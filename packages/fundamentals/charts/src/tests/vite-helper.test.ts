@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -40,7 +40,6 @@ describe('chartsViteAlias', () => {
     // Existence check via fs — `existsSync` is what the helper uses
     // internally to filter candidates, so this asserts the same
     // contract the consumer Vite resolver will rely on.
-    const { existsSync } = require('node:fs') as typeof import('node:fs')
     expect(existsSync(alias.tslib as string)).toBe(true)
   })
 })
@@ -108,7 +107,6 @@ describe('@pyreon/charts/vite subpath export contract', () => {
   it('package.json declares the ./vite subpath export', () => {
     // Inline read of the package's own manifest.
     const pkgPath = path.resolve(__dirname, '..', '..', 'package.json')
-    const { readFileSync } = require('node:fs') as typeof import('node:fs')
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as {
       exports?: Record<string, unknown>
     }

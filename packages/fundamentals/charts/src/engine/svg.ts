@@ -46,6 +46,11 @@ function esc(s: string): string {
     .replace(/'/g, '&apos;')
 }
 
+function dashAttr(dash: Double[] | undefined): string {
+  if (dash === undefined || dash.length === 0) return ''
+  return ` stroke-dasharray="${dash.map((d) => n(d)).join(' ')}"`
+}
+
 function pointsAttr(points: Pt[]): string {
   return points.map((p) => `${n(p.x)},${n(p.y)}`).join(' ')
 }
@@ -72,13 +77,13 @@ export function svgCommand(c: DrawCmd, fontFamily: string): string {
     return `<rect x="${n(c.rect.x)}" y="${n(c.rect.y)}" width="${n(c.rect.w)}" height="${n(c.rect.h)}" fill="${esc(c.fill)}"/>`
   }
   if (c.kind === 'line') {
-    return `<line x1="${n(c.from.x)}" y1="${n(c.from.y)}" x2="${n(c.to.x)}" y2="${n(c.to.y)}" stroke="${esc(c.stroke)}" stroke-width="${n(c.width)}"/>`
+    return `<line x1="${n(c.from.x)}" y1="${n(c.from.y)}" x2="${n(c.to.x)}" y2="${n(c.to.y)}" stroke="${esc(c.stroke)}" stroke-width="${n(c.width)}"${dashAttr(c.dash)}/>`
   }
   if (c.kind === 'polyline') {
     // Below two points there is no segment to stroke; emitting the element
     // anyway would put a stray dot at the vertex in some renderers.
     if (c.points.length < 2) return ''
-    return `<polyline points="${pointsAttr(c.points)}" fill="none" stroke="${esc(c.stroke)}" stroke-width="${n(c.width)}" stroke-linejoin="round" stroke-linecap="round"/>`
+    return `<polyline points="${pointsAttr(c.points)}" fill="none" stroke="${esc(c.stroke)}" stroke-width="${n(c.width)}"${dashAttr(c.dash)} stroke-linejoin="round" stroke-linecap="round"/>`
   }
   if (c.kind === 'polygon') {
     if (c.points.length < 3) return ''

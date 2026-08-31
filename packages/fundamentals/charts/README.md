@@ -41,6 +41,44 @@ dropped by any bundler, however the library was built.
 Marks: `bars`, `line`, `area`, `points`, `stackedBars`, `groupedBars`.
 Components: `PlotChart`, `PieChart` (donut via `innerRadius`), `GaugeChart`.
 
+### Curves, annotations, bubbles, labels
+
+```tsx
+import { PlotChart, line, area, bubble, smooth, step } from '@pyreon/charts/plot'
+
+<PlotChart
+  data={readings}
+  marks={[
+    area((d) => d.value, { curve: smooth }),
+    bubble((d) => d.price, (d) => d.volume),
+  ]}
+  annotations={[
+    { y: 100, label: 'Target' },
+    { yFrom: 40, yTo: 60 },       // a translucent band
+  ]}
+/>
+```
+
+A **curve** is an imported binding, like a mark — `smooth` (monotone cubic:
+it never invents an extremum the data does not have, unlike the Catmull-Rom
+family) or `step` (holds each value to the next datum — the honest shape for
+prices). Under the hood a curve is a `(points) => points` densifier, which is
+why it costs zero new backend work on any platform.
+
+**Annotations** are dashed rules and translucent bands with optional labels,
+placed by the same scale the axis is labelled with. **`bubble`** maps its r
+channel by AREA, not radius — radius-proportional bubbles exaggerate the data.
+**`bars(y, { showValues: true })`** labels each bar with its formatted value.
+
+### Entrance animation
+
+On by default: bars rise from the zero line, lines draw left to right, points
+grow. Off automatically under `prefers-reduced-motion`, and via
+`animate={false}`. Only the FIRST paint animates — an update should read as
+the new truth, not a morph. The mechanism is `ChartSpec.progress`, a pure
+engine parameter (0..1) the host tweens, so any backend animates by tweening
+one number.
+
 ### Formatting
 
 ```tsx

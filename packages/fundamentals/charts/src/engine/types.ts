@@ -75,8 +75,8 @@ export type MeasureText = (text: string, fontSize: Double) => Double
  */
 export type DrawCmd =
   | { kind: 'rect'; rect: Rect; fill: string }
-  | { kind: 'line'; from: Pt; to: Pt; stroke: string; width: Double }
-  | { kind: 'polyline'; points: Pt[]; stroke: string; width: Double }
+  | { kind: 'line'; from: Pt; to: Pt; stroke: string; width: Double; dash?: Double[] | undefined }
+  | { kind: 'polyline'; points: Pt[]; stroke: string; width: Double; dash?: Double[] | undefined }
   | { kind: 'polygon'; points: Pt[]; fill: string }
   | { kind: 'circle'; center: Pt; radius: Double; fill: string }
   | {

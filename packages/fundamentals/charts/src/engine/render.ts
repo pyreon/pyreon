@@ -4,7 +4,9 @@ import { computeLayout, layoutBars, layoutSeriesPoints, layoutSeriesPointsAt } f
 import { layoutGroupedBars, layoutStackedBars, stackedExtent } from './stack'
 import type { Formatter } from './format'
 import type { LayoutConfig, PlotLayout } from './layout'
-import { extent, niceDomain } from './scale'
+import { extent, niceDomain, scaleLinear } from './scale'
+import { plain } from './format'
+import { withAlpha } from './radar'
 import type { DrawCmd, Domain, MeasureText, Pt, Rect, Double } from './types'
 
 /** One drawable series. */
@@ -18,6 +20,32 @@ export interface Series {
   radius: Double
   /** Name for the legend, the tooltip and the accessible table. */
   label: string
+  /** Densifier applied to line/area points — `smooth`/`step` from ./curve. */
+  curve?: ((points: Pt[]) => Pt[]) | undefined
+  /** Draw each value above its bar. */
+  showValues?: boolean | undefined
+  /** Per-datum radii (the bubble channel), already mapped to pixels. */
+  radii?: Double[] | undefined
+}
+
+/**
+ * A reference rule or band — the "target line" every dashboard needs.
+ *
+ * Exactly one of `y`, `x`, or the `yFrom`/`yTo` pair should be set; an
+ * annotation with none is skipped rather than guessed at. Values are in DOMAIN
+ * units — for a categorical x axis that is the datum INDEX, matching how the
+ * points are placed.
+ */
+export interface Annotation {
+  /** Horizontal rule at this y value. */
+  y?: Double | undefined
+  /** Vertical rule at this x value. */
+  x?: Double | undefined
+  /** Horizontal band between these two y values. */
+  yFrom?: Double | undefined
+  yTo?: Double | undefined
+  label?: string | undefined
+  color?: string | undefined
 }
 
 export interface ChartTheme {
@@ -52,6 +80,20 @@ export interface ChartSpec {
   xValues?: Double[] | undefined
   /** Label the x axis with calendar steps — see `LayoutConfig.xTime`. */
   xTime?: boolean | undefined
+  /** Reference rules and bands, drawn between the grid and the series. */
+  annotations?: Annotation[] | undefined
+  /**
+   * Entrance progress, 0..1; absent means 1 (fully drawn).
+   *
+   * Animation lives in the ENGINE as a parameter, not in the hosts as a
+   * effect: `renderChart` at progress 0.4 is a pure function returning the
+   * 40%-grown frame — bars part-risen from the zero line, lines revealed
+   * left-to-right, points part-sized. That makes every frame testable, keeps
+   * the draw list flat, and means the SwiftUI/Compose executors animate the
+   * day they exist, with no animation code of their own. The host's whole job
+   * is to tween this number.
+   */
+  progress?: Double | undefined
 }
 
 export const defaultTheme: ChartTheme = {
@@ -144,6 +186,38 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
   const plot = l.plot
   const t = spec.theme
   const out: DrawCmd[] = []
+  const raw = spec.progress
+  const progress = raw === undefined ? 1.0 : raw < 0.0 ? 0.0 : raw > 1.0 ? 1.0 : raw
+
+  // Grows a bar rect toward its value from the zero line — the edge a bar is
+  // measured from, so a negative bar grows DOWNWARD during the entrance
+  // instead of sliding in from above.
+  const growRect = (r: Rect): Rect => {
+    if (progress >= 1.0) return r
+    const zeroY = scaleLinear(yDomain, plot.y + plot.h, plot.y, yDomain.min < 0.0 && yDomain.max > 0.0 ? 0.0 : yDomain.min)
+    const h = r.h * progress
+    const top = r.y + r.h <= zeroY + 0.5 ? zeroY - h : zeroY
+    return { x: r.x, y: top, w: r.w, h }
+  }
+
+  // Reveals a polyline left to right: whole points up to the cut, plus an
+  // interpolated point partway along the segment the cut lands in, so the tip
+  // advances smoothly instead of popping a segment at a time.
+  const reveal = (pts: Pt[]): Pt[] => {
+    if (progress >= 1.0 || pts.length < 2) return pts
+    const span = pts.length - 1
+    const cut = span * progress
+    const whole = Math.floor(cut)
+    const outPts: Pt[] = []
+    for (let i = 0; i <= whole; i++) outPts.push(pts[i]!)
+    const frac = cut - whole
+    if (frac > 0.0 && whole + 1 < pts.length) {
+      const a = pts[whole]!
+      const b = pts[whole + 1]!
+      outPts.push({ x: a.x + (b.x - a.x) * frac, y: a.y + (b.y - a.y) * frac })
+    }
+    return outPts
+  }
 
   if (spec.showGrid) {
     for (const tick of l.yTicks) {
@@ -176,19 +250,83 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
     })
   }
 
+  // Reference bands and rules sit BETWEEN the grid and the series: a band is
+  // context the data draws over, and a rule must not be buried under a filled
+  // area — dashing is what keeps it legible crossing the data. Bands first,
+  // rules second, so a rule bounding its own band stays visible.
+  const notes = spec.annotations ?? []
+  for (const a of notes) {
+    if (a.yFrom !== undefined && a.yTo !== undefined) {
+      const y1 = scaleLinear(yDomain, plot.y + plot.h, plot.y, a.yFrom)
+      const y2 = scaleLinear(yDomain, plot.y + plot.h, plot.y, a.yTo)
+      const top = y1 < y2 ? y1 : y2
+      out.push({
+        kind: 'rect',
+        rect: { x: plot.x, y: top, w: plot.w, h: Math.abs(y2 - y1) },
+        fill: withAlpha(a.color ?? t.axis, 0.12),
+      })
+    }
+  }
+  for (const a of notes) {
+    if (a.y !== undefined) {
+      const yPos = scaleLinear(yDomain, plot.y + plot.h, plot.y, a.y)
+      out.push({
+        kind: 'line',
+        from: { x: plot.x, y: yPos },
+        to: { x: plot.x + plot.w, y: yPos },
+        stroke: a.color ?? t.axis,
+        width: 1.0,
+        dash: [4.0, 4.0],
+      })
+      if (a.label !== undefined) {
+        out.push({
+          kind: 'text',
+          text: a.label,
+          at: { x: plot.x + plot.w, y: yPos - 4.0 },
+          fill: a.color ?? t.label,
+          size: t.fontSize,
+          align: 'end',
+          baseline: 'bottom',
+        })
+      }
+    }
+    if (a.x !== undefined) {
+      const xPos = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, a.x)
+      out.push({
+        kind: 'line',
+        from: { x: xPos, y: plot.y },
+        to: { x: xPos, y: plot.y + plot.h },
+        stroke: a.color ?? t.axis,
+        width: 1.0,
+        dash: [4.0, 4.0],
+      })
+      if (a.label !== undefined) {
+        out.push({
+          kind: 'text',
+          text: a.label,
+          at: { x: xPos + 4.0, y: plot.y },
+          fill: a.color ?? t.label,
+          size: t.fontSize,
+          align: 'start',
+          baseline: 'top',
+        })
+      }
+    }
+  }
+
   // Stacked and grouped series are laid out TOGETHER — each needs to know the
   // others to place its bars — so they are drawn as a set before the
   // independent marks rather than one at a time in the loop below.
   const stackedSeries = spec.series.filter((s) => s.kind === 'stacked')
   if (stackedSeries.length > 0) {
     for (const seg of layoutStackedBars(stackedSeries.map((s) => s.values), plot, yDomain, 0.25)) {
-      out.push({ kind: 'rect', rect: seg.rect, fill: stackedSeries[seg.seriesIndex]!.color })
+      out.push({ kind: 'rect', rect: growRect(seg.rect), fill: stackedSeries[seg.seriesIndex]!.color })
     }
   }
   const groupedSeries = spec.series.filter((s) => s.kind === 'grouped')
   if (groupedSeries.length > 0) {
     for (const seg of layoutGroupedBars(groupedSeries.map((s) => s.values), plot, yDomain, 0.25)) {
-      out.push({ kind: 'rect', rect: seg.rect, fill: groupedSeries[seg.seriesIndex]!.color })
+      out.push({ kind: 'rect', rect: growRect(seg.rect), fill: groupedSeries[seg.seriesIndex]!.color })
     }
   }
 
@@ -202,17 +340,41 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
         ? layoutSeriesPointsAt(values, spec.xValues, plot, yDomain, l.xDomainUsed)
         : layoutSeriesPoints(values, plot, yDomain)
 
+    // The curve shapes line AND area from the same densified points — an
+    // area whose fill followed straight segments under a smoothed outline
+    // would show slivers of background between the two.
+    const shape = (pts: Pt[]): Pt[] => (s.curve !== undefined ? s.curve(pts) : pts)
+
     if (s.kind === 'bars') {
-      for (const r of layoutBars(s.values, plot, yDomain, 0.25)) {
-        out.push({ kind: 'rect', rect: r, fill: s.color })
+      const rects = layoutBars(s.values, plot, yDomain, 0.25)
+      for (const r of rects) {
+        out.push({ kind: 'rect', rect: growRect(r), fill: s.color })
+      }
+      if (s.showValues === true && progress >= 1.0) {
+        const fmt = spec.yFormat ?? plain
+        for (let i = 0; i < rects.length; i++) {
+          const r = rects[i]!
+          const v = s.values[i]!
+          // A negative bar hangs below the zero line, so its label goes under
+          // its bottom edge — above the top would sit ON the zero line.
+          out.push({
+            kind: 'text',
+            text: fmt(v),
+            at: { x: r.x + r.w / 2.0, y: v < 0.0 ? r.y + r.h + 4.0 : r.y - 4.0 },
+            fill: t.label,
+            size: t.fontSize,
+            align: 'middle',
+            baseline: v < 0.0 ? 'top' : 'bottom',
+          })
+        }
       }
     } else if (s.kind === 'line') {
-      const pts = place(s.values)
+      const pts = reveal(shape(place(s.values)))
       if (pts.length > 1) {
         out.push({ kind: 'polyline', points: pts, stroke: s.color, width: s.width })
       }
     } else if (s.kind === 'area') {
-      const pts = place(s.values)
+      const pts = reveal(shape(place(s.values)))
       if (pts.length > 1) {
         const poly: Pt[] = []
         for (const p of pts) poly.push(p)
@@ -223,8 +385,15 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
         out.push({ kind: 'polygon', points: poly, fill: s.color })
       }
     } else {
-      for (const p of place(s.values)) {
-        out.push({ kind: 'circle', center: p, radius: s.radius, fill: s.color })
+      const pts = place(s.values)
+      for (let i = 0; i < pts.length; i++) {
+        const fullR = s.radii !== undefined ? s.radii[i] ?? s.radius : s.radius
+        out.push({
+          kind: 'circle',
+          center: pts[i]!,
+          radius: fullR * progress,
+          fill: s.color,
+        })
       }
     }
   }
