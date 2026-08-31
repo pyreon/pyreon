@@ -160,8 +160,8 @@ export function layoutChart(spec: ChartSpec, measure: MeasureText): PlotLayout {
     width: spec.width,
     height: spec.height,
     xDomain:
-      spec.xValues !== undefined && spec.xValues.length > 0
-        ? extent(spec.xValues)
+      (spec.xValues ?? []).length > 0
+        ? extent(spec.xValues ?? [])
         : { min: 0.0, max: n > 1 ? n - 1 : 1.0 },
     yDomain: resolveYDomain(spec),
     categories: spec.categories,
@@ -196,8 +196,11 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
   const plot = l.plot
   const t = spec.theme
   const out: DrawCmd[] = []
-  const raw = spec.progress
-  const progress = raw === undefined ? 1.0 : raw < 0.0 ? 0.0 : raw > 1.0 ? 1.0 : raw
+  // `?? 1.0` FIRST, then clamp a non-optional. Swift does not narrow an
+  // optional through a ternary chain, so the coalesce-then-clamp idiom is
+  // what compiles on native — and it reads better on web too.
+  const rawProgress = spec.progress ?? 1.0
+  const progress = rawProgress < 0.0 ? 0.0 : rawProgress > 1.0 ? 1.0 : rawProgress
 
   // Grows a bar rect toward its value from the zero line — the edge a bar is
   // measured from, so a negative bar grows DOWNWARD during the entrance
@@ -368,9 +371,12 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
     // One helper rather than three call-site conditionals: line, area and
     // points must agree about placement, or an area fill drifts away from the
     // line it is meant to sit under.
+    // Coalesced to a sentinel: an EMPTY array means "place by index", and a
+    // non-optional binding is what Swift can use on both sides of the branch.
+    const xs = spec.xValues ?? []
     const place = (values: Double[]): Pt[] =>
-      spec.xValues !== undefined && spec.xValues.length > 0
-        ? layoutSeriesPointsAt(values, spec.xValues, plot, yDomain, l.xDomainUsed)
+      xs.length > 0
+        ? layoutSeriesPointsAt(values, xs, plot, yDomain, l.xDomainUsed)
         : layoutSeriesPoints(values, plot, yDomain)
 
     // The curve shapes line AND area from the same densified points — an
@@ -449,8 +455,9 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
       }
     } else {
       const pts = place(s.values)
+      const radii = s.radii ?? []
       for (let i = 0; i < pts.length; i++) {
-        const fullR = s.radii !== undefined ? s.radii[i] ?? s.radius : s.radius
+        const fullR = radii.length > 0 ? radii[i] ?? s.radius : s.radius
         out.push({
           kind: 'circle',
           center: pts[i]!,
