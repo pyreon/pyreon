@@ -19,6 +19,22 @@
         "best-practices"
       ]
     },
+    "settings": {
+      "type": "object",
+      "description": "Options shared by every rule that DECLARES them in its schema. Some options are a property of the project rather than of one rule \u2014 `portablePaths` names the directories whose source must survive three targets, and five rules need that same answer. A key here is seeded into a rule's options only when that rule declares it; per-rule options always win.",
+      "properties": {
+        "portablePaths": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Path substrings whose files must lower to SwiftUI / Compose. Read by every rule in the `portable` group that needs to know which files travel."
+        },
+        "exemptPaths": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Path substrings exempt from the rules that support it."
+        }
+      }
+    },
     "groups": {
       "type": "object",
       "description": "Severity for a whole rule GROUP, in one line. Applied after the preset and BEFORE per-rule entries, so an explicit rule always wins over its group. `pyreon` = framework semantics; `a11y` = accessibility; `pkg` = per-library, dependency-gated; `internal` = rules that encode the Pyreon repository itself (never on in a shipped preset).",

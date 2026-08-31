@@ -269,6 +269,8 @@ export type RuleEntry = Severity | readonly [Severity, RuleOptions]
 
 export interface LintConfig {
   rules: Record<string, RuleEntry>
+  /** See {@link LintConfigFile.settings}. */
+  settings?: RuleOptions | undefined
   include?: string[] | undefined
   exclude?: string[] | undefined
 }
@@ -285,6 +287,24 @@ export interface LintConfigFile {
    * instead of by id.
    */
   groups?: Partial<Record<RuleGroup, Severity>> | undefined
+  /**
+   * Options shared by every rule that DECLARES them.
+   *
+   * Some options are a property of the project, not of one rule:
+   * `portablePaths` names the directories whose source must survive three
+   * targets, and FIVE rules need that same answer. Repeating it per rule makes
+   * the config a hand-maintained subset of the registry — add a sixth portable
+   * rule and it is silently inert in every project that listed the other five,
+   * which is this repo's most-repeated bug class.
+   *
+   * A key here is seeded into a rule's options only when that rule's
+   * `meta.schema` declares it, so this can never spray an option onto a rule
+   * that would reject it. Per-rule options always win, so a project can widen
+   * the shared answer and then narrow it for one rule.
+   *
+   *   { "settings": { "portablePaths": ["src/"] } }
+   */
+  settings?: RuleOptions | undefined
   rules?: Record<string, RuleEntry> | undefined
   include?: string[] | undefined
   exclude?: string[] | undefined

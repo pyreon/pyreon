@@ -1,6 +1,6 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, isCallTo } from '../../utils/ast'
-import { isServerFile } from '../../utils/file-roles'
+import { isApiRouteFile, isServerFile } from '../../utils/file-roles'
 
 export const preferRequestContext: Rule = {
   meta: {
@@ -12,7 +12,14 @@ export const preferRequestContext: Rule = {
     fixable: false,
   },
   create(context) {
-    if (!isServerFile(context.getFilePath())) return {}
+    // `isServerFile` is a PATH guess — `server` in the path, or `*.server.ts`
+    // — and it does not know about fs-router api routes. A module-level
+    // `signal()` in `src/routes/api/posts.ts` is exactly this defect and went
+    // unreported, which is what the role-aware plan meant when it called this
+    // "its broken path guess". Widened here rather than in the shared helper,
+    // to keep the change to the rule that needed it.
+    const filePath = context.getFilePath()
+    if (!isServerFile(filePath) && !isApiRouteFile(filePath)) return {}
 
     let functionDepth = 0
     const callbacks: VisitorCallbacks = {

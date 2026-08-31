@@ -603,6 +603,90 @@ const FIXTURES: Record<string, Fixture> = {
     bad: `export function stop(ws: any) { ws.close()\n  ws.onmessage = null }`,
     good: `export function stop(ws: any) { ws.onmessage = null\n  ws.close() }`,
   },
+  'pyreon/no-env-branch-in-render': {
+    file: 'src/W.tsx',
+    bad: `export const W = () => <div>{isServer ? 'server' : 'client'}</div>`,
+    good: `export const W = () => <div>{label()}</div>`,
+  },
+  'pyreon/require-stable-iteration-order': {
+    file: 'src/W.tsx',
+    bad: `export const W = (o: any) => <ul>{Object.keys(o).map((k) => <li>{k}</li>)}</ul>`,
+    good: `export const W = (o: any) => <ul>{Object.keys(o).sort().map((k) => <li>{k}</li>)}</ul>`,
+  },
+  'pyreon/no-unvalidated-request-body': {
+    file: 'src/routes/api/items.ts',
+    bad: `export async function POST(req: Request) { const body = await req.json()\n  return save(body) }`,
+    good: `export async function POST(req: Request) { const body = schema.parse(await req.json())\n  return save(body) }`,
+  },
+  'pyreon/no-await-in-loop-over-io': {
+    file: 'src/routes/api/items.ts',
+    bad: `export async function GET(req: Request) { const out = []\n  for (const id of ids) { out.push(await fetchOne(id)) }\n  return out }`,
+    good: `export async function GET(req: Request) { return await Promise.all(ids.map((id) => fetchOne(id))) }`,
+  },
+  'pyreon/require-request-signal-forwarding': {
+    file: 'src/routes/api/items.ts',
+    bad: `export async function GET(req: Request) { return await fetch('https://x.example') }`,
+    good: `export async function GET(req: Request) { return await fetch('https://x.example', { signal: req.signal }) }`,
+  },
+  'pyreon/no-module-mutable-in-handler': {
+    file: 'src/routes/api/items.ts',
+    bad: `let currentUser = null\nexport function GET(req: Request) { currentUser = req.headers.get('x-user')\n  return currentUser }`,
+    good: `export function GET(req: Request) { const currentUser = req.headers.get('x-user')\n  return currentUser }`,
+  },
+  'pyreon/no-secret-in-shared-module': {
+    file: 'src/config.ts',
+    bad: `export const key = process.env.STRIPE_SECRET_KEY`,
+    good: `export const key = process.env.ZERO_PUBLIC_API_URL`,
+  },
+  'pyreon/no-layout-thrash': {
+    file: 'src/measure.ts',
+    bad: `export function run(els: any[]) { for (const el of els) { el.style.width = '1px'\n  const w = el.offsetWidth\n  use(w) } }`,
+    good: `export function run(els: any[]) { const ws = els.map((el) => el.offsetWidth)\n  els.forEach((el, i) => { el.style.width = ws[i] + 'px' }) }`,
+  },
+  'pyreon/require-abort-on-unmount': {
+    file: 'src/W.tsx',
+    bad: `export const W = () => { onMount(() => { fetch('/api').then(use) }) }`,
+    good: `export const W = () => { onMount(() => { const ac = new AbortController()\n  fetch('/api', { signal: ac.signal }).then(use)\n  return () => ac.abort() }) }`,
+  },
+  'pyreon/require-img-loading-hint': {
+    file: 'src/W.tsx',
+    bad: `export const W = () => <img src="/a.png" alt="a" width={1} height={1} />`,
+    good: `export const W = () => <img src="/a.png" alt="a" width={1} height={1} loading="lazy" />`,
+  },
+  'pyreon/no-blocking-third-party-script': {
+    file: 'src/W.tsx',
+    bad: `export const W = () => <script src="https://cdn.example/a.js" />`,
+    good: `export const W = () => <script src="https://cdn.example/a.js" defer />`,
+  },
+  'pyreon/no-web-only-import-in-portable': {
+    file: 'src/shared/logic.ts',
+    options: { portablePaths: ['src/shared/'] },
+    bad: `import { mount } from '@pyreon/runtime-dom'\nexport const go = () => mount`,
+    good: `import { signal } from '@pyreon/reactivity'\nexport const go = () => signal`,
+  },
+  'pyreon/prefer-canonical-primitive': {
+    file: 'src/shared/View.tsx',
+    options: { portablePaths: ['src/shared/'] },
+    bad: `export const V = () => <div>hi</div>`,
+    good: `export const V = () => <Stack>hi</Stack>`,
+  },
+  'pyreon/require-native-compat-marker': {
+    file: 'src/shared/Provider.tsx',
+    options: { portablePaths: ['src/shared/'] },
+    bad: `export function Shell(props: any) { provide(Ctx, props.value)\n  return props.children }`,
+    good: `function Shell(props: any) { provide(Ctx, props.value)\n  return props.children }\nexport default nativeCompat(Shell)`,
+  },
+  'pyreon/no-css-in-js-in-portable': {
+    file: 'src/shared/styles.ts',
+    options: { portablePaths: ['src/shared/'] },
+    bad: `export const Box = styled('div')({ padding: 4 })`,
+    good: `export const box = { padding: 'medium' }`,
+  },
+  'pyreon/no-catch-without-rethrow-or-report': {
+    file: 'src/a.ts',
+    bad: `export function f() { try { g() } catch (err) { } }`,
+    good: `export function f() { try { g() } catch (err) { throw new Error('failed', { cause: err }) } }`,
+  },
   'pyreon/prefer-passive-listener': {
     file: 'src/a.ts',
     bad: `export function bind(el: any) { el.addEventListener('scroll', onScroll) }`,

@@ -38,10 +38,27 @@ describe('backend group wiring', () => {
   it('holds exactly the request-path rules, and every one is server-gated', () => {
     const be = allRules.filter((r) => groupOf(r.meta) === 'backend')
     expect(be.map((r) => r.meta.id).sort()).toEqual([
+      'pyreon/no-await-in-loop-over-io',
       'pyreon/no-floating-promise-in-handler',
+      'pyreon/no-module-mutable-in-handler',
+      'pyreon/no-secret-in-shared-module',
       'pyreon/no-sync-fs-in-request-path',
+      'pyreon/no-unvalidated-request-body',
+      'pyreon/require-request-signal-forwarding',
     ])
-    for (const r of be) expect(r.meta.appliesTo, r.meta.id).toEqual(['server'])
+    for (const r of be) {
+      if (r.meta.id === 'pyreon/no-secret-in-shared-module') {
+        // The one backend rule that must NOT be server-gated, and the reason
+        // is the rule itself: its subject is a secret ESCAPING to the client,
+        // so the file it fires on is by definition not server-role. A server
+        // file reading a secret is correct and is the entire point of having
+        // secrets; a shared one doing it is the leak. It guards the boundary
+        // from the other side.
+        expect(r.meta.appliesTo, r.meta.id).toEqual(['shared', 'client'])
+        continue
+      }
+      expect(r.meta.appliesTo, r.meta.id).toEqual(['server'])
+    }
   })
 })
 

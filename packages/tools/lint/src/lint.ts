@@ -120,6 +120,11 @@ function buildConfig(options: LintOptions): {
     }
   }
 
+  // Project-wide shared options. Seeded into a rule's options by the runner,
+  // and only for the keys that rule's own schema declares — see
+  // `LintConfigFile.settings`.
+  if (fileConfig?.settings) config.settings = fileConfig.settings
+
   // Merge config file rule overrides. Entries can be a bare severity or a
   // `[severity, options]` tuple — passed through verbatim; the runner
   // normalizes at use-site.
@@ -240,6 +245,7 @@ export function lint(options: LintOptions): LintResult {
   const configDiagnostics: ConfigDiagnostic[] = diagnoseUnknownConfigKeys(
     options.config ? loadConfigFromPath(options.config) : loadConfig(resolve('.')),
     allRules.map((r) => r.meta.id),
+    [...new Set(allRules.flatMap((r) => Object.keys(r.meta.schema ?? {})))],
   )
   const results: LintResult = {
     files: [],

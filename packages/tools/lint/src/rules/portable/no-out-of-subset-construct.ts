@@ -1,5 +1,6 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
+import { isPortablePath, portablePathsFrom } from '../../utils/portable-paths'
 
 /**
  * A TypeScript construct the multiplatform compiler cannot lower.
@@ -42,12 +43,12 @@ export const noOutOfSubsetConstruct: Rule = {
     schema: { portablePaths: 'string[]' },
   },
   create(context) {
-    // Substring match, same convention as `exemptPaths`.
-    const raw = (context.getOptions() as { portablePaths?: unknown }).portablePaths
-    const paths = Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string' && x.length > 0) : []
+    // Substring match, same convention as `exemptPaths`. Shared with the four
+    // sibling portable rules so all five read the option identically — a
+    // second copy is how two rules end up disagreeing about the same key.
+    const paths = portablePathsFrom(context)
     if (paths.length === 0) return {}
-    const filePath = context.getFilePath()
-    if (!paths.some((entry) => filePath.includes(entry))) return {}
+    if (!isPortablePath(context.getFilePath(), paths)) return {}
 
     const say = (what: string, why: string, node: unknown) =>
       context.report({
