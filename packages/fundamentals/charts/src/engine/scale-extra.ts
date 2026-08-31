@@ -61,7 +61,7 @@ export function timeTicks(
   d: Domain,
   r0: Double,
   r1: Double,
-  target: number,
+  target: Double,
   format?: Formatter,
 ): Tick[] {
   const span = d.max - d.min
