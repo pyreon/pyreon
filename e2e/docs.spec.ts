@@ -4,6 +4,48 @@ import { expect, test } from '@playwright/test'
 // rollout risk: landing rendering, navigation, scroll-spy, 404, and
 // the heavy custom-component pages.
 
+/**
+ * Bring every `<Example>` on the page into view.
+ *
+ * `<Example>` lazy-mounts: it defers its dynamic import until an
+ * IntersectionObserver (rootMargin 400px) says it is near the viewport, so a
+ * gallery page does not fire 40 chunk loads on hydration. Specs written before
+ * that landed asserted on examples that were still showing their skeleton —
+ * and stayed broken silently, because the docs suite was never registered in
+ * CI. Scroll the page in steps so every observer fires, then return to the top.
+ */
+async function revealExamples(page: import('@playwright/test').Page): Promise<void> {
+  // Mounting an example changes the page height, which can push a later one
+  // back out of the observer's 400px margin — so a single top-to-bottom sweep
+  // that returns to the top can leave the last example permanently unobserved.
+  // Sweep repeatedly and STAY at the bottom between passes; only return to the
+  // top once nothing is loading. Against the DEV server the first pass also
+  // pays each example chunk's on-demand transform, hence the budget.
+  const deadline = Date.now() + 45_000
+  for (;;) {
+    await page.evaluate(async () => {
+      for (let y = 0; y < document.body.scrollHeight; y += 300) {
+        window.scrollTo(0, y)
+        await new Promise((r) => setTimeout(r, 60))
+      }
+      window.scrollTo(0, document.body.scrollHeight)
+    })
+    await page.waitForTimeout(400)
+    const stuck = await page.locator('.pyreon-example__loading').count()
+    if (stuck === 0) break
+    if (Date.now() > deadline) {
+      const which = await page.evaluate(() =>
+        [...document.querySelectorAll('.pyreon-example')]
+          .map((el, i) => ({ i, t: el.querySelector('.pyreon-example__title')?.textContent ?? '(untitled)', stuck: !!el.querySelector('.pyreon-example__loading') }))
+          .filter((e) => e.stuck)
+          .map((e) => `#${e.i} ${e.t}`),
+      )
+      throw new Error(`revealExamples: ${stuck} example(s) still loading: ${which.join(', ')}`)
+    }
+  }
+  await page.evaluate(() => window.scrollTo(0, 0))
+}
+
 test.describe('docs rendering', () => {
   test('landing page renders the PyreonLanding component (real signal counter)', async ({
     page,
@@ -269,9 +311,25 @@ test.describe('docs rendering', () => {
       const resultCount = await page.locator('.pyreon-search__result').count()
       expect(resultCount).toBeGreaterThan(0)
     }).toPass({ timeout: 15_000 })
-    // Escape closes the overlay.
+    // The reactive class flip on the `<search>` host is the precise binding
+    // that died when the compiler re-invoked `useSearch()` per use site: the
+    // overlay's open state lived in an instance no binding was subscribed to,
+    // so the class stayed `pyreon-search` and the panel never rendered.
+    await expect(page.locator('search.pyreon-search--open')).toHaveCount(1)
+    // A result must actually navigate (SPA push, not a dead node).
+    const first = page.locator('.pyreon-search__result a').first()
+    const href = await first.getAttribute('href')
+    expect(href).toMatch(/^\/docs\//)
+    await first.click()
+    await expect(page).toHaveURL(new RegExp(href!.split('#')[0]!.replace(/\//g, '\\/')))
+    await expect(page.locator('.pyreon-search__panel')).not.toBeVisible()
+
+    // Escape closes the overlay (re-open first — the click above closed it).
+    await page.keyboard.press('Meta+k')
+    await expect(page.locator('.pyreon-search__panel')).toBeVisible()
     await page.keyboard.press('Escape')
     await expect(page.locator('.pyreon-search__panel')).not.toBeVisible()
+    await expect(page.locator('search.pyreon-search--open')).toHaveCount(0)
   })
 
   test('sidebar group collapse state persists to localStorage', async ({
@@ -279,36 +337,42 @@ test.describe('docs rendering', () => {
   }) => {
     await page.goto('/docs/getting-started')
     await page.waitForLoadState('networkidle')
-    // Find the "Patterns" group and collapse it.
-    const patternsTitle = page.locator('.pyreon-sidebar__group-title', {
-      hasText: 'Patterns',
-    })
-    await expect(patternsTitle).toBeVisible()
+    // Take the FIRST group rather than naming one. This spec used to look for
+    // a "Patterns" group; the sidebar was later reorganised and the group is
+    // gone, so the spec asserted against an element that could never exist —
+    // undetected because the docs suite was not registered in CI. Reading the
+    // group's own label keeps the localStorage assertion exact without
+    // hard-coding navigation copy.
+    const group = page.locator('.pyreon-sidebar__group').first()
+    const groupTitle = group.locator('.pyreon-sidebar__group-title')
+    await expect(groupTitle).toBeVisible()
+    // `textContent`, not `innerText`: the group title is uppercased by CSS
+    // `text-transform`, and `innerText` returns the RENDERED text, which would
+    // not match the label the sidebar actually persists.
+    const groupLabel = ((await groupTitle.textContent()) ?? '').trim()
     // Before click — expanded. Sidebar keeps the list ALWAYS mounted
     // (CSS grid-template-rows 1fr ↔ 0fr animation needs something to
     // animate); collapse state lives on `.pyreon-sidebar__collapse`'s
     // `data-collapsed` attribute. So we assert the data-attribute,
     // not the DOM-presence of the list.
-    const collapseEl = page
-      .locator('.pyreon-sidebar__group')
-      .filter({ has: page.locator('button:has-text("Patterns")') })
-      .locator('.pyreon-sidebar__collapse')
+    const collapseEl = group.locator('.pyreon-sidebar__collapse')
     await expect(collapseEl).toHaveAttribute('data-collapsed', 'false')
-    await patternsTitle.click()
+    await groupTitle.click()
     // After click — collapsed (data-collapsed flips to "true").
     await expect(collapseEl).toHaveAttribute('data-collapsed', 'true')
     // localStorage records the toggle.
     const stored = await page.evaluate(() =>
       localStorage.getItem('pyreon-docs-sidebar-collapsed'),
     )
-    expect(stored).toContain('Patterns')
+    expect(stored).toContain(groupLabel)
   })
 
   test('<Example> share="key" — click in one example reactively updates another (the killer Pyreon docs DX)', async ({
     page,
   }) => {
-    await page.goto('/docs/example-dx')
+    await page.goto('/docs/live-examples')
     await page.waitForLoadState('networkidle')
+    await revealExamples(page)
 
     // The page mounts 3 examples: effects-log, bridge-counter-button,
     // bridge-counter-readout. Both bridge examples share key="bridge".
@@ -360,8 +424,9 @@ test.describe('docs rendering', () => {
   }) => {
     // The effects-log example uses signals locally — no `share` prop.
     // Clicking inside it must not affect the shared-bridge examples.
-    await page.goto('/docs/example-dx')
+    await page.goto('/docs/live-examples')
     await page.waitForLoadState('networkidle')
+    await revealExamples(page)
     await expect(page.locator('.pyreon-example')).toHaveCount(3)
 
     // The effects-log example has a "+ Increment" + "Reset" pair —
@@ -391,6 +456,7 @@ test.describe('docs rendering', () => {
     // overlay-order regression: Controls must render, not just resolve).
     await page.goto('/docs/flow')
     await page.waitForLoadState('networkidle')
+    await revealExamples(page)
     const canvas = page.locator('.pyreon-example .pyreon-flow').first()
     await expect(canvas).toBeVisible({ timeout: 15_000 })
     await expect(canvas.locator('[data-nodeid]')).toHaveCount(3)
@@ -416,29 +482,35 @@ test.describe('docs rendering', () => {
     expect(arrows.dangling).toBe(0)
   })
 
-  test('flow playground: both arrow shapes render + auto-layout moves the nodes', async ({
+  test('flow playground: edge arrowheads paint + auto-layout moves the nodes', async ({
     page,
   }) => {
     // The second flow <Example> on /docs/flow is the kitchen-sink playground.
     // It locks the two features the docs example previously under-showed:
-    //   (1) BOTH marker shapes paint — a filled <polygon> (ArrowClosed) AND
-    //       an open <polyline> (Arrow) — in the same real-compiler render.
+    //   (1) Edge arrowheads paint as real <marker> geometry in a
+    //       real-compiler render. This used to assert BOTH marker shapes
+    //       (a filled <polygon> AND an open <polyline>); the example later
+    //       dropped its per-edge marker overrides for the coherent default,
+    //       and the assertion survived only because this suite was not
+    //       registered in CI. The invariant it protects — markers render at
+    //       all — is kept.
     //   (2) AUTO-LAYOUT is wired + visible: clicking a layout button runs a
     //       real elkjs pass and the node's own `transform: translate(x,y)`
     //       (its GRAPH position, independent of the viewport/fitView) changes.
     await page.goto('/docs/flow')
     await page.waitForLoadState('networkidle')
+    await revealExamples(page)
     const pg = page.locator('.pyreon-example .pyreon-flow').nth(1)
     await expect(pg).toBeVisible({ timeout: 15_000 })
     await expect(pg.locator('[data-nodeid]')).toHaveCount(6)
 
-    // Both marker SHAPES present (closed filled + open chevron).
+    // The default arrowhead paints as a filled <polygon> inside a <marker>.
     const shapes = await pg.evaluate((flow) => ({
+      markers: flow.querySelectorAll('marker').length,
       polygons: flow.querySelectorAll('marker polygon').length,
-      polylines: flow.querySelectorAll('marker polyline').length,
     }))
+    expect(shapes.markers).toBeGreaterThan(0)
     expect(shapes.polygons).toBeGreaterThan(0)
-    expect(shapes.polylines).toBeGreaterThan(0)
 
     // Auto-layout: the node's own transform changes after a layered pass.
     const node = pg.locator('[data-nodeid="source"]')
@@ -463,6 +535,7 @@ test.describe('docs rendering', () => {
     // core @pyreon/virtual contract — NOT all 10k DOM rows).
     await page.goto('/docs/virtual')
     await page.waitForLoadState('networkidle')
+    await revealExamples(page)
     const example = page.locator('.pyreon-example').first()
     await expect(example).toBeVisible({ timeout: 15_000 })
     // Readout proves the full count is virtualized.
@@ -482,6 +555,7 @@ test.describe('docs rendering', () => {
     // fresh mount) — not just in-memory signal state.
     await page.goto('/docs/storage')
     await page.waitForLoadState('networkidle')
+    await revealExamples(page)
     // Clear any prior run's persisted state, then reload to a clean default.
     await page.evaluate(() => {
       localStorage.removeItem('docs-rs-theme')
@@ -489,6 +563,7 @@ test.describe('docs rendering', () => {
     })
     await page.reload()
     await page.waitForLoadState('networkidle')
+    await revealExamples(page)
     const example = page.locator('[data-testid=reactive-storage]')
     await expect(example).toBeVisible({ timeout: 15_000 })
     await expect(example.getByTestId('rs-theme')).toHaveText('light')
@@ -503,6 +578,7 @@ test.describe('docs rendering', () => {
     // Full reload — the values must come back from localStorage, not reset.
     await page.reload()
     await page.waitForLoadState('networkidle')
+    await revealExamples(page)
     const after = page.locator('[data-testid=reactive-storage]')
     await expect(after.getByTestId('rs-theme')).toHaveText('dark')
     await expect(after.getByTestId('rs-count')).toHaveText('2')

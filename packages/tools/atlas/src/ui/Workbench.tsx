@@ -45,15 +45,19 @@ export function Workbench(props: WorkbenchProps) {
     globalInjected = true
     createGlobalStyle([GLOBAL_CSS] as unknown as TemplateStringsArray)
   }
-  // `let`, NOT `const` — load-bearing. The compiler's reactive-props inlining
-  // inlines a prop-derived `const` at every JSX use site; for a STATEFUL factory
-  // call like createModel() that would mint a FRESH, disconnected model per
-  // `<View model={m}>` (signals written in one instance, read in another → the
-  // reactive graph is severed and nothing updates). `let`/`var` bindings are not
-  // tracked by the inliner, so `m` stays the single shared model. See
-  // .claude/rules/anti-patterns.md "reactive-props inlining of a stateful factory".
-  // oxlint-disable-next-line prefer-const
-  let m = createModel(props.catalog, { title: props.title, subtitle: props.subtitle })
+  // `const` is correct again. This was `let` for a long time — load-bearing,
+  // because the compiler's reactive-props inlining re-invoked a prop-derived
+  // `const`'s STATEFUL initializer at every JSX use site, minting a fresh
+  // disconnected model per `<View model={m}>` (signals written in one instance,
+  // read in another). `let` bindings were never tracked by the inliner, so it
+  // worked — but it was folklore the next author could not be expected to know,
+  // and `@pyreon/loom`'s Observatory duly wrote `const` and inherited the same
+  // dead UI, as did `@pyreon/zero-content`'s `useSearch` (the pyreon.dev search
+  // overlay). The inliner now skips a `useX`/`createX` initializer outright, so
+  // this reads normally AND the atlas-workshop e2e is a live regression test of
+  // that compiler fix. See .claude/rules/anti-patterns.md "reactive-props
+  // inlining of a stateful factory".
+  const m = createModel(props.catalog, { title: props.title, subtitle: props.subtitle })
   // The workbench IS a dev tool — its model is its public runtime surface. The
   // browser-verify runner (and any embedding host) drives scenarios through
   // it instead of scripting the DOM.

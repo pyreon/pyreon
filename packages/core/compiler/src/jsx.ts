@@ -5744,10 +5744,48 @@ const STATEFUL_CALLS = new Set([
   'useStore',
 ])
 
+/**
+ * A callee name that follows the framework-wide HOOK / FACTORY naming
+ * convention — `useX` or `createX`.
+ *
+ * The convention is the contract, exactly as it is for `isBrowser()` /
+ * `isServer()` in the SSR-guard rules: a `use*` function participates in
+ * component setup (it may register lifecycle hooks and effects) and a
+ * `create*` function mints STATE. Re-invoking either is never equivalent
+ * to reading its result again.
+ *
+ * This exists because `STATEFUL_CALLS` alone is a hand-maintained name
+ * list, and a hand-maintained list of "things that must not be inlined"
+ * is a silent-hole generator: every factory nobody thought to add gets
+ * re-invoked once per JSX use site, minting a fresh disconnected instance
+ * whose signals no binding ever observes. That shipped TWICE — `atlas`'s
+ * `createModel` (worked around per-site with `let`, which is folklore the
+ * next author cannot be expected to know) and, undetected until the docs
+ * site was probed in a real browser, `zero-content`'s `useSearch`, which
+ * made the pyreon.dev search overlay dead on every page.
+ *
+ * Scope note: this widens ONLY the non-inlining decision. A call to an
+ * unrecognised callee (`cx(props.a)`, `formatDate(props.d)`) is still
+ * inlined and therefore still reactive — narrowing that would trade a
+ * silent state bug for a silent staleness bug.
+ */
+function isFactoryConventionName(name: string): boolean {
+  return /^(?:use|create)[A-Z]/.test(name)
+}
+
 function isStatefulCall(node: N): boolean {
   if (node.type !== 'CallExpression') return false
   const callee = node.callee
-  if (callee?.type === 'Identifier') return STATEFUL_CALLS.has(callee.name)
+  if (callee?.type === 'Identifier')
+    return STATEFUL_CALLS.has(callee.name) || isFactoryConventionName(callee.name)
+  // `Posts.useSearch(term)` — a feature-object hook. The convention lives on
+  // the PROPERTY, so read it there rather than on the object.
+  if (
+    callee?.type === 'MemberExpression' &&
+    !callee.computed &&
+    callee.property?.type === 'Identifier'
+  )
+    return isFactoryConventionName(callee.property.name)
   return false
 }
 

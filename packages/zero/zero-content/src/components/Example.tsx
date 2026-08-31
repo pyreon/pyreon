@@ -149,6 +149,15 @@ export function Example(props: ExampleProps): VNodeChild {
         return
       }
       Loaded.set(Comp)
+    }).catch((e: unknown) => {
+      // Without this the example sits in its loading skeleton FOREVER on any
+      // import failure — no error, no console output the user would connect to
+      // the blank box, and an unhandled rejection is the only trace. The two
+      // resolution failures above set `error`; the LOAD failure had no path to
+      // it, which is the one case a reader cannot diagnose from the page.
+      error.set(
+        `Example "${props.file}" failed to load: ${e instanceof Error ? e.message : String(e)}`,
+      )
     })
   }
 
