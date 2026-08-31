@@ -54,7 +54,7 @@
         },
         "web-perf": {
           "$ref": "#/definitions/severity",
-          "description": "Client-role files \u2014 the browser work that shows up as jank or layout shift."
+          "description": "Client-role files \u2014 main-thread work that shows up as jank or layout shift, plus teardown that only goes wrong in a real browser."
         },
         "portable": {
           "$ref": "#/definitions/severity",

@@ -60,18 +60,11 @@ export const noLocaleDependentFormat: Rule = {
           return
         }
 
-        // `new Intl.NumberFormat()` — same shape, same failure.
-        if (
-          node.type === 'NewExpression' &&
-          callee.type === 'MemberExpression' &&
-          callee.object?.type === 'Identifier' &&
-          String(callee.object.name) === 'Intl' &&
-          callee.property?.type === 'Identifier' &&
-          INTL_CTORS.has(String(callee.property.name)) &&
-          (node.arguments ?? []).length === 0
-        ) {
-          report(node, `Intl.${String(callee.property.name)}`)
-        }
+        // `new Intl.NumberFormat()` is handled by the NewExpression visitor
+        // below. A branch testing `node.type === 'NewExpression'` HERE was
+        // unreachable — the walker never dispatches a NewExpression to this
+        // callback — so it was dead code shadowing a live handler, and its
+        // uncoverable branches were the file's whole coverage gap.
       },
       NewExpression(node: any) {
         const callee = node?.callee

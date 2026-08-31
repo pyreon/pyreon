@@ -598,6 +598,11 @@ const FIXTURES: Record<string, Fixture> = {
     bad: `export function handler() { sendReceipt(user) }`,
     good: `export async function handler() { await sendReceipt(user) }`,
   },
+  'pyreon/no-close-before-handler-teardown': {
+    file: 'src/a.ts',
+    bad: `export function stop(ws: any) { ws.close()\n  ws.onmessage = null }`,
+    good: `export function stop(ws: any) { ws.onmessage = null\n  ws.close() }`,
+  },
   'pyreon/prefer-passive-listener': {
     file: 'src/a.ts',
     bad: `export function bind(el: any) { el.addEventListener('scroll', onScroll) }`,

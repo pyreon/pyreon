@@ -127,6 +127,7 @@ import { noUnstableRenderId } from './isomorphic/no-unstable-render-id'
 import { noNodeBuiltinInComponent } from './isomorphic/no-node-builtin-in-component'
 import { noSyncFsInRequestPath } from './backend/no-sync-fs-in-request-path'
 import { noFloatingPromiseInHandler } from './backend/no-floating-promise-in-handler'
+import { noCloseBeforeHandlerTeardown } from './web-perf/no-close-before-handler-teardown'
 import { preferPassiveListener } from './web-perf/prefer-passive-listener'
 import { noUnboundedRafLoop } from './web-perf/no-unbounded-raf-loop'
 import { noOutOfSubsetConstruct } from './portable/no-out-of-subset-construct'
@@ -141,6 +142,7 @@ export const allRules: Rule[] = [
   noNodeBuiltinInComponent,
   noSyncFsInRequestPath,
   noFloatingPromiseInHandler,
+  noCloseBeforeHandlerTeardown,
   preferPassiveListener,
   noUnboundedRafLoop,
   noOutOfSubsetConstruct,
