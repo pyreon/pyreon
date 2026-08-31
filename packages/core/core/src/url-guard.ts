@@ -99,7 +99,21 @@ function svgDataUriHasScript(value: string): boolean {
     try {
       payload = decodeURIComponent(payload)
     } catch {
-      // keep the raw (still-encoded) payload — the scan below runs on it as-is
+      // FAIL CLOSED, like the base64 branch two lines up.
+      //
+      // Keeping the raw still-encoded payload and scanning that was a bypass:
+      // `SVG_SCRIPT_RE` matches `<script` and ` on…=`, neither of which appears
+      // in `%3Cscript%3E`. So a single trailing `%` — enough to make
+      // `decodeURIComponent` throw, and nothing else — took a payload from
+      // BLOCKED to ALLOWED:
+      //
+      //   data:image/svg+xml,%3Cscript%3Ealert(1)%3C/script%3E   → blocked
+      //   data:image/svg+xml,%3Cscript%3Ealert(1)%3C/script%3E%  → allowed
+      //
+      // The two branches disagreeing was the whole defect, and this function's
+      // own docstring already promised the base64 branch's behaviour for both
+      // ("malformed payloads are treated as unsafe").
+      return true
     }
   }
   return SVG_SCRIPT_RE.test(payload)

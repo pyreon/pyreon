@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -267,6 +267,95 @@ describe('vercelRevalidateHandler (M3.1)', () => {
         ),
       )
       expect(res.status).toBe(200)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+// ── the secret comparison is actually constant-time now ──────────────────────
+//
+// It used to be `secret !== expected`, under a comment calling it
+// "constant-time-ish: we compare strings of equal length". `!==` short-circuits
+// at the first differing byte regardless of length, which is precisely the leak
+// the phrase claimed to avoid. Overstating what a check does is worse than not
+// having it, because it stops anyone looking again.
+//
+// A timing assertion would be flaky and would prove nothing on a loaded runner,
+// and the behavioural specs below pass against BOTH implementations — they
+// guard the rewrite against breaking rejection or acceptance, which is worth
+// having but is not evidence about timing. The load-bearing assertion is
+// therefore STATIC: the module must compare with `timingSafeEqual` and must not
+// contain the short-circuiting form. Same shape as the repo's ESM-discipline
+// check, and for the same reason — the property is invisible to behaviour.
+describe('secret validation', () => {
+  it('compares with timingSafeEqual, not with !== (static — timing is unobservable)', () => {
+    const raw = readFileSync(
+      new URL('../vercel-revalidate-handler.ts', import.meta.url),
+      'utf8',
+    )
+    // Strip comments first: the fix's own comment QUOTES the old expression to
+    // explain why it was wrong, and a naive scan reads that as the code still
+    // being there. Same trap as the diagnose-catalog marker check.
+    const code = raw
+      .split('\n')
+      .filter((l) => !l.trimStart().startsWith('*') && !l.trimStart().startsWith('//'))
+      .join('\n')
+    expect(code).toContain('timingSafeEqual')
+    expect(code).not.toMatch(/secret\s*!==\s*expected/)
+  })
+
+  // Sibling describe, so it needs its own env setup — the outer block's
+  // beforeEach does not reach here.
+  let saved: string | undefined
+  beforeEach(() => {
+    saved = process.env.VERCEL_REVALIDATE_TOKEN
+    process.env.VERCEL_REVALIDATE_TOKEN = VALID_SECRET
+  })
+  afterEach(() => {
+    if (saved === undefined) delete process.env.VERCEL_REVALIDATE_TOKEN
+    else process.env.VERCEL_REVALIDATE_TOKEN = saved
+  })
+
+  const cases: Array<[string, string]> = [
+    ['same length, differs at the first byte', 'X'.repeat(VALID_SECRET.length)],
+    ['same length, differs only at the last byte', VALID_SECRET.slice(0, -1) + 'X'],
+    ['a correct prefix, truncated', VALID_SECRET.slice(0, 3)],
+    ['a correct value with a suffix', VALID_SECRET + 'X'],
+    ['empty-ish', ' '],
+  ]
+
+  for (const [name, wrong] of cases) {
+    it(`rejects a wrong secret — ${name}`, async () => {
+      const dir = makeManifestDir({ revalidate: { '/about': 60 } })
+      try {
+        const handler = vercelRevalidateHandler({ manifestPath: join(dir, '_pyreon-revalidate.json') })
+        const res = await handler(
+          new Request(
+            `http://localhost/api/_pyreon-revalidate?path=/about&secret=${encodeURIComponent(wrong)}`,
+            { method: 'POST' },
+          ),
+        )
+        expect(res.status).toBe(403)
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    })
+  }
+
+  it('still ACCEPTS the correct secret', async () => {
+    // The guard must not become "reject everything" — the failure mode a
+    // comparison rewrite invites.
+    const dir = makeManifestDir({ revalidate: { '/about': 60 } })
+    try {
+      const handler = vercelRevalidateHandler({ manifestPath: join(dir, '_pyreon-revalidate.json') })
+      const res = await handler(
+        new Request(
+          `http://localhost/api/_pyreon-revalidate?path=/about&secret=${VALID_SECRET}`,
+          { method: 'POST' },
+        ),
+      )
+      expect(res.status).not.toBe(403)
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
