@@ -19,7 +19,7 @@
 import type { FieldMeta, StandardSchemaIssue, StandardSchemaV1 } from '../types'
 import { META_SLOT } from '../types'
 import { type PyreonIssue, ValidationError } from './issue'
-import { type JitValidator, tryCompileJit } from './jit'
+import { type JitValidator, tryCompileJit, tryCompileJitCheck } from './jit'
 import type { CatchOp, CheckOpts, Op, ParseCtx, PendingCheck } from './ops'
 import { EMPTY_PATH, makeCtx } from './ops'
 import { getServerCheck } from './registry'
@@ -302,6 +302,11 @@ export abstract class Schema<T> {
    */
   is(input: unknown): boolean {
     if (this._compiledVerdict) return this._compiledVerdict(input)
+    // Verdict-only JIT: no ctx, no issue objects, no output value — the
+    // whole reason `.is()` exists. Falls through to the seams below for any
+    // shape the verdict emitter refuses.
+    const check = this._getCheck()
+    if (check !== null) return check(input)
     // Pure-JIT fast seam (see {@link _pureCtx}): the verdict is just "did the
     // reused ctx accumulate issues?" — no Result object at all. The issues
     // never escape here, so truncating the array (not replacing it) is safe.
@@ -692,9 +697,25 @@ export abstract class Schema<T> {
     // with — a post-compile chained op (`.refine()` on an already-parsed
     // schema) may make the recompiled tree impure.
     this._pureCtx = undefined
+    this._jitCheck = undefined
     // A build-attached verdict reflects the op-list AT ATTACH TIME; any later
     // chained method invalidates it, so drop it and fall back to `.parse().ok`.
     this._compiledVerdict = undefined
+  }
+
+  /**
+   * Verdict-only compiled validator (`tryCompileJitCheck`). `undefined` = not
+   * built yet; `null` = the emitter refused this shape (a `_runInto`
+   * fallback, or a closure-only check) and `.is()` keeps the parse path.
+   * Built lazily and independently of {@link _compiled}, so a schema that
+   * only ever parses never pays for it.
+   */
+  private _jitCheck?: ((input: unknown) => boolean) | null | undefined
+
+  /** Build (or fetch cached) verdict-only validator; `null` when unsupported. */
+  private _getCheck(): ((input: unknown) => boolean) | null {
+    if (this._jitCheck === undefined) this._jitCheck = tryCompileJitCheck(this)
+    return this._jitCheck
   }
 
   /** Build (or fetch cached) compiled validator. */

@@ -19,6 +19,24 @@ a spy on `Node.prototype.removeChild` during a `<For>` clear of 1,000 rows repor
 
 ---
 
+### A microbenchmark that calls the same function with the SAME input every iteration measures how INLINABLE the callee is, not how fast it is
+
+(the validation-library suite, 2026-08). A loop-invariant call is a loop-invariant computation, and V8 is entitled to hoist it out of the timed loop or drop it. Measured directly: ArkType's `string.email` cell read **~3ns/op** — below the cost of the regex the check must perform, i.e. the work had stopped happening — while Pyreon and TypeBox, whose validators V8 did not manage to hoist, kept reporting their real ~28ns. The table was ranking inlinability. **A result SINK does not fix it** (`if (run(x) === neverReturnedSymbol) sink++` still lets a hoisted value satisfy the comparison); only VARYING THE INPUT does. Rotate a pool of SAME-SHAPE, different-value inputs so the object maps stay monomorphic and every entry does identical work — the pool defeats hoisting without changing what is measured. **The tell is an absolute number below the physical floor of the operation** (a regex test, a hash lookup, a DOM crossing); when one arm reads implausibly fast and its neighbours do not, suspect the harness before believing the winner. Same family as "verify the harness before trusting its result". Reference: `packages/fundamentals/validate/bench/validation.ts` (`POOL` + the sink's own docblock).
+
+---
+
+### Running one arm's PROCESSES consecutively lets a load burst land entirely on that arm
+
+(same suite). Per-cell process isolation with N pooled processes is the right shape, but scheduling them lib-by-lib (all of A, then all of B) is not: on a shared machine a contention burst outlasts a single cell, so it hits whichever library was running and shows up as a lopsided ROW rather than as noise. Observed: a Pyreon cell read **155ns against its own 5ns** on the interleaved schedule — a 31× artifact that reads exactly like a real regression. **ROUND-ROBIN the processes across the arms in a row** (process 1 for every library, then process 2, …) so a burst widens every CI together — and a widened CI reads as a 🤝 tie, which is the conservative failure. This is the cross-library twin of the repo's existing "round-robin timing runs so GC/tier debt spreads across cells" rule.
+
+---
+
+### A per-item measurement that comes out UNIFORM across items that do very different work is measuring the shared setup, not the item
+
+(same suite). A "setup cost" table timed `build the scenario, then bind library L` — but building the scenario constructed EVERY library's schema, so all nine columns read ~1.4ms of shared construction and the per-library compile was invisible. Nine libraries doing genuinely different amounts of work cannot legitimately agree to three significant figures; **uniformity across arms is a tell, exactly as an implausibly-low absolute is**. Fixed by measuring only the thing that differs — the explicit compile CALL (`z.compile` ~55µs, `TypeCompiler.Compile` ~48µs on the same schema) — and reporting `—` for the libraries that compile lazily or at definition time rather than printing a number that measures something else for them.
+
+---
+
 ### A/B perf harnesses that toggle variants via `git apply … 2>/dev/null` without VERIFYING the state they label
 
 `git apply` fails ATOMICALLY (whole patch, all files) when any hunk doesn't apply — under `2>/dev/null` a mid-sequence failure silently leaves the PREVIOUS state in place, so the harness measures one variant while labeling it another (a mislabeled A/B is worse than none: it "proves" the wrong design). Real instance: the validate pure-seam INLINE-vs-OUTLINED comparison ran 3 rounds of "INLINE" that were actually the un-patched BASELINE (the multi-file fix patch conflicted with an already-applied hunk of itself), and the design verdict REVERSED once states were verified. **Rule: every A/B toggle must (a) reset to a KNOWN state first (`git checkout -- <files>`, then apply), and (b) grep a variant-unique marker before measuring — fail loudly on mismatch.** Same family as bisect-verify: a measurement whose code-state you didn't verify is not evidence.

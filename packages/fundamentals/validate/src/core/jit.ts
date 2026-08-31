@@ -332,7 +332,46 @@ function fieldDefinedWhenValid(field: FieldLike): boolean {
  * if the root isn't an inline-able object (caller → interpreter). Never
  * throws — any codegen error returns `null`.
  */
+/**
+ * What the emitted function is FOR.
+ *
+ *  parse — the historical mode: build the validated output value and push a
+ *          Pyreon issue at every failure site.
+ *  check — a VERDICT-ONLY twin: no output value, no issue objects, no ctx.
+ *          Every failure site is a bare `return false`, and the root returns
+ *          `true`. This is what `.is()` wants and what ArkType's `.allows()`
+ *          and TypeBox's `.Check()` have always done.
+ *
+ * Why it is worth a second emission rather than reusing the parse function:
+ * `.is()` used to run the parse validator and throw its issues away, so it
+ * paid for every `makeIssue` — a `path.slice()`, a params record and a
+ * template-literal message per failure — to produce one boolean. Measured on
+ * the package bench against TypeBox's `Check` on the same schema, that cost
+ * `.is()` between 5× and 33× on invalid input, and (because the strip-clone
+ * is built too) ~2× on valid arrays.
+ */
+export type JitMode = 'parse' | 'check'
+
+/**
+ * Thrown by the emitter when a subtree cannot be expressed in verdict mode
+ * (a `_runInto` fallback, or a check with no inline condition and no `_pred`
+ * predicate — both need a real ctx to decide). Caught by the same `try`
+ * that already backstops codegen, so the caller just gets `null` and keeps
+ * the previous `.is()` behaviour. NEVER thrown in parse mode.
+ */
+class CheckUnsupported extends Error {}
+
+/** Verdict-only twin of {@link tryCompileJit} — see {@link JitMode}. */
+export function tryCompileJitCheck(schema: Schema<unknown>): ((input: unknown) => boolean) | null {
+  return compileJit(schema, 'check') as ((input: unknown) => boolean) | null
+}
+
 export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
+  return compileJit(schema, 'parse') as SyncValidator | null
+}
+
+function compileJit(schema: Schema<unknown>, mode: JitMode): unknown {
+  const CHECK = mode === 'check'
   const root = schema as unknown as FieldLike
   // JIT a composite root (object/array/discriminated-union) OR an
   // inline-primitive root (string / number / … with only checks). A primitive
@@ -365,6 +404,16 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
           // predicates call the closure on FAILURE only; a plain closure
           // (no inline cond, no `_pred`) is called always (the wrapper's
           // push/pop then costs the same as the old per-field P.push).
+          // Verdict mode: a check is expressible only when it has an inline
+          // condition or a pure `_pred`. A closure-only check would have to
+          // run against a real ctx and be asked whether it pushed anything,
+          // which is exactly the allocation this mode exists to avoid — so
+          // the whole compile bails and `.is()` keeps its previous path.
+          if (CHECK) {
+            const c = inlineCheckCond(op, ve) ?? (op._pred ? `!${cap(op._pred)}(${ve})` : null)
+            if (!c) throw new CheckUnsupported()
+            return `if (${c}) return false;`
+          }
           const call = `${cap(wrapCheckWithPath(op._checkFn!, ps.suffix, ps.dynIdx !== null))}(${ve}, ctx${idxArg});`
           // Failure condition — inline ONLY cheap literal conditions (length /
           // numeric compares) so the valid path pays no closure CALL. A format
@@ -387,7 +436,9 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
 
     // Prototype-pollution-safe assignment of `valExpr` into `target[kl]`.
     const assign = (target: string, kl: string, key: string, valExpr: string): string =>
-      key === '__proto__'
+      CHECK
+        ? '' // verdict mode builds no output value
+        : key === '__proto__'
         ? `Object.defineProperty(${target}, ${kl}, { value: ${valExpr}, enumerable: true, writable: true, configurable: true });`
         : `${target}[${kl}] = ${valExpr};`
 
@@ -404,6 +455,9 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
     // idempotent, so a later format-check-failure wrapper (which also swaps)
     // and `P` stay pointing at the same array.
     const flushPath = (ps: PathState): { pre: string; post: string } => {
+      // Verdict mode reports no issues, so no path is ever observed — and
+      // there is no ctx to materialize one from.
+      if (CHECK) return { pre: '', post: '' }
       const pushes: string[] = []
       if (ps.dynIdx) pushes.push(`P.push(${ps.dynIdx});`)
       for (const seg of ps.suffix) pushes.push(`P.push(${JSON.stringify(seg)});`)
@@ -458,6 +512,13 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
       if (isInlinePrimitive(field)) {
         const kind = field._kind as PrimKind
         const litRef = kind === 'literal' ? cap(field.value) : ''
+        if (CHECK) {
+          const checksC = genChecks(fieldCheckOps(field), srcVar, ps)
+          lines.push(
+            `if (${typeFailExpr(kind, srcVar, litRef)}) return false; ${checksC} ${onValid(srcVar)}`,
+          )
+          return
+        }
         // The literal type-mismatch issue must match the interpreter's
         // `invalid_literal` shape (LiteralSchema._compileType) — "Expected
         // <value>" — NOT the generic typeIssue ("Expected literal, …").
@@ -484,10 +545,12 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
         return
       }
       if (depth <= MAX_DEPTH && isPlainObject(field)) {
-        const ti = cap((val: unknown, c: ParseCtx, idx?: number) => {
-          c.issues.push(typeIssue('object', val, jitEffectivePath(c, sfx, idx)))
-        })
-        lines.push(`if (typeof ${srcVar} !== "object" || ${srcVar} === null || Array.isArray(${srcVar})) { ${ti}(${srcVar}, ctx${idxArg}); } else {`)
+        const objFail = CHECK
+          ? 'return false;'
+          : `${cap((val: unknown, c: ParseCtx, idx?: number) => {
+              c.issues.push(typeIssue('object', val, jitEffectivePath(c, sfx, idx)))
+            })}(${srcVar}, ctx${idxArg});`
+        lines.push(`if (typeof ${srcVar} !== "object" || ${srcVar} === null || Array.isArray(${srcVar})) { ${objFail} } else {`)
         genObjectValue(field.shape as Record<string, FieldLike>, srcVar, onValid, onAsync, depth + 1, ps)
         lines.push(`}`)
         return
@@ -495,10 +558,14 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
       if (depth <= MAX_DEPTH && isInlineArray(field) && field.element) {
         // The array codegen reads `A` (element-slot bookkeeping + own-check
         // deferral), so a schema containing an array keeps the async machinery.
-        usesAsyncMachinery = true
-        const ti = cap((val: unknown, c: ParseCtx, idx?: number) => {
-          c.issues.push(typeIssue('array', val, jitEffectivePath(c, sfx, idx)))
-        })
+        // Verdict mode never defers (a fallback is refused outright), so it
+        // needs none of the A/B pending machinery.
+        if (!CHECK) usesAsyncMachinery = true
+        const arrFail = CHECK
+          ? 'return false;'
+          : `${cap((val: unknown, c: ParseCtx, idx?: number) => {
+              c.issues.push(typeIssue('array', val, jitEffectivePath(c, sfx, idx)))
+            })}(${srcVar}, ctx${idxArg});`
         const arrV = nv()
         const iV = nv()
         const eV = nv()
@@ -515,9 +582,16 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
         // unwound path, which is EXACTLY what the interpreter's post-await
         // `runPostType` checks observe (parity over prettiness).
         const arrChecks = genChecks(fieldCheckOps(field), srcVar, { dynIdx: null, suffix: [] })
-        lines.push(`if (!Array.isArray(${srcVar})) { ${ti}(${srcVar}, ctx${idxArg}); } else {`)
+        lines.push(`if (!Array.isArray(${srcVar})) { ${arrFail} } else {`)
         if (pre) lines.push(pre)
-        lines.push(`let ${arrV} = []; let ${beforeV} = ctx.issues.length; let ${a0V} = A === null ? 0 : A.length;`)
+        // Verdict mode builds no element array and reads no ctx issue count:
+        // a failing element has already returned false, so by the time the
+        // array's OWN checks run nothing can have failed — the interpreter's
+        // "skip own checks when an element failed" guard is unreachable and
+        // the checks run unconditionally.
+        if (!CHECK) {
+          lines.push(`let ${arrV} = []; let ${beforeV} = ctx.issues.length; let ${a0V} = A === null ? 0 : A.length;`)
+        }
         lines.push(`for (let ${iV} = 0; ${iV} < ${srcVar}.length; ${iV}++) { let ${eV} = ${srcVar}[${iV}];`)
         // element pushed within its own type-ok branch (a failed element pushes
         // issues → the overall parse fails → the array value is discarded), so
@@ -528,7 +602,7 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
         genValue(
           field.element,
           eV,
-          (r) => `${arrV}.push(${r});`,
+          CHECK ? () => '' : (r) => `${arrV}.push(${r});`,
           (p) =>
             `const ${slotV} = ${arrV}.length; ${arrV}.push(undefined); if (A === null) { A = []; B = []; } A.push(${p}); B.push((${eV}r) => { ${arrV}[${slotV}] = ${eV}r; });`,
           depth + 1,
@@ -543,7 +617,9 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
         // the checks defer too (they must observe the final issue state,
         // post-settlement) — the deferred closure reconstructs the path via
         // its own wrapper, so it runs with `sfxArr` captured, not the live P.
-        if (arrChecks) {
+        if (arrChecks && CHECK) {
+          lines.push(arrChecks)
+        } else if (arrChecks) {
           lines.push(
             `if (A === null || A.length === ${a0V}) { if (ctx.issues.length === ${beforeV}) { ${arrChecks} } } else { A.push(Promise.all(A.slice(${a0V})).then(() => { if (ctx.issues.length === ${beforeV}) { ${arrChecks} } })); B.push(NOOP); }`,
           )
@@ -628,7 +704,9 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
         const allBakeable = [...tagMap.keys()].every((t) => tagToken(t) !== null)
         const tagV = nv()
         lines.push(
-          `if (typeof ${srcVar} !== "object" || ${srcVar} === null || Array.isArray(${srcVar})) { ${notObj}(${srcVar}, ctx${idxArg}); } else {`,
+          `if (typeof ${srcVar} !== "object" || ${srcVar} === null || Array.isArray(${srcVar})) { ${
+            CHECK ? 'return false;' : `${notObj}(${srcVar}, ctx${idxArg});`
+          } } else {`,
         )
         lines.push(`let ${tagV} = ${srcVar}[${keyLit(disc)}];`)
         lines.push(allBakeable ? `switch (${tagV}) {` : `switch (${cap(dispatch)}.get(${tagV})) {`)
@@ -683,7 +761,7 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
         // produce a value — the parse has failed (root falls through to
         // `return input`; a nested position leaves the field unassigned,
         // unobservable on a failed parse).
-        lines.push(`default: ${badTag}(${tagV}, ctx${idxArg});`)
+        lines.push(CHECK ? 'default: return false;' : `default: ${badTag}(${tagV}, ctx${idxArg});`)
         lines.push(`}`)
         lines.push(`}`)
         return
@@ -694,6 +772,11 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
       // the call. A Promise result (async `.refine`/`.transform`/registered
       // `.serverCheck`) routes through `onAsync` — deferred onto `A`, awaited
       // by the root return, exactly like the interpreter's pending collection.
+      // A fallback runs the interpreter against a real ctx and decides by
+      // inspecting the issues it pushed — precisely the allocation verdict
+      // mode exists to avoid, and it can run user code (refine/transform).
+      // Refuse the whole compile; `.is()` keeps its previous path.
+      if (CHECK) throw new CheckUnsupported()
       const run = cap((val: unknown, c: ParseCtx) => field._runInto(val, c))
       const fv = nv()
       const { pre, post } = flushPath(ps)
@@ -766,13 +849,19 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
         // Bind to a temp and hand the VAR to `onValid` — several onValid
         // shapes interpolate their argument more than once (the guarded
         // strip-assign), which would construct the literal twice.
+        if (CHECK) {
+          // every field's guard + checks are already emitted above; the
+          // literal itself is pure output, so it is never constructed
+          lines.push(onValid(''))
+          return
+        }
         const litV = nv()
         lines.push(`let ${litV} = { ${parts.join(', ')} };`)
         lines.push(onValid(litV))
         return
       }
       const outV = nv()
-      lines.push(`let ${outV} = {};`)
+      if (!CHECK) lines.push(`let ${outV} = {};`)
       genObjectBody(shape, srcVar, outV, depth, ps, preset)
       // A pending descendant patches `outV` by reference when it settles, so
       // handing the object to `onValid` NOW is correct — the root return
@@ -815,9 +904,11 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
         // path (`_runInto` for optional/default/nullable/union/…) can yield
         // `undefined`, so it KEEPS the guard. Locked by the JIT↔interpreter
         // differential fuzz (strip semantics compared).
-        const onValid = fieldDefinedWhenValid(field)
-          ? (r: string) => assign(outVar, kl, key, r)
-          : (r: string) => `if (${r} !== undefined || (${kl} in ${srcVar})) { ${assign(outVar, kl, key, r)} }`
+        const onValid = CHECK
+          ? () => ''
+          : fieldDefinedWhenValid(field)
+            ? (r: string) => assign(outVar, kl, key, r)
+            : (r: string) => `if (${r} !== undefined || (${kl} in ${srcVar})) { ${assign(outVar, kl, key, r)} }`
         // Deferred variant of the same strip-guarded assignment — an async
         // field's resolved value is applied AT THE ROOT BARRIER (A = promises,
         // B = paired apply callbacks), in deferral order. Applying inside each
@@ -848,8 +939,17 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
     // `return` it (behind the pending barrier when anything deferred); if the
     // root type-guard fails the issue was pushed and we fall through to
     // `return input` (the raw value — the parse has failed).
-    genValue(root, 'input', BARRIER, (p) => `return ${p};`, 0, { dynIdx: null, suffix: [] })
-    lines.push(BARRIER('input'))
+    if (CHECK) {
+      // Root: every failure site has already returned false, so reaching the
+      // end of a subtree means it validated. `return true` is emitted both as
+      // the root's onValid and as the trailing fall-through (the latter is
+      // reachable only for shapes whose root guard is the last statement).
+      genValue(root, 'input', () => 'return true;', () => '', 0, { dynIdx: null, suffix: [] })
+      lines.push('return true;')
+    } else {
+      genValue(root, 'input', BARRIER, (p) => `return ${p};`, 0, { dynIdx: null, suffix: [] })
+      lines.push(BARRIER('input'))
+    }
 
     // Function-level pending lists — async fallback subtrees defer here:
     // `A[i]` is the promise, `B[i]` the paired apply-callback run with the
@@ -858,6 +958,16 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
     // the output by settlement order). NOOP pads `B` for self-applying
     // entries (deferred array checks). Declared ONLY when the body references
     // them (see {@link usesAsyncMachinery}) — a scalar / flat-object omits them.
+    // Verdict mode touches no ctx at all (no issues, no path, no pending), so
+    // the emitted function takes only the input — nothing to allocate, and
+    // nothing for a caller to thread through.
+    if (CHECK) {
+      // eslint-disable-next-line no-new-func
+      const checkFactory = new Function('H', `return function jitCheck(input) {\n${lines.join('\n')}\n}`) as (
+        h: unknown[],
+      ) => (input: unknown) => boolean
+      return checkFactory(helpers)
+    }
     const prelude = usesAsyncMachinery
       ? `var P = ctx.path;\nvar A = null; var B = null; var NOOP = () => {};`
       : `var P = ctx.path;`

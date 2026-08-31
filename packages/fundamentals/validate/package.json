@@ -66,10 +66,13 @@
     "@pyreon/manifest": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
+    "@sinclair/typebox": "^0.34.52",
     "@vitus-labs/tools-lint": "^2.6.3",
     "arktype": "^2.2.3",
+    "joi": "^18.2.5",
     "valibot": "^1.4.2",
-    "zod": "^4.4.3"
+    "yup": "^1.7.1",
+    "zod": "^4.5.4"
   },
   "peerDependencies": {
     "@pyreon/reactivity": "workspace:^"

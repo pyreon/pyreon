@@ -27,7 +27,7 @@
     "@pyreon/ui-core": "workspace:*",
     "@pyreon/unistyle": "workspace:*",
     "@pyreon/zero": "workspace:*",
-    "zod": "^4.4.3"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@pyreon/tsconfig": "workspace:*",
