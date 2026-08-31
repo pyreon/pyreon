@@ -3770,8 +3770,15 @@ function emitSwiftFunction(
     // later type-dependent emit in the body resolves them — the named-handler
     // analog of the inline-handler seeding in emitSwiftAction. Restored after.
     const savedLocals = seedHandlerLocals(inlinedBody, _exprInferCtx)
+    // ALSO seed _activeInferCtx: the type-gated call lowerings
+    // (Number.isInteger / isNaN / numericFloatness) read _activeInferCtx,
+    // and for a TOP-LEVEL helper the two ctxs are distinct objects (they
+    // alias only inside emitSwiftComponent) — seeding one left `r` unknown
+    // to the other, so isInteger warned raw despite a resolvable type.
+    const savedActive = seedHandlerLocals(inlinedBody, _activeInferCtx)
     const bodyLines = inlinedBody.map((s) => `    ${emitSwiftStatement(s, 4)}`).join('\n')
     _exprInferCtx.locals = savedLocals
+    _activeInferCtx.locals = savedActive
     const vis2 = visibility === 'private' ? 'private ' : ''
     return `${vis2}func ${swiftIdent(d.name)}(${params})${retType} {\n${bodyLines}\n  }`
   } finally {
@@ -4755,7 +4762,11 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         e.callee.property === 'isInteger' &&
         e.args.length === 1
       ) {
-        const nt = inferType(e.args[0]!, _activeInferCtx)
+        const nt0 = inferType(e.args[0]!, _activeInferCtx)
+        const nt =
+          nt0.kind === 'typeRef' && (nt0.name === 'Double' || nt0.name === 'Float')
+            ? ({ kind: 'number', float: true } as TypeIR)
+            : nt0
         const argStr = emitSwiftExpr(e.args[0]!, indent)
         if (nt.kind === 'number' && nt.float !== true) return 'true'
         if (nt.kind === 'number') {
@@ -4775,7 +4786,11 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         e.callee.name === 'isNaN' &&
         e.args.length === 1
       ) {
-        const nT = inferType(e.args[0]!, _activeInferCtx)
+        const nT0 = inferType(e.args[0]!, _activeInferCtx)
+        const nT =
+          nT0.kind === 'typeRef' && (nT0.name === 'Double' || nT0.name === 'Float')
+            ? ({ kind: 'number', float: true } as TypeIR)
+            : nT0
         const nStr = emitSwiftExpr(e.args[0]!, indent)
         if (nT.kind === 'number' && nT.float !== true) return 'false'
         if (nT.kind === 'number') return `(${nStr}).isNaN`

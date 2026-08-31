@@ -150,6 +150,41 @@ export function App(){
     expect(swCode).not.toContain('pyreonNumString')
   })
 
+  // Number.isInteger over alias-typed arithmetic lowers (was a raw-emit
+  // warning: the binary inference did not normalize the Double alias, so
+  // `const r = Math.round(v*100)/100` over `v: Double` seeded unknown).
+  it('Number.isInteger lowers for an alias-derived local, zero warnings', () => {
+    const SRC = `
+  function plainish(v: Double): string {
+    const r = Math.round(v * 100.0) / 100.0
+    return Number.isInteger(r) ? String(Math.round(r)) : String(r)
+  }
+  export function P() { return <Text>{plainish(1.5)}</Text> }
+`
+    const rs = transform(SRC, { target: 'swift' })
+    expect(rs.code).toContain('.truncatingRemainder(dividingBy: 1) == 0')
+    expect(rs.warnings).toHaveLength(0)
+    const rk = transform(SRC, { target: 'kotlin' })
+    expect(rk.code).toContain('% 1.0 == 0.0')
+    expect(rk.warnings).toHaveLength(0)
+  })
+
+  // The BINARY normalization's own load-bearing shape: BOTH operands are
+  // alias-typed (no Math.* result to carry floatness), so without the
+  // numAlias normalization `a + b` infers unknown and isInteger warns raw.
+  it('Number.isInteger over a sum of two alias-typed params lowers', () => {
+    const SRC = `
+  function f(a: Double, b: Double): string {
+    const s = a + b
+    return Number.isInteger(s) ? "int" : "frac"
+  }
+  export function P() { return <Text>{f(1.0, 2.0)}</Text> }
+`
+    const rs = transform(SRC, { target: 'swift' })
+    expect(rs.code).toContain('.truncatingRemainder(dividingBy: 1) == 0')
+    expect(rs.warnings).toHaveLength(0)
+  })
+
   // Kotlin unaffected (derivedStateOf infers) — still references the Math call.
   it('Kotlin: a Math.ceil computed still emits (unchanged)', () => {
     expect(kt(C(`  const pc=computed(()=>Math.ceil(rows().length/2))`))).toContain('ceil')

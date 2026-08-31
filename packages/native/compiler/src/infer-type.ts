@@ -1864,8 +1864,18 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       // A template literal always produces a string (native interpolation).
       return { kind: 'string' }
     case 'binary': {
-      const left = inferType(expr.left, ctx)
-      const right = inferType(expr.right, ctx)
+      // The `Double`/`Float` ALIAS arrives as an unresolved typeRef (an
+      // annotated param / helper return) — normalize it to number+float
+      // HERE so arithmetic over alias-typed operands infers numerically:
+      // without this, `const r = Math.round(v * 100.0) / 100.0` over a
+      // `v: Double` param seeded `r` as UNKNOWN, which defeated every
+      // downstream type-gated lowering (Number.isInteger warned raw).
+      const numAlias = (t: TypeIR): TypeIR =>
+        t.kind === 'typeRef' && (t.name === 'Double' || t.name === 'Float')
+          ? { kind: 'number', float: true }
+          : t
+      const left = numAlias(inferType(expr.left, ctx))
+      const right = numAlias(inferType(expr.right, ctx))
       // String concat: `'a' + name` or `name + 'b'` — if EITHER side
       // is a string and the op is `+`, the result is a string.
       if (expr.op === '+' && (left.kind === 'string' || right.kind === 'string')) {

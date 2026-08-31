@@ -3827,7 +3827,11 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         e.callee.property === 'isInteger' &&
         e.args.length === 1
       ) {
-        const nt = inferType(e.args[0]!, _kotlinExprInferCtx)
+        const nt0 = inferType(e.args[0]!, _kotlinExprInferCtx)
+        const nt =
+          nt0.kind === 'typeRef' && (nt0.name === 'Double' || nt0.name === 'Float')
+            ? ({ kind: 'number', float: true } as TypeIR)
+            : nt0
         const argStr = emitKotlinExpr(e.args[0]!, indent)
         if (nt.kind === 'number' && nt.float !== true) return 'true'
         if (nt.kind === 'number') {
@@ -3843,7 +3847,11 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         e.callee.name === 'isNaN' &&
         e.args.length === 1
       ) {
-        const nT = inferType(e.args[0]!, _kotlinExprInferCtx)
+        const nT0 = inferType(e.args[0]!, _kotlinExprInferCtx)
+        const nT =
+          nT0.kind === 'typeRef' && (nT0.name === 'Double' || nT0.name === 'Float')
+            ? ({ kind: 'number', float: true } as TypeIR)
+            : nT0
         const nStr = emitKotlinExpr(e.args[0]!, indent)
         if (nT.kind === 'number' && nT.float !== true) return 'false'
         if (nT.kind === 'number') return `(${nStr}).isNaN()`
