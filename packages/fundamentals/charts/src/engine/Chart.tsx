@@ -112,6 +112,16 @@ export interface PlotChartProps<T> {
   xTime?: boolean
   /** Formats the x-axis ticks. Overrides the calendar default when `xTime`. */
   xFormat?: Formatter
+  /**
+   * Flip the frame: categories on the Y axis, bars growing rightward.
+   *
+   * The left gutter sizes itself from the widest CATEGORY label — long
+   * category names are the reason horizontal bars exist. Bar marks only: a
+   * horizontal line or scatter is a transposed coordinate system, not a
+   * flipped bar chart, and non-bar marks are skipped rather than drawn
+   * misleadingly.
+   */
+  horizontal?: boolean
   /** Reference rules and bands — the target line, the healthy range. */
   annotations?: Annotation[]
   /**
@@ -214,6 +224,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       ? { xValues: rows.map((d, i) => props.xValue!(d, i)) }
       : {}),
     annotations: props.annotations,
+    horizontal: props.horizontal === true,
     progress: entrance,
   })
 

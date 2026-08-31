@@ -1,6 +1,6 @@
 // Marks → draw commands. The whole chart, as plain data.
 
-import { computeLayout, layoutBars, layoutSeriesPoints, layoutSeriesPointsAt } from './layout'
+import { computeLayout, layoutBars, layoutBarsH, layoutSeriesPoints, layoutSeriesPointsAt } from './layout'
 import { layoutGroupedBars, layoutStackedBars, stackedExtent } from './stack'
 import type { Formatter } from './format'
 import type { LayoutConfig, PlotLayout } from './layout'
@@ -80,6 +80,15 @@ export interface ChartSpec {
   xValues?: Double[] | undefined
   /** Label the x axis with calendar steps — see `LayoutConfig.xTime`. */
   xTime?: boolean | undefined
+  /**
+   * Flip the frame: categories on Y, values on X, bars growing rightward.
+   *
+   * Bar-family series only (bars / stacked / grouped): a horizontal line or
+   * scatter is a transposed COORDINATE SYSTEM, not a flipped bar chart, and
+   * pretending otherwise would draw something misleading. Non-bar series in
+   * a horizontal spec are SKIPPED — asserted, not silent.
+   */
+  horizontal?: boolean | undefined
   /** Reference rules and bands, drawn between the grid and the series. */
   annotations?: Annotation[] | undefined
   /**
@@ -169,6 +178,7 @@ export function layoutChart(spec: ChartSpec, measure: MeasureText): PlotLayout {
     yFormat: spec.yFormat,
     xFormat: spec.xFormat,
     xTime: spec.xTime === true,
+    horizontal: spec.horizontal === true,
   }
   return computeLayout(cfg, measure)
 }
@@ -200,6 +210,16 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
     return { x: r.x, y: top, w: r.w, h }
   }
 
+  // The horizontal twin: grows a bar toward its value from the zero line,
+  // which in this frame is a VERTICAL line — a negative bar grows leftward.
+  const growRectH = (r: Rect): Rect => {
+    if (progress >= 1.0) return r
+    const zeroX = scaleLinear(yDomain, plot.x, plot.x + plot.w, yDomain.min < 0.0 && yDomain.max > 0.0 ? 0.0 : yDomain.min)
+    const w = r.w * progress
+    const left = r.x >= zeroX - 0.5 ? zeroX : zeroX - w
+    return { x: left, y: r.y, w, h: r.h }
+  }
+
   // Reveals a polyline left to right: whole points up to the cut, plus an
   // interpolated point partway along the segment the cut lands in, so the tip
   // advances smoothly instead of popping a segment at a time.
@@ -220,14 +240,27 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
   }
 
   if (spec.showGrid) {
-    for (const tick of l.yTicks) {
-      out.push({
-        kind: 'line',
-        from: { x: plot.x, y: tick.pos },
-        to: { x: plot.x + plot.w, y: tick.pos },
-        stroke: t.grid,
-        width: 1.0,
-      })
+    if (spec.horizontal === true) {
+      // The grid follows the VALUE axis — vertical lines in this frame.
+      for (const tick of l.xTicks) {
+        out.push({
+          kind: 'line',
+          from: { x: tick.pos, y: plot.y },
+          to: { x: tick.pos, y: plot.y + plot.h },
+          stroke: t.grid,
+          width: 1.0,
+        })
+      }
+    } else {
+      for (const tick of l.yTicks) {
+        out.push({
+          kind: 'line',
+          from: { x: plot.x, y: tick.pos },
+          to: { x: plot.x + plot.w, y: tick.pos },
+          stroke: t.grid,
+          width: 1.0,
+        })
+      }
     }
   }
 
@@ -317,13 +350,13 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
   // Stacked and grouped series are laid out TOGETHER — each needs to know the
   // others to place its bars — so they are drawn as a set before the
   // independent marks rather than one at a time in the loop below.
-  const stackedSeries = spec.series.filter((s) => s.kind === 'stacked')
+  const stackedSeries = spec.horizontal === true ? [] : spec.series.filter((s) => s.kind === 'stacked')
   if (stackedSeries.length > 0) {
     for (const seg of layoutStackedBars(stackedSeries.map((s) => s.values), plot, yDomain, 0.25)) {
       out.push({ kind: 'rect', rect: growRect(seg.rect), fill: stackedSeries[seg.seriesIndex]!.color })
     }
   }
-  const groupedSeries = spec.series.filter((s) => s.kind === 'grouped')
+  const groupedSeries = spec.horizontal === true ? [] : spec.series.filter((s) => s.kind === 'grouped')
   if (groupedSeries.length > 0) {
     for (const seg of layoutGroupedBars(groupedSeries.map((s) => s.values), plot, yDomain, 0.25)) {
       out.push({ kind: 'rect', rect: growRect(seg.rect), fill: groupedSeries[seg.seriesIndex]!.color })
@@ -344,6 +377,36 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
     // area whose fill followed straight segments under a smoothed outline
     // would show slivers of background between the two.
     const shape = (pts: Pt[]): Pt[] => (s.curve !== undefined ? s.curve(pts) : pts)
+
+    if (spec.horizontal === true) {
+      if (s.kind !== 'bars') continue
+      const rects = layoutBarsH(s.values, plot, yDomain, 0.25)
+      for (const r of rects) {
+        out.push({ kind: 'rect', rect: growRectH(r), fill: s.color })
+      }
+      if (s.showValues === true && progress >= 1.0) {
+        const fmt = spec.yFormat ?? plain
+        for (let i = 0; i < rects.length; i++) {
+          const r = rects[i]!
+          const v = s.values[i]!
+          // The label sits just past the bar's far end — right of a positive
+          // bar, left of a negative one.
+          out.push({
+            kind: 'text',
+            text: fmt(v),
+            at: {
+              x: v < 0.0 ? r.x - 4.0 : r.x + r.w + 4.0,
+              y: r.y + r.h / 2.0,
+            },
+            fill: t.label,
+            size: t.fontSize,
+            align: v < 0.0 ? 'end' : 'start',
+            baseline: 'middle',
+          })
+        }
+      }
+      continue
+    }
 
     if (s.kind === 'bars') {
       const rects = layoutBars(s.values, plot, yDomain, 0.25)
@@ -398,6 +461,9 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
     }
   }
 
+  // The anchors hold in BOTH frames: y-side labels sit left of the plot,
+  // x-side labels below it — only what the ticks CONTAIN differs (categories
+  // vs values in the horizontal frame).
   for (const tick of l.yTicks) {
     out.push({
       kind: 'text',

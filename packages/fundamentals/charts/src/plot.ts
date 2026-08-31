@@ -35,10 +35,12 @@ export { defaultTheme, layoutChart, renderChart, resolveYDomain, seriesMaxLength
 export type { Annotation, ChartSpec, ChartTheme, Series } from './engine/render'
 export {
   bandTicks,
+  bandTicksY,
   computeLayout,
   hitBar,
   hitNearestX,
   layoutBars,
+  layoutBarsH,
   layoutSeriesPoints,
   layoutSeriesPointsAt,
 } from './engine/layout'

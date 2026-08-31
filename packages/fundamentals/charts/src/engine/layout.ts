@@ -61,6 +61,14 @@ export interface LayoutConfig {
    * `xFormat` still wins when given — this only picks the DEFAULT labelling.
    */
   xTime?: boolean | undefined
+  /**
+   * Flip the frame: categories on the Y axis, values on X.
+   *
+   * The left gutter is then sized by the widest CATEGORY label rather than
+   * the widest value label — long category names are the reason horizontal
+   * bars exist, so the gutter math is the feature, not a detail.
+   */
+  horizontal?: boolean | undefined
 }
 
 /**
@@ -82,15 +90,21 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   const labelGap = 6.0
   const tickLen = 4.0
 
-  // Provisional y ticks over the full height, purely to measure their labels.
-  // Their POSITIONS are recomputed below against the final plot rect — only the
-  // label TEXT is needed here, and that does not depend on the rect.
-  const provisional = cfg.showYAxis
-    ? makeTicks(cfg.yDomain, cfg.height, 0.0, cfg.yTickCount, cfg.yFormat)
-    : []
+  // Provisional y-side labels, purely to size the left gutter. Vertical
+  // charts measure VALUE labels there; a horizontal chart puts CATEGORIES on
+  // the y axis, so it measures those instead — long category names are the
+  // reason horizontal bars exist, and a gutter sized for numbers would clip
+  // every one of them.
+  const provisionalLabels = cfg.horizontal === true
+    ? cfg.showYAxis
+      ? cfg.categories
+      : []
+    : cfg.showYAxis
+      ? makeTicks(cfg.yDomain, cfg.height, 0.0, cfg.yTickCount, cfg.yFormat).map((t) => t.label)
+      : []
   let widest = 0.0
-  for (const t of provisional) {
-    const w = measure(t.label, cfg.fontSize)
+  for (const label of provisionalLabels) {
+    const w = measure(label, cfg.fontSize)
     if (w > widest) widest = w
   }
 
@@ -102,6 +116,18 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
     y: padTop,
     w: Math.max(0.0, cfg.width - left - padRight),
     h: Math.max(0.0, cfg.height - padTop - bottom),
+  }
+
+  if (cfg.horizontal === true) {
+    // Flipped frame: category bands run down the y axis, the VALUE domain
+    // runs along x. The value ticks reuse the y domain — that is where the
+    // data lives — and the same formatter, so a chart flipped horizontal
+    // keeps its "$3.2K" labels without re-wiring anything.
+    const yTicks = cfg.showYAxis ? bandTicksY(cfg.categories, plot) : []
+    const xTicks = cfg.showXAxis
+      ? makeTicks(cfg.yDomain, plot.x, plot.x + plot.w, cfg.yTickCount, cfg.yFormat)
+      : []
+    return { plot, xTicks, yTicks, xDomainUsed: cfg.xDomain }
   }
 
   // y grows DOWNWARD in screen space, so the domain min maps to the plot's
@@ -122,6 +148,22 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
 }
 
 /** One tick per category, centred on its band. */
+/** Band ticks down the Y axis — the horizontal frame's category labels. */
+export function bandTicksY(categories: string[], plot: Rect): Tick[] {
+  const n = categories.length
+  const out: Tick[] = []
+  if (n === 0) return out
+  const bh = plot.h / n
+  for (let i = 0; i < n; i++) {
+    out.push({
+      value: i,
+      pos: plot.y + bh * (i + 0.5),
+      label: categories[i]!,
+    })
+  }
+  return out
+}
+
 export function bandTicks(categories: string[], plot: Rect): Tick[] {
   const n = categories.length
   const out: Tick[] = []
@@ -219,6 +261,39 @@ export function layoutSeriesPointsAt(
     out.push({
       x: scaleLinear(xDomain, plot.x, plot.x + plot.w, xs[i]!),
       y: scaleLinear(yDomain, plot.y + plot.h, plot.y, values[i]!),
+    })
+  }
+  return out
+}
+
+/**
+ * Horizontal bars — one per datum, measured RIGHTWARD from the zero line.
+ * The mirror of `layoutBars` with the axes swapped: bands run down the plot,
+ * values run along it, and a negative value extends left of the zero line.
+ */
+export function layoutBarsH(
+  values: Double[],
+  plot: Rect,
+  vDomain: Domain,
+  gapRatio: Double,
+): Rect[] {
+  const n = values.length
+  const out: Rect[] = []
+  if (n === 0) return out
+  const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
+  const band = plot.h / n
+  const bh = band * (1.0 - ratio)
+  const zero = vDomain.min < 0.0 && vDomain.max > 0.0 ? 0.0 : vDomain.min
+  const zeroX = scaleLinear(vDomain, plot.x, plot.x + plot.w, zero)
+  for (let i = 0; i < n; i++) {
+    const v = values[i]!
+    const vx = scaleLinear(vDomain, plot.x, plot.x + plot.w, v)
+    const left = vx < zeroX ? vx : zeroX
+    out.push({
+      x: left,
+      y: plot.y + band * i + (band - bh) / 2.0,
+      w: Math.abs(vx - zeroX),
+      h: bh,
     })
   }
   return out
