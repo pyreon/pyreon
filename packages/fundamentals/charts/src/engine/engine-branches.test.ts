@@ -5,15 +5,17 @@ import { describe, expect, it } from 'vitest'
 import { arcPolygon, hitArc, layoutArcs, renderPie } from './arc'
 import { chartTable, describeChart } from './a11y'
 import { minMaxBuckets } from './decimate'
+import { ohlcExtent } from './candlestick'
 import { compact, fixed } from './format'
-import { bandTicks, computeLayout } from './layout'
+import { bandTicks, computeLayout, layoutBarsH } from './layout'
 import { renderLegend } from './legend'
-import { renderRadar, withAlpha } from './radar'
+import { radarAngles, renderRadar, withAlpha } from './radar'
 import { barsFor, defaultTheme, renderChart, resolveYDomain } from './render'
 import type { ChartSpec } from './render'
 import { formatTime, logTicks, scaleLog, timeTicks } from './scale-extra'
 import { layoutGroupedBars, layoutStackedBars, stackedExtent } from './stack'
 import { placeTooltip } from './tooltip'
+import { bubble, resolveMarks } from './marks'
 
 const measure = (t: string, s: number) => t.length * s * 0.6
 const plot = { x: 0, y: 0, w: 300, h: 100 }
@@ -516,5 +518,135 @@ describe('stacked and grouped rendering', () => {
       ],
     }))
     expect(d.max).toBeGreaterThanOrEqual(500)
+  })
+})
+
+// ————— fallback/default arms the idioms pass introduced (or exposed) —————
+import { buildHeatGrid, colorRamp, renderHeat } from './heat'
+
+describe('coalesce/default fallback arms', () => {
+  it('renderChart defaults progress/xValues/curve/yDomain when omitted', () => {
+    const spec = {
+      series: [{ kind: 'line', values: [1, 3, 2] }],
+      width: 300,
+      height: 100,
+      categories: [],
+      theme: defaultTheme,
+      showXAxis: true,
+      showYAxis: true,
+      showGrid: true,
+    } as unknown as ChartSpec
+    const cmds = renderChart(spec, measure)
+    expect(cmds.length).toBeGreaterThan(0)
+  })
+
+  it('renderHeat defaults gap and clamps progress at both ends', () => {
+    const grid = buildHeatGrid(['a', 'b'], ['x'], [0, 1], [0, 0], [1, 2])
+    const ramp = colorRamp(['#000000', '#ffffff'])
+    const base = renderHeat({ grid, plot, ramp })
+    expect(base.length).toBeGreaterThan(0)
+    const under = renderHeat({ grid, plot, ramp, progress: -0.5 })
+    const over = renderHeat({ grid, plot, ramp, progress: 2.0 })
+    expect(under.length).toBeLessThanOrEqual(over.length)
+  })
+
+  it('buildHeatGrid tracks min on a strictly-increasing sequence (false arm)', () => {
+    const g = buildHeatGrid(['a', 'b', 'c'], ['x'], [0, 1, 2], [0, 0, 0], [1, 5, 9])
+    expect(g.min).toBe(1)
+    expect(g.max).toBe(9)
+  })
+
+  it('colorRamp reads UPPERCASE hex and survives a malformed short stop', () => {
+    const upper = colorRamp(['#ABCDEF', '#FEDCBA'])(0.5)
+    expect(upper.startsWith('rgb(')).toBe(true)
+    // A malformed short stop degrades PER-CHANNEL: the readable pair
+    // parses (ab -> 171), the missing pairs read 0 — never NaN.
+    const short = colorRamp(['#ab', '#ffffff'])(0.0)
+    expect(short).toBe('rgb(171, 0, 0)')
+  })
+
+  it('radarAngles of a non-positive count is empty', () => {
+    expect(radarAngles(0)).toEqual([])
+    expect(radarAngles(-3)).toEqual([])
+  })
+
+  it('an x-annotation without a label draws no label text', () => {
+    const spec = {
+      series: [{ kind: 'line', values: [1, 2, 3] }],
+      width: 300,
+      height: 100,
+      categories: [],
+      theme: defaultTheme,
+      showXAxis: true,
+      showYAxis: true,
+      showGrid: true,
+      annotations: [{ x: 1.0 }],
+    } as unknown as ChartSpec
+    const cmds = renderChart(spec, measure)
+    const texts = cmds.filter((c) => c.kind === 'text' && c.text === '')
+    expect(texts).toHaveLength(0)
+  })
+
+  it('logTicks guards a non-positive min and an inverted domain', () => {
+    const t1 = logTicks({ min: 0.0, max: 100.0 }, 0, 300)
+    expect(t1.length).toBeGreaterThan(0)
+    const t2 = logTicks({ min: 10.0, max: 1.0 }, 0, 300)
+    expect(t2.length).toBeGreaterThan(0)
+  })
+
+  it('ohlcExtent handles an empty list and a flat market', () => {
+    expect(ohlcExtent([])).toEqual({ min: 0.0, max: 1.0 })
+    const flat = ohlcExtent([
+      { open: 5, high: 5, low: 5, close: 5 },
+    ])
+    expect(flat.min).toBeLessThan(5)
+    expect(flat.max).toBeGreaterThan(5)
+  })
+
+  it('minMaxBuckets skips empty buckets when buckets exceed points', () => {
+    const out = minMaxBuckets([1, 2], 10)
+    expect(out.length).toBeGreaterThan(0)
+  })
+
+  it('layoutBarsH clamps the gap ratio at both ends', () => {
+    const under = layoutBarsH([5, 10], plot, { min: 0, max: 10 }, -1.0)
+    const over = layoutBarsH([5, 10], plot, { min: 0, max: 10 }, 5.0)
+    expect(under).toHaveLength(2)
+    expect(over).toHaveLength(2)
+    expect(over[0]!.h).toBeLessThan(under[0]!.h)
+  })
+
+  it('bubble radii degrade to minRadius when every size is zero', () => {
+    const series = resolveMarks(
+      [{ v: 1 }, { v: 2 }],
+      [bubble((d: { v: number }) => d.v, () => 0)],
+    )
+    expect(series[0]!.radii).toBeDefined()
+    expect(series[0]!.radii![0]).toBe(series[0]!.radii![1])
+  })
+
+  it('an x-annotation WITH a label draws its label', () => {
+    const specWithLabel = {
+      series: [{ kind: 'line', values: [1, 2, 3] }],
+      width: 300,
+      height: 100,
+      categories: [],
+      theme: defaultTheme,
+      showXAxis: true,
+      showYAxis: true,
+      showGrid: true,
+      annotations: [{ x: 1.0, label: 'release' }],
+    } as unknown as ChartSpec
+    const cmds = renderChart(specWithLabel, measure)
+    expect(cmds.some((c) => c.kind === 'text' && c.text === 'release')).toBe(true)
+  })
+
+  it('stacked layout tolerates ragged series and clamps its gap ratio', () => {
+    const segs = layoutStackedBars([[10, 20], [5]], plot, { min: 0, max: 30 }, 5.0)
+    expect(segs.length).toBeGreaterThan(0)
+    const none = layoutStackedBars([], plot, { min: 0, max: 30 }, 0.2)
+    expect(none).toEqual([])
+    const empty = layoutStackedBars([[], []], plot, { min: 0, max: 30 }, 0.2)
+    expect(empty).toEqual([])
   })
 })
