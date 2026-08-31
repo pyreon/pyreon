@@ -10,6 +10,7 @@
  *   valibot   valibot 1                 (interpreted, tree-shakeable)
  *   arktype   arktype 2                 (JIT at schema-definition time)
  *   typebox   @sinclair/typebox         (JIT via `TypeCompiler.Compile`)
+ *   typia     typia 14                  (AHEAD-OF-TIME: codegen from a TS type)
  *   yup       yup 1                     (interpreted)
  *   joi       joi 18                    (interpreted)
  *
@@ -101,6 +102,11 @@ import { Type, FormatRegistry, type TSchema } from '@sinclair/typebox'
 import { TypeCompiler } from '@sinclair/typebox/compiler'
 import * as yup from 'yup'
 import Joi from 'joi'
+// Pre-compiled ahead of time — typia builds its validators from a TYPE at
+// COMPILE time and cannot construct them at runtime like every other entry
+// here. See `bench/typia/README.md` for why the emitted file is checked in
+// and what limits the drift risk.
+import * as typiaGen from './typia/generated.js'
 import { s } from '../src/v1'
 
 // ─── libraries ─────────────────────────────────────────────────────────
@@ -112,6 +118,7 @@ const ALL_LIBS = [
   'valibot',
   'arktype',
   'typebox',
+  'typia',
   'yup',
   'joi',
 ] as const
@@ -271,6 +278,25 @@ const bind = {
     parse: (i) => S(i),
     check: (i) => S.allows(i),
   }),
+  /**
+   * typia's "schema" is a PAIR of already-compiled functions, because its
+   * validators are generated from a TypeScript type at build time.
+   *
+   * `check` uses `createIs`; `parse` uses `plain.createValidateClone`, which
+   * allocates a stripped clone and reports errors — the honest analogue of
+   * `safeParse`. `typia.validate` would return the input BY REFERENCE and be
+   * measuring strictly less work, and `typia.is` under a parse heading would
+   * skip the allocation AND the error collection.
+   *
+   * NOTE on the check axis: `createIs` IGNORES unknown properties where
+   * zod/valibot STRIP them. Every scenario input here is exact-shaped, so all
+   * libraries agree (the correctness gate proves it), but on an input
+   * carrying extra keys `createIs` answers a slightly different question.
+   */
+  typia: (S: TypiaPair): Bound => ({
+    parse: (i) => S.validate(i),
+    check: (i) => S.is(i),
+  }),
   typebox: (S: TSchema): Bound => {
     const c = TypeCompiler.Compile(S) // ahead-of-time; setup cost measured separately
     // No output-producing equivalent — `check` axis only (see file header).
@@ -294,12 +320,19 @@ const bind = {
 
 // ─── scenarios ─────────────────────────────────────────────────────────
 /** Per-library schema for one scenario. Every library states its own idiom. */
+/** typia's pre-compiled pair for one scenario. */
+interface TypiaPair {
+  is: (i: unknown) => boolean
+  validate: (i: unknown) => { success: boolean }
+}
+
 interface SchemaSet {
   pyreon: Parameters<(typeof bind)['pyreon']>[0]
   zod: z.ZodType
   valibot: v.GenericSchema
   arktype: Parameters<(typeof bind)['arktype']>[0]
   typebox: TSchema
+  typia: TypiaPair
   yup: yup.Schema
   joi: Joi.Schema
 }
@@ -368,6 +401,7 @@ function scenarios(): Scenario[] {
       valibot: v.pipe(v.string(), v.email()),
       arktype: type('string.email'),
       typebox: Type.String({ format: 'email' }),
+      typia: { is: typiaGen.isStringEmail, validate: typiaGen.validateStringEmail },
       yup: yup.string().required().email(),
       joi: Joi.string().email({ tlds: false }).required(),
     },
@@ -384,6 +418,7 @@ function scenarios(): Scenario[] {
       valibot: v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(150)),
       arktype: type('0 <= number.integer <= 150'),
       typebox: Type.Integer({ minimum: 0, maximum: 150 }),
+      typia: { is: typiaGen.isNumberRange, validate: typiaGen.validateNumberRange },
       yup: yup.number().required().integer().min(0).max(150),
       joi: Joi.number().integer().min(0).max(150).required(),
     },
@@ -425,6 +460,7 @@ function scenarios(): Scenario[] {
         email: Type.String({ format: 'email' }),
         tags: Type.Array(Type.String()),
       }),
+      typia: { is: typiaGen.isUser, validate: typiaGen.validateUser },
       yup: yup.object({
         name: yup.string().required().min(2),
         age: yup.number().required().integer().min(0).max(150),
@@ -466,6 +502,7 @@ function scenarios(): Scenario[] {
           age: Type.Integer({ minimum: 0, maximum: 150 }),
         }),
       ),
+      typia: { is: typiaGen.isNameAgeArray, validate: typiaGen.validateNameAgeArray },
       yup: yup
         .array()
         .of(
@@ -529,6 +566,7 @@ function scenarios(): Scenario[] {
           }),
         }),
       }),
+      typia: { is: typiaGen.isDeep, validate: typiaGen.validateDeep },
       yup: yup.object({
         id: yup.number().required().integer(),
         user: yup
@@ -601,6 +639,7 @@ function scenarios(): Scenario[] {
           }),
         ),
       }),
+      typia: { is: typiaGen.isPage, validate: typiaGen.validatePage },
       yup: yup.object({
         page: yup.number().required().integer().min(0),
         items: yup
@@ -684,6 +723,7 @@ function scenarios(): Scenario[] {
         Type.Object({ kind: Type.Literal('rect'), w: Type.Number(), h: Type.Number() }),
         Type.Object({ kind: Type.Literal('label'), text: Type.String(), size: Type.Number() }),
       ]),
+      typia: { is: typiaGen.isShape, validate: typiaGen.validateShape },
       yup: yup.lazy((value: unknown) => {
         const k = (value as { kind?: string } | null | undefined)?.kind
         if (k === 'circle') {
@@ -899,6 +939,8 @@ function parseSucceeded(lib: Lib, out: unknown): boolean {
       return (out as { error?: unknown }).error === undefined
     case 'typebox':
       return out as boolean
+    case 'typia':
+      return (out as { success: boolean }).success
   }
 }
 
@@ -983,7 +1025,7 @@ const opsPerSec = (ns: number) => Math.round(1e9 / ns).toLocaleString('en-US')
 
 console.log(`\nValidation benchmark — ${LIBS.join(' / ')}`)
 console.log(
-  `versions: zod ${z.core?.version ? `${z.core.version.major}.${z.core.version.minor}.${z.core.version.patch}` : '4'}, valibot 1, arktype 2, typebox 0.34, yup 1, joi 18`,
+  `versions: zod ${z.core?.version ? `${z.core.version.major}.${z.core.version.minor}.${z.core.version.patch}` : '4'}, valibot 1, arktype 2, typebox 0.34, typia 14, yup 1, joi 18`,
 )
 console.log(
   `Node ${process.version}, ${process.platform} ${process.arch}, NODE_ENV=${process.env.NODE_ENV}`,

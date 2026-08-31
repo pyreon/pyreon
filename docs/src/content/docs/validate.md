@@ -838,10 +838,10 @@ The document describes the **input shape** — `.transform()` emits its inner sc
 
 ## Performance
 
-The `s` runtime is benchmarked against the six most-used TypeScript validators —
+The `s` runtime is benchmarked against the seven most-used TypeScript validators —
 **Zod 4** (interpreted **and** through the `z.compile()` codegen it shipped in 4.5),
-**Valibot 1**, **ArkType 2**, **TypeBox** (`TypeCompiler`), **Yup 1** and **Joi 18**
-(`bun bench:validation`).
+**Valibot 1**, **ArkType 2**, **TypeBox** (`TypeCompiler`), **typia 14**, **Yup 1** and
+**Joi 18** (`bun bench:validation`).
 
 The harness is built for objectivity. Every scenario × path × axis × library cell runs in
 fresh isolated processes (3 pooled per cell, so the CI covers process-level jitter), those
@@ -859,49 +859,62 @@ header); every scenario, input, and competitor call form is in the one file for 
 ### `check` — a boolean verdict (`.is()`)
 
 **Fastest or CI-tied on 10 of 12 cells.** Outright wins on flat object (31ns, ahead of
-ArkType's 35ns and TypeBox's 39ns), deep-nested (11ns) and object-with-array-of-objects
-(46ns); tied 🤝 for first with TypeBox and/or ArkType and/or compiled Zod on number-range
-(both paths), flat-object invalid, array-of-20, deep-nested invalid, and discriminated
-union (both paths). Both losses are `string.email`, where ArkType is ~1.2× ahead.
+ArkType 35 and TypeBox 39), array-of-20 (51ns), deep-nested (10ns) and
+object-with-array-of-objects (46ns); tied 🤝 for first with TypeBox / typia / ArkType /
+compiled Zod on number-range (both paths), flat-object invalid, deep-nested invalid, and
+discriminated union (both paths). Both losses are `string.email`, where ArkType and typia
+are ~1.3× ahead.
 
 `.is()` compiles its **own** verdict-only validator: every failure site is a bare
 `return false`, no output value is built, no issue objects are allocated, and the emitted
 function takes only the input. Against the previous `.is()` — which ran the parse validator
-and discarded its results — that is worth **1.2× to 28.7×**, measured as an in-run control
-interleaved with every other cell in the same run: flat-object invalid 201ns → 7ns,
-deep-nested invalid 139ns → 7ns, discriminated-union invalid 84ns → 8ns, array-of-20 valid
-238ns → 69ns.
+and discarded its results — that is worth **1.2× to 25.7×**, measured as an in-run control
+interleaved with every other cell in the same run: flat-object invalid 180ns → 7ns,
+deep-nested invalid 137ns → 7ns, discriminated-union invalid 85ns → 7ns, array-of-20 valid
+119ns → 51ns.
 
 ### `parse` — produce a validated output value
 
-**Fastest on the error / invalid path, outright, on every shape** — 1.2–1.5× vs Valibot,
-7.6–11.8× vs Zod (interpreted and compiled alike), 12.3–37.0× vs ArkType, 18.7–138× vs
-Joi/Yup. Error-information parity is verified separately: on a multi-fail object Pyreon
-reports the same issue count with paths and messages as Zod, so the speed is not
-"reporting less".
+**The error path is ours: outright fastest on four of five invalid cells** — 1.1–3.4×
+vs Valibot, 7.3–10.9× vs Zod (interpreted and compiled alike), 12.4–37.8× vs ArkType,
+1.6–6.1× vs typia, 19–135× vs Joi/Yup. Error-information parity is verified separately: on
+a multi-fail object Pyreon reports the same issue count with paths and messages as Zod, so
+the speed is not "reporting less". The fifth (scalar number-range invalid) goes to typia by
+1.2×.
 
-**On the valid path we are no longer ahead everywhere, and that changed with Zod 4.5.**
-Compiled Zod wins scalar number-range outright (3ns vs 9ns); ArkType wins scalar email
-(28ns vs 34ns) and flat object (36ns vs 50ns). Array-of-20, object-with-array-of-objects,
-deep-nested and discriminated union are 🤝 CI-ties with compiled Zod. We remain ahead of
-interpreted Zod, Valibot, Yup and Joi on every valid-path shape.
+**On the valid path we are not ahead, and Zod 4.5 is why.** Compiled Zod wins scalar
+number-range (3ns vs 7ns), array-of-20 (108ns vs 119ns) and object-with-array-of-objects
+(118ns vs 138ns); ArkType and typia win scalar email (26/27ns vs 33ns) and ArkType wins
+flat object (36ns vs 49ns). Deep-nested and discriminated union are 🤝 CI-ties with compiled
+Zod. We remain ahead of interpreted Zod, Valibot, Yup and Joi on every valid-path shape.
 
-Two structural reasons for the residual. ArkType returns the **input aliased** on success —
-it does not clone — while Pyreon (like Zod and Valibot) returns an immutable clone with
-unknown keys stripped; strip-and-clone is a deliberate semantic, and part of the gap is
-paying for it. The rest is that Pyreon's `Result` envelope is built by the `parse()` seam
-**around** the generated function rather than inside it, so a scalar parse pays a call plus
-two property loads a fully-inlined competitor does not. Pushing the envelope down into the
-codegen is the identified next lever, and is not done yet.
+Three structural reasons for the residual, none of them "we are simply slower":
+
+- **ArkType returns the input aliased** on success — it does not clone — while Pyreon (like
+  Zod and Valibot) returns an immutable clone with unknown keys stripped. Strip-and-clone is
+  a deliberate semantic and part of the gap is paying for it.
+- **Zod's compiled path signals failure with a sentinel return value** rather than threading
+  a context, which is cheaper on the valid path — and it pays for that by re-running the
+  **interpreter** to build errors, which is why its invalid cells are 550–850ns against our
+  50–180ns.
+- **typia and TypeBox specialise a single type at build time.** On a 3ns integer check there
+  is very little a runtime schema library can give back. typia in particular cannot build a
+  validator at runtime at all (see below), which is a different product, not just a faster one.
 
 ### Ahead-of-time compile cost
 
 A compiler buys steady-state speed with a one-off cost. Across the seven scenarios,
-`z.compile()` costs **15–72µs** and `TypeCompiler.Compile()` **11–55µs** per schema. Pyreon
+`z.compile()` costs **17–67µs** and `TypeCompiler.Compile()` **11–50µs** per schema. Pyreon
 compiles lazily on first parse and ArkType at schema-definition time, so neither has a
 separable compile call to report rather than a number measuring something else. A
 long-lived server amortizes any of these; a cold serverless invocation or a short CLI run
 may not.
+
+typia is not in that table because it has no runtime compile step at all: it generates its
+validator from a TypeScript **type** at build time, through a bespoke toolchain (`ttsc` +
+TypeScript 7). That buys it the scalar wins above, and costs it the ability to build a
+validator from data that only exists at runtime — an OpenAPI-driven client, a user-defined
+form, a schema loaded from a database.
 
 ## See also
 

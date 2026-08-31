@@ -235,6 +235,7 @@ type CheckFn = (v: unknown, ctx: ParseCtx) => void
  */
 export interface JitValidator extends SyncValidator {
   _jitPure?: boolean
+
 }
 
 /**
@@ -941,11 +942,14 @@ function compileJit(schema: Schema<unknown>, mode: JitMode): unknown {
     // `return input` (the raw value — the parse has failed).
     if (CHECK) {
       // Root: every failure site has already returned false, so reaching the
-      // end of a subtree means it validated. `return true` is emitted both as
-      // the root's onValid and as the trailing fall-through (the latter is
-      // reachable only for shapes whose root guard is the last statement).
+      // end of a subtree means it validated — `return true` is the root's
+      // onValid. The trailing statement is a fall-through that no current
+      // emission arm can reach (every arm returns on both branches), and it
+      // is `false` deliberately: if a future arm ever DID fall through, a
+      // validator should reject rather than accept. Fail-closed costs
+      // nothing while the line stays dead.
       genValue(root, 'input', () => 'return true;', () => '', 0, { dynIdx: null, suffix: [] })
-      lines.push('return true;')
+      lines.push('return false;')
     } else {
       genValue(root, 'input', BARRIER, (p) => `return ${p};`, 0, { dynIdx: null, suffix: [] })
       lines.push(BARRIER('input'))
@@ -968,9 +972,16 @@ function compileJit(schema: Schema<unknown>, mode: JitMode): unknown {
       ) => (input: unknown) => boolean
       return checkFactory(helpers)
     }
-    const prelude = usesAsyncMachinery
-      ? `var P = ctx.path;\nvar A = null; var B = null; var NOOP = () => {};`
-      : `var P = ctx.path;`
+    // `P` is read ONLY by `flushPath`'s emitted pushes/pops, and `mutRef` is
+    // set exactly when one was emitted — so on a scalar or a flat object of
+    // primitives (the shapes that never descend into a keyed position) the
+    // `var P = ctx.path` line is a property load whose result is never used,
+    // paid on every single parse. Emit it only when something reads it.
+    const needsP = mutRef !== null
+    const preludeParts: string[] = []
+    if (needsP) preludeParts.push('var P = ctx.path;')
+    if (usesAsyncMachinery) preludeParts.push('var A = null; var B = null; var NOOP = () => {};')
+    const prelude = preludeParts.join('\n')
     const body = `${prelude}\n${lines.join('\n')}`
     // eslint-disable-next-line no-new-func
     const factory = new Function('H', `return function jitValidate(input, ctx) {\n${body}\n}`) as (

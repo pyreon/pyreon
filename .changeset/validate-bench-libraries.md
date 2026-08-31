@@ -7,7 +7,18 @@ measurement-validity bug.
 
 Zod 4.5 shipped `z.compile()` — a `new Function` codegen path — so the suite now
 measures `zod-c` alongside interpreted `zod`, plus `@sinclair/typebox`
-(`TypeCompiler`), `yup` and `joi`. Zod is bumped 4.4.3 → 4.5.4 repo-wide.
+(`TypeCompiler`), `typia 14`, `yup` and `joi`. Zod is bumped 4.4.3 → 4.5.4 repo-wide.
+
+typia is ahead-of-time: it generates validators from a TypeScript TYPE at build time
+through `ttsc` + TypeScript 7 — a toolchain this repo deliberately pins away from, since
+TS7 removed the classic Compiler API `@pyreon/compiler` depends on. Its fixtures are
+therefore compiled OUTSIDE the repo and the emitted plain JS is vendored under
+`bench/typia/`, so the benchmark needs no transformer and the workspace's TypeScript
+resolution is untouched. Nothing gates that file's freshness except the benchmark's own
+cross-library correctness gate, which fails if it drifts from the shapes the other
+libraries validate. It runs `plain.createValidateClone` on the parse axis — `typia.validate`
+returns the input by reference and `typia.is` skips both the allocation and the error
+collection, so either would credit typia for work it never does.
 
 Two axes, because these libraries do not all return the same thing. `parse` produces
 a validated output value; `check` is a boolean verdict through each library's

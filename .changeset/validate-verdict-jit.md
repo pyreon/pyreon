@@ -10,6 +10,10 @@ template-literal message per failure, plus the strip-clone of the output object 
 never returned. Measured against TypeBox's `Check()` on the same schema, that cost
 `.is()` between 5× and 33× on invalid input and ~2× on valid arrays.
 
+Measured against an in-run control interleaved with every other cell: **1.2×–25.7×**
+(flat-object invalid 180ns → 7ns, deep-nested invalid 137ns → 7ns, array-of-20 valid
+119ns → 51ns). `.is()` is now fastest or CI-tied on 10 of 12 `check`-axis cells.
+
 `tryCompileJitCheck` is a second emission from the existing codegen: every failure
 site is a bare `return false`, the root returns `true`, no output is constructed and
 the emitted function takes only the input. Shapes it cannot express — a `_runInto`

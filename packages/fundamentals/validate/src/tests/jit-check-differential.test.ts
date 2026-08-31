@@ -105,7 +105,9 @@ describe('verdict JIT — primitive roots', () => {
     })
   }
   it('the verdict emitter actually served these schemas', () => {
-    expect(schemas.filter(([, sc]) => hasVerdict(sc)).length).toBeGreaterThan(15)
+    // EXACT, not a floor: a regression that refuses a subset would pass a loose
+    // floor. Ratchet it deliberately if a shape legitimately becomes unservable.
+    expect(schemas.filter(([, sc]) => hasVerdict(sc)).length).toBe(25)
     expect(covered).toBe(1)
   })
 })
@@ -175,7 +177,7 @@ describe('verdict JIT — objects, arrays, discriminated unions', () => {
     })
   }
   it('the verdict emitter actually served these schemas', () => {
-    expect(cases.filter(([, sc]) => hasVerdict(sc)).length).toBeGreaterThan(6)
+    expect(cases.filter(([, sc]) => hasVerdict(sc)).length).toBe(9)
   })
 })
 
@@ -259,6 +261,33 @@ describe('verdict JIT — cache invalidation', () => {
     expect(narrowed.is('a')).toBe(sc.parse('a').ok)
     expect(narrowed.is('abc')).toBe(true)
     expect(narrowed.is('a')).toBe(false)
+  })
+
+  it('a mutated SHARED CHILD cannot desync `.is()` from `.parse()`', () => {
+    // `_compiled` and `_jitCheck` are two artifacts of ONE verdict, and a
+    // chained method mutates in place while invalidating only the schema it
+    // was called on — never its ancestors. If the two are built at different
+    // moments, an object over a shared leaf can answer `.is()` from a
+    // pre-mutation snapshot and `.parse()` from a post-mutation one.
+    //
+    // The ancestor staleness itself is PRE-EXISTING and not what this locks:
+    // both readers may legitimately be stale. What must never happen is that
+    // they are stale DIFFERENTLY. Asserting `is === parse.ok` (rather than a
+    // fixed verdict) is deliberate — it holds whichever snapshot wins.
+    const leaf = s.string()
+    const parent = s.object({ e: leaf })
+    expect(parent.is({ e: 'x' })).toBe(parent.parse({ e: 'x' }).ok)
+    s.object({ e: leaf.email() }) // in-place chain mutates the SHARED leaf
+    expect(parent.is({ e: 'x' })).toBe(parent.parse({ e: 'x' }).ok)
+    expect(parent.is({ e: 'a@b.com' })).toBe(parent.parse({ e: 'a@b.com' }).ok)
+  })
+
+  it('… and in the reverse order (parse observed first)', () => {
+    const leaf = s.string()
+    const parent = s.object({ e: leaf })
+    expect(parent.parse({ e: 'x' }).ok).toBe(true)
+    s.object({ e: leaf.email() })
+    expect(parent.is({ e: 'x' })).toBe(parent.parse({ e: 'x' }).ok)
   })
 
   it('a refine chained after a compiled verdict makes `.is()` fall back, still agreeing', () => {

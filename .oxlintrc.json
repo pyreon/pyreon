@@ -256,6 +256,7 @@
     "tests/browser",
     "templates",
     "atlas-dist",
-    "atlas-dist-e2e"
+    "atlas-dist-e2e",
+    "**/bench/typia/generated.js"
   ]
 }
