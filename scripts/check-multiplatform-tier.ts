@@ -332,10 +332,17 @@ async function main(): Promise<number> {
   //    packages (validate / validation / url-state / feature / hotkeys / http /
   //    head) were absent from the hand-written list, so importing them into
   //    shared source produced NO diagnostic and a cryptic native build failure.
-  const parsePath = join(REPO, 'packages/native/compiler/src/parse.ts')
-  const parseSrc = readFileSync(parsePath, 'utf8')
-  const wStart = parseSrc.indexOf(WEB_ONLY_START)
-  const wEnd = parseSrc.indexOf(WEB_ONLY_END)
+  // TWO consumers, not one. The native compiler warns while COMPILING; the
+  // project audit (`pyreon doctor --check-native`) reports without a build.
+  // Only the first was derived, so the audit kept its own hand-written list
+  // and rotted in both directions exactly as parse.ts had: 5 packages it
+  // called web-only actually declare a `nativeFrontend` and partially cross,
+  // and 17 that ARE web-only it never flagged at all. Deriving one and
+  // hand-maintaining the other is how the same bug ships twice.
+  const WEB_ONLY_CONSUMERS = [
+    'packages/native/compiler/src/parse.ts',
+    'packages/core/compiler/src/native-audit.ts',
+  ] as const
   const derivedNames = deriveWebOnlyPackages(rows)
   const renderedSet = renderWebOnlySet(deriveWebOnlyRationales(rows))
   // A manifest-bearing package must never be hand-listed — that would let the
@@ -348,25 +355,27 @@ async function main(): Promise<number> {
       )
     }
   }
-  if (wStart === -1 || wEnd === -1) {
-    failures.push(
-      `packages/native/compiler/src/parse.ts is missing the ${WEB_ONLY_START} / ` +
-        `${WEB_ONLY_END} markers — the web-only warn set is no longer derived from the ` +
-        `manifests, so it will drift silently.`,
-    )
-  } else if (writeTable) {
-    const next =
-      parseSrc.slice(0, wStart) + renderedSet + parseSrc.slice(wEnd + WEB_ONLY_END.length)
-    writeFileSync(parsePath, next)
-    console.log(`[check-multiplatform-tier] compiler web-only set written (${derivedNames.length})`)
-  } else {
-    const current = parseSrc.slice(wStart, wEnd + WEB_ONLY_END.length)
-    if (current !== renderedSet) {
+  for (const rel of WEB_ONLY_CONSUMERS) {
+    const consumerPath = join(REPO, rel)
+    const consumerSrc = readFileSync(consumerPath, 'utf8')
+    const wStart = consumerSrc.indexOf(WEB_ONLY_START)
+    const wEnd = consumerSrc.indexOf(WEB_ONLY_END)
+    if (wStart === -1 || wEnd === -1) {
       failures.push(
-        `the native compiler's WEB_ONLY_PACKAGES set is STALE — a manifest's multiplatform ` +
-          `declaration changed without regenerating it. A package missing from that set ` +
-          `emits verbatim and fails the native build with no diagnostic. Run: ` +
-          `bun scripts/check-multiplatform-tier.ts --write-table`,
+        `${rel} is missing the ${WEB_ONLY_START} / ${WEB_ONLY_END} markers — the web-only ` +
+          `set is no longer derived from the manifests, so it will drift silently.`,
+      )
+      continue
+    }
+    if (writeTable) {
+      const next =
+        consumerSrc.slice(0, wStart) + renderedSet + consumerSrc.slice(wEnd + WEB_ONLY_END.length)
+      writeFileSync(consumerPath, next)
+      console.log(`[check-multiplatform-tier] web-only set written to ${rel} (${derivedNames.length})`)
+    } else if (consumerSrc.slice(wStart, wEnd + WEB_ONLY_END.length) !== renderedSet) {
+      failures.push(
+        `${rel}'s WEB_ONLY_PACKAGES set is STALE — a manifest's multiplatform declaration ` +
+          `changed without regenerating it. Run: bun scripts/check-multiplatform-tier.ts --write-table`,
       )
     }
   }

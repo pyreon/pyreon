@@ -35,16 +35,37 @@ describe('auditNative', () => {
     expect(f!.message).toContain('WebView')
   })
 
-  it('flags top-level interface / TS enum / class as native-unsupported-decl', () => {
+  it('flags a top-level TS enum / class as native-unsupported-decl', () => {
     write(
       'src/Comp.tsx',
       `import { Text } from '@pyreon/primitives'\ninterface Todo { id: number }\nenum Color { Red }\nclass Thing {}\nexport function Comp() { return (<Text>x</Text>) }`,
     )
     const r = auditNative(dir)
     const decls = r.findings.filter((x) => x.code === 'native-unsupported-decl')
-    expect(decls.length).toBe(3)
-    expect(decls.map((d) => d.message).join('\n')).toContain('type Todo = {')
+    // The invariant is unchanged: a top-level declaration PMTC cannot compile
+    // is reported. What changed is WHICH declarations those are.
+    expect(decls.length).toBe(2)
     expect(decls.map((d) => d.message).join('\n')).toContain("'a' | 'b'")
+  })
+
+  it('does NOT flag a top-level interface — PMTC compiles one', () => {
+    // The corrected truth, and the reason the assertion above dropped from 3
+    // to 2. Verified against BOTH emitters before changing this rule: a plain
+    // interface, one with optional fields, one with a nested object field and
+    // one with an array field each emit a `struct` / `data class` with zero
+    // warnings. The shapes PMTC cannot take (`extends`, generics, a method
+    // member) it warns about BY NAME at build time, which is more precise than
+    // a file-level heuristic that cannot distinguish them.
+    //
+    // Left as-is, this rule fired on three correct files in this repo and told
+    // their authors to rewrite working code -- a gate that cries wolf, which
+    // is the class this repo treats as worse than no gate at all.
+    write(
+      'src/OnlyIface.tsx',
+      `import { Text } from '@pyreon/primitives'\ninterface Todo { id: number }\nexport function C() { return (<Text>x</Text>) }`,
+    )
+    const r = auditNative(dir)
+    expect(r.findings.filter((x) => x.code === 'native-unsupported-decl')).toHaveLength(0)
   })
 
   it('does NOT flag a file that does not import @pyreon/primitives (scoping)', () => {

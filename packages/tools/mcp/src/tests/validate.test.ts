@@ -70,16 +70,29 @@ describe('MCP validate — merged detector surface', () => {
 
 describe('MCP validate — native (multiplatform) detector', () => {
   it('flags web-only imports + dropped decls in a multiplatform snippet', () => {
+    // `class` rather than `interface`: PMTC compiles an interface into a
+    // struct / data class, so flagging one told authors to rewrite code that
+    // already worked. A class genuinely does not lower.
     const code = `
       import { Stack } from '@pyreon/primitives'
       import { Chart } from '@pyreon/charts'
-      interface Todo { id: number }
+      class Todo { id = 1 }
       export function App() { return (<Stack />) }
     `
     const diags = detectNativePatterns(code)
     const codes = new Set(diags.map((d) => d.code))
     expect(codes.has('native-web-only-import')).toBe(true)
     expect(codes.has('native-unsupported-decl')).toBe(true)
+  })
+
+  it('does NOT flag a top-level interface — PMTC compiles one', () => {
+    const code = `
+      import { Stack } from '@pyreon/primitives'
+      interface Todo { id: number }
+      export function App() { return (<Stack />) }
+    `
+    const diags = detectNativePatterns(code)
+    expect(diags.filter((d) => d.code === 'native-unsupported-decl')).toHaveLength(0)
   })
 
   it('does NOT flag a pure-web snippet (no @pyreon/primitives import)', () => {
