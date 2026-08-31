@@ -292,9 +292,40 @@ public final class PyreonRouter {
         routes: [RouteRecord] = [],
         notFoundComponent: (() -> AnyView)? = nil,
     ) {
-        self.path = initialPath
         self.routes = routes
         self.notFoundComponent = notFoundComponent
+        // GATE the initial path. It used to be assigned straight to `path`,
+        // and `allowNavigation` runs only from `push`/`replace` — so an app
+        // COLD-LAUNCHED by a deep link arrived at that route with every guard
+        // skipped, while a warm link to the same route was gated. A web page
+        // doing `location.href = "myapp://admin/billing"` opened the app at
+        // /admin/billing with the auth guard never executed.
+        //
+        // A route's own `beforeEnter` is available here — it arrives on the
+        // `routes` passed to this very call — so it runs, and that is the shape
+        // an auth gate on a specific route actually takes.
+        //
+        // GLOBAL guards deliberately do NOT run, and cannot: they are registered
+        // on the router this call is building, so the list is necessarily empty.
+        // Re-validating the standing path when one is later added was tried and
+        // REVERTED — it makes registering a guard NAVIGATE, so the ordinary
+        // "block all navigation while saving" pattern (`beforeEach { false }`)
+        // would eject the user from the page they are on. A guard is about
+        // TRANSITIONS; applying it retroactively to the current location is a
+        // different, worse semantic, and this package's own
+        // `testBeforeEachBlocksReplace` caught it.
+        //
+        // So: a guard that must cover a COLD deep link belongs on the route's
+        // `beforeEnter`, which is the one that runs here. Stated in the public
+        // doc above rather than left for a reader to discover.
+        self.path = initialPath
+        // Gate it now that `self` is usable — `resolveChainIn` is an instance
+        // method. A refused path falls back to root, the same degradation the
+        // web router uses for a cancelled navigation: the user lands somewhere
+        // they are allowed to be.
+        if let candidate = self.path.last, !self.initialPathAllowed(candidate) {
+            self.path = []
+        }
         // Resolve any params that the initial top-of-stack path produces,
         // so apps that start on `/users/42` have `params["id"] == "42"`
         // immediately — no need to call push/replace just to populate.
@@ -439,6 +470,20 @@ public final class PyreonRouter {
     /// first (parity with web: global beforeEach precedes per-route
     /// beforeEnter). The matched-route lookup is non-recursive over
     /// the route table — same shape as `resolveCurrentChain`.
+    /// Whether the route-level `beforeEnter` chain admits the initial path.
+    ///
+    /// Only the per-route guards can run at construction — the global list is
+    /// necessarily empty, because guards are registered on the router this call
+    /// is building — see the note in `init` for why re-validating the standing
+    /// path when one is later added was tried and reverted.
+    private func initialPathAllowed(_ candidate: String) -> Bool {
+        guard let chain = resolveChainIn(routes, candidate) else { return true }
+        for (record, _) in chain {
+            if let guardFn = record.beforeEnter, !guardFn(candidate) { return false }
+        }
+        return true
+    }
+
     private func allowNavigation(to candidate: String) -> Bool {
         _inGuard = true
         defer { _inGuard = false }

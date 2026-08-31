@@ -15,6 +15,7 @@
 
 package com.pyreon.runtime
 
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 
@@ -41,8 +42,35 @@ fun testLinkingConstructorShape() {
     check(ctx.started.size == 1) { "single-arg constructor produces a usable linking" }
 }
 
+// A Context whose startActivity throws the way the real one does when nothing
+// on the device resolves the scheme — a zoommtg:// link on a phone without Zoom.
+private class UnresolvableContext : Context() {
+    override fun startActivity(intent: Intent) {
+        throw ActivityNotFoundException("no activity for intent")
+    }
+}
+
+fun testOpenUrlSurvivesAnUnresolvableScheme() {
+    // startActivity THROWS ActivityNotFoundException, and an unguarded call
+    // terminated the process on a URL the device simply could not open — from
+    // one shared source, on one target only, since the Swift half degraded.
+    val linking = PyreonLinking(UnresolvableContext())
+    val opened = linking.openUrl("zoommtg://join?id=1")
+    check(!opened) { "an unresolvable scheme reports false rather than crashing" }
+}
+
+fun testOpenUrlReportsSuccess() {
+    // Reported rather than swallowed: a caller that wants to fall back needs to
+    // know, and a bare catch leaves the button looking broken with no way to
+    // tell. So the success path must be distinguishable.
+    val ctx = RecordingContext()
+    check(PyreonLinking(ctx).openUrl("https://pyreon.dev")) { "a handled URL reports true" }
+}
+
 fun main() {
     testOpenUrlStartsActivity()
     testLinkingConstructorShape()
+    testOpenUrlSurvivesAnUnresolvableScheme()
+    testOpenUrlReportsSuccess()
     println("[PyreonLinkingTest] all smoke tests passed")
 }
