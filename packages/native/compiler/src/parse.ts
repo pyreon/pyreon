@@ -9232,7 +9232,7 @@ function tryFunctionDecl(
   // patterns (`{ k }` / renamed `{ k: local }`) lower; a rest element or a
   // nested pattern warns + is left un-destructured (the param still emits
   // so the function stays well-formed).
-  const params: { name: string; type: TypeIR }[] = []
+  const params: { name: string; type: TypeIR; defaultValue?: ExprIR | undefined }[] = []
   const destructurePrelude: StatementIR[] = []
   let synthParamIdx = 0
   for (const p of (arrow.params as AnyNode[] | undefined) ?? []) {
@@ -9241,6 +9241,17 @@ function tryFunctionDecl(
       const annot = p.typeAnnotation?.typeAnnotation as AnyNode | undefined
       const type: TypeIR = annot ? parseTypeAnnotation(annot, ctx) : { kind: 'unknown' }
       params.push({ name: paramName, type })
+    } else if (p?.type === 'AssignmentPattern' && p.left?.type === 'Identifier') {
+      // A defaulted parameter (`places: number = 0`). Swift and Kotlin both
+      // have native default parameters, so the default CROSSES rather than
+      // being desugared — and dropping the case silently deleted the param
+      // while the body kept reading it ("cannot find 'places' in scope" on
+      // the real engine's `currency(symbol, places = 0)`).
+      const left = p.left as AnyNode
+      const paramName = left.name as string
+      const annot = left.typeAnnotation?.typeAnnotation as AnyNode | undefined
+      const type: TypeIR = annot ? parseTypeAnnotation(annot, ctx) : { kind: 'unknown' }
+      params.push({ name: paramName, type, defaultValue: parseExpr(p.right as AnyNode, ctx) })
     } else if (p?.type === 'ObjectPattern') {
       const synthName = `__p${synthParamIdx++}`
       const annot = p.typeAnnotation?.typeAnnotation as AnyNode | undefined

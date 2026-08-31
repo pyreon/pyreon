@@ -3702,7 +3702,10 @@ function emitSwiftFunction(
   // preserves the call-site shape verbatim, so the function decl
   // must also opt out of Swift's default external labeling.
   const params = d.params
-    .map((p) => `_ ${swiftIdent(p.name)}: ${swiftType(p.type)}`)
+    .map((p) => {
+      const dflt = p.defaultValue !== undefined ? ` = ${emitSwiftExpr(p.defaultValue, 0)}` : ''
+      return `_ ${swiftIdent(p.name)}: ${swiftType(p.type)}${dflt}`
+    })
     .join(', ')
   // Render return-type clause. If the declared type is `unknown`, INFER it
   // from the body's return expr (`(x: number) => x * 2` → `-> Int`) so a

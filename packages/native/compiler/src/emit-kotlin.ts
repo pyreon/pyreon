@@ -2979,7 +2979,10 @@ function emitKotlinFunction(
   ctx: KotlinCtx,
 ): string {
   const params = d.params
-    .map((p) => `${kotlinIdent(p.name)}: ${kotlinType(p.type, ctx, p.name)}`)
+    .map((p) => {
+      const dflt = p.defaultValue !== undefined ? ` = ${emitKotlinExpr(p.defaultValue, 0)}` : ''
+      return `${kotlinIdent(p.name)}: ${kotlinType(p.type, ctx, p.name)}${dflt}`
+    })
     .join(', ')
   // Kotlin function return-type clause. Unknown return type degrades
   // to `Unit` (void); a known return type emits as `: T`.

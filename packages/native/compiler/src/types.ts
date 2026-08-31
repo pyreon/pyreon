@@ -88,7 +88,7 @@ export type DeclIR =
   | {
       kind: 'function'
       name: string
-      params: { name: string; type: TypeIR }[]
+      params: { name: string; type: TypeIR; defaultValue?: ExprIR | undefined }[]
       returnType: TypeIR
       body: StatementIR[]
     }
