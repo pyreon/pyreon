@@ -388,6 +388,15 @@
           "packages/internals/vitest-config/"
         ]
       }
+    ],
+    "pyreon/no-secret-in-shared-module": [
+      "error",
+      {
+        "exemptPaths": [
+          "packages/zero/zero/src/adapters/",
+          "packages/tools/atlas/src/plugins/"
+        ]
+      }
     ]
   }
 }

@@ -34,11 +34,15 @@ const only = (src: string, id: string, file = PORTABLE) =>
   at(src, file).filter((d) => d.ruleId === id)
 
 describe('portable group wiring', () => {
-  it('holds exactly the two portability rules, and BOTH are opt-in', () => {
+  it('holds exactly the six portability rules, and every one is opt-in', () => {
     const p = allRules.filter((r) => groupOf(r.meta) === 'portable')
     expect(p.map((r) => r.meta.id).sort()).toEqual([
+      'pyreon/no-css-in-js-in-portable',
       'pyreon/no-out-of-subset-construct',
       'pyreon/no-platform-branch-without-fallback',
+      'pyreon/no-web-only-import-in-portable',
+      'pyreon/prefer-canonical-primitive',
+      'pyreon/require-native-compat-marker',
     ])
     // Opt-in is load-bearing: a web-only project must not see these at all.
     for (const r of p) expect(r.meta.optIn, r.meta.id).toBe(true)

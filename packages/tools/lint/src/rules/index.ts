@@ -128,6 +128,22 @@ import { noNodeBuiltinInComponent } from './isomorphic/no-node-builtin-in-compon
 import { noSyncFsInRequestPath } from './backend/no-sync-fs-in-request-path'
 import { noFloatingPromiseInHandler } from './backend/no-floating-promise-in-handler'
 import { noCloseBeforeHandlerTeardown } from './web-perf/no-close-before-handler-teardown'
+import { noEnvBranchInRender } from './isomorphic/no-env-branch-in-render'
+import { requireStableIterationOrder } from './isomorphic/require-stable-iteration-order'
+import { noUnvalidatedRequestBody } from './backend/no-unvalidated-request-body'
+import { noAwaitInLoopOverIo } from './backend/no-await-in-loop-over-io'
+import { requireRequestSignalForwarding } from './backend/require-request-signal-forwarding'
+import { noModuleMutableInHandler } from './backend/no-module-mutable-in-handler'
+import { noSecretInSharedModule } from './backend/no-secret-in-shared-module'
+import { noLayoutThrash } from './web-perf/no-layout-thrash'
+import { requireAbortOnUnmount } from './web-perf/require-abort-on-unmount'
+import { requireImgLoadingHint } from './web-perf/require-img-loading-hint'
+import { noBlockingThirdPartyScript } from './web-perf/no-blocking-third-party-script'
+import { noWebOnlyImportInPortable } from './portable/no-web-only-import-in-portable'
+import { preferCanonicalPrimitive } from './portable/prefer-canonical-primitive'
+import { requireNativeCompatMarker } from './portable/require-native-compat-marker'
+import { noCssInJsInPortable } from './portable/no-css-in-js-in-portable'
+import { noCatchWithoutRethrowOrReport } from './js/no-catch-without-rethrow-or-report'
 import { preferPassiveListener } from './web-perf/prefer-passive-listener'
 import { noUnboundedRafLoop } from './web-perf/no-unbounded-raf-loop'
 import { noOutOfSubsetConstruct } from './portable/no-out-of-subset-construct'
@@ -143,6 +159,22 @@ export const allRules: Rule[] = [
   noSyncFsInRequestPath,
   noFloatingPromiseInHandler,
   noCloseBeforeHandlerTeardown,
+  noEnvBranchInRender,
+  requireStableIterationOrder,
+  noUnvalidatedRequestBody,
+  noAwaitInLoopOverIo,
+  requireRequestSignalForwarding,
+  noModuleMutableInHandler,
+  noSecretInSharedModule,
+  noLayoutThrash,
+  requireAbortOnUnmount,
+  requireImgLoadingHint,
+  noBlockingThirdPartyScript,
+  noWebOnlyImportInPortable,
+  preferCanonicalPrimitive,
+  requireNativeCompatMarker,
+  noCssInJsInPortable,
+  noCatchWithoutRethrowOrReport,
   preferPassiveListener,
   noUnboundedRafLoop,
   noOutOfSubsetConstruct,

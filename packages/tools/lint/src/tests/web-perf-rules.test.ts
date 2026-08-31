@@ -29,12 +29,16 @@ const only = (src: string, id: string, file?: string) =>
   at(src, file).filter((d) => d.ruleId === id)
 
 describe('web-perf group wiring', () => {
-  it('holds the three client-side rules, all gated to client + shared', () => {
+  it('holds the seven client-side rules, all gated to client + shared', () => {
     const wp = allRules.filter((r) => groupOf(r.meta) === 'web-perf')
     expect(wp.map((r) => r.meta.id).sort()).toEqual([
+      'pyreon/no-blocking-third-party-script',
       'pyreon/no-close-before-handler-teardown',
+      'pyreon/no-layout-thrash',
       'pyreon/no-unbounded-raf-loop',
       'pyreon/prefer-passive-listener',
+      'pyreon/require-abort-on-unmount',
+      'pyreon/require-img-loading-hint',
     ])
     for (const r of wp) expect(r.meta.appliesTo, r.meta.id).toEqual(['client', 'shared'])
   })

@@ -68,8 +68,8 @@ function lintWithRuleEnabled(ruleId: string, source: string, filePath?: string) 
 // ── Rule Metadata ───────────────────────────────────────────────────────────
 
 describe('Rule metadata', () => {
-  it('should have 116 rules', () => {
-    expect(allRules.length).toBe(116)
+  it('should have 132 rules', () => {
+    expect(allRules.length).toBe(132)
   })
 
   it('should have unique rule IDs', () => {
@@ -152,13 +152,13 @@ describe('Rule metadata', () => {
     // no-unsanitized-inner-html).
     expect(counts.security).toBe(3)
     // Role-aware tiers — where a file runs, and which platforms it must survive.
-    expect(counts.isomorphic).toBe(4)
-    expect(counts.backend).toBe(2)
-    expect(counts['web-perf']).toBe(3)
-    expect(counts.portable).toBe(2)
-    expect(counts.js).toBe(2)
+    expect(counts.isomorphic).toBe(6)
+    expect(counts.backend).toBe(7)
+    expect(counts['web-perf']).toBe(7)
+    expect(counts.portable).toBe(6)
+    expect(counts.js).toBe(3)
     const total = Object.values(counts).reduce((a, b) => a + b, 0)
-    expect(total).toBe(116)
+    expect(total).toBe(132)
   })
 })
 
@@ -2071,7 +2071,7 @@ describe('Ignore filter', () => {
 describe('Presets', () => {
   it('recommended should include all rules (opt-in ones forced off)', () => {
     const config = getPreset('recommended')
-    expect(Object.keys(config.rules).length).toBe(116)
+    expect(Object.keys(config.rules).length).toBe(132)
     // Opt-in best-practice rules are present as keys but disabled.
     for (const rule of allRules) {
       if (rule.meta.optIn === true) {
