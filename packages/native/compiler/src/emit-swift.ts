@@ -585,8 +585,22 @@ let _activeInferCtx: ReturnType<typeof buildInferenceCtx> = emptyInferenceCtx()
 /** 'double' / 'int' / 'other' for an expr, via the active inference ctx. */
 function numericFloatness(e: ExprIR): 'double' | 'int' | 'other' {
   const t = inferType(e, _activeInferCtx)
+  // The `Double`/`Float` ALIAS arrives as an unresolved typeRef (a param
+  // annotated `: Double` infers typeRef, not number+float) — it is exactly
+  // as float as a resolved float number, and missing it defeated the
+  // Int×Double coercion for every alias-annotated operand (the charts
+  // engine's `step * i` tick loop).
+  if (t.kind === 'typeRef' && (t.name === 'Double' || t.name === 'Float')) return 'double'
   if (t.kind !== 'number') return 'other'
   return t.float === true ? 'double' : 'int'
+}
+
+/** number+float OR the source-spelled `Double`/`Float` alias typeRef. */
+function isFloatTypeIR(t: TypeIR): boolean {
+  return (
+    (t.kind === 'number' && t.float === true) ||
+    (t.kind === 'typeRef' && (t.name === 'Double' || t.name === 'Float'))
+  )
 }
 
 /**
@@ -988,6 +1002,7 @@ export function emitSwift(
   )
   // Gap 3 PR-3.4 — reset KeepAlive-wrapper flag per transform.
   _needsSwiftKeepAliveWrapper = false
+  _needsSwiftNumString = false
   const parts: string[] = []
   for (const e of enums) parts.push(emitSwiftEnum(e))
   for (const s of structs) parts.push(emitSwiftStruct(s))
@@ -1060,6 +1075,8 @@ export function emitSwift(
   for (const s of _synthExprStructs) parts.push(emitSwiftStruct(s))
   // Gap 3 PR-3.2/3.3/3.4 — prepend wrapper helper structs if needed.
   if (_needsSwiftKeepAliveWrapper) parts.push(SWIFT_KEEP_ALIVE_WRAPPER)
+  // consulted AFTER helper + component emission — the flag is set during it
+  if (_needsSwiftNumString) parts.push(SWIFT_NUM_STRING)
   for (const cp of componentParts) parts.push(cp)
   _enumNames = new Set()
   _structFieldsToName = new Map()
@@ -1084,6 +1101,7 @@ export function emitSwift(
   _modelMethodNames = new Map()
   _usesPermissionsEnvSwift = false
   _needsSwiftKeepAliveWrapper = false
+  _needsSwiftNumString = false
   const warnings = [..._emitWarnings]
   _emitWarnings = []
   return { code: parts.join('\n\n'), warnings }
@@ -3930,10 +3948,24 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       // (inclusive → `through:`). Ranges keep break/continue semantics.
       const pad = ' '.repeat(indent)
       const from = emitSwiftExpr(s.from, indent)
-      const to = emitSwiftExpr(s.to, indent)
+      const toT = inferType(s.to, _activeInferCtx)
+      const toRaw = emitSwiftExpr(s.to, indent)
+      // A Double TO-bound makes `0..<n` a Range<Double> — not a Sequence at
+      // all. JS `i < n` trips ceil(n) times for fractional n (identity for
+      // integral), so the bound wraps `Int(ceil(...))`.
+      const to = isFloatTypeIR(toT) ? `Int(ceil(Double(${toRaw})))` : toRaw
+      // The counter is an Int in the body's scope — registering it lets the
+      // binary-op coercion wrap `Double(i)` when it meets a Double
+      // (`first + step * i` was 'Int * Double' on the charts engine; an
+      // unregistered counter inferred unknown, so the coercion never fired).
+      const hadItem = _activeInferCtx.locals.has(s.item)
+      const prevItem = _activeInferCtx.locals.get(s.item)
+      _activeInferCtx.locals.set(s.item, { kind: 'number' })
       const lines = s.body
         .map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`)
         .join('\n')
+      if (hadItem) _activeInferCtx.locals.set(s.item, prevItem!)
+      else _activeInferCtx.locals.delete(s.item)
       const head =
         s.step !== undefined
           ? `stride(from: ${from}, ${s.inclusive === true ? 'through' : 'to'}: ${to}, by: ${emitSwiftExpr(s.step, indent)})`
@@ -4549,6 +4581,18 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // equivalents (Foundation is in the CLI import header). Kotlin
       // needs no mapping — java.lang.Math is valid on Android/JVM. An
       // unmapped `Math.X` falls through to the generic emit.
+      // `String(x)` over a FLOAT-typed arg → the JS-faithful formatter
+      // (integral Doubles print without .0, like the web). Non-float args
+      // keep the verbatim `String(...)` — valid Swift, byte-identical.
+      if (
+        e.callee.kind === 'identifier' &&
+        e.callee.name === 'String' &&
+        e.args.length === 1 &&
+        isFloatTypeIR(inferType(e.args[0]!, _activeInferCtx))
+      ) {
+        _needsSwiftNumString = true
+        return `pyreonNumString(${emitSwiftExpr(e.args[0]!, indent)})`
+      }
       if (
         e.callee.kind === 'member' &&
         e.callee.object.kind === 'identifier' &&
@@ -4600,16 +4644,23 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           // result is wrapped `Int(…)` so it stays an Int usable in `page <
           // pageCount` and prints "4" not "4.0" (matches `inferMathCall` → Int).
           case 'round':
-            if (args.length === 1) return `Int((Double(${args[0]!})).rounded())`
+            if (args.length === 1) return `(Double(${args[0]!})).rounded()`
             break
+          // floor/ceil/trunc return DOUBLE — JS Math.floor returns a
+          // NUMBER, and the old `Int(floor(...))` wrap poisoned every
+          // downstream mixed expression (`Math.floor(min/step) * step`
+          // → 'Int * Double' — 18 errors on the charts engine bundle).
+          // Index positions coerce back via the 'index' emit's
+          // float-index Int() wrap; Kotlin was always JS-faithful here
+          // (java.lang.Math.floor returns double, Int×Double promotes).
           case 'floor':
-            if (args.length === 1) return `Int(floor(Double(${args[0]!})))`
+            if (args.length === 1) return `floor(Double(${args[0]!}))`
             break
           case 'ceil':
-            if (args.length === 1) return `Int(ceil(Double(${args[0]!})))`
+            if (args.length === 1) return `ceil(Double(${args[0]!}))`
             break
           case 'trunc':
-            if (args.length === 1) return `Int(trunc(Double(${args[0]!})))`
+            if (args.length === 1) return `trunc(Double(${args[0]!}))`
             break
           case 'abs':
             if (args.length === 1) return `abs(${args[0]!})`
@@ -5985,7 +6036,14 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         )
         return `${objStr}[${idxStr}]`
       }
-      return `${emitSwiftExpr(e.object, indent)}[${emitSwiftExpr(e.index, indent)}]`
+      // A provably-Double index (Math.floor now returns Double) needs the
+      // Int() wrap Swift subscripts demand; unknown/Int stays bare.
+      {
+        const idxT = inferType(e.index, _activeInferCtx)
+        const idxRaw = emitSwiftExpr(e.index, indent)
+        const idxOut = isFloatTypeIR(idxT) ? `Int(${idxRaw})` : idxRaw
+        return `${emitSwiftExpr(e.object, indent)}[${idxOut}]`
+      }
     }
     case 'member': {
       // `Math.PI` is a member READ (the Math CALL mapping never sees it) —
@@ -7725,6 +7783,16 @@ private struct PyreonKeepAliveWrapper<Content: View>: View {
 }`
 
 let _needsSwiftKeepAliveWrapper = false
+
+// `String(x)` over a Double: JS prints an integral number WITHOUT a
+// trailing .0 (`String(3.0)` → "3"), Swift's own String(3.0) → "3.0" —
+// a user-visible parity break in every numeric label once the Math.floor
+// family became Double-returning. Emitted once, only when used (the
+// PyreonUrlStateDouble.set formatter, extracted).
+let _needsSwiftNumString = false
+const SWIFT_NUM_STRING = `func pyreonNumString(_ v: Double) -> String {
+    v.rounded() == v && v.magnitude < 1e15 ? String(Int(v)) : String(v)
+}`
 
 /**
  * Escape-hatch primitive emit (`<NativeIOS>` / `<NativeAndroid>` / `<Web>`).

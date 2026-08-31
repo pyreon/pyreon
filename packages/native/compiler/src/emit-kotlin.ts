@@ -344,6 +344,11 @@ function collectLayoutComponentNamesKotlin(components: ComponentIR[]): Set<strin
  * silent-drop diagnostics).
  */
 let _emitWarnings: string[] = []
+
+// JS-faithful `String(double)` — see the Swift twin. Emitted once when used.
+let _needsKotlinNumString = false
+const KOTLIN_NUM_STRING = `fun pyreonNumString(v: Double): String =
+    if (v == Math.rint(v) && Math.abs(v) < 1e15) v.toLong().toString() else v.toString()`
 /**
  * Module-level `const X = <string|number|boolean literal>` bindings,
  * name → value (Kotlin mirror of emit-swift's `_constStringMap`). Lets
@@ -386,6 +391,7 @@ export function emitKotlin(
   aliasImports: Map<string, string> = new Map(),
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
+  _needsKotlinNumString = false
   // Per-FILE hook-binding-name sets. They are populated by the pre-pass
   // below (which walks EVERY component at once), so they are file-scoped,
   // not component-scoped — and nothing reset them. Two consequences: the
@@ -597,6 +603,8 @@ export function emitKotlin(
   // if any of those elements is encountered.
   const componentParts: string[] = []
   for (const c of components) componentParts.push(emitKotlinComponent(c))
+  // consulted AFTER helper + component emission — the flag is set during it
+  if (_needsKotlinNumString) parts.push(KOTLIN_NUM_STRING)
   // Emit synthesized anonymous-object data classes (collected during
   // component emit) at module scope — Kotlin allows top-level forward refs.
   for (const s of _synthExprStructs) parts.push(emitKotlinStruct(s))
@@ -624,6 +632,7 @@ export function emitKotlin(
   _needsKotlinKeepAliveWrapper = false
   const warnings = [..._emitWarnings]
   _emitWarnings = []
+  _needsKotlinNumString = false
   return { code: parts.join('\n\n'), warnings }
 }
 
@@ -3679,6 +3688,16 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         e.callee.name === 'String' &&
         e.args.length === 1
       ) {
+        // A FLOAT-typed arg routes through the JS-faithful formatter —
+        // Kotlin's `3.0.toString()` is "3.0", the web prints "3".
+        const sArgT = inferType(e.args[0]!, _kotlinExprInferCtx)
+        if (
+          (sArgT.kind === 'number' && sArgT.float === true) ||
+          (sArgT.kind === 'typeRef' && (sArgT.name === 'Double' || sArgT.name === 'Float'))
+        ) {
+          _needsKotlinNumString = true
+          return `pyreonNumString(${emitKotlinExpr(e.args[0]!, indent)})`
+        }
         return `(${emitKotlinExpr(e.args[0]!, indent)}).toString()`
       }
       // `Date.now()` — JS ms-since-epoch. `Date` is an unresolved reference
@@ -4742,7 +4761,19 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             : '.'
         return `${emitKotlinExpr(e.object, indent)}${dot}getOrNull(${emitKotlinExpr(e.index, indent)})`
       }
-      return `${emitKotlinExpr(e.object, indent)}[${emitKotlinExpr(e.index, indent)}]`
+      // A provably-Double index (Math.floor returns Double, JS-faithful)
+      // needs `.toInt()` — Kotlin's List subscript takes Int only (the
+      // Swift twin wraps `Int(...)`).
+      {
+        const idxT = inferType(e.index, _kotlinExprInferCtx)
+        const idxRaw = emitKotlinExpr(e.index, indent)
+        const idxOut =
+          (idxT.kind === 'number' && idxT.float === true) ||
+          (idxT.kind === 'typeRef' && (idxT.name === 'Double' || idxT.name === 'Float'))
+            ? `(${idxRaw}).toInt()`
+            : idxRaw
+        return `${emitKotlinExpr(e.object, indent)}[${idxOut}]`
+      }
     }
     case 'member': {
       // `Math.PI` member READ — java.lang.Math.PI is valid on the JVM, but

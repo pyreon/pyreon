@@ -1217,7 +1217,10 @@ function inferMathCall(expr: ExprIR, ctx: InferenceCtx): TypeIR | null {
   }
   const fn = expr.callee.property
   if (fn === 'ceil' || fn === 'floor' || fn === 'round' || fn === 'trunc') {
-    return { kind: 'number' } // integer-valued → Int
+    // JS-faithful: Math.floor returns a NUMBER (Double on Swift; Kotlin's
+    // java.lang.Math.floor already returns double). The old Int inference
+    // made every `Math.floor(a/b) * b` a 'Int * Double' Swift error.
+    return { kind: 'number', float: true }
   }
   const DOUBLE = new Set([
     'sqrt', 'pow', 'cbrt', 'hypot', 'sin', 'cos', 'tan', 'asin', 'acos',
