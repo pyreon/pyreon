@@ -967,7 +967,12 @@ export function seedHandlerLocals(
   const saved = ctx.locals
   ctx.locals = new Map(saved)
   for (const s of stmts) {
-    if (s.kind === 'let') ctx.locals.set(s.name, inferType(s.expr, ctx))
+    if (s.kind === 'let') {
+      const t = inferType(s.expr, ctx)
+      // The ANNOTATION is evidence the initializer's inference may lack —
+      // `const out: Double[] = []` seeded unknown from the empty literal.
+      ctx.locals.set(s.name, t.kind === 'unknown' && s.declaredType !== undefined ? s.declaredType : t)
+    }
   }
   return saved
 }
@@ -1323,6 +1328,7 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       return { kind: 'unknown' }
     }
     case 'call': {
+
       // `Object.keys(<object-typed expr>)` → static `[String]` of the
       // struct field names. A synthesized struct's keys are statically
       // known at compile time, so the rewrite lowers the call to a plain
