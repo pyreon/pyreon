@@ -166,6 +166,16 @@ const GATES: Gate[] = [
     name: 'check-workflow-shell-order',
     cmd: 'bun scripts/check-workflow-shell-order.ts',
   },
+  // Its sibling for the OTHER language a workflow embeds. Two different actions
+  // here take an input named `script:` -- the emulator runner's is shell, and
+  // `actions/github-script`'s is JavaScript -- so a snippet pasted into the
+  // wrong one leaves the YAML valid and dies at runtime with a SyntaxError. It
+  // did: the nightly sticky-issue NOTIFIER, i.e. the thing that reports a red
+  // device build, could not parse.
+  {
+    name: 'check-github-script-syntax',
+    cmd: 'bun scripts/check-github-script-syntax.ts',
+  },
   // A cache SAVE key and its RESTORE key must hash the same inputs. hashFiles()
   // is a pure function of its argument list, so two different lists can never
   // produce a matching digest — the restore just misses, silently, forever.
