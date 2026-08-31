@@ -138,3 +138,61 @@ describe('the gate stays honest about what it cannot merge', () => {
     expect(r.code).toContain('var size: Double? = nil')
   })
 })
+
+describe('union branch dedupe at parse', () => {
+  it('a union of identical base types collapses — align is String?, never Any?', () => {
+    // 'start' | 'middle' | 'end' degrades to string | string | string at
+    // parse. Undeduped, the emitters saw a mixed union and rendered Any? —
+    // which cannot synthesize Codable, failing the exact struct the
+    // fat-struct lowering exists to make compile.
+    const r = transform(
+      `
+      type Cmd =
+        | { kind: 'text'; align: 'start' | 'middle' | 'end' }
+        | { kind: 'rect'; w: Double }
+      export function P() { return <Text>x</Text> }
+      `,
+      { target: 'swift' },
+    )
+    expect(r.code).toContain('var align: String? = nil')
+    expect(r.code).not.toContain('Any?')
+  })
+
+  it('a genuinely mixed union still degrades rather than guessing', () => {
+    const r = transform(
+      `
+      type Odd = { kind: 'a'; v: string | Double }
+      type Other = { kind: 'b'; v: string | Double }
+      export function P() { return <Text>x</Text> }
+      `,
+      { target: 'swift' },
+    )
+    expect(r.code).toContain('Any')
+  })
+})
+
+describe('native-primitive alias names do not warn', () => {
+  it('a helper param typed by the Double alias is silent — the name IS the native type', () => {
+    const r = transform(
+      `
+      type Double = number
+      function scale2(v: Double): Double { return v * 2.0 }
+      export function P() { return <Text>{String(scale2(1.5))}</Text> }
+      `,
+      { target: 'swift' },
+    )
+    expect(r.warnings.filter((w) => String(w).includes("type \`Double\` can't be resolved"))).toEqual([])
+    expect(r.code).toContain('func scale2(_ v: Double) -> Double')
+  })
+
+  it('an unknown non-primitive name still warns', () => {
+    const r = transform(
+      `
+      function go(v: Mystery): string { return 'x' }
+      export function P() { return <Text>{go(1 as never)}</Text> }
+      `,
+      { target: 'swift' },
+    )
+    expect(r.warnings.some((w) => String(w).includes('Mystery'))).toBe(true)
+  })
+})

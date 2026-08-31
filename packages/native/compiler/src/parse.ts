@@ -6224,10 +6224,18 @@ function parseProps(
  * named props type, the dominant real-world component shape). Any other
  * TypeIR passes through unchanged.
  */
+/** Type names that are REAL primitive types on both native targets. */
+const NATIVE_PRIMITIVE_TYPE_NAMES = new Set(['Double', 'Float', 'Int', 'Bool', 'String'])
+
 function resolvePropsObjectType(t: TypeIR, ctx: ParseCtx): TypeIR {
   if (t.kind === 'typeRef' && t.args.length === 0) {
     const resolved = ctx.objectTypeAliases.get(t.name)
     if (resolved !== undefined) return resolved
+    if (NATIVE_PRIMITIVE_TYPE_NAMES.has(t.name)) return t
+    // A typeRef named after a native primitive emits VERBATIM as that native
+    // type — `type Double = number` is the documented cross-target alias
+    // (tsc resolves the alias, PMTC reads the NAME). Warning here tells the
+    // author to fix working code, five times per file on the chart engine.
     ctx.warnings.push(
       `Component props type \`${t.name}\` can't be resolved — PMTC only resolves an object-shape \`type ${t.name} = { … }\` or \`interface ${t.name} { … }\` declared in the SAME file (imports aren't followed, and neither are generic / \`extends\` interfaces). The emitted component would reference undeclared properties and fail the native build. Declare it locally or inline the annotation (\`props: { … }\`).`,
     )
@@ -9895,7 +9903,23 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
         if (parsed.kind === 'union') branches.push(...parsed.branches)
         else branches.push(parsed)
       }
-      return { kind: 'union', branches }
+      // Dedupe structurally-equal branches. Literal types already degrade to
+      // their base type above, so 'start' | 'middle' | 'end' arrives here as
+      // string | string | string — three branches that are ONE type. Left
+      // undeduped, the emitters see a mixed union and degrade the field to
+      // Any, which breaks Codable synthesis on the very structs the
+      // fat-struct lowering exists to make compile. A single survivor
+      // collapses out of the union entirely.
+      const seen = new Set<string>()
+      const unique: TypeIR[] = []
+      for (const b of branches) {
+        const k = typeShapeKey(b)
+        if (seen.has(k)) continue
+        seen.add(k)
+        unique.push(b)
+      }
+      if (unique.length === 1) return unique[0]!
+      return { kind: 'union', branches: unique }
     }
     case 'TSTypeReference': {
       // `Foo`, `MyInterface`, `Array<T>`, `Promise<string>`, etc. The
