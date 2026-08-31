@@ -4437,6 +4437,13 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             // — bounds are the caller's concern; documented v1 limitation.
             if (e.args.length === 1) return `${obj}[${argExprs[0]!}].toString()`
             break
+          case 'charCodeAt':
+            // JS `s.charCodeAt(i)` → the UTF-16 code unit as Double (the JS
+            // number). `.toInt()` on the index tolerates a Double-typed
+            // engine index (valid on Int too); out-of-range crashes (JS
+            // returns NaN) — caller's concern, same v1 rule as `charAt`.
+            if (e.args.length === 1) return `${obj}[(${argExprs[0]!}).toInt()].code.toDouble()`
+            break
           case 'padStart':
           case 'padEnd': {
             // Kotlin `String.padStart(len, padChar)` / `padEnd` ARE native —

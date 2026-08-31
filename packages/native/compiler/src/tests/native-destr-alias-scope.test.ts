@@ -94,3 +94,28 @@ describe('P1 — Math.PI lowers as a constant member read', () => {
     expect(out).not.toContain('Math.PI')
   })
 })
+
+describe('P1 — charCodeAt lowers (was a silent verbatim emit)', () => {
+  const SRC_CC = `
+  function code(s: string): Double {
+    const c = s.charCodeAt(0)
+    return c >= 48.0 ? c - 48.0 : 0.0
+  }
+  export function P() { return <Text>{String(code("a"))}</Text> }
+`
+  it('Swift: UTF-16 code unit as Double', () => {
+    const out = transform(SRC_CC, { target: 'swift' }).code
+    expect(out).toContain('Double(Array(s.utf16)[Int(0)])')
+    expect(out).not.toContain('charCodeAt')
+  })
+  it('Kotlin: Char.code as Double', () => {
+    const out = transform(SRC_CC, { target: 'kotlin' }).code
+    expect(out).toContain('s[(0).toInt()].code.toDouble()')
+    expect(out).not.toContain('charCodeAt')
+  })
+  it.skipIf(!isSwiftUIAvailable())('the emitted Swift type-checks', () => {
+    const out = transform(SRC_CC, { target: 'swift' }).code
+    const res = validateSwiftWithStubs(out)
+    expect(res.ok, res.output).toBe(true)
+  })
+})

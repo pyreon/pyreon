@@ -5555,6 +5555,13 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // limitation. Kotlin maps separately (`str[i].toString()`).
             if (e.args.length === 1) return `String(Array(${obj})[${argExprs[0]!}])`
             break
+          case 'charCodeAt':
+            // JS `s.charCodeAt(i)` → the UTF-16 code unit as Double
+            // (matching the JS number). `Array(s.utf16)` gives O(1)
+            // integer indexing; out-of-range crashes (JS returns NaN) —
+            // bounds are the caller's concern, same v1 rule as `charAt`.
+            if (e.args.length === 1) return `Double(Array(${obj}.utf16)[Int(${argExprs[0]!})])`
+            break
           case 'startsWith':
             // JS String.startsWith → Swift `hasPrefix` (Kotlin's
             // startsWith is valid as-is, no mapping there).

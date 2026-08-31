@@ -1685,6 +1685,9 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
               return { kind: 'boolean' }
             case 'indexOf':
               return { kind: 'number' }
+            case 'charCodeAt':
+              // emitted as Double on both targets (the JS number)
+              return { kind: 'number', float: true }
           }
         }
       }
