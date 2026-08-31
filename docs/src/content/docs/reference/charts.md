@@ -83,6 +83,7 @@ const typedChart = useChart<MyOption>(() => ({
 | [`PlotChart`](#plotchart) | component | Pyreon's OWN charting engine, from the `@pyreon/charts/plot` subpath — no ECharts, no third-party engine. |
 | [`chartToSvg`](#charttosvg) | function | Render a chart to a standalone `<svg>` STRING. |
 | [`PieChart`](#piechart) | component | Pie and donut from the same engine (`@pyreon/charts/plot`); `innerRadius` is what makes it a donut. |
+| [`HeatmapChart`](#heatmapchart) | component | Heatmap from the plot engine (`@pyreon/charts/plot`): two categorical axes, a value per cell, color as the third channel |
 
 ## API
 
@@ -264,6 +265,35 @@ const cpu = signal(42)
 - Omitting `label` and expecting a legend — the slice labels are what name the data
 
 **See also:** `PlotChart`
+
+---
+
+### HeatmapChart `component`
+
+```ts
+<T>(props: HeatmapChartProps<T>) => VNodeChild
+```
+
+Heatmap from the plot engine (`@pyreon/charts/plot`): two categorical axes, a value per cell, color as the third channel. Category order is FIRST-SEEN (weekday names and funnel stages carry an order alphabetical sorting destroys); duplicate (x, y) observations SUM; absent cells are NOT drawn — absence and zero are different facts. The ramp is plain `#rrggbb` stops interpolated by hand-rolled math, so the same code lowers to native. The row gutter sizes itself from the widest row label, the same rule horizontal bars use.
+
+**Example**
+
+```tsx
+import { HeatmapChart } from '@pyreon/charts/plot'
+
+interface Ev { day: string; hour: string; count: number }
+const events: Ev[] = [{ day: 'Mon', hour: '09', count: 12 }]
+
+<HeatmapChart data={events} x={(d: Ev) => d.day} y={(d: Ev) => d.hour} value={(d: Ev) => d.count} />
+```
+
+**Common mistakes**
+
+- Expecting alphabetically sorted axes — category order is first-seen from the data, which is what keeps Mon..Sun in week order; sort the DATA to sort the axes
+- Reading an undrawn cell as zero — absent cells are skipped, not painted cold; emit explicit zero observations when zero is a fact worth showing
+- Passing a color ramp as anything but `#rrggbb` stops — named colors and rgb() strings are not parsed; the hex restriction is what lets the ramp math lower to native
+
+**See also:** `PlotChart` · `PieChart`
 
 ---
 

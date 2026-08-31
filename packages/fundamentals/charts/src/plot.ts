@@ -11,6 +11,12 @@
 export { PlotChart } from './engine/Chart'
 export type { PlotChartProps } from './engine/Chart'
 export { GaugeChart, PieChart } from './engine/PieChart'
+export { HeatmapChart } from './engine/HeatmapChart'
+export type { HeatmapChartProps } from './engine/HeatmapChart'
+
+// Heat geometry — usable standalone, like the rest of the engine.
+export { buildHeatGrid, colorRamp, HEAT_RAMP, renderHeat } from './engine/heat'
+export type { HeatCell, HeatGrid, HeatmapOptions } from './engine/heat'
 export type { GaugeChartProps, PieChartProps } from './engine/PieChart'
 
 // Marks

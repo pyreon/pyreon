@@ -92,6 +92,27 @@ marks only: a horizontal line or scatter is a transposed coordinate system,
 not a flipped bar chart, so non-bar marks are skipped rather than drawn
 misleadingly.
 
+### Heatmap
+
+```tsx
+import { HeatmapChart } from '@pyreon/charts/plot'
+
+<HeatmapChart
+  data={events}
+  x={(d) => d.day}
+  y={(d) => d.hour}
+  value={(d) => d.count}
+/>
+```
+
+Two categorical axes, a value per cell, color as the third channel. Category
+order is FIRST-SEEN — weekday names and funnel stages carry an order that
+alphabetical sorting would destroy. Duplicate `(x, y)` observations SUM.
+Absent cells are not drawn: absence and zero are different facts, and
+painting absence as the coldest color would conflate them. The ramp is
+plain `#rrggbb` stops (`colors={['#eff6ff', '#1e40af']}`), interpolated by
+hand-rolled math so the same code lowers to native.
+
 ### Formatting
 
 ```tsx
