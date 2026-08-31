@@ -300,6 +300,32 @@ const debounced = useDebouncedValue(q, 300)  // write the URL from this`,
     }),
   },
   {
+    // The pyreon.dev search overlay's failure signature, and `@pyreon/loom`'s
+    // Observatory before it: a hook or factory result held in a prop-derived
+    // `const` was re-invoked by the reactive-props inlining pass at EVERY JSX
+    // use site, so each binding watched its own freshly-minted instance while
+    // the event handlers mutated the component body's. Nothing throws — which
+    // is why this is keyed on the SYMPTOM a reader would search for, not on an
+    // error string. Distinct from the props-destructured entry above: there the
+    // value is captured once, here there are N live instances.
+    pattern:
+      /(use|create)[A-Z]\w*\(.*(never updates|not reactive|does nothing|no effect)|(toggle|click|handler).*(does nothing|no effect).*(signal|state).*(chang|updat)|(two|multiple|separate|fresh|disconnected) (instances?|copies).*(hook|factory|model|store)|signal (chang|updat)\w* but.*(UI|DOM|view).*(not|never|doesn't)/i,
+    diagnose: () => ({
+      cause:
+        "A prop-derived `const` whose initializer is a CALL used to be re-invoked at every JSX use site. The inlining pass exists so `const a = props.x + 1` stays reactive — it splices the initializer back in at each use — but applied to a factory it mints a NEW instance per binding. The handlers write the body's instance; the bindings read their own; the DOM never moves and nothing errors.",
+      fix: "Upgrade `@pyreon/compiler` — a prop-derived const initialized by a `useX` / `createX` call is now REFERENCED at its use sites, not re-invoked. If your factory is named something else (`makeStore`, `buildModel`), it is still inlined: rename it to the `use*` / `create*` convention, or declare the binding `let`, which the inliner has never tracked.",
+      fixCode: `// re-invoked per use site on older compilers, and still is when the
+// callee matches neither convention
+const s = makeStore(props.id)
+return <div class={() => s.open() ? 'on' : 'off'} onClick={() => s.toggle()} />
+
+// one instance: the convention is the contract
+const s = useStore(props.id)`,
+      related:
+        'Confirm it from the EMIT, not by reading the source: transform the file and count the callee. A count that GREW between source and emit is an inlined initializer — that sweep is what found the second instance after the first was worked around per-site. See anti-patterns "reactive-props inlining of a stateful factory".',
+    }),
+  },
+  {
     // The residual footgun left by the <textarea value> SSR fix. `value` now
     // serializes correctly, but the React habit `defaultValue` still emits a
     // nonsense `default-value=""` attribute and a BLANK control -- silently,
