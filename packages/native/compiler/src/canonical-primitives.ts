@@ -24,14 +24,18 @@
 // - NOT a per-platform implementation — the iOS/Android emit GENERATES
 //   the platform-native code; no runtime module is invoked.
 //
-// ## Scope (Phase B initial)
+// ## Scope
 //
-// 6 primitives wired end-to-end: Stack, Inline, Text, Button, Press, Field.
-// The other 10 (Layer, Scroll, Spacer, Heading, Image, Icon, Link, Toggle,
-// Modal) are listed in the name maps but DON'T have emit functions yet —
-// the dispatcher falls through to generic-tag emit for them.
+// ALL 16 are wired end-to-end on both targets. 15 have a dedicated per-target
+// emit function; `Inline` deliberately shares `Stack`'s with a row default,
+// since the two differ only in axis.
 //
-// Match the web-runtime scope shipped in #894.
+// This comment said "6 primitives wired ... the other 10 fall through to
+// generic emit" for long after that stopped being true, and it is the file the
+// rest of the codebase treats as the single source of truth on the question —
+// so the stale half was load-bearing misinformation, not a stale note. (It also
+// listed nine names as ten.) When you add a primitive, update this block in the
+// same change.
 
 // ============================================================================
 // Canonical primitive name set
@@ -42,11 +46,9 @@
  * use `isCanonicalPrimitive` to decide whether to route through canonical
  * emit before falling through to generic emit.
  *
- * 16 primitives total (matches `@pyreon/primitives` exports). Per-target emit
- * functions only exist for the 6 Phase-A3-implemented primitives today; the
- * other 10 fall through to generic emit, which produces the LITERAL tag name
- * in the output — usable as a marker but not actually typecheck-clean on
- * either platform.
+ * 16 primitives total (matches `@pyreon/primitives` exports), every one of
+ * which routes through a canonical per-target emit — 15 dedicated, plus
+ * `Inline` on `Stack`'s with a row default.
  */
 export const CANONICAL_PRIMITIVES = new Set([
   // Layout (5)
@@ -55,7 +57,7 @@ export const CANONICAL_PRIMITIVES = new Set([
   'Layer',
   'Scroll',
   'Spacer',
-  // Content (4)
+  // Content (5)
   'Text',
   'Heading',
   'Image',

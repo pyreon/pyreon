@@ -50,11 +50,25 @@ let _hydrationData: Record<string, Record<string, unknown>> | null = null
  *   the result into the page). Non-JSON types (Date/Map/Set) should be stored
  *   as plain values or revived on read.
  *
+ * Store state is, by definition, user data — so the JSON must be neutralised
+ * for the inline-`<script>` context before it is embedded. A bare
+ * `JSON.stringify` lets a stored string close the element (`</script>`) or open
+ * the script-data-double-escaped state (`<!--<script`), and U+2028 / U+2029 are
+ * legal in JSON strings but are line terminators inside a `<script>` body.
+ * Escaping the whole `<` class covers all three and round-trips byte-identically
+ * through `JSON.parse`, so the hydrated data is unchanged.
+ *
  * @example
  * // server, after render:
+ * const scriptSafeJson = (value: unknown): string =>
+ *   JSON.stringify(value)
+ *     .replace(/</g, '\\u003C')
+ *     .replace(/\u2028/g, '\\u2028')
+ *     .replace(/\u2029/g, '\\u2029')
+ *
  * const stores = dehydrateStores()
  * html = html.replace('</head>',
- *   `<script>window.__PYREON_STORE_STATE__=${JSON.stringify(stores)}</script></head>`)
+ *   `<script>window.__PYREON_STORE_STATE__=${scriptSafeJson(stores)}</script></head>`)
  */
 export function dehydrateStores(
   filter?: (id: string) => boolean,
