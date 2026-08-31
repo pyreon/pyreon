@@ -1,0 +1,60 @@
+{
+  "_comment": "Ratchet floors for coverage metrics a package DECLARES but that measured BELOW the declaration. check-coverage.ts compared statements only, so these were declared-but-unenforced. An entry is the measured value at seeding: the gate fails if a metric drops BELOW its floor, and warns while it sits under the package's own declared threshold. Floors may only TIGHTEN -- run `bun scripts/check-coverage.ts --update-baseline` after genuinely improving one, never to absorb a regression. Remove the entry once the package meets its declaration.",
+  "_seeded": "from a green main Coverage (Full) run",
+  "packages": {
+    "@pyreon/code": {
+      "branches": 93.1
+    },
+    "@pyreon/compiler": {
+      "branches": 84.17,
+      "functions": 91.06
+    },
+    "@pyreon/core": {
+      "branches": 97.33
+    },
+    "@pyreon/create-zero": {
+      "branches": 97.61
+    },
+    "@pyreon/feature": {
+      "branches": 95.0
+    },
+    "@pyreon/form": {
+      "branches": 96.78,
+      "functions": 98.18
+    },
+    "@pyreon/hooks": {
+      "branches": 94.47
+    },
+    "@pyreon/hotkeys": {
+      "branches": 96.65
+    },
+    "@pyreon/lint": {
+      "branches": 88.51
+    },
+    "@pyreon/mcp": {
+      "branches": 83.61
+    },
+    "@pyreon/reactivity": {
+      "branches": 95.88
+    },
+    "@pyreon/rich-text": {
+      "branches": 91.42
+    },
+    "@pyreon/state-tree": {
+      "branches": 97.34
+    },
+    "@pyreon/storybook": {
+      "branches": 87.5
+    },
+    "@pyreon/styler": {
+      "branches": 98.65,
+      "functions": 98.9
+    },
+    "@pyreon/table": {
+      "branches": 96.09
+    },
+    "@pyreon/ui-core": {
+      "branches": 98.44
+    }
+  }
+}
