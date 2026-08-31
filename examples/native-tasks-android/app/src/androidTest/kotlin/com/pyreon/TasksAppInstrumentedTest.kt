@@ -603,13 +603,11 @@ class TasksAppInstrumentedTest {
         // the host-pushed `__pyreonData` back, so both directions land in a
         // native Text the semantics tree can read; asserting inside the WebView
         // is what Compose testing cannot do.
-        composeRule.waitUntil(timeoutMillis = 20_000) {
-            composeRule
-                .onAllNodesWithTag("toolkit-bridge")
-                .fetchSemanticsNodes()
-                .isNotEmpty()
-        }
-        composeRule.onNodeWithTag("toolkit-bridge").assertTextEquals("ping")
+        // Wait for the TEXT, not just the node: the echo is an async
+        // WebView round-trip, so the Text exists (empty) before "ping"
+        // lands — asserting on existence raced it on the 2-core emulator
+        // (bit on #3160, whose emit diff was elsewhere entirely).
+        waitForTagText("toolkit-bridge", "ping")
 
         // machine: the declared initial state, then a transition that must
         // actually MOVE it — the initial value alone would pass against a
