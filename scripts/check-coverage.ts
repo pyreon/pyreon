@@ -323,6 +323,7 @@ interface CoverageResult {
   lines: number
   pass: boolean
   threshold: number
+  branchThreshold: number
 }
 
 /**
@@ -493,6 +494,63 @@ function getPackageThreshold(pkgDir: string): number {
 }
 
 /** Extract branch threshold from a package's vitest.config.ts. Defaults to DEFAULT_THRESHOLD if absent. */
+
+/**
+ * What branch coverage each package has ACTUALLY ACHIEVED — the ratchet.
+ *
+ * This exists because branch coverage was measured, stored, and printed in
+ * this gate's own report table for a long time while never being COMPARED to
+ * anything: `pass` was `statements >= threshold` alone. So every package's
+ * configured `branches` threshold was an aspiration nothing enforced, and
+ * measuring all 72 at once found **17 sitting below their own declared
+ * number** — from 0.12pp (`@pyreon/reactivity`) to 7.5pp (`@pyreon/storybook`).
+ *
+ * Turning enforcement on against the CONFIGURED thresholds would red all 17 at
+ * once. Lowering those 17 configs to match reality would throw away the
+ * aspiration and read as a bulk threshold cut, which this repo rightly warns
+ * against. So the two numbers are separated, exactly as `lint-baseline.json`
+ * separates them for lint findings:
+ *
+ * - `vitest.config.ts` `branches` stays the TARGET, untouched;
+ * - this map is the FLOOR, measured at 0f0cc85ab, and the gate enforces it.
+ *
+ * The floor can only move UP. A package that improves should have its entry
+ * raised (or deleted once it clears its configured target) in the same PR that
+ * improves it — the gate prints a nudge when measured runs well ahead. Never
+ * lower an entry to absorb a regression; that is the one edit this file exists
+ * to prevent.
+ *
+ * Values are FLOORED integers of the measured percentage, so ordinary
+ * sub-point jitter between runs cannot red CI on its own.
+ */
+export const BRANCH_BASELINE: Record<string, number> = {
+  '@pyreon/storybook': 87, // measured 87.50, target 95
+  '@pyreon/code': 93, // measured 93.10, target 98
+  '@pyreon/feature': 95, // measured 95.00, target 99
+  '@pyreon/rich-text': 91, // measured 91.42, target 95
+  '@pyreon/hooks': 94, // measured 94.47, target 98
+  '@pyreon/mcp': 83, // measured 83.76, target 86
+  '@pyreon/table': 96, // measured 96.09, target 98
+  '@pyreon/hotkeys': 96, // measured 96.65, target 98
+  '@pyreon/core': 97, // measured 97.33, target 98
+  '@pyreon/state-tree': 97, // measured 97.34, target 98
+  '@pyreon/charts': 97, // measured 97.35, target 98
+  '@pyreon/ui-core': 98, // measured 98.44, target 99
+  '@pyreon/create-zero': 97, // measured 97.61, target 98
+  '@pyreon/styler': 98, // measured 98.65, target 99
+  '@pyreon/form': 96, // measured 96.78, target 97
+  '@pyreon/reactivity': 95, // measured 95.88, target 96
+  // `@pyreon/lint` is deliberately ABSENT. It measured 88.51 against a target
+  // of 90 on this commit, and #3142 takes it to 90.07 with 98 new specs — so
+  // it needs no floor, and this PR must merge AFTER that one.
+}
+
+/** The branch percentage a package must not fall below. */
+export function branchFloorFor(pkgName: string, configured: number): number {
+  const baseline = BRANCH_BASELINE[pkgName]
+  return baseline === undefined ? configured : baseline
+}
+
 function getPackageBranchThreshold(pkgDir: string): number {
   const configPath = join(pkgDir, 'vitest.config.ts')
   if (!existsSync(configPath)) return DEFAULT_THRESHOLD
@@ -537,6 +595,7 @@ function runCoverage(
   pkgDir: string,
   pkgName: string,
   threshold: number,
+  branchThreshold: number,
 ): Promise<CoverageResult | CoverageProblem> {
   return new Promise((resolve) => {
     // Vitest runs under NODE, explicitly — never under whatever the shebang
@@ -652,8 +711,18 @@ function runCoverage(
           branches: outcome.branches,
           functions: outcome.functions,
           lines: outcome.lines,
-          pass: outcome.statements >= threshold,
+          // BOTH dimensions. Branch coverage was measured, stored, and printed
+          // in the report table here for a long time while never being
+          // COMPARED to anything — so every `currentBranches` in the exemption
+          // table below was decorative, and a package could sit arbitrarily
+          // far under its own configured branch threshold with this gate
+          // green. `@pyreon/lint` did exactly that at 88.47 against a declared
+          // 90, and nothing anywhere reported it: the packages' own `test`
+          // script is a bare `vitest run`, so CI never enforced branches
+          // either.
+          pass: outcome.statements >= threshold && outcome.branches >= branchThreshold,
           threshold,
+          branchThreshold,
         })
       } else {
         // How the child ENDED is the first diagnostic for an unparseable run —
@@ -727,10 +796,12 @@ async function runWithConcurrency(
   results: CoverageResult[]
   problems: CoverageProblem[]
   staleDeclarations: string[]
+  ratchetable: string[]
 }> {
   const results: CoverageResult[] = []
   const problems: CoverageProblem[] = []
   const staleDeclarations: string[] = []
+  const ratchetable: string[] = []
   const queue = [...packages]
 
   async function worker() {
@@ -747,9 +818,18 @@ async function runWithConcurrency(
       // number to a different package. Reading it during this very change,
       // `@pyreon/atlas`'s 79.72% appeared beside `@pyreon/zero`, which reads
       // as a real finding about entirely the wrong package.
-      const outcome = await runCoverage(pkg.dir, pkg.name, pkg.threshold)
+      const outcome = await runCoverage(pkg.dir, pkg.name, pkg.threshold, branchFloorFor(pkg.name, pkg.branchThreshold))
       if ('statements' in outcome) {
         results.push(outcome)
+        // A ratchet that nobody tightens drifts back into decoration. When a
+        // package runs a clear 2pp ahead of its floor, say so at the point
+        // someone is already reading coverage output.
+        const floor = BRANCH_BASELINE[pkg.name]
+        if (floor !== undefined && outcome.branches >= floor + 2) {
+          ratchetable.push(
+            `${pkg.name}: branches ${outcome.branches}% vs floor ${floor}% — raise BRANCH_BASELINE (target ${pkg.branchThreshold}%)`,
+          )
+        }
         console.log(`  ${pkg.name}: ${outcome.statements}% ${outcome.pass ? '\u2705' : '\u274c'}`)
         if (NO_INSTRUMENTABLE_SOURCE[pkg.name]) {
           // The declaration has gone stale: the package now HAS measurable
@@ -794,7 +874,7 @@ async function runWithConcurrency(
     await worker()
   }
 
-  return { results, problems, staleDeclarations }
+  return { results, problems, staleDeclarations, ratchetable }
 }
 
 /**
@@ -1043,7 +1123,7 @@ console.log(
   `\nRunning coverage for ${packages.length} packages (${CONCURRENCY} parallel, vitest under node ${nodeVersion})...\n`,
 )
 
-const { results, problems, staleDeclarations } = await runWithConcurrency(packages)
+const { results, problems, staleDeclarations, ratchetable } = await runWithConcurrency(packages)
 const sorted = results.sort((a, b) => a.package.localeCompare(b.package))
 const sortedProblems = problems.sort((a, b) => a.package.localeCompare(b.package))
 const hasFailures =
@@ -1054,14 +1134,14 @@ const reportLines: string[] = [
   '',
   '## Coverage Report',
   '',
-  '| Package | Stmts | Branch | Funcs | Lines | Threshold | Status |',
+  '| Package | Stmts | Branch | Funcs | Lines | Threshold (stmt/branch) | Status |',
   '|---------|-------|--------|-------|-------|-----------|--------|',
 ]
 
 for (const r of sorted) {
   const status = r.pass ? '\u2705' : '\u274c'
   reportLines.push(
-    `| ${r.package} | ${r.statements}% | ${r.branches}% | ${r.functions}% | ${r.lines}% | ${r.threshold}% | ${status} |`,
+    `| ${r.package} | ${r.statements}% | ${r.branches}% | ${r.functions}% | ${r.lines}% | ${r.threshold}%/${r.branchThreshold}% | ${status} |`,
   )
 }
 
@@ -1089,6 +1169,16 @@ if (sortedProblems.length > 0) {
   )
 }
 
+if (ratchetable.length > 0) {
+  // Advisory, never a failure: running ahead of the floor is the GOOD
+  // direction, and failing a green run for it would teach people to stop
+  // improving coverage.
+  console.log(
+    `\n\u2139\uFE0F  ${ratchetable.length} package(s) are running ahead of their BRANCH_BASELINE floor:`,
+  )
+  for (const line of ratchetable) console.log(`    ${line}`)
+}
+
 if (staleDeclarations.length > 0) {
   reportLines.push(
     '',
@@ -1113,9 +1203,14 @@ console.log(report)
 if (isCI) {
   for (const r of sorted) {
     if (!r.pass) {
-      console.log(
-        `::error::${r.package} coverage below threshold: ${r.statements}% statements (need ${r.threshold}%)`,
-      )
+      const missed: string[] = []
+      if (r.statements < r.threshold) {
+        missed.push(`${r.statements}% statements (need ${r.threshold}%)`)
+      }
+      if (r.branches < r.branchThreshold) {
+        missed.push(`${r.branches}% branches (need ${r.branchThreshold}%)`)
+      }
+      console.log(`::error::${r.package} coverage below threshold: ${missed.join(', ')}`)
     }
   }
   for (const p of sortedProblems) {
