@@ -130,3 +130,48 @@ describe('the manifest tracks the registry', () => {
     expect(missing).toEqual([])
   })
 })
+
+describe('the manifest tracks rule METADATA, not just counts', () => {
+  const MANIFEST = readFileSync(join(import.meta.dirname, '..', 'manifest.ts'), 'utf8')
+
+  /**
+   * The counts above were the obvious rot. These are the quieter half: prose
+   * that names SPECIFIC rules and asserts something about their meta. It reads
+   * as documentation and behaves as an unchecked claim, which is the same
+   * shape as the schema's group list — accurate when written, with nothing
+   * keeping it that way.
+   */
+
+  it('only calls a rule auto-fixable when it actually is', () => {
+    // A wrong `(auto-fixable)` sends someone to run `--fix` and wonder why
+    // nothing changed. It renders verbatim into the docs site and the MCP
+    // api-reference, so the claim travels further than this file.
+    const claimed = [...MANIFEST.matchAll(/`(pyreon\/[a-z-]+)`[^.]{0,40}?auto-fixable/g)].map(
+      (m) => String(m[1]),
+    )
+    expect(claimed.length, 'no auto-fixable claims found — did the prose change?').toBeGreaterThan(0)
+
+    const fixable = new Set(allRules.filter((r) => r.meta.fixable === true).map((r) => r.meta.id))
+    expect(claimed.filter((id) => !fixable.has(id))).toEqual([])
+  })
+
+  it('lists exactly the monorepo-scoped rules, in both directions', () => {
+    // This list tells a consumer which rules EVERY shipped preset forces off,
+    // because they encode the Pyreon repo itself. A rule missing from it reads
+    // as shippable when it is not; a rule listed after losing the marker reads
+    // as forced-off when it is now live in someone's project.
+    const live = allRules
+      .filter((r) => r.meta.scope === 'monorepo')
+      .map((r) => r.meta.id.replace('pyreon/', ''))
+      .sort()
+
+    const block = MANIFEST.match(/meta\.scope: \\'monorepo\\'[^)]*\)/)
+    expect(block, 'the monorepo-scope prose block moved — update this matcher').not.toBeNull()
+    const named = [...(block?.[0] ?? '').matchAll(/`([a-z-]+)`/g)]
+      .map((m) => String(m[1]))
+      .filter((n) => n !== 'meta.scope')
+      .sort()
+
+    expect(named).toEqual(live)
+  })
+})
