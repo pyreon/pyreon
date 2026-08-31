@@ -514,11 +514,58 @@ function detectJsxAttributes(ctx: DetectContext, node: ts.JsxAttribute): void {
     )
   }
 
+/**
+ * Is this `<input>` a TEXT-like control, i.e. one where `change` fires on blur?
+ *
+ * Absent or unrecognised `type` counts as text, because that is what the
+ * browser defaults to. A non-literal type (`type={t()}`) is unknowable
+ * statically and is treated as text so the advice still reaches the common
+ * case rather than going silent.
+ */
+function isTextLikeInput(jsxElement: ts.Node): boolean {
+  const COMMITTED_ON_SELECT = new Set([
+    'checkbox',
+    'radio',
+    'file',
+    'range',
+    'color',
+    'date',
+    'datetime-local',
+    'month',
+    'week',
+    'time',
+    'submit',
+    'reset',
+    'button',
+    'image',
+    'hidden',
+  ])
+  const attrs = ts.isJsxSelfClosingElement(jsxElement)
+    ? jsxElement.attributes
+    : ts.isJsxElement(jsxElement)
+      ? jsxElement.openingElement.attributes
+      : undefined
+  if (!attrs) return true
+  for (const a of attrs.properties) {
+    if (!ts.isJsxAttribute(a) || a.name.getText() !== 'type') continue
+    const init = a.initializer
+    if (init && ts.isStringLiteral(init)) return !COMMITTED_ON_SELECT.has(init.text)
+    return true
+  }
+  return true
+}
+
   if (attrName === 'onChange') {
     const jsxElement = findParentJsxElement(node)
     if (jsxElement) {
       const tagName = getJsxTagName(jsxElement)
-      if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') {
+      // `change` fires on BLUR only for text-like controls. On a checkbox,
+      // radio, file, range, color or date picker -- and on `<select>` -- it
+      // fires the moment the value is committed, which is exactly what the
+      // author wants, and `input` is the wrong advice there. The detector used
+      // to flag all three tags unconditionally and told `RadioGroupBase` to
+      // rewrite a correct handler on its hidden native radio.
+      if (tagName === 'textarea' || (tagName === 'input' && isTextLikeInput(jsxElement))) {
         detectDiag(
           ctx,
           node,
@@ -532,17 +579,13 @@ function detectJsxAttributes(ctx: DetectContext, node: ts.JsxAttribute): void {
     }
   }
 
-  if (attrName === 'dangerouslySetInnerHTML') {
-    detectDiag(
-      ctx,
-      node,
-      'dangerously-set-inner-html',
-      'dangerouslySetInnerHTML is React-specific. Use innerHTML prop in Pyreon.',
-      detectGetNodeText(ctx, node),
-      'innerHTML={htmlString}',
-      true,
-    )
-  }
+  // `dangerouslySetInnerHTML` is deliberately NOT flagged. Pyreon ships BOTH
+  // props with different contracts: this one is raw (React semantics, the
+  // author owns sanitization) and `innerHTML` is the SANITIZED path. They are
+  // not interchangeable, and the old advice to "use innerHTML in Pyreon" was
+  // actively harmful -- it silently changes the value through a sanitizer, and
+  // `innerHTML` THROWS during SSR (`throwSsrInnerHtmlUnsupported`), so taking
+  // the suggestion breaks server rendering outright.
 }
 
 function detectDotValueSignal(ctx: DetectContext, node: ts.PropertyAccessExpression): void {

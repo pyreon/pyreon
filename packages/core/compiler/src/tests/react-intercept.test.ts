@@ -308,12 +308,32 @@ describe('detectReactPatterns', () => {
     expect(d!.message).toContain('textarea')
   })
 
-  test('detects onChange on select', () => {
+  test('does NOT detect onChange on select — change fires on SELECTION there', () => {
+    // `change` on a <select> fires the moment an option is committed, not on
+    // blur, so `onInput` is not the fix and the warning was wrong.
     const code = 'const el = <select onChange={handleChange} />'
     const diags = detectReactPatterns(code)
-    const d = diags.find((d) => d.code === 'on-change-input')
-    expect(d).toBeDefined()
-    expect(d!.message).toContain('select')
+    expect(diags.find((d) => d.code === 'on-change-input')).toBeUndefined()
+  })
+
+  test('does NOT detect onChange on a radio / checkbox / file input', () => {
+    // Same reason, and the shape that made this concrete: `RadioGroupBase`
+    // has a hidden native radio whose onChange is correct, and the detector
+    // told its author to rewrite it.
+    for (const type of ['radio', 'checkbox', 'file', 'range', 'date']) {
+      const diags = detectReactPatterns(`const el = <input type="${type}" onChange={h} />`)
+      expect(diags.find((d) => d.code === 'on-change-input')).toBeUndefined()
+    }
+  })
+
+  test('still detects onChange on a TEXT input, where change DOES fire on blur', () => {
+    for (const code of [
+      'const el = <input onChange={h} />',
+      'const el = <input type="text" onChange={h} />',
+      'const el = <textarea onChange={h} />',
+    ]) {
+      expect(detectReactPatterns(code).find((d) => d.code === 'on-change-input')).toBeDefined()
+    }
   })
 
   test('does NOT detect onChange on non-input element', () => {
@@ -323,14 +343,15 @@ describe('detectReactPatterns', () => {
     expect(d).toBeUndefined()
   })
 
-  test('detects dangerouslySetInnerHTML', () => {
+  test('does NOT flag dangerouslySetInnerHTML — it is a first-class Pyreon prop', () => {
+    // Pyreon ships BOTH: this one raw (React semantics, author owns
+    // sanitization) and `innerHTML` SANITIZED. They are not interchangeable,
+    // and the old "use innerHTML in Pyreon" advice was actively harmful --
+    // it changes the value through a sanitizer AND `innerHTML` throws during
+    // SSR, so following it breaks server rendering.
     const code = 'const el = <div dangerouslySetInnerHTML={{ __html: "<b>hi</b>" }} />'
     const diags = detectReactPatterns(code)
-    const d = diags.find((d) => d.code === 'dangerously-set-inner-html')
-    expect(d).toBeDefined()
-    expect(d!.message).toContain('innerHTML')
-    expect(d!.suggested).toContain('innerHTML')
-    expect(d!.fixable).toBe(true)
+    expect(diags.find((d) => d.code === 'dangerously-set-inner-html')).toBeUndefined()
   })
 
   test('detects .value assignment on a declared signal', () => {
