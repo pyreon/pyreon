@@ -396,3 +396,14 @@ describe('tooltip', () => {
     expect(placeTooltip({ x: 10, y: 100 }, { w: 50, h: 40 }, b, 8).y + 40).toBeLessThanOrEqual(100)
   })
 })
+
+describe('fitCircle', () => {
+  it('inscribes the largest circle that fits the box, centred', () => {
+    const wide = fitCircle({ x: 10, y: 20, w: 200, h: 100 })
+    expect(wide.center).toEqual({ x: 110, y: 70 })
+    // The SHORT side limits the radius, or the circle overflows the box.
+    expect(wide.radius).toBeLessThanOrEqual(50)
+    const tall = fitCircle({ x: 0, y: 0, w: 100, h: 300 })
+    expect(tall.radius).toBeLessThanOrEqual(50)
+  })
+})

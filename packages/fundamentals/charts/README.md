@@ -46,13 +46,14 @@ Components: `PlotChart`, `PieChart` (donut via `innerRadius`), `GaugeChart`.
 ```tsx
 import { PlotChart, bars, compact, currency } from '@pyreon/charts/plot'
 
-<PlotChart data={rows} marks={[bars((d) => d.revenue)]} format={currency} />
+<PlotChart data={rows} marks={[bars((d) => d.revenue)]} format={currency('$')} />
 ```
 
 One `format` covers the y-axis ticks, the tooltip values and the spoken
 description. One rather than one per surface, because an axis reading `$3.2K`
 beside a tooltip reading `3204.55` for the same point reads as a bug. Ships
-`plain` (the default), `compact`, `currency`, `percent` and `fixed`; any
+`plain` (the default) and `compact` as formatters, and `currency(symbol)`,
+`percent()` and `fixed(places)` as factories that return one; any
 `(v: number) => string` works.
 
 The formatters are hand-rolled rather than `Intl.NumberFormat`, because this

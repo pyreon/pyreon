@@ -315,3 +315,68 @@ describe('seriesMaxLength', () => {
     expect(seriesMaxLength([])).toBe(0)
   })
 })
+
+describe('axis formatting reaches every surface', () => {
+  const DATA = [
+    { m: 'Jan', v: 3200000 },
+    { m: 'Feb', v: 1800000 },
+  ]
+  const MARKS = [barsMark((d: (typeof DATA)[number]) => d.v)]
+
+  it('formats the y-axis ticks', () => {
+    const spec = {
+      width: 400,
+      height: 200,
+      series: resolveMarks(DATA, MARKS),
+      categories: resolveCategories(DATA, (d: (typeof DATA)[number]) => d.m),
+      theme: defaultTheme,
+      showXAxis: true,
+      showYAxis: true,
+      showGrid: true,
+      yFormat: compact,
+    }
+    const layout = layoutChart(spec, () => 30)
+    const labels = layout.yTicks.map((t) => t.label)
+    // Without the formatter these read "3200000" — the first thing anyone
+    // notices on a revenue chart.
+    expect(labels.some((l) => l.endsWith('M'))).toBe(true)
+    expect(labels.every((l) => !/^\d{7}$/.test(l))).toBe(true)
+  })
+
+  it('leaves the default in place when none is given', () => {
+    const spec = {
+      width: 400,
+      height: 200,
+      series: resolveMarks(DATA, MARKS),
+      categories: [] as string[],
+      theme: defaultTheme,
+      showXAxis: true,
+      showYAxis: true,
+      showGrid: true,
+    }
+    const labels = layoutChart(spec, () => 30).yTicks.map((t) => t.label)
+    expect(labels.some((l) => l.includes('M'))).toBe(false)
+  })
+
+  it('widens the y gutter for a longer formatted label', () => {
+    // The gutter is measured from the LABEL TEXT, so a formatter that makes
+    // labels longer has to move the plot — otherwise the axis overlaps it.
+    const base = {
+      width: 400,
+      height: 200,
+      series: resolveMarks(DATA, MARKS),
+      categories: [] as string[],
+      theme: defaultTheme,
+      showXAxis: true,
+      showYAxis: true,
+      showGrid: true,
+    }
+    const measure = (t: string): number => t.length * 6
+    const narrow = layoutChart({ ...base, yFormat: compact }, measure).plot.x
+    // `currency` is a FACTORY — `currency('$', 2)` is the Formatter. Passing
+    // the factory bare compiles nowhere and formats nothing; the labels here
+    // are "$1000000.00"-shaped, clearly wider than compact's "1M".
+    const wide = layoutChart({ ...base, yFormat: currency('$', 2) }, measure).plot.x
+    expect(wide).toBeGreaterThan(narrow)
+  })
+})
