@@ -87,6 +87,17 @@ interface ParseCtx {
    */
   objectTypeAliases: Map<string, Extract<TypeIR, { kind: 'object' }>>
   /**
+   * Locally-declared FUNCTION-type aliases (`type Formatter = (v: Double) =>
+   * string`), name → parsed function TypeIR. Consumed by SUBSTITUTION: a
+   * zero-arg typeRef naming one resolves to the function type inline, so the
+   * emitters' existing machinery does everything — `swiftUnionType`
+   * parenthesizes the optional form, and `typeContainsFunction` sees a real
+   * function kind and drops Codable / @Serializable from structs carrying
+   * one, which a name-preserving `typealias` emit could not do without
+   * teaching that check to chase aliases.
+   */
+  fnTypeAliases: Map<string, TypeIR>
+  /**
    * Per-component store ALIASES: local binding name → store hook name,
    * populated from `const app = useApp()` declarations in the CURRENT
    * component body and CLEARED before each top-level node is parsed (so a
@@ -333,6 +344,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     source,
     storeHookNames: new Set(),
     objectTypeAliases: new Map(),
+    fnTypeAliases: new Map(),
     storeAliases: new Map(),
     toastNames: new Set(),
     kineticFactoryNames: new Map(),
@@ -5420,6 +5432,7 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     // warnings from double-firing, and the consts are read-only lookup either way.
     stringConsts: ctx.stringConsts,
     objectTypeAliases: new Map(),
+    fnTypeAliases: new Map(),
     storeAliases: new Map(),
     toastNames: new Set(),
     // Scratch ctx: deliberately isolated from the main pass (see the doc
@@ -5501,6 +5514,11 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     const name = alias.id?.name as string | undefined
     if (!name) continue
     const aliasBody = alias.typeAnnotation as AnyNode | undefined
+    if (aliasBody?.type === 'TSFunctionType') {
+      const parsedFn = parseTypeAnnotation(aliasBody, scratch)
+      if (parsedFn.kind === 'function') ctx.fnTypeAliases.set(name, parsedFn)
+      continue
+    }
     if (!aliasBody || aliasBody.type !== 'TSTypeLiteral') continue
     const parsed = parseTypeAnnotation(aliasBody, scratch)
     if (parsed.kind === 'object' && parsed.fields.length > 0) {
@@ -9936,6 +9954,13 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
       }
       const params = node.typeArguments?.params as AnyNode[] | undefined
       const args = params ? params.map((p) => parseTypeAnnotation(p, ctx)) : []
+      // A zero-arg typeRef naming a local FUNCTION-type alias substitutes to
+      // the function type itself — see ParseCtx.fnTypeAliases for why
+      // substitution beats a name-preserving typealias emit.
+      if (args.length === 0) {
+        const fn = ctx.fnTypeAliases.get(name)
+        if (fn !== undefined) return fn
+      }
       return { kind: 'typeRef', name, args }
     }
     case 'TSFunctionType': {
