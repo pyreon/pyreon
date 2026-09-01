@@ -5,9 +5,8 @@
 // is free on native. Written in the native subset (Double-only math, no
 // closures in structs, no early returns inside lambdas).
 
-import type { Double, DrawCmd, Rect } from './types'
+import type { Double, DrawCmd, MeasureText, Rect } from './types'
 import { measureApprox, renderSvg } from './svg'
-import type { MeasureText } from './types'
 import type { SvgOptions } from './svg'
 
 export interface FunnelStage {
