@@ -126,15 +126,19 @@ On JSC we are not, and the reason is not any of the obvious candidates.
 runner, so this entry can only ever report the JSC column — the single engine
 where we look worst. That is a cost of the policy, not an argument against it.
 
-### Five refuted hypotheses, so the next attempt starts past them
+### Four refuted hypotheses and one bad refutation, so the next attempt starts past them
 
-Each was plausible, each was measured, each was wrong:
+Each was plausible and each was measured. Four were wrong; the second was
+measured on the wrong engine and is corrected below — it is the largest
+lever found so far, not a dead end:
 
 1. **Extra NaN validation.** We reject NaN for `s.number()`, typia does not — 4
    extra checks on this shape. Median of 3: 10.74ns with, 10.47ns without.
-2. **Emission shape (flat `&&` chain vs early returns).** Rewriting ours as a
-   flat chain with identical checks measured 11.91ns against our 10.37ns — the
-   flat form is SLOWER for us, not faster.
+2. ~~**Emission shape (flat `&&` chain vs early returns).**~~ **Refuted, then
+   the refutation itself turned out to be wrong — see the correction below.**
+   The original measurement (11.91ns flat against 10.37ns ours) was taken under
+   **V8**, and the gap being explained is JSC-only. Measuring a candidate cause
+   on the engine that does not exhibit the effect settles nothing.
 3. **`Array.isArray` guards.** typia omits them; we need them (an array with
    crafted own properties would otherwise pass a strict count check). Cost under
    V8: ~0.08ns.
@@ -147,8 +151,37 @@ Each was plausible, each was measured, each was wrong:
    Process-isolated, 3 interleaved pairs: 9.50ns against 8.83ns — consistently
    SLOWER. JSC already intrinsifies `Number.isNaN`.
 
-What is left is a JSC-specific codegen difference that none of the above
-explains, on a shape where V8 sees no difference at all.
+### Correction: emission shape is the largest single lever on JSC
+
+Re-run as a 2x2 over the two things that actually differ between the emitters
+— SHAPE (statements with temporaries vs one `&&` expression) and CHECKS (our
+`Array.isArray` + `Number.isNaN` vs typia omitting both) — on BOTH engines,
+one variant per process, 3 interleaved passes, median of 11 runs each:
+
+| variant | shape | checks | JSC (bun 1.4) | V8 (node 26.1) |
+| --- | --- | --- | --- | --- |
+| `ours` | statement | ours | 8.31ns | 18.67ns |
+| `ours-flat` | expression | ours | **6.49ns (-22%)** | 18.33ns |
+| `typia-stmt` | statement | typia's | 7.39ns (-11%) | 18.33ns |
+| `typia` | expression | typia's | 4.57ns (-45%) | 17.80ns |
+
+Two readings, and the first one is the correction:
+
+- **On JSC, shape is worth about twice what the extra checks are worth.** The
+  hypothesis dismissed above is in fact the biggest lever measured. The two are
+  also not independent — 22% and 11% separately, 45% together — so neither
+  alone accounts for the gap.
+- **On V8 all four variants tie.** 17.80 to 18.67ns with spreads that overlap
+  throughout, which is why the original V8-only measurement read as noise and
+  was mistaken for a refutation.
+
+Reproduce with `bench-vs-typia.mjs`, which now carries all four variants.
+
+**Not implemented, and not a free win.** The verdict JIT emits the statement
+form; switching it would trade ~22% on JSC for nothing measurable on V8 —
+where most validation actually runs — against real codegen surface (the
+temporaries exist so per-field checks compose). It is recorded here as a
+measured lever, not as a pending change.
 
 ## Reading the numbers with the right amount of suspicion
 
