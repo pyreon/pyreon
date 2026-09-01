@@ -59,6 +59,13 @@ export interface Mark<T> {
   /** Rendered-radius bounds for the r channel. */
   minRadius?: Double | undefined
   maxRadius?: Double | undefined
+  /**
+   * A whole-series transform applied after the accessor resolves — how the
+   * indicators (`sma`, `ema`, `bollinger`, `trend`) derive their values. A
+   * NaN in the output is a GAP: the line breaks there instead of drawing a
+   * zero.
+   */
+  transform?: ((values: Double[]) => Double[]) | undefined
 }
 
 /**
@@ -69,7 +76,7 @@ export interface Mark<T> {
 const PALETTE = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
 
 function mark<T>(kind: Series['kind'], y: Accessor<T>, options: MarkOptions): Mark<T> {
-  return { kind, y, options, r: undefined }
+  return { kind, y, options, r: undefined, transform: undefined }
 }
 
 /** Vertical bars, one per datum, measured from the zero line. */
@@ -148,11 +155,15 @@ export function bubble<T>(
  */
 export function resolveMarks<T>(data: T[], marks: Mark<T>[]): Series[] {
   return marks.map((m, seriesIndex) => {
-    const values: Double[] = []
+    const raw: Double[] = []
     for (let i = 0; i < data.length; i++) {
       const v = m.y(data[i]!, i)
-      values.push(Number.isFinite(v) ? v : 0)
+      raw.push(Number.isFinite(v) ? v : 0)
     }
+    // A transform's NaNs are deliberate gaps and survive; a raw accessor's
+    // non-finite result was zeroed above (a visible wrong datum beats a
+    // silently missing one when the CALLER's accessor is broken).
+    const values = m.transform === undefined ? raw : m.transform(raw)
     // The r channel resolves to RADII here, area-mapped over the series'
     // own extent, so the engine only ever sees pixels.
     let radii: Double[] | undefined = undefined
