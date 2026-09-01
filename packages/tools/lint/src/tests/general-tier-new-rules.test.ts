@@ -249,6 +249,42 @@ describe('the portable tier completion', () => {
     ).toEqual([])
   })
 
+  it("...and covers `h('div')`, the OTHER way to write a DOM element", () => {
+    // `@pyreon/primitives`' own web implementations are written entirely in
+    // `h()`, so a JSX-only rule reports nothing on a file made of nothing but
+    // DOM elements. Two spellings, one defect.
+    const d = only(
+      `import { h } from '@pyreon/core'\nexport const V = () => h('div', null, 'hi')`,
+      'pyreon/prefer-canonical-primitive',
+      PT,
+    )
+    expect(d).toHaveLength(1)
+    expect(d[0]?.message).toContain('Stack')
+  })
+
+  it('...but only when `h` is the FRAMEWORK factory', () => {
+    // Somebody else's `h` — a helper, a param, a math variable — is not an
+    // element factory, and reporting on it is a false positive in a rule that
+    // must stay quiet on code entitled to the whole language.
+    expect(
+      only(
+        `const h = (t: string) => t\nexport const V = () => h('div')`,
+        'pyreon/prefer-canonical-primitive',
+        PT,
+      ),
+    ).toEqual([])
+  })
+
+  it("...and `h(Component)` is a component, not a DOM tag", () => {
+    expect(
+      only(
+        `import { h } from '@pyreon/core'\nimport { Stack } from '@pyreon/primitives'\nexport const V = () => h(Stack, null)`,
+        'pyreon/prefer-canonical-primitive',
+        PT,
+      ),
+    ).toEqual([])
+  })
+
   it('...but a sibling OUTSIDE the branch still fires — the skip is scoped', () => {
     // Depth, not a latch: leaving the `<Web>` subtree must re-arm the rule, or
     // one escape hatch anywhere in a file silences the whole file.

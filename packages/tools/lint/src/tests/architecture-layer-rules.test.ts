@@ -83,6 +83,61 @@ describe('pyreon/no-cross-layer-import — core cannot import ui-system', () => 
   })
 })
 
+describe('pyreon/no-circular-import — the ui-system tree', () => {
+  // The `core` tree was enforced from the start; `ui-system` was not, and it
+  // is the tree that actually broke: `ui-core` and `unistyle` formed a real
+  // cycle, resolved by the theme-engine registration seam. Nothing but that
+  // fix's own tests stood between the repo and its return.
+  const at = (file: string, src: string) =>
+    findByRule(lintFile(file, src, allRules, defaultConfig()), 'pyreon/no-circular-import')
+
+  it('flags ui-core importing unistyle — the exact edge of the historical cycle', () => {
+    expect(
+      at(
+        '/abs/packages/ui-system/ui-core/src/provider.tsx',
+        `import { enrichTheme } from '@pyreon/unistyle'\n`,
+      ).length,
+    ).toBeGreaterThan(0)
+  })
+
+  it('flags styler importing ui-core — styler has no ui-system deps at all', () => {
+    expect(
+      at('/abs/packages/ui-system/styler/src/index.ts', `import { init } from '@pyreon/ui-core'\n`)
+        .length,
+    ).toBeGreaterThan(0)
+  })
+
+  it('does NOT flag unistyle importing ui-core — that IS the correct direction', () => {
+    expect(
+      at(
+        '/abs/packages/ui-system/unistyle/src/index.ts',
+        `import { init } from '@pyreon/ui-core'\n`,
+      ),
+    ).toEqual([])
+  })
+
+  it('does NOT flag a ui-system package importing a CORE one', () => {
+    // The two orders are independent stacks. A single merged rank table would
+    // make this — the normal direction — a violation in every ui package.
+    expect(
+      at('/abs/packages/ui-system/elements/src/index.ts', `import { h } from '@pyreon/core'\n`),
+    ).toEqual([])
+  })
+
+  it('does NOT flag a package it has no documented rank for', () => {
+    // `document-primitives` is not in the documented chain. Ranking it by eye
+    // put it beside `elements` when it sits above, and produced 41 findings in
+    // a tree with no real violation. An unranked package is ignored: a guessed
+    // rank is worse than no rank.
+    expect(
+      at(
+        '/abs/packages/ui-system/document-primitives/src/primitives/DocText.ts',
+        `import { Text } from '@pyreon/elements'\n`,
+      ),
+    ).toEqual([])
+  })
+})
+
 describe('pyreon/no-circular-import — fires when upper layer imports lower-equal layer', () => {
   it('flags runtime-dom (layer 2) importing router (layer 3)', () => {
     const result = lintFile(
