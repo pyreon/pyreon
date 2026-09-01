@@ -5281,8 +5281,23 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           (typedKey !== null ? _structTypedKeyToName.get(typedKey) : undefined) ??
           _structFieldsToName.get(fieldSet)
         if (structName !== undefined) {
+          const structDefC =
+            _declaredStructs.find((st) => st.name === structName) ??
+            _synthExprStructs.find((st) => st.name === structName)
+          const fieldTC = new Map((structDefC?.fields ?? []).map((f) => [f.name, f.type]))
           const args = orderFieldsByStructK(e.fields, structName)
-            .map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`)
+            .map((f) => {
+              const raw = emitKotlinExpr(f.value, indent)
+              const ft = fieldTC.get(f.name)
+              const wantsFloat =
+                ft !== undefined &&
+                ((ft.kind === 'number' && ft.float === true) ||
+                  (ft.kind === 'typeRef' && (ft.name === 'Double' || ft.name === 'Float')))
+              const vt = inferType(f.value, _kotlinExprInferCtx)
+              const isInt = vt.kind === 'number' && vt.float !== true
+              // Kotlin named args do NOT widen Int -> Double either.
+              return `${f.name} = ${wantsFloat && isInt ? `(${raw}).toDouble()` : raw}`
+            })
             .join(', ')
           return `${kotlinIdent(structName)}(${args})`
         }

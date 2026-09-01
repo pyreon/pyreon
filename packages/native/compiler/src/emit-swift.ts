@@ -890,6 +890,13 @@ export function emitSwift(
   // Helper name → return type, so a computed over a helper call
   // (`computed(() => dbl(21))`) infers `Int` instead of `Any`.
   _helperReturns = new Map(helperFns.map((h) => [h.name, h.returnType]))
+  _exprInferCtx.helperReturns = _helperReturns
+  _activeInferCtx.helperReturns = _helperReturns
+  // The module-level infer ctxs used OUTSIDE component emission (top-level
+  // helper bodies, closures) must see the helper return types too — without
+  // this, `const step = niceStep(...)` seeded UNKNOWN and every
+  // type-gated lowering downstream of it went dark.
+
   _zeroArgHelperNames = new Set(helperFns.filter((h) => h.params.length === 0).map((h) => h.name))
   _fontMap = fonts
   _constStringMap = new Map()
@@ -2416,8 +2423,10 @@ function emitSwiftComponent(c: ComponentIR): string {
     const p0 = d.fn.params[0]
     const argName = p0 === undefined ? '_' : swiftIdent(p0.name)
     const savedLocals = seedHandlerLocals(d.fn.body, _exprInferCtx)
+    const savedLocalsAct7 = seedHandlerLocals(d.fn.body, _activeInferCtx)
     const body = d.fn.body.map((st) => emitSwiftStatement(st, 8)).join('; ')
     _exprInferCtx.locals = savedLocals
+    _activeInferCtx.locals = savedLocalsAct7
     lines.push(`      .onAppear {`)
     lines.push(`        ${swiftIdent(d.name)}.action = { ${argName} in ${body} }`)
     lines.push(`      }`)
@@ -2449,8 +2458,10 @@ function emitSwiftComponent(c: ComponentIR): string {
   for (const d of c.decls) {
     if (d.kind !== 'tick') continue
     const savedTick = seedHandlerLocals(d.body, _exprInferCtx)
+    const savedTickAct0 = seedHandlerLocals(d.body, _activeInferCtx)
     const body = d.body.map((st) => `          ${emitSwiftStatement(st, 10)}`).join('\n')
     _exprInferCtx.locals = savedTick
+    _activeInferCtx.locals = savedTickAct0
     const ns = `${d.delayMs}_000_000`
     lines.push(`      .task {`)
     if (d.mode === 'interval') {
@@ -2485,8 +2496,10 @@ function emitSwiftComponent(c: ComponentIR): string {
   for (const d of c.decls) {
     if (d.kind !== 'on-mount') continue
     const savedLocals = seedHandlerLocals(d.body, _exprInferCtx)
+    const savedLocalsAct1 = seedHandlerLocals(d.body, _activeInferCtx)
     const bodyLines = d.body.map((st) => `        ${emitSwiftStatement(st, 8)}`).join('\n')
     _exprInferCtx.locals = savedLocals
+    _activeInferCtx.locals = savedLocalsAct1
     lines.push(`      .onAppear {`)
     lines.push(bodyLines)
     lines.push(`      }`)
@@ -2511,8 +2524,10 @@ function emitSwiftComponent(c: ComponentIR): string {
       continue
     }
     const savedLocals = seedHandlerLocals(d.body, _exprInferCtx)
+    const savedLocalsAct2 = seedHandlerLocals(d.body, _activeInferCtx)
     const bodyLines = d.body.map((st) => `          ${emitSwiftStatement(st, 10)}`).join('\n')
     _exprInferCtx.locals = savedLocals
+    _activeInferCtx.locals = savedLocalsAct2
     lines.push(`      .background(`)
     lines.push(`        Button("") {`)
     lines.push(bodyLines)
@@ -3679,10 +3694,12 @@ function emitSwiftDecl(
     // after (scoped to this body).
     const inlinedStmts = inlineValueConstsInStmts(d.body)
     const savedLocals = seedHandlerLocals(inlinedStmts, _exprInferCtx)
+    const savedLocalsAct3 = seedHandlerLocals(inlinedStmts, _activeInferCtx)
     const bodyLines = inlinedStmts
       .map((s) => `    ${emitSwiftStatement(s, 4)}`)
       .join('\n')
     _exprInferCtx.locals = savedLocals
+    _activeInferCtx.locals = savedLocalsAct3
     return [
       `private var ${swiftIdent(d.name)}: ${swiftReturnType} {`,
       bodyLines,
@@ -4425,8 +4442,10 @@ function emitSwiftIndexedClosure(
       const pad = ' '.repeat(indent + 2)
       const inlinedStmts = inlineValueConstsInStmts(cb.stmts)
       const savedLocals = seedHandlerLocals(inlinedStmts, _exprInferCtx)
+      const savedLocalsAct5 = seedHandlerLocals(inlinedStmts, _activeInferCtx)
       const lines = inlinedStmts.map((s) => pad + emitSwiftStatement(s, indent + 2)).join('\n')
       _exprInferCtx.locals = savedLocals
+      _activeInferCtx.locals = savedLocalsAct5
       return `{ (${idx}, ${el}) in\n${lines}\n${' '.repeat(indent)}}`
     }
     return `{ (${idx}, ${el}) in ${emitSwiftExpr(cb.body, indent)} }`
@@ -6475,9 +6494,36 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       if (e.stmts !== undefined && e.stmts.length > 0) {
         const pad = ' '.repeat(indent + 2)
         const inlined = inlineValueConstsInStmts(e.stmts)
+        // Bind ANNOTATED closure params into both ctxs — the body's
+        // type-gated lowerings otherwise see them as unknown (`pts.count`
+        // in the charts reveal closure could not coerce against a Double).
+        const paramBind: Array<[string, boolean, TypeIR | undefined, boolean, TypeIR | undefined]> = []
+        if (e.paramTypes !== undefined) {
+          e.params.forEach((pn, pi) => {
+            const pt = e.paramTypes![pi]
+            if (pt === undefined || pt.kind === 'unknown') return
+            paramBind.push([
+              pn,
+              _exprInferCtx.locals.has(pn),
+              _exprInferCtx.locals.get(pn),
+              _activeInferCtx.locals.has(pn),
+              _activeInferCtx.locals.get(pn),
+            ])
+            _exprInferCtx.locals.set(pn, pt)
+            _activeInferCtx.locals.set(pn, pt)
+          })
+        }
         const saved = seedHandlerLocals(inlined, _exprInferCtx)
+        const savedAct8 = seedHandlerLocals(inlined, _activeInferCtx)
         const lines = inlined.map((st) => pad + emitSwiftStatement(st, indent + 2)).join('\n')
         _exprInferCtx.locals = saved
+        _activeInferCtx.locals = savedAct8
+        for (const [pn, hadE, prevE, hadA, prevA] of paramBind.reverse()) {
+          if (hadE) _exprInferCtx.locals.set(pn, prevE!)
+          else _exprInferCtx.locals.delete(pn)
+          if (hadA) _activeInferCtx.locals.set(pn, prevA!)
+          else _activeInferCtx.locals.delete(pn)
+        }
         const params = e.params.length > 0 ? `${swiftClosureParams()} in` : ''
         return `{ ${params}\n${lines}\n${' '.repeat(indent)}}`
       }
@@ -6623,8 +6669,24 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           // reorders identically — the two backends must not disagree about
           // emitted bytes for the same source.
           const ordered = orderFieldsByStruct(e.fields, structName)
+          // Coerce an INT-valued arg into a FLOAT-typed field —
+          // `Tick(value: i)` over a loop counter is 'cannot convert Int to
+          // Double' (Swift has no implicit widening at init args either).
+          const structDef =
+            _declaredStructs.find((st) => st.name === structName) ??
+            _synthExprStructs.find((st) => st.name === structName)
+          const fieldT = new Map((structDef?.fields ?? []).map((f) => [f.name, f.type]))
           const args = ordered
-            .map((f) => `${swiftIdent(f.name)}: ${emitSwiftExpr(f.value, indent)}`)
+            .map((f) => {
+              const raw = emitSwiftExpr(f.value, indent)
+              const ft = fieldT.get(f.name)
+              const wantsFloat =
+                ft !== undefined &&
+                ((ft.kind === 'number' && ft.float === true) ||
+                  (ft.kind === 'typeRef' && (ft.name === 'Double' || ft.name === 'Float')))
+              const coerce = wantsFloat && numericFloatness(f.value) === 'int'
+              return `${swiftIdent(f.name)}: ${coerce ? `Double(${raw})` : raw}`
+            })
             .join(', ')
           return `${swiftIdent(structName)}(${args})`
         }
@@ -7382,6 +7444,7 @@ function emitSwiftAction(handler: ExprIR, indent: number): string {
       // the condition to `if t != nil`. Restored after, so the seeding is
       // scoped to this body (re-entrant-safe for nested handlers).
       const savedLocals = seedHandlerLocals(inlinedStmts, _exprInferCtx)
+      const savedLocalsAct6 = seedHandlerLocals(inlinedStmts, _activeInferCtx)
       // M4.5: an `async () => { … await … }` handler wraps its body in a
       // `Task { … }` so the synchronous SwiftUI action slot (`() -> Void`) can
       // launch async work. The `await` sub-expressions emit inside it.
@@ -7392,6 +7455,7 @@ function emitSwiftAction(handler: ExprIR, indent: number): string {
         .map((s) => bodyPad + emitSwiftStatement(s, bodyIndent))
         .join('\n')
       _exprInferCtx.locals = savedLocals
+      _activeInferCtx.locals = savedLocalsAct6
       if (isAsync) {
         return `{\n${pad}Task {\n${lines}\n${pad}}\n${' '.repeat(indent)}}`
       }
