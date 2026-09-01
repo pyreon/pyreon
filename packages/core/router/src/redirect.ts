@@ -98,16 +98,28 @@ export type RedirectClass =
  * back the bytes that produce a different one.
  */
 function normaliseTarget(target: string): string {
-  return (
-    target
-      .replace(/[\t\n\r]/g, '')
-      // Matching control characters is the POINT: this range is exactly the
-      // "C0 control or space" set the URL parser strips from both ends, and
-      // narrowing it to `\s` is the bug (`\s` misses NUL and the other C0
-      // controls, which is how a `\u0000//host` target reached `internal`).
-      // oxlint-disable-next-line no-control-regex
-      .replace(/^[\u0000-\u0020\s]+|[\u0000-\u0020\s]+$/g, '')
-  )
+  // Step 2 first, because it is the one a regex expresses safely: a character
+  // class with no quantifier scans linearly and cannot backtrack.
+  const s = target.replace(/[\t\n\r]/g, '')
+
+  // Step 1 is an INDEX WALK, deliberately not a regex. The obvious spelling —
+  // `/^[\u0000-\u0020\s]+|[\u0000-\u0020\s]+$/g` — is a polynomial ReDoS:
+  // the two alternatives are quantified over an AMBIGUOUS class (`\u0000-\u0020`
+  // already contains every character `\s` adds below U+0080), so on a long run
+  // of matching characters the engine retries the `$`-anchored branch from
+  // every position. This function's input can be attacker-supplied — a `?next=`
+  // parameter is the canonical case — which is exactly the reachability that
+  // makes it a denial of service rather than a curiosity. CodeQL flagged it.
+  //
+  // `<= 0x20` is not an approximation: the URL parser strips "C0 control or
+  // space", which is U+0000–U+001F plus U+0020, and nothing else. Dropping `\s`
+  // therefore makes this MORE faithful, not less — a leading U+00A0 is not
+  // stripped by a browser either, so it stays part of the path.
+  let start = 0
+  let end = s.length
+  while (start < end && s.charCodeAt(start) <= 0x20) start++
+  while (end > start && s.charCodeAt(end - 1) <= 0x20) end--
+  return s.slice(start, end)
 }
 
 export function classifyRedirectTarget(target: string): RedirectClass {

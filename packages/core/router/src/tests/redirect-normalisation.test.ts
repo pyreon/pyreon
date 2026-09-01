@@ -104,6 +104,32 @@ describe('classifyRedirectTarget — URL-parser preprocessing', () => {
     }
   })
 
+  it('normalises in LINEAR time — the guard is reachable with attacker input', () => {
+    // The obvious spelling of this normalisation is a ReDoS:
+    //   /^[\u0000-\u0020\s]+|[\u0000-\u0020\s]+$/g
+    // Its two alternatives are quantified over an AMBIGUOUS class — `\u0000-\u0020`
+    // already contains everything `\s` adds below U+0080 — so on a long run of
+    // matching characters the engine retries the `$`-anchored branch from every
+    // position. Measured on that implementation: 5k chars 13.5ms, 20k 204ms,
+    // 80k 3,563ms. Clean quadratic, and `redirect()` targets can come straight
+    // from a `?next=` parameter, so it is reachable rather than theoretical.
+    //
+    // A timing assertion is normally a flaky test. It is safe here only because
+    // the margin is four orders of magnitude: the linear implementation does
+    // this in ~0.01ms, so a 500ms budget cannot be reached by a slow machine —
+    // it can only be reached by the quadratic shape coming back.
+    const hostile = `/${' '.repeat(80_000)}x`
+    const started = performance.now()
+    const out = safeRedirectLocation(hostile)
+    const elapsed = performance.now() - started
+
+    expect(elapsed, `normalisation took ${elapsed.toFixed(0)}ms — quadratic backtracking is back`)
+      .toBeLessThan(500)
+    // And it still does the job: interior spaces are NOT edge-trimmed.
+    expect(out.startsWith('/')).toBe(true)
+    expect(out.endsWith('x')).toBe(true)
+  })
+
   describe('legitimate targets are unchanged', () => {
     it('keeps an intentional cross-origin redirect', () => {
       const c = classifyRedirectTarget('https://ok.example/x')
