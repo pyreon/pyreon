@@ -62,7 +62,18 @@ export function createServerIslandMiddleware(routes: RouteRecord[]): Middleware 
       return new Response(null, { status: 405, headers: { Allow: 'GET' } })
     }
 
-    const name = decodeURIComponent(ctx.url.pathname.slice(FRAGMENT_PREFIX.length))
+    // `decodeURIComponent` throws `URIError` on malformed percent-encoding
+    // (`GET /_pyreon/fragment/%`), and this runs PRE-AUTH on an unauthenticated
+    // endpoint — unguarded it was a one-character 500. Unlike the router's pure
+    // matcher this middleware HAS an HTTP context and already answers 400 for a
+    // malformed name, so a malformed escape joins that branch rather than
+    // falling through as raw text.
+    let name: string
+    try {
+      name = decodeURIComponent(ctx.url.pathname.slice(FRAGMENT_PREFIX.length))
+    } catch {
+      return new Response('Bad Request', { status: 400 })
+    }
     if (!name || name.includes('/')) {
       return new Response('Bad Request', { status: 400 })
     }

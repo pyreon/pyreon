@@ -8261,6 +8261,20 @@ function emitKotlinPermissionsProvider(
     )
     return emitKotlinGeneric(e, indent)
   }
+  if (seed.deniedUnderWildcard.length > 0) {
+    // The native container is grant-only, so an explicit `false` has nowhere to
+    // live. That is exact when the map has no wildcards — an unlisted key is
+    // denied either way — but under a wildcard the `false` is the ONLY thing
+    // denying it, so dropping it makes native GRANT what the web DENIES.
+    // `permissionsProviderSeed` computed this and its docstring said the caller
+    // reports it; no caller did, so an authorization primitive was failing OPEN
+    // in silence. A wrong-direction authz divergence must be loud.
+    _emitWarnings.push(
+      `<PermissionsProvider>: ${seed.deniedUnderWildcard
+        .map((d) => JSON.stringify(d))
+        .join(', ')} ${seed.deniedUnderWildcard.length === 1 ? 'is' : 'are'} set to false under a wildcard grant, and the native permissions container is GRANT-ONLY — so those keys are DENIED on the web and GRANTED on device. Split the wildcard into the exact keys you mean to grant, or gate the check in app code.`,
+    )
+  }
   const pad = ' '.repeat(indent + 2)
   const set = `PyreonPermissions(setOf(${seed.granted.map((g) => JSON.stringify(g)).join(', ')}))`
   const content = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
