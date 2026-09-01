@@ -520,7 +520,7 @@ effect(() => updateHeader(throttled()))
 onCleanup(() => throttled.dispose())
 ```
 
-:::caution[`debounce` / `throttle` are scope-aware — `dispose()` only for standalone use]
+:::warning[`debounce` / `throttle` are scope-aware — `dispose()` only for standalone use]
 Each `debounce`/`throttle` (and `distinct`/`scan`) owns a live `effect` +, for the timing ops, a `setTimeout`. Created **inside a component or `effectScope`**, the effect **and its pending timer** are torn down automatically on unmount — no `dispose()` needed. Created **standalone** (module scope, a `defineStore` setup that outlives every scope), nothing owns it — call the returned idempotent `.dispose()`. A growing `rx.debounce.create` / `rx.throttle.create` perf counter in dev flags standalone instances created without a matching dispose.
 :::
 
