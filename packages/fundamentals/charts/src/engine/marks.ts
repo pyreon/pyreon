@@ -169,16 +169,16 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[]): Series[] {
     let radii: Double[] | undefined = undefined
     const rAcc = m.r
     if (rAcc !== undefined) {
-      const raw: Double[] = []
+      const rawR: Double[] = []
       for (let i = 0; i < data.length; i++) {
         const rv = rAcc(data[i]!, i)
-        raw.push(Number.isFinite(rv) && rv > 0.0 ? rv : 0.0)
+        rawR.push(Number.isFinite(rv) && rv > 0.0 ? rv : 0.0)
       }
       let hi = 0.0
-      for (const rv of raw) if (rv > hi) hi = rv
+      for (const rv of rawR) if (rv > hi) hi = rv
       const minR = m.minRadius ?? 3.0
       const maxR = m.maxRadius ?? 18.0
-      radii = raw.map((rv) =>
+      radii = rawR.map((rv) =>
         hi === 0.0 ? minR : minR + Math.sqrt(rv / hi) * (maxR - minR),
       )
     }
