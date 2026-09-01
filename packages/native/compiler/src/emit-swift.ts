@@ -3977,7 +3977,13 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       // A Double TO-bound makes `0..<n` a Range<Double> — not a Sequence at
       // all. JS `i < n` trips ceil(n) times for fractional n (identity for
       // integral), so the bound wraps `Int(ceil(...))`.
-      const to = isFloatTypeIR(toT) ? `Int(ceil(Double(${toRaw})))` : toRaw
+      // Descending mirror: exclusive `i > n` stops ABOVE n (floor), the
+      // inclusive `i >= n` reaches down to ceil(n).
+      const to = isFloatTypeIR(toT)
+        ? s.down === true && s.inclusive !== true
+          ? `Int(floor(Double(${toRaw})))`
+          : `Int(ceil(Double(${toRaw})))`
+        : toRaw
       // The counter is an Int in the body's scope — registering it lets the
       // binary-op coercion wrap `Double(i)` when it meets a Double
       // (`first + step * i` was 'Int * Double' on the charts engine; an
@@ -3990,12 +3996,16 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
         .join('\n')
       if (hadItem) _activeInferCtx.locals.set(s.item, prevItem!)
       else _activeInferCtx.locals.delete(s.item)
+      // Swift has no descending range literal — a `down` loop is always a
+      // negative-step stride (`stride(from: n, through: 0, by: -1)`).
       const head =
-        s.step !== undefined
-          ? `stride(from: ${from}, ${s.inclusive === true ? 'through' : 'to'}: ${to}, by: ${emitSwiftExpr(s.step, indent)})`
-          : s.inclusive === true
-            ? `${from}...${to}`
-            : `${from}..<${to}`
+        s.down === true
+          ? `stride(from: ${from}, ${s.inclusive === true ? 'through' : 'to'}: ${to}, by: ${s.step !== undefined ? `-${emitSwiftExpr(s.step, indent)}` : '-1'})`
+          : s.step !== undefined
+            ? `stride(from: ${from}, ${s.inclusive === true ? 'through' : 'to'}: ${to}, by: ${emitSwiftExpr(s.step, indent)})`
+            : s.inclusive === true
+              ? `${from}...${to}`
+              : `${from}..<${to}`
       return `for ${swiftIdent(s.item)} in ${head} {\n${lines}\n${pad}}`
     }
     case 'do-while': {

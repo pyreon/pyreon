@@ -1055,6 +1055,8 @@ export type StatementIR =
       from: ExprIR
       to: ExprIR
       inclusive?: boolean
+      /** A DESCENDING loop (`for (let i = n; i >= 0; i--)` / `i -= k`) — Swift `stride(by: -k)`, Kotlin `downTo`. */
+      down?: boolean
       step?: ExprIR
       body: StatementIR[]
     }

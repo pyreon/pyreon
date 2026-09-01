@@ -3252,10 +3252,17 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       const toIsFloat =
         (toT.kind === 'number' && toT.float === true) ||
         (toT.kind === 'typeRef' && (toT.name === 'Double' || toT.name === 'Float'))
+      // Descending mirror of the rounding: exclusive `i > n` bottoms out at
+      // floor(n)+1 (the `+ 1` is added in the range below), inclusive `i >= n`
+      // reaches down to ceil(n).
       const to = toIsFloat
-        ? s.inclusive === true
-          ? `Math.floor(${toRaw}).toInt()`
-          : `Math.ceil(${toRaw}).toInt()`
+        ? s.down === true
+          ? s.inclusive === true
+            ? `Math.ceil(${toRaw}).toInt()`
+            : `Math.floor(${toRaw}).toInt()`
+          : s.inclusive === true
+            ? `Math.floor(${toRaw}).toInt()`
+            : `Math.ceil(${toRaw}).toInt()`
         : toRaw
       // The counter is an Int local in the body's scope — registering it
       // lets type-gated lowerings coerce (`Tick(value = i)` into a Double
@@ -3268,7 +3275,16 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
         .join('\n')
       if (hadI) _kotlinExprInferCtx.locals.set(s.item, prevI!)
       else _kotlinExprInferCtx.locals.delete(s.item)
-      const range = s.inclusive === true ? `${from}..${to}` : `${from} until ${to}`
+      // Kotlin `downTo` is inclusive-only — an exclusive descending bound
+      // (`i > n`) shifts to `downTo (n + 1)`.
+      const range =
+        s.down === true
+          ? s.inclusive === true
+            ? `${from} downTo ${to}`
+            : `${from} downTo (${to} + 1)`
+          : s.inclusive === true
+            ? `${from}..${to}`
+            : `${from} until ${to}`
       const stepPart = s.step !== undefined ? ` step ${emitKotlinExpr(s.step, indent)}` : ''
       return `for (${kotlinIdent(s.item)} in ${range}${stepPart}) {\n${lines}\n${pad}}`
     }
