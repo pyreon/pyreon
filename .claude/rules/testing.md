@@ -82,6 +82,50 @@ A per-test timeout sized against ONE internal deadline is wrong the moment a tes
 - `describe(name, { timeout }, fn)` IS honored in vitest 4 — prove the option is applied (not silently ignored) by temporarily forcing `timeout: 1` and confirming `Test timed out in 1ms`. (Verified for this fix: forcing `TEST_TIMEOUT_MS = 1` → `Error: Test timed out in 1ms.` on "two clients converge".)
 - A load-dependent flake is usually **not locally reproducible**. Per the "Cross-tab Playwright specs" precedent below, the structural argument is the bisect proof — state that honestly instead of claiming a repro you don't have. Here: the backstop was `60_000` for the 3-wait spec (== its composed sum, violating "must EXCEED"), and the 20s internal budget was demonstrably outrun (the descriptive error fired); the fix makes the backstop `105_000` (> the `90_000` worst-case sum, +15s headroom) with a `30_000` budget, all tracking one constant.
 
+## A PARTIAL threshold override inherits the default for every key it omits
+
+`defineNodeConfig`'s `coverageThresholds` MERGES with the category default, so a
+config that declares three of four dimensions silently leaves the fourth at 95%.
+That is not a hypothetical: it is what made `Coverage (Full)` red on every `main`
+run through 2026-08, across three packages at once.
+
+- `@pyreon/atlas` declared `statements`/`branches`/`functions` at 79/75/66 —
+  deliberately, under a paragraph explaining exactly why each was re-baselined —
+  and omitted `lines`, which then answered to a 95 nobody had measured against.
+  It measured 81.36. The comment's own text quotes the fourth measured number
+  (79.94); it was simply never written into the object.
+- `@pyreon/server` has the identical shape one key over: three declared with a
+  paragraph about the browser-only island arms, `functions` omitted, measuring
+  92.85.
+- `@pyreon/loom` declared nothing at all, so all four inherited 95 while branches
+  measured 90.32.
+
+**A partial override READS as "the thresholds are set", and that is what makes it
+worse than an empty config** — the surrounding comment is evidence of care, so a
+reviewer stops looking. When a config merges with defaults, every key you leave
+out is a value you are asserting without having measured it.
+
+**Rule: declare every dimension the package does not meet, with the reason.** If
+three of four are honest re-baselines, the fourth is not "unset" — it is the
+default, and you are claiming it.
+
+Two smaller traps from the same pass:
+
+- **An exclude list drifts when the files it names are DECOMPOSED.** atlas
+  excluded `src/ui/chrome/**` and `src/ui/views/**` as declaration-only modules;
+  a later refactor split them into 159 one-declaration files under
+  `components/` and the list did not follow. The rationale still applied
+  perfectly — only the paths had moved. When you decompose a directory, grep the
+  exclude lists, lint scopes and gate allowlists that name it.
+- **When a coverage shortfall is real, ask which of the three it is** —
+  accounting artifact (browser-covered file → exclude with the covering suite
+  named), cheap real gap (write the test), or honest re-baseline (declare the
+  measured value + a `BELOW_FLOOR_EXEMPTIONS` entry). `@pyreon/compiler` was the
+  second: it sat 0.03pp under its branch floor and 0.12pp under its function
+  floor, and floors may only tighten, so the answer was tests — a catalog-wide
+  contract over `ERROR_PATTERNS` that took `diagnose.ts` from 34.56% to 100%
+  statements and the package from 91.23% to 98.72% functions.
+
 ## A CI-only failure's message IS the artifact — make it carry the evidence
 
 A load-dependent flake that reproduces in 1.85s locally and fails only under a
