@@ -67,14 +67,28 @@ here we are mid-pack, 19-27x behind TypeBox on the assert cases.
 
 Two readings, one of them a testable prediction:
 
-- **Our four numbers are nearly identical (4.35M / 4.16M / 4.13M).**
-  `assertLoose` does no clone and no unknown-key scan, so it should be far faster
-  than `parseStrict`. It is not — which is exactly the signature of `.is()` still
-  running the parse validator and discarding the result. That is true of the
-  PUBLISHED 0.51.0: the verdict-only JIT is unmerged (#3164). So this data
-  independently confirms the JIT's absence and predicts the assert cells should
-  move when it ships. Re-run with `--validate-version` once it does; if they do
-  not move, the JIT is not reaching this shape and that is worth knowing.
+- **Our four numbers are nearly identical (4.35M / 4.16M / 4.13M).** `assertLoose`
+  does no clone and no unknown-key scan, so it should be far faster than
+  `parseStrict`. It is not.
+
+  **This entry originally predicted that the unmerged verdict JIT (#3164) would
+  move those cells. That prediction was WRONG and is corrected here.** The cause
+  was not the JIT being unpublished — it was that the JIT excluded
+  `.passthrough()` entirely, which is exactly what `assertLoose` uses, so shipping
+  it would have changed nothing. Found by measuring, within the hour, which is why
+  the prediction was worth writing down.
+
+  Extending the verdict JIT to passthrough (#3181) and re-running THIS harness:
+
+  | case | before | after |
+  |---|---|---|
+  | `assertLoose` | 4,159,437 | **124,809,662** (30x) |
+
+  4th place to 1st, ahead of TypeBox's 113,006,350. `assertStrict` is unchanged at
+  4.0M and still 19x behind, because `.strict()` remains excluded — it must REJECT
+  an unknown key, which needs a key scan the inline loop does not emit. That is the
+  next lever, and its mechanism is known.
+
 - **`parseSafe` is still not trustworthy.** 50.9M is 12x our own `parseStrict`,
   and strict mode only adds an unknown-key scan — that gap is not explicable by
   the extra work. The likeliest reading is the discarded clone being optimised
