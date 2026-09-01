@@ -55,3 +55,31 @@ describe('zoom window math', () => {
     expect(brushRange(0, 100, -50, 500, { start: 0, end: 1 }, 10)).toEqual({ start: 0, end: 9 })
   })
 })
+
+describe('zoom window edge cases (coverage of the clamps)', () => {
+  it('zoomWindow clamps an out-of-range centre fraction to the window ends', () => {
+    const win = { start: 0.2, end: 0.6 }
+    const left = zoomWindow(win, 0.5, -3)
+    const right = zoomWindow(win, 0.5, 7)
+    // Anchored at the left end the start does not move; at the right end the end does not move.
+    expect(left.start).toBeCloseTo(0.2, 9)
+    expect(right.end).toBeCloseTo(0.6, 9)
+  })
+  it('zoomWindow on a degenerate zero-span window still returns a valid window', () => {
+    const z = zoomWindow({ start: 0.4, end: 0.4 }, 2, 0.5)
+    expect(z.end - z.start).toBeGreaterThan(0)
+    expect(z.start).toBeGreaterThanOrEqual(0)
+    expect(z.end).toBeLessThanOrEqual(1)
+  })
+  it('sliceRange clamps every bound: from below zero, from past the end, to past n, to before from', () => {
+    expect(sliceRange({ start: -0.5, end: 0.1 }, 10)).toEqual({ from: 0, to: 1 })
+    expect(sliceRange({ start: 1.5, end: 2 }, 10)).toEqual({ from: 9, to: 10 })
+    expect(sliceRange({ start: 0.95, end: 0.96 }, 10)).toEqual({ from: 9, to: 10 })
+    expect(sliceRange({ start: 0, end: 0 }, 10)).toEqual({ from: 0, to: 1 })
+  })
+  it('brushRange over a zero-width plot maps everything to the window start', () => {
+    const r = brushRange(10, 0, 50, 90, { start: 0.5, end: 1 }, 10)
+    expect(r.start).toBe(5)
+    expect(r.end).toBe(5)
+  })
+})
