@@ -13,6 +13,8 @@ import { sunburstToSvg } from './sunburst'
 import type { SunburstOptions } from './sunburst'
 import { treeToSvg } from './tree'
 import type { TreeOptions, TreeOrient } from './tree'
+import { sankeyToSvg } from './sankey'
+import type { SankeyLink, SankeyNode, SankeyOptions } from './sankey'
 import type { FunnelOptions } from './funnel'
 import type { RadarAxis } from './radar'
 import type { Double } from './types'
@@ -27,6 +29,7 @@ export type FamilyPlan =
   | { kind: 'treemap'; nodes: TreeNode[]; treemap: TreemapOptions; title: string | undefined }
   | { kind: 'sunburst'; nodes: TreeNode[]; innerRatio: Double; sunburst: SunburstOptions; title: string | undefined }
   | { kind: 'tree'; nodes: TreeNode[]; tree: TreeOptions; title: string | undefined }
+  | { kind: 'sankey'; nodes: SankeyNode[]; links: SankeyLink[]; sankey: SankeyOptions; title: string | undefined }
 
 export interface CompiledFamily {
   plan: FamilyPlan
@@ -34,7 +37,7 @@ export interface CompiledFamily {
   supported: boolean
 }
 
-const FAMILY_TYPES = new Set(['pie', 'gauge', 'radar', 'candlestick', 'heatmap', 'funnel', 'treemap', 'sunburst', 'tree'])
+const FAMILY_TYPES = new Set(['pie', 'gauge', 'radar', 'candlestick', 'heatmap', 'funnel', 'treemap', 'sunburst', 'tree', 'sankey'])
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const num = (v: unknown): number | null => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null
@@ -67,6 +70,7 @@ const KNOWN_BY_FAMILY: Record<string, Set<string>> = {
   treemap: new Set(['type', 'name', 'data', 'leafDepth', 'label', 'itemStyle', 'color', 'emphasis', 'roam', 'nodeClick', 'breadcrumb']),
   sunburst: new Set(['type', 'name', 'data', 'radius', 'center', 'sort', 'startAngle', 'label', 'itemStyle', 'color', 'emphasis', 'nodeClick', 'levels']),
   tree: new Set(['type', 'name', 'data', 'orient', 'layout', 'symbol', 'symbolSize', 'initialTreeDepth', 'edgeShape', 'label', 'itemStyle', 'lineStyle', 'leaves', 'roam', 'expandAndCollapse', 'emphasis', 'top', 'left', 'right', 'bottom']),
+  sankey: new Set(['type', 'name', 'data', 'nodes', 'links', 'edges', 'nodeWidth', 'nodeGap', 'nodeAlign', 'layoutIterations', 'orient', 'draggable', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'levels', 'top', 'left', 'right', 'bottom']),
 }
 
 /**
@@ -218,6 +222,44 @@ export function compileFamily(option: EChartsOption): CompiledFamily | null {
       warnings,
       supported,
     }
+  }
+
+  if (type === 'sankey') {
+    const rawNodes = Array.isArray(s['nodes']) ? (s['nodes'] as unknown[]) : data
+    const nodes: SankeyNode[] = []
+    for (let i = 0; i < rawNodes.length; i++) {
+      const d = rawNodes[i]
+      if (!isObj(d) || typeof d['name'] !== 'string') {
+        warn('series-data-shape', 'series[0].data[' + String(i) + ']', 'A sankey node must be an object with a name; it was skipped.')
+        continue
+      }
+      const item = isObj(d['itemStyle']) ? d['itemStyle'] : {}
+      nodes.push({ name: d['name'] as string, ...(typeof item['color'] === 'string' ? { color: item['color'] as string } : {}) })
+    }
+    const rawLinks = Array.isArray(s['links']) ? (s['links'] as unknown[]) : Array.isArray(s['edges']) ? (s['edges'] as unknown[]) : []
+    const links: SankeyLink[] = []
+    for (let i = 0; i < rawLinks.length; i++) {
+      const d = rawLinks[i]
+      const v = isObj(d) ? num(d['value']) : null
+      if (!isObj(d) || typeof d['source'] !== 'string' || typeof d['target'] !== 'string' || v === null) {
+        warn('series-data-shape', 'series[0].links[' + String(i) + ']', 'A sankey link needs string source/target and a numeric value; it was skipped.')
+        continue
+      }
+      links.push({ source: d['source'] as string, target: d['target'] as string, value: v })
+    }
+    if (s['orient'] === 'vertical') warn('series-option-unsupported', 'series[0].orient', 'Vertical sankey is not supported yet; rendered horizontally.')
+    const label = isObj(s['label']) ? s['label'] : {}
+    const nodeWidth = num(s['nodeWidth'])
+    const nodeGap = num(s['nodeGap'])
+    const iterations = num(s['layoutIterations'])
+    const sankey: SankeyOptions = {
+      showLabels: label['show'] !== false,
+      ...(nodeWidth !== null ? { nodeWidth } : {}),
+      ...(nodeGap !== null ? { nodePadding: nodeGap } : {}),
+      ...(iterations !== null ? { iterations } : {}),
+      ...(s['nodeAlign'] === 'left' ? { align: 'left' as const } : {}),
+    }
+    return { plan: { kind: 'sankey', nodes, links, sankey, title }, warnings, supported }
   }
 
   if (type === 'tree') {
@@ -457,6 +499,15 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
         ...(plan.title !== undefined ? { title: plan.title } : {}),
       })
     }
+    case 'sankey':
+      return sankeyToSvg({
+        nodes: plan.nodes,
+        links: plan.links,
+        sankey: plan.sankey,
+        width,
+        height,
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
     case 'tree':
       return treeToSvg({
         data: plan.nodes,
