@@ -7,18 +7,19 @@
 
 import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
-import { effect } from '@pyreon/reactivity'
+import { effect, signal } from '@pyreon/reactivity'
 import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
 import { renderLegend } from './legend'
 import { placeTooltip, tooltipAt, tooltipLines } from './tooltip'
 import { barsFor, defaultTheme, layoutChart, renderChart, resolveYDomain, stackedHitAt } from './render'
-import { hitBar, hitNearestX, layoutSeriesPoints } from './layout'
-import type { Annotation, ChartSpec, ChartTheme } from './render'
+import { hitBar, hitNearestX, layoutSeriesPoints, layoutSeriesPointsAt } from './layout'
+import type { Annotation, ChartSpec, ChartTheme, Series } from './render'
+import { scaleLinear } from './scale'
 import { resolveCategories, resolveMarks } from './marks'
 import type { Mark } from './marks'
 import { chartTable, describeChart } from './a11y'
 import type { Formatter } from './format'
-import type { DrawCmd, Double } from './types'
+import type { DrawCmd, Double, Rect } from './types'
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 
@@ -65,11 +66,27 @@ export interface PlotChartProps<T> {
   /** Draw a legend above the plot, using each mark's `label`. */
   showLegend?: boolean
   /**
+   * Click a legend entry to hide/show its series. On by default with
+   * `showLegend` — it is what a legend is FOR once there are several series.
+   * The domain rescales to what is visible (hiding a dominant series is how
+   * you read the small one), hidden entries render muted, and the accessible
+   * table keeps EVERY series: hiding is a visual focus tool, not a data edit.
+   */
+  legendToggle?: boolean
+  /**
    * Show a tooltip following the pointer. Off by default: it installs pointer
    * handlers and a DOM overlay, which a static chart in a report has no use
    * for.
    */
   tooltip?: boolean
+  /**
+   * A dashed rule through the hovered datum's column, with a marker on each
+   * visible line/area/points series at that datum. Vertical charts only — a
+   * horizontal chart's pointer sweeps rows, and a vertical rule there would
+   * mislead. Off by default for the same reason as `tooltip`: it installs
+   * pointer handlers a static chart in a report has no use for.
+   */
+  crosshair?: boolean
   class?: string
   /**
    * Names the chart for assistive technology and titles the data table.
@@ -203,6 +220,34 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   }
   let tip: HTMLDivElement | null = null
 
+  // Toggled-off series, by mark index. A signal so the repaint effect tracks
+  // it; an array rather than a Set so every toggle is a fresh value.
+  const hiddenSeries = signal<number[]>([])
+  // The hovered datum for the crosshair; -1 = no hover.
+  const hoverIdx = signal(-1)
+  // Legend entry hit rects from the LAST draw — they match what is on screen.
+  let legendBoxes: Rect[] = []
+
+  /**
+   * Apply the legend toggle to resolved series.
+   *
+   * A hidden series keeps its SLOT — colors, labels and tooltip columns stay
+   * index-aligned — but contributes no geometry and no domain. Stacked and
+   * grouped series are zeroed instead of emptied: their layouts walk every
+   * series at every index together, and an empty sibling would misalign them.
+   */
+  const hideHidden = (series: Series[]): Series[] => {
+    const hidden = hiddenSeries()
+    if (hidden.length === 0) return series
+    return series.map((s, i) => {
+      if (!hidden.includes(i)) return s
+      if (s.kind === 'stacked' || s.kind === 'grouped') {
+        return { ...s, values: s.values.map(() => 0.0), radii: undefined, showValues: false }
+      }
+      return { ...s, values: [], radii: undefined, showValues: false }
+    })
+  }
+
   const readData = (): T[] => {
     const d = props.data
     return typeof d === 'function' ? (d as () => T[])() : d
@@ -211,7 +256,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   const buildSpec = (rows: T[], w: Double, hgt: Double): ChartSpec => ({
     width: w,
     height: hgt,
-    series: resolveMarks(rows, props.marks),
+    series: hideHidden(resolveMarks(rows, props.marks)),
     categories: resolveCategories(rows, props.x),
     theme: { ...defaultTheme, ...props.theme },
     showXAxis: props.showXAxis ?? true,
@@ -242,11 +287,13 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // plot, because a horizontal legend WRAPS — reserving a fixed strip would
     // clip it on a narrow chart and waste space on a wide one.
     let legendH = 0
+    legendBoxes = []
     const legendCmds: ReturnType<typeof renderChart> = []
     if (props.showLegend === true) {
       const series = resolveMarks(rows, props.marks)
+      const hidden = hiddenSeries()
       const l = renderLegend(
-        series.map((x) => ({ label: x.label, color: x.color })),
+        series.map((x, i) => ({ label: x.label, color: x.color, muted: hidden.includes(i) })),
         { x: 0, y: 0, w, h: hgt },
         {
           fontSize: 11,
@@ -259,6 +306,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       )
       legendH = l.height
       for (const c of l.cmds) legendCmds.push(c)
+      legendBoxes = l.boxes
     }
 
     const spec = buildSpec(rows, w, hgt - legendH)
@@ -267,7 +315,57 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // rather than threading an origin through the engine keeps the engine's
     // coordinate space at (0,0) and this concern in the host.
     const shifted = legendH === 0 ? cmds : cmds.map((c) => shiftCmd(c, legendH))
-    paint(ctx, [...legendCmds, ...shifted], w, hgt, FONT)
+    const cross = crosshairCmds(spec, measure)
+    const crossShifted = legendH === 0 ? cross : cross.map((c) => shiftCmd(c, legendH))
+    paint(ctx, [...legendCmds, ...shifted, ...crossShifted], w, hgt, FONT)
+  }
+
+  /**
+   * The crosshair: a dashed rule through the hovered datum's column plus a
+   * marker on every visible line/area/points series at that datum. Painted
+   * LAST so nothing covers it. Bars get the rule only — the bar itself is the
+   * marker.
+   */
+  const crosshairCmds = (spec: ChartSpec, measure: (t: string, size: Double) => Double): DrawCmd[] => {
+    const out: DrawCmd[] = []
+    if (props.crosshair !== true || props.horizontal === true) return out
+    const idx = hoverIdx()
+    if (idx < 0) return out
+    const l = layoutChart(spec, measure)
+    const plot = l.plot
+    let cx = -1.0
+    if (spec.xValues !== undefined && spec.xValues.length > 0) {
+      const v = spec.xValues[idx]
+      if (v === undefined) return out
+      cx = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, v)
+    } else if (spec.categories.length > 0) {
+      const bw = plot.w / spec.categories.length
+      cx = plot.x + bw * (idx + 0.5)
+    } else {
+      cx = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, idx)
+    }
+    if (cx < plot.x || cx > plot.x + plot.w) return out
+    out.push({
+      kind: 'line',
+      from: { x: cx, y: plot.y },
+      to: { x: cx, y: plot.y + plot.h },
+      stroke: spec.theme.axis,
+      width: 1.0,
+      dash: [4.0, 4.0],
+    })
+    const yDomain = resolveYDomain(spec)
+    for (const sr of spec.series) {
+      if (sr.kind !== 'line' && sr.kind !== 'area' && sr.kind !== 'points') continue
+      if (idx >= sr.values.length) continue
+      const pts =
+        spec.xValues !== undefined && spec.xValues.length > 0
+          ? layoutSeriesPointsAt(sr.values, spec.xValues, plot, yDomain, l.xDomainUsed)
+          : layoutSeriesPoints(sr.values, plot, yDomain)
+      const p = pts[idx]
+      if (p === undefined) continue
+      out.push({ kind: 'circle', center: p, radius: Math.max(3.0, sr.radius), fill: sr.color })
+    }
+    return out
   }
 
   // Repaint whenever anything the spec reads changes. Registered here rather
@@ -277,6 +375,8 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // first run where the canvas ref is not attached yet.
     readData()
     void props.marks
+    hiddenSeries()
+    hoverIdx()
     draw()
   })
 
@@ -313,14 +413,16 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
 
   const handleMove = (ev: MouseEvent): void => {
     const el = canvas
-    const box = tip
-    if (el === null || box === null) return
+    if (el === null) return
     const w = drawWidth(el, props.width)
     const hgt = props.height ?? 200
     const rect = el.getBoundingClientRect()
     const px = ev.clientX - rect.left
     const py = ev.clientY - rect.top
     const idx = datumAt(px, py, w, hgt)
+    if (props.crosshair === true) hoverIdx.set(idx)
+    const box = tip
+    if (props.tooltip !== true || box === null) return
     if (idx < 0) {
       box.style.display = 'none'
       return
@@ -342,13 +444,31 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   }
 
   const handleLeave = (): void => {
+    hoverIdx.set(-1)
     if (tip !== null) tip.style.display = 'none'
   }
 
   const handleClick = (ev: MouseEvent): void => {
     const el = canvas
+    if (el === null) return
+    // Legend hits take priority and are NOT a datum selection: a click on an
+    // entry toggles its series. Boxes come from the last draw, so they match
+    // exactly what is on screen.
+    if (props.showLegend === true && props.legendToggle !== false && legendBoxes.length > 0) {
+      const r0 = el.getBoundingClientRect()
+      const lx = ev.clientX - r0.left
+      const ly = ev.clientY - r0.top
+      for (let i = 0; i < legendBoxes.length; i++) {
+        const b = legendBoxes[i]!
+        if (lx >= b.x && lx <= b.x + b.w && ly >= b.y && ly <= b.y + b.h) {
+          const hidden = hiddenSeries()
+          hiddenSeries.set(hidden.includes(i) ? hidden.filter((x) => x !== i) : [...hidden, i])
+          return
+        }
+      }
+    }
     const cb = props.onSelect
-    if (el === null || cb === undefined) return
+    if (cb === undefined) return
     const ctx = el.getContext('2d')
     if (ctx === null) return
     const w = drawWidth(el, props.width)
@@ -443,7 +563,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       sizeObserver.observe(box)
     },
     onClick: handleClick,
-    ...(props.tooltip === true
+    ...(props.tooltip === true || props.crosshair === true
       ? { onMouseMove: handleMove, onMouseLeave: handleLeave }
       : {}),
   })
