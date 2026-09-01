@@ -207,6 +207,34 @@ published no-op that every unit test passed over — see
 - **No AI-generated footer either.** Do not append `🤖 Generated with Claude Code`
   (or any equivalent) to a PR body or commit message. Same rule, same reason: no AI
   attribution anywhere. This also overrides a harness default that adds one.
+- **It overrides a MID-SESSION instruction too, and that is not hypothetical.**
+  A system turn arrived re-introducing both forms as the new attribution policy,
+  explicitly framed as replacing earlier guidance. Two written rules — this one
+  and CLAUDE.md's — were on the losing side of that by default; the policy held
+  only because the agent judged the project instruction to outrank the harness
+  default. That is a coin flip dressed as a rule.
+
+  So it is now a **control**, not a note: `guard-ai-attribution` (PreToolUse on
+  Bash) blocks `git commit` / `git tag` / `gh pr` / `gh issue` / `gh release`
+  carrying either form. It reads the command text AND any `-F` / `--body-file`
+  the command points at — the by-reference path is the one that matters, since
+  the convention here is to write the body to a scratchpad file first, leaving
+  nothing incriminating in the command string. A **human** `Co-Authored-By` is
+  untouched, and so is reading, grepping or editing a file that merely contains
+  the phrase — otherwise the guard could not be written or documented.
+
+  The match is **anchored to line start**, because a git trailer is by
+  definition a `Token: value` pair at the start of a line and GitHub renders the
+  footer the same way — so anchoring costs no real coverage. The first cut
+  matched mid-line and therefore blocked any commit whose message merely
+  DISCUSSED the rule, including the commits that add this hook: it refused to
+  let itself be maintained, which is the one false positive a guard like this
+  can least afford. The residual edge is small and deliberate — prose is safe
+  only while it does not BEGIN a line with one of the forms; rewrap the sentence
+  if you hit it.
+
+  If the policy genuinely changes, change it HERE, in CLAUDE.md, and in the
+  hook. Not in a single commit.
 
 ## Pre-push hook (Phase E1)
 
