@@ -44,15 +44,47 @@ jobs:
         with:
           bun-version-file: .bun-version
 
-      - name: Cache bun dependencies
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # RESTORE-ONLY, under the key ci.yml's Install job saves on main. This
+      # workflow used to `actions/cache` (save) the same ~1 GB tarball store
+      # under its own `bun-<os>-<lockhash>` key — a second copy per lockfile
+      # variant, which is what kept the 10 GB actions cache at capacity.
+      - name: Restore bun dependencies
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-          restore-keys: bun-${{ runner.os }}-
+          key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-install-cache-${{ runner.os }}-
 
-      - name: Install (PR head)
-        run: bun install --frozen-lockfile
+      # `check-bundle-budgets` measures the BUILT lib/, and this job needs two
+      # of them (PR head, then base). It used to get each one from a plain
+      # `bun install`, whose postinstall bootstrap rebuilds all 74 packages
+      # from scratch — ~5 min of runner time per PR, for artifacts ci.yml's
+      # Bootstrap job builds and caches under a SOURCE-HASHED key minutes
+      # earlier. Restore that cache instead and let `bootstrap.ts` rebuild only
+      # what the content-hash manifest says is stale. The key expression is
+      # byte-identical to ci.yml's (`check-cache-key-sync` enforces it); the
+      # bare-prefix fallback restores the nearest lib/ and the incremental
+      # build corrects it, so a miss is slower, never wrong.
+      #
+      # Note on the base restore below: `hashFiles()` is evaluated on the
+      # runner when its step starts, against the CURRENT worktree — so after
+      # `git checkout <base>` the same expression names the BASE tree's key,
+      # which main's own push run populated. That is what makes the second
+      # restore an exact hit rather than a guess.
+      - name: Restore lib/ (PR head, source-hashed)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            packages/*/*/lib
+            .bootstrap-cache.json
+          key: bootstrap-ubuntu-${{ hashFiles('packages/*/*/src/**', 'packages/*/*/package.json', 'packages/*/*/tsconfig.json', 'tsconfig.json', 'scripts/bootstrap.ts', 'bun.lock') }}
+          restore-keys: |
+            bootstrap-ubuntu-
+
+      - name: Install + incremental build (PR head)
+        run: |
+          PYREON_BOOTSTRAP_SKIP=1 bun install --frozen-lockfile
+          bun scripts/bootstrap.ts
 
       - name: Measure (PR head)
         run: bun scripts/check-bundle-budgets.ts --json >/tmp/pr.json || true
@@ -130,8 +162,22 @@ jobs:
       - name: Checkout base
         run: git checkout -f "${{ steps.base.outputs.sha }}"
 
-      - name: Install (base)
-        run: bun install --frozen-lockfile
+      # The manifest from the head restore describes the head's lib/; drop it
+      # so the base restore's own manifest (or a full hash pass) governs.
+      - name: Restore lib/ (base, source-hashed)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            packages/*/*/lib
+            .bootstrap-cache.json
+          key: bootstrap-ubuntu-${{ hashFiles('packages/*/*/src/**', 'packages/*/*/package.json', 'packages/*/*/tsconfig.json', 'tsconfig.json', 'scripts/bootstrap.ts', 'bun.lock') }}
+          restore-keys: |
+            bootstrap-ubuntu-
+
+      - name: Install + incremental build (base)
+        run: |
+          PYREON_BOOTSTRAP_SKIP=1 bun install --frozen-lockfile
+          bun scripts/bootstrap.ts
 
       - name: Measure (base)
         run: bun scripts/check-bundle-budgets.ts --json >/tmp/base.json || true

@@ -52,6 +52,13 @@ export const Revenue = () => (
 inside the accessor are tracked, so a `rows.set(...)` repaints the chart with
 no other wiring.
 
+<Example file="./examples/charts/plot-marks" title="Marks, reactivity and formatting" />
+
+That demo is the real engine, mounted live: marks compose in paint order (area
+under line under points), `data` is an accessor so **Regenerate** repaints
+without re-mounting anything, and one `format` feeds the axis, the tooltip and
+the accessible description together.
+
 ## Marks
 
 A mark pairs a value accessor `(d, index) => number` with paint options. They

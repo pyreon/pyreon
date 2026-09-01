@@ -654,6 +654,7 @@ jobs:
       e2e-matrix: ${{ steps.e2e.outputs.matrix }}
       e2e-has: ${{ steps.e2e.outputs.has }}
       scaffold-has: ${{ steps.scaffold.outputs.has }}
+      scaffold-matrix: ${{ steps.scaffold.outputs.matrix }}
       bootstrap-exit-codes: ${{ steps.bexit.outputs.run }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -803,10 +804,32 @@ jobs:
       - name: Detect scaffold-relevant changes
         id: scaffold
         run: |
+          # The six scaffold cells, packed into 3 batches (see ci-batch.ts
+          # for why a cell is not free: each one was its own runner — six
+          # queue entries + six setups for ~6 min of work apiece, and under
+          # slot contention the six serialised anyway). `emit` writes BOTH
+          # outputs on every exit path so the cell job can never see a
+          # `has=true` with an empty matrix.
+          CELLS='["cpa-smoke-app-vercel","cpa-smoke-app-static","cpa-smoke-blog-cloudflare","cpa-smoke-dashboard-vercel-full","cpa-smoke-dashboard-node-supabase","cpa-smoke-monorepo-vercel"]'
+          emit() {
+            echo "has=$1" >> "$GITHUB_OUTPUT"
+            if [ "$1" = "true" ]; then
+              local out
+              if ! out=$(bun run scripts/ci-batch.ts --items="$CELLS" --max=3); then
+                # Batcher failure must never DROP a cell — fall back to one
+                # cell per batch, which is exactly the pre-batching shape.
+                echo "ci-batch failed for scaffold — falling back to unbatched"
+                out=$(echo "$CELLS" | sed -E 's/"([^"]+)"/{"name":"\1","members":"\1"}/g')
+              fi
+              echo "matrix=$out" >> "$GITHUB_OUTPUT"
+            else
+              echo "matrix=[]" >> "$GITHUB_OUTPUT"
+            fi
+          }
           # Non-PR triggers always run the full matrix — main / merge_group
           # is the protected path. Per-suite skipping is a PR-only opt.
           if [ "${{ github.event_name }}" != "pull_request" ]; then
-            echo "has=true" >> "$GITHUB_OUTPUT"
+            emit true
             echo "Full scaffold matrix forced (event: ${{ github.event_name }})"
             exit 0
           fi
@@ -814,7 +837,7 @@ jobs:
           # Changed files (handles fetch failures cleanly — fall back to
           # running the matrix if we can't determine the diff).
           if ! CHANGED=$(git diff --name-only "$BASE"...HEAD 2>/dev/null); then
-            echo "has=true" >> "$GITHUB_OUTPUT"
+            emit true
             echo "Could not determine changes — running full matrix (safety)"
             exit 0
           fi
@@ -843,7 +866,7 @@ jobs:
               break
             fi
           done <<< "$TRIGGERS"
-          echo "has=$HAS" >> "$GITHUB_OUTPUT"
+          emit "$HAS"
           if [ "$HAS" = "false" ]; then
             echo "No scaffold-relevant changes — skipping matrix (saves ~265s/cell)"
           fi
@@ -1162,17 +1185,23 @@ jobs:
             exit 1
           fi
 
-      # Save the verdict store — push:main only (the PR side only restores,
-      # so a PR can never poison the shared store). `if: always()` so a red
-      # main run still saves the verdicts it derived; they are
-      # content-addressed, so verdicts from a failing run are just as valid
-      # as from a green one. This step MUST live in THIS matrix job: the
-      # first cut sat in the `Test` aggregator, where `matrix.name`
-      # doesn't exist (condition never true) and the derived store isn't on
-      # disk — so zero caches were ever saved and every native cell stayed
-      # cold at ~15-17min while the restore step missed forever.
+      # Save the verdict store from EVERY run, PRs included. It was main-only
+      # (the "save on main only" rule that exists for the 1 GB tarball
+      # store), but this store is <1 MB and content-addressed — a verdict is
+      # a pure function of (compiler version, stub text, exact bytes), so a
+      # PR cannot "poison" it, only add entries — and main-only saving had a
+      # real cost: main's run is CANCELLED whenever a newer merge queues
+      # behind it (27 of the last 60), so the store went unsaved for hours
+      # and the next run paid ~60 min of cold `kotlinc`/`swiftc` (measured
+      # 1325s + 1312s + 931s on run 33532534054, vs ~45s warm). The sha in
+      # the key keeps entries distinct; the restore's bare prefix picks the
+      # newest. `if: always()` so a red run still saves what it derived.
+      # This step MUST live in THIS matrix job: the first cut sat in the
+      # `Test` aggregator, where `matrix.name` doesn't exist (condition
+      # never true) and the derived store isn't on disk — so zero caches
+      # were ever saved and every native cell stayed cold at ~15-17min.
       - name: Save native compile-verdict cache
-        if: always() && github.ref == 'refs/heads/main' && startsWith(matrix.name, 'native')
+        if: always() && startsWith(matrix.name, 'native')
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache/pyreon-native-validate
@@ -1976,11 +2005,12 @@ jobs:
   # typecheck on the scaffolder package can't see, because templates
   # aren't in any tsconfig include path.
   #
-  # P1d — sharded as a matrix (6 cells in parallel) so wall-clock
-  # ≈ slowest single cell instead of the sum. Pre-shard the job ran 6
-  # cells sequentially in one runner (~215s); post-shard each runs in
-  # its own ~50-110s job (per-cell `bun install` from repo root is the
-  # dominant cost) with no cross-cell contention.
+  # P1d sharded this into 6 parallel cells; the 2026-09 queue pass packs
+  # them into 3 batches via ci-batch.ts. The cells had grown to ~6 min
+  # each (a scaffolded app's cold `bun install` dominates), so six of them
+  # were six 50-min queue entries under slot contention — batching keeps
+  # the per-batch failure surface, halves the setups, and frees 3 slots
+  # for every other in-flight PR. See ci-batch.ts for the measured case.
   #
   # `scaffold-smoke-aggregate` mirrors the e2e aggregator pattern: a
   # stable required check name regardless of which cells ran (matches
@@ -1997,7 +2027,7 @@ jobs:
   # push:main + merge_group ALWAYS run the full matrix — main is never
   # allowed to merge an undetected scaffold regression.
   scaffold-smoke-cell:
-    name: Scaffold Smoke (${{ matrix.cell }})
+    name: Scaffold Smoke (${{ matrix.name }})
     # P3c — each cell runs `bun install` + `vite build` of the scaffolded app.
     # Needs Bootstrap so the workspace lib/ is resolvable when the app pulls
     # in @pyreon/* via the node condition.
@@ -2005,24 +2035,35 @@ jobs:
     needs: [bootstrap, lint, changes]
     if: ${{ needs.changes.outputs.scaffold-has == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Three cells of ~6 min in one batch, plus setup. Derived, not guessed:
+    # measured cells run 222-373s; the heaviest LPT bin is 3 × ~370s.
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        cell:
-          - cpa-smoke-app-vercel
-          - cpa-smoke-app-static
-          - cpa-smoke-blog-cloudflare
-          - cpa-smoke-dashboard-vercel-full
-          - cpa-smoke-dashboard-node-supabase
-          - cpa-smoke-monorepo-vercel
+        # Batched by `Changes (decide)` — `[{name, members}]`, same shape as
+        # the e2e matrix. `members` is the space-separated cell list.
+        include: ${{ fromJSON(needs.changes.outputs.scaffold-matrix || '[]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pyreon
-      # scaffold-smoke.ts accepts a positional cell filter:
-      #   `bun scripts/scaffold-smoke.ts cpa-smoke-app-vercel` runs only that cell.
-      - name: Run scaffold-smoke cell
-        run: bun scripts/scaffold-smoke.ts ${{ matrix.cell }}
+      # A scaffolded app's `bun install` is the dominant per-cell cost, and
+      # it ran against an EMPTY tarball store — every cell cold-fetched vite,
+      # rolldown and friends from the registry. The monorepo's store holds
+      # nearly all of them; restore-only (Install saves it on main).
+      - name: Restore bun download cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-install-cache-${{ runner.os }}-
+      # scaffold-smoke.ts accepts positional cell filters and runs the
+      # matches sequentially:
+      #   `bun scripts/scaffold-smoke.ts cpa-smoke-app-vercel cpa-smoke-app-static`
+      - name: Run scaffold-smoke batch — ${{ matrix.name }}
+        env:
+          MEMBERS: ${{ matrix.members }}
+        run: bun scripts/scaffold-smoke.ts $MEMBERS
 
   # Stable required-check aggregator. Mirrors the `e2e` job's pattern
   # — branch protection requires this check by name; matrix cells are
