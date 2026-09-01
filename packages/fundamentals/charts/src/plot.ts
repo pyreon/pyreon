@@ -98,3 +98,19 @@ export { measureApprox, renderSvg, svgCommand } from './engine/svg'
 export type { SvgOptions } from './engine/svg'
 
 export type { Domain, DrawCmd, Double, MeasureText, Pt, Rect, Tick } from './engine/types'
+
+// Server-side SVG for the whole family — pure, measureApprox by default
+export {
+  candlestickToSvg,
+  gaugeToSvg,
+  heatmapToSvg,
+  pieToSvg,
+  radarToSvg,
+} from './engine/family-svg'
+export type {
+  CandlestickToSvgOptions,
+  GaugeToSvgOptions,
+  HeatmapToSvgOptions,
+  PieToSvgOptions,
+  RadarToSvgOptions,
+} from './engine/family-svg'
