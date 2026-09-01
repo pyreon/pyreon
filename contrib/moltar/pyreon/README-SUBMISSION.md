@@ -26,7 +26,7 @@ installs, runs, and prints our four results.
 installs from npm and that is the honest comparison. An unreleased change will
 not appear until it ships — pin explicitly with `--validate-version`.
 
-## The blocker: we are ESM-only, their default runner is CJS
+## We are ESM-only by policy; their default runner is CJS
 
 Upstream's default runner is `ts-node index.ts` (CommonJS). Every `@pyreon/*`
 package publishes an `exports` map with **only** `import` and `types` — no
@@ -45,8 +45,18 @@ Our case runs fine under `bun` and their harness supports it (`start:bun`,
 `start:deno`, and they publish per-runtime results — `bun-1.json`, `deno-2.json`).
 But their published matrix is dominated by node (`node-14` … `node-26`), so
 without a `require` condition we would be **absent from most of the results
-people actually look at**. Submitting is therefore gated on a product decision
-about dual publishing, not on this file.
+people actually look at**.
+
+**That is settled, not open.** ESM-only is deliberate policy for this framework,
+and it will not change to win a benchmark slot. A `default` condition would make
+Node's CJS resolver match (the artifact would even stay ESM — Node >=22.12 can
+`require()` an ES module), and it was tried and REJECTED for exactly that reason:
+the effect is CJS consumers, whatever the build format says.
+
+So this entry is **bun/deno only, permanently**. Upstream publishes per-runtime
+results (`bun-1.json`, `deno-2.json`), so the numbers are real and comparable —
+they are simply absent from the node columns. Do not "fix" this by adding an
+export condition.
 
 ## First real measurement (bun 1.4, quiet machine, 2026-09-01)
 
@@ -164,7 +174,8 @@ contract mismatch fails in our CI rather than in a stranger's.
 
 ## Steps (manual — an external PR must be a human decision)
 
-1. Resolve the CJS blocker, or accept bun/deno-only results.
+1. Accept bun/deno-only results. The node matrix is out by policy (see above);
+   do not add an export condition to get into it.
 2. Fork <https://github.com/moltar/typescript-runtime-type-benchmarks>.
 3. Copy `cases/pyreon.ts` to `cases/pyreon.ts` in the fork. Copy nothing else
    from this directory — `benchmarks/` here is a local shim for our test, and
