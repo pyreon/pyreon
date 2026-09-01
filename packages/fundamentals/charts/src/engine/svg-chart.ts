@@ -9,7 +9,7 @@ import { describeChart } from './a11y'
 import type { Mark } from './marks'
 import { resolveCategories, resolveMarks } from './marks'
 import { defaultTheme, renderChart } from './render'
-import type { Annotation, ChartTheme } from './render'
+import type { Annotation, ChartTheme, PointMarker } from './render'
 import { measureApprox, renderSvg } from './svg'
 import type { Formatter } from './format'
 import type { SvgOptions } from './svg'
@@ -41,6 +41,8 @@ export interface ChartToSvgOptions<T> {
   format?: Formatter
   /** Reference rules and bands — see `Annotation`. */
   annotations?: Annotation[]
+  /** Datum-anchored point markers — see `PointMarker`. */
+  markers?: PointMarker[]
   /** Flip the frame — categories on Y, bars growing rightward. Bar marks only. */
   horizontal?: boolean
   /**
@@ -92,6 +94,7 @@ export function chartToSvg<T>(options: ChartToSvgOptions<T>): string {
     y2Domain: options.y2Domain,
     y2Format: options.y2Format,
     annotations: options.annotations,
+    markers: options.markers,
     horizontal: options.horizontal === true,
   }
   const measure = options.measure ?? measureApprox()
