@@ -13,7 +13,10 @@
     "directory": "packages/fundamentals/store"
   },
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "./src/registry.ts",
+    "./lib/index.js"
+  ],
   "main": "./lib/index.js",
   "module": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
