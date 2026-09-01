@@ -52,11 +52,15 @@ export function renderCandles(
   candles: Ohlc[],
   plot: Rect,
   domain: Domain,
-  options: CandleOptions = {},
+  // Optional rather than defaulted to `{}`: an empty-object-literal default
+  // has no native lowering, and the optional-chained reads below are the
+  // same contract. This is what lets the finance family join the generated
+  // Swift/Kotlin engine.
+  options?: CandleOptions,
 ): DrawCmd[] {
-  const up = options.upColor ?? '#15803d'
-  const down = options.downColor ?? '#b42318'
-  const rawRatio = options.widthRatio ?? 0.6
+  const up = options?.upColor ?? '#15803d'
+  const down = options?.downColor ?? '#b42318'
+  const rawRatio = options?.widthRatio ?? 0.6
   const ratio = rawRatio < 0.05 ? 0.05 : rawRatio > 0.9 ? 0.9 : rawRatio
   const out: DrawCmd[] = []
   const n = candles.length
@@ -102,6 +106,13 @@ export function hitCandle(count: number, plot: Rect, px: Double, py: Double): nu
   if (px < plot.x || px > plot.x + plot.w) return -1
   if (py < plot.y || py > plot.y + plot.h) return -1
   const band = plot.w / count
-  const i = Math.floor((px - plot.x) / band)
-  return i >= count ? count - 1 : i
+  // Integer floor by scanning (Math.floor lowers to a Double natively).
+  const target = (px - plot.x) / band
+  let i = 0
+  let jf = 0.0
+  for (let j = 0; j < count; j++) {
+    if (jf <= target) i = j
+    jf = jf + 1.0
+  }
+  return i
 }
