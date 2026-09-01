@@ -65,6 +65,8 @@ export { arcPolygon, fitCircle, hitArc, layoutArcs, pointOnCircle, renderGauge, 
 export type { ArcGeometry, GaugeOptions, PieOptions, Slice } from './engine/arc'
 export { radarAngles, radarPolygon, renderRadar, withAlpha } from './engine/radar'
 export type { RadarAxis, RadarOptions, RadarSeries } from './engine/radar'
+export { RadarChart } from './engine/RadarChart'
+export type { RadarChartProps } from './engine/RadarChart'
 
 // Stacked / grouped / scatter
 export { layoutGroupedBars, layoutScatter, layoutStackedBars, stackHasNegatives, stackedExtent } from './engine/stack'
