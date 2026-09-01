@@ -59,6 +59,8 @@ const CORPUS: { name: string; option: EChartsOption; expectClean: boolean }[] = 
     xAxis: { type: 'category', data: ['12a', '1a'] }, yAxis: { type: 'category', data: ['Sat', 'Sun'] },
     visualMap: { min: 0, max: 10, inRange: { color: ['#eff6ff', '#1e40af'] } },
     series: [{ type: 'heatmap', data: [[0, 0, 5], [1, 1, 9]] }] } },
+  { name: 'funnel', expectClean: true, option: {
+    series: [{ type: 'funnel', sort: 'descending', minSize: '10%', data: [{ value: 60, name: 'Visit' }, { value: 40, name: 'Inquiry' }, { value: 20, name: 'Order' }] }] } },
   { name: 'rose pie (roseType unmapped)', expectClean: false, option: {
     series: [{ type: 'pie', roseType: 'area', data: [{ value: 1, name: 'a' }] }] } },
   { name: 'radar + dataZoom (unmapped keys)', expectClean: false, option: {
@@ -85,8 +87,8 @@ describe('ECharts option facade — conformance corpus', () => {
       const c = planOption(f.option).compiled
       return c.supported && c.warnings.length === 0
     }).length
-    // 15 of 17 today. Raise this number as families land; never lower it.
-    expect(clean).toBeGreaterThanOrEqual(15)
+    // 16 of 18 today. Raise this number as families land; never lower it.
+    expect(clean).toBeGreaterThanOrEqual(16)
   })
 })
 
@@ -206,5 +208,15 @@ describe('ECharts option facade — family mappings', () => {
       expect(svg, f.name).toContain('<svg')
       expect(svg, f.name).not.toContain('NaN')
     }
+  })
+})
+
+describe('funnel option mapping', () => {
+  it('sort/minSize/funnelAlign map onto FunnelOptions; a funnel option renders', () => {
+    const f = compileFamily({ series: [{ type: 'funnel', sort: 'ascending', minSize: '20%', funnelAlign: 'left', data: [{ value: 1, name: 'a' }, { value: 2, name: 'b' }, { value: 3, name: 'c' }] }] })!
+    if (f.plan.kind !== 'funnel') throw new Error('kind')
+    expect(f.plan.funnel).toMatchObject({ sort: 'ascending', minWidthRatio: 0.2, align: 'left' })
+    expect(f.plan.rows.map((r) => r.name)).toEqual(['a', 'b', 'c'])
+    expect(optionToSvg({ series: [{ type: 'funnel', data: [{ value: 5, name: 'x' }] }] })).toContain('<polygon')
   })
 })
