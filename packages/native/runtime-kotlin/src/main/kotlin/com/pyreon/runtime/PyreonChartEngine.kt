@@ -1433,22 +1433,18 @@ fun hitHeatCell(grid: HeatGrid, plot: PyreonChartRect, gap: Double, px: Double, 
     val ch = (plot.h).toDouble() / (nr).toDouble()
     val tCol = ((px - plot.x)).toDouble() / (cw).toDouble()
     val tRow = ((py - plot.y)).toDouble() / (ch).toDouble()
-    var col = 0
     var colF = 0.0
     var jf = 0.0
     for (j in 0 until nc) {
       if (jf <= tCol) {
-        col = j
         colF = jf
       }
       jf = jf + 1.0
     }
-    var row = 0
     var rowF = 0.0
     var kf = 0.0
     for (k in 0 until nr) {
       if (kf <= tRow) {
-        row = k
         rowF = kf
       }
       kf = kf + 1.0

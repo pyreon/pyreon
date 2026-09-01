@@ -232,24 +232,16 @@ export function hitHeatCell(
   // scan also clamps to the last column/row.
   const tCol = (px - plot.x) / cw
   const tRow = (py - plot.y) / ch
-  let col = 0
   let colF = 0.0
   let jf = 0.0
   for (let j = 0; j < nc; j++) {
-    if (jf <= tCol) {
-      col = j
-      colF = jf
-    }
+    if (jf <= tCol) colF = jf
     jf = jf + 1.0
   }
-  let row = 0
   let rowF = 0.0
   let kf = 0.0
   for (let k = 0; k < nr; k++) {
-    if (kf <= tRow) {
-      row = k
-      rowF = kf
-    }
+    if (kf <= tRow) rowF = kf
     kf = kf + 1.0
   }
   const inX = px - (plot.x + colF * cw)

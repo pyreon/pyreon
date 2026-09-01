@@ -1757,22 +1757,18 @@ public func hitHeatCell(_ grid: HeatGrid, _ plot: PyreonChartRect, _ gap: Double
     let ch = Double(plot.h) / Double(nr)
     let tCol = (px - plot.x) / Double(cw)
     let tRow = (py - plot.y) / Double(ch)
-    var col = 0
     var colF = 0.0
     var jf = 0.0
     for j in 0..<nc {
       if jf <= tCol {
-        col = j
         colF = jf
       }
       jf = jf + 1.0
     }
-    var row = 0
     var rowF = 0.0
     var kf = 0.0
     for k in 0..<nr {
       if kf <= tRow {
-        row = k
         rowF = kf
       }
       kf = kf + 1.0
