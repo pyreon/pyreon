@@ -80,9 +80,21 @@ public object PyreonDeepLink {
 
     /** Register the live router; returns a release handle. */
     public fun setListener(onLink: (String) -> Unit): () -> Unit {
-        lock.withLock { listener = onLink }
-        return { lock.withLock { listener = null } }
+        val token = lock.withLock {
+            listenerToken += 1
+            listener = onLink
+            listenerToken
+        }
+        // Release by IDENTITY, not by position — the Swift mirror's fix, and
+        // for the same reason: a router that registered EARLIER and released
+        // LATER would clear the slot belonging to the router that replaced it,
+        // killing warm deep links for the rest of the session and stashing the
+        // next one to `pending` for a router that may never be constructed.
+        return { lock.withLock { if (listenerToken == token) listener = null } }
     }
+
+    /** Identifies the CURRENT registration, so a stale disposer is a no-op. */
+    private var listenerToken: Long = 0
 
     /** Test seam — one test's link must not leak into the next. */
     public fun reset(): Unit = lock.withLock {

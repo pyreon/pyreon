@@ -15,6 +15,7 @@
 package com.pyreon.runtime
 
 import android.content.Context
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 
@@ -24,13 +25,31 @@ import android.net.Uri
  * No reactive state; `openUrl` fires an ACTION_VIEW intent.
  */
 class PyreonLinking(private val context: Context) {
-    /** Open `url` in the platform browser / the app registered for its scheme. */
-    fun openUrl(url: String) {
+    /**
+     * Open `url` in the platform browser / the app registered for its scheme.
+     *
+     * Returns whether anything could handle it. `startActivity` THROWS
+     * `ActivityNotFoundException` when no app resolves the scheme, so an
+     * unguarded call terminated the process on a URL the device simply could
+     * not open — a `zoommtg://` link on a phone without Zoom, from a feed of
+     * server-supplied links. The Swift half already degraded gracefully, so one
+     * shared source crashed on exactly one target.
+     *
+     * Reported rather than swallowed: a caller that wants to fall back (open
+     * the https equivalent, show a message) needs to know, and a bare `catch`
+     * would leave the button looking broken with no way to tell.
+     */
+    fun openUrl(url: String): Boolean {
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
             // startActivity may be called from a non-Activity Context; ACTION_VIEW
             // then needs NEW_TASK (harmless for an Activity Context too).
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        context.startActivity(intent)
+        return try {
+            context.startActivity(intent)
+            true
+        } catch (e: ActivityNotFoundException) {
+            false
+        }
     }
 }

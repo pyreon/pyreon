@@ -292,9 +292,45 @@ public final class PyreonRouter {
         routes: [RouteRecord] = [],
         notFoundComponent: (() -> AnyView)? = nil,
     ) {
-        self.path = initialPath
         self.routes = routes
         self.notFoundComponent = notFoundComponent
+        // GATE the initial path. It used to be assigned straight to `path`,
+        // and `allowNavigation` runs only from `push`/`replace` — so an app
+        // COLD-LAUNCHED by a deep link arrived at that route with every guard
+        // skipped, while a warm link to the same route was gated. A web page
+        // doing `location.href = "myapp://admin/billing"` opened the app at
+        // /admin/billing with the auth guard never executed.
+        //
+        // A route's own `beforeEnter` is available here — it arrives on the
+        // `routes` passed to this very call — so it runs, and that is the shape
+        // an auth gate on a specific route actually takes.
+        //
+        // GLOBAL guards deliberately do NOT run, and cannot: they are registered
+        // on the router this call is building, so the list is necessarily empty.
+        // Re-validating the standing path when one is later added was tried and
+        // REVERTED — it makes registering a guard NAVIGATE, so the ordinary
+        // "block all navigation while saving" pattern (`beforeEach { false }`)
+        // would eject the user from the page they are on. A guard is about
+        // TRANSITIONS; applying it retroactively to the current location is a
+        // different, worse semantic, and this package's own
+        // `testBeforeEachBlocksReplace` caught it.
+        //
+        // So: a guard that must cover a COLD deep link belongs on the route's
+        // `beforeEnter`, which is the one that runs here. Stated in the public
+        // doc above rather than left for a reader to discover.
+        // Gate the inbound path BEFORE it is stored, using the LOCAL
+        // parameters only. This must not touch `self`: reading an observable
+        // property inside `init` registers the half-built router with
+        // whatever observation context SwiftUI is evaluating in, which made
+        // the demo app rebuild its ContentView, construct a second router,
+        // and discard it — and the discarded one's teardown took the
+        // deep-link listener slot with it, so every WARM link after launch
+        // was dropped. Device-verified: the same gate expressed against
+        // `self` fails `test_deepLinkOpensTheRouteColdAndWarm`, and this one
+        // passes. A refused path falls back to root, the same degradation the
+        // web router uses for a cancelled navigation: the user lands
+        // somewhere they are allowed to be.
+        self.path = Self.initialPathAllowed(routes, initialPath.last) ? initialPath : []
         // Resolve any params that the initial top-of-stack path produces,
         // so apps that start on `/users/42` have `params["id"] == "42"`
         // immediately — no need to call push/replace just to populate.
@@ -350,6 +386,12 @@ public final class PyreonRouter {
     /// Internal — `resolveCurrentRoute()` (flat top-of-chain) and
     /// `resolveCurrentChain()` (full chain) are the public accessors.
     private func resolveChainIn(_ records: [RouteRecord], _ candidate: String) -> [ChainEntry]? {
+        return Self.resolveChainInStatic(records, candidate)
+    }
+
+    /// The implementation. Pure over its parameters — no `self` — so `init`
+    /// can use it without an observable read.
+    private static func resolveChainInStatic(_ records: [RouteRecord], _ candidate: String) -> [ChainEntry]? {
         for record in records {
             // Exact match (leaf or parent matching its own path) → terminate here.
             if let params = Self.matchPath(candidate, record.path) {
@@ -359,7 +401,7 @@ public final class PyreonRouter {
             // child's `path` is the FULL path (including parent prefix),
             // so we recurse with the SAME candidate.
             if let children = record.children, !children.isEmpty {
-                if let childChain = resolveChainIn(children, candidate) {
+                if let childChain = resolveChainInStatic(children, candidate) {
                     // Successful descent — prepend the parent. Parent
                     // doesn't itself match the candidate, so its
                     // params are empty (it's a structural layout).
@@ -439,6 +481,27 @@ public final class PyreonRouter {
     /// first (parity with web: global beforeEach precedes per-route
     /// beforeEnter). The matched-route lookup is non-recursive over
     /// the route table — same shape as `resolveCurrentChain`.
+    /// Whether the route-level `beforeEnter` chain admits the initial path.
+    ///
+    /// Only the per-route guards can run at construction — the global list is
+    /// necessarily empty, because guards are registered on the router this call
+    /// is building — see the note in `init` for why re-validating the standing
+    /// path when one is later added was tried and reverted.
+    ///
+    /// STATIC, and takes `records` rather than reading `self.routes`, because
+    /// its only caller is `init` — see the note there.
+    private static func initialPathAllowed(
+        _ records: [RouteRecord],
+        _ candidate: String?
+    ) -> Bool {
+        guard let candidate else { return true }
+        guard let chain = resolveChainInStatic(records, candidate) else { return true }
+        for (record, _) in chain {
+            if let guardFn = record.beforeEnter, !guardFn(candidate) { return false }
+        }
+        return true
+    }
+
     private func allowNavigation(to candidate: String) -> Bool {
         _inGuard = true
         defer { _inGuard = false }

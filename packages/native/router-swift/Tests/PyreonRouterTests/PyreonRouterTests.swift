@@ -1225,4 +1225,70 @@ final class PyreonRouterQueryTests: XCTestCase {
         XCTAssertEqual(router.query["ref"], "email")
         XCTAssertTrue(router.params.isEmpty)
     }
+
+    // MARK: - A COLD deep link is gated (2026-08 security audit)
+    //
+    // `init` assigned `initialPath` straight to `path`, and `allowNavigation`
+    // runs only from `push`/`replace` — so an app cold-launched by a deep link
+    // arrived at that route with every guard skipped, while a WARM link to the
+    // same route was gated. A web page doing
+    // `location.href = "myapp://admin/billing"` opened the app at /admin/billing
+    // with the auth guard never executed. The reference host in this repo is
+    // exported + BROWSABLE, so the launch is one visited page away.
+    //
+    // The asymmetry is what let it survive: an app tested by driving links into
+    // an ALREADY-RUNNING app looks correctly gated.
+
+    /// A route-level `beforeEnter` gates the initial path, not just push.
+    func testColdDeepLinkIsGatedByBeforeEnter() throws {
+        let routes = [
+            RouteRecord(
+                path: "/admin",
+                component: { AnyView(Text("admin")) },
+                beforeEnter: { _ in false },
+            ),
+        ]
+        let router = PyreonRouter(initialPath: ["/admin"], routes: routes)
+        // Falls back to root — the same degradation the web router uses for a
+        // cancelled navigation: land somewhere you are allowed to be.
+        XCTAssertEqual(router.path, [])
+    }
+
+    /// An ALLOWED initial path is untouched — the guard must not become
+    /// "never honour a deep link".
+    func testColdDeepLinkIsKeptWhenAllowed() throws {
+        let routes = [
+            RouteRecord(
+                path: "/admin",
+                component: { AnyView(Text("admin")) },
+                beforeEnter: { _ in true },
+            ),
+        ]
+        let router = PyreonRouter(initialPath: ["/admin"], routes: routes)
+        XCTAssertEqual(router.path, ["/admin"])
+    }
+
+    /// A GLOBAL guard does NOT retroactively eject you from the standing path.
+    ///
+    /// Tried the opposite and reverted it: re-validating on registration makes
+    /// adding a guard NAVIGATE, so `beforeEach { false }` — the ordinary
+    /// "block navigation while saving" pattern — would throw the user off the
+    /// page they are on. `testBeforeEachBlocksReplace` caught it. The cold-link
+    /// gate is therefore `beforeEnter`, which runs at construction.
+    func testGlobalGuardDoesNotEjectFromTheStandingPath() throws {
+        let routes = [RouteRecord(path: "/home", component: { AnyView(Text("home")) })]
+        let router = PyreonRouter(initialPath: ["/home"], routes: routes)
+        router.beforeEachGuards = [{ _ in false }]
+        XCTAssertEqual(router.path, ["/home"])
+        // …and it still blocks the next TRANSITION, which is its actual job.
+        router.push("/other")
+        XCTAssertEqual(router.path, ["/home"])
+    }
+
+    /// A path with no matching route is left alone — an unknown route is the
+    /// 404 fallback's business, not the guard's.
+    func testColdDeepLinkWithNoMatchingRouteIsKept() throws {
+        let router = PyreonRouter(initialPath: ["/nope"], routes: [])
+        XCTAssertEqual(router.path, ["/nope"])
+    }
 }
