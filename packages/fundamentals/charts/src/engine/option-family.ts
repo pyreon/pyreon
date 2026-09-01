@@ -25,6 +25,7 @@ import { polarToSvg } from './polar'
 import type { PolarAxes, PolarOptions, PolarSeries } from './polar'
 import { riverToSvg } from './river'
 import type { RiverOptions, RiverSeries } from './river'
+import { resolveDataset } from './option-layer'
 import type { FunnelOptions } from './funnel'
 import type { RadarAxis } from './radar'
 import type { Double } from './types'
@@ -74,7 +75,7 @@ export function isFamilyOption(option: EChartsOption): boolean {
   return isObj(s) && typeof s['type'] === 'string' && (FAMILY_TYPES.has(s['type'] as string) || s['coordinateSystem'] === 'polar')
 }
 
-const KNOWN_TOP = new Set(['series', 'title', 'legend', 'tooltip', 'color', 'radar', 'xAxis', 'yAxis', 'visualMap', 'animation', 'backgroundColor', 'textStyle', 'grid', 'calendar', 'parallel', 'parallelAxis', 'polar', 'angleAxis', 'radiusAxis', 'singleAxis'])
+const KNOWN_TOP = new Set(['series', 'title', 'legend', 'tooltip', 'color', 'radar', 'xAxis', 'yAxis', 'visualMap', 'animation', 'backgroundColor', 'textStyle', 'grid', 'calendar', 'parallel', 'parallelAxis', 'polar', 'angleAxis', 'radiusAxis', 'singleAxis', 'dataset', 'graphic'])
 const KNOWN_BY_FAMILY: Record<string, Set<string>> = {
   pie: new Set(['type', 'name', 'data', 'radius', 'label', 'itemStyle', 'center', 'emphasis', 'color']),
   gauge: new Set(['type', 'name', 'data', 'min', 'max', 'detail', 'axisLine', 'progress', 'itemStyle', 'color']),
@@ -96,12 +97,15 @@ const KNOWN_BY_FAMILY: Record<string, Set<string>> = {
  * Compile a family option. Returns null when the first series is cartesian
  * (`compileOption` owns those) so `planOption` can route without guessing.
  */
-export function compileFamily(option: EChartsOption): CompiledFamily | null {
-  if (!isFamilyOption(option)) return null
+export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
+  if (!isFamilyOption(rawOption)) return null
   const warnings: OptionWarning[] = []
   const warn = (code: OptionWarning['code'], path: string, message: string): void => {
     warnings.push({ code, path, message })
   }
+  const resolved = resolveDataset(rawOption)
+  for (const w of resolved.warnings) warnings.push(w)
+  const option = resolved.option as EChartsOption
   let supported = true
   const seriesArr = Array.isArray(option['series']) ? (option['series'] as unknown[]) : [option['series']]
   const s = seriesArr[0] as Record<string, unknown>

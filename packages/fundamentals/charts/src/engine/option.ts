@@ -14,6 +14,7 @@
 // server and in a test the same way the engine does.
 
 import { defaultTheme, renderChart } from './render'
+import { appendGraphicLayer, graphicCommands, resolveDataset, svgSize } from './option-layer'
 import type { Annotation, ChartSpec, PointMarker, Series } from './render'
 import { smooth, step } from './curve'
 import type { Formatter } from './format'
@@ -65,7 +66,7 @@ export interface CompileOptions {
 
 const KNOWN_TOP = new Set([
   'series', 'xAxis', 'yAxis', 'title', 'legend', 'tooltip', 'color', 'grid',
-  'animation', 'backgroundColor', 'textStyle',
+  'animation', 'backgroundColor', 'textStyle', 'dataset', 'graphic',
 ])
 const KNOWN_SERIES = new Set([
   'type', 'name', 'data', 'stack', 'smooth', 'step', 'areaStyle', 'itemStyle',
@@ -86,12 +87,16 @@ const num = (v: unknown): number | null => {
 const first = <T,>(v: T | T[] | undefined): T | undefined => (Array.isArray(v) ? v[0] : v)
 
 /** Compile an ECharts-shaped option onto the engine. Pure. */
-export function compileOption(option: EChartsOption, opts: CompileOptions = {}): CompiledOption {
+export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {}): CompiledOption {
   const warnings: OptionWarning[] = []
   const warn = (code: OptionWarning['code'], path: string, message: string): void => {
     warnings.push({ code, path, message })
   }
   let supported = true
+  // The dataset pre-pass materialises series data before anything reads it.
+  const resolved = resolveDataset(rawOption)
+  for (const w of resolved.warnings) warnings.push(w)
+  const option = resolved.option as EChartsOption
 
   for (const key of Object.keys(option)) {
     if (!KNOWN_TOP.has(key)) {
@@ -366,7 +371,11 @@ export function planOption(option: EChartsOption, opts: CompileOptions = {}): Op
  */
 export function optionToSvg(option: EChartsOption, opts: OptionToSvgOptions = {}): string {
   const fam = compileFamily(option)
-  if (fam !== null) return familyToSvg(fam.plan, { width: opts.width, height: opts.height })
+  if (fam !== null) {
+    const svg = familyToSvg(fam.plan, { width: opts.width, height: opts.height })
+    const size = svgSize(svg)
+    return size === null ? svg : appendGraphicLayer(svg, graphicCommands(option, size.width, size.height).cmds, size.width, size.height)
+  }
   const compiled = compileOption(option, opts)
   const measure = opts.measure ?? measureApprox()
   const width = compiled.spec.width
@@ -390,6 +399,7 @@ export function optionToSvg(option: EChartsOption, opts: OptionToSvgOptions = {}
   }
   const chart = renderChart({ ...compiled.spec, height: Math.max(0.0, height - top) }, measure)
   for (const c of chart) cmds.push(top === 0.0 ? c : shift(c, top))
+  for (const c of graphicCommands(option, width, height).cmds) cmds.push(c)
   return renderSvg(cmds, width, height, {
     ...(compiled.title !== null ? { title: compiled.title.text } : {}),
   })
