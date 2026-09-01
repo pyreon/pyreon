@@ -301,6 +301,21 @@ export abstract class Schema<T> {
    * if (Login.is(req.body)) handle(req.body)
    */
   is(input: unknown): boolean {
+    // MEASURED SEAM COST: 1.27ns/op (12.51 via this method vs 11.24 calling the
+    // compiled function directly, 8-field strict shape, 500k iterations).
+    //
+    // It can be removed by caching the compiled function as an OWN `is`
+    // property, so `schema.is` IS the compiled function. Deliberately not done:
+    // the compiled verdict must be invalidated whenever the schema tree changes
+    // (chained methods mutate in place), and an own-property cache makes
+    // stale-after-mutation the failure mode — `.is()` disagreeing with
+    // `.parse().ok`, which shipped once already and is locked by
+    // `jit-check-differential`. 1.27ns is not worth re-opening that class.
+    //
+    // For scale: it is ~1/3 of the gap to typia on this shape. The other ~2/3
+    // is the generated code itself, even though both emit the same
+    // `Object.keys(x).length !== N` strict check — so the seam is not where the
+    // remaining difference lives.
     if (this._compiledVerdict) return this._compiledVerdict(input)
     // Verdict-only JIT: no ctx, no issue objects, no output value — the
     // whole reason `.is()` exists. Falls through to the seams below for any
