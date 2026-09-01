@@ -22,6 +22,7 @@ import {
   readdirSync,
   writeFileSync,
 } from 'node:fs'
+import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 const UPSTREAM = 'https://github.com/moltar/typescript-runtime-type-benchmarks.git'
@@ -33,7 +34,15 @@ function arg(flag: string, fallback: string): string {
   return i === -1 ? fallback : (process.argv[i + 1] ?? fallback)
 }
 
-const dir = resolve(arg('--dir', '/tmp/pyreon-moltar-local'))
+// Scratch clone lives under the USER'S OWN cache dir, deliberately not the OS
+// temp dir. `/tmp` is world-writable and this path is predictable, so on a
+// shared machine another user could pre-create it as a symlink and the
+// writeFileSync calls below would follow it (CodeQL js/insecure-temporary-file,
+// flagged high on the first version of this file). A per-user directory removes
+// the class outright while still letting the clone be REUSED across runs, which
+// matters — re-cloning upstream every time is slow.
+const DEFAULT_DIR = join(homedir(), '.cache', 'pyreon', 'moltar-local')
+const dir = resolve(arg('--dir', DEFAULT_DIR))
 const libs = arg('--libs', 'pyreon,zod,valibot,arktype,typebox').split(',').map(s => s.trim())
 const validateVersion = arg('--validate-version', 'latest')
 // bun by default: the published packages are ESM-only (no `require` condition),
@@ -50,7 +59,7 @@ const run = (cmd: string, args: string[], cwd: string) =>
   execFileSync(cmd, args, { cwd, stdio: 'inherit' })
 
 if (!existsSync(join(dir, '.git'))) {
-  mkdirSync(dir, { recursive: true })
+  mkdirSync(dir, { recursive: true, mode: 0o700 })
   console.log(`[moltar] cloning upstream -> ${dir}`)
   run('git', ['clone', '--depth', '1', UPSTREAM, dir], '/')
 } else {

@@ -17,7 +17,9 @@ bun contrib/moltar/pyreon/run-local.ts --runtime node          # currently FAILS
 bun contrib/moltar/pyreon/run-local.ts --validate-version 0.52.0
 ```
 
-It clones upstream to a scratch dir outside the repo, injects our case,
+It clones upstream to a scratch dir under `~/.cache/pyreon/` (deliberately NOT
+the world-writable OS temp dir — a predictable path there is a symlink-planting
+hazard, flagged high by CodeQL on the first version), injects our case,
 installs, runs, and prints our four results.
 
 **It measures the PUBLISHED package, not your working tree**, because upstream
