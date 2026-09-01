@@ -61,6 +61,9 @@ const CORPUS: { name: string; option: EChartsOption; expectClean: boolean }[] = 
     series: [{ type: 'heatmap', data: [[0, 0, 5], [1, 1, 9]] }] } },
   { name: 'funnel', expectClean: true, option: {
     series: [{ type: 'funnel', sort: 'descending', minSize: '10%', data: [{ value: 60, name: 'Visit' }, { value: 40, name: 'Inquiry' }, { value: 20, name: 'Order' }] }] } },
+  { name: 'boxplot with outlier scatter', expectClean: true, option: {
+    xAxis: { data: ['A', 'B'] }, yAxis: {},
+    series: [{ type: 'boxplot', data: [[1, 2, 3, 4, 5], [2, 3, 4, 5, 6]] }, { type: 'scatter', data: [[0, 9]] }] } },
   { name: 'rose pie (roseType unmapped)', expectClean: false, option: {
     series: [{ type: 'pie', roseType: 'area', data: [{ value: 1, name: 'a' }] }] } },
   { name: 'radar + dataZoom (unmapped keys)', expectClean: false, option: {
@@ -87,8 +90,8 @@ describe('ECharts option facade — conformance corpus', () => {
       const c = planOption(f.option).compiled
       return c.supported && c.warnings.length === 0
     }).length
-    // 16 of 18 today. Raise this number as families land; never lower it.
-    expect(clean).toBeGreaterThanOrEqual(16)
+    // 17 of 19 today. Raise this number as families land; never lower it.
+    expect(clean).toBeGreaterThanOrEqual(17)
   })
 })
 
