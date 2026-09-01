@@ -39,6 +39,14 @@ export interface MarkOptions {
    * them. Formatted with the chart's `format`.
    */
   showValues?: boolean
+  /**
+   * Which y axis this mark scales against; absent = left.
+   *
+   * Only the independent marks honor 'right': stacked/grouped marks are laid
+   * out as ONE set against ONE scale, and the horizontal frame has a single
+   * value axis — both pin to left by design rather than silently mis-scaling.
+   */
+  axis?: 'left' | 'right'
 }
 
 /** A mark bound to its accessor, resolved against data at render time. */
@@ -173,6 +181,7 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[]): Series[] {
       curve: m.options.curve,
       showValues: m.options.showValues === true,
       radii,
+      axis: m.options.axis,
     }
   })
 }
