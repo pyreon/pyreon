@@ -7,6 +7,10 @@ description: Reactive ECharts bridge with lazy loading, auto-detection, and type
 
 <PackageBadge name="@pyreon/charts" href="/docs/charts" />
 
+:::tip[First-party engine]
+Prefer zero dependencies, SSR-rendered SVG, and native-shared geometry? The same package ships Pyreon's own engine at [`@pyreon/charts/plot`](/docs/charts-plot).
+:::
+
 ## Installation
 
 `@pyreon/charts` declares `echarts` as a **peer dependency** (`>=5.6.0`) — install it alongside the package.
