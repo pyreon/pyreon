@@ -2,7 +2,7 @@
   "_doc": "Per-package main-entry budgets in BYTES (minified + gzipped). Externalizes @pyreon/*, node:*, and every bare-module import auto-collected from each package's lib/ tree \u2014 this is the unique code each package adds to a consumer bundle. Seeded at 25% headroom. `--update` is a RATCHET: it RAISES a budget only for a package that is actually OVER (intentional growth, reviewed in the same PR), LOWERS one that has shrunk, and leaves everything else byte-identical. Use `--update=@pyreon/pkg` to scope it.",
   "_units": "bytes (gzipped)",
   "@pyreon/a11y": 1536,
-  "@pyreon/atlas": 11776,
+  "@pyreon/atlas": 12288,
   "@pyreon/attrs": 1280,
   "@pyreon/charts": 256,
   "@pyreon/cli": 17152,

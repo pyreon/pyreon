@@ -31,6 +31,7 @@ import type { ComponentIntelligence, ComponentRef, PlayFn, VerifyCheck, VerifyFi
 import { finding } from '../core'
 import { skipped } from './registry'
 import { defineAtlasPlugin } from './define'
+import { installRouteFor } from './router'
 import type { AtlasPlugin, VerifyContext } from './types'
 import { type DomEnv, ensureDom } from '../verify/dom'
 import { defaultRuntime, driveInteractions, type MountedScenario, type MountRuntime, mountScenario } from '../verify/harness'
@@ -173,10 +174,16 @@ async function exercise(
   dom: DomEnv,
   runtime: MountRuntime,
   component: ComponentRef,
-  scenario: { id: string; args?: Record<string, unknown>; play?: PlayFn },
+  scenario: { id: string; args?: Record<string, unknown>; play?: PlayFn; route?: string },
   wrapper: ComponentRef | undefined,
 ): Promise<Exercised> {
   const args = scenario.args ?? {}
+  // A scenario carrying a `route` must MOUNT under it. The route axis used to
+  // add the scenarios and nothing installed the router, so two different URLs
+  // rendered byte-identically and both reported `pass` — the axis was decor.
+  // Installing here rather than in the router plugin keeps ONE owner of the
+  // router's install/dispose; see `setRouteInstaller`.
+  const routed = await installRouteFor(scenario.route)
   const tReal = PROFILE ? performance.now() : 0
   let mounted: MountedScenario | undefined = mountScenario(dom, runtime, component, args, wrapper)
   step('real mount', tReal)
@@ -210,8 +217,16 @@ async function exercise(
     // Unmount inside the same window so a teardown error counts as a finding
     // for THIS scenario rather than leaking into the next one.
     mounted.dispose()
+    // Dispose the router in the same window, and BEFORE the next scenario. The
+    // active router is module-level state in the project's copy, so one left
+    // installed answers for whatever runs next — including a check meant to
+    // observe a component WITHOUT one.
+    routed.disposer?.()
   }
   const errors = [...mounted.errors]
+  // A scenario that asked for a route and did not get one is a finding, not a
+  // pass: silently rendering unrouted is what made the whole axis decorative.
+  if (routed.reason !== undefined) errors.push(routed.reason)
   mounted = undefined
   return { id: scenario.id, args, errors, clicks, ...(playFailure ? { playFailure } : {}) }
 }

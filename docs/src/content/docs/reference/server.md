@@ -220,6 +220,7 @@ const CartBadge = serverIsland(() => import('../islands/CartBadge'), {
 
 **Common mistakes**
 
+- TRUSTING the props inside the fragment — they arrive in the query string of a public, UNAUTHENTICATED endpoint (`GET /_pyreon/fragment/<name>?props=…`), so a caller can send any value for any registered island. The NAME is allowlisted; the props are not. Render from them freely, but authorize from the REQUEST (`useRequestLocals()`, the session cookie) — an island that reads a `userId` prop and returns that user's data is an IDOR by construction
 - Passing children — island props cross the fragment boundary as codec-encoded data; children are dropped (same contract as client islands)
 - Setting `cache` on a cookie-varying fragment — the same auth poisoning class as ISR cacheKey; the no-store default exists for a reason
 - Expecting the fragment to hydrate interactivity — fragments are server-rendered HTML; composing a client island() INSIDE a server island is a documented follow-up, not v1
