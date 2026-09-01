@@ -22,12 +22,23 @@ export interface ErrorDiagnosis {
   related?: string | undefined
 }
 
-interface ErrorPattern {
+export interface ErrorPattern {
   pattern: RegExp
   diagnose: (match: RegExpMatchArray) => ErrorDiagnosis
 }
 
-const ERROR_PATTERNS: ErrorPattern[] = [
+/**
+ * The catalog itself.
+ *
+ * Exported so a test can hold the whole thing to a contract rather than
+ * spot-checking the handful of entries someone happened to write an example
+ * for. `diagnoseError` returns the FIRST match, so an entry that throws, that
+ * renders an empty `fix`, or whose pattern is broad enough to swallow an
+ * unrelated error is not a local defect — it changes what every entry below it
+ * can ever answer. Adding a byte to the bundle is free: `diagnoseError`
+ * already references it.
+ */
+export const ERROR_PATTERNS: ErrorPattern[] = [
   {
     // The residual footgun left by narrowing the native audit's
     // `native-unsupported-decl` rule. That rule used to flag EVERY top-level

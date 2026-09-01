@@ -188,8 +188,14 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
     reason:
       'JSX transform compiler. PR #1079 excluded load-native.ts (napi-rs binary loader) + event-names.ts (DOM-event remap data). Ratcheted 89/83 → 91/85 (measured 91.79/85.56) after validate-emit.ts — the pure TS-compiler-API compile-time @pyreon/validate specializer — gained full behavioral coverage (56.3%→98.9% stmts) of its check vocabulary + emitSchemaSource mini rewrite. Residual gap is the jsx.ts codegen edge-case tail (dual-backend, covered by native-equivalence + fuzz-equivalence in the `test (native)` cell) plus the syntactic audit modules (native-audit/content-audit/island-audit/ssg-audit) and diagnose.ts (exercised by e2e/dev-error-printer.spec.ts). Lifting to 95/95 is multi-PR work tracked as a long-tail effort.',
   },
+  '@pyreon/loom': {
+    currentStatements: 95,
+    currentBranches: 90,
+    reason:
+      'Dependency observatory. Statements, functions and lines all clear the floor comfortably (97.71 / 99.09 / 98.96) and are NOT exempted — only branches is, at 90.32. It had no threshold entry at all, so all four inherited the 95% default and the branch shortfall reddened `Coverage (Full)` on every main run while nothing in the package stated its branch contract. The 54 uncovered branches are spread thin across six files that are otherwise 96-99% (workspace 83.8, model 86.6, detect 88.3, config 88.3, graph 90, imports 96.1) and are defensive arms — `??` fallbacks and optional chaining on shapes the callers already guarantee. Ratchet up as tests land.',
+  },
   '@pyreon/atlas': {
-    currentStatements: 79,
+    currentStatements: 82,
     currentBranches: 75,
     reason:
       'AI-native component workbench. FIRST time this package has ever been enforced: it was absent from every CI coverage table because the runner silently dropped any package whose output it could not parse, so its declared 95/95/95 was decorative and the package sat ~15pp under it. Honest first baseline (measured 79.72/75.98, functions 66.06, lines 79.94). The uncovered surface is concentrated and named: `static.ts` (the `atlas build` static-docs generator, landed with no tests), `server.ts`/`plugin.ts`/`run.ts` (the vite-booting dev surface, proven by e2e/atlas-workshop.spec.ts rather than node vitest), `lens.ts`/`lens-client.ts`/`axe.ts` (browser-side instrumentation measured on the page\'s own devtools bridge), and the `A11y*` styled-declaration modules. This is the low end of a deliberate ratchet — raise these thresholds + this entry in lockstep as tests land, never lower.',
