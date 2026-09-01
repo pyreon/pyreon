@@ -305,7 +305,8 @@ const isPlainObject = (s: FieldLike, checkMode = false): boolean =>
   // `_catchall` stays excluded in BOTH modes — it VALIDATES unknown keys, and
   // the inline loop skips them, which would silently pass invalid input.
   (s._unknownKeys === 'strip' ||
-    (checkMode && (s._unknownKeys === 'passthrough' || s._unknownKeys === 'strict'))) &&
+    s._unknownKeys === 'strict' ||
+    (checkMode && s._unknownKeys === 'passthrough')) &&
   !s._catchall
 /**
  * An array we can recurse into: has an element schema AND its OWN ops are
@@ -471,6 +472,57 @@ function compileJit(schema: Schema<unknown>, mode: JitMode): unknown {
       return `var ${ksv} = Object.keys(${srcVar}); for (var ${iv} = 0; ${iv} < ${ksv}.length; ${iv}++) { if (!${setRef}.has(${ksv}[${iv}])) return false; }`
     }
 
+    /**
+     * Parse-mode `.strict()`: report EVERY unrecognized key, issue for issue
+     * with the interpreter's `finishUnknownKeys`.
+     *
+     * Three things must line up or the differential fuzz fails:
+     *
+     * 1. ORDER — the interpreter reports unknown keys AFTER the known fields,
+     *    and issue order is observable, so this is emitted after the field walk
+     *    but BEFORE the value escapes (see `preValid`). Verdict mode emits its
+     *    scan FIRST instead, to fail fast; it has no issues to order.
+     * 2. NO early return — one issue per unknown key, so the loop completes.
+     * 3. PATH — `[...effectivePath, key]`, through the same elision machinery
+     *    every other issue site here uses.
+     */
+    const strictReport = (
+      shape: Record<string, FieldLike>,
+      srcVar: string,
+      sfx: ReadonlyArray<string>,
+      dynIdx: string | null,
+    ): string => {
+      const setRef = cap(new Set(Object.keys(shape)))
+      const report = cap((c: ParseCtx, key: string, idx?: number) => {
+        c.issues.push(
+          makeIssue({
+            code: 'unrecognized_keys',
+            key: 'validate.object.unrecognized-key',
+            params: { key },
+            fallback: `Unrecognized key "${key}"`,
+            message: `Unrecognized key "${key}"`,
+            path: [...jitEffectivePath(c, sfx, idx), key],
+          }),
+        )
+      })
+      const ksv = nv()
+      const iv = nv()
+      const kv = nv()
+      const idxArg = dynIdx ? `, ${dynIdx}` : ''
+      const shapeKeys = Object.keys(shape)
+      // Parse mode must name each offending key, so it cannot reduce to a
+      // count the way verdict mode does — but it can GUARD on one. When every
+      // declared field must be present (the known-key checks above already
+      // reject a missing one), a key count of N means there is nothing to
+      // report, so the valid path skips the per-key lookups entirely and only
+      // a failing object pays for the scan.
+      const guard = shapeKeys.every((k) => fieldDefinedWhenValid(shape[k]!))
+        ? `if (${ksv}.length !== ${shapeKeys.length}) `
+        : ''
+      const scan = `for (var ${iv} = 0; ${iv} < ${ksv}.length; ${iv}++) { var ${kv} = ${ksv}[${iv}]; if (!${setRef}.has(${kv})) ${report}(ctx, ${kv}${idxArg}); }`
+      return `var ${ksv} = Object.keys(${srcVar}); ${guard}{ ${scan} }`
+    }
+
     const genChecks = (ops: CheckOpLike[], ve: string, ps: PathState): string => {
       const idxArg = ps.dynIdx ? `, ${ps.dynIdx}` : ''
       return ops
@@ -632,7 +684,18 @@ function compileJit(schema: Schema<unknown>, mode: JitMode): unknown {
         if (CHECK && field._unknownKeys === 'strict') {
           lines.push(strictScan(field.shape as Record<string, FieldLike>, srcVar))
         }
-        genObjectValue(field.shape as Record<string, FieldLike>, srcVar, onValid, onAsync, depth + 1, ps)
+        genObjectValue(
+          field.shape as Record<string, FieldLike>,
+          srcVar,
+          onValid,
+          onAsync,
+          depth + 1,
+          ps,
+          undefined,
+          !CHECK && field._unknownKeys === 'strict'
+            ? strictReport(field.shape as Record<string, FieldLike>, srcVar, ps.suffix, ps.dynIdx)
+            : undefined,
+        )
         lines.push(`}`)
         return
       }
@@ -830,7 +893,18 @@ function compileJit(schema: Schema<unknown>, mode: JitMode): unknown {
             if (CHECK && member._unknownKeys === 'strict') {
               lines.push(strictScan(member.shape as Record<string, FieldLike>, srcVar))
             }
-            genObjectValue(member.shape as Record<string, FieldLike>, srcVar, onValid, onAsync, depth + 1, ps, preset)
+            genObjectValue(
+              member.shape as Record<string, FieldLike>,
+              srcVar,
+              onValid,
+              onAsync,
+              depth + 1,
+              ps,
+              preset,
+              !CHECK && member._unknownKeys === 'strict'
+                ? strictReport(member.shape as Record<string, FieldLike>, srcVar, ps.suffix, ps.dynIdx)
+                : undefined,
+            )
           } else {
             // Non-inlinable member (own checks / strict / catchall / depth
             // cap) — its captured `_runInto` closure, exactly the
@@ -904,6 +978,14 @@ function compileJit(schema: Schema<unknown>, mode: JitMode): unknown {
       depth: number,
       ps: PathState,
       preset?: { key: string; varExpr: string },
+      /**
+       * Emitted immediately BEFORE the object value is handed to `onValid`.
+       * Parse-mode strict reporting rides here rather than after the call:
+       * `onValid` is what emits the `return`, so anything appended afterwards
+       * is dead code — which is how a first attempt shipped a strict object
+       * that silently accepted unknown keys.
+       */
+      preValid?: string,
     ): void => {
       const keys = Object.keys(shape)
       const literalOk = keys.every((key) => {
@@ -941,6 +1023,7 @@ function compileJit(schema: Schema<unknown>, mode: JitMode): unknown {
         }
         const litV = nv()
         lines.push(`let ${litV} = { ${parts.join(', ')} };`)
+        if (preValid) lines.push(preValid)
         lines.push(onValid(litV))
         return
       }
@@ -950,6 +1033,7 @@ function compileJit(schema: Schema<unknown>, mode: JitMode): unknown {
       // A pending descendant patches `outV` by reference when it settles, so
       // handing the object to `onValid` NOW is correct — the root return
       // barrier awaits every pending entry before the value escapes.
+      if (preValid) lines.push(preValid)
       lines.push(onValid(outV))
     }
 
