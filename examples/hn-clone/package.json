@@ -53,7 +53,7 @@
     "@pyreon/zero": "workspace:*",
     "@tanstack/query-core": "^5.102.2",
     "@tanstack/virtual-core": "^3.17.7",
-    "zod": "^4.4.3"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@pyreon/mcp": "workspace:*",

@@ -54,12 +54,16 @@ export function typeIssue(
   path: ReadonlyArray<PathSegment>,
 ): PyreonIssue {
   const actualType = describeType(actual)
+  // Built ONCE and used for both fields — `fallback` and `message` are the
+  // same English string here, and evaluating the template twice concatenated
+  // it twice on every type failure.
+  const text = `Expected ${expected}, received ${actualType}`
   return makeIssue({
     code: 'wrong_type',
     key: `validate.${expected}.required`,
     params: { expected, actual: actualType },
-    fallback: `Expected ${expected}, received ${actualType}`,
-    message: `Expected ${expected}, received ${actualType}`,
+    fallback: text,
+    message: text,
     path,
   })
 }

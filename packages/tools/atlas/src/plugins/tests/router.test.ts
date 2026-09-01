@@ -1,5 +1,5 @@
 import type { ComponentIntelligence, Scenario } from '../../core'
-import { installRouter, routerPlugin, uniqueSlugs, urlSlug, withRouteAxis } from '../router'
+import { installRouteFor, installRouter, routerPlugin, setRouteInstaller, uniqueSlugs, urlSlug, withRouteAxis } from '../router'
 
 const scenario = (id: string, name = id): Scenario => ({
   id,
@@ -145,5 +145,114 @@ describe('installRouter', () => {
     // A resolved-but-unusable module must not half-install.
     const partial = { createRouter: () => ({}) } as never
     expect(await installRouter(() => partial, [], '/')).toBeUndefined()
+  })
+})
+
+// ── the axis has to actually route ───────────────────────────────────────────
+//
+// `installRouter` had zero callers and `Scenario.route` had zero readers, while
+// `routerPlugin` was publicly exported. A `routerPlugin({ urls: [...] })` config
+// produced the expected doubled scenario count with names like
+// `Profile @ /users/999` — and every scenario passed having mounted with NO
+// router installed, so two different URLs rendered byte-identically and both
+// reported `pass`. A verification tool manufacturing confidence is the worst
+// kind of defect: its output is what you check instead of looking.
+//
+// Bisect-verified: dropping the `setRouteInstaller` call in `routerPlugin`
+// makes the install spec see no router and the report-when-unroutable spec see
+// no reason.
+describe('the route axis installs the router it advertises', () => {
+  // `_installRoute` is module-level state that `routerPlugin` WRITES, so a spec
+  // that sets it leaves it set for the next one. Every spec below happens to
+  // re-run `decorate()` first, which makes the file order-independent by
+  // accident rather than by construction — the moment one of them stops doing
+  // that, it silently borrows the previous spec's fake router and still passes.
+  afterEach(() => {
+    setRouteInstaller(undefined)
+  })
+
+  const fakeRouterModule = () => {
+    const created: Record<string, unknown>[] = []
+    const active: unknown[] = []
+    return {
+      created,
+      active,
+      mod: {
+        createRouter: (options: Record<string, unknown>) => {
+          created.push(options)
+          return { id: created.length }
+        },
+        setActiveRouter: (r: unknown) => {
+          active.push(r)
+        },
+      },
+    }
+  }
+
+  it('a scenario route installs a router built at that URL, then disposes it', async () => {
+    const fake = fakeRouterModule()
+    routerPlugin({ urls: ['/users/7'], load: () => fake.mod }).decorate?.({
+      name: 'Profile',
+      scenarios: [{ id: 'default', args: {} }],
+    } as never, { cwd: '.' })
+
+    const routed = await installRouteFor('/users/7')
+    expect(fake.created).toHaveLength(1)
+    expect(fake.created[0]!.url).toBe('/users/7')
+    // Installed…
+    expect(fake.active).toEqual([{ id: 1 }])
+    expect(routed.reason).toBeUndefined()
+    expect(routed.disposer).toBeTypeOf('function')
+
+    // …and removed on the way out. A router left installed outlives the
+    // scenario and answers for whatever runs next — including a check meant to
+    // observe a component WITHOUT one.
+    routed.disposer!()
+    expect(fake.active[fake.active.length - 1]).toBeNull()
+  })
+
+  it('a scenario with no route installs nothing and reports nothing', () => {
+    // The non-route path must stay free of both the install and the finding.
+    return installRouteFor(undefined).then((r) => {
+      expect(r.disposer).toBeUndefined()
+      expect(r.reason).toBeUndefined()
+    })
+  })
+
+  it('a route that CANNOT be applied is reported, not silently skipped', async () => {
+    // Configured with urls but no `load`: the axis still produces its
+    // scenarios, and the mounting owner must say they were not routed rather
+    // than pass them as if they had been.
+    routerPlugin({ urls: ['/a'] }).decorate?.({
+      name: 'X',
+      scenarios: [{ id: 'default', args: {} }],
+    } as never, { cwd: '.' })
+    const routed = await installRouteFor('/a')
+    expect(routed.disposer).toBeUndefined()
+    expect(routed.reason).toContain('not applied')
+    expect(routed.reason).toContain('/a')
+  })
+
+  it('the UNSET seam reports rather than passing silently', async () => {
+    // The reset direction of the seam, proven without going through
+    // `routerPlugin`. `installRouteFor` is called by whichever plugin owns
+    // mounting, which has no way to know whether a router was ever registered
+    // — so the un-registered state has to be a REASON, not a throw and not a
+    // silent `{}` that reads as "routed fine".
+    setRouteInstaller(undefined)
+    const routed = await installRouteFor('/unset')
+    expect(routed.disposer).toBeUndefined()
+    expect(routed.reason).toContain('not applied')
+    expect(routed.reason).toContain('/unset')
+  })
+
+  it('a load that resolves no module is reported too', async () => {
+    routerPlugin({ urls: ['/b'], load: () => undefined }).decorate?.({
+      name: 'X',
+      scenarios: [{ id: 'default', args: {} }],
+    } as never, { cwd: '.' })
+    const routed = await installRouteFor('/b')
+    expect(routed.disposer).toBeUndefined()
+    expect(routed.reason).toContain('did not load')
   })
 })

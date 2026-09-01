@@ -104,7 +104,11 @@ broken launcher as working.
 
 ### Workspace resolution (no build for dev)
 
-Each `package.json` has `"bun": "./src/index.ts"`; root tsconfig has `customConditions: ["bun"]`. **Vite's config bundler hardcodes the `node` condition → `lib/`**, so a `postinstall` bootstrap (`scripts/bootstrap.ts`) builds all packages when any `lib/` is missing OR stale (mtime drift).
+Each `package.json` has `"bun": "./src/index.ts"`; root tsconfig has `customConditions: ["bun"]`. **Vite's config bundler hardcodes the `node` condition → `lib/`**, so a `postinstall` bootstrap (`scripts/bootstrap.ts`) builds all packages whose SOURCE-CONTENT HASH differs from the one recorded in the
+gitignored root `.bootstrap-cache.json` (or whose `lib/` is missing/broken). Detection is
+mtime-INDEPENDENT — `touch`ing a source file does NOT trigger a rebuild, because a fresh CI
+`checkout` stamps every file identically and a `cache/restore` stamps `lib/` NEWER than `src/`,
+which made mtime ordering report a restored-stale `lib/` as fresh.
 
 - You do NOT manually `bun run build` after clone/worktree/pull — `bun install` handles it.
 - **If an example build fails with confusing errors (`MISSING_EXPORT`, missing files) after editing package source, run `bun scripts/bootstrap.ts`** — Vite is reading a stale `lib/`.

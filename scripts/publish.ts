@@ -3,7 +3,7 @@
  * Resolves workspace:^ → ^X.Y.Z before publish, restores after.
  * Skips already-published versions.
  *
- * Usage: bun run scripts/publish.ts [--dry-run] [--tag <tag>] [--otp=<code>]
+ * Usage: bun run scripts/publish.ts [--dry-run] [--tag <tag>] [--otp=<code>] [--only=<pkg>]
  *
  *   --tag <tag>   npm dist-tag for the published version. Defaults to
  *                 `latest`. Used by the prerelease workflow to publish
@@ -34,6 +34,17 @@ const NPM_PIN = '11.16.0'
 const dryRun = process.argv.includes('--dry-run')
 const otpArg = process.argv.find((a) => a.startsWith('--otp='))
 const otp = otpArg?.split('=')[1]
+// Bootstrap a SINGLE package. The first publish of a new scoped package cannot
+// go through OIDC (a trusted publisher can only be attached to a package that
+// already exists), so it has to be run by hand with a token — and the obvious
+// hand-command, `bun publish` from the package directory, ships a manifest
+// this script would have REWRITTEN: `workspace:*` dependencies left verbatim
+// (`npm i` then hard-fails with EUNSUPPORTEDPROTOCOL — the 0.18.0 compiler
+// incident), the `bun` export condition still pointing at `src/index.ts`, and
+// `src/` still in `files`. Routing the bootstrap through this flag makes that
+// first tarball identical in shape to every release that follows it.
+const onlyArg = process.argv.find((a) => a.startsWith('--only='))
+const only = onlyArg?.slice('--only='.length)
 const tagFlagIndex = process.argv.indexOf('--tag')
 const tag = tagFlagIndex >= 0 ? process.argv[tagFlagIndex + 1] : undefined
 
@@ -282,6 +293,7 @@ for (const dir of packageDirs) {
   const raw = await readFile(pkgPath, 'utf-8')
   const pkg = JSON.parse(raw)
   if (pkg.private || !pkg.name) continue
+  if (only && pkg.name !== only) continue
   if (PLATFORM_STUB_PACKAGES.has(pkg.name)) {
     console.log(`⏭️  ${pkg.name}@${pkg.version} — published by release-native.yml`)
     skipped.push(pkg.name)
@@ -586,7 +598,7 @@ if (needsBootstrap.length > 0) {
     // 65-package log. 0.46.0 proved a console.warn-only skip is invisible:
     // @pyreon/rich-text was skipped from every release for 3 weeks unnoticed.
     console.log(
-      `::warning title=First-publish bootstrap needed::${name} was NOT published — OIDC cannot create a package. From its directory: bun publish --access=public, then add a Trusted Publisher on npmjs.com (GitHub Actions → pyreon/pyreon → release.yml).`,
+      `::warning title=First-publish bootstrap needed::${name} was NOT published — OIDC cannot create a package. Bootstrap it with 'bun scripts/publish.ts --only=${name}' (NOT a bare 'bun publish' — that ships workspace:* deps and src/), then add a Trusted Publisher on npmjs.com (GitHub Actions → pyreon/pyreon → release.yml).`,
     )
   }
   // Run-summary block (the Actions run's Summary tab) — same visibility goal.
@@ -597,13 +609,18 @@ if (needsBootstrap.length > 0) {
       `\n## ⚠️ First-publish bootstrap needed (${needsBootstrap.length})\n\n` +
         needsBootstrap.map((n) => `- \`${n}\``).join('\n') +
         `\n\nOIDC trusted publishing cannot CREATE a package. One-time, per package:\n` +
-        `1. from the package directory: \`bun publish --access=public\` (your npm auth)\n` +
+        `1. from the REPO ROOT: \`bun scripts/publish.ts --only=${name}\` (your npm auth)\n` +
+        `   Do NOT run a bare \`bun publish\` from the package directory — it skips\n` +
+        `   this script's manifest rewrite, so the tarball ships \`workspace:*\`\n` +
+        `   dependencies (\`npm i\` then fails with EUNSUPPORTEDPROTOCOL), the \`bun\`\n` +
+        `   export condition pointing at src/, and src/ itself.\n` +
         `2. npmjs.com → package → Settings → add a Trusted Publisher (GitHub Actions, \`pyreon/pyreon\`, \`release.yml\`)\n\n` +
         `The post-publish \`check-published-state\` existence sweep fails until this is done.\n`,
     )
   }
   console.warn(
-    '\n   For each: from the package directory run `bun publish --access=public`',
+    '\n   For each, from the REPO ROOT: `bun scripts/publish.ts --only=<pkg>`\n' +
+      '   (a bare `bun publish` skips the manifest rewrite — see above)',
   )
   console.warn(
     '   with a classic npm token, then add a Trusted Publisher on npmjs.com',
