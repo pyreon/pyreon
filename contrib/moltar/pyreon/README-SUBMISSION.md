@@ -110,6 +110,38 @@ measures a smaller object* (49ns). The same cell read 6.8M ops/s at ±106% on th
 run before. Treat any single figure from here as a smoke test until it is taken
 on an idle machine, and prefer the margin column over the headline.
 
+## Not every cell compares the same work
+
+`parseStrict` is the clearest case. moltar's typia entry is:
+
+```js
+addCase('typia', 'parseStrict', data => {
+  if (!equals(data)) throw new Error('wrong type.');
+  return data;          // the INPUT, by reference
+});
+addCase('typia', 'parseSafe', data => {
+  if (!is(data)) throw new Error('wrong type.');
+  return clone(data);   // this one clones
+});
+```
+
+`parseOrThrow` returns a stripped CLONE, a deliberate Pyreon semantic. typia's
+own numbers show the size of the difference: its `parseStrict` (131.9M) is 2.3x
+faster than its `parseSafe` (57.0M) — and strict does strictly MORE validation
+work than safe, so the only way it comes out faster is by skipping the clone.
+ArkType aliases the input the same way.
+
+That is within the letter of the benchmark (its assertion is `toEqual`, which is
+structural, so aliasing passes) and it is not cheating. It does mean the
+`parseStrict` and `parseSafe` columns are not measuring one job across all
+libraries, and a ranking there compares allocate-vs-alias as much as speed.
+
+The ASSERT cells have no such asymmetry — every entry returns a boolean and
+allocates nothing — so `assertLoose` / `assertStrict` are the honest
+apples-to-apples comparison. On those, typia is genuinely ahead of us on
+`assertStrict` (134.1M vs 86.7M, 1.55x) doing identical work, and that gap is
+real.
+
 ## Why the assert cases wrap `.is()` in a throw
 
 `assertLoose` / `assertStrict` require a **throw** on invalid input, not a
