@@ -3971,13 +3971,30 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       // `0...n`); a literal step > 1 → `stride(from:to:by:)`
       // (inclusive → `through:`). Ranges keep break/continue semantics.
       const pad = ' '.repeat(indent)
-      const from = emitSwiftExpr(s.from, indent)
+      const fromT = inferType(s.from, _activeInferCtx)
+      const fromRaw = emitSwiftExpr(s.from, indent)
+      // A float FROM bound cannot seed an Int range/stride (and a Double
+      // stride would type the counter Double, breaking the Int-counter
+      // contract the body coercion relies on). Identity for integral-valued
+      // Doubles — the dominant shape, a Math.ceil/max result typed Double by
+      // JS `number`. Descending starts at floor(f), ascending at ceil(f).
+      const from = isFloatTypeIR(fromT)
+        ? s.down === true
+          ? `Int(floor(Double(${fromRaw})))`
+          : `Int(ceil(Double(${fromRaw})))`
+        : fromRaw
       const toT = inferType(s.to, _activeInferCtx)
       const toRaw = emitSwiftExpr(s.to, indent)
       // A Double TO-bound makes `0..<n` a Range<Double> — not a Sequence at
       // all. JS `i < n` trips ceil(n) times for fractional n (identity for
       // integral), so the bound wraps `Int(ceil(...))`.
-      const to = isFloatTypeIR(toT) ? `Int(ceil(Double(${toRaw})))` : toRaw
+      // Descending mirror: exclusive `i > n` stops ABOVE n (floor), the
+      // inclusive `i >= n` reaches down to ceil(n).
+      const to = isFloatTypeIR(toT)
+        ? s.down === true && s.inclusive !== true
+          ? `Int(floor(Double(${toRaw})))`
+          : `Int(ceil(Double(${toRaw})))`
+        : toRaw
       // The counter is an Int in the body's scope — registering it lets the
       // binary-op coercion wrap `Double(i)` when it meets a Double
       // (`first + step * i` was 'Int * Double' on the charts engine; an
@@ -3990,12 +4007,16 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
         .join('\n')
       if (hadItem) _activeInferCtx.locals.set(s.item, prevItem!)
       else _activeInferCtx.locals.delete(s.item)
+      // Swift has no descending range literal — a `down` loop is always a
+      // negative-step stride (`stride(from: n, through: 0, by: -1)`).
       const head =
-        s.step !== undefined
-          ? `stride(from: ${from}, ${s.inclusive === true ? 'through' : 'to'}: ${to}, by: ${emitSwiftExpr(s.step, indent)})`
-          : s.inclusive === true
-            ? `${from}...${to}`
-            : `${from}..<${to}`
+        s.down === true
+          ? `stride(from: ${from}, ${s.inclusive === true ? 'through' : 'to'}: ${to}, by: ${s.step !== undefined ? `-${emitSwiftExpr(s.step, indent)}` : '-1'})`
+          : s.step !== undefined
+            ? `stride(from: ${from}, ${s.inclusive === true ? 'through' : 'to'}: ${to}, by: ${emitSwiftExpr(s.step, indent)})`
+            : s.inclusive === true
+              ? `${from}...${to}`
+              : `${from}..<${to}`
       return `for ${swiftIdent(s.item)} in ${head} {\n${lines}\n${pad}}`
     }
     case 'do-while': {
