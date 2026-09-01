@@ -197,6 +197,37 @@ const SUITES: Suite[] = [
     ],
   },
   {
+    // pyreon.dev itself. The site had NO e2e suite registered here at all —
+    // `test:e2e:docs` existed in package.json and `e2e-configs/docs.config.ts`
+    // was complete, but nothing ever invoked either, so the public docs site
+    // shipped with zero browser coverage. That is what let the search overlay
+    // die unnoticed: the compiler inlined `const state = useSearch(opts)` at
+    // every JSX use site, so Cmd+K toggled a signal no binding was subscribed
+    // to. The spec that would have caught it (`Cmd+K opens search overlay`)
+    // was written, correct, and never run.
+    //
+    // Triggered by the docs source AND by the packages the site is built
+    // from — a compiler or runtime change is exactly how it broke.
+    name: 'docs',
+    script: 'test:e2e:docs',
+    triggers: [
+      ...RENDER_CORE,
+      'packages/core/compiler/',
+      'packages/tools/vite-plugin/',
+      'packages/zero/zero/',
+      'packages/zero/zero-content/',
+      // The SITE's code, not its prose: a markdown content edit must stay
+      // free (209 doc pages — booting Playwright for a typo is the kind of
+      // cost that gets a suite disabled again).
+      'docs/src/components/',
+      'docs/src/routes/',
+      'docs/vite-plugins/',
+      'docs/vite.config.ts',
+      'docs/content.config.ts',
+      'e2e/docs.spec.ts',
+    ],
+  },
+  {
     name: 'zero-islands',
     script: 'test:e2e:zero-islands',
     triggers: [

@@ -289,3 +289,73 @@ describe('internal <a href> full-reload dev warning (PZ-06)', () => {
     expect(warnsContaining(RELOAD_MSG)).toBe(1) // unchanged — listener removed
   })
 })
+
+// ─── User event handlers are COMPOSED, not overwritten ───────────────────────
+//
+// `onClick: handleClick` was spread LAST in RouterLink's `h('a', …)` call, so a
+// consumer's `onClick` was silently dropped — as were `onMouseEnter`/`onFocus`.
+// The `class` prop had already been fixed for exactly this reason ("overriding
+// the user's class silently dropped any conditional class"), and the events were
+// left behind: folklore, not a fix, so the class stayed open.
+//
+// The shipped instance was `@pyreon/zero-content`'s search overlay, which closes
+// itself in `onClick` — so on pyreon.dev a result click navigated and left the
+// modal dialog covering the destination page. Its unit test passed throughout
+// because it MOCKS RouterLink with a stub that does call `onClick`.
+describe('RouterLink composes user event handlers', () => {
+  test('the user onClick runs AND navigation still happens', async () => {
+    clearRouterEnv()
+    const router = makeRouter({ routes, mode: 'history', url: '/' })
+    setActiveRouter(router as never)
+    const el = container()
+    let clicked = 0
+    mount(
+      h(RouterLink, { to: '/settings', onClick: () => { clicked++ } }, 'Settings'),
+      el,
+    )
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true })
+    el.querySelector('a')?.dispatchEvent(event)
+    expect(clicked).toBe(1)
+    expect(event.defaultPrevented).toBe(true)
+    await new Promise<void>((r) => setTimeout(r, 10))
+    expect(router.currentRoute().path).toBe('/settings')
+  })
+
+  test('a user onClick that preventDefaults SUPPRESSES navigation', async () => {
+    // User-first ordering is what makes this composable rather than a race:
+    // `handleClick` already bails on `defaultPrevented`.
+    clearRouterEnv()
+    const router = makeRouter({ routes, mode: 'history', url: '/' })
+    setActiveRouter(router as never)
+    const el = container()
+    mount(
+      h(RouterLink, { to: '/settings', onClick: (e: MouseEvent) => e.preventDefault() }, 'S'),
+      el,
+    )
+    el.querySelector('a')?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    await new Promise<void>((r) => setTimeout(r, 10))
+    expect(router.currentRoute().path).toBe('/')
+  })
+
+  test('user onMouseEnter and onFocus still fire', () => {
+    clearRouterEnv()
+    const router = makeRouter({ routes, mode: 'history', url: '/' })
+    setActiveRouter(router as never)
+    const el = container()
+    let entered = 0
+    let focused = 0
+    mount(
+      h(
+        RouterLink,
+        { to: '/settings', onMouseEnter: () => { entered++ }, onFocus: () => { focused++ } },
+        'S',
+      ),
+      el,
+    )
+    const anchor = el.querySelector('a')
+    anchor?.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }))
+    anchor?.dispatchEvent(new FocusEvent('focus', { bubbles: true }))
+    expect(entered).toBe(1)
+    expect(focused).toBe(1)
+  })
+})

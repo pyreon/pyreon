@@ -2385,4 +2385,26 @@ describeNative('templatizeComponentChildren parity', () => {
     compareTplComponents(
       'const Node = (props) => <div class="branch"><Node d={props.d} /><Node d={props.d} /></div>',
     ))
+
+  describe('prop-derived const initialized by a factory call (useX / createX)', () => {
+    it('a `useX` result is referenced, not re-invoked, in both backends', () => {
+      compare(
+        `function C(props){ const s = useThing({ n: props.n }); return <div class={() => s.open() ? 'a' : 'b'}>{() => s.label()}</div> }`,
+      )
+    })
+    it('a `createX` result is referenced, not re-invoked, in both backends', () => {
+      compare(
+        `function C(props){ const m = createModel(props.data); return <div class={() => m.view()}>{() => m.title()}</div> }`,
+      )
+    })
+    it('the member form `Feature.useX(props.q)` agrees across backends', () => {
+      compare(`function C(props){ const r = Posts.useSearch(props.q); return <div>{() => r.data()}</div> }`)
+    })
+    it('an unrecognised callee still inlines identically in both backends', () => {
+      compare(`function C(props){ const cls = cx(props.a, props.b); return <div class={cls}/> }`)
+    })
+    it('a lowercase `use`-prefixed name is not treated as a hook in either backend', () => {
+      compare(`function C(props){ const v = username(props.id); return <div>{v}</div> }`)
+    })
+  })
 })

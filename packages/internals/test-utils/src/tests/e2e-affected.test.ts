@@ -125,10 +125,25 @@ describe('selectSuites', () => {
     expect(names).not.toContain('app-showcase')
   })
 
-  it('docs-only change set → no suites', () => {
+  it('docs PROSE-only change set → no suites', () => {
+    // A markdown content edit stays free — 209 doc pages, and booting a
+    // browser suite for a typo is how a suite ends up disabled again.
     expect(
       selectSuites(['docs/src/content/docs/zero.md', 'README.md', 'CLAUDE.md']),
     ).toEqual([])
+  })
+
+  it('a docs SITE-code change selects the docs suite', () => {
+    // The site had no registered suite at all until the search overlay was
+    // found dead in a real browser: `test:e2e:docs` and its config existed and
+    // nothing ever ran them. Lock the registration, not just the script.
+    expect(selectSuites(['docs/src/components/Header.tsx']).map((s) => s.name)).toContain('docs')
+    expect(selectSuites(['docs/src/routes/_layout.tsx']).map((s) => s.name)).toContain('docs')
+  })
+
+  it('a compiler change selects the docs suite', () => {
+    // The site is BUILT by the compiler; that is exactly how search broke.
+    expect(selectSuites(['packages/core/compiler/src/jsx.ts']).map((s) => s.name)).toContain('docs')
   })
 
   it('every suite is uniquely named and maps to a test:e2e* script', () => {

@@ -157,7 +157,25 @@ fn jsx_to_html_attr(name: &str) -> &str {
     }
 }
 
+/// A callee name following the framework-wide HOOK / FACTORY convention
+/// (`useX` / `createX`). Mirrors `isFactoryConventionName` in the JS
+/// backend — see its doc comment for why the explicit `STATEFUL_CALLS`
+/// list alone is a silent-hole generator.
+fn is_factory_convention_name(name: &str) -> bool {
+    for prefix in ["use", "create"] {
+        if let Some(rest) = name.strip_prefix(prefix) {
+            if rest.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 fn is_stateful_call(name: &str) -> bool {
+    if is_factory_convention_name(name) {
+        return true;
+    }
     matches!(
         name,
         "signal"
@@ -1086,8 +1104,13 @@ fn is_pure_coercion_call(call: &CallExpression) -> bool {
 
 fn is_stateful_call_expr(expr: &Expression) -> bool {
     if let Expression::CallExpression(call) = expr {
-        if let Expression::Identifier(id) = &call.callee {
-            return is_stateful_call(id.name.as_str());
+        match &call.callee {
+            Expression::Identifier(id) => return is_stateful_call(id.name.as_str()),
+            // `Posts.useSearch(term)` — the convention lives on the PROPERTY.
+            Expression::StaticMemberExpression(m) => {
+                return is_factory_convention_name(m.property.name.as_str())
+            }
+            _ => {}
         }
     }
     false
