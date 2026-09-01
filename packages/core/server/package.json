@@ -21,12 +21,14 @@
     ".": {
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
-      "types": "./lib/types/index.d.ts"
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
     },
     "./client": {
       "bun": "./src/client.ts",
       "import": "./lib/client.js",
-      "types": "./lib/types/client.d.ts"
+      "types": "./lib/types/client.d.ts",
+      "default": "./lib/client.js"
     }
   },
   "files": [

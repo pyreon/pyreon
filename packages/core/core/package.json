@@ -21,22 +21,26 @@
     ".": {
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
-      "types": "./lib/types/index.d.ts"
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
     },
     "./jsx-runtime": {
       "bun": "./src/jsx-runtime.ts",
       "import": "./lib/jsx-runtime.js",
-      "types": "./lib/types/jsx-runtime.d.ts"
+      "types": "./lib/types/jsx-runtime.d.ts",
+      "default": "./lib/jsx-runtime.js"
     },
     "./jsx-dev-runtime": {
       "bun": "./src/jsx-dev-runtime.ts",
       "import": "./lib/jsx-dev-runtime.js",
-      "types": "./lib/types/jsx-dev-runtime.d.ts"
+      "types": "./lib/types/jsx-dev-runtime.d.ts",
+      "default": "./lib/jsx-dev-runtime.js"
     },
     "./plain": {
       "bun": "./src/plain.ts",
       "import": "./lib/plain.js",
-      "types": "./lib/types/plain.d.ts"
+      "types": "./lib/types/plain.d.ts",
+      "default": "./lib/plain.js"
     }
   },
   "files": [

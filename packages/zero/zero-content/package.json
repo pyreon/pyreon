@@ -21,17 +21,20 @@
     ".": {
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
-      "types": "./lib/types/index.d.ts"
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
     },
     "./plugin": {
       "bun": "./src/plugin.ts",
       "import": "./lib/plugin.js",
-      "types": "./lib/types/plugin.d.ts"
+      "types": "./lib/types/plugin.d.ts",
+      "default": "./lib/plugin.js"
     },
     "./schema": {
       "bun": "./src/schema.ts",
       "import": "./lib/schema.js",
-      "types": "./lib/types/schema.d.ts"
+      "types": "./lib/types/schema.d.ts",
+      "default": "./lib/schema.js"
     }
   },
   "files": [

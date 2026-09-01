@@ -21,17 +21,20 @@
     ".": {
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
-      "types": "./lib/types/index.d.ts"
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
     },
     "./jsx-runtime": {
       "bun": "./src/jsx-runtime.ts",
       "import": "./lib/jsx-runtime.js",
-      "types": "./lib/types/jsx-runtime.d.ts"
+      "types": "./lib/types/jsx-runtime.d.ts",
+      "default": "./lib/jsx-runtime.js"
     },
     "./jsx-dev-runtime": {
       "bun": "./src/jsx-runtime.ts",
       "import": "./lib/jsx-runtime.js",
-      "types": "./lib/types/jsx-runtime.d.ts"
+      "types": "./lib/types/jsx-runtime.d.ts",
+      "default": "./lib/jsx-runtime.js"
     }
   },
   "files": [

@@ -21,22 +21,26 @@
     ".": {
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
-      "types": "./lib/types/index.d.ts"
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
     },
     "./plain": {
       "bun": "./src/plain.ts",
       "import": "./lib/plain.js",
-      "types": "./lib/types/plain.d.ts"
+      "types": "./lib/types/plain.d.ts",
+      "default": "./lib/plain.js"
     },
     "./diagnose": {
       "bun": "./src/diagnose.ts",
       "import": "./lib/diagnose.js",
-      "types": "./lib/types/diagnose.d.ts"
+      "types": "./lib/types/diagnose.d.ts",
+      "default": "./lib/diagnose.js"
     },
     "./fs-route-convention": {
       "bun": "./src/fs-route-convention.ts",
       "import": "./lib/fs-route-convention.js",
-      "types": "./lib/types/fs-route-convention.d.ts"
+      "types": "./lib/types/fs-route-convention.d.ts",
+      "default": "./lib/fs-route-convention.js"
     }
   },
   "files": [

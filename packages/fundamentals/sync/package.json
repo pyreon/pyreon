@@ -21,17 +21,20 @@
     ".": {
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
-      "types": "./lib/types/index.d.ts"
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
     },
     "./yjs": {
       "bun": "./src/yjs.ts",
       "import": "./lib/yjs.js",
-      "types": "./lib/types/yjs.d.ts"
+      "types": "./lib/types/yjs.d.ts",
+      "default": "./lib/yjs.js"
     },
     "./server": {
       "bun": "./src/server.ts",
       "import": "./lib/server.js",
-      "types": "./lib/types/server.d.ts"
+      "types": "./lib/types/server.d.ts",
+      "default": "./lib/server.js"
     }
   },
   "files": [

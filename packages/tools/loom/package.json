@@ -27,27 +27,32 @@
     ".": {
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
-      "types": "./lib/types/index.d.ts"
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
     },
     "./core": {
       "bun": "./src/core.ts",
       "import": "./lib/core.js",
-      "types": "./lib/types/core.d.ts"
+      "types": "./lib/types/core.d.ts",
+      "default": "./lib/core.js"
     },
     "./cli": {
       "bun": "./src/cli.ts",
       "import": "./lib/cli.js",
-      "types": "./lib/types/cli.d.ts"
+      "types": "./lib/types/cli.d.ts",
+      "default": "./lib/cli.js"
     },
     "./ui": {
       "bun": "./src/ui.ts",
       "import": "./lib/ui.js",
-      "types": "./lib/types/ui.d.ts"
+      "types": "./lib/types/ui.d.ts",
+      "default": "./lib/ui.js"
     },
     "./dev": {
       "bun": "./src/dev.ts",
       "import": "./lib/dev.js",
-      "types": "./lib/types/dev.d.ts"
+      "types": "./lib/types/dev.d.ts",
+      "default": "./lib/dev.js"
     },
     "./package.json": "./package.json"
   },

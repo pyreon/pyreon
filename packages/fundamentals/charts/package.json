@@ -21,27 +21,32 @@
     ".": {
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
-      "types": "./lib/types/index.d.ts"
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
     },
     "./manual": {
       "bun": "./src/manual.ts",
       "import": "./lib/manual.js",
-      "types": "./lib/types/manual.d.ts"
+      "types": "./lib/types/manual.d.ts",
+      "default": "./lib/manual.js"
     },
     "./vite": {
       "bun": "./src/vite.ts",
       "import": "./lib/vite.js",
-      "types": "./lib/types/vite.d.ts"
+      "types": "./lib/types/vite.d.ts",
+      "default": "./lib/vite.js"
     },
     "./webview": {
       "bun": "./src/webview.ts",
       "import": "./lib/webview.js",
-      "types": "./lib/types/webview.d.ts"
+      "types": "./lib/types/webview.d.ts",
+      "default": "./lib/webview.js"
     },
     "./plot": {
       "bun": "./src/plot.ts",
       "import": "./lib/plot.js",
-      "types": "./lib/types/plot.d.ts"
+      "types": "./lib/types/plot.d.ts",
+      "default": "./lib/plot.js"
     }
   },
   "files": [

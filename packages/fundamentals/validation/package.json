@@ -21,22 +21,26 @@
     ".": {
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
-      "types": "./lib/types/index.d.ts"
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
     },
     "./zod": {
       "bun": "./src/zod.ts",
       "import": "./lib/zod.js",
-      "types": "./lib/types/zod.d.ts"
+      "types": "./lib/types/zod.d.ts",
+      "default": "./lib/zod.js"
     },
     "./valibot": {
       "bun": "./src/valibot.ts",
       "import": "./lib/valibot.js",
-      "types": "./lib/types/valibot.d.ts"
+      "types": "./lib/types/valibot.d.ts",
+      "default": "./lib/valibot.js"
     },
     "./arktype": {
       "bun": "./src/arktype.ts",
       "import": "./lib/arktype.js",
-      "types": "./lib/types/arktype.d.ts"
+      "types": "./lib/types/arktype.d.ts",
+      "default": "./lib/arktype.js"
     }
   },
   "files": [

@@ -21,17 +21,20 @@
     ".": {
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
-      "types": "./lib/types/index.d.ts"
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
     },
     "./lpih": {
       "bun": "./src/lpih.ts",
       "import": "./lib/lpih.js",
-      "types": "./lib/types/lpih.d.ts"
+      "types": "./lib/types/lpih.d.ts",
+      "default": "./lib/lpih.js"
     },
     "./coverage": {
       "bun": "./src/coverage.ts",
       "import": "./lib/coverage.js",
-      "types": "./lib/types/coverage.d.ts"
+      "types": "./lib/types/coverage.d.ts",
+      "default": "./lib/coverage.js"
     }
   },
   "files": [

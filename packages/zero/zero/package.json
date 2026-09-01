@@ -21,162 +21,194 @@
     ".": {
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
-      "types": "./lib/types/index.d.ts"
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
     },
     "./server": {
       "bun": "./src/server.ts",
       "import": "./lib/server.js",
-      "types": "./lib/types/server.d.ts"
+      "types": "./lib/types/server.d.ts",
+      "default": "./lib/server.js"
     },
     "./client": {
       "bun": "./src/client.ts",
       "import": "./lib/client.js",
-      "types": "./lib/types/client.d.ts"
+      "types": "./lib/types/client.d.ts",
+      "default": "./lib/client.js"
     },
     "./config": {
       "bun": "./src/config.ts",
       "import": "./lib/config.js",
-      "types": "./lib/types/config.d.ts"
+      "types": "./lib/types/config.d.ts",
+      "default": "./lib/config.js"
     },
     "./image": {
       "bun": "./src/image.tsx",
       "import": "./lib/image.js",
-      "types": "./lib/types/image.d.ts"
+      "types": "./lib/types/image.d.ts",
+      "default": "./lib/image.js"
     },
     "./no-optimize": {
       "bun": "./src/no-optimize.tsx",
       "import": "./lib/no-optimize.js",
-      "types": "./lib/types/no-optimize.d.ts"
+      "types": "./lib/types/no-optimize.d.ts",
+      "default": "./lib/no-optimize.js"
     },
     "./use-resource-hints": {
       "bun": "./src/use-resource-hints.ts",
       "import": "./lib/use-resource-hints.js",
-      "types": "./lib/types/use-resource-hints.d.ts"
+      "types": "./lib/types/use-resource-hints.d.ts",
+      "default": "./lib/use-resource-hints.js"
     },
     "./link": {
       "bun": "./src/link.tsx",
       "import": "./lib/link.js",
-      "types": "./lib/types/link.d.ts"
+      "types": "./lib/types/link.d.ts",
+      "default": "./lib/link.js"
     },
     "./script": {
       "bun": "./src/script.tsx",
       "import": "./lib/script.js",
-      "types": "./lib/types/script.d.ts"
+      "types": "./lib/types/script.d.ts",
+      "default": "./lib/script.js"
     },
     "./font": {
       "bun": "./src/font.ts",
       "import": "./lib/font.js",
-      "types": "./lib/types/font.d.ts"
+      "types": "./lib/types/font.d.ts",
+      "default": "./lib/font.js"
     },
     "./cache": {
       "bun": "./src/cache.ts",
       "import": "./lib/cache.js",
-      "types": "./lib/types/cache.d.ts"
+      "types": "./lib/types/cache.d.ts",
+      "default": "./lib/cache.js"
     },
     "./seo": {
       "bun": "./src/seo.ts",
       "import": "./lib/seo.js",
-      "types": "./lib/types/seo.d.ts"
+      "types": "./lib/types/seo.d.ts",
+      "default": "./lib/seo.js"
     },
     "./theme": {
       "bun": "./src/theme.tsx",
       "import": "./lib/theme.js",
-      "types": "./lib/types/theme.d.ts"
+      "types": "./lib/types/theme.d.ts",
+      "default": "./lib/theme.js"
     },
     "./image-plugin": {
       "bun": "./src/image-plugin.ts",
       "import": "./lib/image-plugin.js",
-      "types": "./lib/types/image-plugin.d.ts"
+      "types": "./lib/types/image-plugin.d.ts",
+      "default": "./lib/image-plugin.js"
     },
     "./image-types": {
       "bun": "./src/image-types.ts",
       "import": "./lib/image-types.js",
-      "types": "./lib/types/image-types.d.ts"
+      "types": "./lib/types/image-types.d.ts",
+      "default": "./lib/image-types.js"
     },
     "./font-import-plugin": {
       "bun": "./src/font-import-plugin.ts",
       "import": "./lib/font-import-plugin.js",
-      "types": "./lib/types/font-import-plugin.d.ts"
+      "types": "./lib/types/font-import-plugin.d.ts",
+      "default": "./lib/font-import-plugin.js"
     },
     "./font-types": {
       "bun": "./src/font-types.ts",
       "import": "./lib/font-types.js",
-      "types": "./lib/types/font-types.d.ts"
+      "types": "./lib/types/font-types.d.ts",
+      "default": "./lib/font-types.js"
     },
     "./actions": {
       "bun": "./src/actions.ts",
       "import": "./lib/actions.js",
-      "types": "./lib/types/actions.d.ts"
+      "types": "./lib/types/actions.d.ts",
+      "default": "./lib/actions.js"
     },
     "./api-routes": {
       "bun": "./src/api-routes.ts",
       "import": "./lib/api-routes.js",
-      "types": "./lib/types/api-routes.d.ts"
+      "types": "./lib/types/api-routes.d.ts",
+      "default": "./lib/api-routes.js"
     },
     "./cors": {
       "bun": "./src/cors.ts",
       "import": "./lib/cors.js",
-      "types": "./lib/types/cors.d.ts"
+      "types": "./lib/types/cors.d.ts",
+      "default": "./lib/cors.js"
     },
     "./rate-limit": {
       "bun": "./src/rate-limit.ts",
       "import": "./lib/rate-limit.js",
-      "types": "./lib/types/rate-limit.d.ts"
+      "types": "./lib/types/rate-limit.d.ts",
+      "default": "./lib/rate-limit.js"
     },
     "./compression": {
       "bun": "./src/compression.ts",
       "import": "./lib/compression.js",
-      "types": "./lib/types/compression.d.ts"
+      "types": "./lib/types/compression.d.ts",
+      "default": "./lib/compression.js"
     },
     "./testing": {
       "bun": "./src/testing.ts",
       "import": "./lib/testing.js",
-      "types": "./lib/types/testing.d.ts"
+      "types": "./lib/types/testing.d.ts",
+      "default": "./lib/testing.js"
     },
     "./meta": {
       "bun": "./src/meta.tsx",
       "import": "./lib/meta.js",
-      "types": "./lib/types/meta.d.ts"
+      "types": "./lib/types/meta.d.ts",
+      "default": "./lib/meta.js"
     },
     "./favicon": {
       "bun": "./src/favicon.ts",
       "import": "./lib/favicon.js",
-      "types": "./lib/types/favicon.d.ts"
+      "types": "./lib/types/favicon.d.ts",
+      "default": "./lib/favicon.js"
     },
     "./og-image": {
       "bun": "./src/og-image.ts",
       "import": "./lib/og-image.js",
-      "types": "./lib/types/og-image.d.ts"
+      "types": "./lib/types/og-image.d.ts",
+      "default": "./lib/og-image.js"
     },
     "./i18n-routing": {
       "bun": "./src/i18n-routing.ts",
       "import": "./lib/i18n-routing.js",
-      "types": "./lib/types/i18n-routing.d.ts"
+      "types": "./lib/types/i18n-routing.d.ts",
+      "default": "./lib/i18n-routing.js"
     },
     "./ai": {
       "bun": "./src/ai.ts",
       "import": "./lib/ai.js",
-      "types": "./lib/types/ai.d.ts"
+      "types": "./lib/types/ai.d.ts",
+      "default": "./lib/ai.js"
     },
     "./middleware": {
       "bun": "./src/middleware.ts",
       "import": "./lib/middleware.js",
-      "types": "./lib/types/middleware.d.ts"
+      "types": "./lib/types/middleware.d.ts",
+      "default": "./lib/middleware.js"
     },
     "./csp": {
       "bun": "./src/csp.ts",
       "import": "./lib/csp.js",
-      "types": "./lib/types/csp.d.ts"
+      "types": "./lib/types/csp.d.ts",
+      "default": "./lib/csp.js"
     },
     "./env": {
       "bun": "./src/env.ts",
       "import": "./lib/env.js",
-      "types": "./lib/types/env.d.ts"
+      "types": "./lib/types/env.d.ts",
+      "default": "./lib/env.js"
     },
     "./logger": {
       "bun": "./src/logger.ts",
       "import": "./lib/logger.js",
-      "types": "./lib/types/logger.d.ts"
+      "types": "./lib/types/logger.d.ts",
+      "default": "./lib/logger.js"
     }
   },
   "files": [

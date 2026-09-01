@@ -21,12 +21,14 @@
     ".": {
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
-      "types": "./lib/types/index.d.ts"
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
     },
     "./router": {
       "bun": "./src/router.ts",
       "import": "./lib/router.js",
-      "types": "./lib/types/router.d.ts"
+      "types": "./lib/types/router.d.ts",
+      "default": "./lib/router.js"
     }
   },
   "files": [

@@ -21,12 +21,14 @@
     ".": {
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
-      "types": "./lib/types/index.d.ts"
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
     },
     "./webview": {
       "bun": "./src/webview.ts",
       "import": "./lib/webview.js",
-      "types": "./lib/types/webview.d.ts"
+      "types": "./lib/types/webview.d.ts",
+      "default": "./lib/webview.js"
     }
   },
   "files": [

@@ -24,15 +24,18 @@
     ".": {
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
-      "types": "./lib/types/index.d.ts"
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
     },
     "./cli": {
       "bun": "./src/cli.ts",
-      "import": "./lib/cli.js"
+      "import": "./lib/cli.js",
+      "default": "./lib/cli.js"
     },
     "./lint-worker": {
       "bun": "./src/lint-worker.ts",
-      "import": "./lib/lint-worker.js"
+      "import": "./lib/lint-worker.js",
+      "default": "./lib/lint-worker.js"
     },
     "./package.json": "./package.json"
   },

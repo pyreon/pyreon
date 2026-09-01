@@ -21,27 +21,32 @@
     ".": {
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
-      "types": "./lib/types/index.d.ts"
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
     },
     "./hooks": {
       "bun": "./src/hooks.ts",
       "import": "./lib/hooks.js",
-      "types": "./lib/types/hooks.d.ts"
+      "types": "./lib/types/hooks.d.ts",
+      "default": "./lib/hooks.js"
     },
     "./signals": {
       "bun": "./src/signals.ts",
       "import": "./lib/signals.js",
-      "types": "./lib/types/signals.d.ts"
+      "types": "./lib/types/signals.d.ts",
+      "default": "./lib/signals.js"
     },
     "./jsx-runtime": {
       "bun": "./src/jsx-runtime.ts",
       "import": "./lib/jsx-runtime.js",
-      "types": "./lib/types/jsx-runtime.d.ts"
+      "types": "./lib/types/jsx-runtime.d.ts",
+      "default": "./lib/jsx-runtime.js"
     },
     "./jsx-dev-runtime": {
       "bun": "./src/jsx-runtime.ts",
       "import": "./lib/jsx-runtime.js",
-      "types": "./lib/types/jsx-runtime.d.ts"
+      "types": "./lib/types/jsx-runtime.d.ts",
+      "default": "./lib/jsx-runtime.js"
     }
   },
   "files": [

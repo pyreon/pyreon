@@ -21,32 +21,38 @@
     ".": {
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
-      "types": "./lib/types/index.d.ts"
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
     },
     "./middleware": {
       "bun": "./src/middleware.ts",
       "import": "./lib/middleware.js",
-      "types": "./lib/types/middleware.d.ts"
+      "types": "./lib/types/middleware.d.ts",
+      "default": "./lib/middleware.js"
     },
     "./schema": {
       "bun": "./src/schema.ts",
       "import": "./lib/schema.js",
-      "types": "./lib/types/schema.d.ts"
+      "types": "./lib/types/schema.d.ts",
+      "default": "./lib/schema.js"
     },
     "./query": {
       "bun": "./src/query.ts",
       "import": "./lib/query.js",
-      "types": "./lib/types/query.d.ts"
+      "types": "./lib/types/query.d.ts",
+      "default": "./lib/query.js"
     },
     "./mock": {
       "bun": "./src/mock.ts",
       "import": "./lib/mock.js",
-      "types": "./lib/types/mock.d.ts"
+      "types": "./lib/types/mock.d.ts",
+      "default": "./lib/mock.js"
     },
     "./server": {
       "bun": "./src/server.ts",
       "import": "./lib/server.js",
-      "types": "./lib/types/server.d.ts"
+      "types": "./lib/types/server.d.ts",
+      "default": "./lib/server.js"
     },
     "./package.json": "./package.json"
   },

@@ -21,22 +21,26 @@
     ".": {
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
-      "types": "./lib/types/index.d.ts"
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
     },
     "./transition": {
       "bun": "./src/transition-entry.ts",
       "import": "./lib/transition-entry.js",
-      "types": "./lib/types/transition-entry.d.ts"
+      "types": "./lib/types/transition-entry.d.ts",
+      "default": "./lib/transition-entry.js"
     },
     "./keep-alive": {
       "bun": "./src/keep-alive-entry.ts",
       "import": "./lib/keep-alive-entry.js",
-      "types": "./lib/types/keep-alive-entry.d.ts"
+      "types": "./lib/types/keep-alive-entry.d.ts",
+      "default": "./lib/keep-alive-entry.js"
     },
     "./sanitizer": {
       "bun": "./src/sanitizer.ts",
       "import": "./lib/sanitizer.js",
-      "types": "./lib/types/sanitizer.d.ts"
+      "types": "./lib/types/sanitizer.d.ts",
+      "default": "./lib/sanitizer.js"
     }
   },
   "files": [

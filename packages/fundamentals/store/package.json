@@ -21,12 +21,14 @@
     ".": {
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
-      "types": "./lib/types/index.d.ts"
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
     },
     "./devtools": {
       "bun": "./src/devtools.ts",
       "import": "./lib/devtools.js",
-      "types": "./lib/types/devtools.d.ts"
+      "types": "./lib/types/devtools.d.ts",
+      "default": "./lib/devtools.js"
     }
   },
   "files": [

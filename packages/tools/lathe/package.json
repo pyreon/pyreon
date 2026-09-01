@@ -27,22 +27,26 @@
     ".": {
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
-      "types": "./lib/types/index.d.ts"
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
     },
     "./core": {
       "bun": "./src/core.ts",
       "import": "./lib/core.js",
-      "types": "./lib/types/core.d.ts"
+      "types": "./lib/types/core.d.ts",
+      "default": "./lib/core.js"
     },
     "./cli": {
       "bun": "./src/cli.ts",
       "import": "./lib/cli.js",
-      "types": "./lib/types/cli.d.ts"
+      "types": "./lib/types/cli.d.ts",
+      "default": "./lib/cli.js"
     },
     "./vite": {
       "bun": "./src/vite.ts",
       "import": "./lib/vite.js",
-      "types": "./lib/types/vite.d.ts"
+      "types": "./lib/types/vite.d.ts",
+      "default": "./lib/vite.js"
     },
     "./package.json": "./package.json"
   },

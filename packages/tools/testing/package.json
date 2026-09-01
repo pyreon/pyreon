@@ -25,52 +25,62 @@
     ".": {
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
-      "types": "./lib/index.d.ts"
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
     },
     "./matchers": {
       "bun": "./src/matchers.ts",
       "import": "./lib/matchers.js",
-      "types": "./lib/matchers.d.ts"
+      "types": "./lib/matchers.d.ts",
+      "default": "./lib/matchers.js"
     },
     "./vitest": {
       "bun": "./src/vitest.ts",
       "import": "./lib/vitest.js",
-      "types": "./lib/vitest.d.ts"
+      "types": "./lib/vitest.d.ts",
+      "default": "./lib/vitest.js"
     },
     "./form": {
       "bun": "./src/form.ts",
       "import": "./lib/form.js",
-      "types": "./lib/form.d.ts"
+      "types": "./lib/form.d.ts",
+      "default": "./lib/form.js"
     },
     "./ui": {
       "bun": "./src/ui.ts",
       "import": "./lib/ui.js",
-      "types": "./lib/ui.d.ts"
+      "types": "./lib/ui.d.ts",
+      "default": "./lib/ui.js"
     },
     "./router": {
       "bun": "./src/router.ts",
       "import": "./lib/router.js",
-      "types": "./lib/router.d.ts"
+      "types": "./lib/router.d.ts",
+      "default": "./lib/router.js"
     },
     "./store": {
       "bun": "./src/store.ts",
       "import": "./lib/store.js",
-      "types": "./lib/store.d.ts"
+      "types": "./lib/store.d.ts",
+      "default": "./lib/store.js"
     },
     "./i18n": {
       "bun": "./src/i18n.ts",
       "import": "./lib/i18n.js",
-      "types": "./lib/i18n.d.ts"
+      "types": "./lib/i18n.d.ts",
+      "default": "./lib/i18n.js"
     },
     "./toast": {
       "bun": "./src/toast.ts",
       "import": "./lib/toast.js",
-      "types": "./lib/toast.d.ts"
+      "types": "./lib/toast.d.ts",
+      "default": "./lib/toast.js"
     },
     "./query": {
       "bun": "./src/query.ts",
       "import": "./lib/query.js",
-      "types": "./lib/query.d.ts"
+      "types": "./lib/query.d.ts",
+      "default": "./lib/query.js"
     },
     "./package.json": "./package.json"
   },

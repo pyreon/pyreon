@@ -30,22 +30,26 @@
     ".": {
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
-      "types": "./lib/types/index.d.ts"
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
     },
     "./server": {
       "bun": "./src/server.ts",
       "import": "./lib/server.js",
-      "types": "./lib/types/server.d.ts"
+      "types": "./lib/types/server.d.ts",
+      "default": "./lib/server.js"
     },
     "./mini": {
       "bun": "./src/mini.ts",
       "import": "./lib/mini.js",
-      "types": "./lib/types/mini.d.ts"
+      "types": "./lib/types/mini.d.ts",
+      "default": "./lib/mini.js"
     },
     "./json-schema": {
       "bun": "./src/json-schema.ts",
       "import": "./lib/json-schema.js",
-      "types": "./lib/json-schema.d.ts"
+      "types": "./lib/json-schema.d.ts",
+      "default": "./lib/json-schema.js"
     }
   },
   "publishConfig": {

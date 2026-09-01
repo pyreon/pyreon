@@ -21,17 +21,20 @@
     ".": {
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
-      "types": "./lib/types/index.d.ts"
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
     },
     "./devtools": {
       "bun": "./src/devtools.tsx",
       "import": "./lib/devtools.js",
-      "types": "./lib/types/devtools.d.ts"
+      "types": "./lib/types/devtools.d.ts",
+      "default": "./lib/devtools.js"
     },
     "./persist": {
       "bun": "./src/persist.ts",
       "import": "./lib/persist.js",
-      "types": "./lib/types/persist.d.ts"
+      "types": "./lib/types/persist.d.ts",
+      "default": "./lib/persist.js"
     }
   },
   "files": [
