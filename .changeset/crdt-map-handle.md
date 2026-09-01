@@ -23,6 +23,13 @@ missing `has`/`keys`/`applyOps`/`encodeState`/`encodeMessage`/`applyMessage`/`on
 the Kotlin stub was additionally missing `PyreonScalar.Null` — while its own comment already
 claimed to mirror the surface. Both now do.
 
-Still absent on native, and unchanged by this: `CrdtDoc.transact` and `CrdtDoc.destroy`.
-`transact` is not cosmetic — the web contract requires writes to happen inside it — so
-idiomatic shared source using it still will not compile on native.
+`CrdtDoc.transact` and `CrdtDoc.destroy` are still absent on native — but they no longer
+fail silently. PMTC now WARNS by name when shared source calls a `CrdtDoc`/`CrdtMap` member
+that has no native counterpart, saying what will happen (the call is reproduced verbatim, so
+the native build fails on a method you never wrote in that language) and what to do instead.
+
+The classification behind that warning is TOTAL over the web contract rather than a
+hand-maintained list: a test parses `CrdtDoc`/`CrdtMap` out of `@pyreon/sync`'s own
+`crdt/types.ts` and fails if any member is unclassified. A list checked in one direction rots
+the moment the interface grows a member, and the rot is invisible — an unclassified member
+simply never warns.

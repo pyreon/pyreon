@@ -4,6 +4,7 @@
 // starter fixtures use are recognised. Anything outside that set is
 // either passed through as unknown or surfaces a warning.
 
+import { warnUnlowerdCrdtMembers } from './parse-crdt-surface'
 import { parseSync } from 'oxc-parser'
 import { detectPlain, transformPlain } from '@pyreon/compiler/plain'
 import {
@@ -395,6 +396,12 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // that fails the native build with a cryptic `Cannot find 'Chart' in
   // scope`, far from the cause. Name the package + the escape-hatch fix.
   warnWebOnlyImports(ast.program.body as AnyNode[], ctx)
+  // `@pyreon/sync` CRDT members with no native counterpart. PMTC reproduces a
+  // member call VERBATIM, so an un-lowered one fails the Swift/Kotlin build
+  // inside a GENERATED file naming a method the user never wrote in that
+  // language. Program-level because a call can appear anywhere (a handler, a
+  // nested closure), not only in a declaration.
+  warnUnlowerdCrdtMembers(ast.program as AnyNode, ctx.warnings, source)
   // Pre-pass: record the local name(s) bound to the imperative `toast` import
   // from @pyreon/toast, so parseExpr can lower `toast(...)` / `toast.success(...)`
   // to PyreonToast. Handles renamed imports (`import { toast as notify }`).
