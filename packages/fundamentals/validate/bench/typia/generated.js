@@ -18,7 +18,6 @@ import * as _validateReport_1 from "typia/lib/internal/_validateReport";
  *                    of zod's safeParse; `typia.validate` returns the input by
  *                    reference and would be measuring less work.
  */
-import typia, { plain } from 'typia';
 // 1 — string.email
 export const isStringEmail = (() => {
     return input => "string" === typeof input && _isFormatEmail_1._isFormatEmail(input);

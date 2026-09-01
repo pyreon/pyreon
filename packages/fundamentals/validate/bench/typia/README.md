@@ -29,6 +29,13 @@ npx ttsc --emit       # first run builds a native Go plugin; minutes, then cache
 # copy dist/index.js back over generated.js
 ```
 
+One post-processing step: ttsc inlines every `typia.createIs<T>()` /
+`plain.createValidateClone<T>()` call into `typia/lib/internal/*` helpers but
+leaves the original `import typia, { plain } from 'typia'` behind, where it is
+entirely unused. Delete that line — it is the only reference to either binding,
+and keeping it makes the benchmark load typia's whole runtime to run code that
+no longer calls into it.
+
 **Nothing gates this file's freshness**, which would normally be a drift
 hazard. What limits the damage is that the benchmark's cross-library
 correctness gate runs before any timing and requires every library to agree on
