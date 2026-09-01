@@ -56,6 +56,7 @@
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.11.6",
+    "@pyreon/core": "workspace:*",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/runtime-server": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
