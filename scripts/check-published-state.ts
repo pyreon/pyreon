@@ -250,11 +250,16 @@ if (import.meta.main) {
       )
       for (const pkg of absent) {
         console.error(`  - ${pkg}`)
-        console.error(`::warning title=First-publish bootstrap needed::${pkg} is not on npm — OIDC cannot create a package. From its directory: bun publish --access=public (with your npm auth), then add a Trusted Publisher on npmjs.com (GitHub Actions → pyreon/pyreon → release.yml).`)
+        console.error(`::warning title=First-publish bootstrap needed::${pkg} is not on npm — OIDC cannot create a package. Bootstrap it from the REPO ROOT with 'bun scripts/publish.ts --only=${pkg}' (with your npm auth), then add a Trusted Publisher on npmjs.com (GitHub Actions → pyreon/pyreon → release.yml). A bare 'bun publish' would ship workspace:* deps and src/.`)
       }
       console.error(
         `  OIDC trusted publishing cannot CREATE a package. One-time manual fix per package:\n` +
-          `    1. from the package directory: bun publish --access=public   (classic/granular npm token or npm login)\n` +
+          `    1. from the REPO ROOT: bun scripts/publish.ts --only=<pkg>   (classic/granular npm token or npm login)\n` +
+          `       NOT a bare \`bun publish\` from the package directory: that skips the\n` +
+          `       manifest rewrite every release publish applies, so the tarball would\n` +
+          `       carry \`workspace:*\` dependencies (\`npm i\` fails with\n` +
+          `       EUNSUPPORTEDPROTOCOL), the \`bun\` export condition pointing at src/,\n` +
+          `       and src/ itself — 83 files instead of 23.\n` +
           `    2. on npmjs.com → the package → Settings → add a Trusted Publisher\n` +
           `       (GitHub Actions, repo pyreon/pyreon, workflow release.yml, no environment)\n` +
           `  Subsequent releases publish it via OIDC like the rest of the suite.`,
