@@ -541,17 +541,26 @@ const METRICS: readonly Metric[] = ['statements', 'branches', 'functions', 'line
 export function parseDeclaredThresholds(
   configSource: string | null,
   fallback: number,
-): DeclaredThresholds {
-  const read = (metric: Metric): number => {
+): Partial<DeclaredThresholds> {
+  // ONLY what the config actually states. Substituting a default for an absent
+  // metric INVENTS a threshold the package never declared, and this gate's
+  // whole claim is that it compares what a package declares. It shipped with
+  // the fallback applied to all four and immediately blocked three unrelated
+  // PRs: `@pyreon/atlas` declares no `lines` (judged against 95, measures
+  // 81.44) and `@pyreon/server` declares no `functions` (against 95, measures
+  // 92.85). Neither had a ratchet floor either, because the SEEDING pass
+  // correctly recorded only declared metrics -- so the two halves disagreed.
+  //
+  // `statements` keeps its own long-standing fallback via `getPackageThreshold`,
+  // unchanged: every package is expected to have one, and that comparison
+  // predates this function.
+  const out: Partial<DeclaredThresholds> = {}
+  for (const metric of METRICS) {
     const m = configSource?.match(new RegExp(`${metric}:\\s*(\\d+(?:\\.\\d+)?)`))
-    return m?.[1] === undefined ? fallback : Number(m[1])
+    if (m?.[1] !== undefined) out[metric] = Number(m[1])
   }
-  return {
-    statements: read('statements'),
-    branches: read('branches'),
-    functions: read('functions'),
-    lines: read('lines'),
-  }
+  if (out.statements === undefined) out.statements = fallback
+  return out
 }
 
 /** Ratchet floors for metrics a package declares but measured below. */
@@ -564,8 +573,8 @@ const BASELINE_FLOORS: Record<string, Partial<Record<Metric, number>>> = (() => 
   return parsed.packages ?? {}
 })()
 
-/** Every threshold declared in a package's vitest config. */
-function declaredThresholdsFor(pkgDir: string): DeclaredThresholds {
+/** Every threshold a package's vitest config actually STATES (absent = not compared). */
+function declaredThresholdsFor(pkgDir: string): Partial<DeclaredThresholds> {
   const configPath = join(pkgDir, 'vitest.config.ts')
   const src = existsSync(configPath) ? readFileSync(configPath, 'utf-8') : null
   return parseDeclaredThresholds(src, DEFAULT_THRESHOLD)
@@ -589,15 +598,32 @@ export interface MetricShortfall {
  * semantics to `lint-baseline.json`, so a known gap cannot quietly widen while
  * the aspiration in the package's own config stays visible as the target.
  */
+/**
+ * How far under a recorded floor is still the same measurement.
+ *
+ * A floor seeded at the EXACT measured value has zero tolerance, and coverage
+ * is not bit-stable: worker count, a timing-dependent skip, or a test that
+ * touches one more line all move it a fraction. Shipped without this, a
+ * 0.25pp drift in `@pyreon/compiler` functions (91.06 -> 90.81) failed the gate
+ * on a PR that does not touch that package. The bundle-budget gate reached the
+ * same conclusion for gzip variance and says so in its own failure text.
+ *
+ * Deliberately small: it absorbs noise, not a real regression. A package losing
+ * a whole percentage point of coverage still fails.
+ */
+export const FLOOR_TOLERANCE_PP = 0.5
+
 export function findShortfalls(
   measured: DeclaredThresholds,
-  declared: DeclaredThresholds,
+  declared: Partial<DeclaredThresholds>,
   floors: Partial<Record<Metric, number>> | undefined,
 ): MetricShortfall[] {
   const out: MetricShortfall[] = []
   for (const metric of METRICS) {
     const value = measured[metric]
     const want = declared[metric]
+    // Not declared -> not compared. See parseDeclaredThresholds.
+    if (want === undefined) continue
     if (value >= want) continue
     const floor = floors?.[metric]
     // Statements keep their own long-standing hard comparison elsewhere; a
@@ -608,7 +634,7 @@ export function findShortfalls(
       measured: value,
       declared: want,
       floor: effective,
-      regressed: value < effective,
+      regressed: value < effective - FLOOR_TOLERANCE_PP,
     })
   }
   return out
@@ -1176,9 +1202,7 @@ const { results, problems, staleDeclarations } = await runWithConcurrency(packag
 const sorted = results.sort((a, b) => a.package.localeCompare(b.package))
 const sortedProblems = problems.sort((a, b) => a.package.localeCompare(b.package))
 const hasFailures =
-  sorted.some((r) => !r.pass || r.shortfalls.some((s) => s.regressed)) ||
-  sortedProblems.length > 0 ||
-  staleDeclarations.length > 0
+  sorted.some(isFailingResult) || sortedProblems.length > 0 || staleDeclarations.length > 0
 
 // Build report
 const reportLines: string[] = [
@@ -1193,7 +1217,7 @@ for (const r of sorted) {
   // A row must not read \u2705 while the run fails. Before the declared-metric
   // comparison existed this was `r.pass` alone, so a package failing on a
   // ratcheted metric printed a green row beside a red gate.
-  const status = r.pass && !r.shortfalls.some((sf) => sf.regressed) ? '\u2705' : '\u274c'
+  const status = isFailingResult(r) ? '\u274c' : '\u2705'
   reportLines.push(
     `| ${r.package} | ${r.statements}% | ${r.branches}% | ${r.functions}% | ${r.lines}% | ${r.threshold}% | ${status} |`,
   )
@@ -1234,7 +1258,17 @@ if (staleDeclarations.length > 0) {
   )
 }
 
-if (sorted.some((r) => !r.pass)) {
+/**
+ * The ONE failure predicate. Row status, summary line and exit code must all
+ * ask the same question -- they did not, and the gate printed
+ * "All packages meet their coverage thresholds" directly above three rows
+ * marked with a cross, while exiting 1. A reader believes the sentence.
+ */
+function isFailingResult(r: CoverageResult): boolean {
+  return !r.pass || r.shortfalls.some((sf) => sf.regressed)
+}
+
+if (sorted.some(isFailingResult)) {
   reportLines.push('', '\u274c Some packages below their coverage threshold')
 } else if (sortedProblems.length === 0) {
   reportLines.push('', '\u2705 All packages meet their coverage thresholds')
