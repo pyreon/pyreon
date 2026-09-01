@@ -244,6 +244,31 @@ const events: Ev[] = [{ day: 'Mon', hour: '09', count: 12 }]
       ],
       seeAlso: ['PlotChart', 'PieChart'],
     },
+    {
+      name: 'RadarChart',
+      kind: 'component',
+      signature: '<T>(props: RadarChartProps<T>) => VNodeChild',
+      summary:
+        'Radar (spider) chart from the plot engine (`@pyreon/charts/plot`) — one polygon per datum over shared spokes. Each axis normalises by its OWN max, so axes in different units (revenue beside a score out of 5) are comparable on one chart; a shared scale would flatten every small-range axis to the centre. Fewer than three axes draws nothing (no area to enclose). The fill is translucent (`fillAlpha`, default 0.25) with a full-strength outline, so overlapping polygons stay readable. Geometry (`renderRadar`, `radarPolygon`, `radarAngles`) exported standalone.',
+      example: `import { RadarChart } from '@pyreon/charts/plot'
+
+interface Player { name: string; speed: number; power: number; skill: number }
+const players: Player[] = [{ name: 'Ana', speed: 90, power: 40, skill: 80 }]
+
+<RadarChart
+  data={players}
+  axes={[{ label: 'Speed', max: 100 }, { label: 'Power', max: 100 }, { label: 'Skill', max: 100 }]}
+  values={(d: Player) => [d.speed, d.power, d.skill]}
+  label={(d: Player) => d.name}
+  showLegend
+/>`,
+      mistakes: [
+        'Comparing absolute magnitudes across axes — each spoke normalises by its own `max`, so polygon SHAPE compares profiles, not sizes; put same-unit series on a PlotChart when magnitude is the story',
+        'Passing `values` in a different order than `axes` — the two are index-aligned, and a swapped pair silently plots speed on the power spoke',
+        'More than a handful of polygons — overlapping fills become unreadable past 3-4 series; filter the data or facet into several charts',
+      ],
+      seeAlso: ['PlotChart', 'PieChart'],
+    },
   ],
   gotchas: [
     {
