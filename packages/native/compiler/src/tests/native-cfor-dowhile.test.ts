@@ -68,7 +68,13 @@ describe('canonical C-style count-loops lower to native ranges', () => {
     expect(out.warnings ?? []).toEqual([])
   })
 
-  it('a NON-canonical for (decrement) warns by name and drops nothing silently', () => {
+  // REWRITTEN (descending-count-loop PR): the decrement form USED to be
+  // non-canonical and this spec asserted the warn. It now LOWERS (Swift
+  // negative-step stride) — the invariant this spec protects is unchanged
+  // ("nothing drops silently"), the assertion is updated to the corrected
+  // truth. The still-non-canonical MIXED direction keeps the warn coverage
+  // in native-descending-count-loop.test.ts.
+  it('a descending for (decrement) now LOWERS — nothing dropped, no warning', () => {
     const src = `
 import { signal } from '@pyreon/reactivity'
 import { Stack, Button } from '@pyreon/primitives'
@@ -82,9 +88,8 @@ export function App() {
   return <Stack gap="sm"><Button onPress={() => run()}>go</Button></Stack>
 }`
     const out = transform(src, { target: 'swift' })
-    expect(
-      (out.warnings ?? []).some((w) => w.includes('canonical count-loop')),
-    ).toBe(true)
+    expect(out.code).toContain('for i in stride(from: 5, to: 0, by: -1) {')
+    expect(out.warnings ?? []).toEqual([])
   })
 
   it('a counter REASSIGNED in the body bails (Swift range binding is immutable)', () => {

@@ -3971,13 +3971,30 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       // `0...n`); a literal step > 1 → `stride(from:to:by:)`
       // (inclusive → `through:`). Ranges keep break/continue semantics.
       const pad = ' '.repeat(indent)
-      const from = emitSwiftExpr(s.from, indent)
+      const fromT = inferType(s.from, _activeInferCtx)
+      const fromRaw = emitSwiftExpr(s.from, indent)
+      // A float FROM bound cannot seed an Int range/stride (and a Double
+      // stride would type the counter Double, breaking the Int-counter
+      // contract the body coercion relies on). Identity for integral-valued
+      // Doubles — the dominant shape, a Math.ceil/max result typed Double by
+      // JS `number`. Descending starts at floor(f), ascending at ceil(f).
+      const from = isFloatTypeIR(fromT)
+        ? s.down === true
+          ? `Int(floor(Double(${fromRaw})))`
+          : `Int(ceil(Double(${fromRaw})))`
+        : fromRaw
       const toT = inferType(s.to, _activeInferCtx)
       const toRaw = emitSwiftExpr(s.to, indent)
       // A Double TO-bound makes `0..<n` a Range<Double> — not a Sequence at
       // all. JS `i < n` trips ceil(n) times for fractional n (identity for
       // integral), so the bound wraps `Int(ceil(...))`.
-      const to = isFloatTypeIR(toT) ? `Int(ceil(Double(${toRaw})))` : toRaw
+      // Descending mirror: exclusive `i > n` stops ABOVE n (floor), the
+      // inclusive `i >= n` reaches down to ceil(n).
+      const to = isFloatTypeIR(toT)
+        ? s.down === true && s.inclusive !== true
+          ? `Int(floor(Double(${toRaw})))`
+          : `Int(ceil(Double(${toRaw})))`
+        : toRaw
       // The counter is an Int in the body's scope — registering it lets the
       // binary-op coercion wrap `Double(i)` when it meets a Double
       // (`first + step * i` was 'Int * Double' on the charts engine; an
@@ -3990,12 +4007,16 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
         .join('\n')
       if (hadItem) _activeInferCtx.locals.set(s.item, prevItem!)
       else _activeInferCtx.locals.delete(s.item)
+      // Swift has no descending range literal — a `down` loop is always a
+      // negative-step stride (`stride(from: n, through: 0, by: -1)`).
       const head =
-        s.step !== undefined
-          ? `stride(from: ${from}, ${s.inclusive === true ? 'through' : 'to'}: ${to}, by: ${emitSwiftExpr(s.step, indent)})`
-          : s.inclusive === true
-            ? `${from}...${to}`
-            : `${from}..<${to}`
+        s.down === true
+          ? `stride(from: ${from}, ${s.inclusive === true ? 'through' : 'to'}: ${to}, by: ${s.step !== undefined ? `-${emitSwiftExpr(s.step, indent)}` : '-1'})`
+          : s.step !== undefined
+            ? `stride(from: ${from}, ${s.inclusive === true ? 'through' : 'to'}: ${to}, by: ${emitSwiftExpr(s.step, indent)})`
+            : s.inclusive === true
+              ? `${from}...${to}`
+              : `${from}..<${to}`
       return `for ${swiftIdent(s.item)} in ${head} {\n${lines}\n${pad}}`
     }
     case 'do-while': {
@@ -9817,6 +9838,20 @@ function emitSwiftPermissionsProvider(
       '<PermissionsProvider permissions={…}>: the permissions map is not a literal object of boolean values, so the grants cannot be baked into the native emit — the provider injects NOTHING and every check below it denies. Use a literal map, or seed at the call site with usePermissions(["posts.*"]).',
     )
     return emitSwiftGeneric(e, indent)
+  }
+  if (seed.deniedUnderWildcard.length > 0) {
+    // The native container is grant-only, so an explicit `false` has nowhere to
+    // live. That is exact when the map has no wildcards — an unlisted key is
+    // denied either way — but under a wildcard the `false` is the ONLY thing
+    // denying it, so dropping it makes native GRANT what the web DENIES.
+    // `permissionsProviderSeed` computed this and its docstring said the caller
+    // reports it; no caller did, so an authorization primitive was failing OPEN
+    // in silence. A wrong-direction authz divergence must be loud.
+    _emitWarnings.push(
+      `<PermissionsProvider>: ${seed.deniedUnderWildcard
+        .map((d) => JSON.stringify(d))
+        .join(', ')} ${seed.deniedUnderWildcard.length === 1 ? 'is' : 'are'} set to false under a wildcard grant, and the native permissions container is GRANT-ONLY — so those keys are DENIED on the web and GRANTED on device. Split the wildcard into the exact keys you mean to grant, or gate the check in app code.`,
+    )
   }
   const pad = ' '.repeat(indent + 2)
   const set = `PyreonPermissions([${seed.granted.map((g) => JSON.stringify(g)).join(', ')}])`

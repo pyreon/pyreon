@@ -5892,7 +5892,12 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
         // refs). Only genuine calls warn.
         const callee =
           call.callee?.type === 'Identifier' ? `${call.callee.name}(...)` : 'a call'
-        ctx.warnings.push(
+        // DEFERRED like the control-flow arm below: a pure-logic HELPER's body
+        // legitimately contains bare calls (`out.push(x)`), and the helper
+        // carve-out re-parses the whole body via tryFunctionDecl — warning
+        // here directly produced a spurious "DROPPED" for functions the
+        // helper path emits COMPLETELY (the charts engine's `smooth`).
+        droppedStmtWarnings.push(
           `Component ${name}: a bare component-body statement (${callee}) is not lowered natively and was DROPPED — only declarations, onMount(fn), and the return JSX run on native. Move side effects into onMount or a handler.`,
         )
       } else if (
@@ -9636,9 +9641,14 @@ function classifyForRange(
   const decls = (init.declarations as AnyNode[] | undefined) ?? []
   if (decls.length !== 1 || decls[0]?.id?.type !== 'Identifier' || !decls[0]?.init) return null
   const item = decls[0].id.name as string
+  const testOp = test.operator as string
+  // Descending twin: `i > LIMIT` / `i >= LIMIT` paired with `i--` / `i -= k`.
+  // The test and update DIRECTIONS must agree — a mixed pair (`i < n; i--`)
+  // is an infinite loop in JS and stays a warn-bail.
+  const descending = testOp === '>' || testOp === '>='
   if (
     test.type !== 'BinaryExpression' ||
-    (test.operator !== '<' && test.operator !== '<=') ||
+    (testOp !== '<' && testOp !== '<=' && !descending) ||
     (test.left as AnyNode)?.type !== 'Identifier' ||
     (test.left as AnyNode)?.name !== item
   ) {
@@ -9647,14 +9657,14 @@ function classifyForRange(
   let step: ExprIR | undefined
   if (
     update.type === 'UpdateExpression' &&
-    update.operator === '++' &&
+    update.operator === (descending ? '--' : '++') &&
     (update.argument as AnyNode)?.type === 'Identifier' &&
     (update.argument as AnyNode)?.name === item
   ) {
     step = undefined
   } else if (
     update.type === 'AssignmentExpression' &&
-    update.operator === '+=' &&
+    update.operator === (descending ? '-=' : '+=') &&
     (update.left as AnyNode)?.type === 'Identifier' &&
     (update.left as AnyNode)?.name === item &&
     ((update.right as AnyNode)?.type === 'Literal' ||
@@ -9676,7 +9686,8 @@ function classifyForRange(
     item,
     from: parseExpr(decls[0].init as AnyNode, ctx),
     to: parseExpr(test.right as AnyNode, ctx),
-    ...(test.operator === '<=' ? { inclusive: true } : {}),
+    ...(testOp === '<=' || testOp === '>=' ? { inclusive: true } : {}),
+    ...(descending ? { down: true } : {}),
     ...(step !== undefined ? { step } : {}),
     body,
   }
@@ -9846,7 +9857,7 @@ function parseStatement(node: AnyNode, ctx: ParseCtx): StatementIR | null {
       const range = classifyForRange(node, ctx)
       if (range !== null) return range
       ctx.warnings.push(
-        `Only the canonical count-loop lowers to native (\`for (let i = 0; i < n; i++)\`, \`<=\`, or \`i += k\` with a positive literal step; the counter must not be reassigned in the body) — rewrite this \`for\` as a \`while\` (or \`for…of\`).`,
+        `Only the canonical count-loop lowers to native (\`for (let i = 0; i < n; i++)\` or the descending \`for (let i = n; i >= 0; i--)\`; \`<=\`/\`>=\`, or \`i += k\`/\`i -= k\` with a positive literal step; the test and update must agree in direction and the counter must not be reassigned in the body) — rewrite this \`for\` as a \`while\` (or \`for…of\`).`,
       )
       return null
     }
