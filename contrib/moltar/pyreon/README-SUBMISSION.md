@@ -48,6 +48,39 @@ without a `require` condition we would be **absent from most of the results
 people actually look at**. Submitting is therefore gated on a product decision
 about dual publishing, not on this file.
 
+## First real measurement (bun 1.4, quiet machine, 2026-09-01)
+
+In-run comparison — every arm measured in the same run on the same box, which is
+the only valid way to read this. Upstream's committed `bun-1.json` is from THEIR
+machine and must not be compared against.
+
+| case | us | rank | leader |
+|---|---|---|---|
+| `parseStrict` | 4,349,212 (±0.64%) | 2 of 4 | arktype 17,238,697 (**3.96x**) |
+| `assertStrict` | 4,129,678 (±0.50%) | 3 of 5 | typebox 78,823,090 (**19x**) |
+| `assertLoose`  | 4,159,437 (±0.51%) | 4 of 5 | typebox 113,006,350 (**27x**) |
+| `parseSafe`    | 50,891,015 (±3.45%) | 1 of 3 | — (arktype/typebox absent) |
+
+**This contradicts the comfortable in-house picture, which is the point of an
+independent harness.** Our own bench has us winning or tied in 14 of ~21 cells;
+here we are mid-pack, 19-27x behind TypeBox on the assert cases.
+
+Two readings, one of them a testable prediction:
+
+- **Our four numbers are nearly identical (4.35M / 4.16M / 4.13M).**
+  `assertLoose` does no clone and no unknown-key scan, so it should be far faster
+  than `parseStrict`. It is not — which is exactly the signature of `.is()` still
+  running the parse validator and discarding the result. That is true of the
+  PUBLISHED 0.51.0: the verdict-only JIT is unmerged (#3164). So this data
+  independently confirms the JIT's absence and predicts the assert cells should
+  move when it ships. Re-run with `--validate-version` once it does; if they do
+  not move, the JIT is not reaching this shape and that is worth knowing.
+- **`parseSafe` is still not trustworthy.** 50.9M is 12x our own `parseStrict`,
+  and strict mode only adds an unknown-key scan — that gap is not explicable by
+  the extra work. The likeliest reading is the discarded clone being optimised
+  away in the safe case and not in the strict one. Treat the rank as reported,
+  not as a win.
+
 ## Reading the numbers with the right amount of suspicion
 
 Upstream calls `this.fn(validateData)` in a loop with a **single frozen
