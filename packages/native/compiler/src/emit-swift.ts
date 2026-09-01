@@ -3971,7 +3971,18 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       // `0...n`); a literal step > 1 → `stride(from:to:by:)`
       // (inclusive → `through:`). Ranges keep break/continue semantics.
       const pad = ' '.repeat(indent)
-      const from = emitSwiftExpr(s.from, indent)
+      const fromT = inferType(s.from, _activeInferCtx)
+      const fromRaw = emitSwiftExpr(s.from, indent)
+      // A float FROM bound cannot seed an Int range/stride (and a Double
+      // stride would type the counter Double, breaking the Int-counter
+      // contract the body coercion relies on). Identity for integral-valued
+      // Doubles — the dominant shape, a Math.ceil/max result typed Double by
+      // JS `number`. Descending starts at floor(f), ascending at ceil(f).
+      const from = isFloatTypeIR(fromT)
+        ? s.down === true
+          ? `Int(floor(Double(${fromRaw})))`
+          : `Int(ceil(Double(${fromRaw})))`
+        : fromRaw
       const toT = inferType(s.to, _activeInferCtx)
       const toRaw = emitSwiftExpr(s.to, indent)
       // A Double TO-bound makes `0..<n` a Range<Double> — not a Sequence at

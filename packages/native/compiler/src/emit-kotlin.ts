@@ -3243,7 +3243,21 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       // Canonical count-loop. Step 1 → `F until T` / `F..T` (inclusive);
       // a literal step > 1 appends `step K`. Ranges keep break/continue.
       const pad = ' '.repeat(indent)
-      const from = emitKotlinExpr(s.from, indent)
+      const fromT = inferType(s.from, _kotlinExprInferCtx)
+      const fromRaw = emitKotlinExpr(s.from, indent)
+      const fromIsFloat =
+        (fromT.kind === 'number' && fromT.float === true) ||
+        (fromT.kind === 'typeRef' && (fromT.name === 'Double' || fromT.name === 'Float'))
+      // A float FROM bound cannot seed an IntRange — `Double downTo Int` does
+      // not resolve, and `0.5..n` is a ClosedFloatingPointRange with an
+      // ambiguous iterator. Int walk by contract (identity for
+      // integral-valued Doubles); descending starts at floor(f), ascending
+      // at ceil(f).
+      const from = fromIsFloat
+        ? s.down === true
+          ? `Math.floor(${fromRaw}).toInt()`
+          : `Math.ceil(${fromRaw}).toInt()`
+        : fromRaw
       const toT = inferType(s.to, _kotlinExprInferCtx)
       const toRaw = emitKotlinExpr(s.to, indent)
       // A Double bound cannot form an IntRange. JS `i < n` trips ceil(n)

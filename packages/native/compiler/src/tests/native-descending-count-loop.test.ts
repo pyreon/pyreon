@@ -143,3 +143,70 @@ export function App() { return <Stack><Text>ok</Text></Stack> }`
     expect(r.ok, r.error ?? '').toBe(true)
   })
 })
+
+// A FLOAT-typed FROM bound (the arcPolygon shape: `const steps = Math.max(2,
+// Math.ceil(...))` is Double by JS-number inference) cannot seed an Int
+// range — Kotlin `Double downTo Int` does not resolve, and a Swift Double
+// stride would type the counter Double against the Int-counter contract.
+// Both emitters wrap the FROM side like they already wrap TO: descending
+// floor(f), ascending ceil(f) — identity for integral-valued Doubles.
+const FLOATFROM = `
+import { Text } from '@pyreon/primitives'
+function ringWalk(sweep: number): number {
+  const steps = Math.max(2, Math.ceil(sweep * 64.0))
+  let acc = 0
+  for (let i = steps; i >= 0; i--) {
+    acc = acc + i
+  }
+  return acc
+}
+export function P() { return <Text>{String(ringWalk(2))}</Text> }
+`
+
+const FLOATFROM_ASC = `
+import { Text } from '@pyreon/primitives'
+function climb(x: number): number {
+  const f = Math.ceil(x * 0.5)
+  let acc = 0
+  for (let i = f; i < 9; i++) {
+    acc = acc + i
+  }
+  return acc
+}
+export function P() { return <Text>{String(climb(2))}</Text> }
+`
+
+describe('float FROM bound wraps to Int (both directions)', () => {
+  it('Kotlin: descending Double FROM floors to Int', () => {
+    const r = kt(FLOATFROM)
+    expect(r.warnings).toHaveLength(0)
+    expect(r.code).toContain('Math.floor(steps).toInt() downTo 0')
+  })
+  it('Swift: descending Double FROM floors inside the stride', () => {
+    const r = sw(FLOATFROM)
+    expect(r.warnings).toHaveLength(0)
+    expect(r.code).toContain('stride(from: Int(floor(Double(steps))), through: 0, by: -1)')
+  })
+  it('Kotlin: ascending Double FROM ceils to Int', () => {
+    const r = kt(FLOATFROM_ASC)
+    expect(r.warnings).toHaveLength(0)
+    expect(r.code).toContain('Math.ceil(f).toInt() until 9')
+  })
+  it('Swift: ascending Double FROM ceils to Int', () => {
+    const r = sw(FLOATFROM_ASC)
+    expect(r.warnings).toHaveLength(0)
+    expect(r.code).toContain('Int(ceil(Double(f)))..<9')
+  })
+  it.skipIf(!isKotlincAvailable())('Android: the float-FROM walks compile via kotlinc', () => {
+    for (const src of [FLOATFROM, FLOATFROM_ASC]) {
+      const r = validateKotlin(kt(src).code)
+      expect(r.ok, r.error ?? '').toBe(true)
+    }
+  })
+  it.skipIf(!isSwiftUIAvailable())('iOS: the float-FROM walks typecheck via swiftc', () => {
+    for (const src of [FLOATFROM, FLOATFROM_ASC]) {
+      const r = validateSwiftTypecheck(sw(src).code)
+      expect(r.ok, r.error ?? '').toBe(true)
+    }
+  })
+})
