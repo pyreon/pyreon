@@ -6963,6 +6963,11 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   // never compiled the emit. Same class as the kinetic factory, reached by a
   // different route (a missing mapping rather than a missing decline).
   if (tag === 'Link' || tag === 'RouterLink') return emitSwiftLink(e, indent)
+  if (tag === 'PieChart') return emitSwiftPieChart(e, indent)
+  if (tag === 'GaugeChart') return emitSwiftGaugeChart(e, indent)
+  // `<PieChart>` / `<GaugeChart>` from @pyreon/charts/plot — the radial
+  // family lowers to the runtime wrapper views over the GENERATED engine
+  // (renderPie / renderGauge), so web and native draw the same math.
   // `<QueryClientProvider client={…}>` is TRANSPARENT on native. It exists on
   // the web to inject the client `useQuery` reads; the native `useQuery`
   // lowering is self-contained, so the provider has nothing to inject and its
@@ -10791,4 +10796,116 @@ function emitSwiftRxCall(
       // marker so missing dispatch is obvious in failed swiftc output.
       return `/* unsupported rx.${e.method} */ ${src}`
   }
+}
+
+/**
+ * `<PieChart data value label …>` (@pyreon/charts/plot) → the runtime-swift
+ * `PyreonPieChart` view. The accessor props pass through as closures — the
+ * wrapper is generic over the row type, so `value={(d) => d.amount}` emits
+ * `{ d in d.amount }` and Swift infers the parameter from `data`.
+ *
+ * The web accessors accept `(d, index)`; the native wrapper takes the
+ * single-argument form (the dominant shape). An index-dependent accessor
+ * warns + falls back to generic emit rather than mis-lowering.
+ */
+function emitSwiftPieChart(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const attr = (n: string) =>
+    e.attrs.find(
+      (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === n,
+    )
+  const data = attr('data')
+  const value = attr('value')
+  const label = attr('label')
+  if (data === undefined || value === undefined || label === undefined) {
+    _emitWarnings.push(
+      'PieChart: the native lowering needs `data`, `value` and `label` props — element left to generic emit (it will not compile natively)',
+    )
+    return emitSwiftGeneric(e, indent)
+  }
+  const color = attr('color')
+  for (const a of [value, label, ...(color === undefined ? [] : [color])]) {
+    if (a.value.kind === 'arrow' && a.value.params.length > 1) {
+      _emitWarnings.push(
+        `PieChart: the \`${a.name}\` accessor uses the (d, index) form — the native lowering supports the single-argument accessor; precompute an array for index-dependent slices`,
+      )
+      return emitSwiftGeneric(e, indent)
+    }
+  }
+  const args = [
+    `data: ${emitSwiftExpr(unwrapAccessorArrow(data.value), indent)}`,
+    `value: ${emitSwiftExpr(value.value, indent)}`,
+    `label: ${emitSwiftExpr(label.value, indent)}`,
+  ]
+  if (color !== undefined) args.push(`color: ${emitSwiftExpr(color.value, indent)}`)
+  for (const n of ['width', 'height', 'innerRadius', 'showLabels'] as const) {
+    const a = attr(n)
+    if (a !== undefined) args.push(`${n}: ${emitSwiftExpr(unwrapAccessorArrow(a.value), indent)}`)
+  }
+  for (const n of ['showLegend', 'onSelect', 'title', 'accessibleTable'] as const) {
+    if (attr(n) !== undefined) {
+      _emitWarnings.push(
+        `PieChart: \`${n}\` has no native lowering (web-only legend / hit-testing / a11y-table surface) — DROPPED on this target`,
+      )
+    }
+  }
+  // Special-case emitters never reach the generic modifier tail — carry the
+  // testid + a11y through explicitly (the Link/Toggle lesson).
+  const testid = readStringAttrExpr(e, 'data-testid', 0)
+  const a11y = swiftAccessibilityModifiers(e).join('')
+  const tail =
+    (testid === undefined
+      ? ''
+      : `.accessibilityElement(children: .contain).accessibilityIdentifier(${testid})`) + a11y
+  return `PyreonPieChart(${args.join(', ')})${tail}`
+}
+
+/**
+ * `<GaugeChart value …>` (@pyreon/charts/plot) → the runtime-swift
+ * `PyreonGaugeChart` view. Scalar props map 1:1; `value={() => x()}`
+ * unwraps to the reactive read.
+ */
+function emitSwiftGaugeChart(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const attr = (n: string) =>
+    e.attrs.find(
+      (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === n,
+    )
+  const value = attr('value')
+  if (value === undefined) {
+    _emitWarnings.push(
+      'GaugeChart: the native lowering needs the `value` prop — element left to generic emit (it will not compile natively)',
+    )
+    return emitSwiftGeneric(e, indent)
+  }
+  const args = [`value: ${emitSwiftExpr(unwrapAccessorArrow(value.value), indent)}`]
+  for (const n of [
+    'min',
+    'max',
+    'width',
+    'height',
+    'thickness',
+    'trackColor',
+    'valueColor',
+    'showValue',
+  ] as const) {
+    const a = attr(n)
+    if (a !== undefined) args.push(`${n}: ${emitSwiftExpr(unwrapAccessorArrow(a.value), indent)}`)
+  }
+  if (attr('title') !== undefined) {
+    _emitWarnings.push(
+      'GaugeChart: `title` has no native lowering (it feeds the web aria-label) — use `accessibilityLabel`, which lowers on all three targets',
+    )
+  }
+  const testid = readStringAttrExpr(e, 'data-testid', 0)
+  const a11y = swiftAccessibilityModifiers(e).join('')
+  const tail =
+    (testid === undefined
+      ? ''
+      : `.accessibilityElement(children: .contain).accessibilityIdentifier(${testid})`) + a11y
+  return `PyreonGaugeChart(${args.join(', ')})${tail}`
 }

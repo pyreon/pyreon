@@ -220,5 +220,19 @@ class FinanceInstrumentedTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("login-page").assertIsDisplayed()
     }
-}
 
+    // The chart crossing: `<PieChart>` from @pyreon/charts/plot lowered to the
+    // runtime PyreonPieChart composable over the GENERATED engine — asserts the
+    // chart NODE is on the dashboard on a real emulator (geometry is
+    // execution-proven by the Swift engine tests + kotlinc typecheck; this is
+    // the Android device half).
+    @Test
+    fun spendingPieChartRendersOnDashboard() {
+        composeRule.onNodeWithTag("login-username").performTextInput("alice")
+        composeRule.onNodeWithTag("login-submit").performClick()
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            composeRule.onAllNodesWithTag("dashboard-page").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("spend-pie").assertExists()
+    }
+}

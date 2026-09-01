@@ -199,3 +199,151 @@ public struct PyreonChartCanvas: View {
         }
     }
 }
+
+// ── Radial chart components ─────────────────────────────────────────────
+//
+// The native twins of `@pyreon/charts/plot`'s `<PieChart>` / `<GaugeChart>`.
+// PMTC lowers those JSX components to these views; the geometry comes from
+// the GENERATED PyreonChartEngine (renderPie / renderGauge), so web and
+// native draw from the same byte-locked math. Defaults mirror the web
+// component bodies exactly (PieChart.tsx) — width 300/height 240 for pie,
+// 240/140 for gauge, the same palette, the same label colors.
+
+/// The web `<PieChart>` fallback palette, byte-for-byte.
+public let pyreonChartPalette: [String] = [
+    "#0f766e", "#b45309", "#1d4ed8", "#b42318", "#15803d", "#7c3aed",
+]
+
+public struct PyreonPieChart<T>: View {
+    let data: [T]
+    let value: (T) -> Double
+    let label: (T) -> String
+    let color: ((T) -> String)?
+    let width: Double
+    let height: Double
+    let innerRadius: Double
+    let showLabels: Bool
+
+    public init(
+        data: [T],
+        value: @escaping (T) -> Double,
+        label: @escaping (T) -> String,
+        color: ((T) -> String)? = nil,
+        width: Double = 300.0,
+        height: Double = 240.0,
+        innerRadius: Double = 0.0,
+        showLabels: Bool = true
+    ) {
+        self.data = data
+        self.value = value
+        self.label = label
+        self.color = color
+        self.width = width
+        self.height = height
+        self.innerRadius = innerRadius
+        self.showLabels = showLabels
+    }
+
+    /// Int-returning value accessor — a TS `amount: number` field infers Int,
+    /// so `value={(t) => t.amount}` arrives as `(T) -> Int`; convert at the
+    /// seam rather than failing every integer column.
+    public init(
+        data: [T],
+        value: @escaping (T) -> Int,
+        label: @escaping (T) -> String,
+        color: ((T) -> String)? = nil,
+        width: Double = 300.0,
+        height: Double = 240.0,
+        innerRadius: Double = 0.0,
+        showLabels: Bool = true
+    ) {
+        self.init(
+            data: data,
+            value: { Double(value($0)) },
+            label: label,
+            color: color,
+            width: width,
+            height: height,
+            innerRadius: innerRadius,
+            showLabels: showLabels)
+    }
+
+    public var body: some View {
+        let slices = data.enumerated().map { (i, d) in
+            Slice(
+                value: value(d),
+                label: label(d),
+                color: color?(d) ?? pyreonChartPalette[i % pyreonChartPalette.count])
+        }
+        let cmds = renderPie(
+            slices,
+            PyreonChartRect(x: 0.0, y: 0.0, w: width, h: height),
+            PieOptions(
+                innerRadius: innerRadius,
+                showLabels: showLabels,
+                labelColor: "#ffffff",
+                fontSize: 11.0))
+        return PyreonChartCanvas(cmds: cmds).frame(width: width, height: height)
+    }
+}
+
+public struct PyreonGaugeChart: View {
+    let value: Double
+    let min: Double
+    let max: Double
+    let width: Double
+    let height: Double
+    let thickness: Double
+    let trackColor: String
+    let valueColor: String
+    let showValue: Bool
+
+    public init(
+        value: Double,
+        min: Double = 0.0,
+        max: Double = 100.0,
+        width: Double = 240.0,
+        height: Double = 140.0,
+        thickness: Double = 22.0,
+        trackColor: String = "rgba(132,150,165,0.22)",
+        valueColor: String = "#0f766e",
+        showValue: Bool = true
+    ) {
+        self.value = value
+        self.min = min
+        self.max = max
+        self.width = width
+        self.height = height
+        self.thickness = thickness
+        self.trackColor = trackColor
+        self.valueColor = valueColor
+        self.showValue = showValue
+    }
+
+    public var body: some View {
+        // The half-circle occupies the top half of its box, so the drawing
+        // box is twice the visible height — the web component's exact shape.
+        var cmds = renderGauge(
+            value,
+            PyreonChartRect(x: 0.0, y: 0.0, w: width, h: height * 2.0),
+            GaugeOptions(
+                min: min,
+                max: max,
+                sweep: Double.pi,
+                thickness: thickness,
+                trackColor: trackColor,
+                valueColor: valueColor))
+        if showValue {
+            cmds.append(
+                PyreonDrawCmd(
+                    kind: "text",
+                    fill: "#10161d",
+                    text: plain(value),
+                    at: PyreonChartPt(x: width / 2.0, y: height - 6.0),
+                    size: 20.0,
+                    align: "middle",
+                    baseline: "bottom"))
+        }
+        return PyreonChartCanvas(cmds: cmds).frame(width: width, height: height)
+    }
+}

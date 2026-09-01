@@ -13,6 +13,8 @@ import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import android.graphics.Paint
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.unit.dp
 
 // The chart draw-list contract — the Kotlin twin of PyreonChartCanvas.swift.
 // The RUNTIME owns these types; the generated PyreonChartEngine geometry
@@ -184,4 +186,86 @@ fun PyreonChartCanvas(
             }
         }
     }
+}
+
+// ── Radial chart components ─────────────────────────────────────────────
+//
+// The native twins of `@pyreon/charts/plot`'s `<PieChart>` / `<GaugeChart>`.
+// PMTC lowers those JSX components to these composables; the geometry comes
+// from the GENERATED PyreonChartEngine (renderPie / renderGauge), so web and
+// native draw from the same byte-locked math. Defaults mirror the web
+// component bodies exactly (PieChart.tsx).
+
+/** The web `<PieChart>` fallback palette, byte-for-byte. */
+val pyreonChartPalette: List<String> =
+    listOf("#0f766e", "#b45309", "#1d4ed8", "#b42318", "#15803d", "#7c3aed")
+
+@Composable
+fun <T> PyreonPieChart(
+    data: List<T>,
+    // Number, not Double: a TS `amount: number` field infers Int, and the
+    // accessor's return coerces here rather than failing every Int column.
+    value: (T) -> Number,
+    label: (T) -> String,
+    color: ((T) -> String)? = null,
+    width: Double = 300.0,
+    height: Double = 240.0,
+    innerRadius: Double = 0.0,
+    showLabels: Boolean = true,
+    modifier: Modifier = Modifier,
+) {
+    val slices = data.mapIndexed { i, d ->
+        Slice(
+            value = value(d).toDouble(),
+            label = label(d),
+            color = color?.invoke(d) ?: pyreonChartPalette[i % pyreonChartPalette.size])
+    }
+    val cmds = renderPie(
+        slices,
+        PyreonChartRect(x = 0.0, y = 0.0, w = width, h = height),
+        PieOptions(
+            innerRadius = innerRadius,
+            showLabels = showLabels,
+            labelColor = "#ffffff",
+            fontSize = 11.0))
+    PyreonChartCanvas(cmds, modifier.size(width.dp, height.dp))
+}
+
+@Composable
+fun PyreonGaugeChart(
+    value: Double,
+    min: Double = 0.0,
+    max: Double = 100.0,
+    width: Double = 240.0,
+    height: Double = 140.0,
+    thickness: Double = 22.0,
+    trackColor: String = "rgba(132,150,165,0.22)",
+    valueColor: String = "#0f766e",
+    showValue: Boolean = true,
+    modifier: Modifier = Modifier,
+) {
+    // The half-circle occupies the top half of its box, so the drawing box is
+    // twice the visible height — the web component's exact shape.
+    val cmds = renderGauge(
+        value,
+        PyreonChartRect(x = 0.0, y = 0.0, w = width, h = height * 2.0),
+        GaugeOptions(
+            min = min,
+            max = max,
+            sweep = Math.PI,
+            thickness = thickness,
+            trackColor = trackColor,
+            valueColor = valueColor)).toMutableList()
+    if (showValue) {
+        cmds.add(
+            PyreonDrawCmd(
+                kind = "text",
+                fill = "#10161d",
+                text = plain(value),
+                at = PyreonChartPt(x = width / 2.0, y = height - 6.0),
+                size = 20.0,
+                align = "middle",
+                baseline = "bottom"))
+    }
+    PyreonChartCanvas(cmds, modifier.size(width.dp, height.dp))
 }

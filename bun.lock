@@ -823,6 +823,7 @@
       "name": "@pyreon/example-native-finance",
       "version": "0.50.1",
       "dependencies": {
+        "@pyreon/charts": "workspace:*",
         "@pyreon/hooks": "workspace:*",
       },
       "devDependencies": {

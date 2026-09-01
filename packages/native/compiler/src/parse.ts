@@ -1113,7 +1113,6 @@ function tryModuleDeclsFromTopLevel(node: AnyNode, ctx: ParseCtx): ModuleDeclIR[
 // different as a linter, a `<head>` manager and an animation engine.
 const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map([
   ['@pyreon/atlas', "the component workbench — dev tooling that runs in a browser, not app runtime"],
-  ['@pyreon/charts', "wraps ECharts (browser canvas engine); consume on native via the `<WebView>` bridge subpath"],
   ['@pyreon/code', "wraps CodeMirror 6 (DOM editor engine); consume on native via the `<WebView>` bridge subpath"],
   ['@pyreon/compiler', "the web JSX compiler + build tooling itself; the native sibling is @pyreon/native-compiler — nothing here ships to an app runtime"],
   ['@pyreon/config', "build-time config shape read by the tooling that assembles an app — never part of a rendered app on any target"],
@@ -2511,6 +2510,20 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
     },
   ],
   [
+    '@pyreon/charts',
+    {
+      // The RADIAL components lower: `<PieChart>` / `<GaugeChart>` from the
+      // /plot subpath emit the runtime PyreonPieChart / PyreonGaugeChart views
+      // over the GENERATED PyreonChartEngine geometry — web and native draw
+      // the same byte-locked math. The cartesian `<PlotChart>` is marks-based
+      // (generic accessor layer, deliberately outside the generated bundle),
+      // and the default export wraps ECharts — both stay web.
+      advice:
+        '`<PieChart>` and `<GaugeChart>` from `@pyreon/charts/plot` DO lower (native PyreonPieChart / PyreonGaugeChart over the generated engine). The cartesian `<PlotChart>` / heatmap / candlestick and the ECharts-backed default export are web-only — keep them in a `<Web>` branch, or embed via the `/webview` bridge',
+      supported: new Set(['PieChart', 'GaugeChart']),
+    },
+  ],
+  [
     '@pyreon/validate',
     {
       advice:
@@ -2663,8 +2676,20 @@ function warnUnloweredPyreonModules(body: AnyNode[], ctx: ParseCtx): void {
     if (node.type !== 'ImportDeclaration') continue
     const src = node.source?.value
     if (typeof src !== 'string') continue
-    const entry = UNLOWERED_PYREON_MODULES.get(src)
-    if (entry === undefined) continue
+    // ROOT-normalized lookup: `@pyreon/charts/plot` must match the
+    // `@pyreon/charts` entry — an exact-string get left every subpath
+    // import SILENT (no symbol warn, and warnWebOnlyImports skips packages
+    // that have an entry here, so nothing fired at all). The `/webview`
+    // subpath is the documented native bridge and stays exempt, mirroring
+    // warnWebOnlyImports — a warning that fires on its own recommended fix
+    // trains people to ignore it.
+    const srcRoot = src.startsWith('@pyreon/')
+      ? `@pyreon/${src.slice('@pyreon/'.length).split('/')[0] ?? ''}`
+      : src
+    const isWebviewBridge =
+      src.startsWith('@pyreon/') && src.slice('@pyreon/'.length).split('/')[1] === 'webview'
+    const entry = UNLOWERED_PYREON_MODULES.get(src) ?? UNLOWERED_PYREON_MODULES.get(srcRoot)
+    if (entry === undefined || isWebviewBridge) continue
     for (const spec of (node.specifiers as AnyNode[]) ?? []) {
       if (spec.type !== 'ImportSpecifier') continue
       const imported = spec.imported?.name ?? spec.imported?.value
@@ -2739,7 +2764,12 @@ function warnUnloweredPyreonHooks(body: AnyNode[], ctx: ParseCtx): void {
       // signals") is true but leaves the author guessing; an entry in
       // UNLOWERED_PYREON_MODULES names the actual alternative for THAT
       // package, which is the whole reason that map exists.
-      const moduleAdvice = UNLOWERED_PYREON_MODULES.get(src)?.advice
+      // Root-normalized like the specifier loop above — a hook imported from
+      // a SUBPATH must still get its package's advice.
+      const advSrcRoot = src.startsWith('@pyreon/')
+        ? `@pyreon/${src.slice('@pyreon/'.length).split('/')[0] ?? ''}`
+        : src
+      const moduleAdvice = (UNLOWERED_PYREON_MODULES.get(src) ?? UNLOWERED_PYREON_MODULES.get(advSrcRoot))?.advice
       ctx.warnings.push(
         `${imported}() (from ${src}) has NO native lowering — the call is reproduced verbatim in the emitted Swift/Kotlin, where no such function exists, so the native build fails with "cannot find '${imported}' in scope". ${
           moduleAdvice
