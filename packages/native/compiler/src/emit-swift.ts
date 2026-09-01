@@ -36,6 +36,7 @@ import {
   literalShapeKey,
 } from './expr-utils'
 import {
+  nilCoalesceTernary,
   buildArraySpreadConcat,
   buildInferenceCtx,
   classifyNegativeSlice,
@@ -584,8 +585,22 @@ let _activeInferCtx: ReturnType<typeof buildInferenceCtx> = emptyInferenceCtx()
 /** 'double' / 'int' / 'other' for an expr, via the active inference ctx. */
 function numericFloatness(e: ExprIR): 'double' | 'int' | 'other' {
   const t = inferType(e, _activeInferCtx)
+  // The `Double`/`Float` ALIAS arrives as an unresolved typeRef (a param
+  // annotated `: Double` infers typeRef, not number+float) — it is exactly
+  // as float as a resolved float number, and missing it defeated the
+  // Int×Double coercion for every alias-annotated operand (the charts
+  // engine's `step * i` tick loop).
+  if (t.kind === 'typeRef' && (t.name === 'Double' || t.name === 'Float')) return 'double'
   if (t.kind !== 'number') return 'other'
   return t.float === true ? 'double' : 'int'
+}
+
+/** number+float OR the source-spelled `Double`/`Float` alias typeRef. */
+function isFloatTypeIR(t: TypeIR): boolean {
+  return (
+    (t.kind === 'number' && t.float === true) ||
+    (t.kind === 'typeRef' && (t.name === 'Double' || t.name === 'Float'))
+  )
 }
 
 /**
@@ -875,6 +890,13 @@ export function emitSwift(
   // Helper name → return type, so a computed over a helper call
   // (`computed(() => dbl(21))`) infers `Int` instead of `Any`.
   _helperReturns = new Map(helperFns.map((h) => [h.name, h.returnType]))
+  _exprInferCtx.helperReturns = _helperReturns
+  _activeInferCtx.helperReturns = _helperReturns
+  // The module-level infer ctxs used OUTSIDE component emission (top-level
+  // helper bodies, closures) must see the helper return types too — without
+  // this, `const step = niceStep(...)` seeded UNKNOWN and every
+  // type-gated lowering downstream of it went dark.
+
   _zeroArgHelperNames = new Set(helperFns.filter((h) => h.params.length === 0).map((h) => h.name))
   _fontMap = fonts
   _constStringMap = new Map()
@@ -987,6 +1009,7 @@ export function emitSwift(
   )
   // Gap 3 PR-3.4 — reset KeepAlive-wrapper flag per transform.
   _needsSwiftKeepAliveWrapper = false
+  _needsSwiftNumString = false
   const parts: string[] = []
   for (const e of enums) parts.push(emitSwiftEnum(e))
   for (const s of structs) parts.push(emitSwiftStruct(s))
@@ -1059,6 +1082,8 @@ export function emitSwift(
   for (const s of _synthExprStructs) parts.push(emitSwiftStruct(s))
   // Gap 3 PR-3.2/3.3/3.4 — prepend wrapper helper structs if needed.
   if (_needsSwiftKeepAliveWrapper) parts.push(SWIFT_KEEP_ALIVE_WRAPPER)
+  // consulted AFTER helper + component emission — the flag is set during it
+  if (_needsSwiftNumString) parts.push(SWIFT_NUM_STRING)
   for (const cp of componentParts) parts.push(cp)
   _enumNames = new Set()
   _structFieldsToName = new Map()
@@ -1083,6 +1108,7 @@ export function emitSwift(
   _modelMethodNames = new Map()
   _usesPermissionsEnvSwift = false
   _needsSwiftKeepAliveWrapper = false
+  _needsSwiftNumString = false
   const warnings = [..._emitWarnings]
   _emitWarnings = []
   return { code: parts.join('\n\n'), warnings }
@@ -2397,8 +2423,10 @@ function emitSwiftComponent(c: ComponentIR): string {
     const p0 = d.fn.params[0]
     const argName = p0 === undefined ? '_' : swiftIdent(p0.name)
     const savedLocals = seedHandlerLocals(d.fn.body, _exprInferCtx)
+    const savedLocalsAct7 = seedHandlerLocals(d.fn.body, _activeInferCtx)
     const body = d.fn.body.map((st) => emitSwiftStatement(st, 8)).join('; ')
     _exprInferCtx.locals = savedLocals
+    _activeInferCtx.locals = savedLocalsAct7
     lines.push(`      .onAppear {`)
     lines.push(`        ${swiftIdent(d.name)}.action = { ${argName} in ${body} }`)
     lines.push(`      }`)
@@ -2430,8 +2458,10 @@ function emitSwiftComponent(c: ComponentIR): string {
   for (const d of c.decls) {
     if (d.kind !== 'tick') continue
     const savedTick = seedHandlerLocals(d.body, _exprInferCtx)
+    const savedTickAct0 = seedHandlerLocals(d.body, _activeInferCtx)
     const body = d.body.map((st) => `          ${emitSwiftStatement(st, 10)}`).join('\n')
     _exprInferCtx.locals = savedTick
+    _activeInferCtx.locals = savedTickAct0
     const ns = `${d.delayMs}_000_000`
     lines.push(`      .task {`)
     if (d.mode === 'interval') {
@@ -2466,8 +2496,10 @@ function emitSwiftComponent(c: ComponentIR): string {
   for (const d of c.decls) {
     if (d.kind !== 'on-mount') continue
     const savedLocals = seedHandlerLocals(d.body, _exprInferCtx)
+    const savedLocalsAct1 = seedHandlerLocals(d.body, _activeInferCtx)
     const bodyLines = d.body.map((st) => `        ${emitSwiftStatement(st, 8)}`).join('\n')
     _exprInferCtx.locals = savedLocals
+    _activeInferCtx.locals = savedLocalsAct1
     lines.push(`      .onAppear {`)
     lines.push(bodyLines)
     lines.push(`      }`)
@@ -2492,8 +2524,10 @@ function emitSwiftComponent(c: ComponentIR): string {
       continue
     }
     const savedLocals = seedHandlerLocals(d.body, _exprInferCtx)
+    const savedLocalsAct2 = seedHandlerLocals(d.body, _activeInferCtx)
     const bodyLines = d.body.map((st) => `          ${emitSwiftStatement(st, 10)}`).join('\n')
     _exprInferCtx.locals = savedLocals
+    _activeInferCtx.locals = savedLocalsAct2
     lines.push(`      .background(`)
     lines.push(`        Button("") {`)
     lines.push(bodyLines)
@@ -3660,10 +3694,12 @@ function emitSwiftDecl(
     // after (scoped to this body).
     const inlinedStmts = inlineValueConstsInStmts(d.body)
     const savedLocals = seedHandlerLocals(inlinedStmts, _exprInferCtx)
+    const savedLocalsAct3 = seedHandlerLocals(inlinedStmts, _activeInferCtx)
     const bodyLines = inlinedStmts
       .map((s) => `    ${emitSwiftStatement(s, 4)}`)
       .join('\n')
     _exprInferCtx.locals = savedLocals
+    _activeInferCtx.locals = savedLocalsAct3
     return [
       `private var ${swiftIdent(d.name)}: ${swiftReturnType} {`,
       bodyLines,
@@ -3701,7 +3737,10 @@ function emitSwiftFunction(
   // preserves the call-site shape verbatim, so the function decl
   // must also opt out of Swift's default external labeling.
   const params = d.params
-    .map((p) => `_ ${swiftIdent(p.name)}: ${swiftType(p.type)}`)
+    .map((p) => {
+      const dflt = p.defaultValue !== undefined ? ` = ${emitSwiftExpr(p.defaultValue, 0)}` : ''
+      return `_ ${swiftIdent(p.name)}: ${swiftType(p.type)}${dflt}`
+    })
     .join(', ')
   // Render return-type clause. If the declared type is `unknown`, INFER it
   // from the body's return expr (`(x: number) => x * 2` → `-> Int`) so a
@@ -3748,8 +3787,15 @@ function emitSwiftFunction(
     // later type-dependent emit in the body resolves them — the named-handler
     // analog of the inline-handler seeding in emitSwiftAction. Restored after.
     const savedLocals = seedHandlerLocals(inlinedBody, _exprInferCtx)
+    // ALSO seed _activeInferCtx: the type-gated call lowerings
+    // (Number.isInteger / isNaN / numericFloatness) read _activeInferCtx,
+    // and for a TOP-LEVEL helper the two ctxs are distinct objects (they
+    // alias only inside emitSwiftComponent) — seeding one left `r` unknown
+    // to the other, so isInteger warned raw despite a resolvable type.
+    const savedActive = seedHandlerLocals(inlinedBody, _activeInferCtx)
     const bodyLines = inlinedBody.map((s) => `    ${emitSwiftStatement(s, 4)}`).join('\n')
     _exprInferCtx.locals = savedLocals
+    _activeInferCtx.locals = savedActive
     const vis2 = visibility === 'private' ? 'private ' : ''
     return `${vis2}func ${swiftIdent(d.name)}(${params})${retType} {\n${bodyLines}\n  }`
   } finally {
@@ -3775,6 +3821,15 @@ function swiftCondition(e: ExprIR, emit: (x: ExprIR) => string): string {
   if (c?.form === 'present') return `${emit(e)} != nil`
   return emit(e)
 }
+
+// A let-bound arrow is a STANDALONE closure — Swift cannot infer its param
+// types, so annotated params emit the typed parenthesized form there. A
+// callback ARGUMENT gets its types from the call site, and a typed form
+// there is churn (and can disagree with the receiver's element type — an
+// annotated `(x: number)` on `[Int].map` must stay bare). The flag is set by
+// the let-statement emit and CONSUMED by the first arrow emitted, so nested
+// callback arrows inside the bound closure's body see it false.
+let _typedClosureLet = false
 
 function emitSwiftStatement(s: StatementIR, indent: number): string {
   switch (s.kind) {
@@ -3822,7 +3877,13 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
             ? `: ${swiftType(s.declaredType)}`
             : ''
         const kw = s.mutable || s.expr.kind === 'new-collection' ? 'var' : 'let'
-        return `${kw} ${swiftIdent(s.name)}${ann} = ${emitSwiftExpr(s.expr, indent)}`
+        const prevTyped = _typedClosureLet
+        if (s.expr.kind === 'arrow') _typedClosureLet = true
+        try {
+          return `${kw} ${swiftIdent(s.name)}${ann} = ${emitSwiftExpr(s.expr, indent)}`
+        } finally {
+          _typedClosureLet = prevTyped
+        }
       }
     case 'assign':
       return `${emitSwiftExpr(s.target, indent)} ${s.op} ${emitSwiftExpr(s.value, indent)}`
@@ -3911,10 +3972,24 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       // (inclusive → `through:`). Ranges keep break/continue semantics.
       const pad = ' '.repeat(indent)
       const from = emitSwiftExpr(s.from, indent)
-      const to = emitSwiftExpr(s.to, indent)
+      const toT = inferType(s.to, _activeInferCtx)
+      const toRaw = emitSwiftExpr(s.to, indent)
+      // A Double TO-bound makes `0..<n` a Range<Double> — not a Sequence at
+      // all. JS `i < n` trips ceil(n) times for fractional n (identity for
+      // integral), so the bound wraps `Int(ceil(...))`.
+      const to = isFloatTypeIR(toT) ? `Int(ceil(Double(${toRaw})))` : toRaw
+      // The counter is an Int in the body's scope — registering it lets the
+      // binary-op coercion wrap `Double(i)` when it meets a Double
+      // (`first + step * i` was 'Int * Double' on the charts engine; an
+      // unregistered counter inferred unknown, so the coercion never fired).
+      const hadItem = _activeInferCtx.locals.has(s.item)
+      const prevItem = _activeInferCtx.locals.get(s.item)
+      _activeInferCtx.locals.set(s.item, { kind: 'number' })
       const lines = s.body
         .map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`)
         .join('\n')
+      if (hadItem) _activeInferCtx.locals.set(s.item, prevItem!)
+      else _activeInferCtx.locals.delete(s.item)
       const head =
         s.step !== undefined
           ? `stride(from: ${from}, ${s.inclusive === true ? 'through' : 'to'}: ${to}, by: ${emitSwiftExpr(s.step, indent)})`
@@ -4367,8 +4442,10 @@ function emitSwiftIndexedClosure(
       const pad = ' '.repeat(indent + 2)
       const inlinedStmts = inlineValueConstsInStmts(cb.stmts)
       const savedLocals = seedHandlerLocals(inlinedStmts, _exprInferCtx)
+      const savedLocalsAct5 = seedHandlerLocals(inlinedStmts, _activeInferCtx)
       const lines = inlinedStmts.map((s) => pad + emitSwiftStatement(s, indent + 2)).join('\n')
       _exprInferCtx.locals = savedLocals
+      _activeInferCtx.locals = savedLocalsAct5
       return `{ (${idx}, ${el}) in\n${lines}\n${' '.repeat(indent)}}`
     }
     return `{ (${idx}, ${el}) in ${emitSwiftExpr(cb.body, indent)} }`
@@ -4530,6 +4607,18 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // equivalents (Foundation is in the CLI import header). Kotlin
       // needs no mapping — java.lang.Math is valid on Android/JVM. An
       // unmapped `Math.X` falls through to the generic emit.
+      // `String(x)` over a FLOAT-typed arg → the JS-faithful formatter
+      // (integral Doubles print without .0, like the web). Non-float args
+      // keep the verbatim `String(...)` — valid Swift, byte-identical.
+      if (
+        e.callee.kind === 'identifier' &&
+        e.callee.name === 'String' &&
+        e.args.length === 1 &&
+        isFloatTypeIR(inferType(e.args[0]!, _activeInferCtx))
+      ) {
+        _needsSwiftNumString = true
+        return `pyreonNumString(${emitSwiftExpr(e.args[0]!, indent)})`
+      }
       if (
         e.callee.kind === 'member' &&
         e.callee.object.kind === 'identifier' &&
@@ -4581,16 +4670,23 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           // result is wrapped `Int(…)` so it stays an Int usable in `page <
           // pageCount` and prints "4" not "4.0" (matches `inferMathCall` → Int).
           case 'round':
-            if (args.length === 1) return `Int((Double(${args[0]!})).rounded())`
+            if (args.length === 1) return `(Double(${args[0]!})).rounded()`
             break
+          // floor/ceil/trunc return DOUBLE — JS Math.floor returns a
+          // NUMBER, and the old `Int(floor(...))` wrap poisoned every
+          // downstream mixed expression (`Math.floor(min/step) * step`
+          // → 'Int * Double' — 18 errors on the charts engine bundle).
+          // Index positions coerce back via the 'index' emit's
+          // float-index Int() wrap; Kotlin was always JS-faithful here
+          // (java.lang.Math.floor returns double, Int×Double promotes).
           case 'floor':
-            if (args.length === 1) return `Int(floor(Double(${args[0]!})))`
+            if (args.length === 1) return `floor(Double(${args[0]!}))`
             break
           case 'ceil':
-            if (args.length === 1) return `Int(ceil(Double(${args[0]!})))`
+            if (args.length === 1) return `ceil(Double(${args[0]!}))`
             break
           case 'trunc':
-            if (args.length === 1) return `Int(trunc(Double(${args[0]!})))`
+            if (args.length === 1) return `trunc(Double(${args[0]!}))`
             break
           case 'abs':
             if (args.length === 1) return `abs(${args[0]!})`
@@ -4685,7 +4781,11 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         e.callee.property === 'isInteger' &&
         e.args.length === 1
       ) {
-        const nt = inferType(e.args[0]!, _activeInferCtx)
+        const nt0 = inferType(e.args[0]!, _activeInferCtx)
+        const nt =
+          nt0.kind === 'typeRef' && (nt0.name === 'Double' || nt0.name === 'Float')
+            ? ({ kind: 'number', float: true } as TypeIR)
+            : nt0
         const argStr = emitSwiftExpr(e.args[0]!, indent)
         if (nt.kind === 'number' && nt.float !== true) return 'true'
         if (nt.kind === 'number') {
@@ -4705,7 +4805,11 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         e.callee.name === 'isNaN' &&
         e.args.length === 1
       ) {
-        const nT = inferType(e.args[0]!, _activeInferCtx)
+        const nT0 = inferType(e.args[0]!, _activeInferCtx)
+        const nT =
+          nT0.kind === 'typeRef' && (nT0.name === 'Double' || nT0.name === 'Float')
+            ? ({ kind: 'number', float: true } as TypeIR)
+            : nT0
         const nStr = emitSwiftExpr(e.args[0]!, indent)
         if (nT.kind === 'number' && nT.float !== true) return 'false'
         if (nT.kind === 'number') return `(${nStr}).isNaN`
@@ -5536,6 +5640,13 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // limitation. Kotlin maps separately (`str[i].toString()`).
             if (e.args.length === 1) return `String(Array(${obj})[${argExprs[0]!}])`
             break
+          case 'charCodeAt':
+            // JS `s.charCodeAt(i)` → the UTF-16 code unit as Double
+            // (matching the JS number). `Array(s.utf16)` gives O(1)
+            // integer indexing; out-of-range crashes (JS returns NaN) —
+            // bounds are the caller's concern, same v1 rule as `charAt`.
+            if (e.args.length === 1) return `Double(Array(${obj}.utf16)[Int(${argExprs[0]!})])`
+            break
           case 'startsWith':
             // JS String.startsWith → Swift `hasPrefix` (Kotlin's
             // startsWith is valid as-is, no mapping there).
@@ -5959,9 +6070,23 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         )
         return `${objStr}[${idxStr}]`
       }
-      return `${emitSwiftExpr(e.object, indent)}[${emitSwiftExpr(e.index, indent)}]`
+      // A provably-Double index (Math.floor now returns Double) needs the
+      // Int() wrap Swift subscripts demand; unknown/Int stays bare.
+      {
+        const idxT = inferType(e.index, _activeInferCtx)
+        const idxRaw = emitSwiftExpr(e.index, indent)
+        const idxOut = isFloatTypeIR(idxT) ? `Int(${idxRaw})` : idxRaw
+        return `${emitSwiftExpr(e.object, indent)}[${idxOut}]`
+      }
     }
     case 'member': {
+      // `Math.PI` is a member READ (the Math CALL mapping never sees it) —
+      // emitted verbatim it is "cannot find 'Math' in scope". Swift's
+      // constant is `Double.pi`.
+      if (e.object.kind === 'identifier' && e.object.name === 'Math' && e.property === 'PI') {
+        return 'Double.pi'
+      }
+
       // `m.size` (Map/Set property) → Swift `.count`, typed off the receiver.
       if (e.property === 'size') {
         const szT = inferType(e.object, _activeInferCtx)
@@ -6102,7 +6227,15 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // valid on numbers, so `Double(...)` is always sound here. Other ops
       // (`+ - * %`) match JS for integers and are emitted verbatim.
       if (e.op === '/') {
-        return `Double(${bl}) / Double(${br})`
+        // Skip the wrap for a PROVABLY-float operand: `Double(x)` over an
+        // already-Double is a no-op that stacks overload-resolution work —
+        // a chained interpolation (`r0 + (a - lo) / (hi - lo) * (r1 - r0)`
+        // over Double bindings) blew swiftc's expression budget purely on
+        // redundant wraps ("unable to type-check in reasonable time").
+        // Int and UNKNOWN operands keep the wrap (JS float division).
+        const lw = numericFloatness(e.left) === 'double' ? bl : `Double(${bl})`
+        const rw = numericFloatness(e.right) === 'double' ? br : `Double(${br})`
+        return `${lw} / ${rw}`
       }
       // Exponent (`a ** b`) — Swift has no `**` operator; `pow(_:_:)` is
       // Double-domain (Foundation, re-exported by SwiftUI). Coerce both
@@ -6273,6 +6406,16 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // …` compiles), so this is a Swift-only refinement. `optionalMemberTernary`
       // (infer-type.ts — the ONE bisect point) detects the simplest `opt` cond +
       // `opt.prop` then shape (the find-then-field idiom).
+      // TS narrows `x === undefined ? fb : x` (and the `!==` mirror); Swift
+      // does not, so the straight emit fails "must be unwrapped". The idiom
+      // IS Swift's nil-coalescing — rewrite to `(x ?? fb)` when the branch
+      // that survives the check is STRUCTURALLY the checked expression and
+      // the checked expression is provably optional (a `??` on a non-optional
+      // is its own swiftc complaint, so an unprovable case emits as before).
+      const nc = nilCoalesceTernary(e, _exprInferCtx)
+      if (nc) {
+        return `(${emitSwiftExpr(nc.opt, indent)} ?? ${emitSwiftExpr(nc.fallback, indent)})`
+      }
       const omt = optionalMemberTernary(e, _exprInferCtx)
       if (omt) {
         return `(${emitSwiftExpr(omt.opt, indent)}?.${swiftIdent(omt.property)} ?? ${emitSwiftExpr(e.otherwise, indent)})`
@@ -6330,17 +6473,62 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // the whole body on the PLAIN 1-param path (the indexed path fixed
       // this in #1954; the dedup idiom `filter(x => { …; seen.add(x); return
       // true })` exposed the plain-path sibling).
+      // Typed form when EVERY param carries an annotation — Swift's
+      // parenthesized closure params are all-or-nothing, and a standalone
+      // `let f = { r in … }` cannot infer its param types at all.
+      const standaloneClosure = _typedClosureLet
+      _typedClosureLet = false
+      const swiftClosureParams = (): string => {
+        const types = e.paramTypes
+        if (
+          standaloneClosure &&
+          e.params.length > 0 &&
+          types !== undefined &&
+          types.length === e.params.length &&
+          types.every((t) => t !== undefined && t.kind !== 'unknown')
+        ) {
+          return `(${e.params.map((n, i) => `${swiftIdent(n)}: ${swiftType(types[i]!)}`).join(', ')})`
+        }
+        return e.params.map(swiftIdent).join(', ')
+      }
       if (e.stmts !== undefined && e.stmts.length > 0) {
         const pad = ' '.repeat(indent + 2)
         const inlined = inlineValueConstsInStmts(e.stmts)
+        // Bind ANNOTATED closure params into both ctxs — the body's
+        // type-gated lowerings otherwise see them as unknown (`pts.count`
+        // in the charts reveal closure could not coerce against a Double).
+        const paramBind: Array<[string, boolean, TypeIR | undefined, boolean, TypeIR | undefined]> = []
+        if (e.paramTypes !== undefined) {
+          e.params.forEach((pn, pi) => {
+            const pt = e.paramTypes![pi]
+            if (pt === undefined || pt.kind === 'unknown') return
+            paramBind.push([
+              pn,
+              _exprInferCtx.locals.has(pn),
+              _exprInferCtx.locals.get(pn),
+              _activeInferCtx.locals.has(pn),
+              _activeInferCtx.locals.get(pn),
+            ])
+            _exprInferCtx.locals.set(pn, pt)
+            _activeInferCtx.locals.set(pn, pt)
+          })
+        }
         const saved = seedHandlerLocals(inlined, _exprInferCtx)
+        const savedAct8 = seedHandlerLocals(inlined, _activeInferCtx)
         const lines = inlined.map((st) => pad + emitSwiftStatement(st, indent + 2)).join('\n')
         _exprInferCtx.locals = saved
-        const params = e.params.length > 0 ? `${e.params.map(swiftIdent).join(', ')} in` : ''
+        _activeInferCtx.locals = savedAct8
+        for (const [pn, hadE, prevE, hadA, prevA] of paramBind.reverse()) {
+          if (hadE) _exprInferCtx.locals.set(pn, prevE!)
+          else _exprInferCtx.locals.delete(pn)
+          if (hadA) _activeInferCtx.locals.set(pn, prevA!)
+          else _activeInferCtx.locals.delete(pn)
+        }
+        const params = e.params.length > 0 ? `${swiftClosureParams()} in` : ''
         return `{ ${params}\n${lines}\n${' '.repeat(indent)}}`
       }
       if (e.params.length === 0) return `{ ${emitSwiftExpr(e.body, indent)} }`
-      return `{ ${e.params.map(swiftIdent).join(', ')} in ${emitSwiftExpr(e.body, indent)} }`
+      return `{ ${swiftClosureParams()} in ${emitSwiftExpr(e.body, indent)} }`
     }
     case 'new-sized-map': {
       // `new SizedMap<K, V>({ maxEntries, lru })` → the co-located
@@ -6481,8 +6669,24 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           // reorders identically — the two backends must not disagree about
           // emitted bytes for the same source.
           const ordered = orderFieldsByStruct(e.fields, structName)
+          // Coerce an INT-valued arg into a FLOAT-typed field —
+          // `Tick(value: i)` over a loop counter is 'cannot convert Int to
+          // Double' (Swift has no implicit widening at init args either).
+          const structDef =
+            _declaredStructs.find((st) => st.name === structName) ??
+            _synthExprStructs.find((st) => st.name === structName)
+          const fieldT = new Map((structDef?.fields ?? []).map((f) => [f.name, f.type]))
           const args = ordered
-            .map((f) => `${swiftIdent(f.name)}: ${emitSwiftExpr(f.value, indent)}`)
+            .map((f) => {
+              const raw = emitSwiftExpr(f.value, indent)
+              const ft = fieldT.get(f.name)
+              const wantsFloat =
+                ft !== undefined &&
+                ((ft.kind === 'number' && ft.float === true) ||
+                  (ft.kind === 'typeRef' && (ft.name === 'Double' || ft.name === 'Float')))
+              const coerce = wantsFloat && numericFloatness(f.value) === 'int'
+              return `${swiftIdent(f.name)}: ${coerce ? `Double(${raw})` : raw}`
+            })
             .join(', ')
           return `${swiftIdent(structName)}(${args})`
         }
@@ -7240,6 +7444,7 @@ function emitSwiftAction(handler: ExprIR, indent: number): string {
       // the condition to `if t != nil`. Restored after, so the seeding is
       // scoped to this body (re-entrant-safe for nested handlers).
       const savedLocals = seedHandlerLocals(inlinedStmts, _exprInferCtx)
+      const savedLocalsAct6 = seedHandlerLocals(inlinedStmts, _activeInferCtx)
       // M4.5: an `async () => { … await … }` handler wraps its body in a
       // `Task { … }` so the synchronous SwiftUI action slot (`() -> Void`) can
       // launch async work. The `await` sub-expressions emit inside it.
@@ -7250,6 +7455,7 @@ function emitSwiftAction(handler: ExprIR, indent: number): string {
         .map((s) => bodyPad + emitSwiftStatement(s, bodyIndent))
         .join('\n')
       _exprInferCtx.locals = savedLocals
+      _activeInferCtx.locals = savedLocalsAct6
       if (isAsync) {
         return `{\n${pad}Task {\n${lines}\n${pad}}\n${' '.repeat(indent)}}`
       }
@@ -7664,6 +7870,16 @@ private struct PyreonKeepAliveWrapper<Content: View>: View {
 }`
 
 let _needsSwiftKeepAliveWrapper = false
+
+// `String(x)` over a Double: JS prints an integral number WITHOUT a
+// trailing .0 (`String(3.0)` → "3"), Swift's own String(3.0) → "3.0" —
+// a user-visible parity break in every numeric label once the Math.floor
+// family became Double-returning. Emitted once, only when used (the
+// PyreonUrlStateDouble.set formatter, extracted).
+let _needsSwiftNumString = false
+const SWIFT_NUM_STRING = `func pyreonNumString(_ v: Double) -> String {
+    v.rounded() == v && v.magnitude < 1e15 ? String(Int(v)) : String(v)
+}`
 
 /**
  * Escape-hatch primitive emit (`<NativeIOS>` / `<NativeAndroid>` / `<Web>`).

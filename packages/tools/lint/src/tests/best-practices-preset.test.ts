@@ -21,7 +21,7 @@ function sev(entry: unknown): Severity {
 }
 
 describe('opt-in best-practice rule wiring', () => {
-  it('the expected 25 best-practice rules are tagged optIn', () => {
+  it('the expected 31 best-practice rules are tagged optIn', () => {
     // Six a11y rules were promoted OUT of opt-in: require-img-alt,
     // anchor-is-valid, no-autofocus, no-redundant-role, no-positive-tabindex
     // and primitive-media-needs-label. Each is an unambiguous WCAG failure
@@ -36,6 +36,16 @@ describe('opt-in best-practice rule wiring', () => {
         'pyreon/no-unguarded-async-signal-write',
         'pyreon/no-out-of-subset-construct',
         'pyreon/no-platform-branch-without-fallback',
+        // The portable tier completed: every one is opt-in because these are
+        // pure noise in a web-only project, which is most projects.
+        'pyreon/no-web-only-import-in-portable',
+        'pyreon/prefer-canonical-primitive',
+        'pyreon/require-native-compat-marker',
+        'pyreon/no-css-in-js-in-portable',
+        // A loading hint cannot be decided statically — the rule asks for the
+        // call to be made rather than asserting lazy is right.
+        'pyreon/require-img-loading-hint',
+        'pyreon/no-catch-without-rethrow-or-report',
         'pyreon/img-requires-dimensions',
         'pyreon/content-visibility-needs-intrinsic-size',
         'pyreon/prefer-zero-image',

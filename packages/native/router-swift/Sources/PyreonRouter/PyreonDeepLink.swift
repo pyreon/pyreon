@@ -94,14 +94,29 @@ public enum PyreonDeepLink {
     /// release handle; the router calls it on deinit.
     public static func setListener(_ onLink: @escaping (String) -> Void) -> () -> Void {
         lock.lock()
+        listenerToken &+= 1
+        let token = listenerToken
         listener = onLink
         lock.unlock()
+        // Release by IDENTITY, not by position. The disposer used to nil the
+        // slot unconditionally, so a router that registered EARLIER and
+        // deallocated LATER cleared the slot belonging to the router that had
+        // replaced it — warm deep links then died silently for the rest of the
+        // session, and because the slot is nil the next link is stashed to
+        // `pending` for a router that may never be constructed.
+        //
+        // This is leak class A, and the fix is the one this repo's own
+        // `_disposableBeforeEachGuards` already uses: compare a token taken at
+        // registration and clear only if it is still the live one.
         return {
             lock.lock()
-            listener = nil
+            if listenerToken == token { listener = nil }
             lock.unlock()
         }
     }
+
+    /// Identifies the CURRENT registration, so a stale disposer is a no-op.
+    private static var listenerToken: UInt64 = 0
 
     /// Test seam — clears both slots so one test's link cannot leak into the
     /// next.

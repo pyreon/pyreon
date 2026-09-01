@@ -51,6 +51,7 @@ VALID_GROUPS.add('internal')
 export function diagnoseUnknownConfigKeys(
   fileConfig: LintConfigFile | null,
   knownRuleIds: readonly string[],
+  knownSettingKeys: readonly string[] = [],
 ): ConfigDiagnostic[] {
   if (!fileConfig) return []
   const out: ConfigDiagnostic[] = []
@@ -78,6 +79,27 @@ export function diagnoseUnknownConfigKeys(
       message:
         `Config names an unknown rule group \`${group}\`, so that entry does ` +
         `nothing. Valid groups: ${valid}.`,
+    })
+  }
+
+  // A `settings` key no rule declares is seeded onto nothing. Same silence as
+  // a typo'd rule id: the line parses, merges, and protects nothing.
+  const knownSettings = new Set(knownSettingKeys)
+  for (const key of Object.keys(fileConfig.settings ?? {})) {
+    if (knownSettings.has(key)) continue
+    const near = knownSettingKeys.filter((k) => isNear(k, key)).slice(0, 3)
+    const hint =
+      near.length > 0
+        ? ` Did you mean: ${near.join(', ')}?`
+        : knownSettingKeys.length > 0
+          ? ` Known settings: ${[...knownSettings].sort().join(', ')}.`
+          : ''
+    out.push({
+      ruleId: `settings.${key}`,
+      severity: 'error',
+      message:
+        `Config sets an unknown shared setting \`${key}\`, which no rule ` +
+        `declares, so it reaches no rule.${hint}`,
     })
   }
 

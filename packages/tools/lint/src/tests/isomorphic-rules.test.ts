@@ -35,13 +35,15 @@ const only = (src: string, id: string, file?: string) =>
   at(src, file).filter((d) => d.ruleId === id)
 
 describe('isomorphic group wiring', () => {
-  it('holds exactly the four hydration-contract rules', () => {
+  it('holds exactly the six hydration-contract rules', () => {
     const iso = allRules.filter((r) => groupOf(r.meta) === 'isomorphic')
     expect(iso.map((r) => r.meta.id).sort()).toEqual([
+      'pyreon/no-env-branch-in-render',
       'pyreon/no-locale-dependent-format',
       'pyreon/no-node-builtin-in-component',
       'pyreon/no-timezone-dependent-date',
       'pyreon/no-unstable-render-id',
+      'pyreon/require-stable-iteration-order',
     ])
   })
 

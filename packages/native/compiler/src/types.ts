@@ -88,7 +88,7 @@ export type DeclIR =
   | {
       kind: 'function'
       name: string
-      params: { name: string; type: TypeIR }[]
+      params: { name: string; type: TypeIR; defaultValue?: ExprIR | undefined }[]
       returnType: TypeIR
       body: StatementIR[]
     }
@@ -1003,6 +1003,8 @@ export type StatementIR =
        * `listOf()`. The annotation is the only place that element type exists.
        */
       declaredType?: TypeIR
+          /** an ARRAY-literal local later mutated via push/pop/shift/unshift/splice — Kotlin must emit mutableListOf */
+      methodMutated?: boolean | undefined
     }
   /**
    * Reassignment of a plain local / member / index target:
@@ -1318,7 +1320,17 @@ export type ExprIR =
    * emit `stmts` as a multi-statement closure body; without it the
    * earlier parse silently kept only the FIRST statement.
    */
-  | { kind: 'arrow'; params: string[]; body: ExprIR; stmts?: StatementIR[]; async?: boolean }
+  | {
+      kind: 'arrow'
+      params: string[]
+      /** Per-param TS annotations, index-aligned with `params`; undefined where unannotated. */
+      paramTypes?: (TypeIR | undefined)[] | undefined
+      /** the arrow's declared RETURN annotation, when written */
+      returnAnnot?: TypeIR | undefined
+      body: ExprIR
+      stmts?: StatementIR[]
+      async?: boolean
+    }
   /**
    * RX-2 — `@pyreon/rx` namespace call. Produced by parse.ts'
    * `tryRxNamespaceLowering` when it encounters `rx.METHOD(signal, ...)`.

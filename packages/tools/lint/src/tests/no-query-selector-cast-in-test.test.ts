@@ -204,4 +204,26 @@ describe('pyreon/no-query-selector-cast-in-test', () => {
     expect(diagIds(result)).not.toContain('pyreon/no-query-selector-cast-in-test')
   })
 
+  // ── Shared isTestFile (the plan's last phase-0 residual) ─────────────────
+  it.each([
+    ['a .spec.ts file', 'src/foo.spec.ts'],
+    ['a file under tests/', 'src/tests/helpers.ts'],
+    ['a file under __tests__/', 'src/__tests__/helpers.ts'],
+  ])('fires in %s, which the old inline regex missed', (_name, file) => {
+    // This rule was the last of three still re-implementing `isTestFile`
+    // inline, matching `*.test.ts(x)` alone. The narrowing excluded OTHER
+    // test files rather than production code, which its own docstring's
+    // rationale never justified. Measured before changing it: 52 files fall in
+    // the gap and none contained the pattern — so this widening fixes a latent
+    // inconsistency rather than a live hole, and these specs are what keep the
+    // two definitions of "is this a test" from drifting apart again.
+    const result = lint(`const a = el.querySelector('a') as HTMLAnchorElement`, file, ON)
+    expect(diagIds(result)).toContain('pyreon/no-query-selector-cast-in-test')
+  })
+
+  it('still does not fire in production code', () => {
+    const result = lint(`const a = el.querySelector('a') as HTMLAnchorElement`, 'src/widget.ts', ON)
+    expect(diagIds(result)).not.toContain('pyreon/no-query-selector-cast-in-test')
+  })
+
 })

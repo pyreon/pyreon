@@ -61,7 +61,7 @@ export function timeTicks(
   d: Domain,
   r0: Double,
   r1: Double,
-  target: number,
+  target: Double,
   format?: Formatter,
 ): Tick[] {
   const span = d.max - d.min
@@ -83,6 +83,10 @@ export function timeTicks(
     }
   }
 
+  // Coalesce-first: Swift does not narrow an optional closure through a
+  // ternary nil-check, so bind the resolved formatter once (`format(v)` on
+  // the non-nil branch is "must be unwrapped" natively).
+  const fmt = format ?? ((x: Double): string => formatTime(x, step))
   const first = Math.ceil(d.min / step) * step
   const limit = 200
   let i = 0
@@ -92,7 +96,7 @@ export function timeTicks(
     out.push({
       value: v,
       pos: r0 + ((v - d.min) / span) * (r1 - r0),
-      label: format === undefined ? formatTime(v, step) : format(v),
+      label: fmt(v),
     })
     i = i + 1
   }
@@ -108,11 +112,32 @@ export function timeTicks(
  * supplies on web.
  */
 export function formatTime(ms: Double, step: Double): string {
-  const d = new Date(ms)
-  const p2 = (n: number): string => (n < 10 ? `0${n}` : `${n}`)
-  if (step >= DAY * 300.0) return `${d.getFullYear()}`
-  if (step >= DAY * 25.0) return `${d.getFullYear()}-${p2(d.getMonth() + 1)}`
-  if (step >= DAY) return `${p2(d.getMonth() + 1)}-${p2(d.getDate())}`
-  if (step >= MINUTE) return `${p2(d.getHours())}:${p2(d.getMinutes())}`
-  return `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`
+  // Pure epoch math in UTC — `new Date` is a class-construction bail under
+  // PMTC, and local-time getters would make one shared source label the
+  // same timestamp differently per device timezone. UTC is the one answer
+  // every platform derives identically; a locale/zone-aware label is a
+  // `Formatter` the caller supplies. (Civil-from-days: Howard Hinnant's
+  // algorithm, integer-exact for the whole Double-safe epoch range.)
+  const p2 = (n: Double): string => (n < 10 ? `0${Math.trunc(n)}` : `${Math.trunc(n)}`)
+  const dayMs = 86400000.0
+  const days = Math.floor(ms / dayMs)
+  const msOfDay = ms - days * dayMs
+  const z = days + 719468.0
+  const era = Math.floor(z / 146097.0)
+  const doe = z - era * 146097.0
+  const yoe = Math.floor((doe - Math.floor(doe / 1460.0) + Math.floor(doe / 36524.0) - Math.floor(doe / 146096.0)) / 365.0)
+  const y0 = yoe + era * 400.0
+  const doy = doe - (365.0 * yoe + Math.floor(yoe / 4.0) - Math.floor(yoe / 100.0))
+  const mp = Math.floor((5.0 * doy + 2.0) / 153.0)
+  const day = doy - Math.floor((153.0 * mp + 2.0) / 5.0) + 1.0
+  const month = mp < 10.0 ? mp + 3.0 : mp - 9.0
+  const year = month <= 2.0 ? y0 + 1.0 : y0
+  const hours = Math.floor(msOfDay / 3600000.0)
+  const minutes = Math.floor((msOfDay - hours * 3600000.0) / 60000.0)
+  const seconds = Math.floor((msOfDay - hours * 3600000.0 - minutes * 60000.0) / 1000.0)
+  if (step >= DAY * 300.0) return `${Math.trunc(year)}`
+  if (step >= DAY * 25.0) return `${Math.trunc(year)}-${p2(month)}`
+  if (step >= DAY) return `${p2(month)}-${p2(day)}`
+  if (step >= MINUTE) return `${p2(hours)}:${p2(minutes)}`
+  return `${p2(hours)}:${p2(minutes)}:${p2(seconds)}`
 }

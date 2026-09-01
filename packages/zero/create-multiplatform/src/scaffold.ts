@@ -158,8 +158,8 @@ android/keystore.properties
   // showing: one line moves a whole tier, so an app states its platform story
   // in config rather than rule by rule.
   //
-  // `portablePaths` is not optional decoration. `no-out-of-subset-construct`
-  // fires on NOTHING until it is told which files must travel — deliberately,
+  // `portablePaths` is not optional decoration. FIVE of the portable rules
+  // fire on NOTHING until told which files must travel — deliberately,
   // because run unscoped it produces thousands of findings in code entitled to
   // the whole language, and "which files reach iOS and Android" cannot be
   // inferred from a file's contents. A scaffolder is the one caller that knows
@@ -175,9 +175,11 @@ android/keystore.properties
         $schema: 'node_modules/@pyreon/lint/schema/pyreonlintrc.schema.json',
         preset: 'recommended',
         groups: { portable: 'warn' },
-        rules: {
-          'pyreon/no-out-of-subset-construct': ['warn', { portablePaths: ['src/'] }],
-        },
+        // Shared, not per-rule: FIVE portable rules need to know which files
+        // must lower, and listing them one by one makes this config a
+        // hand-maintained subset of the rule registry — a sixth portable rule
+        // would then be silently inert here.
+        settings: { portablePaths: ['src/'] },
       },
       null,
       2,

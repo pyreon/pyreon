@@ -465,14 +465,25 @@ SERVER side of the SSR store-hydration handshake (the `@pyreon/store` analogue o
 **Example**
 
 ```tsx
-// server, after render:
+// server, after render. Store state is user data, so the JSON must be
+// neutralised for the inline-<script> context: a bare JSON.stringify lets a
+// stored string close the element or open the script-data-double-escaped state,
+// and U+2028/U+2029 are legal in JSON but are line terminators inside a script.
+// Every escape here round-trips byte-identically through JSON.parse.
+const scriptSafeJson = (v: unknown) =>
+  JSON.stringify(v)
+    .replace(/</g, '\\u003C')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029')
+
 const stores = dehydrateStores(id => !id.startsWith('server:'))
 html = html.replace('</head>',
-  `<script>window.__PYREON_STORE_STATE__=${JSON.stringify(stores)}</script></head>`)
+  `<script>window.__PYREON_STORE_STATE__=${scriptSafeJson(stores)}</script></head>`)
 ```
 
 **Common mistakes**
 
+- Embedding the snapshot with a bare `JSON.stringify` — store state is user data, so a stored string containing `</script>` or `<!--<script` breaks out of the inline script. Escape the `<` class plus U+2028/U+2029 before interpolating, as the example does
 - Storing non-JSON-serializable values (Date / Map / Set / class instances) in a dehydrated store — the framework `JSON.stringify`s the snapshot, so those silently degrade. Keep dehydrated state plain, or revive on read
 - Calling it BEFORE render completes — it snapshots current signal values; run it after `renderToString` so loaders/server mutations are reflected
 - Forgetting the `filter` for sensitive stores — by default EVERY active store is dehydrated and shipped to the client. Exclude server-only state with the predicate

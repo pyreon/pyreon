@@ -15,13 +15,13 @@ export interface RadarSeries {
   fillAlpha: Double
 }
 
-const START = -Math.PI / 2.0
+const RADAR_START = -Math.PI / 2.0
 
 /** Where each axis points, evenly around the circle from 12 o'clock. */
 export function radarAngles(count: number): Double[] {
   const out: Double[] = []
   if (count <= 0) return out
-  for (let i = 0; i < count; i++) out.push(START + (Math.PI * 2.0 * i) / count)
+  for (let i = 0; i < count; i++) out.push(RADAR_START + (Math.PI * 2.0 * i) / count)
   return out
 }
 
@@ -42,8 +42,11 @@ export function radarPolygon(
   const angles = radarAngles(n)
   const out: Pt[] = []
   for (let i = 0; i < n; i++) {
-    const max = axes[i]!.max
-    const t = max <= 0.0 ? 0.0 : Math.max(0.0, Math.min(1.0, values[i]! / max))
+    // named to avoid shadowing the native max() call under PMTC — a Swift
+    // local `max: Double` makes `max(0.0, …)` "cannot call value of
+    // non-function type"; JS scoping allows the shadow, Swift's does not.
+    const axisMax = axes[i]!.max
+    const t = axisMax <= 0.0 ? 0.0 : Math.max(0.0, Math.min(1.0, values[i]! / axisMax))
     out.push(pointOnCircle(center, radius * t, angles[i]!))
   }
   return out
@@ -133,15 +136,23 @@ export function withAlpha(color: string, alpha: Double): string {
   const a = Math.max(0.0, Math.min(1.0, alpha))
   if (!color.startsWith('#')) return color
   const hex = color.slice(1)
-  const full =
-    hex.length === 3
-      ? `${hex[0]!}${hex[0]!}${hex[1]!}${hex[1]!}${hex[2]!}${hex[2]!}`
-      : hex.length === 6
-        ? hex
-        : ''
-  if (full === '') return color
-  const r = Number.parseInt(full.slice(0, 2), 16)
-  const g = Number.parseInt(full.slice(2, 4), 16)
-  const b = Number.parseInt(full.slice(4, 6), 16)
-  return `rgba(${r}, ${g}, ${b}, ${a})`
+  // charCodeAt-based hex decode — no String Int-subscripts, no parseInt
+  // radix: both are outside the PMTC subset ("cannot subscript String with
+  // an Int" on Swift), and withAlpha must lower so native annotation bands
+  // compute the same rgba the web does. Same idiom as heat.ts's ramp.
+  const code = (c: Double): Double => {
+    if (c >= 48.0 && c <= 57.0) return c - 48.0
+    if (c >= 97.0 && c <= 102.0) return c - 87.0
+    if (c >= 65.0 && c <= 70.0) return c - 55.0
+    return 0.0
+  }
+  const pair = (at: Double): Double => code(hex.charCodeAt(at)) * 16.0 + code(hex.charCodeAt(at + 1))
+  const single = (at: Double): Double => code(hex.charCodeAt(at)) * 17.0
+  if (hex.length === 3) {
+    return `rgba(${single(0.0)}, ${single(1.0)}, ${single(2.0)}, ${a})`
+  }
+  if (hex.length === 6) {
+    return `rgba(${pair(0.0)}, ${pair(2.0)}, ${pair(4.0)}, ${a})`
+  }
+  return color
 }

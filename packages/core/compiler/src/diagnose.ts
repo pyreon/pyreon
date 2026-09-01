@@ -22,12 +22,43 @@ export interface ErrorDiagnosis {
   related?: string | undefined
 }
 
-interface ErrorPattern {
+export interface ErrorPattern {
   pattern: RegExp
   diagnose: (match: RegExpMatchArray) => ErrorDiagnosis
 }
 
-const ERROR_PATTERNS: ErrorPattern[] = [
+/**
+ * The catalog itself.
+ *
+ * Exported so a test can hold the whole thing to a contract rather than
+ * spot-checking the handful of entries someone happened to write an example
+ * for. `diagnoseError` returns the FIRST match, so an entry that throws, that
+ * renders an empty `fix`, or whose pattern is broad enough to swallow an
+ * unrelated error is not a local defect — it changes what every entry below it
+ * can ever answer. Adding a byte to the bundle is free: `diagnoseError`
+ * already references it.
+ */
+export const ERROR_PATTERNS: ErrorPattern[] = [
+  {
+    // The residual footgun left by narrowing the native audit's
+    // `native-unsupported-decl` rule. That rule used to flag EVERY top-level
+    // `interface`, on the false premise that PMTC drops them silently — it
+    // compiles a plain one into a struct / data class, and told authors of
+    // correct code to rewrite it. What it does NOT compile is an interface
+    // carrying generics or `extends`, and for those PMTC warns by name. The
+    // audit no longer covers that case, so the catalog teaches it instead:
+    // the warning is easy to skim past in a build log, and the symptom on the
+    // far side is a device build referencing a type that was never emitted.
+    pattern:
+      /Top-level `interface [A-Za-z0-9_$]+` with generics or `extends` is NOT compiled to native|interface[^\n]{0,60}(generic|extends)[^\n]{0,60}not (compiled|lowered) to native/i,
+    diagnose: () => ({
+      cause:
+        "PMTC synthesizes a native struct (Swift) / data class (Kotlin) from an object-shape interface by reading its fields directly. It cannot do that for an interface that carries GENERICS — there is no single field list to emit, since the shape depends on a type argument — nor for one that uses `extends`, because the inherited members live in another declaration the emitter would have to resolve and flatten. Neither lowers, so the declaration is skipped and anything typed by it references a symbol that was never emitted. A plain interface, one with optional fields, one with a nested object field and one with an array field ALL compile normally — this is specifically the generic / `extends` case.",
+      fix: "Flatten the shape into a single non-generic declaration. For `extends`, write the inherited fields out in the child (or keep the parent as a separate struct and hold it as a FIELD, which does lower). For a generic, declare the concrete instantiation you actually cross with — `interface UserPage { items: User[] }` rather than `interface Page<T> { items: T[] }`. Both spellings work identically on web, so this costs the shared source nothing.",
+      fixCode:
+        "// does NOT lower — generics have no single field list to emit\n// interface Page<T> { items: T[]; total: number }\n\n// lowers on both targets\ninterface UserPage {\n  items: User[]\n  total: number\n}",
+    }),
+  },
   {
     // A reactive boundary's child stops updating. Two distinct causes, and the
     // catalog carries both because the symptom is identical and neither throws:

@@ -34,27 +34,56 @@ public protocol PyreonScheduler: AnyObject {
 }
 
 /// Default scheduler — a detached concurrency task per pending call.
+///
+/// Two things here are load-bearing and were both wrong.
+///
+/// The user's `work` runs ON THE MAIN ACTOR. `schedule` is a nonisolated method
+/// of a nonisolated class, so an unstructured `Task { }` does NOT inherit
+/// MainActor — it runs on the global concurrent executor. Debounced bodies
+/// write signals, so that was an off-main `@Observable` mutation on every
+/// debounced keystroke. (The Android twin's version of this is a hard crash:
+/// `Detected multithreaded access to SnapshotStateObserver`.)
+///
+/// And `tasks` is guarded. It was a bare `Dictionary` mutated from inside the
+/// task body — on a cooperative-pool thread — while `schedule` and `cancel`
+/// mutated it from the caller. Concurrent Swift Dictionary mutation is
+/// undefined behaviour, not merely a lost entry, and the practical symptom is
+/// a `cancel` that goes missing so a cancelled debounce still fires.
 public final class TaskScheduler: PyreonScheduler {
     private var next = 0
     private var tasks: [Int: _Concurrency.Task<Void, Never>] = [:]
+    private let lock = NSLock()
 
     public init() {}
 
     public func schedule(after milliseconds: Int, _ work: @escaping () -> Void) -> Int {
+        lock.lock()
         next += 1
         let token = next
-        tasks[token] = _Concurrency.Task { [weak self] in
+        lock.unlock()
+        let task = _Concurrency.Task { [weak self] in
             try? await _Concurrency.Task.sleep(nanoseconds: UInt64(milliseconds) * 1_000_000)
             if _Concurrency.Task.isCancelled { return }
-            self?.tasks[token] = nil
-            work()
+            self?.clear(token)
+            await MainActor.run { work() }
         }
+        lock.lock()
+        tasks[token] = task
+        lock.unlock()
         return token
     }
 
     public func cancel(_ token: Int) {
-        tasks[token]?.cancel()
+        lock.lock()
+        let task = tasks.removeValue(forKey: token)
+        lock.unlock()
+        task?.cancel()
+    }
+
+    private func clear(_ token: Int) {
+        lock.lock()
         tasks[token] = nil
+        lock.unlock()
     }
 }
 

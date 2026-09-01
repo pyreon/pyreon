@@ -122,7 +122,12 @@ export const defaultTheme: ChartTheme = {
  * flatten every variation that matters.
  */
 export function resolveYDomain(spec: ChartSpec): Domain {
-  if (spec.yDomain !== undefined) return spec.yDomain
+  // `?? derive` rather than an early return: Swift does not narrow
+  // `spec.yDomain` through the guard, and the coalesce is the same contract.
+  return spec.yDomain ?? deriveYDomain(spec)
+}
+
+function deriveYDomain(spec: ChartSpec): Domain {
   // A STACK's domain is its tallest TOTAL, not its tallest value — taking the
   // max of the individual series would clip the stack at the top.
   const stacked = spec.series.filter((s) => s.kind === 'stacked')
@@ -160,8 +165,8 @@ export function layoutChart(spec: ChartSpec, measure: MeasureText): PlotLayout {
     width: spec.width,
     height: spec.height,
     xDomain:
-      spec.xValues !== undefined && spec.xValues.length > 0
-        ? extent(spec.xValues)
+      (spec.xValues ?? []).length > 0
+        ? extent(spec.xValues ?? [])
         : { min: 0.0, max: n > 1 ? n - 1 : 1.0 },
     yDomain: resolveYDomain(spec),
     categories: spec.categories,
@@ -196,8 +201,11 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
   const plot = l.plot
   const t = spec.theme
   const out: DrawCmd[] = []
-  const raw = spec.progress
-  const progress = raw === undefined ? 1.0 : raw < 0.0 ? 0.0 : raw > 1.0 ? 1.0 : raw
+  // `?? 1.0` FIRST, then clamp a non-optional. Swift does not narrow an
+  // optional through a ternary chain, so the coalesce-then-clamp idiom is
+  // what compiles on native — and it reads better on web too.
+  const rawProgress = spec.progress ?? 1.0
+  const progress = rawProgress < 0.0 ? 0.0 : rawProgress > 1.0 ? 1.0 : rawProgress
 
   // Grows a bar rect toward its value from the zero line — the edge a bar is
   // measured from, so a negative bar grows DOWNWARD during the entrance
@@ -289,9 +297,13 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
   // rules second, so a rule bounding its own band stays visible.
   const notes = spec.annotations ?? []
   for (const a of notes) {
+    // Coalesced before use: Swift does not narrow `a.yFrom` through the
+    // guard, and the guard still decides whether the band draws at all.
+    const yFrom = a.yFrom ?? 0.0
+    const yTo = a.yTo ?? 0.0
     if (a.yFrom !== undefined && a.yTo !== undefined) {
-      const y1 = scaleLinear(yDomain, plot.y + plot.h, plot.y, a.yFrom)
-      const y2 = scaleLinear(yDomain, plot.y + plot.h, plot.y, a.yTo)
+      const y1 = scaleLinear(yDomain, plot.y + plot.h, plot.y, yFrom)
+      const y2 = scaleLinear(yDomain, plot.y + plot.h, plot.y, yTo)
       const top = y1 < y2 ? y1 : y2
       out.push({
         kind: 'rect',
@@ -301,8 +313,9 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
     }
   }
   for (const a of notes) {
+    const ay = a.y ?? 0.0
     if (a.y !== undefined) {
-      const yPos = scaleLinear(yDomain, plot.y + plot.h, plot.y, a.y)
+      const yPos = scaleLinear(yDomain, plot.y + plot.h, plot.y, ay)
       out.push({
         kind: 'line',
         from: { x: plot.x, y: yPos },
@@ -311,10 +324,11 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
         width: 1.0,
         dash: [4.0, 4.0],
       })
+      const yLabel = a.label ?? ''
       if (a.label !== undefined) {
         out.push({
           kind: 'text',
-          text: a.label,
+          text: yLabel,
           at: { x: plot.x + plot.w, y: yPos - 4.0 },
           fill: a.color ?? t.label,
           size: t.fontSize,
@@ -323,8 +337,9 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
         })
       }
     }
+    const ax = a.x ?? 0.0
     if (a.x !== undefined) {
-      const xPos = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, a.x)
+      const xPos = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, ax)
       out.push({
         kind: 'line',
         from: { x: xPos, y: plot.y },
@@ -333,10 +348,11 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
         width: 1.0,
         dash: [4.0, 4.0],
       })
+      const xLabel = a.label ?? ''
       if (a.label !== undefined) {
         out.push({
           kind: 'text',
-          text: a.label,
+          text: xLabel,
           at: { x: xPos + 4.0, y: plot.y },
           fill: a.color ?? t.label,
           size: t.fontSize,
@@ -368,15 +384,21 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
     // One helper rather than three call-site conditionals: line, area and
     // points must agree about placement, or an area fill drifts away from the
     // line it is meant to sit under.
+    // Coalesced to a sentinel: an EMPTY array means "place by index", and a
+    // non-optional binding is what Swift can use on both sides of the branch.
+    const xs = spec.xValues ?? []
     const place = (values: Double[]): Pt[] =>
-      spec.xValues !== undefined && spec.xValues.length > 0
-        ? layoutSeriesPointsAt(values, spec.xValues, plot, yDomain, l.xDomainUsed)
+      xs.length > 0
+        ? layoutSeriesPointsAt(values, xs, plot, yDomain, l.xDomainUsed)
         : layoutSeriesPoints(values, plot, yDomain)
 
     // The curve shapes line AND area from the same densified points — an
     // area whose fill followed straight segments under a smoothed outline
     // would show slivers of background between the two.
-    const shape = (pts: Pt[]): Pt[] => (s.curve !== undefined ? s.curve(pts) : pts)
+    // Coalesced to identity: calling through the optional needs a lowering
+    // Swift lacks, and "no curve" IS the identity curve.
+    const curveFn = s.curve ?? ((q: Pt[]): Pt[] => q)
+    const shape = (pts: Pt[]): Pt[] => curveFn(pts)
 
     if (spec.horizontal === true) {
       if (s.kind !== 'bars') continue
@@ -449,8 +471,9 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
       }
     } else {
       const pts = place(s.values)
+      const radii = s.radii ?? []
       for (let i = 0; i < pts.length; i++) {
-        const fullR = s.radii !== undefined ? s.radii[i] ?? s.radius : s.radius
+        const fullR = radii.length > 0 ? radii[i] ?? s.radius : s.radius
         out.push({
           kind: 'circle',
           center: pts[i]!,
@@ -495,4 +518,44 @@ export function barsFor(spec: ChartSpec, index: number, measure: MeasureText): R
   const s = spec.series[index]
   if (s === undefined || s.kind !== 'bars') return []
   return layoutBars(s.values, layoutChart(spec, measure).plot, resolveYDomain(spec), 0.25)
+}
+
+/**
+ * The datum index under a point for the STACKED and GROUPED bar sets, or -1.
+ *
+ * `barsFor` answers only for `kind === 'bars'`, because a plain bar series is
+ * laid out on its own. Stacked and grouped series are laid out TOGETHER — each
+ * needs the others to place its bars — so they cannot be asked one series at a
+ * time, which is why the host's hit test skipped them entirely and every click
+ * on a stacked or grouped chart reported a miss. They draw real rects, and
+ * `onSelect`'s contract is "the datum index when a bar is tapped".
+ *
+ * The segment carries both indices; the DATUM index is returned, matching what
+ * a plain bar series reports and what the tooltip renders. Which SERIES a
+ * segment belongs to is not expressible through a single-index callback, so it
+ * is deliberately not surfaced here rather than guessed at.
+ */
+export function stackedHitAt(
+  spec: ChartSpec,
+  measure: MeasureText,
+  px: Double,
+  py: Double,
+): number {
+  if (spec.horizontal === true) return -1
+  const plot = layoutChart(spec, measure).plot
+  const yDomain = resolveYDomain(spec)
+  for (const kind of ['stacked', 'grouped'] as const) {
+    const series = spec.series.filter((s) => s.kind === kind)
+    if (series.length === 0) continue
+    const values = series.map((s) => s.values)
+    const segs =
+      kind === 'stacked'
+        ? layoutStackedBars(values, plot, yDomain, 0.25)
+        : layoutGroupedBars(values, plot, yDomain, 0.25)
+    for (const seg of segs) {
+      const r = seg.rect
+      if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return seg.datumIndex
+    }
+  }
+  return -1
 }

@@ -1,6 +1,6 @@
 ---
 title: '@pyreon/lint'
-description: Pyreon-specific linter — 116 rules across 25 categories for signals, JSX, lifecycle, SSR, performance, architecture, routing, SSG, and opt-in best practices (frontend a11y/CLS, query/rx/form/i18n/router/storage library usage). CLI, programmatic API, watch mode, AST cache, and an LSP server.
+description: Pyreon-specific linter — 132 rules across 25 categories for signals, JSX, lifecycle, SSR, performance, architecture, routing, SSG, and opt-in best practices (frontend a11y/CLS, query/rx/form/i18n/router/storage library usage). CLI, programmatic API, watch mode, AST cache, and an LSP server.
 ---
 
 `@pyreon/lint` is a framework-specific linter that catches Pyreon anti-patterns at the AST level — bare signal reads in JSX, props destructuring that breaks reactivity, browser globals in SSR code, bundler-coupled dev gates, and dozens more. It is powered by [`oxc-parser`](https://oxc.rs) for fast ESTree/TS-ESTree parsing, ships a CLI (`pyreon-lint`), a programmatic API (`lint` / `lintFile`), watch mode, an AST cache, and an LSP server for editor integration.
@@ -410,6 +410,33 @@ Categories live underneath, so a query rule is `group: 'pkg'`, `category: 'query
 }
 ```
 
+### Options shared by more than one rule
+
+Some options are a property of the project, not of one rule. `portablePaths` names the directories whose source has to survive three targets — and **five** rules in the `portable` group need that same answer. Repeating it per rule turns your config into a hand-maintained copy of the rule registry: add a sixth portable rule and it is silently inert in every project that listed the other five.
+
+`settings` says it once:
+
+```json
+{
+  "preset": "recommended",
+  "groups": { "portable": "warn" },
+  "settings": { "portablePaths": ["src/"] }
+}
+```
+
+A key is seeded into a rule's options **only when that rule declares it** in its own schema, so a shared key can never reach a rule that would reject it as unknown. Per-rule options still win, so you can widen the shared answer and narrow it for one rule:
+
+```json
+{
+  "settings": { "portablePaths": ["src/"] },
+  "rules": {
+    "pyreon/no-out-of-subset-construct": ["warn", { "portablePaths": ["src/shared/"] }]
+  }
+}
+```
+
+A `settings` key that no rule declares is reported as a config error — a typo here would otherwise be as silent as a typo'd rule id.
+
 `pyreon-lint --list` groups its output the same way. There is deliberately no `js` or `ts` group: those are for general JS/TS correctness rules, which this package does not have yet, and an empty group would advertise coverage that doesn't exist.
 
 ### Why isn't a rule firing?
@@ -442,7 +469,7 @@ pyreon-lint --why-off pyreon/rx-prefer-pipe
 
 The dependency gate is checked relative to a file, so pass a path (`pyreon-lint --why-off <id> src/`) when you want that reason evaluated. An unknown id exits non-zero and suggests the near miss. Programmatic equivalent: `explainRuleState(id, { config, filePath })`.
 
-There are **116 rules across 25 categories**. Six of them are **monorepo-scoped** (`meta.scope: 'monorepo'`) — `no-circular-import`, `no-cross-layer-import`, `no-error-without-prefix`, `no-query-selector-cast-in-test`, `require-browser-smoke-test`, `vitest-config-uses-shared`. They encode the Pyreon repository's own conventions (its layer order, its private internal packages, its `[Pyreon]` error prefix) rather than anything about Pyreon-the-framework, so **every preset a consumer selects forces them off**, `best-practices` included. The Pyreon repo re-enables them by id in its own `.pyreonlintrc.json`, which keeps that dependency visible in config instead of hidden inside a shared preset. The `frontend`, `query`, `rx`, `i18n`, and `storage` categories (plus the two opt-in rules in `form` and `router`) are opt-in best-practice rules — off in the standard presets. Run `pyreon-lint --list` for the authoritative list with live severities.
+There are **132 rules across 25 categories**. Six of them are **monorepo-scoped** (`meta.scope: 'monorepo'`) — `no-circular-import`, `no-cross-layer-import`, `no-error-without-prefix`, `no-query-selector-cast-in-test`, `require-browser-smoke-test`, `vitest-config-uses-shared`. They encode the Pyreon repository's own conventions (its layer order, its private internal packages, its `[Pyreon]` error prefix) rather than anything about Pyreon-the-framework, so **every preset a consumer selects forces them off**, `best-practices` included. The Pyreon repo re-enables them by id in its own `.pyreonlintrc.json`, which keeps that dependency visible in config instead of hidden inside a shared preset. The `frontend`, `query`, `rx`, `i18n`, and `storage` categories (plus the two opt-in rules in `form` and `router`) are opt-in best-practice rules — off in the standard presets. Run `pyreon-lint --list` for the authoritative list with live severities.
 
 ### Categories at a glance
 

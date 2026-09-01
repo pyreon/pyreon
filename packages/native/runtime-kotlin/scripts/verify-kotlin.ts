@@ -428,6 +428,12 @@ open class Context {
   open fun startActivity(intent: Intent) {}
 }
 
+// Thrown by startActivity when nothing on the device resolves the intent.
+// Mirrored because openUrl now CATCHES it — an unguarded startActivity
+// terminated the process on a URL the device could not open.
+// (No backticks in this comment: it lives inside a TS template literal.)
+class ActivityNotFoundException(message: String? = null) : RuntimeException(message)
+
 class Intent {
   companion object {
     const val ACTION_VIEW = "android.intent.action.VIEW"
@@ -847,6 +853,31 @@ public class Looper {
 public class Handler(looper: Looper) {
   @Suppress("UNUSED_PARAMETER")
   public fun post(r: Runnable): Boolean = true
+}
+`
+
+// android.os for the RATE-LIMIT service — EXACTLY what PyreonRateLimit.kt
+// touches: a main-looper Handler used to hop the debounced/throttled body off
+// the Timer thread and onto the thread that owns the Compose state. A separate
+// mirror from the websocket one even though the surface is identical today,
+// because a shared stub is a superset the moment either file grows a member —
+// and supersets mask (the rule this file states four times).
+const ANDROID_OS_RATELIMIT_HANDLER_STUBS = `package android.os
+
+public class Looper {
+  public companion object {
+    public fun getMainLooper(): Looper = Looper()
+  }
+}
+
+public class Handler(looper: Looper) {
+  // Runs INLINE. The stub environment has no looper to drain, and the smoke
+  // test asserts the debounced body actually fired — a stub that queued and
+  // dropped would make every rate-limit assertion vacuous.
+  public fun post(r: Runnable): Boolean {
+    r.run()
+    return true
+  }
 }
 `
 
@@ -1299,6 +1330,10 @@ try {
     // The transport hops every listener callback to the main looper.
     writeFileSync(join(tempDir, 'AndroidOsHandler.kt'), ANDROID_OS_HANDLER_STUBS, 'utf8')
   }
+  if (SERVICE === 'PyreonRateLimit') {
+    // The scheduler hops the user's body to the main looper before running it.
+    writeFileSync(join(tempDir, 'AndroidOsHandler.kt'), ANDROID_OS_RATELIMIT_HANDLER_STUBS, 'utf8')
+  }
   const okhttpHttpPath = join(tempDir, 'OkHttp3Http.kt')
   if (SERVICE === 'PyreonHttpOkHttp') {
     writeFileSync(okhttpHttpPath, OKHTTP3_HTTP_STUBS, 'utf8')
@@ -1561,6 +1596,10 @@ try {
         ]
       : []
   const linkingStubs = SERVICE === 'PyreonLinking' ? [linkingContentPath, linkingNetPath] : []
+  // The rate-limit scheduler hops the debounced body to the main looper, so its
+  // compile needs the Handler mirror written above.
+  const rateLimitStubs =
+    SERVICE === 'PyreonRateLimit' ? [join(tempDir, 'AndroidOsHandler.kt')] : []
   const notifStubs = SERVICE === 'PyreonNotifications' ? [notifAppPath, notifContentPath, notifOsPath, notifRPath, notifCorePath] : []
   // The OkHttp transport is an EXTENSION over the core container — its
   // compile needs the sibling PyreonWebSocket.kt source + the okhttp3 stubs.
@@ -1599,6 +1638,7 @@ try {
         ...storageExtras,
         ...secureAndroidExtras,
         ...linkingStubs,
+        ...rateLimitStubs,
         ...notifStubs,
         ...okhttpExtras,
         ...okhttpHttpExtras,
@@ -1629,6 +1669,7 @@ try {
         ...storageExtras,
         ...secureAndroidExtras,
         ...linkingStubs,
+        ...rateLimitStubs,
         ...notifStubs,
         ...okhttpExtras,
         ...okhttpHttpExtras,

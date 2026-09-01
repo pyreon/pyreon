@@ -1,4 +1,5 @@
 import type { Rule, VisitorCallbacks } from '../../types'
+import { isTestFile } from '../../utils/file-roles'
 import { isProjectDependency } from '../../utils/project-deps'
 
 /**
@@ -66,8 +67,15 @@ export const noQuerySelectorCastInTest: Rule = {
 
     // Test files only. The `as HTML...Element` pattern is legitimate in
     // production code (event-handler `e.target as HTMLInputElement`, etc.).
-    const isTestFile = /\.test\.(?:ts|tsx)$/.test(filePath)
-    if (!isTestFile) return {}
+    //
+    // Uses the SHARED `isTestFile`, which was the last of three rules still
+    // re-implementing it inline. The local copy matched `*.test.ts(x)` alone,
+    // so it missed `.spec.` files and anything under `tests/` or
+    // `__tests__/` — 52 files in this repo, none of which happened to contain
+    // the pattern, so the narrowing cost nothing and hid nothing. It was
+    // still a second definition of "is this a test", which is how the two
+    // answers drift apart later.
+    if (!isTestFile(filePath)) return {}
 
     // `@pyreon/test-utils` (which exports `query()`) is a PRIVATE monorepo
     // package — a consumer can't install it, so this rule's `error` would be

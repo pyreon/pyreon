@@ -84,15 +84,36 @@ public final class PyreonCrashReporter {
         // single-slot doctrine: an append-only list on a global is the
         // unbounded-growth shape).
         PyreonCrashReporter.active = self
+        // CHAIN to whatever was installed before us. `NSSetUncaughtExceptionHandler`
+        // REPLACES the current handler, so installing without capturing the
+        // previous one silently disconnects any crash SDK the app configured
+        // first — Crashlytics/Sentry stop receiving NSException reports from the
+        // moment a view calls `useCrashReporter()`, and the drop reads as a
+        // stability improvement. Which handler wins was a coin flip on
+        // initialisation order.
+        //
+        // The Kotlin twin has always chained, and its own doc states the rule:
+        // "a crash reporter that swallows the crash changes app behavior".
+        // This is that rule, applied on the target that was breaking it.
+        PyreonCrashReporter.previousHandler = NSGetUncaughtExceptionHandler()
         NSSetUncaughtExceptionHandler { exception in
             PyreonCrashReporter.active?.persist(
                 message: "\(exception.name.rawValue): \(exception.reason ?? "")",
                 stack: exception.callStackSymbols.joined(separator: "\n")
             )
+            // Forward LAST, so our report is on disk before the previous
+            // handler does whatever it does — which may be to terminate.
+            PyreonCrashReporter.previousHandler?(exception)
         }
     }
 
     @ObservationIgnored nonisolated(unsafe) static var active: PyreonCrashReporter?
+
+    /// The uncaught-exception handler installed before ours, forwarded to on
+    /// every crash. A C-function hook cannot capture context, so — like
+    /// `active` — it lives in a static slot.
+    @ObservationIgnored nonisolated(unsafe) static var previousHandler:
+        (@convention(c) (NSException) -> Void)?
 
     /// Manual capture — caught errors, assertion failures, "should never
     /// happen" branches. Persists AND forwards to the transport when wired.

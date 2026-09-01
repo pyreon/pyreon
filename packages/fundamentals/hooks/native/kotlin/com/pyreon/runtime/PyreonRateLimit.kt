@@ -28,26 +28,61 @@ public interface PyreonScheduler {
  * PyreonFetch already is.
  */
 public class PyreonTaskScheduler : PyreonScheduler {
-    private val timer = java.util.Timer(true)
     private var next = 0
+    private val lock = Any()
     private val tasks = HashMap<Int, java.util.TimerTask>()
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
 
     override fun schedule(milliseconds: Int, work: () -> Unit): Int {
-        next++
-        val token = next
+        val token = synchronized(lock) { ++next }
         val task = object : java.util.TimerTask() {
             override fun run() {
-                tasks.remove(token)
-                work()
+                synchronized(lock) { tasks.remove(token) }
+                // HOP TO MAIN before running the user's body.
+                //
+                // `TimerTask.run` executes on the Timer's own thread, so the
+                // debounced callback ran off-main — and these bodies write
+                // signals, which in Compose is a `MutableState` write from the
+                // wrong thread: `IllegalArgumentException: Detected
+                // multithreaded access to SnapshotStateObserver`. That is the
+                // exact crash `PyreonWebSocketOkHttp` and
+                // `PyreonNetworkStatusAndroid` each document at length and each
+                // already fix by posting to the main looper; the scheduler the
+                // emitter ships into every debounced callback did not.
+                //
+                // Posted unconditionally rather than behind a
+                // `Looper.myLooper() == mainLooper` fast path, for the reason
+                // the WebSocket file gives: the Timer never delivers on main,
+                // so the check would always take the post branch anyway, and an
+                // inline fast path can reorder a later callback ahead of an
+                // earlier queued one.
+                main.post { work() }
             }
         }
-        tasks[token] = task
-        timer.schedule(task, milliseconds.toLong())
+        synchronized(lock) { tasks[token] = task }
+        SHARED_TIMER.schedule(task, milliseconds.toLong())
         return token
     }
 
     override fun cancel(token: Int) {
-        tasks.remove(token)?.cancel()
+        synchronized(lock) { tasks.remove(token) }?.cancel()
+    }
+
+    private companion object {
+        /**
+         * ONE daemon timer thread for every scheduler in the process.
+         *
+         * It used to be one `java.util.Timer(true)` — i.e. one THREAD — per
+         * instance, and the emit constructs an instance per debounced or
+         * throttled callback with nothing ever cancelling it: a screen with
+         * three debounced fields started three threads that outlived it, and
+         * reclamation depended on Timer's finalizer-based reaper.
+         *
+         * Sharing is safe because the timer thread now does almost nothing —
+         * it cancels a map entry and posts to the main looper — so no task can
+         * hold the queue against another. Daemon, so it never blocks exit.
+         */
+        private val SHARED_TIMER = java.util.Timer("pyreon-scheduler", true)
     }
 }
 

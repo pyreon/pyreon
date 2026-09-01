@@ -1,0 +1,5 @@
+---
+'@pyreon/native-compiler': patch
+---
+
+PMTC Kotlin lambda/collection lowerings the charts engine surfaced: a top-level function used as a VALUE in `??` emits the `::` reference (bare names are "function invocation expected"); an array-literal local mutated via push/pop/shift/unshift/splice emits `mutableListOf` (Kotlin's List has no `add` — reassignment marking cannot carry this, `val` stays idiomatic); a return-bearing standalone lambda with annotated params AND a declared return type emits the ANONYMOUS FUNCTION form (plain `return` is legal there — the labeled-return bail previously DROPPED the body to `Unit`, now reserved for the un-annotated case with a sharper message); and the single-EXPRESSION arrow branch routes through the typed-params helper it had bypassed entirely. Also: an object-literal return keeps its `return` (the assignment detector misread named struct-init args — every Pt-returning helper lost its return statement); `Math.max`/`min` with mixed Int/Double args coerce the int side (java.lang.Math has no mixed overload); and Kotlin count-loops register their counter and wrap a Double bound `.toInt()` (the Swift mirror).

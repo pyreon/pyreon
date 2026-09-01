@@ -74,14 +74,20 @@ export function App(){
     expect(rk.code).not.toContain('Date.now()')
     expect(rk.warnings).toHaveLength(0)
   })
-  it('composes: `Math.floor(Date.now() / 1000)` stays an Int computed', () => {
+  it('composes: `Math.floor(Date.now() / 1000)` is a Double computed, formatted like JS', () => {
+    // Math.floor returns a NUMBER in JS — Double on Swift (the old Int
+    // wrap poisoned mixed arithmetic; see native-math-return-type). The
+    // label parity survives via the String(float) formatter: an integral
+    // Double prints WITHOUT the trailing .0, exactly like the web.
     const rs = sw(`import { signal, computed } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'
 export function App(){
   const out = computed(() => Math.floor(Date.now() / 1000))
   return (<Stack><Text>{String(out())}</Text></Stack>)
 }`)
-    expect(rs.code).toContain('var out: Int {')
+    expect(rs.code).toContain('var out: Double {')
+    expect(rs.code).toContain('pyreonNumString(out)')
+    expect(rs.code).toContain('func pyreonNumString')
   })
 
   // Guard — other Date.* statics warn LOUD, never silent.

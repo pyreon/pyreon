@@ -140,8 +140,60 @@ export const promiseRaceNeedsCleartimeout: Rule = {
     fixable: false,
   },
   create(context) {
+    /**
+     * Races that are not inside a `try` at all.
+     *
+     * The rule shipped with a single `TryStatement` visitor, which meant it
+     * could only ever fire on a race someone had ALREADY wrapped. The
+     * documented leak (class I) needs no try:
+     *
+     *     await Promise.race([work, new Promise((_, rej) => setTimeout(rej, MS))])
+     *
+     * and with no try/finally anywhere the timer can never be cleared — the
+     * strictly worse version of the defect, reported by nothing. Verified
+     * against the rule's own fixture: it fires, and deleting the `try/catch`
+     * around it made the rule go silent.
+     */
+    const looseRaces: Array<{ node: any; fn: any }> = []
+    const fnStack: any[] = []
+    let tryDepth = 0
+    const enterFn = (node: any) => fnStack.push(node)
+    const exitFn = () => fnStack.pop()
+
     const callbacks: VisitorCallbacks = {
+      FunctionDeclaration: enterFn,
+      'FunctionDeclaration:exit': exitFn,
+      FunctionExpression: enterFn,
+      'FunctionExpression:exit': exitFn,
+      ArrowFunctionExpression: enterFn,
+      'ArrowFunctionExpression:exit': exitFn,
+
+      CallExpression(node: any) {
+        if (tryDepth > 0) return // the TryStatement visitor owns those
+        if (findRaceWithTimeoutCalls(node).length === 0) return
+        looseRaces.push({ node, fn: fnStack[fnStack.length - 1] ?? null })
+      },
+
+      'Program:exit'() {
+        for (const { node, fn } of looseRaces) {
+          // A clearTimeout anywhere in the enclosing function is enough — the
+          // rule's job is to catch a timer nothing can cancel, not to police
+          // where the cancel sits.
+          if (fn !== null && containsClearTimeout(fn)) continue
+          context.report({
+            message:
+              '`Promise.race` with a `setTimeout` rejection branch, and no `clearTimeout` anywhere that can cancel it. When `work` wins, the timer and its rejection closure stay alive until it fires. Capture the timer id outside the Promise constructor and clear it in a `finally`.',
+            span: getSpan(node),
+          })
+        }
+      },
+
+      'TryStatement:exit'() {
+        tryDepth--
+      },
+
       TryStatement(node: any) {
+        tryDepth++
         // Find any Promise.race-with-timeout calls INSIDE this try's
         // block (NOT in nested try blocks — those have their own
         // finally requirement and will be visited separately).

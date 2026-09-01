@@ -26,9 +26,10 @@ const only = (src: string, id: string, file?: string) =>
   at(src, file).filter((d) => d.ruleId === id)
 
 describe('js group wiring', () => {
-  it('holds only the two context-requiring rules — not a general JS tier', () => {
+  it('holds only the three context-requiring rules — not a general JS tier', () => {
     const js = allRules.filter((r) => groupOf(r.meta) === 'js')
     expect(js.map((r) => r.meta.id).sort()).toEqual([
+      'pyreon/no-catch-without-rethrow-or-report',
       'pyreon/no-require-in-esm',
       'pyreon/require-error-cause',
     ])

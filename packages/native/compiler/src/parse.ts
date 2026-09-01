@@ -87,6 +87,17 @@ interface ParseCtx {
    */
   objectTypeAliases: Map<string, Extract<TypeIR, { kind: 'object' }>>
   /**
+   * Locally-declared FUNCTION-type aliases (`type Formatter = (v: Double) =>
+   * string`), name → parsed function TypeIR. Consumed by SUBSTITUTION: a
+   * zero-arg typeRef naming one resolves to the function type inline, so the
+   * emitters' existing machinery does everything — `swiftUnionType`
+   * parenthesizes the optional form, and `typeContainsFunction` sees a real
+   * function kind and drops Codable / @Serializable from structs carrying
+   * one, which a name-preserving `typealias` emit could not do without
+   * teaching that check to chase aliases.
+   */
+  fnTypeAliases: Map<string, TypeIR>
+  /**
    * Per-component store ALIASES: local binding name → store hook name,
    * populated from `const app = useApp()` declarations in the CURRENT
    * component body and CLEARED before each top-level node is parsed (so a
@@ -333,6 +344,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     source,
     storeHookNames: new Set(),
     objectTypeAliases: new Map(),
+    fnTypeAliases: new Map(),
     storeAliases: new Map(),
     toastNames: new Set(),
     kineticFactoryNames: new Map(),
@@ -5420,6 +5432,7 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     // warnings from double-firing, and the consts are read-only lookup either way.
     stringConsts: ctx.stringConsts,
     objectTypeAliases: new Map(),
+    fnTypeAliases: new Map(),
     storeAliases: new Map(),
     toastNames: new Set(),
     // Scratch ctx: deliberately isolated from the main pass (see the doc
@@ -5501,6 +5514,11 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     const name = alias.id?.name as string | undefined
     if (!name) continue
     const aliasBody = alias.typeAnnotation as AnyNode | undefined
+    if (aliasBody?.type === 'TSFunctionType') {
+      const parsedFn = parseTypeAnnotation(aliasBody, scratch)
+      if (parsedFn.kind === 'function') ctx.fnTypeAliases.set(name, parsedFn)
+      continue
+    }
     if (!aliasBody || aliasBody.type !== 'TSTypeLiteral') continue
     const parsed = parseTypeAnnotation(aliasBody, scratch)
     if (parsed.kind === 'object' && parsed.fields.length > 0) {
@@ -9214,15 +9232,39 @@ function tryFunctionDecl(
   // patterns (`{ k }` / renamed `{ k: local }`) lower; a rest element or a
   // nested pattern warns + is left un-destructured (the param still emits
   // so the function stays well-formed).
-  const params: { name: string; type: TypeIR }[] = []
+  const params: { name: string; type: TypeIR; defaultValue?: ExprIR | undefined }[] = []
   const destructurePrelude: StatementIR[] = []
   let synthParamIdx = 0
   for (const p of (arrow.params as AnyNode[] | undefined) ?? []) {
     if (p?.type === 'Identifier') {
       const paramName = p.name as string
       const annot = p.typeAnnotation?.typeAnnotation as AnyNode | undefined
+      const base: TypeIR = annot ? parseTypeAnnotation(annot, ctx) : { kind: 'unknown' }
+      if (p.optional === true && base.kind !== 'unknown' && !typeIsOptional(base)) {
+        // A `format?: Formatter` param is OPTIONAL-typed and omittable at the
+        // call site. Dropping the `?` emitted a required non-optional param —
+        // every optional-passing caller then failed "must be unwrapped", and
+        // every omitting caller failed on arity. Optional type + nil default
+        // reproduces both halves of the TS contract natively.
+        params.push({
+          name: paramName,
+          type: { kind: 'union', branches: [base, { kind: 'undefined' }] } as TypeIR,
+          defaultValue: { kind: 'literal', value: null } as ExprIR,
+        })
+      } else {
+        params.push({ name: paramName, type: base })
+      }
+    } else if (p?.type === 'AssignmentPattern' && p.left?.type === 'Identifier') {
+      // A defaulted parameter (`places: number = 0`). Swift and Kotlin both
+      // have native default parameters, so the default CROSSES rather than
+      // being desugared — and dropping the case silently deleted the param
+      // while the body kept reading it ("cannot find 'places' in scope" on
+      // the real engine's `currency(symbol, places = 0)`).
+      const left = p.left as AnyNode
+      const paramName = left.name as string
+      const annot = left.typeAnnotation?.typeAnnotation as AnyNode | undefined
       const type: TypeIR = annot ? parseTypeAnnotation(annot, ctx) : { kind: 'unknown' }
-      params.push({ name: paramName, type })
+      params.push({ name: paramName, type, defaultValue: parseExpr(p.right as AnyNode, ctx) })
     } else if (p?.type === 'ObjectPattern') {
       const synthName = `__p${synthParamIdx++}`
       const annot = p.typeAnnotation?.typeAnnotation as AnyNode | undefined
@@ -9341,6 +9383,14 @@ function parseStatementBlock(block: AnyNode, ctx: ParseCtx): StatementIR[] {
         for (const p of props) {
           const key = (p as AnyNode).key.name as string
           const local = (p as AnyNode).value.name as string
+          // A block-scoped local SHADOWS any component-scope alias of the
+          // same name. The component classifier may have parsed this same
+          // declarator earlier (before the helper path won) and registered
+          // `local -> __pyDestrM.key` in the component-lifetime alias map —
+          // without this delete, parseExpr's Identifier case rewrites later
+          // reads to the STALE container (referenced but never declared:
+          // "cannot find '__pyDestrM' in scope").
+          ctx.hookFieldAliases.delete(local)
           out.push({
             kind: 'let',
             name: local,
@@ -9375,6 +9425,9 @@ function parseStatementBlock(block: AnyNode, ctx: ParseCtx): StatementIR[] {
         const synthName = `__pyDestr${ctx.hookDestructureCounter++}`
         out.push({ kind: 'let', name: synthName, expr: parseExpr(d.init as AnyNode, ctx) })
         els.forEach((el, i) => {
+          // Same shadowing rule as the object arm above: the block-scoped
+          // local must beat any stale component-scope alias for this name.
+          ctx.hookFieldAliases.delete((el as AnyNode).name as string)
           out.push({
             kind: 'let',
             name: (el as AnyNode).name as string,
@@ -9425,6 +9478,8 @@ function parseStatementBlock(block: AnyNode, ctx: ParseCtx): StatementIR[] {
     if (parsed) out.push(parsed)
   }
   markReassignedLocalsMutable(out)
+  markMethodMutatedLocals(out)
+
   return out
 }
 
@@ -9437,6 +9492,47 @@ function parseStatementBlock(block: AnyNode, ctx: ParseCtx): StatementIR[] {
  * `mutable` flag. Conservative: only bare-identifier targets promote a local;
  * member/index reassignment doesn't declare a local.
  */
+/**
+ * Kotlin's List has no `add` — a local ARRAY literal that later receives a
+ * mutating method (`push`/`pop`/`shift`/`unshift`/`splice`) must emit as
+ * `mutableListOf`. Reassignment marking (`mutable`) cannot carry this: `val`
+ * is correct for a list that mutates in place (idiomatic Kotlin), only the
+ * LIST type must be mutable. Swift needs nothing (collection locals are
+ * already `var` value types).
+ */
+function markMethodMutatedLocals(stmts: StatementIR[]): void {
+  const mutators = new Set(['push', 'pop', 'shift', 'unshift', 'splice'])
+  const names = new Set<string>()
+  const scanExpr = (e: ExprIR): void => {
+    forEachExpr(e, (x) => {
+      if (
+        x.kind === 'call' &&
+        x.callee.kind === 'member' &&
+        x.callee.object.kind === 'identifier' &&
+        typeof x.callee.property === 'string' &&
+        mutators.has(x.callee.property)
+      ) {
+        names.add(x.callee.object.name)
+      }
+    })
+  }
+  const walk = (list: StatementIR[]): void => {
+    for (const st of list) {
+      if (st.kind === 'let' || st.kind === 'expr') scanExpr(st.expr)
+      if (st.kind === 'return' && st.expr) scanExpr(st.expr)
+      if (st.kind === 'assign') { scanExpr(st.target); scanExpr(st.value) }
+      if (st.kind === 'if') { scanExpr(st.cond); walk(st.then); if (st.elseBody) walk(st.elseBody) }
+      if (st.kind === 'while' || st.kind === 'do-while') { scanExpr(st.cond); walk(st.body) }
+      if (st.kind === 'for-range') { walk(st.body) }
+      if (st.kind === 'for-of') { walk(st.body) }
+    }
+  }
+  walk(stmts)
+  for (const st of stmts) {
+    if (st.kind === 'let' && names.has(st.name)) st.methodMutated = true
+  }
+}
+
 function markReassignedLocalsMutable(stmts: StatementIR[]): void {
   const reassigned = new Set<string>()
   const collect = (list: StatementIR[]): void => {
@@ -9936,6 +10032,13 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
       }
       const params = node.typeArguments?.params as AnyNode[] | undefined
       const args = params ? params.map((p) => parseTypeAnnotation(p, ctx)) : []
+      // A zero-arg typeRef naming a local FUNCTION-type alias substitutes to
+      // the function type itself — see ParseCtx.fnTypeAliases for why
+      // substitution beats a name-preserving typealias emit.
+      if (args.length === 0) {
+        const fn = ctx.fnTypeAliases.get(name)
+        if (fn !== undefined) return fn
+      }
       return { kind: 'typeRef', name, args }
     }
     case 'TSFunctionType': {
@@ -10404,9 +10507,17 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           )
         }
       }
-      const params = (node.params as AnyNode[])
-        .filter((p) => p.type === 'Identifier')
-        .map((p) => p.name as string)
+      const identParams = (node.params as AnyNode[]).filter((p) => p.type === 'Identifier')
+      const params = identParams.map((p) => p.name as string)
+      // Annotations, index-aligned. A standalone Swift closure cannot infer
+      // its param types (`let f = { r in … }` is 'cannot infer type of
+      // closure parameter'), so what the author wrote must survive to emit.
+      const returnAnnotNode = (node.returnType as AnyNode | undefined)?.typeAnnotation
+      const returnAnnot = returnAnnotNode ? parseTypeAnnotation(returnAnnotNode as AnyNode, ctx) : undefined
+      const paramTypes = identParams.map((p) => {
+        const annot = p.typeAnnotation?.typeAnnotation as AnyNode | undefined
+        return annot ? parseTypeAnnotation(annot, ctx) : undefined
+      })
       const body = node.body
       const isExpressionBody = body.type !== 'BlockStatement'
       if (isExpressionBody) {
@@ -10427,9 +10538,9 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           const stmts: StatementIR[] = ((seqBody.expressions as AnyNode[]) ?? []).map(
             (x) => ({ kind: 'expr', expr: parseExpr(x, ctx) }),
           )
-          return { kind: 'arrow', async: node.async === true, params, body: { kind: 'literal', value: '' }, stmts }
+          return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: { kind: 'literal', value: '' }, stmts }
         }
-        return { kind: 'arrow', async: node.async === true, params, body: parseExpr(body, ctx) }
+        return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: parseExpr(body, ctx) }
       }
       // Block body. The common compact case — a single expression/return
       // statement (`() => { count.set(c() + 1) }`) — keeps the lean
@@ -10437,7 +10548,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // action emit already handles it; backward-compat).
       const stmts = body.body as AnyNode[]
       if (stmts.length === 0) {
-        return { kind: 'arrow', async: node.async === true, params, body: { kind: 'literal', value: '' } }
+        return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: { kind: 'literal', value: '' } }
       }
       if (
         stmts.length === 1 &&
@@ -10445,8 +10556,8 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       ) {
         const only = stmts[0]!
         const inner = only.type === 'ReturnStatement' ? only.argument : only.expression
-        if (!inner) return { kind: 'arrow', async: node.async === true, params, body: { kind: 'literal', value: '' } }
-        return { kind: 'arrow', async: node.async === true, params, body: parseExpr(inner, ctx) }
+        if (!inner) return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: { kind: 'literal', value: '' } }
+        return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: parseExpr(inner, ctx) }
       }
       // MULTIPLE statements (or a single non-expr/return statement like an
       // `if`) — carry the FULL statement list. The pre-fix `.find()` kept
@@ -10459,6 +10570,8 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         kind: 'arrow',
         async: node.async === true,
         params,
+        paramTypes,
+        returnAnnot,
         body: { kind: 'literal', value: '' },
         stmts: blockStmts,
       }

@@ -54,7 +54,10 @@ export interface NativeAuditResult {
   }
 }
 
-// Packages that cannot be native-rendered (hard DOM/canvas/vendor deps).
+// Web-only packages, DERIVED from the manifests (see the generated block
+// below). A package that declares a `nativeFrontend` partially crosses and
+// is deliberately absent: flagging those told authors their working code was
+// broken, while 17 genuinely web-only packages went unflagged.
 // Importing one in a multiplatform component file is a native-build hazard.
 //
 // SOURCE OF TRUTH: each package's `manifest.ts` declares
@@ -65,21 +68,43 @@ export interface NativeAuditResult {
 // `emit-rocketstyle.ts`, `parse-rocketstyle.ts`, `attrs-native.ts` for them), but
 // stayed listed here — so the audit reported the tri-target examples that exist to
 // PROVE ui-system on native as native-build hazards.
-const WEB_ONLY_PACKAGES = new Set<string>([
-  '@pyreon/charts',
-  '@pyreon/flow',
-  '@pyreon/code',
-  '@pyreon/dnd',
-  '@pyreon/document',
-  '@pyreon/document-primitives',
-  '@pyreon/query',
-  '@pyreon/table',
-  '@pyreon/virtual',
-  '@pyreon/hotkeys',
-  '@pyreon/kinetic',
-  '@pyreon/ui-components',
-  '@pyreon/connector-document',
+// <gen:web-only-packages:start>
+// GENERATED — do not edit by hand. Derived from every package manifest's
+// `multiplatform` declaration (tier === 'web-only' AND no `nativeFrontend`)
+// by `bun scripts/check-multiplatform-tier.ts --write-table`, which also
+// gates that this stays in sync. Edit the MANIFEST, not this list.
+//
+// The value is the manifest's `rationale` — the per-package reason the
+// warning quotes, so one blanket line does not have to serve packages as
+// different as a linter, a `<head>` manager and an animation engine.
+const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map([
+  ['@pyreon/atlas', "the component workbench — dev tooling that runs in a browser, not app runtime"],
+  ['@pyreon/charts', "wraps ECharts (browser canvas engine); consume on native via the `<WebView>` bridge subpath"],
+  ['@pyreon/code', "wraps CodeMirror 6 (DOM editor engine); consume on native via the `<WebView>` bridge subpath"],
+  ['@pyreon/compiler', "the web JSX compiler + build tooling itself; the native sibling is @pyreon/native-compiler — nothing here ships to an app runtime"],
+  ['@pyreon/config', "build-time config shape read by the tooling that assembles an app — never part of a rendered app on any target"],
+  ['@pyreon/connector-document', "bridges ui-components to @pyreon/document extraction — both ends are web/document engines"],
+  ['@pyreon/document', "wraps pdfmake/docx/exceljs/pptxgenjs (browser/node document engines); no native lowering"],
+  ['@pyreon/document-primitives', "document-authoring primitives feeding the pdfmake/docx renderers"],
+  ['@pyreon/flow', "SVG rendering (the layout engine itself is pure and platform-free); consume on native via the `<WebView>` bridge subpath"],
+  ['@pyreon/head', "document `<head>` management — no equivalent surface exists on iOS/Android"],
+  ['@pyreon/lathe', "the code generator — build-time tooling that emits app code, not app runtime itself"],
+  ['@pyreon/lint', "lint tooling — runs at dev time, not app runtime"],
+  ['@pyreon/loom', "the dependency observatory — dev tooling, not app runtime"],
+  ['@pyreon/mcp', "the MCP server — dev/AI tooling, not app runtime"],
+  ['@pyreon/rich-text', "wraps TipTap/ProseMirror (DOM editor); consume on native via the `<WebView>` bridge subpath"],
+  ['@pyreon/runtime-dom', "the DOM renderer — on native, PMTC emits SwiftUI/Compose instead of running a renderer; `<Transition>` / `<TransitionGroup>` DO cross, but import them from `@pyreon/primitives` (this package is web-only, so importing them from here warns)"],
+  ['@pyreon/runtime-server', "server-side HTML rendering (SSR/streaming) — a web-platform concern with no native analogue"],
+  ['@pyreon/server', "SSR handler + islands for web deployments; native apps have no server-rendered HTML"],
+  ['@pyreon/testing', "the web testing kit (Testing-Library parity over the DOM renderer); native testing is XCUITest/Compose-test territory"],
+  ['@pyreon/ui-components', ""],
+  ['@pyreon/ui-primitives', ""],
+  ['@pyreon/unistyle', "responsive breakpoints + CSS-variable theming over real CSS; native theming is compile-time tokens + the 2-bucket size-class model"],
+  ['@pyreon/virtual', "DOM virtualization (scroll containers, measured rows); native lists are lazy by construction (LazyColumn/LazyVStack)"],
+  ['@pyreon/zero', "the web meta-framework (SSR/SSG/ISR, Vite, fs-router); native apps are built by PMTC + create-multiplatform, not zero"],
+  ['@pyreon/zero-content', "markdown/MDX content pipeline for zero's web rendering"],
 ])
+// <gen:web-only-packages:end>
 
 const MULTIPLATFORM_SIGNAL = '@pyreon/primitives'
 
@@ -196,7 +221,7 @@ export function auditNative(cwd: string): NativeAuditResult {
       findings.push({
         code: 'web-only-package-import',
         message:
-          `\`${wo.spec}\` cannot be native-rendered (hard DOM/canvas/vendor dependency) but this file also imports \`@pyreon/primitives\` (a multiplatform component). On iOS/Android it will silently drop / fail to emit. Fix: host the web component in a \`<WebView>\` (for charts/flow/editor/document), or use \`@pyreon/primitives\` for UI. See get_pattern({ name: "multiplatform" }).`,
+          `\`${wo.spec}\` is web-only — ${WEB_ONLY_PACKAGES.get(wo.spec) ?? 'no native frontend'} — but this file also imports \`@pyreon/primitives\` (a multiplatform component). Fix: host the web component in a \`<WebView>\`, or use \`@pyreon/primitives\` for UI. See get_pattern({ name: "multiplatform" }).`,
         location: makeLocation(file, source, wo.node, root),
       })
       findingsByCode['web-only-package-import']++
@@ -206,10 +231,16 @@ export function auditNative(cwd: string): NativeAuditResult {
     for (const decl of source.statements) {
       let kind: string | null = null
       let name = ''
-      if (ts.isInterfaceDeclaration(decl)) {
-        kind = 'interface'
-        name = decl.name.text
-      } else if (ts.isEnumDeclaration(decl)) {
+      // `interface` is deliberately NOT flagged. PMTC synthesizes a struct
+      // from one, verified against both emitters: a plain interface, one with
+      // optional fields, one with a nested object field and one with an array
+      // field all emit a `struct` / `data class` with ZERO warnings. The
+      // shapes it cannot take -- `extends`, generics, a method member -- it
+      // WARNS about by name at compile time, which is strictly better than a
+      // file-level heuristic that cannot tell those shapes apart. Flagging
+      // every interface made this rule fire on three correct files and told
+      // their authors to rewrite working code.
+      if (ts.isEnumDeclaration(decl)) {
         kind = 'TS enum'
         name = decl.name.text
       } else if (ts.isClassDeclaration(decl)) {
@@ -218,15 +249,13 @@ export function auditNative(cwd: string): NativeAuditResult {
       }
       if (!kind) continue
       const fix =
-        kind === 'interface'
-          ? `use \`type ${name} = { … }\` (PMTC synthesizes a struct from an object-literal type alias, not an interface)`
-          : kind === 'TS enum'
-            ? `use a string-literal union \`type ${name} = 'a' | 'b'\` (→ native enum)`
-            : `move the logic into functions + signals (or \`defineStore\` / \`model()\`)`
+        kind === 'TS enum'
+          ? `use a string-literal union \`type ${name} = 'a' | 'b'\` (→ native enum)`
+          : `move the logic into functions + signals (or \`defineStore\` / \`model()\`)`
       findings.push({
         code: 'native-unsupported-decl',
         message:
-          `Top-level \`${kind} ${name}\` is NOT compiled to native — PMTC silently drops it, so the emitted SwiftUI/Compose references an undefined symbol on the real device build (the \`swiftc -parse\` gate can't catch this). Fix: ${fix}.`,
+          `Top-level \`${kind} ${name}\` is not compiled to native. PMTC warns about it by name when you build, so this is not a silent drop — the audit surfaces it WITHOUT a compile, across the whole project. Fix: ${fix}.`,
         location: makeLocation(file, source, decl, root),
       })
       findingsByCode['native-unsupported-decl']++
@@ -301,7 +330,7 @@ export function detectNativePatterns(
     const { line, column } = lineCol(wo.node)
     diags.push({
       code: 'native-web-only-import',
-      message: `\`${wo.spec}\` cannot be native-rendered (DOM/canvas/vendor dependency) but this is a multiplatform component (imports \`@pyreon/primitives\`). On iOS/Android it silently drops / fails to emit.`,
+      message: `\`${wo.spec}\` is web-only — ${WEB_ONLY_PACKAGES.get(wo.spec) ?? 'no native frontend'} — but this is a multiplatform component (imports \`@pyreon/primitives\`).`,
       line,
       column,
       current: `import … from '${wo.spec}'`,
@@ -313,10 +342,10 @@ export function detectNativePatterns(
   for (const decl of source.statements) {
     let kind: string | null = null
     let name = ''
-    if (ts.isInterfaceDeclaration(decl)) {
-      kind = 'interface'
-      name = decl.name.text
-    } else if (ts.isEnumDeclaration(decl)) {
+    // See the sibling pass above: `interface` is deliberately not flagged,
+    // because PMTC compiles one into a struct / data class and warns by name
+    // for the shapes it cannot take.
+    if (ts.isEnumDeclaration(decl)) {
       kind = 'enum'
       name = decl.name.text
     } else if (ts.isClassDeclaration(decl)) {
@@ -325,15 +354,13 @@ export function detectNativePatterns(
     }
     if (!kind) continue
     const suggested =
-      kind === 'interface'
-        ? `type ${name} = { … }  // object-literal alias → struct on native`
-        : kind === 'enum'
-          ? `type ${name} = 'a' | 'b'  // string-literal union → native enum`
-          : `move logic into functions + signals (or defineStore / model())`
+      kind === 'enum'
+        ? `type ${name} = 'a' | 'b'  // string-literal union → native enum`
+        : `move logic into functions + signals (or defineStore / model())`
     const { line, column } = lineCol(decl)
     diags.push({
       code: 'native-unsupported-decl',
-      message: `Top-level \`${kind} ${name}\` is silently DROPPED by PMTC on native — the emitted SwiftUI/Compose references an undefined symbol on the device build.`,
+      message: `Top-level \`${kind} ${name}\` is not compiled to native. PMTC warns about it by name at build time; this reports it without a compile.`,
       line,
       column,
       current: `${kind} ${name}`,
