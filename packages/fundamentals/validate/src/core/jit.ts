@@ -290,6 +290,18 @@ const isPlainObject = (s: FieldLike, checkMode = false): boolean =>
   // scan the inline loop silently accepts unknown keys, which is a validation
   // hole — so the gate and the scan must move together.
   //
+  // PARSE mode does NOT cover strict, and the reason is an emission-ORDER
+  // constraint rather than a semantic one. It was attempted: the parse-mode
+  // report must push one `unrecognized_keys` issue PER unknown key, AFTER the
+  // known-field issues (issue order is observable), at `[...effectivePath,
+  // key]`. Appending it after the `genObjectValue` call emits it after the
+  // value has already been RETURNED — dead code, so strict silently accepted
+  // unknown keys and 18 specs caught it. Doing it properly means threading the
+  // report INTO `genObjectValue` so it lands before `onValid` in BOTH its
+  // LITERAL and ASSIGN emissions, and in the DU member path. Contained, but it
+  // is the intricate part of this file and it is where a validation hole
+  // hides, so it wants its own pass. Worth ~3.9x on the harness's parseStrict.
+  //
   // `_catchall` stays excluded in BOTH modes — it VALIDATES unknown keys, and
   // the inline loop skips them, which would silently pass invalid input.
   (s._unknownKeys === 'strip' ||
