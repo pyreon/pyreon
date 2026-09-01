@@ -4,6 +4,7 @@ import {
   type CrdtMap,
   type CrdtOrigin,
   LOCAL_ORIGIN,
+  REMOTE_ORIGIN,
 } from './types'
 
 /**
@@ -98,7 +99,7 @@ class PyreonCrdtMap implements CrdtMap {
   }
 
   /** @internal — fired by the doc at transaction commit. */
-  _notify(changedKeys: ReadonlySet<string>, origin: CrdtOrigin): void {
+  _notify(changedKeys: ReadonlySet<string>, origin: CrdtOrigin = REMOTE_ORIGIN): void {
     // Single-observer fast path — the dominant shape (the keyed dispatcher
     // installs exactly ONE observer per map). Fired per transaction commit, so
     // the `[...observers]` snapshot was a throwaway array every commit. Capture

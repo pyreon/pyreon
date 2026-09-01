@@ -440,6 +440,23 @@ final class PyreonTasksUITests: XCTestCase {
             "true",
             "PyreonPermissions denied a seeded grant"
         )
+        // sync: the CRDT-backed signal was RENDERED but asserted by neither device
+        // test until now -- built, shipped, never verified, which is the class
+        // this whole arc is about.
+        XCTAssertEqual(
+            app.staticTexts["toolkit-synced"].firstMatch.label,
+            "0",
+            "syncedSignal did not reach the view with its initial value"
+        )
+        // sync: CONVERGENCE through the map handle. The key is written ONLY on
+        // the peer doc, so `has` can be true only if applyOps actually merged
+        // the peer's ops into this one. Reading back our own write would pass
+        // against a plain Map with no CRDT in it at all.
+        XCTAssertEqual(
+            app.staticTexts["toolkit-crdt-map"].firstMatch.label,
+            "true",
+            "CRDT ops did not converge through the map handle on device"
+        )
         // table: one row at pageSize 10 is exactly one page.
         XCTAssertEqual(
             app.staticTexts["toolkit-tablepages"].firstMatch.label,

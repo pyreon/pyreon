@@ -561,6 +561,25 @@ class TasksAppInstrumentedTest {
         composeRule
             .onNodeWithTag("toolkit-perm")
             .assertTextEquals("true")
+        // sync: the CRDT-backed signal was RENDERED but asserted by neither device
+        // test until now -- built, shipped, never verified.
+        composeRule
+            .onNodeWithTag("toolkit-synced")
+            .performScrollTo()
+            .assertTextEquals("0")
+        // sync: CONVERGENCE through the map handle. The key is written ONLY on
+        // the peer doc, so `has` can be true only if applyOps actually merged
+        // the peer's ops in. Reading back our own write would pass against a
+        // plain Map with no CRDT in it.
+        //
+        // performScrollTo is not optional here: a Compose <Scroll> keeps every
+        // child COMPOSED however far down it sits, so an assertion reads fine
+        // off-screen -- but anything that needs the node on-screen does not, and
+        // a page that grows past the fold breaks silently without it.
+        composeRule
+            .onNodeWithTag("toolkit-crdt-map")
+            .performScrollTo()
+            .assertTextEquals("true")
         // table: one row at pageSize 10 is exactly one page.
         composeRule
             .onNodeWithTag("toolkit-tablepages")

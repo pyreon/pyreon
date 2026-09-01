@@ -33,3 +33,9 @@ hand-maintained list: a test parses `CrdtDoc`/`CrdtMap` out of `@pyreon/sync`'s 
 `crdt/types.ts` and fails if any member is unclassified. A list checked in one direction rots
 the moment the interface grows a member, and the rot is invisible — an unclassified member
 simply never warns.
+
+Also: `PyreonCrdtDoc.applyOps`'s `origin` parameter now defaults to `REMOTE_ORIGIN`, which its
+own docblock has always claimed. It was required, so the documented call shape did not compile
+— and that mattered beyond tidiness, because the native runtimes take `applyOps(ops)` with one
+argument, so shared multiplatform source could not write a call valid on both platforms. Every
+existing caller already passes the origin explicitly, so the default is purely additive.
