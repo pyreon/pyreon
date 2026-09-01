@@ -76,6 +76,15 @@ const WEIGHTS: Record<string, number> = {
   'native-rest': 332,
   'native-compiler-1': 120,
   'native-compiler-2': 120,
+  // ── scaffold-smoke cells (run 31084707225; a scaffolded app's cold
+  //    `bun install` + `vite build` — monorepo-vercel auto-skips on a
+  //    version-ahead workspace, hence the outlier) ──
+  'cpa-smoke-app-vercel': 366,
+  'cpa-smoke-app-static': 359,
+  'cpa-smoke-blog-cloudflare': 373,
+  'cpa-smoke-dashboard-vercel-full': 370,
+  'cpa-smoke-dashboard-node-supabase': 372,
+  'cpa-smoke-monorepo-vercel': 35,
 }
 
 /** Cells with no measured weight — mid-range so an unknown never dominates
