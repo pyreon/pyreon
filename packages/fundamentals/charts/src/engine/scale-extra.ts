@@ -36,11 +36,19 @@ export function logTicks(d: Domain, r0: Double, r1: Double): Tick[] {
   // otherwise generate 600 ticks nobody can read.
   const limit = 24
   let count = 0
-  for (let e = from; e <= to && count < limit; e++) {
+  let e = from
+  // A `while` rather than a compound-condition `for` head: PMTC lowers only
+  // the canonical count-loop, and `e <= to && count < limit` is outside that
+  // shape — as a `for` it warn-drops on native (the loop body vanishes from
+  // the emitted engine). Byte-identical web semantics: `count` advances only
+  // on push, `e` every pass.
+  while (e <= to && count < limit) {
     const v = Math.pow(10.0, e)
-    if (v < min || v > max) continue
-    out.push({ value: v, pos: scaleLog(d, r0, r1, v), label: plain(v) })
-    count = count + 1
+    if (v >= min && v <= max) {
+      out.push({ value: v, pos: scaleLog(d, r0, r1, v), label: plain(v) })
+      count = count + 1
+    }
+    e = e + 1.0
   }
   return out
 }

@@ -510,13 +510,45 @@ const RouterLinkImpl: ComponentFn<RouterLinkProps> = (props) => {
     rel: _rel,
     class: userClass,
     children,
+    onClick: userClick,
+    onMouseEnter: userMouseEnter,
+    onFocus: userFocus,
     ...rest
-  } = props as RouterLinkProps & { class?: ClassValue | (() => ClassValue) }
+  } = props as RouterLinkProps & {
+    class?: ClassValue | (() => ClassValue)
+    onClick?: (e: MouseEvent) => void
+    onMouseEnter?: (e: MouseEvent) => void
+    onFocus?: (e: FocusEvent) => void
+  }
 
   // Compose the user-provided `class` (string / array / object / function) with
   // the internal `activeClass` accessor. Returning a function lets `applyProp`
   // wrap it in `renderEffect` once — so navigation re-evaluates BOTH sides on
   // every route change without rebuilding the link.
+  // Compose the user's event handlers with the internal ones rather than
+  // letting `onClick: handleClick` (spread LAST) silently overwrite them.
+  // `class` was fixed for exactly this reason and the events were left behind
+  // — folklore, not a fix, so the class stayed open: `<RouterLink onClick>`
+  // dropped the handler on every consumer. The docs search overlay is the
+  // shipped instance — it closes itself in `onClick`, so a result click
+  // navigated and left the modal covering the destination page.
+  //
+  // The USER runs first, so `e.preventDefault()` in their handler suppresses
+  // navigation — `handleClick` already bails on `defaultPrevented`, which is
+  // what makes "user first" the composable order rather than a race.
+  const composedClick = (e: MouseEvent): void => {
+    userClick?.(e)
+    handleClick(e)
+  }
+  const composedMouseEnter = (e: MouseEvent): void => {
+    userMouseEnter?.(e)
+    handleMouseEnter()
+  }
+  const composedFocus = (e: FocusEvent): void => {
+    userFocus?.(e)
+    handleFocus()
+  }
+
   const mergedClass = (): string => {
     const userResolved =
       typeof userClass === 'function' ? (userClass as () => ClassValue)() : userClass
@@ -533,9 +565,9 @@ const RouterLinkImpl: ComponentFn<RouterLinkProps> = (props) => {
       rel: linkRel,
       class: mergedClass,
       'aria-current': ariaCurrent,
-      onClick: handleClick,
-      onMouseEnter: handleMouseEnter,
-      onFocus: handleFocus,
+      onClick: composedClick,
+      onMouseEnter: composedMouseEnter,
+      onFocus: composedFocus,
     },
     children ?? props.to,
   )

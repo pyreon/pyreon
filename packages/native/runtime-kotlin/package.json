@@ -26,7 +26,10 @@
   "pyreon": {
     "native": {
       "kotlin": {
-        "dir": "src/main/kotlin"
+        "dir": "src/main/kotlin",
+        "kotlinSdkOnly": [
+          "PyreonChartCanvas.kt"
+        ]
       }
     }
   }

@@ -6,10 +6,13 @@ import type { Signal } from '@pyreon/reactivity'
  * Flow playground — the kitchen-sink live demo for the Flow docs page.
  *
  * One graph exercising every visible @pyreon/flow feature:
- *  - Edge ARROWS: filled `ArrowClosed`, open `Arrow` chevron, per-edge
- *    colours, and a both-ends marker — so the marker vocabulary reads at
- *    a glance (the framework default is a subtle gray, deliberately
- *    overridden here so the feature is unmistakable in a docs demo).
+ *  - Edge ARROWS: the unified DEFAULT arrowhead on every edge — a small
+ *    filled triangle in the line colour, so a graph reads as one connected
+ *    stroke. (This comment used to advertise a per-edge marker vocabulary —
+ *    `ArrowClosed` vs an open `Arrow` chevron, custom colours, both-ends
+ *    markers — which the edge list below deliberately dropped in favour of
+ *    the coherent default. The claim outlived the code because the docs e2e
+ *    suite was never registered in CI; see `scripts/e2e-affected.ts`.)
  *  - AUTO-LAYOUT: four real elkjs runs behind labelled buttons —
  *    `layered →`, `layered ↓`, `tree`, `force`. Click one and the nodes
  *    animate to the computed positions (elkjs is lazy-loaded on first call).
