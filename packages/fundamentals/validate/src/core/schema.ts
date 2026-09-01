@@ -19,7 +19,7 @@
 import type { FieldMeta, StandardSchemaIssue, StandardSchemaV1 } from '../types'
 import { META_SLOT } from '../types'
 import { type PyreonIssue, ValidationError } from './issue'
-import { type JitValidator, tryCompileJit } from './jit'
+import { type JitValidator, tryCompileJit, tryCompileJitCheck } from './jit'
 import type { CatchOp, CheckOpts, Op, ParseCtx, PendingCheck } from './ops'
 import { EMPTY_PATH, makeCtx } from './ops'
 import { getServerCheck } from './registry'
@@ -302,6 +302,21 @@ export abstract class Schema<T> {
    */
   is(input: unknown): boolean {
     if (this._compiledVerdict) return this._compiledVerdict(input)
+    // Verdict-only JIT: no ctx, no issue objects, no output value — the
+    // whole reason `.is()` exists. Falls through to the seams below for any
+    // shape the verdict emitter refuses.
+    // Hot path is ONE field load. `_jitCheck` is only ever assigned inside
+    // `_getCompiled()` — alongside `_compiled`, from the same snapshot — and
+    // `_invalidateCompile()` clears both, so reading it directly cannot
+    // observe a verdict built from a different tree than the parse validator.
+    // `undefined` means "not built yet" (compile now); `null` means the
+    // emitter refused this shape (use the seams below).
+    let check = this._jitCheck
+    if (check === undefined) {
+      this._getCompiled()
+      check = this._jitCheck
+    }
+    if (check !== undefined && check !== null) return check(input)
     // Pure-JIT fast seam (see {@link _pureCtx}): the verdict is just "did the
     // reused ctx accumulate issues?" — no Result object at all. The issues
     // never escape here, so truncating the array (not replacing it) is safe.
@@ -692,10 +707,22 @@ export abstract class Schema<T> {
     // with — a post-compile chained op (`.refine()` on an already-parsed
     // schema) may make the recompiled tree impure.
     this._pureCtx = undefined
+    this._jitCheck = undefined
     // A build-attached verdict reflects the op-list AT ATTACH TIME; any later
     // chained method invalidates it, so drop it and fall back to `.parse().ok`.
     this._compiledVerdict = undefined
   }
+
+  /**
+   * Verdict-only compiled validator (`tryCompileJitCheck`). `undefined` = not
+   * built yet; `null` = the emitter refused this shape (a `_runInto`
+   * fallback, or a closure-only check) and `.is()` keeps the parse path.
+   * Built in the SAME pass as {@link _compiled} — deliberately not lazily;
+   * see {@link _getCheck} for the snapshot-skew that laziness reintroduces.
+   */
+  private _jitCheck?: ((input: unknown) => boolean) | null | undefined
+
+
 
   /** Build (or fetch cached) compiled validator. */
   private _getCompiled(): SyncValidator {
@@ -704,6 +731,15 @@ export abstract class Schema<T> {
       // fall back to the interpreted compiler for everything else.
       const jit = tryCompileJit(this)
       this._compiled = jit ?? compileSchema(this)
+      // Built HERE, in the same pass, rather than lazily on first `.is()`.
+      // Invalidating the two together is not sufficient: a chained method
+      // mutates a schema in place without invalidating its ancestors, so a
+      // parent can hold a `_compiled` snapshot older than the tree — and a
+      // verdict function compiled LATER would read the newer tree and answer
+      // differently. Same pass ⇒ same snapshot ⇒ `is(x) === parse(x).ok`
+      // holds whether or not either is stale. Costs one extra codegen per
+      // schema actually used; the emitter refuses unsupported shapes early.
+      this._jitCheck = tryCompileJitCheck(this)
       // A `_jitPure`-branded validator (no fallback ⇒ no user code / Promise /
       // pending) unlocks the reused-ctx fast seams — see {@link _pureCtx}.
       this._pureCtx = jit !== null && (jit as JitValidator)._jitPure === true ? makeCtx() : undefined

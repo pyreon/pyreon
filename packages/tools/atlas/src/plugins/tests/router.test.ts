@@ -162,6 +162,15 @@ describe('installRouter', () => {
 // makes the install spec see no router and the report-when-unroutable spec see
 // no reason.
 describe('the route axis installs the router it advertises', () => {
+  // `_installRoute` is module-level state that `routerPlugin` WRITES, so a spec
+  // that sets it leaves it set for the next one. Every spec below happens to
+  // re-run `decorate()` first, which makes the file order-independent by
+  // accident rather than by construction — the moment one of them stops doing
+  // that, it silently borrows the previous spec's fake router and still passes.
+  afterEach(() => {
+    setRouteInstaller(undefined)
+  })
+
   const fakeRouterModule = () => {
     const created: Record<string, unknown>[] = []
     const active: unknown[] = []
@@ -222,6 +231,19 @@ describe('the route axis installs the router it advertises', () => {
     expect(routed.disposer).toBeUndefined()
     expect(routed.reason).toContain('not applied')
     expect(routed.reason).toContain('/a')
+  })
+
+  it('the UNSET seam reports rather than passing silently', async () => {
+    // The reset direction of the seam, proven without going through
+    // `routerPlugin`. `installRouteFor` is called by whichever plugin owns
+    // mounting, which has no way to know whether a router was ever registered
+    // — so the un-registered state has to be a REASON, not a throw and not a
+    // silent `{}` that reads as "routed fine".
+    setRouteInstaller(undefined)
+    const routed = await installRouteFor('/unset')
+    expect(routed.disposer).toBeUndefined()
+    expect(routed.reason).toContain('not applied')
+    expect(routed.reason).toContain('/unset')
   })
 
   it('a load that resolves no module is reported too', async () => {
