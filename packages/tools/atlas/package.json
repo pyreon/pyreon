@@ -112,7 +112,7 @@
     "happy-dom": "^20.11.6",
     "playwright-core": ">=1.40",
     "vite": "^8.2.2",
-    "zod": "^4.4.3"
+    "zod": "^4.5.4"
   },
   "peerDependencies": {
     "@pyreon/compiler": "workspace:*",
