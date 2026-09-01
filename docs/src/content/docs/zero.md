@@ -1488,7 +1488,7 @@ nothing to diagnose. Pyreon dev builds detect this and tell you:
 server stays bound to loopback would produce a certificate for an address
 nothing can reach.
 
-:::caution[`lan: true` exposes your dev server]
+:::warning[`lan: true` exposes your dev server]
 Binding to your network interfaces makes the dev server — and everything it
 serves, including source and any env values exposed to the client — reachable
 by **anyone else on that network**. This is the same exposure as Vite's

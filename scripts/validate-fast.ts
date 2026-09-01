@@ -7,6 +7,7 @@
  * tripped freshly-pushed PRs:
  *
  *   - check-doc-claims      (CLAUDE.md doc page count drifted)
+ *   - check-docs-content-drops (a docs page renders with text MISSING)
  *   - check-multiplatform-matrix (matrix headline drifted from its own table)
  *   - check-changeset-required (no changeset for published-pkg source change)
  *   - check-no-major-changesets (a `major` bump is illegal while Pyreon is 0.x)
@@ -95,6 +96,7 @@ const GATES: Gate[] = [
   // validate-fast checked one half and not the other. 0.3s.
   { name: 'check-generated-fresh', cmd: 'bun docs/scripts/check-generated-fresh.ts' },
   { name: 'check-doc-claims', cmd: 'bun scripts/check-doc-claims.ts' },
+  { name: 'check-docs-content-drops', cmd: 'bun scripts/check-docs-content-drops.ts' },
   // The multiplatform capability matrix's headline must equal its own table's
   // Σ(weight × fraction) — the page once carried three disagreeing self-ratings.
   { name: 'check-multiplatform-matrix', cmd: 'bun scripts/check-multiplatform-matrix.ts' },
