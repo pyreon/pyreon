@@ -68,6 +68,11 @@ describe('kotlin typed lambda params', () => {
 `,
       { target: 'kotlin' },
     )
-    expect(out.code).toContain('{ p: Pt ->')
+    // A return-bearing multi-statement standalone lambda now emits the
+    // ANONYMOUS FUNCTION form — plain returns are legal there, where a
+    // lambda needs a call-site label. (The old typed-lambda assertion
+    // passed over a body the labeled-return bail had silently DROPPED.)
+    expect(out.code).toContain('fun(p: Pt): Double {')
+    expect(out.code).toContain('return m')
   })
 })

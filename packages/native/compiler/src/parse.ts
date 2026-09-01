@@ -9478,6 +9478,8 @@ function parseStatementBlock(block: AnyNode, ctx: ParseCtx): StatementIR[] {
     if (parsed) out.push(parsed)
   }
   markReassignedLocalsMutable(out)
+  markMethodMutatedLocals(out)
+
   return out
 }
 
@@ -9490,6 +9492,47 @@ function parseStatementBlock(block: AnyNode, ctx: ParseCtx): StatementIR[] {
  * `mutable` flag. Conservative: only bare-identifier targets promote a local;
  * member/index reassignment doesn't declare a local.
  */
+/**
+ * Kotlin's List has no `add` — a local ARRAY literal that later receives a
+ * mutating method (`push`/`pop`/`shift`/`unshift`/`splice`) must emit as
+ * `mutableListOf`. Reassignment marking (`mutable`) cannot carry this: `val`
+ * is correct for a list that mutates in place (idiomatic Kotlin), only the
+ * LIST type must be mutable. Swift needs nothing (collection locals are
+ * already `var` value types).
+ */
+function markMethodMutatedLocals(stmts: StatementIR[]): void {
+  const mutators = new Set(['push', 'pop', 'shift', 'unshift', 'splice'])
+  const names = new Set<string>()
+  const scanExpr = (e: ExprIR): void => {
+    forEachExpr(e, (x) => {
+      if (
+        x.kind === 'call' &&
+        x.callee.kind === 'member' &&
+        x.callee.object.kind === 'identifier' &&
+        typeof x.callee.property === 'string' &&
+        mutators.has(x.callee.property)
+      ) {
+        names.add(x.callee.object.name)
+      }
+    })
+  }
+  const walk = (list: StatementIR[]): void => {
+    for (const st of list) {
+      if (st.kind === 'let' || st.kind === 'expr') scanExpr(st.expr)
+      if (st.kind === 'return' && st.expr) scanExpr(st.expr)
+      if (st.kind === 'assign') { scanExpr(st.target); scanExpr(st.value) }
+      if (st.kind === 'if') { scanExpr(st.cond); walk(st.then); if (st.elseBody) walk(st.elseBody) }
+      if (st.kind === 'while' || st.kind === 'do-while') { scanExpr(st.cond); walk(st.body) }
+      if (st.kind === 'for-range') { walk(st.body) }
+      if (st.kind === 'for-of') { walk(st.body) }
+    }
+  }
+  walk(stmts)
+  for (const st of stmts) {
+    if (st.kind === 'let' && names.has(st.name)) st.methodMutated = true
+  }
+}
+
 function markReassignedLocalsMutable(stmts: StatementIR[]): void {
   const reassigned = new Set<string>()
   const collect = (list: StatementIR[]): void => {
@@ -10469,6 +10512,8 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // Annotations, index-aligned. A standalone Swift closure cannot infer
       // its param types (`let f = { r in … }` is 'cannot infer type of
       // closure parameter'), so what the author wrote must survive to emit.
+      const returnAnnotNode = (node.returnType as AnyNode | undefined)?.typeAnnotation
+      const returnAnnot = returnAnnotNode ? parseTypeAnnotation(returnAnnotNode as AnyNode, ctx) : undefined
       const paramTypes = identParams.map((p) => {
         const annot = p.typeAnnotation?.typeAnnotation as AnyNode | undefined
         return annot ? parseTypeAnnotation(annot, ctx) : undefined
@@ -10493,9 +10538,9 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           const stmts: StatementIR[] = ((seqBody.expressions as AnyNode[]) ?? []).map(
             (x) => ({ kind: 'expr', expr: parseExpr(x, ctx) }),
           )
-          return { kind: 'arrow', async: node.async === true, params, paramTypes, body: { kind: 'literal', value: '' }, stmts }
+          return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: { kind: 'literal', value: '' }, stmts }
         }
-        return { kind: 'arrow', async: node.async === true, params, paramTypes, body: parseExpr(body, ctx) }
+        return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: parseExpr(body, ctx) }
       }
       // Block body. The common compact case — a single expression/return
       // statement (`() => { count.set(c() + 1) }`) — keeps the lean
@@ -10503,7 +10548,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // action emit already handles it; backward-compat).
       const stmts = body.body as AnyNode[]
       if (stmts.length === 0) {
-        return { kind: 'arrow', async: node.async === true, params, paramTypes, body: { kind: 'literal', value: '' } }
+        return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: { kind: 'literal', value: '' } }
       }
       if (
         stmts.length === 1 &&
@@ -10511,8 +10556,8 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       ) {
         const only = stmts[0]!
         const inner = only.type === 'ReturnStatement' ? only.argument : only.expression
-        if (!inner) return { kind: 'arrow', async: node.async === true, params, paramTypes, body: { kind: 'literal', value: '' } }
-        return { kind: 'arrow', async: node.async === true, params, paramTypes, body: parseExpr(inner, ctx) }
+        if (!inner) return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: { kind: 'literal', value: '' } }
+        return { kind: 'arrow', async: node.async === true, params, paramTypes, returnAnnot, body: parseExpr(inner, ctx) }
       }
       // MULTIPLE statements (or a single non-expr/return statement like an
       // `if`) — carry the FULL statement list. The pre-fix `.find()` kept
@@ -10526,6 +10571,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         async: node.async === true,
         params,
         paramTypes,
+        returnAnnot,
         body: { kind: 'literal', value: '' },
         stmts: blockStmts,
       }
