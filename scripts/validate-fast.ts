@@ -13,6 +13,7 @@
  *   - check-no-major-changesets (a `major` bump is illegal while Pyreon is 0.x)
  *   - check-bundle-budgets   (new publishable package missing entry)
  *   - check-distribution    (sideEffects / source-map invariants)
+ *   - check-esm-only        (no CJS-enabling export condition)
  *   - check-export-entries  (subpath export has a build entry — release-build guard)
  *   - check-release-readiness (publishConfig.access / fixed-group coverage)
  *   - check-manifest-depth  (LOCKED package density regressed)
@@ -108,6 +109,7 @@ const GATES: Gate[] = [
   { name: 'check-no-major-changesets', cmd: 'bun scripts/check-no-major-changesets.ts' },
   { name: 'check-bundle-budgets', cmd: 'bun scripts/check-bundle-budgets.ts' },
   { name: 'check-distribution', cmd: 'bun scripts/check-distribution.ts' },
+  { name: 'check-esm-only', cmd: 'bun scripts/check-esm-only.ts' },
   { name: 'check-export-entries', cmd: 'bun scripts/check-export-entries.ts' },
   { name: 'check-tsconfig-presets', cmd: 'bun scripts/check-tsconfig-presets.ts' },
   { name: 'check-release-readiness', cmd: 'bun scripts/check-release-readiness.ts' },
