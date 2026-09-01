@@ -1,11 +1,17 @@
 ---
 title: Charts
-description: Reactive ECharts bridge with lazy loading, auto-detection, and typed options for Pyreon.
+description: The reactive ECharts bridge — lazy loading, auto-detection, and typed options. One of two charting engines in the package.
 ---
 
 `@pyreon/charts` is a reactive bridge to [Apache ECharts](https://echarts.apache.org/) for Pyreon. You write ECharts options as a **function** — signal reads inside are tracked, so the chart re-renders whenever any tracked signal changes. ECharts itself is **lazy-loaded**: chart types and components are auto-detected from your options and dynamically imported on first render, so there are zero ECharts bytes in your initial bundle until a chart actually mounts.
 
 <PackageBadge name="@pyreon/charts" href="/docs/charts" />
+
+:::note{title="This package ships TWO independent engines"}
+This page documents the **ECharts bridge** (`@pyreon/charts`). The package also ships Pyreon's own engine at [`@pyreon/charts/plot`](/docs/charts-plot) — pure-TypeScript geometry, marks as imported bindings so tree-shaking is structural, a canvas backend, and an SVG backend that renders on the server.
+
+They share nothing but a package name. Importing one never pulls in the other, so pick per chart: the bridge for ECharts' breadth of chart types, the plot engine for a small bundle, server rendering, or no third-party engine at all.
+:::
 
 ## Installation
 
