@@ -23,6 +23,8 @@ import { parallelToSvg } from './parallel'
 import type { ParallelAxis, ParallelOptions, ParallelRow } from './parallel'
 import { polarToSvg } from './polar'
 import type { PolarAxes, PolarOptions, PolarSeries } from './polar'
+import { riverToSvg } from './river'
+import type { RiverOptions, RiverSeries } from './river'
 import type { FunnelOptions } from './funnel'
 import type { RadarAxis } from './radar'
 import type { Double } from './types'
@@ -42,6 +44,7 @@ export type FamilyPlan =
   | { kind: 'calendar'; start: string; end: string; values: Record<string, Double>; calendar: CalendarOptions; title: string | undefined }
   | { kind: 'parallel'; axes: ParallelAxis[]; rows: ParallelRow[]; parallel: ParallelOptions; title: string | undefined }
   | { kind: 'polar'; axes: PolarAxes; series: PolarSeries[]; polar: PolarOptions; title: string | undefined }
+  | { kind: 'themeRiver'; series: RiverSeries[]; river: RiverOptions; title: string | undefined }
 
 export interface CompiledFamily {
   plan: FamilyPlan
@@ -49,7 +52,7 @@ export interface CompiledFamily {
   supported: boolean
 }
 
-const FAMILY_TYPES = new Set(['pie', 'gauge', 'radar', 'candlestick', 'heatmap', 'funnel', 'treemap', 'sunburst', 'tree', 'sankey', 'graph', 'parallel'])
+const FAMILY_TYPES = new Set(['pie', 'gauge', 'radar', 'candlestick', 'heatmap', 'funnel', 'treemap', 'sunburst', 'tree', 'sankey', 'graph', 'parallel', 'themeRiver'])
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const num = (v: unknown): number | null => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null
@@ -71,7 +74,7 @@ export function isFamilyOption(option: EChartsOption): boolean {
   return isObj(s) && typeof s['type'] === 'string' && (FAMILY_TYPES.has(s['type'] as string) || s['coordinateSystem'] === 'polar')
 }
 
-const KNOWN_TOP = new Set(['series', 'title', 'legend', 'tooltip', 'color', 'radar', 'xAxis', 'yAxis', 'visualMap', 'animation', 'backgroundColor', 'textStyle', 'grid', 'calendar', 'parallel', 'parallelAxis', 'polar', 'angleAxis', 'radiusAxis'])
+const KNOWN_TOP = new Set(['series', 'title', 'legend', 'tooltip', 'color', 'radar', 'xAxis', 'yAxis', 'visualMap', 'animation', 'backgroundColor', 'textStyle', 'grid', 'calendar', 'parallel', 'parallelAxis', 'polar', 'angleAxis', 'radiusAxis', 'singleAxis'])
 const KNOWN_BY_FAMILY: Record<string, Set<string>> = {
   pie: new Set(['type', 'name', 'data', 'radius', 'label', 'itemStyle', 'center', 'emphasis', 'color']),
   gauge: new Set(['type', 'name', 'data', 'min', 'max', 'detail', 'axisLine', 'progress', 'itemStyle', 'color']),
@@ -83,6 +86,7 @@ const KNOWN_BY_FAMILY: Record<string, Set<string>> = {
   sunburst: new Set(['type', 'name', 'data', 'radius', 'center', 'sort', 'startAngle', 'label', 'itemStyle', 'color', 'emphasis', 'nodeClick', 'levels']),
   tree: new Set(['type', 'name', 'data', 'orient', 'layout', 'symbol', 'symbolSize', 'initialTreeDepth', 'edgeShape', 'label', 'itemStyle', 'lineStyle', 'leaves', 'roam', 'expandAndCollapse', 'emphasis', 'top', 'left', 'right', 'bottom']),
   sankey: new Set(['type', 'name', 'data', 'nodes', 'links', 'edges', 'nodeWidth', 'nodeGap', 'nodeAlign', 'layoutIterations', 'orient', 'draggable', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'levels', 'top', 'left', 'right', 'bottom']),
+  themeRiver: new Set(['type', 'name', 'data', 'coordinateSystem', 'singleAxisIndex', 'boundaryGap', 'label', 'itemStyle', 'emphasis', 'color', 'animation']),
   polar: new Set(['type', 'name', 'data', 'coordinateSystem', 'polarIndex', 'stack', 'itemStyle', 'lineStyle', 'label', 'emphasis', 'smooth', 'symbol', 'symbolSize', 'barWidth', 'barGap', 'barCategoryGap', 'roundCap', 'showBackground', 'backgroundStyle', 'areaStyle', 'animation', 'color']),
   parallel: new Set(['type', 'name', 'data', 'coordinateSystem', 'parallelIndex', 'lineStyle', 'emphasis', 'inactiveOpacity', 'activeOpacity', 'realtime', 'smooth', 'progressive', 'animation']),
   graph: new Set(['type', 'name', 'data', 'nodes', 'links', 'edges', 'categories', 'layout', 'symbol', 'symbolSize', 'force', 'circular', 'roam', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'draggable', 'edgeSymbol', 'edgeSymbolSize', 'focusNodeAdjacency', 'zoom', 'center', 'left', 'top', 'right', 'bottom', 'width', 'height', 'coordinateSystem']),
@@ -238,6 +242,31 @@ export function compileFamily(option: EChartsOption): CompiledFamily | null {
       warnings,
       supported,
     }
+  }
+
+  if (type === 'themeRiver') {
+    // Triples [date, value, name] group into one stream per name over the
+    // sorted set of dates; a stream without a value on a date contributes 0.
+    const dates = new Set<string>()
+    const byName = new Map<string, Map<string, Double>>()
+    for (let i = 0; i < data.length; i++) {
+      const d = data[i]
+      const v = Array.isArray(d) ? num(d[1]) : null
+      if (!Array.isArray(d) || typeof d[0] !== 'string' || v === null || typeof d[2] !== 'string') {
+        warn('series-data-shape', 'series[0].data[' + String(i) + ']', 'A themeRiver datum must be [date, value, name]; it was skipped.')
+        continue
+      }
+      dates.add(d[0] as string)
+      const row = byName.get(d[2] as string) ?? new Map<string, Double>()
+      row.set(d[0] as string, (row.get(d[0] as string) ?? 0.0) + v)
+      byName.set(d[2] as string, row)
+    }
+    const categories = Array.from(dates).sort()
+    const series: RiverSeries[] = []
+    for (const [name, row] of byName) series.push({ name, values: categories.map((c) => row.get(c) ?? 0.0) })
+    const label = isObj(s['label']) ? s['label'] : {}
+    const river: RiverOptions = { categories, showLabels: label['show'] !== false }
+    return { plan: { kind: 'themeRiver', series, river, title }, warnings, supported }
   }
 
   if (familyKey === 'polar') {
@@ -726,6 +755,14 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
         ...(plan.title !== undefined ? { title: plan.title } : {}),
       })
     }
+    case 'themeRiver':
+      return riverToSvg({
+        series: plan.series,
+        river: plan.river,
+        width,
+        height,
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
     case 'polar':
       return polarToSvg({
         axes: plan.axes,
