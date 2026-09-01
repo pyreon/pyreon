@@ -29,6 +29,43 @@ yarn add @pyreon/runtime-dom
 
 :::
 
+## Entry points
+
+Everything is exported from the main entry. Three subpaths exist alongside it:
+
+| Import | Exports |
+| --- | --- |
+| `@pyreon/runtime-dom` | Everything below, plus `mount`, `hydrateRoot` and the rest of the renderer. |
+| `@pyreon/runtime-dom/transition` | `Transition`, `TransitionGroup`. |
+| `@pyreon/runtime-dom/keep-alive` | `KeepAlive`. |
+| `@pyreon/runtime-dom/sanitizer` | `defaultSanitize` — the allowlist sanitizer the `innerHTML` prop uses. |
+
+### The main entry already tree-shakes
+
+The obvious reading — "import from the subpath to get the small bundle" — is **wrong**, and worth stating plainly because it costs people time. Measured with `Bun.build`, minified, gzipped, `@pyreon/*` externalized, `NODE_ENV=production`:
+
+| What you import | Size |
+| --- | --- |
+| `mount` | 7,710 B gz |
+| `mount` + `Transition` + `TransitionGroup` + `KeepAlive` | 9,421 B gz |
+| `mount` + `hydrateRoot` | 14,200 B gz |
+| The whole namespace (`import * as`) | 17,992 B gz |
+
+And the two spellings are **byte-identical**:
+
+| | Size |
+| --- | --- |
+| `import { mount, Transition } from '@pyreon/runtime-dom'` | 8,344 B gz |
+| `mount` from the main entry + `Transition` from `/transition` | 8,344 B gz |
+
+So the subpaths are not a size lever. Import from the main entry and let your bundler do its job; reach for a subpath when you want the boundary stated in the import rather than inferred from a bundler's behaviour.
+
+`/sanitizer` is the one that stands alone — **1,177 B gz** with nothing else pulled in — because sanitizing a string of HTML has no reason to drag in a renderer.
+
+:::note{title="Numbers are measured, not estimated"}
+Reproduce them with `bun run check-import-budgets`, which gates `mount` and `mount + hydrateRoot` against `scripts/import-budgets.json`. Sizes move as the renderer changes; the shape of the finding — main entry and subpath are equivalent — is what to rely on.
+:::
+
 ## Core Concepts
 
 Pyreon's runtime-dom takes a fundamentally different approach from virtual-DOM frameworks like React or Vue. Instead of diffing a virtual tree on every update, Pyreon creates DOM nodes once and uses fine-grained reactive effects to update only the specific text nodes, attributes, or properties that depend on changed signals. This means:
