@@ -105,6 +105,51 @@ Two readings, one of them a testable prediction:
   away in the safe case and not in the strict one. Treat the rank as reported,
   not as a win.
 
+## The typia gap is ENGINE-SPECIFIC, and this harness only shows the bad half
+
+Upstream's numbers put typia ahead of us on the assert cells. That is true under
+the engine this entry can run on, and false under the one most consumers use.
+
+Hand-written twins of both emitted validators (identical checks, same rotated
+8-input pool, process-isolated per variant, interleaved, median of 11 runs x 3
+pairs):
+
+| engine | ours | typia | verdict |
+|---|---|---|---|
+| V8 (node 26) | 19.28ns | 18.54ns | **1.04x — statistical tie**, spreads 18.5-20.6 vs 17.6-20.0 |
+| JSC (bun 1.4) | 8.68ns | 4.60ns | **1.89x to typia**, spreads 8.3-10.0 vs 4.4-5.8, no overlap |
+
+So on V8 — Node, Chrome, Edge — we are level with a build-time code generator.
+On JSC we are not, and the reason is not any of the obvious candidates.
+
+**The irony worth naming:** ESM-only keeps us out of upstream's ts-node/CJS
+runner, so this entry can only ever report the JSC column — the single engine
+where we look worst. That is a cost of the policy, not an argument against it.
+
+### Five refuted hypotheses, so the next attempt starts past them
+
+Each was plausible, each was measured, each was wrong:
+
+1. **Extra NaN validation.** We reject NaN for `s.number()`, typia does not — 4
+   extra checks on this shape. Median of 3: 10.74ns with, 10.47ns without.
+2. **Emission shape (flat `&&` chain vs early returns).** Rewriting ours as a
+   flat chain with identical checks measured 11.91ns against our 10.37ns — the
+   flat form is SLOWER for us, not faster.
+3. **`Array.isArray` guards.** typia omits them; we need them (an array with
+   crafted own properties would otherwise pass a strict count check). Cost under
+   V8: ~0.08ns.
+4. **`Object.keys` allocation for the strict key count.** Looked like the answer
+   — it allocates an array per call, twice. typia's generated code does exactly
+   the same thing (`7 === Object.keys(input).length`), so it cannot be the
+   differentiator.
+5. **Self-compare NaN (`t !== t`) instead of `Number.isNaN(t)`.** Provably
+   equivalent once `typeof t === "number"` has passed, and avoids a call.
+   Process-isolated, 3 interleaved pairs: 9.50ns against 8.83ns — consistently
+   SLOWER. JSC already intrinsifies `Number.isNaN`.
+
+What is left is a JSC-specific codegen difference that none of the above
+explains, on a shape where V8 sees no difference at all.
+
 ## Reading the numbers with the right amount of suspicion
 
 Upstream calls `this.fn(validateData)` in a loop with a **single frozen
