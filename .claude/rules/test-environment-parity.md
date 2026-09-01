@@ -98,6 +98,41 @@ Three categories of `any` / type-erasure patterns in tests have canonical typed 
 
 **One known load-bearing `any`** at `@pyreon/dnd`'s `src/tests/integration.test.ts`: typing the pdnd adapter mock callbacks with a non-`any` shape produces 16+ downstream typecheck errors because the assertion sites call across many opts shapes (`opts.onDragEnter`, `opts.onDrop`, etc.). The test deliberately uses `any` for dispatch-across-shapes pragmatism. **If the lint rule `pyreon/no-test-any-without-helper` ships in a future PR, add this file to its `exemptPaths`.**
 
+## A spec that hardcodes a platform modifier tests only the author's OS
+
+Playwright resolves `Meta` and `Control` against the **host** platform. A
+component that offers a platform-aware shortcut resolves it against the **user
+agent**. Those agree on a developer's Mac and on a Linux runner — so a spec that
+hardcodes one of them passes locally and does nothing in CI, silently.
+
+`@pyreon/zero-content`'s search overlay is the worked example:
+
+```ts
+const isMod = navigator.userAgent.includes('Mac') ? e.metaKey : e.ctrlKey
+```
+
+The docs specs pressed `Meta+k`. On macOS the panel opened; on the ubuntu runner
+the component was listening for Control, nothing happened, and the assertion
+reported `.pyreon-search__panel` not visible — i.e. **"search is broken", from
+the one cause that is not it.** The specs had never executed anywhere but a
+laptop (see the sibling entry on `test:e2e:*` scripts that no matrix invokes),
+so the mismatch shipped with them.
+
+**Rule: press `ControlOrMeta+<key>`.** Playwright maps it the same way the
+component maps its own branch, so the spec follows the product rather than one
+operating system. More generally: when a product branches on the environment,
+the spec must *derive* the same branch, never restate one side of it — a
+restated constant is correct exactly on the machine it was written on.
+
+Two things this does NOT cover, worth stating so the rule is not over-trusted:
+
+- A **spoofed** user agent breaks the pairing again — `ControlOrMeta` follows
+  the host, `navigator.userAgent` follows the override. If a spec sets a UA, it
+  must drive the modifier that UA implies.
+- A chord the **browser itself** claims (`Control+Shift+R` is Chromium's hard
+  reload) never reaches the page on any platform. That is a different failure
+  and `e2e/reactive-overlay.spec.ts` documents it at its own call site.
+
 ## Anti-patterns this rule explicitly forbids
 
 ### 1. Mock-vnode tests as the only coverage for a contract
