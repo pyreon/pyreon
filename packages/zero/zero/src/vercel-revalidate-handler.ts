@@ -39,6 +39,28 @@
  * })
  */
 
+import { timingSafeEqual } from 'node:crypto'
+
+/**
+ * Compare two secrets without leaking where they diverge.
+ *
+ * `a !== b` stops at the first differing byte, so response time is a function
+ * of how many leading bytes an attacker guessed correctly — the classic oracle.
+ * `timingSafeEqual` compares every byte regardless.
+ *
+ * Length is checked first because `timingSafeEqual` throws on mismatched
+ * buffers. That does leak the secret's LENGTH; hashing both sides to a fixed
+ * width would close even that, at the cost of making the check harder to read
+ * for a threat this remote. Stated rather than hidden.
+ */
+function secretsMatch(given: string, expected: string): boolean {
+  const a = Buffer.from(given, 'utf8')
+  const b = Buffer.from(expected, 'utf8')
+  if (a.length !== b.length) return false
+  return timingSafeEqual(a, b)
+}
+
+
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
@@ -112,12 +134,18 @@ export function vercelRevalidateHandler(
       return new Response('Bad Request: missing path or secret', { status: 400 })
     }
 
-    // Validate the secret against the env var. Constant-time-ish: we
-    // compare strings of equal length; mismatched lengths short-circuit
-    // (acceptable — the attacker can already see the response time
-    // difference via fetch behavior). The env-var-missing case fails
-    // CLOSED (401) — production webhooks shouldn't accept requests when
-    // the server hasn't been configured.
+    // Validate the secret against the env var, in constant time.
+    //
+    // This comment used to call `secret !== expected` "constant-time-ish: we
+    // compare strings of equal length". It is not: `!==` short-circuits at the
+    // first differing byte regardless of length, which is exactly the leak the
+    // phrase claims to avoid. Overstating what a check does is worse than not
+    // having it, because it stops anyone looking again.
+    //
+    // `timingSafeEqual` requires equal-length buffers, so length is compared
+    // first and separately — that comparison genuinely does leak the secret's
+    // LENGTH, which is a far weaker signal than its bytes and is unavoidable
+    // without hashing both sides. The env-var-missing case fails CLOSED.
     const expected = process.env[secretEnvVar]
     if (!expected) {
       return new Response(
@@ -125,7 +153,7 @@ export function vercelRevalidateHandler(
         { status: 500 },
       )
     }
-    if (secret !== expected) {
+    if (!secretsMatch(secret, expected)) {
       return new Response('Forbidden: invalid secret', { status: 403 })
     }
 
