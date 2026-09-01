@@ -90,3 +90,41 @@ describe('verdict JIT — unknown-key semantics match the interpreter', () => {
     expect(T.is({ toString: 'no' })).toBe(false)
   })
 })
+
+describe('verdict JIT — strict emits the CHEAPER shape when it can', () => {
+  // These assert the emitted SOURCE, because both strict paths are
+  // semantically identical: neutering the fast path leaves every behavioural
+  // spec green and the only symptom is being slower. Without a shape
+  // assertion the optimisation could stop applying and nothing would fail.
+  const src = (sc: Schema<unknown>): string => {
+    const fn = tryCompileJitCheck(sc)
+    expect(fn).not.toBeNull()
+    return String(fn)
+  }
+
+  it('all-required shape uses a key COUNT, not a per-key scan', () => {
+    const body = src(s.object({ a: s.number(), b: s.string() }).strict())
+    expect(body).toMatch(/Object\.keys\([^)]*\)\.length !== 2/)
+    expect(body).not.toContain('.has(')
+  })
+
+  it('a field that can be validly ABSENT falls back to the SCAN', () => {
+    // `.optional()` / `.nullable()` / `.default()` route to the `_runInto`
+    // fallback, which the verdict JIT refuses OUTRIGHT — so they never reach
+    // this code. `s.undefined()` is an inline primitive that can still be
+    // validly absent, which is exactly the shape that needs the scan.
+    const body = src(s.object({ a: s.number(), b: s.undefined() }).strict())
+    expect(body).toContain('.has(')
+    expect(body).not.toMatch(/Object\.keys\([^)]*\)\.length !==/)
+  })
+
+  it('the scan rejects what the count would have accepted, and accepts what it would have rejected', () => {
+    const O = s.object({ a: s.number(), b: s.undefined() }).strict()
+    // count == 2 == N, but `zzz` is unknown -> the count would ACCEPT this.
+    expect(O.is({ a: 1, zzz: 1 })).toBe(false)
+    expect(O.is({ a: 1, zzz: 1 })).toBe(O.parse({ a: 1, zzz: 1 }).ok)
+    // count == 1 != N, but `b` may be absent -> the count would REJECT this.
+    expect(O.is({ a: 1 })).toBe(true)
+    expect(O.is({ a: 1 })).toBe(O.parse({ a: 1 }).ok)
+  })
+})

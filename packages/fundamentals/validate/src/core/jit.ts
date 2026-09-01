@@ -425,14 +425,37 @@ function compileJit(schema: Schema<unknown>, mode: JitMode): unknown {
      * name the key.
      */
     const strictScan = (shape: Record<string, FieldLike>, srcVar: string): string => {
-      const setRef = cap(new Set(Object.keys(shape)))
+      const shapeKeys = Object.keys(shape)
+      // FAST PATH — when every declared field must be PRESENT in a valid
+      // object, "no unknown keys" reduces to a key COUNT. The known-key checks
+      // above already reject a missing required field (its slot reads
+      // `undefined` and fails its type guard), so at this point the object is
+      // known to carry all N declared keys; carrying exactly N therefore means
+      // it carries nothing else. One integer compare replaces N Set lookups.
+      //
+      // `fieldDefinedWhenValid` is the right predicate: it is false for exactly
+      // the fields that can be validly ABSENT (optional / nullish / default all
+      // route to the `_runInto` fallback), and for those the count identity
+      // breaks — a missing optional plus one extra key sums to N.
+      if (shapeKeys.every((k) => fieldDefinedWhenValid(shape[k]!))) {
+        return `if (Object.keys(${srcVar}).length !== ${shapeKeys.length}) return false;`
+      }
+      const setRef = cap(new Set(shapeKeys))
       const ksv = nv()
       const iv = nv()
-      // `Object.keys` + an indexed loop, NOT `for...in` + `hasOwnProperty`.
-      // The two are semantically identical here (own enumerable string keys),
-      // and the allocation-free form looks like the obvious win — it was
-      // measured SLOWER, 97.5ns against 90.4ns on the 8-key shape. The array
-      // is not what this costs.
+      // SLOW PATH — a shape with an optionally-absent field, where the count
+      // identity above does not hold. Scans the input's own keys.
+      //
+      // `Object.keys` + an indexed loop, NOT `for...in` + `hasOwnProperty`:
+      // the two are semantically identical here (own enumerable string keys)
+      // and the allocation-free form measured SLOWER, 97.5ns against 90.4ns on
+      // an 8-key shape — the per-key `hasOwnProperty.call` costs more than the
+      // array it avoids. (The array is NOT cheap: dropping the per-key Set
+      // lookups via the count fast path took the same shape 94.7ns -> 67.9ns,
+      // so roughly 57ns of that is `Object.keys` itself. There is no
+      // allocation-free own-key count in JS — `for...in` walks INHERITED
+      // enumerable properties too, so counting with it would diverge from the
+      // interpreter on any object with an enumerable prototype.)
       return `var ${ksv} = Object.keys(${srcVar}); for (var ${iv} = 0; ${iv} < ${ksv}.length; ${iv}++) { if (!${setRef}.has(${ksv}[${iv}])) return false; }`
     }
 
