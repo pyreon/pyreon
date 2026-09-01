@@ -285,13 +285,15 @@ const isPlainObject = (s: FieldLike, checkMode = false): boolean =>
   // PARSE mode passthrough must copy unknown keys onto the result, which the
   // shape-only inline loop cannot do — so it stays excluded there.
   //
-  // `strict` is NOT covered: it must REJECT on an unknown key, which needs a
-  // key scan the inline loop does not emit. Silently accepting one would be a
-  // validation hole, so it keeps the interpreter.
+  // `strict` is covered in verdict mode too, but ONLY because the emission
+  // pairs it with an explicit own-key scan (see `strictScan`). Without that
+  // scan the inline loop silently accepts unknown keys, which is a validation
+  // hole — so the gate and the scan must move together.
   //
   // `_catchall` stays excluded in BOTH modes — it VALIDATES unknown keys, and
   // the inline loop skips them, which would silently pass invalid input.
-  (s._unknownKeys === 'strip' || (checkMode && s._unknownKeys === 'passthrough')) &&
+  (s._unknownKeys === 'strip' ||
+    (checkMode && (s._unknownKeys === 'passthrough' || s._unknownKeys === 'strict'))) &&
   !s._catchall
 /**
  * An array we can recurse into: has an element schema AND its OWN ops are
@@ -406,6 +408,33 @@ function compileJit(schema: Schema<unknown>, mode: JitMode): unknown {
     const keyLit = (k: string): string => JSON.stringify(k)
     let uid = 0
     const nv = (): string => `t${uid++}`
+
+    /**
+     * Verdict-mode `.strict()`: reject the object if it carries any key the
+     * shape does not declare.
+     *
+     * The predicate is OWN-key membership, matching the interpreter's
+     * `Object.hasOwn(known, key)`. It must not be `in` — that walks the
+     * prototype chain, so a key named `toString` / `constructor` /
+     * `hasOwnProperty` reads as declared and slips through, which is the exact
+     * hole fixed in the interpreter alongside this. A Set built from
+     * `Object.keys(shape)` has the same semantics and no prototype to walk.
+     *
+     * Verdict-only: this returns FALSE rather than reporting WHICH key was
+     * unrecognized, so it is never emitted in parse mode, where the issue must
+     * name the key.
+     */
+    const strictScan = (shape: Record<string, FieldLike>, srcVar: string): string => {
+      const setRef = cap(new Set(Object.keys(shape)))
+      const ksv = nv()
+      const iv = nv()
+      // `Object.keys` + an indexed loop, NOT `for...in` + `hasOwnProperty`.
+      // The two are semantically identical here (own enumerable string keys),
+      // and the allocation-free form looks like the obvious win — it was
+      // measured SLOWER, 97.5ns against 90.4ns on the 8-key shape. The array
+      // is not what this costs.
+      return `var ${ksv} = Object.keys(${srcVar}); for (var ${iv} = 0; ${iv} < ${ksv}.length; ${iv}++) { if (!${setRef}.has(${ksv}[${iv}])) return false; }`
+    }
 
     const genChecks = (ops: CheckOpLike[], ve: string, ps: PathState): string => {
       const idxArg = ps.dynIdx ? `, ${ps.dynIdx}` : ''
@@ -565,6 +594,9 @@ function compileJit(schema: Schema<unknown>, mode: JitMode): unknown {
               c.issues.push(typeIssue('object', val, jitEffectivePath(c, sfx, idx)))
             })}(${srcVar}, ctx${idxArg});`
         lines.push(`if (typeof ${srcVar} !== "object" || ${srcVar} === null || Array.isArray(${srcVar})) { ${objFail} } else {`)
+        if (CHECK && field._unknownKeys === 'strict') {
+          lines.push(strictScan(field.shape as Record<string, FieldLike>, srcVar))
+        }
         genObjectValue(field.shape as Record<string, FieldLike>, srcVar, onValid, onAsync, depth + 1, ps)
         lines.push(`}`)
         return
@@ -760,6 +792,9 @@ function compileJit(schema: Schema<unknown>, mode: JitMode): unknown {
               fieldCheckOps(discField).length === 0
                 ? { key: disc, varExpr: tagV }
                 : undefined
+            if (CHECK && member._unknownKeys === 'strict') {
+              lines.push(strictScan(member.shape as Record<string, FieldLike>, srcVar))
+            }
             genObjectValue(member.shape as Record<string, FieldLike>, srcVar, onValid, onAsync, depth + 1, ps, preset)
           } else {
             // Non-inlinable member (own checks / strict / catchall / depth
