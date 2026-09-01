@@ -13,10 +13,26 @@ export default defineNodeConfig({
   // tests), `server.ts` + `plugin.ts` + `run.ts` (vite-booting dev surface),
   // `lens.ts` / `lens-client.ts` / `axe.ts` (browser-side instrumentation), and
   // the `A11y*` styled-declaration modules.
+  //
+  // `lines` is declared EXPLICITLY alongside the other three. Omitting it did
+  // not mean "no line threshold" — an unset key inherits the category default
+  // (95%), so the package silently carried a ceiling nobody had measured
+  // against while its three deliberate re-baselines sat at 79/75/66. It
+  // measured 81.36% and reddened `Coverage (Full)` on every main run. A
+  // partial override reads as "the thresholds are set"; it is not.
+  // Ratcheted UP with the exclusion fix below rather than left at the old
+  // seed: dropping 159 declaration-only files from the denominator moved the
+  // measurement to 83.92 / 75.18 / 87.90 / 84.78, and a floor that sits 20
+  // points under what the package actually achieves protects nothing. Held ~1
+  // point below measured, because the same run differs slightly between macOS
+  // and the ubuntu runner. Branches stays at 75: CI measures 75.12 and the
+  // margin is already thinner than that variance, so tightening it would make
+  // the gate flip by platform.
   coverageThresholds: {
-    statements: 79,
+    statements: 82,
     branches: 75,
-    functions: 66,
+    functions: 85,
+    lines: 83,
   },
   // `src/ui/**` splits cleanly into two halves, and only one is measurable here.
   //
@@ -49,5 +65,14 @@ export default defineNodeConfig({
     'src/ui/kit.ts',
     'src/ui/chrome/**',
     'src/ui/views/**',
+    // Same class as the two above, and the reason this list needed a third
+    // entry: the chrome/view modules were later decomposed into 159
+    // one-declaration files under `components/`, and the exclude list did not
+    // follow. Every one of them is an `el.attrs(…).theme(…)` (or `txt`)
+    // declaration — the single file carrying a conditional carries `??` inside
+    // a theme callback and nothing else — so the Node runner measures "did the
+    // module evaluate", which is what the paragraph above says not to measure.
+    // The covering suite is unchanged: `e2e/atlas-workshop.spec.ts`.
+    'src/ui/components/**',
   ],
 })
