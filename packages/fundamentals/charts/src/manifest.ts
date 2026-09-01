@@ -210,7 +210,7 @@ const cpu = signal(42)
       kind: 'component',
       signature: '<T>(props: CandlestickChartProps<T>) => VNodeChild',
       summary:
-        'Candlestick chart from the plot engine (`@pyreon/charts/plot`) — open/high/low/close accessors per datum, direction encoded by color (close vs open; up green, down red by default, both overridable). A doji (open == close) keeps a 1px body — flat trading is a fact, and a missing candle reads as missing data. The wick draws first so the body sits over it; the price domain is niced so the axis lands on readable ticks. Geometry (`renderCandles`, `ohlcExtent`) exported standalone.',
+        'Candlestick chart from the plot engine (`@pyreon/charts/plot`) — open/high/low/close accessors per datum, direction encoded by color (close vs open; up green, down red by default, both overridable). `onSelect` fires with the candle index (the full COLUMN is the hit target — a wick is one pixel wide) and `tooltip` shows the hovered period OHLC. A doji (open == close) keeps a 1px body — flat trading is a fact, and a missing candle reads as missing data. The wick draws first so the body sits over it; the price domain is niced so the axis lands on readable ticks. Geometry (`renderCandles`, `ohlcExtent`) exported standalone.',
       example: `import { CandlestickChart } from '@pyreon/charts/plot'
 
 interface Bar { day: string; o: number; h: number; l: number; c: number }
@@ -220,6 +220,7 @@ const bars: Bar[] = [{ day: 'Mon', o: 10, h: 20, l: 5, c: 15 }]
       mistakes: [
         'Feeding pre-sorted-descending periods and reading the chart right-to-left — periods render in DATA order, oldest first by convention; sort ascending',
         'Expecting volume bars — volume is a second chart sharing the x axis, not a candle option; compose a `PlotChart` with `bars` below it',
+        'Aiming a click at the candle body — the hit target is the whole COLUMN, deliberately: a doji body is one pixel tall and selection must not be a game of skill',
       ],
       seeAlso: ['PlotChart', 'HeatmapChart'],
     },
@@ -228,7 +229,7 @@ const bars: Bar[] = [{ day: 'Mon', o: 10, h: 20, l: 5, c: 15 }]
       kind: 'component',
       signature: '<T>(props: HeatmapChartProps<T>) => VNodeChild',
       summary:
-        'Heatmap from the plot engine (`@pyreon/charts/plot`): two categorical axes, a value per cell, color as the third channel. Category order is FIRST-SEEN (weekday names and funnel stages carry an order alphabetical sorting destroys); duplicate (x, y) observations SUM; absent cells are NOT drawn — absence and zero are different facts. The ramp is plain `#rrggbb` stops interpolated by hand-rolled math, so the same code lowers to native. The row gutter sizes itself from the widest row label, the same rule horizontal bars use.',
+        'Heatmap from the plot engine (`@pyreon/charts/plot`): two categorical axes, a value per cell, color as the third channel. Category order is FIRST-SEEN (weekday names and funnel stages carry an order alphabetical sorting destroys); duplicate (x, y) observations SUM; absent cells are NOT drawn — absence and zero are different facts. The ramp is plain `#rrggbb` stops interpolated by hand-rolled math, so the same code lowers to native. The row gutter sizes itself from the widest row label, the same rule horizontal bars use. `onSelect` fires with the tapped CELL (its categories and aggregated value; null for a miss) and `tooltip` shows row \u00b7 column: value — both speak in cells because duplicate observations SUM into one cell, so the cell is the unit on screen.',
       example: `import { HeatmapChart } from '@pyreon/charts/plot'
 
 interface Ev { day: string; hour: string; count: number }
@@ -239,6 +240,7 @@ const events: Ev[] = [{ day: 'Mon', hour: '09', count: 12 }]
         'Expecting alphabetically sorted axes — category order is first-seen from the data, which is what keeps Mon..Sun in week order; sort the DATA to sort the axes',
         'Reading an undrawn cell as zero — absent cells are skipped, not painted cold; emit explicit zero observations when zero is a fact worth showing',
         'Passing a color ramp as anything but `#rrggbb` stops — named colors and rgb() strings are not parsed; the hex restriction is what lets the ramp math lower to native',
+        'Expecting `onSelect` to fire a datum index — duplicate (x, y) observations SUM into one cell, so the callback speaks in cells: categories plus the aggregated value, or null for a miss (an undrawn cell is a miss too: absence is not selectable)',
       ],
       seeAlso: ['PlotChart', 'PieChart'],
     },

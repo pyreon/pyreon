@@ -88,3 +88,20 @@ export function renderCandles(
   }
   return out
 }
+
+/**
+ * The candle band index under the pointer, or -1 for a miss.
+ *
+ * The FULL column counts, not just the body: a wick is one pixel wide and a
+ * doji body is one pixel tall, so asking the pointer to land on the drawn ink
+ * would make selection a game of skill. A column is unambiguous — bands
+ * partition the plot.
+ */
+export function hitCandle(count: number, plot: Rect, px: Double, py: Double): number {
+  if (count <= 0) return -1
+  if (px < plot.x || px > plot.x + plot.w) return -1
+  if (py < plot.y || py > plot.y + plot.h) return -1
+  const band = plot.w / count
+  const i = Math.floor((px - plot.x) / band)
+  return i >= count ? count - 1 : i
+}

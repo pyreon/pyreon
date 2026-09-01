@@ -862,6 +862,43 @@ corsMiddleware({ origin: ['https://app.com'], credentials: true, maxAge: 86400 }
 rateLimitMiddleware({ max: 20, window: 60, include: ['/api/*'] })
 ```
 
+### Composing them — `@pyreon/zero/middleware`
+
+Each built-in ships from its own subpath. `@pyreon/zero/middleware` carries the two helpers for combining them.
+
+**`compose(...middlewares)`** runs middleware in order and **short-circuits on the first `Response`**. If every one returns `void`, the composed middleware returns `void` and rendering continues.
+
+```ts
+import { compose } from '@pyreon/zero/middleware'
+import { corsMiddleware } from '@pyreon/zero/cors'
+import { rateLimitMiddleware } from '@pyreon/zero/rate-limit'
+import { cacheMiddleware } from '@pyreon/zero/cache'
+
+const combined = compose(
+  corsMiddleware({ origin: '*' }),
+  rateLimitMiddleware({ max: 100 }),
+  cacheMiddleware(),
+)
+```
+
+Order is the contract: a rate limiter placed after a cache never sees a cached hit.
+
+**`getContext(ctx)`** is a namespaced bag on `ctx.locals` for middleware to pass data *to each other* without coupling to one another's names, and without colliding with the `locals` your loaders read.
+
+```ts
+import { getContext } from '@pyreon/zero/middleware'
+
+const auth: Middleware = (ctx) => {
+  getContext(ctx).userId = 'user_123'
+}
+
+const logging: Middleware = (ctx) => {
+  console.log('user:', getContext(ctx).userId)
+}
+```
+
+It creates the bag on first call, so neither middleware has to know which ran first. Use `ctx.locals` directly for data a **loader** should read; use `getContext` for data only middleware cares about.
+
 ### CSP Nonce
 
 ```tsx
