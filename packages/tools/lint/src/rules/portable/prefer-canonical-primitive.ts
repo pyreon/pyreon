@@ -17,6 +17,12 @@ import { isPortablePath, portablePathsFrom } from '../../utils/portable-paths'
  *
  * `@pyreon/elements` components are flagged for the same reason one layer up —
  * they are built on the styler stack, which is web-only by architecture.
+ *
+ * Both SPELLINGS are covered. Pyreon has two ways to write a DOM element —
+ * `<div>` and `h('div', …)` — and a JSX-only rule sees exactly half of them.
+ * `@pyreon/primitives`' own web implementations are written entirely in `h()`,
+ * so the shape is not hypothetical: a rule that reads JSX alone reports
+ * nothing on a file made of nothing but DOM elements.
  */
 const SUGGESTIONS: Record<string, string> = {
   div: 'Stack (column) or Inline (row)',
@@ -48,6 +54,24 @@ const SUGGESTIONS: Record<string, string> = {
   small: 'Text',
 }
 
+/**
+ * Is this file's `h` the framework's element factory?
+ *
+ * Only an `h` imported from `@pyreon/core` builds a Pyreon element. A local
+ * `h` — a helper, a param, a math variable — is somebody else's identifier,
+ * and reporting on it would be a false positive in a rule that must stay
+ * quiet on code entitled to the whole language.
+ */
+function importsFrameworkH(node: any): boolean {
+  const source = node?.source?.value
+  if (source !== '@pyreon/core' && source !== '@pyreon/runtime-dom') return false
+  for (const spec of node.specifiers ?? []) {
+    if (spec?.type !== 'ImportSpecifier') continue
+    if (spec.imported?.name === 'h' && spec.local?.name === 'h') return true
+  }
+  return false
+}
+
 /** The tag name of a JSXElement's opening element, or null. */
 function openingTagName(node: any): string | null {
   const name = node?.openingElement?.name
@@ -74,8 +98,36 @@ export const preferCanonicalPrimitive: Rule = {
     // not a boolean: `<Web>` can nest inside a component that also renders
     // portable siblings, and oxc passes no parent to work it out from.
     let webDepth = 0
+    // Set by an `import { h } from '@pyreon/core'`. An `h(...)` call is only
+    // an element factory once we have SEEN that import; without it the name
+    // belongs to the file's author.
+    let frameworkH = false
+
+    const report = (what: string, tag: string, node: unknown) => {
+      const suggestion = SUGGESTIONS[tag]
+      context.report({
+        message: `${what} is a DOM element, and this file has to compile for iOS and Android where there is no DOM. PMTC lowers the 15 canonical primitives from \`@pyreon/primitives\`${
+          suggestion === undefined ? '' : ` — this is usually \`<${suggestion}>\``
+        }. If it genuinely has to be a DOM node, put it behind a \`<Web>\` branch with native siblings.`,
+        span: getSpan(node),
+      })
+    }
 
     const callbacks: VisitorCallbacks = {
+      ImportDeclaration(node: any) {
+        if (importsFrameworkH(node)) frameworkH = true
+      },
+      CallExpression(node: any) {
+        if (!frameworkH || webDepth > 0) return
+        if (node?.callee?.type !== 'Identifier' || node.callee.name !== 'h') return
+        const first = node.arguments?.[0]
+        // `h(Component, …)` is a component, not a DOM element — only a STRING
+        // literal names an intrinsic tag, exactly as in JSX.
+        if (first?.type !== 'Literal' || typeof first.value !== 'string') return
+        const tag = first.value
+        if (!/^[a-z]/.test(tag)) return
+        report(`\`h('${tag}', …)\``, tag, node)
+      },
       JSXElement(node: any) {
         if (openingTagName(node) === 'Web') webDepth++
       },
@@ -90,13 +142,7 @@ export const preferCanonicalPrimitive: Rule = {
         // Uppercase is a component — a platform branch, a canonical primitive,
         // or the author's own. Only intrinsic DOM tags are lowercase.
         if (!/^[a-z]/.test(tag)) return
-        const suggestion = SUGGESTIONS[tag]
-        context.report({
-          message: `\`<${tag}>\` is a DOM element, and this file has to compile for iOS and Android where there is no DOM. PMTC lowers the 15 canonical primitives from \`@pyreon/primitives\`${
-            suggestion === undefined ? '' : ` — this is usually \`<${suggestion}>\``
-          }. If it genuinely has to be a DOM node, put it behind a \`<Web>\` branch with native siblings.`,
-          span: getSpan(node),
-        })
+        report(`\`<${tag}>\``, tag, node)
       },
     }
     return callbacks
