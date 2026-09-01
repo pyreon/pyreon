@@ -69,14 +69,55 @@ export type RedirectClass =
  *    `vbscript:`, `mailto:`, …). Never a valid navigation target; routed to `/`.
  *  - `internal`  — a same-origin path; handled by the router as an SPA nav.
  */
+/**
+ * Normalise a target the way a URL parser does, BEFORE classifying it.
+ *
+ * This is the load-bearing half of the guard. A classifier that inspects the
+ * raw string is answering a different question from the one the browser will
+ * ask: the WHATWG URL parser preprocesses its input first, so the string that
+ * gets a scheme and an origin is not the string we were handed. Two steps, and
+ * `String.prototype.trim()` covers neither completely:
+ *
+ *  1. **Strip leading/trailing C0 controls and space.** `trim()` removes
+ *     Unicode whitespace but only five of the C0 controls (tab, LF, VT, FF,
+ *     CR) — so `"\u0000//evil.com"` kept its prefix, did not start with `//`,
+ *     and was classified INTERNAL. The browser strips the NUL and follows the
+ *     protocol-relative URL to another origin.
+ *  2. **Remove ALL ASCII tab and newline, anywhere in the input.** This one
+ *     `trim()` cannot reach at all, because the character is in the middle:
+ *     `"/<TAB>/evil.com"` was classified internal and resolves to
+ *     `https://evil.com/`, and `"java<TAB>script:alert(1)"` was classified
+ *     internal and resolves to a live `javascript:` URL.
+ *
+ * Both were verified against the platform's own URL parser rather than argued
+ * from the spec text — see `redirect-normalisation.test.ts`.
+ *
+ * The normalised value is what the classifier inspects AND what it returns, so
+ * the string we judged is the string that ships. Returning the original was the
+ * second half of the bug: even a correct verdict would have handed the caller
+ * back the bytes that produce a different one.
+ */
+function normaliseTarget(target: string): string {
+  return (
+    target
+      .replace(/[\t\n\r]/g, '')
+      // Matching control characters is the POINT: this range is exactly the
+      // "C0 control or space" set the URL parser strips from both ends, and
+      // narrowing it to `\s` is the bug (`\s` misses NUL and the other C0
+      // controls, which is how a `\u0000//host` target reached `internal`).
+      // oxlint-disable-next-line no-control-regex
+      .replace(/^[\u0000-\u0020\s]+|[\u0000-\u0020\s]+$/g, '')
+  )
+}
+
 export function classifyRedirectTarget(target: string): RedirectClass {
-  const t = target.trim()
+  const t = normaliseTarget(target)
   if (/^https?:\/\//i.test(t)) return { kind: 'external', url: t }
   if (t.startsWith('//')) return { kind: 'block', url: '/' }
   // Any other explicit scheme (javascript:, data:, mailto:, tel:, …) is not a
   // navigation target — block it. A bare path has no leading `scheme:`.
   if (/^[a-z][a-z0-9+.-]*:/i.test(t)) return { kind: 'block', url: '/' }
-  return { kind: 'internal', url: target }
+  return { kind: 'internal', url: t }
 }
 
 /** Server-safe redirect target: `external`/`internal` pass through, everything else → `/`. */
