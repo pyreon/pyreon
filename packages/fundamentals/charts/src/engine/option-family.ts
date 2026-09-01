@@ -21,6 +21,8 @@ import { calendarToSvg } from './calendar'
 import type { CalendarOptions } from './calendar'
 import { parallelToSvg } from './parallel'
 import type { ParallelAxis, ParallelOptions, ParallelRow } from './parallel'
+import { polarToSvg } from './polar'
+import type { PolarAxes, PolarOptions, PolarSeries } from './polar'
 import type { FunnelOptions } from './funnel'
 import type { RadarAxis } from './radar'
 import type { Double } from './types'
@@ -39,6 +41,7 @@ export type FamilyPlan =
   | { kind: 'graph'; nodes: GraphNode[]; links: GraphLink[]; graph: GraphOptions; title: string | undefined }
   | { kind: 'calendar'; start: string; end: string; values: Record<string, Double>; calendar: CalendarOptions; title: string | undefined }
   | { kind: 'parallel'; axes: ParallelAxis[]; rows: ParallelRow[]; parallel: ParallelOptions; title: string | undefined }
+  | { kind: 'polar'; axes: PolarAxes; series: PolarSeries[]; polar: PolarOptions; title: string | undefined }
 
 export interface CompiledFamily {
   plan: FamilyPlan
@@ -65,10 +68,10 @@ const pct = (v: unknown): number | null => {
 /** True when the option's first series is a family (non-cartesian) type. */
 export function isFamilyOption(option: EChartsOption): boolean {
   const s = first(option['series'] as unknown)
-  return isObj(s) && typeof s['type'] === 'string' && FAMILY_TYPES.has(s['type'] as string)
+  return isObj(s) && typeof s['type'] === 'string' && (FAMILY_TYPES.has(s['type'] as string) || s['coordinateSystem'] === 'polar')
 }
 
-const KNOWN_TOP = new Set(['series', 'title', 'legend', 'tooltip', 'color', 'radar', 'xAxis', 'yAxis', 'visualMap', 'animation', 'backgroundColor', 'textStyle', 'grid', 'calendar', 'parallel', 'parallelAxis'])
+const KNOWN_TOP = new Set(['series', 'title', 'legend', 'tooltip', 'color', 'radar', 'xAxis', 'yAxis', 'visualMap', 'animation', 'backgroundColor', 'textStyle', 'grid', 'calendar', 'parallel', 'parallelAxis', 'polar', 'angleAxis', 'radiusAxis'])
 const KNOWN_BY_FAMILY: Record<string, Set<string>> = {
   pie: new Set(['type', 'name', 'data', 'radius', 'label', 'itemStyle', 'center', 'emphasis', 'color']),
   gauge: new Set(['type', 'name', 'data', 'min', 'max', 'detail', 'axisLine', 'progress', 'itemStyle', 'color']),
@@ -80,6 +83,7 @@ const KNOWN_BY_FAMILY: Record<string, Set<string>> = {
   sunburst: new Set(['type', 'name', 'data', 'radius', 'center', 'sort', 'startAngle', 'label', 'itemStyle', 'color', 'emphasis', 'nodeClick', 'levels']),
   tree: new Set(['type', 'name', 'data', 'orient', 'layout', 'symbol', 'symbolSize', 'initialTreeDepth', 'edgeShape', 'label', 'itemStyle', 'lineStyle', 'leaves', 'roam', 'expandAndCollapse', 'emphasis', 'top', 'left', 'right', 'bottom']),
   sankey: new Set(['type', 'name', 'data', 'nodes', 'links', 'edges', 'nodeWidth', 'nodeGap', 'nodeAlign', 'layoutIterations', 'orient', 'draggable', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'levels', 'top', 'left', 'right', 'bottom']),
+  polar: new Set(['type', 'name', 'data', 'coordinateSystem', 'polarIndex', 'stack', 'itemStyle', 'lineStyle', 'label', 'emphasis', 'smooth', 'symbol', 'symbolSize', 'barWidth', 'barGap', 'barCategoryGap', 'roundCap', 'showBackground', 'backgroundStyle', 'areaStyle', 'animation', 'color']),
   parallel: new Set(['type', 'name', 'data', 'coordinateSystem', 'parallelIndex', 'lineStyle', 'emphasis', 'inactiveOpacity', 'activeOpacity', 'realtime', 'smooth', 'progressive', 'animation']),
   graph: new Set(['type', 'name', 'data', 'nodes', 'links', 'edges', 'categories', 'layout', 'symbol', 'symbolSize', 'force', 'circular', 'roam', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'draggable', 'edgeSymbol', 'edgeSymbolSize', 'focusNodeAdjacency', 'zoom', 'center', 'left', 'top', 'right', 'bottom', 'width', 'height', 'coordinateSystem']),
 }
@@ -98,9 +102,10 @@ export function compileFamily(option: EChartsOption): CompiledFamily | null {
   const seriesArr = Array.isArray(option['series']) ? (option['series'] as unknown[]) : [option['series']]
   const s = seriesArr[0] as Record<string, unknown>
   const type = s['type'] as string
+  const familyKey = s['coordinateSystem'] === 'polar' ? 'polar' : type
   for (const key of Object.keys(option)) if (!KNOWN_TOP.has(key)) warn('option-key-unsupported', key, `"${key}" has no mapping yet; it was ignored.`)
-  for (const key of Object.keys(s)) if (!KNOWN_BY_FAMILY[type]!.has(key)) warn('series-option-unsupported', `series[0].${key}`, `"${key}" has no mapping for ${type} yet; it was ignored.`)
-  if (seriesArr.length > 1 && type !== 'radar') {
+  for (const key of Object.keys(s)) if (!KNOWN_BY_FAMILY[familyKey]!.has(key)) warn('series-option-unsupported', `series[0].${key}`, `"${key}" has no mapping for ${type} yet; it was ignored.`)
+  if (seriesArr.length > 1 && type !== 'radar' && familyKey !== 'polar') {
     warn('series-option-unsupported', 'series[1]', `Only one ${type} series is rendered per chart; extra series were ignored.`)
   }
   const titleRaw = first(option['title'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
@@ -233,6 +238,62 @@ export function compileFamily(option: EChartsOption): CompiledFamily | null {
       warnings,
       supported,
     }
+  }
+
+  if (familyKey === 'polar') {
+    const angle = first(option['angleAxis'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
+    const radius = first(option['radiusAxis'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
+    const angleObj = isObj(angle) ? angle : {}
+    const radiusObj = isObj(radius) ? radius : {}
+    const catAxis = radiusObj['type'] === 'category' ? radiusObj : angleObj
+    const valAxis = radiusObj['type'] === 'category' ? angleObj : radiusObj
+    const categories = Array.isArray(catAxis['data']) ? (catAxis['data'] as unknown[]).map((c) => (typeof c === 'string' ? c : isObj(c) && typeof c['value'] === 'string' ? (c['value'] as string) : String(c))) : []
+    const vmax = num(valAxis['max'])
+    const vmin = num(valAxis['min'])
+    const startDeg = num(angleObj['startAngle'])
+    const axes: PolarAxes = {
+      categories,
+      categoryOn: radiusObj['type'] === 'category' ? 'radius' : 'angle',
+      ...(vmax !== null ? { valueDomain: [vmin ?? 0.0, vmax] as [Double, Double] } : {}),
+      ...(startDeg !== null ? { startAngle: (-startDeg * Math.PI) / 180.0 } : {}),
+      ...(angleObj['clockwise'] === false ? { clockwise: false } : {}),
+    }
+    const series: PolarSeries[] = []
+    for (let k = 0; k < seriesArr.length; k++) {
+      const ser = seriesArr[k]
+      if (!isObj(ser)) continue
+      const st = ser['type']
+      if (st !== 'bar' && st !== 'line') {
+        warn('series-type-unsupported', 'series[' + String(k) + '].type', 'Only bar and line series render on the polar coordinate; ' + String(st) + ' was skipped.')
+        continue
+      }
+      const rows = Array.isArray(ser['data']) ? (ser['data'] as unknown[]) : []
+      const values: Double[] = []
+      for (const d of rows) {
+        const v = num(Array.isArray(d) ? d[0] : isObj(d) ? d['value'] : d)
+        values.push(v === null ? NaN : v)
+      }
+      const item = isObj(ser['itemStyle']) ? ser['itemStyle'] : {}
+      const line = isObj(ser['lineStyle']) ? ser['lineStyle'] : {}
+      const color = typeof item['color'] === 'string' ? (item['color'] as string) : typeof line['color'] === 'string' ? (line['color'] as string) : undefined
+      series.push({
+        name: typeof ser['name'] === 'string' ? (ser['name'] as string) : 'Series ' + String(k + 1),
+        kind: st,
+        values,
+        ...(color !== undefined ? { color } : {}),
+        ...(typeof ser['stack'] === 'string' ? { stack: ser['stack'] as string } : {}),
+      })
+    }
+    const pol = first(option['polar'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
+    let innerRatio = 0.0
+    const pr = isObj(pol) ? pol['radius'] : undefined
+    if (Array.isArray(pr) && pr.length === 2) {
+      const inner = pct(pr[0])
+      const outer = pct(pr[1])
+      if (inner !== null && outer !== null && outer > 0.0) innerRatio = inner / outer
+    }
+    const polar: PolarOptions = { innerRatio }
+    return { plan: { kind: 'polar', axes, series, polar, title }, warnings, supported }
   }
 
   if (type === 'parallel') {
@@ -665,6 +726,15 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
         ...(plan.title !== undefined ? { title: plan.title } : {}),
       })
     }
+    case 'polar':
+      return polarToSvg({
+        axes: plan.axes,
+        series: plan.series,
+        polar: plan.polar,
+        width,
+        height,
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
     case 'parallel':
       return parallelToSvg({
         axes: plan.axes,
