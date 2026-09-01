@@ -74,7 +74,7 @@ import { announce } from '@pyreon/a11y'
 import { useUrlState } from '@pyreon/url-state'
 import { signal, computed } from '@pyreon/reactivity'
 import { useForm } from '@pyreon/form'
-import { useFetch } from '@pyreon/hooks'
+import { useFetch, useCrashReporter } from '@pyreon/hooks'
 import { defineStore } from '@pyreon/store'
 import { For, Show, Suspense, ErrorBoundary, onMount } from '@pyreon/core'
 import { Stack, Inline, Field, Button, Text, Image, Icon, Scroll, Modal, WebView } from '@pyreon/primitives'
@@ -600,6 +600,19 @@ function ToolkitScreen() {
   // These MUST live in onMount: a bare component-body statement is not lowered
   // and is DROPPED (PMTC says so, by name). Only declarations, onMount and the
   // return survive.
+  // crash reporting: lowers fully on both targets (recordError / breadcrumb /
+  // hadCrash / lastCrash / clear) and `start()` is auto-wired by both emits --
+  // and until now NO example used it, so no device gate had ever compiled it,
+  // let alone run it. A capability absent from every example is verified by
+  // nothing, however many gates exist.
+  //
+  // `hadCrash` reflects the PREVIOUS session, so it cannot be asserted in the
+  // same run that records: iOS proves it across a real terminate+relaunch, and
+  // Android reads the persisted file from the test process. Activity recreation
+  // would NOT do -- it keeps the process, so a persistence claim asserted that
+  // way passes against a purely in-memory store.
+  const crash = useCrashReporter()
+  const crashNote = signal('idle')
   const peer = new PyreonCrdtDoc('peer-2')
   const crdtMerged = signal('pending')
   onMount(() => {
@@ -705,6 +718,21 @@ function ToolkitScreen() {
       </Button>
       <Text data-testid="toolkit-synced">{String(synced())}</Text>
       <Text data-testid="toolkit-crdt-map">{crdtMerged()}</Text>
+      <Text data-testid="toolkit-crash-had">{String(crash.hadCrash)}</Text>
+      <Text data-testid="toolkit-crash-note">{crashNote()}</Text>
+      <Button
+        onPress={() => {
+          crash.breadcrumb('toolkit-tap')
+          crash.recordError('device-proof')
+          crashNote.set('survived')
+        }}
+        data-testid="toolkit-crash-record"
+      >
+        Record error
+      </Button>
+      <Button onPress={() => crash.clear()} data-testid="toolkit-crash-clear">
+        Clear crash
+      </Button>
       <Text data-testid="toolkit-tablepages">{String(table.pageCount())}</Text>
       <Text data-testid="toolkit-http">{taskReq.data}</Text>
       <Text data-testid="toolkit-sortable">{sortable.activeKey ?? 'idle'}</Text>

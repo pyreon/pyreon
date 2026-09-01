@@ -47,6 +47,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.pyreon.runtime.PyreonToast
 import org.junit.Before
 import org.junit.Rule
@@ -561,6 +562,42 @@ class TasksAppInstrumentedTest {
         composeRule
             .onNodeWithTag("toolkit-perm")
             .assertTextEquals("true")
+        // crash reporting: recorded, then PROVEN persisted by reading the app's
+        // own files dir from the test process.
+        //
+        // `hadCrash` reflects the PREVIOUS session, so it cannot be asserted in
+        // the run that records -- and the tempting alternative is worthless
+        // here: this repo already has a `todosPersistAcrossActivityRecreation`
+        // that passed against an in-memory store, because activity recreation
+        // keeps the PROCESS. Reading the file the reporter actually wrote does
+        // not have that hole. (iOS proves the same thing across a real
+        // terminate + relaunch, which XCUITest can do and Compose cannot.)
+        composeRule
+            .onNodeWithTag("toolkit-crash-record")
+            .performScrollTo()
+            .performClick()
+        // SURVIVED: the statement after recordError still ran.
+        composeRule
+            .onNodeWithTag("toolkit-crash-note")
+            .performScrollTo()
+            .assertTextEquals("survived")
+        // FIRED: the report reached disk, with our message in it. Walking the
+        // directory rather than naming a file keeps this robust to the
+        // backend's filename choice.
+        val crashDir = java.io.File(
+            InstrumentationRegistry.getInstrumentation().targetContext.filesDir,
+            "pyreon-crash",
+        )
+        val persisted = crashDir.walkTopDown().filter { it.isFile }.toList()
+        org.junit.Assert.assertTrue(
+            "crash reporter persisted nothing to " + crashDir.absolutePath,
+            persisted.isNotEmpty(),
+        )
+        org.junit.Assert.assertTrue(
+            "persisted report did not carry the recorded message",
+            persisted.any { it.readText().contains("device-proof") },
+        )
+
         // sync: the CRDT-backed signal was RENDERED but asserted by neither device
         // test until now -- built, shipped, never verified.
         composeRule
