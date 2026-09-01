@@ -228,6 +228,7 @@ export const SIDEBAR: SidebarGroup[] = [
     items: [
       { text: 'Document', slug: 'document' },
       { text: 'Charts', slug: 'charts' },
+      { text: 'Plot Engine', slug: 'charts-plot' },
       { text: 'Code Editor', slug: 'code' },
       { text: 'Rich Text', slug: 'rich-text' },
       { text: 'Flow', slug: 'flow' },
@@ -265,6 +266,7 @@ export const SIDEBAR: SidebarGroup[] = [
     collapsed: true,
     items: [
       { text: 'Multi-Platform (PMTC)', slug: 'multiplatform' },
+      { text: 'Native Packages', slug: 'native-packages' },
       { text: 'PMTC Library Status & Authoring', slug: 'multiplatform-libraries' },
       { text: 'PMTC Supported TypeScript', slug: 'pmtc-supported-typescript' },
       { text: 'PMTC Per-Target Setup', slug: 'pmtc-per-target-setup' },

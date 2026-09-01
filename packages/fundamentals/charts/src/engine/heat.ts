@@ -161,3 +161,36 @@ export function renderHeat(options: HeatmapOptions): DrawCmd[] {
   }
   return out
 }
+
+/**
+ * The index into `grid.cells` under the pointer, or -1 for a miss.
+ *
+ * The gap counts as a miss — grout is not a cell — and so does a grid
+ * position holding no datum: absent cells are undrawn because absence and
+ * zero are different facts, and an undrawn cell is not selectable either.
+ */
+export function hitHeatCell(
+  grid: HeatGrid,
+  plot: Rect,
+  gap: Double,
+  px: Double,
+  py: Double,
+): number {
+  const nc = grid.cols.length
+  const nr = grid.rows.length
+  if (nc === 0 || nr === 0) return -1
+  if (px < plot.x || px > plot.x + plot.w || py < plot.y || py > plot.y + plot.h) return -1
+  const cw = plot.w / nc
+  const ch = plot.h / nr
+  const col = Math.floor(Math.min((px - plot.x) / cw, nc - 1))
+  const row = Math.floor(Math.min((py - plot.y) / ch, nr - 1))
+  const inX = px - (plot.x + col * cw)
+  const inY = py - (plot.y + row * ch)
+  if (inX < gap / 2.0 || inX > cw - gap / 2.0) return -1
+  if (inY < gap / 2.0 || inY > ch - gap / 2.0) return -1
+  for (let i = 0; i < grid.cells.length; i++) {
+    const c = grid.cells[i]!
+    if (c.col === col && c.row === row) return i
+  }
+  return -1
+}
