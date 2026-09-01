@@ -24,7 +24,7 @@ const inkedIn = (canvas: HTMLCanvasElement, x0: number, x1: number, y0 = 0, y1 =
   return n
 }
 const inked = (c: HTMLCanvasElement) => inkedIn(c, 0, 100000)
-const canvasOf = (el: HTMLElement) => el.querySelector('canvas') as HTMLCanvasElement
+const canvasOf = (el: HTMLElement): HTMLCanvasElement => el.querySelector('canvas')!
 const click = (c: HTMLCanvasElement, x: number, y: number) => {
   const r = c.getBoundingClientRect()
   c.dispatchEvent(new MouseEvent('click', { clientX: r.left + x, clientY: r.top + y, bubbles: true }))
@@ -108,7 +108,7 @@ describe('PlotChart plumb (real browser)', () => {
     const r = c.getBoundingClientRect()
     c.dispatchEvent(new MouseEvent('mousemove', { clientX: r.left + 210, clientY: r.top + 150, bubbles: true }))
     await flush()
-    const tip = container.querySelector('[data-pyreon-chart-tooltip]') as HTMLElement
+    const tip: HTMLElement = container.querySelector('[data-pyreon-chart-tooltip]')!
     expect(tip.textContent).toBe('custom:50')
   })
 })
