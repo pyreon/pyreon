@@ -7,6 +7,8 @@
 import type { EChartsOption, OptionWarning } from './option'
 import { candlestickToSvg, gaugeToSvg, heatmapToSvg, pieToSvg, radarToSvg } from './family-svg'
 import { funnelToSvg } from './funnel'
+import { treemapToSvg } from './treemap'
+import type { TreeNode, TreemapOptions } from './treemap'
 import type { FunnelOptions } from './funnel'
 import type { RadarAxis } from './radar'
 import type { Double } from './types'
@@ -18,6 +20,7 @@ export type FamilyPlan =
   | { kind: 'candlestick'; rows: { x: string; open: Double; high: Double; low: Double; close: Double }[]; upColor: string | undefined; downColor: string | undefined; title: string | undefined }
   | { kind: 'heatmap'; rows: { x: string; y: string; value: Double }[]; colors: string[] | undefined; title: string | undefined }
   | { kind: 'funnel'; rows: { value: Double; name: string; color: string | undefined }[]; funnel: FunnelOptions; title: string | undefined }
+  | { kind: 'treemap'; nodes: TreeNode[]; treemap: TreemapOptions; title: string | undefined }
 
 export interface CompiledFamily {
   plan: FamilyPlan
@@ -25,7 +28,7 @@ export interface CompiledFamily {
   supported: boolean
 }
 
-const FAMILY_TYPES = new Set(['pie', 'gauge', 'radar', 'candlestick', 'heatmap', 'funnel'])
+const FAMILY_TYPES = new Set(['pie', 'gauge', 'radar', 'candlestick', 'heatmap', 'funnel', 'treemap'])
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const num = (v: unknown): number | null => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null
@@ -55,6 +58,7 @@ const KNOWN_BY_FAMILY: Record<string, Set<string>> = {
   candlestick: new Set(['type', 'name', 'data', 'itemStyle', 'color']),
   heatmap: new Set(['type', 'name', 'data', 'label', 'itemStyle', 'emphasis', 'color']),
   funnel: new Set(['type', 'name', 'data', 'sort', 'gap', 'minSize', 'label', 'itemStyle', 'funnelAlign', 'color', 'emphasis']),
+  treemap: new Set(['type', 'name', 'data', 'leafDepth', 'label', 'itemStyle', 'color', 'emphasis', 'roam', 'nodeClick', 'breadcrumb']),
 }
 
 /**
@@ -208,6 +212,35 @@ export function compileFamily(option: EChartsOption): CompiledFamily | null {
     }
   }
 
+  if (type === 'treemap') {
+    const toNode = (d: unknown, i: number): TreeNode | null => {
+      if (!isObj(d)) return null
+      const kids = Array.isArray(d['children']) ? (d['children'] as unknown[]).map((c, j) => toNode(c, j)).filter((c): c is TreeNode => c !== null) : undefined
+      const v = num(d['value'])
+      const item = isObj(d['itemStyle']) ? d['itemStyle'] : {}
+      const name = typeof d['name'] === 'string' ? (d['name'] as string) : 'Node ' + String(i + 1)
+      return {
+        name,
+        ...(v !== null ? { value: v } : {}),
+        ...(kids !== undefined && kids.length > 0 ? { children: kids } : {}),
+        ...(typeof item['color'] === 'string' ? { color: item['color'] as string } : {}),
+      }
+    }
+    const nodes: TreeNode[] = []
+    for (let i = 0; i < data.length; i++) {
+      const n = toNode(data[i], i)
+      if (n === null) warn('series-data-shape', 'series[0].data[' + String(i) + ']', 'A treemap datum must be an object; it was skipped.')
+      else nodes.push(n)
+    }
+    const label = isObj(s['label']) ? s['label'] : {}
+    const depth = num(s['leafDepth'])
+    const treemap: TreemapOptions = {
+      showLabels: label['show'] !== false,
+      ...(depth !== null ? { maxDepth: depth } : {}),
+    }
+    return { plan: { kind: 'treemap', nodes, treemap, title }, warnings, supported }
+  }
+
   if (type === 'funnel') {
     const rows: { value: Double; name: string; color: string | undefined }[] = []
     for (let i = 0; i < data.length; i++) {
@@ -340,6 +373,14 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
         ...(plan.title !== undefined ? { title: plan.title } : {}),
       })
     }
+    case 'treemap':
+      return treemapToSvg({
+        data: plan.nodes,
+        treemap: plan.treemap,
+        width,
+        height,
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
     default:
       return heatmapToSvg({
         data: plan.rows,
