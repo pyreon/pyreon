@@ -100,7 +100,10 @@ export class ObjectSchema<TShape extends Shape> extends SchemaBase<InferShape<TS
       if (this._catchall) {
         const catchall = this._catchall
         for (const key of Object.keys(source)) {
-          if (key in known) continue
+          // `in` would walk the PROTOTYPE CHAIN, so a key named `toString` /
+          // `constructor` / `hasOwnProperty` counted as KNOWN and slipped past
+          // strict mode — the one thing strict exists to prevent. Own-key only.
+          if (Object.hasOwn(known, key)) continue
           mutablePath(ctx).push(key)
           try {
             assignSafe(result, key, runFieldValidator(catchall, source[key], ctx))
@@ -110,7 +113,7 @@ export class ObjectSchema<TShape extends Shape> extends SchemaBase<InferShape<TS
         }
       } else if (this._unknownKeys !== 'strip') {
         for (const key of Object.keys(source)) {
-          if (key in known) continue
+          if (Object.hasOwn(known, key)) continue
           if (this._unknownKeys === 'strict') {
             ctx.issues.push(
               makeIssue({
