@@ -164,11 +164,71 @@ export const CATCH_ALL_ROUTE = { path: '/:rest*', component: () => null }
  */
 export function routerPlugin(options: RouterPluginOptions = {}): AtlasPlugin {
   const urls = options.urls ?? []
+  const routes = options.routes ?? [CATCH_ALL_ROUTE]
   return {
     name: 'atlas:router',
     decorate(ci: ComponentIntelligence): ComponentIntelligence {
       if (urls.length === 0) return ci
+      // Publish the installer BEFORE handing back the decorated scenarios, so
+      // the axis and the thing that makes the axis mean something arrive
+      // together. Registering only when there is a `load` keeps a URL-only
+      // config honest: it still produces one scenario per URL, and the
+      // mounting owner reports that they were not routed.
+      setRouteInstaller(
+        options.load === undefined
+          ? undefined
+          : (url: string) => installRouter(options.load!, routes, url),
+      )
       return { ...ci, scenarios: withRouteAxis(ci.scenarios, urls) }
     },
   }
+}
+
+/**
+ * The seam between this plugin and whichever plugin owns MOUNTING.
+ *
+ * The route axis used to be inert: `installRouter` had no callers and
+ * `Scenario.route` had no readers, so a `routerPlugin({ urls: [...] })` config
+ * produced the expected doubled scenario count with names like
+ * `Profile @ /users/999` — and every one of them passed having mounted with NO
+ * router installed. Two different URLs rendered byte-identically and both
+ * reported `pass`. A verification tool manufacturing confidence is the worst
+ * kind of defect, because its output is what you check instead of looking.
+ *
+ * A registration slot rather than this plugin reaching into the mount
+ * lifecycle: that would mean two owners of one router's install/dispose, which
+ * is the shape that produced a double mount and an overwritten verdict the last
+ * time two plugins claimed the same stage. Same seam pattern as ui-core's
+ * `setThemeEngine`.
+ */
+let _installRoute: ((url: string) => Promise<(() => void) | undefined>) | undefined
+
+/** @internal — set by `routerPlugin`, read by the mounting plugin. */
+export function setRouteInstaller(
+  fn: ((url: string) => Promise<(() => void) | undefined>) | undefined,
+): void {
+  _installRoute = fn
+}
+
+/**
+ * Install the router for a scenario's URL, or report why it could not be.
+ *
+ * Returns `{ disposer }` when routed and `{ reason }` when not, so the caller
+ * can SAY that a route scenario rendered unrouted instead of passing silently —
+ * the exact failure this seam exists to end.
+ *
+ * @internal
+ */
+export async function installRouteFor(
+  url: string | undefined,
+): Promise<{ disposer?: () => void; reason?: string }> {
+  if (url === undefined) return {}
+  if (_installRoute === undefined) {
+    return { reason: `route "${url}" not applied — routerPlugin has no \`load\`` }
+  }
+  const disposer = await _installRoute(url)
+  if (disposer === undefined) {
+    return { reason: `route "${url}" not applied — the project's @pyreon/router did not load` }
+  }
+  return { disposer }
 }

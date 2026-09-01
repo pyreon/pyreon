@@ -38,7 +38,47 @@ public struct PyreonDrawCmd: Codable, Equatable {
     public var size: Double?
     public var align: String?
     public var baseline: String?
-    public init(kind: String) { self.kind = kind }
+    // Full defaulted-parameter init in the GENERATED engine's field order —
+    // the emitted geometry constructs commands as named-subset calls
+    // (`PyreonDrawCmd(kind: "rect", rect: r, fill: f)`), and Swift requires
+    // call-site argument order to match this parameter order. The order is
+    // the compiler's synthesized fat-struct order (first-seen across the
+    // DrawCmd union's arms), locked by the chart-engine drift test.
+    public init(
+        kind: String,
+        rect: PyreonChartRect? = nil,
+        fill: String? = nil,
+        from: PyreonChartPt? = nil,
+        to: PyreonChartPt? = nil,
+        stroke: String? = nil,
+        width: Double? = nil,
+        dash: [Double]? = nil,
+        points: [PyreonChartPt]? = nil,
+        center: PyreonChartPt? = nil,
+        radius: Double? = nil,
+        text: String? = nil,
+        at: PyreonChartPt? = nil,
+        size: Double? = nil,
+        align: String? = nil,
+        baseline: String? = nil
+    ) {
+        self.kind = kind
+        self.rect = rect
+        self.fill = fill
+        self.from = from
+        self.to = to
+        self.stroke = stroke
+        self.width = width
+        self.dash = dash
+        self.points = points
+        self.center = center
+        self.radius = radius
+        self.text = text
+        self.at = at
+        self.size = size
+        self.align = align
+        self.baseline = baseline
+    }
 }
 
 /// Parse the engine's color strings — `#rgb`, `#rrggbb`, `rgb(r, g, b)` and
