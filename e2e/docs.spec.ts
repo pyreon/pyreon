@@ -294,9 +294,13 @@ test.describe('docs rendering', () => {
   test('Cmd+K opens search overlay; Escape closes it', async ({ page }) => {
     await page.goto('/docs/getting-started')
     await page.waitForLoadState('networkidle')
-    // Trigger the keyboard shortcut. The Search component listens for
-    // metaKey OR ctrlKey + k depending on userAgent.
-    await page.keyboard.press('Meta+k')
+    // Trigger the keyboard shortcut. The Search component branches on the
+    // platform — `navigator.userAgent.includes('Mac') ? e.metaKey : e.ctrlKey`
+    // — so pressing Meta opens the panel on a macOS dev machine and does
+    // NOTHING on the Linux CI runner, where the component is listening for
+    // Control. Playwright's `ControlOrMeta` resolves the same way the
+    // component does, so the spec follows the product rather than one OS.
+    await page.keyboard.press('ControlOrMeta+k')
     // Overlay should be open with input focused.
     await expect(page.locator('.pyreon-search__panel')).toBeVisible()
     await expect(page.locator('.pyreon-search__input')).toBeVisible()
@@ -325,7 +329,7 @@ test.describe('docs rendering', () => {
     await expect(page.locator('.pyreon-search__panel')).not.toBeVisible()
 
     // Escape closes the overlay (re-open first — the click above closed it).
-    await page.keyboard.press('Meta+k')
+    await page.keyboard.press('ControlOrMeta+k')
     await expect(page.locator('.pyreon-search__panel')).toBeVisible()
     await page.keyboard.press('Escape')
     await expect(page.locator('.pyreon-search__panel')).not.toBeVisible()
