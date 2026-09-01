@@ -9,6 +9,8 @@ import { candlestickToSvg, gaugeToSvg, heatmapToSvg, pieToSvg, radarToSvg } from
 import { funnelToSvg } from './funnel'
 import { treemapToSvg } from './treemap'
 import type { TreeNode, TreemapOptions } from './treemap'
+import { sunburstToSvg } from './sunburst'
+import type { SunburstOptions } from './sunburst'
 import type { FunnelOptions } from './funnel'
 import type { RadarAxis } from './radar'
 import type { Double } from './types'
@@ -21,6 +23,7 @@ export type FamilyPlan =
   | { kind: 'heatmap'; rows: { x: string; y: string; value: Double }[]; colors: string[] | undefined; title: string | undefined }
   | { kind: 'funnel'; rows: { value: Double; name: string; color: string | undefined }[]; funnel: FunnelOptions; title: string | undefined }
   | { kind: 'treemap'; nodes: TreeNode[]; treemap: TreemapOptions; title: string | undefined }
+  | { kind: 'sunburst'; nodes: TreeNode[]; innerRatio: Double; sunburst: SunburstOptions; title: string | undefined }
 
 export interface CompiledFamily {
   plan: FamilyPlan
@@ -28,7 +31,7 @@ export interface CompiledFamily {
   supported: boolean
 }
 
-const FAMILY_TYPES = new Set(['pie', 'gauge', 'radar', 'candlestick', 'heatmap', 'funnel', 'treemap'])
+const FAMILY_TYPES = new Set(['pie', 'gauge', 'radar', 'candlestick', 'heatmap', 'funnel', 'treemap', 'sunburst'])
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const num = (v: unknown): number | null => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null
@@ -59,6 +62,7 @@ const KNOWN_BY_FAMILY: Record<string, Set<string>> = {
   heatmap: new Set(['type', 'name', 'data', 'label', 'itemStyle', 'emphasis', 'color']),
   funnel: new Set(['type', 'name', 'data', 'sort', 'gap', 'minSize', 'label', 'itemStyle', 'funnelAlign', 'color', 'emphasis']),
   treemap: new Set(['type', 'name', 'data', 'leafDepth', 'label', 'itemStyle', 'color', 'emphasis', 'roam', 'nodeClick', 'breadcrumb']),
+  sunburst: new Set(['type', 'name', 'data', 'radius', 'center', 'sort', 'startAngle', 'label', 'itemStyle', 'color', 'emphasis', 'nodeClick', 'levels']),
 }
 
 /**
@@ -210,6 +214,46 @@ export function compileFamily(option: EChartsOption): CompiledFamily | null {
       warnings,
       supported,
     }
+  }
+
+  if (type === 'sunburst') {
+    const toNode = (d: unknown, i: number): TreeNode | null => {
+      if (!isObj(d)) return null
+      const kids = Array.isArray(d['children']) ? (d['children'] as unknown[]).map((c, j) => toNode(c, j)).filter((c): c is TreeNode => c !== null) : undefined
+      const v = num(d['value'])
+      const item = isObj(d['itemStyle']) ? d['itemStyle'] : {}
+      const name = typeof d['name'] === 'string' ? (d['name'] as string) : 'Node ' + String(i + 1)
+      return {
+        name,
+        ...(v !== null ? { value: v } : {}),
+        ...(kids !== undefined && kids.length > 0 ? { children: kids } : {}),
+        ...(typeof item['color'] === 'string' ? { color: item['color'] as string } : {}),
+      }
+    }
+    const nodes: TreeNode[] = []
+    for (let i = 0; i < data.length; i++) {
+      const n = toNode(data[i], i)
+      if (n === null) warn('series-data-shape', 'series[0].data[' + String(i) + ']', 'A sunburst datum must be an object; it was skipped.')
+      else nodes.push(n)
+    }
+    const label = isObj(s['label']) ? s['label'] : {}
+    // ECharts: radius ['25%', '90%'] — the hole is the inner/outer ratio; a
+    // single value is the outer radius with no hole. startAngle is degrees,
+    // counter-clockwise from 3 o'clock (90 = 12 o'clock); we sweep clockwise.
+    let innerRatio = 0.2
+    const radius = s['radius']
+    if (Array.isArray(radius) && radius.length === 2) {
+      const inner = pct(radius[0])
+      const outer = pct(radius[1])
+      if (inner !== null && outer !== null && outer > 0.0) innerRatio = inner / outer
+    } else if (radius !== undefined) innerRatio = 0.0
+    const startDeg = num(s['startAngle'])
+    const sunburst: SunburstOptions = {
+      showLabels: label['show'] !== false,
+      ...(s['sort'] === null || s['sort'] === 'none' ? { sort: 'none' as const } : {}),
+      ...(startDeg !== null ? { startAngle: (-startDeg * Math.PI) / 180.0 } : {}),
+    }
+    return { plan: { kind: 'sunburst', nodes, innerRatio, sunburst, title }, warnings, supported }
   }
 
   if (type === 'treemap') {
@@ -373,6 +417,15 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
         ...(plan.title !== undefined ? { title: plan.title } : {}),
       })
     }
+    case 'sunburst':
+      return sunburstToSvg({
+        data: plan.nodes,
+        innerRatio: plan.innerRatio,
+        sunburst: plan.sunburst,
+        width,
+        height,
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
     case 'treemap':
       return treemapToSvg({
         data: plan.nodes,
