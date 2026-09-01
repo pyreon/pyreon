@@ -275,11 +275,23 @@ function wrapCheckWithPath(fn: CheckFn, suffix: ReadonlyArray<string>, hasDynIdx
  * NO catchall — a catchall validates unknown keys, which the inline shape-only
  * loop would silently skip).
  */
-const isPlainObject = (s: FieldLike): boolean =>
+const isPlainObject = (s: FieldLike, checkMode = false): boolean =>
   s._kind === 'object' &&
   Array.isArray(s._ops) &&
   s._ops.length === 0 &&
-  s._unknownKeys === 'strip' &&
+  // `strip` always. `passthrough` ADDITIONALLY in verdict mode, where the two
+  // are the same question: both accept unknown keys, and a verdict builds no
+  // output, so the only thing either asks is "are the known keys valid?". In
+  // PARSE mode passthrough must copy unknown keys onto the result, which the
+  // shape-only inline loop cannot do — so it stays excluded there.
+  //
+  // `strict` is NOT covered: it must REJECT on an unknown key, which needs a
+  // key scan the inline loop does not emit. Silently accepting one would be a
+  // validation hole, so it keeps the interpreter.
+  //
+  // `_catchall` stays excluded in BOTH modes — it VALIDATES unknown keys, and
+  // the inline loop skips them, which would silently pass invalid input.
+  (s._unknownKeys === 'strip' || (checkMode && s._unknownKeys === 'passthrough')) &&
   !s._catchall
 /**
  * An array we can recurse into: has an element schema AND its OWN ops are
@@ -382,7 +394,8 @@ function compileJit(schema: Schema<unknown>, mode: JitMode): unknown {
   // whose member bodies inline. Other roots (plain union, record, coerce,
   // modifier-wrapped, …) gain nothing from flattening, so the interpreter
   // handles them.
-  if (!isPlainObject(root) && !isInlineArray(root) && !isInlinePrimitive(root) && !isInlineDU(root)) return null
+  if (!isPlainObject(root, CHECK) && !isInlineArray(root) && !isInlinePrimitive(root) && !isInlineDU(root))
+    return null
 
   try {
     const helpers: unknown[] = []
@@ -545,7 +558,7 @@ function compileJit(schema: Schema<unknown>, mode: JitMode): unknown {
         lines.push(`if (${typeFailExpr(kind, srcVar, litRef)}) { ${ti}(${srcVar}, ctx${idxArg}); } else { ${checks} ${onValid(srcVar)} }`)
         return
       }
-      if (depth <= MAX_DEPTH && isPlainObject(field)) {
+      if (depth <= MAX_DEPTH && isPlainObject(field, CHECK)) {
         const objFail = CHECK
           ? 'return false;'
           : `${cap((val: unknown, c: ParseCtx, idx?: number) => {
@@ -719,7 +732,7 @@ function compileJit(schema: Schema<unknown>, mode: JitMode): unknown {
           } else {
             lines.push(`case ${ci}: {`)
           }
-          if (depth + 1 <= MAX_DEPTH && isPlainObject(member)) {
+          if (depth + 1 <= MAX_DEPTH && isPlainObject(member, CHECK)) {
             // Inline the member's strip-clone body directly. The DU guard
             // above already proved `srcVar` is a non-null non-array object,
             // so the member's own (byte-identical) type-guard is provably
