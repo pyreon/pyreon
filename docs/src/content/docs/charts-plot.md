@@ -248,7 +248,7 @@ const svg = chartToSvg({
 
 This is what makes a chart work in an SSG page with JavaScript disabled, in an emailed report, or in a PDF pipeline.
 
-:::caution{title="Give each chart its own idPrefix"}
+:::warning{title="Give each chart its own idPrefix"}
 `renderSvg` accepts an `idPrefix` that namespaces the SVG's internal ids. Two charts on one page sharing a prefix produce duplicate ids, and a `<defs>` reference then resolves to whichever came first. Vary it per chart.
 :::
 
