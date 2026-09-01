@@ -1,5 +1,7 @@
 // ─── Registry ─────────────────────────────────────────────────────────────────
 
+import { isServer } from '@pyreon/reactivity'
+
 // Default: module-level singleton — correct for a browser, where one process
 // serves one user. On a SERVER this module publishes `setRegistryProvider` on a
 // `globalThis` seam (see the bottom of this file) and @pyreon/runtime-server
@@ -57,7 +59,7 @@ export function getRegistry(): Map<string, unknown> {
  * Server-only: in a browser one process serves one user, so the module-level
  * registry is correct and this costs nothing.
  */
-if (typeof document === 'undefined') {
+if (isServer) {
   ;(
     globalThis as {
       __PYREON_STORE_SET_REGISTRY_PROVIDER__?: (fn: () => Map<string, unknown> | undefined) => void
