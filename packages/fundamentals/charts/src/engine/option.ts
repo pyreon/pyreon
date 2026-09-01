@@ -13,13 +13,12 @@
 // cross. And it is DATA in, DATA out — no console, no DOM — so it runs on the
 // server and in a test the same way the engine does.
 
-import { defaultTheme } from './render'
+import { defaultTheme, renderChart } from './render'
 import type { Annotation, ChartSpec, PointMarker, Series } from './render'
 import { smooth, step } from './curve'
 import type { Formatter } from './format'
 import { renderLegend } from './legend'
 import type { LegendEntry } from './legend'
-import { renderChart } from './render'
 import { measureApprox, renderSvg } from './svg'
 import type { DrawCmd, Domain, Double, MeasureText } from './types'
 
