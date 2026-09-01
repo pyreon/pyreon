@@ -12,6 +12,9 @@ import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
 import { renderLegend } from './legend'
 import type { LegendPager } from './legend'
 import { renderTitle } from './title'
+import { hitToolbox, renderToolbox, toolboxTools } from './toolbox'
+import type { ToolboxTool } from './toolbox'
+import { renderSvg } from './svg'
 import { placeTooltip, tooltipAt, tooltipLines } from './tooltip'
 import type { TooltipContent } from './tooltip'
 import { barsFor, defaultTheme, layoutChart, renderChart, resolveY2Domain, resolveYDomain, seriesOnRightAxis, stackedHitAt } from './render'
@@ -194,6 +197,16 @@ export interface PlotChartProps<T> {
    */
   tooltipFormatter?: (content: TooltipContent) => string
   /**
+   * Toolbox buttons at the top-right (ECharts' `toolbox`). `saveAsImage`
+   * downloads the current frame as an SVG (the engine's own serializer —
+   * vector, and the same draw list the canvas shows); `restore` resets zoom,
+   * brush, legend toggles and any magicType override; `magicType` offers
+   * line / bar switches for the independent marks.
+   */
+  toolbox?: { saveAsImage?: boolean; restore?: boolean; magicType?: ('line' | 'bar')[] }
+  /** Called with the SVG string on saveAsImage instead of triggering a download. */
+  onSaveImage?: (svg: string) => void
+  /**
    * Animate the first paint — bars rise, lines draw, points grow. On by
    * default because an entrance orients the eye; OFF automatically under
    * `prefers-reduced-motion`, which is a request, not a hint. Data UPDATES
@@ -302,6 +315,14 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   // land one legend-height too high — which is what happened before a
   // legend and a click could coexist.
   let topOffset = 0.0
+  // Toolbox state: the magicType override, and last-draw hit boxes.
+  const typeOverride = signal<'line' | 'bar' | null>(null)
+  let toolboxBoxes: Rect[] = []
+  let toolList: ToolboxTool[] = []
+  // The last painted frame's commands, for saveAsImage.
+  let lastFrame: DrawCmd[] = []
+  let lastW = 0.0
+  let lastH = 0.0
 
   /**
    * Apply the legend toggle to resolved series.
@@ -357,6 +378,11 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // (striping, ids) must not see its data renumbered by a zoom.
     series: hideHidden(resolveMarks(rows, props.marks.map((m) => ({
       ...m,
+      // magicType: a line/bar switch retypes the INDEPENDENT marks only —
+      // stacked/grouped/points keep their geometry (a stack is not a line).
+      kind: typeOverride() !== null && (m.kind === 'bars' || m.kind === 'line' || m.kind === 'area')
+        ? (typeOverride() === 'bar' ? 'bars' : 'line')
+        : m.kind,
       y: (d: T, i: number) => m.y(d, i + off),
       ...(m.r !== undefined ? { r: (d: T, i: number) => m.r!(d, i + off) } : {}),
     })))),
@@ -395,11 +421,25 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // not a fixed strip — reserving one would clip or waste.
     let legendH = 0
     let titleH = 0.0
+    let toolH = 0.0
     legendBoxes = []
     legendPager = null
     const legendCmds: ReturnType<typeof renderChart> = []
+    toolboxBoxes = []
+    toolList = props.toolbox === undefined ? [] : toolboxTools(props.toolbox)
+    if (toolList.length > 0) {
+      const ov = typeOverride()
+      const tb = renderToolbox(toolList, { x: 0, y: 0, w, h: hgt }, {
+        fontSize: props.theme?.fontSize ?? defaultTheme.fontSize,
+        color: props.theme?.label ?? defaultTheme.label,
+        active: ov === null ? undefined : ov === 'bar' ? 'magicBar' : 'magicLine',
+      })
+      for (const c of tb.cmds) legendCmds.push(c)
+      toolboxBoxes = tb.boxes
+      toolH = tb.height
+    }
     if (props.showTitle === true && props.title !== undefined) {
-      const tl = renderTitle(props.title, props.subtitle, { x: 0, y: 0, w, h: hgt }, {
+      const tl = renderTitle(props.title, props.subtitle, { x: 0, y: toolH, w, h: hgt - toolH }, {
         fontSize: (props.theme?.fontSize ?? defaultTheme.fontSize) + 4.0,
         color: props.theme?.label ?? defaultTheme.label,
         align: 'start',
@@ -407,6 +447,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       titleH = tl.height
       for (const c of tl.cmds) legendCmds.push(c)
     }
+    titleH = titleH + toolH
     if (props.showLegend === true) {
       const series = resolveMarks(rows, props.marks)
       const hidden = hiddenSeries()
@@ -442,7 +483,10 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const crossShifted = top === 0.0 ? cross : cross.map((c) => shiftCmd(c, top))
     const band = brushCmds(spec, measure)
     const bandShifted = top === 0.0 ? band : band.map((c) => shiftCmd(c, top))
-    paint(ctx, [...legendCmds, ...shifted, ...bandShifted, ...crossShifted], w, hgt, FONT)
+    lastFrame = [...legendCmds, ...shifted, ...bandShifted, ...crossShifted]
+    lastW = w
+    lastH = hgt
+    paint(ctx, lastFrame, w, hgt, FONT)
   }
 
   /**
@@ -572,6 +616,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     zoomWin()
     brushSel()
     legendPage()
+    typeOverride()
     draw()
   })
 
@@ -742,6 +787,35 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // Legend hits take priority and are NOT a datum selection: a click on an
     // entry toggles its series. Boxes come from the last draw, so they match
     // exactly what is on screen.
+    if (toolList.length > 0) {
+      const r0 = el.getBoundingClientRect()
+      const tool = hitToolbox(toolList, toolboxBoxes, ev.clientX - r0.left, ev.clientY - r0.top)
+      if (tool !== null) {
+        if (tool === 'restore') {
+          zoomWin.set(null)
+          brushSel.set(null)
+          hiddenSeries.set([])
+          legendPage.set(0)
+          typeOverride.set(null)
+        } else if (tool === 'magicLine') {
+          typeOverride.set(typeOverride() === 'line' ? null : 'line')
+        } else if (tool === 'magicBar') {
+          typeOverride.set(typeOverride() === 'bar' ? null : 'bar')
+        } else {
+          const svg = renderSvg(lastFrame, lastW, lastH, { fontFamily: FONT, ...(props.title !== undefined ? { title: props.title } : {}) })
+          if (props.onSaveImage !== undefined) props.onSaveImage(svg)
+          else if (typeof document !== 'undefined' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+            const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }))
+            const a = document.createElement('a')
+            a.href = url
+            a.download = (props.title ?? 'chart') + '.svg'
+            a.click()
+            URL.revokeObjectURL(url)
+          }
+        }
+        return
+      }
+    }
     if (props.showLegend === true && legendPager !== null) {
       const r0 = el.getBoundingClientRect()
       const lx = ev.clientX - r0.left
