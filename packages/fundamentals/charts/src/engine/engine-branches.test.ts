@@ -649,4 +649,87 @@ describe('coalesce/default fallback arms', () => {
     const empty = layoutStackedBars([[], []], plot, { min: 0, max: 30 }, 0.2)
     expect(empty).toEqual([])
   })
+
+  const mkSpec = (over: Record<string, unknown>): ChartSpec =>
+    ({
+      series: [{ kind: 'line', values: [8, 12, 18] }],
+      width: 300,
+      height: 100,
+      categories: [],
+      theme: defaultTheme,
+      showXAxis: true,
+      showYAxis: true,
+      showGrid: true,
+      ...over,
+    }) as unknown as ChartSpec
+
+  it('withAlpha decodes every hex arm and passes unknowns through', () => {
+    expect(withAlpha('#ABCDEF', 0.5)).toBe('rgba(171, 205, 239, 0.5)')
+    expect(withAlpha('#abc', 1.0)).toBe('rgba(170, 187, 204, 1)')
+    expect(withAlpha('#19f', 0.25)).toBe('rgba(17, 153, 255, 0.25)')
+    expect(withAlpha('tomato', 0.5)).toBe('tomato')
+    expect(withAlpha('#ab', 0.5)).toBe('#ab')
+  })
+
+  it('a y-band annotation fills with and without an explicit color, and labels', () => {
+    const cmds = renderChart(
+      mkSpec({
+        annotations: [
+          { yFrom: 5.0, yTo: 15.0 },
+          { yFrom: 16.0, yTo: 20.0, color: '#ff0000' },
+          { y: 16.0, label: 'zone', color: '#ff0000' },
+          { y: 17.0 },
+        ],
+      }),
+      measure,
+    )
+    expect(cmds.some((c) => c.kind === 'text' && c.text === 'zone')).toBe(true)
+    // exactly the two bands — a line series draws no rects
+    expect(cmds.filter((c) => c.kind === 'rect')).toHaveLength(2)
+  })
+
+  it('a points series renders per-point radii with the scalar fallback', () => {
+    const withRadii = renderChart(
+      mkSpec({
+        series: [
+          { kind: 'points', values: [5, 10, 15], color: '#00f', width: 1, radius: 4, label: 'P', radii: [2, 8] },
+        ],
+      }),
+      measure,
+    )
+    const circles = withRadii.filter((c) => c.kind === 'circle')
+    expect(circles).toHaveLength(3)
+    const bare = renderChart(
+      mkSpec({
+        series: [{ kind: 'points', values: [5, 10], color: '#00f', width: 1, radius: 4, label: 'P' }],
+      }),
+      measure,
+    )
+    expect(bare.filter((c) => c.kind === 'circle')).toHaveLength(2)
+  })
+
+  it('stacked sums skip non-positive values', () => {
+    const segs = layoutStackedBars([[10, -5], [20, 0]], plot, { min: 0, max: 30 }, 0.2)
+    expect(segs.length).toBeGreaterThan(0)
+  })
+
+  it('bubble honors explicit min/max radius options', () => {
+    const series = resolveMarks(
+      [{ v: 1 }, { v: 4 }],
+      [bubble((d: { v: number }) => d.v, (d: { v: number }) => d.v, { minRadius: 5, maxRadius: 10 })],
+    )
+    const r = series[0]!.radii!
+    expect(Math.min(...r)).toBeGreaterThanOrEqual(5)
+    expect(Math.max(...r)).toBeLessThanOrEqual(10)
+  })
+
+  it('ohlcExtent walks both comparison arms over multiple candles', () => {
+    const e = ohlcExtent([
+      { open: 5, high: 8, low: 4, close: 6 },
+      { open: 6, high: 12, low: 2, close: 7 },
+      { open: 7, high: 9, low: 5, close: 8 },
+    ])
+    expect(e.min).toBe(2)
+    expect(e.max).toBe(12)
+  })
 })

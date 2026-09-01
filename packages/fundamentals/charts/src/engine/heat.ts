@@ -70,15 +70,15 @@ export function buildHeatGrid(
 
 /** Parse `#rrggbb` into channels. A malformed stop yields black rather than NaN. */
 function hexChannel(hex: string, at: number): Double {
-  const code = (ch: string): Double => {
-    const c = ch.charCodeAt(0)
-    if (c >= 48 && c <= 57) return c - 48
-    if (c >= 97 && c <= 102) return c - 87
-    if (c >= 65 && c <= 70) return c - 55
+  const code = (ch: Double): Double => {
+    const c = ch
+    if (c >= 48.0 && c <= 57.0) return c - 48.0
+    if (c >= 97.0 && c <= 102.0) return c - 87.0
+    if (c >= 65.0 && c <= 70.0) return c - 55.0
     return 0.0
   }
   if (hex.length < at + 2) return 0.0
-  return code(hex[at]!) * 16.0 + code(hex[at + 1]!)
+  return code(hex.charCodeAt(at)) * 16.0 + code(hex.charCodeAt(at + 1))
 }
 
 /**
