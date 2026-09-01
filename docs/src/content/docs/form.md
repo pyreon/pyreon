@@ -1592,6 +1592,44 @@ const form = useForm<ProfileForm>({
 })
 ```
 
+## Devtools introspection — `@pyreon/form/devtools`
+
+A form is a graph of signals, which makes it invisible to a DOM inspector. The `devtools` subpath is a small registry that lets a panel — the Pyreon devtools, a debug overlay of your own, a test harness — see the live forms on a page.
+
+```ts
+import {
+  registerForm,
+  unregisterForm,
+  getActiveForms,
+  getFormInstance,
+  getFormSnapshot,
+  onFormChange,
+} from '@pyreon/form/devtools'
+
+const form = useForm({ initialValues: { email: '' } })
+registerForm('login-form', form)
+
+getActiveForms()            // ['login-form']
+getFormSnapshot('login-form')
+// { values, errors, isSubmitting, isValid, isDirty, submitCount }
+const stop = onFormChange(() => console.log('a form registered or unregistered'))
+```
+
+| Export | Does |
+| --- | --- |
+| `registerForm(name, form)` | Publish a form under a name. |
+| `unregisterForm(name)` | Remove it. |
+| `getActiveForms()` | Every registered name, dropping any whose form has been collected. |
+| `getFormInstance(name)` | The form, or `undefined` if it was collected or never registered. |
+| `getFormSnapshot(name)` | A plain object with `values`, `errors`, `isSubmitting`, `isValid`, `isDirty` and `submitCount` — each signal read once, at call time. Not reactive: call it again for a fresh snapshot. |
+| `onFormChange(listener)` | Fires when a form registers or unregisters. Returns an unsubscribe. |
+
+:::note{title="Registration is explicit, and the registry holds weak references"}
+`useForm` does not register anything by itself — you call `registerForm`, so a production build that never imports this subpath carries none of it.
+
+The registry holds each form in a `WeakRef`, so registering does not keep an unmounted form alive. A name whose form has been collected disappears from `getActiveForms()` on the next call rather than lingering as a dead entry. Calling `unregisterForm` on unmount is still worth doing — it fires the change listeners immediately instead of at the next GC.
+:::
+
 ## API Reference
 
 ### `useForm(options)`

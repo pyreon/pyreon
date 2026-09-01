@@ -172,6 +172,18 @@ getAvailableLanguages() // EditorLanguage[] — all 20 identifiers
 const ext = await loadLanguage('typescript') // returns the CodeMirror Extension
 ```
 
+### Registering every grammar at once — `@pyreon/code/languages-all`
+
+`loadLanguage` and `editor.language.set()` pull one grammar on demand, which is the right default. When you need **every** built-in grammar registered up front, import the side-effect entry once:
+
+```ts
+import '@pyreon/code/languages-all'
+```
+
+It lives behind its own entry precisely so that importing it is a **decision**. A bundler's dependency scanner follows every specifier in that module at build (and dev-server-start) time, so this file is what the ~18 `@codemirror/lang-*` packages cost. An editor that only shows TS/TSX/JSON never reaches it and never pays for them.
+
+Reach for it when the language is chosen at runtime from data you do not control — a paste-a-snippet box, a file browser over an arbitrary repo — where lazy-loading per grammar buys nothing because you will hit most of them anyway.
+
 :::note[`loadLanguage` returns the extension]
 `loadLanguage(lang)` resolves to the loaded CodeMirror `Extension` (cached after the first load), not `void`. If the optional grammar package isn't installed, it resolves to an empty extension `[]` rather than throwing — the editor degrades to plain-text editing.
 :::
