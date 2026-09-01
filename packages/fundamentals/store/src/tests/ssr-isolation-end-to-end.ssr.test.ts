@@ -29,6 +29,22 @@ import { defineStore, dehydrateStores } from '../index'
  * fundamentals → core is the permitted direction and nothing ships it.
  */
 describe('SSR store isolation, end to end', () => {
+  it('does NOT isolate outside a render — the process default still persists', async () => {
+    // Isolation has nothing to say about a call that is not inside a request.
+    // The obvious provider spelling — `() => als.getStore() ?? new Map()` —
+    // fabricates a throwaway map for exactly those calls, so a store written
+    // outside a render is silently dropped on the next read. That is data loss
+    // rather than a leak, and it is on the DEFAULT path now that the seam wires
+    // isolation automatically, so it needs its own lock.
+    const useCfg = defineStore('e2e-cfg', () => ({ n: signal(0) }))
+
+    // A render first: that is what installs the ALS-backed provider.
+    await renderToString(h('div', null, 'page'))
+
+    useCfg().store.n.set(42)
+    expect(useCfg().store.n(), 'a write outside a render was dropped').toBe(42)
+  })
+
   it('isolates requests AND dehydrates each one’s own state', async () => {
     const useUser = defineStore('e2e-user', () => ({ name: signal('anonymous') }))
 

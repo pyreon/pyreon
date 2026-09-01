@@ -196,9 +196,14 @@ let _storeIsolationActive = false
  * configureStoreIsolation(setStoreRegistryProvider)
  */
 export function configureStoreIsolation(
-  setStoreRegistryProvider: (fn: () => Map<string, unknown>) => void,
+  setStoreRegistryProvider: (fn: () => Map<string, unknown> | undefined) => void,
 ): void {
-  setStoreRegistryProvider(() => _storeAls.getStore() ?? new Map())
+  // Return the ALS store, or `undefined` — NOT a fresh Map. Outside a render
+  // there is no request scope, and fabricating a throwaway map for those calls
+  // means a store written outside a render is silently dropped on the next
+  // read. `undefined` tells the registry to use its process default, so
+  // isolation applies exactly where it has something to say.
+  setStoreRegistryProvider(() => _storeAls.getStore())
   _storeIsolationActive = true
 }
 
@@ -221,7 +226,7 @@ export function configureStoreIsolation(
 function tryAutoWireStoreIsolation(): void {
   const seam = (
     globalThis as {
-      __PYREON_STORE_SET_REGISTRY_PROVIDER__?: (fn: () => Map<string, unknown>) => void
+      __PYREON_STORE_SET_REGISTRY_PROVIDER__?: (fn: () => Map<string, unknown> | undefined) => void
     }
   ).__PYREON_STORE_SET_REGISTRY_PROVIDER__
   if (typeof seam === 'function') configureStoreIsolation(seam)

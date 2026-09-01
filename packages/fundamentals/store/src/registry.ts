@@ -7,25 +7,33 @@
 // requests never share a registry. `configureStoreIsolation` remains the
 // explicit override for a custom provider.
 const _defaultRegistry = new Map<string, unknown>()
-let _registryProvider: () => Map<string, unknown> = () => _defaultRegistry
+let _registryProvider: () => Map<string, unknown> | undefined = () => _defaultRegistry
 
 /**
  * Override the store registry provider.
  * Called by @pyreon/runtime-server to inject a per-request isolated registry,
  * preventing store state from leaking between concurrent SSR requests.
  *
+ * A provider returns `undefined` to mean "no request scope here — use the
+ * process default". That is not a detail: an ALS-backed provider is out of
+ * scope for every call that is not inside a render, and the obvious spelling
+ * (`() => als.getStore() ?? new Map()`) fabricates a THROWAWAY map for those
+ * calls, so a store written outside a render is silently dropped on the next
+ * read. Returning `undefined` keeps the pre-isolation behaviour exactly where
+ * isolation has nothing to say, and isolates where it does.
+ *
  * @example
  * import { AsyncLocalStorage } from "node:async_hooks"
  * const als = new AsyncLocalStorage<Map<string, unknown>>()
- * setRegistryProvider(() => als.getStore() ?? new Map())
+ * setRegistryProvider(() => als.getStore()) // undefined outside a request
  * // Then wrap each request: als.run(new Map(), () => renderToString(app))
  */
-export function setRegistryProvider(fn: () => Map<string, unknown>): void {
+export function setRegistryProvider(fn: () => Map<string, unknown> | undefined): void {
   _registryProvider = fn
 }
 
 export function getRegistry(): Map<string, unknown> {
-  return _registryProvider()
+  return _registryProvider() ?? _defaultRegistry
 }
 
 /**
@@ -52,7 +60,7 @@ export function getRegistry(): Map<string, unknown> {
 if (typeof document === 'undefined') {
   ;(
     globalThis as {
-      __PYREON_STORE_SET_REGISTRY_PROVIDER__?: (fn: () => Map<string, unknown>) => void
+      __PYREON_STORE_SET_REGISTRY_PROVIDER__?: (fn: () => Map<string, unknown> | undefined) => void
     }
   ).__PYREON_STORE_SET_REGISTRY_PROVIDER__ = setRegistryProvider
 }
