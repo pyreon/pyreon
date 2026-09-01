@@ -111,3 +111,66 @@ describe('guard-ai-attribution — allows', () => {
     expect(decide('git commit -F "$MSG_FILE"')).toBe('allow')
   })
 })
+
+describe('guard-ai-attribution — line-start anchoring', () => {
+  // The first cut matched anywhere in the text, and so blocked any commit whose
+  // message merely DISCUSSED the rule — including the commits that add and
+  // document this hook. The guard refused to let itself be maintained, which is
+  // the one false positive it can least afford: it makes correcting the policy
+  // harder than violating it.
+  //
+  // A git trailer is by definition a Token: value pair at the START of a line,
+  // and GitHub renders the footer the same way. Anchoring therefore costs no
+  // real coverage; the block-side specs above still pass unchanged.
+
+  it('allows a commit message that mentions the forms mid-line', () => {
+    expect(
+      decide('git commit -m "docs: explain that a Co-Authored-By: Claude trailer is banned"'),
+    ).toBe('allow')
+  })
+
+  it('allows a body FILE that documents the rule in prose', () => {
+    // The self-block, reproduced. This PR's own commit body says exactly this.
+    const dir = mkdtempSync(join(tmpdir(), 'attrib-prose-'))
+    const prose = join(dir, 'msg.txt')
+    writeFileSync(
+      prose,
+      [
+        'chore: make the no-attribution rule a control',
+        '',
+        'The guard blocks a Co-Authored-By: Claude trailer, and it also',
+        'rejects the Generated with [Claude Code] footer. Both are banned.',
+        '',
+      ].join('\n'),
+    )
+    expect(decide(`git commit -F ${prose}`)).toBe('allow')
+  })
+
+  it('KNOWN EDGE — prose that BEGINS a line with the phrase is still blocked', () => {
+    // The discriminator is position, so prose is safe only while it does not
+    // start a line with one of the forms. That is the deliberate trade: the
+    // alternative is matching mid-line, which is what made the guard unable to
+    // document itself. An author who hits this rewraps the sentence.
+    const dir = mkdtempSync(join(tmpdir(), 'attrib-edge-'))
+    const wrapped = join(dir, 'msg.txt')
+    writeFileSync(wrapped, 'docs: x\n\nThe rule forbids a\nCo-Authored-By: Claude trailer.\n')
+    expect(decide(`git commit -F ${wrapped}`)).toBe('block')
+  })
+
+  it('still blocks a real trailer that FOLLOWS prose about the rule', () => {
+    // The discriminator is position, not vocabulary: the same file may discuss
+    // the rule and still be rejected for carrying the trailer itself.
+    const dir = mkdtempSync(join(tmpdir(), 'attrib-both-'))
+    const both = join(dir, 'msg.txt')
+    writeFileSync(both, `chore: x\n\nA Co-Authored-By: Claude trailer is banned.\n\n${TRAILER}\n`)
+    expect(decide(`git commit -F ${both}`)).toBe('block')
+  })
+
+  it('normalizes an escaped newline so an inline -m trailer is still caught', () => {
+    // A -m argument carries its line break as a two-character backslash-n
+    // sequence, so a naive line-start anchor would never fire on the inline
+    // shape. Covered by the block specs above; asserted here as the reason the
+    // unescape step exists.
+    expect(decide(`git commit -m "fix: x\n\n${TRAILER}"`)).toBe('block')
+  })
+})

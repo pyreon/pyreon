@@ -223,6 +223,16 @@ published no-op that every unit test passed over — see
   untouched, and so is reading, grepping or editing a file that merely contains
   the phrase — otherwise the guard could not be written or documented.
 
+  The match is **anchored to line start**, because a git trailer is by
+  definition a `Token: value` pair at the start of a line and GitHub renders the
+  footer the same way — so anchoring costs no real coverage. The first cut
+  matched mid-line and therefore blocked any commit whose message merely
+  DISCUSSED the rule, including the commits that add this hook: it refused to
+  let itself be maintained, which is the one false positive a guard like this
+  can least afford. The residual edge is small and deliberate — prose is safe
+  only while it does not BEGIN a line with one of the forms; rewrap the sentence
+  if you hit it.
+
   If the policy genuinely changes, change it HERE, in CLAUDE.md, and in the
   hook. Not in a single commit.
 

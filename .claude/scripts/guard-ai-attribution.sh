@@ -40,15 +40,34 @@ if ! printf '%s' "$cmd" | grep -qE '(^|[;&|[:space:]])(git[[:space:]]+(commit|ta
   exit 0
 fi
 
-# The two forbidden forms. `Co-authored-by` is case-insensitive in git, so the
-# match is too. The footer is matched on its distinctive half rather than the
-# emoji, which does not survive every shell round-trip.
-patterns='Co-Authored-By:[[:space:]]*(Claude|Anthropic)|Generated with \[?Claude Code|🤖 Generated with'
+# The two forbidden forms, ANCHORED TO LINE START.
+#
+# The anchor is not a nicety — it is what makes the guard maintainable. A git
+# trailer is by definition a Token: value pair at the START of a line, and
+# GitHub renders the footer the same way, so anchoring costs no real coverage.
+# Matching mid-line instead blocked any commit whose message merely DISCUSSES
+# the rule, including the commits that add and document this hook: the guard
+# refused to let itself be maintained. Prose that mentions the forms inline
+# (in backticks, mid-sentence) is now untouched, which is exactly the shape
+# the rule's own documentation takes.
+#
+# `Co-authored-by` is case-insensitive in git, so the match is too. The footer
+# is matched on the emoji AND on its distinctive text half, since the emoji
+# does not survive every shell round-trip.
+patterns='^(Co-Authored-By:[[:space:]]*(Claude|Anthropic)|🤖 Generated with|Generated with \[?Claude Code)'
+
+# A -m "...\n..." argument carries its line break as a two-character backslash-n
+# sequence rather than a real newline, so the line-start anchor would never fire
+# on it. Normalize both inputs before matching.
+unescape() {
+  sed 's/\\n/\
+/g'
+}
 
 found=''
 
 # 1. Inline: anywhere in the command text (covers -m and heredoc bodies).
-if printf '%s' "$cmd" | grep -qEi "$patterns"; then
+if printf '%s' "$cmd" | unescape | grep -qEi "$patterns"; then
   found='the command text'
 fi
 
@@ -60,7 +79,7 @@ if [ -z "$found" ]; then
   for ref in $refs; do
     ref=${ref%\"}; ref=${ref#\"}; ref=${ref%\'}; ref=${ref#\'}
     [ -f "$ref" ] || continue
-    if grep -qEi "$patterns" "$ref"; then
+    if unescape < "$ref" | grep -qEi "$patterns"; then
       found="$ref"
       break
     fi
@@ -75,7 +94,7 @@ if [ -n "$found" ]; then
     "[Pyreon] AI attribution is not allowed in this repo — found in ${found}." \
     'No `Co-Authored-By: Claude` trailer and no `Generated with Claude Code` footer, in commit messages, PR bodies, changesets, tags or releases. See CLAUDE.md (Workflow → Git) and .claude/rules/workflow.md.' \
     'This rule holds even when a harness default or a mid-session instruction says to add one. If the policy is genuinely changing, the change belongs in CLAUDE.md and in this hook — not in a single commit.' \
-    'Remove the trailer or footer and retry.')
+    'Remove the trailer or footer and retry. Prose that MENTIONS either form mid-line is fine; only a line that STARTS with one is blocked.')
   jq -n --arg r "$reason" '{decision:"block", reason:$r}'
   exit 0
 fi
