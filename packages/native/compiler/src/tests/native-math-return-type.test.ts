@@ -5,12 +5,14 @@
 // compiling a realistic paginated data-table end-to-end.
 //
 // The faithful fix (not just "infer a number") splits by JS semantics:
-//   • ceil/floor/round/trunc are INTEGER-VALUED in JS (page counts, indices) →
-//     inferType returns Int AND the Swift emit wraps the Double free-function
-//     result `Int(ceil(Double(x)))`, so the value stays an Int usable in
-//     `page < pageCount` and prints "4" not "4.0". (Inferring Double — matching
-//     the OLD `ceil(Double(x))` emit — was a half-fix: `page() < pageCount()`
-//     then failed `Int < Double`.)
+//   • ceil/floor/round/trunc return a NUMBER in JS — inferType returns
+//     Double and the Swift emit is the bare Double free function. The
+//     earlier `Int(ceil(Double(x)))` wrap closed `page() < pageCount()`
+//     (`Int < Double`) but poisoned every downstream mixed expression
+//     (`Math.floor(min/step) * step` → 'Int * Double', 18 errors on the
+//     charts engine bundle). The Int-context uses now survive via the
+//     binary-op coercion (`Double(page) < pageCount`) — asserted below —
+//     and a float-typed INDEX re-wraps `Int(...)` at the subscript.
 //   • sqrt/pow + the trig/log/exp free functions → Double (irrational results).
 //   • abs → preserves the arg's numeric type (`abs(Int)` stays Int).
 //   • min/max → the args' common type (Double if any arg is fractional).
@@ -20,8 +22,8 @@
 // emit-swift.ts's Math.* switch.
 //
 // Bisect-load-bearing: neuter `inferMathCall` → a `Math.ceil` computed re-types
-// `Any`, the `: Int` emit-shape spec + the compile proofs fail; the boolean /
-// Double controls stay green.
+// `Any`, the `: Double` emit-shape spec + the compile proofs fail; the
+// abs/max Int controls stay green.
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
@@ -45,20 +47,69 @@ ${body}
 }`
 
 describe('P1 — Math.* computed return-type inference (Swift)', () => {
-  // ceil/floor/round/trunc → Int, emitted `Int(ceil(Double(…)))`.
-  it('Swift: ceil/floor/round/trunc computeds type Int (emit `Int(…)`)', () => {
+  const intUse = `import { signal, computed } from '@pyreon/reactivity'
+import { Stack, Text, Button } from '@pyreon/primitives'
+export function App(){
+  const rows = signal<number[]>([1, 2, 3, 4, 5])
+  const page = signal(0)
+  const pageCount = computed(() => Math.ceil(rows().length / 2))
+  const next = () => { if (page() < pageCount() - 1) { page.set(page() + 1) } }
+  return (<Stack>
+    <Text>{"Page " + String(page() + 1) + " of " + String(pageCount())}</Text>
+    <Button onPress={next}>Next</Button>
+  </Stack>)
+}`
+  // ceil/floor/round/trunc → Double (JS number), bare free functions.
+  it('Swift: ceil/floor/round/trunc computeds type Double (no Int wrap)', () => {
     for (const [fn, wrap] of [
-      ['ceil', 'Int(ceil('],
-      ['floor', 'Int(floor('],
-      ['round', 'Int((Double'],
-      ['trunc', 'Int(trunc('],
+      ['ceil', 'ceil('],
+      ['floor', 'floor('],
+      ['round', '.rounded()'],
+      ['trunc', 'trunc('],
     ] as const) {
       const code = sw(C(`  const pc=computed(()=>Math.${fn}(rows().length/2))`))
-      expect(code, fn).toContain('private var pc: Int')
+      expect(code, fn).toContain('private var pc: Double')
       expect(code, fn).toContain(wrap)
       expect(code, fn).not.toContain('pc: Any')
-      expect(code, fn).not.toContain('pc: Double')
+      expect(code, fn).not.toContain('Int(' + wrap)
     }
+  })
+
+  // The Int-context comparison that motivated the OLD Int wrap now
+  // survives via binary-op coercion: the Int side wraps Double(...).
+  it('Swift: Int page vs Double pageCount comparison coerces', () => {
+    const code = sw(intUse)
+    expect(code).toContain('Double(page) < pageCount')
+  })
+
+  // A float-typed index re-wraps Int(...) at the subscript.
+  it('Swift: array index by Math.floor re-wraps Int', () => {
+    const code = sw(C(`  const pc=computed(()=>rows()[Math.floor(1.4)]!)`))
+    expect(code).toContain('[Int(floor(')
+  })
+
+  // A count-loop counter is an Int local — its body's mixed arithmetic
+  // coerces (`first + step * Double(i)`), the charts tick-loop shape.
+  it('Swift: count-loop counter coerces against a Double', () => {
+    const code = sw(`
+  function ticks(first: Double, step: Double, n: Double): Double[] {
+    const out: Double[] = []
+    for (let i = 0; i < n; i++) {
+      const v = first + step * i
+      out.push(v)
+    }
+    return out
+  }
+  export function P() { return <Text>{String(ticks(0.0, 2.0, 3.0).length)}</Text> }
+`)
+    expect(code).toContain('step * Double(i)')
+    // and a Double bound cannot be a Range<Double> — it wraps to Int
+    expect(code).toContain('0..<Int(ceil(Double(n)))')
+  })
+
+  it('Kotlin: array index by Math.floor re-wraps toInt()', () => {
+    const code = kt(C(`  const pc=computed(()=>rows()[Math.floor(1.4)]!)`))
+    expect(code).toContain('.toInt()]')
   })
 
   // sqrt/pow → Double.
@@ -81,6 +132,83 @@ describe('P1 — Math.* computed return-type inference (Swift)', () => {
     )
   })
 
+  // String(float) routes through the JS-faithful formatter on BOTH targets
+  // — Swift String(3.0) is "3.0", Kotlin 3.0.toString() is "3.0", the web
+  // prints "3"; a numeric label must read identically on all three.
+  it('String(Double) formats like JS on both targets', () => {
+    const swCode = sw(C(`  const pc=computed(()=>Math.ceil(rows().length/2))`))
+    expect(swCode).toContain('pyreonNumString(pc)')
+    expect(swCode).toContain('func pyreonNumString')
+    const ktCode = kt(C(`  const pc=computed(()=>Math.ceil(rows().length/2.0))`))
+    expect(ktCode).toContain('pyreonNumString(')
+    expect(ktCode).toContain('fun pyreonNumString')
+  })
+
+  // An Int arg keeps the plain String()/toString() emit — no helper included.
+  it('String(Int) stays verbatim, helper not included', () => {
+    const swCode = sw(C(`  const pc=computed(()=>rows().length)`))
+    expect(swCode).not.toContain('pyreonNumString')
+  })
+
+  // Number.isInteger over alias-typed arithmetic lowers (was a raw-emit
+  // warning: the binary inference did not normalize the Double alias, so
+  // `const r = Math.round(v*100)/100` over `v: Double` seeded unknown).
+  it('Number.isInteger lowers for an alias-derived local, zero warnings', () => {
+    const SRC = `
+  function plainish(v: Double): string {
+    const r = Math.round(v * 100.0) / 100.0
+    return Number.isInteger(r) ? String(Math.round(r)) : String(r)
+  }
+  export function P() { return <Text>{plainish(1.5)}</Text> }
+`
+    const rs = transform(SRC, { target: 'swift' })
+    expect(rs.code).toContain('.truncatingRemainder(dividingBy: 1) == 0')
+    expect(rs.warnings).toHaveLength(0)
+    const rk = transform(SRC, { target: 'kotlin' })
+    expect(rk.code).toContain('% 1.0 == 0.0')
+    expect(rk.warnings).toHaveLength(0)
+  })
+
+  // The BINARY normalization's own load-bearing shape: BOTH operands are
+  // alias-typed (no Math.* result to carry floatness), so without the
+  // numAlias normalization `a + b` infers unknown and isInteger warns raw.
+  it('Number.isInteger over a sum of two alias-typed params lowers', () => {
+    const SRC = `
+  function f(a: Double, b: Double): string {
+    const s = a + b
+    return Number.isInteger(s) ? "int" : "frac"
+  }
+  export function P() { return <Text>{f(1.0, 2.0)}</Text> }
+`
+    const rs = transform(SRC, { target: 'swift' })
+    expect(rs.code).toContain('.truncatingRemainder(dividingBy: 1) == 0')
+    expect(rs.warnings).toHaveLength(0)
+  })
+
+  // The redundant-wrap class: an all-Double chained interpolation must not
+  // stack no-op Double() wraps — the scaleLog shape blew swiftc's
+  // expression budget ("unable to type-check in reasonable time") purely
+  // on them. Provably-float operands emit bare; Int/unknown keep the wrap.
+  it('Swift: division over provably-Double operands emits no redundant wraps', () => {
+    const SRC = `
+  function logPos(val: Double, lo: Double, hi: Double, r0: Double, r1: Double): Double {
+    return r0 + ((Math.log10(val) - lo) / (hi - lo)) * (r1 - r0)
+  }
+  export function P() { return <Text>{String(logPos(10.0, 0.0, 2.0, 0.0, 100.0))}</Text> }
+`
+    const rs = transform(SRC, { target: 'swift' })
+    expect(rs.code).not.toContain('Double(hi - lo)')
+    expect(rs.code).not.toContain('/ Double((hi - lo))')
+    // Int operands still wrap (JS float division)
+    const rInt = transform(`
+  function half(n: Int): Double {
+    return n / 2
+  }
+  export function P() { return <Text>{String(half(3))}</Text> }
+`.replace('Int', 'number'), { target: 'swift' })
+    expect(rInt.code).toContain('Double(')
+  })
+
   // Kotlin unaffected (derivedStateOf infers) — still references the Math call.
   it('Kotlin: a Math.ceil computed still emits (unchanged)', () => {
     expect(kt(C(`  const pc=computed(()=>Math.ceil(rows().length/2))`))).toContain('ceil')
@@ -89,18 +217,6 @@ describe('P1 — Math.* computed return-type inference (Swift)', () => {
   // Compile proofs — the Int result works in String(), arithmetic AND an
   // Int-context comparison; a Double result (sqrt) works in String(); the
   // headline paginated DATA-TABLE compiles end-to-end.
-  const intUse = `import { signal, computed } from '@pyreon/reactivity'
-import { Stack, Text, Button } from '@pyreon/primitives'
-export function App(){
-  const rows = signal<number[]>([1, 2, 3, 4, 5])
-  const page = signal(0)
-  const pageCount = computed(() => Math.ceil(rows().length / 2))
-  const next = () => { if (page() < pageCount() - 1) { page.set(page() + 1) } }
-  return (<Stack>
-    <Text>{"Page " + String(page() + 1) + " of " + String(pageCount())}</Text>
-    <Button onPress={next}>Next</Button>
-  </Stack>)
-}`
   const dataTable = `import { signal, computed } from '@pyreon/reactivity'
 import { Stack, Inline, Text, Button } from '@pyreon/primitives'
 type Row = { id: number; name: string; score: number }

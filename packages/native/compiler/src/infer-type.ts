@@ -762,7 +762,43 @@ export function classifyOptionalCondition(
  * OBJECT are the SAME expression (`selected() ? selected().name : …`) without
  * pulling in a full expression comparator.
  */
-function sameOptionalBase(a: ExprIR, b: ExprIR): boolean {
+/**
+ * Detect `x === undefined ? fb : x` / `x !== undefined ? x : fb` (undefined
+ * parses as a null literal, so `=== null` matches identically — the same nil
+ * on both targets). Returns the optional and its fallback for a nil-coalescing
+ * emit (`x ?? fb` on Swift, `x ?: fb` on Kotlin), or null when the shape or
+ * the optionality is not provable — a coalesce on a non-optional is its own
+ * compiler complaint, so an unprovable case emits as before. ONE definition
+ * for both emitters: the pattern is part of the language subset, and the two
+ * backends must not disagree about which ternaries it claims.
+ */
+export function nilCoalesceTernary(
+  e: ExprIR,
+  ctx: InferenceCtx,
+): { opt: ExprIR; fallback: ExprIR } | null {
+  if (e.kind !== 'ternary') return null
+  const c = e.cond
+  if (c.kind !== 'comparison' || (c.op !== '==' && c.op !== '!=')) return null
+  const leftIsNull = c.left.kind === 'literal' && c.left.value === null
+  const rightIsNull = c.right.kind === 'literal' && c.right.value === null
+  if (leftIsNull === rightIsNull) return null
+  const x = leftIsNull ? c.right : c.left
+  const survivor = c.op === '==' ? e.otherwise : e.then
+  const fallback = c.op === '==' ? e.then : e.otherwise
+  if (!sameOptionalBase(x, survivor)) return null
+  // Skip only when PROVABLY non-optional. The asymmetry decides the default:
+  // the rewrite is semantics-preserving either way (on a non-optional the TS
+  // ternary's absent-branch is dead, and `x ?? fb` is x — same value), and
+  // the failure modes are not symmetric — coalescing a non-optional is a
+  // compiler WARNING on both targets, while NOT unwrapping an optional is a
+  // hard ERROR. Inference through a param's member read is `unknown` today,
+  // which is exactly the shape the engine writes.
+  const it = inferType(x, ctx)
+  if (it.kind !== 'unknown' && !typeIsOptional(it)) return null
+  return { opt: x, fallback }
+}
+
+export function sameOptionalBase(a: ExprIR, b: ExprIR): boolean {
   if (a.kind !== b.kind) return false
   if (a.kind === 'identifier' && b.kind === 'identifier') return a.name === b.name
   if (a.kind === 'call' && b.kind === 'call') {
@@ -1181,7 +1217,10 @@ function inferMathCall(expr: ExprIR, ctx: InferenceCtx): TypeIR | null {
   }
   const fn = expr.callee.property
   if (fn === 'ceil' || fn === 'floor' || fn === 'round' || fn === 'trunc') {
-    return { kind: 'number' } // integer-valued → Int
+    // JS-faithful: Math.floor returns a NUMBER (Double on Swift; Kotlin's
+    // java.lang.Math.floor already returns double). The old Int inference
+    // made every `Math.floor(a/b) * b` a 'Int * Double' Swift error.
+    return { kind: 'number', float: true }
   }
   const DOUBLE = new Set([
     'sqrt', 'pow', 'cbrt', 'hypot', 'sin', 'cos', 'tan', 'asin', 'acos',
@@ -1649,6 +1688,9 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
               return { kind: 'boolean' }
             case 'indexOf':
               return { kind: 'number' }
+            case 'charCodeAt':
+              // emitted as Double on both targets (the JS number)
+              return { kind: 'number', float: true }
           }
         }
       }
@@ -1668,6 +1710,10 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       return { kind: 'unknown' }
     }
     case 'member': {
+      // `Math.PI` is a Double constant on both targets.
+      if (expr.object.kind === 'identifier' && expr.object.name === 'Math' && expr.property === 'PI') {
+        return { kind: 'number', float: true }
+      }
       // Standalone-validation: `s.object({ … }).safeParse(x).success` is a Bool
       // (`.data` is the optional validated value → left unknown). Reading this
       // off the `schema-validate` node keeps the wrapping `computed`'s type
@@ -1818,8 +1864,18 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       // A template literal always produces a string (native interpolation).
       return { kind: 'string' }
     case 'binary': {
-      const left = inferType(expr.left, ctx)
-      const right = inferType(expr.right, ctx)
+      // The `Double`/`Float` ALIAS arrives as an unresolved typeRef (an
+      // annotated param / helper return) — normalize it to number+float
+      // HERE so arithmetic over alias-typed operands infers numerically:
+      // without this, `const r = Math.round(v * 100.0) / 100.0` over a
+      // `v: Double` param seeded `r` as UNKNOWN, which defeated every
+      // downstream type-gated lowering (Number.isInteger warned raw).
+      const numAlias = (t: TypeIR): TypeIR =>
+        t.kind === 'typeRef' && (t.name === 'Double' || t.name === 'Float')
+          ? { kind: 'number', float: true }
+          : t
+      const left = numAlias(inferType(expr.left, ctx))
+      const right = numAlias(inferType(expr.right, ctx))
       // String concat: `'a' + name` or `name + 'b'` — if EITHER side
       // is a string and the op is `+`, the result is a string.
       if (expr.op === '+' && (left.kind === 'string' || right.kind === 'string')) {
