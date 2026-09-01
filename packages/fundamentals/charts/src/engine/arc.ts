@@ -52,7 +52,14 @@ export function layoutArcs(slices: Slice[]): ArcGeometry[] {
 }
 
 /** The largest circle centred in a rect. */
-export function fitCircle(box: Rect): { center: Pt; radius: Double } {
+/**
+ * A fitted circle. NAMED (not an inline object type) so PMTC synthesizes a
+ * real struct — an inline return annotation lowers to a Swift tuple that
+ * cannot match the struct the body constructs.
+ */
+export type Circle = { center: Pt; radius: Double }
+
+export function fitCircle(box: Rect): Circle {
   const r = Math.min(box.w, box.h) / 2.0
   return { center: { x: box.x + box.w / 2.0, y: box.y + box.h / 2.0 }, radius: Math.max(0.0, r) }
 }

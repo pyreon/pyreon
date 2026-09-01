@@ -15,13 +15,13 @@ export interface RadarSeries {
   fillAlpha: Double
 }
 
-const START = -Math.PI / 2.0
+const RADAR_START = -Math.PI / 2.0
 
 /** Where each axis points, evenly around the circle from 12 o'clock. */
 export function radarAngles(count: number): Double[] {
   const out: Double[] = []
   if (count <= 0) return out
-  for (let i = 0; i < count; i++) out.push(START + (Math.PI * 2.0 * i) / count)
+  for (let i = 0; i < count; i++) out.push(RADAR_START + (Math.PI * 2.0 * i) / count)
   return out
 }
 
@@ -42,8 +42,11 @@ export function radarPolygon(
   const angles = radarAngles(n)
   const out: Pt[] = []
   for (let i = 0; i < n; i++) {
-    const max = axes[i]!.max
-    const t = max <= 0.0 ? 0.0 : Math.max(0.0, Math.min(1.0, values[i]! / max))
+    // named to avoid shadowing the native max() call under PMTC — a Swift
+    // local `max: Double` makes `max(0.0, …)` "cannot call value of
+    // non-function type"; JS scoping allows the shadow, Swift's does not.
+    const axisMax = axes[i]!.max
+    const t = axisMax <= 0.0 ? 0.0 : Math.max(0.0, Math.min(1.0, values[i]! / axisMax))
     out.push(pointOnCircle(center, radius * t, angles[i]!))
   }
   return out
@@ -146,10 +149,10 @@ export function withAlpha(color: string, alpha: Double): string {
   const pair = (at: Double): Double => code(hex.charCodeAt(at)) * 16.0 + code(hex.charCodeAt(at + 1))
   const single = (at: Double): Double => code(hex.charCodeAt(at)) * 17.0
   if (hex.length === 3) {
-    return `rgba(${single(0)}, ${single(1)}, ${single(2)}, ${a})`
+    return `rgba(${single(0.0)}, ${single(1.0)}, ${single(2.0)}, ${a})`
   }
   if (hex.length === 6) {
-    return `rgba(${pair(0)}, ${pair(2)}, ${pair(4)}, ${a})`
+    return `rgba(${pair(0.0)}, ${pair(2.0)}, ${pair(4.0)}, ${a})`
   }
   return color
 }

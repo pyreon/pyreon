@@ -41,7 +41,7 @@ function trim(v: Double): string {
 export function fixed(places: number): Formatter {
   const p = Math.max(0, Math.min(10, places))
   const mul = Math.pow(10.0, p)
-  return (v) => {
+  return (v: Double): string => {
     const r = Math.round(v * mul) / mul
     if (p === 0) return `${Math.round(r)}`
     const s = `${r}`
@@ -55,11 +55,11 @@ export function fixed(places: number): Formatter {
 /** Currency, symbol first. */
 export function currency(symbol: string, places: number = 0): Formatter {
   const f = fixed(places)
-  return (v) => (v < 0.0 ? `-${symbol}${f(-v)}` : `${symbol}${f(v)}`)
+  return (v: Double): string => (v < 0.0 ? `-${symbol}${f(-v)}` : `${symbol}${f(v)}`)
 }
 
 /** A ratio as a percentage — `percent()(0.42)` is "42%". */
 export function percent(places: number = 0): Formatter {
   const f = fixed(places)
-  return (v) => `${f(v * 100.0)}%`
+  return (v: Double): string => `${f(v * 100.0)}%`
 }
