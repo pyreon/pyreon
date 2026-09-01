@@ -318,14 +318,19 @@ public final class PyreonRouter {
         // So: a guard that must cover a COLD deep link belongs on the route's
         // `beforeEnter`, which is the one that runs here. Stated in the public
         // doc above rather than left for a reader to discover.
-        self.path = initialPath
-        // Gate it now that `self` is usable — `resolveChainIn` is an instance
-        // method. A refused path falls back to root, the same degradation the
-        // web router uses for a cancelled navigation: the user lands somewhere
-        // they are allowed to be.
-        if let candidate = self.path.last, !self.initialPathAllowed(candidate) {
-            self.path = []
-        }
+        // Gate the inbound path BEFORE it is stored, using the LOCAL
+        // parameters only. This must not touch `self`: reading an observable
+        // property inside `init` registers the half-built router with
+        // whatever observation context SwiftUI is evaluating in, which made
+        // the demo app rebuild its ContentView, construct a second router,
+        // and discard it — and the discarded one's teardown took the
+        // deep-link listener slot with it, so every WARM link after launch
+        // was dropped. Device-verified: the same gate expressed against
+        // `self` fails `test_deepLinkOpensTheRouteColdAndWarm`, and this one
+        // passes. A refused path falls back to root, the same degradation the
+        // web router uses for a cancelled navigation: the user lands
+        // somewhere they are allowed to be.
+        self.path = Self.initialPathAllowed(routes, initialPath.last) ? initialPath : []
         // Resolve any params that the initial top-of-stack path produces,
         // so apps that start on `/users/42` have `params["id"] == "42"`
         // immediately — no need to call push/replace just to populate.
@@ -381,6 +386,12 @@ public final class PyreonRouter {
     /// Internal — `resolveCurrentRoute()` (flat top-of-chain) and
     /// `resolveCurrentChain()` (full chain) are the public accessors.
     private func resolveChainIn(_ records: [RouteRecord], _ candidate: String) -> [ChainEntry]? {
+        return Self.resolveChainInStatic(records, candidate)
+    }
+
+    /// The implementation. Pure over its parameters — no `self` — so `init`
+    /// can use it without an observable read.
+    private static func resolveChainInStatic(_ records: [RouteRecord], _ candidate: String) -> [ChainEntry]? {
         for record in records {
             // Exact match (leaf or parent matching its own path) → terminate here.
             if let params = Self.matchPath(candidate, record.path) {
@@ -390,7 +401,7 @@ public final class PyreonRouter {
             // child's `path` is the FULL path (including parent prefix),
             // so we recurse with the SAME candidate.
             if let children = record.children, !children.isEmpty {
-                if let childChain = resolveChainIn(children, candidate) {
+                if let childChain = resolveChainInStatic(children, candidate) {
                     // Successful descent — prepend the parent. Parent
                     // doesn't itself match the candidate, so its
                     // params are empty (it's a structural layout).
@@ -476,8 +487,15 @@ public final class PyreonRouter {
     /// necessarily empty, because guards are registered on the router this call
     /// is building — see the note in `init` for why re-validating the standing
     /// path when one is later added was tried and reverted.
-    private func initialPathAllowed(_ candidate: String) -> Bool {
-        guard let chain = resolveChainIn(routes, candidate) else { return true }
+    ///
+    /// STATIC, and takes `records` rather than reading `self.routes`, because
+    /// its only caller is `init` — see the note there.
+    private static func initialPathAllowed(
+        _ records: [RouteRecord],
+        _ candidate: String?
+    ) -> Bool {
+        guard let candidate else { return true }
+        guard let chain = resolveChainInStatic(records, candidate) else { return true }
         for (record, _) in chain {
             if let guardFn = record.beforeEnter, !guardFn(candidate) { return false }
         }
