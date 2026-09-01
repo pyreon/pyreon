@@ -29,6 +29,10 @@ export interface ChartToSvgOptions<T> {
   showGrid?: boolean
   /** Pins the y domain; derived from the data when absent. */
   yDomain?: Domain
+  /** Pins the RIGHT y domain (dual-axis: marks carrying `axis: 'right'`). */
+  y2Domain?: Domain
+  /** Tick label formatting for the right axis. */
+  y2Format?: Formatter
   /**
    * Formats the y-axis tick labels and the derived description. The default
    * prints the number, which is wrong for money and percentages; `currency`,
@@ -85,6 +89,8 @@ export function chartToSvg<T>(options: ChartToSvgOptions<T>): string {
     // cannot lower.
     yDomain: options.yDomain,
     yFormat: options.format,
+    y2Domain: options.y2Domain,
+    y2Format: options.y2Format,
     annotations: options.annotations,
     horizontal: options.horizontal === true,
   }

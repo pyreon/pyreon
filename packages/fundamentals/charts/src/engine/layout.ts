@@ -18,6 +18,8 @@ export interface PlotLayout {
   plot: Rect
   xTicks: Tick[]
   yTicks: Tick[]
+  /** Right-axis ticks; empty unless the config carries a `y2Domain`. */
+  y2Ticks: Tick[]
   /**
    * The x domain the ticks were computed against.
    *
@@ -61,6 +63,15 @@ export interface LayoutConfig {
    * `xFormat` still wins when given — this only picks the DEFAULT labelling.
    */
   xTime?: boolean | undefined
+  /**
+   * The RIGHT y domain, for dual-axis charts. Its presence is what widens the
+   * right gutter from the slim default to a measured one — the same
+   * measured-not-guessed rule the left gutter follows — and what makes
+   * `y2Ticks` non-empty. Ignored in the horizontal frame (single value axis).
+   */
+  y2Domain?: Domain | undefined
+  /** Tick label formatting for the right axis. */
+  y2Format?: Formatter | undefined
   /**
    * Flip the frame: categories on the Y axis, values on X.
    *
@@ -111,10 +122,23 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   const left = cfg.showYAxis ? widest + labelGap + tickLen : 0.0
   const bottom = cfg.showXAxis ? cfg.fontSize + labelGap + tickLen : 0.0
 
+  // Coalesced before the guard (the Swift-narrowing idiom used throughout):
+  // the sentinel domain is never read unless `hasY2` is true.
+  const y2dom = cfg.y2Domain ?? { min: 0.0, max: 1.0 }
+  const hasY2 = cfg.y2Domain !== undefined && cfg.horizontal !== true && cfg.showYAxis
+  let widest2 = 0.0
+  if (hasY2) {
+    for (const label of makeTicks(y2dom, cfg.height, 0.0, cfg.yTickCount, cfg.y2Format).map((t) => t.label)) {
+      const w = measure(label, cfg.fontSize)
+      if (w > widest2) widest2 = w
+    }
+  }
+  const right = hasY2 ? widest2 + labelGap + tickLen : padRight
+
   const plot: Rect = {
     x: left,
     y: padTop,
-    w: Math.max(0.0, cfg.width - left - padRight),
+    w: Math.max(0.0, cfg.width - left - right),
     h: Math.max(0.0, cfg.height - padTop - bottom),
   }
 
@@ -127,7 +151,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
     const xTicks = cfg.showXAxis
       ? makeTicks(cfg.yDomain, plot.x, plot.x + plot.w, cfg.yTickCount, cfg.yFormat)
       : []
-    return { plot, xTicks, yTicks, xDomainUsed: cfg.xDomain }
+    return { plot, xTicks, yTicks, y2Ticks: [], xDomainUsed: cfg.xDomain }
   }
 
   // y grows DOWNWARD in screen space, so the domain min maps to the plot's
@@ -144,7 +168,11 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
         : makeTicks(cfg.xDomain, plot.x, plot.x + plot.w, cfg.xTickCount, cfg.xFormat)
     : []
 
-  return { plot, xTicks, yTicks, xDomainUsed: cfg.xDomain }
+  const y2Ticks = hasY2
+    ? makeTicks(y2dom, plot.y + plot.h, plot.y, cfg.yTickCount, cfg.y2Format)
+    : []
+
+  return { plot, xTicks, yTicks, y2Ticks, xDomainUsed: cfg.xDomain }
 }
 
 /** One tick per category, centred on its band. */
