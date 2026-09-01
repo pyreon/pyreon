@@ -26,6 +26,8 @@ export interface Series {
   showValues?: boolean | undefined
   /** Per-datum radii (the bubble channel), already mapped to pixels. */
   radii?: Double[] | undefined
+  /** Which y axis the series scales against; absent = left. See `seriesOnRightAxis`. */
+  axis?: 'left' | 'right' | undefined
 }
 
 /**
@@ -69,6 +71,10 @@ export interface ChartSpec {
   /** Tick label formatting, per axis. See `LayoutConfig` for why it matters. */
   yFormat?: Formatter | undefined
   xFormat?: Formatter | undefined
+  /** Pins the RIGHT y domain; derived from the right-axis series when absent. */
+  y2Domain?: Domain | undefined
+  /** Tick label formatting for the right axis. */
+  y2Format?: Formatter | undefined
   /**
    * Per-datum x positions, index-aligned with every series' values.
    *
@@ -124,23 +130,70 @@ export const defaultTheme: ChartTheme = {
 export function resolveYDomain(spec: ChartSpec): Domain {
   // `?? derive` rather than an early return: Swift does not narrow
   // `spec.yDomain` through the guard, and the coalesce is the same contract.
-  return spec.yDomain ?? deriveYDomain(spec)
+  return spec.yDomain ?? deriveOver(leftAxisSeries(spec))
 }
 
-function deriveYDomain(spec: ChartSpec): Domain {
+/**
+ * The RIGHT y domain — meaningful only while `hasRightAxis(spec)` is true.
+ *
+ * Total rather than optional by design: an optional return forces every
+ * caller through a narrowing Swift cannot follow, while a caller that asks
+ * for a right domain no right series defines was going to draw nothing with
+ * it anyway.
+ */
+export function resolveY2Domain(spec: ChartSpec): Domain {
+  return spec.y2Domain ?? deriveOver(rightAxisSeries(spec))
+}
+
+/**
+ * Does this series scale on the RIGHT axis?
+ *
+ * Three deliberate pins, none silent: stacked/grouped are laid out as ONE set
+ * against ONE scale (a stack across two axes is not a stack); the horizontal
+ * frame has a single value axis; and when NO left series exists the right
+ * ones fall back to left — a chart whose every series is "right" is just a
+ * chart, and a left axis with no data to define it would label nothing.
+ */
+export function seriesOnRightAxis(s: Series, spec: ChartSpec): boolean {
+  if (spec.horizontal === true) return false
+  if (s.kind === 'stacked' || s.kind === 'grouped') return false
+  if (s.axis !== 'right') return false
+  let hasLeft = false
+  for (const q of spec.series) {
+    const qRight = q.axis === 'right' && q.kind !== 'stacked' && q.kind !== 'grouped'
+    if (!qRight) hasLeft = true
+  }
+  return hasLeft
+}
+
+/** True when at least one series actually scales on the right axis. */
+export function hasRightAxis(spec: ChartSpec): boolean {
+  for (const s of spec.series) if (seriesOnRightAxis(s, spec)) return true
+  return false
+}
+
+function leftAxisSeries(spec: ChartSpec): Series[] {
+  return spec.series.filter((s) => !seriesOnRightAxis(s, spec))
+}
+
+function rightAxisSeries(spec: ChartSpec): Series[] {
+  return spec.series.filter((s) => seriesOnRightAxis(s, spec))
+}
+
+function deriveOver(series: Series[]): Domain {
   // A STACK's domain is its tallest TOTAL, not its tallest value — taking the
   // max of the individual series would clip the stack at the top.
-  const stacked = spec.series.filter((s) => s.kind === 'stacked')
+  const stacked = series.filter((s) => s.kind === 'stacked')
   if (stacked.length > 0) {
     const e = stackedExtent(stacked.map((s) => s.values))
     const others: Double[] = []
-    for (const s of spec.series) if (s.kind !== 'stacked') for (const v of s.values) others.push(v)
+    for (const s of series) if (s.kind !== 'stacked') for (const v of s.values) others.push(v)
     const max = others.length > 0 ? Math.max(e.max, extent(others).max) : e.max
     return niceDomain({ min: 0.0, max }, 5.0)
   }
   const all: Double[] = []
   let hasBars = false
-  for (const s of spec.series) {
+  for (const s of series) {
     if (s.kind === 'bars' || s.kind === 'area' || s.kind === 'grouped') hasBars = true
     for (const v of s.values) all.push(v)
   }
@@ -182,6 +235,10 @@ export function layoutChart(spec: ChartSpec, measure: MeasureText): PlotLayout {
     // compile, so it is written in the subset that does.
     yFormat: spec.yFormat,
     xFormat: spec.xFormat,
+    // undefined when unused, so the layout's right gutter stays the slim
+    // default for every single-axis chart.
+    y2Domain: hasRightAxis(spec) ? resolveY2Domain(spec) : undefined,
+    y2Format: spec.y2Format,
     xTime: spec.xTime === true,
     horizontal: spec.horizontal === true,
   }
@@ -197,6 +254,11 @@ export function layoutChart(spec: ChartSpec, measure: MeasureText): PlotLayout {
  */
 export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
   const yDomain = resolveYDomain(spec)
+  // Non-optional on purpose: when no right axis exists this aliases the left
+  // domain and is simply never consulted — the binding shape Swift can carry
+  // through every branch below without narrowing.
+  const useY2 = hasRightAxis(spec)
+  const y2Domain = useY2 ? resolveY2Domain(spec) : yDomain
   const l = layoutChart(spec, measure)
   const plot = l.plot
   const t = spec.theme
@@ -210,9 +272,9 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
   // Grows a bar rect toward its value from the zero line — the edge a bar is
   // measured from, so a negative bar grows DOWNWARD during the entrance
   // instead of sliding in from above.
-  const growRect = (r: Rect): Rect => {
+  const growRect = (r: Rect, dom: Domain): Rect => {
     if (progress >= 1.0) return r
-    const zeroY = scaleLinear(yDomain, plot.y + plot.h, plot.y, yDomain.min < 0.0 && yDomain.max > 0.0 ? 0.0 : yDomain.min)
+    const zeroY = scaleLinear(dom, plot.y + plot.h, plot.y, dom.min < 0.0 && dom.max > 0.0 ? 0.0 : dom.min)
     const h = r.h * progress
     const top = r.y + r.h <= zeroY + 0.5 ? zeroY - h : zeroY
     return { x: r.x, y: top, w: r.w, h }
@@ -285,6 +347,15 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
     out.push({
       kind: 'line',
       from: { x: plot.x, y: plot.y + plot.h },
+      to: { x: plot.x + plot.w, y: plot.y + plot.h },
+      stroke: t.axis,
+      width: 1.0,
+    })
+  }
+  if (spec.showYAxis && useY2) {
+    out.push({
+      kind: 'line',
+      from: { x: plot.x + plot.w, y: plot.y },
       to: { x: plot.x + plot.w, y: plot.y + plot.h },
       stroke: t.axis,
       width: 1.0,
@@ -369,13 +440,13 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
   const stackedSeries = spec.horizontal === true ? [] : spec.series.filter((s) => s.kind === 'stacked')
   if (stackedSeries.length > 0) {
     for (const seg of layoutStackedBars(stackedSeries.map((s) => s.values), plot, yDomain, 0.25)) {
-      out.push({ kind: 'rect', rect: growRect(seg.rect), fill: stackedSeries[seg.seriesIndex]!.color })
+      out.push({ kind: 'rect', rect: growRect(seg.rect, yDomain), fill: stackedSeries[seg.seriesIndex]!.color })
     }
   }
   const groupedSeries = spec.horizontal === true ? [] : spec.series.filter((s) => s.kind === 'grouped')
   if (groupedSeries.length > 0) {
     for (const seg of layoutGroupedBars(groupedSeries.map((s) => s.values), plot, yDomain, 0.25)) {
-      out.push({ kind: 'rect', rect: growRect(seg.rect), fill: groupedSeries[seg.seriesIndex]!.color })
+      out.push({ kind: 'rect', rect: growRect(seg.rect, yDomain), fill: groupedSeries[seg.seriesIndex]!.color })
     }
   }
 
@@ -387,10 +458,13 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
     // Coalesced to a sentinel: an EMPTY array means "place by index", and a
     // non-optional binding is what Swift can use on both sides of the branch.
     const xs = spec.xValues ?? []
+    // Each independent series scales against ITS axis — the whole point of a
+    // dual-axis chart, and the line that decides it.
+    const sDomain = seriesOnRightAxis(s, spec) ? y2Domain : yDomain
     const place = (values: Double[]): Pt[] =>
       xs.length > 0
-        ? layoutSeriesPointsAt(values, xs, plot, yDomain, l.xDomainUsed)
-        : layoutSeriesPoints(values, plot, yDomain)
+        ? layoutSeriesPointsAt(values, xs, plot, sDomain, l.xDomainUsed)
+        : layoutSeriesPoints(values, plot, sDomain)
 
     // The curve shapes line AND area from the same densified points — an
     // area whose fill followed straight segments under a smoothed outline
@@ -431,9 +505,9 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
     }
 
     if (s.kind === 'bars') {
-      const rects = layoutBars(s.values, plot, yDomain, 0.25)
+      const rects = layoutBars(s.values, plot, sDomain, 0.25)
       for (const r of rects) {
-        out.push({ kind: 'rect', rect: growRect(r), fill: s.color })
+        out.push({ kind: 'rect', rect: growRect(r, sDomain), fill: s.color })
       }
       if (s.showValues === true && progress >= 1.0) {
         const fmt = spec.yFormat ?? plain
@@ -498,6 +572,17 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
       baseline: 'middle',
     })
   }
+  for (const tick of l.y2Ticks) {
+    out.push({
+      kind: 'text',
+      text: tick.label,
+      at: { x: plot.x + plot.w + 6.0, y: tick.pos },
+      fill: t.label,
+      size: t.fontSize,
+      align: 'start',
+      baseline: 'middle',
+    })
+  }
   for (const tick of l.xTicks) {
     out.push({
       kind: 'text',
@@ -517,7 +602,10 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
 export function barsFor(spec: ChartSpec, index: number, measure: MeasureText): Rect[] {
   const s = spec.series[index]
   if (s === undefined || s.kind !== 'bars') return []
-  return layoutBars(s.values, layoutChart(spec, measure).plot, resolveYDomain(spec), 0.25)
+  // The hit rects must come from the SAME domain the bars were drawn with,
+  // or a right-axis bar reports hits where the left-axis geometry would be.
+  const dom = seriesOnRightAxis(s, spec) ? resolveY2Domain(spec) : resolveYDomain(spec)
+  return layoutBars(s.values, layoutChart(spec, measure).plot, dom, 0.25)
 }
 
 /**

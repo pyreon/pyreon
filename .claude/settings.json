@@ -89,6 +89,11 @@
             "type": "command",
             "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/scripts/guard-shell-substitution.sh",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/scripts/guard-ai-attribution.sh",
+            "timeout": 5
           }
         ]
       }

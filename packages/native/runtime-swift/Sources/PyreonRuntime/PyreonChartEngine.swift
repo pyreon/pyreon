@@ -143,11 +143,13 @@ public struct PlotLayout: Codable {
   public var plot: PyreonChartRect
   public var xTicks: [Tick]
   public var yTicks: [Tick]
+  public var y2Ticks: [Tick]
   public var xDomainUsed: Domain
-  public init(plot: PyreonChartRect, xTicks: [Tick], yTicks: [Tick], xDomainUsed: Domain) {
+  public init(plot: PyreonChartRect, xTicks: [Tick], yTicks: [Tick], y2Ticks: [Tick], xDomainUsed: Domain) {
     self.plot = plot
     self.xTicks = xTicks
     self.yTicks = yTicks
+    self.y2Ticks = y2Ticks
     self.xDomainUsed = xDomainUsed
   }
 }
@@ -166,8 +168,10 @@ public struct LayoutConfig {
   public var yFormat: ((Double) -> String)? = nil
   public var xFormat: ((Double) -> String)? = nil
   public var xTime: Bool? = nil
+  public var y2Domain: Domain? = nil
+  public var y2Format: ((Double) -> String)? = nil
   public var horizontal: Bool? = nil
-  public init(width: Double, height: Double, xDomain: Domain, yDomain: Domain, categories: [String], fontSize: Double, xTickCount: Double, yTickCount: Double, showXAxis: Bool, showYAxis: Bool, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, xTime: Bool? = nil, horizontal: Bool? = nil) {
+  public init(width: Double, height: Double, xDomain: Domain, yDomain: Domain, categories: [String], fontSize: Double, xTickCount: Double, yTickCount: Double, showXAxis: Bool, showYAxis: Bool, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, xTime: Bool? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, horizontal: Bool? = nil) {
     self.width = width
     self.height = height
     self.xDomain = xDomain
@@ -181,6 +185,8 @@ public struct LayoutConfig {
     self.yFormat = yFormat
     self.xFormat = xFormat
     self.xTime = xTime
+    self.y2Domain = y2Domain
+    self.y2Format = y2Format
     self.horizontal = horizontal
   }
 }
@@ -208,7 +214,8 @@ public struct Series {
   public var curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil
   public var showValues: Bool? = nil
   public var radii: [Double]? = nil
-  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, showValues: Bool? = nil, radii: [Double]? = nil) {
+  public var axis: String? = nil
+  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, showValues: Bool? = nil, radii: [Double]? = nil, axis: String? = nil) {
     self.kind = kind
     self.values = values
     self.color = color
@@ -218,6 +225,7 @@ public struct Series {
     self.curve = curve
     self.showValues = showValues
     self.radii = radii
+    self.axis = axis
   }
 }
 
@@ -263,12 +271,14 @@ public struct ChartSpec {
   public var yDomain: Domain? = nil
   public var yFormat: ((Double) -> String)? = nil
   public var xFormat: ((Double) -> String)? = nil
+  public var y2Domain: Domain? = nil
+  public var y2Format: ((Double) -> String)? = nil
   public var xValues: [Double]? = nil
   public var xTime: Bool? = nil
   public var horizontal: Bool? = nil
   public var annotations: [Annotation]? = nil
   public var progress: Double? = nil
-  public init(width: Double, height: Double, series: [Series], categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, progress: Double? = nil) {
+  public init(width: Double, height: Double, series: [Series], categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, progress: Double? = nil) {
     self.width = width
     self.height = height
     self.series = series
@@ -280,6 +290,8 @@ public struct ChartSpec {
     self.yDomain = yDomain
     self.yFormat = yFormat
     self.xFormat = xFormat
+    self.y2Domain = y2Domain
+    self.y2Format = y2Format
     self.xValues = xValues
     self.xTime = xTime
     self.horizontal = horizontal
@@ -814,15 +826,28 @@ public func computeLayout(_ cfg: LayoutConfig, _ measure: (String, Double) -> Do
     }
     let left = cfg.showYAxis ? widest + labelGap + tickLen : 0.0
     let bottom = cfg.showXAxis ? cfg.fontSize + labelGap + tickLen : 0.0
-    let plot = PyreonChartRect(x: left, y: padTop, w: max(0.0, cfg.width - left - padRight), h: max(0.0, cfg.height - padTop - bottom))
+    let y2dom = (cfg.y2Domain ?? Domain(min: 0.0, max: 1.0))
+    let hasY2 = cfg.y2Domain != nil && cfg.horizontal != true && cfg.showYAxis
+    var widest2 = 0.0
+    if hasY2 {
+      for label in makeTicks(y2dom, cfg.height, 0.0, cfg.yTickCount, cfg.y2Format).map({ t in t.label }) {
+        let w = measure(label, cfg.fontSize)
+        if w > widest2 {
+          widest2 = w
+        }
+      }
+    }
+    let right = hasY2 ? widest2 + labelGap + tickLen : padRight
+    let plot = PyreonChartRect(x: left, y: padTop, w: max(0.0, cfg.width - left - right), h: max(0.0, cfg.height - padTop - bottom))
     if cfg.horizontal == true {
       let yTicks = cfg.showYAxis ? bandTicksY(cfg.categories, plot) : []
       let xTicks = cfg.showXAxis ? makeTicks(cfg.yDomain, plot.x, plot.x + plot.w, cfg.yTickCount, cfg.yFormat) : []
-      return PlotLayout(plot: plot, xTicks: xTicks, yTicks: yTicks, xDomainUsed: cfg.xDomain)
+      return PlotLayout(plot: plot, xTicks: xTicks, yTicks: yTicks, y2Ticks: [], xDomainUsed: cfg.xDomain)
     }
     let yTicks = cfg.showYAxis ? makeTicks(cfg.yDomain, plot.y + plot.h, plot.y, cfg.yTickCount, cfg.yFormat) : []
     let xTicks = cfg.showXAxis ? cfg.categories.count > 0 ? bandTicks(cfg.categories, plot) : cfg.xTime == true ? timeTicks(cfg.xDomain, plot.x, plot.x + plot.w, cfg.xTickCount, cfg.xFormat) : makeTicks(cfg.xDomain, plot.x, plot.x + plot.w, cfg.xTickCount, cfg.xFormat) : []
-    return PlotLayout(plot: plot, xTicks: xTicks, yTicks: yTicks, xDomainUsed: cfg.xDomain)
+    let y2Ticks = hasY2 ? makeTicks(y2dom, plot.y + plot.h, plot.y, cfg.yTickCount, cfg.y2Format) : []
+    return PlotLayout(plot: plot, xTicks: xTicks, yTicks: yTicks, y2Ticks: y2Ticks, xDomainUsed: cfg.xDomain)
   }
 
 public func bandTicksY(_ categories: [String], _ plot: PyreonChartRect) -> [Tick] {
@@ -1051,14 +1076,49 @@ public func layoutScatter(_ xs: [Double], _ ys: [Double], _ plot: PyreonChartRec
     return out
   }
 
-public func resolveYDomain(_ spec: ChartSpec) -> Domain { (spec.yDomain ?? deriveYDomain(spec)) }
+public func resolveYDomain(_ spec: ChartSpec) -> Domain { (spec.yDomain ?? deriveOver(leftAxisSeries(spec))) }
 
-public func deriveYDomain(_ spec: ChartSpec) -> Domain {
-    let stacked = spec.series.filter({ s in s.kind == "stacked" })
+public func resolveY2Domain(_ spec: ChartSpec) -> Domain { (spec.y2Domain ?? deriveOver(rightAxisSeries(spec))) }
+
+public func seriesOnRightAxis(_ s: Series, _ spec: ChartSpec) -> Bool {
+    if spec.horizontal == true {
+      return false
+    }
+    if s.kind == "stacked" || s.kind == "grouped" {
+      return false
+    }
+    if s.axis != "right" {
+      return false
+    }
+    var hasLeft = false
+    for q in spec.series {
+      let qRight = q.axis == "right" && q.kind != "stacked" && q.kind != "grouped"
+      if !qRight {
+        hasLeft = true
+      }
+    }
+    return hasLeft
+  }
+
+public func hasRightAxis(_ spec: ChartSpec) -> Bool {
+    for s in spec.series {
+      if seriesOnRightAxis(s, spec) {
+        return true
+      }
+    }
+    return false
+  }
+
+public func leftAxisSeries(_ spec: ChartSpec) -> [Series] { spec.series.filter({ s in !seriesOnRightAxis(s, spec) }) }
+
+public func rightAxisSeries(_ spec: ChartSpec) -> [Series] { spec.series.filter({ s in seriesOnRightAxis(s, spec) }) }
+
+public func deriveOver(_ series: [Series]) -> Domain {
+    let stacked = series.filter({ s in s.kind == "stacked" })
     if stacked.count > 0 {
       let e = stackedExtent(stacked.map({ s in s.values }))
       var others: [Double] = []
-      for s in spec.series {
+      for s in series {
         if s.kind != "stacked" {
           for v in s.values {
             others.append(v)
@@ -1070,7 +1130,7 @@ public func deriveYDomain(_ spec: ChartSpec) -> Domain {
     }
     var all: [Double] = []
     var hasBars = false
-    for s in spec.series {
+    for s in series {
       if s.kind == "bars" || s.kind == "area" || s.kind == "grouped" {
         hasBars = true
       }
@@ -1095,23 +1155,25 @@ public func seriesMaxLength(_ series: [Series]) -> Int {
 
 public func layoutChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double) -> PlotLayout {
     let n = seriesMaxLength(spec.series)
-    let cfg = LayoutConfig(width: spec.width, height: spec.height, xDomain: ((spec.xValues ?? [])).count > 0 ? extent((spec.xValues ?? [])) : Domain(min: 0.0, max: n > 1 ? Double(n - 1) : 1.0), yDomain: resolveYDomain(spec), categories: spec.categories, fontSize: spec.theme.fontSize, xTickCount: 5.0, yTickCount: 5.0, showXAxis: spec.showXAxis, showYAxis: spec.showYAxis, yFormat: spec.yFormat, xFormat: spec.xFormat, xTime: spec.xTime == true, horizontal: spec.horizontal == true)
+    let cfg = LayoutConfig(width: spec.width, height: spec.height, xDomain: ((spec.xValues ?? [])).count > 0 ? extent((spec.xValues ?? [])) : Domain(min: 0.0, max: n > 1 ? Double(n - 1) : 1.0), yDomain: resolveYDomain(spec), categories: spec.categories, fontSize: spec.theme.fontSize, xTickCount: 5.0, yTickCount: 5.0, showXAxis: spec.showXAxis, showYAxis: spec.showYAxis, yFormat: spec.yFormat, xFormat: spec.xFormat, xTime: spec.xTime == true, y2Domain: hasRightAxis(spec) ? resolveY2Domain(spec) : nil, y2Format: spec.y2Format, horizontal: spec.horizontal == true)
     return computeLayout(cfg, measure)
   }
 
 public func renderChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double) -> [PyreonDrawCmd] {
     let yDomain = resolveYDomain(spec)
+    let useY2 = hasRightAxis(spec)
+    let y2Domain = useY2 ? resolveY2Domain(spec) : yDomain
     let l = layoutChart(spec, measure)
     let plot = l.plot
     let t = spec.theme
     var out: [PyreonDrawCmd] = []
     let rawProgress = (spec.progress ?? 1.0)
     let progress = rawProgress < 0.0 ? 0.0 : rawProgress > 1.0 ? 1.0 : rawProgress
-    let growRect = { (r: PyreonChartRect) in
+    let growRect = { (r: PyreonChartRect, dom: Domain) in
       if progress >= 1.0 {
         return r
       }
-      let zeroY = scaleLinear(yDomain, plot.y + plot.h, plot.y, yDomain.min < 0.0 && yDomain.max > 0.0 ? 0.0 : yDomain.min)
+      let zeroY = scaleLinear(dom, plot.y + plot.h, plot.y, dom.min < 0.0 && dom.max > 0.0 ? 0.0 : dom.min)
       let h = r.h * progress
       let top = r.y + r.h <= zeroY + 0.5 ? zeroY - h : zeroY
       return PyreonChartRect(x: r.x, y: top, w: r.w, h: h)
@@ -1161,6 +1223,9 @@ public func renderChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double
     if spec.showXAxis {
       out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: plot.x, y: plot.y + plot.h), to: PyreonChartPt(x: plot.x + plot.w, y: plot.y + plot.h), stroke: t.axis, width: 1.0))
     }
+    if spec.showYAxis && useY2 {
+      out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: plot.x + plot.w, y: plot.y), to: PyreonChartPt(x: plot.x + plot.w, y: plot.y + plot.h), stroke: t.axis, width: 1.0))
+    }
     let notes = (spec.annotations ?? [])
     for a in notes {
       let yFrom = (a.yFrom ?? 0.0)
@@ -1195,13 +1260,13 @@ public func renderChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double
     let stackedSeries = spec.horizontal == true ? [] : spec.series.filter({ s in s.kind == "stacked" })
     if stackedSeries.count > 0 {
       for seg in layoutStackedBars(stackedSeries.map({ s in s.values }), plot, yDomain, 0.25) {
-        out.append(PyreonDrawCmd(kind: "rect", rect: growRect(seg.rect), fill: stackedSeries[seg.seriesIndex].color))
+        out.append(PyreonDrawCmd(kind: "rect", rect: growRect(seg.rect, yDomain), fill: stackedSeries[seg.seriesIndex].color))
       }
     }
     let groupedSeries = spec.horizontal == true ? [] : spec.series.filter({ s in s.kind == "grouped" })
     if groupedSeries.count > 0 {
       for seg in layoutGroupedBars(groupedSeries.map({ s in s.values }), plot, yDomain, 0.25) {
-        out.append(PyreonDrawCmd(kind: "rect", rect: growRect(seg.rect), fill: groupedSeries[seg.seriesIndex].color))
+        out.append(PyreonDrawCmd(kind: "rect", rect: growRect(seg.rect, yDomain), fill: groupedSeries[seg.seriesIndex].color))
       }
     }
     for s in spec.series {
@@ -1209,7 +1274,8 @@ public func renderChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double
         continue
       }
       let xs = (spec.xValues ?? [])
-      let place = { (values: [Double]) in xs.count > 0 ? layoutSeriesPointsAt(values, xs, plot, yDomain, l.xDomainUsed) : layoutSeriesPoints(values, plot, yDomain) }
+      let sDomain = seriesOnRightAxis(s, spec) ? y2Domain : yDomain
+      let place = { (values: [Double]) in xs.count > 0 ? layoutSeriesPointsAt(values, xs, plot, sDomain, l.xDomainUsed) : layoutSeriesPoints(values, plot, sDomain) }
       let curveFn = (s.curve ?? ({ q in q }))
       let shape = { (pts: [PyreonChartPt]) in curveFn(pts) }
       if spec.horizontal == true {
@@ -1231,9 +1297,9 @@ public func renderChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double
         continue
       }
       if s.kind == "bars" {
-        let rects = layoutBars(s.values, plot, yDomain, 0.25)
+        let rects = layoutBars(s.values, plot, sDomain, 0.25)
         for r in rects {
-          out.append(PyreonDrawCmd(kind: "rect", rect: growRect(r), fill: s.color))
+          out.append(PyreonDrawCmd(kind: "rect", rect: growRect(r, sDomain), fill: s.color))
         }
         if s.showValues == true && progress >= 1.0 {
           let fmt = (spec.yFormat ?? plain)
@@ -1275,6 +1341,9 @@ public func renderChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double
     for tick in l.yTicks {
       out.append(PyreonDrawCmd(kind: "text", fill: t.label, text: tick.label, at: PyreonChartPt(x: plot.x - 6.0, y: tick.pos), size: t.fontSize, align: "end", baseline: "middle"))
     }
+    for tick in l.y2Ticks {
+      out.append(PyreonDrawCmd(kind: "text", fill: t.label, text: tick.label, at: PyreonChartPt(x: plot.x + plot.w + 6.0, y: tick.pos), size: t.fontSize, align: "start", baseline: "middle"))
+    }
     for tick in l.xTicks {
       out.append(PyreonDrawCmd(kind: "text", fill: t.label, text: tick.label, at: PyreonChartPt(x: tick.pos, y: plot.y + plot.h + 6.0), size: t.fontSize, align: "middle", baseline: "top"))
     }
@@ -1286,7 +1355,8 @@ public func barsFor(_ spec: ChartSpec, _ index: Int, _ measure: (String, Double)
     if s == nil || s.kind != "bars" {
       return []
     }
-    return layoutBars(s.values, layoutChart(spec, measure).plot, resolveYDomain(spec), 0.25)
+    let dom = seriesOnRightAxis(s, spec) ? resolveY2Domain(spec) : resolveYDomain(spec)
+    return layoutBars(s.values, layoutChart(spec, measure).plot, dom, 0.25)
   }
 
 public func stackedHitAt(_ spec: ChartSpec, _ measure: (String, Double) -> Double, _ px: Double, _ py: Double) -> Int {

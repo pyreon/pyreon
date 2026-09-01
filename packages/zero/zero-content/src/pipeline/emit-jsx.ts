@@ -4,6 +4,7 @@ import { parseCodeFenceMeta } from './code-meta'
 import type {
   Blockquote,
   Code,
+  Delete,
   Emphasis,
   Heading as MdastHeading,
   Image as MdastImage,
@@ -199,6 +200,35 @@ async function emitNode(
     case 'emphasis': {
       const inner = await emitChildren((node as Emphasis).children as Nodes[], headings, opts)
       return `<em>${inner}</em>`
+    }
+    // GFM strikethrough. Without this arm the node fell to the unhandled
+    // default, which DROPS the subtree — so `~~superseded~~ but here is why`
+    // rendered as an explanation with its subject missing. The docs build
+    // warned about it on every run; nothing gates that warning.
+    case 'delete': {
+      const inner = await emitChildren((node as Delete).children as Nodes[], headings, opts)
+      return `<del>${inner}</del>`
+    }
+    // `remark-directive` claims `:word` ANYWHERE in prose as a text
+    // directive, and an unhandled node is DROPPED — so ordinary sentences
+    // lost text. Measured across this repo's docs: `display:none` lost
+    // `none`, `map 1:1 to every target` lost a `1`, and seven more pages
+    // were affected. `1:1` alone makes this reachable in almost any prose.
+    //
+    // The directive syntax exists for the `:::container` forms the docs
+    // actually use (callouts, code groups). Nothing uses the INLINE form,
+    // so reconstructing the source text is both faithful and the safest
+    // possible failure mode: an unrecognized directive renders as written
+    // rather than vanishing. Same for the leaf (`::name`) form.
+    case 'textDirective':
+    case 'leafDirective': {
+      const d = node as { type: string; name: string; children?: unknown[] }
+      const marker = node.type === 'leafDirective' ? '::' : ':'
+      const label =
+        d.children && d.children.length > 0
+          ? `[${await emitChildren(d.children as Nodes[], headings, opts)}]`
+          : ''
+      return `${escapeJsxText(`${marker}${d.name}`)}${label}`
     }
     case 'inlineCode':
       return `<code>${escapeJsxText((node as InlineCode).value)}</code>`

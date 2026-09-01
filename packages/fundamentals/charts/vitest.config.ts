@@ -29,6 +29,11 @@ export default defineNodeConfig({
     // without a real 2d context.
     'src/engine/HeatmapChart.tsx',
     'src/engine/CandlestickChart.tsx',
+    // Covered by radar-chart.browser.test.tsx (real Chromium) — same canvas-host
+    // rationale; radial-host.ts is the width-measure/ResizeObserver seam those
+    // components exercise, meaningless without a real layout engine.
+    'src/engine/RadarChart.tsx',
+    'src/engine/radial-host.ts',
     'src/engine/canvas-web.ts',
   ],
   // loader.ts + vite.ts (the node-instrumented surface) are at 100% on all

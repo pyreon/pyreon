@@ -18,6 +18,8 @@ import { scaleLinear } from './scale'
 import { resolveCategories, resolveMarks } from './marks'
 import type { Mark } from './marks'
 import { chartTable, describeChart } from './a11y'
+import { brushRange, isFullWindow, panWindow, sliceRange, zoomWindow } from './zoom'
+import type { ZoomWindow } from './zoom'
 import type { Formatter } from './format'
 import type { DrawCmd, Double, Rect } from './types'
 
@@ -87,6 +89,24 @@ export interface PlotChartProps<T> {
    * pointer handlers a static chart in a report has no use for.
    */
   crosshair?: boolean
+  /**
+   * Wheel-zoom + drag-pan over the x range (ECharts' inside dataZoom).
+   *
+   * The window is a fraction pair over the data; zoom keeps the datum under
+   * the cursor fixed, drag pans by plot-widths, double-click resets. Off by
+   * default like every interactive extra: it installs pointer handlers and
+   * captures the wheel, which a static chart must never do.
+   */
+  dataZoom?: boolean
+  /**
+   * Drag-select a datum range. With `dataZoom` on, brush is Shift+drag (plain
+   * drag pans); alone, plain drag brushes. The selection reports through
+   * `onBrush` as a GLOBAL, inclusive index range and stays highlighted until
+   * the next click, which reports `onBrush(null)`.
+   */
+  brush?: boolean
+  /** Fired when a brush completes (inclusive datum range) or clears (null). */
+  onBrush?: (range: { start: number; end: number } | null) => void
   class?: string
   /**
    * Names the chart for assistive technology and titles the data table.
@@ -225,6 +245,20 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   const hiddenSeries = signal<number[]>([])
   // The hovered datum for the crosshair; -1 = no hover.
   const hoverIdx = signal(-1)
+  // The dataZoom window; null = everything (the untouched state).
+  const zoomWin = signal<ZoomWindow | null>(null)
+  // A committed brush band, in GLOBAL datum indices; null = none.
+  const brushSel = signal<{ start: number; end: number } | null>(null)
+  // In-flight drag bookkeeping. Plain locals, not signals: nothing should
+  // repaint on every intermediate pixel except the overlay, which the move
+  // handler drives through `draw()` itself.
+  let dragMode: 'pan' | 'brush' | null = null
+  let dragStartX = 0.0
+  let dragLastX = 0.0
+  let dragMoved = false
+  let suppressClick = false
+  // Live brush overlay in CANVAS pixels while dragging; null when idle.
+  let brushDrag: { a: Double; b: Double } | null = null
   // Legend entry hit rects from the LAST draw — they match what is on screen.
   let legendBoxes: Rect[] = []
 
@@ -253,11 +287,39 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     return typeof d === 'function' ? (d as () => T[])() : d
   }
 
-  const buildSpec = (rows: T[], w: Double, hgt: Double): ChartSpec => ({
+  /**
+   * The visible slice of the data under the zoom window.
+   *
+   * Slicing ROWS (rather than restricting domains) is what keeps every
+   * downstream concern — geometry, hit testing, tooltips, the accessible
+   * table — correct with zero further awareness: a zoomed chart is a chart
+   * of fewer rows. `viewOffset` maps local indices back to global ones for
+   * the callbacks, because the caller's world never zoomed.
+   */
+  const viewRange = (rows: T[]): { from: number; to: number } => {
+    const win = zoomWin()
+    if (win === null) return { from: 0, to: rows.length }
+    return sliceRange(win, rows.length)
+  }
+  const viewRows = (rows: T[]): T[] => {
+    const r = viewRange(rows)
+    return r.from === 0 && r.to === rows.length ? rows : rows.slice(r.from, r.to)
+  }
+
+  const buildSpec = (allRows: T[], w: Double, hgt: Double): ChartSpec => {
+    const off = viewRange(allRows).from
+    const rows = viewRows(allRows)
+    return {
     width: w,
     height: hgt,
-    series: hideHidden(resolveMarks(rows, props.marks)),
-    categories: resolveCategories(rows, props.x),
+    // Accessors receive the GLOBAL index — an accessor keyed on position
+    // (striping, ids) must not see its data renumbered by a zoom.
+    series: hideHidden(resolveMarks(rows, props.marks.map((m) => ({
+      ...m,
+      y: (d: T, i: number) => m.y(d, i + off),
+      ...(m.r !== undefined ? { r: (d: T, i: number) => m.r!(d, i + off) } : {}),
+    })))),
+    categories: resolveCategories(rows, props.x === undefined ? undefined : (d, i) => props.x!(d, i + off)),
     theme: { ...defaultTheme, ...props.theme },
     showXAxis: props.showXAxis ?? true,
     showYAxis: props.showYAxis ?? true,
@@ -266,12 +328,13 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     ...(props.xFormat !== undefined ? { xFormat: props.xFormat } : {}),
     ...(props.xTime === true ? { xTime: true } : {}),
     ...(props.xValue !== undefined
-      ? { xValues: rows.map((d, i) => props.xValue!(d, i)) }
+      ? { xValues: rows.map((d, i) => props.xValue!(d, i + off)) }
       : {}),
     annotations: props.annotations,
     horizontal: props.horizontal === true,
     progress: entrance,
-  })
+    }
+  }
 
   const draw = (): void => {
     const el = canvas
@@ -317,7 +380,9 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const shifted = legendH === 0 ? cmds : cmds.map((c) => shiftCmd(c, legendH))
     const cross = crosshairCmds(spec, measure)
     const crossShifted = legendH === 0 ? cross : cross.map((c) => shiftCmd(c, legendH))
-    paint(ctx, [...legendCmds, ...shifted, ...crossShifted], w, hgt, FONT)
+    const band = brushCmds(spec, measure)
+    const bandShifted = legendH === 0 ? band : band.map((c) => shiftCmd(c, legendH))
+    paint(ctx, [...legendCmds, ...shifted, ...bandShifted, ...crossShifted], w, hgt, FONT)
   }
 
   /**
@@ -368,6 +433,70 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     return out
   }
 
+  /** The brush band — the live drag, or the committed selection. */
+  const brushCmds = (spec: ChartSpec, measure: (t: string, size: Double) => Double): DrawCmd[] => {
+    const out: DrawCmd[] = []
+    if (props.brush !== true || props.horizontal === true) return out
+    const l = layoutChart(spec, measure)
+    const plot = l.plot
+    let lo = -1.0
+    let hi = -1.0
+    const live = brushDrag
+    const committed = brushSel()
+    if (live !== null) {
+      lo = live.a < live.b ? live.a : live.b
+      hi = live.a < live.b ? live.b : live.a
+    } else if (committed !== null) {
+      const rows = readData()
+      const r = viewRange(rows)
+      const nView = r.to - r.from
+      if (nView <= 0) return out
+      // Committed indices are GLOBAL; place the band over the datum bands of
+      // the visible slice, clipped to the plot when partly zoomed away.
+      const bw = plot.w / nView
+      lo = plot.x + (committed.start - r.from) * bw
+      hi = plot.x + (committed.end - r.from + 1) * bw
+      if (hi < plot.x || lo > plot.x + plot.w) return out
+      if (lo < plot.x) lo = plot.x
+      if (hi > plot.x + plot.w) hi = plot.x + plot.w
+    } else {
+      return out
+    }
+    out.push({
+      kind: 'rect',
+      rect: { x: lo, y: plot.y, w: hi - lo, h: plot.h },
+      fill: 'rgba(99,102,241,0.15)',
+    })
+    out.push({
+      kind: 'line',
+      from: { x: lo, y: plot.y },
+      to: { x: lo, y: plot.y + plot.h },
+      stroke: spec.theme.axis,
+      width: 1.0,
+      dash: [3.0, 3.0],
+    })
+    out.push({
+      kind: 'line',
+      from: { x: hi, y: plot.y },
+      to: { x: hi, y: plot.y + plot.h },
+      stroke: spec.theme.axis,
+      width: 1.0,
+      dash: [3.0, 3.0],
+    })
+    return out
+  }
+
+  /** The plot rect at the current size — gestures are plot-relative. */
+  const plotNow = (): Rect | null => {
+    const el = canvas
+    if (el === null) return null
+    const ctx = el.getContext('2d')
+    if (ctx === null) return null
+    const w = drawWidth(el, props.width)
+    const hgt = props.height ?? 200
+    return layoutChart(buildSpec(readData(), w, hgt), canvasMeasure(ctx, FONT)).plot
+  }
+
   // Repaint whenever anything the spec reads changes. Registered here rather
   // than in onMount so the first paint happens as soon as the ref lands.
   effect(() => {
@@ -377,6 +506,8 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     void props.marks
     hiddenSeries()
     hoverIdx()
+    zoomWin()
+    brushSel()
     draw()
   })
 
@@ -411,9 +542,82 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     return hitNearestX(layoutSeriesPoints(first.values, l.plot, resolveYDomain(spec)), px)
   }
 
+  const handleWheel = (ev: WheelEvent): void => {
+    if (props.dataZoom !== true) return
+    const el = canvas
+    if (el === null) return
+    const plot = plotNow()
+    if (plot === null) return
+    // Captured deliberately: a wheel over a zoomable plot is a zoom, not a
+    // page scroll — half-zooming while the page glides away is worse than
+    // either behavior alone.
+    ev.preventDefault()
+    const rect = el.getBoundingClientRect()
+    const px = ev.clientX - rect.left
+    const frac = plot.w <= 0.0 ? 0.5 : (px - plot.x) / plot.w
+    const win = zoomWin() ?? { start: 0.0, end: 1.0 }
+    const next = zoomWindow(win, ev.deltaY > 0 ? 1.25 : 0.8, frac)
+    zoomWin.set(isFullWindow(next) ? null : next)
+  }
+
+  const handleDown = (ev: MouseEvent): void => {
+    if (props.dataZoom !== true && props.brush !== true) return
+    const el = canvas
+    if (el === null) return
+    const rect = el.getBoundingClientRect()
+    dragStartX = ev.clientX - rect.left
+    dragLastX = dragStartX
+    dragMoved = false
+    // A new gesture re-arms the click decision. Without this, a drag whose
+    // trailing click never fires (pointer released off-canvas) leaves the
+    // suppression latched and silently eats the NEXT legitimate click.
+    suppressClick = false
+    // With both gestures on, Shift picks the brush and plain drag pans; with
+    // only one on, the drag is that one. Precedence over guesswork.
+    dragMode =
+      props.brush === true && (props.dataZoom !== true || ev.shiftKey) ? 'brush' : props.dataZoom === true ? 'pan' : null
+    if (dragMode !== null) ev.preventDefault()
+  }
+
+  const endDrag = (): void => {
+    if (dragMode === 'brush' && dragMoved) {
+      const plot = plotNow()
+      const rows = readData()
+      if (plot !== null && rows.length > 0) {
+        const win = zoomWin() ?? { start: 0.0, end: 1.0 }
+        const range = brushRange(plot.x, plot.w, dragStartX, dragLastX, win, rows.length)
+        brushSel.set(range)
+        if (props.onBrush !== undefined) props.onBrush(range)
+      }
+    }
+    if (dragMoved) suppressClick = true
+    dragMode = null
+    brushDrag = null
+    draw()
+  }
+
   const handleMove = (ev: MouseEvent): void => {
     const el = canvas
     if (el === null) return
+    if (dragMode !== null) {
+      const rect0 = el.getBoundingClientRect()
+      const x = ev.clientX - rect0.left
+      if (Math.abs(x - dragStartX) > 3.0) dragMoved = true
+      if (dragMode === 'pan') {
+        const plot = plotNow()
+        if (plot !== null && plot.w > 0.0) {
+          const win = zoomWin() ?? { start: 0.0, end: 1.0 }
+          // Dragging right moves the window LEFT — the data follows the hand.
+          const next = panWindow(win, (dragLastX - x) / plot.w)
+          zoomWin.set(isFullWindow(next) ? null : next)
+        }
+      } else {
+        brushDrag = { a: dragStartX, b: x }
+        draw()
+      }
+      dragLastX = x
+      return
+    }
     const w = drawWidth(el, props.width)
     const hgt = props.height ?? 200
     const rect = el.getBoundingClientRect()
@@ -444,6 +648,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   }
 
   const handleLeave = (): void => {
+    if (dragMode !== null) endDrag()
     hoverIdx.set(-1)
     if (tip !== null) tip.style.display = 'none'
   }
@@ -451,6 +656,18 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   const handleClick = (ev: MouseEvent): void => {
     const el = canvas
     if (el === null) return
+    // A drag is not a click: panning or brushing must not fire onSelect or
+    // toggle a legend entry on release.
+    if (suppressClick) {
+      suppressClick = false
+      return
+    }
+    // A committed brush clears on the next plain click — and says so.
+    if (brushSel() !== null) {
+      brushSel.set(null)
+      if (props.onBrush !== undefined) props.onBrush(null)
+      return
+    }
     // Legend hits take priority and are NOT a datum selection: a click on an
     // entry toggles its series. Boxes come from the last draw, so they match
     // exactly what is on screen.
@@ -488,16 +705,18 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // fires "with the datum index when a bar is tapped". They cannot be asked
     // one series at a time (each needs the others to place its bars), hence the
     // separate helper rather than a widened loop condition.
+    // Callbacks speak GLOBAL indices — the caller's data never zoomed.
+    const off = viewRange(readData()).from
     for (let i = 0; i < spec.series.length; i++) {
       if (spec.series[i]!.kind !== 'bars') continue
       const idx = hitBar(barsFor(spec, i, measure), px, py)
       if (idx >= 0) {
-        cb(idx)
+        cb(idx + off)
         return
       }
     }
     const stackedIdx = stackedHitAt(spec, measure, px, py)
-    cb(stackedIdx)
+    cb(stackedIdx < 0 ? stackedIdx : stackedIdx + off)
   }
 
   const a11yInput = (): {
@@ -563,7 +782,11 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       sizeObserver.observe(box)
     },
     onClick: handleClick,
-    ...(props.tooltip === true || props.crosshair === true
+    ...(props.dataZoom === true ? { onWheel: handleWheel, onDblClick: () => zoomWin.set(null) } : {}),
+    ...(props.dataZoom === true || props.brush === true
+      ? { onMouseDown: handleDown, onMouseUp: endDrag }
+      : {}),
+    ...(props.tooltip === true || props.crosshair === true || props.dataZoom === true || props.brush === true
       ? { onMouseMove: handleMove, onMouseLeave: handleLeave }
       : {}),
   })

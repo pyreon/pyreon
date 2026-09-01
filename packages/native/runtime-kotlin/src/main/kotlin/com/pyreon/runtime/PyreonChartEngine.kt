@@ -33,19 +33,19 @@ data class RadarOptions(var rings: Int, var gridColor: String, var labelColor: S
 
 data class Gutters(var left: Double, var right: Double, var top: Double, var bottom: Double)
 
-data class PlotLayout(var plot: PyreonChartRect, var xTicks: List<Tick>, var yTicks: List<Tick>, var xDomainUsed: Domain)
+data class PlotLayout(var plot: PyreonChartRect, var xTicks: List<Tick>, var yTicks: List<Tick>, var y2Ticks: List<Tick>, var xDomainUsed: Domain)
 
-data class LayoutConfig(var width: Double, var height: Double, var xDomain: Domain, var yDomain: Domain, var categories: List<String>, var fontSize: Double, var xTickCount: Double, var yTickCount: Double, var showXAxis: Boolean, var showYAxis: Boolean, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null)
+data class LayoutConfig(var width: Double, var height: Double, var xDomain: Domain, var yDomain: Domain, var categories: List<String>, var fontSize: Double, var xTickCount: Double, var yTickCount: Double, var showXAxis: Boolean, var showYAxis: Boolean, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var xTime: Boolean? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var horizontal: Boolean? = null)
 
 data class StackSegment(var rect: PyreonChartRect, var seriesIndex: Int, var datumIndex: Int, var value: Double)
 
-data class Series(var kind: String, var values: List<Double>, var color: String, var width: Double, var radius: Double, var label: String, var curve: ((List<PyreonChartPt>) -> List<PyreonChartPt>)? = null, var showValues: Boolean? = null, var radii: List<Double>? = null)
+data class Series(var kind: String, var values: List<Double>, var color: String, var width: Double, var radius: Double, var label: String, var curve: ((List<PyreonChartPt>) -> List<PyreonChartPt>)? = null, var showValues: Boolean? = null, var radii: List<Double>? = null, var axis: String? = null)
 
 data class Annotation(var y: Double? = null, var x: Double? = null, var yFrom: Double? = null, var yTo: Double? = null, var label: String? = null, var color: String? = null)
 
 data class ChartTheme(var axis: String, var grid: String, var label: String, var fontSize: Double)
 
-data class ChartSpec(var width: Double, var height: Double, var series: List<Series>, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var progress: Double? = null)
+data class ChartSpec(var width: Double, var height: Double, var series: List<Series>, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var progress: Double? = null)
 
 private val MINUTE = 60000.0
 
@@ -573,15 +573,28 @@ fun computeLayout(cfg: LayoutConfig, measure: (String, Double) -> Double): PlotL
     }
     val left = if (cfg.showYAxis) widest + labelGap + tickLen else 0.0
     val bottom = if (cfg.showXAxis) cfg.fontSize + labelGap + tickLen else 0.0
-    val plot = PyreonChartRect(x = left, y = padTop, w = Math.max(0.0, cfg.width - left - padRight), h = Math.max(0.0, cfg.height - padTop - bottom))
+    val y2dom = (cfg.y2Domain ?: Domain(min = 0.0, max = 1.0))
+    val hasY2 = cfg.y2Domain != null && cfg.horizontal != true && cfg.showYAxis
+    var widest2 = 0.0
+    if (hasY2) {
+      for (label in makeTicks(y2dom, cfg.height, 0.0, cfg.yTickCount, cfg.y2Format).map({ t -> t.label })) {
+        val w = measure(label, cfg.fontSize)
+        if (w > widest2) {
+          widest2 = w
+        }
+      }
+    }
+    val right = if (hasY2) widest2 + labelGap + tickLen else padRight
+    val plot = PyreonChartRect(x = left, y = padTop, w = Math.max(0.0, cfg.width - left - right), h = Math.max(0.0, cfg.height - padTop - bottom))
     if (cfg.horizontal == true) {
       val yTicks = if (cfg.showYAxis) bandTicksY(cfg.categories, plot) else listOf()
       val xTicks = if (cfg.showXAxis) makeTicks(cfg.yDomain, plot.x, plot.x + plot.w, cfg.yTickCount, cfg.yFormat) else listOf()
-      return PlotLayout(plot = plot, xTicks = xTicks, yTicks = yTicks, xDomainUsed = cfg.xDomain)
+      return PlotLayout(plot = plot, xTicks = xTicks, yTicks = yTicks, y2Ticks = listOf(), xDomainUsed = cfg.xDomain)
     }
     val yTicks = if (cfg.showYAxis) makeTicks(cfg.yDomain, plot.y + plot.h, plot.y, cfg.yTickCount, cfg.yFormat) else listOf()
     val xTicks = if (cfg.showXAxis) if (cfg.categories.length > 0) bandTicks(cfg.categories, plot) else if (cfg.xTime == true) timeTicks(cfg.xDomain, plot.x, plot.x + plot.w, cfg.xTickCount, cfg.xFormat) else makeTicks(cfg.xDomain, plot.x, plot.x + plot.w, cfg.xTickCount, cfg.xFormat) else listOf()
-    return PlotLayout(plot = plot, xTicks = xTicks, yTicks = yTicks, xDomainUsed = cfg.xDomain)
+    val y2Ticks = if (hasY2) makeTicks(y2dom, plot.y + plot.h, plot.y, cfg.yTickCount, cfg.y2Format) else listOf()
+    return PlotLayout(plot = plot, xTicks = xTicks, yTicks = yTicks, y2Ticks = y2Ticks, xDomainUsed = cfg.xDomain)
   }
 
 fun bandTicksY(categories: List<String>, plot: PyreonChartRect): List<Tick> {
@@ -810,14 +823,49 @@ fun layoutScatter(xs: List<Double>, ys: List<Double>, plot: PyreonChartRect, xDo
     return out
   }
 
-fun resolveYDomain(spec: ChartSpec): Domain = (spec.yDomain ?: deriveYDomain(spec))
+fun resolveYDomain(spec: ChartSpec): Domain = (spec.yDomain ?: deriveOver(leftAxisSeries(spec)))
 
-fun deriveYDomain(spec: ChartSpec): Domain {
-    val stacked = spec.series.filter({ s -> s.kind == "stacked" })
+fun resolveY2Domain(spec: ChartSpec): Domain = (spec.y2Domain ?: deriveOver(rightAxisSeries(spec)))
+
+fun seriesOnRightAxis(s: Series, spec: ChartSpec): Boolean {
+    if (spec.horizontal == true) {
+      return false
+    }
+    if (s.kind == "stacked" || s.kind == "grouped") {
+      return false
+    }
+    if (s.axis != "right") {
+      return false
+    }
+    var hasLeft = false
+    for (q in spec.series) {
+      val qRight = q.axis == "right" && q.kind != "stacked" && q.kind != "grouped"
+      if (!qRight) {
+        hasLeft = true
+      }
+    }
+    return hasLeft
+  }
+
+fun hasRightAxis(spec: ChartSpec): Boolean {
+    for (s in spec.series) {
+      if (seriesOnRightAxis(s, spec)) {
+        return true
+      }
+    }
+    return false
+  }
+
+fun leftAxisSeries(spec: ChartSpec): List<Series> = spec.series.filter({ s -> !seriesOnRightAxis(s, spec) })
+
+fun rightAxisSeries(spec: ChartSpec): List<Series> = spec.series.filter({ s -> seriesOnRightAxis(s, spec) })
+
+fun deriveOver(series: List<Series>): Domain {
+    val stacked = series.filter({ s -> s.kind == "stacked" })
     if (stacked.length > 0) {
       val e = stackedExtent(stacked.map({ s -> s.values }))
       val others: MutableList<Double> = mutableListOf()
-      for (s in spec.series) {
+      for (s in series) {
         if (s.kind != "stacked") {
           for (v in s.values) {
             others.add(v)
@@ -829,7 +877,7 @@ fun deriveYDomain(spec: ChartSpec): Domain {
     }
     val all: MutableList<Double> = mutableListOf()
     var hasBars = false
-    for (s in spec.series) {
+    for (s in series) {
       if (s.kind == "bars" || s.kind == "area" || s.kind == "grouped") {
         hasBars = true
       }
@@ -854,23 +902,25 @@ fun seriesMaxLength(series: List<Series>): Int {
 
 fun layoutChart(spec: ChartSpec, measure: (String, Double) -> Double): PlotLayout {
     val n = seriesMaxLength(spec.series)
-    val cfg = LayoutConfig(width = spec.width, height = spec.height, xDomain = if (((spec.xValues ?: listOf())).length > 0) extent((spec.xValues ?: listOf())) else Domain(min = 0.0, max = if (n > 1) (n - 1).toDouble() else 1.0), yDomain = resolveYDomain(spec), categories = spec.categories, fontSize = spec.theme.fontSize, xTickCount = 5.0, yTickCount = 5.0, showXAxis = spec.showXAxis, showYAxis = spec.showYAxis, yFormat = spec.yFormat, xFormat = spec.xFormat, xTime = spec.xTime == true, horizontal = spec.horizontal == true)
+    val cfg = LayoutConfig(width = spec.width, height = spec.height, xDomain = if (((spec.xValues ?: listOf())).length > 0) extent((spec.xValues ?: listOf())) else Domain(min = 0.0, max = if (n > 1) (n - 1).toDouble() else 1.0), yDomain = resolveYDomain(spec), categories = spec.categories, fontSize = spec.theme.fontSize, xTickCount = 5.0, yTickCount = 5.0, showXAxis = spec.showXAxis, showYAxis = spec.showYAxis, yFormat = spec.yFormat, xFormat = spec.xFormat, xTime = spec.xTime == true, y2Domain = if (hasRightAxis(spec)) resolveY2Domain(spec) else null, y2Format = spec.y2Format, horizontal = spec.horizontal == true)
     return computeLayout(cfg, measure)
   }
 
 fun renderChart(spec: ChartSpec, measure: (String, Double) -> Double): List<PyreonDrawCmd> {
     val yDomain = resolveYDomain(spec)
+    val useY2 = hasRightAxis(spec)
+    val y2Domain = if (useY2) resolveY2Domain(spec) else yDomain
     val l = layoutChart(spec, measure)
     val plot = l.plot
     val t = spec.theme
     val out: MutableList<PyreonDrawCmd> = mutableListOf()
     val rawProgress = (spec.progress ?: 1.0)
     val progress = if (rawProgress < 0.0) 0.0 else if (rawProgress > 1.0) 1.0 else rawProgress
-    val growRect = fun(r: PyreonChartRect): PyreonChartRect {
+    val growRect = fun(r: PyreonChartRect, dom: Domain): PyreonChartRect {
       if (progress >= 1.0) {
         return r
       }
-      val zeroY = scaleLinear(yDomain, plot.y + plot.h, plot.y, if (yDomain.min < 0.0 && yDomain.max > 0.0) 0.0 else yDomain.min)
+      val zeroY = scaleLinear(dom, plot.y + plot.h, plot.y, if (dom.min < 0.0 && dom.max > 0.0) 0.0 else dom.min)
       val h = r.h * progress
       val top = if (r.y + r.h <= zeroY + 0.5) zeroY - h else zeroY
       return PyreonChartRect(x = r.x, y = top, w = r.w, h = h)
@@ -920,6 +970,9 @@ fun renderChart(spec: ChartSpec, measure: (String, Double) -> Double): List<Pyre
     if (spec.showXAxis) {
       out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = plot.x, y = plot.y + plot.h), to = PyreonChartPt(x = plot.x + plot.w, y = plot.y + plot.h), stroke = t.axis, width = 1.0))
     }
+    if (spec.showYAxis && useY2) {
+      out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = plot.x + plot.w, y = plot.y), to = PyreonChartPt(x = plot.x + plot.w, y = plot.y + plot.h), stroke = t.axis, width = 1.0))
+    }
     val notes = (spec.annotations ?: listOf())
     for (a in notes) {
       val yFrom = (a.yFrom ?: 0.0)
@@ -954,13 +1007,13 @@ fun renderChart(spec: ChartSpec, measure: (String, Double) -> Double): List<Pyre
     val stackedSeries = if (spec.horizontal == true) listOf() else spec.series.filter({ s -> s.kind == "stacked" })
     if (stackedSeries.length > 0) {
       for (seg in layoutStackedBars(stackedSeries.map({ s -> s.values }), plot, yDomain, 0.25)) {
-        out.add(PyreonDrawCmd(kind = "rect", rect = growRect(seg.rect), fill = stackedSeries[seg.seriesIndex].color))
+        out.add(PyreonDrawCmd(kind = "rect", rect = growRect(seg.rect, yDomain), fill = stackedSeries[seg.seriesIndex].color))
       }
     }
     val groupedSeries = if (spec.horizontal == true) listOf() else spec.series.filter({ s -> s.kind == "grouped" })
     if (groupedSeries.length > 0) {
       for (seg in layoutGroupedBars(groupedSeries.map({ s -> s.values }), plot, yDomain, 0.25)) {
-        out.add(PyreonDrawCmd(kind = "rect", rect = growRect(seg.rect), fill = groupedSeries[seg.seriesIndex].color))
+        out.add(PyreonDrawCmd(kind = "rect", rect = growRect(seg.rect, yDomain), fill = groupedSeries[seg.seriesIndex].color))
       }
     }
     for (s in spec.series) {
@@ -968,7 +1021,8 @@ fun renderChart(spec: ChartSpec, measure: (String, Double) -> Double): List<Pyre
         continue
       }
       val xs = (spec.xValues ?: listOf())
-      val place = { values: List<Double> -> if (xs.length > 0) layoutSeriesPointsAt(values, xs, plot, yDomain, l.xDomainUsed) else layoutSeriesPoints(values, plot, yDomain) }
+      val sDomain = if (seriesOnRightAxis(s, spec)) y2Domain else yDomain
+      val place = { values: List<Double> -> if (xs.length > 0) layoutSeriesPointsAt(values, xs, plot, sDomain, l.xDomainUsed) else layoutSeriesPoints(values, plot, sDomain) }
       val curveFn = (s.curve ?: ({ q -> q }))
       val shape = { pts: List<PyreonChartPt> -> curveFn(pts) }
       if (spec.horizontal == true) {
@@ -990,9 +1044,9 @@ fun renderChart(spec: ChartSpec, measure: (String, Double) -> Double): List<Pyre
         continue
       }
       if (s.kind == "bars") {
-        val rects = layoutBars(s.values, plot, yDomain, 0.25)
+        val rects = layoutBars(s.values, plot, sDomain, 0.25)
         for (r in rects) {
-          out.add(PyreonDrawCmd(kind = "rect", rect = growRect(r), fill = s.color))
+          out.add(PyreonDrawCmd(kind = "rect", rect = growRect(r, sDomain), fill = s.color))
         }
         if (s.showValues == true && progress >= 1.0) {
           val fmt = (spec.yFormat ?: ::plain)
@@ -1034,6 +1088,9 @@ fun renderChart(spec: ChartSpec, measure: (String, Double) -> Double): List<Pyre
     for (tick in l.yTicks) {
       out.add(PyreonDrawCmd(kind = "text", fill = t.label, text = tick.label, at = PyreonChartPt(x = plot.x - 6.0, y = tick.pos), size = t.fontSize, align = "end", baseline = "middle"))
     }
+    for (tick in l.y2Ticks) {
+      out.add(PyreonDrawCmd(kind = "text", fill = t.label, text = tick.label, at = PyreonChartPt(x = plot.x + plot.w + 6.0, y = tick.pos), size = t.fontSize, align = "start", baseline = "middle"))
+    }
     for (tick in l.xTicks) {
       out.add(PyreonDrawCmd(kind = "text", fill = t.label, text = tick.label, at = PyreonChartPt(x = tick.pos, y = plot.y + plot.h + 6.0), size = t.fontSize, align = "middle", baseline = "top"))
     }
@@ -1045,7 +1102,8 @@ fun barsFor(spec: ChartSpec, index: Int, measure: (String, Double) -> Double): L
     if (s == null || s.kind != "bars") {
       return listOf()
     }
-    return layoutBars(s.values, layoutChart(spec, measure).plot, resolveYDomain(spec), 0.25)
+    val dom = if (seriesOnRightAxis(s, spec)) resolveY2Domain(spec) else resolveYDomain(spec)
+    return layoutBars(s.values, layoutChart(spec, measure).plot, dom, 0.25)
   }
 
 fun stackedHitAt(spec: ChartSpec, measure: (String, Double) -> Double, px: Double, py: Double): Int {

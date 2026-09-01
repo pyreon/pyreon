@@ -66,6 +66,7 @@
       "name": "@pyreon/docs",
       "version": "0.50.0",
       "dependencies": {
+        "@pyreon/charts": "workspace:*",
         "@pyreon/core": "workspace:*",
         "@pyreon/flow": "workspace:*",
         "@pyreon/form": "workspace:*",
