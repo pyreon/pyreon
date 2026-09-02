@@ -93,14 +93,14 @@ export function C() { return <SankeyChart nodes={[]} /> }`,
     expect(r.warnings.join('\n')).toContain('<SankeyChart>: needs a `links` attribute on native')
     expect(r.code).toContain('EmptyView()')
   })
-  it('an accessor-prop host (PlotChart) warns by name instead of naming a view that does not exist', () => {
+  it('a still-unlowered host (OptionChart) warns by name instead of naming a view that does not exist', () => {
     const r = transform(
-      `import { PlotChart, bars } from '@pyreon/charts/plot'
-export function C() { const rows = [{ v: 1 }]; return <PlotChart data={rows} marks={[bars((d) => d.v)]} /> }`,
+      `import { OptionChart } from '@pyreon/charts/plot'
+export function C() { return <OptionChart option={{ series: [] }} /> }`,
       { target: 'swift' },
     )
-    expect(r.warnings.join('\n')).toContain('<PlotChart> has no native lowering yet')
-    expect(r.code).not.toContain('PlotChart(')
+    expect(r.warnings.join('\n')).toContain('<OptionChart> has no native lowering yet')
+    expect(r.code).not.toContain('OptionChart(')
   })
   it('importing from @pyreon/charts/plot does not raise the web-only package warning', () => {
     const r = transform(SANKEY, { target: 'swift' })
@@ -372,6 +372,102 @@ export function C() { return (<><CandlestickChart data={BARS} open={(d) => d.o} 
   })
   it.skipIf(!isKotlincAvailable())('kotlinc (stub bundle + real engine + measurer) accepts them', () => {
     const r = validateKotlin(transform(FRAMES, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+})
+
+
+const PLOT = `import { signal } from '@pyreon/reactivity'
+import { Stack, Text } from '@pyreon/primitives'
+import { PlotChart, area, bars, line } from '@pyreon/charts/plot'
+import type { Annotation } from '@pyreon/charts/plot'
+interface Month { name: string; revenue: number; cost: number }
+const MONTHS: Month[] = [{ name: 'Jan', revenue: 12, cost: 8 }, { name: 'Feb', revenue: 15, cost: 9 }, { name: 'Mar', revenue: 11, cost: 10 }]
+const GOAL: Annotation[] = [{ y: 14, label: 'goal', color: '#b42318' }]
+export function Revenue() {
+  const picked = signal(-1)
+  return (
+    <Stack>
+      <Text>{picked()}</Text>
+      <PlotChart
+        data={MONTHS}
+        x={(d) => d.name}
+        marks={[bars((d) => d.revenue, { label: 'Revenue', color: '#0f766e' }), line((d) => d.cost, { label: 'Cost', width: 3 })]}
+        annotations={GOAL}
+        showGrid={false}
+        height={180}
+        title="Revenue by month"
+        onSelect={(i: number) => picked.set(i)}
+        data-testid="revenue"
+      />
+      <PlotChart data={MONTHS} marks={[area((d, i) => d.cost + i)]} width={240} height={120} />
+    </Stack>
+  )
+}`
+
+describe('chart hosts — <PlotChart marks> (the cartesian family)', () => {
+  it('Swift: each mark becomes a Series over an inlined accessor; the spec is built inline; onSelect taps plotHitBars', () => {
+    const r = transform(PLOT, { target: 'swift' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('let pyreonValues0: [Double] = MONTHS.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(pyreonD.revenue) }')
+    expect(r.code).toContain('let pyreonValues1: [Double] = MONTHS.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(pyreonD.cost) }')
+    expect(r.code).toContain(
+      'let pyreonSeries: [Series] = [Series(kind: "bars", values: pyreonValues0, color: "#0f766e", width: 2.0, radius: 3.0, label: "Revenue", showValues: false), Series(kind: "line", values: pyreonValues1, color: "#b45309", width: 3.0, radius: 3.0, label: "Cost", showValues: false)]',
+    )
+    expect(r.code).toContain('let pyreonCats: [String] = MONTHS.enumerated().map { (pyreonI, pyreonD) in pyreonD.name }')
+    expect(r.code).toContain(
+      'let pyreonSpec: ChartSpec = ChartSpec(width: Double(pyreonGeo.size.width), height: 180.0, series: pyreonSeries, categories: pyreonCats, theme: ChartTheme(axis: "#8496a5", grid: "rgba(132,150,165,0.18)", label: "#5a6b7a", fontSize: 11.0), showXAxis: true, showYAxis: true, showGrid: false, annotations: GOAL)',
+    )
+    expect(r.code).toContain('PyreonChartCanvas(cmds: renderChart(pyreonSpec, pyreonChartMeasure))')
+    expect(r.code).toContain('let i = plotHitBars(pyreonSpec, pyreonChartMeasure, Double(pyreonTap.location.x), Double(pyreonTap.location.y))')
+    expect(r.code).toContain('.accessibilityLabel("Revenue by month")')
+    expect(r.code).toContain('.accessibilityIdentifier("revenue")')
+    // The second chart: an index-using accessor, no x, a given width (Group, no reader).
+    expect(r.code).toContain('let pyreonValues0: [Double] = MONTHS.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(pyreonD.cost + pyreonI) }')
+    expect(r.code).toContain('let pyreonCats: [String] = []')
+    expect(r.code).toContain('Series(kind: "area", values: pyreonValues0, color: "#0f766e", width: 2.0, radius: 3.0, label: "Series 1", showValues: false)')
+    expect(r.code).toContain('ChartSpec(width: 240.0, height: 120.0, series: pyreonSeries, categories: pyreonCats,')
+  })
+  it('Kotlin: the same series and spec as named-argument data classes', () => {
+    const r = transform(PLOT, { target: 'kotlin' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('val pyreonValues0: List<Double> = MONTHS.mapIndexed { pyreonI, pyreonD -> (pyreonD.revenue).toDouble() }')
+    expect(r.code).toContain(
+      'val pyreonSeries: List<Series> = listOf(Series(kind = "bars", values = pyreonValues0, color = "#0f766e", width = 2.0, radius = 3.0, label = "Revenue", showValues = false), Series(kind = "line", values = pyreonValues1, color = "#b45309", width = 3.0, radius = 3.0, label = "Cost", showValues = false))',
+    )
+    expect(r.code).toContain(
+      'val pyreonSpec: ChartSpec = ChartSpec(width = pyreonW, height = 180.0, series = pyreonSeries, categories = pyreonCats, theme = ChartTheme(axis = "#8496a5", grid = "rgba(132,150,165,0.18)", label = "#5a6b7a", fontSize = 11.0), showXAxis = true, showYAxis = true, showGrid = false, annotations = GOAL)',
+    )
+    expect(r.code).toContain('PyreonChartCanvas(cmds = renderChart(pyreonSpec, ::pyreonChartMeasure)')
+    expect(r.code).toContain('val i = plotHitBars(pyreonSpec, ::pyreonChartMeasure, (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble())')
+    expect(r.code).toContain('.testTag("revenue")')
+    expect(r.code).toContain('Series(kind = "area", values = pyreonValues0, color = "#0f766e", width = 2.0, radius = 3.0, label = "Series 1", showValues = false)')
+  })
+  it('a bubble mark, a curve option, a non-literal marks array and the unlowered props are reported by name', () => {
+    const r = transform(
+      `import { PlotChart, bubble, line, monotoneCurve } from '@pyreon/charts/plot'
+interface Row { n: string; v: number; r: number }
+const ROWS: Row[] = [{ n: 'a', v: 1, r: 2 }]
+const MARKS = [line((d: Row) => d.v)]
+export function C() { return (<><PlotChart data={ROWS} marks={[bubble((d) => d.v, (d) => d.r)]} /><PlotChart data={ROWS} marks={[line((d) => d.v, { curve: monotoneCurve })]} showLegend={true} dataZoom={true} /><PlotChart data={ROWS} marks={MARKS} /></>) }`,
+      { target: 'swift' },
+    )
+    const w = r.warnings.join('\n')
+    expect(w).toContain('<PlotChart> mark 1: `bubble` (a radius accessor) is not lowered')
+    expect(w).toContain('<PlotChart> mark 1: a `curve` callback is not lowered')
+    expect(w).toContain('<PlotChart>: `showLegend`, `dataZoom` are not lowered on native yet')
+    expect(w).toContain('<PlotChart marks>: must be an inline array of mark calls')
+  })
+  it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine + measurer) accepts the plot emit', () => {
+    const r = validateSwiftWithStubs(transform(PLOT, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isSwiftUIAvailable())('swiftc against real SwiftUI + canvas + engine accepts it', () => {
+    const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(ENGINE_SWIFT) + '\n' + transform(PLOT, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isKotlincAvailable())('kotlinc (stub bundle + real engine + measurer) accepts it', () => {
+    const r = validateKotlin(transform(PLOT, { target: 'kotlin' }).code)
     expect(r.ok, r.error ?? '').toBe(true)
   })
 })

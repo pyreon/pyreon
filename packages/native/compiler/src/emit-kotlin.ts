@@ -69,7 +69,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, HEAT_RAMP_DEFAULT, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, HEAT_RAMP_DEFAULT, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -9054,6 +9054,7 @@ function emitKotlinChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   if (tag === 'CandlestickChart') return emitKotlinCandlestickHost(e, indent)
   if (tag === 'HeatmapChart') return emitKotlinHeatmapHost(e, indent)
   if (tag === 'RadarChart') return emitKotlinRadarHost(e, indent)
+  if (tag === 'PlotChart') return emitKotlinPlotHost(e, indent)
   if (Object.hasOwn(ACCESSOR_CHART_HOSTS, tag)) return emitKotlinAccessorHost(e, indent)
   const unlowered = UNLOWERED_CHART_HOSTS[tag]
   if (unlowered !== undefined) {
@@ -9348,4 +9349,156 @@ function emitKotlinRadarHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   const opts = `RadarOptions(rings = ${rings}, gridColor = "rgba(132,150,165,0.35)", labelColor = "#5a6b7a", fontSize = 11.0, showLabels = ${showLabels})`
   const cmds = `renderRadar(${emitKotlinExpr(axesV, indent)}, ${series}, PyreonChartRect(0.0, 0.0, ${W}, ${H}), ${opts})`
   return kotlinFrameHost(e, cmds, null, W, H, hasWidth, indent)
+}
+
+
+// ---- `<PlotChart marks>` -----------------------------------------------------
+
+function kotlinAccessorExpr(v: ExprIR, tag: string, what: string, indent: number): string | 'unsupported' {
+  if (v.kind !== 'arrow' || (v.stmts !== undefined && v.stmts.length > 0) || v.params.length > 2) {
+    _emitWarnings.push(`<${tag}> ${what}: only a single-expression arrow \`(d, i) => …\` lowers on native; emitting an empty Box().`)
+    return 'unsupported'
+  }
+  let body: ExprIR | null = v.body
+  const names = ['pyreonD', 'pyreonI']
+  for (let i = 0; i < v.params.length && body !== null; i++) {
+    body = substituteIdentifier(body, v.params[i]!, { kind: 'identifier', name: names[i]! })
+  }
+  if (body === null) {
+    _emitWarnings.push(`<${tag}> ${what}: the accessor shadows its own parameter; emitting an empty Box().`)
+    return 'unsupported'
+  }
+  return emitKotlinExpr(body, indent)
+}
+
+function kotlinMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex: number): string[] | 'unsupported' {
+  const fields = new Map<string, ExprIR>()
+  if (opts !== undefined) {
+    if (opts.kind !== 'object' || (opts.spreads !== undefined && opts.spreads.length > 0)) {
+      _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: options must be an object literal on native; emitting an empty Box().`)
+      return 'unsupported'
+    }
+    for (const f of opts.fields) fields.set(f.name, f.value)
+  }
+  if (fields.has('curve')) _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: a \`curve\` callback is not lowered on native; the series draws straight.`)
+  const args: string[] = []
+  for (const spec of PLOT_MARK_OPTION_FIELDS) {
+    const v = fields.get(spec.name)
+    if (v !== undefined) {
+      if (v.kind !== 'literal' || typeof v.value !== spec.kind) {
+        _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`${spec.name}\` must be a ${spec.kind} literal on native; emitting an empty Box().`)
+        return 'unsupported'
+      }
+      const lit = spec.kind === 'number' ? chartDouble(v.value as number) : JSON.stringify(v.value)
+      args.push(`${spec.name} = ${lit}`)
+      continue
+    }
+    if (spec.name === 'color') args.push(`color = ${JSON.stringify(CHART_HOST_PALETTE[seriesIndex % CHART_HOST_PALETTE.length])}`)
+    else if (spec.name === 'label') args.push(`label = ${JSON.stringify(`Series ${seriesIndex + 1}`)}`)
+    else if (spec.default !== undefined) args.push(`${spec.name} = ${spec.kind === 'number' ? chartDouble(spec.default as number) : String(spec.default)}`)
+  }
+  return args
+}
+
+function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const tag = 'PlotChart'
+  const dataV = chartAttrExprKotlin(e, 'data')
+  const marksV = chartAttrExprKotlin(e, 'marks')
+  if (dataV === undefined || marksV === undefined) {
+    _emitWarnings.push(`<${tag}>: needs \`data\` and \`marks\` attributes on native; emitting an empty Box().`)
+    return 'Box {}'
+  }
+  if (marksV.kind !== 'array') {
+    _emitWarnings.push(`<${tag} marks>: must be an inline array of mark calls (\`[bars((d) => d.v), line((d) => d.avg)]\`) on native; emitting an empty Box().`)
+    return 'Box {}'
+  }
+  const data = emitKotlinExpr(dataV, indent)
+  const lets: string[] = []
+  const series: string[] = []
+  for (let k = 0; k < marksV.elements.length; k++) {
+    const m = marksV.elements[k]!
+    const callee = m.kind === 'call' && m.callee.kind === 'identifier' ? m.callee.name : undefined
+    const kind = callee === undefined ? undefined : PLOT_MARK_KINDS[callee]
+    if (m.kind !== 'call' || kind === undefined) {
+      _emitWarnings.push(`<${tag}> mark ${k + 1}: ${callee === 'bubble' ? '`bubble` (a radius accessor)' : 'this mark'} is not lowered on native; emitting an empty Box().`)
+      return 'Box {}'
+    }
+    const y = m.args[0]
+    if (y === undefined) {
+      _emitWarnings.push(`<${tag}> mark ${k + 1}: needs an accessor; emitting an empty Box().`)
+      return 'Box {}'
+    }
+    const body = kotlinAccessorExpr(y, tag, `mark ${k + 1}`, indent)
+    if (body === 'unsupported') return 'Box {}'
+    const opts = kotlinMarkOptionArgs(m.args[1], tag, k)
+    if (opts === 'unsupported') return 'Box {}'
+    lets.push(`val pyreonValues${k}: List<Double> = ${data}.mapIndexed { pyreonI, pyreonD -> (${body}).toDouble() }`)
+    series.push(`Series(kind = ${JSON.stringify(kind)}, values = pyreonValues${k}, ${opts.join(', ')})`)
+  }
+  lets.push(`val pyreonSeries: List<Series> = listOf(${series.join(', ')})`)
+  const xAcc = chartAttrExprKotlin(e, 'x')
+  if (xAcc !== undefined) {
+    const body = kotlinAccessorExpr(xAcc, tag, 'x', indent)
+    if (body === 'unsupported') return 'Box {}'
+    lets.push(`val pyreonCats: List<String> = ${data}.mapIndexed { pyreonI, pyreonD -> ${body} }`)
+  } else {
+    lets.push('val pyreonCats: List<String> = listOf<String>()')
+  }
+  const xValueAcc = chartAttrExprKotlin(e, 'xValue')
+  if (xValueAcc !== undefined) {
+    const body = kotlinAccessorExpr(xValueAcc, tag, 'xValue', indent)
+    if (body === 'unsupported') return 'Box {}'
+    lets.push(`val pyreonXValues: List<Double> = ${data}.mapIndexed { pyreonI, pyreonD -> (${body}).toDouble() }`)
+  }
+  const present = PLOT_UNLOWERED_PROPS.filter((p) => chartAttrExprKotlin(e, p) !== undefined)
+  if (present.length > 0) _emitWarnings.push(`<${tag}>: ${present.map((p) => `\`${p}\``).join(', ')} ${present.length === 1 ? 'is' : 'are'} not lowered on native yet; the chart renders without.`)
+  const H = kotlinChartDouble(e, 'height', 200, indent)
+  const hasWidth = chartAttrExprKotlin(e, 'width') !== undefined
+  const W = hasWidth ? kotlinChartDouble(e, 'width', 300, indent) : 'pyreonW'
+  const bool = (name: string, fallback: boolean): string => {
+    const raw = readStaticAttrKotlin(e, name)
+    const v = chartAttrExprKotlin(e, name)
+    return v === undefined ? String(fallback) : typeof raw === 'boolean' ? String(raw) : emitKotlinExpr(v, indent)
+  }
+  const specArgs = [
+    `width = ${W}`,
+    `height = ${H}`,
+    'series = pyreonSeries',
+    'categories = pyreonCats',
+    `theme = ${KOTLIN_CHART_TARGET.theme()}`,
+    `showXAxis = ${bool('showXAxis', true)}`,
+    `showYAxis = ${bool('showYAxis', true)}`,
+    `showGrid = ${bool('showGrid', true)}`,
+  ]
+  const y2 = chartAttrExprKotlin(e, 'y2Domain')
+  if (y2 !== undefined) specArgs.push(`y2Domain = ${emitKotlinExpr(y2, indent)}`)
+  if (xValueAcc !== undefined) specArgs.push('xValues = pyreonXValues')
+  if (readStaticAttrKotlin(e, 'xTime') === true) specArgs.push('xTime = true')
+  if (readStaticAttrKotlin(e, 'horizontal') === true) specArgs.push('horizontal = true')
+  const ann = chartAttrExprKotlin(e, 'annotations')
+  if (ann !== undefined) specArgs.push(`annotations = ${emitKotlinExpr(ann, indent)}`)
+  const mk = chartAttrExprKotlin(e, 'markers')
+  if (mk !== undefined) specArgs.push(`markers = ${emitKotlinExpr(mk, indent)}`)
+  lets.push(`val pyreonSpec: ChartSpec = ChartSpec(${specArgs.join(', ')})`)
+  const cmds = 'renderChart(pyreonSpec, ::pyreonChartMeasure)'
+  return kotlinFrameHostLets(e, lets, cmds, (x, y) => `plotHitBars(pyreonSpec, ::pyreonChartMeasure, ${x}, ${y})`, W, H, hasWidth, indent)
+}
+
+/** `kotlinFrameHost` with hoisted `val`s in the BoxWithConstraints scope (always emitted, so the vals have a scope). */
+function kotlinFrameHostLets(e: Extract<ExprIR, { kind: 'jsx-element' }>, lets: readonly string[], cmds: string, hit: ((x: string, y: string) => string) | null, W: string, H: string, hasWidth: boolean, indent: number, names: readonly string[] = ['selectindex', 'select']): string {
+  const onSel = hit === null ? undefined : e.attrs.find((a) => a.kind === 'event' && names.includes(a.name))
+  const tap =
+    onSel?.kind === 'event' && hit !== null
+      ? `.pointerInput(Unit) { detectTapGestures { pyreonTap -> ${kotlinChartSelectBody(onSel.handler, hit('(pyreonTap.x / pyreonDensity).toDouble()', '(pyreonTap.y / pyreonDensity).toDouble()'), indent)} } }`
+      : ''
+  const size = hasWidth ? `Modifier.width((${W}).dp).height((${H}).dp)` : `Modifier.fillMaxWidth().height((${H}).dp)`
+  const generic = emitKotlinLayoutModifier(e)
+  const titleRaw = readStaticAttrKotlin(e, 'title')
+  const titleMod = typeof titleRaw === 'string' ? `.semantics { contentDescription = ${JSON.stringify(titleRaw)} }` : ''
+  const canvas = `PyreonChartCanvas(cmds = ${cmds}, modifier = ${size + tap + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))})`
+  const pad = ' '.repeat(indent + 2)
+  const widthLine = hasWidth ? '' : `${pad}val pyreonW = maxWidth.value.toDouble()\n`
+  const densityLine = tap === '' ? '' : `${pad}val pyreonDensity = LocalDensity.current.density\n`
+  const body = lets.map((l) => `${pad}${l}\n`).join('')
+  return `BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {\n${widthLine}${densityLine}${body}${pad}${canvas}\n${' '.repeat(indent)}}`
 }

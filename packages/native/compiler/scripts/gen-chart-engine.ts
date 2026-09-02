@@ -63,6 +63,7 @@ export const ENGINE_FILES = [
   'parallel',
   'candlestick-chart',
   'heat-chart',
+  'plot-hit',
 ] as const
 
 const RENAMES: ReadonlyArray<readonly [string, string]> = [

@@ -25,6 +25,7 @@ export { buildHeatGrid, HEAT_RAMP, hitHeatCell, rampColor, renderHeat } from './
 export { colorRamp } from './engine/heat-ramp'
 export type { HeatCell, HeatGrid, HeatmapOptions } from './engine/heat'
 export { heatGridFrom, heatPlotFor, hitHeatChart, renderHeatChart } from './engine/heat-chart'
+export { plotHitBars, plotHitIndex } from './engine/plot-hit'
 export type { GaugeChartProps, PieChartProps } from './engine/PieChart'
 
 // Marks
