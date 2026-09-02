@@ -7,7 +7,7 @@
 
 import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
-import { effect, signal } from '@pyreon/reactivity'
+import { batch, effect, signal } from '@pyreon/reactivity'
 import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
 import { renderLegend } from './legend'
 import type { LegendPager } from './legend'
@@ -654,12 +654,15 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     let next = absolute !== undefined ? absolute : cur < 0 ? (delta > 0 ? 0 : n - 1) : cur + delta
     if (next < 0) next = 0
     if (next > n - 1) next = n - 1
-    focusIdx.set(next)
-    hoverIdx.set(next)
     const off = viewRange(all).from
     const t = chartTable(a11yInput())
     const row = t.rows[next + off]
-    announce.set(row === undefined ? '' : row.join(', '))
+    // One notify cycle for the three writes a keystroke makes (focus, hover, live region).
+    batch(() => {
+      focusIdx.set(next)
+      hoverIdx.set(next)
+      announce.set(row === undefined ? '' : row.join(', '))
+    })
   }
 
   const handleKeyDown = (ev: KeyboardEvent): void => {
@@ -673,9 +676,11 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       const cb = props.onSelect
       if (idx >= 0 && cb !== undefined) cb(idx + viewRange(readData()).from)
     } else if (key === 'Escape') {
-      focusIdx.set(-1)
-      hoverIdx.set(-1)
-      announce.set('')
+      batch(() => {
+        focusIdx.set(-1)
+        hoverIdx.set(-1)
+        announce.set('')
+      })
     } else return
     ev.preventDefault()
   }
@@ -975,7 +980,9 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     if (tip !== null) tip.style.display = 'none'
   }
 
-  const handleClick = (ev: MouseEvent): void => {
+  // The whole click is one batch: a preset, legend-page or legend-toggle click
+  // writes two or three signals, and the canvas must repaint once, not per write.
+  const handleClick = (ev: MouseEvent): void => batch(() => {
     const el = canvas
     if (el === null) return
     // A drag is not a click: panning or brushing must not fire onSelect or
@@ -1063,7 +1070,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const off = viewRange(readData()).from
     const idx = plotHitBars(spec, measure, px, py)
     cb(idx < 0 ? idx : idx + off)
-  }
+  })
 
   const a11yInput = (): {
     title?: string | undefined
@@ -1137,7 +1144,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     'data-pyreon-presets': () => presetBoxesJson(),
     'data-pyreon-nav': () => navJson(),
     'data-pyreon-hover': () => String(hoverIdx()),
-    ...(keyboardOn ? { tabIndex: 0, onKeyDown: handleKeyDown, onBlur: () => { focusIdx.set(-1); announce.set('') } } : {}),
+    ...(keyboardOn ? { tabIndex: 0, onKeyDown: handleKeyDown, onBlur: () => batch(() => { focusIdx.set(-1); announce.set('') }) } : {}),
     ...(props.dataZoom === true ? { onWheel: handleWheel, onDblClick: () => zoomWin.set(null) } : {}),
     ...(props.dataZoom === true || props.brush === true || props.navigator === true
       ? { onMouseDown: handleDown, onMouseUp: endDrag }
