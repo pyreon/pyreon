@@ -179,6 +179,43 @@ let _activeEnumType: string | undefined
  * Swift typecheck (an integer literal infers as Double there) and failed
  * kotlinc with 'actual type is Int, but Double? was expected'.
  */
+/**
+ * Named constructor args for a DECLARED data class, in declared order, with
+ * an integer-valued field coerced into a Double-typed slot — Kotlin widens
+ * nothing at a named argument (`CalendarOptions(firstDay = 1)` is an
+ * `argument type mismatch: actual type is 'Int', but 'Double?' was expected`).
+ * ONE builder for the exact-match AND the optional-subset resolution rungs —
+ * the subset rung (every chart `options` literal, which names a few of a
+ * struct's optional fields) used to emit raw args and was the one that
+ * reached kotlinc. The Swift twin resolves both rungs to one struct name and
+ * coerces in a single place; this is that place for Kotlin.
+ */
+function kotlinStructCtorArgs(
+  fields: { name: string; value: ExprIR }[],
+  structName: string,
+  indent: number,
+): string {
+  const structDef =
+    _declaredStructs.find((st) => st.name === structName) ??
+    _synthExprStructs.find((st) => st.name === structName)
+  const fieldT = new Map((structDef?.fields ?? []).map((f) => [f.name, f.type]))
+  return orderFieldsByStructK(fields, structName)
+    .map((f) => {
+      const ft = fieldT.get(f.name)
+      const raw = withExpectedTypeKotlin(ft, () => emitKotlinExpr(f.value, indent))
+      const wantsFloat = ft !== undefined && typeWantsFloat(ft)
+      const vt = inferType(f.value, _kotlinExprInferCtx)
+      // An integer LITERAL always coerces into a Double field (Swift's
+      // `Double(1)` twin); the inferred type alone missed it under an
+      // optional Double field.
+      const isInt =
+        (vt.kind === 'number' && vt.float !== true) ||
+        (f.value.kind === 'literal' && typeof f.value.value === 'number' && Number.isInteger(f.value.value) && f.value.float !== true)
+      return `${f.name} = ${wantsFloat && isInt ? `(${raw}).toDouble()` : raw}`
+    })
+    .join(', ')
+}
+
 function typeWantsFloat(t: TypeIR): boolean {
   if (t.kind === 'number') return t.float === true
   if (t.kind === 'typeRef') return t.name === 'Double' || t.name === 'Float'
@@ -415,6 +452,8 @@ const KOTLIN_NUM_STRING = `fun pyreonNumString(v: Double): String =
  * the existing "needs static" emit path.
  */
 let _constStringMapKotlin: Map<string, string | number | boolean> = new Map()
+/** Module-level const name → its initializer IR (the chart-host literal adapters resolve a typed const through it). */
+let _moduleConstExprsKotlin: Map<string, ExprIR> = new Map()
 /** Per-COMPONENT const-string map — mirror of emit-swift's
  * `_componentConstMap`. Set per `emitKotlinComponent`; consulted by
  * `readStaticAttrKotlin` after the module-level map. */
@@ -489,6 +528,10 @@ export function emitKotlin(
     if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
       _constStringMapKotlin.set(md.name, v)
     }
+  }
+  _moduleConstExprsKotlin = new Map()
+  for (const md of moduleDecls) {
+    if (!md.mutable) _moduleConstExprsKotlin.set(md.name, md.initial)
   }
   _enumNames = new Set(enums.map((e) => e.name))
   // Build the struct-fields key map — mirror of emit-swift's logic.
@@ -5525,21 +5568,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           (typedKey !== null ? _structTypedKeyToName.get(typedKey) : undefined) ??
           _structFieldsToName.get(fieldSet)
         if (structName !== undefined) {
-          const structDefC =
-            _declaredStructs.find((st) => st.name === structName) ??
-            _synthExprStructs.find((st) => st.name === structName)
-          const fieldTC = new Map((structDefC?.fields ?? []).map((f) => [f.name, f.type]))
-          const args = orderFieldsByStructK(e.fields, structName)
-            .map((f) => {
-              const ft = fieldTC.get(f.name)
-              const raw = withExpectedTypeKotlin(ft, () => emitKotlinExpr(f.value, indent))
-              const wantsFloat = ft !== undefined && typeWantsFloat(ft)
-              const vt = inferType(f.value, _kotlinExprInferCtx)
-              const isInt = vt.kind === 'number' && vt.float !== true
-              // Kotlin named args do NOT widen Int -> Double either.
-              return `${f.name} = ${wantsFloat && isInt ? `(${raw}).toDouble()` : raw}`
-            })
-            .join(', ')
+          const args = kotlinStructCtorArgs(e.fields, structName, indent)
           return `${kotlinIdent(structName)}(${args})`
         }
         // The exact index missed. Before synthesizing, try a DECLARED data
@@ -5556,9 +5585,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           typeIsOptional,
         )
         if (subset !== null) {
-          const args = orderFieldsByStructK(e.fields, subset)
-            .map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`)
-            .join(', ')
+          const args = kotlinStructCtorArgs(e.fields, subset, indent)
           return `${kotlinIdent(subset)}(${args})`
         }
         // No declared data class matches — SYNTHESIZE one for an all-scalar-
@@ -9035,6 +9062,9 @@ const KOTLIN_CHART_TARGET: ChartHostTarget = {
   max0: (e) => `maxOf(0.0, ${e})`,
   min: (a, b) => `minOf(${a}, ${b})`,
   nil: 'null',
+  nan: 'Double.NaN',
+  list: (items) => `listOf(${items.join(', ')})`,
+  struct: (name, fields) => `${name}(${fields.map(([k, v]) => `${k} = ${v}`).join(', ')})`,
   pieOptions: (a) => `PieOptions(innerRadius = ${a.innerRatio}, showLabels = true, labelColor = "#ffffff", fontSize = 11.0)`,
   theme: () => `ChartTheme(axis = ${JSON.stringify(CHART_THEME_DEFAULT.axis)}, grid = ${JSON.stringify(CHART_THEME_DEFAULT.grid)}, label = ${JSON.stringify(CHART_THEME_DEFAULT.label)}, fontSize = ${CHART_THEME_DEFAULT.fontSize})`,
 }
@@ -9092,14 +9122,28 @@ function emitKotlinChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
     return 'Box {}'
   }
   const spec = CHART_HOSTS[tag]!
-  const data: string[] = []
+  for (const p of spec.warnProps ?? []) {
+    if (chartAttrExprKotlin(e, p) !== undefined) _emitWarnings.push(`<${tag}>: \`${p}\` is not lowered on native; the chart renders without it.`)
+  }
+  const attrs: Record<string, ExprIR> = {}
   for (const name of spec.data) {
     const v = chartAttrExprKotlin(e, name)
     if (v === undefined) {
       _emitWarnings.push(`<${tag}>: needs a \`${name}\` attribute on native; emitting an empty Box().`)
       return 'Box {}'
     }
-    data.push(emitKotlinExpr(v, indent))
+    attrs[name] = v
+  }
+  const data: string[] = []
+  for (const name of spec.data) {
+    const adapter = spec.adapt?.[name]
+    if (adapter !== undefined) {
+      const adapted = adapter(attrs, KOTLIN_CHART_TARGET, (m) => _emitWarnings.push(m), (n) => _moduleConstExprsKotlin.get(n))
+      if (adapted === 'unsupported') return 'Box {}'
+      data.push(adapted)
+    } else {
+      data.push(emitKotlinExpr(attrs[name]!, indent))
+    }
   }
   const optV = chartAttrExprKotlin(e, spec.options)
   const options = optV === undefined ? 'null' : emitKotlinExpr(optV, indent)
@@ -9111,7 +9155,7 @@ function emitKotlinChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
     options,
     W,
     H,
-    gutter: kotlinChartDouble(e, 'gutter', 80, indent),
+    gutter: kotlinChartDouble(e, 'gutter', spec.gutterDefault ?? 80, indent),
     innerRatio: kotlinChartDouble(e, 'innerRatio', 0.2, indent),
   }
   const layout = spec.layout(args, KOTLIN_CHART_TARGET)
