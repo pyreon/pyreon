@@ -254,6 +254,70 @@ private fun syncDefaultsTests() {
     dd.set(PYREON_SYNCED_DEFAULT_MAP, "k", PyreonScalar.Str("after"))
     check(sd() == "x", "a disposed signal ignores later writes, no crash")
 
+    // 5. MAP HANDLE — the native twin of the web `doc.getMap(name)`.
+    //    The engine's own methods take the map name as a first argument; shared
+    //    source is written against the web API, where a map is a value you hold.
+    //    Before this handle existed, the ordinary shape
+    //    `doc.getMap("room").set("k", v)` lowered to native code calling a
+    //    `getMap` that was not there — and PMTC emitted it verbatim with NO
+    //    warning, so the failure surfaced as a kotlinc error in a generated file
+    //    instead of a diagnostic naming the call.
+    val hd = PyreonCrdtDoc("h1")
+    val room = hd.getMap("room")
+
+    //    The overloads are the other half: `PyreonScalar` is a sealed type, so
+    //    `room.set("k", "v")` cannot type-check against a bare parameter, and
+    //    requiring the wrapper would put a Kotlin constructor in a file that
+    //    must also compile as TypeScript.
+    room.set("title", "hello")
+    room.set("n", 42)
+    room.set("ok", true)
+    room.set("ratio", 1.5)
+    check(room.get("title") == PyreonScalar.Str("hello"), "handle set/get round-trips a String")
+    //    Kotlin has ONE numeric case (`Num(Double)`) where Swift has `.int` and
+    //    `.double`, so an Int widens here — asserted so the difference is a
+    //    recorded property rather than a surprise at a call site.
+    check(room.get("n") == PyreonScalar.Num(42.0), "handle set/get widens an Int to Num")
+    check(room.get("ok") == PyreonScalar.Bool(true), "handle set/get round-trips a Bool")
+    check(room.get("ratio") == PyreonScalar.Num(1.5), "handle set/get round-trips a Double")
+    check(room.has("title"), "handle has")
+    check(room.keys().size == 4, "handle keys")
+    check(room.get("absent") == null, "handle get of an absent key is null")
+
+    //    A handle is a VALUE, not a registration: two calls with the same name
+    //    address the same underlying map.
+    check(hd.getMap("room").get("title") == PyreonScalar.Str("hello"), "handles are not per-call state")
+    check(hd.getMap("other").get("title") == null, "a different name is a different map")
+
+    //    And the handle observes only its OWN map.
+    var sawRoom = 0
+    var sawOther = 0
+    val offRoom = room.observe { sawRoom += 1 }
+    val offOther = hd.getMap("other").observe { sawOther += 1 }
+    room.set("title", "changed")
+    check(sawRoom == 1, "handle observe fires for its own map")
+    check(sawOther == 0, "handle observe does not fire for another map")
+    offRoom()
+    offOther()
+    room.set("title", "again")
+    check(sawRoom == 1, "handle observe unsubscribes")
+
+    //    Cross-document convergence THROUGH the handle — the shape a device proof
+    //    drives. A FRESH pair, deliberately: reusing `hd` asserts nothing, because
+    //    its Lamport clock is at 6 after the writes above and a peer's clock-1
+    //    write correctly LOSES. The Swift twin of this test failed exactly that
+    //    way on first run.
+    val localFresh = PyreonCrdtDoc("a1")
+    val peer = PyreonCrdtDoc("z9")
+    val localRoom = localFresh.getMap("room")
+    localRoom.set("title", "from-local")
+    peer.getMap("room").set("title", "from-peer")
+    localFresh.applyOps(peer.encodeState())
+    //    Equal clocks (one write each), so the actor id breaks the tie and
+    //    "z9" > "a1" wins — the same rule the flat-API test asserts, reached
+    //    through the handle.
+    check(localRoom.get("title") == PyreonScalar.Str("from-peer"), "handle reads a merged remote write")
+
     tA.dispose()
     tB.dispose()
 }

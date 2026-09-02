@@ -861,6 +861,11 @@ function emitKotlinFeature(f: FeatureDefnIR): string {
     `    val initialValues = PyreonFeatureSchema_${f.bindingName}()`,
   )
   lines.push(`}`)
+  // See the Swift mirror. A VALUE binding, not a `typealias` — for symmetry with
+  // the sibling lowerings, not for collision safety: both forms collide with a
+  // same-named user type, which parse.ts warns about by name.
+  lines.push(``)
+  lines.push(`val ${f.bindingName} = PyreonFeature_${f.bindingName}`)
   return lines.join('\n')
 }
 
