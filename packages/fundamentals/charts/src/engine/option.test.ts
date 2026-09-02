@@ -66,6 +66,9 @@ const CORPUS: { name: string; option: EChartsOption; expectClean: boolean }[] = 
     series: [{ type: 'heatmap', data: [[0, 0, 5], [1, 1, 9]] }] } },
   { name: 'funnel', expectClean: true, option: {
     series: [{ type: 'funnel', sort: 'descending', minSize: '10%', data: [{ value: 60, name: 'Visit' }, { value: 40, name: 'Inquiry' }, { value: 20, name: 'Order' }] }] } },
+  { name: 'scatter on geo', expectClean: true, option: {
+    geo: { map: 'corpus-squares' },
+    series: [{ type: 'scatter', coordinateSystem: 'geo', symbolSize: 10, data: [{ name: 'a', value: [5, 5, 3] }, { name: 'b', value: [15, 5, 9] }] }] } },
   { name: 'map (registered squares)', expectClean: true, option: {
     visualMap: { min: 0, max: 10 },
     series: [{ type: 'map', map: 'corpus-squares', label: { show: true }, data: [{ name: 'West', value: 3 }, { name: 'East', value: 8 }] }] } },
@@ -149,8 +152,8 @@ describe('ECharts option facade — conformance corpus', () => {
       const c = planOption(f.option).compiled
       return c.supported && c.warnings.length === 0
     }).length
-    // 32 of 34 today. Raise this number as families land; never lower it.
-    expect(clean).toBeGreaterThanOrEqual(32)
+    // 33 of 35 today. Raise this number as families land; never lower it.
+    expect(clean).toBeGreaterThanOrEqual(33)
   })
 })
 
