@@ -9440,7 +9440,12 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const zoomed = readStaticAttrKotlin(e, 'dataZoom') === true
   const presetsRaw = kotlinZoomPresets(e, tag)
   const presets = presetsRaw === 'unsupported' ? undefined : presetsRaw
-  const windowed = zoomed || presets !== undefined
+  let navigating = readStaticAttrKotlin(e, 'navigator') === true
+  if (navigating && marksV.elements.length === 0) {
+    _emitWarnings.push(`<${tag} navigator>: needs at least one mark (the strip shows the first one); the chart renders without the navigator.`)
+    navigating = false
+  }
+  const windowed = zoomed || presets !== undefined || navigating
   const legend = kotlinLegendInteraction(e)
   const lets: string[] = []
   if (windowed) {
@@ -9448,10 +9453,16 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     lets.push(`val pyreonRange: SliceRange = sliceRange(pyreonZoom, ${data}.size)`)
     lets.push(`val pyreonRows = ${data}.subList(pyreonRange.from, pyreonRange.to)`)
   }
+  if (navigating) {
+    lets.push('var pyreonNavKind by remember { mutableStateOf(0) }')
+    lets.push('var pyreonNavAnchor by remember { mutableStateOf(ZoomWindow(start = 0.0, end = 1.0)) }')
+    lets.push('var pyreonNavDx by remember { mutableStateOf(0.0) }')
+  }
   if (legend.toggling) lets.push('var pyreonHidden by remember { mutableStateOf(listOf<Int>()) }')
   if (legend.paging) lets.push('var pyreonLegendPage by remember { mutableStateOf(0.0) }')
   const rows = windowed ? 'pyreonRows' : data
   const series: string[] = []
+  let navValues = ''
   for (let k = 0; k < marksV.elements.length; k++) {
     const m = marksV.elements[k]!
     const callee = m.kind === 'call' && m.callee.kind === 'identifier' ? m.callee.name : undefined
@@ -9472,6 +9483,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     const opts = kotlinMarkOptionArgs(optsArg, tag, k)
     if (opts === 'unsupported') return 'Box {}'
     lets.push(`val pyreonValues${k}: List<Double> = ${kotlinPlotRowMap(rows, `(${body}).toDouble()`, windowed)}`)
+    if (k === 0 && navigating) navValues = kotlinPlotRowMap(data, `(${body}).toDouble()`, false)
     if (bubble) {
       const r = m.args[1]
       if (r === undefined) {
@@ -9520,22 +9532,29 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const chrome = kotlinChartChrome(e, entries, W, H, indent, true, legend.paging ? 'pyreonLegendPage' : undefined)
   lets.push(...chrome.lets)
   const theme = kotlinChartTheme(e, tag)
+  const themed = presets !== undefined || navigating
+  if (themed) lets.push(`val pyreonTheme: ChartTheme = ${theme}`)
   if (presets !== undefined) {
-    lets.push(`val pyreonTheme: ChartTheme = ${theme}`)
     lets.push(`val pyreonPresets: List<ZoomPreset> = listOf(${presets.join(', ')})`)
     lets.push(`val pyreonPresetStrip: PresetLayout = renderPresets(pyreonPresets, ${data}.size, pyreonZoom, PyreonChartRect(0.0, 0.0, ${W}, ${H}), PresetOptions(fontSize = 11.0, padX = 8.0, padY = 3.0, gap = 6.0, inset = 8.0, activeFill = pyreonTheme.axis, idleFill = pyreonTheme.grid, activeText = "#ffffff", idleText = pyreonTheme.label), ::pyreonChartMeasure)`)
+  }
+  const belowNav = presets === undefined ? '' : ' - pyreonPresetStrip.height'
+  if (navigating) {
+    lets.push(`val pyreonNavValues: List<Double> = ${navValues}`)
+    lets.push(`val pyreonNavigator: NavigatorLayout = renderNavigator(pyreonNavValues, pyreonSeries[0].color, pyreonZoom, PyreonChartRect(0.0, 0.0, ${W}, ${H}${belowNav}), pyreonTheme.grid)`)
   }
   const bool = (name: string, fallback: boolean): string => {
     const raw = readStaticAttrKotlin(e, name)
     const v = chartAttrExprKotlin(e, name)
     return v === undefined ? String(fallback) : typeof raw === 'boolean' ? String(raw) : emitKotlinExpr(v, indent)
   }
+  const below = `${belowNav}${navigating ? ' - pyreonNavigator.height' : ''}`
   const specArgs = [
     `width = ${W}`,
-    `height = ${presets === undefined ? chrome.height(H) : `${chrome.height(H)} - pyreonPresetStrip.height`}`,
+    `height = ${chrome.height(H)}${below}`,
     'series = pyreonSeries',
     'categories = pyreonCats',
-    `theme = ${presets === undefined ? theme : 'pyreonTheme'}`,
+    `theme = ${themed ? 'pyreonTheme' : theme}`,
     `showXAxis = ${bool('showXAxis', true)}`,
     `showYAxis = ${bool('showYAxis', true)}`,
     `showGrid = ${bool('showGrid', true)}`,
@@ -9556,7 +9575,8 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const mk = chartAttrExprKotlin(e, 'markers')
   if (mk !== undefined) specArgs.push(`markers = ${emitKotlinExpr(mk, indent)}`)
   lets.push(`val pyreonSpec: ChartSpec = ChartSpec(${specArgs.join(', ')})`)
-  const cmds = `${chrome.wrap('renderChart(pyreonSpec, ::pyreonChartMeasure)')}${presets === undefined ? '' : ' + pyreonPresetStrip.cmds'}`
+  const extraCmds = `${navigating ? ' + pyreonNavigator.cmds' : ''}${presets === undefined ? '' : ' + pyreonPresetStrip.cmds'}`
+  const cmds = `${chrome.wrap('renderChart(pyreonSpec, ::pyreonChartMeasure)')}${extraCmds}`
   const hit = (x: string, y: string): string => {
     const local = `plotHitBars(pyreonSpec, ::pyreonChartMeasure, ${x}, ${chrome.top === '0.0' ? y : `${y} - pyreonTop`})`
     return windowed ? `run { val pyreonHit = ${local}; if (pyreonHit < 0) -1 else pyreonHit + pyreonRange.from }` : local
@@ -9587,7 +9607,12 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   if (zoomed) {
     tap += `.pointerInput(Unit) { detectTransformGestures { _, pyreonPan, pyreonZoomBy, _ -> pyreonZoom = panWindow(zoomWindow(pyreonZoom, 1.0 / pyreonZoomBy.toDouble(), 0.5), -(pyreonPan.x / pyreonDensity).toDouble() / ${W}) } }`
   }
-  return kotlinFrameHostWithDensity(e, lets, cmds, tap, W, H, hasWidth, indent, zoomed || tap !== '')
+  // The navigator's drag: a Box laid over the strip (its own pointerInput, so
+  // the canvas gestures never see it), offset from the host's top edge.
+  const overlay = navigating
+    ? `Box(modifier = Modifier.fillMaxWidth().offset(y = ((${H})${below}).dp).height((pyreonNavigator.height).dp).pointerInput(Unit) { detectDragGestures(onDragStart = { pyreonStart -> pyreonNavAnchor = pyreonZoom; pyreonNavDx = 0.0; pyreonNavKind = navigatorHit(pyreonNavigator.strip, pyreonZoom, (pyreonStart.x / pyreonDensity).toDouble()) }, onDragEnd = { pyreonNavKind = 0 }, onDrag = { pyreonChange, pyreonDrag -> pyreonChange.consume(); pyreonNavDx = pyreonNavDx + (pyreonDrag.x / pyreonDensity).toDouble(); pyreonZoom = navigatorDrag(pyreonNavKind, pyreonNavAnchor, pyreonNavDx / pyreonNavigator.strip.w) }) })`
+    : undefined
+  return kotlinFrameHostWithDensity(e, lets, cmds, tap, W, H, hasWidth, indent, windowed || tap !== '', overlay)
 }
 
 /** `kotlinFrameHost` with hoisted `val`s in the BoxWithConstraints scope (always emitted, so the vals have a scope). */
@@ -9727,13 +9752,20 @@ function kotlinPlotRowMap(rows: string, body: string, zoomed: boolean): string {
 }
 
 /** `kotlinFrameHostWithTap` that can also force the density line (the transform gesture reads it even without a tap). */
-function kotlinFrameHostWithDensity(e: Extract<ExprIR, { kind: 'jsx-element' }>, lets: readonly string[], cmds: string, tap: string, W: string, H: string, hasWidth: boolean, indent: number, needsDensity: boolean): string {
+function kotlinFrameHostWithDensity(e: Extract<ExprIR, { kind: 'jsx-element' }>, lets: readonly string[], cmds: string, tap: string, W: string, H: string, hasWidth: boolean, indent: number, needsDensity: boolean, overlay?: string): string {
   const size = hasWidth ? `Modifier.width((${W}).dp).height((${H}).dp)` : `Modifier.fillMaxWidth().height((${H}).dp)`
   const generic = emitKotlinLayoutModifier(e)
   const titleRaw = readStaticAttrKotlin(e, 'title')
   const titleMod = typeof titleRaw === 'string' ? `.semantics { contentDescription = ${JSON.stringify(titleRaw)} }` : ''
-  const canvas = `PyreonChartCanvas(cmds = ${cmds}, modifier = ${size + tap + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))})`
   const pad = ' '.repeat(indent + 2)
+  const identity = titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))
+  // With an overlay the host is a Box carrying the size + identity modifiers; the
+  // canvas fills it and the overlay sits on top. Without one, the canvas IS the
+  // host (modifier order unchanged: size, gestures, identity).
+  const canvas =
+    overlay === undefined
+      ? `PyreonChartCanvas(cmds = ${cmds}, modifier = ${size + tap + identity})`
+      : `Box(modifier = ${size + identity}) {\n${pad}  PyreonChartCanvas(cmds = ${cmds}, modifier = Modifier.fillMaxSize()${tap})\n${pad}  ${overlay}\n${pad}}`
   const widthLine = hasWidth ? '' : `${pad}val pyreonW = maxWidth.value.toDouble()\n`
   const densityLine = needsDensity ? `${pad}val pyreonDensity = LocalDensity.current.density\n` : ''
   const body = lets.map((l) => `${pad}${l}\n`).join('')
@@ -9788,3 +9820,12 @@ function kotlinLegendInteraction(e: Extract<ExprIR, { kind: 'jsx-element' }>): K
   }
 }
 
+
+// ---- `<PlotChart navigator>` — the slider dataZoom, engine-laid-out ------------
+//
+// Compose twin of the Swift lowering: the strip is `renderNavigator` over the
+// first mark across ALL rows, and its drag lives on its own Box laid over the
+// strip (offset from the top of the host, above the preset strip), so the
+// plot's tap and transform gestures never see a touch that starts there.
+
+/** `kotlinFrameHostWithTap` that can also force the density line (the transform gesture reads it even without a tap) and lay an `overlay` composable over the canvas. */

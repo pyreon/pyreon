@@ -13,7 +13,6 @@ import { renderLegend } from './legend'
 import type { LegendPager } from './legend'
 import { renderTitle } from './title'
 import { sameShape, sameValues, tweenValues } from './tween'
-import { withAlpha } from './radar'
 import { placeTooltip, tooltipAt, tooltipLines } from './tooltip'
 import type { TooltipContent } from './tooltip'
 import { defaultTheme, layoutChart, renderChart, resolveY2Domain, resolveYDomain, seriesOnRightAxis } from './render'
@@ -26,8 +25,9 @@ import type { Mark } from './marks'
 import { chartTable, describeChart } from './a11y'
 import { brushRange } from './brush'
 import { hideHiddenSeries, legendHitIndex, legendToggle, pagerHit } from './legend-toggle'
+import { navigatorDrag, navigatorHit, renderNavigator } from './navigator'
 import { presetHit, presetWindow, renderPresets } from './presets'
-import { clampWindow, isFullWindow, panWindow, sliceRange, zoomWindow } from './zoom'
+import { isFullWindow, panWindow, sliceRange, zoomWindow } from './zoom'
 import type { ZoomWindow } from './zoom'
 import type { ChartLink } from './link'
 import type { Formatter } from './format'
@@ -348,7 +348,8 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   let bottomOffset = 0.0
   // Navigator strip rect from the last draw + the in-flight band drag.
   let navRect: Rect | null = null
-  let navDrag: { kind: 'move' | 'left' | 'right'; startWin: ZoomWindow } | null = null
+  // 1 = band, 2 = left handle, 3 = right handle (the engine's `navigatorHit`).
+  let navDrag: { kind: number; startWin: ZoomWindow } | null = null
   const navJson = signal('null')
   // Keyboard focus datum (LOCAL index into the visible rows); -1 = none.
   const focusIdx = signal(-1)
@@ -571,39 +572,21 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     paint(ctx, [...legendCmds, ...shifted, ...bandShifted, ...crossShifted, ...ringShifted, ...navCmds, ...presetCmds], w, hgt, FONT)
   }
 
-  /** The navigator strip: a mini area of the first series over ALL rows, and the window band with its handles. */
+  /** The navigator strip — engine-laid-out (iOS and Android drive the same one); `navRect` is what the drag measures against. */
   const navigatorCmds = (allRows: T[], w: Double, y0: Double, navH: Double): DrawCmd[] => {
     navRect = null
     if (props.navigator !== true || navH <= 0.0) return []
-    const inset = 8.0
-    const strip: Rect = { x: inset, y: y0 + 6.0, w: Math.max(0.0, w - inset * 2.0), h: navH - 12.0 }
-    navRect = strip
-    const out: DrawCmd[] = []
-    out.push({ kind: 'rect', rect: strip, fill: props.theme?.grid ?? defaultTheme.grid })
     const series = resolveMarks(allRows, props.marks)
     const first = series.find((x) => x.values.length > 1)
-    if (first !== undefined) {
-      let lo = Infinity
-      let hi = -Infinity
-      for (const v of first.values) {
-        if (v !== v) continue
-        if (v < lo) lo = v
-        if (v > hi) hi = v
-      }
-      if (lo !== Infinity) {
-        const safe = first.values.map((v) => (v !== v ? lo : v))
-        const pts = layoutSeriesPoints(safe, strip, { min: Math.min(lo, 0.0), max: hi <= lo ? lo + 1.0 : hi })
-        const last = pts[pts.length - 1]!
-        out.push({ kind: 'polygon', points: [...pts, { x: last.x, y: strip.y + strip.h }, { x: pts[0]!.x, y: strip.y + strip.h }], fill: withAlpha(first.color, 0.35) })
-      }
-    }
-    const win = zoomWin() ?? { start: 0.0, end: 1.0 }
-    const bx0 = strip.x + strip.w * win.start
-    const bx1 = strip.x + strip.w * win.end
-    out.push({ kind: 'rect', rect: { x: bx0, y: strip.y, w: bx1 - bx0, h: strip.h }, fill: 'rgba(37,99,235,0.18)' })
-    out.push({ kind: 'rect', rect: { x: bx0 - 3.0, y: strip.y, w: 6.0, h: strip.h }, fill: '#2563eb' })
-    out.push({ kind: 'rect', rect: { x: bx1 - 3.0, y: strip.y, w: 6.0, h: strip.h }, fill: '#2563eb' })
-    return out
+    const l = renderNavigator(
+      first?.values ?? [],
+      first?.color ?? '#000000',
+      zoomWin() ?? { start: 0.0, end: 1.0 },
+      { x: 0.0, y: 0.0, w, h: y0 + navH },
+      props.theme?.grid ?? defaultTheme.grid,
+    )
+    navRect = l.strip
+    return l.cmds
   }
 
   /** A dashed rectangle around the focused datum's column — the keyboard focus ring. */
@@ -856,10 +839,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const pressY = ev.clientY - rect.top
     if (props.navigator === true && navRect !== null && pressY >= navRect.y && pressY <= navRect.y + navRect.h) {
       const win = zoomWin() ?? { start: 0.0, end: 1.0 }
-      const bx0 = navRect.x + navRect.w * win.start
-      const bx1 = navRect.x + navRect.w * win.end
-      const kind = Math.abs(dragStartX - bx0) <= 6.0 ? 'left' : Math.abs(dragStartX - bx1) <= 6.0 ? 'right' : 'move'
-      navDrag = { kind, startWin: win }
+      navDrag = { kind: navigatorHit(navRect, win, dragStartX), startWin: win }
       dragMode = 'nav'
       suppressClick = false
       ev.preventDefault()
@@ -903,14 +883,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       if (Math.abs(x - dragStartX) > 3.0) dragMoved = true
       if (dragMode === 'nav') {
         if (navDrag !== null && navRect !== null && navRect.w > 0.0) {
-          const f = (x - dragStartX) / navRect.w
-          const sw = navDrag.startWin
-          const next =
-            navDrag.kind === 'move'
-              ? clampWindow({ start: sw.start + f, end: sw.end + f })
-              : navDrag.kind === 'left'
-                ? clampWindow({ start: Math.min(sw.start + f, sw.end - 0.02), end: sw.end })
-                : clampWindow({ start: sw.start, end: Math.max(sw.end + f, sw.start + 0.02) })
+          const next = navigatorDrag(navDrag.kind, navDrag.startWin, (x - dragStartX) / navRect.w)
           zoomWin.set(isFullWindow(next) ? null : next)
         }
         dragLastX = x

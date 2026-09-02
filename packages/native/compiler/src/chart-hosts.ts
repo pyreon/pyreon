@@ -277,4 +277,4 @@ export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'strin
 ]
 
 /** PlotChart props that change what is DRAWN and have no native lowering yet — reported by name when present. */
-export const PLOT_UNLOWERED_PROPS: readonly string[] = ['brush', 'navigator']
+export const PLOT_UNLOWERED_PROPS: readonly string[] = ['brush']

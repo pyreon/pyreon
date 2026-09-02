@@ -493,7 +493,7 @@ public struct LongPressGesture: Gesture {
 // mirrors the real gesture's \`translation: CGSize\` (width/height Doubles) so
 // an emit reading a member DragGesture.Value doesn't have fails typecheck.
 public struct DragGesture: Gesture {
-  public struct Value { public var translation: CGSize = CGSize(); public var location: CGPoint = CGPoint() }
+  public struct Value { public var translation: CGSize = CGSize(); public var location: CGPoint = CGPoint(); public var startLocation: CGPoint = CGPoint() }
   public init(minimumDistance: Double = 10) {}
   public func onChanged(_ action: @escaping (Value) -> Void) -> DragGesture { self }
   public func onEnded(_ action: @escaping (Value) -> Void) -> DragGesture { self }

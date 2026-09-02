@@ -477,13 +477,24 @@ class SemanticsPropertyReceiver {
 // detectHorizontalDragGestures (onDragStart takes an Offset; the drag
 // callback takes (PointerInputChange, Float)) so an emit passing the
 // wrong shape fails the kotlinc gate instead of being masked.
-class PointerInputChange
+class PointerInputChange {
+  fun consume() {}
+}
 class Offset(val x: Float = 0f, val y: Float = 0f)
 class PointerInputScope {
   // The chart-host tap emit (chart-hosts.ts): a tap position in px.
   @Suppress("UNUSED_PARAMETER", "RedundantSuspendModifier")
   suspend fun detectTapGestures(onTap: ((Offset) -> Unit)? = null) {}
   suspend fun detectTransformGestures(onGesture: (Offset, Offset, Float, Float) -> Unit) {}
+  // <PlotChart navigator> (chart-hosts.ts): the strip's drag overlay. The real
+  // signature — onDrag takes (PointerInputChange, Offset) — so a wrong shape fails here.
+  @Suppress("UNUSED_PARAMETER", "RedundantSuspendModifier")
+  suspend fun detectDragGestures(
+    onDragStart: (Offset) -> Unit = {},
+    onDragEnd: () -> Unit = {},
+    onDragCancel: () -> Unit = {},
+    onDrag: (PointerInputChange, Offset) -> Unit,
+  ) {}
   @Suppress("UNUSED_PARAMETER", "RedundantSuspendModifier")
   suspend fun detectHorizontalDragGestures(
     onDragStart: (Offset) -> Unit = {},
@@ -648,6 +659,8 @@ object Modifier {
   // ships it from androidx.compose.foundation.layout.
   @Suppress("UNUSED_PARAMETER")
   fun fillMaxWidth(fraction: Float = 1f): Modifier = this
+  fun fillMaxSize(fraction: Float = 1f): Modifier = this
+  fun offset(x: Dp = 0.dp, y: Dp = 0.dp): Modifier = this
   // --- Phase P2.2 content: <Icon>/<Image> sizing. Real Compose ships
   // size/width/height from androidx.compose.foundation.layout.
   @Suppress("UNUSED_PARAMETER")
