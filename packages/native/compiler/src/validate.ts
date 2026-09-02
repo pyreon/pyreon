@@ -19,8 +19,8 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { KOTLIN_COMPOSE_STUBS } from './kotlin-stubs'
-import { SWIFT_UI_STUBS } from './swift-stubs'
+import { KOTLIN_CHART_VIEW_STUBS, KOTLIN_COMPOSE_STUBS } from './kotlin-stubs'
+import { SWIFT_CHART_VIEW_STUBS, SWIFT_UI_STUBS } from './swift-stubs'
 import {
   readToolProbe,
   withVerdictCache,
@@ -446,7 +446,6 @@ export function _swiftInputPrelude(stripped: string, observation: string): strin
   return foundation + SWIFT_NETWORKING_SHIM + observation
 }
 
-
 // ---------------------------------------------------------------------------
 // `@pyreon/charts/plot` hosts: an emitted `<SankeyChart>` names the GENERATED
 // engine (`layoutSankey` / `renderSankey` / the family structs) and the
@@ -456,7 +455,9 @@ export function _swiftInputPrelude(stripped: string, observation: string): strin
 // bundle pulls in the REAL committed engine plus the canvas-owned draw-list
 // types extracted VERBATIM (exactly how native-chart-engine-generated.test.ts
 // compiles them), and stubs only the two views the engine never declares
-// (GeometryReader, PyreonChartCanvas). Outside the monorepo the runtime files
+// (GeometryReader, PyreonChartCanvas). Those two view stubs live in
+// swift-stubs.ts / kotlin-stubs.ts — where the stub-coverage ratchet looks —
+// so `PyreonChartCanvas` counts as covered. Outside the monorepo the runtime files
 // are absent: the view stubs still apply and the engine symbols are reported
 // missing — a loud outcome, never a silent pass.
 // ---------------------------------------------------------------------------
@@ -472,19 +473,6 @@ function readIfPresent(p: string): string | undefined {
   }
 }
 
-const SWIFT_CHART_VIEW_STUBS = `
-// ---- @pyreon/charts/plot hosts (chart-hosts.ts emit) ----
-public struct GeometryProxy { public var size: CGSize = CGSize() }
-public struct GeometryReader<Content: View>: View {
-  public init(@ViewBuilder content: @escaping (GeometryProxy) -> Content) {}
-  public typealias Body = Never
-}
-public struct PyreonChartCanvas: View {
-  public init(cmds: [PyreonDrawCmd], fontFamily: String? = nil) {}
-  public typealias Body = Never
-}
-`
-
 /** The Swift stub text a chart-host emit needs beyond the SwiftUI bundle; `''` when no host is present. */
 export function swiftChartAugmentation(source: string): string {
   if (!CHART_HOST_MARK.test(source)) return ''
@@ -496,13 +484,6 @@ export function swiftChartAugmentation(source: string): string {
   const types = start >= 0 && end > start ? canvas.slice(start, end) : ''
   return SWIFT_CHART_VIEW_STUBS + '\n' + types + '\n' + engine.replace(SWIFT_STUBBED_IMPORTS, '')
 }
-
-const KOTLIN_CHART_VIEW_STUBS = `
-// ---- @pyreon/charts/plot hosts (chart-hosts.ts emit) ----
-@Composable
-@Suppress("UNUSED_PARAMETER")
-fun PyreonChartCanvas(cmds: List<PyreonDrawCmd>, modifier: Modifier = Modifier) {}
-`
 
 /** The Kotlin stub text a chart-host emit needs beyond the Compose bundle; `''` when no host is present. */
 export function kotlinChartAugmentation(source: string): string {
