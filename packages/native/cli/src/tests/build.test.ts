@@ -575,6 +575,20 @@ describe('@pyreon/native-cli build', () => {
     expect(plain).not.toContain('detectHorizontalDragGestures')
   })
 
+  it('Kotlin <PlotChart dataZoom> pulls the transform-gesture import', () => {
+    // The pinch + pan emit (chart-hosts.ts) calls `detectTransformGestures`
+    // inside `.pointerInput`; both live in sub-packages the star imports do
+    // not cover. The validate loop cannot see a missing import (stubs), so
+    // without this arm the first zoomed chart fails the real gradle build.
+    const zoomed = conditionalKotlinImports(
+      'PyreonChartCanvas(cmds = pyreonCmds, modifier = Modifier.fillMaxWidth().pointerInput(Unit) { detectTransformGestures { _, pyreonPan, pyreonZoomBy, _ -> pyreonZoom = panWindow(zoomWindow(pyreonZoom, 1.0 / pyreonZoomBy.toDouble(), 0.5), 0.0) } })',
+    )
+    expect(zoomed).toContain('import androidx.compose.ui.input.pointer.pointerInput')
+    expect(zoomed).toContain('import androidx.compose.foundation.gestures.detectTransformGestures')
+    const tapOnly = conditionalKotlinImports('PyreonChartCanvas(cmds = pyreonCmds, modifier = Modifier.pointerInput(Unit) { detectTapGestures { } })')
+    expect(tapOnly).not.toContain('detectTransformGestures')
+  })
+
   it('Kotlin .combinedClickable( still does NOT pull the plain clickable import', () => {
     // Guards the widened predicate against over-matching: `combinedClickable`
     // capitalises the C, so `.clickable` is not a substring of it. If this ever
