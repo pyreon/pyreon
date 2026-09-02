@@ -73,6 +73,8 @@ import { Toaster, toast } from '@pyreon/toast'
 import { announce } from '@pyreon/a11y'
 import { useUrlState } from '@pyreon/url-state'
 import { signal, computed } from '@pyreon/reactivity'
+import { SankeyChart } from '@pyreon/charts/plot'
+import type { SankeyLink, SankeyNode } from '@pyreon/charts/plot'
 import { useForm } from '@pyreon/form'
 import { useFetch } from '@pyreon/hooks'
 import { defineStore } from '@pyreon/store'
@@ -412,6 +414,17 @@ function TaskDetailPage(props: { params: { id: string } }) {
 // the average rendering AT ALL proves the Double pipeline.
 type Scores = { math: number; art: number; gym: number }
 
+// Device proof for the plot engine's NATIVE hosts (#3255): the same
+// `<SankeyChart>` JSX renders on web (canvas), iOS (SwiftUI Canvas) and
+// Android (Compose Canvas) over the generated PyreonChartEngine — the
+// data is module-level literals typed by the engine's own structs, the
+// shape the compiler's external struct registry exists for.
+const FLOW_NODES: SankeyNode[] = [{ name: 'Backlog' }, { name: 'Doing' }, { name: 'Done' }]
+const FLOW_LINKS: SankeyLink[] = [
+  { source: 'Backlog', target: 'Doing', value: 8 },
+  { source: 'Doing', target: 'Done', value: 5 },
+]
+
 function StatsPage() {
   const navigate = useNavigate()
   const scores = signal<Scores>({ math: 82, art: 91, gym: 74 })
@@ -429,6 +442,7 @@ function StatsPage() {
       <For each={subjects} by={(name: string) => name}>
         {(name: string) => <Text>{name}</Text>}
       </For>
+      <SankeyChart nodes={FLOW_NODES} links={FLOW_LINKS} height={160} title="Task flow" data-testid="stats-flow" />
       <Button onPress={() => navigate('/tasks')} data-testid="stats-back">
         Back to tasks
       </Button>
