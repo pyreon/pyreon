@@ -14,6 +14,7 @@ const EXPECTED = [
   'resolveDataset', 'applyTransforms', 'graphicCommands', 'visualMapCommands', 'customCommands',
   'registerTheme', 'resolveTheme', 'registerLocale', 'numberFormatter', 'registerMap',
   'zoomWindow', 'brushRange', 'renderTitle',
+  'OptionChart', 'GanttChart', 'createChartLink', 'sonifyValues', 'compiledCommands', 'valueToHz', 'resolveTimeline', 'splitGrids',
 ] as const
 
 describe('@pyreon/charts/plot public surface', () => {

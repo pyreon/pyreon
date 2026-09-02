@@ -5641,6 +5641,73 @@ if (warnings.length > 0) console.warn(warnings.map((w) => w.code + ' @ ' + w.pat
 - Expecting \`map\` series to work without \`registerMap\` — an unregistered name warns by name and draws nothing
 - Using this for the interactive host — \`optionToSvg\` is the server/static path; mount \`<PlotChart>\` or a family component for pointer interaction`,
   },
+
+  'charts/OptionChart': {
+    signature: '(props: OptionChartProps) => VNode',
+    example: `import { OptionChart } from '@pyreon/charts/plot'
+import type { EChartsOption } from '@pyreon/charts/plot'
+import { signal } from '@pyreon/reactivity'
+
+const option = signal<EChartsOption>({ xAxis: { data: ['Mon', 'Tue'] }, yAxis: {}, series: [{ type: 'bar', data: [120, 200] }] })
+<OptionChart option={() => option()} width={640} height={320} theme="dark" onSelect={(hit) => hit && console.log(hit.name, hit.value)} />`,
+    notes: `The ECharts-option-driven host: an ECharts-shaped option in (a value or an accessor), a live chart out. Cartesian plans — single grid or multi-\`grid\` — paint on a canvas through the SAME \`compiledCommands\` that \`optionToSvg\` serialises, so the host and the server never disagree on a pixel; family and geo plans render through the facade into an inline \`<svg>\`. A \`timeline\` steps on \`autoPlay\` (one interval, owned by the effect and cleared on every option change and on unmount) or is driven by \`timelineIndex\`; \`onSelect\` hit-tests clicks against the painted geometry (bars by rect, other series by nearest x) and reports \`{ seriesIndex, dataIndex, name, value }\`; \`theme\` / \`locale\` reach the compilers; the hidden table lists every series by category. Interaction that needs the row model — tooltip, dataZoom, brush, navigator, keyboard — lives on \`<PlotChart>\`, whose \`marks\` API is the engine's native shape. See also: optionToSvg, PlotChart, compileOption.`,
+    mistakes: `- Passing the option as a plain object and expecting updates — a value is static; pass an accessor (\`option={() => option()}\`) so a signal write repaints
+- Reading \`hit.dataIndex\` as a ROW index on a multi-grid option — it is the index within the hit grid's series; the grid is implied by \`seriesIndex\`
+- Expecting \`tooltip\` / \`dataZoom\` from the option to install pointer handlers — the option host paints what the facade compiles; pointer interaction is \`<PlotChart>\`'s
+- Setting \`timelineIndex\` AND \`timeline.autoPlay\` — an explicit index wins and auto-play is suspended while it is set
+- Reaching into the inline \`<svg>\` of a family option for hit-testing — families keep their own canvas hosts (\`<PieChart>\`, \`<SankeyChart>\`, …) for interaction`,
+  },
+
+  'charts/GanttChart': {
+    signature: '(props: GanttChartProps) => VNode',
+    example: `import { GanttChart } from '@pyreon/charts/plot'
+import type { GanttTask } from '@pyreon/charts/plot'
+
+const tasks: GanttTask[] = [
+  { id: 'design', name: 'Design', start: '2024-03-01', end: '2024-03-10', progress: 0.5, group: 'Phase 1' },
+  { id: 'build', name: 'Build', start: '2024-03-08', end: '2024-03-24', dependencies: ['design'], group: 'Phase 1' },
+  { id: 'launch', name: 'Launch', start: '2024-03-25', milestone: true, dependencies: ['build'], group: 'Phase 2' },
+]
+<GanttChart tasks={tasks} gantt={{ today: '2024-03-16' }} height={240} onSelect={(row) => row && console.log(row.task.id)} />`,
+    notes: `The Gantt family — one row per task on a calendar-aligned time axis. \`layoutGantt\` sizes the label column by the widest name (capped by \`labelFraction\`), picks the tick UNIT from the span (day / week / month / quarter / year, ticks aligned to UTC calendar boundaries), lays a lane header wherever \`group\` changes, places bars on the padded (or explicit \`domain\`) time range, milestones as diamonds at their instant, dependency ELBOWS from a predecessor's end to a successor's start, and a \`today\` marker. \`renderGantt\` draws lane bands, grid, ticks, bars with darker \`progress\` insets, elbows and the dashed today line, with an entrance \`progress\` that grows the bars; \`hitGantt\` prefers the bar, then the row band right of the labels; \`ganttToSvg\` is the server path. ISO \`YYYY-MM-DD\` strings or epoch ms both work as dates. See also: PlotChart, CalendarChart.`,
+    mistakes: `- Giving a milestone an \`end\` — a milestone is an instant; \`end\` is ignored and the diamond sits at \`start\`
+- Expecting a dependency on an unknown id to throw — it is skipped silently by design (a partial import must still draw); validate ids upstream
+- Passing local-time \`Date\` objects — dates are UTC epoch ms or ISO date strings; a \`Date\` must be converted with \`getTime()\`
+- Reading \`rect.h\` as the row height — \`rect\` is the BAR (60% of the row); \`band\` is the full row
+- Mixing \`group\`s out of order — a lane header is emitted at every CHANGE of \`group\`, so interleaved groups produce repeated headers`,
+  },
+
+  'charts/createChartLink': {
+    signature: '() => ChartLink',
+    example: `import { PlotChart, createChartLink, line, bar } from '@pyreon/charts/plot'
+
+interface Bar { t: string; close: number; volume: number }
+declare const price: Bar[]
+const link = createChartLink()
+<PlotChart data={price} x={(d) => d.t} marks={[line((d: Bar) => d.close)]} dataZoom crosshair navigator link={link} />
+<PlotChart data={price} x={(d) => d.t} marks={[bar((d: Bar) => d.volume)]} dataZoom crosshair link={link} />`,
+    notes: 'Linked charts (ECharts `connect`): a shared `{ zoom, hover }` pair of signals that every `<PlotChart link>` in a group uses IN PLACE of its private dataZoom window and crosshair datum. No bus, no registry, no unsubscribe — a chart that unmounts simply stops reading them, so there is nothing module-level to leak. Every gesture that writes the window (wheel, pan, brush, navigator drag, zoom presets, double-click reset) and the crosshair datum (hover, leave) therefore propagates to every linked chart; each chart keeps its own series, legend and tooltip. `sonifyValues` accepts the same link to move the crosshair with the sound. See also: PlotChart, sonifyValues.',
+    mistakes: `- Creating the link inside the component body of a chart that re-mounts — every mount then gets a fresh link and nothing stays linked; create it where the group lives
+- Linking charts with DIFFERENT category counts — the shared window is a fraction and the hover a datum index, so they only line up when the charts share an x range
+- Linking a pie or a treemap — the link carries a cartesian window + datum; the families have no shared datum index
+- Expecting \`link.zoom()\` to be non-null at rest — null means the whole range (the untouched state), by the same convention as the host`,
+  },
+
+  'charts/sonifyValues': {
+    signature: '(values: number[], options?: SonifyOptions) => Sonification',
+    example: `import { sonifyValues, createChartLink } from '@pyreon/charts/plot'
+
+declare const closes: number[]
+const link = createChartLink()
+const sound = sonifyValues(closes, { duration: 3000, minHz: 220, maxHz: 880, link })
+<button onClick={() => void sound.play()}>Play</button>
+<button onClick={() => sound.stop()}>Stop</button>`,
+    notes: `A series as sound: each value maps linearly to a pitch between \`minHz\` and \`maxHz\` (\`valueToHz\`, clamped to the domain, NaN stays NaN), one oscillator steps through them over \`duration\`, a gap plays as silence, \`onStep(index)\` fires per datum, and a \`ChartLink\` moves every linked chart's crosshair along with the audio so the eye and the ear read the same datum. \`play()\` resolves when the last datum has sounded or on \`stop()\`; every timer is cleared and the oscillator stopped and disconnected on BOTH endings (a replay never trips a stale-oscillator error). The \`AudioContext\` is injectable for tests and shared contexts; browsers require a user gesture before audio starts, so call \`play()\` from a click. See also: createChartLink, PlotChart.`,
+    mistakes: `- Calling \`play()\` on page load — browsers keep an \`AudioContext\` suspended until a user gesture; wire it to a click
+- Expecting a value that replaces a gap to fade in — a gap is silence and a value snaps in; there is nothing to tween from
+- Sonifying an unnormalised mix of series — the domain defaults to the finite min/max of THESE values; pass \`domain\` to compare two runs on one scale
+- Dropping the returned object — \`stop()\` is the only way to end early, and \`playing()\` is how a play button knows to toggle`,
+  },
   // <gen-docs:api-reference:end @pyreon/charts>
   // ═══════════════════════════════════════════════════════════════════════════
 
