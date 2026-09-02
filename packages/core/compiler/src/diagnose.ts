@@ -40,6 +40,21 @@ export interface ErrorPattern {
  */
 export const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // A real, user-facing error in `@pyreon/router`'s loader path that the
+    // catalog did not teach at all. A cycle in loader data is one of the few
+    // SSR failures that surfaces as a hard 500 with a stack pointing into
+    // framework code, and the cause is almost always an ORM instance rather
+    // than anything the author wrote deliberately — so the paste-the-error path
+    // is exactly where it should be answered.
+    pattern: /\[Pyreon\] Loader returned circular reference at|Loader returned circular reference/i,
+    diagnose: () => ({
+      cause:
+        'A route loader returned an object graph containing a CYCLE, and loader data must be serialized into the page as JSON so the client can hydrate without re-fetching. The key path in the message is where the cycle closes. The overwhelmingly common source is an ORM instance with its back-references intact — a Prisma/Mongo/TypeORM row whose `author` points at a user whose `posts` array points back at the row. Note the serializer distinguishes a real cycle from a SHARED reference: `{ author: user, lastEditor: user }` is a DAG, not a cycle, and serializes fine — so this error means the graph genuinely closes on itself.',
+      fix: 'Return a plain projection of the fields the route actually renders, rather than the ORM object. That is worth doing regardless of this error: everything a loader returns is embedded in the HTML and shipped to every visitor, so returning a whole row also ships columns the page never displays. If you need the nested shape, select it explicitly (Prisma `select`, a Mongo projection) or map it yourself — a custom `replacer` is not an option, because the framework owns this serialization.',
+      fixCode: "// throws — `post.author.posts` points back at `post`\n// export const loader = () => db.post.findUnique({ where: { id }, include: { author: true } })\n\n// returns a plain projection: no cycle, and no columns the page never renders\nexport const loader = async () => {\n  const post = await db.post.findUnique({\n    where: { id },\n    select: { id: true, title: true, body: true, author: { select: { id: true, name: true } } },\n  })\n  return { post }\n}",
+    }),
+  },
+  {
     // The residual footgun left by narrowing the native audit's
     // `native-unsupported-decl` rule. That rule used to flag EVERY top-level
     // `interface`, on the false premise that PMTC drops them silently — it

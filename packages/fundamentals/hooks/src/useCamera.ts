@@ -1,5 +1,7 @@
 import { isClient } from '@pyreon/reactivity'
 
+import { createFilePicker } from './file-picker'
+
 export interface UseCameraResult {
   /**
    * Open the platform camera and resolve the captured photo's URI, or `null`
@@ -43,43 +45,16 @@ export interface UseCameraResult {
  * ```
  */
 export function useCamera(): UseCameraResult {
+  const pick = createFilePicker((input) => {
+    input.accept = 'image/*'
+    // The whole reason this works on the web: `capture` asks a mobile
+    // browser for the CAMERA rather than the gallery. Desktop browsers
+    // ignore it and show a file dialog, which is the honest degradation —
+    // there is no camera flow to open.
+    input.setAttribute('capture', 'environment')
+  })
   return {
+    capture: pick,
     isAvailable: () => isClient,
-
-    capture: () =>
-      new Promise<string | null>((resolve) => {
-        if (!isClient) {
-          resolve(null)
-          return
-        }
-        const input = document.createElement('input')
-        input.type = 'file'
-        input.accept = 'image/*'
-        // The whole reason this works on the web: `capture` asks a mobile
-        // browser for the CAMERA rather than the gallery. Desktop browsers
-        // ignore it and show a file dialog, which is the honest degradation —
-        // there is no camera flow to open.
-        input.setAttribute('capture', 'environment')
-        input.style.display = 'none'
-
-        let settled = false
-        const settle = (value: string | null) => {
-          if (settled) return
-          settled = true
-          input.remove()
-          resolve(value)
-        }
-
-        input.addEventListener('change', () => {
-          const file = input.files?.[0]
-          settle(file ? URL.createObjectURL(file) : null)
-        })
-        // Cancel fires on modern engines; without it a dismissed sheet would
-        // leave the promise pending forever and the input in the DOM.
-        input.addEventListener('cancel', () => settle(null))
-
-        document.body.append(input)
-        input.click()
-      }),
   }
 }

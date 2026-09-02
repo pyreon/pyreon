@@ -6,6 +6,18 @@
 
 import type { EChartsOption, OptionWarning } from './option'
 import { candlestickToSvg, gaugeToSvg, heatmapToSvg, pieToSvg, radarToSvg } from './family-svg'
+import { funnelToSvg } from './funnel'
+import { treemapToSvg } from './treemap'
+import type { TreeNode, TreemapOptions } from './treemap'
+import { sunburstToSvg } from './sunburst'
+import type { SunburstOptions } from './sunburst'
+import { treeToSvg } from './tree'
+import type { TreeOptions, TreeOrient } from './tree'
+import { sankeyToSvg } from './sankey'
+import type { SankeyLink, SankeyNode, SankeyOptions } from './sankey'
+import { graphToSvg } from './graph'
+import type { GraphLink, GraphNode, GraphOptions } from './graph'
+import type { FunnelOptions } from './funnel'
 import type { RadarAxis } from './radar'
 import type { Double } from './types'
 
@@ -15,6 +27,12 @@ export type FamilyPlan =
   | { kind: 'radar'; axes: RadarAxis[]; rows: { values: Double[]; name: string; color: string | undefined }[]; fillAlpha: Double; showLegend: boolean; title: string | undefined }
   | { kind: 'candlestick'; rows: { x: string; open: Double; high: Double; low: Double; close: Double }[]; upColor: string | undefined; downColor: string | undefined; title: string | undefined }
   | { kind: 'heatmap'; rows: { x: string; y: string; value: Double }[]; colors: string[] | undefined; title: string | undefined }
+  | { kind: 'funnel'; rows: { value: Double; name: string; color: string | undefined }[]; funnel: FunnelOptions; title: string | undefined }
+  | { kind: 'treemap'; nodes: TreeNode[]; treemap: TreemapOptions; title: string | undefined }
+  | { kind: 'sunburst'; nodes: TreeNode[]; innerRatio: Double; sunburst: SunburstOptions; title: string | undefined }
+  | { kind: 'tree'; nodes: TreeNode[]; tree: TreeOptions; title: string | undefined }
+  | { kind: 'sankey'; nodes: SankeyNode[]; links: SankeyLink[]; sankey: SankeyOptions; title: string | undefined }
+  | { kind: 'graph'; nodes: GraphNode[]; links: GraphLink[]; graph: GraphOptions; title: string | undefined }
 
 export interface CompiledFamily {
   plan: FamilyPlan
@@ -22,7 +40,7 @@ export interface CompiledFamily {
   supported: boolean
 }
 
-const FAMILY_TYPES = new Set(['pie', 'gauge', 'radar', 'candlestick', 'heatmap'])
+const FAMILY_TYPES = new Set(['pie', 'gauge', 'radar', 'candlestick', 'heatmap', 'funnel', 'treemap', 'sunburst', 'tree', 'sankey', 'graph'])
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const num = (v: unknown): number | null => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null
@@ -51,6 +69,12 @@ const KNOWN_BY_FAMILY: Record<string, Set<string>> = {
   radar: new Set(['type', 'name', 'data', 'areaStyle', 'itemStyle', 'lineStyle', 'symbol', 'color']),
   candlestick: new Set(['type', 'name', 'data', 'itemStyle', 'color']),
   heatmap: new Set(['type', 'name', 'data', 'label', 'itemStyle', 'emphasis', 'color']),
+  funnel: new Set(['type', 'name', 'data', 'sort', 'gap', 'minSize', 'label', 'itemStyle', 'funnelAlign', 'color', 'emphasis']),
+  treemap: new Set(['type', 'name', 'data', 'leafDepth', 'label', 'itemStyle', 'color', 'emphasis', 'roam', 'nodeClick', 'breadcrumb']),
+  sunburst: new Set(['type', 'name', 'data', 'radius', 'center', 'sort', 'startAngle', 'label', 'itemStyle', 'color', 'emphasis', 'nodeClick', 'levels']),
+  tree: new Set(['type', 'name', 'data', 'orient', 'layout', 'symbol', 'symbolSize', 'initialTreeDepth', 'edgeShape', 'label', 'itemStyle', 'lineStyle', 'leaves', 'roam', 'expandAndCollapse', 'emphasis', 'top', 'left', 'right', 'bottom']),
+  sankey: new Set(['type', 'name', 'data', 'nodes', 'links', 'edges', 'nodeWidth', 'nodeGap', 'nodeAlign', 'layoutIterations', 'orient', 'draggable', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'levels', 'top', 'left', 'right', 'bottom']),
+  graph: new Set(['type', 'name', 'data', 'nodes', 'links', 'edges', 'categories', 'layout', 'symbol', 'symbolSize', 'force', 'circular', 'roam', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'draggable', 'edgeSymbol', 'edgeSymbolSize', 'focusNodeAdjacency', 'zoom', 'center', 'left', 'top', 'right', 'bottom', 'width', 'height', 'coordinateSystem']),
 }
 
 /**
@@ -204,6 +228,240 @@ export function compileFamily(option: EChartsOption): CompiledFamily | null {
     }
   }
 
+  if (type === 'graph') {
+    const rawNodes = Array.isArray(s['nodes']) ? (s['nodes'] as unknown[]) : data
+    const nodes: GraphNode[] = []
+    for (let i = 0; i < rawNodes.length; i++) {
+      const d = rawNodes[i]
+      if (!isObj(d)) {
+        warn('series-data-shape', 'series[0].data[' + String(i) + ']', 'A graph node must be an object; it was skipped.')
+        continue
+      }
+      const id = typeof d['id'] === 'string' ? (d['id'] as string) : typeof d['id'] === 'number' ? String(d['id']) : typeof d['name'] === 'string' ? (d['name'] as string) : 'Node ' + String(i + 1)
+      const item = isObj(d['itemStyle']) ? d['itemStyle'] : {}
+      const v = num(d['value'])
+      const cat = num(d['category'])
+      const x = num(d['x'])
+      const y = num(d['y'])
+      nodes.push({
+        id,
+        ...(typeof d['name'] === 'string' ? { name: d['name'] as string } : {}),
+        ...(v !== null ? { value: v } : {}),
+        ...(cat !== null ? { category: cat } : {}),
+        ...(typeof item['color'] === 'string' ? { color: item['color'] as string } : {}),
+        ...(x !== null ? { x } : {}),
+        ...(y !== null ? { y } : {}),
+      })
+    }
+    const rawLinks = Array.isArray(s['links']) ? (s['links'] as unknown[]) : Array.isArray(s['edges']) ? (s['edges'] as unknown[]) : []
+    const endpoint = (v: unknown): string | null => (typeof v === 'string' ? v : typeof v === 'number' && nodes[v] !== undefined ? nodes[v]!.id : null)
+    const links: GraphLink[] = []
+    for (let i = 0; i < rawLinks.length; i++) {
+      const d = rawLinks[i]
+      const src = isObj(d) ? endpoint(d['source']) : null
+      const tgt = isObj(d) ? endpoint(d['target']) : null
+      if (!isObj(d) || src === null || tgt === null) {
+        warn('series-data-shape', 'series[0].links[' + String(i) + ']', 'A graph link needs a source and a target (name or index); it was skipped.')
+        continue
+      }
+      const v = num(d['value'])
+      links.push({ source: src, target: tgt, ...(v !== null ? { value: v } : {}) })
+    }
+    const label = isObj(s['label']) ? s['label'] : {}
+    const cats = Array.isArray(s['categories']) ? (s['categories'] as unknown[]).map((c, i) => (isObj(c) && typeof c['name'] === 'string' ? (c['name'] as string) : typeof c === 'string' ? c : 'Category ' + String(i + 1))) : undefined
+    if (typeof s['symbolSize'] === 'function') warn('series-option-unsupported', 'series[0].symbolSize', 'A symbolSize FUNCTION is not supported; pass a number or per-node values.')
+    const symbolSize = num(s['symbolSize'])
+    const force = isObj(s['force']) ? s['force'] : {}
+    const repulsion = Array.isArray(force['repulsion']) ? num((force['repulsion'] as unknown[])[0]) : num(force['repulsion'])
+    const edgeLength = Array.isArray(force['edgeLength']) ? num((force['edgeLength'] as unknown[])[0]) : num(force['edgeLength'])
+    const gravity = num(force['gravity'])
+    const layoutRaw = s['layout']
+    const graph: GraphOptions = {
+      layout: layoutRaw === 'circular' ? 'circular' : layoutRaw === 'none' ? 'none' : 'force',
+      showLabels: label['show'] === true,
+      ...(cats !== undefined ? { categories: cats } : {}),
+      ...(symbolSize !== null ? { symbolSize } : {}),
+      ...(repulsion !== null ? { repulsion } : {}),
+      ...(edgeLength !== null ? { linkDistance: edgeLength } : {}),
+      ...(gravity !== null ? { gravity } : {}),
+    }
+    return { plan: { kind: 'graph', nodes, links, graph, title }, warnings, supported }
+  }
+
+  if (type === 'sankey') {
+    const rawNodes = Array.isArray(s['nodes']) ? (s['nodes'] as unknown[]) : data
+    const nodes: SankeyNode[] = []
+    for (let i = 0; i < rawNodes.length; i++) {
+      const d = rawNodes[i]
+      if (!isObj(d) || typeof d['name'] !== 'string') {
+        warn('series-data-shape', 'series[0].data[' + String(i) + ']', 'A sankey node must be an object with a name; it was skipped.')
+        continue
+      }
+      const item = isObj(d['itemStyle']) ? d['itemStyle'] : {}
+      nodes.push({ name: d['name'] as string, ...(typeof item['color'] === 'string' ? { color: item['color'] as string } : {}) })
+    }
+    const rawLinks = Array.isArray(s['links']) ? (s['links'] as unknown[]) : Array.isArray(s['edges']) ? (s['edges'] as unknown[]) : []
+    const links: SankeyLink[] = []
+    for (let i = 0; i < rawLinks.length; i++) {
+      const d = rawLinks[i]
+      const v = isObj(d) ? num(d['value']) : null
+      if (!isObj(d) || typeof d['source'] !== 'string' || typeof d['target'] !== 'string' || v === null) {
+        warn('series-data-shape', 'series[0].links[' + String(i) + ']', 'A sankey link needs string source/target and a numeric value; it was skipped.')
+        continue
+      }
+      links.push({ source: d['source'] as string, target: d['target'] as string, value: v })
+    }
+    if (s['orient'] === 'vertical') warn('series-option-unsupported', 'series[0].orient', 'Vertical sankey is not supported yet; rendered horizontally.')
+    const label = isObj(s['label']) ? s['label'] : {}
+    const nodeWidth = num(s['nodeWidth'])
+    const nodeGap = num(s['nodeGap'])
+    const iterations = num(s['layoutIterations'])
+    const sankey: SankeyOptions = {
+      showLabels: label['show'] !== false,
+      ...(nodeWidth !== null ? { nodeWidth } : {}),
+      ...(nodeGap !== null ? { nodePadding: nodeGap } : {}),
+      ...(iterations !== null ? { iterations } : {}),
+      ...(s['nodeAlign'] === 'left' ? { align: 'left' as const } : {}),
+    }
+    return { plan: { kind: 'sankey', nodes, links, sankey, title }, warnings, supported }
+  }
+
+  if (type === 'tree') {
+    const toNode = (d: unknown, i: number): TreeNode | null => {
+      if (!isObj(d)) return null
+      const kids = Array.isArray(d['children']) ? (d['children'] as unknown[]).map((c, j) => toNode(c, j)).filter((c): c is TreeNode => c !== null) : undefined
+      const v = num(d['value'])
+      const item = isObj(d['itemStyle']) ? d['itemStyle'] : {}
+      const name = typeof d['name'] === 'string' ? (d['name'] as string) : 'Node ' + String(i + 1)
+      return {
+        name,
+        ...(v !== null ? { value: v } : {}),
+        ...(kids !== undefined && kids.length > 0 ? { children: kids } : {}),
+        ...(typeof item['color'] === 'string' ? { color: item['color'] as string } : {}),
+      }
+    }
+    const nodes: TreeNode[] = []
+    for (let i = 0; i < data.length; i++) {
+      const n = toNode(data[i], i)
+      if (n === null) warn('series-data-shape', 'series[0].data[' + String(i) + ']', 'A tree datum must be an object; it was skipped.')
+      else nodes.push(n)
+    }
+    const label = isObj(s['label']) ? s['label'] : {}
+    const orientRaw = s['orient']
+    const orientMap: Record<string, TreeOrient> = { LR: 'LR', RL: 'RL', TB: 'TB', BT: 'BT', horizontal: 'LR', vertical: 'TB' }
+    const orient: TreeOrient = s['layout'] === 'radial' ? 'radial' : (typeof orientRaw === 'string' ? orientMap[orientRaw] : undefined) ?? 'LR'
+    const symbolSize = num(s['symbolSize'])
+    const initialDepth = num(s['initialTreeDepth'])
+    const tree: TreeOptions = {
+      orient,
+      showLabels: label['show'] !== false,
+      ...(symbolSize !== null ? { symbolSize } : {}),
+      ...(initialDepth !== null && initialDepth >= 0 ? { maxDepth: initialDepth + 1 } : {}),
+      ...(s['edgeShape'] === 'polyline' ? { edgeShape: 'elbow' as const } : {}),
+    }
+    return { plan: { kind: 'tree', nodes, tree, title }, warnings, supported }
+  }
+
+  if (type === 'sunburst') {
+    const toNode = (d: unknown, i: number): TreeNode | null => {
+      if (!isObj(d)) return null
+      const kids = Array.isArray(d['children']) ? (d['children'] as unknown[]).map((c, j) => toNode(c, j)).filter((c): c is TreeNode => c !== null) : undefined
+      const v = num(d['value'])
+      const item = isObj(d['itemStyle']) ? d['itemStyle'] : {}
+      const name = typeof d['name'] === 'string' ? (d['name'] as string) : 'Node ' + String(i + 1)
+      return {
+        name,
+        ...(v !== null ? { value: v } : {}),
+        ...(kids !== undefined && kids.length > 0 ? { children: kids } : {}),
+        ...(typeof item['color'] === 'string' ? { color: item['color'] as string } : {}),
+      }
+    }
+    const nodes: TreeNode[] = []
+    for (let i = 0; i < data.length; i++) {
+      const n = toNode(data[i], i)
+      if (n === null) warn('series-data-shape', 'series[0].data[' + String(i) + ']', 'A sunburst datum must be an object; it was skipped.')
+      else nodes.push(n)
+    }
+    const label = isObj(s['label']) ? s['label'] : {}
+    // ECharts: radius ['25%', '90%'] — the hole is the inner/outer ratio; a
+    // single value is the outer radius with no hole. startAngle is degrees,
+    // counter-clockwise from 3 o'clock (90 = 12 o'clock); we sweep clockwise.
+    let innerRatio = 0.2
+    const radius = s['radius']
+    if (Array.isArray(radius) && radius.length === 2) {
+      const inner = pct(radius[0])
+      const outer = pct(radius[1])
+      if (inner !== null && outer !== null && outer > 0.0) innerRatio = inner / outer
+    } else if (radius !== undefined) innerRatio = 0.0
+    const startDeg = num(s['startAngle'])
+    const sunburst: SunburstOptions = {
+      showLabels: label['show'] !== false,
+      ...(s['sort'] === null || s['sort'] === 'none' ? { sort: 'none' as const } : {}),
+      ...(startDeg !== null ? { startAngle: (-startDeg * Math.PI) / 180.0 } : {}),
+    }
+    return { plan: { kind: 'sunburst', nodes, innerRatio, sunburst, title }, warnings, supported }
+  }
+
+  if (type === 'treemap') {
+    const toNode = (d: unknown, i: number): TreeNode | null => {
+      if (!isObj(d)) return null
+      const kids = Array.isArray(d['children']) ? (d['children'] as unknown[]).map((c, j) => toNode(c, j)).filter((c): c is TreeNode => c !== null) : undefined
+      const v = num(d['value'])
+      const item = isObj(d['itemStyle']) ? d['itemStyle'] : {}
+      const name = typeof d['name'] === 'string' ? (d['name'] as string) : 'Node ' + String(i + 1)
+      return {
+        name,
+        ...(v !== null ? { value: v } : {}),
+        ...(kids !== undefined && kids.length > 0 ? { children: kids } : {}),
+        ...(typeof item['color'] === 'string' ? { color: item['color'] as string } : {}),
+      }
+    }
+    const nodes: TreeNode[] = []
+    for (let i = 0; i < data.length; i++) {
+      const n = toNode(data[i], i)
+      if (n === null) warn('series-data-shape', 'series[0].data[' + String(i) + ']', 'A treemap datum must be an object; it was skipped.')
+      else nodes.push(n)
+    }
+    const label = isObj(s['label']) ? s['label'] : {}
+    const depth = num(s['leafDepth'])
+    const treemap: TreemapOptions = {
+      showLabels: label['show'] !== false,
+      ...(depth !== null ? { maxDepth: depth } : {}),
+    }
+    return { plan: { kind: 'treemap', nodes, treemap, title }, warnings, supported }
+  }
+
+  if (type === 'funnel') {
+    const rows: { value: Double; name: string; color: string | undefined }[] = []
+    for (let i = 0; i < data.length; i++) {
+      const d = data[i]
+      const v = isObj(d) ? num(d['value']) : num(d)
+      if (v === null) {
+        warn('series-data-shape', `series[0].data[${i}]`, 'A funnel datum needs a numeric value; it was skipped.')
+        continue
+      }
+      const item = isObj(d) && isObj(d['itemStyle']) ? d['itemStyle'] : {}
+      rows.push({
+        value: v,
+        name: isObj(d) && typeof d['name'] === 'string' ? (d['name'] as string) : `Stage ${i + 1}`,
+        color: typeof item['color'] === 'string' ? (item['color'] as string) : palette[i % Math.max(1, palette.length)],
+      })
+    }
+    const sortRaw = s['sort']
+    const sort: FunnelOptions['sort'] = sortRaw === 'ascending' ? 'ascending' : sortRaw === 'none' ? 'none' : 'descending'
+    const minSize = pct(s['minSize'])
+    const alignRaw = s['funnelAlign']
+    const label = isObj(s['label']) ? s['label'] : {}
+    const funnel: FunnelOptions = {
+      sort,
+      gap: num(s['gap']) ?? 2.0,
+      minWidthRatio: minSize === null ? 0.0 : minSize / 100.0,
+      align: alignRaw === 'left' ? 'left' : alignRaw === 'right' ? 'right' : 'center',
+      showLabels: label['show'] !== false,
+    }
+    return { plan: { kind: 'funnel', rows, funnel, title }, warnings, supported }
+  }
+
   // heatmap
   const xAxis = first(option['xAxis'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
   const yAxis = first(option['yAxis'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
@@ -288,6 +546,62 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
         low: (d) => d.low,
         close: (d) => d.close,
         candle: { upColor: plan.upColor, downColor: plan.downColor },
+        width,
+        height,
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
+    case 'funnel': {
+      const hasColors = plan.rows.some((r) => r.color !== undefined)
+      return funnelToSvg({
+        data: plan.rows,
+        value: (d) => d.value,
+        label: (d) => d.name,
+        ...(hasColors ? { color: (d: { color: string | undefined }, i: number) => d.color ?? PALETTE[i % PALETTE.length]! } : {}),
+        funnel: plan.funnel,
+        width,
+        height,
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
+    }
+    case 'graph':
+      return graphToSvg({
+        nodes: plan.nodes,
+        links: plan.links,
+        graph: plan.graph,
+        width,
+        height,
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
+    case 'sankey':
+      return sankeyToSvg({
+        nodes: plan.nodes,
+        links: plan.links,
+        sankey: plan.sankey,
+        width,
+        height,
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
+    case 'tree':
+      return treeToSvg({
+        data: plan.nodes,
+        tree: plan.tree,
+        width,
+        height,
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
+    case 'sunburst':
+      return sunburstToSvg({
+        data: plan.nodes,
+        innerRatio: plan.innerRatio,
+        sunburst: plan.sunburst,
+        width,
+        height,
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
+    case 'treemap':
+      return treemapToSvg({
+        data: plan.nodes,
+        treemap: plan.treemap,
         width,
         height,
         ...(plan.title !== undefined ? { title: plan.title } : {}),
