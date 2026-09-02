@@ -148,7 +148,9 @@ export { GraphChart } from './engine/GraphChart'
 export type { GraphChartProps } from './engine/GraphChart'
 
 // Funnel + boxplot
-export { funnelToSvg, hitFunnel, layoutFunnel, renderFunnel } from './engine/funnel'
+export { hitFunnel, layoutFunnel, renderFunnel } from './engine/funnel'
+export { funnelToSvg } from './engine/family-svg'
+export type { FunnelToSvgOptions } from './engine/family-svg'
 export type { FunnelOptions, FunnelStage } from './engine/funnel'
 export { FunnelChart } from './engine/FunnelChart'
 

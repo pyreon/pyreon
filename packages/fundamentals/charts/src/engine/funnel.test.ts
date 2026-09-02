@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { funnelToSvg, hitFunnel, layoutFunnel, renderFunnel } from './funnel'
+import { hitFunnel, layoutFunnel, renderFunnel } from './funnel'
+import { funnelToSvg } from './family-svg'
 import type { FunnelStage } from './funnel'
 
 const plot = { x: 0, y: 0, w: 200, h: 100 }

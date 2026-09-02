@@ -5,8 +5,7 @@
 // later, the family components) consume directly.
 
 import type { EChartsOption, OptionWarning } from './option'
-import { candlestickToSvg, gaugeToSvg, heatmapToSvg, pieToSvg, radarToSvg } from './family-svg'
-import { funnelToSvg } from './funnel'
+import { candlestickToSvg, funnelToSvg, gaugeToSvg, heatmapToSvg, pieToSvg, radarToSvg } from './family-svg'
 import { treemapToSvg } from './treemap'
 import type { TreeNode, TreemapOptions } from './treemap'
 import { sunburstToSvg } from './sunburst'
