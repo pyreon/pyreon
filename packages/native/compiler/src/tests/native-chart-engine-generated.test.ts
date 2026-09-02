@@ -24,7 +24,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { buildChartEngine } from '../../scripts/gen-chart-engine'
+import { buildChartEngine, buildChartEngineStructs } from '../../scripts/gen-chart-engine'
 import {
   isKotlincAvailable,
   isSwiftUIAvailable,
@@ -46,6 +46,14 @@ describe('native chart engine — generated, drift-locked, compile-proven', () =
     const hint = 'regenerate: bun packages/native/compiler/scripts/gen-chart-engine.ts'
     expect(read(SWIFT_OUT), hint).toBe(swift)
     expect(read(KOTLIN_OUT), hint).toBe(kotlin)
+  })
+
+  it('the compiler-side struct registry is byte-identical to a fresh generation and names the runtime types', () => {
+    const fresh = buildChartEngineStructs(REPO)
+    expect(read('packages/native/compiler/src/chart-engine-structs.ts'), 'regenerate: bun packages/native/compiler/scripts/gen-chart-engine.ts').toBe(fresh)
+    expect(fresh).toContain('"name": "SankeyNode"')
+    expect(fresh).toContain('"name": "PyreonDrawCmd"')
+    expect(fresh).not.toMatch(/"name": "(?:Pt|Rect|DrawCmd)"/)
   })
 
   it('the generated engine references the runtime draw-list types, never its own', () => {

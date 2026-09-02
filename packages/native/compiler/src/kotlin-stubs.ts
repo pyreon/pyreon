@@ -216,6 +216,22 @@ fun Box(
   content()
 }
 
+// BoxWithConstraints — the container-sized host the chart-host emit uses
+// (chart-hosts.ts): maxWidth is the Dp the draw list is laid out for.
+class BoxWithConstraintsScope {
+  val maxWidth: Dp = Dp(0f)
+  val maxHeight: Dp = Dp(0f)
+}
+
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun BoxWithConstraints(
+  modifier: Modifier = Modifier,
+  content: @Composable BoxWithConstraintsScope.() -> Unit,
+) {
+  BoxWithConstraintsScope().content()
+}
+
 // --- K4: Saveable state machinery (rememberSaveable + Saver) ---
 //
 // Real Compose ships rememberSaveable as a Composable that persists

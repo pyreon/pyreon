@@ -74,6 +74,8 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
+import { CHART_HOSTS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
+import type { ChartHostArgs, ChartHostTarget } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
   stretchAlignWarning,
@@ -233,6 +235,57 @@ let _componentParamsInfo: Map<
 let _signalEnumTypes: Map<string, string> = new Map()
 /** Set when emitting a signal initial value that's an enum-typed signal. */
 let _activeEnumType: string | undefined
+
+/**
+ * A struct field whose NATIVE type is a float — `Double` / `Float`, a float
+ * `number`, or an OPTIONAL of one (`value?: Double` is `Double?` natively) — so
+ * an Int-valued literal needs widening at the init arg. The optional case is
+ * the one that hid: `{ name: 'root', value: 10 }` for a `TreeNode` passed the
+ * Swift typecheck (an integer literal infers as Double there) and failed
+ * kotlinc with 'actual type is Int, but Double? was expected'.
+ */
+function typeWantsFloat(t: TypeIR): boolean {
+  if (t.kind === 'number') return t.float === true
+  if (t.kind === 'typeRef') return t.name === 'Double' || t.name === 'Float'
+  if (t.kind === 'union') return t.branches.some((b) => b.kind !== 'null' && b.kind !== 'undefined' && typeWantsFloat(b))
+  return false
+}
+
+/**
+ * The type the value being emitted is DECLARED to have — a signal's
+ * `signal<T>(…)` annotation, a module const's `: T`, an array's element type,
+ * a struct field's type — threaded through the literal emit so an object
+ * literal resolves to the struct its annotation NAMES. Without it a literal is
+ * matched by field set alone, and a partial literal of a struct with optional
+ * fields (`{ name: 'Coal' }` as a `SankeyNode`) is AMBIGUOUS across every
+ * struct that accepts it — the resolver bails to a synthesized `__Obj0`, which
+ * the annotation then rejects. Saved and RESTORED around each frame (the
+ * thread-local frame-restore rule): a nested literal must not leak its
+ * expectation into its siblings.
+ */
+let _expectedType: TypeIR | undefined
+
+/** The struct `_expectedType` names, when it accepts the literal's fields (every unset field optional). */
+function expectedStructFor(fields: readonly { name: string }[]): string | null {
+  const t = _expectedType
+  if (t === undefined || t.kind !== 'typeRef') return null
+  const st = _declaredStructs.find((s) => s.name === t.name)
+  if (st === undefined) return null
+  const given = new Set(fields.map((f) => f.name))
+  for (const g of given) if (!st.fields.some((f) => f.name === g)) return null
+  for (const f of st.fields) if (!given.has(f.name) && !typeIsOptional(f.type)) return null
+  return st.name
+}
+
+function withExpectedType<T>(t: TypeIR | undefined, fn: () => T): T {
+  const prev = _expectedType
+  _expectedType = t
+  try {
+    return fn()
+  } finally {
+    _expectedType = prev
+  }
+}
 /**
  * Per-component: every signal name in scope. Used by G1 (TextField
  * two-way binding) to know which `value={x}` attr identifiers match
@@ -1012,7 +1065,7 @@ export function emitSwift(
   _needsSwiftNumString = false
   const parts: string[] = []
   for (const e of enums) parts.push(emitSwiftEnum(e))
-  for (const s of structs) parts.push(emitSwiftStruct(s))
+  for (const s of structs) if (!s.external) parts.push(emitSwiftStruct(s))
   for (const md of moduleDecls) parts.push(emitSwiftModuleDecl(md))
   // Gap 4 v1: emit per-store @Observable singleton class BEFORE
   // components so call sites can reference the type.
@@ -1932,7 +1985,7 @@ function emitSwiftStruct(s: StructIR): string {
  */
 function emitSwiftModuleDecl(md: ModuleDeclIR): string {
   const kw = md.mutable ? 'var' : 'let'
-  const initial = emitSwiftExpr(md.initial, 0)
+  const initial = withExpectedType(md.type, () => emitSwiftExpr(md.initial, 0))
   if (md.type.kind === 'unknown') {
     // Omit explicit type annotation when source didn't carry one.
     // Swift infers from `= initial`.
@@ -3148,7 +3201,7 @@ function emitSwiftDecl(
     // Inline them, exactly as struct-level computeds and handler bodies
     // already do; mutated (`let x = 1; x++`) vars are excluded upstream.
     const effInitial = _siblingSignalSeeds.get(d.name) ?? inlineValueConsts(d.initial)
-    const initial = emitSwiftExpr(effInitial, 0)
+    const initial = withExpectedType(d.type, () => emitSwiftExpr(effInitial, 0))
     _activeEnumType = undefined
     // Parse-time inference returned unknown for an object-literal (or
     // array-of-object-literal) initializer, but the VALUE emit above just
@@ -6611,7 +6664,8 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         (r) => `[${r}]`,
       )
       if (spreadConcat !== null) return spreadConcat
-      return `[${e.elements.map((el) => emitSwiftExpr(el, indent)).join(', ')}]`
+      const elT = _expectedType?.kind === 'array' ? _expectedType.element : undefined
+      return `[${e.elements.map((el) => withExpectedType(elT, () => emitSwiftExpr(el, indent))).join(', ')}]`
     }
     case 'spread':
       // A bare spread node reaching the expr emitter is a CALL-ARGUMENT
@@ -6676,7 +6730,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         // never disagree. Rung 0 is the typed key added here; putting it at
         // the call site instead would let the two paths pick DIFFERENT
         // structs for the same literal.
-        const structName = resolveSwiftObjectStructName(e.fields)
+        const structName = expectedStructFor(e.fields) ?? resolveSwiftObjectStructName(e.fields)
         if (structName !== null) {
           // Swift's memberwise initializer demands arguments in DECLARATION
           // order — defaults let a subset OMIT fields, never REORDER them. A
@@ -6699,12 +6753,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           const fieldT = new Map((structDef?.fields ?? []).map((f) => [f.name, f.type]))
           const args = ordered
             .map((f) => {
-              const raw = emitSwiftExpr(f.value, indent)
               const ft = fieldT.get(f.name)
-              const wantsFloat =
-                ft !== undefined &&
-                ((ft.kind === 'number' && ft.float === true) ||
-                  (ft.kind === 'typeRef' && (ft.name === 'Double' || ft.name === 'Float')))
+              const raw = withExpectedType(ft, () => emitSwiftExpr(f.value, indent))
+              const wantsFloat = ft !== undefined && typeWantsFloat(ft)
               const coerce = wantsFloat && numericFloatness(f.value) === 'int'
               return `${swiftIdent(f.name)}: ${coerce ? `Double(${raw})` : raw}`
             })
@@ -6909,6 +6960,9 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   // <WebView> — native host (WKWebView via PyreonWebView) for embedding
   // web-only-rich viz (charts / flow / tables) inside a native shell.
   if (tag === 'WebView') return emitSwiftWebView(e)
+  // `@pyreon/charts/plot` family hosts → PyreonChartCanvas over the generated
+  // engine (chart-hosts.ts); accessor-prop hosts warn by name.
+  if (isChartHostTag(tag)) return emitSwiftChartHost(e, indent)
   // Phase 5 — walled tags. SwiftUI has no equivalent for these three:
   //   - <Suspense fallback>:   no async-render-suspend mechanism
   //   - <ErrorBoundary fallback>: no render-time try/catch
@@ -10791,4 +10845,77 @@ function emitSwiftRxCall(
       // marker so missing dispatch is obvious in failed swiftc output.
       return `/* unsupported rx.${e.method} */ ${src}`
   }
+}
+
+
+// ---------------------------------------------------------------------------
+// `@pyreon/charts/plot` family hosts → PyreonChartCanvas (the SwiftUI Canvas
+// that walks the generated engine's draw list). See chart-hosts.ts.
+// ---------------------------------------------------------------------------
+
+const SWIFT_CHART_TARGET: ChartHostTarget = {
+  rect: (x, y, w, h) => `PyreonChartRect(x: ${x}, y: ${y}, w: ${w}, h: ${h})`,
+  pt: (x, y) => `PyreonChartPt(x: ${x}, y: ${y})`,
+  max0: (e) => `max(0.0, ${e})`,
+  min: (a, b) => `min(${a}, ${b})`,
+}
+
+/** A JSX attr's value expression, unwrapping a zero-arg accessor arrow. */
+function chartAttrExpr(e: Extract<ExprIR, { kind: 'jsx-element' }>, name: string): ExprIR | undefined {
+  for (const a of e.attrs) {
+    if (a.kind === 'attr' && a.name === name) {
+      const v = a.value
+      if (v.kind === 'arrow' && v.params.length === 0) return v.body
+      return v
+    }
+  }
+  return undefined
+}
+
+/** A numeric host prop as a Double expression: static → literal, dynamic → `Double(expr)`, absent → the default. */
+function swiftChartDouble(e: Extract<ExprIR, { kind: 'jsx-element' }>, name: string, fallback: number, indent: number): string {
+  const stat = readStaticAttr(e, name)
+  if (typeof stat === 'number') return chartDouble(stat)
+  const dyn = chartAttrExpr(e, name)
+  if (dyn !== undefined) return `Double(${emitSwiftExpr(dyn, indent)})`
+  return chartDouble(fallback)
+}
+
+function emitSwiftChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const tag = e.tag
+  const unlowered = UNLOWERED_CHART_HOSTS[tag]
+  if (unlowered !== undefined) {
+    _emitWarnings.push(`<${tag}> has no native lowering yet — ${unlowered}. Emitting an EmptyView().`)
+    return 'EmptyView()'
+  }
+  const spec = CHART_HOSTS[tag]!
+  const data: string[] = []
+  for (const name of spec.data) {
+    const v = chartAttrExpr(e, name)
+    if (v === undefined) {
+      _emitWarnings.push(`<${tag}>: needs a \`${name}\` attribute on native; emitting an EmptyView().`)
+      return 'EmptyView()'
+    }
+    data.push(emitSwiftExpr(v, indent))
+  }
+  const optV = chartAttrExpr(e, spec.options)
+  const options = optV === undefined ? 'nil' : emitSwiftExpr(optV, indent)
+  const H = swiftChartDouble(e, 'height', spec.defaultHeight, indent)
+  const hasWidth = chartAttrExpr(e, 'width') !== undefined
+  const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
+  const args: ChartHostArgs = {
+    data,
+    options,
+    W,
+    H,
+    gutter: swiftChartDouble(e, 'gutter', 80, indent),
+    innerRatio: swiftChartDouble(e, 'innerRatio', 0.2, indent),
+  }
+  const cmds = spec.cmds(args, SWIFT_CHART_TARGET)
+  const canvas = `PyreonChartCanvas(cmds: ${cmds})`
+  const title = readStringAttrExpr(e, 'title', indent)
+  const tail = (title !== undefined ? `.accessibilityLabel(${title})` : '') + emitSwiftLayoutModifiers(e)
+  if (hasWidth) return `${canvas}.frame(width: ${W}, height: ${H})${tail}`
+  const pad = ' '.repeat(indent + 2)
+  return `GeometryReader { pyreonGeo in\n${pad}${canvas}\n${' '.repeat(indent)}}.frame(height: ${H})${tail}`
 }

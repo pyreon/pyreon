@@ -11,6 +11,8 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.nativeCanvas
 import android.graphics.Paint
 
@@ -92,7 +94,12 @@ fun PyreonChartCanvas(
     cmds: List<PyreonDrawCmd>,
     modifier: Modifier = Modifier,
 ) {
+    // The draw list is in density-independent units — the same numbers the web
+    // canvas paints in CSS px and SwiftUI in points — so scale by the density
+    // once here rather than converting every coordinate and font size.
+    val density = LocalDensity.current.density
     Canvas(modifier = modifier) {
+        scale(scale = density, pivot = Offset.Zero) {
         for (c in cmds) {
             when (c.kind) {
                 "rect" -> {
@@ -182,6 +189,7 @@ fun PyreonChartCanvas(
                     drawContext.canvas.nativeCanvas.drawText(txt, at.x.toFloat(), y, paint)
                 }
             }
+        }
         }
     }
 }

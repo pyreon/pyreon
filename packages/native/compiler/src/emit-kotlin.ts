@@ -69,6 +69,8 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
+import { CHART_HOSTS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
+import type { ChartHostArgs, ChartHostTarget } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
   stretchAlignWarning,
@@ -168,6 +170,57 @@ function canAliasIntercept(tag: string, expectedPkg: string): boolean {
 let _componentPropsMapKotlin: Map<string, { name: string; type: TypeIR }[]> = new Map()
 let _signalEnumTypes: Map<string, string> = new Map()
 let _activeEnumType: string | undefined
+
+/**
+ * A struct field whose NATIVE type is a float — `Double` / `Float`, a float
+ * `number`, or an OPTIONAL of one (`value?: Double` is `Double?` natively) — so
+ * an Int-valued literal needs widening at the init arg. The optional case is
+ * the one that hid: `{ name: 'root', value: 10 }` for a `TreeNode` passed the
+ * Swift typecheck (an integer literal infers as Double there) and failed
+ * kotlinc with 'actual type is Int, but Double? was expected'.
+ */
+function typeWantsFloat(t: TypeIR): boolean {
+  if (t.kind === 'number') return t.float === true
+  if (t.kind === 'typeRef') return t.name === 'Double' || t.name === 'Float'
+  if (t.kind === 'union') return t.branches.some((b) => b.kind !== 'null' && b.kind !== 'undefined' && typeWantsFloat(b))
+  return false
+}
+
+/**
+ * The type the value being emitted is DECLARED to have — a signal's
+ * `signal<T>(…)` annotation, a module const's `: T`, an array's element type,
+ * a struct field's type — threaded through the literal emit so an object
+ * literal resolves to the struct its annotation NAMES. Without it a literal is
+ * matched by field set alone, and a partial literal of a struct with optional
+ * fields (`{ name: 'Coal' }` as a `SankeyNode`) is AMBIGUOUS across every
+ * struct that accepts it — the resolver bails to a synthesized `__Obj0`, which
+ * the annotation then rejects. Saved and RESTORED around each frame (the
+ * thread-local frame-restore rule): a nested literal must not leak its
+ * expectation into its siblings.
+ */
+let _expectedTypeKotlin: TypeIR | undefined
+
+/** The struct `_expectedTypeKotlin` names, when it accepts the literal's fields (every unset field optional). */
+function expectedStructForKotlin(fields: readonly { name: string }[]): string | null {
+  const t = _expectedTypeKotlin
+  if (t === undefined || t.kind !== 'typeRef') return null
+  const st = _declaredStructs.find((s) => s.name === t.name)
+  if (st === undefined) return null
+  const given = new Set(fields.map((f) => f.name))
+  for (const g of given) if (!st.fields.some((f) => f.name === g)) return null
+  for (const f of st.fields) if (!given.has(f.name) && !typeIsOptional(f.type)) return null
+  return st.name
+}
+
+function withExpectedTypeKotlin<T>(t: TypeIR | undefined, fn: () => T): T {
+  const prev = _expectedTypeKotlin
+  _expectedTypeKotlin = t
+  try {
+    return fn()
+  } finally {
+    _expectedTypeKotlin = prev
+  }
+}
 /** G1: every signal name in scope — see emit-swift.ts for the rationale. */
 let _signalNames: Set<string> = new Set()
 /**
@@ -533,7 +586,7 @@ export function emitKotlin(
   // Gap 3 PR-3.4 — reset KeepAlive-wrapper flag.
   _needsKotlinKeepAliveWrapper = false
   for (const e of enums) parts.push(emitKotlinEnum(e))
-  for (const s of structs) parts.push(emitKotlinStruct(s))
+  for (const s of structs) if (!s.external) parts.push(emitKotlinStruct(s))
   for (const md of moduleDecls) parts.push(emitKotlinModuleDecl(md))
   // Gap 4 v1: emit per-store singleton class.
   for (const s of stores) parts.push(emitKotlinStore(s))
@@ -1560,7 +1613,7 @@ function emitKotlinStruct(s: StructIR): string {
  */
 function emitKotlinModuleDecl(md: ModuleDeclIR): string {
   const kw = md.mutable ? 'var' : 'val'
-  const initial = emitKotlinExpr(md.initial, 0)
+  const initial = withExpectedTypeKotlin(md.type, () => emitKotlinExpr(md.initial, 0))
   if (md.type.kind === 'unknown') {
     return `private ${kw} ${kotlinIdent(md.name)} = ${initial}`
   }
@@ -2280,7 +2333,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     // (`"all"`) as an enum case (`Filter.all`).
     const isEnumTyped = d.type.kind === 'typeRef' && _enumNames.has(d.type.name)
     if (isEnumTyped) _activeEnumType = (d.type as { name: string }).name
-    const initial = emitKotlinExpr(d.initial, 0)
+    const initial = withExpectedTypeKotlin(d.type, () => emitKotlinExpr(d.initial, 0))
     _activeEnumType = undefined
     // G5 — persistent signal via `useStorage<T>('key', default)`. Compose's
     // `rememberSaveable` saves/restores state across configuration changes
@@ -5387,7 +5440,8 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         (r) => `listOf(${r})`,
       )
       if (spreadConcat !== null) return spreadConcat
-      return `listOf(${e.elements.map((el) => emitKotlinExpr(el, indent)).join(', ')})`
+      const elT = _expectedTypeKotlin?.kind === 'array' ? _expectedTypeKotlin.element : undefined
+      return `listOf(${e.elements.map((el) => withExpectedTypeKotlin(elT, () => emitKotlinExpr(el, indent))).join(', ')})`
     }
     case 'spread':
       // A bare spread node reaching the expr emitter is a CALL-ARGUMENT
@@ -5437,6 +5491,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         const typedKey = literalShapeKey(e.fields)
         const fieldSet = e.fields.map((f) => f.name).sort().join(',')
         const structName =
+          expectedStructForKotlin(e.fields) ??
           (typedKey !== null ? _structTypedKeyToName.get(typedKey) : undefined) ??
           _structFieldsToName.get(fieldSet)
         if (structName !== undefined) {
@@ -5446,12 +5501,9 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           const fieldTC = new Map((structDefC?.fields ?? []).map((f) => [f.name, f.type]))
           const args = orderFieldsByStructK(e.fields, structName)
             .map((f) => {
-              const raw = emitKotlinExpr(f.value, indent)
               const ft = fieldTC.get(f.name)
-              const wantsFloat =
-                ft !== undefined &&
-                ((ft.kind === 'number' && ft.float === true) ||
-                  (ft.kind === 'typeRef' && (ft.name === 'Double' || ft.name === 'Float')))
+              const raw = withExpectedTypeKotlin(ft, () => emitKotlinExpr(f.value, indent))
+              const wantsFloat = ft !== undefined && typeWantsFloat(ft)
               const vt = inferType(f.value, _kotlinExprInferCtx)
               const isInt = vt.kind === 'number' && vt.float !== true
               // Kotlin named args do NOT widen Int -> Double either.
@@ -5726,6 +5778,9 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // <WebView> — native host (Android WebView via PyreonWebView) for
   // embedding web-only-rich viz inside a Compose native shell.
   if (tag === 'WebView') return emitKotlinWebView(e)
+  // `@pyreon/charts/plot` family hosts → PyreonChartCanvas over the generated
+  // engine (chart-hosts.ts); accessor-prop hosts warn by name.
+  if (isChartHostTag(tag)) return emitKotlinChartHost(e, indent)
   // Phase 5 — walled tags. Mirror of the Swift dispatcher entry.
   // Compose has no equivalent for Suspense / ErrorBoundary / KeepAlive
   // either; previously these emitted FAKE composables (`Suspense(…) {}`)
@@ -8935,4 +8990,83 @@ function emitKotlinRxCall(
     default:
       return `/* unsupported rx.${e.method} */ ${src}`
   }
+}
+
+
+// ---------------------------------------------------------------------------
+// `@pyreon/charts/plot` family hosts → PyreonChartCanvas (the Compose Canvas
+// that walks the generated engine's draw list). Mirror of the Swift emitter;
+// see chart-hosts.ts for the per-host table.
+// ---------------------------------------------------------------------------
+
+const KOTLIN_CHART_TARGET: ChartHostTarget = {
+  rect: (x, y, w, h) => `PyreonChartRect(${x}, ${y}, ${w}, ${h})`,
+  pt: (x, y) => `PyreonChartPt(${x}, ${y})`,
+  max0: (e) => `maxOf(0.0, ${e})`,
+  min: (a, b) => `minOf(${a}, ${b})`,
+}
+
+/** A JSX attr's value expression, unwrapping a zero-arg accessor arrow. */
+function chartAttrExprKotlin(e: Extract<ExprIR, { kind: 'jsx-element' }>, name: string): ExprIR | undefined {
+  for (const a of e.attrs) {
+    if (a.kind === 'attr' && a.name === name) {
+      const v = a.value
+      if (v.kind === 'arrow' && v.params.length === 0) return v.body
+      return v
+    }
+  }
+  return undefined
+}
+
+/** A numeric host prop as a Double expression: static → literal, dynamic → `(expr).toDouble()`, absent → the default. */
+function kotlinChartDouble(e: Extract<ExprIR, { kind: 'jsx-element' }>, name: string, fallback: number, indent: number): string {
+  const stat = readStaticAttrKotlin(e, name)
+  if (typeof stat === 'number') return chartDouble(stat)
+  const dyn = chartAttrExprKotlin(e, name)
+  if (dyn !== undefined) return `(${emitKotlinExpr(dyn, indent)}).toDouble()`
+  return chartDouble(fallback)
+}
+
+function emitKotlinChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const tag = e.tag
+  const unlowered = UNLOWERED_CHART_HOSTS[tag]
+  if (unlowered !== undefined) {
+    _emitWarnings.push(`<${tag}> has no native lowering yet — ${unlowered}. Emitting an empty Box().`)
+    return 'Box {}'
+  }
+  const spec = CHART_HOSTS[tag]!
+  const data: string[] = []
+  for (const name of spec.data) {
+    const v = chartAttrExprKotlin(e, name)
+    if (v === undefined) {
+      _emitWarnings.push(`<${tag}>: needs a \`${name}\` attribute on native; emitting an empty Box().`)
+      return 'Box {}'
+    }
+    data.push(emitKotlinExpr(v, indent))
+  }
+  const optV = chartAttrExprKotlin(e, spec.options)
+  const options = optV === undefined ? 'null' : emitKotlinExpr(optV, indent)
+  const H = kotlinChartDouble(e, 'height', spec.defaultHeight, indent)
+  const hasWidth = chartAttrExprKotlin(e, 'width') !== undefined
+  const W = hasWidth ? kotlinChartDouble(e, 'width', 300, indent) : 'pyreonW'
+  const args: ChartHostArgs = {
+    data,
+    options,
+    W,
+    H,
+    gutter: kotlinChartDouble(e, 'gutter', 80, indent),
+    innerRatio: kotlinChartDouble(e, 'innerRatio', 0.2, indent),
+  }
+  const cmds = spec.cmds(args, KOTLIN_CHART_TARGET)
+  // Size modifiers first (they are the host's own layout), then the generic
+  // tail — testTag / a11y / padding — so `data-testid` reaches the node.
+  const size = hasWidth ? `Modifier.width((${W}).dp).height((${H}).dp)` : `Modifier.fillMaxWidth().height((${H}).dp)`
+  const generic = emitKotlinLayoutModifier(e)
+  const titleRaw = readStaticAttrKotlin(e, 'title')
+  const titleMod = typeof titleRaw === 'string' ? `.semantics { contentDescription = ${JSON.stringify(titleRaw)} }` : ''
+  const modifier = size + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))
+  const canvas = `PyreonChartCanvas(cmds = ${cmds}, modifier = ${modifier})`
+  if (hasWidth) return canvas
+  const pad = ' '.repeat(indent + 2)
+  return `BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {\n${pad}val pyreonW = maxWidth.value.toDouble()\n${pad}${canvas}\n${' '.repeat(indent)}}`
 }
