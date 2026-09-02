@@ -186,8 +186,11 @@ export function compileOption(option: EChartsOption, opts: CompileOptions = {}):
           xs.push(x)
           values.push(y)
         }
+      } else if (d === null || d === undefined || d === '-') {
+        // ECharts' empty datum: a GAP in the line, not a zero and not an error.
+        values.push(NaN)
       } else if (isObj(d)) {
-        const v = num(d['value'])
+        const v = d['value'] === null || d['value'] === '-' ? NaN : num(d['value'])
         if (v === null) warn('series-data-shape', `${path}.data[${j}].value`, 'Non-numeric value; the point was zeroed.')
         values.push(v ?? 0.0)
       } else {

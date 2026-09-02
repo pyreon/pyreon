@@ -1140,7 +1140,9 @@ public func deriveOver(_ series: [Series]) -> Domain {
       for s in series {
         if s.kind != "stacked" {
           for v in s.values {
-            others.append(v)
+            if isFiniteValue(v) {
+              others.append(v)
+            }
           }
         }
       }
@@ -1154,13 +1156,17 @@ public func deriveOver(_ series: [Series]) -> Domain {
         hasBars = true
       }
       for v in s.values {
-        all.append(v)
+        if isFiniteValue(v) {
+          all.append(v)
+        }
       }
     }
     let e = extent(all)
     let withZero = hasBars ? Domain(min: e.min > 0.0 ? 0.0 : e.min, max: e.max < 0.0 ? 0.0 : e.max) : e
     return niceDomain(withZero, 5.0)
   }
+
+public func isFiniteValue(_ v: Double) -> Bool { v == v }
 
 public func seriesMaxLength(_ series: [Series]) -> Int {
     var n = 0
@@ -1330,26 +1336,33 @@ public func renderChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double
         }
       } else {
         if s.kind == "line" {
-          let pts = reveal(shape(place(s.values)))
-          if pts.count > 1 {
-            out.append(PyreonDrawCmd(kind: "polyline", stroke: s.color, width: s.width, points: pts))
+          for run in splitRuns(s.values, place) {
+            let pts = reveal(shape(run))
+            if pts.count > 1 {
+              out.append(PyreonDrawCmd(kind: "polyline", stroke: s.color, width: s.width, points: pts))
+            }
           }
         } else {
           if s.kind == "area" {
-            let pts = reveal(shape(place(s.values)))
-            if pts.count > 1 {
-              var poly: [PyreonChartPt] = []
-              for p in pts {
-                poly.append(p)
+            for run in splitRuns(s.values, place) {
+              let pts = reveal(shape(run))
+              if pts.count > 1 {
+                var poly: [PyreonChartPt] = []
+                for p in pts {
+                  poly.append(p)
+                }
+                poly.append(PyreonChartPt(x: pts[pts.count - 1].x, y: plot.y + plot.h))
+                poly.append(PyreonChartPt(x: pts[0].x, y: plot.y + plot.h))
+                out.append(PyreonDrawCmd(kind: "polygon", fill: s.color, points: poly))
               }
-              poly.append(PyreonChartPt(x: pts[pts.count - 1].x, y: plot.y + plot.h))
-              poly.append(PyreonChartPt(x: pts[0].x, y: plot.y + plot.h))
-              out.append(PyreonDrawCmd(kind: "polygon", fill: s.color, points: poly))
             }
           } else {
             let pts = place(s.values)
             let radii = (s.radii ?? [])
             for i in 0..<pts.count {
+              if !isFiniteValue(s.values[i]) {
+                continue
+              }
               let fullR = radii.count > 0 ? (radii[i] ?? s.radius) : s.radius
               out.append(PyreonDrawCmd(kind: "circle", fill: s.color, center: pts[i], radius: fullR * progress))
             }
@@ -1433,6 +1446,50 @@ public func renderChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double
       out.append(PyreonDrawCmd(kind: "text", fill: t.label, text: tick.label, at: PyreonChartPt(x: tick.pos, y: plot.y + plot.h + 6.0), size: t.fontSize, align: "middle", baseline: "top"))
     }
     return out
+  }
+
+public func splitRuns(_ values: [Double], _ place: ([Double]) -> [PyreonChartPt]) -> [[PyreonChartPt]] {
+    var runs: [[PyreonChartPt]] = []
+    var hasGap = false
+    for v in values {
+      if !isFiniteValue(v) {
+        hasGap = true
+      }
+    }
+    if !hasGap {
+      runs.append(place(values))
+      return runs
+    }
+    var filled: [Double] = []
+    for v in values {
+      filled.append(isFiniteValue(v) ? v : 0.0)
+    }
+    let pts = place(filled)
+    var runStart = -1
+    for i in 0..<pts.count {
+      if isFiniteValue(values[i]) {
+        if runStart < 0 {
+          runStart = i
+        }
+      } else {
+        if runStart >= 0 {
+          var run: [PyreonChartPt] = []
+          for j in runStart..<i {
+            run.append(pts[j])
+          }
+          runs.append(run)
+          runStart = -1
+        }
+      }
+    }
+    if runStart >= 0 {
+      var run: [PyreonChartPt] = []
+      for j in runStart..<pts.count {
+        run.append(pts[j])
+      }
+      runs.append(run)
+    }
+    return runs
   }
 
 public func barsFor(_ spec: ChartSpec, _ index: Int, _ measure: (String, Double) -> Double) -> [PyreonChartRect] {
