@@ -4,6 +4,7 @@
 // starter fixtures use are recognised. Anything outside that set is
 // either passed through as unknown or surfaces a warning.
 
+import { warnUnlowerdCrdtMembers } from './parse-crdt-surface'
 import { parseSync } from 'oxc-parser'
 import { detectPlain, transformPlain } from '@pyreon/compiler/plain'
 import {
@@ -395,6 +396,12 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // that fails the native build with a cryptic `Cannot find 'Chart' in
   // scope`, far from the cause. Name the package + the escape-hatch fix.
   warnWebOnlyImports(ast.program.body as AnyNode[], ctx)
+  // `@pyreon/sync` CRDT members with no native counterpart. PMTC reproduces a
+  // member call VERBATIM, so an un-lowered one fails the Swift/Kotlin build
+  // inside a GENERATED file naming a method the user never wrote in that
+  // language. Program-level because a call can appear anywhere (a handler, a
+  // nested closure), not only in a declaration.
+  warnUnlowerdCrdtMembers(ast.program as AnyNode, ctx.warnings, source)
   // Pre-pass: record the local name(s) bound to the imperative `toast` import
   // from @pyreon/toast, so parseExpr can lower `toast(...)` / `toast.success(...)`
   // to PyreonToast. Handles renamed imports (`import { toast as notify }`).
@@ -555,6 +562,17 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
       zodSchemas.push(pv)
       continue
     }
+    // Every schema recognizer above declined. They all key on the INLINE
+    // argument (`zodSchema(z.object({ … }))`), so the ordinary refactor of
+    // lifting the schema to its own const — `const base = z.string()` then
+    // `zodSchema(base)` — matches none of them and falls through to a VERBATIM
+    // emit. `z` / `v` / `type` exist in neither Swift nor Kotlin, so the
+    // generated file fails to compile on `cannot find 'z' in scope` /
+    // `unresolved reference`, with nothing said at emit time. Declining is
+    // correct — synthesizing a struct from an unresolved binding would be a
+    // guess — but a decline has to be OBSERVABLE, or it is indistinguishable
+    // from shipping it broken.
+    warnUnloweredSchemaAdapter(node, ctx.warnings)
     // styled(Prim)`css` component lowering — `const X = styled(Stack)`…`` wrapping
     // a CANONICAL primitive. Collected BEFORE the arrow-helper + module-decl
     // catch-alls so the styled const isn't mis-parsed as a broken module binding.
@@ -659,6 +677,27 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // as a top-level struct alongside the named ones. Appended, so a
   // top-level `const X = s.object(...)` still emits first.
   for (const inline of ctx.inlineSchemas) zodSchemas.push(inline)
+
+  // A feature emits an alias under the SOURCE binding name so `Todo.name`
+  // resolves. Swift and Kotlin do NOT separate the type and value namespaces
+  // the way TypeScript does, so if the same file also declares a TYPE of that
+  // name the two collide — `invalid redeclaration of 'Todo'` / `conflicting
+  // declarations`, in a generated file the author never wrote. Neither alias
+  // form escapes it (a `typealias` and a value binding collide identically;
+  // both were measured). Say so by name instead of shipping the collision.
+  for (const f of features) {
+    const clash =
+      structs.some((st) => st.name === f.bindingName) ||
+      enums.some((en) => en.name === f.bindingName)
+    if (clash) {
+      ctx.warnings.push(
+        `defineFeature declaration \`${f.bindingName}\`: a type of the same name is declared in this file. ` +
+          `Swift and Kotlin share one namespace for types and values, so the emitted alias collides with it ` +
+          `and the native build fails on a redeclaration. Rename one of them (e.g. the feature binding to ` +
+          `\`${f.bindingName}Feature\`).`,
+      )
+    }
+  }
 
   return {
     components,
@@ -11227,3 +11266,36 @@ function parseJsxChild(node: AnyNode, ctx: ParseCtx): ChildIR | null {
   return null
 }
 
+/**
+ * Warn when a `@pyreon/validation` adapter call reaches the emit un-lowered.
+ *
+ * Pure and total over the three adapters: anything not matched by the inline
+ * recognizers reaches here, so a new adapter is caught by adding its name to
+ * the set rather than by remembering to warn at a new call site.
+ */
+const SCHEMA_ADAPTERS = new Set(['zodSchema', 'valibotSchema', 'arktypeSchema'])
+
+export function warnUnloweredSchemaAdapter(node: AnyNode, warnings: string[]): void {
+  const varDecl =
+    node.type === 'ExportNamedDeclaration' && node.declaration?.type === 'VariableDeclaration'
+      ? node.declaration
+      : node.type === 'VariableDeclaration'
+        ? node
+        : null
+  if (!varDecl) return
+  const declarators = (varDecl.declarations as AnyNode[] | undefined) ?? []
+  if (declarators.length !== 1) return
+  const d = declarators[0]
+  if (!d || d.id?.type !== 'Identifier') return
+  const init = d.init as AnyNode | undefined
+  if (init?.type !== 'CallExpression' || init.callee?.type !== 'Identifier') return
+  const adapter = init.callee.name as string
+  if (!SCHEMA_ADAPTERS.has(adapter)) return
+  warnings.push(
+    `\`${adapter}\` declaration \`${d.id.name as string}\`: the schema argument is not an inline ` +
+      `literal, so no native struct is synthesized and the call is reproduced VERBATIM — the native ` +
+      `build then fails on a symbol that exists only in JS (\`cannot find 'z' in scope\` / ` +
+      `\`unresolved reference\`). Inline the schema at the call site ` +
+      `(\`${adapter}(z.object({ … }))\`) so it can be lowered.`,
+  )
+}
