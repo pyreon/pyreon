@@ -436,15 +436,16 @@ final class PyreonTasksUITests: XCTestCase {
         // #3263: `<PlotChart marks>` — the cartesian family natively. The bars
         // canvas carries the testid; a tap runs the engine's plotHitBars over
         // the same spec the canvas painted. Three category bands share the plot
-        // (left gutter ~35pt for the y labels), so (90, 120) from the canvas
-        // origin is inside the first band, near the baseline every bar reaches.
+        // (left gutter ~35pt for the y labels), so (90, 100) from the canvas
+        // origin is inside the first bar — every bar spans that height, with
+        // or without the preset strip that shortens the plot from below.
         let statsBars = app.descendants(matching: .any).matching(identifier: "stats-bars").firstMatch
         XCTAssertTrue(statsBars.waitForExistence(timeout: 10), "bar chart canvas missing on stats page")
         XCTAssertGreaterThan(statsBars.frame.height, 100, "bar chart canvas has no height")
         let barPick = app.staticTexts["stats-bars-pick"].firstMatch
         XCTAssertTrue(barPick.waitForExistence(timeout: 10), "bar pick text missing")
         XCTAssertEqual(barPick.label, "-1", "no tap yet, bar pick should be -1")
-        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 90, dy: 120)).tap()
+        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 90, dy: 100)).tap()
         XCTAssertTrue(
             waitForLabel(barPick, "0", timeout: 10),
             "tap on the first bar did not bind index 0 (label: \(barPick.label))"
@@ -454,10 +455,31 @@ final class PyreonTasksUITests: XCTestCase {
         // row 1 (any scale in 3…6 does), so the sole band now IS 'art' and a
         // tap must report the GLOBAL index 1: gesture, slice and rebase, together.
         statsBars.pinch(withScale: 4.5, velocity: 2)
-        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 90, dy: 120)).tap()
+        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 90, dy: 100)).tap()
         XCTAssertTrue(
             waitForLabel(barPick, "1", timeout: 10),
             "after the pinch, a tap on the sole band did not bind the GLOBAL index 1 (label: \(barPick.label))"
+        )
+        // #3270: `<PlotChart zoomPresets>` — the engine lays the strip out along
+        // the canvas bottom (22pt), right-aligned: 'all' is the last button (~34pt
+        // wide, centred ~25pt in from the right edge), 'last 1' sits left of it
+        // (~49pt wide, centred ~72pt in). 'last 1' keeps only the LAST row, so the
+        // sole band must report the GLOBAL index 2; 'all' restores every row and
+        // the first band is row 0 again. A missed button leaves the previous
+        // window in place, which the next band tap exposes as the wrong index.
+        let barsW = statsBars.frame.width
+        let barsH = statsBars.frame.height
+        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: barsW - 72, dy: barsH - 11)).tap()
+        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 90, dy: 100)).tap()
+        XCTAssertTrue(
+            waitForLabel(barPick, "2", timeout: 10),
+            "after the 'last 1' preset, a tap on the sole band did not bind the GLOBAL index 2 (label: \(barPick.label))"
+        )
+        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: barsW - 25, dy: barsH - 11)).tap()
+        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 90, dy: 100)).tap()
+        XCTAssertTrue(
+            waitForLabel(barPick, "0", timeout: 10),
+            "after the 'all' preset, a tap on the first band did not bind index 0 again (label: \(barPick.label))"
         )
         let statsBack = app.buttons["stats-back"].firstMatch
         XCTAssertTrue(statsBack.exists, "Back button missing on stats page")

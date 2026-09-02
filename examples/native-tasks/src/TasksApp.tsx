@@ -472,6 +472,9 @@ function StatsPage() {
         // #3268: pinch + pan natively (wheel + drag on the web); tap indices stay
         // GLOBAL, which is what the pinch-then-tap device assertion relies on.
         dataZoom={true}
+        // #3270: the range-selector presets — the engine lays the strip out on
+        // every target; a tap on 'last 1' or 'all' writes the same window.
+        zoomPresets={[{ label: 'last 1', count: 1 }, { label: 'all', count: 0 }]}
         height={160}
         title="Scores by subject"
         data-testid="stats-bars"

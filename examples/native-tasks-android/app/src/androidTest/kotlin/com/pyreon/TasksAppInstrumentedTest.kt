@@ -545,8 +545,8 @@ class TasksAppInstrumentedTest {
             .performTouchInput { click(Offset(88f * flowDensity, 80f * flowDensity)) }
         waitForTagText("stats-flow-pick", "0")
         // #3263: `<PlotChart marks>` natively — a tap on the bars canvas runs
-        // plotHitBars over the spec the canvas painted; (90, 120) dp is inside
-        // the first of three bands, near the baseline.
+        // plotHitBars over the spec the canvas painted; (90, 100) dp is inside
+        // the first bar, with or without the preset strip below the plot.
         composeRule
             .onNodeWithTag("stats-bars")
             .assertIsDisplayed()
@@ -555,7 +555,7 @@ class TasksAppInstrumentedTest {
             .assertTextEquals("-1")
         composeRule
             .onNodeWithTag("stats-bars")
-            .performTouchInput { click(Offset(90f * flowDensity, 120f * flowDensity)) }
+            .performTouchInput { click(Offset(90f * flowDensity, 100f * flowDensity)) }
         waitForTagText("stats-bars-pick", "0")
         // #3268: `<PlotChart dataZoom>` — detectTransformGestures folds the
         // pinch into the engine's fraction window. Two fingers 20dp apart that
@@ -574,8 +574,25 @@ class TasksAppInstrumentedTest {
             }
         composeRule
             .onNodeWithTag("stats-bars")
-            .performTouchInput { click(Offset(90f * flowDensity, 120f * flowDensity)) }
+            .performTouchInput { click(Offset(90f * flowDensity, 100f * flowDensity)) }
         waitForTagText("stats-bars-pick", "1")
+        // #3270: the zoomPresets strip — 'last 1' (centred ~72dp from the right,
+        // 11dp above the bottom) keeps only the LAST row → the sole band is the
+        // GLOBAL index 2; 'all' (~25dp from the right) restores every row → 0.
+        composeRule
+            .onNodeWithTag("stats-bars")
+            .performTouchInput { click(Offset(width - 72f * flowDensity, height - 11f * flowDensity)) }
+        composeRule
+            .onNodeWithTag("stats-bars")
+            .performTouchInput { click(Offset(90f * flowDensity, 100f * flowDensity)) }
+        waitForTagText("stats-bars-pick", "2")
+        composeRule
+            .onNodeWithTag("stats-bars")
+            .performTouchInput { click(Offset(width - 25f * flowDensity, height - 11f * flowDensity)) }
+        composeRule
+            .onNodeWithTag("stats-bars")
+            .performTouchInput { click(Offset(90f * flowDensity, 100f * flowDensity)) }
+        waitForTagText("stats-bars-pick", "0")
         composeRule
             .onNodeWithTag("stats-back")
             .performClick()
