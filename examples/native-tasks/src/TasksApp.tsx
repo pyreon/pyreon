@@ -448,12 +448,12 @@ interface Stage {
 }
 const STAGES_ALL: Stage[] = [{ name: 'Leads', total: 120 }, { name: 'Qualified', total: 80 }, { name: 'Won', total: 30 }]
 const STAGES_DROPPED: Stage[] = [{ name: 'Qualified', total: 80 }, { name: 'Won', total: 30 }]
-interface Slice {
+interface PieSlice {
   name: string
   total: number
   tint: string
 }
-const SLICES: Slice[] = [{ name: 'iOS', total: 45, tint: '#0f766e' }, { name: 'Android', total: 35, tint: '#b45309' }, { name: 'Web', total: 20, tint: '#1d4ed8' }]
+const SLICES: PieSlice[] = [{ name: 'iOS', total: 45, tint: '#0f766e' }, { name: 'Android', total: 35, tint: '#b45309' }, { name: 'Web', total: 20, tint: '#1d4ed8' }]
 interface Team {
   name: string
   scores: number[]
@@ -487,7 +487,7 @@ function DashboardPage() {
         <Button onPress={() => load.set(load() + 25)} data-testid="dash-load-up">
           Load +25
         </Button>
-        <PieChart data={SLICES} value={(d: Slice) => d.total} label={(d: Slice) => d.name} color={(d: Slice) => d.tint} innerRadius={0.4} height={200} data-testid="dash-pie" />
+        <PieChart data={SLICES} value={(d: PieSlice) => d.total} label={(d: PieSlice) => d.name} color={(d: PieSlice) => d.tint} innerRadius={0.4} height={200} data-testid="dash-pie" />
         <RadarChart data={TEAMS} axes={SKILL_AXES} values={(d: Team) => d.scores} label={(d: Team) => d.name} rings={3} height={200} title="Skills" data-testid="dash-radar" />
         <HeatmapChart data={HEAT_CELLS} x={(d: HeatCellRow) => d.hour} y={(d: HeatCellRow) => d.d} value={(d: HeatCellRow) => d.n} gap={2} height={160} data-testid="dash-heat" />
         <TreemapChart data={TREE} height={180} data-testid="dash-tree" />
