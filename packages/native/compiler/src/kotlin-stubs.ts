@@ -1993,3 +1993,18 @@ class PyreonAuth<User> {
   fun signOut() {}
 }
 `
+
+/**
+ * The Compose canvas (+ the two runtime helpers the chart hosts call) for a
+ * `@pyreon/charts/plot` host emit; validate.ts appends the REAL engine and
+ * draw-list data classes next to this. Lives here so the stub-coverage
+ * ratchet counts `PyreonChartCanvas` as covered. The signature mirrors
+ * runtime-kotlin `PyreonChartCanvas.kt` exactly.
+ */
+export const KOTLIN_CHART_VIEW_STUBS = `
+// ---- @pyreon/charts/plot hosts (chart-hosts.ts emit) ----
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun PyreonChartCanvas(cmds: List<PyreonDrawCmd>, modifier: Modifier = Modifier) {}
+fun pyreonChartMeasure(text: String, size: Double): Double = text.length * size * 0.6
+`
