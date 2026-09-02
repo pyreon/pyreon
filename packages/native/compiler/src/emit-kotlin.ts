@@ -69,7 +69,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { CHART_HOSTS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -9005,6 +9005,7 @@ const KOTLIN_CHART_TARGET: ChartHostTarget = {
   max0: (e) => `maxOf(0.0, ${e})`,
   min: (a, b) => `minOf(${a}, ${b})`,
   nil: 'null',
+  pieOptions: (a) => `PieOptions(innerRadius = ${a.innerRatio}, showLabels = true, labelColor = "#ffffff", fontSize = 11.0)`,
 }
 
 /** A JSX attr's value expression, unwrapping a zero-arg accessor arrow. */
@@ -9048,6 +9049,8 @@ function kotlinChartSelectBody(handler: ExprIR, hitExpr: string, indent: number)
 
 function emitKotlinChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const tag = e.tag
+  if (tag === 'GaugeChart') return emitKotlinGaugeHost(e, indent)
+  if (Object.hasOwn(ACCESSOR_CHART_HOSTS, tag)) return emitKotlinAccessorHost(e, indent)
   const unlowered = UNLOWERED_CHART_HOSTS[tag]
   if (unlowered !== undefined) {
     _emitWarnings.push(`<${tag}> has no native lowering yet — ${unlowered}. Emitting an empty Box().`)
@@ -9103,4 +9106,109 @@ function emitKotlinChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   const widthLine = hasWidth ? '' : `${pad}val pyreonW = maxWidth.value.toDouble()\n`
   const densityLine = tap === '' ? '' : `${pad}val pyreonDensity = LocalDensity.current.density\n`
   return `BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {\n${widthLine}${densityLine}${pad}${canvas}\n${' '.repeat(indent)}}`
+}
+
+
+// ---- accessor-prop hosts (FunnelChart / PieChart) + GaugeChart ------------
+
+/** Mirror of the Swift accessor inliner: the body with its params substituted for `pyreonD` / `pyreonI`. */
+function kotlinChartAccessor(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: string, prop: string, indent: number): string | null | 'unsupported' {
+  const v = chartAttrExprKotlin(e, prop)
+  if (v === undefined) return null
+  if (v.kind !== 'arrow' || (v.stmts !== undefined && v.stmts.length > 0) || v.params.length > 2) {
+    _emitWarnings.push(`<${tag} ${prop}>: only a single-expression arrow \`(d, i) => …\` lowers on native; emitting an empty Box().`)
+    return 'unsupported'
+  }
+  let body: ExprIR | null = v.body
+  const names = ['pyreonD', 'pyreonI']
+  for (let i = 0; i < v.params.length && body !== null; i++) {
+    body = substituteIdentifier(body, v.params[i]!, { kind: 'identifier', name: names[i]! })
+  }
+  if (body === null) {
+    _emitWarnings.push(`<${tag} ${prop}>: the accessor shadows its own parameter; emitting an empty Box().`)
+    return 'unsupported'
+  }
+  return emitKotlinExpr(body, indent)
+}
+
+function emitKotlinAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const tag = e.tag
+  const spec = ACCESSOR_CHART_HOSTS[tag]!
+  const dataV = chartAttrExprKotlin(e, spec.data)
+  if (dataV === undefined) {
+    _emitWarnings.push(`<${tag}>: needs a \`${spec.data}\` attribute on native; emitting an empty Box().`)
+    return 'Box {}'
+  }
+  const fieldArgs: string[] = []
+  for (const f of spec.fields) {
+    const acc = kotlinChartAccessor(e, tag, f.prop, indent)
+    if (acc === 'unsupported') return 'Box {}'
+    let value: string
+    if (acc === null) {
+      if (f.fallback !== 'palette') {
+        _emitWarnings.push(`<${tag}>: needs a \`${f.prop}\` accessor on native; emitting an empty Box().`)
+        return 'Box {}'
+      }
+      value = `listOf(${CHART_HOST_PALETTE.map((c) => JSON.stringify(c)).join(', ')})[pyreonI % ${CHART_HOST_PALETTE.length}]`
+    } else {
+      value = f.double === true ? `(${acc}).toDouble()` : acc
+    }
+    fieldArgs.push(`${f.name} = ${value}`)
+  }
+  const items = `${emitKotlinExpr(dataV, indent)}.mapIndexed { pyreonI, pyreonD -> ${spec.struct}(${fieldArgs.join(', ')}) }`
+  const optV = spec.options === undefined ? undefined : chartAttrExprKotlin(e, spec.options)
+  const options = optV === undefined ? 'null' : emitKotlinExpr(optV, indent)
+  const H = kotlinChartDouble(e, 'height', spec.defaultHeight, indent)
+  const hasWidth = chartAttrExprKotlin(e, 'width') !== undefined
+  const W = hasWidth ? kotlinChartDouble(e, 'width', 300, indent) : 'pyreonW'
+  const args: ChartHostArgs = { data: [], options, W, H, gutter: '0.0', innerRatio: kotlinChartDouble(e, 'innerRadius', 0, indent) }
+  if (tag === 'PieChart' && readStaticAttrKotlin(e, 'showLegend') === true) {
+    _emitWarnings.push('<PieChart showLegend>: the legend is not lowered on native yet; the pie renders without it.')
+  }
+  const cmds = spec.render(items, args, KOTLIN_CHART_TARGET)
+  const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
+  const tap =
+    onSel?.kind === 'event'
+      ? `.pointerInput(Unit) { detectTapGestures { pyreonTap -> ${kotlinChartSelectBody(onSel.handler, spec.hit(items, '(pyreonTap.x / pyreonDensity).toDouble()', '(pyreonTap.y / pyreonDensity).toDouble()', args, KOTLIN_CHART_TARGET), indent)} } }`
+      : ''
+  const size = hasWidth ? `Modifier.width((${W}).dp).height((${H}).dp)` : `Modifier.fillMaxWidth().height((${H}).dp)`
+  const generic = emitKotlinLayoutModifier(e)
+  const titleRaw = readStaticAttrKotlin(e, 'title')
+  const titleMod = typeof titleRaw === 'string' ? `.semantics { contentDescription = ${JSON.stringify(titleRaw)} }` : ''
+  const modifier = size + tap + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))
+  const canvas = `PyreonChartCanvas(cmds = ${cmds}, modifier = ${modifier})`
+  if (hasWidth && tap === '') return canvas
+  const pad = ' '.repeat(indent + 2)
+  const widthLine = hasWidth ? '' : `${pad}val pyreonW = maxWidth.value.toDouble()\n`
+  const densityLine = tap === '' ? '' : `${pad}val pyreonDensity = LocalDensity.current.density\n`
+  return `BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {\n${widthLine}${densityLine}${pad}${canvas}\n${' '.repeat(indent)}}`
+}
+
+/** Mirror of the Swift gauge host: renderGauge over a double-height box + the value text. */
+function emitKotlinGaugeHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const valueV = chartAttrExprKotlin(e, 'value')
+  if (valueV === undefined) {
+    _emitWarnings.push('<GaugeChart>: needs a `value` attribute on native; emitting an empty Box().')
+    return 'Box {}'
+  }
+  const value = `(${emitKotlinExpr(valueV, indent)}).toDouble()`
+  const H = kotlinChartDouble(e, 'height', 140, indent)
+  const hasWidth = chartAttrExprKotlin(e, 'width') !== undefined
+  const W = hasWidth ? kotlinChartDouble(e, 'width', 240, indent) : 'pyreonW'
+  const track = readStaticAttrKotlin(e, 'trackColor')
+  const valueColor = readStaticAttrKotlin(e, 'valueColor')
+  const opts = `GaugeOptions(min = ${kotlinChartDouble(e, 'min', 0, indent)}, max = ${kotlinChartDouble(e, 'max', 100, indent)}, sweep = Math.PI, thickness = ${kotlinChartDouble(e, 'thickness', 22, indent)}, trackColor = ${typeof track === 'string' ? JSON.stringify(track) : '"rgba(132,150,165,0.22)"'}, valueColor = ${typeof valueColor === 'string' ? JSON.stringify(valueColor) : '"#0f766e"'})`
+  const showValue = readStaticAttrKotlin(e, 'showValue') !== false
+  const text = showValue
+    ? ` + listOf(PyreonDrawCmd(kind = "text", fill = "#10161d", text = plain(${value}), at = PyreonChartPt(${W} / 2.0, ${H} - 6.0), size = 20.0, align = "middle", baseline = "bottom"))`
+    : ''
+  const cmds = `renderGauge(${value}, PyreonChartRect(0.0, 0.0, ${W}, ${H} * 2.0), ${opts})${text}`
+  const size = hasWidth ? `Modifier.width((${W}).dp).height((${H}).dp)` : `Modifier.fillMaxWidth().height((${H}).dp)`
+  const generic = emitKotlinLayoutModifier(e)
+  const titleRaw = readStaticAttrKotlin(e, 'title')
+  const titleMod = typeof titleRaw === 'string' ? `.semantics { contentDescription = ${JSON.stringify(titleRaw)} }` : ''
+  const canvas = `PyreonChartCanvas(cmds = ${cmds}, modifier = ${size + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))})`
+  if (hasWidth) return canvas
+  const pad = ' '.repeat(indent + 2)
+  return `BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {\n${pad}val pyreonW = maxWidth.value.toDouble()\n${pad}${canvas}\n${' '.repeat(indent)}}`
 }

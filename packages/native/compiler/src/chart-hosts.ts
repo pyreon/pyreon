@@ -31,6 +31,8 @@ export interface ChartHostTarget {
   min: (a: string, b: string) => string
   /** The absent-options literal (`nil` / `null`). */
   nil: string
+  /** `PieOptions(innerRadius: <innerRatio>, showLabels: true, labelColor: "#ffffff", fontSize: 11.0)` — the web host's fixed pie options. */
+  pieOptions: (a: ChartHostArgs) => string
 }
 
 export interface ChartHostArgs {
@@ -144,10 +146,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
 /** Plot hosts that exist on the web but have no native lowering yet, with the reason. */
 export const UNLOWERED_CHART_HOSTS: Readonly<Record<string, string>> = {
   PlotChart: 'its `marks` are accessor closures over your rows (`bars((d) => d.total)`); natively, build a `ChartSpec` and call `renderChart` yourself',
-  PieChart: 'its `value` / `label` props are accessor closures; call `renderPie` over `Slice[]` yourself',
-  GaugeChart: 'call `renderGauge(value, box, options)` yourself',
   RadarChart: 'its `value` prop is an accessor closure; call `renderRadar` yourself',
-  FunnelChart: 'its `value` / `label` props are accessor closures; build `FunnelStage[]` and call `renderFunnel` yourself',
   HeatmapChart: 'its `x` / `y` / `value` props are accessor closures; call `buildHeatGrid` + `renderHeat` yourself',
   CandlestickChart: 'its `open` / `high` / `low` / `close` props are accessor closures; call `renderCandles` over `Ohlc[]` yourself',
   CalendarChart: 'its `values` prop is a record; natively pass a `CalendarValue[]` to `renderCalendar` yourself',
@@ -157,10 +156,83 @@ export const UNLOWERED_CHART_HOSTS: Readonly<Record<string, string>> = {
 
 /** Whether a JSX tag is a `@pyreon/charts/plot` host, lowered or not. */
 export function isChartHostTag(tag: string): boolean {
-  return Object.hasOwn(CHART_HOSTS, tag) || Object.hasOwn(UNLOWERED_CHART_HOSTS, tag)
+  return Object.hasOwn(CHART_HOSTS, tag) || Object.hasOwn(ACCESSOR_CHART_HOSTS, tag) || tag === 'GaugeChart' || Object.hasOwn(UNLOWERED_CHART_HOSTS, tag)
 }
 
 /** A Double literal the way both targets accept it (`240` → `240.0`). */
 export function chartDouble(n: number): string {
   return Number.isInteger(n) ? `${n}.0` : `${n}`
+}
+
+
+// ---------------------------------------------------------------------------
+// Accessor-prop hosts. `<FunnelChart data={rows} value={(d) => d.total}
+// label={(d) => d.name}>` builds its engine input by MAPPING the rows through
+// accessor closures; natively that is `rows.enumerated().map { (i, d) in
+// FunnelStage(value: Double(d.total), label: d.name, color: …) }` — the
+// accessor bodies inlined with their parameters substituted, so the closure
+// is one expression the target can type from the array's element. A block-
+// bodied accessor has no such form and warns by name.
+// ---------------------------------------------------------------------------
+
+/** One field of the engine's input struct, fed by an accessor prop. */
+export interface AccessorField {
+  /** The struct field. */
+  readonly name: string
+  /** The accessor prop on the host (`value`, `label`, `color`). */
+  readonly prop: string
+  /** Coerce the accessor's result to a Double (the field is a Double). */
+  readonly double?: boolean
+  /** When the accessor is absent: the shared palette by index. */
+  readonly fallback?: 'palette'
+}
+
+export interface AccessorHostSpec {
+  /** The rows prop. */
+  readonly data: string
+  /** The engine's input struct the rows map to. */
+  readonly struct: string
+  readonly fields: readonly AccessorField[]
+  /** The options prop (`funnel`), or none. */
+  readonly options?: string
+  readonly defaultHeight: number
+  /** Builds the draw-list expression from the mapped items. */
+  readonly render: (items: string, a: ChartHostArgs, t: ChartHostTarget) => string
+  /** Builds the index-hit expression for a tap at (x, y). */
+  readonly hit: (items: string, x: string, y: string, a: ChartHostArgs, t: ChartHostTarget) => string
+}
+
+/** The palette the web Funnel / Pie hosts colour unaccessored rows with. */
+export const CHART_HOST_PALETTE = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed'] as const
+
+export const ACCESSOR_CHART_HOSTS: Readonly<Record<string, AccessorHostSpec>> = {
+  FunnelChart: {
+    data: 'data',
+    struct: 'FunnelStage',
+    fields: [
+      { name: 'value', prop: 'value', double: true },
+      { name: 'label', prop: 'label' },
+      { name: 'color', prop: 'color', fallback: 'palette' },
+    ],
+    options: 'funnel',
+    defaultHeight: 240,
+    render: (items, a, t) => `renderFunnel(${items}, ${t.rect('8.0', '8.0', `${a.W} - 16.0`, `${a.H} - 16.0`)}, ${a.options})`,
+    hit: (items, x, y, a, t) => `hitFunnel(${items}, ${t.rect('8.0', '8.0', `${a.W} - 16.0`, `${a.H} - 16.0`)}, ${x}, ${y}, ${a.options})`,
+  },
+  PieChart: {
+    data: 'data',
+    struct: 'Slice',
+    fields: [
+      { name: 'value', prop: 'value', double: true },
+      { name: 'label', prop: 'label' },
+      { name: 'color', prop: 'color', fallback: 'palette' },
+    ],
+    defaultHeight: 240,
+    // `innerRatio` carries the host's `innerRadius` (a 0..1 fraction of the fitted radius).
+    render: (items, a, t) => `renderPie(${items}, ${box00(a, t)}, ${t.pieOptions(a)})`,
+    hit: (items, x, y, a, t) => {
+      const fit = `fitCircle(${box00(a, t)})`
+      return `hitArc(layoutArcs(${items}), ${fit}.center, ${fit}.radius, ${fit}.radius * ${a.innerRatio}, ${t.pt(x, y)})`
+    },
+  },
 }

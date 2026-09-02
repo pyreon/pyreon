@@ -222,3 +222,69 @@ export function Plan() {
     expect(r.ok, r.error ?? '').toBe(true)
   })
 })
+
+
+const ACCESSOR = `import { signal } from '@pyreon/reactivity'
+import { Stack, Text } from '@pyreon/primitives'
+import { FunnelChart, GaugeChart, PieChart } from '@pyreon/charts/plot'
+interface Stage { name: string; total: number; tint: string }
+const STAGES: Stage[] = [{ name: 'Visit', total: 120, tint: '#111111' }, { name: 'Sign up', total: 48, tint: '#222222' }]
+export function Sales() {
+  const picked = signal(-1)
+  const load = signal(42)
+  return (
+    <Stack>
+      <Text>{picked()}</Text>
+      <FunnelChart data={STAGES} value={(d) => d.total} label={(d, i) => d.name} height={200} onSelect={(i: number) => picked.set(i)} />
+      <PieChart data={STAGES} value={(d) => d.total} label={(d) => d.name} color={(d) => d.tint} innerRadius={0.4} width={200} height={200} />
+      <GaugeChart value={load()} min={0} max={100} thickness={18} valueColor="#b45309" height={120} data-testid="gauge" />
+    </Stack>
+  )
+}`
+
+describe('chart hosts — accessor-prop hosts (Funnel / Pie) and Gauge', () => {
+  it('Swift: rows map through the inlined accessors into the engine struct; absent color takes the palette; onSelect taps hitFunnel', () => {
+    const r = transform(ACCESSOR, { target: 'swift' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain(
+      'renderFunnel(STAGES.enumerated().map { (pyreonI, pyreonD) in FunnelStage(value: Double(pyreonD.total), label: pyreonD.name, color: ["#0f766e", "#b45309", "#1d4ed8", "#b42318", "#15803d", "#7c3aed"][pyreonI % 6]) }, PyreonChartRect(x: 8.0, y: 8.0, w: Double(pyreonGeo.size.width) - 16.0, h: 200.0 - 16.0), nil)',
+    )
+    expect(r.code).toContain('let i = hitFunnel(STAGES.enumerated().map { (pyreonI, pyreonD) in FunnelStage(')
+    expect(r.code).toContain(
+      'renderPie(STAGES.enumerated().map { (pyreonI, pyreonD) in Slice(value: Double(pyreonD.total), label: pyreonD.name, color: pyreonD.tint) }, PyreonChartRect(x: 0.0, y: 0.0, w: 200.0, h: 200.0), PieOptions(innerRadius: 0.4, showLabels: true, labelColor: "#ffffff", fontSize: 11.0))',
+    )
+    expect(r.code).toContain('renderGauge(Double(load), PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 120.0 * 2.0), GaugeOptions(min: 0.0, max: 100.0, sweep: Double.pi, thickness: 18.0, trackColor: "rgba(132,150,165,0.22)", valueColor: "#b45309")) + [PyreonDrawCmd(kind: "text", fill: "#10161d", text: plain(Double(load))')
+    expect(r.code).toContain('.accessibilityIdentifier("gauge")')
+  })
+  it('Kotlin: mapIndexed with the same inlined accessors; the pie options and gauge text mirror Swift', () => {
+    const r = transform(ACCESSOR, { target: 'kotlin' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('renderFunnel(STAGES.mapIndexed { pyreonI, pyreonD -> FunnelStage(value = (pyreonD.total).toDouble(), label = pyreonD.name, color = listOf("#0f766e", "#b45309", "#1d4ed8", "#b42318", "#15803d", "#7c3aed")[pyreonI % 6]) }, PyreonChartRect(8.0, 8.0, pyreonW - 16.0, 200.0 - 16.0), null)')
+    expect(r.code).toContain('PieOptions(innerRadius = 0.4, showLabels = true, labelColor = "#ffffff", fontSize = 11.0)')
+    expect(r.code).toContain('renderGauge((load).toDouble(), PyreonChartRect(0.0, 0.0, pyreonW, 120.0 * 2.0), GaugeOptions(min = 0.0, max = 100.0, sweep = Math.PI, thickness = 18.0, trackColor = "rgba(132,150,165,0.22)", valueColor = "#b45309")) + listOf(PyreonDrawCmd(kind = "text", fill = "#10161d", text = plain((load).toDouble())')
+    expect(r.code).toContain('.testTag("gauge")')
+  })
+  it('a block-bodied accessor and a pie legend are reported by name', () => {
+    const r = transform(
+      `import { FunnelChart, PieChart } from '@pyreon/charts/plot'
+interface Row { n: string; v: number }
+const ROWS: Row[] = [{ n: 'a', v: 1 }]
+export function C() { return (<><FunnelChart data={ROWS} value={(d) => { const twice = d.v * 2; return twice }} label={(d) => d.n} /><PieChart data={ROWS} value={(d) => d.v} label={(d) => d.n} showLegend={true} /></>) }`,
+      { target: 'swift' },
+    )
+    expect(r.warnings.join('\n')).toContain('<FunnelChart value>: only a single-expression arrow')
+    expect(r.warnings.join('\n')).toContain('<PieChart showLegend>: the legend is not lowered')
+  })
+  it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine) accepts the accessor and gauge emits', () => {
+    const r = validateSwiftWithStubs(transform(ACCESSOR, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isSwiftUIAvailable())('swiftc against real SwiftUI + canvas + engine accepts them', () => {
+    const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(ENGINE_SWIFT) + '\n' + transform(ACCESSOR, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isKotlincAvailable())('kotlinc (stub bundle + real engine) accepts them', () => {
+    const r = validateKotlin(transform(ACCESSOR, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+})
