@@ -301,6 +301,34 @@ export abstract class Schema<T> {
    * if (Login.is(req.body)) handle(req.body)
    */
   is(input: unknown): boolean {
+    // MEASURED SEAM COST: 1.27ns/op (12.51 via this method vs 11.24 calling the
+    // compiled function directly, 8-field strict shape, 500k iterations).
+    //
+    // It can be removed by caching the compiled function as an OWN `is`
+    // property, so `schema.is` IS the compiled function. Deliberately not done:
+    // the compiled verdict must be invalidated whenever the schema tree changes
+    // (chained methods mutate in place), and an own-property cache makes
+    // stale-after-mutation the failure mode — `.is()` disagreeing with
+    // `.parse().ok`, which shipped once already and is locked by
+    // `jit-check-differential`. 1.27ns is not worth re-opening that class.
+    //
+    // For scale: it is ~1/3 of the gap to typia on this shape. The other ~2/3
+    // is the generated code itself, even though both emit the same
+    // `Object.keys(x).length !== N` strict check — so the seam is not where the
+    // remaining difference lives.
+    //
+    // Two candidate explanations for that remainder were MEASURED AND REFUTED,
+    // recorded so they are not re-tried:
+    //   - Extra validation on our side. We reject `NaN` for `s.number()` and
+    //     typia does not, so we run 4 more checks on that shape. Median of 3
+    //     runs each: 10.74ns with, 10.47ns without — ~0.3ns, inside the noise.
+    //   - Emission SHAPE. typia emits one flat `&&` chain; we emit statements
+    //     with early returns. Hand-written twins of both, same checks, median
+    //     of 3: early-return 9.25ns, flat-chain 9.59ns. The flat form is not
+    //     faster, and if anything is slightly slower.
+    // So on the ASSERT cells typia is genuinely faster at near-identical work.
+    // The parse cells are a different story — there it returns the input by
+    // reference where `parseOrThrow` builds a stripped clone.
     if (this._compiledVerdict) return this._compiledVerdict(input)
     // Verdict-only JIT: no ctx, no issue objects, no output value — the
     // whole reason `.is()` exists. Falls through to the seams below for any
