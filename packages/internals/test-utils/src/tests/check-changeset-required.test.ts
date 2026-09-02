@@ -22,7 +22,7 @@ import {
  * Tests for the changeset-required gate (`scripts/check-changeset-required.ts`).
  *
  * **Why this matters**: the pre-fix gate was inline shell in
- * `.github/workflows/changeset-check.yml` that matched ANY file under
+ * `.github/workflows/pr-gates.yml` (then `changeset-check.yml`) that matched ANY file under
  * `packages/`. That fired on private packages (`@pyreon/test-utils`,
  * `@pyreon/manifest`, `@pyreon/perf-harness`, `@pyreon/vitest-config`,
  * `@pyreon/playwright-config`, `@pyreon/devtools`, `@pyreon/ui-*`, every

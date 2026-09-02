@@ -91,6 +91,24 @@ describe('SCENARIOS', () => {
       expect(s.id).toContain('::')
     }
   })
+
+  it('an entry override is a bare lib-relative .js filename (never a path escape)', () => {
+    for (const s of SCENARIOS) {
+      if (s.entry !== undefined) expect(s.entry).toMatch(/^[\w-]+\.js$/)
+    }
+  })
+
+  it('locks the plot subpath trio (tree-shaking of the charts engine)', () => {
+    const charts = SCENARIOS.filter((s) => s.pkg === '@pyreon/charts')
+    expect(charts.map((s) => s.id).sort()).toEqual([
+      '@pyreon/charts::plot-minimal',
+      '@pyreon/charts::plot-pie',
+      '@pyreon/charts::plot-svg',
+    ])
+    // All three must measure the SUBPATH entry — routing through the main
+    // barrel would measure the echarts bridge, not the engine.
+    for (const s of charts) expect(s.entry).toBe('plot.js')
+  })
 })
 
 describe('VERSION_NOISE_BYTES', () => {

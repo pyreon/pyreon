@@ -138,6 +138,7 @@
     "@preact/signals-core": "^1.14.4",
     "@pyreon/playwright-config": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
+    "@pyreon/validate": "workspace:^",
     "@swc/core": "^1.16.1",
     "@tanstack/react-router": "^1.170.32",
     "@tiptap/react": "^3.30.3",
