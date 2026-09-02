@@ -47,6 +47,8 @@ export const ENGINE_FILES = [
   'stack',
   'render',
   'funnel',
+  'treemap',
+  'sunburst',
 ] as const
 
 const RENAMES: ReadonlyArray<readonly [string, string]> = [
