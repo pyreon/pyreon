@@ -26,6 +26,8 @@ import type { PolarAxes, PolarOptions, PolarSeries } from './polar'
 import { riverToSvg } from './river'
 import type { RiverOptions, RiverSeries } from './river'
 import { resolveDataset } from './option-layer'
+import { geoToSvg, getMap } from './geo'
+import type { GeoJson, GeoOptions } from './geo'
 import type { FunnelOptions } from './funnel'
 import type { RadarAxis } from './radar'
 import type { Double } from './types'
@@ -46,6 +48,7 @@ export type FamilyPlan =
   | { kind: 'parallel'; axes: ParallelAxis[]; rows: ParallelRow[]; parallel: ParallelOptions; title: string | undefined }
   | { kind: 'polar'; axes: PolarAxes; series: PolarSeries[]; polar: PolarOptions; title: string | undefined }
   | { kind: 'themeRiver'; series: RiverSeries[]; river: RiverOptions; title: string | undefined }
+  | { kind: 'map'; geo: GeoJson; values: Record<string, Double>; options: GeoOptions; title: string | undefined }
 
 export interface CompiledFamily {
   plan: FamilyPlan
@@ -53,7 +56,7 @@ export interface CompiledFamily {
   supported: boolean
 }
 
-const FAMILY_TYPES = new Set(['pie', 'gauge', 'radar', 'candlestick', 'heatmap', 'funnel', 'treemap', 'sunburst', 'tree', 'sankey', 'graph', 'parallel', 'themeRiver'])
+const FAMILY_TYPES = new Set(['pie', 'gauge', 'radar', 'candlestick', 'heatmap', 'funnel', 'treemap', 'sunburst', 'tree', 'sankey', 'graph', 'parallel', 'themeRiver', 'map'])
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const num = (v: unknown): number | null => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null
@@ -75,7 +78,7 @@ export function isFamilyOption(option: EChartsOption): boolean {
   return isObj(s) && typeof s['type'] === 'string' && (FAMILY_TYPES.has(s['type'] as string) || s['coordinateSystem'] === 'polar')
 }
 
-const KNOWN_TOP = new Set(['series', 'title', 'legend', 'tooltip', 'color', 'radar', 'xAxis', 'yAxis', 'visualMap', 'animation', 'backgroundColor', 'textStyle', 'grid', 'calendar', 'parallel', 'parallelAxis', 'polar', 'angleAxis', 'radiusAxis', 'singleAxis', 'dataset', 'graphic'])
+const KNOWN_TOP = new Set(['series', 'title', 'legend', 'tooltip', 'color', 'radar', 'xAxis', 'yAxis', 'visualMap', 'animation', 'backgroundColor', 'textStyle', 'grid', 'calendar', 'parallel', 'parallelAxis', 'polar', 'angleAxis', 'radiusAxis', 'singleAxis', 'dataset', 'graphic', 'geo'])
 const KNOWN_BY_FAMILY: Record<string, Set<string>> = {
   pie: new Set(['type', 'name', 'data', 'radius', 'label', 'itemStyle', 'center', 'emphasis', 'color']),
   gauge: new Set(['type', 'name', 'data', 'min', 'max', 'detail', 'axisLine', 'progress', 'itemStyle', 'color']),
@@ -87,6 +90,7 @@ const KNOWN_BY_FAMILY: Record<string, Set<string>> = {
   sunburst: new Set(['type', 'name', 'data', 'radius', 'center', 'sort', 'startAngle', 'label', 'itemStyle', 'color', 'emphasis', 'nodeClick', 'levels']),
   tree: new Set(['type', 'name', 'data', 'orient', 'layout', 'symbol', 'symbolSize', 'initialTreeDepth', 'edgeShape', 'label', 'itemStyle', 'lineStyle', 'leaves', 'roam', 'expandAndCollapse', 'emphasis', 'top', 'left', 'right', 'bottom']),
   sankey: new Set(['type', 'name', 'data', 'nodes', 'links', 'edges', 'nodeWidth', 'nodeGap', 'nodeAlign', 'layoutIterations', 'orient', 'draggable', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'levels', 'top', 'left', 'right', 'bottom']),
+  map: new Set(['type', 'name', 'data', 'map', 'roam', 'label', 'itemStyle', 'emphasis', 'select', 'selectedMode', 'nameProperty', 'projection', 'zoom', 'center', 'aspectScale', 'layoutCenter', 'layoutSize', 'showLegendSymbol', 'geoIndex', 'left', 'top', 'right', 'bottom']),
   themeRiver: new Set(['type', 'name', 'data', 'coordinateSystem', 'singleAxisIndex', 'boundaryGap', 'label', 'itemStyle', 'emphasis', 'color', 'animation']),
   polar: new Set(['type', 'name', 'data', 'coordinateSystem', 'polarIndex', 'stack', 'itemStyle', 'lineStyle', 'label', 'emphasis', 'smooth', 'symbol', 'symbolSize', 'barWidth', 'barGap', 'barCategoryGap', 'roundCap', 'showBackground', 'backgroundStyle', 'areaStyle', 'animation', 'color']),
   parallel: new Set(['type', 'name', 'data', 'coordinateSystem', 'parallelIndex', 'lineStyle', 'emphasis', 'inactiveOpacity', 'activeOpacity', 'realtime', 'smooth', 'progressive', 'animation']),
@@ -246,6 +250,41 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       warnings,
       supported,
     }
+  }
+
+  if (type === 'map') {
+    const mapName = typeof s['map'] === 'string' ? (s['map'] as string) : ''
+    const found = getMap(mapName)
+    if (found === null) warn('series-option-unsupported', 'series[0].map', 'Map "' + mapName + '" is not registered (call registerMap first); nothing was drawn.')
+    const geo: GeoJson = found ?? { type: 'FeatureCollection', features: [] }
+    const values: Record<string, Double> = {}
+    for (let i = 0; i < data.length; i++) {
+      const d = data[i]
+      const v = isObj(d) ? num(d['value']) : null
+      if (!isObj(d) || typeof d['name'] !== 'string' || v === null) {
+        warn('series-data-shape', 'series[0].data[' + String(i) + ']', 'A map datum must be { name, value }; it was skipped.')
+        continue
+      }
+      values[d['name'] as string] = v
+    }
+    const label = isObj(s['label']) ? s['label'] : {}
+    const item = isObj(s['itemStyle']) ? s['itemStyle'] : {}
+    const vm = first(option['visualMap'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
+    const stops = isObj(vm) && isObj(vm['inRange']) && Array.isArray(vm['inRange']['color'])
+      ? (vm['inRange']['color'] as unknown[]).filter((c): c is string => typeof c === 'string')
+      : []
+    const vmMin = isObj(vm) ? num(vm['min']) : null
+    const vmMax = isObj(vm) ? num(vm['max']) : null
+    if (s['roam'] === true) warn('series-option-unsupported', 'series[0].roam', 'Map roaming (pan/zoom) is not supported yet; the map is static.')
+    const options: GeoOptions = {
+      showLabels: label['show'] === true,
+      ...(typeof s['nameProperty'] === 'string' ? { nameProperty: s['nameProperty'] as string } : {}),
+      ...(typeof item['borderColor'] === 'string' ? { borderColor: item['borderColor'] as string } : {}),
+      ...(num(item['borderWidth']) !== null ? { borderWidth: num(item['borderWidth']) as number } : {}),
+      ...(stops.length >= 2 ? { stops } : {}),
+      ...(vmMin !== null && vmMax !== null ? { domain: [vmMin, vmMax] as [Double, Double] } : {}),
+    }
+    return { plan: { kind: 'map', geo, values, options, title }, warnings, supported }
   }
 
   if (type === 'themeRiver') {
@@ -759,6 +798,15 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
         ...(plan.title !== undefined ? { title: plan.title } : {}),
       })
     }
+    case 'map':
+      return geoToSvg({
+        geo: plan.geo,
+        values: plan.values,
+        options: plan.options,
+        width,
+        height,
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
     case 'themeRiver':
       return riverToSvg({
         series: plan.series,
