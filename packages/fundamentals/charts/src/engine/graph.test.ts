@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { graphToSvg, hitGraph, layoutGraph, renderGraph } from './graph'
+import { layoutGraph, renderGraph } from './graph'
+import { hitGraph } from './graph-hit'
+import { graphToSvg } from './family-svg'
 import { compileFamily, familyToSvg } from './option-family'
 
 const box = { x: 0, y: 0, w: 400, h: 300 }

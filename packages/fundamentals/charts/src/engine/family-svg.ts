@@ -30,6 +30,8 @@ import { layoutPolar, renderPolar } from './polar'
 import type { PolarAxes, PolarOptions, PolarSeries } from './polar'
 import { layoutSankey, renderSankey } from './sankey'
 import type { SankeyLink, SankeyNode, SankeyOptions } from './sankey'
+import { layoutGraph, renderGraph } from './graph'
+import type { GraphLink, GraphNode, GraphOptions } from './graph'
 import type { FunnelOptions, FunnelStage } from './funnel'
 import type { HeatGrid } from './heat'
 import { computeLayout } from './layout'
@@ -675,6 +677,38 @@ export function sankeyToSvg(options: SankeyToSvgOptions): string {
   const description =
     options.description ??
     (options.title !== undefined ? `${options.title}: ${layout.nodes.length} nodes, ${layout.links.length} flows totalling ${total}.` : undefined)
+  return renderSvg(cmds, width, height, {
+    ...options.svg,
+    ...(options.title !== undefined ? { title: options.title } : {}),
+    ...(description !== undefined && description !== '' ? { description } : {}),
+  })
+}
+
+// ---- graph (svg half; the geometry in graph.ts is bundled into the native engine) ----
+
+export interface GraphToSvgOptions {
+  nodes: GraphNode[]
+  links: GraphLink[]
+  width?: Double
+  height?: Double
+  graph?: GraphOptions
+  measure?: MeasureText
+  title?: string
+  description?: string
+  svg?: Omit<SvgOptions, 'title' | 'description'>
+}
+
+/** Graph → `<svg>` string, server-safe. */
+export function graphToSvg(options: GraphToSvgOptions): string {
+  const width = options.width ?? 640.0
+  const height = options.height ?? 400.0
+  const box: Rect = { x: 0.0, y: 0.0, w: width, h: height }
+  const layout = layoutGraph(options.nodes, options.links, box, options.graph)
+  const cmds = renderGraph(layout, box, options.graph)
+  void (options.measure ?? measureApprox())
+  const description =
+    options.description ??
+    (options.title !== undefined ? `${options.title}: ${layout.nodes.length} nodes, ${layout.links.length} links.` : undefined)
   return renderSvg(cmds, width, height, {
     ...options.svg,
     ...(options.title !== undefined ? { title: options.title } : {}),
