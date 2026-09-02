@@ -6472,5 +6472,45 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
       }
     ],
     "external": true
+  },
+  {
+    "name": "ZoomWindow",
+    "fields": [
+      {
+        "name": "start",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "end",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "SliceRange",
+    "fields": [
+      {
+        "name": "from",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "to",
+        "type": {
+          "kind": "number"
+        }
+      }
+    ],
+    "external": true
   }
 ]

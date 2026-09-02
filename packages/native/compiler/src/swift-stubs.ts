@@ -495,9 +495,17 @@ public struct LongPressGesture: Gesture {
 public struct DragGesture: Gesture {
   public struct Value { public var translation: CGSize = CGSize(); public var location: CGPoint = CGPoint() }
   public init(minimumDistance: Double = 10) {}
+  public func onChanged(_ action: @escaping (Value) -> Void) -> DragGesture { self }
   public func onEnded(_ action: @escaping (Value) -> Void) -> DragGesture { self }
 }
 public struct CGSize { public var width: Double = 0; public var height: Double = 0 }
+// MagnificationGesture — what <PlotChart dataZoom> lowers its pinch to. The
+// value is the cumulative scale (CGFloat) since the gesture began.
+public struct MagnificationGesture: Gesture {
+  public init() {}
+  public func onChanged(_ action: @escaping (CGFloat) -> Void) -> MagnificationGesture { self }
+  public func onEnded(_ action: @escaping (CGFloat) -> Void) -> MagnificationGesture { self }
+}
 // Mirrors the real SwiftUI button styles the variant emit can produce.
 // Listing exactly these (not an open struct) keeps a wrong style name a
 // compile error here rather than a device surprise.

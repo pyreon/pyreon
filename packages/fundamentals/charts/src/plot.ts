@@ -126,8 +126,9 @@ export type {
 
 // ---------------------------------------------------------------------------
 // Interaction + component geometry (dataZoom, brush, title)
-export { brushRange, clampWindow, isFullWindow, panWindow, sliceRange, zoomWindow } from './engine/zoom'
-export type { ZoomWindow } from './engine/zoom'
+export { clampWindow, isFullWindow, panWindow, sliceRange, zoomWindow } from './engine/zoom'
+export type { SliceRange, ZoomWindow } from './engine/zoom'
+export { brushRange } from './engine/brush'
 export { renderTitle } from './engine/title'
 
 // Hierarchy families — one TreeNode shape shared by treemap / sunburst / tree

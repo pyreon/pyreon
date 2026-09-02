@@ -483,6 +483,7 @@ class PointerInputScope {
   // The chart-host tap emit (chart-hosts.ts): a tap position in px.
   @Suppress("UNUSED_PARAMETER", "RedundantSuspendModifier")
   suspend fun detectTapGestures(onTap: ((Offset) -> Unit)? = null) {}
+  suspend fun detectTransformGestures(onGesture: (Offset, Offset, Float, Float) -> Unit) {}
   @Suppress("UNUSED_PARAMETER", "RedundantSuspendModifier")
   suspend fun detectHorizontalDragGestures(
     onDragStart: (Offset) -> Unit = {},

@@ -264,6 +264,8 @@ function typeWantsFloat(t: TypeIR): boolean {
  * expectation into its siblings.
  */
 let _expectedType: TypeIR | undefined
+/** The declared return type of the top-level function being emitted; steers a `return { … }` literal to its named struct. */
+let _currentReturnType: TypeIR | undefined
 
 /** The struct `_expectedType` names, when it accepts the literal's fields (every unset field optional). */
 function expectedStructFor(fields: readonly { name: string }[]): string | null {
@@ -469,6 +471,10 @@ let _helperFnNames: Set<string> = new Set()
 /** File-scope helper name → return type, assigned onto each component's infer
  * ctx so a computed over a helper call infers its return type (not `Any`). */
 let _helperReturns: Map<string, TypeIR> = new Map()
+/** Top-level helper name → its parameter types; steers an object-literal ARGUMENT to the parameter's named struct. */
+let _helperParamTypes: Map<string, TypeIR[]> = new Map()
+/** Object-literal argument node → the struct its parameter names (populated at the call, read by the literal emit). */
+const _argExpectedTypes: WeakMap<object, TypeIR> = new WeakMap()
 /**
  * Names of ZERO-ARG functions in scope (file-scope helpers + component-scope
  * `const f = () => …` decls). Used ONLY by the text/child-interpolation path,
@@ -943,6 +949,7 @@ export function emitSwift(
   // Helper name → return type, so a computed over a helper call
   // (`computed(() => dbl(21))`) infers `Int` instead of `Any`.
   _helperReturns = new Map(helperFns.map((h) => [h.name, h.returnType]))
+  _helperParamTypes = new Map(helperFns.map((h) => [h.name, h.params.map((p) => p.type)]))
   _exprInferCtx.helperReturns = _helperReturns
   _activeInferCtx.helperReturns = _helperReturns
   // The module-level infer ctxs used OUTSIDE component emission (top-level
@@ -2389,6 +2396,9 @@ function emitSwiftComponent(c: ComponentIR): string {
     }
     lines.push(`  }`)
   }
+  // Hosts that need component state (<PlotChart dataZoom>) register it while
+  // the body is emitted; it is spliced in here, before `var body`, afterwards.
+  const pyreonHostStateAt = lines.length
   lines.push(`  var body: some View {`)
   // Phase 5b: plain value consts as body-local `let`s at the top of the
   // ViewBuilder (Swift infers the type; they may read @State properties).
@@ -2798,6 +2808,10 @@ function emitSwiftComponent(c: ComponentIR): string {
   _urlStateNames = new Set()
   _usesRouter = false
   _routerRoutes = new Map()
+  if (_hostStateDecls.length > 0) {
+    lines.splice(pyreonHostStateAt, 0, ..._hostStateDecls.map((l) => `  ${l}`))
+    _hostStateDecls = []
+  }
   return lines.join('\n')
 }
 
@@ -3805,6 +3819,8 @@ function emitSwiftFunction(
     returnType = inferReturnType(d.params, d.body, inferCtx)
   }
   const retType = returnType.kind === 'unknown' ? '' : ` -> ${swiftType(returnType)}`
+  const prevReturnType = _currentReturnType
+  _currentReturnType = returnType.kind === 'unknown' ? undefined : returnType
   // Single-statement single-return concise form.
   // Seed this function's PARAM types into the infer ctx `numericFloatness`
   // reads (`_activeInferCtx`), so an Int-typed param used in fractional
@@ -3827,7 +3843,8 @@ function emitSwiftFunction(
       d.body[0]!.kind === 'return' &&
       d.body[0]!.expr !== undefined
     ) {
-      const concise = emitSwiftExpr(inlineValueConsts((d.body[0]! as { expr: ExprIR }).expr), 0)
+      const conciseExpr = inlineValueConsts((d.body[0]! as { expr: ExprIR }).expr)
+      const concise = withExpectedType(conciseExpr.kind === 'object' ? _currentReturnType : undefined, () => emitSwiftExpr(conciseExpr, 0))
       const vis = visibility === 'private' ? 'private ' : ''
       return `${vis}func ${swiftIdent(d.name)}(${params})${retType} { ${concise} }`
     }
@@ -3852,6 +3869,7 @@ function emitSwiftFunction(
     const vis2 = visibility === 'private' ? 'private ' : ''
     return `${vis2}func ${swiftIdent(d.name)}(${params})${retType} {\n${bodyLines}\n  }`
   } finally {
+    _currentReturnType = prevReturnType
     for (const s of paramSaved) {
       if (s.had) _activeInferCtx.locals.set(s.name, s.prev!)
       else _activeInferCtx.locals.delete(s.name)
@@ -3940,8 +3958,12 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       }
     case 'assign':
       return `${emitSwiftExpr(s.target, indent)} ${s.op} ${emitSwiftExpr(s.value, indent)}`
-    case 'return':
-      return s.expr ? `return ${emitSwiftExpr(s.expr, indent)}` : 'return'
+    case 'return': {
+      const ex = s.expr
+      if (ex === undefined) return 'return'
+      // A returned object literal takes the enclosing function's declared struct.
+      return `return ${withExpectedType(ex.kind === 'object' ? _currentReturnType : undefined, () => emitSwiftExpr(ex, indent))}`
+    }
     case 'expr':
       // A bare `i++` / `i--` STATEMENT is side-effect-only → `i += 1` /
       // `i -= 1`. The general `update` expr emit is a value-position IIFE
@@ -4615,6 +4637,15 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // somehow fails (it cannot for JSONEncoder output) so the type stays String.
       return `(String(data: try! JSONEncoder().encode(${emitSwiftExpr(e.arg, indent)}), encoding: .utf8) ?? "")`
     case 'call': {
+      if (e.callee.kind === 'identifier') {
+        const paramTypes = _helperParamTypes.get(e.callee.name)
+        if (paramTypes !== undefined) {
+          e.args.forEach((arg, idx) => {
+            const pt = paramTypes[idx]
+            if (pt !== undefined && pt.kind === 'typeRef' && arg.kind === 'object') _argExpectedTypes.set(arg, pt)
+          })
+        }
+      }
       // `Object.keys(<object-typed expr>)` → static `[String]` of the
       // struct field names. A synthesized struct's keys are statically
       // known, so the rewrite lowers to a plain string-array literal;
@@ -6686,6 +6717,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       )
       return emitSwiftExpr(e.argument, indent)
     case 'object': {
+      // A literal whose CALL parameter names a struct is emitted under that struct.
+      const argExpected = _argExpectedTypes.get(e)
+      if (_expectedType === undefined && argExpected !== undefined) return withExpectedType(argExpected, () => emitSwiftExpr(e, indent))
       // G4 — partial-update form. When the object has EXACTLY ONE
       // spread and that spread argument is a bare identifier (typical
       // shape: `{ ...t, done: !t.done }` inside `.map(t => ...)`),
@@ -11304,7 +11338,15 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     return 'EmptyView()'
   }
   const data = emitSwiftExpr(dataV, indent)
+  const zoomed = readStaticAttr(e, 'dataZoom') === true
   const lets: string[] = []
+  if (zoomed) {
+    _hostStateDecls.push('@State private var pyreonZoom: ZoomWindow = ZoomWindow(start: 0.0, end: 1.0)')
+    _hostStateDecls.push('@State private var pyreonZoomAnchor: ZoomWindow = ZoomWindow(start: 0.0, end: 1.0)')
+    lets.push(`let pyreonRange: SliceRange = sliceRange(pyreonZoom, ${data}.count)`)
+    lets.push(`let pyreonRows = Array(${data}[pyreonRange.from..<pyreonRange.to])`)
+  }
+  const rows = zoomed ? 'pyreonRows' : data
   const series: string[] = []
   for (let k = 0; k < marksV.elements.length; k++) {
     const m = marksV.elements[k]!
@@ -11322,11 +11364,10 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     }
     const body = swiftAccessorExpr(y, tag, `mark ${k + 1}`, indent)
     if (body === 'unsupported') return 'EmptyView()'
-    // A bubble carries its radius accessor as the SECOND argument and its options as the third.
     const optsArg = bubble ? m.args[2] : m.args[1]
     const opts = swiftMarkOptionArgs(optsArg, tag, k)
     if (opts === 'unsupported') return 'EmptyView()'
-    lets.push(`let pyreonValues${k}: [Double] = ${data}.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(${body}) }`)
+    lets.push(`let pyreonValues${k}: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${body})`, 'Double', zoomed)}`)
     if (bubble) {
       const r = m.args[1]
       if (r === undefined) {
@@ -11336,8 +11377,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       const rBody = swiftAccessorExpr(r, tag, `mark ${k + 1} radius`, indent)
       if (rBody === 'unsupported') return 'EmptyView()'
       const range = swiftBubbleRange(optsArg)
-      lets.push(`let pyreonRadii${k}: [Double] = bubbleRadii(${data}.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(${rBody}) }, ${range[0]}, ${range[1]})`)
-      // Swift's memberwise init is positional by label: `radii` sits between `showValues` and `axis`.
+      lets.push(`let pyreonRadii${k}: [Double] = bubbleRadii(${swiftPlotRowMap(rows, `pyreonChartDouble(${rBody})`, 'Double', zoomed)}, ${range[0]}, ${range[1]})`)
       const at = opts.findIndex((o) => o.startsWith('showValues:')) + 1
       const withRadii = [...opts.slice(0, at), `radii: pyreonRadii${k}`, ...opts.slice(at)]
       series.push(`Series(kind: "points", values: pyreonValues${k}, ${withRadii.join(', ')})`)
@@ -11350,7 +11390,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   if (xAcc !== undefined) {
     const body = swiftAccessorExpr(xAcc, tag, 'x', indent)
     if (body === 'unsupported') return 'EmptyView()'
-    lets.push(`let pyreonCats: [String] = ${data}.enumerated().map { (pyreonI, pyreonD) in ${body} }`)
+    lets.push(`let pyreonCats: [String] = ${swiftPlotRowMap(rows, body, 'String', zoomed)}`)
   } else {
     lets.push('let pyreonCats: [String] = []')
   }
@@ -11358,7 +11398,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   if (xValueAcc !== undefined) {
     const body = swiftAccessorExpr(xValueAcc, tag, 'xValue', indent)
     if (body === 'unsupported') return 'EmptyView()'
-    lets.push(`let pyreonXValues: [Double] = ${data}.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(${body}) }`)
+    lets.push(`let pyreonXValues: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${body})`, 'Double', zoomed)}`)
   }
   const present = PLOT_UNLOWERED_PROPS.filter((p) => chartAttrExpr(e, p) !== undefined)
   if (present.length > 0) _emitWarnings.push(`<${tag}>: ${present.map((p) => `\`${p}\``).join(', ')} ${present.length === 1 ? 'is' : 'are'} not lowered on native yet; the chart renders without.`)
@@ -11399,7 +11439,24 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   if (mk !== undefined) specArgs.push(`markers: ${emitSwiftExpr(mk, indent)}`)
   lets.push(`let pyreonSpec: ChartSpec = ChartSpec(${specArgs.join(', ')})`)
   const canvas = `PyreonChartCanvas(cmds: ${chrome.wrap('renderChart(pyreonSpec, pyreonChartMeasure)')})`
-  const gesture = swiftChartGesture(e, (x, y) => `plotHitBars(pyreonSpec, pyreonChartMeasure, ${x}, ${chrome.top === '0.0' ? y : `${y} - pyreonTop`})`, indent)
+  const tapY = chrome.top === '0.0' ? 'Double(pyreonTap.location.y)' : 'Double(pyreonTap.location.y) - pyreonTop'
+  // Under dataZoom the hit is LOCAL to the slice; the callback speaks GLOBAL indices, as on the web.
+  const hit = zoomed
+    ? `{ () -> Int in let pyreonHit = plotHitBars(pyreonSpec, pyreonChartMeasure, Double(pyreonTap.location.x), ${tapY}); return pyreonHit < 0 ? -1 : pyreonHit + pyreonRange.from }()`
+    : `plotHitBars(pyreonSpec, pyreonChartMeasure, Double(pyreonTap.location.x), ${tapY})`
+  const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
+  let gesture = ''
+  if (onSel?.kind === 'event') {
+    const body = swiftChartSelectBody(onSel.handler, hit, indent)
+    // With pan and pinch live, a tap is a drag that did not move: guard by translation.
+    const guarded = zoomed ? `if abs(pyreonTap.translation.width) < 6.0 && abs(pyreonTap.translation.height) < 6.0 { ${body} }` : body
+    gesture = `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in ${guarded} })`
+  }
+  if (zoomed) {
+    gesture +=
+      `.simultaneousGesture(MagnificationGesture().onChanged { pyreonScale in pyreonZoom = zoomWindow(pyreonZoomAnchor, 1.0 / Double(pyreonScale), 0.5) }.onEnded { _ in pyreonZoomAnchor = pyreonZoom })` +
+      `.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { pyreonDrag in pyreonZoom = panWindow(pyreonZoomAnchor, -Double(pyreonDrag.translation.width) / ${W}) }.onEnded { _ in pyreonZoomAnchor = pyreonZoom })`
+  }
   return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent)
 }
 
@@ -11518,3 +11575,25 @@ function swiftBubbleRange(opts: ExprIR | undefined): [string, string] {
   }
   return [min, max]
 }
+
+
+// ---- `<PlotChart dataZoom>` — pinch + pan over a fraction window ---------------
+//
+// A host is an expression inside the user's component and cannot declare
+// state on its own, so the plot host with `dataZoom` REGISTERS the `@State`
+// properties it needs here; `emitSwiftComponent` splices them into the
+// struct right before `var body` once the body has been emitted. The window
+// is the engine's `ZoomWindow`; the rows are sliced through `sliceRange`,
+// so a zoomed chart is just a chart of fewer rows — and the accessors keep
+// seeing the GLOBAL index, exactly as on the web.
+
+let _hostStateDecls: string[] = []
+
+function swiftPlotRowMap(rows: string, body: string, type: string, zoomed: boolean): string {
+  if (!zoomed) return `${rows}.enumerated().map { (pyreonI, pyreonD) in ${body} }`
+  // Bind the rebased GLOBAL index only when the accessor reads it (an unused let is a warning).
+  if (!/\bpyreonI\b/.test(body)) return `${rows}.enumerated().map { (_, pyreonD) -> ${type} in ${body} }`
+  return `${rows}.enumerated().map { (pyreonJ, pyreonD) -> ${type} in let pyreonI = pyreonJ + pyreonRange.from; return ${body} }`
+}
+
+/** `<PlotChart data marks x? xValue? … dataZoom? showLegend? showTitle? onSelect? …>` */
