@@ -522,7 +522,8 @@ describe('stacked and grouped rendering', () => {
 })
 
 // ————— fallback/default arms the idioms pass introduced (or exposed) —————
-import { buildHeatGrid, colorRamp, renderHeat } from './heat'
+import { buildHeatGrid, renderHeat } from './heat'
+import { colorRamp } from './heat-ramp'
 
 describe('coalesce/default fallback arms', () => {
   it('renderChart defaults progress/xValues/curve/yDomain when omitted', () => {
@@ -542,11 +543,11 @@ describe('coalesce/default fallback arms', () => {
 
   it('renderHeat defaults gap and clamps progress at both ends', () => {
     const grid = buildHeatGrid(['a', 'b'], ['x'], [0, 1], [0, 0], [1, 2])
-    const ramp = colorRamp(['#000000', '#ffffff'])
-    const base = renderHeat({ grid, plot, ramp })
+    const stops = ['#000000', '#ffffff']
+    const base = renderHeat({ grid, plot, stops })
     expect(base.length).toBeGreaterThan(0)
-    const under = renderHeat({ grid, plot, ramp, progress: -0.5 })
-    const over = renderHeat({ grid, plot, ramp, progress: 2.0 })
+    const under = renderHeat({ grid, plot, stops, progress: -0.5 })
+    const over = renderHeat({ grid, plot, stops, progress: 2.0 })
     expect(under.length).toBeLessThanOrEqual(over.length)
   })
 

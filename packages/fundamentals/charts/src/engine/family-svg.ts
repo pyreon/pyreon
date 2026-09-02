@@ -16,7 +16,7 @@ import { renderRadar } from './radar'
 import type { RadarAxis } from './radar'
 import { ohlcExtent, renderCandles } from './candlestick'
 import type { CandleOptions, Ohlc } from './candlestick'
-import { buildHeatGrid, colorRamp, HEAT_RAMP, renderHeat } from './heat'
+import { buildHeatGrid, HEAT_RAMP, renderHeat } from './heat'
 import { renderFunnel } from './funnel'
 import { layoutTreemap, renderTreemap } from './treemap'
 import type { TreeNode, TreemapOptions } from './treemap'
@@ -413,7 +413,7 @@ export function heatmapToSvg<T>(options: HeatmapToSvgOptions<T>): string {
   const cmds: DrawCmd[] = renderHeat({
     grid,
     plot,
-    ramp: colorRamp(options.colors ?? HEAT_RAMP),
+    stops: options.colors ?? HEAT_RAMP,
     gap: options.gap,
   })
   const nc = grid.cols.length

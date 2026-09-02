@@ -3,10 +3,16 @@
 //
 // Pure like everything else in the engine: aggregation, the color ramp and
 // the cell layout are plain functions over plain data, and the output is the
-// same flat DrawCmd list every backend already executes. Nothing here knows
-// about canvases.
+// same flat DrawCmd list every backend already executes. Written in the
+// native subset and BUNDLED into the generated Swift/Kotlin engine — which is
+// why the ramp is a plain function over its stops (`rampColor`) rather than a
+// closure factory; the closure form (`colorRamp`) lives in heat-ramp.ts for
+// the web callers that want one.
 
 import type { Double, DrawCmd, Rect } from './types'
+
+/** The default ramp — a perceptually reasonable cool-to-warm. */
+export const HEAT_RAMP = ['#eff6ff', '#93c5fd', '#3b82f6', '#1e40af']
 
 /** One aggregated cell — grid coordinates plus its value. */
 export interface HeatCell {
@@ -32,94 +38,106 @@ export interface HeatGrid {
  * event data with several observations per cell, and summing is the
  * aggregation the others (count, mean) build on trivially in user code.
  */
-export function buildHeatGrid(
-  cols: string[],
-  rows: string[],
-  colOf: Double[],
-  rowOf: Double[],
-  values: Double[],
-): HeatGrid {
-  const byKey = new Map<string, HeatCell>()
-  const n = Math.min(colOf.length, Math.min(rowOf.length, values.length))
-  let minV = 0.0
-  let maxV = 0.0
-  let seen = false
+export function buildHeatGrid(cols: string[], rows: string[], colOf: Double[], rowOf: Double[], values: Double[]): HeatGrid {
+  const n1 = colOf.length < rowOf.length ? colOf.length : rowOf.length
+  const n = n1 < values.length ? n1 : values.length
+  const cellCol: Double[] = []
+  const cellRow: Double[] = []
+  const cellVal: Double[] = []
   for (let i = 0; i < n; i++) {
     const c = colOf[i]!
     const r = rowOf[i]!
     if (c < 0.0 || r < 0.0) continue
-    const key = `${c}:${r}`
-    const prior = byKey.get(key)
-    const v = prior === undefined ? values[i]! : prior.value + values[i]!
-    byKey.set(key, { col: c, row: r, value: v })
+    let found = -1
+    for (let k = 0; k < cellCol.length; k++) if (found < 0 && cellCol[k]! === c && cellRow[k]! === r) found = k
+    if (found < 0) {
+      cellCol.push(c)
+      cellRow.push(r)
+      cellVal.push(values[i]!)
+    } else {
+      cellVal[found] = cellVal[found]! + values[i]!
+    }
   }
   const cells: HeatCell[] = []
-  for (const cell of byKey.values()) {
-    cells.push(cell)
-    if (!seen) {
-      minV = cell.value
-      maxV = cell.value
-      seen = true
+  let minV = 0.0
+  let maxV = 0.0
+  for (let k = 0; k < cellCol.length; k++) {
+    cells.push({ col: cellCol[k]!, row: cellRow[k]!, value: cellVal[k]! })
+    if (k === 0) {
+      minV = cellVal[k]!
+      maxV = cellVal[k]!
     } else {
-      if (cell.value < minV) minV = cell.value
-      if (cell.value > maxV) maxV = cell.value
+      if (cellVal[k]! < minV) minV = cellVal[k]!
+      if (cellVal[k]! > maxV) maxV = cellVal[k]!
     }
   }
   return { cols, rows, cells, min: minV, max: maxV }
 }
 
-/** Parse `#rrggbb` into channels. A malformed stop yields black rather than NaN. */
-function hexChannel(hex: string, at: number): Double {
-  const code = (ch: Double): Double => {
-    const c = ch
-    if (c >= 48.0 && c <= 57.0) return c - 48.0
-    if (c >= 97.0 && c <= 102.0) return c - 87.0
-    if (c >= 65.0 && c <= 70.0) return c - 55.0
-    return 0.0
-  }
+/** One hex digit's value from its char code (0 for anything else). */
+function heatHexDigit(c: Double): Double {
+  if (c >= 48.0 && c <= 57.0) return c - 48.0
+  if (c >= 97.0 && c <= 102.0) return c - 87.0
+  if (c >= 65.0 && c <= 70.0) return c - 55.0
+  return 0.0
+}
+
+/** Parse two hex digits at `at` into a channel. A malformed stop yields 0 rather than NaN. */
+function heatChannel(hex: string, at: number): Double {
   if (hex.length < at + 2) return 0.0
-  return code(hex.charCodeAt(at)) * 16.0 + code(hex.charCodeAt(at + 1))
+  return heatHexDigit(hex.charCodeAt(at)) * 16.0 + heatHexDigit(hex.charCodeAt(at + 1))
+}
+
+/** 1 when the stop carries a `#` prefix, else 0 — the offset of its first digit. */
+function heatHashOffset(hex: string): number {
+  if (hex.length > 0 && hex.charCodeAt(0) === 35.0) return 1
+  return 0
 }
 
 /**
- * A color ramp over `#rrggbb` stops: `t` in 0..1 interpolates piecewise
- * between them.
- *
- * Hand-rolled (no regex, no parseInt radix tricks) so the ramp itself lowers
- * through PMTC — a native heatmap needs its colors computed by the same code
- * or the two targets drift. Returns `rgb(r, g, b)` strings, which every
- * backend's fill already accepts.
+ * The colour at `t` (0..1, clamped) along a ramp of `#rrggbb` stops,
+ * interpolated piecewise between them. No stops → black; one stop → that
+ * stop. Returns `rgb(r, g, b)`, which every backend's fill accepts.
  */
-export function colorRamp(stops: string[]): (t: Double) => string {
-  const parsed = stops.map((sHex) => {
-    const h = sHex.startsWith('#') ? sHex.slice(1) : sHex
-    return { r: hexChannel(h, 0.0), g: hexChannel(h, 2.0), b: hexChannel(h, 4.0) }
-  })
-  return (t: Double): string => {
-    if (parsed.length === 0) return 'rgb(0, 0, 0)'
-    if (parsed.length === 1 || t <= 0.0) {
-      const p = parsed[0]!
-      return `rgb(${Math.round(p.r)}, ${Math.round(p.g)}, ${Math.round(p.b)})`
-    }
-    const clamped = t >= 1.0 ? 1.0 : t
-    const span = parsed.length - 1
-    const pos = clamped * span
-    const idx = Math.min(span - 1, Math.floor(pos))
-    const frac = pos - idx
-    const a = parsed[idx]!
-    const b = parsed[idx + 1]!
-    const mix = (x: Double, y: Double): Double => Math.round(x + (y - x) * frac)
-    return `rgb(${mix(a.r, b.r)}, ${mix(a.g, b.g)}, ${mix(a.b, b.b)})`
+export function rampColor(stops: string[], t: Double): string {
+  const n = stops.length
+  if (n === 0) return 'rgb(0, 0, 0)'
+  if (n === 1 || t <= 0.0) {
+    const s0 = stops[0]!
+    const o0 = heatHashOffset(s0)
+    return `rgb(${Math.round(heatChannel(s0, o0))}, ${Math.round(heatChannel(s0, o0 + 2))}, ${Math.round(heatChannel(s0, o0 + 4))})`
   }
+  const clamped = t >= 1.0 ? 1.0 : t
+  let spanF = 0.0
+  for (let i = 1; i < n; i++) spanF = spanF + 1.0
+  const pos = clamped * spanF
+  const rawIdx = Math.floor(pos)
+  const idx = rawIdx > spanF - 1.0 ? spanF - 1.0 : rawIdx
+  const frac = pos - idx
+  let a = stops[0]!
+  let b = stops[1]!
+  let iF = 0.0
+  const last = n - 1
+  for (let i = 0; i < last; i++) {
+    if (iF === idx) {
+      a = stops[i]!
+      b = stops[i + 1]!
+    }
+    iF = iF + 1.0
+  }
+  const oa = heatHashOffset(a)
+  const ob = heatHashOffset(b)
+  const r = heatChannel(a, oa) + (heatChannel(b, ob) - heatChannel(a, oa)) * frac
+  const g = heatChannel(a, oa + 2) + (heatChannel(b, ob + 2) - heatChannel(a, oa + 2)) * frac
+  const bl = heatChannel(a, oa + 4) + (heatChannel(b, ob + 4) - heatChannel(a, oa + 4)) * frac
+  return `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(bl)})`
 }
-
-/** The default ramp — a perceptually reasonable cool-to-warm. */
-export const HEAT_RAMP = ['#eff6ff', '#93c5fd', '#3b82f6', '#1e40af']
 
 export interface HeatmapOptions {
   grid: HeatGrid
   plot: Rect
-  ramp: (t: Double) => string
+  /** Ramp stops (`#rrggbb`); default `HEAT_RAMP`. */
+  stops?: string[] | undefined
   /** Gap between cells in pixels — the grout that makes cells readable. */
   gap?: Double | undefined
   /** Entrance progress 0..1; cells scale up from their centres. */
@@ -137,19 +155,25 @@ export interface HeatmapOptions {
  * them.
  */
 export function renderHeat(options: HeatmapOptions): DrawCmd[] {
-  const { grid, plot, ramp } = options
+  const grid = options.grid
+  const plot = options.plot
+  const stops = options.stops ?? HEAT_RAMP
   const gap = options.gap ?? 1.0
-  const raw = options.progress
-  const progress = raw === undefined ? 1.0 : raw < 0.0 ? 0.0 : raw > 1.0 ? 1.0 : raw
+  const rawP = options.progress ?? 1.0
+  const progress = rawP < 0.0 ? 0.0 : rawP > 1.0 ? 1.0 : rawP
   const out: DrawCmd[] = []
   const nc = grid.cols.length
   const nr = grid.rows.length
   if (nc === 0 || nr === 0) return out
-  const cw = plot.w / nc
-  const ch = plot.h / nr
+  let ncF = 0.0
+  for (let i = 0; i < nc; i++) ncF = ncF + 1.0
+  let nrF = 0.0
+  for (let i = 0; i < nr; i++) nrF = nrF + 1.0
+  const cw = plot.w / ncF
+  const ch = plot.h / nrF
   const span = grid.max - grid.min
   for (const cell of grid.cells) {
-    if (cell.col >= nc || cell.row >= nr) continue
+    if (cell.col >= ncF || cell.row >= nrF) continue
     const t = span <= 0.0 ? 1.0 : (cell.value - grid.min) / span
     const fullW = cw - gap
     const fullH = ch - gap
@@ -157,7 +181,7 @@ export function renderHeat(options: HeatmapOptions): DrawCmd[] {
     const h = fullH * progress
     const x = plot.x + cell.col * cw + gap / 2.0 + (fullW - w) / 2.0
     const y = plot.y + cell.row * ch + gap / 2.0 + (fullH - h) / 2.0
-    out.push({ kind: 'rect', rect: { x, y, w, h }, fill: ramp(t) })
+    out.push({ kind: 'rect', rect: { x, y, w, h }, fill: rampColor(stops, t) })
   }
   return out
 }
@@ -169,28 +193,29 @@ export function renderHeat(options: HeatmapOptions): DrawCmd[] {
  * position holding no datum: absent cells are undrawn because absence and
  * zero are different facts, and an undrawn cell is not selectable either.
  */
-export function hitHeatCell(
-  grid: HeatGrid,
-  plot: Rect,
-  gap: Double,
-  px: Double,
-  py: Double,
-): number {
+export function hitHeatCell(grid: HeatGrid, plot: Rect, gap: Double, px: Double, py: Double): number {
   const nc = grid.cols.length
   const nr = grid.rows.length
   if (nc === 0 || nr === 0) return -1
   if (px < plot.x || px > plot.x + plot.w || py < plot.y || py > plot.y + plot.h) return -1
-  const cw = plot.w / nc
-  const ch = plot.h / nr
-  const col = Math.floor(Math.min((px - plot.x) / cw, nc - 1))
-  const row = Math.floor(Math.min((py - plot.y) / ch, nr - 1))
+  let ncF = 0.0
+  for (let i = 0; i < nc; i++) ncF = ncF + 1.0
+  let nrF = 0.0
+  for (let i = 0; i < nr; i++) nrF = nrF + 1.0
+  const cw = plot.w / ncF
+  const ch = plot.h / nrF
+  const rawCol = Math.floor((px - plot.x) / cw)
+  const col = rawCol > ncF - 1.0 ? ncF - 1.0 : rawCol
+  const rawRow = Math.floor((py - plot.y) / ch)
+  const row = rawRow > nrF - 1.0 ? nrF - 1.0 : rawRow
   const inX = px - (plot.x + col * cw)
   const inY = py - (plot.y + row * ch)
   if (inX < gap / 2.0 || inX > cw - gap / 2.0) return -1
   if (inY < gap / 2.0 || inY > ch - gap / 2.0) return -1
+  let hit = -1
   for (let i = 0; i < grid.cells.length; i++) {
     const c = grid.cells[i]!
-    if (c.col === col && c.row === row) return i
+    if (hit < 0 && c.col === col && c.row === row) hit = i
   }
-  return -1
+  return hit
 }

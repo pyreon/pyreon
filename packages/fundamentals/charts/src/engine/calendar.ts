@@ -1,7 +1,8 @@
 // Calendar geometry — a day-per-cell grid over a date range (the GitHub
 // contribution graph shape), coloured by value through the shared heat ramp.
 
-import { colorRamp, HEAT_RAMP } from './heat'
+import { HEAT_RAMP } from './heat'
+import { colorRamp } from './heat-ramp'
 import { measureApprox, renderSvg } from './svg'
 import type { SvgOptions } from './svg'
 import type { Double, DrawCmd, MeasureText, Pt, Rect } from './types'

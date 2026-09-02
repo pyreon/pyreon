@@ -5,7 +5,7 @@ import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
-import { buildHeatGrid, colorRamp, HEAT_RAMP, hitHeatCell, renderHeat } from './heat'
+import { buildHeatGrid, HEAT_RAMP, hitHeatCell, renderHeat } from './heat'
 import type { HeatGrid } from './heat'
 import { defaultTheme } from './render'
 import type { ChartTheme } from './render'
@@ -142,7 +142,7 @@ export function HeatmapChart<T>(props: HeatmapChartProps<T>): VNode {
     const cmds: DrawCmd[] = renderHeat({
       grid,
       plot,
-      ramp: colorRamp(props.colors ?? HEAT_RAMP),
+      stops: props.colors ?? HEAT_RAMP,
       gap: props.gap,
     })
     const nc = grid.cols.length

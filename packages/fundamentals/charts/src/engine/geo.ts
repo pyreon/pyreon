@@ -4,7 +4,8 @@
 // once at startup (ECharts' registerMap shape), bounded by the app's map
 // count, and looked up by name from the option facade.
 
-import { colorRamp, HEAT_RAMP } from './heat'
+import { HEAT_RAMP } from './heat'
+import { colorRamp } from './heat-ramp'
 import { measureApprox, renderSvg } from './svg'
 import type { SvgOptions } from './svg'
 import type { Double, DrawCmd, MeasureText, Pt, Rect } from './types'
