@@ -24,10 +24,16 @@
  * Not a platform-variance problem either: after a bootstrap, macOS 15330 vs ubuntu
  * 15473 is 0.9%, consistent with the ~1.1% the gate already documents. An earlier
  * note of mine claiming 3.0% was measured on the stale tree and is retracted.
+ *
+ * Imports the POLICY module, not the gate — deliberately. This package extends
+ * `@pyreon/tsconfig/internal.json`, whose `types` are `["vitest/globals", "node"]`
+ * with no `bun`, so importing `check-bundle-budgets.ts` here drags `Bun.build`
+ * into this program and fails typecheck with TS2868. That is not hypothetical: it
+ * is what this file did on its first push. Do not repoint it at the gate.
  */
 
 import { describe, expect, it } from 'vitest'
-import { isUpdateMode, shouldLowerUnscoped } from '../../../../../scripts/check-bundle-budgets'
+import { isUpdateMode, shouldLowerUnscoped } from '../../../../../scripts/bundle-budget-policy'
 
 describe('--update lowers only when the package is named', () => {
   it('an UNSCOPED --update never lowers — a stale lib/ can only measure low', () => {

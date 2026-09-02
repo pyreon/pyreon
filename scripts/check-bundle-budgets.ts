@@ -30,19 +30,18 @@
  */
 
 import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join, resolve } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { parseSync, Visitor } from 'oxc-parser'
 
+import { isUpdateMode, shouldLowerUnscoped } from './bundle-budget-policy'
 import { isModuleEntry } from './is-entry'
 
-// `import.meta.dir` is a Bun-ism and is `undefined` under vitest, which threw at
-// MODULE scope (`paths[0] must be of type string`) — so the file could not be
-// imported to unit-test its pure helpers at all. The URL form is standard and
-// works in both, same reasoning as `check-coverage.ts`'s `import.meta.main` note.
-const HERE = import.meta.dir ?? dirname(fileURLToPath(import.meta.url))
-const REPO_ROOT = resolve(HERE, '..')
+// `import.meta.dirname` is the STANDARD property (Node 20.11+, and Bun), which is
+// what every sibling gate uses (`affected.ts`, `check-coverage.ts`). The Bun-only
+// `import.meta.dir` is absent from TypeScript's `ImportMeta` unless a program
+// declares bun types, so reaching for it breaks any tsconfig that does not.
+const REPO_ROOT = resolve(import.meta.dirname, '..')
 const BUDGETS_PATH = join(REPO_ROOT, 'scripts', 'bundle-budgets.json')
 
 /**
@@ -371,43 +370,6 @@ async function measurePackage(pkg: PackageInfo): Promise<BundleResult> {
 
 // ─── Main ────────────────────────────────────────────────────────────────
 
-/**
- * Should an UNSCOPED `--update` lower this budget?
- *
- * No — never. A budget is measured from `lib/`, and a stale or partial `lib/`
- * measures SMALLER than the real package, so a bad measurement can only ever
- * push a budget DOWN. That is the whole observed failure: `@pyreon/validate` was
- * ratcheted 15872 -> 15360, a value implying a ~12288 B measurement for a package
- * that really measures 15330 B locally (after a bootstrap) and 15473 B on CI. The
- * budget landed BELOW what CI measures, so the gate failed on a package neither
- * branch touched — twice, because the wrong value was committed and travelled.
- *
- * Refusing by DIRECTION rather than by drop size is what makes this correct. A
- * size threshold cannot tell a stale build from a genuinely loose budget, and
- * this repo has plenty of the latter — `loom` measures 298 B against 6144,
- * `testing` 1745 against 5120, both identical before and after a full rebuild.
- * Blocking those would refuse legitimate tightening while still missing a small
- * stale drop.
- *
- * Tightening stays available and becomes a deliberate act: `--update=@pyreon/pkg`
- * lowers, and naming the package is the review signal. Pure, so it is testable
- * without a build tree.
- */
-export function shouldLowerUnscoped(scoped: boolean): boolean {
-  return scoped
-}
-
-/**
- * Does this argv enable `--update`?
- *
- * Both the bare flag and the documented scoped form `--update=@pyreon/pkg`. An
- * `includes('--update')` exact match silently missed the scoped form, so it ran
- * as a plain check for its whole life — latent until lowering became
- * scoped-only.
- */
-export function isUpdateMode(args: readonly string[]): boolean {
-  return args.some((a) => a === '--update' || a.startsWith('--update='))
-}
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2)
@@ -479,7 +441,7 @@ async function main(): Promise<void> {
     const only = onlyArg?.slice('--update='.length)
 
     const budgets: Record<string, unknown> = {
-      _doc: 'Per-package main-entry budgets in BYTES (minified + gzipped). Externalizes @pyreon/*, node:*, and every bare-module import auto-collected from each package\'s lib/ tree — this is the unique code each package adds to a consumer bundle. Seeded at 25% headroom. `--update` is a RATCHET: it RAISES a budget only for a package that is actually OVER (intentional growth, reviewed in the same PR), LOWERS one that has shrunk, and leaves everything else byte-identical. Use `--update=@pyreon/pkg` to scope it.',
+      _doc: 'Per-package main-entry budgets in BYTES (minified + gzipped). Externalizes @pyreon/*, node:*, and every bare-module import auto-collected from each package\'s lib/ tree — this is the unique code each package adds to a consumer bundle. Seeded at 25% headroom. `--update` is a RATCHET: it RAISES a budget only for a package that is actually OVER (intentional growth, reviewed in the same PR), and LOWERS one only when you NAME it (`--update=@pyreon/pkg`) — a stale or partial lib/ measures SMALLER than the real package, so an unscoped drop is far more likely to be a bad measurement than a real shrink. Everything else stays byte-identical.',
       _units: 'bytes (gzipped)',
     }
     const raised: string[] = []
