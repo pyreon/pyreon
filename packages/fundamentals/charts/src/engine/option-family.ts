@@ -6,6 +6,8 @@
 
 import type { EChartsOption, OptionWarning } from './option'
 import { candlestickToSvg, gaugeToSvg, heatmapToSvg, pieToSvg, radarToSvg } from './family-svg'
+import { funnelToSvg } from './funnel'
+import type { FunnelOptions } from './funnel'
 import type { RadarAxis } from './radar'
 import type { Double } from './types'
 
@@ -15,6 +17,7 @@ export type FamilyPlan =
   | { kind: 'radar'; axes: RadarAxis[]; rows: { values: Double[]; name: string; color: string | undefined }[]; fillAlpha: Double; showLegend: boolean; title: string | undefined }
   | { kind: 'candlestick'; rows: { x: string; open: Double; high: Double; low: Double; close: Double }[]; upColor: string | undefined; downColor: string | undefined; title: string | undefined }
   | { kind: 'heatmap'; rows: { x: string; y: string; value: Double }[]; colors: string[] | undefined; title: string | undefined }
+  | { kind: 'funnel'; rows: { value: Double; name: string; color: string | undefined }[]; funnel: FunnelOptions; title: string | undefined }
 
 export interface CompiledFamily {
   plan: FamilyPlan
@@ -22,7 +25,7 @@ export interface CompiledFamily {
   supported: boolean
 }
 
-const FAMILY_TYPES = new Set(['pie', 'gauge', 'radar', 'candlestick', 'heatmap'])
+const FAMILY_TYPES = new Set(['pie', 'gauge', 'radar', 'candlestick', 'heatmap', 'funnel'])
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const num = (v: unknown): number | null => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null
@@ -51,6 +54,7 @@ const KNOWN_BY_FAMILY: Record<string, Set<string>> = {
   radar: new Set(['type', 'name', 'data', 'areaStyle', 'itemStyle', 'lineStyle', 'symbol', 'color']),
   candlestick: new Set(['type', 'name', 'data', 'itemStyle', 'color']),
   heatmap: new Set(['type', 'name', 'data', 'label', 'itemStyle', 'emphasis', 'color']),
+  funnel: new Set(['type', 'name', 'data', 'sort', 'gap', 'minSize', 'label', 'itemStyle', 'funnelAlign', 'color', 'emphasis']),
 }
 
 /**
@@ -204,6 +208,37 @@ export function compileFamily(option: EChartsOption): CompiledFamily | null {
     }
   }
 
+  if (type === 'funnel') {
+    const rows: { value: Double; name: string; color: string | undefined }[] = []
+    for (let i = 0; i < data.length; i++) {
+      const d = data[i]
+      const v = isObj(d) ? num(d['value']) : num(d)
+      if (v === null) {
+        warn('series-data-shape', `series[0].data[${i}]`, 'A funnel datum needs a numeric value; it was skipped.')
+        continue
+      }
+      const item = isObj(d) && isObj(d['itemStyle']) ? d['itemStyle'] : {}
+      rows.push({
+        value: v,
+        name: isObj(d) && typeof d['name'] === 'string' ? (d['name'] as string) : `Stage ${i + 1}`,
+        color: typeof item['color'] === 'string' ? (item['color'] as string) : palette[i % Math.max(1, palette.length)],
+      })
+    }
+    const sortRaw = s['sort']
+    const sort: FunnelOptions['sort'] = sortRaw === 'ascending' ? 'ascending' : sortRaw === 'none' ? 'none' : 'descending'
+    const minSize = pct(s['minSize'])
+    const alignRaw = s['funnelAlign']
+    const label = isObj(s['label']) ? s['label'] : {}
+    const funnel: FunnelOptions = {
+      sort,
+      gap: num(s['gap']) ?? 2.0,
+      minWidthRatio: minSize === null ? 0.0 : minSize / 100.0,
+      align: alignRaw === 'left' ? 'left' : alignRaw === 'right' ? 'right' : 'center',
+      showLabels: label['show'] !== false,
+    }
+    return { plan: { kind: 'funnel', rows, funnel, title }, warnings, supported }
+  }
+
   // heatmap
   const xAxis = first(option['xAxis'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
   const yAxis = first(option['yAxis'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
@@ -292,6 +327,19 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
         height,
         ...(plan.title !== undefined ? { title: plan.title } : {}),
       })
+    case 'funnel': {
+      const hasColors = plan.rows.some((r) => r.color !== undefined)
+      return funnelToSvg({
+        data: plan.rows,
+        value: (d) => d.value,
+        label: (d) => d.name,
+        ...(hasColors ? { color: (d: { color: string | undefined }, i: number) => d.color ?? PALETTE[i % PALETTE.length]! } : {}),
+        funnel: plan.funnel,
+        width,
+        height,
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
+    }
     default:
       return heatmapToSvg({
         data: plan.rows,
