@@ -174,7 +174,7 @@ const idle = useIdle(30_000)               // Signal<boolean> — true after 30s
 () => SecureStorage — { write(key, value): boolean; read(key): string | null; remove(key): boolean; contains(key): boolean }
 ```
 
-The imperative secret store for auth tokens / API keys / PII — the cross-platform boundary secrets must go through instead of `useStorage` (localStorage is plaintext + same-origin-script-readable). KEY-FIRST: `write(key, value)`. Per-platform backing: iOS Keychain, Android AndroidKeyStore AES-GCM over app-private storage (both encrypted at rest, survive relaunch), web a MODULE-SCOPED in-memory store (the web has no OS secret store; persisting secrets to localStorage would be the exact bug this hook prevents — web secrets are process-lifetime only, fail closed). Imperative by design, NOT a reactive signal: a secret is fetched at an auth boundary, not rendered as live UI. The store is app-wide — every `useSecureStorage()` call sees the same secrets.
+The imperative secret store for auth tokens / API keys / PII — the cross-platform boundary secrets must go through instead of `useStorage` (localStorage is plaintext + same-origin-script-readable). KEY-FIRST: `write(key, value)`. Per-platform backing: iOS Keychain, Android AndroidKeyStore AES-GCM over app-private storage (both encrypted at rest, survive relaunch), web a MODULE-SCOPED in-memory store (the web has no OS secret store; persisting secrets to localStorage would be the exact bug this hook prevents — web secrets are process-lifetime only, fail closed). Imperative by design, NOT a reactive signal: a secret is fetched at an auth boundary, not rendered as live UI. The store is app-wide — every `useSecureStorage()` call sees the same secrets. On the SERVER it is INERT: reads return null, `write` returns false, nothing is stored. A module-scoped map is the right scope for a browser (one process, one user) and the wrong one for SSR (one process, everyone) — a secret written during a server render would otherwise be readable by every later request.
 
 **Example**
 
@@ -195,6 +195,7 @@ const signOut = () => secrets.remove('auth-token')
 - Expecting web secrets to survive a reload — the web store is deliberately in-memory (no OS secret store exists); persist web sessions via httpOnly cookies / your auth provider
 - Wrapping `read()` in a signal and rendering it as live UI — the store is imperative; fetch at the auth boundary, keep UI state in ordinary signals
 - Expecting `remove()` to report a missing key — delete is idempotent (true even when absent), matching Keychain semantics
+- Writing a secret during SSR and expecting to read it back — the server arm is inert (`write` returns false) precisely so one request cannot read another's secret. Server-side secrets belong in the request context or the environment, not in a Keychain mirror
 
 **See also:** `useStorage (in @pyreon/storage — for NON-secret app state)` · `useDatabase` · `useFetch`
 

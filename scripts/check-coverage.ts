@@ -47,9 +47,10 @@
  * exemption is updated in lockstep with real package improvements.
  */
 import { spawn, spawnSync } from 'node:child_process'
-import { readdirSync, existsSync, readFileSync, appendFileSync, realpathSync } from 'node:fs'
+import { readdirSync, existsSync, readFileSync, appendFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
+
+import { isModuleEntry } from './is-entry'
 
 const PACKAGE_DIRS = [
   'packages/core',
@@ -1095,17 +1096,10 @@ function enforceFloor(packages: PackageInfo[]): string[] {
  * under Node LTS. Falling back to comparing the resolved entry path keeps this
  * working on every runtime.
  */
-const isEntry = (() => {
-  const flag = (import.meta as { main?: boolean }).main
-  if (typeof flag === 'boolean') return flag
-  const entry = process.argv[1]
-  if (!entry) return false
-  try {
-    return pathToFileURL(realpathSync(entry)).href === import.meta.url
-  } catch {
-    return false
-  }
-})()
+// The reasoning above now lives ONCE, in `./is-entry` — a second copy of a
+// subtle runtime check is a drift source, and this file's copy was already being
+// re-derived by hand elsewhere.
+const isEntry = isModuleEntry(import.meta)
 
 if (!isEntry) {
   // Imported for `parseCoverageOutput` — export surface only, no gate.

@@ -2,7 +2,7 @@
 
 VNode → HTML renderer with progressive streaming and per-request `AsyncLocalStorage` isolation.
 
-Walks a VNode tree and produces an HTML string or a Web-standard `ReadableStream` of chunks. Signal accessors are called synchronously to snapshot their current value — there is no reactivity on the server. `renderToStream` flushes progressively and resolves Suspense boundaries out-of-order (fallback first, then a `<template>` + inline swap script). Every `renderToString` / `renderToStream` / `runWithRequestContext` call runs in its own ALS store so concurrent requests never share `provide()` frames; `configureStoreIsolation()` extends the same isolation to the `@pyreon/store` registry. Most apps consume this transitively through `@pyreon/server.createHandler` or `@pyreon/zero` rather than calling directly.
+Walks a VNode tree and produces an HTML string or a Web-standard `ReadableStream` of chunks. Signal accessors are called synchronously to snapshot their current value — there is no reactivity on the server. `renderToStream` flushes progressively and resolves Suspense boundaries out-of-order (fallback first, then a `<template>` + inline swap script). Every `renderToString` / `renderToStream` / `runWithRequestContext` call runs in its own ALS store so concurrent requests never share `provide()` frames; the `@pyreon/store` registry is isolated automatically when the store is loaded (`configureStoreIsolation()` is the override, not the switch). Most apps consume this transitively through `@pyreon/server.createHandler` or `@pyreon/zero` rather than calling directly.
 
 ## Install
 
@@ -81,7 +81,7 @@ import { setStoreRegistryProvider } from '@pyreon/store'
 configureStoreIsolation(setStoreRegistryProvider) // once at startup
 ```
 
-Without this call, the `@pyreon/store` registry is a process-global singleton — concurrent requests would share defined stores. `configureStoreIsolation` plumbs the registry through the same ALS, so each request gets its own store map. **Call once at startup**, not per request. Skip this if you don't use `@pyreon/store`.
+You do NOT need this call. `@pyreon/store` publishes its registry setter on a `globalThis` seam when it loads on a server, and this renderer wires it at its own choke point, so each request already gets its own store map. It was opt-in before, which meant unisolated by DEFAULT: `@pyreon/server` and `@pyreon/zero` own the server and neither depends on `@pyreon/store` — that is why the API takes a setter as an argument — so the only party who could opt in was the application author. Call it to supply a provider of your own (a shared build-time cache across SSG pages, a test double); **once at startup**, not per request. An app that already calls it keeps working unchanged.
 
 ## SSR-safe contracts the renderer enforces
 

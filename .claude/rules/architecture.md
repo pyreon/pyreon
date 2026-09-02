@@ -84,5 +84,11 @@
 
 - `renderToString(vnode)` + `renderToStream(vnode)` with Suspense streaming
 - Always call `mergeChildrenIntoProps(vnode)` before `runWithHooks`
-- `runWithRequestContext(fn)` isolates context + store per request via ALS
+- `runWithRequestContext(fn)` isolates context + store per request via ALS. The
+  store half is wired AUTOMATICALLY: `@pyreon/store` publishes its registry
+  setter on a `globalThis` seam when it loads on a server and `runtime-server`
+  picks it up at its render choke point. `configureStoreIsolation` is the
+  override for a custom provider, not the switch — it used to be the switch,
+  which meant unisolated by default, because neither `@pyreon/server` nor
+  `@pyreon/zero` depends on `@pyreon/store` and so neither could call it.
 - Island architecture: `island(loader, { name, hydrate })` for partial hydration
