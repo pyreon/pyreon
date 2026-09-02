@@ -20,6 +20,8 @@ import type { Formatter } from './format'
 import { renderLegend } from './legend'
 import type { LegendEntry } from './legend'
 import { measureApprox, renderSvg } from './svg'
+import { compileFamily, familyToSvg } from './option-family'
+import type { CompiledFamily } from './option-family'
 import type { DrawCmd, Domain, Double, MeasureText } from './types'
 
 /** An ECharts-shaped option. Loosely typed on purpose: the facade VALIDATES. */
@@ -345,12 +347,26 @@ export interface OptionToSvgOptions extends CompileOptions {
   measure?: MeasureText
 }
 
+/** Either half of the facade, chosen by the first series' type. */
+export type OptionPlan =
+  | { kind: 'cartesian'; compiled: CompiledOption }
+  | { kind: 'family'; compiled: CompiledFamily }
+
+/** Route an option to the cartesian or the family compiler. */
+export function planOption(option: EChartsOption, opts: CompileOptions = {}): OptionPlan {
+  const fam = compileFamily(option)
+  if (fam !== null) return { kind: 'family', compiled: fam }
+  return { kind: 'cartesian', compiled: compileOption(option, opts) }
+}
+
 /**
  * ECharts option → `<svg>` string, server-safe. The chart, its title and its
  * legend are composed the way the host component composes them: title on
  * top, legend under it, the plot shrunk by exactly what those consumed.
  */
 export function optionToSvg(option: EChartsOption, opts: OptionToSvgOptions = {}): string {
+  const fam = compileFamily(option)
+  if (fam !== null) return familyToSvg(fam.plan, { width: opts.width, height: opts.height })
   const compiled = compileOption(option, opts)
   const measure = opts.measure ?? measureApprox()
   const width = compiled.spec.width
