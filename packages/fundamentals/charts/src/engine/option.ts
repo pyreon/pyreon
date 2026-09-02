@@ -13,11 +13,14 @@
 // cross. And it is DATA in, DATA out — no console, no DOM — so it runs on the
 // server and in a test the same way the engine does.
 
-import { defaultTheme, renderChart } from './render'
+import { renderChart } from './render'
 import { appendGraphicLayer, graphicCommands, resolveDataset, svgSize } from './option-layer'
 import { visualMapCommands } from './visual-map'
 import { customCommands, customExtents } from './custom-series'
 import type { CustomRenderItem, CustomSeriesPlan } from './custom-series'
+import { resolveTheme } from './theme-registry'
+import type { ThemeDefinition } from './theme-registry'
+import { dateFormatter, numberFormatter } from './locale'
 import type { Annotation, ChartSpec, PointMarker, Series } from './render'
 import { smooth, step } from './curve'
 import type { Formatter } from './format'
@@ -50,6 +53,8 @@ export interface CompiledOption {
   spec: ChartSpec
   /** Custom (`renderItem`) series — rendered after the chart, never part of the spec. */
   custom: CustomSeriesPlan[]
+  /** Background colour from the theme, painted first by `optionToSvg`; undefined = transparent. */
+  background: string | undefined
   /** Title text + sub-text, when the option carries them. */
   title: { text: string; subtext: string | undefined } | null
   /** Legend entries, or null when the option hides the legend. */
@@ -67,6 +72,10 @@ export interface CompiledOption {
 export interface CompileOptions {
   width?: Double
   height?: Double
+  /** A registered theme name (`light`, `dark`, or one from `registerTheme`) or an inline definition. */
+  theme?: string | ThemeDefinition | undefined
+  /** BCP 47 tag for axis-label formatting (see `registerLocale`). */
+  locale?: string | undefined
 }
 
 const KNOWN_TOP = new Set([
@@ -168,9 +177,13 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   const y2Format = axisFormatter(yAxes[1], 'yAxis[1]', warn)
 
   // ---- palette --------------------------------------------------------
-  const palette: string[] = Array.isArray(option['color'])
+  const themed = resolveTheme(opts.theme, warnings)
+  const optionPalette: string[] = Array.isArray(option['color'])
     ? (option['color'] as unknown[]).filter((c): c is string => typeof c === 'string')
     : []
+  const palette: string[] = optionPalette.length > 0 ? optionPalette : themed.palette ?? []
+  const localeNumber = opts.locale !== undefined ? numberFormatter(opts.locale) : undefined
+  const localeDate = opts.locale !== undefined ? dateFormatter(opts.locale) : undefined
 
   // ---- series ---------------------------------------------------------
   const rawSeries = Array.isArray(option['series'])
@@ -398,15 +411,15 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     height: opts.height ?? 320.0,
     series,
     categories,
-    theme: defaultTheme,
+    theme: themed.chartTheme,
     showXAxis: true,
     showYAxis: true,
     showGrid: true,
     yDomain,
     y2Domain,
-    yFormat,
-    y2Format,
-    xFormat,
+    yFormat: yFormat ?? localeNumber,
+    y2Format: y2Format ?? localeNumber,
+    xFormat: xFormat ?? (xTime ? localeDate : undefined),
     xValues,
     xTime: xTime ? true : undefined,
     annotations: annotations.length > 0 ? annotations : undefined,
@@ -414,7 +427,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   }
   if (customY !== undefined && spec.yDomain === undefined) spec.yDomain = customY
   if (customX !== undefined && (spec.xValues === undefined || spec.xValues.length === 0)) spec.xValues = customX
-  return { spec, custom: customPlans, title, legend, tooltip, warnings, supported }
+  return { spec, custom: customPlans, background: themed.background, title, legend, tooltip, warnings, supported }
 }
 
 const defaultPalette = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
@@ -498,6 +511,7 @@ export function optionToSvg(option: EChartsOption, opts: OptionToSvgOptions = {}
   const t = compiled.spec.theme
   let top = 0.0
   const cmds: DrawCmd[] = []
+  if (compiled.background !== undefined) cmds.push({ kind: 'rect', rect: { x: 0.0, y: 0.0, w: width, h: height }, fill: compiled.background })
   if (compiled.title !== null) {
     cmds.push({ kind: 'text', text: compiled.title.text, at: { x: 0.0, y: 0.0 }, fill: t.label, size: t.fontSize + 4.0, align: 'start', baseline: 'top' })
     top = top + t.fontSize + 4.0
