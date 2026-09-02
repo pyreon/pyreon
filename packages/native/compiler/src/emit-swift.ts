@@ -1399,6 +1399,20 @@ function emitSwiftFeature(f: FeatureDefnIR): string {
     `    static let initialValues = PyreonFeatureSchema_${f.bindingName}()`,
   )
   lines.push(`}`)
+  // The binding the SOURCE actually names. Without it the declaration is
+  // unreachable: shared source writes `Todo.name`, the emit declares
+  // `PyreonFeature_Todo`, and swiftc/kotlinc fail with "cannot find 'Todo' in
+  // scope" on a file the author never wrote. The two sibling lowerings in this
+  // file (`PyreonFieldMeta`, `PyreonZodSchema`) both emit this alias; the
+  // feature one did not.
+  //
+  // A VALUE binding (`.self`, a metatype) rather than a `typealias`, matching
+  // the two siblings. It is NOT collision-proof and must not be sold as such:
+  // Swift and Kotlin share one namespace for types and values, so a same-named
+  // user type collides with EITHER form (measured both ways). parse.ts warns by
+  // name for that shape instead.
+  lines.push(``)
+  lines.push(`let ${f.bindingName} = PyreonFeature_${f.bindingName}.self`)
   return lines.join('\n')
 }
 

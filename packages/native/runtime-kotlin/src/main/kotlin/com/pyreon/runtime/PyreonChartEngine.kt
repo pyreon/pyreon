@@ -43,9 +43,11 @@ data class Series(var kind: String, var values: List<Double>, var color: String,
 
 data class Annotation(var y: Double? = null, var x: Double? = null, var yFrom: Double? = null, var yTo: Double? = null, var label: String? = null, var color: String? = null)
 
+data class PointMarker(var seriesIndex: Double? = null, var at: String? = null, var atIndex: Double? = null, var label: String? = null, var color: String? = null, var radius: Double? = null)
+
 data class ChartTheme(var axis: String, var grid: String, var label: String, var fontSize: Double)
 
-data class ChartSpec(var width: Double, var height: Double, var series: List<Series>, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var progress: Double? = null)
+data class ChartSpec(var width: Double, var height: Double, var series: List<Series>, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null)
 
 private val MINUTE = 60000.0
 
@@ -1083,6 +1085,72 @@ fun renderChart(spec: ChartSpec, measure: (String, Double) -> Double): List<Pyre
             }
           }
         }
+      }
+    }
+    val markers = (spec.markers ?: listOf())
+    for (m in markers) {
+      if (spec.horizontal == true) {
+        continue
+      }
+      val rawSeriesIndex = (m.seriesIndex ?: 0.0)
+      val s = spec.series[(Math.floor(rawSeriesIndex)).toInt()]
+      if (s == null) {
+        continue
+      }
+      if (s.kind == "stacked" || s.kind == "grouped") {
+        continue
+      }
+      val n = s.values.length
+      if (n == 0) {
+        continue
+      }
+      var idx = -1
+      if (m.at == "max") {
+        idx = 0
+        for (i in 1 until n) {
+          if (s.values[i] > s.values[idx]) {
+            idx = i
+          }
+        }
+      } else {
+        if (m.at == "min") {
+          idx = 0
+          for (i in 1 until n) {
+            if (s.values[i] < s.values[idx]) {
+              idx = i
+            }
+          }
+        } else {
+          val rawAt = (m.atIndex ?: -1.0)
+          if (m.atIndex != null) {
+            var jf = 0.0
+            for (j in 0 until n) {
+              if (jf <= rawAt) {
+                idx = j
+              }
+              jf = jf + 1.0
+            }
+            if (idx < 0) {
+              idx = 0
+            }
+          }
+        }
+      }
+      if (idx < 0) {
+        continue
+      }
+      val mDomain = if (seriesOnRightAxis(s, spec)) y2Domain else yDomain
+      val xsM = (spec.xValues ?: listOf())
+      val pts = if (xsM.length > 0) layoutSeriesPointsAt(s.values, xsM, plot, mDomain, l.xDomainUsed) else layoutSeriesPoints(s.values, plot, mDomain)
+      val p = pts[idx]
+      if (p == null) {
+        continue
+      }
+      val mColor = (m.color ?: s.color)
+      out.add(PyreonDrawCmd(kind = "circle", fill = mColor, center = p, radius = ((m.radius ?: 4.0)) * progress))
+      val mLabel = (m.label ?: "")
+      if (m.label != null && progress >= 1.0) {
+        out.add(PyreonDrawCmd(kind = "text", fill = mColor, text = mLabel, at = PyreonChartPt(x = p.x, y = p.y - ((m.radius ?: 4.0)) - 4.0), size = t.fontSize, align = "middle", baseline = "bottom"))
       }
     }
     for (tick in l.yTicks) {

@@ -246,6 +246,23 @@ public struct Annotation: Codable {
   }
 }
 
+public struct PointMarker: Codable {
+  public var seriesIndex: Double? = nil
+  public var at: String? = nil
+  public var atIndex: Double? = nil
+  public var label: String? = nil
+  public var color: String? = nil
+  public var radius: Double? = nil
+  public init(seriesIndex: Double? = nil, at: String? = nil, atIndex: Double? = nil, label: String? = nil, color: String? = nil, radius: Double? = nil) {
+    self.seriesIndex = seriesIndex
+    self.at = at
+    self.atIndex = atIndex
+    self.label = label
+    self.color = color
+    self.radius = radius
+  }
+}
+
 public struct ChartTheme: Codable {
   public var axis: String
   public var grid: String
@@ -277,8 +294,9 @@ public struct ChartSpec {
   public var xTime: Bool? = nil
   public var horizontal: Bool? = nil
   public var annotations: [Annotation]? = nil
+  public var markers: [PointMarker]? = nil
   public var progress: Double? = nil
-  public init(width: Double, height: Double, series: [Series], categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, progress: Double? = nil) {
+  public init(width: Double, height: Double, series: [Series], categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil) {
     self.width = width
     self.height = height
     self.series = series
@@ -296,6 +314,7 @@ public struct ChartSpec {
     self.xTime = xTime
     self.horizontal = horizontal
     self.annotations = annotations
+    self.markers = markers
     self.progress = progress
   }
 }
@@ -1336,6 +1355,72 @@ public func renderChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double
             }
           }
         }
+      }
+    }
+    let markers = (spec.markers ?? [])
+    for m in markers {
+      if spec.horizontal == true {
+        continue
+      }
+      let rawSeriesIndex = (m.seriesIndex ?? 0.0)
+      let s = spec.series[Int(floor(Double(rawSeriesIndex)))]
+      if s == nil {
+        continue
+      }
+      if s.kind == "stacked" || s.kind == "grouped" {
+        continue
+      }
+      let n = s.values.count
+      if n == 0 {
+        continue
+      }
+      var idx = -1
+      if m.at == "max" {
+        idx = 0
+        for i in 1..<n {
+          if s.values[i] > s.values[idx] {
+            idx = i
+          }
+        }
+      } else {
+        if m.at == "min" {
+          idx = 0
+          for i in 1..<n {
+            if s.values[i] < s.values[idx] {
+              idx = i
+            }
+          }
+        } else {
+          let rawAt = (m.atIndex ?? -1.0)
+          if m.atIndex != nil {
+            var jf = 0.0
+            for j in 0..<n {
+              if jf <= rawAt {
+                idx = j
+              }
+              jf = jf + 1.0
+            }
+            if idx < 0 {
+              idx = 0
+            }
+          }
+        }
+      }
+      if idx < 0 {
+        continue
+      }
+      let mDomain = seriesOnRightAxis(s, spec) ? y2Domain : yDomain
+      let xsM = (spec.xValues ?? [])
+      let pts = xsM.count > 0 ? layoutSeriesPointsAt(s.values, xsM, plot, mDomain, l.xDomainUsed) : layoutSeriesPoints(s.values, plot, mDomain)
+      let p = pts[idx]
+      if p == nil {
+        continue
+      }
+      let mColor = (m.color ?? s.color)
+      out.append(PyreonDrawCmd(kind: "circle", fill: mColor, center: p, radius: ((m.radius ?? 4.0)) * progress))
+      let mLabel = (m.label ?? "")
+      if m.label != nil && progress >= 1.0 {
+        out.append(PyreonDrawCmd(kind: "text", fill: mColor, text: mLabel, at: PyreonChartPt(x: p.x, y: p.y - ((m.radius ?? 4.0)) - 4.0), size: t.fontSize, align: "middle", baseline: "bottom"))
       }
     }
     for tick in l.yTicks {

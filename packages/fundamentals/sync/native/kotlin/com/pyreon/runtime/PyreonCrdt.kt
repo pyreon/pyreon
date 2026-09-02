@@ -42,6 +42,42 @@ private fun remoteWins(local: Register, remoteClock: Int, remoteActor: String): 
     return remoteActor > local.actor
 }
 
+/**
+ * A handle bound to one map inside a document — the native twin of the web
+ * `CrdtMap` returned by `doc.getMap(name)`.
+ *
+ * The engine stores every map in one flat table and its methods therefore take
+ * the map name as a first argument. That is a fine INTERNAL shape and the wrong
+ * AUTHORING shape: shared source is written against the web API, where a map is
+ * a value you hold. Without this handle `doc.getMap("room").set("k", v)` — the
+ * ordinary way to write it — lowered to native code referencing a `getMap` that
+ * did not exist, and PMTC emitted it verbatim with no warning, so the failure
+ * arrived as a Kotlin compile error in a generated file rather than as a
+ * diagnostic naming the unsupported call.
+ *
+ * The `set` overloads exist for the same reason. `PyreonScalar` is a sealed
+ * type, so the natural `map.set("k", "v")` cannot type-check against a bare
+ * `PyreonScalar` parameter; requiring the wrapper in shared source would put a
+ * Kotlin constructor in a file that also has to compile as TypeScript.
+ */
+class PyreonCrdtMap internal constructor(
+    private val doc: PyreonCrdtDoc,
+    private val name: String,
+) {
+    fun get(key: String): PyreonScalar? = doc.get(name, key)
+    fun has(key: String): Boolean = doc.has(name, key)
+    fun keys(): List<String> = doc.keys(name)
+
+    fun set(key: String, value: PyreonScalar) = doc.set(name, key, value)
+    fun set(key: String, value: String) = doc.set(name, key, PyreonScalar.Str(value))
+    fun set(key: String, value: Int) = doc.set(name, key, PyreonScalar.Num(value.toDouble()))
+    fun set(key: String, value: Double) = doc.set(name, key, PyreonScalar.Num(value))
+    fun set(key: String, value: Boolean) = doc.set(name, key, PyreonScalar.Bool(value))
+
+    /** Observe changes to THIS map. Returns an unsubscribe, as on the web. */
+    fun observe(cb: (Set<String>) -> Unit): () -> Unit = doc.observe(name, cb)
+}
+
 /** The pure LWW document engine, wire-compatible with the TS/Swift `PyreonCrdtDoc`. */
 class PyreonCrdtDoc(val actor: String) {
     private var clock = 0
@@ -52,6 +88,13 @@ class PyreonCrdtDoc(val actor: String) {
     /** Emits ops from LOCAL writes (the transport relays them). Remote merges
      *  emit nothing here — no echo re-broadcast (structural). */
     var onLocalOps: ((List<PyreonCrdtOp>) -> Unit)? = null
+
+    /**
+     * The map handle for [name] — the native twin of the web `doc.getMap(name)`.
+     * Handles are values, not registrations: two calls with the same name address
+     * the same underlying map, and holding one costs nothing.
+     */
+    fun getMap(name: String): PyreonCrdtMap = PyreonCrdtMap(this, name)
 
     fun get(map: String, key: String): PyreonScalar? = maps[map]?.get(key)?.value
     fun has(map: String, key: String): Boolean = maps[map]?.containsKey(key) == true

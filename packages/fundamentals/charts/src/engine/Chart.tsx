@@ -10,10 +10,13 @@ import type { VNode } from '@pyreon/core'
 import { effect, signal } from '@pyreon/reactivity'
 import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
 import { renderLegend } from './legend'
+import type { LegendPager } from './legend'
+import { renderTitle } from './title'
 import { placeTooltip, tooltipAt, tooltipLines } from './tooltip'
-import { barsFor, defaultTheme, layoutChart, renderChart, resolveYDomain, stackedHitAt } from './render'
+import type { TooltipContent } from './tooltip'
+import { barsFor, defaultTheme, layoutChart, renderChart, resolveY2Domain, resolveYDomain, seriesOnRightAxis, stackedHitAt } from './render'
 import { hitBar, hitNearestX, layoutSeriesPoints, layoutSeriesPointsAt } from './layout'
-import type { Annotation, ChartSpec, ChartTheme, Series } from './render'
+import type { Annotation, ChartSpec, ChartTheme, PointMarker, Series } from './render'
 import { scaleLinear } from './scale'
 import { resolveCategories, resolveMarks } from './marks'
 import type { Mark } from './marks'
@@ -21,7 +24,7 @@ import { chartTable, describeChart } from './a11y'
 import { brushRange, isFullWindow, panWindow, sliceRange, zoomWindow } from './zoom'
 import type { ZoomWindow } from './zoom'
 import type { Formatter } from './format'
-import type { DrawCmd, Double, Rect } from './types'
+import type { Domain, DrawCmd, Double, Rect } from './types'
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 
@@ -161,6 +164,35 @@ export interface PlotChartProps<T> {
   horizontal?: boolean
   /** Reference rules and bands — the target line, the healthy range. */
   annotations?: Annotation[]
+  /** Datum-anchored point markers (max / min / a concrete index). */
+  markers?: PointMarker[]
+  /**
+   * Right y axis. Marks opt in with `axis: 'right'`; the domain derives from
+   * those marks unless pinned here, and `y2Format` labels that axis (the
+   * left keeps `format`). Stacked/grouped marks and horizontal charts stay
+   * on the left — one stack, one scale.
+   */
+  y2Domain?: Domain
+  y2Format?: Formatter
+  /**
+   * Cap the legend at this many rows and page the rest — a legend of forty
+   * series must not eat the plot. The pager's arrows are clickable.
+   */
+  legendMaxRows?: number
+  /**
+   * Draw `title` (and `subtitle`) as a heading above the chart. Off by
+   * default: `title` alone names the chart for assistive technology, and a
+   * chart in a card usually has the card's own heading.
+   */
+  showTitle?: boolean
+  subtitle?: string
+  /**
+   * Replace the tooltip's default lines. Receives the resolved content
+   * (title + one row per visible series at the hovered datum) and returns
+   * the text to show — ECharts' `tooltip.formatter`, over data rather than
+   * over a template string.
+   */
+  tooltipFormatter?: (content: TooltipContent) => string
   /**
    * Animate the first paint — bars rise, lines draw, points grow. On by
    * default because an entrance orients the eye; OFF automatically under
@@ -261,6 +293,15 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   let brushDrag: { a: Double; b: Double } | null = null
   // Legend entry hit rects from the LAST draw — they match what is on screen.
   let legendBoxes: Rect[] = []
+  // Legend pager (when `legendMaxRows` caps an overflowing legend).
+  const legendPage = signal(0)
+  let legendPager: LegendPager | null = null
+  // Pixels consumed above the plot by the title block + legend on the LAST
+  // draw. Every pointer handler subtracts it: the plot is drawn shifted down
+  // by exactly this much, so a hit test against an unshifted layout would
+  // land one legend-height too high — which is what happened before a
+  // legend and a click could coexist.
+  let topOffset = 0.0
 
   /**
    * Apply the legend toggle to resolved series.
@@ -331,6 +372,9 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       ? { xValues: rows.map((d, i) => props.xValue!(d, i + off)) }
       : {}),
     annotations: props.annotations,
+    markers: props.markers,
+    y2Domain: props.y2Domain,
+    y2Format: props.y2Format,
     horizontal: props.horizontal === true,
     progress: entrance,
     }
@@ -346,42 +390,58 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const measure = canvasMeasure(ctx, FONT)
     const rows = readData()
 
-    // The legend is laid out FIRST and the height it reports is taken off the
-    // plot, because a horizontal legend WRAPS — reserving a fixed strip would
-    // clip it on a narrow chart and waste space on a wide one.
+    // Title block first, then the legend, then the plot in what is left. Each
+    // reports the height it used, because a wrapped legend or a sub-title is
+    // not a fixed strip — reserving one would clip or waste.
     let legendH = 0
+    let titleH = 0.0
     legendBoxes = []
+    legendPager = null
     const legendCmds: ReturnType<typeof renderChart> = []
+    if (props.showTitle === true && props.title !== undefined) {
+      const tl = renderTitle(props.title, props.subtitle, { x: 0, y: 0, w, h: hgt }, {
+        fontSize: (props.theme?.fontSize ?? defaultTheme.fontSize) + 4.0,
+        color: props.theme?.label ?? defaultTheme.label,
+        align: 'start',
+      })
+      titleH = tl.height
+      for (const c of tl.cmds) legendCmds.push(c)
+    }
     if (props.showLegend === true) {
       const series = resolveMarks(rows, props.marks)
       const hidden = hiddenSeries()
       const l = renderLegend(
         series.map((x, i) => ({ label: x.label, color: x.color, muted: hidden.includes(i) })),
-        { x: 0, y: 0, w, h: hgt },
+        { x: 0, y: titleH, w, h: hgt - titleH },
         {
           fontSize: 11,
           labelColor: (props.theme?.label ?? defaultTheme.label),
           swatch: 10,
           gap: 12,
           orientation: 'horizontal',
+          maxRows: props.legendMaxRows,
+          page: legendPage(),
         },
         measure,
       )
       legendH = l.height
       for (const c of l.cmds) legendCmds.push(c)
       legendBoxes = l.boxes
+      legendPager = l.pager ?? null
     }
 
-    const spec = buildSpec(rows, w, hgt - legendH)
+    const top = titleH + legendH
+    topOffset = top
+    const spec = buildSpec(rows, w, hgt - top)
     const cmds = renderChart(spec, measure)
-    // Shift the plot down past the legend. Translating the emitted commands
-    // rather than threading an origin through the engine keeps the engine's
-    // coordinate space at (0,0) and this concern in the host.
-    const shifted = legendH === 0 ? cmds : cmds.map((c) => shiftCmd(c, legendH))
+    // Shift the plot down past the title + legend. Translating the emitted
+    // commands rather than threading an origin through the engine keeps the
+    // engine's coordinate space at (0,0) and this concern in the host.
+    const shifted = top === 0.0 ? cmds : cmds.map((c) => shiftCmd(c, top))
     const cross = crosshairCmds(spec, measure)
-    const crossShifted = legendH === 0 ? cross : cross.map((c) => shiftCmd(c, legendH))
+    const crossShifted = top === 0.0 ? cross : cross.map((c) => shiftCmd(c, top))
     const band = brushCmds(spec, measure)
-    const bandShifted = legendH === 0 ? band : band.map((c) => shiftCmd(c, legendH))
+    const bandShifted = top === 0.0 ? band : band.map((c) => shiftCmd(c, top))
     paint(ctx, [...legendCmds, ...shifted, ...bandShifted, ...crossShifted], w, hgt, FONT)
   }
 
@@ -419,13 +479,16 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       dash: [4.0, 4.0],
     })
     const yDomain = resolveYDomain(spec)
+    const y2Domain = resolveY2Domain(spec)
     for (const sr of spec.series) {
       if (sr.kind !== 'line' && sr.kind !== 'area' && sr.kind !== 'points') continue
       if (idx >= sr.values.length) continue
+      // A right-axis series places its marker on ITS domain.
+      const dom = seriesOnRightAxis(sr, spec) ? y2Domain : yDomain
       const pts =
         spec.xValues !== undefined && spec.xValues.length > 0
-          ? layoutSeriesPointsAt(sr.values, spec.xValues, plot, yDomain, l.xDomainUsed)
-          : layoutSeriesPoints(sr.values, plot, yDomain)
+          ? layoutSeriesPointsAt(sr.values, spec.xValues, plot, dom, l.xDomainUsed)
+          : layoutSeriesPoints(sr.values, plot, dom)
       const p = pts[idx]
       if (p === undefined) continue
       out.push({ kind: 'circle', center: p, radius: Math.max(3.0, sr.radius), fill: sr.color })
@@ -494,7 +557,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     if (ctx === null) return null
     const w = drawWidth(el, props.width)
     const hgt = props.height ?? 200
-    return layoutChart(buildSpec(readData(), w, hgt), canvasMeasure(ctx, FONT)).plot
+    return layoutChart(buildSpec(readData(), w, hgt - topOffset), canvasMeasure(ctx, FONT)).plot
   }
 
   // Repaint whenever anything the spec reads changes. Registered here rather
@@ -508,6 +571,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     hoverIdx()
     zoomWin()
     brushSel()
+    legendPage()
     draw()
   })
 
@@ -525,7 +589,10 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const ctx = el.getContext('2d')
     if (ctx === null) return -1
     const measure = canvasMeasure(ctx, FONT)
-    const spec = buildSpec(readData(), w, hgt)
+    // Hit-test in PLOT space: the plot was drawn `topOffset` px down, under
+    // the title + legend, so the pointer's y comes back up by that much.
+    const spec = buildSpec(readData(), w, hgt - topOffset)
+    py = py - topOffset
     for (let i = 0; i < spec.series.length; i++) {
       if (spec.series[i]!.kind !== 'bars') continue
       const idx = hitBar(barsFor(spec, i, measure), px, py)
@@ -637,7 +704,11 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       tooltipAt(idx, resolveCategories(rows, props.x), series),
       props.format,
     )
-    box.textContent = lines.join('\n')
+    const custom = props.tooltipFormatter
+    box.textContent =
+      custom === undefined
+        ? lines.join('\n')
+        : custom(tooltipAt(idx, resolveCategories(rows, props.x), series))
     box.style.display = 'block'
     // Measure AFTER filling it: placement depends on the rendered size, and a
     // stale size flips the tooltip on the wrong side at the edge.
@@ -671,6 +742,21 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // Legend hits take priority and are NOT a datum selection: a click on an
     // entry toggles its series. Boxes come from the last draw, so they match
     // exactly what is on screen.
+    if (props.showLegend === true && legendPager !== null) {
+      const r0 = el.getBoundingClientRect()
+      const lx = ev.clientX - r0.left
+      const ly = ev.clientY - r0.top
+      const p = legendPager
+      const inside = (b: Rect | null): boolean => b !== null && lx >= b.x && lx <= b.x + b.w && ly >= b.y && ly <= b.y + b.h
+      if (inside(p.prev)) {
+        legendPage.set(p.page - 1)
+        return
+      }
+      if (inside(p.next)) {
+        legendPage.set(p.page + 1)
+        return
+      }
+    }
     if (props.showLegend === true && props.legendToggle !== false && legendBoxes.length > 0) {
       const r0 = el.getBoundingClientRect()
       const lx = ev.clientX - r0.left
@@ -690,11 +776,12 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     if (ctx === null) return
     const w = drawWidth(el, props.width)
     const hgt = props.height ?? 200
-    const spec = buildSpec(readData(), w, hgt)
+    const spec = buildSpec(readData(), w, hgt - topOffset)
     const measure = canvasMeasure(ctx, FONT)
     const rect = el.getBoundingClientRect()
     const px = ev.clientX - rect.left
-    const py = ev.clientY - rect.top
+    // Plot space (see datumAt): the plot sits under the title + legend.
+    const py = ev.clientY - rect.top - topOffset
     // Every BAR mark is hit-testable — plain, stacked and grouped. A line or
     // area chart still reports -1 rather than guessing at a nearest point the
     // caller did not ask for.

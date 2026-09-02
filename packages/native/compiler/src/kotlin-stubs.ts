@@ -1390,15 +1390,46 @@ class PyreonMachine(initial: String, val transitions: Map<String, Map<String, St
 
 // @pyreon/sync — CRDT doc + synced-signal facade. Mirrors the real
 // PyreonCrdt.kt / PyreonSyncedSignal.kt SURFACE.
+// A stub NARROWER than the runtime rejects CORRECT emit; one that is WIDER
+// hides a missing symbol. Mirrored from PyreonCrdt.kt, not approximated to
+// what the emitter happens to produce today — \`Null\` and the whole map facade
+// were both absent while this comment already claimed to mirror the surface.
 sealed class PyreonScalar {
   data class Str(val v: String) : PyreonScalar()
   data class Num(val v: Double) : PyreonScalar()
   data class Bool(val v: Boolean) : PyreonScalar()
+  object Null : PyreonScalar()
+}
+data class PyreonCrdtOp(
+  val map: String,
+  val key: String,
+  val value: PyreonScalar,
+  val clock: Int,
+  val actor: String,
+)
+class PyreonCrdtMap {
+  fun get(key: String): PyreonScalar? = null
+  fun has(key: String): Boolean = false
+  fun keys(): List<String> = emptyList()
+  fun set(key: String, value: PyreonScalar) {}
+  fun set(key: String, value: String) {}
+  fun set(key: String, value: Int) {}
+  fun set(key: String, value: Double) {}
+  fun set(key: String, value: Boolean) {}
+  fun observe(cb: (Set<String>) -> Unit): () -> Unit = {}
 }
 class PyreonCrdtDoc(val actor: String) {
+  var onLocalOps: ((List<PyreonCrdtOp>) -> Unit)? = null
+  fun getMap(name: String): PyreonCrdtMap = PyreonCrdtMap()
   fun get(map: String, key: String): PyreonScalar? = null
+  fun has(map: String, key: String): Boolean = false
+  fun keys(map: String): List<String> = emptyList()
   fun set(map: String, key: String, value: PyreonScalar) {}
   fun observe(map: String, cb: (Set<String>) -> Unit): () -> Unit = {}
+  fun applyOps(ops: List<PyreonCrdtOp>) {}
+  fun encodeState(): List<PyreonCrdtOp> = emptyList()
+  fun encodeMessage(ops: List<PyreonCrdtOp>): String = ""
+  fun applyMessage(json: String) {}
 }
 const val PYREON_SYNCED_DEFAULT_MAP = "pyreon"
 class PyreonSyncedSignal<T>(
