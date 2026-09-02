@@ -99,7 +99,7 @@ class PyreonCrdtMap implements CrdtMap {
   }
 
   /** @internal — fired by the doc at transaction commit. */
-  _notify(changedKeys: ReadonlySet<string>, origin: CrdtOrigin = REMOTE_ORIGIN): void {
+  _notify(changedKeys: ReadonlySet<string>, origin: CrdtOrigin): void {
     // Single-observer fast path — the dominant shape (the keyed dispatcher
     // installs exactly ONE observer per map). Fired per transaction commit, so
     // the `[...observers]` snapshot was a throwaway array every commit. Capture
@@ -194,7 +194,7 @@ export class PyreonCrdtDoc implements CrdtDoc {
    * the Lamport clock, applies each op that wins its register, fires observers
    * once under `origin` (default {@link REMOTE_ORIGIN} is the transport's to set).
    */
-  applyOps(ops: readonly PyreonCrdtOp[], origin: CrdtOrigin): void {
+  applyOps(ops: readonly PyreonCrdtOp[], origin: CrdtOrigin = REMOTE_ORIGIN): void {
     if (this.destroyed || ops.length === 0) return
     if (this.depth !== 0) {
       // Never merge remote ops mid-local-transaction — the transport always
