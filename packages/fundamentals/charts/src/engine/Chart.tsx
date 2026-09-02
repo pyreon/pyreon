@@ -7,7 +7,7 @@
 
 import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
-import { effect, signal } from '@pyreon/reactivity'
+import { batch, effect, isClient, signal } from '@pyreon/reactivity'
 import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
 import { renderLegend } from './legend'
 import type { LegendPager } from './legend'
@@ -792,11 +792,14 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       const tool = hitToolbox(toolList, toolboxBoxes, ev.clientX - r0.left, ev.clientY - r0.top)
       if (tool !== null) {
         if (tool === 'restore') {
-          zoomWin.set(null)
-          brushSel.set(null)
-          hiddenSeries.set([])
-          legendPage.set(0)
-          typeOverride.set(null)
+          // One notify cycle for the five resets, not five redraws.
+          batch(() => {
+            zoomWin.set(null)
+            brushSel.set(null)
+            hiddenSeries.set([])
+            legendPage.set(0)
+            typeOverride.set(null)
+          })
         } else if (tool === 'magicLine') {
           typeOverride.set(typeOverride() === 'line' ? null : 'line')
         } else if (tool === 'magicBar') {
@@ -804,7 +807,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
         } else {
           const svg = renderSvg(lastFrame, lastW, lastH, { fontFamily: FONT, ...(props.title !== undefined ? { title: props.title } : {}) })
           if (props.onSaveImage !== undefined) props.onSaveImage(svg)
-          else if (typeof document !== 'undefined' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+          else if (isClient && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
             const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }))
             const a = document.createElement('a')
             a.href = url
