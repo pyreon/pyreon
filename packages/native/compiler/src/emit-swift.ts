@@ -11339,14 +11339,18 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   }
   const data = emitSwiftExpr(dataV, indent)
   const zoomed = readStaticAttr(e, 'dataZoom') === true
+  const presetsRaw = swiftZoomPresets(e, tag)
+  const presets = presetsRaw === 'unsupported' ? undefined : presetsRaw
+  // The window state exists whenever something writes it: a gesture or a preset.
+  const windowed = zoomed || presets !== undefined
   const lets: string[] = []
-  if (zoomed) {
+  if (windowed) {
     _hostStateDecls.push('@State private var pyreonZoom: ZoomWindow = ZoomWindow(start: 0.0, end: 1.0)')
-    _hostStateDecls.push('@State private var pyreonZoomAnchor: ZoomWindow = ZoomWindow(start: 0.0, end: 1.0)')
+    if (zoomed) _hostStateDecls.push('@State private var pyreonZoomAnchor: ZoomWindow = ZoomWindow(start: 0.0, end: 1.0)')
     lets.push(`let pyreonRange: SliceRange = sliceRange(pyreonZoom, ${data}.count)`)
     lets.push(`let pyreonRows = Array(${data}[pyreonRange.from..<pyreonRange.to])`)
   }
-  const rows = zoomed ? 'pyreonRows' : data
+  const rows = windowed ? 'pyreonRows' : data
   const series: string[] = []
   for (let k = 0; k < marksV.elements.length; k++) {
     const m = marksV.elements[k]!
@@ -11367,7 +11371,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     const optsArg = bubble ? m.args[2] : m.args[1]
     const opts = swiftMarkOptionArgs(optsArg, tag, k)
     if (opts === 'unsupported') return 'EmptyView()'
-    lets.push(`let pyreonValues${k}: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${body})`, 'Double', zoomed)}`)
+    lets.push(`let pyreonValues${k}: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${body})`, 'Double', windowed)}`)
     if (bubble) {
       const r = m.args[1]
       if (r === undefined) {
@@ -11377,7 +11381,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       const rBody = swiftAccessorExpr(r, tag, `mark ${k + 1} radius`, indent)
       if (rBody === 'unsupported') return 'EmptyView()'
       const range = swiftBubbleRange(optsArg)
-      lets.push(`let pyreonRadii${k}: [Double] = bubbleRadii(${swiftPlotRowMap(rows, `pyreonChartDouble(${rBody})`, 'Double', zoomed)}, ${range[0]}, ${range[1]})`)
+      lets.push(`let pyreonRadii${k}: [Double] = bubbleRadii(${swiftPlotRowMap(rows, `pyreonChartDouble(${rBody})`, 'Double', windowed)}, ${range[0]}, ${range[1]})`)
       const at = opts.findIndex((o) => o.startsWith('showValues:')) + 1
       const withRadii = [...opts.slice(0, at), `radii: pyreonRadii${k}`, ...opts.slice(at)]
       series.push(`Series(kind: "points", values: pyreonValues${k}, ${withRadii.join(', ')})`)
@@ -11390,7 +11394,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   if (xAcc !== undefined) {
     const body = swiftAccessorExpr(xAcc, tag, 'x', indent)
     if (body === 'unsupported') return 'EmptyView()'
-    lets.push(`let pyreonCats: [String] = ${swiftPlotRowMap(rows, body, 'String', zoomed)}`)
+    lets.push(`let pyreonCats: [String] = ${swiftPlotRowMap(rows, body, 'String', windowed)}`)
   } else {
     lets.push('let pyreonCats: [String] = []')
   }
@@ -11398,7 +11402,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   if (xValueAcc !== undefined) {
     const body = swiftAccessorExpr(xValueAcc, tag, 'xValue', indent)
     if (body === 'unsupported') return 'EmptyView()'
-    lets.push(`let pyreonXValues: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${body})`, 'Double', zoomed)}`)
+    lets.push(`let pyreonXValues: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${body})`, 'Double', windowed)}`)
   }
   const present = PLOT_UNLOWERED_PROPS.filter((p) => chartAttrExpr(e, p) !== undefined)
   if (present.length > 0) _emitWarnings.push(`<${tag}>: ${present.map((p) => `\`${p}\``).join(', ')} ${present.length === 1 ? 'is' : 'are'} not lowered on native yet; the chart renders without.`)
@@ -11407,6 +11411,14 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
   const chrome = swiftChartChrome(e, 'pyreonSeries.map { LegendEntry(label: $0.label, color: $0.color) }', W, H, indent, true)
   lets.push(...chrome.lets)
+  const theme = swiftChartTheme(e, tag)
+  if (presets !== undefined) {
+    // The strip sits at the canvas bottom in canvas coordinates (never shifted
+    // by the title/legend), exactly where the web paints it.
+    lets.push(`let pyreonTheme: ChartTheme = ${theme}`)
+    lets.push(`let pyreonPresets: [ZoomPreset] = [${presets.join(', ')}]`)
+    lets.push(`let pyreonPresetStrip: PresetLayout = renderPresets(pyreonPresets, ${data}.count, pyreonZoom, PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${H}), PresetOptions(fontSize: 11.0, padX: 8.0, padY: 3.0, gap: 6.0, inset: 8.0, activeFill: pyreonTheme.axis, idleFill: pyreonTheme.grid, activeText: "#ffffff", idleText: pyreonTheme.label), pyreonChartMeasure)`)
+  }
   const bool = (name: string, fallback: boolean): string => {
     const raw = readStaticAttr(e, name)
     const v = chartAttrExpr(e, name)
@@ -11414,10 +11426,10 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   }
   const specArgs = [
     `width: ${W}`,
-    `height: ${chrome.height(H)}`,
+    `height: ${presets === undefined ? chrome.height(H) : `${chrome.height(H)} - pyreonPresetStrip.height`}`,
     'series: pyreonSeries',
     'categories: pyreonCats',
-    `theme: ${swiftChartTheme(e, tag)}`,
+    `theme: ${presets === undefined ? theme : 'pyreonTheme'}`,
     `showXAxis: ${bool('showXAxis', true)}`,
     `showYAxis: ${bool('showYAxis', true)}`,
     `showGrid: ${bool('showGrid', true)}`,
@@ -11438,16 +11450,22 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   const mk = chartAttrExpr(e, 'markers')
   if (mk !== undefined) specArgs.push(`markers: ${emitSwiftExpr(mk, indent)}`)
   lets.push(`let pyreonSpec: ChartSpec = ChartSpec(${specArgs.join(', ')})`)
-  const canvas = `PyreonChartCanvas(cmds: ${chrome.wrap('renderChart(pyreonSpec, pyreonChartMeasure)')})`
+  const canvas = `PyreonChartCanvas(cmds: ${chrome.wrap('renderChart(pyreonSpec, pyreonChartMeasure)')}${presets === undefined ? '' : ' + pyreonPresetStrip.cmds'})`
   const tapY = chrome.top === '0.0' ? 'Double(pyreonTap.location.y)' : 'Double(pyreonTap.location.y) - pyreonTop'
-  // Under dataZoom the hit is LOCAL to the slice; the callback speaks GLOBAL indices, as on the web.
-  const hit = zoomed
+  // Under a window the hit is LOCAL to the slice; the callback speaks GLOBAL indices, as on the web.
+  const hit = windowed
     ? `{ () -> Int in let pyreonHit = plotHitBars(pyreonSpec, pyreonChartMeasure, Double(pyreonTap.location.x), ${tapY}); return pyreonHit < 0 ? -1 : pyreonHit + pyreonRange.from }()`
     : `plotHitBars(pyreonSpec, pyreonChartMeasure, Double(pyreonTap.location.x), ${tapY})`
   const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
   let gesture = ''
-  if (onSel?.kind === 'event') {
-    const body = swiftChartSelectBody(onSel.handler, hit, indent)
+  if (onSel?.kind === 'event' || presets !== undefined) {
+    const select = onSel?.kind === 'event' ? swiftChartSelectBody(onSel.handler, hit, indent) : ''
+    let body = select
+    if (presets !== undefined) {
+      // A tap on a preset writes the window and stops there; anything else is the selection.
+      const apply = `pyreonZoom = presetWindow(pyreonPresets[pyreonPreset].count, ${data}.count)${zoomed ? '; pyreonZoomAnchor = pyreonZoom' : ''}`
+      body = `let pyreonPreset = presetHit(pyreonPresetStrip.boxes, Double(pyreonTap.location.x), Double(pyreonTap.location.y)); if pyreonPreset >= 0 { ${apply} }${select === '' ? '' : ` else { ${select} }`}`
+    }
     // With pan and pinch live, a tap is a drag that did not move: guard by translation.
     const guarded = zoomed ? `if abs(pyreonTap.translation.width) < 6.0 && abs(pyreonTap.translation.height) < 6.0 { ${body} }` : body
     gesture = `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in ${guarded} })`
@@ -11597,3 +11615,34 @@ function swiftPlotRowMap(rows: string, body: string, type: string, zoomed: boole
 }
 
 /** `<PlotChart data marks x? xValue? … dataZoom? showLegend? showTitle? onSelect? …>` */
+
+
+// ---- `<PlotChart zoomPresets>` — the preset strip, engine-laid-out ------------
+//
+// The strip is the engine's `renderPresets` (the same layout the web host
+// paints), so iOS places and hit-tests the same buttons. A tap that lands on a
+// button writes the window; presets therefore need the host's window state
+// even without `dataZoom` (no gestures then — just the strip).
+
+/** `zoomPresets={[{ label, count }, …]}` as `ZoomPreset(label:count:)` literals; `undefined` when absent or empty; `'unsupported'` (warned) for any other shape. */
+function swiftZoomPresets(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: string): string[] | 'unsupported' | undefined {
+  const v = chartAttrExpr(e, 'zoomPresets')
+  if (v === undefined) return undefined
+  if (v.kind !== 'array') return unsupportedZoomPresets(tag)
+  const out: string[] = []
+  for (const el of v.elements) {
+    if (el.kind !== 'object') return unsupportedZoomPresets(tag)
+    const label = el.fields.find((f) => f.name === 'label')?.value
+    const count = el.fields.find((f) => f.name === 'count')?.value
+    if (label?.kind !== 'literal' || typeof label.value !== 'string' || count?.kind !== 'literal' || typeof count.value !== 'number') return unsupportedZoomPresets(tag)
+    out.push(`ZoomPreset(label: ${JSON.stringify(label.value)}, count: ${Math.trunc(count.value)})`)
+  }
+  return out.length === 0 ? undefined : out
+}
+
+function unsupportedZoomPresets(tag: string): 'unsupported' {
+  _emitWarnings.push(`<${tag} zoomPresets>: must be an inline array of \`{ label, count }\` literals on native; the chart renders without the preset strip.`)
+  return 'unsupported'
+}
+
+/** `<PlotChart data marks x? xValue? … dataZoom? zoomPresets? showLegend? showTitle? onSelect? …>` */
