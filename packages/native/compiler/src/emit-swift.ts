@@ -74,7 +74,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, HEAT_RAMP_DEFAULT, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -10860,6 +10860,7 @@ const SWIFT_CHART_TARGET: ChartHostTarget = {
   min: (a, b) => `min(${a}, ${b})`,
   nil: 'nil',
   pieOptions: (a) => `PieOptions(innerRadius: ${a.innerRatio}, showLabels: true, labelColor: "#ffffff", fontSize: 11.0)`,
+  theme: () => `ChartTheme(axis: ${JSON.stringify(CHART_THEME_DEFAULT.axis)}, grid: ${JSON.stringify(CHART_THEME_DEFAULT.grid)}, label: ${JSON.stringify(CHART_THEME_DEFAULT.label)}, fontSize: ${CHART_THEME_DEFAULT.fontSize})`,
 }
 
 /** A JSX attr's value expression, unwrapping a zero-arg accessor arrow. */
@@ -10904,6 +10905,9 @@ function swiftChartSelectBody(handler: ExprIR, hitExpr: string, indent: number):
 function emitSwiftChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const tag = e.tag
   if (tag === 'GaugeChart') return emitSwiftGaugeHost(e, indent)
+  if (tag === 'CandlestickChart') return emitSwiftCandlestickHost(e, indent)
+  if (tag === 'HeatmapChart') return emitSwiftHeatmapHost(e, indent)
+  if (tag === 'RadarChart') return emitSwiftRadarHost(e, indent)
   if (Object.hasOwn(ACCESSOR_CHART_HOSTS, tag)) return emitSwiftAccessorHost(e, indent)
   const unlowered = UNLOWERED_CHART_HOSTS[tag]
   if (unlowered !== undefined) {
@@ -11048,4 +11052,169 @@ function emitSwiftGaugeHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   if (hasWidth) return `${canvas}.frame(width: ${W}, height: ${H})${tail}`
   const pad = ' '.repeat(indent + 2)
   return `GeometryReader { pyreonGeo in\n${pad}${canvas}\n${' '.repeat(indent)}}.frame(height: ${H})${tail}`
+}
+
+
+// ---- cartesian-frame hosts (Candlestick / Heatmap) + Radar ----------------
+//
+// The mapped inputs are hoisted into typed `let`s inside the host's view
+// builder rather than inlined into one expression: a render call whose
+// arguments are two `enumerated().map` closures (and the same two again in the
+// tap's hit test) sends swiftc into "unable to type-check this expression in
+// reasonable time". A `let pyreonCandles: [Ohlc] = …` per input keeps every
+// expression small and its type stated — and the Int→Double coercion goes
+// through `pyreonChartDouble` (two overloads) rather than `Double(_:)` (twenty),
+// because four of those in one struct init is the same explosion.
+
+/** `data.enumerated().map { (pyreonI, pyreonD) in <wrap(accessor body)> }`, or 'unsupported' (reported) / null (absent). */
+function swiftChartMap(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  tag: string,
+  data: string,
+  prop: string,
+  wrap: (body: string) => string,
+  indent: number,
+): string | null | 'unsupported' {
+  const acc = swiftChartAccessor(e, tag, prop, indent)
+  if (acc === null || acc === 'unsupported') return acc
+  return `${data}.enumerated().map { (pyreonI, pyreonD) in ${wrap(acc)} }`
+}
+
+/**
+ * The host's view: a GeometryReader (width from the reader) or a Group (width
+ * given) whose builder holds the hoisted `let`s and then the canvas.
+ */
+function swiftFrameHost(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  lets: readonly string[],
+  canvas: string,
+  gesture: string,
+  W: string,
+  H: string,
+  hasWidth: boolean,
+  indent: number,
+): string {
+  const title = readStringAttrExpr(e, 'title', indent)
+  const tail = (title !== undefined ? `.accessibilityLabel(${title})` : '') + emitSwiftLayoutModifiers(e)
+  const pad = ' '.repeat(indent + 2)
+  const body = lets.map((l) => `${pad}${l}\n`).join('')
+  if (hasWidth) return `Group {\n${body}${pad}${canvas}${gesture}.frame(width: ${W}, height: ${H})${tail}\n${' '.repeat(indent)}}`
+  return `GeometryReader { pyreonGeo in\n${body}${pad}${canvas}${gesture}\n${' '.repeat(indent)}}.frame(height: ${H})${tail}`
+}
+
+function swiftChartGesture(e: Extract<ExprIR, { kind: 'jsx-element' }>, hit: (x: string, y: string) => string, indent: number, names: readonly string[] = ['selectindex', 'select']): string {
+  const onSel = e.attrs.find((a) => a.kind === 'event' && names.includes(a.name))
+  if (onSel?.kind !== 'event') return ''
+  return `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in ${swiftChartSelectBody(onSel.handler, hit('Double(pyreonTap.location.x)', 'Double(pyreonTap.location.y)'), indent)} })`
+}
+
+/** `<CandlestickChart data open high low close x? candle? height width title>` → the shared frame over the mapped candles. */
+function emitSwiftCandlestickHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const tag = 'CandlestickChart'
+  const dataV = chartAttrExpr(e, 'data')
+  if (dataV === undefined) {
+    _emitWarnings.push(`<${tag}>: needs a \`data\` attribute on native; emitting an EmptyView().`)
+    return 'EmptyView()'
+  }
+  const data = emitSwiftExpr(dataV, indent)
+  const fields: string[] = []
+  for (const f of ['open', 'high', 'low', 'close']) {
+    const acc = swiftChartAccessor(e, tag, f, indent)
+    if (acc === 'unsupported') return 'EmptyView()'
+    if (acc === null) {
+      _emitWarnings.push(`<${tag}>: needs an \`${f}\` accessor on native; emitting an EmptyView().`)
+      return 'EmptyView()'
+    }
+    fields.push(`${f}: pyreonChartDouble(${acc})`)
+  }
+  const lets = [`let pyreonCandles: [Ohlc] = ${data}.enumerated().map { (pyreonI, pyreonD) in Ohlc(${fields.join(', ')}) }`]
+  const catsM = swiftChartMap(e, tag, data, 'x', (b) => b, indent)
+  if (catsM === 'unsupported') return 'EmptyView()'
+  lets.push(`let pyreonCats: [String] = ${catsM ?? '[]'}`)
+  if (chartAttrExpr(e, 'theme') !== undefined) _emitWarnings.push(`<${tag} theme>: a theme override is not lowered on native yet; the default theme applies.`)
+  const optV = chartAttrExpr(e, 'candle')
+  const options = optV === undefined ? 'nil' : emitSwiftExpr(optV, indent)
+  const H = swiftChartDouble(e, 'height', 200, indent)
+  const hasWidth = chartAttrExpr(e, 'width') !== undefined
+  const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
+  const canvas = `PyreonChartCanvas(cmds: renderCandlestickChart(pyreonCandles, ${W}, ${H}, pyreonCats, ${SWIFT_CHART_TARGET.theme()}, ${options}, pyreonChartMeasure))`
+  const gesture = swiftChartGesture(e, (x, y) => `hitCandlestickChart(pyreonCandles, ${W}, ${H}, pyreonCats, ${CHART_THEME_DEFAULT.fontSize}, pyreonChartMeasure, ${x}, ${y})`, indent)
+  return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent)
+}
+
+/** `<HeatmapChart data x y value colors? gap? height width title onSelectIndex?>` → heatGridFrom over the mapped rows + the shared frame. */
+function emitSwiftHeatmapHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const tag = 'HeatmapChart'
+  const dataV = chartAttrExpr(e, 'data')
+  if (dataV === undefined) {
+    _emitWarnings.push(`<${tag}>: needs a \`data\` attribute on native; emitting an EmptyView().`)
+    return 'EmptyView()'
+  }
+  const data = emitSwiftExpr(dataV, indent)
+  const lets: string[] = []
+  for (const [prop, name, type, wrap] of [
+    ['x', 'pyreonXs', '[String]', (b: string) => b],
+    ['y', 'pyreonYs', '[String]', (b: string) => b],
+    ['value', 'pyreonVals', '[Double]', (b: string) => `pyreonChartDouble(${b})`],
+  ] as const) {
+    const m = swiftChartMap(e, tag, data, prop, wrap, indent)
+    if (m === 'unsupported') return 'EmptyView()'
+    if (m === null) {
+      _emitWarnings.push(`<${tag}>: needs a \`${prop}\` accessor on native; emitting an EmptyView().`)
+      return 'EmptyView()'
+    }
+    lets.push(`let ${name}: ${type} = ${m}`)
+  }
+  lets.push('let pyreonGrid: HeatGrid = heatGridFrom(pyreonXs, pyreonYs, pyreonVals)')
+  if (chartAttrExpr(e, 'theme') !== undefined) _emitWarnings.push(`<${tag} theme>: a theme override is not lowered on native yet; the default theme applies.`)
+  if (e.attrs.some((a) => a.kind === 'event' && a.name === 'select')) {
+    _emitWarnings.push(`<${tag} onSelect>: the cell-shaped callback is not lowered on native; use \`onSelectIndex\` (the index into the grid's cells).`)
+  }
+  const colorsV = chartAttrExpr(e, 'colors')
+  const stops = colorsV === undefined ? `[${HEAT_RAMP_DEFAULT.map((c) => JSON.stringify(c)).join(', ')}]` : emitSwiftExpr(colorsV, indent)
+  const gap = swiftChartDouble(e, 'gap', 1, indent)
+  const H = swiftChartDouble(e, 'height', 200, indent)
+  const hasWidth = chartAttrExpr(e, 'width') !== undefined
+  const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
+  const canvas = `PyreonChartCanvas(cmds: renderHeatChart(pyreonGrid, ${W}, ${H}, ${SWIFT_CHART_TARGET.theme()}, ${stops}, ${gap}, pyreonChartMeasure))`
+  const gesture = swiftChartGesture(e, (x, y) => `hitHeatChart(pyreonGrid, ${W}, ${H}, ${CHART_THEME_DEFAULT.fontSize}, ${gap}, pyreonChartMeasure, ${x}, ${y})`, indent, ['selectindex'])
+  return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent)
+}
+
+/** `<RadarChart data axes values label color? fillAlpha? rings? showLabels? height width title>` → renderRadar over the mapped series. */
+function emitSwiftRadarHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const tag = 'RadarChart'
+  const dataV = chartAttrExpr(e, 'data')
+  const axesV = chartAttrExpr(e, 'axes')
+  if (dataV === undefined || axesV === undefined) {
+    _emitWarnings.push(`<${tag}>: needs \`data\` and \`axes\` attributes on native; emitting an EmptyView().`)
+    return 'EmptyView()'
+  }
+  const data = emitSwiftExpr(dataV, indent)
+  const values = swiftChartAccessor(e, tag, 'values', indent)
+  if (values === 'unsupported') return 'EmptyView()'
+  if (values === null) {
+    _emitWarnings.push(`<${tag}>: needs a \`values\` accessor on native; emitting an EmptyView().`)
+    return 'EmptyView()'
+  }
+  const colorAcc = swiftChartAccessor(e, tag, 'color', indent)
+  if (colorAcc === 'unsupported') return 'EmptyView()'
+  const color = colorAcc ?? `[${CHART_HOST_PALETTE.map((c) => JSON.stringify(c)).join(', ')}][pyreonI % ${CHART_HOST_PALETTE.length}]`
+  const fillAlpha = swiftChartDouble(e, 'fillAlpha', 0.25, indent)
+  const lets = [
+    `let pyreonSeries: [RadarSeries] = ${data}.enumerated().map { (pyreonI, pyreonD) in RadarSeries(values: (${values}).map { pyreonChartDouble($0) }, color: ${color}, fillAlpha: ${fillAlpha}) }`,
+  ]
+  if (readStaticAttr(e, 'showLegend') === true) _emitWarnings.push(`<${tag} showLegend>: the legend is not lowered on native yet; the radar renders without it.`)
+  const ringsV = chartAttrExpr(e, 'rings')
+  const ringsRaw = readStaticAttr(e, 'rings')
+  const rings = ringsV === undefined ? '4' : typeof ringsRaw === 'number' ? String(Math.trunc(ringsRaw)) : emitSwiftExpr(ringsV, indent)
+  const showRaw = readStaticAttr(e, 'showLabels')
+  const showV = chartAttrExpr(e, 'showLabels')
+  const showLabels = showV === undefined ? 'true' : typeof showRaw === 'boolean' ? String(showRaw) : emitSwiftExpr(showV, indent)
+  const H = swiftChartDouble(e, 'height', 260, indent)
+  const hasWidth = chartAttrExpr(e, 'width') !== undefined
+  const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
+  const opts = `RadarOptions(rings: ${rings}, gridColor: "rgba(132,150,165,0.35)", labelColor: "#5a6b7a", fontSize: 11.0, showLabels: ${showLabels})`
+  const canvas = `PyreonChartCanvas(cmds: renderRadar(${emitSwiftExpr(axesV, indent)}, pyreonSeries, PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${H}), ${opts}))`
+  return swiftFrameHost(e, lets, canvas, '', W, H, hasWidth, indent)
 }

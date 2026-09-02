@@ -502,6 +502,7 @@ const KOTLIN_CHART_VIEW_STUBS = `
 @Composable
 @Suppress("UNUSED_PARAMETER")
 fun PyreonChartCanvas(cmds: List<PyreonDrawCmd>, modifier: Modifier = Modifier) {}
+fun pyreonChartMeasure(text: String, size: Double): Double = text.length * size * 0.6
 `
 
 /** The Kotlin stub text a chart-host emit needs beyond the Compose bundle; `''` when no host is present. */

@@ -33,6 +33,8 @@ export interface ChartHostTarget {
   nil: string
   /** `PieOptions(innerRadius: <innerRatio>, showLabels: true, labelColor: "#ffffff", fontSize: 11.0)` — the web host's fixed pie options. */
   pieOptions: (a: ChartHostArgs) => string
+  /** The web hosts' default ChartTheme literal. */
+  theme: () => string
 }
 
 export interface ChartHostArgs {
@@ -146,9 +148,6 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
 /** Plot hosts that exist on the web but have no native lowering yet, with the reason. */
 export const UNLOWERED_CHART_HOSTS: Readonly<Record<string, string>> = {
   PlotChart: 'its `marks` are accessor closures over your rows (`bars((d) => d.total)`); natively, build a `ChartSpec` and call `renderChart` yourself',
-  RadarChart: 'its `value` prop is an accessor closure; call `renderRadar` yourself',
-  HeatmapChart: 'its `x` / `y` / `value` props are accessor closures; call `buildHeatGrid` + `renderHeat` yourself',
-  CandlestickChart: 'its `open` / `high` / `low` / `close` props are accessor closures; call `renderCandles` over `Ohlc[]` yourself',
   CalendarChart: 'its `values` prop is a record; natively pass a `CalendarValue[]` to `renderCalendar` yourself',
   ParallelChart: 'its rows mix strings and nulls; natively pass numeric rows to `layoutParallel` yourself',
   OptionChart: 'the ECharts option facade is web-only',
@@ -156,7 +155,7 @@ export const UNLOWERED_CHART_HOSTS: Readonly<Record<string, string>> = {
 
 /** Whether a JSX tag is a `@pyreon/charts/plot` host, lowered or not. */
 export function isChartHostTag(tag: string): boolean {
-  return Object.hasOwn(CHART_HOSTS, tag) || Object.hasOwn(ACCESSOR_CHART_HOSTS, tag) || tag === 'GaugeChart' || Object.hasOwn(UNLOWERED_CHART_HOSTS, tag)
+  return Object.hasOwn(CHART_HOSTS, tag) || Object.hasOwn(ACCESSOR_CHART_HOSTS, tag) || Object.hasOwn(FRAME_CHART_HOSTS, tag) || Object.hasOwn(UNLOWERED_CHART_HOSTS, tag)
 }
 
 /** A Double literal the way both targets accept it (`240` → `240.0`). */
@@ -236,3 +235,12 @@ export const ACCESSOR_CHART_HOSTS: Readonly<Record<string, AccessorHostSpec>> = 
     },
   },
 }
+
+/** The web hosts' default `ChartTheme` — inlined because the engine's own `defaultTheme` is module-private in both targets. */
+export const CHART_THEME_DEFAULT = { axis: '#8496a5', grid: 'rgba(132,150,165,0.18)', label: '#5a6b7a', fontSize: '11.0' } as const
+
+/** The heatmap's default ramp (`HEAT_RAMP`), inlined for the same reason. */
+export const HEAT_RAMP_DEFAULT = ['#eff6ff', '#93c5fd', '#3b82f6', '#1e40af'] as const
+
+/** The hosts with a dedicated emitter each (a fixed frame or a second data prop). */
+export const FRAME_CHART_HOSTS: Readonly<Record<string, true>> = { GaugeChart: true, CandlestickChart: true, HeatmapChart: true, RadarChart: true }

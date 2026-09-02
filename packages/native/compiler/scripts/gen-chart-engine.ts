@@ -61,6 +61,8 @@ export const ENGINE_FILES = [
   'calendar',
   'gantt',
   'parallel',
+  'candlestick-chart',
+  'heat-chart',
 ] as const
 
 const RENAMES: ReadonlyArray<readonly [string, string]> = [
@@ -147,7 +149,10 @@ function publicizeSwift(code: string): string {
       i++
       const fields: SwiftField[] = []
       while (i < lines.length && lines[i] !== '}') {
-        const f = lines[i]!.match(/^(\s+)var (\w+): ([^=]+?)(?: = (.+))?$/)
+        // A field named after a Swift keyword arrives backtick-escaped from the
+        // emitter (`open` on Ohlc); the escape is part of the name and has to
+        // survive into the init, or the field is dropped from it silently.
+        const f = lines[i]!.match(/^(\s+)var (`?\w+`?): ([^=]+?)(?: = (.+))?$/)
         if (f) {
           fields.push({ name: f[2]!, type: f[3]!.trim(), def: f[4] ?? null })
           out.push(`${f[1]}public var ${f[2]}: ${f[3]!.trim()}${f[4] ? ` = ${f[4]}` : ''}`)

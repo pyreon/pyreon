@@ -89,6 +89,19 @@ fun pyreonChartColor(s: String): Color {
  * A Compose Canvas walking the engine's flat draw list — the native twin of
  * canvas-web's renderer (same dispatch, same text-anchor semantics).
  */
+/**
+ * Text width in engine units (dp) — the MeasureText the layout functions
+ * take. The draw list is scaled by the density once at paint time, so the
+ * measure is taken at the unscaled size: measureText is linear in the
+ * text size, which makes dp-at-1x the same number as px-at-density / density.
+ */
+fun pyreonChartMeasure(text: String, size: Double): Double {
+    val p = Paint()
+    p.textSize = size.toFloat()
+    p.isAntiAlias = true
+    return p.measureText(text).toDouble()
+}
+
 @Composable
 fun PyreonChartCanvas(
     cmds: List<PyreonDrawCmd>,
