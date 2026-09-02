@@ -61,6 +61,12 @@ const CORPUS: { name: string; option: EChartsOption; expectClean: boolean }[] = 
     series: [{ type: 'heatmap', data: [[0, 0, 5], [1, 1, 9]] }] } },
   { name: 'funnel', expectClean: true, option: {
     series: [{ type: 'funnel', sort: 'descending', minSize: '10%', data: [{ value: 60, name: 'Visit' }, { value: 40, name: 'Inquiry' }, { value: 20, name: 'Order' }] }] } },
+  { name: 'derived dataset (filter + sort) bars', expectClean: true, option: {
+    dataset: [
+      { source: [['name', 'score', 'team'], ['a', 5, 'x'], ['b', 9, 'y'], ['c', 1, 'x'], ['d', 7, 'y']] },
+      { transform: [{ type: 'filter', config: { dimension: 'team', eq: 'y' } }, { type: 'sort', config: { dimension: 'score', order: 'desc' } }] },
+    ],
+    xAxis: { type: 'category' }, yAxis: {}, series: [{ type: 'bar', datasetIndex: 1 }] } },
   { name: 'heatmap + piecewise visualMap', expectClean: true, option: {
     visualMap: { type: 'piecewise', splitNumber: 3, min: 0, max: 9, orient: 'horizontal', left: 'center', bottom: 0 },
     xAxis: { data: ['a', 'b'] }, yAxis: { data: ['r', 's'] },
@@ -117,8 +123,8 @@ describe('ECharts option facade — conformance corpus', () => {
       const c = planOption(f.option).compiled
       return c.supported && c.warnings.length === 0
     }).length
-    // 27 of 29 today. Raise this number as families land; never lower it.
-    expect(clean).toBeGreaterThanOrEqual(27)
+    // 28 of 30 today. Raise this number as families land; never lower it.
+    expect(clean).toBeGreaterThanOrEqual(28)
   })
 })
 
