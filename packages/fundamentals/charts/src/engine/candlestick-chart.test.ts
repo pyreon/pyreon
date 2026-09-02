@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { candlestickFrame, hitCandlestickChart, renderCandlestickChart } from './candlestick-chart'
 import type { Ohlc } from './candlestick'
+import type { DrawCmd } from './types'
 import { defaultTheme } from './render'
 import { measureApprox } from './svg'
 
@@ -10,6 +11,8 @@ const CANDLES: Ohlc[] = [
   { open: 9, high: 14, low: 7, close: 12 },
 ]
 const measure = measureApprox()
+const texts = (cs: DrawCmd[]) => cs.filter((c): c is Extract<DrawCmd, { kind: 'text' }> => c.kind === 'text')
+const rects = (cs: DrawCmd[]) => cs.filter((c): c is Extract<DrawCmd, { kind: 'rect' }> => c.kind === 'rect')
 
 describe('candlestickFrame', () => {
   it('nices the price domain and lays the plot out with one band per candle', () => {
@@ -38,15 +41,15 @@ describe('renderCandlestickChart', () => {
     expect(firstCandle).toBeGreaterThan(0)
     // Everything before the first candle body is frame: grid lines and labels.
     expect(new Set(kinds.slice(0, firstCandle))).toEqual(new Set(['line', 'text']))
-    const xLabels = cmds.filter((c) => c.kind === 'text' && c.baseline === 'top').map((c) => c.text)
+    const xLabels = texts(cmds).filter((c) => c.baseline === 'top').map((c) => c.text)
     expect(xLabels).toEqual(['Mon', 'Tue', 'Wed'])
-    const yLabels = cmds.filter((c) => c.kind === 'text' && c.align === 'end')
+    const yLabels = texts(cmds).filter((c) => c.align === 'end')
     expect(yLabels.length).toBeGreaterThan(1)
     for (const t of yLabels) expect(t.fill).toBe(defaultTheme.label)
   })
   it('honors candle options through to the bodies', () => {
     const cmds = renderCandlestickChart(CANDLES, 300, 160, [], defaultTheme, { upColor: '#0a0', downColor: '#a00' }, measure)
-    const fills = new Set(cmds.filter((c) => c.kind === 'rect').map((c) => c.fill))
+    const fills = new Set(rects(cmds).map((c) => c.fill))
     expect(fills.has('#0a0')).toBe(true)
     expect(fills.has('#a00')).toBe(true)
   })
