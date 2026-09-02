@@ -300,6 +300,20 @@ const link = createChartLink()
 
 The radius travels in the draw list as `corners` on the rect command, clamped by the engine to half the bar's shorter side — so a bar animating up from zero rounds proportionally, and the web canvas, the SSR SVG and the SwiftUI/Compose canvases all draw the same four arcs.
 
+### Gradient fills
+
+`gradient` on a bar-family or `area` mark (ECharts' `LinearGradient` item and area style). You give the stops; the engine resolves the two points against the plot box, so one ramp spans the chart instead of repeating inside every bar.
+
+```tsx
+<PlotChart
+  data={rows}
+  x={(d) => d.k}
+  marks={[area((d) => d.v, { gradient: { stops: [{ offset: 0, color: '#2563eb' }, { offset: 1, color: 'rgba(37,99,235,0)' }] } })]}
+/>
+```
+
+`direction: 'horizontal'` ramps left → right instead of top → bottom. Every gradient-bearing command still carries its solid `color`, so a backend that cannot paint one — or an SVG serialized command-by-command without a `<defs>` — falls back to the colour rather than to nothing.
+
 ### Events and actions
 
 ECharts' `on(...)` / `dispatchAction` in Pyreon shapes: every event is a prop, every action is a call on a handle whose signals ARE the chart's state.

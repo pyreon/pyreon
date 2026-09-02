@@ -40,6 +40,7 @@ const REPO = join(HERE, '../../../..')
 export const ENGINE_FILES = [
   'types',
   'corners',
+  'gradient',
   'format',
   'scale',
   'scale-extra',
@@ -79,6 +80,8 @@ const RENAMES: ReadonlyArray<readonly [string, string]> = [
   ['Pt', 'PyreonChartPt'],
   ['Rect', 'PyreonChartRect'],
   ['DrawCmd', 'PyreonDrawCmd'],
+  ['ChartGradientStop', 'PyreonChartGradientStop'],
+  ['ChartGradient', 'PyreonChartGradient'],
 ]
 
 const HEADER = (lang: string) =>
@@ -109,7 +112,7 @@ function renameTypes(code: string): string {
 /** Strip the synthesized Pt/Rect/DrawCmd struct blocks from the Swift emit. */
 function stripSwiftStructs(code: string): string {
   let out = code
-  for (const name of ['Pt', 'Rect', 'DrawCmd']) {
+  for (const name of ['Pt', 'Rect', 'DrawCmd', 'ChartGradientStop', 'ChartGradient']) {
     // Flat data structs — fields only, no nested braces.
     const re = new RegExp(`struct ${name}(?::[^\\{]*)? \\{[^}]*\\}\\n*`, 'g')
     const before = out
@@ -122,7 +125,7 @@ function stripSwiftStructs(code: string): string {
 /** Strip the synthesized data classes + @Serializable lines from Kotlin. */
 function stripKotlinDecls(code: string): string {
   let out = code
-  for (const name of ['Pt', 'Rect', 'DrawCmd']) {
+  for (const name of ['Pt', 'Rect', 'DrawCmd', 'ChartGradientStop', 'ChartGradient']) {
     const re = new RegExp(`^data class ${name}\\([^\\n]*\\)\\n`, 'm')
     const before = out
     out = out.replace(re, '')
@@ -225,7 +228,7 @@ export function buildChartEngine(repoRoot: string = REPO): { swift: string; kotl
  */
 export function buildChartEngineStructs(repoRoot: string = REPO): string {
   const parsed = parsePyreon(bundleEngineSource(repoRoot))
-  const RENAME: Record<string, string> = { Pt: 'PyreonChartPt', Rect: 'PyreonChartRect', DrawCmd: 'PyreonDrawCmd' }
+  const RENAME: Record<string, string> = { Pt: 'PyreonChartPt', Rect: 'PyreonChartRect', DrawCmd: 'PyreonDrawCmd', ChartGradientStop: 'PyreonChartGradientStop', ChartGradient: 'PyreonChartGradient' }
   const rename = (v: unknown): unknown => {
     if (Array.isArray(v)) return v.map(rename)
     if (v !== null && typeof v === 'object') {

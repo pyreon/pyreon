@@ -117,6 +117,59 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "PyreonChartGradientStop",
+    "fields": [
+      {
+        "name": "offset",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "color",
+        "type": {
+          "kind": "string"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "PyreonChartGradient",
+    "fields": [
+      {
+        "name": "from",
+        "type": {
+          "kind": "typeRef",
+          "name": "PyreonChartPt",
+          "args": []
+        }
+      },
+      {
+        "name": "to",
+        "type": {
+          "kind": "typeRef",
+          "name": "PyreonChartPt",
+          "args": []
+        }
+      },
+      {
+        "name": "stops",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "PyreonChartGradientStop",
+            "args": []
+          }
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "PyreonDrawCmd",
     "fields": [
       {
@@ -167,6 +220,22 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
                 "name": "Double",
                 "args": []
               }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "grad",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "PyreonChartGradient",
+              "args": []
             },
             {
               "kind": "undefined"
@@ -368,6 +437,37 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
       },
       {
         "name": "baseline",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "SeriesGradient",
+    "fields": [
+      {
+        "name": "stops",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "PyreonChartGradientStop",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "direction",
         "type": {
           "kind": "union",
           "branches": [
@@ -1169,6 +1269,22 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
                 "name": "Double",
                 "args": []
               }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "gradient",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "SeriesGradient",
+              "args": []
             },
             {
               "kind": "undefined"

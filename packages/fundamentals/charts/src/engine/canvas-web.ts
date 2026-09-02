@@ -6,7 +6,7 @@
 // command list rather than drawing directly.
 
 import { cornerRadii, hasCorners } from './corners'
-import type { DrawCmd, MeasureText, Pt } from './types'
+import type { ChartGradient, DrawCmd, MeasureText, Pt } from './types'
 
 /**
  * Text measurement backed by the canvas itself, for `computeLayout`.
@@ -59,6 +59,18 @@ function traceRoundedRect(
   ctx.closePath()
 }
 
+/** A canvas gradient from the engine's stops — or the solid fill when it has none. */
+function fillStyleFor(
+  ctx: CanvasRenderingContext2D,
+  fill: string,
+  grad: ChartGradient | undefined,
+): string | CanvasGradient {
+  if (grad === undefined || grad.stops.length === 0) return fill
+  const g = ctx.createLinearGradient(grad.from.x, grad.from.y, grad.to.x, grad.to.y)
+  for (const st of grad.stops) g.addColorStop(Math.min(1, Math.max(0, st.offset)), st.color)
+  return g
+}
+
 function tracePolyline(ctx: CanvasRenderingContext2D, points: Pt[]): void {
   ctx.beginPath()
   ctx.moveTo(points[0]!.x, points[0]!.y)
@@ -84,7 +96,7 @@ export function paint(
   ctx.clearRect(0, 0, width, height)
   for (const c of cmds) {
     if (c.kind === 'rect') {
-      ctx.fillStyle = c.fill
+      ctx.fillStyle = fillStyleFor(ctx, c.fill, c.grad)
       const radii = cornerRadii(c.rect, c.corners)
       if (hasCorners(radii)) {
         traceRoundedRect(ctx, c.rect.x, c.rect.y, c.rect.w, c.rect.h, radii)
@@ -118,7 +130,7 @@ export function paint(
       }
     } else if (c.kind === 'polygon') {
       if (c.points.length > 2) {
-        ctx.fillStyle = c.fill
+        ctx.fillStyle = fillStyleFor(ctx, c.fill, c.grad)
         tracePolyline(ctx, c.points)
         ctx.closePath()
         ctx.fill()
