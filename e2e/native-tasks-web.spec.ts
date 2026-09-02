@@ -78,6 +78,12 @@ test.describe('native-tasks-web — the shared source renders on the third targe
       'toolkit-evens': '2',
       // sync: the CRDT counter at its seeded initial value.
       'toolkit-synced': '0',
+      // sync: convergence through the map handle -- the key is written ONLY on a
+      // peer doc, so this is true only if applyOps actually merged its ops in.
+      'toolkit-crdt-map': 'true',
+      // crash: fresh session, nothing recorded yet.
+      'toolkit-crash-had': 'false',
+      'toolkit-crash-note': 'idle',
       // machine: the declared initial state.
       'toolkit-machine': 'off',
       // storage: the default, since nothing has persisted a value yet.
@@ -86,6 +92,14 @@ test.describe('native-tasks-web — the shared source renders on the third targe
     for (const [id, value] of Object.entries(expected)) {
       await expect(page.getByTestId(id), `${id} should render ${value}`).toHaveText(value)
     }
+    // crash reporting: the app must SURVIVE recording an error -- a reporter
+    // that takes the process down with it is worse than none. The persistence
+    // half is device-only (iOS across a real terminate+relaunch, Android by
+    // reading the file the reporter wrote); the web half proves the same call
+    // is safe and that the shared source's shape works on all three targets.
+    await page.getByTestId('toolkit-crash-record').click()
+    await expect(page.getByTestId('toolkit-crash-note')).toHaveText('survived')
+
     // kinetic: the preset-animated container mounts its children.
     await expect(page.getByTestId('toolkit-fade')).toBeVisible()
 
