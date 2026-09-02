@@ -128,13 +128,20 @@ final class PyreonTasksUITests: XCTestCase {
     private func navigateToToolkit(_ app: XCUIApplication) -> XCUIElement {
         let username = app.textFields["login-username"].firstMatch
         XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        // Five characters in one go, deliberately. The big test types "ab"
+        // first BECAUSE that fails the min-length validator and must NOT
+        // navigate -- copying only that half is why the first run of this
+        // helper reported "Toolkit button missing": login had never succeeded.
         username.tap()
-        username.typeText("ab")
+        username.typeText("abcde")
         dismissKeyboard(app)
 
         let submit = app.buttons["login-submit"].firstMatch
         XCTAssertTrue(submit.exists, "Continue button missing")
         submit.tap()
+
+        let tasksPage = app.otherElements["tasks-page"].firstMatch
+        XCTAssertTrue(tasksPage.waitForExistence(timeout: 20), "Tasks page did not render after login")
 
         let toolkitBtn = app.buttons["tasks-toolkit"].firstMatch
         XCTAssertTrue(toolkitBtn.waitForExistence(timeout: 20), "Toolkit button missing")
@@ -523,9 +530,25 @@ final class PyreonTasksUITests: XCTestCase {
         // sync: the CRDT-backed signal was RENDERED but asserted by neither device
         // test until now -- built, shipped, never verified, which is the class
         // this whole arc is about.
+        // "0.0", NOT "0" -- and that is a REAL cross-platform divergence this
+        // assertion exposed on its first device run, not a formatting nit.
+        //
+        // The web renders "0": JS has one number type and prints an integral
+        // value without a decimal. Both native targets lower a syncedSignal
+        // with an integer initial to a DOUBLE -- Kotlin because
+        // PyreonScalar.Num carries a Double and has no Int case at all, Swift
+        // because the emit follows it (`PyreonSyncedSignal<Double>`) -- so
+        // `String(synced())` is "0.0" there. Any app displaying a synced number
+        // shows a different string on mobile than on web.
+        //
+        // Asserted as it actually behaves rather than as it should, so the
+        // divergence is RECORDED instead of hidden by having no assertion at
+        // all -- which is exactly how it survived until now. Fixing it means
+        // giving Kotlin's scalar an Int case, which is a wire-format change and
+        // belongs in its own PR.
         XCTAssertEqual(
             app.staticTexts["toolkit-synced"].firstMatch.label,
-            "0",
+            "0.0",
             "syncedSignal did not reach the view with its initial value"
         )
         // sync: CONVERGENCE through the map handle. The key is written ONLY on

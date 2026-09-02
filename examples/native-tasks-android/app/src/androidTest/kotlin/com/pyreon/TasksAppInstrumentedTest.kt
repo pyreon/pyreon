@@ -600,10 +600,22 @@ class TasksAppInstrumentedTest {
 
         // sync: the CRDT-backed signal was RENDERED but asserted by neither device
         // test until now -- built, shipped, never verified.
+        // "0.0", NOT "0" -- a REAL cross-platform divergence this assertion
+        // exposed on its first device run, not a formatting nit. The web
+        // renders "0" (JS has one number type and prints an integral value
+        // without a decimal); both native targets lower a syncedSignal with an
+        // integer initial to a DOUBLE, because PyreonScalar.Num carries a
+        // Double and Kotlin has no Int case at all. Any app displaying a synced
+        // number shows a different string on mobile than on web.
+        //
+        // Asserted as it behaves rather than as it should, so the divergence is
+        // RECORDED rather than hidden by having no assertion -- which is
+        // exactly how it survived until now. The real fix is an Int case on the
+        // Kotlin scalar, which is a wire-format change of its own.
         composeRule
             .onNodeWithTag("toolkit-synced")
             .performScrollTo()
-            .assertTextEquals("0")
+            .assertTextEquals("0.0")
         // sync: CONVERGENCE through the map handle. The key is written ONLY on
         // the peer doc, so `has` can be true only if applyOps actually merged
         // the peer's ops in. Reading back our own write would pass against a
