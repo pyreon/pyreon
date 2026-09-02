@@ -16,6 +16,8 @@
 import { defaultTheme, renderChart } from './render'
 import { appendGraphicLayer, graphicCommands, resolveDataset, svgSize } from './option-layer'
 import { visualMapCommands } from './visual-map'
+import { customCommands, customExtents } from './custom-series'
+import type { CustomRenderItem, CustomSeriesPlan } from './custom-series'
 import type { Annotation, ChartSpec, PointMarker, Series } from './render'
 import { smooth, step } from './curve'
 import type { Formatter } from './format'
@@ -46,6 +48,8 @@ export interface OptionWarning {
 
 export interface CompiledOption {
   spec: ChartSpec
+  /** Custom (`renderItem`) series — rendered after the chart, never part of the spec. */
+  custom: CustomSeriesPlan[]
   /** Title text + sub-text, when the option carries them. */
   title: { text: string; subtext: string | undefined } | null
   /** Legend entries, or null when the option hides the legend. */
@@ -74,6 +78,7 @@ const KNOWN_SERIES = new Set([
   'lineStyle', 'symbolSize', 'label', 'yAxisIndex', 'markLine', 'markPoint',
   'color', 'showSymbol', 'symbol', 'emphasis', 'z', 'zlevel', 'silent',
   'symbolRepeat', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'rippleEffect', 'showEffectOn',
+  'renderItem', 'encode', 'dimensions', 'clip', 'datasetIndex',
 ])
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
@@ -157,6 +162,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       ? [option['series']]
       : []
   const series: Series[] = []
+  const customPlans: CustomSeriesPlan[] = []
   const annotations: Annotation[] = []
   const markers: PointMarker[] = []
   let xValues: Double[] | undefined = undefined
@@ -174,6 +180,27 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       if (!KNOWN_SERIES.has(key)) warn('series-option-unsupported', `${path}.${key}`, `"${key}" has no mapping yet; it was ignored.`)
     }
     const type = typeof s['type'] === 'string' ? (s['type'] as string) : ''
+    if (type === 'custom') {
+      const ri = s['renderItem']
+      if (typeof ri !== 'function') {
+        warn('series-data-shape', path + '.renderItem', 'A custom series needs a renderItem function; the series was skipped.')
+        continue
+      }
+      const enc = isObj(s['encode']) ? s['encode'] : {}
+      const yRaw = enc['y']
+      const yDims = (Array.isArray(yRaw) ? yRaw : yRaw === undefined ? [1] : [yRaw]).map((d) => num(d) ?? 1)
+      const xRaw = Array.isArray(enc['x']) ? enc['x'][0] : enc['x']
+      const item = isObj(s['itemStyle']) ? s['itemStyle'] : {}
+      customPlans.push({
+        name: typeof s['name'] === 'string' ? (s['name'] as string) : 'Series ' + String(i + 1),
+        color: typeof item['color'] === 'string' ? (item['color'] as string) : palette[i % Math.max(1, palette.length)] ?? defaultPalette[i % defaultPalette.length]!,
+        data: Array.isArray(s['data']) ? (s['data'] as unknown[]) : [],
+        renderItem: ri as CustomRenderItem,
+        yDims,
+        xDim: num(xRaw) ?? 0,
+      })
+      continue
+    }
     let kind: Series['kind']
     if (type === 'bar') kind = s['stack'] !== undefined ? 'stacked' : barCount > 1 ? 'grouped' : 'bars'
     else if (type === 'line') kind = isObj(s['areaStyle']) || s['areaStyle'] === true ? 'area' : 'line'
@@ -303,6 +330,16 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   const tooltipRaw = option['tooltip']
   const tooltip = tooltipRaw !== undefined && !(isObj(tooltipRaw) && tooltipRaw['show'] === false)
 
+  // A custom-only chart still needs axes: seed them from the custom extents.
+  let customY: { min: Double; max: Double } | undefined = undefined
+  let customX: Double[] | undefined = undefined
+  if (series.length === 0 && customPlans.length > 0) {
+    for (const plan of customPlans) {
+      const ext = customExtents(plan)
+      if (ext.y !== null) customY = customY === undefined ? { min: Math.min(0.0, ext.y[0]), max: ext.y[1] } : { min: Math.min(customY.min, ext.y[0]), max: Math.max(customY.max, ext.y[1]) }
+      if (ext.x !== null && categories.length === 0) customX = [ext.x[0], ext.x[1]]
+    }
+  }
   const spec: ChartSpec = {
     width: opts.width ?? 640.0,
     height: opts.height ?? 320.0,
@@ -322,7 +359,9 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     annotations: annotations.length > 0 ? annotations : undefined,
     markers: markers.length > 0 ? markers : undefined,
   }
-  return { spec, title, legend, tooltip, warnings, supported }
+  if (customY !== undefined && spec.yDomain === undefined) spec.yDomain = customY
+  if (customX !== undefined && (spec.xValues === undefined || spec.xValues.length === 0)) spec.xValues = customX
+  return { spec, custom: customPlans, title, legend, tooltip, warnings, supported }
 }
 
 const defaultPalette = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
@@ -422,6 +461,8 @@ export function optionToSvg(option: EChartsOption, opts: OptionToSvgOptions = {}
   }
   const chart = renderChart({ ...compiled.spec, height: Math.max(0.0, height - top) }, measure)
   for (const c of chart) cmds.push(top === 0.0 ? c : shift(c, top))
+  const customOut = customCommands(compiled.custom, { ...compiled.spec, height: Math.max(0.0, height - top) }, measure, width, height)
+  for (const c of customOut.cmds) cmds.push(top === 0.0 ? c : shift(c, top))
   for (const c of visualMapCommands(option, width, height).cmds) cmds.push(c)
   for (const c of graphicCommands(option, width, height).cmds) cmds.push(c)
   return renderSvg(cmds, width, height, {

@@ -61,6 +61,15 @@ const CORPUS: { name: string; option: EChartsOption; expectClean: boolean }[] = 
     series: [{ type: 'heatmap', data: [[0, 0, 5], [1, 1, 9]] }] } },
   { name: 'funnel', expectClean: true, option: {
     series: [{ type: 'funnel', sort: 'descending', minSize: '10%', data: [{ value: 60, name: 'Visit' }, { value: 40, name: 'Inquiry' }, { value: 20, name: 'Order' }] }] } },
+  { name: 'custom series (gantt bars via renderItem)', expectClean: true, option: {
+    xAxis: {}, yAxis: {},
+    series: [{ type: 'custom', encode: { x: [1, 2], y: 0 }, data: [[0, 1, 4], [1, 2, 6], [2, 3, 5]],
+      renderItem: (params: { dataIndex: number }, api: { value: (d: number) => unknown; coord: (p: [unknown, unknown]) => [number, number]; size: (e: [number, number]) => [number, number]; style: () => Record<string, unknown> }) => {
+        const start = api.coord([api.value(1), api.value(0)])
+        const end = api.coord([api.value(2), api.value(0)])
+        const h = api.size([0, 1])[1] * 0.6
+        return { type: 'rect', shape: { x: start[0], y: start[1] - h / 2, width: end[0] - start[0], height: h }, style: api.style() }
+      } }] } },
   { name: 'pictorialBar (repeated circles) + effectScatter', expectClean: true, option: {
     xAxis: { data: ['a', 'b', 'c'] }, yAxis: {},
     series: [{ type: 'pictorialBar', symbol: 'circle', symbolRepeat: true, data: [3, 6, 9] }, { type: 'effectScatter', symbolSize: 10, data: [2, 5, 7] }] } },
@@ -129,8 +138,8 @@ describe('ECharts option facade — conformance corpus', () => {
       const c = planOption(f.option).compiled
       return c.supported && c.warnings.length === 0
     }).length
-    // 29 of 31 today. Raise this number as families land; never lower it.
-    expect(clean).toBeGreaterThanOrEqual(29)
+    // 30 of 32 today. Raise this number as families land; never lower it.
+    expect(clean).toBeGreaterThanOrEqual(30)
   })
 })
 
