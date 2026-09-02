@@ -25,6 +25,7 @@ import type { Mark } from './marks'
 import { chartTable, describeChart } from './a11y'
 import { brushRange, clampWindow, isFullWindow, panWindow, sliceRange, zoomWindow } from './zoom'
 import type { ZoomWindow } from './zoom'
+import type { ChartLink } from './link'
 import type { Formatter } from './format'
 import type { Domain, DrawCmd, Double, Rect } from './types'
 
@@ -94,6 +95,12 @@ export interface PlotChartProps<T> {
    * pointer handlers a static chart in a report has no use for.
    */
   crosshair?: boolean
+  /**
+   * Share zoom and crosshair state with other hosts (ECharts `connect`): pass
+   * the same `createChartLink()` to every chart in the group and a wheel,
+   * pan, navigator drag, preset or hover on any of them moves all of them.
+   */
+  link?: ChartLink
   /**
    * Wheel-zoom + drag-pan over the x range (ECharts' inside dataZoom).
    *
@@ -306,9 +313,9 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   // it; an array rather than a Set so every toggle is a fresh value.
   const hiddenSeries = signal<number[]>([])
   // The hovered datum for the crosshair; -1 = no hover.
-  const hoverIdx = signal(-1)
+  const hoverIdx = props.link?.hover ?? signal(-1)
   // The dataZoom window; null = everything (the untouched state).
-  const zoomWin = signal<ZoomWindow | null>(null)
+  const zoomWin = props.link?.zoom ?? signal<ZoomWindow | null>(null)
   // A committed brush band, in GLOBAL datum indices; null = none.
   const brushSel = signal<{ start: number; end: number } | null>(null)
   // In-flight drag bookkeeping. Plain locals, not signals: nothing should
@@ -1150,6 +1157,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     },
     'data-pyreon-presets': () => presetBoxesJson(),
     'data-pyreon-nav': () => navJson(),
+    'data-pyreon-hover': () => String(hoverIdx()),
     ...(keyboardOn ? { tabIndex: 0, onKeyDown: handleKeyDown, onBlur: () => { focusIdx.set(-1); announce.set('') } } : {}),
     ...(props.dataZoom === true ? { onWheel: handleWheel, onDblClick: () => zoomWin.set(null) } : {}),
     ...(props.dataZoom === true || props.brush === true || props.navigator === true

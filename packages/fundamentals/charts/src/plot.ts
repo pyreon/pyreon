@@ -196,3 +196,5 @@ export { ganttDurationDays, ganttTicks, ganttToSvg, hitGantt, layoutGantt, rende
 export type { GanttDependency, GanttLane, GanttLayout, GanttOptions, GanttRow, GanttTask, GanttTick, GanttTickUnit, GanttToSvgOptions } from './engine/gantt'
 export { GanttChart } from './engine/GanttChart'
 export type { GanttChartProps } from './engine/GanttChart'
+export { createChartLink } from './engine/link'
+export type { ChartLink } from './engine/link'
