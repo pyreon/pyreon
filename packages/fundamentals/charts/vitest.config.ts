@@ -49,6 +49,9 @@ export default defineNodeConfig({
     'src/engine/ParallelChart.tsx',
     'src/engine/PolarChart.tsx',
     'src/engine/RiverChart.tsx',
+    // Same class — canvas hosts covered only by their real-Chromium suites (gantt.browser.test.tsx, geo.browser.test.tsx).
+    'src/engine/GanttChart.tsx',
+    'src/engine/MapChart.tsx',
   ],
   // loader.ts + vite.ts (the node-instrumented surface) are at 100% on all
   // four metrics after the error/retry/no-tslib path tests. Threshold set to
