@@ -61,6 +61,9 @@ const CORPUS: { name: string; option: EChartsOption; expectClean: boolean }[] = 
     series: [{ type: 'heatmap', data: [[0, 0, 5], [1, 1, 9]] }] } },
   { name: 'funnel', expectClean: true, option: {
     series: [{ type: 'funnel', sort: 'descending', minSize: '10%', data: [{ value: 60, name: 'Visit' }, { value: 40, name: 'Inquiry' }, { value: 20, name: 'Order' }] }] } },
+  { name: 'pictorialBar (repeated circles) + effectScatter', expectClean: true, option: {
+    xAxis: { data: ['a', 'b', 'c'] }, yAxis: {},
+    series: [{ type: 'pictorialBar', symbol: 'circle', symbolRepeat: true, data: [3, 6, 9] }, { type: 'effectScatter', symbolSize: 10, data: [2, 5, 7] }] } },
   { name: 'derived dataset (filter + sort) bars', expectClean: true, option: {
     dataset: [
       { source: [['name', 'score', 'team'], ['a', 5, 'x'], ['b', 9, 'y'], ['c', 1, 'x'], ['d', 7, 'y']] },
@@ -123,8 +126,8 @@ describe('ECharts option facade — conformance corpus', () => {
       const c = planOption(f.option).compiled
       return c.supported && c.warnings.length === 0
     }).length
-    // 28 of 30 today. Raise this number as families land; never lower it.
-    expect(clean).toBeGreaterThanOrEqual(28)
+    // 29 of 31 today. Raise this number as families land; never lower it.
+    expect(clean).toBeGreaterThanOrEqual(29)
   })
 })
 

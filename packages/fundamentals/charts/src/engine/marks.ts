@@ -47,6 +47,12 @@ export interface MarkOptions {
    * value axis — both pin to left by design rather than silently mis-scaling.
    */
   axis?: 'left' | 'right'
+  /** Halo rings around each point (`points` only) — the effectScatter look. */
+  effect?: boolean
+  /** Draw bars as a symbol (`bars` only) — the pictorialBar look. */
+  symbol?: 'rect' | 'circle' | 'diamond' | 'triangle'
+  /** Repeat the symbol along the bar instead of stretching it. */
+  symbolRepeat?: boolean
 }
 
 /** A mark bound to its accessor, resolved against data at render time. */
@@ -182,6 +188,9 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[]): Series[] {
       showValues: m.options.showValues === true,
       radii,
       axis: m.options.axis,
+      effect: m.options.effect,
+      symbol: m.options.symbol,
+      symbolRepeat: m.options.symbolRepeat,
     }
   })
 }

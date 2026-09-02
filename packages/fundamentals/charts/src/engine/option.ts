@@ -73,6 +73,7 @@ const KNOWN_SERIES = new Set([
   'type', 'name', 'data', 'stack', 'smooth', 'step', 'areaStyle', 'itemStyle',
   'lineStyle', 'symbolSize', 'label', 'yAxisIndex', 'markLine', 'markPoint',
   'color', 'showSymbol', 'symbol', 'emphasis', 'z', 'zlevel', 'silent',
+  'symbolRepeat', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'rippleEffect', 'showEffectOn',
 ])
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
@@ -86,6 +87,18 @@ const num = (v: unknown): number | null => {
   return null
 }
 const first = <T,>(v: T | T[] | undefined): T | undefined => (Array.isArray(v) ? v[0] : v)
+
+/** `symbol` + `symbolRepeat` for a pictorialBar series; a path/image symbol falls back to a rect with a warning. */
+function pictorialFields(s: Record<string, unknown>, warn: (code: OptionWarning['code'], path: string, message: string) => void, path: string): { symbol: Series['symbol']; symbolRepeat: boolean } {
+  const raw = typeof s['symbol'] === 'string' ? (s['symbol'] as string) : 'rect'
+  let symbol: Series['symbol'] = 'rect'
+  if (raw === 'circle') symbol = 'circle'
+  else if (raw === 'diamond') symbol = 'diamond'
+  else if (raw === 'triangle') symbol = 'triangle'
+  else if (raw !== 'rect' && raw !== 'roundRect') warn('mark-shape-unsupported', `${path}.symbol`, `pictorialBar symbol "${raw}" is not supported (rect, roundRect, circle, diamond, triangle are); drawn as a rect.`)
+  const rep = s['symbolRepeat']
+  return { symbol, symbolRepeat: rep === true || rep === 'fixed' || (typeof rep === 'number' && rep > 0) }
+}
 
 /** Compile an ECharts-shaped option onto the engine. Pure. */
 export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {}): CompiledOption {
@@ -164,7 +177,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     let kind: Series['kind']
     if (type === 'bar') kind = s['stack'] !== undefined ? 'stacked' : barCount > 1 ? 'grouped' : 'bars'
     else if (type === 'line') kind = isObj(s['areaStyle']) || s['areaStyle'] === true ? 'area' : 'line'
-    else if (type === 'scatter') kind = 'points'
+    else if (type === 'scatter' || type === 'effectScatter') kind = 'points'
+    else if (type === 'pictorialBar') kind = s['stack'] !== undefined ? 'stacked' : barCount > 1 ? 'grouped' : 'bars'
     else {
       warn('series-type-unsupported', `${path}.type`, `Series type "${type}" is not mapped by this facade yet (cartesian family only).`)
       supported = false
@@ -229,6 +243,8 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       showValues: label['show'] === true,
       radii: undefined,
       axis: yAxisIndex === 1 ? 'right' : undefined,
+      ...(type === 'effectScatter' ? { effect: true } : {}),
+      ...(type === 'pictorialBar' ? pictorialFields(s, warn, path) : {}),
     }
     series.push(entry)
     const seriesIndex = series.length - 1
