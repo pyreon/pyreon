@@ -94,6 +94,12 @@ export interface Scenario {
   dir: string
   /** Named exports the scenario imports (re-exported so they're retained). */
   imports: string[]
+  /**
+   * Lib entry file relative to the package's lib/ (default "index.js").
+   * Subpath scenarios (e.g. charts' "plot.js") lock a subpath export's
+   * tree-shaking without routing through the main barrel.
+   */
+  entry?: string
 }
 
 /**
@@ -192,6 +198,32 @@ export const SCENARIOS: Scenario[] = [
     pkg: '@pyreon/hooks',
     dir: 'fundamentals/hooks',
     imports: ['useAuth'],
+  },
+  {
+    id: '@pyreon/charts::plot-minimal',
+    pkg: '@pyreon/charts',
+    dir: 'fundamentals/charts',
+    entry: 'plot.js',
+    // A bar+line chart must not pull the radial/finance/matrix families
+    // or the SVG serializer — marks are imported bindings by design.
+    imports: ['PlotChart', 'bars', 'line'],
+  },
+  {
+    id: '@pyreon/charts::plot-svg',
+    pkg: '@pyreon/charts',
+    dir: 'fundamentals/charts',
+    entry: 'plot.js',
+    // The server-side serializer must not drag components or the canvas
+    // host (ResizeObserver/rAF) into a node bundle.
+    imports: ['chartToSvg'],
+  },
+  {
+    id: '@pyreon/charts::plot-pie',
+    pkg: '@pyreon/charts',
+    dir: 'fundamentals/charts',
+    entry: 'plot.js',
+    // A radial-only import must not pull the cartesian layout/stack path.
+    imports: ['PieChart'],
   },
 ]
 
@@ -340,7 +372,7 @@ function getPackagesRoot(): string {
 
 async function measureScenario(s: Scenario): Promise<MeasuredImport> {
   const pkgDir = join(getPackagesRoot(), s.dir)
-  const lib = join(pkgDir, 'lib', 'index.js')
+  const lib = join(pkgDir, 'lib', s.entry ?? 'index.js')
   let tmp: string | undefined
   try {
     const externals = collectBareModuleImports(join(pkgDir, 'lib'))

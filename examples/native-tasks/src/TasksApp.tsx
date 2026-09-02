@@ -74,9 +74,9 @@ import { announce } from '@pyreon/a11y'
 import { useUrlState } from '@pyreon/url-state'
 import { signal, computed } from '@pyreon/reactivity'
 import { useForm } from '@pyreon/form'
-import { useFetch } from '@pyreon/hooks'
+import { useFetch, useCrashReporter } from '@pyreon/hooks'
 import { defineStore } from '@pyreon/store'
-import { For, Show, Suspense, ErrorBoundary } from '@pyreon/core'
+import { For, Show, Suspense, ErrorBoundary, onMount } from '@pyreon/core'
 import { Stack, Inline, Field, Button, Text, Image, Icon, Scroll, Modal, WebView } from '@pyreon/primitives'
 import {
   createRouter,
@@ -584,6 +584,42 @@ function ToolkitScreen() {
   // it, and omitting it is invalid on the web too.
   const doc = new PyreonCrdtDoc('peer-1')
   const synced = syncedSignal({ doc, key: 'toolkitCount', initial: 0 })
+  // sync, part 2: the MAP HANDLE and an actual CONVERGENCE, both device-proven.
+  //
+  // `doc.getMap(name)` is the shape the web contract documents -- you hold a map
+  // and call it -- and until it existed natively this lowered to a call on a
+  // method that was not there, silently.
+  //
+  // The assertion proves the ENGINE, not the facade: the key is written ONLY on
+  // `peer`, so `doc` can only know it by having applied `peer`'s ops. Reading
+  // back one's own write would pass against a plain Map with no CRDT in it.
+  // `has` is deliberate too -- it returns a plain Bool on web, Swift and Kotlin
+  // alike, whereas `get` returns `unknown` on web and `PyreonScalar?` natively,
+  // which does not stringify the same way on all three.
+  //
+  // These MUST live in onMount: a bare component-body statement is not lowered
+  // and is DROPPED (PMTC says so, by name). Only declarations, onMount and the
+  // return survive.
+  // crash reporting: lowers fully on both targets (recordError / breadcrumb /
+  // hadCrash / lastCrash / clear) and `start()` is auto-wired by both emits --
+  // and until now NO example used it, so no device gate had ever compiled it,
+  // let alone run it. A capability absent from every example is verified by
+  // nothing, however many gates exist.
+  //
+  // `hadCrash` reflects the PREVIOUS session, so it cannot be asserted in the
+  // same run that records: iOS proves it across a real terminate+relaunch, and
+  // Android reads the persisted file from the test process. Activity recreation
+  // would NOT do -- it keeps the process, so a persistence claim asserted that
+  // way passes against a purely in-memory store.
+  const crash = useCrashReporter()
+  const crashNote = signal('idle')
+  const peer = new PyreonCrdtDoc('peer-2')
+  const crdtMerged = signal('pending')
+  onMount(() => {
+    peer.getMap('room').set('title', 'from-peer')
+    doc.applyOps(peer.encodeState())
+    crdtMerged.set(String(doc.getMap('room').has('title')))
+  })
   // http: the endpoint declared above, driven through useFetch.
   // TYPED: an untyped useFetch lowers to `decode(Any.self, …)` on Swift, which
   // does not round-trip — the compiler says so by name.
@@ -681,6 +717,22 @@ function ToolkitScreen() {
         Toggle mode
       </Button>
       <Text data-testid="toolkit-synced">{String(synced())}</Text>
+      <Text data-testid="toolkit-crdt-map">{crdtMerged()}</Text>
+      <Text data-testid="toolkit-crash-had">{String(crash.hadCrash)}</Text>
+      <Text data-testid="toolkit-crash-note">{crashNote()}</Text>
+      <Button
+        onPress={() => {
+          crash.breadcrumb('toolkit-tap')
+          crash.recordError('device-proof')
+          crashNote.set('survived')
+        }}
+        data-testid="toolkit-crash-record"
+      >
+        Record error
+      </Button>
+      <Button onPress={() => crash.clear()} data-testid="toolkit-crash-clear">
+        Clear crash
+      </Button>
       <Text data-testid="toolkit-tablepages">{String(table.pageCount())}</Text>
       <Text data-testid="toolkit-http">{taskReq.data}</Text>
       <Text data-testid="toolkit-sortable">{sortable.activeKey ?? 'idle'}</Text>

@@ -82,6 +82,49 @@ private func remoteWins(_ local: Register, _ remoteClock: Int, _ remoteActor: St
   return remoteActor > local.actor
 }
 
+/// A handle bound to one map inside a document — the native twin of the web
+/// `CrdtMap` returned by `doc.getMap(name)`.
+///
+/// The engine stores every map in one flat table and its methods therefore take
+/// the map name as a first argument. That is a fine INTERNAL shape and the wrong
+/// AUTHORING shape: shared source is written against the web API, where a map is
+/// a value you hold. Without this handle `doc.getMap('room').set('k', v)` — the
+/// ordinary way to write it — lowered to native code referencing a `getMap` that
+/// did not exist, and PMTC emitted it verbatim with no warning, so the failure
+/// arrived as a Swift compile error in a generated file rather than as a
+/// diagnostic naming the unsupported call.
+///
+/// The `set` overloads exist for the same reason. `PyreonScalar` is an enum, so
+/// the natural `map.set("k", "v")` cannot type-check against a bare
+/// `PyreonScalar` parameter; requiring `.string("v")` in shared source would put
+/// a Swift enum case in a file that also has to compile as TypeScript. The
+/// overloads accept what the author already writes and wrap it here.
+public struct PyreonCrdtMap {
+  private let doc: PyreonCrdtDoc
+  private let name: String
+
+  init(doc: PyreonCrdtDoc, name: String) {
+    self.doc = doc
+    self.name = name
+  }
+
+  public func get(_ key: String) -> PyreonScalar? { doc.get(name, key) }
+  public func has(_ key: String) -> Bool { doc.has(name, key) }
+  public func keys() -> [String] { doc.keys(name) }
+
+  public func set(_ key: String, _ value: PyreonScalar) { doc.set(name, key, value) }
+  public func set(_ key: String, _ value: String) { doc.set(name, key, .string(value)) }
+  public func set(_ key: String, _ value: Int) { doc.set(name, key, .int(value)) }
+  public func set(_ key: String, _ value: Double) { doc.set(name, key, .double(value)) }
+  public func set(_ key: String, _ value: Bool) { doc.set(name, key, .bool(value)) }
+
+  /// Observe changes to THIS map. Returns an unsubscribe, as on the web.
+  @discardableResult
+  public func observe(_ cb: @escaping (Set<String>) -> Void) -> () -> Void {
+    doc.observe(name, cb)
+  }
+}
+
 /// The pure LWW document engine. Wire-compatible with the TS `PyreonCrdtDoc`.
 public final class PyreonCrdtDoc {
   public let actor: String
@@ -96,6 +139,13 @@ public final class PyreonCrdtDoc {
 
   public init(actor: String) {
     self.actor = actor
+  }
+
+  /// The map handle for `name` — the native twin of the web `doc.getMap(name)`.
+  /// Handles are values, not registrations: two calls with the same name address
+  /// the same underlying map, and holding one costs nothing.
+  public func getMap(_ name: String) -> PyreonCrdtMap {
+    PyreonCrdtMap(doc: self, name: name)
   }
 
   public func get(_ map: String, _ key: String) -> PyreonScalar? {

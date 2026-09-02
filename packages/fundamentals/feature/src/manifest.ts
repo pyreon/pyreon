@@ -12,7 +12,7 @@ export default defineManifest({
     rationale:
       'CRUD composite over query/form/store/validation. The RUNTIME half stays web — the generated hooks (useList / useById / useCreate / useUpdate / useDelete / useSearch), the network fetcher, and validator/form integration all lower only when every dependency does. The DECLARATION half already crosses (see nativeFrontend)',
     nativeFrontend:
-      "`defineFeature({ name, schema })` with the LITERAL field-type map (`schema: { id: 'string', done: 'boolean' }`) — emits a Codable struct plus a module-scope const carrying `name` + `initialValues` on both targets. A runtime schema (Zod / Valibot / ArkType) is NOT introspected and warns by name",
+      "`defineFeature({ name, schema })` with the LITERAL field-type map (`schema: { id: 'string', done: 'boolean' }`) — emits a Codable struct plus a module-scope const carrying `name` + `initialValues` on both targets, reachable under the SOURCE binding name (`Todo.name`). A runtime schema (Zod / Valibot / ArkType) is NOT introspected and warns by name. One limit, warned by name: Swift and Kotlin share a single namespace for types and values, so a file declaring both `const Todo = defineFeature(...)` and a TYPE named `Todo` cannot emit both — rename one",
   },
   longExample: `import { defineFeature } from '@pyreon/feature'
 import { signal } from '@pyreon/reactivity'
