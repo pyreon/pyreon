@@ -285,13 +285,28 @@ const isPlainObject = (s: FieldLike, checkMode = false): boolean =>
   // PARSE mode passthrough must copy unknown keys onto the result, which the
   // shape-only inline loop cannot do — so it stays excluded there.
   //
-  // `strict` is NOT covered: it must REJECT on an unknown key, which needs a
-  // key scan the inline loop does not emit. Silently accepting one would be a
-  // validation hole, so it keeps the interpreter.
+  // `strict` is covered in verdict mode too, but ONLY because the emission
+  // pairs it with an explicit own-key scan (see `strictScan`). Without that
+  // scan the inline loop silently accepts unknown keys, which is a validation
+  // hole — so the gate and the scan must move together.
+  //
+  // PARSE mode does NOT cover strict, and the reason is an emission-ORDER
+  // constraint rather than a semantic one. It was attempted: the parse-mode
+  // report must push one `unrecognized_keys` issue PER unknown key, AFTER the
+  // known-field issues (issue order is observable), at `[...effectivePath,
+  // key]`. Appending it after the `genObjectValue` call emits it after the
+  // value has already been RETURNED — dead code, so strict silently accepted
+  // unknown keys and 18 specs caught it. Doing it properly means threading the
+  // report INTO `genObjectValue` so it lands before `onValid` in BOTH its
+  // LITERAL and ASSIGN emissions, and in the DU member path. Contained, but it
+  // is the intricate part of this file and it is where a validation hole
+  // hides, so it wants its own pass. Worth ~3.9x on the harness's parseStrict.
   //
   // `_catchall` stays excluded in BOTH modes — it VALIDATES unknown keys, and
   // the inline loop skips them, which would silently pass invalid input.
-  (s._unknownKeys === 'strip' || (checkMode && s._unknownKeys === 'passthrough')) &&
+  (s._unknownKeys === 'strip' ||
+    s._unknownKeys === 'strict' ||
+    (checkMode && s._unknownKeys === 'passthrough')) &&
   !s._catchall
 /**
  * An array we can recurse into: has an element schema AND its OWN ops are
@@ -406,6 +421,107 @@ function compileJit(schema: Schema<unknown>, mode: JitMode): unknown {
     const keyLit = (k: string): string => JSON.stringify(k)
     let uid = 0
     const nv = (): string => `t${uid++}`
+
+    /**
+     * Verdict-mode `.strict()`: reject the object if it carries any key the
+     * shape does not declare.
+     *
+     * The predicate is OWN-key membership, matching the interpreter's
+     * `Object.hasOwn(known, key)`. It must not be `in` — that walks the
+     * prototype chain, so a key named `toString` / `constructor` /
+     * `hasOwnProperty` reads as declared and slips through, which is the exact
+     * hole fixed in the interpreter alongside this. A Set built from
+     * `Object.keys(shape)` has the same semantics and no prototype to walk.
+     *
+     * Verdict-only: this returns FALSE rather than reporting WHICH key was
+     * unrecognized, so it is never emitted in parse mode, where the issue must
+     * name the key.
+     */
+    const strictScan = (shape: Record<string, FieldLike>, srcVar: string): string => {
+      const shapeKeys = Object.keys(shape)
+      // FAST PATH — when every declared field must be PRESENT in a valid
+      // object, "no unknown keys" reduces to a key COUNT. The known-key checks
+      // above already reject a missing required field (its slot reads
+      // `undefined` and fails its type guard), so at this point the object is
+      // known to carry all N declared keys; carrying exactly N therefore means
+      // it carries nothing else. One integer compare replaces N Set lookups.
+      //
+      // `fieldDefinedWhenValid` is the right predicate: it is false for exactly
+      // the fields that can be validly ABSENT (optional / nullish / default all
+      // route to the `_runInto` fallback), and for those the count identity
+      // breaks — a missing optional plus one extra key sums to N.
+      if (shapeKeys.every((k) => fieldDefinedWhenValid(shape[k]!))) {
+        return `if (Object.keys(${srcVar}).length !== ${shapeKeys.length}) return false;`
+      }
+      const setRef = cap(new Set(shapeKeys))
+      const ksv = nv()
+      const iv = nv()
+      // SLOW PATH — a shape with an optionally-absent field, where the count
+      // identity above does not hold. Scans the input's own keys.
+      //
+      // `Object.keys` + an indexed loop, NOT `for...in` + `hasOwnProperty`:
+      // the two are semantically identical here (own enumerable string keys)
+      // and the allocation-free form measured SLOWER, 97.5ns against 90.4ns on
+      // an 8-key shape — the per-key `hasOwnProperty.call` costs more than the
+      // array it avoids. (The array is NOT cheap: dropping the per-key Set
+      // lookups via the count fast path took the same shape 94.7ns -> 67.9ns,
+      // so roughly 57ns of that is `Object.keys` itself. There is no
+      // allocation-free own-key count in JS — `for...in` walks INHERITED
+      // enumerable properties too, so counting with it would diverge from the
+      // interpreter on any object with an enumerable prototype.)
+      return `var ${ksv} = Object.keys(${srcVar}); for (var ${iv} = 0; ${iv} < ${ksv}.length; ${iv}++) { if (!${setRef}.has(${ksv}[${iv}])) return false; }`
+    }
+
+    /**
+     * Parse-mode `.strict()`: report EVERY unrecognized key, issue for issue
+     * with the interpreter's `finishUnknownKeys`.
+     *
+     * Three things must line up or the differential fuzz fails:
+     *
+     * 1. ORDER — the interpreter reports unknown keys AFTER the known fields,
+     *    and issue order is observable, so this is emitted after the field walk
+     *    but BEFORE the value escapes (see `preValid`). Verdict mode emits its
+     *    scan FIRST instead, to fail fast; it has no issues to order.
+     * 2. NO early return — one issue per unknown key, so the loop completes.
+     * 3. PATH — `[...effectivePath, key]`, through the same elision machinery
+     *    every other issue site here uses.
+     */
+    const strictReport = (
+      shape: Record<string, FieldLike>,
+      srcVar: string,
+      sfx: ReadonlyArray<string>,
+      dynIdx: string | null,
+    ): string => {
+      const setRef = cap(new Set(Object.keys(shape)))
+      const report = cap((c: ParseCtx, key: string, idx?: number) => {
+        c.issues.push(
+          makeIssue({
+            code: 'unrecognized_keys',
+            key: 'validate.object.unrecognized-key',
+            params: { key },
+            fallback: `Unrecognized key "${key}"`,
+            message: `Unrecognized key "${key}"`,
+            path: [...jitEffectivePath(c, sfx, idx), key],
+          }),
+        )
+      })
+      const ksv = nv()
+      const iv = nv()
+      const kv = nv()
+      const idxArg = dynIdx ? `, ${dynIdx}` : ''
+      const shapeKeys = Object.keys(shape)
+      // Parse mode must name each offending key, so it cannot reduce to a
+      // count the way verdict mode does — but it can GUARD on one. When every
+      // declared field must be present (the known-key checks above already
+      // reject a missing one), a key count of N means there is nothing to
+      // report, so the valid path skips the per-key lookups entirely and only
+      // a failing object pays for the scan.
+      const guard = shapeKeys.every((k) => fieldDefinedWhenValid(shape[k]!))
+        ? `if (${ksv}.length !== ${shapeKeys.length}) `
+        : ''
+      const scan = `for (var ${iv} = 0; ${iv} < ${ksv}.length; ${iv}++) { var ${kv} = ${ksv}[${iv}]; if (!${setRef}.has(${kv})) ${report}(ctx, ${kv}${idxArg}); }`
+      return `var ${ksv} = Object.keys(${srcVar}); ${guard}{ ${scan} }`
+    }
 
     const genChecks = (ops: CheckOpLike[], ve: string, ps: PathState): string => {
       const idxArg = ps.dynIdx ? `, ${ps.dynIdx}` : ''
@@ -565,7 +681,21 @@ function compileJit(schema: Schema<unknown>, mode: JitMode): unknown {
               c.issues.push(typeIssue('object', val, jitEffectivePath(c, sfx, idx)))
             })}(${srcVar}, ctx${idxArg});`
         lines.push(`if (typeof ${srcVar} !== "object" || ${srcVar} === null || Array.isArray(${srcVar})) { ${objFail} } else {`)
-        genObjectValue(field.shape as Record<string, FieldLike>, srcVar, onValid, onAsync, depth + 1, ps)
+        if (CHECK && field._unknownKeys === 'strict') {
+          lines.push(strictScan(field.shape as Record<string, FieldLike>, srcVar))
+        }
+        genObjectValue(
+          field.shape as Record<string, FieldLike>,
+          srcVar,
+          onValid,
+          onAsync,
+          depth + 1,
+          ps,
+          undefined,
+          !CHECK && field._unknownKeys === 'strict'
+            ? strictReport(field.shape as Record<string, FieldLike>, srcVar, ps.suffix, ps.dynIdx)
+            : undefined,
+        )
         lines.push(`}`)
         return
       }
@@ -760,7 +890,21 @@ function compileJit(schema: Schema<unknown>, mode: JitMode): unknown {
               fieldCheckOps(discField).length === 0
                 ? { key: disc, varExpr: tagV }
                 : undefined
-            genObjectValue(member.shape as Record<string, FieldLike>, srcVar, onValid, onAsync, depth + 1, ps, preset)
+            if (CHECK && member._unknownKeys === 'strict') {
+              lines.push(strictScan(member.shape as Record<string, FieldLike>, srcVar))
+            }
+            genObjectValue(
+              member.shape as Record<string, FieldLike>,
+              srcVar,
+              onValid,
+              onAsync,
+              depth + 1,
+              ps,
+              preset,
+              !CHECK && member._unknownKeys === 'strict'
+                ? strictReport(member.shape as Record<string, FieldLike>, srcVar, ps.suffix, ps.dynIdx)
+                : undefined,
+            )
           } else {
             // Non-inlinable member (own checks / strict / catchall / depth
             // cap) — its captured `_runInto` closure, exactly the
@@ -834,6 +978,14 @@ function compileJit(schema: Schema<unknown>, mode: JitMode): unknown {
       depth: number,
       ps: PathState,
       preset?: { key: string; varExpr: string },
+      /**
+       * Emitted immediately BEFORE the object value is handed to `onValid`.
+       * Parse-mode strict reporting rides here rather than after the call:
+       * `onValid` is what emits the `return`, so anything appended afterwards
+       * is dead code — which is how a first attempt shipped a strict object
+       * that silently accepted unknown keys.
+       */
+      preValid?: string,
     ): void => {
       const keys = Object.keys(shape)
       const literalOk = keys.every((key) => {
@@ -871,6 +1023,7 @@ function compileJit(schema: Schema<unknown>, mode: JitMode): unknown {
         }
         const litV = nv()
         lines.push(`let ${litV} = { ${parts.join(', ')} };`)
+        if (preValid) lines.push(preValid)
         lines.push(onValid(litV))
         return
       }
@@ -880,6 +1033,7 @@ function compileJit(schema: Schema<unknown>, mode: JitMode): unknown {
       // A pending descendant patches `outV` by reference when it settles, so
       // handing the object to `onValid` NOW is correct — the root return
       // barrier awaits every pending entry before the value escapes.
+      if (preValid) lines.push(preValid)
       lines.push(onValid(outV))
     }
 

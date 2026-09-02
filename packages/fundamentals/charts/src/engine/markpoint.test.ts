@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { defaultTheme, renderChart } from './render'
+import { barsFor, defaultTheme, renderChart } from './render'
 import type { ChartSpec, PointMarker, Series } from './render'
 import { chartToSvg } from './svg-chart'
-import { line, points } from './marks'
+import { line } from './marks'
 import type { DrawCmd, Double } from './types'
 
 const measure = (text: string, _s: Double): Double => text.length * 7.0
@@ -115,5 +115,34 @@ describe('point markers (markPoint)', () => {
     const cmds = renderChart(spec([S({ kind: 'points' })], [{ at: 'max', color: '#ff0000' }]), measure)
     // 4 data dots + 1 marker
     expect(circles(cmds)).toHaveLength(5)
+  })
+})
+
+describe('point markers (markPoint) — edge shapes', () => {
+  it('edge shapes that must not draw: a seriesIndex past the series list, an empty series', () => {
+    expect(circles(renderChart(spec([S({})], [{ at: 'max', seriesIndex: 5.0 }]), measure))).toHaveLength(0)
+    expect(circles(renderChart(spec([S({ values: [] })], [{ at: 'max' }]), measure))).toHaveLength(0)
+  })
+
+  it('a negative atIndex clamps to the first datum', () => {
+    const first = circles(renderChart(spec([S({})], [{ atIndex: 0.0 }]), measure))
+    const negative = circles(renderChart(spec([S({})], [{ atIndex: -3.0 }]), measure))
+    expect(negative).toHaveLength(1)
+    expect(negative[0]!.center.x).toBeCloseTo(first[0]!.center.x, 9)
+  })
+
+  it('on a value x axis the marker is placed by xValues, not by index', () => {
+    const byIndex = circles(renderChart(spec([S({})], [{ at: 'max' }]), measure))
+    const byValue = circles(renderChart(spec([S({})], [{ at: 'max' }], { xValues: [0.0, 1.0, 2.0, 3.0, 40.0] }), measure))
+    expect(byValue).toHaveLength(1)
+    expect(byValue[0]!.center.x).not.toBeCloseTo(byIndex[0]!.center.x, 3)
+  })
+
+  it('barsFor resolves a right-axis bar series against ITS domain', () => {
+    const left = barsFor(spec([S({ kind: 'bars' })], []), 0, measure)
+    const right = barsFor(spec([S({ kind: 'bars', axis: 'right' })], []), 0, measure)
+    expect(left).toHaveLength(right.length)
+    expect(right.every((r) => r.h > 0)).toBe(true)
+    expect(barsFor(spec([S({})], []), 0, measure)).toEqual([])
   })
 })

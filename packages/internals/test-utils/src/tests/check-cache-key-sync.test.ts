@@ -15,7 +15,125 @@
 // above — keep in sync." Comments do not diff.
 
 import { describe, expect, it } from 'vitest'
-import { extractKeyUses, findKeyDrift } from '../../../../../scripts/check-cache-key-sync'
+import {
+  extractCacheSteps,
+  extractKeyUses,
+  findDuplicateWriters,
+  findKeyDrift,
+  findOrphanRestores,
+} from '../../../../../scripts/check-cache-key-sync'
+
+// ── one artifact ⇒ one prefix ⇒ one writer ──────────────────────────────────
+// The inverse of key drift: one PATH under two prefixes. `~/.bun/install/cache`
+// was saved by ci.yml as `bun-install-cache-*` AND by two other workflows as
+// `bun-*` — 4.8 GB of duplicate tarball stores in a 10 GB budget (2026-09-01),
+// evicting the small entries every PR depends on. Three prior "fixes" trimmed
+// one writer each and missed a sibling, because nothing read `path:`.
+
+const step = (opts: { kind: 'save' | 'restore' | 'both'; path: string | string[]; key: string; name?: string }) => {
+  const action = opts.kind === 'both' ? 'actions/cache' : `actions/cache/${opts.kind}`
+  const path = Array.isArray(opts.path)
+    ? `          path: |\n${opts.path.map((p) => `            ${p}`).join('\n')}`
+    : `          path: ${opts.path}`
+  return [
+    ...(opts.name ? [`      - name: ${opts.name}`, `        uses: ${action}@sha`] : [`      - uses: ${action}@sha`]),
+    '        with:',
+    path,
+    `          key: ${opts.key}`,
+    '          restore-keys: whatever-',
+  ].join('\n')
+}
+
+describe('extractCacheSteps', () => {
+  it('reads kind, scalar path and the literal key prefix', () => {
+    const text = step({ kind: 'save', path: '~/.bun/install/cache', key: "bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}" })
+    expect(extractCacheSteps(text, 'ci.yml')).toEqual([
+      { file: 'ci.yml', line: 1, kind: 'save', paths: ['~/.bun/install/cache'], prefix: 'bun-install-cache-' },
+    ])
+  })
+  it('reads a block-scalar path list, sorted, as the artifact identity', () => {
+    const text = step({ kind: 'both', path: ['~/.cargo/registry', '~/.cargo/git'], key: 'cargo-registry-${{ x }}' })
+    expect(extractCacheSteps(text, 'f')[0]!.paths).toEqual(['~/.cargo/git', '~/.cargo/registry'])
+  })
+  it('handles `- name:` first, with `uses:` on the next line, and stops at the next step', () => {
+    const text = [
+      step({ kind: 'restore', path: 'a', key: 'p-${{ x }}', name: 'Restore a' }),
+      step({ kind: 'save', path: 'b', key: 'q-${{ x }}', name: 'Save b' }),
+    ].join('\n')
+    const out = extractCacheSteps(text, 'f')
+    expect(out.map((s) => [s.kind, s.paths[0], s.prefix])).toEqual([
+      ['restore', 'a', 'p-'],
+      ['save', 'b', 'q-'],
+    ])
+  })
+  it('records an empty prefix for a pure-expression key (per-run keys are not a prefix family)', () => {
+    const text = step({ kind: 'save', path: 'packages/*/*/lib', key: '${{ env.BOOTSTRAP_KEY }}' })
+    expect(extractCacheSteps(text, 'f')[0]!.prefix).toBe('')
+  })
+})
+
+describe('findDuplicateWriters', () => {
+  it('flags one path written under two prefixes and names every site', () => {
+    const steps = [
+      ...extractCacheSteps(step({ kind: 'save', path: '~/.bun/install/cache', key: 'bun-install-cache-${{ h }}' }), 'ci.yml'),
+      ...extractCacheSteps(step({ kind: 'both', path: '~/.bun/install/cache', key: 'bun-${{ h }}' }), 'release.yml'),
+    ]
+    expect(findDuplicateWriters(steps)).toEqual([
+      {
+        paths: ['~/.bun/install/cache'],
+        writers: [
+          { prefix: 'bun-', sites: ['release.yml:1'] },
+          { prefix: 'bun-install-cache-', sites: ['ci.yml:1'] },
+        ],
+      },
+    ])
+  })
+  it('does NOT flag a restore-only site under a second prefix (that is the orphan check)', () => {
+    const steps = [
+      ...extractCacheSteps(step({ kind: 'save', path: 'x', key: 'a-${{ h }}' }), 'f'),
+      ...extractCacheSteps(step({ kind: 'restore', path: 'x', key: 'b-${{ h }}' }), 'g'),
+    ]
+    expect(findDuplicateWriters(steps)).toEqual([])
+  })
+  it('does NOT flag one prefix saved from several sites', () => {
+    const steps = [
+      ...extractCacheSteps(step({ kind: 'save', path: 'x', key: 'a-${{ h }}' }), 'f'),
+      ...extractCacheSteps(step({ kind: 'both', path: 'x', key: 'a-${{ h }}' }), 'g'),
+    ]
+    expect(findDuplicateWriters(steps)).toEqual([])
+  })
+  it('treats a different path list as a different artifact', () => {
+    const steps = [
+      ...extractCacheSteps(step({ kind: 'save', path: ['a', 'b'], key: 'p-${{ h }}' }), 'f'),
+      ...extractCacheSteps(step({ kind: 'save', path: ['a'], key: 'q-${{ h }}' }), 'g'),
+    ]
+    expect(findDuplicateWriters(steps)).toEqual([])
+  })
+  it('ignores pure-expression keys — a per-run key is not a competing writer', () => {
+    const steps = [
+      ...extractCacheSteps(step({ kind: 'save', path: 'lib', key: 'bootstrap-ubuntu-${{ h }}' }), 'f'),
+      ...extractCacheSteps(step({ kind: 'save', path: 'lib', key: '${{ env.BOOTSTRAP_KEY }}' }), 'f'),
+    ]
+    expect(findDuplicateWriters(steps)).toEqual([])
+  })
+})
+
+describe('findOrphanRestores', () => {
+  it('flags a restore-only prefix that nothing ever saves', () => {
+    const steps = [
+      ...extractCacheSteps(step({ kind: 'save', path: 'x', key: 'a-${{ h }}' }), 'f'),
+      ...extractCacheSteps(step({ kind: 'restore', path: 'x', key: 'zzz-${{ h }}' }), 'g'),
+    ]
+    expect(findOrphanRestores(steps)).toEqual([{ prefix: 'zzz-', sites: ['g:1'] }])
+  })
+  it('accepts a restore whose prefix a combined actions/cache step writes', () => {
+    const steps = [
+      ...extractCacheSteps(step({ kind: 'both', path: 'x', key: 'a-${{ h }}' }), 'f'),
+      ...extractCacheSteps(step({ kind: 'restore', path: 'x', key: 'a-${{ h }}' }), 'g'),
+    ]
+    expect(findOrphanRestores(steps)).toEqual([])
+  })
+})
 
 const SIX = "'src/**', 'package.json', 'tsconfig.json', 'root.json', 'boot.ts', 'bun.lock'"
 const FOUR = "'src/**', 'package.json', 'boot.ts', 'bun.lock'"
