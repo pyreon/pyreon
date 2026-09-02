@@ -42,6 +42,9 @@
  * checks lean this way and not the other.
  */
 
+import { execFileSync } from 'node:child_process'
+import { appendFileSync } from 'node:fs'
+
 export type Mergeable = 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN'
 
 export interface PullRequest {
@@ -114,19 +117,29 @@ const DRY_RUN = process.argv.includes('--dry-run')
 const MERGEABILITY_ROUNDS = Number(process.env.PYREON_MERGEABILITY_ROUNDS ?? 4)
 const ROUND_DELAY_MS = Number(process.env.PYREON_MERGEABILITY_DELAY_MS ?? 5000)
 
-async function ghRaw(args: string[]): Promise<string> {
-  const proc = Bun.spawn(['gh', ...args], { stdout: 'pipe', stderr: 'pipe' })
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  if (code !== 0) throw new Error(`gh ${args.slice(0, 2).join(' ')} failed (${code}): ${err.trim()}`)
-  return out
+// node:child_process, not `Bun.spawn` — this module is IMPORTED by
+// `@pyreon/test-utils`' unit test for the pure selector, and that package
+// typechecks without bun types in scope (`error TS2868: Cannot find name
+// 'Bun'`). Every sibling CI script here is written against node APIs for the
+// same reason; the runtime is still bun.
+function ghRaw(args: string[]): string {
+  try {
+    return execFileSync('gh', args, {
+      encoding: 'utf8',
+      // The paginated run listing is ~250 short JSON lines today, but a busy
+      // repo can multiply that; the 1 MB default would truncate silently.
+      maxBuffer: 32 * 1024 * 1024,
+    })
+  } catch (err) {
+    const e = err as { status?: number; stderr?: string }
+    throw new Error(
+      `gh ${args.slice(0, 2).join(' ')} failed (${e.status ?? '?'}): ${(e.stderr ?? '').trim()}`,
+    )
+  }
 }
 
-async function gh<T>(args: string[]): Promise<T> {
-  return JSON.parse(await ghRaw(args)) as T
+function gh<T>(args: string[]): T {
+  return JSON.parse(ghRaw(args)) as T
 }
 
 /**
@@ -136,9 +149,8 @@ async function gh<T>(args: string[]): Promise<T> {
  * runs, three pages.) Ask for a `--jq` projection instead and read the result
  * line by line, which is page-count independent.
  */
-async function ghJsonLines<T>(args: string[]): Promise<T[]> {
-  const out = await ghRaw(args)
-  return out
+function ghJsonLines<T>(args: string[]): T[] {
+  return ghRaw(args)
     .split('\n')
     .filter((l) => l.trim() !== '')
     .map((l) => JSON.parse(l) as T)
@@ -157,7 +169,7 @@ async function resolveMergeability(numbers: readonly number[]): Promise<PullRequ
     const stillPending: number[] = []
     for (const n of pending) {
       try {
-        const pr = await gh<{ number: number; mergeable: Mergeable; headRefOid: string }>([
+        const pr = gh<{ number: number; mergeable: Mergeable; headRefOid: string }>([
           'pr',
           'view',
           String(n),
@@ -185,7 +197,7 @@ async function resolveMergeability(numbers: readonly number[]): Promise<PullRequ
 }
 
 async function main(): Promise<void> {
-  const open = await gh<Array<{ number: number }>>([
+  const open = gh<Array<{ number: number }>>([
     'pr',
     'list',
     '--repo',
@@ -216,7 +228,7 @@ async function main(): Promise<void> {
 
   const runs: WorkflowRun[] = []
   for (const status of ['in_progress', 'queued'] as const) {
-    const rows = await ghJsonLines<{ id: number; head_sha: string; name: string }>([
+    const rows = ghJsonLines<{ id: number; head_sha: string; name: string }>([
       'api',
       '--paginate',
       `repos/${REPO}/actions/runs?status=${status}&per_page=100`,
@@ -243,7 +255,7 @@ async function main(): Promise<void> {
   if (!DRY_RUN) {
     for (const c of cancellations) {
       try {
-        await gh<unknown>([
+        gh<unknown>([
           'api',
           '--method',
           'POST',
@@ -267,7 +279,7 @@ async function main(): Promise<void> {
       '',
       ...summarize(cancellations).map((l) => `- ${l}`),
     ]
-    await Bun.write(summary, `${lines.join('\n')}\n`, { createPath: false })
+    appendFileSync(summary, `${lines.join('\n')}\n`)
   }
   console.log(`[cancel-conflicting-ci] done — ${cancelled} run(s) cancelled.`)
 }
