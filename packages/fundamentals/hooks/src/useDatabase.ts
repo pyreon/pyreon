@@ -68,15 +68,22 @@ const KEY_PREFIX = 'pyreon:db:'
  * Module-scoped so reads and writes within one page agree with each other. A
  * per-call store would make `insert` then `get` fail whenever persistence was
  * unavailable, which is a worse failure than not persisting.
+ *
+ * CLIENT ONLY. "One page" is one process in a browser and every request in a
+ * server, so neither arm of the server path touches this map — see
+ * `readCollection` / `writeCollection`.
  */
 const memory = new Map<string, PyreonRecord[]>()
 
 function readCollection(collection: string): PyreonRecord[] {
   const key = KEY_PREFIX + collection
-  /* v8 ignore next — the server arm. `isServer` is a module-load constant and
-     these tests run under happy-dom, so reaching it would mean mocking
-     @pyreon/reactivity, which the test-environment rules forbid. */
-  if (isServer) return memory.get(key) ?? []
+  // The SERVER has no localStorage AND no per-request scope here, so it must
+  // not consult `memory` — that map is process-global, so one request's records
+  // would be served to the next visitor. An empty collection is the honest
+  // answer: this store is localStorage-backed by definition, and nothing was
+  // ever persisted on the server. Exercised by `useDatabase.ssr.test.ts`, which
+  // flips the flag with a per-file mock the way `useCamera.ssr.test.ts` does.
+  if (isServer) return []
   try {
     const store = globalThis.localStorage
     // No localStorage at all (blocked / non-browser) — the mirror IS the store.
@@ -103,12 +110,16 @@ function readCollection(collection: string): PyreonRecord[] {
 
 function writeCollection(collection: string, records: PyreonRecord[]): void {
   const key = KEY_PREFIX + collection
-  // Always mirror into memory: if the write below fails (quota, private mode)
-  // the data still round-trips for this page rather than vanishing between an
-  // insert and the next read.
-  memory.set(key, records)
-  /* v8 ignore next — server arm; see readCollection above. */
+  // Server first, BEFORE the mirror. `memory` is module-scoped, which is the
+  // right scope for a browser (one process, one user) and the wrong one for a
+  // server (one process, everyone) — mirroring here left an SSR insert visible
+  // to every later request. Nothing persists on the server anyway, so the write
+  // is a no-op rather than a shared one.
   if (isServer) return
+  // Mirror into memory: if the write below fails (quota, private mode) the data
+  // still round-trips for this page rather than vanishing between an insert and
+  // the next read.
+  memory.set(key, records)
   try {
     globalThis.localStorage?.setItem(key, JSON.stringify(records))
   } catch {
