@@ -667,6 +667,27 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // top-level `const X = s.object(...)` still emits first.
   for (const inline of ctx.inlineSchemas) zodSchemas.push(inline)
 
+  // A feature emits an alias under the SOURCE binding name so `Todo.name`
+  // resolves. Swift and Kotlin do NOT separate the type and value namespaces
+  // the way TypeScript does, so if the same file also declares a TYPE of that
+  // name the two collide — `invalid redeclaration of 'Todo'` / `conflicting
+  // declarations`, in a generated file the author never wrote. Neither alias
+  // form escapes it (a `typealias` and a value binding collide identically;
+  // both were measured). Say so by name instead of shipping the collision.
+  for (const f of features) {
+    const clash =
+      structs.some((st) => st.name === f.bindingName) ||
+      enums.some((en) => en.name === f.bindingName)
+    if (clash) {
+      ctx.warnings.push(
+        `defineFeature declaration \`${f.bindingName}\`: a type of the same name is declared in this file. ` +
+          `Swift and Kotlin share one namespace for types and values, so the emitted alias collides with it ` +
+          `and the native build fails on a redeclaration. Rename one of them (e.g. the feature binding to ` +
+          `\`${f.bindingName}Feature\`).`,
+      )
+    }
+  }
+
   return {
     components,
     enums,
