@@ -25,14 +25,15 @@ import { describe, expect, it } from 'vitest'
  * change reverts/breaks the externalization, lib/ jumps back to multi-
  * megabyte territory and this test fails.
  *
- * Threshold: 1 MB. Post-fix is ~458 KB (2.2× headroom for legitimate
- * growth — fonts, generated `.d.ts` chains, additional renderers).
+ * Threshold: 2.5 MB. The plot surface (eleven families, maps included)
+ * sits at ~1.6 MB, leaving headroom for legitimate growth — fonts,
+ * generated `.d.ts` chains, additional renderers.
  * Broken state was 9.2 MB (~20× over threshold), so the test fails
  * loudly the moment regression hits, with no false-positives from
  * normal package growth.
  */
 describe('charts — bundle size regression (echarts subpath externalization)', () => {
-  it('lib/ total stays under 1 MB (post-fix: ~464 KB; pre-fix was 9.2 MB)', () => {
+  it('lib/ total stays under 2.5 MB (~1.6 MB with the plot surface; the pre-fix duplication was 9.2 MB)', () => {
     const here = dirname(fileURLToPath(import.meta.url))
     const libDir = join(here, '..', '..', 'lib')
 
@@ -60,7 +61,10 @@ describe('charts — bundle size regression (echarts subpath externalization)', 
       }
     }
 
-    const ONE_MB = 1024 * 1024
-    expect(totalBytes).toBeLessThan(ONE_MB)
+    // 2.5 MB: the plot subpath ships eleven families with source maps
+    // (~1.6 MB total, ~370 KB of .js); the 9.2 MB duplication bug this
+    // guards against is still ~4x over the line.
+    const CAP = 2.5 * 1024 * 1024
+    expect(totalBytes).toBeLessThan(CAP)
   })
 })
