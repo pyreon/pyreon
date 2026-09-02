@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { line } from './marks'
 import { barsFor, defaultTheme, renderChart } from './render'
 import type { ChartSpec, PointMarker, Series } from './render'
 import { chartToSvg } from './svg-chart'
+import { line } from './marks'
 import type { DrawCmd, Double } from './types'
 
 const measure = (text: string, _s: Double): Double => text.length * 7.0

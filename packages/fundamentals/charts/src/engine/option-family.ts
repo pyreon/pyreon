@@ -1,0 +1,309 @@
+// The non-cartesian half of the option facade: pie / gauge / radar /
+// candlestick / heatmap options → the family renderers. Same contract as
+// `compileOption`: nothing is dropped silently — every unmapped key becomes
+// a named warning — and the output is data the family SVG helpers (and,
+// later, the family components) consume directly.
+
+import type { EChartsOption, OptionWarning } from './option'
+import { candlestickToSvg, gaugeToSvg, heatmapToSvg, pieToSvg, radarToSvg } from './family-svg'
+import type { RadarAxis } from './radar'
+import type { Double } from './types'
+
+export type FamilyPlan =
+  | { kind: 'pie'; rows: { value: Double; name: string; color: string | undefined }[]; innerRadius: Double; showLabels: boolean; showLegend: boolean; title: string | undefined }
+  | { kind: 'gauge'; value: Double; min: Double; max: Double; showValue: boolean; thickness: Double | undefined; valueColor: string | undefined; title: string | undefined }
+  | { kind: 'radar'; axes: RadarAxis[]; rows: { values: Double[]; name: string; color: string | undefined }[]; fillAlpha: Double; showLegend: boolean; title: string | undefined }
+  | { kind: 'candlestick'; rows: { x: string; open: Double; high: Double; low: Double; close: Double }[]; upColor: string | undefined; downColor: string | undefined; title: string | undefined }
+  | { kind: 'heatmap'; rows: { x: string; y: string; value: Double }[]; colors: string[] | undefined; title: string | undefined }
+
+export interface CompiledFamily {
+  plan: FamilyPlan
+  warnings: OptionWarning[]
+  supported: boolean
+}
+
+const FAMILY_TYPES = new Set(['pie', 'gauge', 'radar', 'candlestick', 'heatmap'])
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+const num = (v: unknown): number | null => {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null
+  if (typeof v === 'string' && v.trim() !== '') {
+    const n = Number(v)
+    return Number.isFinite(n) ? n : null
+  }
+  return null
+}
+const first = <T,>(v: T | T[] | undefined): T | undefined => (Array.isArray(v) ? v[0] : v)
+const pct = (v: unknown): number | null => {
+  if (typeof v === 'string' && v.endsWith('%')) return num(v.slice(0, -1))
+  return num(v)
+}
+
+/** True when the option's first series is a family (non-cartesian) type. */
+export function isFamilyOption(option: EChartsOption): boolean {
+  const s = first(option['series'] as unknown)
+  return isObj(s) && typeof s['type'] === 'string' && FAMILY_TYPES.has(s['type'] as string)
+}
+
+const KNOWN_TOP = new Set(['series', 'title', 'legend', 'tooltip', 'color', 'radar', 'xAxis', 'yAxis', 'visualMap', 'animation', 'backgroundColor', 'textStyle', 'grid'])
+const KNOWN_BY_FAMILY: Record<string, Set<string>> = {
+  pie: new Set(['type', 'name', 'data', 'radius', 'label', 'itemStyle', 'center', 'emphasis', 'color']),
+  gauge: new Set(['type', 'name', 'data', 'min', 'max', 'detail', 'axisLine', 'progress', 'itemStyle', 'color']),
+  radar: new Set(['type', 'name', 'data', 'areaStyle', 'itemStyle', 'lineStyle', 'symbol', 'color']),
+  candlestick: new Set(['type', 'name', 'data', 'itemStyle', 'color']),
+  heatmap: new Set(['type', 'name', 'data', 'label', 'itemStyle', 'emphasis', 'color']),
+}
+
+/**
+ * Compile a family option. Returns null when the first series is cartesian
+ * (`compileOption` owns those) so `planOption` can route without guessing.
+ */
+export function compileFamily(option: EChartsOption): CompiledFamily | null {
+  if (!isFamilyOption(option)) return null
+  const warnings: OptionWarning[] = []
+  const warn = (code: OptionWarning['code'], path: string, message: string): void => {
+    warnings.push({ code, path, message })
+  }
+  let supported = true
+  const seriesArr = Array.isArray(option['series']) ? (option['series'] as unknown[]) : [option['series']]
+  const s = seriesArr[0] as Record<string, unknown>
+  const type = s['type'] as string
+  for (const key of Object.keys(option)) if (!KNOWN_TOP.has(key)) warn('option-key-unsupported', key, `"${key}" has no mapping yet; it was ignored.`)
+  for (const key of Object.keys(s)) if (!KNOWN_BY_FAMILY[type]!.has(key)) warn('series-option-unsupported', `series[0].${key}`, `"${key}" has no mapping for ${type} yet; it was ignored.`)
+  if (seriesArr.length > 1 && type !== 'radar') {
+    warn('series-option-unsupported', 'series[1]', `Only one ${type} series is rendered per chart; extra series were ignored.`)
+  }
+  const titleRaw = first(option['title'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
+  const title = isObj(titleRaw) && typeof titleRaw['text'] === 'string' ? (titleRaw['text'] as string) : undefined
+  const legendRaw = option['legend']
+  const showLegend = legendRaw !== undefined && !(isObj(legendRaw) && legendRaw['show'] === false)
+  const palette: string[] = Array.isArray(option['color']) ? (option['color'] as unknown[]).filter((c): c is string => typeof c === 'string') : []
+  const data = Array.isArray(s['data']) ? (s['data'] as unknown[]) : []
+  if (!Array.isArray(s['data'])) {
+    warn('series-data-shape', 'series[0].data', 'Series data must be an array; treated as empty.')
+  }
+
+  if (type === 'pie') {
+    const rows: { value: Double; name: string; color: string | undefined }[] = []
+    for (let i = 0; i < data.length; i++) {
+      const d = data[i]
+      const v = isObj(d) ? num(d['value']) : num(d)
+      if (v === null) {
+        warn('series-data-shape', `series[0].data[${i}]`, 'A pie datum needs a numeric value; it was skipped.')
+        continue
+      }
+      const item = isObj(d) && isObj(d['itemStyle']) ? d['itemStyle'] : {}
+      rows.push({
+        value: v,
+        name: isObj(d) && typeof d['name'] === 'string' ? (d['name'] as string) : `Slice ${i + 1}`,
+        color: typeof item['color'] === 'string' ? (item['color'] as string) : palette[i % Math.max(1, palette.length)],
+      })
+    }
+    // radius: '60%' | ['40%', '70%'] → the hole as a fraction of the outer radius.
+    let innerRadius = 0.0
+    const r = s['radius']
+    if (Array.isArray(r) && r.length === 2) {
+      const inner = pct(r[0])
+      const outer = pct(r[1])
+      if (inner !== null && outer !== null && outer > 0) innerRadius = Math.max(0.0, Math.min(0.95, inner / outer))
+    }
+    const label = isObj(s['label']) ? s['label'] : {}
+    return { plan: { kind: 'pie', rows, innerRadius, showLabels: label['show'] !== false, showLegend, title }, warnings, supported }
+  }
+
+  if (type === 'gauge') {
+    const d0 = data[0]
+    const value = isObj(d0) ? num(d0['value']) : num(d0)
+    if (value === null) {
+      warn('series-data-shape', 'series[0].data[0]', 'A gauge needs one numeric value.')
+      supported = false
+    }
+    const detail = isObj(s['detail']) ? s['detail'] : {}
+    const axisLine = isObj(s['axisLine']) && isObj(s['axisLine']['lineStyle']) ? s['axisLine']['lineStyle'] : {}
+    const progress = isObj(s['progress']) && isObj(s['progress']['itemStyle']) ? s['progress']['itemStyle'] : {}
+    const item = isObj(s['itemStyle']) ? s['itemStyle'] : {}
+    return {
+      plan: {
+        kind: 'gauge',
+        value: value ?? 0.0,
+        min: num(s['min']) ?? 0.0,
+        max: num(s['max']) ?? 100.0,
+        showValue: detail['show'] !== false,
+        thickness: num(axisLine['width']) ?? undefined,
+        valueColor: typeof progress['color'] === 'string' ? (progress['color'] as string) : typeof item['color'] === 'string' ? (item['color'] as string) : undefined,
+        title,
+      },
+      warnings,
+      supported,
+    }
+  }
+
+  if (type === 'radar') {
+    const radar = first(option['radar'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
+    const indicators = isObj(radar) && Array.isArray(radar['indicator']) ? (radar['indicator'] as unknown[]) : []
+    const axes: RadarAxis[] = []
+    for (let i = 0; i < indicators.length; i++) {
+      const ind = indicators[i]
+      if (!isObj(ind)) continue
+      axes.push({ label: typeof ind['name'] === 'string' ? (ind['name'] as string) : `Axis ${i + 1}`, max: num(ind['max']) ?? 100.0 })
+    }
+    if (axes.length < 3) {
+      warn('series-data-shape', 'radar.indicator', 'A radar needs at least three indicators.')
+      supported = false
+    }
+    const rows: { values: Double[]; name: string; color: string | undefined }[] = []
+    let fillAlpha = 0.25
+    for (let si = 0; si < seriesArr.length; si++) {
+      const rs = seriesArr[si]
+      if (!isObj(rs) || rs['type'] !== 'radar') continue
+      const area = isObj(rs['areaStyle']) ? rs['areaStyle'] : rs['areaStyle'] === undefined ? null : {}
+      if (area !== null && num(area['opacity']) !== null) fillAlpha = num(area['opacity']) as number
+      const rdata = Array.isArray(rs['data']) ? (rs['data'] as unknown[]) : []
+      for (let i = 0; i < rdata.length; i++) {
+        const d = rdata[i]
+        const raw = isObj(d) && Array.isArray(d['value']) ? (d['value'] as unknown[]) : Array.isArray(d) ? d : null
+        if (raw === null) {
+          warn('series-data-shape', `series[${si}].data[${i}]`, 'A radar datum needs a value array; it was skipped.')
+          continue
+        }
+        const item = isObj(d) && isObj(d['itemStyle']) ? d['itemStyle'] : {}
+        rows.push({
+          values: raw.map((v) => num(v) ?? 0.0),
+          name: isObj(d) && typeof d['name'] === 'string' ? (d['name'] as string) : `Series ${rows.length + 1}`,
+          color: typeof item['color'] === 'string' ? (item['color'] as string) : palette[rows.length % Math.max(1, palette.length)],
+        })
+      }
+    }
+    return { plan: { kind: 'radar', axes, rows, fillAlpha, showLegend, title }, warnings, supported }
+  }
+
+  if (type === 'candlestick') {
+    const xAxis = first(option['xAxis'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
+    const cats = isObj(xAxis) && Array.isArray(xAxis['data']) ? (xAxis['data'] as unknown[]).map((c) => String(c)) : []
+    const rows: { x: string; open: Double; high: Double; low: Double; close: Double }[] = []
+    for (let i = 0; i < data.length; i++) {
+      const d = data[i]
+      const arr = Array.isArray(d) ? d : isObj(d) && Array.isArray(d['value']) ? (d['value'] as unknown[]) : null
+      // ECharts candlestick tuples are [open, close, lowest, highest].
+      if (arr === null || arr.length < 4) {
+        warn('series-data-shape', `series[0].data[${i}]`, 'A candlestick datum is [open, close, low, high]; it was skipped.')
+        continue
+      }
+      rows.push({ x: cats[i] ?? String(i + 1), open: num(arr[0]) ?? 0.0, close: num(arr[1]) ?? 0.0, low: num(arr[2]) ?? 0.0, high: num(arr[3]) ?? 0.0 })
+    }
+    const item = isObj(s['itemStyle']) ? s['itemStyle'] : {}
+    return {
+      plan: {
+        kind: 'candlestick',
+        rows,
+        upColor: typeof item['color'] === 'string' ? (item['color'] as string) : undefined,
+        downColor: typeof item['color0'] === 'string' ? (item['color0'] as string) : undefined,
+        title,
+      },
+      warnings,
+      supported,
+    }
+  }
+
+  // heatmap
+  const xAxis = first(option['xAxis'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
+  const yAxis = first(option['yAxis'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
+  const xs = isObj(xAxis) && Array.isArray(xAxis['data']) ? (xAxis['data'] as unknown[]).map((c) => String(c)) : []
+  const ys = isObj(yAxis) && Array.isArray(yAxis['data']) ? (yAxis['data'] as unknown[]).map((c) => String(c)) : []
+  const rows: { x: string; y: string; value: Double }[] = []
+  for (let i = 0; i < data.length; i++) {
+    const d = data[i]
+    const arr = Array.isArray(d) ? d : isObj(d) && Array.isArray(d['value']) ? (d['value'] as unknown[]) : null
+    if (arr === null || arr.length < 3) {
+      warn('series-data-shape', `series[0].data[${i}]`, 'A heatmap datum is [xIndex, yIndex, value]; it was skipped.')
+      continue
+    }
+    const xi = num(arr[0])
+    const yi = num(arr[1])
+    rows.push({
+      x: xi !== null && xs[xi] !== undefined ? xs[xi]! : String(arr[0]),
+      y: yi !== null && ys[yi] !== undefined ? ys[yi]! : String(arr[1]),
+      value: num(arr[2]) ?? 0.0,
+    })
+  }
+  const vm = first(option['visualMap'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
+  const colors = isObj(vm) && isObj(vm['inRange']) && Array.isArray(vm['inRange']['color'])
+    ? (vm['inRange']['color'] as unknown[]).filter((c): c is string => typeof c === 'string')
+    : undefined
+  return { plan: { kind: 'heatmap', rows, colors, title }, warnings, supported }
+}
+
+/** Render a compiled family plan to an `<svg>` string. */
+export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined; height?: Double | undefined } = {}): string {
+  const width = size.width ?? 640.0
+  const height = size.height ?? 320.0
+  switch (plan.kind) {
+    case 'pie': {
+      const hasColors = plan.rows.some((r) => r.color !== undefined)
+      return pieToSvg({
+        data: plan.rows,
+        value: (d) => d.value,
+        label: (d) => d.name,
+        ...(hasColors ? { color: (d: { color: string | undefined }, i: number) => d.color ?? PALETTE[i % PALETTE.length]! } : {}),
+        innerRadius: plan.innerRadius,
+        showLabels: plan.showLabels,
+        showLegend: plan.showLegend,
+        width,
+        height,
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
+    }
+    case 'gauge':
+      return gaugeToSvg({
+        value: plan.value,
+        min: plan.min,
+        max: plan.max,
+        showValue: plan.showValue,
+        width,
+        height,
+        ...(plan.thickness !== undefined ? { thickness: plan.thickness } : {}),
+        ...(plan.valueColor !== undefined ? { valueColor: plan.valueColor } : {}),
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
+    case 'radar': {
+      const hasColors = plan.rows.some((r) => r.color !== undefined)
+      return radarToSvg({
+        data: plan.rows,
+        axes: plan.axes,
+        values: (d) => d.values,
+        label: (d) => d.name,
+        ...(hasColors ? { color: (d: { color: string | undefined }, i: number) => d.color ?? PALETTE[i % PALETTE.length]! } : {}),
+        fillAlpha: plan.fillAlpha,
+        showLegend: plan.showLegend,
+        width,
+        height,
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
+    }
+    case 'candlestick':
+      return candlestickToSvg({
+        data: plan.rows,
+        x: (d) => d.x,
+        open: (d) => d.open,
+        high: (d) => d.high,
+        low: (d) => d.low,
+        close: (d) => d.close,
+        candle: { upColor: plan.upColor, downColor: plan.downColor },
+        width,
+        height,
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
+    default:
+      return heatmapToSvg({
+        data: plan.rows,
+        x: (d) => d.x,
+        y: (d) => d.y,
+        value: (d) => d.value,
+        ...(plan.colors !== undefined && plan.colors.length > 1 ? { colors: plan.colors } : {}),
+        width,
+        height,
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
+  }
+}
+
+const PALETTE = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
