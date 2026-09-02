@@ -497,6 +497,25 @@ final class PyreonTasksUITests: XCTestCase {
             waitForLabel(barPick, "0", timeout: 10),
             "after showing the series again from the legend entry, the band tap did not bind 0 (label: \(barPick.label))"
         )
+        // #3277: `<PlotChart brush>` — a plain drag across the brush-only line
+        // chart's plot (x 50 → W-30, y 60) selects every row → '0-2' through the
+        // named onBrush; a tap on the plot clears it → 'none'.
+        let statsBrush = app.descendants(matching: .any).matching(identifier: "stats-brush").firstMatch
+        XCTAssertTrue(statsBrush.waitForExistence(timeout: 10), "brush chart canvas missing on stats page")
+        let brushSel = app.staticTexts["stats-brush-sel"].firstMatch
+        XCTAssertTrue(brushSel.waitForExistence(timeout: 10), "brush selection text missing")
+        XCTAssertEqual(brushSel.label, "none", "no brush yet, selection should be none")
+        let brushOrigin = statsBrush.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        brushOrigin.withOffset(CGVector(dx: 50, dy: 60)).press(forDuration: 0.2, thenDragTo: brushOrigin.withOffset(CGVector(dx: statsBrush.frame.width - 30, dy: 60)))
+        XCTAssertTrue(
+            waitForLabel(brushSel, "0-2", timeout: 10),
+            "a drag across the plot did not brush every row (label: \(brushSel.label))"
+        )
+        brushOrigin.withOffset(CGVector(dx: 60, dy: 60)).tap()
+        XCTAssertTrue(
+            waitForLabel(brushSel, "none", timeout: 10),
+            "a tap did not clear the brush (label: \(brushSel.label))"
+        )
         let statsBack = app.buttons["stats-back"].firstMatch
         XCTAssertTrue(statsBack.exists, "Back button missing on stats page")
         statsBack.tap()

@@ -610,6 +610,23 @@ class TasksAppInstrumentedTest {
             .onNodeWithTag("stats-bars")
             .performTouchInput { click(Offset(90f * flowDensity, 100f * flowDensity)) }
         waitForTagText("stats-bars-pick", "0")
+        // #3277: the brush-only line chart — a drag across its plot selects every
+        // row → '0-2' through the named onBrush; a tap clears → 'none'.
+        composeRule
+            .onNodeWithTag("stats-brush-sel")
+            .assertTextEquals("none")
+        composeRule
+            .onNodeWithTag("stats-brush")
+            .performTouchInput {
+                down(Offset(50f * flowDensity, 60f * flowDensity))
+                moveTo(Offset(width - 30f * flowDensity, 60f * flowDensity))
+                up()
+            }
+        waitForTagText("stats-brush-sel", "0-2")
+        composeRule
+            .onNodeWithTag("stats-brush")
+            .performTouchInput { click(Offset(60f * flowDensity, 60f * flowDensity)) }
+        waitForTagText("stats-brush-sel", "none")
         composeRule
             .onNodeWithTag("stats-back")
             .performClick()
