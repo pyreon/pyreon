@@ -71,6 +71,9 @@ const CORPUS: { name: string; option: EChartsOption; expectClean: boolean }[] = 
     series: [{ type: 'sunburst', radius: ['20%', '90%'], data: [{ name: 'A', value: 10 }, { name: 'B', children: [{ name: 'b1', value: 4 }, { name: 'b2', value: 6 }] }] }] } },
   { name: 'treemap', expectClean: true, option: {
     series: [{ type: 'treemap', data: [{ name: 'A', value: 10 }, { name: 'B', children: [{ name: 'b1', value: 4 }, { name: 'b2', value: 6 }] }] }] } },
+  { name: 'boxplot with outlier scatter', expectClean: true, option: {
+    xAxis: { data: ['A', 'B'] }, yAxis: {},
+    series: [{ type: 'boxplot', data: [[1, 2, 3, 4, 5], [2, 3, 4, 5, 6]] }, { type: 'scatter', data: [[0, 9]] }] } },
   { name: 'rose pie (roseType unmapped)', expectClean: false, option: {
     series: [{ type: 'pie', roseType: 'area', data: [{ value: 1, name: 'a' }] }] } },
   { name: 'radar + dataZoom (unmapped keys)', expectClean: false, option: {
@@ -99,6 +102,8 @@ describe('ECharts option facade — conformance corpus', () => {
     }).length
     // 21 of 23 today. Raise this number as families land; never lower it.
     expect(clean).toBeGreaterThanOrEqual(21)
+    // 17 of 19 today. Raise this number as families land; never lower it.
+    expect(clean).toBeGreaterThanOrEqual(17)
   })
 })
 
