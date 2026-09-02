@@ -5,13 +5,12 @@
 // later, the family components) consume directly.
 
 import type { EChartsOption, OptionWarning } from './option'
-import { candlestickToSvg, funnelToSvg, gaugeToSvg, graphToSvg, heatmapToSvg, pieToSvg, polarToSvg, radarToSvg, riverToSvg, sankeyToSvg, sunburstToSvg, treeToSvg, treemapToSvg } from './family-svg'
+import { calendarToSvg, candlestickToSvg, funnelToSvg, gaugeToSvg, graphToSvg, heatmapToSvg, pieToSvg, polarToSvg, radarToSvg, riverToSvg, sankeyToSvg, sunburstToSvg, treeToSvg, treemapToSvg } from './family-svg'
 import type { TreeNode, TreemapOptions } from './treemap'
 import type { SunburstOptions } from './sunburst'
 import type { TreeOptions, TreeOrient } from './tree'
 import type { SankeyLink, SankeyNode, SankeyOptions } from './sankey'
 import type { GraphLink, GraphNode, GraphOptions } from './graph'
-import { calendarToSvg } from './calendar'
 import type { CalendarOptions } from './calendar'
 import { parallelToSvg } from './parallel'
 import type { ParallelAxis, ParallelOptions, ParallelRow } from './parallel'
@@ -574,7 +573,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       ...(cellSize !== null ? { cellSize } : {}),
       ...(firstDay !== null ? { firstDay } : {}),
       ...(stops.length >= 2 ? { stops } : {}),
-      ...(vmMin !== null && vmMax !== null ? { domain: [vmMin, vmMax] as [Double, Double] } : {}),
+      ...(vmMin !== null && vmMax !== null ? { domain: { min: vmMin, max: vmMax } } : {}),
     }
     return { plan: { kind: 'calendar', start, end, values, calendar, title }, warnings, supported }
   }

@@ -165,8 +165,11 @@ export type { FunnelOptions, FunnelStage } from './engine/funnel'
 export { FunnelChart } from './engine/FunnelChart'
 
 // Coordinates — calendar, parallel, polar, single axis, theme river, geo
-export { calendarDomain, calendarToSvg, formatIsoDate, hitCalendar, layoutCalendar, parseIsoDate, renderCalendar } from './engine/calendar'
-export type { CalendarCell, CalendarLayout, CalendarOptions, CalendarToSvgOptions } from './engine/calendar'
+export { calendarCellValues, calendarDomain, civilFromDays, daysFromCivil, formatIsoDays, hitCalendarIndex, layoutCalendar, parseIsoDays, renderCalendar, weekdayOfDays } from './engine/calendar'
+export type { CalendarCell, CalendarCellValues, CalendarDate, CalendarLabel, CalendarLayout, CalendarOptions, CalendarParsed, CalendarValue } from './engine/calendar'
+export { calendarValues, formatIsoDate, hitCalendar, parseIsoDate } from './engine/calendar-web'
+export { calendarToSvg } from './engine/family-svg'
+export type { CalendarToSvgOptions } from './engine/family-svg'
 export { CalendarChart } from './engine/CalendarChart'
 export type { CalendarChartProps } from './engine/CalendarChart'
 export { hitParallel, layoutParallel, lineRuns, parallelToSvg, renderParallel } from './engine/parallel'

@@ -32,6 +32,9 @@ import { layoutSankey, renderSankey } from './sankey'
 import type { SankeyLink, SankeyNode, SankeyOptions } from './sankey'
 import { layoutGraph, renderGraph } from './graph'
 import type { GraphLink, GraphNode, GraphOptions } from './graph'
+import { calendarDomain, layoutCalendar, renderCalendar } from './calendar'
+import type { CalendarOptions } from './calendar'
+import { calendarValues } from './calendar-web'
 import type { FunnelOptions, FunnelStage } from './funnel'
 import type { HeatGrid } from './heat'
 import { computeLayout } from './layout'
@@ -709,6 +712,42 @@ export function graphToSvg(options: GraphToSvgOptions): string {
   const description =
     options.description ??
     (options.title !== undefined ? `${options.title}: ${layout.nodes.length} nodes, ${layout.links.length} links.` : undefined)
+  return renderSvg(cmds, width, height, {
+    ...options.svg,
+    ...(options.title !== undefined ? { title: options.title } : {}),
+    ...(description !== undefined && description !== '' ? { description } : {}),
+  })
+}
+
+// ---- calendar (svg half; the geometry in calendar.ts is bundled into the native engine) ----
+
+export interface CalendarToSvgOptions {
+  start: string
+  end: string
+  values: Record<string, Double>
+  width?: Double
+  height?: Double
+  calendar?: CalendarOptions
+  measure?: MeasureText
+  title?: string
+  description?: string
+  svg?: Omit<SvgOptions, 'title' | 'description'>
+}
+
+/** Calendar → `<svg>` string, server-safe. */
+export function calendarToSvg(options: CalendarToSvgOptions): string {
+  const width = options.width ?? 720.0
+  const height = options.height ?? 140.0
+  const layout = layoutCalendar(options.start, options.end, { x: 4.0, y: 4.0, w: width - 8.0, h: height - 8.0 }, options.calendar)
+  const vals = calendarValues(options.values)
+  const cmds = renderCalendar(layout, vals, options.calendar)
+  void (options.measure ?? measureApprox())
+  let filled = 0
+  for (const c of layout.cells) if (options.values[c.date] !== undefined) filled++
+  const dom = calendarDomain(layout, vals)
+  const description =
+    options.description ??
+    (options.title !== undefined ? `${options.title}: ${layout.cells.length} days from ${options.start} to ${options.end}, ${filled} with values from ${dom.min} to ${dom.max}.` : undefined)
   return renderSvg(cmds, width, height, {
     ...options.svg,
     ...(options.title !== undefined ? { title: options.title } : {}),

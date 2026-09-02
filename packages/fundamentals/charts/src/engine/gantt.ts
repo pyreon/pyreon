@@ -2,7 +2,7 @@
 // fills, milestones (diamonds), dependency elbows and a today marker. Pure:
 // dates in, rects and commands out; the host and `ganttToSvg` both consume it.
 
-import { formatIsoDate, parseIsoDate } from './calendar'
+import { formatIsoDate, parseIsoDate } from './calendar-web'
 import { measureApprox, renderSvg } from './svg'
 import type { SvgOptions } from './svg'
 import type { Double, DrawCmd, MeasureText, Pt, Rect } from './types'
