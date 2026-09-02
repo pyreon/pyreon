@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { hitPolar, layoutPolar, polarToSvg, renderPolar } from './polar'
+import { layoutPolar, renderPolar } from './polar'
+import { hitPolar } from './polar-hit'
+import { polarToSvg } from './family-svg'
 import type { PolarSeries } from './polar'
 import { compileFamily, familyToSvg, isFamilyOption } from './option-family'
 
@@ -13,7 +15,7 @@ describe('polar layout (categories on the angle axis)', () => {
     const l = layoutPolar(axes, bars, box)
     expect(l.categoryOn).toBe('angle')
     expect(l.sectors).toHaveLength(4)
-    expect(l.domain).toEqual([0, 4])
+    expect(l.domain).toEqual({ min: 0, max: 4 })
     for (const s of l.sectors) expect(s.end - s.start).toBeCloseTo((TAU / 4) * 0.8, 9)
     expect(l.sectors[0]!.innerR).toBeCloseTo(l.innerR, 9)
     expect(l.sectors[3]!.outerR).toBeCloseTo(l.outerR, 9)
@@ -27,13 +29,13 @@ describe('polar layout (categories on the angle axis)', () => {
     expect(g0).toHaveLength(2)
     expect(g0[1]!.start).toBeCloseTo(g0[0]!.end, 9)
     const stacked = layoutPolar(axes, [{ ...bars[0]!, stack: 's' }, { name: 'y', kind: 'bar', values: [1, 1, 1, 1], stack: 's' }], box)
-    expect(stacked.domain).toEqual([0, 5])
+    expect(stacked.domain).toEqual({ min: 0, max: 5 })
     const s0 = stacked.sectors.filter((s) => s.index === 0)
     expect(s0[1]!.innerR).toBeCloseTo(s0[0]!.outerR, 9)
     expect(s0[1]!.start).toBeCloseTo(s0[0]!.start, 9)
   })
   it('a line series places points at slot centres by value; a fixed domain and start angle apply', () => {
-    const l = layoutPolar({ ...axes, valueDomain: [0, 8], startAngle: 0 }, [{ name: 'l', kind: 'line', values: [4, 8, 0, 4] }], box)
+    const l = layoutPolar({ ...axes, valueDomain: { min: 0, max: 8 }, startAngle: 0 }, [{ name: 'l', kind: 'line', values: [4, 8, 0, 4] }], box)
     expect(l.lines).toHaveLength(1)
     const p = l.lines[0]!.points
     const dist = (q: { x: number; y: number }) => Math.hypot(q.x - l.center.x, q.y - l.center.y)
@@ -46,12 +48,12 @@ describe('polar layout (categories on the angle axis)', () => {
 
 describe('polar layout (categories on the radius axis)', () => {
   it('one ring per category; arcs sweep by value; counter-clockwise flips the sweep', () => {
-    const l = layoutPolar({ categories: ['a', 'b'], categoryOn: 'radius', valueDomain: [0, 10] }, [{ name: 'x', kind: 'bar', values: [5, 10] }], box)
+    const l = layoutPolar({ categories: ['a', 'b'], categoryOn: 'radius', valueDomain: { min: 0, max: 10 } }, [{ name: 'x', kind: 'bar', values: [5, 10] }], box)
     expect(l.sectors).toHaveLength(2)
     expect(l.sectors[0]!.end - l.sectors[0]!.start).toBeCloseTo(TAU / 2, 9)
     expect(l.sectors[1]!.end - l.sectors[1]!.start).toBeCloseTo(TAU, 9)
     expect(l.sectors[1]!.innerR).toBeGreaterThan(l.sectors[0]!.outerR)
-    const ccw = layoutPolar({ categories: ['a'], categoryOn: 'radius', valueDomain: [0, 10], clockwise: false }, [{ name: 'x', kind: 'bar', values: [5] }], box)
+    const ccw = layoutPolar({ categories: ['a'], categoryOn: 'radius', valueDomain: { min: 0, max: 10 }, clockwise: false }, [{ name: 'x', kind: 'bar', values: [5] }], box)
     expect(ccw.sectors[0]!.end).toBeCloseTo(-Math.PI / 2, 9)
     expect(ccw.sectors[0]!.start).toBeCloseTo(-Math.PI / 2 - Math.PI, 9)
   })
@@ -115,7 +117,7 @@ describe('polar option mapping', () => {
     expect(f.plan.axes.categoryOn).toBe('angle')
     expect(f.plan.axes.clockwise).toBe(false)
     expect(f.plan.axes.startAngle).toBeCloseTo(-Math.PI / 2, 9)
-    expect(f.plan.axes.valueDomain).toEqual([0, 10])
+    expect(f.plan.axes.valueDomain).toEqual({ min: 0, max: 10 })
     expect(f.plan.series).toHaveLength(3)
     expect(f.plan.series[1]).toMatchObject({ kind: 'bar', stack: 's', color: '#123456' })
     expect(f.plan.series[2]!.kind).toBe('line')
@@ -125,7 +127,7 @@ describe('polar option mapping', () => {
     const radial = compileFamily({ radiusAxis: { type: 'category', data: ['x', 'y'] }, angleAxis: { max: 5 }, series: [{ type: 'bar', coordinateSystem: 'polar', data: [1, 2] }] })!
     if (radial.plan.kind !== 'polar') throw new Error('kind')
     expect(radial.plan.axes.categoryOn).toBe('radius')
-    expect(radial.plan.axes.valueDomain).toEqual([0, 5])
+    expect(radial.plan.axes.valueDomain).toEqual({ min: 0, max: 5 })
     const bad = compileFamily({ angleAxis: { type: 'category', data: ['a'] }, series: [{ type: 'scatter', coordinateSystem: 'polar', data: [[1, 1]] }] })!
     expect(bad.warnings.map((w) => w.code)).toContain('series-type-unsupported')
   })

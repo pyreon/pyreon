@@ -26,6 +26,8 @@ import { layoutTree, renderTree } from './tree'
 import type { TreeOptions } from './tree'
 import { layoutRiver, renderRiver } from './river'
 import type { RiverOptions, RiverSeries } from './river'
+import { layoutPolar, renderPolar } from './polar'
+import type { PolarAxes, PolarOptions, PolarSeries } from './polar'
 import type { FunnelOptions, FunnelStage } from './funnel'
 import type { HeatGrid } from './heat'
 import { computeLayout } from './layout'
@@ -604,6 +606,39 @@ export function riverToSvg(options: RiverToSvgOptions): string {
   const description =
     options.description ??
     (options.title !== undefined ? `${options.title}: ${options.series.length} streams over ${layout.xs.length} points (${options.series.map((s) => s.name).join(', ')}).` : undefined)
+  return renderSvg(cmds, width, height, {
+    ...options.svg,
+    ...(options.title !== undefined ? { title: options.title } : {}),
+    ...(description !== undefined && description !== '' ? { description } : {}),
+  })
+}
+
+// ---- polar (svg half; the geometry in polar.ts is bundled into the native engine) ----
+
+export interface PolarToSvgOptions {
+  axes: PolarAxes
+  series: PolarSeries[]
+  width?: Double
+  height?: Double
+  polar?: PolarOptions
+  measure?: MeasureText
+  title?: string
+  description?: string
+  svg?: Omit<SvgOptions, 'title' | 'description'>
+}
+
+/** Polar chart → `<svg>` string, server-safe. */
+export function polarToSvg(options: PolarToSvgOptions): string {
+  const width = options.width ?? 480.0
+  const height = options.height ?? 480.0
+  const layout = layoutPolar(options.axes, options.series, { x: 0.0, y: 0.0, w: width, h: height }, options.polar)
+  const cmds = renderPolar(layout, options.polar)
+  void (options.measure ?? measureApprox())
+  const description =
+    options.description ??
+    (options.title !== undefined
+      ? `${options.title}: ${options.series.length} series over ${options.axes.categories.length} categories, values ${layout.domain.min} to ${layout.domain.max}.`
+      : undefined)
   return renderSvg(cmds, width, height, {
     ...options.svg,
     ...(options.title !== undefined ? { title: options.title } : {}),
