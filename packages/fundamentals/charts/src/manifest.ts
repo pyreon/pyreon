@@ -389,13 +389,13 @@ const tasks: GanttTask[] = [
       signature: '() => ChartLink',
       summary:
         "Linked charts (ECharts `connect`): a shared `{ zoom, hover }` pair of signals that every `<PlotChart link>` in a group uses IN PLACE of its private dataZoom window and crosshair datum. No bus, no registry, no unsubscribe — a chart that unmounts simply stops reading them, so there is nothing module-level to leak. Every gesture that writes the window (wheel, pan, brush, navigator drag, zoom presets, double-click reset) and the crosshair datum (hover, leave) therefore propagates to every linked chart; each chart keeps its own series, legend and tooltip. `sonifyValues` accepts the same link to move the crosshair with the sound.",
-      example: `import { PlotChart, createChartLink, line, bar } from '@pyreon/charts/plot'
+      example: `import { PlotChart, createChartLink, line, bars } from '@pyreon/charts/plot'
 
 interface Bar { t: string; close: number; volume: number }
 declare const price: Bar[]
 const link = createChartLink()
 <PlotChart data={price} x={(d) => d.t} marks={[line((d: Bar) => d.close)]} dataZoom crosshair navigator link={link} />
-<PlotChart data={price} x={(d) => d.t} marks={[bar((d: Bar) => d.volume)]} dataZoom crosshair link={link} />`,
+<PlotChart data={price} x={(d) => d.t} marks={[bars((d: Bar) => d.volume)]} dataZoom crosshair link={link} />`,
       mistakes: [
         'Creating the link inside the component body of a chart that re-mounts — every mount then gets a fresh link and nothing stays linked; create it where the group lives',
         'Linking charts with DIFFERENT category counts — the shared window is a fraction and the hover a datum index, so they only line up when the charts share an x range',
