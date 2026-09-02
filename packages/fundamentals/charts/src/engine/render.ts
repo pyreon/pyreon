@@ -50,6 +50,34 @@ export interface Annotation {
   color?: string | undefined
 }
 
+/**
+ * A datum-anchored point marker — ECharts' markPoint, engine-shaped.
+ *
+ * Exactly one of `at` ('max' | 'min') or `atIndex` (a concrete datum index)
+ * should be set; a marker with neither is skipped rather than guessed at —
+ * the Annotation precedent. Split into two fields rather than one
+ * `'max' | 'min' | number` union because a mixed string/number union falls
+ * outside the native subset the engine compiles in, and the split costs the
+ * caller nothing.
+ *
+ * Stacked/grouped series are skipped (their geometry is a JOINT layout — a
+ * single series' values do not place a point in it), and the marker scales
+ * against the series' OWN axis, so a right-axis series marks correctly.
+ */
+export interface PointMarker {
+  /** Which series the marker reads; default 0. */
+  seriesIndex?: Double | undefined
+  /** Anchor at the series' maximum or minimum datum. */
+  at?: 'max' | 'min' | undefined
+  /** Anchor at a concrete datum index (clamped into range). */
+  atIndex?: Double | undefined
+  label?: string | undefined
+  /** Marker fill; defaults to the series colour. */
+  color?: string | undefined
+  /** Marker radius; default 4. */
+  radius?: Double | undefined
+}
+
 export interface ChartTheme {
   axis: string
   grid: string
@@ -97,6 +125,8 @@ export interface ChartSpec {
   horizontal?: boolean | undefined
   /** Reference rules and bands, drawn between the grid and the series. */
   annotations?: Annotation[] | undefined
+  /** Datum-anchored point markers, drawn OVER the series. */
+  markers?: PointMarker[] | undefined
   /**
    * Entrance progress, 0..1; absent means 1 (fully drawn).
    *
@@ -555,6 +585,69 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
           fill: s.color,
         })
       }
+    }
+  }
+
+  // Point markers draw OVER the series (painter's order — a marker buried
+  // under an area fill marks nothing) and UNDER the axis labels.
+  const markers = spec.markers ?? []
+  for (const m of markers) {
+    if (spec.horizontal === true) continue
+    const rawSeriesIndex = m.seriesIndex ?? 0.0
+    const s = spec.series[Math.floor(rawSeriesIndex)]
+    if (s === undefined) continue
+    if (s.kind === 'stacked' || s.kind === 'grouped') continue
+    const n = s.values.length
+    if (n === 0) continue
+    let idx = -1
+    if (m.at === 'max') {
+      idx = 0
+      for (let i = 1; i < n; i++) if (s.values[i]! > s.values[idx]!) idx = i
+    } else if (m.at === 'min') {
+      idx = 0
+      for (let i = 1; i < n; i++) if (s.values[i]! < s.values[idx]!) idx = i
+    } else {
+      const rawAt = m.atIndex ?? -1.0
+      if (m.atIndex !== undefined) {
+        // Floor AND clamp in one int-typed scan. The direct forms both fall
+        // outside the native subset's Int/Double rules: Math.floor assigns a
+        // Double into the Int the argmax branches established, and a
+        // rawAt-greater-than-n-minus-one clamp mixes an Int length into
+        // Double arithmetic. The scan stops at the last j at-or-below rawAt
+        // (the floor), never exceeds n-1 (the high clamp), and the fallback
+        // is the low clamp. O(n) over a series the render already walks.
+        // jf mirrors j as a Double: Swift rejects an Int-loop-var compared
+        // against a Double, and Double-vs-Double is clean on both targets.
+        let jf = 0.0
+        for (let j = 0; j < n; j++) {
+          if (jf <= rawAt) idx = j
+          jf = jf + 1.0
+        }
+        if (idx < 0) idx = 0
+      }
+    }
+    if (idx < 0) continue
+    const mDomain = seriesOnRightAxis(s, spec) ? y2Domain : yDomain
+    const xsM = spec.xValues ?? []
+    const pts =
+      xsM.length > 0
+        ? layoutSeriesPointsAt(s.values, xsM, plot, mDomain, l.xDomainUsed)
+        : layoutSeriesPoints(s.values, plot, mDomain)
+    const p = pts[idx]
+    if (p === undefined) continue
+    const mColor = m.color ?? s.color
+    out.push({ kind: 'circle', center: p, radius: (m.radius ?? 4.0) * progress, fill: mColor })
+    const mLabel = m.label ?? ''
+    if (m.label !== undefined && progress >= 1.0) {
+      out.push({
+        kind: 'text',
+        text: mLabel,
+        at: { x: p.x, y: p.y - (m.radius ?? 4.0) - 4.0 },
+        fill: mColor,
+        size: t.fontSize,
+        align: 'middle',
+        baseline: 'bottom',
+      })
     }
   }
 
