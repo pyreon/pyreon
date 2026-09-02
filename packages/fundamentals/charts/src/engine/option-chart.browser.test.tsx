@@ -40,8 +40,8 @@ describe('OptionChart (real browser)', () => {
     expect(inked(c)).not.toBe(before)
   })
 
-  it('a family option renders through the facade as an inline svg', async () => {
-    const { container } = mountInBrowser(h(OptionChart, { option: { series: [{ type: 'pie', data: [{ name: 'x', value: 1 }, { name: 'y', value: 3 }] }] }, width: 300, height: 200 }))
+  it('a host-less family option (single axis) renders through the facade as an inline svg', async () => {
+    const { container } = mountInBrowser(h(OptionChart, { option: { singleAxis: { type: 'value' }, series: [{ type: 'scatter', coordinateSystem: 'singleAxis', data: [[1, 2], [3, 4]] }] }, width: 300, height: 200 }))
     await flush()
     expect(container.querySelector('svg')).not.toBeNull()
     expect(container.querySelector('canvas')!.style.display).toBe('none')
