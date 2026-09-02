@@ -1506,7 +1506,9 @@ public struct GeometryReader<Content: View>: View {
   public typealias Body = Never
 }
 public struct PyreonChartCanvas: View {
-  public init(cmds: [PyreonDrawCmd], fontFamily: String? = nil) {}
-  public typealias Body = Never
+  public var cmds: [PyreonDrawCmd]
+  public var fontFamily: String?
+  public init(cmds: [PyreonDrawCmd], fontFamily: String? = nil) { self.cmds = cmds; self.fontFamily = fontFamily }
+  public var body: some View { EmptyView() }
 }
 `
