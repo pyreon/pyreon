@@ -7,7 +7,7 @@
 
 import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
-import { effect, signal } from '@pyreon/reactivity'
+import { batch, effect, signal } from '@pyreon/reactivity'
 import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
 import { renderLegend } from './legend'
 import type { LegendPager } from './legend'
@@ -596,12 +596,15 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     let next = absolute !== undefined ? absolute : cur < 0 ? (delta > 0 ? 0 : n - 1) : cur + delta
     if (next < 0) next = 0
     if (next > n - 1) next = n - 1
-    focusIdx.set(next)
-    hoverIdx.set(next)
     const off = viewRange(all).from
     const t = chartTable(a11yInput())
     const row = t.rows[next + off]
-    announce.set(row === undefined ? '' : row.join(', '))
+    // One notify cycle for the three writes a keystroke makes (focus, hover, live region).
+    batch(() => {
+      focusIdx.set(next)
+      hoverIdx.set(next)
+      announce.set(row === undefined ? '' : row.join(', '))
+    })
   }
 
   const handleKeyDown = (ev: KeyboardEvent): void => {
@@ -615,9 +618,11 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       const cb = props.onSelect
       if (idx >= 0 && cb !== undefined) cb(idx + viewRange(readData()).from)
     } else if (key === 'Escape') {
-      focusIdx.set(-1)
-      hoverIdx.set(-1)
-      announce.set('')
+      batch(() => {
+        focusIdx.set(-1)
+        hoverIdx.set(-1)
+        announce.set('')
+      })
     } else return
     ev.preventDefault()
   }
@@ -1070,7 +1075,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       return z === null ? 'all' : z.start.toFixed(3) + '-' + z.end.toFixed(3)
     },
     'data-pyreon-presets': () => presetBoxesJson(),
-    ...(keyboardOn ? { tabIndex: 0, onKeyDown: handleKeyDown, onBlur: () => { focusIdx.set(-1); announce.set('') } } : {}),
+    ...(keyboardOn ? { tabIndex: 0, onKeyDown: handleKeyDown, onBlur: () => batch(() => { focusIdx.set(-1); announce.set('') }) } : {}),
     ...(props.dataZoom === true ? { onWheel: handleWheel, onDblClick: () => zoomWin.set(null) } : {}),
     ...(props.dataZoom === true || props.brush === true
       ? { onMouseDown: handleDown, onMouseUp: endDrag }
