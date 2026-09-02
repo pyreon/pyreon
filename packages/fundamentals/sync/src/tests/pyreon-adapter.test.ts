@@ -289,3 +289,22 @@ describe('createActorId — collision resistance (regression)', () => {
     expect(createActorId()).toBe(`a-${'ab'.repeat(16)}`)
   })
 })
+
+describe('applyOps origin default (cross-platform shape)', () => {
+  it('defaults to REMOTE_ORIGIN when omitted — the docblock promised it and the signature did not', () => {
+    // The docblock has always said "default REMOTE_ORIGIN"; the parameter was
+    // required, so the documented call shape did not compile. It matters beyond
+    // tidiness: the NATIVE runtimes take `applyOps(ops)` with one argument, so
+    // shared multiplatform source could not write a call that was valid on both.
+    const a = new PyreonCrdtDoc('a1')
+    const b = new PyreonCrdtDoc('b2')
+    a.getMap('m').set('k', 'from-a')
+
+    const seen: unknown[] = []
+    b.getMap('m').observe((_keys, origin) => seen.push(origin))
+    b.applyOps(a.encodeState())
+
+    expect(b.getMap('m').get('k')).toBe('from-a')
+    expect(seen).toEqual([REMOTE_ORIGIN])
+  })
+})
