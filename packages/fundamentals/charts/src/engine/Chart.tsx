@@ -907,7 +907,9 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     if (tip !== null) tip.style.display = 'none'
   }
 
-  const handleClick = (ev: MouseEvent): void => {
+  // The whole click is one batch: a preset, legend-page or legend-toggle click
+  // writes two or three signals, and the canvas must repaint once, not per write.
+  const handleClick = (ev: MouseEvent): void => batch(() => {
     const el = canvas
     if (el === null) return
     // A drag is not a click: panning or brushing must not fire onSelect or
@@ -1003,7 +1005,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     }
     const stackedIdx = stackedHitAt(spec, measure, px, py)
     cb(stackedIdx < 0 ? stackedIdx : stackedIdx + off)
-  }
+  })
 
   const a11yInput = (): {
     title?: string | undefined
