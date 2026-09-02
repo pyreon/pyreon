@@ -25,6 +25,7 @@ import { plotHitBars, plotHitIndex } from './plot-hit'
 import type { Mark } from './marks'
 import { chartTable, describeChart } from './a11y'
 import { brushRange } from './brush'
+import { hideHiddenSeries, legendHitIndex, legendToggle, pagerHit } from './legend-toggle'
 import { presetHit, presetWindow, renderPresets } from './presets'
 import { clampWindow, isFullWindow, panWindow, sliceRange, zoomWindow } from './zoom'
 import type { ZoomWindow } from './zoom'
@@ -409,17 +410,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
    * grouped series are zeroed instead of emptied: their layouts walk every
    * series at every index together, and an empty sibling would misalign them.
    */
-  const hideHidden = (series: Series[]): Series[] => {
-    const hidden = hiddenSeries()
-    if (hidden.length === 0) return series
-    return series.map((s, i) => {
-      if (!hidden.includes(i)) return s
-      if (s.kind === 'stacked' || s.kind === 'grouped') {
-        return { ...s, values: s.values.map(() => 0.0), radii: undefined, showValues: false }
-      }
-      return { ...s, values: [], radii: undefined, showValues: false }
-    })
-  }
+  const hideHidden = (series: Series[]): Series[] => hideHiddenSeries(series, hiddenSeries())
 
   const readData = (): T[] => {
     const d = props.data
@@ -1015,13 +1006,9 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       const lx = ev.clientX - r0.left
       const ly = ev.clientY - r0.top
       const p = legendPager
-      const inside = (b: Rect): boolean => lx >= b.x && lx <= b.x + b.w && ly >= b.y && ly <= b.y + b.h
-      if (p.hasPrev && inside(p.prev)) {
-        legendPage.set(p.page - 1)
-        return
-      }
-      if (p.hasNext && inside(p.next)) {
-        legendPage.set(p.page + 1)
+      const d = pagerHit(p, lx, ly)
+      if (d !== 0.0) {
+        legendPage.set(p.page + d)
         return
       }
     }
@@ -1029,13 +1016,10 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       const r0 = el.getBoundingClientRect()
       const lx = ev.clientX - r0.left
       const ly = ev.clientY - r0.top
-      for (let i = 0; i < legendBoxes.length; i++) {
-        const b = legendBoxes[i]!
-        if (lx >= b.x && lx <= b.x + b.w && ly >= b.y && ly <= b.y + b.h) {
-          const hidden = hiddenSeries()
-          hiddenSeries.set(hidden.includes(i) ? hidden.filter((x) => x !== i) : [...hidden, i])
-          return
-        }
+      const i = legendHitIndex(legendBoxes, lx, ly)
+      if (i >= 0) {
+        hiddenSeries.set(legendToggle(hiddenSeries(), i))
+        return
       }
     }
     const cb = props.onSelect

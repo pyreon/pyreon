@@ -496,7 +496,7 @@ describe('chart hosts — legend + title chrome (Plot / Pie / Radar)', () => {
     const r = transform(CHROME, { target: 'swift' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('let pyreonTitle: TitleLayout = renderTitle("Revenue", "by month", PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 220.0), TitleOptions(fontSize: 15.0, color: "#5a6b7a", align: "start"))')
-    expect(r.code).toContain('let pyreonLegend: LegendLayout = renderLegend(pyreonSeries.map { LegendEntry(label: $0.label, color: $0.color) }, PyreonChartRect(x: 0.0, y: pyreonTitle.height, w: Double(pyreonGeo.size.width), h: 220.0 - pyreonTitle.height), LegendOptions(fontSize: 11.0, labelColor: "#5a6b7a", swatch: 10.0, gap: 12.0, orientation: "horizontal", maxRows: 2.0), pyreonChartMeasure)')
+    expect(r.code).toContain('let pyreonLegend: LegendLayout = renderLegend(pyreonSeriesAll.enumerated().map { (pyreonI, pyreonS) in LegendEntry(label: pyreonS.label, color: pyreonS.color, muted: pyreonHidden.contains(pyreonI)) }, PyreonChartRect(x: 0.0, y: pyreonTitle.height, w: Double(pyreonGeo.size.width), h: 220.0 - pyreonTitle.height), LegendOptions(fontSize: 11.0, labelColor: "#5a6b7a", swatch: 10.0, gap: 12.0, orientation: "horizontal", maxRows: 2.0, page: pyreonLegendPage), pyreonChartMeasure)')
     expect(r.code).toContain('let pyreonTop: Double = pyreonTitle.height + pyreonLegend.height')
     expect(r.code).toContain('ChartSpec(width: Double(pyreonGeo.size.width), height: 220.0 - pyreonTop, series: pyreonSeries')
     expect(r.code).toContain('PyreonChartCanvas(cmds: pyreonTitle.cmds + pyreonLegend.cmds + pyreonShiftCmds(renderChart(pyreonSpec, pyreonChartMeasure), pyreonTop))')
@@ -515,7 +515,7 @@ describe('chart hosts — legend + title chrome (Plot / Pie / Radar)', () => {
     const r = transform(CHROME, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('val pyreonTitle: TitleLayout = renderTitle("Revenue", "by month", PyreonChartRect(0.0, 0.0, pyreonW, 220.0), TitleOptions(fontSize = 15.0, color = "#5a6b7a", align = "start"))')
-    expect(r.code).toContain('val pyreonLegend: LegendLayout = renderLegend(pyreonSeries.map { LegendEntry(label = it.label, color = it.color) }, PyreonChartRect(0.0, pyreonTitle.height, pyreonW, 220.0 - pyreonTitle.height), LegendOptions(fontSize = 11.0, labelColor = "#5a6b7a", swatch = 10.0, gap = 12.0, orientation = "horizontal", maxRows = 2.0), ::pyreonChartMeasure)')
+    expect(r.code).toContain('val pyreonLegend: LegendLayout = renderLegend(pyreonSeriesAll.mapIndexed { pyreonI, pyreonS -> LegendEntry(label = pyreonS.label, color = pyreonS.color, muted = pyreonHidden.contains(pyreonI)) }, PyreonChartRect(0.0, pyreonTitle.height, pyreonW, 220.0 - pyreonTitle.height), LegendOptions(fontSize = 11.0, labelColor = "#5a6b7a", swatch = 10.0, gap = 12.0, orientation = "horizontal", maxRows = 2.0, page = pyreonLegendPage), ::pyreonChartMeasure)')
     expect(r.code).toContain('PyreonChartCanvas(cmds = pyreonTitle.cmds + pyreonLegend.cmds + pyreonShiftCmds(renderChart(pyreonSpec, ::pyreonChartMeasure), pyreonTop)')
     expect(r.code).toContain('plotHitBars(pyreonSpec, ::pyreonChartMeasure, (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble() - pyreonTop)')
     expect(r.code).toContain('val pyreonItems: List<Slice> = TEAMS.mapIndexed { pyreonI, pyreonD -> Slice(')
@@ -769,6 +769,107 @@ describe('chart hosts — <PlotChart zoomPresets> as the engine-laid-out preset 
   })
   it.skipIf(!isKotlincAvailable())('kotlinc (stub bundle + real engine) accepts it', () => {
     const r = validateKotlin(transform(PRESETS_ZOOMED, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+})
+
+
+const LEGEND = `import { signal } from '@pyreon/reactivity'
+import { Stack, Text } from '@pyreon/primitives'
+import { PlotChart, bars, line } from '@pyreon/charts/plot'
+interface Day { label: string; hits: number; avg: number }
+const DAYS: Day[] = [{ label: 'Mon', hits: 3, avg: 2 }, { label: 'Tue', hits: 5, avg: 3 }, { label: 'Wed', hits: 2, avg: 3 }, { label: 'Thu', hits: 7, avg: 4 }]
+export function Traffic() {
+  const picked = signal(-1)
+  return (
+    <Stack>
+      <Text>{picked()}</Text>
+      <PlotChart data={DAYS} x={(d) => d.label} marks={[bars((d) => d.hits, { label: 'Hits' }), line((d) => d.avg, { label: 'Avg' })]} showLegend={true} legendMaxRows={1} height={200} onSelect={(i: number) => picked.set(i)} />
+    </Stack>
+  )
+}`
+
+const LEGEND_NO_TOGGLE = LEGEND.replace('showLegend={true}', 'showLegend={true} legendToggle={false}')
+const LEGEND_NO_PAGING = LEGEND.replace(' legendMaxRows={1}', '')
+const LEGEND_WITH_PRESETS = LEGEND.replace('showLegend={true}', "showLegend={true} zoomPresets={[{ label: 'last 2', count: 2 }, { label: 'all', count: 0 }]}")
+
+describe('chart hosts — <PlotChart showLegend> legend tap toggle + paging', () => {
+  it('Swift: the hidden set and the page are host state; the plot draws what hideHiddenSeries leaves; entries render muted; the tap checks the pager, then the entries, then selects', () => {
+    const r = transform(LEGEND, { target: 'swift' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('@State private var pyreonHidden: [Int] = []')
+    expect(r.code).toContain('@State private var pyreonLegendPage: Double = 0.0')
+    expect(r.code.indexOf('@State private var pyreonHidden')).toBeLessThan(r.code.indexOf('var body: some View'))
+    expect(r.code).toContain('let pyreonSeriesAll: [Series] = [Series(kind: "bars", values: pyreonValues0, ')
+    expect(r.code).toContain('let pyreonSeries: [Series] = hideHiddenSeries(pyreonSeriesAll, pyreonHidden)')
+    expect(r.code).toContain(
+      'renderLegend(pyreonSeriesAll.enumerated().map { (pyreonI, pyreonS) in LegendEntry(label: pyreonS.label, color: pyreonS.color, muted: pyreonHidden.contains(pyreonI)) }, PyreonChartRect(x: 0.0, y: pyreonTitle.height, w: Double(pyreonGeo.size.width), h: 200.0 - pyreonTitle.height), LegendOptions(fontSize: 11.0, labelColor: "#5a6b7a", swatch: 10.0, gap: 12.0, orientation: "horizontal", maxRows: 1.0, page: pyreonLegendPage), pyreonChartMeasure)',
+    )
+    expect(r.code).toContain(
+      'let pyreonPageDelta: Double = pyreonLegend.pager.map { pagerHit($0, Double(pyreonTap.location.x), Double(pyreonTap.location.y)) } ?? 0.0; let pyreonLegendHit = legendHitIndex(pyreonLegend.boxes, Double(pyreonTap.location.x), Double(pyreonTap.location.y)); if pyreonPageDelta != 0.0 { pyreonLegendPage = (pyreonLegend.pager?.page ?? 0.0) + pyreonPageDelta } else if pyreonLegendHit >= 0 { pyreonHidden = legendToggle(pyreonHidden, pyreonLegendHit) } else {',
+    )
+    // The plot is still hit-tested in PLOT space (under the chrome).
+    expect(r.code).toContain('plotHitBars(pyreonSpec, pyreonChartMeasure, Double(pyreonTap.location.x), Double(pyreonTap.location.y) - pyreonTop)')
+  })
+  it('Kotlin: the same shape over remembered state', () => {
+    const r = transform(LEGEND, { target: 'kotlin' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('var pyreonHidden by remember { mutableStateOf(listOf<Int>()) }')
+    expect(r.code).toContain('var pyreonLegendPage by remember { mutableStateOf(0.0) }')
+    expect(r.code).toContain('val pyreonSeriesAll: List<Series> = listOf(Series(kind = "bars", values = pyreonValues0, ')
+    expect(r.code).toContain('val pyreonSeries: List<Series> = hideHiddenSeries(pyreonSeriesAll, pyreonHidden)')
+    expect(r.code).toContain('renderLegend(pyreonSeriesAll.mapIndexed { pyreonI, pyreonS -> LegendEntry(label = pyreonS.label, color = pyreonS.color, muted = pyreonHidden.contains(pyreonI)) }, ')
+    expect(r.code).toContain('orientation = "horizontal", maxRows = 1.0, page = pyreonLegendPage), ::pyreonChartMeasure)')
+    expect(r.code).toContain(
+      'val pyreonPageDelta = pyreonLegend.pager?.let { pagerHit(it, (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble()) } ?: 0.0; val pyreonLegendHit = legendHitIndex(pyreonLegend.boxes, (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble()); if (pyreonPageDelta != 0.0) { pyreonLegendPage = (pyreonLegend.pager?.page ?: 0.0) + pyreonPageDelta } else if (pyreonLegendHit >= 0) { pyreonHidden = legendToggle(pyreonHidden, pyreonLegendHit) } else {',
+    )
+  })
+  it('legendToggle={false} keeps the legend inert: no hidden set, no toggle branch — paging stays', () => {
+    const s = transform(LEGEND_NO_TOGGLE, { target: 'swift' })
+    expect(s.warnings).toEqual([])
+    expect(s.code).not.toContain('pyreonHidden')
+    expect(s.code).toContain('let pyreonSeries: [Series] = [Series(kind: "bars"')
+    expect(s.code).toContain('pyreonLegendPage')
+    const k = transform(LEGEND_NO_TOGGLE, { target: 'kotlin' })
+    expect(k.code).not.toContain('pyreonHidden')
+    expect(k.code).toContain('pyreonLegendPage')
+  })
+  it('without legendMaxRows there is no page state and no pager branch — the toggle stays', () => {
+    const s = transform(LEGEND_NO_PAGING, { target: 'swift' })
+    expect(s.warnings).toEqual([])
+    expect(s.code).not.toContain('pyreonLegendPage')
+    expect(s.code).not.toContain('pagerHit')
+    expect(s.code).toContain('let pyreonLegendHit = legendHitIndex(pyreonLegend.boxes, Double(pyreonTap.location.x), Double(pyreonTap.location.y)); if pyreonLegendHit >= 0 { pyreonHidden = legendToggle(pyreonHidden, pyreonLegendHit) } else {')
+    const k = transform(LEGEND_NO_PAGING, { target: 'kotlin' })
+    expect(k.code).not.toContain('pyreonLegendPage')
+    expect(k.code).toContain('if (pyreonLegendHit >= 0) { pyreonHidden = legendToggle(pyreonHidden, pyreonLegendHit) } else {')
+  })
+  it('with presets too, the tap order is pager → legend entry → preset → selection', () => {
+    const s = transform(LEGEND_WITH_PRESETS, { target: 'swift' })
+    expect(s.warnings).toEqual([])
+    expect(s.code).toContain('} else if pyreonLegendHit >= 0 { pyreonHidden = legendToggle(pyreonHidden, pyreonLegendHit) } else if pyreonPreset >= 0 { pyreonZoom = presetWindow(pyreonPresets[pyreonPreset].count, DAYS.count) } else {')
+    const k = transform(LEGEND_WITH_PRESETS, { target: 'kotlin' })
+    expect(k.warnings).toEqual([])
+    expect(k.code).toContain('} else if (pyreonLegendHit >= 0) { pyreonHidden = legendToggle(pyreonHidden, pyreonLegendHit) } else if (pyreonPreset >= 0) { pyreonZoom = presetWindow(pyreonPresets[pyreonPreset].count, DAYS.size) } else {')
+  })
+  it('a plot without a legend gets none of it', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(PRESETS, { target })
+      expect(r.code).not.toContain('pyreonHidden')
+      expect(r.code).not.toContain('pyreonLegendPage')
+      expect(r.code).not.toContain('legendHitIndex')
+    }
+  })
+  it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine) accepts the legend-interaction emit', () => {
+    const r = validateSwiftWithStubs(transform(LEGEND_WITH_PRESETS, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isSwiftUIAvailable())('swiftc against real SwiftUI + canvas + engine accepts it', () => {
+    const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(ENGINE_SWIFT) + '\n' + transform(LEGEND_WITH_PRESETS, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isKotlincAvailable())('kotlinc (stub bundle + real engine) accepts it', () => {
+    const r = validateKotlin(transform(LEGEND_WITH_PRESETS, { target: 'kotlin' }).code)
     expect(r.ok, r.error ?? '').toBe(true)
   })
 })

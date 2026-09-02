@@ -9441,12 +9441,15 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const presetsRaw = kotlinZoomPresets(e, tag)
   const presets = presetsRaw === 'unsupported' ? undefined : presetsRaw
   const windowed = zoomed || presets !== undefined
+  const legend = kotlinLegendInteraction(e)
   const lets: string[] = []
   if (windowed) {
     lets.push('var pyreonZoom by remember { mutableStateOf(ZoomWindow(start = 0.0, end = 1.0)) }')
     lets.push(`val pyreonRange: SliceRange = sliceRange(pyreonZoom, ${data}.size)`)
     lets.push(`val pyreonRows = ${data}.subList(pyreonRange.from, pyreonRange.to)`)
   }
+  if (legend.toggling) lets.push('var pyreonHidden by remember { mutableStateOf(listOf<Int>()) }')
+  if (legend.paging) lets.push('var pyreonLegendPage by remember { mutableStateOf(0.0) }')
   const rows = windowed ? 'pyreonRows' : data
   const series: string[] = []
   for (let k = 0; k < marksV.elements.length; k++) {
@@ -9486,7 +9489,12 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
       series.push(`Series(kind = ${JSON.stringify(kind)}, values = pyreonValues${k}, ${opts.join(', ')})`)
     }
   }
-  lets.push(`val pyreonSeries: List<Series> = listOf(${series.join(', ')})`)
+  if (legend.toggling) {
+    lets.push(`val pyreonSeriesAll: List<Series> = listOf(${series.join(', ')})`)
+    lets.push('val pyreonSeries: List<Series> = hideHiddenSeries(pyreonSeriesAll, pyreonHidden)')
+  } else {
+    lets.push(`val pyreonSeries: List<Series> = listOf(${series.join(', ')})`)
+  }
   const xAcc = chartAttrExprKotlin(e, 'x')
   if (xAcc !== undefined) {
     const body = kotlinAccessorExpr(xAcc, tag, 'x', indent)
@@ -9506,7 +9514,10 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const H = kotlinChartDouble(e, 'height', 200, indent)
   const hasWidth = chartAttrExprKotlin(e, 'width') !== undefined
   const W = hasWidth ? kotlinChartDouble(e, 'width', 300, indent) : 'pyreonW'
-  const chrome = kotlinChartChrome(e, 'pyreonSeries.map { LegendEntry(label = it.label, color = it.color) }', W, H, indent, true)
+  const entries = legend.toggling
+    ? 'pyreonSeriesAll.mapIndexed { pyreonI, pyreonS -> LegendEntry(label = pyreonS.label, color = pyreonS.color, muted = pyreonHidden.contains(pyreonI)) }'
+    : 'pyreonSeries.map { LegendEntry(label = it.label, color = it.color) }'
+  const chrome = kotlinChartChrome(e, entries, W, H, indent, true, legend.paging ? 'pyreonLegendPage' : undefined)
   lets.push(...chrome.lets)
   const theme = kotlinChartTheme(e, tag)
   if (presets !== undefined) {
@@ -9554,12 +9565,23 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const tapX = '(pyreonTap.x / pyreonDensity).toDouble()'
   const tapYExpr = '(pyreonTap.y / pyreonDensity).toDouble()'
   let tap = ''
-  if (onSel?.kind === 'event' || presets !== undefined) {
+  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging) {
     const select = onSel?.kind === 'event' ? kotlinChartSelectBody(onSel.handler, hit(tapX, tapYExpr), indent) : ''
-    let body = select
-    if (presets !== undefined) {
-      body = `val pyreonPreset = presetHit(pyreonPresetStrip.boxes, ${tapX}, ${tapYExpr}); if (pyreonPreset >= 0) { pyreonZoom = presetWindow(pyreonPresets[pyreonPreset].count, ${data}.size) }${select === '' ? '' : ` else { ${select} }`}`
+    const decls: string[] = []
+    const branches: string[] = []
+    if (legend.paging) {
+      decls.push(`val pyreonPageDelta = pyreonLegend.pager?.let { pagerHit(it, ${tapX}, ${tapYExpr}) } ?: 0.0`)
+      branches.push('if (pyreonPageDelta != 0.0) { pyreonLegendPage = (pyreonLegend.pager?.page ?: 0.0) + pyreonPageDelta }')
     }
+    if (legend.toggling) {
+      decls.push(`val pyreonLegendHit = legendHitIndex(pyreonLegend.boxes, ${tapX}, ${tapYExpr})`)
+      branches.push('if (pyreonLegendHit >= 0) { pyreonHidden = legendToggle(pyreonHidden, pyreonLegendHit) }')
+    }
+    if (presets !== undefined) {
+      decls.push(`val pyreonPreset = presetHit(pyreonPresetStrip.boxes, ${tapX}, ${tapYExpr})`)
+      branches.push(`if (pyreonPreset >= 0) { pyreonZoom = presetWindow(pyreonPresets[pyreonPreset].count, ${data}.size) }`)
+    }
+    const body = branches.length === 0 ? select : `${decls.join('; ')}; ${branches.join(' else ')}${select === '' ? '' : ` else { ${select} }`}`
     tap = `.pointerInput(Unit) { detectTapGestures { pyreonTap -> ${body} } }`
   }
   if (zoomed) {
@@ -9597,7 +9619,7 @@ interface KotlinChartChrome {
   height: (H: string) => string
 }
 
-function kotlinChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries: string, W: string, H: string, indent: number, withTitle: boolean): KotlinChartChrome {
+function kotlinChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries: string, W: string, H: string, indent: number, withTitle: boolean, page?: string): KotlinChartChrome {
   const titleRaw = readStaticAttrKotlin(e, 'title')
   const showTitle = withTitle && readStaticAttrKotlin(e, 'showTitle') === true && typeof titleRaw === 'string'
   const showLegend = readStaticAttrKotlin(e, 'showLegend') === true
@@ -9613,7 +9635,8 @@ function kotlinChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries:
   if (showLegend) {
     const maxRowsRaw = readStaticAttrKotlin(e, 'legendMaxRows')
     const maxRows = typeof maxRowsRaw === 'number' ? `, maxRows = ${chartDouble(maxRowsRaw)}` : ''
-    lets.push(`val pyreonLegend: LegendLayout = renderLegend(${entries}, PyreonChartRect(0.0, pyreonTitle.height, ${W}, ${H} - pyreonTitle.height), LegendOptions(fontSize = 11.0, labelColor = "#5a6b7a", swatch = 10.0, gap = 12.0, orientation = "horizontal"${maxRows}), ::pyreonChartMeasure)`)
+    const pageArg = page === undefined ? '' : `, page = ${page}`
+    lets.push(`val pyreonLegend: LegendLayout = renderLegend(${entries}, PyreonChartRect(0.0, pyreonTitle.height, ${W}, ${H} - pyreonTitle.height), LegendOptions(fontSize = 11.0, labelColor = "#5a6b7a", swatch = 10.0, gap = 12.0, orientation = "horizontal"${maxRows}${pageArg}), ::pyreonChartMeasure)`)
   } else {
     lets.push('val pyreonLegend: LegendLayout = LegendLayout(cmds = listOf(), height = 0.0, boxes = listOf())')
   }
@@ -9743,5 +9766,25 @@ function kotlinZoomPresets(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: str
 function unsupportedZoomPresetsKotlin(tag: string): 'unsupported' {
   _emitWarnings.push(`<${tag} zoomPresets>: must be an inline array of \`{ label, count }\` literals on native; the chart renders without the preset strip.`)
   return 'unsupported'
+}
+
+
+// ---- `<PlotChart showLegend legendToggle legendMaxRows>` — legend tap + paging ----
+//
+// Compose twin of the Swift lowering: the hidden set and the page are
+// remembered in the host, a tap on an entry toggles it, the plot draws what
+// `hideHiddenSeries` leaves, and the entries render muted.
+
+interface KotlinLegendInteraction {
+  toggling: boolean
+  paging: boolean
+}
+
+function kotlinLegendInteraction(e: Extract<ExprIR, { kind: 'jsx-element' }>): KotlinLegendInteraction {
+  const legendOn = readStaticAttrKotlin(e, 'showLegend') === true
+  return {
+    toggling: legendOn && readStaticAttrKotlin(e, 'legendToggle') !== false,
+    paging: legendOn && typeof readStaticAttrKotlin(e, 'legendMaxRows') === 'number',
+  }
 }
 

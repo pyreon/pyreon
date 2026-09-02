@@ -69,6 +69,7 @@ export const ENGINE_FILES = [
   'bubble',
   'zoom',
   'presets',
+  'legend-toggle',
 ] as const
 
 const RENAMES: ReadonlyArray<readonly [string, string]> = [
