@@ -218,12 +218,12 @@ const svg = optionToSvg({ xAxis: { data: ['Mon', 'Tue'] }, yAxis: {}, series: [{
 ### Interaction, linking, Gantt, sonification, the option host
 
 ```tsx
-import { PlotChart, GanttChart, OptionChart, createChartLink, sonifyValues, line, bar } from '@pyreon/charts/plot'
+import { PlotChart, GanttChart, OptionChart, createChartLink, sonifyValues, line, bars } from '@pyreon/charts/plot'
 
 const link = createChartLink() // ECharts `connect`: shared zoom window + crosshair datum
 <PlotChart data={price} x={(d) => d.t} marks={[line((d) => d.close)]} dataZoom navigator crosshair keyboard link={link}
   zoomPresets={[{ label: '1m', count: 30 }, { label: '3m', count: 90 }, { label: 'All', count: 0 }]} />
-<PlotChart data={price} x={(d) => d.t} marks={[bar((d) => d.volume)]} dataZoom crosshair link={link} />
+<PlotChart data={price} x={(d) => d.t} marks={[bars((d) => d.volume)]} dataZoom crosshair link={link} />
 
 const sound = sonifyValues(price.map((d) => d.close), { duration: 3000, link }) // pitch over time, crosshair follows
 <button onClick={() => void sound.play()}>Play</button>
