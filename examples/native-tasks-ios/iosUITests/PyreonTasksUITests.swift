@@ -524,6 +524,35 @@ final class PyreonTasksUITests: XCTestCase {
             "Did not return to tasks after stats Back"
         )
 
+        // #3279: the DASHBOARD — the native wave's gate. Six families on one
+        // shared-source page. Repaint: the funnel's data is a signal; the tap on
+        // its top slab reads 'Leads', a button drops that stage, and the SAME tap
+        // then reads 'Qualified' — the hit test ran over the re-laid-out canvas.
+        let dashNav = app.buttons["tasks-dashboard"].firstMatch
+        XCTAssertTrue(dashNav.waitForExistence(timeout: 10), "Dashboard button missing on tasks page")
+        dashNav.tap()
+        let dashPage = app.otherElements["dash-page"].firstMatch
+        XCTAssertTrue(dashPage.waitForExistence(timeout: 15), "Dashboard page did not render")
+        let dashFunnel = app.descendants(matching: .any).matching(identifier: "dash-funnel").firstMatch
+        XCTAssertTrue(dashFunnel.waitForExistence(timeout: 10), "funnel canvas missing on dashboard")
+        let dashStage = app.staticTexts["dash-stage"].firstMatch
+        XCTAssertEqual(dashStage.label, "none", "no funnel tap yet")
+        let funnelTop = dashFunnel.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0)).withOffset(CGVector(dx: 0, dy: 30))
+        funnelTop.tap()
+        XCTAssertTrue(waitForLabel(dashStage, "Leads", timeout: 10), "tap on the top slab did not select Leads (label: \(dashStage.label))")
+        app.buttons["dash-drop"].firstMatch.tap()
+        funnelTop.tap()
+        XCTAssertTrue(waitForLabel(dashStage, "Qualified", timeout: 10), "after dropping the first stage, the same tap did not select Qualified — the funnel did not repaint (label: \(dashStage.label))")
+        let dashLoad = app.staticTexts["dash-load"].firstMatch
+        XCTAssertEqual(dashLoad.label, "40", "gauge load should start at 40")
+        app.buttons["dash-load-up"].firstMatch.tap()
+        XCTAssertTrue(waitForLabel(dashLoad, "65", timeout: 10), "Load +25 did not move the gauge's signal (label: \(dashLoad.label))")
+        for id in ["dash-gauge", "dash-pie", "dash-radar", "dash-heat", "dash-tree"] {
+            XCTAssertTrue(app.descendants(matching: .any).matching(identifier: id).firstMatch.exists, "\(id) canvas missing on dashboard")
+        }
+        app.buttons["dash-back"].firstMatch.tap()
+        XCTAssertTrue(tasksPage.waitForExistence(timeout: 15), "Did not return to tasks after dashboard Back")
+
         // Phase 5b: the TOOLKIT screen — the one place eleven packages that had
         // only ever been snippet-proven actually run. The web e2e asserts the
         // same values in a browser; this is the native half, and until it

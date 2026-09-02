@@ -632,6 +632,47 @@ class TasksAppInstrumentedTest {
             .performClick()
         assertTagDisplayed("tasks-page", "after stats-back (/stats -> /tasks)")
 
+        // #3279: the DASHBOARD — the native wave's gate: six families on one
+        // shared-source page; the funnel repaints from a signal (tap reads
+        // 'Leads', drop the stage, the same tap reads 'Qualified'); the gauge
+        // reads a signal a button moves (40 → 65).
+        composeRule
+            .onNodeWithTag("tasks-dashboard")
+            .performScrollTo()
+            .performClick()
+        assertTagDisplayed("dash-page", "after tasks-dashboard (/tasks -> /dashboard)")
+        composeRule
+            .onNodeWithTag("dash-stage")
+            .assertTextEquals("none")
+        composeRule
+            .onNodeWithTag("dash-funnel")
+            .performTouchInput { click(Offset(width / 2f, 30f * flowDensity)) }
+        waitForTagText("dash-stage", "Leads")
+        composeRule
+            .onNodeWithTag("dash-drop")
+            .performScrollTo()
+            .performClick()
+        composeRule
+            .onNodeWithTag("dash-funnel")
+            .performTouchInput { click(Offset(width / 2f, 30f * flowDensity)) }
+        waitForTagText("dash-stage", "Qualified")
+        composeRule
+            .onNodeWithTag("dash-load")
+            .assertTextEquals("40")
+        composeRule
+            .onNodeWithTag("dash-load-up")
+            .performScrollTo()
+            .performClick()
+        waitForTagText("dash-load", "65")
+        for (id in listOf("dash-gauge", "dash-pie", "dash-radar", "dash-heat", "dash-tree")) {
+            composeRule.onNodeWithTag(id).assertExists()
+        }
+        composeRule
+            .onNodeWithTag("dash-back")
+            .performScrollTo()
+            .performClick()
+        assertTagDisplayed("tasks-page", "after dash-back (/dashboard -> /tasks)")
+
         // Phase 5b: the TOOLKIT screen — where eleven previously snippet-only
         // packages actually run. The web e2e asserts the same values in a
         // browser; this is the Android half. Until it existed the screen was
