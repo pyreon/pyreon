@@ -1,0 +1,64 @@
+name: Cancel CI on conflict
+
+# Cancel in-flight CI for PRs that cannot merge.
+#
+# GitHub already refuses to DISPATCH a `pull_request` workflow for a
+# conflicting PR (the merge ref cannot be built, so nothing queues — the
+# "checks never started" shape in .claude/rules/anti-patterns.md). What it does
+# NOT do is stop a run that was already running when a merge to main created
+# the conflict. That run tests `old-main + head`, the PR cannot merge on it,
+# and resolving the conflict pushes a commit that dispatches a fresh run — so
+# the in-flight work is superseded the moment the conflict appears.
+#
+# Measured 2026-09-02: 58 of 60 open PRs conflicting, **169 of 254 in-flight
+# runs (66%) theirs**, a sampled ~189 jobs queued or running for PRs that
+# could not merge — against an org-wide cap of 20 concurrent jobs. Every one of
+# those slots is one a mergeable PR waits behind.
+#
+# Triggered by `push: main`, because a base move is what creates a conflict.
+# The schedule is a safety net for conflicts that arise another way (a
+# `.gitattributes` change, a force-push race) and for a push whose run was
+# coalesced away. The script itself is fail-safe: only a DEFINITIVE
+# `CONFLICTING` is ever acted on, `UNKNOWN` is skipped, and a failed listing
+# aborts rather than proceeding with an empty conflict set.
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write # cancel workflow runs
+  pull-requests: read
+
+concurrency:
+  # One at a time; a newer main push supersedes a pending sweep because it
+  # asks the same question against a newer base. Cancelling the in-progress
+  # one is safe — the sweep is idempotent and the newer run redoes it.
+  group: cancel-conflicting-ci
+  cancel-in-progress: true
+
+jobs:
+  sweep:
+    name: Cancel CI on conflicting PRs
+    runs-on: ubuntu-latest
+    # Derived: the script polls mergeability in up to 4 rounds with a 5 s gap
+    # (GitHub computes it lazily and a base push invalidates every PR at once),
+    # then one API call per in-flight run. At ~60 open PRs that is a few
+    # minutes; 15 is ~3x.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+      # No `bun install` — the script uses only `gh` and Bun's own APIs, so it
+      # needs no node_modules. That keeps this sweep off the critical path of
+      # the very contention it exists to relieve.
+      - name: Cancel in-flight runs on conflicting PRs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bun scripts/cancel-conflicting-ci.ts
