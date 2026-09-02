@@ -34,6 +34,10 @@ public struct PyreonDrawCmd: Codable, Equatable {
     public var dash: [Double]?
     public var points: [PyreonChartPt]?
     public var fill: String?
+    /// Corner radii for a `rect` — [topLeft, topRight, bottomRight, bottomLeft],
+    /// already in engine units. Clamped through the engine's `cornerRadii`, so
+    /// this canvas rounds by the same numbers the web canvas and the SVG do.
+    public var corners: [Double]?
     public var center: PyreonChartPt?
     public var radius: Double?
     public var text: String?
@@ -51,6 +55,7 @@ public struct PyreonDrawCmd: Codable, Equatable {
         kind: String,
         rect: PyreonChartRect? = nil,
         fill: String? = nil,
+        corners: [Double]? = nil,
         from: PyreonChartPt? = nil,
         to: PyreonChartPt? = nil,
         stroke: String? = nil,
@@ -68,6 +73,7 @@ public struct PyreonDrawCmd: Codable, Equatable {
         self.kind = kind
         self.rect = rect
         self.fill = fill
+        self.corners = corners
         self.from = from
         self.to = to
         self.stroke = stroke
@@ -164,6 +170,47 @@ public func pyreonChartColor(_ s: String) -> Color {
     return Color.clear
 }
 
+/// The four arcs of a rounded rect — the twin of canvas-web's `traceRoundedRect`
+/// and svg.ts's path builder, corner for corner.
+func pyreonRoundedRectPath(_ r: PyreonChartRect, _ radii: [Double]) -> Path {
+    let tl = CGFloat(radii[0])
+    let tr = CGFloat(radii[1])
+    let br = CGFloat(radii[2])
+    let bl = CGFloat(radii[3])
+    let x = CGFloat(r.x)
+    let y = CGFloat(r.y)
+    let w = CGFloat(r.w)
+    let h = CGFloat(r.h)
+    var p = Path()
+    p.move(to: CGPoint(x: x + tl, y: y))
+    p.addLine(to: CGPoint(x: x + w - tr, y: y))
+    if tr > 0 {
+        p.addArc(
+            center: CGPoint(x: x + w - tr, y: y + tr), radius: tr,
+            startAngle: .degrees(-90), endAngle: .degrees(0), clockwise: false)
+    }
+    p.addLine(to: CGPoint(x: x + w, y: y + h - br))
+    if br > 0 {
+        p.addArc(
+            center: CGPoint(x: x + w - br, y: y + h - br), radius: br,
+            startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
+    }
+    p.addLine(to: CGPoint(x: x + bl, y: y + h))
+    if bl > 0 {
+        p.addArc(
+            center: CGPoint(x: x + bl, y: y + h - bl), radius: bl,
+            startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
+    }
+    p.addLine(to: CGPoint(x: x, y: y + tl))
+    if tl > 0 {
+        p.addArc(
+            center: CGPoint(x: x + tl, y: y + tl), radius: tl,
+            startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
+    }
+    p.closeSubpath()
+    return p
+}
+
 /// A SwiftUI Canvas walking the engine's flat draw list — the native twin of
 /// canvas-web's renderer (same dispatch, same text-anchor semantics).
 public struct PyreonChartCanvas: View {
@@ -180,9 +227,16 @@ public struct PyreonChartCanvas: View {
                 switch c.kind {
                 case "rect":
                     guard let r = c.rect, let fill = c.fill else { continue }
-                    context.fill(
-                        Path(CGRect(x: r.x, y: r.y, width: r.w, height: r.h)),
-                        with: .color(pyreonChartColor(fill)))
+                    let radii = cornerRadii(r, c.corners)
+                    if hasCorners(radii) {
+                        context.fill(
+                            pyreonRoundedRectPath(r, radii),
+                            with: .color(pyreonChartColor(fill)))
+                    } else {
+                        context.fill(
+                            Path(CGRect(x: r.x, y: r.y, width: r.w, height: r.h)),
+                            with: .color(pyreonChartColor(fill)))
+                    }
                 case "line":
                     guard let f = c.from, let t = c.to, let stroke = c.stroke else { continue }
                     var p = Path()

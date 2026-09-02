@@ -290,6 +290,16 @@ const link = createChartLink()
 <PlotChart data={price} x={(d) => d.t} marks={[bar((d) => d.volume)]} dataZoom crosshair link={link} />
 ```
 
+### Rounded bars
+
+`borderRadius` on a bar-family mark (ECharts' `itemStyle.borderRadius`): a number rounds all four corners, `[topLeft, topRight, bottomRight, bottomLeft]` rounds them individually — `[6, 6, 0, 0]` is the column look that keeps the bar flat on the axis.
+
+```tsx
+<PlotChart data={rows} x={(d) => d.k} marks={[bars((d) => d.v, { borderRadius: [6, 6, 0, 0] })]} />
+```
+
+The radius travels in the draw list as `corners` on the rect command, clamped by the engine to half the bar's shorter side — so a bar animating up from zero rounds proportionally, and the web canvas, the SSR SVG and the SwiftUI/Compose canvases all draw the same four arcs.
+
 ### Events and actions
 
 ECharts' `on(...)` / `dispatchAction` in Pyreon shapes: every event is a prop, every action is a call on a handle whose signals ARE the chart's state.
