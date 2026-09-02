@@ -23,7 +23,7 @@ import { resolveCategories, resolveMarks } from './marks'
 import { plotHitBars, plotHitIndex } from './plot-hit'
 import type { Mark } from './marks'
 import { chartTable, describeChart } from './a11y'
-import { brushRange } from './brush'
+import { brushBand, brushRange, renderBrushBand } from './brush'
 import { hideHiddenSeries, legendHitIndex, legendToggle, pagerHit } from './legend-toggle'
 import { navigatorDrag, navigatorHit, renderNavigator } from './navigator'
 import { presetHit, presetWindow, renderPresets } from './presets'
@@ -709,57 +709,16 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     return out
   }
 
-  /** The brush band — the live drag, or the committed selection. */
+  /** The brush band — the live drag, or the committed selection projected through the window (engine-drawn; iOS and Android paint the same band). */
   const brushCmds = (spec: ChartSpec, measure: (t: string, size: Double) => Double): DrawCmd[] => {
-    const out: DrawCmd[] = []
-    if (props.brush !== true || props.horizontal === true) return out
-    const l = layoutChart(spec, measure)
-    const plot = l.plot
-    let lo = -1.0
-    let hi = -1.0
+    if (props.brush !== true || props.horizontal === true) return []
+    const plot = layoutChart(spec, measure).plot
     const live = brushDrag
+    if (live !== null) return renderBrushBand(plot, live.a < live.b ? live.a : live.b, live.a < live.b ? live.b : live.a, spec.theme.axis)
     const committed = brushSel()
-    if (live !== null) {
-      lo = live.a < live.b ? live.a : live.b
-      hi = live.a < live.b ? live.b : live.a
-    } else if (committed !== null) {
-      const rows = readData()
-      const r = viewRange(rows)
-      const nView = r.to - r.from
-      if (nView <= 0) return out
-      // Committed indices are GLOBAL; place the band over the datum bands of
-      // the visible slice, clipped to the plot when partly zoomed away.
-      const bw = plot.w / nView
-      lo = plot.x + (committed.start - r.from) * bw
-      hi = plot.x + (committed.end - r.from + 1) * bw
-      if (hi < plot.x || lo > plot.x + plot.w) return out
-      if (lo < plot.x) lo = plot.x
-      if (hi > plot.x + plot.w) hi = plot.x + plot.w
-    } else {
-      return out
-    }
-    out.push({
-      kind: 'rect',
-      rect: { x: lo, y: plot.y, w: hi - lo, h: plot.h },
-      fill: 'rgba(99,102,241,0.15)',
-    })
-    out.push({
-      kind: 'line',
-      from: { x: lo, y: plot.y },
-      to: { x: lo, y: plot.y + plot.h },
-      stroke: spec.theme.axis,
-      width: 1.0,
-      dash: [3.0, 3.0],
-    })
-    out.push({
-      kind: 'line',
-      from: { x: hi, y: plot.y },
-      to: { x: hi, y: plot.y + plot.h },
-      stroke: spec.theme.axis,
-      width: 1.0,
-      dash: [3.0, 3.0],
-    })
-    return out
+    if (committed === null) return []
+    const band = brushBand(plot, committed, zoomWin() ?? { start: 0.0, end: 1.0 }, readData().length)
+    return band.visible ? renderBrushBand(plot, band.lo, band.hi, spec.theme.axis) : []
   }
 
   /** The plot rect at the current size — gestures are plot-relative. */

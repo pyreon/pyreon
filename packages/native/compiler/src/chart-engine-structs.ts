@@ -6669,5 +6669,51 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
       }
     ],
     "external": true
+  },
+  {
+    "name": "BrushRange",
+    "fields": [
+      {
+        "name": "start",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "end",
+        "type": {
+          "kind": "number"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "BrushBand",
+    "fields": [
+      {
+        "name": "visible",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "lo",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "hi",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
   }
 ]

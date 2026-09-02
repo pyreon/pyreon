@@ -9451,7 +9451,14 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     _emitWarnings.push(`<${tag} navigator>: needs at least one mark (the strip shows the first one); the chart renders without the navigator.`)
     navigating = false
   }
+  let brushing = readStaticAttrKotlin(e, 'brush') === true && readStaticAttrKotlin(e, 'horizontal') !== true
+  if (brushing && zoomed) {
+    _emitWarnings.push(`<${tag} brush>: with \`dataZoom\` the web brushes on Shift+drag, which touch has not — on native the plain drag pans, so the brush stays web-only in that combination; the chart renders without it.`)
+    brushing = false
+  }
+  const onBrush = brushing ? kotlinBrushHandler(e, tag) : undefined
   const windowed = zoomed || presets !== undefined || navigating
+  const win = windowed ? 'pyreonZoom' : 'ZoomWindow(start = 0.0, end = 1.0)'
   const legend = kotlinLegendInteraction(e)
   const lets: string[] = []
   if (windowed) {
@@ -9463,6 +9470,12 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     lets.push('var pyreonNavKind by remember { mutableStateOf(0) }')
     lets.push('var pyreonNavAnchor by remember { mutableStateOf(ZoomWindow(start = 0.0, end = 1.0)) }')
     lets.push('var pyreonNavDx by remember { mutableStateOf(0.0) }')
+  }
+  if (brushing) {
+    lets.push('var pyreonBrushStart by remember { mutableStateOf(-1) }')
+    lets.push('var pyreonBrushEnd by remember { mutableStateOf(-1) }')
+    lets.push('var pyreonBrushA by remember { mutableStateOf(-1.0) }')
+    lets.push('var pyreonBrushB by remember { mutableStateOf(-1.0) }')
   }
   if (legend.toggling) lets.push('var pyreonHidden by remember { mutableStateOf(listOf<Int>()) }')
   if (legend.paging) lets.push('var pyreonLegendPage by remember { mutableStateOf(0.0) }')
@@ -9581,8 +9594,14 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const mk = chartAttrExprKotlin(e, 'markers')
   if (mk !== undefined) specArgs.push(`markers = ${emitKotlinExpr(mk, indent)}`)
   lets.push(`val pyreonSpec: ChartSpec = ChartSpec(${specArgs.join(', ')})`)
+  if (brushing) {
+    lets.push('val pyreonPlot: PyreonChartRect = layoutChart(pyreonSpec, ::pyreonChartMeasure).plot')
+    lets.push(
+      `val pyreonBrushCmds: List<PyreonDrawCmd> = if (pyreonBrushA >= 0.0) renderBrushBand(pyreonPlot, minOf(pyreonBrushA, pyreonBrushB), maxOf(pyreonBrushA, pyreonBrushB), pyreonSpec.theme.axis) else if (pyreonBrushStart >= 0) run { val pyreonBand = brushBand(pyreonPlot, BrushRange(start = pyreonBrushStart, end = pyreonBrushEnd), ${win}, ${data}.size); if (pyreonBand.visible) renderBrushBand(pyreonPlot, pyreonBand.lo, pyreonBand.hi, pyreonSpec.theme.axis) else listOf() } else listOf()`,
+    )
+  }
   const extraCmds = `${navigating ? ' + pyreonNavigator.cmds' : ''}${presets === undefined ? '' : ' + pyreonPresetStrip.cmds'}`
-  const cmds = `${chrome.wrap('renderChart(pyreonSpec, ::pyreonChartMeasure)')}${extraCmds}`
+  const cmds = `${chrome.wrap(`renderChart(pyreonSpec, ::pyreonChartMeasure)${brushing ? ' + pyreonBrushCmds' : ''}`)}${extraCmds}`
   const hit = (x: string, y: string): string => {
     const local = `plotHitBars(pyreonSpec, ::pyreonChartMeasure, ${x}, ${chrome.top === '0.0' ? y : `${y} - pyreonTop`})`
     return windowed ? `run { val pyreonHit = ${local}; if (pyreonHit < 0) -1 else pyreonHit + pyreonRange.from }` : local
@@ -9591,7 +9610,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const tapX = '(pyreonTap.x / pyreonDensity).toDouble()'
   const tapYExpr = '(pyreonTap.y / pyreonDensity).toDouble()'
   let tap = ''
-  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging) {
+  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging || brushing) {
     const select = onSel?.kind === 'event' ? kotlinChartSelectBody(onSel.handler, hit(tapX, tapYExpr), indent) : ''
     const decls: string[] = []
     const branches: string[] = []
@@ -9607,14 +9626,18 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
       decls.push(`val pyreonPreset = presetHit(pyreonPresetStrip.boxes, ${tapX}, ${tapYExpr})`)
       branches.push(`if (pyreonPreset >= 0) { pyreonZoom = presetWindow(pyreonPresets[pyreonPreset].count, ${data}.size) }`)
     }
-    const body = branches.length === 0 ? select : `${decls.join('; ')}; ${branches.join(' else ')}${select === '' ? '' : ` else { ${select} }`}`
+    if (brushing) {
+      branches.push(`if (pyreonBrushStart >= 0) { pyreonBrushStart = -1; pyreonBrushEnd = -1${onBrush === undefined ? '' : `; ${onBrush}(null)`} }`)
+    }
+    const body = branches.length === 0 ? select : `${decls.length === 0 ? '' : `${decls.join('; ')}; `}${branches.join(' else ')}${select === '' ? '' : ` else { ${select} }`}`
     tap = `.pointerInput(Unit) { detectTapGestures { pyreonTap -> ${body} } }`
   }
   if (zoomed) {
     tap += `.pointerInput(Unit) { detectTransformGestures { _, pyreonPan, pyreonZoomBy, _ -> pyreonZoom = panWindow(zoomWindow(pyreonZoom, 1.0 / pyreonZoomBy.toDouble(), 0.5), -(pyreonPan.x / pyreonDensity).toDouble() / ${W}) } }`
   }
-  // The navigator's drag: a Box laid over the strip (its own pointerInput, so
-  // the canvas gestures never see it), offset from the host's top edge.
+  if (brushing) {
+    tap += `.pointerInput(Unit) { detectDragGestures(onDragStart = { pyreonStart -> pyreonBrushA = (pyreonStart.x / pyreonDensity).toDouble(); pyreonBrushB = pyreonBrushA }, onDragEnd = { val pyreonSel: BrushRange = brushRange(pyreonPlot.x, pyreonPlot.w, pyreonBrushA, pyreonBrushB, ${win}, ${data}.size); pyreonBrushStart = pyreonSel.start; pyreonBrushEnd = pyreonSel.end; pyreonBrushA = -1.0; pyreonBrushB = -1.0${onBrush === undefined ? '' : `; ${onBrush}(pyreonSel)`} }, onDrag = { pyreonChange, pyreonDrag -> pyreonChange.consume(); pyreonBrushB = pyreonBrushB + (pyreonDrag.x / pyreonDensity).toDouble() }) }`
+  }
   const overlay = navigating
     ? `Box(modifier = Modifier.fillMaxWidth().offset(y = ((${H})${below}).dp).height((pyreonNavigator.height).dp).pointerInput(Unit) { detectDragGestures(onDragStart = { pyreonStart -> pyreonNavAnchor = pyreonZoom; pyreonNavDx = 0.0; pyreonNavKind = navigatorHit(pyreonNavigator.strip, pyreonZoom, (pyreonStart.x / pyreonDensity).toDouble()) }, onDragEnd = { pyreonNavKind = 0 }, onDrag = { pyreonChange, pyreonDrag -> pyreonChange.consume(); pyreonNavDx = pyreonNavDx + (pyreonDrag.x / pyreonDensity).toDouble(); pyreonZoom = navigatorDrag(pyreonNavKind, pyreonNavAnchor, pyreonNavDx / pyreonNavigator.strip.w) }) })`
     : undefined
@@ -9835,3 +9858,22 @@ function kotlinLegendInteraction(e: Extract<ExprIR, { kind: 'jsx-element' }>): K
 // plot's tap and transform gestures never see a touch that starts there.
 
 /** `kotlinFrameHostWithTap` that can also force the density line (the transform gesture reads it even without a tap) and lay an `overlay` composable over the canvas. */
+
+
+// ---- `<PlotChart brush onBrush>` — drag-select a GLOBAL datum range -----------
+//
+// Compose twin of the Swift lowering: the committed range and the live span
+// are remembered; a plain drag on the plot (never with `dataZoom`, where the
+// web needs Shift) selects through the engine's `brushRange`; the band is
+// `renderBrushBand` inside the chrome wrap. `onBrush` must be a NAMED handler.
+
+/** The `onBrush` handler NAME, or undefined; warns by name for any other shape. */
+function kotlinBrushHandler(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: string): string | undefined {
+  const onBrush = e.attrs.find((a) => a.kind === 'event' && a.name === 'brush')
+  if (onBrush?.kind !== 'event') return undefined
+  const h = onBrush.handler
+  if (h.kind === 'identifier') return kotlinIdent(h.name)
+  _emitWarnings.push(`<${tag} onBrush>: must be a NAMED handler (\`const onBrush = (r: BrushRange | null) => …\`) on native — an inline arrow is not lowered; the brush still selects, without the callback.`)
+  return undefined
+}
+
