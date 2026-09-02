@@ -1368,6 +1368,27 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "Emphasis",
+    "fields": [
+      {
+        "name": "highlight",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "selected",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "number"
+          }
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "ChartSpec",
     "fields": [
       {
@@ -1638,6 +1659,22 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
             {
               "kind": "typeRef",
               "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "emphasis",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Emphasis",
               "args": []
             },
             {

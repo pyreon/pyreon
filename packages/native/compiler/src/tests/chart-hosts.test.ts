@@ -1090,3 +1090,30 @@ describe('chart hosts — <PlotChart brush onBrush> as a plain drag over the eng
     expect(r.ok, r.error ?? '').toBe(true)
   })
 })
+
+
+const EVENTS_MODEL = `import { signal } from '@pyreon/reactivity'
+import { Stack, Text } from '@pyreon/primitives'
+import { PlotChart, bars } from '@pyreon/charts/plot'
+interface Row { k: string; v: number }
+const ROWS: Row[] = [{ k: 'a', v: 3 }, { k: 'b', v: 5 }]
+export function Picks() {
+  const hovered = signal(-1)
+  return (
+    <Stack>
+      <Text>{hovered()}</Text>
+      <PlotChart data={ROWS} x={(d) => d.k} marks={[bars((d) => d.v)]} height={200} selectedMode="single" onHighlight={(i: number) => hovered.set(i)} />
+    </Stack>
+  )
+}
+`
+
+describe('PlotChart events/actions props on native', () => {
+  it('warn BY NAME — attrs AND event props — and the chart still lowers', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(EVENTS_MODEL, { target })
+      expect(r.warnings.some((w) => w.includes('`selectedMode`, `onHighlight` are not lowered on native yet'))).toBe(true)
+      expect(r.code).toContain('renderChart(')
+    }
+  })
+})

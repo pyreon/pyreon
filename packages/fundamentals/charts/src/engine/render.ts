@@ -6,6 +6,7 @@ import type { Formatter } from './format'
 import type { LayoutConfig, PlotLayout } from './layout'
 import { extent, niceDomain, scaleLinear } from './scale'
 import { plain } from './format'
+import { countToDouble } from './brush'
 import { withAlpha } from './radar'
 import type { DrawCmd, Domain, MeasureText, Pt, Rect, Double } from './types'
 
@@ -91,6 +92,19 @@ export interface ChartTheme {
   fontSize: Double
 }
 
+/**
+ * Datum emphasis, in VISIBLE-row indices (the crosshair's space).
+ *
+ * `highlight` is the hovered — or dispatched — datum (-1 = none): its whole
+ * column gets a faint band so it reads on every series at once (ECharts' axis
+ * shadow), and its bars and points an outline. `selected` are the datums a
+ * click or a dispatched `select` pinned: a heavier outline that stays.
+ */
+export interface Emphasis {
+  highlight: number
+  selected: number[]
+}
+
 export interface ChartSpec {
   width: Double
   height: Double
@@ -145,6 +159,8 @@ export interface ChartSpec {
    * is to tween this number.
    */
   progress?: Double | undefined
+  /** Hover + selection emphasis; absent draws nothing extra. */
+  emphasis?: Emphasis | undefined
 }
 
 export const defaultTheme: ChartTheme = {
@@ -152,6 +168,23 @@ export const defaultTheme: ChartTheme = {
   grid: 'rgba(132,150,165,0.18)',
   label: '#5a6b7a',
   fontSize: 11.0,
+}
+
+/** 0 = plain, 1 = highlighted (a hover or a dispatched `highlight`), 2 = selected. */
+export function emphasisLevel(spec: ChartSpec, index: number): number {
+  const e: Emphasis = spec.emphasis ?? { highlight: -1, selected: [] }
+  for (const sel of e.selected) if (sel === index) return 2
+  return e.highlight === index ? 1 : 0
+}
+
+/** The outline a highlighted (1) or selected (2) bar gets — closed, painted over the fill. */
+export function emphasisOutline(r: Rect, level: number, stroke: string): DrawCmd {
+  return {
+    kind: 'polyline',
+    points: [{ x: r.x, y: r.y }, { x: r.x + r.w, y: r.y }, { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h }, { x: r.x, y: r.y }],
+    stroke,
+    width: level === 2 ? 2.5 : 1.5,
+  }
 }
 
 /**
@@ -470,19 +503,49 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
     }
   }
 
+  // Emphasis band: the highlighted datum's column, UNDER every series, so a
+  // hover or a dispatched `highlight` reads on all of them at once.
+  //
+  // Two native-subset rules decide the shape here. The emitter coerces both
+  // operands of a DIVISION (`Double(plot.w) / Double(nb)`) and a LOOP variable
+  // (`band * Double(i)`), but not a plain int local in a multiplication — so
+  // the width can be written inline while the offset goes through the engine's
+  // own `countToDouble`. Swift has no implicit Int/Double promotion, so this
+  // is a compile error rather than a style choice; `countToDouble` is O(index)
+  // and runs once per frame only while something is highlighted.
+  const emph: Emphasis = spec.emphasis ?? { highlight: -1, selected: [] }
+  if (emph.highlight >= 0 && spec.horizontal !== true) {
+    const xsE = spec.xValues ?? []
+    const hi = emph.highlight
+    if (xsE.length > emph.highlight) {
+      const cx = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, xsE[emph.highlight]!)
+      out.push({ kind: 'rect', rect: { x: cx - 6.0, y: plot.y, w: 12.0, h: plot.h }, fill: withAlpha(t.axis, 0.14) })
+    } else if (spec.categories.length > emph.highlight) {
+      const nb = spec.categories.length
+      const bandW = plot.w / nb
+      out.push({ kind: 'rect', rect: { x: plot.x + bandW * countToDouble(hi), y: plot.y, w: bandW, h: plot.h }, fill: withAlpha(t.axis, 0.14) })
+    }
+  }
+
   // Stacked and grouped series are laid out TOGETHER — each needs to know the
   // others to place its bars — so they are drawn as a set before the
   // independent marks rather than one at a time in the loop below.
   const stackedSeries = spec.horizontal === true ? [] : spec.series.filter((s) => s.kind === 'stacked')
   if (stackedSeries.length > 0) {
     for (const seg of layoutStackedBars(stackedSeries.map((s) => s.values), plot, yDomain, 0.25)) {
-      out.push({ kind: 'rect', rect: growRect(seg.rect, yDomain), fill: stackedSeries[seg.seriesIndex]!.color })
+      const rS = growRect(seg.rect, yDomain)
+      out.push({ kind: 'rect', rect: rS, fill: stackedSeries[seg.seriesIndex]!.color })
+      const lvlS = emphasisLevel(spec, seg.datumIndex)
+      if (lvlS > 0) out.push(emphasisOutline(rS, lvlS, t.label))
     }
   }
   const groupedSeries = spec.horizontal === true ? [] : spec.series.filter((s) => s.kind === 'grouped')
   if (groupedSeries.length > 0) {
     for (const seg of layoutGroupedBars(groupedSeries.map((s) => s.values), plot, yDomain, 0.25)) {
-      out.push({ kind: 'rect', rect: growRect(seg.rect, yDomain), fill: groupedSeries[seg.seriesIndex]!.color })
+      const rG = growRect(seg.rect, yDomain)
+      out.push({ kind: 'rect', rect: rG, fill: groupedSeries[seg.seriesIndex]!.color })
+      const lvlG = emphasisLevel(spec, seg.datumIndex)
+      if (lvlG > 0) out.push(emphasisOutline(rG, lvlG, t.label))
     }
   }
 
@@ -535,6 +598,10 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
           out.push(symbolCommand(grown, s.symbol ?? 'rect', s.color))
         }
       }
+      for (let i = 0; i < rects.length; i++) {
+        const lvl = emphasisLevel(spec, i)
+        if (lvl > 0) out.push(emphasisOutline(growRectH(rects[i]!), lvl, t.label))
+      }
       if (s.showValues === true && progress >= 1.0) {
         const fmt = spec.yFormat ?? plain
         for (let i = 0; i < rects.length; i++) {
@@ -586,6 +653,10 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
           out.push(symbolCommand(grown, s.symbol ?? 'rect', s.color))
         }
       }
+      for (let i = 0; i < rects.length; i++) {
+        const lvl = emphasisLevel(spec, i)
+        if (lvl > 0) out.push(emphasisOutline(growRect(rects[i]!, sDomain), lvl, t.label))
+      }
       if (s.showValues === true && progress >= 1.0) {
         const fmt = spec.yFormat ?? plain
         for (let i = 0; i < rects.length; i++) {
@@ -629,6 +700,11 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
           // Two translucent halos under the dot — the ripple, frozen at a frame.
           out.push({ kind: 'circle', center: pts[i]!, radius: fullR * 2.6 * progress, fill: withAlpha(s.color, 0.12) })
           out.push({ kind: 'circle', center: pts[i]!, radius: fullR * 1.7 * progress, fill: withAlpha(s.color, 0.25) })
+        }
+        const lvlP = emphasisLevel(spec, i)
+        if (lvlP > 0) {
+          // A halo UNDER the dot: emphasis that never hides the value.
+          out.push({ kind: 'circle', center: pts[i]!, radius: fullR * progress + (lvlP === 2 ? 4.0 : 3.0), fill: withAlpha(t.label, 0.35) })
         }
         out.push({
           kind: 'circle',

@@ -279,4 +279,10 @@ export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'strin
 /** PlotChart props that change what is DRAWN and have no native lowering yet — reported by name when present. */
 // Every PlotChart prop lowers now; the list stays as the mechanism (a new prop
 // lands here first and warns by name until it crosses).
-export const PLOT_UNLOWERED_PROPS: readonly string[] = []
+/**
+ * `<PlotChart>` props with no native form YET — the web events/actions model
+ * (a handle's signals, a pick-to-pin mode, the change callbacks). Each warns
+ * BY NAME; the chart renders without it. Event props are matched against the
+ * parser's lowercased event names, so `onHighlight` is found as `highlight`.
+ */
+export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'onZoom', 'emphasis']

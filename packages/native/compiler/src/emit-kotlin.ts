@@ -9540,7 +9540,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     if (body === 'unsupported') return 'Box {}'
     lets.push(`val pyreonXValues: List<Double> = ${kotlinPlotRowMap(rows, `(${body}).toDouble()`, windowed)}`)
   }
-  const present = PLOT_UNLOWERED_PROPS.filter((p) => chartAttrExprKotlin(e, p) !== undefined)
+  const present = PLOT_UNLOWERED_PROPS.filter((p) => chartAttrExprKotlin(e, p) !== undefined || e.attrs.some((a) => a.kind === 'event' && 'on' + a.name === p.toLowerCase()))
   if (present.length > 0) _emitWarnings.push(`<${tag}>: ${present.map((p) => `\`${p}\``).join(', ')} ${present.length === 1 ? 'is' : 'are'} not lowered on native yet; the chart renders without.`)
   const H = kotlinChartDouble(e, 'height', 200, indent)
   const hasWidth = chartAttrExprKotlin(e, 'width') !== undefined

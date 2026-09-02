@@ -7,7 +7,7 @@
 
 import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
-import { batch, effect, signal } from '@pyreon/reactivity'
+import { batch, effect, signal, untrack } from '@pyreon/reactivity'
 import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
 import { renderLegend } from './legend'
 import type { LegendPager } from './legend'
@@ -29,7 +29,7 @@ import { navigatorDrag, navigatorHit, renderNavigator } from './navigator'
 import { presetHit, presetWindow, renderPresets } from './presets'
 import { isFullWindow, panWindow, sliceRange, zoomWindow } from './zoom'
 import type { ZoomWindow } from './zoom'
-import type { ChartLink } from './link'
+import type { ChartHandle, ChartLink } from './link'
 import type { Formatter } from './format'
 import type { Domain, DrawCmd, Double, Rect } from './types'
 
@@ -105,6 +105,41 @@ export interface PlotChartProps<T> {
    * pan, navigator drag, preset or hover on any of them moves all of them.
    */
   link?: ChartLink
+  /**
+   * The imperative handle (ECharts `dispatchAction`): pass `createChartHandle()`
+   * and its `dispatch` drives highlight, selection, legend and zoom from
+   * outside. Its signals ARE this chart's state — reading `handle.selected()`
+   * reads the chart. A handle is also a link: hand it to sibling charts as
+   * `link` to connect them.
+   */
+  handle?: ChartHandle
+  /**
+   * Click-to-pin selection (ECharts `selectedMode`): `'single'` keeps one
+   * datum, `'multiple'` toggles each. Selected datums draw a heavy outline
+   * that stays, and every change reports through `onSelectChange` with GLOBAL
+   * indices. `onSelect` still fires for the pick itself; a miss leaves the
+   * selection alone (clearing is an explicit `unselect` / `restore`).
+   */
+  selectedMode?: 'single' | 'multiple'
+  /** Fired with the selected datums (GLOBAL indices) whenever the set changes — a pick, a dispatch, a `restore`. */
+  onSelectChange?: (selected: number[]) => void
+  /**
+   * Fired with the highlighted datum's GLOBAL index on hover (ECharts
+   * `mouseover` / `highlight`) and -1 when it clears (`mouseout` / `downplay`),
+   * whatever moved it: the pointer, the keyboard, a link or a dispatch.
+   */
+  onHighlight?: (index: number) => void
+  /** Fired with the hidden series (mark indices) when a legend click or a legend action changes them (ECharts `legendselectchanged`). */
+  onLegendChange?: (hidden: number[]) => void
+  /** Fired with the zoom window (fractions; null = everything) whenever it changes — wheel, pan, navigator, preset, dispatch (ECharts `datazoom`). */
+  onZoom?: (window: { start: number; end: number } | null) => void
+  /**
+   * Hover emphasis: the highlighted datum's column gets a faint band, its
+   * bars and points an outline. On by default when the events model is in
+   * play (`selectedMode`, `handle` or `onHighlight`); `false` keeps the
+   * crosshair alone.
+   */
+  emphasis?: boolean
   /**
    * Wheel-zoom + drag-pan over the x range (ECharts' inside dataZoom).
    *
@@ -315,11 +350,15 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
 
   // Toggled-off series, by mark index. A signal so the repaint effect tracks
   // it; an array rather than a Set so every toggle is a fresh value.
-  const hiddenSeries = signal<number[]>([])
+  const hiddenSeries = props.handle?.hidden ?? signal<number[]>([])
   // The hovered datum for the crosshair; -1 = no hover.
-  const hoverIdx = props.link?.hover ?? signal(-1)
+  const hoverIdx = props.handle?.hover ?? props.link?.hover ?? signal(-1)
   // The dataZoom window; null = everything (the untouched state).
-  const zoomWin = props.link?.zoom ?? signal<ZoomWindow | null>(null)
+  const zoomWin = props.handle?.zoom ?? props.link?.zoom ?? signal<ZoomWindow | null>(null)
+  // Pinned datums, GLOBAL indices (they survive a zoom); the handle owns them when given.
+  const selected = props.handle?.selected ?? signal<number[]>([])
+  const eventsOn = props.selectedMode !== undefined || props.handle !== undefined || props.onHighlight !== undefined
+  const emphasisOn = props.emphasis ?? eventsOn
   // A committed brush band, in GLOBAL datum indices; null = none.
   const brushSel = signal<{ start: number; end: number } | null>(null)
   // In-flight drag bookkeeping. Plain locals, not signals: nothing should
@@ -467,6 +506,12 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     y2Format: props.y2Format,
     horizontal: props.horizontal === true,
     progress: entrance,
+    // Emphasis speaks VISIBLE indices: the hover already does, the pins are
+    // global and come down by the window's offset (off-window pins are just
+    // not drawn — they are still selected).
+    ...(emphasisOn
+      ? { emphasis: { highlight: hoverIdx(), selected: selected().map((g) => g - off).filter((i) => i >= 0 && i < rows.length) } }
+      : {}),
     }
   }
 
@@ -638,6 +683,17 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     })
   }
 
+  /** A datum was picked (click or keyboard): pin it per `selectedMode`, then report the pick. */
+  const pickDatum = (global: number): void => {
+    const mode = props.selectedMode
+    if (mode !== undefined && global >= 0) {
+      const cur = selected()
+      const has = cur.includes(global)
+      selected.set(mode === 'single' ? (has ? [] : [global]) : has ? cur.filter((i) => i !== global) : [...cur, global])
+    }
+    if (props.onSelect !== undefined) props.onSelect(global)
+  }
+
   const handleKeyDown = (ev: KeyboardEvent): void => {
     const key = ev.key
     if (key === 'ArrowRight' || key === 'ArrowUp') moveFocus(1)
@@ -646,8 +702,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     else if (key === 'End') moveFocus(0, viewRows(readData()).length - 1)
     else if (key === 'Enter' || key === ' ') {
       const idx = focusIdx()
-      const cb = props.onSelect
-      if (idx >= 0 && cb !== undefined) cb(idx + viewRange(readData()).from)
+      if (idx >= 0) pickDatum(idx + viewRange(readData()).from)
     } else if (key === 'Escape') {
       batch(() => {
         focusIdx.set(-1)
@@ -742,6 +797,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     hiddenSeries()
     hoverIdx()
     zoomWin()
+    selected()
     brushSel()
     legendPage()
     focusIdx()
@@ -869,7 +925,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const px = ev.clientX - rect.left
     const py = ev.clientY - rect.top
     const idx = datumAt(px, py, w, hgt)
-    if (props.crosshair === true) hoverIdx.set(idx)
+    if (props.crosshair === true || eventsOn) hoverIdx.set(idx)
     const box = tip
     if (props.tooltip !== true || box === null) return
     if (idx < 0) {
@@ -954,8 +1010,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
         return
       }
     }
-    const cb = props.onSelect
-    if (cb === undefined) return
+    if (props.onSelect === undefined && props.selectedMode === undefined) return
     const ctx = el.getContext('2d')
     if (ctx === null) return
     const w = drawWidth(el, props.width)
@@ -979,7 +1034,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // Callbacks speak GLOBAL indices — the caller's data never zoomed.
     const off = viewRange(readData()).from
     const idx = plotHitBars(spec, measure, px, py)
-    cb(idx < 0 ? idx : idx + off)
+    pickDatum(idx < 0 ? idx : idx + off)
   })
 
   const a11yInput = (): {
@@ -1054,15 +1109,45 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     'data-pyreon-presets': () => presetBoxesJson(),
     'data-pyreon-nav': () => navJson(),
     'data-pyreon-hover': () => String(hoverIdx()),
+    'data-pyreon-selected': () => selected().join(','),
     ...(keyboardOn ? { tabIndex: 0, onKeyDown: handleKeyDown, onBlur: () => batch(() => { focusIdx.set(-1); announce.set('') }) } : {}),
     ...(props.dataZoom === true ? { onWheel: handleWheel, onDblClick: () => zoomWin.set(null) } : {}),
     ...(props.dataZoom === true || props.brush === true || props.navigator === true
       ? { onMouseDown: handleDown, onMouseUp: endDrag }
       : {}),
-    ...(props.tooltip === true || props.crosshair === true || props.dataZoom === true || props.brush === true || props.navigator === true
+    ...(props.tooltip === true || props.crosshair === true || props.dataZoom === true || props.brush === true || props.navigator === true || eventsOn
       ? { onMouseMove: handleMove, onMouseLeave: handleLeave }
       : {}),
   })
+
+  // The events model: each callback fires when ITS state changes, whoever
+  // changed it (pointer, keyboard, link, dispatch) — one effect per event,
+  // the callback untracked so a handler's own signal reads never subscribe.
+  const fireOnChange = <V,>(read: () => V, same: (a: V, b: V) => boolean, cb: ((v: V) => void) | undefined): void => {
+    if (cb === undefined) return
+    let prev = untrack(read)
+    effect(() => {
+      const v = read()
+      if (same(prev, v)) return
+      prev = v
+      untrack(() => cb(v))
+    })
+  }
+  fireOnChange(
+    () => {
+      const i = hoverIdx()
+      return i < 0 ? -1 : i + viewRange(readData()).from
+    },
+    (a, b) => a === b,
+    props.onHighlight,
+  )
+  fireOnChange(() => selected(), (a, b) => a === b, props.onSelectChange)
+  fireOnChange(() => hiddenSeries(), (a, b) => a === b, props.onLegendChange)
+  fireOnChange(
+    () => zoomWin(),
+    (a, b) => a === b || (a !== null && b !== null && a.start === b.start && a.end === b.end),
+    props.onZoom,
+  )
 
   const tooltipNode = (): VNode =>
     h('div', {

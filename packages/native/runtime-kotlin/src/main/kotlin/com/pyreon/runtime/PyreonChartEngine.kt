@@ -51,7 +51,9 @@ data class PointMarker(var seriesIndex: Double? = null, var at: String? = null, 
 
 data class ChartTheme(var axis: String, var grid: String, var label: String, var fontSize: Double)
 
-data class ChartSpec(var width: Double, var height: Double, var series: List<Series>, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null)
+data class Emphasis(var highlight: Int, var selected: List<Int>)
+
+data class ChartSpec(var width: Double, var height: Double, var series: List<Series>, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null, var emphasis: Emphasis? = null)
 
 data class FunnelStage(var value: Double, var label: String, var color: String)
 
@@ -1055,6 +1057,18 @@ fun layoutScatter(xs: List<Double>, ys: List<Double>, plot: PyreonChartRect, xDo
     return out
   }
 
+fun emphasisLevel(spec: ChartSpec, index: Int): Int {
+    val e = (spec.emphasis ?: Emphasis(highlight = -1, selected = listOf()))
+    for (sel in e.selected) {
+      if (sel == index) {
+        return 2
+      }
+    }
+    return if (e.highlight == index) 1 else 0
+  }
+
+fun emphasisOutline(r: PyreonChartRect, level: Int, stroke: String): PyreonDrawCmd = PyreonDrawCmd(kind = "polyline", stroke = stroke, width = if (level == 2) 2.5 else 1.5, points = listOf(PyreonChartPt(x = r.x, y = r.y), PyreonChartPt(x = r.x + r.w, y = r.y), PyreonChartPt(x = r.x + r.w, y = r.y + r.h), PyreonChartPt(x = r.x, y = r.y + r.h), PyreonChartPt(x = r.x, y = r.y)))
+
 fun resolveYDomain(spec: ChartSpec): Domain = (spec.yDomain ?: deriveOver(leftAxisSeries(spec)))
 
 fun resolveY2Domain(spec: ChartSpec): Domain = (spec.y2Domain ?: deriveOver(rightAxisSeries(spec)))
@@ -1236,16 +1250,41 @@ fun renderChart(spec: ChartSpec, measure: (String, Double) -> Double): List<Pyre
         }
       }
     }
+    val emph = (spec.emphasis ?: Emphasis(highlight = -1, selected = listOf()))
+    if (emph.highlight >= 0 && spec.horizontal != true) {
+      val xsE = (spec.xValues ?: listOf())
+      val hi = emph.highlight
+      if (xsE.length > emph.highlight) {
+        val cx = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, xsE[emph.highlight])
+        out.add(PyreonDrawCmd(kind = "rect", rect = PyreonChartRect(x = cx - 6.0, y = plot.y, w = 12.0, h = plot.h), fill = withAlpha(t.axis, 0.14)))
+      } else {
+        if (spec.categories.length > emph.highlight) {
+          val nb = spec.categories.length
+          val bandW = (plot.w).toDouble() / (nb).toDouble()
+          out.add(PyreonDrawCmd(kind = "rect", rect = PyreonChartRect(x = plot.x + bandW * countToDouble(hi), y = plot.y, w = bandW, h = plot.h), fill = withAlpha(t.axis, 0.14)))
+        }
+      }
+    }
     val stackedSeries = if (spec.horizontal == true) listOf() else spec.series.filter({ s -> s.kind == "stacked" })
     if (stackedSeries.length > 0) {
       for (seg in layoutStackedBars(stackedSeries.map({ s -> s.values }), plot, yDomain, 0.25)) {
-        out.add(PyreonDrawCmd(kind = "rect", rect = growRect(seg.rect, yDomain), fill = stackedSeries[seg.seriesIndex].color))
+        val rS = growRect(seg.rect, yDomain)
+        out.add(PyreonDrawCmd(kind = "rect", rect = rS, fill = stackedSeries[seg.seriesIndex].color))
+        val lvlS = emphasisLevel(spec, seg.datumIndex)
+        if (lvlS > 0) {
+          out.add(emphasisOutline(rS, lvlS, t.label))
+        }
       }
     }
     val groupedSeries = if (spec.horizontal == true) listOf() else spec.series.filter({ s -> s.kind == "grouped" })
     if (groupedSeries.length > 0) {
       for (seg in layoutGroupedBars(groupedSeries.map({ s -> s.values }), plot, yDomain, 0.25)) {
-        out.add(PyreonDrawCmd(kind = "rect", rect = growRect(seg.rect, yDomain), fill = groupedSeries[seg.seriesIndex].color))
+        val rG = growRect(seg.rect, yDomain)
+        out.add(PyreonDrawCmd(kind = "rect", rect = rG, fill = groupedSeries[seg.seriesIndex].color))
+        val lvlG = emphasisLevel(spec, seg.datumIndex)
+        if (lvlG > 0) {
+          out.add(emphasisOutline(rG, lvlG, t.label))
+        }
       }
     }
     for (s in spec.series) {
@@ -1287,6 +1326,12 @@ fun renderChart(spec: ChartSpec, measure: (String, Double) -> Double): List<Pyre
             }
           }
         }
+        for (i in 0 until rects.length) {
+          val lvl = emphasisLevel(spec, i)
+          if (lvl > 0) {
+            out.add(emphasisOutline(growRectH(rects[i]), lvl, t.label))
+          }
+        }
         if (s.showValues == true && progress >= 1.0) {
           val fmt = (spec.yFormat ?: ::plain)
           for (i in 0 until rects.length) {
@@ -1326,6 +1371,12 @@ fun renderChart(spec: ChartSpec, measure: (String, Double) -> Double): List<Pyre
             }
           }
         }
+        for (i in 0 until rects.length) {
+          val lvl = emphasisLevel(spec, i)
+          if (lvl > 0) {
+            out.add(emphasisOutline(growRect(rects[i], sDomain), lvl, t.label))
+          }
+        }
         if (s.showValues == true && progress >= 1.0) {
           val fmt = (spec.yFormat ?: ::plain)
           for (i in 0 until rects.length) {
@@ -1360,6 +1411,10 @@ fun renderChart(spec: ChartSpec, measure: (String, Double) -> Double): List<Pyre
               if (s.effect == true) {
                 out.add(PyreonDrawCmd(kind = "circle", fill = withAlpha(s.color, 0.12), center = pts[i], radius = fullR * 2.6 * progress))
                 out.add(PyreonDrawCmd(kind = "circle", fill = withAlpha(s.color, 0.25), center = pts[i], radius = fullR * 1.7 * progress))
+              }
+              val lvlP = emphasisLevel(spec, i)
+              if (lvlP > 0) {
+                out.add(PyreonDrawCmd(kind = "circle", fill = withAlpha(t.label, 0.35), center = pts[i], radius = fullR * progress + (if (lvlP == 2) 4.0 else 3.0)))
               }
               out.add(PyreonDrawCmd(kind = "circle", fill = s.color, center = pts[i], radius = fullR * progress))
             }
