@@ -548,13 +548,13 @@ Linked charts (ECharts `connect`): a shared `{ zoom, hover }` pair of signals th
 **Example**
 
 ```tsx
-import { PlotChart, createChartLink, line, bar } from '@pyreon/charts/plot'
+import { PlotChart, createChartLink, line, bars } from '@pyreon/charts/plot'
 
 interface Bar { t: string; close: number; volume: number }
 declare const price: Bar[]
 const link = createChartLink()
 <PlotChart data={price} x={(d) => d.t} marks={[line((d: Bar) => d.close)]} dataZoom crosshair navigator link={link} />
-<PlotChart data={price} x={(d) => d.t} marks={[bar((d: Bar) => d.volume)]} dataZoom crosshair link={link} />
+<PlotChart data={price} x={(d) => d.t} marks={[bars((d: Bar) => d.volume)]} dataZoom crosshair link={link} />
 ```
 
 **Common mistakes**
