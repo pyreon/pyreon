@@ -79,6 +79,7 @@ const KNOWN_SERIES = new Set([
   'color', 'showSymbol', 'symbol', 'emphasis', 'z', 'zlevel', 'silent',
   'symbolRepeat', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'rippleEffect', 'showEffectOn',
   'renderItem', 'encode', 'dimensions', 'clip', 'datasetIndex',
+  'coordinateSystem', 'polyline', 'effect', 'large', 'largeThreshold', 'progressive',
 ])
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
@@ -103,6 +104,22 @@ function pictorialFields(s: Record<string, unknown>, warn: (code: OptionWarning[
   else if (raw !== 'rect' && raw !== 'roundRect') warn('mark-shape-unsupported', `${path}.symbol`, `pictorialBar symbol "${raw}" is not supported (rect, roundRect, circle, diamond, triangle are); drawn as a rect.`)
   const rep = s['symbolRepeat']
   return { symbol, symbolRepeat: rep === true || rep === 'fixed' || (typeof rep === 'number' && rep > 0) }
+}
+
+/** The internal renderItem for a `lines` series: a polyline through every [x, y] pair of the flattened datum. */
+function linesRenderItem(styles: { color: string; width: number }[]): CustomRenderItem {
+  return (params, api) => {
+    const pts: [number, number][] = []
+    for (let d = 0; ; d = d + 2) {
+      const x = api.value(d)
+      const y = api.value(d + 1)
+      if (x === undefined || y === undefined) break
+      pts.push(api.coord([x, y]))
+    }
+    if (pts.length < 2) return null
+    const st = styles[params.dataIndex] ?? { color: '#334155', width: 1.5 }
+    return { type: 'polyline', shape: { points: pts }, style: { stroke: st.color, lineWidth: st.width } }
+  }
 }
 
 /** Compile an ECharts-shaped option onto the engine. Pure. */
@@ -180,6 +197,45 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       if (!KNOWN_SERIES.has(key)) warn('series-option-unsupported', `${path}.${key}`, `"${key}" has no mapping yet; it was ignored.`)
     }
     const type = typeof s['type'] === 'string' ? (s['type'] as string) : ''
+    if (type === 'lines') {
+      if (isObj(s['effect']) && s['effect']['show'] === true) warn('series-option-unsupported', path + '.effect', 'Animated line trails are not supported; the lines are drawn static.')
+      const lineStyle = isObj(s['lineStyle']) ? s['lineStyle'] : {}
+      const seriesColor = typeof lineStyle['color'] === 'string' ? (lineStyle['color'] as string) : palette[i % Math.max(1, palette.length)] ?? defaultPalette[i % defaultPalette.length]!
+      const seriesWidth = num(lineStyle['width']) ?? 1.5
+      const rows = Array.isArray(s['data']) ? (s['data'] as unknown[]) : []
+      const flat: unknown[] = []
+      const styles: { color: string; width: number }[] = []
+      for (let j = 0; j < rows.length; j++) {
+        const d = rows[j]
+        const coords = Array.isArray(d) ? d : isObj(d) && Array.isArray(d['coords']) ? (d['coords'] as unknown[]) : null
+        const pairs = coords === null ? [] : coords.filter((c): c is unknown[] => Array.isArray(c) && c.length >= 2)
+        if (coords === null || pairs.length < 2) {
+          warn('series-data-shape', `${path}.data[${j}]`, 'A lines datum needs coords with at least two [x, y] pairs; it was skipped.')
+          continue
+        }
+        const row: unknown[] = []
+        for (const c of pairs) {
+          row.push(num(c[0]) ?? 0)
+          row.push(num(c[1]) ?? 0)
+        }
+        flat.push(row)
+        const ls = isObj(d) && isObj(d['lineStyle']) ? d['lineStyle'] : {}
+        styles.push({ color: typeof ls['color'] === 'string' ? (ls['color'] as string) : seriesColor, width: num(ls['width']) ?? seriesWidth })
+      }
+      const yDims: number[] = []
+      let longest = 0
+      for (const r of flat) if ((r as unknown[]).length > longest) longest = (r as unknown[]).length
+      for (let d = 1; d < longest; d = d + 2) yDims.push(d)
+      customPlans.push({
+        name: typeof s['name'] === 'string' ? (s['name'] as string) : 'Series ' + String(i + 1),
+        color: seriesColor,
+        data: flat,
+        renderItem: linesRenderItem(styles),
+        yDims,
+        xDim: 0,
+      })
+      continue
+    }
     if (type === 'custom') {
       const ri = s['renderItem']
       if (typeof ri !== 'function') {

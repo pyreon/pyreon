@@ -66,9 +66,13 @@ export function customExtents(plan: CustomSeriesPlan): { x: [Double, Double] | n
   let xhi = -Infinity
   let ylo = Infinity
   let yhi = -Infinity
+  // A lines datum is a flattened [x, y, x, y, …] row: every even dim is an x.
+  const allPairs = plan.yDims.length > 1 && plan.yDims.every((d, k) => d === 2 * k + 1)
   for (const d of plan.data) {
-    const x = num(dimOf(d, plan.xDim))
-    if (x !== null) {
+    const xDims = allPairs && Array.isArray(d) ? d.map((_, k) => k).filter((k) => k % 2 === 0) : [plan.xDim]
+    for (const xd of xDims) {
+      const x = num(dimOf(d, xd))
+      if (x === null) continue
       if (x < xlo) xlo = x
       if (x > xhi) xhi = x
     }
