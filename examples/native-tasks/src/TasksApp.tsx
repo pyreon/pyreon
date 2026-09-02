@@ -73,7 +73,7 @@ import { Toaster, toast } from '@pyreon/toast'
 import { announce } from '@pyreon/a11y'
 import { useUrlState } from '@pyreon/url-state'
 import { signal, computed } from '@pyreon/reactivity'
-import { SankeyChart } from '@pyreon/charts/plot'
+import { PlotChart, SankeyChart, bars } from '@pyreon/charts/plot'
 import type { SankeyHitIndex, SankeyLink, SankeyNode } from '@pyreon/charts/plot'
 import { useForm } from '@pyreon/form'
 import { useFetch } from '@pyreon/hooks'
@@ -420,6 +420,14 @@ type Scores = { math: number; art: number; gym: number }
 // data is module-level literals typed by the engine's own structs, the
 // shape the compiler's external struct registry exists for.
 const FLOW_NODES: SankeyNode[] = [{ name: 'Backlog' }, { name: 'Doing' }, { name: 'Done' }]
+// The cartesian family on native (#3263): a bar per subject, the accessor
+// bodies inlined into the engine's Series on iOS/Android, the same canvas
+// on the web.
+interface ScoreRow {
+  subject: string
+  score: number
+}
+const SCORE_ROWS: ScoreRow[] = [{ subject: 'math', score: 82 }, { subject: 'art', score: 91 }, { subject: 'gym', score: 74 }]
 const FLOW_LINKS: SankeyLink[] = [
   { source: 'Backlog', target: 'Doing', value: 8 },
   { source: 'Doing', target: 'Done', value: 5 },
@@ -431,6 +439,8 @@ function StatsPage() {
   // `onSelectIndex` is the engine's index hit on every target — a click on the
   // web canvas, a tap gesture over the same layout on iOS/Android.
   const flowPick = signal(-1)
+  // The bar index the last tap on the score chart reported (-1 = none yet).
+  const barPick = signal(-1)
   const scores = signal<Scores>({ math: 82, art: 91, gym: 74 })
   const subjects = computed(() => Object.keys(scores()))
   const total = computed(() => Object.values(scores()).reduce((a: number, b: number) => a + b, 0))
@@ -455,6 +465,16 @@ function StatsPage() {
         onSelectIndex={(hit: SankeyHitIndex) => flowPick.set(hit.node)}
       />
       <Text data-testid="stats-flow-pick">{String(flowPick())}</Text>
+      <PlotChart
+        data={SCORE_ROWS}
+        x={(d: ScoreRow) => d.subject}
+        marks={[bars((d: ScoreRow) => d.score, { label: 'Score', color: '#0f766e' })]}
+        height={160}
+        title="Scores by subject"
+        data-testid="stats-bars"
+        onSelect={(i: number) => barPick.set(i)}
+      />
+      <Text data-testid="stats-bars-pick">{String(barPick())}</Text>
       <Button onPress={() => navigate('/tasks')} data-testid="stats-back">
         Back to tasks
       </Button>

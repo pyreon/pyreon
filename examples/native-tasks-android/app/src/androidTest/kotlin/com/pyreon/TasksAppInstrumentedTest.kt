@@ -544,6 +544,19 @@ class TasksAppInstrumentedTest {
             .onNodeWithTag("stats-flow")
             .performTouchInput { click(Offset(88f * flowDensity, 80f * flowDensity)) }
         waitForTagText("stats-flow-pick", "0")
+        // #3263: `<PlotChart marks>` natively — a tap on the bars canvas runs
+        // plotHitBars over the spec the canvas painted; (90, 120) dp is inside
+        // the first of three bands, near the baseline.
+        composeRule
+            .onNodeWithTag("stats-bars")
+            .assertIsDisplayed()
+        composeRule
+            .onNodeWithTag("stats-bars-pick")
+            .assertTextEquals("-1")
+        composeRule
+            .onNodeWithTag("stats-bars")
+            .performTouchInput { click(Offset(90f * flowDensity, 120f * flowDensity)) }
+        waitForTagText("stats-bars-pick", "0")
         composeRule
             .onNodeWithTag("stats-back")
             .performClick()
