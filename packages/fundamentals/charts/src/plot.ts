@@ -192,3 +192,7 @@ export { getTheme, listThemes, registerTheme, resolveTheme } from './engine/them
 export type { ResolvedTheme, ThemeDefinition } from './engine/theme-registry'
 export { dateFormatter, getLocale, numberFormatter, registerLocale } from './engine/locale'
 export type { LocalePack } from './engine/locale'
+export { ganttDurationDays, ganttTicks, ganttToSvg, hitGantt, layoutGantt, renderGantt } from './engine/gantt'
+export type { GanttDependency, GanttLane, GanttLayout, GanttOptions, GanttRow, GanttTask, GanttTick, GanttTickUnit, GanttToSvgOptions } from './engine/gantt'
+export { GanttChart } from './engine/GanttChart'
+export type { GanttChartProps } from './engine/GanttChart'
