@@ -190,12 +190,33 @@ jobs:
       # builds). Local-dev installs deliberately keep the postinstall build.
       - run: PYREON_BOOTSTRAP_SKIP=1 bun install --frozen-lockfile
       # node_modules is fully determined by the lockfile, so the content key
-      # IS the exact key; downstream jobs restore it via setup-pyreon. The
-      # per-ref save is deliberate (unlike the tarball store): a lockfile-
-      # changing PR's ~30 downstream jobs would otherwise each pay the
-      # fallback install.
+      # IS the exact key; downstream jobs restore it via setup-pyreon.
+      #
+      # WHO SAVES: main, and a PR ONLY when its lockfile differs from main's.
+      # The actions cache is REF-scoped — an entry saved from a PR's merge ref
+      # is visible to that PR alone — so a PR whose lockfile equals main's can
+      # only ever mint a copy nobody else can use. That copy was minted
+      # whenever main's own entry was missing, and under a full 10 GB budget
+      # it often was: measured 2026-09-02, FOURTEEN identical 434 MB copies
+      # (6 GB, 60% of the budget) each scoped to one PR, evicting the small
+      # entries every PR depends on, which evicted main's node_modules, which
+      # made the next PR mint a copy — a self-reinforcing cascade. A
+      # lockfile-CHANGING PR still saves its own (its ~15 downstream jobs
+      # would otherwise each pay the fallback install); everyone else reads
+      # main's, which main re-saves on every push that misses.
+      - name: Does this PR change the lockfile?
+        id: lock-diff
+        if: github.event_name == 'pull_request'
+        run: |
+          if git diff --quiet "origin/${{ github.base_ref }}" -- bun.lock; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "bun.lock matches the base — main's node_modules entry serves this PR; not saving a per-ref copy."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "bun.lock differs from the base — this PR saves its own node_modules entry."
+          fi
       - name: Save node_modules (lockfile key)
-        if: steps.nm-restore.outputs.cache-hit != 'true'
+        if: steps.nm-restore.outputs.cache-hit != 'true' && (github.event_name != 'pull_request' || steps.lock-diff.outputs.changed == 'true')
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
