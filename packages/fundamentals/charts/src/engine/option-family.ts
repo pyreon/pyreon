@@ -30,6 +30,8 @@ import { geoToSvg, getMap } from './geo'
 import type { GeoJson, GeoOptions } from './geo'
 import { geoPointsToSvg } from './geo-points'
 import type { GeoPath, GeoPoint, GeoPointsOptions } from './geo-points'
+import { singleAxisToSvg } from './single-axis'
+import type { SingleAxisOptions, SingleAxisPoint, SingleAxisSpec } from './single-axis'
 import type { FunnelOptions } from './funnel'
 import type { RadarAxis } from './radar'
 import type { Double } from './types'
@@ -52,6 +54,7 @@ export type FamilyPlan =
   | { kind: 'themeRiver'; series: RiverSeries[]; river: RiverOptions; title: string | undefined }
   | { kind: 'map'; geo: GeoJson; values: Record<string, Double>; options: GeoOptions; title: string | undefined }
   | { kind: 'geoPoints'; geo: GeoJson; points: GeoPoint[]; paths: GeoPath[]; map: GeoOptions; options: GeoPointsOptions; title: string | undefined }
+  | { kind: 'singleAxis'; axis: SingleAxisSpec; points: SingleAxisPoint[]; options: SingleAxisOptions; title: string | undefined }
 
 export interface CompiledFamily {
   plan: FamilyPlan
@@ -78,7 +81,7 @@ const pct = (v: unknown): number | null => {
 /** True when the option's first series is a family (non-cartesian) type. */
 export function isFamilyOption(option: EChartsOption): boolean {
   const s = first(option['series'] as unknown)
-  return isObj(s) && typeof s['type'] === 'string' && (FAMILY_TYPES.has(s['type'] as string) || s['coordinateSystem'] === 'polar' || s['coordinateSystem'] === 'geo')
+  return isObj(s) && typeof s['type'] === 'string' && (FAMILY_TYPES.has(s['type'] as string) || s['coordinateSystem'] === 'polar' || s['coordinateSystem'] === 'geo' || s['coordinateSystem'] === 'singleAxis')
 }
 
 const KNOWN_TOP = new Set(['series', 'title', 'legend', 'tooltip', 'color', 'radar', 'xAxis', 'yAxis', 'visualMap', 'animation', 'backgroundColor', 'textStyle', 'grid', 'calendar', 'parallel', 'parallelAxis', 'polar', 'angleAxis', 'radiusAxis', 'singleAxis', 'dataset', 'graphic', 'geo'])
@@ -93,6 +96,7 @@ const KNOWN_BY_FAMILY: Record<string, Set<string>> = {
   sunburst: new Set(['type', 'name', 'data', 'radius', 'center', 'sort', 'startAngle', 'label', 'itemStyle', 'color', 'emphasis', 'nodeClick', 'levels']),
   tree: new Set(['type', 'name', 'data', 'orient', 'layout', 'symbol', 'symbolSize', 'initialTreeDepth', 'edgeShape', 'label', 'itemStyle', 'lineStyle', 'leaves', 'roam', 'expandAndCollapse', 'emphasis', 'top', 'left', 'right', 'bottom']),
   sankey: new Set(['type', 'name', 'data', 'nodes', 'links', 'edges', 'nodeWidth', 'nodeGap', 'nodeAlign', 'layoutIterations', 'orient', 'draggable', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'levels', 'top', 'left', 'right', 'bottom']),
+  singleAxis: new Set(['type', 'name', 'data', 'coordinateSystem', 'singleAxisIndex', 'symbolSize', 'symbol', 'label', 'itemStyle', 'emphasis', 'color', 'animation']),
   geo: new Set(['type', 'name', 'data', 'coordinateSystem', 'geoIndex', 'symbolSize', 'symbol', 'label', 'itemStyle', 'lineStyle', 'effect', 'polyline', 'emphasis', 'rippleEffect', 'showEffectOn', 'color', 'animation', 'zlevel', 'z']),
   map: new Set(['type', 'name', 'data', 'map', 'roam', 'label', 'itemStyle', 'emphasis', 'select', 'selectedMode', 'nameProperty', 'projection', 'zoom', 'center', 'aspectScale', 'layoutCenter', 'layoutSize', 'showLegendSymbol', 'geoIndex', 'left', 'top', 'right', 'bottom']),
   themeRiver: new Set(['type', 'name', 'data', 'coordinateSystem', 'singleAxisIndex', 'boundaryGap', 'label', 'itemStyle', 'emphasis', 'color', 'animation']),
@@ -118,10 +122,10 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
   const seriesArr = Array.isArray(option['series']) ? (option['series'] as unknown[]) : [option['series']]
   const s = seriesArr[0] as Record<string, unknown>
   const type = s['type'] as string
-  const familyKey = s['coordinateSystem'] === 'polar' ? 'polar' : s['coordinateSystem'] === 'geo' ? 'geo' : type
+  const familyKey = s['coordinateSystem'] === 'polar' ? 'polar' : s['coordinateSystem'] === 'geo' ? 'geo' : s['coordinateSystem'] === 'singleAxis' ? 'singleAxis' : type
   for (const key of Object.keys(option)) if (!KNOWN_TOP.has(key)) warn('option-key-unsupported', key, `"${key}" has no mapping yet; it was ignored.`)
   for (const key of Object.keys(s)) if (!KNOWN_BY_FAMILY[familyKey]!.has(key)) warn('series-option-unsupported', `series[0].${key}`, `"${key}" has no mapping for ${type} yet; it was ignored.`)
-  if (seriesArr.length > 1 && type !== 'radar' && familyKey !== 'polar' && familyKey !== 'geo') {
+  if (seriesArr.length > 1 && type !== 'radar' && familyKey !== 'polar' && familyKey !== 'geo' && familyKey !== 'singleAxis') {
     warn('series-option-unsupported', 'series[1]', `Only one ${type} series is rendered per chart; extra series were ignored.`)
   }
   const titleRaw = first(option['title'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
@@ -254,6 +258,51 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       warnings,
       supported,
     }
+  }
+
+  if (familyKey === 'singleAxis') {
+    if (type !== 'scatter' && type !== 'effectScatter') warn('series-type-unsupported', 'series[0].type', 'Only scatter renders on a single axis; ' + type + ' was skipped.')
+    const axRaw = first(option['singleAxis'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
+    const ax = isObj(axRaw) ? axRaw : {}
+    const isCat = ax['type'] === 'category'
+    const cats = Array.isArray(ax['data']) ? (ax['data'] as unknown[]).map((c) => (typeof c === 'string' ? c : isObj(c) && typeof c['value'] === 'string' ? (c['value'] as string) : String(c))) : undefined
+    const lo = num(ax['min'])
+    const hi = num(ax['max'])
+    const axis: SingleAxisSpec = {
+      type: isCat ? 'category' : 'value',
+      ...(isCat ? { categories: cats ?? [] } : {}),
+      ...(!isCat && lo !== null && hi !== null ? { domain: [lo, hi] as [Double, Double] } : {}),
+      ...(typeof ax['name'] === 'string' ? { name: ax['name'] as string } : {}),
+    }
+    const points: SingleAxisPoint[] = []
+    if (type === 'scatter' || type === 'effectScatter') {
+      for (let i = 0; i < data.length; i++) {
+        const d = data[i]
+        const arr = Array.isArray(d) ? d : isObj(d) && Array.isArray(d['value']) ? (d['value'] as unknown[]) : isObj(d) ? [d['value']] : [d]
+        const x = num(arr[0])
+        if (x === null) {
+          warn('series-data-shape', 'series[0].data[' + String(i) + ']', 'A single-axis datum must be a value or [position, size]; it was skipped.')
+          continue
+        }
+        const size = num(arr[1])
+        const item = isObj(d) && isObj(d['itemStyle']) ? d['itemStyle'] : {}
+        points.push({
+          x,
+          ...(size !== null ? { size } : {}),
+          ...(isObj(d) && typeof d['name'] === 'string' ? { name: d['name'] as string } : {}),
+          ...(typeof item['color'] === 'string' ? { color: item['color'] as string } : {}),
+        })
+      }
+    }
+    const label = isObj(s['label']) ? s['label'] : {}
+    const item = isObj(s['itemStyle']) ? s['itemStyle'] : {}
+    const size = num(s['symbolSize'])
+    const options: SingleAxisOptions = {
+      showLabels: label['show'] === true,
+      ...(size !== null ? { radius: size / 2.0 } : {}),
+      ...(typeof item['color'] === 'string' ? { color: item['color'] as string } : {}),
+    }
+    return { plan: { kind: 'singleAxis', axis, points, options, title }, warnings, supported }
   }
 
   if (familyKey === 'geo') {
@@ -873,6 +922,15 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
         ...(plan.title !== undefined ? { title: plan.title } : {}),
       })
     }
+    case 'singleAxis':
+      return singleAxisToSvg({
+        axis: plan.axis,
+        points: plan.points,
+        options: plan.options,
+        width,
+        height,
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
     case 'geoPoints':
       return geoPointsToSvg({
         geo: plan.geo,
