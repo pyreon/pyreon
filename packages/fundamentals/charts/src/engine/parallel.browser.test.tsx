@@ -3,7 +3,9 @@ import { signal } from '@pyreon/reactivity'
 import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
 import { ParallelChart } from './ParallelChart'
 import { layoutParallel } from './parallel'
-import type { ParallelLine, ParallelRow } from './parallel'
+import type { ParallelLine } from './parallel'
+import { parallelRows } from './parallel-web'
+import type { ParallelRow } from './parallel-web'
 
 const AXES = [{ name: 'a' }, { name: 'b' }]
 const ROWS: ParallelRow[] = [[1, 10], [2, 20], [3, 30]]
@@ -26,7 +28,7 @@ describe('ParallelChart (real browser)', () => {
     const c = container.querySelector('canvas')!
     const before = inked(c)
     expect(before).toBeGreaterThan(0)
-    const line = layoutParallel(AXES, ROWS, { x: 40, y: 8, w: 320, h: 284 }).lines[1]!
+    const line = layoutParallel(AXES, parallelRows(AXES, ROWS), { x: 40, y: 8, w: 320, h: 284 }).lines[1]!
     const a = line.points[0]!
     const b = line.points[1]!
     const r = c.getBoundingClientRect()

@@ -3,9 +3,11 @@
 import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
-import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
-import { hitParallel, layoutParallel, renderParallel } from './parallel'
-import type { ParallelAxis, ParallelLayout, ParallelLine, ParallelOptions, ParallelRow } from './parallel'
+import { paint, prepareCanvas } from './canvas-web'
+import { layoutParallel, renderParallel } from './parallel'
+import type { ParallelAxis, ParallelLayout, ParallelLine, ParallelOptions } from './parallel'
+import { hitParallel, parallelLineColors, parallelRows } from './parallel-web'
+import type { ParallelRow } from './parallel-web'
 import { chartTable, describeChart } from './a11y'
 import type { Double } from './types'
 
@@ -19,6 +21,8 @@ export interface ParallelChartProps {
   /** Space kept for labels on both sides; default 40. */
   gutter?: Double
   parallel?: ParallelOptions
+  /** Per-row line colour; sets `lineColors` on the engine options. */
+  rowColor?: (row: ParallelRow, index: number) => string
   title?: string
   onSelect?: (line: ParallelLine | null) => void
   accessibleTable?: boolean
@@ -36,9 +40,14 @@ export function ParallelChart(props: ParallelChartProps): VNode {
   let canvas: HTMLCanvasElement | null = null
   let sizeObserver: ResizeObserver | null = null
   const readRows = (): ParallelRow[] => (typeof props.rows === 'function' ? props.rows() : props.rows)
+  const opts = (): ParallelOptions | undefined => {
+    const colorOf = props.rowColor
+    if (colorOf === undefined) return props.parallel
+    return { ...props.parallel, lineColors: parallelLineColors(readRows(), colorOf) }
+  }
   const layoutFor = (w: Double, hgt: Double): ParallelLayout => {
     const g = props.gutter ?? 40.0
-    return layoutParallel(props.axes, readRows(), { x: g, y: 8.0, w: Math.max(0.0, w - g * 2.0), h: Math.max(0.0, hgt - 16.0) }, props.parallel)
+    return layoutParallel(props.axes, parallelRows(props.axes, readRows()), { x: g, y: 8.0, w: Math.max(0.0, w - g * 2.0), h: Math.max(0.0, hgt - 16.0) }, opts())
   }
 
   const draw = (): void => {
@@ -48,7 +57,7 @@ export function ParallelChart(props: ParallelChartProps): VNode {
     const hgt = props.height ?? 300
     const ctx = prepareCanvas(el, w, hgt)
     if (ctx === null) return
-    paint(ctx, renderParallel(layoutFor(w, hgt), props.parallel, canvasMeasure(ctx, FONT)), w, hgt, FONT)
+    paint(ctx, renderParallel(layoutFor(w, hgt), opts()), w, hgt, FONT)
   }
 
   effect(() => {
