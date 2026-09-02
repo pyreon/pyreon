@@ -449,6 +449,16 @@ final class PyreonTasksUITests: XCTestCase {
             waitForLabel(barPick, "0", timeout: 10),
             "tap on the first bar did not bind index 0 (label: \(barPick.label))"
         )
+        // #3268: `<PlotChart dataZoom>` — a pinch drives the engine's fraction
+        // window through MagnificationGesture. 4.5x on three rows keeps only
+        // row 1 (any scale in 3…6 does), so the sole band now IS 'art' and a
+        // tap must report the GLOBAL index 1: gesture, slice and rebase, together.
+        statsBars.pinch(withScale: 4.5, velocity: 2)
+        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 90, dy: 120)).tap()
+        XCTAssertTrue(
+            waitForLabel(barPick, "1", timeout: 10),
+            "after the pinch, a tap on the sole band did not bind the GLOBAL index 1 (label: \(barPick.label))"
+        )
         let statsBack = app.buttons["stats-back"].firstMatch
         XCTAssertTrue(statsBack.exists, "Back button missing on stats page")
         statsBack.tap()
