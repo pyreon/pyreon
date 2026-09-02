@@ -1113,7 +1113,7 @@ function tryModuleDeclsFromTopLevel(node: AnyNode, ctx: ParseCtx): ModuleDeclIR[
 // different as a linter, a `<head>` manager and an animation engine.
 const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map([
   ['@pyreon/atlas', "the component workbench — dev tooling that runs in a browser, not app runtime"],
-  ['@pyreon/charts', "the ECharts bridge wraps a browser canvas engine — consume it on native via the `<WebView>` bridge subpath; the `/plot` engine takes the other road: every family's geometry is generated into the native runtimes (PyreonChartEngine.swift/.kt, drift-tested on both toolchains), with the canvas hosts and gestures web-only"],
+  ['@pyreon/charts', "the ECharts bridge wraps a browser canvas engine — consume it on native via the `<WebView>` bridge subpath; the `/plot` engine takes the other road: every family's geometry is generated into the native runtimes (PyreonChartEngine.swift/.kt, drift-tested on both toolchains) and every host lowers to a native canvas (PyreonChartCanvas — legend, title, theme, formatters, selection as a tap), with only the gesture surfaces (dataZoom / brush / navigator) and the ECharts option facade web-only"],
   ['@pyreon/code', "wraps CodeMirror 6 (DOM editor engine); consume on native via the `<WebView>` bridge subpath"],
   ['@pyreon/compiler', "the web JSX compiler + build tooling itself; the native sibling is @pyreon/native-compiler — nothing here ships to an app runtime"],
   ['@pyreon/config', "build-time config shape read by the tooling that assembles an app — never part of a rendered app on any target"],
