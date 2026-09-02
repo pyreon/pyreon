@@ -181,7 +181,7 @@ export { geoPointRadii, geoPointsToSvg, hitGeoPoint, renderGeoPaths, renderGeoPo
 export type { GeoPath, GeoPoint, GeoPointsOptions, GeoPointsToSvgOptions } from './engine/geo-points'
 
 // ECharts option compatibility — the facade, its layers, and the registries
-export { compileOption, optionToSvg, planOption } from './engine/option'
+export { compiledCommands, compileOption, optionToSvg, planOption } from './engine/option'
 export type { CompileOptions, CompiledOption, EChartsOption, OptionPlan, OptionToSvgOptions, OptionWarning } from './engine/option'
 export { compileFamily, familyToSvg, isFamilyOption } from './engine/option-family'
 export type { CompiledFamily, FamilyPlan } from './engine/option-family'
@@ -202,3 +202,7 @@ export { createChartLink } from './engine/link'
 export type { ChartLink } from './engine/link'
 export { sonifyValues, valueToHz } from './engine/sonify'
 export type { Sonification, SonifyOptions } from './engine/sonify'
+export { OptionChart } from './engine/OptionChart'
+export type { OptionChartProps, OptionHit } from './engine/OptionChart'
+export { TIMELINE_HEIGHT, gridRect, resolveTimeline, splitGrids, timelineSteps } from './engine/option-composite'
+export type { GridPart, TimelineSteps } from './engine/option-composite'
