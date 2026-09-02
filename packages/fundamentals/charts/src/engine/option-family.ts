@@ -17,6 +17,8 @@ import { sankeyToSvg } from './sankey'
 import type { SankeyLink, SankeyNode, SankeyOptions } from './sankey'
 import { graphToSvg } from './graph'
 import type { GraphLink, GraphNode, GraphOptions } from './graph'
+import { calendarToSvg } from './calendar'
+import type { CalendarOptions } from './calendar'
 import { boxplotToSvg } from './boxplot'
 import type { FiveNumber } from './boxplot'
 import type { FunnelOptions } from './funnel'
@@ -35,6 +37,7 @@ export type FamilyPlan =
   | { kind: 'tree'; nodes: TreeNode[]; tree: TreeOptions; title: string | undefined }
   | { kind: 'sankey'; nodes: SankeyNode[]; links: SankeyLink[]; sankey: SankeyOptions; title: string | undefined }
   | { kind: 'graph'; nodes: GraphNode[]; links: GraphLink[]; graph: GraphOptions; title: string | undefined }
+  | { kind: 'calendar'; start: string; end: string; values: Record<string, Double>; calendar: CalendarOptions; title: string | undefined }
   | { kind: 'boxplot'; rows: (FiveNumber & { x: string })[]; fill: string | undefined; stroke: string | undefined; title: string | undefined }
 
 export interface CompiledFamily {
@@ -65,13 +68,13 @@ export function isFamilyOption(option: EChartsOption): boolean {
   return isObj(s) && typeof s['type'] === 'string' && FAMILY_TYPES.has(s['type'] as string)
 }
 
-const KNOWN_TOP = new Set(['series', 'title', 'legend', 'tooltip', 'color', 'radar', 'xAxis', 'yAxis', 'visualMap', 'animation', 'backgroundColor', 'textStyle', 'grid'])
+const KNOWN_TOP = new Set(['series', 'title', 'legend', 'tooltip', 'color', 'radar', 'xAxis', 'yAxis', 'visualMap', 'animation', 'backgroundColor', 'textStyle', 'grid', 'calendar'])
 const KNOWN_BY_FAMILY: Record<string, Set<string>> = {
   pie: new Set(['type', 'name', 'data', 'radius', 'label', 'itemStyle', 'center', 'emphasis', 'color']),
   gauge: new Set(['type', 'name', 'data', 'min', 'max', 'detail', 'axisLine', 'progress', 'itemStyle', 'color']),
   radar: new Set(['type', 'name', 'data', 'areaStyle', 'itemStyle', 'lineStyle', 'symbol', 'color']),
   candlestick: new Set(['type', 'name', 'data', 'itemStyle', 'color']),
-  heatmap: new Set(['type', 'name', 'data', 'label', 'itemStyle', 'emphasis', 'color']),
+  heatmap: new Set(['coordinateSystem', 'calendarIndex', 'type', 'name', 'data', 'label', 'itemStyle', 'emphasis', 'color']),
   funnel: new Set(['type', 'name', 'data', 'sort', 'gap', 'minSize', 'label', 'itemStyle', 'funnelAlign', 'color', 'emphasis']),
   treemap: new Set(['type', 'name', 'data', 'leafDepth', 'label', 'itemStyle', 'color', 'emphasis', 'roam', 'nodeClick', 'breadcrumb']),
   sunburst: new Set(['type', 'name', 'data', 'radius', 'center', 'sort', 'startAngle', 'label', 'itemStyle', 'color', 'emphasis', 'nodeClick', 'levels']),
@@ -230,6 +233,59 @@ export function compileFamily(option: EChartsOption): CompiledFamily | null {
       warnings,
       supported,
     }
+  }
+
+  if (type === 'heatmap' && s['coordinateSystem'] === 'calendar') {
+    const cal = first(option['calendar'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
+    const calObj = isObj(cal) ? cal : {}
+    let start = ''
+    let end = ''
+    const range = calObj['range']
+    const year = (y: number): [string, string] => [String(y) + '-01-01', String(y) + '-12-31']
+    if (typeof range === 'number') [start, end] = year(range)
+    else if (typeof range === 'string' && /^\d{4}$/.test(range)) [start, end] = year(Number(range))
+    else if (typeof range === 'string' && /^\d{4}-\d{2}$/.test(range)) {
+      const y = Number(range.slice(0, 4))
+      const mo = Number(range.slice(5, 7))
+      const lastDay = new Date(Date.UTC(y, mo, 0)).getUTCDate()
+      start = range + '-01'
+      end = range + '-' + (lastDay < 10 ? '0' : '') + String(lastDay)
+    } else if (typeof range === 'string') [start, end] = [range, range]
+    else if (Array.isArray(range) && range.length === 2 && typeof range[0] === 'string' && typeof range[1] === 'string') [start, end] = [range[0], range[1]]
+    else warn('series-option-unsupported', 'calendar.range', 'calendar.range must be a year, a "YYYY-MM", a date, or [start, end]; nothing was laid out.')
+    if (calObj['orient'] === 'vertical') warn('series-option-unsupported', 'calendar.orient', 'A vertical calendar is not supported yet; rendered horizontally.')
+    const values: Record<string, Double> = {}
+    for (let i = 0; i < data.length; i++) {
+      const d = data[i]
+      const pair = Array.isArray(d) ? d : isObj(d) && Array.isArray(d['value']) ? (d['value'] as unknown[]) : null
+      const date = pair !== null && typeof pair[0] === 'string' ? pair[0] : null
+      const v = pair !== null ? num(pair[1]) : null
+      if (date === null || v === null || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        warn('series-data-shape', 'series[0].data[' + String(i) + ']', 'A calendar heatmap datum must be [YYYY-MM-DD, value]; it was skipped.')
+        continue
+      }
+      values[date] = v
+    }
+    const dayLabel = isObj(calObj['dayLabel']) ? calObj['dayLabel'] : {}
+    const monthLabel = isObj(calObj['monthLabel']) ? calObj['monthLabel'] : {}
+    const cellRaw = calObj['cellSize']
+    const cellSize = Array.isArray(cellRaw) ? num(cellRaw[0]) : num(cellRaw)
+    const firstDay = num(dayLabel['firstDay'])
+    const vm = first(option['visualMap'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
+    const stops = isObj(vm) && isObj(vm['inRange']) && Array.isArray(vm['inRange']['color'])
+      ? (vm['inRange']['color'] as unknown[]).filter((c): c is string => typeof c === 'string')
+      : []
+    const vmMin = isObj(vm) ? num(vm['min']) : null
+    const vmMax = isObj(vm) ? num(vm['max']) : null
+    const calendar: CalendarOptions = {
+      showDayLabels: dayLabel['show'] !== false,
+      showMonthLabels: monthLabel['show'] !== false,
+      ...(cellSize !== null ? { cellSize } : {}),
+      ...(firstDay !== null ? { firstDay } : {}),
+      ...(stops.length >= 2 ? { stops } : {}),
+      ...(vmMin !== null && vmMax !== null ? { domain: [vmMin, vmMax] as [Double, Double] } : {}),
+    }
+    return { plan: { kind: 'calendar', start, end, values, calendar, title }, warnings, supported }
   }
 
   if (type === 'graph') {
@@ -608,6 +664,16 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
         ...(plan.title !== undefined ? { title: plan.title } : {}),
       })
     }
+    case 'calendar':
+      return calendarToSvg({
+        start: plan.start,
+        end: plan.end,
+        values: plan.values,
+        calendar: plan.calendar,
+        width,
+        height,
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
     case 'graph':
       return graphToSvg({
         nodes: plan.nodes,
