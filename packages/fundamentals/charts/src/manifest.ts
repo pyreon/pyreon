@@ -11,7 +11,7 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'wraps ECharts (browser canvas engine); consume on native via the `<WebView>` bridge subpath',
+      'the ECharts bridge wraps a browser canvas engine — consume it on native via the `<WebView>` bridge subpath; the `/plot` engine takes the other road: every family\'s geometry is generated into the native runtimes (PyreonChartEngine.swift/.kt, drift-tested on both toolchains), with the canvas hosts and gestures web-only',
   },
   longExample: `import { Chart, useChart, type EChartsOption, type ComposeOption, type BarSeriesOption, type LineSeriesOption } from '@pyreon/charts'
 import { signal } from '@pyreon/reactivity'

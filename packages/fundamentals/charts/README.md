@@ -16,7 +16,9 @@ They are INDEPENDENT. Pulling a name from the default entry loads ECharts;
 
 No third-party engine. The geometry is pure TypeScript over plain data, and the
 platform half is a short backend that walks a flat `DrawCmd[]` — which is what
-makes it tree-shakeable, server-renderable, and the path to native rendering.
+makes it tree-shakeable, server-renderable, and — because every family's geometry
+is written in the PMTC subset — generated verbatim into the Swift and Kotlin
+runtimes (see [Native geometry](#native-geometry--the-plot-engine-on-iosandroid)).
 
 ```tsx
 import { PlotChart, bars, line } from '@pyreon/charts/plot'
@@ -479,7 +481,7 @@ Protocol: per-impl **process isolation** (fresh `bun` child per impl ×3, pooled
 
 ## Multiplatform — `@pyreon/charts/webview`
 
-`@pyreon/charts` is web-only (it wraps ECharts, a canvas engine that can't compile to SwiftUI/Compose). To ship charts on iOS/Android too, host the real engine inside a native `<WebView>` — the sanctioned Pyreon multiplatform mechanism, with a bidirectional data bridge.
+The ECharts bridge (`@pyreon/charts`) is web-only — ECharts is a canvas engine that can't compile to SwiftUI/Compose. To ship an ECharts chart on iOS/Android, host the real engine inside a native `<WebView>` — the sanctioned Pyreon multiplatform mechanism, with a bidirectional data bridge. (The plot engine takes the other road: its geometry is generated INTO the native runtimes — see the next section.)
 
 ```ts
 import { buildChartHostHtml } from '@pyreon/charts/webview'
@@ -506,6 +508,14 @@ import { WebView } from '@pyreon/primitives'
 - **`<ChartWebView option onSelect>`** is the web-side ergonomic wrapper (it builds the host + emits `<WebView>` for you); on native, use `<WebView html={CHART_HOST} …>` directly (the component's body can't be PMTC-lowered — the host string + `<WebView>` can).
 
 See `examples/native-viz` for a full one-source bar + line + pie + flow app across web/iOS/Android.
+
+## Native geometry — the plot engine on iOS/Android
+
+Every family in `@pyreon/charts/plot` — cartesian marks, pie/gauge, radar, candlestick, heatmap, funnel, treemap, sunburst, tree, sankey, graph, polar, theme river, calendar, gantt, parallel coordinates — has its geometry written in the PMTC native subset and BUNDLED into `PyreonChartEngine.swift` and `PyreonChartEngine.kt` by `packages/native/compiler/scripts/gen-chart-engine.ts`. The same TypeScript that lays out a chart on the web is what lays it out on a device: the generator compiles the engine sources through the real Pyreon compiler, and a drift test compiles the generated Swift and Kotlin with `swiftc` / `kotlinc` on every change, so the three targets cannot diverge silently.
+
+What that buys you natively: `layoutX` / `renderX` / `hitXIndex` for every family, returning the same `DrawCmd[]` the web canvas and the server SVG execute. What stays web-only today: the canvas hosts (`<PlotChart>`, `<SankeyChart>`, …), gestures, `sonifyValues`, the update tween and the ECharts option facade — the native side has the geometry and the draw list, not the interaction layer.
+
+A few API shapes exist BECAUSE of the crossing, and they are the shapes to use everywhere: hits are answered as indices by the engine (`hitSankeyIndex` → `{ node, link }`, `hitGraphIndex` → `-1 | i`) with the nullable/union forms (`hitSankey`, `hitGraph`, …) layered on the web side; domains are `{ min, max }` structs, never tuples; dates are ISO strings and days since 1970-01-01 (`daysFromCivil` / `civilFromDays` / `parseIsoDays`), never `Date`; a colour ramp is `rampColor(stops, t)`; a calendar's values are a `{ date, value }` list (`calendarValues(record)` converts); parallel rows are numeric (`parallelRows(axes, rows)` maps categories to indices and gaps to `NaN`); the graph force layout's seed drives a Park–Miller LCG so a seeded layout is byte-identical on every target.
 
 ## Documentation
 
