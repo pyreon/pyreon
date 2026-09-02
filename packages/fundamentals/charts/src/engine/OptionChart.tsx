@@ -6,9 +6,9 @@
 // two host-less shapes render through `optionToSvg` into an inline `<svg>`. A
 // `timeline` steps on `autoPlay` or is driven by `timelineIndex`.
 
-import { h, onUnmount } from '@pyreon/core'
+import { h, onMount } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
-import { effect, onCleanup, signal } from '@pyreon/reactivity'
+import { batch, effect, signal } from '@pyreon/reactivity'
 import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
 import { compiledCommands, optionToSvg, planOption } from './option'
 import type { CompiledOption, EChartsOption, OptionPlan } from './option'
@@ -107,24 +107,44 @@ export function OptionChart(props: OptionChartProps): VNode {
     clearInterval(timer)
     timer = null
   }
+  // The effect stays PURE: it derives the auto-play plan (a fresh object per
+  // option change, null when nothing plays) into a signal. The interval itself
+  // is imperative work and is owned by onMount below — a server render never
+  // starts one, and the mount cleanup stops it.
+  const autoPlan = signal<{ n: number; start: number; interval: Double } | null>(null)
   effect(() => {
-    stopTimer()
     const opt = readOption()
     const steps = timelineSteps(opt)
-    if (steps === null || !steps.autoPlay || props.timelineIndex !== undefined || steps.labels.length < 2) return
-    const n = steps.labels.length
-    let cur = steps.current
-    step.set(cur)
-    timer = setInterval(() => {
-      cur = (cur + 1) % n
-      step.set(cur)
-      props.onTimelineChange?.(cur)
-    }, steps.playInterval)
-    onCleanup(stopTimer)
+    autoPlan.set(
+      steps === null || !steps.autoPlay || props.timelineIndex !== undefined || steps.labels.length < 2
+        ? null
+        : { n: steps.labels.length, start: steps.current, interval: steps.playInterval },
+    )
   })
-  onUnmount(stopTimer)
+  onMount(() => {
+    const play = (): void => {
+      stopTimer()
+      const plan = autoPlan()
+      if (plan === null) return
+      let cur = plan.start
+      step.set(cur)
+      timer = setInterval(() => {
+        cur = (cur + 1) % plan.n
+        step.set(cur)
+        props.onTimelineChange?.(cur)
+      }, plan.interval)
+    }
+    play()
+    const unsubscribe = autoPlan.subscribe(play)
+    return () => {
+      unsubscribe()
+      stopTimer()
+    }
+  })
 
-  const draw = (): void => {
+  // One batch per draw: the mode and host-node writes of a family host, or the
+  // mode flip to svg/canvas, must repaint the surface once, not per write.
+  const draw = (): void => batch(() => {
     const opt = readOption()
     const idx = stepIndex()
     const w = width()
@@ -166,7 +186,7 @@ export function OptionChart(props: OptionChartProps): VNode {
     }
     if (steps !== null) for (const c of timelineCommands({ ...steps, current: idx ?? steps.current }, w, hgt - stripH, stripH)) cmds.push(c)
     paint(ctx, cmds, w, hgt, FONT)
-  }
+  })
 
   effect(() => {
     readOption()
