@@ -11007,28 +11007,35 @@ function emitSwiftAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
     }
     fieldArgs.push(`${f.name}: ${value}`)
   }
-  const items = `${emitSwiftExpr(dataV, indent)}.enumerated().map { (pyreonI, pyreonD) in ${spec.struct}(${fieldArgs.join(', ')}) }`
+  const mapped = `${emitSwiftExpr(dataV, indent)}.enumerated().map { (pyreonI, pyreonD) in ${spec.struct}(${fieldArgs.join(', ')}) }`
   const optV = spec.options === undefined ? undefined : chartAttrExpr(e, spec.options)
   const options = optV === undefined ? 'nil' : emitSwiftExpr(optV, indent)
   const H = swiftChartDouble(e, 'height', spec.defaultHeight, indent)
   const hasWidth = chartAttrExpr(e, 'width') !== undefined
   const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
-  const args: ChartHostArgs = { data: [], options, W, H, gutter: '0.0', innerRatio: swiftChartDouble(e, 'innerRadius', 0, indent) }
-  if (tag === 'PieChart' && readStaticAttr(e, 'showLegend') === true) {
-    _emitWarnings.push('<PieChart showLegend>: the legend is not lowered on native yet; the pie renders without it.')
-  }
-  const canvas = `PyreonChartCanvas(cmds: ${spec.render(items, args, SWIFT_CHART_TARGET)})`
+  // A pie with a legend hoists its slices so the legend entries and the arcs
+  // come from one list; without chrome the inline map stays as it was.
+  const chrome = tag === 'PieChart' ? swiftChartChrome(e, 'pyreonItems.map { LegendEntry(label: $0.label, color: $0.color) }', W, H, indent, false) : { lets: [], top: '0.0', wrap: (p: string) => p, height: (h: string) => h }
+  const withChrome = chrome.top !== '0.0'
+  const items = withChrome ? 'pyreonItems' : mapped
+  const lets = withChrome ? [`let pyreonItems: [${spec.struct}] = ${mapped}`, ...chrome.lets] : []
+  const args: ChartHostArgs = { data: [], options, W, H: chrome.height(H), gutter: '0.0', innerRatio: swiftChartDouble(e, 'innerRadius', 0, indent) }
+  const canvas = `PyreonChartCanvas(cmds: ${chrome.wrap(spec.render(items, args, SWIFT_CHART_TARGET))})`
   // Both `onSelect` (already an index on these hosts) and `onSelectIndex` lower to the tap.
   const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
+  const tapY = withChrome ? 'Double(pyreonTap.location.y) - pyreonTop' : 'Double(pyreonTap.location.y)'
   const gesture =
     onSel?.kind === 'event'
-      ? `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in ${swiftChartSelectBody(onSel.handler, spec.hit(items, 'Double(pyreonTap.location.x)', 'Double(pyreonTap.location.y)', args, SWIFT_CHART_TARGET), indent)} })`
+      ? `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in ${swiftChartSelectBody(onSel.handler, spec.hit(items, 'Double(pyreonTap.location.x)', tapY, args, SWIFT_CHART_TARGET), indent)} })`
       : ''
   const title = readStringAttrExpr(e, 'title', indent)
   const tail = (title !== undefined ? `.accessibilityLabel(${title})` : '') + emitSwiftLayoutModifiers(e)
-  if (hasWidth) return `${canvas}${gesture}.frame(width: ${W}, height: ${H})${tail}`
-  const pad = ' '.repeat(indent + 2)
-  return `GeometryReader { pyreonGeo in\n${pad}${canvas}${gesture}\n${' '.repeat(indent)}}.frame(height: ${H})${tail}`
+  if (!withChrome) {
+    if (hasWidth) return `${canvas}${gesture}.frame(width: ${W}, height: ${H})${tail}`
+    const pad = ' '.repeat(indent + 2)
+    return `GeometryReader { pyreonGeo in\n${pad}${canvas}${gesture}\n${' '.repeat(indent)}}.frame(height: ${H})${tail}`
+  }
+  return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent)
 }
 
 /** `<GaugeChart value min max thickness trackColor valueColor showValue>` → renderGauge over a double-height box (a half circle) + the value text. */
@@ -11205,18 +11212,29 @@ function emitSwiftRadarHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const lets = [
     `let pyreonSeries: [RadarSeries] = ${data}.enumerated().map { (pyreonI, pyreonD) in RadarSeries(values: (${values}).map { pyreonChartDouble($0) }, color: ${color}, fillAlpha: ${fillAlpha}) }`,
   ]
-  if (readStaticAttr(e, 'showLegend') === true) _emitWarnings.push(`<${tag} showLegend>: the legend is not lowered on native yet; the radar renders without it.`)
+  const H = swiftChartDouble(e, 'height', 260, indent)
+  const hasWidth = chartAttrExpr(e, 'width') !== undefined
+  const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
+  let entries = '[]'
+  if (readStaticAttr(e, 'showLegend') === true) {
+    const label = swiftChartAccessor(e, tag, 'label', indent)
+    if (label === 'unsupported') return 'EmptyView()'
+    if (label === null) {
+      _emitWarnings.push(`<${tag} showLegend>: needs a \`label\` accessor for the legend on native; emitting an EmptyView().`)
+      return 'EmptyView()'
+    }
+    entries = `${data}.enumerated().map { (pyreonI, pyreonD) in LegendEntry(label: ${label}, color: ${color}) }`
+  }
+  const chrome = swiftChartChrome(e, entries, W, H, indent, false)
+  lets.push(...chrome.lets)
   const ringsV = chartAttrExpr(e, 'rings')
   const ringsRaw = readStaticAttr(e, 'rings')
   const rings = ringsV === undefined ? '4' : typeof ringsRaw === 'number' ? String(Math.trunc(ringsRaw)) : emitSwiftExpr(ringsV, indent)
   const showRaw = readStaticAttr(e, 'showLabels')
   const showV = chartAttrExpr(e, 'showLabels')
   const showLabels = showV === undefined ? 'true' : typeof showRaw === 'boolean' ? String(showRaw) : emitSwiftExpr(showV, indent)
-  const H = swiftChartDouble(e, 'height', 260, indent)
-  const hasWidth = chartAttrExpr(e, 'width') !== undefined
-  const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
   const opts = `RadarOptions(rings: ${rings}, gridColor: "rgba(132,150,165,0.35)", labelColor: "#5a6b7a", fontSize: 11.0, showLabels: ${showLabels})`
-  const canvas = `PyreonChartCanvas(cmds: renderRadar(${emitSwiftExpr(axesV, indent)}, pyreonSeries, PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${H}), ${opts}))`
+  const canvas = `PyreonChartCanvas(cmds: ${chrome.wrap(`renderRadar(${emitSwiftExpr(axesV, indent)}, pyreonSeries, PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${chrome.height(H)}), ${opts})`)})`
   return swiftFrameHost(e, lets, canvas, '', W, H, hasWidth, indent)
 }
 
@@ -11327,6 +11345,8 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   const H = swiftChartDouble(e, 'height', 200, indent)
   const hasWidth = chartAttrExpr(e, 'width') !== undefined
   const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
+  const chrome = swiftChartChrome(e, 'pyreonSeries.map { LegendEntry(label: $0.label, color: $0.color) }', W, H, indent, true)
+  lets.push(...chrome.lets)
   const bool = (name: string, fallback: boolean): string => {
     const raw = readStaticAttr(e, name)
     const v = chartAttrExpr(e, name)
@@ -11334,7 +11354,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   }
   const specArgs = [
     `width: ${W}`,
-    `height: ${H}`,
+    `height: ${chrome.height(H)}`,
     'series: pyreonSeries',
     'categories: pyreonCats',
     `theme: ${SWIFT_CHART_TARGET.theme()}`,
@@ -11352,7 +11372,58 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   const mk = chartAttrExpr(e, 'markers')
   if (mk !== undefined) specArgs.push(`markers: ${emitSwiftExpr(mk, indent)}`)
   lets.push(`let pyreonSpec: ChartSpec = ChartSpec(${specArgs.join(', ')})`)
-  const canvas = 'PyreonChartCanvas(cmds: renderChart(pyreonSpec, pyreonChartMeasure))'
-  const gesture = swiftChartGesture(e, (x, y) => `plotHitBars(pyreonSpec, pyreonChartMeasure, ${x}, ${y})`, indent)
+  const canvas = `PyreonChartCanvas(cmds: ${chrome.wrap('renderChart(pyreonSpec, pyreonChartMeasure)')})`
+  const gesture = swiftChartGesture(e, (x, y) => `plotHitBars(pyreonSpec, pyreonChartMeasure, ${x}, ${chrome.top === '0.0' ? y : `${y} - pyreonTop`})`, indent)
   return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent)
 }
+
+
+// ---- legend + title chrome (Plot / Pie / Radar) ------------------------------
+//
+// The web hosts draw the title block, then the legend, then the plot in what
+// is left, translating the plot's commands down by the height the two used.
+// Natively the same three lists are built from the crossed `renderTitle` /
+// `renderLegend` and the runtime's `pyreonShiftCmds`; a host with neither
+// flag emits exactly what it emitted before (no lets, no shift).
+
+interface SwiftChartChrome {
+  lets: string[]
+  /** `'0.0'` when there is no chrome — callers then leave their emit untouched. */
+  top: string
+  /** Wraps the plot's draw list: `title + legend + shift(plot, top)`. */
+  wrap: (plot: string) => string
+  /** The plot's height once the chrome is subtracted. */
+  height: (H: string) => string
+}
+
+function swiftChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries: string, W: string, H: string, indent: number, withTitle: boolean): SwiftChartChrome {
+  const title = readStringAttrExpr(e, 'title', indent)
+  const showTitle = withTitle && readStaticAttr(e, 'showTitle') === true && title !== undefined
+  const showLegend = readStaticAttr(e, 'showLegend') === true
+  if (!showTitle && !showLegend) return { lets: [], top: '0.0', wrap: (p) => p, height: (h) => h }
+  const lets: string[] = []
+  if (showTitle) {
+    const subtitle = readStringAttrExpr(e, 'subtitle', indent) ?? 'nil'
+    lets.push(`let pyreonTitle: TitleLayout = renderTitle(${title}, ${subtitle}, PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${H}), TitleOptions(fontSize: 15.0, color: "#5a6b7a", align: "start"))`)
+  } else {
+    lets.push('let pyreonTitle: TitleLayout = TitleLayout(cmds: [], height: 0.0)')
+  }
+  if (showLegend) {
+    const maxRowsRaw = readStaticAttr(e, 'legendMaxRows')
+    const maxRows = typeof maxRowsRaw === 'number' ? `, maxRows: ${chartDouble(maxRowsRaw)}` : ''
+    lets.push(`let pyreonLegend: LegendLayout = renderLegend(${entries}, PyreonChartRect(x: 0.0, y: pyreonTitle.height, w: ${W}, h: ${H} - pyreonTitle.height), LegendOptions(fontSize: 11.0, labelColor: "#5a6b7a", swatch: 10.0, gap: 12.0, orientation: "horizontal"${maxRows}), pyreonChartMeasure)`)
+  } else {
+    lets.push('let pyreonLegend: LegendLayout = LegendLayout(cmds: [], height: 0.0, boxes: [])')
+  }
+  lets.push('let pyreonTop: Double = pyreonTitle.height + pyreonLegend.height')
+  return {
+    lets,
+    top: 'pyreonTop',
+    wrap: (p) => `pyreonTitle.cmds + pyreonLegend.cmds + pyreonShiftCmds(${p}, pyreonTop)`,
+    height: (h) => `${h} - pyreonTop`,
+  }
+}
+
+/** `<RadarChart data axes values label color? fillAlpha? rings? showLabels? showLegend? height width title>` → renderRadar over the mapped series. */
+
+/** `<PlotChart data marks x? xValue? showXAxis? showYAxis? showGrid? horizontal? xTime? annotations? markers? y2Domain? showLegend? showTitle? onSelect? …>` */

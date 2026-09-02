@@ -1021,12 +1021,12 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       const lx = ev.clientX - r0.left
       const ly = ev.clientY - r0.top
       const p = legendPager
-      const inside = (b: Rect | null): boolean => b !== null && lx >= b.x && lx <= b.x + b.w && ly >= b.y && ly <= b.y + b.h
-      if (inside(p.prev)) {
+      const inside = (b: Rect): boolean => lx >= b.x && lx <= b.x + b.w && ly >= b.y && ly <= b.y + b.h
+      if (p.hasPrev && inside(p.prev)) {
         legendPage.set(p.page - 1)
         return
       }
-      if (inside(p.next)) {
+      if (p.hasNext && inside(p.next)) {
         legendPage.set(p.page + 1)
         return
       }

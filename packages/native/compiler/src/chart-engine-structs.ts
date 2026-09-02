@@ -6123,5 +6123,354 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
       }
     ],
     "external": true
+  },
+  {
+    "name": "TitleOptions",
+    "fields": [
+      {
+        "name": "fontSize",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "color",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "subtitleSize",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "subtitleColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "align",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "gap",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "TitleLayout",
+    "fields": [
+      {
+        "name": "cmds",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "PyreonDrawCmd",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "height",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "LegendEntry",
+    "fields": [
+      {
+        "name": "label",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "color",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "muted",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "LegendOptions",
+    "fields": [
+      {
+        "name": "fontSize",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "labelColor",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "swatch",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "gap",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "orientation",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "maxRows",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "page",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "LegendPager",
+    "fields": [
+      {
+        "name": "page",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "pages",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "hasPrev",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "prev",
+        "type": {
+          "kind": "typeRef",
+          "name": "PyreonChartRect",
+          "args": []
+        }
+      },
+      {
+        "name": "hasNext",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "next",
+        "type": {
+          "kind": "typeRef",
+          "name": "PyreonChartRect",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "LegendLayout",
+    "fields": [
+      {
+        "name": "cmds",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "PyreonDrawCmd",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "height",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "boxes",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "PyreonChartRect",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "pager",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "LegendPager",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "LegendPlan",
+    "fields": [
+      {
+        "name": "row",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "Double",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "xs",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "Double",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "rows",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
   }
 ]

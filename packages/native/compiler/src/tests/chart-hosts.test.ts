@@ -264,7 +264,7 @@ describe('chart hosts — accessor-prop hosts (Funnel / Pie) and Gauge', () => {
     expect(r.code).toContain('renderGauge((load).toDouble(), PyreonChartRect(0.0, 0.0, pyreonW, 120.0 * 2.0), GaugeOptions(min = 0.0, max = 100.0, sweep = Math.PI, thickness = 18.0, trackColor = "rgba(132,150,165,0.22)", valueColor = "#b45309")) + listOf(PyreonDrawCmd(kind = "text", fill = "#10161d", text = plain((load).toDouble())')
     expect(r.code).toContain('.testTag("gauge")')
   })
-  it('a block-bodied accessor and a pie legend are reported by name', () => {
+  it('a block-bodied accessor is reported by name; a pie legend now lowers', () => {
     const r = transform(
       `import { FunnelChart, PieChart } from '@pyreon/charts/plot'
 interface Row { n: string; v: number }
@@ -273,7 +273,7 @@ export function C() { return (<><FunnelChart data={ROWS} value={(d) => { const t
       { target: 'swift' },
     )
     expect(r.warnings.join('\n')).toContain('<FunnelChart value>: only a single-expression arrow')
-    expect(r.warnings.join('\n')).toContain('<PieChart showLegend>: the legend is not lowered')
+    expect(r.warnings.join('\n')).not.toContain('showLegend')
   })
   it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine) accepts the accessor and gauge emits', () => {
     const r = validateSwiftWithStubs(transform(ACCESSOR, { target: 'swift' }).code)
@@ -343,7 +343,7 @@ describe('chart hosts — cartesian-frame hosts (Candlestick / Heatmap) and Rada
     expect(r.code).toContain('RadarOptions(rings = 3, gridColor = "rgba(132,150,165,0.35)", labelColor = "#5a6b7a", fontSize = 11.0, showLabels = true)')
     expect(r.code).toContain('.testTag("heat")')
   })
-  it('a theme override, a cell-shaped heatmap onSelect and a radar legend are reported by name', () => {
+  it('a theme override and a cell-shaped heatmap onSelect are reported by name; a radar legend lowers', () => {
     const r = transform(
       `import { CandlestickChart, HeatmapChart, RadarChart } from '@pyreon/charts/plot'
 import type { RadarAxis } from '@pyreon/charts/plot'
@@ -360,7 +360,7 @@ export function C() { return (<><CandlestickChart data={BARS} open={(d) => d.o} 
     const w = r.warnings.join('\n')
     expect(w).toContain('<CandlestickChart theme>: a theme override is not lowered')
     expect(w).toContain('<HeatmapChart onSelect>: the cell-shaped callback is not lowered')
-    expect(w).toContain('<RadarChart showLegend>: the legend is not lowered')
+    expect(w).not.toContain('showLegend')
   })
   it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine + measurer) accepts the frame emits', () => {
     const r = validateSwiftWithStubs(transform(FRAMES, { target: 'swift' }).code)
@@ -455,7 +455,7 @@ export function C() { return (<><PlotChart data={ROWS} marks={[bubble((d) => d.v
     const w = r.warnings.join('\n')
     expect(w).toContain('<PlotChart> mark 1: `bubble` (a radius accessor) is not lowered')
     expect(w).toContain('<PlotChart> mark 1: a `curve` callback is not lowered')
-    expect(w).toContain('<PlotChart>: `showLegend`, `dataZoom` are not lowered on native yet')
+    expect(w).toContain('<PlotChart>: `dataZoom` is not lowered on native yet')
     expect(w).toContain('<PlotChart marks>: must be an inline array of mark calls')
   })
   it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine + measurer) accepts the plot emit', () => {
@@ -468,6 +468,77 @@ export function C() { return (<><PlotChart data={ROWS} marks={[bubble((d) => d.v
   })
   it.skipIf(!isKotlincAvailable())('kotlinc (stub bundle + real engine + measurer) accepts it', () => {
     const r = validateKotlin(transform(PLOT, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+})
+
+
+const CHROME = `import { Stack } from '@pyreon/primitives'
+import { PieChart, PlotChart, RadarChart, bars, line } from '@pyreon/charts/plot'
+import type { RadarAxis } from '@pyreon/charts/plot'
+interface Month { name: string; revenue: number; cost: number }
+interface Team { name: string; scores: number[]; share: number }
+const MONTHS: Month[] = [{ name: 'Jan', revenue: 12, cost: 8 }, { name: 'Feb', revenue: 15, cost: 9 }]
+const TEAMS: Team[] = [{ name: 'A', scores: [3, 4, 5], share: 60 }, { name: 'B', scores: [5, 2, 4], share: 40 }]
+const AXES: RadarAxis[] = [{ label: 'x', max: 5 }, { label: 'y', max: 5 }, { label: 'z', max: 5 }]
+export function Chrome() {
+  return (
+    <Stack>
+      <PlotChart data={MONTHS} x={(d) => d.name} marks={[bars((d) => d.revenue, { label: 'Revenue' }), line((d) => d.cost, { label: 'Cost' })]} showLegend={true} showTitle={true} title="Revenue" subtitle="by month" legendMaxRows={2} height={220} onSelect={(i: number) => console.log(i)} />
+      <PieChart data={TEAMS} value={(d) => d.share} label={(d) => d.name} showLegend={true} width={240} height={200} onSelect={(i: number) => console.log(i)} />
+      <RadarChart data={TEAMS} axes={AXES} values={(d) => d.scores} label={(d) => d.name} showLegend={true} height={240} />
+    </Stack>
+  )
+}`
+
+describe('chart hosts — legend + title chrome (Plot / Pie / Radar)', () => {
+  it('Swift: the title block, then the legend, then the plot shifted down by both; the tap subtracts the same offset', () => {
+    const r = transform(CHROME, { target: 'swift' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('let pyreonTitle: TitleLayout = renderTitle("Revenue", "by month", PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 220.0), TitleOptions(fontSize: 15.0, color: "#5a6b7a", align: "start"))')
+    expect(r.code).toContain('let pyreonLegend: LegendLayout = renderLegend(pyreonSeries.map { LegendEntry(label: $0.label, color: $0.color) }, PyreonChartRect(x: 0.0, y: pyreonTitle.height, w: Double(pyreonGeo.size.width), h: 220.0 - pyreonTitle.height), LegendOptions(fontSize: 11.0, labelColor: "#5a6b7a", swatch: 10.0, gap: 12.0, orientation: "horizontal", maxRows: 2.0), pyreonChartMeasure)')
+    expect(r.code).toContain('let pyreonTop: Double = pyreonTitle.height + pyreonLegend.height')
+    expect(r.code).toContain('ChartSpec(width: Double(pyreonGeo.size.width), height: 220.0 - pyreonTop, series: pyreonSeries')
+    expect(r.code).toContain('PyreonChartCanvas(cmds: pyreonTitle.cmds + pyreonLegend.cmds + pyreonShiftCmds(renderChart(pyreonSpec, pyreonChartMeasure), pyreonTop))')
+    expect(r.code).toContain('plotHitBars(pyreonSpec, pyreonChartMeasure, Double(pyreonTap.location.x), Double(pyreonTap.location.y) - pyreonTop)')
+    // Pie: slices hoisted so the legend and the arcs share one list; no title block (the pie has no showTitle).
+    expect(r.code).toContain('let pyreonItems: [Slice] = TEAMS.enumerated().map { (pyreonI, pyreonD) in Slice(value: Double(pyreonD.share), label: pyreonD.name, color:')
+    expect(r.code).toContain('let pyreonTitle: TitleLayout = TitleLayout(cmds: [], height: 0.0)')
+    expect(r.code).toContain('renderLegend(pyreonItems.map { LegendEntry(label: $0.label, color: $0.color) }, PyreonChartRect(x: 0.0, y: pyreonTitle.height, w: 240.0, h: 200.0 - pyreonTitle.height)')
+    expect(r.code).toContain('pyreonShiftCmds(renderPie(pyreonItems, PyreonChartRect(x: 0.0, y: 0.0, w: 240.0, h: 200.0 - pyreonTop), PieOptions(')
+    expect(r.code).toContain('fitCircle(PyreonChartRect(x: 0.0, y: 0.0, w: 240.0, h: 200.0 - pyreonTop)).radius * 0.0, PyreonChartPt(x: Double(pyreonTap.location.x), y: Double(pyreonTap.location.y) - pyreonTop))')
+    // Radar: legend entries from the label accessor and the same palette the series use.
+    expect(r.code).toContain('renderLegend(TEAMS.enumerated().map { (pyreonI, pyreonD) in LegendEntry(label: pyreonD.name, color: ["#0f766e", "#b45309", "#1d4ed8", "#b42318", "#15803d", "#7c3aed"][pyreonI % 6]) }')
+    expect(r.code).toContain('pyreonShiftCmds(renderRadar(AXES, pyreonSeries, PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 240.0 - pyreonTop), RadarOptions(')
+  })
+  it('Kotlin: the same chrome with the runtime shift', () => {
+    const r = transform(CHROME, { target: 'kotlin' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('val pyreonTitle: TitleLayout = renderTitle("Revenue", "by month", PyreonChartRect(0.0, 0.0, pyreonW, 220.0), TitleOptions(fontSize = 15.0, color = "#5a6b7a", align = "start"))')
+    expect(r.code).toContain('val pyreonLegend: LegendLayout = renderLegend(pyreonSeries.map { LegendEntry(label = it.label, color = it.color) }, PyreonChartRect(0.0, pyreonTitle.height, pyreonW, 220.0 - pyreonTitle.height), LegendOptions(fontSize = 11.0, labelColor = "#5a6b7a", swatch = 10.0, gap = 12.0, orientation = "horizontal", maxRows = 2.0), ::pyreonChartMeasure)')
+    expect(r.code).toContain('PyreonChartCanvas(cmds = pyreonTitle.cmds + pyreonLegend.cmds + pyreonShiftCmds(renderChart(pyreonSpec, ::pyreonChartMeasure), pyreonTop)')
+    expect(r.code).toContain('plotHitBars(pyreonSpec, ::pyreonChartMeasure, (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble() - pyreonTop)')
+    expect(r.code).toContain('val pyreonItems: List<Slice> = TEAMS.mapIndexed { pyreonI, pyreonD -> Slice(')
+    expect(r.code).toContain('pyreonShiftCmds(renderPie(pyreonItems, PyreonChartRect(0.0, 0.0, 240.0, 200.0 - pyreonTop), PieOptions(')
+    expect(r.code).toContain('pyreonShiftCmds(renderRadar(AXES, pyreonSeries, PyreonChartRect(0.0, 0.0, pyreonW, 240.0 - pyreonTop), RadarOptions(')
+  })
+  it('without the flags the hosts emit exactly what they did before (no lets, no shift)', () => {
+    const r = transform(PLOT, { target: 'swift' })
+    expect(r.code).not.toContain('pyreonShiftCmds')
+    expect(r.code).not.toContain('pyreonTop')
+    const p = transform(ACCESSOR, { target: 'swift' })
+    expect(p.code).not.toContain('pyreonItems')
+  })
+  it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine + shift) accepts the chrome emits', () => {
+    const r = validateSwiftWithStubs(transform(CHROME, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isSwiftUIAvailable())('swiftc against real SwiftUI + canvas + engine accepts them', () => {
+    const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(ENGINE_SWIFT) + '\n' + transform(CHROME, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isKotlincAvailable())('kotlinc (stub bundle + real engine + shift) accepts them', () => {
+    const r = validateKotlin(transform(CHROME, { target: 'kotlin' }).code)
     expect(r.ok, r.error ?? '').toBe(true)
   })
 })
