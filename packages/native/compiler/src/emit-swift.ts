@@ -11139,14 +11139,15 @@ function emitSwiftCandlestickHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, i
   const catsM = swiftChartMap(e, tag, data, 'x', (b) => b, indent)
   if (catsM === 'unsupported') return 'EmptyView()'
   lets.push(`let pyreonCats: [String] = ${catsM ?? '[]'}`)
-  if (chartAttrExpr(e, 'theme') !== undefined) _emitWarnings.push(`<${tag} theme>: a theme override is not lowered on native yet; the default theme applies.`)
+  const theme = swiftChartTheme(e, tag)
+  lets.push(`let pyreonTheme: ChartTheme = ${theme}`)
   const optV = chartAttrExpr(e, 'candle')
   const options = optV === undefined ? 'nil' : emitSwiftExpr(optV, indent)
   const H = swiftChartDouble(e, 'height', 200, indent)
   const hasWidth = chartAttrExpr(e, 'width') !== undefined
   const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
-  const canvas = `PyreonChartCanvas(cmds: renderCandlestickChart(pyreonCandles, ${W}, ${H}, pyreonCats, ${SWIFT_CHART_TARGET.theme()}, ${options}, pyreonChartMeasure))`
-  const gesture = swiftChartGesture(e, (x, y) => `hitCandlestickChart(pyreonCandles, ${W}, ${H}, pyreonCats, ${CHART_THEME_DEFAULT.fontSize}, pyreonChartMeasure, ${x}, ${y})`, indent)
+  const canvas = `PyreonChartCanvas(cmds: renderCandlestickChart(pyreonCandles, ${W}, ${H}, pyreonCats, pyreonTheme, ${options}, pyreonChartMeasure))`
+  const gesture = swiftChartGesture(e, (x, y) => `hitCandlestickChart(pyreonCandles, ${W}, ${H}, pyreonCats, pyreonTheme.fontSize, pyreonChartMeasure, ${x}, ${y})`, indent)
   return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent)
 }
 
@@ -11174,7 +11175,7 @@ function emitSwiftHeatmapHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
     lets.push(`let ${name}: ${type} = ${m}`)
   }
   lets.push('let pyreonGrid: HeatGrid = heatGridFrom(pyreonXs, pyreonYs, pyreonVals)')
-  if (chartAttrExpr(e, 'theme') !== undefined) _emitWarnings.push(`<${tag} theme>: a theme override is not lowered on native yet; the default theme applies.`)
+  lets.push(`let pyreonTheme: ChartTheme = ${swiftChartTheme(e, tag)}`)
   if (e.attrs.some((a) => a.kind === 'event' && a.name === 'select')) {
     _emitWarnings.push(`<${tag} onSelect>: the cell-shaped callback is not lowered on native; use \`onSelectIndex\` (the index into the grid's cells).`)
   }
@@ -11184,8 +11185,8 @@ function emitSwiftHeatmapHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
   const H = swiftChartDouble(e, 'height', 200, indent)
   const hasWidth = chartAttrExpr(e, 'width') !== undefined
   const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
-  const canvas = `PyreonChartCanvas(cmds: renderHeatChart(pyreonGrid, ${W}, ${H}, ${SWIFT_CHART_TARGET.theme()}, ${stops}, ${gap}, pyreonChartMeasure))`
-  const gesture = swiftChartGesture(e, (x, y) => `hitHeatChart(pyreonGrid, ${W}, ${H}, ${CHART_THEME_DEFAULT.fontSize}, ${gap}, pyreonChartMeasure, ${x}, ${y})`, indent, ['selectindex'])
+  const canvas = `PyreonChartCanvas(cmds: renderHeatChart(pyreonGrid, ${W}, ${H}, pyreonTheme, ${stops}, ${gap}, pyreonChartMeasure))`
+  const gesture = swiftChartGesture(e, (x, y) => `hitHeatChart(pyreonGrid, ${W}, ${H}, pyreonTheme.fontSize, ${gap}, pyreonChartMeasure, ${x}, ${y})`, indent, ['selectindex'])
   return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent)
 }
 
@@ -11308,9 +11309,10 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   for (let k = 0; k < marksV.elements.length; k++) {
     const m = marksV.elements[k]!
     const callee = m.kind === 'call' && m.callee.kind === 'identifier' ? m.callee.name : undefined
-    const kind = callee === undefined ? undefined : PLOT_MARK_KINDS[callee]
+    const bubble = callee === 'bubble'
+    const kind = callee === undefined ? undefined : bubble ? 'points' : PLOT_MARK_KINDS[callee]
     if (m.kind !== 'call' || kind === undefined) {
-      _emitWarnings.push(`<${tag}> mark ${k + 1}: ${callee === 'bubble' ? '`bubble` (a radius accessor)' : 'this mark'} is not lowered on native; emitting an EmptyView().`)
+      _emitWarnings.push(`<${tag}> mark ${k + 1}: this mark is not lowered on native; emitting an EmptyView().`)
       return 'EmptyView()'
     }
     const y = m.args[0]
@@ -11320,10 +11322,28 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     }
     const body = swiftAccessorExpr(y, tag, `mark ${k + 1}`, indent)
     if (body === 'unsupported') return 'EmptyView()'
-    const opts = swiftMarkOptionArgs(m.args[1], tag, k)
+    // A bubble carries its radius accessor as the SECOND argument and its options as the third.
+    const optsArg = bubble ? m.args[2] : m.args[1]
+    const opts = swiftMarkOptionArgs(optsArg, tag, k)
     if (opts === 'unsupported') return 'EmptyView()'
     lets.push(`let pyreonValues${k}: [Double] = ${data}.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(${body}) }`)
-    series.push(`Series(kind: ${JSON.stringify(kind)}, values: pyreonValues${k}, ${opts.join(', ')})`)
+    if (bubble) {
+      const r = m.args[1]
+      if (r === undefined) {
+        _emitWarnings.push(`<${tag}> mark ${k + 1}: \`bubble\` needs a radius accessor; emitting an EmptyView().`)
+        return 'EmptyView()'
+      }
+      const rBody = swiftAccessorExpr(r, tag, `mark ${k + 1} radius`, indent)
+      if (rBody === 'unsupported') return 'EmptyView()'
+      const range = swiftBubbleRange(optsArg)
+      lets.push(`let pyreonRadii${k}: [Double] = bubbleRadii(${data}.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(${rBody}) }, ${range[0]}, ${range[1]})`)
+      // Swift's memberwise init is positional by label: `radii` sits between `showValues` and `axis`.
+      const at = opts.findIndex((o) => o.startsWith('showValues:')) + 1
+      const withRadii = [...opts.slice(0, at), `radii: pyreonRadii${k}`, ...opts.slice(at)]
+      series.push(`Series(kind: "points", values: pyreonValues${k}, ${withRadii.join(', ')})`)
+    } else {
+      series.push(`Series(kind: ${JSON.stringify(kind)}, values: pyreonValues${k}, ${opts.join(', ')})`)
+    }
   }
   lets.push(`let pyreonSeries: [Series] = [${series.join(', ')}]`)
   const xAcc = chartAttrExpr(e, 'x')
@@ -11357,13 +11377,19 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     `height: ${chrome.height(H)}`,
     'series: pyreonSeries',
     'categories: pyreonCats',
-    `theme: ${SWIFT_CHART_TARGET.theme()}`,
+    `theme: ${swiftChartTheme(e, tag)}`,
     `showXAxis: ${bool('showXAxis', true)}`,
     `showYAxis: ${bool('showYAxis', true)}`,
     `showGrid: ${bool('showGrid', true)}`,
   ]
+  const yFormat = swiftChartFormatter(e, 'format', indent)
+  if (yFormat !== undefined) specArgs.push(`yFormat: ${yFormat}`)
+  const xFormat = swiftChartFormatter(e, 'xFormat', indent)
+  if (xFormat !== undefined) specArgs.push(`xFormat: ${xFormat}`)
   const y2 = chartAttrExpr(e, 'y2Domain')
   if (y2 !== undefined) specArgs.push(`y2Domain: ${emitSwiftExpr(y2, indent)}`)
+  const y2Format = swiftChartFormatter(e, 'y2Format', indent)
+  if (y2Format !== undefined) specArgs.push(`y2Format: ${y2Format}`)
   if (xValueAcc !== undefined) specArgs.push('xValues: pyreonXValues')
   if (readStaticAttr(e, 'xTime') === true) specArgs.push('xTime: true')
   if (readStaticAttr(e, 'horizontal') === true) specArgs.push('horizontal: true')
@@ -11427,3 +11453,68 @@ function swiftChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries: 
 /** `<RadarChart data axes values label color? fillAlpha? rings? showLabels? showLegend? height width title>` → renderRadar over the mapped series. */
 
 /** `<PlotChart data marks x? xValue? showXAxis? showYAxis? showGrid? horizontal? xTime? annotations? markers? y2Domain? showLegend? showTitle? onSelect? …>` */
+
+
+// ---- theme overrides, formatters and bubble marks -----------------------------
+
+/**
+ * The host's `ChartTheme` literal: the web default, overridden by the literal
+ * fields of a `theme={{ … }}` object literal. Any other shape keeps the default
+ * and says so.
+ */
+function swiftChartTheme(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: string): string {
+  const v = chartAttrExpr(e, 'theme')
+  const fields: Record<string, string> = {
+    axis: JSON.stringify(CHART_THEME_DEFAULT.axis),
+    grid: JSON.stringify(CHART_THEME_DEFAULT.grid),
+    label: JSON.stringify(CHART_THEME_DEFAULT.label),
+    fontSize: CHART_THEME_DEFAULT.fontSize,
+  }
+  if (v !== undefined) {
+    if (v.kind !== 'object' || (v.spreads !== undefined && v.spreads.length > 0)) {
+      _emitWarnings.push(`<${tag} theme>: only an object literal with literal fields lowers on native; the default theme applies.`)
+    } else {
+      for (const f of v.fields) {
+        if (!Object.hasOwn(fields, f.name)) continue
+        if (f.value.kind !== 'literal' || (f.name === 'fontSize' ? typeof f.value.value !== 'number' : typeof f.value.value !== 'string')) {
+          _emitWarnings.push(`<${tag} theme>: \`${f.name}\` must be a literal on native; its default applies.`)
+          continue
+        }
+        fields[f.name] = f.name === 'fontSize' ? chartDouble(f.value.value as number) : JSON.stringify(f.value.value)
+      }
+    }
+  }
+  return `ChartTheme(axis: ${fields.axis}, grid: ${fields.grid}, label: ${fields.label}, fontSize: ${fields.fontSize})`
+}
+
+/**
+ * A `Formatter` prop as a Swift `(Double) -> String`: an engine formatter by
+ * name (`plain`, `compact`), an engine factory call (`fixed(2)`, `currency("$", 2)`,
+ * `percent(1)`), or an arrow — which lowers as a closure and is type-checked by
+ * the compile gates. `undefined` when the prop is absent.
+ */
+function swiftChartFormatter(e: Extract<ExprIR, { kind: 'jsx-element' }>, prop: string, indent: number): string | undefined {
+  const v = chartAttrExpr(e, prop)
+  if (v === undefined) return undefined
+  return emitSwiftExpr(v, indent)
+}
+
+/** `<CandlestickChart data open high low close x? candle? theme? height width title>` → the shared frame over the mapped candles. */
+
+/** `<HeatmapChart data x y value colors? gap? theme? height width title onSelectIndex?>` → heatGridFrom over the mapped rows + the shared frame. */
+
+/** `<PlotChart data marks x? xValue? showXAxis? showYAxis? showGrid? horizontal? xTime? annotations? markers? y2Domain? theme? format? xFormat? y2Format? showLegend? showTitle? onSelect? …>` */
+
+/** `[minRadius, maxRadius]` of a bubble's options literal, the web defaults (3, 18) when absent. */
+function swiftBubbleRange(opts: ExprIR | undefined): [string, string] {
+  let min = '3.0'
+  let max = '18.0'
+  if (opts !== undefined && opts.kind === 'object') {
+    for (const f of opts.fields) {
+      if (f.value.kind !== 'literal' || typeof f.value.value !== 'number') continue
+      if (f.name === 'minRadius') min = chartDouble(f.value.value)
+      if (f.name === 'maxRadius') max = chartDouble(f.value.value)
+    }
+  }
+  return [min, max]
+}

@@ -9236,24 +9236,6 @@ function kotlinChartMap(
   return `${data}.mapIndexed { pyreonI, pyreonD -> ${wrap(acc)} }`
 }
 
-function kotlinFrameHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, cmds: string, hit: ((x: string, y: string) => string) | null, W: string, H: string, hasWidth: boolean, indent: number, names: readonly string[] = ['selectindex', 'select']): string {
-  const onSel = hit === null ? undefined : e.attrs.find((a) => a.kind === 'event' && names.includes(a.name))
-  const tap =
-    onSel?.kind === 'event' && hit !== null
-      ? `.pointerInput(Unit) { detectTapGestures { pyreonTap -> ${kotlinChartSelectBody(onSel.handler, hit('(pyreonTap.x / pyreonDensity).toDouble()', '(pyreonTap.y / pyreonDensity).toDouble()'), indent)} } }`
-      : ''
-  const size = hasWidth ? `Modifier.width((${W}).dp).height((${H}).dp)` : `Modifier.fillMaxWidth().height((${H}).dp)`
-  const generic = emitKotlinLayoutModifier(e)
-  const titleRaw = readStaticAttrKotlin(e, 'title')
-  const titleMod = typeof titleRaw === 'string' ? `.semantics { contentDescription = ${JSON.stringify(titleRaw)} }` : ''
-  const canvas = `PyreonChartCanvas(cmds = ${cmds}, modifier = ${size + tap + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))})`
-  if (hasWidth && tap === '') return canvas
-  const pad = ' '.repeat(indent + 2)
-  const widthLine = hasWidth ? '' : `${pad}val pyreonW = maxWidth.value.toDouble()\n`
-  const densityLine = tap === '' ? '' : `${pad}val pyreonDensity = LocalDensity.current.density\n`
-  return `BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {\n${widthLine}${densityLine}${pad}${canvas}\n${' '.repeat(indent)}}`
-}
-
 function emitKotlinCandlestickHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const tag = 'CandlestickChart'
   const dataV = chartAttrExprKotlin(e, 'data')
@@ -9272,18 +9254,18 @@ function emitKotlinCandlestickHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
     }
     fields.push(`${f} = (${acc}).toDouble()`)
   }
-  const candles = `${data}.mapIndexed { pyreonI, pyreonD -> Ohlc(${fields.join(', ')}) }`
+  const lets = [`val pyreonCandles: List<Ohlc> = ${data}.mapIndexed { pyreonI, pyreonD -> Ohlc(${fields.join(', ')}) }`]
   const catsM = kotlinChartMap(e, tag, data, 'x', (b) => b, indent)
   if (catsM === 'unsupported') return 'Box {}'
-  const cats = catsM ?? 'listOf<String>()'
-  if (chartAttrExprKotlin(e, 'theme') !== undefined) _emitWarnings.push(`<${tag} theme>: a theme override is not lowered on native yet; the default theme applies.`)
+  lets.push(`val pyreonCats: List<String> = ${catsM ?? 'listOf<String>()'}`)
+  lets.push(`val pyreonTheme: ChartTheme = ${kotlinChartTheme(e, tag)}`)
   const optV = chartAttrExprKotlin(e, 'candle')
   const options = optV === undefined ? 'null' : emitKotlinExpr(optV, indent)
   const H = kotlinChartDouble(e, 'height', 200, indent)
   const hasWidth = chartAttrExprKotlin(e, 'width') !== undefined
   const W = hasWidth ? kotlinChartDouble(e, 'width', 300, indent) : 'pyreonW'
-  const cmds = `renderCandlestickChart(${candles}, ${W}, ${H}, ${cats}, ${KOTLIN_CHART_TARGET.theme()}, ${options}, ::pyreonChartMeasure)`
-  return kotlinFrameHost(e, cmds, (x, y) => `hitCandlestickChart(${candles}, ${W}, ${H}, ${cats}, ${CHART_THEME_DEFAULT.fontSize}, ::pyreonChartMeasure, ${x}, ${y})`, W, H, hasWidth, indent)
+  const cmds = `renderCandlestickChart(pyreonCandles, ${W}, ${H}, pyreonCats, pyreonTheme, ${options}, ::pyreonChartMeasure)`
+  return kotlinFrameHostLets(e, lets, cmds, (x, y) => `hitCandlestickChart(pyreonCandles, ${W}, ${H}, pyreonCats, pyreonTheme.fontSize, ::pyreonChartMeasure, ${x}, ${y})`, W, H, hasWidth, indent)
 }
 
 function emitKotlinHeatmapHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
@@ -9294,18 +9276,22 @@ function emitKotlinHeatmapHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
     return 'Box {}'
   }
   const data = emitKotlinExpr(dataV, indent)
-  const parts: string[] = []
-  for (const [prop, wrap] of [['x', (b: string) => b], ['y', (b: string) => b], ['value', (b: string) => `(${b}).toDouble()`]] as const) {
+  const lets: string[] = []
+  for (const [prop, name, type, wrap] of [
+    ['x', 'pyreonXs', 'List<String>', (b: string) => b],
+    ['y', 'pyreonYs', 'List<String>', (b: string) => b],
+    ['value', 'pyreonVals', 'List<Double>', (b: string) => `(${b}).toDouble()`],
+  ] as const) {
     const m = kotlinChartMap(e, tag, data, prop, wrap, indent)
     if (m === 'unsupported') return 'Box {}'
     if (m === null) {
       _emitWarnings.push(`<${tag}>: needs a \`${prop}\` accessor on native; emitting an empty Box().`)
       return 'Box {}'
     }
-    parts.push(m)
+    lets.push(`val ${name}: ${type} = ${m}`)
   }
-  const grid = `heatGridFrom(${parts.join(', ')})`
-  if (chartAttrExprKotlin(e, 'theme') !== undefined) _emitWarnings.push(`<${tag} theme>: a theme override is not lowered on native yet; the default theme applies.`)
+  lets.push('val pyreonGrid: HeatGrid = heatGridFrom(pyreonXs, pyreonYs, pyreonVals)')
+  lets.push(`val pyreonTheme: ChartTheme = ${kotlinChartTheme(e, tag)}`)
   if (e.attrs.some((a) => a.kind === 'event' && a.name === 'select')) {
     _emitWarnings.push(`<${tag} onSelect>: the cell-shaped callback is not lowered on native; use \`onSelectIndex\` (the index into the grid's cells).`)
   }
@@ -9315,8 +9301,8 @@ function emitKotlinHeatmapHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   const H = kotlinChartDouble(e, 'height', 200, indent)
   const hasWidth = chartAttrExprKotlin(e, 'width') !== undefined
   const W = hasWidth ? kotlinChartDouble(e, 'width', 300, indent) : 'pyreonW'
-  const cmds = `renderHeatChart(${grid}, ${W}, ${H}, ${KOTLIN_CHART_TARGET.theme()}, ${stops}, ${gap}, ::pyreonChartMeasure)`
-  return kotlinFrameHost(e, cmds, (x, y) => `hitHeatChart(${grid}, ${W}, ${H}, ${CHART_THEME_DEFAULT.fontSize}, ${gap}, ::pyreonChartMeasure, ${x}, ${y})`, W, H, hasWidth, indent, ['selectindex'])
+  const cmds = `renderHeatChart(pyreonGrid, ${W}, ${H}, pyreonTheme, ${stops}, ${gap}, ::pyreonChartMeasure)`
+  return kotlinFrameHostLets(e, lets, cmds, (x, y) => `hitHeatChart(pyreonGrid, ${W}, ${H}, pyreonTheme.fontSize, ${gap}, ::pyreonChartMeasure, ${x}, ${y})`, W, H, hasWidth, indent, ['selectindex'])
 }
 
 function emitKotlinRadarHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
@@ -9432,9 +9418,10 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   for (let k = 0; k < marksV.elements.length; k++) {
     const m = marksV.elements[k]!
     const callee = m.kind === 'call' && m.callee.kind === 'identifier' ? m.callee.name : undefined
-    const kind = callee === undefined ? undefined : PLOT_MARK_KINDS[callee]
+    const bubble = callee === 'bubble'
+    const kind = callee === undefined ? undefined : bubble ? 'points' : PLOT_MARK_KINDS[callee]
     if (m.kind !== 'call' || kind === undefined) {
-      _emitWarnings.push(`<${tag}> mark ${k + 1}: ${callee === 'bubble' ? '`bubble` (a radius accessor)' : 'this mark'} is not lowered on native; emitting an empty Box().`)
+      _emitWarnings.push(`<${tag}> mark ${k + 1}: this mark is not lowered on native; emitting an empty Box().`)
       return 'Box {}'
     }
     const y = m.args[0]
@@ -9444,10 +9431,26 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     }
     const body = kotlinAccessorExpr(y, tag, `mark ${k + 1}`, indent)
     if (body === 'unsupported') return 'Box {}'
-    const opts = kotlinMarkOptionArgs(m.args[1], tag, k)
+    const optsArg = bubble ? m.args[2] : m.args[1]
+    const opts = kotlinMarkOptionArgs(optsArg, tag, k)
     if (opts === 'unsupported') return 'Box {}'
     lets.push(`val pyreonValues${k}: List<Double> = ${data}.mapIndexed { pyreonI, pyreonD -> (${body}).toDouble() }`)
-    series.push(`Series(kind = ${JSON.stringify(kind)}, values = pyreonValues${k}, ${opts.join(', ')})`)
+    if (bubble) {
+      const r = m.args[1]
+      if (r === undefined) {
+        _emitWarnings.push(`<${tag}> mark ${k + 1}: \`bubble\` needs a radius accessor; emitting an empty Box().`)
+        return 'Box {}'
+      }
+      const rBody = kotlinAccessorExpr(r, tag, `mark ${k + 1} radius`, indent)
+      if (rBody === 'unsupported') return 'Box {}'
+      const range = kotlinBubbleRange(optsArg)
+      lets.push(`val pyreonRadii${k}: List<Double> = bubbleRadii(${data}.mapIndexed { pyreonI, pyreonD -> (${rBody}).toDouble() }, ${range[0]}, ${range[1]})`)
+      const at = opts.findIndex((o) => o.startsWith('showValues =')) + 1
+      const withRadii = [...opts.slice(0, at), `radii = pyreonRadii${k}`, ...opts.slice(at)]
+      series.push(`Series(kind = "points", values = pyreonValues${k}, ${withRadii.join(', ')})`)
+    } else {
+      series.push(`Series(kind = ${JSON.stringify(kind)}, values = pyreonValues${k}, ${opts.join(', ')})`)
+    }
   }
   lets.push(`val pyreonSeries: List<Series> = listOf(${series.join(', ')})`)
   const xAcc = chartAttrExprKotlin(e, 'x')
@@ -9481,13 +9484,19 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     `height = ${chrome.height(H)}`,
     'series = pyreonSeries',
     'categories = pyreonCats',
-    `theme = ${KOTLIN_CHART_TARGET.theme()}`,
+    `theme = ${kotlinChartTheme(e, tag)}`,
     `showXAxis = ${bool('showXAxis', true)}`,
     `showYAxis = ${bool('showYAxis', true)}`,
     `showGrid = ${bool('showGrid', true)}`,
   ]
+  const yFormat = kotlinChartFormatter(e, 'format', indent)
+  if (yFormat !== undefined) specArgs.push(`yFormat = ${yFormat}`)
+  const xFormat = kotlinChartFormatter(e, 'xFormat', indent)
+  if (xFormat !== undefined) specArgs.push(`xFormat = ${xFormat}`)
   const y2 = chartAttrExprKotlin(e, 'y2Domain')
   if (y2 !== undefined) specArgs.push(`y2Domain = ${emitKotlinExpr(y2, indent)}`)
+  const y2Format = kotlinChartFormatter(e, 'y2Format', indent)
+  if (y2Format !== undefined) specArgs.push(`y2Format = ${y2Format}`)
   if (xValueAcc !== undefined) specArgs.push('xValues = pyreonXValues')
   if (readStaticAttrKotlin(e, 'xTime') === true) specArgs.push('xTime = true')
   if (readStaticAttrKotlin(e, 'horizontal') === true) specArgs.push('horizontal = true')
@@ -9572,3 +9581,51 @@ function kotlinFrameHostWithTap(e: Extract<ExprIR, { kind: 'jsx-element' }>, let
   return `BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {\n${widthLine}${densityLine}${body}${pad}${canvas}\n${' '.repeat(indent)}}`
 }
 
+
+// ---- theme overrides, formatters and bubble marks -----------------------------
+
+function kotlinChartTheme(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: string): string {
+  const v = chartAttrExprKotlin(e, 'theme')
+  const fields: Record<string, string> = {
+    axis: JSON.stringify(CHART_THEME_DEFAULT.axis),
+    grid: JSON.stringify(CHART_THEME_DEFAULT.grid),
+    label: JSON.stringify(CHART_THEME_DEFAULT.label),
+    fontSize: CHART_THEME_DEFAULT.fontSize,
+  }
+  if (v !== undefined) {
+    if (v.kind !== 'object' || (v.spreads !== undefined && v.spreads.length > 0)) {
+      _emitWarnings.push(`<${tag} theme>: only an object literal with literal fields lowers on native; the default theme applies.`)
+    } else {
+      for (const f of v.fields) {
+        if (!Object.hasOwn(fields, f.name)) continue
+        if (f.value.kind !== 'literal' || (f.name === 'fontSize' ? typeof f.value.value !== 'number' : typeof f.value.value !== 'string')) {
+          _emitWarnings.push(`<${tag} theme>: \`${f.name}\` must be a literal on native; its default applies.`)
+          continue
+        }
+        fields[f.name] = f.name === 'fontSize' ? chartDouble(f.value.value as number) : JSON.stringify(f.value.value)
+      }
+    }
+  }
+  return `ChartTheme(axis = ${fields.axis}, grid = ${fields.grid}, label = ${fields.label}, fontSize = ${fields.fontSize})`
+}
+
+/** A `Formatter` prop as a Kotlin `(Double) -> String`: a bare engine formatter becomes a function reference; a factory call or an arrow lowers as is. */
+function kotlinChartFormatter(e: Extract<ExprIR, { kind: 'jsx-element' }>, prop: string, indent: number): string | undefined {
+  const v = chartAttrExprKotlin(e, prop)
+  if (v === undefined) return undefined
+  if (v.kind === 'identifier') return `::${v.name}`
+  return emitKotlinExpr(v, indent)
+}
+
+function kotlinBubbleRange(opts: ExprIR | undefined): [string, string] {
+  let min = '3.0'
+  let max = '18.0'
+  if (opts !== undefined && opts.kind === 'object') {
+    for (const f of opts.fields) {
+      if (f.value.kind !== 'literal' || typeof f.value.value !== 'number') continue
+      if (f.name === 'minRadius') min = chartDouble(f.value.value)
+      if (f.name === 'maxRadius') max = chartDouble(f.value.value)
+    }
+  }
+  return [min, max]
+}

@@ -11,6 +11,7 @@
 // Recharts all converge on marks-over-data rather than one nested config object.
 
 import type { Series } from './render'
+import { bubbleRadii } from './bubble'
 import type { Double, Pt } from './types'
 
 /** Reads one numeric channel out of a datum. */
@@ -165,17 +166,8 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[]): Series[] {
     const rAcc = m.r
     if (rAcc !== undefined) {
       const raw: Double[] = []
-      for (let i = 0; i < data.length; i++) {
-        const rv = rAcc(data[i]!, i)
-        raw.push(Number.isFinite(rv) && rv > 0.0 ? rv : 0.0)
-      }
-      let hi = 0.0
-      for (const rv of raw) if (rv > hi) hi = rv
-      const minR = m.minRadius ?? 3.0
-      const maxR = m.maxRadius ?? 18.0
-      radii = raw.map((rv) =>
-        hi === 0.0 ? minR : minR + Math.sqrt(rv / hi) * (maxR - minR),
-      )
+      for (let i = 0; i < data.length; i++) raw.push(rAcc(data[i]!, i))
+      radii = bubbleRadii(raw, m.minRadius ?? 3.0, m.maxRadius ?? 18.0)
     }
     return {
       kind: m.kind,
