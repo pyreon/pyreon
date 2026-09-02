@@ -134,7 +134,13 @@ function publicizeSwift(code: string): string {
       i++
       const fields: SwiftField[] = []
       while (i < lines.length && lines[i] !== '}') {
-        const f = lines[i]!.match(/^(\s+)var (\w+): ([^=]+?)(?: = (.+))?$/)
+        // A Swift-keyword field name arrives BACKTICK-ESCAPED from `swiftIdent`
+        // (`open` on Ohlc). A `\w+`-only name group silently fails to match it,
+        // which cost two defects at once: the field stayed INTERNAL on a public
+        // struct, and — because it never reached `fields` — it was omitted from
+        // the synthesized memberwise init, so the struct failed to compile with
+        // "return from initializer without initializing all stored properties".
+        const f = lines[i]!.match(/^(\s+)var (`\w+`|\w+): ([^=]+?)(?: = (.+))?$/)
         if (f) {
           fields.push({ name: f[2]!, type: f[3]!.trim(), def: f[4] ?? null })
           out.push(`${f[1]}public var ${f[2]}: ${f[3]!.trim()}${f[4] ? ` = ${f[4]}` : ''}`)

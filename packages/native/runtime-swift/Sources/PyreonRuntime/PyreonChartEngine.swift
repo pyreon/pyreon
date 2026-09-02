@@ -320,11 +320,12 @@ public struct ChartSpec {
 }
 
 public struct Ohlc: Codable {
-  var `open`: Double
+  public var `open`: Double
   public var high: Double
   public var low: Double
   public var close: Double
-  public init(high: Double, low: Double, close: Double) {
+  public init(`open`: Double, high: Double, low: Double, close: Double) {
+    self.`open` = `open`
     self.high = high
     self.low = low
     self.close = close
