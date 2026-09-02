@@ -254,6 +254,15 @@ interface ParseCtx {
    */
   httpClientBaseUrls: Map<string, string>
   /**
+   * Identifiers passed as `createHttp({ schema: <name> })`. The pre-pass
+   * below reads ONLY `baseUrl` off that config and emits nothing for the
+   * declaration, so such a name never reaches the Swift/Kotlin — and the
+   * blanket "reproduced verbatim … cannot find X in scope" line would be
+   * denying a symbol that is not there. Same shape as the `withField` /
+   * `zodSchema` suppressions below.
+   */
+  httpClientSchemaNames: Set<string>
+  /**
    * `@pyreon/http` endpoint bindings: `const getUser = api.endpoint('GET
    * /users/:id', { … })` → `getUser` → its method / path template / owning
    * client / `:param` names. A same-file, compile-time-templated endpoint
@@ -365,6 +374,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     helperFns: [],
     theme: DEFAULT_THEME,
     httpClientBaseUrls: new Map(),
+    httpClientSchemaNames: new Set(),
     endpointDefs: new Map(),
     inlineSchemas: [],
     inlineSchemaByShape: new Map(),
@@ -1755,6 +1765,12 @@ function collectHttpClients(body: AnyNode[], ctx: ParseCtx): void {
         // build time as an inline string.
         baseUrl = staticStringArg(v, ctx) ?? HTTP_NONLITERAL_BASEURL
       }
+      // `schema:` is read by nobody on this path — PyreonFetch does not
+      // validate — so record the name to keep the symbol warn honest.
+      const sch = readObjectProp(cfg, 'schema') as AnyNode | undefined
+      if (sch?.type === 'Identifier' && typeof sch.name === 'string') {
+        ctx.httpClientSchemaNames.add(sch.name)
+      }
       ctx.httpClientBaseUrls.set(name, baseUrl)
     }
   }
@@ -2772,6 +2788,12 @@ function warnUnloweredPyreonModules(body: AnyNode[], ctx: ParseCtx): void {
       ) {
         continue
       }
+      // Same shape once more: a name used ONLY as `createHttp({ schema })`
+      // is consumed by `collectHttpClients`, which reads `baseUrl` and
+      // nothing else, so the declaration emits no Swift/Kotlin at all. The
+      // blanket line claimed it was "reproduced verbatim" in an emit that
+      // never mentions it.
+      if (ctx.httpClientSchemaNames.has(imported)) continue
       // When a module lists `unsupported`, ONLY those warn — everything else in
       // it lowers and must stay silent.
       if (entry.unsupported !== undefined && !entry.unsupported.has(imported)) continue
@@ -5524,6 +5546,7 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     helperFns: [],
     theme: DEFAULT_THEME,
     httpClientBaseUrls: new Map(),
+    httpClientSchemaNames: new Set(),
     endpointDefs: new Map(),
     inlineSchemas: [],
     inlineSchemaByShape: new Map(),
