@@ -37,6 +37,31 @@ import { parseSync, Visitor } from 'oxc-parser'
 import { isUpdateMode, shouldLowerUnscoped } from './bundle-budget-policy'
 import { isModuleEntry } from './is-entry'
 
+// Minimal ambient for Bun's bundler, so this file stays importable from a
+// program without `@types/bun`. Its sibling `check-import-budgets.ts` already
+// does exactly this, for exactly this reason, and `serve-ssg.ts` before it —
+// but this file did not, so the moment a test imported it for the pure helpers
+// below, `@pyreon/test-utils` (types: ["vitest/globals", "node"]) failed with
+// TS2868 plus two implicit-any params inferred off the missing type. The
+// helpers now live in `./bundle-budget-policy`, which is the better home
+// because BOTH gates consume them — this ambient is the second half, so the
+// next person to import something from here does not hit the same wall.
+declare const Bun: {
+  build(options: {
+    entrypoints: string[]
+    minify?: boolean
+    target?: string
+    splitting?: boolean
+    outdir?: string
+    external?: string[]
+    define?: Record<string, string>
+  }): Promise<{
+    success: boolean
+    logs: unknown[]
+    outputs: Array<{ kind: string; text(): Promise<string> }>
+  }>
+}
+
 // `import.meta.dirname` is the STANDARD property (Node 20.11+, and Bun), which is
 // what every sibling gate uses (`affected.ts`, `check-coverage.ts`). The Bun-only
 // `import.meta.dir` is absent from TypeScript's `ImportMeta` unless a program
