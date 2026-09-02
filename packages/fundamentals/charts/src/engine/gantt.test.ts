@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { ganttDurationDays, ganttTicks, ganttToSvg, hitGantt, layoutGantt, renderGantt } from './gantt'
+import { ganttDurationDays, ganttTicks, layoutGantt, renderGantt } from './gantt'
+import { hitGantt } from './gantt-web'
+import { ganttToSvg } from './family-svg'
+import { daysFromCivil } from './calendar'
 import type { GanttTask } from './gantt'
 
 const tasks: GanttTask[] = [
@@ -39,20 +42,20 @@ describe('layoutGantt', () => {
     expect(layoutGantt([{ id: 'x', name: 'x', start: '2024-01-01', end: '2024-01-02', dependencies: ['nope'] }], box).dependencies).toEqual([])
   })
   it('an explicit domain and a today marker map onto the plot; the label column caps at the fraction', () => {
-    const l = layoutGantt(tasks, box, { domain: ['2024-03-01', '2024-03-31'], today: '2024-03-16', labelFraction: 0.2 })
-    expect(l.domain).toEqual([Date.UTC(2024, 2, 1), Date.UTC(2024, 2, 31)])
-    expect(l.today!.x).toBeCloseTo(l.plot.x + l.plot.w / 2, 5)
+    const l = layoutGantt(tasks, box, { domain: { start: '2024-03-01', end: '2024-03-31' }, today: '2024-03-16', labelFraction: 0.2 })
+    expect(l.domain).toEqual({ min: daysFromCivil(2024, 3, 1), max: daysFromCivil(2024, 3, 31) })
+    expect(l.todayX).toBeCloseTo(l.plot.x + l.plot.w / 2, 5)
     expect(l.plot.x).toBeLessThanOrEqual(box.w * 0.2 + 0.001)
     expect(l.rows[0]!.rect.x).toBeCloseTo(l.plot.x, 5)
   })
   it('picks a tick unit by span and aligns ticks to calendar boundaries', () => {
-    const day = ganttTicks(Date.UTC(2024, 0, 3, 12), Date.UTC(2024, 0, 6), 'day')
+    const day = ganttTicks(daysFromCivil(2024, 1, 3) + 0.5, daysFromCivil(2024, 1, 6), 'day')
     expect(day.map((t) => t.label)).toEqual(['4 Jan', '5 Jan', '6 Jan'])
-    const month = ganttTicks(Date.UTC(2024, 0, 15), Date.UTC(2024, 3, 2), 'month')
+    const month = ganttTicks(daysFromCivil(2024, 1, 15), daysFromCivil(2024, 4, 2), 'month')
     expect(month.map((t) => t.label)).toEqual(['Feb', 'Mar', 'Apr'])
-    const quarter = ganttTicks(Date.UTC(2023, 10, 1), Date.UTC(2024, 8, 1), 'quarter')
+    const quarter = ganttTicks(daysFromCivil(2023, 11, 1), daysFromCivil(2024, 9, 1), 'quarter')
     expect(quarter.map((t) => t.label)).toEqual(['Q1 2024', 'Q2 2024', 'Q3 2024'])
-    const year = ganttTicks(Date.UTC(2020, 5, 1), Date.UTC(2023, 0, 1), 'year')
+    const year = ganttTicks(daysFromCivil(2020, 6, 1), daysFromCivil(2023, 1, 1), 'year')
     expect(year.map((t) => t.label)).toEqual(['2021', '2022', '2023'])
     expect(layoutGantt([{ id: 'a', name: 'a', start: '2024-01-01', end: '2024-01-05' }], box).unit).toBe('day')
     expect(layoutGantt([{ id: 'a', name: 'a', start: '2020-01-01', end: '2030-01-05' }], box).unit).toBe('year')
