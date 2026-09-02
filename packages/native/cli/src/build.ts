@@ -420,6 +420,13 @@ export function conditionalKotlinImports(emitted: string): string {
   if (emitted.includes('.pointerInput(')) {
     imports.push('import androidx.compose.ui.input.pointer.pointerInput')
   }
+  // Chart-host `onSelectIndex` (chart-hosts.ts): a tap over the engine's index hit.
+  if (emitted.includes('detectTapGestures(')) {
+    imports.push('import androidx.compose.foundation.gestures.detectTapGestures')
+  }
+  if (emitted.includes('LocalDensity.current')) {
+    imports.push('import androidx.compose.ui.platform.LocalDensity')
+  }
   if (emitted.includes('detectHorizontalDragGestures(')) {
     imports.push('import androidx.compose.foundation.gestures.detectHorizontalDragGestures')
   }

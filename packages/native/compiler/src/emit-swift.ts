@@ -10858,6 +10858,7 @@ const SWIFT_CHART_TARGET: ChartHostTarget = {
   pt: (x, y) => `PyreonChartPt(x: ${x}, y: ${y})`,
   max0: (e) => `max(0.0, ${e})`,
   min: (a, b) => `min(${a}, ${b})`,
+  nil: 'nil',
 }
 
 /** A JSX attr's value expression, unwrapping a zero-arg accessor arrow. */
@@ -10879,6 +10880,24 @@ function swiftChartDouble(e: Extract<ExprIR, { kind: 'jsx-element' }>, name: str
   const dyn = chartAttrExpr(e, name)
   if (dyn !== undefined) return `Double(${emitSwiftExpr(dyn, indent)})`
   return chartDouble(fallback)
+}
+
+/**
+ * The body of the tap closure for `onSelectIndex`: bind the handler's param to
+ * the engine's index hit, then run the handler's own body as a zero-arg
+ * closure (which captures the binding). A bare function reference is called
+ * with the hit directly.
+ */
+function swiftChartSelectBody(handler: ExprIR, hitExpr: string, indent: number): string {
+  if (handler.kind === 'arrow') {
+    const p = handler.params[0]
+    const zeroArg: ExprIR = { ...handler, params: [] }
+    const closure = emitSwiftAction(zeroArg, indent)
+    return p === undefined ? `(${closure})()` : `let ${swiftIdent(p)} = ${hitExpr}; (${closure})()`
+  }
+  const resolved = resolveFunctionHandler(handler)
+  if (resolved !== undefined) return `${swiftIdent(resolved)}(${hitExpr})`
+  return `(${emitSwiftExpr(handler, indent)})(${hitExpr})`
 }
 
 function emitSwiftChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
@@ -10911,11 +10930,20 @@ function emitSwiftChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     gutter: swiftChartDouble(e, 'gutter', 80, indent),
     innerRatio: swiftChartDouble(e, 'innerRatio', 0.2, indent),
   }
-  const cmds = spec.cmds(args, SWIFT_CHART_TARGET)
-  const canvas = `PyreonChartCanvas(cmds: ${cmds})`
+  const layout = spec.layout(args, SWIFT_CHART_TARGET)
+  const canvas = `PyreonChartCanvas(cmds: ${spec.render(layout, args, SWIFT_CHART_TARGET)})`
+  // `onSelectIndex` → a tap (a zero-distance drag, which reports its location)
+  // over the engine's index hit, computed against the same layout the canvas
+  // painted. `.contentShape` makes the whole canvas — not only its painted
+  // pixels — hit-testable.
+  const onSel = e.attrs.find((a) => a.kind === 'event' && a.name === 'selectindex')
+  const gesture =
+    onSel?.kind === 'event'
+      ? `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in ${swiftChartSelectBody(onSel.handler, spec.hit(layout, 'Double(pyreonTap.location.x)', 'Double(pyreonTap.location.y)', args, SWIFT_CHART_TARGET), indent)} })`
+      : ''
   const title = readStringAttrExpr(e, 'title', indent)
   const tail = (title !== undefined ? `.accessibilityLabel(${title})` : '') + emitSwiftLayoutModifiers(e)
-  if (hasWidth) return `${canvas}.frame(width: ${W}, height: ${H})${tail}`
+  if (hasWidth) return `${canvas}${gesture}.frame(width: ${W}, height: ${H})${tail}`
   const pad = ' '.repeat(indent + 2)
-  return `GeometryReader { pyreonGeo in\n${pad}${canvas}\n${' '.repeat(indent)}}.frame(height: ${H})${tail}`
+  return `GeometryReader { pyreonGeo in\n${pad}${canvas}${gesture}\n${' '.repeat(indent)}}.frame(height: ${H})${tail}`
 }

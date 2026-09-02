@@ -3090,7 +3090,7 @@ public func renderTreemap(_ cells: [TreemapCell], _ options: TreemapOptions? = n
     return out
   }
 
-public func hitTreemap(_ cells: [TreemapCell], _ px: Double, _ py: Double) -> TreemapCell? {
+public func hitTreemapIndex(_ cells: [TreemapCell], _ px: Double, _ py: Double) -> Int {
     var bestIdx = -1
     var bestDepth = -1
     for i in 0..<cells.count {
@@ -3104,10 +3104,12 @@ public func hitTreemap(_ cells: [TreemapCell], _ px: Double, _ py: Double) -> Tr
         bestIdx = i
       }
     }
-    if bestIdx < 0 {
-      return nil
-    }
-    return cells[bestIdx]
+    return bestIdx
+  }
+
+public func hitTreemap(_ cells: [TreemapCell], _ px: Double, _ py: Double) -> TreemapCell? {
+    let i = hitTreemapIndex(cells, px, py)
+    return i < 0 ? nil : cells[i]
   }
 
 public func treeDepth(_ nodes: [TreeNode]) -> Int {
@@ -3260,7 +3262,7 @@ public func renderSunburst(_ arcs: [SunburstArc], _ center: PyreonChartPt, _ opt
     return out
   }
 
-public func hitSunburst(_ arcs: [SunburstArc], _ center: PyreonChartPt, _ px: Double, _ py: Double) -> SunburstArc? {
+public func hitSunburstIndex(_ arcs: [SunburstArc], _ center: PyreonChartPt, _ px: Double, _ py: Double) -> Int {
     let dx = px - center.x
     let dy = py - center.y
     let dist = sqrt(Double(dx * dx + dy * dy))
@@ -3287,10 +3289,12 @@ public func hitSunburst(_ arcs: [SunburstArc], _ center: PyreonChartPt, _ px: Do
         bestIdx = i
       }
     }
-    if bestIdx < 0 {
-      return nil
-    }
-    return arcs[bestIdx]
+    return bestIdx
+  }
+
+public func hitSunburst(_ arcs: [SunburstArc], _ center: PyreonChartPt, _ px: Double, _ py: Double) -> SunburstArc? {
+    let i = hitSunburstIndex(arcs, center, px, py)
+    return i < 0 ? nil : arcs[i]
   }
 
 public func placeTreeNode(_ orient: String, _ box: PyreonChartRect, _ gutter: Double, _ levelsF: Double, _ slotsF: Double, _ depthF: Double, _ t: Double) -> Placed {
@@ -3514,7 +3518,7 @@ public func renderTree(_ layout: TreeLayout, _ options: TreeOptions? = nil) -> [
     return out
   }
 
-public func hitTree(_ layout: TreeLayout, _ px: Double, _ py: Double, _ symbolSize: Double? = nil) -> TreeLayoutNode? {
+public func hitTreeIndex(_ layout: TreeLayout, _ px: Double, _ py: Double, _ symbolSize: Double? = nil) -> Int {
     let r = ((symbolSize ?? 8.0)) / 2.0 + 4.0
     var bestIdx = -1
     var bestD = r * r
@@ -3528,10 +3532,12 @@ public func hitTree(_ layout: TreeLayout, _ px: Double, _ py: Double, _ symbolSi
         bestD = d
       }
     }
-    if bestIdx < 0 {
-      return nil
-    }
-    return layout.nodes[bestIdx]
+    return bestIdx
+  }
+
+public func hitTree(_ layout: TreeLayout, _ px: Double, _ py: Double, _ symbolSize: Double? = nil) -> TreeLayoutNode? {
+    let i = hitTreeIndex(layout, px, py, symbolSize)
+    return i < 0 ? nil : layout.nodes[i]
   }
 
 public func riverValue(_ s: RiverSeries, _ i: Int) -> Double {
@@ -3772,7 +3778,7 @@ public func riverPointInPolygon(_ pts: [PyreonChartPt], _ px: Double, _ py: Doub
     return inside
   }
 
-public func hitRiver(_ layout: RiverLayout, _ px: Double, _ py: Double, _ curve: String? = nil) -> RiverLayer? {
+public func hitRiverIndex(_ layout: RiverLayout, _ px: Double, _ py: Double, _ curve: String? = nil) -> Int {
     let shape = (curve ?? "smooth")
     var bestIdx = -1
     for i in stride(from: layout.layers.count - 1, through: 0, by: -1) {
@@ -3784,10 +3790,12 @@ public func hitRiver(_ layout: RiverLayout, _ px: Double, _ py: Double, _ curve:
         bestIdx = i
       }
     }
-    if bestIdx < 0 {
-      return nil
-    }
-    return layout.layers[bestIdx]
+    return bestIdx
+  }
+
+public func hitRiver(_ layout: RiverLayout, _ px: Double, _ py: Double, _ curve: String? = nil) -> RiverLayer? {
+    let i = hitRiverIndex(layout, px, py, curve)
+    return i < 0 ? nil : layout.layers[i]
   }
 
 public func polarFrac(_ v: Double, _ lo: Double, _ hi: Double) -> Double {

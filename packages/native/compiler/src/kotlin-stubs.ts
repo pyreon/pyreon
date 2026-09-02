@@ -232,6 +232,11 @@ fun BoxWithConstraints(
   BoxWithConstraintsScope().content()
 }
 
+// LocalDensity — the chart-host tap emit divides a px tap position by the
+// display density (the draw list is laid out in dp).
+class Density(val density: Float = 1f)
+object LocalDensity { val current: Density = Density() }
+
 // --- K4: Saveable state machinery (rememberSaveable + Saver) ---
 //
 // Real Compose ships rememberSaveable as a Composable that persists
@@ -473,8 +478,11 @@ class SemanticsPropertyReceiver {
 // callback takes (PointerInputChange, Float)) so an emit passing the
 // wrong shape fails the kotlinc gate instead of being masked.
 class PointerInputChange
-class Offset
+class Offset(val x: Float = 0f, val y: Float = 0f)
 class PointerInputScope {
+  // The chart-host tap emit (chart-hosts.ts): a tap position in px.
+  @Suppress("UNUSED_PARAMETER", "RedundantSuspendModifier")
+  suspend fun detectTapGestures(onTap: ((Offset) -> Unit)? = null) {}
   @Suppress("UNUSED_PARAMETER", "RedundantSuspendModifier")
   suspend fun detectHorizontalDragGestures(
     onDragStart: (Offset) -> Unit = {},

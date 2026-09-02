@@ -4,7 +4,7 @@ import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
-import { hitSunburst, layoutSunburst, renderSunburst } from './sunburst'
+import { hitSunburst, hitSunburstIndex, layoutSunburst, renderSunburst } from './sunburst'
 import type { SunburstArc, SunburstOptions } from './sunburst'
 import type { TreeNode } from './treemap'
 import { chartTable, describeChart } from './a11y'
@@ -22,6 +22,8 @@ export interface SunburstChartProps {
   title?: string
   /** Fired with the deepest arc under the click, or null for a miss. */
   onSelect?: (arc: SunburstArc | null) => void
+  /** The engine's INDEX hit — the multiplatform-safe twin of `onSelect` (what the native tap gesture reports). */
+  onSelectIndex?: (hit: number) => void
   accessibleTable?: boolean
   class?: string
 }
@@ -65,12 +67,16 @@ export function SunburstChart(props: SunburstChartProps): VNode {
   const handleClick = (ev: MouseEvent): void => {
     const el = canvas
     const cb = props.onSelect
-    if (el === null || cb === undefined) return
+    const cbi = props.onSelectIndex
+    if (el === null || (cb === undefined && cbi === undefined)) return
     const w = drawWidth(el, props.width)
     const hgt = props.height ?? 300
     const r = el.getBoundingClientRect()
     const g = geometry(w, hgt)
-    cb(hitSunburst(g.arcs, g.center, ev.clientX - r.left, ev.clientY - r.top))
+    const px = ev.clientX - r.left
+    const py = ev.clientY - r.top
+    if (cb !== undefined) cb(hitSunburst(g.arcs, g.center, px, py))
+    if (cbi !== undefined) cbi(hitSunburstIndex(g.arcs, g.center, px, py))
   }
 
   const a11y = () => {

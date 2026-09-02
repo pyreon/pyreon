@@ -9004,6 +9004,7 @@ const KOTLIN_CHART_TARGET: ChartHostTarget = {
   pt: (x, y) => `PyreonChartPt(${x}, ${y})`,
   max0: (e) => `maxOf(0.0, ${e})`,
   min: (a, b) => `minOf(${a}, ${b})`,
+  nil: 'null',
 }
 
 /** A JSX attr's value expression, unwrapping a zero-arg accessor arrow. */
@@ -9025,6 +9026,24 @@ function kotlinChartDouble(e: Extract<ExprIR, { kind: 'jsx-element' }>, name: st
   const dyn = chartAttrExprKotlin(e, name)
   if (dyn !== undefined) return `(${emitKotlinExpr(dyn, indent)}).toDouble()`
   return chartDouble(fallback)
+}
+
+/**
+ * The body of the tap lambda for `onSelectIndex`: bind the handler's param to
+ * the engine's index hit, then run the handler's own body as a zero-arg lambda
+ * (which captures the binding — a one-param lambda literal cannot be invoked
+ * without a declared param type). A bare function reference is called with
+ * the hit directly.
+ */
+function kotlinChartSelectBody(handler: ExprIR, hitExpr: string, indent: number): string {
+  if (handler.kind === 'arrow') {
+    const p = handler.params[0]
+    const zeroArg: ExprIR = { ...handler, params: [] }
+    const lambda = emitKotlinAction(zeroArg, indent)
+    return p === undefined ? `(${lambda})()` : `val ${kotlinIdent(p)} = ${hitExpr}; (${lambda})()`
+  }
+  if (handler.kind === 'identifier') return `${kotlinIdent(handler.name)}(${hitExpr})`
+  return `(${emitKotlinExpr(handler, indent)})(${hitExpr})`
 }
 
 function emitKotlinChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
@@ -9057,16 +9076,31 @@ function emitKotlinChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
     gutter: kotlinChartDouble(e, 'gutter', 80, indent),
     innerRatio: kotlinChartDouble(e, 'innerRatio', 0.2, indent),
   }
-  const cmds = spec.cmds(args, KOTLIN_CHART_TARGET)
-  // Size modifiers first (they are the host's own layout), then the generic
-  // tail — testTag / a11y / padding — so `data-testid` reaches the node.
+  const layout = spec.layout(args, KOTLIN_CHART_TARGET)
+  const cmds = spec.render(layout, args, KOTLIN_CHART_TARGET)
+  // `onSelectIndex` → a tap over the engine's index hit. The tap position is
+  // in pixels while the draw list is laid out in dp (PyreonChartCanvas scales
+  // by the density when it paints), so the position is divided by the density
+  // read in the enclosing composable scope.
+  const onSel = e.attrs.find((a) => a.kind === 'event' && a.name === 'selectindex')
+  const tap =
+    onSel?.kind === 'event'
+      ? `.pointerInput(Unit) { detectTapGestures { pyreonTap -> ${kotlinChartSelectBody(onSel.handler, spec.hit(layout, '(pyreonTap.x / pyreonDensity).toDouble()', '(pyreonTap.y / pyreonDensity).toDouble()', args, KOTLIN_CHART_TARGET), indent)} } }`
+      : ''
+  // Size modifiers first (they are the host's own layout), then the tap, the
+  // title as the content description, then the generic tail — testTag / a11y
+  // / padding — so `data-testid` reaches the node.
   const size = hasWidth ? `Modifier.width((${W}).dp).height((${H}).dp)` : `Modifier.fillMaxWidth().height((${H}).dp)`
   const generic = emitKotlinLayoutModifier(e)
   const titleRaw = readStaticAttrKotlin(e, 'title')
   const titleMod = typeof titleRaw === 'string' ? `.semantics { contentDescription = ${JSON.stringify(titleRaw)} }` : ''
-  const modifier = size + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))
+  const modifier = size + tap + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))
   const canvas = `PyreonChartCanvas(cmds = ${cmds}, modifier = ${modifier})`
-  if (hasWidth) return canvas
+  // A tap needs the density from a composable scope, so a tappable host always
+  // sits in a BoxWithConstraints even when its width is explicit.
+  if (hasWidth && tap === '') return canvas
   const pad = ' '.repeat(indent + 2)
-  return `BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {\n${pad}val pyreonW = maxWidth.value.toDouble()\n${pad}${canvas}\n${' '.repeat(indent)}}`
+  const widthLine = hasWidth ? '' : `${pad}val pyreonW = maxWidth.value.toDouble()\n`
+  const densityLine = tap === '' ? '' : `${pad}val pyreonDensity = LocalDensity.current.density\n`
+  return `BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {\n${widthLine}${densityLine}${pad}${canvas}\n${' '.repeat(indent)}}`
 }

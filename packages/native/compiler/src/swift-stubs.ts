@@ -482,6 +482,8 @@ public enum Edge {
     public static let all = Edge.Set(rawValue: 15)
   }
 }
+public protocol Shape {}
+public struct Rectangle: Shape { public init() {} }
 public protocol Gesture {}
 public struct LongPressGesture: Gesture {
   public init(minimumDuration: Double = 0.5) {}
@@ -491,7 +493,7 @@ public struct LongPressGesture: Gesture {
 // mirrors the real gesture's \`translation: CGSize\` (width/height Doubles) so
 // an emit reading a member DragGesture.Value doesn't have fails typecheck.
 public struct DragGesture: Gesture {
-  public struct Value { public var translation: CGSize = CGSize() }
+  public struct Value { public var translation: CGSize = CGSize(); public var location: CGPoint = CGPoint() }
   public init(minimumDistance: Double = 10) {}
   public func onEnded(_ action: @escaping (Value) -> Void) -> DragGesture { self }
 }
@@ -556,6 +558,9 @@ extension View {
   public func accessibilityHidden(_ hidden: Bool) -> some View { self }
   public func simultaneousGesture<G: Gesture>(_ gesture: G) -> some View { self }
   public func highPriorityGesture<G: Gesture>(_ gesture: G) -> some View { self }
+  // .gesture / .contentShape(Rectangle()) — the chart-host tap emit (chart-hosts.ts).
+  public func gesture<G: Gesture>(_ gesture: G) -> some View { self }
+  public func contentShape<S: Shape>(_ shape: S) -> some View { self }
   public func onSubmit(_ action: @escaping () -> Void) -> some View { self }
   public func font(_ font: Font?) -> some View { self }
   public func opacity(_ opacity: Double) -> some View { self }
