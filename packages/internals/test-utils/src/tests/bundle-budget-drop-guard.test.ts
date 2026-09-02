@@ -2,57 +2,65 @@
  * `--update` committed a budget derived from a stale `lib/`.
  *
  * It is documented as a RATCHET that "LOWERS one that has shrunk" — correct in
- * principle, and the failure mode in practice: a stale or partial build measures
- * far smaller than the real package, so the ratchet writes a budget BELOW what
- * CI measures. `@pyreon/validate` went 15872 -> 15360, implying a ~12288 B
- * measurement for a package that really measures ~15016 B locally and 15473 B on
- * CI. The gate then failed on a package the branch never touched — twice, on two
- * different branches, because the wrong value was committed and travelled.
+ * principle, and the failure mode in practice. A budget is measured from `lib/`,
+ * and a stale or partial `lib/` measures SMALLER than the real package, so a bad
+ * measurement can only ever push a budget DOWN. `@pyreon/validate` went
+ * 15872 -> 15360, a value implying a ~12288 B measurement for a package that
+ * really measures 15330 B locally (after a bootstrap) and 15473 B on CI. The gate
+ * then failed on a package neither branch touched — twice, because the wrong
+ * value was committed and travelled.
  *
- * The checker already knew this shape ("this budget has too little headroom to
- * be measured reliably"); the WRITER did not. This is the writer's half.
+ * The checker already knew this shape ("this budget has too little headroom to be
+ * measured reliably"); the WRITER did not. This is the writer's half.
  *
- * Not a variance problem: measured macOS 15016 vs ubuntu 15473 is ~3.0%, while
- * the committed value was ~22% below reality. Guarding the drop is therefore the
- * honest fix, and the variance constant is deliberately left alone — one
- * package is not enough evidence to move a repo-wide constant.
+ * Refusing by DIRECTION, not by drop size. My first attempt used a >10% threshold
+ * and was wrong: a size test cannot tell a stale build from a genuinely loose
+ * budget, and this repo has plenty of the latter — `loom` measures 298 B against a
+ * 6144 budget and `testing` 1745 against 5120, both IDENTICAL before and after a
+ * full rebuild. The threshold would have refused legitimate tightening while still
+ * missing a small stale drop. Direction is the property that actually separates
+ * them.
+ *
+ * Not a platform-variance problem either: after a bootstrap, macOS 15330 vs ubuntu
+ * 15473 is 0.9%, consistent with the ~1.1% the gate already documents. An earlier
+ * note of mine claiming 3.0% was measured on the stale tree and is retracted.
  */
 
 import { describe, expect, it } from 'vitest'
-import { isSuspiciousDrop, MAX_UNSCOPED_DROP_PCT } from '../../../../../scripts/check-bundle-budgets'
+import { isUpdateMode, shouldLowerUnscoped } from '../../../../../scripts/check-bundle-budgets'
 
-describe('--update refuses a drop that is really a stale build', () => {
-  it('refuses the shape that actually shipped (validate 15872 -> 15360 is inside, the stale one is not)', () => {
-    // The committed regression came from a ~12288 B measurement -> ideal 15360.
-    expect(isSuspiciousDrop(19840, 15360, false)).toBe(true)
-    // loom / testing / preact-compat, reproduced on a stale tree.
-    expect(isSuspiciousDrop(6144, 512, false)).toBe(true)
-    expect(isSuspiciousDrop(5120, 2304, false)).toBe(true)
-    expect(isSuspiciousDrop(1280, 1024, false)).toBe(true)
+describe('--update lowers only when the package is named', () => {
+  it('an UNSCOPED --update never lowers — a stale lib/ can only measure low', () => {
+    expect(shouldLowerUnscoped(false)).toBe(false)
   })
 
-  it('allows a SMALL genuine tightening — a ratchet that never lowers protects nothing', () => {
-    expect(isSuspiciousDrop(1000, 950, false)).toBe(false)
-    expect(isSuspiciousDrop(1000, 900, false)).toBe(false) // exactly 10%, not > 10%
+  it('a SCOPED --update=@pyreon/pkg lowers — naming it is the deliberate act', () => {
+    expect(shouldLowerUnscoped(true)).toBe(true)
+  })
+})
+
+/**
+ * The scoped form is now the ONLY way to lower a budget, so it had better work.
+ * It did not: `args.includes('--update')` is an exact match, so
+ * `--update=@pyreon/pkg` — the form the script's own doc comment recommends —
+ * never enabled update mode and silently ran as a plain check.
+ *
+ * Latent for its whole life, and invisible to a unit test of the lowering rule:
+ * both specs above passed while the feature was unreachable. The end-to-end run
+ * is what found it.
+ */
+describe('--update flag parsing accepts the documented scoped form', () => {
+  it('enables update mode for the bare flag', () => {
+    expect(isUpdateMode(['--update'])).toBe(true)
   })
 
-  it('never fires when the budget is unchanged or growing', () => {
-    expect(isSuspiciousDrop(1000, 1000, false)).toBe(false)
-    expect(isSuspiciousDrop(1000, 2000, false)).toBe(false)
+  it('enables update mode for --update=@pyreon/pkg (the shape that was broken)', () => {
+    expect(isUpdateMode(['--update=@pyreon/validate'])).toBe(true)
   })
 
-  it('SCOPED --update=@pyreon/pkg always proceeds — naming it is the deliberate act', () => {
-    expect(isSuspiciousDrop(6144, 512, true)).toBe(false)
-  })
-
-  it('is defined against a threshold, not a magic number in the branch', () => {
-    expect(MAX_UNSCOPED_DROP_PCT).toBe(10)
-    const justOver = 1000 - (MAX_UNSCOPED_DROP_PCT + 1) * 10
-    expect(isSuspiciousDrop(1000, justOver, false)).toBe(true)
-  })
-
-  it('degenerate previous values cannot divide by zero into a false refusal', () => {
-    expect(isSuspiciousDrop(0, 0, false)).toBe(false)
-    expect(isSuspiciousDrop(-5, 1, false)).toBe(false)
+  it('stays off for a plain check, and for a flag that merely starts alike', () => {
+    expect(isUpdateMode([])).toBe(false)
+    expect(isUpdateMode(['--json'])).toBe(false)
+    expect(isUpdateMode(['--updated'])).toBe(false)
   })
 })

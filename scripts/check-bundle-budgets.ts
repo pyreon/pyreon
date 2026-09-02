@@ -372,34 +372,52 @@ async function measurePackage(pkg: PackageInfo): Promise<BundleResult> {
 // ─── Main ────────────────────────────────────────────────────────────────
 
 /**
- * A shrink larger than this is treated as a stale/partial `lib/`, not as real
- * shrinkage. Measured cause: an unscoped `--update` ratcheted
- * `@pyreon/validate` 15872 -> 15360 — a value implying a ~12288 B measurement
- * for a package that really measures ~15016 B locally and 15473 B on CI. The
- * budget landed BELOW what CI measures, so the gate failed on a package the
- * branch never touched, on two branches, because the wrong value was committed
- * and travelled. Running `--update` on a tree with a stale `lib/` reproduces it
- * for `loom` (-91.7%), `testing` (-55%) and `preact-compat` (-20%).
+ * Should an UNSCOPED `--update` lower this budget?
+ *
+ * No — never. A budget is measured from `lib/`, and a stale or partial `lib/`
+ * measures SMALLER than the real package, so a bad measurement can only ever
+ * push a budget DOWN. That is the whole observed failure: `@pyreon/validate` was
+ * ratcheted 15872 -> 15360, a value implying a ~12288 B measurement for a package
+ * that really measures 15330 B locally (after a bootstrap) and 15473 B on CI. The
+ * budget landed BELOW what CI measures, so the gate failed on a package neither
+ * branch touched — twice, because the wrong value was committed and travelled.
+ *
+ * Refusing by DIRECTION rather than by drop size is what makes this correct. A
+ * size threshold cannot tell a stale build from a genuinely loose budget, and
+ * this repo has plenty of the latter — `loom` measures 298 B against 6144,
+ * `testing` 1745 against 5120, both identical before and after a full rebuild.
+ * Blocking those would refuse legitimate tightening while still missing a small
+ * stale drop.
+ *
+ * Tightening stays available and becomes a deliberate act: `--update=@pyreon/pkg`
+ * lowers, and naming the package is the review signal. Pure, so it is testable
+ * without a build tree.
  */
-export const MAX_UNSCOPED_DROP_PCT = 10
+export function shouldLowerUnscoped(scoped: boolean): boolean {
+  return scoped
+}
 
 /**
- * Should `--update` REFUSE to lower this budget?
+ * Does this argv enable `--update`?
  *
- * Pure so it can be tested without a build tree. Scoped `--update=@pyreon/pkg`
- * always proceeds — naming the package IS the deliberate act, which is the
- * escape hatch for a genuine large shrink.
+ * Both the bare flag and the documented scoped form `--update=@pyreon/pkg`. An
+ * `includes('--update')` exact match silently missed the scoped form, so it ran
+ * as a plain check for its whole life — latent until lowering became
+ * scoped-only.
  */
-export function isSuspiciousDrop(prev: number, ideal: number, scoped: boolean): boolean {
-  if (scoped) return false
-  if (!(ideal < prev) || prev <= 0) return false
-  return ((prev - ideal) / prev) * 100 > MAX_UNSCOPED_DROP_PCT
+export function isUpdateMode(args: readonly string[]): boolean {
+  return args.some((a) => a === '--update' || a.startsWith('--update='))
 }
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2)
   const jsonMode = args.includes('--json')
-  const updateMode = args.includes('--update')
+  // `--update=@pyreon/pkg` is the DOCUMENTED scoped form, but `includes` is an
+  // exact match, so it never enabled update mode — the scoped form silently ran
+  // as a plain check for its whole life. Latent until this change made the scoped
+  // form the only way to lower a budget; a unit test on the pure helper passed
+  // throughout, which is why the end-to-end run is the one that found it.
+  const updateMode = isUpdateMode(args)
 
   const packages = findPackages()
 
@@ -497,8 +515,8 @@ async function main(): Promise<void> {
         // than as shrinkage: keep the previous budget and say why. Real shrinkage
         // of this size is rare and gets there in steps, or via
         // `--update=@pyreon/pkg`, which is scoped and deliberate.
-        const dropPct = ((prev - ideal) / prev) * 100
-        if (isSuspiciousDrop(prev, ideal, only !== undefined)) {
+        if (!shouldLowerUnscoped(only !== undefined)) {
+          const dropPct = ((prev - ideal) / prev) * 100
           budgets[r.name] = prev
           refused.push(
             `${r.name} ${prev} → ${ideal} (−${dropPct.toFixed(1)}%, measured ${r.gzip})`,
@@ -524,7 +542,7 @@ async function main(): Promise<void> {
     for (const l of seeded) console.log(`  + ${l}`)
     for (const l of refused) {
       console.log(
-        `  ⚠ refused to lower ${l} — that large a drop is usually a stale \`lib/\`. Run \`bun scripts/bootstrap.ts\` and retry, or scope it: --update=${l.split(' ')[0]}`,
+        `  ⚠ not lowered: ${l} — an unscoped --update never lowers, because a stale \`lib/\` can only measure LOW. If this shrink is real, scope it: --update=${l.split(' ')[0]}`,
       )
     }
     /* eslint-enable no-console */
