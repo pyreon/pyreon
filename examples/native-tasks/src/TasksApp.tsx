@@ -477,7 +477,9 @@ function StatsPage() {
         zoomPresets={[{ label: 'last 1', count: 1 }, { label: 'all', count: 0 }]}
         // #3272: the legend, whose entries toggle their series on every target.
         showLegend={true}
-        height={160}
+        // #3274: the navigator strip — its band and handles drive the same window.
+        navigator={true}
+        height={240}
         title="Scores by subject"
         data-testid="stats-bars"
         onSelect={(i: number) => barPick.set(i)}

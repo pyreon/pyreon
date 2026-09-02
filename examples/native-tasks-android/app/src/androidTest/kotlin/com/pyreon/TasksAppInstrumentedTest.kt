@@ -610,6 +610,35 @@ class TasksAppInstrumentedTest {
             .onNodeWithTag("stats-bars")
             .performTouchInput { click(Offset(90f * flowDensity, 100f * flowDensity)) }
         waitForTagText("stats-bars-pick", "0")
+        // #3274: the navigator strip (x 8…W-8dp, centred 40dp above the bottom).
+        // Left handle dragged right by 55% → rows 1..2 → the first band is the
+        // GLOBAL index 1; the band dragged left by 55% → rows 0..1 → 0 again.
+        composeRule
+            .onNodeWithTag("stats-bars")
+            .performTouchInput {
+                val navY = height - 40f * flowDensity
+                val stripW = width - 16f * flowDensity
+                down(Offset(10f * flowDensity, navY))
+                moveTo(Offset(10f * flowDensity + stripW * 0.55f, navY))
+                up()
+            }
+        composeRule
+            .onNodeWithTag("stats-bars")
+            .performTouchInput { click(Offset(90f * flowDensity, 100f * flowDensity)) }
+        waitForTagText("stats-bars-pick", "1")
+        composeRule
+            .onNodeWithTag("stats-bars")
+            .performTouchInput {
+                val navY = height - 40f * flowDensity
+                val stripW = width - 16f * flowDensity
+                down(Offset(8f * flowDensity + stripW * 0.775f, navY))
+                moveTo(Offset(8f * flowDensity + stripW * 0.225f, navY))
+                up()
+            }
+        composeRule
+            .onNodeWithTag("stats-bars")
+            .performTouchInput { click(Offset(90f * flowDensity, 100f * flowDensity)) }
+        waitForTagText("stats-bars-pick", "0")
         composeRule
             .onNodeWithTag("stats-back")
             .performClick()
