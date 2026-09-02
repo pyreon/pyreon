@@ -22,6 +22,10 @@ import { layoutTreemap, renderTreemap } from './treemap'
 import type { TreeNode, TreemapOptions } from './treemap'
 import { layoutSunburst, renderSunburst, treeDepth } from './sunburst'
 import type { SunburstOptions } from './sunburst'
+import { layoutTree, renderTree } from './tree'
+import type { TreeOptions } from './tree'
+import { layoutRiver, renderRiver } from './river'
+import type { RiverOptions, RiverSeries } from './river'
 import type { FunnelOptions, FunnelStage } from './funnel'
 import type { HeatGrid } from './heat'
 import { computeLayout } from './layout'
@@ -542,6 +546,64 @@ export function sunburstToSvg(options: SunburstToSvgOptions): string {
     (options.title !== undefined
       ? `${options.title}: ${treeDepth(options.data)} levels, ${leaves.length} leaves.`
       : undefined)
+  return renderSvg(cmds, width, height, {
+    ...options.svg,
+    ...(options.title !== undefined ? { title: options.title } : {}),
+    ...(description !== undefined && description !== '' ? { description } : {}),
+  })
+}
+
+// ---- tree + theme river (svg halves; the geometry in tree.ts / river.ts is bundled into the native engine) ----
+
+export interface TreeToSvgOptions {
+  data: TreeNode[]
+  width?: Double
+  height?: Double
+  tree?: TreeOptions
+  measure?: MeasureText
+  title?: string
+  description?: string
+  svg?: Omit<SvgOptions, 'title' | 'description'>
+}
+
+/** Tree → `<svg>` string, server-safe. */
+export function treeToSvg(options: TreeToSvgOptions): string {
+  const width = options.width ?? 640.0
+  const height = options.height ?? 400.0
+  const layout = layoutTree(options.data, { x: 0.0, y: 0.0, w: width, h: height }, options.tree)
+  const cmds = renderTree(layout, options.tree)
+  void (options.measure ?? measureApprox())
+  const leaves = layout.nodes.filter((n) => n.leaf).length
+  const description =
+    options.description ??
+    (options.title !== undefined ? `${options.title}: ${layout.nodes.length} nodes, ${leaves} leaves.` : undefined)
+  return renderSvg(cmds, width, height, {
+    ...options.svg,
+    ...(options.title !== undefined ? { title: options.title } : {}),
+    ...(description !== undefined && description !== '' ? { description } : {}),
+  })
+}
+
+export interface RiverToSvgOptions {
+  series: RiverSeries[]
+  width?: Double
+  height?: Double
+  river?: RiverOptions
+  measure?: MeasureText
+  title?: string
+  description?: string
+  svg?: Omit<SvgOptions, 'title' | 'description'>
+}
+
+/** Theme river → `<svg>` string, server-safe. */
+export function riverToSvg(options: RiverToSvgOptions): string {
+  const width = options.width ?? 640.0
+  const height = options.height ?? 320.0
+  const layout = layoutRiver(options.series, { x: 8.0, y: 8.0, w: Math.max(0.0, width - 16.0), h: Math.max(0.0, height - 16.0) }, options.river)
+  const cmds = renderRiver(layout, options.river, options.measure ?? measureApprox())
+  const description =
+    options.description ??
+    (options.title !== undefined ? `${options.title}: ${options.series.length} streams over ${layout.xs.length} points (${options.series.map((s) => s.name).join(', ')}).` : undefined)
   return renderSvg(cmds, width, height, {
     ...options.svg,
     ...(options.title !== undefined ? { title: options.title } : {}),
