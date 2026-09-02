@@ -3,7 +3,8 @@ import { signal } from '@pyreon/reactivity'
 import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
 import { SankeyChart } from './SankeyChart'
 import { layoutSankey } from './sankey'
-import type { SankeyHit, SankeyLink } from './sankey'
+import type { SankeyLink } from './sankey'
+import type { SankeyHit } from './sankey-hit'
 
 const NODES = [{ name: 'a' }, { name: 'b' }, { name: 'c' }]
 const LINKS: SankeyLink[] = [{ source: 'a', target: 'b', value: 5 }, { source: 'b', target: 'c', value: 5 }]

@@ -28,6 +28,8 @@ import { layoutRiver, renderRiver } from './river'
 import type { RiverOptions, RiverSeries } from './river'
 import { layoutPolar, renderPolar } from './polar'
 import type { PolarAxes, PolarOptions, PolarSeries } from './polar'
+import { layoutSankey, renderSankey } from './sankey'
+import type { SankeyLink, SankeyNode, SankeyOptions } from './sankey'
 import type { FunnelOptions, FunnelStage } from './funnel'
 import type { HeatGrid } from './heat'
 import { computeLayout } from './layout'
@@ -639,6 +641,40 @@ export function polarToSvg(options: PolarToSvgOptions): string {
     (options.title !== undefined
       ? `${options.title}: ${options.series.length} series over ${options.axes.categories.length} categories, values ${layout.domain.min} to ${layout.domain.max}.`
       : undefined)
+  return renderSvg(cmds, width, height, {
+    ...options.svg,
+    ...(options.title !== undefined ? { title: options.title } : {}),
+    ...(description !== undefined && description !== '' ? { description } : {}),
+  })
+}
+
+// ---- sankey (svg half; the geometry in sankey.ts is bundled into the native engine) ----
+
+export interface SankeyToSvgOptions {
+  nodes: SankeyNode[]
+  links: SankeyLink[]
+  width?: Double
+  height?: Double
+  sankey?: SankeyOptions
+  measure?: MeasureText
+  title?: string
+  description?: string
+  svg?: Omit<SvgOptions, 'title' | 'description'>
+}
+
+/** Sankey → `<svg>` string, server-safe. Leaves a label gutter on both sides. */
+export function sankeyToSvg(options: SankeyToSvgOptions): string {
+  const width = options.width ?? 640.0
+  const height = options.height ?? 400.0
+  const gutter = 80.0
+  const layout = layoutSankey(options.nodes, options.links, { x: gutter, y: 8.0, w: Math.max(0.0, width - gutter * 2.0), h: Math.max(0.0, height - 16.0) }, options.sankey)
+  const cmds = renderSankey(layout, options.sankey)
+  void (options.measure ?? measureApprox())
+  let total = 0.0
+  for (const l of layout.links) total = total + l.value
+  const description =
+    options.description ??
+    (options.title !== undefined ? `${options.title}: ${layout.nodes.length} nodes, ${layout.links.length} flows totalling ${total}.` : undefined)
   return renderSvg(cmds, width, height, {
     ...options.svg,
     ...(options.title !== undefined ? { title: options.title } : {}),
