@@ -121,6 +121,93 @@ final class PyreonTasksUITests: XCTestCase {
         }
     }
 
+    /// Login -> tasks -> toolkit. Factored out because the crash-reporter proof
+    /// needs to reach the toolkit page TWICE (once to record, once after a real
+    /// relaunch), and duplicating the login flow would be two places to rot.
+    @discardableResult
+    private func navigateToToolkit(_ app: XCUIApplication) -> XCUIElement {
+        let username = app.textFields["login-username"].firstMatch
+        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        // Five characters in one go, deliberately. The big test types "ab"
+        // first BECAUSE that fails the min-length validator and must NOT
+        // navigate -- copying only that half is why the first run of this
+        // helper reported "Toolkit button missing": login had never succeeded.
+        username.tap()
+        username.typeText("abcde")
+        dismissKeyboard(app)
+
+        let submit = app.buttons["login-submit"].firstMatch
+        XCTAssertTrue(submit.exists, "Continue button missing")
+        submit.tap()
+
+        let tasksPage = app.otherElements["tasks-page"].firstMatch
+        XCTAssertTrue(tasksPage.waitForExistence(timeout: 20), "Tasks page did not render after login")
+
+        let toolkitBtn = app.buttons["tasks-toolkit"].firstMatch
+        XCTAssertTrue(toolkitBtn.waitForExistence(timeout: 20), "Toolkit button missing")
+        toolkitBtn.tap()
+
+        let toolkitPage = app.otherElements["toolkit-page"].firstMatch
+        XCTAssertTrue(toolkitPage.waitForExistence(timeout: 15), "Toolkit page did not render")
+        return toolkitPage
+    }
+
+    /// Crash reporting, device-proven in the only way that means anything: a
+    /// REAL process restart.
+    ///
+    /// `hadCrash` reflects the PREVIOUS session, so it cannot be asserted in the
+    /// run that records. And the cheap alternative would be worthless -- this
+    /// repo already has a `todosPersistAcrossActivityRecreation` that passed
+    /// against an in-memory store, because activity recreation keeps the
+    /// process. `terminate()` + `launch()` does not.
+    ///
+    /// Two halves, and both matter: the handler FIRES (the report survives to
+    /// the next session) and the app SURVIVES recording one (a reporter that
+    /// takes the process down with it is worse than none).
+    func test_crashReporterRecordsPersistsAcrossRelaunchAndAppSurvives() throws {
+        let app = XCUIApplication()
+        app.launch()
+        navigateToToolkit(app)
+
+        // Fresh session: nothing recorded yet. Asserted so the "true" below is a
+        // CHANGE and not the value it always had.
+        XCTAssertEqual(
+            app.staticTexts["toolkit-crash-had"].firstMatch.label,
+            "false",
+            "hadCrash was already true before anything was recorded"
+        )
+
+        let record = app.buttons["toolkit-crash-record"].firstMatch
+        XCTAssertTrue(record.waitForExistence(timeout: 10), "Record-error button missing")
+        record.tap()
+
+        // SURVIVED: the statement after recordError still ran, and the app is
+        // still answering.
+        let note = app.staticTexts["toolkit-crash-note"].firstMatch
+        XCTAssertTrue(
+            note.waitForExistence(timeout: 10),
+            "Crash note missing after recording"
+        )
+        XCTAssertEqual(note.label, "survived", "App did not survive recordError")
+
+        // FIRED: a real process restart, then the report must be back.
+        app.terminate()
+        app.launch()
+        navigateToToolkit(app)
+
+        let had = app.staticTexts["toolkit-crash-had"].firstMatch
+        XCTAssertTrue(had.waitForExistence(timeout: 15), "Crash flag missing after relaunch")
+        XCTAssertEqual(
+            had.label,
+            "true",
+            "Crash report did not survive a real process restart"
+        )
+
+        // Hygiene: leave no persisted report behind for a later test to trip on.
+        let clear = app.buttons["toolkit-crash-clear"].firstMatch
+        if clear.exists { clear.tap() }
+    }
+
     func test_appLaunchesOnLoginPage() throws {
         let app = XCUIApplication()
         app.launch()
@@ -439,6 +526,39 @@ final class PyreonTasksUITests: XCTestCase {
             app.staticTexts["toolkit-perm"].firstMatch.label,
             "true",
             "PyreonPermissions denied a seeded grant"
+        )
+        // sync: the CRDT-backed signal was RENDERED but asserted by neither device
+        // test until now -- built, shipped, never verified, which is the class
+        // this whole arc is about.
+        // "0.0", NOT "0" -- and that is a REAL cross-platform divergence this
+        // assertion exposed on its first device run, not a formatting nit.
+        //
+        // The web renders "0": JS has one number type and prints an integral
+        // value without a decimal. Both native targets lower a syncedSignal
+        // with an integer initial to a DOUBLE -- Kotlin because
+        // PyreonScalar.Num carries a Double and has no Int case at all, Swift
+        // because the emit follows it (`PyreonSyncedSignal<Double>`) -- so
+        // `String(synced())` is "0.0" there. Any app displaying a synced number
+        // shows a different string on mobile than on web.
+        //
+        // Asserted as it actually behaves rather than as it should, so the
+        // divergence is RECORDED instead of hidden by having no assertion at
+        // all -- which is exactly how it survived until now. Fixing it means
+        // giving Kotlin's scalar an Int case, which is a wire-format change and
+        // belongs in its own PR.
+        XCTAssertEqual(
+            app.staticTexts["toolkit-synced"].firstMatch.label,
+            "0.0",
+            "syncedSignal did not reach the view with its initial value"
+        )
+        // sync: CONVERGENCE through the map handle. The key is written ONLY on
+        // the peer doc, so `has` can be true only if applyOps actually merged
+        // the peer's ops into this one. Reading back our own write would pass
+        // against a plain Map with no CRDT in it at all.
+        XCTAssertEqual(
+            app.staticTexts["toolkit-crdt-map"].firstMatch.label,
+            "true",
+            "CRDT ops did not converge through the map handle on device"
         )
         // table: one row at pageSize 10 is exactly one page.
         XCTAssertEqual(

@@ -16,13 +16,12 @@ name: Dependency Audit
 on:
   push:
     branches: [main]
-  # NO `branches:` filter — deliberately. A PR whose base is another FEATURE
-  # branch (a stack) is still a PR that will reach main, and gating this
-  # workflow on `branches: [main]` meant it never ran on one: the PR then
-  # showed a small all-green set from the handful of workflows that DO run on
-  # any base, which reads as "validated" and is not.
-  # Re-adding the filter re-opens that hole.
-  pull_request:
+  # No `pull_request` trigger (2026-09): this is ADVISORY and never blocks a
+  # PR, so running it per PR only spent a runner slot — under org-wide slot
+  # contention every job is a queue entry every other PR pays for. The
+  # advisory DB does not change per PR; main + the weekly schedule cover it.
+  # A PR's own dependency hygiene (untrusted deps, lockfile drift) runs as
+  # steps of ci.yml's Fast Gates.
   schedule:
     - cron: '13 6 * * 1' # weekly, Mondays 06:13 UTC
 

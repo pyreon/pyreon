@@ -870,7 +870,9 @@ fun deriveOver(series: List<Series>): Domain {
       for (s in series) {
         if (s.kind != "stacked") {
           for (v in s.values) {
-            others.add(v)
+            if (isFiniteValue(v)) {
+              others.add(v)
+            }
           }
         }
       }
@@ -884,13 +886,17 @@ fun deriveOver(series: List<Series>): Domain {
         hasBars = true
       }
       for (v in s.values) {
-        all.add(v)
+        if (isFiniteValue(v)) {
+          all.add(v)
+        }
       }
     }
     val e = extent(all)
     val withZero = if (hasBars) Domain(min = if (e.min > 0.0) 0.0 else e.min, max = if (e.max < 0.0) 0.0 else e.max) else e
     return niceDomain(withZero, 5.0)
   }
+
+fun isFiniteValue(v: Double): Boolean = v == v
 
 fun seriesMaxLength(series: List<Series>): Int {
     var n = 0
@@ -1060,26 +1066,33 @@ fun renderChart(spec: ChartSpec, measure: (String, Double) -> Double): List<Pyre
         }
       } else {
         if (s.kind == "line") {
-          val pts = reveal(shape(place(s.values)))
-          if (pts.length > 1) {
-            out.add(PyreonDrawCmd(kind = "polyline", stroke = s.color, width = s.width, points = pts))
+          for (run in splitRuns(s.values, place)) {
+            val pts = reveal(shape(run))
+            if (pts.length > 1) {
+              out.add(PyreonDrawCmd(kind = "polyline", stroke = s.color, width = s.width, points = pts))
+            }
           }
         } else {
           if (s.kind == "area") {
-            val pts = reveal(shape(place(s.values)))
-            if (pts.length > 1) {
-              val poly: MutableList<PyreonChartPt> = mutableListOf()
-              for (p in pts) {
-                poly.add(p)
+            for (run in splitRuns(s.values, place)) {
+              val pts = reveal(shape(run))
+              if (pts.length > 1) {
+                val poly: MutableList<PyreonChartPt> = mutableListOf()
+                for (p in pts) {
+                  poly.add(p)
+                }
+                poly.add(PyreonChartPt(x = pts[pts.length - 1].x, y = plot.y + plot.h))
+                poly.add(PyreonChartPt(x = pts[0].x, y = plot.y + plot.h))
+                out.add(PyreonDrawCmd(kind = "polygon", fill = s.color, points = poly))
               }
-              poly.add(PyreonChartPt(x = pts[pts.length - 1].x, y = plot.y + plot.h))
-              poly.add(PyreonChartPt(x = pts[0].x, y = plot.y + plot.h))
-              out.add(PyreonDrawCmd(kind = "polygon", fill = s.color, points = poly))
             }
           } else {
             val pts = place(s.values)
             val radii = (s.radii ?: listOf())
             for (i in 0 until pts.length) {
+              if (!isFiniteValue(s.values[i])) {
+                continue
+              }
               val fullR = if (radii.length > 0) (radii[i] ?: s.radius) else s.radius
               out.add(PyreonDrawCmd(kind = "circle", fill = s.color, center = pts[i], radius = fullR * progress))
             }
@@ -1163,6 +1176,50 @@ fun renderChart(spec: ChartSpec, measure: (String, Double) -> Double): List<Pyre
       out.add(PyreonDrawCmd(kind = "text", fill = t.label, text = tick.label, at = PyreonChartPt(x = tick.pos, y = plot.y + plot.h + 6.0), size = t.fontSize, align = "middle", baseline = "top"))
     }
     return out
+  }
+
+fun splitRuns(values: List<Double>, place: (List<Double>) -> List<PyreonChartPt>): List<List<PyreonChartPt>> {
+    val runs: MutableList<List<PyreonChartPt>> = mutableListOf()
+    var hasGap = false
+    for (v in values) {
+      if (!isFiniteValue(v)) {
+        hasGap = true
+      }
+    }
+    if (!hasGap) {
+      runs.add(place(values))
+      return runs
+    }
+    val filled: MutableList<Double> = mutableListOf()
+    for (v in values) {
+      filled.add(if (isFiniteValue(v)) v else 0.0)
+    }
+    val pts = place(filled)
+    var runStart = -1
+    for (i in 0 until pts.length) {
+      if (isFiniteValue(values[i])) {
+        if (runStart < 0) {
+          runStart = i
+        }
+      } else {
+        if (runStart >= 0) {
+          val run: MutableList<PyreonChartPt> = mutableListOf()
+          for (j in runStart until i) {
+            run.add(pts[j])
+          }
+          runs.add(run)
+          runStart = -1
+        }
+      }
+    }
+    if (runStart >= 0) {
+      val run: MutableList<PyreonChartPt> = mutableListOf()
+      for (j in runStart until pts.length) {
+        run.add(pts[j])
+      }
+      runs.add(run)
+    }
+    return runs
   }
 
 fun barsFor(spec: ChartSpec, index: Int, measure: (String, Double) -> Double): List<PyreonChartRect> {

@@ -140,8 +140,8 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: cargo-release-${{ runner.os }}-${{ matrix.target }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock') }}
-          restore-keys: cargo-release-${{ runner.os }}-${{ matrix.target }}-
+          key: cargo-registry-${{ runner.os }}-${{ matrix.target }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock') }}
+          restore-keys: cargo-registry-${{ runner.os }}-${{ matrix.target }}-
 
       - name: Build (native)
         if: matrix.host == 'native'
