@@ -16,6 +16,7 @@
 import { renderChart } from './render'
 import { appendGraphicLayer, graphicCommands, resolveDataset, svgSize } from './option-layer'
 import { visualMapCommands } from './visual-map'
+import { TIMELINE_HEIGHT, composeSvg, resolveTimeline, splitGrids, timelineCommands, timelineSteps } from './option-composite'
 import { customCommands, customExtents } from './custom-series'
 import type { CustomRenderItem, CustomSeriesPlan } from './custom-series'
 import { resolveTheme } from './theme-registry'
@@ -29,7 +30,7 @@ import type { LegendEntry } from './legend'
 import { measureApprox, renderSvg } from './svg'
 import { compileFamily, familyToSvg } from './option-family'
 import type { CompiledFamily } from './option-family'
-import type { DrawCmd, Domain, Double, MeasureText } from './types'
+import type { DrawCmd, Domain, Double, MeasureText, Rect } from './types'
 
 /** An ECharts-shaped option. Loosely typed on purpose: the facade VALIDATES. */
 export type EChartsOption = Record<string, unknown>
@@ -44,6 +45,7 @@ export interface OptionWarning {
     | 'axis-count-unsupported'
     | 'series-option-unsupported'
     | 'mark-shape-unsupported'
+    | 'timeline-step-out-of-range'
   /** Where in the option, e.g. `series[2].type`. */
   path: string
   message: string
@@ -72,6 +74,8 @@ export interface CompiledOption {
 export interface CompileOptions {
   width?: Double
   height?: Double
+  /** Which `timeline` step to render (`options[i]` merged over `baseOption`); defaults to `timeline.currentIndex`. */
+  timelineIndex?: number
   /** A registered theme name (`light`, `dark`, or one from `registerTheme`) or an inline definition. */
   theme?: string | ThemeDefinition | undefined
   /** BCP 47 tag for axis-label formatting (see `registerLocale`). */
@@ -481,12 +485,25 @@ export interface OptionToSvgOptions extends CompileOptions {
 export type OptionPlan =
   | { kind: 'cartesian'; compiled: CompiledOption }
   | { kind: 'family'; compiled: CompiledFamily }
+  /** A multi-`grid` option: one plan per grid, each with its pixel rect. */
+  | { kind: 'grids'; parts: { plan: OptionPlan; rect: Rect }[]; warnings: OptionWarning[] }
 
-/** Route an option to the cartesian or the family compiler. */
-export function planOption(option: EChartsOption, opts: CompileOptions = {}): OptionPlan {
+/** Route an option to the cartesian or the family compiler (a `timeline` step is resolved first; several `grid`s become one plan each). */
+export function planOption(rawOption: EChartsOption, opts: CompileOptions = {}): OptionPlan {
+  const tl = resolveTimeline(rawOption, opts.timelineIndex)
+  const option = tl.option as EChartsOption
+  const parts = splitGrids(option, opts.width ?? 640.0, opts.height ?? 320.0)
+  if (parts !== null) {
+    return { kind: 'grids', parts: parts.map((p) => ({ plan: planOption(p.option as EChartsOption, { ...opts, width: p.rect.w, height: p.rect.h }), rect: p.rect })), warnings: tl.warnings }
+  }
   const fam = compileFamily(option)
-  if (fam !== null) return { kind: 'family', compiled: fam }
-  return { kind: 'cartesian', compiled: compileOption(option, opts) }
+  if (fam !== null) {
+    if (tl.warnings.length > 0) fam.warnings.unshift(...tl.warnings)
+    return { kind: 'family', compiled: fam }
+  }
+  const compiled = compileOption(option, opts)
+  if (tl.warnings.length > 0) compiled.warnings.unshift(...tl.warnings)
+  return { kind: 'cartesian', compiled }
 }
 
 /**
@@ -494,7 +511,34 @@ export function planOption(option: EChartsOption, opts: CompileOptions = {}): Op
  * legend are composed the way the host component composes them: title on
  * top, legend under it, the plot shrunk by exactly what those consumed.
  */
-export function optionToSvg(option: EChartsOption, opts: OptionToSvgOptions = {}): string {
+export function optionToSvg(rawOption: EChartsOption, opts: OptionToSvgOptions = {}): string {
+  const option = resolveTimeline(rawOption, opts.timelineIndex).option as EChartsOption
+  const steps = timelineSteps(rawOption)
+  const width = opts.width ?? 640.0
+  const height = opts.height ?? 320.0
+  const stripH = steps === null ? 0.0 : TIMELINE_HEIGHT
+  const parts = splitGrids(option, width, height - stripH)
+  if (parts === null && steps === null) return optionToSvgSingle(option, opts)
+  // Composite: each grid (or the whole chart) rendered on its own, laid into one document.
+  const rects: { option: EChartsOption; rect: Rect }[] =
+    parts === null ? [{ option, rect: { x: 0.0, y: 0.0, w: width, h: height - stripH } }] : parts.map((p) => ({ option: p.option as EChartsOption, rect: p.rect }))
+  const rendered = rects.map((r) => ({ svg: optionToSvgSingle(r.option, { ...opts, width: r.rect.w, height: r.rect.h }), x: r.rect.x, y: r.rect.y }))
+  const overlay: DrawCmd[] = []
+  if (parts !== null) {
+    // The parts carry no overlays (splitGrids strips them) — they belong to the whole canvas.
+    for (const c of visualMapCommands(option, width, height - stripH).cmds) overlay.push(c)
+    for (const c of graphicCommands(option, width, height - stripH).cmds) overlay.push(c)
+  }
+  if (steps !== null) for (const c of timelineCommands(steps, width, height - stripH, stripH)) overlay.push(c)
+  const titleRaw = first(option['title'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
+  return composeSvg(rendered, overlay, width, height, {
+    ...(isObj(titleRaw) && typeof titleRaw['text'] === 'string' ? { title: titleRaw['text'] as string } : {}),
+    ...(typeof option['backgroundColor'] === 'string' ? { background: option['backgroundColor'] as string } : {}),
+  })
+}
+
+/** One single-grid, single-step option → `<svg>`: the family half or the cartesian half. */
+function optionToSvgSingle(option: EChartsOption, opts: OptionToSvgOptions): string {
   const fam = compileFamily(option)
   if (fam !== null) {
     const svg = familyToSvg(fam.plan, { width: opts.width, height: opts.height })
