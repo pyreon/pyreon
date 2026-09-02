@@ -52,7 +52,7 @@
  *
  * ## History
  *
- * The pre-fix gate was inline shell in `.github/workflows/changeset-check.yml`
+ * The pre-fix gate was inline shell in `.github/workflows/pr-gates.yml` (then `changeset-check.yml`)
  * checking `git diff -- 'packages/**'`. That fired on ANY change anywhere
  * under `packages/`, including private internal packages — every PR that
  * touched `@pyreon/test-utils` tests, `@pyreon/perf-harness` instrumentation,

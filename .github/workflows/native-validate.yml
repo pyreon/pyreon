@@ -222,15 +222,20 @@ jobs:
       # The toolchain versions are in the cache key as well as in the verdict
       # keys. That is belt-and-braces, not redundancy: it keeps a toolchain bump
       # from dragging a large dead cache along behind it.
+      # Key FAMILY is `native-verdicts-ci-` — the same one ci.yml's native
+      # test cells use, with this job's lineage (`validate-swift…-kotlin…`)
+      # in the suffix. One path ⇒ one prefix family ⇒ `check-cache-key-sync`
+      # can prove no second writer exists; the lineage keeps the restore
+      # from picking up a sibling cell's store.
       - name: Restore native compile-verdict cache
         # Skipped on the nightly drift run — see the uncached env below.
         if: github.event_name != 'schedule'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache/pyreon-native-validate
-          key: native-validate-${{ runner.os }}-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-${{ github.run_id }}
+          key: native-verdicts-ci-${{ runner.os }}-validate-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-${{ github.run_id }}
           restore-keys: |
-            native-validate-${{ runner.os }}-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-
+            native-verdicts-ci-${{ runner.os }}-validate-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-
 
       - name: Run native-compiler tests with validation REQUIRED
         # PYREON_REQUIRE_NATIVE_VALIDATE=1 promotes the "skip when tool
