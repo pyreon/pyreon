@@ -39,7 +39,11 @@ export function buildHeatGrid(
   rowOf: Double[],
   values: Double[],
 ): HeatGrid {
-  const byKey = new Map<string, HeatCell>()
+  // The map holds an INDEX into `cells`, not the cell: a Map with a struct
+  // value has no native lowering, and an index round-trips through both
+  // targets as a plain number. Same aggregation, one indirection.
+  const byKey = new Map<string, number>()
+  const cells: HeatCell[] = []
   const n = Math.min(colOf.length, Math.min(rowOf.length, values.length))
   let minV = 0.0
   let maxV = 0.0
@@ -50,12 +54,18 @@ export function buildHeatGrid(
     if (c < 0.0 || r < 0.0) continue
     const key = `${c}:${r}`
     const prior = byKey.get(key)
-    const v = prior === undefined ? values[i]! : prior.value + values[i]!
-    byKey.set(key, { col: c, row: r, value: v })
+    // Coalesced before the branch (Swift does not narrow through the guard),
+    // and mutated IN PLACE through the index — a struct copy would drop the
+    // write on native.
+    const at = prior ?? -1
+    if (prior === undefined) {
+      byKey.set(key, cells.length)
+      cells.push({ col: c, row: r, value: values[i]! })
+    } else {
+      cells[at]!.value = cells[at]!.value + values[i]!
+    }
   }
-  const cells: HeatCell[] = []
-  for (const cell of byKey.values()) {
-    cells.push(cell)
+  for (const cell of cells) {
     if (!seen) {
       minV = cell.value
       maxV = cell.value
@@ -91,25 +101,47 @@ function hexChannel(hex: string, at: number): Double {
  * backend's fill already accepts.
  */
 export function colorRamp(stops: string[]): (t: Double) => string {
-  const parsed = stops.map((sHex) => {
-    const h = sHex.startsWith('#') ? sHex.slice(1) : sHex
-    return { r: hexChannel(h, 0.0), g: hexChannel(h, 2.0), b: hexChannel(h, 4.0) }
-  })
+  // Three channel arrays instead of an array of records: a mapped object
+  // literal has no typed lowering on the native targets.
+  const rs: Double[] = []
+  const gs: Double[] = []
+  const bs: Double[] = []
+  for (const sHex of stops) {
+    // Offset past a leading '#' instead of slicing (String.slice has no
+    // native lowering; hexChannel already takes a start position).
+    const off = sHex.startsWith('#') ? 1 : 0
+    rs.push(hexChannel(sHex, off))
+    gs.push(hexChannel(sHex, off + 2))
+    bs.push(hexChannel(sHex, off + 4))
+  }
+  // One exit and Double-only arithmetic inside the closure: a bare return
+  // inside a lambda and Int/Double mixing are both outside the native subset
+  // (the closure is what makes a heatmap's colours the same on every target).
+  let spanF = -1.0
+  for (let k = 0; k < rs.length; k++) spanF = spanF + 1.0
   return (t: Double): string => {
-    if (parsed.length === 0) return 'rgb(0, 0, 0)'
-    if (parsed.length === 1 || t <= 0.0) {
-      const p = parsed[0]!
-      return `rgb(${Math.round(p.r)}, ${Math.round(p.g)}, ${Math.round(p.b)})`
+    let result = 'rgb(0, 0, 0)'
+    if (rs.length === 1 || (rs.length > 1 && t <= 0.0)) {
+      result = `rgb(${Math.round(rs[0]!)}, ${Math.round(gs[0]!)}, ${Math.round(bs[0]!)})`
+    } else if (rs.length > 1) {
+      const clamped = t >= 1.0 ? 1.0 : t
+      const pos = clamped * spanF
+      // Floor + clamp-below-span through a Double cursor beside the Int index.
+      let idx = 0
+      let idxF = 0.0
+      let jf = 1.0
+      for (let k = 1; k < rs.length - 1; k++) {
+        if (jf <= pos) {
+          idx = k
+          idxF = jf
+        }
+        jf = jf + 1.0
+      }
+      const frac = pos - idxF
+      const mix = (x: Double, y: Double): Double => Math.round(x + (y - x) * frac)
+      result = `rgb(${mix(rs[idx]!, rs[idx + 1]!)}, ${mix(gs[idx]!, gs[idx + 1]!)}, ${mix(bs[idx]!, bs[idx + 1]!)})`
     }
-    const clamped = t >= 1.0 ? 1.0 : t
-    const span = parsed.length - 1
-    const pos = clamped * span
-    const idx = Math.min(span - 1, Math.floor(pos))
-    const frac = pos - idx
-    const a = parsed[idx]!
-    const b = parsed[idx + 1]!
-    const mix = (x: Double, y: Double): Double => Math.round(x + (y - x) * frac)
-    return `rgb(${mix(a.r, b.r)}, ${mix(a.g, b.g)}, ${mix(a.b, b.b)})`
+    return result
   }
 }
 
@@ -119,7 +151,12 @@ export const HEAT_RAMP = ['#eff6ff', '#93c5fd', '#3b82f6', '#1e40af']
 export interface HeatmapOptions {
   grid: HeatGrid
   plot: Rect
-  ramp: (t: Double) => string
+  /**
+   * `#rrggbb` ramp stops, cold to hot. Data rather than a closure: a
+   * function-typed struct field has no native lowering, and stops are what
+   * every caller had anyway (`colorRamp` runs inside).
+   */
+  stops: string[]
   /** Gap between cells in pixels — the grout that makes cells readable. */
   gap?: Double | undefined
   /** Entrance progress 0..1; cells scale up from their centres. */
@@ -137,19 +174,28 @@ export interface HeatmapOptions {
  * them.
  */
 export function renderHeat(options: HeatmapOptions): DrawCmd[] {
-  const { grid, plot, ramp } = options
+  const grid = options.grid
+  const plot = options.plot
+  const ramp = colorRamp(options.stops)
   const gap = options.gap ?? 1.0
-  const raw = options.progress
-  const progress = raw === undefined ? 1.0 : raw < 0.0 ? 0.0 : raw > 1.0 ? 1.0 : raw
+  // Coalesce FIRST, then clamp a non-optional (the Swift-narrowing idiom).
+  const rawP = options.progress ?? 1.0
+  const progress = rawP < 0.0 ? 0.0 : rawP > 1.0 ? 1.0 : rawP
   const out: DrawCmd[] = []
   const nc = grid.cols.length
   const nr = grid.rows.length
   if (nc === 0 || nr === 0) return out
+  // Double twins of the counts: a cell's col/row are Doubles, and comparing
+  // them against an Int count is a Swift error.
+  let ncF = 0.0
+  for (let k = 0; k < nc; k++) ncF = ncF + 1.0
+  let nrF = 0.0
+  for (let k = 0; k < nr; k++) nrF = nrF + 1.0
   const cw = plot.w / nc
   const ch = plot.h / nr
   const span = grid.max - grid.min
   for (const cell of grid.cells) {
-    if (cell.col >= nc || cell.row >= nr) continue
+    if (cell.col >= ncF || cell.row >= nrF) continue
     const t = span <= 0.0 ? 1.0 : (cell.value - grid.min) / span
     const fullW = cw - gap
     const fullH = ch - gap
@@ -182,15 +228,30 @@ export function hitHeatCell(
   if (px < plot.x || px > plot.x + plot.w || py < plot.y || py > plot.y + plot.h) return -1
   const cw = plot.w / nc
   const ch = plot.h / nr
-  const col = Math.floor(Math.min((px - plot.x) / cw, nc - 1))
-  const row = Math.floor(Math.min((py - plot.y) / ch, nr - 1))
-  const inX = px - (plot.x + col * cw)
-  const inY = py - (plot.y + row * ch)
+  // Integer floors by scanning (Math.floor lowers to a Double natively); the
+  // scan also clamps to the last column/row.
+  const tCol = (px - plot.x) / cw
+  const tRow = (py - plot.y) / ch
+  let colF = 0.0
+  let jf = 0.0
+  for (let j = 0; j < nc; j++) {
+    if (jf <= tCol) colF = jf
+    jf = jf + 1.0
+  }
+  let rowF = 0.0
+  let kf = 0.0
+  for (let k = 0; k < nr; k++) {
+    if (kf <= tRow) rowF = kf
+    kf = kf + 1.0
+  }
+  const inX = px - (plot.x + colF * cw)
+  const inY = py - (plot.y + rowF * ch)
   if (inX < gap / 2.0 || inX > cw - gap / 2.0) return -1
   if (inY < gap / 2.0 || inY > ch - gap / 2.0) return -1
   for (let i = 0; i < grid.cells.length; i++) {
     const c = grid.cells[i]!
-    if (c.col === col && c.row === row) return i
+    // Cell fields lower to Double natively; compare with the Double cursors.
+    if (c.col === colF && c.row === rowF) return i
   }
   return -1
 }

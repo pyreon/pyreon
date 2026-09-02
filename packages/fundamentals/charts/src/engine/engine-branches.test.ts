@@ -542,11 +542,11 @@ describe('coalesce/default fallback arms', () => {
 
   it('renderHeat defaults gap and clamps progress at both ends', () => {
     const grid = buildHeatGrid(['a', 'b'], ['x'], [0, 1], [0, 0], [1, 2])
-    const ramp = colorRamp(['#000000', '#ffffff'])
-    const base = renderHeat({ grid, plot, ramp })
+    const stops = ['#000000', '#ffffff']
+    const base = renderHeat({ grid, plot, stops })
     expect(base.length).toBeGreaterThan(0)
-    const under = renderHeat({ grid, plot, ramp, progress: -0.5 })
-    const over = renderHeat({ grid, plot, ramp, progress: 2.0 })
+    const under = renderHeat({ grid, plot, stops, progress: -0.5 })
+    const over = renderHeat({ grid, plot, stops, progress: 2.0 })
     expect(under.length).toBeLessThanOrEqual(over.length)
   })
 
