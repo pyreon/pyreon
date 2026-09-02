@@ -30,11 +30,19 @@
  */
 
 import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { gzipSync } from 'node:zlib'
 import { parseSync, Visitor } from 'oxc-parser'
 
-const REPO_ROOT = resolve(import.meta.dir, '..')
+import { isModuleEntry } from './is-entry'
+
+// `import.meta.dir` is a Bun-ism and is `undefined` under vitest, which threw at
+// MODULE scope (`paths[0] must be of type string`) — so the file could not be
+// imported to unit-test its pure helpers at all. The URL form is standard and
+// works in both, same reasoning as `check-coverage.ts`'s `import.meta.main` note.
+const HERE = import.meta.dir ?? dirname(fileURLToPath(import.meta.url))
+const REPO_ROOT = resolve(HERE, '..')
 const BUDGETS_PATH = join(REPO_ROOT, 'scripts', 'bundle-budgets.json')
 
 /**
@@ -363,6 +371,31 @@ async function measurePackage(pkg: PackageInfo): Promise<BundleResult> {
 
 // ─── Main ────────────────────────────────────────────────────────────────
 
+/**
+ * A shrink larger than this is treated as a stale/partial `lib/`, not as real
+ * shrinkage. Measured cause: an unscoped `--update` ratcheted
+ * `@pyreon/validate` 15872 -> 15360 — a value implying a ~12288 B measurement
+ * for a package that really measures ~15016 B locally and 15473 B on CI. The
+ * budget landed BELOW what CI measures, so the gate failed on a package the
+ * branch never touched, on two branches, because the wrong value was committed
+ * and travelled. Running `--update` on a tree with a stale `lib/` reproduces it
+ * for `loom` (-91.7%), `testing` (-55%) and `preact-compat` (-20%).
+ */
+export const MAX_UNSCOPED_DROP_PCT = 10
+
+/**
+ * Should `--update` REFUSE to lower this budget?
+ *
+ * Pure so it can be tested without a build tree. Scoped `--update=@pyreon/pkg`
+ * always proceeds — naming the package IS the deliberate act, which is the
+ * escape hatch for a genuine large shrink.
+ */
+export function isSuspiciousDrop(prev: number, ideal: number, scoped: boolean): boolean {
+  if (scoped) return false
+  if (!(ideal < prev) || prev <= 0) return false
+  return ((prev - ideal) / prev) * 100 > MAX_UNSCOPED_DROP_PCT
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2)
   const jsonMode = args.includes('--json')
@@ -423,6 +456,7 @@ async function main(): Promise<void> {
     }
     // Optional scope: `--update=@pyreon/foo` touches only that package. Useful
     // when you know exactly which budget your change moved.
+    const refused: string[] = []
     const onlyArg = args.find((a) => a.startsWith('--update='))
     const only = onlyArg?.slice('--update='.length)
 
@@ -449,6 +483,28 @@ async function main(): Promise<void> {
         raised.push(`${r.name} ${prev} → ${ideal} (measured ${r.gzip})`)
       } else if (ideal < prev) {
         // Shrank: tighten. A ratchet that never lowers stops protecting anything.
+        //
+        // But a LARGE apparent shrink is almost never a real one — it is a stale
+        // or partial `lib/`, which `--update` otherwise commits as truth. That
+        // happened: `@pyreon/validate` was ratcheted 15872 → 15360, a value that
+        // implies a ~12288 B measurement, while the package really measures
+        // ~15016 B locally and 15473 B on CI. The budget landed BELOW what CI
+        // measures, so the gate failed on a package the branch never touched —
+        // twice, on two different branches, because the wrong value was committed
+        // and travelled.
+        //
+        // A drop past this threshold is therefore treated as unmeasured rather
+        // than as shrinkage: keep the previous budget and say why. Real shrinkage
+        // of this size is rare and gets there in steps, or via
+        // `--update=@pyreon/pkg`, which is scoped and deliberate.
+        const dropPct = ((prev - ideal) / prev) * 100
+        if (isSuspiciousDrop(prev, ideal, only !== undefined)) {
+          budgets[r.name] = prev
+          refused.push(
+            `${r.name} ${prev} → ${ideal} (−${dropPct.toFixed(1)}%, measured ${r.gzip})`,
+          )
+          continue
+        }
         budgets[r.name] = ideal
         lowered.push(`${r.name} ${prev} → ${ideal}`)
       } else {
@@ -466,6 +522,11 @@ async function main(): Promise<void> {
     for (const l of raised) console.log(`  ▲ ${l}`)
     for (const l of lowered) console.log(`  ▼ ${l}`)
     for (const l of seeded) console.log(`  + ${l}`)
+    for (const l of refused) {
+      console.log(
+        `  ⚠ refused to lower ${l} — that large a drop is usually a stale \`lib/\`. Run \`bun scripts/bootstrap.ts\` and retry, or scope it: --update=${l.split(' ')[0]}`,
+      )
+    }
     /* eslint-enable no-console */
     return
   }
@@ -579,4 +640,6 @@ async function main(): Promise<void> {
   }
 }
 
-await main()
+// Guarded so this file can be IMPORTED to unit-test its pure helpers; unguarded,
+// importing it ran the whole gate and hit `process.exit(1)` inside vitest.
+if (isModuleEntry(import.meta)) await main()
