@@ -23,6 +23,12 @@ describe('compiledCommands', () => {
     expect(texts).toContain('Q1')
     expect(texts).toContain('note')
     expect(cmds.filter((c) => c.kind === 'polyline').length).toBeGreaterThan(0)
+    // The plot really sits BELOW the title + legend: every bar rect starts at or under `top`
+    // (legend swatches are 10px squares; bars are wider). This is the assertion the byte
+    // comparison above cannot make on its own, since both sides share compiledCommands.
+    const bars = cmds.filter((c) => c.kind === 'rect' && c.rect.w > 12)
+    expect(bars.length).toBeGreaterThan(0)
+    for (const b of bars) if (b.kind === 'rect') expect(b.rect.y).toBeGreaterThanOrEqual(top)
   })
   it('a title-less, legend-less option has no offset and starts with the plot', () => {
     const bare = { xAxis: { data: ['a'] }, yAxis: {}, series: [{ type: 'bar', data: [1] }] }
