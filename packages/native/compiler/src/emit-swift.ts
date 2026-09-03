@@ -11474,6 +11474,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   const presets = presetsRaw === 'unsupported' ? undefined : presetsRaw
   // The window state exists whenever something writes it: a gesture or a preset.
   const windowed = zoomed || presets !== undefined
+  const legend = swiftLegendInteraction(e)
   const lets: string[] = []
   if (windowed) {
     _hostStateDecls.push('@State private var pyreonZoom: ZoomWindow = ZoomWindow(start: 0.0, end: 1.0)')
@@ -11481,6 +11482,8 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     lets.push(`let pyreonRange: SliceRange = sliceRange(pyreonZoom, ${data}.count)`)
     lets.push(`let pyreonRows = Array(${data}[pyreonRange.from..<pyreonRange.to])`)
   }
+  if (legend.toggling) _hostStateDecls.push('@State private var pyreonHidden: [Int] = []')
+  if (legend.paging) _hostStateDecls.push('@State private var pyreonLegendPage: Double = 0.0')
   const rows = windowed ? 'pyreonRows' : data
   const series: string[] = []
   for (let k = 0; k < marksV.elements.length; k++) {
@@ -11520,7 +11523,13 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       series.push(`Series(kind: ${JSON.stringify(kind)}, values: pyreonValues${k}, ${opts.join(', ')})`)
     }
   }
-  lets.push(`let pyreonSeries: [Series] = [${series.join(', ')}]`)
+  if (legend.toggling) {
+    // The legend lists every series; the plot draws what the hidden set leaves.
+    lets.push(`let pyreonSeriesAll: [Series] = [${series.join(', ')}]`)
+    lets.push('let pyreonSeries: [Series] = hideHiddenSeries(pyreonSeriesAll, pyreonHidden)')
+  } else {
+    lets.push(`let pyreonSeries: [Series] = [${series.join(', ')}]`)
+  }
   const xAcc = chartAttrExpr(e, 'x')
   if (xAcc !== undefined) {
     const body = swiftAccessorExpr(xAcc, tag, 'x', indent)
@@ -11540,7 +11549,10 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   const H = swiftChartDouble(e, 'height', 200, indent)
   const hasWidth = chartAttrExpr(e, 'width') !== undefined
   const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
-  const chrome = swiftChartChrome(e, 'pyreonSeries.map { LegendEntry(label: $0.label, color: $0.color) }', W, H, indent, true)
+  const entries = legend.toggling
+    ? 'pyreonSeriesAll.enumerated().map { (pyreonI, pyreonS) in LegendEntry(label: pyreonS.label, color: pyreonS.color, muted: pyreonHidden.contains(pyreonI)) }'
+    : 'pyreonSeries.map { LegendEntry(label: $0.label, color: $0.color) }'
+  const chrome = swiftChartChrome(e, entries, W, H, indent, true, legend.paging ? 'pyreonLegendPage' : undefined)
   lets.push(...chrome.lets)
   const theme = swiftChartTheme(e, tag)
   if (presets !== undefined) {
@@ -11589,13 +11601,31 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     : `plotHitBars(pyreonSpec, pyreonChartMeasure, Double(pyreonTap.location.x), ${tapY})`
   const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
   let gesture = ''
-  if (onSel?.kind === 'event' || presets !== undefined) {
+  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging) {
     const select = onSel?.kind === 'event' ? swiftChartSelectBody(onSel.handler, hit, indent) : ''
-    let body = select
+    // One tap, several surfaces, in canvas coordinates: the legend pager, a
+    // legend entry, a preset button, then the plot. First hit wins — the web's order.
+    const cx = 'Double(pyreonTap.location.x)'
+    const cy = 'Double(pyreonTap.location.y)'
+    const decls: string[] = []
+    const branches: string[] = []
+    if (legend.paging) {
+      decls.push(`let pyreonPageDelta: Double = pyreonLegend.pager.map { pagerHit($0, ${cx}, ${cy}) } ?? 0.0`)
+      branches.push(`if pyreonPageDelta != 0.0 { pyreonLegendPage = (pyreonLegend.pager?.page ?? 0.0) + pyreonPageDelta }`)
+    }
+    if (legend.toggling) {
+      decls.push(`let pyreonLegendHit = legendHitIndex(pyreonLegend.boxes, ${cx}, ${cy})`)
+      branches.push('if pyreonLegendHit >= 0 { pyreonHidden = legendToggle(pyreonHidden, pyreonLegendHit) }')
+    }
     if (presets !== undefined) {
-      // A tap on a preset writes the window and stops there; anything else is the selection.
-      const apply = `pyreonZoom = presetWindow(pyreonPresets[pyreonPreset].count, ${data}.count)${zoomed ? '; pyreonZoomAnchor = pyreonZoom' : ''}`
-      body = `let pyreonPreset = presetHit(pyreonPresetStrip.boxes, Double(pyreonTap.location.x), Double(pyreonTap.location.y)); if pyreonPreset >= 0 { ${apply} }${select === '' ? '' : ` else { ${select} }`}`
+      decls.push(`let pyreonPreset = presetHit(pyreonPresetStrip.boxes, ${cx}, ${cy})`)
+      branches.push(`if pyreonPreset >= 0 { pyreonZoom = presetWindow(pyreonPresets[pyreonPreset].count, ${data}.count)${zoomed ? '; pyreonZoomAnchor = pyreonZoom' : ''} }`)
+    }
+    let body: string
+    if (branches.length === 0) {
+      body = select
+    } else {
+      body = `${decls.join('; ')}; ${branches.join(' else ')}${select === '' ? '' : ` else { ${select} }`}`
     }
     // With pan and pinch live, a tap is a drag that did not move: guard by translation.
     const guarded = zoomed ? `if abs(pyreonTap.translation.width) < 6.0 && abs(pyreonTap.translation.height) < 6.0 { ${body} }` : body
@@ -11628,7 +11658,7 @@ interface SwiftChartChrome {
   height: (H: string) => string
 }
 
-function swiftChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries: string, W: string, H: string, indent: number, withTitle: boolean): SwiftChartChrome {
+function swiftChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries: string, W: string, H: string, indent: number, withTitle: boolean, page?: string): SwiftChartChrome {
   const title = readStringAttrExpr(e, 'title', indent)
   const showTitle = withTitle && readStaticAttr(e, 'showTitle') === true && title !== undefined
   const showLegend = readStaticAttr(e, 'showLegend') === true
@@ -11643,7 +11673,8 @@ function swiftChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries: 
   if (showLegend) {
     const maxRowsRaw = readStaticAttr(e, 'legendMaxRows')
     const maxRows = typeof maxRowsRaw === 'number' ? `, maxRows: ${chartDouble(maxRowsRaw)}` : ''
-    lets.push(`let pyreonLegend: LegendLayout = renderLegend(${entries}, PyreonChartRect(x: 0.0, y: pyreonTitle.height, w: ${W}, h: ${H} - pyreonTitle.height), LegendOptions(fontSize: 11.0, labelColor: "#5a6b7a", swatch: 10.0, gap: 12.0, orientation: "horizontal"${maxRows}), pyreonChartMeasure)`)
+    const pageArg = page === undefined ? '' : `, page: ${page}`
+    lets.push(`let pyreonLegend: LegendLayout = renderLegend(${entries}, PyreonChartRect(x: 0.0, y: pyreonTitle.height, w: ${W}, h: ${H} - pyreonTitle.height), LegendOptions(fontSize: 11.0, labelColor: "#5a6b7a", swatch: 10.0, gap: 12.0, orientation: "horizontal"${maxRows}${pageArg}), pyreonChartMeasure)`)
   } else {
     lets.push('let pyreonLegend: LegendLayout = LegendLayout(cmds: [], height: 0.0, boxes: [])')
   }
@@ -11777,3 +11808,28 @@ function unsupportedZoomPresets(tag: string): 'unsupported' {
 }
 
 /** `<PlotChart data marks x? xValue? … dataZoom? zoomPresets? showLegend? showTitle? onSelect? …>` */
+
+
+// ---- `<PlotChart showLegend legendToggle legendMaxRows>` — legend tap + paging ----
+//
+// The legend's boxes and pager rects come from the engine's `renderLegend`;
+// the hidden set and the page are host state (the same `@State` splice the
+// window uses). A tap on an entry toggles it (`legendToggle`), the series
+// feed the plot through `hideHiddenSeries`, and the entries render muted —
+// exactly the web's model, so a hidden series keeps its slot on every target.
+
+/** Legend interaction the host must wire: none, toggle only, page only, or both. */
+interface SwiftLegendInteraction {
+  toggling: boolean
+  paging: boolean
+}
+
+function swiftLegendInteraction(e: Extract<ExprIR, { kind: 'jsx-element' }>): SwiftLegendInteraction {
+  const legendOn = readStaticAttr(e, 'showLegend') === true
+  return {
+    toggling: legendOn && readStaticAttr(e, 'legendToggle') !== false,
+    paging: legendOn && typeof readStaticAttr(e, 'legendMaxRows') === 'number',
+  }
+}
+
+/** `<PlotChart data marks x? xValue? … dataZoom? zoomPresets? showLegend? legendToggle? legendMaxRows? showTitle? onSelect? …>` */
