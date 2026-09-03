@@ -154,16 +154,20 @@ jobs:
         with:
           bun-version-file: .bun-version
 
-      # Speed up release runs by ~1 min on warm cache. The `bun.lock` hash
-      # invalidates the cache when deps change, so we never publish against
-      # a stale snapshot. restore-keys allows a near-miss fallback while
-      # full match stays preferred.
-      - name: Cache bun dependencies
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # Speed up release runs by ~1 min on warm cache. RESTORE-ONLY, under the
+      # SAME key ci.yml's Install job saves on every main push
+      # (`bun-install-cache-<os>-<lockhash>`): this workflow used to save the
+      # identical ~1 GB tarball store under its own `bun-<os>-<lockhash>` key,
+      # so every lockfile variant was stored TWICE and five such copies
+      # (4.8 GB) pinned the 10 GB actions cache at capacity — evicting the
+      # small entries every PR depends on (bootstrap lib/, native verdicts,
+      # Playwright). One key per artifact, one writer.
+      - name: Restore bun dependencies
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-          restore-keys: bun-${{ runner.os }}-
+          key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-install-cache-${{ runner.os }}-
 
       # PYREON_BOOTSTRAP_SKIP: the postinstall bootstrap runs the FULL
       # parallel monorepo build (incl. the Rust native compile) inside
@@ -331,12 +335,13 @@ jobs:
         with:
           bun-version-file: .bun-version
 
-      - name: Cache bun dependencies
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # Restore-only under ci.yml's key — see the note on the first job.
+      - name: Restore bun dependencies
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-          restore-keys: bun-${{ runner.os }}-
+          key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-install-cache-${{ runner.os }}-
 
       # PYREON_BOOTSTRAP_SKIP: the postinstall bootstrap runs the FULL
       # parallel monorepo build (incl. the Rust native compile) inside

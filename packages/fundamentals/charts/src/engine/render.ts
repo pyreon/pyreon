@@ -26,6 +26,14 @@ export interface Series {
   showValues?: boolean | undefined
   /** Per-datum radii (the bubble channel), already mapped to pixels. */
   radii?: Double[] | undefined
+  /** Which y axis the series scales against; absent = left. See `seriesOnRightAxis`. */
+  axis?: 'left' | 'right' | undefined
+  /** Halo rings around each point — the effectScatter look; `points` only. */
+  effect?: boolean | undefined
+  /** Draw bars as a symbol instead of a rect — the pictorialBar look; `bars` only. */
+  symbol?: 'rect' | 'circle' | 'diamond' | 'triangle' | undefined
+  /** Repeat the symbol along the bar instead of stretching it. */
+  symbolRepeat?: boolean | undefined
 }
 
 /**
@@ -46,6 +54,34 @@ export interface Annotation {
   yTo?: Double | undefined
   label?: string | undefined
   color?: string | undefined
+}
+
+/**
+ * A datum-anchored point marker — ECharts' markPoint, engine-shaped.
+ *
+ * Exactly one of `at` ('max' | 'min') or `atIndex` (a concrete datum index)
+ * should be set; a marker with neither is skipped rather than guessed at —
+ * the Annotation precedent. Split into two fields rather than one
+ * `'max' | 'min' | number` union because a mixed string/number union falls
+ * outside the native subset the engine compiles in, and the split costs the
+ * caller nothing.
+ *
+ * Stacked/grouped series are skipped (their geometry is a JOINT layout — a
+ * single series' values do not place a point in it), and the marker scales
+ * against the series' OWN axis, so a right-axis series marks correctly.
+ */
+export interface PointMarker {
+  /** Which series the marker reads; default 0. */
+  seriesIndex?: Double | undefined
+  /** Anchor at the series' maximum or minimum datum. */
+  at?: 'max' | 'min' | undefined
+  /** Anchor at a concrete datum index (clamped into range). */
+  atIndex?: Double | undefined
+  label?: string | undefined
+  /** Marker fill; defaults to the series colour. */
+  color?: string | undefined
+  /** Marker radius; default 4. */
+  radius?: Double | undefined
 }
 
 export interface ChartTheme {
@@ -69,6 +105,10 @@ export interface ChartSpec {
   /** Tick label formatting, per axis. See `LayoutConfig` for why it matters. */
   yFormat?: Formatter | undefined
   xFormat?: Formatter | undefined
+  /** Pins the RIGHT y domain; derived from the right-axis series when absent. */
+  y2Domain?: Domain | undefined
+  /** Tick label formatting for the right axis. */
+  y2Format?: Formatter | undefined
   /**
    * Per-datum x positions, index-aligned with every series' values.
    *
@@ -91,6 +131,8 @@ export interface ChartSpec {
   horizontal?: boolean | undefined
   /** Reference rules and bands, drawn between the grid and the series. */
   annotations?: Annotation[] | undefined
+  /** Datum-anchored point markers, drawn OVER the series. */
+  markers?: PointMarker[] | undefined
   /**
    * Entrance progress, 0..1; absent means 1 (fully drawn).
    *
@@ -124,31 +166,88 @@ export const defaultTheme: ChartTheme = {
 export function resolveYDomain(spec: ChartSpec): Domain {
   // `?? derive` rather than an early return: Swift does not narrow
   // `spec.yDomain` through the guard, and the coalesce is the same contract.
-  return spec.yDomain ?? deriveYDomain(spec)
+  return spec.yDomain ?? deriveOver(leftAxisSeries(spec))
 }
 
-function deriveYDomain(spec: ChartSpec): Domain {
+/**
+ * The RIGHT y domain — meaningful only while `hasRightAxis(spec)` is true.
+ *
+ * Total rather than optional by design: an optional return forces every
+ * caller through a narrowing Swift cannot follow, while a caller that asks
+ * for a right domain no right series defines was going to draw nothing with
+ * it anyway.
+ */
+export function resolveY2Domain(spec: ChartSpec): Domain {
+  return spec.y2Domain ?? deriveOver(rightAxisSeries(spec))
+}
+
+/**
+ * Does this series scale on the RIGHT axis?
+ *
+ * Three deliberate pins, none silent: stacked/grouped are laid out as ONE set
+ * against ONE scale (a stack across two axes is not a stack); the horizontal
+ * frame has a single value axis; and when NO left series exists the right
+ * ones fall back to left — a chart whose every series is "right" is just a
+ * chart, and a left axis with no data to define it would label nothing.
+ */
+export function seriesOnRightAxis(s: Series, spec: ChartSpec): boolean {
+  if (spec.horizontal === true) return false
+  if (s.kind === 'stacked' || s.kind === 'grouped') return false
+  if (s.axis !== 'right') return false
+  let hasLeft = false
+  for (const q of spec.series) {
+    const qRight = q.axis === 'right' && q.kind !== 'stacked' && q.kind !== 'grouped'
+    if (!qRight) hasLeft = true
+  }
+  return hasLeft
+}
+
+/** True when at least one series actually scales on the right axis. */
+export function hasRightAxis(spec: ChartSpec): boolean {
+  for (const s of spec.series) if (seriesOnRightAxis(s, spec)) return true
+  return false
+}
+
+function leftAxisSeries(spec: ChartSpec): Series[] {
+  return spec.series.filter((s) => !seriesOnRightAxis(s, spec))
+}
+
+function rightAxisSeries(spec: ChartSpec): Series[] {
+  return spec.series.filter((s) => seriesOnRightAxis(s, spec))
+}
+
+function deriveOver(series: Series[]): Domain {
   // A STACK's domain is its tallest TOTAL, not its tallest value — taking the
   // max of the individual series would clip the stack at the top.
-  const stacked = spec.series.filter((s) => s.kind === 'stacked')
+  const stacked = series.filter((s) => s.kind === 'stacked')
   if (stacked.length > 0) {
     const e = stackedExtent(stacked.map((s) => s.values))
     const others: Double[] = []
-    for (const s of spec.series) if (s.kind !== 'stacked') for (const v of s.values) others.push(v)
+    for (const s of series) if (s.kind !== 'stacked') for (const v of s.values) if (isFiniteValue(v)) others.push(v)
     const max = others.length > 0 ? Math.max(e.max, extent(others).max) : e.max
     return niceDomain({ min: 0.0, max }, 5.0)
   }
   const all: Double[] = []
   let hasBars = false
-  for (const s of spec.series) {
+  for (const s of series) {
     if (s.kind === 'bars' || s.kind === 'area' || s.kind === 'grouped') hasBars = true
-    for (const v of s.values) all.push(v)
+    // Gaps (NaN) carry no extent.
+    for (const v of s.values) if (isFiniteValue(v)) all.push(v)
   }
   const e = extent(all)
   const withZero: Domain = hasBars
     ? { min: e.min > 0.0 ? 0.0 : e.min, max: e.max < 0.0 ? 0.0 : e.max }
     : e
   return niceDomain(withZero, 5.0)
+}
+
+/**
+ * Finite check written for the native subset: a NaN is the only value that is
+ * not equal to itself, and the engine never produces infinities. `Number.*`
+ * has no lowering inside this module, so the comparison IS the check.
+ */
+function isFiniteValue(v: Double): boolean {
+  return v === v
 }
 
 /** Longest series length — the x extent for a numeric axis. */
@@ -182,6 +281,10 @@ export function layoutChart(spec: ChartSpec, measure: MeasureText): PlotLayout {
     // compile, so it is written in the subset that does.
     yFormat: spec.yFormat,
     xFormat: spec.xFormat,
+    // undefined when unused, so the layout's right gutter stays the slim
+    // default for every single-axis chart.
+    y2Domain: hasRightAxis(spec) ? resolveY2Domain(spec) : undefined,
+    y2Format: spec.y2Format,
     xTime: spec.xTime === true,
     horizontal: spec.horizontal === true,
   }
@@ -197,6 +300,11 @@ export function layoutChart(spec: ChartSpec, measure: MeasureText): PlotLayout {
  */
 export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
   const yDomain = resolveYDomain(spec)
+  // Non-optional on purpose: when no right axis exists this aliases the left
+  // domain and is simply never consulted — the binding shape Swift can carry
+  // through every branch below without narrowing.
+  const useY2 = hasRightAxis(spec)
+  const y2Domain = useY2 ? resolveY2Domain(spec) : yDomain
   const l = layoutChart(spec, measure)
   const plot = l.plot
   const t = spec.theme
@@ -210,9 +318,9 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
   // Grows a bar rect toward its value from the zero line — the edge a bar is
   // measured from, so a negative bar grows DOWNWARD during the entrance
   // instead of sliding in from above.
-  const growRect = (r: Rect): Rect => {
+  const growRect = (r: Rect, dom: Domain): Rect => {
     if (progress >= 1.0) return r
-    const zeroY = scaleLinear(yDomain, plot.y + plot.h, plot.y, yDomain.min < 0.0 && yDomain.max > 0.0 ? 0.0 : yDomain.min)
+    const zeroY = scaleLinear(dom, plot.y + plot.h, plot.y, dom.min < 0.0 && dom.max > 0.0 ? 0.0 : dom.min)
     const h = r.h * progress
     const top = r.y + r.h <= zeroY + 0.5 ? zeroY - h : zeroY
     return { x: r.x, y: top, w: r.w, h }
@@ -285,6 +393,15 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
     out.push({
       kind: 'line',
       from: { x: plot.x, y: plot.y + plot.h },
+      to: { x: plot.x + plot.w, y: plot.y + plot.h },
+      stroke: t.axis,
+      width: 1.0,
+    })
+  }
+  if (spec.showYAxis && useY2) {
+    out.push({
+      kind: 'line',
+      from: { x: plot.x + plot.w, y: plot.y },
       to: { x: plot.x + plot.w, y: plot.y + plot.h },
       stroke: t.axis,
       width: 1.0,
@@ -369,13 +486,13 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
   const stackedSeries = spec.horizontal === true ? [] : spec.series.filter((s) => s.kind === 'stacked')
   if (stackedSeries.length > 0) {
     for (const seg of layoutStackedBars(stackedSeries.map((s) => s.values), plot, yDomain, 0.25)) {
-      out.push({ kind: 'rect', rect: growRect(seg.rect), fill: stackedSeries[seg.seriesIndex]!.color })
+      out.push({ kind: 'rect', rect: growRect(seg.rect, yDomain), fill: stackedSeries[seg.seriesIndex]!.color })
     }
   }
   const groupedSeries = spec.horizontal === true ? [] : spec.series.filter((s) => s.kind === 'grouped')
   if (groupedSeries.length > 0) {
     for (const seg of layoutGroupedBars(groupedSeries.map((s) => s.values), plot, yDomain, 0.25)) {
-      out.push({ kind: 'rect', rect: growRect(seg.rect), fill: groupedSeries[seg.seriesIndex]!.color })
+      out.push({ kind: 'rect', rect: growRect(seg.rect, yDomain), fill: groupedSeries[seg.seriesIndex]!.color })
     }
   }
 
@@ -387,10 +504,13 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
     // Coalesced to a sentinel: an EMPTY array means "place by index", and a
     // non-optional binding is what Swift can use on both sides of the branch.
     const xs = spec.xValues ?? []
+    // Each independent series scales against ITS axis — the whole point of a
+    // dual-axis chart, and the line that decides it.
+    const sDomain = seriesOnRightAxis(s, spec) ? y2Domain : yDomain
     const place = (values: Double[]): Pt[] =>
       xs.length > 0
-        ? layoutSeriesPointsAt(values, xs, plot, yDomain, l.xDomainUsed)
-        : layoutSeriesPoints(values, plot, yDomain)
+        ? layoutSeriesPointsAt(values, xs, plot, sDomain, l.xDomainUsed)
+        : layoutSeriesPoints(values, plot, sDomain)
 
     // The curve shapes line AND area from the same densified points — an
     // area whose fill followed straight segments under a smoothed outline
@@ -404,7 +524,26 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
       if (s.kind !== 'bars') continue
       const rects = layoutBarsH(s.values, plot, yDomain, 0.25)
       for (const r of rects) {
-        out.push({ kind: 'rect', rect: growRectH(r), fill: s.color })
+        const grown = growRectH(r)
+        if (s.symbol === undefined) {
+          out.push({ kind: 'rect', rect: grown, fill: s.color })
+        } else if (s.symbolRepeat === true) {
+          // Repeat a unit symbol along the bar (left to right); a partial last symbol is dropped.
+          const unit = grown.h
+          let count = 0
+          let acc = unit
+          for (let k = 0; k < 400; k++) {
+            if (unit > 0.0 && acc <= grown.w + 0.001) count = k + 1
+            acc = acc + unit
+          }
+          let kf = 0.0
+          for (let k = 0; k < count; k++) {
+            out.push(symbolCommand({ x: grown.x + unit * kf, y: grown.y, w: unit, h: unit }, s.symbol ?? 'rect', s.color))
+            kf = kf + 1.0
+          }
+        } else {
+          out.push(symbolCommand(grown, s.symbol ?? 'rect', s.color))
+        }
       }
       if (s.showValues === true && progress >= 1.0) {
         const fmt = spec.yFormat ?? plain
@@ -431,9 +570,31 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
     }
 
     if (s.kind === 'bars') {
-      const rects = layoutBars(s.values, plot, yDomain, 0.25)
+      const rects = layoutBars(s.values, plot, sDomain, 0.25)
       for (const r of rects) {
-        out.push({ kind: 'rect', rect: growRect(r), fill: s.color })
+        const grown = growRect(r, sDomain)
+        if (s.symbol === undefined) {
+          out.push({ kind: 'rect', rect: grown, fill: s.color })
+        } else if (s.symbolRepeat === true) {
+          // Repeat a unit symbol up the bar; a partial last symbol is dropped.
+          // (Horizontal charts left this loop above, so the bar is vertical.)
+          const unit = grown.w
+          const length = grown.h
+          let count = 0
+          let acc = unit
+          for (let k = 0; k < 400; k++) {
+            if (unit > 0.0 && acc <= length + 0.001) count = k + 1
+            acc = acc + unit
+          }
+          let kf = 0.0
+          for (let k = 0; k < count; k++) {
+            const cell: Rect = { x: grown.x, y: grown.y + grown.h - unit * (kf + 1.0), w: unit, h: unit }
+            out.push(symbolCommand(cell, s.symbol ?? 'rect', s.color))
+            kf = kf + 1.0
+          }
+        } else {
+          out.push(symbolCommand(grown, s.symbol ?? 'rect', s.color))
+        }
       }
       if (s.showValues === true && progress >= 1.0) {
         const fmt = spec.yFormat ?? plain
@@ -454,26 +615,39 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
         }
       }
     } else if (s.kind === 'line') {
-      const pts = reveal(shape(place(s.values)))
-      if (pts.length > 1) {
-        out.push({ kind: 'polyline', points: pts, stroke: s.color, width: s.width })
+      // A non-finite value is a GAP: the line breaks into runs rather than
+      // drawing a zero or bridging the hole (ECharts' connectNulls: false).
+      for (const run of splitRuns(s.values, place)) {
+        const pts = reveal(shape(run))
+        if (pts.length > 1) {
+          out.push({ kind: 'polyline', points: pts, stroke: s.color, width: s.width })
+        }
       }
     } else if (s.kind === 'area') {
-      const pts = reveal(shape(place(s.values)))
-      if (pts.length > 1) {
-        const poly: Pt[] = []
-        for (const p of pts) poly.push(p)
-        // Close down to the baseline so the fill is a band under the line
-        // rather than a polygon between the first and last data points.
-        poly.push({ x: pts[pts.length - 1]!.x, y: plot.y + plot.h })
-        poly.push({ x: pts[0]!.x, y: plot.y + plot.h })
-        out.push({ kind: 'polygon', points: poly, fill: s.color })
+      for (const run of splitRuns(s.values, place)) {
+        const pts = reveal(shape(run))
+        if (pts.length > 1) {
+          const poly: Pt[] = []
+          for (const p of pts) poly.push(p)
+          // Close down to the baseline so the fill is a band under the line
+          // rather than a polygon between the first and last data points.
+          poly.push({ x: pts[pts.length - 1]!.x, y: plot.y + plot.h })
+          poly.push({ x: pts[0]!.x, y: plot.y + plot.h })
+          out.push({ kind: 'polygon', points: poly, fill: s.color })
+        }
       }
     } else {
       const pts = place(s.values)
       const radii = s.radii ?? []
       for (let i = 0; i < pts.length; i++) {
+        // A gap draws no dot.
+        if (!isFiniteValue(s.values[i]!)) continue
         const fullR = radii.length > 0 ? radii[i] ?? s.radius : s.radius
+        if (s.effect === true) {
+          // Two translucent halos under the dot — the ripple, frozen at a frame.
+          out.push({ kind: 'circle', center: pts[i]!, radius: fullR * 2.6 * progress, fill: withAlpha(s.color, 0.12) })
+          out.push({ kind: 'circle', center: pts[i]!, radius: fullR * 1.7 * progress, fill: withAlpha(s.color, 0.25) })
+        }
         out.push({
           kind: 'circle',
           center: pts[i]!,
@@ -481,6 +655,69 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
           fill: s.color,
         })
       }
+    }
+  }
+
+  // Point markers draw OVER the series (painter's order — a marker buried
+  // under an area fill marks nothing) and UNDER the axis labels.
+  const markers = spec.markers ?? []
+  for (const m of markers) {
+    if (spec.horizontal === true) continue
+    const rawSeriesIndex = m.seriesIndex ?? 0.0
+    const s = spec.series[Math.floor(rawSeriesIndex)]
+    if (s === undefined) continue
+    if (s.kind === 'stacked' || s.kind === 'grouped') continue
+    const n = s.values.length
+    if (n === 0) continue
+    let idx = -1
+    if (m.at === 'max') {
+      idx = 0
+      for (let i = 1; i < n; i++) if (s.values[i]! > s.values[idx]!) idx = i
+    } else if (m.at === 'min') {
+      idx = 0
+      for (let i = 1; i < n; i++) if (s.values[i]! < s.values[idx]!) idx = i
+    } else {
+      const rawAt = m.atIndex ?? -1.0
+      if (m.atIndex !== undefined) {
+        // Floor AND clamp in one int-typed scan. The direct forms both fall
+        // outside the native subset's Int/Double rules: Math.floor assigns a
+        // Double into the Int the argmax branches established, and a
+        // rawAt-greater-than-n-minus-one clamp mixes an Int length into
+        // Double arithmetic. The scan stops at the last j at-or-below rawAt
+        // (the floor), never exceeds n-1 (the high clamp), and the fallback
+        // is the low clamp. O(n) over a series the render already walks.
+        // jf mirrors j as a Double: Swift rejects an Int-loop-var compared
+        // against a Double, and Double-vs-Double is clean on both targets.
+        let jf = 0.0
+        for (let j = 0; j < n; j++) {
+          if (jf <= rawAt) idx = j
+          jf = jf + 1.0
+        }
+        if (idx < 0) idx = 0
+      }
+    }
+    if (idx < 0) continue
+    const mDomain = seriesOnRightAxis(s, spec) ? y2Domain : yDomain
+    const xsM = spec.xValues ?? []
+    const pts =
+      xsM.length > 0
+        ? layoutSeriesPointsAt(s.values, xsM, plot, mDomain, l.xDomainUsed)
+        : layoutSeriesPoints(s.values, plot, mDomain)
+    const p = pts[idx]
+    if (p === undefined) continue
+    const mColor = m.color ?? s.color
+    out.push({ kind: 'circle', center: p, radius: (m.radius ?? 4.0) * progress, fill: mColor })
+    const mLabel = m.label ?? ''
+    if (m.label !== undefined && progress >= 1.0) {
+      out.push({
+        kind: 'text',
+        text: mLabel,
+        at: { x: p.x, y: p.y - (m.radius ?? 4.0) - 4.0 },
+        fill: mColor,
+        size: t.fontSize,
+        align: 'middle',
+        baseline: 'bottom',
+      })
     }
   }
 
@@ -495,6 +732,17 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
       fill: t.label,
       size: t.fontSize,
       align: 'end',
+      baseline: 'middle',
+    })
+  }
+  for (const tick of l.y2Ticks) {
+    out.push({
+      kind: 'text',
+      text: tick.label,
+      at: { x: plot.x + plot.w + 6.0, y: tick.pos },
+      fill: t.label,
+      size: t.fontSize,
+      align: 'start',
       baseline: 'middle',
     })
   }
@@ -513,11 +761,86 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
   return out
 }
 
+/**
+ * Split a series into runs of finite values, each already placed. A run is
+ * the piece of a line between two gaps; placing the WHOLE series first keeps
+ * every point at the x it would have had, so a gap removes a segment without
+ * shifting its neighbours.
+ */
+function splitRuns(values: Double[], place: (values: Double[]) => Pt[]): Pt[][] {
+  const runs: Pt[][] = []
+  let hasGap = false
+  for (const v of values) if (!isFiniteValue(v)) hasGap = true
+  if (!hasGap) {
+    runs.push(place(values))
+    return runs
+  }
+  // Placement needs finite inputs: substitute zero, then drop those points
+  // out of the runs — their x positions are still the right ones.
+  const filled: Double[] = []
+  for (const v of values) filled.push(isFiniteValue(v) ? v : 0.0)
+  const pts = place(filled)
+  // Track each run by its start index rather than re-assigning a fresh array
+  // (a reassigned array binding has no native lowering).
+  let runStart = -1
+  for (let i = 0; i < pts.length; i++) {
+    if (isFiniteValue(values[i]!)) {
+      if (runStart < 0) runStart = i
+    } else if (runStart >= 0) {
+      const run: Pt[] = []
+      for (let j = runStart; j < i; j++) run.push(pts[j]!)
+      runs.push(run)
+      runStart = -1
+    }
+  }
+  if (runStart >= 0) {
+    const run: Pt[] = []
+    for (let j = runStart; j < pts.length; j++) run.push(pts[j]!)
+    runs.push(run)
+  }
+  return runs
+}
+
+/** One symbol filling `cell` — rect, circle, diamond, or triangle. */
+function symbolCommand(cell: Rect, symbol: 'rect' | 'circle' | 'diamond' | 'triangle', fill: string): DrawCmd {
+  if (symbol === 'circle') {
+    const r = (cell.w < cell.h ? cell.w : cell.h) / 2.0
+    return { kind: 'circle', center: { x: cell.x + cell.w / 2.0, y: cell.y + cell.h / 2.0 }, radius: r, fill }
+  }
+  if (symbol === 'diamond') {
+    return {
+      kind: 'polygon',
+      points: [
+        { x: cell.x + cell.w / 2.0, y: cell.y },
+        { x: cell.x + cell.w, y: cell.y + cell.h / 2.0 },
+        { x: cell.x + cell.w / 2.0, y: cell.y + cell.h },
+        { x: cell.x, y: cell.y + cell.h / 2.0 },
+      ],
+      fill,
+    }
+  }
+  if (symbol === 'triangle') {
+    return {
+      kind: 'polygon',
+      points: [
+        { x: cell.x + cell.w / 2.0, y: cell.y },
+        { x: cell.x + cell.w, y: cell.y + cell.h },
+        { x: cell.x, y: cell.y + cell.h },
+      ],
+      fill,
+    }
+  }
+  return { kind: 'rect', rect: cell, fill }
+}
+
 /** Bar rects for a series index — what a hit test runs against. */
 export function barsFor(spec: ChartSpec, index: number, measure: MeasureText): Rect[] {
   const s = spec.series[index]
   if (s === undefined || s.kind !== 'bars') return []
-  return layoutBars(s.values, layoutChart(spec, measure).plot, resolveYDomain(spec), 0.25)
+  // The hit rects must come from the SAME domain the bars were drawn with,
+  // or a right-axis bar reports hits where the left-axis geometry would be.
+  const dom = seriesOnRightAxis(s, spec) ? resolveY2Domain(spec) : resolveYDomain(spec)
+  return layoutBars(s.values, layoutChart(spec, measure).plot, dom, 0.25)
 }
 
 /**

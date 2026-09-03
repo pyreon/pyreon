@@ -93,7 +93,18 @@ function buildProcessor(mdxEnabled: boolean): Processor {
   const base = unified()
     .use(remarkParse)
     .use(remarkFrontmatter, ['yaml'])
-    .use(remarkGfm)
+    // `singleTilde: false` — GFM's default treats a SINGLE `~x~` as
+    // strikethrough, which collides with `~` meaning "approximately". Two
+    // such uses in one paragraph pair up and strike everything between them,
+    // across line breaks. On this repo's own benchmark prose, `layout is
+    // ~86% of that op … a small JS-only Pyreon cost (~+28%)` struck out the
+    // three lines between the two figures — the methodological caveat, which
+    // is exactly the content those pages exist to carry. 32 doc pages have a
+    // line with two or more single tildes.
+    //
+    // Nobody writing `~2.6×` means strikethrough, and `~~text~~` still works,
+    // so the option costs nothing and removes a whole class of silent damage.
+    .use(remarkGfm, { singleTilde: false })
     .use(remarkDirective)
     .use(remarkCalloutThreadLocal)
     .use(remarkCodeGroup)

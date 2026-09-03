@@ -11,7 +11,9 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'wraps ECharts (browser canvas engine); consume on native via the `<WebView>` bridge subpath',
+      'the default export wraps ECharts (browser canvas engine) and the cartesian `<PlotChart>` is marks-based — both web; the RADIAL `/plot` components cross (see nativeFrontend), and the rest embeds via the `<WebView>` bridge subpath',
+    nativeFrontend:
+      'PyreonPieChart / PyreonGaugeChart — `<PieChart>` and `<GaugeChart>` from `@pyreon/charts/plot`, drawn by the GENERATED PyreonChartEngine (the same byte-locked geometry as the web canvas renderer)',
   },
   longExample: `import { Chart, useChart, type EChartsOption, type ComposeOption, type BarSeriesOption, type LineSeriesOption } from '@pyreon/charts'
 import { signal } from '@pyreon/reactivity'
@@ -241,6 +243,31 @@ const events: Ev[] = [{ day: 'Mon', hour: '09', count: 12 }]
         'Reading an undrawn cell as zero — absent cells are skipped, not painted cold; emit explicit zero observations when zero is a fact worth showing',
         'Passing a color ramp as anything but `#rrggbb` stops — named colors and rgb() strings are not parsed; the hex restriction is what lets the ramp math lower to native',
         'Expecting `onSelect` to fire a datum index — duplicate (x, y) observations SUM into one cell, so the callback speaks in cells: categories plus the aggregated value, or null for a miss (an undrawn cell is a miss too: absence is not selectable)',
+      ],
+      seeAlso: ['PlotChart', 'PieChart'],
+    },
+    {
+      name: 'RadarChart',
+      kind: 'component',
+      signature: '<T>(props: RadarChartProps<T>) => VNodeChild',
+      summary:
+        'Radar (spider) chart from the plot engine (`@pyreon/charts/plot`) — one polygon per datum over shared spokes. Each axis normalises by its OWN max, so axes in different units (revenue beside a score out of 5) are comparable on one chart; a shared scale would flatten every small-range axis to the centre. Fewer than three axes draws nothing (no area to enclose). The fill is translucent (`fillAlpha`, default 0.25) with a full-strength outline, so overlapping polygons stay readable. Geometry (`renderRadar`, `radarPolygon`, `radarAngles`) exported standalone.',
+      example: `import { RadarChart } from '@pyreon/charts/plot'
+
+interface Player { name: string; speed: number; power: number; skill: number }
+const players: Player[] = [{ name: 'Ana', speed: 90, power: 40, skill: 80 }]
+
+<RadarChart
+  data={players}
+  axes={[{ label: 'Speed', max: 100 }, { label: 'Power', max: 100 }, { label: 'Skill', max: 100 }]}
+  values={(d: Player) => [d.speed, d.power, d.skill]}
+  label={(d: Player) => d.name}
+  showLegend
+/>`,
+      mistakes: [
+        'Comparing absolute magnitudes across axes — each spoke normalises by its own `max`, so polygon SHAPE compares profiles, not sizes; put same-unit series on a PlotChart when magnitude is the story',
+        'Passing `values` in a different order than `axes` — the two are index-aligned, and a swapped pair silently plots speed on the power spoke',
+        'More than a handful of polygons — overlapping fills become unreadable past 3-4 series; filter the data or facet into several charts',
       ],
       seeAlso: ['PlotChart', 'PieChart'],
     },

@@ -832,11 +832,42 @@ public enum PyreonScalar: Equatable {
   case bool(Bool)
   case null
 }
+// A stub that is NARROWER than the runtime rejects CORRECT emit, and one that
+// is WIDER hides a missing symbol. Both halves of the surface below are
+// therefore mirrored from PyreonCrdt.swift, not approximated to what the
+// emitter happens to produce today.
+extension PyreonScalar: Codable {}
+public struct PyreonCrdtOp: Codable, Equatable {
+  public let map: String
+  public let key: String
+  public let value: PyreonScalar
+  public let clock: Int
+  public let actor: String
+}
+public struct PyreonCrdtMap {
+  public func get(_ key: String) -> PyreonScalar? { nil }
+  public func has(_ key: String) -> Bool { false }
+  public func keys() -> [String] { [] }
+  public func set(_ key: String, _ value: PyreonScalar) {}
+  public func set(_ key: String, _ value: String) {}
+  public func set(_ key: String, _ value: Int) {}
+  public func set(_ key: String, _ value: Double) {}
+  public func set(_ key: String, _ value: Bool) {}
+  public func observe(_ cb: @escaping (Set<String>) -> Void) -> () -> Void { {} }
+}
 public final class PyreonCrdtDoc {
+  public var onLocalOps: (([PyreonCrdtOp]) -> Void)?
   public init(actor: String) {}
+  public func getMap(_ name: String) -> PyreonCrdtMap { PyreonCrdtMap() }
   public func get(_ map: String, _ key: String) -> PyreonScalar? { nil }
+  public func has(_ map: String, _ key: String) -> Bool { false }
+  public func keys(_ map: String) -> [String] { [] }
   public func set(_ map: String, _ key: String, _ value: PyreonScalar) {}
   public func observe(_ map: String, _ cb: @escaping (Set<String>) -> Void) -> () -> Void { {} }
+  public func applyOps(_ ops: [PyreonCrdtOp]) {}
+  public func encodeState() -> [PyreonCrdtOp] { [] }
+  public func encodeMessage(_ ops: [PyreonCrdtOp]) -> String { "" }
+  public func applyMessage(_ json: String) {}
 }
 public protocol PyreonScalarConvertible: Equatable {
   init?(pyreonScalar: PyreonScalar)
@@ -1066,6 +1097,17 @@ public final class PyreonCrashReporter {
   public func recordError(_ message: String) {}
   public func breadcrumb(_ message: String) {}
   public func clear() {}
+}
+// Mirrors PyreonChartCanvas.swift's radial wrappers EXACTLY (init signatures
+// incl. defaults) — a looser stub masks, a narrower one manufactures bugs.
+public struct PyreonPieChart<T>: View {
+  public init(data: [T], value: @escaping (T) -> Double, label: @escaping (T) -> String, color: ((T) -> String)? = nil, width: Double = 300.0, height: Double = 240.0, innerRadius: Double = 0.0, showLabels: Bool = true) {}
+  public init(data: [T], value: @escaping (T) -> Int, label: @escaping (T) -> String, color: ((T) -> String)? = nil, width: Double = 300.0, height: Double = 240.0, innerRadius: Double = 0.0, showLabels: Bool = true) {}
+  public var body: some View { EmptyView() }
+}
+public struct PyreonGaugeChart: View {
+  public init(value: Double, min: Double = 0.0, max: Double = 100.0, width: Double = 240.0, height: Double = 140.0, thickness: Double = 22.0, trackColor: String = "rgba(132,150,165,0.22)", valueColor: String = "#0f766e", showValue: Bool = true) {}
+  public var body: some View { EmptyView() }
 }
 public struct PyreonLink<Label: View>: View {
   public init(_ to: String, @ViewBuilder label: () -> Label) {}

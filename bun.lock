@@ -18,6 +18,7 @@
         "@preact/signals-core": "^1.14.4",
         "@pyreon/playwright-config": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/validate": "workspace:^",
         "@swc/core": "^1.16.1",
         "@tanstack/react-router": "^1.170.32",
         "@tiptap/react": "^3.31.0",
@@ -66,6 +67,7 @@
       "name": "@pyreon/docs",
       "version": "0.50.0",
       "dependencies": {
+        "@pyreon/charts": "workspace:*",
         "@pyreon/core": "workspace:*",
         "@pyreon/flow": "workspace:*",
         "@pyreon/form": "workspace:*",
@@ -822,6 +824,7 @@
       "name": "@pyreon/example-native-finance",
       "version": "0.50.1",
       "dependencies": {
+        "@pyreon/charts": "workspace:*",
         "@pyreon/hooks": "workspace:*",
       },
       "devDependencies": {
@@ -1979,7 +1982,9 @@
       },
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.11.6",
+        "@pyreon/core": "workspace:*",
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/runtime-server": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@vitus-labs/tools-lint": "^2.6.3",

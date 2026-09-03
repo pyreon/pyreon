@@ -861,6 +861,11 @@ function emitKotlinFeature(f: FeatureDefnIR): string {
     `    val initialValues = PyreonFeatureSchema_${f.bindingName}()`,
   )
   lines.push(`}`)
+  // See the Swift mirror. A VALUE binding, not a `typealias` — for symmetry with
+  // the sibling lowerings, not for collision safety: both forms collide with a
+  // same-named user type, which parse.ts warns about by name.
+  lines.push(``)
+  lines.push(`val ${f.bindingName} = PyreonFeature_${f.bindingName}`)
   return lines.join('\n')
 }
 
@@ -3087,7 +3092,7 @@ function emitKotlinFunction(
 function kotlinCondition(e: ExprIR, emit: (x: ExprIR) => string): string {
   const c = classifyOptionalCondition(e, _kotlinExprInferCtx)
   if (c?.form === 'absent') return `${emit(c.argument)} == null`
-  if (c?.form === 'present') return `${emit(e)} != null`
+  if (c?.form === 'present') return `${emit(c.argument ?? e)} != null`
   return emit(e)
 }
 
@@ -3191,7 +3196,13 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       // the non-null type (restored after).
       const optC = classifyOptionalCondition(s.cond, _kotlinExprInferCtx)
       const narrowName =
-        optC?.form === 'present' && s.cond.kind === 'identifier' ? s.cond.name : undefined
+        optC?.form === 'present'
+          ? s.cond.kind === 'identifier'
+            ? s.cond.name
+            : optC.argument?.kind === 'identifier'
+              ? optC.argument.name
+              : undefined
+          : undefined
       const narrowPrev =
         narrowName !== undefined ? _kotlinExprInferCtx.locals.get(narrowName) : undefined
       if (narrowName !== undefined && narrowPrev !== undefined) {
@@ -5772,6 +5783,11 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // never compiled the emit. Same class as the kinetic factory, reached by a
   // different route (a missing mapping rather than a missing decline).
   if (tag === 'Link' || tag === 'RouterLink') return emitKotlinLink(e, indent)
+  if (tag === 'PieChart') return emitKotlinPieChart(e, indent)
+  if (tag === 'GaugeChart') return emitKotlinGaugeChart(e, indent)
+  // `<PieChart>` / `<GaugeChart>` from @pyreon/charts/plot — mirror of the
+  // Swift branch: the radial family lowers to the runtime composables over
+  // the GENERATED engine.
   if (tag === 'PermissionsProvider') return emitKotlinPermissionsProvider(e, indent)
   // Mirror of the Swift branch: `<QueryClientProvider>` is TRANSPARENT on
   // native. The web needs it to inject the client `useQuery` reads; the native
@@ -8935,4 +8951,120 @@ function emitKotlinRxCall(
     default:
       return `/* unsupported rx.${e.method} */ ${src}`
   }
+}
+
+
+/** Kotlin refuses Int literals for Double params — `height={200}` must emit `200.0`. */
+function ktChartDouble(text: string): string {
+  return /^-?\d+$/.test(text) ? `${text}.0` : text
+}
+
+/**
+ * `<PieChart data value label …>` (@pyreon/charts/plot) → the runtime-kotlin
+ * `PyreonPieChart` composable. Mirror of emitSwiftPieChart — see its
+ * docblock for the accessor-arity rule.
+ */
+function emitKotlinPieChart(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const attr = (n: string) =>
+    e.attrs.find(
+      (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === n,
+    )
+  const data = attr('data')
+  const value = attr('value')
+  const label = attr('label')
+  if (data === undefined || value === undefined || label === undefined) {
+    _emitWarnings.push(
+      'PieChart: the native lowering needs `data`, `value` and `label` props — element left to generic emit (it will not compile natively)',
+    )
+    return emitKotlinGeneric(e, indent)
+  }
+  const color = attr('color')
+  for (const a of [value, label, ...(color === undefined ? [] : [color])]) {
+    if (a.value.kind === 'arrow' && a.value.params.length > 1) {
+      _emitWarnings.push(
+        `PieChart: the \`${a.name}\` accessor uses the (d, index) form — the native lowering supports the single-argument accessor; precompute an array for index-dependent slices`,
+      )
+      return emitKotlinGeneric(e, indent)
+    }
+  }
+  const args = [
+    `data = ${emitKotlinExpr(unwrapAccessorArrow(data.value), indent)}`,
+    `value = ${emitKotlinExpr(value.value, indent)}`,
+    `label = ${emitKotlinExpr(label.value, indent)}`,
+  ]
+  if (color !== undefined) args.push(`color = ${emitKotlinExpr(color.value, indent)}`)
+  for (const n of ['width', 'height', 'innerRadius', 'showLabels'] as const) {
+    const a = attr(n)
+    if (a !== undefined) {
+      const t = emitKotlinExpr(unwrapAccessorArrow(a.value), indent)
+      args.push(`${n} = ${n === 'showLabels' ? t : ktChartDouble(t)}`)
+    }
+  }
+  for (const n of ['showLegend', 'onSelect', 'title', 'accessibleTable'] as const) {
+    if (attr(n) !== undefined) {
+      _emitWarnings.push(
+        `PieChart: \`${n}\` has no native lowering (web-only legend / hit-testing / a11y-table surface) — DROPPED on this target`,
+      )
+    }
+  }
+  const testid = readStringAttrExprKotlin(e, 'data-testid', 0)
+  const mods =
+    (testid === undefined ? '' : `.testTag(${testid})`) +
+    kotlinAccessibilityLabelModifier(e).join('') +
+    kotlinAccessibilityHiddenModifier(e).join('')
+  if (mods !== '') args.push(`modifier = Modifier${mods}`)
+  return `PyreonPieChart(${args.join(', ')})`
+}
+
+/**
+ * `<GaugeChart value …>` (@pyreon/charts/plot) → the runtime-kotlin
+ * `PyreonGaugeChart` composable. Mirror of emitSwiftGaugeChart.
+ */
+function emitKotlinGaugeChart(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const attr = (n: string) =>
+    e.attrs.find(
+      (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === n,
+    )
+  const value = attr('value')
+  if (value === undefined) {
+    _emitWarnings.push(
+      'GaugeChart: the native lowering needs the `value` prop — element left to generic emit (it will not compile natively)',
+    )
+    return emitKotlinGeneric(e, indent)
+  }
+  const args = [`value = ${ktChartDouble(emitKotlinExpr(unwrapAccessorArrow(value.value), indent))}`]
+  for (const n of [
+    'min',
+    'max',
+    'width',
+    'height',
+    'thickness',
+    'trackColor',
+    'valueColor',
+    'showValue',
+  ] as const) {
+    const a = attr(n)
+    if (a !== undefined) {
+      const t = emitKotlinExpr(unwrapAccessorArrow(a.value), indent)
+      args.push(`${n} = ${n === 'showValue' || n === 'trackColor' || n === 'valueColor' ? t : ktChartDouble(t)}`)
+    }
+  }
+  if (attr('title') !== undefined) {
+    _emitWarnings.push(
+      'GaugeChart: `title` has no native lowering (it feeds the web aria-label) — use `accessibilityLabel`, which lowers on all three targets',
+    )
+  }
+  const testid = readStringAttrExprKotlin(e, 'data-testid', 0)
+  const mods =
+    (testid === undefined ? '' : `.testTag(${testid})`) +
+    kotlinAccessibilityLabelModifier(e).join('') +
+    kotlinAccessibilityHiddenModifier(e).join('')
+  if (mods !== '') args.push(`modifier = Modifier${mods}`)
+  return `PyreonGaugeChart(${args.join(', ')})`
 }

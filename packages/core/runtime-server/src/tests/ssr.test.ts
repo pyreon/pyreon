@@ -548,18 +548,40 @@ describe('concurrent SSR — context isolation', () => {
 
 describe('configureStoreIsolation', () => {
   test('activates store isolation — withStoreContext wraps in ALS', async () => {
-    let providerCalled = false
-    const mockSetProvider = (fn: () => Map<string, unknown>) => {
-      providerCalled = true
-      // The provider should return a Map
-      const result = fn()
-      expect(result).toBeInstanceOf(Map)
+    let provider: (() => Map<string, unknown> | undefined) | null = null
+    const mockSetProvider = (fn: () => Map<string, unknown> | undefined) => {
+      provider = fn
     }
     configureStoreIsolation(mockSetProvider)
-    expect(providerCalled).toBe(true)
+    expect(provider, 'no provider was installed').not.toBeNull()
+    const read = provider as unknown as () => Map<string, unknown> | undefined
 
-    // After activation, renderToString should work (it uses withStoreContext internally)
-    const html = await renderToString(h('div', null, 'store-iso'))
+    // OUTSIDE a render there is no request scope, so the provider yields
+    // `undefined` — the registry's signal to use its process default. It used
+    // to fabricate a fresh Map here, which silently dropped any store written
+    // outside a render.
+    expect(read()).toBeUndefined()
+
+    // INSIDE a render it yields that request's own Map, and two renders never
+    // share one. That is the property this API exists for, and asserting it
+    // here is strictly stronger than the old `toBeInstanceOf(Map)` check.
+    let a: Map<string, unknown> | undefined
+    let b: Map<string, unknown> | undefined
+    const html = await renderToString(
+      h(() => {
+        a = read()
+        return h('div', null, 'store-iso')
+      }, null),
+    )
+    await renderToString(
+      h(() => {
+        b = read()
+        return h('div', null, 'x')
+      }, null),
+    )
+    expect(a).toBeInstanceOf(Map)
+    expect(b).toBeInstanceOf(Map)
+    expect(a).not.toBe(b)
     expect(html).toBe('<div>store-iso</div>')
   })
 })

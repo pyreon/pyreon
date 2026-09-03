@@ -2336,7 +2336,7 @@ window.__PYREON_DEVTOOLS__.reactive.getGraph()  // { nodes, edges }`,
     example: `import { renderToString } from "@pyreon/runtime-server"
 
 const html = await renderToString(<App />)`,
-    notes: 'Render a VNode tree to a single HTML string. Each call runs in a fresh isolated ALS context stack (and store registry if `configureStoreIsolation` was called) so concurrent requests never bleed `provide()` frames into each other. Signal accessors are invoked synchronously to snapshot their CURRENT value — there is no reactivity on the server, so a `<div>{count()}</div>` renders the value at render time and only becomes live after client hydration. Async component functions (`async function C()`) are awaited before the walk continues. Returns the empty string for a `null` root. See also: renderToStream, runWithRequestContext.',
+    notes: 'Render a VNode tree to a single HTML string. Each call runs in a fresh isolated ALS context stack (and its own store registry) so concurrent requests never bleed `provide()` frames into each other. Signal accessors are invoked synchronously to snapshot their CURRENT value — there is no reactivity on the server, so a `<div>{count()}</div>` renders the value at render time and only becomes live after client hydration. Async component functions (`async function C()`) are awaited before the walk continues. Returns the empty string for a `null` root. See also: renderToStream, runWithRequestContext.',
     mistakes: `- Expecting signal writes after \`renderToString\` to change the output — SSR is one-shot; the string is already produced. Reactivity is a post-hydration (client) concern
 - Calling Pyreon context APIs (\`useHead\`, loaders) OUTSIDE \`renderToString\` and expecting per-request isolation — use \`runWithRequestContext\` for that; bare calls share the fallback stack across concurrent requests
 - Reaching for \`renderToString\` directly when you have an HTTP handler — the \`createHandler\` in \`@pyreon/server\` wraps it with template precompilation, middleware, and loader-data injection; prefer that for request handling`,
@@ -2368,7 +2368,7 @@ const data = await runWithRequestContext(async () => {
   await prefetchLoaderData(router, url.pathname, request)
   return renderToString(<App />)
 })`,
-    notes: 'Run an async function inside a fresh, isolated ALS context stack (and store registry, if `configureStoreIsolation` was called). Use this when you need to call Pyreon context-aware APIs — `useHead`, `prefetchLoaderData`, router resolution — OUTSIDE a `renderToString` / `renderToStream` call but still want per-request isolation. Without it those calls land on a process-global fallback stack shared by every concurrent request. See also: renderToString, configureStoreIsolation.',
+    notes: 'Run an async function inside a fresh, isolated ALS context stack (and its own store registry). Use this when you need to call Pyreon context-aware APIs — `useHead`, `prefetchLoaderData`, router resolution — OUTSIDE a `renderToString` / `renderToStream` call but still want per-request isolation. Without it those calls land on a process-global fallback stack shared by every concurrent request. See also: renderToString, configureStoreIsolation.',
     mistakes: `- Calling \`prefetchLoaderData\` / \`useHead\` before \`renderToString\` WITHOUT wrapping the whole sequence in one \`runWithRequestContext\` — the prefetch lands in a different (or the shared fallback) context than the render, so the render sees no loader data
 - Wrapping a synchronous function — the signature is \`() => Promise<T>\`; return the promise (or make the fn \`async\`) so the ALS scope spans the awaited work`,
   },
@@ -2380,8 +2380,8 @@ import { setStoreRegistryProvider } from "@pyreon/store"
 
 // once, at server startup:
 configureStoreIsolation(setStoreRegistryProvider)`,
-    notes: `Opt in to per-request \`@pyreon/store\` isolation. Call ONCE at server startup, passing \`@pyreon/store\`'s \`setStoreRegistryProvider\`. After this, every \`renderToString\` / \`renderToStream\` / \`runWithRequestContext\` call gets its own fresh store registry via ALS. WITHOUT calling it, store isolation is a no-op and all concurrent requests share ONE process-global store registry — request A's \`defineStore\` state is visible to request B (SSR state bleed across users). See also: runWithRequestContext, renderToString.`,
-    mistakes: `- Not calling it at all in an SSR app that uses \`@pyreon/store\` — concurrent requests share one global registry, so one request’s store state leaks into another request’s render
+    notes: 'OVERRIDE per-request `@pyreon/store` isolation with a provider of your own. You do NOT need to call this to be isolated: `@pyreon/store` publishes its setter on a `globalThis` seam when it loads on a server, and the renderer wires it at its own choke point, so every `renderToString` / `renderToStream` / `runWithRequestContext` call already gets a fresh registry via ALS. It was opt-in before, which meant unisolated by default — the two layers that own the server (`@pyreon/server`, `@pyreon/zero`) cannot call it, because neither depends on `@pyreon/store`, so the only party who could opt in was the application author. Reach for it to supply a custom registry (a shared build-time cache across SSG pages, a test double); the last call wins. See also: runWithRequestContext, renderToString.',
+    mistakes: `- Believing you must call it — isolation is automatic as of the seam; this is the override, not the switch. A pre-seam app that DID call it keeps working unchanged
 - Calling it per request instead of once at startup — it only needs to wire the provider once; the per-request fresh \`Map\` is handled internally by the ALS run
 - Passing something other than the \`setStoreRegistryProvider\` exported by \`@pyreon/store\` — the contract is specifically that provider-setter shape`,
   },
@@ -4038,12 +4038,13 @@ const signIn = async () => {
 }
 const authed = () => fetch('/api/me', { headers: { Authorization: 'Bearer ' + (secrets.read('auth-token') ?? '') } })
 const signOut = () => secrets.remove('auth-token')`,
-    notes: 'The imperative secret store for auth tokens / API keys / PII — the cross-platform boundary secrets must go through instead of `useStorage` (localStorage is plaintext + same-origin-script-readable). KEY-FIRST: `write(key, value)`. Per-platform backing: iOS Keychain, Android AndroidKeyStore AES-GCM over app-private storage (both encrypted at rest, survive relaunch), web a MODULE-SCOPED in-memory store (the web has no OS secret store; persisting secrets to localStorage would be the exact bug this hook prevents — web secrets are process-lifetime only, fail closed). Imperative by design, NOT a reactive signal: a secret is fetched at an auth boundary, not rendered as live UI. The store is app-wide — every `useSecureStorage()` call sees the same secrets. See also: useStorage (in @pyreon/storage — for NON-secret app state), useDatabase, useFetch.',
+    notes: 'The imperative secret store for auth tokens / API keys / PII — the cross-platform boundary secrets must go through instead of `useStorage` (localStorage is plaintext + same-origin-script-readable). KEY-FIRST: `write(key, value)`. Per-platform backing: iOS Keychain, Android AndroidKeyStore AES-GCM over app-private storage (both encrypted at rest, survive relaunch), web a MODULE-SCOPED in-memory store (the web has no OS secret store; persisting secrets to localStorage would be the exact bug this hook prevents — web secrets are process-lifetime only, fail closed). Imperative by design, NOT a reactive signal: a secret is fetched at an auth boundary, not rendered as live UI. The store is app-wide — every `useSecureStorage()` call sees the same secrets. On the SERVER it is INERT: reads return null, `write` returns false, nothing is stored. A module-scoped map is the right scope for a browser (one process, one user) and the wrong one for SSR (one process, everyone) — a secret written during a server render would otherwise be readable by every later request. See also: useStorage (in @pyreon/storage — for NON-secret app state), useDatabase, useFetch.',
     mistakes: `- Calling \`write(value, key)\` — the API is KEY-FIRST (\`write('auth-token', token)\`); the old value-first order was removed because a positional native lowering would compile with the arguments crossed
 - Storing a bearer/refresh token in \`useStorage\` or localStorage instead — plaintext on disk, readable by any same-origin script; that is the bug this hook exists to prevent
 - Expecting web secrets to survive a reload — the web store is deliberately in-memory (no OS secret store exists); persist web sessions via httpOnly cookies / your auth provider
 - Wrapping \`read()\` in a signal and rendering it as live UI — the store is imperative; fetch at the auth boundary, keep UI state in ordinary signals
-- Expecting \`remove()\` to report a missing key — delete is idempotent (true even when absent), matching Keychain semantics`,
+- Expecting \`remove()\` to report a missing key — delete is idempotent (true even when absent), matching Keychain semantics
+- Writing a secret during SSR and expecting to read it back — the server arm is inert (\`write\` returns false) precisely so one request cannot read another's secret. Server-side secrets belong in the request context or the environment, not in a Keychain mirror`,
   },
 
   'hooks/useControllableState': {
@@ -5566,6 +5567,26 @@ const events: Ev[] = [{ day: 'Mon', hour: '09', count: 12 }]
 - Reading an undrawn cell as zero — absent cells are skipped, not painted cold; emit explicit zero observations when zero is a fact worth showing
 - Passing a color ramp as anything but \`#rrggbb\` stops — named colors and rgb() strings are not parsed; the hex restriction is what lets the ramp math lower to native
 - Expecting \`onSelect\` to fire a datum index — duplicate (x, y) observations SUM into one cell, so the callback speaks in cells: categories plus the aggregated value, or null for a miss (an undrawn cell is a miss too: absence is not selectable)`,
+  },
+
+  'charts/RadarChart': {
+    signature: '<T>(props: RadarChartProps<T>) => VNodeChild',
+    example: `import { RadarChart } from '@pyreon/charts/plot'
+
+interface Player { name: string; speed: number; power: number; skill: number }
+const players: Player[] = [{ name: 'Ana', speed: 90, power: 40, skill: 80 }]
+
+<RadarChart
+  data={players}
+  axes={[{ label: 'Speed', max: 100 }, { label: 'Power', max: 100 }, { label: 'Skill', max: 100 }]}
+  values={(d: Player) => [d.speed, d.power, d.skill]}
+  label={(d: Player) => d.name}
+  showLegend
+/>`,
+    notes: 'Radar (spider) chart from the plot engine (`@pyreon/charts/plot`) — one polygon per datum over shared spokes. Each axis normalises by its OWN max, so axes in different units (revenue beside a score out of 5) are comparable on one chart; a shared scale would flatten every small-range axis to the centre. Fewer than three axes draws nothing (no area to enclose). The fill is translucent (`fillAlpha`, default 0.25) with a full-strength outline, so overlapping polygons stay readable. Geometry (`renderRadar`, `radarPolygon`, `radarAngles`) exported standalone. See also: PlotChart, PieChart.',
+    mistakes: `- Comparing absolute magnitudes across axes — each spoke normalises by its own \`max\`, so polygon SHAPE compares profiles, not sizes; put same-unit series on a PlotChart when magnitude is the story
+- Passing \`values\` in a different order than \`axes\` — the two are index-aligned, and a swapped pair silently plots speed on the power spoke
+- More than a handful of polygons — overlapping fills become unreadable past 3-4 series; filter the data or facet into several charts`,
   },
   // <gen-docs:api-reference:end @pyreon/charts>
   // ═══════════════════════════════════════════════════════════════════════════

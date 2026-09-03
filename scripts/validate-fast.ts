@@ -7,11 +7,13 @@
  * tripped freshly-pushed PRs:
  *
  *   - check-doc-claims      (CLAUDE.md doc page count drifted)
+ *   - check-docs-content-drops (a docs page renders with text MISSING)
  *   - check-multiplatform-matrix (matrix headline drifted from its own table)
  *   - check-changeset-required (no changeset for published-pkg source change)
  *   - check-no-major-changesets (a `major` bump is illegal while Pyreon is 0.x)
  *   - check-bundle-budgets   (new publishable package missing entry)
  *   - check-distribution    (sideEffects / source-map invariants)
+ *   - check-esm-only        (no CJS-enabling export condition)
  *   - check-export-entries  (subpath export has a build entry — release-build guard)
  *   - check-release-readiness (publishConfig.access / fixed-group coverage)
  *   - check-manifest-depth  (LOCKED package density regressed)
@@ -95,6 +97,7 @@ const GATES: Gate[] = [
   // validate-fast checked one half and not the other. 0.3s.
   { name: 'check-generated-fresh', cmd: 'bun docs/scripts/check-generated-fresh.ts' },
   { name: 'check-doc-claims', cmd: 'bun scripts/check-doc-claims.ts' },
+  { name: 'check-docs-content-drops', cmd: 'bun scripts/check-docs-content-drops.ts' },
   // The multiplatform capability matrix's headline must equal its own table's
   // Σ(weight × fraction) — the page once carried three disagreeing self-ratings.
   { name: 'check-multiplatform-matrix', cmd: 'bun scripts/check-multiplatform-matrix.ts' },
@@ -106,6 +109,7 @@ const GATES: Gate[] = [
   { name: 'check-no-major-changesets', cmd: 'bun scripts/check-no-major-changesets.ts' },
   { name: 'check-bundle-budgets', cmd: 'bun scripts/check-bundle-budgets.ts' },
   { name: 'check-distribution', cmd: 'bun scripts/check-distribution.ts' },
+  { name: 'check-esm-only', cmd: 'bun scripts/check-esm-only.ts' },
   { name: 'check-export-entries', cmd: 'bun scripts/check-export-entries.ts' },
   { name: 'check-tsconfig-presets', cmd: 'bun scripts/check-tsconfig-presets.ts' },
   { name: 'check-release-readiness', cmd: 'bun scripts/check-release-readiness.ts' },

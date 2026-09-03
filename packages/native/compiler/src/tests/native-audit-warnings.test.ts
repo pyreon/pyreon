@@ -910,7 +910,10 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
     // have native frontends (Element→Stack, styled(Prim), rocketstyle) so a user
     // imports them to AUTHOR multiplatform components. @pyreon/ui-components stays
     // web-only-on-import (PMTC compiles source, not the npm package).
-    for (const pkg of ['@pyreon/charts', '@pyreon/flow', '@pyreon/code', '@pyreon/document', '@pyreon/ui-components']) {
+    // NOTE `@pyreon/charts` left this loop when its radial components began
+    // lowering (nativeFrontend: PyreonPieChart/PyreonGaugeChart) — asserted in
+    // the derived-set describe below and in native-chart-components.test.ts.
+    for (const pkg of ['@pyreon/flow', '@pyreon/code', '@pyreon/document', '@pyreon/ui-components']) {
       it(`warns importing ${pkg} (web-only) into a native file + names the escape hatch`, () => {
         const result = transform(
           `import { Thing } from '${pkg}'\nimport { Stack } from '@pyreon/primitives'\nexport function App() { return <Stack><Thing /></Stack> }`,
@@ -927,20 +930,32 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
       })
     }
 
-    it('fires on a sub-path import (`@pyreon/charts/manual`)', () => {
+    it('fires on a sub-path import (`@pyreon/flow/layout`)', () => {
+      const result = transform(
+        `import { x } from '@pyreon/flow/layout'\nexport function App() { return null }`,
+        { target: 'kotlin' },
+      )
+      expect(result.warnings.some((w) => w.includes('@pyreon/flow') && w.includes('WEB-ONLY'))).toBe(true)
+    })
+
+    it('a charts sub-path import gets the SYMBOL-level advice now, not the blanket line', () => {
+      // `@pyreon/charts` declares nativeFrontend, so the blanket warn defers
+      // to the UNLOWERED entry — root-normalized, so the /manual subpath
+      // still matches it (the exact-string get used to leave this SILENT).
       const result = transform(
         `import { x } from '@pyreon/charts/manual'\nexport function App() { return null }`,
         { target: 'kotlin' },
       )
-      expect(result.warnings.some((w) => w.includes('@pyreon/charts') && w.includes('WEB-ONLY'))).toBe(true)
+      expect(result.warnings.some((w) => w.includes('WEB-ONLY'))).toBe(false)
+      expect(result.warnings.some((w) => w.includes('PieChart') && w.includes('GaugeChart'))).toBe(true)
     })
 
     it('warns ONCE per package even with multiple imports from it', () => {
       const result = transform(
-        `import { Chart } from '@pyreon/charts'\nimport { useChart } from '@pyreon/charts'\nexport function App() { return null }`,
+        `import { FlowCanvas } from '@pyreon/flow'\nimport { edgesFor } from '@pyreon/flow'\nexport function App() { return null }`,
         { target: 'swift' },
       )
-      expect(result.warnings.filter((w) => w.includes('@pyreon/charts') && w.includes('WEB-ONLY'))).toHaveLength(1)
+      expect(result.warnings.filter((w) => w.includes('@pyreon/flow') && w.includes('WEB-ONLY'))).toHaveLength(1)
     })
 
     for (const pkg of ['@pyreon/primitives', '@pyreon/reactivity', '@pyreon/store', '@pyreon/router', '@pyreon/form', '@pyreon/i18n', '@pyreon/validation']) {
@@ -1007,6 +1022,7 @@ describe('web-only package warnings are derived from the manifests', () => {
   // must NOT be blanket-warned — that is the "stale entry" failure, and it is
   // the more damaging direction: it tells the user a shipped API is unusable.
   for (const pkg of [
+    '@pyreon/charts',
     '@pyreon/toast',
     '@pyreon/a11y',
     '@pyreon/query',

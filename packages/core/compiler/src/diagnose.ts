@@ -40,6 +40,21 @@ export interface ErrorPattern {
  */
 export const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // A real, user-facing error in `@pyreon/router`'s loader path that the
+    // catalog did not teach at all. A cycle in loader data is one of the few
+    // SSR failures that surfaces as a hard 500 with a stack pointing into
+    // framework code, and the cause is almost always an ORM instance rather
+    // than anything the author wrote deliberately — so the paste-the-error path
+    // is exactly where it should be answered.
+    pattern: /\[Pyreon\] Loader returned circular reference at|Loader returned circular reference/i,
+    diagnose: () => ({
+      cause:
+        'A route loader returned an object graph containing a CYCLE, and loader data must be serialized into the page as JSON so the client can hydrate without re-fetching. The key path in the message is where the cycle closes. The overwhelmingly common source is an ORM instance with its back-references intact — a Prisma/Mongo/TypeORM row whose `author` points at a user whose `posts` array points back at the row. Note the serializer distinguishes a real cycle from a SHARED reference: `{ author: user, lastEditor: user }` is a DAG, not a cycle, and serializes fine — so this error means the graph genuinely closes on itself.',
+      fix: 'Return a plain projection of the fields the route actually renders, rather than the ORM object. That is worth doing regardless of this error: everything a loader returns is embedded in the HTML and shipped to every visitor, so returning a whole row also ships columns the page never displays. If you need the nested shape, select it explicitly (Prisma `select`, a Mongo projection) or map it yourself — a custom `replacer` is not an option, because the framework owns this serialization.',
+      fixCode: "// throws — `post.author.posts` points back at `post`\n// export const loader = () => db.post.findUnique({ where: { id }, include: { author: true } })\n\n// returns a plain projection: no cycle, and no columns the page never renders\nexport const loader = async () => {\n  const post = await db.post.findUnique({\n    where: { id },\n    select: { id: true, title: true, body: true, author: { select: { id: true, name: true } } },\n  })\n  return { post }\n}",
+    }),
+  },
+  {
     // The residual footgun left by narrowing the native audit's
     // `native-unsupported-decl` rule. That rule used to flag EVERY top-level
     // `interface`, on the false premise that PMTC drops them silently — it
@@ -1662,6 +1677,24 @@ const geometry = () => props.shape
       fix: 'Assign an OBJECT (`user = { …user, name }`), or — if the binding legitimately holds primitives sometimes — declare it shallow with `state.raw(initial)`, which keeps replace-the-value signal semantics for any type. TypeScript catches this shape when the state is typed: `state<T>` returns `T`, so assigning a primitive to object-typed state is a type error before it is a runtime one.',
       fixCode:
         "// deep state stays an object:\nlet user = state({ name: 'Ada' })\nuser = { name: 'Bo' }        // ✓ replace with an object\n\n// a sometimes-primitive value is SHALLOW state:\nlet selection = state.raw<{ id: number } | null>(null)\nselection = { id: 1 }        // ✓ replace semantics, any type",
+    }),
+  },
+  {
+    // A chart JSX component reached the native build unlowered. The radial
+    // components (`PieChart` / `GaugeChart` from `@pyreon/charts/plot`) DO
+    // lower — but only in the supported shape, and every decline path warns
+    // by name at transform time (an `(d, index)` accessor, a missing
+    // `data`/`value`/`label`/`value` prop). `PlotChart` and the rest of the
+    // cartesian family are web-only, so their tags emit verbatim and die in
+    // the platform compiler instead.
+    pattern:
+      /(cannot find '(?:Pie|Gauge|Plot|Heatmap|Candlestick)Chart' in scope|Unresolved reference '(?:Pie|Gauge|Plot|Heatmap|Candlestick)Chart')/,
+    diagnose: () => ({
+      cause:
+        "A chart component from `@pyreon/charts` reached the emitted Swift/Kotlin as a literal tag — nothing by that name exists on either platform. For `<PieChart>`/`<GaugeChart>` this means the native lowering DECLINED: the transform warnings name the reason (an `(d, index)` two-argument accessor, or a missing required prop — the lowering needs `data`, `value` and `label` for pie, `value` for gauge). For `<PlotChart>`/heatmap/candlestick there is no native lowering at all — the cartesian family is marks-based and web-only.",
+      fix: "Read the transform warnings first — the decline paths are named. For the radials: use single-argument accessors (`value={(t) => t.amount}`) and pass the required props; index-dependent slices need a precomputed array. For the cartesian family: keep it in a `<Web>` branch, or embed the web chart via the `@pyreon/charts/webview` bridge inside a `<WebView>` host.",
+      fixCode:
+        "// radial: lowers to the native PyreonPieChart over the generated engine\n<PieChart data={txns} value={(t) => Math.abs(t.amount)} label={(t) => t.description} />\n\n// cartesian: web-only — branch it\n<Web><PlotChart data={rows} marks={[line((d) => d.y)]} /></Web>",
     }),
   },
 ]

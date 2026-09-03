@@ -4,6 +4,7 @@
 // starter fixtures use are recognised. Anything outside that set is
 // either passed through as unknown or surfaces a warning.
 
+import { warnUnlowerdCrdtMembers } from './parse-crdt-surface'
 import { parseSync } from 'oxc-parser'
 import { detectPlain, transformPlain } from '@pyreon/compiler/plain'
 import {
@@ -253,6 +254,15 @@ interface ParseCtx {
    */
   httpClientBaseUrls: Map<string, string>
   /**
+   * Identifiers passed as `createHttp({ schema: <name> })`. The pre-pass
+   * below reads ONLY `baseUrl` off that config and emits nothing for the
+   * declaration, so such a name never reaches the Swift/Kotlin — and the
+   * blanket "reproduced verbatim … cannot find X in scope" line would be
+   * denying a symbol that is not there. Same shape as the `withField` /
+   * `zodSchema` suppressions below.
+   */
+  httpClientSchemaNames: Set<string>
+  /**
    * `@pyreon/http` endpoint bindings: `const getUser = api.endpoint('GET
    * /users/:id', { … })` → `getUser` → its method / path template / owning
    * client / `:param` names. A same-file, compile-time-templated endpoint
@@ -364,6 +374,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     helperFns: [],
     theme: DEFAULT_THEME,
     httpClientBaseUrls: new Map(),
+    httpClientSchemaNames: new Set(),
     endpointDefs: new Map(),
     inlineSchemas: [],
     inlineSchemaByShape: new Map(),
@@ -395,6 +406,12 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // that fails the native build with a cryptic `Cannot find 'Chart' in
   // scope`, far from the cause. Name the package + the escape-hatch fix.
   warnWebOnlyImports(ast.program.body as AnyNode[], ctx)
+  // `@pyreon/sync` CRDT members with no native counterpart. PMTC reproduces a
+  // member call VERBATIM, so an un-lowered one fails the Swift/Kotlin build
+  // inside a GENERATED file naming a method the user never wrote in that
+  // language. Program-level because a call can appear anywhere (a handler, a
+  // nested closure), not only in a declaration.
+  warnUnlowerdCrdtMembers(ast.program as AnyNode, ctx.warnings, source)
   // Pre-pass: record the local name(s) bound to the imperative `toast` import
   // from @pyreon/toast, so parseExpr can lower `toast(...)` / `toast.success(...)`
   // to PyreonToast. Handles renamed imports (`import { toast as notify }`).
@@ -555,6 +572,17 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
       zodSchemas.push(pv)
       continue
     }
+    // Every schema recognizer above declined. They all key on the INLINE
+    // argument (`zodSchema(z.object({ … }))`), so the ordinary refactor of
+    // lifting the schema to its own const — `const base = z.string()` then
+    // `zodSchema(base)` — matches none of them and falls through to a VERBATIM
+    // emit. `z` / `v` / `type` exist in neither Swift nor Kotlin, so the
+    // generated file fails to compile on `cannot find 'z' in scope` /
+    // `unresolved reference`, with nothing said at emit time. Declining is
+    // correct — synthesizing a struct from an unresolved binding would be a
+    // guess — but a decline has to be OBSERVABLE, or it is indistinguishable
+    // from shipping it broken.
+    warnUnloweredSchemaAdapter(node, ctx.warnings)
     // styled(Prim)`css` component lowering — `const X = styled(Stack)`…`` wrapping
     // a CANONICAL primitive. Collected BEFORE the arrow-helper + module-decl
     // catch-alls so the styled const isn't mis-parsed as a broken module binding.
@@ -659,6 +687,27 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // as a top-level struct alongside the named ones. Appended, so a
   // top-level `const X = s.object(...)` still emits first.
   for (const inline of ctx.inlineSchemas) zodSchemas.push(inline)
+
+  // A feature emits an alias under the SOURCE binding name so `Todo.name`
+  // resolves. Swift and Kotlin do NOT separate the type and value namespaces
+  // the way TypeScript does, so if the same file also declares a TYPE of that
+  // name the two collide — `invalid redeclaration of 'Todo'` / `conflicting
+  // declarations`, in a generated file the author never wrote. Neither alias
+  // form escapes it (a `typealias` and a value binding collide identically;
+  // both were measured). Say so by name instead of shipping the collision.
+  for (const f of features) {
+    const clash =
+      structs.some((st) => st.name === f.bindingName) ||
+      enums.some((en) => en.name === f.bindingName)
+    if (clash) {
+      ctx.warnings.push(
+        `defineFeature declaration \`${f.bindingName}\`: a type of the same name is declared in this file. ` +
+          `Swift and Kotlin share one namespace for types and values, so the emitted alias collides with it ` +
+          `and the native build fails on a redeclaration. Rename one of them (e.g. the feature binding to ` +
+          `\`${f.bindingName}Feature\`).`,
+      )
+    }
+  }
 
   return {
     components,
@@ -1113,7 +1162,6 @@ function tryModuleDeclsFromTopLevel(node: AnyNode, ctx: ParseCtx): ModuleDeclIR[
 // different as a linter, a `<head>` manager and an animation engine.
 const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map([
   ['@pyreon/atlas', "the component workbench — dev tooling that runs in a browser, not app runtime"],
-  ['@pyreon/charts', "wraps ECharts (browser canvas engine); consume on native via the `<WebView>` bridge subpath"],
   ['@pyreon/code', "wraps CodeMirror 6 (DOM editor engine); consume on native via the `<WebView>` bridge subpath"],
   ['@pyreon/compiler', "the web JSX compiler + build tooling itself; the native sibling is @pyreon/native-compiler — nothing here ships to an app runtime"],
   ['@pyreon/config', "build-time config shape read by the tooling that assembles an app — never part of a rendered app on any target"],
@@ -1716,6 +1764,12 @@ function collectHttpClients(body: AnyNode[], ctx: ParseCtx): void {
         // http client is normally written, and its value is just as known at
         // build time as an inline string.
         baseUrl = staticStringArg(v, ctx) ?? HTTP_NONLITERAL_BASEURL
+      }
+      // `schema:` is read by nobody on this path — PyreonFetch does not
+      // validate — so record the name to keep the symbol warn honest.
+      const sch = readObjectProp(cfg, 'schema') as AnyNode | undefined
+      if (sch?.type === 'Identifier' && typeof sch.name === 'string') {
+        ctx.httpClientSchemaNames.add(sch.name)
       }
       ctx.httpClientBaseUrls.set(name, baseUrl)
     }
@@ -2511,6 +2565,20 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
     },
   ],
   [
+    '@pyreon/charts',
+    {
+      // The RADIAL components lower: `<PieChart>` / `<GaugeChart>` from the
+      // /plot subpath emit the runtime PyreonPieChart / PyreonGaugeChart views
+      // over the GENERATED PyreonChartEngine geometry — web and native draw
+      // the same byte-locked math. The cartesian `<PlotChart>` is marks-based
+      // (generic accessor layer, deliberately outside the generated bundle),
+      // and the default export wraps ECharts — both stay web.
+      advice:
+        '`<PieChart>` and `<GaugeChart>` from `@pyreon/charts/plot` DO lower (native PyreonPieChart / PyreonGaugeChart over the generated engine). The cartesian `<PlotChart>` / heatmap / candlestick and the ECharts-backed default export are web-only — keep them in a `<Web>` branch, or embed via the `/webview` bridge',
+      supported: new Set(['PieChart', 'GaugeChart']),
+    },
+  ],
+  [
     '@pyreon/validate',
     {
       advice:
@@ -2663,8 +2731,20 @@ function warnUnloweredPyreonModules(body: AnyNode[], ctx: ParseCtx): void {
     if (node.type !== 'ImportDeclaration') continue
     const src = node.source?.value
     if (typeof src !== 'string') continue
-    const entry = UNLOWERED_PYREON_MODULES.get(src)
-    if (entry === undefined) continue
+    // ROOT-normalized lookup: `@pyreon/charts/plot` must match the
+    // `@pyreon/charts` entry — an exact-string get left every subpath
+    // import SILENT (no symbol warn, and warnWebOnlyImports skips packages
+    // that have an entry here, so nothing fired at all). The `/webview`
+    // subpath is the documented native bridge and stays exempt, mirroring
+    // warnWebOnlyImports — a warning that fires on its own recommended fix
+    // trains people to ignore it.
+    const srcRoot = src.startsWith('@pyreon/')
+      ? `@pyreon/${src.slice('@pyreon/'.length).split('/')[0] ?? ''}`
+      : src
+    const isWebviewBridge =
+      src.startsWith('@pyreon/') && src.slice('@pyreon/'.length).split('/')[1] === 'webview'
+    const entry = UNLOWERED_PYREON_MODULES.get(src) ?? UNLOWERED_PYREON_MODULES.get(srcRoot)
+    if (entry === undefined || isWebviewBridge) continue
     for (const spec of (node.specifiers as AnyNode[]) ?? []) {
       if (spec.type !== 'ImportSpecifier') continue
       const imported = spec.imported?.name ?? spec.imported?.value
@@ -2708,6 +2788,12 @@ function warnUnloweredPyreonModules(body: AnyNode[], ctx: ParseCtx): void {
       ) {
         continue
       }
+      // Same shape once more: a name used ONLY as `createHttp({ schema })`
+      // is consumed by `collectHttpClients`, which reads `baseUrl` and
+      // nothing else, so the declaration emits no Swift/Kotlin at all. The
+      // blanket line claimed it was "reproduced verbatim" in an emit that
+      // never mentions it.
+      if (ctx.httpClientSchemaNames.has(imported)) continue
       // When a module lists `unsupported`, ONLY those warn — everything else in
       // it lowers and must stay silent.
       if (entry.unsupported !== undefined && !entry.unsupported.has(imported)) continue
@@ -2739,7 +2825,12 @@ function warnUnloweredPyreonHooks(body: AnyNode[], ctx: ParseCtx): void {
       // signals") is true but leaves the author guessing; an entry in
       // UNLOWERED_PYREON_MODULES names the actual alternative for THAT
       // package, which is the whole reason that map exists.
-      const moduleAdvice = UNLOWERED_PYREON_MODULES.get(src)?.advice
+      // Root-normalized like the specifier loop above — a hook imported from
+      // a SUBPATH must still get its package's advice.
+      const advSrcRoot = src.startsWith('@pyreon/')
+        ? `@pyreon/${src.slice('@pyreon/'.length).split('/')[0] ?? ''}`
+        : src
+      const moduleAdvice = (UNLOWERED_PYREON_MODULES.get(src) ?? UNLOWERED_PYREON_MODULES.get(advSrcRoot))?.advice
       ctx.warnings.push(
         `${imported}() (from ${src}) has NO native lowering — the call is reproduced verbatim in the emitted Swift/Kotlin, where no such function exists, so the native build fails with "cannot find '${imported}' in scope". ${
           moduleAdvice
@@ -5455,6 +5546,7 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     helperFns: [],
     theme: DEFAULT_THEME,
     httpClientBaseUrls: new Map(),
+    httpClientSchemaNames: new Set(),
     endpointDefs: new Map(),
     inlineSchemas: [],
     inlineSchemaByShape: new Map(),
@@ -11227,3 +11319,36 @@ function parseJsxChild(node: AnyNode, ctx: ParseCtx): ChildIR | null {
   return null
 }
 
+/**
+ * Warn when a `@pyreon/validation` adapter call reaches the emit un-lowered.
+ *
+ * Pure and total over the three adapters: anything not matched by the inline
+ * recognizers reaches here, so a new adapter is caught by adding its name to
+ * the set rather than by remembering to warn at a new call site.
+ */
+const SCHEMA_ADAPTERS = new Set(['zodSchema', 'valibotSchema', 'arktypeSchema'])
+
+export function warnUnloweredSchemaAdapter(node: AnyNode, warnings: string[]): void {
+  const varDecl =
+    node.type === 'ExportNamedDeclaration' && node.declaration?.type === 'VariableDeclaration'
+      ? node.declaration
+      : node.type === 'VariableDeclaration'
+        ? node
+        : null
+  if (!varDecl) return
+  const declarators = (varDecl.declarations as AnyNode[] | undefined) ?? []
+  if (declarators.length !== 1) return
+  const d = declarators[0]
+  if (!d || d.id?.type !== 'Identifier') return
+  const init = d.init as AnyNode | undefined
+  if (init?.type !== 'CallExpression' || init.callee?.type !== 'Identifier') return
+  const adapter = init.callee.name as string
+  if (!SCHEMA_ADAPTERS.has(adapter)) return
+  warnings.push(
+    `\`${adapter}\` declaration \`${d.id.name as string}\`: the schema argument is not an inline ` +
+      `literal, so no native struct is synthesized and the call is reproduced VERBATIM — the native ` +
+      `build then fails on a symbol that exists only in JS (\`cannot find 'z' in scope\` / ` +
+      `\`unresolved reference\`). Inline the schema at the call site ` +
+      `(\`${adapter}(z.object({ … }))\`) so it can be lowered.`,
+  )
+}

@@ -31,7 +31,7 @@
 | @pyreon/virtual | useVirtualizer, useWindowVirtualizer | TanStack Virtual adapter |
 | @pyreon/i18n | createI18n, I18nProvider, useI18n, Trans | Reactive i18n |
 | @pyreon/feature | defineFeature, reference, extractFields | Schema-driven CRUD primitives |
-| @pyreon/charts | useChart, Chart | Reactive ECharts bridge. **Vite + browser tests need a `tslib` alias** to `tslib.es6.js` (microsoft/tslib#189). Use `tslibBrowserAlias()` from `vitest.browser.ts` in test configs; add `resolve.alias: { tslib: 'tslib/tslib.es6.js' }` to consumer apps' `vite.config.ts`. |
+| @pyreon/charts | useChart, Chart, PlotChart, PieChart, GaugeChart, HeatmapChart, CandlestickChart, chartToSvg | TWO independent engines. `@pyreon/charts` bridges ECharts; `@pyreon/charts/plot` is Pyreon's own — pure-TypeScript geometry, marks as imported bindings (structural tree-shaking), canvas + server-side SVG backends. Import from ONE; a name from the default entry drags ECharts back in. The ECharts half needs a `tslib` alias** to `tslib.es6.js` (microsoft/tslib#189). Use `tslibBrowserAlias()` from `vitest.browser.ts` in test configs; add `resolve.alias: { tslib: 'tslib/tslib.es6.js' }` to consumer apps' `vite.config.ts`. |
 | @pyreon/storage | useStorage, useSessionStorage, useCookie, useIndexedDB | Reactive client storage |
 | @pyreon/hotkeys | useHotkey, useHotkeyScope, registerHotkey | Keyboard shortcuts |
 | @pyreon/permissions | createPermissions, PermissionsProvider, usePermissions | Reactive permissions |
@@ -376,7 +376,7 @@ deriveIslandName("Counter", islandRelPath(root, "/app/src/islands.ts"))
 
 ## @pyreon/runtime-server — SSR Renderer
 
-Pyreon's server-side renderer: walks a VNode tree and produces HTML. Signal accessors are called synchronously to SNAPSHOT their current value — no effects, no reactivity on the server (reactivity resumes post-hydration on the client). Async component functions are awaited. `renderToStream` flushes progressively and resolves Suspense boundaries out-of-order (fallback first, then a `<template>` + inline swap script). Concurrency-safe: every `renderToString` / `renderToStream` / `runWithRequestContext` call runs in its own `AsyncLocalStorage` store so concurrent requests never share context frames; `configureStoreIsolation()` extends the same isolation to the `@pyreon/store` registry. Most apps consume this transitively through `@pyreon/server` (`createHandler` / `prerender`) rather than calling it directly.
+Pyreon's server-side renderer: walks a VNode tree and produces HTML. Signal accessors are called synchronously to SNAPSHOT their current value — no effects, no reactivity on the server (reactivity resumes post-hydration on the client). Async component functions are awaited. `renderToStream` flushes progressively and resolves Suspense boundaries out-of-order (fallback first, then a `<template>` + inline swap script). Concurrency-safe: every `renderToString` / `renderToStream` / `runWithRequestContext` call runs in its own `AsyncLocalStorage` store so concurrent requests never share context frames; the `@pyreon/store` registry is isolated the same way AUTOMATICALLY — the store publishes its setter on a `globalThis` seam when it loads on a server and this renderer picks it up, so a consumer cannot forget to wire it; `configureStoreIsolation()` stays as the explicit override for a custom provider. Most apps consume this transitively through `@pyreon/server` (`createHandler` / `prerender`) rather than calling it directly.
 
 ```typescript
 import { renderToString } from "@pyreon/runtime-server"

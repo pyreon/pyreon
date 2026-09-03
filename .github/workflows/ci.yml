@@ -65,585 +65,79 @@ concurrency:
 permissions:
   contents: read
 
+# ── Job map ─────────────────────────────────────────────────────────────────
+# The org is on the free plan: 20 concurrent jobs ORG-WIDE, 5 macOS, shared
+# by every in-flight PR. Runner-minutes are unmetered (public repo); SLOTS
+# and DAG LEVELS are the whole constraint — measured 2026-09-01 an ordinary
+# code PR spent 641 min queued for 24 min of work. So the shape is: as few
+# jobs as the isolation genuinely needs, two levels deep, and a gate that
+# takes seconds is a STEP, never a job.
+#
+#   level 1   Install            install + decide + lib/ (one job, one failure semantics)
+#   level 2   Fast Gates         every lib-free gate (lint, docs, manifests, policy, secrets)
+#             Build              every lib-needing gate (examples, modes, budgets, coverage, rust)
+#             typecheck / test / e2e / scaffold cells   dynamic, batched by ci-batch.ts
+#             Test (browser)     vitest --browser (Playwright)
+#             Release Build      the literal next-release build + pack rehearsal
+#             bootstrap-exit-codes                      only when bootstrap.ts changed
+#   level 3   Test               ONE aggregator for all four matrices
+#   main only Coverage (Full), Benchmark
+#
+# Required contexts (both authorities — classic protection AND ruleset
+# 19416270 — must stay identical): Install, Fast Gates, Build, Test,
+# Test (browser), Release Build, bootstrap-exit-codes, plus the native and
+# CodeQL workflows' own jobs. NEVER rename a required job; DROP a name from
+# protection before deleting its job, never ADD one (an added name hangs
+# every open PR on "Expected" until its next push).
+#
 # ── Shared cache keys ──────────────────────────────────────────────────────
-# Defined here so every job uses the exact same strings.
-#
-# TWO-LAYER bootstrap cache strategy:
-#
-# 1. BOOTSTRAP_KEY (per-run-id) — what every DOWNSTREAM job restores via
-#    the setup-pyreon composite action. Bootstrap saves under this key
-#    after building lib/; downstream jobs restore under the same key for
-#    an exact-match guaranteed-fresh artifact set. Same shape + composite-
-#    action contract as pre-this-PR.
-#
-# 2. Source-hashed cross-run key — what the Bootstrap job ADDITIONALLY
-#    saves under. Constructed at step level via hashFiles(...) because
-#    that function isn't allowed in workflow-level `env:`. The Bootstrap
-#    job FIRST tries to restore from this cross-run key; on EXACT match,
-#    the build step skips entirely (saves ~236s). The save step writes
-#    under BOTH keys so the source-hashed key is populated for future
-#    cross-run hits AND the per-run-id key is populated for THIS run's
-#    downstream jobs.
-#
-# The two-layer design preserves the existing downstream-job contract
-# (composite action's `key: ${{ env.BOOTSTRAP_KEY }}` works unchanged)
-# while adding cross-run reuse for the source-stable case.
+# lib/ has TWO layers: a SOURCE-HASHED cross-run key (Install restores it,
+# rebuilds only content-changed packages, saves it back) and this per-run-id
+# key that every downstream job restores through setup-pyreon for an exact,
+# fresh set. hashFiles() cannot appear in workflow-level env, so the
+# source-hashed key is inlined at each site and `check-cache-key-sync`
+# enforces that every site hashes the same inputs. node_modules is keyed by
+# lockfile hash inside setup-pyreon.
 env:
-  # NM_KEY is gone (2026-06-11): node_modules is content-keyed by lockfile
-  # hash, computed inside the setup-pyreon composite. Only lib/ keeps a
-  # per-run key (source changes every push, so the per-run artifact is the
-  # only exact one) — and the composite degrades through the source-hashed
-  # + prefix restore-keys with a rebuild fallback when it's not visible.
   BOOTSTRAP_KEY: bootstrap-${{ github.run_id }}
 
 jobs:
-  # ── Install: checkout + install + bootstrap, then save caches ───────────
-  # Downstream jobs restore these caches by run_id — guaranteed fresh,
-  # no stale restore-keys matches, no redundant bun install calls.
+  # ── Install: ONE job for install → decide → build lib/ ─────────────────
+  # This used to be three jobs — Install ∥ Changes (decide) → Bootstrap — on
+  # the theory that a no-`needs` decide job "starts at t=0" and lib-free jobs
+  # should not wait for the lib/ build. Both hold only while runners are
+  # free, and they are not: the org's free plan allows 20 concurrent jobs
+  # ORG-WIDE, shared by every in-flight PR, and on 2026-09-01 an ordinary
+  # code PR (run 33544139801) spent 641 min queued for 24 min of work. Under
+  # that regime every DAG LEVEL costs a full queue round (tens of minutes)
+  # and every JOB is a slot the other PRs wait for — so one job at level 1
+  # beats three jobs across two levels, even though lib-free jobs now wait a
+  # couple of minutes longer for the build. The decide work is seconds of
+  # git + bun and needs nothing from node_modules; it runs after the install
+  # only so this job has one failure semantics: if Install fails, every
+  # dependent's fail-closed clause fires and the FULL set runs, loudly.
+  #
+  # Outputs — all fail-closed (a detection error means "run everything",
+  # because a skipped required check reports SUCCESS to branch protection):
+  #   code       a non-docs source file changed → gates the read-nothing
+  #              heavy jobs (Build's gates, browser tests, Release Build)
+  #   affected   ANY workspace is affected, INCLUDING a doc-INPUT change
+  #              mapped to its consumer (anti-patterns.md → @pyreon/mcp,
+  #              whose tests parse it) → gates the lib/ build below
+  #   typecheck-/test-/e2e-/scaffold-matrix (+ -has)  dynamic cell lists,
+  #              packed by ci-batch.ts; only affected categories spawn a
+  #              cell, and the cells still compute their own narrow filter
+  #   bootstrap-exit-codes   bootstrap.ts's own contract test is relevant
+  # `code` and `affected` diverge exactly on a doc-INPUT change (code=false,
+  # affected=true). A pure-prose docs PR is false/false → only Fast Gates and
+  # the aggregators run.
   install:
     name: Install
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      # Shallow checkout — Install needs only the working tree (bun.lock +
-      # package.json set). The affected-filter computation that used to
-      # require full history here was dead weight: every consumer (cells,
-      # changes) computes its own; the `affected-filter` output had ZERO
-      # readers. Removed 2026-07 (queue-contention optimization pass).
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: .bun-version
-      # P1b — cache bun's global package-tarball cache (`~/.bun/install/cache`).
-      # When the lockfile-keyed node_modules restore misses (new bun.lock hash,
-      # fresh runner), `bun install --frozen-lockfile` extracts tarballs from
-      # this cache. Without it bun re-fetches every package from npm registry —
-      # ~30-90s on cold starts. Content-addressed by tarball hash, safe to
-      # share cross-run AND cross-PR.
-      # RESTORE always, SAVE on push:main only — the same discipline as the
-      # verdict store (#2652), applied to CI's BIGGEST cache consumer. The
-      # combined actions/cache form saved this 1.2GB tarball store on EVERY
-      # ref: each PR whose bun.lock hash differed from main minted a copy
-      # scoped to its own merge ref — reusable only by re-runs of that same
-      # PR — and five such copies (~6GB) had pushed the repo's 10GB cache
-      # budget to 9.73GB, LRU-evicting every smaller cache (including the
-      # native verdict store this branch exists to make work). A PR with a
-      # lockfile change now pays one cold fetch per push (~30-90s) instead of
-      # poisoning the shared budget; main's saves keep the store fresh for
-      # every PR via the prefix restore-key.
-      - name: Restore bun install cache
-        id: bun-tarball-cache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-          restore-keys: bun-install-cache-${{ runner.os }}-
-      # Try to restore a previous lockfile-matched cache (fast path)
-      - name: Restore node_modules
-        id: nm-restore
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            node_modules
-            packages/*/*/node_modules
-            examples/*/node_modules
-            docs/node_modules
-          key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-      # P3c — skip the postinstall lib/ build. The Install job now does
-      # ONLY `bun install --frozen-lockfile` (~60s) so lib-free downstream
-      # jobs (typecheck, lint, test, coverage, audit-types, etc.) unblock
-      # ~150s sooner. The separate `bootstrap` job below runs the build
-      # and gates lib-needing jobs (build, verify-modes, e2e-*,
-      # check-bundle-budgets, scaffold-smoke, check-distribution).
-      # PYREON_BOOTSTRAP_SKIP=1 makes bootstrap.ts a no-op (exit 0 before
-      # any work). Local-dev installs deliberately keep the build because
-      # devs want `bun run dev` to work immediately.
-      - run: PYREON_BOOTSTRAP_SKIP=1 bun install --frozen-lockfile
-      # Save under the lockfile hash — the ONLY node_modules key now.
-      # The per-run-id save was dropped in the 2026-06-11 root-cause fix:
-      # node_modules is fully determined by the lockfile, so the content
-      # key IS exact; the run-id copy added a same-run cache-propagation
-      # dependency (randomly invisible to same-run readers during cache-
-      # service degradation) plus ~317MB of quota churn per run.
-      - name: Save node_modules (lockfile key)
-        if: steps.nm-restore.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            node_modules
-            packages/*/*/node_modules
-            examples/*/node_modules
-            docs/node_modules
-          key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-      # The tarball-store save half of the restore above — push:main only, and
-      # only when the exact key missed (a fresh bun.lock hash). NOTE the
-      # node_modules save above deliberately KEEPS per-ref saves: downstream
-      # jobs of a lockfile-changing PR run restore it by exact key, and
-      # without it every one of them would pay the fallback install. The
-      # tarball store has no such role — it is only the fetch-accelerator
-      # behind cold installs, and a prefix-restored stale store is always
-      # valid (content-addressed tarballs) — so its per-ref copies were pure
-      # budget poison.
-      - name: Save bun install cache (main only)
-        if: github.ref == 'refs/heads/main' && steps.bun-tarball-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-
-  # ── Bootstrap (P3c): builds lib/ separately from Install ──────────────
-  # Restores node_modules from the Install job (per-run cache), runs
-  # `bun scripts/bootstrap.ts` (which does the workspace-wide build of
-  # lib/*), saves the lib/ cache for lib-needing downstream jobs.
-  #
-  # ## Why split this off
-  #
-  # Pre-P3c, Install ran `bun install` + the postinstall bootstrap in
-  # one ~210s job. Every downstream job — INCLUDING lib-free ones like
-  # typecheck, lint, test — waited the full 210s to start. The build
-  # step (~150s) accounts for ~70% of that wait.
-  #
-  # Post-P3c, Install does ONLY `bun install` (~60s). Lib-free jobs
-  # need only `install`, so they start ~150s sooner. Lib-needing jobs
-  # need `bootstrap` (which itself needs `install`), so their start
-  # time is roughly unchanged (~210s = 60s install + 150s bootstrap)
-  # but the critical path for the COMMON case (PRs only need a subset
-  # of lib-needing jobs) is dominated by the now-faster lib-free path.
-  #
-  # ## Cross-run lib/ caching deliberately disabled
-  #
-  # We DON'T restore a previous-run lib/ here for the same reason the
-  # pre-P3c Install job didn't: rolldown's chunk filenames are
-  # content-hashed, and a stale lib/ that nominally matches current
-  # source might reference chunk filenames that no longer exist
-  # (dropped files, divergent chunk-split decisions between runs).
-  # Save under the per-run key only so downstream jobs in THIS run get
-  # exactly the lib/ that THIS run's bootstrap produced.
-  bootstrap:
-    name: Bootstrap
-    # Skip the ~210s lib/ build when NOTHING is affected — a pure-prose docs PR
-    # (CLAUDE.md, a README). Gated on `affected` (NOT `code`): a doc-INPUT change
-    # (anti-patterns.md → @pyreon/mcp) is code=false but affected=true, and
-    # test-cell then needs lib/, so bootstrap must run.
-    #
-    # ALSO gated on `e2e-has`, and that half is load-bearing. The rest of this
-    # comment used to claim every lib/ consumer is gated on `affected`/`code`
-    # "or its own decide, so nothing downstream needs lib/ when this skips" —
-    # which is exactly WRONG for e2e: e2e is gated on its own decide, and that
-    # decide can say RUN while `affected` says nothing.
-    #
-    # `e2e-affected.ts` treats any `e2e/` change as a trigger, but a change to
-    # `e2e/**` alone touches no workspace, so `affected.ts` returns false. Then
-    # bootstrap skips, the e2e matrix (needs: bootstrap) skips, and the
-    # fail-closed aggregator errors on the decide-says-run/suite-skipped
-    # contradiction — making a PR that only fixes e2e SPECS structurally
-    # un-mergeable (#2978). Same class as the scripts-json disagreement
-    # documented in `affected.ts`, a different shape.
-    #
-    # Fail-closed: also runs if `changes` itself failed.
-    needs: [install, changes]
-    if: ${{ (success() && (needs.changes.outputs.affected == 'true' || needs.changes.outputs.e2e-has == 'true')) || (failure() && needs.changes.result != 'success') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # Composite restores node_modules (default) from Install's per-run
-      # cache. We disable bootstrap restore because the cache doesn't
-      # exist yet — THIS job populates it.
-      - uses: ./.github/actions/setup-pyreon
-        with:
-          restore-bootstrap: 'false'
-      # Layer 2: source-hashed cross-run cache + content-hash INCREMENTAL
-      # rebuild. On an EXACT key hit (no package source changed since a prior
-      # run) the Build step is a no-op (~3s vs ~236s). On a prefix
-      # (restore-keys) hit — some source changed — the NEAREST prior lib/ +
-      # its manifest are restored, and `scripts/bootstrap.ts` content-hashes
-      # each package and rebuilds ONLY the changed ones (~15-30s for a 1-2
-      # package PR vs a ~236s cold build). The `.bootstrap-cache.json`
-      # manifest (per-package source hashes) travels WITH lib/ in the same
-      # cache entry, so the restored lib/ and the hashes that describe it
-      # are always consistent.
-      #
-      # restore-keys is SAFE here (it was NOT under the old mtime detection):
-      # bootstrap.ts now decides rebuilds by SOURCE CONTENT HASH, not mtime,
-      # so a prefix-restored (older-source) lib/ never looks falsely-fresh —
-      # every changed package is rebuilt in full (consistent chunks) and
-      # unchanged packages keep their hash-verified lib/. Workspace deps are
-      # externalized (JS) / referenced (DTS), so there is no cross-package
-      # chunk staleness when only a subset rebuilds.
-      #
-      # hashFiles(...) is inlined — GHA disallows it in workflow-level
-      # `env:`. Keep inputs in sync between this restore and the saves below.
-      - name: Restore source-hashed lib/ cache (+ incremental manifest)
-        id: bootstrap-cache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            packages/*/*/lib
-            .bootstrap-cache.json
-          key: bootstrap-ubuntu-${{ hashFiles('packages/*/*/src/**', 'packages/*/*/package.json', 'packages/*/*/tsconfig.json', 'tsconfig.json', 'scripts/bootstrap.ts', 'bun.lock') }}
-          restore-keys: |
-            bootstrap-ubuntu-
-      # Build on any non-exact-hit. On an exact hit nothing changed → skip.
-      # Otherwise bootstrap.ts runs and incrementally rebuilds only the
-      # packages whose content hash differs from the restored manifest
-      # (full cold build when there was no prefix match to restore).
-      - name: Build lib/ (incremental)
-        if: steps.bootstrap-cache.outputs.cache-hit != 'true'
-        run: bun scripts/bootstrap.ts
-      - name: Cache-hit summary
-        run: |
-          if [ "${{ steps.bootstrap-cache.outputs.cache-hit }}" = "true" ]; then
-            echo "::notice title=Bootstrap cache hit::source-hashed cache hit — skipped ~236s of build"
-          else
-            echo "::notice title=Bootstrap cache miss::source changed since last cached build — rebuilt lib/"
-          fi
-      # Save under the source-hashed key (cross-run reuse). Only when
-      # we just BUILT (no point re-saving identical bytes on cache-hit).
-      - name: Save source-hashed lib/ cache for next runs
-        if: steps.bootstrap-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          # Save the manifest alongside lib/ so the next run's restore gets
-          # the per-package hashes that describe exactly this lib/.
-          path: |
-            packages/*/*/lib
-            .bootstrap-cache.json
-          # Key MUST match the restore step above — keep in sync.
-          key: bootstrap-ubuntu-${{ hashFiles('packages/*/*/src/**', 'packages/*/*/package.json', 'packages/*/*/tsconfig.json', 'tsconfig.json', 'scripts/bootstrap.ts', 'bun.lock') }}
-      # Layer 1: per-run-id key. ALWAYS save under this key (whether the
-      # build ran or the source-hashed cache hit). Every downstream job
-      # in this run (test, e2e, verify-modes, etc.) restores lib/ via
-      # the setup-pyreon composite action's `key: ${{ env.BOOTSTRAP_KEY }}`.
-      # This preserves the per-run-id contract pre-this-PR — downstream
-      # jobs see the same lib/ they always have, no composite-action edits
-      # needed.
-      - name: Save lib/ under per-run-id key for downstream jobs
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: packages/*/*/lib
-          key: ${{ env.BOOTSTRAP_KEY }}
-
-  # ── Shared setup anchor (YAML anchor not supported, so we repeat) ───────
-  # Every downstream job: checkout → setup-bun → restore run_id caches.
-  # No bun install needed — caches are guaranteed fresh from Install job.
-
-  # ── Typecheck: per-category matrix (P3b) ─────────────────────────────
-  # Sharded by `packages/<category>/` (8 cells in parallel). Each cell
-  # narrows the affected-filter to its own slice via
-  # `scripts/affected.ts --category=<name>`; cells with no affected
-  # packages in their category skip gracefully (empty filter = no-op).
-  # Aggregator `typecheck` job (next) keeps the stable `Typecheck`
-  # required check name for branch protection.
-  #
-  # Why shard: pre-P3b Typecheck ran `bun run $FILTER --sequential
-  # typecheck` against EVERY affected package on one runner (~270s
-  # median for full-suite runs because we must run sequentially to
-  # avoid 7+ heavy tsc invocations OOM-killing the 7GB runner). Sharding
-  # parallelizes across runners — per-cell wall-clock = ~max-of-category
-  # (90-120s typical) instead of the full sum. Critical-path drop
-  # ~150-180s.
-  #
-  # Why 8 cells (not 5 as the plan first sketched): every `packages/*`
-  # category is its own cell — including `internals` (4 pkgs), `ui` (3
-  # private), `native` (6, newer ios/android stuff). The matrix infra
-  # cost is per-cell startup overhead (~30s composite restore); going
-  # 5→8 cells adds ~3 runners but each finishes in ~30-60s anyway
-  # because every cell carries fewer packages. Smaller cells also fit
-  # under the 10min job timeout with comfortable margin on the OOM-
-  # sensitive `--sequential` path.
-  typecheck-cell:
-    name: typecheck (${{ matrix.name }})
-    # DYNAMIC matrix (2026-07): only categories with affected packages spawn a
-    # cell — `changes` computes the list with the SAME script+base each cell
-    # uses, so the spawn decision and the cell's own filter can never disagree.
-    # Pre-change all 9 cells booted a runner on every PR and most self-skipped
-    # via an empty filter (~30–60s of queue+checkout+setup per no-op). The
-    # `typecheck` aggregator treats a skipped/empty matrix as a pass.
-    # Fail-closed twice over: if `changes` failed, the failure() arm runs the
-    # cells AND the `|| full-list` matrix fallback spawns every category.
-    # `examples` is a pseudo-category (affected.ts maps it to the top-level
-    # examples/ dir) — example type regressions were invisible to CI before it.
-    needs: [install, changes]
-    if: ${{ (success() && needs.changes.outputs.typecheck-has == 'true') || (failure() && needs.changes.result != 'success') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJSON(needs.changes.outputs.typecheck-matrix || '[{"name":"all","members":"core fundamentals internals native tools ui ui-system zero examples"}]') }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # affected.ts needs the merge-base to compute a real diff;
-          # the install job uses fetch-depth: 0 for the same reason.
-          fetch-depth: 0
-      - uses: ./.github/actions/setup-pyreon
-        with:
-          # P3c — typecheck reads src/ via the bun customCondition (root
-          # tsconfig.json line 8); lib/ is not needed. Skipping the
-          # bootstrap restore lets typecheck start as soon as Install
-          # finishes (~60s) instead of waiting for Bootstrap (~210s).
-          restore-bootstrap: 'false'
-      # Incremental typecheck cache (`incremental` in @pyreon/tsconfig/base.json).
-      #
-      # Every package resolves its @pyreon/* deps to SOURCE, so a cold typecheck
-      # re-parses its whole dependency subtree. Measured locally on the `core`
-      # category: 12.2s cold, 4.9s with a warm cache and a leaf-file change
-      # (2.5x), 9.3s when a BASE package changed. Cells here run 144-235s and
-      # `Typecheck` is a required check, so this is on the merge critical path.
-      #
-      # ## Why the key is what it is
-      #
-      # Cell NAMES are unstable across the PR/main boundary: `ci-batch` packs
-      # whatever categories are affected, so main produces
-      # `core+internals+native+tools` while a PR touching one package produces
-      # `core`. A name-keyed cache would therefore miss in exactly the case it
-      # exists for. The restore-key is a bare `runner.os` prefix so a PR cell
-      # takes whichever tree is nearest, whatever cell built it.
-      #
-      # That works because the trees CONVERGE by construction: each cell
-      # restores the broad prefix BEFORE typechecking and saves afterwards, so
-      # what it saves is (whatever it restored) + (its own categories, fresh).
-      # After one main run every key holds a near-complete tree, and a partial
-      # or mismatched restore costs a cold typecheck — never a wrong one.
-      #
-      # ## Why a stale tree cannot produce a false green
-      #
-      # TypeScript versions every file in the program by CONTENT, so a cache
-      # built on another commit re-checks whatever actually changed. That is the
-      # load-bearing claim, and it is proven rather than assumed:
-      # `incremental-typecheck-safety.test.ts` runs five classes of mutation
-      # (own-source error, dependency arity, exported-type shape, removed
-      # export, type-only change) against a warm cache AND from scratch and
-      # asserts the two report IDENTICAL diagnostics.
-      #
-      # Saves happen on main only. A PR-scoped save is invisible to every other
-      # PR, so it would cost upload time and help nobody.
-      - name: Restore typecheck cache (tsbuildinfo)
-        id: tsbuildinfo-cache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            packages/*/*/.cache/tsbuildinfo
-            examples/*/.cache/tsbuildinfo
-          key: tsbuildinfo-${{ runner.os }}-${{ github.run_id }}-${{ matrix.name }}
-          restore-keys: tsbuildinfo-${{ runner.os }}-
-      - name: Run typecheck (${{ matrix.name }})
-        env:
-          MEMBERS: ${{ matrix.members }}
-        run: |
-          # A cell runs a BATCH of categories sequentially. No `set -e`: one
-          # failing category must not hide the ones behind it, so failures are
-          # collected and reported together at the end.
-          FAILED=""
-          for category in $MEMBERS; do
-          echo "::group::typecheck — $category"
-          # Recompute the filter per-cell with --category narrowing.
-          # We DON'T reuse install.outputs.affected-filter because it
-          # spans every category; per-cell we need only this slice.
-          # The script's closure is still computed against the full dep
-          # graph (a @pyreon/core change still expands to every
-          # dependent), but the final emit drops anything outside the
-          # cell's category.
-          #
-          # The `examples` pseudo-category maps to the top-level examples/
-          # dir; every other category maps to packages/<cat>/.
-          if [ "$category" = "examples" ]; then
-            CATEGORY_GLOB="./examples/*"
-          else
-            CATEGORY_GLOB="./packages/$category/*"
-          fi
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git fetch origin "${{ github.base_ref }}" || true
-            FILTER=$(bun run scripts/affected.ts \
-              --base=origin/${{ github.base_ref }} \
-              --category="$category")
-            # Root-file change in a PR returns --filter=* from the
-            # script (the only safe escalation when blast radius is
-            # unknowable). At the cell level we translate that to the
-            # category-scoped glob so each cell runs its OWN full
-            # slice — otherwise every cell would run every package and
-            # we'd lose the shard entirely.
-            if [ "$FILTER" = "--filter=*" ]; then
-              FILTER="--filter=$CATEGORY_GLOB"
-            fi
-          else
-            # push:main + merge_group always run the full slice for
-            # this category — the gate that protects main never
-            # trusts the narrowing.
-            FILTER="--filter=$CATEGORY_GLOB"
-          fi
-          if [ -z "$FILTER" ]; then
-            echo "No affected packages in this category — skipping."
-            echo "::endgroup::"
-            continue
-          fi
-          echo "Cell filter: $FILTER"
-          set -f
-          # --sequential caps simultaneous memory at the largest
-          # single tsc invocation (~775 MB for app-showcase, ~583 MB
-          # for fundamentals-playground — the heaviest are the example
-          # apps, now covered by the `examples` cell). --sequential keeps
-          # per-cell peak memory at one tsc at a time.
-          # shellcheck disable=SC2086
-          bun run $FILTER --sequential typecheck || FAILED="$FAILED $category"
-          set +f
-          echo "::endgroup::"
-          done
-          if [ -n "$FAILED" ]; then
-            echo "::error title=typecheck batch failed::category(ies):$FAILED"
-            exit 1
-          fi
-
-      # Save on main only — see the restore step's rationale. `if: always()` so
-      # a cell that FAILED still contributes its cache: the packages that
-      # typechecked cleanly before the failure produced valid buildinfo, and
-      # discarding it would make the next run pay for them again.
-      - name: Save typecheck cache (tsbuildinfo)
-        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            packages/*/*/.cache/tsbuildinfo
-            examples/*/.cache/tsbuildinfo
-          key: tsbuildinfo-${{ runner.os }}-${{ github.run_id }}-${{ matrix.name }}
-
-  typecheck:
-    name: Typecheck
-    needs: typecheck-cell
-    if: always()
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    steps:
-      - name: Aggregate typecheck matrix result
-        run: |
-          RESULT='${{ needs.typecheck-cell.result }}'
-          echo "typecheck-cell=$RESULT"
-          # `success` = every cell passed (or self-skipped via empty filter,
-          # which exits 0). `skipped` = the whole matrix was `if:`-gated off
-          # because nothing is affected (a pure-prose docs PR) — a pass, not a
-          # regression. Anything else (failure/cancelled) = fail.
-          if [ "$RESULT" = "success" ] || [ "$RESULT" = "skipped" ]; then
-            echo "All typecheck cells passed (or skipped: nothing affected)."
-            exit 0
-          fi
-          echo "::error::One or more typecheck cells failed ($RESULT)"
-          exit 1
-
-  lint:
-    name: Lint
-    needs: install
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-pyreon
-        with:
-          restore-bootstrap: 'false'
-      - name: Run lint
-        run: bun run lint
-      - name: Enforce pyreon/require-browser-smoke-test
-        run: bun run lint:browser-smoke
-
-  # ── Changes: did this PR touch anything beyond pure docs? ────────────
-  # Layer-2 heavy-job gate. A PR that changes ONLY docs/markdown (CLAUDE.md,
-  # READMEs, docs/**, .claude/**, llms*.txt) cannot affect any build/test
-  # output, so the expensive always-run jobs (build, verify-modes, coverage,
-  # browser/rust tests, audit-types, bundle/import budgets, distribution,
-  # client-bundle-node-imports, manifest-depth, pyreon-lint-gate) gate on
-  # `code == 'true'` and SKIP — a docs PR then runs only the fast gates
-  # (lint, doc-claims, docs-sync, changeset, secrets-scan, …).
-  #
-  # CONSERVATIVE by construction (scripts/affected.ts:isDocsOnlyChange): any
-  # non-docs path → code=true; a null/unknowable diff → code=true; push:main
-  # + merge_group → code=true (the gate that protects main never trusts the
-  # narrowing). A skipped required check reports as SUCCESS to branch
-  # protection (same mechanism `e2e-suite` / `scaffold-smoke-cell` rely on),
-  # so a docs PR is mergeable with the heavy jobs skipped.
-  #
-  # The per-category test/typecheck cells + e2e suites ARE gated here since
-  # 2026-07 — via DYNAMIC matrices (only affected categories/suites spawn a
-  # runner), not the old boot-then-self-skip shape. Their aggregators treat
-  # a skipped/empty matrix as a pass, with fail-closed fallbacks (a failed
-  # `changes` spawns the FULL cell matrices and reds the e2e/scaffold
-  # aggregators).
-  # Every PR must be gated by CI, and GitHub can only gate a PR whose base
-  # is a PROTECTED branch. Protecting feature branches is structurally
-  # impossible: a ruleset's `required_status_checks` gates REF UPDATES, so
-  # applying it to branches people push to makes them read-only (verified
-  # empirically 2026-07-30 — `GH013 … 37 of 37 required status checks are
-  # expected` on an ordinary push — and reverted). It works on `main` only
-  # because nobody pushes there directly; the sole ref update is the merge
-  # button, evaluated against the PR's completed checks.
-  #
-  # So the invariant "every PR merges gated" reduces to "every PR targets
-  # main", and this job is that policy made visible: a PR based on another
-  # feature branch gets an immediate, named RED check explaining why, instead
-  # of a quietly ungated merge button. On main-targeting PRs it passes in
-  # seconds. Skipped (= neutral) for push/merge_group events.
-  #
-  # Required-context note: this is in main's required set, which is safe
-  # BECAUSE the job is trivially green on every main-targeting PR — the only
-  # kind branch protection evaluates. Its red form only ever appears where
-  # nothing is required, which is exactly the situation it exists to name.
-  pr-base-guard:
-    name: PR targets main
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    steps:
-      - name: Enforce the single-base PR policy
-        env:
-          BASE: ${{ github.base_ref }}
-        run: |
-          if [ "$BASE" = "main" ]; then
-            echo "base=main — this PR is gated by branch protection."
-            exit 0
-          fi
-          echo "::error::This PR targets '$BASE', not 'main'. A PR into an unprotected feature branch can be merged before ANY check finishes — GitHub cannot require status checks on a branch people push to (the rule gates ref updates, freezing the branch). Re-target with: gh pr edit ${{ github.event.pull_request.number }} --base main. For dependent work, branch FROM the parent but still open the PR against main — the diff shrinks automatically when the parent merges."
-          exit 1
-
-  changes:
-    name: Changes (decide)
-    # NO `needs:` — deliberately. This job uses ONLY git + bun (the affected
-    # scripts import nothing from node_modules — proven by the pre-2026-07
-    # `changes`/`e2e-decide` jobs, which ran them for months with no
-    # node_modules restore). The old `needs: install` edge was pure DAG
-    # waste: under runner-queue contention (the measured PR-CI bottleneck —
-    # 11,076s of summed queue wait vs 2,050s of summed work on a typical
-    # run) every `needs` level costs a fresh 1–5 min queue round, and
-    # `changes` gates bootstrap + every cell matrix. Starting it at t=0
-    # moves the ENTIRE lib tier up by ~4–6 min.
-    #
-    # This is THE single decide job (2026-07 consolidation): it absorbed
-    # `E2E (decide)`, `Scaffold Smoke (decide)`, and the bootstrap-exit-codes
-    # relevance detection — three always-booted runners whose work is a few
-    # seconds of git/bun each. Fewer jobs = fewer queue slots = less
-    # self-inflicted starvation when parallel sessions push PRs concurrently.
-    runs-on: ubuntu-latest
-    timeout-minutes: 8
-    # Skip signals, all fail-closed (an error → the full set runs):
-    #   • code     = a non-docs source file changed. Gates the READ-NOTHING
-    #                heavy jobs (build, verify-modes, coverage, browser/rust,
-    #                audit-types, budgets, distribution, manifest-depth,
-    #                pyreon-lint-gate, client-bundle) — they never read docs.
-    #   • affected = ANY workspace is affected, INCLUDING a doc-INPUT change
-    #                mapped to its consuming package (anti-patterns.md +
-    #                docs/patterns/** → @pyreon/mcp, whose tests PARSE them).
-    #                Gates bootstrap.
-    #   • typecheck-matrix / test-matrix = the per-category cell lists.
-    #                Pre-consolidation EVERY cell booted a runner (9+9 jobs)
-    #                and self-skipped via an empty filter — paying ~30–60s of
-    #                checkout+setup+queue per no-op. Now only categories with
-    #                affected packages spawn a cell (e2e-decide's proven
-    #                dynamic-matrix pattern). Cells still compute their OWN
-    #                narrow filter — the matrix only decides SPAWNING.
-    #   • e2e-matrix / scaffold-has / bootstrap-exit-codes = moved verbatim
-    #                from the deleted decide jobs.
-    # They diverge exactly on a doc-INPUT change (code=false, affected=true). A
-    # pure-prose docs PR is code=false AND affected=false → everything heavy
-    # skips, only the fast gates run.
+    # Derived, not guessed: install ~50s + decide ~20s + lib/ build 90-280s
+    # (prefix-hit incremental vs cold, measured 2026-09) + two cache saves.
+    # 15 is ~2× the cold case.
+    timeout-minutes: 15
     outputs:
       code: ${{ steps.detect.outputs.code }}
       affected: ${{ steps.detect.outputs.affected }}
@@ -654,14 +148,90 @@ jobs:
       e2e-matrix: ${{ steps.e2e.outputs.matrix }}
       e2e-has: ${{ steps.e2e.outputs.has }}
       scaffold-has: ${{ steps.scaffold.outputs.has }}
+      scaffold-matrix: ${{ steps.scaffold.outputs.matrix }}
       bootstrap-exit-codes: ${{ steps.bexit.outputs.run }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # the decide steps diff against the base ref
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
+      # ── 1. install ──────────────────────────────────────────────────────
+      # bun's global package-tarball store. When the lockfile-keyed
+      # node_modules restore misses (new bun.lock hash, fresh runner),
+      # `bun install --frozen-lockfile` extracts from this store instead of
+      # re-fetching every package (~30-90s cold). Content-addressed, so a
+      # prefix-restored stale store is always valid.
+      # RESTORE always, SAVE on push:main only. This is ~1 GB per lockfile
+      # variant — saving it per ref is what filled the 10 GB actions cache
+      # (twice), evicting the small entries every PR depends on. ONE key,
+      # ONE writer: every other workflow that needs it restores under this
+      # exact key (`bun-install-cache-<os>-<lockhash>`) and never saves.
+      - name: Restore bun install cache
+        id: bun-tarball-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-install-cache-${{ runner.os }}-
+      - name: Restore node_modules
+        id: nm-restore
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            node_modules
+            packages/*/*/node_modules
+            examples/*/node_modules
+            docs/node_modules
+          key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+      # PYREON_BOOTSTRAP_SKIP=1 keeps the postinstall lib/ build out of the
+      # install (it runs below, gated on `affected`, so a docs-only PR never
+      # builds). Local-dev installs deliberately keep the postinstall build.
+      - run: PYREON_BOOTSTRAP_SKIP=1 bun install --frozen-lockfile
+      # node_modules is fully determined by the lockfile, so the content key
+      # IS the exact key; downstream jobs restore it via setup-pyreon.
+      #
+      # WHO SAVES: main, and a PR ONLY when its lockfile differs from main's.
+      # The actions cache is REF-scoped — an entry saved from a PR's merge ref
+      # is visible to that PR alone — so a PR whose lockfile equals main's can
+      # only ever mint a copy nobody else can use. That copy was minted
+      # whenever main's own entry was missing, and under a full 10 GB budget
+      # it often was: measured 2026-09-02, FOURTEEN identical 434 MB copies
+      # (6 GB, 60% of the budget) each scoped to one PR, evicting the small
+      # entries every PR depends on, which evicted main's node_modules, which
+      # made the next PR mint a copy — a self-reinforcing cascade. A
+      # lockfile-CHANGING PR still saves its own (its ~15 downstream jobs
+      # would otherwise each pay the fallback install); everyone else reads
+      # main's, which main re-saves on every push that misses.
+      - name: Does this PR change the lockfile?
+        id: lock-diff
+        if: github.event_name == 'pull_request'
+        run: |
+          if git diff --quiet "origin/${{ github.base_ref }}" -- bun.lock; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "bun.lock matches the base — main's node_modules entry serves this PR; not saving a per-ref copy."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "bun.lock differs from the base — this PR saves its own node_modules entry."
+          fi
+      - name: Save node_modules (lockfile key)
+        if: steps.nm-restore.outputs.cache-hit != 'true' && (github.event_name != 'pull_request' || steps.lock-diff.outputs.changed == 'true')
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            node_modules
+            packages/*/*/node_modules
+            examples/*/node_modules
+            docs/node_modules
+          key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+      - name: Save bun install cache (main only)
+        if: github.ref == 'refs/heads/main' && steps.bun-tarball-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+      # ── 2. decide ───────────────────────────────────────────────────────
       - name: Detect changes (code + affected)
         id: detect
         run: |
@@ -803,10 +373,32 @@ jobs:
       - name: Detect scaffold-relevant changes
         id: scaffold
         run: |
+          # The six scaffold cells, packed into 3 batches (see ci-batch.ts
+          # for why a cell is not free: each one was its own runner — six
+          # queue entries + six setups for ~6 min of work apiece, and under
+          # slot contention the six serialised anyway). `emit` writes BOTH
+          # outputs on every exit path so the cell job can never see a
+          # `has=true` with an empty matrix.
+          CELLS='["cpa-smoke-app-vercel","cpa-smoke-app-static","cpa-smoke-blog-cloudflare","cpa-smoke-dashboard-vercel-full","cpa-smoke-dashboard-node-supabase","cpa-smoke-monorepo-vercel"]'
+          emit() {
+            echo "has=$1" >> "$GITHUB_OUTPUT"
+            if [ "$1" = "true" ]; then
+              local out
+              if ! out=$(bun run scripts/ci-batch.ts --items="$CELLS" --max=3); then
+                # Batcher failure must never DROP a cell — fall back to one
+                # cell per batch, which is exactly the pre-batching shape.
+                echo "ci-batch failed for scaffold — falling back to unbatched"
+                out=$(echo "$CELLS" | sed -E 's/"([^"]+)"/{"name":"\1","members":"\1"}/g')
+              fi
+              echo "matrix=$out" >> "$GITHUB_OUTPUT"
+            else
+              echo "matrix=[]" >> "$GITHUB_OUTPUT"
+            fi
+          }
           # Non-PR triggers always run the full matrix — main / merge_group
           # is the protected path. Per-suite skipping is a PR-only opt.
           if [ "${{ github.event_name }}" != "pull_request" ]; then
-            echo "has=true" >> "$GITHUB_OUTPUT"
+            emit true
             echo "Full scaffold matrix forced (event: ${{ github.event_name }})"
             exit 0
           fi
@@ -814,7 +406,7 @@ jobs:
           # Changed files (handles fetch failures cleanly — fall back to
           # running the matrix if we can't determine the diff).
           if ! CHANGED=$(git diff --name-only "$BASE"...HEAD 2>/dev/null); then
-            echo "has=true" >> "$GITHUB_OUTPUT"
+            emit true
             echo "Could not determine changes — running full matrix (safety)"
             exit 0
           fi
@@ -843,7 +435,7 @@ jobs:
               break
             fi
           done <<< "$TRIGGERS"
-          echo "has=$HAS" >> "$GITHUB_OUTPUT"
+          emit "$HAS"
           if [ "$HAS" = "false" ]; then
             echo "No scaffold-relevant changes — skipping matrix (saves ~265s/cell)"
           fi
@@ -878,6 +470,431 @@ jobs:
           if [ "$RELEVANT" = "false" ]; then
             echo "No bootstrap.ts changes — bootstrap-exit-codes job will skip (saves ~190s)"
           fi
+      # ── 3. lib/ ─────────────────────────────────────────────────────────
+      # Gated on `affected` (NOT `code`: a doc-INPUT change is code=false but
+      # its consumer's tests need lib/) OR `e2e-has` — that half is
+      # load-bearing: a PR that only touches `e2e/**` affects no workspace,
+      # yet its e2e suites need every example built (#2978).
+      - name: Decide whether lib/ is needed
+        id: lib
+        run: |
+          if [ "${{ steps.detect.outputs.affected }}" = "true" ] || [ "${{ steps.e2e.outputs.has }}" = "true" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Nothing affected and no e2e selected — lib/ not built."
+          fi
+      # TWO-LAYER lib/ cache. (1) A SOURCE-HASHED cross-run key: on an exact
+      # hit the build is skipped outright; on a prefix (restore-keys) hit the
+      # nearest prior lib/ + its `.bootstrap-cache.json` manifest come back
+      # and `bootstrap.ts` rebuilds only the packages whose CONTENT hash
+      # differs (15-90s for a 1-2 package PR vs ~280s cold). restore-keys is
+      # safe precisely because dirtiness is decided by content hash, never
+      # mtime — a prefix-restored older lib/ can never look falsely fresh.
+      # (2) The per-run-id key (`BOOTSTRAP_KEY`, workflow env) that every
+      # downstream job restores through setup-pyreon for an exact, fresh set.
+      # hashFiles() is inlined because GHA forbids it in workflow-level env;
+      # `check-cache-key-sync` enforces that every site hashes the same
+      # inputs.
+      - name: Restore source-hashed lib/ cache (+ incremental manifest)
+        id: bootstrap-cache
+        if: steps.lib.outputs.run == 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            packages/*/*/lib
+            .bootstrap-cache.json
+          key: bootstrap-ubuntu-${{ hashFiles('packages/*/*/src/**', 'packages/*/*/package.json', 'packages/*/*/tsconfig.json', 'tsconfig.json', 'scripts/bootstrap.ts', 'bun.lock') }}
+          restore-keys: |
+            bootstrap-ubuntu-
+      - name: Build lib/ (incremental)
+        if: steps.lib.outputs.run == 'true' && steps.bootstrap-cache.outputs.cache-hit != 'true'
+        run: bun scripts/bootstrap.ts
+      - name: Cache-hit summary
+        if: steps.lib.outputs.run == 'true'
+        run: |
+          if [ "${{ steps.bootstrap-cache.outputs.cache-hit }}" = "true" ]; then
+            echo "::notice title=lib/ cache hit::source-hashed cache hit — build skipped"
+          else
+            echo "::notice title=lib/ rebuilt::source changed since the nearest cached build — bootstrap.ts rebuilt the stale packages"
+          fi
+      - name: Save source-hashed lib/ cache for next runs
+        if: steps.lib.outputs.run == 'true' && steps.bootstrap-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            packages/*/*/lib
+            .bootstrap-cache.json
+          key: bootstrap-ubuntu-${{ hashFiles('packages/*/*/src/**', 'packages/*/*/package.json', 'packages/*/*/tsconfig.json', 'tsconfig.json', 'scripts/bootstrap.ts', 'bun.lock') }}
+      - name: Save lib/ under per-run-id key for downstream jobs
+        if: steps.lib.outputs.run == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: packages/*/*/lib
+          key: ${{ env.BOOTSTRAP_KEY }}
+
+  # ── Fast Gates: every lib-free gate, one runner ──────────────────────────
+  # Consolidated 2026-08 (eleven singleton jobs → one) and again 2026-09
+  # (Lint, PR targets main, Secrets Scan, Dependency Audit, Release
+  # Readiness, Doc Examples → steps here; their check names were DROPPED from
+  # branch protection, never renamed). The measurement behind both passes is
+  # the same: under org-wide slot contention the per-JOB queue tax dwarfs
+  # the work by 10-30×, so a 20-second gate in its own job is a 20-second
+  # gate behind a 20-50 minute wait — and a slot every other PR pays for.
+  #
+  # Every gate is its own NAMED STEP, and every step runs even when an
+  # earlier one failed (`!cancelled()`), so one push reports EVERY failing
+  # gate instead of the first — the job is red if any step is. The one
+  # exception is setup: if checkout/setup-pyreon fail, the gates are skipped
+  # rather than each failing noisily on a missing node_modules.
+  #
+  # Secrets Scan's ghcr.io pre-pull keeps its retry loop; a genuine registry
+  # outage reds this ONE step and the other gates still report.
+  fast-gates:
+    name: Fast Gates
+    needs: install
+    if: always() && needs.install.result == 'success'
+    runs-on: ubuntu-latest
+    # Derived: ~90s of prior gates + lint 20s + doc examples 45s + secrets
+    # scan 30s (+ up to 100s of pre-pull backoff) + audit/readiness/guard
+    # ~25s ≈ 4-5 min worst case; 15 is ~3× that.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # Docs Sync, Doc Examples, secrets scan and the changeset gate all diff against history
+      - uses: ./.github/actions/setup-pyreon
+        id: setup
+        with:
+          restore-bootstrap: 'false' # every gate here is lib-free
+          node-version: '24' # Doc Examples typechecks under node
+      # ── repo policy ──────────────────────────────────────────────────────
+      # Every PR must be gated by CI, and GitHub can only gate a PR whose base
+      # is a PROTECTED branch. Protecting feature branches is structurally
+      # impossible (a ruleset's required checks gate REF UPDATES — applying
+      # it to a branch people push to freezes it; verified 2026-07-30), so
+      # "every PR merges gated" reduces to "every PR targets main", and this
+      # step is that policy made visible. Skipped on push/merge_group.
+      - name: PR targets main
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' && github.event_name == 'pull_request' }}
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          if [ "$BASE" = "main" ]; then
+            echo "base=main — this PR is gated by branch protection."
+            exit 0
+          fi
+          echo "::error::This PR targets '$BASE', not 'main'. A PR into an unprotected feature branch can be merged before ANY check finishes — GitHub cannot require status checks on a branch people push to (the rule gates ref updates, freezing the branch). Re-target with: gh pr edit ${{ github.event.pull_request.number }} --base main. For dependent work, branch FROM the parent but still open the PR against main — the diff shrinks automatically when the parent merges."
+          exit 1
+      # ── lint ─────────────────────────────────────────────────────────────
+      - name: Lint (oxlint)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run lint
+      - name: Lint (pyreon/require-browser-smoke-test)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run lint:browser-smoke
+      - name: Lint Ratchet (oxlint warn baseline)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run check-lint-ratchet
+      - name: Lint Ratchet (pyreon-lint advisory baseline)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run check-pyreon-lint-ratchet
+      - name: Pyreon Lint Gate
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run lint:pyreon
+      # ── docs + generated surfaces ────────────────────────────────────────
+      - name: Check Doc Claims
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run check-doc-claims
+      - name: Multiplatform Matrix (headline == table sum)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun scripts/check-multiplatform-matrix.ts
+      - name: Docs Sync (gen-docs --check)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run gen-docs --check
+      - name: Docs Sync (check-mcp-docs)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run check-mcp-docs
+      # The AI-facing prop contract for @pyreon/ui-components, DERIVED by
+      # running its rocketstyle chains against a real theme (dimension values
+      # live in `.states((t) => …)` callbacks, so they cannot be read from
+      # types). Runs here rather than in `validate-fast` because it mounts
+      # 108 components and costs ~48s cold.
+      - name: Atlas Agent Guide (AI prop contract in sync)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run atlas-guide
+      - name: Docs Generated Fresh
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun docs/scripts/check-generated-fresh.ts
+      # Doc Examples: typecheck the `// @check`-marked docs blocks + resolve
+      # README imports. Path-scoped INSIDE the job (a trigger-level `paths:`
+      # filter on a required check is the documented Expected-hang deadlock).
+      - name: Doc Examples (relevance)
+        id: doc-examples
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch origin "${{ github.base_ref }}" || true
+          if ! CHANGED=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" 2>/dev/null); then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if echo "$CHANGED" | grep -qE '^(docs/src/content/docs/|packages/[^/]+/[^/]+/README\.md|packages/[^/]+/[^/]+/src/|scripts/check-(doc-examples|readme-imports)\.ts|\.github/workflows/ci\.yml)'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "Relevant changes found — running doc-examples typecheck."
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No doc-example-relevant changes — skipping."
+          fi
+      - name: Doc Examples (typecheck opted-in blocks)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' && steps.doc-examples.outputs.run == 'true' }}
+        run: bun scripts/check-doc-examples.ts
+      - name: Doc Examples (README imports resolve)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' && steps.doc-examples.outputs.run == 'true' }}
+        run: bun scripts/check-readme-imports.ts
+      # ── type + manifest + package contracts ──────────────────────────────
+      - name: Audit Types
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run audit-types --all --strict
+      - name: Check Manifest Depth
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run check-manifest-depth
+      - name: Check Manifest Examples
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run check-manifest-examples
+      - name: Check Export Entries
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run check-export-entries
+      - name: Check No Major Changesets
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun scripts/check-no-major-changesets.ts
+      - name: Check Client Bundle Node Imports
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run check-client-bundle-node-imports
+      # Release Readiness: publishConfig.access + changeset fixed-group
+      # coverage — red here means the NEXT release will fail.
+      - name: Release Readiness
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        env:
+          HAS_SKIP_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'skip-release-readiness') }}
+        run: bun scripts/check-release-readiness.ts
+      # ── dependencies + secrets ───────────────────────────────────────────
+      - name: Dependency Audit (untrusted deps)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun pm untrusted
+        continue-on-error: true
+      - name: Dependency Audit (no lockfile drift)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: git diff --exit-code bun.lock || (echo "::error::Lockfile is out of sync with package.json" && exit 1)
+      # The trufflehog action `docker run`s ghcr.io/trufflesecurity/trufflehog
+      # at runtime, and ghcr.io intermittently times out on the manifest fetch
+      # (exit 125, before any scan). Pre-pull with retry + backoff so the
+      # action finds the image locally; a genuine sustained outage still fails
+      # after honest retries. Scan scope and action SHA are unchanged.
+      - name: Secrets Scan (pre-pull trufflehog image)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: |
+          img="ghcr.io/trufflesecurity/trufflehog:latest"
+          for i in 1 2 3 4; do
+            if docker pull "$img"; then exit 0; fi
+            echo "::warning::ghcr.io pull attempt $i/4 failed for $img; backing off ${i}0s"
+            sleep "${i}0"
+          done
+          echo "::error::trufflehog image pull failed after 4 attempts — genuine ghcr.io outage, not a transient flake"
+          exit 1
+      - name: Secrets Scan (trufflehog, verified only)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        uses: trufflesecurity/trufflehog@bcfcf73aaf4759d4dadc2783177c245a02792318 # v3.97.0
+        with:
+          extra_args: --only-verified
+
+  # ── Shared setup anchor (YAML anchor not supported, so we repeat) ───────
+  # Every downstream job: checkout → setup-bun → restore run_id caches.
+  # No bun install needed — caches are guaranteed fresh from Install job.
+
+  # ── Typecheck: per-category matrix (P3b) ─────────────────────────────
+  # Sharded by `packages/<category>/` (8 cells in parallel). Each cell
+  # narrows the affected-filter to its own slice via
+  # `scripts/affected.ts --category=<name>`; cells with no affected
+  # packages in their category skip gracefully (empty filter = no-op).
+  # Aggregator `typecheck` job (next) keeps the stable `Typecheck`
+  # required check name for branch protection.
+  #
+  # Why shard: pre-P3b Typecheck ran `bun run $FILTER --sequential
+  # typecheck` against EVERY affected package on one runner (~270s
+  # median for full-suite runs because we must run sequentially to
+  # avoid 7+ heavy tsc invocations OOM-killing the 7GB runner). Sharding
+  # parallelizes across runners — per-cell wall-clock = ~max-of-category
+  # (90-120s typical) instead of the full sum. Critical-path drop
+  # ~150-180s.
+  #
+  # Why 8 cells (not 5 as the plan first sketched): every `packages/*`
+  # category is its own cell — including `internals` (4 pkgs), `ui` (3
+  # private), `native` (6, newer ios/android stuff). The matrix infra
+  # cost is per-cell startup overhead (~30s composite restore); going
+  # 5→8 cells adds ~3 runners but each finishes in ~30-60s anyway
+  # because every cell carries fewer packages. Smaller cells also fit
+  # under the 10min job timeout with comfortable margin on the OOM-
+  # sensitive `--sequential` path.
+  typecheck-cell:
+    name: typecheck (${{ matrix.name }})
+    # DYNAMIC matrix (2026-07): only categories with affected packages spawn a
+    # cell — `changes` computes the list with the SAME script+base each cell
+    # uses, so the spawn decision and the cell's own filter can never disagree.
+    # Pre-change all 9 cells booted a runner on every PR and most self-skipped
+    # via an empty filter (~30–60s of queue+checkout+setup per no-op). The
+    # `typecheck` aggregator treats a skipped/empty matrix as a pass.
+    # Fail-closed twice over: if `changes` failed, the failure() arm runs the
+    # cells AND the `|| full-list` matrix fallback spawns every category.
+    # `examples` is a pseudo-category (affected.ts maps it to the top-level
+    # examples/ dir) — example type regressions were invisible to CI before it.
+    needs: install
+    if: ${{ (success() && needs.install.outputs.typecheck-has == 'true') || (failure() && needs.install.result != 'success') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.install.outputs.typecheck-matrix || '[{"name":"all","members":"core fundamentals internals native tools ui ui-system zero examples"}]') }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # affected.ts needs the merge-base to compute a real diff;
+          # the install job uses fetch-depth: 0 for the same reason.
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-pyreon
+        with:
+          # P3c — typecheck reads src/ via the bun customCondition (root
+          # tsconfig.json line 8); lib/ is not needed. Skipping the
+          # bootstrap restore lets typecheck start as soon as Install
+          # finishes (~60s) instead of waiting for Bootstrap (~210s).
+          restore-bootstrap: 'false'
+      # Incremental typecheck cache (`incremental` in @pyreon/tsconfig/base.json).
+      #
+      # Every package resolves its @pyreon/* deps to SOURCE, so a cold typecheck
+      # re-parses its whole dependency subtree. Measured locally on the `core`
+      # category: 12.2s cold, 4.9s with a warm cache and a leaf-file change
+      # (2.5x), 9.3s when a BASE package changed. Cells here run 144-235s and
+      # `Typecheck` is a required check, so this is on the merge critical path.
+      #
+      # ## Why the key is what it is
+      #
+      # Cell NAMES are unstable across the PR/main boundary: `ci-batch` packs
+      # whatever categories are affected, so main produces
+      # `core+internals+native+tools` while a PR touching one package produces
+      # `core`. A name-keyed cache would therefore miss in exactly the case it
+      # exists for. The restore-key is a bare `runner.os` prefix so a PR cell
+      # takes whichever tree is nearest, whatever cell built it.
+      #
+      # That works because the trees CONVERGE by construction: each cell
+      # restores the broad prefix BEFORE typechecking and saves afterwards, so
+      # what it saves is (whatever it restored) + (its own categories, fresh).
+      # After one main run every key holds a near-complete tree, and a partial
+      # or mismatched restore costs a cold typecheck — never a wrong one.
+      #
+      # ## Why a stale tree cannot produce a false green
+      #
+      # TypeScript versions every file in the program by CONTENT, so a cache
+      # built on another commit re-checks whatever actually changed. That is the
+      # load-bearing claim, and it is proven rather than assumed:
+      # `incremental-typecheck-safety.test.ts` runs five classes of mutation
+      # (own-source error, dependency arity, exported-type shape, removed
+      # export, type-only change) against a warm cache AND from scratch and
+      # asserts the two report IDENTICAL diagnostics.
+      #
+      # Saves happen on main only. A PR-scoped save is invisible to every other
+      # PR, so it would cost upload time and help nobody.
+      - name: Restore typecheck cache (tsbuildinfo)
+        id: tsbuildinfo-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            packages/*/*/.cache/tsbuildinfo
+            examples/*/.cache/tsbuildinfo
+          key: tsbuildinfo-${{ runner.os }}-${{ github.run_id }}-${{ matrix.name }}
+          restore-keys: tsbuildinfo-${{ runner.os }}-
+      - name: Run typecheck (${{ matrix.name }})
+        env:
+          MEMBERS: ${{ matrix.members }}
+        run: |
+          # A cell runs a BATCH of categories sequentially. No `set -e`: one
+          # failing category must not hide the ones behind it, so failures are
+          # collected and reported together at the end.
+          FAILED=""
+          for category in $MEMBERS; do
+          echo "::group::typecheck — $category"
+          # Recompute the filter per-cell with --category narrowing.
+          # We DON'T reuse install.outputs.affected-filter because it
+          # spans every category; per-cell we need only this slice.
+          # The script's closure is still computed against the full dep
+          # graph (a @pyreon/core change still expands to every
+          # dependent), but the final emit drops anything outside the
+          # cell's category.
+          #
+          # The `examples` pseudo-category maps to the top-level examples/
+          # dir; every other category maps to packages/<cat>/.
+          if [ "$category" = "examples" ]; then
+            CATEGORY_GLOB="./examples/*"
+          else
+            CATEGORY_GLOB="./packages/$category/*"
+          fi
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin "${{ github.base_ref }}" || true
+            FILTER=$(bun run scripts/affected.ts \
+              --base=origin/${{ github.base_ref }} \
+              --category="$category")
+            # Root-file change in a PR returns --filter=* from the
+            # script (the only safe escalation when blast radius is
+            # unknowable). At the cell level we translate that to the
+            # category-scoped glob so each cell runs its OWN full
+            # slice — otherwise every cell would run every package and
+            # we'd lose the shard entirely.
+            if [ "$FILTER" = "--filter=*" ]; then
+              FILTER="--filter=$CATEGORY_GLOB"
+            fi
+          else
+            # push:main + merge_group always run the full slice for
+            # this category — the gate that protects main never
+            # trusts the narrowing.
+            FILTER="--filter=$CATEGORY_GLOB"
+          fi
+          if [ -z "$FILTER" ]; then
+            echo "No affected packages in this category — skipping."
+            echo "::endgroup::"
+            continue
+          fi
+          echo "Cell filter: $FILTER"
+          set -f
+          # --sequential caps simultaneous memory at the largest
+          # single tsc invocation (~775 MB for app-showcase, ~583 MB
+          # for fundamentals-playground — the heaviest are the example
+          # apps, now covered by the `examples` cell). --sequential keeps
+          # per-cell peak memory at one tsc at a time.
+          # shellcheck disable=SC2086
+          bun run $FILTER --sequential typecheck || FAILED="$FAILED $category"
+          set +f
+          echo "::endgroup::"
+          done
+          if [ -n "$FAILED" ]; then
+            echo "::error title=typecheck batch failed::category(ies):$FAILED"
+            exit 1
+          fi
+
+      # Save on main only — see the restore step's rationale. `if: always()` so
+      # a cell that FAILED still contributes its cache: the packages that
+      # typechecked cleanly before the failure produced valid buildinfo, and
+      # discarding it would make the next run pay for them again.
+      - name: Save typecheck cache (tsbuildinfo)
+        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            packages/*/*/.cache/tsbuildinfo
+            examples/*/.cache/tsbuildinfo
+          key: tsbuildinfo-${{ runner.os }}-${{ github.run_id }}-${{ matrix.name }}
 
   # ── Test: per-category matrix (P3b) ──────────────────────────────────
   # Same shard shape as `typecheck-cell` above (8 cells, per-category).
@@ -899,33 +916,24 @@ jobs:
   # pool sooner for everything downstream.
   test-cell:
     name: test (${{ matrix.name }})
-    # Cost gate: also depend on `lint` (fast, deterministic, needs only
-    # install — it finishes before bootstrap on every green run, so it adds
-    # zero latency). When lint fails, the expensive matrix SKIPS via the
-    # failure() arm requiring changes.result != 'success' (false when lint,
-    # not changes, failed). Safe-by-invariant: lint ALWAYS reports, so a
-    # green run never blocks on a skipped required check. The same
-    # `[bootstrap, lint, changes]` gate is applied to every other
-    # lib-needing expensive job below.
     # Dynamic matrix (see typecheck-cell): only categories with affected
-    # packages spawn — the doc-INPUT mapping is preserved because `changes`
-    # uses the same affected.ts (anti-patterns.md / docs/patterns/** →
-    # @pyreon/mcp → the `tools` cell spawns and runs its parser test). The
-    # `test` aggregator treats a skipped/empty matrix as a pass.
-    # 2026-07 queue-contention pass: the `typecheck` needs-edge is GONE. It
-    # routed every test cell through install → typecheck-cell → typecheck
-    # (aggregator) → test-cell = FOUR queue rounds before a test started
-    # (measured: test cells started at t≈1050–1175s with 180–300s queue
-    # each). Under runner starvation each DAG level costs 1–5 min of queue,
-    # dwarfing the runner-spend the cost gate saved. `lint` stays as the
-    # cheap cost gate — it finishes before bootstrap on every green run, so
-    # it adds zero latency while still skipping the matrix on lint failures
-    # (the common pre-push-catchable class). A typecheck failure no longer
-    # skips tests; the merge is blocked by the required `Typecheck` check
-    # regardless, so the only cost is some wasted runner time on a doomed
+    # packages spawn — the doc-INPUT mapping is preserved because Install's
+    # decide steps use the same affected.ts (anti-patterns.md /
+    # docs/patterns/** → @pyreon/mcp → the `tools` cell spawns and runs its
+    # parser test). The `Test` aggregator treats a skipped/empty matrix as a
+    # pass and is fail-closed on an Install failure.
+    # NO cost-gate edge (2026-09). The 2026-07 pass dropped the `typecheck`
+    # edge (four queue rounds before a test started) and kept `lint` as a
+    # cheap gate; with Lint now a step of Fast Gates, gating on it would
+    # re-add a DAG level — and under slot contention a level is a full queue
+    # round (tens of minutes, measured), while lint failures on CI are rare
+    # (0 of the 25 most recent failed runs — the pre-push hook catches them).
+    # A lint or typecheck failure no longer skips tests; the merge is
+    # blocked by the required Fast Gates / Test checks regardless, so the
+    # only cost is some wasted runner time on a doomed
     # run — cheaper than taxing every green run with two extra queue rounds.
-    needs: [bootstrap, lint, changes]
-    if: ${{ (success() && needs.changes.outputs.test-has == 'true') || (failure() && needs.changes.result != 'success') }}
+    needs: install
+    if: ${{ (success() && needs.install.outputs.test-has == 'true') || (failure() && needs.install.result != 'success') }}
     runs-on: ubuntu-latest
     # `native` used to be ONE cell carrying two unrelated heavy workloads, and
     # it kept getting timeout-CANCELLED — which fails the required `Test`
@@ -1007,7 +1015,7 @@ jobs:
       matrix:
         # Dynamic (see typecheck-cell): only affected categories spawn;
         # `|| full-list` fallback keeps a `changes` failure fail-closed.
-        include: ${{ fromJSON(needs.changes.outputs.test-matrix || '[{"name":"native-compiler-1","members":"native-compiler-1"},{"name":"native-compiler-2","members":"native-compiler-2"},{"name":"native-compiler-3","members":"native-compiler-3"},{"name":"native-rest","members":"native-rest"},{"name":"batch-a","members":"core fundamentals internals"},{"name":"batch-b","members":"tools ui ui-system zero"}]') }}
+        include: ${{ fromJSON(needs.install.outputs.test-matrix || '[{"name":"native-compiler-1","members":"native-compiler-1"},{"name":"native-compiler-2","members":"native-compiler-2"},{"name":"native-compiler-3","members":"native-compiler-3"},{"name":"native-rest","members":"native-rest"},{"name":"batch-a","members":"core fundamentals internals"},{"name":"batch-b","members":"tools ui ui-system zero"}]') }}
     steps:
       # Pin Node — vitest's `#!/usr/bin/env node` shebang means tests
       # run under whatever Node is on PATH. Without this, ubuntu-latest's
@@ -1162,209 +1170,27 @@ jobs:
             exit 1
           fi
 
-      # Save the verdict store — push:main only (the PR side only restores,
-      # so a PR can never poison the shared store). `if: always()` so a red
-      # main run still saves the verdicts it derived; they are
-      # content-addressed, so verdicts from a failing run are just as valid
-      # as from a green one. This step MUST live in THIS matrix job: the
-      # first cut sat in the `Test` aggregator, where `matrix.name`
-      # doesn't exist (condition never true) and the derived store isn't on
-      # disk — so zero caches were ever saved and every native cell stayed
-      # cold at ~15-17min while the restore step missed forever.
+      # Save the verdict store from EVERY run, PRs included. It was main-only
+      # (the "save on main only" rule that exists for the 1 GB tarball
+      # store), but this store is <1 MB and content-addressed — a verdict is
+      # a pure function of (compiler version, stub text, exact bytes), so a
+      # PR cannot "poison" it, only add entries — and main-only saving had a
+      # real cost: main's run is CANCELLED whenever a newer merge queues
+      # behind it (27 of the last 60), so the store went unsaved for hours
+      # and the next run paid ~60 min of cold `kotlinc`/`swiftc` (measured
+      # 1325s + 1312s + 931s on run 33532534054, vs ~45s warm). The sha in
+      # the key keeps entries distinct; the restore's bare prefix picks the
+      # newest. `if: always()` so a red run still saves what it derived.
+      # This step MUST live in THIS matrix job: the first cut sat in the
+      # `Test` aggregator, where `matrix.name` doesn't exist (condition
+      # never true) and the derived store isn't on disk — so zero caches
+      # were ever saved and every native cell stayed cold at ~15-17min.
       - name: Save native compile-verdict cache
-        if: always() && github.ref == 'refs/heads/main' && startsWith(matrix.name, 'native')
+        if: always() && startsWith(matrix.name, 'native')
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache/pyreon-native-validate
           key: native-verdicts-ci-${{ runner.os }}-${{ matrix.name }}-${{ github.sha }}
-
-  test:
-    name: Test
-    needs: test-cell
-    if: always()
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    steps:
-      - name: Aggregate test matrix result
-        run: |
-          RESULT='${{ needs.test-cell.result }}'
-          echo "test-cell=$RESULT"
-          # `success` = every cell passed (or self-skipped via empty filter).
-          # `skipped` = the whole matrix was `if:`-gated off because nothing is
-          # affected (a pure-prose docs PR) — a pass, not a regression.
-          if [ "$RESULT" = "success" ] || [ "$RESULT" = "skipped" ]; then
-            echo "All test cells passed (or skipped: nothing affected)."
-            exit 0
-          fi
-          echo "::error::One or more test cells failed ($RESULT)"
-          exit 1
-
-  # ── Dedicated cell for `bootstrap-exit-codes.test.ts` ──────────────────
-  # That single test file spawns 8 bun subprocesses, each running the
-  # full bootstrap.ts walk over ~80 packages. Locally this runs in ~5s;
-  # on GHA's slower runners it took ~190s (entirely dominating `test
-  # (internals)`'s ~196s wall-clock). The PR-time test (internals) job
-  # now sets PYREON_SKIP_SLOW_TESTS=1 to skip this file; this dedicated
-  # cell runs WITHOUT the env var, but ONLY when `scripts/bootstrap.ts`
-  # itself can have changed — that's the only path that can regress the
-  # exit-code contract this suite protects.
-  #
-  # push:main / merge_group always run (safety: main never merges without
-  # the full contract validation).
-  bootstrap-exit-codes:
-    name: bootstrap-exit-codes
-    # 2026-07: the relevance detection moved into `Changes (decide)` — this
-    # job used to boot a runner on EVERY PR (checkout + setup + node 24,
-    # ~21–31s) just to conclude "not relevant, skip" ~99% of the time. Now
-    # the job itself skips (no runner) unless bootstrap.ts / the test / the
-    # workflow changed. Fail-closed: a failed `changes` runs it.
-    needs: [install, changes]
-    if: ${{ (success() && needs.changes.outputs.bootstrap-exit-codes == 'true') || (failure() && needs.changes.result != 'success') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 8
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-pyreon
-        with:
-          node-version: '24'
-          restore-bootstrap: 'false' # this test doesn't read lib/
-      - name: Run bootstrap-exit-codes
-        run: |
-          bun run --filter='@pyreon/test-utils' test src/tests/bootstrap-exit-codes.test.ts
-
-  test-browser:
-    name: Test (browser)
-    # P3c — same risk class as `test-cell`: any browser test that asserts
-    # on built artifacts (lib/) needs Bootstrap. Conservatively gate on
-    # bootstrap rather than chase per-test audits.
-    # Cost gate (see test-cell): lint only — the typecheck edge was dropped
-    # in the 2026-07 queue-contention pass (each extra DAG level = a queue
-    # round under runner starvation).
-    # Layer-2 gate: skip entirely on a docs-only PR (`changes.code == false`).
-    needs: [bootstrap, lint, changes]
-    if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-pyreon
-        with:
-          node-version: '24'
-      # RESTORE always; SAVE only on main. The browser bundle is ~261 MB and
-      # depends only on the Playwright version in bun.lock, so a per-branch save
-      # stored the SAME bytes once per PR — four live copies, 783 MB of pure
-      # duplication, in a cache that is at 9.77 GB of its 10 GB limit.
-      #
-      # That ceiling is not an abstract tidiness concern. Bootstrap caches are
-      # 5 MB, and one saved at 19:04 on run 30840261671 was already GONE when a
-      # downstream job looked at 19:23. Every lib-needing job then rebuilds all
-      # 74 packages: 43 jobs x ~350s = 228 of that run's 401 runner-minutes.
-      # Large low-value entries evict small high-value ones.
-      #
-      # A PR that changes bun.lock misses the exact key, falls through the
-      # `playwright-chromium-<os>-` prefix to main's nearest browser, and the
-      # install step below reconciles it — the same path a cold runner takes.
-      - name: Restore Playwright browsers
-        id: pw-cache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-          restore-keys: playwright-chromium-${{ runner.os }}-
-      - name: Install Playwright Chromium
-        run: |
-          # The recurring e2e / Test(browser) "cancelled" flake is the Playwright
-          # install hanging until the 15-min job timeout (the specs never run —
-          # the whole budget burns in this step). TWO independent apt hangs cause
-          # it, both addressed here:
-          #   1. `apt-get update` hangs on GitHub's packages.microsoft.com apt
-          #      sources (azure-cli + prod) when they 403 → strip them first.
-          #   2. The `apt-get install` of the OS deps hangs FETCHING the ~21 MB of
-          #      .deb archives from GitHub's apt mirror (observed: 14 min stuck at
-          #      "Need to get 21.1 MB" before cancellation).
-          # ubuntu-latest already ships Chromium's core libs, so the OS-dep install
-          # is best-effort + hard-timeout-bounded + non-fatal; the browser binary
-          # (from Playwright's own CDN, which never hangs) is what matters and is
-          # ALWAYS installed.
-          sudo grep -rlZ packages.microsoft.com /etc/apt/sources.list.d/ 2>/dev/null | sudo xargs -0 -r rm -f || true
-          timeout 240 bunx playwright install-deps chromium || echo "::warning::playwright install-deps timed out or failed — relying on the runner's preinstalled Chromium libs"
-          bunx playwright install chromium
-      # Populate the shared entry ONLY from main, so one copy serves every PR
-      # instead of one copy per PR. `if: always()` is deliberate: a failing spec
-      # must not throw away a browser download the next run would reuse.
-      - name: Save Playwright browsers (main only)
-        if: always() && github.ref == 'refs/heads/main' && steps.pw-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-      - run: bun run test:browser
-
-  # ── Test (Rust binary): cross-backend equivalence gate ───────────────
-  # Builds the @pyreon/compiler Rust napi-rs binary and runs the compiler
-  # test suite with it loaded. The cross-backend equivalence harness
-  # (235 patterns) auto-detects the binary's presence and asserts every
-  # JS-path output matches the Rust-path output. Without this job, only
-  # the JS fallback is exercised in CI — which is exactly what shipped the
-  # 6 divergences caught in Phase 1 (#491). Locks the Rust path against
-  # silent regressions going forward.
-  test-rust-binary:
-    name: Test (Rust binary)
-    needs: [install, changes]
-    if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      # Composite handles checkout + bun + node + NM/bootstrap cache restore;
-      # rust toolchain + cargo caches stay manual (specific ordering needs).
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-pyreon
-        with:
-          node-version: '24'
-          # P3c — @pyreon/compiler tests resolve via the bun condition
-          # (its own src/), and the rust binary is built in this job
-          # below. Other packages' lib/ is not needed.
-          restore-bootstrap: 'false'
-      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master — pinned (OpenSSF Pinned-Dependencies)
-        with:
-          toolchain: stable
-      - name: Cache cargo registry
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: cargo-registry-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock') }}
-          restore-keys: cargo-registry-${{ runner.os }}-
-      # P1c — cache cargo `target/` (compiled artifacts), keyed by Cargo.lock
-      # + every Rust source file under native/src. Cargo's content hashing
-      # invalidates correctly on source change; the cache only hits when the
-      # exact compiled output is reproducible. Saves ~2-3 min on common case
-      # where compiler source is unchanged (vast majority of CI runs).
-      - name: Cache cargo target/
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: packages/core/compiler/native/target
-          key: cargo-target-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock', 'packages/core/compiler/native/src/**/*.rs') }}
-          restore-keys: |
-            cargo-target-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock') }}-
-            cargo-target-${{ runner.os }}-
-      - name: Build native binary
-        run: bun run --filter='@pyreon/compiler' build:native
-      - name: Assert binary present
-        # Soft-fail in build-native.ts means cargo trouble silently routes
-        # consumers to JS. CI's job is the opposite — fail loudly so the
-        # gate can never erode to "JS-only ran, equivalence checks
-        # silently skipped."
-        run: |
-          BIN=packages/core/compiler/native/pyreon-compiler.node
-          if [ ! -f "$BIN" ]; then
-            echo "::error::Native binary missing at $BIN. Cargo build failed silently (build-native.ts soft-fails). The Rust equivalence gate cannot run without it."
-            exit 1
-          fi
-          echo "Binary OK: $(ls -la $BIN)"
-      - name: Run @pyreon/compiler tests against Rust binary
-        run: bun run --filter='@pyreon/compiler' test
 
   # ── E2E: real-Chromium app-level tests against example apps ──────────
   # Parallel, flake-resilient matrix. Before 2026-05 this was ONE runner
@@ -1388,16 +1214,14 @@ jobs:
   #    empty matrix (docs-only PR) resolves as a green skip.
   e2e-suite:
     name: e2e (${{ matrix.name }})
-    # P3c — e2e suites boot example apps via `vite preview` / `vite build`
-    # which resolves @pyreon/* via the node condition → lib/. Needs Bootstrap.
-    # Suite selection comes from the consolidated `Changes (decide)` job
-    # (the standalone `E2E (decide)` runner was folded into it, 2026-07).
-    # Cost gate (see test-cell): lint only (typecheck edge dropped).
-    # Fail-closed: a failed `changes` leaves e2e-has empty → suites skip →
-    # the `e2e` AGGREGATOR fails (it requires changes.result == success),
-    # so the required E2E check goes red rather than green-via-skip.
-    needs: [bootstrap, lint, changes]
-    if: needs.changes.outputs.e2e-has == 'true'
+    # e2e suites boot example apps via `vite preview` / `vite build`, which
+    # resolve @pyreon/* via the node condition → lib/ (built by Install,
+    # which also selects the suites). Fail-closed: a failed Install leaves
+    # e2e-has empty → suites skip → the `Test` AGGREGATOR fails (it requires
+    # install.result == success), so the check goes red, never
+    # green-via-skip.
+    needs: install
+    if: needs.install.outputs.e2e-has == 'true'
     runs-on: ubuntu-latest
     # A cell runs a BATCH of suites now, so the cap covers the batch, not one
     # suite. Full serial e2e is ~8-20 min across every suite; at 4 batches the
@@ -1407,7 +1231,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.changes.outputs.e2e-matrix || '[]') }}
+        include: ${{ fromJSON(needs.install.outputs.e2e-matrix || '[]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pyreon
@@ -1530,170 +1354,205 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
-  # Stable required check. Aggregates the dynamic matrix so the
-  # branch-protection "E2E" requirement keeps resolving regardless of
-  # which suites the PR selected (or none, for a docs-only PR).
-  e2e:
-    name: E2E
-    needs: [changes, e2e-suite]
+  # ── Scaffold smoke: end-to-end gate against create-pyreon-app ──────────
+  # Runs the actual scaffolder + bun install + bun run build for every
+  # cell defined in scripts/scaffold-smoke.ts (template × adapter ×
+  # integrations). Catches the bug class that PR #404 shipped with —
+  # template TS errors / missing deps / wrong API names that lint+
+  # typecheck on the scaffolder package can't see, because templates
+  # aren't in any tsconfig include path.
+  #
+  # P1d sharded this into 6 parallel cells; the 2026-09 queue pass packs
+  # them into 3 batches via ci-batch.ts. The cells had grown to ~6 min
+  # each (a scaffolded app's cold `bun install` dominates), so six of them
+  # were six 50-min queue entries under slot contention — batching keeps
+  # the per-batch failure surface, halves the setups, and frees 3 slots
+  # for every other in-flight PR. See ci-batch.ts for the measured case.
+  #
+  # `scaffold-smoke-aggregate` mirrors the e2e aggregator pattern: a
+  # stable required check name regardless of which cells ran (matches
+  # branch-protection's expectations even if a cell gets renamed).
+  #
+  # ## Path-scoping (perf): PRs that don't touch the scaffolder OR any
+  # template skip the matrix entirely. All 6 cells share the same
+  # scaffold-relevant input surface (the cells differ only in template ×
+  # adapter combinations — the SCAFFOLDER + the templates are the same
+  # source) so it's all-or-nothing. Install's decide steps gate the matrix;
+  # the `Test` aggregator treats an empty matrix as a green skip (same shape
+  # as e2e). push:main + merge_group ALWAYS run the full matrix — main is
+  # never allowed to merge an undetected scaffold regression.
+  scaffold-smoke-cell:
+    name: Scaffold Smoke (${{ matrix.name }})
+    # Each cell runs `bun install` + `vite build` of the scaffolded app, which
+    # resolves @pyreon/* via the node condition → lib/ (built by Install).
+    needs: install
+    if: ${{ needs.install.outputs.scaffold-has == 'true' }}
+    runs-on: ubuntu-latest
+    # Three cells of ~6 min in one batch, plus setup. Derived, not guessed:
+    # measured cells run 222-373s; the heaviest LPT bin is 3 × ~370s.
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        # Batched by Install's decide step — `[{name, members}]`, same shape
+        # as the e2e matrix. `members` is the space-separated cell list.
+        include: ${{ fromJSON(needs.install.outputs.scaffold-matrix || '[]') }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-pyreon
+      # A scaffolded app's `bun install` is the dominant per-cell cost, and
+      # it ran against an EMPTY tarball store — every cell cold-fetched vite,
+      # rolldown and friends from the registry. The monorepo's store holds
+      # nearly all of them; restore-only (Install saves it on main).
+      - name: Restore bun download cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-install-cache-${{ runner.os }}-
+      # scaffold-smoke.ts accepts positional cell filters and runs the
+      # matches sequentially:
+      #   `bun scripts/scaffold-smoke.ts cpa-smoke-app-vercel cpa-smoke-app-static`
+      - name: Run scaffold-smoke batch — ${{ matrix.name }}
+        env:
+          MEMBERS: ${{ matrix.members }}
+        run: bun scripts/scaffold-smoke.ts $MEMBERS
+  # ── Test: the ONE aggregator for every dynamic matrix ────────────────────
+  # Branch protection pins a stable name; matrix cells have dynamic names.
+  # This used to be four aggregator jobs (Test, Typecheck, E2E, Scaffold
+  # Smoke), each a runner for 2 s of shell behind a 50-minute slot wait
+  # (measured 2026-09-01). One job now aggregates all four matrices; the
+  # other three names were dropped from protection. The summary names WHICH
+  # matrix failed, so nothing is lost but three queue entries per PR.
+  #
+  # Semantics per matrix (unchanged from the four jobs it replaces):
+  #   success  every cell passed (or self-skipped via an empty filter)
+  #   skipped  the matrix was `if:`-gated off — nothing affected — a PASS
+  #   e2e is special: the decide said RUN but the matrix did not succeed is a
+  #   contradiction (#2978's shape) and reads as red, never green-via-skip.
+  # Fail-closed on Install: if the decide job did not succeed, cell selection
+  # is unknown and this is red regardless of what did run.
+  test:
+    name: Test
+    needs: [install, typecheck-cell, test-cell, e2e-suite, scaffold-smoke-cell]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: Aggregate e2e matrix result
+      - name: Aggregate typecheck / test / e2e / scaffold matrices
+        env:
+          INSTALL: ${{ needs.install.result }}
+          TYPECHECK: ${{ needs.typecheck-cell.result }}
+          TEST: ${{ needs.test-cell.result }}
+          E2E: ${{ needs.e2e-suite.result }}
+          E2E_HAS: ${{ needs.install.outputs.e2e-has }}
+          SCAFFOLD: ${{ needs.scaffold-smoke-cell.result }}
         run: |
-          DECIDE='${{ needs.changes.result }}'
-          SUITE='${{ needs.e2e-suite.result }}'
-          HAS='${{ needs.changes.outputs.e2e-has }}'
-          echo "changes=$DECIDE  e2e-suite=$SUITE  has=$HAS"
-          if [ "$DECIDE" != "success" ]; then
-            echo "::error::the changes (decide) job did not succeed ($DECIDE) — e2e suite selection is unknown"
-            exit 1
+          echo "install=$INSTALL  typecheck=$TYPECHECK  test=$TEST  e2e=$E2E (selected=$E2E_HAS)  scaffold=$SCAFFOLD"
+          fail=0
+          ok() { [ "$1" = "success" ] || [ "$1" = "skipped" ]; }
+          if [ "$INSTALL" != "success" ]; then
+            echo "::error::Install (decide) did not succeed ($INSTALL) — cell selection is unknown"
+            fail=1
           fi
-          if [ "$HAS" != "true" ]; then
-            echo "No e2e-relevant changes for this PR — matrix empty, green skip."
-            exit 0
+          ok "$TYPECHECK" || { echo "::error::typecheck cell(s) failed ($TYPECHECK)"; fail=1; }
+          ok "$TEST" || { echo "::error::test cell(s) failed ($TEST)"; fail=1; }
+          ok "$SCAFFOLD" || { echo "::error::scaffold-smoke batch(es) failed ($SCAFFOLD)"; fail=1; }
+          if [ "$E2E_HAS" = "true" ]; then
+            [ "$E2E" = "success" ] || { echo "::error::e2e suites were selected but the matrix did not succeed ($E2E)"; fail=1; }
+          else
+            echo "No e2e-relevant changes — matrix empty, green skip."
           fi
-          if [ "$SUITE" = "success" ]; then
-            echo "All selected e2e suites passed."
-            exit 0
-          fi
-          echo "::error::One or more e2e suites failed (e2e-suite=$SUITE)"
-          exit 1
+          if [ "$fail" -eq 0 ]; then echo "All matrices passed (or were correctly skipped)."; fi
+          exit $fail
 
+  # ── Build: every lib-needing singleton gate, one runner ──────────────────
+  # Was SEVEN jobs — Build, Verify Modes, Check Bundle Budgets, Check Import
+  # Budgets, Check Distribution, Check Bin Liveness, Coverage — plus Test
+  # (Rust binary). All needed the same restored lib/, all did 20-110s of
+  # work, and each paid its own checkout + setup + a 20-50 minute slot wait
+  # (measured 2026-09-01). Their check names were dropped from branch
+  # protection; the gates themselves are unchanged and now report as named
+  # steps of this one required job. Every step runs even after an earlier
+  # failure (`!cancelled()`) so a push shows every red gate at once.
+  #
+  # Gated on `code` (a docs-only PR changes no build output), fail-closed
+  # on an Install failure.
   build:
     name: Build
-    # P3c — `vite build` of examples resolves @pyreon/* via the node
-    # condition → lib/. Needs Bootstrap.
-    # Cost gate (see test-cell): skip when a fast deterministic check fails.
-    # Layer-2 gate: skip entirely on a docs-only PR (`changes.code == false`).
-    needs: [bootstrap, lint, changes] # typecheck edge dropped 2026-07 (queue-contention pass — see test-cell)
-    if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
+    needs: install
+    if: ${{ (success() && needs.install.outputs.code == 'true') || (failure() && needs.install.result != 'success') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Derived from the measured steps (2026-09-01): examples build 70s +
+    # verify-modes 90s + budgets 55s + distribution 25s + bin-liveness 30s +
+    # coverage 40-110s + rust (cached target) ~100s + setup ≈ 7-9 min; 25 is
+    # ~3× and satisfies check-ci-job-timeouts' lib-restore floor.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # coverage's affected.ts needs the merge-base
       - uses: ./.github/actions/setup-pyreon
-      - name: Run build
+        id: setup
+        with:
+          # Coverage REQUIRES node (bun's inspector lacks the V8 coverage API);
+          # check-coverage.ts spawns vitest under node explicitly.
+          node-version: '24'
+      # ── examples ─────────────────────────────────────────────────────────
+      # @pyreon/* is already built (lib/ restored from this run's cache); only
+      # the example apps build here. Including @pyreon/* in the filter would
+      # race the examples: rolldown cleans lib/ before rebuilding, and an
+      # example reading lib/seo.js mid-clean hits "Cannot find module".
+      - name: Build examples
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: |
-          # @pyreon/* packages are already built by install's bootstrap;
-          # lib/ is restored from this run's cache above. The Build job
-          # only verifies example app builds (which consume the restored
-          # lib/). Including @pyreon/* in `bun run --filter=*` here would
-          # race with the example builds: rolldown cleans lib/ before
-          # rebuilding, and example apps reading lib/seo.js in parallel
-          # hit a window where seo.js still references chunks that were
-          # just deleted but not yet re-emitted → "Cannot find module".
-          # Scope to examples/* to avoid the race.
           set -f
           bun run --filter='./examples/*' build
-
-  # ── Coverage gate — split into floor (PR-fast) + full (push/merge_group) ──
-  # P3a — pre-fix, Coverage ran the full per-package test suite with
-  # --coverage instrumentation on EVERY PR (~200s). The actual coverage
-  # numbers only matter when blocking main from regressing; the *floor*
-  # config invariant (every package's vitest.config.ts threshold ≥ FLOOR
-  # + drift detection on BELOW_FLOOR_EXEMPTIONS entries) is what's
-  # actionable to a PR author at edit time. Splitting:
-  #
-  #  • `Coverage` (this job): floor-only, always runs, ~5s. Same name
-  #    as before so branch protection keeps working — PRs now get a
-  #    fast structural check instead of waiting 200s for actual
-  #    numbers most PRs don't change.
-  #  • `Coverage (Full)` (below): full test execution with coverage,
-  #    runs on push:main + merge_group only. Main is never allowed to
-  #    regress; merge_group acts as the final pre-merge safety check.
-  #
-  # The trade-off USED to be: a PR that drops a package's actual coverage
-  # passes `Coverage` and fails only later on main. That policy is what
-  # rotted — twice inside a month (2026-07: 15 packages; 2026-08: seven).
-  # A gate whose failures land where nobody is blocked gets re-run past,
-  # and by the time anyone looks the baseline and the regression are
-  # indistinguishable.
-  #
-  # So this job now ALSO measures the packages the PR actually touches
-  # (see the step below). Cost tracks the PR rather than the monorepo —
-  # affected packages only, ~3s for two of them. The full run stays on
-  # push:main + merge_group as the whole-repo backstop.
-  coverage:
-    name: Coverage
-    # `bootstrap` is REQUIRED, not an optimisation to shave off. The floor
-    # check alone reads vitest.config.ts and needs no `lib/`, which is why this
-    # job ran without it for a long time — but the affected-coverage step below
-    # EXECUTES each package's suite, and not every suite resolves purely
-    # through the bun condition to `src`. `@pyreon/atlas` is the counter-example
-    # that proved it: without `lib/` its tests never reach a coverage summary,
-    # and the step failed with "NO COVERAGE OUTPUT" on unrelated PRs within
-    # half an hour of the affected step landing (#2659 → #2666, #2480).
-    needs: [install, changes, bootstrap]
-    if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 12
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0 # affected.ts needs the merge-base to compute a real diff
-      - uses: ./.github/actions/setup-pyreon
-        with:
-          # TRUE — see the `needs:` note above. The floor check would be happy
-          # without it; the affected run is not, because it runs real suites.
-          restore-bootstrap: 'true'
-          # Coverage REQUIRES node (bun's inspector lacks the V8 coverage API
-          # — 'Coverage APIs are not supported'). check-coverage.ts spawns
-          # vitest under node explicitly and preflights for it; this pins the
-          # version instead of trusting whatever the runner image ships.
-          node-version: '24'
-      - name: Coverage floor + exemption drift check
+      # `vite build` every example × mode cell and assert the RENDERED content
+      # (not just a green build) — the typed-but-unimplemented backstop.
+      - name: Verify Modes
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run verify-modes
+      # ── package contracts against the built lib/ ────────────────────────
+      - name: Check Bundle Budgets
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run check-bundle-budgets
+      - name: Check Import Budgets
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run check-import-budgets
+      # sideEffects declared + source maps shipped + a live `npm pack
+      # --dry-run` probe against the built tarball.
+      - name: Check Distribution
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run check-distribution
+      # Spawn every published bin under REAL node and assert it does
+      # something — the published-dead-bin class (pyreon-lint's no-op bin).
+      - name: Check Bin Liveness
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run check-bin-liveness
+      # ── coverage ─────────────────────────────────────────────────────────
+      - name: Coverage (floor + exemption drift)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: bun run coverage:floor
-
-      # Measure the packages this PR actually touches.
-      #
-      # The full run is `push:main` + `merge_group` only, and that cadence is
-      # the reason this gate has now rotted TWICE inside a month: nothing
-      # measured coverage while a change was still reviewable, so drift landed
-      # freely and only surfaced on main — where a red gate blocks nobody and
-      # gets re-run past. Seven packages had drifted under by 2026-08.
-      #
-      # This is deliberately NOT the full run: it measures only affected
-      # packages, so cost tracks the PR (two packages measure in ~3s locally;
-      # the heaviest single package is ~40s). A docs-only PR measures nothing
-      # and exits 0.
-      #
-      # NOTE this changes a previously-documented trade-off — a PR that drops a
-      # package's coverage used to pass here and fail only on main. That policy
-      # is what rotted; catching it on the PR that causes it is the point.
+      # Measure the packages this PR actually touches (`--changed-only`: the
+      # DIRECTLY-changed workspaces, never the dependent closure — coverage
+      # is a property of a package's own sources + tests, and the closure is
+      # what tripped the >15 cap and silently skipped the packages that
+      # matter most). The whole-repo run stays on push:main + merge_group.
       - name: Coverage (changed packages)
-        if: github.event_name == 'pull_request'
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' && github.event_name == 'pull_request' }}
         run: |
           set -euo pipefail
           git fetch origin "${{ github.base_ref }}" || true
-          # `--changed-only`: the DIRECTLY-changed workspaces, NOT the dependent
-          # closure. Coverage is a property of a package's own sources + own
-          # tests, so a dependent's number cannot move — and expanding to the
-          # closure is what broke this step. A `@pyreon/vite-plugin` or
-          # `@pyreon/zero` change expands to ~49 workspaces, tripping the >15 cap
-          # below, so the step SKIPPED: the packages whose coverage matters most
-          # were the ones never measured before merge. That left `Coverage (Full)`
-          # on push:main as the only signal, where a red run blocks nobody and
-          # gets re-run past — it has rotted three times. Direct-only measures 3
-          # packages for that same PR.
           FILTER=$(bun run scripts/affected.ts --changed-only --base=origin/${{ github.base_ref }})
           if [ "$FILTER" = "--filter=*" ]; then
-            # Unknowable blast radius (a root-file change). The full run is far
-            # too slow for a PR, and the `push:main` run covers it — so skip
-            # rather than pretend, and say which it was.
             echo "Root-file change → blast radius unknowable; full coverage runs on main."
             exit 0
           fi
           NAMES=$(printf '%s\n' $FILTER | sed 's/^--filter=//' | paste -sd, -)
           COUNT=$(printf '%s\n' $FILTER | grep -c . || true)
-          # CAP the set. `--filter=*` is not the only way to end up with the
-          # whole monorepo: a release PR touches every package.json, so
-          # affected.ts legitimately returns ~130 EXPLICIT filters and this
-          # step tried to run the entire suite at PR time — the exact cost the
-          # step exists to avoid, and it reds the release PR (#2480). The
-          # push:main + merge_group full run is the backstop for wide changes;
-          # this step is for the ordinary 1-5 package PR.
+          # A release PR touches every package.json → ~130 explicit filters;
+          # the push:main full run is the backstop for that width.
           if [ "$COUNT" -gt 15 ]; then
             echo "$COUNT affected packages — too wide for a PR-time run;"
             echo "full coverage runs on push:main + merge_group."
@@ -1701,6 +1560,167 @@ jobs:
           fi
           echo "Affected ($COUNT): ${NAMES:-<none>}"
           bun scripts/check-coverage.ts --only="$NAMES"
+      # ── Rust binary: cross-backend equivalence gate ──────────────────────
+      # Builds the @pyreon/compiler napi-rs binary and runs the compiler suite
+      # with it loaded; the equivalence harness asserts every JS-path output
+      # matches the Rust path. Without it only the JS fallback is exercised —
+      # which is exactly what shipped the 6 divergences caught in #491.
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master — pinned (OpenSSF Pinned-Dependencies)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        with:
+          toolchain: stable
+      - name: Cache cargo registry
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-registry-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock') }}
+          restore-keys: cargo-registry-${{ runner.os }}-
+      # Keyed by Cargo.lock + every Rust source: cargo's own content hashing
+      # invalidates correctly, so a hit means the compiled output is exact.
+      - name: Cache cargo target/
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: packages/core/compiler/native/target
+          key: cargo-target-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock', 'packages/core/compiler/native/src/**/*.rs') }}
+          restore-keys: |
+            cargo-target-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock') }}-
+            cargo-target-${{ runner.os }}-
+      - name: Build native binary
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run --filter='@pyreon/compiler' build:native
+      # build-native.ts soft-fails so cargo trouble routes CONSUMERS to JS;
+      # CI's job is the opposite — fail loudly so the gate can never erode to
+      # "JS-only ran, equivalence silently skipped".
+      - name: Assert native binary present
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: |
+          BIN=packages/core/compiler/native/pyreon-compiler.node
+          if [ ! -f "$BIN" ]; then
+            echo "::error::Native binary missing at $BIN. Cargo build failed silently (build-native.ts soft-fails). The Rust equivalence gate cannot run without it."
+            exit 1
+          fi
+          echo "Binary OK: $(ls -la $BIN)"
+      - name: Test (Rust binary) — @pyreon/compiler suite against the binary
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run --filter='@pyreon/compiler' test
+
+  test-browser:
+    name: Test (browser)
+    # Same risk class as `test-cell`: any browser test that asserts on built
+    # artifacts (lib/) needs the lib/ Install built — restored via
+    # setup-pyreon rather than audited per test. Skips entirely on a
+    # docs-only PR (`code == false`); fail-closed on an Install failure.
+    needs: install
+    if: ${{ (success() && needs.install.outputs.code == 'true') || (failure() && needs.install.result != 'success') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-pyreon
+        with:
+          node-version: '24'
+      # RESTORE always; SAVE only on main. The browser bundle is ~261 MB and
+      # depends only on the Playwright version in bun.lock, so a per-branch save
+      # stored the SAME bytes once per PR — four live copies, 783 MB of pure
+      # duplication, in a cache that is at 9.77 GB of its 10 GB limit.
+      #
+      # That ceiling is not an abstract tidiness concern. Bootstrap caches are
+      # 5 MB, and one saved at 19:04 on run 30840261671 was already GONE when a
+      # downstream job looked at 19:23. Every lib-needing job then rebuilds all
+      # 74 packages: 43 jobs x ~350s = 228 of that run's 401 runner-minutes.
+      # Large low-value entries evict small high-value ones.
+      #
+      # A PR that changes bun.lock misses the exact key, falls through the
+      # `playwright-chromium-<os>-` prefix to main's nearest browser, and the
+      # install step below reconciles it — the same path a cold runner takes.
+      - name: Restore Playwright browsers
+        id: pw-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: playwright-chromium-${{ runner.os }}-
+      - name: Install Playwright Chromium
+        run: |
+          # The recurring e2e / Test(browser) "cancelled" flake is the Playwright
+          # install hanging until the 15-min job timeout (the specs never run —
+          # the whole budget burns in this step). TWO independent apt hangs cause
+          # it, both addressed here:
+          #   1. `apt-get update` hangs on GitHub's packages.microsoft.com apt
+          #      sources (azure-cli + prod) when they 403 → strip them first.
+          #   2. The `apt-get install` of the OS deps hangs FETCHING the ~21 MB of
+          #      .deb archives from GitHub's apt mirror (observed: 14 min stuck at
+          #      "Need to get 21.1 MB" before cancellation).
+          # ubuntu-latest already ships Chromium's core libs, so the OS-dep install
+          # is best-effort + hard-timeout-bounded + non-fatal; the browser binary
+          # (from Playwright's own CDN, which never hangs) is what matters and is
+          # ALWAYS installed.
+          sudo grep -rlZ packages.microsoft.com /etc/apt/sources.list.d/ 2>/dev/null | sudo xargs -0 -r rm -f || true
+          timeout 240 bunx playwright install-deps chromium || echo "::warning::playwright install-deps timed out or failed — relying on the runner's preinstalled Chromium libs"
+          bunx playwright install chromium
+      # Populate the shared entry ONLY from main, so one copy serves every PR
+      # instead of one copy per PR. `if: always()` is deliberate: a failing spec
+      # must not throw away a browser download the next run would reuse.
+      - name: Save Playwright browsers (main only)
+        if: always() && github.ref == 'refs/heads/main' && steps.pw-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+      - run: bun run test:browser
+
+  release-build:
+    name: Release Build
+    needs: install
+    if: ${{ (success() && needs.install.outputs.code == 'true') || (failure() && needs.install.result != 'success') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-pyreon
+        with:
+          restore-bootstrap: 'false'
+      - name: Clean full build of every published package (release path)
+        run: bun scripts/build-batched.ts
+      - name: Pack + validate every manifest (publish dry-run, no upload)
+        run: bun scripts/publish.ts --dry-run
+
+  # ── Dedicated cell for `bootstrap-exit-codes.test.ts` ──────────────────
+  # That single test file spawns 8 bun subprocesses, each running the
+  # full bootstrap.ts walk over ~80 packages. Locally this runs in ~5s;
+  # on GHA's slower runners it took ~190s (entirely dominating `test
+  # (internals)`'s ~196s wall-clock). The PR-time test (internals) job
+  # now sets PYREON_SKIP_SLOW_TESTS=1 to skip this file; this dedicated
+  # cell runs WITHOUT the env var, but ONLY when `scripts/bootstrap.ts`
+  # itself can have changed — that's the only path that can regress the
+  # exit-code contract this suite protects.
+  #
+  # push:main / merge_group always run (safety: main never merges without
+  # the full contract validation).
+  bootstrap-exit-codes:
+    name: bootstrap-exit-codes
+    # Relevance is decided in Install — this job used to boot a runner on
+    # EVERY PR (checkout + setup + node 24, ~21–31s) just to conclude "not
+    # relevant, skip" ~99% of the time. Now the job itself skips (no runner)
+    # unless bootstrap.ts / the test / the workflow changed. Fail-closed: a
+    # failed Install runs it.
+    needs: install
+    if: ${{ (success() && needs.install.outputs.bootstrap-exit-codes == 'true') || (failure() && needs.install.result != 'success') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-pyreon
+        with:
+          node-version: '24'
+          restore-bootstrap: 'false' # this test doesn't read lib/
+      - name: Run bootstrap-exit-codes
+        run: |
+          bun run --filter='@pyreon/test-utils' test src/tests/bootstrap-exit-codes.test.ts
 
   coverage-full:
     name: Coverage (Full)
@@ -1734,8 +1754,7 @@ jobs:
     # immediately — never leave it red (see anti-patterns.md "CI / Build Gate
     # Mistakes": a red-on-arrival gate is a dead gate).
     if: ${{ github.event_name == 'push' || github.event_name == 'merge_group' }}
-    # Cost gate (see test-cell): skip when a fast deterministic check fails.
-    needs: [bootstrap, lint] # typecheck edge dropped 2026-07 (queue-contention pass — see test-cell)
+    needs: install
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -1751,337 +1770,13 @@ jobs:
       - name: Run full per-package coverage
         run: bun run coverage
 
-  # ── Audit Types: typed-but-unimplemented detector ─────────────────────
-  # Runs `audit-types --all --strict` against the high-risk packages
-  # (zero, router, core, server, runtime-server, vite-plugin) and FAILS
-  # CI if any field is typed-but-unimplemented (zero non-type refs in
-  # the owning package). Phase E2 triaged the original 3-finding
-  # baseline: zero's duplicate `LoaderContext` was deleted (re-exports
-  # router's), `RouteMeta.requiresAuth` and `NativeItem.__isNative` are
-  # in `EXEMPT_FIELDS` with rationale (user-side convention + cross-
-  # package brand respectively). New HIGH findings now block merge.
-  # See scripts/audit-types.ts for the heuristic + EXEMPT_FIELDS /
-  # EXEMPT_FILES escape hatches when a field genuinely doesn't fit the
-  # in-package-by-name read pattern.
-  # ── Fast Gates (consolidated) ─────────────────────────────────────────
-  # ELEVEN former singleton jobs, one runner. Measured on run 30901780195:
-  # 39 of 47 jobs did <90s of work yet carried 133 of the run's 153 QUEUE
-  # minutes — under org-pool runner starvation the per-JOB queue tax
-  # (300-480s each here) dwarfs the work several times over, and even the
-  # zero-dependency decide job waited 330s for a slot. Consolidating trades
-  # ~220s of sequential work in ONE slot for eleven slots' worth of queue.
-  #
-  # Every folded gate is lib-free (runs against src via the bun condition)
-  # and needs at most [install, changes]. Gates that previously skipped on
-  # docs-only PRs now always run — deliberately STRICTER, never fail-open,
-  # and each costs seconds. Deliberately NOT folded: Secrets Scan (its
-  # standalone shape is ghcr-flake containment — a registry hiccup must not
-  # red eleven gates), Dependency Audit (separate workflow), and anything
-  # lib-needing.
-  #
-  # Failure visibility: each gate is its own NAMED STEP, so the job summary
-  # names the exact failed gate. The alias jobs below keep the pinned
-  # branch-protection contexts reporting until protection swaps to this
-  # job's context; then the aliases get deleted (expand/contract).
-  fast-gates:
-    name: Fast Gates
-    # needs NO `changes` edge: this job reads none of its outputs (it runs
-    # every gate unconditionally — strictly more checking than the old
-    # per-gate skip), so waiting on the decide job was pure DAG latency.
-    needs: [install]
-    if: always() && needs.install.result == 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0 # Docs Sync diffs against the base ref
-      - uses: ./.github/actions/setup-pyreon
-        with:
-          restore-bootstrap: 'false' # every folded gate is lib-free
-      - name: Check Doc Claims
-        run: bun run check-doc-claims
-      - name: Multiplatform Matrix (headline == table sum)
-        run: bun scripts/check-multiplatform-matrix.ts
-      - name: Docs Sync (gen-docs --check)
-        run: bun run gen-docs --check
-      - name: Docs Sync (check-mcp-docs)
-        run: bun run check-mcp-docs
-      # The AI-facing prop contract for @pyreon/ui-components, DERIVED by
-      # running its rocketstyle chains against a real theme (dimension values
-      # live in `.states((t) => …)` callbacks, so they cannot be read from
-      # types). Rename a value and the committed guide no longer matches.
-      #
-      # Runs here rather than in `validate-fast` because it mounts 108
-      # components and costs ~48s cold — enough to make the pre-push hook worth
-      # bypassing, which would cost more than this gate is worth.
-      - name: Atlas Agent Guide (AI prop contract in sync)
-        run: bun run atlas-guide
-      - name: Docs Generated Fresh
-        run: bun docs/scripts/check-generated-fresh.ts
-      - name: Lint Ratchet (oxlint warn baseline)
-        run: bun run check-lint-ratchet
-      - name: Lint Ratchet (pyreon-lint advisory baseline)
-        run: bun run check-pyreon-lint-ratchet
-      - name: Audit Types
-        run: bun run audit-types --all --strict
-      - name: Pyreon Lint Gate
-        run: bun run lint:pyreon
-      - name: Check Manifest Depth
-        run: bun run check-manifest-depth
-      - name: Check Manifest Examples
-        run: bun run check-manifest-examples
-      - name: Check Export Entries
-        run: bun run check-export-entries
-      - name: Check No Major Changesets
-        run: bun scripts/check-no-major-changesets.ts
-      - name: Check Client Bundle Node Imports
-        run: bun run check-client-bundle-node-imports
-
-
-  check-bundle-budgets:
-    name: Check Bundle Budgets
-    # P3c — bundles `lib/index.js` of every published package via Bun.build.
-    # Needs Bootstrap.
-    # Cost gate (see test-cell): skip when a fast deterministic check fails.
-    # Layer-2 gate: skip entirely on a docs-only PR (`changes.code == false`).
-    needs: [bootstrap, lint, changes] # typecheck edge dropped 2026-07 (queue-contention pass — see test-cell)
-    if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
-    runs-on: ubuntu-latest
-    # 15, not 5. `setup-pyreon` defaults `restore-bootstrap: true`, and
-    # restoring the lib/ cache measured 5.9-6.0 min across TWELVE jobs of run
-    # 30840261671 — so a 5-minute budget was spent entirely inside setup, with
-    # nothing left for the check. The job could not pass, and a timed-out job
-    # reports `cancelled`, which never satisfies a required context: this and
-    # its three siblings below are REQUIRED, so every affected PR was
-    # permanently unmergeable with no red X to explain why.
-    #
-    # Derived, not guessed:
-    #   bootstrap-cache restore   6.0m  (measured, 12/12 jobs at 5.9-6.0)
-    #   the check step itself    ~0.8m  (Build's own step, same run)
-    #   checkout + teardown      ~0.3m
-    #     => ~7m, and setup is the variable that broke it, so ~100% headroom
-    #
-    # The lib-FREE gates (Lint Ratchet, Check Manifest Depth) call the same
-    # action with restore-bootstrap 'false' and finish in ~0.3m; their small
-    # budgets are correct. `check-ci-job-timeouts` enforces the distinction.
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-pyreon
-      - name: Verify each package main-entry within budget
-        run: bun run check-bundle-budgets
-
-  # ── Check import budgets: PER-IMPORT (minimal-import) bundle gate ─────
-  # Sibling of check-bundle-budgets. That gate measures each package's
-  # FULL barrel; this one locks the gzipped size of the CANONICAL MINIMAL
-  # IMPORTS real apps write (`mount`-only, `signal/computed/effect`, basic
-  # router). It catches the failure mode the full-barrel gate can't see:
-  # an optional feature silently STOPPING tree-shaking so a minimal import
-  # starts dragging in code it never used to. Needs Bootstrap (measures
-  # built lib/index.js). See scripts/check-import-budgets.ts.
-  check-import-budgets:
-    name: Check Import Budgets
-    needs: [bootstrap, lint, changes] # typecheck edge dropped 2026-07 (queue-contention pass — see test-cell)
-    if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-pyreon
-      - name: Verify canonical minimal imports within budget
-        run: bun run check-import-budgets
-
-  # ── Check distribution: bundle/distribution hygiene gate ──────────────
-  # Asserts every published @pyreon/* package declares `sideEffects` (so
-  # bundlers can tree-shake) and excludes `!lib/**/*.map` from its `files`
-  # array (so source maps don't ship to npm consumers). Also runs an
-  # `npm pack --dry-run` probe against @pyreon/reactivity to prove the
-  # tarball is actually clean at publish time, not just on paper. The
-  # probe relies on lib/ being built — restored from the bootstrap
-  # cache rather than rebuilt, so the job runs in seconds, not minutes.
-  # See scripts/check-distribution.ts.
-  check-distribution:
-    name: Check Distribution
-    # P3c — `npm pack --dry-run` probe reads lib/ via the `files` array.
-    # Needs Bootstrap.
-    # Cost gate (see test-cell): skip when a fast deterministic check fails.
-    # Layer-2 gate: skip entirely on a docs-only PR (`changes.code == false`).
-    needs: [bootstrap, lint, changes] # typecheck edge dropped 2026-07 (queue-contention pass — see test-cell)
-    if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-pyreon
-      - name: Check sideEffects + source-map exclusion
-        run: bun run check-distribution
-
-  # ── Check bin liveness: published-CLI no-op guard ─────────────────────
-  # A published bin can build + ship + exit 0 while executing NOTHING —
-  # @pyreon/lint 0.43.x shipped `bin/pyreon-lint.js` doing a bare
-  # `import('../lib/cli.js')` whose `if (import.meta.main) main()` call the
-  # bundler had tree-shaken out, so `npx pyreon-lint` ran nothing; and
-  # `import.meta.main`-gated bins are a silent no-op on Node 20/22 LTS.
-  # This gate spawns each published bin under REAL Node (not Bun — the bug
-  # is Node-runtime specific) and fails if any does nothing. Reads lib/, so
-  # it Needs Bootstrap. See scripts/check-bin-liveness.ts.
-  check-bin-liveness:
-    name: Check Bin Liveness
-    needs: [bootstrap, lint, changes] # typecheck edge dropped 2026-07 (queue-contention pass — see test-cell)
-    if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-pyreon
-      - name: Spawn every published bin, assert it does something
-        run: bun run check-bin-liveness
-
-  release-build:
-    name: Release Build
-    needs: [install, changes]
-    if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-pyreon
-        with:
-          restore-bootstrap: 'false'
-      - name: Clean full build of every published package (release path)
-        run: bun scripts/build-batched.ts
-      - name: Pack + validate every manifest (publish dry-run, no upload)
-        run: bun scripts/publish.ts --dry-run
-
-  verify-modes:
-    name: Verify Modes
-    # P3c — `vite build` of every example × mode cell. Needs Bootstrap.
-    # Cost gate (see test-cell): skip when a fast deterministic check fails.
-    # Layer-2 gate: skip entirely on a docs-only PR (`changes.code == false`).
-    needs: [bootstrap, lint, changes] # typecheck edge dropped 2026-07 (queue-contention pass — see test-cell)
-    if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-pyreon
-      - run: bun run verify-modes
-
-  # ── Scaffold smoke: end-to-end gate against create-pyreon-app ──────────
-  # Runs the actual scaffolder + bun install + bun run build for every
-  # cell defined in scripts/scaffold-smoke.ts (template × adapter ×
-  # integrations). Catches the bug class that PR #404 shipped with —
-  # template TS errors / missing deps / wrong API names that lint+
-  # typecheck on the scaffolder package can't see, because templates
-  # aren't in any tsconfig include path.
-  #
-  # P1d — sharded as a matrix (6 cells in parallel) so wall-clock
-  # ≈ slowest single cell instead of the sum. Pre-shard the job ran 6
-  # cells sequentially in one runner (~215s); post-shard each runs in
-  # its own ~50-110s job (per-cell `bun install` from repo root is the
-  # dominant cost) with no cross-cell contention.
-  #
-  # `scaffold-smoke-aggregate` mirrors the e2e aggregator pattern: a
-  # stable required check name regardless of which cells ran (matches
-  # branch-protection's expectations even if a cell gets renamed).
-  #
-  # ## Path-scoping (perf): PRs that don't touch the scaffolder OR any
-  # template skip the matrix entirely. All 6 cells share the same
-  # scaffold-relevant input surface (the cells differ only in template ×
-  # adapter combinations — the SCAFFOLDER + the templates are the same
-  # source) so it's all-or-nothing. The consolidated `Changes (decide)` job
-  # gates the matrix (the standalone `Scaffold Smoke (decide)` runner was
-  # folded into it, 2026-07); the `scaffold-smoke` aggregator runs always
-  # (empty matrix is a green skip, same shape as e2e).
-  # push:main + merge_group ALWAYS run the full matrix — main is never
-  # allowed to merge an undetected scaffold regression.
-  scaffold-smoke-cell:
-    name: Scaffold Smoke (${{ matrix.cell }})
-    # P3c — each cell runs `bun install` + `vite build` of the scaffolded app.
-    # Needs Bootstrap so the workspace lib/ is resolvable when the app pulls
-    # in @pyreon/* via the node condition.
-    # Cost gate (see test-cell): lint only (typecheck edge dropped 2026-07).
-    needs: [bootstrap, lint, changes]
-    if: ${{ needs.changes.outputs.scaffold-has == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        cell:
-          - cpa-smoke-app-vercel
-          - cpa-smoke-app-static
-          - cpa-smoke-blog-cloudflare
-          - cpa-smoke-dashboard-vercel-full
-          - cpa-smoke-dashboard-node-supabase
-          - cpa-smoke-monorepo-vercel
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-pyreon
-      # scaffold-smoke.ts accepts a positional cell filter:
-      #   `bun scripts/scaffold-smoke.ts cpa-smoke-app-vercel` runs only that cell.
-      - name: Run scaffold-smoke cell
-        run: bun scripts/scaffold-smoke.ts ${{ matrix.cell }}
-
-  # Stable required-check aggregator. Mirrors the `e2e` job's pattern
-  # — branch protection requires this check by name; matrix cells are
-  # the individual reports + failure surface.
-  scaffold-smoke:
-    name: Scaffold Smoke
-    needs: [changes, scaffold-smoke-cell]
-    if: always()
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    steps:
-      - name: Aggregate scaffold-smoke matrix
-        run: |
-          RESULT="${{ needs.scaffold-smoke-cell.result }}"
-          # Fail-closed (2026-07, an improvement over the old decide job): if
-          # `changes` didn't succeed, the scaffold relevance is UNKNOWN and the
-          # cells skipped — that must read as red, not green-via-skip.
-          if [ "${{ needs.changes.result }}" != "success" ]; then
-            echo "::error::changes (decide) did not succeed (${{ needs.changes.result }}) — scaffold relevance unknown"
-            exit 1
-          fi
-          # `skipped` happens when the decide step says no relevant
-          # changes — that's a green outcome (matches e2e's empty-matrix
-          # pattern). `success` is the normal pass. Anything else fails.
-          if [ "$RESULT" = "success" ] || [ "$RESULT" = "skipped" ]; then
-            if [ "$RESULT" = "skipped" ]; then
-              echo "No scaffold-relevant changes — matrix skipped."
-            else
-              echo "All scaffold-smoke cells passed."
-            fi
-            exit 0
-          fi
-          echo "::error::One or more scaffold-smoke cells failed (result=$RESULT)"
-          exit 1
-
-  audit:
-    name: Dependency Audit
-    needs: install
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-pyreon
-        with:
-          # P3c — `bun pm untrusted` + lockfile diff only need NM, not lib/.
-          restore-bootstrap: 'false'
-      - name: Check for untrusted dependencies
-        run: bun pm untrusted
-        continue-on-error: true
-      - name: Verify no lockfile drift
-        run: git diff --exit-code bun.lock || (echo "::error::Lockfile is out of sync with package.json" && exit 1)
-
   # ── Benchmark (push:main only — track perf over time) ────────────────────
   benchmark:
     name: Benchmark
     if: github.event_name == 'push'
     # P3c — benchmarks measure realistic perf against the BUILT artifacts,
     # not src/. Needs Bootstrap.
-    needs: bootstrap
+    needs: install
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -2099,41 +1794,3 @@ jobs:
             bench-results.json
             bundle-size.json
           retention-days: 90
-
-  secrets-scan:
-    name: Secrets Scan
-    runs-on: ubuntu-latest
-    # 10, not 5 — the pre-pull retry loop below can legitimately spend
-    # 4 pull attempts + 60s of backoff sleeps before its OWN loud failure;
-    # a 5-min cap could kill the job mid-retry with an opaque "cancelled"
-    # instead of the loop's diagnostic (the timeout-must-exceed-composed-
-    # internal-budgets rule from testing.md).
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-      # The trufflehog action `docker run`s ghcr.io/trufflesecurity/
-      # trufflehog at job runtime. ghcr.io intermittently times out on
-      # the manifest fetch (exit 125, BEFORE any scan) — and since this
-      # is a REQUIRED check, that flake blocks every PR repo-wide on bad
-      # luck (observed on #656, #688). Pre-pull the image with retry +
-      # backoff into the local Docker cache so the action finds it
-      # locally and never performs the flaky network pull. This adds
-      # ZERO change to the trufflehog action SHA, `--only-verified`
-      # args, or scan scope — the security posture is identical; only
-      # the image fetch is made resilient. A genuine sustained ghcr.io
-      # outage still fails (correctly) after honest retries.
-      - name: Pre-pull trufflehog image (ghcr.io flake-resilient)
-        run: |
-          img="ghcr.io/trufflesecurity/trufflehog:latest"
-          for i in 1 2 3 4; do
-            if docker pull "$img"; then exit 0; fi
-            echo "::warning::ghcr.io pull attempt $i/4 failed for $img; backing off ${i}0s"
-            sleep "${i}0"
-          done
-          echo "::error::trufflehog image pull failed after 4 attempts — genuine ghcr.io outage, not a transient flake"
-          exit 1
-      - uses: trufflesecurity/trufflehog@bcfcf73aaf4759d4dadc2783177c245a02792318 # v3.97.0
-        with:
-          extra_args: --only-verified

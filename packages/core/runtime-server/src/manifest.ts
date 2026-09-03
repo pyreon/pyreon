@@ -6,7 +6,7 @@ export default defineManifest({
   tagline:
     'SSR/SSG VNode→HTML renderer — renderToString, renderToStream (out-of-order Suspense), per-request ALS context/store isolation',
   description:
-    "Pyreon's server-side renderer: walks a VNode tree and produces HTML. Signal accessors are called synchronously to SNAPSHOT their current value — no effects, no reactivity on the server (reactivity resumes post-hydration on the client). Async component functions are awaited. `renderToStream` flushes progressively and resolves Suspense boundaries out-of-order (fallback first, then a `<template>` + inline swap script). Concurrency-safe: every `renderToString` / `renderToStream` / `runWithRequestContext` call runs in its own `AsyncLocalStorage` store so concurrent requests never share context frames; `configureStoreIsolation()` extends the same isolation to the `@pyreon/store` registry. Most apps consume this transitively through `@pyreon/server` (`createHandler` / `prerender`) rather than calling it directly.",
+    "Pyreon's server-side renderer: walks a VNode tree and produces HTML. Signal accessors are called synchronously to SNAPSHOT their current value — no effects, no reactivity on the server (reactivity resumes post-hydration on the client). Async component functions are awaited. `renderToStream` flushes progressively and resolves Suspense boundaries out-of-order (fallback first, then a `<template>` + inline swap script). Concurrency-safe: every `renderToString` / `renderToStream` / `runWithRequestContext` call runs in its own `AsyncLocalStorage` store so concurrent requests never share context frames; the `@pyreon/store` registry is isolated the same way AUTOMATICALLY — the store publishes its setter on a `globalThis` seam when it loads on a server and this renderer picks it up, so a consumer cannot forget to wire it; `configureStoreIsolation()` stays as the explicit override for a custom provider. Most apps consume this transitively through `@pyreon/server` (`createHandler` / `prerender`) rather than calling it directly.",
   category: 'server',
   multiplatform: {
     tier: 'web-only',
@@ -18,7 +18,7 @@ export default defineManifest({
     'renderToStream(vnode, { signal?, suspenseTimeoutMs? }) → ReadableStream<string> — progressive, out-of-order Suspense (default 30s per-boundary timeout, configurable; signal threads AbortSignal end-to-end)',
     'Per-request ALS context isolation — concurrent requests never share provide() frames',
     'runWithRequestContext(fn) — isolated context+store for Pyreon APIs called outside renderToString',
-    'configureStoreIsolation(setStoreRegistryProvider) — opt-in per-request @pyreon/store isolation',
+    'configureStoreIsolation(setStoreRegistryProvider) — override per-request @pyreon/store isolation (wired automatically when @pyreon/store is loaded)',
     'Compiler-emitted reactive props resolved via makeReactiveProps (parity with CSR mount.ts)',
     'For-list key markers URL-encoded so user keys can never break out of the HTML comment',
     'decodeKeyFromMarker — symmetric inverse of the For-key marker encoder (devtools/future hydration)',
@@ -29,7 +29,7 @@ export default defineManifest({
       kind: 'function',
       signature: 'renderToString(root: VNode | null): Promise<string>',
       summary:
-        'Render a VNode tree to a single HTML string. Each call runs in a fresh isolated ALS context stack (and store registry if `configureStoreIsolation` was called) so concurrent requests never bleed `provide()` frames into each other. Signal accessors are invoked synchronously to snapshot their CURRENT value — there is no reactivity on the server, so a `<div>{count()}</div>` renders the value at render time and only becomes live after client hydration. Async component functions (`async function C()`) are awaited before the walk continues. Returns the empty string for a `null` root.',
+        'Render a VNode tree to a single HTML string. Each call runs in a fresh isolated ALS context stack (and its own store registry) so concurrent requests never bleed `provide()` frames into each other. Signal accessors are invoked synchronously to snapshot their CURRENT value — there is no reactivity on the server, so a `<div>{count()}</div>` renders the value at render time and only becomes live after client hydration. Async component functions (`async function C()`) are awaited before the walk continues. Returns the empty string for a `null` root.',
       example: `import { renderToString } from "@pyreon/runtime-server"
 
 const html = await renderToString(<App />)`,
@@ -68,7 +68,7 @@ return new Response(renderToStream(<App />, {
       kind: 'function',
       signature: 'runWithRequestContext<T>(fn: () => Promise<T>): Promise<T>',
       summary:
-        'Run an async function inside a fresh, isolated ALS context stack (and store registry, if `configureStoreIsolation` was called). Use this when you need to call Pyreon context-aware APIs — `useHead`, `prefetchLoaderData`, router resolution — OUTSIDE a `renderToString` / `renderToStream` call but still want per-request isolation. Without it those calls land on a process-global fallback stack shared by every concurrent request.',
+        'Run an async function inside a fresh, isolated ALS context stack (and its own store registry). Use this when you need to call Pyreon context-aware APIs — `useHead`, `prefetchLoaderData`, router resolution — OUTSIDE a `renderToString` / `renderToStream` call but still want per-request isolation. Without it those calls land on a process-global fallback stack shared by every concurrent request.',
       example: `import { runWithRequestContext } from "@pyreon/runtime-server"
 
 const data = await runWithRequestContext(async () => {
@@ -87,14 +87,14 @@ const data = await runWithRequestContext(async () => {
       signature:
         'configureStoreIsolation(setStoreRegistryProvider: (fn: () => Map<string, unknown>) => void): void',
       summary:
-        "Opt in to per-request `@pyreon/store` isolation. Call ONCE at server startup, passing `@pyreon/store`'s `setStoreRegistryProvider`. After this, every `renderToString` / `renderToStream` / `runWithRequestContext` call gets its own fresh store registry via ALS. WITHOUT calling it, store isolation is a no-op and all concurrent requests share ONE process-global store registry — request A's `defineStore` state is visible to request B (SSR state bleed across users).",
+        "OVERRIDE per-request `@pyreon/store` isolation with a provider of your own. You do NOT need to call this to be isolated: `@pyreon/store` publishes its setter on a `globalThis` seam when it loads on a server, and the renderer wires it at its own choke point, so every `renderToString` / `renderToStream` / `runWithRequestContext` call already gets a fresh registry via ALS. It was opt-in before, which meant unisolated by default — the two layers that own the server (`@pyreon/server`, `@pyreon/zero`) cannot call it, because neither depends on `@pyreon/store`, so the only party who could opt in was the application author. Reach for it to supply a custom registry (a shared build-time cache across SSG pages, a test double); the last call wins.",
       example: `import { configureStoreIsolation } from "@pyreon/runtime-server"
 import { setStoreRegistryProvider } from "@pyreon/store"
 
 // once, at server startup:
 configureStoreIsolation(setStoreRegistryProvider)`,
       mistakes: [
-        'Not calling it at all in an SSR app that uses `@pyreon/store` — concurrent requests share one global registry, so one request’s store state leaks into another request’s render',
+        'Believing you must call it — isolation is automatic as of the seam; this is the override, not the switch. A pre-seam app that DID call it keeps working unchanged',
         'Calling it per request instead of once at startup — it only needs to wire the provider once; the per-request fresh `Map` is handled internally by the ALS run',
         'Passing something other than the `setStoreRegistryProvider` exported by `@pyreon/store` — the contract is specifically that provider-setter shape',
       ],

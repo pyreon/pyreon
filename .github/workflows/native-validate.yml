@@ -153,7 +153,39 @@ jobs:
     # PR runs should now land far under this, because they inherit main's warm
     # cache (see the `push:` trigger). If a WARM run ever approaches this cap,
     # that is real growth to shard — not a number to raise again.
-    timeout-minutes: 70
+    #
+    # 2026-09-02: re-derived, and this time the gate had already been DEAD for
+    # four nights. The uncached nightly:
+    #
+    #   2026-08-26  success    62.2m
+    #   2026-08-29  cancelled  70.2m   <- the cap
+    #   2026-08-30  cancelled  70.2m
+    #   2026-08-31  cancelled  70.2m
+    #   2026-09-01  cancelled  70.2m
+    #
+    # Four consecutive nights truncated at the cap is the exact failure the
+    # paragraph above predicts ("the cap must exceed a full COLD run or the
+    # nightly can never pass by construction"), and it went unnoticed because a
+    # dead schedule blocks nobody. A cold PR run on #3261 — which renamed this
+    # job's verdict-cache key, guaranteeing a miss — finished at 69.6m, i.e.
+    # 24 SECONDS inside the cap. Warm PR runs are 12-16m, so per the rule above
+    # this is not warm growth to shard; it is the cold path outgrowing its
+    # budget again.
+    #
+    # The formula cannot be applied literally here, and saying why matters: the
+    # four cancelled nights are TRUNCATED, so their true duration is unknown —
+    # `70.2` is the cap, not a measurement, and multiplying a censored value by
+    # 1.4 would just re-derive the cap. The only completed cold figures are
+    # 62.2m (2026-08-26) and 69.6m (2026-09-02), and the trend between them is
+    # what pushed the nightly over. Taking the worst COMPLETED cold run and the
+    # standard headroom: 69.6 x 1.4 ~= 97, rounded up to 120 to cover the
+    # unknown amount by which the fully-uncached nightly exceeds the 69.6m
+    # partially-warm PR path.
+    #
+    # 120 is therefore also a MEASUREMENT: the next nightly will report a real
+    # cold duration instead of being cut off at the cap, which is the number
+    # the next re-derivation should use. A truncated run teaches nothing.
+    timeout-minutes: 120
     permissions:
       contents: read
     steps:
@@ -222,15 +254,20 @@ jobs:
       # The toolchain versions are in the cache key as well as in the verdict
       # keys. That is belt-and-braces, not redundancy: it keeps a toolchain bump
       # from dragging a large dead cache along behind it.
+      # Key FAMILY is `native-verdicts-ci-` — the same one ci.yml's native
+      # test cells use, with this job's lineage (`validate-swift…-kotlin…`)
+      # in the suffix. One path ⇒ one prefix family ⇒ `check-cache-key-sync`
+      # can prove no second writer exists; the lineage keeps the restore
+      # from picking up a sibling cell's store.
       - name: Restore native compile-verdict cache
         # Skipped on the nightly drift run — see the uncached env below.
         if: github.event_name != 'schedule'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache/pyreon-native-validate
-          key: native-validate-${{ runner.os }}-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-${{ github.run_id }}
+          key: native-verdicts-ci-${{ runner.os }}-validate-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-${{ github.run_id }}
           restore-keys: |
-            native-validate-${{ runner.os }}-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-
+            native-verdicts-ci-${{ runner.os }}-validate-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-
 
       - name: Run native-compiler tests with validation REQUIRED
         # PYREON_REQUIRE_NATIVE_VALIDATE=1 promotes the "skip when tool

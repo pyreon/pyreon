@@ -161,6 +161,32 @@ final class PyreonFinanceUITests: XCTestCase {
         signOutIfSignedIn(app)
     }
 
+    /// The chart crossing: `<PieChart>` from @pyreon/charts/plot lowered to
+    /// the runtime PyreonPieChart over the GENERATED engine — this asserts the
+    /// chart ELEMENT is on the dashboard on a real Simulator (the geometry is
+    /// execution-proven by PyreonChartEngineTests; this is the device half).
+    func test_spendingPieChartRendersOnDashboard() throws {
+        let app = launchOnLoginScreen()
+
+        let field = app.textFields["login-username"]
+        XCTAssertTrue(field.waitForExistence(timeout: 30), "Username field did not render")
+        field.tap()
+        field.typeText("alice")
+        app.buttons["login-submit"].tap()
+
+        XCTAssertTrue(
+            app.otherElements["dashboard-page"].waitForExistence(timeout: 15),
+            "Did not reach the dashboard"
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["spend-pie"].waitForExistence(timeout: 10),
+            "PieChart did not render — the @pyreon/charts/plot lowering or the "
+                + "PyreonPieChart runtime view broke on-device"
+        )
+
+        signOutIfSignedIn(app)
+    }
+
     // Keyed-<For> mutation through a store, with the useDatabase side-channel
     // firing on the same path (`db.delete('tx', String(id))`). The balance is
     // the observable: removing Rent (−1500) must leave Salary alone → 4200.

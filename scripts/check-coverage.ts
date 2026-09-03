@@ -47,9 +47,10 @@
  * exemption is updated in lockstep with real package improvements.
  */
 import { spawn, spawnSync } from 'node:child_process'
-import { readdirSync, existsSync, readFileSync, appendFileSync, realpathSync } from 'node:fs'
+import { readdirSync, existsSync, readFileSync, appendFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
+
+import { isModuleEntry } from './is-entry'
 
 const PACKAGE_DIRS = [
   'packages/core',
@@ -164,6 +165,12 @@ interface FloorExemption {
   reason: string
 }
 const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
+  '@pyreon/charts': {
+    currentStatements: 94,
+    currentBranches: 85,
+    reason:
+      'The plot-engine family wave (2026-09, ~30 stacked PRs: funnel through gantt, the ECharts option facade, the option host, the native crossings). Each PR lands one family with statement-level geometry specs; the edge and interaction specs that lift branch coverage arrive in LATER PRs of the same stack, so an intermediate branch measures 94-97% statements and 85-90% branches (theme river: 96.28 / 87.49 with the browser-covered canvas hosts excluded) while the top of the stack sits higher. Recorded at the wave floor rather than lowered per PR; the ratchet back toward 98 is one follow-up once the wave has merged, and the family hosts stay excluded because each is covered only by its real-Chromium spec.',
+  },
   '@pyreon/lathe': {
     currentStatements: 90,
     currentBranches: 80,
@@ -1089,17 +1096,10 @@ function enforceFloor(packages: PackageInfo[]): string[] {
  * under Node LTS. Falling back to comparing the resolved entry path keeps this
  * working on every runtime.
  */
-const isEntry = (() => {
-  const flag = (import.meta as { main?: boolean }).main
-  if (typeof flag === 'boolean') return flag
-  const entry = process.argv[1]
-  if (!entry) return false
-  try {
-    return pathToFileURL(realpathSync(entry)).href === import.meta.url
-  } catch {
-    return false
-  }
-})()
+// The reasoning above now lives ONCE, in `./is-entry` — a second copy of a
+// subtle runtime check is a drift source, and this file's copy was already being
+// re-derived by hand elsewhere.
+const isEntry = isModuleEntry(import.meta)
 
 if (!isEntry) {
   // Imported for `parseCoverageOutput` — export surface only, no gate.

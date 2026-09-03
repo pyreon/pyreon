@@ -32,8 +32,14 @@ describe('gen-docs — runtime-server snapshot', () => {
     const r = renderApiReferenceEntries(manifest)
     expect(r['runtime-server/renderToString']?.mistakes).toContain('one-shot')
     expect(r['runtime-server/renderToStream']?.mistakes).toContain('Suspense')
+    // Was `'global registry'`, asserting the pre-seam foot-gun "call this or
+    // requests share one registry". Isolation is automatic now, so that
+    // sentence is gone — but the INVARIANT the assertion protects is that this
+    // entry still tells an agent what the call is FOR, rather than shipping an
+    // entry with no guidance. The new hazard is the opposite mistake: reaching
+    // for it as though it were still the switch.
     expect(r['runtime-server/configureStoreIsolation']?.mistakes).toContain(
-      'global registry',
+      'this is the override, not the switch',
     )
   })
 })
