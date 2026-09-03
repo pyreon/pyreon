@@ -2167,7 +2167,7 @@ fun renderTreemap(cells: List<TreemapCell>, options: TreemapOptions? = null, mea
     return out
   }
 
-fun hitTreemap(cells: List<TreemapCell>, px: Double, py: Double): TreemapCell? {
+fun hitTreemapIndex(cells: List<TreemapCell>, px: Double, py: Double): Int {
     var bestIdx = -1
     var bestDepth = -1
     for (i in 0 until cells.length) {
@@ -2181,10 +2181,12 @@ fun hitTreemap(cells: List<TreemapCell>, px: Double, py: Double): TreemapCell? {
         bestIdx = i
       }
     }
-    if (bestIdx < 0) {
-      return null
-    }
-    return cells[bestIdx]
+    return bestIdx
+  }
+
+fun hitTreemap(cells: List<TreemapCell>, px: Double, py: Double): TreemapCell? {
+    val i = hitTreemapIndex(cells, px, py)
+    return if (i < 0) null else cells[i]
   }
 
 fun treeDepth(nodes: List<TreeNode>): Int {
@@ -2337,7 +2339,7 @@ fun renderSunburst(arcs: List<SunburstArc>, center: PyreonChartPt, options: Sunb
     return out
   }
 
-fun hitSunburst(arcs: List<SunburstArc>, center: PyreonChartPt, px: Double, py: Double): SunburstArc? {
+fun hitSunburstIndex(arcs: List<SunburstArc>, center: PyreonChartPt, px: Double, py: Double): Int {
     val dx = px - center.x
     val dy = py - center.y
     val dist = Math.sqrt((dx * dx + dy * dy).toDouble())
@@ -2364,10 +2366,12 @@ fun hitSunburst(arcs: List<SunburstArc>, center: PyreonChartPt, px: Double, py: 
         bestIdx = i
       }
     }
-    if (bestIdx < 0) {
-      return null
-    }
-    return arcs[bestIdx]
+    return bestIdx
+  }
+
+fun hitSunburst(arcs: List<SunburstArc>, center: PyreonChartPt, px: Double, py: Double): SunburstArc? {
+    val i = hitSunburstIndex(arcs, center, px, py)
+    return if (i < 0) null else arcs[i]
   }
 
 fun placeTreeNode(orient: String, box: PyreonChartRect, gutter: Double, levelsF: Double, slotsF: Double, depthF: Double, t: Double): Placed {
@@ -2591,7 +2595,7 @@ fun renderTree(layout: TreeLayout, options: TreeOptions? = null): List<PyreonDra
     return out
   }
 
-fun hitTree(layout: TreeLayout, px: Double, py: Double, symbolSize: Double? = null): TreeLayoutNode? {
+fun hitTreeIndex(layout: TreeLayout, px: Double, py: Double, symbolSize: Double? = null): Int {
     val r = (((symbolSize ?: 8.0))).toDouble() / (2.0).toDouble() + 4.0
     var bestIdx = -1
     var bestD = r * r
@@ -2605,10 +2609,12 @@ fun hitTree(layout: TreeLayout, px: Double, py: Double, symbolSize: Double? = nu
         bestD = d
       }
     }
-    if (bestIdx < 0) {
-      return null
-    }
-    return layout.nodes[bestIdx]
+    return bestIdx
+  }
+
+fun hitTree(layout: TreeLayout, px: Double, py: Double, symbolSize: Double? = null): TreeLayoutNode? {
+    val i = hitTreeIndex(layout, px, py, symbolSize)
+    return if (i < 0) null else layout.nodes[i]
   }
 
 fun riverValue(s: RiverSeries, i: Int): Double {
@@ -2849,7 +2855,7 @@ fun riverPointInPolygon(pts: List<PyreonChartPt>, px: Double, py: Double): Boole
     return inside
   }
 
-fun hitRiver(layout: RiverLayout, px: Double, py: Double, curve: String? = null): RiverLayer? {
+fun hitRiverIndex(layout: RiverLayout, px: Double, py: Double, curve: String? = null): Int {
     val shape = (curve ?: "smooth")
     var bestIdx = -1
     for (i in layout.layers.length - 1 downTo 0) {
@@ -2861,10 +2867,12 @@ fun hitRiver(layout: RiverLayout, px: Double, py: Double, curve: String? = null)
         bestIdx = i
       }
     }
-    if (bestIdx < 0) {
-      return null
-    }
-    return layout.layers[bestIdx]
+    return bestIdx
+  }
+
+fun hitRiver(layout: RiverLayout, px: Double, py: Double, curve: String? = null): RiverLayer? {
+    val i = hitRiverIndex(layout, px, py, curve)
+    return if (i < 0) null else layout.layers[i]
   }
 
 fun polarFrac(v: Double, lo: Double, hi: Double): Double {

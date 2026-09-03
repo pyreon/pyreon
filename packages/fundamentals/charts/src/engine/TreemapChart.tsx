@@ -4,7 +4,7 @@ import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
-import { hitTreemap, layoutTreemap, renderTreemap } from './treemap'
+import { hitTreemap, hitTreemapIndex, layoutTreemap, renderTreemap } from './treemap'
 import type { TreeNode, TreemapCell, TreemapOptions } from './treemap'
 import { chartTable, describeChart } from './a11y'
 import type { Double } from './types'
@@ -19,6 +19,8 @@ export interface TreemapChartProps {
   title?: string
   /** Fired with the deepest cell under the click, or null for a miss. */
   onSelect?: (cell: TreemapCell | null) => void
+  /** The engine's INDEX hit — the multiplatform-safe twin of `onSelect` (what the native tap gesture reports). */
+  onSelectIndex?: (hit: number) => void
   accessibleTable?: boolean
   class?: string
 }
@@ -58,11 +60,16 @@ export function TreemapChart(props: TreemapChartProps): VNode {
   const handleClick = (ev: MouseEvent): void => {
     const el = canvas
     const cb = props.onSelect
-    if (el === null || cb === undefined) return
+    const cbi = props.onSelectIndex
+    if (el === null || (cb === undefined && cbi === undefined)) return
     const w = drawWidth(el, props.width)
     const hgt = props.height ?? 300
     const r = el.getBoundingClientRect()
-    cb(hitTreemap(cellsFor(w, hgt), ev.clientX - r.left, ev.clientY - r.top))
+    const cells = cellsFor(w, hgt)
+    const px = ev.clientX - r.left
+    const py = ev.clientY - r.top
+    if (cb !== undefined) cb(hitTreemap(cells, px, py))
+    if (cbi !== undefined) cbi(hitTreemapIndex(cells, px, py))
   }
 
   const a11y = () => {

@@ -4,7 +4,7 @@ import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { paint, prepareCanvas } from './canvas-web'
-import { layoutGraph, renderGraph } from './graph'
+import { hitGraphIndex, layoutGraph, renderGraph } from './graph'
 import { hitGraph } from './graph-hit'
 import type { GraphLayout, GraphLayoutNode, GraphLink, GraphNode, GraphOptions } from './graph'
 import { chartTable, describeChart } from './a11y'
@@ -20,6 +20,8 @@ export interface GraphChartProps {
   graph?: GraphOptions
   title?: string
   onSelect?: (node: GraphLayoutNode | null) => void
+  /** The engine's INDEX hit — the multiplatform-safe twin of `onSelect` (what the native tap gesture reports). */
+  onSelectIndex?: (hit: number) => void
   accessibleTable?: boolean
   class?: string
 }
@@ -58,11 +60,16 @@ export function GraphChart(props: GraphChartProps): VNode {
   const handleClick = (ev: MouseEvent): void => {
     const el = canvas
     const cb = props.onSelect
-    if (el === null || cb === undefined) return
+    const cbi = props.onSelectIndex
+    if (el === null || (cb === undefined && cbi === undefined)) return
     const w = drawWidth(el, props.width)
     const hgt = props.height ?? 300
     const r = el.getBoundingClientRect()
-    cb(hitGraph(layoutFor(w, hgt), ev.clientX - r.left, ev.clientY - r.top))
+    const layout = layoutFor(w, hgt)
+    const px = ev.clientX - r.left
+    const py = ev.clientY - r.top
+    if (cb !== undefined) cb(hitGraph(layout, px, py))
+    if (cbi !== undefined) cbi(hitGraphIndex(layout, px, py))
   }
 
   const a11y = () => {

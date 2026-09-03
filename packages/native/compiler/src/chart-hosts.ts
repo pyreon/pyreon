@@ -7,9 +7,12 @@
 // What was missing was the HOST: on the web `<SankeyChart nodes links>` is a
 // component that lays out into its canvas element; natively that component
 // does not exist. This table says, per host, which props are the engine's
-// data arguments, which prop is the options struct, and how the draw list is
-// built from them — the same box arithmetic the web host uses, so a chart
-// lays out identically on all three targets for the same size.
+// data arguments, which prop is the options struct, how the LAYOUT is built
+// from them (the same box arithmetic the web host uses, so a chart lays out
+// identically on all three targets for the same size), how the draw list is
+// rendered from that layout, and how a tap is answered — the engine's INDEX
+// hit (`hitSankeyIndex`, …), which is what the multiplatform-safe
+// `onSelectIndex` callback receives on every target.
 //
 // The hosts NOT here take accessor callbacks (`value={(d) => d.total}`),
 // records, mixed-type rows or marks — shapes with no native form. They warn
@@ -26,6 +29,8 @@ export interface ChartHostTarget {
   max0: (e: string) => string
   /** `min(a, b)`. */
   min: (a: string, b: string) => string
+  /** The absent-options literal (`nil` / `null`). */
+  nil: string
 }
 
 export interface ChartHostArgs {
@@ -49,66 +54,90 @@ export interface ChartHostSpec {
   readonly options: string
   /** The web host's default `height`. */
   readonly defaultHeight: number
-  /** Builds the `[PyreonDrawCmd]` expression. */
-  readonly cmds: (a: ChartHostArgs, t: ChartHostTarget) => string
+  /** Builds the layout expression (`layoutX(...)`). */
+  readonly layout: (a: ChartHostArgs, t: ChartHostTarget) => string
+  /** Builds the `[PyreonDrawCmd]` expression from a layout expression. */
+  readonly render: (layout: string, a: ChartHostArgs, t: ChartHostTarget) => string
+  /** Builds the index-hit expression for a tap at (x, y) — what `onSelectIndex` receives. */
+  readonly hit: (layout: string, x: string, y: string, a: ChartHostArgs, t: ChartHostTarget) => string
 }
 
 const box00 = (a: ChartHostArgs, t: ChartHostTarget): string => t.rect('0.0', '0.0', a.W, a.H)
+
+/** `options?.field` — or the target's nil when no options were given (`nil?.x` is not Swift). */
+const optField = (a: ChartHostArgs, t: ChartHostTarget, field: string): string =>
+  a.options === t.nil ? t.nil : `${a.options}?.${field}`
 
 export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
   SankeyChart: {
     data: ['nodes', 'links'],
     options: 'sankey',
     defaultHeight: 300,
-    cmds: (a, t) => {
+    layout: (a, t) => {
       const box = t.rect(a.gutter, '8.0', t.max0(`${a.W} - ${a.gutter} * 2.0`), t.max0(`${a.H} - 16.0`))
-      return `renderSankey(layoutSankey(${a.data[0]}, ${a.data[1]}, ${box}, ${a.options}), ${a.options})`
+      return `layoutSankey(${a.data[0]}, ${a.data[1]}, ${box}, ${a.options})`
     },
+    render: (l, a) => `renderSankey(${l}, ${a.options})`,
+    hit: (l, x, y) => `hitSankeyIndex(${l}, ${x}, ${y})`,
   },
   GraphChart: {
     data: ['nodes', 'links'],
     options: 'graph',
     defaultHeight: 300,
-    cmds: (a, t) => `renderGraph(layoutGraph(${a.data[0]}, ${a.data[1]}, ${box00(a, t)}, ${a.options}), ${box00(a, t)}, ${a.options})`,
+    layout: (a, t) => `layoutGraph(${a.data[0]}, ${a.data[1]}, ${box00(a, t)}, ${a.options})`,
+    render: (l, a, t) => `renderGraph(${l}, ${box00(a, t)}, ${a.options})`,
+    hit: (l, x, y) => `hitGraphIndex(${l}, ${x}, ${y})`,
   },
   TreemapChart: {
     data: ['data'],
     options: 'treemap',
     defaultHeight: 300,
-    cmds: (a, t) => `renderTreemap(layoutTreemap(${a.data[0]}, ${box00(a, t)}, ${a.options}), ${a.options})`,
+    layout: (a, t) => `layoutTreemap(${a.data[0]}, ${box00(a, t)}, ${a.options})`,
+    render: (l, a) => `renderTreemap(${l}, ${a.options})`,
+    hit: (l, x, y) => `hitTreemapIndex(${l}, ${x}, ${y})`,
   },
   SunburstChart: {
     data: ['data'],
     options: 'sunburst',
     defaultHeight: 300,
-    cmds: (a, t) => {
+    layout: (a, t) => {
       const outer = t.max0(`${t.min(a.W, a.H)} / 2.0 - 4.0`)
-      return `renderSunburst(layoutSunburst(${a.data[0]}, ${outer} * ${a.innerRatio}, ${outer}, ${a.options}), ${t.pt(`${a.W} / 2.0`, `${a.H} / 2.0`)}, ${a.options})`
+      return `layoutSunburst(${a.data[0]}, ${outer} * ${a.innerRatio}, ${outer}, ${a.options})`
     },
+    render: (l, a, t) => `renderSunburst(${l}, ${t.pt(`${a.W} / 2.0`, `${a.H} / 2.0`)}, ${a.options})`,
+    hit: (l, x, y, a, t) => `hitSunburstIndex(${l}, ${t.pt(`${a.W} / 2.0`, `${a.H} / 2.0`)}, ${x}, ${y})`,
   },
   TreeChart: {
     data: ['data'],
     options: 'tree',
     defaultHeight: 300,
-    cmds: (a, t) => `renderTree(layoutTree(${a.data[0]}, ${box00(a, t)}, ${a.options}), ${a.options})`,
+    layout: (a, t) => `layoutTree(${a.data[0]}, ${box00(a, t)}, ${a.options})`,
+    render: (l, a) => `renderTree(${l}, ${a.options})`,
+    hit: (l, x, y, a, t) => `hitTreeIndex(${l}, ${x}, ${y}, ${optField(a, t, 'symbolSize')})`,
   },
   RiverChart: {
     data: ['series'],
     options: 'river',
     defaultHeight: 300,
-    cmds: (a, t) => `renderRiver(layoutRiver(${a.data[0]}, ${t.rect('8.0', '8.0', t.max0(`${a.W} - 16.0`), t.max0(`${a.H} - 16.0`))}, ${a.options}), ${a.options})`,
+    layout: (a, t) => `layoutRiver(${a.data[0]}, ${t.rect('8.0', '8.0', t.max0(`${a.W} - 16.0`), t.max0(`${a.H} - 16.0`))}, ${a.options})`,
+    render: (l, a) => `renderRiver(${l}, ${a.options})`,
+    hit: (l, x, y, a, t) => `hitRiverIndex(${l}, ${x}, ${y}, ${optField(a, t, 'curve')})`,
   },
   GanttChart: {
     data: ['tasks'],
     options: 'gantt',
     defaultHeight: 320,
-    cmds: (a, t) => `renderGantt(layoutGantt(${a.data[0]}, ${t.rect('4.0', '4.0', `${a.W} - 8.0`, `${a.H} - 8.0`)}, ${a.options}), ${a.options})`,
+    layout: (a, t) => `layoutGantt(${a.data[0]}, ${t.rect('4.0', '4.0', `${a.W} - 8.0`, `${a.H} - 8.0`)}, ${a.options})`,
+    render: (l, a) => `renderGantt(${l}, ${a.options})`,
+    hit: (l, x, y) => `hitGanttIndex(${l}, ${x}, ${y})`,
   },
   PolarChart: {
     data: ['axes', 'series'],
     options: 'polar',
     defaultHeight: 300,
-    cmds: (a, t) => `renderPolar(layoutPolar(${a.data[0]}, ${a.data[1]}, ${box00(a, t)}, ${a.options}), ${a.options})`,
+    layout: (a, t) => `layoutPolar(${a.data[0]}, ${a.data[1]}, ${box00(a, t)}, ${a.options})`,
+    render: (l, a) => `renderPolar(${l}, ${a.options})`,
+    hit: (l, x, y) => `hitPolarIndex(${l}, ${x}, ${y})`,
   },
 }
 

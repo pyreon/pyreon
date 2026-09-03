@@ -152,3 +152,73 @@ describe('chart hosts — compile-proven', () => {
     }
   })
 })
+
+const ONSELECT = `import { signal } from '@pyreon/reactivity'
+import { Stack, Text } from '@pyreon/primitives'
+import { SankeyChart, TreemapChart } from '@pyreon/charts/plot'
+import type { SankeyHitIndex, SankeyLink, SankeyNode, TreeNode } from '@pyreon/charts/plot'
+const CELLS: TreeNode[] = [{ name: 'a', value: 3 }, { name: 'b', value: 1 }]
+function report(i: number) {
+  return i
+}
+export function Picker() {
+  const nodes = signal<SankeyNode[]>([{ name: 'Coal' }, { name: 'Power' }])
+  const links = signal<SankeyLink[]>([{ source: 'Coal', target: 'Power', value: 10 }])
+  const picked = signal(-1)
+  const cell = signal(-1)
+  return (
+    <Stack>
+      <Text>{picked()}</Text>
+      <SankeyChart nodes={nodes()} links={links()} height={240} onSelectIndex={(hit: SankeyHitIndex) => picked.set(hit.node)} />
+      <TreemapChart data={CELLS} width={200} height={100} onSelectIndex={(i: number) => { cell.set(report(i)) }} />
+    </Stack>
+  )
+}`
+
+describe('chart hosts — onSelectIndex (tap → the engine index hit)', () => {
+  it('Swift: a zero-distance drag whose location feeds hitXIndex over the same layout the canvas painted', () => {
+    const r = transform(ONSELECT, { target: 'swift' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain(
+      '.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in let hit = hitSankeyIndex(layoutSankey(nodes, links, PyreonChartRect(x: 80.0, y: 8.0, w: max(0.0, Double(pyreonGeo.size.width) - 80.0 * 2.0), h: max(0.0, 240.0 - 16.0)), nil), Double(pyreonTap.location.x), Double(pyreonTap.location.y)); ({ picked = hit.node })() })',
+    )
+    expect(r.code).toContain('let i = hitTreemapIndex(layoutTreemap(CELLS, PyreonChartRect(x: 0.0, y: 0.0, w: 200.0, h: 100.0), nil), Double(pyreonTap.location.x), Double(pyreonTap.location.y))')
+    expect(r.code).toContain('.frame(width: 200.0, height: 100.0)')
+  })
+  it('Kotlin: detectTapGestures over the same layout, the px tap divided by the density read in the enclosing scope', () => {
+    const r = transform(ONSELECT, { target: 'kotlin' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('val pyreonDensity = LocalDensity.current.density')
+    expect(r.code).toContain(
+      '.pointerInput(Unit) { detectTapGestures { pyreonTap -> val hit = hitSankeyIndex(layoutSankey(nodes, links, PyreonChartRect(80.0, 8.0, maxOf(0.0, pyreonW - 80.0 * 2.0), maxOf(0.0, 240.0 - 16.0)), null), (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble()); ({ picked = hit.node })() } }',
+    )
+    // An explicit-width host with a tap still gets the BoxWithConstraints scope (the density lives there).
+    expect(r.code).toContain('val i = hitTreemapIndex(layoutTreemap(CELLS, PyreonChartRect(0.0, 0.0, 200.0, 100.0), null), (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble())')
+  })
+  it('a bare function reference is called with the hit', () => {
+    const src = `import { Stack } from '@pyreon/primitives'
+import { GanttChart } from '@pyreon/charts/plot'
+import type { GanttTask } from '@pyreon/charts/plot'
+const TASKS: GanttTask[] = [{ id: 'a', name: 'Design', start: '2024-03-01', end: '2024-03-10' }]
+function chosen(i: number) {
+  return i
+}
+export function Plan() {
+  return (<Stack><GanttChart tasks={TASKS} onSelectIndex={chosen} /></Stack>)
+}`
+    expect(transform(src, { target: 'swift' }).code).toContain('pyreonTap in chosen(hitGanttIndex(layoutGantt(TASKS, ')
+    expect(transform(src, { target: 'kotlin' }).code).toContain('pyreonTap -> chosen(hitGanttIndex(layoutGantt(TASKS, ')
+  })
+  it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine) accepts the tap emit', () => {
+    const r = validateSwiftWithStubs(transform(ONSELECT, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isSwiftUIAvailable())('swiftc against real SwiftUI + canvas + engine accepts the tap emit', () => {
+    const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(ENGINE_SWIFT) + '\n' + transform(ONSELECT, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isKotlincAvailable())('kotlinc (stub bundle + real engine) accepts the tap emit', () => {
+    const r = validateKotlin(transform(ONSELECT, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+})

@@ -4,7 +4,7 @@ import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { paint, prepareCanvas } from './canvas-web'
-import { hitTree, layoutTree, renderTree } from './tree'
+import { hitTree, hitTreeIndex, layoutTree, renderTree } from './tree'
 import type { TreeLayout, TreeLayoutNode, TreeOptions } from './tree'
 import type { TreeNode } from './treemap'
 import { chartTable, describeChart } from './a11y'
@@ -20,6 +20,8 @@ export interface TreeChartProps {
   title?: string
   /** Fired with the node under the click, or null for a miss. */
   onSelect?: (node: TreeLayoutNode | null) => void
+  /** The engine's INDEX hit — the multiplatform-safe twin of `onSelect` (what the native tap gesture reports). */
+  onSelectIndex?: (hit: number) => void
   accessibleTable?: boolean
   class?: string
 }
@@ -58,11 +60,16 @@ export function TreeChart(props: TreeChartProps): VNode {
   const handleClick = (ev: MouseEvent): void => {
     const el = canvas
     const cb = props.onSelect
-    if (el === null || cb === undefined) return
+    const cbi = props.onSelectIndex
+    if (el === null || (cb === undefined && cbi === undefined)) return
     const w = drawWidth(el, props.width)
     const hgt = props.height ?? 300
     const r = el.getBoundingClientRect()
-    cb(hitTree(layoutFor(w, hgt), ev.clientX - r.left, ev.clientY - r.top, props.tree?.symbolSize))
+    const layout = layoutFor(w, hgt)
+    const px = ev.clientX - r.left
+    const py = ev.clientY - r.top
+    if (cb !== undefined) cb(hitTree(layout, px, py, props.tree?.symbolSize))
+    if (cbi !== undefined) cbi(hitTreeIndex(layout, px, py, props.tree?.symbolSize))
   }
 
   const a11y = () => {

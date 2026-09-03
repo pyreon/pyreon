@@ -4,7 +4,7 @@ import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
-import { ganttDurationDays, layoutGantt, renderGantt } from './gantt'
+import { ganttDurationDays, hitGanttIndex, layoutGantt, renderGantt } from './gantt'
 import { hitGantt } from './gantt-web'
 import type { GanttLayout, GanttOptions, GanttRow, GanttTask } from './gantt'
 import { chartTable, describeChart } from './a11y'
@@ -20,6 +20,8 @@ export interface GanttChartProps {
   gantt?: GanttOptions
   title?: string
   onSelect?: (row: GanttRow | null) => void
+  /** The engine's INDEX hit — the multiplatform-safe twin of `onSelect` (what the native tap gesture reports). */
+  onSelectIndex?: (hit: number) => void
   accessibleTable?: boolean
   class?: string
 }
@@ -56,11 +58,16 @@ export function GanttChart(props: GanttChartProps): VNode {
   const handleClick = (ev: MouseEvent): void => {
     const el = canvas
     const cb = props.onSelect
-    if (el === null || cb === undefined) return
+    const cbi = props.onSelectIndex
+    if (el === null || (cb === undefined && cbi === undefined)) return
     const w = drawWidth(el, props.width)
     const hgt = props.height ?? 320
     const r = el.getBoundingClientRect()
-    cb(hitGantt(layoutFor(w, hgt, el.getContext('2d')), ev.clientX - r.left, ev.clientY - r.top))
+    const layout = layoutFor(w, hgt, el.getContext('2d'))
+    const px = ev.clientX - r.left
+    const py = ev.clientY - r.top
+    if (cb !== undefined) cb(hitGantt(layout, px, py))
+    if (cbi !== undefined) cbi(hitGanttIndex(layout, px, py))
   }
 
   const a11y = () => {
