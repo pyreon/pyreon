@@ -13,9 +13,14 @@
 // cross. And it is DATA in, DATA out — no console, no DOM — so it runs on the
 // server and in a test the same way the engine does.
 
-import { defaultTheme, renderChart } from './render'
+import { renderChart } from './render'
 import { appendGraphicLayer, graphicCommands, resolveDataset, svgSize } from './option-layer'
 import { visualMapCommands } from './visual-map'
+import { customCommands, customExtents } from './custom-series'
+import type { CustomRenderItem, CustomSeriesPlan } from './custom-series'
+import { resolveTheme } from './theme-registry'
+import type { ThemeDefinition } from './theme-registry'
+import { dateFormatter, numberFormatter } from './locale'
 import type { Annotation, ChartSpec, PointMarker, Series } from './render'
 import { smooth, step } from './curve'
 import type { Formatter } from './format'
@@ -46,6 +51,10 @@ export interface OptionWarning {
 
 export interface CompiledOption {
   spec: ChartSpec
+  /** Custom (`renderItem`) series — rendered after the chart, never part of the spec. */
+  custom: CustomSeriesPlan[]
+  /** Background colour from the theme, painted first by `optionToSvg`; undefined = transparent. */
+  background: string | undefined
   /** Title text + sub-text, when the option carries them. */
   title: { text: string; subtext: string | undefined } | null
   /** Legend entries, or null when the option hides the legend. */
@@ -63,6 +72,10 @@ export interface CompiledOption {
 export interface CompileOptions {
   width?: Double
   height?: Double
+  /** A registered theme name (`light`, `dark`, or one from `registerTheme`) or an inline definition. */
+  theme?: string | ThemeDefinition | undefined
+  /** BCP 47 tag for axis-label formatting (see `registerLocale`). */
+  locale?: string | undefined
 }
 
 const KNOWN_TOP = new Set([
@@ -74,6 +87,8 @@ const KNOWN_SERIES = new Set([
   'lineStyle', 'symbolSize', 'label', 'yAxisIndex', 'markLine', 'markPoint',
   'color', 'showSymbol', 'symbol', 'emphasis', 'z', 'zlevel', 'silent',
   'symbolRepeat', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'rippleEffect', 'showEffectOn',
+  'renderItem', 'encode', 'dimensions', 'clip', 'datasetIndex',
+  'coordinateSystem', 'polyline', 'effect', 'large', 'largeThreshold', 'progressive',
 ])
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
@@ -98,6 +113,22 @@ function pictorialFields(s: Record<string, unknown>, warn: (code: OptionWarning[
   else if (raw !== 'rect' && raw !== 'roundRect') warn('mark-shape-unsupported', `${path}.symbol`, `pictorialBar symbol "${raw}" is not supported (rect, roundRect, circle, diamond, triangle are); drawn as a rect.`)
   const rep = s['symbolRepeat']
   return { symbol, symbolRepeat: rep === true || rep === 'fixed' || (typeof rep === 'number' && rep > 0) }
+}
+
+/** The internal renderItem for a `lines` series: a polyline through every [x, y] pair of the flattened datum. */
+function linesRenderItem(styles: { color: string; width: number }[]): CustomRenderItem {
+  return (params, api) => {
+    const pts: [number, number][] = []
+    for (let d = 0; ; d = d + 2) {
+      const x = api.value(d)
+      const y = api.value(d + 1)
+      if (x === undefined || y === undefined) break
+      pts.push(api.coord([x, y]))
+    }
+    if (pts.length < 2) return null
+    const st = styles[params.dataIndex] ?? { color: '#334155', width: 1.5 }
+    return { type: 'polyline', shape: { points: pts }, style: { stroke: st.color, lineWidth: st.width } }
+  }
 }
 
 /** Compile an ECharts-shaped option onto the engine. Pure. */
@@ -146,9 +177,13 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   const y2Format = axisFormatter(yAxes[1], 'yAxis[1]', warn)
 
   // ---- palette --------------------------------------------------------
-  const palette: string[] = Array.isArray(option['color'])
+  const themed = resolveTheme(opts.theme, warnings)
+  const optionPalette: string[] = Array.isArray(option['color'])
     ? (option['color'] as unknown[]).filter((c): c is string => typeof c === 'string')
     : []
+  const palette: string[] = optionPalette.length > 0 ? optionPalette : themed.palette ?? []
+  const localeNumber = opts.locale !== undefined ? numberFormatter(opts.locale) : undefined
+  const localeDate = opts.locale !== undefined ? dateFormatter(opts.locale) : undefined
 
   // ---- series ---------------------------------------------------------
   const rawSeries = Array.isArray(option['series'])
@@ -157,6 +192,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       ? [option['series']]
       : []
   const series: Series[] = []
+  const customPlans: CustomSeriesPlan[] = []
   const annotations: Annotation[] = []
   const markers: PointMarker[] = []
   let xValues: Double[] | undefined = undefined
@@ -174,6 +210,66 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       if (!KNOWN_SERIES.has(key)) warn('series-option-unsupported', `${path}.${key}`, `"${key}" has no mapping yet; it was ignored.`)
     }
     const type = typeof s['type'] === 'string' ? (s['type'] as string) : ''
+    if (type === 'lines') {
+      if (isObj(s['effect']) && s['effect']['show'] === true) warn('series-option-unsupported', path + '.effect', 'Animated line trails are not supported; the lines are drawn static.')
+      const lineStyle = isObj(s['lineStyle']) ? s['lineStyle'] : {}
+      const seriesColor = typeof lineStyle['color'] === 'string' ? (lineStyle['color'] as string) : palette[i % Math.max(1, palette.length)] ?? defaultPalette[i % defaultPalette.length]!
+      const seriesWidth = num(lineStyle['width']) ?? 1.5
+      const rows = Array.isArray(s['data']) ? (s['data'] as unknown[]) : []
+      const flat: unknown[] = []
+      const styles: { color: string; width: number }[] = []
+      for (let j = 0; j < rows.length; j++) {
+        const d = rows[j]
+        const coords = Array.isArray(d) ? d : isObj(d) && Array.isArray(d['coords']) ? (d['coords'] as unknown[]) : null
+        const pairs = coords === null ? [] : coords.filter((c): c is unknown[] => Array.isArray(c) && c.length >= 2)
+        if (coords === null || pairs.length < 2) {
+          warn('series-data-shape', `${path}.data[${j}]`, 'A lines datum needs coords with at least two [x, y] pairs; it was skipped.')
+          continue
+        }
+        const row: unknown[] = []
+        for (const c of pairs) {
+          row.push(num(c[0]) ?? 0)
+          row.push(num(c[1]) ?? 0)
+        }
+        flat.push(row)
+        const ls = isObj(d) && isObj(d['lineStyle']) ? d['lineStyle'] : {}
+        styles.push({ color: typeof ls['color'] === 'string' ? (ls['color'] as string) : seriesColor, width: num(ls['width']) ?? seriesWidth })
+      }
+      const yDims: number[] = []
+      let longest = 0
+      for (const r of flat) if ((r as unknown[]).length > longest) longest = (r as unknown[]).length
+      for (let d = 1; d < longest; d = d + 2) yDims.push(d)
+      customPlans.push({
+        name: typeof s['name'] === 'string' ? (s['name'] as string) : 'Series ' + String(i + 1),
+        color: seriesColor,
+        data: flat,
+        renderItem: linesRenderItem(styles),
+        yDims,
+        xDim: 0,
+      })
+      continue
+    }
+    if (type === 'custom') {
+      const ri = s['renderItem']
+      if (typeof ri !== 'function') {
+        warn('series-data-shape', path + '.renderItem', 'A custom series needs a renderItem function; the series was skipped.')
+        continue
+      }
+      const enc = isObj(s['encode']) ? s['encode'] : {}
+      const yRaw = enc['y']
+      const yDims = (Array.isArray(yRaw) ? yRaw : yRaw === undefined ? [1] : [yRaw]).map((d) => num(d) ?? 1)
+      const xRaw = Array.isArray(enc['x']) ? enc['x'][0] : enc['x']
+      const item = isObj(s['itemStyle']) ? s['itemStyle'] : {}
+      customPlans.push({
+        name: typeof s['name'] === 'string' ? (s['name'] as string) : 'Series ' + String(i + 1),
+        color: typeof item['color'] === 'string' ? (item['color'] as string) : palette[i % Math.max(1, palette.length)] ?? defaultPalette[i % defaultPalette.length]!,
+        data: Array.isArray(s['data']) ? (s['data'] as unknown[]) : [],
+        renderItem: ri as CustomRenderItem,
+        yDims,
+        xDim: num(xRaw) ?? 0,
+      })
+      continue
+    }
     let kind: Series['kind']
     if (type === 'bar') kind = s['stack'] !== undefined ? 'stacked' : barCount > 1 ? 'grouped' : 'bars'
     else if (type === 'line') kind = isObj(s['areaStyle']) || s['areaStyle'] === true ? 'area' : 'line'
@@ -303,26 +399,38 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   const tooltipRaw = option['tooltip']
   const tooltip = tooltipRaw !== undefined && !(isObj(tooltipRaw) && tooltipRaw['show'] === false)
 
+  // A custom-only chart still needs axes: seed them from the custom extents.
+  let customY: { min: Double; max: Double } | undefined = undefined
+  let customX: Double[] | undefined = undefined
+  if (series.length === 0 && customPlans.length > 0) {
+    for (const plan of customPlans) {
+      const ext = customExtents(plan)
+      if (ext.y !== null) customY = customY === undefined ? { min: Math.min(0.0, ext.y[0]), max: ext.y[1] } : { min: Math.min(customY.min, ext.y[0]), max: Math.max(customY.max, ext.y[1]) }
+      if (ext.x !== null && categories.length === 0) customX = [ext.x[0], ext.x[1]]
+    }
+  }
   const spec: ChartSpec = {
     width: opts.width ?? 640.0,
     height: opts.height ?? 320.0,
     series,
     categories,
-    theme: defaultTheme,
+    theme: themed.chartTheme,
     showXAxis: true,
     showYAxis: true,
     showGrid: true,
     yDomain,
     y2Domain,
-    yFormat,
-    y2Format,
-    xFormat,
+    yFormat: yFormat ?? localeNumber,
+    y2Format: y2Format ?? localeNumber,
+    xFormat: xFormat ?? (xTime ? localeDate : undefined),
     xValues,
     xTime: xTime ? true : undefined,
     annotations: annotations.length > 0 ? annotations : undefined,
     markers: markers.length > 0 ? markers : undefined,
   }
-  return { spec, title, legend, tooltip, warnings, supported }
+  if (customY !== undefined && spec.yDomain === undefined) spec.yDomain = customY
+  if (customX !== undefined && (spec.xValues === undefined || spec.xValues.length === 0)) spec.xValues = customX
+  return { spec, custom: customPlans, background: themed.background, title, legend, tooltip, warnings, supported }
 }
 
 const defaultPalette = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
@@ -406,6 +514,7 @@ export function optionToSvg(option: EChartsOption, opts: OptionToSvgOptions = {}
   const t = compiled.spec.theme
   let top = 0.0
   const cmds: DrawCmd[] = []
+  if (compiled.background !== undefined) cmds.push({ kind: 'rect', rect: { x: 0.0, y: 0.0, w: width, h: height }, fill: compiled.background })
   if (compiled.title !== null) {
     cmds.push({ kind: 'text', text: compiled.title.text, at: { x: 0.0, y: 0.0 }, fill: t.label, size: t.fontSize + 4.0, align: 'start', baseline: 'top' })
     top = top + t.fontSize + 4.0
@@ -422,6 +531,8 @@ export function optionToSvg(option: EChartsOption, opts: OptionToSvgOptions = {}
   }
   const chart = renderChart({ ...compiled.spec, height: Math.max(0.0, height - top) }, measure)
   for (const c of chart) cmds.push(top === 0.0 ? c : shift(c, top))
+  const customOut = customCommands(compiled.custom, { ...compiled.spec, height: Math.max(0.0, height - top) }, measure, width, height)
+  for (const c of customOut.cmds) cmds.push(top === 0.0 ? c : shift(c, top))
   for (const c of visualMapCommands(option, width, height).cmds) cmds.push(c)
   for (const c of graphicCommands(option, width, height).cmds) cmds.push(c)
   return renderSvg(cmds, width, height, {
