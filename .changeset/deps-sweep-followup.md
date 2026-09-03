@@ -50,12 +50,28 @@ v3 major this repo already adopted.
 Dev-only comparison/tooling bumps across the touched packages: `rolldown`,
 `react-hook-form`, `hotkeys-js`, `axios`, `ky`, `i18next`, `xstate`, `joi`,
 `typia`, `nuqs`, `@tanstack/react-virtual`, `@tanstack/react-table`,
-`@tanstack/react-query`, `motion`, `happy-dom` (deduped to one resolved
-version across every package that pins it — three stale copies were
-co-installed before this pass), and `mobx-state-tree` 7.4.0 → 8.0.0 — a real
-major, but its own peer range for `mobx` moved `^6.3.0` → `^7.0.0`, which
-matches what this repo already declares (`^7.0.3`); the OLD pin was the one
-silently out of range.
+`@tanstack/react-query`, `motion`, and `mobx-state-tree` 7.4.0 → 8.0.0 — a
+real major, but its own peer range for `mobx` moved `^6.3.0` → `^7.0.0`,
+which matches what this repo already declares (`^7.0.3`); the OLD pin was
+the one silently out of range.
+
+`happy-dom` deduped to ONE resolved version repo-wide — three stale copies
+(20.11.6/20.12.0/20.13.2) were co-installed before this pass across the ~17
+packages that each pin it independently. The unification target is
+**20.11.6, not the newest 20.13.2** — bumping past 20.11.6 breaks
+`@pyreon/styler`'s `memory-growth.test.ts` deterministically (5/5 local
+runs, plus a CI failure on `test (fundamentals+ui-system+zero)`), a pure
+`environment: 'happy-dom'` test whose eviction-cycle counting depends on
+CSSOM/`cssRules` behavior that changed somewhere between those versions —
+confirmed by isolating the version with an exact pin, not by assumption; 3/3
+clean at 20.11.6, 5/5 failing at 20.13.2. Verified pre-existing on `main`
+(3/3 passes there, at 20.11.6) so this is the same "routine bump, unvetted
+runtime behavior change" shape as the `@tanstack/virtual-core` finding
+below, just caught before push instead of by CI. The one other consumer
+pinning past 20.11.6 — `@happy-dom/global-registrator` in
+`examples/benchmark`, whose own 20.13.2 release requires `happy-dom
+^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
+graph resolves to one version again.
 
 `examples/benchmark`'s framework competitors were refreshed too so the
 "fastest framework" comparisons stay honest against current releases: Vue +

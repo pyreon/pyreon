@@ -33,7 +33,7 @@
     "@vue/server-renderer": "^3.5.42"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.13.2",
+    "@happy-dom/global-registrator": "^20.11.6",
     "@octanejs/vite-plugin": "0.1.52",
     "@pyreon/compiler": "workspace:*",
     "@pyreon/runtime-server": "workspace:*",

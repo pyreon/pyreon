@@ -36,7 +36,7 @@
         "esbuild": "^0.28.2",
         "find-my-way": "^9.9.0",
         "goober": "^2.1.19",
-        "happy-dom": "^20.13.2",
+        "happy-dom": "20.11.6",
         "hono": "^4.13.5",
         "next": "^16.3.4",
         "oxc-parser": "^0.148.0",
@@ -212,7 +212,7 @@
         "vue": "^3.5.42",
       },
       "devDependencies": {
-        "@happy-dom/global-registrator": "^20.13.2",
+        "@happy-dom/global-registrator": "20.11.6",
         "@octanejs/vite-plugin": "0.1.52",
         "@pyreon/compiler": "workspace:*",
         "@pyreon/runtime-server": "workspace:*",
@@ -659,7 +659,7 @@
         "@pyreon/vite-plugin": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@vitus-labs/tools-vitest": "^2.6.3",
-        "happy-dom": "^20.13.2",
+        "happy-dom": "^20.11.6",
         "typescript": "^6.0.3",
         "vite": "^8.2.2",
         "vitest": "^4.1.11",
@@ -1261,7 +1261,7 @@
         "@types/bun": "^1.3.14",
         "@vitest/browser-playwright": "^4.1.11",
         "@vitus-labs/tools-vitest": "^2.6.3",
-        "happy-dom": "^20.13.2",
+        "happy-dom": "^20.11.6",
         "typescript": "^6.0.3",
         "vite": "^8.2.2",
         "vitest": "^4.1.11",
@@ -1299,7 +1299,7 @@
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
-        "happy-dom": "^20.13.2",
+        "happy-dom": "^20.11.6",
       },
       "optionalDependencies": {
         "@pyreon/compiler-darwin-arm64": "workspace:^",
@@ -1382,7 +1382,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@vitest/browser-playwright": "^4.1.11",
-        "happy-dom": "^20.13.2",
+        "happy-dom": "^20.11.6",
         "rolldown": "^1.2.7",
       },
       "peerDependencies": {
@@ -1413,7 +1413,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@vitest/browser-playwright": "^4.1.11",
-        "happy-dom": "^20.13.2",
+        "happy-dom": "^20.11.6",
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
@@ -1437,7 +1437,7 @@
         "@pyreon/vitest-config": "workspace:*",
         "@vitest/browser-playwright": "^4.1.11",
         "esbuild": "^0.28.2",
-        "happy-dom": "^20.13.2",
+        "happy-dom": "^20.11.6",
         "rolldown": "^1.2.7",
         "vite": "^8.2.2",
       },
@@ -1529,7 +1529,7 @@
         "@vitest/browser-playwright": "^4.1.11",
         "echarts": "^6.1.0",
         "echarts-for-react": "^3.0.6",
-        "happy-dom": "^20.13.2",
+        "happy-dom": "^20.11.6",
         "react": "^19.2.8",
         "react-dom": "^19.2.8",
       },
@@ -2186,7 +2186,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/unistyle": "workspace:^",
         "@pyreon/vitest-config": "workspace:*",
-        "happy-dom": "^20.13.2",
+        "happy-dom": "^20.11.6",
         "vitest": "^4.1.11",
       },
     },
@@ -2214,7 +2214,7 @@
         "@vitest/browser": "^4.1.11",
         "@vitest/browser-playwright": "^4.1.11",
         "@vitest/coverage-v8": "^4.1.11",
-        "happy-dom": "^20.13.2",
+        "happy-dom": "^20.11.6",
         "vitest": "^4.1.11",
       },
     },
@@ -2323,7 +2323,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vite-plugin": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
-        "happy-dom": "^20.13.2",
+        "happy-dom": "^20.11.6",
         "playwright-core": ">=1.40",
         "vite": "^8.2.2",
         "zod": "^4.5.4",
@@ -2513,7 +2513,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@vitest/browser-playwright": "^4.1.11",
-        "happy-dom": "^20.13.2",
+        "happy-dom": "^20.11.6",
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
@@ -2530,7 +2530,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@vitest/browser-playwright": "^4.1.11",
-        "happy-dom": "^20.13.2",
+        "happy-dom": "^20.11.6",
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
@@ -2547,7 +2547,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@vitest/browser-playwright": "^4.1.11",
-        "happy-dom": "^20.13.2",
+        "happy-dom": "^20.11.6",
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
@@ -2581,7 +2581,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@vitest/browser-playwright": "^4.1.11",
-        "happy-dom": "^20.13.2",
+        "happy-dom": "^20.11.6",
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
@@ -2674,7 +2674,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@vitest/browser-playwright": "^4.1.11",
-        "happy-dom": "^20.13.2",
+        "happy-dom": "^20.11.6",
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
@@ -3432,7 +3432,7 @@
 
     "@hapi/topo": ["@hapi/topo@6.0.2", "", { "dependencies": { "@hapi/hoek": "^11.0.2" } }, "sha512-KR3rD5inZbGMrHmgPxsJ9dbi6zEK+C3ZwUwTa+eMwWLz7oijWUTWD2pMSNNYJAU6Qq+65NkxXjqHr/7LM2Xkqg=="],
 
-    "@happy-dom/global-registrator": ["@happy-dom/global-registrator@20.13.2", "", { "dependencies": { "@types/node": ">=20.0.0", "happy-dom": "^20.13.2" } }, "sha512-pGO7WhgHVLi7mi7zCLyJ+FkTad2aPTcjUXhRbgA4T5n1vLRJ/9uw3EsLieScNSX6HOfPF947bOP7N42l+KrWjg=="],
+    "@happy-dom/global-registrator": ["@happy-dom/global-registrator@20.11.6", "", { "dependencies": { "@types/node": ">=20.0.0", "happy-dom": "^20.11.6" } }, "sha512-ZQ47qUTeNbGhHkCGExJ1oZhruoxKRaxO44RgFETl3T4c1rRxIBlAOnM3SAH4XHu7Ue2owJXP+jOx1vOuKuxcSg=="],
 
     "@hono/node-server": ["@hono/node-server@2.1.0", "", { "peerDependencies": { "hono": "^4" } }, "sha512-XovyyCCnBzW+zKu+z/zq8hwNs4KOR5rEMAOxo2f40Q5xoOI37IMm6MIg2COOUtUApo0i6850MTBKH2u4QLGIqg=="],
 
@@ -4954,7 +4954,7 @@
 
     "gray-matter": ["gray-matter@4.0.3", "", { "dependencies": { "js-yaml": "^3.13.1", "kind-of": "^6.0.2", "section-matter": "^1.0.0", "strip-bom-string": "^1.0.0" } }, "sha512-5v6yZd4JK3eMI3FqqCouswVqwugaA9r4dNZB1wwcmrD02QkV5H0y7XBQW8QwQqEaZY1pM9aqORSORhJRdNK44Q=="],
 
-    "happy-dom": ["happy-dom@20.13.2", "", { "dependencies": { "@types/node": ">=20.0.0", "@types/whatwg-mimetype": "^3.0.2", "@types/ws": "^8.18.1", "buffer-image-size": "^0.6.4", "entities": "^7.0.1", "whatwg-mimetype": "^3.0.0", "ws": "^8.21.0" } }, "sha512-VC9HoEaT3Jf3K/1g/GjMYGAZCCg+ULgGVcXJlAeSzdTj8mIoPJRp14KVclP5gpUcF/kauuaVB2ri2/WxXbl4vg=="],
+    "happy-dom": ["happy-dom@20.11.6", "", { "dependencies": { "@types/node": ">=20.0.0", "@types/whatwg-mimetype": "^3.0.2", "@types/ws": "^8.18.1", "buffer-image-size": "^0.6.4", "entities": "^7.0.1", "whatwg-mimetype": "^3.0.0", "ws": "^8.21.0" } }, "sha512-Hldbg8AdAa5a5oDcZpjqnGitp7JB0hqWmfv/8qr+kft4vzSD8BHsbdRfzYvL/0QcbKcURC/yyoygbeDQarPvYg=="],
 
     "has-flag": ["has-flag@4.0.0", "", {}, "sha512-EykJT/Q1KjTWctppgIAgfSO0tKVuZUjhgMr17kqTumMl6Afv3EISleU7qZUzoXDFTAHTDC4NOoG/ZxU3EvlMPQ=="],
 
