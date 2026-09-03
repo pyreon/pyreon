@@ -74,7 +74,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, HEAT_RAMP_DEFAULT, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, HEAT_RAMP_DEFAULT, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -11039,6 +11039,7 @@ function emitSwiftChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   if (tag === 'CandlestickChart') return emitSwiftCandlestickHost(e, indent)
   if (tag === 'HeatmapChart') return emitSwiftHeatmapHost(e, indent)
   if (tag === 'RadarChart') return emitSwiftRadarHost(e, indent)
+  if (tag === 'PlotChart') return emitSwiftPlotHost(e, indent)
   if (Object.hasOwn(ACCESSOR_CHART_HOSTS, tag)) return emitSwiftAccessorHost(e, indent)
   const unlowered = UNLOWERED_CHART_HOSTS[tag]
   if (unlowered !== undefined) {
@@ -11348,4 +11349,141 @@ function emitSwiftRadarHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const opts = `RadarOptions(rings: ${rings}, gridColor: "rgba(132,150,165,0.35)", labelColor: "#5a6b7a", fontSize: 11.0, showLabels: ${showLabels})`
   const canvas = `PyreonChartCanvas(cmds: renderRadar(${emitSwiftExpr(axesV, indent)}, pyreonSeries, PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${H}), ${opts}))`
   return swiftFrameHost(e, lets, canvas, '', W, H, hasWidth, indent)
+}
+
+
+// ---- `<PlotChart marks>` -----------------------------------------------------
+
+/** An accessor arrow's body with its params substituted, as an expression — or 'unsupported' (reported). */
+function swiftAccessorExpr(v: ExprIR, tag: string, what: string, indent: number): string | 'unsupported' {
+  if (v.kind !== 'arrow' || (v.stmts !== undefined && v.stmts.length > 0) || v.params.length > 2) {
+    _emitWarnings.push(`<${tag}> ${what}: only a single-expression arrow \`(d, i) => …\` lowers on native; emitting an EmptyView().`)
+    return 'unsupported'
+  }
+  let body: ExprIR | null = v.body
+  const names = ['pyreonD', 'pyreonI']
+  for (let i = 0; i < v.params.length && body !== null; i++) {
+    body = substituteIdentifier(body, v.params[i]!, { kind: 'identifier', name: names[i]! })
+  }
+  if (body === null) {
+    _emitWarnings.push(`<${tag}> ${what}: the accessor shadows its own parameter; emitting an EmptyView().`)
+    return 'unsupported'
+  }
+  return emitSwiftExpr(body, indent)
+}
+
+/** The literal option fields of one mark call as `name: value` Swift args, in `Series` declaration order. */
+function swiftMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex: number): string[] | 'unsupported' {
+  const fields = new Map<string, ExprIR>()
+  if (opts !== undefined) {
+    if (opts.kind !== 'object' || (opts.spreads !== undefined && opts.spreads.length > 0)) {
+      _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: options must be an object literal on native; emitting an EmptyView().`)
+      return 'unsupported'
+    }
+    for (const f of opts.fields) fields.set(f.name, f.value)
+  }
+  if (fields.has('curve')) _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: a \`curve\` callback is not lowered on native; the series draws straight.`)
+  const args: string[] = []
+  for (const spec of PLOT_MARK_OPTION_FIELDS) {
+    const v = fields.get(spec.name)
+    if (v !== undefined) {
+      if (v.kind !== 'literal' || typeof v.value !== spec.kind) {
+        _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`${spec.name}\` must be a ${spec.kind} literal on native; emitting an EmptyView().`)
+        return 'unsupported'
+      }
+      const lit = spec.kind === 'number' ? chartDouble(v.value as number) : JSON.stringify(v.value)
+      args.push(`${spec.name}: ${lit}`)
+      continue
+    }
+    if (spec.name === 'color') args.push(`color: ${JSON.stringify(CHART_HOST_PALETTE[seriesIndex % CHART_HOST_PALETTE.length])}`)
+    else if (spec.name === 'label') args.push(`label: ${JSON.stringify(`Series ${seriesIndex + 1}`)}`)
+    else if (spec.default !== undefined) args.push(`${spec.name}: ${spec.kind === 'number' ? chartDouble(spec.default as number) : String(spec.default)}`)
+  }
+  return args
+}
+
+/** `<PlotChart data marks x? xValue? showXAxis? showYAxis? showGrid? horizontal? xTime? annotations? markers? y2Domain? onSelect? …>` */
+function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const tag = 'PlotChart'
+  const dataV = chartAttrExpr(e, 'data')
+  const marksV = chartAttrExpr(e, 'marks')
+  if (dataV === undefined || marksV === undefined) {
+    _emitWarnings.push(`<${tag}>: needs \`data\` and \`marks\` attributes on native; emitting an EmptyView().`)
+    return 'EmptyView()'
+  }
+  if (marksV.kind !== 'array') {
+    _emitWarnings.push(`<${tag} marks>: must be an inline array of mark calls (\`[bars((d) => d.v), line((d) => d.avg)]\`) on native; emitting an EmptyView().`)
+    return 'EmptyView()'
+  }
+  const data = emitSwiftExpr(dataV, indent)
+  const lets: string[] = []
+  const series: string[] = []
+  for (let k = 0; k < marksV.elements.length; k++) {
+    const m = marksV.elements[k]!
+    const callee = m.kind === 'call' && m.callee.kind === 'identifier' ? m.callee.name : undefined
+    const kind = callee === undefined ? undefined : PLOT_MARK_KINDS[callee]
+    if (m.kind !== 'call' || kind === undefined) {
+      _emitWarnings.push(`<${tag}> mark ${k + 1}: ${callee === 'bubble' ? '`bubble` (a radius accessor)' : 'this mark'} is not lowered on native; emitting an EmptyView().`)
+      return 'EmptyView()'
+    }
+    const y = m.args[0]
+    if (y === undefined) {
+      _emitWarnings.push(`<${tag}> mark ${k + 1}: needs an accessor; emitting an EmptyView().`)
+      return 'EmptyView()'
+    }
+    const body = swiftAccessorExpr(y, tag, `mark ${k + 1}`, indent)
+    if (body === 'unsupported') return 'EmptyView()'
+    const opts = swiftMarkOptionArgs(m.args[1], tag, k)
+    if (opts === 'unsupported') return 'EmptyView()'
+    lets.push(`let pyreonValues${k}: [Double] = ${data}.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(${body}) }`)
+    series.push(`Series(kind: ${JSON.stringify(kind)}, values: pyreonValues${k}, ${opts.join(', ')})`)
+  }
+  lets.push(`let pyreonSeries: [Series] = [${series.join(', ')}]`)
+  const xAcc = chartAttrExpr(e, 'x')
+  if (xAcc !== undefined) {
+    const body = swiftAccessorExpr(xAcc, tag, 'x', indent)
+    if (body === 'unsupported') return 'EmptyView()'
+    lets.push(`let pyreonCats: [String] = ${data}.enumerated().map { (pyreonI, pyreonD) in ${body} }`)
+  } else {
+    lets.push('let pyreonCats: [String] = []')
+  }
+  const xValueAcc = chartAttrExpr(e, 'xValue')
+  if (xValueAcc !== undefined) {
+    const body = swiftAccessorExpr(xValueAcc, tag, 'xValue', indent)
+    if (body === 'unsupported') return 'EmptyView()'
+    lets.push(`let pyreonXValues: [Double] = ${data}.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(${body}) }`)
+  }
+  const present = PLOT_UNLOWERED_PROPS.filter((p) => chartAttrExpr(e, p) !== undefined)
+  if (present.length > 0) _emitWarnings.push(`<${tag}>: ${present.map((p) => `\`${p}\``).join(', ')} ${present.length === 1 ? 'is' : 'are'} not lowered on native yet; the chart renders without.`)
+  const H = swiftChartDouble(e, 'height', 200, indent)
+  const hasWidth = chartAttrExpr(e, 'width') !== undefined
+  const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
+  const bool = (name: string, fallback: boolean): string => {
+    const raw = readStaticAttr(e, name)
+    const v = chartAttrExpr(e, name)
+    return v === undefined ? String(fallback) : typeof raw === 'boolean' ? String(raw) : emitSwiftExpr(v, indent)
+  }
+  const specArgs = [
+    `width: ${W}`,
+    `height: ${H}`,
+    'series: pyreonSeries',
+    'categories: pyreonCats',
+    `theme: ${SWIFT_CHART_TARGET.theme()}`,
+    `showXAxis: ${bool('showXAxis', true)}`,
+    `showYAxis: ${bool('showYAxis', true)}`,
+    `showGrid: ${bool('showGrid', true)}`,
+  ]
+  const y2 = chartAttrExpr(e, 'y2Domain')
+  if (y2 !== undefined) specArgs.push(`y2Domain: ${emitSwiftExpr(y2, indent)}`)
+  if (xValueAcc !== undefined) specArgs.push('xValues: pyreonXValues')
+  if (readStaticAttr(e, 'xTime') === true) specArgs.push('xTime: true')
+  if (readStaticAttr(e, 'horizontal') === true) specArgs.push('horizontal: true')
+  const ann = chartAttrExpr(e, 'annotations')
+  if (ann !== undefined) specArgs.push(`annotations: ${emitSwiftExpr(ann, indent)}`)
+  const mk = chartAttrExpr(e, 'markers')
+  if (mk !== undefined) specArgs.push(`markers: ${emitSwiftExpr(mk, indent)}`)
+  lets.push(`let pyreonSpec: ChartSpec = ChartSpec(${specArgs.join(', ')})`)
+  const canvas = 'PyreonChartCanvas(cmds: renderChart(pyreonSpec, pyreonChartMeasure))'
+  const gesture = swiftChartGesture(e, (x, y) => `plotHitBars(pyreonSpec, pyreonChartMeasure, ${x}, ${y})`, indent)
+  return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent)
 }

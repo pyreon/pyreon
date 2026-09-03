@@ -19,11 +19,12 @@ import type { ToolboxTool } from './toolbox'
 import { renderSvg } from './svg'
 import { placeTooltip, tooltipAt, tooltipLines } from './tooltip'
 import type { TooltipContent } from './tooltip'
-import { barsFor, defaultTheme, layoutChart, renderChart, resolveY2Domain, resolveYDomain, seriesOnRightAxis, stackedHitAt } from './render'
-import { hitBar, hitNearestX, layoutSeriesPoints, layoutSeriesPointsAt } from './layout'
+import { defaultTheme, layoutChart, renderChart, resolveY2Domain, resolveYDomain, seriesOnRightAxis } from './render'
+import { layoutSeriesPoints, layoutSeriesPointsAt } from './layout'
 import type { Annotation, ChartSpec, ChartTheme, PointMarker, Series } from './render'
 import { scaleLinear } from './scale'
 import { resolveCategories, resolveMarks } from './marks'
+import { plotHitBars, plotHitIndex } from './plot-hit'
 import type { Mark } from './marks'
 import { chartTable, describeChart } from './a11y'
 import { brushRange, clampWindow, isFullWindow, panWindow, sliceRange, zoomWindow } from './zoom'
@@ -879,22 +880,8 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // the title + legend, so the pointer's y comes back up by that much.
     const spec = buildSpec(readData(), w, hgt - topOffset - bottomOffset)
     py = py - topOffset
-    for (let i = 0; i < spec.series.length; i++) {
-      if (spec.series[i]!.kind !== 'bars') continue
-      const idx = hitBar(barsFor(spec, i, measure), px, py)
-      if (idx >= 0) return idx
-    }
-    // Same gap as the click handler: the tooltip never appeared over a stacked
-    // or grouped chart either, because both bailed on the same condition.
-    const stackedIdx = stackedHitAt(spec, measure, px, py)
-    if (stackedIdx >= 0) return stackedIdx
-    const first = spec.series[0]
-    if (first === undefined || first.kind === 'bars') return -1
-    if (first.kind === 'stacked' || first.kind === 'grouped') return -1
-    const l = layoutChart(spec, measure)
-    return hitNearestX(layoutSeriesPoints(first.values, l.plot, resolveYDomain(spec)), px)
+    return plotHitIndex(spec, measure, px, py)
   }
-
   const handleWheel = (ev: WheelEvent): void => {
     if (props.dataZoom !== true) return
     const el = canvas
@@ -1169,6 +1156,8 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     }
     const stackedIdx = stackedHitAt(spec, measure, px, py)
     cb(stackedIdx < 0 ? stackedIdx : stackedIdx + off)
+    const idx = plotHitBars(spec, measure, px, py)
+    cb(idx < 0 ? idx : idx + off)
   })
 
   const a11yInput = (): {

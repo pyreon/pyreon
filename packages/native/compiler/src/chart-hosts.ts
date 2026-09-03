@@ -147,7 +147,6 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
 
 /** Plot hosts that exist on the web but have no native lowering yet, with the reason. */
 export const UNLOWERED_CHART_HOSTS: Readonly<Record<string, string>> = {
-  PlotChart: 'its `marks` are accessor closures over your rows (`bars((d) => d.total)`); natively, build a `ChartSpec` and call `renderChart` yourself',
   CalendarChart: 'its `values` prop is a record; natively pass a `CalendarValue[]` to `renderCalendar` yourself',
   ParallelChart: 'its rows mix strings and nulls; natively pass numeric rows to `layoutParallel` yourself',
   OptionChart: 'the ECharts option facade is web-only',
@@ -243,4 +242,39 @@ export const CHART_THEME_DEFAULT = { axis: '#8496a5', grid: 'rgba(132,150,165,0.
 export const HEAT_RAMP_DEFAULT = ['#eff6ff', '#93c5fd', '#3b82f6', '#1e40af'] as const
 
 /** The hosts with a dedicated emitter each (a fixed frame or a second data prop). */
-export const FRAME_CHART_HOSTS: Readonly<Record<string, true>> = { GaugeChart: true, CandlestickChart: true, HeatmapChart: true, RadarChart: true }
+export const FRAME_CHART_HOSTS: Readonly<Record<string, true>> = { GaugeChart: true, CandlestickChart: true, HeatmapChart: true, RadarChart: true, PlotChart: true }
+
+
+// ---------------------------------------------------------------------------
+// `<PlotChart marks>` — the cartesian family. A mark call (`bars((d) => d.v,
+// { label })`) lowers to a `Series` whose values are the accessor inlined
+// into a map over the rows; the spec is built inline and `renderChart` /
+// `plotHitBars` do the rest. The constants below are the web host's own
+// defaults (`resolveMarks`), inlined because the engine's are module-private.
+// ---------------------------------------------------------------------------
+
+/** Mark constructor → the `Series.kind` it produces. `bubble` carries a radius accessor and is declined by name. */
+export const PLOT_MARK_KINDS: Readonly<Record<string, string>> = {
+  bars: 'bars',
+  stackedBars: 'stacked',
+  groupedBars: 'grouped',
+  line: 'line',
+  area: 'area',
+  points: 'points',
+}
+
+/** Mark options that lower as literal fields of `Series`, with their default when absent. */
+export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'string' | 'number' | 'boolean'; default?: string | number | boolean }> = [
+  { name: 'color', kind: 'string' },
+  { name: 'width', kind: 'number', default: 2 },
+  { name: 'radius', kind: 'number', default: 3 },
+  { name: 'label', kind: 'string' },
+  { name: 'showValues', kind: 'boolean', default: false },
+  { name: 'axis', kind: 'string' },
+  { name: 'effect', kind: 'boolean' },
+  { name: 'symbol', kind: 'string' },
+  { name: 'symbolRepeat', kind: 'boolean' },
+]
+
+/** PlotChart props that change what is DRAWN and have no native lowering yet — reported by name when present. */
+export const PLOT_UNLOWERED_PROPS: readonly string[] = ['showLegend', 'showTitle', 'dataZoom', 'brush', 'navigator', 'zoomPresets', 'format', 'xFormat', 'y2Format', 'theme']
