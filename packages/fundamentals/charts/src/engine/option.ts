@@ -552,7 +552,20 @@ function optionToSvgSingle(option: EChartsOption, opts: OptionToSvgOptions): str
     return appendGraphicLayer(svg, overlay, size.width, size.height)
   }
   const compiled = compileOption(option, opts)
-  const measure = opts.measure ?? measureApprox()
+  const composed = compiledCommands(compiled, option, opts.measure ?? measureApprox())
+  return renderSvg(composed.cmds, compiled.spec.width, compiled.spec.height, {
+    ...(compiled.title !== null ? { title: compiled.title.text } : {}),
+  })
+}
+
+/**
+ * The composed picture of a compiled cartesian option as flat commands —
+ * background, title, legend, the plot shrunk by what those consumed, custom
+ * series, then the visualMap strip and free-form graphics. `top` is the plot's
+ * y offset, which a host needs to hit-test against the same geometry.
+ * `optionToSvg` and `<OptionChart>` both paint exactly this.
+ */
+export function compiledCommands(compiled: CompiledOption, option: EChartsOption, measure: MeasureText): { cmds: DrawCmd[]; top: Double } {
   const width = compiled.spec.width
   const height = compiled.spec.height
   const t = compiled.spec.theme
@@ -579,7 +592,5 @@ function optionToSvgSingle(option: EChartsOption, opts: OptionToSvgOptions): str
   for (const c of customOut.cmds) cmds.push(top === 0.0 ? c : shift(c, top))
   for (const c of visualMapCommands(option, width, height).cmds) cmds.push(c)
   for (const c of graphicCommands(option, width, height).cmds) cmds.push(c)
-  return renderSvg(cmds, width, height, {
-    ...(compiled.title !== null ? { title: compiled.title.text } : {}),
-  })
+  return { cmds, top }
 }

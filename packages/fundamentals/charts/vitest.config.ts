@@ -53,6 +53,8 @@ export default defineNodeConfig({
     'src/engine/BoxplotChart.tsx',
     // Same class — canvas hosts covered only by their real-Chromium suites (geo.browser.test.tsx).
     // Same class — canvas hosts covered only by their real-Chromium suites (gantt.browser.test.tsx, geo.browser.test.tsx).
+    // Same class — canvas hosts covered only by their real-Chromium suites (option-chart(-family).browser.test.tsx, gantt.browser.test.tsx, geo.browser.test.tsx).
+    'src/engine/OptionChart.tsx',
     'src/engine/GanttChart.tsx',
     'src/engine/MapChart.tsx',
   ],

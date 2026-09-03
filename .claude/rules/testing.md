@@ -313,3 +313,17 @@ Without `@vite/client`, neither tab opens the HMR websocket — no HMR updates, 
 **Local bisect can't reproduce the flake.** The race is load-dependent on GitHub-hosted ubuntu-latest runners under concurrent test scheduling; local 5× runs on macOS pass against both the broken and fixed states. The structural reasoning is the bisect proof — HMR client = cross-tab reload signal = listener destruction; suppressed client = no signal = no destruction. CI is the only place that exercises the failure mode.
 
 **General rule**: only suppress HMR when the spec opens multiple tabs against the same Vite dev server AND relies on long-lived per-page listeners (storage events, window globals, subscribed signals). Single-tab specs and click-driven specs don't need it.
+
+## `mountInBrowser(() => Comp(props))` runs the component setup TWICE — mount a VNode
+
+`mountInBrowser` takes a `VNodeChild`; an arrow that CALLS the component is a
+function child, i.e. a reactive accessor, and the general accessor path runs it
+twice at mount (an untracked classification sample, then the tracked bind — see
+CLAUDE.md "single accessor invocation ... keyed-array/general accessors keep the
+2-invocation handoff"). The sampled instance is never mounted, but its setup
+already ran: every `effect`, `ResizeObserver` and timer it created is live.
+Found on `<OptionChart>`'s auto-play spec: `onTimelineChange` fired twice per
+tick, once per instance, and no amount of interval ownership inside the
+component could fix a second component. Mount a VNode — `mountInBrowser(h(Comp,
+props))` — whenever the component owns a timer, an observer or a subscription;
+the arrow form is only harmless for components whose setup is idempotent.
