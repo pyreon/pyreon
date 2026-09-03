@@ -558,6 +558,25 @@ class TasksAppInstrumentedTest {
             .onNodeWithTag("stats-bars")
             .performTouchInput { click(Offset(90f * flowDensity, 120f * flowDensity)) }
         waitForTagText("stats-bars-pick", "0")
+        // #3268: `<PlotChart dataZoom>` — detectTransformGestures folds the
+        // pinch into the engine's fraction window. Two fingers 20dp apart that
+        // end 90dp apart is 4.5x; three rows keep only row 1 (any scale in
+        // 3…6 does), so a tap on the sole band must report the GLOBAL index 1.
+        composeRule
+            .onNodeWithTag("stats-bars")
+            .performTouchInput {
+                val cx = width / 2f
+                val cy = height / 2f
+                val d = flowDensity
+                pinch(
+                    start0 = Offset(cx - 10f * d, cy), end0 = Offset(cx - 45f * d, cy),
+                    start1 = Offset(cx + 10f * d, cy), end1 = Offset(cx + 45f * d, cy),
+                )
+            }
+        composeRule
+            .onNodeWithTag("stats-bars")
+            .performTouchInput { click(Offset(90f * flowDensity, 120f * flowDensity)) }
+        waitForTagText("stats-bars-pick", "1")
         composeRule
             .onNodeWithTag("stats-back")
             .performClick()

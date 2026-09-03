@@ -469,6 +469,9 @@ function StatsPage() {
         data={SCORE_ROWS}
         x={(d: ScoreRow) => d.subject}
         marks={[bars((d: ScoreRow) => d.score, { label: 'Score', color: '#0f766e' })]}
+        // #3268: pinch + pan natively (wheel + drag on the web); tap indices stay
+        // GLOBAL, which is what the pinch-then-tap device assertion relies on.
+        dataZoom={true}
         height={160}
         title="Scores by subject"
         data-testid="stats-bars"
