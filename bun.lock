@@ -36,7 +36,7 @@
         "esbuild": "^0.28.2",
         "find-my-way": "^9.9.0",
         "goober": "^2.1.19",
-        "happy-dom": "20.11.6",
+        "happy-dom": "^20.11.6",
         "hono": "^4.13.5",
         "next": "^16.3.4",
         "oxc-parser": "^0.148.0",
@@ -212,7 +212,7 @@
         "vue": "^3.5.42",
       },
       "devDependencies": {
-        "@happy-dom/global-registrator": "20.11.6",
+        "@happy-dom/global-registrator": "^20.11.6",
         "@octanejs/vite-plugin": "0.1.52",
         "@pyreon/compiler": "workspace:*",
         "@pyreon/runtime-server": "workspace:*",

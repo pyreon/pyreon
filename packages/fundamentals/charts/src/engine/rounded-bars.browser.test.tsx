@@ -8,6 +8,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
+import { query } from '@pyreon/test-utils'
 import { PlotChart } from './Chart'
 import type { PlotChartProps } from './Chart'
 import { bars } from './marks'
@@ -71,7 +72,7 @@ describe('rounded bars — pixels', () => {
   it('a square bar paints its top-left corner; a [16,16,0,0] bar leaves it empty and keeps the bottom-left', async () => {
     const square = mountInBrowser(<PlotChart<Row> {...chartProps()} />)
     await flush()
-    const sc = square.container.querySelector('canvas') as HTMLCanvasElement
+    const sc = query(square.container, 'canvas')
     const box = barBox(sc)
     expect(box.w).toBeGreaterThan(20)
     expect(box.h).toBeGreaterThan(40)
@@ -83,7 +84,7 @@ describe('rounded bars — pixels', () => {
       <PlotChart<Row> {...chartProps({ marks: [bars((d: Row) => d.v, { color: RED, borderRadius: [16, 16, 0, 0] })] })} />,
     )
     await flush()
-    const rc = rounded.container.querySelector('canvas') as HTMLCanvasElement
+    const rc = query(rounded.container, 'canvas')
     const rbox = barBox(rc)
     // The bar occupies the same box — rounding removes corners, not width.
     expect(Math.abs(rbox.w - box.w)).toBeLessThanOrEqual(2)
@@ -104,7 +105,7 @@ describe('rounded bars — pixels', () => {
       <PlotChart<Row> {...chartProps({ marks: [bars((d: Row) => d.v, { color: RED, borderRadius: 999 })] })} />,
     )
     await flush()
-    const c = container.querySelector('canvas') as HTMLCanvasElement
+    const c = query(container, 'canvas')
     const box = barBox(c)
     // A fully-clamped rect is a stadium: its horizontal mid-line still spans
     // the whole width, and its centre is painted.

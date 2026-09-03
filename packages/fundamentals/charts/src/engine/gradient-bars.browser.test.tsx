@@ -7,6 +7,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
+import { query } from '@pyreon/test-utils'
 import { PlotChart } from './Chart'
 import type { PlotChartProps } from './Chart'
 import { bars } from './marks'
@@ -72,7 +73,7 @@ describe('gradient fills — pixels', () => {
   it('a solid bar is one colour top to bottom; a gradient bar is red at the top and blue at the bottom', async () => {
     const solid = mountInBrowser(<PlotChart<Row> {...chartProps()} />)
     await flush()
-    const sc = solid.container.querySelector('canvas') as HTMLCanvasElement
+    const sc = query(solid.container, 'canvas')
     const sbox = paintedBox(sc)
     const sTop = rgbaAt(sc, sbox.x + sbox.w / 2, sbox.y + 4)
     const sBottom = rgbaAt(sc, sbox.x + sbox.w / 2, sbox.y + sbox.h - 5)
@@ -85,7 +86,7 @@ describe('gradient fills — pixels', () => {
       <PlotChart<Row> {...chartProps({ marks: [bars((d: Row) => d.v, { color: TOP, gradient: GRADIENT })] })} />,
     )
     await flush()
-    const gc = grad.container.querySelector('canvas') as HTMLCanvasElement
+    const gc = query(grad.container, 'canvas')
     const gbox = paintedBox(gc)
     const gTop = rgbaAt(gc, gbox.x + gbox.w / 2, gbox.y + 4)
     const gBottom = rgbaAt(gc, gbox.x + gbox.w / 2, gbox.y + gbox.h - 5)
@@ -107,7 +108,7 @@ describe('gradient fills — pixels', () => {
       />,
     )
     await flush()
-    const c = container.querySelector('canvas') as HTMLCanvasElement
+    const c = query(container, 'canvas')
     const box = paintedBox(c)
     const left = rgbaAt(c, box.x + 3, box.y + box.h / 2)
     const right = rgbaAt(c, box.x + box.w - 4, box.y + box.h / 2)

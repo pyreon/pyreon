@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
+import { query } from '@pyreon/test-utils'
 import { PlotChart } from './Chart'
 import type { PlotChartProps } from './Chart'
 import { bars } from './marks'
@@ -37,7 +38,7 @@ const chartProps = (over: Partial<PlotChartProps<Row>> = {}): PlotChartProps<Row
 })
 const mountChart = (over: Partial<PlotChartProps<Row>> = {}) => mountInBrowser(<PlotChart<Row> {...chartProps(over)} />)
 
-const canvasOf = (container: HTMLElement): HTMLCanvasElement => container.querySelector('canvas') as HTMLCanvasElement
+const canvasOf = (container: HTMLElement): HTMLCanvasElement => query(container, 'canvas')
 const key = (el: HTMLElement, k: string): void => {
   el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }))
 }
