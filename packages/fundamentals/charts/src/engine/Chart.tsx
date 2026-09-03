@@ -15,12 +15,12 @@ import { renderTitle } from './title'
 import { sameShape, sameValues, tweenValues } from './tween'
 import { withAlpha } from './radar'
 import { hitToolbox, renderToolbox, toolboxTools } from './toolbox'
-import type { ToolboxTool } from './toolbox'
 import { renderSvg } from './svg'
+import type { ToolboxTool } from './toolbox'
 import { placeTooltip, tooltipAt, tooltipLines } from './tooltip'
 import type { TooltipContent } from './tooltip'
-import { defaultTheme, layoutChart, renderChart, resolveY2Domain, resolveYDomain, seriesOnRightAxis } from './render'
-import { layoutSeriesPoints, layoutSeriesPointsAt } from './layout'
+import { barsFor, defaultTheme, layoutChart, renderChart, resolveY2Domain, resolveYDomain, seriesOnRightAxis, stackedHitAt } from './render'
+import { hitBar, layoutSeriesPoints, layoutSeriesPointsAt } from './layout'
 import type { Annotation, ChartSpec, ChartTheme, PointMarker, Series } from './render'
 import { scaleLinear } from './scale'
 import { resolveCategories, resolveMarks } from './marks'
@@ -723,10 +723,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       })
     } else return
     ev.preventDefault()
-    lastFrame = [...legendCmds, ...shifted, ...bandShifted, ...crossShifted]
-    lastW = w
-    lastH = hgt
-    paint(ctx, lastFrame, w, hgt, FONT)
+    draw()
   }
 
   /**
@@ -1074,6 +1071,13 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
         } else if (tool === 'magicBar') {
           typeOverride.set(typeOverride() === 'bar' ? null : 'bar')
         } else {
+          // Static, and deliberately not dynamic: `@pyreon/charts/plot` is
+          // ONE package entry (rolldown builds it as a single-chunk bundle —
+          // no code splitting), so `import('./svg')` inlines to exactly the
+          // same bytes as a static import while adding an async indirection
+          // that never pays off. See anti-patterns.md — saveAsImage is now a
+          // permanent, unavoidable part of the plot-minimal bundle; the
+          // import-budget and tree-shake suite are relocked accordingly.
           const svg = renderSvg(lastFrame, lastW, lastH, { fontFamily: FONT, ...(props.title !== undefined ? { title: props.title } : {}) })
           if (props.onSaveImage !== undefined) props.onSaveImage(svg)
           else if (isClient && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {

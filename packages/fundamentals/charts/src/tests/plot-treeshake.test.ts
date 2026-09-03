@@ -68,11 +68,19 @@ describe('plot subpath — tree-shake semantics', () => {
     }
   })
 
-  it('PlotChart + bars + line pulls no candle/heat/SVG code', async () => {
+  it('PlotChart + bars + line pulls no candle/heat code', async () => {
     const code = await bundle('cartesian', importFrom('PlotChart, bars, line'))
     expect(code).not.toContain(MARKERS.candlestick)
     expect(code).not.toContain(MARKERS.heat)
-    expect(code).not.toContain(MARKERS.svg)
+    // svg IS expected here, not absent — PlotChart's toolbox saveAsImage
+    // calls the SVG serializer directly (Chart.tsx). Unlike the family
+    // geometry (imported bindings, genuinely optional), this is a core
+    // component's OWN behaviour, always reachable from PlotChart regardless
+    // of import shape — and `@pyreon/charts/plot` is a single rolldown
+    // chunk with no code-splitting, so a dynamic import doesn't rescue it
+    // either (verified: 0 `import(` calls survive in the built lib). See
+    // anti-patterns.md "A prop-gated optional feature cannot tree-shake".
+    expect(code).toContain(MARKERS.svg)
   })
 
   it('chartToSvg (server path) pulls no components or browser canvas host', async () => {

@@ -92,6 +92,16 @@ export function familyHostNode(plan: FamilyPlan, o: FamilyHostOptions): VNode | 
       return h(RiverChart, { series: plan.series, river: plan.river, ...size, ...title, ...sel('themeRiver') })
     case 'map':
       return h(MapChart, { map: plan.geo, values: plan.values, options: plan.options, ...size, ...title, ...sel('map') })
+    // Renders through the facade's SVG only. boxplot is here for a concrete
+    // reason rather than an omission: the plan carries rows that are ALREADY
+    // five-number summaries (option-family feeds them straight to
+    // `boxplotToSvg`), while `BoxplotChart` takes raw observations and
+    // summarises them itself — there is no way to hand it a summary without a
+    // new prop. Giving the canvas host a summaries path is a component API
+    // change, so it is a follow-up rather than something to slip into a
+    // batch merge; until then a boxplot option renders as static SVG, which
+    // is what it did before this switch became exhaustive over it.
+    case 'boxplot':
     case 'geoPoints':
     case 'singleAxis':
       return null

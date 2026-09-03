@@ -10,7 +10,7 @@
   "@pyreon/core::jsx": 664,
   "@pyreon/hooks::useEventListener": 614,
   "@pyreon/hooks::useAuth": 731,
-  "@pyreon/charts::plot-minimal": 12288,
+  "@pyreon/charts::plot-minimal": 16384,
   "@pyreon/charts::plot-svg": 7168,
   "@pyreon/charts::plot-pie": 3920
 }
