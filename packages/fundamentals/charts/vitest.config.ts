@@ -52,6 +52,8 @@ export default defineNodeConfig({
     // Same class — canvas hosts covered only by their real-Chromium suites (boxplot.browser.test.tsx).
     'src/engine/BoxplotChart.tsx',
     // Same class — canvas hosts covered only by their real-Chromium suites (geo.browser.test.tsx).
+    // Same class — canvas hosts covered only by their real-Chromium suites (gantt.browser.test.tsx, geo.browser.test.tsx).
+    'src/engine/GanttChart.tsx',
     'src/engine/MapChart.tsx',
   ],
   // loader.ts + vite.ts (the node-instrumented surface) are at 100% on all
