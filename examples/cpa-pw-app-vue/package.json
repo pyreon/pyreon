@@ -29,7 +29,7 @@
     "@pyreon/validation": "workspace:^",
     "@pyreon/vue-compat": "workspace:^",
     "@pyreon/zero": "workspace:^",
-    "@tanstack/query-core": "^5.102.2",
+    "@tanstack/query-core": "^5.102.8",
     "zod": "^4.5.4"
   },
   "devDependencies": {

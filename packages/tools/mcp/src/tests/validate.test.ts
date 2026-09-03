@@ -73,9 +73,14 @@ describe('MCP validate — native (multiplatform) detector', () => {
     // `class` rather than `interface`: PMTC compiles an interface into a
     // struct / data class, so flagging one told authors to rewrite code that
     // already worked. A class genuinely does not lower.
+    //
+    // `@pyreon/code` rather than `@pyreon/flow`: `createFlow` now crosses to
+    // native (#3295), so `@pyreon/flow` dropped out of `WEB_ONLY_PACKAGES` —
+    // `@pyreon/code` wraps CodeMirror (a DOM editor engine) and stays
+    // durably web-only regardless of any single component's crossing status.
     const code = `
       import { Stack } from '@pyreon/primitives'
-      import { FlowCanvas } from '@pyreon/flow'
+      import { CodeEditor } from '@pyreon/code'
       class Todo { id = 1 }
       export function App() { return (<Stack />) }
     `

@@ -4,6 +4,7 @@ import type {
   EdgeMarkerSpec,
   EdgePathOptions,
   EdgePathResult,
+  EdgeSegment,
   FlowEdge,
   FlowNode,
   HandleConfig,
@@ -384,6 +385,18 @@ export function getBezierPath(params: {
     path: `M${sourceX},${sourceY} C${sourceControlX},${sourceControlY} ${targetControlX},${targetControlY} ${targetX},${targetY}`,
     labelX: center.x,
     labelY: center.y,
+    segments: [
+      { kind: 'move', x: sourceX, y: sourceY },
+      {
+        kind: 'cubic',
+        x: targetX,
+        y: targetY,
+        c1x: sourceControlX,
+        c1y: sourceControlY,
+        c2x: targetControlX,
+        c2y: targetControlY,
+      },
+    ],
   }
 }
 
@@ -437,24 +450,63 @@ export function getSmoothStepPath(params: {
   const r = borderRadius
 
   let path: string
+  let segments: EdgeSegment[]
 
   if (isHorizontalSource && !isHorizontalTarget) {
     // Horizontal source → vertical target
     const cornerY = tY
-    path = `M${sourceX},${sourceY} L${sX},${sY} L${sX},${cornerY > sY ? cornerY - r : cornerY + r} Q${sX},${cornerY} ${sX + (tX > sX ? r : -r)},${cornerY} L${tX},${cornerY} L${targetX},${targetY}`
+    const cornerRunY = cornerY > sY ? cornerY - r : cornerY + r
+    const cornerOutX = sX + (tX > sX ? r : -r)
+    path = `M${sourceX},${sourceY} L${sX},${sY} L${sX},${cornerRunY} Q${sX},${cornerY} ${cornerOutX},${cornerY} L${tX},${cornerY} L${targetX},${targetY}`
+    segments = [
+      { kind: 'move', x: sourceX, y: sourceY },
+      { kind: 'line', x: sX, y: sY },
+      { kind: 'line', x: sX, y: cornerRunY },
+      { kind: 'quad', x: cornerOutX, y: cornerY, cx: sX, cy: cornerY },
+      { kind: 'line', x: tX, y: cornerY },
+      { kind: 'line', x: targetX, y: targetY },
+    ]
   } else if (!isHorizontalSource && isHorizontalTarget) {
     // Vertical source → horizontal target
     const cornerX = tX
-    path = `M${sourceX},${sourceY} L${sX},${sY} L${cornerX > sX ? cornerX - r : cornerX + r},${sY} Q${cornerX},${sY} ${cornerX},${sY + (tY > sY ? r : -r)} L${cornerX},${tY} L${targetX},${targetY}`
+    const cornerRunX = cornerX > sX ? cornerX - r : cornerX + r
+    const cornerOutY = sY + (tY > sY ? r : -r)
+    path = `M${sourceX},${sourceY} L${sX},${sY} L${cornerRunX},${sY} Q${cornerX},${sY} ${cornerX},${cornerOutY} L${cornerX},${tY} L${targetX},${targetY}`
+    segments = [
+      { kind: 'move', x: sourceX, y: sourceY },
+      { kind: 'line', x: sX, y: sY },
+      { kind: 'line', x: cornerRunX, y: sY },
+      { kind: 'quad', x: cornerX, y: cornerOutY, cx: cornerX, cy: sY },
+      { kind: 'line', x: cornerX, y: tY },
+      { kind: 'line', x: targetX, y: targetY },
+    ]
   } else if (isHorizontalSource && isHorizontalTarget) {
     // Both horizontal — go through middle Y
     path = `M${sourceX},${sourceY} L${sX},${sourceY} L${midX},${sourceY} Q${midX},${sourceY} ${midX},${midY} L${midX},${targetY} L${tX},${targetY} L${targetX},${targetY}`
+    segments = [
+      { kind: 'move', x: sourceX, y: sourceY },
+      { kind: 'line', x: sX, y: sourceY },
+      { kind: 'line', x: midX, y: sourceY },
+      { kind: 'quad', x: midX, y: midY, cx: midX, cy: sourceY },
+      { kind: 'line', x: midX, y: targetY },
+      { kind: 'line', x: tX, y: targetY },
+      { kind: 'line', x: targetX, y: targetY },
+    ]
   } else {
     // Both vertical — go through middle X
     path = `M${sourceX},${sourceY} L${sourceX},${sY} L${sourceX},${midY} Q${sourceX},${midY} ${midX},${midY} L${targetX},${midY} L${targetX},${tY} L${targetX},${targetY}`
+    segments = [
+      { kind: 'move', x: sourceX, y: sourceY },
+      { kind: 'line', x: sourceX, y: sY },
+      { kind: 'line', x: sourceX, y: midY },
+      { kind: 'quad', x: midX, y: midY, cx: sourceX, cy: midY },
+      { kind: 'line', x: targetX, y: midY },
+      { kind: 'line', x: targetX, y: tY },
+      { kind: 'line', x: targetX, y: targetY },
+    ]
   }
 
-  return { path, labelX: center.x, labelY: center.y }
+  return { path, labelX: center.x, labelY: center.y, segments }
 }
 
 /**
@@ -473,6 +525,10 @@ export function getStraightPath(params: {
     path: `M${sourceX},${sourceY} L${targetX},${targetY}`,
     labelX: center.x,
     labelY: center.y,
+    segments: [
+      { kind: 'move', x: sourceX, y: sourceY },
+      { kind: 'line', x: targetX, y: targetY },
+    ],
   }
 }
 
@@ -511,8 +567,11 @@ export function getWaypointPath(params: {
 
   const allPoints = [{ x: sourceX, y: sourceY }, ...waypoints, { x: targetX, y: targetY }]
 
-  const segments = allPoints.map((p) => `${p.x},${p.y}`)
-  const path = `M${segments.join(' L')}`
+  const pathParts = allPoints.map((p) => `${p.x},${p.y}`)
+  const path = `M${pathParts.join(' L')}`
+  const pathSegments: EdgeSegment[] = allPoints.map((p, i) =>
+    i === 0 ? { kind: 'move', x: p.x, y: p.y } : { kind: 'line', x: p.x, y: p.y },
+  )
 
   // Label at the middle waypoint
   const midIdx = Math.floor(waypoints.length / 2)
@@ -523,7 +582,7 @@ export function getWaypointPath(params: {
     y: (sourceY + targetY) / 2,
   }
 
-  return { path, labelX: midPoint.x, labelY: midPoint.y }
+  return { path, labelX: midPoint.x, labelY: midPoint.y, segments: pathSegments }
 }
 
 /**

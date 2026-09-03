@@ -342,6 +342,9 @@ let _syncedSignalNames: Set<string> = new Set()
 let _tableNames: Set<string> = new Set()
 /** `useSortable` binding names — the `ref={s.itemRef(k)}` lowering keys on these. */
 let _sortableNames: Set<string> = new Set()
+/** `createFlow(...)` bindings — property reads (nodes/edges/viewport/zoom)
+ *  drop parens; methods (addNode/selectNode/selectedNodes/…) flow through. */
+let _flowStateNamesKt: Set<string> = new Set()
 /** Per-component: i18n instance names — `i18n.t(key, {…})` lowers the
  *  object-literal values arg to a map at this call shape. Mirror of
  *  emit-swift's `_i18nNames`. */
@@ -1752,6 +1755,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _syncedSignalNames = new Set()
   _tableNames = new Set()
   _sortableNames = new Set()
+  _flowStateNamesKt = new Set()
   _i18nNamesKotlin = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
@@ -1792,6 +1796,7 @@ function emitKotlinComponent(c: ComponentIR): string {
     if (d.kind === 'synced-signal') _syncedSignalNames.add(d.name)
     if (d.kind === 'table-state') _tableNames.add(d.name)
     if (d.kind === 'sortable') _sortableNames.add(d.name)
+    if (d.kind === 'flow-state') _flowStateNamesKt.add(d.name)
     if (d.kind === 'i18n') _i18nNamesKotlin.add(d.name)
     // C4: `const router = createRouter(...)` is a remembered router
     // instance — name reads bare (no parens) like a signal. Add to
@@ -2198,6 +2203,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _syncedSignalNames = new Set()
   _tableNames = new Set()
   _sortableNames = new Set()
+  _flowStateNamesKt = new Set()
   _i18nNamesKotlin = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
@@ -2964,6 +2970,54 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   if (d.kind === 'size-class') {
     return `val ${kotlinIdent(d.name)} = if (LocalConfiguration.current.screenWidthDp >= 600) "regular" else "compact"`
   }
+  // `@pyreon/flow` — sequential `remember` (no cross-ref wall like Swift's
+  // `@State`), so the whole literal node/edge config passes straight into
+  // the constructor — no post-decl `bind`/`.onAppear` step needed (mirrors
+  // how table's Kotlin twin is simpler than its Swift one, for the same
+  // reason: Compose recomposition tracks reads sequentially).
+  if (d.kind === 'flow-state') {
+    // Same reasoning as the Swift twin: register the row struct via the
+    // SHARED `synthLiteralStructName` registry (not `inferType` on a
+    // synthetic array, which cannot name an anonymous literal it hasn't
+    // seen declared before — see emit-swift.ts's comment on this same
+    // decision). Registering FIRST guarantees this name is the SAME one
+    // each node's `data = {...}` literal resolves to below.
+    const rowFields = d.nodes[0]!.data.kind === 'object' ? d.nodes[0]!.data.fields : []
+    const rowType =
+      synthLiteralStructName(rowFields, _synthExprStructs, _synthExprStructKeys, (ex) =>
+        inferType(ex, _kotlinExprInferCtx),
+      ) ?? 'Any'
+    // `PyreonXYPosition`/`PyreonFlowNode.width`/`.height` are Double —
+    // Kotlin refuses a bare Int literal there (same reason charts' Pie/Gauge
+    // emitters run every numeric arg through `ktChartDouble`).
+    const nodeLits = d.nodes
+      .map((n) => {
+        const parts = [
+          `id = ${JSON.stringify(n.id)}`,
+          ...(n.type !== undefined ? [`type = ${JSON.stringify(n.type)}`] : []),
+          `position = PyreonXYPosition(${ktChartDouble(emitKotlinExpr(n.positionX, 0))}, ${ktChartDouble(emitKotlinExpr(n.positionY, 0))})`,
+          `data = ${emitKotlinExpr(n.data, 0)}`,
+          ...(n.width !== undefined ? [`width = ${ktChartDouble(emitKotlinExpr(n.width, 0))}`] : []),
+          ...(n.height !== undefined ? [`height = ${ktChartDouble(emitKotlinExpr(n.height, 0))}`] : []),
+        ]
+        return `PyreonFlowNode(${parts.join(', ')})`
+      })
+      .join(', ')
+    const edgeLits = d.edges
+      .map((e) => {
+        const parts = [
+          `id = ${JSON.stringify(e.id)}`,
+          `source = ${JSON.stringify(e.source)}`,
+          `target = ${JSON.stringify(e.target)}`,
+          ...(e.type !== undefined ? [`type = ${JSON.stringify(e.type)}`] : []),
+          ...(e.label !== undefined ? [`label = ${JSON.stringify(e.label)}`] : []),
+          ...(e.animated !== undefined ? [`animated = ${e.animated ? 'true' : 'false'}`] : []),
+        ]
+        return `PyreonFlowEdge(${parts.join(', ')})`
+      })
+      .join(', ')
+    return `val ${kotlinIdent(d.name)} = remember { PyreonFlowState<${rowType}>(nodes = listOf(${nodeLits}), edges = listOf(${edgeLits})) }`
+  }
   // C4: router hook — `const navigate = useNavigate()` → as-is.
   // Compose's `useNavigate()` is a `@Composable` function that reads
   // `LocalPyreonRouter.current` directly via CompositionLocal — no
@@ -3018,6 +3072,71 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     ].join('\n')
   }
   return `val ${kotlinIdent(d.name)} by remember { derivedStateOf { ${emitKotlinExpr(d.expr!, 0)} } }`
+}
+
+/**
+ * `addNode({...})` — construct a `PyreonFlowNode(...)` from a call-site
+ * object literal. Kotlin twin of `swiftFlowNodeLiteral` (emit-swift.ts) —
+ * same reasoning: the generic object-literal path would synthesize its own
+ * unrelated `__ObjN` data class (same field names, different NOMINAL type),
+ * which Kotlin's type system rejects just as Swift's does. Returns `null`
+ * (never warns) for any shape it doesn't recognize; the caller falls
+ * through to generic emission — correct for a non-literal argument (an
+ * identifier already holding a `PyreonFlowNode`).
+ */
+function kotlinFlowNodeLiteral(arg: ExprIR): string | null {
+  if (arg.kind !== 'object') return null
+  const field = (n: string): ExprIR | undefined => arg.fields.find((f) => f.name === n)?.value
+  const idExpr = field('id')
+  const posExpr = field('position')
+  const dataExpr = field('data')
+  if (!idExpr || !posExpr || posExpr.kind !== 'object' || !dataExpr) return null
+  const posX = posExpr.fields.find((f) => f.name === 'x')?.value
+  const posY = posExpr.fields.find((f) => f.name === 'y')?.value
+  if (!posX || !posY) return null
+  const typeExpr = field('type')
+  const widthExpr = field('width')
+  const heightExpr = field('height')
+  const parts = [
+    `id = ${emitKotlinExpr(idExpr, 0)}`,
+    ...(typeExpr ? [`type = ${emitKotlinExpr(typeExpr, 0)}`] : []),
+    `position = PyreonXYPosition(${ktChartDouble(emitKotlinExpr(posX, 0))}, ${ktChartDouble(emitKotlinExpr(posY, 0))})`,
+    `data = ${emitKotlinExpr(dataExpr, 0)}`,
+    ...(widthExpr ? [`width = ${ktChartDouble(emitKotlinExpr(widthExpr, 0))}`] : []),
+    ...(heightExpr ? [`height = ${ktChartDouble(emitKotlinExpr(heightExpr, 0))}`] : []),
+  ]
+  return `PyreonFlowNode(${parts.join(', ')})`
+}
+
+/** `addEdge({...})` — the `PyreonFlowEdge` twin of `kotlinFlowNodeLiteral`. */
+function kotlinFlowEdgeLiteral(arg: ExprIR): string | null {
+  if (arg.kind !== 'object') return null
+  const field = (n: string): ExprIR | undefined => arg.fields.find((f) => f.name === n)?.value
+  const idExpr = field('id')
+  const sourceExpr = field('source')
+  const targetExpr = field('target')
+  if (!idExpr || !sourceExpr || !targetExpr) return null
+  const typeExpr = field('type')
+  const labelExpr = field('label')
+  const animatedExpr = field('animated')
+  const parts = [
+    `id = ${emitKotlinExpr(idExpr, 0)}`,
+    `source = ${emitKotlinExpr(sourceExpr, 0)}`,
+    `target = ${emitKotlinExpr(targetExpr, 0)}`,
+    ...(typeExpr ? [`type = ${emitKotlinExpr(typeExpr, 0)}`] : []),
+    ...(labelExpr ? [`label = ${emitKotlinExpr(labelExpr, 0)}`] : []),
+    ...(animatedExpr ? [`animated = ${emitKotlinExpr(animatedExpr, 0)}`] : []),
+  ]
+  return `PyreonFlowEdge(${parts.join(', ')})`
+}
+
+/** `updateNodePosition(id, {x, y})` — the `PyreonXYPosition` twin. */
+function kotlinFlowPositionLiteral(arg: ExprIR): string | null {
+  if (arg.kind !== 'object') return null
+  const x = arg.fields.find((f) => f.name === 'x')?.value
+  const y = arg.fields.find((f) => f.name === 'y')?.value
+  if (!x || !y) return null
+  return `PyreonXYPosition(${ktChartDouble(emitKotlinExpr(x, 0))}, ${ktChartDouble(emitKotlinExpr(y, 0))})`
 }
 
 /**
@@ -4296,6 +4415,47 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         _tableNames.has(e.callee.object.name) &&
         e.args.length === 0 &&
         ['page', 'sortColumn', 'sortDirection', 'filterValue'].includes(e.callee.property)
+      ) {
+        return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
+      }
+      // PyreonFlowState struct-literal ARGUMENTS — see swiftFlowNodeLiteral's
+      // docblock (emit-swift.ts) for why this rewrite exists: Kotlin's type
+      // system is nominal too, so a bare object literal would synthesize an
+      // unrelated data class instead of satisfying the declared parameter
+      // type. Must run BEFORE the property-read block below, mirroring
+      // emit-swift.ts's ordering.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _flowStateNamesKt.has(e.callee.object.name)
+      ) {
+        if (e.callee.property === 'addNode' && e.args.length === 1) {
+          const lit = kotlinFlowNodeLiteral(e.args[0]!)
+          if (lit !== null) return `${kotlinIdent(e.callee.object.name)}.addNode(${lit})`
+        }
+        if (e.callee.property === 'addEdge' && e.args.length === 1) {
+          const lit = kotlinFlowEdgeLiteral(e.args[0]!)
+          if (lit !== null) return `${kotlinIdent(e.callee.object.name)}.addEdge(${lit})`
+        }
+        if (e.callee.property === 'updateNodePosition' && e.args.length === 2) {
+          const lit = kotlinFlowPositionLiteral(e.args[1]!)
+          if (lit !== null) {
+            return `${kotlinIdent(e.callee.object.name)}.updateNodePosition(${emitKotlinExpr(e.args[0]!, indent)}, ${lit})`
+          }
+        }
+      }
+      // PyreonFlowState property reads drop parens — web `flow.nodes()` /
+      // `flow.edges()` / `flow.viewport()` / `flow.zoom()` are Signal/Computed
+      // accessor CALLS; the Kotlin port exposes them as `val` properties
+      // (mirrors the table rewrite immediately above). `selectedNodes()`/
+      // `selectedEdges()` stay METHODS (named that way on purpose, matching
+      // the web call syntax with no rewrite needed) — deliberately absent.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _flowStateNamesKt.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['nodes', 'edges', 'viewport', 'zoom'].includes(e.callee.property)
       ) {
         return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
       }
