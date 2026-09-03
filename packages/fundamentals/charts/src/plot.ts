@@ -35,6 +35,7 @@ export {
   bubble,
   groupedBars,
   line,
+  normalizeCorners,
   points,
   resolveCategories,
   resolveMarks,
@@ -46,6 +47,7 @@ export type { Accessor, BubbleOptions, Mark, MarkOptions } from './engine/marks'
 export { smooth, step } from './engine/curve'
 
 // Core render + layout
+export { cornerRadii, hasCorners, rectCmd } from './engine/corners'
 export { defaultTheme, emphasisLevel, emphasisOutline, layoutChart, renderChart, resolveYDomain, seriesMaxLength } from './engine/render'
 export type { Annotation, ChartSpec, ChartTheme, Emphasis, Series } from './engine/render'
 export {

@@ -5,6 +5,7 @@
 // SwiftUI `Canvas` and Compose `Canvas`, which is the point of emitting a flat
 // command list rather than drawing directly.
 
+import { cornerRadii, hasCorners } from './corners'
 import type { DrawCmd, MeasureText, Pt } from './types'
 
 /**
@@ -22,6 +23,40 @@ export function canvasMeasure(ctx: CanvasRenderingContext2D, fontFamily: string)
     ctx.font = prev
     return w
   }
+}
+
+/**
+ * Trace a rounded rect.
+ *
+ * Arcs rather than `ctx.roundRect`: the radii are already clamped by the
+ * engine, the arc form works on every 2D context (including the ones a test
+ * environment provides), and it is the same four arcs the SVG path and both
+ * native canvases draw — which is what keeps the four backends visually
+ * identical rather than approximately so.
+ */
+function traceRoundedRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number[],
+): void {
+  const tl = r[0]!
+  const tr = r[1]!
+  const br = r[2]!
+  const bl = r[3]!
+  ctx.beginPath()
+  ctx.moveTo(x + tl, y)
+  ctx.lineTo(x + w - tr, y)
+  if (tr > 0) ctx.arc(x + w - tr, y + tr, tr, -Math.PI / 2, 0)
+  ctx.lineTo(x + w, y + h - br)
+  if (br > 0) ctx.arc(x + w - br, y + h - br, br, 0, Math.PI / 2)
+  ctx.lineTo(x + bl, y + h)
+  if (bl > 0) ctx.arc(x + bl, y + h - bl, bl, Math.PI / 2, Math.PI)
+  ctx.lineTo(x, y + tl)
+  if (tl > 0) ctx.arc(x + tl, y + tl, tl, Math.PI, Math.PI * 1.5)
+  ctx.closePath()
 }
 
 function tracePolyline(ctx: CanvasRenderingContext2D, points: Pt[]): void {
@@ -50,7 +85,13 @@ export function paint(
   for (const c of cmds) {
     if (c.kind === 'rect') {
       ctx.fillStyle = c.fill
-      ctx.fillRect(c.rect.x, c.rect.y, c.rect.w, c.rect.h)
+      const radii = cornerRadii(c.rect, c.corners)
+      if (hasCorners(radii)) {
+        traceRoundedRect(ctx, c.rect.x, c.rect.y, c.rect.w, c.rect.h, radii)
+        ctx.fill()
+      } else {
+        ctx.fillRect(c.rect.x, c.rect.y, c.rect.w, c.rect.h)
+      }
     } else if (c.kind === 'line') {
       ctx.strokeStyle = c.stroke
       ctx.lineWidth = c.width

@@ -15,6 +15,7 @@
 // Text measurement is the one thing it cannot do (no font metrics without a
 // rendering context), which is why `measureApprox` exists — see its note.
 
+import { cornerRadii, hasCorners } from './corners'
 import type { DrawCmd, Double, MeasureText, Pt } from './types'
 
 /**
@@ -71,9 +72,38 @@ const BASELINE: Record<'top' | 'middle' | 'bottom', string> = {
   bottom: 'alphabetic',
 }
 
+/**
+ * The `d` of a rounded rect — four arcs, sweep-flag 1 (clockwise in SVG's
+ * y-down space), matching the canvas and native traces corner for corner.
+ */
+function roundedRectPath(x: Double, y: Double, w: Double, h: Double, r: Double[]): string {
+  const tl = r[0]!
+  const tr = r[1]!
+  const br = r[2]!
+  const bl = r[3]!
+  const arc = (rad: Double, ex: Double, ey: Double): string =>
+    rad > 0 ? `A${n(rad)} ${n(rad)} 0 0 1 ${n(ex)} ${n(ey)}` : ''
+  return (
+    `M${n(x + tl)} ${n(y)}` +
+    `H${n(x + w - tr)}` +
+    arc(tr, x + w, y + tr) +
+    `V${n(y + h - br)}` +
+    arc(br, x + w - br, y + h) +
+    `H${n(x + bl)}` +
+    arc(bl, x, y + h - bl) +
+    `V${n(y + tl)}` +
+    arc(tl, x + tl, y) +
+    'Z'
+  )
+}
+
 /** Serialize one command. Exported for backends that compose their own document. */
 export function svgCommand(c: DrawCmd, fontFamily: string): string {
   if (c.kind === 'rect') {
+    const radii = cornerRadii(c.rect, c.corners)
+    if (hasCorners(radii)) {
+      return `<path d="${roundedRectPath(c.rect.x, c.rect.y, c.rect.w, c.rect.h, radii)}" fill="${esc(c.fill)}"/>`
+    }
     return `<rect x="${n(c.rect.x)}" y="${n(c.rect.y)}" width="${n(c.rect.w)}" height="${n(c.rect.h)}" fill="${esc(c.fill)}"/>`
   }
   if (c.kind === 'line') {

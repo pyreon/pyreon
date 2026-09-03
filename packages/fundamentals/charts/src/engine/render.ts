@@ -7,6 +7,7 @@ import type { LayoutConfig, PlotLayout } from './layout'
 import { extent, niceDomain, scaleLinear } from './scale'
 import { plain } from './format'
 import { countToDouble } from './brush'
+import { rectCmd } from './corners'
 import { withAlpha } from './radar'
 import type { DrawCmd, Domain, MeasureText, Pt, Rect, Double } from './types'
 
@@ -35,6 +36,8 @@ export interface Series {
   symbol?: 'rect' | 'circle' | 'diamond' | 'triangle' | undefined
   /** Repeat the symbol along the bar instead of stretching it. */
   symbolRepeat?: boolean | undefined
+  /** Corner radii for bar-family series — `[tl, tr, br, bl]`, clamped at paint time. */
+  corners?: Double[] | undefined
 }
 
 /**
@@ -544,7 +547,7 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
   if (stackedSeries.length > 0) {
     for (const seg of layoutStackedBars(stackedSeries.map((s) => s.values), plot, yDomain, 0.25)) {
       const rS = growRect(seg.rect, yDomain)
-      out.push({ kind: 'rect', rect: rS, fill: stackedSeries[seg.seriesIndex]!.color })
+      out.push(rectCmd(rS, stackedSeries[seg.seriesIndex]!.color, stackedSeries[seg.seriesIndex]!.corners))
       const lvlS = emphasisLevel(spec, seg.datumIndex)
       if (lvlS > 0) out.push(emphasisOutline(rS, lvlS, t.label))
     }
@@ -553,7 +556,7 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
   if (groupedSeries.length > 0) {
     for (const seg of layoutGroupedBars(groupedSeries.map((s) => s.values), plot, yDomain, 0.25)) {
       const rG = growRect(seg.rect, yDomain)
-      out.push({ kind: 'rect', rect: rG, fill: groupedSeries[seg.seriesIndex]!.color })
+      out.push(rectCmd(rG, groupedSeries[seg.seriesIndex]!.color, groupedSeries[seg.seriesIndex]!.corners))
       const lvlG = emphasisLevel(spec, seg.datumIndex)
       if (lvlG > 0) out.push(emphasisOutline(rG, lvlG, t.label))
     }
@@ -589,7 +592,7 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
       for (const r of rects) {
         const grown = growRectH(r)
         if (s.symbol === undefined) {
-          out.push({ kind: 'rect', rect: grown, fill: s.color })
+          out.push(rectCmd(grown, s.color, s.corners))
         } else if (s.symbolRepeat === true) {
           // Repeat a unit symbol along the bar (left to right); a partial last symbol is dropped.
           const unit = grown.h
@@ -641,7 +644,7 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
       for (const r of rects) {
         const grown = growRect(r, sDomain)
         if (s.symbol === undefined) {
-          out.push({ kind: 'rect', rect: grown, fill: s.color })
+          out.push(rectCmd(grown, s.color, s.corners))
         } else if (s.symbolRepeat === true) {
           // Repeat a unit symbol up the bar; a partial last symbol is dropped.
           // (Horizontal charts left this loop above, so the bar is vertical.)

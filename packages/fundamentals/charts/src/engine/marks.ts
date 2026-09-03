@@ -17,6 +17,29 @@ import type { Double, Pt } from './types'
 /** Reads one numeric channel out of a datum. */
 export type Accessor<T> = (d: T, index: number) => Double
 
+/**
+ * Normalize the user-facing `borderRadius` to the four-value form.
+ *
+ * A single number rounds every corner (ECharts' scalar form); a 4-array is
+ * taken as-is; anything shorter is padded from what it does carry, so `[6, 6]`
+ * reads as "round the top" the way CSS shorthand does.
+ *
+ * Lives HERE rather than next to `cornerRadii`: `typeof x === 'number'` is
+ * outside the native subset, and `corners.ts` crosses into the generated
+ * Swift/Kotlin engine. A mark option is resolved on the way IN, so the engine
+ * only ever sees the four-value form.
+ */
+export function normalizeCorners(radius: Double | Double[] | undefined): Double[] | undefined {
+  if (radius === undefined) return undefined
+  if (typeof radius === 'number') return [radius, radius, radius, radius]
+  if (radius.length === 0) return undefined
+  const a = radius[0]!
+  const b = radius.length > 1 ? radius[1]! : a
+  const c = radius.length > 2 ? radius[2]! : a
+  const d = radius.length > 3 ? radius[3]! : b
+  return [a, b, c, d]
+}
+
 export interface MarkOptions {
   /** Name for the legend, the tooltip and the accessible table. */
   label?: string
@@ -54,6 +77,17 @@ export interface MarkOptions {
   symbol?: 'rect' | 'circle' | 'diamond' | 'triangle'
   /** Repeat the symbol along the bar instead of stretching it. */
   symbolRepeat?: boolean
+  /**
+   * Round the bar's corners (ECharts' `itemStyle.borderRadius`) — bar-family
+   * marks only.
+   *
+   * A number rounds all four; `[topLeft, topRight, bottomRight, bottomLeft]`
+   * rounds them individually, so `[6, 6, 0, 0]` is the column-chart look that
+   * keeps the bar sitting flat on the axis. Radii larger than the bar can hold
+   * are clamped at paint time, so a bar animating up from zero rounds
+   * proportionally instead of turning into a lozenge.
+   */
+  borderRadius?: Double | Double[]
 }
 
 /** A mark bound to its accessor, resolved against data at render time. */
@@ -206,6 +240,7 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[]): Series[] {
       effect: m.options.effect,
       symbol: m.options.symbol,
       symbolRepeat: m.options.symbolRepeat,
+      corners: normalizeCorners(m.options.borderRadius),
     }
   })
 }
