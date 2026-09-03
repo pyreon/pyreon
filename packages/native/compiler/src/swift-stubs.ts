@@ -1098,6 +1098,17 @@ public final class PyreonCrashReporter {
   public func breadcrumb(_ message: String) {}
   public func clear() {}
 }
+// Mirrors PyreonChartCanvas.swift's radial wrappers EXACTLY (init signatures
+// incl. defaults) — a looser stub masks, a narrower one manufactures bugs.
+public struct PyreonPieChart<T>: View {
+  public init(data: [T], value: @escaping (T) -> Double, label: @escaping (T) -> String, color: ((T) -> String)? = nil, width: Double = 300.0, height: Double = 240.0, innerRadius: Double = 0.0, showLabels: Bool = true) {}
+  public init(data: [T], value: @escaping (T) -> Int, label: @escaping (T) -> String, color: ((T) -> String)? = nil, width: Double = 300.0, height: Double = 240.0, innerRadius: Double = 0.0, showLabels: Bool = true) {}
+  public var body: some View { EmptyView() }
+}
+public struct PyreonGaugeChart: View {
+  public init(value: Double, min: Double = 0.0, max: Double = 100.0, width: Double = 240.0, height: Double = 140.0, thickness: Double = 22.0, trackColor: String = "rgba(132,150,165,0.22)", valueColor: String = "#0f766e", showValue: Bool = true) {}
+  public var body: some View { EmptyView() }
+}
 public struct PyreonLink<Label: View>: View {
   public init(_ to: String, @ViewBuilder label: () -> Label) {}
   public typealias Body = Never

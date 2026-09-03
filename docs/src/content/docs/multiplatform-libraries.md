@@ -533,7 +533,7 @@ the machine-checked contract.
 | `@pyreon/toast` | the core `toast(...)` + `<Toaster>` now lower to the native PyreonToast runtime (v1); the rich surface (toast.promise/update, options, animation) stays web |
 | `@pyreon/hotkeys` | keyboard-shortcut layer over DOM KeyboardEvent. The REGISTRY half (registerHotkey / scopes / conflict reporting) is web; the `useHotkey` authoring hook lowers — see nativeFrontend |
 | `@pyreon/code` | wraps CodeMirror 6 (DOM editor engine); consume on native via the `<WebView>` bridge subpath |
-| `@pyreon/charts` | wraps ECharts (browser canvas engine); consume on native via the `<WebView>` bridge subpath |
+| `@pyreon/charts` | the default export wraps ECharts (browser canvas engine) and the cartesian `<PlotChart>` is marks-based — both web; the RADIAL `/plot` components cross (see nativeFrontend), and the rest embeds via the `<WebView>` bridge subpath |
 | `@pyreon/document` | wraps pdfmake/docx/exceljs/pptxgenjs (browser/node document engines); no native lowering |
 | `@pyreon/url-state` | the address bar is the web's own surface — history entries, `popstate`, `batchUrlUpdates` and the pluggable serializers stay web; on native the equivalent is the router's search parameters |
 | `@pyreon/table` | the TanStack-backed `useTable` (row model / faceting / virtual sizing) stays web; the dependency-free `createTableState` engine lowers to the native PyreonTableState port, rendered with `<For>` + primitives |

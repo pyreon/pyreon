@@ -1679,6 +1679,24 @@ const geometry = () => props.shape
         "// deep state stays an object:\nlet user = state({ name: 'Ada' })\nuser = { name: 'Bo' }        // ✓ replace with an object\n\n// a sometimes-primitive value is SHALLOW state:\nlet selection = state.raw<{ id: number } | null>(null)\nselection = { id: 1 }        // ✓ replace semantics, any type",
     }),
   },
+  {
+    // A chart JSX component reached the native build unlowered. The radial
+    // components (`PieChart` / `GaugeChart` from `@pyreon/charts/plot`) DO
+    // lower — but only in the supported shape, and every decline path warns
+    // by name at transform time (an `(d, index)` accessor, a missing
+    // `data`/`value`/`label`/`value` prop). `PlotChart` and the rest of the
+    // cartesian family are web-only, so their tags emit verbatim and die in
+    // the platform compiler instead.
+    pattern:
+      /(cannot find '(?:Pie|Gauge|Plot|Heatmap|Candlestick)Chart' in scope|Unresolved reference '(?:Pie|Gauge|Plot|Heatmap|Candlestick)Chart')/,
+    diagnose: () => ({
+      cause:
+        "A chart component from `@pyreon/charts` reached the emitted Swift/Kotlin as a literal tag — nothing by that name exists on either platform. For `<PieChart>`/`<GaugeChart>` this means the native lowering DECLINED: the transform warnings name the reason (an `(d, index)` two-argument accessor, or a missing required prop — the lowering needs `data`, `value` and `label` for pie, `value` for gauge). For `<PlotChart>`/heatmap/candlestick there is no native lowering at all — the cartesian family is marks-based and web-only.",
+      fix: "Read the transform warnings first — the decline paths are named. For the radials: use single-argument accessors (`value={(t) => t.amount}`) and pass the required props; index-dependent slices need a precomputed array. For the cartesian family: keep it in a `<Web>` branch, or embed the web chart via the `@pyreon/charts/webview` bridge inside a `<WebView>` host.",
+      fixCode:
+        "// radial: lowers to the native PyreonPieChart over the generated engine\n<PieChart data={txns} value={(t) => Math.abs(t.amount)} label={(t) => t.description} />\n\n// cartesian: web-only — branch it\n<Web><PlotChart data={rows} marks={[line((d) => d.y)]} /></Web>",
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */

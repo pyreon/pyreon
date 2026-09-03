@@ -886,6 +886,12 @@ fun rememberNavController(): NavController = NavController()
 // @pyreon/native-router-kotlin.
 @Composable
 @Suppress("UNUSED_PARAMETER")
+fun <T> PyreonPieChart(data: List<T>, value: (T) -> Number, label: (T) -> String, color: ((T) -> String)? = null, width: Double = 300.0, height: Double = 240.0, innerRadius: Double = 0.0, showLabels: Boolean = true, modifier: Modifier = Modifier) {}
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun PyreonGaugeChart(value: Double, min: Double = 0.0, max: Double = 100.0, width: Double = 240.0, height: Double = 140.0, thickness: Double = 22.0, trackColor: String = "rgba(132,150,165,0.22)", valueColor: String = "#0f766e", showValue: Boolean = true, modifier: Modifier = Modifier) {}
+@Composable
+@Suppress("UNUSED_PARAMETER")
 fun PyreonLink(to: String, content: @Composable (navigate: () -> Unit) -> Unit) {
   // Stub body — real impl reads LocalPyreonRouter and pushes \`to\`
   // on navigate(). For typecheck-only purposes we just invoke the

@@ -56,6 +56,7 @@ import { defineStore } from '@pyreon/store'
 import { For, Show, onMount } from '@pyreon/core'
 import { Stack, Inline, Field, Button, Text, Scroll } from '@pyreon/primitives'
 import { createRouter, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
+import { PieChart } from '@pyreon/charts/plot'
 
 type User = { id: string; name: string }
 type Transaction = { id: number; description: string; amount: number }
@@ -211,6 +212,13 @@ function DashboardPage() {
         <Text data-testid="dash-title">Ledger</Text>
         <Text data-testid="dash-balance">{balance}</Text>
       </Inline>
+      <PieChart
+        data={useFinance().store.txns}
+        value={(t) => Math.abs(t.amount)}
+        label={(t) => t.description}
+        height={160}
+        data-testid="spend-pie"
+      />
       <Scroll>
         <For each={useFinance().store.txns} by={(t) => t.id}>
           {(t) => (

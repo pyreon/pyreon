@@ -23,16 +23,31 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
 describe('auditNative', () => {
   it('flags a web-only-package import in a multiplatform file', () => {
+    // NOTE `@pyreon/charts` left the web-only set when its radial components
+    // began lowering (nativeFrontend) — `@pyreon/flow` is a genuine rendering
+    // engine still in it, with the same WebView-bridge rationale.
     write(
       'src/App.tsx',
-      `import { Stack } from '@pyreon/primitives'\nimport { Chart } from '@pyreon/charts'\nexport function App() { return (<Stack />) }`,
+      `import { Stack } from '@pyreon/primitives'\nimport { FlowCanvas } from '@pyreon/flow'\nexport function App() { return (<Stack />) }`,
     )
     const r = auditNative(dir)
     expect(r.summary.multiplatformFiles).toBe(1)
     const f = r.findings.find((x) => x.code === 'web-only-package-import')
     expect(f).toBeDefined()
-    expect(f!.message).toContain('@pyreon/charts')
+    expect(f!.message).toContain('@pyreon/flow')
     expect(f!.message).toContain('WebView')
+  })
+
+  it('does NOT flag @pyreon/charts — its radial components lower (nativeFrontend)', () => {
+    // The stale-entry direction: flagging a package whose components DO cross
+    // tells the user a shipped API is unusable. The set is derived from the
+    // manifests, so declaring nativeFrontend removed charts with no edit here.
+    write(
+      'src/Radial.tsx',
+      `import { Stack } from '@pyreon/primitives'\nimport { PieChart } from '@pyreon/charts/plot'\nexport function R() { return (<Stack />) }`,
+    )
+    const r = auditNative(dir)
+    expect(r.findings.filter((f) => f.code === 'web-only-package-import')).toHaveLength(0)
   })
 
   it('flags a top-level TS enum / class as native-unsupported-decl', () => {
@@ -69,10 +84,10 @@ describe('auditNative', () => {
   })
 
   it('does NOT flag a file that does not import @pyreon/primitives (scoping)', () => {
-    // charts + interface, but no primitives import → not a multiplatform file.
+    // flow + interface, but no primitives import → not a multiplatform file.
     write(
       'src/WebOnly.tsx',
-      `import { Chart } from '@pyreon/charts'\ninterface Z { a: number }\nexport const x = 1`,
+      `import { FlowCanvas } from '@pyreon/flow'\ninterface Z { a: number }\nexport const x = 1`,
     )
     const r = auditNative(dir)
     expect(r.summary.multiplatformFiles).toBe(0)
@@ -89,10 +104,10 @@ describe('auditNative', () => {
     expect(r.findings).toHaveLength(0)
   })
 
-  it('matches web-only subpath imports (e.g. @pyreon/charts/manual)', () => {
+  it('matches web-only subpath imports (e.g. @pyreon/flow/layout)', () => {
     write(
       'src/Sub.tsx',
-      `import { Stack } from '@pyreon/primitives'\nimport { x } from '@pyreon/charts/manual'\nexport function Sub() { return (<Stack />) }`,
+      `import { Stack } from '@pyreon/primitives'\nimport { x } from '@pyreon/flow/layout'\nexport function Sub() { return (<Stack />) }`,
     )
     const r = auditNative(dir)
     expect(r.findings.some((f) => f.code === 'web-only-package-import')).toBe(true)
