@@ -73,8 +73,8 @@ import { Toaster, toast } from '@pyreon/toast'
 import { announce } from '@pyreon/a11y'
 import { useUrlState } from '@pyreon/url-state'
 import { signal, computed } from '@pyreon/reactivity'
-import { PlotChart, SankeyChart, bars } from '@pyreon/charts/plot'
-import type { SankeyHitIndex, SankeyLink, SankeyNode } from '@pyreon/charts/plot'
+import { PlotChart, SankeyChart, bars, line } from '@pyreon/charts/plot'
+import type { BrushRange, SankeyHitIndex, SankeyLink, SankeyNode } from '@pyreon/charts/plot'
 import { useForm } from '@pyreon/form'
 import { useFetch, useCrashReporter } from '@pyreon/hooks'
 import { defineStore } from '@pyreon/store'
@@ -441,6 +441,10 @@ function StatsPage() {
   const flowPick = signal(-1)
   // The bar index the last tap on the score chart reported (-1 = none yet).
   const barPick = signal(-1)
+  // The brush's committed range as text ('none' when cleared) — #3277: a NAMED
+  // handler taking BrushRange | null narrows on every target.
+  const brushSel = signal('none')
+  const onBrushRange = (r: BrushRange | null) => brushSel.set(r === null ? 'none' : String(r.start) + '-' + String(r.end))
   const scores = signal<Scores>({ math: 82, art: 91, gym: 74 })
   const subjects = computed(() => Object.keys(scores()))
   const total = computed(() => Object.values(scores()).reduce((a: number, b: number) => a + b, 0))
@@ -485,6 +489,17 @@ function StatsPage() {
         onSelect={(i: number) => barPick.set(i)}
       />
       <Text data-testid="stats-bars-pick">{String(barPick())}</Text>
+      <PlotChart
+        data={SCORE_ROWS}
+        x={(d: ScoreRow) => d.subject}
+        marks={[line((d: ScoreRow) => d.score, { label: 'Trend', color: '#b45309' })]}
+        // #3277: brush-only (the bar chart's dataZoom makes its brush web-only).
+        brush={true}
+        height={120}
+        data-testid="stats-brush"
+        onBrush={onBrushRange}
+      />
+      <Text data-testid="stats-brush-sel">{brushSel()}</Text>
       <Button onPress={() => navigate('/tasks')} data-testid="stats-back">
         Back to tasks
       </Button>
