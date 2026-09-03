@@ -3,9 +3,11 @@
 import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
-import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
-import { hitSankey, layoutSankey, renderSankey } from './sankey'
-import type { SankeyHit, SankeyLayout, SankeyLink, SankeyNode, SankeyOptions } from './sankey'
+import { paint, prepareCanvas } from './canvas-web'
+import { layoutSankey, renderSankey } from './sankey'
+import type { SankeyLayout, SankeyLink, SankeyNode, SankeyOptions } from './sankey'
+import { hitSankey } from './sankey-hit'
+import type { SankeyHit } from './sankey-hit'
 import { chartTable, describeChart } from './a11y'
 import type { Double } from './types'
 
@@ -49,7 +51,7 @@ export function SankeyChart(props: SankeyChartProps): VNode {
     const hgt = props.height ?? 300
     const ctx = prepareCanvas(el, w, hgt)
     if (ctx === null) return
-    paint(ctx, renderSankey(layoutFor(w, hgt), props.sankey, canvasMeasure(ctx, FONT)), w, hgt, FONT)
+    paint(ctx, renderSankey(layoutFor(w, hgt), props.sankey), w, hgt, FONT)
   }
 
   effect(() => {

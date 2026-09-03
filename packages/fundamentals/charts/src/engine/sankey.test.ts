@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { hitSankey, layoutSankey, renderSankey, ribbonPoints, sankeyToSvg } from './sankey'
+import { layoutSankey, renderSankey, ribbonPoints } from './sankey'
+import { hitSankey } from './sankey-hit'
+import { sankeyToSvg } from './family-svg'
 import { compileFamily, familyToSvg } from './option-family'
 
 const box = { x: 0, y: 0, w: 400, h: 200 }

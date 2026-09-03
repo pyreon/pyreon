@@ -5,11 +5,10 @@
 // later, the family components) consume directly.
 
 import type { EChartsOption, OptionWarning } from './option'
-import { candlestickToSvg, funnelToSvg, gaugeToSvg, heatmapToSvg, pieToSvg, polarToSvg, radarToSvg, riverToSvg, sunburstToSvg, treeToSvg, treemapToSvg } from './family-svg'
+import { candlestickToSvg, funnelToSvg, gaugeToSvg, heatmapToSvg, pieToSvg, polarToSvg, radarToSvg, riverToSvg, sankeyToSvg, sunburstToSvg, treeToSvg, treemapToSvg } from './family-svg'
 import type { TreeNode, TreemapOptions } from './treemap'
 import type { SunburstOptions } from './sunburst'
 import type { TreeOptions, TreeOrient } from './tree'
-import { sankeyToSvg } from './sankey'
 import type { SankeyLink, SankeyNode, SankeyOptions } from './sankey'
 import { graphToSvg } from './graph'
 import type { GraphLink, GraphNode, GraphOptions } from './graph'
