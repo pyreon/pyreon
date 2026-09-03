@@ -2584,7 +2584,7 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
       // UNLOWERED_CHART_HOSTS for the per-tag reason), and the ECharts-backed
       // default export stays web.
       advice:
-        'Most `@pyreon/charts/plot` hosts lower to a native PyreonChartCanvas over the generated engine — Pie/Funnel/Gauge/Candlestick/Heatmap/Radar/Plot/Sankey/Graph/Treemap/Sunburst/Tree/River/Gantt/Polar. Calendar and Parallel are deliberately unlowered (see UNLOWERED_CHART_HOSTS for why); the ECharts-backed default export is web-only — keep it in a `<Web>` branch, or embed via the `/webview` bridge',
+        'Most `@pyreon/charts/plot` hosts lower to a native PyreonChartCanvas over the generated engine — PieChart/FunnelChart/GaugeChart/CandlestickChart/HeatmapChart/RadarChart/PlotChart/SankeyChart/GraphChart/TreemapChart/SunburstChart/TreeChart/RiverChart/GanttChart/PolarChart/CalendarChart/ParallelChart. OptionChart is deliberately unlowered (see UNLOWERED_CHART_HOSTS for why); the ECharts-backed default export is web-only — keep it in a `<Web>` branch, or embed via the `/webview` bridge',
       supported: new Set([
         'PieChart',
         'FunnelChart',
@@ -2601,6 +2601,34 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
         'RiverChart',
         'GanttChart',
         'PolarChart',
+        'CalendarChart',
+        'ParallelChart',
+        // Mark + curve constructors consumed INLINE inside a `marks={[...]}`
+        // array literal — the structural marks-array pass (chart-hosts.ts /
+        // emit{Swift,Kotlin}.ts's PLOT_MARK_KINDS + the special-cased
+        // `bubble` handling) recognizes and lowers these; without this
+        // entry the generic web-only-import check ALSO flagged every one
+        // of them as "has NO native lowering", duplicating (and
+        // contradicting) the structural pass's own, more specific report.
+        'area',
+        'bars',
+        'bubble',
+        'groupedBars',
+        'line',
+        'points',
+        'stackedBars',
+        'smooth',
+        'step',
+        // Formatter constructors — a chart's `format`/`xFormat`/`yFormat`/
+        // `y2Format` prop lowers a bare name (`plain`, `compact`) or a
+        // factory CALL (`fixed(2)`, `currency("$", 2)`, `percent(1)`) via
+        // `swift{,Kotlin}ChartFormatter` — same false-positive shape as the
+        // mark constructors above.
+        'compact',
+        'currency',
+        'fixed',
+        'percent',
+        'plain',
       ]),
     },
   ],

@@ -655,7 +655,15 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const bandShifted = top === 0.0 ? band : band.map((c) => shiftCmd(c, top))
     const ring = focusRingCmds(spec, measure)
     const ringShifted = top === 0.0 ? ring : ring.map((c) => shiftCmd(c, top))
-    paint(ctx, [...legendCmds, ...shifted, ...bandShifted, ...crossShifted, ...ringShifted, ...navCmds, ...presetCmds], w, hgt, FONT)
+    const frame = [...legendCmds, ...shifted, ...bandShifted, ...crossShifted, ...ringShifted, ...navCmds, ...presetCmds]
+    // Capture what was actually painted so `saveAsImage` serializes THIS
+    // frame rather than re-deriving one. Declared beside the toolbox for
+    // that single reader; without the write it handed `renderSvg` an empty
+    // list at 0x0 and the download was a blank <svg> with only its title.
+    lastFrame = frame
+    lastW = w
+    lastH = hgt
+    paint(ctx, frame, w, hgt, FONT)
   }
 
   /** The navigator strip — engine-laid-out (iOS and Android drive the same one); `navRect` is what the drag measures against. */

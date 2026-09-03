@@ -5310,6 +5310,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           const collection = emitSwiftExpr(e.args[0]!, indent)
           return `${swiftIdent(e.callee.object.name)}.insert(${collection}, PyreonRecord(${parts.join(', ')}))`
         }
+        // Recognized shape didn't match — say why before falling through to
+        // the doomed generic path below.
+        warnDatabaseInsertShape(e.callee.object.name, lit.fields)
       }
       // Native-service argument labels, for services whose Swift signature
       // labels its arguments while the shared TS surface is positional. Same
@@ -6906,6 +6909,44 @@ function warnUntypeableObjectLiteral(fields: { name: string; value: ExprIR }[]):
       `silently produce the wrong bytes at runtime. Annotate the declaration ` +
       `(\`signal<Shape>({ … })\`, or \`const x: Shape = { … }\`) — an annotated literal lowers ` +
       `to a real struct on both targets.`,
+  )
+}
+
+/**
+ * `db.insert(collection, <literal>)` reached the record recognizer above and
+ * did not match its `{ id, fields }` shape — every OTHER object-literal shape
+ * still falls through to the GENERIC struct-synthesis path a few lines below,
+ * and that fallthrough was silent: `warnUntypeableObjectLiteral`'s question is
+ * "could a struct be synthesized at all", and the common mistake here — a
+ * FLAT domain object (`{ id, description, amount }`, no `fields` key) — answers
+ * yes. The struct compiles fine on its own. It just isn't `PyreonRecord`, the
+ * NOMINAL type `insert`'s real signature requires on both targets, so the call
+ * is guaranteed to fail to build regardless of how well-typed the individual
+ * fields are — a struct with matching structure still doesn't satisfy a
+ * nominally-typed Swift/Kotlin parameter. That guarantee is what makes this
+ * warning TOTAL rather than best-effort, unlike `warnUntypeableObjectLiteral`:
+ * there is no shape reaching this function that still compiles.
+ *
+ * An `id`-only literal (no `fields` key at all) is legitimate — both runtimes
+ * default `fields` to empty — and is handled by the recognizer above, so it
+ * never reaches here.
+ */
+function warnDatabaseInsertShape(dbName: string, fields: { name: string; value: ExprIR }[]): void {
+  const hasId = fields.some((f) => f.name === 'id')
+  const unknown = fields.filter((f) => f.name !== 'id' && f.name !== 'fields')
+  const given = fields.map((f) => f.name).join(', ') || '(empty)'
+  const reasons: string[] = []
+  if (!hasId) reasons.push('no `id` field')
+  if (unknown.length > 0) {
+    const names = unknown.map((f) => `\`${f.name}\``).join(', ')
+    const plural = unknown.length === 1 ? ['is', 'it'] : ['are', 'them']
+    reasons.push(`${names} ${plural[0]} not \`id\`/\`fields\` — nest ${plural[1]} under \`fields: { ... }\``)
+  }
+  _emitWarnings.push(
+    `${dbName}.insert(...) argument { ${given} } is not the { id, fields } shape 'PyreonRecord' requires ` +
+      `(${reasons.join('; ')}). No struct synthesized here can satisfy insert's PyreonRecord parameter — ` +
+      `Swift/Kotlin are nominally typed, so this will NOT compile. Write ` +
+      `\`db.insert(collection, { id, fields: { ...columns } })\`.`,
   )
 }
 

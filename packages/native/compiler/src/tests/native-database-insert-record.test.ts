@@ -20,6 +20,16 @@
 // `swiftc -parse` accepts a tuple literal happily, which is why this needed
 // the type gate rather than the syntax gate — the same reason the argument
 // labels survived so long.
+//
+// FOURTH defect, found while auditing whether this fix was actually usable:
+// fixing the RECORD shape (`{ id, fields }`) left the FLAT shape people
+// naturally write (`{ id, description, amount }`, no `fields` key) falling
+// through to the generic struct-synthesis path with ZERO warning — that path
+// happily synthesizes a real, compiling struct for a flat object of typed
+// fields, it just isn't `PyreonRecord`. `native-finance`'s own showcase hit
+// this and retreated to string-keyed ops rather than ever inserting a real
+// row. See `warnDatabaseInsertShape` at the bottom of `emit-swift.ts` /
+// `emit-kotlin.ts`.
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
@@ -96,6 +106,69 @@ export function C() {
     // would be worse than the compiler error. Fall through to the generic path.
     const typo = app(`const add = () => { db.insert('notes', { id: 'n1', feilds: { at: 'x' } }) }`)
     expect(swift(typo).code).not.toContain('PyreonRecord(id: "n1"')
+  })
+
+  describe('a non-matching literal warns before falling through', () => {
+    // The class this closes: struct synthesis for the fallthrough SUCCEEDS
+    // whenever the fields are individually typeable — a flat domain object of
+    // strings/numbers is the normal case, not the exception — so
+    // `warnUntypeableObjectLiteral` (which asks "could a struct be
+    // synthesized at all") stays silent. The struct compiles; it just isn't
+    // `PyreonRecord`, and Swift/Kotlin are nominally typed, so nothing
+    // synthesized here can ever satisfy that parameter. Proven by compiling,
+    // not by reading the emit, at the bottom of this file.
+
+    it('the FLAT domain object shape people naturally write', () => {
+      const flat = app(
+        `const add = () => { db.insert('notes', { id: 'n1', description: 'x', amount: 1 }) }`,
+      )
+      expect(swift(flat).warnings ?? []).not.toEqual([])
+      expect((swift(flat).warnings ?? []).join(' ')).toMatch(/description.*amount|amount.*description/)
+      expect((swift(flat).warnings ?? []).join(' ')).toContain('fields: { ... }')
+      expect((kotlin(flat).warnings ?? []).join(' ')).toContain('PyreonRecord')
+    })
+
+    it('names the SPECIFIC unknown fields, not a generic message', () => {
+      const flat = app(`const add = () => { db.insert('notes', { id: 'n1', amount: 1 }) }`)
+      expect((swift(flat).warnings ?? []).join(' ')).toContain('`amount`')
+    })
+
+    it('a literal missing `id` entirely', () => {
+      const noId = app(`const add = () => { db.insert('notes', { fields: { at: 'x' } }) }`)
+      expect((swift(noId).warnings ?? []).join(' ')).toContain('no `id` field')
+    })
+
+    it('the mistyped-key case above ALSO warns (extends the earlier spec)', () => {
+      const typo = app(`const add = () => { db.insert('notes', { id: 'n1', feilds: { at: 'x' } }) }`)
+      expect(swift(typo).warnings ?? []).not.toEqual([])
+    })
+
+    it('the RECOGNIZED shapes stay silent — id+fields, id-only, empty fields', () => {
+      expect(swift(WRITE).warnings ?? []).toEqual([])
+      expect(kotlin(WRITE).warnings ?? []).toEqual([])
+      const idOnly = app(`const add = () => { db.insert('notes', { id: 'n1' }) }`)
+      expect(swift(idOnly).warnings ?? []).toEqual([])
+      const empty = app(`const add = () => { db.insert('notes', { id: 'n1', fields: {} }) }`)
+      expect(swift(empty).warnings ?? []).toEqual([])
+    })
+
+    it.skipIf(!isSwiftcAvailable())('the flat-object emit does NOT compile — proves the warning is honest', () => {
+      const flat = app(
+        `const add = () => { db.insert('notes', { id: 'n1', description: 'x', amount: 1 }) }`,
+      )
+      const res = validateSwiftWithStubs(swift(flat).code)
+      expect(res.ok).toBe(false)
+      expect(res.error ?? '').toContain('PyreonRecord')
+    })
+
+    it.skipIf(!isKotlincAvailable())('same on Kotlin — argument type mismatch, not a parse error', () => {
+      const flat = app(
+        `const add = () => { db.insert('notes', { id: 'n1', description: 'x', amount: 1 }) }`,
+      )
+      const res = validateKotlin(kotlin(flat).code)
+      expect(res.ok).toBe(false)
+      expect(res.error ?? '').toContain('PyreonRecord')
+    })
   })
 
   it('does NOT rewrite insert on a NON-database binding', () => {

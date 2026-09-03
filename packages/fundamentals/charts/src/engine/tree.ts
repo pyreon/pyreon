@@ -263,7 +263,6 @@ export function renderTree(layout: TreeLayout, options?: TreeOptions): DrawCmd[]
   return out
 }
 
-/** The nearest node within its symbol (plus a small halo), or null. */
 /** Index of the nearest node whose symbol (plus a halo) contains the point, or -1 — what `onSelectIndex` receives. */
 export function hitTreeIndex(layout: TreeLayout, px: Double, py: Double, symbolSize?: Double): number {
   const r = (symbolSize ?? 8.0) / 2.0 + 4.0
@@ -282,6 +281,7 @@ export function hitTreeIndex(layout: TreeLayout, px: Double, py: Double, symbolS
   return bestIdx
 }
 
+/** The nearest node within its symbol (plus a small halo), or null. */
 export function hitTree(layout: TreeLayout, px: Double, py: Double, symbolSize?: Double): TreeLayoutNode | null {
   const i = hitTreeIndex(layout, px, py, symbolSize)
   return i < 0 ? null : layout.nodes[i]!

@@ -420,20 +420,20 @@ export function conditionalKotlinImports(emitted: string): string {
   if (emitted.includes('.pointerInput(')) {
     imports.push('import androidx.compose.ui.input.pointer.pointerInput')
   }
-  // Chart-host `onSelectIndex` (chart-hosts.ts): a tap over the engine's index hit.
-  if (emitted.includes('detectTapGestures(')) {
-    imports.push('import androidx.compose.foundation.gestures.detectTapGestures')
-  }
   if (emitted.includes('LocalDensity.current')) {
     imports.push('import androidx.compose.ui.platform.LocalDensity')
   }
-  if (emitted.includes('detectHorizontalDragGestures(')) {
-    imports.push('import androidx.compose.foundation.gestures.detectHorizontalDragGestures')
-  }
-  // `<PlotChart dataZoom>` (chart-hosts.ts): the pinch + pan lower to
-  // `detectTransformGestures`, same sub-package, same stub-masked class.
-  if (emitted.includes('detectTransformGestures')) {
-    imports.push('import androidx.compose.foundation.gestures.detectTransformGestures')
+  // Every `detect*Gestures` detector (chart-host tap-select, `<Press
+  // onSwipeLeft/onSwipeRight>` drag, `<PlotChart dataZoom>` pinch/pan) lives
+  // in the same package, so DERIVE the import from whatever the emit
+  // actually contains rather than keeping an arm per symbol. The enumerated
+  // form had an arm for the horizontal drag and none for `detectTapGestures`
+  // / `detectTransformGestures`, and the gap is invisible to the kotlinc stub
+  // gate — that gate concatenates the stubs into one compilation unit, so a
+  // symbol resolves there with or without an import. Only the real `gradle
+  // assembleDebug` sees it, one CI round later.
+  for (const m of new Set(emitted.match(/\bdetect[A-Za-z]+Gestures\b/g) ?? [])) {
+    imports.push(`import androidx.compose.foundation.gestures.${m}`)
   }
   // `<PlotChart navigator>` (chart-hosts.ts): the strip's drag overlay.
   if (emitted.includes('detectDragGestures(')) {
