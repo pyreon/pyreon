@@ -30,6 +30,8 @@
 
 import { isClient } from '@pyreon/reactivity'
 
+import { createFilePicker } from './file-picker'
+
 export interface UseImagePickerResult {
   /**
    * Present the platform photo picker and resolve the picked image's URI, or
@@ -64,41 +66,11 @@ export interface UseImagePickerResult {
  * ```
  */
 export function useImagePicker(): UseImagePickerResult {
+  const pick = createFilePicker((input) => {
+    input.accept = 'image/*'
+  })
   return {
-    pick: () => {
-      /* v8 ignore next — SSR arm; `isClient` is a module-load constant and this suite runs under happy-dom, so this is unreachable without mocking @pyreon/reactivity (forbidden by the test-environment rules). */
-      if (!isClient) return Promise.resolve(null)
-      return new Promise<string | null>((resolve) => {
-        const input = document.createElement('input')
-        input.type = 'file'
-        input.accept = 'image/*'
-        // Keep the input out of layout — it is only a programmatic trigger.
-        input.style.display = 'none'
-        document.body.appendChild(input)
-
-        // Settle EXACTLY once and always detach the input: `change` and
-        // `cancel` are mutually exclusive per pick, but a browser that fires
-        // neither (or both) must not leak the node or double-resolve.
-        let settled = false
-        const settle = (value: string | null) => {
-          if (settled) return
-          settled = true
-          input.remove()
-          resolve(value)
-        }
-
-        input.addEventListener('change', () => {
-          const file = input.files?.[0]
-          settle(file ? URL.createObjectURL(file) : null)
-        })
-        // Fired when the user dismisses the file dialog without choosing.
-        // Not universal across older browsers — hence the `settled` guard
-        // rather than relying on exactly one of the two arriving.
-        input.addEventListener('cancel', () => settle(null))
-
-        input.click()
-      })
-    },
+    pick,
     isAvailable: () => isClient,
   }
 }

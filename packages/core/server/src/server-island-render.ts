@@ -2,6 +2,9 @@
  * Server-island fragment renderer — SERVER-ONLY (imports
  * `@pyreon/runtime-server`). Consumed by zero's auto-mounted fragment
  * endpoint (`GET /_pyreon/fragment/<name>?props=<encoded>`); exported from
+ * the main `@pyreon/server` barrel so custom servers can mount their own
+ * endpoint. The client-safe half (the `serverIsland()` marker component +
+ * registry) lives in `server-island.ts`.
  *
  * SECURITY CONTRACT — the props are CLIENT-CONTROLLED. The endpoint is public
  * and unauthenticated, and while the island NAME is allowlisted (only
@@ -10,9 +13,6 @@
  * a full request context: authorize from the REQUEST — `useRequestLocals()`,
  * the session cookie — never from a prop. An island that reads a `userId` prop
  * and returns that user's data is an IDOR by construction.
- * the main `@pyreon/server` barrel so custom servers can mount their own
- * endpoint. The client-safe half (the `serverIsland()` marker component +
- * registry) lives in `server-island.ts`.
  */
 import type { ComponentFn } from '@pyreon/core'
 import { h } from '@pyreon/core'
