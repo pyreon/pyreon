@@ -35,11 +35,22 @@
 // ## Known emit gaps this archetype SURFACED (the honest "any app" roadmap)
 //
 // Building a fuller app reveals TS-surface gaps beyond "the hooks emit":
-//   1. **Object literal → typed struct.** `db.insert('tx', { id, fields })`
-//      lowers the object literal to a Swift TUPLE `(id:…, fields:…)`, NOT a
-//      `PyreonRecord(...)` — so constructing a typed container arg from an
-//      object literal doesn't typecheck. Record-construction insert is a
-//      follow-up; this showcase uses the string-keyed db ops only.
+//   1. **[FIXED] Object literal → typed struct.** `db.insert('tx', { id,
+//      fields: {…} })` now lowers to a real `PyreonRecord(...)` on both
+//      targets — a compiler recognizer catches this exact record shape.
+//      Any OTHER shape (a flat domain object like `{ id, description,
+//      amount }`, no `fields` key) still falls through to generic struct
+//      synthesis, but now WARNS by name instead of silently emitting a
+//      struct that can't satisfy `insert`'s nominal `PyreonRecord`
+//      parameter — see `warnDatabaseInsertShape` in the compiler. This
+//      showcase still uses the string-keyed db ops only, for a real
+//      residual reason, not the fixed one: `fields` is `[String: String]`
+//      on both runtimes with NO auto-coercion (deliberate — a silent
+//      `String(amount)` would hide a real type mistake), so wiring a
+//      typed `Transaction` through `insert`/`all` means hand-stringifying
+//      every non-string column both ways. That's a real app's worth of
+//      churn to the reactive store + computed balance, tracked as its own
+//      follow-up rather than folded into the compiler fix that unblocked it.
 //   2. **`const x = obj.method()`** (a plain const initialized from a
 //      method call, e.g. `const n = db.count('tx')`) is dropped — only
 //      signal / computed / hook decls are captured as component-body decls.
