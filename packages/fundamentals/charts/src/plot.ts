@@ -47,7 +47,9 @@ export type { Accessor, BubbleOptions, Mark, MarkOptions } from './engine/marks'
 export { smooth, step } from './engine/curve'
 
 // Core render + layout
-export { cornerRadii, hasCorners, rectCmd } from './engine/corners'
+export { cornerRadii, hasCorners, polygonCmd, rectCmd } from './engine/corners'
+export { gradientFor, gradientSolid, seriesGradient } from './engine/gradient'
+export type { SeriesGradient } from './engine/gradient'
 export { defaultTheme, emphasisLevel, emphasisOutline, layoutChart, renderChart, resolveYDomain, seriesMaxLength } from './engine/render'
 export type { Annotation, ChartSpec, ChartTheme, Emphasis, Series } from './engine/render'
 export {
@@ -108,7 +110,7 @@ export type { ChartToSvgOptions } from './engine/svg-chart'
 export { measureApprox, renderSvg, svgCommand } from './engine/svg'
 export type { SvgOptions } from './engine/svg'
 
-export type { Domain, DrawCmd, Double, MeasureText, Pt, Rect, Tick } from './engine/types'
+export type { ChartGradient, ChartGradientStop, Domain, DrawCmd, Double, MeasureText, Pt, Rect, Tick } from './engine/types'
 
 // Server-side SVG for the whole family — pure, measureApprox by default
 export {

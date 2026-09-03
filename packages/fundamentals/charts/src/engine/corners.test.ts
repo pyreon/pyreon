@@ -81,13 +81,13 @@ describe('normalizeCorners', () => {
 
 describe('rectCmd', () => {
   it('omits the key entirely when there is no rounding — an existing chart serializes byte-identically', () => {
-    const c = rectCmd(R, '#f00', undefined)
+    const c = rectCmd(R, '#f00', undefined, undefined)
     expect(c).toEqual({ kind: 'rect', rect: R, fill: '#f00' })
     expect('corners' in c).toBe(false)
   })
 
   it('carries the radii when there are any', () => {
-    expect(rectCmd(R, '#f00', [6, 6, 0, 0])).toEqual({ kind: 'rect', rect: R, fill: '#f00', corners: [6, 6, 0, 0] })
+    expect(rectCmd(R, '#f00', [6, 6, 0, 0], undefined)).toEqual({ kind: 'rect', rect: R, fill: '#f00', corners: [6, 6, 0, 0] })
   })
 })
 

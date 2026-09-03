@@ -7,7 +7,9 @@ import type { LayoutConfig, PlotLayout } from './layout'
 import { extent, niceDomain, scaleLinear } from './scale'
 import { plain } from './format'
 import { countToDouble } from './brush'
-import { rectCmd } from './corners'
+import { polygonCmd, rectCmd } from './corners'
+import { seriesGradient } from './gradient'
+import type { SeriesGradient } from './gradient'
 import { withAlpha } from './radar'
 import type { DrawCmd, Domain, MeasureText, Pt, Rect, Double } from './types'
 
@@ -38,6 +40,8 @@ export interface Series {
   symbolRepeat?: boolean | undefined
   /** Corner radii for bar-family series — `[tl, tr, br, bl]`, clamped at paint time. */
   corners?: Double[] | undefined
+  /** Linear-gradient fill for bar-family and area series; resolved against the plot box. */
+  gradient?: SeriesGradient | undefined
 }
 
 /**
@@ -547,7 +551,8 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
   if (stackedSeries.length > 0) {
     for (const seg of layoutStackedBars(stackedSeries.map((s) => s.values), plot, yDomain, 0.25)) {
       const rS = growRect(seg.rect, yDomain)
-      out.push(rectCmd(rS, stackedSeries[seg.seriesIndex]!.color, stackedSeries[seg.seriesIndex]!.corners))
+      const gS = seriesGradient(stackedSeries[seg.seriesIndex]!.gradient, plot)
+      out.push(rectCmd(rS, stackedSeries[seg.seriesIndex]!.color, stackedSeries[seg.seriesIndex]!.corners, gS.stops.length === 0 ? undefined : gS))
       const lvlS = emphasisLevel(spec, seg.datumIndex)
       if (lvlS > 0) out.push(emphasisOutline(rS, lvlS, t.label))
     }
@@ -556,7 +561,8 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
   if (groupedSeries.length > 0) {
     for (const seg of layoutGroupedBars(groupedSeries.map((s) => s.values), plot, yDomain, 0.25)) {
       const rG = growRect(seg.rect, yDomain)
-      out.push(rectCmd(rG, groupedSeries[seg.seriesIndex]!.color, groupedSeries[seg.seriesIndex]!.corners))
+      const gG = seriesGradient(groupedSeries[seg.seriesIndex]!.gradient, plot)
+      out.push(rectCmd(rG, groupedSeries[seg.seriesIndex]!.color, groupedSeries[seg.seriesIndex]!.corners, gG.stops.length === 0 ? undefined : gG))
       const lvlG = emphasisLevel(spec, seg.datumIndex)
       if (lvlG > 0) out.push(emphasisOutline(rG, lvlG, t.label))
     }
@@ -584,6 +590,9 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
     // Coalesced to identity: calling through the optional needs a lowering
     // Swift lacks, and "no curve" IS the identity curve.
     const curveFn = s.curve ?? ((q: Pt[]): Pt[] => q)
+    // Resolved once per series: the ramp spans the plot, not the shape.
+    const sGradAll = seriesGradient(s.gradient, plot)
+    const sGrad = sGradAll.stops.length === 0 ? undefined : sGradAll
     const shape = (pts: Pt[]): Pt[] => curveFn(pts)
 
     if (spec.horizontal === true) {
@@ -592,7 +601,7 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
       for (const r of rects) {
         const grown = growRectH(r)
         if (s.symbol === undefined) {
-          out.push(rectCmd(grown, s.color, s.corners))
+          out.push(rectCmd(grown, s.color, s.corners, sGrad))
         } else if (s.symbolRepeat === true) {
           // Repeat a unit symbol along the bar (left to right); a partial last symbol is dropped.
           const unit = grown.h
@@ -644,7 +653,7 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
       for (const r of rects) {
         const grown = growRect(r, sDomain)
         if (s.symbol === undefined) {
-          out.push(rectCmd(grown, s.color, s.corners))
+          out.push(rectCmd(grown, s.color, s.corners, sGrad))
         } else if (s.symbolRepeat === true) {
           // Repeat a unit symbol up the bar; a partial last symbol is dropped.
           // (Horizontal charts left this loop above, so the bar is vertical.)
@@ -698,6 +707,9 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
         }
       }
     } else if (s.kind === 'area') {
+      // Gap-splitting (a non-finite value breaks the fill into runs, same
+      // as the line branch above) combined with gradient fill support — two
+      // independent fixes to this branch that landed as separate PRs.
       for (const run of splitRuns(s.values, place)) {
         const pts = reveal(shape(run))
         if (pts.length > 1) {
@@ -707,7 +719,7 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
           // rather than a polygon between the first and last data points.
           poly.push({ x: pts[pts.length - 1]!.x, y: plot.y + plot.h })
           poly.push({ x: pts[0]!.x, y: plot.y + plot.h })
-          out.push({ kind: 'polygon', points: poly, fill: s.color })
+          out.push(polygonCmd(poly, s.color, sGrad))
         }
       }
     } else {

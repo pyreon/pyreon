@@ -12,6 +12,7 @@
 
 import type { Series } from './render'
 import { bubbleRadii } from './bubble'
+import type { SeriesGradient } from './gradient'
 import type { Double, Pt } from './types'
 
 /** Reads one numeric channel out of a datum. */
@@ -88,6 +89,16 @@ export interface MarkOptions {
    * proportionally instead of turning into a lozenge.
    */
   borderRadius?: Double | Double[]
+  /**
+   * Fill the mark with a linear gradient (ECharts' `LinearGradient` item and
+   * area style) — bar-family and `area` marks.
+   *
+   * The stops are yours; the two points are the engine's, resolved against the
+   * plot box so the ramp spans the CHART rather than repeating inside every
+   * bar. `direction` is `'vertical'` (top → bottom, the default) or
+   * `'horizontal'`.
+   */
+  gradient?: SeriesGradient
 }
 
 /** A mark bound to its accessor, resolved against data at render time. */
@@ -241,6 +252,7 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[]): Series[] {
       symbol: m.options.symbol,
       symbolRepeat: m.options.symbolRepeat,
       corners: normalizeCorners(m.options.borderRadius),
+      gradient: m.options.gradient,
     }
   })
 }
