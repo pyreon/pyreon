@@ -16,7 +16,9 @@ import { renderRadar } from './radar'
 import type { RadarAxis } from './radar'
 import { ohlcExtent, renderCandles } from './candlestick'
 import type { CandleOptions, Ohlc } from './candlestick'
-import { buildHeatGrid, HEAT_RAMP, renderHeat } from './heat'
+import { buildHeatGrid, colorRamp, HEAT_RAMP, renderHeat } from './heat'
+import { renderFunnel } from './funnel'
+import type { FunnelOptions, FunnelStage } from './funnel'
 import type { HeatGrid } from './heat'
 import { computeLayout } from './layout'
 import { niceDomain } from './scale'
@@ -433,3 +435,45 @@ export function heatmapToSvg<T>(options: HeatmapToSvgOptions<T>): string {
 // `fitCircle`/`layoutArcs` are consumed indirectly through renderPie/renderGauge;
 // re-listed here so a reviewer sees the composition surface in one place.
 export { fitCircle, layoutArcs }
+
+// ---- funnel (svg half; the geometry in funnel.ts is bundled into the native engine) ----
+
+export interface FunnelToSvgOptions<T> {
+  data: T[]
+  value: (d: T, index: number) => Double
+  label: (d: T, index: number) => string
+  color?: (d: T, index: number) => string
+  width?: Double
+  height?: Double
+  funnel?: FunnelOptions
+  measure?: MeasureText
+  title?: string
+  description?: string
+  svg?: Omit<SvgOptions, 'title' | 'description'>
+}
+
+const FUNNEL_PALETTE = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
+
+/** Funnel → `<svg>` string, server-safe. */
+export function funnelToSvg<T>(options: FunnelToSvgOptions<T>): string {
+  const width = options.width ?? 480.0
+  const height = options.height ?? 320.0
+  const stages: FunnelStage[] = options.data.map((d, i) => ({
+    value: options.value(d, i),
+    label: options.label(d, i),
+    color: options.color !== undefined ? options.color(d, i) : FUNNEL_PALETTE[i % FUNNEL_PALETTE.length]!,
+  }))
+  const pad = 8.0
+  const cmds = renderFunnel(stages, { x: pad, y: pad, w: width - pad * 2.0, h: height - pad * 2.0 }, options.funnel)
+  void (options.measure ?? measureApprox())
+  const description =
+    options.description ??
+    (options.title !== undefined
+      ? `${options.title}: ${stages.length} stages, ${stages.map((s) => `${s.label} ${s.value}`).join(', ')}.`
+      : undefined)
+  return renderSvg(cmds, width, height, {
+    ...options.svg,
+    ...(options.title !== undefined ? { title: options.title } : {}),
+    ...(description !== undefined && description !== '' ? { description } : {}),
+  })
+}

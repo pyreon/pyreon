@@ -3,11 +3,11 @@
 // Pure functions to flat commands, like everything else here: a funnel is
 // polygons plus labels, which every backend already executes, so the family
 // is free on native. Written in the native subset (Double-only math, no
-// closures in structs, no early returns inside lambdas).
+// closures in structs, no early returns inside lambdas) and BUNDLED into the
+// generated Swift/Kotlin engine — the svg half lives in family-svg.ts, which
+// is not.
 
-import type { Double, DrawCmd, MeasureText, Rect } from './types'
-import { measureApprox, renderSvg } from './svg'
-import type { SvgOptions } from './svg'
+import type { Double, DrawCmd, Rect } from './types'
 
 export interface FunnelStage {
   value: Double
@@ -53,7 +53,13 @@ export function layoutFunnel(stages: FunnelStage[], plot: Rect, options?: Funnel
   const align = options?.align ?? 'center'
   // Draw order: an index permutation, so the output still names INPUT indices.
   const order: number[] = []
-  for (let i = 0; i < n; i++) order.push(i)
+  // nf mirrors n as a Double: the stage height divides a pixel length by the
+  // count, and Swift will not mix an Int count into Double arithmetic.
+  let nf = 0.0
+  for (let i = 0; i < n; i++) {
+    order.push(i)
+    nf = nf + 1.0
+  }
   if (sort !== 'none') {
     // Insertion sort — tiny n, and it lowers cleanly.
     for (let i = 1; i < n; i++) {
@@ -72,23 +78,22 @@ export function layoutFunnel(stages: FunnelStage[], plot: Rect, options?: Funnel
   }
   let maxV = 0.0
   for (const s of stages) if (s.value > maxV) maxV = s.value
-  const stageH = (plot.h - gap * (n - 1.0)) / n
-  const widthOf = (v: Double): Double => {
-    const ratio = maxV <= 0.0 ? 1.0 : v / maxV
-    const clamped = ratio < minRatio ? minRatio : ratio
-    return plot.w * clamped
-  }
+  const stageH = (plot.h - gap * (nf - 1.0)) / nf
+  // kf mirrors the draw index k as a Double, for the same reason as nf.
+  let kf = 0.0
   for (let k = 0; k < n; k++) {
     const idx = order[k]!
     const next = k + 1 < n ? order[k + 1]! : -1
-    const topW = widthOf(stages[idx]!.value)
+    const topRatio = maxV <= 0.0 ? 1.0 : stages[idx]!.value / maxV
+    const topW = plot.w * (topRatio < minRatio ? minRatio : topRatio)
     // The bottom edge narrows toward the NEXT stage's width (the classic
     // funnel taper); the last stage narrows to the minimum width.
-    const bottomW = next >= 0 ? widthOf(stages[next]!.value) : plot.w * minRatio
-    const top = plot.y + k * (stageH + gap)
-    const centerX = align === 'left' ? plot.x + plot.w / 2.0 - (plot.w - topW) / 2.0 + 0.0 : align === 'right' ? plot.x + plot.w - topW / 2.0 : plot.x + plot.w / 2.0
-    const cx = align === 'left' ? plot.x + topW / 2.0 : centerX
+    const nextRatio = next >= 0 ? (maxV <= 0.0 ? 1.0 : stages[next]!.value / maxV) : minRatio
+    const bottomW = plot.w * (nextRatio < minRatio ? minRatio : nextRatio)
+    const top = plot.y + kf * (stageH + gap)
+    const cx = align === 'left' ? plot.x + topW / 2.0 : align === 'right' ? plot.x + plot.w - topW / 2.0 : plot.x + plot.w / 2.0
     out.push({ index: idx, top, bottom: top + stageH, topWidth: topW, bottomWidth: bottomW, centerX: cx })
+    kf = kf + 1.0
   }
   return out
 }
@@ -145,44 +150,4 @@ export function hitFunnel(stages: FunnelStage[], plot: Rect, px: Double, py: Dou
     if (px >= g.centerX - w / 2.0 && px <= g.centerX + w / 2.0) return g.index
   }
   return -1
-}
-
-export interface FunnelToSvgOptions<T> {
-  data: T[]
-  value: (d: T, index: number) => Double
-  label: (d: T, index: number) => string
-  color?: (d: T, index: number) => string
-  width?: Double
-  height?: Double
-  funnel?: FunnelOptions
-  measure?: MeasureText
-  title?: string
-  description?: string
-  svg?: Omit<SvgOptions, 'title' | 'description'>
-}
-
-const PALETTE = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
-
-/** Funnel → `<svg>` string, server-safe. */
-export function funnelToSvg<T>(options: FunnelToSvgOptions<T>): string {
-  const width = options.width ?? 480.0
-  const height = options.height ?? 320.0
-  const stages: FunnelStage[] = options.data.map((d, i) => ({
-    value: options.value(d, i),
-    label: options.label(d, i),
-    color: options.color !== undefined ? options.color(d, i) : PALETTE[i % PALETTE.length]!,
-  }))
-  const pad = 8.0
-  const cmds = renderFunnel(stages, { x: pad, y: pad, w: width - pad * 2.0, h: height - pad * 2.0 }, options.funnel)
-  void (options.measure ?? measureApprox())
-  const description =
-    options.description ??
-    (options.title !== undefined
-      ? `${options.title}: ${stages.length} stages, ${stages.map((s) => `${s.label} ${s.value}`).join(', ')}.`
-      : undefined)
-  return renderSvg(cmds, width, height, {
-    ...options.svg,
-    ...(options.title !== undefined ? { title: options.title } : {}),
-    ...(description !== undefined && description !== '' ? { description } : {}),
-  })
 }

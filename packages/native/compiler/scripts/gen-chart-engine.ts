@@ -48,6 +48,7 @@ export const ENGINE_FILES = [
   'render',
   'candlestick',
   'heat',
+  'funnel',
 ] as const
 
 const RENAMES: ReadonlyArray<readonly [string, string]> = [
