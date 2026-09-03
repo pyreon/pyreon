@@ -220,13 +220,39 @@ public final class PyreonFlowState<T> {
         selectedEdgeIdSet = []
     }
     /// Removes every currently-selected node (and its connected edges) and
-    /// every currently-selected edge — the same net effect as the web
-    /// `deleteSelected`, built from the primitives above rather than a
-    /// separate batched implementation (native mutations are already
-    /// synchronous, so there is no batching win to chase here).
+    /// every currently-selected edge — the SAME net effect AND the same
+    /// single-pass shape as the web `deleteSelected` (`flow.ts`).
+    ///
+    /// A prior version built this from the CRUD primitives above — one
+    /// `removeNode`/`removeEdge` call per selected id — which is correct but
+    /// quadratic: each `removeNode` call re-scans the WHOLE `nodes` and
+    /// `edges` arrays, so K selected nodes cost O(K × (N + E)), not O(N + E).
+    /// "Select all, then delete" is the shape that makes K = N: on a
+    /// thousand-node graph that is ~1,000,000 comparisons for one keypress
+    /// instead of ~2,000. The web engine avoids exactly this — its
+    /// `deleteSelected` builds `Set`s from the selection ONCE and does ONE
+    /// `filter` pass each over `nodes`/`edges` — and this native port is
+    /// documented as byte-aligned with it, so the loop was a real divergence
+    /// from the reference it claims to match, not a deliberate trade-off.
+    ///
+    /// This was never a batching question (the removed comment's "no
+    /// batching win to chase" was correct on its own narrow point — native
+    /// mutations need no `batch()`-style notification coalescing — but that
+    /// is a different axis from how many times the arrays get SCANNED, and
+    /// conflating the two is what let the O(n²) shape read as intentional).
     public func deleteSelected() {
-        for id in selectedNodeIdSet { removeNode(id) }
-        for id in selectedEdgeIdSet { removeEdge(id) }
+        if !selectedNodeIdSet.isEmpty {
+            let nodeIdsToRemove = Set(selectedNodeIdSet)
+            let edgeIdsToRemove = Set(selectedEdgeIdSet)
+            nodes.removeAll { nodeIdsToRemove.contains($0.id) }
+            edges.removeAll {
+                nodeIdsToRemove.contains($0.source) || nodeIdsToRemove.contains($0.target)
+                    || edgeIdsToRemove.contains($0.id)
+            }
+        } else if !selectedEdgeIdSet.isEmpty {
+            let edgeIdsToRemove = Set(selectedEdgeIdSet)
+            edges.removeAll { edgeIdsToRemove.contains($0.id) }
+        }
         selectedNodeIdSet = []
         selectedEdgeIdSet = []
     }

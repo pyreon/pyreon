@@ -94,6 +94,34 @@ struct PyreonFlowStateTests {
         check(g.nodes.isEmpty, "deleteSelected removes every selected node")
         check(g.edges.isEmpty, "deleteSelected's node removal cascades to connected edges")
 
+        // 6b. deleteSelected's MIXED case: nodes AND edges selected together.
+        //     The web reference resolves this in ONE pass over `edges` whose
+        //     predicate covers BOTH concerns (connected-to-a-removed-node, and
+        //     independently-edge-selected). A prior native version instead
+        //     looped `removeNode`/`removeEdge` per id — same result, but
+        //     O(K x (N + E)) instead of O(N + E). These assertions pin the
+        //     RESULT so the single-pass rewrite is provably equivalent; the
+        //     complexity itself is a property of the code shape, checked by
+        //     review rather than by a wall-clock assertion that would flake.
+        let delMixed = seedFlow()
+        delMixed.selectNode("1")
+        delMixed.selectEdge("e2", additive: true)
+        check(delMixed.selectedNodes() == ["1"] && delMixed.selectedEdges() == ["e2"], "mixed selection holds both")
+        delMixed.deleteSelected()
+        check(delMixed.nodes.map(\.id) == ["2", "3"], "mixed delete removes only the selected node")
+        // e1 goes because it is CONNECTED to removed node 1; e2 goes because it
+        // was independently selected. Both in the same single pass.
+        check(delMixed.edges.isEmpty, "mixed delete removes connected AND independently-selected edges")
+        check(delMixed.selectedNodes().isEmpty && delMixed.selectedEdges().isEmpty, "mixed delete clears selection")
+
+        // 6c. EDGES-ONLY selection takes the second branch (no node pass at
+        //     all) — nodes must be untouched.
+        let delEdgesOnly = seedFlow()
+        delEdgesOnly.selectEdge("e1")
+        delEdgesOnly.deleteSelected()
+        check(delEdgesOnly.nodes.count == 3, "edges-only delete leaves every node")
+        check(delEdgesOnly.edges.map(\.id) == ["e2"], "edges-only delete removes just that edge")
+
         // 7. Viewport — zoomTo clamps, zoomIn/zoomOut are the 1.2x factor, panTo
         //    is an ABSOLUTE pan-to-point (not relative).
         let h = seedFlow()
