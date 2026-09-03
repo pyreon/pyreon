@@ -63,5 +63,19 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "pyreon": {
+    "native": {
+      "swift": "native/swift",
+      "kotlin": "native/kotlin",
+      "kotlinServices": {
+        "PyreonFlowState": [
+          "PyreonFlowState.kt"
+        ]
+      },
+      "kotlinSdkOnly": [
+        "PyreonFlowEdgeCanvas.kt"
+      ]
+    }
   }
 }

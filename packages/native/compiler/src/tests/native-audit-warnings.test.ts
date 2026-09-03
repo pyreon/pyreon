@@ -913,7 +913,11 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
     // NOTE `@pyreon/charts` left this loop when its radial components began
     // lowering (nativeFrontend: PyreonPieChart/PyreonGaugeChart) — asserted in
     // the derived-set describe below and in native-chart-components.test.ts.
-    for (const pkg of ['@pyreon/flow', '@pyreon/code', '@pyreon/document', '@pyreon/ui-components']) {
+    // `@pyreon/flow` followed the same path once `createFlow` gained a
+    // native port (PyreonFlowState) — its JSX components now get the
+    // SYMBOL-level advice below ('a flow sub-path import…'), not this
+    // blanket line, mirroring the charts sub-path case right after this loop.
+    for (const pkg of ['@pyreon/code', '@pyreon/document', '@pyreon/ui-components']) {
       it(`warns importing ${pkg} (web-only) into a native file + names the escape hatch`, () => {
         const result = transform(
           `import { Thing } from '${pkg}'\nimport { Stack } from '@pyreon/primitives'\nexport function App() { return <Stack><Thing /></Stack> }`,
@@ -930,12 +934,12 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
       })
     }
 
-    it('fires on a sub-path import (`@pyreon/flow/layout`)', () => {
+    it('fires on a sub-path import (`@pyreon/code/languages`)', () => {
       const result = transform(
-        `import { x } from '@pyreon/flow/layout'\nexport function App() { return null }`,
+        `import { x } from '@pyreon/code/languages'\nexport function App() { return null }`,
         { target: 'kotlin' },
       )
-      expect(result.warnings.some((w) => w.includes('@pyreon/flow') && w.includes('WEB-ONLY'))).toBe(true)
+      expect(result.warnings.some((w) => w.includes('@pyreon/code') && w.includes('WEB-ONLY'))).toBe(true)
     })
 
     it('a charts sub-path import gets the SYMBOL-level advice now, not the blanket line', () => {
@@ -950,12 +954,29 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
       expect(result.warnings.some((w) => w.includes('PieChart') && w.includes('GaugeChart'))).toBe(true)
     })
 
-    it('warns ONCE per package even with multiple imports from it', () => {
+    it('a flow JSX-component import gets the SYMBOL-level advice now, not the blanket line', () => {
+      // Mirror of the charts case above: `createFlow` declares nativeFrontend
+      // (this PR), so the blanket warn defers to the UNLOWERED entry for the
+      // rest of the package's surface — `<Flow>` and friends have no native
+      // emit, but `createFlow` itself stays completely silent.
       const result = transform(
-        `import { FlowCanvas } from '@pyreon/flow'\nimport { edgesFor } from '@pyreon/flow'\nexport function App() { return null }`,
+        `import { Flow, createFlow } from '@pyreon/flow'\nexport function App() { return null }`,
         { target: 'swift' },
       )
-      expect(result.warnings.filter((w) => w.includes('@pyreon/flow') && w.includes('WEB-ONLY'))).toHaveLength(1)
+      expect(result.warnings.some((w) => w.includes('WEB-ONLY'))).toBe(false)
+      expect(result.warnings.some((w) => w.includes('Flow (from @pyreon/flow)'))).toBe(true)
+      // `createFlow` itself is in `supported` — it must NOT get its own
+      // "has NO native lowering" line (it legitimately appears inside the
+      // Flow warning's ADVICE text, recommending it as the fix).
+      expect(result.warnings.some((w) => w.includes('createFlow (from'))).toBe(false)
+    })
+
+    it('warns ONCE per package even with multiple imports from it', () => {
+      const result = transform(
+        `import { CodeMirror } from '@pyreon/code'\nimport { languages } from '@pyreon/code'\nexport function App() { return null }`,
+        { target: 'swift' },
+      )
+      expect(result.warnings.filter((w) => w.includes('@pyreon/code') && w.includes('WEB-ONLY'))).toHaveLength(1)
     })
 
     for (const pkg of ['@pyreon/primitives', '@pyreon/reactivity', '@pyreon/store', '@pyreon/router', '@pyreon/form', '@pyreon/i18n', '@pyreon/validation']) {

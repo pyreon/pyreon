@@ -24,17 +24,21 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }))
 describe('auditNative', () => {
   it('flags a web-only-package import in a multiplatform file', () => {
     // NOTE `@pyreon/charts` left the web-only set when its radial components
-    // began lowering (nativeFrontend) — `@pyreon/flow` is a genuine rendering
-    // engine still in it, with the same WebView-bridge rationale.
+    // began lowering (nativeFrontend); `@pyreon/flow` followed the same path
+    // once `createFlow` gained a native port (this PR) — `@pyreon/code`
+    // (CodeMirror 6, a genuine DOM editor engine) is the current negative
+    // example. When it too grows a nativeFrontend, swap this fixture again
+    // rather than deleting the case — the SET must always have a real
+    // web-only member to prove the "flags" behavior against.
     write(
       'src/App.tsx',
-      `import { Stack } from '@pyreon/primitives'\nimport { FlowCanvas } from '@pyreon/flow'\nexport function App() { return (<Stack />) }`,
+      `import { Stack } from '@pyreon/primitives'\nimport { CodeEditor } from '@pyreon/code'\nexport function App() { return (<Stack />) }`,
     )
     const r = auditNative(dir)
     expect(r.summary.multiplatformFiles).toBe(1)
     const f = r.findings.find((x) => x.code === 'web-only-package-import')
     expect(f).toBeDefined()
-    expect(f!.message).toContain('@pyreon/flow')
+    expect(f!.message).toContain('@pyreon/code')
     expect(f!.message).toContain('WebView')
   })
 
@@ -45,6 +49,22 @@ describe('auditNative', () => {
     write(
       'src/Radial.tsx',
       `import { Stack } from '@pyreon/primitives'\nimport { PieChart } from '@pyreon/charts/plot'\nexport function R() { return (<Stack />) }`,
+    )
+    const r = auditNative(dir)
+    expect(r.findings.filter((f) => f.code === 'web-only-package-import')).toHaveLength(0)
+  })
+
+  it('does NOT flag @pyreon/flow — createFlow lowers (nativeFrontend)', () => {
+    // Same stale-entry direction as the charts case above: `createFlow`
+    // lowers to the native PyreonFlowState engine (this PR), which removed
+    // `@pyreon/flow` from the derived web-only set. The JSX components
+    // (`<Flow>` etc.) still have no native emit — that is a SEPARATE,
+    // per-symbol diagnostic the PMTC transform emits at compile time
+    // (UNLOWERED_PYREON_MODULES in parse.ts), not this project-scan gate's
+    // concern, so it is not asserted here.
+    write(
+      'src/Diagram.tsx',
+      `import { Stack } from '@pyreon/primitives'\nimport { createFlow } from '@pyreon/flow'\nexport function D() { return (<Stack />) }`,
     )
     const r = auditNative(dir)
     expect(r.findings.filter((f) => f.code === 'web-only-package-import')).toHaveLength(0)
@@ -104,10 +124,10 @@ describe('auditNative', () => {
     expect(r.findings).toHaveLength(0)
   })
 
-  it('matches web-only subpath imports (e.g. @pyreon/flow/layout)', () => {
+  it('matches web-only subpath imports (e.g. @pyreon/code/languages)', () => {
     write(
       'src/Sub.tsx',
-      `import { Stack } from '@pyreon/primitives'\nimport { x } from '@pyreon/flow/layout'\nexport function Sub() { return (<Stack />) }`,
+      `import { Stack } from '@pyreon/primitives'\nimport { x } from '@pyreon/code/languages'\nexport function Sub() { return (<Stack />) }`,
     )
     const r = auditNative(dir)
     expect(r.findings.some((f) => f.code === 'web-only-package-import')).toBe(true)
