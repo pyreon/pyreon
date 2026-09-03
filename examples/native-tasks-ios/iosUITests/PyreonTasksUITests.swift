@@ -520,6 +520,22 @@ final class PyreonTasksUITests: XCTestCase {
             waitForLabel(flowPick, "0", timeout: 10),
             "tap on the first Sankey band did not bind node 0 (label: \(flowPick.label))"
         )
+        // #3263: `<PlotChart marks>` — the cartesian family natively. The bars
+        // canvas carries the testid; a tap runs the engine's plotHitBars over
+        // the same spec the canvas painted. Three category bands share the plot
+        // (left gutter ~35pt for the y labels), so (90, 120) from the canvas
+        // origin is inside the first band, near the baseline every bar reaches.
+        let statsBars = app.descendants(matching: .any).matching(identifier: "stats-bars").firstMatch
+        XCTAssertTrue(statsBars.waitForExistence(timeout: 10), "bar chart canvas missing on stats page")
+        XCTAssertGreaterThan(statsBars.frame.height, 100, "bar chart canvas has no height")
+        let barPick = app.staticTexts["stats-bars-pick"].firstMatch
+        XCTAssertTrue(barPick.waitForExistence(timeout: 10), "bar pick text missing")
+        XCTAssertEqual(barPick.label, "-1", "no tap yet, bar pick should be -1")
+        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 90, dy: 120)).tap()
+        XCTAssertTrue(
+            waitForLabel(barPick, "0", timeout: 10),
+            "tap on the first bar did not bind index 0 (label: \(barPick.label))"
+        )
         let statsBack = app.buttons["stats-back"].firstMatch
         XCTAssertTrue(statsBack.exists, "Back button missing on stats page")
         statsBack.tap()
