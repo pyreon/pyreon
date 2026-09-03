@@ -64,6 +64,8 @@ export const ENGINE_FILES = [
   'candlestick-chart',
   'heat-chart',
   'plot-hit',
+  'title',
+  'legend',
 ] as const
 
 const RENAMES: ReadonlyArray<readonly [string, string]> = [

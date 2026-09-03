@@ -9285,22 +9285,25 @@ function emitKotlinAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     }
     fieldArgs.push(`${f.name} = ${value}`)
   }
-  const items = `${emitKotlinExpr(dataV, indent)}.mapIndexed { pyreonI, pyreonD -> ${spec.struct}(${fieldArgs.join(', ')}) }`
+  const mapped = `${emitKotlinExpr(dataV, indent)}.mapIndexed { pyreonI, pyreonD -> ${spec.struct}(${fieldArgs.join(', ')}) }`
   const optV = spec.options === undefined ? undefined : chartAttrExprKotlin(e, spec.options)
   const options = optV === undefined ? 'null' : emitKotlinExpr(optV, indent)
   const H = kotlinChartDouble(e, 'height', spec.defaultHeight, indent)
   const hasWidth = chartAttrExprKotlin(e, 'width') !== undefined
   const W = hasWidth ? kotlinChartDouble(e, 'width', 300, indent) : 'pyreonW'
-  const args: ChartHostArgs = { data: [], options, W, H, gutter: '0.0', innerRatio: kotlinChartDouble(e, 'innerRadius', 0, indent) }
-  if (tag === 'PieChart' && readStaticAttrKotlin(e, 'showLegend') === true) {
-    _emitWarnings.push('<PieChart showLegend>: the legend is not lowered on native yet; the pie renders without it.')
-  }
-  const cmds = spec.render(items, args, KOTLIN_CHART_TARGET)
+  const chrome = tag === 'PieChart' ? kotlinChartChrome(e, 'pyreonItems.map { LegendEntry(label = it.label, color = it.color) }', W, H, indent, false) : { lets: [], top: '0.0', wrap: (p: string) => p, height: (h: string) => h }
+  const withChrome = chrome.top !== '0.0'
+  const items = withChrome ? 'pyreonItems' : mapped
+  const lets = withChrome ? [`val pyreonItems: List<${spec.struct}> = ${mapped}`, ...chrome.lets] : []
+  const args: ChartHostArgs = { data: [], options, W, H: chrome.height(H), gutter: '0.0', innerRatio: kotlinChartDouble(e, 'innerRadius', 0, indent) }
+  const cmds = chrome.wrap(spec.render(items, args, KOTLIN_CHART_TARGET))
+  const tapY = withChrome ? '(pyreonTap.y / pyreonDensity).toDouble() - pyreonTop' : '(pyreonTap.y / pyreonDensity).toDouble()'
   const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
   const tap =
     onSel?.kind === 'event'
-      ? `.pointerInput(Unit) { detectTapGestures { pyreonTap -> ${kotlinChartSelectBody(onSel.handler, spec.hit(items, '(pyreonTap.x / pyreonDensity).toDouble()', '(pyreonTap.y / pyreonDensity).toDouble()', args, KOTLIN_CHART_TARGET), indent)} } }`
+      ? `.pointerInput(Unit) { detectTapGestures { pyreonTap -> ${kotlinChartSelectBody(onSel.handler, spec.hit(items, '(pyreonTap.x / pyreonDensity).toDouble()', tapY, args, KOTLIN_CHART_TARGET), indent)} } }`
       : ''
+  if (withChrome) return kotlinFrameHostWithTap(e, lets, cmds, tap, W, H, hasWidth, indent)
   const size = hasWidth ? `Modifier.width((${W}).dp).height((${H}).dp)` : `Modifier.fillMaxWidth().height((${H}).dp)`
   const generic = emitKotlinLayoutModifier(e)
   const titleRaw = readStaticAttrKotlin(e, 'title')
@@ -9460,20 +9463,31 @@ function emitKotlinRadarHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   if (colorAcc === 'unsupported') return 'Box {}'
   const color = colorAcc ?? `listOf(${CHART_HOST_PALETTE.map((c) => JSON.stringify(c)).join(', ')})[pyreonI % ${CHART_HOST_PALETTE.length}]`
   const fillAlpha = kotlinChartDouble(e, 'fillAlpha', 0.25, indent)
-  const series = `${data}.mapIndexed { pyreonI, pyreonD -> RadarSeries(values = (${values}).map { it.toDouble() }, color = ${color}, fillAlpha = ${fillAlpha}) }`
-  if (readStaticAttrKotlin(e, 'showLegend') === true) _emitWarnings.push(`<${tag} showLegend>: the legend is not lowered on native yet; the radar renders without it.`)
+  const lets = [`val pyreonSeries: List<RadarSeries> = ${data}.mapIndexed { pyreonI, pyreonD -> RadarSeries(values = (${values}).map { it.toDouble() }, color = ${color}, fillAlpha = ${fillAlpha}) }`]
+  const H = kotlinChartDouble(e, 'height', 260, indent)
+  const hasWidth = chartAttrExprKotlin(e, 'width') !== undefined
+  const W = hasWidth ? kotlinChartDouble(e, 'width', 300, indent) : 'pyreonW'
+  let entries = 'listOf<LegendEntry>()'
+  if (readStaticAttrKotlin(e, 'showLegend') === true) {
+    const label = kotlinChartAccessor(e, tag, 'label', indent)
+    if (label === 'unsupported') return 'Box {}'
+    if (label === null) {
+      _emitWarnings.push(`<${tag} showLegend>: needs a \`label\` accessor for the legend on native; emitting an empty Box().`)
+      return 'Box {}'
+    }
+    entries = `${data}.mapIndexed { pyreonI, pyreonD -> LegendEntry(label = ${label}, color = ${color}) }`
+  }
+  const chrome = kotlinChartChrome(e, entries, W, H, indent, false)
+  lets.push(...chrome.lets)
   const ringsV = chartAttrExprKotlin(e, 'rings')
   const ringsRaw = readStaticAttrKotlin(e, 'rings')
   const rings = ringsV === undefined ? '4' : typeof ringsRaw === 'number' ? String(Math.trunc(ringsRaw)) : emitKotlinExpr(ringsV, indent)
   const showRaw = readStaticAttrKotlin(e, 'showLabels')
   const showV = chartAttrExprKotlin(e, 'showLabels')
   const showLabels = showV === undefined ? 'true' : typeof showRaw === 'boolean' ? String(showRaw) : emitKotlinExpr(showV, indent)
-  const H = kotlinChartDouble(e, 'height', 260, indent)
-  const hasWidth = chartAttrExprKotlin(e, 'width') !== undefined
-  const W = hasWidth ? kotlinChartDouble(e, 'width', 300, indent) : 'pyreonW'
   const opts = `RadarOptions(rings = ${rings}, gridColor = "rgba(132,150,165,0.35)", labelColor = "#5a6b7a", fontSize = 11.0, showLabels = ${showLabels})`
-  const cmds = `renderRadar(${emitKotlinExpr(axesV, indent)}, ${series}, PyreonChartRect(0.0, 0.0, ${W}, ${H}), ${opts})`
-  return kotlinFrameHost(e, cmds, null, W, H, hasWidth, indent)
+  const cmds = chrome.wrap(`renderRadar(${emitKotlinExpr(axesV, indent)}, pyreonSeries, PyreonChartRect(0.0, 0.0, ${W}, ${chrome.height(H)}), ${opts})`)
+  return kotlinFrameHostLets(e, lets, cmds, null, W, H, hasWidth, indent)
 }
 
 
@@ -9580,6 +9594,8 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const H = kotlinChartDouble(e, 'height', 200, indent)
   const hasWidth = chartAttrExprKotlin(e, 'width') !== undefined
   const W = hasWidth ? kotlinChartDouble(e, 'width', 300, indent) : 'pyreonW'
+  const chrome = kotlinChartChrome(e, 'pyreonSeries.map { LegendEntry(label = it.label, color = it.color) }', W, H, indent, true)
+  lets.push(...chrome.lets)
   const bool = (name: string, fallback: boolean): string => {
     const raw = readStaticAttrKotlin(e, name)
     const v = chartAttrExprKotlin(e, name)
@@ -9587,7 +9603,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   }
   const specArgs = [
     `width = ${W}`,
-    `height = ${H}`,
+    `height = ${chrome.height(H)}`,
     'series = pyreonSeries',
     'categories = pyreonCats',
     `theme = ${KOTLIN_CHART_TARGET.theme()}`,
@@ -9605,8 +9621,8 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const mk = chartAttrExprKotlin(e, 'markers')
   if (mk !== undefined) specArgs.push(`markers = ${emitKotlinExpr(mk, indent)}`)
   lets.push(`val pyreonSpec: ChartSpec = ChartSpec(${specArgs.join(', ')})`)
-  const cmds = 'renderChart(pyreonSpec, ::pyreonChartMeasure)'
-  return kotlinFrameHostLets(e, lets, cmds, (x, y) => `plotHitBars(pyreonSpec, ::pyreonChartMeasure, ${x}, ${y})`, W, H, hasWidth, indent)
+  const cmds = chrome.wrap('renderChart(pyreonSpec, ::pyreonChartMeasure)')
+  return kotlinFrameHostLets(e, lets, cmds, (x, y) => `plotHitBars(pyreonSpec, ::pyreonChartMeasure, ${x}, ${chrome.top === '0.0' ? y : `${y} - pyreonTop`})`, W, H, hasWidth, indent)
 }
 
 /** `kotlinFrameHost` with hoisted `val`s in the BoxWithConstraints scope (always emitted, so the vals have a scope). */
@@ -9627,3 +9643,57 @@ function kotlinFrameHostLets(e: Extract<ExprIR, { kind: 'jsx-element' }>, lets: 
   const body = lets.map((l) => `${pad}${l}\n`).join('')
   return `BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {\n${widthLine}${densityLine}${body}${pad}${canvas}\n${' '.repeat(indent)}}`
 }
+
+
+// ---- legend + title chrome (Plot / Pie / Radar) ------------------------------
+
+interface KotlinChartChrome {
+  lets: string[]
+  top: string
+  wrap: (plot: string) => string
+  height: (H: string) => string
+}
+
+function kotlinChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries: string, W: string, H: string, indent: number, withTitle: boolean): KotlinChartChrome {
+  const titleRaw = readStaticAttrKotlin(e, 'title')
+  const showTitle = withTitle && readStaticAttrKotlin(e, 'showTitle') === true && typeof titleRaw === 'string'
+  const showLegend = readStaticAttrKotlin(e, 'showLegend') === true
+  if (!showTitle && !showLegend) return { lets: [], top: '0.0', wrap: (p) => p, height: (h) => h }
+  const lets: string[] = []
+  if (showTitle) {
+    const subRaw = readStaticAttrKotlin(e, 'subtitle')
+    const subtitle = typeof subRaw === 'string' ? JSON.stringify(subRaw) : 'null'
+    lets.push(`val pyreonTitle: TitleLayout = renderTitle(${JSON.stringify(titleRaw)}, ${subtitle}, PyreonChartRect(0.0, 0.0, ${W}, ${H}), TitleOptions(fontSize = 15.0, color = "#5a6b7a", align = "start"))`)
+  } else {
+    lets.push('val pyreonTitle: TitleLayout = TitleLayout(cmds = listOf(), height = 0.0)')
+  }
+  if (showLegend) {
+    const maxRowsRaw = readStaticAttrKotlin(e, 'legendMaxRows')
+    const maxRows = typeof maxRowsRaw === 'number' ? `, maxRows = ${chartDouble(maxRowsRaw)}` : ''
+    lets.push(`val pyreonLegend: LegendLayout = renderLegend(${entries}, PyreonChartRect(0.0, pyreonTitle.height, ${W}, ${H} - pyreonTitle.height), LegendOptions(fontSize = 11.0, labelColor = "#5a6b7a", swatch = 10.0, gap = 12.0, orientation = "horizontal"${maxRows}), ::pyreonChartMeasure)`)
+  } else {
+    lets.push('val pyreonLegend: LegendLayout = LegendLayout(cmds = listOf(), height = 0.0, boxes = listOf())')
+  }
+  lets.push('val pyreonTop: Double = pyreonTitle.height + pyreonLegend.height')
+  return {
+    lets,
+    top: 'pyreonTop',
+    wrap: (p) => `pyreonTitle.cmds + pyreonLegend.cmds + pyreonShiftCmds(${p}, pyreonTop)`,
+    height: (h) => `${h} - pyreonTop`,
+  }
+}
+
+/** A frame host whose tap modifier is already built (the pie's hit needs the chrome offset, which `kotlinFrameHostLets` cannot express). */
+function kotlinFrameHostWithTap(e: Extract<ExprIR, { kind: 'jsx-element' }>, lets: readonly string[], cmds: string, tap: string, W: string, H: string, hasWidth: boolean, indent: number): string {
+  const size = hasWidth ? `Modifier.width((${W}).dp).height((${H}).dp)` : `Modifier.fillMaxWidth().height((${H}).dp)`
+  const generic = emitKotlinLayoutModifier(e)
+  const titleRaw = readStaticAttrKotlin(e, 'title')
+  const titleMod = typeof titleRaw === 'string' ? `.semantics { contentDescription = ${JSON.stringify(titleRaw)} }` : ''
+  const canvas = `PyreonChartCanvas(cmds = ${cmds}, modifier = ${size + tap + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))})`
+  const pad = ' '.repeat(indent + 2)
+  const widthLine = hasWidth ? '' : `${pad}val pyreonW = maxWidth.value.toDouble()\n`
+  const densityLine = tap === '' ? '' : `${pad}val pyreonDensity = LocalDensity.current.density\n`
+  const body = lets.map((l) => `${pad}${l}\n`).join('')
+  return `BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {\n${widthLine}${densityLine}${body}${pad}${canvas}\n${' '.repeat(indent)}}`
+}
+

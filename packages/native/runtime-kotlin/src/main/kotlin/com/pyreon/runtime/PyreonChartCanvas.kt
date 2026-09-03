@@ -104,6 +104,23 @@ fun pyreonChartMeasure(text: String, size: Double): Double {
     return p.measureText(text).toDouble()
 }
 
+/**
+ * Move a draw list down the canvas — the host sits a plot below the title and
+ * legend it drew at (0, 0). Translating the commands keeps every layout
+ * function at (0, 0), exactly as the web hosts do (shiftCmd in Chart.tsx).
+ */
+fun pyreonShiftCmds(cmds: List<PyreonDrawCmd>, dy: Double): List<PyreonDrawCmd> =
+    cmds.map { c ->
+        c.copy(
+            rect = c.rect?.let { PyreonChartRect(it.x, it.y + dy, it.w, it.h) },
+            from = c.from?.let { PyreonChartPt(it.x, it.y + dy) },
+            to = c.to?.let { PyreonChartPt(it.x, it.y + dy) },
+            points = c.points?.map { PyreonChartPt(it.x, it.y + dy) },
+            center = c.center?.let { PyreonChartPt(it.x, it.y + dy) },
+            at = c.at?.let { PyreonChartPt(it.x, it.y + dy) },
+        )
+    }
+
 @Composable
 fun PyreonChartCanvas(
     cmds: List<PyreonDrawCmd>,
