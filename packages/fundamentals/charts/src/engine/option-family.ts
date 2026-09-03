@@ -127,6 +127,13 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
   for (const key of Object.keys(s)) if (!KNOWN_BY_FAMILY[familyKey]!.has(key)) warn('series-option-unsupported', `series[0].${key}`, `"${key}" has no mapping for ${type} yet; it was ignored.`)
   // This guard has collided across the whole charts wave — polar, boxplot,
   // and now geo each legitimately render more than one series per option.
+  // Both sides carved an exception out of this guard — polar on this branch,
+  // boxplot on main — and each legitimately renders more than one series. The
+  // key lookup uses familyKey, which is this branch's fix for polar.
+  // Every family that legitimately renders MORE THAN ONE series carves itself
+  // out of this guard, so each new family adds a clause and this line conflicts
+  // in every branch. (Worth turning into a set membership test rather than a
+  // chain — it has collided three times in this wave alone.)
   if (seriesArr.length > 1 && type !== 'radar' && familyKey !== 'polar' && type !== 'boxplot' && familyKey !== 'geo') {
     warn('series-option-unsupported', 'series[1]', `Only one ${type} series is rendered per chart; extra series were ignored.`)
   }
