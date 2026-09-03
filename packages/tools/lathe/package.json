@@ -70,9 +70,9 @@
     "@pyreon/validate": "workspace:*",
     "@pyreon/validation": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "axios": "^1.19.0",
+    "axios": "^1.20.0",
     "gray-matter": "^4.0.3",
-    "ky": "^2.0.2",
+    "ky": "^2.1.0",
     "zod": "^4.5.4"
   },
   "dependencies": {
