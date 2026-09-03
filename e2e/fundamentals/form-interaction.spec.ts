@@ -22,6 +22,7 @@ const PASSWORD = 'input[type="password"]'
 test.describe('FormDemo interaction — @pyreon/form', () => {
   test('blur on an empty required field shows its validation error', async ({ page }) => {
     await page.goto('/form')
+    await waitForHydration(page)
     await page.locator(NAME).focus()
     await page.locator(NAME).blur() // validateOn:'blur' → validate the field
     await expect(page.getByText('Name is required')).toBeVisible()

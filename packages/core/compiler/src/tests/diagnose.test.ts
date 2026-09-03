@@ -18,6 +18,24 @@ describe('diagnoseError (browser-safe error catalog)', () => {
     expect(diagnoseError('ENOTFOUND some.host — network unreachable')).toBeNull()
   })
 
+  it('diagnoses a @pyreon/flow JSX component reaching native unlowered (createFlow DOES lower)', () => {
+    for (const sym of ['Flow', 'Background', 'Controls', 'MiniMap', 'NodeResizer']) {
+      for (const symptom of [
+        `cannot find '${sym}' in scope`,
+        `Unresolved reference '${sym}'`,
+      ]) {
+        const r = diagnoseError(symptom)
+        expect(r, symptom).not.toBeNull()
+        // The whole point of this entry: distinguish it from an unsupported
+        // PROP SHAPE (charts' PieChart/GaugeChart decline path) — createFlow
+        // itself lowers, only the JSX render layer does not.
+        expect(r!.cause).toContain('createFlow')
+        expect(r!.fix).toContain('PyreonFlowState')
+        expect(r!.fix).toMatch(/PyreonFlowEdgeCanvas|webview/)
+      }
+    }
+  })
+
   it('diagnoses a VNode array rendered as "[object Object]"', () => {
     for (const symptom of [
       '[object Object],[object Object]',
