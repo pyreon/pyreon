@@ -55,6 +55,7 @@ export const ENGINE_FILES = [
   'river',
   'polar',
   'sankey',
+  'graph',
 ] as const
 
 const RENAMES: ReadonlyArray<readonly [string, string]> = [

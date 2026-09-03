@@ -3,8 +3,9 @@
 import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
-import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
-import { hitGraph, layoutGraph, renderGraph } from './graph'
+import { paint, prepareCanvas } from './canvas-web'
+import { layoutGraph, renderGraph } from './graph'
+import { hitGraph } from './graph-hit'
 import type { GraphLayout, GraphLayoutNode, GraphLink, GraphNode, GraphOptions } from './graph'
 import { chartTable, describeChart } from './a11y'
 import type { Double, Rect } from './types'
@@ -45,7 +46,7 @@ export function GraphChart(props: GraphChartProps): VNode {
     const hgt = props.height ?? 300
     const ctx = prepareCanvas(el, w, hgt)
     if (ctx === null) return
-    paint(ctx, renderGraph(layoutFor(w, hgt), boxFor(w, hgt), props.graph, canvasMeasure(ctx, FONT)), w, hgt, FONT)
+    paint(ctx, renderGraph(layoutFor(w, hgt), boxFor(w, hgt), props.graph), w, hgt, FONT)
   }
 
   effect(() => {
