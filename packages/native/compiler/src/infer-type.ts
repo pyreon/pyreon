@@ -742,13 +742,29 @@ export function unwrapOptionalType(t: TypeIR): TypeIR {
 export function classifyOptionalCondition(
   e: ExprIR,
   ctx: InferenceCtx,
-): { form: 'present' } | { form: 'absent'; argument: ExprIR } | null {
+): { form: 'present'; argument?: ExprIR } | { form: 'absent'; argument: ExprIR } | null {
   if (
     e.kind === 'unary' &&
     e.op === '!' &&
     typeIsOptional(inferType(e.argument, ctx))
   ) {
     return { form: 'absent', argument: e.argument }
+  }
+  // `x === null` / `x !== null` (undefined parses as the null literal) on a
+  // provably-optional IDENTIFIER: the same two forms, with the operand as
+  // the argument so a Swift emit can BIND it (`if let x`) rather than
+  // merely test it — Swift never narrows through a nil compare, Kotlin
+  // smart-casts. A non-identifier operand keeps the plain compare.
+  const c = e
+  if (c.kind === 'comparison' && (c.op === '==' || c.op === '!=')) {
+    const leftIsNull = c.left.kind === 'literal' && c.left.value === null
+    const rightIsNull = c.right.kind === 'literal' && c.right.value === null
+    if (leftIsNull !== rightIsNull) {
+      const x = leftIsNull ? c.right : c.left
+      if (x.kind === 'identifier' && typeIsOptional(inferType(x, ctx))) {
+        return c.op === '==' ? { form: 'absent', argument: x } : { form: 'present', argument: x }
+      }
+    }
   }
   if (typeIsOptional(inferType(e, ctx))) return { form: 'present' }
   return null
