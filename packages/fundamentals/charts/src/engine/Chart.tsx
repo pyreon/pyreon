@@ -19,8 +19,8 @@ import { renderSvg } from './svg'
 import type { ToolboxTool } from './toolbox'
 import { placeTooltip, tooltipAt, tooltipLines } from './tooltip'
 import type { TooltipContent } from './tooltip'
-import { barsFor, defaultTheme, layoutChart, renderChart, resolveY2Domain, resolveYDomain, seriesOnRightAxis, stackedHitAt } from './render'
-import { hitBar, layoutSeriesPoints, layoutSeriesPointsAt } from './layout'
+import { defaultTheme, layoutChart, renderChart, resolveY2Domain, resolveYDomain, seriesOnRightAxis } from './render'
+import { layoutSeriesPoints, layoutSeriesPointsAt } from './layout'
 import type { Annotation, ChartSpec, ChartTheme, PointMarker, Series } from './render'
 import { scaleLinear } from './scale'
 import { resolveCategories, resolveMarks } from './marks'
@@ -618,7 +618,15 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const bandShifted = top === 0.0 ? band : band.map((c) => shiftCmd(c, top))
     const ring = focusRingCmds(spec, measure)
     const ringShifted = top === 0.0 ? ring : ring.map((c) => shiftCmd(c, top))
-    paint(ctx, [...legendCmds, ...shifted, ...bandShifted, ...crossShifted, ...ringShifted, ...navCmds, ...presetCmds], w, hgt, FONT)
+    const frame = [...legendCmds, ...shifted, ...bandShifted, ...crossShifted, ...ringShifted, ...navCmds, ...presetCmds]
+    // Capture what was actually painted so `saveAsImage` serializes THIS
+    // frame rather than re-deriving one. Declared beside the toolbox for
+    // that single reader; without the write it handed `renderSvg` an empty
+    // list at 0x0 and the download was a blank <svg> with only its title.
+    lastFrame = frame
+    lastW = w
+    lastH = hgt
+    paint(ctx, frame, w, hgt, FONT)
   }
 
   /** The navigator strip: a mini area of the first series over ALL rows, and the window band with its handles. */
@@ -1144,16 +1152,6 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // separate helper rather than a widened loop condition.
     // Callbacks speak GLOBAL indices — the caller's data never zoomed.
     const off = viewRange(readData()).from
-    for (let i = 0; i < spec.series.length; i++) {
-      if (spec.series[i]!.kind !== 'bars') continue
-      const idx = hitBar(barsFor(spec, i, measure), px, py)
-      if (idx >= 0) {
-        cb(idx + off)
-        return
-      }
-    }
-    const stackedIdx = stackedHitAt(spec, measure, px, py)
-    cb(stackedIdx < 0 ? stackedIdx : stackedIdx + off)
     const idx = plotHitBars(spec, measure, px, py)
     cb(idx < 0 ? idx : idx + off)
   })
