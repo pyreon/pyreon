@@ -2,10 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { compileOption, optionToSvg, planOption } from './option'
 import type { EChartsOption } from './option'
 import { compileFamily } from './option-family'
+import { registerMap } from './geo'
 
 // A gallery-shaped corpus: each fixture is written the way an ECharts user
 // writes it. `expectClean` fixtures must compile with ZERO warnings and render.
 // The pass-rate is the program's conformance metric; it ratchets UP only.
+registerMap('corpus-squares', { type: 'FeatureCollection', features: [
+  { type: 'Feature', properties: { name: 'West' }, geometry: { type: 'Polygon', coordinates: [[[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]] } },
+  { type: 'Feature', properties: { name: 'East' }, geometry: { type: 'Polygon', coordinates: [[[10, 0], [20, 0], [20, 10], [10, 10], [10, 0]]] } },
+] })
 const CORPUS: { name: string; option: EChartsOption; expectClean: boolean }[] = [
   { name: 'basic bar', expectClean: true, option: {
     xAxis: { type: 'category', data: ['Mon', 'Tue', 'Wed'] }, yAxis: { type: 'value' },
@@ -61,6 +66,12 @@ const CORPUS: { name: string; option: EChartsOption; expectClean: boolean }[] = 
     series: [{ type: 'heatmap', data: [[0, 0, 5], [1, 1, 9]] }] } },
   { name: 'funnel', expectClean: true, option: {
     series: [{ type: 'funnel', sort: 'descending', minSize: '10%', data: [{ value: 60, name: 'Visit' }, { value: 40, name: 'Inquiry' }, { value: 20, name: 'Order' }] }] } },
+  { name: 'scatter on geo', expectClean: true, option: {
+    geo: { map: 'corpus-squares' },
+    series: [{ type: 'scatter', coordinateSystem: 'geo', symbolSize: 10, data: [{ name: 'a', value: [5, 5, 3] }, { name: 'b', value: [15, 5, 9] }] }] } },
+  { name: 'map (registered squares)', expectClean: true, option: {
+    visualMap: { min: 0, max: 10 },
+    series: [{ type: 'map', map: 'corpus-squares', label: { show: true }, data: [{ name: 'West', value: 3 }, { name: 'East', value: 8 }] }] } },
   { name: 'lines (trajectories on cartesian)', expectClean: true, option: {
     xAxis: {}, yAxis: {},
     series: [{ type: 'lines', coordinateSystem: 'cartesian2d', lineStyle: { width: 2 }, data: [{ coords: [[0, 0], [4, 3], [8, 1]] }, { coords: [[1, 5], [7, 6]] }] }] } },
@@ -141,8 +152,8 @@ describe('ECharts option facade — conformance corpus', () => {
       const c = planOption(f.option).compiled
       return c.supported && c.warnings.length === 0
     }).length
-    // 31 of 33 today. Raise this number as families land; never lower it.
-    expect(clean).toBeGreaterThanOrEqual(31)
+    // 33 of 35 today. Raise this number as families land; never lower it.
+    expect(clean).toBeGreaterThanOrEqual(33)
   })
 })
 
