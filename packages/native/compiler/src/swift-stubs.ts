@@ -1527,3 +1527,25 @@ public struct AsyncImage: View {
   public typealias Body = Never
 }
 `
+
+/**
+ * The two views a `@pyreon/charts/plot` host emit needs that the generated
+ * engine never declares. validate.ts appends the REAL engine + canvas types
+ * next to this when a chart host is present; the view stubs live here so the
+ * stub-coverage ratchet counts `PyreonChartCanvas` as covered. The init
+ * mirrors runtime-swift `PyreonChartCanvas.swift` exactly.
+ */
+export const SWIFT_CHART_VIEW_STUBS = `
+// ---- @pyreon/charts/plot hosts (chart-hosts.ts emit) ----
+public struct GeometryProxy { public var size: CGSize = CGSize() }
+public struct GeometryReader<Content: View>: View {
+  public init(@ViewBuilder content: @escaping (GeometryProxy) -> Content) {}
+  public typealias Body = Never
+}
+public struct PyreonChartCanvas: View {
+  public var cmds: [PyreonDrawCmd]
+  public var fontFamily: String?
+  public init(cmds: [PyreonDrawCmd], fontFamily: String? = nil) { self.cmds = cmds; self.fontFamily = fontFamily }
+  public var body: some View { EmptyView() }
+}
+`

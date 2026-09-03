@@ -1219,8 +1219,13 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
     // which then told the user to "consume on native via the `<WebView>` bridge
     // subpath", i.e. to do the thing they had just done. A warning that fires
     // on its own recommended fix trains people to ignore it.
-    const isWebviewBridgeImport =
-      src.startsWith('@pyreon/') && src.slice('@pyreon/'.length).split('/')[1] === 'webview'
+    // The `/plot` SUBPATH of @pyreon/charts is the package's OWN engine, whose
+    // geometry is GENERATED into the native runtimes and whose data-prop hosts
+    // lower to PyreonChartCanvas (emit-swift/kotlin `emitXChartHost`,
+    // chart-hosts.ts) — the web-only rationale is about the ECharts bridge at
+    // the package root, and would be wrong for this import.
+    const subpath = src.startsWith('@pyreon/') ? src.slice('@pyreon/'.length).split('/')[1] : undefined
+    const isWebviewBridgeImport = subpath === 'webview' || (pkg === '@pyreon/charts' && subpath === 'plot')
     if (
       WEB_ONLY_PACKAGES.has(pkg) &&
       !UNLOWERED_PYREON_MODULES.has(pkg) &&

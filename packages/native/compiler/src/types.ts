@@ -1449,6 +1449,12 @@ export interface StructIR {
   name: string
   /** Object-type fields. */
   fields: { name: string; type: TypeIR }[]
+  /**
+   * Declared by an imported native runtime (the generated chart engine's
+   * structs, `chart-engine-structs.ts`): used to TYPE object literals and
+   * annotations, never DECLARED in the emit — the runtime already has it.
+   */
+  external?: boolean
 }
 
 /**

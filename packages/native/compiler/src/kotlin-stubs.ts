@@ -216,6 +216,22 @@ fun Box(
   content()
 }
 
+// BoxWithConstraints — the container-sized host the chart-host emit uses
+// (chart-hosts.ts): maxWidth is the Dp the draw list is laid out for.
+class BoxWithConstraintsScope {
+  val maxWidth: Dp = Dp(0f)
+  val maxHeight: Dp = Dp(0f)
+}
+
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun BoxWithConstraints(
+  modifier: Modifier = Modifier,
+  content: @Composable BoxWithConstraintsScope.() -> Unit,
+) {
+  BoxWithConstraintsScope().content()
+}
+
 // --- K4: Saveable state machinery (rememberSaveable + Saver) ---
 //
 // Real Compose ships rememberSaveable as a Composable that persists
@@ -2005,4 +2021,18 @@ class PyreonAuth<User> {
   fun signInFailed(failure: Throwable) {}
   fun signOut() {}
 }
+`
+
+/**
+ * The Compose canvas (+ the two runtime helpers the chart hosts call) for a
+ * `@pyreon/charts/plot` host emit; validate.ts appends the REAL engine and
+ * draw-list data classes next to this. Lives here so the stub-coverage
+ * ratchet counts `PyreonChartCanvas` as covered. The signature mirrors
+ * runtime-kotlin `PyreonChartCanvas.kt` exactly.
+ */
+export const KOTLIN_CHART_VIEW_STUBS = `
+// ---- @pyreon/charts/plot hosts (chart-hosts.ts emit) ----
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun PyreonChartCanvas(cmds: List<PyreonDrawCmd>, modifier: Modifier = Modifier) {}
 `
