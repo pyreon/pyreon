@@ -149,10 +149,26 @@ class PyreonFlowState<T>(
         selectedEdgeIdList = emptyList()
     }
     /** Removes every currently-selected node (and its connected edges) and
-     *  every currently-selected edge. */
+     *  every currently-selected edge — the SAME net effect AND the same
+     *  single-pass shape as the web `deleteSelected` (`flow.ts`). Mirror of
+     *  the Swift fix — see its comment for the full O(K x (N + E)) ->
+     *  O(N + E) reasoning; a prior version looped `removeNode`/`removeEdge`
+     *  per selected id, re-scanning the whole `_nodes`/`_edges` lists on
+     *  EVERY iteration, making "select all, then delete" quadratic. */
     fun deleteSelected() {
-        for (id in selectedNodeIdList) removeNode(id)
-        for (id in selectedEdgeIdList) removeEdge(id)
+        if (selectedNodeIdList.isNotEmpty()) {
+            val nodeIdsToRemove = selectedNodeIdList.toSet()
+            val edgeIdsToRemove = selectedEdgeIdList.toSet()
+            _nodes = _nodes.filter { !nodeIdsToRemove.contains(it.id) }
+            _edges = _edges.filter {
+                !nodeIdsToRemove.contains(it.source) &&
+                    !nodeIdsToRemove.contains(it.target) &&
+                    !edgeIdsToRemove.contains(it.id)
+            }
+        } else if (selectedEdgeIdList.isNotEmpty()) {
+            val edgeIdsToRemove = selectedEdgeIdList.toSet()
+            _edges = _edges.filter { !edgeIdsToRemove.contains(it.id) }
+        }
         selectedNodeIdList = emptyList()
         selectedEdgeIdList = emptyList()
     }
