@@ -290,6 +290,25 @@ const link = createChartLink()
 <PlotChart data={price} x={(d) => d.t} marks={[bar((d) => d.volume)]} dataZoom crosshair link={link} />
 ```
 
+### Events and actions
+
+ECharts' `on(...)` / `dispatchAction` in Pyreon shapes: every event is a prop, every action is a call on a handle whose signals ARE the chart's state.
+
+- `selectedMode="single" | "multiple"` — a click (or Enter on the keyboard focus) pins the datum; pinned datums keep a heavy outline and report through `onSelectChange` with GLOBAL indices. `onSelect` still fires for the pick.
+- `onHighlight` — the hovered datum's GLOBAL index, -1 on leave (ECharts `mouseover` / `mouseout`), whoever moved it: pointer, keyboard, link or dispatch. With it (or `selectedMode` / `handle`) the hovered column draws a faint band and its bars/points an outline — `emphasis={false}` keeps the crosshair alone.
+- `onLegendChange` — the hidden series (mark indices) after a legend click (`legendselectchanged`); `onZoom` — the window after any zoom gesture (`datazoom`).
+- `handle={createChartHandle()}` — `dispatch({ type })` with `highlight` / `downplay` / `select` / `unselect` / `toggleSelect` / `legendSelect` / `legendUnselect` / `legendToggle` / `dataZoom` / `restore`; read `handle.selected()`, `handle.hidden()`, `handle.zoom()`, `handle.hover()` reactively. A handle is a link too: pass it as `link` to siblings to connect them.
+
+```tsx
+const chart = createChartHandle()
+<PlotChart data={rows} x={(d) => d.k} marks={[bars((d) => d.v)]} handle={chart} selectedMode="multiple" onSelectChange={(s) => console.log(s)} />
+<button onClick={() => chart.dispatch({ type: 'select', index: 2 })}>Pin March</button>
+<button onClick={() => chart.dispatch({ type: 'dataZoom', start: 0.25, end: 0.75 })}>Middle half</button>
+<button onClick={() => chart.dispatch({ type: 'restore' })}>Reset</button>
+```
+
+On native the events/actions props warn by name and the chart renders without them (`onSelectIndex` taps cross today; the handle is the next tier).
+
 ## Gantt
 
 `<GanttChart tasks>` lays one row per task on a calendar-aligned time axis — the tick unit (day / week / month / quarter / year) is picked from the span — with lane headers per `group`, darker `progress` insets, milestone diamonds, dependency elbows and a dashed `today` marker. `layoutGantt` / `renderGantt` / `hitGantt` / `ganttToSvg` are the pure halves.

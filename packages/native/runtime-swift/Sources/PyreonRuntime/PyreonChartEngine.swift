@@ -290,6 +290,15 @@ public struct ChartTheme: Codable {
   }
 }
 
+public struct Emphasis: Codable {
+  public var highlight: Int
+  public var selected: [Int]
+  public init(highlight: Int, selected: [Int]) {
+    self.highlight = highlight
+    self.selected = selected
+  }
+}
+
 public struct ChartSpec {
   public var width: Double
   public var height: Double
@@ -310,7 +319,8 @@ public struct ChartSpec {
   public var annotations: [Annotation]? = nil
   public var markers: [PointMarker]? = nil
   public var progress: Double? = nil
-  public init(width: Double, height: Double, series: [Series], categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil) {
+  public var emphasis: Emphasis? = nil
+  public init(width: Double, height: Double, series: [Series], categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil) {
     self.width = width
     self.height = height
     self.series = series
@@ -330,6 +340,7 @@ public struct ChartSpec {
     self.annotations = annotations
     self.markers = markers
     self.progress = progress
+    self.emphasis = emphasis
   }
 }
 
@@ -2485,6 +2496,18 @@ public func layoutScatter(_ xs: [Double], _ ys: [Double], _ plot: PyreonChartRec
     return out
   }
 
+public func emphasisLevel(_ spec: ChartSpec, _ index: Int) -> Int {
+    let e = (spec.emphasis ?? Emphasis(highlight: -1, selected: []))
+    for sel in e.selected {
+      if sel == index {
+        return 2
+      }
+    }
+    return e.highlight == index ? 1 : 0
+  }
+
+public func emphasisOutline(_ r: PyreonChartRect, _ level: Int, _ stroke: String) -> PyreonDrawCmd { PyreonDrawCmd(kind: "polyline", stroke: stroke, width: level == 2 ? 2.5 : 1.5, points: [PyreonChartPt(x: r.x, y: r.y), PyreonChartPt(x: r.x + r.w, y: r.y), PyreonChartPt(x: r.x + r.w, y: r.y + r.h), PyreonChartPt(x: r.x, y: r.y + r.h), PyreonChartPt(x: r.x, y: r.y)]) }
+
 public func resolveYDomain(_ spec: ChartSpec) -> Domain { (spec.yDomain ?? deriveOver(leftAxisSeries(spec))) }
 
 public func resolveY2Domain(_ spec: ChartSpec) -> Domain { (spec.y2Domain ?? deriveOver(rightAxisSeries(spec))) }
@@ -2672,16 +2695,41 @@ public func renderChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double
         }
       }
     }
+    let emph = (spec.emphasis ?? Emphasis(highlight: -1, selected: []))
+    if emph.highlight >= 0 && spec.horizontal != true {
+      let xsE = (spec.xValues ?? [])
+      let hi = emph.highlight
+      if xsE.count > emph.highlight {
+        let cx = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, xsE[emph.highlight])
+        out.append(PyreonDrawCmd(kind: "rect", rect: PyreonChartRect(x: cx - 6.0, y: plot.y, w: 12.0, h: plot.h), fill: withAlpha(t.axis, 0.14)))
+      } else {
+        if spec.categories.count > emph.highlight {
+          let nb = spec.categories.count
+          let bandW = Double(plot.w) / Double(nb)
+          out.append(PyreonDrawCmd(kind: "rect", rect: PyreonChartRect(x: plot.x + bandW * countToDouble(hi), y: plot.y, w: bandW, h: plot.h), fill: withAlpha(t.axis, 0.14)))
+        }
+      }
+    }
     let stackedSeries = spec.horizontal == true ? [] : spec.series.filter({ s in s.kind == "stacked" })
     if stackedSeries.count > 0 {
       for seg in layoutStackedBars(stackedSeries.map({ s in s.values }), plot, yDomain, 0.25) {
-        out.append(PyreonDrawCmd(kind: "rect", rect: growRect(seg.rect, yDomain), fill: stackedSeries[seg.seriesIndex].color))
+        let rS = growRect(seg.rect, yDomain)
+        out.append(PyreonDrawCmd(kind: "rect", rect: rS, fill: stackedSeries[seg.seriesIndex].color))
+        let lvlS = emphasisLevel(spec, seg.datumIndex)
+        if lvlS > 0 {
+          out.append(emphasisOutline(rS, lvlS, t.label))
+        }
       }
     }
     let groupedSeries = spec.horizontal == true ? [] : spec.series.filter({ s in s.kind == "grouped" })
     if groupedSeries.count > 0 {
       for seg in layoutGroupedBars(groupedSeries.map({ s in s.values }), plot, yDomain, 0.25) {
-        out.append(PyreonDrawCmd(kind: "rect", rect: growRect(seg.rect, yDomain), fill: groupedSeries[seg.seriesIndex].color))
+        let rG = growRect(seg.rect, yDomain)
+        out.append(PyreonDrawCmd(kind: "rect", rect: rG, fill: groupedSeries[seg.seriesIndex].color))
+        let lvlG = emphasisLevel(spec, seg.datumIndex)
+        if lvlG > 0 {
+          out.append(emphasisOutline(rG, lvlG, t.label))
+        }
       }
     }
     for s in spec.series {
@@ -2723,6 +2771,12 @@ public func renderChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double
             }
           }
         }
+        for i in 0..<rects.count {
+          let lvl = emphasisLevel(spec, i)
+          if lvl > 0 {
+            out.append(emphasisOutline(growRectH(rects[i]), lvl, t.label))
+          }
+        }
         if s.showValues == true && progress >= 1.0 {
           let fmt = (spec.yFormat ?? plain)
           for i in 0..<rects.count {
@@ -2760,6 +2814,12 @@ public func renderChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double
             } else {
               out.append(symbolCommand(grown, (s.symbol ?? "rect"), s.color))
             }
+          }
+        }
+        for i in 0..<rects.count {
+          let lvl = emphasisLevel(spec, i)
+          if lvl > 0 {
+            out.append(emphasisOutline(growRect(rects[i], sDomain), lvl, t.label))
           }
         }
         if s.showValues == true && progress >= 1.0 {
@@ -2803,6 +2863,10 @@ public func renderChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double
               if s.effect == true {
                 out.append(PyreonDrawCmd(kind: "circle", fill: withAlpha(s.color, 0.12), center: pts[i], radius: fullR * 2.6 * progress))
                 out.append(PyreonDrawCmd(kind: "circle", fill: withAlpha(s.color, 0.25), center: pts[i], radius: fullR * 1.7 * progress))
+              }
+              let lvlP = emphasisLevel(spec, i)
+              if lvlP > 0 {
+                out.append(PyreonDrawCmd(kind: "circle", fill: withAlpha(t.label, 0.35), center: pts[i], radius: fullR * progress + (lvlP == 2 ? 4.0 : 3.0)))
               }
               out.append(PyreonDrawCmd(kind: "circle", fill: s.color, center: pts[i], radius: fullR * progress))
             }

@@ -46,8 +46,8 @@ export type { Accessor, BubbleOptions, Mark, MarkOptions } from './engine/marks'
 export { smooth, step } from './engine/curve'
 
 // Core render + layout
-export { defaultTheme, layoutChart, renderChart, resolveYDomain, seriesMaxLength } from './engine/render'
-export type { Annotation, ChartSpec, ChartTheme, Series } from './engine/render'
+export { defaultTheme, emphasisLevel, emphasisOutline, layoutChart, renderChart, resolveYDomain, seriesMaxLength } from './engine/render'
+export type { Annotation, ChartSpec, ChartTheme, Emphasis, Series } from './engine/render'
 export {
   bandTicks,
   bandTicksY,
@@ -232,8 +232,8 @@ export { ganttToSvg } from './engine/family-svg'
 export type { GanttToSvgOptions } from './engine/family-svg'
 export { GanttChart } from './engine/GanttChart'
 export type { GanttChartProps } from './engine/GanttChart'
-export { createChartLink } from './engine/link'
-export type { ChartLink } from './engine/link'
+export { createChartHandle, createChartLink } from './engine/link'
+export type { ChartAction, ChartHandle, ChartLink } from './engine/link'
 export { sonifyValues, valueToHz } from './engine/sonify'
 export type { Sonification, SonifyOptions } from './engine/sonify'
 export { OptionChart } from './engine/OptionChart'
