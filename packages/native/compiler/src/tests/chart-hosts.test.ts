@@ -873,3 +873,104 @@ describe('chart hosts — <PlotChart showLegend> legend tap toggle + paging', ()
     expect(r.ok, r.error ?? '').toBe(true)
   })
 })
+
+
+const NAV = `import { signal } from '@pyreon/reactivity'
+import { Stack, Text } from '@pyreon/primitives'
+import { PlotChart, line } from '@pyreon/charts/plot'
+interface Day { label: string; hits: number }
+const DAYS: Day[] = [{ label: 'Mon', hits: 3 }, { label: 'Tue', hits: 5 }, { label: 'Wed', hits: 2 }, { label: 'Thu', hits: 7 }]
+export function Traffic() {
+  const picked = signal(-1)
+  return (
+    <Stack>
+      <Text>{picked()}</Text>
+      <PlotChart data={DAYS} x={(d) => d.label} marks={[line((d) => d.hits)]} navigator={true} height={240} onSelect={(i: number) => picked.set(i)} />
+    </Stack>
+  )
+}`
+const NAV_ZOOMED = NAV.replace('navigator={true}', 'navigator={true} dataZoom={true}')
+const NAV_PRESETS = NAV.replace('navigator={true}', "navigator={true} zoomPresets={[{ label: 'last 2', count: 2 }, { label: 'all', count: 0 }]}")
+const NAV_NO_MARKS = NAV.replace('marks={[line((d) => d.hits)]}', 'marks={[]}')
+
+describe('chart hosts — <PlotChart navigator> as the engine-laid-out slider strip with its own drag overlay', () => {
+  it('Swift: the strip is renderNavigator over the first mark across ALL rows; the drag rides a clear overlay above the strip', () => {
+    const r = transform(NAV, { target: 'swift' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('@State private var pyreonZoom: ZoomWindow = ZoomWindow(start: 0.0, end: 1.0)')
+    expect(r.code).toContain('@State private var pyreonNavKind: Int = 0')
+    expect(r.code).toContain('@State private var pyreonNavAnchor: ZoomWindow = ZoomWindow(start: 0.0, end: 1.0)')
+    // The window slices the rows the PLOT draws; the navigator sees every row.
+    expect(r.code).toContain('let pyreonValues0: [Double] = pyreonRows.enumerated().map { (_, pyreonD) -> Double in pyreonChartDouble(pyreonD.hits) }')
+    expect(r.code).toContain('let pyreonNavValues: [Double] = DAYS.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(pyreonD.hits) }')
+    expect(r.code).toContain('let pyreonNavigator: NavigatorLayout = renderNavigator(pyreonNavValues, pyreonSeries[0].color, pyreonZoom, PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 240.0), pyreonTheme.grid)')
+    expect(r.code).toContain('height: 240.0 - pyreonNavigator.height')
+    expect(r.code).toContain('PyreonChartCanvas(cmds: renderChart(pyreonSpec, pyreonChartMeasure) + pyreonNavigator.cmds)')
+    expect(r.code).toContain('ZStack(alignment: .bottom) { PyreonChartCanvas(')
+    expect(r.code).toContain(
+      'Color.clear.contentShape(Rectangle()).frame(height: pyreonNavigator.height).gesture(DragGesture(minimumDistance: 0).onChanged { pyreonNav in if pyreonNavKind == 0 { pyreonNavAnchor = pyreonZoom; pyreonNavKind = navigatorHit(pyreonNavigator.strip, pyreonZoom, Double(pyreonNav.startLocation.x)) }; pyreonZoom = navigatorDrag(pyreonNavKind, pyreonNavAnchor, Double(pyreonNav.translation.width) / pyreonNavigator.strip.w) }.onEnded { _ in pyreonNavKind = 0 })',
+    )
+    expect(r.code).not.toContain('MagnificationGesture')
+  })
+  it('Kotlin: the same strip over remembered state; the drag is a Box laid over the strip with detectDragGestures', () => {
+    const r = transform(NAV, { target: 'kotlin' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('var pyreonNavKind by remember { mutableStateOf(0) }')
+    expect(r.code).toContain('var pyreonNavAnchor by remember { mutableStateOf(ZoomWindow(start = 0.0, end = 1.0)) }')
+    expect(r.code).toContain('val pyreonNavValues: List<Double> = DAYS.mapIndexed { pyreonI, pyreonD -> (pyreonD.hits).toDouble() }')
+    expect(r.code).toContain('val pyreonNavigator: NavigatorLayout = renderNavigator(pyreonNavValues, pyreonSeries[0].color, pyreonZoom, PyreonChartRect(0.0, 0.0, pyreonW, 240.0), pyreonTheme.grid)')
+    expect(r.code).toContain('height = 240.0 - pyreonNavigator.height')
+    expect(r.code).toContain('Box(modifier = Modifier.fillMaxWidth().height((240.0).dp)')
+    expect(r.code).toContain('PyreonChartCanvas(cmds = renderChart(pyreonSpec, ::pyreonChartMeasure) + pyreonNavigator.cmds, modifier = Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures {')
+    expect(r.code).toContain(
+      'Box(modifier = Modifier.fillMaxWidth().offset(y = ((240.0) - pyreonNavigator.height).dp).height((pyreonNavigator.height).dp).pointerInput(Unit) { detectDragGestures(onDragStart = { pyreonStart -> pyreonNavAnchor = pyreonZoom; pyreonNavDx = 0.0; pyreonNavKind = navigatorHit(pyreonNavigator.strip, pyreonZoom, (pyreonStart.x / pyreonDensity).toDouble()) }, onDragEnd = { pyreonNavKind = 0 }, onDrag = { pyreonChange, pyreonDrag -> pyreonChange.consume(); pyreonNavDx = pyreonNavDx + (pyreonDrag.x / pyreonDensity).toDouble(); pyreonZoom = navigatorDrag(pyreonNavKind, pyreonNavAnchor, pyreonNavDx / pyreonNavigator.strip.w) }) })',
+    )
+  })
+  it('with presets too, the navigator sits ABOVE the preset strip and the plot gives up both', () => {
+    const s = transform(NAV_PRESETS, { target: 'swift' })
+    expect(s.warnings).toEqual([])
+    expect(s.code).toContain('PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 240.0 - pyreonPresetStrip.height), pyreonTheme.grid)')
+    expect(s.code).toContain('height: 240.0 - pyreonPresetStrip.height - pyreonNavigator.height')
+    expect(s.code).toContain('+ pyreonNavigator.cmds + pyreonPresetStrip.cmds)')
+    expect(s.code).toContain('.frame(height: pyreonNavigator.height).padding(.bottom, pyreonPresetStrip.height).gesture(')
+    const k = transform(NAV_PRESETS, { target: 'kotlin' })
+    expect(k.warnings).toEqual([])
+    expect(k.code).toContain('.offset(y = ((240.0) - pyreonPresetStrip.height - pyreonNavigator.height).dp)')
+  })
+  it('with dataZoom too, a navigator drag re-anchors the pinch window and the plot keeps its gestures', () => {
+    const s = transform(NAV_ZOOMED, { target: 'swift' })
+    expect(s.warnings).toEqual([])
+    expect(s.code).toContain('.onEnded { _ in pyreonNavKind = 0; pyreonZoomAnchor = pyreonZoom })')
+    expect(s.code).toContain('MagnificationGesture()')
+    const k = transform(NAV_ZOOMED, { target: 'kotlin' })
+    expect(k.code).toContain('detectTransformGestures')
+    expect(k.code).toContain('detectDragGestures(')
+  })
+  it('a navigator with no marks warns BY NAME and renders the chart without it', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(NAV_NO_MARKS, { target })
+      expect(r.warnings).toEqual(['<PlotChart navigator>: needs at least one mark (the strip shows the first one); the chart renders without the navigator.'])
+      expect(r.code).not.toContain('pyreonNavigator')
+    }
+  })
+  it('a plot without a navigator gets none of it, and the frame host emit is unchanged', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(PRESETS, { target })
+      expect(r.code).not.toContain('pyreonNavigator')
+      expect(r.code).not.toContain('pyreonNavKind')
+    }
+    expect(transform(PRESETS, { target: 'kotlin' }).code).toContain('PyreonChartCanvas(cmds = renderChart(pyreonSpec, ::pyreonChartMeasure) + pyreonPresetStrip.cmds, modifier = Modifier.fillMaxWidth().height((200.0).dp).pointerInput(Unit) {')
+  })
+  it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine) accepts the navigator emit', () => {
+    const r = validateSwiftWithStubs(transform(NAV_PRESETS.replace('navigator={true}', 'navigator={true} dataZoom={true}'), { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isSwiftUIAvailable())('swiftc against real SwiftUI + canvas + engine accepts it', () => {
+    const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(ENGINE_SWIFT) + '\n' + transform(NAV_PRESETS.replace('navigator={true}', 'navigator={true} dataZoom={true}'), { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isKotlincAvailable())('kotlinc (stub bundle + real engine) accepts it', () => {
+    const r = validateKotlin(transform(NAV_PRESETS.replace('navigator={true}', 'navigator={true} dataZoom={true}'), { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+})

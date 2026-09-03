@@ -11472,8 +11472,13 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   const zoomed = readStaticAttr(e, 'dataZoom') === true
   const presetsRaw = swiftZoomPresets(e, tag)
   const presets = presetsRaw === 'unsupported' ? undefined : presetsRaw
-  // The window state exists whenever something writes it: a gesture or a preset.
-  const windowed = zoomed || presets !== undefined
+  let navigating = readStaticAttr(e, 'navigator') === true
+  if (navigating && marksV.elements.length === 0) {
+    _emitWarnings.push(`<${tag} navigator>: needs at least one mark (the strip shows the first one); the chart renders without the navigator.`)
+    navigating = false
+  }
+  // The window state exists whenever something writes it: a gesture, a preset, the navigator.
+  const windowed = zoomed || presets !== undefined || navigating
   const legend = swiftLegendInteraction(e)
   const lets: string[] = []
   if (windowed) {
@@ -11482,10 +11487,15 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     lets.push(`let pyreonRange: SliceRange = sliceRange(pyreonZoom, ${data}.count)`)
     lets.push(`let pyreonRows = Array(${data}[pyreonRange.from..<pyreonRange.to])`)
   }
+  if (navigating) {
+    _hostStateDecls.push('@State private var pyreonNavKind: Int = 0')
+    _hostStateDecls.push('@State private var pyreonNavAnchor: ZoomWindow = ZoomWindow(start: 0.0, end: 1.0)')
+  }
   if (legend.toggling) _hostStateDecls.push('@State private var pyreonHidden: [Int] = []')
   if (legend.paging) _hostStateDecls.push('@State private var pyreonLegendPage: Double = 0.0')
   const rows = windowed ? 'pyreonRows' : data
   const series: string[] = []
+  let navValues = ''
   for (let k = 0; k < marksV.elements.length; k++) {
     const m = marksV.elements[k]!
     const callee = m.kind === 'call' && m.callee.kind === 'identifier' ? m.callee.name : undefined
@@ -11506,6 +11516,8 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     const opts = swiftMarkOptionArgs(optsArg, tag, k)
     if (opts === 'unsupported') return 'EmptyView()'
     lets.push(`let pyreonValues${k}: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${body})`, 'Double', windowed)}`)
+    // The navigator shows the first mark over EVERY row, whatever the window.
+    if (k === 0 && navigating) navValues = swiftPlotRowMap(data, `pyreonChartDouble(${body})`, 'Double', false)
     if (bubble) {
       const r = m.args[1]
       if (r === undefined) {
@@ -11555,24 +11567,32 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   const chrome = swiftChartChrome(e, entries, W, H, indent, true, legend.paging ? 'pyreonLegendPage' : undefined)
   lets.push(...chrome.lets)
   const theme = swiftChartTheme(e, tag)
+  const themed = presets !== undefined || navigating
+  if (themed) lets.push(`let pyreonTheme: ChartTheme = ${theme}`)
   if (presets !== undefined) {
     // The strip sits at the canvas bottom in canvas coordinates (never shifted
     // by the title/legend), exactly where the web paints it.
-    lets.push(`let pyreonTheme: ChartTheme = ${theme}`)
     lets.push(`let pyreonPresets: [ZoomPreset] = [${presets.join(', ')}]`)
     lets.push(`let pyreonPresetStrip: PresetLayout = renderPresets(pyreonPresets, ${data}.count, pyreonZoom, PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${H}), PresetOptions(fontSize: 11.0, padX: 8.0, padY: 3.0, gap: 6.0, inset: 8.0, activeFill: pyreonTheme.axis, idleFill: pyreonTheme.grid, activeText: "#ffffff", idleText: pyreonTheme.label), pyreonChartMeasure)`)
+  }
+  // Below the plot, from the bottom up: the preset strip, then the navigator.
+  const belowNav = presets === undefined ? '' : ' - pyreonPresetStrip.height'
+  if (navigating) {
+    lets.push(`let pyreonNavValues: [Double] = ${navValues}`)
+    lets.push(`let pyreonNavigator: NavigatorLayout = renderNavigator(pyreonNavValues, pyreonSeries[0].color, pyreonZoom, PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${H}${belowNav}), pyreonTheme.grid)`)
   }
   const bool = (name: string, fallback: boolean): string => {
     const raw = readStaticAttr(e, name)
     const v = chartAttrExpr(e, name)
     return v === undefined ? String(fallback) : typeof raw === 'boolean' ? String(raw) : emitSwiftExpr(v, indent)
   }
+  const below = `${belowNav}${navigating ? ' - pyreonNavigator.height' : ''}`
   const specArgs = [
     `width: ${W}`,
-    `height: ${presets === undefined ? chrome.height(H) : `${chrome.height(H)} - pyreonPresetStrip.height`}`,
+    `height: ${chrome.height(H)}${below}`,
     'series: pyreonSeries',
     'categories: pyreonCats',
-    `theme: ${presets === undefined ? theme : 'pyreonTheme'}`,
+    `theme: ${themed ? 'pyreonTheme' : theme}`,
     `showXAxis: ${bool('showXAxis', true)}`,
     `showYAxis: ${bool('showYAxis', true)}`,
     `showGrid: ${bool('showGrid', true)}`,
@@ -11593,7 +11613,8 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   const mk = chartAttrExpr(e, 'markers')
   if (mk !== undefined) specArgs.push(`markers: ${emitSwiftExpr(mk, indent)}`)
   lets.push(`let pyreonSpec: ChartSpec = ChartSpec(${specArgs.join(', ')})`)
-  const canvas = `PyreonChartCanvas(cmds: ${chrome.wrap('renderChart(pyreonSpec, pyreonChartMeasure)')}${presets === undefined ? '' : ' + pyreonPresetStrip.cmds'})`
+  const extraCmds = `${navigating ? ' + pyreonNavigator.cmds' : ''}${presets === undefined ? '' : ' + pyreonPresetStrip.cmds'}`
+  const canvas = `PyreonChartCanvas(cmds: ${chrome.wrap('renderChart(pyreonSpec, pyreonChartMeasure)')}${extraCmds})`
   const tapY = chrome.top === '0.0' ? 'Double(pyreonTap.location.y)' : 'Double(pyreonTap.location.y) - pyreonTop'
   // Under a window the hit is LOCAL to the slice; the callback speaks GLOBAL indices, as on the web.
   const hit = windowed
@@ -11636,7 +11657,17 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       `.simultaneousGesture(MagnificationGesture().onChanged { pyreonScale in pyreonZoom = zoomWindow(pyreonZoomAnchor, 1.0 / Double(pyreonScale), 0.5) }.onEnded { _ in pyreonZoomAnchor = pyreonZoom })` +
       `.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { pyreonDrag in pyreonZoom = panWindow(pyreonZoomAnchor, -Double(pyreonDrag.translation.width) / ${W}) }.onEnded { _ in pyreonZoomAnchor = pyreonZoom })`
   }
-  return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent)
+  if (!navigating) return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent)
+  // The navigator's drag lives on a clear overlay over the strip (above the
+  // preset strip), a sibling of the canvas: a touch that starts there is the
+  // navigator's alone, so the plot's gestures never see it. The grab (band or
+  // handle) is decided once, from the start location; the drag is absolute
+  // from the window it started on — the web's model.
+  const overlay =
+    `Color.clear.contentShape(Rectangle()).frame(height: pyreonNavigator.height)${presets === undefined ? '' : '.padding(.bottom, pyreonPresetStrip.height)'}` +
+    `.gesture(DragGesture(minimumDistance: 0).onChanged { pyreonNav in if pyreonNavKind == 0 { pyreonNavAnchor = pyreonZoom; pyreonNavKind = navigatorHit(pyreonNavigator.strip, pyreonZoom, Double(pyreonNav.startLocation.x)) }; pyreonZoom = navigatorDrag(pyreonNavKind, pyreonNavAnchor, Double(pyreonNav.translation.width) / pyreonNavigator.strip.w) }` +
+    `.onEnded { _ in pyreonNavKind = 0${zoomed ? '; pyreonZoomAnchor = pyreonZoom' : ''} })`
+  return swiftFrameHost(e, lets, `ZStack(alignment: .bottom) { ${canvas}${gesture}; ${overlay} }`, '', W, H, hasWidth, indent)
 }
 
 
@@ -11833,3 +11864,14 @@ function swiftLegendInteraction(e: Extract<ExprIR, { kind: 'jsx-element' }>): Sw
 }
 
 /** `<PlotChart data marks x? xValue? … dataZoom? zoomPresets? showLegend? legendToggle? legendMaxRows? showTitle? onSelect? …>` */
+
+
+// ---- `<PlotChart navigator>` — the slider dataZoom, engine-laid-out ------------
+//
+// The strip is the engine's `renderNavigator` over the FIRST mark's values
+// across ALL rows; its drag model (`navigatorHit` / `navigatorDrag`) writes
+// the same window the pinch and the presets write. The drag lives on its own
+// clear overlay above the strip, so it never competes with the plot's pinch
+// and pan gestures — a touch that starts on the strip is the navigator's.
+
+/** `<PlotChart data marks x? xValue? … dataZoom? zoomPresets? navigator? showLegend? legendToggle? legendMaxRows? showTitle? onSelect? …>` */
