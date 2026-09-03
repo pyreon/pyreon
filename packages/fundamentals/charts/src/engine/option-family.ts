@@ -128,8 +128,11 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
   // Both sides carved an exception out of this guard — polar on this branch,
   // boxplot on main — and each legitimately renders more than one series. The
   // key lookup uses familyKey, which is this branch's fix for polar.
-  if (seriesArr.length > 1 && type !== 'radar' && familyKey !== 'polar' && type !== 'boxplot') {
-  if (seriesArr.length > 1 && type !== 'radar' && familyKey !== 'polar' && familyKey !== 'geo') {
+  // Every family that legitimately renders MORE THAN ONE series carves itself
+  // out of this guard, so each new family adds a clause and this line conflicts
+  // in every branch. (Worth turning into a set membership test rather than a
+  // chain — it has collided three times in this wave alone.)
+  if (seriesArr.length > 1 && type !== 'radar' && familyKey !== 'polar' && type !== 'boxplot' && familyKey !== 'geo') {
     warn('series-option-unsupported', 'series[1]', `Only one ${type} series is rendered per chart; extra series were ignored.`)
   }
   const titleRaw = first(option['title'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
