@@ -584,6 +584,25 @@ final class PyreonTasksUITests: XCTestCase {
             waitForLabel(barPick, "0", timeout: 10),
             "after showing the series again from the legend entry, the band tap did not bind 0 (label: \(barPick.label))"
         )
+        // #3274: the navigator strip (x 8…W-8, centred 40pt above the canvas
+        // bottom, above the preset strip). Dragging the LEFT handle right by 55%
+        // of the strip leaves rows 1..2, so the first band is the GLOBAL index 1;
+        // dragging the band left by 55% brings rows 0..1 back, so it is 0 again.
+        let navY = barsH - 40
+        let stripW = barsW - 16
+        let navOrigin = statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        navOrigin.withOffset(CGVector(dx: 10, dy: navY)).press(forDuration: 0.2, thenDragTo: navOrigin.withOffset(CGVector(dx: 10 + stripW * 0.55, dy: navY)))
+        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 90, dy: 100)).tap()
+        XCTAssertTrue(
+            waitForLabel(barPick, "1", timeout: 10),
+            "after dragging the navigator's left handle, the first band did not bind the GLOBAL index 1 (label: \(barPick.label))"
+        )
+        navOrigin.withOffset(CGVector(dx: 8 + stripW * 0.775, dy: navY)).press(forDuration: 0.2, thenDragTo: navOrigin.withOffset(CGVector(dx: 8 + stripW * 0.225, dy: navY)))
+        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 90, dy: 100)).tap()
+        XCTAssertTrue(
+            waitForLabel(barPick, "0", timeout: 10),
+            "after dragging the navigator band left, the first band did not bind 0 again (label: \(barPick.label))"
+        )
         let statsBack = app.buttons["stats-back"].firstMatch
         XCTAssertTrue(statsBack.exists, "Back button missing on stats page")
         statsBack.tap()
