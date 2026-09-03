@@ -5066,7 +5066,7 @@ public func layoutSankey(_ nodes: [SankeyNode], _ links: [SankeyLink], _ box: Py
       let alpha = 0.99 - itF * (0.99 / (iterations > 1.0 ? iterations : 1.0))
       for pass in 0..<2 {
         let forward = pass == 0
-        var dStart = forward ? 1 : maxDepth - 1
+        let dStart = forward ? 1 : maxDepth - 1
         let dEnd = forward ? maxDepth : 0
         let dStep = forward ? 1 : -1
         var d = dStart
@@ -5129,7 +5129,6 @@ public func layoutSankey(_ nodes: [SankeyNode], _ links: [SankeyLink], _ box: Py
           d = d + dStep
           more = forward ? d <= dEnd : d >= dEnd
         }
-        dStart = d
       }
       itF = itF + 1.0
     }

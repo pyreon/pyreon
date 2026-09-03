@@ -2572,15 +2572,36 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
   [
     '@pyreon/charts',
     {
-      // The RADIAL components lower: `<PieChart>` / `<GaugeChart>` from the
-      // /plot subpath emit the runtime PyreonPieChart / PyreonGaugeChart views
-      // over the GENERATED PyreonChartEngine geometry — web and native draw
-      // the same byte-locked math. The cartesian `<PlotChart>` is marks-based
-      // (generic accessor layer, deliberately outside the generated bundle),
-      // and the default export wraps ECharts — both stay web.
+      // Most of `/plot`'s hosts lower to a native PyreonChartCanvas over the
+      // GENERATED PyreonChartEngine geometry — web and native draw the same
+      // byte-locked math: the two ACCESSOR hosts (Pie/Funnel), the five FRAME
+      // hosts with a fixed layout of their own (Gauge/Candlestick/Heatmap/
+      // Radar/Plot), and the eight two-prop CHART_HOSTS (Sankey/Graph/
+      // Treemap/Sunburst/Tree/River/Gantt/Polar — nodes+links or a values
+      // record, dispatched through `emitSwiftChartHost`/`emitKotlinChartHost`
+      // in chart-hosts.ts). Calendar/Parallel are deliberately UNLOWERED
+      // (their prop shapes don't fit any of those three dispatch forms — see
+      // UNLOWERED_CHART_HOSTS for the per-tag reason), and the ECharts-backed
+      // default export stays web.
       advice:
-        '`<PieChart>` and `<GaugeChart>` from `@pyreon/charts/plot` DO lower (native PyreonPieChart / PyreonGaugeChart over the generated engine). The cartesian `<PlotChart>` / heatmap / candlestick and the ECharts-backed default export are web-only — keep them in a `<Web>` branch, or embed via the `/webview` bridge',
-      supported: new Set(['PieChart', 'GaugeChart']),
+        'Most `@pyreon/charts/plot` hosts lower to a native PyreonChartCanvas over the generated engine — Pie/Funnel/Gauge/Candlestick/Heatmap/Radar/Plot/Sankey/Graph/Treemap/Sunburst/Tree/River/Gantt/Polar. Calendar and Parallel are deliberately unlowered (see UNLOWERED_CHART_HOSTS for why); the ECharts-backed default export is web-only — keep it in a `<Web>` branch, or embed via the `/webview` bridge',
+      supported: new Set([
+        'PieChart',
+        'FunnelChart',
+        'GaugeChart',
+        'CandlestickChart',
+        'HeatmapChart',
+        'RadarChart',
+        'PlotChart',
+        'SankeyChart',
+        'GraphChart',
+        'TreemapChart',
+        'SunburstChart',
+        'TreeChart',
+        'RiverChart',
+        'GanttChart',
+        'PolarChart',
+      ]),
     },
   ],
   [
@@ -2750,8 +2771,16 @@ function warnUnloweredPyreonModules(body: AnyNode[], ctx: ParseCtx): void {
       src.startsWith('@pyreon/') && src.slice('@pyreon/'.length).split('/')[1] === 'webview'
     const entry = UNLOWERED_PYREON_MODULES.get(src) ?? UNLOWERED_PYREON_MODULES.get(srcRoot)
     if (entry === undefined || isWebviewBridge) continue
+    // A type-only import (`import type { X }` or the per-specifier `import {
+    // type X }`) is TS-erased before this code ever runs — it names no
+    // runtime symbol for the native emit to lower, so warning about it is
+    // always wrong. Caught here because `SankeyLink`/`SankeyNode` (the plot
+    // subpath's own type exports) reached this loop and were warned as
+    // "has NO native lowering" despite never being a value the emitter sees.
+    if ((node as { importKind?: string }).importKind === 'type') continue
     for (const spec of (node.specifiers as AnyNode[]) ?? []) {
       if (spec.type !== 'ImportSpecifier') continue
+      if ((spec as { importKind?: string }).importKind === 'type') continue
       const imported = spec.imported?.name ?? spec.imported?.value
       if (typeof imported !== 'string') continue
       // The hook arc already covers these; warning again would double-report.

@@ -218,7 +218,7 @@ export function layoutSankey(nodes: SankeyNode[], links: SankeyLink[], box: Rect
     // Two passes per sweep: forward (targets toward sources) then backward.
     for (let pass = 0; pass < 2; pass++) {
       const forward = pass === 0
-      let dStart = forward ? 1 : maxDepth - 1
+      const dStart = forward ? 1 : maxDepth - 1
       const dEnd = forward ? maxDepth : 0
       const dStep = forward ? 1 : -1
       let d = dStart
@@ -266,7 +266,6 @@ export function layoutSankey(nodes: SankeyNode[], links: SankeyLink[], box: Rect
         d = d + dStep
         more = forward ? d <= dEnd : d >= dEnd
       }
-      dStart = d
     }
     itF = itF + 1.0
   }

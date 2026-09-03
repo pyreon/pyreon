@@ -3618,7 +3618,7 @@ fun layoutSankey(nodes: List<SankeyNode>, links: List<SankeyLink>, box: PyreonCh
       val alpha = 0.99 - itF * ((0.99).toDouble() / ((if (iterations > 1.0) iterations else 1.0)).toDouble())
       for (pass in 0 until 2) {
         val forward = pass == 0
-        var dStart = if (forward) 1 else maxDepth - 1
+        val dStart = if (forward) 1 else maxDepth - 1
         val dEnd = if (forward) maxDepth else 0
         val dStep = if (forward) 1 else -1
         var d = dStart
@@ -3681,7 +3681,6 @@ fun layoutSankey(nodes: List<SankeyNode>, links: List<SankeyLink>, box: PyreonCh
           d = d + dStep
           more = if (forward) d <= dEnd else d >= dEnd
         }
-        dStart = d
       }
       itF = itF + 1.0
     }
