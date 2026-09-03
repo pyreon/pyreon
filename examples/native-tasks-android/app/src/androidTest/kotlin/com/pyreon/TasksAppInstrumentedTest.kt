@@ -594,6 +594,23 @@ class TasksAppInstrumentedTest {
             .onNodeWithTag("stats-bars")
             .performTouchInput { click(Offset(90f * flowDensity, 100f * flowDensity)) }
         waitForTagText("stats-bars-pick", "0")
+        // #3272: the legend tap toggle — the 'Score' entry (x 0…~44dp, y 0…11dp,
+        // no title chrome) hides the only series → the band tap reports -1;
+        // tapping it again brings the series back → 0.
+        composeRule
+            .onNodeWithTag("stats-bars")
+            .performTouchInput { click(Offset(20f * flowDensity, 6f * flowDensity)) }
+        composeRule
+            .onNodeWithTag("stats-bars")
+            .performTouchInput { click(Offset(90f * flowDensity, 100f * flowDensity)) }
+        waitForTagText("stats-bars-pick", "-1")
+        composeRule
+            .onNodeWithTag("stats-bars")
+            .performTouchInput { click(Offset(20f * flowDensity, 6f * flowDensity)) }
+        composeRule
+            .onNodeWithTag("stats-bars")
+            .performTouchInput { click(Offset(90f * flowDensity, 100f * flowDensity)) }
+        waitForTagText("stats-bars-pick", "0")
         composeRule
             .onNodeWithTag("stats-back")
             .performClick()

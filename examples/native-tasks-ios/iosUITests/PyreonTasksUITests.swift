@@ -568,6 +568,22 @@ final class PyreonTasksUITests: XCTestCase {
             waitForLabel(barPick, "0", timeout: 10),
             "after the 'all' preset, a tap on the first band did not bind index 0 again (label: \(barPick.label))"
         )
+        // #3272: the legend tap toggle. The chart has no title chrome, so the
+        // legend row is the canvas top: the 'Score' entry box spans x 0…~44, y 0…11.
+        // Hiding the only series leaves no bar geometry, so the band tap reports
+        // -1; a second entry tap brings the series back and the band is 0 again.
+        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 20, dy: 6)).tap()
+        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 90, dy: 100)).tap()
+        XCTAssertTrue(
+            waitForLabel(barPick, "-1", timeout: 10),
+            "after hiding the series from the legend entry, the band tap did not report -1 (label: \(barPick.label))"
+        )
+        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 20, dy: 6)).tap()
+        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 90, dy: 100)).tap()
+        XCTAssertTrue(
+            waitForLabel(barPick, "0", timeout: 10),
+            "after showing the series again from the legend entry, the band tap did not bind 0 (label: \(barPick.label))"
+        )
         let statsBack = app.buttons["stats-back"].firstMatch
         XCTAssertTrue(statsBack.exists, "Back button missing on stats page")
         statsBack.tap()
