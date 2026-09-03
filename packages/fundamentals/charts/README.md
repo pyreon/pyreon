@@ -204,6 +204,17 @@ the long description is derived from your data via `describeChart` unless you
 write your own. `chartTable` returns the same data as rows, for a visually
 hidden table beside the chart.
 
+### Families, coordinates and the ECharts option facade
+
+Beyond bars, lines, points, pie, gauge, radar, candlestick and heatmap, `/plot` ships the full ECharts family set as tree-shakeable modules: **funnel, boxplot, treemap, sunburst, tree, sankey, graph** (seeded force / circular), **calendar, parallel, polar, single axis, theme river** and **map** (GeoJSON via `registerMap`, scatter + flight paths on geo). Each is a component (`<TreemapChart>`, `<SankeyChart>`, `<MapChart>`, …), a pure `layout` / `render` / `hit` trio and a server-safe `xToSvg`.
+
+`optionToSvg` / `compileOption` accept an **ECharts-shaped option** — series, coordinates, `dataset` + transforms, `graphic`, `visualMap`, `custom` `renderItem`, `theme` and `locale` — and name every unmapped key in `warnings` instead of dropping it:
+
+```ts
+import { optionToSvg } from '@pyreon/charts/plot'
+const svg = optionToSvg({ xAxis: { data: ['Mon', 'Tue'] }, yAxis: {}, series: [{ type: 'bar', data: [120, 200] }] }, { theme: 'dark' })
+```
+
 ## Install
 
 ```bash

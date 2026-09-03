@@ -86,6 +86,9 @@ const typedChart = useChart<MyOption>(() => ({
 | [`CandlestickChart`](#candlestickchart) | component | Candlestick chart from the plot engine (`@pyreon/charts/plot`) — open/high/low/close accessors per datum, direction enco |
 | [`HeatmapChart`](#heatmapchart) | component | Heatmap from the plot engine (`@pyreon/charts/plot`): two categorical axes, a value per cell, color as the third channel |
 | [`RadarChart`](#radarchart) | component | Radar (spider) chart from the plot engine (`@pyreon/charts/plot`) — one polygon per datum over shared spokes. |
+| [`TreemapChart`](#treemapchart) | component | The hierarchy families of Pyreon's own engine share ONE data shape: `TreeNode { name, value?, children?, color? }`. |
+| [`MapChart`](#mapchart) | component | GeoJSON regions filled by value. |
+| [`optionToSvg`](#optiontosvg) | function | The ECharts option-compat facade: an ECharts-SHAPED option in, this engine out — cartesian series (line/bar/scatter/effe |
 
 ## API
 
@@ -363,6 +366,105 @@ const players: Player[] = [{ name: 'Ana', speed: 90, power: 40, skill: 80 }]
 - More than a handful of polygons — overlapping fills become unreadable past 3-4 series; filter the data or facet into several charts
 
 **See also:** `PlotChart` · `PieChart`
+
+---
+
+### TreemapChart `component`
+
+```ts
+(props: TreemapChartProps) => VNode
+```
+
+The hierarchy families of Pyreon's own engine share ONE data shape: `TreeNode { name, value?, children?, color? }`. `<TreemapChart>` (squarified), `<SunburstChart>` (radial partition) and `<TreeChart>` (tidy node-link, five orientations) all take the same `data`, so a drill-down can switch views without reshaping. Each is a reactive canvas host over a pure `layoutX` / `renderX` / `hitX` trio and ships an `xToSvg` for the server; cells and arcs carry a child-index `path` as a stable selection identity. Siblings in the same wave: `<FunnelChart>`, `<BoxplotChart>` (`fiveNumber` from raw samples), `<SankeyChart>` and `<GraphChart>` (a SEEDED force layout — same input, same picture).
+
+**Example**
+
+```tsx
+import { TreemapChart, SunburstChart } from '@pyreon/charts/plot'
+import type { TreeNode } from '@pyreon/charts/plot'
+
+const repo: TreeNode[] = [
+  { name: 'src', children: [{ name: 'core', value: 50 }, { name: 'ui', value: 20 }] },
+  { name: 'docs', value: 30 },
+]
+
+<TreemapChart data={repo} height={260} onSelect={(cell) => cell && console.log(cell.path)} />
+<SunburstChart data={repo} innerRatio={0.25} height={320} />
+```
+
+**Common mistakes**
+
+- Giving a parent BOTH a value and children — the parent value wins and the children are laid out inside it as if it were their sum; leave `value` off a parent so it is derived
+- Expecting `onSelect` to fire for the parent when a leaf is clicked — the hit test returns the DEEPEST cell; read `cell.path` to walk up
+- Reading colours as data — descendants inherit and TINT the top-level colour so nesting reads as nesting; set `color` per node only when it carries meaning
+- Passing a graph to `<TreeChart>` — a tree needs one parent per node; use `<GraphChart nodes links>` for arbitrary networks (its force layout is deterministic, seeded)
+
+**See also:** `PlotChart` · `optionToSvg`
+
+---
+
+### MapChart `component`
+
+```ts
+(props: MapChartProps) => VNode
+```
+
+GeoJSON regions filled by value. Register a FeatureCollection once with `registerMap(name, geojson)` (ECharts' shape) or pass it directly; `layoutGeo` projects Polygon / MultiPolygon outer rings (equirectangular or Mercator) and fits them into the box with aspect preserved and north up; `renderGeo` colours through the SAME ramp the heatmap uses so a `visualMap` strip cannot disagree with the map; `hitGeo` is ring-accurate. `renderGeoPoints` / `renderGeoPaths` draw scatter, effectScatter halos and flight paths on top through `layout.project`. The other coordinate families follow the same pattern: `<CalendarChart>` (contribution grid, strict ISO dates), `<ParallelChart>`, `<PolarChart>` (radial or concentric bars, polar lines), `<RiverChart>` (silhouette streamgraph) and `layoutSingleAxis`.
+
+**Example**
+
+```tsx
+import { MapChart, registerMap } from '@pyreon/charts/plot'
+import type { GeoJson } from '@pyreon/charts/plot'
+
+declare const euGeoJson: GeoJson
+registerMap('eu', euGeoJson)
+<MapChart map="eu" values={{ DE: 83, FR: 68, PL: 38 }} options={{ showLabels: true }} height={360} onSelect={(r) => r && console.log(r.name)} />
+```
+
+**Common mistakes**
+
+- Keying `values` by a property the features do not carry — the region name comes from `properties.name` by default; pass `options.nameProperty` for ISO codes or ids
+- Expecting hole rings (lakes) to be cut out — only outer rings are drawn; a hole renders as part of its region
+- Passing coordinates in Mercator metres — `projectLonLat` takes DEGREES (lon, lat) and projects itself; pre-projected data double-projects
+- Using a hand-picked colour per region instead of `values` — the fill is a value → colour mapping through the ramp so the accessible table and any visualMap strip stay truthful
+
+**See also:** `TreemapChart` · `HeatmapChart`
+
+---
+
+### optionToSvg `function`
+
+```ts
+(option: EChartsOption, opts?: OptionToSvgOptions) => string
+```
+
+The ECharts option-compat facade: an ECharts-SHAPED option in, this engine out — cartesian series (line/bar/scatter/effectScatter/pictorialBar/lines/custom with `renderItem`), every family (pie, gauge, radar, candlestick, heatmap, funnel, boxplot, treemap, sunburst, tree, sankey, graph, themeRiver, map), `coordinateSystem: 'polar' | 'geo' | 'singleAxis' | 'calendar'`, `dataset` with filter/sort transforms, `graphic`, `visualMap`, `markPoint` / `markLine`, title, legend, tooltip. `compileOption` returns the spec plus `warnings` — anything unmapped is NAMED (`option-key-unsupported`, `series-option-unsupported`, `series-type-unsupported`, `series-data-shape`, …), never dropped silently, and a gallery-shaped conformance corpus ratchets the clean pass-rate upward in CI. `{ theme, locale }` apply registered themes (`registerTheme`; light/dark built in) and Intl-backed locale packs (`registerLocale`).
+
+**Example**
+
+```tsx
+import { optionToSvg, compileOption } from '@pyreon/charts/plot'
+import type { EChartsOption } from '@pyreon/charts/plot'
+
+declare const echartsOption: EChartsOption
+const svg = optionToSvg(
+  { xAxis: { data: ['Mon', 'Tue'] }, yAxis: {}, series: [{ type: 'bar', data: [120, 200] }] },
+  { width: 640, height: 320, theme: 'dark', locale: 'de' },
+)
+const { spec, warnings } = compileOption(echartsOption)
+if (warnings.length > 0) console.warn(warnings.map((w) => w.code + ' @ ' + w.path))
+```
+
+**Common mistakes**
+
+- Treating an empty `warnings` array as "pixel-identical to ECharts" — it means every key MAPPED; styling details (ECharts default paddings, label placement) still differ
+- Ignoring `warnings` — a `series-type-unsupported` means a whole series is missing from the picture; log them in development
+- Passing `theme` in the OPTION — ECharts sets it on `init`, so the facade takes it in the second argument (`{ theme, locale }`)
+- Expecting `map` series to work without `registerMap` — an unregistered name warns by name and draws nothing
+- Using this for the interactive host — `optionToSvg` is the server/static path; mount `<PlotChart>` or a family component for pointer interaction
+
+**See also:** `PlotChart` · `chartToSvg` · `MapChart`
 
 ---
 

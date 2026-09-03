@@ -233,6 +233,45 @@ that a graphic exists and nothing about what it shows.
 subpath decimate large series before charting — downsampling that preserves
 the visual shape (peaks and troughs) rather than averaging them away.
 
+## Hierarchy and relations
+
+Every hierarchy family reads one `TreeNode` shape — `{ name, value?, children?, color? }` — so the same data drives a treemap, a sunburst and a node-link tree:
+
+```tsx
+import { TreemapChart, SunburstChart, TreeChart } from '@pyreon/charts/plot'
+import type { TreeNode } from '@pyreon/charts/plot'
+
+const repo: TreeNode[] = [
+  { name: 'src', children: [{ name: 'core', value: 50 }, { name: 'ui', value: 20 }] },
+  { name: 'docs', value: 30 },
+]
+
+<TreemapChart data={repo} height={260} onSelect={(cell) => cell && console.log(cell.path)} />
+<SunburstChart data={repo} innerRatio={0.25} height={320} />
+<TreeChart data={repo} tree={{ orient: 'LR' }} height={260} />
+```
+
+Relations use node/link lists: `<SankeyChart nodes links>` lays flows out by longest path with relaxed bands and stacked ribbons, and `<GraphChart nodes links graph={{ layout: 'force' }}>` runs a **seeded, deterministic** force layout (or `circular` / `none` for given coordinates). Every family ships `layoutX` / `renderX` / `hitX` as pure functions and an `xToSvg` for the server, plus `<FunnelChart>` and `<BoxplotChart>` (five-number summaries from raw samples via `fiveNumber`).
+
+## Coordinates
+
+Beyond the cartesian grid the engine ships the ECharts coordinate systems as families of their own: `<CalendarChart start end values>` (the contribution-graph grid, strict ISO dates), `<ParallelChart axes rows>` (parallel coordinates with category or value axes and highlighted rows), `<PolarChart axes series>` (radial or concentric bars and polar lines), `<RiverChart series>` (a silhouette streamgraph), a single axis (`layoutSingleAxis`), and `<MapChart map values>` over GeoJSON registered with `registerMap` — regions filled by value through the same colour ramp the heatmap uses, with `renderGeoPoints` / `renderGeoPaths` for scatter and flight paths on top.
+
+## ECharts option compatibility
+
+`optionToSvg(option)` and `compileOption(option)` accept an **ECharts-shaped option** and render it on this engine — cartesian series, every family above, `coordinateSystem: 'polar' | 'geo' | 'singleAxis'`, `dataset` (with `filter` / `sort` transforms), `graphic`, `visualMap`, `custom` series with `renderItem`, `lines`, `effectScatter`, `pictorialBar`, `markPoint` / `markLine`, titles, legends and tooltips. Anything the facade cannot map is **named** in `compiled.warnings` (`option-key-unsupported`, `series-option-unsupported`, …) rather than dropped silently, and a gallery-shaped conformance corpus ratchets the clean pass-rate upward in CI.
+
+```ts
+import { optionToSvg, compileOption } from '@pyreon/charts/plot'
+
+const svg = optionToSvg({ xAxis: { data: ['Mon', 'Tue'] }, yAxis: {}, series: [{ type: 'bar', data: [120, 200] }] }, { theme: 'dark', locale: 'de' })
+const { spec, warnings } = compileOption(myEchartsOption)
+```
+
+## Themes and locales
+
+`registerTheme(name, { color, backgroundColor, textStyle })` (with `light` and `dark` built in) and `registerLocale(tag, pack)` over `Intl` feed `compileOption(option, { theme, locale })`; `resolveTheme` and `numberFormatter` / `dateFormatter` are exported for hosts that build specs by hand.
+
 ## Native
 
 The engine's geometry is **generated into Swift and Kotlin twins**
