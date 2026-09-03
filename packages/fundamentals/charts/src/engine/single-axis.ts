@@ -56,8 +56,11 @@ export function layoutSingleAxis(axis: SingleAxisSpec, points: SingleAxisPoint[]
   const x0 = box.x + gutter
   const x1 = box.x + box.w - gutter
   const y = box.y + box.h / 2.0
-  let lo = 0.0
-  let hi = 1.0
+  // No initializer: every branch below assigns both before use (checked —
+  // isCat / domain / points-extent all set lo+hi unconditionally), so a
+  // starting value here is dead code a static analyzer correctly flags.
+  let lo: Double
+  let hi: Double
   if (isCat) {
     lo = 0.0
     hi = Math.max(0, (axis.categories ?? []).length - 1)
