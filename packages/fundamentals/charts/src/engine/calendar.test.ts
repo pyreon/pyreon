@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { calendarDomain, calendarToSvg, formatIsoDate, hitCalendar, layoutCalendar, parseIsoDate, renderCalendar } from './calendar'
+import { calendarDomain, civilFromDays, daysFromCivil, layoutCalendar, renderCalendar, weekdayOfDays } from './calendar'
+import { calendarValues, formatIsoDate, hitCalendar, parseIsoDate } from './calendar-web'
+import { calendarToSvg } from './family-svg'
 import { compileFamily, familyToSvg } from './option-family'
 
 const box = { x: 0, y: 0, w: 720, h: 120 }
@@ -11,6 +13,16 @@ describe('calendar dates', () => {
     expect(parseIsoDate('2024-13-01')).toBeNull()
     expect(parseIsoDate('24-01-01')).toBeNull()
     expect(parseIsoDate('2024/01/01')).toBeNull()
+  })
+  it('civil-date arithmetic round-trips across leap years, centuries and the epoch', () => {
+    expect(daysFromCivil(1970, 1, 1)).toBe(0)
+    expect(weekdayOfDays(0)).toBe(4)
+    expect(civilFromDays(daysFromCivil(2000, 2, 29))).toEqual({ year: 2000, month: 2, day: 29 })
+    expect(civilFromDays(daysFromCivil(1900, 3, 1) - 1)).toEqual({ year: 1900, month: 2, day: 28 })
+    expect(civilFromDays(daysFromCivil(1969, 12, 31))).toEqual({ year: 1969, month: 12, day: 31 })
+    expect(formatIsoDate(parseIsoDate('0099-01-05')!)).toBe('0099-01-05')
+    expect(formatIsoDate(Date.UTC(2024, 6, 4))).toBe('2024-07-04')
+    expect(parseIsoDate('2024-07-04')).toBe(Date.UTC(2024, 6, 4))
   })
 })
 
@@ -58,9 +70,10 @@ describe('calendar layout', () => {
 describe('calendar render', () => {
   const l = layoutCalendar('2024-01-01', '2024-01-14', box)
   const values = { '2024-01-01': 1, '2024-01-02': 5, '2024-01-03': 10 }
+  const vals = calendarValues(values)
   it('colours by value through the ramp, empties get the empty colour, domain is the data extent', () => {
-    expect(calendarDomain(l, values)).toEqual([1, 10])
-    const cmds = renderCalendar(l, values)
+    expect(calendarDomain(l, vals)).toEqual({ min: 1, max: 10 })
+    const cmds = renderCalendar(l, vals)
     const rects = cmds.filter((c) => c.kind === 'rect')
     expect(rects).toHaveLength(14)
     const fill = (i: number) => (rects[i]!.kind === 'rect' ? rects[i]!.fill : '')
@@ -71,11 +84,11 @@ describe('calendar render', () => {
     expect(cmds.filter((c) => c.kind === 'text').length).toBe(l.monthLabels.length + l.dayLabels.length)
   })
   it('a fixed domain moves the colours; entrance fills week by week', () => {
-    const wide = renderCalendar(l, values, { domain: [0, 100] })
-    const tight = renderCalendar(l, values)
+    const wide = renderCalendar(l, vals, { domain: { min: 0, max: 100 } })
+    const tight = renderCalendar(l, vals)
     const f = (cmds: typeof wide, i: number) => (cmds[i]!.kind === 'rect' ? cmds[i]!.fill : '')
     expect(f(wide, 2)).not.toBe(f(tight, 2))
-    const half = renderCalendar(l, values, { progress: 0.5 })
+    const half = renderCalendar(l, vals, { progress: 0.5 })
     expect(half.filter((c) => c.kind === 'rect').length).toBeLessThan(14)
     expect(half.filter((c) => c.kind === 'text')).toHaveLength(0)
   })
@@ -103,7 +116,7 @@ describe('calendar option mapping', () => {
     expect(f.plan.start).toBe('2024-01-01')
     expect(f.plan.end).toBe('2024-12-31')
     expect(f.plan.values).toEqual({ '2024-03-01': 4, '2024-03-02': 9 })
-    expect(f.plan.calendar).toMatchObject({ cellSize: 12, firstDay: 1, showMonthLabels: false, domain: [0, 20], stops: ['#ffffff', '#000000'] })
+    expect(f.plan.calendar).toMatchObject({ cellSize: 12, firstDay: 1, showMonthLabels: false, domain: { min: 0, max: 20 }, stops: ['#ffffff', '#000000'] })
     expect(f.warnings).toEqual([])
     expect(familyToSvg(f.plan)).toContain('<rect')
     const range = compileFamily({ calendar: { range: ['2024-02-01', '2024-02-10'] }, series: [{ type: 'heatmap', coordinateSystem: 'calendar', data: [] }] })!

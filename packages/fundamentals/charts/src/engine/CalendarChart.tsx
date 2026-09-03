@@ -3,8 +3,9 @@
 import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
-import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
-import { calendarDomain, hitCalendar, layoutCalendar, renderCalendar } from './calendar'
+import { paint, prepareCanvas } from './canvas-web'
+import { calendarDomain, layoutCalendar, renderCalendar } from './calendar'
+import { calendarValues, hitCalendar } from './calendar-web'
 import type { CalendarCell, CalendarLayout, CalendarOptions } from './calendar'
 import { chartTable, describeChart } from './a11y'
 import type { Double } from './types'
@@ -45,7 +46,7 @@ export function CalendarChart(props: CalendarChartProps): VNode {
     const hgt = props.height ?? 140
     const ctx = prepareCanvas(el, w, hgt)
     if (ctx === null) return
-    paint(ctx, renderCalendar(layoutFor(w, hgt), readValues(), props.calendar, canvasMeasure(ctx, FONT)), w, hgt, FONT)
+    paint(ctx, renderCalendar(layoutFor(w, hgt), calendarValues(readValues()), props.calendar), w, hgt, FONT)
   }
 
   effect(() => {
@@ -67,11 +68,11 @@ export function CalendarChart(props: CalendarChartProps): VNode {
     const values = readValues()
     const layout = layoutFor(300, 140)
     const withData = layout.cells.filter((c) => values[c.date] !== undefined)
-    const [lo, hi] = calendarDomain(layout, values)
+    const dom = calendarDomain(layout, calendarValues(values))
     return {
       title: props.title,
       categories: withData.map((c) => c.date),
-      series: [{ label: props.title ?? `${props.start} to ${props.end} (${lo} to ${hi})`, values: withData.map((c) => values[c.date]!), kind: 'bars' }],
+      series: [{ label: props.title ?? `${props.start} to ${props.end} (${dom.min} to ${dom.max})`, values: withData.map((c) => values[c.date]!), kind: 'bars' }],
     }
   }
 
