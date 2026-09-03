@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { UNLOWERED_CHART_HOSTS } from '../chart-hosts'
 import { transform } from '../index'
 import {
   isKotlincAvailable,
@@ -1088,5 +1089,110 @@ describe('chart hosts — <PlotChart brush onBrush> as a plain drag over the eng
   it.skipIf(!isKotlincAvailable())('kotlinc (stub bundle + real engine) accepts it', () => {
     const r = validateKotlin(transform(BRUSH_PRESETS, { target: 'kotlin' }).code)
     expect(r.ok, r.error ?? '').toBe(true)
+  })
+})
+
+
+const CALENDAR = `import { signal } from '@pyreon/reactivity'
+import { Stack, Text } from '@pyreon/primitives'
+import { CalendarChart } from '@pyreon/charts/plot'
+export function Activity() {
+  const picked = signal(-1)
+  return (
+    <Stack>
+      <Text>{picked()}</Text>
+      <CalendarChart start="2026-01-01" end="2026-02-28" values={{ '2026-01-05': 3, '2026-01-20': 7.5 }} calendar={{ firstDay: 1 }} height={160} onSelectIndex={(i: number) => picked.set(i)} />
+    </Stack>
+  )
+}`
+const CALENDAR_CALL = CALENDAR.replace("values={{ '2026-01-05': 3, '2026-01-20': 7.5 }}", 'values={hitsOf()}').replace('export function Activity()', "const hitsOf = () => ({ '2026-01-05': 3 })\nexport function Activity()")
+
+const PARALLEL = `import { signal } from '@pyreon/reactivity'
+import { Stack, Text } from '@pyreon/primitives'
+import { ParallelChart } from '@pyreon/charts/plot'
+import type { ParallelAxis } from '@pyreon/charts/plot'
+const AXES: ParallelAxis[] = [{ name: 'Cyl', type: 'category', categories: ['4', '6', '8'] }, { name: 'MPG' }]
+const axesOf = (): ParallelAxis[] => AXES
+export function Cars() {
+  const picked = signal(-1)
+  return (
+    <Stack>
+      <Text>{picked()}</Text>
+      <ParallelChart axes={AXES} rows={[['4', 30], ['8', null], ['x', 22]]} gutter={30} height={260} onSelectIndex={(i: number) => picked.set(i)} />
+    </Stack>
+  )
+}`
+const PARALLEL_AXES_CALL = PARALLEL.replace('axes={AXES}', 'axes={axesOf()}')
+const PARALLEL_ROW_COLOR = PARALLEL.replace('gutter={30}', "gutter={30} rowColor={(r, i) => (i === 0 ? '#b42318' : '#0f766e')}")
+
+describe('chart hosts — CalendarChart + ParallelChart lower through literal adapters (the unlowered list is down to OptionChart)', () => {
+  it('Swift: a values record becomes [CalendarValue]; the layout is the web host\'s box; the tap is hitCalendarIndex', () => {
+    const r = transform(CALENDAR, { target: 'swift' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain(
+      'PyreonChartCanvas(cmds: renderCalendar(layoutCalendar("2026-01-01", "2026-02-28", PyreonChartRect(x: 4.0, y: 4.0, w: Double(pyreonGeo.size.width) - 8.0, h: 160.0 - 8.0), CalendarOptions(firstDay: Double(1))), [CalendarValue(date: "2026-01-05", value: 3.0), CalendarValue(date: "2026-01-20", value: 7.5)], CalendarOptions(firstDay: Double(1))))',
+    )
+    expect(r.code).toContain('hitCalendarIndex(layoutCalendar("2026-01-01", "2026-02-28", ')
+  })
+  it('Kotlin: the same through listOf / named args', () => {
+    const r = transform(CALENDAR, { target: 'kotlin' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain(
+      'renderCalendar(layoutCalendar("2026-01-01", "2026-02-28", PyreonChartRect(4.0, 4.0, pyreonW - 8.0, 160.0 - 8.0), CalendarOptions(firstDay = (1).toDouble())), listOf(CalendarValue(date = "2026-01-05", value = 3.0), CalendarValue(date = "2026-01-20", value = 7.5)), CalendarOptions(firstDay = (1).toDouble()))',
+    )
+  })
+  it('a values record that is not a literal (a call) warns BY NAME on both targets', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(CALENDAR_CALL, { target })
+      expect(r.warnings).toEqual(["<CalendarChart values>: must be an inline `{ 'YYYY-MM-DD': n }` literal, or a module const holding one, on native (a record does not cross); emitting nothing."])
+      expect(r.code).not.toContain('renderCalendar(')
+    }
+  })
+  it('Swift: parallel rows become [[Double]] — a category resolves to its index through the typed AXES const, a null or an unknown category is NaN; the gutter defaults to the web\'s 40 and is overridable', () => {
+    const r = transform(PARALLEL, { target: 'swift' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain(
+      'layoutParallel(AXES, [[0.0, 30.0], [2.0, Double.nan], [Double.nan, 22.0]], PyreonChartRect(x: 30.0, y: 8.0, w: max(0.0, Double(pyreonGeo.size.width) - 30.0 * 2.0), h: max(0.0, 260.0 - 16.0)), nil)',
+    )
+    expect(r.code).toContain('renderParallel(layoutParallel(')
+    expect(r.code).toContain('hitParallelIndex(layoutParallel(')
+    const noGutter = transform(PARALLEL.replace(' gutter={30}', ''), { target: 'swift' })
+    expect(noGutter.code).toContain('PyreonChartRect(x: 40.0, y: 8.0, w: max(0.0, Double(pyreonGeo.size.width) - 40.0 * 2.0), h: max(0.0, 260.0 - 16.0))')
+  })
+  it('Kotlin: the same rows through listOf and Double.NaN', () => {
+    const r = transform(PARALLEL, { target: 'kotlin' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('listOf(listOf(0.0, 30.0), listOf(2.0, Double.NaN), listOf(Double.NaN, 22.0)), PyreonChartRect(30.0, 8.0, maxOf(0.0, pyreonW - 30.0 * 2.0), maxOf(0.0, 260.0 - 16.0)), null)')
+  })
+  it('a category cell needs an axes literal the adapter can read (a call is not one); rowColor is reported by name and the chart still lowers', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const byRef = transform(PARALLEL_AXES_CALL, { target })
+      expect(byRef.warnings).toEqual(['<ParallelChart rows>: a category value needs an `axes` literal (inline or a module const) with `categories` on native; emitting nothing.'])
+      expect(byRef.code).not.toContain('renderParallel(')
+      const colored = transform(PARALLEL_ROW_COLOR, { target })
+      expect(colored.warnings).toEqual(['<ParallelChart>: `rowColor` is not lowered on native; the chart renders without it.'])
+      expect(colored.code).toContain('renderParallel(')
+    }
+  })
+  it('OptionChart is the only host left without a lowering', () => {
+    expect(Object.keys(UNLOWERED_CHART_HOSTS)).toEqual(['OptionChart'])
+  })
+  it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine) accepts both hosts', () => {
+    for (const src of [CALENDAR, PARALLEL]) {
+      const r = validateSwiftWithStubs(transform(src, { target: 'swift' }).code)
+      expect(r.ok, r.error ?? '').toBe(true)
+    }
+  })
+  it.skipIf(!isSwiftUIAvailable())('swiftc against real SwiftUI + canvas + engine accepts both', () => {
+    for (const src of [CALENDAR, PARALLEL]) {
+      const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(ENGINE_SWIFT) + '\n' + transform(src, { target: 'swift' }).code)
+      expect(r.ok, r.error ?? '').toBe(true)
+    }
+  })
+  it.skipIf(!isKotlincAvailable())('kotlinc (stub bundle + real engine) accepts both', () => {
+    for (const src of [CALENDAR, PARALLEL]) {
+      const r = validateKotlin(transform(src, { target: 'kotlin' }).code)
+      expect(r.ok, r.error ?? '').toBe(true)
+    }
   })
 })

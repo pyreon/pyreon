@@ -19,6 +19,8 @@
 // BY NAME (`UNLOWERED_CHART_HOSTS`) rather than falling through to the generic
 // component emit, which would name a SwiftUI/Compose view that does not exist.
 
+import type { ExprIR } from './types'
+
 /** Per-target expression helpers the host specs build their draw list with. */
 export interface ChartHostTarget {
   /** `PyreonChartRect(x, y, w, h)` in the target's constructor syntax. */
@@ -31,6 +33,12 @@ export interface ChartHostTarget {
   min: (a: string, b: string) => string
   /** The absent-options literal (`nil` / `null`). */
   nil: string
+  /** The NaN literal (`Double.nan` / `Double.NaN`) — the engine's gap marker. */
+  nan: string
+  /** `[a, b]` / `listOf(a, b)`. */
+  list: (items: readonly string[]) => string
+  /** `Name(f: v, …)` / `Name(f = v, …)`. */
+  struct: (name: string, fields: readonly (readonly [string, string])[]) => string
   /** `PieOptions(innerRadius: <innerRatio>, showLabels: true, labelColor: "#ffffff", fontSize: 11.0)` — the web host's fixed pie options. */
   pieOptions: (a: ChartHostArgs) => string
   /** The web hosts' default ChartTheme literal. */
@@ -64,6 +72,122 @@ export interface ChartHostSpec {
   readonly render: (layout: string, a: ChartHostArgs, t: ChartHostTarget) => string
   /** Builds the index-hit expression for a tap at (x, y) — what `onSelectIndex` receives. */
   readonly hit: (layout: string, x: string, y: string, a: ChartHostArgs, t: ChartHostTarget) => string
+  /** Per-prop literal adapters for props whose web shape has no native form (see the adapters below). */
+  readonly adapt?: Readonly<Record<string, ChartHostAdapter>>
+  /** The `gutter` default when the web host's differs from Sankey's 80. */
+  readonly gutterDefault?: number
+  /** Props that exist on the web but are not lowered — warned BY NAME when present. */
+  readonly warnProps?: readonly string[]
+}
+
+/** Turns one data prop's IR (with every data prop's IR to hand) into an engine argument, or `'unsupported'` after warning. */
+export type ChartHostAdapter = (attrs: Readonly<Record<string, ExprIR>>, t: ChartHostTarget, warn: (msg: string) => void, resolve: (name: string) => ExprIR | undefined) => string | 'unsupported'
+
+// ---------------------------------------------------------------------------
+// Literal adapters. Two hosts take props with no native form — a RECORD
+// (`<CalendarChart values={{ '2026-01-05': 3 }}>`) and rows MIXING strings and
+// nulls (`<ParallelChart rows={[['4', 30], ['8', null]]}>`). Both are literal-
+// shaped in practice, so the adapter turns the literal IR into the engine's
+// own arguments (what `calendarValues` / `parallelRows` compute on the web at
+// runtime): `[CalendarValue(date:value:)]`, `[[Double]]` with a category
+// resolved to its index through the `axes` literal and every gap a NaN.
+// Anything else warns BY NAME and emits nothing.
+// ---------------------------------------------------------------------------
+
+function litString(e: ExprIR | undefined): string | undefined {
+  return e !== undefined && e.kind === 'literal' && typeof e.value === 'string' ? e.value : undefined
+}
+
+function litNumber(e: ExprIR | undefined): number | undefined {
+  return e !== undefined && e.kind === 'literal' && typeof e.value === 'number' ? e.value : undefined
+}
+
+function litNull(e: ExprIR): boolean {
+  return e.kind === 'literal' && e.value === null
+}
+
+/** The literal behind a prop: the expression itself, or a module const's initializer. */
+function literalOf(e: ExprIR | undefined, resolve: (name: string) => ExprIR | undefined): ExprIR | undefined {
+  if (e === undefined) return undefined
+  return e.kind === 'identifier' ? resolve(e.name) : e
+}
+
+/** `values={{ 'YYYY-MM-DD': n, … }}` → `[CalendarValue(date:value:)]`. */
+export const calendarValuesAdapter: ChartHostAdapter = (attrs, t, warn, resolve) => {
+  const values = literalOf(attrs['values'], resolve)
+  if (values === undefined || values.kind !== 'object' || (values.spreads !== undefined && values.spreads.length > 0)) {
+    warn("<CalendarChart values>: must be an inline `{ 'YYYY-MM-DD': n }` literal, or a module const holding one, on native (a record does not cross); emitting nothing.")
+    return 'unsupported'
+  }
+  const items: string[] = []
+  for (const f of values.fields) {
+    const n = litNumber(f.value)
+    if (n === undefined) {
+      warn(`<CalendarChart values>: the value for "${f.name}" must be a number literal on native; emitting nothing.`)
+      return 'unsupported'
+    }
+    items.push(t.struct('CalendarValue', [['date', JSON.stringify(f.name)], ['value', chartDouble(n)]]))
+  }
+  return t.list(items)
+}
+
+/** `rows={[[…], …]}` → `[[Double]]`, categories resolved through the `axes` literal, gaps as NaN. */
+export const parallelRowsAdapter: ChartHostAdapter = (attrs, t, warn, resolve) => {
+  const rows = literalOf(attrs['rows'], resolve)
+  const axes = literalOf(attrs['axes'], resolve)
+  if (rows === undefined || rows.kind !== 'array') {
+    warn('<ParallelChart rows>: must be an inline array literal, or a module const holding one, on native (mixed rows do not cross); emitting nothing.')
+    return 'unsupported'
+  }
+  // The categories of axis `a`, read from the axes literal: [] for a value
+  // axis (a string there is a gap, as on the web), undefined when unreadable.
+  const catsOf = (a: number): string[] | undefined => {
+    if (axes === undefined || axes.kind !== 'array') return undefined
+    const ax = axes.elements[a]
+    if (ax === undefined || ax.kind !== 'object') return undefined
+    if (litString(ax.fields.find((f) => f.name === 'type')?.value) !== 'category') return []
+    const cats = ax.fields.find((f) => f.name === 'categories')?.value
+    if (cats === undefined || cats.kind !== 'array') return undefined
+    const out: string[] = []
+    for (const c of cats.elements) {
+      const s = litString(c)
+      if (s === undefined) return undefined
+      out.push(s)
+    }
+    return out
+  }
+  const out: string[] = []
+  for (const row of rows.elements) {
+    if (row.kind !== 'array') {
+      warn('<ParallelChart rows>: every row must be an inline array literal on native; emitting nothing.')
+      return 'unsupported'
+    }
+    const cells: string[] = []
+    for (let a = 0; a < row.elements.length; a++) {
+      const cell = row.elements[a]!
+      const n = litNumber(cell)
+      if (n !== undefined) {
+        cells.push(chartDouble(n))
+      } else if (litNull(cell)) {
+        cells.push(t.nan)
+      } else {
+        const s = litString(cell)
+        if (s === undefined) {
+          warn('<ParallelChart rows>: cells must be number, string or null literals on native; emitting nothing.')
+          return 'unsupported'
+        }
+        const cats = catsOf(a)
+        if (cats === undefined) {
+          warn('<ParallelChart rows>: a category value needs an `axes` literal (inline or a module const) with `categories` on native; emitting nothing.')
+          return 'unsupported'
+        }
+        const idx = cats.indexOf(s)
+        cells.push(idx < 0 ? t.nan : chartDouble(idx))
+      }
+    }
+    out.push(t.list(cells))
+  }
+  return t.list(out)
 }
 
 const box00 = (a: ChartHostArgs, t: ChartHostTarget): string => t.rect('0.0', '0.0', a.W, a.H)
@@ -143,12 +267,30 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     render: (l, a) => `renderPolar(${l}, ${a.options})`,
     hit: (l, x, y) => `hitPolarIndex(${l}, ${x}, ${y})`,
   },
+  CalendarChart: {
+    data: ['start', 'end', 'values'],
+    options: 'calendar',
+    defaultHeight: 140,
+    layout: (a, t) => `layoutCalendar(${a.data[0]}, ${a.data[1]}, ${t.rect('4.0', '4.0', `${a.W} - 8.0`, `${a.H} - 8.0`)}, ${a.options})`,
+    render: (l, a) => `renderCalendar(${l}, ${a.data[2]}, ${a.options})`,
+    hit: (l, x, y) => `hitCalendarIndex(${l}, ${x}, ${y})`,
+    adapt: { values: calendarValuesAdapter },
+  },
+  ParallelChart: {
+    data: ['axes', 'rows'],
+    options: 'parallel',
+    defaultHeight: 300,
+    gutterDefault: 40,
+    layout: (a, t) => `layoutParallel(${a.data[0]}, ${a.data[1]}, ${t.rect(a.gutter, '8.0', t.max0(`${a.W} - ${a.gutter} * 2.0`), t.max0(`${a.H} - 16.0`))}, ${a.options})`,
+    render: (l, a) => `renderParallel(${l}, ${a.options})`,
+    hit: (l, x, y) => `hitParallelIndex(${l}, ${x}, ${y})`,
+    adapt: { rows: parallelRowsAdapter },
+    warnProps: ['rowColor'],
+  },
 }
 
 /** Plot hosts that exist on the web but have no native lowering yet, with the reason. */
 export const UNLOWERED_CHART_HOSTS: Readonly<Record<string, string>> = {
-  CalendarChart: 'its `values` prop is a record; natively pass a `CalendarValue[]` to `renderCalendar` yourself',
-  ParallelChart: 'its rows mix strings and nulls; natively pass numeric rows to `layoutParallel` yourself',
   OptionChart: 'the ECharts option facade is web-only',
 }
 

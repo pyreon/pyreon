@@ -612,6 +612,8 @@ let _fontMap: Record<string, string> = {}
  * — those fall through to the existing "needs static" emit path.
  */
 let _constStringMap: Map<string, string | number | boolean> = new Map()
+/** Module-level const name → its initializer IR (the chart-host literal adapters resolve a typed const through it). */
+let _moduleConstExprs: Map<string, ExprIR> = new Map()
 /**
  * Per-COMPONENT const-string map — component-body `const` literal bindings
  * (+ transitive aliases) so `readStaticAttr` resolves `<Image src={logo}>`
@@ -967,6 +969,10 @@ export function emitSwift(
     if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
       _constStringMap.set(md.name, v)
     }
+  }
+  _moduleConstExprs = new Map()
+  for (const md of moduleDecls) {
+    if (!md.mutable) _moduleConstExprs.set(md.name, md.initial)
   }
   _enumNames = new Set(enums.map((e) => e.name))
   _structFieldsToName = new Map()
@@ -11072,6 +11078,9 @@ const SWIFT_CHART_TARGET: ChartHostTarget = {
   max0: (e) => `max(0.0, ${e})`,
   min: (a, b) => `min(${a}, ${b})`,
   nil: 'nil',
+  nan: 'Double.nan',
+  list: (items) => `[${items.join(', ')}]`,
+  struct: (name, fields) => `${name}(${fields.map(([k, v]) => `${k}: ${v}`).join(', ')})`,
   pieOptions: (a) => `PieOptions(innerRadius: ${a.innerRatio}, showLabels: true, labelColor: "#ffffff", fontSize: 11.0)`,
   theme: () => `ChartTheme(axis: ${JSON.stringify(CHART_THEME_DEFAULT.axis)}, grid: ${JSON.stringify(CHART_THEME_DEFAULT.grid)}, label: ${JSON.stringify(CHART_THEME_DEFAULT.label)}, fontSize: ${CHART_THEME_DEFAULT.fontSize})`,
 }
@@ -11129,14 +11138,29 @@ function emitSwiftChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     return 'EmptyView()'
   }
   const spec = CHART_HOSTS[tag]!
-  const data: string[] = []
+  for (const p of spec.warnProps ?? []) {
+    if (chartAttrExpr(e, p) !== undefined) _emitWarnings.push(`<${tag}>: \`${p}\` is not lowered on native; the chart renders without it.`)
+  }
+  const attrs: Record<string, ExprIR> = {}
   for (const name of spec.data) {
     const v = chartAttrExpr(e, name)
     if (v === undefined) {
       _emitWarnings.push(`<${tag}>: needs a \`${name}\` attribute on native; emitting an EmptyView().`)
       return 'EmptyView()'
     }
-    data.push(emitSwiftExpr(v, indent))
+    attrs[name] = v
+  }
+  const data: string[] = []
+  for (const name of spec.data) {
+    // A prop whose web shape has no native form goes through its literal adapter.
+    const adapter = spec.adapt?.[name]
+    if (adapter !== undefined) {
+      const adapted = adapter(attrs, SWIFT_CHART_TARGET, (m) => _emitWarnings.push(m), (n) => _moduleConstExprs.get(n))
+      if (adapted === 'unsupported') return 'EmptyView()'
+      data.push(adapted)
+    } else {
+      data.push(emitSwiftExpr(attrs[name]!, indent))
+    }
   }
   const optV = chartAttrExpr(e, spec.options)
   const options = optV === undefined ? 'nil' : emitSwiftExpr(optV, indent)
@@ -11148,7 +11172,7 @@ function emitSwiftChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     options,
     W,
     H,
-    gutter: swiftChartDouble(e, 'gutter', 80, indent),
+    gutter: swiftChartDouble(e, 'gutter', spec.gutterDefault ?? 80, indent),
     innerRatio: swiftChartDouble(e, 'innerRatio', 0.2, indent),
   }
   const layout = spec.layout(args, SWIFT_CHART_TARGET)
