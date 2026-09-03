@@ -61,6 +61,26 @@ const CORPUS: { name: string; option: EChartsOption; expectClean: boolean }[] = 
     series: [{ type: 'heatmap', data: [[0, 0, 5], [1, 1, 9]] }] } },
   { name: 'funnel', expectClean: true, option: {
     series: [{ type: 'funnel', sort: 'descending', minSize: '10%', data: [{ value: 60, name: 'Visit' }, { value: 40, name: 'Inquiry' }, { value: 20, name: 'Order' }] }] } },
+  { name: 'pictorialBar (repeated circles) + effectScatter', expectClean: true, option: {
+    xAxis: { data: ['a', 'b', 'c'] }, yAxis: {},
+    series: [{ type: 'pictorialBar', symbol: 'circle', symbolRepeat: true, data: [3, 6, 9] }, { type: 'effectScatter', symbolSize: 10, data: [2, 5, 7] }] } },
+  { name: 'derived dataset (filter + sort) bars', expectClean: true, option: {
+    dataset: [
+      { source: [['name', 'score', 'team'], ['a', 5, 'x'], ['b', 9, 'y'], ['c', 1, 'x'], ['d', 7, 'y']] },
+      { transform: [{ type: 'filter', config: { dimension: 'team', eq: 'y' } }, { type: 'sort', config: { dimension: 'score', order: 'desc' } }] },
+    ],
+    xAxis: { type: 'category' }, yAxis: {}, series: [{ type: 'bar', datasetIndex: 1 }] } },
+  { name: 'heatmap + piecewise visualMap', expectClean: true, option: {
+    visualMap: { type: 'piecewise', splitNumber: 3, min: 0, max: 9, orient: 'horizontal', left: 'center', bottom: 0 },
+    xAxis: { data: ['a', 'b'] }, yAxis: { data: ['r', 's'] },
+    series: [{ type: 'heatmap', data: [[0, 0, 1], [1, 0, 5], [0, 1, 9], [1, 1, 3]] }] } },
+  { name: 'dataset-driven bars + graphic watermark', expectClean: true, option: {
+    dataset: { source: [['product', '2023', '2024'], ['Milk', 43, 85], ['Cheese', 83, 73]] },
+    graphic: [{ type: 'text', right: 8, bottom: 4, style: { text: 'demo', fontSize: 10 } }],
+    xAxis: { type: 'category' }, yAxis: {}, series: [{ type: 'bar' }, { type: 'bar' }] } },
+  { name: 'themeRiver', expectClean: true, option: {
+    singleAxis: { type: 'time' },
+    series: [{ type: 'themeRiver', data: [['2024-01-01', 3, 'x'], ['2024-01-02', 5, 'x'], ['2024-01-01', 2, 'y'], ['2024-01-02', 1, 'y']] }] } },
   { name: 'polar bar + line', expectClean: true, option: {
     angleAxis: { type: 'category', data: ['Mon', 'Tue', 'Wed'] }, radiusAxis: {},
     series: [{ type: 'bar', coordinateSystem: 'polar', data: [1, 2, 3] }, { type: 'line', coordinateSystem: 'polar', data: [2, 2, 2] }] } },
@@ -109,8 +129,8 @@ describe('ECharts option facade — conformance corpus', () => {
       const c = planOption(f.option).compiled
       return c.supported && c.warnings.length === 0
     }).length
-    // 24 of 26 today. Raise this number as families land; never lower it.
-    expect(clean).toBeGreaterThanOrEqual(24)
+    // 29 of 31 today. Raise this number as families land; never lower it.
+    expect(clean).toBeGreaterThanOrEqual(29)
   })
 })
 
@@ -146,11 +166,11 @@ describe('ECharts option facade — mappings', () => {
 
   it('never drops silently: unknown top-level keys, series options and types are all NAMED', () => {
     const c = compileOption({
-      visualMap: {}, xAxis: { data: ['a'] }, yAxis: {},
+      brush: {}, xAxis: { data: ['a'] }, yAxis: {},
       series: [{ type: 'bar', data: [1], barWidth: 20 }, { type: 'funnel', data: [] }],
     })
     const codes = c.warnings.map((w) => `${w.code}@${w.path}`)
-    expect(codes).toContain('option-key-unsupported@visualMap')
+    expect(codes).toContain('option-key-unsupported@brush')
     expect(codes).toContain('series-option-unsupported@series[0].barWidth')
     expect(codes).toContain('series-type-unsupported@series[1].type')
     expect(c.supported).toBe(false)

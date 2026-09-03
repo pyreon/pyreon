@@ -215,7 +215,10 @@ public struct Series {
   public var showValues: Bool? = nil
   public var radii: [Double]? = nil
   public var axis: String? = nil
-  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, showValues: Bool? = nil, radii: [Double]? = nil, axis: String? = nil) {
+  public var effect: Bool? = nil
+  public var symbol: String? = nil
+  public var symbolRepeat: Bool? = nil
+  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, showValues: Bool? = nil, radii: [Double]? = nil, axis: String? = nil, effect: Bool? = nil, symbol: String? = nil, symbolRepeat: Bool? = nil) {
     self.kind = kind
     self.values = values
     self.color = color
@@ -226,6 +229,9 @@ public struct Series {
     self.showValues = showValues
     self.radii = radii
     self.axis = axis
+    self.effect = effect
+    self.symbol = symbol
+    self.symbolRepeat = symbolRepeat
   }
 }
 
@@ -1376,7 +1382,29 @@ public func renderChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double
         }
         let rects = layoutBarsH(s.values, plot, yDomain, 0.25)
         for r in rects {
-          out.append(PyreonDrawCmd(kind: "rect", rect: growRectH(r), fill: s.color))
+          let grown = growRectH(r)
+          if s.symbol == nil {
+            out.append(PyreonDrawCmd(kind: "rect", rect: grown, fill: s.color))
+          } else {
+            if s.symbolRepeat == true {
+              let unit = grown.h
+              var count = 0
+              var acc = unit
+              for k in 0..<400 {
+                if unit > 0.0 && acc <= grown.w + 0.001 {
+                  count = k + 1
+                }
+                acc = acc + unit
+              }
+              var kf = 0.0
+              for k in 0..<count {
+                out.append(symbolCommand(PyreonChartRect(x: grown.x + unit * kf, y: grown.y, w: unit, h: unit), (s.symbol ?? "rect"), s.color))
+                kf = kf + 1.0
+              }
+            } else {
+              out.append(symbolCommand(grown, (s.symbol ?? "rect"), s.color))
+            }
+          }
         }
         if s.showValues == true && progress >= 1.0 {
           let fmt = (spec.yFormat ?? plain)
@@ -1391,7 +1419,31 @@ public func renderChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double
       if s.kind == "bars" {
         let rects = layoutBars(s.values, plot, sDomain, 0.25)
         for r in rects {
-          out.append(PyreonDrawCmd(kind: "rect", rect: growRect(r, sDomain), fill: s.color))
+          let grown = growRect(r, sDomain)
+          if s.symbol == nil {
+            out.append(PyreonDrawCmd(kind: "rect", rect: grown, fill: s.color))
+          } else {
+            if s.symbolRepeat == true {
+              let unit = grown.w
+              let length = grown.h
+              var count = 0
+              var acc = unit
+              for k in 0..<400 {
+                if unit > 0.0 && acc <= length + 0.001 {
+                  count = k + 1
+                }
+                acc = acc + unit
+              }
+              var kf = 0.0
+              for k in 0..<count {
+                let cell = PyreonChartRect(x: grown.x, y: grown.y + grown.h - unit * (kf + 1.0), w: unit, h: unit)
+                out.append(symbolCommand(cell, (s.symbol ?? "rect"), s.color))
+                kf = kf + 1.0
+              }
+            } else {
+              out.append(symbolCommand(grown, (s.symbol ?? "rect"), s.color))
+            }
+          }
         }
         if s.showValues == true && progress >= 1.0 {
           let fmt = (spec.yFormat ?? plain)
@@ -1431,6 +1483,10 @@ public func renderChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double
                 continue
               }
               let fullR = radii.count > 0 ? (radii[i] ?? s.radius) : s.radius
+              if s.effect == true {
+                out.append(PyreonDrawCmd(kind: "circle", fill: withAlpha(s.color, 0.12), center: pts[i], radius: fullR * 2.6 * progress))
+                out.append(PyreonDrawCmd(kind: "circle", fill: withAlpha(s.color, 0.25), center: pts[i], radius: fullR * 1.7 * progress))
+              }
               out.append(PyreonDrawCmd(kind: "circle", fill: s.color, center: pts[i], radius: fullR * progress))
             }
           }
@@ -1557,6 +1613,20 @@ public func splitRuns(_ values: [Double], _ place: ([Double]) -> [PyreonChartPt]
       runs.append(run)
     }
     return runs
+  }
+
+public func symbolCommand(_ cell: PyreonChartRect, _ symbol: String, _ fill: String) -> PyreonDrawCmd {
+    if symbol == "circle" {
+      let r = Double((cell.w < cell.h ? cell.w : cell.h)) / 2.0
+      return PyreonDrawCmd(kind: "circle", fill: fill, center: PyreonChartPt(x: cell.x + Double(cell.w) / 2.0, y: cell.y + Double(cell.h) / 2.0), radius: r)
+    }
+    if symbol == "diamond" {
+      return PyreonDrawCmd(kind: "polygon", fill: fill, points: [PyreonChartPt(x: cell.x + Double(cell.w) / 2.0, y: cell.y), PyreonChartPt(x: cell.x + cell.w, y: cell.y + Double(cell.h) / 2.0), PyreonChartPt(x: cell.x + Double(cell.w) / 2.0, y: cell.y + cell.h), PyreonChartPt(x: cell.x, y: cell.y + Double(cell.h) / 2.0)])
+    }
+    if symbol == "triangle" {
+      return PyreonDrawCmd(kind: "polygon", fill: fill, points: [PyreonChartPt(x: cell.x + Double(cell.w) / 2.0, y: cell.y), PyreonChartPt(x: cell.x + cell.w, y: cell.y + cell.h), PyreonChartPt(x: cell.x, y: cell.y + cell.h)])
+    }
+    return PyreonDrawCmd(kind: "rect", rect: cell, fill: fill)
   }
 
 public func barsFor(_ spec: ChartSpec, _ index: Int, _ measure: (String, Double) -> Double) -> [PyreonChartRect] {

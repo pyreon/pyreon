@@ -14,6 +14,8 @@
 // server and in a test the same way the engine does.
 
 import { defaultTheme, renderChart } from './render'
+import { appendGraphicLayer, graphicCommands, resolveDataset, svgSize } from './option-layer'
+import { visualMapCommands } from './visual-map'
 import type { Annotation, ChartSpec, PointMarker, Series } from './render'
 import { smooth, step } from './curve'
 import type { Formatter } from './format'
@@ -65,12 +67,13 @@ export interface CompileOptions {
 
 const KNOWN_TOP = new Set([
   'series', 'xAxis', 'yAxis', 'title', 'legend', 'tooltip', 'color', 'grid',
-  'animation', 'backgroundColor', 'textStyle',
+  'animation', 'backgroundColor', 'textStyle', 'dataset', 'graphic', 'visualMap',
 ])
 const KNOWN_SERIES = new Set([
   'type', 'name', 'data', 'stack', 'smooth', 'step', 'areaStyle', 'itemStyle',
   'lineStyle', 'symbolSize', 'label', 'yAxisIndex', 'markLine', 'markPoint',
   'color', 'showSymbol', 'symbol', 'emphasis', 'z', 'zlevel', 'silent',
+  'symbolRepeat', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'rippleEffect', 'showEffectOn',
 ])
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
@@ -85,13 +88,29 @@ const num = (v: unknown): number | null => {
 }
 const first = <T,>(v: T | T[] | undefined): T | undefined => (Array.isArray(v) ? v[0] : v)
 
+/** `symbol` + `symbolRepeat` for a pictorialBar series; a path/image symbol falls back to a rect with a warning. */
+function pictorialFields(s: Record<string, unknown>, warn: (code: OptionWarning['code'], path: string, message: string) => void, path: string): { symbol: Series['symbol']; symbolRepeat: boolean } {
+  const raw = typeof s['symbol'] === 'string' ? (s['symbol'] as string) : 'rect'
+  let symbol: Series['symbol'] = 'rect'
+  if (raw === 'circle') symbol = 'circle'
+  else if (raw === 'diamond') symbol = 'diamond'
+  else if (raw === 'triangle') symbol = 'triangle'
+  else if (raw !== 'rect' && raw !== 'roundRect') warn('mark-shape-unsupported', `${path}.symbol`, `pictorialBar symbol "${raw}" is not supported (rect, roundRect, circle, diamond, triangle are); drawn as a rect.`)
+  const rep = s['symbolRepeat']
+  return { symbol, symbolRepeat: rep === true || rep === 'fixed' || (typeof rep === 'number' && rep > 0) }
+}
+
 /** Compile an ECharts-shaped option onto the engine. Pure. */
-export function compileOption(option: EChartsOption, opts: CompileOptions = {}): CompiledOption {
+export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {}): CompiledOption {
   const warnings: OptionWarning[] = []
   const warn = (code: OptionWarning['code'], path: string, message: string): void => {
     warnings.push({ code, path, message })
   }
   let supported = true
+  // The dataset pre-pass materialises series data before anything reads it.
+  const resolved = resolveDataset(rawOption)
+  for (const w of resolved.warnings) warnings.push(w)
+  const option = resolved.option as EChartsOption
 
   for (const key of Object.keys(option)) {
     if (!KNOWN_TOP.has(key)) {
@@ -158,7 +177,8 @@ export function compileOption(option: EChartsOption, opts: CompileOptions = {}):
     let kind: Series['kind']
     if (type === 'bar') kind = s['stack'] !== undefined ? 'stacked' : barCount > 1 ? 'grouped' : 'bars'
     else if (type === 'line') kind = isObj(s['areaStyle']) || s['areaStyle'] === true ? 'area' : 'line'
-    else if (type === 'scatter') kind = 'points'
+    else if (type === 'scatter' || type === 'effectScatter') kind = 'points'
+    else if (type === 'pictorialBar') kind = s['stack'] !== undefined ? 'stacked' : barCount > 1 ? 'grouped' : 'bars'
     else {
       warn('series-type-unsupported', `${path}.type`, `Series type "${type}" is not mapped by this facade yet (cartesian family only).`)
       supported = false
@@ -226,6 +246,8 @@ export function compileOption(option: EChartsOption, opts: CompileOptions = {}):
       showValues: label['show'] === true,
       radii: undefined,
       axis: yAxisIndex === 1 ? 'right' : undefined,
+      ...(type === 'effectScatter' ? { effect: true } : {}),
+      ...(type === 'pictorialBar' ? pictorialFields(s, warn, path) : {}),
     }
     series.push(entry)
     const seriesIndex = series.length - 1
@@ -369,7 +391,14 @@ export function planOption(option: EChartsOption, opts: CompileOptions = {}): Op
  */
 export function optionToSvg(option: EChartsOption, opts: OptionToSvgOptions = {}): string {
   const fam = compileFamily(option)
-  if (fam !== null) return familyToSvg(fam.plan, { width: opts.width, height: opts.height })
+  if (fam !== null) {
+    const svg = familyToSvg(fam.plan, { width: opts.width, height: opts.height })
+    const size = svgSize(svg)
+    if (size === null) return svg
+    // Overlays above the chart: the visualMap strip, then free-form graphics.
+    const overlay = [...visualMapCommands(option, size.width, size.height).cmds, ...graphicCommands(option, size.width, size.height).cmds]
+    return appendGraphicLayer(svg, overlay, size.width, size.height)
+  }
   const compiled = compileOption(option, opts)
   const measure = opts.measure ?? measureApprox()
   const width = compiled.spec.width
@@ -393,6 +422,8 @@ export function optionToSvg(option: EChartsOption, opts: OptionToSvgOptions = {}
   }
   const chart = renderChart({ ...compiled.spec, height: Math.max(0.0, height - top) }, measure)
   for (const c of chart) cmds.push(top === 0.0 ? c : shift(c, top))
+  for (const c of visualMapCommands(option, width, height).cmds) cmds.push(c)
+  for (const c of graphicCommands(option, width, height).cmds) cmds.push(c)
   return renderSvg(cmds, width, height, {
     ...(compiled.title !== null ? { title: compiled.title.text } : {}),
   })

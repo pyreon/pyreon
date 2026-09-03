@@ -39,7 +39,7 @@ data class LayoutConfig(var width: Double, var height: Double, var xDomain: Doma
 
 data class StackSegment(var rect: PyreonChartRect, var seriesIndex: Int, var datumIndex: Int, var value: Double)
 
-data class Series(var kind: String, var values: List<Double>, var color: String, var width: Double, var radius: Double, var label: String, var curve: ((List<PyreonChartPt>) -> List<PyreonChartPt>)? = null, var showValues: Boolean? = null, var radii: List<Double>? = null, var axis: String? = null)
+data class Series(var kind: String, var values: List<Double>, var color: String, var width: Double, var radius: Double, var label: String, var curve: ((List<PyreonChartPt>) -> List<PyreonChartPt>)? = null, var showValues: Boolean? = null, var radii: List<Double>? = null, var axis: String? = null, var effect: Boolean? = null, var symbol: String? = null, var symbolRepeat: Boolean? = null)
 
 data class Annotation(var y: Double? = null, var x: Double? = null, var yFrom: Double? = null, var yTo: Double? = null, var label: String? = null, var color: String? = null)
 
@@ -1051,7 +1051,29 @@ fun renderChart(spec: ChartSpec, measure: (String, Double) -> Double): List<Pyre
         }
         val rects = layoutBarsH(s.values, plot, yDomain, 0.25)
         for (r in rects) {
-          out.add(PyreonDrawCmd(kind = "rect", rect = growRectH(r), fill = s.color))
+          val grown = growRectH(r)
+          if (s.symbol == null) {
+            out.add(PyreonDrawCmd(kind = "rect", rect = grown, fill = s.color))
+          } else {
+            if (s.symbolRepeat == true) {
+              val unit = grown.h
+              var count = 0
+              var acc = unit
+              for (k in 0 until 400) {
+                if (unit > 0.0 && acc <= grown.w + 0.001) {
+                  count = k + 1
+                }
+                acc = acc + unit
+              }
+              var kf = 0.0
+              for (k in 0 until count) {
+                out.add(symbolCommand(PyreonChartRect(x = grown.x + unit * kf, y = grown.y, w = unit, h = unit), (s.symbol ?: "rect"), s.color))
+                kf = kf + 1.0
+              }
+            } else {
+              out.add(symbolCommand(grown, (s.symbol ?: "rect"), s.color))
+            }
+          }
         }
         if (s.showValues == true && progress >= 1.0) {
           val fmt = (spec.yFormat ?: ::plain)
@@ -1066,7 +1088,31 @@ fun renderChart(spec: ChartSpec, measure: (String, Double) -> Double): List<Pyre
       if (s.kind == "bars") {
         val rects = layoutBars(s.values, plot, sDomain, 0.25)
         for (r in rects) {
-          out.add(PyreonDrawCmd(kind = "rect", rect = growRect(r, sDomain), fill = s.color))
+          val grown = growRect(r, sDomain)
+          if (s.symbol == null) {
+            out.add(PyreonDrawCmd(kind = "rect", rect = grown, fill = s.color))
+          } else {
+            if (s.symbolRepeat == true) {
+              val unit = grown.w
+              val length = grown.h
+              var count = 0
+              var acc = unit
+              for (k in 0 until 400) {
+                if (unit > 0.0 && acc <= length + 0.001) {
+                  count = k + 1
+                }
+                acc = acc + unit
+              }
+              var kf = 0.0
+              for (k in 0 until count) {
+                val cell = PyreonChartRect(x = grown.x, y = grown.y + grown.h - unit * (kf + 1.0), w = unit, h = unit)
+                out.add(symbolCommand(cell, (s.symbol ?: "rect"), s.color))
+                kf = kf + 1.0
+              }
+            } else {
+              out.add(symbolCommand(grown, (s.symbol ?: "rect"), s.color))
+            }
+          }
         }
         if (s.showValues == true && progress >= 1.0) {
           val fmt = (spec.yFormat ?: ::plain)
@@ -1106,6 +1152,10 @@ fun renderChart(spec: ChartSpec, measure: (String, Double) -> Double): List<Pyre
                 continue
               }
               val fullR = if (radii.length > 0) (radii[i] ?: s.radius) else s.radius
+              if (s.effect == true) {
+                out.add(PyreonDrawCmd(kind = "circle", fill = withAlpha(s.color, 0.12), center = pts[i], radius = fullR * 2.6 * progress))
+                out.add(PyreonDrawCmd(kind = "circle", fill = withAlpha(s.color, 0.25), center = pts[i], radius = fullR * 1.7 * progress))
+              }
               out.add(PyreonDrawCmd(kind = "circle", fill = s.color, center = pts[i], radius = fullR * progress))
             }
           }
@@ -1232,6 +1282,20 @@ fun splitRuns(values: List<Double>, place: (List<Double>) -> List<PyreonChartPt>
       runs.add(run)
     }
     return runs
+  }
+
+fun symbolCommand(cell: PyreonChartRect, symbol: String, fill: String): PyreonDrawCmd {
+    if (symbol == "circle") {
+      val r = ((if (cell.w < cell.h) cell.w else cell.h)).toDouble() / (2.0).toDouble()
+      return PyreonDrawCmd(kind = "circle", fill = fill, center = PyreonChartPt(x = cell.x + (cell.w).toDouble() / (2.0).toDouble(), y = cell.y + (cell.h).toDouble() / (2.0).toDouble()), radius = r)
+    }
+    if (symbol == "diamond") {
+      return PyreonDrawCmd(kind = "polygon", fill = fill, points = listOf(PyreonChartPt(x = cell.x + (cell.w).toDouble() / (2.0).toDouble(), y = cell.y), PyreonChartPt(x = cell.x + cell.w, y = cell.y + (cell.h).toDouble() / (2.0).toDouble()), PyreonChartPt(x = cell.x + (cell.w).toDouble() / (2.0).toDouble(), y = cell.y + cell.h), PyreonChartPt(x = cell.x, y = cell.y + (cell.h).toDouble() / (2.0).toDouble())))
+    }
+    if (symbol == "triangle") {
+      return PyreonDrawCmd(kind = "polygon", fill = fill, points = listOf(PyreonChartPt(x = cell.x + (cell.w).toDouble() / (2.0).toDouble(), y = cell.y), PyreonChartPt(x = cell.x + cell.w, y = cell.y + cell.h), PyreonChartPt(x = cell.x, y = cell.y + cell.h)))
+    }
+    return PyreonDrawCmd(kind = "rect", rect = cell, fill = fill)
   }
 
 fun barsFor(spec: ChartSpec, index: Int, measure: (String, Double) -> Double): List<PyreonChartRect> {
