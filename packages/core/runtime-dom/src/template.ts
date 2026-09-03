@@ -1184,6 +1184,73 @@ const SLOT_NOOP = (): void => {}
 /** The live `<!--$-->` opening an SSR-emitted accessor range. */
 const isRangeOpen = (n: Node): boolean => n.nodeType === 8 && (n as Comment).data === '$'
 
+/**
+ * Resolve the text node a compiled MIXED-CONTENT text slot binds into.
+ *
+ * The emit for `<p>Hello {n()}</p>` bakes a `<!>` placeholder and used to
+ * inline `createTextNode("") + replaceChild` against it. That is right for a
+ * CLONE and wrong for an ADOPTED container, where the placeholder ref resolves
+ * to the live `<!--$-->` opening the range that already holds this slot's
+ * server-rendered text. Replacing the OPEN MARKER left the server's own text
+ * standing beside the fresh node, so the value rendered TWICE — `Count: 7`
+ * hydrated to `Count: 77`.
+ *
+ * `_mountSlot` has been marker-aware for element slots since the compiled path
+ * became a consumer of the SSR range; this is the same discrimination for the
+ * text slot, which is why the two now read alike:
+ *
+ *   - clone (no adoption)   -> the template's inert `<!>`, an EMPTY comment
+ *   - adopted, marked range -> the live `<!--$-->`, handled here
+ *
+ * Adopting the server's text node rather than rebuilding it is the point: it
+ * keeps the node identity hydration exists to preserve, and it is what lets an
+ * element carrying a trailing interpolation stay adopted instead of being
+ * refused by the verifier as an ambiguous shape.
+ */
+export function _textSlot(parent: Node, placeholder: Node): Text {
+  if (isRangeOpen(placeholder)) {
+    // The shape SSR emits for a reactive text: exactly one text node between
+    // the markers. Adopt it and drop both markers, leaving the DOM identical
+    // to what a fresh client mount would have produced.
+    const first = placeholder.nextSibling
+    if (first !== null && first.nodeType === 3) {
+      const close = first.nextSibling
+      if (close !== null && close.nodeType === 8 && (close as Comment).data === '/$') {
+        parent.removeChild(placeholder)
+        parent.removeChild(close)
+        return first as Text
+      }
+    }
+    // Any other range shape — empty (the accessor rendered ''), or content a
+    // polymorphic binding will replace wholesale. Clear the whole range and
+    // put a fresh node where it was: correct, simply not adopted. Depth-counted
+    // so a nested range inside this one cannot end the walk early.
+    const fresh = document.createTextNode('')
+    parent.insertBefore(fresh, placeholder)
+    let depth = 0
+    let n: ChildNode | null = placeholder as ChildNode
+    while (n !== null) {
+      const next: ChildNode | null = n.nextSibling
+      let done = false
+      if (n.nodeType === 8) {
+        const d = (n as Comment).data
+        if (d === '$') depth++
+        else if (d === '/$') {
+          depth--
+          if (depth === 0) done = true
+        }
+      }
+      parent.removeChild(n)
+      if (done) break
+      n = next
+    }
+    return fresh
+  }
+  const t = document.createTextNode('')
+  parent.replaceChild(t, placeholder)
+  return t
+}
+
 /** The template's own inert `<!>` — an EMPTY comment, which is what a cloned
  * (non-adopted) template hands `_mountSlot`. `null` is not one: an adopted
  * sole slot whose SSR content was empty passes `null`. */

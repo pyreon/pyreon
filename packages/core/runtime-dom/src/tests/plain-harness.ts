@@ -12,7 +12,7 @@ import { transformJSX } from '@pyreon/compiler'
 import * as JsxRuntime from '@pyreon/core/jsx-runtime'
 import { Fragment, h, _rp, cx } from '@pyreon/core'
 import { _bind, computed, createStore, effect, signal } from '@pyreon/reactivity'
-import { _tpl, _bindText, _bindDirect, _setChild, _setChildAt } from '../template'
+import { _tpl, _bindText, _bindDirect, _setChild, _setChildAt, _textSlot } from '../template'
 import {
   _applyProps,
   _setAttr,
@@ -27,6 +27,7 @@ export const RUNTIME_DEPS = {
   _tpl,
   _bind,
   _bindText,
+  _textSlot,
   _bindDirect,
   _setChild,
   _setChildAt,
