@@ -6330,5 +6330,38 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
       }
     ],
     "external": true
+  },
+  {
+    "name": "CandlestickFrame",
+    "fields": [
+      {
+        "name": "candles",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "Ohlc",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "domain",
+        "type": {
+          "kind": "typeRef",
+          "name": "Domain",
+          "args": []
+        }
+      },
+      {
+        "name": "layout",
+        "type": {
+          "kind": "typeRef",
+          "name": "PlotLayout",
+          "args": []
+        }
+      }
+    ],
+    "external": true
   }
 ]

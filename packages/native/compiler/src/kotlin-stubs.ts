@@ -2043,4 +2043,5 @@ export const KOTLIN_CHART_VIEW_STUBS = `
 @Composable
 @Suppress("UNUSED_PARAMETER")
 fun PyreonChartCanvas(cmds: List<PyreonDrawCmd>, modifier: Modifier = Modifier) {}
+fun pyreonChartMeasure(text: String, size: Double): Double = text.length * size * 0.6
 `

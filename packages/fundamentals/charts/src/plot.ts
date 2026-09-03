@@ -15,6 +15,8 @@ export { CandlestickChart } from './engine/CandlestickChart'
 export type { CandlestickChartProps } from './engine/CandlestickChart'
 export { hitCandle, ohlcExtent, renderCandles } from './engine/candlestick'
 export type { CandleOptions, Ohlc } from './engine/candlestick'
+export { candlestickFrame, hitCandlestickChart, renderCandlestickChart } from './engine/candlestick-chart'
+export type { CandlestickFrame } from './engine/candlestick-chart'
 export { HeatmapChart } from './engine/HeatmapChart'
 export type { HeatmapChartProps } from './engine/HeatmapChart'
 
@@ -22,6 +24,7 @@ export type { HeatmapChartProps } from './engine/HeatmapChart'
 export { buildHeatGrid, HEAT_RAMP, hitHeatCell, rampColor, renderHeat } from './engine/heat'
 export { colorRamp } from './engine/heat-ramp'
 export type { HeatCell, HeatGrid, HeatmapOptions } from './engine/heat'
+export { heatGridFrom, heatPlotFor, hitHeatChart, renderHeatChart } from './engine/heat-chart'
 export type { GaugeChartProps, PieChartProps } from './engine/PieChart'
 
 // Marks

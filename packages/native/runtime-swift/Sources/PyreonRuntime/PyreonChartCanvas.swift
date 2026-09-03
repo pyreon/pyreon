@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 // The chart draw-list contract. The RUNTIME owns these types; the generated
 // PyreonChartEngine geometry (gen-native-chart-engine, follow-up) references
@@ -80,6 +83,25 @@ public struct PyreonDrawCmd: Codable, Equatable {
         self.baseline = baseline
     }
 }
+
+/// Text width in engine units (points) — the MeasureText the layout
+/// functions take, so a frame laid out natively sizes its gutters from the
+/// real glyphs exactly as the web canvas does. Outside UIKit (the macOS
+/// typecheck gate) an average-glyph estimate stands in.
+public func pyreonChartMeasure(_ text: String, _ size: Double) -> Double {
+    #if canImport(UIKit)
+    let attrs: [NSAttributedString.Key: Any] = [.font: UIFont.systemFont(ofSize: CGFloat(size))]
+    return Double((text as NSString).size(withAttributes: attrs).width)
+    #else
+    return Double(text.count) * size * 0.6
+    #endif
+}
+
+/// Int→Double coercion for accessor-mapped fields. Two overloads where
+/// Double(_:) has twenty: four such coercions in one struct init otherwise
+/// send swiftc past its type-check budget.
+public func pyreonChartDouble(_ v: Double) -> Double { v }
+public func pyreonChartDouble(_ v: Int) -> Double { Double(v) }
 
 /// Parse the engine's color strings — `#rgb`, `#rrggbb`, `rgb(r, g, b)` and
 /// `rgba(r, g, b, a)` (what `withAlpha` and the ramps emit). An unknown

@@ -63,6 +63,8 @@ export const ENGINE_FILES = [
   'calendar',
   'gantt',
   'parallel',
+  'candlestick-chart',
+  'heat-chart',
 ] as const
 
 const RENAMES: ReadonlyArray<readonly [string, string]> = [

@@ -4,17 +4,15 @@ import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
-import { hitCandle, ohlcExtent, renderCandles } from './candlestick'
+import { hitCandle, ohlcExtent } from './candlestick'
+import { candlestickFrame, renderCandlestickChart } from './candlestick-chart'
 import type { CandleOptions, Ohlc } from './candlestick'
-import { computeLayout } from './layout'
 import { defaultTheme } from './render'
 import type { ChartTheme } from './render'
-import { niceDomain } from './scale'
 import { placeTooltip } from './tooltip'
 import { plain } from './format'
 import type { Formatter } from './format'
-import type { PlotLayout } from './layout'
-import type { Double, DrawCmd } from './types'
+import type { Double, MeasureText } from './types'
 
 const FONT = 'system-ui, sans-serif'
 
@@ -56,39 +54,11 @@ export function CandlestickChart<T>(props: CandlestickChartProps<T>): VNode {
     return props.width ?? ((box?.clientWidth ?? 0) > 0 ? box!.clientWidth : 300)
   }
 
-  /**
-   * Candles + layout for a given size — shared by the draw and both pointer
-   * handlers, so a hit test can never disagree with what was painted.
-   */
-  const frameFor = (
-    rows: T[],
-    w: Double,
-    hgt: Double,
-    fontSize: Double,
-    measure: (text: string, size: Double) => Double,
-  ): { candles: Ohlc[]; domain: { min: Double; max: Double }; l: PlotLayout } => {
-    const candles = toCandles(rows)
-    // The price domain is niced so the axis lands on readable ticks; the
-    // extent alone puts the top tick at e.g. 197.3.
-    const domain = niceDomain(ohlcExtent(candles), 5.0)
-    const l = computeLayout(
-      {
-        width: w,
-        height: hgt,
-        xDomain: { min: 0.0, max: candles.length > 1 ? candles.length - 1 : 1.0 },
-        yDomain: domain,
-        categories: props.x !== undefined ? rows.map((d, i) => props.x!(d, i)) : [],
-        fontSize,
-        xTickCount: 5.0,
-        yTickCount: 5.0,
-        showXAxis: true,
-        showYAxis: true,
-      },
-      measure,
-    )
-    return { candles, domain, l }
-  }
-
+  // Candles + layout for a given size — the SHARED engine frame, so the draw,
+  // both pointer handlers and the native canvas can never disagree.
+  const categoriesOf = (rows: T[]): string[] => (props.x !== undefined ? rows.map((d, i) => props.x!(d, i)) : [])
+  const frameFor = (rows: T[], w: Double, hgt: Double, fontSize: Double, measure: MeasureText) =>
+    candlestickFrame(toCandles(rows), w, hgt, categoriesOf(rows), fontSize, measure)
   const toCandles = (rows: T[]): Ohlc[] =>
     rows.map((d, i) => ({
       open: props.open(d, i),
@@ -107,38 +77,7 @@ export function CandlestickChart<T>(props: CandlestickChartProps<T>): VNode {
     if (ctx === null) return
     const t = { ...defaultTheme, ...props.theme }
     const rows = readData()
-    const { candles, domain, l } = frameFor(rows, w, hgt, t.fontSize, canvasMeasure(ctx, FONT))
-    const cmds: DrawCmd[] = []
-    for (const tick of l.yTicks) {
-      cmds.push({
-        kind: 'line',
-        from: { x: l.plot.x, y: tick.pos },
-        to: { x: l.plot.x + l.plot.w, y: tick.pos },
-        stroke: t.grid,
-        width: 1.0,
-      })
-      cmds.push({
-        kind: 'text',
-        text: tick.label,
-        at: { x: l.plot.x - 6.0, y: tick.pos },
-        fill: t.label,
-        size: t.fontSize,
-        align: 'end',
-        baseline: 'middle',
-      })
-    }
-    for (const tick of l.xTicks) {
-      cmds.push({
-        kind: 'text',
-        text: tick.label,
-        at: { x: tick.pos, y: l.plot.y + l.plot.h + 6.0 },
-        fill: t.label,
-        size: t.fontSize,
-        align: 'middle',
-        baseline: 'top',
-      })
-    }
-    cmds.push(...renderCandles(candles, l.plot, domain, props.candle ?? {}))
+    const cmds = renderCandlestickChart(toCandles(rows), w, hgt, categoriesOf(rows), t, props.candle ?? {}, canvasMeasure(ctx, FONT))
     paint(ctx, cmds, w, hgt, FONT)
   }
 
@@ -165,7 +104,7 @@ export function CandlestickChart<T>(props: CandlestickChartProps<T>): VNode {
     const w = widthOf(el)
     const hgt = props.height ?? 200
     const t = { ...defaultTheme, ...props.theme }
-    const { candles, l } = frameFor(readData(), w, hgt, t.fontSize, canvasMeasure(ctx, FONT))
+    const { candles, layout: l } = frameFor(readData(), w, hgt, t.fontSize, canvasMeasure(ctx, FONT))
     const r = el.getBoundingClientRect()
     cb(hitCandle(candles.length, l.plot, ev.clientX - r.left, ev.clientY - r.top))
   }
@@ -180,7 +119,7 @@ export function CandlestickChart<T>(props: CandlestickChartProps<T>): VNode {
     const hgt = props.height ?? 200
     const t = { ...defaultTheme, ...props.theme }
     const rows = readData()
-    const { candles, l } = frameFor(rows, w, hgt, t.fontSize, canvasMeasure(ctx, FONT))
+    const { candles, layout: l } = frameFor(rows, w, hgt, t.fontSize, canvasMeasure(ctx, FONT))
     const r = el.getBoundingClientRect()
     const px = ev.clientX - r.left
     const py = ev.clientY - r.top

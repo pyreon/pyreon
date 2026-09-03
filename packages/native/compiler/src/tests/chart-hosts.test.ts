@@ -288,3 +288,90 @@ export function C() { return (<><FunnelChart data={ROWS} value={(d) => { const t
     expect(r.ok, r.error ?? '').toBe(true)
   })
 })
+
+const FRAMES = `import { Stack } from '@pyreon/primitives'
+import { CandlestickChart, HeatmapChart, RadarChart } from '@pyreon/charts/plot'
+import type { RadarAxis } from '@pyreon/charts/plot'
+interface Bar { day: string; o: number; h: number; l: number; c: number }
+interface Cell { d: string; hour: string; n: number }
+interface Team { name: string; scores: number[] }
+const BARS: Bar[] = [{ day: 'Mon', o: 10, h: 12, l: 9, c: 11 }, { day: 'Tue', o: 11, h: 13, l: 10, c: 12 }]
+const CELLS: Cell[] = [{ d: 'Mon', hour: '09', n: 3 }, { d: 'Mon', hour: '10', n: 5 }, { d: 'Tue', hour: '09', n: 1 }]
+const TEAMS: Team[] = [{ name: 'A', scores: [3, 4, 5] }]
+const AXES: RadarAxis[] = [{ label: 'x', max: 5 }, { label: 'y', max: 5 }, { label: 'z', max: 5 }]
+export function Frames() {
+  return (
+    <Stack>
+      <CandlestickChart data={BARS} open={(d) => d.o} high={(d) => d.h} low={(d) => d.l} close={(d) => d.c} x={(d) => d.day} height={180} onSelect={(i: number) => console.log(i)} />
+      <HeatmapChart data={CELLS} x={(d) => d.hour} y={(d) => d.d} value={(d) => d.n} gap={2} width={240} height={160} data-testid="heat" />
+      <RadarChart data={TEAMS} axes={AXES} values={(d) => d.scores} label={(d) => d.name} rings={3} height={220} title="Skills" />
+    </Stack>
+  )
+}`
+
+describe('chart hosts — cartesian-frame hosts (Candlestick / Heatmap) and Radar', () => {
+  it('Swift: the candles, grid and radar series map through inlined accessors into the shared engine frames', () => {
+    const r = transform(FRAMES, { target: 'swift' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('let pyreonCandles: [Ohlc] = BARS.enumerated().map { (pyreonI, pyreonD) in Ohlc(open: pyreonChartDouble(pyreonD.o), high: pyreonChartDouble(pyreonD.h), low: pyreonChartDouble(pyreonD.l), close: pyreonChartDouble(pyreonD.c)) }')
+    expect(r.code).toContain('let pyreonCats: [String] = BARS.enumerated().map { (pyreonI, pyreonD) in pyreonD.day }')
+    expect(r.code).toContain(
+      'renderCandlestickChart(pyreonCandles, Double(pyreonGeo.size.width), 180.0, pyreonCats, ChartTheme(axis: "#8496a5", grid: "rgba(132,150,165,0.18)", label: "#5a6b7a", fontSize: 11.0), nil, pyreonChartMeasure)',
+    )
+    expect(r.code).toContain('let i = hitCandlestickChart(pyreonCandles, Double(pyreonGeo.size.width), 180.0, pyreonCats, 11.0, pyreonChartMeasure, Double(pyreonTap.location.x), Double(pyreonTap.location.y))')
+    expect(r.code).toContain('let pyreonXs: [String] = CELLS.enumerated().map { (pyreonI, pyreonD) in pyreonD.hour }')
+    expect(r.code).toContain('let pyreonVals: [Double] = CELLS.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(pyreonD.n) }')
+    expect(r.code).toContain('let pyreonGrid: HeatGrid = heatGridFrom(pyreonXs, pyreonYs, pyreonVals)')
+    expect(r.code).toContain(
+      'renderHeatChart(pyreonGrid, 240.0, 160.0, ChartTheme(axis: "#8496a5", grid: "rgba(132,150,165,0.18)", label: "#5a6b7a", fontSize: 11.0), ["#eff6ff", "#93c5fd", "#3b82f6", "#1e40af"], 2.0, pyreonChartMeasure)',
+    )
+    expect(r.code).toContain('.accessibilityIdentifier("heat")')
+    expect(r.code).toContain(
+      'let pyreonSeries: [RadarSeries] = TEAMS.enumerated().map { (pyreonI, pyreonD) in RadarSeries(values: (pyreonD.scores).map { pyreonChartDouble($0) }, color: ["#0f766e", "#b45309", "#1d4ed8", "#b42318", "#15803d", "#7c3aed"][pyreonI % 6], fillAlpha: 0.25) }',
+    )
+    expect(r.code).toContain(
+      'renderRadar(AXES, pyreonSeries, PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 220.0), RadarOptions(rings: 3, gridColor: "rgba(132,150,165,0.35)", labelColor: "#5a6b7a", fontSize: 11.0, showLabels: true))',
+    )
+    expect(r.code).toContain('.accessibilityLabel("Skills")')
+  })
+  it('Kotlin: the same frames via mapIndexed and the function reference for the measurer', () => {
+    const r = transform(FRAMES, { target: 'kotlin' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('renderCandlestickChart(BARS.mapIndexed { pyreonI, pyreonD -> Ohlc(open = (pyreonD.o).toDouble(), high = (pyreonD.h).toDouble(), low = (pyreonD.l).toDouble(), close = (pyreonD.c).toDouble()) }, pyreonW, 180.0, BARS.mapIndexed { pyreonI, pyreonD -> pyreonD.day }, ChartTheme(axis = "#8496a5", grid = "rgba(132,150,165,0.18)", label = "#5a6b7a", fontSize = 11.0), null, ::pyreonChartMeasure)')
+    expect(r.code).toContain('renderHeatChart(heatGridFrom(CELLS.mapIndexed { pyreonI, pyreonD -> pyreonD.hour }, CELLS.mapIndexed { pyreonI, pyreonD -> pyreonD.d }, CELLS.mapIndexed { pyreonI, pyreonD -> (pyreonD.n).toDouble() }), 240.0, 160.0, ChartTheme(axis = "#8496a5", grid = "rgba(132,150,165,0.18)", label = "#5a6b7a", fontSize = 11.0), listOf("#eff6ff", "#93c5fd", "#3b82f6", "#1e40af"), 2.0, ::pyreonChartMeasure)')
+    expect(r.code).toContain('RadarSeries(values = (pyreonD.scores).map { it.toDouble() }, color = listOf(')
+    expect(r.code).toContain('RadarOptions(rings = 3, gridColor = "rgba(132,150,165,0.35)", labelColor = "#5a6b7a", fontSize = 11.0, showLabels = true)')
+    expect(r.code).toContain('.testTag("heat")')
+  })
+  it('a theme override, a cell-shaped heatmap onSelect and a radar legend are reported by name', () => {
+    const r = transform(
+      `import { CandlestickChart, HeatmapChart, RadarChart } from '@pyreon/charts/plot'
+import type { RadarAxis } from '@pyreon/charts/plot'
+interface Bar { o: number; h: number; l: number; c: number }
+interface Cell { d: string; hour: string; n: number }
+interface Team { name: string; scores: number[] }
+const BARS: Bar[] = [{ o: 1, h: 2, l: 0, c: 1 }]
+const CELLS: Cell[] = [{ d: 'a', hour: 'b', n: 1 }]
+const TEAMS: Team[] = [{ name: 'A', scores: [1, 2, 3] }]
+const AXES: RadarAxis[] = [{ label: 'x', max: 5 }, { label: 'y', max: 5 }, { label: 'z', max: 5 }]
+export function C() { return (<><CandlestickChart data={BARS} open={(d) => d.o} high={(d) => d.h} low={(d) => d.l} close={(d) => d.c} theme={{ fontSize: 14 }} /><HeatmapChart data={CELLS} x={(d) => d.hour} y={(d) => d.d} value={(d) => d.n} onSelect={(c) => console.log(c)} /><RadarChart data={TEAMS} axes={AXES} values={(d) => d.scores} label={(d) => d.name} showLegend={true} /></>) }`,
+      { target: 'swift' },
+    )
+    const w = r.warnings.join('\n')
+    expect(w).toContain('<CandlestickChart theme>: a theme override is not lowered')
+    expect(w).toContain('<HeatmapChart onSelect>: the cell-shaped callback is not lowered')
+    expect(w).toContain('<RadarChart showLegend>: the legend is not lowered')
+  })
+  it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine + measurer) accepts the frame emits', () => {
+    const r = validateSwiftWithStubs(transform(FRAMES, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isSwiftUIAvailable())('swiftc against real SwiftUI + canvas + engine accepts them', () => {
+    const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(ENGINE_SWIFT) + '\n' + transform(FRAMES, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isKotlincAvailable())('kotlinc (stub bundle + real engine + measurer) accepts them', () => {
+    const r = validateKotlin(transform(FRAMES, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+})
