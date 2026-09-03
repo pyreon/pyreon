@@ -7,8 +7,7 @@
 
 import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
-import { batch, effect, isClient, signal } from '@pyreon/reactivity'
-import { batch, effect, signal, untrack } from '@pyreon/reactivity'
+import { batch, effect, isClient, signal, untrack } from '@pyreon/reactivity'
 import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
 import { renderLegend } from './legend'
 import type { LegendPager } from './legend'
@@ -1105,28 +1104,11 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const px = ev.clientX - rect.left
     // Plot space (see datumAt): the plot sits under the title + legend.
     const py = ev.clientY - rect.top - topOffset
-    // Every BAR mark is hit-testable — plain, stacked and grouped. A line or
-    // area chart still reports -1 rather than guessing at a nearest point the
-    // caller did not ask for.
-    //
-    // Stacked and grouped were skipped by a `kind !== 'bars'` bail whose
-    // comment excused "a line/area chart" — but they draw real rects, so every
-    // click on one reported a miss while `onSelect`'s own contract says it
-    // fires "with the datum index when a bar is tapped". They cannot be asked
-    // one series at a time (each needs the others to place its bars), hence the
-    // separate helper rather than a widened loop condition.
     // Callbacks speak GLOBAL indices — the caller's data never zoomed.
+    // `plotHitBars` (native-crossing, plot-hit.ts) owns EVERY mark kind now —
+    // plain, stacked, and grouped bars all place their rects through it, so
+    // there is no separate loop here to keep in sync with it.
     const off = viewRange(readData()).from
-    for (let i = 0; i < spec.series.length; i++) {
-      if (spec.series[i]!.kind !== 'bars') continue
-      const idx = hitBar(barsFor(spec, i, measure), px, py)
-      if (idx >= 0) {
-        cb(idx + off)
-        return
-      }
-    }
-    const stackedIdx = stackedHitAt(spec, measure, px, py)
-    cb(stackedIdx < 0 ? stackedIdx : stackedIdx + off)
     const idx = plotHitBars(spec, measure, px, py)
     pickDatum(idx < 0 ? idx : idx + off)
   })
