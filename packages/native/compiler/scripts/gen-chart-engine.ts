@@ -58,8 +58,6 @@ export const ENGINE_FILES = [
   'polar',
   'sankey',
   'graph',
-  'heat',
-  'candlestick',
   'calendar',
   'gantt',
   'parallel',
