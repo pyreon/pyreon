@@ -66,6 +66,7 @@ export const ENGINE_FILES = [
   'plot-hit',
   'title',
   'legend',
+  'bubble',
 ] as const
 
 const RENAMES: ReadonlyArray<readonly [string, string]> = [

@@ -316,14 +316,14 @@ describe('chart hosts — cartesian-frame hosts (Candlestick / Heatmap) and Rada
     expect(r.code).toContain('let pyreonCandles: [Ohlc] = BARS.enumerated().map { (pyreonI, pyreonD) in Ohlc(open: pyreonChartDouble(pyreonD.o), high: pyreonChartDouble(pyreonD.h), low: pyreonChartDouble(pyreonD.l), close: pyreonChartDouble(pyreonD.c)) }')
     expect(r.code).toContain('let pyreonCats: [String] = BARS.enumerated().map { (pyreonI, pyreonD) in pyreonD.day }')
     expect(r.code).toContain(
-      'renderCandlestickChart(pyreonCandles, Double(pyreonGeo.size.width), 180.0, pyreonCats, ChartTheme(axis: "#8496a5", grid: "rgba(132,150,165,0.18)", label: "#5a6b7a", fontSize: 11.0), nil, pyreonChartMeasure)',
+      'renderCandlestickChart(pyreonCandles, Double(pyreonGeo.size.width), 180.0, pyreonCats, pyreonTheme, nil, pyreonChartMeasure)',
     )
-    expect(r.code).toContain('let i = hitCandlestickChart(pyreonCandles, Double(pyreonGeo.size.width), 180.0, pyreonCats, 11.0, pyreonChartMeasure, Double(pyreonTap.location.x), Double(pyreonTap.location.y))')
+    expect(r.code).toContain('let i = hitCandlestickChart(pyreonCandles, Double(pyreonGeo.size.width), 180.0, pyreonCats, pyreonTheme.fontSize, pyreonChartMeasure, Double(pyreonTap.location.x), Double(pyreonTap.location.y))')
     expect(r.code).toContain('let pyreonXs: [String] = CELLS.enumerated().map { (pyreonI, pyreonD) in pyreonD.hour }')
     expect(r.code).toContain('let pyreonVals: [Double] = CELLS.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(pyreonD.n) }')
     expect(r.code).toContain('let pyreonGrid: HeatGrid = heatGridFrom(pyreonXs, pyreonYs, pyreonVals)')
     expect(r.code).toContain(
-      'renderHeatChart(pyreonGrid, 240.0, 160.0, ChartTheme(axis: "#8496a5", grid: "rgba(132,150,165,0.18)", label: "#5a6b7a", fontSize: 11.0), ["#eff6ff", "#93c5fd", "#3b82f6", "#1e40af"], 2.0, pyreonChartMeasure)',
+      'renderHeatChart(pyreonGrid, 240.0, 160.0, pyreonTheme, ["#eff6ff", "#93c5fd", "#3b82f6", "#1e40af"], 2.0, pyreonChartMeasure)',
     )
     expect(r.code).toContain('.accessibilityIdentifier("heat")')
     expect(r.code).toContain(
@@ -337,13 +337,13 @@ describe('chart hosts — cartesian-frame hosts (Candlestick / Heatmap) and Rada
   it('Kotlin: the same frames via mapIndexed and the function reference for the measurer', () => {
     const r = transform(FRAMES, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('renderCandlestickChart(BARS.mapIndexed { pyreonI, pyreonD -> Ohlc(open = (pyreonD.o).toDouble(), high = (pyreonD.h).toDouble(), low = (pyreonD.l).toDouble(), close = (pyreonD.c).toDouble()) }, pyreonW, 180.0, BARS.mapIndexed { pyreonI, pyreonD -> pyreonD.day }, ChartTheme(axis = "#8496a5", grid = "rgba(132,150,165,0.18)", label = "#5a6b7a", fontSize = 11.0), null, ::pyreonChartMeasure)')
-    expect(r.code).toContain('renderHeatChart(heatGridFrom(CELLS.mapIndexed { pyreonI, pyreonD -> pyreonD.hour }, CELLS.mapIndexed { pyreonI, pyreonD -> pyreonD.d }, CELLS.mapIndexed { pyreonI, pyreonD -> (pyreonD.n).toDouble() }), 240.0, 160.0, ChartTheme(axis = "#8496a5", grid = "rgba(132,150,165,0.18)", label = "#5a6b7a", fontSize = 11.0), listOf("#eff6ff", "#93c5fd", "#3b82f6", "#1e40af"), 2.0, ::pyreonChartMeasure)')
+    expect(r.code).toContain('renderCandlestickChart(pyreonCandles, pyreonW, 180.0, pyreonCats, pyreonTheme, null, ::pyreonChartMeasure)')
+    expect(r.code).toContain('renderHeatChart(pyreonGrid, 240.0, 160.0, pyreonTheme, listOf("#eff6ff", "#93c5fd", "#3b82f6", "#1e40af"), 2.0, ::pyreonChartMeasure)')
     expect(r.code).toContain('RadarSeries(values = (pyreonD.scores).map { it.toDouble() }, color = listOf(')
     expect(r.code).toContain('RadarOptions(rings = 3, gridColor = "rgba(132,150,165,0.35)", labelColor = "#5a6b7a", fontSize = 11.0, showLabels = true)')
     expect(r.code).toContain('.testTag("heat")')
   })
-  it('a theme override and a cell-shaped heatmap onSelect are reported by name; a radar legend lowers', () => {
+  it('a cell-shaped heatmap onSelect is reported by name; a literal theme and a radar legend lower', () => {
     const r = transform(
       `import { CandlestickChart, HeatmapChart, RadarChart } from '@pyreon/charts/plot'
 import type { RadarAxis } from '@pyreon/charts/plot'
@@ -358,7 +358,7 @@ export function C() { return (<><CandlestickChart data={BARS} open={(d) => d.o} 
       { target: 'swift' },
     )
     const w = r.warnings.join('\n')
-    expect(w).toContain('<CandlestickChart theme>: a theme override is not lowered')
+    expect(w).not.toContain('<CandlestickChart theme>')
     expect(w).toContain('<HeatmapChart onSelect>: the cell-shaped callback is not lowered')
     expect(w).not.toContain('showLegend')
   })
@@ -443,7 +443,7 @@ describe('chart hosts — <PlotChart marks> (the cartesian family)', () => {
     expect(r.code).toContain('.testTag("revenue")')
     expect(r.code).toContain('Series(kind = "area", values = pyreonValues0, color = "#0f766e", width = 2.0, radius = 3.0, label = "Series 1", showValues = false)')
   })
-  it('a bubble mark, a curve option, a non-literal marks array and the unlowered props are reported by name', () => {
+  it('a curve option, a non-literal marks array and the unlowered props are reported by name; a bubble mark lowers', () => {
     const r = transform(
       `import { PlotChart, bubble, line, monotoneCurve } from '@pyreon/charts/plot'
 interface Row { n: string; v: number; r: number }
@@ -453,7 +453,7 @@ export function C() { return (<><PlotChart data={ROWS} marks={[bubble((d) => d.v
       { target: 'swift' },
     )
     const w = r.warnings.join('\n')
-    expect(w).toContain('<PlotChart> mark 1: `bubble` (a radius accessor) is not lowered')
+    expect(w).not.toContain('bubble')
     expect(w).toContain('<PlotChart> mark 1: a `curve` callback is not lowered')
     expect(w).toContain('<PlotChart>: `dataZoom` is not lowered on native yet')
     expect(w).toContain('<PlotChart marks>: must be an inline array of mark calls')
@@ -539,6 +539,66 @@ describe('chart hosts — legend + title chrome (Plot / Pie / Radar)', () => {
   })
   it.skipIf(!isKotlincAvailable())('kotlinc (stub bundle + real engine + shift) accepts them', () => {
     const r = validateKotlin(transform(CHROME, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+})
+
+
+const PROPS = `import { Stack } from '@pyreon/primitives'
+import { CandlestickChart, PlotChart, bubble, bars, compact, fixed, plain } from '@pyreon/charts/plot'
+interface City { name: string; pop: number; area: number; growth: number }
+interface Bar { day: string; o: number; h: number; l: number; c: number }
+const CITIES: City[] = [{ name: 'A', pop: 8, area: 100, growth: 3 }, { name: 'B', pop: 3, area: 40, growth: -1 }]
+const BARS: Bar[] = [{ day: 'Mon', o: 10, h: 12, l: 9, c: 11 }]
+export function Props() {
+  return (
+    <Stack>
+      <PlotChart data={CITIES} x={(d) => d.name} marks={[bars((d) => d.pop, { label: 'Population' }), bubble((d) => d.growth, (d) => d.area, { label: 'Area', minRadius: 4, maxRadius: 20, axis: 'right' })]} theme={{ label: '#222222', fontSize: 12 }} format={compact} xFormat={fixed(1)} y2Format={(v) => plain(v) + '%'} height={200} />
+      <CandlestickChart data={BARS} open={(d) => d.o} high={(d) => d.h} low={(d) => d.l} close={(d) => d.c} theme={{ grid: '#eeeeee' }} height={160} />
+    </Stack>
+  )
+}`
+
+describe('chart hosts — theme overrides, formatters and bubble marks', () => {
+  it('Swift: a literal theme merges over the default; formatters lower by name, factory call or closure; a bubble mark carries area-mapped radii', () => {
+    const r = transform(PROPS, { target: 'swift' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('theme: ChartTheme(axis: "#8496a5", grid: "rgba(132,150,165,0.18)", label: "#222222", fontSize: 12.0), showXAxis: true, showYAxis: true, showGrid: true, yFormat: compact, xFormat: fixed(1), y2Format: { v in plain(v) + "%" })')
+    expect(r.code).toContain('let pyreonRadii1: [Double] = bubbleRadii(CITIES.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(pyreonD.area) }, 4.0, 20.0)')
+    expect(r.code).toContain('Series(kind: "points", values: pyreonValues1, color: "#b45309", width: 2.0, radius: 3.0, label: "Area", showValues: false, radii: pyreonRadii1, axis: "right")')
+    expect(r.code).toContain('let pyreonTheme: ChartTheme = ChartTheme(axis: "#8496a5", grid: "#eeeeee", label: "#5a6b7a", fontSize: 11.0)')
+    expect(r.code).toContain('renderCandlestickChart(pyreonCandles, Double(pyreonGeo.size.width), 160.0, pyreonCats, pyreonTheme, nil, pyreonChartMeasure)')
+  })
+  it('Kotlin: the same, with a bare formatter as a function reference', () => {
+    const r = transform(PROPS, { target: 'kotlin' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('theme = ChartTheme(axis = "#8496a5", grid = "rgba(132,150,165,0.18)", label = "#222222", fontSize = 12.0), showXAxis = true, showYAxis = true, showGrid = true, yFormat = ::compact, xFormat = fixed(1), y2Format = { v -> plain(v) + "%" })')
+    expect(r.code).toContain('val pyreonRadii1: List<Double> = bubbleRadii(CITIES.mapIndexed { pyreonI, pyreonD -> (pyreonD.area).toDouble() }, 4.0, 20.0)')
+    expect(r.code).toContain('Series(kind = "points", values = pyreonValues1, color = "#b45309", width = 2.0, radius = 3.0, label = "Area", showValues = false, radii = pyreonRadii1, axis = "right")')
+    expect(r.code).toContain('val pyreonTheme: ChartTheme = ChartTheme(axis = "#8496a5", grid = "#eeeeee", label = "#5a6b7a", fontSize = 11.0)')
+  })
+  it('a non-literal theme keeps the default and says so', () => {
+    const r = transform(
+      `import { PlotChart, bars } from '@pyreon/charts/plot'
+interface Row { v: number }
+const ROWS: Row[] = [{ v: 1 }]
+const DARK = { label: '#fff' }
+export function C() { return <PlotChart data={ROWS} marks={[bars((d) => d.v)]} theme={DARK} /> }`,
+      { target: 'swift' },
+    )
+    expect(r.warnings.join('\n')).toContain('<PlotChart theme>: only an object literal with literal fields lowers on native')
+    expect(r.code).toContain('theme: ChartTheme(axis: "#8496a5", grid: "rgba(132,150,165,0.18)", label: "#5a6b7a", fontSize: 11.0)')
+  })
+  it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine) accepts the theme, formatter and bubble emits', () => {
+    const r = validateSwiftWithStubs(transform(PROPS, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isSwiftUIAvailable())('swiftc against real SwiftUI + canvas + engine accepts them', () => {
+    const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(ENGINE_SWIFT) + '\n' + transform(PROPS, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isKotlincAvailable())('kotlinc (stub bundle + real engine) accepts them', () => {
+    const r = validateKotlin(transform(PROPS, { target: 'kotlin' }).code)
     expect(r.ok, r.error ?? '').toBe(true)
   })
 })
