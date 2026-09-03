@@ -3,7 +3,8 @@ import { signal } from '@pyreon/reactivity'
 import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
 import { PolarChart } from './PolarChart'
 import { layoutPolar } from './polar'
-import type { PolarHit, PolarSeries } from './polar'
+import type { PolarSeries } from './polar'
+import type { PolarHit } from './polar-hit'
 
 const AXES = { categories: ['a', 'b', 'c'] }
 const SERIES: PolarSeries[] = [{ name: 'x', kind: 'bar', values: [1, 2, 3] }]

@@ -2,15 +2,17 @@
 //
 // Two shapes, decided by which axis carries the categories: categories on the
 // ANGLE axis give radial bars (spokes growing outward) and a polar line; on
-// the RADIUS axis they give concentric arc bars sweeping by value.
+// the RADIUS axis they give concentric arc bars sweeping by value. Written in
+// the native subset and BUNDLED into the generated Swift/Kotlin engine:
+// stacks are index-keyed parallel arrays instead of Maps, every inline object
+// array is a named struct, the hit test answers INDICES (the web-facing
+// discriminated union lives in polar-hit.ts), and the svg half in family-svg.ts.
 
 import { arcPolygon, pointOnCircle } from './arc'
-import { measureApprox, renderSvg } from './svg'
-import type { SvgOptions } from './svg'
-import type { Double, DrawCmd, MeasureText, Pt, Rect } from './types'
+import type { Domain, Double, DrawCmd, Pt, Rect } from './types'
 
-const TAU = Math.PI * 2.0
-const PALETTE = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
+const POLAR_TAU = Math.PI * 2.0
+const POLAR_PALETTE = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
 
 export interface PolarSeries {
   name: string
@@ -25,8 +27,8 @@ export interface PolarAxes {
   categories: string[]
   /** Which axis the categories sit on; default 'angle'. */
   categoryOn?: 'angle' | 'radius' | undefined
-  /** Fixed value extent; default [0, max]. */
-  valueDomain?: [Double, Double] | undefined
+  /** Fixed value extent; default 0..max. (A struct, not a tuple — tuples have no native form.) */
+  valueDomain?: Domain | undefined
   /** Radians, screen orientation; default 12 o'clock. */
   startAngle?: Double | undefined
   clockwise?: boolean | undefined
@@ -51,18 +53,35 @@ export interface PolarPoint {
   value: Double
 }
 
+export interface PolarLine {
+  series: number
+  color: string
+  points: PolarPoint[]
+}
+
+export interface PolarCategoryLabel {
+  text: string
+  at: Pt
+  align: 'start' | 'middle' | 'end'
+}
+
+export interface PolarTick {
+  value: Double
+  label: string
+}
+
 export interface PolarLayout {
   center: Pt
   innerR: Double
   outerR: Double
-  domain: [Double, Double]
+  domain: Domain
   categoryOn: 'angle' | 'radius'
   sectors: PolarSector[]
-  /** Line series points, one array per line series (index into `series`). */
-  lines: { series: number; color: string; points: PolarPoint[] }[]
+  /** Line series, one entry per line series (index into `series`). */
+  lines: PolarLine[]
   /** Category label anchors at the rim (angle) or per ring (radius). */
-  categoryLabels: { text: string; at: Pt; align: 'start' | 'middle' | 'end' }[]
-  ticks: { value: Double; label: string }[]
+  categoryLabels: PolarCategoryLabel[]
+  ticks: PolarTick[]
 }
 
 export interface PolarOptions {
@@ -80,140 +99,261 @@ export interface PolarOptions {
   progress?: Double | undefined
 }
 
-function niceTicks(lo: Double, hi: Double): Double[] {
-  if (hi <= lo) return [lo]
+/** The value → 0..1 position on the value axis, clamped. */
+function polarFrac(v: Double, lo: Double, hi: Double): Double {
+  const span = hi - lo
+  const t = span <= 0.0 ? 0.0 : (v - lo) / span
+  return t < 0.0 ? 0.0 : t > 1.0 ? 1.0 : t
+}
+
+/** Round-ish tick values between lo and hi (about three), the way an axis picks them. */
+export function polarTicks(lo: Double, hi: Double): Double[] {
+  const out: Double[] = []
+  if (hi <= lo) {
+    out.push(lo)
+    return out
+  }
   const raw = (hi - lo) / 3.0
-  const mag = Math.pow(10.0, Math.floor(Math.log10(raw)))
+  // 10^floor(log10(raw)) by repeated scaling — no log10/pow in the subset.
+  let mag = 1.0
+  while (mag * 10.0 <= raw) mag = mag * 10.0
+  while (mag > raw) mag = mag / 10.0
   const norm = raw / mag
   const step = (norm >= 5.0 ? 5.0 : norm >= 2.0 ? 2.0 : 1.0) * mag
-  const out: Double[] = []
-  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v = v + step) out.push(Math.round(v * 1e6) / 1e6)
+  // ceil(lo / step) * step as a scan from below.
+  let v = 0.0
+  while (v < lo) v = v + step
+  while (v - step >= lo) v = v - step
+  let guard = 0
+  while (v <= hi + 1e-9 && guard < 1000) {
+    out.push(Math.round(v * 1e6) / 1e6)
+    v = v + step
+    guard = guard + 1
+  }
   return out
+}
+
+/** Column key of a bar series: its stack, or its own index (grouped). */
+function polarColumnKey(s: PolarSeries, i: number): string {
+  return s.stack ?? `#${i}`
 }
 
 /** Lay out the series into `box`. */
 export function layoutPolar(axes: PolarAxes, series: PolarSeries[], box: Rect, options?: PolarOptions): PolarLayout {
   const categoryOn = axes.categoryOn ?? 'angle'
   const n = axes.categories.length
+  // nF mirrors the category count as a Double for the slot/ring arithmetic.
+  let nF = 0.0
+  for (let i = 0; i < n; i++) nF = nF + 1.0
   const fontSize = options?.fontSize ?? 11.0
   const gutter = options?.showLabels === false ? 4.0 : fontSize * 3.0
   const center: Pt = { x: box.x + box.w / 2.0, y: box.y + box.h / 2.0 }
-  const outerR = Math.max(0.0, Math.min(box.w, box.h) / 2.0 - gutter)
-  const innerR = outerR * Math.max(0.0, Math.min(0.95, options?.innerRatio ?? 0.0))
+  const side = box.w < box.h ? box.w : box.h
+  const rawOuter = side / 2.0 - gutter
+  const outerR = rawOuter < 0.0 ? 0.0 : rawOuter
+  const rawRatio = options?.innerRatio ?? 0.0
+  const ratio = rawRatio < 0.0 ? 0.0 : rawRatio > 0.95 ? 0.95 : rawRatio
+  const innerR = outerR * ratio
   const start = axes.startAngle ?? -Math.PI / 2.0
   const dir = axes.clockwise === false ? -1.0 : 1.0
   const barGap = options?.barGap ?? 0.2
-  // Stacked totals decide the domain; a stack accumulates per category.
-  const stackTop = new Map<string, Double[]>()
+  // Column keys: grouped bars share a slot; stacked ones share a column within it.
+  const columns: string[] = []
+  for (let si = 0; si < series.length; si++) {
+    const s = series[si]!
+    if (s.kind !== 'bar') continue
+    const key = polarColumnKey(s, si)
+    let known = false
+    for (const c of columns) if (c === key) known = true
+    if (!known) columns.push(key)
+  }
+  let columnsF = 0.0
+  for (let i = 0; i < columns.length; i++) columnsF = columnsF + 1.0
+  // Stacked totals decide the domain; a stack accumulates per category (one row of tops per column).
+  const stackTop: Double[] = []
+  for (let c = 0; c < columns.length; c++) for (let i = 0; i < n; i++) stackTop.push(0.0)
   let lo = 0.0
   let hi = 0.0
-  for (const s of series) {
+  for (let si = 0; si < series.length; si++) {
+    const s = series[si]!
+    let col = -1
+    if (s.kind === 'bar' && s.stack !== undefined && categoryOn === 'angle') {
+      const key = polarColumnKey(s, si)
+      for (let c = 0; c < columns.length; c++) if (columns[c]! === key) col = c
+    }
     for (let i = 0; i < n; i++) {
-      const v = s.values[i]
-      if (v === undefined || v !== v) continue
-      if (s.kind === 'bar' && s.stack !== undefined && categoryOn === 'angle') {
-        const acc = stackTop.get(s.stack) ?? new Array<Double>(n).fill(0.0)
-        acc[i] = acc[i]! + v
-        stackTop.set(s.stack, acc)
-        if (acc[i]! > hi) hi = acc[i]!
-        if (acc[i]! < lo) lo = acc[i]!
+      if (i >= s.values.length) continue
+      const v = s.values[i]!
+      if (v !== v) continue
+      if (col >= 0) {
+        const at = col * n + i
+        const top = stackTop[at]! + v
+        stackTop[at] = top
+        if (top > hi) hi = top
+        if (top < lo) lo = top
       } else {
         if (v > hi) hi = v
         if (v < lo) lo = v
       }
     }
   }
-  const domain: [Double, Double] = axes.valueDomain ?? [lo, hi]
-  const span = domain[1] - domain[0]
-  const frac = (v: Double): Double => {
-    const t = span <= 0.0 ? 0.0 : (v - domain[0]) / span
-    return t < 0.0 ? 0.0 : t > 1.0 ? 1.0 : t
-  }
-  const radiusOf = (v: Double): Double => innerR + (outerR - innerR) * frac(v)
+  const domainLo = axes.valueDomain?.min ?? lo
+  const domainHi = axes.valueDomain?.max ?? hi
   const sectors: PolarSector[] = []
-  const lines: PolarLayout['lines'] = []
-  const categoryLabels: PolarLayout['categoryLabels'] = []
-  const barSeries = series.map((s, i) => ({ s, i })).filter((x) => x.s.kind === 'bar')
-  // Grouped bars share a slot; stacked ones share a column within it.
-  const columns: string[] = []
-  for (const b of barSeries) {
-    const key = b.s.stack ?? '#' + String(b.i)
-    if (!columns.includes(key)) columns.push(key)
-  }
-  const running = new Map<string, Double[]>()
+  const lines: PolarLine[] = []
+  const categoryLabels: PolarCategoryLabel[] = []
+  // Running stack bases per column while laying bars out.
+  const running: Double[] = []
+  for (let c = 0; c < columns.length; c++) for (let i = 0; i < n; i++) running.push(0.0)
   if (categoryOn === 'angle') {
-    const slot = n <= 0 ? 0.0 : TAU / n
-    const angleOf = (i: Double): Double => start + dir * slot * i
-    for (const b of barSeries) {
-      const key = b.s.stack ?? '#' + String(b.i)
-      const col = columns.indexOf(key)
-      const acc = running.get(key) ?? new Array<Double>(n).fill(0.0)
-      running.set(key, acc)
-      const color = b.s.color ?? PALETTE[b.i % PALETTE.length]!
+    const slot = nF <= 0.0 ? 0.0 : POLAR_TAU / nF
+    for (let si = 0; si < series.length; si++) {
+      const s = series[si]!
+      if (s.kind !== 'bar') continue
+      const key = polarColumnKey(s, si)
+      let col = 0
+      let colF = 0.0
+      for (let c = 0; c < columns.length; c++) {
+        if (columns[c]! === key) {
+          col = c
+          colF = 0.0
+          for (let k = 0; k < c; k++) colF = colF + 1.0
+        }
+      }
+      const color = s.color ?? POLAR_PALETTE[si % POLAR_PALETTE.length]!
+      let iF = 0.0
       for (let i = 0; i < n; i++) {
-        const v = b.s.values[i]
-        if (v === undefined || v !== v) continue
-        const inner = slot * barGap / 2.0
-        const width = (slot - slot * barGap) / columns.length
-        const a0 = angleOf(i) + dir * (inner + width * col)
-        const a1 = a0 + dir * width
-        const base = acc[i]!
-        acc[i] = base + v
-        sectors.push({ series: b.i, index: i, start: Math.min(a0, a1), end: Math.max(a0, a1), innerR: radiusOf(base), outerR: radiusOf(base + v), color, value: v })
+        if (i < s.values.length) {
+          const v = s.values[i]!
+          if (v === v) {
+            const inner = (slot * barGap) / 2.0
+            const width = (slot - slot * barGap) / columnsF
+            const a0 = start + dir * slot * iF + dir * (inner + width * colF)
+            const a1 = a0 + dir * width
+            const at = col * n + i
+            const base = running[at]!
+            running[at] = base + v
+            sectors.push({
+              series: si,
+              index: i,
+              start: a0 < a1 ? a0 : a1,
+              end: a0 < a1 ? a1 : a0,
+              innerR: innerR + (outerR - innerR) * polarFrac(base, domainLo, domainHi),
+              outerR: innerR + (outerR - innerR) * polarFrac(base + v, domainLo, domainHi),
+              color,
+              value: v,
+            })
+          }
+        }
+        iF = iF + 1.0
       }
     }
     for (let si = 0; si < series.length; si++) {
       const s = series[si]!
       if (s.kind !== 'line') continue
-      const color = s.color ?? PALETTE[si % PALETTE.length]!
+      const color = s.color ?? POLAR_PALETTE[si % POLAR_PALETTE.length]!
       const points: PolarPoint[] = []
+      let iF = 0.0
       for (let i = 0; i < n; i++) {
-        const v = s.values[i]
-        if (v === undefined || v !== v) continue
-        points.push({ series: si, index: i, at: pointOnCircle(center, radiusOf(v), angleOf(i + 0.5)), color, value: v })
+        if (i < s.values.length) {
+          const v = s.values[i]!
+          if (v === v) {
+            const r = innerR + (outerR - innerR) * polarFrac(v, domainLo, domainHi)
+            points.push({ series: si, index: i, at: pointOnCircle(center, r, start + dir * slot * (iF + 0.5)), color, value: v })
+          }
+        }
+        iF = iF + 1.0
       }
       lines.push({ series: si, color, points })
     }
+    let iF = 0.0
     for (let i = 0; i < n; i++) {
-      const a = angleOf(i + 0.5)
+      const a = start + dir * slot * (iF + 0.5)
       const at = pointOnCircle(center, outerR + fontSize * 0.6, a)
       const c = Math.cos(a)
       categoryLabels.push({ text: axes.categories[i]!, at, align: c > 0.3 ? 'start' : c < -0.3 ? 'end' : 'middle' })
+      iF = iF + 1.0
     }
   } else {
-    const ring = n <= 0 ? 0.0 : (outerR - innerR) / n
-    for (const b of barSeries) {
-      const col = columns.indexOf(b.s.stack ?? '#' + String(b.i))
-      const color = b.s.color ?? PALETTE[b.i % PALETTE.length]!
+    const ring = nF <= 0.0 ? 0.0 : (outerR - innerR) / nF
+    for (let si = 0; si < series.length; si++) {
+      const s = series[si]!
+      if (s.kind !== 'bar') continue
+      const key = polarColumnKey(s, si)
+      let colF = 0.0
+      for (let c = 0; c < columns.length; c++) {
+        if (columns[c]! === key) {
+          colF = 0.0
+          for (let k = 0; k < c; k++) colF = colF + 1.0
+        }
+      }
+      const color = s.color ?? POLAR_PALETTE[si % POLAR_PALETTE.length]!
+      let iF = 0.0
       for (let i = 0; i < n; i++) {
-        const v = b.s.values[i]
-        if (v === undefined || v !== v) continue
-        const r0 = innerR + ring * i + ring * barGap / 2.0
-        const width = (ring - ring * barGap) / columns.length
-        const sweep = dir * TAU * frac(v)
-        sectors.push({ series: b.i, index: i, start: Math.min(start, start + sweep), end: Math.max(start, start + sweep), innerR: r0 + width * col, outerR: r0 + width * (col + 1), color, value: v })
+        if (i < s.values.length) {
+          const v = s.values[i]!
+          if (v === v) {
+            const r0 = innerR + ring * iF + (ring * barGap) / 2.0
+            const width = (ring - ring * barGap) / columnsF
+            const sweep = dir * POLAR_TAU * polarFrac(v, domainLo, domainHi)
+            const a0 = start
+            const a1 = start + sweep
+            sectors.push({
+              series: si,
+              index: i,
+              start: a0 < a1 ? a0 : a1,
+              end: a0 < a1 ? a1 : a0,
+              innerR: r0 + width * colF,
+              outerR: r0 + width * (colF + 1.0),
+              color,
+              value: v,
+            })
+          }
+        }
+        iF = iF + 1.0
       }
     }
     for (let si = 0; si < series.length; si++) {
       const s = series[si]!
       if (s.kind !== 'line') continue
-      const color = s.color ?? PALETTE[si % PALETTE.length]!
+      const color = s.color ?? POLAR_PALETTE[si % POLAR_PALETTE.length]!
       const points: PolarPoint[] = []
+      let iF = 0.0
       for (let i = 0; i < n; i++) {
-        const v = s.values[i]
-        if (v === undefined || v !== v) continue
-        points.push({ series: si, index: i, at: pointOnCircle(center, innerR + ring * (i + 0.5), start + dir * TAU * frac(v)), color, value: v })
+        if (i < s.values.length) {
+          const v = s.values[i]!
+          if (v === v) {
+            points.push({ series: si, index: i, at: pointOnCircle(center, innerR + ring * (iF + 0.5), start + dir * POLAR_TAU * polarFrac(v, domainLo, domainHi)), color, value: v })
+          }
+        }
+        iF = iF + 1.0
       }
       lines.push({ series: si, color, points })
     }
-    for (let i = 0; i < n; i++) categoryLabels.push({ text: axes.categories[i]!, at: { x: center.x + 4.0, y: center.y - (innerR + ring * (i + 0.5)) }, align: 'start' })
+    let iF = 0.0
+    for (let i = 0; i < n; i++) {
+      categoryLabels.push({ text: axes.categories[i]!, at: { x: center.x + 4.0, y: center.y - (innerR + ring * (iF + 0.5)) }, align: 'start' })
+      iF = iF + 1.0
+    }
   }
-  const ticks = niceTicks(domain[0], domain[1]).map((v) => ({ value: v, label: String(v) }))
-  return { center, innerR, outerR, domain, categoryOn, sectors, lines, categoryLabels, ticks }
+  const ticks: PolarTick[] = []
+  for (const v of polarTicks(domainLo, domainHi)) ticks.push({ value: v, label: `${v}` })
+  return { center, innerR, outerR, domain: { min: domainLo, max: domainHi }, categoryOn, sectors, lines, categoryLabels, ticks }
+}
+
+/** A full ring as a 64-segment polyline (the first 65 points of the arc polygon's outer edge). */
+function ringPolyline(center: Pt, r: Double): Pt[] {
+  const full = arcPolygon(center, r, 0.0, 0.0, POLAR_TAU)
+  const out: Pt[] = []
+  for (let i = 0; i < full.length; i++) {
+    if (i >= 65) break
+    out.push(full[i]!)
+  }
+  return out
 }
 
 /** Render grid, then bars, then lines, then labels. */
-export function renderPolar(layout: PolarLayout, options?: PolarOptions, measure?: MeasureText): DrawCmd[] {
+export function renderPolar(layout: PolarLayout, options?: PolarOptions): DrawCmd[] {
   const out: DrawCmd[] = []
   const rawP = options?.progress ?? 1.0
   const progress = rawP < 0.0 ? 0.0 : rawP > 1.0 ? 1.0 : rawP
@@ -221,20 +361,23 @@ export function renderPolar(layout: PolarLayout, options?: PolarOptions, measure
   const labelColor = options?.labelColor ?? '#64748b'
   const fontSize = options?.fontSize ?? 11.0
   const lineWidth = options?.lineWidth ?? 2.0
-  void (measure ?? measureApprox())
   const c = layout.center
-  const span = layout.domain[1] - layout.domain[0]
+  const lo = layout.domain.min
+  const hi = layout.domain.max
   if (options?.showGrid !== false) {
     if (layout.categoryOn === 'angle') {
       for (const t of layout.ticks) {
-        const f = span <= 0.0 ? 0.0 : (t.value - layout.domain[0]) / span
-        const r = layout.innerR + (layout.outerR - layout.innerR) * f
+        const r = layout.innerR + (layout.outerR - layout.innerR) * polarFrac(t.value, lo, hi)
         if (r <= 0.0) continue
-        out.push({ kind: 'polyline', points: arcPolygon(c, r, 0.0, 0.0, TAU).slice(0, 65), stroke: gridColor, width: 1.0 })
+        out.push({ kind: 'polyline', points: ringPolyline(c, r), stroke: gridColor, width: 1.0 })
       }
     } else {
-      for (let k = 0; k < 8; k++) out.push({ kind: 'line', from: c, to: pointOnCircle(c, layout.outerR, (k / 8.0) * TAU), stroke: gridColor, width: 1.0 })
-      out.push({ kind: 'polyline', points: arcPolygon(c, layout.outerR, 0.0, 0.0, TAU).slice(0, 65), stroke: gridColor, width: 1.0 })
+      let kF = 0.0
+      for (let k = 0; k < 8; k++) {
+        out.push({ kind: 'line', from: c, to: pointOnCircle(c, layout.outerR, (kF / 8.0) * POLAR_TAU), stroke: gridColor, width: 1.0 })
+        kF = kF + 1.0
+      }
+      out.push({ kind: 'polyline', points: ringPolyline(c, layout.outerR), stroke: gridColor, width: 1.0 })
     }
   }
   for (const s of layout.sectors) {
@@ -244,8 +387,19 @@ export function renderPolar(layout: PolarLayout, options?: PolarOptions, measure
     out.push({ kind: 'polygon', points: arcPolygon(c, outerR, s.innerR, s.start, end), fill: s.color })
   }
   for (const l of layout.lines) {
-    const count = progress >= 1.0 ? l.points.length : Math.floor(l.points.length * progress)
-    const pts = l.points.slice(0, count).map((p) => p.at)
+    // countF = progress >= 1 ? n : floor(n * progress), as a Double scan.
+    let lenF = 0.0
+    for (let i = 0; i < l.points.length; i++) lenF = lenF + 1.0
+    let countF = 0.0
+    if (progress >= 1.0) countF = lenF
+    else while (countF + 1.0 <= lenF * progress) countF = countF + 1.0
+    const pts: Pt[] = []
+    let iF = 0.0
+    for (let i = 0; i < l.points.length; i++) {
+      if (iF >= countF) break
+      pts.push(l.points[i]!.at)
+      iF = iF + 1.0
+    }
     if (pts.length > 1) out.push({ kind: 'polyline', points: pts, stroke: l.color, width: lineWidth })
     for (const p of pts) out.push({ kind: 'circle', center: p, radius: 2.5, fill: l.color })
   }
@@ -255,61 +409,45 @@ export function renderPolar(layout: PolarLayout, options?: PolarOptions, measure
   return out
 }
 
-export type PolarHit = { kind: 'sector'; sector: PolarSector } | { kind: 'point'; point: PolarPoint } | null
+export interface PolarHitIndex {
+  /** Index into `layout.sectors`, or -1. */
+  sector: number
+  /** Index into `layout.lines` (and into that line's `points`), or -1. */
+  line: number
+  point: number
+}
 
-/** A sector under the point, else the nearest line point within 6px, else null. */
-export function hitPolar(layout: PolarLayout, px: Double, py: Double): PolarHit {
+/** A sector under the point, else the nearest line point within 6px, else all -1. */
+export function hitPolarIndex(layout: PolarLayout, px: Double, py: Double): PolarHitIndex {
   const dx = px - layout.center.x
   const dy = py - layout.center.y
   const dist = Math.sqrt(dx * dx + dy * dy)
   const ang = Math.atan2(dy, dx)
-  for (const s of layout.sectors) {
+  let sectorIdx = -1
+  for (let i = 0; i < layout.sectors.length; i++) {
+    if (sectorIdx >= 0) continue
+    const s = layout.sectors[i]!
     if (dist < s.innerR || dist > s.outerR) continue
     let t = ang
-    while (t < s.start) t = t + TAU
-    while (t >= s.start + TAU) t = t - TAU
-    if (t <= s.end) return { kind: 'sector', sector: s }
+    while (t < s.start) t = t + POLAR_TAU
+    while (t >= s.start + POLAR_TAU) t = t - POLAR_TAU
+    if (t <= s.end) sectorIdx = i
   }
-  let best: PolarPoint | null = null
+  if (sectorIdx >= 0) return { sector: sectorIdx, line: -1, point: -1 }
+  let bestLine = -1
+  let bestPoint = -1
   let bestD = 36.0
-  for (const l of layout.lines) {
-    for (const p of l.points) {
+  for (let li = 0; li < layout.lines.length; li++) {
+    const l = layout.lines[li]!
+    for (let pi = 0; pi < l.points.length; pi++) {
+      const p = l.points[pi]!
       const d = (px - p.at.x) * (px - p.at.x) + (py - p.at.y) * (py - p.at.y)
       if (d <= bestD) {
-        best = p
+        bestLine = li
+        bestPoint = pi
         bestD = d
       }
     }
   }
-  return best === null ? null : { kind: 'point', point: best }
-}
-
-export interface PolarToSvgOptions {
-  axes: PolarAxes
-  series: PolarSeries[]
-  width?: Double
-  height?: Double
-  polar?: PolarOptions
-  measure?: MeasureText
-  title?: string
-  description?: string
-  svg?: Omit<SvgOptions, 'title' | 'description'>
-}
-
-/** Polar chart → `<svg>` string, server-safe. */
-export function polarToSvg(options: PolarToSvgOptions): string {
-  const width = options.width ?? 480.0
-  const height = options.height ?? 480.0
-  const layout = layoutPolar(options.axes, options.series, { x: 0.0, y: 0.0, w: width, h: height }, options.polar)
-  const cmds = renderPolar(layout, options.polar, options.measure ?? measureApprox())
-  const description =
-    options.description ??
-    (options.title !== undefined
-      ? `${options.title}: ${options.series.length} series over ${options.axes.categories.length} categories, values ${layout.domain[0]} to ${layout.domain[1]}.`
-      : undefined)
-  return renderSvg(cmds, width, height, {
-    ...options.svg,
-    ...(options.title !== undefined ? { title: options.title } : {}),
-    ...(description !== undefined && description !== '' ? { description } : {}),
-  })
+  return { sector: -1, line: bestLine, point: bestPoint }
 }
