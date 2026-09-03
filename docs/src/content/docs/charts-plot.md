@@ -272,6 +272,57 @@ const { spec, warnings } = compileOption(myEchartsOption)
 
 `registerTheme(name, { color, backgroundColor, textStyle })` (with `light` and `dark` built in) and `registerLocale(tag, pack)` over `Intl` feed `compileOption(option, { theme, locale })`; `resolveTheme` and `numberFormatter` / `dateFormatter` are exported for hosts that build specs by hand.
 
+## Interaction
+
+`<PlotChart>` owns the pointer and keyboard model (each prop installs only its own handlers, so a static chart in a report pays for none of it):
+
+- `tooltip`, `crosshair` — hover.
+- `dataZoom` — wheel-zoom + drag-pan (ECharts' inside dataZoom); `brush` — shift-drag a band and read it from `onBrush`.
+- `navigator` — the slider dataZoom: a strip under the plot with the first series over ALL rows and the window as a draggable band with resize handles.
+- `zoomPresets={[{ label: '1m', count: 30 }, { label: '3m', count: 90 }, { label: 'All', count: 0 }]}` — the Highcharts range selector; a strip of buttons under the plot.
+- `keyboard` — focus the canvas and walk the data with Arrow / Home / End; the focused datum gets a dashed ring and is announced through a live region, Enter / Space fire `onSelect`, Escape clears.
+- `updateAnimation` (default on) — a data change of the same shape tweens to the new frame instead of snapping; `updateDuration` sets the length; `prefers-reduced-motion` disables it.
+- `link={createChartLink()}` — pass the same link to several charts and their zoom window and crosshair datum stay in sync (ECharts `connect`).
+
+```tsx
+const link = createChartLink()
+<PlotChart data={price} x={(d) => d.t} marks={[line((d) => d.close)]} dataZoom navigator crosshair keyboard link={link} zoomPresets={[{ label: '1m', count: 30 }, { label: 'All', count: 0 }]} />
+<PlotChart data={price} x={(d) => d.t} marks={[bar((d) => d.volume)]} dataZoom crosshair link={link} />
+```
+
+## Gantt
+
+`<GanttChart tasks>` lays one row per task on a calendar-aligned time axis — the tick unit (day / week / month / quarter / year) is picked from the span — with lane headers per `group`, darker `progress` insets, milestone diamonds, dependency elbows and a dashed `today` marker. `layoutGantt` / `renderGantt` / `hitGantt` / `ganttToSvg` are the pure halves.
+
+```tsx
+<GanttChart
+  tasks={[
+    { id: 'design', name: 'Design', start: '2024-03-01', end: '2024-03-10', progress: 0.5, group: 'Phase 1' },
+    { id: 'build', name: 'Build', start: '2024-03-08', end: '2024-03-24', dependencies: ['design'], group: 'Phase 1' },
+    { id: 'launch', name: 'Launch', start: '2024-03-25', milestone: true, dependencies: ['build'], group: 'Phase 2' },
+  ]}
+  gantt={{ today: '2024-03-16' }}
+  height={240}
+/>
+```
+
+## Sonification
+
+`sonifyValues(values, { duration, minHz, maxHz, link })` plays a series as pitch over time: one oscillator steps through the values, gaps are silence, `onStep(index)` fires per datum, and a `ChartLink` moves every linked chart's crosshair with the sound. Start it from a click — browsers keep audio suspended until a user gesture.
+
+```tsx
+const sound = sonifyValues(closes, { duration: 3000, link })
+<button onClick={() => void sound.play()}>Play</button>
+```
+
+## The option host
+
+`<OptionChart option>` is the component for an ECharts option: cartesian plans (single or multi-`grid`) paint on a canvas through the same `compiledCommands` the server's `optionToSvg` uses, family and geo plans render as inline SVG, a `timeline` auto-plays or follows `timelineIndex`, and `onSelect` hit-tests clicks against the painted geometry.
+
+```tsx
+<OptionChart option={() => option()} width={640} height={320} theme="dark" onSelect={(hit) => hit && select(hit)} />
+```
+
 ## Native
 
 The engine's geometry is **generated into Swift and Kotlin twins**
