@@ -325,71 +325,6 @@ public struct ChartSpec {
   }
 }
 
-public struct Ohlc: Codable {
-  public var `open`: Double
-  public var high: Double
-  public var low: Double
-  public var close: Double
-  public init(`open`: Double, high: Double, low: Double, close: Double) {
-    self.`open` = `open`
-    self.high = high
-    self.low = low
-    self.close = close
-  }
-}
-
-public struct CandleOptions: Codable {
-  public var upColor: String? = nil
-  public var downColor: String? = nil
-  public var widthRatio: Double? = nil
-  public init(upColor: String? = nil, downColor: String? = nil, widthRatio: Double? = nil) {
-    self.upColor = upColor
-    self.downColor = downColor
-    self.widthRatio = widthRatio
-  }
-}
-
-public struct HeatCell: Codable {
-  public var col: Double
-  public var row: Double
-  public var value: Double
-  public init(col: Double, row: Double, value: Double) {
-    self.col = col
-    self.row = row
-    self.value = value
-  }
-}
-
-public struct HeatGrid: Codable {
-  public var cols: [String]
-  public var rows: [String]
-  public var cells: [HeatCell]
-  public var min: Double
-  public var max: Double
-  public init(cols: [String], rows: [String], cells: [HeatCell], min: Double, max: Double) {
-    self.cols = cols
-    self.rows = rows
-    self.cells = cells
-    self.min = min
-    self.max = max
-  }
-}
-
-public struct HeatmapOptions: Codable {
-  public var grid: HeatGrid
-  public var plot: PyreonChartRect
-  public var stops: [String]
-  public var gap: Double? = nil
-  public var progress: Double? = nil
-  public init(grid: HeatGrid, plot: PyreonChartRect, stops: [String], gap: Double? = nil, progress: Double? = nil) {
-    self.grid = grid
-    self.plot = plot
-    self.stops = stops
-    self.gap = gap
-    self.progress = progress
-  }
-}
-
 public struct FunnelStage: Codable {
   public var value: Double
   public var label: String
@@ -439,6 +374,137 @@ public struct FunnelStageGeometry: Codable {
   }
 }
 
+public struct TreeNode: Codable {
+  public var name: String
+  public var value: Double? = nil
+  public var children: [TreeNode]? = nil
+  public var color: String? = nil
+  public init(name: String, value: Double? = nil, children: [TreeNode]? = nil, color: String? = nil) {
+    self.name = name
+    self.value = value
+    self.children = children
+    self.color = color
+  }
+}
+
+public struct TreemapCell: Codable {
+  public var name: String
+  public var value: Double
+  public var rect: PyreonChartRect
+  public var depth: Int
+  public var path: [Int]
+  public var color: String
+  public var leaf: Bool
+  public init(name: String, value: Double, rect: PyreonChartRect, depth: Int, path: [Int], color: String, leaf: Bool) {
+    self.name = name
+    self.value = value
+    self.rect = rect
+    self.depth = depth
+    self.path = path
+    self.color = color
+    self.leaf = leaf
+  }
+}
+
+public struct TreemapOptions: Codable {
+  public var padding: Double? = nil
+  public var maxDepth: Double? = nil
+  public var showLabels: Bool? = nil
+  public var labelColor: String? = nil
+  public var fontSize: Double? = nil
+  public var progress: Double? = nil
+  public init(padding: Double? = nil, maxDepth: Double? = nil, showLabels: Bool? = nil, labelColor: String? = nil, fontSize: Double? = nil, progress: Double? = nil) {
+    self.padding = padding
+    self.maxDepth = maxDepth
+    self.showLabels = showLabels
+    self.labelColor = labelColor
+    self.fontSize = fontSize
+    self.progress = progress
+  }
+}
+
+public struct TreemapFrame: Codable {
+  public var children: [TreeNode]
+  public var area: PyreonChartRect
+  public var depth: Int
+  public var path: [Int]
+  public var inherited: String
+  public var hasInherited: Bool
+  public init(children: [TreeNode], area: PyreonChartRect, depth: Int, path: [Int], inherited: String, hasInherited: Bool) {
+    self.children = children
+    self.area = area
+    self.depth = depth
+    self.path = path
+    self.inherited = inherited
+    self.hasInherited = hasInherited
+  }
+}
+
+public struct SunburstArc: Codable {
+  public var name: String
+  public var value: Double
+  public var depth: Int
+  public var path: [Int]
+  public var start: Double
+  public var end: Double
+  public var innerR: Double
+  public var outerR: Double
+  public var color: String
+  public var leaf: Bool
+  public init(name: String, value: Double, depth: Int, path: [Int], start: Double, end: Double, innerR: Double, outerR: Double, color: String, leaf: Bool) {
+    self.name = name
+    self.value = value
+    self.depth = depth
+    self.path = path
+    self.start = start
+    self.end = end
+    self.innerR = innerR
+    self.outerR = outerR
+    self.color = color
+    self.leaf = leaf
+  }
+}
+
+public struct SunburstOptions: Codable {
+  public var startAngle: Double? = nil
+  public var padAngle: Double? = nil
+  public var maxDepth: Double? = nil
+  public var sort: String? = nil
+  public var showLabels: Bool? = nil
+  public var labelColor: String? = nil
+  public var fontSize: Double? = nil
+  public var progress: Double? = nil
+  public init(startAngle: Double? = nil, padAngle: Double? = nil, maxDepth: Double? = nil, sort: String? = nil, showLabels: Bool? = nil, labelColor: String? = nil, fontSize: Double? = nil, progress: Double? = nil) {
+    self.startAngle = startAngle
+    self.padAngle = padAngle
+    self.maxDepth = maxDepth
+    self.sort = sort
+    self.showLabels = showLabels
+    self.labelColor = labelColor
+    self.fontSize = fontSize
+    self.progress = progress
+  }
+}
+
+public struct SunburstFrame: Codable {
+  public var children: [TreeNode]
+  public var a0: Double
+  public var a1: Double
+  public var depth: Int
+  public var path: [Int]
+  public var inherited: String
+  public var hasInherited: Bool
+  public init(children: [TreeNode], a0: Double, a1: Double, depth: Int, path: [Int], inherited: String, hasInherited: Bool) {
+    self.children = children
+    self.a0 = a0
+    self.a1 = a1
+    self.depth = depth
+    self.path = path
+    self.inherited = inherited
+    self.hasInherited = hasInherited
+  }
+}
+
 private let MINUTE = 60000.0
 
 private let HOUR = MINUTE * 60.0
@@ -453,7 +519,11 @@ private let RADAR_START = -Double.pi / 2.0
 
 private let defaultTheme: ChartTheme = ChartTheme(axis: "#8496a5", grid: "rgba(132,150,165,0.18)", label: "#5a6b7a", fontSize: 11.0)
 
-private let HEAT_RAMP = ["#eff6ff", "#93c5fd", "#3b82f6", "#1e40af"]
+private let TREEMAP_PALETTE = ["#0f766e", "#b45309", "#1d4ed8", "#b42318", "#15803d", "#7c3aed"]
+
+private let SUNBURST_TAU = Double.pi * 2.0
+
+private let SUNBURST_PALETTE = ["#0f766e", "#b45309", "#1d4ed8", "#b42318", "#15803d", "#7c3aed"]
 
 public func plain(_ v: Double) -> String {
     let r = (Double(v)).rounded()
@@ -1262,9 +1332,7 @@ public func deriveOver(_ series: [Series]) -> Domain {
       for s in series {
         if s.kind != "stacked" {
           for v in s.values {
-            if isFiniteValue(v) {
-              others.append(v)
-            }
+            others.append(v)
           }
         }
       }
@@ -1278,17 +1346,13 @@ public func deriveOver(_ series: [Series]) -> Domain {
         hasBars = true
       }
       for v in s.values {
-        if isFiniteValue(v) {
-          all.append(v)
-        }
+        all.append(v)
       }
     }
     let e = extent(all)
     let withZero = hasBars ? Domain(min: e.min > 0.0 ? 0.0 : e.min, max: e.max < 0.0 ? 0.0 : e.max) : e
     return niceDomain(withZero, 5.0)
   }
-
-public func isFiniteValue(_ v: Double) -> Bool { v == v }
 
 public func seriesMaxLength(_ series: [Series]) -> Int {
     var n = 0
@@ -1504,33 +1568,26 @@ public func renderChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double
         }
       } else {
         if s.kind == "line" {
-          for run in splitRuns(s.values, place) {
-            let pts = reveal(shape(run))
-            if pts.count > 1 {
-              out.append(PyreonDrawCmd(kind: "polyline", stroke: s.color, width: s.width, points: pts))
-            }
+          let pts = reveal(shape(place(s.values)))
+          if pts.count > 1 {
+            out.append(PyreonDrawCmd(kind: "polyline", stroke: s.color, width: s.width, points: pts))
           }
         } else {
           if s.kind == "area" {
-            for run in splitRuns(s.values, place) {
-              let pts = reveal(shape(run))
-              if pts.count > 1 {
-                var poly: [PyreonChartPt] = []
-                for p in pts {
-                  poly.append(p)
-                }
-                poly.append(PyreonChartPt(x: pts[pts.count - 1].x, y: plot.y + plot.h))
-                poly.append(PyreonChartPt(x: pts[0].x, y: plot.y + plot.h))
-                out.append(PyreonDrawCmd(kind: "polygon", fill: s.color, points: poly))
+            let pts = reveal(shape(place(s.values)))
+            if pts.count > 1 {
+              var poly: [PyreonChartPt] = []
+              for p in pts {
+                poly.append(p)
               }
+              poly.append(PyreonChartPt(x: pts[pts.count - 1].x, y: plot.y + plot.h))
+              poly.append(PyreonChartPt(x: pts[0].x, y: plot.y + plot.h))
+              out.append(PyreonDrawCmd(kind: "polygon", fill: s.color, points: poly))
             }
           } else {
             let pts = place(s.values)
             let radii = (s.radii ?? [])
             for i in 0..<pts.count {
-              if !isFiniteValue(s.values[i]) {
-                continue
-              }
               let fullR = radii.count > 0 ? (radii[i] ?? s.radius) : s.radius
               if s.effect == true {
                 out.append(PyreonDrawCmd(kind: "circle", fill: withAlpha(s.color, 0.12), center: pts[i], radius: fullR * 2.6 * progress))
@@ -1620,50 +1677,6 @@ public func renderChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double
     return out
   }
 
-public func splitRuns(_ values: [Double], _ place: ([Double]) -> [PyreonChartPt]) -> [[PyreonChartPt]] {
-    var runs: [[PyreonChartPt]] = []
-    var hasGap = false
-    for v in values {
-      if !isFiniteValue(v) {
-        hasGap = true
-      }
-    }
-    if !hasGap {
-      runs.append(place(values))
-      return runs
-    }
-    var filled: [Double] = []
-    for v in values {
-      filled.append(isFiniteValue(v) ? v : 0.0)
-    }
-    let pts = place(filled)
-    var runStart = -1
-    for i in 0..<pts.count {
-      if isFiniteValue(values[i]) {
-        if runStart < 0 {
-          runStart = i
-        }
-      } else {
-        if runStart >= 0 {
-          var run: [PyreonChartPt] = []
-          for j in runStart..<i {
-            run.append(pts[j])
-          }
-          runs.append(run)
-          runStart = -1
-        }
-      }
-    }
-    if runStart >= 0 {
-      var run: [PyreonChartPt] = []
-      for j in runStart..<pts.count {
-        run.append(pts[j])
-      }
-      runs.append(run)
-    }
-    return runs
-  }
-
 public func symbolCommand(_ cell: PyreonChartRect, _ symbol: String, _ fill: String) -> PyreonDrawCmd {
     if symbol == "circle" {
       let r = Double((cell.w < cell.h ? cell.w : cell.h)) / 2.0
@@ -1705,263 +1718,6 @@ public func stackedHitAt(_ spec: ChartSpec, _ measure: (String, Double) -> Doubl
         if px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h {
           return seg.datumIndex
         }
-      }
-    }
-    return -1
-  }
-
-public func ohlcExtent(_ candles: [Ohlc]) -> Domain {
-    if candles.count == 0 {
-      return Domain(min: 0.0, max: 1.0)
-    }
-    var lo = candles[0].low
-    var hi = candles[0].high
-    for c in candles {
-      if c.low < lo {
-        lo = c.low
-      }
-      if c.high > hi {
-        hi = c.high
-      }
-    }
-    if hi <= lo {
-      return Domain(min: lo - 1.0, max: lo + 1.0)
-    }
-    return Domain(min: lo, max: hi)
-  }
-
-public func renderCandles(_ candles: [Ohlc], _ plot: PyreonChartRect, _ domain: Domain, _ options: CandleOptions? = nil) -> [PyreonDrawCmd] {
-    let up = (options?.upColor ?? "#15803d")
-    let down = (options?.downColor ?? "#b42318")
-    let rawRatio = (options?.widthRatio ?? 0.6)
-    let ratio = rawRatio < 0.05 ? 0.05 : rawRatio > 0.9 ? 0.9 : rawRatio
-    var out: [PyreonDrawCmd] = []
-    let n = candles.count
-    if n == 0 {
-      return out
-    }
-    let band = Double(plot.w) / Double(n)
-    let bw = band * ratio
-    let yOf = { (v: Double) in scaleLinear(domain, plot.y + plot.h, plot.y, v) }
-    for i in 0..<n {
-      let c = candles[i]
-      let cx = plot.x + band * Double(i) + band / 2.0
-      let color = c.close >= c.`open` ? up : down
-      out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: cx, y: yOf(c.high)), to: PyreonChartPt(x: cx, y: yOf(c.low)), stroke: color, width: 1.0))
-      let yo = yOf(c.`open`)
-      let yc = yOf(c.close)
-      let top = yo < yc ? yo : yc
-      let h = abs(yc - yo)
-      out.append(PyreonDrawCmd(kind: "rect", rect: PyreonChartRect(x: cx - bw / 2.0, y: top, w: bw, h: h < 1.0 ? 1.0 : h), fill: color))
-    }
-    return out
-  }
-
-public func hitCandle(_ count: Int, _ plot: PyreonChartRect, _ px: Double, _ py: Double) -> Int {
-    if count <= 0 {
-      return -1
-    }
-    if px < plot.x || px > plot.x + plot.w {
-      return -1
-    }
-    if py < plot.y || py > plot.y + plot.h {
-      return -1
-    }
-    let band = Double(plot.w) / Double(count)
-    let target = (px - plot.x) / band
-    var i = 0
-    var jf = 0.0
-    for j in 0..<count {
-      if jf <= target {
-        i = j
-      }
-      jf = jf + 1.0
-    }
-    return i
-  }
-
-public func buildHeatGrid(_ cols: [String], _ rows: [String], _ colOf: [Double], _ rowOf: [Double], _ values: [Double]) -> HeatGrid {
-    var byKey = [String: Int]()
-    var cells: [HeatCell] = []
-    let n = min(colOf.count, min(rowOf.count, values.count))
-    var minV = 0.0
-    var maxV = 0.0
-    var seen = false
-    for i in 0..<n {
-      let c = colOf[i]
-      let r = rowOf[i]
-      if c < 0.0 || r < 0.0 {
-        continue
-      }
-      let key = "\(c):\(r)"
-      let prior = byKey[key]
-      let at = (prior ?? -1)
-      if prior == nil {
-        byKey[key] = cells.count
-        cells.append(HeatCell(col: c, row: r, value: values[i]))
-      } else {
-        cells[at].value = cells[at].value + values[i]
-      }
-    }
-    for cell in cells {
-      if !seen {
-        minV = cell.value
-        maxV = cell.value
-        seen = true
-      } else {
-        if cell.value < minV {
-          minV = cell.value
-        }
-        if cell.value > maxV {
-          maxV = cell.value
-        }
-      }
-    }
-    return HeatGrid(cols: cols, rows: rows, cells: cells, min: minV, max: maxV)
-  }
-
-public func hexChannel(_ hex: String, _ at: Int) -> Double {
-    let code = { (ch: Double) in
-      let c = ch
-      if c >= 48.0 && c <= 57.0 {
-        return c - 48.0
-      }
-      if c >= 97.0 && c <= 102.0 {
-        return c - 87.0
-      }
-      if c >= 65.0 && c <= 70.0 {
-        return c - 55.0
-      }
-      return 0.0
-    }
-    if hex.count < at + 2 {
-      return 0.0
-    }
-    return code(Double(Array(hex.utf16)[Int(at)])) * 16.0 + code(Double(Array(hex.utf16)[Int(at + 1)]))
-  }
-
-public func colorRamp(_ stops: [String]) -> (Double) -> String {
-    var rs: [Double] = []
-    var gs: [Double] = []
-    var bs: [Double] = []
-    for sHex in stops {
-      let off = sHex.hasPrefix("#") ? 1 : 0
-      rs.append(hexChannel(sHex, off))
-      gs.append(hexChannel(sHex, off + 2))
-      bs.append(hexChannel(sHex, off + 4))
-    }
-    var spanF = -1.0
-    for k in 0..<rs.count {
-      spanF = spanF + 1.0
-    }
-    return { t in
-      var result = "rgb(0, 0, 0)"
-      if rs.count == 1 || (rs.count > 1 && t <= 0.0) {
-        result = "rgb(\((Double(rs[0])).rounded()), \((Double(gs[0])).rounded()), \((Double(bs[0])).rounded()))"
-      } else {
-        if rs.count > 1 {
-          let clamped = t >= 1.0 ? 1.0 : t
-          let pos = clamped * spanF
-          var idx = 0
-          var idxF = 0.0
-          var jf = 1.0
-          for k in 1..<rs.count - 1 {
-            if jf <= pos {
-              idx = k
-              idxF = jf
-            }
-            jf = jf + 1.0
-          }
-          let frac = pos - idxF
-          let mix = { (x: Double, y: Double) in (Double(x + (y - x) * frac)).rounded() }
-          result = "rgb(\(mix(rs[idx], rs[idx + 1])), \(mix(gs[idx], gs[idx + 1])), \(mix(bs[idx], bs[idx + 1])))"
-        }
-      }
-      return result
-    }
-  }
-
-public func renderHeat(_ options: HeatmapOptions) -> [PyreonDrawCmd] {
-    let grid = options.grid
-    let plot = options.plot
-    let ramp = colorRamp(options.stops)
-    let gap = (options.gap ?? 1.0)
-    let rawP = (options.progress ?? 1.0)
-    let progress = rawP < 0.0 ? 0.0 : rawP > 1.0 ? 1.0 : rawP
-    var out: [PyreonDrawCmd] = []
-    let nc = grid.cols.count
-    let nr = grid.rows.count
-    if nc == 0 || nr == 0 {
-      return out
-    }
-    var ncF = 0.0
-    for k in 0..<nc {
-      ncF = ncF + 1.0
-    }
-    var nrF = 0.0
-    for k in 0..<nr {
-      nrF = nrF + 1.0
-    }
-    let cw = Double(plot.w) / Double(nc)
-    let ch = Double(plot.h) / Double(nr)
-    let span = grid.max - grid.min
-    for cell in grid.cells {
-      if cell.col >= ncF || cell.row >= nrF {
-        continue
-      }
-      let t = span <= 0.0 ? 1.0 : Double((cell.value - grid.min)) / Double(span)
-      let fullW = cw - gap
-      let fullH = ch - gap
-      let w = fullW * progress
-      let h = fullH * progress
-      let x = plot.x + cell.col * cw + gap / 2.0 + Double((fullW - w)) / 2.0
-      let y = plot.y + cell.row * ch + gap / 2.0 + Double((fullH - h)) / 2.0
-      out.append(PyreonDrawCmd(kind: "rect", rect: PyreonChartRect(x: x, y: y, w: w, h: h), fill: ramp(t)))
-    }
-    return out
-  }
-
-public func hitHeatCell(_ grid: HeatGrid, _ plot: PyreonChartRect, _ gap: Double, _ px: Double, _ py: Double) -> Int {
-    let nc = grid.cols.count
-    let nr = grid.rows.count
-    if nc == 0 || nr == 0 {
-      return -1
-    }
-    if px < plot.x || px > plot.x + plot.w || py < plot.y || py > plot.y + plot.h {
-      return -1
-    }
-    let cw = Double(plot.w) / Double(nc)
-    let ch = Double(plot.h) / Double(nr)
-    let tCol = (px - plot.x) / Double(cw)
-    let tRow = (py - plot.y) / Double(ch)
-    var colF = 0.0
-    var jf = 0.0
-    for j in 0..<nc {
-      if jf <= tCol {
-        colF = jf
-      }
-      jf = jf + 1.0
-    }
-    var rowF = 0.0
-    var kf = 0.0
-    for k in 0..<nr {
-      if kf <= tRow {
-        rowF = kf
-      }
-      kf = kf + 1.0
-    }
-    let inX = px - (plot.x + colF * cw)
-    let inY = py - (plot.y + rowF * ch)
-    if inX < gap / 2.0 || inX > cw - gap / 2.0 {
-      return -1
-    }
-    if inY < gap / 2.0 || inY > ch - gap / 2.0 {
-      return -1
-    }
-    for i in 0..<grid.cells.count {
-      let c = grid.cells[i]
-      if c.col == colF && c.row == rowF {
-        return i
       }
     }
     return -1
@@ -2059,4 +1815,497 @@ public func hitFunnel(_ stages: [FunnelStage], _ plot: PyreonChartRect, _ px: Do
       }
     }
     return -1
+  }
+
+public func nodeValue(_ node: TreeNode) -> Double {
+    if node.value != nil {
+      return (node.value ?? 0.0)
+    }
+    var sum = 0.0
+    var stack: [TreeNode] = []
+    var sp = 0
+    for c in (node.children ?? []) {
+      if sp < stack.count {
+        stack[sp] = c
+      } else {
+        stack.append(c)
+      }
+      sp = sp + 1
+    }
+    while sp > 0 {
+      sp = sp - 1
+      let cur = stack[sp]
+      let own = cur.value
+      if own != nil {
+        sum = sum + ((own ?? 0.0))
+      } else {
+        for c in (cur.children ?? []) {
+          if sp < stack.count {
+            stack[sp] = c
+          } else {
+            stack.append(c)
+          }
+          sp = sp + 1
+        }
+      }
+    }
+    return sum
+  }
+
+public func worstRatio(_ row: [Double], _ side: Double, _ areaScale: Double) -> Double {
+    if row.count == 0 || side <= 0.0 {
+      return -1.0
+    }
+    var sum = 0.0
+    var maxA = 0.0
+    var minA = -1.0
+    for v in row {
+      let a = v * areaScale
+      sum = sum + a
+      if a > maxA {
+        maxA = a
+      }
+      if minA < 0.0 || a < minA {
+        minA = a
+      }
+    }
+    if sum <= 0.0 || minA <= 0.0 {
+      return -1.0
+    }
+    let s2 = side * side
+    let r1 = (s2 * maxA) / (sum * sum)
+    let r2 = (sum * sum) / (s2 * minA)
+    return r1 > r2 ? r1 : r2
+  }
+
+public func squarify(_ values: [Double], _ rect: PyreonChartRect) -> [PyreonChartRect] {
+    var out: [PyreonChartRect] = []
+    var total = 0.0
+    for v in values {
+      total = total + v
+    }
+    for i in 0..<values.count {
+      out.append(PyreonChartRect(x: rect.x, y: rect.y, w: 0.0, h: 0.0))
+    }
+    if values.count == 0 || total <= 0.0 || rect.w <= 0.0 || rect.h <= 0.0 {
+      return out
+    }
+    let areaScale = Double((rect.w * rect.h)) / total
+    var x = rect.x
+    var y = rect.y
+    var w = rect.w
+    var h = rect.h
+    var i = 0
+    while i < values.count {
+      var row: [Double] = []
+      var rowIdx: [Int] = []
+      var grow = true
+      while grow && i < values.count {
+        let v = values[i]
+        let side = w >= h ? h : w
+        if row.count > 0 {
+          let before = worstRatio(row, side, areaScale)
+          var candidate: [Double] = []
+          for r in row {
+            candidate.append(r)
+          }
+          candidate.append(v)
+          let after = worstRatio(candidate, side, areaScale)
+          if before >= 0.0 && after > before {
+            grow = false
+          }
+        }
+        if grow {
+          row.append(v)
+          rowIdx.append(i)
+          i = i + 1
+        }
+      }
+      var rowSum = 0.0
+      for v in row {
+        rowSum = rowSum + v * areaScale
+      }
+      let vertical = w >= h
+      let side = vertical ? h : w
+      let thick = side <= 0.0 ? 0.0 : Double(rowSum) / Double(side)
+      var offset = 0.0
+      for k in 0..<row.count {
+        let a = row[k] * areaScale
+        let len = thick <= 0.0 ? 0.0 : Double(a) / Double(thick)
+        let target = rowIdx[k]
+        if vertical {
+          out[target] = PyreonChartRect(x: x, y: y + offset, w: thick, h: len)
+        } else {
+          out[target] = PyreonChartRect(x: x + offset, y: y, w: len, h: thick)
+        }
+        offset = offset + len
+      }
+      if vertical {
+        x = x + thick
+        w = w - thick
+      } else {
+        y = y + thick
+        h = h - thick
+      }
+    }
+    return out
+  }
+
+public func orderByValue(_ children: [TreeNode]) -> [Int] {
+    var order: [Int] = []
+    var vals: [Double] = []
+    for i in 0..<children.count {
+      order.append(i)
+      vals.append(nodeValue(children[i]))
+    }
+    for i in 1..<order.count {
+      let cur = order[i]
+      let cv = vals[cur]
+      var j = i - 1
+      while j >= 0 {
+        if vals[order[j]] >= cv {
+          break
+        }
+        order[j + 1] = order[j]
+        j = j - 1
+      }
+      order[j + 1] = cur
+    }
+    return order
+  }
+
+public func layoutTreemap(_ nodes: [TreeNode], _ rect: PyreonChartRect, _ options: TreemapOptions? = nil) -> [TreemapCell] {
+    var cells: [TreemapCell] = []
+    let padding = (options?.padding ?? 2.0)
+    let maxDepth = (options?.maxDepth ?? 64.0)
+    var stack: [TreemapFrame] = []
+    stack.append(TreemapFrame(children: nodes, area: rect, depth: 0, path: [], inherited: "", hasInherited: false))
+    var sp = 1
+    while sp > 0 {
+      sp = sp - 1
+      let frame = stack[sp]
+      var depthF = 0.0
+      for d in 0..<frame.depth {
+        depthF = depthF + 1.0
+      }
+      if depthF >= maxDepth || frame.children.count == 0 {
+        continue
+      }
+      let order = orderByValue(frame.children)
+      var values: [Double] = []
+      for i in order {
+        let v = nodeValue(frame.children[i])
+        values.append(v < 0.0 ? 0.0 : v)
+      }
+      let rects = squarify(values, frame.area)
+      var pushed: [TreemapFrame] = []
+      for k in 0..<order.count {
+        let idx = order[k]
+        let node = frame.children[idx]
+        let r = rects[k]
+        let color = (node.color ?? (frame.hasInherited ? frame.inherited : TREEMAP_PALETTE[idx % TREEMAP_PALETTE.count]))
+        let kids = (node.children ?? [])
+        var cellPath: [Int] = []
+        for p in frame.path {
+          cellPath.append(p)
+        }
+        cellPath.append(idx)
+        cells.append(TreemapCell(name: node.name, value: values[k], rect: r, depth: frame.depth, path: cellPath, color: color, leaf: kids.count == 0))
+        if kids.count > 0 {
+          let innerW = r.w - padding * 2.0
+          let innerH = r.h - padding * 2.0
+          pushed.append(TreemapFrame(children: kids, area: PyreonChartRect(x: r.x + padding, y: r.y + padding, w: innerW < 0.0 ? 0.0 : innerW, h: innerH < 0.0 ? 0.0 : innerH), depth: frame.depth + 1, path: cellPath, inherited: color, hasInherited: true))
+        }
+      }
+      var pk = pushed.count - 1
+      while pk >= 0 {
+        if sp < stack.count {
+          stack[sp] = pushed[pk]
+        } else {
+          stack.append(pushed[pk])
+        }
+        sp = sp + 1
+        pk = pk - 1
+      }
+    }
+    return cells
+  }
+
+public func hexDigit(_ c: Double) -> Double {
+    if c >= 48.0 && c <= 57.0 {
+      return c - 48.0
+    }
+    if c >= 97.0 && c <= 102.0 {
+      return c - 87.0
+    }
+    if c >= 65.0 && c <= 70.0 {
+      return c - 55.0
+    }
+    return 0.0
+  }
+
+public func hexPair(_ hex: String, _ at: Int) -> Double {
+    if hex.count < at + 2 {
+      return 0.0
+    }
+    return hexDigit(Double(Array(hex.utf16)[Int(at)])) * 16.0 + hexDigit(Double(Array(hex.utf16)[Int(at + 1)]))
+  }
+
+public func tintHex(_ hex: String, _ t: Double) -> String {
+    if hex.count < 7 {
+      return hex
+    }
+    let r = (Double(hexPair(hex, 1) + (255.0 - hexPair(hex, 1)) * t)).rounded()
+    let g = (Double(hexPair(hex, 3) + (255.0 - hexPair(hex, 3)) * t)).rounded()
+    let b = (Double(hexPair(hex, 5) + (255.0 - hexPair(hex, 5)) * t)).rounded()
+    return "rgb(\(r), \(g), \(b))"
+  }
+
+public func approxTextWidth(_ text: String, _ fontSize: Double) -> Double {
+    var units = 0.0
+    for i in 0..<text.count {
+      let c = Double(Array(text.utf16)[Int(i)])
+      if c >= 48.0 && c <= 57.0 {
+        units = units + 0.9
+      } else {
+        if c == 46.0 || c == 44.0 || c == 32.0 {
+          units = units + 0.45
+        } else {
+          units = units + 1.0
+        }
+      }
+    }
+    return units * fontSize * 0.52
+  }
+
+public func renderTreemap(_ cells: [TreemapCell], _ options: TreemapOptions? = nil, _ measure: ((String, Double) -> Double)? = nil) -> [PyreonDrawCmd] {
+    var out: [PyreonDrawCmd] = []
+    let rawP = (options?.progress ?? 1.0)
+    let progress = rawP < 0.0 ? 0.0 : rawP > 1.0 ? 1.0 : rawP
+    let showLabels = (options?.showLabels ?? true)
+    let fontSize = (options?.fontSize ?? 11.0)
+    let labelColor = (options?.labelColor ?? "#ffffff")
+    let m = (measure ?? approxTextWidth)
+    for c in cells {
+      let w = c.rect.w * progress
+      let h = c.rect.h * progress
+      let x = c.rect.x + Double((c.rect.w - w)) / 2.0
+      let y = c.rect.y + Double((c.rect.h - h)) / 2.0
+      var depthF = 0.0
+      for d in 0..<c.depth {
+        depthF = depthF + 1.0
+      }
+      let tintT = 0.35 + depthF * 0.15
+      out.append(PyreonDrawCmd(kind: "rect", rect: PyreonChartRect(x: x, y: y, w: w, h: h), fill: c.leaf ? c.color : tintHex(c.color, tintT > 0.6 ? 0.6 : tintT)))
+      if showLabels && progress >= 1.0 && c.leaf {
+        let tw = m(c.name, fontSize)
+        if tw + 8.0 <= c.rect.w && fontSize + 6.0 <= c.rect.h {
+          out.append(PyreonDrawCmd(kind: "text", fill: labelColor, text: c.name, at: PyreonChartPt(x: c.rect.x + 4.0, y: c.rect.y + 4.0), size: fontSize, align: "start", baseline: "top"))
+        }
+      }
+    }
+    return out
+  }
+
+public func hitTreemap(_ cells: [TreemapCell], _ px: Double, _ py: Double) -> TreemapCell? {
+    var bestIdx = -1
+    var bestDepth = -1
+    for i in 0..<cells.count {
+      let c = cells[i]
+      let r = c.rect
+      if px < r.x || px > r.x + r.w || py < r.y || py > r.y + r.h {
+        continue
+      }
+      if c.depth > bestDepth {
+        bestDepth = c.depth
+        bestIdx = i
+      }
+    }
+    if bestIdx < 0 {
+      return nil
+    }
+    return cells[bestIdx]
+  }
+
+public func treeDepth(_ nodes: [TreeNode]) -> Int {
+    var deepest = 0
+    var stack: [TreeNode] = []
+    var depths: [Int] = []
+    var sp = 0
+    for n in nodes {
+      stack.append(n)
+      depths.append(1)
+      sp = sp + 1
+    }
+    while sp > 0 {
+      sp = sp - 1
+      let cur = stack[sp]
+      let d = depths[sp]
+      if d > deepest {
+        deepest = d
+      }
+      for c in (cur.children ?? []) {
+        if sp < stack.count {
+          stack[sp] = c
+          depths[sp] = d + 1
+        } else {
+          stack.append(c)
+          depths.append(d + 1)
+        }
+        sp = sp + 1
+      }
+    }
+    return deepest
+  }
+
+public func layoutSunburst(_ nodes: [TreeNode], _ innerR: Double, _ outerR: Double, _ options: SunburstOptions? = nil) -> [SunburstArc] {
+    var arcs: [SunburstArc] = []
+    let rawLevels = treeDepth(nodes)
+    let maxDepth = (options?.maxDepth ?? 64.0)
+    var levelsF = 0.0
+    for i in 0..<rawLevels {
+      levelsF = levelsF + 1.0
+    }
+    if levelsF > maxDepth {
+      levelsF = maxDepth
+    }
+    if levelsF <= 0.0 {
+      return arcs
+    }
+    let ringW = (outerR - innerR) / levelsF
+    let pad = (options?.padAngle ?? 0.0)
+    let sortMode = (options?.sort ?? "desc")
+    let startAngle = (options?.startAngle ?? -Double.pi / 2.0)
+    var stack: [SunburstFrame] = []
+    stack.append(SunburstFrame(children: nodes, a0: startAngle, a1: startAngle + SUNBURST_TAU, depth: 0, path: [], inherited: "", hasInherited: false))
+    var sp = 1
+    while sp > 0 {
+      sp = sp - 1
+      let frame = stack[sp]
+      var depthF = 0.0
+      for d in 0..<frame.depth {
+        depthF = depthF + 1.0
+      }
+      if depthF >= levelsF || frame.children.count == 0 {
+        continue
+      }
+      var order: [Int] = []
+      if sortMode == "desc" {
+        for i in orderByValue(frame.children) {
+          order.append(i)
+        }
+      } else {
+        for i in 0..<frame.children.count {
+          order.append(i)
+        }
+      }
+      var total = 0.0
+      var count = 0.0
+      for i in order {
+        let v = nodeValue(frame.children[i])
+        total = total + (v < 0.0 ? 0.0 : v)
+        count = count + 1.0
+      }
+      let usable = frame.a1 - frame.a0 - pad * (count - 1.0)
+      var cursor = frame.a0
+      var pushed: [SunburstFrame] = []
+      for idx in order {
+        let node = frame.children[idx]
+        let raw = nodeValue(node)
+        let v = raw < 0.0 ? 0.0 : raw
+        let span = total <= 0.0 || usable <= 0.0 ? 0.0 : usable * (Double(v) / Double(total))
+        let color = (node.color ?? (frame.hasInherited ? frame.inherited : SUNBURST_PALETTE[idx % SUNBURST_PALETTE.count]))
+        let kids = (node.children ?? [])
+        var cellPath: [Int] = []
+        for p in frame.path {
+          cellPath.append(p)
+        }
+        cellPath.append(idx)
+        let r0 = innerR + ringW * depthF
+        arcs.append(SunburstArc(name: node.name, value: v, depth: frame.depth, path: cellPath, start: cursor, end: cursor + span, innerR: r0, outerR: r0 + ringW, color: color, leaf: kids.count == 0))
+        if kids.count > 0 {
+          pushed.append(SunburstFrame(children: kids, a0: cursor, a1: cursor + span, depth: frame.depth + 1, path: cellPath, inherited: color, hasInherited: true))
+        }
+        cursor = cursor + span + pad
+      }
+      var pk = pushed.count - 1
+      while pk >= 0 {
+        if sp < stack.count {
+          stack[sp] = pushed[pk]
+        } else {
+          stack.append(pushed[pk])
+        }
+        sp = sp + 1
+        pk = pk - 1
+      }
+    }
+    return arcs
+  }
+
+public func renderSunburst(_ arcs: [SunburstArc], _ center: PyreonChartPt, _ options: SunburstOptions? = nil, _ measure: ((String, Double) -> Double)? = nil) -> [PyreonDrawCmd] {
+    var out: [PyreonDrawCmd] = []
+    let rawP = (options?.progress ?? 1.0)
+    let progress = rawP < 0.0 ? 0.0 : rawP > 1.0 ? 1.0 : rawP
+    let startAngle = (options?.startAngle ?? -Double.pi / 2.0)
+    let limit = startAngle + SUNBURST_TAU * progress
+    let showLabels = (options?.showLabels ?? true)
+    let fontSize = (options?.fontSize ?? 11.0)
+    let labelColor = (options?.labelColor ?? "#ffffff")
+    let m = (measure ?? approxTextWidth)
+    for a in arcs {
+      if a.start >= limit || a.end <= a.start {
+        continue
+      }
+      let end = a.end < limit ? a.end : limit
+      var depthF = 0.0
+      for d in 0..<a.depth {
+        depthF = depthF + 1.0
+      }
+      let tintT = 0.2 + depthF * 0.15
+      let fill = a.leaf ? a.color : tintHex(a.color, tintT > 0.5 ? 0.5 : tintT)
+      out.append(PyreonDrawCmd(kind: "polygon", fill: fill, points: arcPolygon(center, a.outerR, a.innerR, a.start, end)))
+      if showLabels && progress >= 1.0 {
+        let midR = Double((a.innerR + a.outerR)) / 2.0
+        let chord = midR * (a.end - a.start)
+        let tw = m(a.name, fontSize)
+        if chord >= tw + 4.0 && a.outerR - a.innerR >= fontSize + 4.0 {
+          let mid = Double((a.start + a.end)) / 2.0
+          out.append(PyreonDrawCmd(kind: "text", fill: labelColor, text: a.name, at: PyreonChartPt(x: center.x + cos(Double(mid)) * midR, y: center.y + sin(Double(mid)) * midR), size: fontSize, align: "middle", baseline: "middle"))
+        }
+      }
+    }
+    return out
+  }
+
+public func hitSunburst(_ arcs: [SunburstArc], _ center: PyreonChartPt, _ px: Double, _ py: Double) -> SunburstArc? {
+    let dx = px - center.x
+    let dy = py - center.y
+    let dist = sqrt(Double(dx * dx + dy * dy))
+    let ang = atan2(Double(dy), Double(dx))
+    var bestIdx = -1
+    var bestDepth = -1
+    for i in 0..<arcs.count {
+      let a = arcs[i]
+      if dist < a.innerR || dist > a.outerR {
+        continue
+      }
+      var t = ang
+      while t < a.start {
+        t = t + SUNBURST_TAU
+      }
+      while t >= a.start + SUNBURST_TAU {
+        t = t - SUNBURST_TAU
+      }
+      if t > a.end {
+        continue
+      }
+      if a.depth > bestDepth {
+        bestDepth = a.depth
+        bestIdx = i
+      }
+    }
+    if bestIdx < 0 {
+      return nil
+    }
+    return arcs[bestIdx]
   }

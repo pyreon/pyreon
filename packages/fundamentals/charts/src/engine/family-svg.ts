@@ -18,6 +18,10 @@ import { ohlcExtent, renderCandles } from './candlestick'
 import type { CandleOptions, Ohlc } from './candlestick'
 import { buildHeatGrid, colorRamp, HEAT_RAMP, renderHeat } from './heat'
 import { renderFunnel } from './funnel'
+import { layoutTreemap, renderTreemap } from './treemap'
+import type { TreeNode, TreemapOptions } from './treemap'
+import { layoutSunburst, renderSunburst, treeDepth } from './sunburst'
+import type { SunburstOptions } from './sunburst'
 import type { FunnelOptions, FunnelStage } from './funnel'
 import type { HeatGrid } from './heat'
 import { computeLayout } from './layout'
@@ -30,7 +34,7 @@ import { plain } from './format'
 import type { Formatter } from './format'
 import { measureApprox, renderSvg } from './svg'
 import type { SvgOptions } from './svg'
-import type { Double, DrawCmd, MeasureText, Rect } from './types'
+import type { Double, DrawCmd, MeasureText, Pt, Rect } from './types'
 
 const LEGEND_OPTS = {
   fontSize: 11.0,
@@ -470,6 +474,73 @@ export function funnelToSvg<T>(options: FunnelToSvgOptions<T>): string {
     options.description ??
     (options.title !== undefined
       ? `${options.title}: ${stages.length} stages, ${stages.map((s) => `${s.label} ${s.value}`).join(', ')}.`
+      : undefined)
+  return renderSvg(cmds, width, height, {
+    ...options.svg,
+    ...(options.title !== undefined ? { title: options.title } : {}),
+    ...(description !== undefined && description !== '' ? { description } : {}),
+  })
+}
+
+// ---- treemap + sunburst (svg halves; the geometry in treemap.ts / sunburst.ts is bundled into the native engine) ----
+
+export interface TreemapToSvgOptions {
+  data: TreeNode[]
+  width?: Double
+  height?: Double
+  treemap?: TreemapOptions
+  measure?: MeasureText
+  title?: string
+  description?: string
+  svg?: Omit<SvgOptions, 'title' | 'description'>
+}
+
+/** Treemap → `<svg>` string, server-safe. */
+export function treemapToSvg(options: TreemapToSvgOptions): string {
+  const width = options.width ?? 640.0
+  const height = options.height ?? 400.0
+  const cells = layoutTreemap(options.data, { x: 0.0, y: 0.0, w: width, h: height }, options.treemap)
+  const cmds = renderTreemap(cells, options.treemap, options.measure ?? measureApprox())
+  const leaves = cells.filter((c) => c.leaf)
+  const description =
+    options.description ??
+    (options.title !== undefined
+      ? `${options.title}: ${leaves.length} leaves, largest ${leaves.length > 0 ? leaves.reduce((a, b) => (b.value > a.value ? b : a)).name : 'none'}.`
+      : undefined)
+  return renderSvg(cmds, width, height, {
+    ...options.svg,
+    ...(options.title !== undefined ? { title: options.title } : {}),
+    ...(description !== undefined && description !== '' ? { description } : {}),
+  })
+}
+
+export interface SunburstToSvgOptions {
+  data: TreeNode[]
+  width?: Double
+  height?: Double
+  /** Hole radius as a fraction of the outer radius (0 = full disc). */
+  innerRatio?: Double
+  sunburst?: SunburstOptions
+  measure?: MeasureText
+  title?: string
+  description?: string
+  svg?: Omit<SvgOptions, 'title' | 'description'>
+}
+
+/** Sunburst → `<svg>` string, server-safe. */
+export function sunburstToSvg(options: SunburstToSvgOptions): string {
+  const width = options.width ?? 480.0
+  const height = options.height ?? 480.0
+  const center: Pt = { x: width / 2.0, y: height / 2.0 }
+  const outerR = Math.max(0.0, Math.min(width, height) / 2.0 - 4.0)
+  const innerR = outerR * (options.innerRatio ?? 0.2)
+  const arcs = layoutSunburst(options.data, innerR, outerR, options.sunburst)
+  const cmds = renderSunburst(arcs, center, options.sunburst, options.measure ?? measureApprox())
+  const leaves = arcs.filter((a) => a.leaf)
+  const description =
+    options.description ??
+    (options.title !== undefined
+      ? `${options.title}: ${treeDepth(options.data)} levels, ${leaves.length} leaves.`
       : undefined)
   return renderSvg(cmds, width, height, {
     ...options.svg,

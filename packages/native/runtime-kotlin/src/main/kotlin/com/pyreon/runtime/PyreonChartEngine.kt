@@ -49,21 +49,25 @@ data class ChartTheme(var axis: String, var grid: String, var label: String, var
 
 data class ChartSpec(var width: Double, var height: Double, var series: List<Series>, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null)
 
-data class Ohlc(var open: Double, var high: Double, var low: Double, var close: Double)
-
-data class CandleOptions(var upColor: String? = null, var downColor: String? = null, var widthRatio: Double? = null)
-
-data class HeatCell(var col: Double, var row: Double, var value: Double)
-
-data class HeatGrid(var cols: List<String>, var rows: List<String>, var cells: List<HeatCell>, var min: Double, var max: Double)
-
-data class HeatmapOptions(var grid: HeatGrid, var plot: PyreonChartRect, var stops: List<String>, var gap: Double? = null, var progress: Double? = null)
-
 data class FunnelStage(var value: Double, var label: String, var color: String)
 
 data class FunnelOptions(var gap: Double? = null, var minWidthRatio: Double? = null, var sort: String? = null, var align: String? = null, var showLabels: Boolean? = null, var labelColor: String? = null, var fontSize: Double? = null, var progress: Double? = null)
 
 data class FunnelStageGeometry(var index: Int, var top: Double, var bottom: Double, var topWidth: Double, var bottomWidth: Double, var centerX: Double)
+
+data class TreeNode(var name: String, var value: Double? = null, var children: List<TreeNode>? = null, var color: String? = null)
+
+data class TreemapCell(var name: String, var value: Double, var rect: PyreonChartRect, var depth: Int, var path: List<Int>, var color: String, var leaf: Boolean)
+
+data class TreemapOptions(var padding: Double? = null, var maxDepth: Double? = null, var showLabels: Boolean? = null, var labelColor: String? = null, var fontSize: Double? = null, var progress: Double? = null)
+
+data class TreemapFrame(var children: List<TreeNode>, var area: PyreonChartRect, var depth: Int, var path: List<Int>, var inherited: String, var hasInherited: Boolean)
+
+data class SunburstArc(var name: String, var value: Double, var depth: Int, var path: List<Int>, var start: Double, var end: Double, var innerR: Double, var outerR: Double, var color: String, var leaf: Boolean)
+
+data class SunburstOptions(var startAngle: Double? = null, var padAngle: Double? = null, var maxDepth: Double? = null, var sort: String? = null, var showLabels: Boolean? = null, var labelColor: String? = null, var fontSize: Double? = null, var progress: Double? = null)
+
+data class SunburstFrame(var children: List<TreeNode>, var a0: Double, var a1: Double, var depth: Int, var path: List<Int>, var inherited: String, var hasInherited: Boolean)
 
 private val MINUTE = 60000.0
 
@@ -79,7 +83,11 @@ private val RADAR_START = (-kotlin.math.PI).toDouble() / (2.0).toDouble()
 
 private val defaultTheme: ChartTheme = ChartTheme(axis = "#8496a5", grid = "rgba(132,150,165,0.18)", label = "#5a6b7a", fontSize = 11.0)
 
-private val HEAT_RAMP = listOf("#eff6ff", "#93c5fd", "#3b82f6", "#1e40af")
+private val TREEMAP_PALETTE = listOf("#0f766e", "#b45309", "#1d4ed8", "#b42318", "#15803d", "#7c3aed")
+
+private val SUNBURST_TAU = kotlin.math.PI * 2.0
+
+private val SUNBURST_PALETTE = listOf("#0f766e", "#b45309", "#1d4ed8", "#b42318", "#15803d", "#7c3aed")
 
 fun plain(v: Double): String {
     val r = Math.round(v)
@@ -888,9 +896,7 @@ fun deriveOver(series: List<Series>): Domain {
       for (s in series) {
         if (s.kind != "stacked") {
           for (v in s.values) {
-            if (isFiniteValue(v)) {
-              others.add(v)
-            }
+            others.add(v)
           }
         }
       }
@@ -904,17 +910,13 @@ fun deriveOver(series: List<Series>): Domain {
         hasBars = true
       }
       for (v in s.values) {
-        if (isFiniteValue(v)) {
-          all.add(v)
-        }
+        all.add(v)
       }
     }
     val e = extent(all)
     val withZero = if (hasBars) Domain(min = if (e.min > 0.0) 0.0 else e.min, max = if (e.max < 0.0) 0.0 else e.max) else e
     return niceDomain(withZero, 5.0)
   }
-
-fun isFiniteValue(v: Double): Boolean = v == v
 
 fun seriesMaxLength(series: List<Series>): Int {
     var n = 0
@@ -1130,33 +1132,26 @@ fun renderChart(spec: ChartSpec, measure: (String, Double) -> Double): List<Pyre
         }
       } else {
         if (s.kind == "line") {
-          for (run in splitRuns(s.values, place)) {
-            val pts = reveal(shape(run))
-            if (pts.length > 1) {
-              out.add(PyreonDrawCmd(kind = "polyline", stroke = s.color, width = s.width, points = pts))
-            }
+          val pts = reveal(shape(place(s.values)))
+          if (pts.length > 1) {
+            out.add(PyreonDrawCmd(kind = "polyline", stroke = s.color, width = s.width, points = pts))
           }
         } else {
           if (s.kind == "area") {
-            for (run in splitRuns(s.values, place)) {
-              val pts = reveal(shape(run))
-              if (pts.length > 1) {
-                val poly: MutableList<PyreonChartPt> = mutableListOf()
-                for (p in pts) {
-                  poly.add(p)
-                }
-                poly.add(PyreonChartPt(x = pts[pts.length - 1].x, y = plot.y + plot.h))
-                poly.add(PyreonChartPt(x = pts[0].x, y = plot.y + plot.h))
-                out.add(PyreonDrawCmd(kind = "polygon", fill = s.color, points = poly))
+            val pts = reveal(shape(place(s.values)))
+            if (pts.length > 1) {
+              val poly: MutableList<PyreonChartPt> = mutableListOf()
+              for (p in pts) {
+                poly.add(p)
               }
+              poly.add(PyreonChartPt(x = pts[pts.length - 1].x, y = plot.y + plot.h))
+              poly.add(PyreonChartPt(x = pts[0].x, y = plot.y + plot.h))
+              out.add(PyreonDrawCmd(kind = "polygon", fill = s.color, points = poly))
             }
           } else {
             val pts = place(s.values)
             val radii = (s.radii ?: listOf())
             for (i in 0 until pts.length) {
-              if (!isFiniteValue(s.values[i])) {
-                continue
-              }
               val fullR = if (radii.length > 0) (radii[i] ?: s.radius) else s.radius
               if (s.effect == true) {
                 out.add(PyreonDrawCmd(kind = "circle", fill = withAlpha(s.color, 0.12), center = pts[i], radius = fullR * 2.6 * progress))
@@ -1246,50 +1241,6 @@ fun renderChart(spec: ChartSpec, measure: (String, Double) -> Double): List<Pyre
     return out
   }
 
-fun splitRuns(values: List<Double>, place: (List<Double>) -> List<PyreonChartPt>): List<List<PyreonChartPt>> {
-    val runs: MutableList<List<PyreonChartPt>> = mutableListOf()
-    var hasGap = false
-    for (v in values) {
-      if (!isFiniteValue(v)) {
-        hasGap = true
-      }
-    }
-    if (!hasGap) {
-      runs.add(place(values))
-      return runs
-    }
-    val filled: MutableList<Double> = mutableListOf()
-    for (v in values) {
-      filled.add(if (isFiniteValue(v)) v else 0.0)
-    }
-    val pts = place(filled)
-    var runStart = -1
-    for (i in 0 until pts.length) {
-      if (isFiniteValue(values[i])) {
-        if (runStart < 0) {
-          runStart = i
-        }
-      } else {
-        if (runStart >= 0) {
-          val run: MutableList<PyreonChartPt> = mutableListOf()
-          for (j in runStart until i) {
-            run.add(pts[j])
-          }
-          runs.add(run)
-          runStart = -1
-        }
-      }
-    }
-    if (runStart >= 0) {
-      val run: MutableList<PyreonChartPt> = mutableListOf()
-      for (j in runStart until pts.length) {
-        run.add(pts[j])
-      }
-      runs.add(run)
-    }
-    return runs
-  }
-
 fun symbolCommand(cell: PyreonChartRect, symbol: String, fill: String): PyreonDrawCmd {
     if (symbol == "circle") {
       val r = ((if (cell.w < cell.h) cell.w else cell.h)).toDouble() / (2.0).toDouble()
@@ -1331,263 +1282,6 @@ fun stackedHitAt(spec: ChartSpec, measure: (String, Double) -> Double, px: Doubl
         if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) {
           return seg.datumIndex
         }
-      }
-    }
-    return -1
-  }
-
-fun ohlcExtent(candles: List<Ohlc>): Domain {
-    if (candles.length == 0) {
-      return Domain(min = 0.0, max = 1.0)
-    }
-    var lo = candles[0].low
-    var hi = candles[0].high
-    for (c in candles) {
-      if (c.low < lo) {
-        lo = c.low
-      }
-      if (c.high > hi) {
-        hi = c.high
-      }
-    }
-    if (hi <= lo) {
-      return Domain(min = lo - 1.0, max = lo + 1.0)
-    }
-    return Domain(min = lo, max = hi)
-  }
-
-fun renderCandles(candles: List<Ohlc>, plot: PyreonChartRect, domain: Domain, options: CandleOptions? = null): List<PyreonDrawCmd> {
-    val up = (options?.upColor ?: "#15803d")
-    val down = (options?.downColor ?: "#b42318")
-    val rawRatio = (options?.widthRatio ?: 0.6)
-    val ratio = if (rawRatio < 0.05) 0.05 else if (rawRatio > 0.9) 0.9 else rawRatio
-    val out: MutableList<PyreonDrawCmd> = mutableListOf()
-    val n = candles.length
-    if (n == 0) {
-      return out
-    }
-    val band = (plot.w).toDouble() / (n).toDouble()
-    val bw = band * ratio
-    val yOf = { v: Double -> scaleLinear(domain, plot.y + plot.h, plot.y, v) }
-    for (i in 0 until n) {
-      val c = candles[i]
-      val cx = plot.x + band * i + (band).toDouble() / (2.0).toDouble()
-      val color = if (c.close >= c.open) up else down
-      out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = cx, y = yOf(c.high)), to = PyreonChartPt(x = cx, y = yOf(c.low)), stroke = color, width = 1.0))
-      val yo = yOf(c.open)
-      val yc = yOf(c.close)
-      val top = if (yo < yc) yo else yc
-      val h = Math.abs(yc - yo)
-      out.add(PyreonDrawCmd(kind = "rect", rect = PyreonChartRect(x = cx - (bw).toDouble() / (2.0).toDouble(), y = top, w = bw, h = if (h < 1.0) 1.0 else h), fill = color))
-    }
-    return out
-  }
-
-fun hitCandle(count: Int, plot: PyreonChartRect, px: Double, py: Double): Int {
-    if (count <= 0) {
-      return -1
-    }
-    if (px < plot.x || px > plot.x + plot.w) {
-      return -1
-    }
-    if (py < plot.y || py > plot.y + plot.h) {
-      return -1
-    }
-    val band = (plot.w).toDouble() / (count).toDouble()
-    val target = ((px - plot.x)).toDouble() / (band).toDouble()
-    var i = 0
-    var jf = 0.0
-    for (j in 0 until count) {
-      if (jf <= target) {
-        i = j
-      }
-      jf = jf + 1.0
-    }
-    return i
-  }
-
-fun buildHeatGrid(cols: List<String>, rows: List<String>, colOf: List<Double>, rowOf: List<Double>, values: List<Double>): HeatGrid {
-    val byKey = mutableMapOf<String, Int>()
-    val cells: MutableList<HeatCell> = mutableListOf()
-    val n = Math.min(colOf.length, Math.min(rowOf.length, values.length))
-    var minV = 0.0
-    var maxV = 0.0
-    var seen = false
-    for (i in 0 until n) {
-      val c = colOf[i]
-      val r = rowOf[i]
-      if (c < 0.0 || r < 0.0) {
-        continue
-      }
-      val key = "${c}:${r}"
-      val prior = byKey[key]
-      val at = (prior ?: -1)
-      if (prior == null) {
-        byKey[key] = cells.length
-        cells.add(HeatCell(col = c, row = r, value = values[i]))
-      } else {
-        cells[at].value = cells[at].value + values[i]
-      }
-    }
-    for (cell in cells) {
-      if (!seen) {
-        minV = cell.value
-        maxV = cell.value
-        seen = true
-      } else {
-        if (cell.value < minV) {
-          minV = cell.value
-        }
-        if (cell.value > maxV) {
-          maxV = cell.value
-        }
-      }
-    }
-    return HeatGrid(cols = cols, rows = rows, cells = cells, min = minV, max = maxV)
-  }
-
-fun hexChannel(hex: String, at: Int): Double {
-    val code = fun(ch: Double): Double {
-      val c = ch
-      if (c >= 48.0 && c <= 57.0) {
-        return c - 48.0
-      }
-      if (c >= 97.0 && c <= 102.0) {
-        return c - 87.0
-      }
-      if (c >= 65.0 && c <= 70.0) {
-        return c - 55.0
-      }
-      return 0.0
-    }
-    if (hex.length < at + 2) {
-      return 0.0
-    }
-    return code(hex[(at).toInt()].code.toDouble()) * 16.0 + code(hex[(at + 1).toInt()].code.toDouble())
-  }
-
-fun colorRamp(stops: List<String>): (Double) -> String {
-    val rs: MutableList<Double> = mutableListOf()
-    val gs: MutableList<Double> = mutableListOf()
-    val bs: MutableList<Double> = mutableListOf()
-    for (sHex in stops) {
-      val off = if (sHex.startsWith("#")) 1 else 0
-      rs.add(hexChannel(sHex, off))
-      gs.add(hexChannel(sHex, off + 2))
-      bs.add(hexChannel(sHex, off + 4))
-    }
-    var spanF = -1.0
-    for (k in 0 until rs.length) {
-      spanF = spanF + 1.0
-    }
-    return fun(t: Double): String {
-      var result = "rgb(0, 0, 0)"
-      if (rs.length == 1 || (rs.length > 1 && t <= 0.0)) {
-        result = "rgb(${Math.round(rs[0])}, ${Math.round(gs[0])}, ${Math.round(bs[0])})"
-      } else {
-        if (rs.length > 1) {
-          val clamped = if (t >= 1.0) 1.0 else t
-          val pos = clamped * spanF
-          var idx = 0
-          var idxF = 0.0
-          var jf = 1.0
-          for (k in 1 until rs.length - 1) {
-            if (jf <= pos) {
-              idx = k
-              idxF = jf
-            }
-            jf = jf + 1.0
-          }
-          val frac = pos - idxF
-          val mix = { x: Double, y: Double -> Math.round(x + (y - x) * frac) }
-          result = "rgb(${mix(rs[idx], rs[idx + 1])}, ${mix(gs[idx], gs[idx + 1])}, ${mix(bs[idx], bs[idx + 1])})"
-        }
-      }
-      return result
-    }
-  }
-
-fun renderHeat(options: HeatmapOptions): List<PyreonDrawCmd> {
-    val grid = options.grid
-    val plot = options.plot
-    val ramp = colorRamp(options.stops)
-    val gap = (options.gap ?: 1.0)
-    val rawP = (options.progress ?: 1.0)
-    val progress = if (rawP < 0.0) 0.0 else if (rawP > 1.0) 1.0 else rawP
-    val out: MutableList<PyreonDrawCmd> = mutableListOf()
-    val nc = grid.cols.length
-    val nr = grid.rows.length
-    if (nc == 0 || nr == 0) {
-      return out
-    }
-    var ncF = 0.0
-    for (k in 0 until nc) {
-      ncF = ncF + 1.0
-    }
-    var nrF = 0.0
-    for (k in 0 until nr) {
-      nrF = nrF + 1.0
-    }
-    val cw = (plot.w).toDouble() / (nc).toDouble()
-    val ch = (plot.h).toDouble() / (nr).toDouble()
-    val span = grid.max - grid.min
-    for (cell in grid.cells) {
-      if (cell.col >= ncF || cell.row >= nrF) {
-        continue
-      }
-      val t = if (span <= 0.0) 1.0 else ((cell.value - grid.min)).toDouble() / (span).toDouble()
-      val fullW = cw - gap
-      val fullH = ch - gap
-      val w = fullW * progress
-      val h = fullH * progress
-      val x = plot.x + cell.col * cw + (gap).toDouble() / (2.0).toDouble() + ((fullW - w)).toDouble() / (2.0).toDouble()
-      val y = plot.y + cell.row * ch + (gap).toDouble() / (2.0).toDouble() + ((fullH - h)).toDouble() / (2.0).toDouble()
-      out.add(PyreonDrawCmd(kind = "rect", rect = PyreonChartRect(x = x, y = y, w = w, h = h), fill = ramp(t)))
-    }
-    return out
-  }
-
-fun hitHeatCell(grid: HeatGrid, plot: PyreonChartRect, gap: Double, px: Double, py: Double): Int {
-    val nc = grid.cols.length
-    val nr = grid.rows.length
-    if (nc == 0 || nr == 0) {
-      return -1
-    }
-    if (px < plot.x || px > plot.x + plot.w || py < plot.y || py > plot.y + plot.h) {
-      return -1
-    }
-    val cw = (plot.w).toDouble() / (nc).toDouble()
-    val ch = (plot.h).toDouble() / (nr).toDouble()
-    val tCol = ((px - plot.x)).toDouble() / (cw).toDouble()
-    val tRow = ((py - plot.y)).toDouble() / (ch).toDouble()
-    var colF = 0.0
-    var jf = 0.0
-    for (j in 0 until nc) {
-      if (jf <= tCol) {
-        colF = jf
-      }
-      jf = jf + 1.0
-    }
-    var rowF = 0.0
-    var kf = 0.0
-    for (k in 0 until nr) {
-      if (kf <= tRow) {
-        rowF = kf
-      }
-      kf = kf + 1.0
-    }
-    val inX = px - (plot.x + colF * cw)
-    val inY = py - (plot.y + rowF * ch)
-    if (inX < (gap).toDouble() / (2.0).toDouble() || inX > cw - (gap).toDouble() / (2.0).toDouble()) {
-      return -1
-    }
-    if (inY < (gap).toDouble() / (2.0).toDouble() || inY > ch - (gap).toDouble() / (2.0).toDouble()) {
-      return -1
-    }
-    for (i in 0 until grid.cells.length) {
-      val c = grid.cells[i]
-      if (c.col == colF && c.row == rowF) {
-        return i
       }
     }
     return -1
@@ -1685,4 +1379,497 @@ fun hitFunnel(stages: List<FunnelStage>, plot: PyreonChartRect, px: Double, py: 
       }
     }
     return -1
+  }
+
+fun nodeValue(node: TreeNode): Double {
+    if (node.value != null) {
+      return (node.value ?: 0.0)
+    }
+    var sum = 0.0
+    val stack: MutableList<TreeNode> = mutableListOf()
+    var sp = 0
+    for (c in (node.children ?: listOf())) {
+      if (sp < stack.length) {
+        stack[sp] = c
+      } else {
+        stack.add(c)
+      }
+      sp = sp + 1
+    }
+    while (sp > 0) {
+      sp = sp - 1
+      val cur = stack[sp]
+      val own = cur.value
+      if (own != null) {
+        sum = sum + ((own ?: 0.0))
+      } else {
+        for (c in (cur.children ?: listOf())) {
+          if (sp < stack.length) {
+            stack[sp] = c
+          } else {
+            stack.add(c)
+          }
+          sp = sp + 1
+        }
+      }
+    }
+    return sum
+  }
+
+fun worstRatio(row: List<Double>, side: Double, areaScale: Double): Double {
+    if (row.length == 0 || side <= 0.0) {
+      return -1.0
+    }
+    var sum = 0.0
+    var maxA = 0.0
+    var minA = -1.0
+    for (v in row) {
+      val a = v * areaScale
+      sum = sum + a
+      if (a > maxA) {
+        maxA = a
+      }
+      if (minA < 0.0 || a < minA) {
+        minA = a
+      }
+    }
+    if (sum <= 0.0 || minA <= 0.0) {
+      return -1.0
+    }
+    val s2 = side * side
+    val r1 = ((s2 * maxA)).toDouble() / ((sum * sum)).toDouble()
+    val r2 = ((sum * sum)).toDouble() / ((s2 * minA)).toDouble()
+    return if (r1 > r2) r1 else r2
+  }
+
+fun squarify(values: List<Double>, rect: PyreonChartRect): List<PyreonChartRect> {
+    val out: MutableList<PyreonChartRect> = mutableListOf()
+    var total = 0.0
+    for (v in values) {
+      total = total + v
+    }
+    for (i in 0 until values.length) {
+      out.add(PyreonChartRect(x = rect.x, y = rect.y, w = 0.0, h = 0.0))
+    }
+    if (values.length == 0 || total <= 0.0 || rect.w <= 0.0 || rect.h <= 0.0) {
+      return out
+    }
+    val areaScale = ((rect.w * rect.h)).toDouble() / (total).toDouble()
+    var x = rect.x
+    var y = rect.y
+    var w = rect.w
+    var h = rect.h
+    var i = 0
+    while (i < values.length) {
+      val row: MutableList<Double> = mutableListOf()
+      val rowIdx: MutableList<Int> = mutableListOf()
+      var grow = true
+      while (grow && i < values.length) {
+        val v = values[i]
+        val side = if (w >= h) h else w
+        if (row.length > 0) {
+          val before = worstRatio(row, side, areaScale)
+          val candidate: MutableList<Double> = mutableListOf()
+          for (r in row) {
+            candidate.add(r)
+          }
+          candidate.add(v)
+          val after = worstRatio(candidate, side, areaScale)
+          if (before >= 0.0 && after > before) {
+            grow = false
+          }
+        }
+        if (grow) {
+          row.add(v)
+          rowIdx.add(i)
+          i = i + 1
+        }
+      }
+      var rowSum = 0.0
+      for (v in row) {
+        rowSum = rowSum + v * areaScale
+      }
+      val vertical = w >= h
+      val side = if (vertical) h else w
+      val thick = if (side <= 0.0) 0.0 else (rowSum).toDouble() / (side).toDouble()
+      var offset = 0.0
+      for (k in 0 until row.length) {
+        val a = row[k] * areaScale
+        val len = if (thick <= 0.0) 0.0 else (a).toDouble() / (thick).toDouble()
+        val target = rowIdx[k]
+        if (vertical) {
+          out[target] = PyreonChartRect(x = x, y = y + offset, w = thick, h = len)
+        } else {
+          out[target] = PyreonChartRect(x = x + offset, y = y, w = len, h = thick)
+        }
+        offset = offset + len
+      }
+      if (vertical) {
+        x = x + thick
+        w = w - thick
+      } else {
+        y = y + thick
+        h = h - thick
+      }
+    }
+    return out
+  }
+
+fun orderByValue(children: List<TreeNode>): List<Int> {
+    val order: MutableList<Int> = mutableListOf()
+    val vals: MutableList<Double> = mutableListOf()
+    for (i in 0 until children.length) {
+      order.add(i)
+      vals.add(nodeValue(children[i]))
+    }
+    for (i in 1 until order.length) {
+      val cur = order[i]
+      val cv = vals[cur]
+      var j = i - 1
+      while (j >= 0) {
+        if (vals[order[j]] >= cv) {
+          break
+        }
+        order[j + 1] = order[j]
+        j = j - 1
+      }
+      order[j + 1] = cur
+    }
+    return order
+  }
+
+fun layoutTreemap(nodes: List<TreeNode>, rect: PyreonChartRect, options: TreemapOptions? = null): List<TreemapCell> {
+    val cells: MutableList<TreemapCell> = mutableListOf()
+    val padding = (options?.padding ?: 2.0)
+    val maxDepth = (options?.maxDepth ?: 64.0)
+    val stack: MutableList<TreemapFrame> = mutableListOf()
+    stack.add(TreemapFrame(children = nodes, area = rect, depth = 0, path = listOf(), inherited = "", hasInherited = false))
+    var sp = 1
+    while (sp > 0) {
+      sp = sp - 1
+      val frame = stack[sp]
+      var depthF = 0.0
+      for (d in 0 until frame.depth) {
+        depthF = depthF + 1.0
+      }
+      if (depthF >= maxDepth || frame.children.length == 0) {
+        continue
+      }
+      val order = orderByValue(frame.children)
+      val values: MutableList<Double> = mutableListOf()
+      for (i in order) {
+        val v = nodeValue(frame.children[i])
+        values.add(if (v < 0.0) 0.0 else v)
+      }
+      val rects = squarify(values, frame.area)
+      val pushed: MutableList<TreemapFrame> = mutableListOf()
+      for (k in 0 until order.length) {
+        val idx = order[k]
+        val node = frame.children[idx]
+        val r = rects[k]
+        val color = (node.color ?: (if (frame.hasInherited) frame.inherited else TREEMAP_PALETTE[idx % TREEMAP_PALETTE.length]))
+        val kids = (node.children ?: listOf())
+        val cellPath: MutableList<Int> = mutableListOf()
+        for (p in frame.path) {
+          cellPath.add(p)
+        }
+        cellPath.add(idx)
+        cells.add(TreemapCell(name = node.name, value = values[k], rect = r, depth = frame.depth, path = cellPath, color = color, leaf = kids.length == 0))
+        if (kids.length > 0) {
+          val innerW = r.w - padding * 2.0
+          val innerH = r.h - padding * 2.0
+          pushed.add(TreemapFrame(children = kids, area = PyreonChartRect(x = r.x + padding, y = r.y + padding, w = if (innerW < 0.0) 0.0 else innerW, h = if (innerH < 0.0) 0.0 else innerH), depth = frame.depth + 1, path = cellPath, inherited = color, hasInherited = true))
+        }
+      }
+      var pk = pushed.length - 1
+      while (pk >= 0) {
+        if (sp < stack.length) {
+          stack[sp] = pushed[pk]
+        } else {
+          stack.add(pushed[pk])
+        }
+        sp = sp + 1
+        pk = pk - 1
+      }
+    }
+    return cells
+  }
+
+fun hexDigit(c: Double): Double {
+    if (c >= 48.0 && c <= 57.0) {
+      return c - 48.0
+    }
+    if (c >= 97.0 && c <= 102.0) {
+      return c - 87.0
+    }
+    if (c >= 65.0 && c <= 70.0) {
+      return c - 55.0
+    }
+    return 0.0
+  }
+
+fun hexPair(hex: String, at: Int): Double {
+    if (hex.length < at + 2) {
+      return 0.0
+    }
+    return hexDigit(hex[(at).toInt()].code.toDouble()) * 16.0 + hexDigit(hex[(at + 1).toInt()].code.toDouble())
+  }
+
+fun tintHex(hex: String, t: Double): String {
+    if (hex.length < 7) {
+      return hex
+    }
+    val r = Math.round(hexPair(hex, 1) + (255.0 - hexPair(hex, 1)) * t)
+    val g = Math.round(hexPair(hex, 3) + (255.0 - hexPair(hex, 3)) * t)
+    val b = Math.round(hexPair(hex, 5) + (255.0 - hexPair(hex, 5)) * t)
+    return "rgb(${r}, ${g}, ${b})"
+  }
+
+fun approxTextWidth(text: String, fontSize: Double): Double {
+    var units = 0.0
+    for (i in 0 until text.length) {
+      val c = text[(i).toInt()].code.toDouble()
+      if (c >= 48.0 && c <= 57.0) {
+        units = units + 0.9
+      } else {
+        if (c == 46.0 || c == 44.0 || c == 32.0) {
+          units = units + 0.45
+        } else {
+          units = units + 1.0
+        }
+      }
+    }
+    return units * fontSize * 0.52
+  }
+
+fun renderTreemap(cells: List<TreemapCell>, options: TreemapOptions? = null, measure: ((String, Double) -> Double)? = null): List<PyreonDrawCmd> {
+    val out: MutableList<PyreonDrawCmd> = mutableListOf()
+    val rawP = (options?.progress ?: 1.0)
+    val progress = if (rawP < 0.0) 0.0 else if (rawP > 1.0) 1.0 else rawP
+    val showLabels = (options?.showLabels ?: true)
+    val fontSize = (options?.fontSize ?: 11.0)
+    val labelColor = (options?.labelColor ?: "#ffffff")
+    val m = (measure ?: ::approxTextWidth)
+    for (c in cells) {
+      val w = c.rect.w * progress
+      val h = c.rect.h * progress
+      val x = c.rect.x + ((c.rect.w - w)).toDouble() / (2.0).toDouble()
+      val y = c.rect.y + ((c.rect.h - h)).toDouble() / (2.0).toDouble()
+      var depthF = 0.0
+      for (d in 0 until c.depth) {
+        depthF = depthF + 1.0
+      }
+      val tintT = 0.35 + depthF * 0.15
+      out.add(PyreonDrawCmd(kind = "rect", rect = PyreonChartRect(x = x, y = y, w = w, h = h), fill = if (c.leaf) c.color else tintHex(c.color, if (tintT > 0.6) 0.6 else tintT)))
+      if (showLabels && progress >= 1.0 && c.leaf) {
+        val tw = m(c.name, fontSize)
+        if (tw + 8.0 <= c.rect.w && fontSize + 6.0 <= c.rect.h) {
+          out.add(PyreonDrawCmd(kind = "text", fill = labelColor, text = c.name, at = PyreonChartPt(x = c.rect.x + 4.0, y = c.rect.y + 4.0), size = fontSize, align = "start", baseline = "top"))
+        }
+      }
+    }
+    return out
+  }
+
+fun hitTreemap(cells: List<TreemapCell>, px: Double, py: Double): TreemapCell? {
+    var bestIdx = -1
+    var bestDepth = -1
+    for (i in 0 until cells.length) {
+      val c = cells[i]
+      val r = c.rect
+      if (px < r.x || px > r.x + r.w || py < r.y || py > r.y + r.h) {
+        continue
+      }
+      if (c.depth > bestDepth) {
+        bestDepth = c.depth
+        bestIdx = i
+      }
+    }
+    if (bestIdx < 0) {
+      return null
+    }
+    return cells[bestIdx]
+  }
+
+fun treeDepth(nodes: List<TreeNode>): Int {
+    var deepest = 0
+    val stack: MutableList<TreeNode> = mutableListOf()
+    val depths: MutableList<Int> = mutableListOf()
+    var sp = 0
+    for (n in nodes) {
+      stack.add(n)
+      depths.add(1)
+      sp = sp + 1
+    }
+    while (sp > 0) {
+      sp = sp - 1
+      val cur = stack[sp]
+      val d = depths[sp]
+      if (d > deepest) {
+        deepest = d
+      }
+      for (c in (cur.children ?: listOf())) {
+        if (sp < stack.length) {
+          stack[sp] = c
+          depths[sp] = d + 1
+        } else {
+          stack.add(c)
+          depths.add(d + 1)
+        }
+        sp = sp + 1
+      }
+    }
+    return deepest
+  }
+
+fun layoutSunburst(nodes: List<TreeNode>, innerR: Double, outerR: Double, options: SunburstOptions? = null): List<SunburstArc> {
+    val arcs: MutableList<SunburstArc> = mutableListOf()
+    val rawLevels = treeDepth(nodes)
+    val maxDepth = (options?.maxDepth ?: 64.0)
+    var levelsF = 0.0
+    for (i in 0 until rawLevels) {
+      levelsF = levelsF + 1.0
+    }
+    if (levelsF > maxDepth) {
+      levelsF = maxDepth
+    }
+    if (levelsF <= 0.0) {
+      return arcs
+    }
+    val ringW = ((outerR - innerR)).toDouble() / (levelsF).toDouble()
+    val pad = (options?.padAngle ?: 0.0)
+    val sortMode = (options?.sort ?: "desc")
+    val startAngle = (options?.startAngle ?: (-kotlin.math.PI).toDouble() / (2.0).toDouble())
+    val stack: MutableList<SunburstFrame> = mutableListOf()
+    stack.add(SunburstFrame(children = nodes, a0 = startAngle, a1 = startAngle + SUNBURST_TAU, depth = 0, path = listOf(), inherited = "", hasInherited = false))
+    var sp = 1
+    while (sp > 0) {
+      sp = sp - 1
+      val frame = stack[sp]
+      var depthF = 0.0
+      for (d in 0 until frame.depth) {
+        depthF = depthF + 1.0
+      }
+      if (depthF >= levelsF || frame.children.length == 0) {
+        continue
+      }
+      val order: MutableList<Int> = mutableListOf()
+      if (sortMode == "desc") {
+        for (i in orderByValue(frame.children)) {
+          order.add(i)
+        }
+      } else {
+        for (i in 0 until frame.children.length) {
+          order.add(i)
+        }
+      }
+      var total = 0.0
+      var count = 0.0
+      for (i in order) {
+        val v = nodeValue(frame.children[i])
+        total = total + (if (v < 0.0) 0.0 else v)
+        count = count + 1.0
+      }
+      val usable = frame.a1 - frame.a0 - pad * (count - 1.0)
+      var cursor = frame.a0
+      val pushed: MutableList<SunburstFrame> = mutableListOf()
+      for (idx in order) {
+        val node = frame.children[idx]
+        val raw = nodeValue(node)
+        val v = if (raw < 0.0) 0.0 else raw
+        val span = if (total <= 0.0 || usable <= 0.0) 0.0 else usable * ((v).toDouble() / (total).toDouble())
+        val color = (node.color ?: (if (frame.hasInherited) frame.inherited else SUNBURST_PALETTE[idx % SUNBURST_PALETTE.length]))
+        val kids = (node.children ?: listOf())
+        val cellPath: MutableList<Int> = mutableListOf()
+        for (p in frame.path) {
+          cellPath.add(p)
+        }
+        cellPath.add(idx)
+        val r0 = innerR + ringW * depthF
+        arcs.add(SunburstArc(name = node.name, value = v, depth = frame.depth, path = cellPath, start = cursor, end = cursor + span, innerR = r0, outerR = r0 + ringW, color = color, leaf = kids.length == 0))
+        if (kids.length > 0) {
+          pushed.add(SunburstFrame(children = kids, a0 = cursor, a1 = cursor + span, depth = frame.depth + 1, path = cellPath, inherited = color, hasInherited = true))
+        }
+        cursor = cursor + span + pad
+      }
+      var pk = pushed.length - 1
+      while (pk >= 0) {
+        if (sp < stack.length) {
+          stack[sp] = pushed[pk]
+        } else {
+          stack.add(pushed[pk])
+        }
+        sp = sp + 1
+        pk = pk - 1
+      }
+    }
+    return arcs
+  }
+
+fun renderSunburst(arcs: List<SunburstArc>, center: PyreonChartPt, options: SunburstOptions? = null, measure: ((String, Double) -> Double)? = null): List<PyreonDrawCmd> {
+    val out: MutableList<PyreonDrawCmd> = mutableListOf()
+    val rawP = (options?.progress ?: 1.0)
+    val progress = if (rawP < 0.0) 0.0 else if (rawP > 1.0) 1.0 else rawP
+    val startAngle = (options?.startAngle ?: (-kotlin.math.PI).toDouble() / (2.0).toDouble())
+    val limit = startAngle + SUNBURST_TAU * progress
+    val showLabels = (options?.showLabels ?: true)
+    val fontSize = (options?.fontSize ?: 11.0)
+    val labelColor = (options?.labelColor ?: "#ffffff")
+    val m = (measure ?: ::approxTextWidth)
+    for (a in arcs) {
+      if (a.start >= limit || a.end <= a.start) {
+        continue
+      }
+      val end = if (a.end < limit) a.end else limit
+      var depthF = 0.0
+      for (d in 0 until a.depth) {
+        depthF = depthF + 1.0
+      }
+      val tintT = 0.2 + depthF * 0.15
+      val fill = if (a.leaf) a.color else tintHex(a.color, if (tintT > 0.5) 0.5 else tintT)
+      out.add(PyreonDrawCmd(kind = "polygon", fill = fill, points = arcPolygon(center, a.outerR, a.innerR, a.start, end)))
+      if (showLabels && progress >= 1.0) {
+        val midR = ((a.innerR + a.outerR)).toDouble() / (2.0).toDouble()
+        val chord = midR * (a.end - a.start)
+        val tw = m(a.name, fontSize)
+        if (chord >= tw + 4.0 && a.outerR - a.innerR >= fontSize + 4.0) {
+          val mid = ((a.start + a.end)).toDouble() / (2.0).toDouble()
+          out.add(PyreonDrawCmd(kind = "text", fill = labelColor, text = a.name, at = PyreonChartPt(x = center.x + Math.cos((mid).toDouble()) * midR, y = center.y + Math.sin((mid).toDouble()) * midR), size = fontSize, align = "middle", baseline = "middle"))
+        }
+      }
+    }
+    return out
+  }
+
+fun hitSunburst(arcs: List<SunburstArc>, center: PyreonChartPt, px: Double, py: Double): SunburstArc? {
+    val dx = px - center.x
+    val dy = py - center.y
+    val dist = Math.sqrt((dx * dx + dy * dy).toDouble())
+    val ang = Math.atan2((dy).toDouble(), (dx).toDouble())
+    var bestIdx = -1
+    var bestDepth = -1
+    for (i in 0 until arcs.length) {
+      val a = arcs[i]
+      if (dist < a.innerR || dist > a.outerR) {
+        continue
+      }
+      var t = ang
+      while (t < a.start) {
+        t = t + SUNBURST_TAU
+      }
+      while (t >= a.start + SUNBURST_TAU) {
+        t = t - SUNBURST_TAU
+      }
+      if (t > a.end) {
+        continue
+      }
+      if (a.depth > bestDepth) {
+        bestDepth = a.depth
+        bestIdx = i
+      }
+    }
+    if (bestIdx < 0) {
+      return null
+    }
+    return arcs[bestIdx]
   }

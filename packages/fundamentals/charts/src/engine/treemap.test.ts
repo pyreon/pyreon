@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { hitTreemap, layoutTreemap, nodeValue, renderTreemap, treemapToSvg } from './treemap'
+import { hitTreemap, layoutTreemap, nodeValue, renderTreemap } from './treemap'
+import { treemapToSvg } from './family-svg'
 import type { TreeNode } from './treemap'
 import { compileFamily, familyToSvg } from './option-family'
 

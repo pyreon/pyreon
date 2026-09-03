@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { hitSunburst, layoutSunburst, renderSunburst, sunburstToSvg, treeDepth } from './sunburst'
+import { hitSunburst, layoutSunburst, renderSunburst, treeDepth } from './sunburst'
+import { sunburstToSvg } from './family-svg'
 import type { TreeNode } from './treemap'
 import { compileFamily, familyToSvg } from './option-family'
 
