@@ -32,7 +32,9 @@ import { layoutSankey, renderSankey } from './sankey'
 import type { SankeyLink, SankeyNode, SankeyOptions } from './sankey'
 import { layoutGraph, renderGraph } from './graph'
 import type { GraphLink, GraphNode, GraphOptions } from './graph'
-import { calendarDomain, layoutCalendar, renderCalendar } from './calendar'
+import { calendarDomain, formatIsoDays, layoutCalendar, renderCalendar } from './calendar'
+import { layoutGantt, renderGantt } from './gantt'
+import type { GanttOptions, GanttTask } from './gantt'
 import type { CalendarOptions } from './calendar'
 import { calendarValues } from './calendar-web'
 import type { FunnelOptions, FunnelStage } from './funnel'
@@ -748,6 +750,38 @@ export function calendarToSvg(options: CalendarToSvgOptions): string {
   const description =
     options.description ??
     (options.title !== undefined ? `${options.title}: ${layout.cells.length} days from ${options.start} to ${options.end}, ${filled} with values from ${dom.min} to ${dom.max}.` : undefined)
+  return renderSvg(cmds, width, height, {
+    ...options.svg,
+    ...(options.title !== undefined ? { title: options.title } : {}),
+    ...(description !== undefined && description !== '' ? { description } : {}),
+  })
+}
+
+// ---- gantt (svg half; the geometry in gantt.ts is bundled into the native engine) ----
+
+export interface GanttToSvgOptions {
+  tasks: GanttTask[]
+  width?: Double
+  height?: Double
+  gantt?: GanttOptions
+  measure?: MeasureText
+  title?: string
+  description?: string
+  svg?: Omit<SvgOptions, 'title' | 'description'>
+}
+
+/** Gantt → `<svg>` string, server-safe. */
+export function ganttToSvg(options: GanttToSvgOptions): string {
+  const width = options.width ?? 720.0
+  const height = options.height ?? 320.0
+  const measure = options.measure ?? measureApprox()
+  const layout = layoutGantt(options.tasks, { x: 4.0, y: 4.0, w: width - 8.0, h: height - 8.0 }, options.gantt, measure)
+  const cmds = renderGantt(layout, options.gantt)
+  const description =
+    options.description ??
+    (options.title !== undefined
+      ? `${options.title}: ${layout.rows.length} tasks from ${formatIsoDays(Math.floor(layout.domain.min))} to ${formatIsoDays(Math.floor(layout.domain.max))}.`
+      : undefined)
   return renderSvg(cmds, width, height, {
     ...options.svg,
     ...(options.title !== undefined ? { title: options.title } : {}),

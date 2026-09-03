@@ -1,23 +1,26 @@
 // Gantt geometry — one row per task on a shared time axis, with progress
 // fills, milestones (diamonds), dependency elbows and a today marker. Pure:
-// dates in, rects and commands out; the host and `ganttToSvg` both consume it.
+// dates in, rects and commands out; the host and `ganttToSvg` both consume
+// it. Written in the native subset and BUNDLED into the generated
+// Swift/Kotlin engine: time is DAYS since 1970-01-01 (fractional allowed)
+// through calendar.ts's civil arithmetic, dates are ISO strings, lookups are
+// scans, the hit answers an INDEX (the nullable row lives in gantt-web.ts)
+// and the svg half in family-svg.ts.
 
-import { formatIsoDate, parseIsoDate } from './calendar-web'
-import { measureApprox, renderSvg } from './svg'
-import type { SvgOptions } from './svg'
-import type { Double, DrawCmd, MeasureText, Pt, Rect } from './types'
+import { civilFromDays, daysFromCivil, parseIsoDays, weekdayOfDays } from './calendar'
+import { approxTextWidth } from './treemap'
+import type { Domain, Double, DrawCmd, MeasureText, Pt, Rect } from './types'
 
-const DAY_MS = 86400000
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-const PALETTE = ['#2563eb', '#16a34a', '#f59e0b', '#dc2626', '#7c3aed', '#0891b2', '#db2777', '#65a30d']
+const GANTT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const GANTT_PALETTE = ['#2563eb', '#16a34a', '#f59e0b', '#dc2626', '#7c3aed', '#0891b2', '#db2777', '#65a30d']
 
 export interface GanttTask {
   id: string
   name: string
-  /** ISO `YYYY-MM-DD` or epoch ms. */
-  start: string | Double
-  /** ISO `YYYY-MM-DD` or epoch ms; a milestone may omit it (or equal `start`). */
-  end?: string | Double | undefined
+  /** ISO `YYYY-MM-DD`. */
+  start: string
+  /** ISO `YYYY-MM-DD`; a milestone may omit it (or equal `start`). */
+  end?: string | undefined
   /** 0..1 done fraction; drawn as a darker inner bar. */
   progress?: Double | undefined
   /** Ids of tasks this one depends on; drawn as elbows from their end to this start. */
@@ -28,9 +31,11 @@ export interface GanttTask {
   milestone?: boolean | undefined
 }
 
+/** The tick unit the time axis settled on. */
 export type GanttTickUnit = 'day' | 'week' | 'month' | 'quarter' | 'year'
 
 export interface GanttTick {
+  /** Days since 1970-01-01. */
   at: Double
   x: Double
   label: string
@@ -43,10 +48,13 @@ export interface GanttRow {
   rect: Rect
   /** Row band across the whole plot, for hover/hit. */
   band: Rect
-  startMs: Double
-  endMs: Double
+  /** Days since 1970-01-01. */
+  startDay: Double
+  endDay: Double
   color: string
-  label: { text: string; at: Pt }
+  /** The row's name label and where it sits in the label column. */
+  label: string
+  labelAt: Pt
 }
 
 export interface GanttLane {
@@ -66,14 +74,23 @@ export interface GanttLayout {
   lanes: GanttLane[]
   dependencies: GanttDependency[]
   ticks: GanttTick[]
-  unit: GanttTickUnit
+  unit: 'day' | 'week' | 'month' | 'quarter' | 'year'
   /** The time axis strip at the top. */
   axis: Rect
   /** The bar area (right of the labels, under the axis). */
   plot: Rect
-  domain: [Double, Double]
-  today: { x: Double } | null
+  /** Days since 1970-01-01. */
+  domain: Domain
+  /** Whether a today marker was placed, and where. */
+  hasToday: boolean
+  todayX: Double
   rowHeight: Double
+}
+
+/** An explicit time domain, ISO dates. */
+export interface GanttRange {
+  start: string
+  end: string
 }
 
 export interface GanttOptions {
@@ -84,187 +101,259 @@ export interface GanttOptions {
   labelColor?: string | undefined
   gridColor?: string | undefined
   /** ISO date drawn as a vertical marker; omit for none. */
-  today?: string | Double | undefined
+  today?: string | undefined
   todayColor?: string | undefined
-  /** Fixed time domain (ISO or ms); default the tasks' extent padded by one unit. */
-  domain?: [string | Double, string | Double] | undefined
+  /** Fixed time domain; default the tasks' extent padded by a quarter unit. */
+  domain?: GanttRange | undefined
   showDependencies?: boolean | undefined
   /** Entrance progress 0..1; bars grow from their start. */
   progress?: Double | undefined
   palette?: string[] | undefined
 }
 
-const toMs = (v: string | Double | undefined): number | null => {
-  if (typeof v === 'number') return Number.isFinite(v) ? v : null
-  if (typeof v === 'string') {
-    const iso = parseIsoDate(v)
-    if (iso !== null) return iso
-    const t = Date.parse(v)
-    return Number.isFinite(t) ? t : null
-  }
-  return null
+/** The tick unit for a span in days. */
+function ganttUnitFor(spanDays: Double): 'day' | 'week' | 'month' | 'quarter' | 'year' {
+  if (spanDays <= 21.0) return 'day'
+  if (spanDays <= 120.0) return 'week'
+  if (spanDays <= 730.0) return 'month'
+  if (spanDays <= 3000.0) return 'quarter'
+  return 'year'
 }
 
-const unitFor = (spanDays: Double): GanttTickUnit =>
-  spanDays <= 21 ? 'day' : spanDays <= 120 ? 'week' : spanDays <= 730 ? 'month' : spanDays <= 3000 ? 'quarter' : 'year'
+/** A unit's nominal length in days (months and quarters approximate). */
+function ganttUnitDays(unit: 'day' | 'week' | 'month' | 'quarter' | 'year'): Double {
+  if (unit === 'day') return 1.0
+  if (unit === 'week') return 7.0
+  if (unit === 'month') return 30.0
+  if (unit === 'quarter') return 91.0
+  return 365.0
+}
 
-const unitMs = (u: GanttTickUnit): Double => (u === 'day' ? DAY_MS : u === 'week' ? 7 * DAY_MS : u === 'month' ? 30 * DAY_MS : u === 'quarter' ? 91 * DAY_MS : 365 * DAY_MS)
+/** Month name for a 1-based month number. */
+function ganttMonthName(month: Double): string {
+  let mi = 0
+  let miF = 1.0
+  while (miF < month) {
+    mi = mi + 1
+    miF = miF + 1.0
+  }
+  return GANTT_MONTHS[mi]!
+}
 
-/** Tick instants for a unit across [lo, hi], aligned to calendar boundaries in UTC. */
-export function ganttTicks(lo: Double, hi: Double, unit: GanttTickUnit): { at: Double; label: string }[] {
-  const out: { at: Double; label: string }[] = []
-  const d = new Date(lo)
-  let y = d.getUTCFullYear()
-  let m = d.getUTCMonth()
-  let t: Double
-  if (unit === 'day' || unit === 'week') {
-    t = Date.UTC(y, m, d.getUTCDate())
-    if (unit === 'week') t = t - ((new Date(t).getUTCDay() + 6) % 7) * DAY_MS
-  } else if (unit === 'month') t = Date.UTC(y, m, 1)
-  else if (unit === 'quarter') t = Date.UTC(y, m - (m % 3), 1)
-  else t = Date.UTC(y, 0, 1)
-  const step = unit === 'day' ? DAY_MS : unit === 'week' ? 7 * DAY_MS : 0
-  const sameYear = new Date(lo).getUTCFullYear() === new Date(hi).getUTCFullYear()
+/** The first tick instant at or before `lo`, aligned to the unit's calendar boundary. */
+function ganttAlignStart(lo: Double, unit: 'day' | 'week' | 'month' | 'quarter' | 'year'): Double {
+  const day = Math.floor(lo)
+  const c = civilFromDays(day)
+  if (unit === 'day') return day
+  if (unit === 'week') {
+    const back = weekdayOfDays(day) + 6.0
+    return day - (back - Math.floor(back / 7.0) * 7.0)
+  }
+  if (unit === 'month') return daysFromCivil(c.year, c.month, 1.0)
+  if (unit === 'quarter') {
+    const off = c.month - 1.0
+    return daysFromCivil(c.year, c.month - (off - Math.floor(off / 3.0) * 3.0), 1.0)
+  }
+  return daysFromCivil(c.year, 1.0, 1.0)
+}
+
+/** The tick after `t` for a calendar-stepped unit. */
+function ganttNextTick(t: Double, unit: 'day' | 'week' | 'month' | 'quarter' | 'year'): Double {
+  if (unit === 'day') return t + 1.0
+  if (unit === 'week') return t + 7.0
+  const c = civilFromDays(t)
+  if (unit === 'month') return c.month >= 12.0 ? daysFromCivil(c.year + 1.0, 1.0, 1.0) : daysFromCivil(c.year, c.month + 1.0, 1.0)
+  if (unit === 'quarter') return c.month >= 10.0 ? daysFromCivil(c.year + 1.0, c.month - 9.0, 1.0) : daysFromCivil(c.year, c.month + 3.0, 1.0)
+  return daysFromCivil(c.year + 1.0, 1.0, 1.0)
+}
+
+/** Tick instants (days) for a unit across [lo, hi], aligned to calendar boundaries; `x` is filled by the layout. */
+export function ganttTicks(lo: Double, hi: Double, unit: 'day' | 'week' | 'month' | 'quarter' | 'year'): GanttTick[] {
+  const out: GanttTick[] = []
+  const sameYear = civilFromDays(Math.floor(lo)).year === civilFromDays(Math.floor(hi)).year
+  let t = ganttAlignStart(lo, unit)
   let guard = 0
   while (t <= hi && guard < 400) {
-    guard++
+    guard = guard + 1
     if (t >= lo) {
-      const dt = new Date(t)
+      const c = civilFromDays(t)
+      const q = Math.floor((c.month - 1.0) / 3.0) + 1.0
+      const year = `${Math.round(c.year)}`
       const label =
         unit === 'day' || unit === 'week'
-          ? String(dt.getUTCDate()) + ' ' + MONTHS[dt.getUTCMonth()]!
+          ? `${Math.round(c.day)} ${ganttMonthName(c.month)}`
           : unit === 'month'
-            ? MONTHS[dt.getUTCMonth()]! + (sameYear ? '' : ' ' + String(dt.getUTCFullYear()))
+            ? (sameYear ? ganttMonthName(c.month) : `${ganttMonthName(c.month)} ${year}`)
             : unit === 'quarter'
-              ? 'Q' + String(Math.floor(dt.getUTCMonth() / 3) + 1) + ' ' + String(dt.getUTCFullYear())
-              : String(dt.getUTCFullYear())
-      out.push({ at: t, label })
+              ? `Q${Math.round(q)} ${year}`
+              : year
+      out.push({ at: t, x: 0.0, label })
     }
-    if (step > 0) t = t + step
-    else {
-      const dt = new Date(t)
-      y = dt.getUTCFullYear()
-      m = dt.getUTCMonth()
-      t = unit === 'month' ? Date.UTC(y, m + 1, 1) : unit === 'quarter' ? Date.UTC(y, m + 3, 1) : Date.UTC(y + 1, 0, 1)
-    }
+    t = ganttNextTick(t, unit)
   }
   return out
+}
+
+/** Row index by task id, or -1. */
+function ganttRowIndex(rows: GanttRow[], id: string): number {
+  let found = -1
+  for (let i = 0; i < rows.length; i++) if (found < 0 && rows[i]!.task.id === id) found = i
+  return found
 }
 
 /** Lay tasks out in `box`: labels left, time axis on top, one row per task, lane headers between groups. */
 export function layoutGantt(tasks: GanttTask[], box: Rect, options?: GanttOptions, measure?: MeasureText): GanttLayout {
   const fontSize = options?.fontSize ?? 12.0
-  const m = measure ?? measureApprox()
-  const palette = options?.palette ?? PALETTE
-  const parsed = tasks.map((task) => {
-    const s = toMs(task.start) ?? 0
-    const e = task.milestone === true ? s : Math.max(s, toMs(task.end) ?? s)
-    return { task, s, e }
-  })
-  let lo = Infinity
-  let hi = -Infinity
-  for (const p of parsed) {
-    if (p.s < lo) lo = p.s
-    if (p.e > hi) hi = p.e
+  const m: MeasureText = measure ?? approxTextWidth
+  const palette = options?.palette ?? GANTT_PALETTE
+  const sDay: Double[] = []
+  const eDay: Double[] = []
+  for (const task of tasks) {
+    const ps = parseIsoDays(task.start)
+    const s = ps.ok ? ps.days : 0.0
+    const pe = parseIsoDays(task.end ?? '')
+    const eRaw = pe.ok ? pe.days : s
+    const e = task.milestone === true ? s : eRaw < s ? s : eRaw
+    sDay.push(s)
+    eDay.push(e)
   }
-  if (lo === Infinity) {
-    lo = Date.UTC(2024, 0, 1)
-    hi = lo + 30 * DAY_MS
+  let lo = 0.0
+  let hi = 0.0
+  let seen = false
+  for (let i = 0; i < sDay.length; i++) {
+    if (!seen || sDay[i]! < lo) lo = sDay[i]!
+    if (!seen || eDay[i]! > hi) hi = eDay[i]!
+    seen = true
   }
-  if (hi <= lo) hi = lo + DAY_MS
-  const todayMs = toMs(options?.today)
-  if (todayMs !== null) {
-    if (todayMs < lo) lo = todayMs
-    if (todayMs > hi) hi = todayMs
+  if (!seen) {
+    lo = daysFromCivil(2024.0, 1.0, 1.0)
+    hi = lo + 30.0
   }
-  let unit = unitFor((hi - lo) / DAY_MS)
-  const explicit = options?.domain
-  if (explicit !== undefined) {
-    const a = toMs(explicit[0])
-    const b = toMs(explicit[1])
-    if (a !== null && b !== null && b > a) {
-      lo = a
-      hi = b
-      unit = unitFor((hi - lo) / DAY_MS)
-    }
+  if (hi <= lo) hi = lo + 1.0
+  const pToday = parseIsoDays(options?.today ?? '')
+  const hasToday = pToday.ok
+  const todayDay = pToday.days
+  if (hasToday) {
+    if (todayDay < lo) lo = todayDay
+    if (todayDay > hi) hi = todayDay
+  }
+  const pA = parseIsoDays(options?.domain?.start ?? '')
+  const pB = parseIsoDays(options?.domain?.end ?? '')
+  const explicit = pA.ok && pB.ok && pB.days > pA.days
+  if (explicit) {
+    lo = pA.days
+    hi = pB.days
   } else {
     // Pad by a fraction of a unit so the first and last bars don't touch the edges.
-    const pad = unitMs(unit) * 0.25
+    const pad = ganttUnitDays(ganttUnitFor(hi - lo)) * 0.25
     lo = lo - pad
     hi = hi + pad
   }
+  const unit = ganttUnitFor(hi - lo)
   // Label column: the widest name (or lane) capped at labelFraction of the box.
   let labelW = 0.0
-  for (const p of parsed) labelW = Math.max(labelW, m(p.task.name, fontSize))
-  const lanesText = new Set<string>()
-  for (const p of parsed) if (p.task.group !== undefined) lanesText.add(p.task.group)
-  for (const g of lanesText) labelW = Math.max(labelW, m(g, fontSize + 1.0))
-  const labelCol = Math.min(labelW + 16.0, box.w * (options?.labelFraction ?? 0.35))
-  const axisH = fontSize + 12.0
-  const axis: Rect = { x: box.x + labelCol, y: box.y, w: Math.max(0.0, box.w - labelCol), h: axisH }
-  // Rows: one per task plus one header per group change.
-  let lineCount = 0
-  let lastGroup: string | undefined = undefined
-  for (const p of parsed) {
-    if (p.task.group !== undefined && p.task.group !== lastGroup) {
-      lineCount++
-      lastGroup = p.task.group
-    }
-    lineCount++
+  for (const task of tasks) {
+    const w = m(task.name, fontSize)
+    if (w > labelW) labelW = w
   }
-  const avail = Math.max(0.0, box.h - axisH)
-  const rowHeight = options?.rowHeight ?? Math.max(12.0, Math.min(28.0, lineCount === 0 ? 28.0 : avail / lineCount))
-  const plot: Rect = { x: axis.x, y: box.y + axisH, w: axis.w, h: Math.max(avail, rowHeight * lineCount) }
+  const groups: string[] = []
+  for (const task of tasks) {
+    const g = task.group ?? ''
+    if (g === '') continue
+    let known = false
+    for (const k of groups) if (k === g) known = true
+    if (!known) groups.push(g)
+  }
+  for (const g of groups) {
+    const w = m(g, fontSize + 1.0)
+    if (w > labelW) labelW = w
+  }
+  const cap = box.w * (options?.labelFraction ?? 0.35)
+  const labelCol = labelW + 16.0 < cap ? labelW + 16.0 : cap
+  const axisH = fontSize + 12.0
+  const axisW = box.w - labelCol
+  const axis: Rect = { x: box.x + labelCol, y: box.y, w: axisW < 0.0 ? 0.0 : axisW, h: axisH }
+  // Rows: one per task plus one header per group change.
+  let lineCount = 0.0
+  let lastGroup = ''
+  for (const task of tasks) {
+    const g = task.group ?? ''
+    if (g !== '' && g !== lastGroup) {
+      lineCount = lineCount + 1.0
+      lastGroup = g
+    }
+    lineCount = lineCount + 1.0
+  }
+  const availRaw = box.h - axisH
+  const avail = availRaw < 0.0 ? 0.0 : availRaw
+  const fitRow = lineCount <= 0.0 ? 28.0 : avail / lineCount
+  const clampedRow = fitRow < 12.0 ? 12.0 : fitRow > 28.0 ? 28.0 : fitRow
+  const rowHeight = options?.rowHeight ?? clampedRow
+  const plotH = rowHeight * lineCount
+  const plot: Rect = { x: axis.x, y: box.y + axisH, w: axis.w, h: avail > plotH ? avail : plotH }
   const span = hi - lo
-  const xOf = (t: Double): Double => plot.x + ((t - lo) / span) * plot.w
   const rows: GanttRow[] = []
   const lanes: GanttLane[] = []
   let y = plot.y
-  lastGroup = undefined
-  const byId = new Map<string, GanttRow>()
-  for (let i = 0; i < parsed.length; i++) {
-    const p = parsed[i]!
-    if (p.task.group !== undefined && p.task.group !== lastGroup) {
-      lanes.push({ text: p.task.group, at: { x: box.x + 4.0, y: y + rowHeight / 2.0 }, band: { x: box.x, y, w: box.w, h: rowHeight } })
+  let laneGroup = ''
+  const labelX = box.x + (groups.length > 0 ? 14.0 : 4.0)
+  for (let i = 0; i < tasks.length; i++) {
+    const task = tasks[i]!
+    const g = task.group ?? ''
+    if (g !== '' && g !== laneGroup) {
+      lanes.push({ text: g, at: { x: box.x + 4.0, y: y + rowHeight / 2.0 }, band: { x: box.x, y, w: box.w, h: rowHeight } })
       y = y + rowHeight
-      lastGroup = p.task.group
+      laneGroup = g
     }
-    const x0 = xOf(p.s)
-    const x1 = xOf(p.e)
-    const barH = Math.max(4.0, rowHeight * 0.6)
-    const isMilestone = p.task.milestone === true || p.e === p.s
-    const rect: Rect = isMilestone
-      ? { x: x0 - barH / 2.0, y: y + (rowHeight - barH) / 2.0, w: barH, h: barH }
-      : { x: x0, y: y + (rowHeight - barH) / 2.0, w: Math.max(1.0, x1 - x0), h: barH }
-    const row: GanttRow = {
-      task: p.task,
+    const x0 = plot.x + ((sDay[i]! - lo) / span) * plot.w
+    const x1 = plot.x + ((eDay[i]! - lo) / span) * plot.w
+    const barRaw = rowHeight * 0.6
+    const barH = barRaw < 4.0 ? 4.0 : barRaw
+    const isMilestone = task.milestone === true || eDay[i]! === sDay[i]!
+    const bw = x1 - x0 < 1.0 ? 1.0 : x1 - x0
+    const rect: Rect = isMilestone ? { x: x0 - barH / 2.0, y: y + (rowHeight - barH) / 2.0, w: barH, h: barH } : { x: x0, y: y + (rowHeight - barH) / 2.0, w: bw, h: barH }
+    rows.push({
+      task,
       index: i,
       rect,
       band: { x: box.x, y, w: box.w, h: rowHeight },
-      startMs: p.s,
-      endMs: p.e,
-      color: p.task.color ?? palette[i % palette.length]!,
-      label: { text: p.task.name, at: { x: box.x + (lanesText.size > 0 ? 14.0 : 4.0), y: y + rowHeight / 2.0 } },
-    }
-    rows.push(row)
-    byId.set(p.task.id, row)
+      startDay: sDay[i]!,
+      endDay: eDay[i]!,
+      color: task.color ?? palette[i % palette.length]!,
+      label: task.name,
+      labelAt: { x: labelX, y: y + rowHeight / 2.0 },
+    })
     y = y + rowHeight
   }
   const dependencies: GanttDependency[] = []
   for (const row of rows) {
-    for (const dep of row.task.dependencies ?? []) {
-      const from = byId.get(dep)
-      if (from === undefined) continue
+    const deps = row.task.dependencies ?? []
+    for (const dep of deps) {
+      const fi = ganttRowIndex(rows, dep)
+      if (fi < 0) continue
+      const from = rows[fi]!
       const fx = from.rect.x + from.rect.w
       const fy = from.rect.y + from.rect.h / 2.0
       const tx = row.rect.x
       const ty = row.rect.y + row.rect.h / 2.0
-      const midX = fx + 8.0
-      const points: Pt[] = fx + 8.0 <= tx ? [{ x: fx, y: fy }, { x: midX, y: fy }, { x: midX, y: ty }, { x: tx, y: ty }] : [{ x: fx, y: fy }, { x: fx + 8.0, y: fy }, { x: fx + 8.0, y: ty - row.rect.h / 2.0 - 2.0 }, { x: tx - 8.0, y: ty - row.rect.h / 2.0 - 2.0 }, { x: tx - 8.0, y: ty }, { x: tx, y: ty }]
+      const points: Pt[] = []
+      points.push({ x: fx, y: fy })
+      if (fx + 8.0 <= tx) {
+        points.push({ x: fx + 8.0, y: fy })
+        points.push({ x: fx + 8.0, y: ty })
+      } else {
+        const above = ty - row.rect.h / 2.0 - 2.0
+        points.push({ x: fx + 8.0, y: fy })
+        points.push({ x: fx + 8.0, y: above })
+        points.push({ x: tx - 8.0, y: above })
+        points.push({ x: tx - 8.0, y: ty })
+      }
+      points.push({ x: tx, y: ty })
       dependencies.push({ from: dep, to: row.task.id, points })
     }
   }
-  const ticks: GanttTick[] = ganttTicks(lo, hi, unit).map((t) => ({ at: t.at, x: xOf(t.at), label: t.label }))
+  const ticks: GanttTick[] = []
+  for (const t of ganttTicks(lo, hi, unit)) ticks.push({ at: t.at, x: plot.x + ((t.at - lo) / span) * plot.w, label: t.label })
   return {
     rows,
     lanes,
@@ -273,8 +362,9 @@ export function layoutGantt(tasks: GanttTask[], box: Rect, options?: GanttOption
     unit,
     axis,
     plot,
-    domain: [lo, hi],
-    today: todayMs === null ? null : { x: xOf(todayMs) },
+    domain: { min: lo, max: hi },
+    hasToday,
+    todayX: hasToday ? plot.x + ((todayDay - lo) / span) * plot.w : 0.0,
     rowHeight,
   }
 }
@@ -287,6 +377,7 @@ export function renderGantt(layout: GanttLayout, options?: GanttOptions): DrawCm
   const gridColor = options?.gridColor ?? '#e5e7eb'
   const rawP = options?.progress ?? 1.0
   const progress = rawP < 0.0 ? 0.0 : rawP > 1.0 ? 1.0 : rawP
+  const showDeps = options?.showDependencies ?? true
   for (const lane of layout.lanes) {
     out.push({ kind: 'rect', rect: lane.band, fill: '#f3f4f6' })
     out.push({ kind: 'text', text: lane.text, at: lane.at, fill: labelColor, size: fontSize + 1.0, align: 'start', baseline: 'middle' })
@@ -297,76 +388,57 @@ export function renderGantt(layout: GanttLayout, options?: GanttOptions): DrawCm
     out.push({ kind: 'text', text: t.label, at: { x: t.x + 3.0, y: layout.axis.y + layout.axis.h / 2.0 }, fill: labelColor, size: fontSize - 1.0, align: 'start', baseline: 'middle' })
   }
   for (const row of layout.rows) {
-    out.push({ kind: 'text', text: row.label.text, at: row.label.at, fill: labelColor, size: fontSize, align: 'start', baseline: 'middle' })
+    out.push({ kind: 'text', text: row.label, at: row.labelAt, fill: labelColor, size: fontSize, align: 'start', baseline: 'middle' })
     const r = row.rect
-    if (row.task.milestone === true || row.endMs === row.startMs) {
+    if (row.task.milestone === true || row.endDay === row.startDay) {
       const cx = r.x + r.w / 2.0
       const cy = r.y + r.h / 2.0
       const hw = (r.w / 2.0) * progress
-      out.push({ kind: 'polygon', points: [{ x: cx, y: cy - hw }, { x: cx + hw, y: cy }, { x: cx, y: cy + hw }, { x: cx - hw, y: cy }], fill: row.color })
+      const diamond: Pt[] = []
+      diamond.push({ x: cx, y: cy - hw })
+      diamond.push({ x: cx + hw, y: cy })
+      diamond.push({ x: cx, y: cy + hw })
+      diamond.push({ x: cx - hw, y: cy })
+      out.push({ kind: 'polygon', points: diamond, fill: row.color })
       continue
     }
     const w = r.w * progress
     out.push({ kind: 'rect', rect: { x: r.x, y: r.y, w, h: r.h }, fill: row.color })
-    const done = row.task.progress
-    if (done !== undefined && done > 0.0) {
-      const dw = w * Math.min(1.0, done)
+    const done = row.task.progress ?? 0.0
+    if (done > 0.0) {
+      const dw = w * (done > 1.0 ? 1.0 : done)
       out.push({ kind: 'rect', rect: { x: r.x, y: r.y + r.h * 0.25, w: dw, h: r.h * 0.5 }, fill: 'rgba(0,0,0,0.35)' })
     }
   }
-  if (progress >= 1.0 && options?.showDependencies !== false) {
+  if (progress >= 1.0 && showDeps) {
     for (const d of layout.dependencies) out.push({ kind: 'polyline', points: d.points, stroke: '#6b7280', width: 1.0 })
   }
-  if (layout.today !== null) {
-    out.push({ kind: 'line', from: { x: layout.today.x, y: layout.axis.y }, to: { x: layout.today.x, y: plotBottom }, stroke: options?.todayColor ?? '#dc2626', width: 1.5, dash: [4.0, 3.0] })
+  if (layout.hasToday) {
+    out.push({ kind: 'line', from: { x: layout.todayX, y: layout.axis.y }, to: { x: layout.todayX, y: plotBottom }, stroke: options?.todayColor ?? '#dc2626', width: 1.5, dash: [4.0, 3.0] })
   }
   return out
 }
 
-/** The task whose bar (or, failing that, whose row band right of the labels) is under a point. */
-export function hitGantt(layout: GanttLayout, px: Double, py: Double): GanttRow | null {
-  for (const row of layout.rows) {
-    const r = row.rect
-    if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return row
+/** Index of the task whose bar (or, failing that, whose row band right of the labels) is under a point, or -1. */
+export function hitGanttIndex(layout: GanttLayout, px: Double, py: Double): number {
+  let hit = -1
+  for (let i = 0; i < layout.rows.length; i++) {
+    if (hit >= 0) continue
+    const r = layout.rows[i]!.rect
+    if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) hit = i
   }
-  for (const row of layout.rows) {
-    const b = row.band
-    if (px >= layout.plot.x && py >= b.y && py <= b.y + b.h) return row
+  if (hit >= 0) return hit
+  for (let i = 0; i < layout.rows.length; i++) {
+    if (hit >= 0) continue
+    const b = layout.rows[i]!.band
+    if (px >= layout.plot.x && py >= b.y && py <= b.y + b.h) hit = i
   }
-  return null
+  return hit
 }
 
 /** Whole days between a row's start and end (0 for a milestone). */
 export function ganttDurationDays(row: GanttRow): Double {
-  return Math.round((row.endMs - row.startMs) / DAY_MS)
-}
-
-export interface GanttToSvgOptions {
-  tasks: GanttTask[]
-  width?: Double
-  height?: Double
-  gantt?: GanttOptions
-  measure?: MeasureText
-  title?: string
-  description?: string
-  svg?: Omit<SvgOptions, 'title' | 'description'>
-}
-
-/** Gantt → `<svg>` string, server-safe. */
-export function ganttToSvg(options: GanttToSvgOptions): string {
-  const width = options.width ?? 720.0
-  const height = options.height ?? 320.0
-  const measure = options.measure ?? measureApprox()
-  const layout = layoutGantt(options.tasks, { x: 4.0, y: 4.0, w: width - 8.0, h: height - 8.0 }, options.gantt, measure)
-  const cmds = renderGantt(layout, options.gantt)
-  const description =
-    options.description ??
-    (options.title !== undefined
-      ? `${options.title}: ${layout.rows.length} tasks from ${formatIsoDate(layout.domain[0])} to ${formatIsoDate(layout.domain[1])}.`
-      : undefined)
-  return renderSvg(cmds, width, height, {
-    ...options.svg,
-    ...(options.title !== undefined ? { title: options.title } : {}),
-    ...(description !== undefined && description !== '' ? { description } : {}),
-  })
+  const raw = row.endDay - row.startDay
+  const f = Math.floor(raw)
+  return raw - f < 0.5 ? f : f + 1.0
 }
