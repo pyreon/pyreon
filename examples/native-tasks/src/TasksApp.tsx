@@ -74,7 +74,7 @@ import { announce } from '@pyreon/a11y'
 import { useUrlState } from '@pyreon/url-state'
 import { signal, computed } from '@pyreon/reactivity'
 import { SankeyChart } from '@pyreon/charts/plot'
-import type { SankeyLink, SankeyNode } from '@pyreon/charts/plot'
+import type { SankeyHitIndex, SankeyLink, SankeyNode } from '@pyreon/charts/plot'
 import { useForm } from '@pyreon/form'
 import { useFetch, useCrashReporter } from '@pyreon/hooks'
 import { defineStore } from '@pyreon/store'
@@ -427,6 +427,10 @@ const FLOW_LINKS: SankeyLink[] = [
 
 function StatsPage() {
   const navigate = useNavigate()
+  // The node index the last tap on the flow chart reported (-1 = none yet):
+  // `onSelectIndex` is the engine's index hit on every target — a click on the
+  // web canvas, a tap gesture over the same layout on iOS/Android.
+  const flowPick = signal(-1)
   const scores = signal<Scores>({ math: 82, art: 91, gym: 74 })
   const subjects = computed(() => Object.keys(scores()))
   const total = computed(() => Object.values(scores()).reduce((a: number, b: number) => a + b, 0))
@@ -442,7 +446,15 @@ function StatsPage() {
       <For each={subjects} by={(name: string) => name}>
         {(name: string) => <Text>{name}</Text>}
       </For>
-      <SankeyChart nodes={FLOW_NODES} links={FLOW_LINKS} height={160} title="Task flow" data-testid="stats-flow" />
+      <SankeyChart
+        nodes={FLOW_NODES}
+        links={FLOW_LINKS}
+        height={160}
+        title="Task flow"
+        data-testid="stats-flow"
+        onSelectIndex={(hit: SankeyHitIndex) => flowPick.set(hit.node)}
+      />
+      <Text data-testid="stats-flow-pick">{String(flowPick())}</Text>
       <Button onPress={() => navigate('/tasks')} data-testid="stats-back">
         Back to tasks
       </Button>

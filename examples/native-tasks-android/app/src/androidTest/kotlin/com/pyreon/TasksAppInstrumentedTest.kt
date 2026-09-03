@@ -46,6 +46,9 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.geometry.Offset
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.pyreon.runtime.PyreonToast
@@ -530,6 +533,18 @@ class TasksAppInstrumentedTest {
         composeRule
             .onNodeWithTag("stats-flow")
             .assertIsDisplayed()
+        // #3257: `onSelectIndex` — a tap on the canvas runs hitSankeyIndex over the
+        // same layout the canvas painted and binds the node index. The first band
+        // (Backlog) is at x 80–96 dp (the host's gutter), nearly full height; the
+        // tap position is in px, so the dp offset is scaled by the density.
+        composeRule
+            .onNodeWithTag("stats-flow-pick")
+            .assertTextEquals("-1")
+        val flowDensity = composeRule.density.density
+        composeRule
+            .onNodeWithTag("stats-flow")
+            .performTouchInput { click(Offset(88f * flowDensity, 80f * flowDensity)) }
+        waitForTagText("stats-flow-pick", "0")
         composeRule
             .onNodeWithTag("stats-back")
             .performClick()

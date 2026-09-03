@@ -36,6 +36,17 @@ final class PyreonTasksUITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    /// Poll a static text's label — a state change lands a frame later than
+    /// the gesture that caused it, so an immediate assert races the render.
+    private func waitForLabel(_ el: XCUIElement, _ expected: String, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if el.exists && el.label == expected { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        return el.exists && el.label == expected
+    }
+
     /// Tap an element on a long screen, scrolling the containing ScrollView
     /// ourselves rather than relying on XCUITest's scroll-to-visible.
     ///
@@ -495,6 +506,20 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(statsFlow.waitForExistence(timeout: 10), "Sankey chart canvas missing on stats page")
         XCTAssertGreaterThan(statsFlow.frame.height, 100, "Sankey chart canvas has no height")
         XCTAssertGreaterThan(statsFlow.frame.width, 100, "Sankey chart canvas has no width")
+        // #3257: `onSelectIndex` — a tap on the canvas runs the engine's hit test
+        // (hitSankeyIndex over the same layout the canvas painted) and binds the
+        // node index. The first band (Backlog) sits at x 80–96 inside the canvas
+        // (the host's 80pt gutter) and spans nearly the full height, so a tap at
+        // (88, 80) from the canvas origin lands on node 0; the bound text proves
+        // the gesture reached the state, not merely that a gesture exists.
+        let flowPick = app.staticTexts["stats-flow-pick"].firstMatch
+        XCTAssertTrue(flowPick.waitForExistence(timeout: 10), "flow pick text missing")
+        XCTAssertEqual(flowPick.label, "-1", "no tap yet, pick should be -1")
+        statsFlow.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 88, dy: 80)).tap()
+        XCTAssertTrue(
+            waitForLabel(flowPick, "0", timeout: 10),
+            "tap on the first Sankey band did not bind node 0 (label: \(flowPick.label))"
+        )
         let statsBack = app.buttons["stats-back"].firstMatch
         XCTAssertTrue(statsBack.exists, "Back button missing on stats page")
         statsBack.tap()
