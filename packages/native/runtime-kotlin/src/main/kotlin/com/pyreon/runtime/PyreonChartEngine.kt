@@ -8,6 +8,8 @@ package com.pyreon.runtime
 // Pyreon TS-compat extensions
 private val <T> List<T>.length: Int get() = size
 
+enum class TreeOrient { LR, RL, TB, BT, radial }
+
 
 
 data class Tick(var value: Double, var pos: Double, var label: String)
@@ -79,6 +81,28 @@ data class SunburstOptions(var startAngle: Double? = null, var padAngle: Double?
 
 data class SunburstFrame(var children: List<TreeNode>, var a0: Double, var a1: Double, var depth: Int, var path: List<Int>, var inherited: String, var hasInherited: Boolean)
 
+data class TreeLayoutNode(var name: String, var value: Double? = null, var at: PyreonChartPt, var depth: Int, var path: List<Int>, var color: String, var leaf: Boolean, var dir: PyreonChartPt)
+
+data class TreeLink(var from: PyreonChartPt, var to: PyreonChartPt, var path: List<Int>, var depth: Int)
+
+data class TreeLayout(var nodes: List<TreeLayoutNode>, var links: List<TreeLink>)
+
+data class TreeOptions(var orient: String? = null, var maxDepth: Double? = null, var edgeShape: String? = null, var symbolSize: Double? = null, var showLabels: Boolean? = null, var labelColor: String? = null, var fontSize: Double? = null, var linkColor: String? = null, var progress: Double? = null, var labelGutter: Double? = null)
+
+data class TreeFrame(var node: TreeNode, var depth: Int, var path: List<Int>, var color: String, var parent: Int)
+
+data class Placed(var at: PyreonChartPt, var dir: PyreonChartPt)
+
+data class RiverSeries(var name: String, var values: List<Double>, var color: String? = null)
+
+data class RiverLayer(var series: Int, var name: String, var color: String, var top: List<PyreonChartPt>, var bottom: List<PyreonChartPt>, var labelAt: PyreonChartPt, var thickness: Double)
+
+data class RiverTick(var x: Double, var label: String)
+
+data class RiverLayout(var layers: List<RiverLayer>, var xs: List<Double>, var ticks: List<RiverTick>, var plot: PyreonChartRect)
+
+data class RiverOptions(var categories: List<String>? = null, var baseline: String? = null, var curve: String? = null, var showLabels: Boolean? = null, var showAxis: Boolean? = null, var fontSize: Double? = null, var labelColor: String? = null, var axisColor: String? = null, var progress: Double? = null)
+
 private val MINUTE = 60000.0
 
 private val HOUR = MINUTE * 60.0
@@ -100,6 +124,12 @@ private val TREEMAP_PALETTE = listOf("#0f766e", "#b45309", "#1d4ed8", "#b42318",
 private val SUNBURST_TAU = kotlin.math.PI * 2.0
 
 private val SUNBURST_PALETTE = listOf("#0f766e", "#b45309", "#1d4ed8", "#b42318", "#15803d", "#7c3aed")
+
+private val TREE_TAU = kotlin.math.PI * 2.0
+
+private val TREE_PALETTE = listOf("#0f766e", "#b45309", "#1d4ed8", "#b42318", "#15803d", "#7c3aed")
+
+private val RIVER_PALETTE = listOf("#0f766e", "#b45309", "#1d4ed8", "#b42318", "#15803d", "#7c3aed", "#0e7490", "#9333ea")
 
 fun plain(v: Double): String {
     val r = Math.round(v)
@@ -2198,4 +2228,501 @@ fun hitSunburst(arcs: List<SunburstArc>, center: PyreonChartPt, px: Double, py: 
       return null
     }
     return arcs[bestIdx]
+  }
+
+fun placeTreeNode(orient: String, box: PyreonChartRect, gutter: Double, levelsF: Double, slotsF: Double, depthF: Double, t: Double): Placed {
+    val depthFrac = if (levelsF <= 1.0) 0.0 else (depthF).toDouble() / ((levelsF - 1.0)).toDouble()
+    val slotFrac = if (slotsF <= 1.0) 0.5 else (t).toDouble() / ((slotsF - 1.0)).toDouble()
+    if (orient == "radial") {
+      val cx = box.x + (box.w).toDouble() / (2.0).toDouble()
+      val cy = box.y + (box.h).toDouble() / (2.0).toDouble()
+      val side = if (box.w < box.h) box.w else box.h
+      val rawR = (side).toDouble() / (2.0).toDouble() - gutter
+      val bigR = if (rawR < 0.0) 0.0 else rawR
+      val ang = (-kotlin.math.PI).toDouble() / (2.0).toDouble() + (if (slotsF <= 0.0) 0.0 else ((t).toDouble() / (slotsF).toDouble()) * TREE_TAU)
+      val r = bigR * depthFrac
+      val dir = if (depthF == 0.0) PyreonChartPt(x = 1.0, y = 0.0) else PyreonChartPt(x = Math.cos((ang).toDouble()), y = Math.sin((ang).toDouble()))
+      return Placed(at = PyreonChartPt(x = cx + Math.cos((ang).toDouble()) * r, y = cy + Math.sin((ang).toDouble()) * r), dir = dir)
+    }
+    val x0 = box.x + (gutter).toDouble() / (2.0).toDouble()
+    val y0 = box.y + (gutter).toDouble() / (4.0).toDouble()
+    val rawW = box.w - gutter
+    val w = if (rawW < 0.0) 0.0 else rawW
+    val rawH = box.h - (gutter).toDouble() / (2.0).toDouble()
+    val hgt = if (rawH < 0.0) 0.0 else rawH
+    if (orient == "LR") {
+      return Placed(at = PyreonChartPt(x = x0 + w * depthFrac, y = y0 + hgt * slotFrac), dir = PyreonChartPt(x = 1.0, y = 0.0))
+    }
+    if (orient == "RL") {
+      return Placed(at = PyreonChartPt(x = x0 + w * (1.0 - depthFrac), y = y0 + hgt * slotFrac), dir = PyreonChartPt(x = -1.0, y = 0.0))
+    }
+    if (orient == "TB") {
+      return Placed(at = PyreonChartPt(x = x0 + w * slotFrac, y = y0 + hgt * depthFrac), dir = PyreonChartPt(x = 0.0, y = 1.0))
+    }
+    return Placed(at = PyreonChartPt(x = x0 + w * slotFrac, y = y0 + hgt * (1.0 - depthFrac)), dir = PyreonChartPt(x = 0.0, y = -1.0))
+  }
+
+fun layoutTree(roots: List<TreeNode>, box: PyreonChartRect, options: TreeOptions? = null): TreeLayout {
+    val orient = (options?.orient ?: "LR")
+    val maxDepth = (options?.maxDepth ?: 64.0)
+    val gutter = (options?.labelGutter ?: 60.0)
+    val stack: MutableList<TreeFrame> = mutableListOf()
+    var sp = 0
+    var ri = roots.length - 1
+    while (ri >= 0) {
+      val root = roots[ri]
+      stack.add(TreeFrame(node = root, depth = 0, path = listOf(ri), color = (root.color ?: TREE_PALETTE[ri % TREE_PALETTE.length]), parent = -1))
+      sp = sp + 1
+      ri = ri - 1
+    }
+    val frames: MutableList<TreeFrame> = mutableListOf()
+    val leafFlags: MutableList<Boolean> = mutableListOf()
+    var levelsF = 0.0
+    while (sp > 0) {
+      sp = sp - 1
+      val frame = stack[sp]
+      var depthF = 0.0
+      for (d in 0 until frame.depth) {
+        depthF = depthF + 1.0
+      }
+      if (depthF + 1.0 > levelsF) {
+        levelsF = depthF + 1.0
+      }
+      val kids: MutableList<TreeNode> = mutableListOf()
+      if (depthF + 1.0 < maxDepth) {
+        for (k in (frame.node.children ?: listOf())) {
+          kids.add(k)
+        }
+      }
+      val index = frames.length
+      frames.add(frame)
+      leafFlags.add(kids.length == 0)
+      var ki = kids.length - 1
+      while (ki >= 0) {
+        val kid = kids[ki]
+        val childPath: MutableList<Int> = mutableListOf()
+        for (p in frame.path) {
+          childPath.add(p)
+        }
+        childPath.add(ki)
+        val next = TreeFrame(node = kid, depth = frame.depth + 1, path = childPath, color = (kid.color ?: frame.color), parent = index)
+        if (sp < stack.length) {
+          stack[sp] = next
+        } else {
+          stack.add(next)
+        }
+        sp = sp + 1
+        ki = ki - 1
+      }
+    }
+    val lo: MutableList<Double> = mutableListOf()
+    val hi: MutableList<Double> = mutableListOf()
+    var nextSlot = 0.0
+    for (i in 0 until frames.length) {
+      if (leafFlags[i]) {
+        lo.add(nextSlot)
+        hi.add(nextSlot)
+        nextSlot = nextSlot + 1.0
+      } else {
+        lo.add(-1.0)
+        hi.add(-1.0)
+      }
+    }
+    var bi = frames.length - 1
+    while (bi >= 0) {
+      val parent = frames[bi].parent
+      if (parent >= 0) {
+        if (lo[parent] < 0.0 || lo[bi] < lo[parent]) {
+          lo[parent] = lo[bi]
+        }
+        if (hi[parent] < 0.0 || hi[bi] > hi[parent]) {
+          hi[parent] = hi[bi]
+        }
+      }
+      bi = bi - 1
+    }
+    val slotsF = nextSlot
+    val nodes: MutableList<TreeLayoutNode> = mutableListOf()
+    val links: MutableList<TreeLink> = mutableListOf()
+    for (i in 0 until frames.length) {
+      val f = frames[i]
+      var depthF = 0.0
+      for (d in 0 until f.depth) {
+        depthF = depthF + 1.0
+      }
+      val t = ((lo[i] + hi[i])).toDouble() / (2.0).toDouble()
+      val p = placeTreeNode(orient, box, gutter, levelsF, slotsF, depthF, t)
+      nodes.add(TreeLayoutNode(name = f.node.name, value = f.node.value, at = p.at, depth = f.depth, path = f.path, color = f.color, leaf = leafFlags[i], dir = p.dir))
+    }
+    for (i in 0 until frames.length) {
+      val f = frames[i]
+      if (f.parent < 0) {
+        continue
+      }
+      links.add(TreeLink(from = nodes[f.parent].at, to = nodes[i].at, path = f.path, depth = f.depth))
+    }
+    return TreeLayout(nodes = nodes, links = links)
+  }
+
+fun linkPoints(link: TreeLink, orient: String, shape: String): List<PyreonChartPt> {
+    val a = link.from
+    val b = link.to
+    if (orient == "radial") {
+      return listOf(a, b)
+    }
+    val horizontal = orient == "LR" || orient == "RL"
+    if (shape == "elbow") {
+      if (horizontal) {
+        return listOf(a, PyreonChartPt(x = ((a.x + b.x)).toDouble() / (2.0).toDouble(), y = a.y), PyreonChartPt(x = ((a.x + b.x)).toDouble() / (2.0).toDouble(), y = b.y), b)
+      }
+      return listOf(a, PyreonChartPt(x = a.x, y = ((a.y + b.y)).toDouble() / (2.0).toDouble()), PyreonChartPt(x = b.x, y = ((a.y + b.y)).toDouble() / (2.0).toDouble()), b)
+    }
+    val pts: MutableList<PyreonChartPt> = mutableListOf()
+    var iF = 0.0
+    for (i in 0..12) {
+      val t = (iF).toDouble() / (12.0).toDouble()
+      val e = t * t * (3.0 - 2.0 * t)
+      if (horizontal) {
+        pts.add(PyreonChartPt(x = a.x + (b.x - a.x) * t, y = a.y + (b.y - a.y) * e))
+      } else {
+        pts.add(PyreonChartPt(x = a.x + (b.x - a.x) * e, y = a.y + (b.y - a.y) * t))
+      }
+      iF = iF + 1.0
+    }
+    return pts
+  }
+
+fun renderTree(layout: TreeLayout, options: TreeOptions? = null): List<PyreonDrawCmd> {
+    val out: MutableList<PyreonDrawCmd> = mutableListOf()
+    val orient = (options?.orient ?: "LR")
+    val shape = (options?.edgeShape ?: "curve")
+    val rawP = (options?.progress ?: 1.0)
+    val progress = if (rawP < 0.0) 0.0 else if (rawP > 1.0) 1.0 else rawP
+    var levelsF = 0.0
+    for (n in layout.nodes) {
+      var depthF = 0.0
+      for (d in 0 until n.depth) {
+        depthF = depthF + 1.0
+      }
+      if (depthF + 1.0 > levelsF) {
+        levelsF = depthF + 1.0
+      }
+    }
+    var shownF = 0.0
+    if (progress >= 1.0) {
+      shownF = levelsF
+    } else {
+      while (shownF + 1.0 <= levelsF * progress) {
+        shownF = shownF + 1.0
+      }
+    }
+    val size = (options?.symbolSize ?: 8.0)
+    val linkColor = (options?.linkColor ?: "#94a3b8")
+    val showLabels = (options?.showLabels ?: true)
+    val fontSize = (options?.fontSize ?: 11.0)
+    val labelColor = (options?.labelColor ?: "#334155")
+    for (l in layout.links) {
+      var depthF = 0.0
+      for (d in 0 until l.depth) {
+        depthF = depthF + 1.0
+      }
+      if (depthF >= shownF) {
+        continue
+      }
+      out.add(PyreonDrawCmd(kind = "polyline", stroke = linkColor, width = 1.0, points = linkPoints(l, orient, shape)))
+    }
+    for (n in layout.nodes) {
+      var depthF = 0.0
+      for (d in 0 until n.depth) {
+        depthF = depthF + 1.0
+      }
+      if (depthF >= shownF) {
+        continue
+      }
+      out.add(PyreonDrawCmd(kind = "circle", fill = n.color, center = n.at, radius = (size).toDouble() / (2.0).toDouble()))
+      if (!showLabels || progress < 1.0) {
+        continue
+      }
+      val sx = if (n.leaf) n.dir.x else -n.dir.x
+      val sy = if (n.leaf) n.dir.y else -n.dir.y
+      val off = (size).toDouble() / (2.0).toDouble() + 4.0
+      out.add(PyreonDrawCmd(kind = "text", fill = labelColor, text = n.name, at = PyreonChartPt(x = n.at.x + sx * off, y = n.at.y + sy * off), size = fontSize, align = if (sx > 0.3) "start" else if (sx < -0.3) "end" else "middle", baseline = if (sy > 0.3) "top" else if (sy < -0.3) "bottom" else "middle"))
+    }
+    return out
+  }
+
+fun hitTree(layout: TreeLayout, px: Double, py: Double, symbolSize: Double? = null): TreeLayoutNode? {
+    val r = (((symbolSize ?: 8.0))).toDouble() / (2.0).toDouble() + 4.0
+    var bestIdx = -1
+    var bestD = r * r
+    for (i in 0 until layout.nodes.length) {
+      val n = layout.nodes[i]
+      val dx = px - n.at.x
+      val dy = py - n.at.y
+      val d = dx * dx + dy * dy
+      if (d <= bestD) {
+        bestIdx = i
+        bestD = d
+      }
+    }
+    if (bestIdx < 0) {
+      return null
+    }
+    return layout.nodes[bestIdx]
+  }
+
+fun riverValue(s: RiverSeries, i: Int): Double {
+    if (i >= s.values.length) {
+      return 0.0
+    }
+    val v = s.values[i]
+    if (v != v) {
+      return 0.0
+    }
+    return if (v < 0.0) 0.0 else v
+  }
+
+fun layoutRiver(series: List<RiverSeries>, box: PyreonChartRect, options: RiverOptions? = null): RiverLayout {
+    val fontSize = (options?.fontSize ?: 11.0)
+    val showAxis = options?.showAxis != false
+    val rawH = box.h - (if (showAxis) fontSize * 1.8 else 0.0)
+    val plot = PyreonChartRect(x = box.x, y = box.y, w = box.w, h = if (rawH < 0.0) 0.0 else rawH)
+    var n = 0
+    for (s in series) {
+      if (s.values.length > n) {
+        n = s.values.length
+      }
+    }
+    val cats = (options?.categories ?: listOf())
+    if (cats.length > n) {
+      n = cats.length
+    }
+    var nF = 0.0
+    for (i in 0 until n) {
+      nF = nF + 1.0
+    }
+    val xs: MutableList<Double> = mutableListOf()
+    var iF = 0.0
+    for (i in 0 until n) {
+      xs.add(if (nF <= 1.0) plot.x + (plot.w).toDouble() / (2.0).toDouble() else plot.x + ((plot.w * iF)).toDouble() / ((nF - 1.0)).toDouble())
+      iF = iF + 1.0
+    }
+    val totals: MutableList<Double> = mutableListOf()
+    for (i in 0 until n) {
+      var t = 0.0
+      for (s in series) {
+        t = t + riverValue(s, i)
+      }
+      totals.add(t)
+    }
+    val zeroBase = options?.baseline == "zero"
+    val base: MutableList<Double> = mutableListOf()
+    for (t in totals) {
+      base.add(if (zeroBase) 0.0 else (-t).toDouble() / (2.0).toDouble())
+    }
+    var lo = 0.0
+    var hi = 1.0
+    var seen = false
+    for (i in 0 until n) {
+      val b = base[i]
+      var top = b + totals[i]
+      if (!seen || b < lo) {
+        lo = b
+      }
+      if (!seen || top > hi) {
+        hi = top
+      }
+      seen = true
+    }
+    if (hi <= lo) {
+      hi = lo + 1.0
+    }
+    val layers: MutableList<RiverLayer> = mutableListOf()
+    val cursor: MutableList<Double> = mutableListOf()
+    for (b in base) {
+      cursor.add(b)
+    }
+    for (si in 0 until series.length) {
+      val s = series[si]
+      val top: MutableList<PyreonChartPt> = mutableListOf()
+      val bottom: MutableList<PyreonChartPt> = mutableListOf()
+      var widest = 0.0
+      var widestAt = 0
+      for (i in 0 until n) {
+        val v = riverValue(s, i)
+        val b = cursor[i]
+        bottom.add(PyreonChartPt(x = xs[i], y = plot.y + plot.h - (((b - lo)).toDouble() / ((hi - lo)).toDouble()) * plot.h))
+        top.add(PyreonChartPt(x = xs[i], y = plot.y + plot.h - (((b + v - lo)).toDouble() / ((hi - lo)).toDouble()) * plot.h))
+        if (v > widest) {
+          widest = v
+          widestAt = i
+        }
+        cursor[i] = b + v
+      }
+      val hasPts = n > 0
+      val midX = if (hasPts) xs[widestAt] else plot.x
+      val midY = if (hasPts) (top[widestAt].y).toDouble() / (2.0).toDouble() + (bottom[widestAt].y).toDouble() / (2.0).toDouble() else plot.y
+      val thickness = if (hasPts && widest > 0.0) bottom[widestAt].y - top[widestAt].y else 0.0
+      layers.add(RiverLayer(series = si, name = s.name, color = (s.color ?: RIVER_PALETTE[si % RIVER_PALETTE.length]), top = top, bottom = bottom, labelAt = PyreonChartPt(x = midX, y = midY), thickness = thickness))
+    }
+    val ticks: MutableList<RiverTick> = mutableListOf()
+    if (showAxis && n > 0) {
+      var every = 1
+      while (every * 8 < n) {
+        every = every + 1
+      }
+      var ti = 0
+      while (ti < n) {
+        ticks.add(RiverTick(x = xs[ti], label = if (ti < cats.length) cats[ti] else "${ti + 1}"))
+        ti = ti + every
+      }
+    }
+    return RiverLayout(layers = layers, xs = xs, ticks = ticks, plot = plot)
+  }
+
+fun smoothPoints(pts: List<PyreonChartPt>): List<PyreonChartPt> {
+    val out: MutableList<PyreonChartPt> = mutableListOf()
+    if (pts.length < 3) {
+      for (p in pts) {
+        out.add(p)
+      }
+      return out
+    }
+    out.add(pts[0])
+    for (i in 0 until pts.length - 1) {
+      val p1 = pts[i]
+      val p2 = pts[i + 1]
+      val p0 = if (i > 0) pts[i - 1] else p1
+      val p3 = if (i + 2 < pts.length) pts[i + 2] else p2
+      var kf = 1.0
+      for (k in 1..8) {
+        val t = (kf).toDouble() / (8.0).toDouble()
+        val t2 = t * t
+        val t3 = t2 * t
+        val x = 0.5 * (2.0 * p1.x + (-p0.x + p2.x) * t + (2.0 * p0.x - 5.0 * p1.x + 4.0 * p2.x - p3.x) * t2 + (-p0.x + 3.0 * p1.x - 3.0 * p2.x + p3.x) * t3)
+        val y = 0.5 * (2.0 * p1.y + (-p0.y + p2.y) * t + (2.0 * p0.y - 5.0 * p1.y + 4.0 * p2.y - p3.y) * t2 + (-p0.y + 3.0 * p1.y - 3.0 * p2.y + p3.y) * t3)
+        out.add(PyreonChartPt(x = x, y = y))
+        kf = kf + 1.0
+      }
+    }
+    return out
+  }
+
+fun layerPolygon(layer: RiverLayer, curve: String, progress: Double): List<PyreonChartPt> {
+    var lenF = 0.0
+    for (i in 0 until layer.top.length) {
+      lenF = lenF + 1.0
+    }
+    var countF = 0.0
+    if (progress >= 1.0) {
+      countF = lenF
+    } else {
+      while (countF + 1.0 <= lenF * progress) {
+        countF = countF + 1.0
+      }
+      if (countF < 2.0) {
+        countF = 2.0
+      }
+    }
+    val topCut: MutableList<PyreonChartPt> = mutableListOf()
+    val bottomCut: MutableList<PyreonChartPt> = mutableListOf()
+    var iF = 0.0
+    for (i in 0 until layer.top.length) {
+      if (iF >= countF) {
+        break
+      }
+      topCut.add(layer.top[i])
+      if (i < layer.bottom.length) {
+        bottomCut.add(layer.bottom[i])
+      }
+      iF = iF + 1.0
+    }
+    val top = if (curve == "smooth") smoothPoints(topCut) else topCut
+    val bottom = if (curve == "smooth") smoothPoints(bottomCut) else bottomCut
+    val out: MutableList<PyreonChartPt> = mutableListOf()
+    for (p in top) {
+      out.add(p)
+    }
+    var bi = bottom.length - 1
+    while (bi >= 0) {
+      out.add(bottom[bi])
+      bi = bi - 1
+    }
+    return out
+  }
+
+fun renderRiver(layout: RiverLayout, options: RiverOptions? = null, measure: ((String, Double) -> Double)? = null): List<PyreonDrawCmd> {
+    val out: MutableList<PyreonDrawCmd> = mutableListOf()
+    val curve = (options?.curve ?: "smooth")
+    val rawP = (options?.progress ?: 1.0)
+    val progress = if (rawP < 0.0) 0.0 else if (rawP > 1.0) 1.0 else rawP
+    val fontSize = (options?.fontSize ?: 11.0)
+    val labelColor = (options?.labelColor ?: "#ffffff")
+    val axisColor = (options?.axisColor ?: "#94a3b8")
+    val m = (measure ?: ::approxTextWidth)
+    if (progress <= 0.0 || layout.xs.length < 2) {
+      return out
+    }
+    for (l in layout.layers) {
+      if (l.thickness <= 0.0) {
+        continue
+      }
+      out.add(PyreonDrawCmd(kind = "polygon", fill = l.color, points = layerPolygon(l, curve, progress)))
+    }
+    if (progress < 1.0) {
+      return out
+    }
+    if (options?.showAxis != false && layout.ticks.length > 0) {
+      val y = layout.plot.y + layout.plot.h
+      out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = layout.plot.x, y = y), to = PyreonChartPt(x = layout.plot.x + layout.plot.w, y = y), stroke = axisColor, width = 1.0))
+      for (t in layout.ticks) {
+        out.add(PyreonDrawCmd(kind = "text", fill = "#64748b", text = t.label, at = PyreonChartPt(x = t.x, y = y + 4.0), size = fontSize, align = "middle", baseline = "top"))
+      }
+    }
+    if (options?.showLabels != false) {
+      for (l in layout.layers) {
+        if (l.thickness < fontSize + 2.0) {
+          continue
+        }
+        if (m(l.name, fontSize) > (layout.plot.w).toDouble() / (3.0).toDouble()) {
+          continue
+        }
+        out.add(PyreonDrawCmd(kind = "text", fill = labelColor, text = l.name, at = l.labelAt, size = fontSize, align = "middle", baseline = "middle"))
+      }
+    }
+    return out
+  }
+
+fun riverPointInPolygon(pts: List<PyreonChartPt>, px: Double, py: Double): Boolean {
+    var inside = false
+    var j = pts.length - 1
+    for (i in 0 until pts.length) {
+      val a = pts[i]
+      val b = pts[j]
+      val aAbove = a.y > py
+      val bAbove = b.y > py
+      if (aAbove != bAbove && px < (((b.x - a.x) * (py - a.y))).toDouble() / ((b.y - a.y)).toDouble() + a.x) {
+        inside = !inside
+      }
+      j = i
+    }
+    return inside
+  }
+
+fun hitRiver(layout: RiverLayout, px: Double, py: Double, curve: String? = null): RiverLayer? {
+    val shape = (curve ?: "smooth")
+    var bestIdx = -1
+    for (i in layout.layers.length - 1 downTo 0) {
+      if (bestIdx >= 0) {
+        continue
+      }
+      val l = layout.layers[i]
+      if (l.thickness > 0.0 && riverPointInPolygon(layerPolygon(l, shape, 1.0), px, py)) {
+        bestIdx = i
+      }
+    }
+    if (bestIdx < 0) {
+      return null
+    }
+    return layout.layers[bestIdx]
   }

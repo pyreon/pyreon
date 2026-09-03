@@ -3,7 +3,7 @@
 import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
-import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
+import { paint, prepareCanvas } from './canvas-web'
 import { hitTree, layoutTree, renderTree } from './tree'
 import type { TreeLayout, TreeLayoutNode, TreeOptions } from './tree'
 import type { TreeNode } from './treemap'
@@ -47,7 +47,7 @@ export function TreeChart(props: TreeChartProps): VNode {
     const hgt = props.height ?? 300
     const ctx = prepareCanvas(el, w, hgt)
     if (ctx === null) return
-    paint(ctx, renderTree(layoutFor(w, hgt), props.tree, canvasMeasure(ctx, FONT)), w, hgt, FONT)
+    paint(ctx, renderTree(layoutFor(w, hgt), props.tree), w, hgt, FONT)
   }
 
   effect(() => {
