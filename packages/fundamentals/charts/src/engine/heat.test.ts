@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { buildHeatGrid, colorRamp, HEAT_RAMP, renderHeat } from './heat'
+import { buildHeatGrid, HEAT_RAMP, rampColor, renderHeat } from './heat'
+import { colorRamp } from './heat-ramp'
 import type { Rect } from './types'
 
 const PLOT: Rect = { x: 0, y: 0, w: 100, h: 60 }
@@ -30,16 +31,14 @@ describe('buildHeatGrid', () => {
 
 describe('colorRamp', () => {
   it('hits the endpoints exactly and interpolates the middle', () => {
-    const STOPS = ['#000000', '#ffffff']
-    const ramp = colorRamp(STOPS)
+    const ramp = colorRamp(['#000000', '#ffffff'])
     expect(ramp(0)).toBe('rgb(0, 0, 0)')
     expect(ramp(1)).toBe('rgb(255, 255, 255)')
     expect(ramp(0.5)).toBe('rgb(128, 128, 128)')
   })
 
   it('clamps outside 0..1 rather than extrapolating', () => {
-    const STOPS = ['#000000', '#ffffff']
-    const ramp = colorRamp(STOPS)
+    const ramp = colorRamp(['#000000', '#ffffff'])
     expect(ramp(-2)).toBe(ramp(0))
     expect(ramp(9)).toBe(ramp(1))
   })
@@ -66,12 +65,11 @@ describe('colorRamp', () => {
 })
 
 describe('renderHeat', () => {
-  const STOPS = ['#000000', '#ffffff']
-  const ramp = colorRamp(['#000000', '#ffffff'])
+  const stops = ['#000000', '#ffffff']
 
   it('tiles the plot with gapped cells', () => {
     const grid = buildHeatGrid(['a', 'b'], ['x', 'y'], [0, 1, 0, 1], [0, 0, 1, 1], [1, 2, 3, 4])
-    const cmds = renderHeat({ grid, plot: PLOT, stops: STOPS, gap: 2 })
+    const cmds = renderHeat({ grid, plot: PLOT, stops, gap: 2 })
     expect(cmds).toHaveLength(4)
     for (const c of cmds) {
       if (c.kind !== 'rect') throw new Error('rects only')
@@ -82,7 +80,7 @@ describe('renderHeat', () => {
 
   it('maps min to the ramp bottom and max to the top', () => {
     const grid = buildHeatGrid(['a', 'b'], ['x'], [0, 1], [0, 0], [10, 20])
-    const cmds = renderHeat({ grid, plot: PLOT, stops: STOPS })
+    const cmds = renderHeat({ grid, plot: PLOT, stops })
     const fills = cmds.map((c) => (c.kind === 'rect' ? c.fill : ''))
     expect(fills).toContain('rgb(0, 0, 0)')
     expect(fills).toContain('rgb(255, 255, 255)')
@@ -90,7 +88,7 @@ describe('renderHeat', () => {
 
   it('a FLAT grid renders every cell fully present, not divided by zero', () => {
     const grid = buildHeatGrid(['a', 'b'], ['x'], [0, 1], [0, 0], [5, 5])
-    const cmds = renderHeat({ grid, plot: PLOT, stops: STOPS })
+    const cmds = renderHeat({ grid, plot: PLOT, stops })
     for (const c of cmds) {
       expect(c.kind === 'rect' && c.fill).toBe('rgb(255, 255, 255)')
     }
@@ -98,18 +96,18 @@ describe('renderHeat', () => {
 
   it('does NOT draw absent cells — absence and zero are different facts', () => {
     const grid = buildHeatGrid(['a', 'b'], ['x', 'y'], [0], [0], [1])
-    expect(renderHeat({ grid, plot: PLOT, stops: STOPS })).toHaveLength(1)
+    expect(renderHeat({ grid, plot: PLOT, stops })).toHaveLength(1)
   })
 
   it('ignores cells outside the declared grid rather than painting off-plot', () => {
     const grid = buildHeatGrid(['a'], ['x'], [0, 5], [0, 0], [1, 2])
-    expect(renderHeat({ grid, plot: PLOT, stops: STOPS })).toHaveLength(1)
+    expect(renderHeat({ grid, plot: PLOT, stops })).toHaveLength(1)
   })
 
   it('the entrance scales cells from their centres', () => {
     const grid = buildHeatGrid(['a'], ['x'], [0], [0], [1])
-    const full = renderHeat({ grid, plot: PLOT, stops: STOPS })[0]!
-    const half = renderHeat({ grid, plot: PLOT, stops: STOPS, progress: 0.5 })[0]!
+    const full = renderHeat({ grid, plot: PLOT, stops })[0]!
+    const half = renderHeat({ grid, plot: PLOT, stops, progress: 0.5 })[0]!
     if (full.kind !== 'rect' || half.kind !== 'rect') throw new Error('rects')
     expect(half.rect.w).toBeCloseTo(full.rect.w * 0.5, 5)
     // Centred: the centre point does not move as the cell grows.
@@ -118,6 +116,14 @@ describe('renderHeat', () => {
 
   it('an empty axis renders nothing', () => {
     const grid = buildHeatGrid([], [], [], [], [])
-    expect(renderHeat({ grid, plot: PLOT, stops: STOPS })).toHaveLength(0)
+    expect(renderHeat({ grid, plot: PLOT, stops })).toHaveLength(0)
+  })
+})
+
+describe('rampColor (the crossed plain-function form)', () => {
+  it('agrees with colorRamp at every stop and midpoint', () => {
+    const stops = ['#000000', '#ff0000', '#ffffff']
+    const ramp = colorRamp(stops)
+    for (const t of [-1, 0, 0.25, 0.5, 0.75, 1, 2]) expect(rampColor(stops, t)).toBe(ramp(t))
   })
 })
