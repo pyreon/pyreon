@@ -126,14 +126,6 @@ function compileApp(source: string, globals: Record<string, unknown> = {}): () =
   return fn(...DEP_VALUES, ...Object.values(globals)) as () => unknown
 }
 
-async function ssrInto(vnode: unknown): Promise<HTMLElement> {
-  const html = await renderToString(vnode as never)
-  const host = document.createElement('div')
-  host.innerHTML = html
-  document.body.appendChild(host)
-  return host
-}
-
 /** Every element + text node under `host`, document order. */
 function snapshot(host: HTMLElement): Node[] {
   const out: Node[] = []
@@ -147,8 +139,6 @@ function retained(before: Node[], host: HTMLElement): number {
   const after = new Set(snapshot(host))
   return before.filter((n) => after.has(n)).length
 }
-
-
 
 /** SSR the given tree, then hydrate `client` over it and return the DOM. */
 async function roundTrip(tree: unknown, client: string) {
@@ -192,15 +182,13 @@ describe('trailing reactive-text slot is not adopted as a mount slot', () => {
   })
 
   it('stays reactive after the rebuild — the refusal must not strand the bind', async () => {
-    const html = await renderToString(h('p', { class: 'r' }, 'v=', () => '1') as never)
-    const host = document.createElement('div')
-    host.innerHTML = html
-    document.body.appendChild(host)
-    const App = compileApp(
+    const { host, out, dispose } = await roundTrip(
+      h('p', { class: 'r' }, 'v=', () => '1'),
       `const App = () => { const n = signal('1'); globalThis.__n = n; return <p class="r">v={n()}</p> }`,
     )
-    const dispose = hydrateRoot(host, h(App as never, null))
-    expect(host.innerHTML).toBe('<p class="r">v=1</p>')
+    expect(out).toBe('<p class="r">v=1</p>')
+    // Rebuilding must not cost the binding: the refusal changes WHICH nodes the
+    // element ends up with, never whether the signal still drives them.
     ;(globalThis as { __n?: { set(v: string): void } }).__n?.set('2')
     expect(host.innerHTML).toBe('<p class="r">v=2</p>')
     dispose()
