@@ -51,7 +51,7 @@
     "@pyreon/validation": "workspace:*",
     "@pyreon/virtual": "workspace:*",
     "@pyreon/zero": "workspace:*",
-    "@tanstack/query-core": "^5.102.2",
+    "@tanstack/query-core": "^5.102.8",
     "@tanstack/virtual-core": "^3.17.7",
     "zod": "^4.5.4"
   },

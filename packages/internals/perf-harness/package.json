@@ -33,7 +33,7 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/unistyle": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
-    "happy-dom": "^20.11.6",
+    "happy-dom": "^20.13.2",
     "vitest": "^4.1.11"
   }
 }

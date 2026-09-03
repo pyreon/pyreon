@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "@pyreon/compiler": "workspace:*",
-    "oxc-parser": "^0.147.0"
+    "oxc-parser": "^0.148.0"
   },
   "devDependencies": {
     "@pyreon/http": "workspace:^",
