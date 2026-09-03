@@ -268,6 +268,34 @@ describe('@pyreon/native-cli build', () => {
     }
   })
 
+  it('derives the import for EVERY detect*Gestures detector, not an enumerated few', () => {
+    // The enumerated form carried an arm for the horizontal drag and none for
+    // the tap or transform detectors, so a chart host emitting a tap handler
+    // died on the real `gradle assembleDebug` with `Unresolved reference
+    // 'detectTapGestures'`. The kotlinc stub gate cannot see this: it
+    // concatenates the stubs into one compilation unit, where a symbol
+    // resolves with or without an import.
+    const tap = conditionalKotlinImports('.pointerInput(Unit) { detectTapGestures { } }')
+    expect(tap).toContain('import androidx.compose.foundation.gestures.detectTapGestures')
+    const transform = conditionalKotlinImports('.pointerInput(Unit) { detectTransformGestures { _, _, _, _ -> } }')
+    expect(transform).toContain('import androidx.compose.foundation.gestures.detectTransformGestures')
+    const drag = conditionalKotlinImports('.pointerInput(Unit) { detectHorizontalDragGestures { } }')
+    expect(drag).toContain('import androidx.compose.foundation.gestures.detectHorizontalDragGestures')
+
+    // The load-bearing half: a detector NOBODY has written an arm for still
+    // resolves, which is what makes this a class fix rather than two more arms.
+    const novel = conditionalKotlinImports('.pointerInput(Unit) { detectVerticalDragGestures { } }')
+    expect(novel).toContain('import androidx.compose.foundation.gestures.detectVerticalDragGestures')
+
+    // And it stays quiet when no detector is emitted — an unconditional import
+    // of a symbol the file never uses is its own compile error in Kotlin.
+    expect(conditionalKotlinImports('Text("hi")')).not.toContain('gestures.detect')
+
+    // One import per detector even when a detector appears twice.
+    const twice = conditionalKotlinImports('detectTapGestures { } ; detectTapGestures { }')
+    expect(twice.split('detectTapGestures').length - 1).toBe(1)
+  })
+
   it('Kotlin conditional imports: <Field kind> pulls PasswordVisualTransformation + VisualTransformation', () => {
     // <Field kind="password"> emits `PasswordVisualTransformation()`; the
     // dynamic show/hide toggle also emits `VisualTransformation.None`. Both live
