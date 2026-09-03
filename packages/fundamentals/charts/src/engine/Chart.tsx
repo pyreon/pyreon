@@ -7,11 +7,13 @@
 
 import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
-import { effect, signal } from '@pyreon/reactivity'
+import { batch, effect, signal } from '@pyreon/reactivity'
 import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
 import { renderLegend } from './legend'
 import type { LegendPager } from './legend'
 import { renderTitle } from './title'
+import { sameShape, sameValues, tweenValues } from './tween'
+import { withAlpha } from './radar'
 import { placeTooltip, tooltipAt, tooltipLines } from './tooltip'
 import type { TooltipContent } from './tooltip'
 import { barsFor, defaultTheme, layoutChart, renderChart, resolveY2Domain, resolveYDomain, seriesOnRightAxis, stackedHitAt } from './render'
@@ -21,8 +23,9 @@ import { scaleLinear } from './scale'
 import { resolveCategories, resolveMarks } from './marks'
 import type { Mark } from './marks'
 import { chartTable, describeChart } from './a11y'
-import { brushRange, isFullWindow, panWindow, sliceRange, zoomWindow } from './zoom'
+import { brushRange, clampWindow, isFullWindow, panWindow, sliceRange, zoomWindow } from './zoom'
 import type { ZoomWindow } from './zoom'
+import type { ChartLink } from './link'
 import type { Formatter } from './format'
 import type { Domain, DrawCmd, Double, Rect } from './types'
 
@@ -93,6 +96,12 @@ export interface PlotChartProps<T> {
    */
   crosshair?: boolean
   /**
+   * Share zoom and crosshair state with other hosts (ECharts `connect`): pass
+   * the same `createChartLink()` to every chart in the group and a wheel,
+   * pan, navigator drag, preset or hover on any of them moves all of them.
+   */
+  link?: ChartLink
+  /**
    * Wheel-zoom + drag-pan over the x range (ECharts' inside dataZoom).
    *
    * The window is a fraction pair over the data; zoom keeps the datum under
@@ -110,6 +119,34 @@ export interface PlotChartProps<T> {
   brush?: boolean
   /** Fired when a brush completes (inclusive datum range) or clears (null). */
   onBrush?: (range: { start: number; end: number } | null) => void
+  /**
+   * Keyboard navigation: the canvas becomes focusable; Left/Right (and
+   * Up/Down) move a focus datum, Home/End jump, Enter/Space select (through
+   * `onSelect`), Escape clears. The focused datum is announced in a polite
+   * live region and drawn with a focus ring. Default on; `false` disables.
+   */
+  keyboard?: boolean
+  /**
+   * Range-selector presets (the Highcharts stock idea): buttons in a strip
+   * under the plot that set the zoom window to the LAST `count` rows;
+   * `count <= 0` shows everything. Works with or without `dataZoom`.
+   */
+  zoomPresets?: { label: string; count: number }[]
+  /**
+   * Tween a data change of the same shape (same series count and lengths)
+   * from the previous frame to the new one instead of snapping. Default on;
+   * respects `prefers-reduced-motion` like the entrance animation.
+   */
+  updateAnimation?: boolean
+  /** Tween duration in ms; default 400. */
+  updateDuration?: Double
+  /**
+   * The slider dataZoom: a navigator strip under the plot showing the first
+   * series over ALL rows with the zoom window as a draggable band — drag the
+   * band to move it, drag a handle to resize. Works with or without the
+   * inside `dataZoom` (wheel + pan).
+   */
+  navigator?: boolean
   class?: string
   /**
    * Names the chart for assistive technology and titles the data table.
@@ -276,15 +313,15 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   // it; an array rather than a Set so every toggle is a fresh value.
   const hiddenSeries = signal<number[]>([])
   // The hovered datum for the crosshair; -1 = no hover.
-  const hoverIdx = signal(-1)
+  const hoverIdx = props.link?.hover ?? signal(-1)
   // The dataZoom window; null = everything (the untouched state).
-  const zoomWin = signal<ZoomWindow | null>(null)
+  const zoomWin = props.link?.zoom ?? signal<ZoomWindow | null>(null)
   // A committed brush band, in GLOBAL datum indices; null = none.
   const brushSel = signal<{ start: number; end: number } | null>(null)
   // In-flight drag bookkeeping. Plain locals, not signals: nothing should
   // repaint on every intermediate pixel except the overlay, which the move
   // handler drives through `draw()` itself.
-  let dragMode: 'pan' | 'brush' | null = null
+  let dragMode: 'pan' | 'brush' | 'nav' | null = null
   let dragStartX = 0.0
   let dragLastX = 0.0
   let dragMoved = false
@@ -302,6 +339,64 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   // land one legend-height too high — which is what happened before a
   // legend and a click could coexist.
   let topOffset = 0.0
+  // Pixels consumed BELOW the plot (preset strip, navigator) on the last draw;
+  // every hit test shrinks the plot height by it, as `topOffset` shifts it.
+  let bottomOffset = 0.0
+  // Navigator strip rect from the last draw + the in-flight band drag.
+  let navRect: Rect | null = null
+  let navDrag: { kind: 'move' | 'left' | 'right'; startWin: ZoomWindow } | null = null
+  const navJson = signal('null')
+  // Keyboard focus datum (LOCAL index into the visible rows); -1 = none.
+  const focusIdx = signal(-1)
+  // What the live region says about the focused datum.
+  const announce = signal('')
+  // Preset button hit rects from the LAST draw, in canvas pixels.
+  let presetBoxes: Rect[] = []
+  const presetBoxesJson = signal('[]')
+  // Update tween: the previous frame's values, the running t, and its frame.
+  let lastValues: Double[][] | null = null
+  let tweenFrom: Double[][] | null = null
+  let tweenT = 1.0
+  let tweenFrame = 0.0
+  const keyboardOn = props.keyboard !== false
+  const startTween = (): void => {
+    if (typeof requestAnimationFrame !== 'function') {
+      tweenT = 1.0
+      tweenFrom = null
+      return
+    }
+    const duration = props.updateDuration ?? 400.0
+    let start = -1.0
+    if (tweenFrame !== 0.0 && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(tweenFrame)
+    const tick = (now: number): void => {
+      if (start < 0.0) start = now
+      tweenT = Math.min(1.0, (now - start) / duration)
+      if (tweenT >= 1.0) tweenFrom = null
+      draw()
+      if (tweenT < 1.0) tweenFrame = requestAnimationFrame(tick)
+      else tweenFrame = 0.0
+    }
+    tweenT = 0.0
+    tweenFrame = requestAnimationFrame(tick)
+  }
+  /** The spec actually painted: mid-tween values when a data update is animating. */
+  const tweened = (spec: ChartSpec): ChartSpec => {
+    const cur = spec.series.map((x) => x.values)
+    if (tweenT >= 1.0 || tweenFrom === null) {
+      const enabled = props.updateAnimation !== false && !prefersReducedMotion() && entrance >= 1.0
+      if (enabled && lastValues !== null && sameShape(lastValues, cur) && !sameValues(lastValues, cur)) {
+        tweenFrom = lastValues
+        lastValues = cur
+        startTween()
+        // The first tween frame is painted synchronously at t = 0.
+        return { ...spec, series: spec.series.map((x, i) => ({ ...x, values: tweenValues(tweenFrom!, cur, 0.0)[i]! })) }
+      }
+      lastValues = cur
+      return spec
+    }
+    const frame = tweenValues(tweenFrom, cur, tweenT)
+    return { ...spec, series: spec.series.map((x, i) => ({ ...x, values: frame[i]! })) }
+  }
 
   /**
    * Apply the legend toggle to resolved series.
@@ -432,8 +527,46 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
 
     const top = titleH + legendH
     topOffset = top
-    const spec = buildSpec(rows, w, hgt - top)
+    // Zoom presets take a strip under the plot; the buttons are laid out
+    // right-aligned and their boxes kept for the click handler.
+    const presetH = props.zoomPresets !== undefined && props.zoomPresets.length > 0 ? 22.0 : 0.0
+    const presetCmds: DrawCmd[] = []
+    presetBoxes = []
+    if (presetH > 0.0) {
+      const fs = 11.0
+      const padX = 8.0
+      const gap = 6.0
+      let x = w - 8.0
+      const y = hgt - presetH + 3.0
+      const n = viewRange(rows) // active window for the highlight
+      const active = zoomWin()
+      const items = props.zoomPresets ?? []
+      const boxes: Rect[] = []
+      for (let i = items.length - 1; i >= 0; i--) {
+        const it = items[i]!
+        const tw = measure(it.label, fs) + padX * 2.0
+        x = x - tw
+        boxes[i] = { x, y, w: tw, h: presetH - 6.0 }
+        x = x - gap
+      }
+      void n
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i]!
+        const b = boxes[i]!
+        const total = rows.length
+        const isActive = it.count <= 0 || it.count >= total ? active === null : active !== null && Math.abs(active.start - (1.0 - it.count / total)) < 1e-6 && active.end >= 1.0 - 1e-9
+        presetCmds.push({ kind: 'rect', rect: b, fill: isActive ? (props.theme?.axis ?? defaultTheme.axis) : (props.theme?.grid ?? defaultTheme.grid) })
+        presetCmds.push({ kind: 'text', text: it.label, at: { x: b.x + b.w / 2.0, y: b.y + b.h / 2.0 }, fill: isActive ? '#ffffff' : (props.theme?.label ?? defaultTheme.label), size: fs, align: 'middle', baseline: 'middle' })
+      }
+      presetBoxes = boxes
+    }
+    presetBoxesJson.set(JSON.stringify(presetBoxes))
+    const navH = props.navigator === true ? 36.0 : 0.0
+    bottomOffset = presetH + navH
+    const spec = tweened(buildSpec(rows, w, hgt - top - presetH - navH))
     const cmds = renderChart(spec, measure)
+    const navCmds = navigatorCmds(rows, w, hgt - presetH - navH, navH)
+    navJson.set(JSON.stringify(navRect))
     // Shift the plot down past the title + legend. Translating the emitted
     // commands rather than threading an origin through the engine keeps the
     // engine's coordinate space at (0,0) and this concern in the host.
@@ -442,7 +575,113 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const crossShifted = top === 0.0 ? cross : cross.map((c) => shiftCmd(c, top))
     const band = brushCmds(spec, measure)
     const bandShifted = top === 0.0 ? band : band.map((c) => shiftCmd(c, top))
-    paint(ctx, [...legendCmds, ...shifted, ...bandShifted, ...crossShifted], w, hgt, FONT)
+    const ring = focusRingCmds(spec, measure)
+    const ringShifted = top === 0.0 ? ring : ring.map((c) => shiftCmd(c, top))
+    paint(ctx, [...legendCmds, ...shifted, ...bandShifted, ...crossShifted, ...ringShifted, ...navCmds, ...presetCmds], w, hgt, FONT)
+  }
+
+  /** The navigator strip: a mini area of the first series over ALL rows, and the window band with its handles. */
+  const navigatorCmds = (allRows: T[], w: Double, y0: Double, navH: Double): DrawCmd[] => {
+    navRect = null
+    if (props.navigator !== true || navH <= 0.0) return []
+    const inset = 8.0
+    const strip: Rect = { x: inset, y: y0 + 6.0, w: Math.max(0.0, w - inset * 2.0), h: navH - 12.0 }
+    navRect = strip
+    const out: DrawCmd[] = []
+    out.push({ kind: 'rect', rect: strip, fill: props.theme?.grid ?? defaultTheme.grid })
+    const series = resolveMarks(allRows, props.marks)
+    const first = series.find((x) => x.values.length > 1)
+    if (first !== undefined) {
+      let lo = Infinity
+      let hi = -Infinity
+      for (const v of first.values) {
+        if (v !== v) continue
+        if (v < lo) lo = v
+        if (v > hi) hi = v
+      }
+      if (lo !== Infinity) {
+        const safe = first.values.map((v) => (v !== v ? lo : v))
+        const pts = layoutSeriesPoints(safe, strip, { min: Math.min(lo, 0.0), max: hi <= lo ? lo + 1.0 : hi })
+        const last = pts[pts.length - 1]!
+        out.push({ kind: 'polygon', points: [...pts, { x: last.x, y: strip.y + strip.h }, { x: pts[0]!.x, y: strip.y + strip.h }], fill: withAlpha(first.color, 0.35) })
+      }
+    }
+    const win = zoomWin() ?? { start: 0.0, end: 1.0 }
+    const bx0 = strip.x + strip.w * win.start
+    const bx1 = strip.x + strip.w * win.end
+    out.push({ kind: 'rect', rect: { x: bx0, y: strip.y, w: bx1 - bx0, h: strip.h }, fill: 'rgba(37,99,235,0.18)' })
+    out.push({ kind: 'rect', rect: { x: bx0 - 3.0, y: strip.y, w: 6.0, h: strip.h }, fill: '#2563eb' })
+    out.push({ kind: 'rect', rect: { x: bx1 - 3.0, y: strip.y, w: 6.0, h: strip.h }, fill: '#2563eb' })
+    return out
+  }
+
+  /** A dashed rectangle around the focused datum's column — the keyboard focus ring. */
+  const focusRingCmds = (spec: ChartSpec, measure: (t: string, size: Double) => Double): DrawCmd[] => {
+    const idx = focusIdx()
+    if (idx < 0 || props.horizontal === true) return []
+    const l = layoutChart(spec, measure)
+    const plot = l.plot
+    let cx = -1.0
+    let bw = 16.0
+    if (spec.xValues !== undefined && spec.xValues.length > 0) {
+      const v = spec.xValues[idx]
+      if (v === undefined) return []
+      cx = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, v)
+    } else if (spec.categories.length > 0) {
+      bw = plot.w / spec.categories.length
+      cx = plot.x + bw * (idx + 0.5)
+    } else {
+      cx = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, idx)
+    }
+    const x0 = cx - bw / 2.0
+    const x1 = cx + bw / 2.0
+    return [{
+      kind: 'polyline',
+      points: [{ x: x0, y: plot.y }, { x: x1, y: plot.y }, { x: x1, y: plot.y + plot.h }, { x: x0, y: plot.y + plot.h }, { x: x0, y: plot.y }],
+      stroke: '#2563eb',
+      width: 2.0,
+      dash: [4.0, 3.0],
+    }]
+  }
+
+  /** Move the keyboard focus datum and announce it. */
+  const moveFocus = (delta: number, absolute?: number): void => {
+    const all = readData()
+    const n = viewRows(all).length
+    if (n === 0) return
+    const cur = focusIdx()
+    let next = absolute !== undefined ? absolute : cur < 0 ? (delta > 0 ? 0 : n - 1) : cur + delta
+    if (next < 0) next = 0
+    if (next > n - 1) next = n - 1
+    const off = viewRange(all).from
+    const t = chartTable(a11yInput())
+    const row = t.rows[next + off]
+    // One notify cycle for the three writes a keystroke makes (focus, hover, live region).
+    batch(() => {
+      focusIdx.set(next)
+      hoverIdx.set(next)
+      announce.set(row === undefined ? '' : row.join(', '))
+    })
+  }
+
+  const handleKeyDown = (ev: KeyboardEvent): void => {
+    const key = ev.key
+    if (key === 'ArrowRight' || key === 'ArrowUp') moveFocus(1)
+    else if (key === 'ArrowLeft' || key === 'ArrowDown') moveFocus(-1)
+    else if (key === 'Home') moveFocus(0, 0)
+    else if (key === 'End') moveFocus(0, viewRows(readData()).length - 1)
+    else if (key === 'Enter' || key === ' ') {
+      const idx = focusIdx()
+      const cb = props.onSelect
+      if (idx >= 0 && cb !== undefined) cb(idx + viewRange(readData()).from)
+    } else if (key === 'Escape') {
+      batch(() => {
+        focusIdx.set(-1)
+        hoverIdx.set(-1)
+        announce.set('')
+      })
+    } else return
+    ev.preventDefault()
   }
 
   /**
@@ -557,7 +796,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     if (ctx === null) return null
     const w = drawWidth(el, props.width)
     const hgt = props.height ?? 200
-    return layoutChart(buildSpec(readData(), w, hgt - topOffset), canvasMeasure(ctx, FONT)).plot
+    return layoutChart(buildSpec(readData(), w, hgt - topOffset - bottomOffset), canvasMeasure(ctx, FONT)).plot
   }
 
   // Repaint whenever anything the spec reads changes. Registered here rather
@@ -572,6 +811,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     zoomWin()
     brushSel()
     legendPage()
+    focusIdx()
     draw()
   })
 
@@ -591,7 +831,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const measure = canvasMeasure(ctx, FONT)
     // Hit-test in PLOT space: the plot was drawn `topOffset` px down, under
     // the title + legend, so the pointer's y comes back up by that much.
-    const spec = buildSpec(readData(), w, hgt - topOffset)
+    const spec = buildSpec(readData(), w, hgt - topOffset - bottomOffset)
     py = py - topOffset
     for (let i = 0; i < spec.series.length; i++) {
       if (spec.series[i]!.kind !== 'bars') continue
@@ -628,13 +868,26 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   }
 
   const handleDown = (ev: MouseEvent): void => {
-    if (props.dataZoom !== true && props.brush !== true) return
+    if (props.dataZoom !== true && props.brush !== true && props.navigator !== true) return
     const el = canvas
     if (el === null) return
     const rect = el.getBoundingClientRect()
     dragStartX = ev.clientX - rect.left
     dragLastX = dragStartX
     dragMoved = false
+    // A press inside the navigator strip grabs the band or one of its handles.
+    const pressY = ev.clientY - rect.top
+    if (props.navigator === true && navRect !== null && pressY >= navRect.y && pressY <= navRect.y + navRect.h) {
+      const win = zoomWin() ?? { start: 0.0, end: 1.0 }
+      const bx0 = navRect.x + navRect.w * win.start
+      const bx1 = navRect.x + navRect.w * win.end
+      const kind = Math.abs(dragStartX - bx0) <= 6.0 ? 'left' : Math.abs(dragStartX - bx1) <= 6.0 ? 'right' : 'move'
+      navDrag = { kind, startWin: win }
+      dragMode = 'nav'
+      suppressClick = false
+      ev.preventDefault()
+      return
+    }
     // A new gesture re-arms the click decision. Without this, a drag whose
     // trailing click never fires (pointer released off-canvas) leaves the
     // suppression latched and silently eats the NEXT legitimate click.
@@ -660,6 +913,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     if (dragMoved) suppressClick = true
     dragMode = null
     brushDrag = null
+    navDrag = null
     draw()
   }
 
@@ -670,6 +924,21 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       const rect0 = el.getBoundingClientRect()
       const x = ev.clientX - rect0.left
       if (Math.abs(x - dragStartX) > 3.0) dragMoved = true
+      if (dragMode === 'nav') {
+        if (navDrag !== null && navRect !== null && navRect.w > 0.0) {
+          const f = (x - dragStartX) / navRect.w
+          const sw = navDrag.startWin
+          const next =
+            navDrag.kind === 'move'
+              ? clampWindow({ start: sw.start + f, end: sw.end + f })
+              : navDrag.kind === 'left'
+                ? clampWindow({ start: Math.min(sw.start + f, sw.end - 0.02), end: sw.end })
+                : clampWindow({ start: sw.start, end: Math.max(sw.end + f, sw.start + 0.02) })
+          zoomWin.set(isFullWindow(next) ? null : next)
+        }
+        dragLastX = x
+        return
+      }
       if (dragMode === 'pan') {
         const plot = plotNow()
         if (plot !== null && plot.w > 0.0) {
@@ -724,7 +993,9 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     if (tip !== null) tip.style.display = 'none'
   }
 
-  const handleClick = (ev: MouseEvent): void => {
+  // The whole click is one batch: a preset, legend-page or legend-toggle click
+  // writes two or three signals, and the canvas must repaint once, not per write.
+  const handleClick = (ev: MouseEvent): void => batch(() => {
     const el = canvas
     if (el === null) return
     // A drag is not a click: panning or brushing must not fire onSelect or
@@ -732,6 +1003,22 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     if (suppressClick) {
       suppressClick = false
       return
+    }
+    // Zoom presets: a click on a button sets the window and stops here.
+    if (presetBoxes.length > 0) {
+      const r0 = el.getBoundingClientRect()
+      const lx = ev.clientX - r0.left
+      const ly = ev.clientY - r0.top
+      for (let i = 0; i < presetBoxes.length; i++) {
+        const b = presetBoxes[i]!
+        if (lx >= b.x && lx <= b.x + b.w && ly >= b.y && ly <= b.y + b.h) {
+          const it = props.zoomPresets?.[i]
+          const total = readData().length
+          if (it === undefined || it.count <= 0 || it.count >= total) zoomWin.set(null)
+          else zoomWin.set({ start: 1.0 - it.count / total, end: 1.0 })
+          return
+        }
+      }
     }
     // A committed brush clears on the next plain click — and says so.
     if (brushSel() !== null) {
@@ -776,7 +1063,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     if (ctx === null) return
     const w = drawWidth(el, props.width)
     const hgt = props.height ?? 200
-    const spec = buildSpec(readData(), w, hgt - topOffset)
+    const spec = buildSpec(readData(), w, hgt - topOffset - bottomOffset)
     const measure = canvasMeasure(ctx, FONT)
     const rect = el.getBoundingClientRect()
     const px = ev.clientX - rect.left
@@ -804,7 +1091,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     }
     const stackedIdx = stackedHitAt(spec, measure, px, py)
     cb(stackedIdx < 0 ? stackedIdx : stackedIdx + off)
-  }
+  })
 
   const a11yInput = (): {
     title?: string | undefined
@@ -869,11 +1156,21 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       sizeObserver.observe(box)
     },
     onClick: handleClick,
+    // Stable, reactive hooks for consumers and tests: the zoom window and the
+    // preset button boxes as drawn.
+    'data-pyreon-zoom': () => {
+      const z = zoomWin()
+      return z === null ? 'all' : z.start.toFixed(3) + '-' + z.end.toFixed(3)
+    },
+    'data-pyreon-presets': () => presetBoxesJson(),
+    'data-pyreon-nav': () => navJson(),
+    'data-pyreon-hover': () => String(hoverIdx()),
+    ...(keyboardOn ? { tabIndex: 0, onKeyDown: handleKeyDown, onBlur: () => batch(() => { focusIdx.set(-1); announce.set('') }) } : {}),
     ...(props.dataZoom === true ? { onWheel: handleWheel, onDblClick: () => zoomWin.set(null) } : {}),
-    ...(props.dataZoom === true || props.brush === true
+    ...(props.dataZoom === true || props.brush === true || props.navigator === true
       ? { onMouseDown: handleDown, onMouseUp: endDrag }
       : {}),
-    ...(props.tooltip === true || props.crosshair === true || props.dataZoom === true || props.brush === true
+    ...(props.tooltip === true || props.crosshair === true || props.dataZoom === true || props.brush === true || props.navigator === true
       ? { onMouseMove: handleMove, onMouseLeave: handleLeave }
       : {}),
   })
@@ -897,7 +1194,14 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       },
     })
 
-  if (props.accessibleTable === false && props.tooltip !== true) return canvasNode
+  const liveNode = (): VNode =>
+    h('div', {
+      role: 'status',
+      'aria-live': 'polite',
+      style: 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0;margin:-1px;padding:0',
+    }, () => announce())
+
+  if (props.accessibleTable === false && props.tooltip !== true && !keyboardOn) return canvasNode
 
   // A real table rather than a longer label: a label is read as one
   // unstructured string, while a table can be navigated by row and column.
@@ -936,6 +1240,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     { style: 'position:relative' },
     canvasNode,
     ...(props.tooltip === true ? [tooltipNode()] : []),
+    ...(keyboardOn ? [liveNode()] : []),
     ...(props.accessibleTable === false ? [] : [() => table()]),
   )
 }

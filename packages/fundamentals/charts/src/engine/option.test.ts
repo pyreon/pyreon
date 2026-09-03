@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { compileOption, optionToSvg, planOption } from './option'
-import type { EChartsOption } from './option'
+import type { EChartsOption, OptionPlan, OptionWarning } from './option'
 import { compileFamily } from './option-family'
+import { registerMap } from './geo'
 
 // A gallery-shaped corpus: each fixture is written the way an ECharts user
 // writes it. `expectClean` fixtures must compile with ZERO warnings and render.
 // The pass-rate is the program's conformance metric; it ratchets UP only.
+registerMap('corpus-squares', { type: 'FeatureCollection', features: [
+  { type: 'Feature', properties: { name: 'West' }, geometry: { type: 'Polygon', coordinates: [[[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]] } },
+  { type: 'Feature', properties: { name: 'East' }, geometry: { type: 'Polygon', coordinates: [[[10, 0], [20, 0], [20, 10], [10, 10], [10, 0]]] } },
+] })
 const CORPUS: { name: string; option: EChartsOption; expectClean: boolean }[] = [
   { name: 'basic bar', expectClean: true, option: {
     xAxis: { type: 'category', data: ['Mon', 'Tue', 'Wed'] }, yAxis: { type: 'value' },
@@ -61,6 +66,27 @@ const CORPUS: { name: string; option: EChartsOption; expectClean: boolean }[] = 
     series: [{ type: 'heatmap', data: [[0, 0, 5], [1, 1, 9]] }] } },
   { name: 'funnel', expectClean: true, option: {
     series: [{ type: 'funnel', sort: 'descending', minSize: '10%', data: [{ value: 60, name: 'Visit' }, { value: 40, name: 'Inquiry' }, { value: 20, name: 'Order' }] }] } },
+  { name: 'scatter on a single axis', expectClean: true, option: {
+    singleAxis: { type: 'category', data: ['Mon', 'Tue', 'Wed'] },
+    series: [{ type: 'scatter', coordinateSystem: 'singleAxis', symbolSize: 10, data: [[0, 4], [1, 9], [2, 2]] }] } },
+  { name: 'scatter on geo', expectClean: true, option: {
+    geo: { map: 'corpus-squares' },
+    series: [{ type: 'scatter', coordinateSystem: 'geo', symbolSize: 10, data: [{ name: 'a', value: [5, 5, 3] }, { name: 'b', value: [15, 5, 9] }] }] } },
+  { name: 'map (registered squares)', expectClean: true, option: {
+    visualMap: { min: 0, max: 10 },
+    series: [{ type: 'map', map: 'corpus-squares', label: { show: true }, data: [{ name: 'West', value: 3 }, { name: 'East', value: 8 }] }] } },
+  { name: 'lines (trajectories on cartesian)', expectClean: true, option: {
+    xAxis: {}, yAxis: {},
+    series: [{ type: 'lines', coordinateSystem: 'cartesian2d', lineStyle: { width: 2 }, data: [{ coords: [[0, 0], [4, 3], [8, 1]] }, { coords: [[1, 5], [7, 6]] }] }] } },
+  { name: 'custom series (gantt bars via renderItem)', expectClean: true, option: {
+    xAxis: {}, yAxis: {},
+    series: [{ type: 'custom', encode: { x: [1, 2], y: 0 }, data: [[0, 1, 4], [1, 2, 6], [2, 3, 5]],
+      renderItem: (params: { dataIndex: number }, api: { value: (d: number) => unknown; coord: (p: [unknown, unknown]) => [number, number]; size: (e: [number, number]) => [number, number]; style: () => Record<string, unknown> }) => {
+        const start = api.coord([api.value(1), api.value(0)])
+        const end = api.coord([api.value(2), api.value(0)])
+        const h = api.size([0, 1])[1] * 0.6
+        return { type: 'rect', shape: { x: start[0], y: start[1] - h / 2, width: end[0] - start[0], height: h }, style: api.style() }
+      } }] } },
   { name: 'pictorialBar (repeated circles) + effectScatter', expectClean: true, option: {
     xAxis: { data: ['a', 'b', 'c'] }, yAxis: {},
     series: [{ type: 'pictorialBar', symbol: 'circle', symbolRepeat: true, data: [3, 6, 9] }, { type: 'effectScatter', symbolSize: 10, data: [2, 5, 7] }] } },
@@ -109,13 +135,28 @@ const CORPUS: { name: string; option: EChartsOption; expectClean: boolean }[] = 
     dataZoom: [{ type: 'inside' }], radar: { indicator: [] },
     xAxis: { type: 'category', data: ['a'] }, yAxis: {},
     series: [{ type: 'bar', data: [1] }] } },
+  { name: 'timeline over three steps', expectClean: true, option: {
+    baseOption: { timeline: { data: ['2019', '2020', '2021'], currentIndex: 1 }, xAxis: { type: 'category', data: ['a', 'b'] }, yAxis: {}, series: [{ type: 'bar', name: 'sales' }] },
+    options: [{ series: [{ data: [1, 2] }] }, { series: [{ data: [3, 4] }] }, { series: [{ data: [5, 6] }] }] } },
+  { name: 'two grids stacked', expectClean: true, option: {
+    grid: [{ left: 40, right: 20, top: 20, height: '35%' }, { left: 40, right: 20, top: '60%', height: '35%' }],
+    xAxis: [{ type: 'category', data: ['a', 'b'], gridIndex: 0 }, { type: 'category', data: ['a', 'b'], gridIndex: 1 }],
+    yAxis: [{ gridIndex: 0 }, { gridIndex: 1 }],
+    series: [{ type: 'bar', data: [1, 2] }, { type: 'line', data: [3, 4], xAxisIndex: 1, yAxisIndex: 1 }] } },
 ]
+
+/** Flatten a plan to what the corpus asserts on — a multi-grid plan is clean only when EVERY part is. */
+const compiledOf = (p: OptionPlan): { supported: boolean; warnings: OptionWarning[] } => {
+  if (p.kind !== 'grids') return p.compiled
+  const inner = p.parts.map((q) => compiledOf(q.plan))
+  return { supported: inner.every((c) => c.supported), warnings: [...p.warnings, ...inner.flatMap((c) => c.warnings)] }
+}
 
 describe('ECharts option facade — conformance corpus', () => {
   it('every expectClean fixture compiles with zero warnings and renders', () => {
     const misses: string[] = []
     for (const f of CORPUS) {
-      const c = planOption(f.option).compiled
+      const c = compiledOf(planOption(f.option))
       const svg = optionToSvg(f.option)
       const clean = c.supported && c.warnings.length === 0 && svg.startsWith('<svg')
       if (f.expectClean && !clean) misses.push(`${f.name}: ${c.warnings.map((w) => `${w.path}:${w.code}`).join(', ') || 'unsupported'}`)
@@ -126,11 +167,11 @@ describe('ECharts option facade — conformance corpus', () => {
 
   it('reports the conformance pass-rate and never regresses below the locked floor', () => {
     const clean = CORPUS.filter((f) => {
-      const c = planOption(f.option).compiled
+      const c = compiledOf(planOption(f.option))
       return c.supported && c.warnings.length === 0
     }).length
-    // 29 of 31 today. Raise this number as families land; never lower it.
-    expect(clean).toBeGreaterThanOrEqual(29)
+    // 36 of 38 today. Raise this number as families land; never lower it.
+    expect(clean).toBeGreaterThanOrEqual(36)
   })
 })
 
