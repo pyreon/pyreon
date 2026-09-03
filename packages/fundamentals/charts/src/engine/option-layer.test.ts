@@ -34,7 +34,7 @@ describe('dataset pre-pass', () => {
     expect((keep.option['series'] as Record<string, unknown>[])[0]!['data']).toEqual([9])
     const missing = resolveDataset({ dataset: { source: [['n', 'v'], ['a', 1]] }, series: [{ type: 'bar' }, { type: 'bar' }] })
     expect(missing.warnings.map((w) => w.code)).toEqual(['series-data-shape'])
-    const transform = resolveDataset({ dataset: [{ source: [[1]] }, { transform: { type: 'filter' } }], series: [{ type: 'bar' }] })
+    const transform = resolveDataset({ dataset: [{ source: [[1]] }, { transform: { type: 'ecStat:regression' } }], series: [{ type: 'bar' }] })
     expect(transform.warnings.map((w) => w.code)).toContain('option-key-unsupported')
     expect(resolveDataset({ series: [{ type: 'bar', data: [1] }] }).option).toEqual({ series: [{ type: 'bar', data: [1] }] })
   })

@@ -46,6 +46,8 @@ import { join, resolve } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { parseSync, Visitor } from 'oxc-parser'
 
+import { isUpdateMode, shouldLowerUnscoped } from './bundle-budget-policy'
+
 // Minimal ambient for Bun's bundler. This script is a Bun bin entry, but
 // its pure helpers are imported by `@pyreon/test-utils`, whose tsconfig
 // doesn't include `@types/bun` — the local declaration keeps that
@@ -92,6 +94,12 @@ export interface Scenario {
   dir: string
   /** Named exports the scenario imports (re-exported so they're retained). */
   imports: string[]
+  /**
+   * Lib entry file relative to the package's lib/ (default "index.js").
+   * Subpath scenarios (e.g. charts' "plot.js") lock a subpath export's
+   * tree-shaking without routing through the main barrel.
+   */
+  entry?: string
 }
 
 /**
@@ -190,6 +198,32 @@ export const SCENARIOS: Scenario[] = [
     pkg: '@pyreon/hooks',
     dir: 'fundamentals/hooks',
     imports: ['useAuth'],
+  },
+  {
+    id: '@pyreon/charts::plot-minimal',
+    pkg: '@pyreon/charts',
+    dir: 'fundamentals/charts',
+    entry: 'plot.js',
+    // A bar+line chart must not pull the radial/finance/matrix families
+    // or the SVG serializer — marks are imported bindings by design.
+    imports: ['PlotChart', 'bars', 'line'],
+  },
+  {
+    id: '@pyreon/charts::plot-svg',
+    pkg: '@pyreon/charts',
+    dir: 'fundamentals/charts',
+    entry: 'plot.js',
+    // The server-side serializer must not drag components or the canvas
+    // host (ResizeObserver/rAF) into a node bundle.
+    imports: ['chartToSvg'],
+  },
+  {
+    id: '@pyreon/charts::plot-pie',
+    pkg: '@pyreon/charts',
+    dir: 'fundamentals/charts',
+    entry: 'plot.js',
+    // A radial-only import must not pull the cartesian layout/stack path.
+    imports: ['PieChart'],
   },
 ]
 
@@ -338,7 +372,7 @@ function getPackagesRoot(): string {
 
 async function measureScenario(s: Scenario): Promise<MeasuredImport> {
   const pkgDir = join(getPackagesRoot(), s.dir)
-  const lib = join(pkgDir, 'lib', 'index.js')
+  const lib = join(pkgDir, 'lib', s.entry ?? 'index.js')
   let tmp: string | undefined
   try {
     const externals = collectBareModuleImports(join(pkgDir, 'lib'))
@@ -395,10 +429,65 @@ async function measureScenario(s: Scenario): Promise<MeasuredImport> {
   }
 }
 
+/**
+ * Decide the next budget table for `--update`. Pure, so the direction rule is
+ * testable without a build tree — the wiring is the half a unit test on the
+ * policy helper alone cannot see.
+ *
+ * A budget is derived from a BUILD, and a stale or partial build measures
+ * SMALLER than the real thing, so an unscoped drop is far more likely to be a
+ * bad measurement than a real shrink. Measured on the tree where this was
+ * written: one unscoped run lowered 8 of 11 budgets — `router::basic` by 9.9% —
+ * while raising 3, so a person relocking for the 3 legitimate raises silently
+ * committed 8 unreviewed tightenings. That is the mechanism that ratcheted
+ * `@pyreon/validate` below what CI measures and reddened a gate on two branches
+ * that had not touched the package.
+ *
+ * Raises always apply (that is the reviewed case). Lowering requires naming the
+ * scenario, which is the review signal.
+ */
+export function relockBudgets(
+  measured: readonly MeasuredImport[],
+  previous: Readonly<Record<string, number>>,
+  scope: string | undefined,
+): { budgets: Record<string, number>; refused: string[]; lowered: number } {
+  const budgets: Record<string, number> = {}
+  const refused: string[] = []
+  let lowered = 0
+
+  for (const m of measured) {
+    // Lock current size + 3% headroom so minor bundler-version byte jitter
+    // doesn't flake the gate; a real regression (this gate targets the ~1 KB
+    // tree-shaking-broke class) still trips it.
+    const next = Math.ceil(m.gzip * 1.03)
+    const prev = previous[m.id]
+
+    if (prev !== undefined && next < prev && !shouldLowerUnscoped(scope === m.id)) {
+      budgets[m.id] = prev
+      const pct = (((next - prev) / prev) * 100).toFixed(1)
+      refused.push(
+        `  ⚠ not lowered: ${m.id} ${prev} → ${next} (${pct}%, measured ${m.gzip}) — ` +
+          `an unscoped --update never lowers, because a stale build can only measure LOW. ` +
+          `If this shrink is real, scope it: --update=${m.id}`,
+      )
+      continue
+    }
+
+    budgets[m.id] = next
+    if (prev !== undefined && next < prev) lowered += 1
+  }
+
+  return { budgets, refused, lowered }
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2)
   const jsonMode = args.includes('--json')
-  const updateMode = args.includes('--update')
+  // `includes('--update')` is an exact match, so it never saw a scoped form —
+  // the same latent bug the sibling gate had. `isUpdateMode` handles both.
+  const updateMode = isUpdateMode(args)
+  const scopeFlag = args.find((a) => a.startsWith('--update='))
+  const scope = scopeFlag ? scopeFlag.slice('--update='.length) : undefined
 
   const measured: MeasuredImport[] = []
   for (const s of SCENARIOS) measured.push(await measureScenario(s))
@@ -411,13 +500,19 @@ async function main(): Promise<void> {
       for (const f of failures) console.error(`  ✗ ${f.id}: ${f.error?.split('\n')[0]}`)
       process.exit(1)
     }
-    const budgets: Record<string, number> = {}
-    // Lock current size + 3% headroom so minor bundler-version byte
-    // jitter doesn't flake the gate; a real regression (this gate
-    // targets the ~1 KB tree-shaking-broke class) still trips it.
-    for (const m of measured) budgets[m.id] = Math.ceil(m.gzip * 1.03)
+    let previous: Record<string, number> = {}
+    try {
+      previous = JSON.parse(readFileSync(budgetsPath(), 'utf-8')) as Record<string, number>
+    } catch {
+      // No budgets file yet — first seed, nothing to protect.
+    }
+
+    const { budgets, refused, lowered } = relockBudgets(measured, previous, scope)
     writeFileSync(budgetsPath(), `${JSON.stringify(budgets, null, 2)}\n`)
-    console.log(`[check-import-budgets] Relocked ${measured.length} budget(s) → ${budgetsPath()}`)
+    console.log(
+      `[check-import-budgets] Relocked ${measured.length} budget(s), ${lowered} lowered → ${budgetsPath()}`,
+    )
+    for (const line of refused) console.warn(line)
     return
   }
 

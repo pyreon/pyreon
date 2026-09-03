@@ -28,6 +28,12 @@ export interface Series {
   radii?: Double[] | undefined
   /** Which y axis the series scales against; absent = left. See `seriesOnRightAxis`. */
   axis?: 'left' | 'right' | undefined
+  /** Halo rings around each point — the effectScatter look; `points` only. */
+  effect?: boolean | undefined
+  /** Draw bars as a symbol instead of a rect — the pictorialBar look; `bars` only. */
+  symbol?: 'rect' | 'circle' | 'diamond' | 'triangle' | undefined
+  /** Repeat the symbol along the bar instead of stretching it. */
+  symbolRepeat?: boolean | undefined
 }
 
 /**
@@ -217,7 +223,7 @@ function deriveOver(series: Series[]): Domain {
   if (stacked.length > 0) {
     const e = stackedExtent(stacked.map((s) => s.values))
     const others: Double[] = []
-    for (const s of series) if (s.kind !== 'stacked') for (const v of s.values) others.push(v)
+    for (const s of series) if (s.kind !== 'stacked') for (const v of s.values) if (isFiniteValue(v)) others.push(v)
     const max = others.length > 0 ? Math.max(e.max, extent(others).max) : e.max
     return niceDomain({ min: 0.0, max }, 5.0)
   }
@@ -225,13 +231,23 @@ function deriveOver(series: Series[]): Domain {
   let hasBars = false
   for (const s of series) {
     if (s.kind === 'bars' || s.kind === 'area' || s.kind === 'grouped') hasBars = true
-    for (const v of s.values) all.push(v)
+    // Gaps (NaN) carry no extent.
+    for (const v of s.values) if (isFiniteValue(v)) all.push(v)
   }
   const e = extent(all)
   const withZero: Domain = hasBars
     ? { min: e.min > 0.0 ? 0.0 : e.min, max: e.max < 0.0 ? 0.0 : e.max }
     : e
   return niceDomain(withZero, 5.0)
+}
+
+/**
+ * Finite check written for the native subset: a NaN is the only value that is
+ * not equal to itself, and the engine never produces infinities. `Number.*`
+ * has no lowering inside this module, so the comparison IS the check.
+ */
+function isFiniteValue(v: Double): boolean {
+  return v === v
 }
 
 /** Longest series length — the x extent for a numeric axis. */
@@ -508,7 +524,26 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
       if (s.kind !== 'bars') continue
       const rects = layoutBarsH(s.values, plot, yDomain, 0.25)
       for (const r of rects) {
-        out.push({ kind: 'rect', rect: growRectH(r), fill: s.color })
+        const grown = growRectH(r)
+        if (s.symbol === undefined) {
+          out.push({ kind: 'rect', rect: grown, fill: s.color })
+        } else if (s.symbolRepeat === true) {
+          // Repeat a unit symbol along the bar (left to right); a partial last symbol is dropped.
+          const unit = grown.h
+          let count = 0
+          let acc = unit
+          for (let k = 0; k < 400; k++) {
+            if (unit > 0.0 && acc <= grown.w + 0.001) count = k + 1
+            acc = acc + unit
+          }
+          let kf = 0.0
+          for (let k = 0; k < count; k++) {
+            out.push(symbolCommand({ x: grown.x + unit * kf, y: grown.y, w: unit, h: unit }, s.symbol ?? 'rect', s.color))
+            kf = kf + 1.0
+          }
+        } else {
+          out.push(symbolCommand(grown, s.symbol ?? 'rect', s.color))
+        }
       }
       if (s.showValues === true && progress >= 1.0) {
         const fmt = spec.yFormat ?? plain
@@ -537,7 +572,29 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
     if (s.kind === 'bars') {
       const rects = layoutBars(s.values, plot, sDomain, 0.25)
       for (const r of rects) {
-        out.push({ kind: 'rect', rect: growRect(r, sDomain), fill: s.color })
+        const grown = growRect(r, sDomain)
+        if (s.symbol === undefined) {
+          out.push({ kind: 'rect', rect: grown, fill: s.color })
+        } else if (s.symbolRepeat === true) {
+          // Repeat a unit symbol up the bar; a partial last symbol is dropped.
+          // (Horizontal charts left this loop above, so the bar is vertical.)
+          const unit = grown.w
+          const length = grown.h
+          let count = 0
+          let acc = unit
+          for (let k = 0; k < 400; k++) {
+            if (unit > 0.0 && acc <= length + 0.001) count = k + 1
+            acc = acc + unit
+          }
+          let kf = 0.0
+          for (let k = 0; k < count; k++) {
+            const cell: Rect = { x: grown.x, y: grown.y + grown.h - unit * (kf + 1.0), w: unit, h: unit }
+            out.push(symbolCommand(cell, s.symbol ?? 'rect', s.color))
+            kf = kf + 1.0
+          }
+        } else {
+          out.push(symbolCommand(grown, s.symbol ?? 'rect', s.color))
+        }
       }
       if (s.showValues === true && progress >= 1.0) {
         const fmt = spec.yFormat ?? plain
@@ -558,26 +615,39 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
         }
       }
     } else if (s.kind === 'line') {
-      const pts = reveal(shape(place(s.values)))
-      if (pts.length > 1) {
-        out.push({ kind: 'polyline', points: pts, stroke: s.color, width: s.width })
+      // A non-finite value is a GAP: the line breaks into runs rather than
+      // drawing a zero or bridging the hole (ECharts' connectNulls: false).
+      for (const run of splitRuns(s.values, place)) {
+        const pts = reveal(shape(run))
+        if (pts.length > 1) {
+          out.push({ kind: 'polyline', points: pts, stroke: s.color, width: s.width })
+        }
       }
     } else if (s.kind === 'area') {
-      const pts = reveal(shape(place(s.values)))
-      if (pts.length > 1) {
-        const poly: Pt[] = []
-        for (const p of pts) poly.push(p)
-        // Close down to the baseline so the fill is a band under the line
-        // rather than a polygon between the first and last data points.
-        poly.push({ x: pts[pts.length - 1]!.x, y: plot.y + plot.h })
-        poly.push({ x: pts[0]!.x, y: plot.y + plot.h })
-        out.push({ kind: 'polygon', points: poly, fill: s.color })
+      for (const run of splitRuns(s.values, place)) {
+        const pts = reveal(shape(run))
+        if (pts.length > 1) {
+          const poly: Pt[] = []
+          for (const p of pts) poly.push(p)
+          // Close down to the baseline so the fill is a band under the line
+          // rather than a polygon between the first and last data points.
+          poly.push({ x: pts[pts.length - 1]!.x, y: plot.y + plot.h })
+          poly.push({ x: pts[0]!.x, y: plot.y + plot.h })
+          out.push({ kind: 'polygon', points: poly, fill: s.color })
+        }
       }
     } else {
       const pts = place(s.values)
       const radii = s.radii ?? []
       for (let i = 0; i < pts.length; i++) {
+        // A gap draws no dot.
+        if (!isFiniteValue(s.values[i]!)) continue
         const fullR = radii.length > 0 ? radii[i] ?? s.radius : s.radius
+        if (s.effect === true) {
+          // Two translucent halos under the dot — the ripple, frozen at a frame.
+          out.push({ kind: 'circle', center: pts[i]!, radius: fullR * 2.6 * progress, fill: withAlpha(s.color, 0.12) })
+          out.push({ kind: 'circle', center: pts[i]!, radius: fullR * 1.7 * progress, fill: withAlpha(s.color, 0.25) })
+        }
         out.push({
           kind: 'circle',
           center: pts[i]!,
@@ -689,6 +759,78 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
   }
 
   return out
+}
+
+/**
+ * Split a series into runs of finite values, each already placed. A run is
+ * the piece of a line between two gaps; placing the WHOLE series first keeps
+ * every point at the x it would have had, so a gap removes a segment without
+ * shifting its neighbours.
+ */
+function splitRuns(values: Double[], place: (values: Double[]) => Pt[]): Pt[][] {
+  const runs: Pt[][] = []
+  let hasGap = false
+  for (const v of values) if (!isFiniteValue(v)) hasGap = true
+  if (!hasGap) {
+    runs.push(place(values))
+    return runs
+  }
+  // Placement needs finite inputs: substitute zero, then drop those points
+  // out of the runs — their x positions are still the right ones.
+  const filled: Double[] = []
+  for (const v of values) filled.push(isFiniteValue(v) ? v : 0.0)
+  const pts = place(filled)
+  // Track each run by its start index rather than re-assigning a fresh array
+  // (a reassigned array binding has no native lowering).
+  let runStart = -1
+  for (let i = 0; i < pts.length; i++) {
+    if (isFiniteValue(values[i]!)) {
+      if (runStart < 0) runStart = i
+    } else if (runStart >= 0) {
+      const run: Pt[] = []
+      for (let j = runStart; j < i; j++) run.push(pts[j]!)
+      runs.push(run)
+      runStart = -1
+    }
+  }
+  if (runStart >= 0) {
+    const run: Pt[] = []
+    for (let j = runStart; j < pts.length; j++) run.push(pts[j]!)
+    runs.push(run)
+  }
+  return runs
+}
+
+/** One symbol filling `cell` — rect, circle, diamond, or triangle. */
+function symbolCommand(cell: Rect, symbol: 'rect' | 'circle' | 'diamond' | 'triangle', fill: string): DrawCmd {
+  if (symbol === 'circle') {
+    const r = (cell.w < cell.h ? cell.w : cell.h) / 2.0
+    return { kind: 'circle', center: { x: cell.x + cell.w / 2.0, y: cell.y + cell.h / 2.0 }, radius: r, fill }
+  }
+  if (symbol === 'diamond') {
+    return {
+      kind: 'polygon',
+      points: [
+        { x: cell.x + cell.w / 2.0, y: cell.y },
+        { x: cell.x + cell.w, y: cell.y + cell.h / 2.0 },
+        { x: cell.x + cell.w / 2.0, y: cell.y + cell.h },
+        { x: cell.x, y: cell.y + cell.h / 2.0 },
+      ],
+      fill,
+    }
+  }
+  if (symbol === 'triangle') {
+    return {
+      kind: 'polygon',
+      points: [
+        { x: cell.x + cell.w / 2.0, y: cell.y },
+        { x: cell.x + cell.w, y: cell.y + cell.h },
+        { x: cell.x, y: cell.y + cell.h },
+      ],
+      fill,
+    }
+  }
+  return { kind: 'rect', rect: cell, fill }
 }
 
 /** Bar rects for a series index — what a hit test runs against. */

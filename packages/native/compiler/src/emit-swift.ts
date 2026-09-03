@@ -1399,6 +1399,20 @@ function emitSwiftFeature(f: FeatureDefnIR): string {
     `    static let initialValues = PyreonFeatureSchema_${f.bindingName}()`,
   )
   lines.push(`}`)
+  // The binding the SOURCE actually names. Without it the declaration is
+  // unreachable: shared source writes `Todo.name`, the emit declares
+  // `PyreonFeature_Todo`, and swiftc/kotlinc fail with "cannot find 'Todo' in
+  // scope" on a file the author never wrote. The two sibling lowerings in this
+  // file (`PyreonFieldMeta`, `PyreonZodSchema`) both emit this alias; the
+  // feature one did not.
+  //
+  // A VALUE binding (`.self`, a metatype) rather than a `typealias`, matching
+  // the two siblings. It is NOT collision-proof and must not be sold as such:
+  // Swift and Kotlin share one namespace for types and values, so a same-named
+  // user type collides with EITHER form (measured both ways). parse.ts warns by
+  // name for that shape instead.
+  lines.push(``)
+  lines.push(`let ${f.bindingName} = PyreonFeature_${f.bindingName}.self`)
   return lines.join('\n')
 }
 
@@ -3818,7 +3832,7 @@ function emitSwiftFunction(
 function swiftCondition(e: ExprIR, emit: (x: ExprIR) => string): string {
   const c = classifyOptionalCondition(e, _exprInferCtx)
   if (c?.form === 'absent') return `${emit(c.argument)} == nil`
-  if (c?.form === 'present') return `${emit(e)} != nil`
+  if (c?.form === 'present') return `${emit(c.argument ?? e)} != nil`
   return emit(e)
 }
 
@@ -3913,21 +3927,38 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       // twin: `if (token != null)` smart-casts a val local by language rule.
       // Non-identifier optional conditions keep the `!= nil` lowering below.
       const optC = classifyOptionalCondition(s.cond, _exprInferCtx)
-      if (optC?.form === 'present' && s.cond.kind === 'identifier') {
-        const name = s.cond.name
+      // The comparison forms (`x !== null` / `x === null`) name the operand as
+      // the classifier's argument; `=== null` binds with the BODIES SWAPPED
+      // (the else-body is the narrowed one) and only when there is an else —
+      // a lone absent-check keeps the `== nil` test below.
+      const optName =
+        optC?.form === 'present'
+          ? s.cond.kind === 'identifier'
+            ? s.cond.name
+            : optC.argument?.kind === 'identifier'
+              ? optC.argument.name
+              : undefined
+          : optC?.form === 'absent' && optC.argument.kind === 'identifier' && s.elseBody
+            ? optC.argument.name
+            : undefined
+      if (optName !== undefined) {
+        const name = optName
+        const swapped = optC?.form === 'absent'
+        const narrowed = swapped ? s.elseBody! : s.then
+        const other = swapped ? s.then : s.elseBody
         const prev = _exprInferCtx.locals.get(name)
         if (prev !== undefined) _exprInferCtx.locals.set(name, unwrapOptionalType(prev))
         let thenLines: string
         try {
-          thenLines = s.then
+          thenLines = narrowed
             .map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`)
             .join('\n')
         } finally {
           if (prev !== undefined) _exprInferCtx.locals.set(name, prev)
         }
         const head = `if let ${swiftIdent(name)} {\n${thenLines}\n${pad}}`
-        if (!s.elseBody) return head
-        const elseLines = s.elseBody
+        if (!other) return head
+        const elseLines = other
           .map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`)
           .join('\n')
         return `${head} else {\n${elseLines}\n${pad}}`
@@ -6441,6 +6472,37 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       if (omt) {
         return `(${emitSwiftExpr(omt.opt, indent)}?.${swiftIdent(omt.property)} ?? ${emitSwiftExpr(e.otherwise, indent)})`
       }
+      // A narrowing ternary on an optional IDENTIFIER whose branch READS it
+      // (`r === null ? '' : String(r.start)`): Swift has no ternary narrowing,
+      // so the narrowed branch runs inside `r.map { r in … }` (the closure
+      // param shadows the optional with its payload) and the other branch is
+      // the `??` fallback. Kotlin smart-casts and needs nothing.
+      const oc = classifyOptionalCondition(e.cond, _exprInferCtx)
+      const ocName =
+        oc?.form === 'present'
+          ? e.cond.kind === 'identifier'
+            ? e.cond.name
+            : oc.argument?.kind === 'identifier'
+              ? oc.argument.name
+              : undefined
+          : oc?.form === 'absent' && oc.argument.kind === 'identifier'
+            ? oc.argument.name
+            : undefined
+      if (ocName !== undefined) {
+        const narrowedBranch = oc?.form === 'absent' ? e.otherwise : e.then
+        const otherBranch = oc?.form === 'absent' ? e.then : e.otherwise
+        if (exprReferencesIdent(narrowedBranch, ocName)) {
+          const prev = _exprInferCtx.locals.get(ocName)
+          if (prev !== undefined) _exprInferCtx.locals.set(ocName, unwrapOptionalType(prev))
+          let inner: string
+          try {
+            inner = emitSwiftExpr(narrowedBranch, indent)
+          } finally {
+            if (prev !== undefined) _exprInferCtx.locals.set(ocName, prev)
+          }
+          return `(${swiftIdent(ocName)}.map { ${swiftIdent(ocName)} in ${inner} } ?? ${emitSwiftExpr(otherBranch, indent)})`
+        }
+      }
       const condStr = swiftCondition(e.cond, (x) => emitSwiftExpr(x, indent))
       let thenStr = emitSwiftExpr(e.then, indent)
       let elseStr = emitSwiftExpr(e.otherwise, indent)
@@ -6963,6 +7025,11 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   // never compiled the emit. Same class as the kinetic factory, reached by a
   // different route (a missing mapping rather than a missing decline).
   if (tag === 'Link' || tag === 'RouterLink') return emitSwiftLink(e, indent)
+  if (tag === 'PieChart') return emitSwiftPieChart(e, indent)
+  if (tag === 'GaugeChart') return emitSwiftGaugeChart(e, indent)
+  // `<PieChart>` / `<GaugeChart>` from @pyreon/charts/plot — the radial
+  // family lowers to the runtime wrapper views over the GENERATED engine
+  // (renderPie / renderGauge), so web and native draw the same math.
   // `<QueryClientProvider client={…}>` is TRANSPARENT on native. It exists on
   // the web to inject the client `useQuery` reads; the native `useQuery`
   // lowering is self-contained, so the provider has nothing to inject and its
@@ -10791,4 +10858,116 @@ function emitSwiftRxCall(
       // marker so missing dispatch is obvious in failed swiftc output.
       return `/* unsupported rx.${e.method} */ ${src}`
   }
+}
+
+/**
+ * `<PieChart data value label …>` (@pyreon/charts/plot) → the runtime-swift
+ * `PyreonPieChart` view. The accessor props pass through as closures — the
+ * wrapper is generic over the row type, so `value={(d) => d.amount}` emits
+ * `{ d in d.amount }` and Swift infers the parameter from `data`.
+ *
+ * The web accessors accept `(d, index)`; the native wrapper takes the
+ * single-argument form (the dominant shape). An index-dependent accessor
+ * warns + falls back to generic emit rather than mis-lowering.
+ */
+function emitSwiftPieChart(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const attr = (n: string) =>
+    e.attrs.find(
+      (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === n,
+    )
+  const data = attr('data')
+  const value = attr('value')
+  const label = attr('label')
+  if (data === undefined || value === undefined || label === undefined) {
+    _emitWarnings.push(
+      'PieChart: the native lowering needs `data`, `value` and `label` props — element left to generic emit (it will not compile natively)',
+    )
+    return emitSwiftGeneric(e, indent)
+  }
+  const color = attr('color')
+  for (const a of [value, label, ...(color === undefined ? [] : [color])]) {
+    if (a.value.kind === 'arrow' && a.value.params.length > 1) {
+      _emitWarnings.push(
+        `PieChart: the \`${a.name}\` accessor uses the (d, index) form — the native lowering supports the single-argument accessor; precompute an array for index-dependent slices`,
+      )
+      return emitSwiftGeneric(e, indent)
+    }
+  }
+  const args = [
+    `data: ${emitSwiftExpr(unwrapAccessorArrow(data.value), indent)}`,
+    `value: ${emitSwiftExpr(value.value, indent)}`,
+    `label: ${emitSwiftExpr(label.value, indent)}`,
+  ]
+  if (color !== undefined) args.push(`color: ${emitSwiftExpr(color.value, indent)}`)
+  for (const n of ['width', 'height', 'innerRadius', 'showLabels'] as const) {
+    const a = attr(n)
+    if (a !== undefined) args.push(`${n}: ${emitSwiftExpr(unwrapAccessorArrow(a.value), indent)}`)
+  }
+  for (const n of ['showLegend', 'onSelect', 'title', 'accessibleTable'] as const) {
+    if (attr(n) !== undefined) {
+      _emitWarnings.push(
+        `PieChart: \`${n}\` has no native lowering (web-only legend / hit-testing / a11y-table surface) — DROPPED on this target`,
+      )
+    }
+  }
+  // Special-case emitters never reach the generic modifier tail — carry the
+  // testid + a11y through explicitly (the Link/Toggle lesson).
+  const testid = readStringAttrExpr(e, 'data-testid', 0)
+  const a11y = swiftAccessibilityModifiers(e).join('')
+  const tail =
+    (testid === undefined
+      ? ''
+      : `.accessibilityElement(children: .contain).accessibilityIdentifier(${testid})`) + a11y
+  return `PyreonPieChart(${args.join(', ')})${tail}`
+}
+
+/**
+ * `<GaugeChart value …>` (@pyreon/charts/plot) → the runtime-swift
+ * `PyreonGaugeChart` view. Scalar props map 1:1; `value={() => x()}`
+ * unwraps to the reactive read.
+ */
+function emitSwiftGaugeChart(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  indent: number,
+): string {
+  const attr = (n: string) =>
+    e.attrs.find(
+      (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === n,
+    )
+  const value = attr('value')
+  if (value === undefined) {
+    _emitWarnings.push(
+      'GaugeChart: the native lowering needs the `value` prop — element left to generic emit (it will not compile natively)',
+    )
+    return emitSwiftGeneric(e, indent)
+  }
+  const args = [`value: ${emitSwiftExpr(unwrapAccessorArrow(value.value), indent)}`]
+  for (const n of [
+    'min',
+    'max',
+    'width',
+    'height',
+    'thickness',
+    'trackColor',
+    'valueColor',
+    'showValue',
+  ] as const) {
+    const a = attr(n)
+    if (a !== undefined) args.push(`${n}: ${emitSwiftExpr(unwrapAccessorArrow(a.value), indent)}`)
+  }
+  if (attr('title') !== undefined) {
+    _emitWarnings.push(
+      'GaugeChart: `title` has no native lowering (it feeds the web aria-label) — use `accessibilityLabel`, which lowers on all three targets',
+    )
+  }
+  const testid = readStringAttrExpr(e, 'data-testid', 0)
+  const a11y = swiftAccessibilityModifiers(e).join('')
+  const tail =
+    (testid === undefined
+      ? ''
+      : `.accessibilityElement(children: .contain).accessibilityIdentifier(${testid})`) + a11y
+  return `PyreonGaugeChart(${args.join(', ')})${tail}`
 }

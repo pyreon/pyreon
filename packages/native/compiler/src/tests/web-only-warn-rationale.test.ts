@@ -64,7 +64,10 @@ describe('the web-only warning carries the package’s own reason', () => {
   })
 
   it('still names the escape hatch, but AFTER the native-first advice', () => {
-    const w = webOnlyWarn('@pyreon/charts', 'Chart')
+    // `@pyreon/charts` moved out of the blanket set when its radial
+    // components began lowering (nativeFrontend) — `@pyreon/flow` is a
+    // genuine rendering engine still in it.
+    const w = webOnlyWarn('@pyreon/flow', 'FlowCanvas')
     expect(w).toContain('<Web>')
     // Native-equivalent first: the escape hatch is right for a genuine
     // rendering engine, but it was previously the ONLY option offered, for

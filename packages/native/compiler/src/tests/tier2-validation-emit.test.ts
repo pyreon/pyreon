@@ -7,6 +7,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
+import { isSwiftcAvailable, validateSwiftWithStubs } from '../validate'
 
 const SRC = `
 import { zodSchema } from '@pyreon/validation'
@@ -116,4 +117,64 @@ export function App() { return <Stack><Text>x</Text></Stack> }
       expect(r.code).not.toContain('PyreonZodSchema_')
     }
   })
+})
+
+/**
+ * Declining is right; declining SILENTLY is not.
+ *
+ * Every schema recognizer keys on the INLINE argument, so the ordinary
+ * refactor of lifting a schema to its own const — `const base = z.string()`
+ * then `zodSchema(base)` — matches none of them. That part is correct:
+ * synthesizing a struct from an unresolved binding would be a guess. But the
+ * node then fell through to a VERBATIM emit, and `z` / `type` exist in neither
+ * Swift nor Kotlin, so the generated file failed to compile with nothing said
+ * at emit time.
+ *
+ * The spec above ("does not lower an indirect schema reference") asserts the
+ * right invariant and is kept unchanged — it was simply silent about what got
+ * emitted instead. This is the missing half.
+ *
+ * Found by compiling all 103 shared-source fixtures across the tier2 emit
+ * suites: 4 of 206 compiles failed with NO warning, and they were these two
+ * shapes. The suites make almost no toolchain calls, so a string assertion was
+ * the only thing standing between this and a user.
+ */
+describe('@pyreon/validation — an un-lowered adapter call is DECLINED BY NAME', () => {
+  const indirect = (adapter: string, lib: string, ctor: string) => `
+import { ${adapter} } from '@pyreon/validation'
+import { ${lib} } from '${lib === 'z' ? 'zod' : lib === 'v' ? 'valibot' : 'arktype'}'
+const base = ${ctor}
+export const mySchema = ${adapter}(base)
+`
+
+  it.each([
+    ['zodSchema', 'z', 'z.string()'],
+    ['arktypeSchema', 'type', "type('string')"],
+  ])('%s warns naming the binding on both targets', (adapter, lib, ctor) => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const w = (transform(indirect(adapter, lib, ctor), { target }).warnings ?? []) as string[]
+      expect(w.some((m) => m.includes(adapter) && m.includes('mySchema'))).toBe(true)
+    }
+  })
+
+  it('the SUPPORTED inline shape stays warning-free', () => {
+    const src = `
+import { zodSchema } from '@pyreon/validation'
+import { z } from 'zod'
+export const userSchema = zodSchema(z.object({ name: z.string() }))
+`
+    for (const target of ['swift', 'kotlin'] as const) {
+      expect(transform(src, { target }).warnings ?? []).toEqual([])
+    }
+  })
+
+  it.runIf(isSwiftcAvailable())(
+    'the warning is accurate: the un-lowered emit really does fail to compile',
+    async () => {
+      const code = transform(indirect('zodSchema', 'z', 'z.string()'), { target: 'swift' }).code
+      const r = await validateSwiftWithStubs(code)
+      expect(r.ok).toBe(false)
+      expect(r.error ?? '').toContain("cannot find 'z' in scope")
+    },
+  )
 })

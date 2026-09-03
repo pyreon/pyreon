@@ -75,7 +75,7 @@ describe('MCP validate — native (multiplatform) detector', () => {
     // already worked. A class genuinely does not lower.
     const code = `
       import { Stack } from '@pyreon/primitives'
-      import { Chart } from '@pyreon/charts'
+      import { FlowCanvas } from '@pyreon/flow'
       class Todo { id = 1 }
       export function App() { return (<Stack />) }
     `

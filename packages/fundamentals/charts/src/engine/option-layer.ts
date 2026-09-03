@@ -18,7 +18,7 @@ const num = (v: unknown): number | null => {
   return null
 }
 
-interface Table {
+export interface Table {
   /** Dimension names (header row or object keys). */
   dims: string[]
   /** Rows of cells, one array per record. */
@@ -41,6 +41,76 @@ export function readSource(ds: Record<string, unknown>): Table | null {
   const hasHeader = headerOpt === true || headerOpt === 1 || (headerOpt === undefined && firstRowIsText && rowsRaw.length > 1 && !rowsRaw[1]!.every((c) => typeof c === 'string'))
   const dims = declared ?? (hasHeader ? rowsRaw[0]!.map((c) => String(c)) : rowsRaw[0]!.map((_, i) => 'dim' + String(i)))
   return { dims, rows: hasHeader ? rowsRaw.slice(1) : rowsRaw }
+}
+
+type Cond = Record<string, unknown>
+
+function compareCells(a: unknown, b: unknown): number {
+  const na = num(a)
+  const nb = num(b)
+  if (na !== null && nb !== null) return na - nb
+  const sa = String(a ?? '')
+  const sb = String(b ?? '')
+  return sa < sb ? -1 : sa > sb ? 1 : 0
+}
+
+function evalCond(t: Table, cond: Cond, row: unknown[], warnings: OptionWarning[], path: string): boolean {
+  if (Array.isArray(cond['and'])) return (cond['and'] as Cond[]).every((c) => evalCond(t, c, row, warnings, path))
+  if (Array.isArray(cond['or'])) return (cond['or'] as Cond[]).some((c) => evalCond(t, c, row, warnings, path))
+  if (isObj(cond['not'])) return !evalCond(t, cond['not'] as Cond, row, warnings, path)
+  const di = dimIndex(t, cond['dimension'])
+  if (di === null) {
+    if (!warnings.some((w) => w.path === path + '.dimension')) warnings.push({ code: 'series-data-shape', path: path + '.dimension', message: 'Unknown dataset dimension "' + String(cond['dimension']) + '" in a transform; the condition was ignored.' })
+    return true
+  }
+  const v = row[di]
+  const ops: [string[], (c: number) => boolean][] = [
+    [['gt', '>'], (c) => c > 0],
+    [['gte', '>='], (c) => c >= 0],
+    [['lt', '<'], (c) => c < 0],
+    [['lte', '<='], (c) => c <= 0],
+    [['eq', '='], (c) => c === 0],
+    [['ne', '!='], (c) => c !== 0],
+  ]
+  for (const [keys, test] of ops) {
+    for (const k of keys) {
+      if (cond[k] === undefined) continue
+      if (!test(compareCells(v, cond[k]))) return false
+    }
+  }
+  return true
+}
+
+/** Apply a dataset's `transform` list (filter / sort) to a table; unknown kinds pass through with a warning. */
+export function applyTransforms(t: Table, transforms: unknown[], warnings: OptionWarning[], path = 'dataset'): Table {
+  let cur = t
+  for (let i = 0; i < transforms.length; i++) {
+    const tr = transforms[i]
+    const tp = path + '.transform[' + String(i) + ']'
+    if (!isObj(tr)) continue
+    const cfg = tr['config']
+    if (tr['type'] === 'filter') {
+      const cond = isObj(cfg) ? (cfg as Cond) : {}
+      cur = { dims: cur.dims, rows: cur.rows.filter((r) => evalCond(cur, cond, r, warnings, tp + '.config')) }
+    } else if (tr['type'] === 'sort') {
+      const keys = (Array.isArray(cfg) ? cfg : [cfg]).filter(isObj)
+      const resolved = keys.map((k) => ({ di: dimIndex(cur, k['dimension']), desc: k['order'] === 'desc' }))
+      for (let k = 0; k < resolved.length; k++) if (resolved[k]!.di === null) warnings.push({ code: 'series-data-shape', path: tp + '.config.dimension', message: 'Unknown dataset dimension "' + String(keys[k]!['dimension']) + '" in a sort; that key was ignored.' })
+      const live = resolved.filter((r): r is { di: number; desc: boolean } => r.di !== null)
+      const indexed = cur.rows.map((r, idx) => ({ r, idx }))
+      indexed.sort((a, b) => {
+        for (const key of live) {
+          const c = compareCells(a.r[key.di], b.r[key.di])
+          if (c !== 0) return key.desc ? -c : c
+        }
+        return a.idx - b.idx
+      })
+      cur = { dims: cur.dims, rows: indexed.map((x) => x.r) }
+    } else {
+      warnings.push({ code: 'option-key-unsupported', path: tp + '.type', message: 'dataset transform "' + String(tr['type']) + '" is not supported (filter and sort are); the table passed through unchanged.' })
+    }
+  }
+  return cur
 }
 
 function transpose(t: Table): Table {
@@ -78,12 +148,43 @@ export function resolveDataset(option: EChartsOptionLike): { option: EChartsOpti
   const dsRaw = option['dataset']
   if (dsRaw === undefined) return { option, warnings }
   const datasets = (Array.isArray(dsRaw) ? dsRaw : [dsRaw]).filter(isObj)
-  const tables: (Table | null)[] = datasets.map((d, i) => {
-    if (d['transform'] !== undefined) warnings.push({ code: 'option-key-unsupported', path: 'dataset[' + String(i) + '].transform', message: 'dataset transforms are not supported yet; the source was used as-is.' })
-    return readSource(d)
-  })
+  // Datasets resolve in order so a derived one can build on an earlier one.
+  const tables: (Table | null)[] = []
+  for (let i = 0; i < datasets.length; i++) {
+    const d = datasets[i]!
+    const trRaw = d['transform']
+    if (trRaw === undefined) {
+      tables.push(readSource(d))
+      continue
+    }
+    const from = num(d['fromDatasetIndex']) ?? 0
+    const base = tables[from] ?? null
+    if (base === null) {
+      warnings.push({ code: 'series-data-shape', path: 'dataset[' + String(i) + '].fromDatasetIndex', message: 'The dataset to transform (index ' + String(from) + ') has no readable source; this dataset is empty.' })
+      tables.push(null)
+      continue
+    }
+    tables.push(applyTransforms(base, Array.isArray(trRaw) ? trRaw : [trRaw], warnings, 'dataset[' + String(i) + ']'))
+  }
   const seriesArr = Array.isArray(option['series']) ? (option['series'] as unknown[]) : option['series'] === undefined ? [] : [option['series']]
   let xData: unknown[] | null = null
+  // ECharts hands each series the NEXT unclaimed column of ITS dataset (a
+  // per-dataset cursor), not column seriesIndex+1 — two series on two
+  // datasets both read column 1.
+  const cursor = new Map<number, number>()
+  const nextColumn = (ds: number): number => {
+    const n = (cursor.get(ds) ?? 0) + 1
+    cursor.set(ds, n)
+    return n
+  }
+  // The pre-pass CONSUMES the dataset keys it materialised, so the compilers see a plain series.
+  const withData = (sr: Record<string, unknown>, data: unknown[]): Record<string, unknown> => {
+    const o: Record<string, unknown> = { ...sr, data }
+    delete o['datasetIndex']
+    delete o['encode']
+    delete o['seriesLayoutBy']
+    return o
+  }
   const outSeries = seriesArr.map((sRaw, si) => {
     if (!isObj(sRaw) || Array.isArray(sRaw['data'])) return sRaw
     const dsIndex = num(sRaw['datasetIndex']) ?? 0
@@ -98,24 +199,25 @@ export function resolveDataset(option: EChartsOptionLike): { option: EChartsOpti
     const col = (v: unknown[] | undefined | unknown, fallback: number): number | null => dimIndex(t!, Array.isArray(v) ? v[0] : v) ?? (fallback < t!.dims.length ? fallback : null)
     if (NAME_VALUE_TYPES.has(type)) {
       const nameCol = col(enc['itemName'], 0)
-      const valueCol = col(enc['value'], si + 1)
+      const valueCol = col(enc['value'], enc['value'] === undefined ? nextColumn(dsIndex) : 0)
       if (nameCol === null || valueCol === null) return sRaw
-      return { ...sRaw, data: t.rows.map((r) => ({ name: String(r[nameCol] ?? ''), value: num(r[valueCol]) ?? 0 })) }
+      return withData(sRaw, t.rows.map((r) => ({ name: String(r[nameCol] ?? ''), value: num(r[valueCol]) ?? 0 })))
     }
     if (type === 'scatter') {
       const xCol = col(enc['x'], 0)
-      const yCol = col(enc['y'], si + 1)
+      const yCol = col(enc['y'], enc['y'] === undefined ? nextColumn(dsIndex) : 0)
       if (xCol === null || yCol === null) return sRaw
-      return { ...sRaw, data: t.rows.map((r) => [num(r[xCol]) ?? 0, num(r[yCol]) ?? 0]) }
+      return withData(sRaw, t.rows.map((r) => [num(r[xCol]) ?? 0, num(r[yCol]) ?? 0]))
     }
     const xCol = col(enc['x'], 0)
-    const yCol = col(enc['y'], si + 1)
+    const want = enc['y'] === undefined ? nextColumn(dsIndex) : 0
+    const yCol = col(enc['y'], want)
     if (yCol === null) {
-      warnings.push({ code: 'series-data-shape', path: 'series[' + String(si) + ']', message: 'The dataset has no dimension for this series (dimension ' + String(si + 1) + '); treated as empty.' })
+      warnings.push({ code: 'series-data-shape', path: 'series[' + String(si) + ']', message: 'The dataset has no dimension for this series (dimension ' + String(want) + '); treated as empty.' })
       return sRaw
     }
     if (xData === null && xCol !== null) xData = t.rows.map((r) => r[xCol])
-    return { ...sRaw, data: t.rows.map((r) => num(r[yCol]) ?? null) }
+    return withData(sRaw, t.rows.map((r) => num(r[yCol]) ?? null))
   })
   const out: EChartsOptionLike = { ...option, series: Array.isArray(option['series']) ? outSeries : outSeries[0] }
   const x = out['xAxis']

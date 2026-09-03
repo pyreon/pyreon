@@ -277,6 +277,71 @@ enum PyreonSyncDefaultsTests {
         dd.set(PYREON_SYNCED_DEFAULT_MAP, "k", .string("after"))
         check(sd() == "x", "a disposed signal ignores later writes, no crash")
 
+        // 5. MAP HANDLE — the native twin of the web `doc.getMap(name)`.
+        //    The engine's own methods take the map name as a first argument;
+        //    shared source is written against the web API, where a map is a
+        //    value you hold. Before this handle existed, the ordinary shape
+        //    `doc.getMap('room').set('k', v)` lowered to native code calling a
+        //    `getMap` that was not there — and PMTC emitted it verbatim with no
+        //    warning, so the failure surfaced as a swiftc error in a generated
+        //    file instead of a diagnostic naming the call.
+        let hd = PyreonCrdtDoc(actor: "h1")
+        let room = hd.getMap("room")
+
+        //    The overloads are the other half: `PyreonScalar` is an enum, so
+        //    `room.set("k", "v")` cannot type-check against a bare enum
+        //    parameter, and requiring `.string("v")` would put a Swift enum case
+        //    in a file that must also compile as TypeScript.
+        room.set("title", "hello")
+        room.set("n", 42)
+        room.set("ok", true)
+        room.set("ratio", 1.5)
+        check(room.get("title") == .string("hello"), "handle set/get round-trips a String")
+        check(room.get("n") == .int(42), "handle set/get round-trips an Int")
+        check(room.get("ok") == .bool(true), "handle set/get round-trips a Bool")
+        check(room.get("ratio") == .double(1.5), "handle set/get round-trips a Double")
+        check(room.has("title"), "handle has")
+        check(room.keys().count == 4, "handle keys")
+        check(room.get("absent") == nil, "handle get of an absent key is nil")
+
+        //    A handle is a VALUE, not a registration: two calls with the same
+        //    name address the same underlying map.
+        check(hd.getMap("room").get("title") == .string("hello"), "handles are not per-call state")
+        check(hd.getMap("other").get("title") == nil, "a different name is a different map")
+
+        //    And the handle observes only its OWN map.
+        var sawRoom = 0
+        var sawOther = 0
+        let offRoom = room.observe { _ in sawRoom += 1 }
+        let offOther = hd.getMap("other").observe { _ in sawOther += 1 }
+        room.set("title", "changed")
+        check(sawRoom == 1, "handle observe fires for its own map")
+        check(sawOther == 0, "handle observe does not fire for another map")
+        offRoom()
+        offOther()
+        room.set("title", "again")
+        check(sawRoom == 1, "handle observe unsubscribes")
+
+        //    Cross-document convergence THROUGH the handle — the shape a device
+        //    proof drives: a peer writes, the local doc merges, the handle reads
+        //    the merged value.
+        //
+        //    A FRESH pair, deliberately. Reusing `hd` here asserts nothing about
+        //    the handle: `hd` has taken six writes above, so its Lamport clock is
+        //    at 6 and a peer's clock-1 write correctly LOSES. The first draft of
+        //    this test did exactly that and failed — the engine was right and the
+        //    assertion was wrong, which is the more useful way round to find out.
+        let localFresh = PyreonCrdtDoc(actor: "a1")
+        let peer = PyreonCrdtDoc(actor: "z9")
+        let localRoom = localFresh.getMap("room")
+        localRoom.set("title", "from-local")
+        peer.getMap("room").set("title", "from-peer")
+        localFresh.applyOps(peer.encodeState())
+        //    Equal clocks (one write each), so the actor id breaks the tie and
+        //    "z9" > "a1" wins — the same rule the flat-API test at the top of
+        //    this file asserts, reached through the handle.
+        check(localRoom.get("title") == .string("from-peer"), "handle reads a merged remote write")
+
         _ = tA
         _ = tB
     }

@@ -103,6 +103,129 @@ export function findKeyDrift(uses: KeyUse[]): Drift[] {
   return drifts.sort((a, b) => a.prefix.localeCompare(b.prefix))
 }
 
+// ─── one artifact ⇒ one key prefix ⇒ one writer ───────────────────────────
+//
+// The drift check above catches one PREFIX hashing two input lists. It cannot
+// see the inverse: one PATH cached under two prefixes by two workflows. That is
+// what filled the 10 GB actions cache three times — `~/.bun/install/cache`
+// saved by ci.yml as `bun-install-cache-*` AND by release.yml +
+// bundle-size-diff.yml as `bun-*`, one artifact stored once per lockfile
+// variant per prefix (4.8 GB of pure duplication, 2026-09-01), and LRU then
+// evicting the small entries every PR depends on. A restore-only site under a
+// second prefix is a different, quieter hole: it can never hit, because nothing
+// ever saves that prefix.
+
+export interface CacheStep {
+  file: string
+  line: number
+  /** `save` = actions/cache/save, `restore` = actions/cache/restore, `both` = actions/cache */
+  kind: 'save' | 'restore' | 'both'
+  /** Normalized, sorted path list — the artifact identity. */
+  paths: string[]
+  /** The literal text before the first `${{` in `key:` — '' when the key is pure expression. */
+  prefix: string
+}
+
+/**
+ * Find every `actions/cache*` step and read its `path:` (scalar or block) and
+ * `key:`. Indentation-driven: a step ends at the next `- ` at the same indent.
+ * Pure — unit-tested.
+ */
+export function extractCacheSteps(text: string, file: string): CacheStep[] {
+  const lines = text.split('\n')
+  const out: CacheStep[] = []
+  for (let i = 0; i < lines.length; i++) {
+    const m = /^(\s*)-?\s*uses:\s*actions\/cache(\/save|\/restore)?@/.exec(lines[i]!)
+    if (!m) continue
+    const kind: CacheStep['kind'] = m[2] === '/save' ? 'save' : m[2] === '/restore' ? 'restore' : 'both'
+    // The step's own indent is that of its `- ` line; `uses:` may sit on the
+    // `- ` line or on the following line (when `- name:` came first).
+    const stepIndent = lines[i]!.startsWith(`${m[1]}-`)
+      ? m[1]!.length
+      : findStepIndent(lines, i)
+    const paths: string[] = []
+    let prefix = ''
+    for (let j = i + 1; j < lines.length; j++) {
+      const l = lines[j]!
+      const indent = l.length - l.trimStart().length
+      if (l.trim() !== '' && !l.trim().startsWith('#') && indent <= stepIndent) break
+      const pm = /^\s*path:\s*(.*)$/.exec(l)
+      if (pm) {
+        if (pm[1]!.trim() === '|' || pm[1]!.trim() === '') {
+          for (let k = j + 1; k < lines.length; k++) {
+            const pl = lines[k]!
+            const pind = pl.length - pl.trimStart().length
+            if (pl.trim() === '' || pind <= indent) break
+            paths.push(pl.trim())
+          }
+        } else paths.push(pm[1]!.trim())
+      }
+      const km = /^\s*key:\s*(.*)$/.exec(l)
+      if (km) prefix = km[1]!.split('${{')[0]!.trim()
+    }
+    out.push({ file, line: i + 1, kind, paths: [...paths].sort(), prefix })
+  }
+  return out
+}
+
+function findStepIndent(lines: string[], from: number): number {
+  for (let j = from - 1; j >= 0; j--) {
+    const l = lines[j]!
+    if (/^\s*-\s/.test(l)) return l.length - l.trimStart().length
+  }
+  return 0
+}
+
+export interface PathDuplicate {
+  paths: string[]
+  writers: Array<{ prefix: string; sites: string[] }>
+}
+
+/** One artifact path written under >1 key prefix — every extra prefix is a second copy. */
+export function findDuplicateWriters(steps: CacheStep[]): PathDuplicate[] {
+  const byPath = new Map<string, Map<string, string[]>>()
+  for (const s of steps) {
+    if (s.kind === 'restore' || s.prefix === '') continue
+    const id = s.paths.join('\n')
+    const writers = byPath.get(id) ?? new Map<string, string[]>()
+    byPath.set(id, writers)
+    const sites = writers.get(s.prefix) ?? []
+    sites.push(`${s.file}:${s.line}`)
+    writers.set(s.prefix, sites)
+  }
+  const out: PathDuplicate[] = []
+  for (const [id, writers] of byPath) {
+    if (writers.size < 2) continue
+    out.push({
+      paths: id.split('\n'),
+      writers: [...writers.entries()]
+        .map(([prefix, sites]) => ({ prefix, sites }))
+        .sort((a, b) => a.prefix.localeCompare(b.prefix)),
+    })
+  }
+  return out.sort((a, b) => a.paths[0]!.localeCompare(b.paths[0]!))
+}
+
+export interface OrphanRestore {
+  prefix: string
+  sites: string[]
+}
+
+/** A restore-only site under a prefix NO writer saves can never hit. */
+export function findOrphanRestores(steps: CacheStep[]): OrphanRestore[] {
+  const written = new Set(steps.filter((s) => s.kind !== 'restore' && s.prefix !== '').map((s) => s.prefix))
+  const byPrefix = new Map<string, string[]>()
+  for (const s of steps) {
+    if (s.kind !== 'restore' || s.prefix === '' || written.has(s.prefix)) continue
+    const sites = byPrefix.get(s.prefix) ?? []
+    sites.push(`${s.file}:${s.line}`)
+    byPrefix.set(s.prefix, sites)
+  }
+  return [...byPrefix.entries()]
+    .map(([prefix, sites]) => ({ prefix, sites }))
+    .sort((a, b) => a.prefix.localeCompare(b.prefix))
+}
+
 // ─── main ─────────────────────────────────────────────────────────────────
 
 function collectYaml(dir: string, acc: string[] = []): string[] {
@@ -145,7 +268,48 @@ Make the argument lists byte-identical.`,
   process.exit(1)
 }
 
+const steps = files.flatMap((f) => extractCacheSteps(readFileSync(f, 'utf8'), f.slice(REPO.length + 1)))
+if (steps.length === 0) {
+  console.error('[check-cache-key-sync] FAILED — found ZERO actions/cache steps; the scan is broken')
+  process.exit(1)
+}
+
+const dups = findDuplicateWriters(steps)
+if (dups.length > 0) {
+  console.error(
+    `[check-cache-key-sync] FAILED — ${dups.length} cache path(s) are WRITTEN under more than one key prefix:`,
+  )
+  for (const d of dups) {
+    console.error(`\n  ${d.paths.join(' + ')}`)
+    for (const w of d.writers) {
+      console.error(`    ${w.prefix}`)
+      for (const s of w.sites) console.error(`      at ${s}`)
+    }
+  }
+  console.error(
+    `\nOne artifact ⇒ one key prefix ⇒ one writer. A second prefix stores a second
+copy of the same bytes per variant — 4.8 GB of the 10 GB budget on 2026-09-01 —
+and LRU then evicts the small entries every PR depends on. Keep ONE writer
+(ci.yml's Install job for the shared stores) and make every other site an
+\`actions/cache/restore\` under that exact prefix.`,
+  )
+  process.exit(1)
+}
+
+const orphans = findOrphanRestores(steps)
+if (orphans.length > 0) {
+  console.error(
+    `[check-cache-key-sync] FAILED — ${orphans.length} restore-only prefix(es) that NO step ever saves (they can never hit):`,
+  )
+  for (const o of orphans) {
+    console.error(`\n  ${o.prefix}`)
+    for (const s of o.sites) console.error(`      at ${s}`)
+  }
+  process.exit(1)
+}
+
 const prefixes = new Set(uses.map((u) => u.prefix))
+const written = new Set(steps.filter((s) => s.kind !== 'restore' && s.prefix !== '').map((s) => s.prefix))
 console.log(
-  `[check-cache-key-sync] ✓ ${uses.length} cache key(s) across ${prefixes.size} prefix(es) hash consistent inputs`,
+  `[check-cache-key-sync] ✓ ${uses.length} cache key(s) across ${prefixes.size} prefix(es) hash consistent inputs; ${steps.length} cache step(s), ${written.size} written prefix(es), one writer per path`,
 )

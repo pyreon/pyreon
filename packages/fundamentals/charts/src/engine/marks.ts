@@ -47,6 +47,12 @@ export interface MarkOptions {
    * value axis — both pin to left by design rather than silently mis-scaling.
    */
   axis?: 'left' | 'right'
+  /** Halo rings around each point (`points` only) — the effectScatter look. */
+  effect?: boolean
+  /** Draw bars as a symbol (`bars` only) — the pictorialBar look. */
+  symbol?: 'rect' | 'circle' | 'diamond' | 'triangle'
+  /** Repeat the symbol along the bar instead of stretching it. */
+  symbolRepeat?: boolean
 }
 
 /** A mark bound to its accessor, resolved against data at render time. */
@@ -59,6 +65,13 @@ export interface Mark<T> {
   /** Rendered-radius bounds for the r channel. */
   minRadius?: Double | undefined
   maxRadius?: Double | undefined
+  /**
+   * A whole-series transform applied after the accessor resolves — how the
+   * indicators (`sma`, `ema`, `bollinger`, `trend`) derive their values. A
+   * NaN in the output is a GAP: the line breaks there instead of drawing a
+   * zero.
+   */
+  transform?: ((values: Double[]) => Double[]) | undefined
 }
 
 /**
@@ -69,7 +82,7 @@ export interface Mark<T> {
 const PALETTE = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
 
 function mark<T>(kind: Series['kind'], y: Accessor<T>, options: MarkOptions): Mark<T> {
-  return { kind, y, options, r: undefined }
+  return { kind, y, options, r: undefined, transform: undefined }
 }
 
 /** Vertical bars, one per datum, measured from the zero line. */
@@ -148,26 +161,30 @@ export function bubble<T>(
  */
 export function resolveMarks<T>(data: T[], marks: Mark<T>[]): Series[] {
   return marks.map((m, seriesIndex) => {
-    const values: Double[] = []
+    const raw: Double[] = []
     for (let i = 0; i < data.length; i++) {
       const v = m.y(data[i]!, i)
-      values.push(Number.isFinite(v) ? v : 0)
+      raw.push(Number.isFinite(v) ? v : 0)
     }
+    // A transform's NaNs are deliberate gaps and survive; a raw accessor's
+    // non-finite result was zeroed above (a visible wrong datum beats a
+    // silently missing one when the CALLER's accessor is broken).
+    const values = m.transform === undefined ? raw : m.transform(raw)
     // The r channel resolves to RADII here, area-mapped over the series'
     // own extent, so the engine only ever sees pixels.
     let radii: Double[] | undefined = undefined
     const rAcc = m.r
     if (rAcc !== undefined) {
-      const raw: Double[] = []
+      const rawR: Double[] = []
       for (let i = 0; i < data.length; i++) {
         const rv = rAcc(data[i]!, i)
-        raw.push(Number.isFinite(rv) && rv > 0.0 ? rv : 0.0)
+        rawR.push(Number.isFinite(rv) && rv > 0.0 ? rv : 0.0)
       }
       let hi = 0.0
-      for (const rv of raw) if (rv > hi) hi = rv
+      for (const rv of rawR) if (rv > hi) hi = rv
       const minR = m.minRadius ?? 3.0
       const maxR = m.maxRadius ?? 18.0
-      radii = raw.map((rv) =>
+      radii = rawR.map((rv) =>
         hi === 0.0 ? minR : minR + Math.sqrt(rv / hi) * (maxR - minR),
       )
     }
@@ -182,6 +199,9 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[]): Series[] {
       showValues: m.options.showValues === true,
       radii,
       axis: m.options.axis,
+      effect: m.options.effect,
+      symbol: m.options.symbol,
+      symbolRepeat: m.options.symbolRepeat,
     }
   })
 }

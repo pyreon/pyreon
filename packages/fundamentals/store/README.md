@@ -204,15 +204,27 @@ Works for sync and async actions; `ctx.after` runs after the action resolves, `c
 
 ## SSR isolation
 
+**Automatic — there is nothing to wire.** On a server this package publishes its
+registry setter on a `globalThis` seam, and `@pyreon/runtime-server` picks it up
+at its render choke point, so every `renderToString` / `renderToStream` /
+`runWithRequestContext` call gets its own registry via `AsyncLocalStorage` and
+one request's store state is never visible to another.
+
+It used to be opt-in, which meant unisolated by default: `@pyreon/server` and
+`@pyreon/zero` own the server and neither depends on this package — that is why
+the API takes a setter as an argument — so the only party who could opt in was
+the application author.
+
+To supply a provider of your own (a shared build-time cache across SSG pages, a
+test double), the explicit call still works and wins:
+
 ```ts
-// Once at server startup:
+// Once at server startup — the OVERRIDE, not the switch:
 import { configureStoreIsolation } from '@pyreon/runtime-server'
 import { setStoreRegistryProvider } from '@pyreon/store'
 
 configureStoreIsolation(setStoreRegistryProvider)
 ```
-
-Without this, the store registry is a process-global singleton — concurrent requests share defined stores. With it, each `renderToString` / `renderToStream` call gets its own registry via `AsyncLocalStorage`. Call once at startup, never per request.
 
 ## Testing pattern
 

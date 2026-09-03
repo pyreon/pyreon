@@ -196,14 +196,45 @@ let _storeIsolationActive = false
  * configureStoreIsolation(setStoreRegistryProvider)
  */
 export function configureStoreIsolation(
-  setStoreRegistryProvider: (fn: () => Map<string, unknown>) => void,
+  setStoreRegistryProvider: (fn: () => Map<string, unknown> | undefined) => void,
 ): void {
-  setStoreRegistryProvider(() => _storeAls.getStore() ?? new Map())
+  // Return the ALS store, or `undefined` — NOT a fresh Map. Outside a render
+  // there is no request scope, and fabricating a throwaway map for those calls
+  // means a store written outside a render is silently dropped on the next
+  // read. `undefined` tells the registry to use its process default, so
+  // isolation applies exactly where it has something to say.
+  setStoreRegistryProvider(() => _storeAls.getStore())
   _storeIsolationActive = true
 }
 
-/** Wrap a function call in a fresh store registry (no-op if isolation not configured). */
+/**
+ * Auto-wire per-request store isolation from the `globalThis` seam
+ * `@pyreon/store` publishes when it loads on a server.
+ *
+ * `configureStoreIsolation` is the explicit path and still wins, but nobody was
+ * on it: `@pyreon/server` and `@pyreon/zero` own the server and neither depends
+ * on `@pyreon/store` — which is exactly why the API takes a setter as an
+ * argument — so the only party who could opt in was the application author, via
+ * a paragraph in a package they never import. The default was a process-global
+ * registry shared by every concurrent request.
+ *
+ * Consulted LAZILY, per render rather than at module init, because import order
+ * is not ours to choose: this module may well evaluate before the app first
+ * imports `@pyreon/store`. One `globalThis` property read per render call is
+ * not measurable against rendering a page.
+ */
+function tryAutoWireStoreIsolation(): void {
+  const seam = (
+    globalThis as {
+      __PYREON_STORE_SET_REGISTRY_PROVIDER__?: (fn: () => Map<string, unknown> | undefined) => void
+    }
+  ).__PYREON_STORE_SET_REGISTRY_PROVIDER__
+  if (typeof seam === 'function') configureStoreIsolation(seam)
+}
+
+/** Wrap a function call in a fresh store registry (no-op when @pyreon/store is absent). */
 function withStoreContext<T>(fn: () => T): T {
+  if (!_storeIsolationActive) tryAutoWireStoreIsolation()
   if (!_storeIsolationActive) return fn()
   return _storeAls.run(new Map(), fn)
 }

@@ -11,7 +11,9 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'wraps ECharts (browser canvas engine); consume on native via the `<WebView>` bridge subpath',
+      'the default export wraps ECharts (browser canvas engine) and the cartesian `<PlotChart>` is marks-based — both web; the RADIAL `/plot` components cross (see nativeFrontend), and the rest embeds via the `<WebView>` bridge subpath',
+    nativeFrontend:
+      'PyreonPieChart / PyreonGaugeChart — `<PieChart>` and `<GaugeChart>` from `@pyreon/charts/plot`, drawn by the GENERATED PyreonChartEngine (the same byte-locked geometry as the web canvas renderer)',
   },
   longExample: `import { Chart, useChart, type EChartsOption, type ComposeOption, type BarSeriesOption, type LineSeriesOption } from '@pyreon/charts'
 import { signal } from '@pyreon/reactivity'

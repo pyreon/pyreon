@@ -61,6 +61,15 @@ const CORPUS: { name: string; option: EChartsOption; expectClean: boolean }[] = 
     series: [{ type: 'heatmap', data: [[0, 0, 5], [1, 1, 9]] }] } },
   { name: 'funnel', expectClean: true, option: {
     series: [{ type: 'funnel', sort: 'descending', minSize: '10%', data: [{ value: 60, name: 'Visit' }, { value: 40, name: 'Inquiry' }, { value: 20, name: 'Order' }] }] } },
+  { name: 'pictorialBar (repeated circles) + effectScatter', expectClean: true, option: {
+    xAxis: { data: ['a', 'b', 'c'] }, yAxis: {},
+    series: [{ type: 'pictorialBar', symbol: 'circle', symbolRepeat: true, data: [3, 6, 9] }, { type: 'effectScatter', symbolSize: 10, data: [2, 5, 7] }] } },
+  { name: 'derived dataset (filter + sort) bars', expectClean: true, option: {
+    dataset: [
+      { source: [['name', 'score', 'team'], ['a', 5, 'x'], ['b', 9, 'y'], ['c', 1, 'x'], ['d', 7, 'y']] },
+      { transform: [{ type: 'filter', config: { dimension: 'team', eq: 'y' } }, { type: 'sort', config: { dimension: 'score', order: 'desc' } }] },
+    ],
+    xAxis: { type: 'category' }, yAxis: {}, series: [{ type: 'bar', datasetIndex: 1 }] } },
   { name: 'heatmap + piecewise visualMap', expectClean: true, option: {
     visualMap: { type: 'piecewise', splitNumber: 3, min: 0, max: 9, orient: 'horizontal', left: 'center', bottom: 0 },
     xAxis: { data: ['a', 'b'] }, yAxis: { data: ['r', 's'] },
@@ -91,6 +100,9 @@ const CORPUS: { name: string; option: EChartsOption; expectClean: boolean }[] = 
     series: [{ type: 'sunburst', radius: ['20%', '90%'], data: [{ name: 'A', value: 10 }, { name: 'B', children: [{ name: 'b1', value: 4 }, { name: 'b2', value: 6 }] }] }] } },
   { name: 'treemap', expectClean: true, option: {
     series: [{ type: 'treemap', data: [{ name: 'A', value: 10 }, { name: 'B', children: [{ name: 'b1', value: 4 }, { name: 'b2', value: 6 }] }] }] } },
+  { name: 'boxplot with outlier scatter', expectClean: true, option: {
+    xAxis: { data: ['A', 'B'] }, yAxis: {},
+    series: [{ type: 'boxplot', data: [[1, 2, 3, 4, 5], [2, 3, 4, 5, 6]] }, { type: 'scatter', data: [[0, 9]] }] } },
   { name: 'rose pie (roseType unmapped)', expectClean: false, option: {
     series: [{ type: 'pie', roseType: 'area', data: [{ value: 1, name: 'a' }] }] } },
   { name: 'radar + dataZoom (unmapped keys)', expectClean: false, option: {
@@ -117,8 +129,8 @@ describe('ECharts option facade — conformance corpus', () => {
       const c = planOption(f.option).compiled
       return c.supported && c.warnings.length === 0
     }).length
-    // 27 of 29 today. Raise this number as families land; never lower it.
-    expect(clean).toBeGreaterThanOrEqual(27)
+    // 29 of 31 today. Raise this number as families land; never lower it.
+    expect(clean).toBeGreaterThanOrEqual(29)
   })
 })
 

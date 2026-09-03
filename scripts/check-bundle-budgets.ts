@@ -34,7 +34,39 @@ import { join, resolve } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { parseSync, Visitor } from 'oxc-parser'
 
-const REPO_ROOT = resolve(import.meta.dir, '..')
+import { isUpdateMode, shouldLowerUnscoped } from './bundle-budget-policy'
+import { isModuleEntry } from './is-entry'
+
+// Minimal ambient for Bun's bundler, so this file stays importable from a
+// program without `@types/bun`. Its sibling `check-import-budgets.ts` already
+// does exactly this, for exactly this reason, and `serve-ssg.ts` before it —
+// but this file did not, so the moment a test imported it for the pure helpers
+// below, `@pyreon/test-utils` (types: ["vitest/globals", "node"]) failed with
+// TS2868 plus two implicit-any params inferred off the missing type. The
+// helpers now live in `./bundle-budget-policy`, which is the better home
+// because BOTH gates consume them — this ambient is the second half, so the
+// next person to import something from here does not hit the same wall.
+declare const Bun: {
+  build(options: {
+    entrypoints: string[]
+    minify?: boolean
+    target?: string
+    splitting?: boolean
+    outdir?: string
+    external?: string[]
+    define?: Record<string, string>
+  }): Promise<{
+    success: boolean
+    logs: unknown[]
+    outputs: Array<{ kind: string; text(): Promise<string> }>
+  }>
+}
+
+// `import.meta.dirname` is the STANDARD property (Node 20.11+, and Bun), which is
+// what every sibling gate uses (`affected.ts`, `check-coverage.ts`). The Bun-only
+// `import.meta.dir` is absent from TypeScript's `ImportMeta` unless a program
+// declares bun types, so reaching for it breaks any tsconfig that does not.
+const REPO_ROOT = resolve(import.meta.dirname, '..')
 const BUDGETS_PATH = join(REPO_ROOT, 'scripts', 'bundle-budgets.json')
 
 /**
@@ -363,10 +395,16 @@ async function measurePackage(pkg: PackageInfo): Promise<BundleResult> {
 
 // ─── Main ────────────────────────────────────────────────────────────────
 
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2)
   const jsonMode = args.includes('--json')
-  const updateMode = args.includes('--update')
+  // `--update=@pyreon/pkg` is the DOCUMENTED scoped form, but `includes` is an
+  // exact match, so it never enabled update mode — the scoped form silently ran
+  // as a plain check for its whole life. Latent until this change made the scoped
+  // form the only way to lower a budget; a unit test on the pure helper passed
+  // throughout, which is why the end-to-end run is the one that found it.
+  const updateMode = isUpdateMode(args)
 
   const packages = findPackages()
 
@@ -423,11 +461,12 @@ async function main(): Promise<void> {
     }
     // Optional scope: `--update=@pyreon/foo` touches only that package. Useful
     // when you know exactly which budget your change moved.
+    const refused: string[] = []
     const onlyArg = args.find((a) => a.startsWith('--update='))
     const only = onlyArg?.slice('--update='.length)
 
     const budgets: Record<string, unknown> = {
-      _doc: 'Per-package main-entry budgets in BYTES (minified + gzipped). Externalizes @pyreon/*, node:*, and every bare-module import auto-collected from each package\'s lib/ tree — this is the unique code each package adds to a consumer bundle. Seeded at 25% headroom. `--update` is a RATCHET: it RAISES a budget only for a package that is actually OVER (intentional growth, reviewed in the same PR), LOWERS one that has shrunk, and leaves everything else byte-identical. Use `--update=@pyreon/pkg` to scope it.',
+      _doc: 'Per-package main-entry budgets in BYTES (minified + gzipped). Externalizes @pyreon/*, node:*, and every bare-module import auto-collected from each package\'s lib/ tree — this is the unique code each package adds to a consumer bundle. Seeded at 25% headroom. `--update` is a RATCHET: it RAISES a budget only for a package that is actually OVER (intentional growth, reviewed in the same PR), and LOWERS one only when you NAME it (`--update=@pyreon/pkg`) — a stale or partial lib/ measures SMALLER than the real package, so an unscoped drop is far more likely to be a bad measurement than a real shrink. Everything else stays byte-identical.',
       _units: 'bytes (gzipped)',
     }
     const raised: string[] = []
@@ -449,6 +488,28 @@ async function main(): Promise<void> {
         raised.push(`${r.name} ${prev} → ${ideal} (measured ${r.gzip})`)
       } else if (ideal < prev) {
         // Shrank: tighten. A ratchet that never lowers stops protecting anything.
+        //
+        // But a LARGE apparent shrink is almost never a real one — it is a stale
+        // or partial `lib/`, which `--update` otherwise commits as truth. That
+        // happened: `@pyreon/validate` was ratcheted 15872 → 15360, a value that
+        // implies a ~12288 B measurement, while the package really measures
+        // ~15016 B locally and 15473 B on CI. The budget landed BELOW what CI
+        // measures, so the gate failed on a package the branch never touched —
+        // twice, on two different branches, because the wrong value was committed
+        // and travelled.
+        //
+        // A drop past this threshold is therefore treated as unmeasured rather
+        // than as shrinkage: keep the previous budget and say why. Real shrinkage
+        // of this size is rare and gets there in steps, or via
+        // `--update=@pyreon/pkg`, which is scoped and deliberate.
+        if (!shouldLowerUnscoped(only !== undefined)) {
+          const dropPct = ((prev - ideal) / prev) * 100
+          budgets[r.name] = prev
+          refused.push(
+            `${r.name} ${prev} → ${ideal} (−${dropPct.toFixed(1)}%, measured ${r.gzip})`,
+          )
+          continue
+        }
         budgets[r.name] = ideal
         lowered.push(`${r.name} ${prev} → ${ideal}`)
       } else {
@@ -466,6 +527,11 @@ async function main(): Promise<void> {
     for (const l of raised) console.log(`  ▲ ${l}`)
     for (const l of lowered) console.log(`  ▼ ${l}`)
     for (const l of seeded) console.log(`  + ${l}`)
+    for (const l of refused) {
+      console.log(
+        `  ⚠ not lowered: ${l} — an unscoped --update never lowers, because a stale \`lib/\` can only measure LOW. If this shrink is real, scope it: --update=${l.split(' ')[0]}`,
+      )
+    }
     /* eslint-enable no-console */
     return
   }
@@ -579,4 +645,6 @@ async function main(): Promise<void> {
   }
 }
 
-await main()
+// Guarded so this file can be IMPORTED to unit-test its pure helpers; unguarded,
+// importing it ran the whole gate and hit `process.exit(1)` inside vitest.
+if (isModuleEntry(import.meta)) await main()
