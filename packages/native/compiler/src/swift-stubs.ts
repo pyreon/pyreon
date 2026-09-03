@@ -967,6 +967,79 @@ extension View {
     _ state: PyreonSortableState<T>
   ) -> some View { self }
 }
+// @pyreon/flow — the PyreonFlowState engine. Mirrors PyreonFlowState.swift
+// (minus @Observable/@available, the same omission PyreonTableState documents).
+public struct PyreonXYPosition: Equatable {
+  public init(x: Double, y: Double) {}
+}
+public struct PyreonFlowViewport: Equatable {
+  public var x: Double = 0
+  public var y: Double = 0
+  public var zoom: Double = 1
+  public init(x: Double = 0, y: Double = 0, zoom: Double = 1) {}
+}
+public struct PyreonFlowNode<T> {
+  public var id: String = ""
+  public var position: PyreonXYPosition = PyreonXYPosition(x: 0, y: 0)
+  public var data: T? = nil
+  public init(
+    id: String,
+    type: String? = nil,
+    position: PyreonXYPosition,
+    data: T,
+    width: Double? = nil,
+    height: Double? = nil
+  ) {}
+}
+public struct PyreonFlowEdge: Equatable {
+  public init(
+    id: String,
+    source: String,
+    target: String,
+    type: String? = nil,
+    label: String? = nil,
+    animated: Bool = false
+  ) {}
+}
+public final class PyreonFlowState<T> {
+  public init(
+    nodes: [PyreonFlowNode<T>] = [],
+    edges: [PyreonFlowEdge] = [],
+    viewport: PyreonFlowViewport = PyreonFlowViewport(),
+    minZoom: Double = 0.1,
+    maxZoom: Double = 4
+  ) {}
+  public private(set) var nodes: [PyreonFlowNode<T>] = []
+  public private(set) var edges: [PyreonFlowEdge] = []
+  public private(set) var viewport: PyreonFlowViewport = PyreonFlowViewport()
+  public var containerSize: (width: Double, height: Double) = (0, 0)
+  public var zoom: Double { viewport.zoom }
+  public func getNode(_ id: String) -> PyreonFlowNode<T>? { nil }
+  public func addNode(_ node: PyreonFlowNode<T>) {}
+  public func removeNode(_ id: String) {}
+  public func updateNodePosition(_ id: String, _ position: PyreonXYPosition) {}
+  public func getEdge(_ id: String) -> PyreonFlowEdge? { nil }
+  public func addEdge(_ edge: PyreonFlowEdge) {}
+  public func removeEdge(_ id: String) {}
+  public func isNodeSelected(_ id: String) -> Bool { false }
+  public func isEdgeSelected(_ id: String) -> Bool { false }
+  public func selectedNodes() -> [String] { [] }
+  public func selectedEdges() -> [String] { [] }
+  public func selectNode(_ id: String, additive: Bool = false) {}
+  public func deselectNode(_ id: String) {}
+  public func selectEdge(_ id: String, additive: Bool = false) {}
+  public func clearSelection() {}
+  public func selectAll() {}
+  public func deleteSelected() {}
+  public func zoomTo(_ z: Double) {}
+  public func zoomIn() {}
+  public func zoomOut() {}
+  public func panTo(_ position: PyreonXYPosition) {}
+  public func fitView(_ nodeIds: [String]? = nil, padding: Double = 0.1) {}
+  public func getConnectedEdges(_ nodeId: String) -> [PyreonFlowEdge] { [] }
+  public func getIncomers(_ nodeId: String) -> [PyreonFlowNode<T>] { [] }
+  public func getOutgoers(_ nodeId: String) -> [PyreonFlowNode<T>] { [] }
+}
 public struct PyreonI18n {
   // fallbackLocale is OPTIONAL and DEFAULTED in the real PyreonI18n. The stub
   // made it required, so \`createI18n({ locale, messages })\` — the two-argument

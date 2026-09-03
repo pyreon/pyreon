@@ -260,6 +260,10 @@ let _syncedSignalNames: Set<string> = new Set()
 let _tableNames: Set<string> = new Set()
 /** `useSortable` binding names — the `ref={s.itemRef(k)}` lowering keys on these. */
 let _sortableNames: Set<string> = new Set()
+/** `createFlow(...)` bindings. Its PROPERTY reads (`flow.nodes()`→`flow.nodes`,
+ *  edges/viewport/zoom) drop parens; its METHODS (addNode/selectNode/
+ *  selectedNodes/…) flow through unchanged — see the call-site rewrite below. */
+let _flowStateNamesSwift: Set<string> = new Set()
 /** Per-component: `useOnline()` decl names. A web `useOnline()` returns an
  *  ACCESSOR (`() => boolean`), so shared code reads it as `net()`; on native
  *  the accessor call lowers to the `net.isOnline` read on the PyreonNetworkStatus
@@ -2047,6 +2051,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   _syncedSignalNames = new Set()
   _tableNames = new Set()
   _sortableNames = new Set()
+  _flowStateNamesSwift = new Set()
   _netStatusNames = new Set()
   _appStateNames = new Set()
   _crashNames = new Set()
@@ -2098,6 +2103,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     if (d.kind === 'synced-signal') _syncedSignalNames.add(d.name)
     if (d.kind === 'table-state') _tableNames.add(d.name)
     if (d.kind === 'sortable') _sortableNames.add(d.name)
+    if (d.kind === 'flow-state') _flowStateNamesSwift.add(d.name)
     if (d.kind === 'network-status') _netStatusNames.add(d.name)
     if (d.kind === 'app-state') _appStateNames.add(d.name)
     if (d.kind === 'crash-reporter') _crashNames.add(d.name)
@@ -3680,6 +3686,60 @@ function emitSwiftDecl(
   if (d.kind === 'size-class') {
     return `private var ${swiftIdent(d.name)}: String { pyreonSizeClass == .regular ? "regular" : "compact" }`
   }
+  // `@pyreon/flow` — a self-seeding @State PyreonFlowState. Fully
+  // self-contained (no `.onAppear` wiring — unlike table/sync, `createFlow`
+  // OWNS its data, not an external signal), so the whole node/edge literal
+  // config emits straight into the initializer. The row struct comes from
+  // inferring an ARRAY of every node's `data` sub-expression — the same
+  // "infer the element type of an array-of-objects" recipe `table-state`
+  // uses on its `dataBody`, just fed a synthetic array built from the
+  // literal `data` fields instead of a live signal read.
+  if (d.kind === 'flow-state') {
+    // The row struct comes from REGISTERING the first node's `data` field
+    // set via the SAME `synthLiteralStructName` registry every OTHER object
+    // literal in this file resolves through — not from `inferType` on a
+    // synthetic array. `inferType`'s object case only resolves a literal
+    // against an ALREADY-declared struct (see infer-type.ts's own comment:
+    // "the emit synthesizes an anonymous struct for it, but inference can't
+    // name that without the emitter's per-run registry"), so calling it on a
+    // one-off array built here found nothing and produced `Any` — the exact
+    // failure this comment exists to prevent a future edit from
+    // reintroducing. Registering FIRST (via the shared registry) guarantees
+    // this name is the SAME one each node's `data: {...}` literal resolves
+    // to below, since both hit the identical field-set key.
+    const rowFields = d.nodes[0]!.data.kind === 'object' ? d.nodes[0]!.data.fields : []
+    const rowType =
+      synthLiteralStructName(rowFields, _synthExprStructs, _synthExprStructKeys, (ex) =>
+        inferType(ex, _exprInferCtx),
+      ) ?? 'Any'
+    const nodeLits = d.nodes
+      .map((n) => {
+        const parts = [
+          `id: ${JSON.stringify(n.id)}`,
+          ...(n.type !== undefined ? [`type: ${JSON.stringify(n.type)}`] : []),
+          `position: PyreonXYPosition(x: ${emitSwiftExpr(n.positionX, 0)}, y: ${emitSwiftExpr(n.positionY, 0)})`,
+          `data: ${emitSwiftExpr(n.data, 0)}`,
+          ...(n.width !== undefined ? [`width: ${emitSwiftExpr(n.width, 0)}`] : []),
+          ...(n.height !== undefined ? [`height: ${emitSwiftExpr(n.height, 0)}`] : []),
+        ]
+        return `PyreonFlowNode(${parts.join(', ')})`
+      })
+      .join(', ')
+    const edgeLits = d.edges
+      .map((e) => {
+        const parts = [
+          `id: ${JSON.stringify(e.id)}`,
+          `source: ${JSON.stringify(e.source)}`,
+          `target: ${JSON.stringify(e.target)}`,
+          ...(e.type !== undefined ? [`type: ${JSON.stringify(e.type)}`] : []),
+          ...(e.label !== undefined ? [`label: ${JSON.stringify(e.label)}`] : []),
+          ...(e.animated !== undefined ? [`animated: ${e.animated ? 'true' : 'false'}`] : []),
+        ]
+        return `PyreonFlowEdge(${parts.join(', ')})`
+      })
+      .join(', ')
+    return `@State private var ${swiftIdent(d.name)} = PyreonFlowState<${rowType}>(nodes: [${nodeLits}], edges: [${edgeLits}])`
+  }
   // computed — infer the return type from the expression body so we
   // can emit a typed computed property. Falls back to `Any` for cases
   // the inference can't resolve (the emit still produces compilable
@@ -3726,6 +3786,70 @@ function emitSwiftDecl(
   const inferred = inferCtx.computeds.get(d.name) ?? inferType(d.expr!, inferCtx)
   const swiftReturnType = swiftType(inferred)
   return `private var ${swiftIdent(d.name)}: ${swiftReturnType} { ${emitSwiftExpr(inlineValueConsts(d.expr!), 0)} }`
+}
+
+/**
+ * `addNode({...})` — construct a `PyreonFlowNode(...)` from a call-site
+ * object literal. Same field walk as the decl-time recognizer
+ * (`tryDeclFromCreateFlow` in parse.ts), but over an already-parsed `ExprIR`
+ * rather than a raw AST node, and returning `null` (never warning) for any
+ * shape it doesn't recognize — the caller falls through to generic emission,
+ * which is correct for the common non-literal case (an identifier already
+ * holding a `PyreonFlowNode`).
+ */
+function swiftFlowNodeLiteral(arg: ExprIR): string | null {
+  if (arg.kind !== 'object') return null
+  const field = (n: string): ExprIR | undefined => arg.fields.find((f) => f.name === n)?.value
+  const idExpr = field('id')
+  const posExpr = field('position')
+  const dataExpr = field('data')
+  if (!idExpr || !posExpr || posExpr.kind !== 'object' || !dataExpr) return null
+  const posX = posExpr.fields.find((f) => f.name === 'x')?.value
+  const posY = posExpr.fields.find((f) => f.name === 'y')?.value
+  if (!posX || !posY) return null
+  const typeExpr = field('type')
+  const widthExpr = field('width')
+  const heightExpr = field('height')
+  const parts = [
+    `id: ${emitSwiftExpr(idExpr, 0)}`,
+    ...(typeExpr ? [`type: ${emitSwiftExpr(typeExpr, 0)}`] : []),
+    `position: PyreonXYPosition(x: ${emitSwiftExpr(posX, 0)}, y: ${emitSwiftExpr(posY, 0)})`,
+    `data: ${emitSwiftExpr(dataExpr, 0)}`,
+    ...(widthExpr ? [`width: ${emitSwiftExpr(widthExpr, 0)}`] : []),
+    ...(heightExpr ? [`height: ${emitSwiftExpr(heightExpr, 0)}`] : []),
+  ]
+  return `PyreonFlowNode(${parts.join(', ')})`
+}
+
+/** `addEdge({...})` — the `PyreonFlowEdge` twin of `swiftFlowNodeLiteral`. */
+function swiftFlowEdgeLiteral(arg: ExprIR): string | null {
+  if (arg.kind !== 'object') return null
+  const field = (n: string): ExprIR | undefined => arg.fields.find((f) => f.name === n)?.value
+  const idExpr = field('id')
+  const sourceExpr = field('source')
+  const targetExpr = field('target')
+  if (!idExpr || !sourceExpr || !targetExpr) return null
+  const typeExpr = field('type')
+  const labelExpr = field('label')
+  const animatedExpr = field('animated')
+  const parts = [
+    `id: ${emitSwiftExpr(idExpr, 0)}`,
+    `source: ${emitSwiftExpr(sourceExpr, 0)}`,
+    `target: ${emitSwiftExpr(targetExpr, 0)}`,
+    ...(typeExpr ? [`type: ${emitSwiftExpr(typeExpr, 0)}`] : []),
+    ...(labelExpr ? [`label: ${emitSwiftExpr(labelExpr, 0)}`] : []),
+    ...(animatedExpr ? [`animated: ${emitSwiftExpr(animatedExpr, 0)}`] : []),
+  ]
+  return `PyreonFlowEdge(${parts.join(', ')})`
+}
+
+/** `updateNodePosition(id, {x, y})` — the `PyreonXYPosition` twin. */
+function swiftFlowPositionLiteral(arg: ExprIR): string | null {
+  if (arg.kind !== 'object') return null
+  const x = arg.fields.find((f) => f.name === 'x')?.value
+  const y = arg.fields.find((f) => f.name === 'y')?.value
+  if (!x || !y) return null
+  return `PyreonXYPosition(x: ${emitSwiftExpr(x, 0)}, y: ${emitSwiftExpr(y, 0)})`
 }
 
 /**
@@ -5095,6 +5219,54 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         _tableNames.has(e.callee.object.name) &&
         e.args.length === 0 &&
         ['page', 'sortColumn', 'sortDirection', 'filterValue'].includes(e.callee.property)
+      ) {
+        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
+      }
+      // PyreonFlowState struct-literal ARGUMENTS: `addNode({...})` /
+      // `addEdge({...})` / `updateNodePosition(id, {...})` pass an object
+      // literal where the callee expects a NAMED runtime type
+      // (`PyreonFlowNode<Row>` / `PyreonFlowEdge` / `PyreonXYPosition`).
+      // Swift's type system is nominal, so the generic object-literal path
+      // (which would synthesize its OWN unrelated `__ObjN` struct — same
+      // field names, different type) cannot satisfy the parameter; this
+      // rewrite constructs the RIGHT type by name instead. Falls through to
+      // generic emission (unchanged) when the argument isn't a literal an
+      // already-typed variable reference is the common non-literal case,
+      // and needs no rewrite at all.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _flowStateNamesSwift.has(e.callee.object.name)
+      ) {
+        if (e.callee.property === 'addNode' && e.args.length === 1) {
+          const lit = swiftFlowNodeLiteral(e.args[0]!)
+          if (lit !== null) return `${swiftIdent(e.callee.object.name)}.addNode(${lit})`
+        }
+        if (e.callee.property === 'addEdge' && e.args.length === 1) {
+          const lit = swiftFlowEdgeLiteral(e.args[0]!)
+          if (lit !== null) return `${swiftIdent(e.callee.object.name)}.addEdge(${lit})`
+        }
+        if (e.callee.property === 'updateNodePosition' && e.args.length === 2) {
+          const lit = swiftFlowPositionLiteral(e.args[1]!)
+          if (lit !== null) {
+            return `${swiftIdent(e.callee.object.name)}.updateNodePosition(${emitSwiftExpr(e.args[0]!, indent)}, ${lit})`
+          }
+        }
+      }
+      // PyreonFlowState PROPERTY reads: web `flow.nodes()` / `flow.edges()` /
+      // `flow.viewport()` / `flow.zoom()` are Signal/Computed accessor CALLS —
+      // the native @Observable class exposes them as stored/computed Swift
+      // properties, so the parens must drop (mirrors the table `page`/
+      // `sortColumn` rewrite immediately above). `selectedNodes()`/
+      // `selectedEdges()` stay METHODS on the Swift port (named that way on
+      // purpose, matching the web CALL syntax with no rewrite needed) —
+      // deliberately absent from this list.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _flowStateNamesSwift.has(e.callee.object.name) &&
+        e.args.length === 0 &&
+        ['nodes', 'edges', 'viewport', 'zoom'].includes(e.callee.property)
       ) {
         return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
       }

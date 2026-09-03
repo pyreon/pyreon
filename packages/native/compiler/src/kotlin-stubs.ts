@@ -1508,6 +1508,65 @@ class PyreonSortableState<T>(
   }
 }
 
+// @pyreon/flow — the PyreonFlowState engine. Mirrors PyreonFlowState.kt.
+data class PyreonXYPosition(val x: Double, val y: Double)
+data class PyreonFlowViewport(val x: Double = 0.0, val y: Double = 0.0, val zoom: Double = 1.0)
+data class PyreonFlowNode<T>(
+  val id: String,
+  val type: String? = null,
+  val position: PyreonXYPosition,
+  val data: T,
+  val width: Double? = null,
+  val height: Double? = null,
+)
+data class PyreonFlowEdge(
+  val id: String,
+  val source: String,
+  val target: String,
+  val type: String? = null,
+  val label: String? = null,
+  val animated: Boolean = false,
+)
+data class PyreonFlowContainerSize(val width: Double = 0.0, val height: Double = 0.0)
+class PyreonFlowState<T>(
+  nodes: List<PyreonFlowNode<T>> = emptyList(),
+  edges: List<PyreonFlowEdge> = emptyList(),
+  viewport: PyreonFlowViewport = PyreonFlowViewport(),
+  minZoom: Double = 0.1,
+  maxZoom: Double = 4.0,
+) {
+  val nodes: List<PyreonFlowNode<T>> = nodes
+  val edges: List<PyreonFlowEdge> = edges
+  val viewport: PyreonFlowViewport = viewport
+  var containerSize: PyreonFlowContainerSize = PyreonFlowContainerSize()
+  val zoom: Double get() = viewport.zoom
+  fun getNode(id: String): PyreonFlowNode<T>? = null
+  fun addNode(node: PyreonFlowNode<T>) {}
+  fun removeNode(id: String) {}
+  fun updateNodePosition(id: String, position: PyreonXYPosition) {}
+  fun getEdge(id: String): PyreonFlowEdge? = null
+  fun addEdge(edge: PyreonFlowEdge) {}
+  fun removeEdge(id: String) {}
+  fun isNodeSelected(id: String): Boolean = false
+  fun isEdgeSelected(id: String): Boolean = false
+  fun selectedNodes(): List<String> = emptyList()
+  fun selectedEdges(): List<String> = emptyList()
+  fun selectNode(id: String, additive: Boolean = false) {}
+  fun deselectNode(id: String) {}
+  fun selectEdge(id: String, additive: Boolean = false) {}
+  fun clearSelection() {}
+  fun selectAll() {}
+  fun deleteSelected() {}
+  fun zoomTo(z: Double) {}
+  fun zoomIn() {}
+  fun zoomOut() {}
+  fun panTo(position: PyreonXYPosition) {}
+  fun fitView(nodeIds: List<String>? = null, padding: Double = 0.1) {}
+  fun getConnectedEdges(nodeId: String): List<PyreonFlowEdge> = emptyList()
+  fun getIncomers(nodeId: String): List<PyreonFlowNode<T>> = emptyList()
+  fun getOutgoers(nodeId: String): List<PyreonFlowNode<T>> = emptyList()
+}
+
 // PyreonPermissions — mirror of @pyreon/native-runtime-kotlin's
 // PyreonPermissions.kt surface the emit touches: callable shape
 // (operator invoke), not / cannot / all / any. Added with the

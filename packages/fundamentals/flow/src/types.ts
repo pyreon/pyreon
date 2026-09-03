@@ -226,10 +226,36 @@ export type NodeChange =
 
 // ─── Edge path result ────────────────────────────────────────────────────────
 
+/**
+ * One drawing primitive in an edge's path — the closed vocabulary every
+ * built-in path builder (`getBezierPath`/`getSmoothStepPath`/`getStraightPath`/
+ * `getStepPath`/`getWaypointPath`) reduces to. Exactly the four SVG path
+ * commands those builders ever emit (`M`/`L`/`C`/`Q`), structured instead of
+ * stringified — a `move`/`line`/`cubic`/`quad` union, closed by construction
+ * (every builder's output is representable; nothing here anticipates a
+ * command no builder produces).
+ *
+ * This exists so a NON-SVG renderer (a `Canvas` executor) can draw the exact
+ * same edge without parsing the `path` string — `move`→`moveTo`, `line`→
+ * `lineTo`, `cubic`→`addCurve`/`cubicTo`, `quad`→`addQuadCurve`/
+ * `quadraticBezierTo`. The web SVG renderer is unaffected: `path` (the `d`
+ * attribute string) stays the source of truth there, unchanged in every
+ * builder. `segments` is an ADDITIVE, parallel representation of the same
+ * geometry — the two must always agree (locked by a differential test per
+ * builder), so a consumer picks whichever it needs and never both.
+ */
+export type EdgeSegment =
+  | { kind: 'move'; x: number; y: number }
+  | { kind: 'line'; x: number; y: number }
+  | { kind: 'cubic'; x: number; y: number; c1x: number; c1y: number; c2x: number; c2y: number }
+  | { kind: 'quad'; x: number; y: number; cx: number; cy: number }
+
 export interface EdgePathResult {
   path: string
   labelX: number
   labelY: number
+  /** The same geometry as `path`, structured for a non-SVG (Canvas) renderer. */
+  segments: EdgeSegment[]
 }
 
 /**
@@ -251,6 +277,8 @@ export interface EdgeGeometry {
   path: string
   labelX: number
   labelY: number
+  /** The same geometry as `path`, structured for a non-SVG (Canvas) renderer. */
+  segments: EdgeSegment[]
 }
 
 // ─── Flow config ─────────────────────────────────────────────────────────────

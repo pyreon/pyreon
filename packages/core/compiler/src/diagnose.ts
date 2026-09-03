@@ -1697,6 +1697,22 @@ const geometry = () => props.shape
         "// radial: lowers to the native PyreonPieChart over the generated engine\n<PieChart data={txns} value={(t) => Math.abs(t.amount)} label={(t) => t.description} />\n\n// cartesian: web-only — branch it\n<Web><PlotChart data={rows} marks={[line((d) => d.y)]} /></Web>",
     }),
   },
+  {
+    // The @pyreon/flow twin of the chart entry above — `createFlow` DOES
+    // lower now (PyreonFlowState), but the JSX components it renders through
+    // do not, so the SAME class of error (a literal tag reaching the emitted
+    // Swift/Kotlin) is reachable through the OPPOSITE decline path: not a
+    // rejected shape, but a symbol with no native emit at all.
+    pattern:
+      /cannot find '(?:Flow|Background|Controls|MiniMap|Handle|NodeToolbar|NodeResizer|Panel)' in scope|Unresolved reference '(?:Flow|Background|Controls|MiniMap|Handle|NodeToolbar|NodeResizer|Panel)'/,
+    diagnose: () => ({
+      cause:
+        "A `@pyreon/flow` JSX component reached the emitted Swift/Kotlin as a literal tag — nothing by that name exists on either platform. `<Flow>` and everything it renders (`<Background>`/`<Controls>`/`<MiniMap>`/`<Handle>`/`<NodeToolbar>`/`<NodeResizer>`/`<Panel>`) are SVG/DOM rendering plus pointer-event gesture handling, with no native emit at all — this is NOT a decline path the way an unsupported PieChart shape is; `createFlow` itself lowers correctly and the transform stays silent about it, which is exactly what makes the JSX usage's failure surprising.",
+      fix: "For the diagram's STATE and DATA: use `createFlow({ nodes, edges })` directly — it lowers to the native PyreonFlowState engine (node/edge CRUD, selection, pan/zoom/fitView, graph queries), so mutate it from native event handlers with no JSX involved. For DRAWING edges: `PyreonFlowEdgeCanvas` (SwiftUI Canvas / Compose Canvas) draws the built-in edge geometry from hand-written native code. For the FULL JSX-driven editor (custom node/edge components, drag-to-connect): host it via the `@pyreon/flow/webview` bridge inside a `<WebView>`, or keep the `<Flow>` tree in a `<Web>` branch.",
+      fixCode:
+        "// state crosses — mutate it from native code, no JSX render needed\nconst flow = createFlow({ nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'Start' } }], edges: [] })\nflow.addNode({ id: '2', position: { x: 200, y: 0 }, data: { label: 'End' } })\n\n// the JSX tree itself stays web-only\n<Web><Flow instance={flow}><Background /></Flow></Web>",
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */

@@ -1168,7 +1168,6 @@ const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map([
   ['@pyreon/connector-document', "bridges ui-components to @pyreon/document extraction — both ends are web/document engines"],
   ['@pyreon/document', "wraps pdfmake/docx/exceljs/pptxgenjs (browser/node document engines); no native lowering"],
   ['@pyreon/document-primitives', "document-authoring primitives feeding the pdfmake/docx renderers"],
-  ['@pyreon/flow', "SVG rendering (the layout engine itself is pure and platform-free); consume on native via the `<WebView>` bridge subpath"],
   ['@pyreon/head', "document `<head>` management — no equivalent surface exists on iOS/Android"],
   ['@pyreon/lathe', "the code generator — build-time tooling that emits app code, not app runtime itself"],
   ['@pyreon/lint', "lint tooling — runs at dev time, not app runtime"],
@@ -2562,6 +2561,27 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
       advice:
         "`createTableState({ data, columns, pageSize })` LOWERS to the native PyreonTableState engine — render its `rows()` with `<For>` + primitives. The TanStack-backed `useTable` (getRowModel / getVisibleCells / flexRender) is the WEB render surface with no native analogue; keep it behind a `<Web>` branch",
       supported: new Set(['createTableState']),
+    },
+  ],
+  [
+    '@pyreon/flow',
+    {
+      // `createFlow` lowers (PyreonFlowState — CRUD/selection/viewport/graph
+      // queries); the JSX components (`<Flow>` and everything it renders —
+      // Background/Controls/MiniMap/Handle/NodeToolbar/NodeResizer/Panel) are
+      // SVG/DOM rendering + pointer-event gesture handling with NO native
+      // emit AT ALL. Without this entry those names emitted VERBATIM as if
+      // they were real SwiftUI/Compose types — `Flow(instance: flow) {
+      // Background() }` — which fails at the native BUILD with "cannot find
+      // 'Flow' in scope" and no indication anywhere that `<Flow>` itself is
+      // the unsupported part, not `createFlow` (which by then has correctly
+      // lowered right above it). `computeLayout`/`useFlow`/the edge-path
+      // helpers (`getBezierPath` etc.) are pure functions with no native
+      // port yet either — name them so the warning doesn't imply only the
+      // JSX layer is missing.
+      advice:
+        '`createFlow({ nodes, edges })` LOWERS to the native PyreonFlowState engine (v1: literal config; CRUD/selection/pan-zoom/graph-queries) — mutate it from event handlers, and draw its edges with `PyreonFlowEdgeCanvas` (SwiftUI Canvas / Compose Canvas) from hand-written native code. The `<Flow>` JSX component and everything it renders (Background/Controls/MiniMap/Handle/NodeToolbar/NodeResizer/Panel), `useFlow`, `computeLayout`, and the edge-path helpers (getBezierPath/getSmoothStepPath/…) have NO native emit — host the full JSX-driven editor via the `@pyreon/flow/webview` bridge instead',
+      supported: new Set(['createFlow']),
     },
   ],
   [
@@ -6665,6 +6685,12 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const sortableDecl = tryDeclFromUseSortable(node, ctx)
   if (sortableDecl) return sortableDecl
 
+  // `@pyreon/flow` — `const flow = createFlow({ nodes, edges })` lowers to
+  // the PyreonFlowState engine. Same placement rationale as table/sortable
+  // above: recognized as a real port before the silent-drop block.
+  const flowStateDecl = tryDeclFromCreateFlow(node, ctx)
+  if (flowStateDecl) return flowStateDecl
+
   // Tier-2 silent-drop diagnostics from #1444 (Gap 4 PR-1) — kept for
   // the remaining 3 callees. `createI18n` and `createMachine` were
   // REMOVED from the list because they now have full ports via
@@ -8693,6 +8719,197 @@ function tryDeclFromSyncedSignal(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     initialValue,
     ...(map !== undefined ? { map } : {}),
   }
+}
+
+/**
+ * `const flow = createFlow({ nodes: [...], edges: [...] })` from `@pyreon/flow`
+ * → a `flow-state` decl. Lowers to the native `PyreonFlowState<Row>` port.
+ *
+ * Unlike `createTableState` (which WRAPS an external reactive `data` source),
+ * `createFlow` OWNS its data — `nodes`/`edges` are seeded once from LITERAL
+ * arrays and mutated through the instance's own methods thereafter. So this
+ * recognizer requires literal config, closer to `createMachine`'s shape than
+ * table's closure-wrapping one.
+ *
+ * v1 scope, matching the discipline `createTableState`/`useSortable` set —
+ * a real, useful subset now, everything else named as a follow-up rather
+ * than silently missing:
+ *   - Each node: `id` (string literal), optional `type` (string literal),
+ *     `position: { x, y }` (numeric expressions), `data` (an object literal —
+ *     the SAME field set across every node, so ONE row struct can be
+ *     synthesized), optional numeric `width`/`height`.
+ *   - Each edge: `id` (string literal — NOT auto-generated, unlike the web
+ *     engine's `edgeId()` fallback; a v1 narrowing, like table's explicit
+ *     `columns: [{ id }]`), `source`/`target` (string literals), optional
+ *     `type`/`label` (string literals) and `animated` (boolean literal).
+ *   - `viewport`/`minZoom`/`maxZoom` config fields are NOT yet recognized —
+ *     the native port always starts at the default viewport `(0,0,1)` /
+ *     zoom range `[0.1, 4]` (the same defaults the web engine uses absent
+ *     explicit config).
+ * Anything outside that shape warns + falls back to silent-drop, same as
+ * every other v1 recognizer in this file.
+ */
+function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
+  const init = node.init as AnyNode | undefined
+  if (init?.type !== 'CallExpression') return null
+  if ((init.callee?.name as string | undefined) !== 'createFlow') return null
+  if (node.id?.type !== 'Identifier') return null
+  const name = node.id.name as string
+  const configArg = unwrapTypeLayers((init.arguments as AnyNode[] | undefined)?.[0])
+  if (!configArg || configArg.type !== 'ObjectExpression') {
+    ctx.warnings.push(
+      `createFlow declaration \`${name}\`: argument must be an object literal { nodes, edges } to lower natively. Falling back to silent-drop.`,
+    )
+    return null
+  }
+
+  const literalString = (n: AnyNode | undefined): string | undefined =>
+    n?.type === 'Literal' && typeof n.value === 'string' ? (n.value as string) : undefined
+  const literalBool = (n: AnyNode | undefined): boolean | undefined =>
+    n?.type === 'Literal' && typeof n.value === 'boolean' ? (n.value as boolean) : undefined
+  const objProp = (
+    obj: AnyNode,
+    key: string,
+  ): AnyNode | undefined => {
+    for (const prop of (obj.properties as AnyNode[] | undefined) ?? []) {
+      if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
+      const keyNode = prop.key as AnyNode | undefined
+      const keyName =
+        keyNode?.type === 'Identifier'
+          ? (keyNode.name as string)
+          : keyNode?.type === 'Literal'
+            ? String(keyNode.value)
+            : undefined
+      if (keyName === key) return unwrapTypeLayers(prop.value as AnyNode | undefined)
+    }
+    return undefined
+  }
+
+  const nodesOut: {
+    id: string
+    type?: string
+    positionX: ExprIR
+    positionY: ExprIR
+    data: ExprIR
+    width?: ExprIR
+    height?: ExprIR
+  }[] = []
+  const edgesOut: {
+    id: string
+    source: string
+    target: string
+    type?: string
+    label?: string
+    animated?: boolean
+  }[] = []
+  let shapeOk = true
+
+  const nodesArg = objProp(configArg, 'nodes')
+  if (nodesArg && nodesArg.type === 'ArrayExpression') {
+    for (const el of (nodesArg.elements as AnyNode[] | undefined) ?? []) {
+      const nodeLit = unwrapTypeLayers(el)
+      if (!nodeLit || nodeLit.type !== 'ObjectExpression') {
+        shapeOk = false
+        continue
+      }
+      const idNode = objProp(nodeLit, 'id')
+      const id = literalString(idNode)
+      const positionArg = objProp(nodeLit, 'position')
+      const dataArg = objProp(nodeLit, 'data')
+      if (
+        id === undefined ||
+        !positionArg ||
+        positionArg.type !== 'ObjectExpression' ||
+        !dataArg ||
+        dataArg.type !== 'ObjectExpression'
+      ) {
+        shapeOk = false
+        continue
+      }
+      const posXNode = objProp(positionArg, 'x')
+      const posYNode = objProp(positionArg, 'y')
+      if (!posXNode || !posYNode) {
+        shapeOk = false
+        continue
+      }
+      const typeNode = objProp(nodeLit, 'type')
+      const widthNode = objProp(nodeLit, 'width')
+      const heightNode = objProp(nodeLit, 'height')
+      const typeLit = literalString(typeNode)
+      nodesOut.push({
+        id,
+        positionX: parseExpr(posXNode, ctx),
+        positionY: parseExpr(posYNode, ctx),
+        data: parseExpr(dataArg, ctx),
+        ...(typeLit !== undefined ? { type: typeLit } : {}),
+        ...(widthNode ? { width: parseExpr(widthNode, ctx) } : {}),
+        ...(heightNode ? { height: parseExpr(heightNode, ctx) } : {}),
+      })
+    }
+  } else if (nodesArg) {
+    shapeOk = false
+  }
+
+  const edgesArg = objProp(configArg, 'edges')
+  if (edgesArg && edgesArg.type === 'ArrayExpression') {
+    for (const el of (edgesArg.elements as AnyNode[] | undefined) ?? []) {
+      const edgeLit = unwrapTypeLayers(el)
+      if (!edgeLit || edgeLit.type !== 'ObjectExpression') {
+        shapeOk = false
+        continue
+      }
+      const id = literalString(objProp(edgeLit, 'id'))
+      const source = literalString(objProp(edgeLit, 'source'))
+      const target = literalString(objProp(edgeLit, 'target'))
+      if (id === undefined || source === undefined || target === undefined) {
+        shapeOk = false
+        continue
+      }
+      const edgeType = literalString(objProp(edgeLit, 'type'))
+      const edgeLabel = literalString(objProp(edgeLit, 'label'))
+      const edgeAnimated = literalBool(objProp(edgeLit, 'animated'))
+      edgesOut.push({
+        id,
+        source,
+        target,
+        ...(edgeType !== undefined ? { type: edgeType } : {}),
+        ...(edgeLabel !== undefined ? { label: edgeLabel } : {}),
+        ...(edgeAnimated !== undefined ? { animated: edgeAnimated } : {}),
+      })
+    }
+  } else if (edgesArg) {
+    shapeOk = false
+  }
+
+  if (!shapeOk) {
+    ctx.warnings.push(
+      `createFlow declaration \`${name}\`: \`nodes\`/\`edges\` must be literal arrays of object literals — each node needs a string \`id\`, a \`position: { x, y }\`, and an object-literal \`data\`; each edge needs string \`id\`/\`source\`/\`target\` — to lower natively (v1). Falling back to silent-drop.`,
+    )
+    return null
+  }
+  // Every node's `data` must share the SAME field set so ONE row struct can
+  // be synthesized — the same uniform-row assumption `createTableState`
+  // makes about its data source.
+  const dataFieldSets = new Set(
+    nodesOut.map((n) => (n.data.kind === 'object' ? n.data.fields.map((f) => f.name).sort().join(',') : '<non-object>')),
+  )
+  if (nodesOut.some((n) => n.data.kind !== 'object') || dataFieldSets.size > 1) {
+    ctx.warnings.push(
+      `createFlow declaration \`${name}\`: every node's \`data\` must be an object literal with the SAME field set, so one row struct can be synthesized (v1). Falling back to silent-drop.`,
+    )
+    return null
+  }
+  // At least one node is required — the row struct is synthesized from a
+  // real node's `data` literal (there is no annotation-only path yet), so an
+  // empty seed has nothing to infer T from.
+  if (nodesOut.length === 0) {
+    ctx.warnings.push(
+      `createFlow declaration \`${name}\`: an empty \`nodes: []\` has no literal to infer the row-data struct from (v1). Seed at least one representative node — more can be added later via \`addNode\`. Falling back to silent-drop.`,
+    )
+    return null
+  }
+
+  return { kind: 'flow-state', name, nodes: nodesOut, edges: edgesOut }
 }
 
 /**

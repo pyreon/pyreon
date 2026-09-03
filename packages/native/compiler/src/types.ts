@@ -869,6 +869,49 @@ export type DeclIR =
       reorderBody: StatementIR[]
       axis: 'vertical' | 'horizontal'
     }
+  /**
+   * `const flow = createFlow({ nodes: [...], edges: [...] })` from
+   * `@pyreon/flow` — lowers to the native `PyreonFlowState<Row>` port.
+   *
+   * Unlike `table-state` (which wraps an EXTERNAL reactive data source),
+   * `createFlow` OWNS its data: `nodes`/`edges` are captured here as
+   * LITERAL config (every node/edge field parsed at declaration time, not a
+   * closure body) and mutated through the instance's own methods thereafter
+   * — the emit is a fully self-contained `@State`/`remember` initializer,
+   * no `.onAppear`/post-init wiring needed (closer to `machine`'s shape).
+   *
+   * v1: every node's `data` must share the SAME field set (so ONE row
+   * struct is synthesized, the same uniform-row assumption `table-state`
+   * makes) — `swiftType(inferType({ kind: 'array', elements: nodes.map(n
+   * => n.data) }, ctx).element, synth)` at emit time gets the row type,
+   * mirroring how `table-state`'s `dataBody` resolves its row type. Edge
+   * `id` is required (not auto-generated, unlike the web engine's
+   * `edgeId()` fallback) — a v1 narrowing, like `table-state`'s explicit
+   * `columns: [{ id }]`. `viewport`/`minZoom`/`maxZoom` config are not yet
+   * recognized; the native port starts at the web engine's own defaults.
+   */
+  | {
+      kind: 'flow-state'
+      name: string
+      nodes: {
+        id: string
+        type?: string
+        positionX: ExprIR
+        positionY: ExprIR
+        /** The node's `data: {...}` object literal — uniform across every node. */
+        data: ExprIR
+        width?: ExprIR
+        height?: ExprIR
+      }[]
+      edges: {
+        id: string
+        source: string
+        target: string
+        type?: string
+        label?: string
+        animated?: boolean
+      }[]
+    }
 
 /**
  * Phase C5 — one route entry parsed from `createRouter({ routes: [...] })`.
