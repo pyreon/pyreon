@@ -9563,13 +9563,16 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   }
   const data = emitKotlinExpr(dataV, indent)
   const zoomed = readStaticAttrKotlin(e, 'dataZoom') === true
+  const presetsRaw = kotlinZoomPresets(e, tag)
+  const presets = presetsRaw === 'unsupported' ? undefined : presetsRaw
+  const windowed = zoomed || presets !== undefined
   const lets: string[] = []
-  if (zoomed) {
+  if (windowed) {
     lets.push('var pyreonZoom by remember { mutableStateOf(ZoomWindow(start = 0.0, end = 1.0)) }')
     lets.push(`val pyreonRange: SliceRange = sliceRange(pyreonZoom, ${data}.size)`)
     lets.push(`val pyreonRows = ${data}.subList(pyreonRange.from, pyreonRange.to)`)
   }
-  const rows = zoomed ? 'pyreonRows' : data
+  const rows = windowed ? 'pyreonRows' : data
   const series: string[] = []
   for (let k = 0; k < marksV.elements.length; k++) {
     const m = marksV.elements[k]!
@@ -9590,7 +9593,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     const optsArg = bubble ? m.args[2] : m.args[1]
     const opts = kotlinMarkOptionArgs(optsArg, tag, k)
     if (opts === 'unsupported') return 'Box {}'
-    lets.push(`val pyreonValues${k}: List<Double> = ${kotlinPlotRowMap(rows, `(${body}).toDouble()`, zoomed)}`)
+    lets.push(`val pyreonValues${k}: List<Double> = ${kotlinPlotRowMap(rows, `(${body}).toDouble()`, windowed)}`)
     if (bubble) {
       const r = m.args[1]
       if (r === undefined) {
@@ -9600,7 +9603,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
       const rBody = kotlinAccessorExpr(r, tag, `mark ${k + 1} radius`, indent)
       if (rBody === 'unsupported') return 'Box {}'
       const range = kotlinBubbleRange(optsArg)
-      lets.push(`val pyreonRadii${k}: List<Double> = bubbleRadii(${kotlinPlotRowMap(rows, `(${rBody}).toDouble()`, zoomed)}, ${range[0]}, ${range[1]})`)
+      lets.push(`val pyreonRadii${k}: List<Double> = bubbleRadii(${kotlinPlotRowMap(rows, `(${rBody}).toDouble()`, windowed)}, ${range[0]}, ${range[1]})`)
       const at = opts.findIndex((o) => o.startsWith('showValues =')) + 1
       const withRadii = [...opts.slice(0, at), `radii = pyreonRadii${k}`, ...opts.slice(at)]
       series.push(`Series(kind = "points", values = pyreonValues${k}, ${withRadii.join(', ')})`)
@@ -9613,7 +9616,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   if (xAcc !== undefined) {
     const body = kotlinAccessorExpr(xAcc, tag, 'x', indent)
     if (body === 'unsupported') return 'Box {}'
-    lets.push(`val pyreonCats: List<String> = ${kotlinPlotRowMap(rows, body, zoomed)}`)
+    lets.push(`val pyreonCats: List<String> = ${kotlinPlotRowMap(rows, body, windowed)}`)
   } else {
     lets.push('val pyreonCats: List<String> = listOf<String>()')
   }
@@ -9621,7 +9624,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   if (xValueAcc !== undefined) {
     const body = kotlinAccessorExpr(xValueAcc, tag, 'xValue', indent)
     if (body === 'unsupported') return 'Box {}'
-    lets.push(`val pyreonXValues: List<Double> = ${kotlinPlotRowMap(rows, `(${body}).toDouble()`, zoomed)}`)
+    lets.push(`val pyreonXValues: List<Double> = ${kotlinPlotRowMap(rows, `(${body}).toDouble()`, windowed)}`)
   }
   const present = PLOT_UNLOWERED_PROPS.filter((p) => chartAttrExprKotlin(e, p) !== undefined)
   if (present.length > 0) _emitWarnings.push(`<${tag}>: ${present.map((p) => `\`${p}\``).join(', ')} ${present.length === 1 ? 'is' : 'are'} not lowered on native yet; the chart renders without.`)
@@ -9630,6 +9633,12 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const W = hasWidth ? kotlinChartDouble(e, 'width', 300, indent) : 'pyreonW'
   const chrome = kotlinChartChrome(e, 'pyreonSeries.map { LegendEntry(label = it.label, color = it.color) }', W, H, indent, true)
   lets.push(...chrome.lets)
+  const theme = kotlinChartTheme(e, tag)
+  if (presets !== undefined) {
+    lets.push(`val pyreonTheme: ChartTheme = ${theme}`)
+    lets.push(`val pyreonPresets: List<ZoomPreset> = listOf(${presets.join(', ')})`)
+    lets.push(`val pyreonPresetStrip: PresetLayout = renderPresets(pyreonPresets, ${data}.size, pyreonZoom, PyreonChartRect(0.0, 0.0, ${W}, ${H}), PresetOptions(fontSize = 11.0, padX = 8.0, padY = 3.0, gap = 6.0, inset = 8.0, activeFill = pyreonTheme.axis, idleFill = pyreonTheme.grid, activeText = "#ffffff", idleText = pyreonTheme.label), ::pyreonChartMeasure)`)
+  }
   const bool = (name: string, fallback: boolean): string => {
     const raw = readStaticAttrKotlin(e, name)
     const v = chartAttrExprKotlin(e, name)
@@ -9637,10 +9646,10 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   }
   const specArgs = [
     `width = ${W}`,
-    `height = ${chrome.height(H)}`,
+    `height = ${presets === undefined ? chrome.height(H) : `${chrome.height(H)} - pyreonPresetStrip.height`}`,
     'series = pyreonSeries',
     'categories = pyreonCats',
-    `theme = ${kotlinChartTheme(e, tag)}`,
+    `theme = ${presets === undefined ? theme : 'pyreonTheme'}`,
     `showXAxis = ${bool('showXAxis', true)}`,
     `showYAxis = ${bool('showYAxis', true)}`,
     `showGrid = ${bool('showGrid', true)}`,
@@ -9661,13 +9670,23 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const mk = chartAttrExprKotlin(e, 'markers')
   if (mk !== undefined) specArgs.push(`markers = ${emitKotlinExpr(mk, indent)}`)
   lets.push(`val pyreonSpec: ChartSpec = ChartSpec(${specArgs.join(', ')})`)
-  const cmds = chrome.wrap('renderChart(pyreonSpec, ::pyreonChartMeasure)')
+  const cmds = `${chrome.wrap('renderChart(pyreonSpec, ::pyreonChartMeasure)')}${presets === undefined ? '' : ' + pyreonPresetStrip.cmds'}`
   const hit = (x: string, y: string): string => {
     const local = `plotHitBars(pyreonSpec, ::pyreonChartMeasure, ${x}, ${chrome.top === '0.0' ? y : `${y} - pyreonTop`})`
-    return zoomed ? `run { val pyreonHit = ${local}; if (pyreonHit < 0) -1 else pyreonHit + pyreonRange.from }` : local
+    return windowed ? `run { val pyreonHit = ${local}; if (pyreonHit < 0) -1 else pyreonHit + pyreonRange.from }` : local
   }
   const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
-  let tap = onSel?.kind === 'event' ? `.pointerInput(Unit) { detectTapGestures { pyreonTap -> ${kotlinChartSelectBody(onSel.handler, hit('(pyreonTap.x / pyreonDensity).toDouble()', '(pyreonTap.y / pyreonDensity).toDouble()'), indent)} } }` : ''
+  const tapX = '(pyreonTap.x / pyreonDensity).toDouble()'
+  const tapYExpr = '(pyreonTap.y / pyreonDensity).toDouble()'
+  let tap = ''
+  if (onSel?.kind === 'event' || presets !== undefined) {
+    const select = onSel?.kind === 'event' ? kotlinChartSelectBody(onSel.handler, hit(tapX, tapYExpr), indent) : ''
+    let body = select
+    if (presets !== undefined) {
+      body = `val pyreonPreset = presetHit(pyreonPresetStrip.boxes, ${tapX}, ${tapYExpr}); if (pyreonPreset >= 0) { pyreonZoom = presetWindow(pyreonPresets[pyreonPreset].count, ${data}.size) }${select === '' ? '' : ` else { ${select} }`}`
+    }
+    tap = `.pointerInput(Unit) { detectTapGestures { pyreonTap -> ${body} } }`
+  }
   if (zoomed) {
     tap += `.pointerInput(Unit) { detectTransformGestures { _, pyreonPan, pyreonZoomBy, _ -> pyreonZoom = panWindow(zoomWindow(pyreonZoom, 1.0 / pyreonZoomBy.toDouble(), 0.5), -(pyreonPan.x / pyreonDensity).toDouble() / ${W}) } }`
   }
@@ -9822,3 +9841,32 @@ function kotlinFrameHostWithDensity(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   const body = lets.map((l) => `${pad}${l}\n`).join('')
   return `BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {\n${widthLine}${densityLine}${body}${pad}${canvas}\n${' '.repeat(indent)}}`
 }
+
+
+// ---- `<PlotChart zoomPresets>` — the preset strip, engine-laid-out ------------
+//
+// Compose twin of the Swift lowering: the engine lays the strip out, a tap
+// that lands on a button writes the remembered window, and presets bring the
+// window state with them even without `dataZoom`.
+
+/** `zoomPresets={[{ label, count }, …]}` as `ZoomPreset(label = …, count = …)` literals; `undefined` when absent or empty; `'unsupported'` (warned) otherwise. */
+function kotlinZoomPresets(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: string): string[] | 'unsupported' | undefined {
+  const v = chartAttrExprKotlin(e, 'zoomPresets')
+  if (v === undefined) return undefined
+  if (v.kind !== 'array') return unsupportedZoomPresetsKotlin(tag)
+  const out: string[] = []
+  for (const el of v.elements) {
+    if (el.kind !== 'object') return unsupportedZoomPresetsKotlin(tag)
+    const label = el.fields.find((f) => f.name === 'label')?.value
+    const count = el.fields.find((f) => f.name === 'count')?.value
+    if (label?.kind !== 'literal' || typeof label.value !== 'string' || count?.kind !== 'literal' || typeof count.value !== 'number') return unsupportedZoomPresetsKotlin(tag)
+    out.push(`ZoomPreset(label = ${JSON.stringify(label.value)}, count = ${Math.trunc(count.value)})`)
+  }
+  return out.length === 0 ? undefined : out
+}
+
+function unsupportedZoomPresetsKotlin(tag: string): 'unsupported' {
+  _emitWarnings.push(`<${tag} zoomPresets>: must be an inline array of \`{ label, count }\` literals on native; the chart renders without the preset strip.`)
+  return 'unsupported'
+}
+

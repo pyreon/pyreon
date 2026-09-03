@@ -28,6 +28,7 @@ import { plotHitBars, plotHitIndex } from './plot-hit'
 import type { Mark } from './marks'
 import { chartTable, describeChart } from './a11y'
 import { brushRange } from './brush'
+import { presetHit, presetWindow, renderPresets } from './presets'
 import { clampWindow, isFullWindow, panWindow, sliceRange, zoomWindow } from './zoom'
 import type { ZoomWindow } from './zoom'
 import type { ChartLink } from './link'
@@ -570,38 +571,35 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
 
     const top = titleH + legendH
     topOffset = top
-    // Zoom presets take a strip under the plot; the buttons are laid out
-    // right-aligned and their boxes kept for the click handler.
-    const presetH = props.zoomPresets !== undefined && props.zoomPresets.length > 0 ? 22.0 : 0.0
-    const presetCmds: DrawCmd[] = []
+    // Zoom presets take a strip under the plot. The engine lays it out and
+    // hit-tests it (iOS and Android place the same buttons); the boxes are
+    // kept for the click handler.
+    const presetItems = props.zoomPresets ?? []
+    let presetH = 0.0
+    let presetCmds: DrawCmd[] = []
     presetBoxes = []
-    if (presetH > 0.0) {
-      const fs = 11.0
-      const padX = 8.0
-      const gap = 6.0
-      let x = w - 8.0
-      const y = hgt - presetH + 3.0
-      const n = viewRange(rows) // active window for the highlight
-      const active = zoomWin()
-      const items = props.zoomPresets ?? []
-      const boxes: Rect[] = []
-      for (let i = items.length - 1; i >= 0; i--) {
-        const it = items[i]!
-        const tw = measure(it.label, fs) + padX * 2.0
-        x = x - tw
-        boxes[i] = { x, y, w: tw, h: presetH - 6.0 }
-        x = x - gap
-      }
-      void n
-      for (let i = 0; i < items.length; i++) {
-        const it = items[i]!
-        const b = boxes[i]!
-        const total = rows.length
-        const isActive = it.count <= 0 || it.count >= total ? active === null : active !== null && Math.abs(active.start - (1.0 - it.count / total)) < 1e-6 && active.end >= 1.0 - 1e-9
-        presetCmds.push({ kind: 'rect', rect: b, fill: isActive ? (props.theme?.axis ?? defaultTheme.axis) : (props.theme?.grid ?? defaultTheme.grid) })
-        presetCmds.push({ kind: 'text', text: it.label, at: { x: b.x + b.w / 2.0, y: b.y + b.h / 2.0 }, fill: isActive ? '#ffffff' : (props.theme?.label ?? defaultTheme.label), size: fs, align: 'middle', baseline: 'middle' })
-      }
-      presetBoxes = boxes
+    if (presetItems.length > 0) {
+      const strip = renderPresets(
+        presetItems,
+        rows.length,
+        zoomWin() ?? { start: 0.0, end: 1.0 },
+        { x: 0.0, y: 0.0, w, h: hgt },
+        {
+          fontSize: 11.0,
+          padX: 8.0,
+          padY: 3.0,
+          gap: 6.0,
+          inset: 8.0,
+          activeFill: props.theme?.axis ?? defaultTheme.axis,
+          idleFill: props.theme?.grid ?? defaultTheme.grid,
+          activeText: '#ffffff',
+          idleText: props.theme?.label ?? defaultTheme.label,
+        },
+        measure,
+      )
+      presetCmds = strip.cmds
+      presetBoxes = strip.boxes
+      presetH = strip.height
     }
     presetBoxesJson.set(JSON.stringify(presetBoxes))
     const navH = props.navigator === true ? 36.0 : 0.0
@@ -1041,17 +1039,12 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // Zoom presets: a click on a button sets the window and stops here.
     if (presetBoxes.length > 0) {
       const r0 = el.getBoundingClientRect()
-      const lx = ev.clientX - r0.left
-      const ly = ev.clientY - r0.top
-      for (let i = 0; i < presetBoxes.length; i++) {
-        const b = presetBoxes[i]!
-        if (lx >= b.x && lx <= b.x + b.w && ly >= b.y && ly <= b.y + b.h) {
-          const it = props.zoomPresets?.[i]
-          const total = readData().length
-          if (it === undefined || it.count <= 0 || it.count >= total) zoomWin.set(null)
-          else zoomWin.set({ start: 1.0 - it.count / total, end: 1.0 })
-          return
-        }
+      const hit = presetHit(presetBoxes, ev.clientX - r0.left, ev.clientY - r0.top)
+      if (hit >= 0) {
+        const it = props.zoomPresets?.[hit]
+        const next = presetWindow(it === undefined ? 0 : it.count, readData().length)
+        zoomWin.set(isFullWindow(next) ? null : next)
+        return
       }
     }
     // A committed brush clears on the next plain click — and says so.

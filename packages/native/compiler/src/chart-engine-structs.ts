@@ -6512,5 +6512,129 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
       }
     ],
     "external": true
+  },
+  {
+    "name": "ZoomPreset",
+    "fields": [
+      {
+        "name": "label",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "count",
+        "type": {
+          "kind": "number"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "PresetOptions",
+    "fields": [
+      {
+        "name": "fontSize",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "padX",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "padY",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "gap",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "inset",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "activeFill",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "idleFill",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "activeText",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "idleText",
+        "type": {
+          "kind": "string"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "PresetLayout",
+    "fields": [
+      {
+        "name": "cmds",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "PyreonDrawCmd",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "boxes",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "PyreonChartRect",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "height",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
   }
 ]

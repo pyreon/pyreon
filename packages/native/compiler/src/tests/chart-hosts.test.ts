@@ -670,3 +670,105 @@ describe('chart hosts — <PlotChart dataZoom> as pinch + pan over a fraction wi
     expect(r.ok, r.error ?? '').toBe(true)
   })
 })
+
+
+const PRESETS = `import { signal } from '@pyreon/reactivity'
+import { Stack, Text } from '@pyreon/primitives'
+import { PlotChart, bars } from '@pyreon/charts/plot'
+interface Day { label: string; hits: number }
+const DAYS: Day[] = [{ label: 'Mon', hits: 3 }, { label: 'Tue', hits: 5 }, { label: 'Wed', hits: 2 }, { label: 'Thu', hits: 7 }]
+export function Traffic() {
+  const picked = signal(-1)
+  return (
+    <Stack>
+      <Text>{picked()}</Text>
+      <PlotChart data={DAYS} x={(d) => d.label} marks={[bars((d) => d.hits)]} zoomPresets={[{ label: 'last 2', count: 2 }, { label: 'all', count: 0 }]} height={200} onSelect={(i: number) => picked.set(i)} />
+    </Stack>
+  )
+}`
+
+const PRESETS_NO_SELECT = PRESETS.replace(' onSelect={(i: number) => picked.set(i)}', '')
+const PRESETS_ZOOMED = PRESETS.replace('zoomPresets={', 'dataZoom={true} zoomPresets={')
+const PRESETS_BY_REF = PRESETS.replace("zoomPresets={[{ label: 'last 2', count: 2 }, { label: 'all', count: 0 }]}", 'zoomPresets={RANGES}').replace(
+  'export function Traffic()',
+  "const RANGES = [{ label: 'last 2', count: 2 }]\nexport function Traffic()",
+)
+
+describe('chart hosts — <PlotChart zoomPresets> as the engine-laid-out preset strip', () => {
+  it('Swift: the strip is renderPresets over the host window; a tap that lands on a button writes presetWindow, anything else selects', () => {
+    const r = transform(PRESETS, { target: 'swift' })
+    expect(r.warnings).toEqual([])
+    // Presets bring the window state (no gesture anchor — there is no pinch).
+    expect(r.code).toContain('@State private var pyreonZoom: ZoomWindow = ZoomWindow(start: 0.0, end: 1.0)')
+    expect(r.code).not.toContain('pyreonZoomAnchor')
+    expect(r.code).toContain('let pyreonRange: SliceRange = sliceRange(pyreonZoom, DAYS.count)')
+    expect(r.code).toContain('let pyreonPresets: [ZoomPreset] = [ZoomPreset(label: "last 2", count: 2), ZoomPreset(label: "all", count: 0)]')
+    expect(r.code).toContain(
+      'let pyreonPresetStrip: PresetLayout = renderPresets(pyreonPresets, DAYS.count, pyreonZoom, PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 200.0), PresetOptions(fontSize: 11.0, padX: 8.0, padY: 3.0, gap: 6.0, inset: 8.0, activeFill: pyreonTheme.axis, idleFill: pyreonTheme.grid, activeText: "#ffffff", idleText: pyreonTheme.label), pyreonChartMeasure)',
+    )
+    // The plot gives the strip its height; the strip's commands ride behind the plot's.
+    expect(r.code).toContain('height: 200.0 - pyreonPresetStrip.height')
+    expect(r.code).toContain('PyreonChartCanvas(cmds: renderChart(pyreonSpec, pyreonChartMeasure) + pyreonPresetStrip.cmds)')
+    expect(r.code).toContain(
+      'let pyreonPreset = presetHit(pyreonPresetStrip.boxes, Double(pyreonTap.location.x), Double(pyreonTap.location.y)); if pyreonPreset >= 0 { pyreonZoom = presetWindow(pyreonPresets[pyreonPreset].count, DAYS.count) } else {',
+    )
+    expect(r.code).not.toContain('MagnificationGesture')
+  })
+  it('Kotlin: the same strip over the remembered window; the tap branches on presetHit', () => {
+    const r = transform(PRESETS, { target: 'kotlin' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('var pyreonZoom by remember { mutableStateOf(ZoomWindow(start = 0.0, end = 1.0)) }')
+    expect(r.code).toContain('val pyreonPresets: List<ZoomPreset> = listOf(ZoomPreset(label = "last 2", count = 2), ZoomPreset(label = "all", count = 0))')
+    expect(r.code).toContain(
+      'val pyreonPresetStrip: PresetLayout = renderPresets(pyreonPresets, DAYS.size, pyreonZoom, PyreonChartRect(0.0, 0.0, pyreonW, 200.0), PresetOptions(fontSize = 11.0, padX = 8.0, padY = 3.0, gap = 6.0, inset = 8.0, activeFill = pyreonTheme.axis, idleFill = pyreonTheme.grid, activeText = "#ffffff", idleText = pyreonTheme.label), ::pyreonChartMeasure)',
+    )
+    expect(r.code).toContain('height = 200.0 - pyreonPresetStrip.height')
+    expect(r.code).toContain(
+      'val pyreonPreset = presetHit(pyreonPresetStrip.boxes, (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble()); if (pyreonPreset >= 0) { pyreonZoom = presetWindow(pyreonPresets[pyreonPreset].count, DAYS.size) } else {',
+    )
+    expect(r.code).not.toContain('detectTransformGestures')
+  })
+  it('presets without onSelect still get a tap (there is a button to press) and no selection branch', () => {
+    const s = transform(PRESETS_NO_SELECT, { target: 'swift' })
+    expect(s.warnings).toEqual([])
+    expect(s.code).toContain('DragGesture(minimumDistance: 0).onEnded { pyreonTap in let pyreonPreset = presetHit(')
+    expect(s.code).not.toContain(' else {')
+    const k = transform(PRESETS_NO_SELECT, { target: 'kotlin' })
+    expect(k.warnings).toEqual([])
+    expect(k.code).toContain('detectTapGestures { pyreonTap -> val pyreonPreset = presetHit(')
+    expect(k.code).not.toContain(' else {')
+  })
+  it('with dataZoom too, a preset tap re-anchors the pinch window and the gestures stay', () => {
+    const s = transform(PRESETS_ZOOMED, { target: 'swift' })
+    expect(s.warnings).toEqual([])
+    expect(s.code).toContain('pyreonZoom = presetWindow(pyreonPresets[pyreonPreset].count, DAYS.count); pyreonZoomAnchor = pyreonZoom }')
+    expect(s.code).toContain('MagnificationGesture()')
+    const k = transform(PRESETS_ZOOMED, { target: 'kotlin' })
+    expect(k.warnings).toEqual([])
+    expect(k.code).toContain('detectTransformGestures')
+  })
+  it('a non-literal zoomPresets value warns BY NAME and renders the chart without the strip', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(PRESETS_BY_REF, { target })
+      expect(r.warnings).toEqual(['<PlotChart zoomPresets>: must be an inline array of `{ label, count }` literals on native; the chart renders without the preset strip.'])
+      expect(r.code).not.toContain('pyreonPreset')
+      expect(r.code).toContain('plotHitBars(pyreonSpec, ')
+    }
+  })
+  it('without zoomPresets the plot host emits exactly what it did before', () => {
+    expect(transform(PLOT, { target: 'swift' }).code).not.toContain('pyreonPreset')
+    expect(transform(PLOT, { target: 'kotlin' }).code).not.toContain('pyreonPreset')
+  })
+  it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine) accepts the preset-strip emit', () => {
+    const r = validateSwiftWithStubs(transform(PRESETS_ZOOMED, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isSwiftUIAvailable())('swiftc against real SwiftUI + canvas + engine accepts it', () => {
+    const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(ENGINE_SWIFT) + '\n' + transform(PRESETS_ZOOMED, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isKotlincAvailable())('kotlinc (stub bundle + real engine) accepts it', () => {
+    const r = validateKotlin(transform(PRESETS_ZOOMED, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+})
