@@ -141,35 +141,35 @@
     "@pyreon/validate": "workspace:^",
     "@swc/core": "^1.16.1",
     "@tanstack/react-router": "^1.170.32",
-    "@tiptap/react": "^3.30.3",
-    "@types/bun": "^1.3.14",
-    "@types/node": "^26.2.0",
+    "@tiptap/react": "^3.31.2",
+    "@types/bun": "^1.4.0",
+    "@types/node": "^26.4.1",
     "@unhead/ssr": "^3.4.0",
     "@unhead/vue": "^3.4.0",
     "@vitest/browser": "^4.1.11",
     "@vitest/coverage-v8": "^4.1.11",
-    "@vitus-labs/tools-rolldown": "^2.6.3",
-    "@vitus-labs/tools-typescript": "^2.6.3",
-    "@vitus-labs/tools-vitest": "^2.6.3",
+    "@vitus-labs/tools-rolldown": "^2.7.1",
+    "@vitus-labs/tools-typescript": "^2.7.1",
+    "@vitus-labs/tools-vitest": "^2.7.1",
     "arktype": "^2.2.3",
     "babel-preset-solid": "^1.9.15",
     "esbuild": "^0.28.2",
     "find-my-way": "^9.9.0",
     "goober": "^2.1.19",
     "happy-dom": "^20.11.6",
-    "hono": "^4.13.4",
-    "next": "^16.3.2",
-    "oxc-parser": "^0.147.0",
-    "oxc-transform": "^0.147.0",
-    "oxfmt": "^0.65.0",
-    "oxlint": "^1.80.0",
+    "hono": "^4.13.5",
+    "next": "^16.3.4",
+    "oxc-parser": "^0.148.0",
+    "oxc-transform": "^0.148.0",
+    "oxfmt": "^0.66.0",
+    "oxlint": "^1.81.0",
     "playwright": "1.62.1",
     "preact": "^10.29.8",
     "preact-render-to-string": "^6.7.0",
     "radix3": "^1.1.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "react-router": "^8.3.0",
+    "react-router": "^8.3.1",
     "solid-js": "^1.9.15",
     "styled-components": "^6.5.3",
     "typescript": "^6.0.3",
@@ -177,17 +177,17 @@
     "valibot": "^1.4.2",
     "vite": "^8.2.2",
     "vitest": "^4.1.11",
-    "vue-router": "^5.2.0",
+    "vue-router": "^5.3.1",
     "y-protocols": "^1.0.7",
     "yjs": "^13.6.32",
     "zod": "^4.5.4"
   },
   "overrides": {
-    "@codemirror/view": "6.43.9",
-    "@tanstack/query-core": "5.102.2",
+    "@codemirror/view": "6.43.11",
+    "@tanstack/query-core": "5.102.8",
     "@tanstack/virtual-core": "3.17.4",
     "zod": "4.5.4",
-    "@codemirror/state": "6.7.1",
+    "@codemirror/state": "6.7.2",
     "vite": "8.2.2",
     "playwright": "1.62.1",
     "@playwright/test": "1.62.1",
@@ -198,7 +198,7 @@
     "uuid": "^11.1.1"
   },
   "dependencies": {
-    "@tanstack/query-core": "^5.102.2",
+    "@tanstack/query-core": "^5.102.8",
     "@vitest/browser-playwright": "^4.1.11"
   },
   "loom": {
@@ -210,7 +210,7 @@
         "pkg": "@pyreon/cli",
         "dep": "@pyreon/ansi",
         "code": "prod-import-of-dev-dep",
-        "reason": "@pyreon/ansi is a PRIVATE workspace package and the build inlines it \u2014 the published lib/ carries no import of it, only a comment. Loom reads declared truth and cannot see the bundler, so the warning is correct about the declaration and wrong about the consumer."
+        "reason": "@pyreon/ansi is a PRIVATE workspace package and the build inlines it — the published lib/ carries no import of it, only a comment. Loom reads declared truth and cannot see the bundler, so the warning is correct about the declaration and wrong about the consumer."
       },
       {
         "pkg": "@pyreon/example-react-compat",
@@ -246,13 +246,13 @@
         "pkg": "@pyreon/lathe",
         "dep": "@pyreon/http",
         "code": "prod-import-of-dev-dep",
-        "reason": "Two separate things read as one import here. @pyreon/lathe is a CODE GENERATOR, so `f.import('@pyreon/http', 'createHttp')` is a string ARGUMENT naming what it emits into the consumer's files; loom's lexical scan cannot tell a bare specifier string from an import, which is the correct trade for a scanner that reads declared truth. The dep is declared because the TESTS import it for real \u2014 `@pyreon/http`'s own `buildUrl` is the ORACLE the generated adapter clients (fetch/axios/ky) are held to, so their duplicated URL logic cannot drift. Test files are dev surface by path; the emitter's strings are what the scan actually sees. lib/ carries no import of it."
+        "reason": "Two separate things read as one import here. @pyreon/lathe is a CODE GENERATOR, so `f.import('@pyreon/http', 'createHttp')` is a string ARGUMENT naming what it emits into the consumer's files; loom's lexical scan cannot tell a bare specifier string from an import, which is the correct trade for a scanner that reads declared truth. The dep is declared because the TESTS import it for real — `@pyreon/http`'s own `buildUrl` is the ORACLE the generated adapter clients (fetch/axios/ky) are held to, so their duplicated URL logic cannot drift. Test files are dev surface by path; the emitter's strings are what the scan actually sees. lib/ carries no import of it."
       },
       {
         "pkg": "@pyreon/lathe",
         "dep": "@pyreon/query",
         "code": "prod-import-of-dev-dep",
-        "reason": "Same shape as @pyreon/lathe's @pyreon/http entry. `f.import('@pyreon/query', 'useQuery')` is a string ARGUMENT naming what the generator emits into the consumer's files, and loom's lexical scan cannot tell a bare specifier string from an import \u2014 the correct trade for a scanner that reads declared truth. The dep is declared because the TESTS need it to resolve: `generated-typecheck.test.ts` runs the real TypeScript compiler over the emitted output for every client x validator pair, and the generated hooks import it. lib/ carries no import of it."
+        "reason": "Same shape as @pyreon/lathe's @pyreon/http entry. `f.import('@pyreon/query', 'useQuery')` is a string ARGUMENT naming what the generator emits into the consumer's files, and loom's lexical scan cannot tell a bare specifier string from an import — the correct trade for a scanner that reads declared truth. The dep is declared because the TESTS need it to resolve: `generated-typecheck.test.ts` runs the real TypeScript compiler over the emitted output for every client x validator pair, and the generated hooks import it. lib/ carries no import of it."
       }
     ]
   }

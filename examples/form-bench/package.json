@@ -28,7 +28,7 @@
     "formik": "^2.4.9",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "react-hook-form": "^7.86.0",
+    "react-hook-form": "^7.87.0",
     "solid-js": "^1.9.15",
     "svelte": "^5.56.10",
     "vee-validate": "^4.15.1",
