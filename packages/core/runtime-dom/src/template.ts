@@ -1231,17 +1231,10 @@ export function _textSlot(parent: Node, placeholder: Node): Text {
     let n: ChildNode | null = placeholder as ChildNode
     while (n !== null) {
       const next: ChildNode | null = n.nextSibling
-      let done = false
-      if (n.nodeType === 8) {
-        const d = (n as Comment).data
-        if (d === '$') depth++
-        else if (d === '/$') {
-          depth--
-          if (depth === 0) done = true
-        }
-      }
+      const d = n.nodeType === 8 ? (n as Comment).data : ''
       parent.removeChild(n)
-      if (done) break
+      if (d === '$') depth++
+      else if (d === '/$' && --depth === 0) break
       n = next
     }
     return fresh
