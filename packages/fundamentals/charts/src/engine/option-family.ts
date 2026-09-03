@@ -57,6 +57,22 @@ export interface CompiledFamily {
 }
 
 /**
+ * Families that legitimately render MORE THAN ONE series in one option — the
+ * exception carve-out on the "only one series is rendered" guard below. A Set
+ * rather than a chain of `&&` comparisons: as a chain this single line
+ * collided in four separate branches during the charts wave (polar, boxplot,
+ * geo, singleAxis each adding their own clause), because every branch reads
+ * and rewrites the SAME line. A Set turns each family's addition into its own
+ * insertion — no shared line to collide on.
+ */
+/**
+ * Families that legitimately render MORE THAN ONE series in one option — the
+ * exception carve-out on the "only one series is rendered" guard below. A Set
+ * rather than a chain of `&&` comparisons: as a chain this single line
+ * collided in four separate branches during the charts wave (polar, boxplot,
+ * geo, singleAxis each adding their own clause), because every branch reads
+ * and rewrites the SAME line. A Set turns each family's addition into its own
+ * insertion — no shared line to collide on.
  * Families that legitimately render MORE THAN ONE series, so the
  * "only the first series is rendered" warning must not fire for them.
  *
@@ -130,6 +146,8 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
   const familyKey = s['coordinateSystem'] === 'polar' ? 'polar' : s['coordinateSystem'] === 'geo' ? 'geo' : s['coordinateSystem'] === 'singleAxis' ? 'singleAxis' : type
   for (const key of Object.keys(option)) if (!KNOWN_TOP.has(key)) warn('option-key-unsupported', key, `"${key}" has no mapping yet; it was ignored.`)
   for (const key of Object.keys(s)) if (!KNOWN_BY_FAMILY[familyKey]!.has(key)) warn('series-option-unsupported', `series[0].${key}`, `"${key}" has no mapping for ${type} yet; it was ignored.`)
+  // This guard has collided across the whole charts wave — polar, boxplot,
+  // and now geo each legitimately render more than one series per option.
   // Both sides carved an exception out of this guard — polar on this branch,
   // boxplot on main — and each legitimately renders more than one series. The
   // key lookup uses familyKey, which is this branch's fix for polar.

@@ -3155,7 +3155,7 @@ function emitKotlinFunction(
 function kotlinCondition(e: ExprIR, emit: (x: ExprIR) => string): string {
   const c = classifyOptionalCondition(e, _kotlinExprInferCtx)
   if (c?.form === 'absent') return `${emit(c.argument)} == null`
-  if (c?.form === 'present') return `${emit(e)} != null`
+  if (c?.form === 'present') return `${emit(c.argument ?? e)} != null`
   return emit(e)
 }
 
@@ -3262,7 +3262,13 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       // the non-null type (restored after).
       const optC = classifyOptionalCondition(s.cond, _kotlinExprInferCtx)
       const narrowName =
-        optC?.form === 'present' && s.cond.kind === 'identifier' ? s.cond.name : undefined
+        optC?.form === 'present'
+          ? s.cond.kind === 'identifier'
+            ? s.cond.name
+            : optC.argument?.kind === 'identifier'
+              ? optC.argument.name
+              : undefined
+          : undefined
       const narrowPrev =
         narrowName !== undefined ? _kotlinExprInferCtx.locals.get(narrowName) : undefined
       if (narrowName !== undefined && narrowPrev !== undefined) {

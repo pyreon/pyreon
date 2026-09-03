@@ -13,6 +13,12 @@ A generated or hand-written `index.ts` that `export *`s every layer makes import
 
 ---
 
+### A prop-gated optional feature cannot tree-shake — a branch on a runtime prop is reachable code.
+
+`@pyreon/charts/plot` documents itself as tree-shakeable, and for the geometry it is: bundling `PlotChart + bars + line` and grepping the output finds zero bytes of treemap, sunburst, sankey, polar, candlestick, heat, geo, gantt or funnel, because every family and every mark is an imported binding a bundler can drop. The interaction layer is the exception, and it is invisible from the entry file: `navigator`, `dataZoom` and `brush` are implemented as `props.navigator === true ? … : …` INSIDE the core component, so their hit-testing and drag maths are reachable from `PlotChart` itself no matter how the consumer imports. Measured: the minimal cartesian import grew 12288 → 13573 B gz as those three landed, and it will grow once per interaction feature — a budget relock per feature, forever, which is the tell that the shape is wrong rather than the number. **The distinction worth internalising: an optional FEATURE tree-shakes only when the option is an IMPORT, never when it is a PROP.** A boolean prop is data, and no bundler drops a branch on data. The fix is the seam this repo already uses for the same problem elsewhere (`setThemeEngine`, `setStyleExtraction`, `_setDefaultChromeLayout`): the optional half registers itself at module load and the core holds a slot, so a consumer who never imports it never pays. Detection is not a test — it is bundling the minimal import and grepping for a symbol only the optional half defines; a size budget merely tells you something grew, never which thing.
+
+---
+
 ### A bundle assertion keyed on a GENERATED IDENTIFIER is vacuous — minification renames it.
 
 `expect(bundle).not.toContain('seedFaker')` passes with the whole module bundled, because `seedFaker` minified to one letter. Assert on things minification cannot touch: EXTERNAL import specifiers (`@faker-js/faker`) and string DATA (a fixture uuid). And pair every "must be ABSENT" suite with a CONTROL that bundles the module and requires each marker PRESENT — without it the suite passes just as well when the emitter stops producing anything. The control must reach every surface at once (`export *`), since importing one symbol correctly shakes the rest away. Reference: `lathe/src/tests/entry-points.test.ts:DEV_MARKERS`.

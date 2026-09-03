@@ -3903,7 +3903,7 @@ function emitSwiftFunction(
 function swiftCondition(e: ExprIR, emit: (x: ExprIR) => string): string {
   const c = classifyOptionalCondition(e, _exprInferCtx)
   if (c?.form === 'absent') return `${emit(c.argument)} == nil`
-  if (c?.form === 'present') return `${emit(e)} != nil`
+  if (c?.form === 'present') return `${emit(c.argument ?? e)} != nil`
   return emit(e)
 }
 
@@ -4002,21 +4002,38 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       // twin: `if (token != null)` smart-casts a val local by language rule.
       // Non-identifier optional conditions keep the `!= nil` lowering below.
       const optC = classifyOptionalCondition(s.cond, _exprInferCtx)
-      if (optC?.form === 'present' && s.cond.kind === 'identifier') {
-        const name = s.cond.name
+      // The comparison forms (`x !== null` / `x === null`) name the operand as
+      // the classifier's argument; `=== null` binds with the BODIES SWAPPED
+      // (the else-body is the narrowed one) and only when there is an else —
+      // a lone absent-check keeps the `== nil` test below.
+      const optName =
+        optC?.form === 'present'
+          ? s.cond.kind === 'identifier'
+            ? s.cond.name
+            : optC.argument?.kind === 'identifier'
+              ? optC.argument.name
+              : undefined
+          : optC?.form === 'absent' && optC.argument.kind === 'identifier' && s.elseBody
+            ? optC.argument.name
+            : undefined
+      if (optName !== undefined) {
+        const name = optName
+        const swapped = optC?.form === 'absent'
+        const narrowed = swapped ? s.elseBody! : s.then
+        const other = swapped ? s.then : s.elseBody
         const prev = _exprInferCtx.locals.get(name)
         if (prev !== undefined) _exprInferCtx.locals.set(name, unwrapOptionalType(prev))
         let thenLines: string
         try {
-          thenLines = s.then
+          thenLines = narrowed
             .map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`)
             .join('\n')
         } finally {
           if (prev !== undefined) _exprInferCtx.locals.set(name, prev)
         }
         const head = `if let ${swiftIdent(name)} {\n${thenLines}\n${pad}}`
-        if (!s.elseBody) return head
-        const elseLines = s.elseBody
+        if (!other) return head
+        const elseLines = other
           .map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`)
           .join('\n')
         return `${head} else {\n${elseLines}\n${pad}}`
@@ -6538,6 +6555,37 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       const omt = optionalMemberTernary(e, _exprInferCtx)
       if (omt) {
         return `(${emitSwiftExpr(omt.opt, indent)}?.${swiftIdent(omt.property)} ?? ${emitSwiftExpr(e.otherwise, indent)})`
+      }
+      // A narrowing ternary on an optional IDENTIFIER whose branch READS it
+      // (`r === null ? '' : String(r.start)`): Swift has no ternary narrowing,
+      // so the narrowed branch runs inside `r.map { r in … }` (the closure
+      // param shadows the optional with its payload) and the other branch is
+      // the `??` fallback. Kotlin smart-casts and needs nothing.
+      const oc = classifyOptionalCondition(e.cond, _exprInferCtx)
+      const ocName =
+        oc?.form === 'present'
+          ? e.cond.kind === 'identifier'
+            ? e.cond.name
+            : oc.argument?.kind === 'identifier'
+              ? oc.argument.name
+              : undefined
+          : oc?.form === 'absent' && oc.argument.kind === 'identifier'
+            ? oc.argument.name
+            : undefined
+      if (ocName !== undefined) {
+        const narrowedBranch = oc?.form === 'absent' ? e.otherwise : e.then
+        const otherBranch = oc?.form === 'absent' ? e.then : e.otherwise
+        if (exprReferencesIdent(narrowedBranch, ocName)) {
+          const prev = _exprInferCtx.locals.get(ocName)
+          if (prev !== undefined) _exprInferCtx.locals.set(ocName, unwrapOptionalType(prev))
+          let inner: string
+          try {
+            inner = emitSwiftExpr(narrowedBranch, indent)
+          } finally {
+            if (prev !== undefined) _exprInferCtx.locals.set(ocName, prev)
+          }
+          return `(${swiftIdent(ocName)}.map { ${swiftIdent(ocName)} in ${inner} } ?? ${emitSwiftExpr(otherBranch, indent)})`
+        }
       }
       const condStr = swiftCondition(e.cond, (x) => emitSwiftExpr(x, indent))
       let thenStr = emitSwiftExpr(e.then, indent)
