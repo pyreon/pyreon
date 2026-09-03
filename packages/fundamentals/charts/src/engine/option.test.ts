@@ -61,6 +61,15 @@ const CORPUS: { name: string; option: EChartsOption; expectClean: boolean }[] = 
     series: [{ type: 'heatmap', data: [[0, 0, 5], [1, 1, 9]] }] } },
   { name: 'funnel', expectClean: true, option: {
     series: [{ type: 'funnel', sort: 'descending', minSize: '10%', data: [{ value: 60, name: 'Visit' }, { value: 40, name: 'Inquiry' }, { value: 20, name: 'Order' }] }] } },
+  { name: 'polar bar + line', expectClean: true, option: {
+    angleAxis: { type: 'category', data: ['Mon', 'Tue', 'Wed'] }, radiusAxis: {},
+    series: [{ type: 'bar', coordinateSystem: 'polar', data: [1, 2, 3] }, { type: 'line', coordinateSystem: 'polar', data: [2, 2, 2] }] } },
+  { name: 'parallel', expectClean: true, option: {
+    parallelAxis: [{ dim: 0, name: 'a' }, { dim: 1, name: 'b' }, { dim: 2, name: 'c', type: 'category', data: ['x', 'y'] }],
+    series: [{ type: 'parallel', data: [[1, 2, 'x'], [3, 1, 'y']] }] } },
+  { name: 'calendar heatmap', expectClean: true, option: {
+    calendar: { range: '2024' }, visualMap: { min: 0, max: 10, inRange: { color: ['#eff6ff', '#1e40af'] } },
+    series: [{ type: 'heatmap', coordinateSystem: 'calendar', data: [['2024-01-02', 3], ['2024-06-15', 9]] }] } },
   { name: 'graph (force)', expectClean: true, option: {
     series: [{ type: 'graph', layout: 'force', symbolSize: 12, data: [{ name: 'a' }, { name: 'b' }, { name: 'c' }], links: [{ source: 'a', target: 'b' }, { source: 'b', target: 'c' }] }] } },
   { name: 'sankey', expectClean: true, option: {
@@ -71,6 +80,9 @@ const CORPUS: { name: string; option: EChartsOption; expectClean: boolean }[] = 
     series: [{ type: 'sunburst', radius: ['20%', '90%'], data: [{ name: 'A', value: 10 }, { name: 'B', children: [{ name: 'b1', value: 4 }, { name: 'b2', value: 6 }] }] }] } },
   { name: 'treemap', expectClean: true, option: {
     series: [{ type: 'treemap', data: [{ name: 'A', value: 10 }, { name: 'B', children: [{ name: 'b1', value: 4 }, { name: 'b2', value: 6 }] }] }] } },
+  { name: 'boxplot with outlier scatter', expectClean: true, option: {
+    xAxis: { data: ['A', 'B'] }, yAxis: {},
+    series: [{ type: 'boxplot', data: [[1, 2, 3, 4, 5], [2, 3, 4, 5, 6]] }, { type: 'scatter', data: [[0, 9]] }] } },
   { name: 'rose pie (roseType unmapped)', expectClean: false, option: {
     series: [{ type: 'pie', roseType: 'area', data: [{ value: 1, name: 'a' }] }] } },
   { name: 'radar + dataZoom (unmapped keys)', expectClean: false, option: {
@@ -97,8 +109,8 @@ describe('ECharts option facade — conformance corpus', () => {
       const c = planOption(f.option).compiled
       return c.supported && c.warnings.length === 0
     }).length
-    // 21 of 23 today. Raise this number as families land; never lower it.
-    expect(clean).toBeGreaterThanOrEqual(21)
+    // 24 of 26 today. Raise this number as families land; never lower it.
+    expect(clean).toBeGreaterThanOrEqual(24)
   })
 })
 

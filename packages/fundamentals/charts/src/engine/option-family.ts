@@ -17,6 +17,14 @@ import { sankeyToSvg } from './sankey'
 import type { SankeyLink, SankeyNode, SankeyOptions } from './sankey'
 import { graphToSvg } from './graph'
 import type { GraphLink, GraphNode, GraphOptions } from './graph'
+import { calendarToSvg } from './calendar'
+import type { CalendarOptions } from './calendar'
+import { parallelToSvg } from './parallel'
+import type { ParallelAxis, ParallelOptions, ParallelRow } from './parallel'
+import { polarToSvg } from './polar'
+import type { PolarAxes, PolarOptions, PolarSeries } from './polar'
+import { boxplotToSvg } from './boxplot'
+import type { FiveNumber } from './boxplot'
 import type { FunnelOptions } from './funnel'
 import type { RadarAxis } from './radar'
 import type { Double } from './types'
@@ -33,6 +41,10 @@ export type FamilyPlan =
   | { kind: 'tree'; nodes: TreeNode[]; tree: TreeOptions; title: string | undefined }
   | { kind: 'sankey'; nodes: SankeyNode[]; links: SankeyLink[]; sankey: SankeyOptions; title: string | undefined }
   | { kind: 'graph'; nodes: GraphNode[]; links: GraphLink[]; graph: GraphOptions; title: string | undefined }
+  | { kind: 'calendar'; start: string; end: string; values: Record<string, Double>; calendar: CalendarOptions; title: string | undefined }
+  | { kind: 'parallel'; axes: ParallelAxis[]; rows: ParallelRow[]; parallel: ParallelOptions; title: string | undefined }
+  | { kind: 'polar'; axes: PolarAxes; series: PolarSeries[]; polar: PolarOptions; title: string | undefined }
+  | { kind: 'boxplot'; rows: (FiveNumber & { x: string })[]; fill: string | undefined; stroke: string | undefined; title: string | undefined }
 
 export interface CompiledFamily {
   plan: FamilyPlan
@@ -40,7 +52,7 @@ export interface CompiledFamily {
   supported: boolean
 }
 
-const FAMILY_TYPES = new Set(['pie', 'gauge', 'radar', 'candlestick', 'heatmap', 'funnel', 'treemap', 'sunburst', 'tree', 'sankey', 'graph'])
+const FAMILY_TYPES = new Set(['pie', 'gauge', 'radar', 'candlestick', 'heatmap', 'funnel', 'treemap', 'sunburst', 'tree', 'sankey', 'graph', 'parallel', 'boxplot'])
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const num = (v: unknown): number | null => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null
@@ -59,22 +71,25 @@ const pct = (v: unknown): number | null => {
 /** True when the option's first series is a family (non-cartesian) type. */
 export function isFamilyOption(option: EChartsOption): boolean {
   const s = first(option['series'] as unknown)
-  return isObj(s) && typeof s['type'] === 'string' && FAMILY_TYPES.has(s['type'] as string)
+  return isObj(s) && typeof s['type'] === 'string' && (FAMILY_TYPES.has(s['type'] as string) || s['coordinateSystem'] === 'polar')
 }
 
-const KNOWN_TOP = new Set(['series', 'title', 'legend', 'tooltip', 'color', 'radar', 'xAxis', 'yAxis', 'visualMap', 'animation', 'backgroundColor', 'textStyle', 'grid'])
+const KNOWN_TOP = new Set(['series', 'title', 'legend', 'tooltip', 'color', 'radar', 'xAxis', 'yAxis', 'visualMap', 'animation', 'backgroundColor', 'textStyle', 'grid', 'calendar', 'parallel', 'parallelAxis', 'polar', 'angleAxis', 'radiusAxis'])
 const KNOWN_BY_FAMILY: Record<string, Set<string>> = {
   pie: new Set(['type', 'name', 'data', 'radius', 'label', 'itemStyle', 'center', 'emphasis', 'color']),
   gauge: new Set(['type', 'name', 'data', 'min', 'max', 'detail', 'axisLine', 'progress', 'itemStyle', 'color']),
   radar: new Set(['type', 'name', 'data', 'areaStyle', 'itemStyle', 'lineStyle', 'symbol', 'color']),
   candlestick: new Set(['type', 'name', 'data', 'itemStyle', 'color']),
-  heatmap: new Set(['type', 'name', 'data', 'label', 'itemStyle', 'emphasis', 'color']),
+  heatmap: new Set(['coordinateSystem', 'calendarIndex', 'type', 'name', 'data', 'label', 'itemStyle', 'emphasis', 'color']),
   funnel: new Set(['type', 'name', 'data', 'sort', 'gap', 'minSize', 'label', 'itemStyle', 'funnelAlign', 'color', 'emphasis']),
   treemap: new Set(['type', 'name', 'data', 'leafDepth', 'label', 'itemStyle', 'color', 'emphasis', 'roam', 'nodeClick', 'breadcrumb']),
   sunburst: new Set(['type', 'name', 'data', 'radius', 'center', 'sort', 'startAngle', 'label', 'itemStyle', 'color', 'emphasis', 'nodeClick', 'levels']),
   tree: new Set(['type', 'name', 'data', 'orient', 'layout', 'symbol', 'symbolSize', 'initialTreeDepth', 'edgeShape', 'label', 'itemStyle', 'lineStyle', 'leaves', 'roam', 'expandAndCollapse', 'emphasis', 'top', 'left', 'right', 'bottom']),
   sankey: new Set(['type', 'name', 'data', 'nodes', 'links', 'edges', 'nodeWidth', 'nodeGap', 'nodeAlign', 'layoutIterations', 'orient', 'draggable', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'levels', 'top', 'left', 'right', 'bottom']),
+  polar: new Set(['type', 'name', 'data', 'coordinateSystem', 'polarIndex', 'stack', 'itemStyle', 'lineStyle', 'label', 'emphasis', 'smooth', 'symbol', 'symbolSize', 'barWidth', 'barGap', 'barCategoryGap', 'roundCap', 'showBackground', 'backgroundStyle', 'areaStyle', 'animation', 'color']),
+  parallel: new Set(['type', 'name', 'data', 'coordinateSystem', 'parallelIndex', 'lineStyle', 'emphasis', 'inactiveOpacity', 'activeOpacity', 'realtime', 'smooth', 'progressive', 'animation']),
   graph: new Set(['type', 'name', 'data', 'nodes', 'links', 'edges', 'categories', 'layout', 'symbol', 'symbolSize', 'force', 'circular', 'roam', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'draggable', 'edgeSymbol', 'edgeSymbolSize', 'focusNodeAdjacency', 'zoom', 'center', 'left', 'top', 'right', 'bottom', 'width', 'height', 'coordinateSystem']),
+  boxplot: new Set(['type', 'name', 'data', 'itemStyle', 'color', 'boxWidth', 'emphasis']),
 }
 
 /**
@@ -91,9 +106,13 @@ export function compileFamily(option: EChartsOption): CompiledFamily | null {
   const seriesArr = Array.isArray(option['series']) ? (option['series'] as unknown[]) : [option['series']]
   const s = seriesArr[0] as Record<string, unknown>
   const type = s['type'] as string
+  const familyKey = s['coordinateSystem'] === 'polar' ? 'polar' : type
   for (const key of Object.keys(option)) if (!KNOWN_TOP.has(key)) warn('option-key-unsupported', key, `"${key}" has no mapping yet; it was ignored.`)
-  for (const key of Object.keys(s)) if (!KNOWN_BY_FAMILY[type]!.has(key)) warn('series-option-unsupported', `series[0].${key}`, `"${key}" has no mapping for ${type} yet; it was ignored.`)
-  if (seriesArr.length > 1 && type !== 'radar') {
+  for (const key of Object.keys(s)) if (!KNOWN_BY_FAMILY[familyKey]!.has(key)) warn('series-option-unsupported', `series[0].${key}`, `"${key}" has no mapping for ${type} yet; it was ignored.`)
+  // Both sides carved an exception out of this guard — polar on this branch,
+  // boxplot on main — and each legitimately renders more than one series. The
+  // key lookup uses familyKey, which is this branch's fix for polar.
+  if (seriesArr.length > 1 && type !== 'radar' && familyKey !== 'polar' && type !== 'boxplot') {
     warn('series-option-unsupported', 'series[1]', `Only one ${type} series is rendered per chart; extra series were ignored.`)
   }
   const titleRaw = first(option['title'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
@@ -226,6 +245,157 @@ export function compileFamily(option: EChartsOption): CompiledFamily | null {
       warnings,
       supported,
     }
+  }
+
+  if (familyKey === 'polar') {
+    const angle = first(option['angleAxis'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
+    const radius = first(option['radiusAxis'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
+    const angleObj = isObj(angle) ? angle : {}
+    const radiusObj = isObj(radius) ? radius : {}
+    const catAxis = radiusObj['type'] === 'category' ? radiusObj : angleObj
+    const valAxis = radiusObj['type'] === 'category' ? angleObj : radiusObj
+    const categories = Array.isArray(catAxis['data']) ? (catAxis['data'] as unknown[]).map((c) => (typeof c === 'string' ? c : isObj(c) && typeof c['value'] === 'string' ? (c['value'] as string) : String(c))) : []
+    const vmax = num(valAxis['max'])
+    const vmin = num(valAxis['min'])
+    const startDeg = num(angleObj['startAngle'])
+    const axes: PolarAxes = {
+      categories,
+      categoryOn: radiusObj['type'] === 'category' ? 'radius' : 'angle',
+      ...(vmax !== null ? { valueDomain: [vmin ?? 0.0, vmax] as [Double, Double] } : {}),
+      ...(startDeg !== null ? { startAngle: (-startDeg * Math.PI) / 180.0 } : {}),
+      ...(angleObj['clockwise'] === false ? { clockwise: false } : {}),
+    }
+    const series: PolarSeries[] = []
+    for (let k = 0; k < seriesArr.length; k++) {
+      const ser = seriesArr[k]
+      if (!isObj(ser)) continue
+      const st = ser['type']
+      if (st !== 'bar' && st !== 'line') {
+        warn('series-type-unsupported', 'series[' + String(k) + '].type', 'Only bar and line series render on the polar coordinate; ' + String(st) + ' was skipped.')
+        continue
+      }
+      const rows = Array.isArray(ser['data']) ? (ser['data'] as unknown[]) : []
+      const values: Double[] = []
+      for (const d of rows) {
+        const v = num(Array.isArray(d) ? d[0] : isObj(d) ? d['value'] : d)
+        values.push(v === null ? NaN : v)
+      }
+      const item = isObj(ser['itemStyle']) ? ser['itemStyle'] : {}
+      const line = isObj(ser['lineStyle']) ? ser['lineStyle'] : {}
+      const color = typeof item['color'] === 'string' ? (item['color'] as string) : typeof line['color'] === 'string' ? (line['color'] as string) : undefined
+      series.push({
+        name: typeof ser['name'] === 'string' ? (ser['name'] as string) : 'Series ' + String(k + 1),
+        kind: st,
+        values,
+        ...(color !== undefined ? { color } : {}),
+        ...(typeof ser['stack'] === 'string' ? { stack: ser['stack'] as string } : {}),
+      })
+    }
+    const pol = first(option['polar'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
+    let innerRatio = 0.0
+    const pr = isObj(pol) ? pol['radius'] : undefined
+    if (Array.isArray(pr) && pr.length === 2) {
+      const inner = pct(pr[0])
+      const outer = pct(pr[1])
+      if (inner !== null && outer !== null && outer > 0.0) innerRatio = inner / outer
+    }
+    const polar: PolarOptions = { innerRatio }
+    return { plan: { kind: 'polar', axes, series, polar, title }, warnings, supported }
+  }
+
+  if (type === 'parallel') {
+    const rawAxes = Array.isArray(option['parallelAxis']) ? (option['parallelAxis'] as unknown[]) : []
+    const axes: ParallelAxis[] = []
+    for (let i = 0; i < rawAxes.length; i++) {
+      const a = rawAxes[i]
+      const ao = isObj(a) ? a : {}
+      const dim = num(ao['dim'])
+      const at = dim !== null ? dim : i
+      const lo = num(ao['min'])
+      const hi = num(ao['max'])
+      const cats = Array.isArray(ao['data']) ? (ao['data'] as unknown[]).map((c) => (typeof c === 'string' ? c : isObj(c) && typeof c['value'] === 'string' ? (c['value'] as string) : String(c))) : undefined
+      axes[at] = {
+        name: typeof ao['name'] === 'string' ? (ao['name'] as string) : 'dim ' + String(at),
+        ...(ao['type'] === 'category' ? { type: 'category' as const, categories: cats ?? [] } : {}),
+        ...(ao['type'] !== 'category' && lo !== null && hi !== null ? { domain: [lo, hi] as [Double, Double] } : {}),
+        ...(ao['inverse'] === true ? { inverse: true } : {}),
+      }
+    }
+    for (let i = 0; i < axes.length; i++) if (axes[i] === undefined) axes[i] = { name: 'dim ' + String(i) }
+    const par = first(option['parallel'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
+    if (isObj(par) && par['layout'] === 'vertical') warn('series-option-unsupported', 'parallel.layout', 'A vertical parallel layout is not supported yet; rendered horizontally.')
+    const rows: ParallelRow[] = []
+    for (let i = 0; i < data.length; i++) {
+      const d = data[i]
+      const arr = Array.isArray(d) ? d : isObj(d) && Array.isArray(d['value']) ? (d['value'] as unknown[]) : null
+      if (arr === null) {
+        warn('series-data-shape', 'series[0].data[' + String(i) + ']', 'A parallel datum must be an array of one value per axis; it was skipped.')
+        continue
+      }
+      rows.push(arr.map((v) => (typeof v === 'number' || typeof v === 'string' ? v : null)))
+    }
+    const ls = isObj(s['lineStyle']) ? s['lineStyle'] : {}
+    const lw = num(ls['width'])
+    const lo = num(ls['opacity'])
+    const parallel: ParallelOptions = {
+      ...(lw !== null ? { lineWidth: lw } : {}),
+      ...(lo !== null ? { lineOpacity: lo } : {}),
+      ...(typeof ls['color'] === 'string' ? { lineColor: ls['color'] as string } : {}),
+    }
+    return { plan: { kind: 'parallel', axes, rows, parallel, title }, warnings, supported }
+  }
+
+  if (type === 'heatmap' && s['coordinateSystem'] === 'calendar') {
+    const cal = first(option['calendar'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
+    const calObj = isObj(cal) ? cal : {}
+    let start = ''
+    let end = ''
+    const range = calObj['range']
+    const year = (y: number): [string, string] => [String(y) + '-01-01', String(y) + '-12-31']
+    if (typeof range === 'number') [start, end] = year(range)
+    else if (typeof range === 'string' && /^\d{4}$/.test(range)) [start, end] = year(Number(range))
+    else if (typeof range === 'string' && /^\d{4}-\d{2}$/.test(range)) {
+      const y = Number(range.slice(0, 4))
+      const mo = Number(range.slice(5, 7))
+      const lastDay = new Date(Date.UTC(y, mo, 0)).getUTCDate()
+      start = range + '-01'
+      end = range + '-' + (lastDay < 10 ? '0' : '') + String(lastDay)
+    } else if (typeof range === 'string') [start, end] = [range, range]
+    else if (Array.isArray(range) && range.length === 2 && typeof range[0] === 'string' && typeof range[1] === 'string') [start, end] = [range[0], range[1]]
+    else warn('series-option-unsupported', 'calendar.range', 'calendar.range must be a year, a "YYYY-MM", a date, or [start, end]; nothing was laid out.')
+    if (calObj['orient'] === 'vertical') warn('series-option-unsupported', 'calendar.orient', 'A vertical calendar is not supported yet; rendered horizontally.')
+    const values: Record<string, Double> = {}
+    for (let i = 0; i < data.length; i++) {
+      const d = data[i]
+      const pair = Array.isArray(d) ? d : isObj(d) && Array.isArray(d['value']) ? (d['value'] as unknown[]) : null
+      const date = pair !== null && typeof pair[0] === 'string' ? pair[0] : null
+      const v = pair !== null ? num(pair[1]) : null
+      if (date === null || v === null || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        warn('series-data-shape', 'series[0].data[' + String(i) + ']', 'A calendar heatmap datum must be [YYYY-MM-DD, value]; it was skipped.')
+        continue
+      }
+      values[date] = v
+    }
+    const dayLabel = isObj(calObj['dayLabel']) ? calObj['dayLabel'] : {}
+    const monthLabel = isObj(calObj['monthLabel']) ? calObj['monthLabel'] : {}
+    const cellRaw = calObj['cellSize']
+    const cellSize = Array.isArray(cellRaw) ? num(cellRaw[0]) : num(cellRaw)
+    const firstDay = num(dayLabel['firstDay'])
+    const vm = first(option['visualMap'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
+    const stops = isObj(vm) && isObj(vm['inRange']) && Array.isArray(vm['inRange']['color'])
+      ? (vm['inRange']['color'] as unknown[]).filter((c): c is string => typeof c === 'string')
+      : []
+    const vmMin = isObj(vm) ? num(vm['min']) : null
+    const vmMax = isObj(vm) ? num(vm['max']) : null
+    const calendar: CalendarOptions = {
+      showDayLabels: dayLabel['show'] !== false,
+      showMonthLabels: monthLabel['show'] !== false,
+      ...(cellSize !== null ? { cellSize } : {}),
+      ...(firstDay !== null ? { firstDay } : {}),
+      ...(stops.length >= 2 ? { stops } : {}),
+      ...(vmMin !== null && vmMax !== null ? { domain: [vmMin, vmMax] as [Double, Double] } : {}),
+    }
+    return { plan: { kind: 'calendar', start, end, values, calendar, title }, warnings, supported }
   }
 
   if (type === 'graph') {
@@ -462,6 +632,47 @@ export function compileFamily(option: EChartsOption): CompiledFamily | null {
     return { plan: { kind: 'funnel', rows, funnel, title }, warnings, supported }
   }
 
+  if (type === 'boxplot') {
+    const xAxis = first(option['xAxis'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
+    const cats = isObj(xAxis) && Array.isArray(xAxis['data']) ? (xAxis['data'] as unknown[]).map((c) => String(c)) : []
+    const rows: (FiveNumber & { x: string })[] = []
+    for (let i = 0; i < data.length; i++) {
+      const d = data[i]
+      const arr = Array.isArray(d) ? d : isObj(d) && Array.isArray(d['value']) ? (d['value'] as unknown[]) : null
+      // ECharts boxplot tuples are [min, Q1, median, Q3, max].
+      if (arr === null || arr.length < 5) {
+        warn('series-data-shape', `series[0].data[${i}]`, 'A boxplot datum is [min, Q1, median, Q3, max]; it was skipped.')
+        continue
+      }
+      rows.push({ x: cats[i] ?? String(i + 1), min: num(arr[0]) ?? 0.0, q1: num(arr[1]) ?? 0.0, median: num(arr[2]) ?? 0.0, q3: num(arr[3]) ?? 0.0, max: num(arr[4]) ?? 0.0, outliers: [] })
+    }
+    // A companion scatter series carries the outliers as [categoryIndex, value].
+    for (let si = 1; si < seriesArr.length; si++) {
+      const rs = seriesArr[si]
+      if (!isObj(rs) || rs['type'] !== 'scatter' || !Array.isArray(rs['data'])) continue
+      for (const pt of rs['data'] as unknown[]) {
+        if (!Array.isArray(pt) || pt.length < 2) continue
+        const ci = num(pt[0])
+        const v = num(pt[1])
+        if (ci === null || v === null) continue
+        const row = rows[ci]
+        if (row !== undefined) row.outliers.push(v)
+      }
+    }
+    const item = isObj(s['itemStyle']) ? s['itemStyle'] : {}
+    return {
+      plan: {
+        kind: 'boxplot',
+        rows,
+        fill: typeof item['color'] === 'string' ? (item['color'] as string) : undefined,
+        stroke: typeof item['borderColor'] === 'string' ? (item['borderColor'] as string) : undefined,
+        title,
+      },
+      warnings,
+      supported,
+    }
+  }
+
   // heatmap
   const xAxis = first(option['xAxis'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
   const yAxis = first(option['yAxis'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
@@ -563,6 +774,34 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
         ...(plan.title !== undefined ? { title: plan.title } : {}),
       })
     }
+    case 'polar':
+      return polarToSvg({
+        axes: plan.axes,
+        series: plan.series,
+        polar: plan.polar,
+        width,
+        height,
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
+    case 'parallel':
+      return parallelToSvg({
+        axes: plan.axes,
+        rows: plan.rows,
+        parallel: plan.parallel,
+        width,
+        height,
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
+    case 'calendar':
+      return calendarToSvg({
+        start: plan.start,
+        end: plan.end,
+        values: plan.values,
+        calendar: plan.calendar,
+        width,
+        height,
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
     case 'graph':
       return graphToSvg({
         nodes: plan.nodes,
@@ -605,6 +844,18 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
         width,
         height,
         ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
+    case 'boxplot':
+      return boxplotToSvg({
+        data: plan.rows,
+        values: () => [],
+        x: (d) => d.x,
+        width,
+        height,
+        box: { fill: plan.fill, stroke: plan.stroke },
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+        // Summaries are already computed; feed them straight through.
+        summaries: plan.rows,
       })
     default:
       return heatmapToSvg({
