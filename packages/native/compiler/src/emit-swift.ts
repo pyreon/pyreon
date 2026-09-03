@@ -74,7 +74,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { CHART_HOSTS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -10990,6 +10990,7 @@ const SWIFT_CHART_TARGET: ChartHostTarget = {
   max0: (e) => `max(0.0, ${e})`,
   min: (a, b) => `min(${a}, ${b})`,
   nil: 'nil',
+  pieOptions: (a) => `PieOptions(innerRadius: ${a.innerRatio}, showLabels: true, labelColor: "#ffffff", fontSize: 11.0)`,
 }
 
 /** A JSX attr's value expression, unwrapping a zero-arg accessor arrow. */
@@ -11033,6 +11034,8 @@ function swiftChartSelectBody(handler: ExprIR, hitExpr: string, indent: number):
 
 function emitSwiftChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const tag = e.tag
+  if (tag === 'GaugeChart') return emitSwiftGaugeHost(e, indent)
+  if (Object.hasOwn(ACCESSOR_CHART_HOSTS, tag)) return emitSwiftAccessorHost(e, indent)
   const unlowered = UNLOWERED_CHART_HOSTS[tag]
   if (unlowered !== undefined) {
     _emitWarnings.push(`<${tag}> has no native lowering yet — ${unlowered}. Emitting an EmptyView().`)
@@ -11077,4 +11080,103 @@ function emitSwiftChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   if (hasWidth) return `${canvas}${gesture}.frame(width: ${W}, height: ${H})${tail}`
   const pad = ' '.repeat(indent + 2)
   return `GeometryReader { pyreonGeo in\n${pad}${canvas}${gesture}\n${' '.repeat(indent)}}.frame(height: ${H})${tail}`
+}
+
+
+// ---- accessor-prop hosts (FunnelChart / PieChart) + GaugeChart ------------
+
+/**
+ * An accessor prop's body with its params substituted for the mapped
+ * closure's (`pyreonD`, `pyreonI`), emitted as an expression — or null when
+ * the prop is absent. A block-bodied accessor is reported by name.
+ */
+function swiftChartAccessor(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: string, prop: string, indent: number): string | null | 'unsupported' {
+  const v = chartAttrExpr(e, prop)
+  if (v === undefined) return null
+  if (v.kind !== 'arrow' || (v.stmts !== undefined && v.stmts.length > 0) || v.params.length > 2) {
+    _emitWarnings.push(`<${tag} ${prop}>: only a single-expression arrow \`(d, i) => …\` lowers on native; emitting an EmptyView().`)
+    return 'unsupported'
+  }
+  let body: ExprIR | null = v.body
+  const names = ['pyreonD', 'pyreonI']
+  for (let i = 0; i < v.params.length && body !== null; i++) {
+    body = substituteIdentifier(body, v.params[i]!, { kind: 'identifier', name: names[i]! })
+  }
+  if (body === null) {
+    _emitWarnings.push(`<${tag} ${prop}>: the accessor shadows its own parameter; emitting an EmptyView().`)
+    return 'unsupported'
+  }
+  return emitSwiftExpr(body, indent)
+}
+
+function emitSwiftAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const tag = e.tag
+  const spec = ACCESSOR_CHART_HOSTS[tag]!
+  const dataV = chartAttrExpr(e, spec.data)
+  if (dataV === undefined) {
+    _emitWarnings.push(`<${tag}>: needs a \`${spec.data}\` attribute on native; emitting an EmptyView().`)
+    return 'EmptyView()'
+  }
+  const fieldArgs: string[] = []
+  for (const f of spec.fields) {
+    const acc = swiftChartAccessor(e, tag, f.prop, indent)
+    if (acc === 'unsupported') return 'EmptyView()'
+    let value: string
+    if (acc === null) {
+      if (f.fallback !== 'palette') {
+        _emitWarnings.push(`<${tag}>: needs a \`${f.prop}\` accessor on native; emitting an EmptyView().`)
+        return 'EmptyView()'
+      }
+      value = `[${CHART_HOST_PALETTE.map((c) => JSON.stringify(c)).join(', ')}][pyreonI % ${CHART_HOST_PALETTE.length}]`
+    } else {
+      value = f.double === true ? `Double(${acc})` : acc
+    }
+    fieldArgs.push(`${f.name}: ${value}`)
+  }
+  const items = `${emitSwiftExpr(dataV, indent)}.enumerated().map { (pyreonI, pyreonD) in ${spec.struct}(${fieldArgs.join(', ')}) }`
+  const optV = spec.options === undefined ? undefined : chartAttrExpr(e, spec.options)
+  const options = optV === undefined ? 'nil' : emitSwiftExpr(optV, indent)
+  const H = swiftChartDouble(e, 'height', spec.defaultHeight, indent)
+  const hasWidth = chartAttrExpr(e, 'width') !== undefined
+  const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
+  const args: ChartHostArgs = { data: [], options, W, H, gutter: '0.0', innerRatio: swiftChartDouble(e, 'innerRadius', 0, indent) }
+  if (tag === 'PieChart' && readStaticAttr(e, 'showLegend') === true) {
+    _emitWarnings.push('<PieChart showLegend>: the legend is not lowered on native yet; the pie renders without it.')
+  }
+  const canvas = `PyreonChartCanvas(cmds: ${spec.render(items, args, SWIFT_CHART_TARGET)})`
+  // Both `onSelect` (already an index on these hosts) and `onSelectIndex` lower to the tap.
+  const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
+  const gesture =
+    onSel?.kind === 'event'
+      ? `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in ${swiftChartSelectBody(onSel.handler, spec.hit(items, 'Double(pyreonTap.location.x)', 'Double(pyreonTap.location.y)', args, SWIFT_CHART_TARGET), indent)} })`
+      : ''
+  const title = readStringAttrExpr(e, 'title', indent)
+  const tail = (title !== undefined ? `.accessibilityLabel(${title})` : '') + emitSwiftLayoutModifiers(e)
+  if (hasWidth) return `${canvas}${gesture}.frame(width: ${W}, height: ${H})${tail}`
+  const pad = ' '.repeat(indent + 2)
+  return `GeometryReader { pyreonGeo in\n${pad}${canvas}${gesture}\n${' '.repeat(indent)}}.frame(height: ${H})${tail}`
+}
+
+/** `<GaugeChart value min max thickness trackColor valueColor showValue>` → renderGauge over a double-height box (a half circle) + the value text. */
+function emitSwiftGaugeHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const valueV = chartAttrExpr(e, 'value')
+  if (valueV === undefined) {
+    _emitWarnings.push('<GaugeChart>: needs a `value` attribute on native; emitting an EmptyView().')
+    return 'EmptyView()'
+  }
+  const value = `Double(${emitSwiftExpr(valueV, indent)})`
+  const H = swiftChartDouble(e, 'height', 140, indent)
+  const hasWidth = chartAttrExpr(e, 'width') !== undefined
+  const W = hasWidth ? swiftChartDouble(e, 'width', 240, indent) : 'Double(pyreonGeo.size.width)'
+  const opts = `GaugeOptions(min: ${swiftChartDouble(e, 'min', 0, indent)}, max: ${swiftChartDouble(e, 'max', 100, indent)}, sweep: Double.pi, thickness: ${swiftChartDouble(e, 'thickness', 22, indent)}, trackColor: ${readStringAttrExpr(e, 'trackColor', indent) ?? '"rgba(132,150,165,0.22)"'}, valueColor: ${readStringAttrExpr(e, 'valueColor', indent) ?? '"#0f766e"'})`
+  const showValue = readStaticAttr(e, 'showValue') !== false
+  const text = showValue
+    ? ` + [PyreonDrawCmd(kind: "text", fill: "#10161d", text: plain(${value}), at: PyreonChartPt(x: ${W} / 2.0, y: ${H} - 6.0), size: 20.0, align: "middle", baseline: "bottom")]`
+    : ''
+  const canvas = `PyreonChartCanvas(cmds: renderGauge(${value}, PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${H} * 2.0), ${opts})${text})`
+  const title = readStringAttrExpr(e, 'title', indent)
+  const tail = (title !== undefined ? `.accessibilityLabel(${title})` : '') + emitSwiftLayoutModifiers(e)
+  if (hasWidth) return `${canvas}.frame(width: ${W}, height: ${H})${tail}`
+  const pad = ' '.repeat(indent + 2)
+  return `GeometryReader { pyreonGeo in\n${pad}${canvas}\n${' '.repeat(indent)}}.frame(height: ${H})${tail}`
 }
