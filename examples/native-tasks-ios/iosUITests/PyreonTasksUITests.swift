@@ -485,6 +485,16 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertEqual(statsHigh.label, "2", "filter-map high count wrong")
         let statsAvg = app.staticTexts["stats-average"].firstMatch
         XCTAssertTrue(statsAvg.exists, "Stats average (Double pipeline) missing")
+        // #3255: the plot engine's native HOST — `<SankeyChart>` lowers to a
+        // SwiftUI Canvas walking the generated engine's draw list. The canvas
+        // carries the testid as its identifier and the title as its label;
+        // a Canvas is not a type-specific element, so query by ANY type. A
+        // non-zero frame proves the host was laid out (GeometryReader +
+        // .frame(height:)), not merely present in the tree.
+        let statsFlow = app.descendants(matching: .any).matching(identifier: "stats-flow").firstMatch
+        XCTAssertTrue(statsFlow.waitForExistence(timeout: 10), "Sankey chart canvas missing on stats page")
+        XCTAssertGreaterThan(statsFlow.frame.height, 100, "Sankey chart canvas has no height")
+        XCTAssertGreaterThan(statsFlow.frame.width, 100, "Sankey chart canvas has no width")
         let statsBack = app.buttons["stats-back"].firstMatch
         XCTAssertTrue(statsBack.exists, "Back button missing on stats page")
         statsBack.tap()

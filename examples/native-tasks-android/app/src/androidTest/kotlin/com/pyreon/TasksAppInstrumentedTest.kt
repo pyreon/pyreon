@@ -524,6 +524,12 @@ class TasksAppInstrumentedTest {
         composeRule
             .onNodeWithTag("stats-average")
             .assertIsDisplayed()
+        // #3255: the plot engine's native HOST — `<SankeyChart>` lowers to a
+        // Compose Canvas (PyreonChartCanvas) walking the generated engine's
+        // draw list; the testid rides Modifier.testTag on that canvas.
+        composeRule
+            .onNodeWithTag("stats-flow")
+            .assertIsDisplayed()
         composeRule
             .onNodeWithTag("stats-back")
             .performClick()
