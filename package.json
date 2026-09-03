@@ -185,7 +185,7 @@
   "overrides": {
     "@codemirror/view": "6.43.11",
     "@tanstack/query-core": "5.102.8",
-    "@tanstack/virtual-core": "3.17.8",
+    "@tanstack/virtual-core": "3.17.4",
     "zod": "4.5.4",
     "@codemirror/state": "6.7.2",
     "vite": "8.2.2",

@@ -92,3 +92,37 @@ reason, one level removed: it force-pins a transitive dep of `exceljs`
 `uuid` 12.0.0 dropped CommonJS support entirely — `exceljs`'s own bundled
 code does `require('uuid')`, verified directly in its installed `dist/`, so
 the same ESM-only trap applies one hop further down the graph.
+
+One more found by actually running the browser test tier, not just typecheck
+and the node/happy-dom suite: `@tanstack/virtual-core` was bumped 3.17.4 →
+3.17.8 in this branch's first pass (a routine-looking override edit, not
+vetted as carefully as the deps above), and it broke
+`@pyreon/virtual`'s real-Chromium `repositions a STAYING row below when row 0
+is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
+retries) — bisected down to virtual-core's own 3.17.7 "synchronous
+notification for scroll compensation" change, not to anything else in this
+branch (ruled out `@tanstack/react-virtual`, unrelated — not imported by this
+code path at all; ruled out the `oxc-parser`/`magic-string`/`rolldown`
+bumps too, by reverting each in isolation and rebuilding). Reverted back to
+3.17.4, matching what's currently on `main`, and NOT bumped further.
+
+This surfaced something that predates this PR: `@pyreon/virtual`'s own
+`package.json` has declared `@tanstack/virtual-core: "^3.17.7"` since an
+earlier fix (commit 973c4e323, "the root overrides pinned
+@tanstack/virtual-core to 3.17.4 while three packages declared ^3.17.7, so
+the installed version did not satisfy its own consumers' declared range")
+— but the root override was only ever bumped to 3.17.4 there, not to
+3.17.7+, so the exact mismatch that fix describes is still live on `main`
+today: the declared floor and the resolved version disagree, silently,
+because the currently-resolved 3.17.4 happens to still pass. Bumping the
+override to actually satisfy the package's own declared range (3.17.7,
+confirmed — not just 3.17.8) is what surfaces the real compatibility break
+in `use-virtualizer.ts`'s remeasurement handling. Left as-is here rather
+than fixed, because closing it needs either updating the wrapper for
+virtual-core's new synchronous-notification timing or re-adjudicating the
+test's assumptions against it — real source-level work, not a version
+bump. Tracked as a known gap, not silently left broken: someone picking
+this up should treat `bun run test:browser` in `@pyreon/virtual` as the
+regression gate, not just `bun run test`, which does not exercise this
+path at all (confirmed: the full node/happy-dom suite passes 1805/1805
+regardless of which virtual-core version is resolved).
