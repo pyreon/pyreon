@@ -3903,7 +3903,7 @@ function emitSwiftFunction(
 function swiftCondition(e: ExprIR, emit: (x: ExprIR) => string): string {
   const c = classifyOptionalCondition(e, _exprInferCtx)
   if (c?.form === 'absent') return `${emit(c.argument)} == nil`
-  if (c?.form === 'present') return `${emit(e)} != nil`
+  if (c?.form === 'present') return `${emit(c.argument ?? e)} != nil`
   return emit(e)
 }
 
@@ -4002,21 +4002,38 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       // twin: `if (token != null)` smart-casts a val local by language rule.
       // Non-identifier optional conditions keep the `!= nil` lowering below.
       const optC = classifyOptionalCondition(s.cond, _exprInferCtx)
-      if (optC?.form === 'present' && s.cond.kind === 'identifier') {
-        const name = s.cond.name
+      // The comparison forms (`x !== null` / `x === null`) name the operand as
+      // the classifier's argument; `=== null` binds with the BODIES SWAPPED
+      // (the else-body is the narrowed one) and only when there is an else —
+      // a lone absent-check keeps the `== nil` test below.
+      const optName =
+        optC?.form === 'present'
+          ? s.cond.kind === 'identifier'
+            ? s.cond.name
+            : optC.argument?.kind === 'identifier'
+              ? optC.argument.name
+              : undefined
+          : optC?.form === 'absent' && optC.argument.kind === 'identifier' && s.elseBody
+            ? optC.argument.name
+            : undefined
+      if (optName !== undefined) {
+        const name = optName
+        const swapped = optC?.form === 'absent'
+        const narrowed = swapped ? s.elseBody! : s.then
+        const other = swapped ? s.then : s.elseBody
         const prev = _exprInferCtx.locals.get(name)
         if (prev !== undefined) _exprInferCtx.locals.set(name, unwrapOptionalType(prev))
         let thenLines: string
         try {
-          thenLines = s.then
+          thenLines = narrowed
             .map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`)
             .join('\n')
         } finally {
           if (prev !== undefined) _exprInferCtx.locals.set(name, prev)
         }
         const head = `if let ${swiftIdent(name)} {\n${thenLines}\n${pad}}`
-        if (!s.elseBody) return head
-        const elseLines = s.elseBody
+        if (!other) return head
+        const elseLines = other
           .map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`)
           .join('\n')
         return `${head} else {\n${elseLines}\n${pad}}`
@@ -6538,6 +6555,37 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       const omt = optionalMemberTernary(e, _exprInferCtx)
       if (omt) {
         return `(${emitSwiftExpr(omt.opt, indent)}?.${swiftIdent(omt.property)} ?? ${emitSwiftExpr(e.otherwise, indent)})`
+      }
+      // A narrowing ternary on an optional IDENTIFIER whose branch READS it
+      // (`r === null ? '' : String(r.start)`): Swift has no ternary narrowing,
+      // so the narrowed branch runs inside `r.map { r in … }` (the closure
+      // param shadows the optional with its payload) and the other branch is
+      // the `??` fallback. Kotlin smart-casts and needs nothing.
+      const oc = classifyOptionalCondition(e.cond, _exprInferCtx)
+      const ocName =
+        oc?.form === 'present'
+          ? e.cond.kind === 'identifier'
+            ? e.cond.name
+            : oc.argument?.kind === 'identifier'
+              ? oc.argument.name
+              : undefined
+          : oc?.form === 'absent' && oc.argument.kind === 'identifier'
+            ? oc.argument.name
+            : undefined
+      if (ocName !== undefined) {
+        const narrowedBranch = oc?.form === 'absent' ? e.otherwise : e.then
+        const otherBranch = oc?.form === 'absent' ? e.then : e.otherwise
+        if (exprReferencesIdent(narrowedBranch, ocName)) {
+          const prev = _exprInferCtx.locals.get(ocName)
+          if (prev !== undefined) _exprInferCtx.locals.set(ocName, unwrapOptionalType(prev))
+          let inner: string
+          try {
+            inner = emitSwiftExpr(narrowedBranch, indent)
+          } finally {
+            if (prev !== undefined) _exprInferCtx.locals.set(ocName, prev)
+          }
+          return `(${swiftIdent(ocName)}.map { ${swiftIdent(ocName)} in ${inner} } ?? ${emitSwiftExpr(otherBranch, indent)})`
+        }
       }
       const condStr = swiftCondition(e.cond, (x) => emitSwiftExpr(x, indent))
       let thenStr = emitSwiftExpr(e.then, indent)
@@ -11477,8 +11525,16 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     _emitWarnings.push(`<${tag} navigator>: needs at least one mark (the strip shows the first one); the chart renders without the navigator.`)
     navigating = false
   }
+  // The brush: a plain drag selects — only where the web's plain drag does too.
+  let brushing = readStaticAttr(e, 'brush') === true && readStaticAttr(e, 'horizontal') !== true
+  if (brushing && zoomed) {
+    _emitWarnings.push(`<${tag} brush>: with \`dataZoom\` the web brushes on Shift+drag, which touch has not — on native the plain drag pans, so the brush stays web-only in that combination; the chart renders without it.`)
+    brushing = false
+  }
+  const onBrush = brushing ? swiftBrushHandler(e, tag) : undefined
   // The window state exists whenever something writes it: a gesture, a preset, the navigator.
   const windowed = zoomed || presets !== undefined || navigating
+  const win = windowed ? 'pyreonZoom' : 'ZoomWindow(start: 0.0, end: 1.0)'
   const legend = swiftLegendInteraction(e)
   const lets: string[] = []
   if (windowed) {
@@ -11490,6 +11546,12 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   if (navigating) {
     _hostStateDecls.push('@State private var pyreonNavKind: Int = 0')
     _hostStateDecls.push('@State private var pyreonNavAnchor: ZoomWindow = ZoomWindow(start: 0.0, end: 1.0)')
+  }
+  if (brushing) {
+    _hostStateDecls.push('@State private var pyreonBrushStart: Int = -1')
+    _hostStateDecls.push('@State private var pyreonBrushEnd: Int = -1')
+    _hostStateDecls.push('@State private var pyreonBrushA: Double = -1.0')
+    _hostStateDecls.push('@State private var pyreonBrushB: Double = -1.0')
   }
   if (legend.toggling) _hostStateDecls.push('@State private var pyreonHidden: [Int] = []')
   if (legend.paging) _hostStateDecls.push('@State private var pyreonLegendPage: Double = 0.0')
@@ -11613,8 +11675,17 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   const mk = chartAttrExpr(e, 'markers')
   if (mk !== undefined) specArgs.push(`markers: ${emitSwiftExpr(mk, indent)}`)
   lets.push(`let pyreonSpec: ChartSpec = ChartSpec(${specArgs.join(', ')})`)
+  if (brushing) {
+    // The band lives in PLOT space: the live span while dragging, else the
+    // committed range projected through the window — and it rides inside the
+    // chrome wrap so the title/legend shift moves it with the plot.
+    lets.push('let pyreonPlot: PyreonChartRect = layoutChart(pyreonSpec, pyreonChartMeasure).plot')
+    lets.push(
+      `let pyreonBrushCmds: [PyreonDrawCmd] = pyreonBrushA >= 0.0 ? renderBrushBand(pyreonPlot, min(pyreonBrushA, pyreonBrushB), max(pyreonBrushA, pyreonBrushB), pyreonSpec.theme.axis) : pyreonBrushStart >= 0 ? { () -> [PyreonDrawCmd] in let pyreonBand = brushBand(pyreonPlot, BrushRange(start: pyreonBrushStart, end: pyreonBrushEnd), ${win}, ${data}.count); return pyreonBand.visible ? renderBrushBand(pyreonPlot, pyreonBand.lo, pyreonBand.hi, pyreonSpec.theme.axis) : [] }() : []`,
+    )
+  }
   const extraCmds = `${navigating ? ' + pyreonNavigator.cmds' : ''}${presets === undefined ? '' : ' + pyreonPresetStrip.cmds'}`
-  const canvas = `PyreonChartCanvas(cmds: ${chrome.wrap('renderChart(pyreonSpec, pyreonChartMeasure)')}${extraCmds})`
+  const canvas = `PyreonChartCanvas(cmds: ${chrome.wrap(`renderChart(pyreonSpec, pyreonChartMeasure)${brushing ? ' + pyreonBrushCmds' : ''}`)}${extraCmds})`
   const tapY = chrome.top === '0.0' ? 'Double(pyreonTap.location.y)' : 'Double(pyreonTap.location.y) - pyreonTop'
   // Under a window the hit is LOCAL to the slice; the callback speaks GLOBAL indices, as on the web.
   const hit = windowed
@@ -11622,10 +11693,11 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     : `plotHitBars(pyreonSpec, pyreonChartMeasure, Double(pyreonTap.location.x), ${tapY})`
   const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
   let gesture = ''
-  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging) {
+  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging || brushing) {
     const select = onSel?.kind === 'event' ? swiftChartSelectBody(onSel.handler, hit, indent) : ''
     // One tap, several surfaces, in canvas coordinates: the legend pager, a
-    // legend entry, a preset button, then the plot. First hit wins — the web's order.
+    // legend entry, a preset button, a committed brush (a plain tap clears it),
+    // then the plot. First hit wins — the web's order.
     const cx = 'Double(pyreonTap.location.x)'
     const cy = 'Double(pyreonTap.location.y)'
     const decls: string[] = []
@@ -11642,20 +11714,28 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       decls.push(`let pyreonPreset = presetHit(pyreonPresetStrip.boxes, ${cx}, ${cy})`)
       branches.push(`if pyreonPreset >= 0 { pyreonZoom = presetWindow(pyreonPresets[pyreonPreset].count, ${data}.count)${zoomed ? '; pyreonZoomAnchor = pyreonZoom' : ''} }`)
     }
+    if (brushing) {
+      branches.push(`if pyreonBrushStart >= 0 { pyreonBrushStart = -1; pyreonBrushEnd = -1${onBrush === undefined ? '' : `; ${onBrush}(nil)`} }`)
+    }
     let body: string
     if (branches.length === 0) {
       body = select
     } else {
-      body = `${decls.join('; ')}; ${branches.join(' else ')}${select === '' ? '' : ` else { ${select} }`}`
+      body = `${decls.length === 0 ? '' : `${decls.join('; ')}; `}${branches.join(' else ')}${select === '' ? '' : ` else { ${select} }`}`
     }
-    // With pan and pinch live, a tap is a drag that did not move: guard by translation.
-    const guarded = zoomed ? `if abs(pyreonTap.translation.width) < 6.0 && abs(pyreonTap.translation.height) < 6.0 { ${body} }` : body
+    // With pan, pinch or a brush drag live, a tap is a drag that did not move: guard by translation.
+    const guarded = zoomed || brushing ? `if abs(pyreonTap.translation.width) < 6.0 && abs(pyreonTap.translation.height) < 6.0 { ${body} }` : body
     gesture = `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in ${guarded} })`
   }
   if (zoomed) {
     gesture +=
       `.simultaneousGesture(MagnificationGesture().onChanged { pyreonScale in pyreonZoom = zoomWindow(pyreonZoomAnchor, 1.0 / Double(pyreonScale), 0.5) }.onEnded { _ in pyreonZoomAnchor = pyreonZoom })` +
       `.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { pyreonDrag in pyreonZoom = panWindow(pyreonZoomAnchor, -Double(pyreonDrag.translation.width) / ${W}) }.onEnded { _ in pyreonZoomAnchor = pyreonZoom })`
+  }
+  if (brushing) {
+    gesture +=
+      `.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { pyreonBrushDrag in pyreonBrushA = Double(pyreonBrushDrag.startLocation.x); pyreonBrushB = Double(pyreonBrushDrag.location.x) }` +
+      `.onEnded { pyreonBrushDrag in let pyreonSel: BrushRange = brushRange(pyreonPlot.x, pyreonPlot.w, Double(pyreonBrushDrag.startLocation.x), Double(pyreonBrushDrag.location.x), ${win}, ${data}.count); pyreonBrushStart = pyreonSel.start; pyreonBrushEnd = pyreonSel.end; pyreonBrushA = -1.0; pyreonBrushB = -1.0${onBrush === undefined ? '' : `; ${onBrush}(pyreonSel)`} })`
   }
   if (!navigating) return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent)
   // The navigator's drag lives on a clear overlay over the strip (above the
@@ -11875,3 +11955,29 @@ function swiftLegendInteraction(e: Extract<ExprIR, { kind: 'jsx-element' }>): Sw
 // and pan gestures — a touch that starts on the strip is the navigator's.
 
 /** `<PlotChart data marks x? xValue? … dataZoom? zoomPresets? navigator? showLegend? legendToggle? legendMaxRows? showTitle? onSelect? …>` */
+
+
+// ---- `<PlotChart brush onBrush>` — drag-select a GLOBAL datum range -----------
+//
+// The brush's mapping, placement and band come from the engine (`brush.ts`);
+// the host holds the committed range and the live span as state. Without
+// `dataZoom` a plain drag on the plot IS the brush (the web's rule); with it
+// the web needs Shift, which touch has not, so that combination stays
+// web-only and says so. `onBrush` takes `BrushRange | null` and must be a
+// NAMED handler (`const onBrush = (r: BrushRange | null) => …`): a named
+// handler lowers to a func whose optional parameter narrows; an inline arrow
+// does not carry that type through the tap's closure.
+
+/** The `onBrush` handler NAME, or undefined; warns by name for any other shape. */
+function swiftBrushHandler(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: string): string | undefined {
+  const onBrush = e.attrs.find((a) => a.kind === 'event' && a.name === 'brush')
+  if (onBrush?.kind !== 'event') return undefined
+  const h = onBrush.handler
+  if (h.kind === 'identifier') return swiftIdent(h.name)
+  const resolved = resolveFunctionHandler(h)
+  if (resolved !== undefined) return swiftIdent(resolved)
+  _emitWarnings.push(`<${tag} onBrush>: must be a NAMED handler (\`const onBrush = (r: BrushRange | null) => …\`) on native — an inline arrow is not lowered; the brush still selects, without the callback.`)
+  return undefined
+}
+
+/** `<PlotChart data marks x? xValue? … dataZoom? zoomPresets? navigator? brush? onBrush? showLegend? legendToggle? legendMaxRows? showTitle? onSelect? …>` */

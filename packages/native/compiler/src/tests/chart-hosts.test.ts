@@ -443,7 +443,7 @@ describe('chart hosts — <PlotChart marks> (the cartesian family)', () => {
     expect(r.code).toContain('.testTag("revenue")')
     expect(r.code).toContain('Series(kind = "area", values = pyreonValues0, color = "#0f766e", width = 2.0, radius = 3.0, label = "Series 1", showValues = false)')
   })
-  it('a curve option, a non-literal marks array and the unlowered props are reported by name; a bubble mark lowers', () => {
+  it('a curve option and a non-literal marks array are reported by name; a bubble mark lowers; brush (every prop now) stays quiet', () => {
     const r = transform(
       `import { PlotChart, bubble, line, monotoneCurve } from '@pyreon/charts/plot'
 interface Row { n: string; v: number; r: number }
@@ -455,7 +455,8 @@ export function C() { return (<><PlotChart data={ROWS} marks={[bubble((d) => d.v
     const w = r.warnings.join('\n')
     expect(w).not.toContain('bubble')
     expect(w).toContain('<PlotChart> mark 1: a `curve` callback is not lowered')
-    expect(w).toContain('<PlotChart>: `brush` is not lowered on native yet')
+    // Every PlotChart prop lowers now; the by-name warning list is empty and must stay silent.
+    expect(w).not.toContain('is not lowered on native yet')
     expect(w).toContain('<PlotChart marks>: must be an inline array of mark calls')
   })
   it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine + measurer) accepts the plot emit', () => {
@@ -971,6 +972,121 @@ describe('chart hosts — <PlotChart navigator> as the engine-laid-out slider st
   })
   it.skipIf(!isKotlincAvailable())('kotlinc (stub bundle + real engine) accepts it', () => {
     const r = validateKotlin(transform(NAV_PRESETS.replace('navigator={true}', 'navigator={true} dataZoom={true}'), { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+})
+
+
+const BRUSH = `import { signal } from '@pyreon/reactivity'
+import { Stack, Text } from '@pyreon/primitives'
+import { PlotChart, bars } from '@pyreon/charts/plot'
+import type { BrushRange } from '@pyreon/charts/plot'
+interface Day { label: string; hits: number }
+const DAYS: Day[] = [{ label: 'Mon', hits: 3 }, { label: 'Tue', hits: 5 }, { label: 'Wed', hits: 2 }, { label: 'Thu', hits: 7 }]
+export function Traffic() {
+  const picked = signal(-1)
+  const sel = signal('')
+  const onBrush = (r: BrushRange | null) => {
+    if (r === null) {
+      sel.set('')
+    } else {
+      sel.set(String(r.start) + '-' + String(r.end))
+    }
+  }
+  return (
+    <Stack>
+      <Text>{picked()}</Text>
+      <Text>{sel()}</Text>
+      <PlotChart data={DAYS} x={(d) => d.label} marks={[bars((d) => d.hits)]} brush={true} height={200} onBrush={onBrush} onSelect={(i: number) => picked.set(i)} />
+    </Stack>
+  )
+}`
+const BRUSH_NO_HANDLER = BRUSH.replace(' onBrush={onBrush}', '')
+const BRUSH_INLINE = BRUSH.replace('onBrush={onBrush}', "onBrush={(r: BrushRange | null) => sel.set(r === null ? '' : String(r.start))}")
+const BRUSH_ZOOMED = BRUSH.replace('brush={true}', 'brush={true} dataZoom={true}')
+const BRUSH_PRESETS = BRUSH.replace('brush={true}', "brush={true} zoomPresets={[{ label: 'last 2', count: 2 }, { label: 'all', count: 0 }]}")
+
+describe('chart hosts — <PlotChart brush onBrush> as a plain drag over the engine\'s range mapping', () => {
+  it('Swift: the committed range and the live span are host state; the band rides inside the chrome wrap; a drag selects through brushRange and a plain tap clears', () => {
+    const r = transform(BRUSH, { target: 'swift' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('@State private var pyreonBrushStart: Int = -1')
+    expect(r.code).toContain('@State private var pyreonBrushEnd: Int = -1')
+    expect(r.code).toContain('@State private var pyreonBrushA: Double = -1.0')
+    expect(r.code).toContain('@State private var pyreonBrushB: Double = -1.0')
+    expect(r.code).not.toContain('pyreonZoom')
+    expect(r.code).toContain('let pyreonPlot: PyreonChartRect = layoutChart(pyreonSpec, pyreonChartMeasure).plot')
+    expect(r.code).toContain(
+      'let pyreonBrushCmds: [PyreonDrawCmd] = pyreonBrushA >= 0.0 ? renderBrushBand(pyreonPlot, min(pyreonBrushA, pyreonBrushB), max(pyreonBrushA, pyreonBrushB), pyreonSpec.theme.axis) : pyreonBrushStart >= 0 ? { () -> [PyreonDrawCmd] in let pyreonBand = brushBand(pyreonPlot, BrushRange(start: pyreonBrushStart, end: pyreonBrushEnd), ZoomWindow(start: 0.0, end: 1.0), DAYS.count); return pyreonBand.visible ? renderBrushBand(pyreonPlot, pyreonBand.lo, pyreonBand.hi, pyreonSpec.theme.axis) : [] }() : []',
+    )
+    expect(r.code).toContain('PyreonChartCanvas(cmds: renderChart(pyreonSpec, pyreonChartMeasure) + pyreonBrushCmds)')
+    expect(r.code).toContain('if abs(pyreonTap.translation.width) < 6.0 && abs(pyreonTap.translation.height) < 6.0 { if pyreonBrushStart >= 0 { pyreonBrushStart = -1; pyreonBrushEnd = -1; onBrush(nil) } else {')
+    expect(r.code).toContain(
+      '.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { pyreonBrushDrag in pyreonBrushA = Double(pyreonBrushDrag.startLocation.x); pyreonBrushB = Double(pyreonBrushDrag.location.x) }.onEnded { pyreonBrushDrag in let pyreonSel: BrushRange = brushRange(pyreonPlot.x, pyreonPlot.w, Double(pyreonBrushDrag.startLocation.x), Double(pyreonBrushDrag.location.x), ZoomWindow(start: 0.0, end: 1.0), DAYS.count); pyreonBrushStart = pyreonSel.start; pyreonBrushEnd = pyreonSel.end; pyreonBrushA = -1.0; pyreonBrushB = -1.0; onBrush(pyreonSel) })',
+    )
+    // The named handler narrows its optional through the null compare.
+    expect(r.code).toContain('private func onBrush(_ r: BrushRange?) {\n    if let r {')
+  })
+  it('Kotlin: remembered state, the band in the wrap, detectDragGestures selects, the tap clears', () => {
+    const r = transform(BRUSH, { target: 'kotlin' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('var pyreonBrushStart by remember { mutableStateOf(-1) }')
+    expect(r.code).toContain('val pyreonPlot: PyreonChartRect = layoutChart(pyreonSpec, ::pyreonChartMeasure).plot')
+    expect(r.code).toContain('renderChart(pyreonSpec, ::pyreonChartMeasure) + pyreonBrushCmds')
+    expect(r.code).toContain('if (pyreonBrushStart >= 0) { pyreonBrushStart = -1; pyreonBrushEnd = -1; onBrush(null) } else {')
+    expect(r.code).toContain(
+      '.pointerInput(Unit) { detectDragGestures(onDragStart = { pyreonStart -> pyreonBrushA = (pyreonStart.x / pyreonDensity).toDouble(); pyreonBrushB = pyreonBrushA }, onDragEnd = { val pyreonSel: BrushRange = brushRange(pyreonPlot.x, pyreonPlot.w, pyreonBrushA, pyreonBrushB, ZoomWindow(start = 0.0, end = 1.0), DAYS.size); pyreonBrushStart = pyreonSel.start; pyreonBrushEnd = pyreonSel.end; pyreonBrushA = -1.0; pyreonBrushB = -1.0; onBrush(pyreonSel) }, onDrag = { pyreonChange, pyreonDrag -> pyreonChange.consume(); pyreonBrushB = pyreonBrushB + (pyreonDrag.x / pyreonDensity).toDouble() }) }',
+    )
+    expect(r.code).toContain('fun onBrush(r: BrushRange?) {\n    if (r == null) {')
+  })
+  it('without onBrush the brush still selects and draws; nothing is called', () => {
+    const s = transform(BRUSH_NO_HANDLER, { target: 'swift' })
+    expect(s.warnings).toEqual([])
+    expect(s.code).toContain('pyreonBrushA = -1.0; pyreonBrushB = -1.0 })')
+    expect(s.code).toContain('{ pyreonBrushStart = -1; pyreonBrushEnd = -1 } else {')
+    const k = transform(BRUSH_NO_HANDLER, { target: 'kotlin' })
+    expect(k.warnings).toEqual([])
+    expect(k.code).toContain('pyreonBrushA = -1.0; pyreonBrushB = -1.0 }, onDrag')
+  })
+  it('an inline onBrush arrow warns BY NAME on both targets; the brush still selects', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(BRUSH_INLINE, { target })
+      expect(r.warnings).toEqual(['<PlotChart onBrush>: must be a NAMED handler (`const onBrush = (r: BrushRange | null) => …`) on native — an inline arrow is not lowered; the brush still selects, without the callback.'])
+      expect(r.code).toContain('brushRange(pyreonPlot.x, pyreonPlot.w')
+    }
+  })
+  it('brush + dataZoom warns BY NAME (the web needs Shift there) and renders without the brush', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(BRUSH_ZOOMED, { target })
+      expect(r.warnings).toEqual(['<PlotChart brush>: with `dataZoom` the web brushes on Shift+drag, which touch has not — on native the plain drag pans, so the brush stays web-only in that combination; the chart renders without it.'])
+      expect(r.code).not.toContain('pyreonBrush')
+    }
+  })
+  it('with presets the brush maps through the host window and the tap order is preset → brush clear → selection', () => {
+    const s = transform(BRUSH_PRESETS, { target: 'swift' })
+    expect(s.warnings).toEqual([])
+    expect(s.code).toContain('brushRange(pyreonPlot.x, pyreonPlot.w, Double(pyreonBrushDrag.startLocation.x), Double(pyreonBrushDrag.location.x), pyreonZoom, DAYS.count)')
+    expect(s.code).toContain('} else if pyreonBrushStart >= 0 { pyreonBrushStart = -1; pyreonBrushEnd = -1; onBrush(nil) } else {')
+    const k = transform(BRUSH_PRESETS, { target: 'kotlin' })
+    expect(k.code).toContain('} else if (pyreonBrushStart >= 0) { pyreonBrushStart = -1; pyreonBrushEnd = -1; onBrush(null) } else {')
+  })
+  it('a plot without brush gets none of it', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(PRESETS, { target })
+      expect(r.code).not.toContain('pyreonBrush')
+      expect(r.code).not.toContain('layoutChart(pyreonSpec')
+    }
+  })
+  it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine) accepts the brush emit', () => {
+    const r = validateSwiftWithStubs(transform(BRUSH_PRESETS, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isSwiftUIAvailable())('swiftc against real SwiftUI + canvas + engine accepts it', () => {
+    const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(ENGINE_SWIFT) + '\n' + transform(BRUSH_PRESETS, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isKotlincAvailable())('kotlinc (stub bundle + real engine) accepts it', () => {
+    const r = validateKotlin(transform(BRUSH_PRESETS, { target: 'kotlin' }).code)
     expect(r.ok, r.error ?? '').toBe(true)
   })
 })
