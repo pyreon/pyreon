@@ -30,9 +30,9 @@
     "react-dom": "^19.2.8",
     "react-hook-form": "^7.87.0",
     "solid-js": "^1.9.15",
-    "svelte": "^5.56.10",
+    "svelte": "^5.57.0",
     "vee-validate": "^4.15.1",
-    "vue": "^3.5.41",
+    "vue": "^3.5.42",
     "zod": "^4.5.4"
   },
   "devDependencies": {
@@ -41,7 +41,7 @@
     "@sveltejs/vite-plugin-svelte": "^7.3.0",
     "@types/node": "^26.2.0",
     "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.5",
+    "@types/react-dom": "^19.2.7",
     "playwright": "^1.62.1",
     "typescript": "^6.0.3",
     "vite": "^8.2.2"
