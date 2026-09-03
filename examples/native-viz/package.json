@@ -24,8 +24,8 @@
     "@pyreon/primitives": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/rich-text": "workspace:*",
-    "@tiptap/core": "^3.30.3",
-    "@tiptap/starter-kit": "^3.30.3",
+    "@tiptap/core": "^3.31.2",
+    "@tiptap/starter-kit": "^3.31.2",
     "codemirror": "^6.0.2"
   }
 }
