@@ -19,6 +19,8 @@ import { graphToSvg } from './graph'
 import type { GraphLink, GraphNode, GraphOptions } from './graph'
 import { calendarToSvg } from './calendar'
 import type { CalendarOptions } from './calendar'
+import { parallelToSvg } from './parallel'
+import type { ParallelAxis, ParallelOptions, ParallelRow } from './parallel'
 import { boxplotToSvg } from './boxplot'
 import type { FiveNumber } from './boxplot'
 import type { FunnelOptions } from './funnel'
@@ -38,6 +40,7 @@ export type FamilyPlan =
   | { kind: 'sankey'; nodes: SankeyNode[]; links: SankeyLink[]; sankey: SankeyOptions; title: string | undefined }
   | { kind: 'graph'; nodes: GraphNode[]; links: GraphLink[]; graph: GraphOptions; title: string | undefined }
   | { kind: 'calendar'; start: string; end: string; values: Record<string, Double>; calendar: CalendarOptions; title: string | undefined }
+  | { kind: 'parallel'; axes: ParallelAxis[]; rows: ParallelRow[]; parallel: ParallelOptions; title: string | undefined }
   | { kind: 'boxplot'; rows: (FiveNumber & { x: string })[]; fill: string | undefined; stroke: string | undefined; title: string | undefined }
 
 export interface CompiledFamily {
@@ -46,7 +49,7 @@ export interface CompiledFamily {
   supported: boolean
 }
 
-const FAMILY_TYPES = new Set(['pie', 'gauge', 'radar', 'candlestick', 'heatmap', 'funnel', 'treemap', 'sunburst', 'tree', 'sankey', 'graph', 'boxplot'])
+const FAMILY_TYPES = new Set(['pie', 'gauge', 'radar', 'candlestick', 'heatmap', 'funnel', 'treemap', 'sunburst', 'tree', 'sankey', 'graph', 'parallel', 'boxplot'])
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const num = (v: unknown): number | null => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null
@@ -68,7 +71,7 @@ export function isFamilyOption(option: EChartsOption): boolean {
   return isObj(s) && typeof s['type'] === 'string' && FAMILY_TYPES.has(s['type'] as string)
 }
 
-const KNOWN_TOP = new Set(['series', 'title', 'legend', 'tooltip', 'color', 'radar', 'xAxis', 'yAxis', 'visualMap', 'animation', 'backgroundColor', 'textStyle', 'grid', 'calendar'])
+const KNOWN_TOP = new Set(['series', 'title', 'legend', 'tooltip', 'color', 'radar', 'xAxis', 'yAxis', 'visualMap', 'animation', 'backgroundColor', 'textStyle', 'grid', 'calendar', 'parallel', 'parallelAxis'])
 const KNOWN_BY_FAMILY: Record<string, Set<string>> = {
   pie: new Set(['type', 'name', 'data', 'radius', 'label', 'itemStyle', 'center', 'emphasis', 'color']),
   gauge: new Set(['type', 'name', 'data', 'min', 'max', 'detail', 'axisLine', 'progress', 'itemStyle', 'color']),
@@ -80,6 +83,7 @@ const KNOWN_BY_FAMILY: Record<string, Set<string>> = {
   sunburst: new Set(['type', 'name', 'data', 'radius', 'center', 'sort', 'startAngle', 'label', 'itemStyle', 'color', 'emphasis', 'nodeClick', 'levels']),
   tree: new Set(['type', 'name', 'data', 'orient', 'layout', 'symbol', 'symbolSize', 'initialTreeDepth', 'edgeShape', 'label', 'itemStyle', 'lineStyle', 'leaves', 'roam', 'expandAndCollapse', 'emphasis', 'top', 'left', 'right', 'bottom']),
   sankey: new Set(['type', 'name', 'data', 'nodes', 'links', 'edges', 'nodeWidth', 'nodeGap', 'nodeAlign', 'layoutIterations', 'orient', 'draggable', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'levels', 'top', 'left', 'right', 'bottom']),
+  parallel: new Set(['type', 'name', 'data', 'coordinateSystem', 'parallelIndex', 'lineStyle', 'emphasis', 'inactiveOpacity', 'activeOpacity', 'realtime', 'smooth', 'progressive', 'animation']),
   graph: new Set(['type', 'name', 'data', 'nodes', 'links', 'edges', 'categories', 'layout', 'symbol', 'symbolSize', 'force', 'circular', 'roam', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'draggable', 'edgeSymbol', 'edgeSymbolSize', 'focusNodeAdjacency', 'zoom', 'center', 'left', 'top', 'right', 'bottom', 'width', 'height', 'coordinateSystem']),
   boxplot: new Set(['type', 'name', 'data', 'itemStyle', 'color', 'boxWidth', 'emphasis']),
 }
@@ -233,6 +237,48 @@ export function compileFamily(option: EChartsOption): CompiledFamily | null {
       warnings,
       supported,
     }
+  }
+
+  if (type === 'parallel') {
+    const rawAxes = Array.isArray(option['parallelAxis']) ? (option['parallelAxis'] as unknown[]) : []
+    const axes: ParallelAxis[] = []
+    for (let i = 0; i < rawAxes.length; i++) {
+      const a = rawAxes[i]
+      const ao = isObj(a) ? a : {}
+      const dim = num(ao['dim'])
+      const at = dim !== null ? dim : i
+      const lo = num(ao['min'])
+      const hi = num(ao['max'])
+      const cats = Array.isArray(ao['data']) ? (ao['data'] as unknown[]).map((c) => (typeof c === 'string' ? c : isObj(c) && typeof c['value'] === 'string' ? (c['value'] as string) : String(c))) : undefined
+      axes[at] = {
+        name: typeof ao['name'] === 'string' ? (ao['name'] as string) : 'dim ' + String(at),
+        ...(ao['type'] === 'category' ? { type: 'category' as const, categories: cats ?? [] } : {}),
+        ...(ao['type'] !== 'category' && lo !== null && hi !== null ? { domain: [lo, hi] as [Double, Double] } : {}),
+        ...(ao['inverse'] === true ? { inverse: true } : {}),
+      }
+    }
+    for (let i = 0; i < axes.length; i++) if (axes[i] === undefined) axes[i] = { name: 'dim ' + String(i) }
+    const par = first(option['parallel'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
+    if (isObj(par) && par['layout'] === 'vertical') warn('series-option-unsupported', 'parallel.layout', 'A vertical parallel layout is not supported yet; rendered horizontally.')
+    const rows: ParallelRow[] = []
+    for (let i = 0; i < data.length; i++) {
+      const d = data[i]
+      const arr = Array.isArray(d) ? d : isObj(d) && Array.isArray(d['value']) ? (d['value'] as unknown[]) : null
+      if (arr === null) {
+        warn('series-data-shape', 'series[0].data[' + String(i) + ']', 'A parallel datum must be an array of one value per axis; it was skipped.')
+        continue
+      }
+      rows.push(arr.map((v) => (typeof v === 'number' || typeof v === 'string' ? v : null)))
+    }
+    const ls = isObj(s['lineStyle']) ? s['lineStyle'] : {}
+    const lw = num(ls['width'])
+    const lo = num(ls['opacity'])
+    const parallel: ParallelOptions = {
+      ...(lw !== null ? { lineWidth: lw } : {}),
+      ...(lo !== null ? { lineOpacity: lo } : {}),
+      ...(typeof ls['color'] === 'string' ? { lineColor: ls['color'] as string } : {}),
+    }
+    return { plan: { kind: 'parallel', axes, rows, parallel, title }, warnings, supported }
   }
 
   if (type === 'heatmap' && s['coordinateSystem'] === 'calendar') {
@@ -664,6 +710,15 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
         ...(plan.title !== undefined ? { title: plan.title } : {}),
       })
     }
+    case 'parallel':
+      return parallelToSvg({
+        axes: plan.axes,
+        rows: plan.rows,
+        parallel: plan.parallel,
+        width,
+        height,
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
     case 'calendar':
       return calendarToSvg({
         start: plan.start,
