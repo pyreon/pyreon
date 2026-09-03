@@ -420,8 +420,15 @@ export function conditionalKotlinImports(emitted: string): string {
   if (emitted.includes('.pointerInput(')) {
     imports.push('import androidx.compose.ui.input.pointer.pointerInput')
   }
-  if (emitted.includes('detectHorizontalDragGestures(')) {
-    imports.push('import androidx.compose.foundation.gestures.detectHorizontalDragGestures')
+  // Every `detect*Gestures` detector lives in the same package, so DERIVE the
+  // import from whatever the emit actually contains rather than keeping an arm
+  // per symbol. The enumerated form had an arm for the horizontal drag and none
+  // for `detectTapGestures` / `detectTransformGestures`, and the gap is
+  // invisible to the kotlinc stub gate — that gate concatenates the stubs into
+  // one compilation unit, so a symbol resolves there with or without an import.
+  // Only the real `gradle assembleDebug` sees it, one CI round later.
+  for (const m of new Set(emitted.match(/\bdetect[A-Za-z]+Gestures\b/g) ?? [])) {
+    imports.push(`import androidx.compose.foundation.gestures.${m}`)
   }
   // M3.1 haptics (`const h = useHaptics()`): the Compose haptic surface
   // `LocalHapticFeedback` lives in androidx.compose.ui.platform — NOT
