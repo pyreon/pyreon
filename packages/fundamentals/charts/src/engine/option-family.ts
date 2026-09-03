@@ -82,6 +82,13 @@ export interface CompiledFamily {
  * geo, singleAxis each adding their own clause), because every branch reads
  * and rewrites the SAME line. A Set turns each family's addition into its own
  * insertion — no shared line to collide on.
+ * Families that legitimately render MORE THAN ONE series, so the
+ * "only the first series is rendered" warning must not fire for them.
+ *
+ * A Set rather than a chain of `&&` comparisons: as a chain this single line
+ * collided in four separate branches during the charts wave, because every new
+ * family had to edit it. As a Set, a family adds a MEMBER, and two families
+ * adding different members merge cleanly.
  */
 const MULTI_SERIES_FAMILIES = new Set(['radar', 'polar', 'boxplot', 'geo', 'singleAxis'])
 const FAMILY_TYPES = new Set(['pie', 'gauge', 'radar', 'candlestick', 'heatmap', 'funnel', 'treemap', 'sunburst', 'tree', 'sankey', 'graph', 'parallel', 'themeRiver', 'boxplot', 'map'])
@@ -154,6 +161,9 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
   // boxplot on main — and each legitimately renders more than one series. The
   // key lookup uses familyKey, which is this branch's fix for polar.
   // Every family that legitimately renders MORE THAN ONE series carves itself
+  // out of this guard, so each new family adds a clause and this line conflicts
+  // in every branch. (Worth turning into a set membership test rather than a
+  // chain — it has collided three times in this wave alone.)
   if (seriesArr.length > 1 && !MULTI_SERIES_FAMILIES.has(familyKey) && !MULTI_SERIES_FAMILIES.has(type)) {
     warn('series-option-unsupported', 'series[1]', `Only one ${type} series is rendered per chart; extra series were ignored.`)
   }
