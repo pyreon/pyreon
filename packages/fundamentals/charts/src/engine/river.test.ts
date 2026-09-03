@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { hitRiver, layerPolygon, layoutRiver, renderRiver, riverToSvg, smoothPoints } from './river'
+import { hitRiver, layerPolygon, layoutRiver, renderRiver, smoothPoints } from './river'
+import { riverToSvg } from './family-svg'
 import type { RiverSeries } from './river'
 import { compileFamily, familyToSvg } from './option-family'
 

@@ -3,16 +3,17 @@
 // Each depth is a ring; each node's angular span is its share of its parent's
 // span. Output is a flat list of arcs so the renderer, the hit test and a
 // native executor all consume the same thing (the treemap's radial twin).
+// Written in the native subset and BUNDLED into the generated Swift/Kotlin
+// engine (index-cursor work stacks, insertion-sorted siblings, no spreads,
+// no optional narrowing); the svg half lives in family-svg.ts.
 
 import { arcPolygon } from './arc'
-import { measureApprox, renderSvg } from './svg'
-import type { SvgOptions } from './svg'
-import { nodeValue } from './treemap'
+import { approxTextWidth, nodeValue, orderByValue, tintHex } from './treemap'
 import type { TreeNode } from './treemap'
 import type { Double, DrawCmd, MeasureText, Pt } from './types'
 
-const TAU = Math.PI * 2.0
-const PALETTE = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
+const SUNBURST_TAU = Math.PI * 2.0
+const SUNBURST_PALETTE = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
 
 export interface SunburstArc {
   name: string
@@ -45,14 +46,44 @@ export interface SunburstOptions {
   progress?: Double | undefined
 }
 
-/** Number of levels in the hierarchy (0 for no nodes). */
+/** Number of levels in the hierarchy (0 for no nodes) — iterative. */
 export function treeDepth(nodes: TreeNode[]): number {
   let deepest = 0
+  const stack: TreeNode[] = []
+  const depths: number[] = []
+  let sp = 0
   for (const n of nodes) {
-    const d = 1 + treeDepth(n.children ?? [])
+    stack.push(n)
+    depths.push(1)
+    sp = sp + 1
+  }
+  while (sp > 0) {
+    sp = sp - 1
+    const cur = stack[sp]!
+    const d = depths[sp]!
     if (d > deepest) deepest = d
+    for (const c of cur.children ?? []) {
+      if (sp < stack.length) {
+        stack[sp] = c
+        depths[sp] = d + 1
+      } else {
+        stack.push(c)
+        depths.push(d + 1)
+      }
+      sp = sp + 1
+    }
   }
   return deepest
+}
+
+interface SunburstFrame {
+  children: TreeNode[]
+  a0: Double
+  a1: Double
+  depth: number
+  path: number[]
+  inherited: string
+  hasInherited: boolean
 }
 
 /** Lay out the hierarchy into rings between `innerR` and `outerR`. */
@@ -65,32 +96,54 @@ export function layoutSunburst(
   const arcs: SunburstArc[] = []
   const rawLevels = treeDepth(nodes)
   const maxDepth = options?.maxDepth ?? 64.0
-  const levels = rawLevels < maxDepth ? rawLevels : maxDepth
-  if (levels <= 0) return arcs
-  const ringW = (outerR - innerR) / levels
+  // levelsF mirrors the level count as a Double for the ring-width division.
+  let levelsF = 0.0
+  for (let i = 0; i < rawLevels; i++) levelsF = levelsF + 1.0
+  if (levelsF > maxDepth) levelsF = maxDepth
+  if (levelsF <= 0.0) return arcs
+  const ringW = (outerR - innerR) / levelsF
   const pad = options?.padAngle ?? 0.0
   const sortMode = options?.sort ?? 'desc'
-  const walk = (children: TreeNode[], a0: Double, a1: Double, depth: number, path: number[], inherited: string | undefined): void => {
-    if (depth >= levels || children.length === 0) return
+  const startAngle = options?.startAngle ?? -Math.PI / 2.0
+  const stack: SunburstFrame[] = []
+  stack.push({ children: nodes, a0: startAngle, a1: startAngle + SUNBURST_TAU, depth: 0, path: [], inherited: '', hasInherited: false })
+  // The live stack height; the array only ever grows (no `pop` in the subset).
+  let sp = 1
+  while (sp > 0) {
+    sp = sp - 1
+    const frame = stack[sp]!
+    // depthF mirrors the Int depth for the radius arithmetic.
+    let depthF = 0.0
+    for (let d = 0; d < frame.depth; d++) depthF = depthF + 1.0
+    if (depthF >= levelsF || frame.children.length === 0) continue
     const order: number[] = []
-    for (let i = 0; i < children.length; i++) order.push(i)
-    if (sortMode === 'desc') order.sort((a, b) => nodeValue(children[b]!) - nodeValue(children[a]!))
+    if (sortMode === 'desc') for (const i of orderByValue(frame.children)) order.push(i)
+    else for (let i = 0; i < frame.children.length; i++) order.push(i)
     let total = 0.0
-    for (const i of order) total = total + Math.max(0.0, nodeValue(children[i]!))
-    const usable = a1 - a0 - pad * (order.length - 1)
-    let cursor = a0
+    let count = 0.0
+    for (const i of order) {
+      const v = nodeValue(frame.children[i]!)
+      total = total + (v < 0.0 ? 0.0 : v)
+      count = count + 1.0
+    }
+    const usable = frame.a1 - frame.a0 - pad * (count - 1.0)
+    let cursor = frame.a0
+    const pushed: SunburstFrame[] = []
     for (const idx of order) {
-      const node = children[idx]!
-      const v = Math.max(0.0, nodeValue(node))
+      const node = frame.children[idx]!
+      const raw = nodeValue(node)
+      const v = raw < 0.0 ? 0.0 : raw
       const span = total <= 0.0 || usable <= 0.0 ? 0.0 : usable * (v / total)
-      const color = node.color ?? inherited ?? PALETTE[idx % PALETTE.length]!
+      const color = node.color ?? (frame.hasInherited ? frame.inherited : SUNBURST_PALETTE[idx % SUNBURST_PALETTE.length]!)
       const kids = node.children ?? []
-      const cellPath = [...path, idx]
-      const r0 = innerR + ringW * depth
+      const cellPath: number[] = []
+      for (const p of frame.path) cellPath.push(p)
+      cellPath.push(idx)
+      const r0 = innerR + ringW * depthF
       arcs.push({
         name: node.name,
         value: v,
-        depth,
+        depth: frame.depth,
         path: cellPath,
         start: cursor,
         end: cursor + span,
@@ -99,21 +152,18 @@ export function layoutSunburst(
         color,
         leaf: kids.length === 0,
       })
-      if (kids.length > 0) walk(kids, cursor, cursor + span, depth + 1, cellPath, color)
+      if (kids.length > 0) pushed.push({ children: kids, a0: cursor, a1: cursor + span, depth: frame.depth + 1, path: cellPath, inherited: color, hasInherited: true })
       cursor = cursor + span + pad
     }
+    let pk = pushed.length - 1
+    while (pk >= 0) {
+      if (sp < stack.length) stack[sp] = pushed[pk]!
+      else stack.push(pushed[pk]!)
+      sp = sp + 1
+      pk = pk - 1
+    }
   }
-  walk(nodes, options?.startAngle ?? -Math.PI / 2.0, (options?.startAngle ?? -Math.PI / 2.0) + TAU, 0, [], undefined)
   return arcs
-}
-
-/** Lighten toward white so deeper rings read as nested, not stacked. */
-function tint(hex: string, t: Double): string {
-  const h = hex.startsWith('#') ? hex.slice(1) : hex
-  if (h.length < 6) return hex
-  const ch = (at: number): number => parseInt(h.slice(at, at + 2), 16)
-  const mix = (c: number): number => Math.round(c + (255 - c) * t)
-  return `rgb(${mix(ch(0))}, ${mix(ch(2))}, ${mix(ch(4))})`
 }
 
 /** Render the arcs around `center`: bands per ring, labels where the chord fits. */
@@ -122,15 +172,18 @@ export function renderSunburst(arcs: SunburstArc[], center: Pt, options?: Sunbur
   const rawP = options?.progress ?? 1.0
   const progress = rawP < 0.0 ? 0.0 : rawP > 1.0 ? 1.0 : rawP
   const startAngle = options?.startAngle ?? -Math.PI / 2.0
-  const limit = startAngle + TAU * progress
+  const limit = startAngle + SUNBURST_TAU * progress
   const showLabels = options?.showLabels ?? true
   const fontSize = options?.fontSize ?? 11.0
   const labelColor = options?.labelColor ?? '#ffffff'
-  const m = measure ?? measureApprox()
+  const m: MeasureText = measure ?? approxTextWidth
   for (const a of arcs) {
     if (a.start >= limit || a.end <= a.start) continue
     const end = a.end < limit ? a.end : limit
-    const fill = a.leaf ? a.color : tint(a.color, Math.min(0.5, 0.2 + a.depth * 0.15))
+    let depthF = 0.0
+    for (let d = 0; d < a.depth; d++) depthF = depthF + 1.0
+    const tintT = 0.2 + depthF * 0.15
+    const fill = a.leaf ? a.color : tintHex(a.color, tintT > 0.5 ? 0.5 : tintT)
     out.push({ kind: 'polygon', points: arcPolygon(center, a.outerR, a.innerR, a.start, end), fill })
     if (showLabels && progress >= 1.0) {
       const midR = (a.innerR + a.outerR) / 2.0
@@ -159,49 +212,20 @@ export function hitSunburst(arcs: SunburstArc[], center: Pt, px: Double, py: Dou
   const dy = py - center.y
   const dist = Math.sqrt(dx * dx + dy * dy)
   const ang = Math.atan2(dy, dx)
-  let best: SunburstArc | null = null
-  for (const a of arcs) {
+  let bestIdx = -1
+  let bestDepth = -1
+  for (let i = 0; i < arcs.length; i++) {
+    const a = arcs[i]!
     if (dist < a.innerR || dist > a.outerR) continue
     let t = ang
-    while (t < a.start) t = t + TAU
-    while (t >= a.start + TAU) t = t - TAU
+    while (t < a.start) t = t + SUNBURST_TAU
+    while (t >= a.start + SUNBURST_TAU) t = t - SUNBURST_TAU
     if (t > a.end) continue
-    if (best === null || a.depth > best.depth) best = a
+    if (a.depth > bestDepth) {
+      bestDepth = a.depth
+      bestIdx = i
+    }
   }
-  return best
-}
-
-export interface SunburstToSvgOptions {
-  data: TreeNode[]
-  width?: Double
-  height?: Double
-  /** Hole radius as a fraction of the outer radius (0 = full disc). */
-  innerRatio?: Double
-  sunburst?: SunburstOptions
-  measure?: MeasureText
-  title?: string
-  description?: string
-  svg?: Omit<SvgOptions, 'title' | 'description'>
-}
-
-/** Sunburst → `<svg>` string, server-safe. */
-export function sunburstToSvg(options: SunburstToSvgOptions): string {
-  const width = options.width ?? 480.0
-  const height = options.height ?? 480.0
-  const center: Pt = { x: width / 2.0, y: height / 2.0 }
-  const outerR = Math.max(0.0, Math.min(width, height) / 2.0 - 4.0)
-  const innerR = outerR * (options.innerRatio ?? 0.2)
-  const arcs = layoutSunburst(options.data, innerR, outerR, options.sunburst)
-  const cmds = renderSunburst(arcs, center, options.sunburst, options.measure ?? measureApprox())
-  const leaves = arcs.filter((a) => a.leaf)
-  const description =
-    options.description ??
-    (options.title !== undefined
-      ? `${options.title}: ${treeDepth(options.data)} levels, ${leaves.length} leaves.`
-      : undefined)
-  return renderSvg(cmds, width, height, {
-    ...options.svg,
-    ...(options.title !== undefined ? { title: options.title } : {}),
-    ...(description !== undefined && description !== '' ? { description } : {}),
-  })
+  if (bestIdx < 0) return null
+  return arcs[bestIdx]!
 }

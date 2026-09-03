@@ -3,9 +3,11 @@
 import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
-import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
-import { hitPolar, layoutPolar, renderPolar } from './polar'
-import type { PolarAxes, PolarHit, PolarLayout, PolarOptions, PolarSeries } from './polar'
+import { paint, prepareCanvas } from './canvas-web'
+import { layoutPolar, renderPolar } from './polar'
+import type { PolarAxes, PolarLayout, PolarOptions, PolarSeries } from './polar'
+import { hitPolar } from './polar-hit'
+import type { PolarHit } from './polar-hit'
 import { chartTable, describeChart } from './a11y'
 import type { Double } from './types'
 
@@ -43,7 +45,7 @@ export function PolarChart(props: PolarChartProps): VNode {
     const hgt = props.height ?? 300
     const ctx = prepareCanvas(el, w, hgt)
     if (ctx === null) return
-    paint(ctx, renderPolar(layoutFor(w, hgt), props.polar, canvasMeasure(ctx, FONT)), w, hgt, FONT)
+    paint(ctx, renderPolar(layoutFor(w, hgt), props.polar), w, hgt, FONT)
   }
 
   effect(() => {

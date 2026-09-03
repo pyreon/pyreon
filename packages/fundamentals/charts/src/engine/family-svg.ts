@@ -17,6 +17,20 @@ import type { RadarAxis } from './radar'
 import { ohlcExtent, renderCandles } from './candlestick'
 import type { CandleOptions, Ohlc } from './candlestick'
 import { buildHeatGrid, HEAT_RAMP, renderHeat } from './heat'
+import { renderFunnel } from './funnel'
+import { layoutTreemap, renderTreemap } from './treemap'
+import type { TreeNode, TreemapOptions } from './treemap'
+import { layoutSunburst, renderSunburst, treeDepth } from './sunburst'
+import type { SunburstOptions } from './sunburst'
+import { layoutTree, renderTree } from './tree'
+import type { TreeOptions } from './tree'
+import { layoutRiver, renderRiver } from './river'
+import type { RiverOptions, RiverSeries } from './river'
+import { layoutPolar, renderPolar } from './polar'
+import type { PolarAxes, PolarOptions, PolarSeries } from './polar'
+import { layoutSankey, renderSankey } from './sankey'
+import type { SankeyLink, SankeyNode, SankeyOptions } from './sankey'
+import type { FunnelOptions, FunnelStage } from './funnel'
 import type { HeatGrid } from './heat'
 import { computeLayout } from './layout'
 import { niceDomain } from './scale'
@@ -28,7 +42,7 @@ import { plain } from './format'
 import type { Formatter } from './format'
 import { measureApprox, renderSvg } from './svg'
 import type { SvgOptions } from './svg'
-import type { Double, DrawCmd, MeasureText, Rect } from './types'
+import type { Double, DrawCmd, MeasureText, Pt, Rect } from './types'
 
 const LEGEND_OPTS = {
   fontSize: 11.0,
@@ -433,3 +447,237 @@ export function heatmapToSvg<T>(options: HeatmapToSvgOptions<T>): string {
 // `fitCircle`/`layoutArcs` are consumed indirectly through renderPie/renderGauge;
 // re-listed here so a reviewer sees the composition surface in one place.
 export { fitCircle, layoutArcs }
+
+// ---- funnel (svg half; the geometry in funnel.ts is bundled into the native engine) ----
+
+export interface FunnelToSvgOptions<T> {
+  data: T[]
+  value: (d: T, index: number) => Double
+  label: (d: T, index: number) => string
+  color?: (d: T, index: number) => string
+  width?: Double
+  height?: Double
+  funnel?: FunnelOptions
+  measure?: MeasureText
+  title?: string
+  description?: string
+  svg?: Omit<SvgOptions, 'title' | 'description'>
+}
+
+const FUNNEL_PALETTE = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
+
+/** Funnel → `<svg>` string, server-safe. */
+export function funnelToSvg<T>(options: FunnelToSvgOptions<T>): string {
+  const width = options.width ?? 480.0
+  const height = options.height ?? 320.0
+  const stages: FunnelStage[] = options.data.map((d, i) => ({
+    value: options.value(d, i),
+    label: options.label(d, i),
+    color: options.color !== undefined ? options.color(d, i) : FUNNEL_PALETTE[i % FUNNEL_PALETTE.length]!,
+  }))
+  const pad = 8.0
+  const cmds = renderFunnel(stages, { x: pad, y: pad, w: width - pad * 2.0, h: height - pad * 2.0 }, options.funnel)
+  void (options.measure ?? measureApprox())
+  const description =
+    options.description ??
+    (options.title !== undefined
+      ? `${options.title}: ${stages.length} stages, ${stages.map((s) => `${s.label} ${s.value}`).join(', ')}.`
+      : undefined)
+  return renderSvg(cmds, width, height, {
+    ...options.svg,
+    ...(options.title !== undefined ? { title: options.title } : {}),
+    ...(description !== undefined && description !== '' ? { description } : {}),
+  })
+}
+
+// ---- treemap + sunburst (svg halves; the geometry in treemap.ts / sunburst.ts is bundled into the native engine) ----
+
+export interface TreemapToSvgOptions {
+  data: TreeNode[]
+  width?: Double
+  height?: Double
+  treemap?: TreemapOptions
+  measure?: MeasureText
+  title?: string
+  description?: string
+  svg?: Omit<SvgOptions, 'title' | 'description'>
+}
+
+/** Treemap → `<svg>` string, server-safe. */
+export function treemapToSvg(options: TreemapToSvgOptions): string {
+  const width = options.width ?? 640.0
+  const height = options.height ?? 400.0
+  const cells = layoutTreemap(options.data, { x: 0.0, y: 0.0, w: width, h: height }, options.treemap)
+  const cmds = renderTreemap(cells, options.treemap, options.measure ?? measureApprox())
+  const leaves = cells.filter((c) => c.leaf)
+  const description =
+    options.description ??
+    (options.title !== undefined
+      ? `${options.title}: ${leaves.length} leaves, largest ${leaves.length > 0 ? leaves.reduce((a, b) => (b.value > a.value ? b : a)).name : 'none'}.`
+      : undefined)
+  return renderSvg(cmds, width, height, {
+    ...options.svg,
+    ...(options.title !== undefined ? { title: options.title } : {}),
+    ...(description !== undefined && description !== '' ? { description } : {}),
+  })
+}
+
+export interface SunburstToSvgOptions {
+  data: TreeNode[]
+  width?: Double
+  height?: Double
+  /** Hole radius as a fraction of the outer radius (0 = full disc). */
+  innerRatio?: Double
+  sunburst?: SunburstOptions
+  measure?: MeasureText
+  title?: string
+  description?: string
+  svg?: Omit<SvgOptions, 'title' | 'description'>
+}
+
+/** Sunburst → `<svg>` string, server-safe. */
+export function sunburstToSvg(options: SunburstToSvgOptions): string {
+  const width = options.width ?? 480.0
+  const height = options.height ?? 480.0
+  const center: Pt = { x: width / 2.0, y: height / 2.0 }
+  const outerR = Math.max(0.0, Math.min(width, height) / 2.0 - 4.0)
+  const innerR = outerR * (options.innerRatio ?? 0.2)
+  const arcs = layoutSunburst(options.data, innerR, outerR, options.sunburst)
+  const cmds = renderSunburst(arcs, center, options.sunburst, options.measure ?? measureApprox())
+  const leaves = arcs.filter((a) => a.leaf)
+  const description =
+    options.description ??
+    (options.title !== undefined
+      ? `${options.title}: ${treeDepth(options.data)} levels, ${leaves.length} leaves.`
+      : undefined)
+  return renderSvg(cmds, width, height, {
+    ...options.svg,
+    ...(options.title !== undefined ? { title: options.title } : {}),
+    ...(description !== undefined && description !== '' ? { description } : {}),
+  })
+}
+
+// ---- tree + theme river (svg halves; the geometry in tree.ts / river.ts is bundled into the native engine) ----
+
+export interface TreeToSvgOptions {
+  data: TreeNode[]
+  width?: Double
+  height?: Double
+  tree?: TreeOptions
+  measure?: MeasureText
+  title?: string
+  description?: string
+  svg?: Omit<SvgOptions, 'title' | 'description'>
+}
+
+/** Tree → `<svg>` string, server-safe. */
+export function treeToSvg(options: TreeToSvgOptions): string {
+  const width = options.width ?? 640.0
+  const height = options.height ?? 400.0
+  const layout = layoutTree(options.data, { x: 0.0, y: 0.0, w: width, h: height }, options.tree)
+  const cmds = renderTree(layout, options.tree)
+  void (options.measure ?? measureApprox())
+  const leaves = layout.nodes.filter((n) => n.leaf).length
+  const description =
+    options.description ??
+    (options.title !== undefined ? `${options.title}: ${layout.nodes.length} nodes, ${leaves} leaves.` : undefined)
+  return renderSvg(cmds, width, height, {
+    ...options.svg,
+    ...(options.title !== undefined ? { title: options.title } : {}),
+    ...(description !== undefined && description !== '' ? { description } : {}),
+  })
+}
+
+export interface RiverToSvgOptions {
+  series: RiverSeries[]
+  width?: Double
+  height?: Double
+  river?: RiverOptions
+  measure?: MeasureText
+  title?: string
+  description?: string
+  svg?: Omit<SvgOptions, 'title' | 'description'>
+}
+
+/** Theme river → `<svg>` string, server-safe. */
+export function riverToSvg(options: RiverToSvgOptions): string {
+  const width = options.width ?? 640.0
+  const height = options.height ?? 320.0
+  const layout = layoutRiver(options.series, { x: 8.0, y: 8.0, w: Math.max(0.0, width - 16.0), h: Math.max(0.0, height - 16.0) }, options.river)
+  const cmds = renderRiver(layout, options.river, options.measure ?? measureApprox())
+  const description =
+    options.description ??
+    (options.title !== undefined ? `${options.title}: ${options.series.length} streams over ${layout.xs.length} points (${options.series.map((s) => s.name).join(', ')}).` : undefined)
+  return renderSvg(cmds, width, height, {
+    ...options.svg,
+    ...(options.title !== undefined ? { title: options.title } : {}),
+    ...(description !== undefined && description !== '' ? { description } : {}),
+  })
+}
+
+// ---- polar (svg half; the geometry in polar.ts is bundled into the native engine) ----
+
+export interface PolarToSvgOptions {
+  axes: PolarAxes
+  series: PolarSeries[]
+  width?: Double
+  height?: Double
+  polar?: PolarOptions
+  measure?: MeasureText
+  title?: string
+  description?: string
+  svg?: Omit<SvgOptions, 'title' | 'description'>
+}
+
+/** Polar chart → `<svg>` string, server-safe. */
+export function polarToSvg(options: PolarToSvgOptions): string {
+  const width = options.width ?? 480.0
+  const height = options.height ?? 480.0
+  const layout = layoutPolar(options.axes, options.series, { x: 0.0, y: 0.0, w: width, h: height }, options.polar)
+  const cmds = renderPolar(layout, options.polar)
+  void (options.measure ?? measureApprox())
+  const description =
+    options.description ??
+    (options.title !== undefined
+      ? `${options.title}: ${options.series.length} series over ${options.axes.categories.length} categories, values ${layout.domain.min} to ${layout.domain.max}.`
+      : undefined)
+  return renderSvg(cmds, width, height, {
+    ...options.svg,
+    ...(options.title !== undefined ? { title: options.title } : {}),
+    ...(description !== undefined && description !== '' ? { description } : {}),
+  })
+}
+
+// ---- sankey (svg half; the geometry in sankey.ts is bundled into the native engine) ----
+
+export interface SankeyToSvgOptions {
+  nodes: SankeyNode[]
+  links: SankeyLink[]
+  width?: Double
+  height?: Double
+  sankey?: SankeyOptions
+  measure?: MeasureText
+  title?: string
+  description?: string
+  svg?: Omit<SvgOptions, 'title' | 'description'>
+}
+
+/** Sankey → `<svg>` string, server-safe. Leaves a label gutter on both sides. */
+export function sankeyToSvg(options: SankeyToSvgOptions): string {
+  const width = options.width ?? 640.0
+  const height = options.height ?? 400.0
+  const gutter = 80.0
+  const layout = layoutSankey(options.nodes, options.links, { x: gutter, y: 8.0, w: Math.max(0.0, width - gutter * 2.0), h: Math.max(0.0, height - 16.0) }, options.sankey)
+  const cmds = renderSankey(layout, options.sankey)
+  void (options.measure ?? measureApprox())
+  let total = 0.0
+  for (const l of layout.links) total = total + l.value
+  const description =
+    options.description ??
+    (options.title !== undefined ? `${options.title}: ${layout.nodes.length} nodes, ${layout.links.length} flows totalling ${total}.` : undefined)
+  return renderSvg(cmds, width, height, {
+    ...options.svg,
+    ...(options.title !== undefined ? { title: options.title } : {}),
+    ...(description !== undefined && description !== '' ? { description } : {}),
+  })
+}

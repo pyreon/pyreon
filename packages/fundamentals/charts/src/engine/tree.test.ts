@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { hitTree, layoutTree, linkPoints, renderTree, treeToSvg } from './tree'
+import { hitTree, layoutTree, linkPoints, renderTree } from './tree'
+import { treeToSvg } from './family-svg'
 import type { TreeNode } from './treemap'
 import { compileFamily, familyToSvg } from './option-family'
 
@@ -54,7 +55,7 @@ describe('tree layout (tidy)', () => {
     expect(nodes[1]!.leaf).toBe(true)
   })
   it('link points: curves start and end on the nodes; elbows are 4-point steps; radial spokes are straight', () => {
-    const link = { from: { x: 0, y: 0 }, to: { x: 100, y: 50 }, path: [0, 0] }
+    const link = { from: { x: 0, y: 0 }, to: { x: 100, y: 50 }, path: [0, 0], depth: 1 }
     const curve = linkPoints(link, 'LR', 'curve')
     expect(curve[0]).toEqual(link.from)
     expect(curve[curve.length - 1]).toEqual(link.to)

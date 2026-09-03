@@ -215,6 +215,26 @@ import { optionToSvg } from '@pyreon/charts/plot'
 const svg = optionToSvg({ xAxis: { data: ['Mon', 'Tue'] }, yAxis: {}, series: [{ type: 'bar', data: [120, 200] }] }, { theme: 'dark' })
 ```
 
+### Interaction, linking, Gantt, sonification, the option host
+
+```tsx
+import { PlotChart, GanttChart, OptionChart, createChartLink, sonifyValues, line, bars } from '@pyreon/charts/plot'
+
+const link = createChartLink() // ECharts `connect`: shared zoom window + crosshair datum
+<PlotChart data={price} x={(d) => d.t} marks={[line((d) => d.close)]} dataZoom navigator crosshair keyboard link={link}
+  zoomPresets={[{ label: '1m', count: 30 }, { label: '3m', count: 90 }, { label: 'All', count: 0 }]} />
+<PlotChart data={price} x={(d) => d.t} marks={[bars((d) => d.volume)]} dataZoom crosshair link={link} />
+
+const sound = sonifyValues(price.map((d) => d.close), { duration: 3000, link }) // pitch over time, crosshair follows
+<button onClick={() => void sound.play()}>Play</button>
+
+<GanttChart tasks={tasks} gantt={{ today: '2024-03-16' }} height={240} />
+
+<OptionChart option={() => echartsOption()} theme="dark" onSelect={(hit) => hit && select(hit)} />
+```
+
+`navigator` is the slider dataZoom, `zoomPresets` the range selector, `keyboard` walks the data with a focus ring and a live-region announcement, and a data change of the same shape tweens instead of snapping (`updateAnimation`). `<OptionChart>` paints cartesian plans (single or multi-`grid`, with `timeline` auto-play) on a canvas through the same `compiledCommands` the server's `optionToSvg` uses.
+
 ## Install
 
 ```bash

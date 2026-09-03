@@ -5,15 +5,10 @@
 // later, the family components) consume directly.
 
 import type { EChartsOption, OptionWarning } from './option'
-import { candlestickToSvg, gaugeToSvg, heatmapToSvg, pieToSvg, radarToSvg } from './family-svg'
-import { funnelToSvg } from './funnel'
-import { treemapToSvg } from './treemap'
+import { candlestickToSvg, funnelToSvg, gaugeToSvg, heatmapToSvg, pieToSvg, polarToSvg, radarToSvg, riverToSvg, sankeyToSvg, sunburstToSvg, treeToSvg, treemapToSvg } from './family-svg'
 import type { TreeNode, TreemapOptions } from './treemap'
-import { sunburstToSvg } from './sunburst'
 import type { SunburstOptions } from './sunburst'
-import { treeToSvg } from './tree'
 import type { TreeOptions, TreeOrient } from './tree'
-import { sankeyToSvg } from './sankey'
 import type { SankeyLink, SankeyNode, SankeyOptions } from './sankey'
 import { graphToSvg } from './graph'
 import type { GraphLink, GraphNode, GraphOptions } from './graph'
@@ -21,9 +16,7 @@ import { calendarToSvg } from './calendar'
 import type { CalendarOptions } from './calendar'
 import { parallelToSvg } from './parallel'
 import type { ParallelAxis, ParallelOptions, ParallelRow } from './parallel'
-import { polarToSvg } from './polar'
 import type { PolarAxes, PolarOptions, PolarSeries } from './polar'
-import { riverToSvg } from './river'
 import type { RiverOptions, RiverSeries } from './river'
 import { boxplotToSvg } from './boxplot'
 import type { FiveNumber } from './boxplot'
@@ -489,7 +482,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
     const axes: PolarAxes = {
       categories,
       categoryOn: radiusObj['type'] === 'category' ? 'radius' : 'angle',
-      ...(vmax !== null ? { valueDomain: [vmin ?? 0.0, vmax] as [Double, Double] } : {}),
+      ...(vmax !== null ? { valueDomain: { min: vmin ?? 0.0, max: vmax } } : {}),
       ...(startDeg !== null ? { startAngle: (-startDeg * Math.PI) / 180.0 } : {}),
       ...(angleObj['clockwise'] === false ? { clockwise: false } : {}),
     }
