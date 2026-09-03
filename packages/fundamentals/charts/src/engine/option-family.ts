@@ -28,6 +28,12 @@ import type { RiverOptions, RiverSeries } from './river'
 import { boxplotToSvg } from './boxplot'
 import type { FiveNumber } from './boxplot'
 import { resolveDataset } from './option-layer'
+import { geoToSvg, getMap } from './geo'
+import type { GeoJson, GeoOptions } from './geo'
+import { geoPointsToSvg } from './geo-points'
+import type { GeoPath, GeoPoint, GeoPointsOptions } from './geo-points'
+import { singleAxisToSvg } from './single-axis'
+import type { SingleAxisOptions, SingleAxisPoint, SingleAxisSpec } from './single-axis'
 import type { FunnelOptions } from './funnel'
 import type { RadarAxis } from './radar'
 import type { Double } from './types'
@@ -49,6 +55,9 @@ export type FamilyPlan =
   | { kind: 'polar'; axes: PolarAxes; series: PolarSeries[]; polar: PolarOptions; title: string | undefined }
   | { kind: 'themeRiver'; series: RiverSeries[]; river: RiverOptions; title: string | undefined }
   | { kind: 'boxplot'; rows: (FiveNumber & { x: string })[]; fill: string | undefined; stroke: string | undefined; title: string | undefined }
+  | { kind: 'map'; geo: GeoJson; values: Record<string, Double>; options: GeoOptions; title: string | undefined }
+  | { kind: 'geoPoints'; geo: GeoJson; points: GeoPoint[]; paths: GeoPath[]; map: GeoOptions; options: GeoPointsOptions; title: string | undefined }
+  | { kind: 'singleAxis'; axis: SingleAxisSpec; points: SingleAxisPoint[]; options: SingleAxisOptions; title: string | undefined }
 
 export interface CompiledFamily {
   plan: FamilyPlan
@@ -56,7 +65,33 @@ export interface CompiledFamily {
   supported: boolean
 }
 
-const FAMILY_TYPES = new Set(['pie', 'gauge', 'radar', 'candlestick', 'heatmap', 'funnel', 'treemap', 'sunburst', 'tree', 'sankey', 'graph', 'parallel', 'themeRiver', 'boxplot'])
+/**
+ * Families that legitimately render MORE THAN ONE series in one option — the
+ * exception carve-out on the "only one series is rendered" guard below. A Set
+ * rather than a chain of `&&` comparisons: as a chain this single line
+ * collided in four separate branches during the charts wave (polar, boxplot,
+ * geo, singleAxis each adding their own clause), because every branch reads
+ * and rewrites the SAME line. A Set turns each family's addition into its own
+ * insertion — no shared line to collide on.
+ */
+/**
+ * Families that legitimately render MORE THAN ONE series in one option — the
+ * exception carve-out on the "only one series is rendered" guard below. A Set
+ * rather than a chain of `&&` comparisons: as a chain this single line
+ * collided in four separate branches during the charts wave (polar, boxplot,
+ * geo, singleAxis each adding their own clause), because every branch reads
+ * and rewrites the SAME line. A Set turns each family's addition into its own
+ * insertion — no shared line to collide on.
+ * Families that legitimately render MORE THAN ONE series, so the
+ * "only the first series is rendered" warning must not fire for them.
+ *
+ * A Set rather than a chain of `&&` comparisons: as a chain this single line
+ * collided in four separate branches during the charts wave, because every new
+ * family had to edit it. As a Set, a family adds a MEMBER, and two families
+ * adding different members merge cleanly.
+ */
+const MULTI_SERIES_FAMILIES = new Set(['radar', 'polar', 'boxplot', 'geo', 'singleAxis'])
+const FAMILY_TYPES = new Set(['pie', 'gauge', 'radar', 'candlestick', 'heatmap', 'funnel', 'treemap', 'sunburst', 'tree', 'sankey', 'graph', 'parallel', 'themeRiver', 'boxplot', 'map'])
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const num = (v: unknown): number | null => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null
@@ -75,10 +110,10 @@ const pct = (v: unknown): number | null => {
 /** True when the option's first series is a family (non-cartesian) type. */
 export function isFamilyOption(option: EChartsOption): boolean {
   const s = first(option['series'] as unknown)
-  return isObj(s) && typeof s['type'] === 'string' && (FAMILY_TYPES.has(s['type'] as string) || s['coordinateSystem'] === 'polar')
+  return isObj(s) && typeof s['type'] === 'string' && (FAMILY_TYPES.has(s['type'] as string) || s['coordinateSystem'] === 'polar' || s['coordinateSystem'] === 'geo' || s['coordinateSystem'] === 'singleAxis')
 }
 
-const KNOWN_TOP = new Set(['series', 'title', 'legend', 'tooltip', 'color', 'radar', 'xAxis', 'yAxis', 'visualMap', 'animation', 'backgroundColor', 'textStyle', 'grid', 'calendar', 'parallel', 'parallelAxis', 'polar', 'angleAxis', 'radiusAxis', 'singleAxis', 'dataset', 'graphic'])
+const KNOWN_TOP = new Set(['series', 'title', 'legend', 'tooltip', 'color', 'radar', 'xAxis', 'yAxis', 'visualMap', 'animation', 'backgroundColor', 'textStyle', 'grid', 'calendar', 'parallel', 'parallelAxis', 'polar', 'angleAxis', 'radiusAxis', 'singleAxis', 'dataset', 'graphic', 'geo'])
 const KNOWN_BY_FAMILY: Record<string, Set<string>> = {
   pie: new Set(['type', 'name', 'data', 'radius', 'label', 'itemStyle', 'center', 'emphasis', 'color']),
   gauge: new Set(['type', 'name', 'data', 'min', 'max', 'detail', 'axisLine', 'progress', 'itemStyle', 'color']),
@@ -90,6 +125,9 @@ const KNOWN_BY_FAMILY: Record<string, Set<string>> = {
   sunburst: new Set(['type', 'name', 'data', 'radius', 'center', 'sort', 'startAngle', 'label', 'itemStyle', 'color', 'emphasis', 'nodeClick', 'levels']),
   tree: new Set(['type', 'name', 'data', 'orient', 'layout', 'symbol', 'symbolSize', 'initialTreeDepth', 'edgeShape', 'label', 'itemStyle', 'lineStyle', 'leaves', 'roam', 'expandAndCollapse', 'emphasis', 'top', 'left', 'right', 'bottom']),
   sankey: new Set(['type', 'name', 'data', 'nodes', 'links', 'edges', 'nodeWidth', 'nodeGap', 'nodeAlign', 'layoutIterations', 'orient', 'draggable', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'levels', 'top', 'left', 'right', 'bottom']),
+  singleAxis: new Set(['type', 'name', 'data', 'coordinateSystem', 'singleAxisIndex', 'symbolSize', 'symbol', 'label', 'itemStyle', 'emphasis', 'color', 'animation']),
+  geo: new Set(['type', 'name', 'data', 'coordinateSystem', 'geoIndex', 'symbolSize', 'symbol', 'label', 'itemStyle', 'lineStyle', 'effect', 'polyline', 'emphasis', 'rippleEffect', 'showEffectOn', 'color', 'animation', 'zlevel', 'z']),
+  map: new Set(['type', 'name', 'data', 'map', 'roam', 'label', 'itemStyle', 'emphasis', 'select', 'selectedMode', 'nameProperty', 'projection', 'zoom', 'center', 'aspectScale', 'layoutCenter', 'layoutSize', 'showLegendSymbol', 'geoIndex', 'left', 'top', 'right', 'bottom']),
   themeRiver: new Set(['type', 'name', 'data', 'coordinateSystem', 'singleAxisIndex', 'boundaryGap', 'label', 'itemStyle', 'emphasis', 'color', 'animation']),
   polar: new Set(['type', 'name', 'data', 'coordinateSystem', 'polarIndex', 'stack', 'itemStyle', 'lineStyle', 'label', 'emphasis', 'smooth', 'symbol', 'symbolSize', 'barWidth', 'barGap', 'barCategoryGap', 'roundCap', 'showBackground', 'backgroundStyle', 'areaStyle', 'animation', 'color']),
   parallel: new Set(['type', 'name', 'data', 'coordinateSystem', 'parallelIndex', 'lineStyle', 'emphasis', 'inactiveOpacity', 'activeOpacity', 'realtime', 'smooth', 'progressive', 'animation']),
@@ -114,13 +152,19 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
   const seriesArr = Array.isArray(option['series']) ? (option['series'] as unknown[]) : [option['series']]
   const s = seriesArr[0] as Record<string, unknown>
   const type = s['type'] as string
-  const familyKey = s['coordinateSystem'] === 'polar' ? 'polar' : type
+  const familyKey = s['coordinateSystem'] === 'polar' ? 'polar' : s['coordinateSystem'] === 'geo' ? 'geo' : s['coordinateSystem'] === 'singleAxis' ? 'singleAxis' : type
   for (const key of Object.keys(option)) if (!KNOWN_TOP.has(key)) warn('option-key-unsupported', key, `"${key}" has no mapping yet; it was ignored.`)
   for (const key of Object.keys(s)) if (!KNOWN_BY_FAMILY[familyKey]!.has(key)) warn('series-option-unsupported', `series[0].${key}`, `"${key}" has no mapping for ${type} yet; it was ignored.`)
+  // This guard has collided across the whole charts wave — polar, boxplot,
+  // and now geo each legitimately render more than one series per option.
   // Both sides carved an exception out of this guard — polar on this branch,
   // boxplot on main — and each legitimately renders more than one series. The
   // key lookup uses familyKey, which is this branch's fix for polar.
-  if (seriesArr.length > 1 && type !== 'radar' && familyKey !== 'polar' && type !== 'boxplot') {
+  // Every family that legitimately renders MORE THAN ONE series carves itself
+  // out of this guard, so each new family adds a clause and this line conflicts
+  // in every branch. (Worth turning into a set membership test rather than a
+  // chain — it has collided three times in this wave alone.)
+  if (seriesArr.length > 1 && !MULTI_SERIES_FAMILIES.has(familyKey) && !MULTI_SERIES_FAMILIES.has(type)) {
     warn('series-option-unsupported', 'series[1]', `Only one ${type} series is rendered per chart; extra series were ignored.`)
   }
   const titleRaw = first(option['title'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
@@ -253,6 +297,157 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       warnings,
       supported,
     }
+  }
+
+  if (familyKey === 'singleAxis') {
+    if (type !== 'scatter' && type !== 'effectScatter') warn('series-type-unsupported', 'series[0].type', 'Only scatter renders on a single axis; ' + type + ' was skipped.')
+    const axRaw = first(option['singleAxis'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
+    const ax = isObj(axRaw) ? axRaw : {}
+    const isCat = ax['type'] === 'category'
+    const cats = Array.isArray(ax['data']) ? (ax['data'] as unknown[]).map((c) => (typeof c === 'string' ? c : isObj(c) && typeof c['value'] === 'string' ? (c['value'] as string) : String(c))) : undefined
+    const lo = num(ax['min'])
+    const hi = num(ax['max'])
+    const axis: SingleAxisSpec = {
+      type: isCat ? 'category' : 'value',
+      ...(isCat ? { categories: cats ?? [] } : {}),
+      ...(!isCat && lo !== null && hi !== null ? { domain: [lo, hi] as [Double, Double] } : {}),
+      ...(typeof ax['name'] === 'string' ? { name: ax['name'] as string } : {}),
+    }
+    const points: SingleAxisPoint[] = []
+    if (type === 'scatter' || type === 'effectScatter') {
+      for (let i = 0; i < data.length; i++) {
+        const d = data[i]
+        const arr = Array.isArray(d) ? d : isObj(d) && Array.isArray(d['value']) ? (d['value'] as unknown[]) : isObj(d) ? [d['value']] : [d]
+        const x = num(arr[0])
+        if (x === null) {
+          warn('series-data-shape', 'series[0].data[' + String(i) + ']', 'A single-axis datum must be a value or [position, size]; it was skipped.')
+          continue
+        }
+        const size = num(arr[1])
+        const item = isObj(d) && isObj(d['itemStyle']) ? d['itemStyle'] : {}
+        points.push({
+          x,
+          ...(size !== null ? { size } : {}),
+          ...(isObj(d) && typeof d['name'] === 'string' ? { name: d['name'] as string } : {}),
+          ...(typeof item['color'] === 'string' ? { color: item['color'] as string } : {}),
+        })
+      }
+    }
+    const label = isObj(s['label']) ? s['label'] : {}
+    const item = isObj(s['itemStyle']) ? s['itemStyle'] : {}
+    const size = num(s['symbolSize'])
+    const options: SingleAxisOptions = {
+      showLabels: label['show'] === true,
+      ...(size !== null ? { radius: size / 2.0 } : {}),
+      ...(typeof item['color'] === 'string' ? { color: item['color'] as string } : {}),
+    }
+    return { plan: { kind: 'singleAxis', axis, points, options, title }, warnings, supported }
+  }
+
+  if (familyKey === 'geo') {
+    if (type !== 'scatter' && type !== 'effectScatter' && type !== 'lines') {
+      warn('series-type-unsupported', 'series[0].type', 'Only scatter, effectScatter and lines render on the geo coordinate; ' + type + ' was skipped.')
+    }
+    const geoCfg = first(option['geo'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
+    const geoObj = isObj(geoCfg) ? geoCfg : {}
+    const mapName = typeof geoObj['map'] === 'string' ? (geoObj['map'] as string) : ''
+    const found = getMap(mapName)
+    if (found === null) warn('series-option-unsupported', 'geo.map', 'Map "' + mapName + '" is not registered (call registerMap first); nothing was drawn.')
+    const geo: GeoJson = found ?? { type: 'FeatureCollection', features: [] }
+    const geoItem = isObj(geoObj['itemStyle']) ? geoObj['itemStyle'] : {}
+    const map: GeoOptions = {
+      ...(typeof geoItem['borderColor'] === 'string' ? { borderColor: geoItem['borderColor'] as string } : {}),
+      ...(typeof geoItem['areaColor'] === 'string' ? { emptyColor: geoItem['areaColor'] as string } : {}),
+    }
+    const points: GeoPoint[] = []
+    if (type === 'scatter' || type === 'effectScatter') {
+      for (let i = 0; i < data.length; i++) {
+        const d = data[i]
+        const arr = Array.isArray(d) ? d : isObj(d) && Array.isArray(d['value']) ? (d['value'] as unknown[]) : null
+        const lon = arr === null ? null : num(arr[0])
+        const lat = arr === null ? null : num(arr[1])
+        if (arr === null || lon === null || lat === null) {
+          warn('series-data-shape', 'series[0].data[' + String(i) + ']', 'A geo scatter datum must be [lon, lat, value?]; it was skipped.')
+          continue
+        }
+        const v = num(arr[2])
+        const item = isObj(d) && isObj(d['itemStyle']) ? d['itemStyle'] : {}
+        points.push({
+          lon,
+          lat,
+          ...(isObj(d) && typeof d['name'] === 'string' ? { name: d['name'] as string } : {}),
+          ...(v !== null ? { value: v } : {}),
+          ...(typeof item['color'] === 'string' ? { color: item['color'] as string } : {}),
+        })
+      }
+    }
+    const paths: GeoPath[] = []
+    if (type === 'lines') {
+      const ls = isObj(s['lineStyle']) ? s['lineStyle'] : {}
+      for (let i = 0; i < data.length; i++) {
+        const d = data[i]
+        const coords = Array.isArray(d) ? d : isObj(d) && Array.isArray(d['coords']) ? (d['coords'] as unknown[]) : null
+        const pairs: [Double, Double][] = []
+        for (const c of coords ?? []) {
+          const lon = Array.isArray(c) ? num(c[0]) : null
+          const lat = Array.isArray(c) ? num(c[1]) : null
+          if (lon !== null && lat !== null) pairs.push([lon, lat])
+        }
+        if (pairs.length < 2) {
+          warn('series-data-shape', 'series[0].data[' + String(i) + ']', 'A geo lines datum needs coords with at least two [lon, lat] pairs; it was skipped.')
+          continue
+        }
+        const dls = isObj(d) && isObj(d['lineStyle']) ? d['lineStyle'] : {}
+        const color = typeof dls['color'] === 'string' ? (dls['color'] as string) : typeof ls['color'] === 'string' ? (ls['color'] as string) : undefined
+        const width = num(dls['width']) ?? num(ls['width'])
+        paths.push({ coords: pairs, ...(color !== undefined ? { color } : {}), ...(width !== null ? { width } : {}) })
+      }
+    }
+    const label = isObj(s['label']) ? s['label'] : {}
+    const item = isObj(s['itemStyle']) ? s['itemStyle'] : {}
+    const size = num(s['symbolSize'])
+    const options: GeoPointsOptions = {
+      showLabels: label['show'] === true,
+      effect: type === 'effectScatter',
+      ...(size !== null ? { radius: size / 2.0 } : {}),
+      ...(typeof item['color'] === 'string' ? { color: item['color'] as string } : {}),
+    }
+    return { plan: { kind: 'geoPoints', geo, points, paths, map, options, title }, warnings, supported }
+  }
+
+  if (type === 'map') {
+    const mapName = typeof s['map'] === 'string' ? (s['map'] as string) : ''
+    const found = getMap(mapName)
+    if (found === null) warn('series-option-unsupported', 'series[0].map', 'Map "' + mapName + '" is not registered (call registerMap first); nothing was drawn.')
+    const geo: GeoJson = found ?? { type: 'FeatureCollection', features: [] }
+    const values: Record<string, Double> = {}
+    for (let i = 0; i < data.length; i++) {
+      const d = data[i]
+      const v = isObj(d) ? num(d['value']) : null
+      if (!isObj(d) || typeof d['name'] !== 'string' || v === null) {
+        warn('series-data-shape', 'series[0].data[' + String(i) + ']', 'A map datum must be { name, value }; it was skipped.')
+        continue
+      }
+      values[d['name'] as string] = v
+    }
+    const label = isObj(s['label']) ? s['label'] : {}
+    const item = isObj(s['itemStyle']) ? s['itemStyle'] : {}
+    const vm = first(option['visualMap'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
+    const stops = isObj(vm) && isObj(vm['inRange']) && Array.isArray(vm['inRange']['color'])
+      ? (vm['inRange']['color'] as unknown[]).filter((c): c is string => typeof c === 'string')
+      : []
+    const vmMin = isObj(vm) ? num(vm['min']) : null
+    const vmMax = isObj(vm) ? num(vm['max']) : null
+    if (s['roam'] === true) warn('series-option-unsupported', 'series[0].roam', 'Map roaming (pan/zoom) is not supported yet; the map is static.')
+    const options: GeoOptions = {
+      showLabels: label['show'] === true,
+      ...(typeof s['nameProperty'] === 'string' ? { nameProperty: s['nameProperty'] as string } : {}),
+      ...(typeof item['borderColor'] === 'string' ? { borderColor: item['borderColor'] as string } : {}),
+      ...(num(item['borderWidth']) !== null ? { borderWidth: num(item['borderWidth']) as number } : {}),
+      ...(stops.length >= 2 ? { stops } : {}),
+      ...(vmMin !== null && vmMax !== null ? { domain: [vmMin, vmMax] as [Double, Double] } : {}),
+    }
+    return { plan: { kind: 'map', geo, values, options, title }, warnings, supported }
   }
 
   if (type === 'themeRiver') {
@@ -807,6 +1002,35 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
         ...(plan.title !== undefined ? { title: plan.title } : {}),
       })
     }
+    case 'singleAxis':
+      return singleAxisToSvg({
+        axis: plan.axis,
+        points: plan.points,
+        options: plan.options,
+        width,
+        height,
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
+    case 'geoPoints':
+      return geoPointsToSvg({
+        geo: plan.geo,
+        points: plan.points,
+        paths: plan.paths,
+        map: plan.map,
+        options: plan.options,
+        width,
+        height,
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
+    case 'map':
+      return geoToSvg({
+        geo: plan.geo,
+        values: plan.values,
+        options: plan.options,
+        width,
+        height,
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
     case 'themeRiver':
       return riverToSvg({
         series: plan.series,
