@@ -28,10 +28,16 @@
  * fallback that resolves ASYNCHRONOUSLY (async `.refine`/`.transform`/
  * registered `.serverCheck` under `parseAsync`) is deferred onto a pending
  * list the root return awaits — interpreter parity for async trees, zero
- * cost on the all-sync path (the list stays `null`). Schemas it can't JIT
- * at all (non-object root, root with its own checks, non-strip root) return
- * `null` → the caller uses the interpreter. Always correct; fast wherever
- * it can be.
+ * cost on the all-sync path (the list stays `null`).
+ *
+ * Four ROOTS compile: an object root (no own checks; `strip` key policy, plus
+ * `passthrough`/`strict` in verdict mode), an inline array root, an inline
+ * PRIMITIVE root (`s.number().int().min(0)` and friends — its `typeof` and
+ * cheap check conditions inline with zero closure calls), and a
+ * discriminated-union root. Every other root — plain union, record, tuple,
+ * map, set, intersection, lazy, coerce, modifier-wrapped — gains nothing from
+ * flattening and returns `null`, so the interpreter keeps it. Always correct;
+ * fast wherever it can be.
  *
  * Assignment is prototype-pollution-safe at every level (a `__proto__` key
  * is written via `Object.defineProperty`, never `obj.__proto__ =`).
