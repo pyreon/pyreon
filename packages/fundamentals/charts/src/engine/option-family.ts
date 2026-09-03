@@ -5,15 +5,15 @@
 // later, the family components) consume directly.
 
 import type { EChartsOption, OptionWarning } from './option'
-import { calendarToSvg, candlestickToSvg, funnelToSvg, gaugeToSvg, graphToSvg, heatmapToSvg, pieToSvg, polarToSvg, radarToSvg, riverToSvg, sankeyToSvg, sunburstToSvg, treeToSvg, treemapToSvg } from './family-svg'
+import { calendarToSvg, candlestickToSvg, funnelToSvg, gaugeToSvg, graphToSvg, heatmapToSvg, parallelToSvg, pieToSvg, polarToSvg, radarToSvg, riverToSvg, sankeyToSvg, sunburstToSvg, treeToSvg, treemapToSvg } from './family-svg'
 import type { TreeNode, TreemapOptions } from './treemap'
 import type { SunburstOptions } from './sunburst'
 import type { TreeOptions, TreeOrient } from './tree'
 import type { SankeyLink, SankeyNode, SankeyOptions } from './sankey'
 import type { GraphLink, GraphNode, GraphOptions } from './graph'
 import type { CalendarOptions } from './calendar'
-import { parallelToSvg } from './parallel'
-import type { ParallelAxis, ParallelOptions, ParallelRow } from './parallel'
+import type { ParallelAxis, ParallelOptions } from './parallel'
+import type { ParallelRow } from './parallel-web'
 import type { PolarAxes, PolarOptions, PolarSeries } from './polar'
 import type { RiverOptions, RiverSeries } from './river'
 import { boxplotToSvg } from './boxplot'
@@ -518,7 +518,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       axes[at] = {
         name: typeof ao['name'] === 'string' ? (ao['name'] as string) : 'dim ' + String(at),
         ...(ao['type'] === 'category' ? { type: 'category' as const, categories: cats ?? [] } : {}),
-        ...(ao['type'] !== 'category' && lo !== null && hi !== null ? { domain: [lo, hi] as [Double, Double] } : {}),
+        ...(ao['type'] !== 'category' && lo !== null && hi !== null ? { domain: { min: lo, max: hi } } : {}),
         ...(ao['inverse'] === true ? { inverse: true } : {}),
       }
     }
