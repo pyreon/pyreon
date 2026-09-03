@@ -8909,7 +8909,61 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     return null
   }
 
-  return { kind: 'flow-state', name, nodes: nodesOut, edges: edgesOut }
+  // `minZoom`/`maxZoom` thread straight through — BOTH native constructors
+  // already take them, so the runtime was never the blocker here; only this
+  // reader was. A non-literal value (a variable, an expression) is left to the
+  // unhandled-key warning below rather than half-lowered.
+  const literalNumber = (n: AnyNode | undefined): number | undefined =>
+    n?.type === 'Literal' && typeof n.value === 'number' ? (n.value as number) : undefined
+  const minZoom = literalNumber(objProp(configArg, 'minZoom'))
+  const maxZoom = literalNumber(objProp(configArg, 'maxZoom'))
+
+  // Every OTHER key the user wrote lowers to NOTHING. That is a behavioural
+  // divergence from the same source line — `createFlow({ …, fitView: true })`
+  // auto-fits on web and does not natively; `minZoom: 0.5` clamps zoom to 2x on
+  // web and 4x natively — and it used to happen in total silence, which is what
+  // makes this class expensive: the code compiles, runs, and is simply wrong on
+  // one target. Naming the keys is the whole fix; the alternative (guessing a
+  // native equivalent for `snapToGrid`) would be worse than saying so.
+  const HANDLED_FLOW_CONFIG_KEYS = new Set(['nodes', 'edges', 'minZoom', 'maxZoom'])
+  const droppedKeys: string[] = []
+  for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
+    if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
+    const keyNode = prop.key as AnyNode | undefined
+    const keyName =
+      keyNode?.type === 'Identifier'
+        ? (keyNode.name as string)
+        : keyNode?.type === 'Literal'
+          ? String(keyNode.value)
+          : undefined
+    if (keyName === undefined || HANDLED_FLOW_CONFIG_KEYS.has(keyName)) continue
+    droppedKeys.push(keyName)
+  }
+  // `minZoom`/`maxZoom` written as a NON-literal are handled but unlowerable —
+  // report them here too rather than letting a variable silently take defaults.
+  for (const k of ['minZoom', 'maxZoom'] as const) {
+    if (objProp(configArg, k) !== undefined && literalNumber(objProp(configArg, k)) === undefined) {
+      droppedKeys.push(`${k} (not a numeric literal)`)
+    }
+  }
+  if (droppedKeys.length > 0) {
+    ctx.warnings.push(
+      `createFlow declaration \`${name}\`: ${droppedKeys.map((k) => `\`${k}\``).join(', ')} ` +
+        `${droppedKeys.length === 1 ? 'is' : 'are'} NOT lowered natively — the native PyreonFlowState ` +
+        `uses its own defaults, so this diagram behaves differently on web than on iOS/Android from ` +
+        `the SAME source. Only \`nodes\`, \`edges\`, \`minZoom\` and \`maxZoom\` (numeric literals) cross today. ` +
+        `Set the rest from hand-written native code, or keep the JSX editor on the \`@pyreon/flow/webview\` bridge.`,
+    )
+  }
+
+  return {
+    kind: 'flow-state',
+    name,
+    nodes: nodesOut,
+    edges: edgesOut,
+    ...(minZoom !== undefined ? { minZoom } : {}),
+    ...(maxZoom !== undefined ? { maxZoom } : {}),
+  }
 }
 
 /**

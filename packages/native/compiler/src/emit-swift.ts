@@ -3738,7 +3738,13 @@ function emitSwiftDecl(
         return `PyreonFlowEdge(${parts.join(', ')})`
       })
       .join(', ')
-    return `@State private var ${swiftIdent(d.name)} = PyreonFlowState<${rowType}>(nodes: [${nodeLits}], edges: [${edgeLits}])`
+    // `minZoom`/`maxZoom` are appended ONLY when the config supplied them, so
+    // an unconfigured `createFlow` emits byte-identically to before.
+    const zoomArgs = [
+      ...(d.minZoom !== undefined ? [`minZoom: ${d.minZoom}`] : []),
+      ...(d.maxZoom !== undefined ? [`maxZoom: ${d.maxZoom}`] : []),
+    ].join(', ')
+    return `@State private var ${swiftIdent(d.name)} = PyreonFlowState<${rowType}>(nodes: [${nodeLits}], edges: [${edgeLits}]${zoomArgs === '' ? '' : `, ${zoomArgs}`})`
   }
   // computed — infer the return type from the expression body so we
   // can emit a typed computed property. Falls back to `Any` for cases
