@@ -23,6 +23,8 @@ import { parallelToSvg } from './parallel'
 import type { ParallelAxis, ParallelOptions, ParallelRow } from './parallel'
 import { polarToSvg } from './polar'
 import type { PolarAxes, PolarOptions, PolarSeries } from './polar'
+import { boxplotToSvg } from './boxplot'
+import type { FiveNumber } from './boxplot'
 import type { FunnelOptions } from './funnel'
 import type { RadarAxis } from './radar'
 import type { Double } from './types'
@@ -42,6 +44,7 @@ export type FamilyPlan =
   | { kind: 'calendar'; start: string; end: string; values: Record<string, Double>; calendar: CalendarOptions; title: string | undefined }
   | { kind: 'parallel'; axes: ParallelAxis[]; rows: ParallelRow[]; parallel: ParallelOptions; title: string | undefined }
   | { kind: 'polar'; axes: PolarAxes; series: PolarSeries[]; polar: PolarOptions; title: string | undefined }
+  | { kind: 'boxplot'; rows: (FiveNumber & { x: string })[]; fill: string | undefined; stroke: string | undefined; title: string | undefined }
 
 export interface CompiledFamily {
   plan: FamilyPlan
@@ -49,7 +52,7 @@ export interface CompiledFamily {
   supported: boolean
 }
 
-const FAMILY_TYPES = new Set(['pie', 'gauge', 'radar', 'candlestick', 'heatmap', 'funnel', 'treemap', 'sunburst', 'tree', 'sankey', 'graph', 'parallel'])
+const FAMILY_TYPES = new Set(['pie', 'gauge', 'radar', 'candlestick', 'heatmap', 'funnel', 'treemap', 'sunburst', 'tree', 'sankey', 'graph', 'parallel', 'boxplot'])
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const num = (v: unknown): number | null => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null
@@ -86,6 +89,7 @@ const KNOWN_BY_FAMILY: Record<string, Set<string>> = {
   polar: new Set(['type', 'name', 'data', 'coordinateSystem', 'polarIndex', 'stack', 'itemStyle', 'lineStyle', 'label', 'emphasis', 'smooth', 'symbol', 'symbolSize', 'barWidth', 'barGap', 'barCategoryGap', 'roundCap', 'showBackground', 'backgroundStyle', 'areaStyle', 'animation', 'color']),
   parallel: new Set(['type', 'name', 'data', 'coordinateSystem', 'parallelIndex', 'lineStyle', 'emphasis', 'inactiveOpacity', 'activeOpacity', 'realtime', 'smooth', 'progressive', 'animation']),
   graph: new Set(['type', 'name', 'data', 'nodes', 'links', 'edges', 'categories', 'layout', 'symbol', 'symbolSize', 'force', 'circular', 'roam', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'draggable', 'edgeSymbol', 'edgeSymbolSize', 'focusNodeAdjacency', 'zoom', 'center', 'left', 'top', 'right', 'bottom', 'width', 'height', 'coordinateSystem']),
+  boxplot: new Set(['type', 'name', 'data', 'itemStyle', 'color', 'boxWidth', 'emphasis']),
 }
 
 /**
@@ -105,7 +109,10 @@ export function compileFamily(option: EChartsOption): CompiledFamily | null {
   const familyKey = s['coordinateSystem'] === 'polar' ? 'polar' : type
   for (const key of Object.keys(option)) if (!KNOWN_TOP.has(key)) warn('option-key-unsupported', key, `"${key}" has no mapping yet; it was ignored.`)
   for (const key of Object.keys(s)) if (!KNOWN_BY_FAMILY[familyKey]!.has(key)) warn('series-option-unsupported', `series[0].${key}`, `"${key}" has no mapping for ${type} yet; it was ignored.`)
-  if (seriesArr.length > 1 && type !== 'radar' && familyKey !== 'polar') {
+  // Both sides carved an exception out of this guard — polar on this branch,
+  // boxplot on main — and each legitimately renders more than one series. The
+  // key lookup uses familyKey, which is this branch's fix for polar.
+  if (seriesArr.length > 1 && type !== 'radar' && familyKey !== 'polar' && type !== 'boxplot') {
     warn('series-option-unsupported', 'series[1]', `Only one ${type} series is rendered per chart; extra series were ignored.`)
   }
   const titleRaw = first(option['title'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
@@ -625,6 +632,47 @@ export function compileFamily(option: EChartsOption): CompiledFamily | null {
     return { plan: { kind: 'funnel', rows, funnel, title }, warnings, supported }
   }
 
+  if (type === 'boxplot') {
+    const xAxis = first(option['xAxis'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
+    const cats = isObj(xAxis) && Array.isArray(xAxis['data']) ? (xAxis['data'] as unknown[]).map((c) => String(c)) : []
+    const rows: (FiveNumber & { x: string })[] = []
+    for (let i = 0; i < data.length; i++) {
+      const d = data[i]
+      const arr = Array.isArray(d) ? d : isObj(d) && Array.isArray(d['value']) ? (d['value'] as unknown[]) : null
+      // ECharts boxplot tuples are [min, Q1, median, Q3, max].
+      if (arr === null || arr.length < 5) {
+        warn('series-data-shape', `series[0].data[${i}]`, 'A boxplot datum is [min, Q1, median, Q3, max]; it was skipped.')
+        continue
+      }
+      rows.push({ x: cats[i] ?? String(i + 1), min: num(arr[0]) ?? 0.0, q1: num(arr[1]) ?? 0.0, median: num(arr[2]) ?? 0.0, q3: num(arr[3]) ?? 0.0, max: num(arr[4]) ?? 0.0, outliers: [] })
+    }
+    // A companion scatter series carries the outliers as [categoryIndex, value].
+    for (let si = 1; si < seriesArr.length; si++) {
+      const rs = seriesArr[si]
+      if (!isObj(rs) || rs['type'] !== 'scatter' || !Array.isArray(rs['data'])) continue
+      for (const pt of rs['data'] as unknown[]) {
+        if (!Array.isArray(pt) || pt.length < 2) continue
+        const ci = num(pt[0])
+        const v = num(pt[1])
+        if (ci === null || v === null) continue
+        const row = rows[ci]
+        if (row !== undefined) row.outliers.push(v)
+      }
+    }
+    const item = isObj(s['itemStyle']) ? s['itemStyle'] : {}
+    return {
+      plan: {
+        kind: 'boxplot',
+        rows,
+        fill: typeof item['color'] === 'string' ? (item['color'] as string) : undefined,
+        stroke: typeof item['borderColor'] === 'string' ? (item['borderColor'] as string) : undefined,
+        title,
+      },
+      warnings,
+      supported,
+    }
+  }
+
   // heatmap
   const xAxis = first(option['xAxis'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
   const yAxis = first(option['yAxis'] as Record<string, unknown> | Record<string, unknown>[] | undefined)
@@ -796,6 +844,18 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
         width,
         height,
         ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
+    case 'boxplot':
+      return boxplotToSvg({
+        data: plan.rows,
+        values: () => [],
+        x: (d) => d.x,
+        width,
+        height,
+        box: { fill: plan.fill, stroke: plan.stroke },
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+        // Summaries are already computed; feed them straight through.
+        summaries: plan.rows,
       })
     default:
       return heatmapToSvg({

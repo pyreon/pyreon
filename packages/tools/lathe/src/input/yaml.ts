@@ -133,6 +133,36 @@ function parseSeq(lines: Line[], start: number, indent: number): [unknown[], num
   return [items, i]
 }
 
+/**
+ * Assign one parsed mapping entry.
+ *
+ * `map[key] = value` is wrong for exactly two keys, and wrong SILENTLY:
+ * `__proto__` runs the accessor inherited from `Object.prototype`, which
+ * REPLACES the object's prototype instead of adding a key — so the key
+ * vanishes from the parsed document while its value's properties leak into
+ * every subsequent member read on that object. `constructor` is not an
+ * accessor, so plain assignment does define it, but a spec that names it
+ * is worth treating the same way rather than relying on that distinction.
+ *
+ * A spec reaches this parser over the network (`lathe pull <url>` fetches
+ * one and writes it to disk), and the IR it produces is what the emitters
+ * turn into SOURCE — so a key that silently disappears, or a property that
+ * silently appears, is a code-generation input the author never wrote.
+ *
+ * The fix is to do what `JSON.parse` already does for the `.json` half of
+ * this same reader: define the property rather than assign it, so
+ * `__proto__` becomes an ordinary own key and nothing is lost or injected.
+ * Without this the two input formats disagree about the same document.
+ */
+function setKey(map: Record<string, unknown>, key: string, value: unknown): void {
+  Object.defineProperty(map, key, {
+    value,
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  })
+}
+
 function parseMap(lines: Line[], start: number, indent: number): [Record<string, unknown>, number] {
   const map: Record<string, unknown> = {}
   let i = start
@@ -148,28 +178,28 @@ function parseMap(lines: Line[], start: number, indent: number): [Record<string,
       const next = lines[i + 1]
       if (next && next.indent > line.indent) {
         const [v, ni] = parseBlock(lines, i + 1, next.indent)
-        map[key] = v
+        setKey(map, key, v)
         i = ni
         continue
       }
       // A sequence may sit at the SAME indent as its key — legal YAML.
       if (next && next.indent === line.indent && next.text.startsWith('-')) {
         const [v, ni] = parseSeq(lines, i + 1, line.indent)
-        map[key] = v
+        setKey(map, key, v)
         i = ni
         continue
       }
-      map[key] = null
+      setKey(map, key, null)
       i += 1
       continue
     }
     if (rest === '|' || rest === '>' || /^[|>][-+]?$/.test(rest)) {
       const [text, ni] = parseBlockScalar(lines, i + 1, line.indent, rest.startsWith('>'))
-      map[key] = text
+      setKey(map, key, text)
       i = ni
       continue
     }
-    map[key] = scalar(rest, line.n)
+    setKey(map, key, scalar(rest, line.n))
     i += 1
   }
   return [map, i]
@@ -313,7 +343,7 @@ function parseFlow(src: string, line: number): unknown {
       skipWs()
       if (src[pos] !== ':') throw new YamlError('expected ":" in flow mapping', line)
       pos++
-      out[key] = readValue()
+      setKey(out, key, readValue())
       skipWs()
       if (src[pos] === ',') { pos++; continue }
       if (src[pos] === '}') { pos++; return out }

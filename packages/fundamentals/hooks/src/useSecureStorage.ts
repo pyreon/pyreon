@@ -51,6 +51,8 @@
 /** The imperative secret-store surface — identical on web, iOS (Keychain)
  * and Android (Keystore). All methods are synchronous (secrets are small
  * strings). */
+import { isServer } from '@pyreon/reactivity'
+
 export interface SecureStorage {
   /** Persist `value` at `key` (KEY FIRST — overwrites). Returns true on
    * success. */
@@ -66,6 +68,11 @@ export interface SecureStorage {
 
 // Module-scoped: the secret store is app-wide, like the Keychain/Keystore
 // it mirrors. Never serialized, never persisted — see the header.
+//
+// "App-wide" is the right scope for a BROWSER, where one process serves one
+// user. It is the wrong scope for a SERVER, where one process serves everyone:
+// a component that writes a secret during SSR would leave it in this map for
+// every LATER request to read. See `serverSecureStorage` below.
 const memoryStore = new Map<string, string>()
 
 const webSecureStorage: SecureStorage = {
@@ -85,6 +92,28 @@ const webSecureStorage: SecureStorage = {
   },
 }
 
+/**
+ * The server arm: an inert store.
+ *
+ * There is no Keychain, no Keystore and no browser process on the server, so
+ * there is nothing for this hook to mirror — and the module-scoped map the web
+ * arm uses is shared by every request the process serves. A component that
+ * wrote a session token during SSR would leave it there for the NEXT visitor to
+ * read, which is a cross-request secret leak rather than a persistence quirk.
+ *
+ * Returning an empty store is the honest answer and it is also the consistent
+ * one: every caller within a render sees the same (empty) result, and nothing
+ * crosses a request boundary. `write` returns `false` because it did not store
+ * anything — a caller that needs server-side secrets should read them from the
+ * request context or the environment, not from a Keychain mirror.
+ */
+const serverSecureStorage: SecureStorage = {
+  write: () => false,
+  read: () => null,
+  remove: () => true, // idempotent: nothing is stored, so it is already gone
+  contains: () => false,
+}
+
 export function useSecureStorage(): SecureStorage {
-  return webSecureStorage
+  return isServer ? serverSecureStorage : webSecureStorage
 }
