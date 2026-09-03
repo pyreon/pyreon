@@ -67,6 +67,7 @@ export const ENGINE_FILES = [
   'title',
   'legend',
   'bubble',
+  'zoom',
 ] as const
 
 const RENAMES: ReadonlyArray<readonly [string, string]> = [

@@ -430,6 +430,11 @@ export function conditionalKotlinImports(emitted: string): string {
   if (emitted.includes('detectHorizontalDragGestures(')) {
     imports.push('import androidx.compose.foundation.gestures.detectHorizontalDragGestures')
   }
+  // `<PlotChart dataZoom>` (chart-hosts.ts): the pinch + pan lower to
+  // `detectTransformGestures`, same sub-package, same stub-masked class.
+  if (emitted.includes('detectTransformGestures')) {
+    imports.push('import androidx.compose.foundation.gestures.detectTransformGestures')
+  }
   // M3.1 haptics (`const h = useHaptics()`): the Compose haptic surface
   // `LocalHapticFeedback` lives in androidx.compose.ui.platform — NOT
   // covered by the star-imported androidx.compose.ui.* (single-package).

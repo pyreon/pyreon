@@ -212,6 +212,8 @@ function expectedStructForKotlin(fields: readonly { name: string }[]): string | 
   return st.name
 }
 
+/** The declared return type of the top-level function being emitted; steers a `return { … }` literal to its named struct. */
+let _currentReturnTypeKotlin: TypeIR | undefined
 function withExpectedTypeKotlin<T>(t: TypeIR | undefined, fn: () => T): T {
   const prev = _expectedTypeKotlin
   _expectedTypeKotlin = t
@@ -311,6 +313,8 @@ let _helperFnNames: Set<string> = new Set()
  * `derivedStateOf` mostly self-infers, but a helper call in a typed position
  * still benefits). */
 let _helperReturns: Map<string, TypeIR> = new Map()
+let _helperParamTypesKotlin: Map<string, TypeIR[]> = new Map()
+const _argExpectedTypesKotlin: WeakMap<object, TypeIR> = new WeakMap()
 /**
  * Mirror of emit-swift's `_zeroArgFnNames` — see its doc comment. Kotlin is
  * the LOUD half of that bug: a bare zero-arg fn reference in a Text
@@ -471,6 +475,7 @@ export function emitKotlin(
   // free-function call in ANY component.
   _helperFnNames = new Set(helperFns.map((h) => h.name))
   _helperReturns = new Map(helperFns.map((h) => [h.name, h.returnType]))
+  _helperParamTypesKotlin = new Map(helperFns.map((h) => [h.name, h.params.map((p) => p.type)]))
   _zeroArgHelperNames = new Set(helperFns.filter((h) => h.params.length === 0).map((h) => h.name))
   _constStringMapKotlin = new Map()
   _kotlinStoreDefs = stores
@@ -3073,6 +3078,7 @@ function emitKotlinFunction(
   // Register PARAM types in the infer ctx for the body emit — the Swift
   // twin's paramSaved: a `n: Double` fn param otherwise infers unknown, so
   // a count-loop over it cannot wrap its Double bound (`0 until n`).
+  let prevReturnType: TypeIR | undefined
   const kParamSaved = d.params.map((p) => ({
     name: p.name,
     had: _kotlinExprInferCtx.locals.has(p.name),
@@ -3080,6 +3086,7 @@ function emitKotlinFunction(
   }))
   for (const p of d.params) _kotlinExprInferCtx.locals.set(p.name, p.type)
   const kParamRestore = (): void => {
+    _currentReturnTypeKotlin = prevReturnType
     for (const sv of kParamSaved) {
       if (sv.had) _kotlinExprInferCtx.locals.set(sv.name, sv.prev!)
       else _kotlinExprInferCtx.locals.delete(sv.name)
@@ -3088,12 +3095,15 @@ function emitKotlinFunction(
   // Kotlin function return-type clause. Unknown return type degrades
   // to `Unit` (void); a known return type emits as `: T`.
   const retType = d.returnType.kind === 'unknown' ? '' : `: ${kotlinType(d.returnType, ctx)}`
+  prevReturnType = _currentReturnTypeKotlin
+  _currentReturnTypeKotlin = d.returnType.kind === 'unknown' ? undefined : d.returnType
   if (
     d.body.length === 1 &&
     d.body[0]!.kind === 'return' &&
     d.body[0]!.expr !== undefined
   ) {
-    const concise = emitKotlinExpr((d.body[0]! as { expr: ExprIR }).expr, 0)
+    const conciseExpr = (d.body[0]! as { expr: ExprIR }).expr
+    const concise = withExpectedTypeKotlin(conciseExpr.kind === 'object' ? _currentReturnTypeKotlin : undefined, () => emitKotlinExpr(conciseExpr, 0))
     // An expression that LOWERS to an assignment (`.set` / `.update` on
     // a signal or store field → `x = v`) cannot use the
     // expression-body form — Kotlin assignments are statements, so
@@ -3228,7 +3238,10 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       // (e.g. multi-statement `derivedStateOf { … }` bodies) so kotlinc
       // doesn't reject with "'return' is prohibited here".
       const keyword = ctx.lambdaLabel ? `return@${ctx.lambdaLabel}` : 'return'
-      return s.expr ? `${keyword} ${emitKotlinExpr(s.expr, indent)}` : keyword
+      const ex = s.expr
+      if (ex === undefined) return keyword
+      // A returned object literal takes the enclosing function's declared struct.
+      return `${keyword} ${withExpectedTypeKotlin(ex.kind === 'object' ? _currentReturnTypeKotlin : undefined, () => emitKotlinExpr(ex, indent))}`
     }
     case 'expr':
       // A bare `i++` / `i--` STATEMENT is side-effect-only → `i += 1` /
@@ -3730,6 +3743,15 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // conditionalKotlinImports); the kotlinc stub fakes it as a Json member.
       return `Json.encodeToString(${emitKotlinExpr(e.arg, indent)})`
     case 'call': {
+      if (e.callee.kind === 'identifier') {
+        const paramTypes = _helperParamTypesKotlin.get(e.callee.name)
+        if (paramTypes !== undefined) {
+          e.args.forEach((arg, idx) => {
+            const pt = paramTypes[idx]
+            if (pt !== undefined && pt.kind === 'typeRef' && arg.kind === 'object') _argExpectedTypesKotlin.set(arg, pt)
+          })
+        }
+      }
       // Field-array accessor unwrap: zero-arg `items()`/`length()` on a
       // PyreonFieldArray decl (and `value()` on a For-item param over its
       // items) are web signal READS — on Kotlin they are properties, so the
@@ -5466,6 +5488,8 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       )
       return emitKotlinExpr(e.argument, indent)
     case 'object': {
+      const argExpected = _argExpectedTypesKotlin.get(e)
+      if (_expectedTypeKotlin === undefined && argExpected !== undefined) return withExpectedTypeKotlin(argExpected, () => emitKotlinExpr(e, indent))
       // G4 — partial-update form. When the object has EXACTLY ONE
       // spread and that spread argument is a bare identifier (typical
       // shape: `{ ...t, done: !t.done }` inside a `.map(t => ...)`
@@ -9538,7 +9562,14 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     return 'Box {}'
   }
   const data = emitKotlinExpr(dataV, indent)
+  const zoomed = readStaticAttrKotlin(e, 'dataZoom') === true
   const lets: string[] = []
+  if (zoomed) {
+    lets.push('var pyreonZoom by remember { mutableStateOf(ZoomWindow(start = 0.0, end = 1.0)) }')
+    lets.push(`val pyreonRange: SliceRange = sliceRange(pyreonZoom, ${data}.size)`)
+    lets.push(`val pyreonRows = ${data}.subList(pyreonRange.from, pyreonRange.to)`)
+  }
+  const rows = zoomed ? 'pyreonRows' : data
   const series: string[] = []
   for (let k = 0; k < marksV.elements.length; k++) {
     const m = marksV.elements[k]!
@@ -9559,7 +9590,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     const optsArg = bubble ? m.args[2] : m.args[1]
     const opts = kotlinMarkOptionArgs(optsArg, tag, k)
     if (opts === 'unsupported') return 'Box {}'
-    lets.push(`val pyreonValues${k}: List<Double> = ${data}.mapIndexed { pyreonI, pyreonD -> (${body}).toDouble() }`)
+    lets.push(`val pyreonValues${k}: List<Double> = ${kotlinPlotRowMap(rows, `(${body}).toDouble()`, zoomed)}`)
     if (bubble) {
       const r = m.args[1]
       if (r === undefined) {
@@ -9569,7 +9600,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
       const rBody = kotlinAccessorExpr(r, tag, `mark ${k + 1} radius`, indent)
       if (rBody === 'unsupported') return 'Box {}'
       const range = kotlinBubbleRange(optsArg)
-      lets.push(`val pyreonRadii${k}: List<Double> = bubbleRadii(${data}.mapIndexed { pyreonI, pyreonD -> (${rBody}).toDouble() }, ${range[0]}, ${range[1]})`)
+      lets.push(`val pyreonRadii${k}: List<Double> = bubbleRadii(${kotlinPlotRowMap(rows, `(${rBody}).toDouble()`, zoomed)}, ${range[0]}, ${range[1]})`)
       const at = opts.findIndex((o) => o.startsWith('showValues =')) + 1
       const withRadii = [...opts.slice(0, at), `radii = pyreonRadii${k}`, ...opts.slice(at)]
       series.push(`Series(kind = "points", values = pyreonValues${k}, ${withRadii.join(', ')})`)
@@ -9582,7 +9613,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   if (xAcc !== undefined) {
     const body = kotlinAccessorExpr(xAcc, tag, 'x', indent)
     if (body === 'unsupported') return 'Box {}'
-    lets.push(`val pyreonCats: List<String> = ${data}.mapIndexed { pyreonI, pyreonD -> ${body} }`)
+    lets.push(`val pyreonCats: List<String> = ${kotlinPlotRowMap(rows, body, zoomed)}`)
   } else {
     lets.push('val pyreonCats: List<String> = listOf<String>()')
   }
@@ -9590,7 +9621,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   if (xValueAcc !== undefined) {
     const body = kotlinAccessorExpr(xValueAcc, tag, 'xValue', indent)
     if (body === 'unsupported') return 'Box {}'
-    lets.push(`val pyreonXValues: List<Double> = ${data}.mapIndexed { pyreonI, pyreonD -> (${body}).toDouble() }`)
+    lets.push(`val pyreonXValues: List<Double> = ${kotlinPlotRowMap(rows, `(${body}).toDouble()`, zoomed)}`)
   }
   const present = PLOT_UNLOWERED_PROPS.filter((p) => chartAttrExprKotlin(e, p) !== undefined)
   if (present.length > 0) _emitWarnings.push(`<${tag}>: ${present.map((p) => `\`${p}\``).join(', ')} ${present.length === 1 ? 'is' : 'are'} not lowered on native yet; the chart renders without.`)
@@ -9631,7 +9662,16 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   if (mk !== undefined) specArgs.push(`markers = ${emitKotlinExpr(mk, indent)}`)
   lets.push(`val pyreonSpec: ChartSpec = ChartSpec(${specArgs.join(', ')})`)
   const cmds = chrome.wrap('renderChart(pyreonSpec, ::pyreonChartMeasure)')
-  return kotlinFrameHostLets(e, lets, cmds, (x, y) => `plotHitBars(pyreonSpec, ::pyreonChartMeasure, ${x}, ${chrome.top === '0.0' ? y : `${y} - pyreonTop`})`, W, H, hasWidth, indent)
+  const hit = (x: string, y: string): string => {
+    const local = `plotHitBars(pyreonSpec, ::pyreonChartMeasure, ${x}, ${chrome.top === '0.0' ? y : `${y} - pyreonTop`})`
+    return zoomed ? `run { val pyreonHit = ${local}; if (pyreonHit < 0) -1 else pyreonHit + pyreonRange.from }` : local
+  }
+  const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
+  let tap = onSel?.kind === 'event' ? `.pointerInput(Unit) { detectTapGestures { pyreonTap -> ${kotlinChartSelectBody(onSel.handler, hit('(pyreonTap.x / pyreonDensity).toDouble()', '(pyreonTap.y / pyreonDensity).toDouble()'), indent)} } }` : ''
+  if (zoomed) {
+    tap += `.pointerInput(Unit) { detectTransformGestures { _, pyreonPan, pyreonZoomBy, _ -> pyreonZoom = panWindow(zoomWindow(pyreonZoom, 1.0 / pyreonZoomBy.toDouble(), 0.5), -(pyreonPan.x / pyreonDensity).toDouble() / ${W}) } }`
+  }
+  return kotlinFrameHostWithDensity(e, lets, cmds, tap, W, H, hasWidth, indent, zoomed || tap !== '')
 }
 
 /** `kotlinFrameHost` with hoisted `val`s in the BoxWithConstraints scope (always emitted, so the vals have a scope). */
@@ -9753,4 +9793,32 @@ function kotlinBubbleRange(opts: ExprIR | undefined): [string, string] {
     }
   }
   return [min, max]
+}
+
+
+// ---- `<PlotChart dataZoom>` — pinch + pan over a fraction window ---------------
+//
+// Compose lets state live where it is remembered, so the zoom window is a
+// `remember { mutableStateOf }` inside the host's own BoxWithConstraints —
+// no component-level splice. `detectTransformGestures` reports INCREMENTAL
+// pan and zoom per event, which maps straight onto the engine's window math.
+
+function kotlinPlotRowMap(rows: string, body: string, zoomed: boolean): string {
+  if (!zoomed) return `${rows}.mapIndexed { pyreonI, pyreonD -> ${body} }`
+  if (!/\bpyreonI\b/.test(body)) return `${rows}.mapIndexed { _, pyreonD -> ${body} }`
+  return `${rows}.mapIndexed { pyreonJ, pyreonD -> val pyreonI = pyreonJ + pyreonRange.from; ${body} }`
+}
+
+/** `kotlinFrameHostWithTap` that can also force the density line (the transform gesture reads it even without a tap). */
+function kotlinFrameHostWithDensity(e: Extract<ExprIR, { kind: 'jsx-element' }>, lets: readonly string[], cmds: string, tap: string, W: string, H: string, hasWidth: boolean, indent: number, needsDensity: boolean): string {
+  const size = hasWidth ? `Modifier.width((${W}).dp).height((${H}).dp)` : `Modifier.fillMaxWidth().height((${H}).dp)`
+  const generic = emitKotlinLayoutModifier(e)
+  const titleRaw = readStaticAttrKotlin(e, 'title')
+  const titleMod = typeof titleRaw === 'string' ? `.semantics { contentDescription = ${JSON.stringify(titleRaw)} }` : ''
+  const canvas = `PyreonChartCanvas(cmds = ${cmds}, modifier = ${size + tap + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))})`
+  const pad = ' '.repeat(indent + 2)
+  const widthLine = hasWidth ? '' : `${pad}val pyreonW = maxWidth.value.toDouble()\n`
+  const densityLine = needsDensity ? `${pad}val pyreonDensity = LocalDensity.current.density\n` : ''
+  const body = lets.map((l) => `${pad}${l}\n`).join('')
+  return `BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {\n${widthLine}${densityLine}${body}${pad}${canvas}\n${' '.repeat(indent)}}`
 }

@@ -449,13 +449,13 @@ describe('chart hosts — <PlotChart marks> (the cartesian family)', () => {
 interface Row { n: string; v: number; r: number }
 const ROWS: Row[] = [{ n: 'a', v: 1, r: 2 }]
 const MARKS = [line((d: Row) => d.v)]
-export function C() { return (<><PlotChart data={ROWS} marks={[bubble((d) => d.v, (d) => d.r)]} /><PlotChart data={ROWS} marks={[line((d) => d.v, { curve: monotoneCurve })]} showLegend={true} dataZoom={true} /><PlotChart data={ROWS} marks={MARKS} /></>) }`,
+export function C() { return (<><PlotChart data={ROWS} marks={[bubble((d) => d.v, (d) => d.r)]} /><PlotChart data={ROWS} marks={[line((d) => d.v, { curve: monotoneCurve })]} showLegend={true} brush={true} /><PlotChart data={ROWS} marks={MARKS} /></>) }`,
       { target: 'swift' },
     )
     const w = r.warnings.join('\n')
     expect(w).not.toContain('bubble')
     expect(w).toContain('<PlotChart> mark 1: a `curve` callback is not lowered')
-    expect(w).toContain('<PlotChart>: `dataZoom` is not lowered on native yet')
+    expect(w).toContain('<PlotChart>: `brush` is not lowered on native yet')
     expect(w).toContain('<PlotChart marks>: must be an inline array of mark calls')
   })
   it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine + measurer) accepts the plot emit', () => {
@@ -599,6 +599,74 @@ export function C() { return <PlotChart data={ROWS} marks={[bars((d) => d.v)]} t
   })
   it.skipIf(!isKotlincAvailable())('kotlinc (stub bundle + real engine) accepts them', () => {
     const r = validateKotlin(transform(PROPS, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+})
+
+
+const ZOOM = `import { signal } from '@pyreon/reactivity'
+import { Stack, Text } from '@pyreon/primitives'
+import { PlotChart, bars, line } from '@pyreon/charts/plot'
+interface Day { label: string; hits: number; avg: number }
+const DAYS: Day[] = [{ label: 'Mon', hits: 3, avg: 2 }, { label: 'Tue', hits: 5, avg: 3 }, { label: 'Wed', hits: 2, avg: 3 }, { label: 'Thu', hits: 7, avg: 4 }]
+export function Traffic() {
+  const picked = signal(-1)
+  return (
+    <Stack>
+      <Text>{picked()}</Text>
+      <PlotChart data={DAYS} x={(d) => d.label} marks={[bars((d) => d.hits), line((d, i) => d.avg + i)]} dataZoom={true} height={200} onSelect={(i: number) => picked.set(i)} />
+    </Stack>
+  )
+}`
+
+describe('chart hosts — <PlotChart dataZoom> as pinch + pan over a fraction window', () => {
+  it('Swift: the host registers two @State windows on the component, slices the rows, keeps GLOBAL indices, and adds the gestures', () => {
+    const r = transform(ZOOM, { target: 'swift' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('@State private var pyreonZoom: ZoomWindow = ZoomWindow(start: 0.0, end: 1.0)')
+    expect(r.code).toContain('@State private var pyreonZoomAnchor: ZoomWindow = ZoomWindow(start: 0.0, end: 1.0)')
+    // The state sits on the struct, before `var body` — not inside the builder.
+    expect(r.code.indexOf('@State private var pyreonZoom')).toBeLessThan(r.code.indexOf('var body: some View'))
+    expect(r.code).toContain('let pyreonRange: SliceRange = sliceRange(pyreonZoom, DAYS.count)')
+    expect(r.code).toContain('let pyreonRows = Array(DAYS[pyreonRange.from..<pyreonRange.to])')
+    expect(r.code).toContain('let pyreonValues1: [Double] = pyreonRows.enumerated().map { (pyreonJ, pyreonD) -> Double in let pyreonI = pyreonJ + pyreonRange.from; return pyreonChartDouble(pyreonD.avg + pyreonI) }')
+    expect(r.code).toContain('let pyreonCats: [String] = pyreonRows.enumerated().map { (_, pyreonD) -> String in pyreonD.label }')
+    expect(r.code).toContain('.simultaneousGesture(MagnificationGesture().onChanged { pyreonScale in pyreonZoom = zoomWindow(pyreonZoomAnchor, 1.0 / Double(pyreonScale), 0.5) }.onEnded { _ in pyreonZoomAnchor = pyreonZoom })')
+    expect(r.code).toContain('.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { pyreonDrag in pyreonZoom = panWindow(pyreonZoomAnchor, -Double(pyreonDrag.translation.width) / Double(pyreonGeo.size.width)) }.onEnded { _ in pyreonZoomAnchor = pyreonZoom })')
+    expect(r.code).toContain('if abs(pyreonTap.translation.width) < 6.0 && abs(pyreonTap.translation.height) < 6.0 { let i = { () -> Int in let pyreonHit = plotHitBars(pyreonSpec, pyreonChartMeasure, Double(pyreonTap.location.x), Double(pyreonTap.location.y)); return pyreonHit < 0 ? -1 : pyreonHit + pyreonRange.from }()')
+  })
+  it('Kotlin: the window is remembered in the host, the rows are a subList, and detectTransformGestures drives pan + zoom incrementally', () => {
+    const r = transform(ZOOM, { target: 'kotlin' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('var pyreonZoom by remember { mutableStateOf(ZoomWindow(start = 0.0, end = 1.0)) }')
+    expect(r.code).toContain('val pyreonRange: SliceRange = sliceRange(pyreonZoom, DAYS.size)')
+    expect(r.code).toContain('val pyreonRows = DAYS.subList(pyreonRange.from, pyreonRange.to)')
+    expect(r.code).toContain('val pyreonValues1: List<Double> = pyreonRows.mapIndexed { pyreonJ, pyreonD -> val pyreonI = pyreonJ + pyreonRange.from; (pyreonD.avg + pyreonI).toDouble() }')
+    expect(r.code).toContain('.pointerInput(Unit) { detectTransformGestures { _, pyreonPan, pyreonZoomBy, _ -> pyreonZoom = panWindow(zoomWindow(pyreonZoom, 1.0 / pyreonZoomBy.toDouble(), 0.5), -(pyreonPan.x / pyreonDensity).toDouble() / pyreonW) } }')
+    expect(r.code).toContain('run { val pyreonHit = plotHitBars(pyreonSpec, ::pyreonChartMeasure, (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble()); if (pyreonHit < 0) -1 else pyreonHit + pyreonRange.from }')
+  })
+  it('without dataZoom the plot host emits exactly what it did before (no state, no slice, no gestures)', () => {
+    const r = transform(PLOT, { target: 'swift' })
+    expect(r.code).not.toContain('pyreonZoom')
+    expect(r.code).not.toContain('pyreonRange')
+    expect(r.code).not.toContain('MagnificationGesture')
+    const k = transform(PLOT, { target: 'kotlin' })
+    expect(k.code).not.toContain('detectTransformGestures')
+  })
+  it('two zoomed hosts in one component get one pair of state properties each (the collector drains per component)', () => {
+    const r = transform(ZOOM.replace('<PlotChart data', '<PlotChart data={DAYS} marks={[bars((d) => d.hits)]} dataZoom={true} height={100} /><PlotChart data'), { target: 'swift' })
+    expect(r.code.split('@State private var pyreonZoom:').length - 1).toBe(2)
+  })
+  it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine + gestures) accepts the dataZoom emit', () => {
+    const r = validateSwiftWithStubs(transform(ZOOM, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isSwiftUIAvailable())('swiftc against real SwiftUI + canvas + engine accepts it', () => {
+    const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(ENGINE_SWIFT) + '\n' + transform(ZOOM, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isKotlincAvailable())('kotlinc (stub bundle + real engine + gestures) accepts it', () => {
+    const r = validateKotlin(transform(ZOOM, { target: 'kotlin' }).code)
     expect(r.ok, r.error ?? '').toBe(true)
   })
 })
