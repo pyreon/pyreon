@@ -3,7 +3,8 @@
 // Pure functions to flat commands, like everything else here. A candle is a
 // BODY rect between open and close plus a WICK line to the high and low —
 // two primitives every backend already executes, which is what keeps the
-// finance family free on native.
+// finance family free on native: this file is written in the native subset
+// and BUNDLED into the generated Swift/Kotlin engine.
 
 import { scaleLinear } from './scale'
 import type { Domain, Double, DrawCmd, Rect } from './types'
@@ -65,30 +66,25 @@ export function renderCandles(
   const out: DrawCmd[] = []
   const n = candles.length
   if (n === 0) return out
-  const band = plot.w / n
+  let nF = 0.0
+  for (let i = 0; i < n; i++) nF = nF + 1.0
+  const band = plot.w / nF
   const bw = band * ratio
-  const yOf = (v: Double): Double => scaleLinear(domain, plot.y + plot.h, plot.y, v)
+  const y0 = plot.y + plot.h
+  let iF = 0.0
   for (let i = 0; i < n; i++) {
     const c = candles[i]!
-    const cx = plot.x + band * i + band / 2.0
+    const cx = plot.x + band * iF + band / 2.0
     const color = c.close >= c.open ? up : down
     // Wick first, body over it.
-    out.push({
-      kind: 'line',
-      from: { x: cx, y: yOf(c.high) },
-      to: { x: cx, y: yOf(c.low) },
-      stroke: color,
-      width: 1.0,
-    })
-    const yo = yOf(c.open)
-    const yc = yOf(c.close)
+    out.push({ kind: 'line', from: { x: cx, y: scaleLinear(domain, y0, plot.y, c.high) }, to: { x: cx, y: scaleLinear(domain, y0, plot.y, c.low) }, stroke: color, width: 1.0 })
+    const yo = scaleLinear(domain, y0, plot.y, c.open)
+    const yc = scaleLinear(domain, y0, plot.y, c.close)
     const top = yo < yc ? yo : yc
-    const h = Math.abs(yc - yo)
-    out.push({
-      kind: 'rect',
-      rect: { x: cx - bw / 2.0, y: top, w: bw, h: h < 1.0 ? 1.0 : h },
-      fill: color,
-    })
+    const rawH = yc - yo
+    const h = rawH < 0.0 ? -rawH : rawH
+    out.push({ kind: 'rect', rect: { x: cx - bw / 2.0, y: top, w: bw, h: h < 1.0 ? 1.0 : h }, fill: color })
+    iF = iF + 1.0
   }
   return out
 }

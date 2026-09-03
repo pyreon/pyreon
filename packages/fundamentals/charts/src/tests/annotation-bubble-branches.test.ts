@@ -16,7 +16,7 @@
 import { describe, expect, it } from 'vitest'
 import { defaultTheme, renderChart, type ChartSpec } from '../engine/render'
 import { bubble, resolveMarks, type Mark } from '../engine/marks'
-import { colorRamp } from '../engine/heat'
+import { colorRamp } from '../engine/heat-ramp'
 import type { DrawCmd } from '../engine/types'
 
 const measure = (s: string): number => s.length * 6

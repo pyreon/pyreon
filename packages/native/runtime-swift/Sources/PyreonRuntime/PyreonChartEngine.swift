@@ -1100,6 +1100,70 @@ public struct GraphOptions: Codable {
   }
 }
 
+public struct HeatCell: Codable {
+  public var col: Double
+  public var row: Double
+  public var value: Double
+  public init(col: Double, row: Double, value: Double) {
+    self.col = col
+    self.row = row
+    self.value = value
+  }
+}
+
+public struct HeatGrid: Codable {
+  public var cols: [String]
+  public var rows: [String]
+  public var cells: [HeatCell]
+  public var min: Double
+  public var max: Double
+  public init(cols: [String], rows: [String], cells: [HeatCell], min: Double, max: Double) {
+    self.cols = cols
+    self.rows = rows
+    self.cells = cells
+    self.min = min
+    self.max = max
+  }
+}
+
+public struct HeatmapOptions: Codable {
+  public var grid: HeatGrid
+  public var plot: PyreonChartRect
+  public var stops: [String]? = nil
+  public var gap: Double? = nil
+  public var progress: Double? = nil
+  public init(grid: HeatGrid, plot: PyreonChartRect, stops: [String]? = nil, gap: Double? = nil, progress: Double? = nil) {
+    self.grid = grid
+    self.plot = plot
+    self.stops = stops
+    self.gap = gap
+    self.progress = progress
+  }
+}
+
+public struct Ohlc: Codable {
+  var `open`: Double
+  public var high: Double
+  public var low: Double
+  public var close: Double
+  public init(high: Double, low: Double, close: Double) {
+    self.high = high
+    self.low = low
+    self.close = close
+  }
+}
+
+public struct CandleOptions: Codable {
+  public var upColor: String? = nil
+  public var downColor: String? = nil
+  public var widthRatio: Double? = nil
+  public init(upColor: String? = nil, downColor: String? = nil, widthRatio: Double? = nil) {
+    self.upColor = upColor
+    self.downColor = downColor
+    self.widthRatio = widthRatio
+  }
+}
+
 private let MINUTE = 60000.0
 
 private let HOUR = MINUTE * 60.0
@@ -1139,6 +1203,8 @@ private let GRAPH_TAU = Double.pi * 2.0
 private let GRAPH_PALETTE = ["#0f766e", "#b45309", "#1d4ed8", "#b42318", "#15803d", "#7c3aed", "#0e7490", "#9333ea"]
 
 private let GRAPH_LCG_M = 2147483647.0
+
+private let HEAT_RAMP = ["#eff6ff", "#93c5fd", "#3b82f6", "#1e40af"]
 
 public func plain(_ v: Double) -> String {
     let r = (Double(v)).rounded()
@@ -4831,4 +4897,275 @@ public func hitGraphIndex(_ layout: GraphLayout, _ px: Double, _ py: Double) -> 
       }
     }
     return best
+  }
+
+public func buildHeatGrid(_ cols: [String], _ rows: [String], _ colOf: [Double], _ rowOf: [Double], _ values: [Double]) -> HeatGrid {
+    let n1 = colOf.count < rowOf.count ? colOf.count : rowOf.count
+    let n = n1 < values.count ? n1 : values.count
+    var cellCol: [Double] = []
+    var cellRow: [Double] = []
+    var cellVal: [Double] = []
+    for i in 0..<n {
+      let c = colOf[i]
+      let r = rowOf[i]
+      if c < 0.0 || r < 0.0 {
+        continue
+      }
+      var found = -1
+      for k in 0..<cellCol.count {
+        if found < 0 && cellCol[k] == c && cellRow[k] == r {
+          found = k
+        }
+      }
+      if found < 0 {
+        cellCol.append(c)
+        cellRow.append(r)
+        cellVal.append(values[i])
+      } else {
+        cellVal[found] = cellVal[found] + values[i]
+      }
+    }
+    var cells: [HeatCell] = []
+    var minV = 0.0
+    var maxV = 0.0
+    for k in 0..<cellCol.count {
+      cells.append(HeatCell(col: cellCol[k], row: cellRow[k], value: cellVal[k]))
+      if k == 0 {
+        minV = cellVal[k]
+        maxV = cellVal[k]
+      } else {
+        if cellVal[k] < minV {
+          minV = cellVal[k]
+        }
+        if cellVal[k] > maxV {
+          maxV = cellVal[k]
+        }
+      }
+    }
+    return HeatGrid(cols: cols, rows: rows, cells: cells, min: minV, max: maxV)
+  }
+
+public func heatHexDigit(_ c: Double) -> Double {
+    if c >= 48.0 && c <= 57.0 {
+      return c - 48.0
+    }
+    if c >= 97.0 && c <= 102.0 {
+      return c - 87.0
+    }
+    if c >= 65.0 && c <= 70.0 {
+      return c - 55.0
+    }
+    return 0.0
+  }
+
+public func heatChannel(_ hex: String, _ at: Int) -> Double {
+    if hex.count < at + 2 {
+      return 0.0
+    }
+    return heatHexDigit(Double(Array(hex.utf16)[Int(at)])) * 16.0 + heatHexDigit(Double(Array(hex.utf16)[Int(at + 1)]))
+  }
+
+public func heatHashOffset(_ hex: String) -> Int {
+    if hex.count > 0 && Double(Array(hex.utf16)[Int(0)]) == 35.0 {
+      return 1
+    }
+    return 0
+  }
+
+public func rampColor(_ stops: [String], _ t: Double) -> String {
+    let n = stops.count
+    if n == 0 {
+      return "rgb(0, 0, 0)"
+    }
+    if n == 1 || t <= 0.0 {
+      let s0 = stops[0]
+      let o0 = heatHashOffset(s0)
+      return "rgb(\((Double(heatChannel(s0, o0))).rounded()), \((Double(heatChannel(s0, o0 + 2))).rounded()), \((Double(heatChannel(s0, o0 + 4))).rounded()))"
+    }
+    let clamped = t >= 1.0 ? 1.0 : t
+    var spanF = 0.0
+    for i in 1..<n {
+      spanF = spanF + 1.0
+    }
+    let pos = clamped * spanF
+    let rawIdx = floor(Double(pos))
+    let idx = rawIdx > spanF - 1.0 ? spanF - 1.0 : rawIdx
+    let frac = pos - idx
+    var a = stops[0]
+    var b = stops[1]
+    var iF = 0.0
+    let last = n - 1
+    for i in 0..<last {
+      if iF == idx {
+        a = stops[i]
+        b = stops[i + 1]
+      }
+      iF = iF + 1.0
+    }
+    let oa = heatHashOffset(a)
+    let ob = heatHashOffset(b)
+    let r = heatChannel(a, oa) + (heatChannel(b, ob) - heatChannel(a, oa)) * frac
+    let g = heatChannel(a, oa + 2) + (heatChannel(b, ob + 2) - heatChannel(a, oa + 2)) * frac
+    let bl = heatChannel(a, oa + 4) + (heatChannel(b, ob + 4) - heatChannel(a, oa + 4)) * frac
+    return "rgb(\((Double(r)).rounded()), \((Double(g)).rounded()), \((Double(bl)).rounded()))"
+  }
+
+public func renderHeat(_ options: HeatmapOptions) -> [PyreonDrawCmd] {
+    let grid = options.grid
+    let plot = options.plot
+    let stops = (options.stops ?? HEAT_RAMP)
+    let gap = (options.gap ?? 1.0)
+    let rawP = (options.progress ?? 1.0)
+    let progress = rawP < 0.0 ? 0.0 : rawP > 1.0 ? 1.0 : rawP
+    var out: [PyreonDrawCmd] = []
+    let nc = grid.cols.count
+    let nr = grid.rows.count
+    if nc == 0 || nr == 0 {
+      return out
+    }
+    var ncF = 0.0
+    for i in 0..<nc {
+      ncF = ncF + 1.0
+    }
+    var nrF = 0.0
+    for i in 0..<nr {
+      nrF = nrF + 1.0
+    }
+    let cw = Double(plot.w) / ncF
+    let ch = Double(plot.h) / nrF
+    let span = grid.max - grid.min
+    for cell in grid.cells {
+      if cell.col >= ncF || cell.row >= nrF {
+        continue
+      }
+      let t = span <= 0.0 ? 1.0 : Double((cell.value - grid.min)) / Double(span)
+      let fullW = cw - gap
+      let fullH = ch - gap
+      let w = fullW * progress
+      let h = fullH * progress
+      let x = plot.x + cell.col * cw + gap / 2.0 + Double((fullW - w)) / 2.0
+      let y = plot.y + cell.row * ch + gap / 2.0 + Double((fullH - h)) / 2.0
+      out.append(PyreonDrawCmd(kind: "rect", rect: PyreonChartRect(x: x, y: y, w: w, h: h), fill: rampColor(stops, t)))
+    }
+    return out
+  }
+
+public func hitHeatCell(_ grid: HeatGrid, _ plot: PyreonChartRect, _ gap: Double, _ px: Double, _ py: Double) -> Int {
+    let nc = grid.cols.count
+    let nr = grid.rows.count
+    if nc == 0 || nr == 0 {
+      return -1
+    }
+    if px < plot.x || px > plot.x + plot.w || py < plot.y || py > plot.y + plot.h {
+      return -1
+    }
+    var ncF = 0.0
+    for i in 0..<nc {
+      ncF = ncF + 1.0
+    }
+    var nrF = 0.0
+    for i in 0..<nr {
+      nrF = nrF + 1.0
+    }
+    let cw = Double(plot.w) / ncF
+    let ch = Double(plot.h) / nrF
+    let rawCol = floor(Double((px - plot.x) / cw))
+    let col = rawCol > ncF - 1.0 ? ncF - 1.0 : rawCol
+    let rawRow = floor(Double((py - plot.y) / ch))
+    let row = rawRow > nrF - 1.0 ? nrF - 1.0 : rawRow
+    let inX = px - (plot.x + col * cw)
+    let inY = py - (plot.y + row * ch)
+    if inX < gap / 2.0 || inX > cw - gap / 2.0 {
+      return -1
+    }
+    if inY < gap / 2.0 || inY > ch - gap / 2.0 {
+      return -1
+    }
+    var hit = -1
+    for i in 0..<grid.cells.count {
+      let c = grid.cells[i]
+      if hit < 0 && c.col == col && c.row == row {
+        hit = i
+      }
+    }
+    return hit
+  }
+
+public func ohlcExtent(_ candles: [Ohlc]) -> Domain {
+    if candles.count == 0 {
+      return Domain(min: 0.0, max: 1.0)
+    }
+    var lo = candles[0].low
+    var hi = candles[0].high
+    for c in candles {
+      if c.low < lo {
+        lo = c.low
+      }
+      if c.high > hi {
+        hi = c.high
+      }
+    }
+    if hi <= lo {
+      return Domain(min: lo - 1.0, max: lo + 1.0)
+    }
+    return Domain(min: lo, max: hi)
+  }
+
+public func renderCandles(_ candles: [Ohlc], _ plot: PyreonChartRect, _ domain: Domain, _ options: CandleOptions? = nil) -> [PyreonDrawCmd] {
+    let up = (options?.upColor ?? "#15803d")
+    let down = (options?.downColor ?? "#b42318")
+    let rawRatio = (options?.widthRatio ?? 0.6)
+    let ratio = rawRatio < 0.05 ? 0.05 : rawRatio > 0.9 ? 0.9 : rawRatio
+    var out: [PyreonDrawCmd] = []
+    let n = candles.count
+    if n == 0 {
+      return out
+    }
+    var nF = 0.0
+    for i in 0..<n {
+      nF = nF + 1.0
+    }
+    let band = Double(plot.w) / nF
+    let bw = band * ratio
+    let y0 = plot.y + plot.h
+    var iF = 0.0
+    for i in 0..<n {
+      let c = candles[i]
+      let cx = plot.x + band * iF + band / 2.0
+      let color = c.close >= c.`open` ? up : down
+      out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: cx, y: scaleLinear(domain, y0, plot.y, c.high)), to: PyreonChartPt(x: cx, y: scaleLinear(domain, y0, plot.y, c.low)), stroke: color, width: 1.0))
+      let yo = scaleLinear(domain, y0, plot.y, c.`open`)
+      let yc = scaleLinear(domain, y0, plot.y, c.close)
+      let top = yo < yc ? yo : yc
+      let rawH = yc - yo
+      let h = rawH < 0.0 ? -rawH : rawH
+      out.append(PyreonDrawCmd(kind: "rect", rect: PyreonChartRect(x: cx - bw / 2.0, y: top, w: bw, h: h < 1.0 ? 1.0 : h), fill: color))
+      iF = iF + 1.0
+    }
+    return out
+  }
+
+public func hitCandle(_ count: Int, _ plot: PyreonChartRect, _ px: Double, _ py: Double) -> Int {
+    if count <= 0 {
+      return -1
+    }
+    if px < plot.x || px > plot.x + plot.w {
+      return -1
+    }
+    if py < plot.y || py > plot.y + plot.h {
+      return -1
+    }
+    var countF = 0.0
+    for i in 0..<count {
+      countF = countF + 1.0
+    }
+    let band = Double(plot.w) / countF
+    let posF = floor(Double((px - plot.x) / band))
+    var i = 0
+    var iF = 0.0
+    while iF < posF && i + 1 < count {
+      i = i + 1
+      iF = iF + 1.0
+    }
+    return i
   }

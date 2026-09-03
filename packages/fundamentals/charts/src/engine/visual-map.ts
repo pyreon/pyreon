@@ -1,6 +1,7 @@
 // visualMap — the value → colour legend strip (continuous ramp or piecewise swatches).
 
-import { colorRamp, HEAT_RAMP } from './heat'
+import { HEAT_RAMP } from './heat'
+import { colorRamp } from './heat-ramp'
 import type { OptionWarning } from './option'
 import type { Double, DrawCmd, Rect } from './types'
 
