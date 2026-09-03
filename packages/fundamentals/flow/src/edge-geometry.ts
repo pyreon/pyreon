@@ -160,7 +160,7 @@ export function computeEdgeGeometry(
       )
   }
 
-  const { path, labelX, labelY } = edge.waypoints?.length
+  const { path, labelX, labelY, segments } = edge.waypoints?.length
     ? getWaypointPath({
         sourceX: sourcePos.x,
         sourceY: sourcePos.y,
@@ -189,5 +189,6 @@ export function computeEdgeGeometry(
     path,
     labelX,
     labelY,
+    segments,
   }
 }
