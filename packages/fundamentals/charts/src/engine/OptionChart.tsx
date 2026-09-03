@@ -1,16 +1,19 @@
 // `<OptionChart>` — the ECharts-option-driven host: an ECharts-shaped option in
 // (value or accessor), a live chart out. Cartesian plans (single or
 // multi-grid) paint on a canvas through the SAME `compiledCommands` that
-// `optionToSvg` serialises, so the host and the server never disagree; family
-// and geo plans render through `optionToSvg` into an inline `<svg>`. A
+// `optionToSvg` serialises, so the host and the server never disagree; a
+// family plan mounts the family's OWN canvas host (`familyHostNode`), and the
+// two host-less shapes render through `optionToSvg` into an inline `<svg>`. A
 // `timeline` steps on `autoPlay` or is driven by `timelineIndex`.
 
 import { h, onMount } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
-import { effect, signal } from '@pyreon/reactivity'
+import { batch, effect, signal } from '@pyreon/reactivity'
 import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
 import { compiledCommands, optionToSvg, planOption } from './option'
 import type { CompiledOption, EChartsOption, OptionPlan } from './option'
+import { familyHostNode } from './family-host'
+import type { FamilyPlan } from './option-family'
 import { TIMELINE_HEIGHT, resolveTimeline, timelineCommands, timelineSteps } from './option-composite'
 import { graphicCommands } from './option-layer'
 import { visualMapCommands } from './visual-map'
@@ -47,6 +50,8 @@ export interface OptionChartProps {
   onTimelineChange?: (index: number) => void
   /** Fired with the datum under a click (cartesian plans), or null for a miss. */
   onSelect?: (hit: OptionHit | null) => void
+  /** Fired by a family host (pie, sankey, treemap, …) with ITS hit value, tagged with the family kind. */
+  onFamilySelect?: (kind: FamilyPlan['kind'], hit: unknown) => void
   /** Accessible name; defaults to the option's title. */
   title?: string
   accessibleTable?: boolean
@@ -78,7 +83,9 @@ export function OptionChart(props: OptionChartProps): VNode {
   let svgHost: HTMLDivElement | null = null
   // The auto-played step; -1 = not started (use the option's currentIndex).
   const step = signal(-1)
-  const usingSvg = signal(false)
+  // Which surface shows: the built-in canvas, a family host, or the svg fallback.
+  const mode = signal<'canvas' | 'host' | 'svg'>('canvas')
+  const hostNode = signal<VNode | null>(null)
   const readOption = (): EChartsOption => (typeof props.option === 'function' ? props.option() : props.option)
   const stepIndex = (): number | undefined => props.timelineIndex ?? (step() >= 0 ? step() : undefined)
   const width = (): Double => props.width ?? 640.0
@@ -135,7 +142,9 @@ export function OptionChart(props: OptionChartProps): VNode {
     }
   })
 
-  const draw = (): void => {
+  // One batch per draw: the mode and host-node writes of a family host, or the
+  // mode flip to svg/canvas, must repaint the surface once, not per write.
+  const draw = (): void => batch(() => {
     const opt = readOption()
     const idx = stepIndex()
     const w = width()
@@ -144,12 +153,20 @@ export function OptionChart(props: OptionChartProps): VNode {
     const stripH = steps === null ? 0.0 : TIMELINE_HEIGHT
     const plan = planOption(opt, compileOpts(w, hgt - stripH, idx))
     if (!canvasable(plan)) {
-      usingSvg.set(true)
+      if (plan.kind === 'family') {
+        const node = familyHostNode(plan.compiled.plan, { width: w, height: hgt - stripH, ...(props.onFamilySelect !== undefined ? { onSelect: props.onFamilySelect } : {}) })
+        if (node !== null) {
+          mode.set('host')
+          hostNode.set(node)
+          return
+        }
+      }
+      mode.set('svg')
       const host = svgHost
       if (host !== null) host.innerHTML = optionToSvg(opt, compileOpts(w, hgt, idx))
       return
     }
-    usingSvg.set(false)
+    mode.set('canvas')
     const el = canvas
     if (el === null) return
     const ctx = prepareCanvas(el, w, hgt)
@@ -169,7 +186,7 @@ export function OptionChart(props: OptionChartProps): VNode {
     }
     if (steps !== null) for (const c of timelineCommands({ ...steps, current: idx ?? steps.current }, w, hgt - stripH, stripH)) cmds.push(c)
     paint(ctx, cmds, w, hgt, FONT)
-  }
+  })
 
   effect(() => {
     readOption()
@@ -263,7 +280,7 @@ export function OptionChart(props: OptionChartProps): VNode {
     role: 'img',
     'aria-label': () => describeChart(a11y()),
     'data-pyreon-step': () => String(stepIndex() ?? -1),
-    style: () => (usingSvg() ? 'display:none' : ''),
+    style: () => (mode() === 'canvas' ? '' : 'display:none'),
     ref: (el: HTMLCanvasElement | null) => {
       canvas = el
       if (el !== null) draw()
@@ -271,13 +288,14 @@ export function OptionChart(props: OptionChartProps): VNode {
     onClick: handleClick,
   })
   const svgNode = h('div', {
-    style: () => (usingSvg() ? '' : 'display:none'),
+    style: () => (mode() === 'svg' ? '' : 'display:none'),
     ref: (el: HTMLDivElement | null) => {
       svgHost = el
       if (el !== null) draw()
     },
   })
-  if (props.accessibleTable === false) return h('div', { style: 'position:relative' }, canvasNode, svgNode)
+  const hostSlot = (): VNode | null => (mode() === 'host' ? hostNode() : null)
+  if (props.accessibleTable === false) return h('div', { style: 'position:relative' }, canvasNode, svgNode, hostSlot)
   const table = (): VNode | null => {
     const t = chartTable(a11y())
     if (t.rows.length === 0) return null
@@ -291,5 +309,5 @@ export function OptionChart(props: OptionChartProps): VNode {
       ),
     )
   }
-  return h('div', { style: 'position:relative' }, canvasNode, svgNode, () => table())
+  return h('div', { style: 'position:relative' }, canvasNode, svgNode, hostSlot, () => table())
 }
