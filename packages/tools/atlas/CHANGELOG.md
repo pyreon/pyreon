@@ -1,5 +1,368 @@
 # @pyreon/atlas
 
+## 0.52.0
+
+### Minor Changes
+
+- Add `bundleCostPlugin` — what importing each component costs a consumer, minified + gzipped. (879ff89)
+
+  **Opt-in, not in the recommended bundle.** Each measurement is a real bundler run: on a 108-component library that is 108 builds against a scan that is otherwise ~2s. A metric that multiplies scan time by an order of magnitude has to be asked for, not inflicted — and it reports a number rather than a bug, so paying for it on runs nobody reads buys nothing.
+
+  **What the number means.** Workspace packages and bare dependencies are external, exactly as the repo-wide budget gate measures them, so this is "the bytes this component's own source contributes" — not the page weight of rendering it. A component rendering through half of `@pyreon/elements` measures small, because that cost belongs to elements and is counted there. Charging every component for the same shared runtime would make the numbers useless for the only thing they are good for: comparing components against each other.
+
+  **A `decorate` hook, not a `verify` check.** There is no threshold at which a component's size is WRONG, so making it a check would force a pass/fail on a measurement and the only honest verdict would be a permanent `pass` — the false-green shape the verdict model exists to avoid.
+
+  **Needs Bun.** `Bun.build` is the only bundler it uses, so `bun atlas scan` measures and `npx atlas scan` (node) does not. Rather than fail quietly it SAYS so, once per run, through `onUnavailable` — an opt-in capability that silently produces nothing is the same false-quiet as a gate that scans zero files and reports a clean pass. Adding esbuild as a dependency would fix it at the cost of real install weight on every Atlas user for a metric most never read; reusing the project's own Vite (already an optional peer, already loaded by the module loader) is the better door and belongs in its own change.
+
+  Unmeasurable is ABSENT, never `0` — a zero would read as "free", the most misleading number available.
+
+- **Verify findings are structured — catalog `version: 2`.** (ebeb330)
+
+  A finding was a prose sentence. An agent handed `"hydrateRoot threw: Cannot read properties of undefined"` could say what was wrong and never say what KIND of wrong it was — the only thing to branch on was a string free to be reworded in any release.
+
+  Every finding is now `{ code, message, fix? }`:
+
+  ```
+  ✗ button--empty
+      a11y [missing-accessible-name]: missing accessible name: "label" is empty
+        → Give "label" a non-empty value, or an aria-label if the text is decorative.
+  ```
+
+  - **`code`** is a stable identifier for the CLASS of failure — `mount-threw`, `hydrate-threw`, `hydrated-dom-differs`, `reactive-nodes-retained`, `missing-accessible-name`, and one for every reason a check did not run (`browser-only`, `no-dom`, `no-gc-hook`, `no-ssr-renderer`, `not-run`, `nothing-to-check`). Permanent once shipped: a reworded message is a patch, a renamed code is a breaking change.
+  - **`fix`** names the one concrete thing to change, and travels WITH the finding rather than in a lookup table a consumer has to know to consult — so the agent guide, the MCP tools and `atlas verify --json` all carry the actionable half without a second call. Absent when no single next step exists, rather than invented.
+
+  **Fixes a silent drop the change exposed.** Both the catalog renderer and the MCP surface collected findings from a hand-written list of five check names. `ssrParity` was added as a sixth and neither list learned about it — so a hydration failure was recorded in the catalog, marked the scenario failed, and then vanished from the agent guide, the llms text and the MCP tools: the surfaces an AI assistant actually reads. Both now derive from the verdict itself, which cannot go stale. `CHECK_KEYS` moved from `plugins/registry` down to `core/types`, beside the type it enumerates, so `core` can use it without importing upward.
+
+  **`@pyreon/mcp` refuses a stale catalog** rather than rendering blanks. At v1 findings were strings; reading one with v2 code yields `undefined` for every finding, so a component's failures display as empty — silently wrong, to a reader that cannot tell a blank is anomalous. The loader now checks the version and names the fix (`re-run atlas scan`).
+
+- Surface reactive-graph health in the Reactivity panel — orphan signals, accidental fan-out, deep derived chains. (d569b80)
+
+  `describeReactiveGraph` already derives three behavioural smells from the live graph; nothing showed them. The panel now does, most-actionable first, with each row saying what the smell COSTS rather than what it is ("one write drives many subscribers — the accidental-repaint shape", not "high-fanout: many subscribers").
+
+  Orphan signals sort first because they are the only kind that is usually a BUG rather than a cost: from the graph, state nothing reads is indistinguishable from a read that was SEVERED, and the severed case is the "UI silently never updates" class.
+
+  **Scoped to the component, which is the whole correctness of it.** The workbench and the preview share one reactivity instance — that is why this can be a client-side panel at all — so an unscoped read describes Atlas's own chrome (sidebar signals, theme, search box) as the component's smells. That would be worse than showing nothing: confidently wrong, about someone else's code, with no way for the reader to tell. A baseline is taken before the component mounts and only later nodes count; edges need both ends in scope. Bisect-verified — unscoped, the fixture's "chrome" orphan is reported as the component's.
+
+  Shown whenever a graph exists rather than gated on pressing Record: a smell is a property of the graph, not of a session, so requiring a recording to see an orphan would hide the one finding that is usually real.
+
+  **Deliberately rows, not a diagram.** #2517 §3 asked for the graph drawn via `@pyreon/flow`. The diagnostic value is the insights; a diagram of a healthy graph is a picture of nothing wrong at several times the cost, and on a real component the node count makes it unreadable exactly when it matters. The diagram stays a separate question rather than a hidden prerequisite.
+
+- **Atlas honours the target project's `resolve.alias`, and one broken component no longer takes down the workbench** (#2744). (1676b6a)
+
+  Atlas creates its Vite contexts with `configFile: false` — deliberately, since the project's config carries plugins Atlas must not double-apply (it already runs the real `@pyreon/vite-plugin`). But that also discarded `resolve.alias`, so an app whose components import through its own `~/components/…` alias failed to load every one of them.
+
+  `resolve.alias` is now extracted from the project's vite config and applied to all three Vite contexts — the dev server, the static build, and **the scan's module loader**. The scan matters as much as the workbench: without it, an aliased component is silently absent from the catalog rather than visibly broken.
+
+  Only `resolve.alias` is taken — never plugins, and deliberately not `resolve.conditions` (Atlas resolves workspace packages through the `bun` condition on purpose, and inheriting the app's would break every `@pyreon/*` import). A config that cannot be loaded warns and degrades to no aliases rather than refusing to start.
+
+  `atlas.config.ts` gains an `alias` key as the explicit escape hatch. Entries declared there win — Vite matches in order and these are placed first.
+
+  **Separately: a component that fails to load is now one broken card, not a dead workbench.** The generated catalog module used static `import * as __modN from '…'` per component; a static import cannot be caught, so a single unresolvable import failed the whole module and nothing rendered. Each component is now imported individually through a caught dynamic import, and the render path's existing error-card branch — previously unreachable for this failure — surfaces the module's own message (`Cannot find module '~/shared/tokens'`) instead of a generic "could not load".
+
+- **`--check` — the ratchet. `atlas scan` and `atlas verify` can now answer "did I help?", not just "how is it now?".** (ebeb330)
+
+  Absolute counts (`14 verified, 1 failing`) answer the second question and cannot answer the first — which is the one anyone iterating actually has, and the only signal an agent can use to decide whether to keep a change or back it out. A single number is not a reward signal; a delta is.
+
+  `--check` compares the run against the **committed** `atlas-catalog.json` and exits non-zero on a regression:
+
+  ```
+  atlas --check: REGRESSED — 2 check(s) started failing
+    ✗ button--empty — now failing: interaction
+  ```
+
+  **A check that STOPS RUNNING counts as a regression.** This is the case absolute counts structurally cannot catch, because losing coverage makes the numbers improve. Delete a wrapper from `atlas.config.ts` and every mount-dependent check drops to `skip`:
+
+  ```
+  atlas: discovered 1 component(s), 2 scenario(s) — 0 verified, 0 failing, 2 unverified.
+  atlas --check: REGRESSED — 4 check(s) stopped running
+    ✗ button--empty — no longer checked: interaction, leak
+      (coverage lost — the failure did not go away, the check did)
+  ```
+
+  `2 failing` became `0 failing` and the catalog reads as fixed. Losing coverage is the one way to "fix" a red catalog that must never read as green.
+
+  Three deliberate behaviours: `--check` never writes the catalog (a ratchet that overwrites its own baseline compares a run against itself and can never report a regression again); a missing or unreadable baseline is exit 0 with a note, never a failure (making the first `--check` run red for everybody is how a ratchet gets disabled on day one); and a new or removed scenario is not a regression (adding a component with a failing edge case is new information, deleting one is a legitimate edit).
+
+  The diff is per CHECK rather than per scenario — "still failing" and "failing for a different reason" are different events — and iterates `CHECK_KEYS`, so a seventh check is ratcheted the day it lands.
+
+- Add `routerPlugin` — route state as a scenario axis for components that ask the router questions. (efa2fac)
+
+  **Sized honestly.** A component calling `useRouter()`/`useParams()` does not crash in the workbench today: Atlas already detects a missing provider and reports that the fix is an `atlas.config.ts` wrapper. So this removes hand-written boilerplate, and adds the thing a wrapper cannot give you — `/users/1` and `/users/999` as SEPARATE verified scenarios, each with its own verdict, snapshot and URL.
+
+  The URL is carried as scenario METADATA, not as an arg. In `args` it would render as a control the component does not have and let a user "edit" something with no effect.
+
+  `installRouter` builds the router from the module the loader resolved, never Atlas's own copy — `useRouter()` resolves against module-level state inside a particular copy of `@pyreon/router`, so a router made from the wrong one is invisible to the component and reports "no router" while one demonstrably exists. It clears the active router on dispose, because that state outlives the scan and would otherwise answer for whatever runs next, including a check meant to observe a component WITHOUT one.
+
+  With no URLs configured the plugin is the identity function, so it costs nothing until it is given something to vary.
+
+- Add the SSR-parity verify check — does each scenario survive `renderToString` + hydrate? (073b3ae)
+
+  A hydration mismatch is the framework's own first-class bug class: the SSR↔hydration differential fuzz found six shipped instances, every one a cursor misalignment where the server's HTML and the client's expectation disagreed about how many DOM nodes a construct occupies. None of Atlas's other checks could see it — `interaction` mounts on the client and never renders on a server, and `snapshot` photographs one render, so a build that is consistently wrong photographs consistently. Every scenario a catalog already has now becomes a parity test at zero authoring cost.
+
+  **Two oracles, because one is not enough.** The runtime's own mismatch channel must report nothing, AND the hydrated DOM must equal a fresh client mount. The second exists because the first can agree on broken — an SSR pass and a hydrate pass reaching the same wrong DOM produce zero mismatches, and only an independently-built third instance reveals it.
+
+  `VerifyVerdict` gains a sixth check, `ssrParity`. Consumers reading the catalog's verdict shape see one more field; `verify-browser` carries the node-side verdict through rather than recomputing it.
+
+  **Honest limits, stated in the source rather than discovered later.** The check is BLIND to `typeof window` branching: both renders happen in one process with DOM globals installed so components can mount at all, so the "server" pass sees a browser too and the two sides agree. What it does catch is non-deterministic renders (`Math.random()`, `Date.now()`, per-render ids), components that throw only under `renderToString`, and the framework's own cursor-misalignment class. It skips with a reason when `@pyreon/runtime-server` is not installed, since a component library with no SSR story is a legitimate project.
+
+  Verified end to end, not just unit-tested: against the 43-scenario workshop catalog it reports 43 passes, and perturbing a real component to render non-deterministically moves the scan to 39 verified / 4 failing with a source-anchored finding (`text at root > button > reactive: expected 12, DOM had 11`).
+
+- **Store panel — the writes an interaction made, steppable** (Atlas roadmap §9, the last open item on #2517). (1676b6a)
+
+  `@pyreon/store` publishes a mutation stream: every write announces its store, whether it was a `patch` or a direct set, and the per-key old/new values. Storybook has no equivalent, because React state changes are private to the component that owns them — there is nothing to subscribe to.
+
+  Press Record, interact with the preview, then step back through the writes. Stepping back shows the store **as it was**, not a recomputation. The panel also flags keys written more than once in a single interaction — a loop or a chain of dependent writes, worth seeing and not automatically wrong.
+
+  Recording is explicit rather than always-on, matching the Perf panel: `addStorePlugin` attaches to every store created afterwards, so a session-long subscription would pay for every write whether anyone is looking or not.
+
+  `@pyreon/store` is an **optional** peer — a project that uses no stores sees a panel that says so, not an error.
+
+- **`atlas verify <Component>` — the write → verify → fix loop, and a scan that says WHICH check failed.** (019d5d1)
+
+  A scan reported `41 verified, 2 failing`. That counts _scenarios_, and it withholds the finding: six checks run per scenario, and the one that failed is the whole content of the message. Answering "which check?" meant opening `atlas-catalog.json` and walking it by hand.
+
+  - **Every run now prints a per-check tally** — `checks: a11y 18/20 ✗ · interaction 43/43 · ssrParity 43/43 · leak 43/43` — plus `not run:` lines naming the checks that were unavailable and why. This is not cosmetic: on a package where `@pyreon/runtime-server` does not resolve, the scan reports **1090 of 1090 scenarios verified** having run two of the six checks. True, and completely misleading without the tally.
+  - **A failing scan now prints the failing CHECK and its findings**, not a bare list of scenario ids. Capped at 20 rows on a whole-catalog scan, and the cap reports itself.
+  - **New `atlas verify [Component] [--cwd <dir>] [--json]`.** Discovery still walks the project — a component's file is not known until it does — but decoration and verification run only for the match. Measured on `@pyreon/ui-components` (108 components, 1090 scenarios): 1.35s full scan against 0.90s scoped to one component's 60 scenarios; the verify work drops ~18× while discovery dominates the residual, so it is a focus tool first and a speed tool second. Failing scenarios print uncapped. `--json` emits the report as data for an agent to branch on.
+
+  Three refusals in `atlas verify` are deliberate. It **never writes `atlas-catalog.json`** — a one-component catalog would replace the real one and silently break the agent guide, the MCP tools and `atlas check` for everything else. An **unmatched name exits non-zero** with suggestions, because filtering to nothing otherwise reports "0 scenarios, 0 failing", which reads as a pass. And a run where **nothing could be verified exits non-zero** too: zero failures is not a pass when zero checks ran.
+
+  **Load errors are classified instead of blanket-blamed.** `virtual:zero/routes` is a module a build plugin synthesises; the import is correct and unresolvable only because Atlas does not run that plugin. Every scan of every zero app printed "fix the import and re-run" for it. Those are now reported separately, as "nothing to fix" — while still stating that a component defined in such a file would be absent, which is the half that remains true. A genuinely broken import keeps the loud, actionable message.
+
+  **Fixes a pre-existing arg-parsing bug**: `--cwd` was missing from the value-flag set, so any command reading a positional alongside it took the _path_ as that positional. `atlas check Button --cwd ./ui` parsed `./ui` as the component's args JSON and reported "could not parse the args" for a command line that is entirely correct.
+
+  `CHECK_KEYS` and `CheckKey` are now exported from the plugin registry as the single owner of the check list, so a seventh check cannot be merged into verdicts while going uncounted in the report.
+
+  `pyreon atlas --help` lists the new `verify` subcommand (`@pyreon/cli` passes every argument through, so the command itself already worked — the help text was the gap).
+
+- Make the Atlas story actually automated: previews, scenarios and a wrapper, all (69c191f)
+  from the spec.
+
+  The `atlas` plugin already emitted scenarios, but they were keyed by a native
+  data component Atlas has no reason to scan, and varied RESPONSE fields rather
+  than props. It produced a plausible-looking file that did nothing — the
+  "generated but never wired" shape, and only running `atlas scan` against a real
+  project surfaced it.
+
+  Now:
+
+  - **`components.tsx`** — one browsable preview per read operation. The variant
+    axis is the DATA STATE (`loading` / `error` / `empty`), which is a real prop,
+    so Atlas infers a control for it, and they are the three states a live
+    request will not show you on demand.
+  - **`atlas.wrapper.tsx`** — the `QueryClientProvider` the previews need, with
+    the generated mocks installed, so every card renders with **no server**. Atlas
+    names the missing provider precisely when there is none, so this is a step
+    the generator can simply take.
+  - **A transport seam on the generated client.** Endpoints bind at declaration
+    time, so middleware cannot be added to `createHttp` afterwards — which a mock
+    installed by a wrapper or a test never can be. One passthrough entry reserves
+    the slot; `installMocks()` uses it.
+
+  Measured on the bookshelf example: `atlas scan` discovers 2 components and 8
+  scenarios, **8 verified, 0 failing** — and `atlas.config.ts` names no component,
+  no scenario and no provider.
+
+  **`@pyreon/atlas` gains `ignore`**, a list of path fragments added to the
+  discovery defaults. A file can export a PascalCase component and still not
+  belong in a catalog: generated code shaped for another compiler, an internal
+  helper, an app entry point. Without it the only options were to browse it or
+  rename it, and a card that throws on every scenario trains people to ignore the
+  report.
+
+### Patch Changes
+
+- Diagnosability round from an upstream report. `atlas scan`'s dual-instance refusal now prints the TWO resolved framework copies (path + version, extracted from the caught sentinel error's own `A:`/`B:` lines) — the summary alone said "align the versions" while withholding where the second copy lives, sending the reader into node_modules archaeology for a fact the error already carried. A message shape with no `A:`/`B:` lines degrades to the summary standing alone. Plus: `@pyreon/validate` and `@pyreon/validation` READMEs each open with an explicit not-to-be-confused cross-reference (near-identical names, different jobs — validator-you-use vs stack-wide contract/adapters — a documented conflation trap). (443a646)
+- Close the pre-release audit's long tail: a fail-open URL guard, an inert verification axis, an unnecessary supply-chain surface, and two overstated claims (8563e97)
+
+  **`isSafeImageDataUri` failed OPEN on a malformed percent-escape.** The base64 branch returns "unsafe" when `atob` throws; the percent branch caught the `decodeURIComponent` failure, kept the raw still-encoded payload, and scanned that — but the scripted-SVG regex matches `<script` and ` on…=`, neither of which appears in `%3Cscript%3E`. So one trailing `%` took a payload from blocked to allowed. The function's own docstring already promised the base64 branch's behaviour for both, so the two branches disagreeing was the whole defect. Scoped to `src`/`srcset`/`poster` on image/video elements where a scripted SVG does not execute, so this is defence-in-depth — reported because a guard that fails open is worse than one that does not exist: it is relied on.
+
+  **`@pyreon/atlas`'s route axis was inert.** `installRouter` had zero callers and `Scenario.route` had zero readers while `routerPlugin` was publicly exported, so a `routerPlugin({ urls })` config produced the expected doubled scenario count with names like `Profile @ /users/999` — and every one passed having mounted with no router installed. Two different URLs rendered byte-identically and both reported `pass`. The router is now installed around the scenario mount through a registration seam (the plugin publishes an installer; the plugin that owns mounting consumes it, so there is still ONE owner of the router's install/dispose), disposed in the same window so it cannot answer for the next scenario, and a route that CANNOT be applied is reported as a finding rather than passing silently.
+
+  **`@pyreon/code`'s 15 `@codemirror/lang-*` packages move from `optionalDependencies` to optional peers.** `optionalDependencies` reads as optional and is not: every package manager installs them by default, so every consumer carried their install weight and CVE surface for grammars they never load. Each is reached through a lazy `import()`, which is exactly the shape `@pyreon/document` moved to `peerDependenciesMeta.optional` for the same reason.
+
+  **The Vercel revalidate handler compares its secret in constant time.** It was `secret !== expected` under a comment calling it "constant-time-ish"; `!==` short-circuits at the first differing byte regardless of length, which is precisely the leak the phrase claimed to avoid. Length is compared separately because `timingSafeEqual` requires equal-length buffers — that leaks the secret's LENGTH, which is stated rather than hidden.
+
+  **`serverIsland` documents that its props are client-controlled.** The fragment endpoint is public and unauthenticated; the island NAME is allowlisted, the props are not, so a fragment renders with attacker-chosen props inside a full request context. That is the intended design, but neither the JSDoc nor the manifest said so — an island that reads a `userId` prop and returns that user's data is an IDOR by construction. Now named as the first entry in the API's `mistakes`, so it reaches `llms.txt` and the MCP reference too.
+
+- Update third-party dependencies to their latest compatible releases, (ea669a1)
+  extending #3174's sweep to every package.json the first pass hadn't reached
+  (that pass touched only the root manifest, so nothing there tripped the
+  Changeset gate — this one edits per-package manifests directly and does).
+
+  Runtime dependencies that reach consumers: `oxc-parser`/`oxc-transform`
+  0.147 → 0.148 (`@pyreon/compiler`, `@pyreon/native-compiler`, `@pyreon/lint`
+  — `@oxc-project/types` alongside it), `magic-string` 1.2.2 → 1.2.3
+  (`@pyreon/compiler`), the CodeMirror 6 family — `@codemirror/search` and
+  `@codemirror/state` 6.7.1 → 6.7.2, `@codemirror/legacy-modes` 6.5.3 → 6.5.4
+  (`@pyreon/code`), TipTap 3.30.3 → 3.31.2 (`@pyreon/rich-text`), TanStack Query
+  5.102.2 → 5.102.8 across `@tanstack/query-core` and its persist/devtools
+  companions (`@pyreon/query`, and the shared root override so `@pyreon/http`
+  agrees), `@tanstack/table-core` 9.1.2 → 9.2.4 (`@pyreon/table`), the
+  pragmatic-drag-and-drop family (`@pyreon/dnd`) — core 3.0.0 → 3.1.0,
+  auto-scroll 3.1.0 → 3.2.0, hitbox 2.1.0 → 2.2.0, all in-range within the
+  v3 major this repo already adopted.
+
+  Dev-only comparison/tooling bumps across the touched packages: `rolldown`,
+  `react-hook-form`, `hotkeys-js`, `axios`, `ky`, `i18next`, `xstate`, `joi`,
+  `typia`, `nuqs`, `@tanstack/react-virtual`, `@tanstack/react-table`,
+  `@tanstack/react-query`, `motion`, and `mobx-state-tree` 7.4.0 → 8.0.0 — a
+  real major, but its own peer range for `mobx` moved `^6.3.0` → `^7.0.0`,
+  which matches what this repo already declares (`^7.0.3`); the OLD pin was
+  the one silently out of range.
+
+  `happy-dom` deduped to ONE resolved version repo-wide — three stale copies
+  (20.11.6/20.12.0/20.13.2) were co-installed before this pass across the ~17
+  packages that each pin it independently. The unification target is
+  **20.11.6, not the newest 20.13.2** — bumping past 20.11.6 breaks
+  `@pyreon/styler`'s `memory-growth.test.ts` deterministically (5/5 local
+  runs, plus a CI failure on `test (fundamentals+ui-system+zero)`), a pure
+  `environment: 'happy-dom'` test whose eviction-cycle counting depends on
+  CSSOM/`cssRules` behavior that changed somewhere between those versions —
+  confirmed by isolating the version with an exact pin, not by assumption; 3/3
+  clean at 20.11.6, 5/5 failing at 20.13.2. Verified pre-existing on `main`
+  (3/3 passes there, at 20.11.6) so this is the same "routine bump, unvetted
+  runtime behavior change" shape as the `@tanstack/virtual-core` finding
+  below, just caught before push instead of by CI. The one other consumer
+  pinning past 20.11.6 — `@happy-dom/global-registrator` in
+  `examples/benchmark`, whose own 20.13.2 release requires `happy-dom
+^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
+  graph resolves to one version again.
+
+  `examples/benchmark`'s framework competitors were refreshed too so the
+  "fastest framework" comparisons stay honest against current releases: Vue +
+  `@vue/server-renderer` + `@vue/compiler-dom` 3.5.41 → 3.5.42, Svelte 5.56.10
+  → 5.57.0, and Octane 0.1.46 → 0.2.2 (its peer `@octanejs/vite-plugin`
+  0.1.46 → 0.1.52 alongside it) — a real minor jump, verified with a clean
+  production build before committing to it. Octane 0.2.2 replaces the
+  `forBlock` fast-path flag the row-list bench's own doc comment describes
+  un-handicapping with a new `fastKeyedForBlock` path; the bench impl still
+  reaches it (confirmed by compiling `octane.tsrx` through `octane/compiler`
+  0.2.2 and reading the emitted flags), so the comparison stays fair, but
+  every previously-published Pyreon-vs-Octane number in
+  `.claude/skills/pyreon-benchmarks/SKILL.md` was measured against 0.1.46 and
+  needs re-verification against 0.2.2 before being cited again — flagged
+  there, not restated as fact here.
+
+  Held deliberately, each for a stated reason found by actually reading the
+  dependency rather than assuming: TypeScript stays capped `<7.0.0` (removes
+  the classic Compiler API `@pyreon/compiler`/`@pyreon/mcp`/`@pyreon/cli` are
+  built on). `vitest`/`@vitest/browser`/`@vitest/browser-playwright`/
+  `@vitest/coverage-v8` stay on 4.1.11 as one locked unit (5.0.0 just went GA
+  and changes `clearMocks` to default `true`, tightens `coverage.include`/
+  `exclude` matching, and removes several import entrypoints — exactly the
+  class of change this repo's `Coverage (Full)` gate has already rotted on
+  three times; a real migration, not a version bump). `@changesets/cli`
+  2.31.1 → 3.0.1 and `@changesets/changelog-github` 0.7.0 → 1.0.0 stay put:
+  1.0.0 ships `"type": "module"` with no CJS export, and this repo's own
+  `.changeset/resilient-changelog.cjs` does `require('@changesets/changelog-
+github')` — bumping it would break `changeset version` at release time with
+  `ERR_REQUIRE_ESM`, verified by reading the published package's `exports`
+  map, not assumed. The root `uuid` override stays at `11.1.1` for the same
+  reason, one level removed: it force-pins a transitive dep of `exceljs`
+  (`^8.3.0`, itself already outside its own declared range on purpose), and
+  `uuid` 12.0.0 dropped CommonJS support entirely — `exceljs`'s own bundled
+  code does `require('uuid')`, verified directly in its installed `dist/`, so
+  the same ESM-only trap applies one hop further down the graph.
+
+  One more found by actually running the browser test tier, not just typecheck
+  and the node/happy-dom suite: `@tanstack/virtual-core` was bumped 3.17.4 →
+  3.17.8 in this branch's first pass (a routine-looking override edit, not
+  vetted as carefully as the deps above), and it broke
+  `@pyreon/virtual`'s real-Chromium `repositions a STAYING row below when row 0
+is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
+  retries) — bisected down to virtual-core's own 3.17.7 "synchronous
+  notification for scroll compensation" change, not to anything else in this
+  branch (ruled out `@tanstack/react-virtual`, unrelated — not imported by this
+  code path at all; ruled out the `oxc-parser`/`magic-string`/`rolldown`
+  bumps too, by reverting each in isolation and rebuilding). Reverted back to
+  3.17.4, matching what's currently on `main`, and NOT bumped further.
+
+  This surfaced something that predates this PR: `@pyreon/virtual`'s own
+  `package.json` has declared `@tanstack/virtual-core: "^3.17.7"` since an
+  earlier fix (commit 973c4e323, "the root overrides pinned
+  @tanstack/virtual-core to 3.17.4 while three packages declared ^3.17.7, so
+  the installed version did not satisfy its own consumers' declared range")
+  — but the root override was only ever bumped to 3.17.4 there, not to
+  3.17.7+, so the exact mismatch that fix describes is still live on `main`
+  today: the declared floor and the resolved version disagree, silently,
+  because the currently-resolved 3.17.4 happens to still pass. Bumping the
+  override to actually satisfy the package's own declared range (3.17.7,
+  confirmed — not just 3.17.8) is what surfaces the real compatibility break
+  in `use-virtualizer.ts`'s remeasurement handling. Left as-is here rather
+  than fixed, because closing it needs either updating the wrapper for
+  virtual-core's new synchronous-notification timing or re-adjudicating the
+  test's assumptions against it — real source-level work, not a version
+  bump. Tracked as a known gap, not silently left broken: someone picking
+  this up should treat `bun run test:browser` in `@pyreon/virtual` as the
+  regression gate, not just `bun run test`, which does not exercise this
+  path at all (confirmed: the full node/happy-dom suite passes 1805/1805
+  regardless of which virtual-core version is resolved).
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- Two new lint rules for validated upstream-shipped bug shapes (97 → 99 rules): (47ef812)
+
+  - `pyreon/no-signal-read-in-attrs-callback` (styling, warn, dep-gated on `@pyreon/rocketstyle`): rocketstyle `.attrs()` callbacks run ONCE at setup, so a zero-arg call of a same-file signal/computed binding inside the callback captures a dead value that never updates (the ui-collapse-that-never-collapsed shape). Silent on `props.*`/`theme.*` reads, calls with args, the `.attrs({...})` object form, and handlers defined inside the callback; silent entirely in projects without `@pyreon/rocketstyle`.
+
+  - `pyreon/no-guard-only-signal-reads-in-effect` (reactivity, info): flags an `effect()` whose EVERY reactive read (tracked signal call or `props.X` read) sits behind a conditional whose own test is provably non-reactive (`if (ref.current) { chart.setOption(props.option) }`, incl. the early-return spelling) — the first run can short-circuit before any read, so the effect subscribes to nothing and never re-runs. Zero-FP construction: any unconditional proven OR possible read (an unclassifiable zero-arg call like `chart.instance()`), a reactive guard test, both-branch reads, loop-body reads, nested-callback reads, and switch/catch shapes all suppress the report.
+
+  `@pyreon/atlas`: the workbench preview's `dir`-applying effect now reads the `dir()` signal before the element guard — the previous shape subscribed only when the guard was truthy on the first run (it was in practice, since the effect is created after the element is captured, but the shape was fragile and is exactly what the new rule flags).
+
+- Update third-party dependencies to their latest compatible releases. (5867cca)
+
+  Runtime dependencies that reach consumers: `oxc-parser` / `oxc-transform`
+  0.144 → 0.147 (`@pyreon/compiler`, `@pyreon/native-compiler`), the CodeMirror 6
+  family (`@pyreon/code`), TipTap 3.29 → 3.30 (`@pyreon/rich-text`), TanStack
+  Query 5.101 → 5.102 (`@pyreon/query`), the
+  pragmatic-drag-and-drop auto-scroll/hitbox companions (`@pyreon/dnd`),
+  `y-protocols` (`@pyreon/sync`), `oxlint` 1.78 → 1.80 (`@pyreon/lint`), and the
+  shiki / remark / unist chain (`@pyreon/zero-content`).
+
+  No API surface changes. Held deliberately, each for a stated reason: TypeScript
+  stays capped `<7.0.0` (TS7 removed the classic Compiler API), and
+  `@changesets/cli` v3, `@atlaskit/pragmatic-drag-and-drop` v3, and `ky` v2 are
+  majors that need their own PRs.
+
+- Eight README examples are now typechecked in CI. (e0e0dc0)
+
+  `check-doc-examples` only ever looked at `docs/src/content/docs/**`; package READMEs carry ~550 `ts`/`tsx` blocks and nothing verified any of them. The gate now walks package READMEs too, and each of these packages has one verified-clean example opted in with the `// @check` marker.
+
+  Each was compiled before being marked, not marked and then debugged. No content changed — the marker is a comment inside the fence.
+
+- Hydration now ADOPTS a reactive accessor's server-rendered subtree instead of rebuilding it, and `@pyreon/zero` resolves the matched route before hydrating so its pages actually hydrate in place. (7ead5f8)
+
+  A function child's SSR output is bracketed by `<!--$-->…<!--/$-->`. Previously the general case (anything but a single text node) always deleted that range and re-mounted. `RouterView` renders its route through exactly such an accessor, so a zero app discarded its entire server-rendered page on every load — measured on the docs production build, 10 of 11,514 `<body>` nodes survived hydration (0.1%). Typed input, focus, scroll position and any listener attached by non-Pyreon code were destroyed on every page load, and the client rebuilt DOM the server had already produced.
+
+  `hydrateReactiveChild` now hydrates the accessor's first render against that range, bounded by the end marker the same way the async-component path bounds its own. Anything the walk does not consume is swept, so a genuine divergence degrades to the previous behaviour rather than orphaning nodes.
+
+  The SAME adoption applies to `hydrateSoleAccessorChild`, and for zero that is the load-bearing one. #2935 elides the range markers when an accessor is an element's ONLY child (the tag boundary is the extent), and `RouterView` returns `h('div', …, child)` — so zero's route takes that path. Adopting in only the marked path leaves zero at 0.1%; measured, not inferred.
+
+  That alone does not help a `lazy()` host: at hydration time the route component is not yet loaded, so the accessor's first render is the loading fallback (`null` for a route without a `loadingComponent`), which matches nothing. `startClient` therefore calls `router.preload(path, { skipLoaders: true })` before `hydrateRoot`, making the first render the real component. Loader data is unaffected — it was already seeded from `__PYREON_LOADER_DATA__`. The route chunks are `modulepreload`ed by the SSG/SSR build, so this normally resolves from cache, and the server's DOM stays visible while it does.
+
+  Measured on the docs production build at this branch's tip, `/docs/router`: `<body>` retention 10/11,514 (0.1%) → 558/11,514 (4.8%). (An earlier cut of this branch measured 10.9%; the figure was re-measured after the later correctness commits and this is the honest current number.) The residual is NOT verifier strictness — instrumenting every adoption bail site shows zero shape/DOM-gate failures on this page. It is arming-protocol timing: compiled `_tpl` calls evaluated as h() arguments run before any DOM cursor exists, so they clone eagerly and the whole subtree below them is swapped instead of adopted. That is a separate lever — deferred `_tpl` arming — which this change makes reachable for the first time in a zero app.
+
+  Also fixes a latent cleanup bug this exposed: `bindPolymorphicText` disposes its binding without removing the bound text node, so a NESTED accessor's adopted text survived its parent's re-emission. Invisible while every accessor re-mounted over a full range swap; caught by the SSR↔hydration parity fuzzer's post-flip oracle.
+
+  `@pyreon/atlas`'s SSR-parity oracle now normalizes the `<input value>` attribute, which a server can only express as an ATTRIBUTE while the client sets it as a PROPERTY. A hydrated tree shows the server's attribute and a client-mounted tree shows nothing, while the live property — what the user sees, edits and submits — is identical. That check previously passed only BECAUSE hydration rebuilt every subtree, making "hydrated" and "client mount" the same code path; adoption surfaced the difference rather than causing it. Everything else the oracle compares is untouched. Scoped to `value` alone — the narrower the exemption the smaller the hole — and it should be deleted outright once #2953 establishes `defaultValue` on a client mount, fixing the divergence at the source.
+
+- Updated dependencies:
+  - @pyreon/compiler@0.52.0
+  - @pyreon/core@0.52.0
+  - @pyreon/hooks@0.52.0
+  - @pyreon/code@0.52.0
+  - @pyreon/reactivity@0.52.0
+  - @pyreon/unistyle@0.52.0
+  - @pyreon/runtime-dom@0.52.0
+  - @pyreon/feature@0.52.0
+  - @pyreon/permissions@0.52.0
+  - @pyreon/store@0.52.0
+  - @pyreon/vite-plugin@0.52.0
+  - @pyreon/elements@0.52.0
+  - @pyreon/config@0.52.0
+  - @pyreon/rocketstyle@0.52.0
+  - @pyreon/ui-core@0.52.0
+  - @pyreon/styler@0.52.0
+
 ## 0.51.0
 
 ### Minor Changes

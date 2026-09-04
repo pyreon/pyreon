@@ -1,5 +1,257 @@
 # @pyreon/router
 
+## 0.52.0
+
+### Minor Changes
+
+- Fix redirect target handling: cross-origin redirects now actually work on the (0e434c8)
+  client, and client + server agree on what a target means.
+
+  Two defects were tangled together. **Functional**: `redirect()`'s docs promised
+  cross-origin support (`redirect('https://provider.com/oauth')`), but the client
+  router rewrote EVERY absolute URL to `/` via `sanitizePath` — so a cross-origin
+  redirect silently failed to `/` on an SPA navigation (breaking e.g. an OAuth
+  hand-off), while the SSR handler emitted it verbatim. **Security**: that same
+  client/server disagreement meant a guard a developer verified on the client (which
+  blocks absolute URLs) did not hold on the server (which emitted them raw).
+
+  A single shared classifier — `classifyRedirectTarget` (exported) — now drives
+  BOTH paths:
+
+  - **`external`** (an explicit `http(s)://` URL): a real `window.location`
+    navigation on the client (was silently `/`), a `Location:` header on the server.
+    The target is trusted to the caller — validate an untrusted `?next=` value
+    against an allowlist, exactly as with any framework (Remix/Next model); the
+    `redirect()` JSDoc now says so.
+  - **`block`** (protocol-relative `//host`, or a non-`http(s)` scheme like
+    `javascript:` / `data:` / `mailto:`): refused and routed to `/`, on both the
+    client redirect application and the server `Location:` (`safeRedirectLocation`).
+  - **`internal`** (a same-origin path): an in-router SPA navigation, unchanged.
+
+  Bisect-verified: reverting the client external branch fails a cross-origin
+  redirect (no real navigation); reverting the server sanitizer emits
+  `javascript:alert(1)` as the raw `Location`. Full `@pyreon/router` 758/758 +
+  `@pyreon/server` 256/256, typecheck + lint + budgets clean. `push`/`replace` of a
+  string path and route-config redirects keep their same-origin-only behavior.
+
+### Patch Changes
+
+- Three defects found auditing the changes since 0.51.0. (5493aa8)
+
+  **`safeRedirectLocation` failed open to an open redirect and to `javascript:`
+  XSS.** The guard classified the RAW target while a browser classifies a
+  PREPROCESSED one, and the gap is one character wide. The WHATWG URL parser
+  strips leading/trailing C0 controls and space, and removes ALL ASCII tab and
+  newline from anywhere in the input; `String.prototype.trim()` covers the first
+  only partially and the second not at all, because that character sits in the
+  middle. So `"/<TAB>/evil.example"` was classified `internal` and resolves to
+  `https://evil.example/`, and `"java<TAB>script:alert(1)"` was classified
+  `internal` and resolves to a live `javascript:` URL — both verified against the
+  platform's own URL parser, which is the oracle the regression test uses. The
+  `internal` branch also returned the ORIGINAL string rather than the one it had
+  inspected, so even a correct verdict handed back bytes that produce a different
+  one. The target is now normalised the way the parser does, before classifying,
+  and the normalised value is what ships.
+
+  **`@pyreon/lathe`'s YAML reader replaced an object's prototype instead of
+  setting a key.** Both mapping paths assigned `map[key] = value`, and for
+  `__proto__` that runs the inherited accessor: the key vanishes from the parsed
+  document while its value's properties leak into every later member read on that
+  object. A spec reaches this parser over the network — `lathe pull <url>` fetches
+  one and writes it to disk — and the IR it produces is what the emitters turn
+  into source, so a silently-dropped field is a missing field in a generated
+  client and a silently-added one is a generator input nobody wrote. The `.json`
+  half of the same reader was always correct, because `JSON.parse` defines the
+  property rather than assigning it; the two formats disagreed about the same
+  document. Fixed by doing what `JSON.parse` does.
+
+  **The three file pickers leaked their `<input>` when neither `change` nor
+  `cancel` fired.** `useCamera` / `useFilePicker` / `useImagePicker` each appended
+  a hidden input to `document.body` and removed it inside `settle`, under a
+  comment promising that "a browser that fires neither event must not leak the
+  node". The `settled` flag cannot provide that: with no event `settle` never
+  runs, so neither does `input.remove()`, and the document then holds the node,
+  its listeners and the `resolve` closure for the life of the page — once per
+  pick, unbounded. `cancel` is the event that would have fired, and the same
+  comments describe it as "not universal across older browsers". The three
+  implementations were byte-identical and are now one helper, whose `onCleanup`
+  settles any pick still open when the component unmounts.
+
+- Update third-party dependencies to their latest compatible releases, (ea669a1)
+  extending #3174's sweep to every package.json the first pass hadn't reached
+  (that pass touched only the root manifest, so nothing there tripped the
+  Changeset gate — this one edits per-package manifests directly and does).
+
+  Runtime dependencies that reach consumers: `oxc-parser`/`oxc-transform`
+  0.147 → 0.148 (`@pyreon/compiler`, `@pyreon/native-compiler`, `@pyreon/lint`
+  — `@oxc-project/types` alongside it), `magic-string` 1.2.2 → 1.2.3
+  (`@pyreon/compiler`), the CodeMirror 6 family — `@codemirror/search` and
+  `@codemirror/state` 6.7.1 → 6.7.2, `@codemirror/legacy-modes` 6.5.3 → 6.5.4
+  (`@pyreon/code`), TipTap 3.30.3 → 3.31.2 (`@pyreon/rich-text`), TanStack Query
+  5.102.2 → 5.102.8 across `@tanstack/query-core` and its persist/devtools
+  companions (`@pyreon/query`, and the shared root override so `@pyreon/http`
+  agrees), `@tanstack/table-core` 9.1.2 → 9.2.4 (`@pyreon/table`), the
+  pragmatic-drag-and-drop family (`@pyreon/dnd`) — core 3.0.0 → 3.1.0,
+  auto-scroll 3.1.0 → 3.2.0, hitbox 2.1.0 → 2.2.0, all in-range within the
+  v3 major this repo already adopted.
+
+  Dev-only comparison/tooling bumps across the touched packages: `rolldown`,
+  `react-hook-form`, `hotkeys-js`, `axios`, `ky`, `i18next`, `xstate`, `joi`,
+  `typia`, `nuqs`, `@tanstack/react-virtual`, `@tanstack/react-table`,
+  `@tanstack/react-query`, `motion`, and `mobx-state-tree` 7.4.0 → 8.0.0 — a
+  real major, but its own peer range for `mobx` moved `^6.3.0` → `^7.0.0`,
+  which matches what this repo already declares (`^7.0.3`); the OLD pin was
+  the one silently out of range.
+
+  `happy-dom` deduped to ONE resolved version repo-wide — three stale copies
+  (20.11.6/20.12.0/20.13.2) were co-installed before this pass across the ~17
+  packages that each pin it independently. The unification target is
+  **20.11.6, not the newest 20.13.2** — bumping past 20.11.6 breaks
+  `@pyreon/styler`'s `memory-growth.test.ts` deterministically (5/5 local
+  runs, plus a CI failure on `test (fundamentals+ui-system+zero)`), a pure
+  `environment: 'happy-dom'` test whose eviction-cycle counting depends on
+  CSSOM/`cssRules` behavior that changed somewhere between those versions —
+  confirmed by isolating the version with an exact pin, not by assumption; 3/3
+  clean at 20.11.6, 5/5 failing at 20.13.2. Verified pre-existing on `main`
+  (3/3 passes there, at 20.11.6) so this is the same "routine bump, unvetted
+  runtime behavior change" shape as the `@tanstack/virtual-core` finding
+  below, just caught before push instead of by CI. The one other consumer
+  pinning past 20.11.6 — `@happy-dom/global-registrator` in
+  `examples/benchmark`, whose own 20.13.2 release requires `happy-dom
+^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
+  graph resolves to one version again.
+
+  `examples/benchmark`'s framework competitors were refreshed too so the
+  "fastest framework" comparisons stay honest against current releases: Vue +
+  `@vue/server-renderer` + `@vue/compiler-dom` 3.5.41 → 3.5.42, Svelte 5.56.10
+  → 5.57.0, and Octane 0.1.46 → 0.2.2 (its peer `@octanejs/vite-plugin`
+  0.1.46 → 0.1.52 alongside it) — a real minor jump, verified with a clean
+  production build before committing to it. Octane 0.2.2 replaces the
+  `forBlock` fast-path flag the row-list bench's own doc comment describes
+  un-handicapping with a new `fastKeyedForBlock` path; the bench impl still
+  reaches it (confirmed by compiling `octane.tsrx` through `octane/compiler`
+  0.2.2 and reading the emitted flags), so the comparison stays fair, but
+  every previously-published Pyreon-vs-Octane number in
+  `.claude/skills/pyreon-benchmarks/SKILL.md` was measured against 0.1.46 and
+  needs re-verification against 0.2.2 before being cited again — flagged
+  there, not restated as fact here.
+
+  Held deliberately, each for a stated reason found by actually reading the
+  dependency rather than assuming: TypeScript stays capped `<7.0.0` (removes
+  the classic Compiler API `@pyreon/compiler`/`@pyreon/mcp`/`@pyreon/cli` are
+  built on). `vitest`/`@vitest/browser`/`@vitest/browser-playwright`/
+  `@vitest/coverage-v8` stay on 4.1.11 as one locked unit (5.0.0 just went GA
+  and changes `clearMocks` to default `true`, tightens `coverage.include`/
+  `exclude` matching, and removes several import entrypoints — exactly the
+  class of change this repo's `Coverage (Full)` gate has already rotted on
+  three times; a real migration, not a version bump). `@changesets/cli`
+  2.31.1 → 3.0.1 and `@changesets/changelog-github` 0.7.0 → 1.0.0 stay put:
+  1.0.0 ships `"type": "module"` with no CJS export, and this repo's own
+  `.changeset/resilient-changelog.cjs` does `require('@changesets/changelog-
+github')` — bumping it would break `changeset version` at release time with
+  `ERR_REQUIRE_ESM`, verified by reading the published package's `exports`
+  map, not assumed. The root `uuid` override stays at `11.1.1` for the same
+  reason, one level removed: it force-pins a transitive dep of `exceljs`
+  (`^8.3.0`, itself already outside its own declared range on purpose), and
+  `uuid` 12.0.0 dropped CommonJS support entirely — `exceljs`'s own bundled
+  code does `require('uuid')`, verified directly in its installed `dist/`, so
+  the same ESM-only trap applies one hop further down the graph.
+
+  One more found by actually running the browser test tier, not just typecheck
+  and the node/happy-dom suite: `@tanstack/virtual-core` was bumped 3.17.4 →
+  3.17.8 in this branch's first pass (a routine-looking override edit, not
+  vetted as carefully as the deps above), and it broke
+  `@pyreon/virtual`'s real-Chromium `repositions a STAYING row below when row 0
+is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
+  retries) — bisected down to virtual-core's own 3.17.7 "synchronous
+  notification for scroll compensation" change, not to anything else in this
+  branch (ruled out `@tanstack/react-virtual`, unrelated — not imported by this
+  code path at all; ruled out the `oxc-parser`/`magic-string`/`rolldown`
+  bumps too, by reverting each in isolation and rebuilding). Reverted back to
+  3.17.4, matching what's currently on `main`, and NOT bumped further.
+
+  This surfaced something that predates this PR: `@pyreon/virtual`'s own
+  `package.json` has declared `@tanstack/virtual-core: "^3.17.7"` since an
+  earlier fix (commit 973c4e323, "the root overrides pinned
+  @tanstack/virtual-core to 3.17.4 while three packages declared ^3.17.7, so
+  the installed version did not satisfy its own consumers' declared range")
+  — but the root override was only ever bumped to 3.17.4 there, not to
+  3.17.7+, so the exact mismatch that fix describes is still live on `main`
+  today: the declared floor and the resolved version disagree, silently,
+  because the currently-resolved 3.17.4 happens to still pass. Bumping the
+  override to actually satisfy the package's own declared range (3.17.7,
+  confirmed — not just 3.17.8) is what surfaces the real compatibility break
+  in `use-virtualizer.ts`'s remeasurement handling. Left as-is here rather
+  than fixed, because closing it needs either updating the wrapper for
+  virtual-core's new synchronous-notification timing or re-adjudicating the
+  test's assumptions against it — real source-level work, not a version
+  bump. Tracked as a known gap, not silently left broken: someone picking
+  this up should treat `bun run test:browser` in `@pyreon/virtual` as the
+  regression gate, not just `bun run test`, which does not exercise this
+  path at all (confirmed: the full node/happy-dom suite passes 1805/1805
+  regardless of which virtual-core version is resolved).
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- Test-infrastructure only — no runtime or consumer-facing behavior change. The happy-dom spec-parity `hashchange`-echo guard (happy-dom fires a deferred synthetic `hashchange` for hash-changing `history.pushState`/`replaceState`; real browsers never do) was extracted from `@pyreon/router`'s test setup into the shared internal `@pyreon/test-utils` and installed in every suite that drives a real router in happy-dom: router (unchanged behavior), a11y (fixes a load-dependent CI flake where a stale echo made the route announcer fire for a traversal the test never made, plus a deterministic regression spec), and testing's own suite (internal devDep on the private `@pyreon/test-utils`; the shipped `/vitest` setup module is unchanged). (a6e9c1a)
+- Security: harden the SSR loader/store-state serializer against inline-`<script>` context injection. (ce819ca)
+
+  `stringifyLoaderData` — the shared helper that serializes `window.__PYREON_LOADER_DATA__` and `window.__PYREON_STORE_STATE__` into inline `<script>` bodies — previously escaped only `</`. That is insufficient: the HTML tokenizer enters the script-data-double-escaped state on `<!--` followed by `<script` (neither token contains a slash), so a loader/store value like `<!--<script>` survived verbatim and could corrupt the script boundary (hydration DoS; XSS-adjacent). Raw U+2028/U+2029 in a JSON string were also emitted unescaped and are `SyntaxError`s inside a `<script>`.
+
+  The serializer now neutralises the whole `<` class (`<` — makes `</script`, `<!--`, and `<script` all unformable, superseding the old `</`-only escape) plus U+2028/U+2029. Escaped forms parse back to the original characters under `JSON.parse`, so hydrated data is byte-identical — only the serialized representation is neutralised. Both embed sites (loader data and store state) route through this one helper, so both are covered.
+
+- Fix a polynomial ReDoS introduced by the redirect-normalisation hardening in (5493aa8)
+  this same PR.
+
+  The normalisation used an anchored alternation quantified over an AMBIGUOUS
+  character class: the `U+0000`-`U+0020` range already contains everything `\s`
+  adds below U+0080, so on a long run of matching characters the engine retries
+  the `$`-anchored branch from every position. Measured: 5k chars 13.5ms, 20k
+  204ms, 80k **3,563ms**. Clean quadratic.
+
+  `redirect()` targets can come straight from a `?next=` parameter, and this guard
+  runs on every SSR redirect, so it was reachable rather than theoretical - an
+  attacker sending 80k spaces burns 3.5 seconds of server CPU per request.
+
+  Replaced with an index walk: linear, no backtracking, and closer to the spec.
+  `<= 0x20` is exactly the "C0 control or space" set the URL parser strips, so
+  dropping `\s` makes it MORE faithful - a leading U+00A0 is not stripped by a
+  browser either, so it correctly stays part of the path.
+
+  Found by CodeQL on the PR that introduced it.
+
+- Fix a rapid double-Back silently losing a history entry. (80e2ce2)
+
+  A BROWSER-initiated traversal (popstate/hashchange) has already moved the URL — the browser owns it, and the router's commit is only catching the app up. `commitNavigation` nonetheless ran `syncBrowserUrl(path, replace)` for it, which is redundant in the happy path and actively wrong once a newer traversal has moved the history: the write lands on whatever entry is current NOW, stamping the older navigation's URL onto it.
+
+  The observable failure is pressing Back twice quickly. Back #1 starts an async navigate; Back #2 fires while it is still in flight and is dropped by the same-path guard (which compares against a `currentPath` that #1 has not yet updated); #1 then commits and `replaceState`s its URL over the entry the browser had already moved to. The second Back is silently undone.
+
+  A browser-initiated commit now writes nothing. Cancellation remains the one case where the router legitimately rewrites a browser-initiated URL, and `handleBrowserNav` already owns that path.
+
+- A rapid second browser Back landing on the ORIGINAL path is no longer dropped. The popstate echo guard compared the incoming traversal against `currentPath` — which the first (still in-flight) browser navigation had not updated yet — so the second traversal read as an echo and was silently discarded, leaving the router's path/query state diverged from the real URL (stale `currentRoute().query` and search readers) until the next navigation. The guard now compares against the in-flight browser navigation's target (`_pendingBrowserTarget`, identity-guarded on settle), so the second traversal runs the full pipeline and supersedes the first. This is the other half of the race #2885 fixed (the URL-clobber half). (6b84f8a)
+- A malformed percent-escape in a URL no longer 500s an SSR app (a0611c4)
+
+  `decodeURIComponent` throws `URIError` on a lone `%`, `%zz`, or a truncated multi-byte escape. Every decode in `@pyreon/router`'s matcher is applied to attacker-supplied text — a path segment, a query key, a query value — and the matcher is reached PRE-AUTH from `router.preload` inside the SSR handler. So `GET /?q=%` was an unauthenticated 500 on every server-rendered Pyreon app: one character, no auth, and a STATIC route, because the QUERY parser decodes too and no dynamic parameter is needed.
+
+  The matcher is a pure function with no HTTP context, so it cannot answer 400; an undecodable segment now resolves to its literal text, which keeps matching total and leaks nothing. Well-formed encoding is untouched (`/posts/a%20b` still yields `a b`) — this is a guard, not a retreat from decoding. A host that wants to reject malformed URLs should validate before routing.
+
+  `@pyreon/zero`'s server-islands fragment endpoint (`GET /_pyreon/fragment/<name>`) had the same unguarded decode on the same pre-auth path; unlike the matcher it HAS a request context and already answers 400 for a malformed name, so a malformed escape joins that branch rather than falling through as raw text.
+
+  The adapters (`bun.ts`) and `url-guard.ts` already guarded this, so the unguarded sites were an oversight rather than a policy.
+
+- `<RouterLink>` composes the consumer's `onClick` / `onMouseEnter` / `onFocus` instead of overwriting them (b030408)
+
+  `onClick: handleClick` was spread AFTER `...rest` in the internal `h('a', …)` call, so any handler the consumer passed was silently dropped — the same defect `class` had already been fixed for ("overriding the user's class silently dropped any conditional class"). Fixing one prop and leaving the events is folklore rather than a fix, so the class stayed open.
+
+  The shipped instance is the docs search overlay, which closes itself in `onClick`: on pyreon.dev a search result navigated correctly and left the modal dialog covering the destination page. Its unit test passed throughout, because it mocks `RouterLink` with a stub that does call `onClick` — a mock that is more correct than the component.
+
+  The user's handler runs FIRST, so `e.preventDefault()` in it suppresses navigation: `handleClick` already bails on `defaultPrevented`, which is what makes user-first the composable order rather than a race.
+
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+  - @pyreon/runtime-dom@0.52.0
+  - @pyreon/sized-map@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

@@ -1,5 +1,268 @@
 # @pyreon/code
 
+## 0.52.0
+
+### Patch Changes
+
+- Close the pre-release audit's long tail: a fail-open URL guard, an inert verification axis, an unnecessary supply-chain surface, and two overstated claims (8563e97)
+
+  **`isSafeImageDataUri` failed OPEN on a malformed percent-escape.** The base64 branch returns "unsafe" when `atob` throws; the percent branch caught the `decodeURIComponent` failure, kept the raw still-encoded payload, and scanned that — but the scripted-SVG regex matches `<script` and ` on…=`, neither of which appears in `%3Cscript%3E`. So one trailing `%` took a payload from blocked to allowed. The function's own docstring already promised the base64 branch's behaviour for both, so the two branches disagreeing was the whole defect. Scoped to `src`/`srcset`/`poster` on image/video elements where a scripted SVG does not execute, so this is defence-in-depth — reported because a guard that fails open is worse than one that does not exist: it is relied on.
+
+  **`@pyreon/atlas`'s route axis was inert.** `installRouter` had zero callers and `Scenario.route` had zero readers while `routerPlugin` was publicly exported, so a `routerPlugin({ urls })` config produced the expected doubled scenario count with names like `Profile @ /users/999` — and every one passed having mounted with no router installed. Two different URLs rendered byte-identically and both reported `pass`. The router is now installed around the scenario mount through a registration seam (the plugin publishes an installer; the plugin that owns mounting consumes it, so there is still ONE owner of the router's install/dispose), disposed in the same window so it cannot answer for the next scenario, and a route that CANNOT be applied is reported as a finding rather than passing silently.
+
+  **`@pyreon/code`'s 15 `@codemirror/lang-*` packages move from `optionalDependencies` to optional peers.** `optionalDependencies` reads as optional and is not: every package manager installs them by default, so every consumer carried their install weight and CVE surface for grammars they never load. Each is reached through a lazy `import()`, which is exactly the shape `@pyreon/document` moved to `peerDependenciesMeta.optional` for the same reason.
+
+  **The Vercel revalidate handler compares its secret in constant time.** It was `secret !== expected` under a comment calling it "constant-time-ish"; `!==` short-circuits at the first differing byte regardless of length, which is precisely the leak the phrase claimed to avoid. Length is compared separately because `timingSafeEqual` requires equal-length buffers — that leaks the secret's LENGTH, which is stated rather than hidden.
+
+  **`serverIsland` documents that its props are client-controlled.** The fragment endpoint is public and unauthenticated; the island NAME is allowlisted, the props are not, so a fragment renders with attacker-chosen props inside a full request context. That is the intended design, but neither the JSDoc nor the manifest said so — an island that reads a `userId` prop and returns that user's data is an IDOR by construction. Now named as the first entry in the API's `mistakes`, so it reaches `llms.txt` and the MCP reference too.
+
+- Update third-party dependencies to their latest compatible releases, (ea669a1)
+  extending #3174's sweep to every package.json the first pass hadn't reached
+  (that pass touched only the root manifest, so nothing there tripped the
+  Changeset gate — this one edits per-package manifests directly and does).
+
+  Runtime dependencies that reach consumers: `oxc-parser`/`oxc-transform`
+  0.147 → 0.148 (`@pyreon/compiler`, `@pyreon/native-compiler`, `@pyreon/lint`
+  — `@oxc-project/types` alongside it), `magic-string` 1.2.2 → 1.2.3
+  (`@pyreon/compiler`), the CodeMirror 6 family — `@codemirror/search` and
+  `@codemirror/state` 6.7.1 → 6.7.2, `@codemirror/legacy-modes` 6.5.3 → 6.5.4
+  (`@pyreon/code`), TipTap 3.30.3 → 3.31.2 (`@pyreon/rich-text`), TanStack Query
+  5.102.2 → 5.102.8 across `@tanstack/query-core` and its persist/devtools
+  companions (`@pyreon/query`, and the shared root override so `@pyreon/http`
+  agrees), `@tanstack/table-core` 9.1.2 → 9.2.4 (`@pyreon/table`), the
+  pragmatic-drag-and-drop family (`@pyreon/dnd`) — core 3.0.0 → 3.1.0,
+  auto-scroll 3.1.0 → 3.2.0, hitbox 2.1.0 → 2.2.0, all in-range within the
+  v3 major this repo already adopted.
+
+  Dev-only comparison/tooling bumps across the touched packages: `rolldown`,
+  `react-hook-form`, `hotkeys-js`, `axios`, `ky`, `i18next`, `xstate`, `joi`,
+  `typia`, `nuqs`, `@tanstack/react-virtual`, `@tanstack/react-table`,
+  `@tanstack/react-query`, `motion`, and `mobx-state-tree` 7.4.0 → 8.0.0 — a
+  real major, but its own peer range for `mobx` moved `^6.3.0` → `^7.0.0`,
+  which matches what this repo already declares (`^7.0.3`); the OLD pin was
+  the one silently out of range.
+
+  `happy-dom` deduped to ONE resolved version repo-wide — three stale copies
+  (20.11.6/20.12.0/20.13.2) were co-installed before this pass across the ~17
+  packages that each pin it independently. The unification target is
+  **20.11.6, not the newest 20.13.2** — bumping past 20.11.6 breaks
+  `@pyreon/styler`'s `memory-growth.test.ts` deterministically (5/5 local
+  runs, plus a CI failure on `test (fundamentals+ui-system+zero)`), a pure
+  `environment: 'happy-dom'` test whose eviction-cycle counting depends on
+  CSSOM/`cssRules` behavior that changed somewhere between those versions —
+  confirmed by isolating the version with an exact pin, not by assumption; 3/3
+  clean at 20.11.6, 5/5 failing at 20.13.2. Verified pre-existing on `main`
+  (3/3 passes there, at 20.11.6) so this is the same "routine bump, unvetted
+  runtime behavior change" shape as the `@tanstack/virtual-core` finding
+  below, just caught before push instead of by CI. The one other consumer
+  pinning past 20.11.6 — `@happy-dom/global-registrator` in
+  `examples/benchmark`, whose own 20.13.2 release requires `happy-dom
+^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
+  graph resolves to one version again.
+
+  `examples/benchmark`'s framework competitors were refreshed too so the
+  "fastest framework" comparisons stay honest against current releases: Vue +
+  `@vue/server-renderer` + `@vue/compiler-dom` 3.5.41 → 3.5.42, Svelte 5.56.10
+  → 5.57.0, and Octane 0.1.46 → 0.2.2 (its peer `@octanejs/vite-plugin`
+  0.1.46 → 0.1.52 alongside it) — a real minor jump, verified with a clean
+  production build before committing to it. Octane 0.2.2 replaces the
+  `forBlock` fast-path flag the row-list bench's own doc comment describes
+  un-handicapping with a new `fastKeyedForBlock` path; the bench impl still
+  reaches it (confirmed by compiling `octane.tsrx` through `octane/compiler`
+  0.2.2 and reading the emitted flags), so the comparison stays fair, but
+  every previously-published Pyreon-vs-Octane number in
+  `.claude/skills/pyreon-benchmarks/SKILL.md` was measured against 0.1.46 and
+  needs re-verification against 0.2.2 before being cited again — flagged
+  there, not restated as fact here.
+
+  Held deliberately, each for a stated reason found by actually reading the
+  dependency rather than assuming: TypeScript stays capped `<7.0.0` (removes
+  the classic Compiler API `@pyreon/compiler`/`@pyreon/mcp`/`@pyreon/cli` are
+  built on). `vitest`/`@vitest/browser`/`@vitest/browser-playwright`/
+  `@vitest/coverage-v8` stay on 4.1.11 as one locked unit (5.0.0 just went GA
+  and changes `clearMocks` to default `true`, tightens `coverage.include`/
+  `exclude` matching, and removes several import entrypoints — exactly the
+  class of change this repo's `Coverage (Full)` gate has already rotted on
+  three times; a real migration, not a version bump). `@changesets/cli`
+  2.31.1 → 3.0.1 and `@changesets/changelog-github` 0.7.0 → 1.0.0 stay put:
+  1.0.0 ships `"type": "module"` with no CJS export, and this repo's own
+  `.changeset/resilient-changelog.cjs` does `require('@changesets/changelog-
+github')` — bumping it would break `changeset version` at release time with
+  `ERR_REQUIRE_ESM`, verified by reading the published package's `exports`
+  map, not assumed. The root `uuid` override stays at `11.1.1` for the same
+  reason, one level removed: it force-pins a transitive dep of `exceljs`
+  (`^8.3.0`, itself already outside its own declared range on purpose), and
+  `uuid` 12.0.0 dropped CommonJS support entirely — `exceljs`'s own bundled
+  code does `require('uuid')`, verified directly in its installed `dist/`, so
+  the same ESM-only trap applies one hop further down the graph.
+
+  One more found by actually running the browser test tier, not just typecheck
+  and the node/happy-dom suite: `@tanstack/virtual-core` was bumped 3.17.4 →
+  3.17.8 in this branch's first pass (a routine-looking override edit, not
+  vetted as carefully as the deps above), and it broke
+  `@pyreon/virtual`'s real-Chromium `repositions a STAYING row below when row 0
+is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
+  retries) — bisected down to virtual-core's own 3.17.7 "synchronous
+  notification for scroll compensation" change, not to anything else in this
+  branch (ruled out `@tanstack/react-virtual`, unrelated — not imported by this
+  code path at all; ruled out the `oxc-parser`/`magic-string`/`rolldown`
+  bumps too, by reverting each in isolation and rebuilding). Reverted back to
+  3.17.4, matching what's currently on `main`, and NOT bumped further.
+
+  This surfaced something that predates this PR: `@pyreon/virtual`'s own
+  `package.json` has declared `@tanstack/virtual-core: "^3.17.7"` since an
+  earlier fix (commit 973c4e323, "the root overrides pinned
+  @tanstack/virtual-core to 3.17.4 while three packages declared ^3.17.7, so
+  the installed version did not satisfy its own consumers' declared range")
+  — but the root override was only ever bumped to 3.17.4 there, not to
+  3.17.7+, so the exact mismatch that fix describes is still live on `main`
+  today: the declared floor and the resolved version disagree, silently,
+  because the currently-resolved 3.17.4 happens to still pass. Bumping the
+  override to actually satisfy the package's own declared range (3.17.7,
+  confirmed — not just 3.17.8) is what surfaces the real compatibility break
+  in `use-virtualizer.ts`'s remeasurement handling. Left as-is here rather
+  than fixed, because closing it needs either updating the wrapper for
+  virtual-core's new synchronous-notification timing or re-adjudicating the
+  test's assumptions against it — real source-level work, not a version
+  bump. Tracked as a known gap, not silently left broken: someone picking
+  this up should treat `bun run test:browser` in `@pyreon/virtual` as the
+  regression gate, not just `bun run test`, which does not exercise this
+  path at all (confirmed: the full node/happy-dom suite passes 1805/1805
+  regardless of which virtual-core version is resolved).
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- Ship the MIT LICENSE file in the package tarball (8aeffe0)
+
+  These eight published packages were missing a `LICENSE` file. The repo's
+  own rule has always been that every package carries one ("Every package
+  MUST have `LICENSE` (MIT) and `README.md` — no exceptions"), but nothing
+  enforced it, so the gap went unnoticed.
+
+  No runtime change. It matters anyway: consumers, vendoring tools and
+  licence scanners read the file from the tarball, and its absence makes an
+  MIT-licensed package look unlicensed at the point where that question is
+  actually asked. A gate now keeps every workspace covered.
+
+- Every rule now runs on this monorepo, and every rule is proven to fire. (ec0aff6)
+
+  Three silent holes, each the same shape — a capability that worked for a
+  hand-maintained subset, where being outside the subset was indistinguishable
+  from being inside it.
+
+  **Two rules could never fire.** `pyreon doctor`'s lint gate scans each
+  package's shipped `src/**` minus tests, fixtures and `.d.ts`. Two rules'
+  subject is exactly what that removes: `no-query-selector-cast-in-test` and
+  `vitest-config-uses-shared`. Both were configured `error`; 2,159 test files
+  and 115 vitest configs existed and **none were in scope**. A rule now declares
+  its surface via `RuleMeta.scanTarget` (`'source'` | `'test'` |
+  `'packageConfig'`) and the gate collects what the enabled rules need, each
+  extra target as its own pass with every other rule off — running the full set
+  over tests would reintroduce the fixture noise the exclusions exist to prevent.
+
+  Turning them on found **280 `querySelector(…) as HTMLX` sites across 92
+  files** — the exact class `no-query-selector-cast-in-test` exists to prevent,
+  re-accumulated since PR #963 eliminated 122 of them. They are routed to the
+  advisory ratchet at a seeded baseline of 280, which can only shrink. That is
+  strictly more enforcement than the zero they had, and the burn-down is a
+  follow-up.
+
+  **`exemptPaths` was honoured per rule** — a rule had to call `isPathExempt`
+  itself and **55 of 101 did not**, so an exemption configured for one of those
+  parsed, validated, and did nothing. It is now applied centrally in the runner,
+  before `rule.create()`, so it means the same thing for every rule by
+  construction.
+
+  Because it is now a runner-level option rather than a per-rule one, option
+  validation recognises it on every rule — configuring it on a rule whose schema
+  omits it used to warn `unknown option "exemptPaths"` about an exemption that
+  demonstrably works. The 46 per-rule `isPathExempt` bails are deleted: the
+  central skip runs before `rule.create()`, so they were unreachable.
+
+  **A config key naming nothing was silently ignored.** This repo shipped
+  `pyreon/dangerously-set-inner-html` — with an `exemptPaths` list — for a rule
+  that has never existed. Unknown `rules` / `groups` keys are now config
+  diagnostics with a did-you-mean.
+
+  **Verification:** a new fires-invariant asserts all 101 rules produce their
+  diagnostic on a defect fixture and stay silent on the corrected one, with only
+  that rule enabled, and asserts the fixture map is total over the registry.
+  Building it found 13 fixtures wrong and **zero broken rules** — and it then caught the new rule below before it had a fixture, which is the case it exists for.
+
+  **New rule — `pyreon/no-unsanitized-inner-html`** (opt-in, `warn`). Pyreon
+  assigns `dangerouslySetInnerHTML`'s `__html` **raw** by design — React parity,
+  the developer owns sanitization, and unlike the sibling `innerHTML` prop no
+  sanitizer applies. That is the most direct XSS vector a Pyreon app has, and it
+  was caught by nothing. The gap was recorded but not closed: the ghost config
+  entry above was `pyreon/dangerously-set-inner-html`, complete with an exemption
+  for the one file that legitimately uses it.
+
+  It stays quiet on everything it cannot prove — a string literal, a
+  substitution-free template literal, a sanitizer call, and one hop through a
+  same-file `const`, so the idiomatic `const clean = DOMPurify.sanitize(dirty)`
+  is recognised. Opt-in because it is a judgement call about a prop that is
+  legitimately used with your own sanitizer.
+
+  It found **4 raw sinks** in this repo, ratcheted alongside the others. One is
+  worth a look on its own: `<Icon svg={…}>` renders caller-supplied markup raw,
+  so an app passing untrusted SVG through it has an XSS hole. The other three
+  are library output (mermaid, katex) and an `aria-hidden` gutter built from
+  line numbers.
+
+  **Also fixed:** the code editor's gutter line numbers failed WCAG AA — 2.45:1
+  (light) and 2.63:1 (dark) against a 4.5:1 requirement. Now 4.55:1 and 4.75:1,
+  one palette step each.
+
+  The repo's config runs all 101 rules: non-opt-in at `error`, opt-in at
+  advisory severity so the ratchet locks them at zero. Four rules stay off with
+  stated reasons — `no-ternary-conditional` and `no-and-conditional` are style
+  preferences whose own docstrings say they are not correctness rules, and
+  gating CI on them would fail correct code.
+
+- Update third-party dependencies to their latest compatible releases. (5867cca)
+
+  Runtime dependencies that reach consumers: `oxc-parser` / `oxc-transform`
+  0.144 → 0.147 (`@pyreon/compiler`, `@pyreon/native-compiler`), the CodeMirror 6
+  family (`@pyreon/code`), TipTap 3.29 → 3.30 (`@pyreon/rich-text`), TanStack
+  Query 5.101 → 5.102 (`@pyreon/query`), the
+  pragmatic-drag-and-drop auto-scroll/hitbox companions (`@pyreon/dnd`),
+  `y-protocols` (`@pyreon/sync`), `oxlint` 1.78 → 1.80 (`@pyreon/lint`), and the
+  shiki / remark / unist chain (`@pyreon/zero-content`).
+
+  No API surface changes. Held deliberately, each for a stated reason: TypeScript
+  stays capped `<7.0.0` (TS7 removed the classic Compiler API), and
+  `@changesets/cli` v3, `@atlaskit/pragmatic-drag-and-drop` v3, and `ky` v2 are
+  majors that need their own PRs.
+
+- A WebView host page that cannot start now tells the host (a0c4cd7)
+
+  All three host pages already detected the failure — engine missing or never
+  injected — set a `window.__pyreonXError` flag, and returned. That flag lives
+  inside the very frame nobody on the host can read from, so every target rendered
+  a blank box with the diagnosis stranded one origin away. On a device that is the
+  hardest possible failure to debug.
+
+  They now report it through the reverse bridge that was already there for
+  ordinary events, as `{ error: "…" }`. The report retries briefly, because the
+  host installs `pyreonPostMessage` on load and the page's own script runs first.
+
+- Close two escapes in the WebView host page that could not do what they claimed (0653ff0)
+
+  The host-page builders wrote a `background` value into a `<style>` body with `&quot;` escaping and an inlined engine bundle into a `<script>` body with a `</` → `<\/` replacement. Both are the wrong escape for their context.
+
+  `<style>` is a RAW-TEXT element: character references are never decoded inside it, so `&quot;` was inert and a `</style>` in the value closed the element and put everything after it into the document. A real CSS colour or gradient never contains `<`, `>`, or a quote, so those are dropped now — lossless for every valid value, and `background: '#0b0d12'` and `rgb(11 13 18 / 80%)` still reach the sheet verbatim.
+
+  For the script body, `</` → `<\/` stops the element being CLOSED but not the tokenizer entering the script-data-DOUBLE-escaped state, which it does on `<!--` followed by `<script`. In that state the page's own literal `</script>` no longer ends the element and the rest of the document becomes script content. `<!--` is broken too now. Both replacements are identity escapes in the string and regex contexts a bundle actually contains these bytes in (`\/` is `/`, `\-` is `-`), so the JS is unchanged; the one shape they alter is an Annex-B `<!--` HTML-like comment in code position, which no bundler emits.
+
+  A `<script src>` URL is now escaped for its attribute context (`&` first, then `"` and `<`) rather than `"` alone.
+
+  These are developer-supplied options rather than request data, so this is defence-in-depth — but a PR earlier in this cycle hardened these exact functions for the JS-string context and left both of these, and an app deriving a theme colour from content would have been exposed. `@pyreon/charts` has the same two shapes and is deliberately left alone here — it is under active change.
+
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+  - @pyreon/primitives@0.52.0
+  - @pyreon/runtime-dom@0.52.0
+
 ## 0.51.0
 
 ### Minor Changes

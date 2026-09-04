@@ -1,5 +1,0 @@
----
-"@pyreon/native-compiler": patch
----
-
-Swift: a signal seeded from sibling signal reads (`const count = signal(5); const derived = signal(count() * 2)`) no longer emits a stored-property initializer referencing a sibling `@State` member ("cannot use instance member within property initializer" — warning-free; Kotlin was never affected, and computeds were always fine since a property getter may read self). A per-component pre-pass substitutes each sibling read with that sibling's own construction-time seed expression — semantically faithful because Pyreon reads the sibling exactly once at construction; source order is a valid topological order, so chains substitute transitively. Shapes that cannot be substituted faithfully — a storage-backed source (its runtime value is not its default), enum-typed declarations, non-pure seeds, or nodes the substitution walker does not cover (caught by a total residual check) — keep the previous emit and now warn loudly, naming the declaration, the sibling, and the `computed()`/pure-seed remedy.

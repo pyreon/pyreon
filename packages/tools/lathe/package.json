@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/lathe",
-  "version": "0.51.0",
-  "description": "Spec-to-Pyreon code generator \u2014 OpenAPI in, typed schemas / endpoints / queries out, with a multiplatform mode that proves its own output lowers to Swift and Kotlin.",
+  "version": "0.52.0",
+  "description": "Spec-to-Pyreon code generator — OpenAPI in, typed schemas / endpoints / queries out, with a multiplatform mode that proves its own output lowers to Swift and Kotlin.",
   "license": "MIT",
   "publishConfig": {
     "access": "public"

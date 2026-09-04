@@ -1,5 +1,51 @@
 # @pyreon/ui-core
 
+## 0.52.0
+
+### Minor Changes
+
+- A `.theme()` chain with no `.styles()` now renders its theme as CSS (a0c4cd7)
+
+  `.theme()` supplies values; nothing turned them into CSS unless the author also
+  chained `.styles()`. So a theme-only chain rendered COMPLETELY UNSTYLED in a
+  browser, while `@pyreon/native-compiler` reads the same `.theme()` statically and
+  emits real view modifiers — one declaration, fully styled on iOS/Android and bare
+  on the web.
+
+  The bridge arrives through ui-core's existing theme-engine seam
+  (`responsiveStyles`, registered by unistyle), so rocketstyle gains no dependency
+  on unistyle and still degrades to no CSS without it. It applies ONLY when the
+  chain declared no `.styles()` of its own — an explicit chain already owns the
+  bridge, and a second one would emit the theme twice.
+
+### Patch Changes
+
+- perf(ui-core): memoize `resolveCssVariables()` (per-flip rocketstyle hot path) (195a9dc)
+
+  `resolveCssVariables()` allocated a fresh 3-key object on every call. Its
+  hottest caller is rocketstyle's `_resolveRsEntry`, which reads `.enabled` twice
+  per flip per component — so a single theme/mode flip on a rocketstyle-heavy page
+  allocated hundreds of short-lived objects here alone (plus one per `PyreonUI`
+  mount and per pre-paint resolution).
+
+  The result is a pure function of `config.cssVariables`, which changes only when
+  `init()` REASSIGNS it (the documented invariant is that the flag does not flip
+  mid-session, let alone mutate in place). It is now memoized on the raw value's
+  identity: the dominant default (`false`) returns a pre-seeded object with zero
+  allocation, and a real `init()` toggle reassigns to a value that misses the
+  cache and re-resolves. Every caller only reads the result, so the shared
+  reference is safe.
+
+  Bisect-verified: two successive calls under stable config return the SAME object
+  (the pre-memo code allocated a fresh one each call, failing `a === b`), while an
+  `init({ cssVariables })` toggle is still observed. Stays within the ui-core
+  bundle budget.
+
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+  - @pyreon/styler@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

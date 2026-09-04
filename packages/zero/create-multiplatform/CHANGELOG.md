@@ -1,5 +1,135 @@
 # @pyreon/create-multiplatform
 
+## 0.52.0
+
+### Minor Changes
+
+- Scaffolded Android apps gain a real release lane: a `release` signingConfig backed by `android/keystore.properties`, a `scripts/ensure-release-keystore.sh` generator (self-signed — Play App Signing re-signs store uploads, so the local key proves the full sign→install→run path credential-free; a real upload key drops into the same properties shape), `npm run release:android`, a `testBuildType` toggle so `gradle -PpyreonReleaseTests connectedCheck` re-runs the app's instrumented tests against the signed R8-minified release artifact, test-APK-only `-dontwarn` rules for androidx.test's compile-only annotations, and a project `.gitignore` (previously absent entirely — signing material was committable). (03b9599)
+- A scaffolded multiplatform app now ships a `.pyreonlintrc.json` that turns the (bb2dc02)
+  `portable` rule tier on, plus the `lint` script to run it.
+
+  The two `portable` rules exist to catch shared source that will not lower to
+  SwiftUI or Compose — an out-of-subset construct, a platform branch with no
+  native arm — before the next native build finds it. They are `optIn`, correctly,
+  because they are pure noise in a web-only project, which means
+  `preset: 'recommended'` leaves them off. This scaffolder shipped no lint config
+  at all, so a scaffolded native app got the native rules switched off: rules
+  written for multiplatform, a multiplatform scaffolder, and they never met.
+
+  The config has two halves and both are load-bearing. `groups: { portable }`
+  enables the tier in one line — the affordance worth showing, since an app can
+  then state its platform story in config rather than rule by rule. But
+  `no-out-of-subset-construct` additionally fires on NOTHING until
+  `portablePaths` names the files that must travel (deliberate: unscoped it
+  produces thousands of findings in code entitled to the whole language, and
+  which files reach iOS and Android cannot be inferred from their contents). A
+  scaffolder is the one caller that knows the answer, having just created `src/`.
+  Without it the group key looks like it enabled something and enables nothing —
+  which is how the first cut of this change was written, and what its own test
+  caught.
+
+  Verified by running the SCAFFOLDER'S emitted config through the real `lint()`
+  rather than a re-typed copy, and bisected three ways: dropping the group key,
+  the paths option, or the whole file each fails.
+
+- Native-source resolve-and-scan toolchain — the monorepo Gap-1 fix, and the keystone for per-package native co-location. (ff73c97)
+
+  The scaffold hard-coded the native runtime location into the app build (iOS `project.yml` `packages:` and Android Gradle `srcDir` both pointed at a fixed `../node_modules/@pyreon/native-runtime-*` path). npm/yarn HOISTING and pnpm's symlinked store both break that: in a monorepo the runtime is usually installed at the workspace root, not the app's local `node_modules`, so the fixed path dangles and the build cannot find the runtime sources.
+
+  `@pyreon/native-cli` gains a `wire` command and a resolver:
+
+  - `resolveNativeSources(appDir)` walks the app's declared `@pyreon/*` deps and resolves each one's install location by walking `node_modules` upward — the same algorithm Node's resolver uses, so it is hoisting- and pnpm-symlink-safe.
+  - Each package declares its native sources via a `pyreon.native` field in `package.json`, or the zero-config default dirs `native/swift/` and `native/kotlin/`. The four base runtime/router packages now declare the field pointing at their existing `Sources/PyreonRuntime` / `Sources/PyreonRouter` / `src/main/kotlin` layout, so they resolve through the SAME convention as a co-located feature package — no name-based special-casing. This is what makes per-package native co-location possible: a feature package can ship `native/{swift,kotlin}/` and it aggregates into the app build with zero config, and a third-party package opts in by declaring the field.
+  - `pyreon-native wire [--app=<dir>] [--android-out=<file>] [--json]` emits the resolved build wiring: the Gradle srcDirs list (base runtime/router + every co-located feature `native/kotlin/`, deduped, absolute), the iOS SwiftPM package paths (resolved absolute), and the co-located Swift target sources grouped by module. A DECLARED-but-missing native dir is surfaced as a broken declaration (exit 2).
+
+  Scaffolded Android apps now resolve their Kotlin source roots through this: `scripts/build-android.sh` runs `pyreon-native wire --android-out=android/app/pyreon-native.srcdirs` after the emit (before Gradle configures), and `build.gradle.kts` prefers that resolved list, falling back to the legacy fixed `node_modules` paths for a flat layout. Existing flat apps are unaffected; monorepo apps now build.
+
+  iOS co-location target wiring (compiling co-located feature `native/swift/` into the runtime target) is a follow-up that pairs with relocating the first feature runtime; the base Swift packages already resolve through `wire` today.
+
+### Patch Changes
+
+- Role-aware rule tiers — one config now covers server, client, isomorphic and (ec0aff6)
+  multiplatform code, with no glob `overrides`.
+
+  A general-purpose linter splits backend from frontend with hand-written globs
+  the user keeps in sync. A framework does not have to guess: an fs-router API
+  route, a `node:` import, an `island()` call and an entry file each PROVE where
+  a file runs. `resolveFileRole()` reads them, strongest signal first, and
+  defaults to `shared` — the strict answer, because an isomorphic file must
+  satisfy both sides and guessing either one silently disables the other's rules.
+
+  **This was already happening, badly.** Two rules classified server files with
+  `filePath.includes('server')`, and `observer` contains `server` — so
+  `use-intersection-observer.ts`, a client hook, was treated as a server file by
+  both. Reproduced against `lintFile`, then fixed. A third rule re-implemented
+  `isTestFile` inline, omitting `/__tests__/`.
+
+  **Eleven new rules across five new groups** (113 rules, 25 categories,
+  10 groups). Every one gated by the RUNNER via `appliesTo`, never by the rule —
+  `exemptPaths` was opt-in per rule and 55 of 102 silently ignored it, and a role
+  gate written rule-by-rule would repeat that exactly.
+
+  - **`isomorphic`** — `no-locale-dependent-format`, `no-timezone-dependent-date`,
+    `no-unstable-render-id`, `no-node-builtin-in-component`. Hydration mismatches
+    that are correct in every unit test and wrong for some users in production.
+  - **`backend`** — `no-sync-fs-in-request-path`, `no-floating-promise-in-handler`.
+  - **`web-perf`** — `prefer-passive-listener`, `no-unbounded-raf-loop`.
+  - **`portable`** — `no-out-of-subset-construct`, `no-platform-branch-without-fallback`.
+    PMTC warns about these too, but only for files a native app's entry graph
+    reaches; the catalog names that gap directly ("a feature no example uses is
+    one no gate ever compiles"). These fire at authoring time instead.
+  - **`js`** — `require-error-cause`.
+
+  **Precision came from measurement, not taste.** Run unscoped against this repo
+  the first cut produced **over 5,000 findings**; reading them produced five
+  narrowings, and the final count is **11**:
+
+  | finding              | cause                                                            | narrowing                                                |
+  | -------------------- | ---------------------------------------------------------------- | -------------------------------------------------------- |
+  | 4,388 subset         | web-only internals are entitled to the whole language            | fires only where `portablePaths` says a file must travel |
+  | 469 floating promise | a shared util is not a request handler                           | the file must EXPORT a handler                           |
+  | 149 sync fs          | Vite plugins and the compiler are server-role, not request paths | same handler gate                                        |
+  | 14 raf               | a one-shot frame is ordinary                                     | must schedule ITSELF                                     |
+  | 1 raf                | a double-rAF terminates                                          | self-REFERENCE, not merely nested                        |
+  | 11 locale            | benches print to a console                                       | `bench/` and `e2e/` are build role                       |
+  | 2 timezone           | `new Date(y, m, d).getDate()` is timezone-independent arithmetic | only Dates representing an INSTANT                       |
+  | 2 error-cause        | a custom error class has no options slot                         | built-in error constructors only                         |
+
+  **Two real bugs found and fixed by the new rules.** The scaffolded dashboard
+  template formatted money and dates with no locale in 14 places — every
+  generated app shipped a hydration mismatch on its own front page. Fixed with a
+  `lib/format.ts` that pins locale AND timezone, which is also the pattern users
+  should copy. And five `throw new Error(msg)` sites inside `catch` now pass
+  `{ cause }`, so the stack points at what actually broke.
+
+  Also closes the review finding on `no-unsanitized-inner-html`: a dead
+  assignment was a half-written hop loop, and finishing it fixed a real
+  false positive — a sanitized value that had been renamed once
+  (`const body = clean`) was flagged.
+
+- `validateSwiftWithStubs` is exported from `@pyreon/native-compiler`. It is the (33c8eae)
+  Linux-viable TYPE gate — it strips the emit's framework imports, prepends stubs
+  mirroring the real SwiftUI / PyreonRuntime surface, and type-checks — and a
+  consumer that GENERATES Pyreon source needs it: `validateSwift` is parse-only,
+  and `validateSwiftTypecheck` needs a real Apple SDK.
+
+  The scaffolder now uses it. Its two specs were named "compiles to valid
+  SwiftUI" / "…Compose" and asserted only that the emit contained some strings —
+  a shape check wearing a compile's name. The scaffolded app is the
+  highest-stakes source in the repo, so it now goes through swiftc and kotlinc,
+  and is asserted to emit no warnings on either target.
+
+- Shared `settings` in the lint config, and the four portable rules a scaffolded multiplatform app was never actually running. (72edfc6)
+
+  `portablePaths` is a property of the project, not of one rule — it names the directories whose source has to survive three targets, and **five** rules need that same answer. Repeating it per rule made a config a hand-maintained copy of the rule registry, and the multiplatform scaffolder listed exactly one: `no-out-of-subset-construct` fired, while `no-web-only-import-in-portable`, `prefer-canonical-primitive`, `require-native-compat-marker` and `no-css-in-js-in-portable` were silently inert in every scaffolded app.
+
+  `{ "settings": { "portablePaths": ["src/"] } }` says it once. A key is seeded into a rule's options only when that rule DECLARES it in `meta.schema`, so a shared key can never reach a rule that would reject it as unknown; per-rule options still win. A `settings` key no rule declares is reported as a config error, since a typo there would otherwise be as silent as a typo'd rule id.
+
+  Two fixes fell out of the fixture that proves it:
+
+  - `prefer-canonical-primitive` fired on DOM tags inside a `<Web>` branch — the exact shape its own message recommends as the fix. It now tracks `<Web>` by depth, so leaving the subtree re-arms the rule rather than one escape hatch silencing a whole file.
+  - `no-out-of-subset-construct` read `portablePaths` through its own copy of the parsing logic; all five rules now share one helper, so they cannot drift on what the key means.
+
 ## 0.51.0
 
 ### Patch Changes

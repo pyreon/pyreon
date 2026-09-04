@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/native-runtime-kotlin",
-  "version": "0.51.0",
-  "description": "PRIVATE / EXPERIMENTAL \u2014 Kotlin runtime that compiler-emitted Compose code links against on Android. Parallel to @pyreon/native-runtime-swift. Phase 0+ scaffold; first real module is PyreonStorage (Compose + file-backed persistent state).",
+  "version": "0.52.0",
+  "description": "PRIVATE / EXPERIMENTAL — Kotlin runtime that compiler-emitted Compose code links against on Android. Parallel to @pyreon/native-runtime-swift. Phase 0+ scaffold; first real module is PyreonStorage (Compose + file-backed persistent state).",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -17,7 +17,7 @@
     "build": "bun scripts/check-duplicate-declarations.ts && bun scripts/check-service-coverage.ts && bun scripts/verify-all.ts",
     "test": "bun scripts/check-duplicate-declarations.ts && bun scripts/check-service-coverage.ts && bun scripts/verify-all.ts && if command -v kotlinc >/dev/null 2>&1; then bun scripts/run-kotlin-tests.ts; else echo '[native-runtime-kotlin] kotlinc not on PATH; skipping test (Android stack required)'; fi",
     "lint": "echo '[native-runtime-kotlin] Kotlin lint (detekt/ktlint) not yet integrated; skipping lint'",
-    "typecheck": "bun scripts/check-duplicate-declarations.ts && bun scripts/check-service-coverage.ts && if [ \"$CI\" = \"true\" ]; then echo '[native-runtime-kotlin] skipping typecheck in CI \u2014 kotlinc cold-start + parallel-load timeouts; covered by @pyreon/native-compiler K-FINAL gate (#888) which validates the same K4 stub surface end-to-end'; else bun scripts/verify-all.ts --mode=typecheck; fi"
+    "typecheck": "bun scripts/check-duplicate-declarations.ts && bun scripts/check-service-coverage.ts && if [ \"$CI\" = \"true\" ]; then echo '[native-runtime-kotlin] skipping typecheck in CI — kotlinc cold-start + parallel-load timeouts; covered by @pyreon/native-compiler K-FINAL gate (#888) which validates the same K4 stub surface end-to-end'; else bun scripts/verify-all.ts --mode=typecheck; fi"
   },
   "publishConfig": {
     "access": "public"

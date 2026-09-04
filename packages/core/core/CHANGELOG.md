@@ -1,5 +1,134 @@
 # @pyreon/core
 
+## 0.52.0
+
+### Minor Changes
+
+- Add `<Async>` and `use()` — two primitives that remove the two most-repeated shapes in Pyreon app code. (d5f19b9)
+
+  **`<Async>`** renders one of pending / error / empty / data from any async-shaped source, replacing the hand-written guard chain at every data boundary (38 such chains across the repo's own example apps). The `of` prop is structural rather than a dependency — anything exposing `isPending` / `isError` / `error` / `data` accessors satisfies `AsyncLike<T>`, so `@pyreon/query` results, `@pyreon/http` resources and hand-rolled sources all work without `@pyreon/core` importing any of them.
+
+  Two deliberate semantics, both regression-locked:
+
+  - **There is no rethrowing default for errors.** An error thrown from a reactive re-run is NOT caught by `<ErrorBoundary>` — only a throw during the initial mount is — so rethrowing would escape unhandled on exactly the common case, a request that fails after mount. Omitting `error` renders nothing and warns once in development.
+  - **An empty array with no `empty` prop is passed to `children`**, so a list that renders its own empty state keeps working instead of silently vanishing. Only `null`/`undefined` renders nothing, because there is no value to hand to `children`.
+
+  **`use()`** composes element behaviours into a single ref. A `Directive` is a plain `(el) => cleanup | void`, so attaching N behaviours costs one attribute instead of a ref declaration, N hook calls and a ref attach. Nothing is special-cased by the compiler or renderer — `use()` returns an ordinary `RefCallback`, which the runtime already invokes with the element on mount and `null` on unmount. Cleanups run in reverse attach order; falsy entries are skipped so a directive can be applied conditionally inline; and a re-attach without an intervening detach tears the previous registration down first, so listeners cannot pile up.
+
+- `elementRef()` — one value that is both the ref and the element accessor (9f02726)
+
+  Eleven hooks across `@pyreon/hooks` and `@pyreon/dnd` take their target as
+  `() => HTMLElement | null`. That forced three touchpoints for one concept:
+  declare a `let`, hand-write the thunk, wire the ref back. Repo-wide that is
+  50 declarations and 194 thunk sites; a single kanban card writes the same
+  thunk twice because it uses two hooks on one element.
+
+  ```tsx
+  const panel = elementRef<HTMLDivElement>()
+  useClickOutside(panel, close)   // it IS () => T | null
+  useElementSize(panel)           // …and N hooks share it
+  <div ref={panel}>               // …and it IS a ref
+  ```
+
+  Purely additive: every existing hook takes it unchanged, because it already
+  has the accessor shape they declare. `.current` is kept so it drops into code
+  written against `createRef`.
+
+- Lazy component children — a component's sole JSX child is now built when the component READS `props.children`, not when the `jsx(Comp, …)` argument is evaluated. (e6b70a5)
+
+  `<Provider><div>{useCtx()}</div></Provider>` lowers to `jsx(Provider, { children: _tpl(html, bind) })`, and `_tpl(…)` is an argument: it ran before `Provider`'s body, so every binding in that child snapshotted the context owner from BEFORE `provide()` and resolved to the default value. Measured on the previous release: the client rendered `DEFAULT`, plain SSR rendered `PROVIDED`, and SSR with `ssrTemplate` (default-on via the vite-plugin) rendered `DEFAULT` — wrong on the client and disagreeing with itself across the flag. The accessor form `{() => useCtx()}` was equally affected, because deferring the read does not move the effect's construction.
+
+  Both compiler backends now emit `{_lc(() => _tpl(…))}` (and `{_lc(() => _ssr(…))}`) for a component's sole child. `_lc` is a memoized, untracked thunk branded as a reactive prop, so the existing `makeReactiveProps` step turns it into a property getter — `props.children` still yields the same VALUE it always did, leaving every structural children consumer untouched. A component that never reads its children now builds nothing at all, which also removes an orphaned, undisposable binding those children used to leave behind.
+
+  Components with two or more children keep the previous eager behaviour: there `props.children` is an array, and deferring it would change what that array contains.
+
+- Fix: a nested component setup no longer closes its parent's lifecycle-hook frame. (d114ff8)
+
+  `runWithHooks` opened the setup frame with `setCurrentHooks(hooks)` and closed it
+  with `setCurrentHooks(null)` — a reset to a constant rather than a restore of the
+  caller's frame. Component setup genuinely nests: the compiler lowers an element
+  with a conditional or `.map` child to `_tpl(html, bindFn)` whose `bindFn` calls
+  `_mountSlot(...)`, and `_tpl` runs `bindFn` synchronously at its call site. So
+
+  ```tsx
+  const box = <div>{show && <Child />}</div>; // Child's full setup runs HERE
+  onMount(() => {
+    /* ... */
+  }); // frame already closed → dropped
+  ```
+
+  ran `Child`'s entire setup partway through the parent's, and every
+  `onMount` / `onUnmount` / `onUpdate` / `onErrorCaptured` the parent registered
+  afterwards was silently discarded — surfacing only as a dev warning that blamed
+  the caller for using a hook "outside component setup".
+
+  The frame is now restored rather than reset, so each component keeps its own
+  hooks at any nesting depth.
+
+  `pyreon doctor diagnose` / MCP `diagnose` now also explain the residual case —
+  the hook genuinely called outside setup (after an `await`, in a handler, inside
+  an effect), which drops the callback silently.
+
+- Plain Mode (experimental): write reactive code as plain JavaScript. A module carrying the `'use plain'` directive (or importing from the new `@pyreon/core/plain` entry) is rewritten by a compiler pre-pass before the JSX transform: `let count = state(0)` declares a signal, bare reads and plain assignments (`count = count + 1`, `count++`, `count += n`) compile to tracked calls and `.set(...)`, `derived(expr)` compiles to a computed, and `effect(fn)` gets total tracking — state mentioned only in a branch, after an `await`, or inside a nested function is subscribed via a hoisted prologue, so a conditional read can never silently lose its subscription. Destructured component props (`function C({ name })`) compile to live `props.*` reads instead of the captured-once footgun, and a component-body `if (<reactive>) return <jsx>` early return re-evaluates when the state flips. Cross-module: `export let x = state(0)` exports the live signal; the vite plugin's signal registry feeds importers on both dialects, and marker-bearing `.ts` store modules are transformed too. Out-of-scope shapes (deep mutation of state objects, destructuring assignment onto state, rest/nested props patterns) warn loudly instead of failing silently, and plain code that never went through the compiler throws with the fix at runtime. (317367a)
+- Plain Mode follow-up tier: deep state, the classic→plain codemod, readiness report, Lens verdicts, and native-target support. (5c5e246)
+
+  - **Deep state** — `let user = state({ … })` / `state([ … ])` (a literal object/array initializer) now lowers to `signal(createStore(...))`: member writes (`user.name = x`) and array mutations (`todos.push(t)`) notify with per-key granularity, whole reassignment replaces the store, and every JSX position stays live through the existing signal machinery. `state.raw(v)` opts a literal out to a shallow signal (replace-the-value semantics); non-literal initializers stay shallow — the split is static. Total tracking hoists conditional static member paths (`void (user().name);`), never a write target.
+  - **Codemod + readiness** — `pyreon plain [paths] [--write] [--json]`: per-binding classic→plain migration (`migrateToPlain` in `@pyreon/compiler`) whose dry-run is the readiness report with a declined-shape histogram. Object-literal signals convert to `state.raw(...)` — the codemod never changes semantics. A seeded round-trip fuzz oracle (classic → codemod → compile → behavioral DOM diff) locks both directions.
+  - **Reactivity Lens** — plain pre-pass warnings surface as `plain-mode` footgun findings in `analyzeReactivity`, at their source locations.
+  - **Native targets** — the PMTC compiler runs the same pre-pass via the new light `@pyreon/compiler/plain` subpath; a plain shared-source file emits byte-identical Swift/Compose to its classic twin.
+  - **Cross-module** — the vite-plugin signal-export registry now recognizes `state.raw(...)` exports; imported-state member-write warnings give conditional (deep vs shallow) guidance.
+
+### Patch Changes
+
+- Close the pre-release audit's long tail: a fail-open URL guard, an inert verification axis, an unnecessary supply-chain surface, and two overstated claims (8563e97)
+
+  **`isSafeImageDataUri` failed OPEN on a malformed percent-escape.** The base64 branch returns "unsafe" when `atob` throws; the percent branch caught the `decodeURIComponent` failure, kept the raw still-encoded payload, and scanned that — but the scripted-SVG regex matches `<script` and ` on…=`, neither of which appears in `%3Cscript%3E`. So one trailing `%` took a payload from blocked to allowed. The function's own docstring already promised the base64 branch's behaviour for both, so the two branches disagreeing was the whole defect. Scoped to `src`/`srcset`/`poster` on image/video elements where a scripted SVG does not execute, so this is defence-in-depth — reported because a guard that fails open is worse than one that does not exist: it is relied on.
+
+  **`@pyreon/atlas`'s route axis was inert.** `installRouter` had zero callers and `Scenario.route` had zero readers while `routerPlugin` was publicly exported, so a `routerPlugin({ urls })` config produced the expected doubled scenario count with names like `Profile @ /users/999` — and every one passed having mounted with no router installed. Two different URLs rendered byte-identically and both reported `pass`. The router is now installed around the scenario mount through a registration seam (the plugin publishes an installer; the plugin that owns mounting consumes it, so there is still ONE owner of the router's install/dispose), disposed in the same window so it cannot answer for the next scenario, and a route that CANNOT be applied is reported as a finding rather than passing silently.
+
+  **`@pyreon/code`'s 15 `@codemirror/lang-*` packages move from `optionalDependencies` to optional peers.** `optionalDependencies` reads as optional and is not: every package manager installs them by default, so every consumer carried their install weight and CVE surface for grammars they never load. Each is reached through a lazy `import()`, which is exactly the shape `@pyreon/document` moved to `peerDependenciesMeta.optional` for the same reason.
+
+  **The Vercel revalidate handler compares its secret in constant time.** It was `secret !== expected` under a comment calling it "constant-time-ish"; `!==` short-circuits at the first differing byte regardless of length, which is precisely the leak the phrase claimed to avoid. Length is compared separately because `timingSafeEqual` requires equal-length buffers — that leaks the secret's LENGTH, which is stated rather than hidden.
+
+  **`serverIsland` documents that its props are client-controlled.** The fragment endpoint is public and unauthenticated; the island NAME is allowlisted, the props are not, so a fragment renders with attacker-chosen props inside a full request context. That is the intended design, but neither the JSDoc nor the manifest said so — an island that reads a `userId` prop and returns that user's data is an IDOR by construction. Now named as the first entry in the API's `mistakes`, so it reaches `llms.txt` and the MCP reference too.
+
+- SVG geometry attributes (`x`, `y`, `x1`/`y1`/`x2`/`y2`, `cx`/`cy`/`r`/`rx`/`ry`, `width`, `height`, `points`) accept the reactive accessor form (`x={() => …}`) in the JSX types, matching `fill` / `stroke` / `d` / `transform` / `opacity`. Type-only widening — the runtime already resolves accessor-valued attributes; the fix for a missing variant belongs here, never an `as never` cast at the call site. (e56abb6)
+- perf(core): cut two allocations per JSX element and one per reactive prop on the component-mount path (773f9df)
+
+  Attribution for the deep-component-tree mount scenario (2,047 components) put
+  29% of self time in the props pipeline, ahead of every DOM call. Two changes,
+  both allocation removals on paths that run once per component:
+
+  - **`jsx()` zero-copy path.** When an element has no `children` and no `key`,
+    both existing paths reduce to "hand `props` through unchanged" — the
+    value-copy branch copies every data property, the descriptor branch
+    re-defines every descriptor, and neither adds or removes a key. The original
+    object is exactly what they produce, so it now goes straight to `h()`. That
+    skips `Object.getOwnPropertyDescriptors` (one descriptor object PER KEY, plus
+    the container) and the rest-spread. It also preserves getter-shaped reactive
+    props by construction, because nothing is read. Covers the dominant childless
+    shapes: `<Comp prop={x} />`, `<img src=… />`, `<Icon name=… />`.
+
+  - **`makeReactiveProps()` single pass.** Was scan-then-build, reading every key
+    twice for any component carrying a compiler-wrapped reactive prop. Now copies
+    on first reactive prop and backfills the keys already scanned. All-static
+    components still return the input object untouched, which is the property the
+    scan-first shape existed to guarantee.
+
+  Measured on that scenario with both builds served at once and the arms
+  alternated per pass, so both see the same machine: **4.90 → 4.50 ms, −8.2%,
+  confidence intervals separated** (60 samples per cell). Vanilla, SolidJS, React,
+  Preact and Vue all stayed inside their intervals across every run, which is the
+  control a Pyreon-only change has to pass. Context propagation over the same tree
+  is unchanged.
+
+  No API change and no behavioural change; the getter-preservation contract that
+  these paths exist to protect is unchanged and newly pinned by regression specs
+  for the key, inherited-`children`, and live-getter cases.
+
+- Updated dependencies:
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

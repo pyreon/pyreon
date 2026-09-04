@@ -1,5 +1,106 @@
 # @pyreon/feature
 
+## 0.52.0
+
+### Minor Changes
+
+- Add `feature.Field` — render one schema field without hand-writing its markup. (475985d)
+
+  `defineFeature` has always derived `fields: FieldInfo[]` from the schema (name, type, optionality, enum values, a human label) and nothing consumed it, so every app hand-wrote markup the schema had already described. `<Feature.Field form={form} name="title" />` now renders the label, a control typed from the schema (string → text, number → number, boolean → checkbox, enum → select with its values), and the error — wired through the form's own `register` / `labelProps` / `errorProps`, so label↔control association and the error's `role="alert"` come for free.
+
+  Deliberately PER-FIELD rather than a whole-form renderer. A generated form is excellent right up until a designer wants one field different, at which point an all-or-nothing component is worse than the markup it replaced. Every derived value has an override (`label`, `type`, `options`, `placeholder`, `class`, `inputClass`), and a field you do not want generated is written by hand next to the ones you do.
+
+  An unknown `name` throws naming the field and listing the real ones, rather than rendering an empty row that reads as a styling bug.
+
+  Type inference is duck-typed on Zod, so a `z.string().email()` renders `type="text"` — the component does not guess an input type from the field NAME, which would mistype a field called `emailVerified`. Pass `type` explicitly.
+
+- `defineFeature` reads the literal field-type map, the one schema form that crosses to native (950f1c2)
+
+  `@pyreon/native-compiler` introspects `schema: { id: 'string', done: 'boolean' }`
+  and emits a Codable struct from it. A runtime Zod / Valibot / ArkType schema is
+  NOT introspected there and warns by name — so the literal map is the form the
+  multiplatform docs prescribe for a feature that has to run on all three targets.
+
+  On the web that form produced ZERO fields: no auto form fields, no table
+  columns, no create defaults. The one shape that crosses was inert on the target
+  it was written for.
+
+  `extractFields` now recognizes it, gated on EVERY value being a known field-type
+  name so a real schema can never be mistaken for one — and `FeatureConfig.schema`
+  accepts it, so the documented shape typechecks instead of needing a cast.
+
+- Add `feature.Table` — render the table `useTable()` already computes. (e9bbe3e)
+
+  `useTable()` derives columns from the schema, wires sorting and the global filter to signals, and returns a live table. Nothing rendered it, so every app hand-wrote ~50 lines of thead/tbody — and met two traps that have nothing to do with their domain:
+
+  - A `<th>` carries a `key`, so the keyed reconciler REUSES the node on a state change and never re-runs its body. A sort indicator read bare therefore freezes at its first value; it must sit inside an accessor.
+  - `getVisibleCells()` comes from `columnVisibilityFeature`, which `featureTableFeatures` does not register — `getAllCells()` is correct here, and reaching for the other one silently renders nothing.
+
+  `<Feature.Table of={t} />` owns both. Per-COLUMN cell overrides keyed by column id (`cell={{ status: ({ value, row }) => … }}`), for the same reason `Field` is per-field: a generated table is excellent until one column needs a badge or a formatted date. `empty` renders a full-width row when the row model is empty; `sortable={false}` drops the handlers and the indicator.
+
+### Patch Changes
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- `@pyreon/feature` declares the native frontend it already had (5ff6d4a)
+
+  `defineFeature({ name, schema })` with the literal field-type map has been
+  lowering to a Codable struct plus a module-scope const (`name`,
+  `initialValues`) on both targets — but the manifest still said the package had
+  NO native emit, so the compiler's derived web-only set kept warning about it and
+  the coverage registry counted it as an open gap.
+
+  The declaration half now says what it does, and the runtime half (the generated
+  CRUD hooks, the fetcher, validator/form integration) is scoped honestly as the
+  part that stays web. A runtime schema (Zod / Valibot / ArkType) is still not
+  introspected and warns by name.
+
+  Native app-runtime coverage: 34/37 → 35/37.
+
+- fix(feature): edit-mode `useForm` no longer gets stuck (and populates) when the backend returns server-only keys (54f6d97)
+
+  `useForm({ mode: 'edit', id })` auto-fetches the record and populated the form by iterating EVERY key of the server response and calling `form.setFieldValue(key, …)`. But `@pyreon/form`'s `setFieldValue` THROWS on a field the form doesn't have — and a real backend returns server-only keys (`id`, `createdAt`, `updatedAt`, relations) that aren't schema fields. The throw fired inside the populate `batch()`, aborting before `isSubmitting.set(false)` → the form was left permanently `isSubmitting: true` (submit disabled, appears frozen) with the fields unpopulated, plus an unhandled promise rejection. The populate loop now skips keys that aren't registered form fields. Also guards the dev-only Zod-detection against a nullish `schema` (a JS-caller edge that crashed at `defineFeature` time). Bisect-verified.
+
+- PMTC: a `defineFeature` binding is now REACHABLE from the shared source that declares it (78b3423)
+
+  `const Todo = defineFeature({ name, schema })` lowered its DECLARATION on both
+  targets — a `Codable` struct plus `enum PyreonFeature_Todo` / `object
+PyreonFeature_Todo` carrying `name` and `initialValues` — and emitted nothing
+  called `Todo`. Since the only reason to declare a feature is to use it, every
+  real shared-source app failed to build on **both** platforms the moment it wrote
+  `Todo.name`: swiftc `cannot find 'Todo' in scope`, kotlinc `unresolved
+reference 'Todo'`, in a generated file the author never wrote.
+
+  The two sibling lowerings in the same emitter (`PyreonFieldMeta`,
+  `PyreonZodSchema`) have always emitted an alias under the source binding name.
+  The feature one did not. It now does: `let Todo = PyreonFeature_Todo.self`
+  (Swift) and `val Todo = PyreonFeature_Todo` (Kotlin).
+
+  It survived five green specs because every one of them asserts the emitted
+  DECLARATION and none ever writes the binding in a component body — and because
+  this test file made **zero** `swiftc`/`kotlinc` calls, so the whole
+  `@pyreon/feature` lowering had never been compiled by either toolchain. Both
+  halves are closed: the specs now reference the binding, and they compile the
+  result with the real compilers.
+
+  One limit is now DECLINED BY NAME rather than shipped broken. Swift and Kotlin
+  share a single namespace for types and values — unlike TypeScript, where
+  `interface Todo` and `const Todo` coexist — so a shared file declaring both a
+  feature binding and a TYPE of that name cannot emit both. Neither alias form
+  escapes it (a `typealias` and a value binding collide identically; both were
+  measured, which is why the value form is chosen for sibling symmetry and NOT
+  sold as collision-safe). The compiler now warns naming the binding and the
+  remedy instead of emitting a redeclaration error.
+
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/validation@0.52.0
+  - @pyreon/reactivity@0.52.0
+  - @pyreon/form@0.52.0
+  - @pyreon/http@0.52.0
+  - @pyreon/query@0.52.0
+  - @pyreon/table@0.52.0
+  - @pyreon/store@0.52.0
+
 ## 0.51.0
 
 ### Minor Changes

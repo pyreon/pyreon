@@ -1,5 +1,139 @@
 # @pyreon/runtime-server
 
+## 0.52.0
+
+### Minor Changes
+
+- Security fix: the sanitized `innerHTML` prop no longer emits RAW markup during SSR/SSG/streaming — it now fails loud. (2486982)
+
+  Pyreon ships two innerHTML props: `dangerouslySetInnerHTML` (raw, developer owns sanitization — React semantics) and `innerHTML` (the SANITIZED path — the client auto-sanitizes it via an allowlist sanitizer). The SSR, SSG, and streaming renderers were emitting the `innerHTML` value RAW next to the intentionally-raw `dangerouslySetInnerHTML` branch, so attacker-controlled markup landed in the initial HTML response and executed at parse time — before hydration could re-sanitize it. That is a server-side stored/reflected XSS: a client-side guard shipped without its server twin.
+
+  The sanitizer is DOM-based (`DOMParser`) and cannot run in Node, so there is no safe one-line server sanitize (a hand-rolled string HTML sanitizer is mXSS-prone on exactly the SVG foreign-content surface the allowlist supports). The renderers therefore **throw a clear, actionable `[Pyreon]` error** instead of shipping raw markup — a loud failure beats a silent XSS.
+
+  **Behavior break** (intentional, security): a server-rendered element with a non-empty sanitized `innerHTML` prop now throws at render time. Remedies, named in the error:
+
+  - Untrusted content → render the element in a client-only island / SPA route so `innerHTML` is sanitized in the browser.
+  - Trusted content, or your own server-safe sanitizer → use `dangerouslySetInnerHTML` (raw by design; pre-sanitize with e.g. DOMPurify+jsdom or sanitize-html).
+
+  `dangerouslySetInnerHTML` is unchanged (raw, verbatim emit). Empty `innerHTML` still falls through to children. A follow-up may add a real-parser (parse5/DOM-in-Node) server sanitizer so the prop can emit sanitized instead of throwing. `@pyreon/compiler` gains a `diagnose` catalog entry teaching the new error.
+
+- Fix two SSR fast-path divergences where the compiled `_ssr` output disagreed with the `h()` path. (b67df5e)
+
+  **A function-valued attribute serialized the closure SOURCE.** The compile-to-string SSR fast path picks the lean `_ssrAttrGen` / `_ssrAttrUrl` helpers from the attribute NAME alone, but whether `renderProp` resolves a value depends on the value's TYPE — so the name-based selection could never rule out the function branch, and both helpers omitted it. A bare identifier holding an accessor (`d={geometry}` where `geometry` came from a prop or a `const`) rendered as `d="() =&gt; geometry()?.path ?? &quot;&quot;"` instead of the resolved value: visible in the SSR HTML and a guaranteed hydration mismatch, since the client's `applyAttrProp` resolves. Affected the lean subset only — `d`, `id`, `title`, `role`, `data-*`, `href`, `src` — while `class` / `style` / `aria-*` / camelCase names (which route through `renderProp` verbatim) were correct, which is why the shape hid. Resolution now runs before the URL guard, so an accessor returning `javascript:` is stripped rather than stringified.
+
+  **A prefilled `<textarea>` server-rendered blank.** `<textarea>` has no `value` CONTENT attribute — the value IS the element's text content — so `renderProp` skips it and emits it as the child. The fast path serialized it as an attribute instead, producing a dead `value="…"` and an EMPTY textarea: any server-rendered draft, bio or comment came back blank, stayed blank with JS off, and mismatched on hydration. `<textarea value>` now bails to the `h()` path, joining the existing `select` / `option` bail for the same PZ-09 concern; the bail is placed at the attribute seam so it also covers the compile-time bake arm and costs nothing for a `<textarea>` without a `value`. Mirrored in both compiler backends.
+
+### Patch Changes
+
+- Sole-child accessor slots are SSR-emitted without `<!--$-->…<!--/$-->` range markers. (6c9e618)
+
+  SSR wraps every reactive accessor's output in range markers because an accessor's DOM extent is runtime-unknowable — it can render zero nodes, one, or many. There is exactly one construct where it is knowable: an accessor that is its element's ONLY child, where the tag boundary already delimits the slot. Everything between `<a>` and `</a>` IS the extent, whatever the value. Those markers carried no information, so they are gone: 18 bytes of HTML per slot and, on hydration, a whole per-row DOM triplet locate-verify-remove replaced by a single node check.
+
+  The elision is decided from the STATIC vnode shape (`children.length === 1 && typeof children[0] === 'function'`), never from the rendered value — so it is uniform across every value a slot can produce, which is what separates it from the value-conditional scheme that previously regressed 83/5000 parity-fuzz seeds by putting a marked range next to an unmarked one. An accessor with siblings, inside a Fragment, or at the root keeps its markers, because there the extent genuinely is unknowable.
+
+  Four surfaces move together: `renderElement` and `streamElementNode` (`@pyreon/runtime-server`), `hydrateElement` plus the `<For>` row plan and the compiled-`_tpl` adopt verifier (`@pyreon/runtime-dom`), and the new `_escSole` emit in BOTH `@pyreon/compiler` backends. `_escSole` is a new `@pyreon/runtime-server` export: `_esc` with one extra branch that unwraps a function value without markers, which is what makes the emit correct for `{() => sig()}` (the accessor reaches the hole as a function) and `{sig()}` (the compiler wraps it, so it arrives as a value) alike.
+
+  The marker triplet also carried a per-row structural guard on the hydration fast paths — it is what proved a compiled row's dynamic slot still held a TEXT node, so a row whose accessor rendered empty or a VNode bailed to the interpretive walk instead of binding the wrong node. With the markers gone that invariant is stated directly, in both `replayRowPlan` and the `_tpl` adopt replay.
+
+  Verified at 20,000 seeds of the SSR↔hydration parity fuzz and 5,000 seeds each of the compiler's cross-backend `fuzz-equivalence` and the `_ssr`-vs-h() `ssr-template-fuzz`; the seed counts of all three are now overridable via `PYREON_FUZZ_SEEDS`.
+
+- Security: validate SSR attribute NAMES to close an XSS sink. (cfbb342)
+
+  `renderToString`/`renderToStream` escaped attribute VALUES but not attribute
+  NAMES — and `escapeHtml` leaves space and `=` intact, while an attribute name is
+  never quoted. So a spread of a user-keyed object onto an SSR element
+  (`<el {...userKeys}>`) let an attacker-controlled key like
+  `{ ['x onmouseover=alert(document.cookie)']: '1' }` render as
+  `<el x onmouseover=alert(document.cookie)="1">` — a live event handler. The
+  boolean-true form (`{ ['y onclick=alert(1)']: true }` → `<el y onclick=alert(1)>`)
+  was an even cleaner breakout.
+
+  `toAttrName` now validates the resolved name against the breakout-char set
+  (whitespace, `/ > = < " '`, control chars) and DROPS the attribute (with a dev
+  warning) when it is unsafe — matching React/Preact, and the client `setAttribute`
+  which already throws on such names. Valid `data-*` / `aria-*` / camelCase / SVG
+  (`xlink:href`) names are unaffected. Covers the runtime prop loop, the `h()` path,
+  and the compiler's `_ssrAttr` fast path (all route through `renderProp`).
+
+- **Per-request store isolation is now automatic; it used to be opt-in, and (5493aa8)
+  nothing opted in.**
+
+  `@pyreon/store`'s registry is a module-level `Map`, and `@pyreon/runtime-server`
+  exposed `configureStoreIsolation(setter)` to swap in an AsyncLocalStorage-backed
+  provider. That was documented everywhere — README, manifest, generated docs all
+  said "call once at startup or concurrent requests share one global store
+  registry". Nothing called it.
+
+  The seam takes a _setter_ as an argument for a reason: `@pyreon/server` and
+  `@pyreon/zero` own the server and neither depends on `@pyreon/store`, so neither
+  _can_ wire it. That left the application author, reached only through a
+  paragraph in a package they never import. Verified on the default path — two
+  `runWithRequestContext` calls, which is exactly what two concurrent SSR renders
+  are, and the second read the first's store value.
+
+  `@pyreon/store` now publishes its setter on a `globalThis` seam when it loads on
+  a server, and the renderer picks it up at its render choke point — the same
+  shape as `__PYREON_STYLER_COLLECT__`, and for the same reason. No import in
+  either direction; the browser pays nothing.
+
+  `configureStoreIsolation` keeps working and still wins, but it is now the
+  override rather than the switch: reach for it to supply a custom provider (a
+  shared build-time cache across SSG pages, a test double). An app that already
+  calls it is unaffected.
+
+  **Behaviour change worth knowing about:** an SSG build that deliberately relied
+  on one registry persisting across page renders now gets a fresh one per render.
+  That was already a bug in the other direction — page 2 could ship page 1's state
+  — but if you want the old behaviour, pass your own provider.
+
+- Fix a cross-request bug in concurrent streaming SSR: the styler's SSR rule buffer (f84675f)
+  and streaming flush watermark are now scoped per request.
+
+  `@pyreon/styler`'s `sheet` is a module-level singleton, and its SSR accumulation
+  state (`ssrBuffer` + the streaming `flushSSRPending()` watermark) lived on the
+  instance. Under `renderToStream` / `mode: 'stream'`, two CONCURRENT streaming
+  renders therefore shared one buffer and one watermark — request A's per-boundary
+  flush advanced the watermark past request B's rules, so a boundary could ship
+  missing or another request's CSS (FOUC / cross-request styles).
+
+  `@pyreon/runtime-server` (which owns the request lifecycle and can use
+  `AsyncLocalStorage` — the styler is browser-safe and cannot import
+  `node:async_hooks`) now establishes a per-request styler scope around every
+  render and exposes an opaque per-request bag via
+  `globalThis.__PYREON_STYLER_REQUEST_STATE__`. The styler stashes its SSR state
+  in that bag when a scope is active, and falls back to its instance state
+  otherwise — so string SSR, SSG, direct callers and the client are unchanged
+  (the change is strictly additive; it only ISOLATES concurrent streams).
+
+  Bisect-verified: neutering the styler's scope getter leaks request A's rules into
+  request B's flush; reverting the runtime-server scope wrap leaves renders with no
+  per-request bag. String mode was already synchronous-safe; the caches (which are
+  content-addressed) stay correctly shared.
+
+- `<textarea value>` SSR emits the value as text content, not a dead attribute (ba24de3)
+
+  `<textarea>` has no `value` CONTENT attribute — the value _is_ the element's
+  text content — so `<textarea value="hello"></textarea>` is ignored by the HTML
+  parser and renders **blank**. Any server-rendered prefilled textarea (a bio, a
+  comment draft, a description) came back empty, filled in only after hydration,
+  and stayed empty with JS off.
+
+  It was also an SSR/client divergence, since the client was already correct:
+  `applyProps` sets the `.value` PROPERTY rather than an attribute.
+
+  This is the sibling of the `<select value>` class (PZ-09) and was missed when
+  that landed — the same "a control whose value is not an attribute" shape, in the
+  only other element that has it. Both the string and stream paths are fixed;
+  they are separate code paths and a fix to one is not a fix to the other.
+
+  Value wins over children, because that is what the client does: a `.value`
+  property set after children mount overrides the text content. `<input value>`
+  is untouched — it has a real value attribute.
+
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes
