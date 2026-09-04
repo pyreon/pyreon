@@ -25,7 +25,7 @@ import { transformJSX } from '@pyreon/compiler'
 import { Fragment, h, _rp, cx } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { _tpl, _bindText, _bindDirect } from '../template'
-import { _applyProps, _setStyle, mountChild, _mountSlot } from '../index'
+import { _applyProps, _setStyle, mountChild, _mountSlot, _textSlot } from '../index'
 
 function stripImports(code: string): string {
   return code.replace(/^import\s+.*$/gm, '').trim()
@@ -49,6 +49,7 @@ const RUNTIME_DEPS = {
   _applyProps,
   _setStyle,
   _mountSlot,
+  _textSlot,
   _rp,
   _cx: cx,
   h,

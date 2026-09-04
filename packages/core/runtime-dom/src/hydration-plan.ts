@@ -1081,33 +1081,18 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
           // in the DOM: the open one IS the placeholder the compiled bind
           // resolves to, and `_mountSlot` consumes both.
           if (wantSlot && slotOpen === null && matchingCloseIsLastChild(n as Comment, el)) {
-            // AMBIGUOUS TRAILING PLACEHOLDER. The compiler bakes the SAME `<!>`
-            // for two slots with opposite adoption contracts: a MOUNT slot
-            // (`_mountSlot`, which is adoption-aware and consumes the live
-            // `<!--$-->` itself) and a reactive TEXT slot (`_bindText` behind an
-            // INLINE `replaceChild` the runtime cannot intercept). Claiming the
-            // range as a mount slot leaves both markers standing for a consumer
-            // that never comes: the text bind replaces the OPEN marker with a
-            // fresh node and writes the value into it, so the server's own text
-            // survives beside it and `<p>Hello {n()}</p>` hydrates to
-            // `Hello AdaAda`. Real, and in one of the commonest shapes there is.
-            //
-            // A range holding exactly one TEXT node is the shape both can
-            // produce, and nothing in the DOM or the signature distinguishes
-            // them — the template records only "ends with a placeholder".
-            // Normalizing it is not available either: stripping the markers to
-            // suit the text bind hands a genuine mount slot a text-node
-            // placeholder, which its marker-less branch then mounts a SECOND
-            // copy into. So refuse the shape and let the element rebuild —
-            // correct, and strictly better than adopting it wrongly. An EMPTY
-            // range and a range holding ELEMENTS are both unambiguous and keep
-            // adopting. Restoring adoption here needs the emit to route the
-            // text slot through a runtime helper the way `_mountSlot` already
-            // is; that is a compiler change in both backends, not a verifier one.
-            const first = n.nextSibling
-            if (first !== null && first.nodeType === 3 && first.nextSibling === el.lastChild) {
-              return false
-            }
+            // A trailing range holding one text node is a reactive TEXT slot, and
+            // it is claimed here alongside genuine mount slots because the two
+            // are indistinguishable from the DOM: the signature records only
+            // "this element ends with a placeholder". #3299 refused the shape
+            // for exactly that reason — the text bind inlined a `replaceChild`
+            // that swapped the OPEN MARKER and left the server's text standing,
+            // so claiming it rendered the value twice. That is now fixed at the
+            // consumer instead: `_textSlot` gives the text bind the same
+            // clone-vs-marked-range discrimination `_mountSlot` has, so BOTH
+            // kinds consume the markers correctly and the element stays adopted
+            // rather than rebuilding. Refusing here would give the correctness
+            // back but cost the adoption, which is the thing hydration is for.
             slotOpen = n as Comment
             break
           }

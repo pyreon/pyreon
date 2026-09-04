@@ -1,62 +1,43 @@
 /**
- * Regression lock — a TRAILING reactive-text slot must not be adopted as a
- * MOUNT slot.
+ * Regression lock — a compiled MIXED-CONTENT text slot ADOPTS its SSR text node.
  *
- * THE BUG. The compiler bakes the same `<!>` placeholder for two slots whose
- * adoption contracts are opposites. A MOUNT slot is consumed by `_mountSlot`,
- * which is adoption-aware: handed the live `<!--$-->` it recognises the marked
- * range and hydrates into it. A reactive TEXT slot is consumed by `_bindText`
- * behind an INLINE `replaceChild` the runtime never sees:
+ * THE DEFECT. The emit for `<p>Hello {n()}</p>` bakes a `<!>` placeholder and
+ * used to inline `createTextNode("") + replaceChild` against it:
  *
  *     const __p0 = __root.firstChild.nextSibling   // the placeholder
  *     const __t0 = document.createTextNode("")
  *     __root.replaceChild(__t0, __p0)              // <- replaces the OPEN MARKER
  *     _bindText(n, __t0)
  *
- * The verifier claimed any trailing range whose close marker was the element's
- * last child as a mount slot and left both markers standing. For a text bind
- * that meant the value was written into a fresh node while the server's own
- * text survived beside it:
+ * That is right for a CLONE and wrong for an ADOPTED container, where the
+ * placeholder ref resolves to the live `<!--$-->` opening the range that already
+ * holds this slot's server-rendered text. The bind wrote the value into its
+ * fresh node while the server's own text survived beside it:
  *
- *     SSR      <p class="a">Hello <!--$-->Ada<!--/$--></p>
- *     hydrated <p class="a">Hello AdaAda<!--/$--></p>
+ *     SSR       <div class="b">Count: <!--$-->7<!--/$--></div>
+ *     hydrated  <div class="b">Count: 77<!--/$--></div>
  *
- * `Count: 7` hydrated to `Count: 77`. The shape is any element whose LAST child
- * is an interpolation and which has any sibling before it — one of the
- * commonest things in a rendered page.
+ * `_mountSlot` has been marker-aware for ELEMENT slots since the compiled path
+ * became a consumer of the SSR range; the text slot never joined that
+ * agreement, because its swap is INLINE generated code the runtime cannot
+ * intercept. `_textSlot` gives it the same clone-vs-marked-range
+ * discrimination, so the element stays adopted AND renders once.
  *
- * WHY IT SURVIVED. Two independent gaps line up. The hydration parity fuzzer
- * builds its trees with `h()` and never `transformJSX`, so it reaches the
- * runtime path only and cannot see a compiled-template defect at all — a gap
- * its own record already names as owed. And on a real `@pyreon/zero` page most
- * of the body is re-mounted rather than adopted, so the broken branch rarely
- * ran where anyone would notice.
- *
- * THE FIX HAS CHANGED SHAPE — this file's original one was superseded, and the
- * docblock is corrected rather than left describing code that is gone. The
- * first fix REFUSED the ambiguous shape in `matchDomAgainstTemplate`, so the
- * element rebuilt: correct output, at the cost of the adoption hydration
- * exists to provide. It was deliberately minimal — a correctness fix should not
- * wait on a compiler change — and it is no longer present.
- *
- * What ships instead is `_textSlot`: the text bind now gets the same
- * clone-vs-marked-range discrimination `_mountSlot` has, emitted by both
- * compiler backends in place of the inlined `createTextNode + replaceChild`.
- * The verifier claims the range as before, BOTH slot kinds consume their
- * markers correctly, and the element stays adopted.
- *
- * So these specs now lock the OUTPUT half of the contract — the value renders
- * once, with no marker litter — while `hydrate-text-slot-adoption.test.tsx`
- * locks the adoption half. Keeping both is deliberate: an output-only suite
- * passes for a fix that gives up adoption, which is exactly what the refusal
- * did, and an adoption-only suite would not have caught the original
- * duplication at all.
+ * WHY BOTH HALVES ARE ASSERTED. Correct output alone is satisfiable by giving
+ * up — refusing the shape in the verifier makes the element rebuild, which is
+ * also correct and was the first fix considered. The point of this one is that
+ * it keeps ADOPTION, so every spec below checks node identity and the
+ * `runtime.tpl.adopt` counter alongside the HTML. A future change that fixes
+ * the duplication by rebuilding would pass an output-only suite.
  *
  * Every spec compiles REAL JSX through `transformJSX`, because vitest's own JSX
- * transform never emits `_tpl` and cannot reproduce any of this.
+ * transform never emits `_tpl` and cannot reproduce any of this. Note the
+ * transform prefers the NATIVE binary, so a JS-only change is not exercised
+ * here at all — both backends emit `_textSlot`, locked by the compiler's
+ * native-equivalence suite.
  *
- * Bisect: neutering `_textSlot`'s marked-range branch fails the
- * three duplication specs with `expected '<p class="a">Hello AdaAda…'`.
+ * Bisect: restoring the inlined `createTextNode + replaceChild` in either
+ * backend fails the duplication specs with `expected 'Count: 77<!--/$-->'`.
  */
 import { transformJSX } from '@pyreon/compiler'
 import { For, Fragment, h } from '@pyreon/core'
@@ -75,6 +56,7 @@ import {
   _setStyle,
   _tpl,
   hydrateRoot,
+  mount,
 } from '../index'
 import { bindPolymorphicText } from '../mount'
 
@@ -147,7 +129,8 @@ function retained(before: Node[], host: HTMLElement): number {
   return before.filter((n) => after.has(n)).length
 }
 
-/** SSR the given tree, then hydrate `client` over it and return the DOM. */
+
+/** SSR `tree`, hydrate `client` over it, and report what happened. */
 async function roundTrip(tree: unknown, client: string) {
   const html = await renderToString(tree as never)
   const host = document.createElement('div')
@@ -156,83 +139,98 @@ async function roundTrip(tree: unknown, client: string) {
   const before = snapshot(host)
   const App = compileApp(client)
   const dispose = hydrateRoot(host, h(App as never, null))
-  return { html, host, before, dispose, out: host.innerHTML }
+  return { html, host, before, dispose, out: host.innerHTML, kept: retained(before, host) }
 }
 
-describe('trailing reactive-text slot is not adopted as a mount slot', () => {
-  it('static text then {dynamic} — renders the value ONCE', async () => {
-    const { html, out, dispose } = await roundTrip(
+describe('compiled mixed-content text slot adopts its SSR text', () => {
+  it('static text then {dynamic}: renders ONCE and keeps every node', async () => {
+    const { html, out, kept, before, dispose } = await roundTrip(
       h('p', { class: 'a' }, 'Hello ', () => 'Ada'),
       `const App = () => { const n = signal('Ada'); return <p class="a">Hello {n()}</p> }`,
     )
     expect(html).toBe('<p class="a">Hello <!--$-->Ada<!--/$--></p>')
     expect(out).toBe('<p class="a">Hello Ada</p>')
+    expect(kept).toBe(before.length) // the SSR text node itself is ADOPTED
+    expect(tplAdopted()).toBe(1)
     dispose()
   })
 
   it('label: {value} — the shape that hydrated to `Count: 77`', async () => {
-    const { out, dispose } = await roundTrip(
+    const { out, kept, before, dispose } = await roundTrip(
       h('div', { class: 'b' }, 'Count: ', () => '7'),
       `const App = () => { const c = signal('7'); return <div class="b">Count: {c()}</div> }`,
     )
     expect(out).toBe('<div class="b">Count: 7</div>')
+    expect(kept).toBe(before.length)
     dispose()
   })
 
-  it('element then {dynamic} — a preceding ELEMENT sibling triggers it too', async () => {
-    const { out, dispose } = await roundTrip(
+  it('a preceding ELEMENT sibling triggers it too', async () => {
+    const { out, kept, before, dispose } = await roundTrip(
       h('p', { class: 'c' }, h('b', null, 'B'), () => 'tail'),
       `const App = () => { const t = signal('tail'); return <p class="c"><b>B</b>{t()}</p> }`,
     )
     expect(out).toBe('<p class="c"><b>B</b>tail</p>')
+    expect(kept).toBe(before.length)
     dispose()
   })
 
-  it('stays reactive after the rebuild — the refusal must not strand the bind', async () => {
+  it('an EMPTY range leaves no marker litter', async () => {
+    // The accessor rendered '' server-side, so the range holds no text at all.
+    // The helper must still land a node the bind can write into, and consume
+    // BOTH markers — a stray `<!--/$-->` would diverge from a client mount.
+    const { out, dispose } = await roundTrip(
+      h('p', { class: 'e' }, 'x', () => ''),
+      `const App = () => { const t = signal(''); return <p class="e">x{t()}</p> }`,
+    )
+    expect(out).toBe('<p class="e">x</p>')
+    dispose()
+  })
+
+  it('the adopted node stays live — adoption must not strand the binding', async () => {
     const { host, out, dispose } = await roundTrip(
       h('p', { class: 'r' }, 'v=', () => '1'),
       `const App = () => { const n = signal('1'); globalThis.__n = n; return <p class="r">v={n()}</p> }`,
     )
     expect(out).toBe('<p class="r">v=1</p>')
-    // Rebuilding must not cost the binding: the refusal changes WHICH nodes the
-    // element ends up with, never whether the signal still drives them.
     ;(globalThis as { __n?: { set(v: string): void } }).__n?.set('2')
     expect(host.innerHTML).toBe('<p class="r">v=2</p>')
     dispose()
   })
 
-  // ── The refusal must stay NARROW ───────────────────────────────────────────
-  it('a SOLE {dynamic} child still adopts (markers elided, different path)', async () => {
-    const { html, out, before, host, dispose } = await roundTrip(
+  // ── Shapes that must be untouched ─────────────────────────────────────────
+  it('a SOLE {dynamic} child still takes the baked-space path', async () => {
+    const { html, out, kept, before, dispose } = await roundTrip(
       h('p', { class: 'd' }, () => 'only'),
       `const App = () => { const o = signal('only'); return <p class="d">{o()}</p> }`,
     )
-    expect(html).toBe('<p class="d">only</p>')
+    expect(html).toBe('<p class="d">only</p>') // markers elided, no placeholder
     expect(out).toBe('<p class="d">only</p>')
-    expect(retained(before, host)).toBe(before.length)
-    dispose()
-  })
-
-  it('a trailing slot holding ELEMENTS still ADOPTS — unambiguous, keeps its win', async () => {
-    const { out, before, host, dispose } = await roundTrip(
-      h('ul', { class: 'l' }, h('li', { class: 'hd' }, 'h'), () => [h('li', null, 'a'), h('li', null, 'b')]),
-      `const App = () => { const xs = signal(['a','b']); return <ul class="l"><li class="hd">h</li>{xs().map((x) => <li>{x}</li>)}</ul> }`,
-    )
-    expect(out).toContain('<li>a</li>')
-    expect(out).toContain('<li>b</li>')
-    expect(out.match(/<li>a<\/li>/g)).toHaveLength(1)
-    expect(retained(before, host)).toBeGreaterThan(0)
-    expect(tplAdopted()).toBeGreaterThan(0)
+    expect(kept).toBe(before.length)
     dispose()
   })
 
   it('an all-static element is untouched', async () => {
-    const { out, before, host, dispose } = await roundTrip(
-      h('p', { class: 'e' }, 'plain'),
-      `const App = () => <p class="e">plain</p>`,
+    const { out, kept, before, dispose } = await roundTrip(
+      h('p', { class: 'f' }, 'plain'),
+      `const App = () => <p class="f">plain</p>`,
     )
-    expect(out).toBe('<p class="e">plain</p>')
-    expect(retained(before, host)).toBe(before.length)
+    expect(out).toBe('<p class="f">plain</p>')
+    expect(kept).toBe(before.length)
+    dispose()
+  })
+
+  it('a CLONE (no adoption) still swaps a fresh node in', async () => {
+    // The other half of the discrimination: mounted fresh, the placeholder is
+    // the template's inert `<!>` and the helper must behave as the inlined
+    // pair did. Guards against "fix adoption, break mounting".
+    const App = compileApp(
+      `const App = () => { const n = signal('Zoe'); return <p class="g">Hi {n()}</p> }`,
+    )
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const dispose = mount(h(App as never, null), host)
+    expect(host.innerHTML).toBe('<p class="g">Hi Zoe</p>')
     dispose()
   })
 })
