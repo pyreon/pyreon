@@ -1,5 +1,221 @@
 # @pyreon/table
 
+## 0.52.0
+
+### Minor Changes
+
+- Ship co-located native ports, and gate that they always do. (2e12add)
+
+  - **`@pyreon/table`**: its `PyreonTableState` Swift/Kotlin ports (added in #2828)
+    were declared via `pyreon.native` and compiled by the co-source gate, but the
+    package's `files` array did not include `native/swift` / `native/kotlin` — so
+    the ports never reached the published tarball. A native app installing
+    `@pyreon/table` could not resolve them. Added the two `files` entries.
+
+  - **`@pyreon/cli`** (`runDistributionGate`, i.e. `pyreon doctor` + the
+    `check-distribution` CI gate): a new rule, `distribution/native-source-not-
+shipped`, fails any package that declares `pyreon.native` but omits the
+    declared native source dirs from `files`. This is the class of bug above —
+    a co-located port that builds in-repo but is absent from npm. It surfaced two
+    real instances (`@pyreon/sync`, `@pyreon/table`), both fixed here.
+
+- Lower `@pyreon/table`'s `createTableState` to native (iOS + Android). (2eb6540)
+
+  `const t = createTableState({ data: () => rows(), columns: [{ id }], pageSize })`
+  in shared `.tsx` now compiles to the `@Observable` PyreonTableState engine —
+  sort / filter / paginate / select, rendered with `<For each={t.rows()}>` +
+  `@pyreon/primitives`.
+
+  - **Column cell accessors are codegen'd** from the row struct's inferred field
+    types: a `String` field → `.string($0.name)`, a number → `.number(Double($0.age))`.
+  - **Swift** wires the reactive data source in `.onAppear` (`t.setData { rows }`),
+    because a `@State` initializer can't capture the source signal; the table
+    itself is a self-seeding `@State`. **Kotlin** passes it in the constructor
+    (sequential `remember`).
+  - Use-sites: `t.rows()`/`t.toggleSort(id)`/`t.setFilter(q)`/… flow through as
+    methods; `t.page()`/`t.sortColumn()`/… drop parens (property reads).
+  - The `PyreonTableState` port is now `@Observable` (Swift) / `mutableStateOf`-
+    backed (Kotlin) so sort/filter/page mutations recompose.
+  - `@pyreon/table` declares a `nativeFrontend` and leaves WEB_ONLY_PACKAGES; the
+    TanStack-backed `useTable` (row model / faceting / virtual sizing) stays web.
+
+  Verified: the actual emit type-checks against the real SwiftUI SDK + the real
+  port on macOS, and both targets validate against the compiler stubs. v1: scalar
+  columns with the default `row[id]` accessor; explicit accessors / rowId /
+  filterFn are follow-ups.
+
+- Add `createTableState` — a dependency-free, reactive table-state core, plus co-located native Swift/Kotlin ports (`PyreonTableState`): the multiplatform-portable alternative to `useTable` (which binds `@tanstack/table-core` and is web-only-rich). (58c0fc4)
+
+  Pure signal logic for sort / filter / paginate / row-selection, so the same behaviour runs on web AND — via the native ports — on iOS/Android, where you render `rows()` with native `<For>` (tables ARE native: SwiftUI `List` / Compose `LazyColumn`), no WebView. `data` is an accessor so a signal source stays reactive; `rows()` re-derives filtered → sorted → paginated; `toggleSort` cycles none → asc → desc → none; the filter is case-insensitive across every column (override with `filterFn`); selection is keyed by `rowId`. A `createTableState`-only import tree-shakes TanStack out entirely (`sideEffects: false`).
+
+  The native ports are behaviour-identical to the TS engine (same sort/filter/paginate/select results) and are compile-and-run verified by the co-source gate (`swiftc` + `kotlinc` compile the runtime and run the assertion tests).
+
+- Fine-grained cells-list accessor `visibleCells(table, rowId)` + value-gated atom propagation (TanStack Store reference parity). (2b11ae1)
+
+  Two changes that together make a single-cell edit genuinely fine-grained end-to-end:
+
+  - **`visibleCells(table, rowId)`** (new export) — the cells-LIST companion to `flexRenderCell`, for the inner `<For>` of a keyed table body. The previously documented `each={() => row.getVisibleCells()}` leaves a TRACKED table-core read in every row's scope (its memo deps read `table.options`, which changes on every options sync — data edits included), so a single-cell edit re-ran every row's cells-list accessor: measured 1000 re-runs at N=1000 where 1 is correct, making the edit ~3× slower than a memoized react-table. `visibleCells` subscribes to the row's own signal plus the column-geometry state slices (visibility, order, pinning, grouping) and looks the cells up untracked from the CURRENT row model. Re-measured: update-1cell is now ~1.3× FASTER than a hand-memoized react-table at N=100 and N=1000 (10-25× vs naive).
+  - **Atom bindings default `compare` to `Object.is`** — TanStack Store's reference `createAtom` does not propagate an equal update; Pyreon's bare `computed` notifies unconditionally on dependency change. Core creates its per-slice `table.atoms[key]` with no compare while their fn reads `table.options`, so every data edit re-notified every state-slice subscriber with an unchanged value. Value-gating restores reference-binding parity.
+  - The structural column signature now includes `groupedColumnMode` (it changes the leaf-column list without touching `columns` or row ids), so that change correctly bumps the per-row signals.
+
+  The sort-toggle contract is unchanged and deliberate: a structure/order change still re-runs all cells (coarse-but-correct for state-reading cells — the case `React.memo` on `original` identity silently freezes).
+
+### Patch Changes
+
+- Update third-party dependencies to their latest compatible releases, (ea669a1)
+  extending #3174's sweep to every package.json the first pass hadn't reached
+  (that pass touched only the root manifest, so nothing there tripped the
+  Changeset gate — this one edits per-package manifests directly and does).
+
+  Runtime dependencies that reach consumers: `oxc-parser`/`oxc-transform`
+  0.147 → 0.148 (`@pyreon/compiler`, `@pyreon/native-compiler`, `@pyreon/lint`
+  — `@oxc-project/types` alongside it), `magic-string` 1.2.2 → 1.2.3
+  (`@pyreon/compiler`), the CodeMirror 6 family — `@codemirror/search` and
+  `@codemirror/state` 6.7.1 → 6.7.2, `@codemirror/legacy-modes` 6.5.3 → 6.5.4
+  (`@pyreon/code`), TipTap 3.30.3 → 3.31.2 (`@pyreon/rich-text`), TanStack Query
+  5.102.2 → 5.102.8 across `@tanstack/query-core` and its persist/devtools
+  companions (`@pyreon/query`, and the shared root override so `@pyreon/http`
+  agrees), `@tanstack/table-core` 9.1.2 → 9.2.4 (`@pyreon/table`), the
+  pragmatic-drag-and-drop family (`@pyreon/dnd`) — core 3.0.0 → 3.1.0,
+  auto-scroll 3.1.0 → 3.2.0, hitbox 2.1.0 → 2.2.0, all in-range within the
+  v3 major this repo already adopted.
+
+  Dev-only comparison/tooling bumps across the touched packages: `rolldown`,
+  `react-hook-form`, `hotkeys-js`, `axios`, `ky`, `i18next`, `xstate`, `joi`,
+  `typia`, `nuqs`, `@tanstack/react-virtual`, `@tanstack/react-table`,
+  `@tanstack/react-query`, `motion`, and `mobx-state-tree` 7.4.0 → 8.0.0 — a
+  real major, but its own peer range for `mobx` moved `^6.3.0` → `^7.0.0`,
+  which matches what this repo already declares (`^7.0.3`); the OLD pin was
+  the one silently out of range.
+
+  `happy-dom` deduped to ONE resolved version repo-wide — three stale copies
+  (20.11.6/20.12.0/20.13.2) were co-installed before this pass across the ~17
+  packages that each pin it independently. The unification target is
+  **20.11.6, not the newest 20.13.2** — bumping past 20.11.6 breaks
+  `@pyreon/styler`'s `memory-growth.test.ts` deterministically (5/5 local
+  runs, plus a CI failure on `test (fundamentals+ui-system+zero)`), a pure
+  `environment: 'happy-dom'` test whose eviction-cycle counting depends on
+  CSSOM/`cssRules` behavior that changed somewhere between those versions —
+  confirmed by isolating the version with an exact pin, not by assumption; 3/3
+  clean at 20.11.6, 5/5 failing at 20.13.2. Verified pre-existing on `main`
+  (3/3 passes there, at 20.11.6) so this is the same "routine bump, unvetted
+  runtime behavior change" shape as the `@tanstack/virtual-core` finding
+  below, just caught before push instead of by CI. The one other consumer
+  pinning past 20.11.6 — `@happy-dom/global-registrator` in
+  `examples/benchmark`, whose own 20.13.2 release requires `happy-dom
+^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
+  graph resolves to one version again.
+
+  `examples/benchmark`'s framework competitors were refreshed too so the
+  "fastest framework" comparisons stay honest against current releases: Vue +
+  `@vue/server-renderer` + `@vue/compiler-dom` 3.5.41 → 3.5.42, Svelte 5.56.10
+  → 5.57.0, and Octane 0.1.46 → 0.2.2 (its peer `@octanejs/vite-plugin`
+  0.1.46 → 0.1.52 alongside it) — a real minor jump, verified with a clean
+  production build before committing to it. Octane 0.2.2 replaces the
+  `forBlock` fast-path flag the row-list bench's own doc comment describes
+  un-handicapping with a new `fastKeyedForBlock` path; the bench impl still
+  reaches it (confirmed by compiling `octane.tsrx` through `octane/compiler`
+  0.2.2 and reading the emitted flags), so the comparison stays fair, but
+  every previously-published Pyreon-vs-Octane number in
+  `.claude/skills/pyreon-benchmarks/SKILL.md` was measured against 0.1.46 and
+  needs re-verification against 0.2.2 before being cited again — flagged
+  there, not restated as fact here.
+
+  Held deliberately, each for a stated reason found by actually reading the
+  dependency rather than assuming: TypeScript stays capped `<7.0.0` (removes
+  the classic Compiler API `@pyreon/compiler`/`@pyreon/mcp`/`@pyreon/cli` are
+  built on). `vitest`/`@vitest/browser`/`@vitest/browser-playwright`/
+  `@vitest/coverage-v8` stay on 4.1.11 as one locked unit (5.0.0 just went GA
+  and changes `clearMocks` to default `true`, tightens `coverage.include`/
+  `exclude` matching, and removes several import entrypoints — exactly the
+  class of change this repo's `Coverage (Full)` gate has already rotted on
+  three times; a real migration, not a version bump). `@changesets/cli`
+  2.31.1 → 3.0.1 and `@changesets/changelog-github` 0.7.0 → 1.0.0 stay put:
+  1.0.0 ships `"type": "module"` with no CJS export, and this repo's own
+  `.changeset/resilient-changelog.cjs` does `require('@changesets/changelog-
+github')` — bumping it would break `changeset version` at release time with
+  `ERR_REQUIRE_ESM`, verified by reading the published package's `exports`
+  map, not assumed. The root `uuid` override stays at `11.1.1` for the same
+  reason, one level removed: it force-pins a transitive dep of `exceljs`
+  (`^8.3.0`, itself already outside its own declared range on purpose), and
+  `uuid` 12.0.0 dropped CommonJS support entirely — `exceljs`'s own bundled
+  code does `require('uuid')`, verified directly in its installed `dist/`, so
+  the same ESM-only trap applies one hop further down the graph.
+
+  One more found by actually running the browser test tier, not just typecheck
+  and the node/happy-dom suite: `@tanstack/virtual-core` was bumped 3.17.4 →
+  3.17.8 in this branch's first pass (a routine-looking override edit, not
+  vetted as carefully as the deps above), and it broke
+  `@pyreon/virtual`'s real-Chromium `repositions a STAYING row below when row 0
+is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
+  retries) — bisected down to virtual-core's own 3.17.7 "synchronous
+  notification for scroll compensation" change, not to anything else in this
+  branch (ruled out `@tanstack/react-virtual`, unrelated — not imported by this
+  code path at all; ruled out the `oxc-parser`/`magic-string`/`rolldown`
+  bumps too, by reverting each in isolation and rebuilding). Reverted back to
+  3.17.4, matching what's currently on `main`, and NOT bumped further.
+
+  This surfaced something that predates this PR: `@pyreon/virtual`'s own
+  `package.json` has declared `@tanstack/virtual-core: "^3.17.7"` since an
+  earlier fix (commit 973c4e323, "the root overrides pinned
+  @tanstack/virtual-core to 3.17.4 while three packages declared ^3.17.7, so
+  the installed version did not satisfy its own consumers' declared range")
+  — but the root override was only ever bumped to 3.17.4 there, not to
+  3.17.7+, so the exact mismatch that fix describes is still live on `main`
+  today: the declared floor and the resolved version disagree, silently,
+  because the currently-resolved 3.17.4 happens to still pass. Bumping the
+  override to actually satisfy the package's own declared range (3.17.7,
+  confirmed — not just 3.17.8) is what surfaces the real compatibility break
+  in `use-virtualizer.ts`'s remeasurement handling. Left as-is here rather
+  than fixed, because closing it needs either updating the wrapper for
+  virtual-core's new synchronous-notification timing or re-adjudicating the
+  test's assumptions against it — real source-level work, not a version
+  bump. Tracked as a known gap, not silently left broken: someone picking
+  this up should treat `bun run test:browser` in `@pyreon/virtual` as the
+  regression gate, not just `bun run test`, which does not exercise this
+  path at all (confirmed: the full node/happy-dom suite passes 1805/1805
+  regardless of which virtual-core version is resolved).
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- perf(table): O(1) cell lookup in `renderCell` instead of an O(C²)-per-row scan (b3af6f5)
+
+  `flexRenderCell` → `renderCell` resolved a cell by doing `getVisibleCells().find(c => c.column.id === columnId)` — an O(C) linear scan by column id. It runs once per cell per render (the documented `{() => flexRenderCell(table, row.id, cell.column.id)}` shape), so a row with C columns did C scans of C cells → **O(C²) per row**, **O(N·C²)** on any full re-render (mount / sort / filter / pagination).
+
+  It now uses table-core v9's own memoized `row.getVisibleCellsByColumnId()` — a by-column-id map with the SAME visible-column filter and the SAME memo deps (`[row.getAllCells(), columnVisibility]`) as `getVisibleCells`, so it returns the identical cell in O(1). Falls back to the O(C) scan only when a table is built from a minimal feature set without column visibility. Per row: **O(C²) → O(C)**.
+
+  This does not change the adapter's compare/laziness semantics — `renderCell` already runs `untrack`ed and already read the same visibility atoms.
+
+  Bisect-verified: a stub row whose `getVisibleCells`/`getAllCells` throw but whose `getVisibleCellsByColumnId` returns the cell renders correctly through the O(1) path; reverting to the `.find` scan throws (`should not scan getVisibleCells`).
+
+- perf(table): make `isSelected` O(1) instead of an O(k) per-row scan (76c0feb)
+
+  `createTableState`'s `isSelected(id)` was `selected().includes(id)` — an O(k)
+  linear scan of the selected-ids array. It's the per-row selection-checkbox
+  predicate (called once per rendered row inside a reactive scope), so with k rows
+  selected it cost O(N·k) per selection change, and O(N²) under a select-all over
+  N rendered rows.
+
+  It now reads a lazily-derived `Set` (`computed(() => new Set(selected()))`): the
+  Set rebuilds O(k) once per selection change (a rare gesture) and each read is
+  O(1) via `Set.has`. Same booleans, same reactivity (the Set is a computed
+  derived from `selected()`). This is the pure-signal, native-portable
+  `createTableState` — it does NOT touch the `@tanstack/table-core` seam.
+
+  Bisect-verified with an operation-count lock: reading the predicate once for each
+  of 200 selected rows makes ZERO `Array.includes` calls (Set-backed); the old
+  `.includes` form makes one per read (200).
+
+- TanStack Table 9.0.0 → 9.1.2 (+ @tanstack/store 0.11.1). The Pyreon (111ac7e)
+  reactivity bindings pass unchanged — 9.1's one seam addition, the optional
+  `commit` hook, is a render-phase-adapter API (`publishExternalState`'s
+  staged-options path) that a fine-grained adapter deliberately does not
+  implement: options are a real atom here (`createOptionsStore: true`), so
+  derived atoms subscribe reactively and there is no out-of-band invalidation
+  to signal. Rationale documented at the seam.
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Minor Changes

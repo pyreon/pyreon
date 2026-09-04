@@ -1,5 +1,124 @@
 # @pyreon/server
 
+## 0.52.0
+
+### Minor Changes
+
+- fix(ssr): ship the styler CSS for the class names SSR emits (9dafed7)
+
+  Server-rendered HTML carried styler class names (`pyr-1abc23`) with **no
+  `<style>` tag at all** on two of the three SSR paths: `@pyreon/zero`'s dev SSR
+  middleware and its production `createServer`. Measured on `examples/ui-showcase`
+  before the fix: 23 of 23 styler classes on `/button` had zero matching CSS
+  rules, on every route. The page hydrated to the correct DOM, so only the FIRST
+  PAINT was wrong — every SSR page flashed unstyled.
+
+  The cause was that `renderPage`'s `collectStyles` hook is opt-in, and of its
+  three consumers only zero's SSG prerender entry ever passed one. SSG had been
+  fixed for exactly this bug ("prerendered HTML carried styler-generated class
+  names … but had ZERO `<style>` tags in the head"), and the sibling call sites
+  were left behind — a fix applied to one call site rather than to the class.
+
+  `renderPage` now defaults `collectStyles` to a `globalThis.__PYREON_STYLER_COLLECT__`
+  collector that `@pyreon/styler`'s singleton registers on SSR init — the
+  string-mode twin of the `__PYREON_STYLER_FLUSH__` seam the streaming pipeline
+  already used, so there is still no `@pyreon/server` → `@pyreon/styler`
+  dependency. Fixing the one choke point covers all three consumers plus any bare
+  `@pyreon/server` user, so no caller can forget it again.
+
+  Unchanged: an explicit `collectStyles` still wins (SSG is byte-identical);
+  apps without styler get no global and no `<style>`; the streaming path keeps
+  its per-boundary watermarked flush, which `getStyleTag()` never disturbs.
+
+  Why it survived this long: a second bug hid it. Hydration was discarding the
+  server DOM and rebuilding it, so users saw _nothing_ for ~300ms rather than
+  seeing the content unstyled. The mask made the defect symptomless — it only
+  becomes visible once hydration correctly adopts the server DOM.
+
+### Patch Changes
+
+- Close the pre-release audit's long tail: a fail-open URL guard, an inert verification axis, an unnecessary supply-chain surface, and two overstated claims (8563e97)
+
+  **`isSafeImageDataUri` failed OPEN on a malformed percent-escape.** The base64 branch returns "unsafe" when `atob` throws; the percent branch caught the `decodeURIComponent` failure, kept the raw still-encoded payload, and scanned that — but the scripted-SVG regex matches `<script` and ` on…=`, neither of which appears in `%3Cscript%3E`. So one trailing `%` took a payload from blocked to allowed. The function's own docstring already promised the base64 branch's behaviour for both, so the two branches disagreeing was the whole defect. Scoped to `src`/`srcset`/`poster` on image/video elements where a scripted SVG does not execute, so this is defence-in-depth — reported because a guard that fails open is worse than one that does not exist: it is relied on.
+
+  **`@pyreon/atlas`'s route axis was inert.** `installRouter` had zero callers and `Scenario.route` had zero readers while `routerPlugin` was publicly exported, so a `routerPlugin({ urls })` config produced the expected doubled scenario count with names like `Profile @ /users/999` — and every one passed having mounted with no router installed. Two different URLs rendered byte-identically and both reported `pass`. The router is now installed around the scenario mount through a registration seam (the plugin publishes an installer; the plugin that owns mounting consumes it, so there is still ONE owner of the router's install/dispose), disposed in the same window so it cannot answer for the next scenario, and a route that CANNOT be applied is reported as a finding rather than passing silently.
+
+  **`@pyreon/code`'s 15 `@codemirror/lang-*` packages move from `optionalDependencies` to optional peers.** `optionalDependencies` reads as optional and is not: every package manager installs them by default, so every consumer carried their install weight and CVE surface for grammars they never load. Each is reached through a lazy `import()`, which is exactly the shape `@pyreon/document` moved to `peerDependenciesMeta.optional` for the same reason.
+
+  **The Vercel revalidate handler compares its secret in constant time.** It was `secret !== expected` under a comment calling it "constant-time-ish"; `!==` short-circuits at the first differing byte regardless of length, which is precisely the leak the phrase claimed to avoid. Length is compared separately because `timingSafeEqual` requires equal-length buffers — that leaks the secret's LENGTH, which is stated rather than hidden.
+
+  **`serverIsland` documents that its props are client-controlled.** The fragment endpoint is public and unauthenticated; the island NAME is allowlisted, the props are not, so a fragment renders with attacker-chosen props inside a full request context. That is the intended design, but neither the JSDoc nor the manifest said so — an island that reads a `userId` prop and returns that user's data is an IDOR by construction. Now named as the first entry in the API's `mistakes`, so it reaches `llms.txt` and the MCP reference too.
+
+- Fixed three README examples that imported symbols which do not exist. (b0761a2)
+
+  - **`@pyreon/native-router-swift` / `-kotlin`** taught `import { RouterProvider, RouterView, Link, useNavigate } from '@pyreon/router'`. `Link` has never existed — the export is `RouterLink`. Both blocks also used `createRouter` without importing it.
+  - **`@pyreon/server`** taught `import { pyreon } from '@pyreon/vite-plugin'`, which is a **default** export. Every other README in the repo had it right.
+  - **`@pyreon/zero-content`** taught `import { registerExamples } from '@pyreon/zero/client'` — it lives in `@pyreon/zero-content`, and the block imported it from both, aliasing the real one to dodge a clash with the import that does not exist.
+
+  None was reachable by an existing gate (native packages are manifest-exempt; none of the blocks was opted into `check-doc-examples`). A new `check-readme-imports` gate now compiles every `@pyreon/*` symbol a package README tells you to import — 603 symbols across 119 packages — and fails on `TS2305`/`TS2724`/`TS2614`.
+
+- Fix redirect target handling: cross-origin redirects now actually work on the (0e434c8)
+  client, and client + server agree on what a target means.
+
+  Two defects were tangled together. **Functional**: `redirect()`'s docs promised
+  cross-origin support (`redirect('https://provider.com/oauth')`), but the client
+  router rewrote EVERY absolute URL to `/` via `sanitizePath` — so a cross-origin
+  redirect silently failed to `/` on an SPA navigation (breaking e.g. an OAuth
+  hand-off), while the SSR handler emitted it verbatim. **Security**: that same
+  client/server disagreement meant a guard a developer verified on the client (which
+  blocks absolute URLs) did not hold on the server (which emitted them raw).
+
+  A single shared classifier — `classifyRedirectTarget` (exported) — now drives
+  BOTH paths:
+
+  - **`external`** (an explicit `http(s)://` URL): a real `window.location`
+    navigation on the client (was silently `/`), a `Location:` header on the server.
+    The target is trusted to the caller — validate an untrusted `?next=` value
+    against an allowlist, exactly as with any framework (Remix/Next model); the
+    `redirect()` JSDoc now says so.
+  - **`block`** (protocol-relative `//host`, or a non-`http(s)` scheme like
+    `javascript:` / `data:` / `mailto:`): refused and routed to `/`, on both the
+    client redirect application and the server `Location:` (`safeRedirectLocation`).
+  - **`internal`** (a same-origin path): an in-router SPA navigation, unchanged.
+
+  Bisect-verified: reverting the client external branch fails a cross-origin
+  redirect (no real navigation); reverting the server sanitizer emits
+  `javascript:alert(1)` as the raw `Location`. Full `@pyreon/router` 758/758 +
+  `@pyreon/server` 256/256, typecheck + lint + budgets clean. `push`/`replace` of a
+  string path and route-config redirects keep their same-origin-only behavior.
+
+- **`useSecureStorage` and `useDatabase` shared their store across requests on the (5493aa8)
+  server.** Both back their web arm with a module-level `Map`, under comments that
+  reason correctly about a browser — "the secret store is app-wide, like the
+  Keychain it mirrors"; "module-scoped so reads and writes within one page agree".
+  In a browser one process serves one user, so app-wide and page-wide are the same
+  scope. On a server one process serves everyone, and both hooks reached that map
+  under SSR: `useDatabase` mirrored into it _before_ its `isServer` early return
+  and read from it, while `useSecureStorage` had no server branch at all.
+
+  Verified by running the modules with no `document` — the real SSR arm, not a
+  mock: a record inserted by one render came back to the next, and a session token
+  written by one render was returned to the next verbatim.
+
+  Both now have an inert server arm — reads empty, `write` returns `false`,
+  nothing stored. That is chosen over a per-call map, which removes the leak but
+  makes two components in one render disagree; inert is consistent for every
+  caller and carries nothing across a request. It is also the honest answer: a
+  localStorage/Keychain mirror has nothing to mirror on a server, and secrets
+  needed there belong in the request context or the environment.
+
+  Also repairs a security docblock in `@pyreon/server`: the server-island fragment
+  renderer's SECURITY CONTRACT paragraph had been spliced into the middle of the
+  preceding sentence, leaving both halves reading as fragments.
+
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/router@0.52.0
+  - @pyreon/reactivity@0.52.0
+  - @pyreon/runtime-dom@0.52.0
+  - @pyreon/head@0.52.0
+  - @pyreon/runtime-server@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

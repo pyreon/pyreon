@@ -1,5 +1,229 @@
 # @pyreon/flow
 
+## 0.52.0
+
+### Minor Changes
+
+- Replace `elkjs` with a built-in layout engine — one fewer dependency, and the only copyleft one in the tree. (e30515b)
+
+  `elkjs` is a GWT-compiled port of the Eclipse Layout Kernel: ~1.4 MB of generated JavaScript under EPL-2.0, fetched at first `.layout()` call, to produce — in the end — one `{ x, y }` per node. Everything else it computed (edge sections, ports, hierarchy) was discarded by the caller.
+
+  All seven algorithms are now implemented directly: `layered` (Sugiyama — cycle breaking, longest-path layering, median-heuristic ordering with adjacent transposition), `tree`, `force` (Fruchterman–Reingold), `stress` (majorisation over BFS distances), `radial`, `box` and `rectpacking`.
+
+  The engine is **lazy-loaded**, exactly as elkjs was — an app that renders a flow but never calls `.layout()` pays nothing. What changes is the size of what gets fetched: a ~2 KB chunk instead of ~1.4 MB. `@pyreon/flow`'s main entry is unchanged.
+
+  **`computeLayout` keeps its async signature** — a caller awaiting it still works — but the engine underneath is pure and synchronous, so layouts are now **deterministic**: the same graph always produces the same positions, which elkjs did not guarantee.
+
+  **Measured against elkjs across all seven algorithms** on four graph shapes.
+
+  **Zero overlapping nodes everywhere** — a stronger guarantee than elkjs, whose stress layout leaves 22 / 6 / 29 overlapping pairs on the same graphs. Physical layouts (force, stress, radial) get a bounded overlap-relaxation pass, since optimising distance does not imply separation.
+
+  Crossings: we WIN clearly on force (0/1/8 against ELK's 34/19/135) and match on chains, trees and cycles. We LOSE on `layered` for a 20-node DAG (8 against 0), on `tree` for a 40-node DAG (56 vs 16), and on `radial` (145 vs 67). ELK's layered pipeline uses Brandes–Köpf coordinate assignment and a full layer sweep; this uses a median heuristic with transposition, so expect comparable structure and more crossings when graphs get dense.
+
+  **Performance at 1000 nodes** (median of 7 warm runs), after fixing three quadratic hot paths plus a round of allocation work — numeric grid keys instead of `\`${cx},${cy}\``strings, no argument-list spreads, a flattened pivot-distance buffer,`sqrt`over`hypot`:
+
+  |                          | before   | after    |
+  | ------------------------ | -------- | -------- |
+  | layered                  | 2,618ms  | **5ms**  |
+  | force                    | 53,441ms | **72ms** |
+  | stress                   | 8,312ms  | **56ms** |
+  | radial                   | —        | **5ms**  |
+  | tree / box / rectpacking | —        | **≤1ms** |
+
+  Quality is byte-identical before and after the optimisation work — same crossing counts on every graph, still zero overlaps — so the speedups are behaviour-preserving.
+
+  **Verified through the render path too**, in real Chromium: five specs mount a `<Flow>`, run each algorithm, and read `getBoundingClientRect()` from the DOM rather than the returned numbers — no visual overlap, children below parents, `RIGHT` laying out across the screen, and a tall node genuinely pushing the next layer down (proving measured boxes reach the engine). Bisect-verified: an all-zeros layout fails four of the five.
+
+- Pointer-path performance overhaul (P4–P8 of the fundamentals perf campaign). Measured in happy-dom at the stated sizes: (e56abb6)
+
+  - **History snapshots are shallow array copies** instead of `structuredClone` — `pushHistory` (it runs inside node-grab pointerdown) drops from ~1.13ms to ~0.002ms per call at 1000 nodes / 1000 edges, and undo/redo now work with non-cloneable node `data` (a function-valued callback previously threw `DataCloneError`). Safe because every write path replaces changed node/edge objects immutably — the same invariant the per-id equality gates already rely on. In-place mutation of node objects remains unsupported (it never rendered); undo cannot restore such mutations, and effectively could not before either.
+  - **Object snapping precomputes candidate guide lines once per drag** (`_createSnapSession`, internal; `SnapSession` type exported) instead of an O(N) scan with N allocations on every pointermove. Behavior change for MULTI-node drags: co-dragged nodes are no longer snap candidates — they move rigidly with the pointer, so snapping against them produced oscillating feedback.
+  - **Selection is per-id gated.** New `isNodeSelected(id)` / `isEdgeSelected(id)` reactive O(1) membership reads backed by per-id `{ equals: Object.is }` computeds — a selection change re-runs O(changed) node thunks instead of all N (20 selection changes at 300 mounted nodes: ~210ms → ~9ms; the old `selectedNodes().includes(id)` per-thunk scan was O(N²)). New bulk `selectNodes(ids, additive?)` replaces the rubber-band commit's O(K²) additive loop (300-node band: ~3000ms → ~0.3ms).
+  - **MiniMap patches in place** (static mount, keyed rows, reactive attr thunks) — a pan/zoom frame creates ZERO elements (was ~306 element creations per viewport write at 300 nodes; a 60-frame burst: ~302ms → ~2ms).
+  - **ONE shared ResizeObserver** measures all node wrappers (was one observer per node: 301 → 2 at 300 nodes).
+  - **Rubber-band / connection pointermoves reuse the container rect** captured at gesture start (was a forced-layout `getBoundingClientRect` per move; invalidated on container resize).
+  - **A drag frame is one batched reactive drain**, and helper-line writes are value-gated (unchanged guides write nothing — ~2 signal writes/frame → 1).
+  - **Selection box, helper-line guides, and Controls patch in place**; Controls buttons no longer remount on zoom changes (the zoom % moved into an inner text thunk — pan already stopped remounting when the reactivity default value gate landed).
+
+  Honest non-mover: total drag-frame wall clock at 300 nodes / 300 edges stayed ~0.3ms/frame in happy-dom — that path is dominated by the keyed reconcile + per-id refresh machinery, not by the removed work. The wins above are eliminated allocations, forced-layout reads, observers and remounts, plus grab latency, selection, and rubber-band costs.
+
+- `@pyreon/flow` starts crossing to native (iOS + Android) — the state engine (9b1f957)
+  and the edge-drawing runtime.
+
+  `const flow = createFlow({ nodes: [...], edges: [...] })` in shared `.tsx`
+  (v1: literal node/edge config) now compiles to the `@Observable`/`remember`
+  PyreonFlowState engine — node/edge CRUD, selection, pan/zoom/fitView, and
+  graph queries (getConnectedEdges/getIncomers/getOutgoers), mutated from
+  native event handlers with the SAME method names the web `FlowInstance`
+  uses.
+
+  - **The row struct is synthesized from the first node's `data` literal**
+    (every node must share one field set, the same uniform-row assumption
+    `createTableState` makes about its rows) via the shared
+    `synthLiteralStructName` registry — the SAME name every OTHER object
+    literal in the file resolves through, so `flow.addNode({...})`'s literal
+    argument constructs the real `PyreonFlowNode<Row>`, not a synthesized
+    lookalike struct (Swift/Kotlin are both NOMINALLY typed, so a
+    structurally-identical-but-differently-named struct does not typecheck).
+  - Use-sites: `flow.nodes()`/`.edges()`/`.viewport()`/`.zoom()` drop parens
+    (property reads, matching the underlying Signal/Computed); `addNode`/
+    `addEdge`/`removeNode`/`selectNode`/… flow through as methods with the
+    SAME names.
+  - **`createFlow` owns its data** (unlike `createTableState`, which wraps an
+    external reactive source) — nodes/edges seed once from literal config and
+    mutate through the instance's own methods, so the Swift emit needs no
+    `.onAppear` wiring dance; it is a fully self-contained `@State`
+    initializer.
+  - **`PyreonFlowEdgeCanvas`** (SwiftUI `Canvas` / Compose `Canvas`) draws the
+    built-in edge path geometry — bezier / smoothstep / straight / step /
+    waypoint all reduce to a closed 4-command vocabulary (`move`/`line`/
+    `cubic`/`quad`, the new `EdgeSegment` union in `types.ts`, additive
+    alongside the existing SVG `path` string with zero web behavior change) —
+    from hand-written native code. It is reusable runtime infrastructure, not
+    yet auto-wired from `<Flow>` JSX.
+  - **The `<Flow>`/`<Background>`/`<Controls>`/`<MiniMap>`/`<Handle>`/
+    `<NodeToolbar>`/`<NodeResizer>`/`<Panel>` JSX components, `useFlow`,
+    `computeLayout`, and the edge-path helper functions have NO native emit
+    yet** — importing them from shared native source now gets a loud,
+    per-symbol compiler warning naming `PyreonFlowState`/`PyreonFlowEdgeCanvas`
+    (hand-wire natively) or the `@pyreon/flow/webview` bridge (the full
+    JSX-driven editor) as the fix, instead of silently emitting a reference to
+    a Swift/Kotlin type that does not exist.
+  - `@pyreon/flow` declares a `nativeFrontend` and leaves the derived
+    `WEB_ONLY_PACKAGES` set.
+
+  Verified: the real emit type-checks against the real SwiftUI SDK + compiles
+  and RUNS against the real `@Observable`/`Compose` ports on macOS (bisect-
+  verified — reverting either the row-struct-registration fix or the
+  struct-literal call-site rewrite reproduces the exact compile failure this
+  PR closes), and both targets validate against the compiler stubs. The
+  co-located native sources pass `check-native-cosource` in isolation (no
+  implicit dependency on `@pyreon/charts`' runtime, even though both end up in
+  the same app-level Swift module — an app depending on `@pyreon/flow` alone
+  must not need `@pyreon/charts` linked).
+
+  v1 scope, matching the discipline `createTableState`/`useSortable` set: not
+  yet ported — `updateNode` (partial merge, no faithful Swift shape without a
+  builder closure), `isValidConnection`, bulk `selectNodes`, `layout()` (the
+  separate layout-engine crossing — a follow-up mirroring the charts
+  engine-bundle-generator tooling), `undo`/`redo`/`pushHistory`,
+  `copySelected`/`paste`, `moveSelectedNodes`/snap-lines (tied to the native
+  gesture layer — pan/zoom/drag/connect — the next, most uncertain phase),
+  sub-flow/group queries.
+
+### Patch Changes
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- Single-node drag no longer fans out to every node and edge. A drag frame writes the whole `nodes()` array, and the shared `nodeMap`/`edgeMap` computeds notify unconditionally — so every node's class/style/data thunk re-ran and every edge recomputed its full geometry on every pointermove, even when untouched (O(N + E) per frame). Per-node/per-edge thunks now subscribe through per-id `computed(() => nodeMap().get(id), { equals: Object.is })` gates (every write path preserves untouched objects' identity), and edge geometry is memoized per edge with the two per-ENDPOINT node computeds as its deps — a single-node drag frame re-runs only the moved node's thunks plus its touching edges' geometry: O(1 + deg). Measured at 300 nodes / 300 edges: ~6.7–8.7 ms/frame → ~0.26 ms/frame (~25–33×), with unmoved-node and unmoved-edge thunk re-runs going from 299 + 298 per frame to 0. The per-id computeds are instance-cached, created detached from the mounting component's scope (an instance outlives any one `<Flow>` mount), swept when their id leaves the graph, and disposed with the instance. (56c87ab)
+- perf: O(n) layout position application (was O(n²)) (25d8f3c)
+
+  Applying a computed layout to the nodes ran `positions.find((p) => p.id ===
+node.id)` inside `nds.map(...)` — O(nodes²), which shows up on large graphs after
+  every layout run. The _animated_ branch already indexed positions into a `Map`
+  and used `.get(node.id)`; the non-animated branch just never got the same
+  treatment.
+
+  Index `positions` by id once (O(n)) and look each node up in O(1). Behaviour
+  identical. Bisect-verified: with the old `find` form the position application
+  calls `Array.prototype.find` once per node (N); the indexed form calls it 0.
+
+- `createFlow`'s config takes 17 keys. The native reader took two — `nodes` and `edges` — and the other fifteen lowered to nothing, silently. So `createFlow({ nodes, edges, minZoom: 0.5, maxZoom: 2 })` clamped zoom to 2x on web and 4x on iOS/Android from the same source line: code that compiles, runs, and is simply wrong on one target, with no diagnostic anywhere. The IR's own doc comment acknowledged the gap; nothing surfaced it to the person writing the app. (faeb942)
+
+  `minZoom`/`maxZoom` now thread through when written as numeric literals. Both native constructors already accepted them, so the runtime was never the blocker — only the reader was. Kotlin renders them as Double literals, because `maxZoom: 2` emitting `maxZoom = 2` is an "argument type mismatch: actual type is 'Int', but 'Double' was expected", while Swift takes the identical source without complaint — the per-target asymmetry that hides this class until a real Kotlin compile.
+
+  Every other key now WARNS by name (`fitView`, `snapToGrid`, `defaultEdgeType`, …), including a `minZoom`/`maxZoom` written as a non-literal, rather than being dropped in silence. Guessing a native equivalent for `snapToGrid` would be worse than saying it does not cross.
+
+- `PyreonFlowState.deleteSelected()` was quadratic on both native targets. It was built from the CRUD primitives — one `removeNode`/`removeEdge` call per selected id — and each `removeNode` re-scans the whole `nodes` AND `edges` collections, so K selected nodes cost O(K x (N + E)) rather than O(N + E). "Select all, then delete" is the shape that makes K = N: on a thousand-node graph that is roughly a million comparisons for one keypress instead of a couple of thousand. (ac92f5a)
+
+  The web engine this port is documented as byte-aligned with does not do that — its `deleteSelected` builds `Set`s from the selection once and does a single `filter` pass over each collection, with the edges predicate covering both concerns at once (connected-to-a-removed-node, and independently-edge-selected). Both native runtimes now use that same shape, including the reference's second branch for the edges-only case.
+
+  No behaviour change: the loop and the single-pass form produce identical node/edge/selection state, which is what the added specs pin.
+
+- Pan/zoom no longer remounts the entire graph. The viewport div was rendered by a reactive child accessor that read `viewport()` at its top — so every wheel tick, pan pointermove, and `animateViewport` frame tore down and re-created every node div (plus its ResizeObserver) and every edge path. The viewport div is now mounted statically with only its `style` string reactive: pan/zoom is one transform write per frame. Measured (happy-dom, 300 nodes/299 edges, 100 viewport writes): ~68ms/write → ~0.014ms/write, and zero element creations per write (was the whole subtree). Element identity across pan/zoom is now locked by bisect-verified regression tests; real-Chromium flow suites and the app-showcase e2e (wheel-zoom spec compiled through the real vite-plugin) pass unchanged. (19234c2)
+- Ship the MIT LICENSE file in the package tarball (8aeffe0)
+
+  These eight published packages were missing a `LICENSE` file. The repo's
+  own rule has always been that every package carries one ("Every package
+  MUST have `LICENSE` (MIT) and `README.md` — no exceptions"), but nothing
+  enforced it, so the gap went unnoticed.
+
+  No runtime change. It matters anyway: consumers, vendoring tools and
+  licence scanners read the file from the tarball, and its absence makes an
+  MIT-licensed package look unlicensed at the point where that question is
+  actually asked. A gate now keeps every workspace covered.
+
+- Three reactivity/correctness fixes found by running `pyreon doctor` against the (02cae6a)
+  framework itself, plus the rule-option support that made the remaining reports
+  resolvable.
+
+  - **`useChart` published a torn frame.** `instance.set(chart)`, `loading.set(false)`
+    and `error.set(null)` ran unbatched, so a subscriber reading two of them saw
+    the chart instance published while `loading` was still `true` — the "chart is
+    ready but still showing a spinner" flicker. Batched into one notify cycle; the
+    batch flushes before `onInit`, so the documented "fully configured before
+    `onInit` fires" invariant is unchanged.
+
+  - **Flow's `handlePointerUp` fired one notify cycle per selected node.** Its
+    three branches (rubber-band / drag-end / connection-drop) are sequential and
+    can co-occur, and the rubber-band branch calls `clearSelection()` plus
+    `selectNode()` once per hit node — so a band over 100 nodes fired 100+ cycles
+    and re-rendered the canvas each time. One pointerup is now one transition.
+
+  - **`createActorId`'s fallback could collide.** The doc comment states two live
+    peers must not share an id, but the non-`crypto.randomUUID` path was
+    `Date.now()` + `Math.random()`, which repeats within a millisecond and is a
+    birthday risk besides. It now prefers `crypto.getRandomValues` (far more widely
+    available than `randomUUID`, which requires a secure context) and its last
+    resort mixes in a per-process monotonic counter, so two ids from one process
+    can never collide by construction and the random field only has to separate
+    processes.
+
+  - **`exemptPaths` on six rules that documented the convention but never read it.**
+    `toast-a11y`, `no-href-navigation`, `no-inline-style-object`,
+    `prefer-use-is-active`, `no-effect-in-mount` and `prefer-field-array` all
+    inspect a call site, so the file that _implements_ the thing being recommended
+    reports against itself — `link.tsx` renders the `<a href>` that `<Link>`
+    wraps, and the toast row computes `role` from severity in its definition
+    rather than at the `<ToastItem>` call site. Resolving that in-rule needs the
+    parent chain, which oxc's visitor does not provide, so these now honour the
+    documented `exemptPaths` option instead. Each still fires normally everywhere
+    else.
+
+- Harden webview host-HTML builders against a quote in developer-supplied (d259c0c)
+  theme/color config breaking the generated page.
+
+  `buildChartHostHtml` interpolated `theme` as a bare single-quoted JS string
+  (`'${theme}'`) and `renderer` verbatim into the `echarts.init(...)` object
+  literal — a theme name or renderer containing `'` broke out of the call.
+  `buildFlowHostHtml` interpolated the `edgeColor`/`nodeFill`/`nodeStroke`/
+  `labelColor` config into JS string literals and one `innerHTML` attribute the
+  same way. These are developer configuration (never user data by design), so this
+  is footgun-removal / correctness, not a user-facing vulnerability — but a color
+  or theme name with a quote should not corrupt the page.
+
+  Fix: `theme` is now `JSON.stringify`'d (a properly-escaped JS string literal),
+  `renderer` is validated to the `'canvas' | 'svg'` enum, and the flow colors run
+  through a `safeColor` allowlist (CSS-color tokens only) that neutralizes every
+  interpolation site at once. Valid hex / `rgb()` / named colors are unaffected.
+
+- Close two escapes in the WebView host page that could not do what they claimed (0653ff0)
+
+  The host-page builders wrote a `background` value into a `<style>` body with `&quot;` escaping and an inlined engine bundle into a `<script>` body with a `</` → `<\/` replacement. Both are the wrong escape for their context.
+
+  `<style>` is a RAW-TEXT element: character references are never decoded inside it, so `&quot;` was inert and a `</style>` in the value closed the element and put everything after it into the document. A real CSS colour or gradient never contains `<`, `>`, or a quote, so those are dropped now — lossless for every valid value, and `background: '#0b0d12'` and `rgb(11 13 18 / 80%)` still reach the sheet verbatim.
+
+  For the script body, `</` → `<\/` stops the element being CLOSED but not the tokenizer entering the script-data-DOUBLE-escaped state, which it does on `<!--` followed by `<script`. In that state the page's own literal `</script>` no longer ends the element and the rest of the document becomes script content. `<!--` is broken too now. Both replacements are identity escapes in the string and regex contexts a bundle actually contains these bytes in (`\/` is `/`, `\-` is `-`), so the JS is unchanged; the one shape they alter is an Annex-B `<!--` HTML-like comment in code position, which no bundler emits.
+
+  A `<script src>` URL is now escaped for its attribute context (`&` first, then `"` and `<`) rather than `"` alone.
+
+  These are developer-supplied options rather than request data, so this is defence-in-depth — but a PR earlier in this cycle hardened these exact functions for the JS-string context and left both of these, and an app deriving a theme colour from content would have been exposed. `@pyreon/charts` has the same two shapes and is deliberately left alone here — it is under active change.
+
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+  - @pyreon/primitives@0.52.0
+  - @pyreon/runtime-dom@0.52.0
+
 ## 0.51.0
 
 ### Minor Changes

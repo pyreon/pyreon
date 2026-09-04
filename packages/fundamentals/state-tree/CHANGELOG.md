@@ -1,5 +1,284 @@
 # @pyreon/state-tree
 
+## 0.52.0
+
+### Minor Changes
+
+- Co-locate native runtimes into their own packages. (ed6518a)
+
+  The Swift/Kotlin runtimes for form, store, state-tree, machine, i18n, permissions,
+  and query move out of the `@pyreon/native-runtime-*` monolith into each package's
+  `native/{swift,kotlin}/` (declared via the `pyreon.native` package.json field,
+  aggregated by `pyreon-native wire`). Framework-base runtimes (reactivity/styling/JSON
+  helpers) stay in the monolith. A new `scripts/check-native-cosource.ts` gate compiles
+  and smoke-runs every co-located `.swift`/`.kt` against the stub harness so a relocated
+  runtime can't rot silently. No API change — this is a source-location move.
+
+### Patch Changes
+
+- Update third-party dependencies to their latest compatible releases, (ea669a1)
+  extending #3174's sweep to every package.json the first pass hadn't reached
+  (that pass touched only the root manifest, so nothing there tripped the
+  Changeset gate — this one edits per-package manifests directly and does).
+
+  Runtime dependencies that reach consumers: `oxc-parser`/`oxc-transform`
+  0.147 → 0.148 (`@pyreon/compiler`, `@pyreon/native-compiler`, `@pyreon/lint`
+  — `@oxc-project/types` alongside it), `magic-string` 1.2.2 → 1.2.3
+  (`@pyreon/compiler`), the CodeMirror 6 family — `@codemirror/search` and
+  `@codemirror/state` 6.7.1 → 6.7.2, `@codemirror/legacy-modes` 6.5.3 → 6.5.4
+  (`@pyreon/code`), TipTap 3.30.3 → 3.31.2 (`@pyreon/rich-text`), TanStack Query
+  5.102.2 → 5.102.8 across `@tanstack/query-core` and its persist/devtools
+  companions (`@pyreon/query`, and the shared root override so `@pyreon/http`
+  agrees), `@tanstack/table-core` 9.1.2 → 9.2.4 (`@pyreon/table`), the
+  pragmatic-drag-and-drop family (`@pyreon/dnd`) — core 3.0.0 → 3.1.0,
+  auto-scroll 3.1.0 → 3.2.0, hitbox 2.1.0 → 2.2.0, all in-range within the
+  v3 major this repo already adopted.
+
+  Dev-only comparison/tooling bumps across the touched packages: `rolldown`,
+  `react-hook-form`, `hotkeys-js`, `axios`, `ky`, `i18next`, `xstate`, `joi`,
+  `typia`, `nuqs`, `@tanstack/react-virtual`, `@tanstack/react-table`,
+  `@tanstack/react-query`, `motion`, and `mobx-state-tree` 7.4.0 → 8.0.0 — a
+  real major, but its own peer range for `mobx` moved `^6.3.0` → `^7.0.0`,
+  which matches what this repo already declares (`^7.0.3`); the OLD pin was
+  the one silently out of range.
+
+  `happy-dom` deduped to ONE resolved version repo-wide — three stale copies
+  (20.11.6/20.12.0/20.13.2) were co-installed before this pass across the ~17
+  packages that each pin it independently. The unification target is
+  **20.11.6, not the newest 20.13.2** — bumping past 20.11.6 breaks
+  `@pyreon/styler`'s `memory-growth.test.ts` deterministically (5/5 local
+  runs, plus a CI failure on `test (fundamentals+ui-system+zero)`), a pure
+  `environment: 'happy-dom'` test whose eviction-cycle counting depends on
+  CSSOM/`cssRules` behavior that changed somewhere between those versions —
+  confirmed by isolating the version with an exact pin, not by assumption; 3/3
+  clean at 20.11.6, 5/5 failing at 20.13.2. Verified pre-existing on `main`
+  (3/3 passes there, at 20.11.6) so this is the same "routine bump, unvetted
+  runtime behavior change" shape as the `@tanstack/virtual-core` finding
+  below, just caught before push instead of by CI. The one other consumer
+  pinning past 20.11.6 — `@happy-dom/global-registrator` in
+  `examples/benchmark`, whose own 20.13.2 release requires `happy-dom
+^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
+  graph resolves to one version again.
+
+  `examples/benchmark`'s framework competitors were refreshed too so the
+  "fastest framework" comparisons stay honest against current releases: Vue +
+  `@vue/server-renderer` + `@vue/compiler-dom` 3.5.41 → 3.5.42, Svelte 5.56.10
+  → 5.57.0, and Octane 0.1.46 → 0.2.2 (its peer `@octanejs/vite-plugin`
+  0.1.46 → 0.1.52 alongside it) — a real minor jump, verified with a clean
+  production build before committing to it. Octane 0.2.2 replaces the
+  `forBlock` fast-path flag the row-list bench's own doc comment describes
+  un-handicapping with a new `fastKeyedForBlock` path; the bench impl still
+  reaches it (confirmed by compiling `octane.tsrx` through `octane/compiler`
+  0.2.2 and reading the emitted flags), so the comparison stays fair, but
+  every previously-published Pyreon-vs-Octane number in
+  `.claude/skills/pyreon-benchmarks/SKILL.md` was measured against 0.1.46 and
+  needs re-verification against 0.2.2 before being cited again — flagged
+  there, not restated as fact here.
+
+  Held deliberately, each for a stated reason found by actually reading the
+  dependency rather than assuming: TypeScript stays capped `<7.0.0` (removes
+  the classic Compiler API `@pyreon/compiler`/`@pyreon/mcp`/`@pyreon/cli` are
+  built on). `vitest`/`@vitest/browser`/`@vitest/browser-playwright`/
+  `@vitest/coverage-v8` stay on 4.1.11 as one locked unit (5.0.0 just went GA
+  and changes `clearMocks` to default `true`, tightens `coverage.include`/
+  `exclude` matching, and removes several import entrypoints — exactly the
+  class of change this repo's `Coverage (Full)` gate has already rotted on
+  three times; a real migration, not a version bump). `@changesets/cli`
+  2.31.1 → 3.0.1 and `@changesets/changelog-github` 0.7.0 → 1.0.0 stay put:
+  1.0.0 ships `"type": "module"` with no CJS export, and this repo's own
+  `.changeset/resilient-changelog.cjs` does `require('@changesets/changelog-
+github')` — bumping it would break `changeset version` at release time with
+  `ERR_REQUIRE_ESM`, verified by reading the published package's `exports`
+  map, not assumed. The root `uuid` override stays at `11.1.1` for the same
+  reason, one level removed: it force-pins a transitive dep of `exceljs`
+  (`^8.3.0`, itself already outside its own declared range on purpose), and
+  `uuid` 12.0.0 dropped CommonJS support entirely — `exceljs`'s own bundled
+  code does `require('uuid')`, verified directly in its installed `dist/`, so
+  the same ESM-only trap applies one hop further down the graph.
+
+  One more found by actually running the browser test tier, not just typecheck
+  and the node/happy-dom suite: `@tanstack/virtual-core` was bumped 3.17.4 →
+  3.17.8 in this branch's first pass (a routine-looking override edit, not
+  vetted as carefully as the deps above), and it broke
+  `@pyreon/virtual`'s real-Chromium `repositions a STAYING row below when row 0
+is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
+  retries) — bisected down to virtual-core's own 3.17.7 "synchronous
+  notification for scroll compensation" change, not to anything else in this
+  branch (ruled out `@tanstack/react-virtual`, unrelated — not imported by this
+  code path at all; ruled out the `oxc-parser`/`magic-string`/`rolldown`
+  bumps too, by reverting each in isolation and rebuilding). Reverted back to
+  3.17.4, matching what's currently on `main`, and NOT bumped further.
+
+  This surfaced something that predates this PR: `@pyreon/virtual`'s own
+  `package.json` has declared `@tanstack/virtual-core: "^3.17.7"` since an
+  earlier fix (commit 973c4e323, "the root overrides pinned
+  @tanstack/virtual-core to 3.17.4 while three packages declared ^3.17.7, so
+  the installed version did not satisfy its own consumers' declared range")
+  — but the root override was only ever bumped to 3.17.4 there, not to
+  3.17.7+, so the exact mismatch that fix describes is still live on `main`
+  today: the declared floor and the resolved version disagree, silently,
+  because the currently-resolved 3.17.4 happens to still pass. Bumping the
+  override to actually satisfy the package's own declared range (3.17.7,
+  confirmed — not just 3.17.8) is what surfaces the real compatibility break
+  in `use-virtualizer.ts`'s remeasurement handling. Left as-is here rather
+  than fixed, because closing it needs either updating the wrapper for
+  virtual-core's new synchronous-notification timing or re-adjudicating the
+  test's assumptions against it — real source-level work, not a version
+  bump. Tracked as a known gap, not silently left broken: someone picking
+  this up should treat `bun run test:browser` in `@pyreon/virtual` as the
+  regression gate, not just `bun run test`, which does not exercise this
+  path at all (confirmed: the full node/happy-dom suite passes 1805/1805
+  regardless of which virtual-core version is resolved).
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- Correct four documentation claims that contradicted the shipped code (26e1837)
+
+  - **`dehydrateStores`'s `@example` taught an XSS.** It showed a bare `JSON.stringify` interpolated into an inline `<script>`, and store state is by definition user data. Framework code is clean — every embed site routes through a script-safe serializer — but this example propagates into `llms.txt` and the MCP api reference, so an assistant reproduces it. A doc is a call site. It now shows the escaping (the `<` class plus U+2028/U+2029) and says why.
+  - **`canonical-primitives.ts` — the file the codebase treats as the single source of truth on the question — said 6 of 16 primitives were wired and named the rest as falling through to generic emit.** All 16 are wired: 15 have a dedicated per-target emit function and `Inline` deliberately shares `Stack`'s with a row default. It also listed nine names as ten and labelled a five-item group as four.
+  - **`@pyreon/state-tree`'s README said live model instances "self-register".** `registerInstance` has no caller outside its own tests, so `getActiveModels()` returns `[]` forever and the snippet as written could never work. Registration is explicit by design — only the caller can name an instance — which is what the function's own docstring already said. The README now matches, and notes that the registry holds `WeakRef`s so registering never keeps an instance alive.
+  - **The multiplatform matrix scored crash reporting `0.0 / "ABSENT — no vocabulary at all. No useCrashReporter"`** while `useCrashReporter()` shipped, was exported from `@pyreon/hooks`, and was wired in both emitters. The row is 0.2 now with an honest account: capture, persistence, and next-launch rehydration exist on all three platforms and the emit auto-starts them, but there is no device test on either target, symbolication is absent, and signal/NDK crashes are out of v1 scope. The matrix gate only checks that the headline equals the column sum, so it is structurally unable to catch a row that misdescribes itself.
+
+- perf: zero-middleware action fast path + allocation-free ancestor walks (8136f63)
+
+  Two allocation reductions on hot paths, both behavior-identical (326 tests unchanged):
+
+  - **`runAction`**: skip the `call`-object literal, the `` `/${name}` `` path string,
+    and the `dispatch` closure when a model has no middleware (the common case —
+    middleware is opt-in). Previously every action call allocated all three only to
+    fall straight through to `fn(...args)`. Mirrors `@pyreon/store`'s `wrapAction`,
+    which already skips its ActionContext allocation when there are no listeners.
+  - **`getRoot` / `getPath`**: replace the per-call `Set` cycle-guard with a bounded
+    depth counter. `getRoot` runs once per `reference()` read (the hot normalized-
+    store path), and the ancestor chain is a tree, so the `Set` only ever guarded a
+    cycle that cannot occur in a well-formed tree — a parentless root allocated one
+    for a loop that never ran.
+
+- fix(state-tree): array/object-held model children now propagate mutations to the parent's `onPatch`/`onSnapshot` and are torn down by `destroy` (e5653df)
+
+  The headline composition pattern — `state: { todos: Todo[] }` — reached the tree via the parent-tracking scan, which set only the child's parent pointer. Field-nested children (`state: { child: Todo }`) were additionally wired for upward patch propagation and added to the parent's teardown set; array/object children were not. So a mutation INSIDE a child (`self.todos()[0].toggle()`) silently:
+
+  - never fired the parent's `onPatch`,
+  - never fired the parent's `onSnapshot` — so a `onSnapshot`-driven persist/sync went **stale**,
+  - and was never torn down by `destroy(parent)` — a `beforeDestroy` timer/listener on an array child leaked.
+
+  Array/object model children are now wired for upward propagation the same way field-nested children are (patch path prefixed with the field key). Because the parent-tracking scan runs on every `.set`, the wiring is disposed and re-created per re-`.set` — with the previous set's propagation listeners disposed and its children removed from the teardown set first — so a persisting child never accumulates listeners (Class-D guard) and `destroy` never tears down instances no longer in the tree. Field-nested children are untouched (no double-wire). Bisect-verified (all manifestations fail with the wiring neutralized while the field-nested path stays green), including a listener-pile-up leak guard.
+
+- Lower `model().views().actions()` — `@pyreon/state-tree` was 1:1-inverted on native (8ab41a7)
+
+  The source that compiled natively was the source that is wrong on web, and the
+  canonical web source did not compile. Two halves, each independently broken.
+
+  **The chain.** The web API is a builder — `model({ state }).views(f).actions(f)
+.create()`. The recognizer matched only the bare `model({ state }).create()`,
+  so every model with an action — that is, every model that can change — fell
+  through to a verbatim emit:
+
+  ```swift
+  private let cart = model((state: __Obj0(count: 0)))
+    .actions({ `self` in (__Obj1(increment: "")) }).create()
+  ```
+
+  `model` exists on neither target, and the action became a `String` field.
+  Zero warnings on either target, so the failure surfaced as `cannot find 'model'
+in scope` / `unresolved reference 'model'` inside generated code, naming
+  nothing about what was unsupported. A model with no actions cannot mutate its
+  own state, so the one shape that did lower was the shape a real model never has.
+
+  **The read.** A model's state field is a signal, so the web read is
+  `cart.total()`. That emitted `…shared.total()` — calling an `Int`. The only
+  form that compiled was `cart.total`, which on web renders the accessor function
+  rather than its value. The emit already lowered the _write_
+  (`cart.total.set(1)` → `total = 1`): it knew the field was a signal when
+  written and forgot when read.
+
+  Views now emit as computed properties (Swift `var doubled: Int { total * 2 }`,
+  Kotlin `val doubled get() = total * 2`), actions as methods, and member bodies
+  address state through the factory's `self` the same way a component body
+  addresses its props param. This mirrors `defineStore`, which had already solved
+  every hard part — the model recognizer simply stopped at state.
+
+  Two smaller fixes ride along, both consequences of the state seed having been
+  stored as a raw literal plus a three-value type tag rather than the `TypeIR` /
+  `ExprIR` the store uses: a fractional seed (`{ total: 2.5 }`) emitted
+  `var total: Int = 2.5`, and an unsupported builder step now declines by name
+  instead of falling through to the verbatim emit.
+
+  Still deferred, and still declining loudly: `.asHook()`,
+  `.create(initialOverride)`, the two-step `const M = model(...); M.create()`
+  form, `getSnapshot` / `onPatch`, and nested field-models. The emitted model is
+  a singleton, so multiple instances of one definition remain out of scope — the
+  two-step form is the only way to reach them, and it declines.
+
+  The web arm that measures the semantics the emit mirrors lives in
+  `@pyreon/state-tree`'s `native-parity.test.ts`; the native specs compile
+  through real `swiftc` and `kotlinc`.
+
+- perf: O(depth) `reference()` resolution via a validated identifier index (ac6a9d3)
+
+  `reference()` resolution ran a full O(N) depth-first walk of the tree on EVERY
+  read — so R reference-reading rows over an N-node tree were O(R·N) per render,
+  the one genuinely super-linear path in the package.
+
+  `resolveIdentifier` now consults a lazy identifier index (definition → id →
+  node) before walking: the first resolve for an id walks the tree and warms the
+  cache, subsequent resolves are O(depth) validated hits.
+
+  The index is **pure acceleration, never a correctness authority.** Every hit is
+  re-validated against the live tree — node still alive, of the right definition,
+  its id still equals the queried id, and still attached under the query root —
+  and any validation miss falls back to the authoritative DFS. So a stale or wrong
+  entry can only ever cost one extra walk, never a wrong resolution. Attachment is
+  verified through the `children` graph (which the container reconciler keeps
+  accurate on detach), NOT `getRoot` (whose `parent` pointer is not cleared on an
+  array splice). Nodes are held via `WeakRef`, so a detached-and-dropped node
+  stays GC-eligible (no unbounded-growth leak). No lifecycle hooks: id-change,
+  detach, destroy, re-parent and GC are all handled by validation + fallback.
+
+  Bisect-verified: disabling the fast path makes a repeated resolve redo the full
+  walk; stubbing the attachment check to a `getRoot`-style test resolves a detached
+  node the DFS would not — both fail their specs.
+
+  The dead-`WeakRef` prune in the index now has a test, and a `_indexEntryCount`
+  probe to make it observable. It needed one: the prune does not change what
+  `indexLookup` returns — a dead ref falls through to the `meta === undefined`
+  exit and yields `undefined` either way — so its only job is keeping the map from
+  growing one dead entry per collected node, and nothing was watching that.
+
+- `getSnapshot` now caches its result (MST-aligned) — repeated calls on an (4c58123)
+  unchanged instance return the same object instead of rebuilding it every time.
+
+  Previously `getSnapshot` walked every field and re-serialized on every call;
+  MobX-State-Tree backs its snapshot with a computed and returns a cache read for
+  an unchanged node. Pyreon now caches the built snapshot on the instance meta and
+  invalidates it on every write — leaf writes via the always-on `afterSet` hook,
+  nested-child writes via `emitPatch` (reached unconditionally through the parent's
+  `onPatch` registration), and reference-id writes via a new reference write hook
+  (reference ids are serialized by getSnapshot but written through a plain signal
+  that bypasses the other two paths). `onSnapshot`'s microtask emit benefits too.
+
+  Structurally: N repeated `getSnapshot` calls on an unchanged instance go from N
+  rebuilds to 1. Behavior change (MST-aligned): the returned snapshot is now the
+  same object across calls until the next write — treat it as immutable.
+
+- perf: single-listener fast path in the snapshot-notify microtask (d02f8f8)
+
+  The coalesced snapshot-notify microtask snapshotted `meta.snapshotListeners` with
+  `[...]` before iterating, even though the common shape is one `onSnapshot(model,
+fn)`. (The sibling `patchListeners` loop already iterates the live set directly.)
+
+  Fast-path `size === 1`: capture the sole listener and fire it (matching the
+  snapshot's "listeners present at notify start" semantics) with no allocation. The
+  `[...]` snapshot is kept for the multi-listener case. Completes the
+  subscriber-snapshot class across `@pyreon/sync` (#3087, #3099) and
+  `@pyreon/url-state` (#3098).
+
+  Bisect-verified: no-op'ing the fast path fails a single-listener fire spec
+  (`expected +0 to be 1`).
+
+- Updated dependencies:
+  - @pyreon/validation@0.52.0
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

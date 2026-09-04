@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/http",
-  "version": "0.51.0",
+  "version": "0.52.0",
   "description": "Pyreon HTTP client — onion middleware, typed errors, optional schema-validated responses. The transport layer under @pyreon/query.",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/http#readme",

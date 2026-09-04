@@ -1,5 +1,104 @@
 # @pyreon/styler
 
+## 0.52.0
+
+### Minor Changes
+
+- fix(ssr): ship the styler CSS for the class names SSR emits (9dafed7)
+
+  Server-rendered HTML carried styler class names (`pyr-1abc23`) with **no
+  `<style>` tag at all** on two of the three SSR paths: `@pyreon/zero`'s dev SSR
+  middleware and its production `createServer`. Measured on `examples/ui-showcase`
+  before the fix: 23 of 23 styler classes on `/button` had zero matching CSS
+  rules, on every route. The page hydrated to the correct DOM, so only the FIRST
+  PAINT was wrong — every SSR page flashed unstyled.
+
+  The cause was that `renderPage`'s `collectStyles` hook is opt-in, and of its
+  three consumers only zero's SSG prerender entry ever passed one. SSG had been
+  fixed for exactly this bug ("prerendered HTML carried styler-generated class
+  names … but had ZERO `<style>` tags in the head"), and the sibling call sites
+  were left behind — a fix applied to one call site rather than to the class.
+
+  `renderPage` now defaults `collectStyles` to a `globalThis.__PYREON_STYLER_COLLECT__`
+  collector that `@pyreon/styler`'s singleton registers on SSR init — the
+  string-mode twin of the `__PYREON_STYLER_FLUSH__` seam the streaming pipeline
+  already used, so there is still no `@pyreon/server` → `@pyreon/styler`
+  dependency. Fixing the one choke point covers all three consumers plus any bare
+  `@pyreon/server` user, so no caller can forget it again.
+
+  Unchanged: an explicit `collectStyles` still wins (SSG is byte-identical);
+  apps without styler get no global and no `<style>`; the streaming path keeps
+  its per-boundary watermarked flush, which `getStyleTag()` never disturbs.
+
+  Why it survived this long: a second bug hid it. Hydration was discarding the
+  server DOM and rebuilding it, so users saw _nothing_ for ~300ms rather than
+  seeing the content unstyled. The mask made the defect symptomless — it only
+  becomes visible once hydration correctly adopts the server DOM.
+
+### Patch Changes
+
+- fix(styler): preserve reactive props through `filterProps`, and never lose the streaming-SSR `@layer` ordering statement (57f0480)
+
+  Two correctness fixes surfaced by a styler audit:
+
+  - **`filterProps` value-copied** (`filtered[key] = props[key]`), firing a getter-shaped reactive `_rp` prop (what the compiler emits for `<X title={sig()} />`) at copy time and freezing it — silently killing reactivity for any consumer using this public helper to forward props. It now descriptor-copies (mirrors the internal `buildProps.copyDescriptor`), which is also what the manifest documents it as doing. Static props are unaffected.
+
+  - **Streaming SSR `@layer` ordering** (`flushSSRPending`) emitted the `@layer elements, rocketstyle;` order statement only on the FIRST flush of a stream. A stream whose opening Suspense boundary flushed only keyframes/global CSS (neither is a layered rule) emitted it nowhere, and if a later boundary carried the first layered rule its cascade fell to stream first-appearance order — risking an `elements`-beats-`rocketstyle` inversion. The statement is now deferred (via a persistent per-stream flag) to the first flush that actually carries a layered rule, so it precedes that rule. A configured custom `layer` still decides upfront (unchanged).
+
+  Both bisect-verified; full `@pyreon/styler` suite (607) green.
+
+- `normalizeCSS` builds its output by copying verbatim runs (`css.slice`) instead (e690309)
+  of appending one character at a time.
+
+  The single-pass scanner classified characters with `charCodeAt` (correct — the
+  discipline the sibling scanners in this file already follow), but built its
+  result with per-char `out += css[i]` — the exact allocation anti-pattern those
+  scanners' own comments warn against (a fresh 1-char string per iteration, and a
+  rope the downstream `hash()` / insertCache must flatten). This finishes that
+  discipline: runs are copied with `slice`, and when nothing is skipped or inserted
+  the input string is returned by identity (no allocation).
+
+  Behavior is BYTE-IDENTICAL — proven by a differential fuzz test that asserts the
+  new implementation matches a pinned copy of the original on hand-picked edge
+  cases (comments, `://` in URLs, redundant semicolons, whitespace collapse,
+  leading/trailing) plus 20,000 random inputs.
+
+  Perf: an A/B on the CSS-in-JS cold-insert bench is CI95-disjoint faster
+  (~1.3×), though the machine was under elevated load when measured, so treat the
+  exact ratio as directional. Note the honest scope: cold insert runs once per
+  unique rule per sheet lifetime (≈zero in the no-reset production SSG shape), so
+  this is primarily a code-hygiene fix + a bench-headline improvement, not a
+  user-perceivable speedup. Warm dedup / dynamic resolve / SSR collect were
+  measured at their architectural floor and are unchanged.
+
+- Fix a cross-request bug in concurrent streaming SSR: the styler's SSR rule buffer (f84675f)
+  and streaming flush watermark are now scoped per request.
+
+  `@pyreon/styler`'s `sheet` is a module-level singleton, and its SSR accumulation
+  state (`ssrBuffer` + the streaming `flushSSRPending()` watermark) lived on the
+  instance. Under `renderToStream` / `mode: 'stream'`, two CONCURRENT streaming
+  renders therefore shared one buffer and one watermark — request A's per-boundary
+  flush advanced the watermark past request B's rules, so a boundary could ship
+  missing or another request's CSS (FOUC / cross-request styles).
+
+  `@pyreon/runtime-server` (which owns the request lifecycle and can use
+  `AsyncLocalStorage` — the styler is browser-safe and cannot import
+  `node:async_hooks`) now establishes a per-request styler scope around every
+  render and exposes an opaque per-request bag via
+  `globalThis.__PYREON_STYLER_REQUEST_STATE__`. The styler stashes its SSR state
+  in that bag when a scope is active, and falls back to its instance state
+  otherwise — so string SSR, SSG, direct callers and the client are unchanged
+  (the change is strictly additive; it only ISOLATES concurrent streams).
+
+  Bisect-verified: neutering the styler's scope getter leaks request A's rules into
+  request B's flush; reverting the runtime-server scope wrap leaves renders with no
+  per-request bag. String mode was already synchronous-safe; the caches (which are
+  content-addressed) stay correctly shared.
+
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Minor Changes

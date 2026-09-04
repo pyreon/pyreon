@@ -1,5 +1,76 @@
 # @pyreon/store
 
+## 0.52.0
+
+### Minor Changes
+
+- Co-locate native runtimes into their own packages. (ed6518a)
+
+  The Swift/Kotlin runtimes for form, store, state-tree, machine, i18n, permissions,
+  and query move out of the `@pyreon/native-runtime-*` monolith into each package's
+  `native/{swift,kotlin}/` (declared via the `pyreon.native` package.json field,
+  aggregated by `pyreon-native wire`). Framework-base runtimes (reactivity/styling/JSON
+  helpers) stay in the monolith. A new `scripts/check-native-cosource.ts` gate compiles
+  and smoke-runs every co-located `.swift`/`.kt` against the stub harness so a relocated
+  runtime can't rot silently. No API change — this is a source-location move.
+
+### Patch Changes
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- Correct four documentation claims that contradicted the shipped code (26e1837)
+
+  - **`dehydrateStores`'s `@example` taught an XSS.** It showed a bare `JSON.stringify` interpolated into an inline `<script>`, and store state is by definition user data. Framework code is clean — every embed site routes through a script-safe serializer — but this example propagates into `llms.txt` and the MCP api reference, so an assistant reproduces it. A doc is a call site. It now shows the escaping (the `<` class plus U+2028/U+2029) and says why.
+  - **`canonical-primitives.ts` — the file the codebase treats as the single source of truth on the question — said 6 of 16 primitives were wired and named the rest as falling through to generic emit.** All 16 are wired: 15 have a dedicated per-target emit function and `Inline` deliberately shares `Stack`'s with a row default. It also listed nine names as ten and labelled a five-item group as four.
+  - **`@pyreon/state-tree`'s README said live model instances "self-register".** `registerInstance` has no caller outside its own tests, so `getActiveModels()` returns `[]` forever and the snippet as written could never work. Registration is explicit by design — only the caller can name an instance — which is what the function's own docstring already said. The README now matches, and notes that the registry holds `WeakRef`s so registering never keeps an instance alive.
+  - **The multiplatform matrix scored crash reporting `0.0 / "ABSENT — no vocabulary at all. No useCrashReporter"`** while `useCrashReporter()` shipped, was exported from `@pyreon/hooks`, and was wired in both emitters. The row is 0.2 now with an honest account: capture, persistence, and next-launch rehydration exist on all three platforms and the emit auto-starts them, but there is no device test on either target, symbolication is absent, and signal/NDK crashes are out of v1 scope. The matrix gate only checks that the headline equals the column sum, so it is structurally unable to catch a row that misdescribes itself.
+
+- Eight README examples are now typechecked in CI. (e0e0dc0)
+
+  `check-doc-examples` only ever looked at `docs/src/content/docs/**`; package READMEs carry ~550 `ts`/`tsx` blocks and nothing verified any of them. The gate now walks package READMEs too, and each of these packages has one verified-clean example opted in with the `// @check` marker.
+
+  Each was compiled before being marked, not marked and then debugged. No content changed — the marker is a comment inside the fence.
+
+- fix(store): a NESTED `patch()` (an effect calling `patch()` during an outer `patch()`) now merges into the outermost patch's SINGLE notification, instead of emitting its own and closing the shared window mid-outer (adb5897)
+
+  The subscribed `patch()` fast path detaches each field's change-detector, writes, re-attaches, and drains in a `batch()` — a user effect fired by that drain can call `patch()` again. The inner patch's own `finally` cleared `patchInProgress` (mid-outer) and emitted a SECOND `'patch'` notification, so one logical mutation surfaced as two events; worse, the prematurely-cleared flag meant a later re-entrant DIRECT write's event was silently buffered-and-dropped.
+
+  A `patchDepth` nesting counter (both the object-form and functional-form paths) makes only the OUTERMOST patch close the window, merge the buffered nested events, and emit once — decremented FIRST in the `finally` (before the emit) so a throwing subscriber can't wedge the depth or the flag. Bisect-verified; full `@pyreon/store` suite (213) green.
+
+- **Per-request store isolation is now automatic; it used to be opt-in, and (5493aa8)
+  nothing opted in.**
+
+  `@pyreon/store`'s registry is a module-level `Map`, and `@pyreon/runtime-server`
+  exposed `configureStoreIsolation(setter)` to swap in an AsyncLocalStorage-backed
+  provider. That was documented everywhere — README, manifest, generated docs all
+  said "call once at startup or concurrent requests share one global store
+  registry". Nothing called it.
+
+  The seam takes a _setter_ as an argument for a reason: `@pyreon/server` and
+  `@pyreon/zero` own the server and neither depends on `@pyreon/store`, so neither
+  _can_ wire it. That left the application author, reached only through a
+  paragraph in a package they never import. Verified on the default path — two
+  `runWithRequestContext` calls, which is exactly what two concurrent SSR renders
+  are, and the second read the first's store value.
+
+  `@pyreon/store` now publishes its setter on a `globalThis` seam when it loads on
+  a server, and the renderer picks it up at its render choke point — the same
+  shape as `__PYREON_STYLER_COLLECT__`, and for the same reason. No import in
+  either direction; the browser pays nothing.
+
+  `configureStoreIsolation` keeps working and still wins, but it is now the
+  override rather than the switch: reach for it to supply a custom provider (a
+  shared build-time cache across SSG pages, a test double). An app that already
+  calls it is unaffected.
+
+  **Behaviour change worth knowing about:** an SSG build that deliberately relied
+  on one registry persisting across page renders now gets a fresh one per render.
+  That was already a bug in the other direction — page 2 could ship page 1's state
+  — but if you want the old behaviour, pass your own provider.
+
+- Updated dependencies:
+  - @pyreon/validation@0.52.0
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

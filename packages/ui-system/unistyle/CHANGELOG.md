@@ -1,5 +1,69 @@
 # @pyreon/unistyle
 
+## 0.52.0
+
+### Minor Changes
+
+- A `.theme()` chain with no `.styles()` now renders its theme as CSS (a0c4cd7)
+
+  `.theme()` supplies values; nothing turned them into CSS unless the author also
+  chained `.styles()`. So a theme-only chain rendered COMPLETELY UNSTYLED in a
+  browser, while `@pyreon/native-compiler` reads the same `.theme()` statically and
+  emits real view modifiers — one declaration, fully styled on iOS/Android and bare
+  on the web.
+
+  The bridge arrives through ui-core's existing theme-engine seam
+  (`responsiveStyles`, registered by unistyle), so rocketstyle gains no dependency
+  on unistyle and still degrades to no CSS without it. It applies ONLY when the
+  chain declared no `.styles()` of its own — an explicit chain already owns the
+  bridge, and a second one would emit the theme twice.
+
+### Patch Changes
+
+- Skip the ReDoS growth-ratio spec under coverage instrumentation (79c1bf1)
+
+  The spec times the same attack at N and 4N and asserts the ratio stays
+  linear-ish. V8 coverage adds a per-basic-block cost plus GC pressure that is
+  NOT proportional to input size, so under `--coverage` the ratio describes the
+  instrumenter rather than the scan — it read 11.9x on main while green in the
+  Test cells and green locally under coverage in isolation.
+
+  It now skips when `scripts/check-coverage.ts` sets `PYREON_COVERAGE_RUN`, and
+  still gates on every PR through the ordinary Test cell.
+
+- fix(unistyle): stop silently dropping the `animation`/`keyframe` declaration when `keyframe` is paired with any other style property (968781e)
+
+  The `animation` special-key descriptor reads two trigger keys — `keyframe` and `animation` — but the fast-path index only registered the special under its `id` (`animation`). A theme that set `keyframe` (a keyframe-name-only animation) alongside any non-special property, e.g. `{ keyframe: 'spin', color: 'red' }`, resolved `color`, saw `fragments.length > 0`, skipped the fallback full-scan, and never emitted the animation — rendering `color: red;` alone. The single-key `{ keyframe: 'spin' }` shape worked only because the fallback scan caught it.
+
+  Special descriptors now carry an optional `keys` list of every additional trigger key their `processSpecial` branch reads (`animation` declares `keys: ['keyframe']`), which the index builder registers alongside `id`. This is a recurrence of the earlier "index-builder skipping a discriminated-union branch" class — the previous `d.id` fix covered specials whose trigger key equals their id, but not one that reads a second, differently-named key.
+
+- perf: cut per-render allocations on the responsive-styles hot path (5c175d4)
+
+  Three allocation reductions on the `makeItResponsive` → `styles()` → `stripUnit()`
+  path that runs on every styled/PyreonUI component render (× breakpoint × property
+  × side). Behavior-identical (341 tests unchanged):
+
+  - **`stripUnit`**: hoist the CSS-unit `RegExp` literal out of the function body to
+    module scope. It sat inside the most-executed leaf in the engine, so a fresh
+    `RegExp` was allocated on every call — thousands of throwaway objects per page
+    render. No `g`/`y` flag, so a shared instance is safe under `.match`.
+  - **`makeItResponsive`**: defer the `...restTheme` rest-spread (a shallow copy of
+    the entire provider theme — colors/space/fonts/radii/…) behind a lazy getter.
+    It was built unconditionally _before_ the rendered-cache-hit early return, so a
+    cache hit — the steady-state path the cache exists to keep cheap — paid for a
+    full large-object copy it never used.
+  - **`styles()`**: memoize the three curried unit factories (`calc`/`edge`/
+    `borderRadius`) by `rootSize` in a single-slot module cache. They depend only on
+    `rootSize` (effectively constant) yet were rebuilt on every call.
+
+  Structural/allocation wins on the hot path; not a wall-clock-benched change.
+
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+  - @pyreon/ui-core@0.52.0
+  - @pyreon/styler@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes

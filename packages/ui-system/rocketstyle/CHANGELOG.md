@@ -1,5 +1,36 @@
 # @pyreon/rocketstyle
 
+## 0.52.0
+
+### Minor Changes
+
+- A `.theme()` chain with no `.styles()` now renders its theme as CSS (a0c4cd7)
+
+  `.theme()` supplies values; nothing turned them into CSS unless the author also
+  chained `.styles()`. So a theme-only chain rendered COMPLETELY UNSTYLED in a
+  browser, while `@pyreon/native-compiler` reads the same `.theme()` statically and
+  emits real view modifiers — one declaration, fully styled on iOS/Android and bare
+  on the web.
+
+  The bridge arrives through ui-core's existing theme-engine seam
+  (`responsiveStyles`, registered by unistyle), so rocketstyle gains no dependency
+  on unistyle and still degrades to no CSS without it. It applies ONLY when the
+  chain declared no `.styles()` of its own — an explicit chain already owns the
+  bridge, and a second one would emit the theme twice.
+
+### Patch Changes
+
+- fix(rocketstyle): use a named optional param in the `Rocketstyle` type instead of a destructuring pattern (1e6c0f2)
+
+  The `Rocketstyle` function type declared its optional config as a destructuring pattern (`({ dimensions, useBooleans }?: {...})`). Binding-pattern names in a function type are documentary, but destructuring an OPTIONAL param makes some TypeScript builds report `Property 'dimensions' does not exist on type '{...} | undefined'` when this source is type-checked cross-package (e.g. `@pyreon/loom` importing rocketstyle) — which surfaces only when a rocketstyle dependency changes forces a re-typecheck. The runtime implementation already destructures with defaults, so this is a type-only, behaviour-preserving change (the param is now a named `config?`).
+
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+  - @pyreon/sized-map@0.52.0
+  - @pyreon/ui-core@0.52.0
+  - @pyreon/styler@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes
