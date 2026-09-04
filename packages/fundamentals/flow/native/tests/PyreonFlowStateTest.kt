@@ -85,6 +85,27 @@ fun main() {
     check(g.nodes.isEmpty(), "deleteSelected removes every selected node")
     check(g.edges.isEmpty(), "deleteSelected's node removal cascades to connected edges")
 
+    // 6b. Mixed node+edge selection — mirror of the Swift spec. Pins the
+    //     RESULT of the single-pass rewrite (was a per-id removeNode loop,
+    //     O(K x (N + E)); now O(N + E), same observable outcome).
+    val delMixed = seedFlow()
+    delMixed.selectNode("1")
+    delMixed.selectEdge("e2", additive = true)
+    check(delMixed.selectedNodes() == listOf("1") && delMixed.selectedEdges() == listOf("e2"), "mixed selection holds both")
+    delMixed.deleteSelected()
+    check(delMixed.nodes.map { it.id } == listOf("2", "3"), "mixed delete removes only the selected node")
+    // e1 goes because it is CONNECTED to removed node 1; e2 because it was
+    // independently selected. Both in the same single pass.
+    check(delMixed.edges.isEmpty(), "mixed delete removes connected AND independently-selected edges")
+    check(delMixed.selectedNodes().isEmpty() && delMixed.selectedEdges().isEmpty(), "mixed delete clears selection")
+
+    // 6c. Edges-only selection takes the second branch — nodes untouched.
+    val delEdgesOnly = seedFlow()
+    delEdgesOnly.selectEdge("e1")
+    delEdgesOnly.deleteSelected()
+    check(delEdgesOnly.nodes.size == 3, "edges-only delete leaves every node")
+    check(delEdgesOnly.edges.map { it.id } == listOf("e2"), "edges-only delete removes just that edge")
+
     // 7. Viewport.
     val h = seedFlow()
     check(h.zoom == 1.0, "default zoom is 1")

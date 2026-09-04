@@ -53,7 +53,7 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@vitest/browser-playwright": "^4.1.11",
-    "@vitus-labs/tools-lint": "^2.6.3",
+    "@vitus-labs/tools-lint": "^2.7.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-hot-toast": "^2.6.0",

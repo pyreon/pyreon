@@ -47,7 +47,7 @@
     "@pyreon/manifest": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitus-labs/tools-lint": "^2.6.3",
+    "@vitus-labs/tools-lint": "^2.7.1",
     "hotkeys-js": "^4.0.7",
     "mousetrap": "^1.6.5",
     "tinykeys": "^4.0.0"

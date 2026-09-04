@@ -3059,7 +3059,20 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
         return `PyreonFlowEdge(${parts.join(', ')})`
       })
       .join(', ')
-    return `val ${kotlinIdent(d.name)} = remember { PyreonFlowState<${rowType}>(nodes = listOf(${nodeLits}), edges = listOf(${edgeLits})) }`
+    // Mirror of the Swift twin: appended ONLY when configured, so an
+    // unconfigured `createFlow` emits byte-identically to before.
+    // Rendered as a Kotlin DOUBLE literal, always. Both params are `Double`,
+    // and Kotlin has no implicit Int->Double widening at a call site, so a
+    // perfectly ordinary `maxZoom: 2` would emit `maxZoom = 2` and fail with
+    // "the integer literal does not conform to the expected type Double".
+    // Swift takes the same source fine (its literal inference handles it),
+    // which is exactly how this stays hidden until a real Kotlin compile.
+    const ktDouble = (n: number): string => (Number.isInteger(n) ? `${n}.0` : `${n}`)
+    const zoomArgs = [
+      ...(d.minZoom !== undefined ? [`minZoom = ${ktDouble(d.minZoom)}`] : []),
+      ...(d.maxZoom !== undefined ? [`maxZoom = ${ktDouble(d.maxZoom)}`] : []),
+    ].join(', ')
+    return `val ${kotlinIdent(d.name)} = remember { PyreonFlowState<${rowType}>(nodes = listOf(${nodeLits}), edges = listOf(${edgeLits})${zoomArgs === '' ? '' : `, ${zoomArgs}`}) }`
   }
   // C4: router hook — `const navigate = useNavigate()` → as-is.
   // Compose's `useNavigate()` is a `@Composable` function that reads

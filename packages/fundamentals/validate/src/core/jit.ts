@@ -28,10 +28,16 @@
  * fallback that resolves ASYNCHRONOUSLY (async `.refine`/`.transform`/
  * registered `.serverCheck` under `parseAsync`) is deferred onto a pending
  * list the root return awaits — interpreter parity for async trees, zero
- * cost on the all-sync path (the list stays `null`). Schemas it can't JIT
- * at all (non-object root, root with its own checks, non-strip root) return
- * `null` → the caller uses the interpreter. Always correct; fast wherever
- * it can be.
+ * cost on the all-sync path (the list stays `null`).
+ *
+ * Four ROOTS compile: an object root (no own checks; `strip` key policy, plus
+ * `passthrough`/`strict` in verdict mode), an inline array root, an inline
+ * PRIMITIVE root (`s.number().int().min(0)` and friends — its `typeof` and
+ * cheap check conditions inline with zero closure calls), and a
+ * discriminated-union root. Every other root — plain union, record, tuple,
+ * map, set, intersection, lazy, coerce, modifier-wrapped — gains nothing from
+ * flattening and returns `null`, so the interpreter keeps it. Always correct;
+ * fast wherever it can be.
  *
  * Assignment is prototype-pollution-safe at every level (a `__proto__` key
  * is written via `Object.defineProperty`, never `obj.__proto__ =`).
@@ -398,7 +404,25 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
   return compileJit(schema, 'parse') as SyncValidator | null
 }
 
-function compileJit(schema: Schema<unknown>, mode: JitMode): unknown {
+/**
+ * @param emitAsync Whether the emitted body may reference the `A`/`B` pending
+ *   machinery. Only a FALLBACK arm can ever produce a Promise
+ *   (see {@link JitValidator._jitPure}), but the array codegen references `A`
+ *   unconditionally for its slot bookkeeping — so a fallback-free tree used to
+ *   carry the whole machinery as provably dead code: three prelude
+ *   initialisers, a `NOOP` closure literal, a baseline slot count, and a live
+ *   `Promise.all` ternary on every return and every array own-check.
+ *
+ *   `hasFallback` is only known once the walk has finished, and those
+ *   emissions happen DURING it, so the first pass emits conservatively and
+ *   {@link compileJit} re-enters itself once with `emitAsync: false` when the
+ *   tree turns out to be pure. Codegen therefore runs twice for a pure tree —
+ *   paid once, lazily, per schema, against a `new Function` call that dominates
+ *   it. Re-entering (rather than pre-scanning for fallbacks) keeps ONE
+ *   inlinability decision in the code: a separate scan would be a second
+ *   matcher for the same concept, free to drift from the emitter it predicts.
+ */
+function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): unknown {
   const CHECK = mode === 'check'
   const root = schema as unknown as FieldLike
   // JIT a composite root (object/array/discriminated-union) OR an
@@ -734,7 +758,13 @@ function compileJit(schema: Schema<unknown>, mode: JitMode): unknown {
         // "skip own checks when an element failed" guard is unreachable and
         // the checks run unconditionally.
         if (!CHECK) {
-          lines.push(`let ${arrV} = []; let ${beforeV} = ctx.issues.length; let ${a0V} = A === null ? 0 : A.length;`)
+          // `a0V` is the pending-slot baseline, read ONLY by the deferred
+          // own-check arm below — which cannot exist without a fallback.
+          lines.push(
+            emitAsync
+              ? `let ${arrV} = []; let ${beforeV} = ctx.issues.length; let ${a0V} = A === null ? 0 : A.length;`
+              : `let ${arrV} = []; let ${beforeV} = ctx.issues.length;`,
+          )
         }
         lines.push(`for (let ${iV} = 0; ${iV} < ${srcVar}.length; ${iV}++) { let ${eV} = ${srcVar}[${iV}];`)
         // element pushed within its own type-ok branch (a failed element pushes
@@ -764,8 +794,13 @@ function compileJit(schema: Schema<unknown>, mode: JitMode): unknown {
         if (arrChecks && CHECK) {
           lines.push(arrChecks)
         } else if (arrChecks) {
+          // Without a fallback nothing can defer, so `A === null` holds for the
+          // life of the call and the deferred arm is unreachable — emit only
+          // the arm that can run, keeping `Promise.all` out of the body.
           lines.push(
-            `if (A === null || A.length === ${a0V}) { if (ctx.issues.length === ${beforeV}) { ${arrChecks} } } else { A.push(Promise.all(A.slice(${a0V})).then(() => { if (ctx.issues.length === ${beforeV}) { ${arrChecks} } })); B.push(NOOP); }`,
+            emitAsync
+              ? `if (A === null || A.length === ${a0V}) { if (ctx.issues.length === ${beforeV}) { ${arrChecks} } } else { A.push(Promise.all(A.slice(${a0V})).then(() => { if (ctx.issues.length === ${beforeV}) { ${arrChecks} } })); B.push(NOOP); }`
+              : `if (ctx.issues.length === ${beforeV}) { ${arrChecks} }`,
           )
         }
         if (post) lines.push(post)
@@ -1100,7 +1135,7 @@ function compileJit(schema: Schema<unknown>, mode: JitMode): unknown {
     // at emit time — safe because it is only ever emitted after the subtree it
     // returns has been fully generated.
     const BARRIER = (r: string): string =>
-      usesAsyncMachinery
+      usesAsyncMachinery && emitAsync
         ? `return A === null ? ${r} : Promise.all(A).then((vs) => { for (var z = 0; z < vs.length; z++) B[z](vs[z]); return ${r}; });`
         : `return ${r};`
     // Validate the root via the same recursive generator: on a valid value
@@ -1144,10 +1179,17 @@ function compileJit(schema: Schema<unknown>, mode: JitMode): unknown {
     // primitives (the shapes that never descend into a keyed position) the
     // `var P = ctx.path` line is a property load whose result is never used,
     // paid on every single parse. Emit it only when something reads it.
+    // A fallback-free tree can never defer, so the whole `A`/`B`/`NOOP`
+    // machinery is dead code paid on every parse. `hasFallback` is only final
+    // now — re-emit once with the async arms suppressed (see `emitAsync`).
+    if (emitAsync && !hasFallback) {
+      const pure = compileJit(schema, mode, false)
+      if (pure !== null) return pure
+    }
     const needsP = mutRef !== null
     const preludeParts: string[] = []
     if (needsP) preludeParts.push('var P = ctx.path;')
-    if (usesAsyncMachinery) preludeParts.push('var A = null; var B = null; var NOOP = () => {};')
+    if (usesAsyncMachinery && emitAsync) preludeParts.push('var A = null; var B = null; var NOOP = () => {};')
     const prelude = preludeParts.join('\n')
     const body = `${prelude}\n${lines.join('\n')}`
     // eslint-disable-next-line no-new-func

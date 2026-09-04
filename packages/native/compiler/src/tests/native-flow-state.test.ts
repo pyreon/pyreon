@@ -13,7 +13,12 @@
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
-import { validateKotlin, validateSwiftWithStubs } from '../validate'
+import {
+  isKotlincAvailable,
+  isSwiftcAvailable,
+  validateKotlin,
+  validateSwiftWithStubs,
+} from '../validate'
 
 const P = '@pyreon/primitives'
 const workflowFlow = `
@@ -183,5 +188,93 @@ describe('createFlow — v1 decline shapes (loud warning, not silent drop)', () 
     expect(r.warnings ?? []).toEqual(
       expect.arrayContaining([expect.stringContaining('createFlow declaration `flow`')]),
     )
+  })
+
+  // `createFlow` takes 17 config keys. The reader took two. The other fifteen
+  // lowered to NOTHING and said nothing, so `createFlow({ …, minZoom: 0.5 })`
+  // clamped zoom to 2x on web and 4x natively from the same source line —
+  // compiles, runs, silently wrong on one target.
+  describe('config keys beyond nodes/edges', () => {
+    const cfg = (extra: string) => `
+      import { createFlow } from '@pyreon/flow'
+      import { Text } from '${P}'
+      export function X() {
+        const flow = createFlow({
+          nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'A' } }],
+          edges: [],
+          ${extra}
+        })
+        return <Text>{flow.zoom()}</Text>
+      }
+    `
+
+    it('minZoom/maxZoom THREAD THROUGH — the runtimes always took them', () => {
+      const src = cfg('minZoom: 0.5, maxZoom: 2,')
+      expect(transform(src, { target: 'swift' }).code).toContain('minZoom: 0.5, maxZoom: 2')
+      expect(transform(src, { target: 'kotlin' }).code).toContain('minZoom = 0.5, maxZoom = 2.0')
+    })
+
+    it('Kotlin renders them as DOUBLE literals — Int does not widen at a call site', () => {
+      // `maxZoom: 2` emitting `maxZoom = 2` is "argument type mismatch: actual
+      // type is 'Int', but 'Double' was expected". Swift takes the same source
+      // fine, which is how a bug like this stays hidden until a real compile.
+      const code = transform(cfg('maxZoom: 2,'), { target: 'kotlin' }).code
+      expect(code).toContain('maxZoom = 2.0')
+      expect(code).not.toContain('maxZoom = 2)')
+    })
+
+    it('an UNLOWERED key warns by NAME on both targets', () => {
+      const src = cfg('fitView: true, snapToGrid: true,')
+      for (const target of ['swift', 'kotlin'] as const) {
+        const w = (transform(src, { target }).warnings ?? []).join(' ')
+        expect(w).toContain('`fitView`')
+        expect(w).toContain('`snapToGrid`')
+        expect(w).toContain('behaves differently on web')
+      }
+    })
+
+    it('a NON-LITERAL minZoom is reported, not silently defaulted', () => {
+      const src = `
+        import { createFlow } from '@pyreon/flow'
+        import { Text } from '${P}'
+        export function X() {
+          const lo = 0.5
+          const flow = createFlow({
+            nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'A' } }],
+            edges: [],
+            minZoom: lo,
+          })
+          return <Text>{flow.zoom()}</Text>
+        }
+      `
+      expect((transform(src, { target: 'swift' }).warnings ?? []).join(' ')).toContain(
+        'minZoom (not a numeric literal)',
+      )
+    })
+
+    it('a config with ONLY nodes/edges stays silent and byte-identical', () => {
+      // The control. A warning that fires unconditionally is worth nothing.
+      const src = cfg('')
+      for (const target of ['swift', 'kotlin'] as const) {
+        const r = transform(src, { target })
+        expect((r.warnings ?? []).join(' ')).not.toContain('NOT lowered natively')
+        expect(r.code).not.toContain('minZoom')
+        expect(r.code).not.toContain('maxZoom')
+      }
+    })
+
+    it.skipIf(!isSwiftcAvailable())('the threaded Swift emit typechecks', () => {
+      const res = validateSwiftWithStubs(
+        transform(cfg('minZoom: 0.5, maxZoom: 2,'), { target: 'swift' }).code,
+      )
+      expect(res.ok, res.error ?? '').toBe(true)
+    })
+
+    it.skipIf(!isKotlincAvailable())('the threaded Kotlin emit typechecks', () => {
+      const res = validateKotlin(
+        transform(cfg('minZoom: 0.5, maxZoom: 2,'), { target: 'kotlin' }).code,
+      )
+      expect(res.ok, res.error ?? '').toBe(true)
+    })
   })
 })

@@ -887,8 +887,14 @@ export type DeclIR =
    * mirroring how `table-state`'s `dataBody` resolves its row type. Edge
    * `id` is required (not auto-generated, unlike the web engine's
    * `edgeId()` fallback) — a v1 narrowing, like `table-state`'s explicit
-   * `columns: [{ id }]`. `viewport`/`minZoom`/`maxZoom` config are not yet
-   * recognized; the native port starts at the web engine's own defaults.
+   * `columns: [{ id }]`.
+   *
+   * `minZoom`/`maxZoom` ARE recognized (both native constructors already take
+   * them, so threading them through was pure compiler-side work). Every OTHER
+   * `FlowConfig` key still lowers to nothing — but now WARNS by name instead of
+   * dropping silently, because a dropped `fitView: true` or `snapToGrid` is a
+   * behavioural divergence from the same source line, and silence is what makes
+   * that expensive to find.
    */
   | {
       kind: 'flow-state'
@@ -911,6 +917,10 @@ export type DeclIR =
         label?: string
         animated?: boolean
       }[]
+      /** `minZoom` from the config, when written as a numeric literal. */
+      minZoom?: number
+      /** `maxZoom` from the config, when written as a numeric literal. */
+      maxZoom?: number
     }
 
 /**
