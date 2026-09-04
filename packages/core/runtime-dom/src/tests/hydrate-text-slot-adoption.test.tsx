@@ -115,14 +115,6 @@ function compileApp(source: string, globals: Record<string, unknown> = {}): () =
   return fn(...DEP_VALUES, ...Object.values(globals)) as () => unknown
 }
 
-async function ssrInto(vnode: unknown): Promise<HTMLElement> {
-  const html = await renderToString(vnode as never)
-  const host = document.createElement('div')
-  host.innerHTML = html
-  document.body.appendChild(host)
-  return host
-}
-
 /** Every element + text node under `host`, document order. */
 function snapshot(host: HTMLElement): Node[] {
   const out: Node[] = []
