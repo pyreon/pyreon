@@ -568,6 +568,60 @@ final class PyreonTasksUITests: XCTestCase {
             waitForLabel(barPick, "0", timeout: 10),
             "after the 'all' preset, a tap on the first band did not bind index 0 again (label: \(barPick.label))"
         )
+        // #3272: the legend tap toggle. The chart has no title chrome, so the
+        // legend row is the canvas top: the 'Score' entry box spans x 0…~44, y 0…11.
+        // Hiding the only series leaves no bar geometry, so the band tap reports
+        // -1; a second entry tap brings the series back and the band is 0 again.
+        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 20, dy: 6)).tap()
+        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 90, dy: 100)).tap()
+        XCTAssertTrue(
+            waitForLabel(barPick, "-1", timeout: 10),
+            "after hiding the series from the legend entry, the band tap did not report -1 (label: \(barPick.label))"
+        )
+        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 20, dy: 6)).tap()
+        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 90, dy: 100)).tap()
+        XCTAssertTrue(
+            waitForLabel(barPick, "0", timeout: 10),
+            "after showing the series again from the legend entry, the band tap did not bind 0 (label: \(barPick.label))"
+        )
+        // #3274: the navigator strip (x 8…W-8, centred 40pt above the canvas
+        // bottom, above the preset strip). Dragging the LEFT handle right by 55%
+        // of the strip leaves rows 1..2, so the first band is the GLOBAL index 1;
+        // dragging the band left by 55% brings rows 0..1 back, so it is 0 again.
+        let navY = barsH - 40
+        let stripW = barsW - 16
+        let navOrigin = statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        navOrigin.withOffset(CGVector(dx: 10, dy: navY)).press(forDuration: 0.2, thenDragTo: navOrigin.withOffset(CGVector(dx: 10 + stripW * 0.55, dy: navY)))
+        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 90, dy: 100)).tap()
+        XCTAssertTrue(
+            waitForLabel(barPick, "1", timeout: 10),
+            "after dragging the navigator's left handle, the first band did not bind the GLOBAL index 1 (label: \(barPick.label))"
+        )
+        navOrigin.withOffset(CGVector(dx: 8 + stripW * 0.775, dy: navY)).press(forDuration: 0.2, thenDragTo: navOrigin.withOffset(CGVector(dx: 8 + stripW * 0.225, dy: navY)))
+        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 90, dy: 100)).tap()
+        XCTAssertTrue(
+            waitForLabel(barPick, "0", timeout: 10),
+            "after dragging the navigator band left, the first band did not bind 0 again (label: \(barPick.label))"
+        )
+        // #3277: `<PlotChart brush>` — a plain drag across the brush-only line
+        // chart's plot (x 50 → W-30, y 60) selects every row → '0-2' through the
+        // named onBrush; a tap on the plot clears it → 'none'.
+        let statsBrush = app.descendants(matching: .any).matching(identifier: "stats-brush").firstMatch
+        XCTAssertTrue(statsBrush.waitForExistence(timeout: 10), "brush chart canvas missing on stats page")
+        let brushSel = app.staticTexts["stats-brush-sel"].firstMatch
+        XCTAssertTrue(brushSel.waitForExistence(timeout: 10), "brush selection text missing")
+        XCTAssertEqual(brushSel.label, "none", "no brush yet, selection should be none")
+        let brushOrigin = statsBrush.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        brushOrigin.withOffset(CGVector(dx: 50, dy: 60)).press(forDuration: 0.2, thenDragTo: brushOrigin.withOffset(CGVector(dx: statsBrush.frame.width - 30, dy: 60)))
+        XCTAssertTrue(
+            waitForLabel(brushSel, "0-2", timeout: 10),
+            "a drag across the plot did not brush every row (label: \(brushSel.label))"
+        )
+        brushOrigin.withOffset(CGVector(dx: 60, dy: 60)).tap()
+        XCTAssertTrue(
+            waitForLabel(brushSel, "none", timeout: 10),
+            "a tap did not clear the brush (label: \(brushSel.label))"
+        )
         let statsBack = app.buttons["stats-back"].firstMatch
         XCTAssertTrue(statsBack.exists, "Back button missing on stats page")
         statsBack.tap()
@@ -575,6 +629,35 @@ final class PyreonTasksUITests: XCTestCase {
             tasksPage.waitForExistence(timeout: 15),
             "Did not return to tasks after stats Back"
         )
+
+        // #3279: the DASHBOARD — the native wave's gate. Six families on one
+        // shared-source page. Repaint: the funnel's data is a signal; the tap on
+        // its top slab reads 'Leads', a button drops that stage, and the SAME tap
+        // then reads 'Qualified' — the hit test ran over the re-laid-out canvas.
+        let dashNav = app.buttons["tasks-dashboard"].firstMatch
+        XCTAssertTrue(dashNav.waitForExistence(timeout: 10), "Dashboard button missing on tasks page")
+        dashNav.tap()
+        let dashPage = app.otherElements["dash-page"].firstMatch
+        XCTAssertTrue(dashPage.waitForExistence(timeout: 15), "Dashboard page did not render")
+        let dashFunnel = app.descendants(matching: .any).matching(identifier: "dash-funnel").firstMatch
+        XCTAssertTrue(dashFunnel.waitForExistence(timeout: 10), "funnel canvas missing on dashboard")
+        let dashStage = app.staticTexts["dash-stage"].firstMatch
+        XCTAssertEqual(dashStage.label, "none", "no funnel tap yet")
+        let funnelTop = dashFunnel.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0)).withOffset(CGVector(dx: 0, dy: 30))
+        funnelTop.tap()
+        XCTAssertTrue(waitForLabel(dashStage, "Leads", timeout: 10), "tap on the top slab did not select Leads (label: \(dashStage.label))")
+        app.buttons["dash-drop"].firstMatch.tap()
+        funnelTop.tap()
+        XCTAssertTrue(waitForLabel(dashStage, "Qualified", timeout: 10), "after dropping the first stage, the same tap did not select Qualified — the funnel did not repaint (label: \(dashStage.label))")
+        let dashLoad = app.staticTexts["dash-load"].firstMatch
+        XCTAssertEqual(dashLoad.label, "40", "gauge load should start at 40")
+        app.buttons["dash-load-up"].firstMatch.tap()
+        XCTAssertTrue(waitForLabel(dashLoad, "65", timeout: 10), "Load +25 did not move the gauge's signal (label: \(dashLoad.label))")
+        for id in ["dash-gauge", "dash-pie", "dash-radar", "dash-heat", "dash-tree"] {
+            XCTAssertTrue(app.descendants(matching: .any).matching(identifier: id).firstMatch.exists, "\(id) canvas missing on dashboard")
+        }
+        app.buttons["dash-back"].firstMatch.tap()
+        XCTAssertTrue(tasksPage.waitForExistence(timeout: 15), "Did not return to tasks after dashboard Back")
 
         // Phase 5b: the TOOLKIT screen — the one place eleven packages that had
         // only ever been snippet-proven actually run. The web e2e asserts the

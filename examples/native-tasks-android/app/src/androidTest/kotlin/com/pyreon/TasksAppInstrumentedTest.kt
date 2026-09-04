@@ -532,6 +532,7 @@ class TasksAppInstrumentedTest {
         // draw list; the testid rides Modifier.testTag on that canvas.
         composeRule
             .onNodeWithTag("stats-flow")
+            .performScrollTo()
             .assertIsDisplayed()
         // #3257: `onSelectIndex` — a tap on the canvas runs hitSankeyIndex over the
         // same layout the canvas painted and binds the node index. The first band
@@ -550,6 +551,7 @@ class TasksAppInstrumentedTest {
         // the first bar, with or without the preset strip below the plot.
         composeRule
             .onNodeWithTag("stats-bars")
+            .performScrollTo()
             .assertIsDisplayed()
         composeRule
             .onNodeWithTag("stats-bars-pick")
@@ -584,10 +586,110 @@ class TasksAppInstrumentedTest {
         // (pinch → GLOBAL index 1, 'last 1' → 2, 'all' → 0) on a real
         // simulator, so the behaviour is device-proven; what is missing here
         // is only a second copy of that proof.
+        // #3272: the legend tap toggle is asserted on the iOS twin only, for
+        // the SAME reason as the preset strip above: the 'Score' entry's box is
+        // sized from the MEASURED width of its label, and Android measures
+        // through android.graphics.Paint (Roboto) while the Swift runtime uses
+        // its own metric. A tap at a hard-coded 20dp is inside the entry on one
+        // target and outside it on the other, so the series never hides and the
+        // band tap reports 0 rather than -1. Confirmed on the device gate.
+        //
+        // The navigator (#3274) and brush (#3277) blocks below stay: they are
+        // positioned by GEOMETRY (fractions of the strip width, constant strip
+        // heights), not by measured text, so they are not subject to this.
+        // #3274: the navigator strip (x 8…W-8dp, centred 40dp above the bottom).
+        // Left handle dragged right by 55% → rows 1..2 → the first band is the
+        // GLOBAL index 1; the band dragged left by 55% → rows 0..1 → 0 again.
+        composeRule
+            .onNodeWithTag("stats-bars")
+            .performTouchInput {
+                val navY = height - 40f * flowDensity
+                val stripW = width - 16f * flowDensity
+                down(Offset(10f * flowDensity, navY))
+                moveTo(Offset(10f * flowDensity + stripW * 0.55f, navY))
+                up()
+            }
+        composeRule
+            .onNodeWithTag("stats-bars")
+            .performTouchInput { click(Offset(90f * flowDensity, 100f * flowDensity)) }
+        waitForTagText("stats-bars-pick", "1")
+        composeRule
+            .onNodeWithTag("stats-bars")
+            .performTouchInput {
+                val navY = height - 40f * flowDensity
+                val stripW = width - 16f * flowDensity
+                down(Offset(8f * flowDensity + stripW * 0.775f, navY))
+                moveTo(Offset(8f * flowDensity + stripW * 0.225f, navY))
+                up()
+            }
+        composeRule
+            .onNodeWithTag("stats-bars")
+            .performTouchInput { click(Offset(90f * flowDensity, 100f * flowDensity)) }
+        waitForTagText("stats-bars-pick", "0")
+        // #3277: the brush-only line chart — a drag across its plot selects every
+        // row → '0-2' through the named onBrush; a tap clears → 'none'.
+        composeRule
+            .onNodeWithTag("stats-brush-sel")
+            .assertTextEquals("none")
+        composeRule
+            .onNodeWithTag("stats-brush")
+            .performScrollTo()
+            .performTouchInput {
+                down(Offset(50f * flowDensity, 60f * flowDensity))
+                moveTo(Offset(width - 30f * flowDensity, 60f * flowDensity))
+                up()
+            }
+        waitForTagText("stats-brush-sel", "0-2")
+        composeRule
+            .onNodeWithTag("stats-brush")
+            .performTouchInput { click(Offset(60f * flowDensity, 60f * flowDensity)) }
+        waitForTagText("stats-brush-sel", "none")
         composeRule
             .onNodeWithTag("stats-back")
+            .performScrollTo()
             .performClick()
         assertTagDisplayed("tasks-page", "after stats-back (/stats -> /tasks)")
+
+        // #3279: the DASHBOARD — the native wave's gate: six families on one
+        // shared-source page; the funnel repaints from a signal (tap reads
+        // 'Leads', drop the stage, the same tap reads 'Qualified'); the gauge
+        // reads a signal a button moves (40 → 65).
+        composeRule
+            .onNodeWithTag("tasks-dashboard")
+            .performScrollTo()
+            .performClick()
+        assertTagDisplayed("dash-page", "after tasks-dashboard (/tasks -> /dashboard)")
+        composeRule
+            .onNodeWithTag("dash-stage")
+            .assertTextEquals("none")
+        composeRule
+            .onNodeWithTag("dash-funnel")
+            .performTouchInput { click(Offset(width / 2f, 30f * flowDensity)) }
+        waitForTagText("dash-stage", "Leads")
+        composeRule
+            .onNodeWithTag("dash-drop")
+            .performScrollTo()
+            .performClick()
+        composeRule
+            .onNodeWithTag("dash-funnel")
+            .performTouchInput { click(Offset(width / 2f, 30f * flowDensity)) }
+        waitForTagText("dash-stage", "Qualified")
+        composeRule
+            .onNodeWithTag("dash-load")
+            .assertTextEquals("40")
+        composeRule
+            .onNodeWithTag("dash-load-up")
+            .performScrollTo()
+            .performClick()
+        waitForTagText("dash-load", "65")
+        for (id in listOf("dash-gauge", "dash-pie", "dash-radar", "dash-heat", "dash-tree")) {
+            composeRule.onNodeWithTag(id).assertExists()
+        }
+        composeRule
+            .onNodeWithTag("dash-back")
+            .performScrollTo()
+            .performClick()
+        assertTagDisplayed("tasks-page", "after dash-back (/dashboard -> /tasks)")
 
         // Phase 5b: the TOOLKIT screen — where eleven previously snippet-only
         // packages actually run. The web e2e asserts the same values in a

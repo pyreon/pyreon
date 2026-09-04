@@ -616,6 +616,8 @@ let _fontMap: Record<string, string> = {}
  * — those fall through to the existing "needs static" emit path.
  */
 let _constStringMap: Map<string, string | number | boolean> = new Map()
+/** Module-level const name → its initializer IR (the chart-host literal adapters resolve a typed const through it). */
+let _moduleConstExprs: Map<string, ExprIR> = new Map()
 /**
  * Per-COMPONENT const-string map — component-body `const` literal bindings
  * (+ transitive aliases) so `readStaticAttr` resolves `<Image src={logo}>`
@@ -971,6 +973,10 @@ export function emitSwift(
     if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
       _constStringMap.set(md.name, v)
     }
+  }
+  _moduleConstExprs = new Map()
+  for (const md of moduleDecls) {
+    if (!md.mutable) _moduleConstExprs.set(md.name, md.initial)
   }
   _enumNames = new Set(enums.map((e) => e.name))
   _structFieldsToName = new Map()
@@ -11291,6 +11297,9 @@ const SWIFT_CHART_TARGET: ChartHostTarget = {
   max0: (e) => `max(0.0, ${e})`,
   min: (a, b) => `min(${a}, ${b})`,
   nil: 'nil',
+  nan: 'Double.nan',
+  list: (items) => `[${items.join(', ')}]`,
+  struct: (name, fields) => `${name}(${fields.map(([k, v]) => `${k}: ${v}`).join(', ')})`,
   pieOptions: (a) => `PieOptions(innerRadius: ${a.innerRatio}, showLabels: true, labelColor: "#ffffff", fontSize: 11.0)`,
   theme: () => `ChartTheme(axis: ${JSON.stringify(CHART_THEME_DEFAULT.axis)}, grid: ${JSON.stringify(CHART_THEME_DEFAULT.grid)}, label: ${JSON.stringify(CHART_THEME_DEFAULT.label)}, fontSize: ${CHART_THEME_DEFAULT.fontSize})`,
 }
@@ -11348,14 +11357,29 @@ function emitSwiftChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     return 'EmptyView()'
   }
   const spec = CHART_HOSTS[tag]!
-  const data: string[] = []
+  for (const p of spec.warnProps ?? []) {
+    if (chartAttrExpr(e, p) !== undefined) _emitWarnings.push(`<${tag}>: \`${p}\` is not lowered on native; the chart renders without it.`)
+  }
+  const attrs: Record<string, ExprIR> = {}
   for (const name of spec.data) {
     const v = chartAttrExpr(e, name)
     if (v === undefined) {
       _emitWarnings.push(`<${tag}>: needs a \`${name}\` attribute on native; emitting an EmptyView().`)
       return 'EmptyView()'
     }
-    data.push(emitSwiftExpr(v, indent))
+    attrs[name] = v
+  }
+  const data: string[] = []
+  for (const name of spec.data) {
+    // A prop whose web shape has no native form goes through its literal adapter.
+    const adapter = spec.adapt?.[name]
+    if (adapter !== undefined) {
+      const adapted = adapter(attrs, SWIFT_CHART_TARGET, (m) => _emitWarnings.push(m), (n) => _moduleConstExprs.get(n))
+      if (adapted === 'unsupported') return 'EmptyView()'
+      data.push(adapted)
+    } else {
+      data.push(emitSwiftExpr(attrs[name]!, indent))
+    }
   }
   const optV = chartAttrExpr(e, spec.options)
   const options = optV === undefined ? 'nil' : emitSwiftExpr(optV, indent)
@@ -11367,7 +11391,7 @@ function emitSwiftChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     options,
     W,
     H,
-    gutter: swiftChartDouble(e, 'gutter', 80, indent),
+    gutter: swiftChartDouble(e, 'gutter', spec.gutterDefault ?? 80, indent),
     innerRatio: swiftChartDouble(e, 'innerRatio', 0.2, indent),
   }
   const layout = spec.layout(args, SWIFT_CHART_TARGET)
@@ -11739,8 +11763,22 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   const zoomed = readStaticAttr(e, 'dataZoom') === true
   const presetsRaw = swiftZoomPresets(e, tag)
   const presets = presetsRaw === 'unsupported' ? undefined : presetsRaw
-  // The window state exists whenever something writes it: a gesture or a preset.
-  const windowed = zoomed || presets !== undefined
+  let navigating = readStaticAttr(e, 'navigator') === true
+  if (navigating && marksV.elements.length === 0) {
+    _emitWarnings.push(`<${tag} navigator>: needs at least one mark (the strip shows the first one); the chart renders without the navigator.`)
+    navigating = false
+  }
+  // The brush: a plain drag selects — only where the web's plain drag does too.
+  let brushing = readStaticAttr(e, 'brush') === true && readStaticAttr(e, 'horizontal') !== true
+  if (brushing && zoomed) {
+    _emitWarnings.push(`<${tag} brush>: with \`dataZoom\` the web brushes on Shift+drag, which touch has not — on native the plain drag pans, so the brush stays web-only in that combination; the chart renders without it.`)
+    brushing = false
+  }
+  const onBrush = brushing ? swiftBrushHandler(e, tag) : undefined
+  // The window state exists whenever something writes it: a gesture, a preset, the navigator.
+  const windowed = zoomed || presets !== undefined || navigating
+  const win = windowed ? 'pyreonZoom' : 'ZoomWindow(start: 0.0, end: 1.0)'
+  const legend = swiftLegendInteraction(e)
   const lets: string[] = []
   if (windowed) {
     _hostStateDecls.push('@State private var pyreonZoom: ZoomWindow = ZoomWindow(start: 0.0, end: 1.0)')
@@ -11748,8 +11786,21 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     lets.push(`let pyreonRange: SliceRange = sliceRange(pyreonZoom, ${data}.count)`)
     lets.push(`let pyreonRows = Array(${data}[pyreonRange.from..<pyreonRange.to])`)
   }
+  if (navigating) {
+    _hostStateDecls.push('@State private var pyreonNavKind: Int = 0')
+    _hostStateDecls.push('@State private var pyreonNavAnchor: ZoomWindow = ZoomWindow(start: 0.0, end: 1.0)')
+  }
+  if (brushing) {
+    _hostStateDecls.push('@State private var pyreonBrushStart: Int = -1')
+    _hostStateDecls.push('@State private var pyreonBrushEnd: Int = -1')
+    _hostStateDecls.push('@State private var pyreonBrushA: Double = -1.0')
+    _hostStateDecls.push('@State private var pyreonBrushB: Double = -1.0')
+  }
+  if (legend.toggling) _hostStateDecls.push('@State private var pyreonHidden: [Int] = []')
+  if (legend.paging) _hostStateDecls.push('@State private var pyreonLegendPage: Double = 0.0')
   const rows = windowed ? 'pyreonRows' : data
   const series: string[] = []
+  let navValues = ''
   for (let k = 0; k < marksV.elements.length; k++) {
     const m = marksV.elements[k]!
     const callee = m.kind === 'call' && m.callee.kind === 'identifier' ? m.callee.name : undefined
@@ -11770,6 +11821,8 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     const opts = swiftMarkOptionArgs(optsArg, tag, k)
     if (opts === 'unsupported') return 'EmptyView()'
     lets.push(`let pyreonValues${k}: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${body})`, 'Double', windowed)}`)
+    // The navigator shows the first mark over EVERY row, whatever the window.
+    if (k === 0 && navigating) navValues = swiftPlotRowMap(data, `pyreonChartDouble(${body})`, 'Double', false)
     if (bubble) {
       const r = m.args[1]
       if (r === undefined) {
@@ -11787,7 +11840,13 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       series.push(`Series(kind: ${JSON.stringify(kind)}, values: pyreonValues${k}, ${opts.join(', ')})`)
     }
   }
-  lets.push(`let pyreonSeries: [Series] = [${series.join(', ')}]`)
+  if (legend.toggling) {
+    // The legend lists every series; the plot draws what the hidden set leaves.
+    lets.push(`let pyreonSeriesAll: [Series] = [${series.join(', ')}]`)
+    lets.push('let pyreonSeries: [Series] = hideHiddenSeries(pyreonSeriesAll, pyreonHidden)')
+  } else {
+    lets.push(`let pyreonSeries: [Series] = [${series.join(', ')}]`)
+  }
   const xAcc = chartAttrExpr(e, 'x')
   if (xAcc !== undefined) {
     const body = swiftAccessorExpr(xAcc, tag, 'x', indent)
@@ -11802,32 +11861,43 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     if (body === 'unsupported') return 'EmptyView()'
     lets.push(`let pyreonXValues: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${body})`, 'Double', windowed)}`)
   }
-  const present = PLOT_UNLOWERED_PROPS.filter((p) => chartAttrExpr(e, p) !== undefined)
+  const present = PLOT_UNLOWERED_PROPS.filter((p) => chartAttrExpr(e, p) !== undefined || e.attrs.some((a) => a.kind === 'event' && 'on' + a.name === p.toLowerCase()))
   if (present.length > 0) _emitWarnings.push(`<${tag}>: ${present.map((p) => `\`${p}\``).join(', ')} ${present.length === 1 ? 'is' : 'are'} not lowered on native yet; the chart renders without.`)
   const H = swiftChartDouble(e, 'height', 200, indent)
   const hasWidth = chartAttrExpr(e, 'width') !== undefined
   const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
-  const chrome = swiftChartChrome(e, 'pyreonSeries.map { LegendEntry(label: $0.label, color: $0.color) }', W, H, indent, true)
+  const entries = legend.toggling
+    ? 'pyreonSeriesAll.enumerated().map { (pyreonI, pyreonS) in LegendEntry(label: pyreonS.label, color: pyreonS.color, muted: pyreonHidden.contains(pyreonI)) }'
+    : 'pyreonSeries.map { LegendEntry(label: $0.label, color: $0.color) }'
+  const chrome = swiftChartChrome(e, entries, W, H, indent, true, legend.paging ? 'pyreonLegendPage' : undefined)
   lets.push(...chrome.lets)
   const theme = swiftChartTheme(e, tag)
+  const themed = presets !== undefined || navigating
+  if (themed) lets.push(`let pyreonTheme: ChartTheme = ${theme}`)
   if (presets !== undefined) {
     // The strip sits at the canvas bottom in canvas coordinates (never shifted
     // by the title/legend), exactly where the web paints it.
-    lets.push(`let pyreonTheme: ChartTheme = ${theme}`)
     lets.push(`let pyreonPresets: [ZoomPreset] = [${presets.join(', ')}]`)
     lets.push(`let pyreonPresetStrip: PresetLayout = renderPresets(pyreonPresets, ${data}.count, pyreonZoom, PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${H}), PresetOptions(fontSize: 11.0, padX: 8.0, padY: 3.0, gap: 6.0, inset: 8.0, activeFill: pyreonTheme.axis, idleFill: pyreonTheme.grid, activeText: "#ffffff", idleText: pyreonTheme.label), pyreonChartMeasure)`)
+  }
+  // Below the plot, from the bottom up: the preset strip, then the navigator.
+  const belowNav = presets === undefined ? '' : ' - pyreonPresetStrip.height'
+  if (navigating) {
+    lets.push(`let pyreonNavValues: [Double] = ${navValues}`)
+    lets.push(`let pyreonNavigator: NavigatorLayout = renderNavigator(pyreonNavValues, pyreonSeries[0].color, pyreonZoom, PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${H}${belowNav}), pyreonTheme.grid)`)
   }
   const bool = (name: string, fallback: boolean): string => {
     const raw = readStaticAttr(e, name)
     const v = chartAttrExpr(e, name)
     return v === undefined ? String(fallback) : typeof raw === 'boolean' ? String(raw) : emitSwiftExpr(v, indent)
   }
+  const below = `${belowNav}${navigating ? ' - pyreonNavigator.height' : ''}`
   const specArgs = [
     `width: ${W}`,
-    `height: ${presets === undefined ? chrome.height(H) : `${chrome.height(H)} - pyreonPresetStrip.height`}`,
+    `height: ${chrome.height(H)}${below}`,
     'series: pyreonSeries',
     'categories: pyreonCats',
-    `theme: ${presets === undefined ? theme : 'pyreonTheme'}`,
+    `theme: ${themed ? 'pyreonTheme' : theme}`,
     `showXAxis: ${bool('showXAxis', true)}`,
     `showYAxis: ${bool('showYAxis', true)}`,
     `showGrid: ${bool('showGrid', true)}`,
@@ -11848,7 +11918,17 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   const mk = chartAttrExpr(e, 'markers')
   if (mk !== undefined) specArgs.push(`markers: ${emitSwiftExpr(mk, indent)}`)
   lets.push(`let pyreonSpec: ChartSpec = ChartSpec(${specArgs.join(', ')})`)
-  const canvas = `PyreonChartCanvas(cmds: ${chrome.wrap('renderChart(pyreonSpec, pyreonChartMeasure)')}${presets === undefined ? '' : ' + pyreonPresetStrip.cmds'})`
+  if (brushing) {
+    // The band lives in PLOT space: the live span while dragging, else the
+    // committed range projected through the window — and it rides inside the
+    // chrome wrap so the title/legend shift moves it with the plot.
+    lets.push('let pyreonPlot: PyreonChartRect = layoutChart(pyreonSpec, pyreonChartMeasure).plot')
+    lets.push(
+      `let pyreonBrushCmds: [PyreonDrawCmd] = pyreonBrushA >= 0.0 ? renderBrushBand(pyreonPlot, min(pyreonBrushA, pyreonBrushB), max(pyreonBrushA, pyreonBrushB), pyreonSpec.theme.axis) : pyreonBrushStart >= 0 ? { () -> [PyreonDrawCmd] in let pyreonBand = brushBand(pyreonPlot, BrushRange(start: pyreonBrushStart, end: pyreonBrushEnd), ${win}, ${data}.count); return pyreonBand.visible ? renderBrushBand(pyreonPlot, pyreonBand.lo, pyreonBand.hi, pyreonSpec.theme.axis) : [] }() : []`,
+    )
+  }
+  const extraCmds = `${navigating ? ' + pyreonNavigator.cmds' : ''}${presets === undefined ? '' : ' + pyreonPresetStrip.cmds'}`
+  const canvas = `PyreonChartCanvas(cmds: ${chrome.wrap(`renderChart(pyreonSpec, pyreonChartMeasure)${brushing ? ' + pyreonBrushCmds' : ''}`)}${extraCmds})`
   const tapY = chrome.top === '0.0' ? 'Double(pyreonTap.location.y)' : 'Double(pyreonTap.location.y) - pyreonTop'
   // Under a window the hit is LOCAL to the slice; the callback speaks GLOBAL indices, as on the web.
   const hit = windowed
@@ -11856,16 +11936,38 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     : `plotHitBars(pyreonSpec, pyreonChartMeasure, Double(pyreonTap.location.x), ${tapY})`
   const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
   let gesture = ''
-  if (onSel?.kind === 'event' || presets !== undefined) {
+  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging || brushing) {
     const select = onSel?.kind === 'event' ? swiftChartSelectBody(onSel.handler, hit, indent) : ''
-    let body = select
-    if (presets !== undefined) {
-      // A tap on a preset writes the window and stops there; anything else is the selection.
-      const apply = `pyreonZoom = presetWindow(pyreonPresets[pyreonPreset].count, ${data}.count)${zoomed ? '; pyreonZoomAnchor = pyreonZoom' : ''}`
-      body = `let pyreonPreset = presetHit(pyreonPresetStrip.boxes, Double(pyreonTap.location.x), Double(pyreonTap.location.y)); if pyreonPreset >= 0 { ${apply} }${select === '' ? '' : ` else { ${select} }`}`
+    // One tap, several surfaces, in canvas coordinates: the legend pager, a
+    // legend entry, a preset button, a committed brush (a plain tap clears it),
+    // then the plot. First hit wins — the web's order.
+    const cx = 'Double(pyreonTap.location.x)'
+    const cy = 'Double(pyreonTap.location.y)'
+    const decls: string[] = []
+    const branches: string[] = []
+    if (legend.paging) {
+      decls.push(`let pyreonPageDelta: Double = pyreonLegend.pager.map { pagerHit($0, ${cx}, ${cy}) } ?? 0.0`)
+      branches.push(`if pyreonPageDelta != 0.0 { pyreonLegendPage = (pyreonLegend.pager?.page ?? 0.0) + pyreonPageDelta }`)
     }
-    // With pan and pinch live, a tap is a drag that did not move: guard by translation.
-    const guarded = zoomed ? `if abs(pyreonTap.translation.width) < 6.0 && abs(pyreonTap.translation.height) < 6.0 { ${body} }` : body
+    if (legend.toggling) {
+      decls.push(`let pyreonLegendHit = legendHitIndex(pyreonLegend.boxes, ${cx}, ${cy})`)
+      branches.push('if pyreonLegendHit >= 0 { pyreonHidden = legendToggle(pyreonHidden, pyreonLegendHit) }')
+    }
+    if (presets !== undefined) {
+      decls.push(`let pyreonPreset = presetHit(pyreonPresetStrip.boxes, ${cx}, ${cy})`)
+      branches.push(`if pyreonPreset >= 0 { pyreonZoom = presetWindow(pyreonPresets[pyreonPreset].count, ${data}.count)${zoomed ? '; pyreonZoomAnchor = pyreonZoom' : ''} }`)
+    }
+    if (brushing) {
+      branches.push(`if pyreonBrushStart >= 0 { pyreonBrushStart = -1; pyreonBrushEnd = -1${onBrush === undefined ? '' : `; ${onBrush}(nil)`} }`)
+    }
+    let body: string
+    if (branches.length === 0) {
+      body = select
+    } else {
+      body = `${decls.length === 0 ? '' : `${decls.join('; ')}; `}${branches.join(' else ')}${select === '' ? '' : ` else { ${select} }`}`
+    }
+    // With pan, pinch or a brush drag live, a tap is a drag that did not move: guard by translation.
+    const guarded = zoomed || brushing ? `if abs(pyreonTap.translation.width) < 6.0 && abs(pyreonTap.translation.height) < 6.0 { ${body} }` : body
     gesture = `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in ${guarded} })`
   }
   if (zoomed) {
@@ -11873,7 +11975,22 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       `.simultaneousGesture(MagnificationGesture().onChanged { pyreonScale in pyreonZoom = zoomWindow(pyreonZoomAnchor, 1.0 / Double(pyreonScale), 0.5) }.onEnded { _ in pyreonZoomAnchor = pyreonZoom })` +
       `.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { pyreonDrag in pyreonZoom = panWindow(pyreonZoomAnchor, -Double(pyreonDrag.translation.width) / ${W}) }.onEnded { _ in pyreonZoomAnchor = pyreonZoom })`
   }
-  return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent)
+  if (brushing) {
+    gesture +=
+      `.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { pyreonBrushDrag in pyreonBrushA = Double(pyreonBrushDrag.startLocation.x); pyreonBrushB = Double(pyreonBrushDrag.location.x) }` +
+      `.onEnded { pyreonBrushDrag in let pyreonSel: BrushRange = brushRange(pyreonPlot.x, pyreonPlot.w, Double(pyreonBrushDrag.startLocation.x), Double(pyreonBrushDrag.location.x), ${win}, ${data}.count); pyreonBrushStart = pyreonSel.start; pyreonBrushEnd = pyreonSel.end; pyreonBrushA = -1.0; pyreonBrushB = -1.0${onBrush === undefined ? '' : `; ${onBrush}(pyreonSel)`} })`
+  }
+  if (!navigating) return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent)
+  // The navigator's drag lives on a clear overlay over the strip (above the
+  // preset strip), a sibling of the canvas: a touch that starts there is the
+  // navigator's alone, so the plot's gestures never see it. The grab (band or
+  // handle) is decided once, from the start location; the drag is absolute
+  // from the window it started on — the web's model.
+  const overlay =
+    `Color.clear.contentShape(Rectangle()).frame(height: pyreonNavigator.height)${presets === undefined ? '' : '.padding(.bottom, pyreonPresetStrip.height)'}` +
+    `.gesture(DragGesture(minimumDistance: 0).onChanged { pyreonNav in if pyreonNavKind == 0 { pyreonNavAnchor = pyreonZoom; pyreonNavKind = navigatorHit(pyreonNavigator.strip, pyreonZoom, Double(pyreonNav.startLocation.x)) }; pyreonZoom = navigatorDrag(pyreonNavKind, pyreonNavAnchor, Double(pyreonNav.translation.width) / pyreonNavigator.strip.w) }` +
+    `.onEnded { _ in pyreonNavKind = 0${zoomed ? '; pyreonZoomAnchor = pyreonZoom' : ''} })`
+  return swiftFrameHost(e, lets, `ZStack(alignment: .bottom) { ${canvas}${gesture}; ${overlay} }`, '', W, H, hasWidth, indent)
 }
 
 
@@ -11895,7 +12012,7 @@ interface SwiftChartChrome {
   height: (H: string) => string
 }
 
-function swiftChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries: string, W: string, H: string, indent: number, withTitle: boolean): SwiftChartChrome {
+function swiftChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries: string, W: string, H: string, indent: number, withTitle: boolean, page?: string): SwiftChartChrome {
   const title = readStringAttrExpr(e, 'title', indent)
   const showTitle = withTitle && readStaticAttr(e, 'showTitle') === true && title !== undefined
   const showLegend = readStaticAttr(e, 'showLegend') === true
@@ -11910,7 +12027,8 @@ function swiftChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries: 
   if (showLegend) {
     const maxRowsRaw = readStaticAttr(e, 'legendMaxRows')
     const maxRows = typeof maxRowsRaw === 'number' ? `, maxRows: ${chartDouble(maxRowsRaw)}` : ''
-    lets.push(`let pyreonLegend: LegendLayout = renderLegend(${entries}, PyreonChartRect(x: 0.0, y: pyreonTitle.height, w: ${W}, h: ${H} - pyreonTitle.height), LegendOptions(fontSize: 11.0, labelColor: "#5a6b7a", swatch: 10.0, gap: 12.0, orientation: "horizontal"${maxRows}), pyreonChartMeasure)`)
+    const pageArg = page === undefined ? '' : `, page: ${page}`
+    lets.push(`let pyreonLegend: LegendLayout = renderLegend(${entries}, PyreonChartRect(x: 0.0, y: pyreonTitle.height, w: ${W}, h: ${H} - pyreonTitle.height), LegendOptions(fontSize: 11.0, labelColor: "#5a6b7a", swatch: 10.0, gap: 12.0, orientation: "horizontal"${maxRows}${pageArg}), pyreonChartMeasure)`)
   } else {
     lets.push('let pyreonLegend: LegendLayout = LegendLayout(cmds: [], height: 0.0, boxes: [])')
   }
@@ -12044,3 +12162,65 @@ function unsupportedZoomPresets(tag: string): 'unsupported' {
 }
 
 /** `<PlotChart data marks x? xValue? … dataZoom? zoomPresets? showLegend? showTitle? onSelect? …>` */
+
+
+// ---- `<PlotChart showLegend legendToggle legendMaxRows>` — legend tap + paging ----
+//
+// The legend's boxes and pager rects come from the engine's `renderLegend`;
+// the hidden set and the page are host state (the same `@State` splice the
+// window uses). A tap on an entry toggles it (`legendToggle`), the series
+// feed the plot through `hideHiddenSeries`, and the entries render muted —
+// exactly the web's model, so a hidden series keeps its slot on every target.
+
+/** Legend interaction the host must wire: none, toggle only, page only, or both. */
+interface SwiftLegendInteraction {
+  toggling: boolean
+  paging: boolean
+}
+
+function swiftLegendInteraction(e: Extract<ExprIR, { kind: 'jsx-element' }>): SwiftLegendInteraction {
+  const legendOn = readStaticAttr(e, 'showLegend') === true
+  return {
+    toggling: legendOn && readStaticAttr(e, 'legendToggle') !== false,
+    paging: legendOn && typeof readStaticAttr(e, 'legendMaxRows') === 'number',
+  }
+}
+
+/** `<PlotChart data marks x? xValue? … dataZoom? zoomPresets? showLegend? legendToggle? legendMaxRows? showTitle? onSelect? …>` */
+
+
+// ---- `<PlotChart navigator>` — the slider dataZoom, engine-laid-out ------------
+//
+// The strip is the engine's `renderNavigator` over the FIRST mark's values
+// across ALL rows; its drag model (`navigatorHit` / `navigatorDrag`) writes
+// the same window the pinch and the presets write. The drag lives on its own
+// clear overlay above the strip, so it never competes with the plot's pinch
+// and pan gestures — a touch that starts on the strip is the navigator's.
+
+/** `<PlotChart data marks x? xValue? … dataZoom? zoomPresets? navigator? showLegend? legendToggle? legendMaxRows? showTitle? onSelect? …>` */
+
+
+// ---- `<PlotChart brush onBrush>` — drag-select a GLOBAL datum range -----------
+//
+// The brush's mapping, placement and band come from the engine (`brush.ts`);
+// the host holds the committed range and the live span as state. Without
+// `dataZoom` a plain drag on the plot IS the brush (the web's rule); with it
+// the web needs Shift, which touch has not, so that combination stays
+// web-only and says so. `onBrush` takes `BrushRange | null` and must be a
+// NAMED handler (`const onBrush = (r: BrushRange | null) => …`): a named
+// handler lowers to a func whose optional parameter narrows; an inline arrow
+// does not carry that type through the tap's closure.
+
+/** The `onBrush` handler NAME, or undefined; warns by name for any other shape. */
+function swiftBrushHandler(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: string): string | undefined {
+  const onBrush = e.attrs.find((a) => a.kind === 'event' && a.name === 'brush')
+  if (onBrush?.kind !== 'event') return undefined
+  const h = onBrush.handler
+  if (h.kind === 'identifier') return swiftIdent(h.name)
+  const resolved = resolveFunctionHandler(h)
+  if (resolved !== undefined) return swiftIdent(resolved)
+  _emitWarnings.push(`<${tag} onBrush>: must be a NAMED handler (\`const onBrush = (r: BrushRange | null) => …\`) on native — an inline arrow is not lowered; the brush still selects, without the callback.`)
+  return undefined
+}
+
+/** `<PlotChart data marks x? xValue? … dataZoom? zoomPresets? navigator? brush? onBrush? showLegend? legendToggle? legendMaxRows? showTitle? onSelect? …>` */

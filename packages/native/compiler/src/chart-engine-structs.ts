@@ -117,6 +117,59 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "PyreonChartGradientStop",
+    "fields": [
+      {
+        "name": "offset",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "color",
+        "type": {
+          "kind": "string"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "PyreonChartGradient",
+    "fields": [
+      {
+        "name": "from",
+        "type": {
+          "kind": "typeRef",
+          "name": "PyreonChartPt",
+          "args": []
+        }
+      },
+      {
+        "name": "to",
+        "type": {
+          "kind": "typeRef",
+          "name": "PyreonChartPt",
+          "args": []
+        }
+      },
+      {
+        "name": "stops",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "PyreonChartGradientStop",
+            "args": []
+          }
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "PyreonDrawCmd",
     "fields": [
       {
@@ -148,6 +201,41 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
           "branches": [
             {
               "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "corners",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "typeRef",
+                "name": "Double",
+                "args": []
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "grad",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "PyreonChartGradient",
+              "args": []
             },
             {
               "kind": "undefined"
@@ -349,6 +437,37 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
       },
       {
         "name": "baseline",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "SeriesGradient",
+    "fields": [
+      {
+        "name": "stops",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "PyreonChartGradientStop",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "direction",
         "type": {
           "kind": "union",
           "branches": [
@@ -1137,6 +1256,41 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
             }
           ]
         }
+      },
+      {
+        "name": "corners",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "typeRef",
+                "name": "Double",
+                "args": []
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "gradient",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "SeriesGradient",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
       }
     ],
     "external": true
@@ -1362,6 +1516,27 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
           "kind": "typeRef",
           "name": "Double",
           "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "Emphasis",
+    "fields": [
+      {
+        "name": "highlight",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "selected",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "number"
+          }
         }
       }
     ],
@@ -1638,6 +1813,22 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
             {
               "kind": "typeRef",
               "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "emphasis",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Emphasis",
               "args": []
             },
             {
@@ -6628,6 +6819,85 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
       },
       {
         "name": "height",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "NavigatorLayout",
+    "fields": [
+      {
+        "name": "cmds",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "PyreonDrawCmd",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "strip",
+        "type": {
+          "kind": "typeRef",
+          "name": "PyreonChartRect",
+          "args": []
+        }
+      },
+      {
+        "name": "height",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "BrushRange",
+    "fields": [
+      {
+        "name": "start",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "end",
+        "type": {
+          "kind": "number"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "BrushBand",
+    "fields": [
+      {
+        "name": "visible",
+        "type": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "name": "lo",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "hi",
         "type": {
           "kind": "typeRef",
           "name": "Double",

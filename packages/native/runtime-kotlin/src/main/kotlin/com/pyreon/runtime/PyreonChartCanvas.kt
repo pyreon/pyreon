@@ -6,6 +6,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect as ComposeRect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
@@ -27,6 +28,19 @@ data class PyreonChartPt(var x: Double, var y: Double)
 
 data class PyreonChartRect(var x: Double, var y: Double, var w: Double, var h: Double)
 
+/**
+ * One colour along a gradient's axis, and the gradient itself — runtime-owned
+ * like PyreonChartPt/Rect/DrawCmd so the draw-command vocabulary lives in one
+ * place on both targets.
+ */
+data class PyreonChartGradientStop(var offset: Double, var color: String)
+
+data class PyreonChartGradient(
+    var from: PyreonChartPt,
+    var to: PyreonChartPt,
+    var stops: List<PyreonChartGradientStop>,
+)
+
 data class PyreonDrawCmd(
     var kind: String,
     var rect: PyreonChartRect? = null,
@@ -37,6 +51,14 @@ data class PyreonDrawCmd(
     var dash: List<Double>? = null,
     var points: List<PyreonChartPt>? = null,
     var fill: String? = null,
+    /**
+     * Corner radii for a `rect` — [topLeft, topRight, bottomRight, bottomLeft],
+     * in engine units. Clamped through the engine's `cornerRadii`, so this
+     * canvas rounds by the same numbers the web canvas and the SVG do.
+     */
+    var corners: List<Double>? = null,
+    /** Paint the fill as a linear gradient; `fill` stays the fallback. */
+    var grad: PyreonChartGradient? = null,
     var center: PyreonChartPt? = null,
     var radius: Double? = null,
     var text: String? = null,
@@ -121,6 +143,54 @@ fun pyreonShiftCmds(cmds: List<PyreonDrawCmd>, dy: Double): List<PyreonDrawCmd> 
         )
     }
 
+/**
+ * A Compose brush from the engine's gradient, or null when there is none (the
+ * caller then paints the solid colour).
+ */
+fun pyreonChartBrush(grad: PyreonChartGradient?): Brush? {
+    val g = grad ?: return null
+    if (g.stops.isEmpty()) return null
+    val stops =
+        g.stops
+            .map { st ->
+                Pair(
+                    st.offset.coerceIn(0.0, 1.0).toFloat(), pyreonChartColor(st.color))
+            }
+            .toTypedArray()
+    return Brush.linearGradient(
+        colorStops = stops,
+        start = Offset(g.from.x.toFloat(), g.from.y.toFloat()),
+        end = Offset(g.to.x.toFloat(), g.to.y.toFloat()))
+}
+
+/**
+ * The four arcs of a rounded rect — the twin of canvas-web's `traceRoundedRect`
+ * and svg.ts's path builder, corner for corner.
+ */
+fun pyreonRoundedRectPath(r: PyreonChartRect, radii: List<Double>): Path {
+    val tl = radii[0].toFloat()
+    val tr = radii[1].toFloat()
+    val br = radii[2].toFloat()
+    val bl = radii[3].toFloat()
+    val x = r.x.toFloat()
+    val y = r.y.toFloat()
+    val w = r.w.toFloat()
+    val h = r.h.toFloat()
+    val p = Path()
+    p.moveTo(x + tl, y)
+    p.lineTo(x + w - tr, y)
+    if (tr > 0f) p.arcTo(ComposeRect(x + w - 2f * tr, y, x + w, y + 2f * tr), -90f, 90f, false)
+    p.lineTo(x + w, y + h - br)
+    if (br > 0f)
+        p.arcTo(ComposeRect(x + w - 2f * br, y + h - 2f * br, x + w, y + h), 0f, 90f, false)
+    p.lineTo(x + bl, y + h)
+    if (bl > 0f) p.arcTo(ComposeRect(x, y + h - 2f * bl, x + 2f * bl, y + h), 90f, 90f, false)
+    p.lineTo(x, y + tl)
+    if (tl > 0f) p.arcTo(ComposeRect(x, y, x + 2f * tl, y + 2f * tl), 180f, 90f, false)
+    p.close()
+    return p
+}
+
 @Composable
 fun PyreonChartCanvas(
     cmds: List<PyreonDrawCmd>,
@@ -137,10 +207,20 @@ fun PyreonChartCanvas(
                 "rect" -> {
                     val r = c.rect ?: continue
                     val fill = c.fill ?: continue
-                    drawRect(
-                        color = pyreonChartColor(fill),
-                        topLeft = Offset(r.x.toFloat(), r.y.toFloat()),
-                        size = Size(r.w.toFloat(), r.h.toFloat()))
+                    val radii = cornerRadii(r, c.corners)
+                    val brush = pyreonChartBrush(c.grad)
+                    if (hasCorners(radii)) {
+                        val path = pyreonRoundedRectPath(r, radii)
+                        if (brush != null) drawPath(path = path, brush = brush, style = Fill)
+                        else drawPath(path = path, color = pyreonChartColor(fill), style = Fill)
+                    } else {
+                        val topLeft = Offset(r.x.toFloat(), r.y.toFloat())
+                        val size = Size(r.w.toFloat(), r.h.toFloat())
+                        if (brush != null) drawRect(brush = brush, topLeft = topLeft, size = size)
+                        else
+                            drawRect(
+                                color = pyreonChartColor(fill), topLeft = topLeft, size = size)
+                    }
                 }
                 "line" -> {
                     val f = c.from ?: continue
@@ -181,7 +261,9 @@ fun PyreonChartCanvas(
                     p.moveTo(pts[0].x.toFloat(), pts[0].y.toFloat())
                     for (i in 1 until pts.size) p.lineTo(pts[i].x.toFloat(), pts[i].y.toFloat())
                     p.close()
-                    drawPath(path = p, color = pyreonChartColor(fill), style = Fill)
+                    val pbrush = pyreonChartBrush(c.grad)
+                    if (pbrush != null) drawPath(path = p, brush = pbrush, style = Fill)
+                    else drawPath(path = p, color = pyreonChartColor(fill), style = Fill)
                 }
                 "circle" -> {
                     val ctr = c.center ?: continue

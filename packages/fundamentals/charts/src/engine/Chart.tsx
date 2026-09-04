@@ -7,13 +7,12 @@
 
 import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
-import { batch, effect, isClient, signal } from '@pyreon/reactivity'
+import { batch, effect, isClient, signal, untrack } from '@pyreon/reactivity'
 import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
 import { renderLegend } from './legend'
 import type { LegendPager } from './legend'
 import { renderTitle } from './title'
 import { sameShape, sameValues, tweenValues } from './tween'
-import { withAlpha } from './radar'
 import { hitToolbox, renderToolbox, toolboxTools } from './toolbox'
 import { renderSvg } from './svg'
 import type { ToolboxTool } from './toolbox'
@@ -27,11 +26,13 @@ import { resolveCategories, resolveMarks } from './marks'
 import { plotHitBars, plotHitIndex } from './plot-hit'
 import type { Mark } from './marks'
 import { chartTable, describeChart } from './a11y'
-import { brushRange } from './brush'
+import { brushBand, brushRange, renderBrushBand } from './brush'
+import { hideHiddenSeries, legendHitIndex, legendToggle, pagerHit } from './legend-toggle'
+import { navigatorDrag, navigatorHit, renderNavigator } from './navigator'
 import { presetHit, presetWindow, renderPresets } from './presets'
-import { clampWindow, isFullWindow, panWindow, sliceRange, zoomWindow } from './zoom'
+import { isFullWindow, panWindow, sliceRange, zoomWindow } from './zoom'
 import type { ZoomWindow } from './zoom'
-import type { ChartLink } from './link'
+import type { ChartHandle, ChartLink } from './link'
 import type { Formatter } from './format'
 import type { Domain, DrawCmd, Double, Rect } from './types'
 
@@ -107,6 +108,41 @@ export interface PlotChartProps<T> {
    * pan, navigator drag, preset or hover on any of them moves all of them.
    */
   link?: ChartLink
+  /**
+   * The imperative handle (ECharts `dispatchAction`): pass `createChartHandle()`
+   * and its `dispatch` drives highlight, selection, legend and zoom from
+   * outside. Its signals ARE this chart's state — reading `handle.selected()`
+   * reads the chart. A handle is also a link: hand it to sibling charts as
+   * `link` to connect them.
+   */
+  handle?: ChartHandle
+  /**
+   * Click-to-pin selection (ECharts `selectedMode`): `'single'` keeps one
+   * datum, `'multiple'` toggles each. Selected datums draw a heavy outline
+   * that stays, and every change reports through `onSelectChange` with GLOBAL
+   * indices. `onSelect` still fires for the pick itself; a miss leaves the
+   * selection alone (clearing is an explicit `unselect` / `restore`).
+   */
+  selectedMode?: 'single' | 'multiple'
+  /** Fired with the selected datums (GLOBAL indices) whenever the set changes — a pick, a dispatch, a `restore`. */
+  onSelectChange?: (selected: number[]) => void
+  /**
+   * Fired with the highlighted datum's GLOBAL index on hover (ECharts
+   * `mouseover` / `highlight`) and -1 when it clears (`mouseout` / `downplay`),
+   * whatever moved it: the pointer, the keyboard, a link or a dispatch.
+   */
+  onHighlight?: (index: number) => void
+  /** Fired with the hidden series (mark indices) when a legend click or a legend action changes them (ECharts `legendselectchanged`). */
+  onLegendChange?: (hidden: number[]) => void
+  /** Fired with the zoom window (fractions; null = everything) whenever it changes — wheel, pan, navigator, preset, dispatch (ECharts `datazoom`). */
+  onZoom?: (window: { start: number; end: number } | null) => void
+  /**
+   * Hover emphasis: the highlighted datum's column gets a faint band, its
+   * bars and points an outline. On by default when the events model is in
+   * play (`selectedMode`, `handle` or `onHighlight`); `false` keeps the
+   * crosshair alone.
+   */
+  emphasis?: boolean
   /**
    * Wheel-zoom + drag-pan over the x range (ECharts' inside dataZoom).
    *
@@ -327,11 +363,15 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
 
   // Toggled-off series, by mark index. A signal so the repaint effect tracks
   // it; an array rather than a Set so every toggle is a fresh value.
-  const hiddenSeries = signal<number[]>([])
+  const hiddenSeries = props.handle?.hidden ?? signal<number[]>([])
   // The hovered datum for the crosshair; -1 = no hover.
-  const hoverIdx = props.link?.hover ?? signal(-1)
+  const hoverIdx = props.handle?.hover ?? props.link?.hover ?? signal(-1)
   // The dataZoom window; null = everything (the untouched state).
-  const zoomWin = props.link?.zoom ?? signal<ZoomWindow | null>(null)
+  const zoomWin = props.handle?.zoom ?? props.link?.zoom ?? signal<ZoomWindow | null>(null)
+  // Pinned datums, GLOBAL indices (they survive a zoom); the handle owns them when given.
+  const selected = props.handle?.selected ?? signal<number[]>([])
+  const eventsOn = props.selectedMode !== undefined || props.handle !== undefined || props.onHighlight !== undefined
+  const emphasisOn = props.emphasis ?? eventsOn
   // A committed brush band, in GLOBAL datum indices; null = none.
   const brushSel = signal<{ start: number; end: number } | null>(null)
   // In-flight drag bookkeeping. Plain locals, not signals: nothing should
@@ -360,7 +400,8 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   let bottomOffset = 0.0
   // Navigator strip rect from the last draw + the in-flight band drag.
   let navRect: Rect | null = null
-  let navDrag: { kind: 'move' | 'left' | 'right'; startWin: ZoomWindow } | null = null
+  // 1 = band, 2 = left handle, 3 = right handle (the engine's `navigatorHit`).
+  let navDrag: { kind: number; startWin: ZoomWindow } | null = null
   const navJson = signal('null')
   // Keyboard focus datum (LOCAL index into the visible rows); -1 = none.
   const focusIdx = signal(-1)
@@ -430,17 +471,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
    * grouped series are zeroed instead of emptied: their layouts walk every
    * series at every index together, and an empty sibling would misalign them.
    */
-  const hideHidden = (series: Series[]): Series[] => {
-    const hidden = hiddenSeries()
-    if (hidden.length === 0) return series
-    return series.map((s, i) => {
-      if (!hidden.includes(i)) return s
-      if (s.kind === 'stacked' || s.kind === 'grouped') {
-        return { ...s, values: s.values.map(() => 0.0), radii: undefined, showValues: false }
-      }
-      return { ...s, values: [], radii: undefined, showValues: false }
-    })
-  }
+  const hideHidden = (series: Series[]): Series[] => hideHiddenSeries(series, hiddenSeries())
 
   const readData = (): T[] => {
     const d = props.data
@@ -501,6 +532,12 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     y2Format: props.y2Format,
     horizontal: props.horizontal === true,
     progress: entrance,
+    // Emphasis speaks VISIBLE indices: the hover already does, the pins are
+    // global and come down by the window's offset (off-window pins are just
+    // not drawn — they are still selected).
+    ...(emphasisOn
+      ? { emphasis: { highlight: hoverIdx(), selected: selected().map((g) => g - off).filter((i) => i >= 0 && i < rows.length) } }
+      : {}),
     }
   }
 
@@ -629,39 +666,21 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     paint(ctx, frame, w, hgt, FONT)
   }
 
-  /** The navigator strip: a mini area of the first series over ALL rows, and the window band with its handles. */
+  /** The navigator strip — engine-laid-out (iOS and Android drive the same one); `navRect` is what the drag measures against. */
   const navigatorCmds = (allRows: T[], w: Double, y0: Double, navH: Double): DrawCmd[] => {
     navRect = null
     if (props.navigator !== true || navH <= 0.0) return []
-    const inset = 8.0
-    const strip: Rect = { x: inset, y: y0 + 6.0, w: Math.max(0.0, w - inset * 2.0), h: navH - 12.0 }
-    navRect = strip
-    const out: DrawCmd[] = []
-    out.push({ kind: 'rect', rect: strip, fill: props.theme?.grid ?? defaultTheme.grid })
     const series = resolveMarks(allRows, props.marks)
     const first = series.find((x) => x.values.length > 1)
-    if (first !== undefined) {
-      let lo = Infinity
-      let hi = -Infinity
-      for (const v of first.values) {
-        if (v !== v) continue
-        if (v < lo) lo = v
-        if (v > hi) hi = v
-      }
-      if (lo !== Infinity) {
-        const safe = first.values.map((v) => (v !== v ? lo : v))
-        const pts = layoutSeriesPoints(safe, strip, { min: Math.min(lo, 0.0), max: hi <= lo ? lo + 1.0 : hi })
-        const last = pts[pts.length - 1]!
-        out.push({ kind: 'polygon', points: [...pts, { x: last.x, y: strip.y + strip.h }, { x: pts[0]!.x, y: strip.y + strip.h }], fill: withAlpha(first.color, 0.35) })
-      }
-    }
-    const win = zoomWin() ?? { start: 0.0, end: 1.0 }
-    const bx0 = strip.x + strip.w * win.start
-    const bx1 = strip.x + strip.w * win.end
-    out.push({ kind: 'rect', rect: { x: bx0, y: strip.y, w: bx1 - bx0, h: strip.h }, fill: 'rgba(37,99,235,0.18)' })
-    out.push({ kind: 'rect', rect: { x: bx0 - 3.0, y: strip.y, w: 6.0, h: strip.h }, fill: '#2563eb' })
-    out.push({ kind: 'rect', rect: { x: bx1 - 3.0, y: strip.y, w: 6.0, h: strip.h }, fill: '#2563eb' })
-    return out
+    const l = renderNavigator(
+      first?.values ?? [],
+      first?.color ?? '#000000',
+      zoomWin() ?? { start: 0.0, end: 1.0 },
+      { x: 0.0, y: 0.0, w, h: y0 + navH },
+      props.theme?.grid ?? defaultTheme.grid,
+    )
+    navRect = l.strip
+    return l.cmds
   }
 
   /** A dashed rectangle around the focused datum's column — the keyboard focus ring. */
@@ -713,6 +732,17 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     })
   }
 
+  /** A datum was picked (click or keyboard): pin it per `selectedMode`, then report the pick. */
+  const pickDatum = (global: number): void => {
+    const mode = props.selectedMode
+    if (mode !== undefined && global >= 0) {
+      const cur = selected()
+      const has = cur.includes(global)
+      selected.set(mode === 'single' ? (has ? [] : [global]) : has ? cur.filter((i) => i !== global) : [...cur, global])
+    }
+    if (props.onSelect !== undefined) props.onSelect(global)
+  }
+
   const handleKeyDown = (ev: KeyboardEvent): void => {
     const key = ev.key
     if (key === 'ArrowRight' || key === 'ArrowUp') moveFocus(1)
@@ -721,8 +751,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     else if (key === 'End') moveFocus(0, viewRows(readData()).length - 1)
     else if (key === 'Enter' || key === ' ') {
       const idx = focusIdx()
-      const cb = props.onSelect
-      if (idx >= 0 && cb !== undefined) cb(idx + viewRange(readData()).from)
+      if (idx >= 0) pickDatum(idx + viewRange(readData()).from)
     } else if (key === 'Escape') {
       batch(() => {
         focusIdx.set(-1)
@@ -785,57 +814,16 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     return out
   }
 
-  /** The brush band — the live drag, or the committed selection. */
+  /** The brush band — the live drag, or the committed selection projected through the window (engine-drawn; iOS and Android paint the same band). */
   const brushCmds = (spec: ChartSpec, measure: (t: string, size: Double) => Double): DrawCmd[] => {
-    const out: DrawCmd[] = []
-    if (props.brush !== true || props.horizontal === true) return out
-    const l = layoutChart(spec, measure)
-    const plot = l.plot
-    let lo = -1.0
-    let hi = -1.0
+    if (props.brush !== true || props.horizontal === true) return []
+    const plot = layoutChart(spec, measure).plot
     const live = brushDrag
+    if (live !== null) return renderBrushBand(plot, live.a < live.b ? live.a : live.b, live.a < live.b ? live.b : live.a, spec.theme.axis)
     const committed = brushSel()
-    if (live !== null) {
-      lo = live.a < live.b ? live.a : live.b
-      hi = live.a < live.b ? live.b : live.a
-    } else if (committed !== null) {
-      const rows = readData()
-      const r = viewRange(rows)
-      const nView = r.to - r.from
-      if (nView <= 0) return out
-      // Committed indices are GLOBAL; place the band over the datum bands of
-      // the visible slice, clipped to the plot when partly zoomed away.
-      const bw = plot.w / nView
-      lo = plot.x + (committed.start - r.from) * bw
-      hi = plot.x + (committed.end - r.from + 1) * bw
-      if (hi < plot.x || lo > plot.x + plot.w) return out
-      if (lo < plot.x) lo = plot.x
-      if (hi > plot.x + plot.w) hi = plot.x + plot.w
-    } else {
-      return out
-    }
-    out.push({
-      kind: 'rect',
-      rect: { x: lo, y: plot.y, w: hi - lo, h: plot.h },
-      fill: 'rgba(99,102,241,0.15)',
-    })
-    out.push({
-      kind: 'line',
-      from: { x: lo, y: plot.y },
-      to: { x: lo, y: plot.y + plot.h },
-      stroke: spec.theme.axis,
-      width: 1.0,
-      dash: [3.0, 3.0],
-    })
-    out.push({
-      kind: 'line',
-      from: { x: hi, y: plot.y },
-      to: { x: hi, y: plot.y + plot.h },
-      stroke: spec.theme.axis,
-      width: 1.0,
-      dash: [3.0, 3.0],
-    })
-    return out
+    if (committed === null) return []
+    const band = brushBand(plot, committed, zoomWin() ?? { start: 0.0, end: 1.0 }, readData().length)
+    return band.visible ? renderBrushBand(plot, band.lo, band.hi, spec.theme.axis) : []
   }
 
   /** The plot rect at the current size — gestures are plot-relative. */
@@ -859,6 +847,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     hiddenSeries()
     hoverIdx()
     zoomWin()
+    selected()
     brushSel()
     legendPage()
     focusIdx()
@@ -916,10 +905,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const pressY = ev.clientY - rect.top
     if (props.navigator === true && navRect !== null && pressY >= navRect.y && pressY <= navRect.y + navRect.h) {
       const win = zoomWin() ?? { start: 0.0, end: 1.0 }
-      const bx0 = navRect.x + navRect.w * win.start
-      const bx1 = navRect.x + navRect.w * win.end
-      const kind = Math.abs(dragStartX - bx0) <= 6.0 ? 'left' : Math.abs(dragStartX - bx1) <= 6.0 ? 'right' : 'move'
-      navDrag = { kind, startWin: win }
+      navDrag = { kind: navigatorHit(navRect, win, dragStartX), startWin: win }
       dragMode = 'nav'
       suppressClick = false
       ev.preventDefault()
@@ -963,14 +949,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       if (Math.abs(x - dragStartX) > 3.0) dragMoved = true
       if (dragMode === 'nav') {
         if (navDrag !== null && navRect !== null && navRect.w > 0.0) {
-          const f = (x - dragStartX) / navRect.w
-          const sw = navDrag.startWin
-          const next =
-            navDrag.kind === 'move'
-              ? clampWindow({ start: sw.start + f, end: sw.end + f })
-              : navDrag.kind === 'left'
-                ? clampWindow({ start: Math.min(sw.start + f, sw.end - 0.02), end: sw.end })
-                : clampWindow({ start: sw.start, end: Math.max(sw.end + f, sw.start + 0.02) })
+          const next = navigatorDrag(navDrag.kind, navDrag.startWin, (x - dragStartX) / navRect.w)
           zoomWin.set(isFullWindow(next) ? null : next)
         }
         dragLastX = x
@@ -997,7 +976,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const px = ev.clientX - rect.left
     const py = ev.clientY - rect.top
     const idx = datumAt(px, py, w, hgt)
-    if (props.crosshair === true) hoverIdx.set(idx)
+    if (props.crosshair === true || eventsOn) hoverIdx.set(idx)
     const box = tip
     if (props.tooltip !== true || box === null) return
     if (idx < 0) {
@@ -1105,13 +1084,9 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       const lx = ev.clientX - r0.left
       const ly = ev.clientY - r0.top
       const p = legendPager
-      const inside = (b: Rect): boolean => lx >= b.x && lx <= b.x + b.w && ly >= b.y && ly <= b.y + b.h
-      if (p.hasPrev && inside(p.prev)) {
-        legendPage.set(p.page - 1)
-        return
-      }
-      if (p.hasNext && inside(p.next)) {
-        legendPage.set(p.page + 1)
+      const d = pagerHit(p, lx, ly)
+      if (d !== 0.0) {
+        legendPage.set(p.page + d)
         return
       }
     }
@@ -1119,17 +1094,13 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       const r0 = el.getBoundingClientRect()
       const lx = ev.clientX - r0.left
       const ly = ev.clientY - r0.top
-      for (let i = 0; i < legendBoxes.length; i++) {
-        const b = legendBoxes[i]!
-        if (lx >= b.x && lx <= b.x + b.w && ly >= b.y && ly <= b.y + b.h) {
-          const hidden = hiddenSeries()
-          hiddenSeries.set(hidden.includes(i) ? hidden.filter((x) => x !== i) : [...hidden, i])
-          return
-        }
+      const i = legendHitIndex(legendBoxes, lx, ly)
+      if (i >= 0) {
+        hiddenSeries.set(legendToggle(hiddenSeries(), i))
+        return
       }
     }
-    const cb = props.onSelect
-    if (cb === undefined) return
+    if (props.onSelect === undefined && props.selectedMode === undefined) return
     const ctx = el.getContext('2d')
     if (ctx === null) return
     const w = drawWidth(el, props.width)
@@ -1140,20 +1111,13 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const px = ev.clientX - rect.left
     // Plot space (see datumAt): the plot sits under the title + legend.
     const py = ev.clientY - rect.top - topOffset
-    // Every BAR mark is hit-testable — plain, stacked and grouped. A line or
-    // area chart still reports -1 rather than guessing at a nearest point the
-    // caller did not ask for.
-    //
-    // Stacked and grouped were skipped by a `kind !== 'bars'` bail whose
-    // comment excused "a line/area chart" — but they draw real rects, so every
-    // click on one reported a miss while `onSelect`'s own contract says it
-    // fires "with the datum index when a bar is tapped". They cannot be asked
-    // one series at a time (each needs the others to place its bars), hence the
-    // separate helper rather than a widened loop condition.
     // Callbacks speak GLOBAL indices — the caller's data never zoomed.
+    // `plotHitBars` (native-crossing, plot-hit.ts) owns EVERY mark kind now —
+    // plain, stacked, and grouped bars all place their rects through it, so
+    // there is no separate loop here to keep in sync with it.
     const off = viewRange(readData()).from
     const idx = plotHitBars(spec, measure, px, py)
-    cb(idx < 0 ? idx : idx + off)
+    pickDatum(idx < 0 ? idx : idx + off)
   })
 
   const a11yInput = (): {
@@ -1228,15 +1192,45 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     'data-pyreon-presets': () => presetBoxesJson(),
     'data-pyreon-nav': () => navJson(),
     'data-pyreon-hover': () => String(hoverIdx()),
+    'data-pyreon-selected': () => selected().join(','),
     ...(keyboardOn ? { tabIndex: 0, onKeyDown: handleKeyDown, onBlur: () => batch(() => { focusIdx.set(-1); announce.set('') }) } : {}),
     ...(props.dataZoom === true ? { onWheel: handleWheel, onDblClick: () => zoomWin.set(null) } : {}),
     ...(props.dataZoom === true || props.brush === true || props.navigator === true
       ? { onMouseDown: handleDown, onMouseUp: endDrag }
       : {}),
-    ...(props.tooltip === true || props.crosshair === true || props.dataZoom === true || props.brush === true || props.navigator === true
+    ...(props.tooltip === true || props.crosshair === true || props.dataZoom === true || props.brush === true || props.navigator === true || eventsOn
       ? { onMouseMove: handleMove, onMouseLeave: handleLeave }
       : {}),
   })
+
+  // The events model: each callback fires when ITS state changes, whoever
+  // changed it (pointer, keyboard, link, dispatch) — one effect per event,
+  // the callback untracked so a handler's own signal reads never subscribe.
+  const fireOnChange = <V,>(read: () => V, same: (a: V, b: V) => boolean, cb: ((v: V) => void) | undefined): void => {
+    if (cb === undefined) return
+    let prev = untrack(read)
+    effect(() => {
+      const v = read()
+      if (same(prev, v)) return
+      prev = v
+      untrack(() => cb(v))
+    })
+  }
+  fireOnChange(
+    () => {
+      const i = hoverIdx()
+      return i < 0 ? -1 : i + viewRange(readData()).from
+    },
+    (a, b) => a === b,
+    props.onHighlight,
+  )
+  fireOnChange(() => selected(), (a, b) => a === b, props.onSelectChange)
+  fireOnChange(() => hiddenSeries(), (a, b) => a === b, props.onLegendChange)
+  fireOnChange(
+    () => zoomWin(),
+    (a, b) => a === b || (a !== null && b !== null && a.start === b.start && a.end === b.end),
+    props.onZoom,
+  )
 
   const tooltipNode = (): VNode =>
     h('div', {

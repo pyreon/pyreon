@@ -435,6 +435,10 @@ export function conditionalKotlinImports(emitted: string): string {
   for (const m of new Set(emitted.match(/\bdetect[A-Za-z]+Gestures\b/g) ?? [])) {
     imports.push(`import androidx.compose.foundation.gestures.${m}`)
   }
+  // `<PlotChart navigator>` (chart-hosts.ts): the strip's drag overlay.
+  if (emitted.includes('detectDragGestures(')) {
+    imports.push('import androidx.compose.foundation.gestures.detectDragGestures')
+  }
   // M3.1 haptics (`const h = useHaptics()`): the Compose haptic surface
   // `LocalHapticFeedback` lives in androidx.compose.ui.platform — NOT
   // covered by the star-imported androidx.compose.ui.* (single-package).

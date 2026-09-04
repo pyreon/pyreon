@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { UNLOWERED_CHART_HOSTS } from '../chart-hosts'
 import { transform } from '../index'
 import {
   isKotlincAvailable,
@@ -443,7 +444,7 @@ describe('chart hosts — <PlotChart marks> (the cartesian family)', () => {
     expect(r.code).toContain('.testTag("revenue")')
     expect(r.code).toContain('Series(kind = "area", values = pyreonValues0, color = "#0f766e", width = 2.0, radius = 3.0, label = "Series 1", showValues = false)')
   })
-  it('a curve option, a non-literal marks array and the unlowered props are reported by name; a bubble mark lowers', () => {
+  it('a curve option and a non-literal marks array are reported by name; a bubble mark lowers; brush (every prop now) stays quiet', () => {
     const r = transform(
       `import { PlotChart, bubble, line, monotoneCurve } from '@pyreon/charts/plot'
 interface Row { n: string; v: number; r: number }
@@ -455,7 +456,8 @@ export function C() { return (<><PlotChart data={ROWS} marks={[bubble((d) => d.v
     const w = r.warnings.join('\n')
     expect(w).not.toContain('bubble')
     expect(w).toContain('<PlotChart> mark 1: a `curve` callback is not lowered')
-    expect(w).toContain('<PlotChart>: `brush` is not lowered on native yet')
+    // Every PlotChart prop lowers now; the by-name warning list is empty and must stay silent.
+    expect(w).not.toContain('is not lowered on native yet')
     expect(w).toContain('<PlotChart marks>: must be an inline array of mark calls')
   })
   it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine + measurer) accepts the plot emit', () => {
@@ -496,7 +498,7 @@ describe('chart hosts — legend + title chrome (Plot / Pie / Radar)', () => {
     const r = transform(CHROME, { target: 'swift' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('let pyreonTitle: TitleLayout = renderTitle("Revenue", "by month", PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 220.0), TitleOptions(fontSize: 15.0, color: "#5a6b7a", align: "start"))')
-    expect(r.code).toContain('let pyreonLegend: LegendLayout = renderLegend(pyreonSeries.map { LegendEntry(label: $0.label, color: $0.color) }, PyreonChartRect(x: 0.0, y: pyreonTitle.height, w: Double(pyreonGeo.size.width), h: 220.0 - pyreonTitle.height), LegendOptions(fontSize: 11.0, labelColor: "#5a6b7a", swatch: 10.0, gap: 12.0, orientation: "horizontal", maxRows: 2.0), pyreonChartMeasure)')
+    expect(r.code).toContain('let pyreonLegend: LegendLayout = renderLegend(pyreonSeriesAll.enumerated().map { (pyreonI, pyreonS) in LegendEntry(label: pyreonS.label, color: pyreonS.color, muted: pyreonHidden.contains(pyreonI)) }, PyreonChartRect(x: 0.0, y: pyreonTitle.height, w: Double(pyreonGeo.size.width), h: 220.0 - pyreonTitle.height), LegendOptions(fontSize: 11.0, labelColor: "#5a6b7a", swatch: 10.0, gap: 12.0, orientation: "horizontal", maxRows: 2.0, page: pyreonLegendPage), pyreonChartMeasure)')
     expect(r.code).toContain('let pyreonTop: Double = pyreonTitle.height + pyreonLegend.height')
     expect(r.code).toContain('ChartSpec(width: Double(pyreonGeo.size.width), height: 220.0 - pyreonTop, series: pyreonSeries')
     expect(r.code).toContain('PyreonChartCanvas(cmds: pyreonTitle.cmds + pyreonLegend.cmds + pyreonShiftCmds(renderChart(pyreonSpec, pyreonChartMeasure), pyreonTop))')
@@ -515,7 +517,7 @@ describe('chart hosts — legend + title chrome (Plot / Pie / Radar)', () => {
     const r = transform(CHROME, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('val pyreonTitle: TitleLayout = renderTitle("Revenue", "by month", PyreonChartRect(0.0, 0.0, pyreonW, 220.0), TitleOptions(fontSize = 15.0, color = "#5a6b7a", align = "start"))')
-    expect(r.code).toContain('val pyreonLegend: LegendLayout = renderLegend(pyreonSeries.map { LegendEntry(label = it.label, color = it.color) }, PyreonChartRect(0.0, pyreonTitle.height, pyreonW, 220.0 - pyreonTitle.height), LegendOptions(fontSize = 11.0, labelColor = "#5a6b7a", swatch = 10.0, gap = 12.0, orientation = "horizontal", maxRows = 2.0), ::pyreonChartMeasure)')
+    expect(r.code).toContain('val pyreonLegend: LegendLayout = renderLegend(pyreonSeriesAll.mapIndexed { pyreonI, pyreonS -> LegendEntry(label = pyreonS.label, color = pyreonS.color, muted = pyreonHidden.contains(pyreonI)) }, PyreonChartRect(0.0, pyreonTitle.height, pyreonW, 220.0 - pyreonTitle.height), LegendOptions(fontSize = 11.0, labelColor = "#5a6b7a", swatch = 10.0, gap = 12.0, orientation = "horizontal", maxRows = 2.0, page = pyreonLegendPage), ::pyreonChartMeasure)')
     expect(r.code).toContain('PyreonChartCanvas(cmds = pyreonTitle.cmds + pyreonLegend.cmds + pyreonShiftCmds(renderChart(pyreonSpec, ::pyreonChartMeasure), pyreonTop)')
     expect(r.code).toContain('plotHitBars(pyreonSpec, ::pyreonChartMeasure, (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble() - pyreonTop)')
     expect(r.code).toContain('val pyreonItems: List<Slice> = TEAMS.mapIndexed { pyreonI, pyreonD -> Slice(')
@@ -770,5 +772,453 @@ describe('chart hosts — <PlotChart zoomPresets> as the engine-laid-out preset 
   it.skipIf(!isKotlincAvailable())('kotlinc (stub bundle + real engine) accepts it', () => {
     const r = validateKotlin(transform(PRESETS_ZOOMED, { target: 'kotlin' }).code)
     expect(r.ok, r.error ?? '').toBe(true)
+  })
+})
+
+
+const LEGEND = `import { signal } from '@pyreon/reactivity'
+import { Stack, Text } from '@pyreon/primitives'
+import { PlotChart, bars, line } from '@pyreon/charts/plot'
+interface Day { label: string; hits: number; avg: number }
+const DAYS: Day[] = [{ label: 'Mon', hits: 3, avg: 2 }, { label: 'Tue', hits: 5, avg: 3 }, { label: 'Wed', hits: 2, avg: 3 }, { label: 'Thu', hits: 7, avg: 4 }]
+export function Traffic() {
+  const picked = signal(-1)
+  return (
+    <Stack>
+      <Text>{picked()}</Text>
+      <PlotChart data={DAYS} x={(d) => d.label} marks={[bars((d) => d.hits, { label: 'Hits' }), line((d) => d.avg, { label: 'Avg' })]} showLegend={true} legendMaxRows={1} height={200} onSelect={(i: number) => picked.set(i)} />
+    </Stack>
+  )
+}`
+
+const LEGEND_NO_TOGGLE = LEGEND.replace('showLegend={true}', 'showLegend={true} legendToggle={false}')
+const LEGEND_NO_PAGING = LEGEND.replace(' legendMaxRows={1}', '')
+const LEGEND_WITH_PRESETS = LEGEND.replace('showLegend={true}', "showLegend={true} zoomPresets={[{ label: 'last 2', count: 2 }, { label: 'all', count: 0 }]}")
+
+describe('chart hosts — <PlotChart showLegend> legend tap toggle + paging', () => {
+  it('Swift: the hidden set and the page are host state; the plot draws what hideHiddenSeries leaves; entries render muted; the tap checks the pager, then the entries, then selects', () => {
+    const r = transform(LEGEND, { target: 'swift' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('@State private var pyreonHidden: [Int] = []')
+    expect(r.code).toContain('@State private var pyreonLegendPage: Double = 0.0')
+    expect(r.code.indexOf('@State private var pyreonHidden')).toBeLessThan(r.code.indexOf('var body: some View'))
+    expect(r.code).toContain('let pyreonSeriesAll: [Series] = [Series(kind: "bars", values: pyreonValues0, ')
+    expect(r.code).toContain('let pyreonSeries: [Series] = hideHiddenSeries(pyreonSeriesAll, pyreonHidden)')
+    expect(r.code).toContain(
+      'renderLegend(pyreonSeriesAll.enumerated().map { (pyreonI, pyreonS) in LegendEntry(label: pyreonS.label, color: pyreonS.color, muted: pyreonHidden.contains(pyreonI)) }, PyreonChartRect(x: 0.0, y: pyreonTitle.height, w: Double(pyreonGeo.size.width), h: 200.0 - pyreonTitle.height), LegendOptions(fontSize: 11.0, labelColor: "#5a6b7a", swatch: 10.0, gap: 12.0, orientation: "horizontal", maxRows: 1.0, page: pyreonLegendPage), pyreonChartMeasure)',
+    )
+    expect(r.code).toContain(
+      'let pyreonPageDelta: Double = pyreonLegend.pager.map { pagerHit($0, Double(pyreonTap.location.x), Double(pyreonTap.location.y)) } ?? 0.0; let pyreonLegendHit = legendHitIndex(pyreonLegend.boxes, Double(pyreonTap.location.x), Double(pyreonTap.location.y)); if pyreonPageDelta != 0.0 { pyreonLegendPage = (pyreonLegend.pager?.page ?? 0.0) + pyreonPageDelta } else if pyreonLegendHit >= 0 { pyreonHidden = legendToggle(pyreonHidden, pyreonLegendHit) } else {',
+    )
+    // The plot is still hit-tested in PLOT space (under the chrome).
+    expect(r.code).toContain('plotHitBars(pyreonSpec, pyreonChartMeasure, Double(pyreonTap.location.x), Double(pyreonTap.location.y) - pyreonTop)')
+  })
+  it('Kotlin: the same shape over remembered state', () => {
+    const r = transform(LEGEND, { target: 'kotlin' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('var pyreonHidden by remember { mutableStateOf(listOf<Int>()) }')
+    expect(r.code).toContain('var pyreonLegendPage by remember { mutableStateOf(0.0) }')
+    expect(r.code).toContain('val pyreonSeriesAll: List<Series> = listOf(Series(kind = "bars", values = pyreonValues0, ')
+    expect(r.code).toContain('val pyreonSeries: List<Series> = hideHiddenSeries(pyreonSeriesAll, pyreonHidden)')
+    expect(r.code).toContain('renderLegend(pyreonSeriesAll.mapIndexed { pyreonI, pyreonS -> LegendEntry(label = pyreonS.label, color = pyreonS.color, muted = pyreonHidden.contains(pyreonI)) }, ')
+    expect(r.code).toContain('orientation = "horizontal", maxRows = 1.0, page = pyreonLegendPage), ::pyreonChartMeasure)')
+    expect(r.code).toContain(
+      'val pyreonPageDelta = pyreonLegend.pager?.let { pagerHit(it, (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble()) } ?: 0.0; val pyreonLegendHit = legendHitIndex(pyreonLegend.boxes, (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble()); if (pyreonPageDelta != 0.0) { pyreonLegendPage = (pyreonLegend.pager?.page ?: 0.0) + pyreonPageDelta } else if (pyreonLegendHit >= 0) { pyreonHidden = legendToggle(pyreonHidden, pyreonLegendHit) } else {',
+    )
+  })
+  it('legendToggle={false} keeps the legend inert: no hidden set, no toggle branch — paging stays', () => {
+    const s = transform(LEGEND_NO_TOGGLE, { target: 'swift' })
+    expect(s.warnings).toEqual([])
+    expect(s.code).not.toContain('pyreonHidden')
+    expect(s.code).toContain('let pyreonSeries: [Series] = [Series(kind: "bars"')
+    expect(s.code).toContain('pyreonLegendPage')
+    const k = transform(LEGEND_NO_TOGGLE, { target: 'kotlin' })
+    expect(k.code).not.toContain('pyreonHidden')
+    expect(k.code).toContain('pyreonLegendPage')
+  })
+  it('without legendMaxRows there is no page state and no pager branch — the toggle stays', () => {
+    const s = transform(LEGEND_NO_PAGING, { target: 'swift' })
+    expect(s.warnings).toEqual([])
+    expect(s.code).not.toContain('pyreonLegendPage')
+    expect(s.code).not.toContain('pagerHit')
+    expect(s.code).toContain('let pyreonLegendHit = legendHitIndex(pyreonLegend.boxes, Double(pyreonTap.location.x), Double(pyreonTap.location.y)); if pyreonLegendHit >= 0 { pyreonHidden = legendToggle(pyreonHidden, pyreonLegendHit) } else {')
+    const k = transform(LEGEND_NO_PAGING, { target: 'kotlin' })
+    expect(k.code).not.toContain('pyreonLegendPage')
+    expect(k.code).toContain('if (pyreonLegendHit >= 0) { pyreonHidden = legendToggle(pyreonHidden, pyreonLegendHit) } else {')
+  })
+  it('with presets too, the tap order is pager → legend entry → preset → selection', () => {
+    const s = transform(LEGEND_WITH_PRESETS, { target: 'swift' })
+    expect(s.warnings).toEqual([])
+    expect(s.code).toContain('} else if pyreonLegendHit >= 0 { pyreonHidden = legendToggle(pyreonHidden, pyreonLegendHit) } else if pyreonPreset >= 0 { pyreonZoom = presetWindow(pyreonPresets[pyreonPreset].count, DAYS.count) } else {')
+    const k = transform(LEGEND_WITH_PRESETS, { target: 'kotlin' })
+    expect(k.warnings).toEqual([])
+    expect(k.code).toContain('} else if (pyreonLegendHit >= 0) { pyreonHidden = legendToggle(pyreonHidden, pyreonLegendHit) } else if (pyreonPreset >= 0) { pyreonZoom = presetWindow(pyreonPresets[pyreonPreset].count, DAYS.size) } else {')
+  })
+  it('a plot without a legend gets none of it', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(PRESETS, { target })
+      expect(r.code).not.toContain('pyreonHidden')
+      expect(r.code).not.toContain('pyreonLegendPage')
+      expect(r.code).not.toContain('legendHitIndex')
+    }
+  })
+  it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine) accepts the legend-interaction emit', () => {
+    const r = validateSwiftWithStubs(transform(LEGEND_WITH_PRESETS, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isSwiftUIAvailable())('swiftc against real SwiftUI + canvas + engine accepts it', () => {
+    const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(ENGINE_SWIFT) + '\n' + transform(LEGEND_WITH_PRESETS, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isKotlincAvailable())('kotlinc (stub bundle + real engine) accepts it', () => {
+    const r = validateKotlin(transform(LEGEND_WITH_PRESETS, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+})
+
+
+const NAV = `import { signal } from '@pyreon/reactivity'
+import { Stack, Text } from '@pyreon/primitives'
+import { PlotChart, line } from '@pyreon/charts/plot'
+interface Day { label: string; hits: number }
+const DAYS: Day[] = [{ label: 'Mon', hits: 3 }, { label: 'Tue', hits: 5 }, { label: 'Wed', hits: 2 }, { label: 'Thu', hits: 7 }]
+export function Traffic() {
+  const picked = signal(-1)
+  return (
+    <Stack>
+      <Text>{picked()}</Text>
+      <PlotChart data={DAYS} x={(d) => d.label} marks={[line((d) => d.hits)]} navigator={true} height={240} onSelect={(i: number) => picked.set(i)} />
+    </Stack>
+  )
+}`
+const NAV_ZOOMED = NAV.replace('navigator={true}', 'navigator={true} dataZoom={true}')
+const NAV_PRESETS = NAV.replace('navigator={true}', "navigator={true} zoomPresets={[{ label: 'last 2', count: 2 }, { label: 'all', count: 0 }]}")
+const NAV_NO_MARKS = NAV.replace('marks={[line((d) => d.hits)]}', 'marks={[]}')
+
+describe('chart hosts — <PlotChart navigator> as the engine-laid-out slider strip with its own drag overlay', () => {
+  it('Swift: the strip is renderNavigator over the first mark across ALL rows; the drag rides a clear overlay above the strip', () => {
+    const r = transform(NAV, { target: 'swift' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('@State private var pyreonZoom: ZoomWindow = ZoomWindow(start: 0.0, end: 1.0)')
+    expect(r.code).toContain('@State private var pyreonNavKind: Int = 0')
+    expect(r.code).toContain('@State private var pyreonNavAnchor: ZoomWindow = ZoomWindow(start: 0.0, end: 1.0)')
+    // The window slices the rows the PLOT draws; the navigator sees every row.
+    expect(r.code).toContain('let pyreonValues0: [Double] = pyreonRows.enumerated().map { (_, pyreonD) -> Double in pyreonChartDouble(pyreonD.hits) }')
+    expect(r.code).toContain('let pyreonNavValues: [Double] = DAYS.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(pyreonD.hits) }')
+    expect(r.code).toContain('let pyreonNavigator: NavigatorLayout = renderNavigator(pyreonNavValues, pyreonSeries[0].color, pyreonZoom, PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 240.0), pyreonTheme.grid)')
+    expect(r.code).toContain('height: 240.0 - pyreonNavigator.height')
+    expect(r.code).toContain('PyreonChartCanvas(cmds: renderChart(pyreonSpec, pyreonChartMeasure) + pyreonNavigator.cmds)')
+    expect(r.code).toContain('ZStack(alignment: .bottom) { PyreonChartCanvas(')
+    expect(r.code).toContain(
+      'Color.clear.contentShape(Rectangle()).frame(height: pyreonNavigator.height).gesture(DragGesture(minimumDistance: 0).onChanged { pyreonNav in if pyreonNavKind == 0 { pyreonNavAnchor = pyreonZoom; pyreonNavKind = navigatorHit(pyreonNavigator.strip, pyreonZoom, Double(pyreonNav.startLocation.x)) }; pyreonZoom = navigatorDrag(pyreonNavKind, pyreonNavAnchor, Double(pyreonNav.translation.width) / pyreonNavigator.strip.w) }.onEnded { _ in pyreonNavKind = 0 })',
+    )
+    expect(r.code).not.toContain('MagnificationGesture')
+  })
+  it('Kotlin: the same strip over remembered state; the drag is a Box laid over the strip with detectDragGestures', () => {
+    const r = transform(NAV, { target: 'kotlin' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('var pyreonNavKind by remember { mutableStateOf(0) }')
+    expect(r.code).toContain('var pyreonNavAnchor by remember { mutableStateOf(ZoomWindow(start = 0.0, end = 1.0)) }')
+    expect(r.code).toContain('val pyreonNavValues: List<Double> = DAYS.mapIndexed { pyreonI, pyreonD -> (pyreonD.hits).toDouble() }')
+    expect(r.code).toContain('val pyreonNavigator: NavigatorLayout = renderNavigator(pyreonNavValues, pyreonSeries[0].color, pyreonZoom, PyreonChartRect(0.0, 0.0, pyreonW, 240.0), pyreonTheme.grid)')
+    expect(r.code).toContain('height = 240.0 - pyreonNavigator.height')
+    expect(r.code).toContain('Box(modifier = Modifier.fillMaxWidth().height((240.0).dp)')
+    expect(r.code).toContain('PyreonChartCanvas(cmds = renderChart(pyreonSpec, ::pyreonChartMeasure) + pyreonNavigator.cmds, modifier = Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures {')
+    expect(r.code).toContain(
+      'Box(modifier = Modifier.fillMaxWidth().offset(y = ((240.0) - pyreonNavigator.height).dp).height((pyreonNavigator.height).dp).pointerInput(Unit) { detectDragGestures(onDragStart = { pyreonStart -> pyreonNavAnchor = pyreonZoom; pyreonNavDx = 0.0; pyreonNavKind = navigatorHit(pyreonNavigator.strip, pyreonZoom, (pyreonStart.x / pyreonDensity).toDouble()) }, onDragEnd = { pyreonNavKind = 0 }, onDrag = { pyreonChange, pyreonDrag -> pyreonChange.consume(); pyreonNavDx = pyreonNavDx + (pyreonDrag.x / pyreonDensity).toDouble(); pyreonZoom = navigatorDrag(pyreonNavKind, pyreonNavAnchor, pyreonNavDx / pyreonNavigator.strip.w) }) })',
+    )
+  })
+  it('with presets too, the navigator sits ABOVE the preset strip and the plot gives up both', () => {
+    const s = transform(NAV_PRESETS, { target: 'swift' })
+    expect(s.warnings).toEqual([])
+    expect(s.code).toContain('PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 240.0 - pyreonPresetStrip.height), pyreonTheme.grid)')
+    expect(s.code).toContain('height: 240.0 - pyreonPresetStrip.height - pyreonNavigator.height')
+    expect(s.code).toContain('+ pyreonNavigator.cmds + pyreonPresetStrip.cmds)')
+    expect(s.code).toContain('.frame(height: pyreonNavigator.height).padding(.bottom, pyreonPresetStrip.height).gesture(')
+    const k = transform(NAV_PRESETS, { target: 'kotlin' })
+    expect(k.warnings).toEqual([])
+    expect(k.code).toContain('.offset(y = ((240.0) - pyreonPresetStrip.height - pyreonNavigator.height).dp)')
+  })
+  it('with dataZoom too, a navigator drag re-anchors the pinch window and the plot keeps its gestures', () => {
+    const s = transform(NAV_ZOOMED, { target: 'swift' })
+    expect(s.warnings).toEqual([])
+    expect(s.code).toContain('.onEnded { _ in pyreonNavKind = 0; pyreonZoomAnchor = pyreonZoom })')
+    expect(s.code).toContain('MagnificationGesture()')
+    const k = transform(NAV_ZOOMED, { target: 'kotlin' })
+    expect(k.code).toContain('detectTransformGestures')
+    expect(k.code).toContain('detectDragGestures(')
+  })
+  it('a navigator with no marks warns BY NAME and renders the chart without it', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(NAV_NO_MARKS, { target })
+      expect(r.warnings).toEqual(['<PlotChart navigator>: needs at least one mark (the strip shows the first one); the chart renders without the navigator.'])
+      expect(r.code).not.toContain('pyreonNavigator')
+    }
+  })
+  it('a plot without a navigator gets none of it, and the frame host emit is unchanged', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(PRESETS, { target })
+      expect(r.code).not.toContain('pyreonNavigator')
+      expect(r.code).not.toContain('pyreonNavKind')
+    }
+    expect(transform(PRESETS, { target: 'kotlin' }).code).toContain('PyreonChartCanvas(cmds = renderChart(pyreonSpec, ::pyreonChartMeasure) + pyreonPresetStrip.cmds, modifier = Modifier.fillMaxWidth().height((200.0).dp).pointerInput(Unit) {')
+  })
+  it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine) accepts the navigator emit', () => {
+    const r = validateSwiftWithStubs(transform(NAV_PRESETS.replace('navigator={true}', 'navigator={true} dataZoom={true}'), { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isSwiftUIAvailable())('swiftc against real SwiftUI + canvas + engine accepts it', () => {
+    const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(ENGINE_SWIFT) + '\n' + transform(NAV_PRESETS.replace('navigator={true}', 'navigator={true} dataZoom={true}'), { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isKotlincAvailable())('kotlinc (stub bundle + real engine) accepts it', () => {
+    const r = validateKotlin(transform(NAV_PRESETS.replace('navigator={true}', 'navigator={true} dataZoom={true}'), { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+})
+
+
+const BRUSH = `import { signal } from '@pyreon/reactivity'
+import { Stack, Text } from '@pyreon/primitives'
+import { PlotChart, bars } from '@pyreon/charts/plot'
+import type { BrushRange } from '@pyreon/charts/plot'
+interface Day { label: string; hits: number }
+const DAYS: Day[] = [{ label: 'Mon', hits: 3 }, { label: 'Tue', hits: 5 }, { label: 'Wed', hits: 2 }, { label: 'Thu', hits: 7 }]
+export function Traffic() {
+  const picked = signal(-1)
+  const sel = signal('')
+  const onBrush = (r: BrushRange | null) => {
+    if (r === null) {
+      sel.set('')
+    } else {
+      sel.set(String(r.start) + '-' + String(r.end))
+    }
+  }
+  return (
+    <Stack>
+      <Text>{picked()}</Text>
+      <Text>{sel()}</Text>
+      <PlotChart data={DAYS} x={(d) => d.label} marks={[bars((d) => d.hits)]} brush={true} height={200} onBrush={onBrush} onSelect={(i: number) => picked.set(i)} />
+    </Stack>
+  )
+}`
+const BRUSH_NO_HANDLER = BRUSH.replace(' onBrush={onBrush}', '')
+const BRUSH_INLINE = BRUSH.replace('onBrush={onBrush}', "onBrush={(r: BrushRange | null) => sel.set(r === null ? '' : String(r.start))}")
+const BRUSH_ZOOMED = BRUSH.replace('brush={true}', 'brush={true} dataZoom={true}')
+const BRUSH_PRESETS = BRUSH.replace('brush={true}', "brush={true} zoomPresets={[{ label: 'last 2', count: 2 }, { label: 'all', count: 0 }]}")
+
+describe('chart hosts — <PlotChart brush onBrush> as a plain drag over the engine\'s range mapping', () => {
+  it('Swift: the committed range and the live span are host state; the band rides inside the chrome wrap; a drag selects through brushRange and a plain tap clears', () => {
+    const r = transform(BRUSH, { target: 'swift' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('@State private var pyreonBrushStart: Int = -1')
+    expect(r.code).toContain('@State private var pyreonBrushEnd: Int = -1')
+    expect(r.code).toContain('@State private var pyreonBrushA: Double = -1.0')
+    expect(r.code).toContain('@State private var pyreonBrushB: Double = -1.0')
+    expect(r.code).not.toContain('pyreonZoom')
+    expect(r.code).toContain('let pyreonPlot: PyreonChartRect = layoutChart(pyreonSpec, pyreonChartMeasure).plot')
+    expect(r.code).toContain(
+      'let pyreonBrushCmds: [PyreonDrawCmd] = pyreonBrushA >= 0.0 ? renderBrushBand(pyreonPlot, min(pyreonBrushA, pyreonBrushB), max(pyreonBrushA, pyreonBrushB), pyreonSpec.theme.axis) : pyreonBrushStart >= 0 ? { () -> [PyreonDrawCmd] in let pyreonBand = brushBand(pyreonPlot, BrushRange(start: pyreonBrushStart, end: pyreonBrushEnd), ZoomWindow(start: 0.0, end: 1.0), DAYS.count); return pyreonBand.visible ? renderBrushBand(pyreonPlot, pyreonBand.lo, pyreonBand.hi, pyreonSpec.theme.axis) : [] }() : []',
+    )
+    expect(r.code).toContain('PyreonChartCanvas(cmds: renderChart(pyreonSpec, pyreonChartMeasure) + pyreonBrushCmds)')
+    expect(r.code).toContain('if abs(pyreonTap.translation.width) < 6.0 && abs(pyreonTap.translation.height) < 6.0 { if pyreonBrushStart >= 0 { pyreonBrushStart = -1; pyreonBrushEnd = -1; onBrush(nil) } else {')
+    expect(r.code).toContain(
+      '.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { pyreonBrushDrag in pyreonBrushA = Double(pyreonBrushDrag.startLocation.x); pyreonBrushB = Double(pyreonBrushDrag.location.x) }.onEnded { pyreonBrushDrag in let pyreonSel: BrushRange = brushRange(pyreonPlot.x, pyreonPlot.w, Double(pyreonBrushDrag.startLocation.x), Double(pyreonBrushDrag.location.x), ZoomWindow(start: 0.0, end: 1.0), DAYS.count); pyreonBrushStart = pyreonSel.start; pyreonBrushEnd = pyreonSel.end; pyreonBrushA = -1.0; pyreonBrushB = -1.0; onBrush(pyreonSel) })',
+    )
+    // The named handler narrows its optional through the null compare.
+    expect(r.code).toContain('private func onBrush(_ r: BrushRange?) {\n    if let r {')
+  })
+  it('Kotlin: remembered state, the band in the wrap, detectDragGestures selects, the tap clears', () => {
+    const r = transform(BRUSH, { target: 'kotlin' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('var pyreonBrushStart by remember { mutableStateOf(-1) }')
+    expect(r.code).toContain('val pyreonPlot: PyreonChartRect = layoutChart(pyreonSpec, ::pyreonChartMeasure).plot')
+    expect(r.code).toContain('renderChart(pyreonSpec, ::pyreonChartMeasure) + pyreonBrushCmds')
+    expect(r.code).toContain('if (pyreonBrushStart >= 0) { pyreonBrushStart = -1; pyreonBrushEnd = -1; onBrush(null) } else {')
+    expect(r.code).toContain(
+      '.pointerInput(Unit) { detectDragGestures(onDragStart = { pyreonStart -> pyreonBrushA = (pyreonStart.x / pyreonDensity).toDouble(); pyreonBrushB = pyreonBrushA }, onDragEnd = { val pyreonSel: BrushRange = brushRange(pyreonPlot.x, pyreonPlot.w, pyreonBrushA, pyreonBrushB, ZoomWindow(start = 0.0, end = 1.0), DAYS.size); pyreonBrushStart = pyreonSel.start; pyreonBrushEnd = pyreonSel.end; pyreonBrushA = -1.0; pyreonBrushB = -1.0; onBrush(pyreonSel) }, onDrag = { pyreonChange, pyreonDrag -> pyreonChange.consume(); pyreonBrushB = pyreonBrushB + (pyreonDrag.x / pyreonDensity).toDouble() }) }',
+    )
+    expect(r.code).toContain('fun onBrush(r: BrushRange?) {\n    if (r == null) {')
+  })
+  it('without onBrush the brush still selects and draws; nothing is called', () => {
+    const s = transform(BRUSH_NO_HANDLER, { target: 'swift' })
+    expect(s.warnings).toEqual([])
+    expect(s.code).toContain('pyreonBrushA = -1.0; pyreonBrushB = -1.0 })')
+    expect(s.code).toContain('{ pyreonBrushStart = -1; pyreonBrushEnd = -1 } else {')
+    const k = transform(BRUSH_NO_HANDLER, { target: 'kotlin' })
+    expect(k.warnings).toEqual([])
+    expect(k.code).toContain('pyreonBrushA = -1.0; pyreonBrushB = -1.0 }, onDrag')
+  })
+  it('an inline onBrush arrow warns BY NAME on both targets; the brush still selects', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(BRUSH_INLINE, { target })
+      expect(r.warnings).toEqual(['<PlotChart onBrush>: must be a NAMED handler (`const onBrush = (r: BrushRange | null) => …`) on native — an inline arrow is not lowered; the brush still selects, without the callback.'])
+      expect(r.code).toContain('brushRange(pyreonPlot.x, pyreonPlot.w')
+    }
+  })
+  it('brush + dataZoom warns BY NAME (the web needs Shift there) and renders without the brush', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(BRUSH_ZOOMED, { target })
+      expect(r.warnings).toEqual(['<PlotChart brush>: with `dataZoom` the web brushes on Shift+drag, which touch has not — on native the plain drag pans, so the brush stays web-only in that combination; the chart renders without it.'])
+      expect(r.code).not.toContain('pyreonBrush')
+    }
+  })
+  it('with presets the brush maps through the host window and the tap order is preset → brush clear → selection', () => {
+    const s = transform(BRUSH_PRESETS, { target: 'swift' })
+    expect(s.warnings).toEqual([])
+    expect(s.code).toContain('brushRange(pyreonPlot.x, pyreonPlot.w, Double(pyreonBrushDrag.startLocation.x), Double(pyreonBrushDrag.location.x), pyreonZoom, DAYS.count)')
+    expect(s.code).toContain('} else if pyreonBrushStart >= 0 { pyreonBrushStart = -1; pyreonBrushEnd = -1; onBrush(nil) } else {')
+    const k = transform(BRUSH_PRESETS, { target: 'kotlin' })
+    expect(k.code).toContain('} else if (pyreonBrushStart >= 0) { pyreonBrushStart = -1; pyreonBrushEnd = -1; onBrush(null) } else {')
+  })
+  it('a plot without brush gets none of it', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(PRESETS, { target })
+      expect(r.code).not.toContain('pyreonBrush')
+      expect(r.code).not.toContain('layoutChart(pyreonSpec')
+    }
+  })
+  it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine) accepts the brush emit', () => {
+    const r = validateSwiftWithStubs(transform(BRUSH_PRESETS, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isSwiftUIAvailable())('swiftc against real SwiftUI + canvas + engine accepts it', () => {
+    const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(ENGINE_SWIFT) + '\n' + transform(BRUSH_PRESETS, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isKotlincAvailable())('kotlinc (stub bundle + real engine) accepts it', () => {
+    const r = validateKotlin(transform(BRUSH_PRESETS, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+})
+
+
+const CALENDAR = `import { signal } from '@pyreon/reactivity'
+import { Stack, Text } from '@pyreon/primitives'
+import { CalendarChart } from '@pyreon/charts/plot'
+export function Activity() {
+  const picked = signal(-1)
+  return (
+    <Stack>
+      <Text>{picked()}</Text>
+      <CalendarChart start="2026-01-01" end="2026-02-28" values={{ '2026-01-05': 3, '2026-01-20': 7.5 }} calendar={{ firstDay: 1 }} height={160} onSelectIndex={(i: number) => picked.set(i)} />
+    </Stack>
+  )
+}`
+const CALENDAR_CALL = CALENDAR.replace("values={{ '2026-01-05': 3, '2026-01-20': 7.5 }}", 'values={hitsOf()}').replace('export function Activity()', "const hitsOf = () => ({ '2026-01-05': 3 })\nexport function Activity()")
+
+const PARALLEL = `import { signal } from '@pyreon/reactivity'
+import { Stack, Text } from '@pyreon/primitives'
+import { ParallelChart } from '@pyreon/charts/plot'
+import type { ParallelAxis } from '@pyreon/charts/plot'
+const AXES: ParallelAxis[] = [{ name: 'Cyl', type: 'category', categories: ['4', '6', '8'] }, { name: 'MPG' }]
+const axesOf = (): ParallelAxis[] => AXES
+export function Cars() {
+  const picked = signal(-1)
+  return (
+    <Stack>
+      <Text>{picked()}</Text>
+      <ParallelChart axes={AXES} rows={[['4', 30], ['8', null], ['x', 22]]} gutter={30} height={260} onSelectIndex={(i: number) => picked.set(i)} />
+    </Stack>
+  )
+}`
+const PARALLEL_AXES_CALL = PARALLEL.replace('axes={AXES}', 'axes={axesOf()}')
+const PARALLEL_ROW_COLOR = PARALLEL.replace('gutter={30}', "gutter={30} rowColor={(r, i) => (i === 0 ? '#b42318' : '#0f766e')}")
+
+describe('chart hosts — CalendarChart + ParallelChart lower through literal adapters (the unlowered list is down to OptionChart)', () => {
+  it('Swift: a values record becomes [CalendarValue]; the layout is the web host\'s box; the tap is hitCalendarIndex', () => {
+    const r = transform(CALENDAR, { target: 'swift' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain(
+      'PyreonChartCanvas(cmds: renderCalendar(layoutCalendar("2026-01-01", "2026-02-28", PyreonChartRect(x: 4.0, y: 4.0, w: Double(pyreonGeo.size.width) - 8.0, h: 160.0 - 8.0), CalendarOptions(firstDay: Double(1))), [CalendarValue(date: "2026-01-05", value: 3.0), CalendarValue(date: "2026-01-20", value: 7.5)], CalendarOptions(firstDay: Double(1))))',
+    )
+    expect(r.code).toContain('hitCalendarIndex(layoutCalendar("2026-01-01", "2026-02-28", ')
+  })
+  it('Kotlin: the same through listOf / named args', () => {
+    const r = transform(CALENDAR, { target: 'kotlin' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain(
+      'renderCalendar(layoutCalendar("2026-01-01", "2026-02-28", PyreonChartRect(4.0, 4.0, pyreonW - 8.0, 160.0 - 8.0), CalendarOptions(firstDay = (1).toDouble())), listOf(CalendarValue(date = "2026-01-05", value = 3.0), CalendarValue(date = "2026-01-20", value = 7.5)), CalendarOptions(firstDay = (1).toDouble()))',
+    )
+  })
+  it('a values record that is not a literal (a call) warns BY NAME on both targets', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(CALENDAR_CALL, { target })
+      expect(r.warnings).toEqual(["<CalendarChart values>: must be an inline `{ 'YYYY-MM-DD': n }` literal, or a module const holding one, on native (a record does not cross); emitting nothing."])
+      expect(r.code).not.toContain('renderCalendar(')
+    }
+  })
+  it('Swift: parallel rows become [[Double]] — a category resolves to its index through the typed AXES const, a null or an unknown category is NaN; the gutter defaults to the web\'s 40 and is overridable', () => {
+    const r = transform(PARALLEL, { target: 'swift' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain(
+      'layoutParallel(AXES, [[0.0, 30.0], [2.0, Double.nan], [Double.nan, 22.0]], PyreonChartRect(x: 30.0, y: 8.0, w: max(0.0, Double(pyreonGeo.size.width) - 30.0 * 2.0), h: max(0.0, 260.0 - 16.0)), nil)',
+    )
+    expect(r.code).toContain('renderParallel(layoutParallel(')
+    expect(r.code).toContain('hitParallelIndex(layoutParallel(')
+    const noGutter = transform(PARALLEL.replace(' gutter={30}', ''), { target: 'swift' })
+    expect(noGutter.code).toContain('PyreonChartRect(x: 40.0, y: 8.0, w: max(0.0, Double(pyreonGeo.size.width) - 40.0 * 2.0), h: max(0.0, 260.0 - 16.0))')
+  })
+  it('Kotlin: the same rows through listOf and Double.NaN', () => {
+    const r = transform(PARALLEL, { target: 'kotlin' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('listOf(listOf(0.0, 30.0), listOf(2.0, Double.NaN), listOf(Double.NaN, 22.0)), PyreonChartRect(30.0, 8.0, maxOf(0.0, pyreonW - 30.0 * 2.0), maxOf(0.0, 260.0 - 16.0)), null)')
+  })
+  it('a category cell needs an axes literal the adapter can read (a call is not one); rowColor is reported by name and the chart still lowers', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const byRef = transform(PARALLEL_AXES_CALL, { target })
+      expect(byRef.warnings).toEqual(['<ParallelChart rows>: a category value needs an `axes` literal (inline or a module const) with `categories` on native; emitting nothing.'])
+      expect(byRef.code).not.toContain('renderParallel(')
+      const colored = transform(PARALLEL_ROW_COLOR, { target })
+      expect(colored.warnings).toEqual(['<ParallelChart>: `rowColor` is not lowered on native; the chart renders without it.'])
+      expect(colored.code).toContain('renderParallel(')
+    }
+  })
+  it('OptionChart is the only host left without a lowering', () => {
+    expect(Object.keys(UNLOWERED_CHART_HOSTS)).toEqual(['OptionChart'])
+  })
+  it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine) accepts both hosts', () => {
+    for (const src of [CALENDAR, PARALLEL]) {
+      const r = validateSwiftWithStubs(transform(src, { target: 'swift' }).code)
+      expect(r.ok, r.error ?? '').toBe(true)
+    }
+  })
+  it.skipIf(!isSwiftUIAvailable())('swiftc against real SwiftUI + canvas + engine accepts both', () => {
+    for (const src of [CALENDAR, PARALLEL]) {
+      const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(ENGINE_SWIFT) + '\n' + transform(src, { target: 'swift' }).code)
+      expect(r.ok, r.error ?? '').toBe(true)
+    }
+  })
+  it.skipIf(!isKotlincAvailable())('kotlinc (stub bundle + real engine) accepts both', () => {
+    for (const src of [CALENDAR, PARALLEL]) {
+      const r = validateKotlin(transform(src, { target: 'kotlin' }).code)
+      expect(r.ok, r.error ?? '').toBe(true)
+    }
+  })
+})
+
+const EVENTS_MODEL = `import { signal } from '@pyreon/reactivity'
+import { Stack, Text } from '@pyreon/primitives'
+import { PlotChart, bars } from '@pyreon/charts/plot'
+interface Row { k: string; v: number }
+const ROWS: Row[] = [{ k: 'a', v: 3 }, { k: 'b', v: 5 }]
+export function Picks() {
+  const hovered = signal(-1)
+  return (
+    <Stack>
+      <Text>{hovered()}</Text>
+      <PlotChart data={ROWS} x={(d) => d.k} marks={[bars((d) => d.v)]} height={200} selectedMode="single" onHighlight={(i: number) => hovered.set(i)} />
+    </Stack>
+  )
+}
+`
+
+describe('PlotChart events/actions props on native', () => {
+  it('warn BY NAME — attrs AND event props — and the chart still lowers', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(EVENTS_MODEL, { target })
+      expect(r.warnings.some((w) => w.includes('`selectedMode`, `onHighlight` are not lowered on native yet'))).toBe(true)
+      expect(r.code).toContain('renderChart(')
+    }
   })
 })

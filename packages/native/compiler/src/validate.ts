@@ -492,10 +492,7 @@ export function kotlinChartAugmentation(source: string): string {
   const engine = readIfPresent(join(NATIVE_PACKAGES_DIR, 'runtime-kotlin/src/main/kotlin/com/pyreon/runtime/PyreonChartEngine.kt'))
   if (canvas === undefined || engine === undefined) return KOTLIN_CHART_VIEW_STUBS
   const decls: string[] = []
-  for (const name of ['PyreonChartPt', 'PyreonChartRect', 'PyreonDrawCmd']) {
-    const m = canvas.match(new RegExp(`data class ${name}\\([^)]*\\)`))
-    if (m) decls.push(m[0])
-  }
+  for (const m of canvas.matchAll(/data class Pyreon\w+\([^)]*\)/g)) decls.push(m[0])
   const body = engine
     .split('\n')
     .filter((l) => !l.startsWith('package '))

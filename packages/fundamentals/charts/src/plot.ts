@@ -35,6 +35,7 @@ export {
   bubble,
   groupedBars,
   line,
+  normalizeCorners,
   points,
   resolveCategories,
   resolveMarks,
@@ -46,8 +47,11 @@ export type { Accessor, BubbleOptions, Mark, MarkOptions } from './engine/marks'
 export { smooth, step } from './engine/curve'
 
 // Core render + layout
-export { defaultTheme, layoutChart, renderChart, resolveYDomain, seriesMaxLength } from './engine/render'
-export type { Annotation, ChartSpec, ChartTheme, Series } from './engine/render'
+export { cornerRadii, hasCorners, polygonCmd, rectCmd } from './engine/corners'
+export { gradientFor, gradientSolid, seriesGradient } from './engine/gradient'
+export type { SeriesGradient } from './engine/gradient'
+export { defaultTheme, emphasisLevel, emphasisOutline, layoutChart, renderChart, resolveYDomain, seriesMaxLength } from './engine/render'
+export type { Annotation, ChartSpec, ChartTheme, Emphasis, Series } from './engine/render'
 export {
   bandTicks,
   bandTicksY,
@@ -106,7 +110,7 @@ export type { ChartToSvgOptions } from './engine/svg-chart'
 export { measureApprox, renderSvg, svgCommand } from './engine/svg'
 export type { SvgOptions } from './engine/svg'
 
-export type { Domain, DrawCmd, Double, MeasureText, Pt, Rect, Tick } from './engine/types'
+export type { ChartGradient, ChartGradientStop, Domain, DrawCmd, Double, MeasureText, Pt, Rect, Tick } from './engine/types'
 
 // Server-side SVG for the whole family — pure, measureApprox by default
 export {
@@ -128,7 +132,8 @@ export type {
 // Interaction + component geometry (dataZoom, brush, title)
 export { clampWindow, isFullWindow, panWindow, sliceRange, zoomWindow } from './engine/zoom'
 export type { SliceRange, ZoomWindow } from './engine/zoom'
-export { brushRange } from './engine/brush'
+export { brushBand, brushRange, renderBrushBand } from './engine/brush'
+export type { BrushBand, BrushRange } from './engine/brush'
 export { renderTitle } from './engine/title'
 
 // Hierarchy families — one TreeNode shape shared by treemap / sunburst / tree
@@ -232,8 +237,8 @@ export { ganttToSvg } from './engine/family-svg'
 export type { GanttToSvgOptions } from './engine/family-svg'
 export { GanttChart } from './engine/GanttChart'
 export type { GanttChartProps } from './engine/GanttChart'
-export { createChartLink } from './engine/link'
-export type { ChartLink } from './engine/link'
+export { createChartHandle, createChartLink } from './engine/link'
+export type { ChartAction, ChartHandle, ChartLink } from './engine/link'
 export { sonifyValues, valueToHz } from './engine/sonify'
 export type { Sonification, SonifyOptions } from './engine/sonify'
 export { OptionChart } from './engine/OptionChart'

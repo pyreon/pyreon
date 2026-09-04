@@ -617,6 +617,14 @@ describe('@pyreon/native-cli build', () => {
     expect(tapOnly).not.toContain('detectTransformGestures')
   })
 
+  it('Kotlin <PlotChart navigator> pulls the drag-detector import', () => {
+    const nav = conditionalKotlinImports(
+      'Box(modifier = Modifier.fillMaxWidth().pointerInput(Unit) { detectDragGestures(onDragStart = { }, onDragEnd = { }, onDrag = { c, d -> c.consume() }) })',
+    )
+    expect(nav).toContain('import androidx.compose.foundation.gestures.detectDragGestures')
+    expect(conditionalKotlinImports('Box(modifier = Modifier.pointerInput(Unit) { detectTapGestures { } })')).not.toContain('detectDragGestures')
+  })
+
   it('Kotlin .combinedClickable( still does NOT pull the plain clickable import', () => {
     // Guards the widened predicate against over-matching: `combinedClickable`
     // capitalises the C, so `.clickable` is not a substring of it. If this ever
