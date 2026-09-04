@@ -206,8 +206,8 @@ export function renderSunburst(arcs: SunburstArc[], center: Pt, options?: Sunbur
   return out
 }
 
-/** The DEEPEST arc containing a point, or null. */
-export function hitSunburst(arcs: SunburstArc[], center: Pt, px: Double, py: Double): SunburstArc | null {
+/** Index of the deepest arc under the point, or -1 — what `onSelectIndex` receives. */
+export function hitSunburstIndex(arcs: SunburstArc[], center: Pt, px: Double, py: Double): number {
   const dx = px - center.x
   const dy = py - center.y
   const dist = Math.sqrt(dx * dx + dy * dy)
@@ -226,6 +226,11 @@ export function hitSunburst(arcs: SunburstArc[], center: Pt, px: Double, py: Dou
       bestIdx = i
     }
   }
-  if (bestIdx < 0) return null
-  return arcs[bestIdx]!
+  return bestIdx
+}
+
+/** The DEEPEST arc containing a point, or null. */
+export function hitSunburst(arcs: SunburstArc[], center: Pt, px: Double, py: Double): SunburstArc | null {
+  const i = hitSunburstIndex(arcs, center, px, py)
+  return i < 0 ? null : arcs[i]!
 }

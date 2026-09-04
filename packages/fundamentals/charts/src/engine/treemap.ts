@@ -324,8 +324,8 @@ export function renderTreemap(cells: TreemapCell[], options?: TreemapOptions, me
   return out
 }
 
-/** The DEEPEST cell containing a point, or null. */
-export function hitTreemap(cells: TreemapCell[], px: Double, py: Double): TreemapCell | null {
+/** Index of the deepest cell under the point, or -1 — what `onSelectIndex` receives. */
+export function hitTreemapIndex(cells: TreemapCell[], px: Double, py: Double): number {
   let bestIdx = -1
   let bestDepth = -1
   for (let i = 0; i < cells.length; i++) {
@@ -337,6 +337,11 @@ export function hitTreemap(cells: TreemapCell[], px: Double, py: Double): Treema
       bestIdx = i
     }
   }
-  if (bestIdx < 0) return null
-  return cells[bestIdx]!
+  return bestIdx
+}
+
+/** The DEEPEST cell containing a point, or null. */
+export function hitTreemap(cells: TreemapCell[], px: Double, py: Double): TreemapCell | null {
+  const i = hitTreemapIndex(cells, px, py)
+  return i < 0 ? null : cells[i]!
 }

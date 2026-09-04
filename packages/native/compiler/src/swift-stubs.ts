@@ -482,6 +482,8 @@ public enum Edge {
     public static let all = Edge.Set(rawValue: 15)
   }
 }
+public protocol Shape {}
+public struct Rectangle: Shape { public init() {} }
 public protocol Gesture {}
 public struct LongPressGesture: Gesture {
   public init(minimumDuration: Double = 0.5) {}
@@ -491,11 +493,19 @@ public struct LongPressGesture: Gesture {
 // mirrors the real gesture's \`translation: CGSize\` (width/height Doubles) so
 // an emit reading a member DragGesture.Value doesn't have fails typecheck.
 public struct DragGesture: Gesture {
-  public struct Value { public var translation: CGSize = CGSize() }
+  public struct Value { public var translation: CGSize = CGSize(); public var location: CGPoint = CGPoint() }
   public init(minimumDistance: Double = 10) {}
+  public func onChanged(_ action: @escaping (Value) -> Void) -> DragGesture { self }
   public func onEnded(_ action: @escaping (Value) -> Void) -> DragGesture { self }
 }
 public struct CGSize { public var width: Double = 0; public var height: Double = 0 }
+// MagnificationGesture — what <PlotChart dataZoom> lowers its pinch to. The
+// value is the cumulative scale (CGFloat) since the gesture began.
+public struct MagnificationGesture: Gesture {
+  public init() {}
+  public func onChanged(_ action: @escaping (CGFloat) -> Void) -> MagnificationGesture { self }
+  public func onEnded(_ action: @escaping (CGFloat) -> Void) -> MagnificationGesture { self }
+}
 // Mirrors the real SwiftUI button styles the variant emit can produce.
 // Listing exactly these (not an open struct) keeps a wrong style name a
 // compile error here rather than a device surprise.
@@ -556,6 +566,9 @@ extension View {
   public func accessibilityHidden(_ hidden: Bool) -> some View { self }
   public func simultaneousGesture<G: Gesture>(_ gesture: G) -> some View { self }
   public func highPriorityGesture<G: Gesture>(_ gesture: G) -> some View { self }
+  // .gesture / .contentShape(Rectangle()) — the chart-host tap emit (chart-hosts.ts).
+  public func gesture<G: Gesture>(_ gesture: G) -> some View { self }
+  public func contentShape<S: Shape>(_ shape: S) -> some View { self }
   public func onSubmit(_ action: @escaping () -> Void) -> some View { self }
   public func font(_ font: Font?) -> some View { self }
   public func opacity(_ opacity: Double) -> some View { self }
@@ -1598,5 +1611,27 @@ public struct AsyncImage: View {
     @ViewBuilder placeholder: () -> P
   ) {}
   public typealias Body = Never
+}
+`
+
+/**
+ * The two views a `@pyreon/charts/plot` host emit needs that the generated
+ * engine never declares. validate.ts appends the REAL engine + canvas types
+ * next to this when a chart host is present; the view stubs live here so the
+ * stub-coverage ratchet counts `PyreonChartCanvas` as covered. The init
+ * mirrors runtime-swift `PyreonChartCanvas.swift` exactly.
+ */
+export const SWIFT_CHART_VIEW_STUBS = `
+// ---- @pyreon/charts/plot hosts (chart-hosts.ts emit) ----
+public struct GeometryProxy { public var size: CGSize = CGSize() }
+public struct GeometryReader<Content: View>: View {
+  public init(@ViewBuilder content: @escaping (GeometryProxy) -> Content) {}
+  public typealias Body = Never
+}
+public struct PyreonChartCanvas: View {
+  public var cmds: [PyreonDrawCmd]
+  public var fontFamily: String?
+  public init(cmds: [PyreonDrawCmd], fontFamily: String? = nil) { self.cmds = cmds; self.fontFamily = fontFamily }
+  public var body: some View { EmptyView() }
 }
 `

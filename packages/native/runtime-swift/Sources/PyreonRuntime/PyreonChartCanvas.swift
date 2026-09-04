@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 // The chart draw-list contract. The RUNTIME owns these types; the generated
 // PyreonChartEngine geometry (gen-native-chart-engine, follow-up) references
@@ -79,6 +82,45 @@ public struct PyreonDrawCmd: Codable, Equatable {
         self.align = align
         self.baseline = baseline
     }
+}
+
+/// Text width in engine units (points) — the MeasureText the layout
+/// functions take, so a frame laid out natively sizes its gutters from the
+/// real glyphs exactly as the web canvas does. Outside UIKit (the macOS
+/// typecheck gate) an average-glyph estimate stands in.
+public func pyreonChartMeasure(_ text: String, _ size: Double) -> Double {
+    #if canImport(UIKit)
+    let attrs: [NSAttributedString.Key: Any] = [.font: UIFont.systemFont(ofSize: CGFloat(size))]
+    return Double((text as NSString).size(withAttributes: attrs).width)
+    #else
+    return Double(text.count) * size * 0.6
+    #endif
+}
+
+/// Int→Double coercion for accessor-mapped fields. Two overloads where
+/// Double(_:) has twenty: four such coercions in one struct init otherwise
+/// send swiftc past its type-check budget.
+public func pyreonChartDouble(_ v: Double) -> Double { v }
+public func pyreonChartDouble(_ v: Int) -> Double { Double(v) }
+
+/// Move a draw list down the canvas — the host sits a plot below the title
+/// and legend it drew at (0, 0). Translating the commands rather than
+/// threading an origin through the engine keeps every layout function at
+/// (0, 0), exactly as the web hosts do (`shiftCmd` in Chart.tsx).
+public func pyreonShiftCmds(_ cmds: [PyreonDrawCmd], _ dy: Double) -> [PyreonDrawCmd] {
+    var out: [PyreonDrawCmd] = []
+    out.reserveCapacity(cmds.count)
+    for c in cmds {
+        var s = c
+        if let r = c.rect { s.rect = PyreonChartRect(x: r.x, y: r.y + dy, w: r.w, h: r.h) }
+        if let f = c.from { s.from = PyreonChartPt(x: f.x, y: f.y + dy) }
+        if let t = c.to { s.to = PyreonChartPt(x: t.x, y: t.y + dy) }
+        if let pts = c.points { s.points = pts.map { PyreonChartPt(x: $0.x, y: $0.y + dy) } }
+        if let ctr = c.center { s.center = PyreonChartPt(x: ctr.x, y: ctr.y + dy) }
+        if let at = c.at { s.at = PyreonChartPt(x: at.x, y: at.y + dy) }
+        out.append(s)
+    }
+    return out
 }
 
 /// Parse the engine's color strings — `#rgb`, `#rrggbb`, `rgb(r, g, b)` and

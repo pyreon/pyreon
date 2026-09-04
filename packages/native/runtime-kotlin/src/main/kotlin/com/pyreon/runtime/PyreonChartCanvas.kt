@@ -11,6 +11,8 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.nativeCanvas
 import android.graphics.Paint
 import androidx.compose.foundation.layout.size
@@ -89,12 +91,47 @@ fun pyreonChartColor(s: String): Color {
  * A Compose Canvas walking the engine's flat draw list — the native twin of
  * canvas-web's renderer (same dispatch, same text-anchor semantics).
  */
+/**
+ * Text width in engine units (dp) — the MeasureText the layout functions
+ * take. The draw list is scaled by the density once at paint time, so the
+ * measure is taken at the unscaled size: measureText is linear in the
+ * text size, which makes dp-at-1x the same number as px-at-density / density.
+ */
+fun pyreonChartMeasure(text: String, size: Double): Double {
+    val p = Paint()
+    p.textSize = size.toFloat()
+    p.isAntiAlias = true
+    return p.measureText(text).toDouble()
+}
+
+/**
+ * Move a draw list down the canvas — the host sits a plot below the title and
+ * legend it drew at (0, 0). Translating the commands keeps every layout
+ * function at (0, 0), exactly as the web hosts do (shiftCmd in Chart.tsx).
+ */
+fun pyreonShiftCmds(cmds: List<PyreonDrawCmd>, dy: Double): List<PyreonDrawCmd> =
+    cmds.map { c ->
+        c.copy(
+            rect = c.rect?.let { PyreonChartRect(it.x, it.y + dy, it.w, it.h) },
+            from = c.from?.let { PyreonChartPt(it.x, it.y + dy) },
+            to = c.to?.let { PyreonChartPt(it.x, it.y + dy) },
+            points = c.points?.map { PyreonChartPt(it.x, it.y + dy) },
+            center = c.center?.let { PyreonChartPt(it.x, it.y + dy) },
+            at = c.at?.let { PyreonChartPt(it.x, it.y + dy) },
+        )
+    }
+
 @Composable
 fun PyreonChartCanvas(
     cmds: List<PyreonDrawCmd>,
     modifier: Modifier = Modifier,
 ) {
+    // The draw list is in density-independent units — the same numbers the web
+    // canvas paints in CSS px and SwiftUI in points — so scale by the density
+    // once here rather than converting every coordinate and font size.
+    val density = LocalDensity.current.density
     Canvas(modifier = modifier) {
+        scale(scale = density, pivot = Offset.Zero) {
         for (c in cmds) {
             when (c.kind) {
                 "rect" -> {
@@ -184,6 +221,7 @@ fun PyreonChartCanvas(
                     drawContext.canvas.nativeCanvas.drawText(txt, at.x.toFloat(), y, paint)
                 }
             }
+        }
         }
     }
 }

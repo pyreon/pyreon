@@ -11,6 +11,7 @@
 // Recharts all converge on marks-over-data rather than one nested config object.
 
 import type { Series } from './render'
+import { bubbleRadii } from './bubble'
 import type { Double, Pt } from './types'
 
 /** Reads one numeric channel out of a datum. */
@@ -175,18 +176,12 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[]): Series[] {
     let radii: Double[] | undefined = undefined
     const rAcc = m.r
     if (rAcc !== undefined) {
-      const rawR: Double[] = []
-      for (let i = 0; i < data.length; i++) {
-        const rv = rAcc(data[i]!, i)
-        rawR.push(Number.isFinite(rv) && rv > 0.0 ? rv : 0.0)
-      }
-      let hi = 0.0
-      for (const rv of rawR) if (rv > hi) hi = rv
-      const minR = m.minRadius ?? 3.0
-      const maxR = m.maxRadius ?? 18.0
-      radii = rawR.map((rv) =>
-        hi === 0.0 ? minR : minR + Math.sqrt(rv / hi) * (maxR - minR),
-      )
+      // The sqrt-scaled min/max mapping now lives in the shared `bubbleRadii`
+      // helper (also used natively) — this used to be inlined here too, which
+      // is how it ended up computed twice under two different names.
+      const rRaw: Double[] = []
+      for (let i = 0; i < data.length; i++) rRaw.push(rAcc(data[i]!, i))
+      radii = bubbleRadii(rRaw, m.minRadius ?? 3.0, m.maxRadius ?? 18.0)
     }
     return {
       kind: m.kind,

@@ -346,8 +346,8 @@ describe('validateRegistry — invariants', () => {
 })
 
 describe('the real REGISTRY', () => {
-  it('carries the shared + service-backend tiers plus the partial set (37 packages)', () => {
-    expect(REGISTRY.length).toBe(37)
+  it('carries the shared + service-backend tiers plus the partial set (38 packages)', () => {
+    expect(REGISTRY.length).toBe(38)
   })
 
   it('starts with an EMPTY warn-allowlist — the ratchet is at its tightest', () => {

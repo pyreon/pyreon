@@ -43,7 +43,7 @@ describe('scrollable legend', () => {
 
   it('the pager reserves width so the last row never runs under the arrows', () => {
     const l = renderLegend(entries(12), { x: 0, y: 0, w: 300, h: 100 }, { ...opts, maxRows: 1 }, measure)
-    const pagerLeft = l.pager!.prev === null ? 300 - (10 * 5 + 10) : l.pager!.prev!.x
+    const pagerLeft = l.pager!.hasPrev ? l.pager!.prev.x : 300 - (10 * 5 + 10)
     for (const b of l.boxes) if (b.w > 0) expect(b.x + b.w).toBeLessThanOrEqual(pagerLeft + 1e-9)
   })
 
@@ -52,12 +52,12 @@ describe('scrollable legend', () => {
     const p1 = renderLegend(entries(12), { x: 0, y: 0, w: 300, h: 100 }, { ...opts, maxRows: 1, page: 1 }, measure)
     const vis = (l: typeof p0) => l.boxes.map((b, i) => (b.w > 0 ? i : -1)).filter((i) => i >= 0)
     expect(vis(p1)[0]).toBeGreaterThan(vis(p0)[vis(p0).length - 1]!)
-    expect(p0.pager!.prev).toBeNull()
-    expect(p0.pager!.next).not.toBeNull()
+    expect(p0.pager!.hasPrev).toBe(false)
+    expect(p0.pager!.hasNext).toBe(true)
     const last = renderLegend(entries(12), { x: 0, y: 0, w: 300, h: 100 }, { ...opts, maxRows: 1, page: 99 }, measure)
     expect(last.pager!.page).toBe(last.pager!.pages - 1)
-    expect(last.pager!.next).toBeNull()
-    expect(last.pager!.prev).not.toBeNull()
+    expect(last.pager!.hasNext).toBe(false)
+    expect(last.pager!.hasPrev).toBe(true)
   })
 
   it('every entry is reachable across the pages (nothing is lost)', () => {

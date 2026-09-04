@@ -522,7 +522,8 @@ describe('stacked and grouped rendering', () => {
 })
 
 // ————— fallback/default arms the idioms pass introduced (or exposed) —————
-import { buildHeatGrid, colorRamp, renderHeat } from './heat'
+import { buildHeatGrid, renderHeat } from './heat'
+import { colorRamp } from './heat-ramp'
 
 describe('coalesce/default fallback arms', () => {
   it('renderChart defaults progress/xValues/curve/yDomain when omitted', () => {

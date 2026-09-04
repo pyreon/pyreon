@@ -216,6 +216,27 @@ fun Box(
   content()
 }
 
+// BoxWithConstraints — the container-sized host the chart-host emit uses
+// (chart-hosts.ts): maxWidth is the Dp the draw list is laid out for.
+class BoxWithConstraintsScope {
+  val maxWidth: Dp = Dp(0f)
+  val maxHeight: Dp = Dp(0f)
+}
+
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun BoxWithConstraints(
+  modifier: Modifier = Modifier,
+  content: @Composable BoxWithConstraintsScope.() -> Unit,
+) {
+  BoxWithConstraintsScope().content()
+}
+
+// LocalDensity — the chart-host tap emit divides a px tap position by the
+// display density (the draw list is laid out in dp).
+class Density(val density: Float = 1f)
+object LocalDensity { val current: Density = Density() }
+
 // --- K4: Saveable state machinery (rememberSaveable + Saver) ---
 //
 // Real Compose ships rememberSaveable as a Composable that persists
@@ -457,8 +478,12 @@ class SemanticsPropertyReceiver {
 // callback takes (PointerInputChange, Float)) so an emit passing the
 // wrong shape fails the kotlinc gate instead of being masked.
 class PointerInputChange
-class Offset
+class Offset(val x: Float = 0f, val y: Float = 0f)
 class PointerInputScope {
+  // The chart-host tap emit (chart-hosts.ts): a tap position in px.
+  @Suppress("UNUSED_PARAMETER", "RedundantSuspendModifier")
+  suspend fun detectTapGestures(onTap: ((Offset) -> Unit)? = null) {}
+  suspend fun detectTransformGestures(onGesture: (Offset, Offset, Float, Float) -> Unit) {}
   @Suppress("UNUSED_PARAMETER", "RedundantSuspendModifier")
   suspend fun detectHorizontalDragGestures(
     onDragStart: (Offset) -> Unit = {},
@@ -2064,4 +2089,20 @@ class PyreonAuth<User> {
   fun signInFailed(failure: Throwable) {}
   fun signOut() {}
 }
+`
+
+/**
+ * The Compose canvas (+ the two runtime helpers the chart hosts call) for a
+ * `@pyreon/charts/plot` host emit; validate.ts appends the REAL engine and
+ * draw-list data classes next to this. Lives here so the stub-coverage
+ * ratchet counts `PyreonChartCanvas` as covered. The signature mirrors
+ * runtime-kotlin `PyreonChartCanvas.kt` exactly.
+ */
+export const KOTLIN_CHART_VIEW_STUBS = `
+// ---- @pyreon/charts/plot hosts (chart-hosts.ts emit) ----
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun PyreonChartCanvas(cmds: List<PyreonDrawCmd>, modifier: Modifier = Modifier) {}
+fun pyreonChartMeasure(text: String, size: Double): Double = text.length * size * 0.6
+fun pyreonShiftCmds(cmds: List<PyreonDrawCmd>, dy: Double): List<PyreonDrawCmd> = cmds
 `

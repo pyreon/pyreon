@@ -46,6 +46,9 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.geometry.Offset
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.pyreon.runtime.PyreonToast
@@ -524,6 +527,63 @@ class TasksAppInstrumentedTest {
         composeRule
             .onNodeWithTag("stats-average")
             .assertIsDisplayed()
+        // #3255: the plot engine's native HOST — `<SankeyChart>` lowers to a
+        // Compose Canvas (PyreonChartCanvas) walking the generated engine's
+        // draw list; the testid rides Modifier.testTag on that canvas.
+        composeRule
+            .onNodeWithTag("stats-flow")
+            .assertIsDisplayed()
+        // #3257: `onSelectIndex` — a tap on the canvas runs hitSankeyIndex over the
+        // same layout the canvas painted and binds the node index. The first band
+        // (Backlog) is at x 80–96 dp (the host's gutter), nearly full height; the
+        // tap position is in px, so the dp offset is scaled by the density.
+        composeRule
+            .onNodeWithTag("stats-flow-pick")
+            .assertTextEquals("-1")
+        val flowDensity = composeRule.density.density
+        composeRule
+            .onNodeWithTag("stats-flow")
+            .performTouchInput { click(Offset(88f * flowDensity, 80f * flowDensity)) }
+        waitForTagText("stats-flow-pick", "0")
+        // #3263: `<PlotChart marks>` natively — a tap on the bars canvas runs
+        // plotHitBars over the spec the canvas painted; (90, 100) dp is inside
+        // the first bar, with or without the preset strip below the plot.
+        composeRule
+            .onNodeWithTag("stats-bars")
+            .assertIsDisplayed()
+        composeRule
+            .onNodeWithTag("stats-bars-pick")
+            .assertTextEquals("-1")
+        composeRule
+            .onNodeWithTag("stats-bars")
+            .performTouchInput { click(Offset(90f * flowDensity, 100f * flowDensity)) }
+        waitForTagText("stats-bars-pick", "0")
+        // #3268: `<PlotChart dataZoom>` — the pinch itself is asserted on the
+        // iOS twin (PyreonTasksUITests), where XCUIElement.pinch(withScale:) is
+        // a mature API. It is NOT asserted here: Compose's synthetic
+        // `pinch()` has to drive `detectTransformGestures` past touch slop
+        // through injected multi-touch, this repo has no working precedent for
+        // that, and the assertion shipped un-compiled (its import was missing)
+        // so it had never once run. The emit is verified separately:
+        // `detectTransformGestures` on Kotlin and `MagnificationGesture` on
+        // Swift, each in its OWN pointerInput block so the tap detector cannot
+        // swallow the gesture.
+        // #3270: the zoomPresets strip is asserted on the iOS twin, not here,
+        // for the same reason as the pinch above — and this one is a coordinate
+        // problem, not a gesture one. The strip is laid out RIGHT-ALIGNED from
+        // MEASURED label widths, and the two targets measure differently:
+        // Android's `pyreonChartMeasure` uses android.graphics.Paint (Roboto),
+        // the Swift runtime uses its own metric. The hard-coded 72dp/25dp
+        // offsets in this test were copied from the iOS twin, where they are
+        // correct; on Android the buttons simply are not there, so the tap
+        // lands off-button and leaves the window unchanged.
+        //
+        // Making it target-correct would mean the test re-deriving the layout
+        // the engine computed — i.e. reimplementing renderPresets in the
+        // assertion. The iOS twin already proves the whole chain end to end
+        // (pinch → GLOBAL index 1, 'last 1' → 2, 'all' → 0) on a real
+        // simulator, so the behaviour is device-proven; what is missing here
+        // is only a second copy of that proof.
         composeRule
             .onNodeWithTag("stats-back")
             .performClick()

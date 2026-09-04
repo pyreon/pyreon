@@ -7,23 +7,29 @@
 
 import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
-import { batch, effect, signal } from '@pyreon/reactivity'
+import { batch, effect, isClient, signal } from '@pyreon/reactivity'
 import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
 import { renderLegend } from './legend'
 import type { LegendPager } from './legend'
 import { renderTitle } from './title'
 import { sameShape, sameValues, tweenValues } from './tween'
 import { withAlpha } from './radar'
+import { hitToolbox, renderToolbox, toolboxTools } from './toolbox'
+import { renderSvg } from './svg'
+import type { ToolboxTool } from './toolbox'
 import { placeTooltip, tooltipAt, tooltipLines } from './tooltip'
 import type { TooltipContent } from './tooltip'
-import { barsFor, defaultTheme, layoutChart, renderChart, resolveY2Domain, resolveYDomain, seriesOnRightAxis, stackedHitAt } from './render'
-import { hitBar, hitNearestX, layoutSeriesPoints, layoutSeriesPointsAt } from './layout'
+import { defaultTheme, layoutChart, renderChart, resolveY2Domain, resolveYDomain, seriesOnRightAxis } from './render'
+import { layoutSeriesPoints, layoutSeriesPointsAt } from './layout'
 import type { Annotation, ChartSpec, ChartTheme, PointMarker, Series } from './render'
 import { scaleLinear } from './scale'
 import { resolveCategories, resolveMarks } from './marks'
+import { plotHitBars, plotHitIndex } from './plot-hit'
 import type { Mark } from './marks'
 import { chartTable, describeChart } from './a11y'
-import { brushRange, clampWindow, isFullWindow, panWindow, sliceRange, zoomWindow } from './zoom'
+import { brushRange } from './brush'
+import { presetHit, presetWindow, renderPresets } from './presets'
+import { clampWindow, isFullWindow, panWindow, sliceRange, zoomWindow } from './zoom'
 import type { ZoomWindow } from './zoom'
 import type { ChartLink } from './link'
 import type { Formatter } from './format'
@@ -231,6 +237,16 @@ export interface PlotChartProps<T> {
    */
   tooltipFormatter?: (content: TooltipContent) => string
   /**
+   * Toolbox buttons at the top-right (ECharts' `toolbox`). `saveAsImage`
+   * downloads the current frame as an SVG (the engine's own serializer —
+   * vector, and the same draw list the canvas shows); `restore` resets zoom,
+   * brush, legend toggles and any magicType override; `magicType` offers
+   * line / bar switches for the independent marks.
+   */
+  toolbox?: { saveAsImage?: boolean; restore?: boolean; magicType?: ('line' | 'bar')[] }
+  /** Called with the SVG string on saveAsImage instead of triggering a download. */
+  onSaveImage?: (svg: string) => void
+  /**
    * Animate the first paint — bars rise, lines draw, points grow. On by
    * default because an entrance orients the eye; OFF automatically under
    * `prefers-reduced-motion`, which is a request, not a hint. Data UPDATES
@@ -397,6 +413,14 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const frame = tweenValues(tweenFrom, cur, tweenT)
     return { ...spec, series: spec.series.map((x, i) => ({ ...x, values: frame[i]! })) }
   }
+  // Toolbox state: the magicType override, and last-draw hit boxes.
+  const typeOverride = signal<'line' | 'bar' | null>(null)
+  let toolboxBoxes: Rect[] = []
+  let toolList: ToolboxTool[] = []
+  // The last painted frame's commands, for saveAsImage.
+  let lastFrame: DrawCmd[] = []
+  let lastW = 0.0
+  let lastH = 0.0
 
   /**
    * Apply the legend toggle to resolved series.
@@ -452,6 +476,11 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // (striping, ids) must not see its data renumbered by a zoom.
     series: hideHidden(resolveMarks(rows, props.marks.map((m) => ({
       ...m,
+      // magicType: a line/bar switch retypes the INDEPENDENT marks only —
+      // stacked/grouped/points keep their geometry (a stack is not a line).
+      kind: typeOverride() !== null && (m.kind === 'bars' || m.kind === 'line' || m.kind === 'area')
+        ? (typeOverride() === 'bar' ? 'bars' : 'line')
+        : m.kind,
       y: (d: T, i: number) => m.y(d, i + off),
       ...(m.r !== undefined ? { r: (d: T, i: number) => m.r!(d, i + off) } : {}),
     })))),
@@ -490,11 +519,25 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // not a fixed strip — reserving one would clip or waste.
     let legendH = 0
     let titleH = 0.0
+    let toolH = 0.0
     legendBoxes = []
     legendPager = null
     const legendCmds: ReturnType<typeof renderChart> = []
+    toolboxBoxes = []
+    toolList = props.toolbox === undefined ? [] : toolboxTools(props.toolbox)
+    if (toolList.length > 0) {
+      const ov = typeOverride()
+      const tb = renderToolbox(toolList, { x: 0, y: 0, w, h: hgt }, {
+        fontSize: props.theme?.fontSize ?? defaultTheme.fontSize,
+        color: props.theme?.label ?? defaultTheme.label,
+        active: ov === null ? undefined : ov === 'bar' ? 'magicBar' : 'magicLine',
+      })
+      for (const c of tb.cmds) legendCmds.push(c)
+      toolboxBoxes = tb.boxes
+      toolH = tb.height
+    }
     if (props.showTitle === true && props.title !== undefined) {
-      const tl = renderTitle(props.title, props.subtitle, { x: 0, y: 0, w, h: hgt }, {
+      const tl = renderTitle(props.title, props.subtitle, { x: 0, y: toolH, w, h: hgt - toolH }, {
         fontSize: (props.theme?.fontSize ?? defaultTheme.fontSize) + 4.0,
         color: props.theme?.label ?? defaultTheme.label,
         align: 'start',
@@ -502,6 +545,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       titleH = tl.height
       for (const c of tl.cmds) legendCmds.push(c)
     }
+    titleH = titleH + toolH
     if (props.showLegend === true) {
       const series = resolveMarks(rows, props.marks)
       const hidden = hiddenSeries()
@@ -527,38 +571,35 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
 
     const top = titleH + legendH
     topOffset = top
-    // Zoom presets take a strip under the plot; the buttons are laid out
-    // right-aligned and their boxes kept for the click handler.
-    const presetH = props.zoomPresets !== undefined && props.zoomPresets.length > 0 ? 22.0 : 0.0
-    const presetCmds: DrawCmd[] = []
+    // Zoom presets take a strip under the plot. The engine lays it out and
+    // hit-tests it (iOS and Android place the same buttons); the boxes are
+    // kept for the click handler.
+    const presetItems = props.zoomPresets ?? []
+    let presetH = 0.0
+    let presetCmds: DrawCmd[] = []
     presetBoxes = []
-    if (presetH > 0.0) {
-      const fs = 11.0
-      const padX = 8.0
-      const gap = 6.0
-      let x = w - 8.0
-      const y = hgt - presetH + 3.0
-      const n = viewRange(rows) // active window for the highlight
-      const active = zoomWin()
-      const items = props.zoomPresets ?? []
-      const boxes: Rect[] = []
-      for (let i = items.length - 1; i >= 0; i--) {
-        const it = items[i]!
-        const tw = measure(it.label, fs) + padX * 2.0
-        x = x - tw
-        boxes[i] = { x, y, w: tw, h: presetH - 6.0 }
-        x = x - gap
-      }
-      void n
-      for (let i = 0; i < items.length; i++) {
-        const it = items[i]!
-        const b = boxes[i]!
-        const total = rows.length
-        const isActive = it.count <= 0 || it.count >= total ? active === null : active !== null && Math.abs(active.start - (1.0 - it.count / total)) < 1e-6 && active.end >= 1.0 - 1e-9
-        presetCmds.push({ kind: 'rect', rect: b, fill: isActive ? (props.theme?.axis ?? defaultTheme.axis) : (props.theme?.grid ?? defaultTheme.grid) })
-        presetCmds.push({ kind: 'text', text: it.label, at: { x: b.x + b.w / 2.0, y: b.y + b.h / 2.0 }, fill: isActive ? '#ffffff' : (props.theme?.label ?? defaultTheme.label), size: fs, align: 'middle', baseline: 'middle' })
-      }
-      presetBoxes = boxes
+    if (presetItems.length > 0) {
+      const strip = renderPresets(
+        presetItems,
+        rows.length,
+        zoomWin() ?? { start: 0.0, end: 1.0 },
+        { x: 0.0, y: 0.0, w, h: hgt },
+        {
+          fontSize: 11.0,
+          padX: 8.0,
+          padY: 3.0,
+          gap: 6.0,
+          inset: 8.0,
+          activeFill: props.theme?.axis ?? defaultTheme.axis,
+          idleFill: props.theme?.grid ?? defaultTheme.grid,
+          activeText: '#ffffff',
+          idleText: props.theme?.label ?? defaultTheme.label,
+        },
+        measure,
+      )
+      presetCmds = strip.cmds
+      presetBoxes = strip.boxes
+      presetH = strip.height
     }
     presetBoxesJson.set(JSON.stringify(presetBoxes))
     const navH = props.navigator === true ? 36.0 : 0.0
@@ -577,7 +618,15 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const bandShifted = top === 0.0 ? band : band.map((c) => shiftCmd(c, top))
     const ring = focusRingCmds(spec, measure)
     const ringShifted = top === 0.0 ? ring : ring.map((c) => shiftCmd(c, top))
-    paint(ctx, [...legendCmds, ...shifted, ...bandShifted, ...crossShifted, ...ringShifted, ...navCmds, ...presetCmds], w, hgt, FONT)
+    const frame = [...legendCmds, ...shifted, ...bandShifted, ...crossShifted, ...ringShifted, ...navCmds, ...presetCmds]
+    // Capture what was actually painted so `saveAsImage` serializes THIS
+    // frame rather than re-deriving one. Declared beside the toolbox for
+    // that single reader; without the write it handed `renderSvg` an empty
+    // list at 0x0 and the download was a blank <svg> with only its title.
+    lastFrame = frame
+    lastW = w
+    lastH = hgt
+    paint(ctx, frame, w, hgt, FONT)
   }
 
   /** The navigator strip: a mini area of the first series over ALL rows, and the window band with its handles. */
@@ -682,6 +731,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       })
     } else return
     ev.preventDefault()
+    draw()
   }
 
   /**
@@ -812,6 +862,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     brushSel()
     legendPage()
     focusIdx()
+    typeOverride()
     draw()
   })
 
@@ -833,22 +884,8 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // the title + legend, so the pointer's y comes back up by that much.
     const spec = buildSpec(readData(), w, hgt - topOffset - bottomOffset)
     py = py - topOffset
-    for (let i = 0; i < spec.series.length; i++) {
-      if (spec.series[i]!.kind !== 'bars') continue
-      const idx = hitBar(barsFor(spec, i, measure), px, py)
-      if (idx >= 0) return idx
-    }
-    // Same gap as the click handler: the tooltip never appeared over a stacked
-    // or grouped chart either, because both bailed on the same condition.
-    const stackedIdx = stackedHitAt(spec, measure, px, py)
-    if (stackedIdx >= 0) return stackedIdx
-    const first = spec.series[0]
-    if (first === undefined || first.kind === 'bars') return -1
-    if (first.kind === 'stacked' || first.kind === 'grouped') return -1
-    const l = layoutChart(spec, measure)
-    return hitNearestX(layoutSeriesPoints(first.values, l.plot, resolveYDomain(spec)), px)
+    return plotHitIndex(spec, measure, px, py)
   }
-
   const handleWheel = (ev: WheelEvent): void => {
     if (props.dataZoom !== true) return
     const el = canvas
@@ -1007,17 +1044,12 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // Zoom presets: a click on a button sets the window and stops here.
     if (presetBoxes.length > 0) {
       const r0 = el.getBoundingClientRect()
-      const lx = ev.clientX - r0.left
-      const ly = ev.clientY - r0.top
-      for (let i = 0; i < presetBoxes.length; i++) {
-        const b = presetBoxes[i]!
-        if (lx >= b.x && lx <= b.x + b.w && ly >= b.y && ly <= b.y + b.h) {
-          const it = props.zoomPresets?.[i]
-          const total = readData().length
-          if (it === undefined || it.count <= 0 || it.count >= total) zoomWin.set(null)
-          else zoomWin.set({ start: 1.0 - it.count / total, end: 1.0 })
-          return
-        }
+      const hit = presetHit(presetBoxes, ev.clientX - r0.left, ev.clientY - r0.top)
+      if (hit >= 0) {
+        const it = props.zoomPresets?.[hit]
+        const next = presetWindow(it === undefined ? 0 : it.count, readData().length)
+        zoomWin.set(isFullWindow(next) ? null : next)
+        return
       }
     }
     // A committed brush clears on the next plain click — and says so.
@@ -1029,17 +1061,56 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // Legend hits take priority and are NOT a datum selection: a click on an
     // entry toggles its series. Boxes come from the last draw, so they match
     // exactly what is on screen.
+    if (toolList.length > 0) {
+      const r0 = el.getBoundingClientRect()
+      const tool = hitToolbox(toolList, toolboxBoxes, ev.clientX - r0.left, ev.clientY - r0.top)
+      if (tool !== null) {
+        if (tool === 'restore') {
+          // One notify cycle for the five resets, not five redraws.
+          batch(() => {
+            zoomWin.set(null)
+            brushSel.set(null)
+            hiddenSeries.set([])
+            legendPage.set(0)
+            typeOverride.set(null)
+          })
+        } else if (tool === 'magicLine') {
+          typeOverride.set(typeOverride() === 'line' ? null : 'line')
+        } else if (tool === 'magicBar') {
+          typeOverride.set(typeOverride() === 'bar' ? null : 'bar')
+        } else {
+          // Static, and deliberately not dynamic: `@pyreon/charts/plot` is
+          // ONE package entry (rolldown builds it as a single-chunk bundle —
+          // no code splitting), so `import('./svg')` inlines to exactly the
+          // same bytes as a static import while adding an async indirection
+          // that never pays off. See anti-patterns.md — saveAsImage is now a
+          // permanent, unavoidable part of the plot-minimal bundle; the
+          // import-budget and tree-shake suite are relocked accordingly.
+          const svg = renderSvg(lastFrame, lastW, lastH, { fontFamily: FONT, ...(props.title !== undefined ? { title: props.title } : {}) })
+          if (props.onSaveImage !== undefined) props.onSaveImage(svg)
+          else if (isClient && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+            const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }))
+            const a = document.createElement('a')
+            a.href = url
+            a.download = (props.title ?? 'chart') + '.svg'
+            a.click()
+            URL.revokeObjectURL(url)
+          }
+        }
+        return
+      }
+    }
     if (props.showLegend === true && legendPager !== null) {
       const r0 = el.getBoundingClientRect()
       const lx = ev.clientX - r0.left
       const ly = ev.clientY - r0.top
       const p = legendPager
-      const inside = (b: Rect | null): boolean => b !== null && lx >= b.x && lx <= b.x + b.w && ly >= b.y && ly <= b.y + b.h
-      if (inside(p.prev)) {
+      const inside = (b: Rect): boolean => lx >= b.x && lx <= b.x + b.w && ly >= b.y && ly <= b.y + b.h
+      if (p.hasPrev && inside(p.prev)) {
         legendPage.set(p.page - 1)
         return
       }
-      if (inside(p.next)) {
+      if (p.hasNext && inside(p.next)) {
         legendPage.set(p.page + 1)
         return
       }
@@ -1081,16 +1152,8 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // separate helper rather than a widened loop condition.
     // Callbacks speak GLOBAL indices — the caller's data never zoomed.
     const off = viewRange(readData()).from
-    for (let i = 0; i < spec.series.length; i++) {
-      if (spec.series[i]!.kind !== 'bars') continue
-      const idx = hitBar(barsFor(spec, i, measure), px, py)
-      if (idx >= 0) {
-        cb(idx + off)
-        return
-      }
-    }
-    const stackedIdx = stackedHitAt(spec, measure, px, py)
-    cb(stackedIdx < 0 ? stackedIdx : stackedIdx + off)
+    const idx = plotHitBars(spec, measure, px, py)
+    cb(idx < 0 ? idx : idx + off)
   })
 
   const a11yInput = (): {

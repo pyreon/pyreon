@@ -246,8 +246,8 @@ function riverPointInPolygon(pts: Pt[], px: Double, py: Double): boolean {
   return inside
 }
 
-/** The layer under a point (front-most wins), or null. */
-export function hitRiver(layout: RiverLayout, px: Double, py: Double, curve?: 'smooth' | 'linear'): RiverLayer | null {
+/** Index of the topmost layer under the point, or -1 — what `onSelectIndex` receives. */
+export function hitRiverIndex(layout: RiverLayout, px: Double, py: Double, curve?: 'smooth' | 'linear'): number {
   const shape = curve ?? 'smooth'
   let bestIdx = -1
   for (let i = layout.layers.length - 1; i >= 0; i--) {
@@ -255,6 +255,11 @@ export function hitRiver(layout: RiverLayout, px: Double, py: Double, curve?: 's
     const l = layout.layers[i]!
     if (l.thickness > 0.0 && riverPointInPolygon(layerPolygon(l, shape, 1.0), px, py)) bestIdx = i
   }
-  if (bestIdx < 0) return null
-  return layout.layers[bestIdx]!
+  return bestIdx
+}
+
+/** The layer under a point (front-most wins), or null. */
+export function hitRiver(layout: RiverLayout, px: Double, py: Double, curve?: 'smooth' | 'linear'): RiverLayer | null {
+  const i = hitRiverIndex(layout, px, py, curve)
+  return i < 0 ? null : layout.layers[i]!
 }

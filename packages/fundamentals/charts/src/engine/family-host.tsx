@@ -99,7 +99,7 @@ export function familyHostNode(plan: FamilyPlan, o: FamilyHostOptions): VNode | 
     // summarises them itself — there is no way to hand it a summary without a
     // new prop. Giving the canvas host a summaries path is a component API
     // change, so it is a follow-up rather than something to slip into a
-    // nine-PR merge; until then a boxplot option renders as static SVG, which
+    // batch merge; until then a boxplot option renders as static SVG, which
     // is what it did before this switch became exhaustive over it.
     case 'boxplot':
     case 'geoPoints':

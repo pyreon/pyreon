@@ -36,6 +36,17 @@ final class PyreonTasksUITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    /// Poll a static text's label — a state change lands a frame later than
+    /// the gesture that caused it, so an immediate assert races the render.
+    private func waitForLabel(_ el: XCUIElement, _ expected: String, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if el.exists && el.label == expected { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        return el.exists && el.label == expected
+    }
+
     /// Tap an element on a long screen, scrolling the containing ScrollView
     /// ourselves rather than relying on XCUITest's scroll-to-visible.
     ///
@@ -485,6 +496,78 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertEqual(statsHigh.label, "2", "filter-map high count wrong")
         let statsAvg = app.staticTexts["stats-average"].firstMatch
         XCTAssertTrue(statsAvg.exists, "Stats average (Double pipeline) missing")
+        // #3255: the plot engine's native HOST — `<SankeyChart>` lowers to a
+        // SwiftUI Canvas walking the generated engine's draw list. The canvas
+        // carries the testid as its identifier and the title as its label;
+        // a Canvas is not a type-specific element, so query by ANY type. A
+        // non-zero frame proves the host was laid out (GeometryReader +
+        // .frame(height:)), not merely present in the tree.
+        let statsFlow = app.descendants(matching: .any).matching(identifier: "stats-flow").firstMatch
+        XCTAssertTrue(statsFlow.waitForExistence(timeout: 10), "Sankey chart canvas missing on stats page")
+        XCTAssertGreaterThan(statsFlow.frame.height, 100, "Sankey chart canvas has no height")
+        XCTAssertGreaterThan(statsFlow.frame.width, 100, "Sankey chart canvas has no width")
+        // #3257: `onSelectIndex` — a tap on the canvas runs the engine's hit test
+        // (hitSankeyIndex over the same layout the canvas painted) and binds the
+        // node index. The first band (Backlog) sits at x 80–96 inside the canvas
+        // (the host's 80pt gutter) and spans nearly the full height, so a tap at
+        // (88, 80) from the canvas origin lands on node 0; the bound text proves
+        // the gesture reached the state, not merely that a gesture exists.
+        let flowPick = app.staticTexts["stats-flow-pick"].firstMatch
+        XCTAssertTrue(flowPick.waitForExistence(timeout: 10), "flow pick text missing")
+        XCTAssertEqual(flowPick.label, "-1", "no tap yet, pick should be -1")
+        statsFlow.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 88, dy: 80)).tap()
+        XCTAssertTrue(
+            waitForLabel(flowPick, "0", timeout: 10),
+            "tap on the first Sankey band did not bind node 0 (label: \(flowPick.label))"
+        )
+        // #3263: `<PlotChart marks>` — the cartesian family natively. The bars
+        // canvas carries the testid; a tap runs the engine's plotHitBars over
+        // the same spec the canvas painted. Three category bands share the plot
+        // (left gutter ~35pt for the y labels), so (90, 100) from the canvas
+        // origin is inside the first bar — every bar spans that height, with
+        // or without the preset strip that shortens the plot from below.
+        let statsBars = app.descendants(matching: .any).matching(identifier: "stats-bars").firstMatch
+        XCTAssertTrue(statsBars.waitForExistence(timeout: 10), "bar chart canvas missing on stats page")
+        XCTAssertGreaterThan(statsBars.frame.height, 100, "bar chart canvas has no height")
+        let barPick = app.staticTexts["stats-bars-pick"].firstMatch
+        XCTAssertTrue(barPick.waitForExistence(timeout: 10), "bar pick text missing")
+        XCTAssertEqual(barPick.label, "-1", "no tap yet, bar pick should be -1")
+        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 90, dy: 100)).tap()
+        XCTAssertTrue(
+            waitForLabel(barPick, "0", timeout: 10),
+            "tap on the first bar did not bind index 0 (label: \(barPick.label))"
+        )
+        // #3268: `<PlotChart dataZoom>` — a pinch drives the engine's fraction
+        // window through MagnificationGesture. 4.5x on three rows keeps only
+        // row 1 (any scale in 3…6 does), so the sole band now IS 'art' and a
+        // tap must report the GLOBAL index 1: gesture, slice and rebase, together.
+        statsBars.pinch(withScale: 4.5, velocity: 2)
+        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 90, dy: 100)).tap()
+        XCTAssertTrue(
+            waitForLabel(barPick, "1", timeout: 10),
+            "after the pinch, a tap on the sole band did not bind the GLOBAL index 1 (label: \(barPick.label))"
+        )
+        // #3270: `<PlotChart zoomPresets>` — the engine lays the strip out along
+        // the canvas bottom (22pt), right-aligned: 'all' is the last button (~34pt
+        // wide, centred ~25pt in from the right edge), 'last 1' sits left of it
+        // (~49pt wide, centred ~72pt in). 'last 1' keeps only the LAST row, so the
+        // sole band must report the GLOBAL index 2; 'all' restores every row and
+        // the first band is row 0 again. A missed button leaves the previous
+        // window in place, which the next band tap exposes as the wrong index.
+        let barsW = statsBars.frame.width
+        let barsH = statsBars.frame.height
+        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: barsW - 72, dy: barsH - 11)).tap()
+        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 90, dy: 100)).tap()
+        XCTAssertTrue(
+            waitForLabel(barPick, "2", timeout: 10),
+            "after the 'last 1' preset, a tap on the sole band did not bind the GLOBAL index 2 (label: \(barPick.label))"
+        )
+        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: barsW - 25, dy: barsH - 11)).tap()
+        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 90, dy: 100)).tap()
+        XCTAssertTrue(
+            waitForLabel(barPick, "0", timeout: 10),
+            "after the 'all' preset, a tap on the first band did not bind index 0 again (label: \(barPick.label))"
+        )
         let statsBack = app.buttons["stats-back"].firstMatch
         XCTAssertTrue(statsBack.exists, "Back button missing on stats page")
         statsBack.tap()

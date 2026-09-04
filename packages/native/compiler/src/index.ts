@@ -6,6 +6,7 @@
 import { emitKotlin } from './emit-kotlin'
 import { emitSwift } from './emit-swift'
 import { parsePyreon } from './parse'
+import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
 import type { EmitOptions, TransformResult } from './types'
 
 export type { TargetLanguage, EmitOptions, TransformResult } from './types'
@@ -25,14 +26,20 @@ export {
   type ValidationResult,
 } from './validate'
 
+/** A module that imports from `@pyreon/charts/plot` constructs the generated
+ *  engine's structs (`SankeyNode`, `GanttTask`, …): their declarations are
+ *  known to the emitters as EXTERNAL structs so literals type correctly. */
+const CHART_PLOT_IMPORT = /from\s*['"]@pyreon\/charts\/plot['"]/
+
 export function transform(source: string, options: EmitOptions): TransformResult {
   const parsed = parsePyreon(source)
+  const structs = CHART_PLOT_IMPORT.test(source) ? [...parsed.structs, ...CHART_ENGINE_STRUCTS] : parsed.structs
   const emitted =
     options.target === 'swift'
       ? emitSwift(
           parsed.components,
           parsed.enums,
-          parsed.structs,
+          structs,
           parsed.moduleDecls,
           parsed.stores,
           parsed.models,
@@ -49,7 +56,7 @@ export function transform(source: string, options: EmitOptions): TransformResult
       : emitKotlin(
           parsed.components,
           parsed.enums,
-          parsed.structs,
+          structs,
           parsed.moduleDecls,
           parsed.stores,
           parsed.models,

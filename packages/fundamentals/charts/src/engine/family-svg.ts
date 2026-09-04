@@ -30,6 +30,17 @@ import { layoutPolar, renderPolar } from './polar'
 import type { PolarAxes, PolarOptions, PolarSeries } from './polar'
 import { layoutSankey, renderSankey } from './sankey'
 import type { SankeyLink, SankeyNode, SankeyOptions } from './sankey'
+import { layoutGraph, renderGraph } from './graph'
+import type { GraphLink, GraphNode, GraphOptions } from './graph'
+import { calendarDomain, formatIsoDays, layoutCalendar, renderCalendar } from './calendar'
+import { layoutGantt, renderGantt } from './gantt'
+import type { GanttOptions, GanttTask } from './gantt'
+import { layoutParallel, renderParallel } from './parallel'
+import type { ParallelAxis, ParallelOptions } from './parallel'
+import { parallelRows } from './parallel-web'
+import type { ParallelRow } from './parallel-web'
+import type { CalendarOptions } from './calendar'
+import { calendarValues } from './calendar-web'
 import type { FunnelOptions, FunnelStage } from './funnel'
 import type { HeatGrid } from './heat'
 import { computeLayout } from './layout'
@@ -675,6 +686,138 @@ export function sankeyToSvg(options: SankeyToSvgOptions): string {
   const description =
     options.description ??
     (options.title !== undefined ? `${options.title}: ${layout.nodes.length} nodes, ${layout.links.length} flows totalling ${total}.` : undefined)
+  return renderSvg(cmds, width, height, {
+    ...options.svg,
+    ...(options.title !== undefined ? { title: options.title } : {}),
+    ...(description !== undefined && description !== '' ? { description } : {}),
+  })
+}
+
+// ---- graph (svg half; the geometry in graph.ts is bundled into the native engine) ----
+
+export interface GraphToSvgOptions {
+  nodes: GraphNode[]
+  links: GraphLink[]
+  width?: Double
+  height?: Double
+  graph?: GraphOptions
+  measure?: MeasureText
+  title?: string
+  description?: string
+  svg?: Omit<SvgOptions, 'title' | 'description'>
+}
+
+/** Graph → `<svg>` string, server-safe. */
+export function graphToSvg(options: GraphToSvgOptions): string {
+  const width = options.width ?? 640.0
+  const height = options.height ?? 400.0
+  const box: Rect = { x: 0.0, y: 0.0, w: width, h: height }
+  const layout = layoutGraph(options.nodes, options.links, box, options.graph)
+  const cmds = renderGraph(layout, box, options.graph)
+  void (options.measure ?? measureApprox())
+  const description =
+    options.description ??
+    (options.title !== undefined ? `${options.title}: ${layout.nodes.length} nodes, ${layout.links.length} links.` : undefined)
+  return renderSvg(cmds, width, height, {
+    ...options.svg,
+    ...(options.title !== undefined ? { title: options.title } : {}),
+    ...(description !== undefined && description !== '' ? { description } : {}),
+  })
+}
+
+// ---- calendar (svg half; the geometry in calendar.ts is bundled into the native engine) ----
+
+export interface CalendarToSvgOptions {
+  start: string
+  end: string
+  values: Record<string, Double>
+  width?: Double
+  height?: Double
+  calendar?: CalendarOptions
+  measure?: MeasureText
+  title?: string
+  description?: string
+  svg?: Omit<SvgOptions, 'title' | 'description'>
+}
+
+/** Calendar → `<svg>` string, server-safe. */
+export function calendarToSvg(options: CalendarToSvgOptions): string {
+  const width = options.width ?? 720.0
+  const height = options.height ?? 140.0
+  const layout = layoutCalendar(options.start, options.end, { x: 4.0, y: 4.0, w: width - 8.0, h: height - 8.0 }, options.calendar)
+  const vals = calendarValues(options.values)
+  const cmds = renderCalendar(layout, vals, options.calendar)
+  void (options.measure ?? measureApprox())
+  let filled = 0
+  for (const c of layout.cells) if (options.values[c.date] !== undefined) filled++
+  const dom = calendarDomain(layout, vals)
+  const description =
+    options.description ??
+    (options.title !== undefined ? `${options.title}: ${layout.cells.length} days from ${options.start} to ${options.end}, ${filled} with values from ${dom.min} to ${dom.max}.` : undefined)
+  return renderSvg(cmds, width, height, {
+    ...options.svg,
+    ...(options.title !== undefined ? { title: options.title } : {}),
+    ...(description !== undefined && description !== '' ? { description } : {}),
+  })
+}
+
+// ---- gantt (svg half; the geometry in gantt.ts is bundled into the native engine) ----
+
+export interface GanttToSvgOptions {
+  tasks: GanttTask[]
+  width?: Double
+  height?: Double
+  gantt?: GanttOptions
+  measure?: MeasureText
+  title?: string
+  description?: string
+  svg?: Omit<SvgOptions, 'title' | 'description'>
+}
+
+/** Gantt → `<svg>` string, server-safe. */
+export function ganttToSvg(options: GanttToSvgOptions): string {
+  const width = options.width ?? 720.0
+  const height = options.height ?? 320.0
+  const measure = options.measure ?? measureApprox()
+  const layout = layoutGantt(options.tasks, { x: 4.0, y: 4.0, w: width - 8.0, h: height - 8.0 }, options.gantt, measure)
+  const cmds = renderGantt(layout, options.gantt)
+  const description =
+    options.description ??
+    (options.title !== undefined
+      ? `${options.title}: ${layout.rows.length} tasks from ${formatIsoDays(Math.floor(layout.domain.min))} to ${formatIsoDays(Math.floor(layout.domain.max))}.`
+      : undefined)
+  return renderSvg(cmds, width, height, {
+    ...options.svg,
+    ...(options.title !== undefined ? { title: options.title } : {}),
+    ...(description !== undefined && description !== '' ? { description } : {}),
+  })
+}
+
+// ---- parallel (svg half; the geometry in parallel.ts is bundled into the native engine) ----
+
+export interface ParallelToSvgOptions {
+  axes: ParallelAxis[]
+  rows: ParallelRow[]
+  width?: Double
+  height?: Double
+  parallel?: ParallelOptions
+  measure?: MeasureText
+  title?: string
+  description?: string
+  svg?: Omit<SvgOptions, 'title' | 'description'>
+}
+
+/** Parallel coordinates → `<svg>` string, server-safe. */
+export function parallelToSvg(options: ParallelToSvgOptions): string {
+  const width = options.width ?? 640.0
+  const height = options.height ?? 360.0
+  const gutter = 40.0
+  const layout = layoutParallel(options.axes, parallelRows(options.axes, options.rows), { x: gutter, y: 8.0, w: Math.max(0.0, width - gutter * 2.0), h: Math.max(0.0, height - 16.0) }, options.parallel)
+  const cmds = renderParallel(layout, options.parallel)
+  void (options.measure ?? measureApprox())
+  const description =
+    options.description ??
+    (options.title !== undefined ? `${options.title}: ${options.rows.length} rows across ${options.axes.length} axes (${options.axes.map((a) => a.name).join(', ')}).` : undefined)
   return renderSvg(cmds, width, height, {
     ...options.svg,
     ...(options.title !== undefined ? { title: options.title } : {}),

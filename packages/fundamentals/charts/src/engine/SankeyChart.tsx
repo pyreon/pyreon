@@ -4,8 +4,8 @@ import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { paint, prepareCanvas } from './canvas-web'
-import { layoutSankey, renderSankey } from './sankey'
-import type { SankeyLayout, SankeyLink, SankeyNode, SankeyOptions } from './sankey'
+import { hitSankeyIndex, layoutSankey, renderSankey } from './sankey'
+import type { SankeyHitIndex, SankeyLayout, SankeyLink, SankeyNode, SankeyOptions } from './sankey'
 import { hitSankey } from './sankey-hit'
 import type { SankeyHit } from './sankey-hit'
 import { chartTable, describeChart } from './a11y'
@@ -23,6 +23,8 @@ export interface SankeyChartProps {
   sankey?: SankeyOptions
   title?: string
   onSelect?: (hit: SankeyHit) => void
+  /** The engine's INDEX hit — the multiplatform-safe twin of `onSelect` (what the native tap gesture reports). */
+  onSelectIndex?: (hit: SankeyHitIndex) => void
   accessibleTable?: boolean
   class?: string
 }
@@ -63,11 +65,16 @@ export function SankeyChart(props: SankeyChartProps): VNode {
   const handleClick = (ev: MouseEvent): void => {
     const el = canvas
     const cb = props.onSelect
-    if (el === null || cb === undefined) return
+    const cbi = props.onSelectIndex
+    if (el === null || (cb === undefined && cbi === undefined)) return
     const w = drawWidth(el, props.width)
     const hgt = props.height ?? 300
     const r = el.getBoundingClientRect()
-    cb(hitSankey(layoutFor(w, hgt), ev.clientX - r.left, ev.clientY - r.top))
+    const layout = layoutFor(w, hgt)
+    const px = ev.clientX - r.left
+    const py = ev.clientY - r.top
+    if (cb !== undefined) cb(hitSankey(layout, px, py))
+    if (cbi !== undefined) cbi(hitSankeyIndex(layout, px, py))
   }
 
   const a11y = () => {

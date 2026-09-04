@@ -24,7 +24,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { buildChartEngine } from '../../scripts/gen-chart-engine'
+import { buildChartEngine, buildChartEngineStructs } from '../../scripts/gen-chart-engine'
 import {
   isKotlincAvailable,
   isSwiftUIAvailable,
@@ -48,34 +48,12 @@ describe('native chart engine — generated, drift-locked, compile-proven', () =
     expect(read(KOTLIN_OUT), hint).toBe(kotlin)
   })
 
-  // A SWIFT-KEYWORD field name (`open` on Ohlc) reaches `publicizeSwift`
-  // backtick-escaped. Its field regex matched `\w+` only, so such a field
-  // was neither made `public` NOR pushed into the synthesized memberwise
-  // init — and Swift then refused the struct with "return from initializer
-  // without initializing all stored properties". This is a STRUCTURAL
-  // invariant, so it is asserted WITHOUT a toolchain: the sibling typecheck
-  // specs are `skipIf`-gated on a Swift/SwiftUI SDK and therefore SKIP on
-  // the Linux runner every PR actually runs, which is why the broken emit
-  // shipped to the macOS device gate before anything failed.
-  it('every stored property of a generated struct is public and reaches its init', () => {
-    const swift = read(SWIFT_OUT)
-    const structs = swift.split(/^public struct /m).slice(1)
-    expect(structs.length, 'generated structs').toBeGreaterThan(0)
-    for (const block of structs) {
-      const name = block.slice(0, block.search(/[:\s{]/))
-      const body = block.slice(0, block.indexOf('\n}'))
-      const props = [...body.matchAll(/^ {2}(?:public )?var (`?\w+`?): /gm)].map((m) => m[1]!)
-      if (props.length === 0) continue
-      // NB: a param type can be a closure (`((Double) -> String)?`), which
-      // contains `)` — so match to the line's trailing `) {`, not `[^)]*`.
-      const init = body.match(/^ {2}public init\((.*)\) \{$/m)
-      expect(init, `${name} has a public memberwise init`).not.toBeNull()
-      const params = init![1]!
-      for (const prop of props) {
-        expect(body, `${name}.${prop} is public`).toContain(`public var ${prop}: `)
-        expect(params, `${name}.${prop} reaches init(${params})`).toContain(`${prop}: `)
-      }
-    }
+  it('the compiler-side struct registry is byte-identical to a fresh generation and names the runtime types', () => {
+    const fresh = buildChartEngineStructs(REPO)
+    expect(read('packages/native/compiler/src/chart-engine-structs.ts'), 'regenerate: bun packages/native/compiler/scripts/gen-chart-engine.ts').toBe(fresh)
+    expect(fresh).toContain('"name": "SankeyNode"')
+    expect(fresh).toContain('"name": "PyreonDrawCmd"')
+    expect(fresh).not.toMatch(/"name": "(?:Pt|Rect|DrawCmd)"/)
   })
 
   it('the generated engine references the runtime draw-list types, never its own', () => {

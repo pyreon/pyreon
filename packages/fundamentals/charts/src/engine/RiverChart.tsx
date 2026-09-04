@@ -4,7 +4,7 @@ import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
-import { hitRiver, layoutRiver, renderRiver } from './river'
+import { hitRiver, hitRiverIndex, layoutRiver, renderRiver } from './river'
 import type { RiverLayer, RiverLayout, RiverOptions, RiverSeries } from './river'
 import { chartTable, describeChart } from './a11y'
 import type { Double } from './types'
@@ -18,6 +18,8 @@ export interface RiverChartProps {
   river?: RiverOptions
   title?: string
   onSelect?: (layer: RiverLayer | null) => void
+  /** The engine's INDEX hit — the multiplatform-safe twin of `onSelect` (what the native tap gesture reports). */
+  onSelectIndex?: (hit: number) => void
   accessibleTable?: boolean
   class?: string
 }
@@ -53,11 +55,16 @@ export function RiverChart(props: RiverChartProps): VNode {
   const handleClick = (ev: MouseEvent): void => {
     const el = canvas
     const cb = props.onSelect
-    if (el === null || cb === undefined) return
+    const cbi = props.onSelectIndex
+    if (el === null || (cb === undefined && cbi === undefined)) return
     const w = drawWidth(el, props.width)
     const hgt = props.height ?? 300
     const r = el.getBoundingClientRect()
-    cb(hitRiver(layoutFor(w, hgt), ev.clientX - r.left, ev.clientY - r.top, props.river?.curve))
+    const layout = layoutFor(w, hgt)
+    const px = ev.clientX - r.left
+    const py = ev.clientY - r.top
+    if (cb !== undefined) cb(hitRiver(layout, px, py, props.river?.curve))
+    if (cbi !== undefined) cbi(hitRiverIndex(layout, px, py, props.river?.curve))
   }
 
   const a11y = () => {

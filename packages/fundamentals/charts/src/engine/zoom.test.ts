@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { brushRange, clampWindow, isFullWindow, panWindow, sliceRange, zoomWindow } from './zoom'
+import { brushRange } from './brush'
+import { clampWindow, isFullWindow, panWindow, sliceRange, zoomWindow } from './zoom'
 
 describe('zoom window math', () => {
   it('clamps into [0,1] preserving span', () => {
