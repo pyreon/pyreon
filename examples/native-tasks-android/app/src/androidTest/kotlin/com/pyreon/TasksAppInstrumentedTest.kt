@@ -532,6 +532,7 @@ class TasksAppInstrumentedTest {
         // draw list; the testid rides Modifier.testTag on that canvas.
         composeRule
             .onNodeWithTag("stats-flow")
+            .performScrollTo()
             .assertIsDisplayed()
         // #3257: `onSelectIndex` — a tap on the canvas runs hitSankeyIndex over the
         // same layout the canvas painted and binds the node index. The first band
@@ -550,6 +551,7 @@ class TasksAppInstrumentedTest {
         // the first bar, with or without the preset strip below the plot.
         composeRule
             .onNodeWithTag("stats-bars")
+            .performScrollTo()
             .assertIsDisplayed()
         composeRule
             .onNodeWithTag("stats-bars-pick")
@@ -631,6 +633,7 @@ class TasksAppInstrumentedTest {
             .assertTextEquals("none")
         composeRule
             .onNodeWithTag("stats-brush")
+            .performScrollTo()
             .performTouchInput {
                 down(Offset(50f * flowDensity, 60f * flowDensity))
                 moveTo(Offset(width - 30f * flowDensity, 60f * flowDensity))
@@ -643,6 +646,7 @@ class TasksAppInstrumentedTest {
         waitForTagText("stats-brush-sel", "none")
         composeRule
             .onNodeWithTag("stats-back")
+            .performScrollTo()
             .performClick()
         assertTagDisplayed("tasks-page", "after stats-back (/stats -> /tasks)")
 

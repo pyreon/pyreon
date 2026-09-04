@@ -518,6 +518,11 @@ function StatsPage() {
   const high = computed(() => Object.values(scores()).flatMap((v: number) => v > 80 ? [v] : []))
   const curved = computed(() => Object.values(scores()).filter((v: number, i: number) => v * 1.05 > i + 75))
   return (
+    // The page outgrew the viewport when the navigator + brush charts landed:
+    // `stats-back` sat at y~900 and iOS's kAXScrollToVisibleAction could not
+    // reach it, failing the device gate. Same treatment as the vocab, dash and
+    // toolkit pages above.
+    <Scroll direction="vertical" data-testid="stats-scroll">
     <Stack gap={3} padding={4} data-testid="stats-page">
       <Text data-testid="stats-total">{String(total())}</Text>
       <Text data-testid="stats-average">{String(average())}</Text>
@@ -570,6 +575,7 @@ function StatsPage() {
         Back to tasks
       </Button>
     </Stack>
+    </Scroll>
   )
 }
 
