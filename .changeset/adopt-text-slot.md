@@ -31,11 +31,14 @@ fix is a new runtime helper, `_textSlot`, carrying the same
 clone-vs-marked-range discrimination, which both compiler backends now emit in
 place of the inlined pair.
 
-**This supersedes #3299**, which fixed the same defect by REFUSING the shape in
-the verifier so the element rebuilt. That was correct and deliberately minimal —
-a correctness fix should not wait on a compiler change — but it paid for
-correctness with adoption. This keeps both: the affected elements render once
-AND stay adopted, node identity intact.
+**This supersedes #3299 and removes it.** That PR fixed the same defect by
+REFUSING the shape in the verifier so the element rebuilt — correct, and
+deliberately minimal, because a correctness fix should not wait on a compiler
+change. It paid for correctness with adoption, and now that the text bind is
+adoption-aware the refusal would only cost the adoption back: with #3299 on
+`main` and `_textSlot` in place, the adoption specs read 0 instead of 3/3, 3/3
+and 4/4. So the guard is deleted here, and its own specs are kept — they lock
+the OUTPUT half of the contract while the new file locks the adoption half.
 
 Measured on the shapes above, SSR then hydrate, counting node identity:
 

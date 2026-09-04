@@ -32,25 +32,30 @@
  * of the body is re-mounted rather than adopted, so the broken branch rarely
  * ran where anyone would notice.
  *
- * THE FIX, and why it is a refusal rather than a repair. Nothing in the DOM or
- * in the template signature distinguishes the two slots — the signature records
- * only "this element ends with a placeholder". Normalizing the range to suit the
- * text bind is not available either: strip the markers and a genuine mount slot
- * receives a text-node placeholder, whose marker-less branch mounts a SECOND
- * copy. So the verifier refuses the one shape both can produce — a range holding
- * exactly one text node — and the element rebuilds, which is correct. An EMPTY
- * range and a range holding ELEMENTS are unambiguous and still adopt; the specs
- * below hold that line, because a bail that widened would quietly cost the
- * adoption the surrounding work exists to win.
+ * THE FIX HAS CHANGED SHAPE — this file's original one was superseded, and the
+ * docblock is corrected rather than left describing code that is gone. The
+ * first fix REFUSED the ambiguous shape in `matchDomAgainstTemplate`, so the
+ * element rebuilt: correct output, at the cost of the adoption hydration
+ * exists to provide. It was deliberately minimal — a correctness fix should not
+ * wait on a compiler change — and it is no longer present.
  *
- * Restoring adoption for this shape means routing the text slot through a
- * runtime helper the way `_mountSlot` already is. That is a compiler change in
- * BOTH backends, not a verifier one, and is deliberately not attempted here.
+ * What ships instead is `_textSlot`: the text bind now gets the same
+ * clone-vs-marked-range discrimination `_mountSlot` has, emitted by both
+ * compiler backends in place of the inlined `createTextNode + replaceChild`.
+ * The verifier claims the range as before, BOTH slot kinds consume their
+ * markers correctly, and the element stays adopted.
+ *
+ * So these specs now lock the OUTPUT half of the contract — the value renders
+ * once, with no marker litter — while `hydrate-text-slot-adoption.test.tsx`
+ * locks the adoption half. Keeping both is deliberate: an output-only suite
+ * passes for a fix that gives up adoption, which is exactly what the refusal
+ * did, and an adoption-only suite would not have caught the original
+ * duplication at all.
  *
  * Every spec compiles REAL JSX through `transformJSX`, because vitest's own JSX
  * transform never emits `_tpl` and cannot reproduce any of this.
  *
- * Bisect: reverting the one-text refusal in `matchDomAgainstTemplate` fails the
+ * Bisect: neutering `_textSlot`'s marked-range branch fails the
  * three duplication specs with `expected '<p class="a">Hello AdaAda…'`.
  */
 import { transformJSX } from '@pyreon/compiler'
@@ -64,6 +69,7 @@ import {
   _bindDirect,
   _bindText,
   _mountSlot,
+  _textSlot,
   _setAttr,
   _setClass,
   _setStyle,
@@ -100,6 +106,7 @@ const RUNTIME_DEPS = {
   _setAttr,
   _setClass,
   _mountSlot,
+  _textSlot,
   bindPolymorphicText,
   h,
   Fragment,
