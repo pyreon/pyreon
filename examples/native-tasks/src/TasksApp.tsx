@@ -520,10 +520,14 @@ function StatsPage() {
   return (
     // The page outgrew the viewport when the navigator + brush charts landed:
     // `stats-back` sat at y~900 and iOS's kAXScrollToVisibleAction could not
-    // reach it, failing the device gate. Same treatment as the vocab, dash and
-    // toolkit pages above.
+    // reach it. The shape here is load-bearing and matches vocab/dash/toolkit
+    // above: a BOUNDED <Stack> outermost, <Scroll> inside it. A <Scroll> placed
+    // outermost is handed unbounded height by the route host, and Compose
+    // rejects that outright — "Vertically scrollable component was measured
+    // with an infinity maximum height constraints".
+    <Stack data-testid="stats-page">
     <Scroll direction="vertical" data-testid="stats-scroll">
-    <Stack gap={3} padding={4} data-testid="stats-page">
+    <Stack gap={3} padding={4}>
       <Text data-testid="stats-total">{String(total())}</Text>
       <Text data-testid="stats-average">{String(average())}</Text>
       <Text data-testid="stats-high">{String(high().length)}</Text>
@@ -576,6 +580,7 @@ function StatsPage() {
       </Button>
     </Stack>
     </Scroll>
+    </Stack>
   )
 }
 
