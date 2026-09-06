@@ -6,7 +6,7 @@
 
 import { createContext, nativeCompat, provide, useContext } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
-import { computed, signal } from '@pyreon/reactivity'
+import { computed, isClient, signal } from '@pyreon/reactivity'
 import { DARK_PALETTE } from './palette'
 import { defaultTheme } from './render'
 import type { ChartTheme } from './render'
@@ -82,9 +82,12 @@ export function systemChartMode(): () => ChartThemeMode {
   if (_systemMode === null) {
     const s = signal<ChartThemeMode>('light')
     _systemMode = s
-    if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+    if (isClient && typeof window.matchMedia === 'function') {
       const mq = window.matchMedia('(prefers-color-scheme: dark)')
       s.set(mq.matches ? 'dark' : 'light')
+      // A document-lifetime listener on a module singleton, not a per-mount
+      // registration: useEventListener is for a component's own lifecycle.
+      // pyreon-lint-ignore pyreon/no-raw-addeventlistener
       mq.addEventListener('change', (e) => s.set(e.matches ? 'dark' : 'light'))
     }
   }
