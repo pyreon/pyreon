@@ -49,7 +49,6 @@ import {
   _setStyle,
   _tpl,
   hydrateRoot,
-  mount,
 } from '../index'
 import { bindPolymorphicText } from '../mount'
 
