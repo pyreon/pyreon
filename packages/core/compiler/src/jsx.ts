@@ -5075,20 +5075,29 @@ export function transformJSX_JS(
       return false
     }
 
+    function childrenHaveExpression(children: N[]): boolean {
+      return children.some(
+        (c: N) =>
+          (c.type === 'JSXExpressionContainer' &&
+            c.expression &&
+            c.expression.type !== 'JSXEmptyExpression') ||
+          (c.type === 'JSXFragment' && childrenHaveExpression(jsxChildren(c))),
+      )
+    }
+
     function elementHasDynamic(node: N): boolean {
       const nodeTag = jsxTagName(node)
       if (jsxAttrs(node).some((a: N) => attrIsDynamic(a, nodeTag))) return true
       if (!isSelfClosing(node)) {
-        if (
-          jsxChildren(node).some(
-            (c: N) =>
-              c.type === 'JSXExpressionContainer' &&
-              c.expression &&
-              c.expression.type !== 'JSXEmptyExpression',
-          )
-        ) {
-          return true
-        }
+        // Looks THROUGH fragments: `<b><i/><>{x}</></b>` flattens to a
+        // placeholder child of `<b>` at emit time, so `<b>` must hold a
+        // phase-1 const exactly as if the expression were written bare —
+        // otherwise its walk is inlined into the phase-2 `_setChildAt` /
+        // `_mountSlot` line and evaluated AFTER an earlier placeholder was
+        // replaced (`_setChildAt(__p0.nextSibling, …)` with `__p0` already
+        // detached: `null.replaceChild`). Found by the compiled-path parity
+        // fuzz; the same predicate on the same (flattened) input the emit uses.
+        if (childrenHaveExpression(jsxChildren(node))) return true
         // PZ-08: an absorbed component child emits a phase-2 `_mountChild` /
         // `_mountSlot` line, so this element's own ref MUST be a phase-1
         // const. Without this the walk was inlined into the phase-2 line and
@@ -5206,7 +5215,23 @@ export function transformJSX_JS(
         needsMountSlotImport = true
         const placeholder = hoistPlaceholderRef(parentRef, childNodeIdx)
         const d = nextDisp()
-        bindLines.push(`const ${d} = _mountSlot(${expr}, ${parentRef}, ${placeholder})`)
+        // Wrap a DYNAMIC children expression (`props.children` — a prop read)
+        // in an accessor, exactly as the h()/SSR emit does via `shouldWrap`.
+        // Passing it BARE handed `_mountSlot` the CHILD's own accessor as the
+        // slot's accessor: one reactive level on the client where the SSR
+        // markup carried two (`<!--$--><!--$-->…<!--/$--><!--/$-->`), so
+        // hydration adopted the outer range and mis-walked the inner one —
+        // the child's text mounted a second time beside its server node —
+        // and a reactive `children` prop was frozen at bind time. The
+        // predicate is shared with the h() path so the two emits cannot
+        // disagree again; a static local `children` stays bare on both. An
+        // ELEMENT-valued const (`const el = <div/>` … `{el}`) is deliberately
+        // NOT wrapped: a VNode is never an accessor, hydration's literal branch
+        // walks the server range for it already, and its prop-derived class
+        // stays reactive through the inlined element (r15 specs).
+        const slotArg =
+          isChildrenExpression(childExpr, expr) && shouldWrap(childExpr) ? `() => (${expr})` : expr
+        bindLines.push(`const ${d} = _mountSlot(${slotArg}, ${parentRef}, ${placeholder})`)
         return '<!>'
       }
       // PZ-02 fix: a call to an in-file JSX-returning helper (`{cell(x)}`,
