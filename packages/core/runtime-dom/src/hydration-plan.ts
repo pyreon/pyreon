@@ -31,7 +31,7 @@ import type { VNode, VNodeChild } from '@pyreon/core'
 import { renderEffect } from '@pyreon/reactivity'
 import { bindPolymorphicText } from './mount'
 import { _markAdoptedHtmlEl, applyClassProp, applyProp, applyProps, applyStyleProp, makeEventBinder } from './props'
-import { _isTplHoleEl, _isTplHtmlEl, _markMidSlotText, _setTplHoleCursors } from './template'
+import { _isTplHoleEl, _isTplHtmlEl, _markMidSlotText, _parkSlotRange, _setTplHoleCursors } from './template'
 
 type Cleanup = () => void
 
@@ -809,6 +809,15 @@ interface AdoptMatch {
    */
   midSlots: { open: Comment; text: Text | null; close: Comment }[] | null
   /**
+   * Verified mid slots whose server range holds ELEMENTS (or several nodes).
+   * These cannot collapse to one node; `tplAdoptVerify` PARKS each range in a
+   * fragment hung off its open marker (see `PARKED_RANGE` in template.ts), so
+   * the marker alone stands where the clone has its `<!>` and every positional
+   * ref after it is correct. `hydrateMountSlot` puts the range back and adopts
+   * it; a text bind discards it.
+   */
+  parks: { open: Comment; close: Comment }[] | null
+  /**
    * Elements whose ONLY child is the text of an ELIDED sole-child accessor
    * slot (the template baked a ' ' placeholder there, recorded as `null`).
    * The marker triplet used to prove per row that such a slot holds a TEXT
@@ -1000,6 +1009,7 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
   let removals: Text[] | null = null
   let triplets: { open: Comment; text: Text | null; close: Comment }[] | null = null
   let midSlots: { open: Comment; text: Text | null; close: Comment }[] | null = null
+  let parks: { open: Comment; close: Comment }[] | null = null
   const midFlags = expected.midSlots
   let soles: Element[] | null = null
   let emptySlots: Element[] | null = null
@@ -1122,6 +1132,10 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
     const midAt = midFlags !== null ? (midFlags[at] as number[] | null) : null
     let ci = 0
     let midPos = 0
+    // This element's parked ranges, in order — the descent below must step
+    // OVER them: their content is slot output the template says nothing about,
+    // exactly like the content after a trailing slot's open marker.
+    let elParks: { open: Comment; close: Comment }[] | null = null
     // Single pass over children: count texts, validate + collect `$` triplets
     // inline (adjacency rules from collectDollarTriplets), gather bare texts.
     let n: ChildNode | null = el.firstChild
@@ -1153,14 +1167,18 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
             slotOpen = n as Comment
             break
           }
-          // MID TEXT SLOT. The template has a `<!>` at this clone index with
-          // static content after it. Its server range must hold at most ONE
-          // text node — the only shape that collapses to the clone's single
-          // node — and is recorded for `tplAdoptVerify` to collapse. Not
-          // counted as a text: the template's `<!>` is not one either, so the
-          // static-text 1:1 gate below stays armed. A range holding elements,
-          // or a range where no mid slot is expected, is a structural
-          // divergence the positional refs cannot survive: bail to the clone.
+          // MID SLOT. The template has a `<!>` at this clone index with static
+          // content after it. Two shapes, both made to match the clone's ONE
+          // node before the bind runs so every later positional ref is right:
+          //   - at most one TEXT node in the range → recorded for `tplAdoptVerify`
+          //     to COLLAPSE (both markers removed);
+          //   - anything else (elements, several nodes, nested ranges) → recorded
+          //     to PARK: the content moves into a fragment hung off the open
+          //     marker, which stays as the placeholder (see `PARKED_RANGE`).
+          // Not counted as a text either way: the template's `<!>` is not one,
+          // so the static-text 1:1 gate below stays armed. A range where no mid
+          // slot is expected, or one with no matching close, is a structural
+          // divergence: bail to the clone.
           if (midAt !== null) {
             if (midPos >= midAt.length || midAt[midPos] !== ci) return false
             const first = n.nextSibling
@@ -1170,8 +1188,16 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
               text = first as Text
               close = first.nextSibling
             }
-            if (close === null || close.nodeType !== 8 || (close as Comment).data !== '/$') return false
-            ;(midSlots ??= []).push({ open: n as Comment, text, close: close as Comment })
+            if (close !== null && close.nodeType === 8 && (close as Comment).data === '/$') {
+              ;(midSlots ??= []).push({ open: n as Comment, text, close: close as Comment })
+            } else {
+              const end = findMatchingClose(n as Comment)
+              if (end === null) return false
+              const park = { open: n as Comment, close: end }
+              ;(parks ??= []).push(park)
+              ;(elParks ??= []).push(park)
+              close = end
+            }
             midPos++
             ci++
             n = close.nextSibling
@@ -1272,8 +1298,15 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
     // Descend into STATIC element children only. With a slot present, those are
     // exactly the elements before its open marker — anything after is rendered
     // slot content, which this template's signature says nothing about.
-    if (slotOpen !== null) {
+    if (slotOpen !== null || elParks !== null) {
+      let pk = 0
       for (let c: ChildNode | null = el.firstChild; c && c !== slotOpen; c = c.nextSibling) {
+        // Step over a parked range wholesale: verify resumes after its close.
+        if (elParks !== null && pk < elParks.length && c === (elParks[pk] as { open: Comment }).open) {
+          c = (elParks[pk] as { close: Comment }).close
+          pk++
+          continue
+        }
         if (c.nodeType === 1 && !walk(c as Element)) return false
       }
     } else {
@@ -1285,7 +1318,7 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
   }
   if (!walk(root)) return null
   if (idx !== total) return null
-  return { removals, triplets, midSlots, soles, emptySlots, holes, htmlEls }
+  return { removals, triplets, midSlots, parks, soles, emptySlots, holes, htmlEls }
 }
 
 /** All checks passed — strip markers, ensuring one text node per slot. */
@@ -1309,6 +1342,41 @@ function collapseMidSlots(
     _markMidSlotText(t)
     s.open.remove()
     s.close.remove()
+  }
+}
+
+/** The `/$` closing `open`'s range at depth 0, or `null` (accessor ranges nest). */
+function findMatchingClose(open: Comment): Comment | null {
+  let depth = 0
+  for (let n: ChildNode | null = open.nextSibling; n; n = n.nextSibling) {
+    if (n.nodeType !== 8) continue
+    const d = (n as Comment).data
+    if (d === '$') depth++
+    else if (d === '/$') {
+      if (depth === 0) return n as Comment
+      depth--
+    }
+  }
+  return null
+}
+
+/**
+ * Park a verified mid ELEMENT range: move `open.nextSibling … close` (close
+ * included) into a fragment hung off `open`, leaving the open marker as the one
+ * node the compiled refs expect at this clone index. Reinserted by
+ * `hydrateMountSlot` before adoption; discarded by `_textSlot`.
+ */
+function parkMidRanges(parks: { open: Comment; close: Comment }[]): void {
+  for (const p of parks) {
+    const frag = document.createDocumentFragment()
+    let n: ChildNode | null = p.open.nextSibling
+    while (n !== null) {
+      const next: ChildNode | null = n.nextSibling
+      frag.appendChild(n)
+      if (n === p.close) break
+      n = next
+    }
+    _parkSlotRange(p.open, frag)
   }
 }
 
@@ -1418,6 +1486,7 @@ export function tplAdoptVerify(
   }
   if (match.triplets) normalizeDollarTriplets(match.triplets)
   if (match.midSlots) collapseMidSlots(match.midSlots)
+  if (match.parks) parkMidRanges(match.parks)
   // Declared innerHTML elements: mark each so the bind's first `_setHtml`
   // write — which runs synchronously inside the adoption's `bind(target)` —
   // trusts the server children instead of re-parsing `__html`. Marked only

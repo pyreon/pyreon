@@ -1221,6 +1221,18 @@ export function _textSlot(parent: Node, placeholder: Node): Text {
   // placeholder is always the template's `<!>` comment.
   if (isMidSlotText(placeholder)) return placeholder as Text
   if (isRangeOpen(placeholder)) {
+    // A PARKED mid range (see `PARKED_RANGE`): the server rendered element
+    // content into what the compiled bind treats as a text slot (a polymorphic
+    // upgrade, or a divergence). A text bind has no use for it — discard the
+    // parked nodes and give the bind a fresh text node. The close marker is
+    // inside the fragment, so the depth walk below must NOT run here: it would
+    // hunt for a close that is no longer in the DOM and remove the static
+    // siblings instead.
+    if (_takeParkedRange(placeholder as Comment) !== null) {
+      const fresh = document.createTextNode('')
+      parent.replaceChild(fresh, placeholder)
+      return fresh
+    }
     // The shape SSR emits for a reactive text: exactly one text node between
     // the markers. Adopt it and drop both markers, leaving the DOM identical
     // to what a fresh client mount would have produced.
@@ -1277,13 +1289,46 @@ const isCloneSlotPlaceholder = (n: Node | null): boolean =>
  * hydrated to `<p></p>`). With the brand it falls to the clone path, which is
  * correct for both the empty range and the single-text range.
  */
+/**
+ * A mid slot whose server range holds ELEMENTS (`{cond && <i/>}!`,
+ * `{xs.map(…)} tail`) cannot be collapsed to one node without losing them —
+ * but the compiled refs after it still need the clone's single-node shape. So
+ * the verifier PARKS the range: everything from the open marker's next sibling
+ * through the close marker is moved into a fragment hung off the OPEN marker,
+ * which stays in the DOM as the one placeholder the refs expect. The consumer
+ * that receives that marker decides: `_mountSlot` hands it to the hydrator,
+ * which puts the range BACK before adopting it (`hydrateMountSlot`); a text
+ * bind (`_textSlot`) has no use for element content and discards it. Carried on
+ * the node, never in a registry (leak class C).
+ */
+const PARKED_RANGE: unique symbol = Symbol('pyreon.parkedRange')
+type ParkedOpen = Comment & { [PARKED_RANGE]?: DocumentFragment | undefined }
+export function _parkSlotRange(open: Comment, frag: DocumentFragment): void {
+  ;(open as ParkedOpen)[PARKED_RANGE] = frag
+}
+/** Take (and clear) the parked range hung off `open`, or `null`. */
+export function _takeParkedRange(open: Comment): DocumentFragment | null {
+  const f = (open as ParkedOpen)[PARKED_RANGE]
+  if (f === undefined) return null
+  ;(open as ParkedOpen)[PARKED_RANGE] = undefined
+  return f
+}
+
 const MID_SLOT_TEXT: unique symbol = Symbol('pyreon.midSlotText')
 type MidSlotText = Text & { [MID_SLOT_TEXT]?: true }
 export function _markMidSlotText(t: Text): void {
   ;(t as MidSlotText)[MID_SLOT_TEXT] = true
 }
-const isMidSlotText = (n: Node): boolean =>
-  n.nodeType === 3 && (n as MidSlotText)[MID_SLOT_TEXT] === true
+// Null-safe: `_mountSlot` hands a `null` placeholder for an EMPTY marker-less
+// sole slot (the slot rendered nothing on the server, so both the compiled ref
+// and the parent's firstChild are null — a designed case, see `_mountSlot`).
+// An unguarded `.nodeType` there threw inside the adopt bind; the throw was
+// swallowed by the adoption fallback and every binding of that element was
+// orphaned: a sole `{() => cond ? null : <X/>}` child AND its sibling
+// `class={…}` both stayed dead after hydration. Found by the compiled-path
+// parity fuzz (seeds 76 + 112) the day after #3307 shipped it.
+const isMidSlotText = (n: Node | null): boolean =>
+  n !== null && n.nodeType === 3 && (n as MidSlotText)[MID_SLOT_TEXT] === true
 
 /** Hydration hook — registered by hydrateRoot (never at module load, so CSR
  * bundles tree-shake it exactly like the `_tpl` adopt verifier).

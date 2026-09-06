@@ -206,22 +206,23 @@ describe('compiled-template hydration adoption', () => {
   })
 
   it('SWAP fallback (adoption-bail shape) keeps LIVE anchors — list ops after a swapped hydration', async () => {
-    // A row with a conditional slot compiles to a template containing a
-    // NON-trailing `<!>` placeholder. Mid slots whose server range holds at most
-    // one text node now ADOPT (the verifier collapses the range — see
-    // `TplSig.midSlots`), so to keep exercising the SWAP path this fixture
-    // renders the conditional TRUE: the range then holds an ELEMENT (`<i>`),
-    // which the verifier still refuses, and every row takes the interpretive
-    // NativeItem SWAP. Before the anchor fix, each ForEntry then pointed at its
-    // DETACHED SSR node and every later op corrupted the list. The adopting
-    // twin of this shape (conditional false) lives in
-    // `hydrate-mid-text-slot-adoption.test.tsx`.
+    // This spec exercises the SWAP path — the interpretive NativeItem swap a
+    // row takes when template adoption BAILS. Before the anchor fix, each
+    // ForEntry then pointed at its DETACHED SSR node and every later op
+    // corrupted the list. Every SHAPE this fixture used to bail on now adopts
+    // (mid text slot: collapsed; mid element slot: parked — see
+    // `TplSig.midSlots`), so the bail is forced the way it happens in
+    // practice: a server/client DIVERGENCE. The client template bakes a static
+    // `class="row"` the server never rendered; the static-skeleton gate refuses
+    // the row and it swaps. The adopting twins of the old shapes live in
+    // `hydrate-mid-text-slot-adoption.test.tsx` and
+    // `hydrate-mid-element-slot-adoption.test.tsx`.
     const BAIL_SRC = `
 const App = () => (
   <div>
     <For each={() => rows()} by={(r) => r.id}>
       {(r) => (
-        <section>
+        <section class="row">
           {cond() ? <i>x</i> : null}
           <a>{() => r.label()}</a>
         </section>
@@ -249,7 +250,7 @@ const App = () => (
     const rows = signal(mk([1, 2, 3]))
     const App = compileApp(BAIL_SRC, { rows: () => rows(), cond: () => true })
     const dispose = hydrateRoot(host, h(App as never, null))
-    expect(tplAdopted()).toBe(0) // adoption bailed (element in the mid range) — swap path
+    expect(tplAdopted()).toBe(0) // adoption bailed (static attr the server lacks) — swap path
     const labels = () => Array.from(host.querySelectorAll('a')).map((a) => a.textContent)
     expect(labels()).toEqual(['L1', 'L2', 'L3'])
 
