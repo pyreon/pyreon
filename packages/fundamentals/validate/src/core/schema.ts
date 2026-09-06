@@ -198,45 +198,26 @@ export abstract class Schema<T> {
    * ```
    */
   parse(input: unknown): Result<T> {
-    const compiled = this._getCompiled()
-    // Pure-JIT fast seam — a fully-inline compiled tree (see {@link _pureCtx})
-    // runs no user code, never returns a Promise and never writes `pending`,
-    // so the seam reuses the per-schema ctx (zero per-parse ctx/issues-array
-    // allocation) and skips the two unreachable branches. Verdicts, issue
-    // objects and value identity are byte-identical to the general seam —
-    // locked by the pure-seam differential fuzz.
+    // HOT SEAM — deliberately tiny. The pure-JIT path (a fully-inline compiled
+    // tree, see {@link _pureCtx}) runs no user code, never returns a Promise
+    // and never writes `pending`, so it needs exactly: two field loads, one
+    // call, one `issues.length` read and one Result literal. Measured on the
+    // `number.int.range` cell (bun/JSC, load 2.6): that body costs 2.98ns as a
+    // small method, while the SAME steps inside the previous one-big-method
+    // `parse` — which also carried the general path, the async refusal and
+    // its error literal — cost 10.2ns, with the emitted validator itself at
+    // 2.63 and zod-c's whole `safeParse` at 2.61. The seam was 75% of the
+    // cell and its size was the whole reason. Everything cold lives in
+    // `parseGeneral` / `pureFail` so this body stays under the inliner's
+    // threshold. `_pureCtx` is only ever set in the same pass that sets
+    // `_compiled`, so its presence proves `_compiled` is built.
     const pure = this._pureCtx
     if (pure !== undefined) {
-      const value = compiled(input, pure)
+      const value = this._compiled!(input, pure)
       if (pure.issues.length === 0) return { ok: true, value: value as T }
-      const issues = pure.issues
-      // The issues array escapes into the Result — hand it out and give the
-      // reused ctx a fresh one. `path` may have been materialized by a
-      // failure wrapper / array flush; reset to the shared sentinel so the
-      // next parse starts allocation-free again. Both are cold-path costs.
-      pure.issues = []
-      pure.path = EMPTY_PATH
-      return { ok: false, issues }
+      return pureFail(pure)
     }
-    const ctx = makeCtx()
-    const value = compiled(input, ctx)
-    // Runtime async detection: sync transforms/refines work normally;
-    // only refuse `.parse` when a fn ACTUALLY returned a Promise.
-    if (value instanceof Promise) {
-      return {
-        ok: false,
-        issues: [
-          {
-            message: '[Pyreon] schema is async — use parseAsync(input) instead of parse()',
-            path: [],
-          } satisfies StandardSchemaIssue,
-        ],
-      }
-    }
-    if (ctx.issues.length > 0) return { ok: false, issues: ctx.issues }
-    return ctx.pending && ctx.pending.length > 0
-      ? { ok: true, value: value as T, pending: ctx.pending }
-      : { ok: true, value: value as T }
+    return parseGeneral(this, input)
   }
 
   /**
@@ -391,28 +372,18 @@ export abstract class Schema<T> {
    */
   get ['~standard'](): StandardSchemaV1<unknown, T>['~standard'] {
     if (this._std) return this._std
+    // HOT SEAM — tiny for the same reason `parse()` is (see its comment): the
+    // pure-JIT path is two loads, one call, one length read and one literal;
+    // everything cold is in `stdValidateGeneral`, so this closure stays
+    // inlineable at a consumer's per-keystroke call site.
     const validate = (input: unknown) => {
-      const compiled = this._getCompiled()
-      // Pure-JIT fast seam — same contract as `parse()`'s (see {@link _pureCtx}).
       const pure = this._pureCtx
       if (pure !== undefined) {
-        const value = compiled(input, pure)
+        const value = this._compiled!(input, pure)
         if (pure.issues.length === 0) return { value: value as T }
-        const issues = pure.issues
-        pure.issues = []
-        pure.path = EMPTY_PATH
-        return { issues }
+        return stdFail(pure)
       }
-      const ctx = makeCtx()
-      const value = compiled(input, ctx)
-      if (value instanceof Promise) {
-        return value.then((resolved) => {
-          if (ctx.issues.length > 0) return { issues: ctx.issues }
-          return { value: resolved as T }
-        })
-      }
-      if (ctx.issues.length > 0) return { issues: ctx.issues }
-      return { value: value as T }
+      return stdValidateGeneral(this, input)
     }
     return (this._std = {
       version: 1 as const,
@@ -753,6 +724,11 @@ export abstract class Schema<T> {
 
 
   /** Build (or fetch cached) compiled validator. */
+  /** @internal Module-private accessor for the cold seam helpers below. */
+  _getCompiledForSeam(): SyncValidator {
+    return this._getCompiled()
+  }
+
   private _getCompiled(): SyncValidator {
     if (!this._compiled) {
       // Try the JIT fast path first (pure object-of-primitives shapes);
@@ -787,6 +763,73 @@ export abstract class Schema<T> {
   _runInto(input: unknown, ctx: ParseCtx): unknown {
     return this._getCompiled()(input, ctx)
   }
+}
+
+/**
+ * Cold half of {@link Schema.parse}'s pure seam: the issues array escapes into
+ * the Result — hand it out and give the reused ctx a fresh one. `path` may have
+ * been materialized by a failure wrapper / array flush; reset to the shared
+ * sentinel so the next parse starts allocation-free again.
+ */
+function pureFail<T>(pure: ParseCtx): Result<T> {
+  const issues = pure.issues
+  pure.issues = []
+  pure.path = EMPTY_PATH
+  return { ok: false, issues }
+}
+
+/** Cold failure half of the Standard Schema seam — see {@link pureFail}. */
+function stdFail(pure: ParseCtx): { issues: ReadonlyArray<PyreonIssue> } {
+  const issues = pure.issues
+  pure.issues = []
+  pure.path = EMPTY_PATH
+  return { issues }
+}
+
+/** General seam of the Standard Schema `validate` — kept out of the hot closure. */
+function stdValidateGeneral<T>(
+  schema: Schema<T>,
+  input: unknown,
+): ReturnType<StandardSchemaV1<unknown, T>['~standard']['validate']> {
+  const compiled = schema._getCompiledForSeam()
+  const ctx = makeCtx()
+  const value = compiled(input, ctx)
+  if (value instanceof Promise) {
+    return value.then((resolved) => {
+      if (ctx.issues.length > 0) return { issues: ctx.issues }
+      return { value: resolved as T }
+    })
+  }
+  if (ctx.issues.length > 0) return { issues: ctx.issues }
+  return { value: value as T }
+}
+
+/**
+ * General seam of {@link Schema.parse}: per-parse ctx, runtime async
+ * detection, `pending` propagation. Kept OUT of `parse` so the pure fast path
+ * above stays small enough to inline (see the comment there).
+ */
+function parseGeneral<T>(schema: Schema<T>, input: unknown): Result<T> {
+  const compiled = schema._getCompiledForSeam()
+  const ctx = makeCtx()
+  const value = compiled(input, ctx)
+  // Runtime async detection: sync transforms/refines work normally;
+  // only refuse `.parse` when a fn ACTUALLY returned a Promise.
+  if (value instanceof Promise) {
+    return {
+      ok: false,
+      issues: [
+        {
+          message: '[Pyreon] schema is async — use parseAsync(input) instead of parse()',
+          path: [],
+        } satisfies StandardSchemaIssue,
+      ],
+    }
+  }
+  if (ctx.issues.length > 0) return { ok: false, issues: ctx.issues }
+  return ctx.pending && ctx.pending.length > 0
+    ? { ok: true, value: value as T, pending: ctx.pending }
+    : { ok: true, value: value as T }
 }
 
 /**
