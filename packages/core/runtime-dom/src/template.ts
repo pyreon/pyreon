@@ -1319,8 +1319,16 @@ type MidSlotText = Text & { [MID_SLOT_TEXT]?: true }
 export function _markMidSlotText(t: Text): void {
   ;(t as MidSlotText)[MID_SLOT_TEXT] = true
 }
-const isMidSlotText = (n: Node): boolean =>
-  n.nodeType === 3 && (n as MidSlotText)[MID_SLOT_TEXT] === true
+// Null-safe: `_mountSlot` hands a `null` placeholder for an EMPTY marker-less
+// sole slot (the slot rendered nothing on the server, so both the compiled ref
+// and the parent's firstChild are null — a designed case, see `_mountSlot`).
+// An unguarded `.nodeType` there threw inside the adopt bind; the throw was
+// swallowed by the adoption fallback and every binding of that element was
+// orphaned: a sole `{() => cond ? null : <X/>}` child AND its sibling
+// `class={…}` both stayed dead after hydration. Found by the compiled-path
+// parity fuzz (seeds 76 + 112) the day after #3307 shipped it.
+const isMidSlotText = (n: Node | null): boolean =>
+  n !== null && n.nodeType === 3 && (n as MidSlotText)[MID_SLOT_TEXT] === true
 
 /** Hydration hook — registered by hydrateRoot (never at module load, so CSR
  * bundles tree-shake it exactly like the `_tpl` adopt verifier).
