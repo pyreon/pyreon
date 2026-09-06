@@ -946,7 +946,7 @@ describe('chart hosts — <PlotChart navigator> as the engine-laid-out slider st
     expect(s.code).toContain('MagnificationGesture()')
     const k = transform(NAV_ZOOMED, { target: 'kotlin' })
     expect(k.code).toContain('detectTransformGestures')
-    expect(k.code).toContain('awaitEachGesture { val pyreonDown = awaitFirstDown()')
+    expect(k.code).toContain('awaitEachGesture { val pyreonDown = awaitFirstDown(requireUnconsumed = false)')
   })
   it('a navigator with no marks warns BY NAME and renders the chart without it', () => {
     for (const target of ['swift', 'kotlin'] as const) {
