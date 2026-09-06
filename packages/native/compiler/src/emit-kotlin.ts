@@ -10019,7 +10019,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     tap += `.pointerInput(Unit) { detectTransformGestures { _, pyreonPan, pyreonZoomBy, _ -> pyreonZoom = panWindow(zoomWindow(pyreonZoom, 1.0 / pyreonZoomBy.toDouble(), 0.5), -(pyreonPan.x / pyreonDensity).toDouble() / ${W}) } }`
   }
   if (brushing) {
-    tap += `.pointerInput(Unit) { awaitEachGesture { val pyreonDown = awaitFirstDown(requireUnconsumed = false); pyreonBrushA = (pyreonDown.position.x / pyreonDensity).toDouble(); pyreonBrushB = pyreonBrushA; drag(pyreonDown.id) { pyreonChange -> pyreonChange.consume(); pyreonBrushB = pyreonBrushB + (pyreonChange.positionChange().x / pyreonDensity).toDouble() }; val pyreonSel: BrushRange = brushRange(pyreonPlot.x, pyreonPlot.w, pyreonBrushA, pyreonBrushB, ${win}, ${data}.size); pyreonBrushStart = pyreonSel.start; pyreonBrushEnd = pyreonSel.end; pyreonBrushA = -1.0; pyreonBrushB = -1.0${onBrush === undefined ? '' : `; ${onBrush}(pyreonSel)`} } }`
+    tap += `.pointerInput(Unit) { awaitEachGesture { val pyreonDown = awaitFirstDown(requireUnconsumed = false); pyreonBrushA = (pyreonDown.position.x / pyreonDensity).toDouble(); pyreonBrushB = pyreonBrushA; drag(pyreonDown.id) { pyreonChange -> val pyreonStep = pyreonChange.positionChange(); pyreonChange.consume(); pyreonBrushB = pyreonBrushB + (pyreonStep.x / pyreonDensity).toDouble() }; val pyreonSel: BrushRange = brushRange(pyreonPlot.x, pyreonPlot.w, pyreonBrushA, pyreonBrushB, ${win}, ${data}.size); pyreonBrushStart = pyreonSel.start; pyreonBrushEnd = pyreonSel.end; pyreonBrushA = -1.0; pyreonBrushB = -1.0${onBrush === undefined ? '' : `; ${onBrush}(pyreonSel)`} } }`
   }
   // Both drag surfaces classify the gesture from the DOWN point, so they are
   // written as `awaitEachGesture { awaitFirstDown(); drag(id) { … } }` rather
@@ -10037,8 +10037,13 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   // Android run proved that: the same assertion failed with the classification
   // fixed. A tap and a drag must both see the down; only the drag consumes the
   // moves.
+  //
+  // Inside the drag, `positionChange()` is read BEFORE `consume()`: Compose
+  // reports the UNCONSUMED movement, so consuming first reads `Offset.Zero`
+  // on every step — the window then never moves, and the fifth device run
+  // showed exactly that (a post-drag tap still reported the un-zoomed index).
   const overlay = navigating
-    ? `Box(modifier = Modifier.fillMaxWidth().offset(y = ((${H})${below}).dp).height((pyreonNavigator.height).dp).pointerInput(Unit) { awaitEachGesture { val pyreonDown = awaitFirstDown(requireUnconsumed = false); pyreonNavAnchor = pyreonZoom; pyreonNavDx = 0.0; pyreonNavKind = navigatorHit(pyreonNavigator.strip, pyreonZoom, (pyreonDown.position.x / pyreonDensity).toDouble()); drag(pyreonDown.id) { pyreonChange -> pyreonChange.consume(); pyreonNavDx = pyreonNavDx + (pyreonChange.positionChange().x / pyreonDensity).toDouble(); pyreonZoom = navigatorDrag(pyreonNavKind, pyreonNavAnchor, pyreonNavDx / pyreonNavigator.strip.w) }; pyreonNavKind = 0 } })`
+    ? `Box(modifier = Modifier.fillMaxWidth().offset(y = ((${H})${below}).dp).height((pyreonNavigator.height).dp).pointerInput(Unit) { awaitEachGesture { val pyreonDown = awaitFirstDown(requireUnconsumed = false); pyreonNavAnchor = pyreonZoom; pyreonNavDx = 0.0; pyreonNavKind = navigatorHit(pyreonNavigator.strip, pyreonZoom, (pyreonDown.position.x / pyreonDensity).toDouble()); drag(pyreonDown.id) { pyreonChange -> val pyreonStep = pyreonChange.positionChange(); pyreonChange.consume(); pyreonNavDx = pyreonNavDx + (pyreonStep.x / pyreonDensity).toDouble(); pyreonZoom = navigatorDrag(pyreonNavKind, pyreonNavAnchor, pyreonNavDx / pyreonNavigator.strip.w) }; pyreonNavKind = 0 } })`
     : undefined
   return kotlinFrameHostWithDensity(e, lets, cmds, tap, W, H, hasWidth, indent, windowed || tap !== '', overlay)
 }
