@@ -1,6 +1,8 @@
 // `<MapChart>` — GeoJSON regions filled by value, on a canvas.
 
 import { h } from '@pyreon/core'
+import type { ChartTheme } from './render'
+import { resolveChartTheme, useChartTheme } from './theme'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
@@ -13,6 +15,8 @@ const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 const EMPTY: GeoJson = { type: 'FeatureCollection', features: [] }
 
 export interface MapChartProps {
+  /** Token overrides merged over the theme in scope (`<ChartThemeProvider>`, else the system scheme). */
+  theme?: Partial<ChartTheme>
   /** A GeoJSON collection, or the name of a map registered with `registerMap`. */
   map: GeoJson | string
   values: Record<string, Double> | (() => Record<string, Double>)
@@ -33,6 +37,8 @@ function drawWidth(el: HTMLCanvasElement, explicit: Double | undefined): Double 
 }
 
 export function MapChart(props: MapChartProps): VNode {
+  const themeOf = useChartTheme()
+  const theme = (): ChartTheme => resolveChartTheme(themeOf(), props.theme)
   let canvas: HTMLCanvasElement | null = null
   let sizeObserver: ResizeObserver | null = null
   const geo = (): GeoJson => (typeof props.map === 'string' ? getMap(props.map) ?? EMPTY : props.map)
@@ -44,13 +50,14 @@ export function MapChart(props: MapChartProps): VNode {
     if (el === null) return
     const w = drawWidth(el, props.width)
     const hgt = props.height ?? 300
-    const ctx = prepareCanvas(el, w, hgt)
+    const ctx = prepareCanvas(el, w, hgt, theme().background)
     if (ctx === null) return
     paint(ctx, renderGeo(layoutFor(w, hgt), readValues(), props.options, canvasMeasure(ctx, FONT)), w, hgt, FONT)
   }
 
   effect(() => {
     readValues()
+    theme() // a provider mode flip repaints (draw() bails before reading it until the ref attaches)
     draw()
   })
 

@@ -10,10 +10,10 @@
 // instead of struct-field mutation; the svg half lives in family-svg.ts.
 
 import type { TreeNode } from './treemap'
+import { DEFAULT_PALETTE, paletteAt } from './palette'
 import type { Double, DrawCmd, Pt, Rect } from './types'
 
 const TREE_TAU = Math.PI * 2.0
-const TREE_PALETTE = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
 
 export type TreeOrient = 'LR' | 'RL' | 'TB' | 'BT' | 'radial'
 
@@ -45,6 +45,8 @@ export interface TreeLayout {
 }
 
 export interface TreeOptions {
+  /** Series colours for entries without one; defaults to the theme palette. */
+  palette?: string[] | undefined
   /** Inline union rather than the TreeOrient alias: the native emitter turns a NAMED string union into an enum, and the comparisons below are string comparisons. */
   orient?: 'LR' | 'RL' | 'TB' | 'BT' | 'radial' | undefined
   /** Only lay out this many levels (1 = roots only). */
@@ -105,6 +107,7 @@ function placeTreeNode(orient: string, box: Rect, gutter: Double, levelsF: Doubl
 
 /** Lay out the hierarchy into `box`. */
 export function layoutTree(roots: TreeNode[], box: Rect, options?: TreeOptions): TreeLayout {
+  const palette = options?.palette ?? DEFAULT_PALETTE
   const orient = options?.orient ?? 'LR'
   const maxDepth = options?.maxDepth ?? 64.0
   const gutter = options?.labelGutter ?? 60.0
@@ -115,7 +118,7 @@ export function layoutTree(roots: TreeNode[], box: Rect, options?: TreeOptions):
   let ri = roots.length - 1
   while (ri >= 0) {
     const root = roots[ri]!
-    stack.push({ node: root, depth: 0, path: [ri], color: root.color ?? TREE_PALETTE[ri % TREE_PALETTE.length]!, parent: -1 })
+    stack.push({ node: root, depth: 0, path: [ri], color: root.color ?? paletteAt(palette, ri), parent: -1 })
     sp = sp + 1
     ri = ri - 1
   }

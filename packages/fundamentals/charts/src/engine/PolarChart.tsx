@@ -1,6 +1,8 @@
 // `<PolarChart>` — bars and lines on a polar coordinate, on a canvas.
 
 import { h } from '@pyreon/core'
+import type { ChartTheme } from './render'
+import { resolveChartTheme, useChartTheme } from './theme'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { paint, prepareCanvas } from './canvas-web'
@@ -14,6 +16,8 @@ import type { Double } from './types'
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 
 export interface PolarChartProps {
+  /** Token overrides merged over the theme in scope (`<ChartThemeProvider>`, else the system scheme). */
+  theme?: Partial<ChartTheme>
   axes: PolarAxes
   series: PolarSeries[] | (() => PolarSeries[])
   width?: Double
@@ -35,23 +39,27 @@ function drawWidth(el: HTMLCanvasElement, explicit: Double | undefined): Double 
 }
 
 export function PolarChart(props: PolarChartProps): VNode {
+  const themeOf = useChartTheme()
+  const theme = (): ChartTheme => resolveChartTheme(themeOf(), props.theme)
+  const polarOpts = (): PolarOptions => ({ palette: theme().palette, ...props.polar })
   let canvas: HTMLCanvasElement | null = null
   let sizeObserver: ResizeObserver | null = null
   const readSeries = (): PolarSeries[] => (typeof props.series === 'function' ? props.series() : props.series)
-  const layoutFor = (w: Double, hgt: Double): PolarLayout => layoutPolar(props.axes, readSeries(), { x: 0.0, y: 0.0, w, h: hgt }, props.polar)
+  const layoutFor = (w: Double, hgt: Double): PolarLayout => layoutPolar(props.axes, readSeries(), { x: 0.0, y: 0.0, w, h: hgt }, polarOpts())
 
   const draw = (): void => {
     const el = canvas
     if (el === null) return
     const w = drawWidth(el, props.width)
     const hgt = props.height ?? 300
-    const ctx = prepareCanvas(el, w, hgt)
+    const ctx = prepareCanvas(el, w, hgt, theme().background)
     if (ctx === null) return
-    paint(ctx, renderPolar(layoutFor(w, hgt), props.polar), w, hgt, FONT)
+    paint(ctx, renderPolar(layoutFor(w, hgt), polarOpts()), w, hgt, FONT)
   }
 
   effect(() => {
     readSeries()
+    theme() // a provider mode flip repaints (draw() bails before reading it until the ref attaches)
     draw()
   })
 

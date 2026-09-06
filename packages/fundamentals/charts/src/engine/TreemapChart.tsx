@@ -1,6 +1,8 @@
 // `<TreemapChart>` — a squarified hierarchy on a canvas.
 
 import { h } from '@pyreon/core'
+import type { ChartTheme } from './render'
+import { resolveChartTheme, useChartTheme } from './theme'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
@@ -12,6 +14,8 @@ import type { Double } from './types'
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 
 export interface TreemapChartProps {
+  /** Token overrides merged over the theme in scope (`<ChartThemeProvider>`, else the system scheme). */
+  theme?: Partial<ChartTheme>
   data: TreeNode[] | (() => TreeNode[])
   width?: Double
   height?: Double
@@ -33,6 +37,9 @@ function drawWidth(el: HTMLCanvasElement, explicit: Double | undefined): Double 
 }
 
 export function TreemapChart(props: TreemapChartProps): VNode {
+  const themeOf = useChartTheme()
+  const theme = (): ChartTheme => resolveChartTheme(themeOf(), props.theme)
+  const treemapOpts = (): TreemapOptions => ({ palette: theme().palette, ...props.treemap })
   let canvas: HTMLCanvasElement | null = null
   let sizeObserver: ResizeObserver | null = null
   const readData = (): TreeNode[] => {
@@ -40,20 +47,21 @@ export function TreemapChart(props: TreemapChartProps): VNode {
     return typeof d === 'function' ? (d as () => TreeNode[])() : d
   }
   const cellsFor = (w: Double, hgt: Double): TreemapCell[] =>
-    layoutTreemap(readData(), { x: 0.0, y: 0.0, w, h: hgt }, props.treemap)
+    layoutTreemap(readData(), { x: 0.0, y: 0.0, w, h: hgt }, treemapOpts())
 
   const draw = (): void => {
     const el = canvas
     if (el === null) return
     const w = drawWidth(el, props.width)
     const hgt = props.height ?? 300
-    const ctx = prepareCanvas(el, w, hgt)
+    const ctx = prepareCanvas(el, w, hgt, theme().background)
     if (ctx === null) return
-    paint(ctx, renderTreemap(cellsFor(w, hgt), props.treemap, canvasMeasure(ctx, FONT)), w, hgt, FONT)
+    paint(ctx, renderTreemap(cellsFor(w, hgt), treemapOpts(), canvasMeasure(ctx, FONT)), w, hgt, FONT)
   }
 
   effect(() => {
     readData()
+    theme() // a provider mode flip repaints (draw() bails before reading it until the ref attaches)
     draw()
   })
 

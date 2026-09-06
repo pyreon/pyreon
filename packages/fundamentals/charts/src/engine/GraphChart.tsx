@@ -1,6 +1,8 @@
 // `<GraphChart>` — a node/link network on a canvas.
 
 import { h } from '@pyreon/core'
+import type { ChartTheme } from './render'
+import { resolveChartTheme, useChartTheme } from './theme'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { paint, prepareCanvas } from './canvas-web'
@@ -13,6 +15,8 @@ import type { Double, Rect } from './types'
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 
 export interface GraphChartProps {
+  /** Token overrides merged over the theme in scope (`<ChartThemeProvider>`, else the system scheme). */
+  theme?: Partial<ChartTheme>
   nodes: GraphNode[] | (() => GraphNode[])
   links: GraphLink[] | (() => GraphLink[])
   width?: Double
@@ -34,26 +38,30 @@ function drawWidth(el: HTMLCanvasElement, explicit: Double | undefined): Double 
 }
 
 export function GraphChart(props: GraphChartProps): VNode {
+  const themeOf = useChartTheme()
+  const theme = (): ChartTheme => resolveChartTheme(themeOf(), props.theme)
+  const graphOpts = (): GraphOptions => ({ palette: theme().palette, ...props.graph })
   let canvas: HTMLCanvasElement | null = null
   let sizeObserver: ResizeObserver | null = null
   const readNodes = (): GraphNode[] => (typeof props.nodes === 'function' ? props.nodes() : props.nodes)
   const readLinks = (): GraphLink[] => (typeof props.links === 'function' ? props.links() : props.links)
   const boxFor = (w: Double, hgt: Double): Rect => ({ x: 0.0, y: 0.0, w, h: hgt })
-  const layoutFor = (w: Double, hgt: Double): GraphLayout => layoutGraph(readNodes(), readLinks(), boxFor(w, hgt), props.graph)
+  const layoutFor = (w: Double, hgt: Double): GraphLayout => layoutGraph(readNodes(), readLinks(), boxFor(w, hgt), graphOpts())
 
   const draw = (): void => {
     const el = canvas
     if (el === null) return
     const w = drawWidth(el, props.width)
     const hgt = props.height ?? 300
-    const ctx = prepareCanvas(el, w, hgt)
+    const ctx = prepareCanvas(el, w, hgt, theme().background)
     if (ctx === null) return
-    paint(ctx, renderGraph(layoutFor(w, hgt), boxFor(w, hgt), props.graph), w, hgt, FONT)
+    paint(ctx, renderGraph(layoutFor(w, hgt), boxFor(w, hgt), graphOpts()), w, hgt, FONT)
   }
 
   effect(() => {
     readNodes()
     readLinks()
+    theme() // a provider mode flip repaints (draw() bails before reading it until the ref attaches)
     draw()
   })
 

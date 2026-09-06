@@ -12,5 +12,5 @@
   "@pyreon/hooks::useAuth": 731,
   "@pyreon/charts::plot-minimal": 18432,
   "@pyreon/charts::plot-svg": 8704,
-  "@pyreon/charts::plot-pie": 4608
+  "@pyreon/charts::plot-pie": 5120
 }

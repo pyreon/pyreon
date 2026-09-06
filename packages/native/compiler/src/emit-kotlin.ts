@@ -79,7 +79,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, HEAT_RAMP_DEFAULT, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, HEAT_RAMP_DEFAULT, chartThemeFields, chartThemePalette, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -6095,6 +6095,12 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // `@pyreon/charts/plot` family hosts → PyreonChartCanvas over the generated
   // engine (chart-hosts.ts); accessor-prop hosts warn by name.
   if (isChartHostTag(tag)) return emitKotlinChartHost(e, indent)
+  // `<ChartThemeProvider>` — transparent on native; see the Swift twin for why.
+  if (tag === 'ChartThemeProvider') {
+    _emitWarnings.push(`<ChartThemeProvider>: not lowered on native — its children render unthemed by it; give each chart its own \`theme\` (\`theme={chartThemes.dark}\` or a literal).`)
+    const inner = ' '.repeat(indent + 2)
+    return `Box {\n${e.children.map((c) => inner + emitKotlinChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
+  }
   // Phase 5 — walled tags. Mirror of the Swift dispatcher entry.
   // Compose has no equivalent for Suspense / ErrorBoundary / KeepAlive
   // either; previously these emitted FAKE composables (`Suspense(…) {}`)
@@ -9874,7 +9880,7 @@ function kotlinAccessorExpr(v: ExprIR, tag: string, what: string, indent: number
   return emitKotlinExpr(body, indent)
 }
 
-function kotlinMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex: number): string[] | 'unsupported' {
+function kotlinMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex: number, palette: readonly string[] = CHART_HOST_PALETTE): string[] | 'unsupported' {
   const fields = new Map<string, ExprIR>()
   if (opts !== undefined) {
     if (opts.kind !== 'object' || (opts.spreads !== undefined && opts.spreads.length > 0)) {
@@ -9896,7 +9902,7 @@ function kotlinMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex
       args.push(`${spec.name} = ${lit}`)
       continue
     }
-    if (spec.name === 'color') args.push(`color = ${JSON.stringify(CHART_HOST_PALETTE[seriesIndex % CHART_HOST_PALETTE.length])}`)
+    if (spec.name === 'color') args.push(`color = ${JSON.stringify(palette[seriesIndex % palette.length])}`)
     else if (spec.name === 'label') args.push(`label = ${JSON.stringify(`Series ${seriesIndex + 1}`)}`)
     else if (spec.default !== undefined) args.push(`${spec.name} = ${spec.kind === 'number' ? chartDouble(spec.default as number) : String(spec.default)}`)
   }
@@ -9957,6 +9963,8 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   if (legend.toggling) lets.push('var pyreonHidden by remember { mutableStateOf(listOf<Int>()) }')
   if (legend.paging) lets.push('var pyreonLegendPage by remember { mutableStateOf(0.0) }')
   const rows = windowed ? 'pyreonRows' : data
+  // The theme's palette colours marks with no `color` (the theme builder already warned about a bad literal, so this parse stays silent).
+  const pyreonPalette = chartThemePalette(chartAttrExprKotlin(e, 'theme'), tag, () => {})
   const series: string[] = []
   let navValues = ''
   for (let k = 0; k < marksV.elements.length; k++) {
@@ -9976,7 +9984,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     const body = kotlinAccessorExpr(y, tag, `mark ${k + 1}`, indent)
     if (body === 'unsupported') return 'Box {}'
     const optsArg = bubble ? m.args[2] : m.args[1]
-    const opts = kotlinMarkOptionArgs(optsArg, tag, k)
+    const opts = kotlinMarkOptionArgs(optsArg, tag, k, pyreonPalette)
     if (opts === 'unsupported') return 'Box {}'
     lets.push(`val pyreonValues${k}: List<Double> = ${kotlinPlotRowMap(rows, `(${body}).toDouble()`, windowed)}`)
     if (k === 0 && navigating) navValues = kotlinPlotRowMap(data, `(${body}).toDouble()`, false)
@@ -10230,28 +10238,8 @@ function kotlinFrameHostWithTap(e: Extract<ExprIR, { kind: 'jsx-element' }>, let
 // ---- theme overrides, formatters and bubble marks -----------------------------
 
 function kotlinChartTheme(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: string): string {
-  const v = chartAttrExprKotlin(e, 'theme')
-  const fields: Record<string, string> = {
-    axis: JSON.stringify(CHART_THEME_DEFAULT.axis),
-    grid: JSON.stringify(CHART_THEME_DEFAULT.grid),
-    label: JSON.stringify(CHART_THEME_DEFAULT.label),
-    fontSize: CHART_THEME_DEFAULT.fontSize,
-  }
-  if (v !== undefined) {
-    if (v.kind !== 'object' || (v.spreads !== undefined && v.spreads.length > 0)) {
-      _emitWarnings.push(`<${tag} theme>: only an object literal with literal fields lowers on native; the default theme applies.`)
-    } else {
-      for (const f of v.fields) {
-        if (!Object.hasOwn(fields, f.name)) continue
-        if (f.value.kind !== 'literal' || (f.name === 'fontSize' ? typeof f.value.value !== 'number' : typeof f.value.value !== 'string')) {
-          _emitWarnings.push(`<${tag} theme>: \`${f.name}\` must be a literal on native; its default applies.`)
-          continue
-        }
-        fields[f.name] = f.name === 'fontSize' ? chartDouble(f.value.value as number) : JSON.stringify(f.value.value)
-      }
-    }
-  }
-  return `ChartTheme(axis = ${fields.axis}, grid = ${fields.grid}, label = ${fields.label}, fontSize = ${fields.fontSize})`
+  const f = chartThemeFields(chartAttrExprKotlin(e, 'theme'), tag, (w) => _emitWarnings.push(w), (items) => `listOf(${items.join(', ')})`)
+  return `ChartTheme(${CHART_THEME_FIELDS.map((x) => `${x.name} = ${f[x.name]}`).join(', ')})`
 }
 
 /** A `Formatter` prop as a Kotlin `(Double) -> String`: a bare engine formatter becomes a function reference; a factory call or an arrow lowers as is. */

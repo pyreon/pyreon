@@ -1,6 +1,8 @@
 // `<SunburstChart>` — a radial partition on a canvas.
 
 import { h } from '@pyreon/core'
+import type { ChartTheme } from './render'
+import { resolveChartTheme, useChartTheme } from './theme'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
@@ -13,6 +15,8 @@ import type { Double, Pt } from './types'
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 
 export interface SunburstChartProps {
+  /** Token overrides merged over the theme in scope (`<ChartThemeProvider>`, else the system scheme). */
+  theme?: Partial<ChartTheme>
   data: TreeNode[] | (() => TreeNode[])
   width?: Double
   height?: Double
@@ -36,6 +40,9 @@ function drawWidth(el: HTMLCanvasElement, explicit: Double | undefined): Double 
 }
 
 export function SunburstChart(props: SunburstChartProps): VNode {
+  const themeOf = useChartTheme()
+  const theme = (): ChartTheme => resolveChartTheme(themeOf(), props.theme)
+  const sunburstOpts = (): SunburstOptions => ({ palette: theme().palette, ...props.sunburst })
   let canvas: HTMLCanvasElement | null = null
   let sizeObserver: ResizeObserver | null = null
   const readData = (): TreeNode[] => {
@@ -45,7 +52,7 @@ export function SunburstChart(props: SunburstChartProps): VNode {
   const geometry = (w: Double, hgt: Double): { arcs: SunburstArc[]; center: Pt } => {
     const outerR = Math.max(0.0, Math.min(w, hgt) / 2.0 - 4.0)
     const innerR = outerR * (props.innerRatio ?? 0.2)
-    return { arcs: layoutSunburst(readData(), innerR, outerR, props.sunburst), center: { x: w / 2.0, y: hgt / 2.0 } }
+    return { arcs: layoutSunburst(readData(), innerR, outerR, sunburstOpts()), center: { x: w / 2.0, y: hgt / 2.0 } }
   }
 
   const draw = (): void => {
@@ -53,14 +60,15 @@ export function SunburstChart(props: SunburstChartProps): VNode {
     if (el === null) return
     const w = drawWidth(el, props.width)
     const hgt = props.height ?? 300
-    const ctx = prepareCanvas(el, w, hgt)
+    const ctx = prepareCanvas(el, w, hgt, theme().background)
     if (ctx === null) return
     const g = geometry(w, hgt)
-    paint(ctx, renderSunburst(g.arcs, g.center, props.sunburst, canvasMeasure(ctx, FONT)), w, hgt, FONT)
+    paint(ctx, renderSunburst(g.arcs, g.center, sunburstOpts(), canvasMeasure(ctx, FONT)), w, hgt, FONT)
   }
 
   effect(() => {
     readData()
+    theme() // a provider mode flip repaints (draw() bails before reading it until the ref attaches)
     draw()
   })
 

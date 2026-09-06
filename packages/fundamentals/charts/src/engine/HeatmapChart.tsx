@@ -8,7 +8,7 @@ import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
 import { HEAT_RAMP } from './heat'
 import { heatGridFrom, hitHeatChart, renderHeatChart } from './heat-chart'
 import type { HeatGrid } from './heat'
-import { defaultTheme } from './render'
+import { resolveChartTheme, tooltipStyle, useChartTheme } from './theme'
 import type { ChartTheme } from './render'
 import { placeTooltip } from './tooltip'
 import { plain } from './format'
@@ -49,6 +49,8 @@ export interface HeatmapChartProps<T> {
 }
 
 export function HeatmapChart<T>(props: HeatmapChartProps<T>): VNode {
+  const themeOf = useChartTheme()
+  const theme = (): ChartTheme => resolveChartTheme(themeOf(), props.theme)
   let canvas: HTMLCanvasElement | null = null
   let tip: HTMLDivElement | null = null
 
@@ -75,7 +77,7 @@ export function HeatmapChart<T>(props: HeatmapChartProps<T>): VNode {
     if (ctx === null) return -1
     const w = widthOf(el)
     const hgt = props.height ?? 200
-    const t = { ...defaultTheme, ...props.theme }
+    const t = theme()
     const grid = resolve(readData())
     const r = el.getBoundingClientRect()
     return hitHeatChart(grid, w, hgt, t.fontSize, props.gap ?? 1.0, canvasMeasure(ctx, FONT), ev.clientX - r.left, ev.clientY - r.top)
@@ -87,9 +89,9 @@ export function HeatmapChart<T>(props: HeatmapChartProps<T>): VNode {
     const box = el.parentElement
     const w = props.width ?? ((box?.clientWidth ?? 0) > 0 ? box!.clientWidth : 300)
     const hgt = props.height ?? 200
-    const ctx = prepareCanvas(el, w, hgt)
+    const ctx = prepareCanvas(el, w, hgt, theme().background)
     if (ctx === null) return
-    const t = { ...defaultTheme, ...props.theme }
+    const t = theme()
     const measure = canvasMeasure(ctx, FONT)
     const grid = resolve(readData())
     const cmds = renderHeatChart(grid, w, hgt, t, props.colors ?? HEAT_RAMP, props.gap ?? 1.0, measure)
@@ -98,6 +100,7 @@ export function HeatmapChart<T>(props: HeatmapChartProps<T>): VNode {
 
   effect(() => {
     readData()
+    theme() // a provider mode flip repaints (draw() bails before reading it until the ref attaches)
     draw()
   })
 
@@ -174,10 +177,7 @@ export function HeatmapChart<T>(props: HeatmapChartProps<T>): VNode {
     h('div', {
       'data-pyreon-chart-tooltip': 'true',
       style:
-        'position:absolute;display:none;pointer-events:none;white-space:pre;' +
-        'background:rgba(16,22,29,0.92);color:#f7f9fa;font:11px ' +
-        FONT +
-        ';padding:6px 8px;border-radius:4px;z-index:1',
+        () => tooltipStyle(theme(), FONT),
       ref: (el: HTMLDivElement | null) => {
         tip = el
       },

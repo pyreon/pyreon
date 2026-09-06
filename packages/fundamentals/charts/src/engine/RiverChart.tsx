@@ -1,6 +1,8 @@
 // `<RiverChart>` — a streamgraph on a canvas.
 
 import { h } from '@pyreon/core'
+import type { ChartTheme } from './render'
+import { resolveChartTheme, useChartTheme } from './theme'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
@@ -12,6 +14,8 @@ import type { Double } from './types'
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 
 export interface RiverChartProps {
+  /** Token overrides merged over the theme in scope (`<ChartThemeProvider>`, else the system scheme). */
+  theme?: Partial<ChartTheme>
   series: RiverSeries[] | (() => RiverSeries[])
   width?: Double
   height?: Double
@@ -32,23 +36,27 @@ function drawWidth(el: HTMLCanvasElement, explicit: Double | undefined): Double 
 }
 
 export function RiverChart(props: RiverChartProps): VNode {
+  const themeOf = useChartTheme()
+  const theme = (): ChartTheme => resolveChartTheme(themeOf(), props.theme)
+  const riverOpts = (): RiverOptions => ({ palette: theme().palette, ...props.river })
   let canvas: HTMLCanvasElement | null = null
   let sizeObserver: ResizeObserver | null = null
   const readSeries = (): RiverSeries[] => (typeof props.series === 'function' ? props.series() : props.series)
-  const layoutFor = (w: Double, hgt: Double): RiverLayout => layoutRiver(readSeries(), { x: 8.0, y: 8.0, w: Math.max(0.0, w - 16.0), h: Math.max(0.0, hgt - 16.0) }, props.river)
+  const layoutFor = (w: Double, hgt: Double): RiverLayout => layoutRiver(readSeries(), { x: 8.0, y: 8.0, w: Math.max(0.0, w - 16.0), h: Math.max(0.0, hgt - 16.0) }, riverOpts())
 
   const draw = (): void => {
     const el = canvas
     if (el === null) return
     const w = drawWidth(el, props.width)
     const hgt = props.height ?? 300
-    const ctx = prepareCanvas(el, w, hgt)
+    const ctx = prepareCanvas(el, w, hgt, theme().background)
     if (ctx === null) return
-    paint(ctx, renderRiver(layoutFor(w, hgt), props.river, canvasMeasure(ctx, FONT)), w, hgt, FONT)
+    paint(ctx, renderRiver(layoutFor(w, hgt), riverOpts(), canvasMeasure(ctx, FONT)), w, hgt, FONT)
   }
 
   effect(() => {
     readSeries()
+    theme() // a provider mode flip repaints (draw() bails before reading it until the ref attaches)
     draw()
   })
 
@@ -63,15 +71,15 @@ export function RiverChart(props: RiverChartProps): VNode {
     const layout = layoutFor(w, hgt)
     const px = ev.clientX - r.left
     const py = ev.clientY - r.top
-    if (cb !== undefined) cb(hitRiver(layout, px, py, props.river?.curve))
-    if (cbi !== undefined) cbi(hitRiverIndex(layout, px, py, props.river?.curve))
+    if (cb !== undefined) cb(hitRiver(layout, px, py, riverOpts()?.curve))
+    if (cbi !== undefined) cbi(hitRiverIndex(layout, px, py, riverOpts()?.curve))
   }
 
   const a11y = () => {
     const series = readSeries()
     let n = 0
     for (const s of series) if (s.values.length > n) n = s.values.length
-    const cats = props.river?.categories ?? Array.from({ length: n }, (_, i) => String(i + 1))
+    const cats = riverOpts()?.categories ?? Array.from({ length: n }, (_, i) => String(i + 1))
     return { title: props.title, categories: cats, series: series.map((s) => ({ label: s.name, values: s.values, kind: 'area' })) }
   }
 

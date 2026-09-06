@@ -1,6 +1,8 @@
 // `<GanttChart>` — tasks on a time axis, on a canvas.
 
 import { h } from '@pyreon/core'
+import type { ChartTheme } from './render'
+import { resolveChartTheme, useChartTheme } from './theme'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
@@ -14,6 +16,8 @@ import type { Double } from './types'
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 
 export interface GanttChartProps {
+  /** Token overrides merged over the theme in scope (`<ChartThemeProvider>`, else the system scheme). */
+  theme?: Partial<ChartTheme>
   tasks: GanttTask[] | (() => GanttTask[])
   width?: Double
   height?: Double
@@ -34,24 +38,28 @@ function drawWidth(el: HTMLCanvasElement, explicit: Double | undefined): Double 
 }
 
 export function GanttChart(props: GanttChartProps): VNode {
+  const themeOf = useChartTheme()
+  const theme = (): ChartTheme => resolveChartTheme(themeOf(), props.theme)
+  const ganttOpts = (): GanttOptions => ({ palette: theme().palette, ...props.gantt })
   let canvas: HTMLCanvasElement | null = null
   let sizeObserver: ResizeObserver | null = null
   const readTasks = (): GanttTask[] => (typeof props.tasks === 'function' ? props.tasks() : props.tasks)
   const layoutFor = (w: Double, hgt: Double, ctx: CanvasRenderingContext2D | null): GanttLayout =>
-    layoutGantt(readTasks(), { x: 4.0, y: 4.0, w: w - 8.0, h: hgt - 8.0 }, props.gantt, ctx === null ? measureApprox() : canvasMeasure(ctx, FONT))
+    layoutGantt(readTasks(), { x: 4.0, y: 4.0, w: w - 8.0, h: hgt - 8.0 }, ganttOpts(), ctx === null ? measureApprox() : canvasMeasure(ctx, FONT))
 
   const draw = (): void => {
     const el = canvas
     if (el === null) return
     const w = drawWidth(el, props.width)
     const hgt = props.height ?? 320
-    const ctx = prepareCanvas(el, w, hgt)
+    const ctx = prepareCanvas(el, w, hgt, theme().background)
     if (ctx === null) return
-    paint(ctx, renderGantt(layoutFor(w, hgt, ctx), props.gantt), w, hgt, FONT)
+    paint(ctx, renderGantt(layoutFor(w, hgt, ctx), ganttOpts()), w, hgt, FONT)
   }
 
   effect(() => {
     readTasks()
+    theme() // a provider mode flip repaints (draw() bails before reading it until the ref attaches)
     draw()
   })
 

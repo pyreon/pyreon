@@ -1,6 +1,9 @@
 // `<FunnelChart>` — a conversion funnel on a canvas, over the engine's funnel geometry.
 
 import { h } from '@pyreon/core'
+import { resolveChartTheme, useChartTheme } from './theme'
+import { paletteAt } from './palette'
+import type { ChartTheme } from './render'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { paint, prepareCanvas } from './canvas-web'
@@ -10,9 +13,10 @@ import { chartTable, describeChart } from './a11y'
 import type { Double } from './types'
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
-const PALETTE = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
 
 export interface FunnelChartProps<T> {
+  /** Token overrides merged over the theme in scope (`<ChartThemeProvider>`, else the system scheme). */
+  theme?: Partial<ChartTheme>
   data: T[] | (() => T[])
   value: (d: T, index: number) => Double
   label: (d: T, index: number) => string
@@ -35,6 +39,8 @@ function drawWidth(el: HTMLCanvasElement, explicit: Double | undefined): Double 
 }
 
 export function FunnelChart<T>(props: FunnelChartProps<T>): VNode {
+  const themeOf = useChartTheme()
+  const theme = (): ChartTheme => resolveChartTheme(themeOf(), props.theme)
   let canvas: HTMLCanvasElement | null = null
   let sizeObserver: ResizeObserver | null = null
   const readData = (): T[] => {
@@ -45,7 +51,7 @@ export function FunnelChart<T>(props: FunnelChartProps<T>): VNode {
     readData().map((d, i) => ({
       value: props.value(d, i),
       label: props.label(d, i),
-      color: props.color !== undefined ? props.color(d, i) : PALETTE[i % PALETTE.length]!,
+      color: props.color !== undefined ? props.color(d, i) : paletteAt(theme().palette, i),
     }))
   const plotFor = (w: Double, hgt: Double) => ({ x: 8.0, y: 8.0, w: w - 16.0, h: hgt - 16.0 })
 
@@ -54,13 +60,14 @@ export function FunnelChart<T>(props: FunnelChartProps<T>): VNode {
     if (el === null) return
     const w = drawWidth(el, props.width)
     const hgt = props.height ?? 240
-    const ctx = prepareCanvas(el, w, hgt)
+    const ctx = prepareCanvas(el, w, hgt, theme().background)
     if (ctx === null) return
     paint(ctx, renderFunnel(stages(), plotFor(w, hgt), props.funnel), w, hgt, FONT)
   }
 
   effect(() => {
     readData()
+    theme() // a provider mode flip repaints (draw() bails before reading it until the ref attaches)
     draw()
   })
 

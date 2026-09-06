@@ -6,6 +6,7 @@
 // full ECharts feature set for the long tail.
 
 import { h } from '@pyreon/core'
+import { resolveChartTheme, tooltipStyle, useChartTheme } from './theme'
 import type { VNode } from '@pyreon/core'
 import { batch, effect, isClient, signal, untrack } from '@pyreon/reactivity'
 import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
@@ -18,7 +19,7 @@ import { renderSvg } from './svg'
 import type { ToolboxTool } from './toolbox'
 import { placeTooltip, tooltipAt, tooltipLines } from './tooltip'
 import type { TooltipContent } from './tooltip'
-import { defaultTheme, layoutChart, renderChart, resolveY2Domain, resolveYDomain, seriesOnRightAxis } from './render'
+import { layoutChart, renderChart, resolveY2Domain, resolveYDomain, seriesOnRightAxis } from './render'
 import { layoutSeriesPoints, layoutSeriesPointsAt } from './layout'
 import type { Annotation, ChartSpec, ChartTheme, PointMarker, Series } from './render'
 import { scaleLinear } from './scale'
@@ -477,6 +478,10 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const d = props.data
     return typeof d === 'function' ? (d as () => T[])() : d
   }
+  // The theme in scope (provider → system scheme) with the prop merged over
+  // it. Read inside the draw effect so a mode flip repaints.
+  const themeOf = useChartTheme()
+  const theme = (): ChartTheme => resolveChartTheme(themeOf(), props.theme)
 
   /**
    * The visible slice of the data under the zoom window.
@@ -514,9 +519,9 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
         : m.kind,
       y: (d: T, i: number) => m.y(d, i + off),
       ...(m.r !== undefined ? { r: (d: T, i: number) => m.r!(d, i + off) } : {}),
-    })))),
+    })), theme().palette)),
     categories: resolveCategories(rows, props.x === undefined ? undefined : (d, i) => props.x!(d, i + off)),
-    theme: { ...defaultTheme, ...props.theme },
+    theme: theme(),
     showXAxis: props.showXAxis ?? true,
     showYAxis: props.showYAxis ?? true,
     showGrid: props.showGrid ?? true,
@@ -546,7 +551,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     if (el === null) return
     const w = drawWidth(el, props.width)
     const hgt = props.height ?? 200
-    const ctx = prepareCanvas(el, w, hgt)
+    const ctx = prepareCanvas(el, w, hgt, theme().background)
     if (ctx === null) return
     const measure = canvasMeasure(ctx, FONT)
     const rows = readData()
@@ -565,8 +570,8 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     if (toolList.length > 0) {
       const ov = typeOverride()
       const tb = renderToolbox(toolList, { x: 0, y: 0, w, h: hgt }, {
-        fontSize: props.theme?.fontSize ?? defaultTheme.fontSize,
-        color: props.theme?.label ?? defaultTheme.label,
+        fontSize: theme().fontSize,
+        color: theme().label,
         active: ov === null ? undefined : ov === 'bar' ? 'magicBar' : 'magicLine',
       })
       for (const c of tb.cmds) legendCmds.push(c)
@@ -575,8 +580,8 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     }
     if (props.showTitle === true && props.title !== undefined) {
       const tl = renderTitle(props.title, props.subtitle, { x: 0, y: toolH, w, h: hgt - toolH }, {
-        fontSize: (props.theme?.fontSize ?? defaultTheme.fontSize) + 4.0,
-        color: props.theme?.label ?? defaultTheme.label,
+        fontSize: theme().titleSize,
+        color: theme().text,
         align: 'start',
       })
       titleH = tl.height
@@ -584,14 +589,14 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     }
     titleH = titleH + toolH
     if (props.showLegend === true) {
-      const series = resolveMarks(rows, props.marks)
+      const series = resolveMarks(rows, props.marks, theme().palette)
       const hidden = hiddenSeries()
       const l = renderLegend(
         series.map((x, i) => ({ label: x.label, color: x.color, muted: hidden.includes(i) })),
         { x: 0, y: titleH, w, h: hgt - titleH },
         {
-          fontSize: 11,
-          labelColor: (props.theme?.label ?? defaultTheme.label),
+          fontSize: theme().fontSize,
+          labelColor: theme().label,
           swatch: 10,
           gap: 12,
           orientation: 'horizontal',
@@ -627,10 +632,10 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
           padY: 3.0,
           gap: 6.0,
           inset: 8.0,
-          activeFill: props.theme?.axis ?? defaultTheme.axis,
-          idleFill: props.theme?.grid ?? defaultTheme.grid,
+          activeFill: theme().axis,
+          idleFill: theme().grid,
           activeText: '#ffffff',
-          idleText: props.theme?.label ?? defaultTheme.label,
+          idleText: theme().label,
         },
         measure,
       )
@@ -677,7 +682,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       first?.color ?? '#000000',
       zoomWin() ?? { start: 0.0, end: 1.0 },
       { x: 0.0, y: 0.0, w, h: y0 + navH },
-      props.theme?.grid ?? defaultTheme.grid,
+      theme().grid,
     )
     navRect = l.strip
     return l.cmds
@@ -852,6 +857,9 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     legendPage()
     focusIdx()
     typeOverride()
+    // The theme in scope — a provider mode flip repaints; touched HERE because
+    // draw() bails before reading it while the canvas ref is still unattached.
+    theme()
     draw()
   })
 
@@ -1241,11 +1249,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       // `pointer-events: none` is load-bearing: without it the tooltip sits
       // under the cursor, swallows the next mousemove, and the chart flickers
       // as the tooltip hides and reappears.
-      style:
-        'position:absolute;display:none;pointer-events:none;white-space:pre;' +
-        'background:rgba(16,22,29,0.92);color:#f7f9fa;font:11px ' +
-        FONT +
-        ';padding:6px 8px;border-radius:4px;z-index:1',
+      style: () => tooltipStyle(theme(), FONT),
       ref: (el: HTMLDivElement | null) => {
         tip = el
       },

@@ -11,8 +11,8 @@
 // svg half in family-svg.ts.
 
 import type { Double, DrawCmd, Pt, Rect } from './types'
+import { DEFAULT_PALETTE, paletteAt } from './palette'
 
-const SANKEY_PALETTE = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed', '#0e7490', '#9333ea']
 
 export interface SankeyNode {
   name: string
@@ -53,6 +53,8 @@ export interface SankeyLayout {
 }
 
 export interface SankeyOptions {
+  /** Series colours for entries without one; defaults to the theme palette. */
+  palette?: string[] | undefined
   nodeWidth?: Double | undefined
   nodePadding?: Double | undefined
   /** Relaxation sweeps; 0 keeps input order. */
@@ -94,6 +96,7 @@ function sankeyIndexOf(nodes: SankeyNode[], name: string): number {
 
 /** Lay out the flow graph into `box`. */
 export function layoutSankey(nodes: SankeyNode[], links: SankeyLink[], box: Rect, options?: SankeyOptions): SankeyLayout {
+  const palette = options?.palette ?? DEFAULT_PALETTE
   const nodeWidth = options?.nodeWidth ?? 16.0
   const padding = options?.nodePadding ?? 8.0
   const iterations = options?.iterations ?? 6.0
@@ -280,7 +283,7 @@ export function layoutSankey(nodes: SankeyNode[], links: SankeyLink[], box: Rect
       depth: depth[i]!,
       value: value[i]!,
       rect: { x, y: y0[i]!, w: nodeWidth, h: hgt[i]! },
-      color: nodes[i]!.color ?? SANKEY_PALETTE[i % SANKEY_PALETTE.length]!,
+      color: nodes[i]!.color ?? paletteAt(palette, i),
     })
   }
   // Ribbon offsets: outgoing sorted by target centre, incoming by source centre,

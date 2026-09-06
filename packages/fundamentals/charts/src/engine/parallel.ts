@@ -9,10 +9,10 @@
 // parallel-web.ts; the svg half in family-svg.ts.
 
 import { plain } from './format'
+import { DEFAULT_PALETTE, paletteAt } from './palette'
 import { sankeyRgba } from './sankey'
 import type { Domain, Double, DrawCmd, Pt, Rect } from './types'
 
-const PARALLEL_PALETTE = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
 
 export interface ParallelAxis {
   name: string
@@ -62,6 +62,8 @@ export interface ParallelLayout {
 }
 
 export interface ParallelOptions {
+  /** Series colours for entries without one; defaults to the theme palette. */
+  palette?: string[] | undefined
   fontSize?: Double | undefined
   labelColor?: string | undefined
   axisColor?: string | undefined
@@ -154,7 +156,7 @@ export function layoutParallel(axes: ParallelAxis[], rows: Double[][], box: Rect
   }
   const lines: ParallelLine[] = []
   const colors = options?.lineColors ?? []
-  const fallback = options?.lineColor ?? PARALLEL_PALETTE[0]!
+  const fallback = options?.lineColor ?? paletteAt(options?.palette ?? DEFAULT_PALETTE, 0)
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]!
     const points: Pt[] = []

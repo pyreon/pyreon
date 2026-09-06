@@ -1,6 +1,7 @@
 // `<BoxplotChart>` — five-number summaries per category on a canvas.
 
 import { h } from '@pyreon/core'
+import { resolveChartTheme, useChartTheme } from './theme'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
@@ -40,6 +41,8 @@ function drawWidth(el: HTMLCanvasElement, explicit: Double | undefined): Double 
 }
 
 export function BoxplotChart<T>(props: BoxplotChartProps<T>): VNode {
+  const themeOf = useChartTheme()
+  const theme = (): ChartTheme => resolveChartTheme(themeOf(), props.theme)
   let canvas: HTMLCanvasElement | null = null
   let sizeObserver: ResizeObserver | null = null
   const readData = (): T[] => {
@@ -74,7 +77,7 @@ export function BoxplotChart<T>(props: BoxplotChartProps<T>): VNode {
     if (el === null) return
     const w = drawWidth(el, props.width)
     const hgt = props.height ?? 240
-    const ctx = prepareCanvas(el, w, hgt)
+    const ctx = prepareCanvas(el, w, hgt, theme().background)
     if (ctx === null) return
     const measure = canvasMeasure(ctx, FONT)
     const data = readData()
@@ -94,6 +97,7 @@ export function BoxplotChart<T>(props: BoxplotChartProps<T>): VNode {
 
   effect(() => {
     readData()
+    theme() // a provider mode flip repaints (draw() bails before reading it until the ref attaches)
     draw()
   })
 

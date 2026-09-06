@@ -4,9 +4,9 @@
 // indices, named tick struct); the svg half lives in family-svg.ts.
 
 import { approxTextWidth } from './treemap'
+import { DEFAULT_PALETTE, paletteAt } from './palette'
 import type { Double, DrawCmd, MeasureText, Pt, Rect } from './types'
 
-const RIVER_PALETTE = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed', '#0e7490', '#9333ea']
 
 export interface RiverSeries {
   name: string
@@ -40,6 +40,8 @@ export interface RiverLayout {
 }
 
 export interface RiverOptions {
+  /** Series colours for nodes without one; defaults to the theme palette. */
+  palette?: string[] | undefined
   categories?: string[] | undefined
   /** 'silhouette' (default) centres the stack on a midline; 'zero' stacks from the bottom. */
   baseline?: 'silhouette' | 'zero' | undefined
@@ -63,6 +65,7 @@ function riverValue(s: RiverSeries, i: number): Double {
 
 /** Lay the layers out into `box`. */
 export function layoutRiver(series: RiverSeries[], box: Rect, options?: RiverOptions): RiverLayout {
+  const palette = options?.palette ?? DEFAULT_PALETTE
   const fontSize = options?.fontSize ?? 11.0
   const showAxis = options?.showAxis !== false
   const rawH = box.h - (showAxis ? fontSize * 1.8 : 0.0)
@@ -125,7 +128,7 @@ export function layoutRiver(series: RiverSeries[], box: Rect, options?: RiverOpt
     const midX = hasPts ? xs[widestAt]! : plot.x
     const midY = hasPts ? top[widestAt]!.y / 2.0 + bottom[widestAt]!.y / 2.0 : plot.y
     const thickness = hasPts && widest > 0.0 ? bottom[widestAt]!.y - top[widestAt]!.y : 0.0
-    layers.push({ series: si, name: s.name, color: s.color ?? RIVER_PALETTE[si % RIVER_PALETTE.length]!, top, bottom, labelAt: { x: midX, y: midY }, thickness })
+    layers.push({ series: si, name: s.name, color: s.color ?? paletteAt(palette, si), top, bottom, labelAt: { x: midX, y: midY }, thickness })
   }
   const ticks: RiverTick[] = []
   if (showAxis && n > 0) {

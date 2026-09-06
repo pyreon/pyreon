@@ -7,6 +7,9 @@
 // accessibility contract.
 
 import { h } from '@pyreon/core'
+import { resolveChartTheme, useChartTheme } from './theme'
+import { paletteAt } from './palette'
+import type { ChartTheme } from './render'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { renderRadar } from './radar'
@@ -18,9 +21,10 @@ import { observeWidth, radialWidth } from './radial-host'
 import type { Double } from './types'
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
-const PALETTE = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
 
 export interface RadarChartProps<T> {
+  /** Token overrides merged over the theme in scope (`<ChartThemeProvider>`, else the system scheme). */
+  theme?: Partial<ChartTheme>
   /** The rows — one polygon each. An accessor makes it reactive. */
   data: T[] | (() => T[])
   /**
@@ -50,6 +54,8 @@ export interface RadarChartProps<T> {
 }
 
 export function RadarChart<T>(props: RadarChartProps<T>): VNode {
+  const themeOf = useChartTheme()
+  const theme = (): ChartTheme => resolveChartTheme(themeOf(), props.theme)
   let canvas: HTMLCanvasElement | null = null
   let sizeObserver: ResizeObserver | null = null
 
@@ -62,7 +68,7 @@ export function RadarChart<T>(props: RadarChartProps<T>): VNode {
     return typeof a === 'function' ? (a as () => RadarAxis[])() : a
   }
   const colorAt = (d: T, i: number): string =>
-    props.color?.(d, i) ?? PALETTE[i % PALETTE.length]!
+    props.color?.(d, i) ?? paletteAt(theme().palette, i)
 
   const seriesOf = (rows: T[]): RadarSeries[] =>
     rows.map((d, i) => ({
@@ -76,7 +82,7 @@ export function RadarChart<T>(props: RadarChartProps<T>): VNode {
     if (el === null) return
     const w = radialWidth(el, props.width, 300)
     const hgt = props.height ?? 260
-    const ctx = prepareCanvas(el, w, hgt)
+    const ctx = prepareCanvas(el, w, hgt, theme().background)
     if (ctx === null) return
     const rows = readData()
     const axes = readAxes()
@@ -90,7 +96,7 @@ export function RadarChart<T>(props: RadarChartProps<T>): VNode {
           const l = renderLegend(
             rows.map((d, i) => ({ label: props.label(d, i), color: colorAt(d, i) })),
             { x: 8, y: 8, w: w - 16, h: hgt },
-            { fontSize: 11, labelColor: '#5a6b7a', swatch: 10, gap: 12, orientation: 'horizontal' },
+            { fontSize: theme().fontSize, labelColor: theme().label, swatch: 10, gap: 12, orientation: 'horizontal' },
             measure,
           )
           legendH = l.height
@@ -100,9 +106,9 @@ export function RadarChart<T>(props: RadarChartProps<T>): VNode {
 
     const cmds = renderRadar(axes, seriesOf(rows), { x: 0, y: legendH, w, h: hgt - legendH }, {
       rings: props.rings ?? 4,
-      gridColor: 'rgba(132,150,165,0.35)',
-      labelColor: '#5a6b7a',
-      fontSize: 11,
+      gridColor: theme().grid,
+      labelColor: theme().label,
+      fontSize: theme().fontSize,
       showLabels: props.showLabels ?? true,
     })
     paint(ctx, [...legendCmds, ...cmds], w, hgt, FONT)
@@ -111,6 +117,7 @@ export function RadarChart<T>(props: RadarChartProps<T>): VNode {
   effect(() => {
     readData()
     readAxes()
+    theme() // a provider mode flip repaints (draw() bails before reading it until the ref attaches)
     draw()
   })
 

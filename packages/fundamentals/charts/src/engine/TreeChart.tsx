@@ -1,6 +1,8 @@
 // `<TreeChart>` — a node-link hierarchy on a canvas.
 
 import { h } from '@pyreon/core'
+import type { ChartTheme } from './render'
+import { resolveChartTheme, useChartTheme } from './theme'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { paint, prepareCanvas } from './canvas-web'
@@ -13,6 +15,8 @@ import type { Double } from './types'
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 
 export interface TreeChartProps {
+  /** Token overrides merged over the theme in scope (`<ChartThemeProvider>`, else the system scheme). */
+  theme?: Partial<ChartTheme>
   data: TreeNode[] | (() => TreeNode[])
   width?: Double
   height?: Double
@@ -34,26 +38,30 @@ function drawWidth(el: HTMLCanvasElement, explicit: Double | undefined): Double 
 }
 
 export function TreeChart(props: TreeChartProps): VNode {
+  const themeOf = useChartTheme()
+  const theme = (): ChartTheme => resolveChartTheme(themeOf(), props.theme)
+  const treeOpts = (): TreeOptions => ({ palette: theme().palette, ...props.tree })
   let canvas: HTMLCanvasElement | null = null
   let sizeObserver: ResizeObserver | null = null
   const readData = (): TreeNode[] => {
     const d = props.data
     return typeof d === 'function' ? (d as () => TreeNode[])() : d
   }
-  const layoutFor = (w: Double, hgt: Double): TreeLayout => layoutTree(readData(), { x: 0.0, y: 0.0, w, h: hgt }, props.tree)
+  const layoutFor = (w: Double, hgt: Double): TreeLayout => layoutTree(readData(), { x: 0.0, y: 0.0, w, h: hgt }, treeOpts())
 
   const draw = (): void => {
     const el = canvas
     if (el === null) return
     const w = drawWidth(el, props.width)
     const hgt = props.height ?? 300
-    const ctx = prepareCanvas(el, w, hgt)
+    const ctx = prepareCanvas(el, w, hgt, theme().background)
     if (ctx === null) return
-    paint(ctx, renderTree(layoutFor(w, hgt), props.tree), w, hgt, FONT)
+    paint(ctx, renderTree(layoutFor(w, hgt), treeOpts()), w, hgt, FONT)
   }
 
   effect(() => {
     readData()
+    theme() // a provider mode flip repaints (draw() bails before reading it until the ref attaches)
     draw()
   })
 
@@ -68,8 +76,8 @@ export function TreeChart(props: TreeChartProps): VNode {
     const layout = layoutFor(w, hgt)
     const px = ev.clientX - r.left
     const py = ev.clientY - r.top
-    if (cb !== undefined) cb(hitTree(layout, px, py, props.tree?.symbolSize))
-    if (cbi !== undefined) cbi(hitTreeIndex(layout, px, py, props.tree?.symbolSize))
+    if (cb !== undefined) cb(hitTree(layout, px, py, treeOpts()?.symbolSize))
+    if (cbi !== undefined) cbi(hitTreeIndex(layout, px, py, treeOpts()?.symbolSize))
   }
 
   const a11y = () => {

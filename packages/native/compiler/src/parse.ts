@@ -2605,7 +2605,7 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
       // UNLOWERED_CHART_HOSTS for the per-tag reason), and the ECharts-backed
       // default export stays web.
       advice:
-        'Most `@pyreon/charts/plot` hosts lower to a native PyreonChartCanvas over the generated engine — PieChart/FunnelChart/GaugeChart/CandlestickChart/HeatmapChart/RadarChart/PlotChart/SankeyChart/GraphChart/TreemapChart/SunburstChart/TreeChart/RiverChart/GanttChart/PolarChart/CalendarChart/ParallelChart. OptionChart is deliberately unlowered (see UNLOWERED_CHART_HOSTS for why); the ECharts-backed default export is web-only — keep it in a `<Web>` branch, or embed via the `/webview` bridge',
+        'Most `@pyreon/charts/plot` hosts lower to a native PyreonChartCanvas over the generated engine — PieChart/FunnelChart/GaugeChart/CandlestickChart/HeatmapChart/RadarChart/PlotChart/SankeyChart/GraphChart/TreemapChart/SunburstChart/TreeChart/RiverChart/GanttChart/PolarChart/CalendarChart/ParallelChart. OptionChart is deliberately unlowered and BoxplotChart is a follow-up (see UNLOWERED_CHART_HOSTS for why); the theme lowers per chart (`theme={chartThemes.dark}` / `theme={{ palette: palettes.okabeIto }}`) while `<ChartThemeProvider>` is transparent; the ECharts-backed default export is web-only — keep it in a `<Web>` branch, or embed via the `/webview` bridge',
       supported: new Set([
         'PieChart',
         'FunnelChart',
@@ -2624,6 +2624,14 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
         'PolarChart',
         'CalendarChart',
         'ParallelChart',
+        // Theme surface: the provider is a TRANSPARENT wrapper on native (its
+        // children render; per-chart `theme` props do the theming there), and
+        // `chartThemes` / `palettes` are compiler-known constants a `theme`
+        // literal resolves at compile time (chart-hosts.ts CHART_THEMES /
+        // NAMED_PALETTES).
+        'ChartThemeProvider',
+        'chartThemes',
+        'palettes',
         // Mark + curve constructors consumed INLINE inside a `marks={[...]}`
         // array literal — the structural marks-array pass (chart-hosts.ts /
         // emit{Swift,Kotlin}.ts's PLOT_MARK_KINDS + the special-cased

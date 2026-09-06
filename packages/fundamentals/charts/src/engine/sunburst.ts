@@ -8,12 +8,12 @@
 // no optional narrowing); the svg half lives in family-svg.ts.
 
 import { arcPolygon } from './arc'
+import { DEFAULT_PALETTE, paletteAt } from './palette'
 import { approxTextWidth, nodeValue, orderByValue, tintHex } from './treemap'
 import type { TreeNode } from './treemap'
 import type { Double, DrawCmd, MeasureText, Pt } from './types'
 
 const SUNBURST_TAU = Math.PI * 2.0
-const SUNBURST_PALETTE = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
 
 export interface SunburstArc {
   name: string
@@ -31,6 +31,8 @@ export interface SunburstArc {
 }
 
 export interface SunburstOptions {
+  /** Series colours for nodes without one; defaults to the theme palette. */
+  palette?: string[] | undefined
   /** Where the first arc begins; default 12 o'clock. */
   startAngle?: Double | undefined
   /** Gap between sibling arcs, radians. */
@@ -93,6 +95,7 @@ export function layoutSunburst(
   outerR: Double,
   options?: SunburstOptions,
 ): SunburstArc[] {
+  const palette = options?.palette ?? DEFAULT_PALETTE
   const arcs: SunburstArc[] = []
   const rawLevels = treeDepth(nodes)
   const maxDepth = options?.maxDepth ?? 64.0
@@ -134,7 +137,7 @@ export function layoutSunburst(
       const raw = nodeValue(node)
       const v = raw < 0.0 ? 0.0 : raw
       const span = total <= 0.0 || usable <= 0.0 ? 0.0 : usable * (v / total)
-      const color = node.color ?? (frame.hasInherited ? frame.inherited : SUNBURST_PALETTE[idx % SUNBURST_PALETTE.length]!)
+      const color = node.color ?? (frame.hasInherited ? frame.inherited : paletteAt(palette, idx))
       const kids = node.children ?? []
       const cellPath: number[] = []
       for (const p of frame.path) cellPath.push(p)

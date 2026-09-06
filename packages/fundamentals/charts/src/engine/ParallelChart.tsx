@@ -1,6 +1,8 @@
 // `<ParallelChart>` — parallel coordinates on a canvas.
 
 import { h } from '@pyreon/core'
+import type { ChartTheme } from './render'
+import { resolveChartTheme, useChartTheme } from './theme'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { paint, prepareCanvas } from './canvas-web'
@@ -14,6 +16,8 @@ import type { Double } from './types'
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 
 export interface ParallelChartProps {
+  /** Token overrides merged over the theme in scope (`<ChartThemeProvider>`, else the system scheme). */
+  theme?: Partial<ChartTheme>
   axes: ParallelAxis[]
   rows: ParallelRow[] | (() => ParallelRow[])
   width?: Double
@@ -37,13 +41,16 @@ function drawWidth(el: HTMLCanvasElement, explicit: Double | undefined): Double 
 }
 
 export function ParallelChart(props: ParallelChartProps): VNode {
+  const themeOf = useChartTheme()
+  const theme = (): ChartTheme => resolveChartTheme(themeOf(), props.theme)
+  const parallelOpts = (): ParallelOptions => ({ palette: theme().palette, ...props.parallel })
   let canvas: HTMLCanvasElement | null = null
   let sizeObserver: ResizeObserver | null = null
   const readRows = (): ParallelRow[] => (typeof props.rows === 'function' ? props.rows() : props.rows)
   const opts = (): ParallelOptions | undefined => {
     const colorOf = props.rowColor
-    if (colorOf === undefined) return props.parallel
-    return { ...props.parallel, lineColors: parallelLineColors(readRows(), colorOf) }
+    if (colorOf === undefined) return parallelOpts()
+    return { ...parallelOpts(), lineColors: parallelLineColors(readRows(), colorOf) }
   }
   const layoutFor = (w: Double, hgt: Double): ParallelLayout => {
     const g = props.gutter ?? 40.0
@@ -55,13 +62,14 @@ export function ParallelChart(props: ParallelChartProps): VNode {
     if (el === null) return
     const w = drawWidth(el, props.width)
     const hgt = props.height ?? 300
-    const ctx = prepareCanvas(el, w, hgt)
+    const ctx = prepareCanvas(el, w, hgt, theme().background)
     if (ctx === null) return
     paint(ctx, renderParallel(layoutFor(w, hgt), opts()), w, hgt, FONT)
   }
 
   effect(() => {
     readRows()
+    theme() // a provider mode flip repaints (draw() bails before reading it until the ref attaches)
     draw()
   })
 

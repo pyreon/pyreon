@@ -1,6 +1,7 @@
 // Marks → draw commands. The whole chart, as plain data.
 
 import { computeLayout, layoutBars, layoutBarsH, layoutSeriesPoints, layoutSeriesPointsAt } from './layout'
+import { DEFAULT_PALETTE } from './palette'
 import { layoutGroupedBars, layoutStackedBars, stackedExtent } from './stack'
 import type { Formatter } from './format'
 import type { LayoutConfig, PlotLayout } from './layout'
@@ -92,11 +93,45 @@ export interface PointMarker {
   radius?: Double | undefined
 }
 
+/**
+ * The chart's token map — every colour, size and timing a chart draws with.
+ *
+ * ONE theme feeds every family, the legend, the title, the tooltip and the
+ * accessible description; `defaultTheme` is the light theme and
+ * `chartThemes.dark` (theme.ts) its dark twin. Hosts resolve a theme from
+ * `<ChartThemeProvider>` / the system colour scheme and merge the `theme`
+ * prop over it, so a chart with no props already reads right on both grounds.
+ *
+ * It crosses to native as a struct, which is why every field is a plain
+ * string / Double / string list and none is optional: a partial is merged on
+ * the web (`resolveChartTheme`) and at COMPILE time on native (`chart-hosts`).
+ */
 export interface ChartTheme {
-  axis: string
-  grid: string
+  /** Series colours in draw order; marks without a `color` cycle through it. */
+  palette: string[]
+  /** Chart ground; '' paints nothing (the host's own background shows). */
+  background: string
+  /** Card surfaces — the tooltip, the legend pager. */
+  surface: string
+  /** Primary text: titles, tooltip values, value labels. */
+  text: string
+  /** Secondary text: axis tick labels, legend entries, subtitles. */
   label: string
+  /** Axis lines and the crosshair. */
+  axis: string
+  /** Grid lines and hover bands. */
+  grid: string
+  /** Font family for every text command; '' inherits the host's font. */
+  fontFamily: string
   fontSize: Double
+  /** Title size; the subtitle uses `fontSize`. */
+  titleSize: Double
+  /** Corner radius bars fall back to when a mark sets none. */
+  radius: Double
+  /** Entrance animation length, ms; 0 disables it. */
+  enterMs: Double
+  /** Data-update tween length, ms; 0 snaps. */
+  updateMs: Double
 }
 
 /**
@@ -171,10 +206,19 @@ export interface ChartSpec {
 }
 
 export const defaultTheme: ChartTheme = {
+  palette: DEFAULT_PALETTE,
+  background: '',
+  surface: '#ffffff',
+  text: '#1f2937',
+  label: '#5a6b7a',
   axis: '#8496a5',
   grid: 'rgba(132,150,165,0.18)',
-  label: '#5a6b7a',
+  fontFamily: '',
   fontSize: 11.0,
+  titleSize: 15.0,
+  radius: 0.0,
+  enterMs: 700.0,
+  updateMs: 350.0,
 }
 
 /** 0 = plain, 1 = highlighted (a hover or a dispatched `highlight`), 2 = selected. */

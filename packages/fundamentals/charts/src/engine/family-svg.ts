@@ -11,6 +11,7 @@
 // pointer handlers and reactivity, which have no meaning on a server.
 
 import { fitCircle, layoutArcs, renderGauge, renderPie } from './arc'
+import { paletteAt } from './palette'
 import type { GaugeOptions } from './arc'
 import { renderRadar } from './radar'
 import type { RadarAxis } from './radar'
@@ -79,6 +80,8 @@ function svgTail(
 }
 
 export interface PieToSvgOptions<T> {
+  /** Series colours for rows without one; defaults to the theme palette. */
+  palette?: string[] | undefined
   data: T[]
   /** The slice magnitude. */
   value: (d: T, index: number) => Double
@@ -98,7 +101,6 @@ export interface PieToSvgOptions<T> {
   svg?: Omit<SvgOptions, 'title' | 'description'>
 }
 
-const PALETTE = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
 
 /** A pie or donut as a standalone `<svg>` string. */
 export function pieToSvg<T>(options: PieToSvgOptions<T>): string {
@@ -107,7 +109,7 @@ export function pieToSvg<T>(options: PieToSvgOptions<T>): string {
   const slices = options.data.map((d, i) => ({
     value: options.value(d, i),
     label: options.label(d, i),
-    color: options.color?.(d, i) ?? PALETTE[i % PALETTE.length]!,
+    color: options.color?.(d, i) ?? paletteAt(options.palette ?? [], i),
   }))
   const measure = options.measure ?? measureApprox()
 
@@ -192,6 +194,8 @@ export function gaugeToSvg(options: GaugeToSvgOptions): string {
 }
 
 export interface RadarToSvgOptions<T> {
+  /** Series colours for rows without one; defaults to the theme palette. */
+  palette?: string[] | undefined
   data: T[]
   /** The spokes; each axis normalises by its OWN max — see `radarPolygon`. */
   axes: RadarAxis[]
@@ -216,7 +220,7 @@ export function radarToSvg<T>(options: RadarToSvgOptions<T>): string {
   const width = options.width ?? 320
   const height = options.height ?? 260
   const colorAt = (d: T, i: number): string =>
-    options.color?.(d, i) ?? PALETTE[i % PALETTE.length]!
+    options.color?.(d, i) ?? paletteAt(options.palette ?? [], i)
   const measure = options.measure ?? measureApprox()
 
   let legendH = 0
@@ -462,6 +466,8 @@ export { fitCircle, layoutArcs }
 // ---- funnel (svg half; the geometry in funnel.ts is bundled into the native engine) ----
 
 export interface FunnelToSvgOptions<T> {
+  /** Series colours for rows without one; defaults to the theme palette. */
+  palette?: string[] | undefined
   data: T[]
   value: (d: T, index: number) => Double
   label: (d: T, index: number) => string
@@ -475,7 +481,6 @@ export interface FunnelToSvgOptions<T> {
   svg?: Omit<SvgOptions, 'title' | 'description'>
 }
 
-const FUNNEL_PALETTE = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
 
 /** Funnel → `<svg>` string, server-safe. */
 export function funnelToSvg<T>(options: FunnelToSvgOptions<T>): string {
@@ -484,7 +489,7 @@ export function funnelToSvg<T>(options: FunnelToSvgOptions<T>): string {
   const stages: FunnelStage[] = options.data.map((d, i) => ({
     value: options.value(d, i),
     label: options.label(d, i),
-    color: options.color !== undefined ? options.color(d, i) : FUNNEL_PALETTE[i % FUNNEL_PALETTE.length]!,
+    color: options.color !== undefined ? options.color(d, i) : paletteAt(options.palette ?? [], i),
   }))
   const pad = 8.0
   const cmds = renderFunnel(stages, { x: pad, y: pad, w: width - pad * 2.0, h: height - pad * 2.0 }, options.funnel)

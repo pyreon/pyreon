@@ -1,6 +1,8 @@
 // `<SankeyChart>` — a flow diagram on a canvas.
 
 import { h } from '@pyreon/core'
+import type { ChartTheme } from './render'
+import { resolveChartTheme, useChartTheme } from './theme'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { paint, prepareCanvas } from './canvas-web'
@@ -14,6 +16,8 @@ import type { Double } from './types'
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 
 export interface SankeyChartProps {
+  /** Token overrides merged over the theme in scope (`<ChartThemeProvider>`, else the system scheme). */
+  theme?: Partial<ChartTheme>
   nodes: SankeyNode[] | (() => SankeyNode[])
   links: SankeyLink[] | (() => SankeyLink[])
   width?: Double
@@ -37,13 +41,16 @@ function drawWidth(el: HTMLCanvasElement, explicit: Double | undefined): Double 
 }
 
 export function SankeyChart(props: SankeyChartProps): VNode {
+  const themeOf = useChartTheme()
+  const theme = (): ChartTheme => resolveChartTheme(themeOf(), props.theme)
+  const sankeyOpts = (): SankeyOptions => ({ palette: theme().palette, ...props.sankey })
   let canvas: HTMLCanvasElement | null = null
   let sizeObserver: ResizeObserver | null = null
   const readNodes = (): SankeyNode[] => (typeof props.nodes === 'function' ? props.nodes() : props.nodes)
   const readLinks = (): SankeyLink[] => (typeof props.links === 'function' ? props.links() : props.links)
   const layoutFor = (w: Double, hgt: Double): SankeyLayout => {
     const g = props.gutter ?? 80.0
-    return layoutSankey(readNodes(), readLinks(), { x: g, y: 8.0, w: Math.max(0.0, w - g * 2.0), h: Math.max(0.0, hgt - 16.0) }, props.sankey)
+    return layoutSankey(readNodes(), readLinks(), { x: g, y: 8.0, w: Math.max(0.0, w - g * 2.0), h: Math.max(0.0, hgt - 16.0) }, sankeyOpts())
   }
 
   const draw = (): void => {
@@ -51,14 +58,15 @@ export function SankeyChart(props: SankeyChartProps): VNode {
     if (el === null) return
     const w = drawWidth(el, props.width)
     const hgt = props.height ?? 300
-    const ctx = prepareCanvas(el, w, hgt)
+    const ctx = prepareCanvas(el, w, hgt, theme().background)
     if (ctx === null) return
-    paint(ctx, renderSankey(layoutFor(w, hgt), props.sankey), w, hgt, FONT)
+    paint(ctx, renderSankey(layoutFor(w, hgt), sankeyOpts()), w, hgt, FONT)
   }
 
   effect(() => {
     readNodes()
     readLinks()
+    theme() // a provider mode flip repaints (draw() bails before reading it until the ref attaches)
     draw()
   })
 

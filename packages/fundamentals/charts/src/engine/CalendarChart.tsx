@@ -1,6 +1,8 @@
 // `<CalendarChart>` — a day-per-cell heat grid on a canvas.
 
 import { h } from '@pyreon/core'
+import type { ChartTheme } from './render'
+import { resolveChartTheme, useChartTheme } from './theme'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { paint, prepareCanvas } from './canvas-web'
@@ -13,6 +15,8 @@ import type { Double } from './types'
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 
 export interface CalendarChartProps {
+  /** Token overrides merged over the theme in scope (`<ChartThemeProvider>`, else the system scheme). */
+  theme?: Partial<ChartTheme>
   start: string
   end: string
   values: Record<string, Double> | (() => Record<string, Double>)
@@ -33,6 +37,8 @@ function drawWidth(el: HTMLCanvasElement, explicit: Double | undefined): Double 
 }
 
 export function CalendarChart(props: CalendarChartProps): VNode {
+  const themeOf = useChartTheme()
+  const theme = (): ChartTheme => resolveChartTheme(themeOf(), props.theme)
   let canvas: HTMLCanvasElement | null = null
   let sizeObserver: ResizeObserver | null = null
   const readValues = (): Record<string, Double> => (typeof props.values === 'function' ? props.values() : props.values)
@@ -44,13 +50,14 @@ export function CalendarChart(props: CalendarChartProps): VNode {
     if (el === null) return
     const w = drawWidth(el, props.width)
     const hgt = props.height ?? 140
-    const ctx = prepareCanvas(el, w, hgt)
+    const ctx = prepareCanvas(el, w, hgt, theme().background)
     if (ctx === null) return
     paint(ctx, renderCalendar(layoutFor(w, hgt), calendarValues(readValues()), props.calendar), w, hgt, FONT)
   }
 
   effect(() => {
     readValues()
+    theme() // a provider mode flip repaints (draw() bails before reading it until the ref attaches)
     draw()
   })
 

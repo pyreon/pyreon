@@ -7,6 +7,9 @@
 // tree-shakeable.
 
 import { h } from '@pyreon/core'
+import { resolveChartTheme, useChartTheme } from './theme'
+import { paletteAt } from './palette'
+import type { ChartTheme } from './render'
 import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { fitCircle, hitArc, layoutArcs, renderGauge, renderPie } from './arc'
@@ -20,9 +23,10 @@ import { observeWidth, radialWidth } from './radial-host'
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 
-const PALETTE = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
 
 export interface PieChartProps<T> {
+  /** Token overrides merged over the theme in scope (`<ChartThemeProvider>`, else the system scheme). */
+  theme?: Partial<ChartTheme>
   data: T[] | (() => T[])
   /** The slice magnitude. */
   value: (d: T, index: number) => Double
@@ -43,6 +47,8 @@ export interface PieChartProps<T> {
 }
 
 export function PieChart<T>(props: PieChartProps<T>): VNode {
+  const themeOf = useChartTheme()
+  const theme = (): ChartTheme => resolveChartTheme(themeOf(), props.theme)
   let canvas: HTMLCanvasElement | null = null
   let sizeObserver: ResizeObserver | null = null
 
@@ -55,7 +61,7 @@ export function PieChart<T>(props: PieChartProps<T>): VNode {
     readData().map((d, i) => ({
       value: props.value(d, i),
       label: props.label(d, i),
-      color: props.color?.(d, i) ?? PALETTE[i % PALETTE.length]!,
+      color: props.color?.(d, i) ?? paletteAt(theme().palette, i),
     }))
 
   const draw = (): void => {
@@ -63,7 +69,7 @@ export function PieChart<T>(props: PieChartProps<T>): VNode {
     if (el === null) return
     const w = radialWidth(el, props.width, 300)
     const hgt = props.height ?? 240
-    const ctx = prepareCanvas(el, w, hgt)
+    const ctx = prepareCanvas(el, w, hgt, theme().background)
     if (ctx === null) return
     const s = slices()
     const measure = canvasMeasure(ctx, FONT)
@@ -77,7 +83,7 @@ export function PieChart<T>(props: PieChartProps<T>): VNode {
           const l = renderLegend(
             s.map((x) => ({ label: x.label, color: x.color })),
             { x: 8, y: 8, w: w - 16, h: hgt },
-            { fontSize: 11, labelColor: '#5a6b7a', swatch: 10, gap: 12, orientation: 'horizontal' },
+            { fontSize: theme().fontSize, labelColor: theme().label, swatch: 10, gap: 12, orientation: 'horizontal' },
             measure,
           )
           legendH = l.height
@@ -97,6 +103,7 @@ export function PieChart<T>(props: PieChartProps<T>): VNode {
 
   effect(() => {
     readData()
+    theme() // a provider mode flip repaints (draw() bails before reading it until the ref attaches)
     draw()
   })
 
@@ -176,6 +183,8 @@ export function PieChart<T>(props: PieChartProps<T>): VNode {
 }
 
 export interface GaugeChartProps {
+  /** Token overrides merged over the theme in scope (`<ChartThemeProvider>`, else the system scheme). */
+  theme?: Partial<ChartTheme>
   value: Double | (() => Double)
   min?: Double
   max?: Double
@@ -192,6 +201,8 @@ export interface GaugeChartProps {
 
 /** A single-value gauge. */
 export function GaugeChart(props: GaugeChartProps): VNode {
+  const themeOf = useChartTheme()
+  const theme = (): ChartTheme => resolveChartTheme(themeOf(), props.theme)
   let canvas: HTMLCanvasElement | null = null
   let sizeObserver: ResizeObserver | null = null
   const readValue = (): Double => {
@@ -204,7 +215,7 @@ export function GaugeChart(props: GaugeChartProps): VNode {
     if (el === null) return
     const w = radialWidth(el, props.width, 240)
     const hgt = props.height ?? 140
-    const ctx = prepareCanvas(el, w, hgt)
+    const ctx = prepareCanvas(el, w, hgt, theme().background)
     if (ctx === null) return
     const min = props.min ?? 0
     const max = props.max ?? 100
@@ -214,8 +225,8 @@ export function GaugeChart(props: GaugeChartProps): VNode {
       max,
       sweep: Math.PI,
       thickness: props.thickness ?? 22,
-      trackColor: props.trackColor ?? 'rgba(132,150,165,0.22)',
-      valueColor: props.valueColor ?? '#0f766e',
+      trackColor: props.trackColor ?? theme().grid,
+      valueColor: props.valueColor ?? paletteAt(theme().palette, 0),
     }
     // A half-circle occupies the top half of its box, so the drawing box is
     // twice the visible height — otherwise the arc is squashed into a quarter.
@@ -225,7 +236,7 @@ export function GaugeChart(props: GaugeChartProps): VNode {
         kind: 'text',
         text: plain(v),
         at: { x: w / 2, y: hgt - 6 },
-        fill: '#10161d',
+        fill: theme().text,
         size: 20,
         align: 'middle',
         baseline: 'bottom',

@@ -8,9 +8,9 @@
 // graph-hit.ts) and the svg half in family-svg.ts.
 
 import type { Double, DrawCmd, Pt, Rect } from './types'
+import { DEFAULT_PALETTE, paletteAt } from './palette'
 
 const GRAPH_TAU = Math.PI * 2.0
-const GRAPH_PALETTE = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed', '#0e7490', '#9333ea']
 /** Park–Miller modulus (2^31 − 1); state × 16807 stays exact in a Double. */
 const GRAPH_LCG_M = 2147483647.0
 
@@ -61,6 +61,8 @@ export interface GraphLayout {
 }
 
 export interface GraphOptions {
+  /** Series colours for nodes without one; defaults to the theme palette. */
+  palette?: string[] | undefined
   layout?: 'force' | 'circular' | 'none' | undefined
   categories?: string[] | undefined
   /** Symbol diameter for a node without a value (values scale it up to 2×). */
@@ -108,6 +110,7 @@ function graphRadius(value: Double, hasValue: boolean, maxValue: Double, base: D
 
 /** Lay out the network into `box`. */
 export function layoutGraph(nodes: GraphNode[], links: GraphLink[], box: Rect, options?: GraphOptions): GraphLayout {
+  const palette = options?.palette ?? DEFAULT_PALETTE
   const mode = options?.layout ?? 'force'
   const base = options?.symbolSize ?? 10.0
   const dropped: string[] = []
@@ -263,7 +266,7 @@ export function layoutGraph(nodes: GraphNode[], links: GraphLink[], box: Rect, o
   for (let i = 0; i < n; i++) {
     const nd = nodes[i]!
     const cat = nd.category
-    const color = nd.color ?? GRAPH_PALETTE[(cat ?? i) % GRAPH_PALETTE.length]!
+    const color = nd.color ?? paletteAt(palette, cat ?? i)
     outNodes.push({ id: nd.id, name: nd.name ?? nd.id, index: i, at: { x: px[i]!, y: py[i]! }, radius: radius[i]!, color, category: cat, value: nd.value })
   }
   return { mode, nodes: outNodes, links: outLinks, dropped }
