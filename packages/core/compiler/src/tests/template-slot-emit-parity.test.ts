@@ -21,9 +21,6 @@
 import { describe, expect, it } from 'vitest'
 import { transformJSX } from '../index'
 
-const phase2Lines = (code: string) =>
-  code.split('\n').filter((l) => /^\s+(_setChildAt|_mountSlot|_textSlot|_mountChild|const __d\d+ = _mountSlot)\(/.test(l) || /= _(mountSlot|textSlot|mountChild)\(/.test(l))
-
 describe('children slot — accessor levels match the SSR emit', () => {
   it('wraps a props-derived children expression in an accessor', () => {
     const { code } = transformJSX(

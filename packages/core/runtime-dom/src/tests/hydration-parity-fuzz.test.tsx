@@ -43,7 +43,7 @@
  */
 import { renderToString } from '@pyreon/runtime-server'
 import { disableHydrationWarnings, hydrateRoot, mount, onHydrationMismatch } from '../index'
-import { For, Fragment, h, Show } from '@pyreon/core'
+import { For, Fragment, h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import {
   KNOWN_ATTR_PARITY_DIVERGENCES,

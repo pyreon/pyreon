@@ -48,7 +48,7 @@ import {
   onHydrationMismatch,
 } from '../index'
 import { bindPolymorphicText } from '../mount'
-import { cmp, flip, genSpec, makeSignals, mulberry32, toSource, toVNode, type SigInst, type SigSpec, type Spec } from './_hydration-fuzz-grammar'
+import { cmp, flip, genSpec, makeSignals, mulberry32, toSource, type SigInst, type SigSpec, type Spec } from './_hydration-fuzz-grammar'
 
 const RUNTIME_DEPS = {
   _tpl,
