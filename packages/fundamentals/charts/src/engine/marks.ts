@@ -205,7 +205,7 @@ export function bubble<T>(
  * nothing to trace it by. Zero is visibly wrong at the right datum, which is
  * the better failure.
  */
-export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: string[] = DEFAULT_PALETTE): Series[] {
+export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly string[] = DEFAULT_PALETTE): Series[] {
   return marks.map((m, seriesIndex) => {
     const raw: Double[] = []
     for (let i = 0; i < data.length; i++) {

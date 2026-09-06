@@ -46,7 +46,7 @@ export interface TreeLayout {
 
 export interface TreeOptions {
   /** Series colours for entries without one; defaults to the theme palette. */
-  palette?: string[] | undefined
+  palette?: readonly string[] | undefined
   /** Inline union rather than the TreeOrient alias: the native emitter turns a NAMED string union into an enum, and the comparisons below are string comparisons. */
   orient?: 'LR' | 'RL' | 'TB' | 'BT' | 'radial' | undefined
   /** Only lay out this many levels (1 = roots only). */

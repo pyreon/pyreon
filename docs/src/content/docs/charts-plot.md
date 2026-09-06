@@ -292,11 +292,12 @@ right on both grounds:
 import { useMode } from '@pyreon/ui-core'
 import { ChartThemeProvider, PlotChart, bars, palettes } from '@pyreon/charts/plot'
 
-const rows = [{ q: 'Q1', v: 3 }, { q: 'Q2', v: 5 }]
+interface Row { q: string; v: number }
+const rows: Row[] = [{ q: 'Q1', v: 3 }, { q: 'Q2', v: 5 }]
 
 export const Themed = () => (
   <ChartThemeProvider mode={useMode} theme={{ palette: palettes.okabeIto, radius: 4 }}>
-    <PlotChart data={rows} x={(d) => d.q} marks={[bars((d) => d.v)]} />
+    <PlotChart<Row> data={rows} x={(d) => d.q} marks={[bars((d) => d.v)]} />
   </ChartThemeProvider>
 )
 ```

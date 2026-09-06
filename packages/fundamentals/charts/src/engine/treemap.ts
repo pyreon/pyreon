@@ -35,7 +35,7 @@ export interface TreemapCell {
 
 export interface TreemapOptions {
   /** Series colours for nodes without one; defaults to the theme palette. */
-  palette?: string[] | undefined
+  palette?: readonly string[] | undefined
   /** Inner padding around a parent's children, in pixels. */
   padding?: Double | undefined
   /** Only lay out this many levels (1 = top level only). */

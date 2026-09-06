@@ -163,7 +163,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
   const title = isObj(titleRaw) && typeof titleRaw['text'] === 'string' ? (titleRaw['text'] as string) : undefined
   const legendRaw = option['legend']
   const showLegend = legendRaw !== undefined && !(isObj(legendRaw) && legendRaw['show'] === false)
-  const palette: string[] = Array.isArray(option['color']) ? (option['color'] as unknown[]).filter((c): c is string => typeof c === 'string') : []
+  const palette: readonly string[] = Array.isArray(option['color']) ? (option['color'] as unknown[]).filter((c): c is string => typeof c === 'string') : []
   const data = Array.isArray(s['data']) ? (s['data'] as unknown[]) : []
   if (!Array.isArray(s['data'])) {
     warn('series-data-shape', 'series[0].data', 'Series data must be an array; treated as empty.')

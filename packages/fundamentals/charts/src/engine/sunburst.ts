@@ -32,7 +32,7 @@ export interface SunburstArc {
 
 export interface SunburstOptions {
   /** Series colours for nodes without one; defaults to the theme palette. */
-  palette?: string[] | undefined
+  palette?: readonly string[] | undefined
   /** Where the first arc begins; default 12 o'clock. */
   startAngle?: Double | undefined
   /** Gap between sibling arcs, radians. */

@@ -62,7 +62,7 @@ export interface GraphLayout {
 
 export interface GraphOptions {
   /** Series colours for nodes without one; defaults to the theme palette. */
-  palette?: string[] | undefined
+  palette?: readonly string[] | undefined
   layout?: 'force' | 'circular' | 'none' | undefined
   categories?: string[] | undefined
   /** Symbol diameter for a node without a value (values scale it up to 2×). */

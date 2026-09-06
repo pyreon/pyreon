@@ -63,7 +63,7 @@ export interface ParallelLayout {
 
 export interface ParallelOptions {
   /** Series colours for entries without one; defaults to the theme palette. */
-  palette?: string[] | undefined
+  palette?: readonly string[] | undefined
   fontSize?: Double | undefined
   labelColor?: string | undefined
   axisColor?: string | undefined

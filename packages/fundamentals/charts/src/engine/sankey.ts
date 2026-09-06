@@ -54,7 +54,7 @@ export interface SankeyLayout {
 
 export interface SankeyOptions {
   /** Series colours for entries without one; defaults to the theme palette. */
-  palette?: string[] | undefined
+  palette?: readonly string[] | undefined
   nodeWidth?: Double | undefined
   nodePadding?: Double | undefined
   /** Relaxation sweeps; 0 keeps input order. */

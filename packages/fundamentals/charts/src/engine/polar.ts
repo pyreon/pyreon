@@ -86,7 +86,7 @@ export interface PolarLayout {
 
 export interface PolarOptions {
   /** Series colours for nodes without one; defaults to the theme palette. */
-  palette?: string[] | undefined
+  palette?: readonly string[] | undefined
   /** Hole radius as a fraction of the outer radius; default 0. */
   innerRatio?: Double | undefined
   /** Fraction of each category slot left empty between bars; default 0.2. */

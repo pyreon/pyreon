@@ -23,7 +23,7 @@ export const DEFAULT_PALETTE: string[] = ['#4f7df3', '#f97362', '#22c3a6', '#a66
 export const DARK_PALETTE: string[] = ['#7b9bff', '#ff8f7e', '#4adbc0', '#bd93ff', '#ffc44d', '#5dcbf2', '#ff80be', '#9ad870', '#a3acbd', '#d8955e']
 
 /** The palette colour for series `index`, cycling; an empty palette falls back to the default. */
-export function paletteAt(palette: string[], index: number): string {
+export function paletteAt(palette: readonly string[], index: number): string {
   const n = palette.length
   if (n === 0) return DEFAULT_PALETTE[index % DEFAULT_PALETTE.length]!
   return palette[index % n]!

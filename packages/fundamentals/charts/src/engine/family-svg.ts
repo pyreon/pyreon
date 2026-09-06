@@ -81,7 +81,7 @@ function svgTail(
 
 export interface PieToSvgOptions<T> {
   /** Series colours for rows without one; defaults to the theme palette. */
-  palette?: string[] | undefined
+  palette?: readonly string[] | undefined
   data: T[]
   /** The slice magnitude. */
   value: (d: T, index: number) => Double
@@ -195,7 +195,7 @@ export function gaugeToSvg(options: GaugeToSvgOptions): string {
 
 export interface RadarToSvgOptions<T> {
   /** Series colours for rows without one; defaults to the theme palette. */
-  palette?: string[] | undefined
+  palette?: readonly string[] | undefined
   data: T[]
   /** The spokes; each axis normalises by its OWN max — see `radarPolygon`. */
   axes: RadarAxis[]
@@ -467,7 +467,7 @@ export { fitCircle, layoutArcs }
 
 export interface FunnelToSvgOptions<T> {
   /** Series colours for rows without one; defaults to the theme palette. */
-  palette?: string[] | undefined
+  palette?: readonly string[] | undefined
   data: T[]
   value: (d: T, index: number) => Double
   label: (d: T, index: number) => string

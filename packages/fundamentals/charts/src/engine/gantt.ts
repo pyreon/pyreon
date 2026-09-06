@@ -108,7 +108,7 @@ export interface GanttOptions {
   showDependencies?: boolean | undefined
   /** Entrance progress 0..1; bars grow from their start. */
   progress?: Double | undefined
-  palette?: string[] | undefined
+  palette?: readonly string[] | undefined
 }
 
 /** The tick unit for a span in days. */

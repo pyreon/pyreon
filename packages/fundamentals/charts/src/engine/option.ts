@@ -185,7 +185,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
   const optionPalette: string[] = Array.isArray(option['color'])
     ? (option['color'] as unknown[]).filter((c): c is string => typeof c === 'string')
     : []
-  const palette: string[] = optionPalette.length > 0 ? optionPalette : themed.palette ?? []
+  const palette: readonly string[] = optionPalette.length > 0 ? optionPalette : themed.palette ?? []
   const localeNumber = opts.locale !== undefined ? numberFormatter(opts.locale) : undefined
   const localeDate = opts.locale !== undefined ? dateFormatter(opts.locale) : undefined
 

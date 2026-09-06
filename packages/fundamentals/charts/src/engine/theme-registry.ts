@@ -30,7 +30,7 @@ export interface ThemeDefinition extends Partial<ChartTheme> {
 
 export interface ResolvedTheme {
   /** The palette the definition set, or null when it left the default. */
-  palette: string[] | null
+  palette: readonly string[] | null
   chartTheme: ChartTheme
   background: string | undefined
 }

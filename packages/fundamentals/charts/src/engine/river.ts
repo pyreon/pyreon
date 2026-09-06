@@ -41,7 +41,7 @@ export interface RiverLayout {
 
 export interface RiverOptions {
   /** Series colours for nodes without one; defaults to the theme palette. */
-  palette?: string[] | undefined
+  palette?: readonly string[] | undefined
   categories?: string[] | undefined
   /** 'silhouette' (default) centres the stack on a midline; 'zero' stacks from the bottom. */
   baseline?: 'silhouette' | 'zero' | undefined

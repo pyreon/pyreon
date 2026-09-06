@@ -108,7 +108,7 @@ export interface PointMarker {
  */
 export interface ChartTheme {
   /** Series colours in draw order; marks without a `color` cycle through it. */
-  palette: string[]
+  palette: readonly string[]
   /** Chart ground; '' paints nothing (the host's own background shows). */
   background: string
   /** Card surfaces — the tooltip, the legend pager. */
