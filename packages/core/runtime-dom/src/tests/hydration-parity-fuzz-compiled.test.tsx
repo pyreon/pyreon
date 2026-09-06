@@ -113,9 +113,16 @@ describe('SSR ↔ hydration parity fuzz — COMPILED path', () => {
   const TIMEOUT_MS = Math.max(30_000, SEEDS * 40) // a real compile per seed
   // Retention RATCHET — the measured floor on the run that set it. Raise it
   // when adoption improves; never lower it to absorb a regression.
-  // Set at 300 seeds: 74.6% (1896/2543 SSR nodes kept, 78 root swaps — the
-  // root `<main>` bails whenever a `<For>` block sits directly under it, a
-  // `<!--pyreon-for-->` region the verifier refuses; the next adoption lever).
+  // Set at 300 seeds: 74.6% (1896/2543 SSR nodes kept, 78 root swaps). The
+  // swaps are NOT `<For>` shapes (a component child lowers the root to h(),
+  // which `hydrateElement` adopts): dumping them (`PYREON_FUZZ_DUMP_SWAPS=1`)
+  // shows STATIC LITERAL EXPRESSION CHILDREN — `{"t"}`, `{54}`, `{null}` —
+  // which the compiler emits as a `<!>` placeholder + `_setChildAt(...)` while
+  // plain JSX text bakes into the template; the server emits plain text either
+  // way, so the mid-slot verifier finds no `$` range and bails. Baking literal
+  // expression children into the template HTML is the next adoption lever
+  // (a compiler change, both backends). `<textarea value>` under the h() path
+  // is the other, smaller class.
   const RETENTION_FLOOR = 0.74
 
   it(`${SEEDS} seeded trees hold all five oracles on the compiled path`, { timeout: TIMEOUT_MS }, async () => {
@@ -124,6 +131,7 @@ describe('SSR ↔ hydration parity fuzz — COMPILED path', () => {
     let ssrNodes = 0
     let kept = 0
     let rootSwaps = 0
+    const swapDump: string[] = []
     // Diagnosis aid: PYREON_FUZZ_ONLY=112,167 runs just those seeds with full output.
     const ONLY = ENV.PYREON_FUZZ_ONLY ? new Set(ENV.PYREON_FUZZ_ONLY.split(',').map(Number)) : null
     const CUT = ONLY ? 2000 : 160
@@ -193,7 +201,10 @@ describe('SSR ↔ hydration parity fuzz — COMPILED path', () => {
       // O4 (root identity) is NOT a hard oracle on the compiled path: a root
       // template whose adoption bails takes the documented swap fallback, which
       // is correct DOM with lost identity — the retention ratchet measures it.
-      if (cA.firstElementChild !== rootBefore) rootSwaps++
+      if (cA.firstElementChild !== rootBefore) {
+        rootSwaps++
+        if (ENV.PYREON_FUZZ_DUMP_SWAPS) swapDump.push(`seed=${seed} ${toSource(spec).split('\n')[1]?.slice(0, 260)}`)
+      }
       if (cmp(cA.innerHTML) !== cmp(cB.innerHTML)) {
         failures.push(`seed=${seed} O2 divergence\n  A: ${cmp(cA.innerHTML).slice(0, CUT)}\n  B: ${cmp(cB.innerHTML).slice(0, CUT)}\n  src: ${toSource(spec).split('\n')[1]?.slice(0, CUT)}`)
       } else {
@@ -220,6 +231,7 @@ describe('SSR ↔ hydration parity fuzz — COMPILED path', () => {
     }
     const retention = ssrNodes === 0 ? 0 : kept / ssrNodes
     // eslint-disable-next-line no-console
+    if (swapDump.length) console.warn('[compiled-fuzz] root swaps:\n' + swapDump.join('\n'))
     console.warn(`[compiled-fuzz] seeds=${SEEDS} retention=${(retention * 100).toFixed(1)}% (${kept}/${ssrNodes} SSR nodes kept) rootSwaps=${rootSwaps}`)
     expect(failures, failures.join('\n')).toEqual([])
     expect(retention).toBeGreaterThanOrEqual(RETENTION_FLOOR)
