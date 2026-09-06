@@ -43,6 +43,7 @@ import { _setPendingForAdoption, mountKeyedList, mountReactive } from './nodes'
 import {
   _setHydrationActive,
   _setSlotHydrator,
+  _takeParkedRange,
   _setTplAdoptTarget,
   _setTplAdoptVerifier,
   _setTplHoleHydrator,
@@ -965,6 +966,12 @@ function hydrateMountSlot(
     const cursor = first === null ? null : first.nodeType === 1 ? first : firstReal(first)
     return hydrateChild(children, cursor, parent, null, 'slot')[0]
   }
+  // A PARKED mid range (see `PARKED_RANGE` in template.ts): the verifier moved
+  // this slot's server content out so the compiled refs after it resolved
+  // against the clone's one-node shape. Put it back — exactly where it was,
+  // right after the open marker — and adopt it like any marked range.
+  const parked = _takeParkedRange(open)
+  if (parked !== null) parent.insertBefore(parked, open.nextSibling)
   if (typeof children === 'function') {
     return hydrateChild(children, open, parent, null, 'slot')[0]
   }

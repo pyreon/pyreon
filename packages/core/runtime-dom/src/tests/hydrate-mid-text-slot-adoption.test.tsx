@@ -200,14 +200,15 @@ describe('mid text slot — static content AFTER the interpolation', () => {
 })
 
 describe('mid slot — the refusal stays exactly as narrow as it must', () => {
-  it('a mid MOUNT slot whose range holds an ELEMENT still rebuilds, correctly, no duplication', async () => {
-    const { out, host, dispose } = await roundTrip(
+  it('a mid MOUNT slot whose range holds an ELEMENT now ADOPTS (parked) — correct, no duplication', async () => {
+    const { out, host, before, dispose } = await roundTrip(
       h('p', { class: 'mo' }, () => h('i', null, 'i'), '!'),
       `const App = () => { const on = signal(true); globalThis.__on = on; return <p class="mo">{on() && <i>i</i>}!</p> }`,
     )
     const noC = (x: string) => x.replace(/<!--[^>]*-->/g, '')
     expect(noC(out)).toBe('<p class="mo"><i>i</i>!</p>')
     expect(out.match(/<i>i<\/i>/g)).toHaveLength(1)
+    expect(retained(before, host)).toBe(before.length) // parked, put back, adopted
     ;(globalThis as unknown as Record<string, { set(v: boolean): void } | undefined>).__on?.set(false)
     expect(noC(host.innerHTML)).toBe('<p class="mo">!</p>')
     dispose()
