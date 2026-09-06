@@ -22,7 +22,7 @@ export interface PolarChartProps extends CanvasHostProps {
 
 export function PolarChart(props: PolarChartProps): VNode {
   const readSeries = (): PolarSeries[] => (typeof props.series === 'function' ? props.series() : props.series)
-  const opts = (palette: string[]): PolarOptions => ({ palette, ...props.polar })
+  const opts = (palette: readonly string[]): PolarOptions => ({ palette, ...props.polar })
   return canvasHost<PolarLayout>({
     props,
     defaultHeight: 300,

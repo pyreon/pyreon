@@ -18,7 +18,7 @@ export interface GanttChartProps extends CanvasHostProps {
 
 export function GanttChart(props: GanttChartProps): VNode {
   const readTasks = (): GanttTask[] => (typeof props.tasks === 'function' ? props.tasks() : props.tasks)
-  const opts = (palette: string[]): GanttOptions => ({ palette, ...props.gantt })
+  const opts = (palette: readonly string[]): GanttOptions => ({ palette, ...props.gantt })
   return canvasHost<GanttLayout>({
     props,
     defaultHeight: 320,

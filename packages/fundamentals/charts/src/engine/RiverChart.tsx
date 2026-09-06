@@ -17,7 +17,7 @@ export interface RiverChartProps extends CanvasHostProps {
 
 export function RiverChart(props: RiverChartProps): VNode {
   const readSeries = (): RiverSeries[] => (typeof props.series === 'function' ? props.series() : props.series)
-  const opts = (palette: string[]): RiverOptions => ({ palette, ...props.river })
+  const opts = (palette: readonly string[]): RiverOptions => ({ palette, ...props.river })
   return canvasHost<RiverLayout>({
     props,
     defaultHeight: 300,

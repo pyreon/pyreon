@@ -24,7 +24,7 @@ interface Geometry { layout: GraphLayout; box: Rect }
 export function GraphChart(props: GraphChartProps): VNode {
   const readNodes = (): GraphNode[] => (typeof props.nodes === 'function' ? props.nodes() : props.nodes)
   const readLinks = (): GraphLink[] => (typeof props.links === 'function' ? props.links() : props.links)
-  const opts = (palette: string[]): GraphOptions => ({ palette, ...props.graph })
+  const opts = (palette: readonly string[]): GraphOptions => ({ palette, ...props.graph })
   return canvasHost<Geometry>({
     props,
     defaultHeight: 300,

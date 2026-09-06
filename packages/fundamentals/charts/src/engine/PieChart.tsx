@@ -42,7 +42,7 @@ export interface PieChartProps<T> extends CanvasHostProps {
 
 export function PieChart<T>(props: PieChartProps<T>): VNode {
   const readData = (): T[] => (typeof props.data === 'function' ? (props.data as () => T[])() : props.data)
-  const slices = (palette: string[]): Slice[] =>
+  const slices = (palette: readonly string[]): Slice[] =>
     readData().map((d, i) => ({ value: props.value(d, i), label: props.label(d, i), color: props.color?.(d, i) ?? paletteAt(palette, i) }))
   return canvasHost<PieGeometry>({
     props,

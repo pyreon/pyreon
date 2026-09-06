@@ -25,7 +25,7 @@ export interface SankeyChartProps extends CanvasHostProps {
 export function SankeyChart(props: SankeyChartProps): VNode {
   const readNodes = (): SankeyNode[] => (typeof props.nodes === 'function' ? props.nodes() : props.nodes)
   const readLinks = (): SankeyLink[] => (typeof props.links === 'function' ? props.links() : props.links)
-  const opts = (palette: string[]): SankeyOptions => ({ palette, ...props.sankey })
+  const opts = (palette: readonly string[]): SankeyOptions => ({ palette, ...props.sankey })
   return canvasHost<SankeyLayout>({
     props,
     defaultHeight: 300,

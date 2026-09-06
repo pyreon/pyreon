@@ -26,7 +26,7 @@ interface Geometry { stages: FunnelStage[]; plot: Rect }
 
 export function FunnelChart<T>(props: FunnelChartProps<T>): VNode {
   const readData = (): T[] => (typeof props.data === 'function' ? (props.data as () => T[])() : props.data)
-  const stages = (palette: string[]): FunnelStage[] =>
+  const stages = (palette: readonly string[]): FunnelStage[] =>
     readData().map((d, i) => ({ value: props.value(d, i), label: props.label(d, i), color: props.color !== undefined ? props.color(d, i) : paletteAt(palette, i) }))
   return canvasHost<Geometry>({
     props,

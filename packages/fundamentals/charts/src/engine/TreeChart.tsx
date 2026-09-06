@@ -19,7 +19,7 @@ export interface TreeChartProps extends CanvasHostProps {
 
 export function TreeChart(props: TreeChartProps): VNode {
   const readData = (): TreeNode[] => (typeof props.data === 'function' ? (props.data as () => TreeNode[])() : props.data)
-  const opts = (palette: string[]): TreeOptions => ({ palette, ...props.tree })
+  const opts = (palette: readonly string[]): TreeOptions => ({ palette, ...props.tree })
   return canvasHost<TreeLayout>({
     props,
     defaultHeight: 300,
