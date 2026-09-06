@@ -206,10 +206,16 @@ describe('compiled-template hydration adoption', () => {
   })
 
   it('SWAP fallback (adoption-bail shape) keeps LIVE anchors — list ops after a swapped hydration', async () => {
-    // A row with a conditional slot compiles to a template containing a `<!>`
-    // placeholder — templateSignature refuses it, so every row takes the
-    // interpretive NativeItem SWAP. Before the anchor fix, each ForEntry then
-    // pointed at its DETACHED SSR node and every later op corrupted the list.
+    // A row with a conditional slot compiles to a template containing a
+    // NON-trailing `<!>` placeholder. Mid slots whose server range holds at most
+    // one text node now ADOPT (the verifier collapses the range — see
+    // `TplSig.midSlots`), so to keep exercising the SWAP path this fixture
+    // renders the conditional TRUE: the range then holds an ELEMENT (`<i>`),
+    // which the verifier still refuses, and every row takes the interpretive
+    // NativeItem SWAP. Before the anchor fix, each ForEntry then pointed at its
+    // DETACHED SSR node and every later op corrupted the list. The adopting
+    // twin of this shape (conditional false) lives in
+    // `hydrate-mid-text-slot-adoption.test.tsx`.
     const BAIL_SRC = `
 const App = () => (
   <div>
@@ -231,7 +237,7 @@ const App = () => (
           each: () => rows(),
           by: (r: Row) => r.id,
           children: (r: Row) =>
-            h('section', null, () => null, h('a', null, () => r.label())),
+            h('section', null, () => h('i', null, 'x'), h('a', null, () => r.label())),
         }),
       )
     const srvRows = mk([1, 2, 3])
@@ -241,9 +247,9 @@ const App = () => (
     document.body.appendChild(host)
 
     const rows = signal(mk([1, 2, 3]))
-    const App = compileApp(BAIL_SRC, { rows: () => rows(), cond: () => false })
+    const App = compileApp(BAIL_SRC, { rows: () => rows(), cond: () => true })
     const dispose = hydrateRoot(host, h(App as never, null))
-    expect(tplAdopted()).toBe(0) // adoption bailed — swap path
+    expect(tplAdopted()).toBe(0) // adoption bailed (element in the mid range) — swap path
     const labels = () => Array.from(host.querySelectorAll('a')).map((a) => a.textContent)
     expect(labels()).toEqual(['L1', 'L2', 'L3'])
 
