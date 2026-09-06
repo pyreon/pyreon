@@ -400,6 +400,34 @@ export interface FormatOptions {
 }
 
 /**
+ * `## <version>` is the ONE structural boundary in the rendered output — the
+ * thing `get_changelog`'s consumers (and this package's own tests) split on.
+ * A changeset body may legitimately carry its own markdown headings, and
+ * changesets inlines that body under its bullet, INDENTED. The parser then
+ * strips the indent (`line.replace(/^ {2,4}/, '')`), so a body `## Title`
+ * resurfaces at column zero and is indistinguishable from a version heading.
+ *
+ * That is not hypothetical: the 0.52.0 release carried five changesets whose
+ * bodies opened with `## …`, so `formatChangelog(query, { limit: 1 })` — one
+ * version — rendered SIX lines starting with `## `, and the release PR went
+ * red on a test that was, in fact, right. Main was green only because main's
+ * CHANGELOG had not been regenerated yet; the defect was in the formatter all
+ * along, waiting for the first body with a heading.
+ *
+ * Demote every heading inside a body by one level, and never below h3, so
+ * that `## ` is reserved for versions BY CONSTRUCTION. Relative structure is
+ * preserved (h2→h3, h3→h4); an h1 in a body — which would otherwise become
+ * an h2 and collide — floors at h3 too. Bodies without headings pass through
+ * byte-identical.
+ */
+function demoteBodyHeadings(text: string): string {
+  return text.replace(/^(#{1,6}) /gm, (_m, hashes: string) => {
+    const level = Math.max(hashes.length + 1, 3)
+    return `${'#'.repeat(level)} `
+  })
+}
+
+/**
  * Format a package's changelog for the MCP response. Filters empty
  * versions and slices to the `limit` most recent.
  */
@@ -450,13 +478,13 @@ export function formatChangelog(
     parts.push(`## ${entry.version}`)
     parts.push('')
     for (const change of entry.changes) {
-      parts.push(`- ${change}`)
+      parts.push(`- ${demoteBodyHeadings(change)}`)
       parts.push('')
     }
     if (includeDependencyUpdates && entry.dependencyUpdates.length > 0) {
       parts.push('### Updated dependencies')
       for (const dep of entry.dependencyUpdates) {
-        parts.push(`- ${dep}`)
+        parts.push(`- ${demoteBodyHeadings(dep)}`)
       }
       parts.push('')
     }
