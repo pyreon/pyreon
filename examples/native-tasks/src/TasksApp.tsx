@@ -520,21 +520,21 @@ function StatsPage() {
   return (
     // The page outgrew the viewport when the navigator + brush charts landed:
     // `stats-back` sat at y~900 and iOS's kAXScrollToVisibleAction could not
-    // reach it. The shape here is load-bearing and matches vocab/dash/toolkit
-    // above: a BOUNDED <Stack> outermost, <Scroll> inside it. A <Scroll> placed
-    // outermost is handed unbounded height by the route host, and Compose
-    // rejects that outright — "Vertically scrollable component was measured
-    // with an infinity maximum height constraints".
-    <Stack data-testid="stats-page">
+    // reach it. Same shape as the dash and toolkit pages: <Scroll> outermost,
+    // the padded content <Stack> carrying `stats-page` — XCUITest finds that
+    // through `otherElements`, whereas a bare wrapper Stack is flattened out
+    // of the accessibility tree. Nothing lazy may live under this scroller:
+    // a <For> lowers to a LazyColumn, and a LazyColumn nested in
+    // Column(Modifier.verticalScroll()) is a measure-time crash on Android
+    // ("infinity maximum height constraints") — the emitter's warning for
+    // that shape only inspects the <Scroll>'s DIRECT children, so a <For>
+    // one level down crashes the device with no compile-time diagnostic.
     <Scroll direction="vertical" data-testid="stats-scroll">
-    <Stack gap={3} padding={4}>
+    <Stack gap={3} padding={4} data-testid="stats-page">
       <Text data-testid="stats-total">{String(total())}</Text>
       <Text data-testid="stats-average">{String(average())}</Text>
       <Text data-testid="stats-high">{String(high().length)}</Text>
       <Text data-testid="stats-curved">{String(curved().length)}</Text>
-      <For each={subjects} by={(name: string) => name}>
-        {(name: string) => <Text>{name}</Text>}
-      </For>
       <SankeyChart
         nodes={FLOW_NODES}
         links={FLOW_LINKS}
@@ -580,7 +580,6 @@ function StatsPage() {
       </Button>
     </Stack>
     </Scroll>
-    </Stack>
   )
 }
 
