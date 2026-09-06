@@ -4207,7 +4207,14 @@ export function transformJSX_JS(
       // the client either, so an option's own `selected` attribute isn't
       // clobbered. NOT a silent catch-all: null falls through to the
       // dynamic path; nothing is dropped.
-      const isSelectValue = tag === 'select' && htmlAttrName === 'value'
+      // `<textarea value>` is the same class: a textarea's value is its TEXT
+      // CONTENT and the `value` content attribute is dead, so a baked
+      // `value="0"` mounted an EMPTY textarea on the client (found by the
+      // compiled-path parity fuzz's swap dump). Routing it to the dynamic
+      // path emits the one-time `_setValue` property set the reactive form
+      // already uses. Named for the select case it was written for.
+      const isSelectValue =
+        (tag === 'select' || tag === 'textarea') && htmlAttrName === 'value'
       // No `isStatic` pre-gate: the arms below are self-evidently-static
       // shapes, and the two backends' static classifiers disagreed on the
       // margins (JS said `-5` was dynamic → runtime setAttribute; Rust said
@@ -4716,7 +4723,9 @@ export function transformJSX_JS(
         // parsed `.value` as a double-quoted JS literal (quote/backslash/
         // control-safe, independent of the JSX quote style) — the same
         // `.value` the bake path reads.
-        if (tag === 'select' && htmlAttrName === 'value') {
+        // `<textarea value="0">` is the same dead-attribute class (its value is
+        // its text content): a baked attribute mounted an EMPTY textarea.
+        if ((tag === 'select' || tag === 'textarea') && htmlAttrName === 'value') {
           bindLines.push(attrSetter(htmlAttrName, varName, escapeJsString(attr.value.value), tag))
           return ''
         }
@@ -5064,7 +5073,7 @@ export function transformJSX_JS(
       // phase-1 ref so the deferred line doesn't re-walk a mutated sibling
       // chain.
       if (
-        tag === 'select' &&
+        (tag === 'select' || tag === 'textarea') &&
         name === 'value' &&
         attr.value &&
         (attr.value.type === 'StringLiteral' ||
@@ -5082,7 +5091,7 @@ export function transformJSX_JS(
       // `<select value={…}>` (PZ-09): every non-omitted shape — including
       // static ones staticAttrToHtml routed to null above — emits a deferred
       // property bind line, so the element needs a ref.
-      if (tag === 'select' && name === 'value') return true
+      if ((tag === 'select' || tag === 'textarea') && name === 'value') return true
       return !isStatic(expr)
     }
 

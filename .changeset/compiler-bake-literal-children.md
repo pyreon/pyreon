@@ -19,3 +19,10 @@ literal bakes only when its source is its `String()` form (plain decimal, no
 exponent/leading zeros/trailing fraction zeros, ≤ 15 digits); `1.50`, `1e3`,
 `-1` keep the runtime path. Both backends, byte-identical (native-equivalence +
 the differential fuzz).
+
+Same sweep, second fix: `<textarea value="0">` (string attribute or literal
+expression) baked a DEAD `value` attribute — a textarea's value is its text
+content — so a static textarea mounted EMPTY on the client, and its SSR form
+`<textarea>0</textarea>` never adopted. It now emits the one-time `_setValue`
+the reactive form already uses (the PZ-09 select rule, one tag over), against a
+phase-1 element const; both forms mount with the value and hydrate in place.

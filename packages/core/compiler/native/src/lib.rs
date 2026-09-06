@@ -6888,7 +6888,8 @@ fn attr_is_dynamic(attr: &JSXAttributeItem, tag: &str) -> bool {
             // `<select value="…">` (plain string form, PZ-09): always emitted
             // as a deferred property bind line (never baked) — the element
             // needs a phase-1 ref. Mirrors jsx.ts:attrIsDynamic.
-            if tag == "select"
+            // `<textarea value="…">` is the same class (dead content attribute).
+            if (tag == "select" || tag == "textarea")
                 && attr_name == "value"
                 && matches!(&a.value, Some(JSXAttributeValue::StringLiteral(_)))
             {
@@ -6914,7 +6915,7 @@ fn attr_is_dynamic(attr: &JSXAttributeItem, tag: &str) -> bool {
                                 // non-omitted shape emits a (deferred)
                                 // property bind line — the element needs a
                                 // ref even when the expression is static.
-                                if tag == "select" && attr_name == "value" {
+                                if (tag == "select" || tag == "textarea") && attr_name == "value" {
                                     return true;
                                 }
                                 !is_static(e)
@@ -7277,7 +7278,8 @@ fn static_attr_to_html(expr: &Expression, html_attr_name: &str, tag: &str) -> Op
     // children lines by process_attrs). Omit-semantic arms
     // (false/null/undefined → "") are unchanged. NOT a silent catch-all:
     // None falls through to the dynamic path; nothing is dropped.
-    let is_select_value = tag == "select" && html_attr_name == "value";
+    // `<textarea value>` is the same dead-attribute class — see jsx.ts.
+    let is_select_value = (tag == "select" || tag == "textarea") && html_attr_name == "value";
     let mut e = expr;
     loop {
         match e {
@@ -7698,7 +7700,8 @@ fn attr_initializer_to_html(
             // `escape_js_string` serializes the parsed value as a
             // double-quoted JS literal (quote/backslash/control-safe,
             // independent of the JSX quote style). Mirrors jsx.ts.
-            if tag == "select" && html_attr_name == "value" {
+            // `<textarea value="…">`: same dead-attribute class — see jsx.ts.
+            if (tag == "select" || tag == "textarea") && html_attr_name == "value" {
                 let line = attr_setter(html_attr_name, var_name, &escape_js_string(&s.value), tag, tb);
                 tb.bind_lines.push(line);
                 return String::new();
