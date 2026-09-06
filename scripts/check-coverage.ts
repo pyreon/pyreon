@@ -994,7 +994,7 @@ export function describeProblem(p: CoverageProblem): string {
         `    named spec. vitest blames whichever test was in flight, which is reliably the\n` +
         `    package's longest-running one.\n` +
         `    Attribute by measuring peak RSS per test FILE (/usr/bin/time -l bunx vitest\n` +
-        `    run <file>), never by reading the name above. Do NOT re-run past it.`
+        `    run <file>), never by reading the name above. Do NOT re-run past it. SECOND mechanism with the IDENTICAL symptom: a per-test TIMEOUT — a vitest timeout rendered through the JSON reporter also drops its text. Discriminate by BOTH peak RSS and the spec's duration vs its effective timeout (shared default 20s): on 2026-09-06 @pyreon/loom's whole-repo scan measured ~630 MB but ran 3.6s quiet vs 26.4s under this job's 4-way load — a timeout, not OOM, and this text sent the investigation down the memory path first. A repo-size-bound spec needs an explicit DERIVED timeout; see strip-equivalence.test.ts.`
       )
     }
     return (
