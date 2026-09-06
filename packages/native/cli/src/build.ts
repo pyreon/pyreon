@@ -435,9 +435,17 @@ export function conditionalKotlinImports(emitted: string): string {
   for (const m of new Set(emitted.match(/\bdetect[A-Za-z]+Gestures\b/g) ?? [])) {
     imports.push(`import androidx.compose.foundation.gestures.${m}`)
   }
-  // `<PlotChart navigator>` (chart-hosts.ts): the strip's drag overlay.
-  if (emitted.includes('detectDragGestures(')) {
-    imports.push('import androidx.compose.foundation.gestures.detectDragGestures')
+  // `<PlotChart navigator>` / `<PlotChart brush>` (chart-hosts.ts): the drag
+  // surfaces are written as `awaitEachGesture { awaitFirstDown(); drag(id) {…} }`
+  // so the hit is classified from the DOWN point (detectDragGestures reports the
+  // slop-crossing point instead). The three live in foundation.gestures, the
+  // per-event delta extension in ui.input.pointer — none star-imported.
+  for (const m of ['awaitEachGesture', 'awaitFirstDown', 'drag'] as const) {
+    // `awaitEachGesture {` takes a TRAILING LAMBDA — match both call shapes.
+    if (new RegExp(`\\b${m}\\s*[({]`).test(emitted)) imports.push(`import androidx.compose.foundation.gestures.${m}`)
+  }
+  if (emitted.includes('.positionChange()')) {
+    imports.push('import androidx.compose.ui.input.pointer.positionChange')
   }
   // M3.1 haptics (`const h = useHaptics()`): the Compose haptic surface
   // `LocalHapticFeedback` lives in androidx.compose.ui.platform — NOT

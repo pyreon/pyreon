@@ -617,12 +617,16 @@ describe('@pyreon/native-cli build', () => {
     expect(tapOnly).not.toContain('detectTransformGestures')
   })
 
-  it('Kotlin <PlotChart navigator> pulls the drag-detector import', () => {
+  it('Kotlin <PlotChart navigator>/<brush> pull the awaitEachGesture/awaitFirstDown/drag/positionChange imports', () => {
     const nav = conditionalKotlinImports(
-      'Box(modifier = Modifier.fillMaxWidth().pointerInput(Unit) { detectDragGestures(onDragStart = { }, onDragEnd = { }, onDrag = { c, d -> c.consume() }) })',
+      'Box(modifier = Modifier.fillMaxWidth().pointerInput(Unit) { awaitEachGesture { val d = awaitFirstDown(); drag(d.id) { c -> c.consume(); x += c.positionChange().x } } })',
     )
-    expect(nav).toContain('import androidx.compose.foundation.gestures.detectDragGestures')
-    expect(conditionalKotlinImports('Box(modifier = Modifier.pointerInput(Unit) { detectTapGestures { } })')).not.toContain('detectDragGestures')
+    expect(nav).toContain('import androidx.compose.foundation.gestures.awaitEachGesture')
+    expect(nav).toContain('import androidx.compose.foundation.gestures.awaitFirstDown')
+    expect(nav).toContain('import androidx.compose.foundation.gestures.drag')
+    expect(nav).toContain('import androidx.compose.ui.input.pointer.positionChange')
+    const tapOnly = conditionalKotlinImports('Box(modifier = Modifier.pointerInput(Unit) { detectTapGestures { } })')
+    for (const sym of ['awaitEachGesture', 'awaitFirstDown', 'gestures.drag', 'positionChange']) expect(tapOnly).not.toContain(sym)
   })
 
   it('Kotlin .combinedClickable( still does NOT pull the plain clickable import', () => {

@@ -477,11 +477,29 @@ class SemanticsPropertyReceiver {
 // detectHorizontalDragGestures (onDragStart takes an Offset; the drag
 // callback takes (PointerInputChange, Float)) so an emit passing the
 // wrong shape fails the kotlinc gate instead of being masked.
+class Offset(val x: Float = 0f, val y: Float = 0f)
+class PointerId(val value: Long)
 class PointerInputChange {
+  val id: PointerId = PointerId(0)
+  val position: Offset = Offset()
   fun consume() {}
 }
-class Offset(val x: Float = 0f, val y: Float = 0f)
+// androidx.compose.ui.input.pointer.positionChange — the per-event delta.
+fun PointerInputChange.positionChange(): Offset = Offset()
+// AwaitPointerEventScope — the receiver inside awaitEachGesture. Only the
+// members the chart-host drag emit uses: awaitFirstDown (real default
+// requireUnconsumed = true) and drag(pointerId) { change -> } (real return
+// type Boolean, true when the pointer lifted rather than being cancelled).
+class AwaitPointerEventScope {
+  @Suppress("UNUSED_PARAMETER", "RedundantSuspendModifier")
+  suspend fun awaitFirstDown(requireUnconsumed: Boolean = true): PointerInputChange = PointerInputChange()
+  @Suppress("UNUSED_PARAMETER", "RedundantSuspendModifier")
+  suspend fun drag(pointerId: PointerId, onDrag: (PointerInputChange) -> Unit): Boolean = true
+}
 class PointerInputScope {
+  // awaitEachGesture — one block per gesture, receiver AwaitPointerEventScope.
+  @Suppress("UNUSED_PARAMETER", "RedundantSuspendModifier")
+  suspend fun awaitEachGesture(block: suspend AwaitPointerEventScope.() -> Unit) {}
   // The chart-host tap emit (chart-hosts.ts): a tap position in px.
   @Suppress("UNUSED_PARAMETER", "RedundantSuspendModifier")
   suspend fun detectTapGestures(onTap: ((Offset) -> Unit)? = null) {}

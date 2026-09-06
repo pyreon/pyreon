@@ -914,7 +914,7 @@ describe('chart hosts — <PlotChart navigator> as the engine-laid-out slider st
     )
     expect(r.code).not.toContain('MagnificationGesture')
   })
-  it('Kotlin: the same strip over remembered state; the drag is a Box laid over the strip with detectDragGestures', () => {
+  it('Kotlin: the same strip over remembered state; the drag is a Box laid over the strip classified from the DOWN point', () => {
     const r = transform(NAV, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('var pyreonNavKind by remember { mutableStateOf(0) }')
@@ -925,7 +925,7 @@ describe('chart hosts — <PlotChart navigator> as the engine-laid-out slider st
     expect(r.code).toContain('Box(modifier = Modifier.fillMaxWidth().height((240.0).dp)')
     expect(r.code).toContain('PyreonChartCanvas(cmds = renderChart(pyreonSpec, ::pyreonChartMeasure) + pyreonNavigator.cmds, modifier = Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures {')
     expect(r.code).toContain(
-      'Box(modifier = Modifier.fillMaxWidth().offset(y = ((240.0) - pyreonNavigator.height).dp).height((pyreonNavigator.height).dp).pointerInput(Unit) { detectDragGestures(onDragStart = { pyreonStart -> pyreonNavAnchor = pyreonZoom; pyreonNavDx = 0.0; pyreonNavKind = navigatorHit(pyreonNavigator.strip, pyreonZoom, (pyreonStart.x / pyreonDensity).toDouble()) }, onDragEnd = { pyreonNavKind = 0 }, onDrag = { pyreonChange, pyreonDrag -> pyreonChange.consume(); pyreonNavDx = pyreonNavDx + (pyreonDrag.x / pyreonDensity).toDouble(); pyreonZoom = navigatorDrag(pyreonNavKind, pyreonNavAnchor, pyreonNavDx / pyreonNavigator.strip.w) }) })',
+      'Box(modifier = Modifier.fillMaxWidth().offset(y = ((240.0) - pyreonNavigator.height).dp).height((pyreonNavigator.height).dp).pointerInput(Unit) { awaitEachGesture { val pyreonDown = awaitFirstDown(); pyreonNavAnchor = pyreonZoom; pyreonNavDx = 0.0; pyreonNavKind = navigatorHit(pyreonNavigator.strip, pyreonZoom, (pyreonDown.position.x / pyreonDensity).toDouble()); drag(pyreonDown.id) { pyreonChange -> pyreonChange.consume(); pyreonNavDx = pyreonNavDx + (pyreonChange.positionChange().x / pyreonDensity).toDouble(); pyreonZoom = navigatorDrag(pyreonNavKind, pyreonNavAnchor, pyreonNavDx / pyreonNavigator.strip.w) }; pyreonNavKind = 0 } })',
     )
   })
   it('with presets too, the navigator sits ABOVE the preset strip and the plot gives up both', () => {
@@ -946,7 +946,7 @@ describe('chart hosts — <PlotChart navigator> as the engine-laid-out slider st
     expect(s.code).toContain('MagnificationGesture()')
     const k = transform(NAV_ZOOMED, { target: 'kotlin' })
     expect(k.code).toContain('detectTransformGestures')
-    expect(k.code).toContain('detectDragGestures(')
+    expect(k.code).toContain('awaitEachGesture { val pyreonDown = awaitFirstDown()')
   })
   it('a navigator with no marks warns BY NAME and renders the chart without it', () => {
     for (const target of ['swift', 'kotlin'] as const) {
@@ -1028,7 +1028,7 @@ describe('chart hosts — <PlotChart brush onBrush> as a plain drag over the eng
     // The named handler narrows its optional through the null compare.
     expect(r.code).toContain('private func onBrush(_ r: BrushRange?) {\n    if let r {')
   })
-  it('Kotlin: remembered state, the band in the wrap, detectDragGestures selects, the tap clears', () => {
+  it('Kotlin: remembered state, the band in the wrap, a drag anchored at the DOWN point selects, the tap clears', () => {
     const r = transform(BRUSH, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('var pyreonBrushStart by remember { mutableStateOf(-1) }')
@@ -1036,7 +1036,7 @@ describe('chart hosts — <PlotChart brush onBrush> as a plain drag over the eng
     expect(r.code).toContain('renderChart(pyreonSpec, ::pyreonChartMeasure) + pyreonBrushCmds')
     expect(r.code).toContain('if (pyreonBrushStart >= 0) { pyreonBrushStart = -1; pyreonBrushEnd = -1; onBrush(null) } else {')
     expect(r.code).toContain(
-      '.pointerInput(Unit) { detectDragGestures(onDragStart = { pyreonStart -> pyreonBrushA = (pyreonStart.x / pyreonDensity).toDouble(); pyreonBrushB = pyreonBrushA }, onDragEnd = { val pyreonSel: BrushRange = brushRange(pyreonPlot.x, pyreonPlot.w, pyreonBrushA, pyreonBrushB, ZoomWindow(start = 0.0, end = 1.0), DAYS.size); pyreonBrushStart = pyreonSel.start; pyreonBrushEnd = pyreonSel.end; pyreonBrushA = -1.0; pyreonBrushB = -1.0; onBrush(pyreonSel) }, onDrag = { pyreonChange, pyreonDrag -> pyreonChange.consume(); pyreonBrushB = pyreonBrushB + (pyreonDrag.x / pyreonDensity).toDouble() }) }',
+      '.pointerInput(Unit) { awaitEachGesture { val pyreonDown = awaitFirstDown(); pyreonBrushA = (pyreonDown.position.x / pyreonDensity).toDouble(); pyreonBrushB = pyreonBrushA; drag(pyreonDown.id) { pyreonChange -> pyreonChange.consume(); pyreonBrushB = pyreonBrushB + (pyreonChange.positionChange().x / pyreonDensity).toDouble() }; val pyreonSel: BrushRange = brushRange(pyreonPlot.x, pyreonPlot.w, pyreonBrushA, pyreonBrushB, ZoomWindow(start = 0.0, end = 1.0), DAYS.size); pyreonBrushStart = pyreonSel.start; pyreonBrushEnd = pyreonSel.end; pyreonBrushA = -1.0; pyreonBrushB = -1.0; onBrush(pyreonSel) } }',
     )
     expect(r.code).toContain('fun onBrush(r: BrushRange?) {\n    if (r == null) {')
   })
@@ -1047,7 +1047,7 @@ describe('chart hosts — <PlotChart brush onBrush> as a plain drag over the eng
     expect(s.code).toContain('{ pyreonBrushStart = -1; pyreonBrushEnd = -1 } else {')
     const k = transform(BRUSH_NO_HANDLER, { target: 'kotlin' })
     expect(k.warnings).toEqual([])
-    expect(k.code).toContain('pyreonBrushA = -1.0; pyreonBrushB = -1.0 }, onDrag')
+    expect(k.code).toContain('pyreonBrushA = -1.0; pyreonBrushB = -1.0 } }')
   })
   it('an inline onBrush arrow warns BY NAME on both targets; the brush still selects', () => {
     for (const target of ['swift', 'kotlin'] as const) {
