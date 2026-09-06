@@ -31,7 +31,7 @@ import { transformSync } from 'esbuild'
 import { Fragment, h, _rp, cx } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
-import { _tpl, _bindText, _bindDirect, _mountSlot } from '../template'
+import { _tpl, _bindText, _bindDirect, _mountSlot, _textSlot } from '../template'
 import {
   _applyProps,
   _setAttr,
@@ -71,6 +71,7 @@ const RUNTIME_DEPS = {
   _setStyle,
   _setAttr,
   _mountSlot,
+  _textSlot,
   _rp,
   _cx: cx,
   h,

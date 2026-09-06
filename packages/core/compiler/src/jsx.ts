@@ -1262,6 +1262,7 @@ export function transformJSX_JS(
   let needsApplyPropsImportGlobal = false
   let needsBindSpreadImportGlobal = false
   let needsMountSlotImportGlobal = false
+  let needsTextSlotImportGlobal = false
   let needsMountComponentImportGlobal = false
   let needsCxImportGlobal = false
   let needsSetStyleImportGlobal = false
@@ -3756,6 +3757,7 @@ export function transformJSX_JS(
     if (needsApplyPropsImportGlobal) runtimeDomImports.push('_applyProps')
     if (needsBindSpreadImportGlobal) runtimeDomImports.push('_bindSpread')
     if (needsMountSlotImportGlobal) runtimeDomImports.push('_mountSlot')
+    if (needsTextSlotImportGlobal) runtimeDomImports.push('_textSlot')
     if (needsMountComponentImportGlobal) runtimeDomImports.push('_mountChild')
     if (needsBindPolyImportGlobal) runtimeDomImports.push('bindPolymorphicText')
     if (needsSetChildImportGlobal) runtimeDomImports.push('_setChild')
@@ -4013,6 +4015,7 @@ export function transformJSX_JS(
     let needsApplyPropsImport = false
     let needsBindSpreadImport = false
     let needsMountSlotImport = false
+    let needsTextSlotImport = false
     let needsMountComponentImport = false
     let needsCxImport = false
     let needsSetStyle = false
@@ -4834,8 +4837,15 @@ export function transformJSX_JS(
       // parsing and break childNodes indexing.
       if (needsPlaceholder) {
         const pVar = hoistPlaceholderRef(parentRef, childNodeIdx)
-        bindLines.push(`const ${tVar} = document.createTextNode("")`)
-        bindLines.push(`${parentRef}.replaceChild(${tVar}, ${pVar})`)
+        // MIXED CONTENT. The inlined `createTextNode + replaceChild` this used
+        // to emit is right for a CLONE and wrong for an ADOPTED container,
+        // where the placeholder ref resolves to the live `<!--$-->` opening the
+        // range that already holds this slot's server-rendered text — so it
+        // replaced the OPEN MARKER and the value rendered twice. `_textSlot` is
+        // the same clone-vs-marked-range discrimination `_mountSlot` already
+        // does for element slots, and it ADOPTS the server's text node.
+        needsTextSlotImport = true
+        bindLines.push(`const ${tVar} = _textSlot(${parentRef}, ${pVar})`)
       } else {
         // Pristine-clone capture — phase 1 (see buildTemplateCall header).
         // Sole-text child, so the canonical walk is child 0 of `varName` — no
@@ -5360,6 +5370,7 @@ export function transformJSX_JS(
     if (needsApplyPropsImport) needsApplyPropsImportGlobal = true
     if (needsBindSpreadImport) needsBindSpreadImportGlobal = true
     if (needsMountSlotImport) needsMountSlotImportGlobal = true
+    if (needsTextSlotImport) needsTextSlotImportGlobal = true
     if (needsMountComponentImport) needsMountComponentImportGlobal = true
     if (needsCxImport) needsCxImportGlobal = true
     if (needsSetStyle) needsSetStyleImportGlobal = true

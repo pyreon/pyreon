@@ -122,7 +122,7 @@ export function App() {
     idx(code, 'const __d1 = _bindText(zoom, __t1);')
   })
 
-  it('mixed-content reactive text after a slot: replaceChild target is a hoisted const', () => {
+  it('mixed-content reactive text after a slot: the slot target is a hoisted const', () => {
     const src = `
 import { signal } from '@pyreon/reactivity'
 const cond = signal(true)
@@ -133,12 +133,16 @@ export function App() {
 `
     const { code } = transformJSX_JS(src, 'test.tsx')
     const slot = idx(code, '_mountSlot(')
-    // The reactive-text child's replaceChild target walk is captured in
-    // phase 1 (against the pristine clone), not inlined after the slot ran.
+    // The reactive-text child's placeholder walk is captured in phase 1
+    // (against the pristine clone), not inlined after the slot ran. The
+    // consumer changed — `_textSlot` replaced an inlined `replaceChild` so the
+    // slot can ADOPT an SSR text node — but the PZ-08 invariant this spec
+    // exists for is unchanged: the target is the hoisted const, never a walk
+    // re-evaluated once `_mountSlot` has already mutated the sibling list.
     const p1 = idx(code, 'const __p1 = __p0.nextSibling.nextSibling;')
     expect(p1).toBeLessThan(slot)
-    idx(code, '.replaceChild(__t0, __p1);')
-    expect(code).not.toContain('replaceChild(__t0, __root.firstChild')
+    idx(code, '_textSlot(__root, __p1);')
+    expect(code).not.toContain('_textSlot(__root, __root.firstChild')
   })
 
   it('mixed-content STATIC text after a slot: replaceChild target is a hoisted const', () => {
