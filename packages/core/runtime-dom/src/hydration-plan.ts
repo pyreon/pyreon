@@ -31,7 +31,7 @@ import type { VNode, VNodeChild } from '@pyreon/core'
 import { renderEffect } from '@pyreon/reactivity'
 import { bindPolymorphicText } from './mount'
 import { _markAdoptedHtmlEl, applyClassProp, applyProp, applyProps, applyStyleProp, makeEventBinder } from './props'
-import { _isTplHoleEl, _isTplHtmlEl, _setTplHoleCursors } from './template'
+import { _isTplHoleEl, _isTplHtmlEl, _markMidSlotText, _setTplHoleCursors } from './template'
 
 type Cleanup = () => void
 
@@ -591,6 +591,28 @@ interface TplSig {
   /** Number of declared holes — 0 lets every hole-aware branch short-circuit. */
   holeCount: number
   /**
+   * Per element (tree order), the CLONE child-indices of its NON-trailing
+   * `<!>` placeholders, or `null` when it has none. This is the mixed-content
+   * interpolation — `<p>Hello <!>!</p>`, `<p><!><b>!</b></p>` — the shape a
+   * prose page is made of.
+   *
+   * The alignment gate refuses these for a real reason: a `<!>` is ONE node in
+   * the clone and a `<!--$-->…<!--/$-->` RANGE in the server DOM, so a compiled
+   * ref that steps past it (`__p1 = __p0.nextSibling.nextSibling`) lands on
+   * range content. The resolution is not to relax the refs but to make the
+   * server DOM MATCH the clone before the bind runs: the verifier requires the
+   * range at that index to hold at most one text node and records it, and
+   * `tplAdoptVerify` COLLAPSES it to exactly one text node (both markers
+   * removed, an empty text materialized if the accessor rendered nothing).
+   * After that every positional ref is correct by construction, and BOTH bind
+   * kinds are already correct on a clone-shaped DOM — `_textSlot` adopts the
+   * text node, `_mountSlot` treats it as an inert placeholder. A range holding
+   * elements still bails, exactly as before.
+   */
+  midSlots: (number[] | null)[] | null
+  /** Number of elements carrying mid slots — 0 short-circuits every branch. */
+  midSlotCount: number
+  /**
    * Per element (tree order), whether the compiler declared a
    * `dangerouslySetInnerHTML` binding on it (`data-pyreon-html`). Such an
    * element accepts ANY server children — they are the parse of the binding's
@@ -625,6 +647,8 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
   let htmlCount = 0
   const slotList: boolean[] = []
   const soleSlotList: boolean[] = []
+  const midSlotList: (number[] | null)[] = []
+  let midSlotCount = 0
   // MOUNT-SLOT ALIGNMENT GATE. A `<!>` placeholder is one node in the clone but
   // an arbitrary run of nodes in the SSR DOM, so every compiled ref walk that
   // would have to step PAST it (`__p1 = __root.firstChild.nextSibling` for a
@@ -645,7 +669,12 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
     let slotAtEnd = false
     let soleSlot = false
     const ownTexts: (string | null)[] = []
-    for (let n = el.firstChild; n; n = n.nextSibling) {
+    // Clone child-index — the position a compiled ref walk would reach by
+    // stepping `nextSibling` from `firstChild`. Every child node counts as one:
+    // text, element, and the `<!>` comment alike.
+    let ci = 0
+    let mids: number[] | null = null
+    for (let n = el.firstChild; n; n = n.nextSibling, ci++) {
       if (n.nodeType === 3) {
         texts++
         // A compiled dynamic text slot is baked as a single space; its SSR
@@ -653,12 +682,17 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
         const d = (n as Text).data
         ownTexts.push(d === ' ' ? null : d)
       } else if (n.nodeType === 8) {
-        // `<!>` mount-slot placeholder. Adoptable only as the last child (see
-        // the alignment gate above); any other comment in a compiled template
-        // is not a shape this verifier models.
-        if (n.nextSibling !== null || (n as Comment).data !== '') {
+        // `<!>` placeholder. Any OTHER comment in a compiled template is not a
+        // shape this verifier models.
+        if ((n as Comment).data !== '') {
           bail = true
           return
+        }
+        // NON-trailing: a mid slot. Recorded by clone index; see `midSlots`
+        // for why this no longer bails and what makes it safe.
+        if (n.nextSibling !== null) {
+          ;(mids ??= []).push(ci)
+          continue
         }
         slotAtEnd = true
         // SOLE child — no static siblings at all. This is what tells the verify
@@ -670,6 +704,8 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
     counts.push(texts)
     slotList.push(slotAtEnd)
     soleSlotList.push(soleSlot)
+    midSlotList.push(mids)
+    if (mids !== null) midSlotCount++
     const ownAttrs: [string, string][] = []
     const a = el.attributes
     for (let i = 0; i < a.length; i++) {
@@ -710,7 +746,10 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
     // ALONE. A slot-bearing element simply loses the hole relaxation and takes
     // the slot path, which is the correctness-over-adoption trade already made
     // above.
-    const isHole = _isTplHoleEl(el) && texts === 0 && !slotAtEnd
+    // `mids === null` is the same DEFENSIVE conjunct as `!slotAtEnd`: a hole
+    // hands its remaining range to `_mountChild`, a mid slot hands a range to a
+    // collapse — never both on one element.
+    const isHole = _isTplHoleEl(el) && texts === 0 && !slotAtEnd && mids === null
     holeFlags.push(isHole ? el.children.length : -1)
     if (isHole) holeCount++
     // A declared innerHTML element must be COMPLETELY empty in the template
@@ -739,6 +778,8 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
     holeCount,
     htmlEls: htmlCount > 0 ? htmlFlags : null,
     htmlCount,
+    midSlots: midSlotCount > 0 ? midSlotList : null,
+    midSlotCount,
   }
   _tplSignature.set(tpl, sig)
   return sig
@@ -758,6 +799,15 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
 interface AdoptMatch {
   removals: Text[] | null
   triplets: { open: Comment; text: Text | null; close: Comment }[] | null
+  /**
+   * Verified mid text slots (see `TplSig.midSlots`), collapsed by
+   * `tplAdoptVerify` to exactly one text node each BEFORE the bind runs.
+   * Distinct from `triplets`, whose normalization removes only the OPEN marker
+   * — that serves the row-plan's `.firstChild` refs, where a trailing close is
+   * inert. A compiled ref stepping PAST a mid slot is not indifferent to a
+   * leftover comment, so here both markers go.
+   */
+  midSlots: { open: Comment; text: Text | null; close: Comment }[] | null
   /**
    * Elements whose ONLY child is the text of an ELIDED sole-child accessor
    * slot (the template baked a ' ' placeholder there, recorded as `null`).
@@ -949,6 +999,8 @@ function matchingCloseIsLastChild(open: Comment, el: Element): boolean {
 function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | null {
   let removals: Text[] | null = null
   let triplets: { open: Comment; text: Text | null; close: Comment }[] | null = null
+  let midSlots: { open: Comment; text: Text | null; close: Comment }[] | null = null
+  const midFlags = expected.midSlots
   let soles: Element[] | null = null
   let emptySlots: Element[] | null = null
   let holes: Map<Element, ChildNode | null> | null = null
@@ -1065,6 +1117,11 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
     // the slot's own hydration, not to this template's skeleton.
     let slotOpen: Comment | null = null
     const wantSlot = expected.slots[at] === true
+    // Clone child-index (see `templateSignature`) and this element's expected
+    // mid-slot indices; `midPos` walks the latter as ranges are consumed.
+    const midAt = midFlags !== null ? (midFlags[at] as number[] | null) : null
+    let ci = 0
+    let midPos = 0
     // Single pass over children: count texts, validate + collect `$` triplets
     // inline (adjacency rules from collectDollarTriplets), gather bare texts.
     let n: ChildNode | null = el.firstChild
@@ -1095,6 +1152,30 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
             // back but cost the adoption, which is the thing hydration is for.
             slotOpen = n as Comment
             break
+          }
+          // MID TEXT SLOT. The template has a `<!>` at this clone index with
+          // static content after it. Its server range must hold at most ONE
+          // text node — the only shape that collapses to the clone's single
+          // node — and is recorded for `tplAdoptVerify` to collapse. Not
+          // counted as a text: the template's `<!>` is not one either, so the
+          // static-text 1:1 gate below stays armed. A range holding elements,
+          // or a range where no mid slot is expected, is a structural
+          // divergence the positional refs cannot survive: bail to the clone.
+          if (midAt !== null) {
+            if (midPos >= midAt.length || midAt[midPos] !== ci) return false
+            const first = n.nextSibling
+            let text: Text | null = null
+            let close: ChildNode | null = first
+            if (first !== null && first.nodeType === 3) {
+              text = first as Text
+              close = first.nextSibling
+            }
+            if (close === null || close.nodeType !== 8 || (close as Comment).data !== '/$') return false
+            ;(midSlots ??= []).push({ open: n as Comment, text, close: close as Comment })
+            midPos++
+            ci++
+            n = close.nextSibling
+            continue
           }
           texts++
           const prev = n.previousSibling
@@ -1127,8 +1208,12 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
         texts++
         ;(bare ??= []).push(n as Text)
       }
+      ci++
       n = n.nextSibling
     }
+    // Every expected mid slot must have been met; a missing one means the
+    // server rendered fewer ranges than the template has placeholders.
+    if (midAt !== null && midPos !== midAt.length) return false
     // The template ends this element with a slot but the target has no matching
     // range — a structural divergence, not something to paper over: the bind
     // would resolve its placeholder ref to a real SSR node and `_mountSlot`
@@ -1200,10 +1285,33 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
   }
   if (!walk(root)) return null
   if (idx !== total) return null
-  return { removals, triplets, soles, emptySlots, holes, htmlEls }
+  return { removals, triplets, midSlots, soles, emptySlots, holes, htmlEls }
 }
 
 /** All checks passed — strip markers, ensuring one text node per slot. */
+/**
+ * Collapse a verified mid text slot to exactly ONE text node so the server DOM
+ * matches the clone's shape before the compiled bind's positional refs run.
+ * Both markers go (contrast `normalizeDollarTriplets`); an empty range gets an
+ * empty text node, which is what `_textSlot` then adopts.
+ */
+function collapseMidSlots(
+  slots: { open: Comment; text: Text | null; close: Comment }[],
+): void {
+  for (const s of slots) {
+    let t = s.text
+    if (t === null) {
+      t = document.createTextNode('')
+      s.open.parentNode?.insertBefore(t, s.close)
+    }
+    // Brand the survivor so `_mountSlot` never mistakes it for a sole
+    // marker-less slot and `_textSlot` adopts it (see `MID_SLOT_TEXT`).
+    _markMidSlotText(t)
+    s.open.remove()
+    s.close.remove()
+  }
+}
+
 function normalizeDollarTriplets(
   triplets: { open: Comment; text: Text | null; close: Comment }[],
 ): void {
@@ -1261,6 +1369,10 @@ export function tplAdoptVerify(
   // adoption kept. Refusing costs such rows the dispatch-free replay (the full
   // verify still adopts them); a silent re-parse would cost the retention.
   if (allowPlanReplay && templateSignature(tpl)?.htmlCount) allowPlanReplay = false
+  // Nor a template with mid text slots: the plan records spots against child
+  // indices, and a mid slot is exactly the case where server and clone indices
+  // disagree until the collapse. The full verify still adopts such rows.
+  if (allowPlanReplay && templateSignature(tpl)?.midSlotCount) allowPlanReplay = false
   if (allowPlanReplay) {
     if (tpl === _lastVerifyTpl) {
       plan = _lastVerifyPlan
@@ -1292,9 +1404,10 @@ export function tplAdoptVerify(
     // and its positional spot-checks are recorded against child indices that
     // rendered slot content shifts. Cache a null plan so every such target
     // takes the full verify.
-    const built = (sig as TplSig).slots.includes(true)
-      ? null
-      : buildAdoptPlan(target, sig as TplSig, match)
+    const built =
+      (sig as TplSig).slots.includes(true) || (sig as TplSig).midSlotCount > 0
+        ? null
+        : buildAdoptPlan(target, sig as TplSig, match)
     _tplAdoptPlan.set(tpl, built)
     _lastVerifyTpl = tpl
     _lastVerifyPlan = built
@@ -1304,6 +1417,7 @@ export function tplAdoptVerify(
     for (const el of match.emptySlots) el.appendChild(document.createTextNode(''))
   }
   if (match.triplets) normalizeDollarTriplets(match.triplets)
+  if (match.midSlots) collapseMidSlots(match.midSlots)
   // Declared innerHTML elements: mark each so the bind's first `_setHtml`
   // write — which runs synchronously inside the adoption's `bind(target)` —
   // trusts the server children instead of re-parsing `__html`. Marked only
