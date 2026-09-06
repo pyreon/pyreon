@@ -41,6 +41,12 @@ describe('literal expression children bake into the template', () => {
     expect(tpl(js(`const A = () => <main>{"<&>\\"&amp;"}</main>`))).toBe('<main>&lt;&amp;&gt;\\"&amp;amp;</main>')
   })
 
+  it('line terminators become numeric entities — the emitted string stays legal (docs build regression)', () => {
+    const out = js('const A = () => <pre>{"// a\\nb"}{`x\\ny`}{"\\u2028"}</pre>')
+    expect(tpl(out)).toBe('<pre>// a&#10;bx&#10;y&#8232;</pre>')
+    expect(out).not.toMatch(/\n<\/pre>/)
+  })
+
   it('a numeric literal bakes only when its source is its String() form', () => {
     expect(tpl(js(`const A = () => <main>{0}{7}{1.5}{123456789012345}</main>`))).toBe('<main>071.5123456789012345</main>')
     const out = js(`const A = () => <main>{1.50}{1e3}{-1}{0x10}{1234567890123456}</main>`)

@@ -5977,7 +5977,19 @@ function bakeableNumberRaw(raw: unknown): string | null {
  * text containing one bails to h()), and the compiled-template adopt verifier
  * refuses a template that does — `&gt;` parses to the identical text node. */
 function escapeLiteralText(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  // Line terminators become numeric entities: the template HTML is emitted
+  // as a double-quoted JS string that escapes only `\\` and `"` (plain JSX text
+  // can never carry a newline, a literal can — `<pre>{"// a\nb"}</pre>` broke
+  // the docs build with `Unterminated string`). The <template> parser decodes
+  // the entity back, so the DOM text is byte-identical.
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\n/g, '&#10;')
+    .replace(/\r/g, '&#13;')
+    .replace(/\u2028/g, '&#8232;')
+    .replace(/\u2029/g, '&#8233;')
 }
 
 function escapeHtmlText(s: string): string {

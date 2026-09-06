@@ -104,6 +104,14 @@ describe('literal expression children adopt their SSR text', () => {
     dispose()
   })
 
+  it('a multi-line literal (docs <pre> shape) bakes as entities and adopts with the exact text', async () => {
+    const { host, dispose, kept, total } = await roundTrip('const App = () => <pre>{"// a\\nb"}{`x\\ny`}</pre>')
+    expect(host.querySelector('pre')!.textContent).toBe('// a\nbx\ny')
+    expect(kept).toBe(total)
+    expect(adopted()).toBe(1)
+    dispose()
+  })
+
   it('a literal beside a reactive text stays static while the binding stays live', async () => {
     const s = signal('a')
     const { host, dispose, kept, total } = await roundTrip(`const App = () => <main>{"x"}<b>{() => S[0]()}</b>{"y"}</main>`, [s])

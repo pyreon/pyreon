@@ -7835,6 +7835,12 @@ fn escape_literal_text(s: &str) -> String {
             '&' => out.push_str("&amp;"),
             '<' => out.push_str("&lt;"),
             '>' => out.push_str("&gt;"),
+            // Line terminators as entities — the emitted JS string escapes only
+            // `\\` and `"`; see jsx.ts `escapeLiteralText`.
+            '\n' => out.push_str("&#10;"),
+            '\r' => out.push_str("&#13;"),
+            '\u{2028}' => out.push_str("&#8232;"),
+            '\u{2029}' => out.push_str("&#8233;"),
             c => out.push(c),
         }
     }
