@@ -5472,6 +5472,29 @@ for (const { id, position } of positioned) flow.updateNode(id, { position })`,
 - Relying on the default merge when data shrinks — a signal change that removes a series/point leaves the old one; pass \`notMerge\` or \`replaceMerge="series"\``,
   },
 
+  'charts/Plot': {
+    signature: '<T>(props: PlotProps<T>) => VNode',
+    example: `import { Axis, Bar, Legend, Line, Plot, Tip, currency } from '@pyreon/charts/plot'
+
+interface Row { month: string; revenue: number; target: number }
+const rows: Row[] = [{ month: 'Jan', revenue: 3200, target: 3000 }, { month: 'Feb', revenue: 4100, target: 3400 }]
+
+<Plot<Row> data={rows} x="month" title="Revenue vs target" showTitle>
+  <Bar y="revenue" label="Revenue" />
+  <Line y="target" label="Target" />
+  <Axis y format={currency('$')} />
+  <Tip />
+  <Legend />
+</Plot>`,
+    notes: `The grammar — \`<Plot data x>\` with MARK CHILDREN (\`Plot\`, because the package's default entry already exports the ECharts bridge as \`<Chart>\`). Channels are FIELD NAMES typed against the row (\`y="revenue"\`) or accessors; marks are JSX children (\`<Bar y stack? group?>\`, \`<Line y>\`, \`<Area y>\`, \`<Dot y r?>\` — \`r\` makes area-mapped bubbles) and draw in order; \`<Rule y | from to>\`, \`<Axis x|y|y2 format domain time hidden>\`, \`<Tip crosshair format>\`, \`<Legend toggle maxRows>\` and \`<Zoom inside navigator presets link brush>\` declare annotations, axes, the tooltip, the legend and every zoom surface as data beside the marks. A \`<Show>\` around a mark adds/removes its series. \`color="region"\` switches to LONG format: one series per distinct value, categories from \`x\`, gaps where a (category, series) pair is absent, bars grouped unless \`stack\`. Marks are branded components \`<Plot>\` scans structurally (never invoked); it resolves them into the \`marks={[bars(…)]}\` props \`<PlotChart>\` takes, so the array form is the same spec — \`resolveGrammar\` is exported for that equivalence. Native: the compiler desugars \`<Plot>\` to \`<PlotChart marks>\` (byte-identical emit); the runtime \`color\` pivot warns by name and renders wide-format. See also: PlotChart, ChartThemeProvider.`,
+    mistakes: `- Passing \`marks={[…]}\` to \`<Plot>\` — the grammar takes marks as CHILDREN; the array form belongs to \`<PlotChart>\` (same spec, other spelling)
+- Writing \`y={d.revenue}\` — a channel is a field NAME (\`y="revenue"\`) or an accessor (\`y={(d) => d.revenue}\`); a value is one number for every row
+- Expecting \`color="region"\` to colour bars by a per-row value — it is the long-format SPLIT (one series per distinct region); for a per-mark colour use \`color="#hex"\` on the mark
+- Rendering \`<Bar>\` outside a \`<Plot>\` — marks are branded descriptors the plot reads; alone they render nothing (and warn on native)
+- Conditionally including a mark with \`{cond && <Line …/>}\` written once at setup — wrap it in \`<Show when={() => cond()}>\` (or an accessor child) so the series follows the signal
+- Looking for a \`series\` array — layering IS the children; a combo chart is a \`<Bar>\` beside a \`<Line>\`, a second axis is \`<Line axis="right">\` + \`<Axis y2>\``,
+  },
+
   'charts/PlotChart': {
     signature: '<T>(props: PlotChartProps<T>) => VNodeChild',
     example: `import { PlotChart, bars, line } from '@pyreon/charts/plot'

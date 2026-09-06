@@ -19,7 +19,7 @@
 // BY NAME (`UNLOWERED_CHART_HOSTS`) rather than falling through to the generic
 // component emit, which would name a SwiftUI/Compose view that does not exist.
 
-import type { ExprIR } from './types'
+import type { AttrIR, ExprIR } from './types'
 
 /** Per-target expression helpers the host specs build their draw list with. */
 export interface ChartHostTarget {
@@ -295,9 +295,150 @@ export const UNLOWERED_CHART_HOSTS: Readonly<Record<string, string>> = {
   BoxplotChart: 'the boxplot host reduces raw samples per row (`fiveNumber`) on the web side; a native lowering is a follow-up',
 }
 
-/** Whether a JSX tag is a `@pyreon/charts/plot` host, lowered or not. */
+/** The grammar host and its mark/config children — `<Plot>` desugars to `<PlotChart marks>` before the plot emit runs. */
+export const GRAMMAR_CHART_HOST = 'Plot'
+export const GRAMMAR_MARK_TAGS: Readonly<Record<string, string>> = { Bar: 'bars', Line: 'line', Area: 'area', Dot: 'points' }
+export const GRAMMAR_CONFIG_TAGS: readonly string[] = ['Rule', 'Axis', 'Tip', 'Legend', 'Zoom']
+
+/** Whether a JSX tag is a `@pyreon/charts/plot` host, lowered or not (the grammar's mark tags included, so a stray one warns instead of emitting a phantom component). */
 export function isChartHostTag(tag: string): boolean {
-  return Object.hasOwn(CHART_HOSTS, tag) || Object.hasOwn(ACCESSOR_CHART_HOSTS, tag) || Object.hasOwn(FRAME_CHART_HOSTS, tag) || Object.hasOwn(UNLOWERED_CHART_HOSTS, tag)
+  return (
+    Object.hasOwn(CHART_HOSTS, tag) ||
+    Object.hasOwn(ACCESSOR_CHART_HOSTS, tag) ||
+    Object.hasOwn(FRAME_CHART_HOSTS, tag) ||
+    Object.hasOwn(UNLOWERED_CHART_HOSTS, tag) ||
+    tag === GRAMMAR_CHART_HOST ||
+    Object.hasOwn(GRAMMAR_MARK_TAGS, tag) ||
+    GRAMMAR_CONFIG_TAGS.includes(tag)
+  )
+}
+
+const lit = (value: string | number | boolean): ExprIR => ({ kind: 'literal', value })
+const ident = (name: string): ExprIR => ({ kind: 'identifier', name })
+/** `"field"` → `(d) => d.field`; an accessor passes through. */
+function channelArrow(v: ExprIR): ExprIR {
+  if (v.kind === 'literal' && typeof v.value === 'string') return { kind: 'arrow', params: ['d'], body: { kind: 'member', object: ident('d'), property: v.value } }
+  return v
+}
+const attrOf = (e: Extract<ExprIR, { kind: 'jsx-element' }>, name: string): ExprIR | undefined => {
+  const a = e.attrs.find((x) => x.kind === 'attr' && x.name === name)
+  return a?.kind === 'attr' ? a.value : undefined
+}
+const flagOn = (e: Extract<ExprIR, { kind: 'jsx-element' }>, name: string): boolean => {
+  const v = attrOf(e, name)
+  return v !== undefined && !(v.kind === 'literal' && v.value === false)
+}
+
+/**
+ * `<Plot data x>` with mark children → the `<PlotChart data x marks={[…]}>`
+ * element the plot emit already lowers, so the grammar is the SAME spec on
+ * native as on the web. Field-name channels become accessors; mark children
+ * become mark calls with their options; Rule/Axis/Tip/Legend/Zoom become the
+ * plot props they set on the web. A long-format `color` channel (a pivot the
+ * web resolves at runtime) is not lowered — it warns by name and the chart
+ * renders as wide-format.
+ */
+export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>, warn: (m: string) => void): Extract<ExprIR, { kind: 'jsx-element' }> {
+  const attrs: AttrIR[] = []
+  const marks: ExprIR[] = []
+  const annotations: ExprIR[] = []
+  for (const a of e.attrs) {
+    if (a.kind === 'attr' && (a.name === 'x' || a.name === 'xValue')) attrs.push({ kind: 'attr', name: a.name, value: channelArrow(a.value) })
+    else if (a.kind === 'attr' && a.name === 'color') warn('<Plot color>: the long-format pivot is resolved on the web at runtime and is not lowered on native; the chart renders wide-format (one mark, one series).')
+    else attrs.push(a)
+  }
+  for (const c of e.children) {
+    if (c.kind !== 'expr' || c.expr.kind !== 'jsx-element') continue
+    const child = c.expr
+    const tag = child.tag
+    const markKind = GRAMMAR_MARK_TAGS[tag]
+    if (markKind !== undefined) {
+      const y = attrOf(child, 'y')
+      if (y === undefined) {
+        warn(`<${tag}>: needs a \`y\` channel; the mark is skipped on native.`)
+        continue
+      }
+      const stack = flagOn(child, 'stack')
+      const group = flagOn(child, 'group')
+      const r = attrOf(child, 'r')
+      const callee = tag === 'Bar' ? (stack ? 'stackedBars' : group ? 'groupedBars' : 'bars') : tag === 'Dot' && r !== undefined ? 'bubble' : markKind
+      const fields: { name: string; value: ExprIR }[] = []
+      for (const a of child.attrs) {
+        if (a.kind !== 'attr' || ['y', 'r', 'stack', 'group'].includes(a.name)) continue
+        fields.push({ name: a.name, value: a.value })
+      }
+      const args: ExprIR[] = [channelArrow(y)]
+      if (callee === 'bubble' && r !== undefined) args.push(channelArrow(r))
+      if (fields.length > 0) args.push({ kind: 'object', fields })
+      marks.push({ kind: 'call', callee: ident(callee), args })
+      continue
+    }
+    switch (tag) {
+      case 'Rule': {
+        const y = attrOf(child, 'y')
+        const from = attrOf(child, 'from')
+        const to = attrOf(child, 'to')
+        const fields: { name: string; value: ExprIR }[] = []
+        if (from !== undefined && to !== undefined) fields.push({ name: 'yFrom', value: from }, { name: 'yTo', value: to })
+        else if (y !== undefined) fields.push({ name: 'y', value: y })
+        else continue
+        for (const n of ['label', 'color']) {
+          const v = attrOf(child, n)
+          if (v !== undefined) fields.push({ name: n, value: v })
+        }
+        annotations.push({ kind: 'object', fields })
+        break
+      }
+      case 'Axis': {
+        const format = attrOf(child, 'format')
+        const domain = attrOf(child, 'domain')
+        if (flagOn(child, 'x')) {
+          if (format !== undefined) attrs.push({ kind: 'attr', name: 'xFormat', value: format })
+          if (flagOn(child, 'time')) attrs.push({ kind: 'attr', name: 'xTime', value: lit(true) })
+          if (flagOn(child, 'hidden')) attrs.push({ kind: 'attr', name: 'showXAxis', value: lit(false) })
+        } else if (flagOn(child, 'y2')) {
+          if (format !== undefined) attrs.push({ kind: 'attr', name: 'y2Format', value: format })
+          if (domain !== undefined) attrs.push({ kind: 'attr', name: 'y2Domain', value: domain })
+        } else {
+          if (format !== undefined) attrs.push({ kind: 'attr', name: 'format', value: format })
+          if (flagOn(child, 'hidden')) attrs.push({ kind: 'attr', name: 'showYAxis', value: lit(false) })
+        }
+        break
+      }
+      case 'Tip':
+        attrs.push({ kind: 'attr', name: 'tooltip', value: lit(true) })
+        if (flagOn(child, 'crosshair')) attrs.push({ kind: 'attr', name: 'crosshair', value: lit(true) })
+        break
+      case 'Legend': {
+        attrs.push({ kind: 'attr', name: 'showLegend', value: lit(true) })
+        const toggle = attrOf(child, 'toggle')
+        if (toggle !== undefined) attrs.push({ kind: 'attr', name: 'legendToggle', value: toggle })
+        const maxRows = attrOf(child, 'maxRows')
+        if (maxRows !== undefined) attrs.push({ kind: 'attr', name: 'legendMaxRows', value: maxRows })
+        break
+      }
+      case 'Zoom': {
+        const inside = attrOf(child, 'inside')
+        if (inside === undefined || !(inside.kind === 'literal' && inside.value === false)) attrs.push({ kind: 'attr', name: 'dataZoom', value: lit(true) })
+        if (flagOn(child, 'navigator')) attrs.push({ kind: 'attr', name: 'navigator', value: lit(true) })
+        const presets = attrOf(child, 'presets')
+        if (presets !== undefined) attrs.push({ kind: 'attr', name: 'zoomPresets', value: presets })
+        const link = attrOf(child, 'link')
+        if (link !== undefined) attrs.push({ kind: 'attr', name: 'link', value: link })
+        const brush = attrOf(child, 'brush')
+        if (brush !== undefined) {
+          attrs.push({ kind: 'attr', name: 'brush', value: lit(true) })
+          attrs.push({ kind: 'event', name: 'brush', handler: brush })
+        }
+        break
+      }
+      default:
+        warn(`<Plot>: child <${tag}> is not a mark or a chart setting; it is ignored on native.`)
+    }
+  }
+  attrs.push({ kind: 'attr', name: 'marks', value: { kind: 'array', elements: marks } })
+  if (annotations.length > 0) attrs.push({ kind: 'attr', name: 'annotations', value: { kind: 'array', elements: annotations } })
+  return { kind: 'jsx-element', tag: 'PlotChart', attrs, children: [] }
 }
 
 /** A Double literal the way both targets accept it (`240` → `240.0`). */

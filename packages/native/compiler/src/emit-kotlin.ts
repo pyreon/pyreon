@@ -79,7 +79,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, HEAT_RAMP_DEFAULT, chartChromeUnlowered, chartThemeFields, chartThemePalette, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartThemeFields, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -9545,6 +9545,19 @@ function kotlinChartSelectBody(handler: ExprIR, hitExpr: string, indent: number)
 
 function emitKotlinChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const tag = e.tag
+  // The grammar: `<Plot>` with mark children desugars to the `<PlotChart marks>` element the plot emit lowers.
+  if (tag === GRAMMAR_CHART_HOST) {
+    const plot = desugarChartGrammar(e, (w) => _emitWarnings.push(w))
+    // The desugared element carries the chrome flags (`<Tip>` → tooltip); name the ones the plot host does not draw here.
+    for (const p of chartChromeUnlowered('PlotChart')) {
+      if (plot.attrs.some((a) => a.kind === 'attr' && a.name === p)) _emitWarnings.push(`<PlotChart>: \`${p}\` is not lowered on native yet; the chart renders without it.`)
+    }
+    return emitKotlinPlotHost(plot, indent)
+  }
+  if (Object.hasOwn(GRAMMAR_MARK_TAGS, tag) || GRAMMAR_CONFIG_TAGS.includes(tag)) {
+    _emitWarnings.push(`<${tag}> only means something as a child of <Plot>; on its own it renders nothing.`)
+    return 'Box {}'
+  }
   // Chrome the web host draws but this target does not yet — named, never silent.
   for (const p of chartChromeUnlowered(tag)) {
     if (chartAttrExprKotlin(e, p) !== undefined) _emitWarnings.push(`<${tag}>: \`${p}\` is not lowered on native yet; the chart renders without it.`)

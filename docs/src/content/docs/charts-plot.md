@@ -23,6 +23,58 @@ hydrates nothing it doesn't need, and shares its geometry with the native
 
 ```tsx
 // @check
+import { Axis, Bar, Legend, Line, Plot, Tip, currency } from '@pyreon/charts/plot'
+
+type Row = { month: string; revenue: number; target: number }
+const rows: Row[] = [
+  { month: 'Jan', revenue: 3200, target: 3000 },
+  { month: 'Feb', revenue: 4100, target: 3400 },
+  { month: 'Mar', revenue: 3800, target: 3800 },
+]
+
+export const Revenue = () => (
+  <Plot<Row> data={rows} x="month" title="Monthly revenue vs target" showTitle>
+    <Bar y="revenue" label="Revenue" />
+    <Line y="target" label="Target" />
+    <Axis y format={currency('$')} />
+    <Tip />
+    <Legend />
+  </Plot>
+)
+```
+
+That is the whole grammar: **channels are field names** (`y="revenue"` is
+typed against `Row`; an accessor `y={(d) => d.revenue}` works too), **marks are
+children** (they draw in order, so an `<Area>` under a `<Line>` under `<Dot>`
+is three lines of JSX), and the tooltip, legend, axes, zoom and reference
+lines are **declared as data** beside the marks they apply to. A `<Show>`
+around a mark adds and removes its series like any other Pyreon child.
+
+| Child | Declares |
+| --- | --- |
+| `<Bar y stack? group? />` `<Line y />` `<Area y />` `<Dot y r? />` | The marks. `stack` / `group` combine bars; `r` turns dots into area-mapped bubbles. |
+| `<Rule y label? />` `<Rule from to />` | A reference line or band. |
+| `<Axis y format domain />` `<Axis x time hidden />` `<Axis y2 … />` | Axis formatting and domains. |
+| `<Tip crosshair? format? />` | The pointer tooltip. |
+| `<Legend toggle? maxRows? />` | The legend (click toggles series). |
+| `<Zoom inside? navigator? presets? link? brush? />` | Pinch/wheel zoom and drag pan, the slider strip, preset buttons, cross-chart linking, the range brush. |
+
+`<Plot color="region">` switches to **long format**: every `y` mark becomes
+one series per distinct `region`, categories come from `x`, a missing
+(category, series) pair is a gap, and bars group side by side unless `stack`.
+
+<Example file="./examples/charts/plot-grammar" title="The grammar — marks as children, a Show around one" />
+
+The grammar and the array form below are ONE spec: `<Plot>` resolves its
+children into the `marks={[bars(…)]}` props `<PlotChart>` takes (`resolveGrammar`
+is exported and tested to produce identical series), and on native the
+compiler desugars `<Plot>` to that element before lowering — the two emit
+byte-identical Swift and Kotlin.
+
+## The array form
+
+```tsx
+// @check
 import { signal } from '@pyreon/reactivity'
 import { PlotChart, bars, line, currency } from '@pyreon/charts/plot'
 

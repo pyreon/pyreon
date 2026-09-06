@@ -2632,6 +2632,18 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
         'ChartThemeProvider',
         'chartThemes',
         'palettes',
+        // The grammar: <Plot> desugars to <PlotChart marks>; its mark/config children are consumed by that desugar.
+        'Plot',
+        'Bar',
+        'Line',
+        'Area',
+        'Dot',
+        'Rule',
+        'Axis',
+        'Tip',
+        'Legend',
+        'Zoom',
+        'channel',
         // Mark + curve constructors consumed INLINE inside a `marks={[...]}`
         // array literal — the structural marks-array pass (chart-hosts.ts /
         // emit{Swift,Kotlin}.ts's PLOT_MARK_KINDS + the special-cased
