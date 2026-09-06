@@ -7,6 +7,12 @@ description: "Common documentation mistakes in Pyreon and how to fix them."
 
 > **Generated** from `.claude/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
+### A renderer that reserves a markdown level for STRUCTURE must demote body headings, or the body can forge structure — and the forgery is invisible until the first body that uses a heading
+
+(`@pyreon/mcp` `get_changelog`, 2026-09). `## <version>` is the one boundary consumers split on. A changeset body may carry its own `## Title`; changesets inlines it INDENTED under the bullet; the parser strips the indent (`line.replace(/^ {2,4}/, '')`); the heading resurfaces at column zero as a fake version. The 0.52.0 release had five such bodies, so `formatChangelog(query, { limit: 1 })` — one version — rendered SIX `## ` lines and the release PR went red on a test that was right. Main stayed green only because its CHANGELOG had not been regenerated: the defect was latent in the formatter, armed by the first release to carry a heading. **Two lessons.** (1) When one markdown level is load-bearing in your output, demote body headings by construction (h2→h3, and floor at h3 so a body h1 cannot become a colliding h2) — do not rely on authors never writing one. (2) A spec that reads a REAL generated file discriminates only on the state that file happens to be in; the real-CHANGELOG spec stayed green with the fix neutered on main, so the load-bearing specs are the synthetic ones that plant the heading deliberately. Bisect: neutering the demotion fails exactly the 3 synthetic heading specs while the byte-identical-passthrough control stays green. Reference: `packages/tools/mcp/src/changelog.ts:demoteBodyHeadings`.
+
+---
+
 ### Forgetting to update all surfaces
 
 CLAUDE.md, docs/, README, llms.txt, llms-full.txt, MCP api-reference must all stay in sync
