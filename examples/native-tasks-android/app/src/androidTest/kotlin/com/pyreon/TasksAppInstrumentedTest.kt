@@ -239,7 +239,20 @@ class TasksAppInstrumentedTest {
                 val nodes = composeRule.onAllNodes(hasTestTag(tag)).fetchSemanticsNodes()
                 when {
                     nodes.isEmpty() -> "NO node with that tag exists (mid-remount, or never rendered)"
-                    else -> "node exists, holding: " + nodes.joinToString(" | ") { n ->
+                    // The TEXT first: three rounds of this failure could not tell
+                    // "the drag did nothing" (0) from "the tap missed" (-1) because
+                    // the config dump was truncated before its text entry.
+                    else -> "node exists, text=" + nodes.joinToString(" | ") { n ->
+                        try {
+                            val t = n.config.getOrNull(SemanticsProperties.Text)?.joinToString("") { it.text }
+                            val e = n.config.getOrNull(SemanticsProperties.EditableText)?.text
+                            "'" + (t ?: e ?: "<none>") + "'"
+                        } catch (_: Throwable) {
+                            "<unreadable>"
+                        }
+                    } + " size=" + nodes.joinToString(" | ") { n ->
+                        try { n.size.toString() } catch (_: Throwable) { "?" }
+                    } + " holding: " + nodes.joinToString(" | ") { n ->
                         try {
                             n.config.toString().take(160)
                         } catch (_: Throwable) {
@@ -603,10 +616,13 @@ class TasksAppInstrumentedTest {
         composeRule
             .onNodeWithTag("stats-bars")
             .performTouchInput {
+                // A real finger moves in many small steps; one 55%-wide jump is
+                // an input no user produces, and the emulator run is the only
+                // place this gesture is exercised — so drive it the way a hand does.
                 val navY = height - 40f * flowDensity
                 val stripW = width - 16f * flowDensity
                 down(Offset(10f * flowDensity, navY))
-                moveTo(Offset(10f * flowDensity + stripW * 0.55f, navY))
+                repeat(10) { moveBy(Offset(stripW * 0.055f, 0f)) }
                 up()
             }
         composeRule
@@ -619,7 +635,7 @@ class TasksAppInstrumentedTest {
                 val navY = height - 40f * flowDensity
                 val stripW = width - 16f * flowDensity
                 down(Offset(8f * flowDensity + stripW * 0.775f, navY))
-                moveTo(Offset(8f * flowDensity + stripW * 0.225f, navY))
+                repeat(10) { moveBy(Offset(-stripW * 0.055f, 0f)) }
                 up()
             }
         composeRule
