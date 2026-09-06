@@ -205,6 +205,20 @@ export interface ChartSpec {
   emphasis?: Emphasis | undefined
 }
 
+/**
+ * The corners a plain bar gets from the theme when its mark set none: the
+ * two corners AWAY from the baseline (top for a positive vertical bar, right
+ * for a positive horizontal one), so the bar still reads as growing from zero.
+ * Zero radius returns undefined — a square rect, byte-identical to before.
+ * Stacked and grouped bars keep their mark corners only: rounding every
+ * segment breaks a stack.
+ */
+export function themeCorners(radius: Double, positive: boolean, horizontal: boolean): Double[] | undefined {
+  if (radius <= 0.0) return undefined
+  if (horizontal) return positive ? [0.0, radius, radius, 0.0] : [radius, 0.0, 0.0, radius]
+  return positive ? [radius, radius, 0.0, 0.0] : [0.0, 0.0, radius, radius]
+}
+
 export const defaultTheme: ChartTheme = {
   palette: DEFAULT_PALETTE,
   background: '',
@@ -216,7 +230,7 @@ export const defaultTheme: ChartTheme = {
   fontFamily: '',
   fontSize: 11.0,
   titleSize: 15.0,
-  radius: 0.0,
+  radius: 3.0,
   enterMs: 700.0,
   updateMs: 350.0,
 }
@@ -642,10 +656,11 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
     if (spec.horizontal === true) {
       if (s.kind !== 'bars') continue
       const rects = layoutBarsH(s.values, plot, yDomain, 0.25)
-      for (const r of rects) {
+      for (let ri = 0; ri < rects.length; ri++) {
+        const r = rects[ri]!
         const grown = growRectH(r)
         if (s.symbol === undefined) {
-          out.push(rectCmd(grown, s.color, s.corners, sGrad))
+          out.push(rectCmd(grown, s.color, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, true), sGrad))
         } else if (s.symbolRepeat === true) {
           // Repeat a unit symbol along the bar (left to right); a partial last symbol is dropped.
           const unit = grown.h
@@ -694,10 +709,11 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
 
     if (s.kind === 'bars') {
       const rects = layoutBars(s.values, plot, sDomain, 0.25)
-      for (const r of rects) {
+      for (let ri = 0; ri < rects.length; ri++) {
+        const r = rects[ri]!
         const grown = growRect(r, sDomain)
         if (s.symbol === undefined) {
-          out.push(rectCmd(grown, s.color, s.corners, sGrad))
+          out.push(rectCmd(grown, s.color, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, false), sGrad))
         } else if (s.symbolRepeat === true) {
           // Repeat a unit symbol up the bar; a partial last symbol is dropped.
           // (Horizontal charts left this loop above, so the bar is vertical.)

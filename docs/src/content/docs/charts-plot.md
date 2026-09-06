@@ -315,6 +315,41 @@ On native the theme is a struct: `theme={chartThemes.dark}` and
 merges over the defaults, and `<ChartThemeProvider>` is transparent (its
 children render; theme each chart there).
 
+## Every host, one surface
+
+All the family hosts — `<PieChart>` / `<GaugeChart>`, `<FunnelChart>`,
+`<RadarChart>`, `<CandlestickChart>`, `<HeatmapChart>`, `<BoxplotChart>`,
+`<TreemapChart>`, `<SunburstChart>`, `<TreeChart>`, `<SankeyChart>`,
+`<GraphChart>`, `<RiverChart>`, `<PolarChart>`, `<GanttChart>`,
+`<CalendarChart>`, `<ParallelChart>`, `<MapChart>` — share one canvas host, so
+they share one prop vocabulary:
+
+| Prop | Does |
+| --- | --- |
+| `title` / `subtitle` / `showTitle` | Names the chart for assistive tech and the hidden table; `showTitle` draws the block above the chart. |
+| `showLegend` | A legend above the chart for families with named entries (series, slices, stages, top-level nodes). |
+| `tooltip` | A pointer tooltip with the family's own lines (a slice's share, a candle's OHLC, a cell's value, a node's name). Off by default — a static report has no pointer. |
+| `animate` | The entrance tween on first paint (`theme.enterMs`); off under `prefers-reduced-motion`. |
+| `onSelect` | The family's rich hit (a cell, an arc, a node, a Sankey node-or-link) or `null`; the row-array hosts (Pie, Funnel, Candlestick, Boxplot, PlotChart) report the row index. |
+| `onSelectIndex` | The engine's INDEX hit, on **every** host — what the native tap gesture reports, so a handler written once works on all three targets. |
+| `theme` / `width` / `height` / `class` / `accessibleTable` | As on `<PlotChart>`. |
+
+Bars are rounded by default: `theme.radius` (3) rounds the corners away from
+the baseline — top for a positive bar, bottom for a negative one, the far end
+when `horizontal` — so a bar still reads as growing from zero. A mark's own
+`borderRadius` wins; `theme={{ radius: 0 }}` restores square bars; stacked and
+grouped segments keep only their mark radii.
+
+### Big data on `<PlotChart>`
+
+`maxPoints` caps what one paint draws: past it the visible slice is thinned with
+LTTB on the first mark — rows stay aligned across marks, so a line and its area
+never disagree — and a 100k-point series paints as a 1k-point one. Hits,
+tooltips and selection report the GLOBAL index of the row actually drawn. The
+engine's throughput is measured, not asserted: `bun run
+--filter=@pyreon/charts bench:engine` (layout + render, 1k–100k points, treemap,
+sankey, LTTB; single machine, author-run — treat magnitudes as the signal).
+
 ## Registered themes and locales
 
 `registerTheme(name, tokens)` takes the same tokens (the ECharts-shaped

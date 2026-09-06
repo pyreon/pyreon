@@ -6,6 +6,7 @@
 // full ECharts feature set for the long tail.
 
 import { h } from '@pyreon/core'
+import { lttb } from './decimate'
 import { resolveChartTheme, tooltipStyle, useChartTheme } from './theme'
 import type { VNode } from '@pyreon/core'
 import { batch, effect, isClient, signal, untrack } from '@pyreon/reactivity'
@@ -190,6 +191,13 @@ export interface PlotChartProps<T> {
    * inside `dataZoom` (wheel + pan).
    */
   navigator?: boolean
+  /**
+   * Draw at most this many rows: past it the visible slice is thinned with
+   * LTTB on the first mark (rows stay aligned across marks), so a 100k-point
+   * series paints as a 1k-point one. Hits, tooltips and selection report the
+   * GLOBAL index of the row actually drawn.
+   */
+  maxPoints?: number
   class?: string
   /**
    * Names the chart for assistive technology and titles the data table.
@@ -502,9 +510,33 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     return r.from === 0 && r.to === rows.length ? rows : rows.slice(r.from, r.to)
   }
 
+  // `maxPoints` decimation: the rows KEPT from the visible slice, as indices
+  // into it, or null when nothing was dropped. Chosen once per spec build by
+  // LTTB over the first mark's values, so every mark stays aligned on the same
+  // rows and a hit/tooltip still names a real datum. Selection and keyboard
+  // navigation map back through it (`lastKeep`) — a decimated chart reports
+  // the GLOBAL index of the row it drew, never a position in the thinned list.
+  let lastKeep: number[] | null = null
+  /** The visible (thinned) row for a slice index, or -1 when decimation dropped it. */
+  const visibleIndexOf = (sliceIndex: number, keep: number[] | null): number => (keep === null ? sliceIndex : keep.indexOf(sliceIndex))
+  const globalOf = (visibleIndex: number, off: number): number => (lastKeep === null ? visibleIndex : (lastKeep[visibleIndex] ?? visibleIndex)) + off
+  const decimateRows = (rows: T[]): number[] | null => {
+    const max = props.maxPoints
+    if (max === undefined || max < 3 || rows.length <= max) return null
+    const first = props.marks[0]
+    if (first === undefined) return null
+    const pts = rows.map((d, i) => ({ x: i, y: first.y(d, i) }))
+    return lttb(pts, max).map((pt) => pt.x)
+  }
+
   const buildSpec = (allRows: T[], w: Double, hgt: Double): ChartSpec => {
     const off = viewRange(allRows).from
-    const rows = viewRows(allRows)
+    const visible = viewRows(allRows)
+    const keep = decimateRows(visible)
+    lastKeep = keep
+    const rows = keep === null ? visible : keep.map((i) => visible[i]!)
+    /** The GLOBAL row index behind visible row `i`. */
+    const gi = (i: number): number => (keep === null ? i : keep[i]!) + off
     return {
     width: w,
     height: hgt,
@@ -517,10 +549,10 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       kind: typeOverride() !== null && (m.kind === 'bars' || m.kind === 'line' || m.kind === 'area')
         ? (typeOverride() === 'bar' ? 'bars' : 'line')
         : m.kind,
-      y: (d: T, i: number) => m.y(d, i + off),
-      ...(m.r !== undefined ? { r: (d: T, i: number) => m.r!(d, i + off) } : {}),
+      y: (d: T, i: number) => m.y(d, gi(i)),
+      ...(m.r !== undefined ? { r: (d: T, i: number) => m.r!(d, gi(i)) } : {}),
     })), theme().palette)),
-    categories: resolveCategories(rows, props.x === undefined ? undefined : (d, i) => props.x!(d, i + off)),
+    categories: resolveCategories(rows, props.x === undefined ? undefined : (d, i) => props.x!(d, gi(i))),
     theme: theme(),
     showXAxis: props.showXAxis ?? true,
     showYAxis: props.showYAxis ?? true,
@@ -529,7 +561,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     ...(props.xFormat !== undefined ? { xFormat: props.xFormat } : {}),
     ...(props.xTime === true ? { xTime: true } : {}),
     ...(props.xValue !== undefined
-      ? { xValues: rows.map((d, i) => props.xValue!(d, i + off)) }
+      ? { xValues: rows.map((d, i) => props.xValue!(d, gi(i))) }
       : {}),
     annotations: props.annotations,
     markers: props.markers,
@@ -541,7 +573,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // global and come down by the window's offset (off-window pins are just
     // not drawn — they are still selected).
     ...(emphasisOn
-      ? { emphasis: { highlight: hoverIdx(), selected: selected().map((g) => g - off).filter((i) => i >= 0 && i < rows.length) } }
+      ? { emphasis: { highlight: hoverIdx(), selected: selected().map((g) => visibleIndexOf(g - off, keep)).filter((i) => i >= 0 && i < rows.length) } }
       : {}),
     }
   }
@@ -728,7 +760,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     if (next > n - 1) next = n - 1
     const off = viewRange(all).from
     const t = chartTable(a11yInput())
-    const row = t.rows[next + off]
+    const row = t.rows[globalOf(next, off)]
     // One notify cycle for the three writes a keystroke makes (focus, hover, live region).
     batch(() => {
       focusIdx.set(next)
@@ -1125,7 +1157,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // there is no separate loop here to keep in sync with it.
     const off = viewRange(readData()).from
     const idx = plotHitBars(spec, measure, px, py)
-    pickDatum(idx < 0 ? idx : idx + off)
+    pickDatum(idx < 0 ? idx : globalOf(idx, off))
   })
 
   const a11yInput = (): {

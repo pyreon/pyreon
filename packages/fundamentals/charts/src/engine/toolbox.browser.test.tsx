@@ -27,7 +27,7 @@ describe('toolbox (real browser)', () => {
     await flush()
     expect(got).toHaveLength(1)
     expect(got[0]).toContain('<svg')
-    expect(got[0]).toContain('<rect')
+    expect(got[0]).toMatch(/<(rect|path)/)
   })
 
   it('magicType line switches bars to a line and restore brings the bars back', async () => {

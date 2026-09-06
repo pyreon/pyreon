@@ -751,6 +751,24 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "RadarHitIndex",
+    "fields": [
+      {
+        "name": "series",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "axis",
+        "type": {
+          "kind": "number"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "Gutters",
     "fields": [
       {

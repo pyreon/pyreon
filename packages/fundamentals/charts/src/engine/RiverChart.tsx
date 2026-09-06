@@ -1,123 +1,47 @@
-// `<RiverChart>` — a streamgraph on a canvas.
+// `<RiverChart>` — a theme river (streamgraph) on a canvas, over the shared canvas host.
 
-import { h } from '@pyreon/core'
-import type { ChartTheme } from './render'
-import { resolveChartTheme, useChartTheme } from './theme'
 import type { VNode } from '@pyreon/core'
-import { effect } from '@pyreon/reactivity'
-import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
+import { canvasHost } from './canvas-host'
+import type { CanvasHostProps } from './canvas-host'
 import { hitRiver, hitRiverIndex, layoutRiver, renderRiver } from './river'
 import type { RiverLayer, RiverLayout, RiverOptions, RiverSeries } from './river'
-import { chartTable, describeChart } from './a11y'
-import type { Double } from './types'
 
-const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
-
-export interface RiverChartProps {
-  /** Token overrides merged over the theme in scope (`<ChartThemeProvider>`, else the system scheme). */
-  theme?: Partial<ChartTheme>
+export interface RiverChartProps extends CanvasHostProps {
   series: RiverSeries[] | (() => RiverSeries[])
-  width?: Double
-  height?: Double
   river?: RiverOptions
-  title?: string
+  /** Fired with the layer under the click, or null for a miss. */
   onSelect?: (layer: RiverLayer | null) => void
   /** The engine's INDEX hit — the multiplatform-safe twin of `onSelect` (what the native tap gesture reports). */
   onSelectIndex?: (hit: number) => void
-  accessibleTable?: boolean
-  class?: string
-}
-
-function drawWidth(el: HTMLCanvasElement, explicit: Double | undefined): Double {
-  if (explicit !== undefined) return explicit
-  const box = el.parentElement
-  const w = box === null ? 0 : box.clientWidth
-  return w > 0 ? w : 300
 }
 
 export function RiverChart(props: RiverChartProps): VNode {
-  const themeOf = useChartTheme()
-  const theme = (): ChartTheme => resolveChartTheme(themeOf(), props.theme)
-  const riverOpts = (): RiverOptions => ({ palette: theme().palette, ...props.river })
-  let canvas: HTMLCanvasElement | null = null
-  let sizeObserver: ResizeObserver | null = null
   const readSeries = (): RiverSeries[] => (typeof props.series === 'function' ? props.series() : props.series)
-  const layoutFor = (w: Double, hgt: Double): RiverLayout => layoutRiver(readSeries(), { x: 8.0, y: 8.0, w: Math.max(0.0, w - 16.0), h: Math.max(0.0, hgt - 16.0) }, riverOpts())
-
-  const draw = (): void => {
-    const el = canvas
-    if (el === null) return
-    const w = drawWidth(el, props.width)
-    const hgt = props.height ?? 300
-    const ctx = prepareCanvas(el, w, hgt, theme().background)
-    if (ctx === null) return
-    paint(ctx, renderRiver(layoutFor(w, hgt), riverOpts(), canvasMeasure(ctx, FONT)), w, hgt, FONT)
-  }
-
-  effect(() => {
-    readSeries()
-    theme() // a provider mode flip repaints (draw() bails before reading it until the ref attaches)
-    draw()
-  })
-
-  const handleClick = (ev: MouseEvent): void => {
-    const el = canvas
-    const cb = props.onSelect
-    const cbi = props.onSelectIndex
-    if (el === null || (cb === undefined && cbi === undefined)) return
-    const w = drawWidth(el, props.width)
-    const hgt = props.height ?? 300
-    const r = el.getBoundingClientRect()
-    const layout = layoutFor(w, hgt)
-    const px = ev.clientX - r.left
-    const py = ev.clientY - r.top
-    if (cb !== undefined) cb(hitRiver(layout, px, py, riverOpts()?.curve))
-    if (cbi !== undefined) cbi(hitRiverIndex(layout, px, py, riverOpts()?.curve))
-  }
-
-  const a11y = () => {
-    const series = readSeries()
-    let n = 0
-    for (const s of series) if (s.values.length > n) n = s.values.length
-    const cats = riverOpts()?.categories ?? Array.from({ length: n }, (_, i) => String(i + 1))
-    return { title: props.title, categories: cats, series: series.map((s) => ({ label: s.name, values: s.values, kind: 'area' })) }
-  }
-
-  const canvasNode = h('canvas', {
-    class: props.class,
-    role: 'img',
-    'aria-label': () => describeChart(a11y()),
-    ref: (el: HTMLCanvasElement | null) => {
-      canvas = el
-      sizeObserver?.disconnect()
-      sizeObserver = null
-      if (el === null) return
-      draw()
-      const box = el.parentElement
-      if (box === null || typeof ResizeObserver === 'undefined') return
-      sizeObserver = new ResizeObserver(() => {
-        if (canvas === null) return
-        const next = drawWidth(canvas, props.width)
-        const dpr = typeof globalThis.devicePixelRatio === 'number' ? globalThis.devicePixelRatio : 1
-        if (Math.round(next * dpr) === canvas.width) return
-        draw()
-      })
-      sizeObserver.observe(box)
+  const opts = (palette: string[]): RiverOptions => ({ palette, ...props.river })
+  return canvasHost<RiverLayout>({
+    props,
+    defaultHeight: 300,
+    caption: 'River data',
+    track: () => {
+      readSeries()
     },
-    onClick: handleClick,
+    layout: (box, _measure, theme) => layoutRiver(readSeries(), { x: box.x + 8.0, y: box.y + 8.0, w: Math.max(0.0, box.w - 16.0), h: Math.max(0.0, box.h - 16.0) }, opts(theme.palette)),
+    render: (layout, measure, theme) => renderRiver(layout, opts(theme.palette), measure),
+    legend: (layout) => layout.layers.map((l) => ({ label: l.name, color: l.color })),
+    select: (layout, px, py) => {
+      props.onSelect?.(hitRiver(layout, px, py, props.river?.curve))
+      props.onSelectIndex?.(hitRiverIndex(layout, px, py, props.river?.curve))
+    },
+    tooltip: (layout, px, py) => {
+      const l = hitRiver(layout, px, py, props.river?.curve)
+      return l === null ? null : [l.name]
+    },
+    a11y: () => {
+      const series = readSeries()
+      let n = 0
+      for (const s of series) if (s.values.length > n) n = s.values.length
+      const cats = props.river?.categories ?? Array.from({ length: n }, (_, i) => String(i + 1))
+      return { title: props.title, categories: cats, series: series.map((s) => ({ label: s.name, values: s.values, kind: 'area' })) }
+    },
   })
-  if (props.accessibleTable === false) return canvasNode
-  const table = (): VNode => {
-    const t = chartTable(a11y())
-    return h(
-      'div',
-      { style: 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0;margin:-1px;padding:0' },
-      h('table', null,
-        h('caption', null, props.title ?? 'Stream data'),
-        h('thead', null, h('tr', null, ...t.headers.map((x) => h('th', { scope: 'col' }, x)))),
-        h('tbody', null, ...t.rows.map((r) => h('tr', null, h('th', { scope: 'row' }, r[0] ?? ''), ...r.slice(1).map((c) => h('td', null, c))))),
-      ),
-    )
-  }
-  return h('div', { style: 'position:relative' }, canvasNode, () => table())
 }

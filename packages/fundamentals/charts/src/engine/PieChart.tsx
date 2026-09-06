@@ -7,6 +7,8 @@
 // tree-shakeable.
 
 import { h } from '@pyreon/core'
+import { canvasHost } from './canvas-host'
+import type { CanvasHostProps } from './canvas-host'
 import { resolveChartTheme, useChartTheme } from './theme'
 import { paletteAt } from './palette'
 import type { ChartTheme } from './render'
@@ -14,172 +16,71 @@ import type { VNode } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { fitCircle, hitArc, layoutArcs, renderGauge, renderPie } from './arc'
 import type { GaugeOptions, Slice } from './arc'
-import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
-import { renderLegend } from './legend'
-import { chartTable, describeChart } from './a11y'
+import { paint, prepareCanvas } from './canvas-web'
 import { plain } from './format'
-import type { Double } from './types'
+import type { Double, Rect } from './types'
 import { observeWidth, radialWidth } from './radial-host'
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 
 
-export interface PieChartProps<T> {
-  /** Token overrides merged over the theme in scope (`<ChartThemeProvider>`, else the system scheme). */
-  theme?: Partial<ChartTheme>
+export interface PieChartProps<T> extends CanvasHostProps {
   data: T[] | (() => T[])
-  /** The slice magnitude. */
   value: (d: T, index: number) => Double
-  /** The slice name — used by the legend, the labels and the a11y table. */
   label: (d: T, index: number) => string
-  /** Per-slice colour; falls back to a built-in palette. */
+  /** Per-slice colour; the theme palette otherwise. */
   color?: (d: T, index: number) => string
-  width?: Double
-  height?: Double
-  /** 0 for a pie, 0..1 for a donut hole. */
+  /** 0 for a pie, 0..1 for a donut — the hole as a fraction of the radius. */
   innerRadius?: Double
+  /** Value labels on the slices (default on). */
   showLabels?: boolean
-  showLegend?: boolean
-  title?: string
+  /** Fired with the slice index under the click, or -1 for a miss. */
   onSelect?: (index: number) => void
-  accessibleTable?: boolean
-  class?: string
+  /** The engine's INDEX hit — identical to `onSelect` here; the multiplatform-safe name every host carries. */
+  onSelectIndex?: (index: number) => void
 }
 
 export function PieChart<T>(props: PieChartProps<T>): VNode {
-  const themeOf = useChartTheme()
-  const theme = (): ChartTheme => resolveChartTheme(themeOf(), props.theme)
-  let canvas: HTMLCanvasElement | null = null
-  let sizeObserver: ResizeObserver | null = null
-
-  const readData = (): T[] => {
-    const d = props.data
-    return typeof d === 'function' ? (d as () => T[])() : d
-  }
-
-  const slices = (): Slice[] =>
-    readData().map((d, i) => ({
-      value: props.value(d, i),
-      label: props.label(d, i),
-      color: props.color?.(d, i) ?? paletteAt(theme().palette, i),
-    }))
-
-  const draw = (): void => {
-    const el = canvas
-    if (el === null) return
-    const w = radialWidth(el, props.width, 300)
-    const hgt = props.height ?? 240
-    const ctx = prepareCanvas(el, w, hgt, theme().background)
-    if (ctx === null) return
-    const s = slices()
-    const measure = canvasMeasure(ctx, FONT)
-
-    // Lay the legend out FIRST and subtract the height it reports, because a
-    // horizontal legend wraps: reserving a fixed strip would clip it on a
-    // narrow chart and leave a gap on a wide one.
-    let legendH = 0
-    const legendCmds = props.showLegend === true
-      ? (() => {
-          const l = renderLegend(
-            s.map((x) => ({ label: x.label, color: x.color })),
-            { x: 8, y: 8, w: w - 16, h: hgt },
-            { fontSize: theme().fontSize, labelColor: theme().label, swatch: 10, gap: 12, orientation: 'horizontal' },
-            measure,
-          )
-          legendH = l.height
-          return l.cmds
-        })()
-      : []
-
-    const box = { x: 0, y: legendH, w, h: hgt - legendH }
-    const cmds = renderPie(s, box, {
-      innerRadius: props.innerRadius ?? 0,
-      showLabels: props.showLabels ?? true,
-      labelColor: '#ffffff',
-      fontSize: 11,
-    })
-    paint(ctx, [...legendCmds, ...cmds], w, hgt, FONT)
-  }
-
-  effect(() => {
-    readData()
-    theme() // a provider mode flip repaints (draw() bails before reading it until the ref attaches)
-    draw()
-  })
-
-  const handleClick = (ev: MouseEvent): void => {
-    const el = canvas
-    const cb = props.onSelect
-    if (el === null || cb === undefined) return
-    const w = radialWidth(el, props.width, 300)
-    const hgt = props.height ?? 240
-    const box = { x: 0, y: 0, w, h: hgt }
-    const { center, radius } = fitCircle(box)
-    const rect = el.getBoundingClientRect()
-    cb(
-      hitArc(
-        layoutArcs(slices()),
-        center,
-        radius,
-        radius * (props.innerRadius ?? 0),
-        { x: ev.clientX - rect.left, y: ev.clientY - rect.top },
-      ),
-    )
-  }
-
-  const a11y = () => {
-    const s = slices()
-    return {
-      title: props.title,
-      categories: s.map((x) => x.label),
-      series: [{ label: 'Value', values: s.map((x) => x.value), kind: 'pie' }],
-    }
-  }
-
-  const canvasNode = h('canvas', {
-    class: props.class,
-    role: 'img',
-    'aria-label': () => describeChart(a11y()),
-    ref: (el: HTMLCanvasElement | null) => {
-      canvas = el
-      if (el === null) {
-        sizeObserver?.disconnect()
-        sizeObserver = null
-        return
-      }
-      draw()
-      sizeObserver = observeWidth(el, () => radialWidth(el, props.width, 300), draw)
+  const readData = (): T[] => (typeof props.data === 'function' ? (props.data as () => T[])() : props.data)
+  const slices = (palette: string[]): Slice[] =>
+    readData().map((d, i) => ({ value: props.value(d, i), label: props.label(d, i), color: props.color?.(d, i) ?? paletteAt(palette, i) }))
+  return canvasHost<PieGeometry>({
+    props,
+    defaultHeight: 240,
+    caption: 'Pie data',
+    track: () => {
+      readData()
     },
-    onClick: handleClick,
+    layout: (box, _measure, theme) => ({ slices: slices(theme.palette), box }),
+    render: (g, _measure, theme) =>
+      renderPie(g.slices, g.box, { innerRadius: props.innerRadius ?? 0, showLabels: props.showLabels ?? true, labelColor: '#ffffff', fontSize: theme.fontSize }),
+    legend: (g) => g.slices.map((x) => ({ label: x.label, color: x.color })),
+    select: (g, px, py) => {
+      const i = hitAt(g, px, py, props.innerRadius ?? 0)
+      props.onSelect?.(i)
+      props.onSelectIndex?.(i)
+    },
+    tooltip: (g, px, py) => {
+      const i = hitAt(g, px, py, props.innerRadius ?? 0)
+      const s = g.slices[i]
+      if (s === undefined) return null
+      let total = 0.0
+      for (const x of g.slices) total += x.value
+      return [s.label, `${plain(s.value)} (${total > 0 ? Math.round((s.value / total) * 100) : 0}%)`]
+    },
+    a11y: (g) => ({
+      title: props.title,
+      categories: g.slices.map((x) => x.label),
+      series: [{ label: 'Value', values: g.slices.map((x) => x.value), kind: 'pie' }],
+    }),
   })
+}
 
-  if (props.accessibleTable === false) return canvasNode
+interface PieGeometry { slices: Slice[]; box: Rect }
 
-  const table = (): VNode => {
-    const t = chartTable(a11y())
-    return h(
-      'div',
-      {
-        style:
-          'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0;margin:-1px;padding:0',
-      },
-      h(
-        'table',
-        null,
-        h('caption', null, props.title ?? 'Chart data'),
-        h('thead', null, h('tr', null, ...t.headers.map((x) => h('th', { scope: 'col' }, x)))),
-        h(
-          'tbody',
-          null,
-          ...t.rows.map((r) =>
-            h('tr', null, h('th', { scope: 'row' }, r[0] ?? ''), ...r.slice(1).map((c) => h('td', null, c))),
-          ),
-        ),
-      ),
-    )
-  }
-
-  return h('div', { style: 'position:relative' }, canvasNode, () => table())
+function hitAt(g: PieGeometry, px: Double, py: Double, innerRadius: Double): number {
+  const { center, radius } = fitCircle(g.box)
+  return hitArc(layoutArcs(g.slices), center, radius, radius * innerRadius, { x: px, y: py })
 }
 
 export interface GaugeChartProps {

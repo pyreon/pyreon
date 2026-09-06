@@ -143,6 +143,15 @@ public struct RadarOptions: Codable {
   }
 }
 
+public struct RadarHitIndex: Codable {
+  public var series: Int
+  public var axis: Int
+  public init(series: Int, axis: Int) {
+    self.series = series
+    self.axis = axis
+  }
+}
+
 public struct Gutters: Codable {
   public var left: Double
   public var right: Double
@@ -1735,7 +1744,7 @@ private let START = -Double.pi / 2.0
 
 private let RADAR_START = -Double.pi / 2.0
 
-private let defaultTheme: ChartTheme = ChartTheme(palette: DEFAULT_PALETTE, background: "", surface: "#ffffff", text: "#1f2937", label: "#5a6b7a", axis: "#8496a5", grid: "rgba(132,150,165,0.18)", fontFamily: "", fontSize: 11.0, titleSize: 15.0, radius: 0.0, enterMs: 700.0, updateMs: 350.0)
+private let defaultTheme: ChartTheme = ChartTheme(palette: DEFAULT_PALETTE, background: "", surface: "#ffffff", text: "#1f2937", label: "#5a6b7a", axis: "#8496a5", grid: "rgba(132,150,165,0.18)", fontFamily: "", fontSize: 11.0, titleSize: 15.0, radius: 3.0, enterMs: 700.0, updateMs: 350.0)
 
 private let HEAT_RAMP = ["#eff6ff", "#93c5fd", "#3b82f6", "#1e40af"]
 
@@ -2338,6 +2347,32 @@ public func withAlpha(_ color: String, _ alpha: Double) -> String {
     return color
   }
 
+public func hitRadarIndex(_ axes: [RadarAxis], _ series: [RadarSeries], _ box: PyreonChartRect, _ opts: RadarOptions, _ px: Double, _ py: Double, _ tolerance: Double = 8.0) -> RadarHitIndex {
+    let miss = RadarHitIndex(series: -1, axis: -1)
+    let n = axes.count
+    if n < 3 {
+      return miss
+    }
+    let pad = opts.showLabels ? opts.fontSize * 3.0 : 0.0
+    let radius = max(0.0, Double(min(box.w, box.h)) / 2.0 - pad)
+    let center = PyreonChartPt(x: box.x + Double(box.w) / 2.0, y: box.y + Double(box.h) / 2.0)
+    var best = tolerance * tolerance
+    var hit = miss
+    for si in 0..<series.count {
+      let pts = radarPolygon(series[si].values, axes, center, radius)
+      for ai in 0..<pts.count {
+        let dx = pts[ai].x - px
+        let dy = pts[ai].y - py
+        let d = dx * dx + dy * dy
+        if d <= best {
+          best = d
+          hit = RadarHitIndex(series: si, axis: ai)
+        }
+      }
+    }
+    return hit
+  }
+
 public func computeLayout(_ cfg: LayoutConfig, _ measure: (String, Double) -> Double) -> PlotLayout {
     let padTop = 8.0
     let padRight = 12.0
@@ -2603,6 +2638,16 @@ public func layoutScatter(_ xs: [Double], _ ys: [Double], _ plot: PyreonChartRec
     return out
   }
 
+public func themeCorners(_ radius: Double, _ positive: Bool, _ horizontal: Bool) -> [Double]? {
+    if radius <= 0.0 {
+      return nil
+    }
+    if horizontal {
+      return positive ? [0.0, radius, radius, 0.0] : [radius, 0.0, 0.0, radius]
+    }
+    return positive ? [radius, radius, 0.0, 0.0] : [0.0, 0.0, radius, radius]
+  }
+
 public func emphasisLevel(_ spec: ChartSpec, _ index: Int) -> Int {
     let e = (spec.emphasis ?? Emphasis(highlight: -1, selected: []))
     for sel in e.selected {
@@ -2857,10 +2902,11 @@ public func renderChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double
           continue
         }
         let rects = layoutBarsH(s.values, plot, yDomain, 0.25)
-        for r in rects {
+        for ri in 0..<rects.count {
+          let r = rects[ri]
           let grown = growRectH(r)
           if s.symbol == nil {
-            out.append(rectCmd(grown, s.color, s.corners, sGrad))
+            out.append(rectCmd(grown, s.color, (s.corners ?? themeCorners(spec.theme.radius, ((s.values[ri] ?? 0.0)) >= 0.0, true)), sGrad))
           } else {
             if s.symbolRepeat == true {
               let unit = grown.h
@@ -2900,10 +2946,11 @@ public func renderChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double
       }
       if s.kind == "bars" {
         let rects = layoutBars(s.values, plot, sDomain, 0.25)
-        for r in rects {
+        for ri in 0..<rects.count {
+          let r = rects[ri]
           let grown = growRect(r, sDomain)
           if s.symbol == nil {
-            out.append(rectCmd(grown, s.color, s.corners, sGrad))
+            out.append(rectCmd(grown, s.color, (s.corners ?? themeCorners(spec.theme.radius, ((s.values[ri] ?? 0.0)) >= 0.0, false)), sGrad))
           } else {
             if s.symbolRepeat == true {
               let unit = grown.w

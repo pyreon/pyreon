@@ -39,6 +39,8 @@ data class RadarSeries(var values: List<Double>, var color: String, var fillAlph
 
 data class RadarOptions(var rings: Int, var gridColor: String, var labelColor: String, var fontSize: Double, var showLabels: Boolean)
 
+data class RadarHitIndex(var series: Int, var axis: Int)
+
 data class Gutters(var left: Double, var right: Double, var top: Double, var bottom: Double)
 
 data class PlotLayout(var plot: PyreonChartRect, var xTicks: List<Tick>, var yTicks: List<Tick>, var y2Ticks: List<Tick>, var xDomainUsed: Domain)
@@ -253,7 +255,7 @@ private val START = (-kotlin.math.PI).toDouble() / (2.0).toDouble()
 
 private val RADAR_START = (-kotlin.math.PI).toDouble() / (2.0).toDouble()
 
-private val defaultTheme: ChartTheme = ChartTheme(palette = DEFAULT_PALETTE, background = "", surface = "#ffffff", text = "#1f2937", label = "#5a6b7a", axis = "#8496a5", grid = "rgba(132,150,165,0.18)", fontFamily = "", fontSize = 11.0, titleSize = 15.0, radius = 0.0, enterMs = 700.0, updateMs = 350.0)
+private val defaultTheme: ChartTheme = ChartTheme(palette = DEFAULT_PALETTE, background = "", surface = "#ffffff", text = "#1f2937", label = "#5a6b7a", axis = "#8496a5", grid = "rgba(132,150,165,0.18)", fontFamily = "", fontSize = 11.0, titleSize = 15.0, radius = 3.0, enterMs = 700.0, updateMs = 350.0)
 
 private val HEAT_RAMP = listOf("#eff6ff", "#93c5fd", "#3b82f6", "#1e40af")
 
@@ -856,6 +858,32 @@ fun withAlpha(color: String, alpha: Double): String {
     return color
   }
 
+fun hitRadarIndex(axes: List<RadarAxis>, series: List<RadarSeries>, box: PyreonChartRect, opts: RadarOptions, px: Double, py: Double, tolerance: Double = 8.0): RadarHitIndex {
+    val miss = RadarHitIndex(series = -1, axis = -1)
+    val n = axes.length
+    if (n < 3) {
+      return miss
+    }
+    val pad = if (opts.showLabels) opts.fontSize * 3.0 else 0.0
+    val radius = Math.max(0.0, (Math.min(box.w, box.h)).toDouble() / (2.0).toDouble() - pad)
+    val center = PyreonChartPt(x = box.x + (box.w).toDouble() / (2.0).toDouble(), y = box.y + (box.h).toDouble() / (2.0).toDouble())
+    var best = tolerance * tolerance
+    var hit = miss
+    for (si in 0 until series.length) {
+      val pts = radarPolygon(series[si].values, axes, center, radius)
+      for (ai in 0 until pts.length) {
+        val dx = pts[ai].x - px
+        val dy = pts[ai].y - py
+        val d = dx * dx + dy * dy
+        if (d <= best) {
+          best = d
+          hit = RadarHitIndex(series = si, axis = ai)
+        }
+      }
+    }
+    return hit
+  }
+
 fun computeLayout(cfg: LayoutConfig, measure: (String, Double) -> Double): PlotLayout {
     val padTop = 8.0
     val padRight = 12.0
@@ -1121,6 +1149,16 @@ fun layoutScatter(xs: List<Double>, ys: List<Double>, plot: PyreonChartRect, xDo
     return out
   }
 
+fun themeCorners(radius: Double, positive: Boolean, horizontal: Boolean): List<Double>? {
+    if (radius <= 0.0) {
+      return null
+    }
+    if (horizontal) {
+      return if (positive) listOf(0.0, radius, radius, 0.0) else listOf(radius, 0.0, 0.0, radius)
+    }
+    return if (positive) listOf(radius, radius, 0.0, 0.0) else listOf(0.0, 0.0, radius, radius)
+  }
+
 fun emphasisLevel(spec: ChartSpec, index: Int): Int {
     val e = (spec.emphasis ?: Emphasis(highlight = -1, selected = listOf()))
     for (sel in e.selected) {
@@ -1375,10 +1413,11 @@ fun renderChart(spec: ChartSpec, measure: (String, Double) -> Double): List<Pyre
           continue
         }
         val rects = layoutBarsH(s.values, plot, yDomain, 0.25)
-        for (r in rects) {
+        for (ri in 0 until rects.length) {
+          val r = rects[ri]
           val grown = growRectH(r)
           if (s.symbol == null) {
-            out.add(rectCmd(grown, s.color, s.corners, sGrad))
+            out.add(rectCmd(grown, s.color, (s.corners ?: themeCorners(spec.theme.radius, ((s.values[ri] ?: 0.0)) >= 0.0, true)), sGrad))
           } else {
             if (s.symbolRepeat == true) {
               val unit = grown.h
@@ -1418,10 +1457,11 @@ fun renderChart(spec: ChartSpec, measure: (String, Double) -> Double): List<Pyre
       }
       if (s.kind == "bars") {
         val rects = layoutBars(s.values, plot, sDomain, 0.25)
-        for (r in rects) {
+        for (ri in 0 until rects.length) {
+          val r = rects[ri]
           val grown = growRect(r, sDomain)
           if (s.symbol == null) {
-            out.add(rectCmd(grown, s.color, s.corners, sGrad))
+            out.add(rectCmd(grown, s.color, (s.corners ?: themeCorners(spec.theme.radius, ((s.values[ri] ?: 0.0)) >= 0.0, false)), sGrad))
           } else {
             if (s.symbolRepeat == true) {
               val unit = grown.w

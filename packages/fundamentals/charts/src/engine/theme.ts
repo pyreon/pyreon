@@ -32,7 +32,7 @@ export const chartThemes: Readonly<Record<ChartThemeMode, ChartTheme>> = {
     fontFamily: '',
     fontSize: 11.0,
     titleSize: 15.0,
-    radius: 0.0,
+    radius: 3.0,
     enterMs: 700.0,
     updateMs: 350.0,
   },

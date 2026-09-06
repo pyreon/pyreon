@@ -156,3 +156,37 @@ export function withAlpha(color: string, alpha: Double): string {
   }
   return color
 }
+
+/** The polygon point nearest the pointer as `{ series, axis }`, within `tolerance` px; -1/-1 for a miss. */
+export interface RadarHitIndex {
+  series: number
+  axis: number
+}
+
+/**
+ * Hit-test the series polygons' vertices — the same geometry `renderRadar`
+ * draws (same pad, radius and centre), so a tap lands where the eye does.
+ */
+export function hitRadarIndex(axes: RadarAxis[], series: RadarSeries[], box: Rect, opts: RadarOptions, px: Double, py: Double, tolerance: Double = 8.0): RadarHitIndex {
+  const miss: RadarHitIndex = { series: -1, axis: -1 }
+  const n = axes.length
+  if (n < 3) return miss
+  const pad = opts.showLabels ? opts.fontSize * 3.0 : 0.0
+  const radius = Math.max(0.0, Math.min(box.w, box.h) / 2.0 - pad)
+  const center: Pt = { x: box.x + box.w / 2.0, y: box.y + box.h / 2.0 }
+  let best = tolerance * tolerance
+  let hit: RadarHitIndex = miss
+  for (let si = 0; si < series.length; si++) {
+    const pts = radarPolygon(series[si]!.values, axes, center, radius)
+    for (let ai = 0; ai < pts.length; ai++) {
+      const dx = pts[ai]!.x - px
+      const dy = pts[ai]!.y - py
+      const d = dx * dx + dy * dy
+      if (d <= best) {
+        best = d
+        hit = { series: si, axis: ai }
+      }
+    }
+  }
+  return hit
+}

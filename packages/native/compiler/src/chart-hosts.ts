@@ -394,7 +394,7 @@ export const CHART_THEME_DEFAULT = {
   fontFamily: '',
   fontSize: '11.0',
   titleSize: '15.0',
-  radius: '0.0',
+  radius: '3.0',
   enterMs: '700.0',
   updateMs: '350.0',
 } as const
@@ -430,7 +430,7 @@ export const CHART_THEMES: Readonly<Record<'light' | 'dark', Readonly<Record<key
     fontFamily: '',
     fontSize: '11.0',
     titleSize: '15.0',
-    radius: '0.0',
+    radius: '3.0',
     enterMs: '700.0',
     updateMs: '350.0',
   },
@@ -527,6 +527,24 @@ export const CHART_HOST_PALETTE: readonly string[] = CHART_THEME_DEFAULT.palette
 /** The heatmap's default ramp (`HEAT_RAMP`), inlined for the same reason. */
 export const HEAT_RAMP_DEFAULT = ['#eff6ff', '#93c5fd', '#3b82f6', '#1e40af'] as const
 
+/**
+ * The shared canvas host's chrome props (canvas-host.tsx). On native, PlotChart
+ * / Pie / Radar draw the title and legend (the #3265 chrome emit); everything
+ * else — and the tooltip and entrance animation everywhere — is web-only for
+ * now, and MUST warn by name rather than drop silently.
+ */
+export const CHART_CHROME_PROPS: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate']
+const CHROME_LOWERED: Readonly<Record<string, readonly string[]>> = {
+  PlotChart: ['showTitle', 'subtitle', 'showLegend'],
+  PieChart: ['showLegend'],
+  RadarChart: ['showLegend'],
+}
+/** The chrome props `<tag>` does NOT lower — each present one warns. */
+export function chartChromeUnlowered(tag: string): readonly string[] {
+  const lowered = CHROME_LOWERED[tag] ?? []
+  return CHART_CHROME_PROPS.filter((p) => !lowered.includes(p))
+}
+
 /** The hosts with a dedicated emitter each (a fixed frame or a second data prop). */
 export const FRAME_CHART_HOSTS: Readonly<Record<string, true>> = { GaugeChart: true, CandlestickChart: true, HeatmapChart: true, RadarChart: true, PlotChart: true }
 
@@ -571,4 +589,4 @@ export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'strin
  * BY NAME; the chart renders without it. Event props are matched against the
  * parser's lowercased event names, so `onHighlight` is found as `highlight`.
  */
-export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'emphasis']
+export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'emphasis', 'maxPoints']

@@ -211,6 +211,8 @@ const sales = signal<Row[]>([{ month: 'Jan', revenue: 120, target: 100 }])
 - Leaving `format` unset on a money or percentage chart — the default prints the raw number, so a revenue axis reads `3200000`; `currency`, `percent`, `compact` and `fixed` ship in the same subpath and one `format` covers the axis, the tooltip and the spoken description at once
 - Reading a rescaled axis as a data change after a legend toggle — hiding a dominant series RESCALES the domain to the visible ones (that is the point: it is how you read the small series); the accessible table still carries every series
 - Expecting `crosshair` on a `horizontal` chart — the pointer sweeps rows there and a vertical rule would mislead, so it is a documented no-op; the tooltip still works
+- Painting a 100k-point series without `maxPoints` — every point becomes a command on every repaint; `maxPoints={1000}` thins the visible slice with LTTB (marks stay aligned, hits report the GLOBAL row index) and the picture is the same to the eye
+- Reading rounded bars as a style bug — `theme.radius` (3) rounds the corners away from the baseline by default; `theme={{ radius: 0 }}` is square, and a mark's own `borderRadius` always wins
 
 **See also:** `chartToSvg` · `PieChart`
 

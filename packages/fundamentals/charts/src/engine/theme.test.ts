@@ -35,7 +35,7 @@ describe('chartThemes', () => {
     expect(merged.palette).toEqual(['#123456'])
     expect(merged.label).toBe(chartThemes.light.label)
     expect(merged.radius).toBe(6)
-    expect(chartThemes.light.radius).toBe(0)
+    expect(chartThemes.light.radius).toBe(3)
     expect(resolveChartTheme(chartThemes.dark)).toBe(chartThemes.dark)
   })
   it('tooltipStyle reads the surface, text, grid and font tokens', () => {

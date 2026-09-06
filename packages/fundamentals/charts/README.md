@@ -142,6 +142,15 @@ palettes.okabeIto }}>` pins or tracks a mode for everything below it; the
 `palettes` (`pyreon`, `pyreonDark`, `echarts6`, `echarts5`, `echartsDark`,
 `observable10`, `tableau10`, `okabeIto`, `tailwind`) are exported as data.
 
+### Every host, one surface
+
+The seventeen family hosts share one canvas host: `title` / `subtitle` /
+`showTitle`, `showLegend`, `tooltip`, `animate`, `theme`, `onSelect` (the
+family's rich hit) and `onSelectIndex` (the engine's index — what the native
+tap reports) mean the same thing on every one of them. Bars round from
+`theme.radius` (3, away from the baseline; `radius: 0` for square).
+`<PlotChart maxPoints>` thins big series with LTTB while keeping marks aligned.
+
 ### Formatting
 
 ```tsx
