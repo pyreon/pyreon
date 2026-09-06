@@ -7734,7 +7734,7 @@ fn flatten_children<'a>(
                 JSXChild::Text(text) => {
                     let cleaned = clean_jsx_text(text.value.as_str());
                     if !cleaned.is_empty() {
-                        flat.push(FlatChild::Text(cleaned));
+                        push_text(flat, escape_html_text(&cleaned));
                     }
                 }
                 JSXChild::Element(el) => {
@@ -7750,7 +7750,17 @@ fn flatten_children<'a>(
                 }
                 JSXChild::ExpressionContainer(c) => {
                     if let Some(expr) = jsx_expr_as_expression(&c.expression) {
-                        flat.push(FlatChild::Expression(expr));
+                        // Mirrors the JS backend: a LITERAL expression child
+                        // bakes into the template like plain JSX text (see
+                        // jsx.ts `literalChildText` for the rationale + the
+                        // numeric-literal predicate both backends share).
+                        if let Some(lit) = literal_child_text(unwrap_type_layers(expr)) {
+                            if !lit.is_empty() {
+                                push_text(flat, escape_literal_text(&lit));
+                            }
+                        } else {
+                            flat.push(FlatChild::Expression(expr));
+                        }
                     }
                 }
                 JSXChild::Fragment(frag) => {
@@ -7762,6 +7772,70 @@ fn flatten_children<'a>(
     }
     add_children(children, &mut flat, &mut elem_idx, tpl_components);
     flat
+}
+
+/// Append template text (already escaped), merging into a preceding text
+/// entry: the parser produces ONE text node for adjacent texts and later
+/// placeholder refs are child-index walks, so the flat list counts NODES.
+fn push_text(flat: &mut Vec<FlatChild<'_>>, html: String) {
+    if let Some(FlatChild::Text(prev)) = flat.last_mut() {
+        prev.push_str(&html);
+    } else {
+        flat.push(FlatChild::Text(html));
+    }
+}
+
+/// Compile-time text of a LITERAL expression child, or `None`. See jsx.ts
+/// `literalChildText` — the predicate is identical by construction.
+fn literal_child_text(expr: &Expression<'_>) -> Option<String> {
+    match expr {
+        Expression::StringLiteral(s) => Some(s.value.to_string()),
+        Expression::NumericLiteral(n) => n.raw.as_ref().and_then(|r| bakeable_number_raw(r.as_str())),
+        Expression::NullLiteral(_) => Some(String::new()),
+        Expression::BooleanLiteral(_) => Some(String::new()),
+        Expression::Identifier(id) if id.name == "undefined" => Some(String::new()),
+        Expression::TemplateLiteral(t) if t.expressions.is_empty() => t
+            .quasis
+            .first()
+            .and_then(|q| q.value.cooked.as_ref().map(|c| c.to_string())),
+        _ => None,
+    }
+}
+
+fn bakeable_number_raw(raw: &str) -> Option<String> {
+    let (int, frac) = match raw.split_once('.') {
+        Some((i, f)) => (i, Some(f)),
+        None => (raw, None),
+    };
+    let int_ok = int == "0"
+        || (!int.is_empty()
+            && !int.starts_with('0')
+            && int.chars().all(|c| c.is_ascii_digit()));
+    if !int_ok {
+        return None;
+    }
+    if let Some(f) = frac {
+        if f.is_empty() || !f.chars().all(|c| c.is_ascii_digit()) || f.ends_with('0') {
+            return None;
+        }
+    }
+    let digits = int.len() + frac.map_or(0, |f| f.len());
+    if digits <= 15 { Some(raw.to_string()) } else { None }
+}
+
+/// Unconditional twin of `escape_html_text` for a JS string literal, where `&`
+/// is always data.
+fn escape_literal_text(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 fn analyze_children(flat: &[FlatChild]) -> (bool, bool) {
@@ -7984,7 +8058,7 @@ fn process_one_child(
     ctx: &mut Ctx,
 ) -> Option<String> {
     match child {
-        FlatChild::Text(text) => Some(escape_html_text(text)),
+        FlatChild::Text(html) => Some(html.clone()),
         FlatChild::Component(comp) => {
             // The component's own source range is PRESERVED as a hole rather
             // than sliced. Slicing would emit the raw text and silently drop
