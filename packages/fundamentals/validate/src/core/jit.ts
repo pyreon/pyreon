@@ -190,28 +190,64 @@ function inlineCheckCond(op: CheckOpLike, ve: string): string | null {
 
 /**
  * Path state carried through CODEGEN (not runtime): the EFFECTIVE path of the
- * current position is `ctx.path` (the flushed, real portion) + `[dynIdx]` (an
- * enclosing array's loop-index variable, if any) + `suffix` (static object
- * keys accumulated since the last flush). Fully-inline subtrees never touch
+ * current position is `ctx.path` (the flushed, real portion) + `tmpl`, the
+ * PENDING segments accumulated since the last flush — static object keys
+ * interleaved with the loop-index VARIABLES of every enclosing inline array
+ * (`{ dyn }` tokens, outermost first). Fully-inline subtrees never touch
  * `ctx.path` on the VALID path — the dominant per-field cost of the old
  * emission (measured ~23ns on a 4-field object) — and reconstruct the full
- * path only at FAILURE sites via {@link jitEffectivePath}. Array loops and
- * `_runInto` fallbacks FLUSH the pending segments onto the real `ctx.path`
- * first (fallback subtrees + always-called format-check closures read it).
+ * path only at FAILURE sites via {@link jitEffectivePath}, which receives the
+ * loop indices as trailing call arguments (they are all in scope at every
+ * failure site under the loops that own them).
+ *
+ * Only a `_runInto` FALLBACK needs the REAL `ctx.path` to be current (the
+ * interpreter it runs reads it), so only a fallback — or an array whose
+ * element subtree contains one — FLUSHES the pending segments. An array whose
+ * element subtree is pure inline (see {@link isPureInline}) keeps its own index
+ * pending too, so a nested `items[i].tags[j]` failure site reconstructs the
+ * whole path from two trailing indices and the valid path never materializes
+ * `ctx.path` at all. Before this, EVERY inline array flushed (`P =
+ * mutablePath(ctx); P.push("items"); … P.pop()`) on every parse — a helper
+ * call plus two array ops per array level, the main per-array cost left on
+ * the deep bench cells against zod-compiled, whose emit bails to INVALID and
+ * never carries a path at all.
  */
+type PathTok = string | { dyn: string }
 interface PathState {
-  dynIdx: string | null
-  suffix: string[]
+  tmpl: PathTok[]
 }
+
+/**
+ * A failure-site path TEMPLATE: the pending segments with each loop index
+ * replaced by its ordinal among the trailing `dyn` call arguments.
+ */
+type PathTmpl = ReadonlyArray<string | number>
 
 /** Reconstruct the effective path at a FAILURE site (see {@link PathState}). */
 export function jitEffectivePath(
   c: ParseCtx,
-  suffix: ReadonlyArray<string>,
-  idx?: number,
+  tmpl: PathTmpl,
+  dyn: ReadonlyArray<number>,
 ): ReadonlyArray<PathSegment> {
-  if (idx === undefined && suffix.length === 0) return c.path
-  return idx === undefined ? [...c.path, ...suffix] : [...c.path, idx, ...suffix]
+  if (tmpl.length === 0) return c.path
+  const out: PathSegment[] = [...c.path]
+  for (let i = 0; i < tmpl.length; i++) {
+    const t = tmpl[i]!
+    out.push(typeof t === 'number' ? dyn[t]! : t)
+  }
+  return out
+}
+
+/** Codegen-side view of a {@link PathState}: the template + the index args. */
+function tmplOf(ps: PathState): PathTmpl {
+  let k = 0
+  return ps.tmpl.map((t) => (typeof t === 'string' ? t : k++))
+}
+/** The trailing `, i, j` call-argument text for a failure-site reporter. */
+function dynArgs(ps: PathState): string {
+  let out = ''
+  for (const t of ps.tmpl) if (typeof t !== 'string') out += `, ${t.dyn}`
+  return out
 }
 
 type CheckFn = (v: unknown, ctx: ParseCtx) => void
@@ -251,21 +287,17 @@ export interface JitValidator extends SyncValidator {
  * when there is nothing pending — the root-scalar hot path is byte-identical
  * to the pre-elision emission.
  */
-function wrapCheckWithPath(fn: CheckFn, suffix: ReadonlyArray<string>, hasDynIdx: boolean): CheckFn {
-  if (suffix.length === 0 && !hasDynIdx) return fn
-  return (v: unknown, c: ParseCtx, idx?: number) => {
+function wrapCheckWithPath(fn: CheckFn, tmpl: PathTmpl): CheckFn {
+  if (tmpl.length === 0) return fn
+  return (v: unknown, c: ParseCtx, ...dyn: number[]) => {
     // Materialize a writable path — `c.path` may be the shared EMPTY_PATH
     // sentinel (a valid parse never pushes). This wrapper is invoked only on
     // a format-check FAILURE (the JIT gates it behind the `_pred` predicate),
     // so the swap is a cold-path cost, never on the valid path.
     const p = mutablePath(c)
     let n = 0
-    if (idx !== undefined) {
-      p.push(idx)
-      n++
-    }
-    for (const seg of suffix) {
-      p.push(seg)
+    for (const t of tmpl) {
+      p.push(typeof t === 'number' ? dyn[t]! : t)
       n++
     }
     try {
@@ -513,11 +545,11 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
     const strictReport = (
       shape: Record<string, FieldLike>,
       srcVar: string,
-      sfx: ReadonlyArray<string>,
-      dynIdx: string | null,
+      ps: PathState,
     ): string => {
+      const sfx = tmplOf(ps)
       const setRef = cap(new Set(Object.keys(shape)))
-      const report = cap((c: ParseCtx, key: string, idx?: number) => {
+      const report = cap((c: ParseCtx, key: string, ...idx: number[]) => {
         c.issues.push(
           makeIssue({
             code: 'unrecognized_keys',
@@ -532,7 +564,7 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
       const ksv = nv()
       const iv = nv()
       const kv = nv()
-      const idxArg = dynIdx ? `, ${dynIdx}` : ''
+      const idxArg = dynArgs(ps)
       const shapeKeys = Object.keys(shape)
       // Parse mode must name each offending key, so it cannot reduce to a
       // count the way verdict mode does — but it can GUARD on one. When every
@@ -548,7 +580,7 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
     }
 
     const genChecks = (ops: CheckOpLike[], ve: string, ps: PathState): string => {
-      const idxArg = ps.dynIdx ? `, ${ps.dynIdx}` : ''
+      const idxArg = dynArgs(ps)
       return ops
         .map((op) => {
           // Check closures read `ctx.path` when they push an issue — under
@@ -568,7 +600,7 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
             if (!c) throw new CheckUnsupported()
             return `if (${c}) return false;`
           }
-          const call = `${cap(wrapCheckWithPath(op._checkFn!, ps.suffix, ps.dynIdx !== null))}(${ve}, ctx${idxArg});`
+          const call = `${cap(wrapCheckWithPath(op._checkFn!, tmplOf(ps)))}(${ve}, ctx${idxArg});`
           // Failure condition — inline ONLY cheap literal conditions (length /
           // numeric compares) so the valid path pays no closure CALL. A format
           // check (email/url/uuid/regex/…) exposes a pure `_pred` predicate:
@@ -613,9 +645,8 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
       // there is no ctx to materialize one from.
       if (CHECK) return { pre: '', post: '' }
       const pushes: string[] = []
-      if (ps.dynIdx) pushes.push(`P.push(${ps.dynIdx});`)
-      for (const seg of ps.suffix) pushes.push(`P.push(${JSON.stringify(seg)});`)
-      const n = (ps.dynIdx ? 1 : 0) + ps.suffix.length
+      for (const t of ps.tmpl) pushes.push(`P.push(${typeof t === 'string' ? JSON.stringify(t) : t.dyn});`)
+      const n = ps.tmpl.length
       if (n === 0) return { pre: '', post: '' }
       if (mutRef === null) mutRef = cap(mutablePath)
       return { pre: `P = ${mutRef}(ctx); ${pushes.join(' ')}`, post: Array(n).fill('P.pop();').join(' ') }
@@ -648,6 +679,44 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
     // closure (still correct, just not inlined). The `try/catch` around
     // codegen is the backstop; this keeps the emitted function reasonable.
     const MAX_DEPTH = 24
+    /**
+     * Whether `genValue(field, …, depth, …)` would emit a subtree with NO
+     * `_runInto` fallback anywhere inside it — i.e. every node inlines: an inline
+     * primitive, a plain object whose fields are all pure, an inline array whose
+     * element is pure, or a discriminated union whose members are all pure, each
+     * within {@link MAX_DEPTH}. Mirrors the dispatch order of `genValue` (and the
+     * DU arm's per-member rule) EXACTLY, because the two must agree: a subtree
+     * this says is pure but the emitter falls back on would report a fallback's
+     * issues against an unflushed path. Locked by the JIT↔interpreter differential
+     * fuzz (issue paths compared).
+     *
+     * Two consumers: an inline ARRAY skips flushing `ctx.path` around a pure
+     * element loop (see {@link PathState}), and an object literal may absorb a
+     * pure composite field (see `genObjectValue`).
+     */
+    const isPureInline = (field: FieldLike, depth: number, checkMode = CHECK): boolean => {
+      if (isInlinePrimitive(field)) return true
+      if (depth > MAX_DEPTH) return false
+      if (isPlainObject(field, checkMode)) {
+        const shape = field.shape as Record<string, FieldLike>
+        for (const k of Object.keys(shape)) if (!isPureInline(shape[k]!, depth + 1, checkMode)) return false
+        return true
+      }
+      if (isInlineArray(field) && field.element) return isPureInline(field.element, depth + 1, checkMode)
+      if (isInlineDU(field)) {
+        for (const m of field._duTagMap!.values()) {
+          const member = m as FieldLike
+          const inlineMember = depth + 1 <= MAX_DEPTH && isPlainObject(member, checkMode)
+          if (inlineMember) {
+            const shape = member.shape as Record<string, FieldLike>
+            for (const k of Object.keys(shape)) if (!isPureInline(shape[k]!, depth + 2, checkMode)) return false
+          } else if (!isPureInline(member, depth + 1, checkMode)) return false
+        }
+        return true
+      }
+      return false
+    }
+
 
     // Validate `srcVar`; on success emit `onValid(resultExpr)`. The caller
     // has already pushed any path segment. Recurses for object/array.
@@ -661,8 +730,8 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
       // Failure-site issue makers reconstruct the effective path from the
       // captured static suffix + the (runtime) enclosing array index — the
       // VALID path never touches `ctx.path` for inline subtrees.
-      const sfx = ps.suffix
-      const idxArg = ps.dynIdx ? `, ${ps.dynIdx}` : ''
+      const sfx = tmplOf(ps)
+      const idxArg = dynArgs(ps)
       if (isInlinePrimitive(field)) {
         const kind = field._kind as PrimKind
         const litRef = kind === 'literal' ? cap(field.value) : ''
@@ -678,7 +747,7 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
         // <value>" — NOT the generic typeIssue ("Expected literal, …").
         const ti =
           kind === 'literal'
-            ? cap((val: unknown, c: ParseCtx, idx?: number) => {
+            ? cap((val: unknown, c: ParseCtx, ...idx: number[]) => {
                 const lit = field.value
                 c.issues.push(
                   makeIssue({
@@ -691,7 +760,7 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
                   }),
                 )
               })
-            : cap((val: unknown, c: ParseCtx, idx?: number) => {
+            : cap((val: unknown, c: ParseCtx, ...idx: number[]) => {
                 c.issues.push(typeIssue(kind, val, jitEffectivePath(c, sfx, idx)))
               })
         const checks = genChecks(fieldCheckOps(field), srcVar, ps)
@@ -701,7 +770,7 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
       if (depth <= MAX_DEPTH && isPlainObject(field, CHECK)) {
         const objFail = CHECK
           ? 'return false;'
-          : `${cap((val: unknown, c: ParseCtx, idx?: number) => {
+          : `${cap((val: unknown, c: ParseCtx, ...idx: number[]) => {
               c.issues.push(typeIssue('object', val, jitEffectivePath(c, sfx, idx)))
             })}(${srcVar}, ctx${idxArg});`
         lines.push(`if (typeof ${srcVar} !== "object" || ${srcVar} === null || Array.isArray(${srcVar})) { ${objFail} } else {`)
@@ -717,7 +786,7 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
           ps,
           undefined,
           !CHECK && field._unknownKeys === 'strict'
-            ? strictReport(field.shape as Record<string, FieldLike>, srcVar, ps.suffix, ps.dynIdx)
+            ? strictReport(field.shape as Record<string, FieldLike>, srcVar, ps)
             : undefined,
         )
         lines.push(`}`)
@@ -731,7 +800,7 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
         if (!CHECK) usesAsyncMachinery = true
         const arrFail = CHECK
           ? 'return false;'
-          : `${cap((val: unknown, c: ParseCtx, idx?: number) => {
+          : `${cap((val: unknown, c: ParseCtx, ...idx: number[]) => {
               c.issues.push(typeIssue('array', val, jitEffectivePath(c, sfx, idx)))
             })}(${srcVar}, ctx${idxArg});`
         const arrV = nv()
@@ -739,17 +808,22 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
         const eV = nv()
         const beforeV = nv()
         const a0V = nv()
-        // Elements need a REAL current path (their own dynamic index rides on
-        // `ps.dynIdx`; fallback elements + format checks read `ctx.path`) —
-        // flush this array's pending segments around the whole element block.
-        const { pre, post } = flushPath(ps)
-        const elemPs: PathState = { dynIdx: iV, suffix: [] }
+        // Elements whose subtree is PURE INLINE never read the real `ctx.path`:
+        // every failure site under them reconstructs its path from the pending
+        // template, so this array keeps its index PENDING too (`{ dyn: iV }`)
+        // and the valid path materializes nothing. A subtree that can reach a
+        // `_runInto` fallback needs the real path current — flush the pending
+        // segments around the whole element block, exactly as before.
+        const pureElems = isPureInline(field.element, depth + 1)
+        const { pre, post } = pureElems ? { pre: '', post: '' } : flushPath(ps)
+        const elemPs: PathState = pureElems ? { tmpl: [...ps.tmpl, { dyn: iV }] } : { tmpl: [{ dyn: iV }] }
         // The array's own checks run INSIDE the flushed block (sync case) or
         // at settlement (deferred case) — in BOTH they read the live
         // `ctx.path` unwrapped: flushed = correct full path; deferred = the
         // unwound path, which is EXACTLY what the interpreter's post-await
-        // `runPostType` checks observe (parity over prettiness).
-        const arrChecks = genChecks(fieldCheckOps(field), srcVar, { dynIdx: null, suffix: [] })
+        // `runPostType` checks observe (parity over prettiness). With nothing
+        // flushed they carry the array's own pending template instead.
+        const arrChecks = genChecks(fieldCheckOps(field), srcVar, pureElems ? ps : { tmpl: [] })
         lines.push(`if (!Array.isArray(${srcVar})) { ${arrFail} } else {`)
         if (pre) lines.push(pre)
         // Verdict mode builds no element array and reads no ctx issue count:
@@ -814,7 +888,7 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
         // Issue makers captured for byte-parity with the interpreter
         // (DiscriminatedUnionSchema._compileType) — same codes/keys/params/
         // paths, reconstructed from the elided suffix at the failure site.
-        const notObj = cap((_val: unknown, c: ParseCtx, idx?: number) => {
+        const notObj = cap((_val: unknown, c: ParseCtx, ...idx: number[]) => {
           c.issues.push(
             makeIssue({
               code: 'invalid_type',
@@ -825,7 +899,7 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
             }),
           )
         })
-        const badTag = cap((tag: unknown, c: ParseCtx, idx?: number) => {
+        const badTag = cap((tag: unknown, c: ParseCtx, ...idx: number[]) => {
           c.issues.push(
             makeIssue({
               code: 'invalid_union_discriminator',
@@ -937,7 +1011,7 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
               ps,
               preset,
               !CHECK && member._unknownKeys === 'strict'
-                ? strictReport(member.shape as Record<string, FieldLike>, srcVar, ps.suffix, ps.dynIdx)
+                ? strictReport(member.shape as Record<string, FieldLike>, srcVar, ps)
                 : undefined,
             )
           } else {
@@ -1028,8 +1102,15 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
         const f = shape[key]!
         // inline primitive whose valid value can never be `undefined` — the
         // strip-guard is then provably a no-op and the unconditional literal
-        // inclusion is byte-identical on the OK path
-        return isInlinePrimitive(f) && fieldDefinedWhenValid(f)
+        // inclusion is byte-identical on the OK path. A PURE-INLINE object or
+        // array field qualifies too: it is a freshly built `{}`/`[]` (defined
+        // when valid), it can never defer (no fallback → no `onAsync` patch
+        // that would need the output object to exist first), and its value
+        // lands in a hoisted temp the literal reads. This is what lets an API
+        // payload `{ page, items: [...] }` allocate its final shape in ONE
+        // literal instead of `{}` + per-key transitions.
+        if (isInlinePrimitive(f)) return fieldDefinedWhenValid(f)
+        return (isPlainObject(f, CHECK) || isInlineArray(f)) && isPureInline(f, depth)
       })
       if (literalOk) {
         const parts: string[] = []
@@ -1043,9 +1124,19 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
           const field = shape[key]!
           const vV = nv()
           lines.push(`let ${vV} = ${srcVar}[${kl}];`)
-          // guard + checks only — the value lands in the literal below
-          genValue(field, vV, () => '', onAsync, depth, { dynIdx: ps.dynIdx, suffix: [...ps.suffix, key] })
-          parts.push(`${litKey}: ${vV}`)
+          const fieldPs: PathState = { tmpl: [...ps.tmpl, key] }
+          if (isInlinePrimitive(field)) {
+            // guard + checks only — the value lands in the literal below
+            genValue(field, vV, () => '', onAsync, depth, fieldPs)
+            parts.push(`${litKey}: ${vV}`)
+            continue
+          }
+          // composite: built inside its own guarded block, captured into a
+          // hoisted temp the literal reads (verdict mode builds no value)
+          const rV = nv()
+          if (!CHECK) lines.push(`let ${rV};`)
+          genValue(field, vV, CHECK ? () => '' : (r) => `${rV} = ${r};`, onAsync, depth, fieldPs)
+          parts.push(`${litKey}: ${rV}`)
         }
         // Bind to a temp and hand the VAR to `onValid` — several onValid
         // shapes interpolate their argument more than once (the guarded
@@ -1093,7 +1184,7 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
         const vV = nv()
         // NO `P.push(key)` — the key rides on the codegen-time suffix; only
         // failure sites / flush points materialize it (the path-elision win).
-        const fieldPs: PathState = { dynIdx: ps.dynIdx, suffix: [...ps.suffix, key] }
+        const fieldPs: PathState = { tmpl: [...ps.tmpl, key] }
         lines.push(`let ${vV} = ${srcVar}[${kl}];`)
         // The assignment guard `if (r !== undefined || (k in src))` decides
         // whether strip-mode copies the key. It is REDUNDANT when the value
@@ -1150,10 +1241,10 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
       // is `false` deliberately: if a future arm ever DID fall through, a
       // validator should reject rather than accept. Fail-closed costs
       // nothing while the line stays dead.
-      genValue(root, 'input', () => 'return true;', () => '', 0, { dynIdx: null, suffix: [] })
+      genValue(root, 'input', () => 'return true;', () => '', 0, { tmpl: [] })
       lines.push('return false;')
     } else {
-      genValue(root, 'input', BARRIER, (p) => `return ${p};`, 0, { dynIdx: null, suffix: [] })
+      genValue(root, 'input', BARRIER, (p) => `return ${p};`, 0, { tmpl: [] })
       lines.push(BARRIER('input'))
     }
 
