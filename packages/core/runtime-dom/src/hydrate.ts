@@ -388,7 +388,33 @@ function adoptReactiveRange(
     hydrated = true
     // `rangeFirst` may itself be a comment the walk should skip.
     const cursor = rangeFirst.nodeType === 1 ? rangeFirst : firstReal(rangeFirst)
-    const disposeBindings = hydrateChild(value, cursor, p, a, `${path} > reactive`)[0]
+    // Snapshot the server range BEFORE the walk. `hydrateChild` recovers a
+    // divergence by mounting the client's render FRESH before the anchor and
+    // returns the cursor it stopped at, so afterwards the range holds THREE
+    // kinds of node: adopted (identity kept), freshly mounted (not in the
+    // snapshot), and server nodes nothing claimed. The third kind used to stay
+    // until this accessor's next run — visible, countable, and carrying no
+    // handler. A list whose client first render is a loading placeholder
+    // (server cache warm, client cache cold) kept its dead rows on screen with
+    // dead delete buttons for the whole fetch; a test that clicked one after the
+    // hydration barrier saw nothing happen. Server DOM the client did not claim
+    // must go NOW, not on the first flip.
+    // `mountReactive` has already inserted its own anchor `a` immediately
+    // before `end`, INSIDE this range — stop at it, or the sweep detaches the
+    // boundary and the accessor can never render again.
+    const stale: ChildNode[] = []
+    for (let n: ChildNode | null = rangeFirst; n && n !== a && n !== end; n = n.nextSibling) stale.push(n)
+    const [disposeBindings, nextCursor] = hydrateChild(value, cursor, p, a, `${path} > reactive`)
+    // Everything the walk consumed sits before the cursor it returned; a
+    // snapshotted node at or after that cursor is unclaimed. Walk from the
+    // STABLE start marker, not from the cursor the walk began at: a nested
+    // accessor's hydration removes its own `$` markers as it adopts, so the
+    // starting cursor may already be detached (its `nextSibling` is null and
+    // a walk from it claims nothing — the first cut swept every adopted node
+    // after a nested range). Freshly mounted nodes are never in the snapshot.
+    const claimed = new Set<ChildNode>()
+    for (let n = startMarker.nextSibling; n && n !== nextCursor && n !== a; n = n.nextSibling) claimed.add(n)
+    for (const n of stale) if (!claimed.has(n)) n.remove()
     // CONTRACT BRIDGE. `hydrateChild`'s cleanups DISPOSE bindings; they do not
     // remove the nodes, because hydrateRoot tears the whole container down.
     // `mountReactive` needs the opposite: its per-run cleanup is what clears the

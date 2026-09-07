@@ -76,9 +76,6 @@ const taskFeature = defineFeature({
   fetcher: mockFetch,
 })
 
-const queryClient = new QueryClient({
-  defaultOptions: { queries: { staleTime: 1000 } },
-})
 
 function FeatureContent() {
   // useList — paginated/filtered list query. Returns UseQueryResult<Task[]>.
@@ -262,6 +259,14 @@ function FeatureContent() {
 }
 
 export function FeatureDemo() {
+  // Per MOUNT, not module-level: a module-level client stays warm across SSR
+  // requests, so the server renders the rows a cold browser cache cannot
+  // reproduce on its first render — a hydration mismatch on every load after
+  // the first (the useDelete e2e flake). Created here, SSR and the client
+  // both start cold and agree.
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { staleTime: 1000 } },
+  })
   return (
     <QueryClientProvider client={queryClient}>
       <FeatureContent />
