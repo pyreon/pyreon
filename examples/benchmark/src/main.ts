@@ -258,7 +258,7 @@ if (__url.searchParams.get('profileClear') === '1') {
   void (async () => {
     const { setupDisposeProfile } = await import('./impl/profile-dispose')
     const hosts: Record<string, HTMLElement> = {}
-    for (const arm of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K']) hosts[arm] = makeContainer()
+    for (const arm of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L']) hosts[arm] = makeContainer()
     setupDisposeProfile(hosts)
     setStatus('profileDispose ready')
   })()

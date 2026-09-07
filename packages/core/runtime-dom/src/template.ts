@@ -2,7 +2,7 @@ import type { NativeItem, VNodeChild } from '@pyreon/core'
 import { _rdNodeId, getContextOwner, renderEffect } from '@pyreon/reactivity'
 import { SizedMap } from '@pyreon/sized-map'
 import { _tagTextBinding } from './binding-registry'
-import { bindPolymorphicText, createPolyTextCore, mountChild, SVG_TAGS, type PolyTextCore } from './mount'
+import { bindPolymorphicText, createPolyTextCore, mountChild, mountChildAsUnit, SVG_TAGS, type PolyTextCore } from './mount'
 import { _bindEvent } from './props'
 
 // Dev-mode gates in this file use the bare bundler-agnostic
@@ -668,7 +668,9 @@ export function _mountChild(
       return cleanup
     }
   }
-  return mountChild(child, parent, anchor)
+  // An absorbed component child appended into the clone — its DOM leaves with
+  // the clone, so it needs effect-only cleanups (see `mountChildAsUnit`).
+  return typeof child === 'function' ? mountChild(child, parent, anchor) : mountChildAsUnit(child, parent, anchor)
 }
 
 /**
@@ -1431,7 +1433,12 @@ export function _mountSlot(
     parent.removeChild(placeholder)
     return SLOT_NOOP
   }
-  const cleanup = mountChild(children, parent, placeholder)
+  // A static value is part of the clone and leaves with it (`mountChildAsUnit`);
+  // an accessor is a reactive boundary that must own its range's removers.
+  const cleanup =
+    typeof children === 'function'
+      ? mountChild(children, parent, placeholder)
+      : mountChildAsUnit(children, parent, placeholder)
   parent.removeChild(placeholder)
   return cleanup
 }

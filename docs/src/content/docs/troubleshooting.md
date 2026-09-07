@@ -18,7 +18,7 @@ Common mistakes and anti-patterns across Pyreon, grouped by area, each with its 
 - **[SSG / e2e Test-Server Mistakes](/docs/troubleshooting/ssg)** — 16 entries
 - **[Bundling Mistakes](/docs/troubleshooting/bundling)** — 4 entries
 - **[Testing Mistakes](/docs/troubleshooting/testing)** — 22 entries
-- **[Lifecycle & Cleanup Mistakes](/docs/troubleshooting/lifecycle)** — 32 entries
+- **[Lifecycle & Cleanup Mistakes](/docs/troubleshooting/lifecycle)** — 33 entries
 - **[Build Pipeline Mistakes](/docs/troubleshooting/build)** — 48 entries
 - **[CI / Build Gate Mistakes](/docs/troubleshooting/ci)** — 20 entries
 - **[Best-Practice Mistakes (opt-in `@pyreon/lint` rules)](/docs/troubleshooting/best-practices)** — 10 entries

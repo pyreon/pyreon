@@ -32,7 +32,7 @@ const INTERVAL_US = 10
 // then refuses to report — both are needed (see bench-clearprofile.ts).
 const PORT = process.env.DP_PORT ?? '4187'
 
-const ARMS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'] as const
+const ARMS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'] as const
 const ARM_LABEL: Record<string, string> = {
   A: 'A_full      component + effect() + reactive text bind  ← benched shape',
   B: 'B_noEffect  component +            reactive text bind',
@@ -45,6 +45,7 @@ const ARM_LABEL: Record<string, string> = {
   I: 'I_directFull = arm A, but the `value` prop IS THE SIGNAL (not a wrapper)',
   J: 'J_rpdFull   = arm A, idiomatic compiled shape: _rpd(sig) + _bindProp (direct tier)',
   K: 'K_rpFull    = arm J with the pre-lever _rp(() => sig()) wrap (control)',
+  L: 'L_board     = the scenario board\'s exact shape: rows carry the SIGNAL, mounted via the compiled PyreonFxList',
 }
 
 const preview = spawn('bunx', ['vite', 'preview', '--port', PORT, '--strictPort'], {
@@ -254,7 +255,7 @@ try {
   )
 
   // ── Per-arm self-time, for the arms that carry the loss.
-  for (const a of ['A', 'G'] as const) {
+  for (const a of ['A', 'G', 'L'] as const) {
     const { total, byFn } = subtree(`__dispose${a}`)
     console.log(`\n=== arm ${a} — ${total} samples, top 18 self-time ===`)
     for (const [key, hits] of [...byFn.entries()].sort((x, y) => y[1] - x[1]).slice(0, 18)) {
