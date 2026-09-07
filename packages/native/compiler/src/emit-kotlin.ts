@@ -10211,17 +10211,35 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     )
   }
   const extraCmds = `${navigating ? ' + pyreonNavigator.cmds' : ''}${presets === undefined ? '' : ' + pyreonPresetStrip.cmds'}`
-  const cmds = `${chrome.wrap(`renderChart(pyreonSpec, ::pyreonChartMeasure)${brushing ? ' + pyreonBrushCmds' : ''}`)}${extraCmds}`
+  // `tooltip` as a tap — mirror of the Swift emitter (a named `tooltipFormatter` lowers; an inline one is reported).
+  const tooltip = readStaticAttrKotlin(e, 'tooltip') === true
+  const tipFormatter = chartAttrExprKotlin(e, 'tooltipFormatter')
+  let tipLines = `tooltipLines(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label = it.label, values = it.values, color = it.color) })${yFormat === undefined ? '' : `, ${yFormat}`})`
+  if (tooltip && tipFormatter !== undefined) {
+    if (tipFormatter.kind === 'identifier') tipLines = `${kotlinIdent(tipFormatter.name)}(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label = it.label, values = it.values, color = it.color) })).split("\\n")`
+    else _emitWarnings.push('<PlotChart tooltipFormatter>: must be a NAMED function on native — an inline arrow is not lowered; the default lines apply.')
+  }
+  if (tooltip) {
+    lets.push('var pyreonTip by remember { mutableStateOf(listOf<String>()) }')
+    lets.push('var pyreonTipAt by remember { mutableStateOf(PyreonChartPt(0.0, 0.0)) }')
+  }
+  const tipCmds = tooltip ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${KOTLIN_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${KOTLIN_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, ::pyreonChartMeasure)` : ''
+  const cmds = `${chrome.wrap(`renderChart(pyreonSpec, ::pyreonChartMeasure)${brushing ? ' + pyreonBrushCmds' : ''}`)}${extraCmds}${tipCmds}`
+  const localHit = (x: string, y: string): string => `plotHitBars(pyreonSpec, ::pyreonChartMeasure, ${x}, ${chrome.top === '0.0' ? y : `${y} - pyreonTop`})`
   const hit = (x: string, y: string): string => {
-    const local = `plotHitBars(pyreonSpec, ::pyreonChartMeasure, ${x}, ${chrome.top === '0.0' ? y : `${y} - pyreonTop`})`
+    if (tooltip) return windowed ? '(if (pyreonLocal < 0) -1 else pyreonLocal + pyreonRange.from)' : 'pyreonLocal'
+    const local = localHit(x, y)
     return windowed ? `run { val pyreonHit = ${local}; if (pyreonHit < 0) -1 else pyreonHit + pyreonRange.from }` : local
   }
   const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
   const tapX = '(pyreonTap.x / pyreonDensity).toDouble()'
   const tapYExpr = '(pyreonTap.y / pyreonDensity).toDouble()'
   let tap = ''
-  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging || brushing) {
-    const select = onSel?.kind === 'event' ? kotlinChartSelectBody(onSel.handler, hit(tapX, tapYExpr), indent) : ''
+  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging || brushing || tooltip) {
+    const selectOnly = onSel?.kind === 'event' ? kotlinChartSelectBody(onSel.handler, hit(tapX, tapYExpr), indent) : ''
+    const select = tooltip
+      ? `val pyreonLocal = ${localHit(tapX, tapYExpr)}; pyreonTip = if (pyreonLocal < 0) listOf() else ${tipLines}; pyreonTipAt = PyreonChartPt(${tapX}, ${tapYExpr})${selectOnly === '' ? '' : `; ${selectOnly}`}`
+      : selectOnly
     const decls: string[] = []
     const branches: string[] = []
     if (legend.paging) {

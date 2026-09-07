@@ -12147,16 +12147,41 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     )
   }
   const extraCmds = `${navigating ? ' + pyreonNavigator.cmds' : ''}${presets === undefined ? '' : ' + pyreonPresetStrip.cmds'}`
-  const canvas = `PyreonChartCanvas(cmds: ${chrome.wrap(`renderChart(pyreonSpec, pyreonChartMeasure)${brushing ? ' + pyreonBrushCmds' : ''}`)}${extraCmds})`
+  // `tooltip` — the web's pointer tooltip is a TAP here (the family hosts'
+  // shape): the same tap that selects reads the crossing `tooltipAt` /
+  // `tooltipLines` over the sliced series and categories with the LOCAL hit,
+  // and a tap on nothing clears the box. A named `tooltipFormatter` lowers
+  // (its lines are the string it returns, split on newlines); an inline one
+  // cannot be a function reference and is reported.
+  const tooltip = readStaticAttr(e, 'tooltip') === true
+  const tipFormatter = chartAttrExpr(e, 'tooltipFormatter')
+  let tipLines = `tooltipLines(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label: $0.label, values: $0.values, color: $0.color) })${yFormat === undefined ? '' : `, ${yFormat}`})`
+  if (tooltip && tipFormatter !== undefined) {
+    if (tipFormatter.kind === 'identifier') tipLines = `${swiftIdent(tipFormatter.name)}(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label: $0.label, values: $0.values, color: $0.color) })).components(separatedBy: "\\n")`
+    else _emitWarnings.push('<PlotChart tooltipFormatter>: must be a NAMED function on native — an inline arrow is not lowered; the default lines apply.')
+  }
+  if (tooltip) {
+    _hostStateDecls.push('@State private var pyreonTip: [String] = []')
+    _hostStateDecls.push('@State private var pyreonTipAt: PyreonChartPt = PyreonChartPt(x: 0.0, y: 0.0)')
+  }
+  const tipCmds = tooltip ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, pyreonChartMeasure)` : ''
+  const canvas = `PyreonChartCanvas(cmds: ${chrome.wrap(`renderChart(pyreonSpec, pyreonChartMeasure)${brushing ? ' + pyreonBrushCmds' : ''}`)}${extraCmds}${tipCmds})`
   const tapY = chrome.top === '0.0' ? 'Double(pyreonTap.location.y)' : 'Double(pyreonTap.location.y) - pyreonTop'
+  const localHit = `plotHitBars(pyreonSpec, pyreonChartMeasure, Double(pyreonTap.location.x), ${tapY})`
   // Under a window the hit is LOCAL to the slice; the callback speaks GLOBAL indices, as on the web.
-  const hit = windowed
-    ? `{ () -> Int in let pyreonHit = plotHitBars(pyreonSpec, pyreonChartMeasure, Double(pyreonTap.location.x), ${tapY}); return pyreonHit < 0 ? -1 : pyreonHit + pyreonRange.from }()`
-    : `plotHitBars(pyreonSpec, pyreonChartMeasure, Double(pyreonTap.location.x), ${tapY})`
+  // With a tooltip the local hit is bound once (`pyreonLocal`) and both read it; without one the emit is as before.
+  const hit = tooltip
+    ? windowed ? '(pyreonLocal < 0 ? -1 : pyreonLocal + pyreonRange.from)' : 'pyreonLocal'
+    : windowed
+      ? `{ () -> Int in let pyreonHit = ${localHit}; return pyreonHit < 0 ? -1 : pyreonHit + pyreonRange.from }()`
+      : localHit
   const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
   let gesture = ''
-  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging || brushing) {
-    const select = onSel?.kind === 'event' ? swiftChartSelectBody(onSel.handler, hit, indent) : ''
+  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging || brushing || tooltip) {
+    const selectOnly = onSel?.kind === 'event' ? swiftChartSelectBody(onSel.handler, hit, indent) : ''
+    const select = tooltip
+      ? `let pyreonLocal = ${localHit}; pyreonTip = pyreonLocal < 0 ? [] : ${tipLines}; pyreonTipAt = PyreonChartPt(x: Double(pyreonTap.location.x), y: Double(pyreonTap.location.y))${selectOnly === '' ? '' : `; ${selectOnly}`}`
+      : selectOnly
     // One tap, several surfaces, in canvas coordinates: the legend pager, a
     // legend entry, a preset button, a committed brush (a plain tap clears it),
     // then the plot. First hit wins — the web's order.

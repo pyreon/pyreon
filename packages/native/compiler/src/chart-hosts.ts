@@ -883,7 +883,7 @@ export const HEAT_RAMP_DEFAULT = ['#eff6ff', '#93c5fd', '#3b82f6', '#1e40af'] as
  */
 export const CHART_CHROME_PROPS: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate']
 const CHROME_LOWERED: Readonly<Record<string, readonly string[]>> = {
-  PlotChart: ['showTitle', 'subtitle', 'showLegend', 'animate'],
+  PlotChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate'],
   HeatmapChart: ['animate'],
   RadarChart: ['showLegend'],
 }
@@ -974,4 +974,4 @@ export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'strin
  * BY NAME; the chart renders without it. Event props are matched against the
  * parser's lowercased event names, so `onHighlight` is found as `highlight`.
  */
-export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'emphasis', 'maxPoints']
+export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'emphasis', 'maxPoints', 'crosshair']
