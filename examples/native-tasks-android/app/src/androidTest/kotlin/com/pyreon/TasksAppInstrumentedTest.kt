@@ -674,9 +674,12 @@ class TasksAppInstrumentedTest {
         // shared-source page; the funnel repaints from a signal (tap reads
         // 'Leads', drop the stage, the same tap reads 'Qualified'); the gauge
         // reads a signal a button moves (40 → 65).
+        // The tasks page is a <For> list (a LazyColumn) with no <Scroll> around
+        // it, so there is no scrollable ancestor for performScrollTo() to use —
+        // the sibling `tasks-stats` button above is tapped the same way. The
+        // first run to reach this line failed on exactly that.
         composeRule
             .onNodeWithTag("tasks-dashboard")
-            .performScrollTo()
             .performClick()
         assertTagDisplayed("dash-page", "after tasks-dashboard (/tasks -> /dashboard)")
         composeRule
