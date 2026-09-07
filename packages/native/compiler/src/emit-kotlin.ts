@@ -10018,7 +10018,17 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
       branches.push(`if (pyreonBrushStart >= 0) { pyreonBrushStart = -1; pyreonBrushEnd = -1${onBrush === undefined ? '' : `; ${onBrush}(null)`} }`)
     }
     const body = branches.length === 0 ? select : `${decls.length === 0 ? '' : `${decls.join('; ')}; `}${branches.join(' else ')}${select === '' ? '' : ` else { ${select} }`}`
-    tap = `.pointerInput(Unit) { detectTapGestures { pyreonTap -> ${body} } }`
+    // The tap lambda closes over composition-scoped VALS (the spec, the slice
+    // range, the legend and preset layouts). A `pointerInput(Unit)` starts its
+    // coroutine ONCE and keeps the first composition's captures, so after a
+    // zoom / legend toggle the tap resolved against the ORIGINAL spec — the
+    // eighth device round proved it: the navigator drag moved the window (the
+    // onZoom text read '55-100') and the tap still reported the un-zoomed
+    // index. Keying on every state the body reads restarts the coroutine with
+    // fresh captures — the Compose idiom (`pointerInput(key)`); SwiftUI needs
+    // nothing, its `let`s are re-bound on every body evaluation.
+    const tapKeys = ['pyreonSpec', ...(windowed ? ['pyreonZoom'] : []), ...(legend.toggling ? ['pyreonHidden'] : []), ...(legend.paging ? ['pyreonLegendPage'] : [])]
+    tap = `.pointerInput(${tapKeys.join(', ')}) { detectTapGestures { pyreonTap -> ${body} } }`
   }
   if (zoomed) {
     tap += `.pointerInput(Unit) { detectTransformGestures { _, pyreonPan, pyreonZoomBy, _ -> pyreonZoom = panWindow(zoomWindow(pyreonZoom, 1.0 / pyreonZoomBy.toDouble(), 0.5), -(pyreonPan.x / pyreonDensity).toDouble() / ${W}) } }`

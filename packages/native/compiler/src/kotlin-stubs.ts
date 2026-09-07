@@ -663,6 +663,8 @@ object Modifier {
   // like the real androidx.compose.ui.input.pointer surface.
   @Suppress("UNUSED_PARAMETER")
   fun pointerInput(key: Any?, block: suspend PointerInputScope.() -> Unit): Modifier = this
+  fun pointerInput(key1: Any?, key2: Any?, block: suspend PointerInputScope.() -> Unit): Modifier = this
+  fun pointerInput(vararg keys: Any?, block: suspend PointerInputScope.() -> Unit): Modifier = this
   // @pyreon/dnd sortable modifiers. Real Compose ships them as top-level
   // extensions on Modifier (PyreonSortableModifier.kt); the stub Modifier is
   // an object, so they are modelled as members with the IDENTICAL parameter

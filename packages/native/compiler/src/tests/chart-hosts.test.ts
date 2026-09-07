@@ -946,7 +946,7 @@ describe('chart hosts — <PlotChart navigator> as the engine-laid-out slider st
     expect(r.code).toContain('val pyreonNavigator: NavigatorLayout = renderNavigator(pyreonNavValues, pyreonSeries[0].color, pyreonZoom, PyreonChartRect(0.0, 0.0, pyreonW, 240.0), pyreonTheme.grid)')
     expect(r.code).toContain('height = 240.0 - pyreonNavigator.height')
     expect(r.code).toContain('Box(modifier = Modifier.fillMaxWidth().height((240.0).dp)')
-    expect(r.code).toContain('PyreonChartCanvas(cmds = renderChart(pyreonSpec, ::pyreonChartMeasure) + pyreonNavigator.cmds, modifier = Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures {')
+    expect(r.code).toContain('PyreonChartCanvas(cmds = renderChart(pyreonSpec, ::pyreonChartMeasure) + pyreonNavigator.cmds, modifier = Modifier.fillMaxSize().pointerInput(pyreonSpec, pyreonZoom) { detectTapGestures {')
     expect(r.code).toContain(
       'Box(modifier = Modifier.fillMaxWidth().offset(y = ((240.0) - pyreonNavigator.height).dp).height((pyreonNavigator.height).dp).pointerInput(Unit) { awaitEachGesture { val pyreonDown = awaitFirstDown(requireUnconsumed = false); pyreonNavAnchor = pyreonZoom; pyreonNavDx = 0.0; pyreonNavKind = navigatorHit(pyreonNavigator.strip, pyreonZoom, (pyreonDown.position.x / pyreonDensity).toDouble()); drag(pyreonDown.id) { pyreonChange -> val pyreonStep = pyreonChange.positionChange(); pyreonChange.consume(); pyreonNavDx = pyreonNavDx + (pyreonStep.x / pyreonDensity).toDouble(); pyreonZoom = navigatorDrag(pyreonNavKind, pyreonNavAnchor, pyreonNavDx / pyreonNavigator.strip.w) }; pyreonNavKind = 0 } })',
     )
@@ -984,7 +984,7 @@ describe('chart hosts — <PlotChart navigator> as the engine-laid-out slider st
       expect(r.code).not.toContain('pyreonNavigator')
       expect(r.code).not.toContain('pyreonNavKind')
     }
-    expect(transform(PRESETS, { target: 'kotlin' }).code).toContain('PyreonChartCanvas(cmds = renderChart(pyreonSpec, ::pyreonChartMeasure) + pyreonPresetStrip.cmds, modifier = Modifier.fillMaxWidth().height((200.0).dp).pointerInput(Unit) {')
+    expect(transform(PRESETS, { target: 'kotlin' }).code).toContain('PyreonChartCanvas(cmds = renderChart(pyreonSpec, ::pyreonChartMeasure) + pyreonPresetStrip.cmds, modifier = Modifier.fillMaxWidth().height((200.0).dp).pointerInput(pyreonSpec, pyreonZoom) {')
   })
   it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine) accepts the navigator emit', () => {
     const r = validateSwiftWithStubs(transform(NAV_PRESETS.replace('navigator={true}', 'navigator={true} dataZoom={true}'), { target: 'swift' }).code)
