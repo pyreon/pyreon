@@ -1713,6 +1713,23 @@ const geometry = () => props.shape
         "// state crosses — mutate it from native code, no JSX render needed\nconst flow = createFlow({ nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'Start' } }], edges: [] })\nflow.addNode({ id: '2', position: { x: 200, y: 0 }, data: { label: 'End' } })\n\n// the JSX tree itself stays web-only\n<Web><Flow instance={flow}><Background /></Flow></Web>",
     }),
   },
+  {
+    // A compiled template whose bind threw on a DETACHED placeholder: a phase-2
+    // line reached its parent by walking from an earlier placeholder that a
+    // previous `_setChildAt` had already replaced. Reachable on compilers before
+    // the fragment-aware `elementHasDynamic` (two fragment-wrapped texts in one
+    // template — `<p><>{""}</><b><i/><>{"t"}</></b></p>`); the catalog teaches
+    // the shape because the stack points into runtime-dom, not at the fragment.
+    pattern:
+      /Cannot read properties of null \(reading 'replaceChild'\)[\s\S]{0,400}(_setChildAt|_textSlot|_tpl)|(_setChildAt|_textSlot)[\s\S]{0,200}Cannot read properties of null \(reading 'replaceChild'\)/,
+    diagnose: () => ({
+      cause:
+        "A compiled template's bind called `replaceChild` through a parent it computed by walking from an earlier placeholder — `_setChildAt(__p0.nextSibling, __p1, …)` — after the line before it had already REPLACED `__p0`, so the walk started from a detached node and the parent was `null`. The element that parents the second placeholder never got a phase-1 const because the compiler classified it as static: its expression child was wrapped in a FRAGMENT (`<b><i/><>{text}</></b>`), and the classifier read the element's direct children while the emit reads the flattened list. The crash is on the client mount, and the stack blames runtime-dom rather than the fragment.",
+      fix: 'Upgrade `@pyreon/compiler` (the classifier looks through fragments since the compiled-path parity fuzz landed). On an older compiler, unwrap the fragment — write the text directly as the element\'s child, or wrap it in a real element — so the parent is classified as dynamic and gets its own const.',
+      fixCode:
+        '// crashes on older compilers — two fragment-wrapped texts in one template\n// <p><>{""}</><b class="c1"><i>x</i><>{label}</></b></p>\n\n// same output, no fragments\n<p>{""}<b class="c1"><i>x</i>{label}</b></p>',
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */
