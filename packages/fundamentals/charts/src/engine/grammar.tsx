@@ -118,23 +118,23 @@ function brand<P>(name: string): (props: P) => VNode | null {
 }
 
 /** Vertical bars; `stack` / `group` combine several. */
-export const Bar = brand<BarProps<any>>('Bar') as <T>(props: BarProps<T>) => VNode | null
+export const Bar = /* @__PURE__ */ brand<BarProps<any>>('Bar') as <T>(props: BarProps<T>) => VNode | null
 /** A polyline through the values. */
-export const Line = brand<MarkProps<any>>('Line') as <T>(props: MarkProps<T>) => VNode | null
+export const Line = /* @__PURE__ */ brand<MarkProps<any>>('Line') as <T>(props: MarkProps<T>) => VNode | null
 /** A filled area under the line. */
-export const Area = brand<MarkProps<any>>('Area') as <T>(props: MarkProps<T>) => VNode | null
+export const Area = /* @__PURE__ */ brand<MarkProps<any>>('Area') as <T>(props: MarkProps<T>) => VNode | null
 /** Dots; with `r`, area-mapped bubbles. */
-export const Dot = brand<DotProps<any>>('Dot') as <T>(props: DotProps<T>) => VNode | null
+export const Dot = /* @__PURE__ */ brand<DotProps<any>>('Dot') as <T>(props: DotProps<T>) => VNode | null
 /** A reference line or band. */
-export const Rule = brand<RuleProps>('Rule')
+export const Rule = /* @__PURE__ */ brand<RuleProps>('Rule')
 /** Axis configuration. */
-export const Axis = brand<AxisProps>('Axis')
+export const Axis = /* @__PURE__ */ brand<AxisProps>('Axis')
 /** The pointer tooltip (+ crosshair). */
-export const Tip = brand<TipProps>('Tip')
+export const Tip = /* @__PURE__ */ brand<TipProps>('Tip')
 /** The legend. */
-export const Legend = brand<LegendProps>('Legend')
+export const Legend = /* @__PURE__ */ brand<LegendProps>('Legend')
 /** Zoom, navigator, presets, brush, linking. */
-export const Zoom = brand<ZoomProps>('Zoom')
+export const Zoom = /* @__PURE__ */ brand<ZoomProps>('Zoom')
 
 const markName = (type: unknown): string | undefined =>
   typeof type === 'function' ? ((type as unknown as Record<symbol, string>)[CHART_MARK] as string | undefined) : undefined
