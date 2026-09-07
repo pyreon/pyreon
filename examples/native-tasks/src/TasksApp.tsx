@@ -565,7 +565,7 @@ function StatsPage() {
         title="Scores by subject"
         data-testid="stats-bars"
         onSelect={(i: number) => barPick.set(i)}
-        onZoom={(w: ZoomWindow) => zoomText.set(`${Math.round(w.start * 100)}-${Math.round(w.end * 100)}`)}
+        onZoom={(w: ZoomWindow) => zoomText.set(`${(w.start * 100).toFixed(0)}-${(w.end * 100).toFixed(0)}`)}
       />
       <Text data-testid="stats-bars-pick">{String(barPick())}</Text>
       <Text data-testid="stats-zoom">{zoomText()}</Text>
