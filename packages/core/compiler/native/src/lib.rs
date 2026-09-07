@@ -6928,6 +6928,16 @@ fn attr_is_dynamic(attr: &JSXAttributeItem, tag: &str) -> bool {
     }
 }
 
+fn children_have_expression(children: &[JSXChild]) -> bool {
+    children.iter().any(|c| match c {
+        JSXChild::ExpressionContainer(ec) => {
+            !matches!(ec.expression, JSXExpression::EmptyExpression(_))
+        }
+        JSXChild::Fragment(f) => children_have_expression(&f.children),
+        _ => false,
+    })
+}
+
 fn element_has_dynamic(el: &JSXElement, tpl_components: bool) -> bool {
     let tag = jsx_tag_name(el);
     if el
@@ -6939,12 +6949,11 @@ fn element_has_dynamic(el: &JSXElement, tpl_components: bool) -> bool {
         return true;
     }
     if !is_self_closing(el) {
-        if el.children.iter().any(|c| match c {
-            JSXChild::ExpressionContainer(ec) => {
-                !matches!(ec.expression, JSXExpression::EmptyExpression(_))
-            }
-            _ => false,
-        }) {
+        // Mirrors the JS backend: looks THROUGH fragments, because a
+        // fragment-wrapped expression flattens to a placeholder child of this
+        // element at emit time and its phase-2 line needs a phase-1 parent
+        // const (see jsx.ts `childrenHaveExpression`).
+        if children_have_expression(&el.children) {
             return true;
         }
         // PZ-08: an absorbed component child emits a phase-2 `_mountChild` /
@@ -8026,9 +8035,18 @@ fn process_one_child(
                 tb.needs_mount_slot = true;
                 let placeholder = tb.hoist_placeholder_ref(parent_ref, child_node_idx);
                 let d = tb.next_disp();
+                // Mirrors the JS backend: a DYNAMIC children expression is
+                // wrapped in an accessor via the same `should_wrap` the h()/SSR
+                // emit uses, so the client carries the same number of reactive
+                // levels as the server markup (see jsx.ts for the failure).
+                let slot_arg = if is_children_expression(expr, &expr_text) && should_wrap(expr, ctx) {
+                    format!("() => ({})", expr_text)
+                } else {
+                    expr_text.clone()
+                };
                 tb.bind_lines.push(format!(
                     "const {} = _mountSlot({}, {}, {})",
-                    d, expr_text, parent_ref, placeholder
+                    d, slot_arg, parent_ref, placeholder
                 ));
                 return Some("<!>".to_string());
             }

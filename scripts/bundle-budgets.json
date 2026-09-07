@@ -5,7 +5,7 @@
   "@pyreon/charts": 256,
   "@pyreon/cli": 17152,
   "@pyreon/code": 7168,
-  "@pyreon/compiler": 99840,
+  "@pyreon/compiler": 102400,
   "@pyreon/config": 256,
   "@pyreon/connector-document": 2304,
   "@pyreon/coolgrid": 2304,
