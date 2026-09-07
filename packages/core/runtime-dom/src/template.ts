@@ -1197,6 +1197,9 @@ export function _tplCacheSize(): number {
  * @param children - The children value (VNode, string, array, or accessor)
  * @param parent - The parent element in the cloned template
  * @param placeholder - The comment placeholder node to replace
+ * @param sole - Compiler verdict: this slot is its element's SOLE meaningful JSX
+ *   child, the construct for which runtime-server ELIDES the `<!--$-->` range
+ *   markers. Emitted (as `true`) only for that shape; absent otherwise.
  * @returns Cleanup function
  */
 /** Shared no-op disposer for slots with no teardown work. MUST be a function:
@@ -1325,6 +1328,8 @@ type ParkedOpen = Comment & { [PARKED_RANGE]?: DocumentFragment | undefined }
 export function _parkSlotRange(open: Comment, frag: DocumentFragment): void {
   ;(open as ParkedOpen)[PARKED_RANGE] = frag
 }
+/** Is a parked range hung off `open`? Non-consuming — see `_mountSlot`. */
+const hasParkedRange = (n: Node): boolean => (n as ParkedOpen)[PARKED_RANGE] !== undefined
 /** Take (and clear) the parked range hung off `open`, or `null`. */
 export function _takeParkedRange(open: Comment): DocumentFragment | null {
   const f = (open as ParkedOpen)[PARKED_RANGE]
@@ -1369,45 +1374,58 @@ export function _mountSlot(
   children: VNodeChild | VNodeChild[],
   parent: Node,
   placeholder: Node,
+  sole?: boolean,
 ): () => void {
   // ADOPTED CONTAINER. When `_tpl` bound against the SSR node instead of a
-  // clone, this placeholder is not the template's inert `<!>` comment but the
-  // live `<!--$-->` marker opening the range that already holds this slot's
-  // server-rendered content. Mounting here would build a second copy and strand
-  // the first. Hand it to hydration, which walks the value against those nodes.
-  // A clone's placeholder has empty comment data, so the two can never be
-  // confused.
-  if (_slotHydrator !== null && placeholder != null && isRangeOpen(placeholder)) {
-    return _slotHydrator(children, parent, placeholder as Comment)
-  }
-  // ADOPTED CONTAINER, MARKER-LESS RANGE. runtime-server ELIDES the `<!--$-->`
-  // pair when the accessor is its element's SOLE child, because the tag boundary
-  // already delimits the extent (see `soleAccessorChild` there). That elision was
-  // designed against the `h()` pair — SSR render and `hydrateSoleAccessorChild` —
-  // and this compiled `_tpl` + `_mountSlot` path is a THIRD consumer of the same
-  // shape, which never joined the agreement. So a sole `.map()` child arrived
-  // here looking for a range SSR never emitted.
+  // clone, this placeholder is not the template's inert `<!>` comment but a
+  // live server node, and mounting here would build a second copy and strand
+  // the first — so the value is handed to hydration, which walks it against
+  // those nodes. A clone's placeholder has empty comment data, so the two can
+  // never be confused. The adopted placeholder is in one of THREE states, and
+  // the order of the tests is load-bearing:
   //
-  // Discriminating the three states the placeholder can be in:
-  //   - clone (no adoption)      -> the template's inert `<!>`, an EMPTY comment
-  //   - adopted, marked range    -> the live `<!--$-->`, handled above
-  //   - adopted, marker-less     -> the first SSR-rendered node, or `null` when
-  //                                 the slot rendered nothing
-  // The `placeholder === parent.firstChild` conjunct is what makes the last case
-  // provably SOLE rather than merely last: adoption already gates every `<!>` to
-  // be its parent's last child, and a last-but-not-sole slot has a preceding
-  // sibling, so its compiled ref walks past `firstChild` and cannot match. A
-  // sole slot's ref is exactly `__root.firstChild` — including the empty case,
-  // where both sides are `null`.
-  if (
-    _slotHydrator !== null &&
-    placeholder === (parent as ParentNode).firstChild &&
-    !isCloneSlotPlaceholder(placeholder) &&
-    // A verifier-collapsed MID slot at index 0 is a firstChild placeholder
-    // that is NOT sole — see `MID_SLOT_TEXT`. Clone path below.
-    !isMidSlotText(placeholder)
-  ) {
-    return _slotHydrator(children, parent, null)
+  //   1. PARKED mid range — the verifier moved a mid slot's element content into
+  //      a fragment hung off its `<!--$-->`, which stayed in place as the
+  //      placeholder (see `PARKED_RANGE`). Recognised by its brand first.
+  //   2. MARKER-LESS (SOLE) range — runtime-server ELIDES the `<!--$-->` pair
+  //      when the accessor is its element's SOLE child, because the tag boundary
+  //      already delimits the extent (see `soleAccessorChild` there). That
+  //      elision was designed against the `h()` pair — SSR render and
+  //      `hydrateSoleAccessorChild` — and this compiled `_tpl` + `_mountSlot`
+  //      path is a THIRD consumer of the same shape. The placeholder is then the
+  //      first SSR-rendered node, or `null` when the slot rendered nothing.
+  //
+  //      Whether the slot IS sole is the compiler's verdict (`sole`), derived
+  //      from the same JSX-level predicate the SSR emit uses for `_escSole`.
+  //      Nothing at runtime can decide it. Position cannot: `<main>{null}{acc}`
+  //      and `<span><>{acc}</></span>` are NOT sole to SSR (the `{null}` and
+  //      the fragment count as children, so the slot is MARKED), yet the client
+  //      template renders no node for either, and the slot's ref lands on
+  //      `firstChild` exactly as a sole slot's would. The marker cannot either:
+  //      a sole slot's VALUE can itself begin with a range — a `<Show>`'s root
+  //      accessor, a fragment whose first child is an accessor — and SSR marks
+  //      THAT range, so a sole slot's first child is a `<!--$-->` that is not
+  //      its own. Reading it as the slot's range (which this did) handed the
+  //      nested consumer a region whose markers were already consumed; it fell
+  //      to the legacy remove-one-node path and everything after it DUPLICATED
+  //      (compiled parity fuzz seeds 1237 and 2447 at 3000 seeds), while the
+  //      positional test failed the mirror shapes (seeds 150, 273, 291).
+  //   3. MARKED range — every other adopted slot; its ref resolves to its own
+  //      live `<!--$-->`.
+  //
+  // A verifier-collapsed mid TEXT slot at index 0 (`MID_SLOT_TEXT`) never
+  // carries `sole` — a mid slot has content after it — and takes the clone
+  // path below like any `_textSlot`-shaped placeholder that reached here.
+  if (_slotHydrator !== null) {
+    if (placeholder != null && isRangeOpen(placeholder) && hasParkedRange(placeholder)) {
+      return _slotHydrator(children, parent, placeholder as Comment)
+    }
+    if (sole === true && !isCloneSlotPlaceholder(placeholder) && !isMidSlotText(placeholder)) {
+      return _slotHydrator(children, parent, null)
+    }
+    if (placeholder != null && isRangeOpen(placeholder)) {
+      return _slotHydrator(children, parent, placeholder as Comment)
+    }
   }
   if (children == null || children === false || children === true) {
     parent.removeChild(placeholder)
