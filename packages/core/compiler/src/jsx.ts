@@ -5248,6 +5248,16 @@ export function transformJSX_JS(
       return expr
     }
 
+    /**
+     * @param sole - This child is the element's SOLE meaningful JSX child by the
+     *   SSR emit's own predicate (`ssrSoleChild`) — the construct for which
+     *   runtime-server elides the `<!--$-->` range markers (`_escSole`). The
+     *   client emit must derive it from the SAME predicate, never from the
+     *   flattened node list: `{null}{acc}` and `<>{acc}</>` render no node for
+     *   the sibling, so the flat list reads them as sole while SSR marks them.
+     *   It decides two things — the `sole` flag handed to `_mountSlot`, and
+     *   whether a lone reactive text may take the `firstChild` fast form.
+     */
     function processOneChild(
       child: FlatChild,
       varName: string,
@@ -5255,8 +5265,13 @@ export function transformJSX_JS(
       useMixed: boolean,
       useMultiExpr: boolean,
       childNodeIdx: number,
+      sole: boolean,
     ): string | null {
       if (child.kind === 'text') return child.html
+      // Emitted only for the sole shape, so every other slot's emit is
+      // byte-identical to before. See `_mountSlot` in runtime-dom for why the
+      // runtime cannot decide this itself.
+      const soleArg = sole ? ', true' : ''
       if (child.kind === 'component') {
         // The component's own source range is PRESERVED as a hole rather than
         // sliced. Slicing would emit the raw text and silently drop every
@@ -5284,7 +5299,12 @@ export function transformJSX_JS(
           : childNodeAccessor(parentRef, child.elemIdx, false)
         return processElement(child.node, childAccessor)
       }
-      const needsPlaceholder = useMixed || useMultiExpr
+      // A lone text expression that SSR does NOT treat as sole (`{null}{n()}`,
+      // `<>{n()}</>`) arrives MARKED, so it needs the `_textSlot` placeholder
+      // form that adopts a marked range; the `firstChild` fast form would make
+      // the verifier refuse the whole template (one text node expected, three
+      // nodes found) and rebuild it.
+      const needsPlaceholder = useMixed || useMultiExpr || !sole
       // PZ-05 fix: TS type-only layers (`as T` / `satisfies T` / `!`) and
       // parens are value-transparent — unwrap BEFORE classification so
       // `{(() => x()) as never}` classifies (and emits) identically to
@@ -5321,7 +5341,7 @@ export function transformJSX_JS(
         // stays reactive through the inlined element (r15 specs).
         const slotArg =
           isChildrenExpression(childExpr, expr) && shouldWrap(childExpr) ? `() => (${expr})` : expr
-        bindLines.push(`const ${d} = _mountSlot(${slotArg}, ${parentRef}, ${placeholder})`)
+        bindLines.push(`const ${d} = _mountSlot(${slotArg}, ${parentRef}, ${placeholder}${soleArg})`)
         return '<!>'
       }
       // PZ-02 fix: a call to an in-file JSX-returning helper (`{cell(x)}`,
@@ -5338,7 +5358,7 @@ export function transformJSX_JS(
         needsMountSlotImport = true
         const placeholder = hoistPlaceholderRef(parentRef, childNodeIdx)
         const d = nextDisp()
-        bindLines.push(`const ${d} = _mountSlot(() => (${expr}), ${parentRef}, ${placeholder})`)
+        bindLines.push(`const ${d} = _mountSlot(() => (${expr}), ${parentRef}, ${placeholder}${soleArg})`)
         return '<!>'
       }
       // Element-conditional / inline-JSX child (`{cond() ? <A/> : <B/>}`,
@@ -5360,7 +5380,7 @@ export function transformJSX_JS(
         const placeholder = hoistPlaceholderRef(parentRef, childNodeIdx)
         const d = nextDisp()
         const slotArg = isReactive ? `() => (${expr})` : expr
-        bindLines.push(`const ${d} = _mountSlot(${slotArg}, ${parentRef}, ${placeholder})`)
+        bindLines.push(`const ${d} = _mountSlot(${slotArg}, ${parentRef}, ${placeholder}${soleArg})`)
         return '<!>'
       }
       const cx = childExpr
@@ -5401,6 +5421,11 @@ export function transformJSX_JS(
       // is the safe outcome, not the emit of a shape the prescan did not price.
       if (hasComponent && !absorbsComponentChildren(jsxChildren(el))) return null
       const { useMixed, useMultiExpr } = analyzeChildren(flatChildren)
+      // The SSR emit's sole-child verdict, on the element's UNFLATTENED JSX
+      // children — the one predicate both emits must share (see processOneChild).
+      const ssrSole = ssrSoleChild(el)
+      const ssrSoleExpr =
+        ssrSole !== null && ssrSole.type === 'JSXExpressionContainer' ? ssrSole.expression : null
       const parentRef = accessor === '__root' ? '__root' : varName
       let html = ''
       let childNodeIdx = 0
@@ -5412,6 +5437,7 @@ export function transformJSX_JS(
           useMixed,
           useMultiExpr,
           childNodeIdx,
+          child.kind === 'expression' && ssrSoleExpr !== null && child.expression === ssrSoleExpr,
         )
         if (childHtml === null) return null
         html += childHtml

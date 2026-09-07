@@ -118,7 +118,7 @@ const x = signal('a')
     // The UNCAST form (`{<span/>}`) bails the template upstream and keeps the
     // static-hoist path — the cast form reaches the classifier and must MOUNT.
     const out = js(`const App = () => <div>{(<span/>) as never}</div>`)
-    expect(out).toContain('_mountSlot(<span/>, __root, __p0)')
+    expect(out).toContain('_mountSlot(<span/>, __root, __p0, true)')
     expect(out).not.toContain('textContent')
   })
 
@@ -142,33 +142,33 @@ describe('PZ-02 — JSX-returning local-helper calls are mounted, not stringifie
   it('argful call routes through _mountSlot wrapped in an accessor', () => {
     const out = js(`const cell = (v: string) => <b>{v}</b>
 const App = (props: { s: string }) => <td>{cell(props.s)}</td>`)
-    expect(out).toContain('_mountSlot(() => (cell(props.s)), __root, __p0)')
+    expect(out).toContain('_mountSlot(() => (cell(props.s)), __root, __p0, true)')
     expect(out).not.toContain('__t0.data = cell(')
   })
 
   it('zero-arg call routes through _mountSlot (pre-fix it mis-bound via _bindText)', () => {
     const out = js(`const icon = () => <b>x</b>
 const App = () => <td>{icon()}</td>`)
-    expect(out).toContain('_mountSlot(() => (icon()), __root, __p0)')
+    expect(out).toContain('_mountSlot(() => (icon()), __root, __p0, true)')
     expect(out).not.toContain('_bindText(icon')
   })
 
   it('accessor form {() => cell(x)} routes through _mountSlot', () => {
     const out = js(`const cell = (v: string) => <b>{v}</b>
 const App = (props: { s: string }) => <td>{() => cell(props.s)}</td>`)
-    expect(out).toContain('_mountSlot(() => (cell(props.s)), __root, __p0)')
+    expect(out).toContain('_mountSlot(() => (cell(props.s)), __root, __p0, true)')
   })
 
   it('function DECLARATION helper (declared before use) routes through _mountSlot', () => {
     const out = js(`function cell(v: string) { return <b>{v}</b> }
 const App = (props: { s: string }) => <td>{cell(props.s)}</td>`)
-    expect(out).toContain('_mountSlot(() => (cell(props.s)), __root, __p0)')
+    expect(out).toContain('_mountSlot(() => (cell(props.s)), __root, __p0, true)')
   })
 
   it('conditional string|VNode-returning helper still routes (mountChild handles both)', () => {
     const out = js(`const cell = (v: string) => v ? <b>{v}</b> : 'none'
 const App = (props: { s: string }) => <td>{cell(props.s)}</td>`)
-    expect(out).toContain('_mountSlot(() => (cell(props.s)), __root, __p0)')
+    expect(out).toContain('_mountSlot(() => (cell(props.s)), __root, __p0, true)')
   })
 
   it('SHADOWED callee is NOT routed (scope-aware, mirrors the auto-call discipline)', () => {
@@ -204,7 +204,7 @@ const App = (props: { s: string }) => <td>{cell(props.s)}</td>`)
     const cast = js(`const cell = (v: string) => <b>{v}</b>
 const App = (props: { s: string }) => <td>{(cell(props.s)) as never}</td>`)
     expect(cast).toBe(uncast)
-    expect(cast).toContain('_mountSlot(() => (cell(props.s)), __root, __p0)')
+    expect(cast).toContain('_mountSlot(() => (cell(props.s)), __root, __p0, true)')
   })
 
   it('mixed content keeps positional placeholders around the mounted helper', () => {

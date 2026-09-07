@@ -8123,6 +8123,14 @@ fn child_node_accessor_tb(
     expr
 }
 
+/// `sole`: this child is the element's SOLE meaningful JSX child by the SSR
+/// emit's own predicate (`ssr_sole_child`) — the construct for which
+/// runtime-server elides the `<!--$-->` range markers (`_escSole`). Derived
+/// from the UNFLATTENED children, never the flat list: `{null}{acc}` and
+/// `<>{acc}</>` render no node for the sibling, so the flat list reads them as
+/// sole while SSR marks them. Mirrors jsx.ts `processOneChild` byte-for-byte:
+/// it decides the `sole` flag handed to `_mountSlot` and whether a lone
+/// reactive text may take the `firstChild` fast form.
 fn process_one_child(
     child: &FlatChild,
     var_name: &str,
@@ -8130,9 +8138,13 @@ fn process_one_child(
     use_mixed: bool,
     use_multi_expr: bool,
     child_node_idx: usize,
+    sole: bool,
     tb: &mut TemplateBuilder,
     ctx: &mut Ctx,
 ) -> Option<String> {
+    // Emitted only for the sole shape, so every other slot's emit is
+    // byte-identical to before (mirrors jsx.ts `soleArg`).
+    let sole_arg = if sole { ", true" } else { "" };
     match child {
         FlatChild::Text(html) => Some(html.clone()),
         FlatChild::Component(comp) => {
@@ -8167,7 +8179,9 @@ fn process_one_child(
             process_element(el, &child_accessor, tb, ctx)
         }
         FlatChild::Expression(raw_expr) => {
-            let needs_placeholder = use_mixed || use_multi_expr;
+            // Mirrors jsx.ts: a lone text expression SSR does NOT treat as sole
+            // arrives MARKED and needs the `_textSlot` placeholder form.
+            let needs_placeholder = use_mixed || use_multi_expr || !sole;
             // PZ-05 fix: TS type-only layers (`as T` / `satisfies T` / `!`)
             // and parens are value-transparent — unwrap BEFORE classification
             // so `{(() => x()) as never}` classifies (and emits) identically
@@ -8195,8 +8209,8 @@ fn process_one_child(
                     expr_text.clone()
                 };
                 tb.bind_lines.push(format!(
-                    "const {} = _mountSlot({}, {}, {})",
-                    d, slot_arg, parent_ref, placeholder
+                    "const {} = _mountSlot({}, {}, {}{})",
+                    d, slot_arg, parent_ref, placeholder, sole_arg
                 ));
                 return Some("<!>".to_string());
             }
@@ -8212,8 +8226,8 @@ fn process_one_child(
                 let placeholder = tb.hoist_placeholder_ref(parent_ref, child_node_idx);
                 let d = tb.next_disp();
                 tb.bind_lines.push(format!(
-                    "const {} = _mountSlot(() => ({}), {}, {})",
-                    d, expr_text, parent_ref, placeholder
+                    "const {} = _mountSlot(() => ({}), {}, {}{})",
+                    d, expr_text, parent_ref, placeholder, sole_arg
                 ));
                 return Some("<!>".to_string());
             }
@@ -8240,8 +8254,8 @@ fn process_one_child(
                     expr_text.clone()
                 };
                 tb.bind_lines.push(format!(
-                    "const {} = _mountSlot({}, {}, {})",
-                    d, slot_arg, parent_ref, placeholder
+                    "const {} = _mountSlot({}, {}, {}{})",
+                    d, slot_arg, parent_ref, placeholder, sole_arg
                 ));
                 return Some("<!>".to_string());
             }
@@ -8299,6 +8313,13 @@ fn process_children(
         return None;
     }
     let (use_mixed, use_multi_expr) = analyze_children(&flat);
+    // The SSR emit's sole-child verdict, on the element's UNFLATTENED JSX
+    // children — the one predicate both emits must share (mirrors jsx.ts).
+    let ssr_sole_expr: Option<&Expression> =
+        ssr_sole_child(el).and_then(|i| match &el.children[i] {
+            JSXChild::ExpressionContainer(c) => jsx_expr_as_expression(&c.expression),
+            _ => None,
+        });
     let parent_ref = if accessor == "__root" {
         "__root"
     } else {
@@ -8307,6 +8328,10 @@ fn process_children(
     let mut html = String::new();
     let mut child_node_idx = 0;
     for child in &flat {
+        let sole = match (child, ssr_sole_expr) {
+            (FlatChild::Expression(e), Some(se)) => std::ptr::eq(*e, se),
+            _ => false,
+        };
         let child_html = process_one_child(
             child,
             var_name,
@@ -8314,6 +8339,7 @@ fn process_children(
             use_mixed,
             use_multi_expr,
             child_node_idx,
+            sole,
             tb,
             ctx,
         )?;

@@ -2408,3 +2408,38 @@ describeNative('templatizeComponentChildren parity', () => {
     })
   })
 })
+
+describeNative('`_mountSlot` sole-slot verdict (both backends)', () => {
+  // The flag is the compiler's SSR-level soleness verdict, emitted as a fourth
+  // `_mountSlot` argument on exactly the sole shape; the same predicate gates
+  // the lone-reactive-text `firstChild` fast form. Byte-parity here is what
+  // keeps the two backends from disagreeing about which slots SSR marked.
+  const both = (src: string): string => {
+    compare(src)
+    return transformJSX_JS(src, 'test.tsx').code
+  }
+  it('a sole accessor slot carries `, true`', () => {
+    expect(both(`const A = () => <b>{() => (s() ? <>{() => t()}<input /></> : <i/>)}</b>`)).toContain('__p0, true)')
+  })
+  it('a `{null}` sibling makes the slot NOT sole (SSR marks it)', () => {
+    const js = both(`const A = () => <main>{null}{() => (s() ? <input /> : <i/>)}</main>`)
+    expect(js).toContain('__root, __p0)')
+    expect(js).not.toContain(', true)')
+  })
+  it('a fragment-wrapped slot is NOT sole', () => {
+    expect(both(`const A = () => <span><>{() => (s() ? <b/> : <i/>)}</></span>`)).not.toContain(', true)')
+  })
+  it('a slot with a static sibling before it is NOT sole', () => {
+    expect(both(`const A = () => <p><i/>{() => (s() ? <b/> : <u/>)}</p>`)).not.toContain(', true)')
+  })
+  it('a wrapped `props.children` sole slot carries `, true`', () => {
+    expect(both(`const C = (props) => <div class="c">{props.children}</div>`)).toContain(
+      '_mountSlot(() => (props.children), __root, __p0, true)',
+    )
+  })
+  it('a lone reactive text SSR does not treat as sole takes the `_textSlot` form', () => {
+    expect(both(`const A = () => <p>{null}{() => n()}</p>`)).toContain('_textSlot(__root, __p0)')
+    expect(both(`const A = () => <p><>{() => n()}</></p>`)).toContain('_textSlot(__root, __p0)')
+    expect(both(`const A = () => <p>{() => n()}</p>`)).toContain('__root.firstChild')
+  })
+})

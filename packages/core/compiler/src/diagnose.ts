@@ -40,6 +40,22 @@ export interface ErrorPattern {
  */
 export const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // A hydration walk that expected an ELEMENT and found a COMMENT (nodeType 8)
+    // one step past a reactive range is the signature of a slot boundary read
+    // wrongly: the walker consumed a nested accessor's markers as if they were
+    // the slot's own, so the next sibling it meets is a marker, not the element,
+    // and everything after it mounts a second time next to the server copy.
+    // Fixed at the root (the compiler now emits the slot's soleness verdict to
+    // `_mountSlot`); what remains to teach is how to read the symptom.
+    pattern: /Hydration mismatch \(tag\): expected \w+, got 8 at .*> reactive/i,
+    diagnose: () => ({
+      cause:
+        'While hydrating a compiled template slot, the walker expected an element but met a COMMENT node right after a reactive range. That means a range boundary was misread — typically a slot whose SSR markers were elided (it was its element\'s sole child) and whose value starts with a NESTED range (a <Show>, or a fragment beginning with an accessor). The nested consumer then found its markers already consumed, mounted its content fresh, and left the server nodes standing: the DOM shows the content twice.',
+      fix: 'Upgrade @pyreon/compiler and @pyreon/runtime-dom together — the compiler now emits the slot\'s soleness verdict and the runtime trusts it, so this shape adopts correctly. If you are pinned, wrap the slot\'s value in an element (<div>{…}</div>) so the nested range is not the slot\'s first node, or give the slot a static sibling so SSR marks it.',
+      fixCode: "// pinned workaround — give the nested range a parent of its own\n<section>{() => (ready() ? <div><Show when={…}>…</Show></div> : null)}</section>",
+    }),
+  },
+  {
     // A real, user-facing error in `@pyreon/router`'s loader path that the
     // catalog did not teach at all. A cycle in loader data is one of the few
     // SSR failures that surfaces as a hard 500 with a stack pointing into
