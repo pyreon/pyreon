@@ -112,8 +112,12 @@ describe('two inline tracking subscribers — dispatch branches', () => {
     const s = signal(1)
     const c = computed(() => s() * 2)
     const seen: number[] = []
-    const d1 = effect(() => seen.push(c()))
-    const d2 = effect(() => seen.push(c() + 100))
+    const d1 = effect(() => {
+      seen.push(c())
+    })
+    const d2 = effect(() => {
+      seen.push(c() + 100)
+    })
     expect(typeof host(c)._s).toBe('function')
     seen.length = 0
     s.set(2)
@@ -126,9 +130,15 @@ describe('two inline tracking subscribers — dispatch branches', () => {
     const s = signal(1)
     const c = computed(() => s() * 2)
     const seen: number[] = []
-    const d1 = effect(() => seen.push(c()))
-    const d2 = effect(() => seen.push(c() + 100))
-    const d3 = effect(() => seen.push(c() + 200))
+    const d1 = effect(() => {
+      seen.push(c())
+    })
+    const d2 = effect(() => {
+      seen.push(c() + 100)
+    })
+    const d3 = effect(() => {
+      seen.push(c() + 200)
+    })
     expect(host(c)._s instanceof Set).toBe(true)
     d1.dispose()
     d2.dispose()
@@ -141,8 +151,12 @@ describe('two inline tracking subscribers — dispatch branches', () => {
 
   it('_hasSubscribers / _tierCount see the function-shaped second tier', () => {
     const s = signal(0)
-    const d1 = effect(() => s())
-    const d2 = effect(() => s())
+    const d1 = effect(() => {
+      s()
+    })
+    const d2 = effect(() => {
+      s()
+    })
     expect(_tierCount(host(s)._s as never)).toBe(1)
     expect(_hasSubscribers(s)).toBe(true)
     d1.dispose()
@@ -160,8 +174,12 @@ describe('two inline tracking subscribers — dispatch branches', () => {
     console.log = (...args: unknown[]) => logs.push(args.map(String).join(' '))
     try {
       const s = signal(1, { name: 'pair' })
-      const d1 = effect(() => s())
-      const d2 = effect(() => s())
+      const d1 = effect(() => {
+        s()
+      })
+      const d2 = effect(() => {
+        s()
+      })
       why()
       s.set(2)
       await new Promise((r) => queueMicrotask(() => r(undefined)))
@@ -210,7 +228,11 @@ describe('two inline tracking subscribers — dispatch branches', () => {
     console.log = (...args: unknown[]) => logs.push(args.map(String).join(' '))
     try {
       const s = signal(1, { name: 'trio' })
-      const ds = [1, 2, 3].map(() => effect(() => s()))
+      const ds = [1, 2, 3].map(() =>
+        effect(() => {
+          s()
+        }),
+      )
       why()
       s.set(2)
       await new Promise((r) => queueMicrotask(() => r(undefined)))
@@ -229,8 +251,12 @@ describe('two inline tracking subscribers — dispatch branches', () => {
       tail = computed(() => prev() + 1)
     }
     const seen: number[] = []
-    const d1 = effect(() => seen.push(tail()))
-    const d2 = effect(() => seen.push(tail() * 10))
+    const d1 = effect(() => {
+      seen.push(tail())
+    })
+    const d2 = effect(() => {
+      seen.push(tail() * 10)
+    })
     seen.length = 0
     s.set(1)
     expect(seen).toEqual([521, 5210])
