@@ -129,7 +129,9 @@ describe('preserved holes — what survives into the emitted child', () => {
 
   it('keeps the signal auto-call on the child’s props', () => {
     const code = emit(`const s = signal(0)\nconst N = () => <div class="b"><Node v={s()} /></div>`)
-    expect(code).toContain('v={_rp(() => s())}')
+    // a bare signal call wraps with `_rpd` (direct-tier reactive prop); the
+    // invariant here is that the wrap SURVIVES the hole, whichever form it takes
+    expect(code).toContain('v={_rpd(s)}')
   })
 
   it('keeps a nested _tpl + _lc INSIDE the absorbed child', () => {

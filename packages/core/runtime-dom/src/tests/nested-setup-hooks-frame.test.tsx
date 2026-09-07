@@ -25,17 +25,18 @@
  * so it cannot reproduce the nesting at all).
  */
 import { transformJSX } from '@pyreon/compiler'
-import { Fragment, h, onMount, onUnmount, _rp, cx } from '@pyreon/core'
+import { Fragment, h, onMount, onUnmount, _rp, _rpd, cx } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { transformSync } from 'esbuild'
 import { afterEach, describe, expect, test } from 'vitest'
-import { _applyProps, _setAttr, _setStyle, bindPolymorphicText, mountChild } from '../index'
+import { _applyProps, _setAttr, _setStyle, bindPolymorphicText, mountChild, _bindProp} from '../index'
 import { _bindDirect, _bindText, _mountSlot, _textSlot, _setChild, _setChildAt, _tpl } from '../template'
 
 const RUNTIME_DEPS = {
   _tpl,
   _bind,
   _bindText,
+  _bindProp,
   _bindDirect,
   _applyProps,
   _setStyle,
@@ -46,6 +47,7 @@ const RUNTIME_DEPS = {
   _setChildAt,
   bindPolymorphicText,
   _rp,
+  _rpd,
   _cx: cx,
   h,
   Fragment,

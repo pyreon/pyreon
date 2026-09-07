@@ -75,10 +75,11 @@ describe('native chart engine — generated, drift-locked, compile-proven', () =
   it.skipIf(!isKotlincAvailable())('Android: engine compiles with the canvas-owned types (verbatim)', () => {
     const canvas = read(CANVAS_KT)
     const decls: string[] = []
+    for (const m of canvas.matchAll(/data class Pyreon\w+\([^)]*\)/g)) decls.push(m[0])
+    // Derived, not listed — a hand list is how the gradient types came back
+    // `unresolved reference`. The three originals must still be among them.
     for (const name of ['PyreonChartPt', 'PyreonChartRect', 'PyreonDrawCmd']) {
-      const m = canvas.match(new RegExp(`data class ${name}\\([^)]*\\)`))
-      expect(m, `${name} declaration in PyreonChartCanvas.kt`).not.toBeNull()
-      decls.push(m![0])
+      expect(decls.some((d) => d.startsWith(`data class ${name}(`)), `${name} in PyreonChartCanvas.kt`).toBe(true)
     }
     const engineBody = read(KOTLIN_OUT)
       .split('\n')

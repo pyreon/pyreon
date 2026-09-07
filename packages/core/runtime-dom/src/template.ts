@@ -2,7 +2,7 @@ import type { NativeItem, VNodeChild } from '@pyreon/core'
 import { _rdNodeId, getContextOwner, renderEffect } from '@pyreon/reactivity'
 import { SizedMap } from '@pyreon/sized-map'
 import { _tagTextBinding } from './binding-registry'
-import { createPolyTextCore, mountChild, SVG_TAGS, type PolyTextCore } from './mount'
+import { bindPolymorphicText, createPolyTextCore, mountChild, SVG_TAGS, type PolyTextCore } from './mount'
 import { _bindEvent } from './props'
 
 // Dev-mode gates in this file use the bare bundler-agnostic
@@ -242,6 +242,25 @@ function resolveSlowCaller(
   if (receiver !== undefined) return () => (source as (this: unknown) => unknown).call(receiver)
   if (caller !== undefined) return caller
   return source as () => unknown
+}
+
+/**
+ * Text binding for a component PROP read — `<span>{props.value}</span>`.
+ * `makeReactiveProps` installs the compiler's reactive-prop thunk as the
+ * property GETTER, so the getter is reachable by descriptor even though a
+ * plain read yields the value. When that getter carries `.direct` (an `_rpd`
+ * thunk over a bare signal call) the binding takes the O(1) direct tier —
+ * `_bindText` on the getter, whose `._v` delegates to the signal — and its
+ * teardown is a slot write instead of a hashed `Set.delete`. Any other getter
+ * (a general `_rp`, a `mergeProps`-wrapped one, a plain data property) takes
+ * the tracked polymorphic path exactly as before. Value semantics are
+ * identical on both paths: the getter's value, re-rendered on change.
+ */
+export function _bindProp(props: object, key: string, node: Text, parent: Node): () => void {
+  const d = Object.getOwnPropertyDescriptor(props, key)
+  const g = d !== undefined ? (d.get as ({ _v?: unknown; direct?: (fn: () => void) => () => void } & (() => unknown)) | undefined) : undefined
+  if (g !== undefined && typeof g.direct === 'function') return _bindText(g, node)
+  return bindPolymorphicText(() => (props as Record<string, unknown>)[key] as VNodeChild, node, parent)
 }
 
 export function _bindText(

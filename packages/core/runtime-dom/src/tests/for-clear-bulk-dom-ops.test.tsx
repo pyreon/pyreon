@@ -43,11 +43,11 @@
  */
 import { query } from '@pyreon/test-utils'
 import { transformJSX } from '@pyreon/compiler'
-import { Fragment, For, h, _rp, cx } from '@pyreon/core'
+import { Fragment, For, h, _rp, _rpd, cx } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { transformSync } from 'esbuild'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { mountChild } from '../index'
+import { mountChild, _bindProp} from '../index'
 import { _bindDirect, _bindText, _mountSlot, _textSlot, _setChild, _setChildAt, _tpl } from '../template'
 
 // ─── Counter sink (mirrors for-clear-replace-fast.test.tsx) ──────────────────
@@ -75,12 +75,14 @@ const RUNTIME_DEPS = {
   _tpl,
   _bind,
   _bindText,
+  _bindProp,
   _bindDirect,
   _mountSlot,
   _textSlot,
   _setChild,
   _setChildAt,
   _rp,
+  _rpd,
   _cx: cx,
   h,
   Fragment,

@@ -346,8 +346,20 @@ describe('validateRegistry — invariants', () => {
 })
 
 describe('the real REGISTRY', () => {
-  it('carries the shared + service-backend tiers plus the partial set (38 packages)', () => {
-    expect(REGISTRY.length).toBe(38)
+  it('carries the shared + service-backend tiers plus the partial set (39 entries)', () => {
+    // 39 = 38 packages + @pyreon/flow's webview host at its real subpath: the
+    // package itself is a pmtc-lowers entry (createFlow → PyreonFlowState) and
+    // the <WebView> bridge is a separate, still-verified crossing.
+    expect(REGISTRY.length).toBe(39)
+  })
+
+  it('@pyreon/flow is a pmtc-lowers entry whose snippet exercises createFlow; its WebView bridge lives at the subpath', () => {
+    const flow = REGISTRY.find((e) => e.name === '@pyreon/flow')
+    const bridge = REGISTRY.find((e) => e.name === '@pyreon/flow/webview')
+    expect(flow?.mechanism).toBe('pmtc-lowers')
+    expect(flow?.snippet).toContain('createFlow(')
+    expect(bridge?.mechanism).toBe('webview-host')
+    expect(bridge?.webviewHost?.componentExport).toBe('FlowWebView')
   })
 
   it('starts with an EMPTY warn-allowlist — the ratchet is at its tightest', () => {

@@ -184,6 +184,19 @@ class SnapshotStateList<T> internal constructor(
 fun <T> mutableStateListOf(vararg elements: T): SnapshotStateList<T> =
   SnapshotStateList(elements.toMutableList())
 
+// SnapshotStateMap — the per-KEY reactive map PyreonFlowState keys its nodes
+// and selection on (a position write recomposes only that key's readers).
+// FUNCTIONAL for the same reason as the list: the PyreonFlowState smoke test
+// RUNS and its get/put/remove/containsKey must actually work. Mirrors the
+// real surface the runtime touches (MutableMap ops + keys) — a stub that
+// is narrower than the runtime manufactures a phantom bug in correct code.
+class SnapshotStateMap<K, V> internal constructor(
+  private val backing: MutableMap<K, V>,
+) : MutableMap<K, V> by backing
+
+fun <K, V> mutableStateMapOf(vararg pairs: Pair<K, V>): SnapshotStateMap<K, V> =
+  SnapshotStateMap(mutableMapOf(*pairs))
+
 @Composable
 fun <T> remember(key: Any?, calculation: () -> T): T = calculation()
 
@@ -191,6 +204,37 @@ fun <T> remember(key: Any?, calculation: () -> T): T = calculation()
 // geolocation composable uses \`remember { PyreonGeolocation() }\`.
 @Composable
 fun <T> remember(calculation: () -> T): T = calculation()
+`
+
+const ANDROIDX_COMPOSE_GRAPHICS_STUBS = `// androidx.compose.ui.graphics — the surface PyreonFlowEdgeGeometry.kt touches
+// (Path mutators, Color(int,int,int) + Gray + float channels, dashPathEffect).
+// FUNCTIONAL, not type-only, because the geometry smoke test RUNS: the stub
+// Path RECORDS the commands it receives so the test can assert the builder's
+// command sequence (the real Path exposes no such list — the recorder is
+// test-only state the runtime never reads). Mirrored to the members used, no
+// wider: a stub broader than the real surface masks breakage.
+package androidx.compose.ui.graphics
+
+class Path {
+  val ops = mutableListOf<String>()
+  fun moveTo(x: Float, y: Float) { ops.add("move($x,$y)") }
+  fun lineTo(x: Float, y: Float) { ops.add("line($x,$y)") }
+  fun cubicTo(x1: Float, y1: Float, x2: Float, y2: Float, x3: Float, y3: Float) { ops.add("cubic($x1,$y1,$x2,$y2,$x3,$y3)") }
+  fun quadraticBezierTo(x1: Float, y1: Float, x2: Float, y2: Float) { ops.add("quad($x1,$y1,$x2,$y2)") }
+}
+
+data class Color(val red: Float, val green: Float, val blue: Float) {
+  constructor(red: Int, green: Int, blue: Int) : this(red / 255f, green / 255f, blue / 255f)
+  companion object {
+    val Gray = Color(0.5f, 0.5f, 0.5f)
+  }
+}
+
+class PathEffect private constructor(val intervals: FloatArray) {
+  companion object {
+    fun dashPathEffect(intervals: FloatArray): PathEffect = PathEffect(intervals)
+  }
+}
 `
 
 const KOTLINX_SERIALIZATION_STUBS = `package kotlinx.serialization
@@ -1271,6 +1315,12 @@ try {
   ) {
     writeFileSync(composePlatformPath, ANDROIDX_COMPOSE_PLATFORM_STUBS, 'utf8')
   }
+  // @pyreon/flow's edge geometry (Path builder + hex color) — the pure half of
+  // its edge canvas, split out so it is verified here instead of by nothing.
+  const composeGraphicsPath = join(tempDir, 'AndroidxComposeGraphics.kt')
+  if (SERVICE === 'PyreonFlowEdgeGeometry') {
+    writeFileSync(composeGraphicsPath, ANDROIDX_COMPOSE_GRAPHICS_STUBS, 'utf8')
+  }
   if (SERVICE === 'PyreonClipboard') {
     writeFileSync(androidContentPath, ANDROID_CONTENT_STUBS, 'utf8')
     writeFileSync(androidxCoreContentPath, ANDROIDX_CORE_CONTENT_STUBS, 'utf8')
@@ -1366,6 +1416,7 @@ try {
   const toastStubs = SERVICE === 'PyreonToast' ? [kotlinxCoroutinesPath] : []
   // PyreonHaptics-only stub source (the Compose hapticfeedback package).
   const hapticStubs = SERVICE === 'PyreonHaptics' ? [hapticFeedbackPath] : []
+  const graphicsStubs = SERVICE === 'PyreonFlowEdgeGeometry' ? [composeGraphicsPath] : []
   const shareStubs = SERVICE === 'PyreonShare' ? [shareIntentPath] : []
   // PyreonImagePicker: the androidx.activity ActivityResult surface + the
   // coroutines stub (CompletableDeferred is its callback→suspend bridge).
@@ -1630,6 +1681,7 @@ try {
         ...clipboardStubs,
         ...toastStubs,
         ...hapticStubs,
+        ...graphicsStubs,
         ...shareStubs,
         ...pickerStubs,
         ...databaseStubs,
@@ -1661,6 +1713,7 @@ try {
         ...clipboardStubs,
         ...toastStubs,
         ...hapticStubs,
+        ...graphicsStubs,
         ...shareStubs,
         ...pickerStubs,
         ...databaseStubs,
@@ -1743,7 +1796,10 @@ try {
   })()
 
   if (!javaAvailable) {
-    console.log('[verify-kotlin] java not available; skipping smoke-run (typecheck passed)')
+    // Loud and distinct from ✓: a typecheck-only pass is NOT a behaviour pass. The
+    // @pyreon/flow port shipped a selectAll/deleteSelected divergence past this
+    // line because the smoke never ran locally (java off PATH) and the log read ✓.
+    console.log('[verify-kotlin] ⚠ SKIPPED smoke-run — `java` not on PATH (typecheck only). Put a JDK on PATH (e.g. /opt/homebrew/opt/openjdk/bin) to RUN the behaviour test.')
   } else {
     const smokeResult = spawnSync(
       'java',

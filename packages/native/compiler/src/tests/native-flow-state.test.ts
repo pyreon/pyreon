@@ -278,3 +278,104 @@ describe('createFlow — v1 decline shapes (loud warning, not silent drop)', () 
     })
   })
 })
+
+
+// ── Nothing silent inside the boundary (the flow audit's compiler half) ──
+// The import-level boundary (`<Flow>`, layout, chrome) already warned by name.
+// The layer INSIDE it did not: unported FlowInstance members emitted verbatim
+// with 0 warnings (dying at xcodebuild), `fitView()` compiled and did nothing,
+// node/edge fields beyond the six the native types carry vanished at
+// declaration AND call site, the Swift emit passed `additive`/`padding`
+// positionally (an iOS-only build break), and the Swift stub was narrower
+// than the runtime (rejecting valid reads). Every one of those is now either
+// a named warning or a correct emit, on both targets.
+describe('createFlow — nothing silent inside the boundary', () => {
+  const base = (body: string, jsx = '<Text>{flow.nodes().length}</Text>') => `
+import { createFlow } from '@pyreon/flow'
+import { Stack, Text, Button } from '${P}'
+export function C() {
+  const flow = createFlow({
+    nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'A' } }],
+    edges: [{ id: 'e1', source: '1', target: '1' }],
+  })
+  ${body}
+  return (<Stack>${jsx}</Stack>)
+}
+`
+  const warningsOf = (src: string, target: 'swift' | 'kotlin') => (transform(src, { target }).warnings ?? []).join('\n')
+
+  for (const target of ['swift', 'kotlin'] as const) {
+    it(`[${target}] an unported FlowInstance member warns BY NAME instead of dying at the native build`, () => {
+      const w = warningsOf(base('', '<Button onPress={() => flow.undo()}>Undo</Button>'), target)
+      expect(w).toContain('`undo` is NOT ported')
+      expect(w).toContain('fails at the native BUILD')
+    })
+    it(`[${target}] a signal WRITE on a flow property warns (the native collections are read-only)`, () => {
+      const w = warningsOf(base('', '<Button onPress={() => flow.nodes.set([])}>Clear</Button>'), target)
+      expect(w).toContain('`nodes.set(...)` writes the `nodes` signal directly')
+    })
+    it(`[${target}] fitView() warns that no native host measures containerSize yet`, () => {
+      const w = warningsOf(base('', '<Button onPress={() => flow.fitView()}>Fit</Button>'), target)
+      expect(w).toContain('`fitView()` compiles natively but does NOTHING from shared source')
+    })
+    it(`[${target}] a ported member emits with NO member warning (the control)`, () => {
+      const w = warningsOf(base('', '<Button onPress={() => flow.zoomIn()}>Zoom</Button>'), target)
+      expect(w).not.toContain('is NOT ported')
+      expect(w).not.toContain('does NOTHING')
+    })
+    it(`[${target}] node/edge fields the native types do not carry warn BY NAME at the DECLARATION`, () => {
+      const src = `
+import { createFlow } from '@pyreon/flow'
+import { Stack, Text } from '${P}'
+export function C() {
+  const flow = createFlow({
+    nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'A' }, parentId: 'root', draggable: false }],
+    edges: [{ id: 'e1', source: '1', target: '1', markerEnd: 'arrow', sourceHandle: 'out' }],
+  })
+  return (<Stack><Text>{flow.nodes().length}</Text></Stack>)
+}
+`
+      const w = warningsOf(src, target)
+      expect(w).toContain('node fields `parentId`, `draggable` are NOT carried')
+      expect(w).toContain('edge fields `markerEnd`, `sourceHandle` are NOT carried')
+    })
+    it(`[${target}] a declaration-time NON-literal edge label/type is named, not silently dropped`, () => {
+      const src = `
+import { createFlow } from '@pyreon/flow'
+import { Stack, Text } from '${P}'
+const LBL = 'wire'
+export function C() {
+  const flow = createFlow({
+    nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'A' } }],
+    edges: [{ id: 'e1', source: '1', target: '1', label: LBL }],
+  })
+  return (<Stack><Text>{flow.nodes().length}</Text></Stack>)
+}
+`
+      expect(warningsOf(src, target)).toContain('`label (not a string literal)`')
+    })
+    it(`[${target}] call-site addNode/addEdge literals with extra fields warn BY NAME`, () => {
+      const w = warningsOf(base('', `<Button onPress={() => { flow.addNode({ id: '2', position: { x: 1, y: 1 }, data: { label: 'B' }, hidden: true }); flow.addEdge({ id: 'e2', source: '1', target: '2', waypoints: [] }) }}>Add</Button>`), target)
+      expect(w).toContain('addNode(...): node field `hidden` is NOT carried')
+      expect(w).toContain('addEdge(...): edge field `waypoints` is NOT carried')
+    })
+  }
+
+  describe('Swift argument labels + stub fidelity', () => {
+    const src = base('', `<Button onPress={() => { flow.selectNode('1', true); flow.selectEdge('e1', true); flow.fitView(undefined, 0.2); flow.fitView(['1'], 0.3) }}>Go</Button><Text>{flow.getNode('1')?.position.x}</Text><Text>{flow.getNode('1')?.width}</Text><Text>{flow.edges()[0].type}</Text>`)
+    const r = transform(src, { target: 'swift' })
+    it('emits the labeled forms the runtime requires', () => {
+      expect(r.code).toContain('flow.selectNode("1", additive: true)')
+      expect(r.code).toContain('flow.selectEdge("e1", additive: true)')
+      expect(r.code).toContain('flow.fitView(nil, padding: 0.2)')
+      expect(r.code).toContain('padding: 0.3)')
+    })
+    it('the labeled emit AND the valid reads typecheck against a stub that mirrors the runtime', () => {
+      // The v1 stub had no stored `x`/`y`, no node `width`/`type`, and an
+      // edge with no stored properties at all — every read below is valid
+      // against PyreonFlowState.swift and was REJECTED by the gate.
+      const v = validateSwiftWithStubs(r.code)
+      expect(v.ok, v.error ?? '').toBe(true)
+    })
+  })
+})

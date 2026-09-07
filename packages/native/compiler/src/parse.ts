@@ -4,6 +4,7 @@
 // starter fixtures use are recognised. Anything outside that set is
 // either passed through as unknown or surfaces a warning.
 
+import { HANDLED_FLOW_EDGE_FIELDS, HANDLED_FLOW_NODE_FIELDS, droppedFlowFieldsWarning } from './flow-lowering'
 import { warnUnlowerdCrdtMembers } from './parse-crdt-surface'
 import { parseSync } from 'oxc-parser'
 import { detectPlain, transformPlain } from '@pyreon/compiler/plain'
@@ -2604,7 +2605,7 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
       // UNLOWERED_CHART_HOSTS for the per-tag reason), and the ECharts-backed
       // default export stays web.
       advice:
-        'Most `@pyreon/charts/plot` hosts lower to a native PyreonChartCanvas over the generated engine — PieChart/FunnelChart/GaugeChart/CandlestickChart/HeatmapChart/RadarChart/PlotChart/SankeyChart/GraphChart/TreemapChart/SunburstChart/TreeChart/RiverChart/GanttChart/PolarChart. Calendar and Parallel are deliberately unlowered (see UNLOWERED_CHART_HOSTS for why); the ECharts-backed default export is web-only — keep it in a `<Web>` branch, or embed via the `/webview` bridge',
+        'Most `@pyreon/charts/plot` hosts lower to a native PyreonChartCanvas over the generated engine — PieChart/FunnelChart/GaugeChart/CandlestickChart/HeatmapChart/RadarChart/PlotChart/SankeyChart/GraphChart/TreemapChart/SunburstChart/TreeChart/RiverChart/GanttChart/PolarChart/CalendarChart/ParallelChart. OptionChart is deliberately unlowered (see UNLOWERED_CHART_HOSTS for why); the ECharts-backed default export is web-only — keep it in a `<Web>` branch, or embed via the `/webview` bridge',
       supported: new Set([
         'PieChart',
         'FunnelChart',
@@ -2621,6 +2622,8 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
         'RiverChart',
         'GanttChart',
         'PolarChart',
+        'CalendarChart',
+        'ParallelChart',
         // Mark + curve constructors consumed INLINE inside a `marks={[...]}`
         // array literal — the structural marks-array pass (chart-hosts.ts /
         // emit{Swift,Kotlin}.ts's PLOT_MARK_KINDS + the special-cased
@@ -8809,6 +8812,18 @@ function tryDeclFromSyncedSignal(node: AnyNode, ctx: ParseCtx): DeclIR | null {
  * Anything outside that shape warns + falls back to silent-drop, same as
  * every other v1 recognizer in this file.
  */
+/** The identifier/string keys of an object literal (computed keys skipped). */
+function literalObjectKeys(obj: AnyNode): string[] {
+  const out: string[] = []
+  for (const prop of (obj.properties as AnyNode[] | undefined) ?? []) {
+    if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
+    const keyNode = prop.key as AnyNode | undefined
+    if (keyNode?.type === 'Identifier') out.push(keyNode.name as string)
+    else if (keyNode?.type === 'Literal') out.push(String(keyNode.value))
+  }
+  return out
+}
+
 function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const init = node.init as AnyNode | undefined
   if (init?.type !== 'CallExpression') return null
@@ -8845,6 +8860,8 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     return undefined
   }
 
+  const droppedNodeFields = new Set<string>()
+  const droppedEdgeFields = new Set<string>()
   const nodesOut: {
     id: string
     type?: string
@@ -8896,6 +8913,8 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       const widthNode = objProp(nodeLit, 'width')
       const heightNode = objProp(nodeLit, 'height')
       const typeLit = literalString(typeNode)
+      for (const k of literalObjectKeys(nodeLit)) if (!HANDLED_FLOW_NODE_FIELDS.has(k)) droppedNodeFields.add(k)
+      if (typeNode && typeLit === undefined) droppedNodeFields.add('type (not a string literal)')
       nodesOut.push({
         id,
         positionX: parseExpr(posXNode, ctx),
@@ -8928,6 +8947,10 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       const edgeType = literalString(objProp(edgeLit, 'type'))
       const edgeLabel = literalString(objProp(edgeLit, 'label'))
       const edgeAnimated = literalBool(objProp(edgeLit, 'animated'))
+      for (const k of literalObjectKeys(edgeLit)) if (!HANDLED_FLOW_EDGE_FIELDS.has(k)) droppedEdgeFields.add(k)
+      if (objProp(edgeLit, 'type') && edgeType === undefined) droppedEdgeFields.add('type (not a string literal)')
+      if (objProp(edgeLit, 'label') && edgeLabel === undefined) droppedEdgeFields.add('label (not a string literal)')
+      if (objProp(edgeLit, 'animated') && edgeAnimated === undefined) droppedEdgeFields.add('animated (not a boolean literal)')
       edgesOut.push({
         id,
         source,
@@ -8985,6 +9008,15 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // makes this class expensive: the code compiles, runs, and is simply wrong on
   // one target. Naming the keys is the whole fix; the alternative (guessing a
   // native equivalent for `snapToGrid`) would be worse than saying so.
+  // Node/edge FIELDS the native types do not carry — the same silent-drop
+  // class as the config keys below, one level down (#3303 named the keys and
+  // stopped there; `parentId`/`markerEnd`/`sourceHandle`/… still vanished).
+  if (droppedNodeFields.size > 0) {
+    ctx.warnings.push(droppedFlowFieldsWarning(`createFlow declaration \`${name}\``, 'node', [...droppedNodeFields]))
+  }
+  if (droppedEdgeFields.size > 0) {
+    ctx.warnings.push(droppedFlowFieldsWarning(`createFlow declaration \`${name}\``, 'edge', [...droppedEdgeFields]))
+  }
   const HANDLED_FLOW_CONFIG_KEYS = new Set(['nodes', 'edges', 'minZoom', 'maxZoom'])
   const droppedKeys: string[] = []
   for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {

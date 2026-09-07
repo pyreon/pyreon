@@ -493,7 +493,7 @@ public struct LongPressGesture: Gesture {
 // mirrors the real gesture's \`translation: CGSize\` (width/height Doubles) so
 // an emit reading a member DragGesture.Value doesn't have fails typecheck.
 public struct DragGesture: Gesture {
-  public struct Value { public var translation: CGSize = CGSize(); public var location: CGPoint = CGPoint() }
+  public struct Value { public var translation: CGSize = CGSize(); public var location: CGPoint = CGPoint(); public var startLocation: CGPoint = CGPoint() }
   public init(minimumDistance: Double = 10) {}
   public func onChanged(_ action: @escaping (Value) -> Void) -> DragGesture { self }
   public func onEnded(_ action: @escaping (Value) -> Void) -> DragGesture { self }
@@ -651,6 +651,9 @@ extension View {
   // the same way: Kotlin accepted the identical source.
   public func scaledToFill() -> some View { self }
   public func onAppear(_ action: (() -> Void)? = nil) -> some View { self }
+  // iOS 17 forms — the zero-argument action, and the (old, new) pair.
+  public func onChange<V: Equatable>(of value: V, initial: Bool = false, _ action: @escaping () -> Void) -> some View { self }
+  public func onChange<V: Equatable>(of value: V, initial: Bool = false, _ action: @escaping (V, V) -> Void) -> some View { self }
   public func onDisappear(_ action: (() -> Void)? = nil) -> some View { self }
 }
 public enum ImageScale { case small, medium, large }
@@ -983,7 +986,14 @@ extension View {
 // @pyreon/flow — the PyreonFlowState engine. Mirrors PyreonFlowState.swift
 // (minus @Observable/@available, the same omission PyreonTableState documents).
 public struct PyreonXYPosition: Equatable {
+  public var x: Double = 0
+  public var y: Double = 0
   public init(x: Double, y: Double) {}
+}
+public struct PyreonFlowContainerSize: Equatable {
+  public var width: Double = 0
+  public var height: Double = 0
+  public init(width: Double = 0, height: Double = 0) {}
 }
 public struct PyreonFlowViewport: Equatable {
   public var x: Double = 0
@@ -992,9 +1002,12 @@ public struct PyreonFlowViewport: Equatable {
   public init(x: Double = 0, y: Double = 0, zoom: Double = 1) {}
 }
 public struct PyreonFlowNode<T> {
-  public var id: String = ""
-  public var position: PyreonXYPosition = PyreonXYPosition(x: 0, y: 0)
-  public var data: T? = nil
+  public var id: String
+  public var type: String? = nil
+  public var position: PyreonXYPosition
+  public var data: T
+  public var width: Double? = nil
+  public var height: Double? = nil
   public init(
     id: String,
     type: String? = nil,
@@ -1002,9 +1015,22 @@ public struct PyreonFlowNode<T> {
     data: T,
     width: Double? = nil,
     height: Double? = nil
-  ) {}
+  ) {
+    self.id = id
+    self.type = type
+    self.position = position
+    self.data = data
+    self.width = width
+    self.height = height
+  }
 }
 public struct PyreonFlowEdge: Equatable {
+  public var id: String
+  public var source: String
+  public var target: String
+  public var type: String? = nil
+  public var label: String? = nil
+  public var animated: Bool = false
   public init(
     id: String,
     source: String,
@@ -1012,7 +1038,14 @@ public struct PyreonFlowEdge: Equatable {
     type: String? = nil,
     label: String? = nil,
     animated: Bool = false
-  ) {}
+  ) {
+    self.id = id
+    self.source = source
+    self.target = target
+    self.type = type
+    self.label = label
+    self.animated = animated
+  }
 }
 public final class PyreonFlowState<T> {
   public init(
@@ -1025,7 +1058,7 @@ public final class PyreonFlowState<T> {
   public private(set) var nodes: [PyreonFlowNode<T>] = []
   public private(set) var edges: [PyreonFlowEdge] = []
   public private(set) var viewport: PyreonFlowViewport = PyreonFlowViewport()
-  public var containerSize: (width: Double, height: Double) = (0, 0)
+  public var containerSize = PyreonFlowContainerSize()
   public var zoom: Double { viewport.zoom }
   public func getNode(_ id: String) -> PyreonFlowNode<T>? { nil }
   public func addNode(_ node: PyreonFlowNode<T>) {}

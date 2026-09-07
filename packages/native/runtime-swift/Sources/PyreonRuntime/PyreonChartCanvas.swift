@@ -24,6 +24,30 @@ public struct PyreonChartRect: Codable, Equatable {
     }
 }
 
+/// One colour along a gradient's axis — runtime-owned like Pt/Rect/DrawCmd,
+/// because `PyreonDrawCmd` is `Codable, Equatable` and a stored property whose
+/// type is neither breaks that conformance.
+public struct PyreonChartGradientStop: Codable, Equatable {
+    public var offset: Double
+    public var color: String
+    public init(offset: Double, color: String) {
+        self.offset = offset
+        self.color = color
+    }
+}
+
+/// A linear gradient in the shape's own coordinate space.
+public struct PyreonChartGradient: Codable, Equatable {
+    public var from: PyreonChartPt
+    public var to: PyreonChartPt
+    public var stops: [PyreonChartGradientStop]
+    public init(from: PyreonChartPt, to: PyreonChartPt, stops: [PyreonChartGradientStop]) {
+        self.from = from
+        self.to = to
+        self.stops = stops
+    }
+}
+
 public struct PyreonDrawCmd: Codable, Equatable {
     public var kind: String
     public var rect: PyreonChartRect?
@@ -34,6 +58,12 @@ public struct PyreonDrawCmd: Codable, Equatable {
     public var dash: [Double]?
     public var points: [PyreonChartPt]?
     public var fill: String?
+    /// Corner radii for a `rect` — [topLeft, topRight, bottomRight, bottomLeft],
+    /// already in engine units. Clamped through the engine's `cornerRadii`, so
+    /// this canvas rounds by the same numbers the web canvas and the SVG do.
+    public var corners: [Double]?
+    /// Paint the fill as a linear gradient; `fill` stays the fallback.
+    public var grad: PyreonChartGradient?
     public var center: PyreonChartPt?
     public var radius: Double?
     public var text: String?
@@ -51,6 +81,8 @@ public struct PyreonDrawCmd: Codable, Equatable {
         kind: String,
         rect: PyreonChartRect? = nil,
         fill: String? = nil,
+        corners: [Double]? = nil,
+        grad: PyreonChartGradient? = nil,
         from: PyreonChartPt? = nil,
         to: PyreonChartPt? = nil,
         stroke: String? = nil,
@@ -68,6 +100,8 @@ public struct PyreonDrawCmd: Codable, Equatable {
         self.kind = kind
         self.rect = rect
         self.fill = fill
+        self.corners = corners
+        self.grad = grad
         self.from = from
         self.to = to
         self.stroke = stroke
@@ -164,6 +198,64 @@ public func pyreonChartColor(_ s: String) -> Color {
     return Color.clear
 }
 
+/// A SwiftUI shading from the engine's gradient — or the solid colour when
+/// there is none. `.linearGradient` takes UNIT points, so the engine's chart
+/// coordinates are handed over as-is via `.point()`-free absolute geometry:
+/// SwiftUI's GraphicsContext gradient takes real points, which is what the
+/// engine already speaks.
+func pyreonChartShading(_ fill: String, _ grad: PyreonChartGradient?) -> GraphicsContext.Shading {
+    guard let g = grad, !g.stops.isEmpty else { return .color(pyreonChartColor(fill)) }
+    let stops = g.stops.map {
+        Gradient.Stop(
+            color: pyreonChartColor($0.color), location: CGFloat(min(1.0, max(0.0, $0.offset))))
+    }
+    return .linearGradient(
+        Gradient(stops: stops),
+        startPoint: CGPoint(x: g.from.x, y: g.from.y),
+        endPoint: CGPoint(x: g.to.x, y: g.to.y))
+}
+
+/// The four arcs of a rounded rect — the twin of canvas-web's `traceRoundedRect`
+/// and svg.ts's path builder, corner for corner.
+func pyreonRoundedRectPath(_ r: PyreonChartRect, _ radii: [Double]) -> Path {
+    let tl = CGFloat(radii[0])
+    let tr = CGFloat(radii[1])
+    let br = CGFloat(radii[2])
+    let bl = CGFloat(radii[3])
+    let x = CGFloat(r.x)
+    let y = CGFloat(r.y)
+    let w = CGFloat(r.w)
+    let h = CGFloat(r.h)
+    var p = Path()
+    p.move(to: CGPoint(x: x + tl, y: y))
+    p.addLine(to: CGPoint(x: x + w - tr, y: y))
+    if tr > 0 {
+        p.addArc(
+            center: CGPoint(x: x + w - tr, y: y + tr), radius: tr,
+            startAngle: .degrees(-90), endAngle: .degrees(0), clockwise: false)
+    }
+    p.addLine(to: CGPoint(x: x + w, y: y + h - br))
+    if br > 0 {
+        p.addArc(
+            center: CGPoint(x: x + w - br, y: y + h - br), radius: br,
+            startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
+    }
+    p.addLine(to: CGPoint(x: x + bl, y: y + h))
+    if bl > 0 {
+        p.addArc(
+            center: CGPoint(x: x + bl, y: y + h - bl), radius: bl,
+            startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
+    }
+    p.addLine(to: CGPoint(x: x, y: y + tl))
+    if tl > 0 {
+        p.addArc(
+            center: CGPoint(x: x + tl, y: y + tl), radius: tl,
+            startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
+    }
+    p.closeSubpath()
+    return p
+}
+
 /// A SwiftUI Canvas walking the engine's flat draw list — the native twin of
 /// canvas-web's renderer (same dispatch, same text-anchor semantics).
 public struct PyreonChartCanvas: View {
@@ -180,9 +272,14 @@ public struct PyreonChartCanvas: View {
                 switch c.kind {
                 case "rect":
                     guard let r = c.rect, let fill = c.fill else { continue }
-                    context.fill(
-                        Path(CGRect(x: r.x, y: r.y, width: r.w, height: r.h)),
-                        with: .color(pyreonChartColor(fill)))
+                    let shade = pyreonChartShading(fill, c.grad)
+                    let radii = cornerRadii(r, c.corners)
+                    if hasCorners(radii) {
+                        context.fill(pyreonRoundedRectPath(r, radii), with: shade)
+                    } else {
+                        context.fill(
+                            Path(CGRect(x: r.x, y: r.y, width: r.w, height: r.h)), with: shade)
+                    }
                 case "line":
                     guard let f = c.from, let t = c.to, let stroke = c.stroke else { continue }
                     var p = Path()
@@ -205,7 +302,7 @@ public struct PyreonChartCanvas: View {
                     p.move(to: CGPoint(x: pts[0].x, y: pts[0].y))
                     for q in pts.dropFirst() { p.addLine(to: CGPoint(x: q.x, y: q.y)) }
                     p.closeSubpath()
-                    context.fill(p, with: .color(pyreonChartColor(fill)))
+                    context.fill(p, with: pyreonChartShading(fill, c.grad))
                 case "circle":
                     guard let ctr = c.center, let rad = c.radius, let fill = c.fill else { continue }
                     let rect = CGRect(

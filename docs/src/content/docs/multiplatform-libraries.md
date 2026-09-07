@@ -265,7 +265,7 @@ These packages target a web-only medium where the native equivalent isn't "the s
 |---|---|---|
 | `@pyreon/charts` | ECharts is canvas-based JS | Swift Charts (iOS 16+); Compose-charting or MPAndroidChart |
 | `@pyreon/code` | CodeMirror 6 is a web editor | iOS / Android each have different code-editor SDKs |
-| `@pyreon/flow` | SVG pan/zoom + DOM | SwiftUI `Canvas` or Compose `Canvas` |
+| `@pyreon/flow` | SVG pan/zoom + DOM | SwiftUI `Canvas` or Compose `Canvas` — the state half already ships (`PyreonFlowState`, lowered from `createFlow`) and a hand-wired `PyreonFlowEdgeCanvas` draws segment lists; the `<Flow>` host, gestures and layout are the open part |
 | `@pyreon/document` | pdfmake / docx / xlsx — web-native JS libs | iOS `PDFKit` / `PDFDocument`; Android `PdfDocument` |
 | `@pyreon/dnd` | `@atlaskit/pragmatic-drag-and-drop` HTML5 DnD | `DragGesture` SwiftUI; Compose `Modifier.draggable` |
 | `@pyreon/table` | TanStack Table — DOM measurement, web-DOM-aware | SwiftUI `Table` (limited); Compose `LazyColumn` patterns |

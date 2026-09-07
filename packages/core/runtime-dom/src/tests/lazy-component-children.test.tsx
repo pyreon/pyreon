@@ -42,7 +42,7 @@ import { effect, signal } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import * as RuntimeServer from '@pyreon/runtime-server'
 import * as JsxRuntime from '@pyreon/core/jsx-runtime'
-import { hydrateRoot, mountChild, onHydrationMismatch } from '../index'
+import { hydrateRoot, mountChild, onHydrationMismatch, _bindProp} from '../index'
 import * as Template from '../template'
 
 const stripImports = (code: string) => code.replace(/^import\s+.*$/gm, '')
@@ -53,7 +53,7 @@ const CLIENT_DEPS: Record<string, unknown> = {
   Fragment,
   _lc,
   _tpl: Template._tpl,
-  _bindText: Template._bindText,
+  _bindText: Template._bindText, _bindProp,
   _bindDirect: Template._bindDirect,
   _mountSlot: Template._mountSlot,
   _setChild: Template._setChild,

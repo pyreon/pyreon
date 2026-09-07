@@ -59,6 +59,7 @@ export {
 export {
   _bindDirect,
   _bindText,
+  _bindProp,
   _mountChild,
   _mountSlot,
   _textSlot,

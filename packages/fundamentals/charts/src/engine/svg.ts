@@ -15,7 +15,8 @@
 // Text measurement is the one thing it cannot do (no font metrics without a
 // rendering context), which is why `measureApprox` exists — see its note.
 
-import type { DrawCmd, Double, MeasureText, Pt } from './types'
+import { cornerRadii, hasCorners } from './corners'
+import type { ChartGradient, DrawCmd, Double, MeasureText, Pt } from './types'
 
 /**
  * Round to at most 2 decimals and drop a trailing `.0`.
@@ -71,10 +72,81 @@ const BASELINE: Record<'top' | 'middle' | 'bottom', string> = {
   bottom: 'alphabetic',
 }
 
-/** Serialize one command. Exported for backends that compose their own document. */
-export function svgCommand(c: DrawCmd, fontFamily: string): string {
+/**
+ * The `d` of a rounded rect — four arcs, sweep-flag 1 (clockwise in SVG's
+ * y-down space), matching the canvas and native traces corner for corner.
+ */
+function roundedRectPath(x: Double, y: Double, w: Double, h: Double, r: Double[]): string {
+  const tl = r[0]!
+  const tr = r[1]!
+  const br = r[2]!
+  const bl = r[3]!
+  const arc = (rad: Double, ex: Double, ey: Double): string =>
+    rad > 0 ? `A${n(rad)} ${n(rad)} 0 0 1 ${n(ex)} ${n(ey)}` : ''
+  return (
+    `M${n(x + tl)} ${n(y)}` +
+    `H${n(x + w - tr)}` +
+    arc(tr, x + w, y + tr) +
+    `V${n(y + h - br)}` +
+    arc(br, x + w - br, y + h) +
+    `H${n(x + bl)}` +
+    arc(bl, x, y + h - bl) +
+    `V${n(y + tl)}` +
+    arc(tl, x + tl, y) +
+    'Z'
+  )
+}
+
+/**
+ * The `<defs>` for every gradient in a command list, plus the id each one got.
+ *
+ * SVG cannot inline a gradient on a shape — it has to live in `<defs>` and be
+ * referenced by id — so serializing a gradient-bearing command needs document
+ * context that `svgCommand` alone does not have. `renderSvg` collects them
+ * here; a caller composing its own document either does the same or accepts
+ * the solid-fill fallback.
+ */
+export function collectGradients(cmds: DrawCmd[], prefix: string): { defs: string; ids: string[] } {
+  const parts: string[] = []
+  const ids: string[] = []
+  let i = 0
+  for (const c of cmds) {
+    const g = c.kind === 'rect' || c.kind === 'polygon' ? c.grad : undefined
+    if (g === undefined || g.stops.length === 0) {
+      ids.push('')
+      continue
+    }
+    const id = `${prefix}-g${i}`
+    i += 1
+    ids.push(id)
+    const stops = g.stops
+      .map((st) => `<stop offset="${n(Math.min(1, Math.max(0, st.offset)))}" stop-color="${esc(st.color)}"/>`)
+      .join('')
+    // userSpaceOnUse: the engine's points are chart coordinates, not fractions
+    // of each shape's bounding box (the SVG default) — which is exactly what
+    // makes one ramp span the plot instead of repeating per bar.
+    parts.push(
+      `<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${n(g.from.x)}" y1="${n(g.from.y)}" x2="${n(g.to.x)}" y2="${n(g.to.y)}">${stops}</linearGradient>`,
+    )
+  }
+  return { defs: parts.length === 0 ? '' : `<defs>${parts.join('')}</defs>`, ids }
+}
+
+/**
+ * Serialize one command. Exported for backends that compose their own document.
+ *
+ * `gradientId` is the id `collectGradients` minted for THIS command; without
+ * one, a gradient-bearing command falls back to its solid `fill`.
+ */
+export function svgCommand(c: DrawCmd, fontFamily: string, gradientId?: string): string {
+  const paint = (fill: string, grad: ChartGradient | undefined): string =>
+    grad !== undefined && gradientId !== undefined && gradientId !== '' ? `url(#${gradientId})` : esc(fill)
   if (c.kind === 'rect') {
-    return `<rect x="${n(c.rect.x)}" y="${n(c.rect.y)}" width="${n(c.rect.w)}" height="${n(c.rect.h)}" fill="${esc(c.fill)}"/>`
+    const radii = cornerRadii(c.rect, c.corners)
+    if (hasCorners(radii)) {
+      return `<path d="${roundedRectPath(c.rect.x, c.rect.y, c.rect.w, c.rect.h, radii)}" fill="${paint(c.fill, c.grad)}"/>`
+    }
+    return `<rect x="${n(c.rect.x)}" y="${n(c.rect.y)}" width="${n(c.rect.w)}" height="${n(c.rect.h)}" fill="${paint(c.fill, c.grad)}"/>`
   }
   if (c.kind === 'line') {
     return `<line x1="${n(c.from.x)}" y1="${n(c.from.y)}" x2="${n(c.to.x)}" y2="${n(c.to.y)}" stroke="${esc(c.stroke)}" stroke-width="${n(c.width)}"${dashAttr(c.dash)}/>`
@@ -87,7 +159,7 @@ export function svgCommand(c: DrawCmd, fontFamily: string): string {
   }
   if (c.kind === 'polygon') {
     if (c.points.length < 3) return ''
-    return `<polygon points="${pointsAttr(c.points)}" fill="${esc(c.fill)}"/>`
+    return `<polygon points="${pointsAttr(c.points)}" fill="${paint(c.fill, c.grad)}"/>`
   }
   if (c.kind === 'circle') {
     return `<circle cx="${n(c.center.x)}" cy="${n(c.center.y)}" r="${n(c.radius)}" fill="${esc(c.fill)}"/>`
@@ -160,12 +232,14 @@ export function renderSvg(
   if (options.title !== undefined) aria.push(`aria-labelledby="${titleId}"`)
   if (options.description !== undefined) aria.push(`aria-describedby="${descId}"`)
 
+  const gradients = collectGradients(cmds, prefix)
   const body: string[] = []
+  if (gradients.defs !== '') body.push(gradients.defs)
   if (options.background !== undefined) {
     body.push(`<rect x="0" y="0" width="${n(width)}" height="${n(height)}" fill="${esc(options.background)}"/>`)
   }
-  for (const c of cmds) {
-    const s = svgCommand(c, fontFamily)
+  for (let i = 0; i < cmds.length; i++) {
+    const s = svgCommand(cmds[i]!, fontFamily, gradients.ids[i])
     if (s !== '') body.push(s)
   }
 

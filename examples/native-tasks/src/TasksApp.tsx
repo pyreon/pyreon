@@ -73,8 +73,8 @@ import { Toaster, toast } from '@pyreon/toast'
 import { announce } from '@pyreon/a11y'
 import { useUrlState } from '@pyreon/url-state'
 import { signal, computed } from '@pyreon/reactivity'
-import { PlotChart, SankeyChart, bars } from '@pyreon/charts/plot'
-import type { SankeyHitIndex, SankeyLink, SankeyNode } from '@pyreon/charts/plot'
+import { FunnelChart, GaugeChart, HeatmapChart, PieChart, PlotChart, RadarChart, SankeyChart, TreemapChart, bars, line } from '@pyreon/charts/plot'
+import type { BrushRange, RadarAxis, SankeyHitIndex, SankeyLink, SankeyNode, TreeNode, ZoomWindow } from '@pyreon/charts/plot'
 import { useForm } from '@pyreon/form'
 import { useFetch, useCrashReporter } from '@pyreon/hooks'
 import { defineStore } from '@pyreon/store'
@@ -248,6 +248,9 @@ function TasksPage() {
         </Button>
         <Button onPress={() => navigate('/stats')} data-testid="tasks-stats">
           Stats
+        </Button>
+        <Button onPress={() => navigate('/dashboard')} data-testid="tasks-dashboard">
+          Dashboard
         </Button>
         <Button onPress={() => navigate('/toolkit')} data-testid="tasks-toolkit">
           Toolkit
@@ -487,6 +490,69 @@ const FLOW_LINKS: SankeyLink[] = [
   { source: 'Doing', target: 'Done', value: 5 },
 ]
 
+// Dashboard — the native wave's gate (#3279): one shared-source page using
+// SIX plot families (funnel, gauge, pie, radar, heatmap, treemap; the stats
+// page adds sankey + the cartesian plot with its pinch + selection), device-
+// asserted on both platforms. The funnel's data is a SIGNAL so a button can
+// re-lay it out under the same tap — the repaint proof — and the gauge reads
+// a signal a button moves.
+interface Stage {
+  name: string
+  total: number
+}
+const STAGES_ALL: Stage[] = [{ name: 'Leads', total: 120 }, { name: 'Qualified', total: 80 }, { name: 'Won', total: 30 }]
+const STAGES_DROPPED: Stage[] = [{ name: 'Qualified', total: 80 }, { name: 'Won', total: 30 }]
+interface PieSlice {
+  name: string
+  total: number
+  tint: string
+}
+const SLICES: PieSlice[] = [{ name: 'iOS', total: 45, tint: '#0f766e' }, { name: 'Android', total: 35, tint: '#b45309' }, { name: 'Web', total: 20, tint: '#1d4ed8' }]
+interface Team {
+  name: string
+  scores: number[]
+}
+const TEAMS: Team[] = [{ name: 'Core', scores: [4, 3, 5] }]
+const SKILL_AXES: RadarAxis[] = [{ label: 'speed', max: 5 }, { label: 'size', max: 5 }, { label: 'dx', max: 5 }]
+interface HeatCellRow {
+  d: string
+  hour: string
+  n: number
+}
+const HEAT_CELLS: HeatCellRow[] = [{ d: 'Mon', hour: '09', n: 3 }, { d: 'Mon', hour: '10', n: 5 }, { d: 'Tue', hour: '09', n: 1 }, { d: 'Tue', hour: '10', n: 4 }]
+const TREE: TreeNode[] = [{ name: 'src', value: 60 }, { name: 'docs', value: 25 }, { name: 'tests', value: 15 }]
+
+function DashboardPage() {
+  const navigate = useNavigate()
+  const stages = signal<Stage[]>(STAGES_ALL)
+  const stagePick = signal(-1)
+  const stageName = computed(() => (stagePick() < 0 ? 'none' : stages()[stagePick()]!.name))
+  const load = signal(40)
+  return (
+    <Scroll direction="vertical" data-testid="dash-scroll">
+      <Stack gap={3} padding={4} data-testid="dash-page">
+        <FunnelChart data={stages()} value={(d: Stage) => d.total} label={(d: Stage) => d.name} height={180} data-testid="dash-funnel" onSelect={(i: number) => stagePick.set(i)} />
+        <Text data-testid="dash-stage">{stageName()}</Text>
+        <Button onPress={() => stages.set(STAGES_DROPPED)} data-testid="dash-drop">
+          Drop first stage
+        </Button>
+        <GaugeChart value={load()} min={0} max={100} thickness={16} valueColor="#b45309" height={120} data-testid="dash-gauge" />
+        <Text data-testid="dash-load">{String(load())}</Text>
+        <Button onPress={() => load.set(load() + 25)} data-testid="dash-load-up">
+          Load +25
+        </Button>
+        <PieChart data={SLICES} value={(d: PieSlice) => d.total} label={(d: PieSlice) => d.name} color={(d: PieSlice) => d.tint} innerRadius={0.4} height={200} data-testid="dash-pie" />
+        <RadarChart data={TEAMS} axes={SKILL_AXES} values={(d: Team) => d.scores} label={(d: Team) => d.name} rings={3} height={200} title="Skills" data-testid="dash-radar" />
+        <HeatmapChart data={HEAT_CELLS} x={(d: HeatCellRow) => d.hour} y={(d: HeatCellRow) => d.d} value={(d: HeatCellRow) => d.n} gap={2} height={160} data-testid="dash-heat" />
+        <TreemapChart data={TREE} height={180} data-testid="dash-tree" />
+        <Button onPress={() => navigate('/tasks')} data-testid="dash-back">
+          Back to tasks
+        </Button>
+      </Stack>
+    </Scroll>
+  )
+}
+
 function StatsPage() {
   const navigate = useNavigate()
   // The node index the last tap on the flow chart reported (-1 = none yet):
@@ -495,6 +561,13 @@ function StatsPage() {
   const flowPick = signal(-1)
   // The bar index the last tap on the score chart reported (-1 = none yet).
   const barPick = signal(-1)
+  // The window as text, so a device assertion can name it — pinch, presets
+  // and the navigator all report through the same onZoom.
+  const zoomText = signal('0-100')
+  // The brush's committed range as text ('none' when cleared) — #3277: a NAMED
+  // handler taking BrushRange | null narrows on every target.
+  const brushSel = signal('none')
+  const onBrushRange = (r: BrushRange | null) => brushSel.set(r === null ? 'none' : String(r.start) + '-' + String(r.end))
   const scores = signal<Scores>({ math: 82, art: 91, gym: 74 })
   const subjects = computed(() => Object.keys(scores()))
   const total = computed(() => Object.values(scores()).reduce((a: number, b: number) => a + b, 0))
@@ -502,14 +575,23 @@ function StatsPage() {
   const high = computed(() => Object.values(scores()).flatMap((v: number) => v > 80 ? [v] : []))
   const curved = computed(() => Object.values(scores()).filter((v: number, i: number) => v * 1.05 > i + 75))
   return (
+    // The page outgrew the viewport when the navigator + brush charts landed:
+    // `stats-back` sat at y~900 and iOS's kAXScrollToVisibleAction could not
+    // reach it. Same shape as the dash and toolkit pages: <Scroll> outermost,
+    // the padded content <Stack> carrying `stats-page` — XCUITest finds that
+    // through `otherElements`, whereas a bare wrapper Stack is flattened out
+    // of the accessibility tree. Nothing lazy may live under this scroller:
+    // a <For> lowers to a LazyColumn, and a LazyColumn nested in
+    // Column(Modifier.verticalScroll()) is a measure-time crash on Android
+    // ("infinity maximum height constraints") — the emitter's warning for
+    // that shape only inspects the <Scroll>'s DIRECT children, so a <For>
+    // one level down crashes the device with no compile-time diagnostic.
+    <Scroll direction="vertical" data-testid="stats-scroll">
     <Stack gap={3} padding={4} data-testid="stats-page">
       <Text data-testid="stats-total">{String(total())}</Text>
       <Text data-testid="stats-average">{String(average())}</Text>
       <Text data-testid="stats-high">{String(high().length)}</Text>
       <Text data-testid="stats-curved">{String(curved().length)}</Text>
-      <For each={subjects} by={(name: string) => name}>
-        {(name: string) => <Text>{name}</Text>}
-      </For>
       <SankeyChart
         nodes={FLOW_NODES}
         links={FLOW_LINKS}
@@ -529,16 +611,34 @@ function StatsPage() {
         // #3270: the range-selector presets — the engine lays the strip out on
         // every target; a tap on 'last 1' or 'all' writes the same window.
         zoomPresets={[{ label: 'last 1', count: 1 }, { label: 'all', count: 0 }]}
-        height={160}
+        // #3272: the legend, whose entries toggle their series on every target.
+        showLegend={true}
+        // #3274: the navigator strip — its band and handles drive the same window.
+        navigator={true}
+        height={240}
         title="Scores by subject"
         data-testid="stats-bars"
         onSelect={(i: number) => barPick.set(i)}
+        onZoom={(w: ZoomWindow) => zoomText.set(`${(w.start * 100).toFixed(0)}-${(w.end * 100).toFixed(0)}`)}
       />
       <Text data-testid="stats-bars-pick">{String(barPick())}</Text>
+      <Text data-testid="stats-zoom">{zoomText()}</Text>
+      <PlotChart
+        data={SCORE_ROWS}
+        x={(d: ScoreRow) => d.subject}
+        marks={[line((d: ScoreRow) => d.score, { label: 'Trend', color: '#b45309' })]}
+        // #3277: brush-only (the bar chart's dataZoom makes its brush web-only).
+        brush={true}
+        height={120}
+        data-testid="stats-brush"
+        onBrush={onBrushRange}
+      />
+      <Text data-testid="stats-brush-sel">{brushSel()}</Text>
       <Button onPress={() => navigate('/tasks')} data-testid="stats-back">
         Back to tasks
       </Button>
     </Stack>
+    </Scroll>
   )
 }
 
@@ -908,6 +1008,11 @@ export function TasksApp() {
       {
         path: '/stats',
         component: StatsPage,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/dashboard',
+        component: DashboardPage,
         beforeEnter: () => useApp().store.isAuthed(),
       },
       {
