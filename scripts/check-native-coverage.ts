@@ -802,9 +802,37 @@ export function C() {
   },
   {
     name: '@pyreon/flow',
+    mechanism: 'pmtc-lowers',
+    rationale:
+      'createFlow({ nodes, edges, minZoom, maxZoom }) lowers to PyreonFlowState (@Observable / Compose state) on both targets — CRUD, selection, pan/zoom/fitView, graph queries; every other FlowConfig key warns by name. The <Flow> JSX host, gestures, layout and chrome do NOT lower yet (warned by name at the import) — the diagram itself still crosses via the @pyreon/flow/webview entry below. NOT device-proven: no example calls createFlow yet.',
+    snippet: `import { createFlow } from '@pyreon/flow'
+import { Stack, Text, Button } from '@pyreon/primitives'
+export function C() {
+  const flow = createFlow({
+    nodes: [
+      { id: 'a', position: { x: 0, y: 0 }, data: { label: 'A' } },
+      { id: 'b', position: { x: 200, y: 0 }, data: { label: 'B' } },
+    ],
+    edges: [{ id: 'e1', source: 'a', target: 'b' }],
+    minZoom: 0.5,
+    maxZoom: 2,
+  })
+  return (
+    <Stack>
+      <Text>{flow.nodes().length}</Text>
+      <Text>{flow.zoom()}</Text>
+      <Button onPress={() => flow.addNode({ id: 'c', position: { x: 400, y: 0 }, data: { label: 'C' } })}>Add</Button>
+      <Button onPress={() => flow.zoomIn()}>Zoom</Button>
+    </Stack>
+  )
+}
+`,
+  },
+  {
+    name: '@pyreon/flow/webview',
     mechanism: 'webview-host',
     rationale:
-      'the node-graph is an elk/SVG layout with no native equivalent, so it crosses by HOSTING the same diagram in a native <WebView> (@pyreon/flow/webview — self-contained, no CDN). Bridge + real SVG render proven in real Chromium; native host is emit + stub-typecheck proven, NOT device-proven.',
+      'the JSX diagram (<Flow>, layout, gestures, chrome) has no native emit yet, so it crosses by HOSTING the same diagram in a native <WebView> (@pyreon/flow/webview — self-contained, no CDN). Bridge + real SVG render proven in real Chromium; native host is emit + stub-typecheck proven, NOT device-proven.',
     snippet: `import { signal } from '@pyreon/reactivity'
 import { Stack, Text, WebView } from '@pyreon/primitives'
 export function C() {
@@ -1239,6 +1267,12 @@ function dirHasSource(dir: string): boolean {
  * whether someone had built recently rather than of the source — the documented
  * "a spawn-based test reads lib/" trap in reverse.
  */
+/** `@scope/pkg/sub/path` → `@scope/pkg`; a bare package name is returned as is. */
+function packageNameOf(entryName: string): string {
+  const m = /^(@[^/]+\/[^/]+)/.exec(entryName)
+  return m ? m[1]! : entryName
+}
+
 function measureWebviewHost(
   loc: PkgLoc | undefined,
   spec: NonNullable<RegistryEntry['webviewHost']>,
@@ -1665,7 +1699,10 @@ async function main(): Promise<number> {
 
     const coOk = entry.requiresCoSource ? coSourceOk(packages.get(entry.name)) : undefined
     const webview = entry.webviewHost
-      ? measureWebviewHost(packages.get(entry.name), entry.webviewHost)
+      ? measureWebviewHost(
+          // A webview host is a SUBPATH of its package by convention
+          // (`@pyreon/flow/webview`); the package map is keyed by package name.
+          packages.get(packageNameOf(entry.name)), entry.webviewHost)
       : undefined
     if (webview) webviewChecks.set(entry.name, webview)
     const res = classifyEntry(

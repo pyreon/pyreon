@@ -97,7 +97,7 @@ jobs:
           # Fail-closed: any diff failure → native=true.
           git fetch origin "${{ github.base_ref }}" || true
           if FILES=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD"); then
-            if printf '%s\n' "$FILES" | grep -qE '^(packages/native/|examples/native-|\.github/workflows/native-device\.yml$)'; then
+            if printf '%s\n' "$FILES" | grep -qE '^(packages/native/|packages/[^/]+/[^/]+/native/|packages/[^/]+/[^/]+/package\.json$|examples/native-|\.github/workflows/native-device\.yml$)'; then
               NATIVE=true
             else
               NATIVE=false
