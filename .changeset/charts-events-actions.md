@@ -1,0 +1,6 @@
+---
+'@pyreon/charts': minor
+'@pyreon/native-compiler': minor
+---
+
+The events/actions model for `<PlotChart>` (ECharts' `on(...)` / `dispatchAction`, Pyreon-shaped). `selectedMode="single" | "multiple"` pins a picked datum (click or keyboard Enter) with a heavy outline that stays and reports the pinned set through `onSelectChange` (GLOBAL indices); `onHighlight` reports the hovered datum and -1 on leave, `onLegendChange` the hidden series, `onZoom` the window — each from one source of truth, so a dispatch fires them exactly as a gesture does. `createChartHandle()` is the imperative handle: a link (`zoom`, `hover`) plus `selected` and `hidden` signals that ARE the chart's state, and `dispatch` over `highlight` / `downplay` / `select` / `unselect` / `toggleSelect` / `legendSelect` / `legendUnselect` / `legendToggle` / `dataZoom` / `restore`; a handle passed as `link` to siblings connects them. The engine draws the emphasis itself — `ChartSpec.emphasis` puts a faint band under the highlighted column and outlines its bars and points, a heavier outline on a pin — so the SVG and the generated native engines carry it in the same draw list. On native the new props warn by name (event props included, which the old filter never matched) and the chart renders without them.

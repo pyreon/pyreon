@@ -477,13 +477,42 @@ class SemanticsPropertyReceiver {
 // detectHorizontalDragGestures (onDragStart takes an Offset; the drag
 // callback takes (PointerInputChange, Float)) so an emit passing the
 // wrong shape fails the kotlinc gate instead of being masked.
-class PointerInputChange
 class Offset(val x: Float = 0f, val y: Float = 0f)
+class PointerId(val value: Long)
+class PointerInputChange {
+  val id: PointerId = PointerId(0)
+  val position: Offset = Offset()
+  fun consume() {}
+}
+// androidx.compose.ui.input.pointer.positionChange — the per-event delta.
+fun PointerInputChange.positionChange(): Offset = Offset()
+// AwaitPointerEventScope — the receiver inside awaitEachGesture. Only the
+// members the chart-host drag emit uses: awaitFirstDown (real default
+// requireUnconsumed = true) and drag(pointerId) { change -> } (real return
+// type Boolean, true when the pointer lifted rather than being cancelled).
+class AwaitPointerEventScope {
+  @Suppress("UNUSED_PARAMETER", "RedundantSuspendModifier")
+  suspend fun awaitFirstDown(requireUnconsumed: Boolean = true): PointerInputChange = PointerInputChange()
+  @Suppress("UNUSED_PARAMETER", "RedundantSuspendModifier")
+  suspend fun drag(pointerId: PointerId, onDrag: (PointerInputChange) -> Unit): Boolean = true
+}
 class PointerInputScope {
+  // awaitEachGesture — one block per gesture, receiver AwaitPointerEventScope.
+  @Suppress("UNUSED_PARAMETER", "RedundantSuspendModifier")
+  suspend fun awaitEachGesture(block: suspend AwaitPointerEventScope.() -> Unit) {}
   // The chart-host tap emit (chart-hosts.ts): a tap position in px.
   @Suppress("UNUSED_PARAMETER", "RedundantSuspendModifier")
   suspend fun detectTapGestures(onTap: ((Offset) -> Unit)? = null) {}
   suspend fun detectTransformGestures(onGesture: (Offset, Offset, Float, Float) -> Unit) {}
+  // <PlotChart navigator> (chart-hosts.ts): the strip's drag overlay. The real
+  // signature — onDrag takes (PointerInputChange, Offset) — so a wrong shape fails here.
+  @Suppress("UNUSED_PARAMETER", "RedundantSuspendModifier")
+  suspend fun detectDragGestures(
+    onDragStart: (Offset) -> Unit = {},
+    onDragEnd: () -> Unit = {},
+    onDragCancel: () -> Unit = {},
+    onDrag: (PointerInputChange, Offset) -> Unit,
+  ) {}
   @Suppress("UNUSED_PARAMETER", "RedundantSuspendModifier")
   suspend fun detectHorizontalDragGestures(
     onDragStart: (Offset) -> Unit = {},
@@ -634,6 +663,8 @@ object Modifier {
   // like the real androidx.compose.ui.input.pointer surface.
   @Suppress("UNUSED_PARAMETER")
   fun pointerInput(key: Any?, block: suspend PointerInputScope.() -> Unit): Modifier = this
+  fun pointerInput(key1: Any?, key2: Any?, block: suspend PointerInputScope.() -> Unit): Modifier = this
+  fun pointerInput(vararg keys: Any?, block: suspend PointerInputScope.() -> Unit): Modifier = this
   // @pyreon/dnd sortable modifiers. Real Compose ships them as top-level
   // extensions on Modifier (PyreonSortableModifier.kt); the stub Modifier is
   // an object, so they are modelled as members with the IDENTICAL parameter
@@ -648,6 +679,8 @@ object Modifier {
   // ships it from androidx.compose.foundation.layout.
   @Suppress("UNUSED_PARAMETER")
   fun fillMaxWidth(fraction: Float = 1f): Modifier = this
+  fun fillMaxSize(fraction: Float = 1f): Modifier = this
+  fun offset(x: Dp = 0.dp, y: Dp = 0.dp): Modifier = this
   // --- Phase P2.2 content: <Icon>/<Image> sizing. Real Compose ships
   // size/width/height from androidx.compose.foundation.layout.
   @Suppress("UNUSED_PARAMETER")

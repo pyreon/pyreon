@@ -386,6 +386,29 @@ const tasks: GanttTask[] = [
       seeAlso: ['PlotChart', 'CalendarChart'],
     },
     {
+      name: 'createChartHandle',
+      kind: 'function',
+      signature: '() => ChartHandle',
+      summary:
+        "The imperative handle (ECharts `dispatchAction`) for ONE `<PlotChart handle>`: a link (`zoom`, `hover`) plus `selected` (pinned datums, GLOBAL indices) and `hidden` (series by mark index), and `dispatch(action)` over the ECharts vocabulary — `highlight` / `downplay` (VISIBLE-row index, the crosshair's space), `select` / `unselect` / `toggleSelect` (global datum), `legendSelect` / `legendUnselect` / `legendToggle` (series), `dataZoom` (fractions; a full window reads back as null) and `restore` (clears all four). Every dispatch is one batch, so the chart repaints once. The signals ARE the chart's state: `handle.selected()` reads the chart, and the change callbacks (`onSelectChange` / `onHighlight` / `onLegendChange` / `onZoom`) fire for a dispatch exactly as for a pointer. A handle is also a link — pass it as `link` to sibling charts to connect them.",
+      example: `import { PlotChart, createChartHandle, bars } from '@pyreon/charts/plot'
+
+interface Row { k: string; v: number }
+declare const rows: Row[]
+const chart = createChartHandle()
+<PlotChart data={rows} x={(d) => d.k} marks={[bars((d: Row) => d.v)]} handle={chart} selectedMode="multiple" onSelectChange={(s) => console.log(s)} />
+chart.dispatch({ type: 'select', index: 2 })
+chart.dispatch({ type: 'dataZoom', start: 0.25, end: 0.75 })
+chart.dispatch({ type: 'restore' })`,
+      mistakes: [
+        'Passing one handle as `handle` to TWO charts — both then share selection and legend state; give each chart its own handle and connect them with `link`',
+        'Dispatching `highlight` with a GLOBAL index on a zoomed chart — highlight speaks the VISIBLE-row space like the crosshair; subtract the window offset (the pins in `select` are global)',
+        'Expecting a miss-click to clear the selection — like ECharts it does not; dispatch `unselect` or `restore`',
+        'Reading `handle.selected()` outside a reactive scope and expecting it to update — it is a signal; read it in an effect, a computed or JSX',
+      ],
+      seeAlso: ['createChartLink', 'PlotChart'],
+    },
+    {
       name: 'createChartLink',
       kind: 'function',
       signature: '() => ChartLink',

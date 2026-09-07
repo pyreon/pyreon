@@ -73,11 +73,51 @@ export type MeasureText = (text: string, fontSize: Double) => Double
  * what crosses cheaply: it is plain data with no closures, so it survives both
  * the PMTC compile and any serialization boundary a host wants to put in.
  */
+/** One colour along a gradient's axis — `offset` is 0..1 from `from` to `to`. */
+export interface ChartGradientStop {
+  offset: Double
+  color: string
+}
+
+/**
+ * A linear gradient in the shape's own coordinate space.
+ *
+ * Named `ChartGradient` rather than `Gradient` on purpose: SwiftUI already has
+ * a `Gradient`, and the generated engine lands in the same module as the
+ * runtime canvas.
+ *
+ * Every command that can carry one ALSO carries its solid `fill`. A backend
+ * that cannot paint a gradient — or a caller serializing one command at a time
+ * without a `<defs>` to put it in — falls back to the fill rather than to
+ * nothing.
+ */
+export interface ChartGradient {
+  from: Pt
+  to: Pt
+  stops: ChartGradientStop[]
+}
+
 export type DrawCmd =
-  | { kind: 'rect'; rect: Rect; fill: string }
+  | {
+      kind: 'rect'
+      rect: Rect
+      fill: string
+      /**
+       * Corner radii — `[topLeft, topRight, bottomRight, bottomLeft]`, in the
+       * same units as the rect. Absent (the common case) is a square rect and
+       * serializes byte-identically to before.
+       *
+       * Every executor clamps through the engine's own `cornerRadii`, so the
+       * web canvas, the SVG string and the SwiftUI/Compose canvases round by
+       * the same numbers rather than by four platform conventions.
+       */
+      corners?: Double[] | undefined
+      /** Paint the fill as a gradient; `fill` stays the fallback. */
+      grad?: ChartGradient | undefined
+    }
   | { kind: 'line'; from: Pt; to: Pt; stroke: string; width: Double; dash?: Double[] | undefined }
   | { kind: 'polyline'; points: Pt[]; stroke: string; width: Double; dash?: Double[] | undefined }
-  | { kind: 'polygon'; points: Pt[]; fill: string }
+  | { kind: 'polygon'; points: Pt[]; fill: string; grad?: ChartGradient | undefined }
   | { kind: 'circle'; center: Pt; radius: Double; fill: string }
   | {
       kind: 'text'

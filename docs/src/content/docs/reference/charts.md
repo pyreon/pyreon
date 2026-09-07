@@ -91,6 +91,7 @@ const typedChart = useChart<MyOption>(() => ({
 | [`optionToSvg`](#optiontosvg) | function | The ECharts option-compat facade: an ECharts-SHAPED option in, this engine out — cartesian series (line/bar/scatter/effe |
 | [`OptionChart`](#optionchart) | component | The ECharts-option-driven host: an ECharts-shaped option in (a value or an accessor), a live chart out. |
 | [`GanttChart`](#ganttchart) | component | The Gantt family — one row per task on a calendar-aligned time axis. |
+| [`createChartHandle`](#createcharthandle) | function | The imperative handle (ECharts `dispatchAction`) for ONE `<PlotChart handle>`: a link (`zoom`, `hover`) plus `selected`  |
 | [`createChartLink`](#createchartlink) | function | Linked charts (ECharts `connect`): a shared `{ zoom, hover }` pair of signals that every `<PlotChart link>` in a group u |
 | [`sonifyValues`](#sonifyvalues) | function | A series as sound: each value maps linearly to a pitch between `minHz` and `maxHz` (`valueToHz`, clamped to the domain,  |
 
@@ -534,6 +535,39 @@ const tasks: GanttTask[] = [
 - Mixing `group`s out of order — a lane header is emitted at every CHANGE of `group`, so interleaved groups produce repeated headers
 
 **See also:** `PlotChart` · `CalendarChart`
+
+---
+
+### createChartHandle `function`
+
+```ts
+() => ChartHandle
+```
+
+The imperative handle (ECharts `dispatchAction`) for ONE `<PlotChart handle>`: a link (`zoom`, `hover`) plus `selected` (pinned datums, GLOBAL indices) and `hidden` (series by mark index), and `dispatch(action)` over the ECharts vocabulary — `highlight` / `downplay` (VISIBLE-row index, the crosshair's space), `select` / `unselect` / `toggleSelect` (global datum), `legendSelect` / `legendUnselect` / `legendToggle` (series), `dataZoom` (fractions; a full window reads back as null) and `restore` (clears all four). Every dispatch is one batch, so the chart repaints once. The signals ARE the chart's state: `handle.selected()` reads the chart, and the change callbacks (`onSelectChange` / `onHighlight` / `onLegendChange` / `onZoom`) fire for a dispatch exactly as for a pointer. A handle is also a link — pass it as `link` to sibling charts to connect them.
+
+**Example**
+
+```tsx
+import { PlotChart, createChartHandle, bars } from '@pyreon/charts/plot'
+
+interface Row { k: string; v: number }
+declare const rows: Row[]
+const chart = createChartHandle()
+<PlotChart data={rows} x={(d) => d.k} marks={[bars((d: Row) => d.v)]} handle={chart} selectedMode="multiple" onSelectChange={(s) => console.log(s)} />
+chart.dispatch({ type: 'select', index: 2 })
+chart.dispatch({ type: 'dataZoom', start: 0.25, end: 0.75 })
+chart.dispatch({ type: 'restore' })
+```
+
+**Common mistakes**
+
+- Passing one handle as `handle` to TWO charts — both then share selection and legend state; give each chart its own handle and connect them with `link`
+- Dispatching `highlight` with a GLOBAL index on a zoomed chart — highlight speaks the VISIBLE-row space like the crosshair; subtract the window offset (the pins in `select` are global)
+- Expecting a miss-click to clear the selection — like ECharts it does not; dispatch `unselect` or `restore`
+- Reading `handle.selected()` outside a reactive scope and expecting it to update — it is a signal; read it in an effect, a computed or JSX
+
+**See also:** `createChartLink` · `PlotChart`
 
 ---
 
