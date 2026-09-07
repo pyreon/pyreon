@@ -32,7 +32,7 @@ const INTERVAL_US = 10
 // then refuses to report — both are needed (see bench-clearprofile.ts).
 const PORT = process.env.DP_PORT ?? '4187'
 
-const ARMS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'] as const
+const ARMS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'] as const
 const ARM_LABEL: Record<string, string> = {
   A: 'A_full      component + effect() + reactive text bind  ← benched shape',
   B: 'B_noEffect  component +            reactive text bind',
@@ -43,6 +43,8 @@ const ARM_LABEL: Record<string, string> = {
   G: 'G_solid     SolidJS equivalent (component + effect + insert)',
   H: 'H_directBind = arm B, but the `value` prop IS THE SIGNAL (not a wrapper)',
   I: 'I_directFull = arm A, but the `value` prop IS THE SIGNAL (not a wrapper)',
+  J: 'J_rpdFull   = arm A, idiomatic compiled shape: _rpd(sig) + _bindProp (direct tier)',
+  K: 'K_rpFull    = arm J with the pre-lever _rp(() => sig()) wrap (control)',
 }
 
 const preview = spawn('bunx', ['vite', 'preview', '--port', PORT, '--strictPort'], {

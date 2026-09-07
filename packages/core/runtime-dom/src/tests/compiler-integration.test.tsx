@@ -8,7 +8,7 @@
  * constructor, execute, mount the result, and assert DOM state.
  */
 import { transformJSX } from '@pyreon/compiler'
-import { Fragment, h, _rp, cx } from '@pyreon/core'
+import { Fragment, h, _rp, _rpd, cx } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { _tpl, _bindText, _bindDirect, _setChild, _setChildAt } from '../template'
 import {
@@ -20,8 +20,7 @@ import {
   _setHtml,
   bindPolymorphicText,
   mount,
-  mountChild,
-} from '../index'
+  mountChild, _bindProp,} from '../index'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -35,6 +34,7 @@ const RUNTIME_DEPS = {
   _tpl,
   _bind,
   _bindText,
+  _bindProp,
   _bindDirect,
   _setChild,
   _setChildAt,
@@ -46,6 +46,7 @@ const RUNTIME_DEPS = {
   _setValue,
   _setHtml,
   _rp,
+  _rpd,
   _cx: cx,
   h,
   Fragment,
@@ -492,16 +493,17 @@ describe('compiler integration — compiler output structure', () => {
     expect(code).toContain('_bindText(count,')
   })
 
-  it('props.name emits a general reactive bindPolymorphicText from @pyreon/runtime-dom', () => {
+  it('props.name emits _bindProp from @pyreon/runtime-dom (descriptor-bound prop read)', () => {
     const { code } = transformJSX(
       'const Comp = (props) => <div>{props.name}</div>',
       'test.tsx',
     )
-    // General reactive text (member access) lowers to bindPolymorphicText — the
-    // polymorphic text↔mount helper — imported from runtime-dom (NOT the raw
+    // A prop read lowers to `_bindProp` — bound by descriptor so an `_rpd`
+    // getter's direct tier is reachable; it falls back to bindPolymorphicText
+    // internally for any other getter. Imported from runtime-dom (NOT the raw
     // _bind from reactivity, which was the pre-universal-mount emit).
-    expect(code).toContain('bindPolymorphicText')
-    expect(code).toContain('bindPolymorphicText(() => (props.name), __t0, __root)')
+    expect(code).toContain('_bindProp(props, "name"')
+    expect(code).toContain('_bindProp(props, "name", __t0, __root)')
   })
 
   it('class={cls()} emits _bindDirect', () => {
@@ -851,14 +853,15 @@ describe('compiler integration — universal VNode[] child mounting', () => {
   })
 
   it('REACTIVE prop {props.items} (VNode[]) mounts + swaps on signal change', () => {
-    // `<ul>{props.items}</ul>` — member access → general reactive child →
-    // `bindPolymorphicText`. A signal-driven prop re-mounts on change.
+    // `<ul>{props.items}</ul>` — a prop read → `_bindProp`, whose fallback for
+    // a getter without `.direct` is the polymorphic mount. A signal-driven
+    // prop re-mounts on change.
     const items = signal([h('li', null, 'x'), h('li', null, 'y')])
     const { container, code } = compileComponent(
       `const C = (props) => (<ul>{props.items}</ul>)`,
       { items },
     )
-    expect(code).toContain('bindPolymorphicText(')
+    expect(code).toContain('_bindProp(') // prop read binds by descriptor; polymorphic mount is its fallback
     const ul = container.querySelector('ul')!
     expect(ul.querySelectorAll('li').length).toBe(2)
     expect(ul.textContent).toBe('xy')

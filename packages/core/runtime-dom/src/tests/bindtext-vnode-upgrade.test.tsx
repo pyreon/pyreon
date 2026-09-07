@@ -17,7 +17,7 @@
  */
 import { transformJSX } from '@pyreon/compiler'
 import { transformSync } from 'esbuild'
-import { createContext, Fragment, h, provide, useContext, _rp, cx } from '@pyreon/core'
+import { createContext, Fragment, h, provide, useContext, _rp, _rpd, cx } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import { _tpl, _bindText, _bindDirect, _mountSlot, _textSlot, _setChild, _setChildAt } from '../template'
@@ -27,8 +27,7 @@ import {
   bindPolymorphicText,
   hydrateRoot,
   mountChild,
-  onHydrationMismatch,
-} from '../index'
+  onHydrationMismatch, _bindProp,} from '../index'
 
 const strip = (html: string) => html.replace(/<!--[\s\S]*?-->/g, '')
 
@@ -49,6 +48,7 @@ const RUNTIME_DEPS = {
   _tpl,
   _bind,
   _bindText,
+  _bindProp,
   _bindDirect,
   _applyProps,
   _setStyle,
@@ -58,6 +58,7 @@ const RUNTIME_DEPS = {
   _setChildAt,
   bindPolymorphicText,
   _rp,
+  _rpd,
   _cx: cx,
   h,
   Fragment,

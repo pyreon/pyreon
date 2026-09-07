@@ -25,7 +25,7 @@
  */
 import { transformJSX } from '@pyreon/compiler'
 import { transformSync } from 'esbuild'
-import { Fragment, h, _rp, cx } from '@pyreon/core'
+import { Fragment, h, _rp, _rpd, cx } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import { _tpl, _bindText, _bindDirect, _mountSlot, _textSlot, _setChild, _setChildAt } from '../template'
@@ -36,8 +36,7 @@ import {
   bindPolymorphicText,
   hydrateRoot,
   mountChild,
-  onHydrationMismatch,
-} from '../index'
+  onHydrationMismatch, _bindProp,} from '../index'
 
 const strip = (html: string) => html.replace(/<!--[\s\S]*?-->/g, '')
 
@@ -62,6 +61,7 @@ const RUNTIME_DEPS = {
   _tpl,
   _bind,
   _bindText,
+  _bindProp,
   _bindDirect,
   _applyProps,
   _setStyle,
@@ -72,6 +72,7 @@ const RUNTIME_DEPS = {
   _setChildAt,
   bindPolymorphicText,
   _rp,
+  _rpd,
   _cx: cx,
   h,
   Fragment,
@@ -369,7 +370,7 @@ export function App() {
       `export function App(props) { return <ul>{props.items}</ul> }`,
       'test.tsx',
     )
-    expect(full.code).toContain('bindPolymorphicText(')
+    expect(full.code).toContain('_bindProp(') // prop read binds by descriptor
     const body = lowerResidualTsx(stripImports(full.code).replace(/^export\s+/gm, ''))
     const fn = new Function(...DEP_NAMES, `${body}\nreturn App`)
     const App = fn(...DEP_VALUES) as (p: unknown) => unknown

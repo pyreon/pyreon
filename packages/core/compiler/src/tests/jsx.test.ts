@@ -1659,10 +1659,13 @@ describe('JSX transform — per-text-node bind', () => {
 // ─── Reactive props auto-detection ──────────────────────────────────────────
 
 describe('JSX transform — reactive props detection', () => {
-  test('props.x in text child is reactive (wrapped in _bind)', () => {
+  test('props.x in text child is reactive — bound by DESCRIPTOR via _bindProp', () => {
+    // A prop read binds through `_bindProp(props, key, …)`, which reaches the
+    // getter itself: an `_rpd` getter (bare signal call at the call site)
+    // takes the direct tier, anything else the tracked polymorphic path.
     const result = t('function Comp(props) { return <div>{props.name}</div> }')
-    expect(result).toContain('bindPolymorphicText(() => (')
-    expect(result).toContain('props.name')
+    expect(result).toContain('_bindProp(props, "name", __t0, __root)')
+    expect(result).not.toContain('bindPolymorphicText')
   })
 
   test('props.x in attribute is reactive (wrapped in _bind)', () => {
@@ -1739,8 +1742,7 @@ describe('JSX transform — reactive props detection', () => {
 
   test('arrow function component detected', () => {
     const result = t('const Comp = (props) => <div>{props.x}</div>')
-    expect(result).toContain('bindPolymorphicText(() => (')
-    expect(result).toContain('props.x')
+    expect(result).toContain('_bindProp(props, "x", __t0, __root)')
   })
 })
 
@@ -1967,7 +1969,7 @@ describe('JSX transform — AST inlining (template literals, ternaries)', () => 
   test('non-children prop access still uses text node binding', () => {
     const result = t('function C(props) { return <div>{props.name}</div> }')
     expect(result).not.toContain('_mountSlot')
-    expect(result).toContain('bindPolymorphicText')
+    expect(result).toContain('_bindProp(props, "name"')
   })
 
   test('signal() calls are NOT inlined as prop-derived vars', () => {
