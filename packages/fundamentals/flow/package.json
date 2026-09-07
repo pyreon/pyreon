@@ -73,6 +73,9 @@
       "kotlinServices": {
         "PyreonFlowState": [
           "PyreonFlowState.kt"
+        ],
+        "PyreonFlowEdgeGeometry": [
+          "PyreonFlowEdgeGeometry.kt"
         ]
       },
       "kotlinSdkOnly": [
