@@ -434,7 +434,12 @@ entrance over `theme.enterMs` inside `PyreonChartEntrance`, off under Reduce
 Motion (iOS) and a zero animator scale (Android) — the web host's
 `prefers-reduced-motion` — and `animate={false}` emits the host exactly as
 before. On an engine with no entrance the prop is named as inert rather than
-as a native gap.
+as a native gap. The `theme` prop follows too: a named theme or a literal
+colours the title, legend and tooltip box, seeds the options palette (an
+explicit `palette` in the options wins) and paints `theme.background`
+behind the chart on every host, as the web canvas host does. A theme that
+is not a literal (`theme={someVariable}`) cannot be read at compile time;
+it is reported by name and the default applies.
 
 Bars are rounded by default: `theme.radius` (3) rounds the corners away from
 the baseline — top for a positive bar, bottom for a negative one, the far end

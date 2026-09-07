@@ -503,7 +503,7 @@ describe('chart hosts — legend + title chrome (Plot / Pie / Radar)', () => {
   it('Swift: the title block, then the legend, then the plot shifted down by both; the tap subtracts the same offset', () => {
     const r = transform(CHROME, { target: 'swift' })
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('let pyreonTitle: TitleLayout = renderTitle("Revenue", "by month", PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 220.0), TitleOptions(fontSize: 15.0, color: "#5a6b7a", align: "start"))')
+    expect(r.code).toContain('let pyreonTitle: TitleLayout = renderTitle("Revenue", "by month", PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 220.0), TitleOptions(fontSize: 15.0, color: "#1f2937", align: "start"))')
     expect(r.code).toContain('let pyreonLegend: LegendLayout = renderLegend(pyreonSeriesAll.enumerated().map { (pyreonI, pyreonS) in LegendEntry(label: pyreonS.label, color: pyreonS.color, muted: pyreonHidden.contains(pyreonI)) }, PyreonChartRect(x: 0.0, y: pyreonTitle.height, w: Double(pyreonGeo.size.width), h: 220.0 - pyreonTitle.height), LegendOptions(fontSize: 11.0, labelColor: "#5a6b7a", swatch: 10.0, gap: 12.0, orientation: "horizontal", maxRows: 2.0, page: pyreonLegendPage), pyreonChartMeasure)')
     expect(r.code).toContain('let pyreonTop: Double = pyreonTitle.height + pyreonLegend.height')
     expect(r.code).toContain('ChartSpec(width: Double(pyreonGeo.size.width), height: 220.0 - pyreonTop, series: pyreonSeries')
@@ -522,7 +522,7 @@ describe('chart hosts — legend + title chrome (Plot / Pie / Radar)', () => {
   it('Kotlin: the same chrome with the runtime shift', () => {
     const r = transform(CHROME, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('val pyreonTitle: TitleLayout = renderTitle("Revenue", "by month", PyreonChartRect(0.0, 0.0, pyreonW, 220.0), TitleOptions(fontSize = 15.0, color = "#5a6b7a", align = "start"))')
+    expect(r.code).toContain('val pyreonTitle: TitleLayout = renderTitle("Revenue", "by month", PyreonChartRect(0.0, 0.0, pyreonW, 220.0), TitleOptions(fontSize = 15.0, color = "#1f2937", align = "start"))')
     expect(r.code).toContain('val pyreonLegend: LegendLayout = renderLegend(pyreonSeriesAll.mapIndexed { pyreonI, pyreonS -> LegendEntry(label = pyreonS.label, color = pyreonS.color, muted = pyreonHidden.contains(pyreonI)) }, PyreonChartRect(0.0, pyreonTitle.height, pyreonW, 220.0 - pyreonTitle.height), LegendOptions(fontSize = 11.0, labelColor = "#5a6b7a", swatch = 10.0, gap = 12.0, orientation = "horizontal", maxRows = 2.0, page = pyreonLegendPage), ::pyreonChartMeasure)')
     expect(r.code).toContain('PyreonChartCanvas(cmds = pyreonTitle.cmds + pyreonLegend.cmds + pyreonShiftCmds(renderChart(pyreonSpec, ::pyreonChartMeasure), pyreonTop)')
     expect(r.code).toContain('plotHitBars(pyreonSpec, ::pyreonChartMeasure, (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble() - pyreonTop)')

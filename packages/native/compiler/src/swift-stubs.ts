@@ -1667,6 +1667,7 @@ public struct PyreonChartCanvas: View {
   public init(cmds: [PyreonDrawCmd], fontFamily: String? = nil) { self.cmds = cmds; self.fontFamily = fontFamily }
   public var body: some View { EmptyView() }
 }
+public func pyreonChartColor(_ s: String) -> Color { Color.clear }
 public struct PyreonChartEntrance<Content: View>: View {
   public init(durationMs: Double, @ViewBuilder content: @escaping (Double) -> Content) {}
   public typealias Body = Never

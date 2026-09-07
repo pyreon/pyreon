@@ -51,6 +51,13 @@ export interface ChartHostTarget {
    * field replaced (Swift mutates a `var` copy, Kotlin `.copy(progress = p)`).
    */
   withProgress: (options: string, struct: string, progress: string) => string
+  /**
+   * The options with the theme palette as the DEFAULT — `Struct(palette: p)`
+   * when no options were given, else a copy whose `palette` is filled only
+   * when the user left it unset (the web host's `{ palette: theme.palette,
+   * ...props.x }` merge; an explicit palette in the options wins).
+   */
+  withPalette: (options: string, struct: string, palette: string) => string
 }
 
 export interface ChartHostArgs {
@@ -65,6 +72,8 @@ export interface ChartHostArgs {
   gutter: string
   /** `innerRatio` (Sunburst) — a Double expression. */
   innerRatio: string
+  /** The theme's font size as emitted text (the pie's label size); the default when absent. */
+  fontSize?: string
 }
 
 export interface ChartHostSpec {
@@ -74,6 +83,8 @@ export interface ChartHostSpec {
   readonly options: string
   /** The engine struct the options prop holds — steers an inline literal and names the entrance copy. */
   readonly optionsStruct: string
+  /** The options struct has a `palette` — the theme's palette is its default (the web host's merge). */
+  readonly paletteOption?: true
   /** The web host's default `height`. */
   readonly defaultHeight: number
   /** Builds the layout expression (`layoutX(...)`). */
@@ -215,6 +226,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     data: ['nodes', 'links'],
     options: 'sankey',
     optionsStruct: 'SankeyOptions',
+    paletteOption: true,
     defaultHeight: 300,
     layout: (a, t) => {
       const box = t.rect(a.gutter, '8.0', t.max0(`${a.W} - ${a.gutter} * 2.0`), t.max0(`${a.H} - 16.0`))
@@ -229,6 +241,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     data: ['nodes', 'links'],
     options: 'graph',
     optionsStruct: 'GraphOptions',
+    paletteOption: true,
     defaultHeight: 300,
     layout: (a, t) => `layoutGraph(${a.data[0]}, ${a.data[1]}, ${box00(a, t)}, ${a.options})`,
     render: (l, a, t) => `renderGraph(${l}, ${box00(a, t)}, ${a.options})`,
@@ -239,6 +252,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     data: ['data'],
     options: 'treemap',
     optionsStruct: 'TreemapOptions',
+    paletteOption: true,
     defaultHeight: 300,
     layout: (a, t) => `layoutTreemap(${a.data[0]}, ${box00(a, t)}, ${a.options})`,
     render: (l, a) => `renderTreemap(${l}, ${a.options})`,
@@ -250,6 +264,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     data: ['data'],
     options: 'sunburst',
     optionsStruct: 'SunburstOptions',
+    paletteOption: true,
     defaultHeight: 300,
     layout: (a, t) => {
       const outer = t.max0(`${t.min(a.W, a.H)} / 2.0 - 4.0`)
@@ -264,6 +279,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     data: ['data'],
     options: 'tree',
     optionsStruct: 'TreeOptions',
+    paletteOption: true,
     defaultHeight: 300,
     layout: (a, t) => `layoutTree(${a.data[0]}, ${box00(a, t)}, ${a.options})`,
     render: (l, a) => `renderTree(${l}, ${a.options})`,
@@ -275,6 +291,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     data: ['series'],
     options: 'river',
     optionsStruct: 'RiverOptions',
+    paletteOption: true,
     defaultHeight: 300,
     layout: (a, t) => `layoutRiver(${a.data[0]}, ${t.rect('8.0', '8.0', t.max0(`${a.W} - 16.0`), t.max0(`${a.H} - 16.0`))}, ${a.options})`,
     render: (l, a) => `renderRiver(${l}, ${a.options})`,
@@ -286,6 +303,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     data: ['tasks'],
     options: 'gantt',
     optionsStruct: 'GanttOptions',
+    paletteOption: true,
     defaultHeight: 320,
     layout: (a, t) => `layoutGantt(${a.data[0]}, ${t.rect('4.0', '4.0', `${a.W} - 8.0`, `${a.H} - 8.0`)}, ${a.options})`,
     render: (l, a) => `renderGantt(${l}, ${a.options})`,
@@ -296,6 +314,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     data: ['axes', 'series'],
     options: 'polar',
     optionsStruct: 'PolarOptions',
+    paletteOption: true,
     defaultHeight: 300,
     layout: (a, t) => `layoutPolar(${a.data[0]}, ${a.data[1]}, ${box00(a, t)}, ${a.options})`,
     render: (l, a) => `renderPolar(${l}, ${a.options})`,
@@ -319,6 +338,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     data: ['axes', 'rows'],
     options: 'parallel',
     optionsStruct: 'ParallelOptions',
+    paletteOption: true,
     defaultHeight: 300,
     gutterDefault: 40,
     layout: (a, t) => `layoutParallel(${a.data[0]}, ${a.data[1]}, ${t.rect(a.gutter, '8.0', t.max0(`${a.W} - ${a.gutter} * 2.0`), t.max0(`${a.H} - 16.0`))}, ${a.options})`,
@@ -846,15 +866,19 @@ export function chartChromeWarning(tag: string, prop: string): string {
 export function chartEnterMs(theme: ExprIR | undefined, tag: string, list: (items: readonly string[]) => string): string {
   return chartThemeFields(theme, tag, () => {}, list).enterMs
 }
-/** The tooltip box's colours — the web hosts' default theme (surface / grid / text). */
-export const CHART_TOOLTIP_FIELDS: readonly (readonly [string, string])[] = [
-  ['fontSize', CHART_THEME_DEFAULT.fontSize],
-  ['fill', JSON.stringify(CHART_THEME_DEFAULT.surface)],
-  ['border', JSON.stringify(CHART_THEME_DEFAULT.grid)],
-  ['text', JSON.stringify(CHART_THEME_DEFAULT.text)],
-  ['pad', '8.0'],
-  ['radius', '4.0'],
-]
+/** The resolved theme as emitted TEXT per field — what `chartThemeFields` returns. */
+export type ChartThemeText = Record<keyof typeof CHART_THEME_DEFAULT, string>
+/** The tooltip box from the theme — the web host's `tooltipStyle` (surface / grid / text, radius at least 4). */
+export function chartTooltipFields(t: ChartThemeText): readonly (readonly [string, string])[] {
+  return [
+    ['fontSize', t.fontSize],
+    ['fill', t.surface],
+    ['border', t.grid],
+    ['text', t.text],
+    ['pad', '8.0'],
+    ['radius', chartDouble(Math.max(4, Number(t.radius)))],
+  ]
+}
 
 /** The hosts with a dedicated emitter each (a fixed frame or a second data prop). */
 export const FRAME_CHART_HOSTS: Readonly<Record<string, true>> = { GaugeChart: true, CandlestickChart: true, HeatmapChart: true, RadarChart: true, PlotChart: true }

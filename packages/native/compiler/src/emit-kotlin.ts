@@ -79,8 +79,8 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_TOOLTIP_FIELDS, CHART_THEME_FIELDS, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
-import type { ChartHostArgs, ChartHostTarget } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
+import type { ChartHostArgs, ChartHostTarget, ChartThemeText } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
   stretchAlignWarning,
@@ -9506,7 +9506,8 @@ const KOTLIN_CHART_TARGET: ChartHostTarget = {
   struct: (name, fields) => `${name}(${fields.map(([k, v]) => `${k} = ${v}`).join(', ')})`,
   coalesce: (a, b) => `(${a} ?: ${b})`,
   withProgress: (options, struct, progress) => (options === 'null' ? `${struct}(progress = ${progress})` : `(${options}).copy(progress = ${progress})`),
-  pieOptions: (a) => `PieOptions(innerRadius = ${a.innerRatio}, showLabels = true, labelColor = "#ffffff", fontSize = 11.0)`,
+  withPalette: (options, struct, palette) => (options === 'null' ? `${struct}(palette = ${palette})` : `(${options}).let { if (it.palette == null) it.copy(palette = ${palette}) else it }`),
+  pieOptions: (a) => `PieOptions(innerRadius = ${a.innerRatio}, showLabels = true, labelColor = "#ffffff", fontSize = ${a.fontSize ?? '11.0'})`,
   theme: () => `ChartTheme(axis = ${JSON.stringify(CHART_THEME_DEFAULT.axis)}, grid = ${JSON.stringify(CHART_THEME_DEFAULT.grid)}, label = ${JSON.stringify(CHART_THEME_DEFAULT.label)}, fontSize = ${CHART_THEME_DEFAULT.fontSize})`,
 }
 
@@ -9568,6 +9569,16 @@ function kotlinChartSelectBody(handler: ExprIR, hitExpr: string, indent: number)
 }
 
 function emitKotlinChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const inner = emitKotlinChartHostInner(e, indent)
+  // `theme.background` — the ground the web host paints; see the Swift emitter. A Box carries it, since the host is a composable call.
+  if (e.tag === GRAMMAR_CHART_HOST || inner === 'Box {}') return inner
+  const bg = chartThemeFields(chartAttrExprKotlin(e, 'theme'), e.tag, () => {}, KOTLIN_CHART_TARGET.list).background
+  if (bg === '""') return inner
+  const pad = ' '.repeat(indent + 2)
+  return `Box(modifier = Modifier.background(pyreonChartColor(${bg}))) {\n${pad}${inner}\n${' '.repeat(indent)}}`
+}
+
+function emitKotlinChartHostInner(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const tag = e.tag
   // The grammar: `<Plot>` with mark children desugars to the `<PlotChart marks>` element the plot emit lowers.
   if (tag === GRAMMAR_CHART_HOST) {
@@ -9624,7 +9635,15 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
     }
   }
   const optV = chartAttrExprKotlin(e, spec.options)
-  const options = optV === undefined ? 'null' : withExpectedTypeKotlin(chartStructRefKotlin(spec.optionsStruct), () => emitKotlinExpr(optV, indent))
+  const userOptions = optV === undefined ? 'null' : withExpectedTypeKotlin(chartStructRefKotlin(spec.optionsStruct), () => emitKotlinExpr(optV, indent))
+  const tf = kotlinChartThemeFields(e, tag)
+  const themed = chartAttrExprKotlin(e, 'theme') !== undefined
+  const themeLets: string[] = []
+  let options = userOptions
+  if (themed && spec.paletteOption === true) {
+    themeLets.push(`val pyreonOptions: ${spec.optionsStruct} = ${KOTLIN_CHART_TARGET.withPalette(userOptions, spec.optionsStruct, tf.palette)}`)
+    options = 'pyreonOptions'
+  }
   const H = kotlinChartDouble(e, 'height', spec.defaultHeight, indent)
   const hasWidth = chartAttrExprKotlin(e, 'width') !== undefined
   const W = hasWidth ? kotlinChartDouble(e, 'width', 300, indent) : 'pyreonW'
@@ -9640,13 +9659,13 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   // a probe layout for the legend's entries, the chrome measured, the plot
   // laid out in what is left.
   const showLegend = spec.legend !== undefined && readStaticAttrKotlin(e, 'showLegend') === true
-  const lets: string[] = []
+  const lets: string[] = [...themeLets]
   let entries = 'listOf<LegendEntry>()'
   if (showLegend) {
     lets.push(`val pyreonProbe = ${spec.layout(args, KOTLIN_CHART_TARGET)}`)
     entries = spec.legend!('pyreonProbe', args, KOTLIN_CHART_TARGET)
   }
-  const chrome = kotlinChartChrome(e, entries, W, H, indent, true)
+  const chrome = kotlinChartChrome(e, entries, W, H, indent, true, tf)
   const plotArgs: ChartHostArgs = { ...args, H: chrome.height(H) }
   const withChrome = chrome.top !== '0.0'
   lets.push(...chrome.lets)
@@ -9664,7 +9683,7 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
     lets.push('var pyreonTipAt by remember { mutableStateOf(PyreonChartPt(0.0, 0.0)) }')
   }
   const tipCmds = tooltip
-    ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${KOTLIN_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${KOTLIN_CHART_TARGET.struct('TooltipOptions', CHART_TOOLTIP_FIELDS)}, ::pyreonChartMeasure)`
+    ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${KOTLIN_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${KOTLIN_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, ::pyreonChartMeasure)`
     : ''
   const cmds = `${chrome.wrap(spec.render(layout, renderArgs, KOTLIN_CHART_TARGET))}${tipCmds}`
   // `onSelectIndex` → a tap over the engine's index hit. The tap position is
@@ -9732,6 +9751,8 @@ function emitKotlinAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     _emitWarnings.push(`<${tag}>: needs a \`${spec.data}\` attribute on native; emitting an empty Box().`)
     return 'Box {}'
   }
+  const tf = kotlinChartThemeFields(e, tag)
+  const themed = chartAttrExprKotlin(e, 'theme') !== undefined
   const fieldArgs: string[] = []
   for (const f of spec.fields) {
     const acc = kotlinChartAccessor(e, tag, f.prop, indent)
@@ -9742,7 +9763,7 @@ function emitKotlinAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
         _emitWarnings.push(`<${tag}>: needs a \`${f.prop}\` accessor on native; emitting an empty Box().`)
         return 'Box {}'
       }
-      value = `listOf(${CHART_HOST_PALETTE.map((c) => JSON.stringify(c)).join(', ')})[pyreonI % ${CHART_HOST_PALETTE.length}]`
+      value = themed ? `${tf.palette}[pyreonI % ${tf.palette}.size]` : `listOf(${CHART_HOST_PALETTE.map((c) => JSON.stringify(c)).join(', ')})[pyreonI % ${CHART_HOST_PALETTE.length}]`
     } else {
       value = f.double === true ? `(${acc}).toDouble()` : acc
     }
@@ -9755,7 +9776,7 @@ function emitKotlinAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   const hasWidth = chartAttrExprKotlin(e, 'width') !== undefined
   const W = hasWidth ? kotlinChartDouble(e, 'width', 300, indent) : 'pyreonW'
   // Mirror of the Swift accessor host: crossing legend entries + tooltip.
-  const chrome = kotlinChartChrome(e, spec.legend('pyreonItems'), W, H, indent, true)
+  const chrome = kotlinChartChrome(e, spec.legend('pyreonItems'), W, H, indent, true, tf)
   const tooltip = readStaticAttrKotlin(e, 'tooltip') === true
   const withChrome = chrome.top !== '0.0'
   const animating = kotlinChartAnimating(e, tag) && spec.optionsStruct !== undefined
@@ -9767,9 +9788,9 @@ function emitKotlinAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     lets.push('var pyreonTip by remember { mutableStateOf(listOf<String>()) }')
     lets.push('var pyreonTipAt by remember { mutableStateOf(PyreonChartPt(0.0, 0.0)) }')
   }
-  const args: ChartHostArgs = { data: [], options, W, H: chrome.height(H), gutter: '0.0', innerRatio: kotlinChartDouble(e, 'innerRadius', 0, indent) }
+  const args: ChartHostArgs = { data: [], options, W, H: chrome.height(H), gutter: '0.0', innerRatio: kotlinChartDouble(e, 'innerRadius', 0, indent), fontSize: tf.fontSize }
   const tipCmds = tooltip
-    ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${KOTLIN_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${KOTLIN_CHART_TARGET.struct('TooltipOptions', CHART_TOOLTIP_FIELDS)}, ::pyreonChartMeasure)`
+    ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${KOTLIN_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${KOTLIN_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, ::pyreonChartMeasure)`
     : ''
   const cmds = `${chrome.wrap(spec.render(items, animating ? { ...args, options: 'pyreonOpts' } : args, KOTLIN_CHART_TARGET))}${tipCmds}`
   const tx = '(pyreonTap.x / pyreonDensity).toDouble()'
@@ -9924,7 +9945,8 @@ function emitKotlinRadarHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   }
   const colorAcc = kotlinChartAccessor(e, tag, 'color', indent)
   if (colorAcc === 'unsupported') return 'Box {}'
-  const color = colorAcc ?? `listOf(${CHART_HOST_PALETTE.map((c) => JSON.stringify(c)).join(', ')})[pyreonI % ${CHART_HOST_PALETTE.length}]`
+  const tf = kotlinChartThemeFields(e, tag)
+  const color = colorAcc ?? (chartAttrExprKotlin(e, 'theme') !== undefined ? `${tf.palette}[pyreonI % ${tf.palette}.size]` : `listOf(${CHART_HOST_PALETTE.map((c) => JSON.stringify(c)).join(', ')})[pyreonI % ${CHART_HOST_PALETTE.length}]`)
   const fillAlpha = kotlinChartDouble(e, 'fillAlpha', 0.25, indent)
   const lets = [`val pyreonSeries: List<RadarSeries> = ${data}.mapIndexed { pyreonI, pyreonD -> RadarSeries(values = (${values}).map { it.toDouble() }, color = ${color}, fillAlpha = ${fillAlpha}) }`]
   const H = kotlinChartDouble(e, 'height', 260, indent)
@@ -9940,7 +9962,7 @@ function emitKotlinRadarHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
     }
     entries = `${data}.mapIndexed { pyreonI, pyreonD -> LegendEntry(label = ${label}, color = ${color}) }`
   }
-  const chrome = kotlinChartChrome(e, entries, W, H, indent, false)
+  const chrome = kotlinChartChrome(e, entries, W, H, indent, false, tf)
   lets.push(...chrome.lets)
   const ringsV = chartAttrExprKotlin(e, 'rings')
   const ringsRaw = readStaticAttrKotlin(e, 'rings')
@@ -10127,9 +10149,10 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const entries = legend.toggling
     ? 'pyreonSeriesAll.mapIndexed { pyreonI, pyreonS -> LegendEntry(label = pyreonS.label, color = pyreonS.color, muted = pyreonHidden.contains(pyreonI)) }'
     : 'pyreonSeries.map { LegendEntry(label = it.label, color = it.color) }'
-  const chrome = kotlinChartChrome(e, entries, W, H, indent, true, legend.paging ? 'pyreonLegendPage' : undefined)
+  const tf = kotlinChartThemeFields(e, tag)
+  const chrome = kotlinChartChrome(e, entries, W, H, indent, true, tf, legend.paging ? 'pyreonLegendPage' : undefined)
   lets.push(...chrome.lets)
-  const theme = kotlinChartTheme(e, tag)
+  const theme = kotlinChartThemeFrom(tf)
   const themed = presets !== undefined || navigating
   if (themed) lets.push(`val pyreonTheme: ChartTheme = ${theme}`)
   if (presets !== undefined) {
@@ -10285,7 +10308,7 @@ interface KotlinChartChrome {
   height: (H: string) => string
 }
 
-function kotlinChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries: string, W: string, H: string, indent: number, withTitle: boolean, page?: string): KotlinChartChrome {
+function kotlinChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries: string, W: string, H: string, indent: number, withTitle: boolean, t: ChartThemeText, page?: string): KotlinChartChrome {
   const titleRaw = readStaticAttrKotlin(e, 'title')
   const showTitle = withTitle && readStaticAttrKotlin(e, 'showTitle') === true && typeof titleRaw === 'string'
   const showLegend = readStaticAttrKotlin(e, 'showLegend') === true
@@ -10294,7 +10317,7 @@ function kotlinChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries:
   if (showTitle) {
     const subRaw = readStaticAttrKotlin(e, 'subtitle')
     const subtitle = typeof subRaw === 'string' ? JSON.stringify(subRaw) : 'null'
-    lets.push(`val pyreonTitle: TitleLayout = renderTitle(${JSON.stringify(titleRaw)}, ${subtitle}, PyreonChartRect(0.0, 0.0, ${W}, ${H}), TitleOptions(fontSize = 15.0, color = "#5a6b7a", align = "start"))`)
+    lets.push(`val pyreonTitle: TitleLayout = renderTitle(${JSON.stringify(titleRaw)}, ${subtitle}, PyreonChartRect(0.0, 0.0, ${W}, ${H}), TitleOptions(fontSize = ${t.titleSize}, color = ${t.text}, align = "start"))`)
   } else {
     lets.push('val pyreonTitle: TitleLayout = TitleLayout(cmds = listOf(), height = 0.0)')
   }
@@ -10302,7 +10325,7 @@ function kotlinChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries:
     const maxRowsRaw = readStaticAttrKotlin(e, 'legendMaxRows')
     const maxRows = typeof maxRowsRaw === 'number' ? `, maxRows = ${chartDouble(maxRowsRaw)}` : ''
     const pageArg = page === undefined ? '' : `, page = ${page}`
-    lets.push(`val pyreonLegend: LegendLayout = renderLegend(${entries}, PyreonChartRect(0.0, pyreonTitle.height, ${W}, ${H} - pyreonTitle.height), LegendOptions(fontSize = 11.0, labelColor = "#5a6b7a", swatch = 10.0, gap = 12.0, orientation = "horizontal"${maxRows}${pageArg}), ::pyreonChartMeasure)`)
+    lets.push(`val pyreonLegend: LegendLayout = renderLegend(${entries}, PyreonChartRect(0.0, pyreonTitle.height, ${W}, ${H} - pyreonTitle.height), LegendOptions(fontSize = ${t.fontSize}, labelColor = ${t.label}, swatch = 10.0, gap = 12.0, orientation = "horizontal"${maxRows}${pageArg}), ::pyreonChartMeasure)`)
   } else {
     lets.push('val pyreonLegend: LegendLayout = LegendLayout(cmds = listOf(), height = 0.0, boxes = listOf())')
   }
@@ -10333,7 +10356,13 @@ function kotlinFrameHostWithTap(e: Extract<ExprIR, { kind: 'jsx-element' }>, let
 // ---- theme overrides, formatters and bubble marks -----------------------------
 
 function kotlinChartTheme(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: string): string {
-  const f = chartThemeFields(chartAttrExprKotlin(e, 'theme'), tag, (w) => _emitWarnings.push(w), (items) => `listOf(${items.join(', ')})`)
+  return kotlinChartThemeFrom(kotlinChartThemeFields(e, tag))
+}
+/** Mirror of the Swift emitter: the theme per field as emitted text, read once per host. */
+function kotlinChartThemeFields(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: string): ChartThemeText {
+  return chartThemeFields(chartAttrExprKotlin(e, 'theme'), tag, (w) => _emitWarnings.push(w), (items) => `listOf(${items.join(', ')})`)
+}
+function kotlinChartThemeFrom(f: ChartThemeText): string {
   return `ChartTheme(${CHART_THEME_FIELDS.map((x) => `${x.name} = ${f[x.name]}`).join(', ')})`
 }
 

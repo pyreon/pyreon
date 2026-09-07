@@ -2139,5 +2139,6 @@ fun PyreonChartCanvas(cmds: List<PyreonDrawCmd>, modifier: Modifier = Modifier) 
 @Composable
 fun PyreonChartEntrance(durationMs: Double, content: @Composable (Double) -> Unit) { content(1.0) }
 fun pyreonChartMeasure(text: String, size: Double): Double = text.length * size * 0.6
+fun pyreonChartColor(s: String): Color = Color(0)
 fun pyreonShiftCmds(cmds: List<PyreonDrawCmd>, dy: Double): List<PyreonDrawCmd> = cmds
 `
