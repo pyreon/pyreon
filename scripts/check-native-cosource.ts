@@ -270,7 +270,7 @@ for (const pkg of pkgs) {
   if (pkg.swiftDir) {
     if (!swiftFullSdk) {
       console.log(
-        `  ${pkg.name} [swift]: full Swift SDK (SwiftUI/Observation) absent — skipped (macOS real-SDK job + device gate verify)`,
+        `  ${pkg.name} [swift]: SKIPPED — full Swift SDK (SwiftUI/Observation) absent here; the macOS \`validate-swift-typecheck\` job runs this script with the real SDK`,
       )
     } else {
       const srcFiles = filesUnder(pkg.swiftDir, '.swift')

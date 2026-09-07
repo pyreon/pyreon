@@ -36,7 +36,11 @@ describe('children slot — accessor levels match the SSR emit', () => {
       `const Loc = (props) => { let children = props.children; return <div class="c">{"a"}{children}</div> }`,
       'x.tsx',
     )
-    expect(code).toContain('_mountSlot(children, __root, __p1)')
+    // The "a" literal is BAKED into the template (no slot of its own), so the
+    // children slot is the element's first placeholder. The invariant is that
+    // the static local stays BARE — no accessor wrap — not the placeholder index.
+    expect(code).toMatch(/_mountSlot\(children, __root, __p\d+\)/)
+    expect(code).not.toContain('() => (children)')
   })
 })
 
@@ -51,15 +55,29 @@ describe('phase-2 parents are phase-1 consts — fragments included', () => {
   }
 
   it('the fuzz seed-10 shape: two fragment-wrapped texts, the second under a nested element', () => {
+    // The fuzz seed used string LITERALS here; those now bake straight into the
+    // template HTML and leave no slot behind (see template-literal-children-bake),
+    // so the shape is carried by `let`-bound locals — static identifiers that
+    // still lower to a per-slot `_setChildAt`, which is what exercises the
+    // fragment-flattening parent walk this describe locks.
     const { code } = transformJSX(
-      `const App = () => <main><p><>{""}</><b class="c1"><i class="c4">{"témû"}</i><>{"témû"}</></b></p>{"hello"}</main>`,
+      `const App = () => { let a = ""; let b = "témû"; let c = "hello"; return <main><p><>{a}</><b class="c1"><i class="c4">{b}</i><>{b}</></b></p>{c}</main> }`,
       'x.tsx',
     )
     const parents = parentsOf(code)
     expect(parents.length).toBeGreaterThanOrEqual(3)
     for (const p of parents) expect(p, code).toMatch(PARENT)
     // the `<b>` holds a const of its own now, so its slot line names it
-    expect(code).toMatch(/_setChildAt\(__e\d+, __p\d+, "témû"\)/)
+    expect(code).toMatch(/_setChildAt\(__e\d+, __p\d+, b\)/)
+  })
+
+  it('the literal form of that shape bakes every text and leaves no slot parent at all', () => {
+    const { code } = transformJSX(
+      `const App = () => <main><p><>{""}</><b class="c1"><i class="c4">{"témû"}</i><>{"témû"}</></b></p>{"hello"}</main>`,
+      'x.tsx',
+    )
+    expect(parentsOf(code)).toEqual([])
+    expect(code).toContain('<i class=\\"c4\\">témû</i>témû</b></p>hello</main>')
   })
 
   it('a fragment-wrapped expression counts as dynamic for the parent element', () => {

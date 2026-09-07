@@ -104,7 +104,8 @@ const x = signal('a')
   it('cast static literal child bakes byte-identically to the plain literal', () => {
     const uncast = js(`const App = () => <div>{"hello"}</div>`)
     expect(js(`const App = () => <div>{("hello") as string}</div>`)).toBe(uncast)
-    expect(uncast).toContain('_setChild(__root, "hello")')
+    // Both bake the literal into the template HTML (no runtime set call).
+    expect(uncast).toContain('_tpl("<div>hello</div>"')
   })
 
   it('cast static object style applies once via _setStyle like the uncast form', () => {

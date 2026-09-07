@@ -1,0 +1,5 @@
+---
+'@pyreon/native-compiler': minor
+---
+
+`createFlow` lowering: nothing silent inside the boundary. Every unported `FlowInstance` member and every signal write on a flow-state property now warns BY NAME (still emitted as written — the native build stays where it fails, but the author hears first); `fitView()` warns that no native host measures `containerSize` yet (it compiled and did nothing); node/edge literal fields the native types do not carry (`parentId`, `draggable`, `style`, `markerEnd`, `sourceHandle`, `waypoints`, …) and declaration-time non-literal `label`/`type` are named at declaration AND call site; the Swift emit uses the port's labeled parameters (`selectNode(id, additive:)`, `fitView(ids, padding:)` — positional emit was an iOS-only build break); and the Swift validation stub mirrors the runtime's real surface (stored `x`/`y`, node `type`/`width`/`height`, edge properties, `PyreonFlowContainerSize`) so valid reads like `getNode(id)?.position.x` are no longer rejected. One shared module (`flow-lowering.ts`) feeds the parser and both emitters.

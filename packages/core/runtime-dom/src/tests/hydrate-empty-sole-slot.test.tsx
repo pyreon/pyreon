@@ -32,6 +32,7 @@ import {
   _applyProps,
   _bindDirect,
   _bindText,
+  _bindProp,
   _mountSlot,
   _textSlot,
   _setChild,

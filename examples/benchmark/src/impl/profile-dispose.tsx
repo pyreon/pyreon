@@ -31,7 +31,7 @@
  * NOT part of the timed fair bench — measurement scaffolding only, loaded
  * exclusively behind `?profileDispose=1`.
  */
-import { For as _For, h as ph, type VNodeChild } from '@pyreon/core'
+import { _rp, _rpd, For as _For, h as ph, type VNodeChild } from '@pyreon/core'
 import { effect, effectScope, signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
 import { createComponent, createEffect, createSignal } from 'solid-js'
@@ -60,6 +60,23 @@ function RowFull(props: { value: () => number; index: number; sink: Sink }): VNo
 
 function RowNoEffect(props: { value: () => number }): VNodeChild {
   return <span class="fx-row">{() => props.value()}</span>
+}
+
+// ── The IDIOMATIC compiled shape: the prop holds the VALUE (`<Row value={sig()} />`)
+// and the row reads `{props.value}`. The compiler lowers the parent side to
+// `_rpd(sig)` (a branded thunk carrying the signal's direct tier) and this child
+// side to `_bindProp(props, "value", …)`, which binds through the getter.
+// Arms J/K below hand the parent-side thunk to `ph()` exactly as the compiler
+// emits it, because a bare signal call only lowers to `_rpd` when the signal is
+// a known declaration in scope — a 500-signal loop is not that shape — and the
+// emit is locked separately (compiler `reactive-prop-direct-tier-emit`).
+function RowFullD(props: { value: number; index: number; sink: Sink }): VNodeChild {
+  effect(() => {
+    const v = props.value
+    props.sink.values[props.index] = v
+    props.sink.runs++
+  })
+  return <span class="fx-row">{props.value}</span>
 }
 
 function RowNoBind(props: { value: () => number; index: number; sink: Sink }): VNodeChild {
@@ -192,6 +209,29 @@ export function setupDisposeProfile(hosts: Record<string, HTMLElement>): void {
         return mount(ph('div', { class: 'fx-list' }, children), hosts.I as HTMLElement)
       },
     },
+    // J: arm A's shape, idiomatic compiled form — `_rpd(sig)` + `_bindProp` (direct tier).
+    J_rpdFull: {
+      name: 'J_rpdFull',
+      mount: () => {
+        const children: VNodeChild[] = []
+        for (let i = 0; i < ROWS; i++) {
+          children.push(ph(RowFullD as never, { value: _rpd(sigs[i] as never), index: i, sink }))
+        }
+        return mount(ph('div', { class: 'fx-list' }, children), hosts.J as HTMLElement)
+      },
+    },
+    // K: the SAME row + parent, but the pre-lever wrap `_rp(() => sig())` — the control.
+    K_rpFull: {
+      name: 'K_rpFull',
+      mount: () => {
+        const children: VNodeChild[] = []
+        for (let i = 0; i < ROWS; i++) {
+          const s = sigs[i] as () => number
+          children.push(ph(RowFullD as never, { value: _rp(() => s()), index: i, sink }))
+        }
+        return mount(ph('div', { class: 'fx-list' }, children), hosts.K as HTMLElement)
+      },
+    },
     G_solid: {
       name: 'G_solid',
       mount: () => {
@@ -250,14 +290,20 @@ export function setupDisposeProfile(hosts: Record<string, HTMLElement>): void {
   function __disposeH(): void { (liveH as () => void)(); liveH = null }
   function __mountI(): void { liveI = (arms.I_directFull as Arm).mount() }
   function __disposeI(): void { (liveI as () => void)(); liveI = null }
+  let liveJ: (() => void) | null = null
+  let liveK: (() => void) | null = null
+  function __mountJ(): void { liveJ = (arms.J_rpdFull as Arm).mount() }
+  function __disposeJ(): void { (liveJ as () => void)(); liveJ = null }
+  function __mountK(): void { liveK = (arms.K_rpFull as Arm).mount() }
+  function __disposeK(): void { (liveK as () => void)(); liveK = null }
 
   const mounters: Record<string, () => void> = {
     A: __mountA, B: __mountB, C: __mountC, D: __mountD, E: __mountE, F: __mountF, G: __mountG,
-    H: __mountH, I: __mountI,
+    H: __mountH, I: __mountI, J: __mountJ, K: __mountK,
   }
   const disposers: Record<string, () => void> = {
     A: __disposeA, B: __disposeB, C: __disposeC, D: __disposeD, E: __disposeE, F: __disposeF, G: __disposeG,
-    H: __disposeH, I: __disposeI,
+    H: __disposeH, I: __disposeI, J: __disposeJ, K: __disposeK,
   }
 
   ;(globalThis as Record<string, unknown>).__disposeBench = {

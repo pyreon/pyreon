@@ -883,10 +883,20 @@ the speed is not "reporting less". The fifth (scalar number-range invalid) goes 
 1.2×.
 
 **On the valid path we are not ahead, and Zod 4.5 is why.** Compiled Zod wins scalar
-number-range (3ns vs 7ns), array-of-20 (108ns vs 119ns) and object-with-array-of-objects
-(118ns vs 138ns); ArkType and typia win scalar email (26/27ns vs 33ns) and ArkType wins
+number-range (2.8ns vs 5.0ns), array-of-20 (108ns vs 116ns) and object-with-array-of-objects
+(117ns vs 134ns); ArkType and typia win scalar email (26/27ns vs 33ns) and ArkType wins
 flat object (36ns vs 49ns). Deep-nested and discriminated union are 🤝 CI-ties with compiled
 Zod. We remain ahead of interpreted Zod, Valibot, Yup and Joi on every valid-path shape.
+
+Those four compiled-Zod cells were re-measured on 2026-09-06 after the `parse()` seam was
+made small enough for V8 to inline (`S.parse` on a scalar: 10.2ns → 4.8ns): number-range
+5.0 vs 2.8 (1.80×, was 2.3×), discriminated union 8.7 vs 8.7 (a tie, as before),
+object-with-array-of-objects 134 vs 117 (1.14×, was 1.17×), array-of-20 116 vs 108 (1.08×,
+was 1.10×). Only those four cells were re-run, interleaved per cell at a 1-minute load under
+2; every other number on this page is still the 2026-08-31 run. On the scalar cell the
+emitted validator alone now ties compiled Zod's whole call (2.6ns each) — the remaining
+2.2ns is the `Result` envelope. On the two deep cells the residual is the per-item
+stripped clone, not the seam.
 
 Three structural reasons for the residual, none of them "we are simply slower":
 

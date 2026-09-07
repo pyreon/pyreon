@@ -529,6 +529,7 @@ struct Ctx<'a> {
 
     needs_tpl_import: bool,
     needs_rp_import: bool,
+    needs_rpd_import: bool,
     needs_lc_import: bool,
     needs_wrap_spread_import: bool,
     needs_cx_import: bool,
@@ -538,6 +539,7 @@ struct Ctx<'a> {
     needs_set_value_import: bool,
     needs_set_html_import: bool,
     needs_bind_text_import: bool,
+    needs_bind_prop_import: bool,
     needs_bind_direct_import: bool,
     needs_bind_import: bool,
     needs_bind_poly_import: bool,
@@ -740,6 +742,7 @@ impl<'a> Ctx<'a> {
             hoist_idx: 0,
             needs_tpl_import: false,
             needs_rp_import: false,
+            needs_rpd_import: false,
             needs_lc_import: false,
             needs_wrap_spread_import: false,
             needs_cx_import: false,
@@ -749,6 +752,7 @@ impl<'a> Ctx<'a> {
             needs_set_value_import: false,
             needs_set_html_import: false,
             needs_bind_text_import: false,
+            needs_bind_prop_import: false,
             needs_bind_direct_import: false,
             needs_bind_import: false,
             needs_bind_poly_import: false,
@@ -873,6 +877,9 @@ impl<'a> Ctx<'a> {
             if self.needs_bind_text_import {
                 imports.push("_bindText");
             }
+            if self.needs_bind_prop_import {
+                imports.push("_bindProp");
+            }
             if self.needs_apply_props_import {
                 imports.push("_applyProps");
             }
@@ -968,6 +975,7 @@ impl<'a> Ctx<'a> {
         }
 
         if self.needs_rp_import
+            || self.needs_rpd_import
             || self.needs_lc_import
             || self.needs_wrap_spread_import
             || self.needs_cx_import
@@ -983,6 +991,9 @@ impl<'a> Ctx<'a> {
             }
             if self.needs_rp_import {
                 core_imports.push("_rp");
+            }
+            if self.needs_rpd_import {
+                core_imports.push("_rpd");
             }
             if self.needs_wrap_spread_import {
                 core_imports.push("_wrapSpread");
@@ -1135,6 +1146,41 @@ fn is_signal_call_expr(expr: &Expression) -> bool {
 /// Check if an identifier name is an active (non-shadowed) signal variable.
 fn is_active_signal(name: &str, ctx: &Ctx) -> bool {
     ctx.signal_vars.contains(name) && !ctx.shadowed_signals.contains(name)
+}
+
+/// `sig()` — a zero-arg call of an active signal/computed — returns the callee
+/// name. Mirrors jsx.ts `bareSignalCallee`.
+fn bare_signal_callee(expr: &Expression, ctx: &Ctx) -> Option<String> {
+    if let Expression::CallExpression(call) = expr {
+        if !call.arguments.is_empty() {
+            return None;
+        }
+        if let Expression::Identifier(id) = &call.callee {
+            if is_active_signal(id.name.as_str(), ctx) {
+                return Some(id.name.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// `props.key` (or `() => props.key`) on a component's props param with a
+/// plain identifier key — the shape `_bindProp` binds by descriptor. Mirrors
+/// jsx.ts `propMemberRead`.
+fn prop_member_read(expr: &Expression, ctx: &Ctx) -> Option<(String, String)> {
+    let mut inner = expr;
+    if let Expression::ArrowFunctionExpression(arrow) = inner {
+        inner = arrow.get_expression()?;
+    }
+    let inner = unwrap_type_layers(inner);
+    if let Expression::StaticMemberExpression(m) = inner {
+        if let Expression::Identifier(obj) = &m.object {
+            if ctx.props_names.contains(obj.name.as_str()) {
+                return Some((obj.name.to_string(), m.property.name.to_string()));
+            }
+        }
+    }
+    None
 }
 
 /// Check if a call expression creates a selector (`createSelector(...)`).
@@ -4640,8 +4686,14 @@ fn handle_jsx_attribute(
                 sliced
             };
             let sp = expr.span();
-            ctx.add_replacement(sp.start, sp.end, format!("_rp(() => {})", inner));
-            ctx.needs_rp_import = true;
+            // Mirrors jsx.ts: a bare signal call wraps with `_rpd` (direct tier).
+            if let Some(name) = bare_signal_callee(expr, ctx) {
+                ctx.add_replacement(sp.start, sp.end, format!("_rpd({})", name));
+                ctx.needs_rpd_import = true;
+            } else {
+                ctx.add_replacement(sp.start, sp.end, format!("_rp(() => {})", inner));
+                ctx.needs_rp_import = true;
+            }
             ctx.lens(
                 sp.start,
                 sp.end,
@@ -6574,6 +6626,7 @@ struct TemplateBuilder {
     /// Mirrors `jsx.ts:capturedRefs`.
     captured_refs: FxHashMap<String, String>,
     needs_bind_text: bool,
+    needs_bind_prop: bool,
     needs_bind_direct: bool,
     needs_apply_props: bool,
     needs_bind_spread: bool,
@@ -6610,6 +6663,7 @@ impl TemplateBuilder {
             canonical_of: FxHashMap::default(),
             captured_refs: FxHashMap::default(),
             needs_bind_text: false,
+            needs_bind_prop: false,
             needs_bind_direct: false,
             needs_apply_props: false,
             needs_bind_spread: false,
@@ -6744,6 +6798,9 @@ fn build_template_call(
 
     if tb.needs_bind_text {
         ctx.needs_bind_text_import = true;
+    }
+    if tb.needs_bind_prop {
+        ctx.needs_bind_prop_import = true;
     }
     if tb.needs_bind_direct {
         ctx.needs_bind_direct_import = true;
@@ -6888,7 +6945,8 @@ fn attr_is_dynamic(attr: &JSXAttributeItem, tag: &str) -> bool {
             // `<select value="…">` (plain string form, PZ-09): always emitted
             // as a deferred property bind line (never baked) — the element
             // needs a phase-1 ref. Mirrors jsx.ts:attrIsDynamic.
-            if tag == "select"
+            // `<textarea value="…">` is the same class (dead content attribute).
+            if (tag == "select" || tag == "textarea")
                 && attr_name == "value"
                 && matches!(&a.value, Some(JSXAttributeValue::StringLiteral(_)))
             {
@@ -6914,7 +6972,7 @@ fn attr_is_dynamic(attr: &JSXAttributeItem, tag: &str) -> bool {
                                 // non-omitted shape emits a (deferred)
                                 // property bind line — the element needs a
                                 // ref even when the expression is static.
-                                if tag == "select" && attr_name == "value" {
+                                if (tag == "select" || tag == "textarea") && attr_name == "value" {
                                     return true;
                                 }
                                 !is_static(e)
@@ -7277,7 +7335,8 @@ fn static_attr_to_html(expr: &Expression, html_attr_name: &str, tag: &str) -> Op
     // children lines by process_attrs). Omit-semantic arms
     // (false/null/undefined → "") are unchanged. NOT a silent catch-all:
     // None falls through to the dynamic path; nothing is dropped.
-    let is_select_value = tag == "select" && html_attr_name == "value";
+    // `<textarea value>` is the same dead-attribute class — see jsx.ts.
+    let is_select_value = (tag == "select" || tag == "textarea") && html_attr_name == "value";
     let mut e = expr;
     loop {
         match e {
@@ -7698,7 +7757,8 @@ fn attr_initializer_to_html(
             // `escape_js_string` serializes the parsed value as a
             // double-quoted JS literal (quote/backslash/control-safe,
             // independent of the JSX quote style). Mirrors jsx.ts.
-            if tag == "select" && html_attr_name == "value" {
+            // `<textarea value="…">`: same dead-attribute class — see jsx.ts.
+            if (tag == "select" || tag == "textarea") && html_attr_name == "value" {
                 let line = attr_setter(html_attr_name, var_name, &escape_js_string(&s.value), tag, tb);
                 tb.bind_lines.push(line);
                 return String::new();
@@ -7734,7 +7794,7 @@ fn flatten_children<'a>(
                 JSXChild::Text(text) => {
                     let cleaned = clean_jsx_text(text.value.as_str());
                     if !cleaned.is_empty() {
-                        flat.push(FlatChild::Text(cleaned));
+                        push_text(flat, escape_html_text(&cleaned));
                     }
                 }
                 JSXChild::Element(el) => {
@@ -7750,7 +7810,17 @@ fn flatten_children<'a>(
                 }
                 JSXChild::ExpressionContainer(c) => {
                     if let Some(expr) = jsx_expr_as_expression(&c.expression) {
-                        flat.push(FlatChild::Expression(expr));
+                        // Mirrors the JS backend: a LITERAL expression child
+                        // bakes into the template like plain JSX text (see
+                        // jsx.ts `literalChildText` for the rationale + the
+                        // numeric-literal predicate both backends share).
+                        if let Some(lit) = literal_child_text(unwrap_type_layers(expr)) {
+                            if !lit.is_empty() {
+                                push_text(flat, escape_literal_text(&lit));
+                            }
+                        } else {
+                            flat.push(FlatChild::Expression(expr));
+                        }
                     }
                 }
                 JSXChild::Fragment(frag) => {
@@ -7762,6 +7832,76 @@ fn flatten_children<'a>(
     }
     add_children(children, &mut flat, &mut elem_idx, tpl_components);
     flat
+}
+
+/// Append template text (already escaped), merging into a preceding text
+/// entry: the parser produces ONE text node for adjacent texts and later
+/// placeholder refs are child-index walks, so the flat list counts NODES.
+fn push_text(flat: &mut Vec<FlatChild<'_>>, html: String) {
+    if let Some(FlatChild::Text(prev)) = flat.last_mut() {
+        prev.push_str(&html);
+    } else {
+        flat.push(FlatChild::Text(html));
+    }
+}
+
+/// Compile-time text of a LITERAL expression child, or `None`. See jsx.ts
+/// `literalChildText` — the predicate is identical by construction.
+fn literal_child_text(expr: &Expression<'_>) -> Option<String> {
+    match expr {
+        Expression::StringLiteral(s) => Some(s.value.to_string()),
+        Expression::NumericLiteral(n) => n.raw.as_ref().and_then(|r| bakeable_number_raw(r.as_str())),
+        Expression::NullLiteral(_) => Some(String::new()),
+        Expression::BooleanLiteral(_) => Some(String::new()),
+        Expression::Identifier(id) if id.name == "undefined" => Some(String::new()),
+        Expression::TemplateLiteral(t) if t.expressions.is_empty() => t
+            .quasis
+            .first()
+            .and_then(|q| q.value.cooked.as_ref().map(|c| c.to_string())),
+        _ => None,
+    }
+}
+
+fn bakeable_number_raw(raw: &str) -> Option<String> {
+    let (int, frac) = match raw.split_once('.') {
+        Some((i, f)) => (i, Some(f)),
+        None => (raw, None),
+    };
+    let int_ok = int == "0"
+        || (!int.is_empty()
+            && !int.starts_with('0')
+            && int.chars().all(|c| c.is_ascii_digit()));
+    if !int_ok {
+        return None;
+    }
+    if let Some(f) = frac {
+        if f.is_empty() || !f.chars().all(|c| c.is_ascii_digit()) || f.ends_with('0') {
+            return None;
+        }
+    }
+    let digits = int.len() + frac.map_or(0, |f| f.len());
+    if digits <= 15 { Some(raw.to_string()) } else { None }
+}
+
+/// Unconditional twin of `escape_html_text` for a JS string literal, where `&`
+/// is always data.
+fn escape_literal_text(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            // Line terminators as entities — the emitted JS string escapes only
+            // `\\` and `"`; see jsx.ts `escapeLiteralText`.
+            '\n' => out.push_str("&#10;"),
+            '\r' => out.push_str("&#13;"),
+            '\u{2028}' => out.push_str("&#8232;"),
+            '\u{2029}' => out.push_str("&#8233;"),
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 fn analyze_children(flat: &[FlatChild]) -> (bool, bool) {
@@ -7855,6 +7995,16 @@ fn emit_reactive_text_child(
         tb.bind_lines.push(format!(
             "const {} = _bindText({}, {}{})",
             d, signal_name, t_var, caller_arg
+        ));
+    } else if let Some((obj, key)) = prop_member_read(expr_node, ctx) {
+        // PROP read — mirrors jsx.ts: bind by descriptor so an `_rpd` getter's
+        // direct tier is reachable; `_bindProp` falls back to the polymorphic
+        // tracked path for any other getter.
+        tb.needs_bind_prop = true;
+        let d = tb.next_disp();
+        tb.bind_lines.push(format!(
+            "const {} = _bindProp({}, \"{}\", {}, {})",
+            d, obj, key, t_var, parent_ref
         ));
     } else if let Some(sel) = try_direct_selector_ternary(expr_node, ctx) {
         // Selector-ternary auto-promotion for text children — companion
@@ -7984,7 +8134,7 @@ fn process_one_child(
     ctx: &mut Ctx,
 ) -> Option<String> {
     match child {
-        FlatChild::Text(text) => Some(escape_html_text(text)),
+        FlatChild::Text(html) => Some(html.clone()),
         FlatChild::Component(comp) => {
             // The component's own source range is PRESERVED as a hole rather
             // than sliced. Slicing would emit the raw text and silently drop

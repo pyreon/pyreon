@@ -37,6 +37,7 @@ import {
   _applyProps,
   _bindDirect,
   _bindText,
+  _bindProp,
   _mountChild,
   _mountSlot,
   _textSlot,
@@ -53,6 +54,7 @@ const RUNTIME_DEPS = {
   _tpl,
   _bind,
   _bindText,
+  _bindProp,
   _bindDirect,
   _applyProps,
   _setStyle,
@@ -164,7 +166,7 @@ describe('templatizeComponentChildren — emit shape', () => {
 
   it('PRESERVES a signal auto-call on an absorbed component child’s props', () => {
     const src = `const s = signal(0)\nconst N = () => <div class="b"><Node v={s()} /></div>`
-    expect(transformJSX(src, 'test.tsx', ON).code).toContain('v={_rp(() => s())}')
+    expect(transformJSX(src, 'test.tsx', ON).code).toContain('v={_rpd(s)}')
   })
 
   it('PRESERVES nested _tpl + _lc INSIDE an absorbed component child', () => {

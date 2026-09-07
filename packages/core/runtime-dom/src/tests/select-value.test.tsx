@@ -33,12 +33,12 @@
  */
 import { query } from '@pyreon/test-utils'
 import { transformJSX } from '@pyreon/compiler'
-import { Fragment, h, _rp, cx } from '@pyreon/core'
+import { Fragment, h, _rp, _rpd, cx } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import { transformSync } from 'esbuild'
 import { _tpl, _bindText, _bindDirect } from '../template'
-import { _applyProps, _setStyle, _mountSlot, _textSlot, hydrateRoot, mountChild } from '../index'
+import { _applyProps, _setStyle, _mountSlot, _textSlot, hydrateRoot, mountChild, _bindProp} from '../index'
 
 // ─── Compiled-template harness ───────────────────────────────────────────────
 // Same shape as compiler-integration.test.tsx, plus an esbuild classic-JSX
@@ -53,12 +53,14 @@ const RUNTIME_DEPS = {
   _tpl,
   _bind,
   _bindText,
+  _bindProp,
   _bindDirect,
   _applyProps,
   _setStyle,
   _mountSlot,
   _textSlot,
   _rp,
+  _rpd,
   _cx: cx,
   h,
   Fragment,

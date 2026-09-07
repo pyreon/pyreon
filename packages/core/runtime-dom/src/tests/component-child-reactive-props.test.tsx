@@ -21,12 +21,12 @@
  */
 import { transformJSX } from '@pyreon/compiler'
 import { transformSync } from 'esbuild'
-import { Fragment, h, _rp, cx } from '@pyreon/core'
+import { Fragment, h, _rp, _rpd, cx } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import { describe, expect, it } from 'vitest'
 import { _tpl, _bindText, _bindDirect, _mountSlot, _textSlot, _setChild, _setChildAt } from '../template'
-import { _applyProps, _setAttr, _setStyle, bindPolymorphicText, mountChild } from '../index'
+import { _applyProps, _setAttr, _setStyle, bindPolymorphicText, mountChild, _bindProp} from '../index'
 
 function stripImports(code: string): string {
   return code.replace(/^import\s+.*$/gm, '').trim()
@@ -45,6 +45,7 @@ const RUNTIME_DEPS = {
   _tpl,
   _bind,
   _bindText,
+  _bindProp,
   _bindDirect,
   _applyProps,
   _setStyle,
@@ -55,6 +56,7 @@ const RUNTIME_DEPS = {
   _setChildAt,
   bindPolymorphicText,
   _rp,
+  _rpd,
   _cx: cx,
   h,
   Fragment,

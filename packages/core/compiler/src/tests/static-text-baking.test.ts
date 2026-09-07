@@ -1,7 +1,7 @@
 import { transformJSX } from '../jsx'
 
 const t = (code: string) => transformJSX(code, 'input.tsx').code
-const hasBind = (out: string) => /\b_bindText\(|\b_bind\(|\bbindPolymorphicText\(/.test(out)
+const hasBind = (out: string) => /\b_bindText\(|\b_bind\(|\bbindPolymorphicText|_bindProp\(/.test(out)
 
 // ── Static-text baking contract (perf-correctness regression gate) ──────────
 //
