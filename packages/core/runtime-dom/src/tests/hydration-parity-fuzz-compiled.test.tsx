@@ -125,7 +125,9 @@ describe('SSR ↔ hydration parity fuzz — COMPILED path', () => {
   // expression children into the template HTML is the next adoption lever
   // (a compiler change, both backends). `<textarea value>` under the h() path
   // is the other, smaller class.
-  const RETENTION_FLOOR = 0.74
+  // Raised to 0.98 when literal expression children started baking (#3318):
+  // 98.8% (2513/2543), zero root swaps at 300 seeds.
+  const RETENTION_FLOOR = 0.98
 
   it(`${SEEDS} seeded trees hold all five oracles on the compiled path`, { timeout: TIMEOUT_MS }, async () => {
     disableHydrationWarnings()
