@@ -25,11 +25,11 @@
  * reverted → specs fail on the missing console.warn/error; restored → pass.
  */
 import { transformJSX } from '@pyreon/compiler'
-import { Fragment, h, _rp, cx, type ComponentFn } from '@pyreon/core'
+import { Fragment, h, _rp, _rpd, cx, type ComponentFn } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { _tpl, _bindText, _bindDirect } from '../template'
-import { _applyProps, _setStyle, mount, mountChild } from '../index'
+import { _applyProps, _setStyle, mount, mountChild, _bindProp} from '../index'
 
 // ─── Compile-and-mount helpers (precedent: compiler-integration.test.tsx) ────
 
@@ -41,10 +41,12 @@ const RUNTIME_DEPS = {
   _tpl,
   _bind,
   _bindText,
+  _bindProp,
   _bindDirect,
   _applyProps,
   _setStyle,
   _rp,
+  _rpd,
   _cx: cx,
   h,
   Fragment,

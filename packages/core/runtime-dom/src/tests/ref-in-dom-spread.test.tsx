@@ -22,14 +22,14 @@
  */
 import { transformJSX } from '@pyreon/compiler'
 import { transformSync } from 'esbuild'
-import { Fragment, h, _rp, cx, makeReactiveProps } from '@pyreon/core'
+import { Fragment, h, _rp, _rpd, cx, makeReactiveProps } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { describe, expect, it } from 'vitest'
-import { _tpl, _bindText, _bindDirect, _mountSlot, _setChild, _setChildAt } from '../template'
-import { _applyProps, _bindSpread, _setAttr, _setStyle, bindPolymorphicText, mount, mountChild } from '../index'
+import { _tpl, _bindText, _bindProp, _bindDirect, _mountSlot, _setChild, _setChildAt } from '../template'
+import { _applyProps, _bindSpread, _setAttr, _setStyle, bindPolymorphicText, mount, mountChild} from '../index'
 
 const RUNTIME_DEPS = {
-  _tpl, _bind, _bindText, _bindDirect, _applyProps, _bindSpread, _setStyle, _setAttr,
+  _tpl, _bind, _bindText, _bindProp, _bindDirect, _applyProps, _bindSpread, _setStyle, _setAttr,
   _mountSlot, _setChild, _setChildAt, bindPolymorphicText, _rp, _cx: cx,
   h, Fragment, signal, document,
 } as const

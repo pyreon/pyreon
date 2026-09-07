@@ -193,6 +193,32 @@ export function _rp<T>(fn: () => T): () => T {
 }
 
 /**
+ * The reactive-prop wrapper for a prop whose expression is EXACTLY a bare
+ * signal/computed call — `<Row value={sig()} />`. Same contract as `_rp`
+ * (a branded thunk that `makeReactiveProps` turns into a getter), plus the
+ * signal's DIRECT-tier surface (`.direct` / `._v` / `.peek`) delegated to the
+ * source, so a consumer that receives the getter itself (`_bindProp`) can
+ * subscribe on the O(1) `_d1` slot instead of a tracked effect. Measured on
+ * the dispose-500 ladder: with the prop holding the signal instead of an
+ * opaque wrapper, the row's text bind drops ~20µs/500 rows on teardown —
+ * half the residual over Solid. The signal itself is never branded (a
+ * shared object passed elsewhere as a plain value would then be misread as
+ * a reactive prop); this allocates one thunk per prop, as `_rp` does.
+ */
+export function _rpd<T>(sig: (() => T) & { direct?: unknown; _v?: unknown; peek?: unknown }): () => T {
+  const t = (() => sig()) as (() => T) & Record<string | symbol, unknown>
+  t[REACTIVE_PROP] = true
+  // `direct`/`peek` are METHODS on the signal (they read `this`), so they are
+  // re-targeted, not copied — a copied reference would run against the thunk.
+  const direct = sig.direct as ((fn: () => void) => () => void) | undefined
+  if (direct !== undefined) t.direct = (fn: () => void) => direct.call(sig, fn)
+  const peek = sig.peek as (() => T) | undefined
+  if (peek !== undefined) t.peek = () => peek.call(sig)
+  Object.defineProperty(t, '_v', { get: () => sig._v, configurable: true })
+  return t
+}
+
+/**
  * Wrap a COMPONENT's sole JSX child so it is built when the component READS
  * `props.children` — not when the JSX call expression is evaluated.
  *

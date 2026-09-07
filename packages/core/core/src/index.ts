@@ -73,6 +73,7 @@ export { Portal, PortalSymbol } from './portal'
 export {
   _lc,
   _rp,
+  _rpd,
   _wrapSpread,
   createUniqueId,
   makeReactiveProps,

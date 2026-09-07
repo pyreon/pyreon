@@ -1251,9 +1251,11 @@ export function transformJSX_JS(
   let hoistIdx = 0
   let needsTplImport = false
   let needsRpImport = false
+  let needsRpdImport = false
   let needsLcImport = false
   let needsWrapSpreadImport = false
   let needsBindTextImportGlobal = false
+  let needsBindPropImportGlobal = false
   let needsBindDirectImportGlobal = false
   let needsBindImportGlobal = false
   let needsBindPolyImportGlobal = false
@@ -2730,8 +2732,18 @@ export function transformJSX_JS(
         const end = expr.end as number
         const sliced = sliceExpr(expr)
         const inner = expr.type === 'ObjectExpression' ? `(${sliced})` : sliced
-        replacements.push({ start, end, text: `_rp(() => ${inner})` })
-        needsRpImport = true
+        // A bare signal/computed call — `value={sig()}` — wraps with `_rpd`,
+        // which carries the signal's direct-tier surface so a `_bindProp`
+        // consumer can skip the tracked effect (see core `_rpd`). Same
+        // value semantics as `_rp(() => sig())`; both backends agree.
+        const bareSig = bareSignalCallee(expr)
+        if (bareSig !== null) {
+          replacements.push({ start, end, text: `_rpd(${bareSig})` })
+          needsRpdImport = true
+        } else {
+          replacements.push({ start, end, text: `_rp(() => ${inner})` })
+          needsRpImport = true
+        }
         lens(
           start,
           end,
@@ -3107,6 +3119,14 @@ export function transformJSX_JS(
     return signalVars.has(name) && !shadowedSignals.has(name)
   }
 
+  /** `sig()` — a zero-arg call of an active signal/computed — returns the callee name, else null. */
+  function bareSignalCallee(node: N): string | null {
+    if (node.type !== 'CallExpression' || (node.arguments?.length ?? 0) !== 0) return null
+    const callee = node.callee
+    if (!callee || callee.type !== 'Identifier' || !isActiveSignal(callee.name)) return null
+    return callee.name
+  }
+
   /** Check if an identifier name is an active (non-shadowed) selector variable. */
   function isActiveSelector(name: string): boolean {
     return selectorVars.has(name) && !shadowedSelectors.has(name)
@@ -3155,6 +3175,21 @@ export function transformJSX_JS(
       }
     }
     return shadows
+  }
+
+  /**
+   * `props.key` (or `() => props.key`) where `props` is a component's props
+   * param and `key` a plain identifier — the shape `_bindProp` binds by
+   * descriptor. Deeper chains and computed keys return null.
+   */
+  function propMemberRead(node: N): { obj: string; key: string } | null {
+    let inner = node
+    if (inner.type === 'ArrowFunctionExpression' && inner.body?.type !== 'BlockStatement') inner = inner.body
+    inner = unwrapTypeLayers(inner)
+    if (inner.type !== 'MemberExpression' || inner.computed) return null
+    if (inner.object?.type !== 'Identifier' || !propsNames.has(inner.object.name)) return null
+    if (inner.property?.type !== 'Identifier') return null
+    return { obj: inner.object.name, key: inner.property.name }
   }
 
   function readsFromProps(node: N): boolean {
@@ -3754,6 +3789,7 @@ export function transformJSX_JS(
     const runtimeDomImports = ['_tpl']
     if (needsBindDirectImportGlobal) runtimeDomImports.push('_bindDirect')
     if (needsBindTextImportGlobal) runtimeDomImports.push('_bindText')
+    if (needsBindPropImportGlobal) runtimeDomImports.push('_bindProp')
     if (needsApplyPropsImportGlobal) runtimeDomImports.push('_applyProps')
     if (needsBindSpreadImportGlobal) runtimeDomImports.push('_bindSpread')
     if (needsMountSlotImportGlobal) runtimeDomImports.push('_mountSlot')
@@ -3791,7 +3827,7 @@ export function transformJSX_JS(
     preamble = `import { ${ssrImports.join(', ')} } from "@pyreon/runtime-server";\n` + preamble
   }
 
-  if (needsRpImport || needsLcImport || needsWrapSpreadImport || needsCxImportGlobal) {
+  if (needsRpImport || needsRpdImport || needsLcImport || needsWrapSpreadImport || needsCxImportGlobal) {
     const coreImports: string[] = []
     // Alias to an internal name — `cx` is a PUBLIC export users import
     // directly (e.g. a hand-written component that also uses `class={…}`),
@@ -3799,6 +3835,7 @@ export function transformJSX_JS(
     if (needsCxImportGlobal) coreImports.push('cx as _cx')
     if (needsLcImport) coreImports.push('_lc')
     if (needsRpImport) coreImports.push('_rp')
+    if (needsRpdImport) coreImports.push('_rpd')
     if (needsWrapSpreadImport) coreImports.push('_wrapSpread')
     preamble = `import { ${coreImports.join(', ')} } from "@pyreon/core";\n` + preamble
   }
@@ -4011,6 +4048,7 @@ export function transformJSX_JS(
     let placeholderIdx = 0
     const reactiveBindExprs: string[] = []
     let needsBindTextImport = false
+    let needsBindPropImport = false
     let needsBindDirectImport = false
     let needsApplyPropsImport = false
     let needsBindSpreadImport = false
@@ -4869,6 +4907,16 @@ export function transformJSX_JS(
         bindLines.push(`const ${d} = _bindText(${directRef.ref}, ${tVar}${callerArg})`)
         return needsPlaceholder ? '<!>' : ' '
       }
+      // PROP read — `{props.value}` (or its accessor form): bind by
+      // DESCRIPTOR so a `_rpd` getter's direct tier is reachable; any other
+      // getter falls back to the polymorphic tracked path inside `_bindProp`.
+      const propRead = propMemberRead(exprNode)
+      if (propRead !== null) {
+        needsBindPropImport = true
+        const d = nextDisp()
+        bindLines.push(`const ${d} = _bindProp(${propRead.obj}, ${JSON.stringify(propRead.key)}, ${tVar}, ${parentRef})`)
+        return needsPlaceholder ? '<!>' : ' '
+      }
       // Selector-ternary auto-promotion (companion to the className
       // path). `<td>{() => sel(k) ? 'X' : 'Y'}</td>` becomes
       // `sel.subscribe(k, (m) => { tVar.data = m ? 'X' : 'Y' })` — the
@@ -5391,6 +5439,7 @@ export function transformJSX_JS(
     if (html === null) return null
 
     if (needsBindTextImport) needsBindTextImportGlobal = true
+    if (needsBindPropImport) needsBindPropImportGlobal = true
     if (needsBindDirectImport) needsBindDirectImportGlobal = true
     if (needsApplyPropsImport) needsApplyPropsImportGlobal = true
     if (needsBindSpreadImport) needsBindSpreadImportGlobal = true

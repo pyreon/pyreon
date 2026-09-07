@@ -10,7 +10,7 @@
 import { transformSync } from 'esbuild'
 import { transformJSX } from '@pyreon/compiler'
 import * as JsxRuntime from '@pyreon/core/jsx-runtime'
-import { Fragment, h, _rp, cx } from '@pyreon/core'
+import { Fragment, h, _rp, _rpd, cx } from '@pyreon/core'
 import { _bind, computed, createStore, effect, signal } from '@pyreon/reactivity'
 import { _tpl, _bindText, _bindDirect, _setChild, _setChildAt, _textSlot } from '../template'
 import {
@@ -20,13 +20,13 @@ import {
   _setStyle,
   _setValue,
   bindPolymorphicText,
-  mountChild,
-} from '../index'
+  mountChild, _bindProp,} from '../index'
 
 export const RUNTIME_DEPS = {
   _tpl,
   _bind,
   _bindText,
+  _bindProp,
   _textSlot,
   _bindDirect,
   _setChild,
@@ -38,6 +38,7 @@ export const RUNTIME_DEPS = {
   _setAttr,
   _setValue,
   _rp,
+  _rpd,
   _cx: cx,
   h,
   Fragment,
