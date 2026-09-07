@@ -483,7 +483,15 @@ jobs:
     # observed success is 41.2m against a 45m budget — 92% utilisation, i.e.
     # one slow runner from the same coin-flip the ubuntu job is already stuck
     # in. Budget = worst measured (41.2m) + ~40% headroom.
-    timeout-minutes: 60
+    # 90, not 60: this job runs the WHOLE native-compiler suite against the real
+    # SDK and had no verdict-cache restore, so every run re-derived ~600
+    # swiftc verdicts from scratch — ~50 min of tests, then the co-located
+    # Swift step, then the 60-minute cap, three times in one day on green
+    # code. The cache below makes a warm run minutes; the extra headroom is
+    # what lets the FIRST run after a toolchain bump (a cold cache) finish and
+    # SAVE, instead of being cancelled before the save step and staying cold
+    # forever.
+    timeout-minutes: 90
     permissions:
       contents: read
     steps:
@@ -509,10 +517,26 @@ jobs:
       - name: Install workspace deps
         run: bun install --frozen-lockfile
 
+      # The macOS twin of the ubuntu job's verdict cache (same accumulating-key
+      # pattern; `runner.os` keeps the two stores apart, and the verdict keys
+      # carry the compiler version themselves). Without it this job could
+      # never finish inside its cap on a busy day.
+      - name: Restore native compile-verdict cache
+        if: github.event_name != 'schedule'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/pyreon-native-validate
+          key: native-verdicts-ci-${{ runner.os }}-validate-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-${{ github.run_id }}
+          restore-keys: |
+            native-verdicts-ci-${{ runner.os }}-validate-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-
+
       - name: Run native-compiler tests (real-SDK Swift -typecheck)
         # macos-15 ships the real SwiftUI SDK → isSwiftUIAvailable()=true → the
         # real-SDK `swiftc -typecheck` blocks run (they SKIP on ubuntu). Kotlin
         # blocks skip (no kotlinc); the ubuntu `validate` job covers Kotlin.
+        env:
+          PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate
+          PYREON_VALIDATE_NO_CACHE: ${{ github.event_name == 'schedule' && '1' || '0' }}
         run: bun run --filter='@pyreon/native-compiler' test
 
       - name: Native coverage — COMPILE every registry snippet
