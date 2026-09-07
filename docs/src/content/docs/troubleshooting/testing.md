@@ -55,7 +55,7 @@ a spy on `Node.prototype.removeChild` during a `<For>` clear of 1,000 rows repor
 
 ---
 
-### An in-process interleaved micro-probe carries an ARM-SLOT bias larger than a sub-nanosecond seam effect — the same function in two slots read 4.48 and 2.99ns
+### An in-process micro-probe's ARM-SLOT bias exceeds a sub-ns seam effect — one function read 4.48ns in one slot and 2.99ns in another
 
 (the `@pyreon/validate` seam probe, 2026-09-07). `decompose-seam*.ts` calls every arm through one `batch(fn)` site, so bun/JSC tiers the closures by call order: the FIRST arm is penalized ~1.4ns and the LAST inherits the warmest ICs, and interleaving rounds cannot undo it because each arm keeps its own closure. The probe that sized #3316 had the shipped seam in slot 1 and the competitor last, so its "seam = 2.21ns (46%)" magnitude is inflated (the DIRECTION — a smaller method inlines — survived a process-isolated re-run; the number did not). **Rules: (1) add a discarded warm arm in slot 1 AND a duplicate of the arm under test in the last slot — if the duplicate disagrees by more than the effect, the probe cannot decide; (2) take the verdict from the process-isolated per-cell runner (`bench/four-cells.ts`: with → `git checkout` → with again), never from an in-process delta.** Same family as "verify the harness before trusting its result": a probe whose two copies of one arm disagree has measured itself. Reference: `packages/fundamentals/validate/bench/decompose-seam3.ts` (the W/P0/PP0 control arms).
 
