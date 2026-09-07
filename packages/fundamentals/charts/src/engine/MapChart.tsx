@@ -30,7 +30,8 @@ export function MapChart(props: MapChartProps): VNode {
       readValues()
     },
     layout: (box) => layoutGeo(geo(), box, props.options),
-    render: (layout, measure) => renderGeo(layout, readValues(), props.options, measure),
+    animates: true,
+    render: (layout, measure, _theme, progress) => renderGeo(layout, readValues(), { ...props.options, progress }, measure),
     select: (layout, px, py) => {
       props.onSelect?.(hitGeo(layout, px, py))
     },

@@ -391,8 +391,14 @@ title block, the legend and the tooltip natively (the tooltip on a **tap**,
 cleared by a tap on nothing). What the legend lists and what a tap says come
 from one crossing module — `treemapLegend`, `sankeyTip`, `pieTip`, … and
 `renderTooltip` in `chrome.ts` — that the web host calls too, so the three
-targets cannot disagree about either. `animate` is the one prop that still
-warns by name on native.
+targets cannot disagree about either. `animate` crosses too: every host whose
+engine takes a `progress` (all of the above except Pie, Radar, Candlestick and
+Gauge, which draw fully formed everywhere) plays the same cubic ease-out
+entrance over `theme.enterMs` inside `PyreonChartEntrance`, off under Reduce
+Motion (iOS) and a zero animator scale (Android) — the web host's
+`prefers-reduced-motion` — and `animate={false}` emits the host exactly as
+before. On an engine with no entrance the prop is named as inert rather than
+as a native gap.
 
 Bars are rounded by default: `theme.radius` (3) rounds the corners away from
 the baseline — top for a positive bar, bottom for a negative one, the far end

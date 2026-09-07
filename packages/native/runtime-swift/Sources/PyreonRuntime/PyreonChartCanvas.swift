@@ -486,3 +486,49 @@ public struct PyreonGaugeChart: View {
         return PyreonChartCanvas(cmds: cmds).frame(width: width, height: height)
     }
 }
+
+// MARK: - Entrance tween
+
+/// The web canvas host's entrance easing: cubic ease-out over `durationMs`,
+/// clamped. Pure, so the three targets share one curve exactly.
+public func pyreonEntranceProgress(_ elapsedMs: Double, _ durationMs: Double) -> Double {
+    if durationMs <= 0.0 { return 1.0 }
+    let t = min(1.0, max(0.0, elapsedMs / durationMs))
+    let u = 1.0 - t
+    return 1.0 - u * u * u
+}
+
+/// Drives a chart's one-time entrance (`animate`, on by default): `content`
+/// receives the progress 0..1 on every frame of the tween and 1 for the rest
+/// of the view's life — the same `progress` the engine's render functions
+/// take on the web. Honours Reduce Motion (the web host's
+/// `prefers-reduced-motion` twin) by rendering fully formed at once. The
+/// timeline is PAUSED once the tween has finished, so a settled chart costs
+/// nothing per frame; a Canvas inside the closure re-evaluates on each tick.
+public struct PyreonChartEntrance<Content: View>: View {
+    public var durationMs: Double
+    public var content: (Double) -> Content
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var start: Date = Date()
+    @State private var finished: Bool = false
+
+    public init(durationMs: Double, @ViewBuilder content: @escaping (Double) -> Content) {
+        self.durationMs = durationMs
+        self.content = content
+    }
+
+    public var body: some View {
+        if reduceMotion || durationMs <= 0.0 {
+            content(1.0)
+        } else {
+            TimelineView(.animation(paused: finished)) { context in
+                content(finished ? 1.0 : pyreonEntranceProgress(context.date.timeIntervalSince(start) * 1000.0, durationMs))
+            }
+            .onAppear { start = Date() }
+            .task {
+                try? await Task.sleep(nanoseconds: UInt64(durationMs * 1_000_000.0))
+                finished = true
+            }
+        }
+    }
+}

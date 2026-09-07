@@ -28,7 +28,8 @@ export function GanttChart(props: GanttChartProps): VNode {
       readTasks()
     },
     layout: (box, measure, theme) => layoutGantt(readTasks(), { x: box.x + 4.0, y: box.y + 4.0, w: box.w - 8.0, h: box.h - 8.0 }, opts(theme.palette), measure),
-    render: (layout, _measure, theme) => renderGantt(layout, opts(theme.palette)),
+    animates: true,
+    render: (layout, _measure, theme, progress) => renderGantt(layout, { ...opts(theme.palette), progress }),
     select: (layout, px, py) => {
       props.onSelect?.(hitGantt(layout, px, py))
       props.onSelectIndex?.(hitGanttIndex(layout, px, py))

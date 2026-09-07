@@ -45,6 +45,12 @@ export interface ChartHostTarget {
   theme: () => string
   /** `a ?? b` / `a ?: b`. */
   coalesce: (a: string, b: string) => string
+  /**
+   * The options struct with `progress` set to the entrance: `Struct(progress: p)`
+   * when no options were given, else a copy of the user's value with the one
+   * field replaced (Swift mutates a `var` copy, Kotlin `.copy(progress = p)`).
+   */
+  withProgress: (options: string, struct: string, progress: string) => string
 }
 
 export interface ChartHostArgs {
@@ -66,6 +72,8 @@ export interface ChartHostSpec {
   readonly data: readonly string[]
   /** The options prop (an `XOptions` struct); optional. */
   readonly options: string
+  /** The engine struct the options prop holds — steers an inline literal and names the entrance copy. */
+  readonly optionsStruct: string
   /** The web host's default `height`. */
   readonly defaultHeight: number
   /** Builds the layout expression (`layoutX(...)`). */
@@ -200,12 +208,13 @@ const box00 = (a: ChartHostArgs, t: ChartHostTarget): string => t.rect('0.0', '0
 
 /** `options?.field` — or the target's nil when no options were given (`nil?.x` is not Swift). */
 const optField = (a: ChartHostArgs, t: ChartHostTarget, field: string): string =>
-  a.options === t.nil ? t.nil : `${a.options}?.${field}`
+  a.options === t.nil ? t.nil : `(${a.options}).${field}`
 
 export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
   SankeyChart: {
     data: ['nodes', 'links'],
     options: 'sankey',
+    optionsStruct: 'SankeyOptions',
     defaultHeight: 300,
     layout: (a, t) => {
       const box = t.rect(a.gutter, '8.0', t.max0(`${a.W} - ${a.gutter} * 2.0`), t.max0(`${a.H} - 16.0`))
@@ -219,6 +228,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
   GraphChart: {
     data: ['nodes', 'links'],
     options: 'graph',
+    optionsStruct: 'GraphOptions',
     defaultHeight: 300,
     layout: (a, t) => `layoutGraph(${a.data[0]}, ${a.data[1]}, ${box00(a, t)}, ${a.options})`,
     render: (l, a, t) => `renderGraph(${l}, ${box00(a, t)}, ${a.options})`,
@@ -228,6 +238,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
   TreemapChart: {
     data: ['data'],
     options: 'treemap',
+    optionsStruct: 'TreemapOptions',
     defaultHeight: 300,
     layout: (a, t) => `layoutTreemap(${a.data[0]}, ${box00(a, t)}, ${a.options})`,
     render: (l, a) => `renderTreemap(${l}, ${a.options})`,
@@ -238,6 +249,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
   SunburstChart: {
     data: ['data'],
     options: 'sunburst',
+    optionsStruct: 'SunburstOptions',
     defaultHeight: 300,
     layout: (a, t) => {
       const outer = t.max0(`${t.min(a.W, a.H)} / 2.0 - 4.0`)
@@ -251,6 +263,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
   TreeChart: {
     data: ['data'],
     options: 'tree',
+    optionsStruct: 'TreeOptions',
     defaultHeight: 300,
     layout: (a, t) => `layoutTree(${a.data[0]}, ${box00(a, t)}, ${a.options})`,
     render: (l, a) => `renderTree(${l}, ${a.options})`,
@@ -261,6 +274,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
   RiverChart: {
     data: ['series'],
     options: 'river',
+    optionsStruct: 'RiverOptions',
     defaultHeight: 300,
     layout: (a, t) => `layoutRiver(${a.data[0]}, ${t.rect('8.0', '8.0', t.max0(`${a.W} - 16.0`), t.max0(`${a.H} - 16.0`))}, ${a.options})`,
     render: (l, a) => `renderRiver(${l}, ${a.options})`,
@@ -271,6 +285,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
   GanttChart: {
     data: ['tasks'],
     options: 'gantt',
+    optionsStruct: 'GanttOptions',
     defaultHeight: 320,
     layout: (a, t) => `layoutGantt(${a.data[0]}, ${t.rect('4.0', '4.0', `${a.W} - 8.0`, `${a.H} - 8.0`)}, ${a.options})`,
     render: (l, a) => `renderGantt(${l}, ${a.options})`,
@@ -280,6 +295,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
   PolarChart: {
     data: ['axes', 'series'],
     options: 'polar',
+    optionsStruct: 'PolarOptions',
     defaultHeight: 300,
     layout: (a, t) => `layoutPolar(${a.data[0]}, ${a.data[1]}, ${box00(a, t)}, ${a.options})`,
     render: (l, a) => `renderPolar(${l}, ${a.options})`,
@@ -291,6 +307,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
   CalendarChart: {
     data: ['start', 'end', 'values'],
     options: 'calendar',
+    optionsStruct: 'CalendarOptions',
     defaultHeight: 140,
     layout: (a, t) => `layoutCalendar(${a.data[0]}, ${a.data[1]}, ${t.rect('4.0', '4.0', `${a.W} - 8.0`, `${a.H} - 8.0`)}, ${a.options})`,
     render: (l, a) => `renderCalendar(${l}, ${a.data[2]}, ${a.options})`,
@@ -301,6 +318,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
   ParallelChart: {
     data: ['axes', 'rows'],
     options: 'parallel',
+    optionsStruct: 'ParallelOptions',
     defaultHeight: 300,
     gutterDefault: 40,
     layout: (a, t) => `layoutParallel(${a.data[0]}, ${a.data[1]}, ${t.rect(a.gutter, '8.0', t.max0(`${a.W} - ${a.gutter} * 2.0`), t.max0(`${a.H} - 16.0`))}, ${a.options})`,
@@ -499,6 +517,8 @@ export interface AccessorHostSpec {
   readonly fields: readonly AccessorField[]
   /** The options prop (`funnel`), or none. */
   readonly options?: string
+  /** The engine struct `options` holds; a host without one (Pie) neither steers nor animates. */
+  readonly optionsStruct?: string
   readonly defaultHeight: number
   /** Builds the draw-list expression from the mapped items. */
   readonly render: (items: string, a: ChartHostArgs, t: ChartHostTarget) => string
@@ -521,6 +541,7 @@ export const ACCESSOR_CHART_HOSTS: Readonly<Record<string, AccessorHostSpec>> = 
       { name: 'color', prop: 'color', fallback: 'palette' },
     ],
     options: 'funnel',
+    optionsStruct: 'FunnelOptions',
     defaultHeight: 240,
     render: (items, a, t) => `renderFunnel(${items}, ${t.rect('8.0', '8.0', `${a.W} - 16.0`, `${a.H} - 16.0`)}, ${a.options})`,
     hit: (items, x, y, a, t) => `hitFunnel(${items}, ${t.rect('8.0', '8.0', `${a.W} - 16.0`, `${a.H} - 16.0`)}, ${x}, ${y}, ${a.options})`,
@@ -699,18 +720,48 @@ export const CHART_HOST_PALETTE: readonly string[] = CHART_THEME_DEFAULT.palette
 export const HEAT_RAMP_DEFAULT = ['#eff6ff', '#93c5fd', '#3b82f6', '#1e40af'] as const
 
 /**
- * The shared canvas host's chrome props (canvas-host.tsx). On native, PlotChart
- * / Pie / Radar draw the title and legend (the #3265 chrome emit); everything
- * else — and the tooltip and entrance animation everywhere — is web-only for
- * now, and MUST warn by name rather than drop silently.
+ * The shared canvas host's chrome props (canvas-host.tsx). On native, the
+ * plot host draws the title and legend (the #3265 chrome emit); the family
+ * hosts draw title, legend and a tap tooltip through the crossing `chrome.ts`;
+ * and every host whose engine takes an entrance `progress` plays the same
+ * cubic ease-out entrance the web host does (`PyreonChartEntrance`). What a
+ * target does NOT draw MUST warn by name rather than drop silently.
  */
 export const CHART_CHROME_PROPS: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate']
 const CHROME_LOWERED: Readonly<Record<string, readonly string[]>> = {
-  PlotChart: ['showTitle', 'subtitle', 'showLegend'],
+  PlotChart: ['showTitle', 'subtitle', 'showLegend', 'animate'],
+  HeatmapChart: ['animate'],
   RadarChart: ['showLegend'],
 }
 /** Title + legend + tap tooltip — what the generic and accessor hosts draw natively through the crossing chrome. */
 const FAMILY_CHROME: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip']
+/**
+ * Whether `<tag>`'s engine takes an entrance `progress` — the same set the web
+ * canvas host tweens (`animates: true`). A host outside it (Pie, Radar,
+ * Candlestick, Gauge) draws fully formed on EVERY target, so `animate` there
+ * is inert rather than "not lowered yet".
+ */
+export function chartHostAnimates(tag: string): boolean {
+  if (tag === 'PlotChart' || tag === 'HeatmapChart') return true
+  const host = CHART_HOSTS[tag]
+  if (host !== undefined) return host.optionsStruct !== undefined
+  return ACCESSOR_CHART_HOSTS[tag]?.optionsStruct !== undefined
+}
+/** The chrome props `<tag>` does NOT lower — each present one warns. */
+export function chartChromeUnlowered(tag: string): readonly string[] {
+  const family = Object.hasOwn(CHART_HOSTS, tag) || Object.hasOwn(ACCESSOR_CHART_HOSTS, tag)
+  const lowered = [...(CHROME_LOWERED[tag] ?? (family ? FAMILY_CHROME : [])), ...(family && chartHostAnimates(tag) ? ['animate'] : [])]
+  return CHART_CHROME_PROPS.filter((p) => !lowered.includes(p))
+}
+/** The warning for a chrome prop `<tag>` carries but does not draw — `animate` on an engine with no entrance is inert everywhere, not a native gap. */
+export function chartChromeWarning(tag: string, prop: string): string {
+  if (prop === 'animate' && !chartHostAnimates(tag)) return `<${tag}>: \`animate\` has no effect on any target — its engine draws fully formed; the prop is ignored.`
+  return `<${tag}>: \`${prop}\` is not lowered on native yet; the chart renders without it.`
+}
+/** The entrance duration — the theme's `enterMs` (a literal object or a named theme), else the default; the family hosts read nothing else off `theme`, so this never warns. */
+export function chartEnterMs(theme: ExprIR | undefined, tag: string, list: (items: readonly string[]) => string): string {
+  return chartThemeFields(theme, tag, () => {}, list).enterMs
+}
 /** The tooltip box's colours — the web hosts' default theme (surface / grid / text). */
 export const CHART_TOOLTIP_FIELDS: readonly (readonly [string, string])[] = [
   ['fontSize', CHART_THEME_DEFAULT.fontSize],
@@ -720,11 +771,6 @@ export const CHART_TOOLTIP_FIELDS: readonly (readonly [string, string])[] = [
   ['pad', '8.0'],
   ['radius', '4.0'],
 ]
-/** The chrome props `<tag>` does NOT lower — each present one warns. */
-export function chartChromeUnlowered(tag: string): readonly string[] {
-  const lowered = CHROME_LOWERED[tag] ?? (Object.hasOwn(CHART_HOSTS, tag) || Object.hasOwn(ACCESSOR_CHART_HOSTS, tag) ? FAMILY_CHROME : [])
-  return CHART_CHROME_PROPS.filter((p) => !lowered.includes(p))
-}
 
 /** The hosts with a dedicated emitter each (a fixed frame or a second data prop). */
 export const FRAME_CHART_HOSTS: Readonly<Record<string, true>> = { GaugeChart: true, CandlestickChart: true, HeatmapChart: true, RadarChart: true, PlotChart: true }

@@ -36,7 +36,8 @@ export function FunnelChart<T>(props: FunnelChartProps<T>): VNode {
       readData()
     },
     layout: (box, _measure, theme) => ({ stages: stages(theme.palette), plot: { x: box.x + 8.0, y: box.y + 8.0, w: box.w - 16.0, h: box.h - 16.0 } }),
-    render: (g) => renderFunnel(g.stages, g.plot, props.funnel),
+    animates: true,
+    render: (g, _measure, _theme, progress) => renderFunnel(g.stages, g.plot, { ...props.funnel, progress }),
     legend: (g) => funnelLegend(g.stages),
     select: (g, px, py) => {
       const i = hitFunnel(g.stages, g.plot, px, py, props.funnel)

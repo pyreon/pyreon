@@ -6630,10 +6630,10 @@ public func heatPlotFor(_ grid: HeatGrid, _ w: Double, _ h: Double, _ fontSize: 
     return PyreonChartRect(x: left, y: 4.0, w: max(0.0, w - left - 4.0), h: max(0.0, h - 4.0 - bottom))
   }
 
-public func renderHeatChart(_ grid: HeatGrid, _ w: Double, _ h: Double, _ theme: ChartTheme, _ stops: [String], _ gap: Double, _ measure: (String, Double) -> Double) -> [PyreonDrawCmd] {
+public func renderHeatChart(_ grid: HeatGrid, _ w: Double, _ h: Double, _ theme: ChartTheme, _ stops: [String], _ gap: Double, _ measure: (String, Double) -> Double, _ progress: Double? = nil) -> [PyreonDrawCmd] {
     let plot = heatPlotFor(grid, w, h, theme.fontSize, measure)
     var cmds: [PyreonDrawCmd] = []
-    let cells = renderHeat(HeatmapOptions(grid: grid, plot: plot, stops: stops, gap: gap, progress: 1.0))
+    let cells = renderHeat(HeatmapOptions(grid: grid, plot: plot, stops: stops, gap: gap, progress: (progress ?? 1.0)))
     for c in cells {
       cmds.append(c)
     }

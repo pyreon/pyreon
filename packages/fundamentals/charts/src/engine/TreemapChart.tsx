@@ -26,7 +26,8 @@ export function TreemapChart(props: TreemapChartProps): VNode {
       readData()
     },
     layout: (box, _measure, theme) => layoutTreemap(readData(), box, { palette: theme.palette, ...props.treemap }),
-    render: (cells, measure, theme) => renderTreemap(cells, { palette: theme.palette, ...props.treemap }, measure),
+    animates: true,
+    render: (cells, measure, theme, progress) => renderTreemap(cells, { palette: theme.palette, ...props.treemap, progress }, measure),
     legend: treemapLegend,
     select: (cells, px, py) => {
       props.onSelect?.(hitTreemap(cells, px, py))

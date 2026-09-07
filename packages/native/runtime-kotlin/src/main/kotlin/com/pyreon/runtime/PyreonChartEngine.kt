@@ -5094,10 +5094,10 @@ fun heatPlotFor(grid: HeatGrid, w: Double, h: Double, fontSize: Double, measure:
     return PyreonChartRect(x = left, y = 4.0, w = Math.max(0.0, w - left - 4.0), h = Math.max(0.0, h - 4.0 - bottom))
   }
 
-fun renderHeatChart(grid: HeatGrid, w: Double, h: Double, theme: ChartTheme, stops: List<String>, gap: Double, measure: (String, Double) -> Double): List<PyreonDrawCmd> {
+fun renderHeatChart(grid: HeatGrid, w: Double, h: Double, theme: ChartTheme, stops: List<String>, gap: Double, measure: (String, Double) -> Double, progress: Double? = null): List<PyreonDrawCmd> {
     val plot = heatPlotFor(grid, w, h, theme.fontSize, measure)
     val cmds: MutableList<PyreonDrawCmd> = mutableListOf()
-    val cells = renderHeat(HeatmapOptions(grid = grid, plot = plot, stops = stops, gap = gap, progress = 1.0))
+    val cells = renderHeat(HeatmapOptions(grid = grid, plot = plot, stops = stops, gap = gap, progress = (progress ?: 1.0)))
     for (c in cells) {
       cmds.add(c)
     }

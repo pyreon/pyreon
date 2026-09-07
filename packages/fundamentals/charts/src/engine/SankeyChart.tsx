@@ -38,7 +38,8 @@ export function SankeyChart(props: SankeyChartProps): VNode {
       const g = props.gutter ?? 80.0
       return layoutSankey(readNodes(), readLinks(), { x: box.x + g, y: box.y + 8.0, w: Math.max(0.0, box.w - g * 2.0), h: Math.max(0.0, box.h - 16.0) }, opts(theme.palette))
     },
-    render: (layout, _measure, theme) => renderSankey(layout, opts(theme.palette)),
+    animates: true,
+    render: (layout, _measure, theme, progress) => renderSankey(layout, { ...opts(theme.palette), progress }),
     legend: sankeyLegend,
     select: (layout, px, py) => {
       props.onSelect?.(hitSankey(layout, px, py))

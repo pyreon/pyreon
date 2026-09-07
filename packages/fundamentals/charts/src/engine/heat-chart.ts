@@ -76,12 +76,13 @@ export function renderHeatChart(
   stops: string[],
   gap: Double,
   measure: MeasureText,
+  progress?: Double,
 ): DrawCmd[] {
   const plot = heatPlotFor(grid, w, h, theme.fontSize, measure)
   // A fresh array: on Kotlin an array RETURNED by a function is an immutable
   // List, so the labels below could not be pushed onto the cells' own list.
   const cmds: DrawCmd[] = []
-  const cells = renderHeat({ grid, plot, stops, gap, progress: 1.0 })
+  const cells = renderHeat({ grid, plot, stops, gap, progress: progress ?? 1.0 })
   for (const c of cells) cmds.push(c)
   let nrF = 0.0
   for (let i = 0; i < grid.rows.length; i++) nrF += 1.0

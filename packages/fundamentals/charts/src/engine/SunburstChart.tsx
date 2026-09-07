@@ -36,7 +36,8 @@ export function SunburstChart(props: SunburstChartProps): VNode {
       const innerR = outerR * (props.innerRatio ?? 0.2)
       return { arcs: layoutSunburst(readData(), innerR, outerR, { palette: theme.palette, ...props.sunburst }), center: { x: box.x + box.w / 2.0, y: box.y + box.h / 2.0 } }
     },
-    render: (g, measure, theme) => renderSunburst(g.arcs, g.center, { palette: theme.palette, ...props.sunburst }, measure),
+    animates: true,
+    render: (g, measure, theme, progress) => renderSunburst(g.arcs, g.center, { palette: theme.palette, ...props.sunburst, progress }, measure),
     legend: (g) => sunburstLegend(g.arcs),
     select: (g, px, py) => {
       props.onSelect?.(hitSunburst(g.arcs, g.center, px, py))

@@ -30,7 +30,8 @@ export function PolarChart(props: PolarChartProps): VNode {
       readSeries()
     },
     layout: (box, _measure, theme) => layoutPolar(props.axes, readSeries(), box, opts(theme.palette)),
-    render: (layout, _measure, theme) => renderPolar(layout, opts(theme.palette)),
+    animates: true,
+    render: (layout, _measure, theme, progress) => renderPolar(layout, { ...opts(theme.palette), progress }),
     legend: (_layout, theme) => polarLegend(readSeries(), theme.palette),
     select: (layout, px, py) => {
       props.onSelect?.(hitPolar(layout, px, py))

@@ -41,7 +41,8 @@ export function ParallelChart(props: ParallelChartProps): VNode {
       const g = props.gutter ?? 40.0
       return layoutParallel(props.axes, parallelRows(props.axes, readRows()), { x: box.x + g, y: box.y + 8.0, w: Math.max(0.0, box.w - g * 2.0), h: Math.max(0.0, box.h - 16.0) }, opts(theme.palette))
     },
-    render: (layout, _measure, theme) => renderParallel(layout, opts(theme.palette)),
+    animates: true,
+    render: (layout, _measure, theme, progress) => renderParallel(layout, { ...opts(theme.palette), progress }),
     select: (layout, px, py) => {
       const line = hitParallel(layout, px, py)
       props.onSelect?.(line)

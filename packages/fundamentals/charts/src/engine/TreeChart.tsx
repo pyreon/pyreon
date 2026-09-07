@@ -28,7 +28,8 @@ export function TreeChart(props: TreeChartProps): VNode {
       readData()
     },
     layout: (box, _measure, theme) => layoutTree(readData(), box, opts(theme.palette)),
-    render: (layout, _measure, theme) => renderTree(layout, opts(theme.palette)),
+    animates: true,
+    render: (layout, _measure, theme, progress) => renderTree(layout, { ...opts(theme.palette), progress }),
     legend: treeLegend,
     select: (layout, px, py) => {
       props.onSelect?.(hitTree(layout, px, py, props.tree?.symbolSize))

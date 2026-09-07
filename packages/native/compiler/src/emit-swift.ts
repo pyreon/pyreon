@@ -84,7 +84,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_TOOLTIP_FIELDS, CHART_THEME_FIELDS, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartThemeFields, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_TOOLTIP_FIELDS, CHART_THEME_FIELDS, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -11379,8 +11379,32 @@ const SWIFT_CHART_TARGET: ChartHostTarget = {
   list: (items) => `[${items.join(', ')}]`,
   struct: (name, fields) => `${name}(${fields.map(([k, v]) => `${k}: ${v}`).join(', ')})`,
   coalesce: (a, b) => `(${a} ?? ${b})`,
+  withProgress: (options, struct, progress) => (options === 'nil' ? `${struct}(progress: ${progress})` : `{ () -> ${struct} in var pyreonO = ${options}; pyreonO.progress = ${progress}; return pyreonO }()`),
   pieOptions: (a) => `PieOptions(innerRadius: ${a.innerRatio}, showLabels: true, labelColor: "#ffffff", fontSize: 11.0)`,
   theme: () => `ChartTheme(axis: ${JSON.stringify(CHART_THEME_DEFAULT.axis)}, grid: ${JSON.stringify(CHART_THEME_DEFAULT.grid)}, label: ${JSON.stringify(CHART_THEME_DEFAULT.label)}, fontSize: ${CHART_THEME_DEFAULT.fontSize})`,
+}
+
+/** `{ kind: 'typeRef' }` for an engine struct — steers an inline options literal (`tree={{ symbolSize: 8 }}`) to `TreeOptions` instead of a synthesized `__Obj`. */
+function chartStructRef(name: string | undefined): TypeIR | undefined {
+  return name === undefined ? undefined : { kind: 'typeRef', name, args: [] }
+}
+
+/** Whether `<tag>` plays its entrance here: the engine takes a `progress` and the host did not write `animate={false}` — the web host's own rule. */
+function swiftChartAnimating(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: string): boolean {
+  return chartHostAnimates(tag) && readStaticAttr(e, 'animate') !== false
+}
+
+/**
+ * The entrance: the host view inside `PyreonChartEntrance`, whose closure hands
+ * the progress 0..1 down as `pyreonEntrance` — the host's render reads it the
+ * way the web host reads its tween (`ChartSpec.progress`, `XOptions.progress`).
+ * A host that does not animate is emitted exactly as before.
+ */
+function swiftChartEntrance(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: string, indent: number, inner: (indent: number) => string): string {
+  if (!swiftChartAnimating(e, tag)) return inner(indent)
+  const ms = chartEnterMs(chartAttrExpr(e, 'theme'), tag, SWIFT_CHART_TARGET.list)
+  const pad = ' '.repeat(indent + 2)
+  return `PyreonChartEntrance(durationMs: ${ms}) { pyreonEntrance in\n${pad}${inner(indent + 2)}\n${' '.repeat(indent)}}`
 }
 
 /** A JSX attr's value expression, unwrapping a zero-arg accessor arrow. */
@@ -11429,9 +11453,9 @@ function emitSwiftChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     const plot = desugarChartGrammar(e, (w) => _emitWarnings.push(w))
     // The desugared element carries the chrome flags (`<Tip>` → tooltip); name the ones the plot host does not draw here.
     for (const p of chartChromeUnlowered('PlotChart')) {
-      if (plot.attrs.some((a) => a.kind === 'attr' && a.name === p)) _emitWarnings.push(`<PlotChart>: \`${p}\` is not lowered on native yet; the chart renders without it.`)
+      if (plot.attrs.some((a) => a.kind === 'attr' && a.name === p)) _emitWarnings.push(chartChromeWarning('PlotChart', p))
     }
-    return emitSwiftPlotHost(plot, indent)
+    return swiftChartEntrance(plot, 'PlotChart', indent, (i) => emitSwiftPlotHost(plot, i))
   }
   if (Object.hasOwn(GRAMMAR_MARK_TAGS, tag) || GRAMMAR_CONFIG_TAGS.includes(tag)) {
     _emitWarnings.push(`<${tag}> only means something as a child of <Plot>; on its own it renders nothing.`)
@@ -11439,19 +11463,25 @@ function emitSwiftChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   }
   // Chrome the web host draws but this target does not yet — named, never silent.
   for (const p of chartChromeUnlowered(tag)) {
-    if (chartAttrExpr(e, p) !== undefined) _emitWarnings.push(`<${tag}>: \`${p}\` is not lowered on native yet; the chart renders without it.`)
+    if (chartAttrExpr(e, p) !== undefined) _emitWarnings.push(chartChromeWarning(tag, p))
   }
   if (tag === 'GaugeChart') return emitSwiftGaugeHost(e, indent)
   if (tag === 'CandlestickChart') return emitSwiftCandlestickHost(e, indent)
-  if (tag === 'HeatmapChart') return emitSwiftHeatmapHost(e, indent)
+  if (tag === 'HeatmapChart') return swiftChartEntrance(e, tag, indent, (i) => emitSwiftHeatmapHost(e, i))
   if (tag === 'RadarChart') return emitSwiftRadarHost(e, indent)
-  if (tag === 'PlotChart') return emitSwiftPlotHost(e, indent)
-  if (Object.hasOwn(ACCESSOR_CHART_HOSTS, tag)) return emitSwiftAccessorHost(e, indent)
+  if (tag === 'PlotChart') return swiftChartEntrance(e, tag, indent, (i) => emitSwiftPlotHost(e, i))
+  if (Object.hasOwn(ACCESSOR_CHART_HOSTS, tag)) return swiftChartEntrance(e, tag, indent, (i) => emitSwiftAccessorHost(e, i))
   const unlowered = UNLOWERED_CHART_HOSTS[tag]
   if (unlowered !== undefined) {
     _emitWarnings.push(`<${tag}> has no native lowering yet — ${unlowered}. Emitting an EmptyView().`)
     return 'EmptyView()'
   }
+  return swiftChartEntrance(e, tag, indent, (i) => emitSwiftGenericChartHost(e, i))
+}
+
+/** The table-driven hosts (`CHART_HOSTS`): data + options → layout → render, with the crossing chrome and the tap. */
+function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const tag = e.tag
   const spec = CHART_HOSTS[tag]!
   for (const p of spec.warnProps ?? []) {
     if (chartAttrExpr(e, p) !== undefined) _emitWarnings.push(`<${tag}>: \`${p}\` is not lowered on native; the chart renders without it.`)
@@ -11478,7 +11508,7 @@ function emitSwiftChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     }
   }
   const optV = chartAttrExpr(e, spec.options)
-  const options = optV === undefined ? 'nil' : emitSwiftExpr(optV, indent)
+  const options = optV === undefined ? 'nil' : withExpectedType(chartStructRef(spec.optionsStruct), () => emitSwiftExpr(optV, indent))
   const H = swiftChartDouble(e, 'height', spec.defaultHeight, indent)
   const hasWidth = chartAttrExpr(e, 'width') !== undefined
   const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
@@ -11515,10 +11545,14 @@ function emitSwiftChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const tapping = onSel?.kind === 'event' || tooltip
   const layout = tapping ? 'pyreonLayout' : spec.layout(plotArgs, SWIFT_CHART_TARGET)
   if (tapping) lets.push(`let pyreonLayout = ${spec.layout(plotArgs, SWIFT_CHART_TARGET)}`)
+  // The entrance reaches the RENDER only: the layout, the hit and the tooltip read the user's options.
+  const animating = swiftChartAnimating(e, tag)
+  if (animating) lets.push(`let pyreonOpts: ${spec.optionsStruct} = ${SWIFT_CHART_TARGET.withProgress(options, spec.optionsStruct, 'pyreonEntrance')}`)
+  const renderArgs: ChartHostArgs = animating ? { ...plotArgs, options: 'pyreonOpts' } : plotArgs
   const tipCmds = tooltip
     ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', CHART_TOOLTIP_FIELDS)}, pyreonChartMeasure)`
     : ''
-  const canvas = `PyreonChartCanvas(cmds: ${chrome.wrap(spec.render(layout, plotArgs, SWIFT_CHART_TARGET))}${tipCmds})`
+  const canvas = `PyreonChartCanvas(cmds: ${chrome.wrap(spec.render(layout, renderArgs, SWIFT_CHART_TARGET))}${tipCmds})`
   // `onSelectIndex` → a tap (a zero-distance drag, which reports its location)
   // over the engine's index hit, computed against the same layout the canvas
   // painted. `.contentShape` makes the whole canvas — not only its painted
@@ -11599,7 +11633,7 @@ function emitSwiftAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   }
   const mapped = `${emitSwiftExpr(dataV, indent)}.enumerated().map { (pyreonI, pyreonD) in ${spec.struct}(${fieldArgs.join(', ')}) }`
   const optV = spec.options === undefined ? undefined : chartAttrExpr(e, spec.options)
-  const options = optV === undefined ? 'nil' : emitSwiftExpr(optV, indent)
+  const options = optV === undefined ? 'nil' : withExpectedType(chartStructRef(spec.optionsStruct), () => emitSwiftExpr(optV, indent))
   const H = swiftChartDouble(e, 'height', spec.defaultHeight, indent)
   const hasWidth = chartAttrExpr(e, 'width') !== undefined
   const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
@@ -11611,14 +11645,16 @@ function emitSwiftAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   const chrome = swiftChartChrome(e, spec.legend('pyreonItems'), W, H, indent, true)
   const tooltip = readStaticAttr(e, 'tooltip') === true
   const withChrome = chrome.top !== '0.0'
-  const hoist = withChrome || tooltip
+  const animating = swiftChartAnimating(e, tag) && spec.optionsStruct !== undefined
+  const hoist = withChrome || tooltip || animating
   const items = hoist ? 'pyreonItems' : mapped
   const lets = hoist ? [`let pyreonItems: [${spec.struct}] = ${mapped}`, ...chrome.lets] : []
+  if (animating) lets.push(`let pyreonOpts: ${spec.optionsStruct} = ${SWIFT_CHART_TARGET.withProgress(options, spec.optionsStruct!, 'pyreonEntrance')}`)
   const args: ChartHostArgs = { data: [], options, W, H: chrome.height(H), gutter: '0.0', innerRatio: swiftChartDouble(e, 'innerRadius', 0, indent) }
   const tipCmds = tooltip
     ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', CHART_TOOLTIP_FIELDS)}, pyreonChartMeasure)`
     : ''
-  const canvas = `PyreonChartCanvas(cmds: ${chrome.wrap(spec.render(items, args, SWIFT_CHART_TARGET))}${tipCmds})`
+  const canvas = `PyreonChartCanvas(cmds: ${chrome.wrap(spec.render(items, animating ? { ...args, options: 'pyreonOpts' } : args, SWIFT_CHART_TARGET))}${tipCmds})`
   // Both `onSelect` (already an index on these hosts) and `onSelectIndex` lower to the tap; `tooltip` shares it.
   const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
   const tapY = withChrome ? 'Double(pyreonTap.location.y) - pyreonTop' : 'Double(pyreonTap.location.y)'
@@ -11787,7 +11823,7 @@ function emitSwiftHeatmapHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
   const H = swiftChartDouble(e, 'height', 200, indent)
   const hasWidth = chartAttrExpr(e, 'width') !== undefined
   const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
-  const canvas = `PyreonChartCanvas(cmds: renderHeatChart(pyreonGrid, ${W}, ${H}, pyreonTheme, ${stops}, ${gap}, pyreonChartMeasure))`
+  const canvas = `PyreonChartCanvas(cmds: renderHeatChart(pyreonGrid, ${W}, ${H}, pyreonTheme, ${stops}, ${gap}, pyreonChartMeasure${swiftChartAnimating(e, tag) ? ', pyreonEntrance' : ''}))`
   const gesture = swiftChartGesture(e, (x, y) => `hitHeatChart(pyreonGrid, ${W}, ${H}, pyreonTheme.fontSize, ${gap}, pyreonChartMeasure, ${x}, ${y})`, indent, ['selectindex'])
   return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent)
 }
@@ -12065,6 +12101,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   if (ann !== undefined) specArgs.push(`annotations: ${emitSwiftExpr(ann, indent)}`)
   const mk = chartAttrExpr(e, 'markers')
   if (mk !== undefined) specArgs.push(`markers: ${emitSwiftExpr(mk, indent)}`)
+  if (swiftChartAnimating(e, 'PlotChart')) specArgs.push('progress: pyreonEntrance')
   lets.push(`let pyreonSpec: ChartSpec = ChartSpec(${specArgs.join(', ')})`)
   if (brushing) {
     // The band lives in PLOT space: the live span while dragging, else the

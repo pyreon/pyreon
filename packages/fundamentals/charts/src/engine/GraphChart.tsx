@@ -34,7 +34,8 @@ export function GraphChart(props: GraphChartProps): VNode {
       readLinks()
     },
     layout: (box, _measure, theme) => ({ layout: layoutGraph(readNodes(), readLinks(), box, opts(theme.palette)), box }),
-    render: (g, _measure, theme) => renderGraph(g.layout, g.box, opts(theme.palette)),
+    animates: true,
+    render: (g, _measure, theme, progress) => renderGraph(g.layout, g.box, { ...opts(theme.palette), progress }),
     select: (g, px, py) => {
       props.onSelect?.(hitGraph(g.layout, px, py))
       props.onSelectIndex?.(hitGraphIndex(g.layout, px, py))

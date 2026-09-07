@@ -79,7 +79,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_TOOLTIP_FIELDS, CHART_THEME_FIELDS, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartThemeFields, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_TOOLTIP_FIELDS, CHART_THEME_FIELDS, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -9505,8 +9505,27 @@ const KOTLIN_CHART_TARGET: ChartHostTarget = {
   list: (items) => `listOf(${items.join(', ')})`,
   struct: (name, fields) => `${name}(${fields.map(([k, v]) => `${k} = ${v}`).join(', ')})`,
   coalesce: (a, b) => `(${a} ?: ${b})`,
+  withProgress: (options, struct, progress) => (options === 'null' ? `${struct}(progress = ${progress})` : `(${options}).copy(progress = ${progress})`),
   pieOptions: (a) => `PieOptions(innerRadius = ${a.innerRatio}, showLabels = true, labelColor = "#ffffff", fontSize = 11.0)`,
   theme: () => `ChartTheme(axis = ${JSON.stringify(CHART_THEME_DEFAULT.axis)}, grid = ${JSON.stringify(CHART_THEME_DEFAULT.grid)}, label = ${JSON.stringify(CHART_THEME_DEFAULT.label)}, fontSize = ${CHART_THEME_DEFAULT.fontSize})`,
+}
+
+/** `{ kind: 'typeRef' }` for an engine struct — steers an inline options literal to the named data class (mirror of the Swift emitter). */
+function chartStructRefKotlin(name: string | undefined): TypeIR | undefined {
+  return name === undefined ? undefined : { kind: 'typeRef', name, args: [] }
+}
+
+/** Whether `<tag>` plays its entrance here — see the Swift emitter. */
+function kotlinChartAnimating(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: string): boolean {
+  return chartHostAnimates(tag) && readStaticAttrKotlin(e, 'animate') !== false
+}
+
+/** The host composable inside `PyreonChartEntrance`, which hands the tween's progress down as `pyreonEntrance` (mirror of the Swift emitter). */
+function kotlinChartEntrance(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: string, indent: number, inner: (indent: number) => string): string {
+  if (!kotlinChartAnimating(e, tag)) return inner(indent)
+  const ms = chartEnterMs(chartAttrExprKotlin(e, 'theme'), tag, KOTLIN_CHART_TARGET.list)
+  const pad = ' '.repeat(indent + 2)
+  return `PyreonChartEntrance(${ms}) { pyreonEntrance ->\n${pad}${inner(indent + 2)}\n${' '.repeat(indent)}}`
 }
 
 /** A JSX attr's value expression, unwrapping a zero-arg accessor arrow. */
@@ -9555,9 +9574,9 @@ function emitKotlinChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
     const plot = desugarChartGrammar(e, (w) => _emitWarnings.push(w))
     // The desugared element carries the chrome flags (`<Tip>` → tooltip); name the ones the plot host does not draw here.
     for (const p of chartChromeUnlowered('PlotChart')) {
-      if (plot.attrs.some((a) => a.kind === 'attr' && a.name === p)) _emitWarnings.push(`<PlotChart>: \`${p}\` is not lowered on native yet; the chart renders without it.`)
+      if (plot.attrs.some((a) => a.kind === 'attr' && a.name === p)) _emitWarnings.push(chartChromeWarning('PlotChart', p))
     }
-    return emitKotlinPlotHost(plot, indent)
+    return kotlinChartEntrance(plot, 'PlotChart', indent, (i) => emitKotlinPlotHost(plot, i))
   }
   if (Object.hasOwn(GRAMMAR_MARK_TAGS, tag) || GRAMMAR_CONFIG_TAGS.includes(tag)) {
     _emitWarnings.push(`<${tag}> only means something as a child of <Plot>; on its own it renders nothing.`)
@@ -9565,19 +9584,25 @@ function emitKotlinChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   }
   // Chrome the web host draws but this target does not yet — named, never silent.
   for (const p of chartChromeUnlowered(tag)) {
-    if (chartAttrExprKotlin(e, p) !== undefined) _emitWarnings.push(`<${tag}>: \`${p}\` is not lowered on native yet; the chart renders without it.`)
+    if (chartAttrExprKotlin(e, p) !== undefined) _emitWarnings.push(chartChromeWarning(tag, p))
   }
   if (tag === 'GaugeChart') return emitKotlinGaugeHost(e, indent)
   if (tag === 'CandlestickChart') return emitKotlinCandlestickHost(e, indent)
-  if (tag === 'HeatmapChart') return emitKotlinHeatmapHost(e, indent)
+  if (tag === 'HeatmapChart') return kotlinChartEntrance(e, tag, indent, (i) => emitKotlinHeatmapHost(e, i))
   if (tag === 'RadarChart') return emitKotlinRadarHost(e, indent)
-  if (tag === 'PlotChart') return emitKotlinPlotHost(e, indent)
-  if (Object.hasOwn(ACCESSOR_CHART_HOSTS, tag)) return emitKotlinAccessorHost(e, indent)
+  if (tag === 'PlotChart') return kotlinChartEntrance(e, tag, indent, (i) => emitKotlinPlotHost(e, i))
+  if (Object.hasOwn(ACCESSOR_CHART_HOSTS, tag)) return kotlinChartEntrance(e, tag, indent, (i) => emitKotlinAccessorHost(e, i))
   const unlowered = UNLOWERED_CHART_HOSTS[tag]
   if (unlowered !== undefined) {
     _emitWarnings.push(`<${tag}> has no native lowering yet — ${unlowered}. Emitting an empty Box().`)
     return 'Box {}'
   }
+  return kotlinChartEntrance(e, tag, indent, (i) => emitKotlinGenericChartHost(e, i))
+}
+
+/** The table-driven hosts (`CHART_HOSTS`) — mirror of the Swift generic host. */
+function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const tag = e.tag
   const spec = CHART_HOSTS[tag]!
   for (const p of spec.warnProps ?? []) {
     if (chartAttrExprKotlin(e, p) !== undefined) _emitWarnings.push(`<${tag}>: \`${p}\` is not lowered on native; the chart renders without it.`)
@@ -9603,7 +9628,7 @@ function emitKotlinChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
     }
   }
   const optV = chartAttrExprKotlin(e, spec.options)
-  const options = optV === undefined ? 'null' : emitKotlinExpr(optV, indent)
+  const options = optV === undefined ? 'null' : withExpectedTypeKotlin(chartStructRefKotlin(spec.optionsStruct), () => emitKotlinExpr(optV, indent))
   const H = kotlinChartDouble(e, 'height', spec.defaultHeight, indent)
   const hasWidth = chartAttrExprKotlin(e, 'width') !== undefined
   const W = hasWidth ? kotlinChartDouble(e, 'width', 300, indent) : 'pyreonW'
@@ -9634,6 +9659,10 @@ function emitKotlinChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   const tapping = onSel?.kind === 'event' || tooltip
   const layout = tapping ? 'pyreonLayout' : spec.layout(plotArgs, KOTLIN_CHART_TARGET)
   if (tapping) lets.push(`val pyreonLayout = ${spec.layout(plotArgs, KOTLIN_CHART_TARGET)}`)
+  // The entrance reaches the RENDER only: the layout, the hit and the tooltip read the user's options.
+  const animating = kotlinChartAnimating(e, tag)
+  if (animating) lets.push(`val pyreonOpts: ${spec.optionsStruct} = ${KOTLIN_CHART_TARGET.withProgress(options, spec.optionsStruct, 'pyreonEntrance')}`)
+  const renderArgs: ChartHostArgs = animating ? { ...plotArgs, options: 'pyreonOpts' } : plotArgs
   if (tooltip) {
     lets.push('var pyreonTip by remember { mutableStateOf(listOf<String>()) }')
     lets.push('var pyreonTipAt by remember { mutableStateOf(PyreonChartPt(0.0, 0.0)) }')
@@ -9641,7 +9670,7 @@ function emitKotlinChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   const tipCmds = tooltip
     ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${KOTLIN_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${KOTLIN_CHART_TARGET.struct('TooltipOptions', CHART_TOOLTIP_FIELDS)}, ::pyreonChartMeasure)`
     : ''
-  const cmds = `${chrome.wrap(spec.render(layout, plotArgs, KOTLIN_CHART_TARGET))}${tipCmds}`
+  const cmds = `${chrome.wrap(spec.render(layout, renderArgs, KOTLIN_CHART_TARGET))}${tipCmds}`
   // `onSelectIndex` → a tap over the engine's index hit. The tap position is
   // in pixels while the draw list is laid out in dp (PyreonChartCanvas scales
   // by the density when it paints), so the position is divided by the density
@@ -9725,7 +9754,7 @@ function emitKotlinAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   }
   const mapped = `${emitKotlinExpr(dataV, indent)}.mapIndexed { pyreonI, pyreonD -> ${spec.struct}(${fieldArgs.join(', ')}) }`
   const optV = spec.options === undefined ? undefined : chartAttrExprKotlin(e, spec.options)
-  const options = optV === undefined ? 'null' : emitKotlinExpr(optV, indent)
+  const options = optV === undefined ? 'null' : withExpectedTypeKotlin(chartStructRefKotlin(spec.optionsStruct), () => emitKotlinExpr(optV, indent))
   const H = kotlinChartDouble(e, 'height', spec.defaultHeight, indent)
   const hasWidth = chartAttrExprKotlin(e, 'width') !== undefined
   const W = hasWidth ? kotlinChartDouble(e, 'width', 300, indent) : 'pyreonW'
@@ -9733,9 +9762,11 @@ function emitKotlinAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   const chrome = kotlinChartChrome(e, spec.legend('pyreonItems'), W, H, indent, true)
   const tooltip = readStaticAttrKotlin(e, 'tooltip') === true
   const withChrome = chrome.top !== '0.0'
-  const hoist = withChrome || tooltip
+  const animating = kotlinChartAnimating(e, tag) && spec.optionsStruct !== undefined
+  const hoist = withChrome || tooltip || animating
   const items = hoist ? 'pyreonItems' : mapped
   const lets = hoist ? [`val pyreonItems: List<${spec.struct}> = ${mapped}`, ...chrome.lets] : []
+  if (animating) lets.push(`val pyreonOpts: ${spec.optionsStruct} = ${KOTLIN_CHART_TARGET.withProgress(options, spec.optionsStruct!, 'pyreonEntrance')}`)
   if (tooltip) {
     lets.push('var pyreonTip by remember { mutableStateOf(listOf<String>()) }')
     lets.push('var pyreonTipAt by remember { mutableStateOf(PyreonChartPt(0.0, 0.0)) }')
@@ -9744,7 +9775,7 @@ function emitKotlinAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   const tipCmds = tooltip
     ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${KOTLIN_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${KOTLIN_CHART_TARGET.struct('TooltipOptions', CHART_TOOLTIP_FIELDS)}, ::pyreonChartMeasure)`
     : ''
-  const cmds = `${chrome.wrap(spec.render(items, args, KOTLIN_CHART_TARGET))}${tipCmds}`
+  const cmds = `${chrome.wrap(spec.render(items, animating ? { ...args, options: 'pyreonOpts' } : args, KOTLIN_CHART_TARGET))}${tipCmds}`
   const tx = '(pyreonTap.x / pyreonDensity).toDouble()'
   const tapY = withChrome ? '(pyreonTap.y / pyreonDensity).toDouble() - pyreonTop' : '(pyreonTap.y / pyreonDensity).toDouble()'
   const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
@@ -9876,7 +9907,7 @@ function emitKotlinHeatmapHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   const H = kotlinChartDouble(e, 'height', 200, indent)
   const hasWidth = chartAttrExprKotlin(e, 'width') !== undefined
   const W = hasWidth ? kotlinChartDouble(e, 'width', 300, indent) : 'pyreonW'
-  const cmds = `renderHeatChart(pyreonGrid, ${W}, ${H}, pyreonTheme, ${stops}, ${gap}, ::pyreonChartMeasure)`
+  const cmds = `renderHeatChart(pyreonGrid, ${W}, ${H}, pyreonTheme, ${stops}, ${gap}, ::pyreonChartMeasure${kotlinChartAnimating(e, tag) ? ', pyreonEntrance' : ''})`
   return kotlinFrameHostLets(e, lets, cmds, (x, y) => `hitHeatChart(pyreonGrid, ${W}, ${H}, pyreonTheme.fontSize, ${gap}, ::pyreonChartMeasure, ${x}, ${y})`, W, H, hasWidth, indent, ['selectindex'])
 }
 
@@ -10145,6 +10176,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   if (ann !== undefined) specArgs.push(`annotations = ${emitKotlinExpr(ann, indent)}`)
   const mk = chartAttrExprKotlin(e, 'markers')
   if (mk !== undefined) specArgs.push(`markers = ${emitKotlinExpr(mk, indent)}`)
+  if (kotlinChartAnimating(e, 'PlotChart')) specArgs.push('progress = pyreonEntrance')
   lets.push(`val pyreonSpec: ChartSpec = ChartSpec(${specArgs.join(', ')})`)
   if (brushing) {
     lets.push('val pyreonPlot: PyreonChartRect = layoutChart(pyreonSpec, ::pyreonChartMeasure).plot')

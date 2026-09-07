@@ -27,7 +27,8 @@ export function RiverChart(props: RiverChartProps): VNode {
       readSeries()
     },
     layout: (box, _measure, theme) => layoutRiver(readSeries(), { x: box.x + 8.0, y: box.y + 8.0, w: Math.max(0.0, box.w - 16.0), h: Math.max(0.0, box.h - 16.0) }, opts(theme.palette)),
-    render: (layout, measure, theme) => renderRiver(layout, opts(theme.palette), measure),
+    animates: true,
+    render: (layout, measure, theme, progress) => renderRiver(layout, { ...opts(theme.palette), progress }, measure),
     legend: riverLegend,
     select: (layout, px, py) => {
       props.onSelect?.(hitRiver(layout, px, py, props.river?.curve))
