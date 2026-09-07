@@ -292,6 +292,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
 /** Plot hosts that exist on the web but have no native lowering yet, with the reason. */
 export const UNLOWERED_CHART_HOSTS: Readonly<Record<string, string>> = {
   OptionChart: 'the ECharts option facade is web-only',
+  BoxplotChart: 'the boxplot host reduces raw samples per row (`fiveNumber`) on the web side; a native lowering is a follow-up',
 }
 
 /** Whether a JSX tag is a `@pyreon/charts/plot` host, lowered or not. */
@@ -342,8 +343,6 @@ export interface AccessorHostSpec {
   readonly hit: (items: string, x: string, y: string, a: ChartHostArgs, t: ChartHostTarget) => string
 }
 
-/** The palette the web Funnel / Pie hosts colour unaccessored rows with. */
-export const CHART_HOST_PALETTE = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed'] as const
 
 export const ACCESSOR_CHART_HOSTS: Readonly<Record<string, AccessorHostSpec>> = {
   FunnelChart: {
@@ -377,11 +376,174 @@ export const ACCESSOR_CHART_HOSTS: Readonly<Record<string, AccessorHostSpec>> = 
   },
 }
 
-/** The web hosts' default `ChartTheme` — inlined because the engine's own `defaultTheme` is module-private in both targets. */
-export const CHART_THEME_DEFAULT = { axis: '#8496a5', grid: 'rgba(132,150,165,0.18)', label: '#5a6b7a', fontSize: '11.0' } as const
+/**
+ * The web hosts' default `ChartTheme` — inlined because the engine's own
+ * `defaultTheme` is module-private in both targets. Field ORDER is the struct's
+ * declaration order (Swift's memberwise init rejects reordered arguments), and
+ * every value is the emitted TEXT of that field. Drift against
+ * `@pyreon/charts/plot`'s `defaultTheme` is locked by `chart-theme-default.test.ts`.
+ */
+export const CHART_THEME_DEFAULT = {
+  palette: ['#4f7df3', '#f97362', '#22c3a6', '#a66cff', '#ffb020', '#2fb7e8', '#f45fa3', '#7bc950', '#8892a6', '#c47a3d'],
+  background: '',
+  surface: '#ffffff',
+  text: '#1f2937',
+  label: '#5a6b7a',
+  axis: '#8496a5',
+  grid: 'rgba(132,150,165,0.18)',
+  fontFamily: '',
+  fontSize: '11.0',
+  titleSize: '15.0',
+  radius: '3.0',
+  enterMs: '700.0',
+  updateMs: '350.0',
+} as const
+
+/**
+ * The named palettes `@pyreon/charts/plot` exports as `palettes.*`, so a theme
+ * literal may say `palette: palettes.okabeIto` and lower to the resolved list.
+ * Drift-locked against theme.ts by `chart-theme-default.test.ts`.
+ */
+export const NAMED_PALETTES: Readonly<Record<string, readonly string[]>> = {
+  pyreon: CHART_THEME_DEFAULT.palette,
+  pyreonDark: ['#7b9bff', '#ff8f7e', '#4adbc0', '#bd93ff', '#ffc44d', '#5dcbf2', '#ff80be', '#9ad870', '#a3acbd', '#d8955e'],
+  echarts6: ['#5070dd', '#b6d634', '#505372', '#ff994d', '#0ca8df', '#ffd10a', '#fb628b', '#785db0', '#3fbe95'],
+  echarts5: ['#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de', '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc'],
+  echartsDark: ['#4992ff', '#7cffb2', '#fddd60', '#ff6e76', '#58d9f9', '#05c091', '#ff8a45', '#8d48e3', '#dd79ff'],
+  observable10: ['#4269d0', '#efb118', '#ff725c', '#6cc5b0', '#3ca951', '#ff8ab7', '#a463f2', '#97bbf5', '#9c6b4e', '#9498a0'],
+  tableau10: ['#4e79a7', '#f28e2c', '#e15759', '#76b7b2', '#59a14f', '#edc949', '#af7aa1', '#ff9da7', '#9c755f', '#bab0ab'],
+  okabeIto: ['#e69f00', '#56b4e9', '#009e73', '#f0e442', '#0072b2', '#d55e00', '#cc79a7', '#000000'],
+  tailwind: ['#3b82f6', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#06b6d4', '#f97316', '#84cc16'],
+}
+
+/** `chartThemes.light` / `chartThemes.dark` as emitted field text — `theme={chartThemes.dark}` lowers to the whole map. */
+export const CHART_THEMES: Readonly<Record<'light' | 'dark', Readonly<Record<keyof typeof CHART_THEME_DEFAULT, string | readonly string[]>>>> = {
+  light: CHART_THEME_DEFAULT,
+  dark: {
+    palette: NAMED_PALETTES.pyreonDark!,
+    background: '#141821',
+    surface: '#1c2230',
+    text: '#e6eaf2',
+    label: '#9aa5b5',
+    axis: '#5d6878',
+    grid: 'rgba(154,165,181,0.16)',
+    fontFamily: '',
+    fontSize: '11.0',
+    titleSize: '15.0',
+    radius: '3.0',
+    enterMs: '700.0',
+    updateMs: '350.0',
+  },
+}
+
+/** The kind each theme field must be as a literal on native. */
+export const CHART_THEME_FIELDS: readonly { name: keyof typeof CHART_THEME_DEFAULT; kind: 'string' | 'number' | 'strings' }[] = [
+  { name: 'palette', kind: 'strings' },
+  { name: 'background', kind: 'string' },
+  { name: 'surface', kind: 'string' },
+  { name: 'text', kind: 'string' },
+  { name: 'label', kind: 'string' },
+  { name: 'axis', kind: 'string' },
+  { name: 'grid', kind: 'string' },
+  { name: 'fontFamily', kind: 'string' },
+  { name: 'fontSize', kind: 'number' },
+  { name: 'titleSize', kind: 'number' },
+  { name: 'radius', kind: 'number' },
+  { name: 'enterMs', kind: 'number' },
+  { name: 'updateMs', kind: 'number' },
+]
+
+/**
+ * The `theme` prop's literal fields, resolved over the defaults — as EMITTED
+ * text per field (`list` formats the palette for the target). A non-literal
+ * theme, or a field of the wrong shape, warns BY NAME and keeps its default;
+ * both emitters share this so their warnings and fallbacks cannot drift.
+ */
+export function chartThemeFields(
+  v: ExprIR | undefined,
+  tag: string,
+  warn: (m: string) => void,
+  list: (items: readonly string[]) => string,
+): Record<keyof typeof CHART_THEME_DEFAULT, string> {
+  const out = {} as Record<keyof typeof CHART_THEME_DEFAULT, string>
+  const named = namedChartTheme(v)
+  const base = named ?? CHART_THEME_DEFAULT
+  const palette = named === undefined ? chartThemePalette(v, tag, warn) : (named.palette as readonly string[])
+  for (const f of CHART_THEME_FIELDS) {
+    const d = base[f.name]
+    out[f.name] = f.kind === 'strings' ? list(palette.map((c) => JSON.stringify(c))) : f.kind === 'number' ? (d as string) : JSON.stringify(d)
+  }
+  if (v === undefined || named !== undefined) return out
+  if (v.kind !== 'object' || (v.spreads !== undefined && v.spreads.length > 0)) {
+    warn(`<${tag} theme>: only an object literal with literal fields lowers on native; the default theme applies.`)
+    return out
+  }
+  for (const f of v.fields) {
+    const spec = CHART_THEME_FIELDS.find((x) => x.name === f.name)
+    if (spec === undefined || spec.kind === 'strings') continue
+    if (f.value.kind !== 'literal' || typeof f.value.value !== spec.kind) {
+      warn(`<${tag} theme>: \`${f.name}\` must be a ${spec.kind} literal on native; its default applies.`)
+      continue
+    }
+    out[spec.name] = spec.kind === 'number' ? chartDouble(f.value.value as number) : JSON.stringify(f.value.value)
+  }
+  return out
+}
+
+/** `theme={chartThemes.dark}` — a whole built-in theme by reference. */
+function namedChartTheme(v: ExprIR | undefined): (typeof CHART_THEMES)['light'] | undefined {
+  if (v === undefined || v.kind !== 'member' || v.object.kind !== 'identifier' || v.object.name !== 'chartThemes') return undefined
+  return v.property === 'light' || v.property === 'dark' ? CHART_THEMES[v.property] : undefined
+}
+
+/**
+ * The theme's palette on native: a `palette` literal (an array of string
+ * literals), a named `palettes.<name>` reference, or the default. Marks without
+ * a `color` cycle through it.
+ */
+export function chartThemePalette(v: ExprIR | undefined, tag: string, warn: (m: string) => void): readonly string[] {
+  const named = namedChartTheme(v)
+  if (named !== undefined) return named.palette as readonly string[]
+  if (v === undefined || v.kind !== 'object') return CHART_THEME_DEFAULT.palette
+  const f = v.fields.find((x) => x.name === 'palette')
+  if (f === undefined) return CHART_THEME_DEFAULT.palette
+  const pv = f.value
+  if (pv.kind === 'member' && pv.object.kind === 'identifier' && pv.object.name === 'palettes') {
+    const found = NAMED_PALETTES[pv.property]
+    if (found !== undefined) return found
+    warn(`<${tag} theme>: \`palettes.${pv.property}\` is not a named palette (${Object.keys(NAMED_PALETTES).join(', ')}); the default palette applies.`)
+    return CHART_THEME_DEFAULT.palette
+  }
+  if (pv.kind !== 'array' || pv.elements.length === 0 || pv.elements.some((it) => it.kind !== 'literal' || typeof it.value !== 'string')) {
+    warn(`<${tag} theme>: \`palette\` must be a non-empty array of string literals or a \`palettes.<name>\` reference on native; the default palette applies.`)
+    return CHART_THEME_DEFAULT.palette
+  }
+  return pv.elements.map((it) => (it as { value: string }).value)
+}
+
+/** The palette the web Funnel / Pie hosts colour unaccessored rows with — the theme's. */
+export const CHART_HOST_PALETTE: readonly string[] = CHART_THEME_DEFAULT.palette
 
 /** The heatmap's default ramp (`HEAT_RAMP`), inlined for the same reason. */
 export const HEAT_RAMP_DEFAULT = ['#eff6ff', '#93c5fd', '#3b82f6', '#1e40af'] as const
+
+/**
+ * The shared canvas host's chrome props (canvas-host.tsx). On native, PlotChart
+ * / Pie / Radar draw the title and legend (the #3265 chrome emit); everything
+ * else — and the tooltip and entrance animation everywhere — is web-only for
+ * now, and MUST warn by name rather than drop silently.
+ */
+export const CHART_CHROME_PROPS: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate']
+const CHROME_LOWERED: Readonly<Record<string, readonly string[]>> = {
+  PlotChart: ['showTitle', 'subtitle', 'showLegend'],
+  PieChart: ['showLegend'],
+  RadarChart: ['showLegend'],
+}
+/** The chrome props `<tag>` does NOT lower — each present one warns. */
+export function chartChromeUnlowered(tag: string): readonly string[] {
+  const lowered = CHROME_LOWERED[tag] ?? []
+  return CHART_CHROME_PROPS.filter((p) => !lowered.includes(p))
+}
 
 /** The hosts with a dedicated emitter each (a fixed frame or a second data prop). */
 export const FRAME_CHART_HOSTS: Readonly<Record<string, true>> = { GaugeChart: true, CandlestickChart: true, HeatmapChart: true, RadarChart: true, PlotChart: true }
@@ -427,4 +589,4 @@ export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'strin
  * BY NAME; the chart renders without it. Event props are matched against the
  * parser's lowercased event names, so `onHighlight` is found as `highlight`.
  */
-export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'emphasis']
+export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'emphasis', 'maxPoints']

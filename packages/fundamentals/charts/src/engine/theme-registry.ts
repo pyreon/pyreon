@@ -6,37 +6,52 @@
 
 import { defaultTheme } from './render'
 import type { ChartTheme } from './render'
+import { chartThemes, resolveChartTheme } from './theme'
 import type { OptionWarning } from './option'
 
-export interface ThemeDefinition {
-  /** Series palette, in order. */
+/**
+ * A named theme: any subset of the `ChartTheme` tokens, plus the ECharts-shaped
+ * aliases (`color` / `backgroundColor` / `textStyle` / `axisLineColor` /
+ * `splitLineColor`) so a theme copied from an ECharts project registers as-is.
+ * An alias and its token both given: the token wins.
+ */
+export interface ThemeDefinition extends Partial<ChartTheme> {
+  /** Alias of `palette`. */
   color?: string[] | undefined
+  /** Alias of `background`. */
   backgroundColor?: string | undefined
+  /** `color` → `label`, `fontSize` → `fontSize`. */
   textStyle?: { color?: string | undefined; fontSize?: number | undefined } | undefined
-  /** Axis line colour (ECharts nests it under each axis; a theme sets it once). */
+  /** Alias of `axis` (ECharts nests it under each axis; a theme sets it once). */
   axisLineColor?: string | undefined
-  /** Grid line colour. */
+  /** Alias of `grid`. */
   splitLineColor?: string | undefined
 }
 
 export interface ResolvedTheme {
-  palette: string[] | null
+  /** The palette the definition set, or null when it left the default. */
+  palette: readonly string[] | null
   chartTheme: ChartTheme
   background: string | undefined
 }
 
-const DARK: ThemeDefinition = {
-  color: ['#4992ff', '#7cffb2', '#fddd60', '#ff6e76', '#58d9f9', '#05c091', '#ff8a45', '#8d48e3', '#dd79ff'],
-  backgroundColor: '#100c2a',
-  textStyle: { color: '#b9b8ce' },
-  axisLineColor: '#6e7079',
-  splitLineColor: 'rgba(110,112,121,0.35)',
-}
-
 const registry = new Map<string, ThemeDefinition>([
   ['light', {}],
-  ['dark', DARK],
+  ['dark', { ...chartThemes.dark }],
 ])
+
+/** The token subset of a definition, aliases folded in. */
+function tokensOf(def: ThemeDefinition): Partial<ChartTheme> {
+  const { color, backgroundColor, textStyle, axisLineColor, splitLineColor, ...tokens } = def
+  const out: Partial<ChartTheme> = { ...tokens }
+  if (out.palette === undefined && color !== undefined && color.length > 0) out.palette = color.slice()
+  if (out.background === undefined && backgroundColor !== undefined) out.background = backgroundColor
+  if (out.label === undefined && textStyle?.color !== undefined) out.label = textStyle.color
+  if (out.fontSize === undefined && textStyle?.fontSize !== undefined) out.fontSize = textStyle.fontSize
+  if (out.axis === undefined && axisLineColor !== undefined) out.axis = axisLineColor
+  if (out.grid === undefined && splitLineColor !== undefined) out.grid = splitLineColor
+  return out
+}
 
 /** Register (or replace) a named theme. */
 export function registerTheme(name: string, theme: ThemeDefinition): void {
@@ -63,12 +78,8 @@ export function resolveTheme(theme: string | ThemeDefinition | undefined, warnin
       warnings?.push({ code: 'option-key-unsupported', path: 'theme', message: `Theme "${theme}" is not registered (registered: ${listThemes().join(', ')}); the light theme was used.` })
     } else def = found
   } else if (theme !== undefined) def = theme
-  const chartTheme: ChartTheme = {
-    axis: def.axisLineColor ?? defaultTheme.axis,
-    grid: def.splitLineColor ?? defaultTheme.grid,
-    label: def.textStyle?.color ?? defaultTheme.label,
-    fontSize: def.textStyle?.fontSize ?? defaultTheme.fontSize,
-  }
-  const palette = def.color !== undefined && def.color.length > 0 ? def.color.slice() : null
-  return { palette, chartTheme, background: def.backgroundColor }
+  const tokens = tokensOf(def)
+  const chartTheme = resolveChartTheme(defaultTheme, tokens)
+  const palette = tokens.palette !== undefined && tokens.palette.length > 0 ? tokens.palette.slice() : null
+  return { palette, chartTheme, background: tokens.background === '' ? undefined : tokens.background }
 }

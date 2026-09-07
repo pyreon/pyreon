@@ -92,11 +92,18 @@ describe('rectCmd', () => {
 })
 
 describe('renderChart carries borderRadius into the draw list', () => {
-  it('plain bars: every bar rect gets the mark radii, and a mark without them stays square', () => {
+  it('plain bars: every bar rect gets the mark radii; a mark without them takes the THEME radius on the corners away from the baseline; radius 0 stays square', () => {
     const rounded = renderChart(spec(resolveMarks(ROWS, [bars((d: Row) => d.v, { borderRadius: [6, 6, 0, 0] })])), measure)
     expect(rects(rounded).map((c) => c.corners)).toEqual([[6, 6, 0, 0], [6, 6, 0, 0]])
-    const square = renderChart(spec(resolveMarks(ROWS, [bars((d: Row) => d.v)])), measure)
+    const themed = renderChart(spec(resolveMarks(ROWS, [bars((d: Row) => d.v)])), measure)
+    expect(rects(themed).map((c) => c.corners)).toEqual([[3, 3, 0, 0], [3, 3, 0, 0]])
+    const base = spec(resolveMarks(ROWS, [bars((d: Row) => d.v)]))
+    const square = renderChart({ ...base, theme: { ...base.theme, radius: 0 } }, measure)
     for (const c of rects(square)) expect(c.corners).toBeUndefined()
+  })
+  it('a negative bar rounds the corners away from the baseline (the bottom ones)', () => {
+    const neg = renderChart(spec(resolveMarks([{ v: -4 }, { v: -2 }] as Row[], [bars((d: Row) => d.v)])), measure)
+    expect(rects(neg).map((c) => c.corners)).toEqual([[0, 0, 3, 3], [0, 0, 3, 3]])
   })
 
   it('a scalar rounds all four', () => {

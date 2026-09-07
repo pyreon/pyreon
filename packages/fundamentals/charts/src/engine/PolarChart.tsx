@@ -1,116 +1,56 @@
-// `<PolarChart>` — bars and lines on a polar coordinate, on a canvas.
+// `<PolarChart>` — bars and lines on a polar coordinate system, over the shared canvas host.
 
-import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
-import { effect } from '@pyreon/reactivity'
-import { paint, prepareCanvas } from './canvas-web'
+import { canvasHost } from './canvas-host'
+import type { CanvasHostProps } from './canvas-host'
+import { plain } from './format'
 import { hitPolarIndex, layoutPolar, renderPolar } from './polar'
 import type { PolarAxes, PolarHitIndex, PolarLayout, PolarOptions, PolarSeries } from './polar'
 import { hitPolar } from './polar-hit'
 import type { PolarHit } from './polar-hit'
-import { chartTable, describeChart } from './a11y'
-import type { Double } from './types'
+import { paletteAt } from './palette'
 
-const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
-
-export interface PolarChartProps {
+export interface PolarChartProps extends CanvasHostProps {
   axes: PolarAxes
   series: PolarSeries[] | (() => PolarSeries[])
-  width?: Double
-  height?: Double
   polar?: PolarOptions
-  title?: string
+  /** Fired with the sector or line point under the click, or null for a miss. */
   onSelect?: (hit: PolarHit) => void
   /** The engine's INDEX hit — the multiplatform-safe twin of `onSelect` (what the native tap gesture reports). */
   onSelectIndex?: (hit: PolarHitIndex) => void
-  accessibleTable?: boolean
-  class?: string
-}
-
-function drawWidth(el: HTMLCanvasElement, explicit: Double | undefined): Double {
-  if (explicit !== undefined) return explicit
-  const box = el.parentElement
-  const w = box === null ? 0 : box.clientWidth
-  return w > 0 ? w : 300
 }
 
 export function PolarChart(props: PolarChartProps): VNode {
-  let canvas: HTMLCanvasElement | null = null
-  let sizeObserver: ResizeObserver | null = null
   const readSeries = (): PolarSeries[] => (typeof props.series === 'function' ? props.series() : props.series)
-  const layoutFor = (w: Double, hgt: Double): PolarLayout => layoutPolar(props.axes, readSeries(), { x: 0.0, y: 0.0, w, h: hgt }, props.polar)
-
-  const draw = (): void => {
-    const el = canvas
-    if (el === null) return
-    const w = drawWidth(el, props.width)
-    const hgt = props.height ?? 300
-    const ctx = prepareCanvas(el, w, hgt)
-    if (ctx === null) return
-    paint(ctx, renderPolar(layoutFor(w, hgt), props.polar), w, hgt, FONT)
-  }
-
-  effect(() => {
-    readSeries()
-    draw()
-  })
-
-  const handleClick = (ev: MouseEvent): void => {
-    const el = canvas
-    const cb = props.onSelect
-    const cbi = props.onSelectIndex
-    if (el === null || (cb === undefined && cbi === undefined)) return
-    const w = drawWidth(el, props.width)
-    const hgt = props.height ?? 300
-    const r = el.getBoundingClientRect()
-    const layout = layoutFor(w, hgt)
-    const px = ev.clientX - r.left
-    const py = ev.clientY - r.top
-    if (cb !== undefined) cb(hitPolar(layout, px, py))
-    if (cbi !== undefined) cbi(hitPolarIndex(layout, px, py))
-  }
-
-  const a11y = () => ({
-    title: props.title,
-    categories: props.axes.categories,
-    series: readSeries().map((s) => ({ label: s.name, values: s.values, kind: s.kind === 'bar' ? 'bars' : 'line' })),
-  })
-
-  const canvasNode = h('canvas', {
-    class: props.class,
-    role: 'img',
-    'aria-label': () => describeChart(a11y()),
-    ref: (el: HTMLCanvasElement | null) => {
-      canvas = el
-      sizeObserver?.disconnect()
-      sizeObserver = null
-      if (el === null) return
-      draw()
-      const box = el.parentElement
-      if (box === null || typeof ResizeObserver === 'undefined') return
-      sizeObserver = new ResizeObserver(() => {
-        if (canvas === null) return
-        const next = drawWidth(canvas, props.width)
-        const dpr = typeof globalThis.devicePixelRatio === 'number' ? globalThis.devicePixelRatio : 1
-        if (Math.round(next * dpr) === canvas.width) return
-        draw()
-      })
-      sizeObserver.observe(box)
+  const opts = (palette: readonly string[]): PolarOptions => ({ palette, ...props.polar })
+  return canvasHost<PolarLayout>({
+    props,
+    defaultHeight: 300,
+    caption: 'Polar data',
+    track: () => {
+      readSeries()
     },
-    onClick: handleClick,
+    layout: (box, _measure, theme) => layoutPolar(props.axes, readSeries(), box, opts(theme.palette)),
+    render: (layout, _measure, theme) => renderPolar(layout, opts(theme.palette)),
+    legend: (_layout, theme) => readSeries().map((s, i) => ({ label: s.name, color: s.color ?? paletteAt(theme.palette, i) })),
+    select: (layout, px, py) => {
+      props.onSelect?.(hitPolar(layout, px, py))
+      props.onSelectIndex?.(hitPolarIndex(layout, px, py))
+    },
+    tooltip: (layout, px, py) => {
+      const hit = hitPolar(layout, px, py)
+      if (hit === null) return null
+      const series = readSeries()
+      if (hit.kind === 'sector') {
+        const s = series[hit.sector.series]
+        return [s?.name ?? `Series ${hit.sector.series + 1}`, plain(hit.sector.value)]
+      }
+      return [plain(hit.point.value)]
+    },
+    a11y: () => ({
+      title: props.title,
+      categories: props.axes.categories,
+      series: readSeries().map((s) => ({ label: s.name, values: s.values, kind: s.kind === 'bar' ? 'bars' : 'line' })),
+    }),
   })
-  if (props.accessibleTable === false) return canvasNode
-  const table = (): VNode => {
-    const t = chartTable(a11y())
-    return h(
-      'div',
-      { style: 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0;margin:-1px;padding:0' },
-      h('table', null,
-        h('caption', null, props.title ?? 'Polar chart data'),
-        h('thead', null, h('tr', null, ...t.headers.map((x) => h('th', { scope: 'col' }, x)))),
-        h('tbody', null, ...t.rows.map((r) => h('tr', null, h('th', { scope: 'row' }, r[0] ?? ''), ...r.slice(1).map((c) => h('td', null, c))))),
-      ),
-    )
-  }
-  return h('div', { style: 'position:relative' }, canvasNode, () => table())
 }

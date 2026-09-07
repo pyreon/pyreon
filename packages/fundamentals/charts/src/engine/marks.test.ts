@@ -46,7 +46,7 @@ describe('marks', () => {
     const [d] = resolveMarks(DATA, [line<Row>((x) => x.revenue)])
     expect(d!.width).toBe(2)
     expect(d!.radius).toBe(3)
-    expect(d!.color).toBe('#0f766e')
+    expect(d!.color).toBe('#4f7df3')
 
     const [o] = resolveMarks(DATA, [
       line<Row>((x) => x.revenue, { color: '#b45309', width: 4, radius: 6 }),

@@ -751,6 +751,24 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "RadarHitIndex",
+    "fields": [
+      {
+        "name": "series",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "axis",
+        "type": {
+          "kind": "number"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "Gutters",
     "fields": [
       {
@@ -1493,6 +1511,39 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "name": "ChartTheme",
     "fields": [
       {
+        "name": "palette",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "string"
+          }
+        }
+      },
+      {
+        "name": "background",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "surface",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "text",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "label",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
         "name": "axis",
         "type": {
           "kind": "string"
@@ -1505,13 +1556,45 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         }
       },
       {
-        "name": "label",
+        "name": "fontFamily",
         "type": {
           "kind": "string"
         }
       },
       {
         "name": "fontSize",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "titleSize",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "radius",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "enterMs",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "updateMs",
         "type": {
           "kind": "typeRef",
           "name": "Double",
@@ -2404,6 +2487,23 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "name": "TreemapOptions",
     "fields": [
       {
+        "name": "palette",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "string"
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
         "name": "padding",
         "type": {
           "kind": "union",
@@ -2632,6 +2732,23 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
   {
     "name": "SunburstOptions",
     "fields": [
+      {
+        "name": "palette",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "string"
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
       {
         "name": "startAngle",
         "type": {
@@ -2956,6 +3073,23 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
   {
     "name": "TreeOptions",
     "fields": [
+      {
+        "name": "palette",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "string"
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
       {
         "name": "orient",
         "type": {
@@ -3341,6 +3475,23 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
   {
     "name": "RiverOptions",
     "fields": [
+      {
+        "name": "palette",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "string"
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
       {
         "name": "categories",
         "type": {
@@ -3880,6 +4031,23 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "name": "PolarOptions",
     "fields": [
       {
+        "name": "palette",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "string"
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
         "name": "innerRatio",
         "type": {
           "kind": "union",
@@ -4230,6 +4398,23 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
   {
     "name": "SankeyOptions",
     "fields": [
+      {
+        "name": "palette",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "string"
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
       {
         "name": "nodeWidth",
         "type": {
@@ -4687,6 +4872,23 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
   {
     "name": "GraphOptions",
     "fields": [
+      {
+        "name": "palette",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "string"
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
       {
         "name": "layout",
         "type": {
@@ -6123,6 +6325,23 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
   {
     "name": "ParallelOptions",
     "fields": [
+      {
+        "name": "palette",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "string"
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
       {
         "name": "fontSize",
         "type": {

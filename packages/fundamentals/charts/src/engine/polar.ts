@@ -9,10 +9,10 @@
 // discriminated union lives in polar-hit.ts), and the svg half in family-svg.ts.
 
 import { arcPolygon, pointOnCircle } from './arc'
+import { DEFAULT_PALETTE, paletteAt } from './palette'
 import type { Domain, Double, DrawCmd, Pt, Rect } from './types'
 
 const POLAR_TAU = Math.PI * 2.0
-const POLAR_PALETTE = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
 
 export interface PolarSeries {
   name: string
@@ -85,6 +85,8 @@ export interface PolarLayout {
 }
 
 export interface PolarOptions {
+  /** Series colours for nodes without one; defaults to the theme palette. */
+  palette?: readonly string[] | undefined
   /** Hole radius as a fraction of the outer radius; default 0. */
   innerRatio?: Double | undefined
   /** Fraction of each category slot left empty between bars; default 0.2. */
@@ -140,6 +142,7 @@ function polarColumnKey(s: PolarSeries, i: number): string {
 
 /** Lay out the series into `box`. */
 export function layoutPolar(axes: PolarAxes, series: PolarSeries[], box: Rect, options?: PolarOptions): PolarLayout {
+  const palette = options?.palette ?? DEFAULT_PALETTE
   const categoryOn = axes.categoryOn ?? 'angle'
   const n = axes.categories.length
   // nF mirrors the category count as a Double for the slot/ring arithmetic.
@@ -220,7 +223,7 @@ export function layoutPolar(axes: PolarAxes, series: PolarSeries[], box: Rect, o
           for (let k = 0; k < c; k++) colF = colF + 1.0
         }
       }
-      const color = s.color ?? POLAR_PALETTE[si % POLAR_PALETTE.length]!
+      const color = s.color ?? paletteAt(palette, si)
       let iF = 0.0
       for (let i = 0; i < n; i++) {
         if (i < s.values.length) {
@@ -251,7 +254,7 @@ export function layoutPolar(axes: PolarAxes, series: PolarSeries[], box: Rect, o
     for (let si = 0; si < series.length; si++) {
       const s = series[si]!
       if (s.kind !== 'line') continue
-      const color = s.color ?? POLAR_PALETTE[si % POLAR_PALETTE.length]!
+      const color = s.color ?? paletteAt(palette, si)
       const points: PolarPoint[] = []
       let iF = 0.0
       for (let i = 0; i < n; i++) {
@@ -287,7 +290,7 @@ export function layoutPolar(axes: PolarAxes, series: PolarSeries[], box: Rect, o
           for (let k = 0; k < c; k++) colF = colF + 1.0
         }
       }
-      const color = s.color ?? POLAR_PALETTE[si % POLAR_PALETTE.length]!
+      const color = s.color ?? paletteAt(palette, si)
       let iF = 0.0
       for (let i = 0; i < n; i++) {
         if (i < s.values.length) {
@@ -316,7 +319,7 @@ export function layoutPolar(axes: PolarAxes, series: PolarSeries[], box: Rect, o
     for (let si = 0; si < series.length; si++) {
       const s = series[si]!
       if (s.kind !== 'line') continue
-      const color = s.color ?? POLAR_PALETTE[si % POLAR_PALETTE.length]!
+      const color = s.color ?? paletteAt(palette, si)
       const points: PolarPoint[] = []
       let iF = 0.0
       for (let i = 0; i < n; i++) {

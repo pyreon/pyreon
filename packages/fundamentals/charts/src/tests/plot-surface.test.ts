@@ -25,6 +25,6 @@ describe('@pyreon/charts/plot public surface', () => {
   it('the option facade round-trips a gallery option to svg from the public entry', () => {
     const svg = plot.optionToSvg({ xAxis: { data: ['a', 'b'] }, yAxis: {}, series: [{ type: 'bar', data: [1, 2] }] }, { width: 200, height: 100, theme: 'dark' })
     expect(svg).toContain('<svg')
-    expect(svg).toContain('#100c2a')
+    expect(svg).toContain('#141821')
   })
 })

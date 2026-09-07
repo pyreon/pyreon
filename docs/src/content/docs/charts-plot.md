@@ -11,9 +11,11 @@ type tree-shakes out of your bundle like any unused function.
 
 The main `@pyreon/charts` entry remains the [ECharts bridge](/docs/charts) —
 reach for that when you need the long tail of ECharts series types today.
-Reach for `/plot` when you want a small, fast, dependency-free chart that
-renders identically on the server, hydrates nothing it doesn't need, and
-shares its geometry with the native (SwiftUI/Compose) runtimes.
+Reach for `/plot` when you want a small, fast, dependency-free chart whose
+geometry renders to a pure SVG string on the server (`chartToSvg` /
+`optionToSvg` — the components themselves paint a canvas after hydration),
+hydrates nothing it doesn't need, and shares its geometry with the native
+(SwiftUI/Compose) runtimes.
 
 <PackageBadge name="@pyreon/charts" href="/docs/charts-plot" />
 
@@ -268,9 +270,94 @@ const svg = optionToSvg({ xAxis: { data: ['Mon', 'Tue'] }, yAxis: {}, series: [{
 const { spec, warnings } = compileOption(myEchartsOption)
 ```
 
-## Themes and locales
+## Themes
 
-`registerTheme(name, { color, backgroundColor, textStyle })` (with `light` and `dark` built in) and `registerLocale(tag, pack)` over `Intl` feed `compileOption(option, { theme, locale })`; `resolveTheme` and `numberFormatter` / `dateFormatter` are exported for hosts that build specs by hand.
+One token map draws every chart. `ChartTheme` is `palette` (series colours in
+draw order), `background`, `surface` (tooltip and pager cards), `text`, `label`
+(ticks and legend entries), `axis`, `grid`, `fontFamily`, `fontSize`,
+`titleSize`, `radius` (the bar corner marks fall back to) and the two animation
+lengths `enterMs` / `updateMs`. Every host, family, legend, title, tooltip and
+accessible description reads from it, so a chart with no props already looks
+right on both grounds:
+
+- **With no provider**, a chart follows the system colour scheme —
+  `chartThemes.light` or `chartThemes.dark` by `prefers-color-scheme`, live.
+- **`<ChartThemeProvider>`** pins a mode or tracks your app's:
+  `mode={useMode}` hands PyreonUI's reactive mode straight through, and
+  `theme={{ … }}` merges token overrides for every chart below it.
+- **The `theme` prop** on any host merges over whatever is in scope.
+
+```tsx
+// @check
+import { useMode } from '@pyreon/ui-core'
+import { ChartThemeProvider, PlotChart, bars, palettes } from '@pyreon/charts/plot'
+
+interface Row { q: string; v: number }
+const rows: Row[] = [{ q: 'Q1', v: 3 }, { q: 'Q2', v: 5 }]
+
+export const Themed = () => (
+  <ChartThemeProvider mode={useMode} theme={{ palette: palettes.okabeIto, radius: 4 }}>
+    <PlotChart<Row> data={rows} x={(d) => d.q} marks={[bars((d) => d.v)]} />
+  </ChartThemeProvider>
+)
+```
+
+`palettes` exports the named sets as data — `pyreon` (the default),
+`pyreonDark`, `echarts6`, `echarts5`, `echartsDark`, `observable10`,
+`tableau10`, `okabeIto` (colour-vision safe) and `tailwind` — so a palette is a
+reference, not a hex list you maintain. A mark with its own `color` keeps it;
+the rest cycle through `theme.palette`.
+
+<Example file="./examples/charts/plot-theme" title="Themes — mode, palette and a live flip" />
+
+On native the theme is a struct: `theme={chartThemes.dark}` and
+`theme={{ palette: palettes.okabeIto }}` resolve at compile time, a literal
+merges over the defaults, and `<ChartThemeProvider>` is transparent (its
+children render; theme each chart there).
+
+## Every host, one surface
+
+All the family hosts — `<PieChart>` / `<GaugeChart>`, `<FunnelChart>`,
+`<RadarChart>`, `<CandlestickChart>`, `<HeatmapChart>`, `<BoxplotChart>`,
+`<TreemapChart>`, `<SunburstChart>`, `<TreeChart>`, `<SankeyChart>`,
+`<GraphChart>`, `<RiverChart>`, `<PolarChart>`, `<GanttChart>`,
+`<CalendarChart>`, `<ParallelChart>`, `<MapChart>` — share one canvas host, so
+they share one prop vocabulary:
+
+| Prop | Does |
+| --- | --- |
+| `title` / `subtitle` / `showTitle` | Names the chart for assistive tech and the hidden table; `showTitle` draws the block above the chart. |
+| `showLegend` | A legend above the chart for families with named entries (series, slices, stages, top-level nodes). |
+| `tooltip` | A pointer tooltip with the family's own lines (a slice's share, a candle's OHLC, a cell's value, a node's name). Off by default — a static report has no pointer. |
+| `animate` | The entrance tween on first paint (`theme.enterMs`); off under `prefers-reduced-motion`. |
+| `onSelect` | The family's rich hit (a cell, an arc, a node, a Sankey node-or-link) or `null`; the row-array hosts (Pie, Funnel, Candlestick, Boxplot, PlotChart) report the row index. |
+| `onSelectIndex` | The engine's INDEX hit, on **every** host — what the native tap gesture reports, so a handler written once works on all three targets. |
+| `theme` / `width` / `height` / `class` / `accessibleTable` | As on `<PlotChart>`. |
+
+Bars are rounded by default: `theme.radius` (3) rounds the corners away from
+the baseline — top for a positive bar, bottom for a negative one, the far end
+when `horizontal` — so a bar still reads as growing from zero. A mark's own
+`borderRadius` wins; `theme={{ radius: 0 }}` restores square bars; stacked and
+grouped segments keep only their mark radii.
+
+### Big data on `<PlotChart>`
+
+`maxPoints` caps what one paint draws: past it the visible slice is thinned with
+LTTB on the first mark — rows stay aligned across marks, so a line and its area
+never disagree — and a 100k-point series paints as a 1k-point one. Hits,
+tooltips and selection report the GLOBAL index of the row actually drawn. The
+engine's throughput is measured, not asserted: `bun run
+--filter=@pyreon/charts bench:engine` (layout + render, 1k–100k points, treemap,
+sankey, LTTB; single machine, author-run — treat magnitudes as the signal).
+
+## Registered themes and locales
+
+`registerTheme(name, tokens)` takes the same tokens (the ECharts-shaped
+aliases `color` / `backgroundColor` / `textStyle` / `axisLineColor` /
+`splitLineColor` still register as-is), with `light` and `dark` built in;
+`registerLocale(tag, pack)` over `Intl` feeds `compileOption(option, { theme,
+locale })`. `resolveTheme` and `numberFormatter` / `dateFormatter` are exported
+for hosts that build specs by hand.
 
 ## Interaction
 
@@ -287,7 +374,7 @@ const { spec, warnings } = compileOption(myEchartsOption)
 ```tsx
 const link = createChartLink()
 <PlotChart data={price} x={(d) => d.t} marks={[line((d) => d.close)]} dataZoom navigator crosshair keyboard link={link} zoomPresets={[{ label: '1m', count: 30 }, { label: 'All', count: 0 }]} />
-<PlotChart data={price} x={(d) => d.t} marks={[bar((d) => d.volume)]} dataZoom crosshair link={link} />
+<PlotChart data={price} x={(d) => d.t} marks={[bars((d) => d.volume)]} dataZoom crosshair link={link} />
 ```
 
 ### Rounded bars

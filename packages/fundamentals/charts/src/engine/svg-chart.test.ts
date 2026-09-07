@@ -21,7 +21,8 @@ describe('chartToSvg', () => {
   it('renders from data with no DOM, no canvas and no measurement context', () => {
     const svg = chartToSvg({ data: DATA, marks: MARKS, x: (d) => d.month })
     expect(svg.startsWith('<svg')).toBe(true)
-    expect(svg).toContain('<rect')
+    // A bar under the default theme is a rounded `<path>` (theme.radius = 3); a square rect only when radius is 0.
+    expect(svg).toMatch(/<(rect|path)/)
     expect(svg).toContain('<polyline')
     expect(svg).toContain('Jan')
     expect(svg).not.toContain('NaN')

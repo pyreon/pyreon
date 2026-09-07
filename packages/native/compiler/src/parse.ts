@@ -2605,7 +2605,7 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
       // UNLOWERED_CHART_HOSTS for the per-tag reason), and the ECharts-backed
       // default export stays web.
       advice:
-        'Most `@pyreon/charts/plot` hosts lower to a native PyreonChartCanvas over the generated engine — PieChart/FunnelChart/GaugeChart/CandlestickChart/HeatmapChart/RadarChart/PlotChart/SankeyChart/GraphChart/TreemapChart/SunburstChart/TreeChart/RiverChart/GanttChart/PolarChart/CalendarChart/ParallelChart. OptionChart is deliberately unlowered (see UNLOWERED_CHART_HOSTS for why); the ECharts-backed default export is web-only — keep it in a `<Web>` branch, or embed via the `/webview` bridge',
+        'Most `@pyreon/charts/plot` hosts lower to a native PyreonChartCanvas over the generated engine — PieChart/FunnelChart/GaugeChart/CandlestickChart/HeatmapChart/RadarChart/PlotChart/SankeyChart/GraphChart/TreemapChart/SunburstChart/TreeChart/RiverChart/GanttChart/PolarChart/CalendarChart/ParallelChart. OptionChart is deliberately unlowered and BoxplotChart is a follow-up (see UNLOWERED_CHART_HOSTS for why); the theme lowers per chart (`theme={chartThemes.dark}` / `theme={{ palette: palettes.okabeIto }}`) while `<ChartThemeProvider>` is transparent; the ECharts-backed default export is web-only — keep it in a `<Web>` branch, or embed via the `/webview` bridge',
       supported: new Set([
         'PieChart',
         'FunnelChart',
@@ -2624,6 +2624,14 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
         'PolarChart',
         'CalendarChart',
         'ParallelChart',
+        // Theme surface: the provider is a TRANSPARENT wrapper on native (its
+        // children render; per-chart `theme` props do the theming there), and
+        // `chartThemes` / `palettes` are compiler-known constants a `theme`
+        // literal resolves at compile time (chart-hosts.ts CHART_THEMES /
+        // NAMED_PALETTES).
+        'ChartThemeProvider',
+        'chartThemes',
+        'palettes',
         // Mark + curve constructors consumed INLINE inside a `marks={[...]}`
         // array literal — the structural marks-array pass (chart-hosts.ts /
         // emit{Swift,Kotlin}.ts's PLOT_MARK_KINDS + the special-cased
@@ -10423,6 +10431,18 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
       // the WHOLE union degraded to `Any?` — silently compilable for
       // assignment, uncompilable the moment the callback is CALLED.
       return parseTypeAnnotation(node.typeAnnotation, ctx)
+    case 'TSTypeOperator': {
+      // `readonly string[]` — the `readonly` operator is a TS-only annotation
+      // on the same runtime value; a Swift array is a value type and a Kotlin
+      // `List` is read-only already, so it lowers exactly like `string[]`.
+      // (`as const` palettes and `readonly` props are ordinary code; before
+      // this case the whole annotation degraded to `Any` with a generic
+      // "Unknown type annotation" warning.) `keyof` / `unique` have no native
+      // form and stay warned — by name, so the fix is nameable.
+      if (node.operator === 'readonly') return parseTypeAnnotation(node.typeAnnotation, ctx)
+      ctx.warnings.push(`\`${node.operator}\` types have no native form in PMTC — spell the concrete type (a string-literal union for \`keyof\`).`)
+      return { kind: 'unknown' }
+    }
     case 'TSTupleType':
       // `[string, number]` — no TypeIR tuple kind (Swift tuples can't be
       // Codable; Kotlin has no tuples beyond Pair/Triple). Name the fix
@@ -10498,6 +10518,9 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
       }
       const params = node.typeArguments?.params as AnyNode[] | undefined
       const args = params ? params.map((p) => parseTypeAnnotation(p, ctx)) : []
+      // `ReadonlyArray<T>` is the long spelling of `readonly T[]` — the same
+      // runtime array, lowered as one (see the TSTypeOperator case).
+      if (name === 'ReadonlyArray' && args.length === 1) return { kind: 'array', element: args[0]! }
       // A zero-arg typeRef naming a local FUNCTION-type alias substitutes to
       // the function type itself — see ParseCtx.fnTypeAliases for why
       // substitution beats a name-preserving typealias emit.

@@ -11,9 +11,9 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'the default export wraps ECharts (browser canvas engine) and the cartesian `<PlotChart>` is marks-based — both web; the RADIAL `/plot` components cross (see nativeFrontend), and the rest embeds via the `<WebView>` bridge subpath',
+      'the DEFAULT export wraps ECharts (a browser canvas engine) and stays web — keep it in a `<Web>` branch or embed it through the `<WebView>` bridge subpath. `@pyreon/charts/plot` is the multiplatform engine: every family and every host except `<OptionChart>` / `<BoxplotChart>` lowers to a native PyreonChartCanvas over the GENERATED engine (see nativeFrontend and the Charts row of the capability matrix)',
     nativeFrontend:
-      'PyreonPieChart / PyreonGaugeChart — `<PieChart>` and `<GaugeChart>` from `@pyreon/charts/plot`, drawn by the GENERATED PyreonChartEngine (the same byte-locked geometry as the web canvas renderer)',
+      'PyreonChartCanvas over PyreonChartEngine.swift/.kt — every `@pyreon/charts/plot` host (`<PlotChart marks>` incl. dataZoom / presets / legend toggle / navigator / brush, Pie / Gauge / Funnel / Radar / Candlestick / Heatmap, and the data hosts Treemap / Sunburst / Tree / Sankey / Graph / River / Polar / Gantt / Calendar / Parallel) plus the `ChartTheme` token map (`theme={chartThemes.dark}`, `palette: palettes.okabeIto` resolve at compile time); `<ChartThemeProvider>` is transparent on native',
   },
   longExample: `import { Chart, useChart, type EChartsOption, type ComposeOption, type BarSeriesOption, type LineSeriesOption } from '@pyreon/charts'
 import { signal } from '@pyreon/reactivity'
@@ -157,8 +157,73 @@ const sales = signal<Row[]>([{ month: 'Jan', revenue: 120, target: 100 }])
         'Leaving `format` unset on a money or percentage chart — the default prints the raw number, so a revenue axis reads `3200000`; `currency`, `percent`, `compact` and `fixed` ship in the same subpath and one `format` covers the axis, the tooltip and the spoken description at once',
         'Reading a rescaled axis as a data change after a legend toggle — hiding a dominant series RESCALES the domain to the visible ones (that is the point: it is how you read the small series); the accessible table still carries every series',
         'Expecting `crosshair` on a `horizontal` chart — the pointer sweeps rows there and a vertical rule would mislead, so it is a documented no-op; the tooltip still works',
+        'Painting a 100k-point series without `maxPoints` — every point becomes a command on every repaint; `maxPoints={1000}` thins the visible slice with LTTB (marks stay aligned, hits report the GLOBAL row index) and the picture is the same to the eye',
+        'Reading rounded bars as a style bug — `theme.radius` (3) rounds the corners away from the baseline by default; `theme={{ radius: 0 }}` is square, and a mark\'s own `borderRadius` always wins',
       ],
       seeAlso: ['chartToSvg', 'PieChart'],
+    },
+    {
+      name: 'ChartThemeProvider',
+      kind: 'component',
+      signature: '(props: { mode?: ChartThemeMode | (() => ChartThemeMode); theme?: Partial<ChartTheme> | (() => Partial<ChartTheme> | undefined); children? }) => VNodeChild',
+      summary:
+        "Provides ONE theme to every `/plot` chart below it. `ChartTheme` is a token map — `palette` (series colours in draw order), `background`, `surface` (tooltip / pager cards), `text`, `label` (ticks, legend entries), `axis`, `grid`, `fontFamily`, `fontSize`, `titleSize`, `radius` (the bar corner marks fall back to), `enterMs` / `updateMs` — and every host, family, legend, title, tooltip and accessible description reads from it. With NO provider a chart follows the system colour scheme (`chartThemes.light` / `chartThemes.dark` by `prefers-color-scheme`, live); `mode` pins one or tracks the app's (`mode={useMode}` hands PyreonUI's reactive mode through); `theme` merges token overrides over the mode's theme; a host's own `theme` prop merges over all of it. `palettes` exports the named sets as data (`pyreon` — the default —, `pyreonDark`, `echarts6`, `echarts5`, `echartsDark`, `observable10`, `tableau10`, `okabeIto`, `tailwind`). On native the provider is transparent: theme each chart there (`theme={chartThemes.dark}` and `palette: palettes.okabeIto` resolve at compile time).",
+      example: `import { ChartThemeProvider, PlotChart, bars, palettes } from '@pyreon/charts/plot'
+import { signal } from '@pyreon/reactivity'
+
+interface Row { q: string; v: number }
+const rows: Row[] = [{ q: 'Q1', v: 3 }, { q: 'Q2', v: 5 }]
+const mode = signal<'light' | 'dark'>('dark') // or PyreonUI's useMode
+
+<ChartThemeProvider mode={() => mode()} theme={{ palette: palettes.okabeIto, radius: 4 }}>
+  <PlotChart data={rows} x={(d: Row) => d.q} marks={[bars((d: Row) => d.v)]} />
+</ChartThemeProvider>`,
+      mistakes: [
+        'Hard-coding `color` on every mark to "theme" a dashboard — a mark with its own `color` keeps it forever; leave `color` off and set `theme.palette` once (the provider, or the `theme` prop)',
+        'Passing a hex list you maintain when a named set exists — `palette: palettes.observable10` is a reference the compiler also resolves on native; a copied list is a second copy to keep in sync',
+        'Expecting `registerTheme` themes to reach `<PlotChart>` — the registry feeds `compileOption` / `<OptionChart>`; the components resolve `<ChartThemeProvider>` → system scheme → `theme` prop',
+        'Wrapping charts in the provider on native and wondering why they stay light — the provider is transparent there (context does not cross); give each chart `theme={chartThemes.dark}`',
+        'Reading `useChartTheme()` once at setup — it returns an ACCESSOR; call it inside the effect that draws so a mode flip repaints',
+        'Building a full `ChartTheme` by hand from four fields — the type has thirteen required tokens now; start from `chartThemes.light` / `.dark` and spread overrides, or pass a `Partial` to `theme`',
+      ],
+      seeAlso: ['PlotChart', 'PieChart'],
+    },
+    {
+      name: 'BoxplotChart',
+      kind: 'component',
+      signature: '<T>(props: BoxplotChartProps<T>) => VNodeChild',
+      summary:
+        'A boxplot per category from RAW SAMPLES: `values={(d) => d.samples}` is reduced with `fiveNumber` (min, q1, median, q3, max; whiskers at the extremes) and drawn over the engine\'s box geometry, one colour per box from the theme palette. `fiveNumber` / `renderBoxplot` / `hitBox` / `boxplotToSvg` are exported for hosts that build their own. Web-only host today (the native lowering is a follow-up).',
+      example: `import { BoxplotChart } from '@pyreon/charts/plot'
+
+interface Group { name: string; samples: number[] }
+const groups: Group[] = [{ name: 'eu', samples: [12, 15, 14, 30, 11] }, { name: 'us', samples: [20, 22, 19, 25] }]
+
+<BoxplotChart data={groups} x={(g: Group) => g.name} values={(g: Group) => g.samples} height={220} title="Latency by region" />`,
+      mistakes: [
+        'Passing pre-computed quartiles as `values` — the prop takes the RAW samples and reduces them; feed summaries to `renderBoxplot(rows: FiveNumber[])` directly instead',
+        'Reading an empty box as a bug — a category with fewer than two samples has no spread, so its box collapses to its median line',
+      ],
+      seeAlso: ['PlotChart'],
+    },
+    {
+      name: 'sma',
+      kind: 'function',
+      signature: '<T>(y: Accessor<T>, window: number, options?: MarkOptions) => Mark<T>',
+      summary:
+        'Indicator MARKS over a value accessor, for the finance and telemetry charts that draw a signal beside its smoothing: `sma(y, window)` (simple moving average), `ema(y, window)` (exponential), `trend(y)` (least-squares line) and `bollinger(y, window, k?)` (the ±k·σ band, returned as an ARRAY of marks to spread into `marks`). Each is a mark like `line`, so it layers in the same `marks={[…]}` array, takes the same `label` / `color` / `width` options, and the leading `window - 1` points are gaps rather than zeros. The value forms `smaValues` / `emaValues` / `stdevValues` / `trendValues` are exported for hosts that need the numbers.',
+      example: `import { PlotChart, line, sma, bollinger } from '@pyreon/charts/plot'
+
+interface Candle { t: number; close: number }
+const candles: Candle[] = [{ t: 1704067200000, close: 101 }, { t: 1704153600000, close: 104 }]
+
+// bollinger returns the band's marks as an ARRAY: spread it into marks.
+<PlotChart data={candles} xValue={(d: Candle) => d.t} xTime marks={[...bollinger((d: Candle) => d.close, 20), line((d: Candle) => d.close, { label: 'Close' }), sma((d: Candle) => d.close, 20, { label: 'SMA 20' })]} />`,
+      mistakes: [
+        'Pre-computing the average into the data and drawing it with `line` — the indicator mark re-derives on every data change and keeps the warm-up gap honest; a baked column silently freezes when the window changes',
+        'Reading the first `window - 1` points as missing data — they are gaps by design (no average exists yet); the engine draws the polyline from the first full window',
+      ],
+      seeAlso: ['PlotChart', 'CandlestickChart'],
     },
     {
       name: 'chartToSvg',

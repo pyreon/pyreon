@@ -1,126 +1,62 @@
-// `<SankeyChart>` — a flow diagram on a canvas.
+// `<SankeyChart>` — a flow diagram on a canvas, over the shared canvas host.
 
-import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
-import { effect } from '@pyreon/reactivity'
-import { paint, prepareCanvas } from './canvas-web'
+import { canvasHost } from './canvas-host'
+import type { CanvasHostProps } from './canvas-host'
+import { plain } from './format'
 import { hitSankeyIndex, layoutSankey, renderSankey } from './sankey'
 import type { SankeyHitIndex, SankeyLayout, SankeyLink, SankeyNode, SankeyOptions } from './sankey'
 import { hitSankey } from './sankey-hit'
 import type { SankeyHit } from './sankey-hit'
-import { chartTable, describeChart } from './a11y'
 import type { Double } from './types'
 
-const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
-
-export interface SankeyChartProps {
+export interface SankeyChartProps extends CanvasHostProps {
   nodes: SankeyNode[] | (() => SankeyNode[])
   links: SankeyLink[] | (() => SankeyLink[])
-  width?: Double
-  height?: Double
   /** Space kept for labels on both sides; default 80. */
   gutter?: Double
   sankey?: SankeyOptions
-  title?: string
+  /** Fired with the node or link under the click, or null for a miss. */
   onSelect?: (hit: SankeyHit) => void
   /** The engine's INDEX hit — the multiplatform-safe twin of `onSelect` (what the native tap gesture reports). */
   onSelectIndex?: (hit: SankeyHitIndex) => void
-  accessibleTable?: boolean
-  class?: string
-}
-
-function drawWidth(el: HTMLCanvasElement, explicit: Double | undefined): Double {
-  if (explicit !== undefined) return explicit
-  const box = el.parentElement
-  const w = box === null ? 0 : box.clientWidth
-  return w > 0 ? w : 300
 }
 
 export function SankeyChart(props: SankeyChartProps): VNode {
-  let canvas: HTMLCanvasElement | null = null
-  let sizeObserver: ResizeObserver | null = null
   const readNodes = (): SankeyNode[] => (typeof props.nodes === 'function' ? props.nodes() : props.nodes)
   const readLinks = (): SankeyLink[] => (typeof props.links === 'function' ? props.links() : props.links)
-  const layoutFor = (w: Double, hgt: Double): SankeyLayout => {
-    const g = props.gutter ?? 80.0
-    return layoutSankey(readNodes(), readLinks(), { x: g, y: 8.0, w: Math.max(0.0, w - g * 2.0), h: Math.max(0.0, hgt - 16.0) }, props.sankey)
-  }
-
-  const draw = (): void => {
-    const el = canvas
-    if (el === null) return
-    const w = drawWidth(el, props.width)
-    const hgt = props.height ?? 300
-    const ctx = prepareCanvas(el, w, hgt)
-    if (ctx === null) return
-    paint(ctx, renderSankey(layoutFor(w, hgt), props.sankey), w, hgt, FONT)
-  }
-
-  effect(() => {
-    readNodes()
-    readLinks()
-    draw()
-  })
-
-  const handleClick = (ev: MouseEvent): void => {
-    const el = canvas
-    const cb = props.onSelect
-    const cbi = props.onSelectIndex
-    if (el === null || (cb === undefined && cbi === undefined)) return
-    const w = drawWidth(el, props.width)
-    const hgt = props.height ?? 300
-    const r = el.getBoundingClientRect()
-    const layout = layoutFor(w, hgt)
-    const px = ev.clientX - r.left
-    const py = ev.clientY - r.top
-    if (cb !== undefined) cb(hitSankey(layout, px, py))
-    if (cbi !== undefined) cbi(hitSankeyIndex(layout, px, py))
-  }
-
-  const a11y = () => {
-    const nodes = layoutFor(300, 300).nodes
-    return {
-      title: props.title,
-      categories: nodes.map((n) => n.name),
-      series: [{ label: props.title ?? 'Flow', values: nodes.map((n) => n.value), kind: 'bars' }],
-    }
-  }
-
-  const canvasNode = h('canvas', {
-    class: props.class,
-    role: 'img',
-    'aria-label': () => describeChart(a11y()),
-    ref: (el: HTMLCanvasElement | null) => {
-      canvas = el
-      sizeObserver?.disconnect()
-      sizeObserver = null
-      if (el === null) return
-      draw()
-      const box = el.parentElement
-      if (box === null || typeof ResizeObserver === 'undefined') return
-      sizeObserver = new ResizeObserver(() => {
-        if (canvas === null) return
-        const next = drawWidth(canvas, props.width)
-        const dpr = typeof globalThis.devicePixelRatio === 'number' ? globalThis.devicePixelRatio : 1
-        if (Math.round(next * dpr) === canvas.width) return
-        draw()
-      })
-      sizeObserver.observe(box)
+  const opts = (palette: readonly string[]): SankeyOptions => ({ palette, ...props.sankey })
+  return canvasHost<SankeyLayout>({
+    props,
+    defaultHeight: 300,
+    caption: 'Flow data',
+    track: () => {
+      readNodes()
+      readLinks()
     },
-    onClick: handleClick,
+    layout: (box, _measure, theme) => {
+      const g = props.gutter ?? 80.0
+      return layoutSankey(readNodes(), readLinks(), { x: box.x + g, y: box.y + 8.0, w: Math.max(0.0, box.w - g * 2.0), h: Math.max(0.0, box.h - 16.0) }, opts(theme.palette))
+    },
+    render: (layout, _measure, theme) => renderSankey(layout, opts(theme.palette)),
+    legend: (layout) => layout.nodes.map((n) => ({ label: n.name, color: n.color })),
+    select: (layout, px, py) => {
+      props.onSelect?.(hitSankey(layout, px, py))
+      props.onSelectIndex?.(hitSankeyIndex(layout, px, py))
+    },
+    tooltip: (layout, px, py) => {
+      const hit = hitSankey(layout, px, py)
+      if (hit === null) return null
+      if (hit.kind === 'node') return [hit.node.name, plain(hit.node.value)]
+      const l = hit.link
+      const from = layout.nodes[l.source]
+      const to = layout.nodes[l.target]
+      return [`${from?.name ?? l.source} → ${to?.name ?? l.target}`, plain(l.value)]
+    },
+    a11y: (layout) => ({
+      title: props.title,
+      categories: layout.nodes.map((n) => n.name),
+      series: [{ label: props.title ?? 'Flow', values: layout.nodes.map((n) => n.value), kind: 'bars' }],
+    }),
   })
-  if (props.accessibleTable === false) return canvasNode
-  const table = (): VNode => {
-    const t = chartTable(a11y())
-    return h(
-      'div',
-      { style: 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0;margin:-1px;padding:0' },
-      h('table', null,
-        h('caption', null, props.title ?? 'Flow data'),
-        h('thead', null, h('tr', null, ...t.headers.map((x) => h('th', { scope: 'col' }, x)))),
-        h('tbody', null, ...t.rows.map((r) => h('tr', null, h('th', { scope: 'row' }, r[0] ?? ''), ...r.slice(1).map((c) => h('td', null, c))))),
-      ),
-    )
-  }
-  return h('div', { style: 'position:relative' }, canvasNode, () => table())
 }

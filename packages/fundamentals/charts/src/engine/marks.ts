@@ -11,6 +11,7 @@
 // Recharts all converge on marks-over-data rather than one nested config object.
 
 import type { Series } from './render'
+import { DEFAULT_PALETTE, paletteAt } from './palette'
 import { bubbleRadii } from './bubble'
 import type { SeriesGradient } from './gradient'
 import type { Double, Pt } from './types'
@@ -125,7 +126,6 @@ export interface Mark<T> {
  * one colour, which reads as one series — so the palette is indexed by series
  * position and an explicit `color` always wins.
  */
-const PALETTE = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
 
 function mark<T>(kind: Series['kind'], y: Accessor<T>, options: MarkOptions): Mark<T> {
   return { kind, y, options, r: undefined, transform: undefined }
@@ -205,7 +205,7 @@ export function bubble<T>(
  * nothing to trace it by. Zero is visibly wrong at the right datum, which is
  * the better failure.
  */
-export function resolveMarks<T>(data: T[], marks: Mark<T>[]): Series[] {
+export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly string[] = DEFAULT_PALETTE): Series[] {
   return marks.map((m, seriesIndex) => {
     const raw: Double[] = []
     for (let i = 0; i < data.length; i++) {
@@ -231,7 +231,7 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[]): Series[] {
     return {
       kind: m.kind,
       values,
-      color: m.options.color ?? PALETTE[seriesIndex % PALETTE.length]!,
+      color: m.options.color ?? paletteAt(palette, seriesIndex),
       width: m.options.width ?? 2,
       radius: m.options.radius ?? 3,
       label: m.options.label ?? `Series ${seriesIndex + 1}`,

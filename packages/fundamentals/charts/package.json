@@ -57,7 +57,8 @@
     "test:browser": "vitest run --config ./vitest.browser.config.ts",
     "bench": "NODE_ENV=production bun bench/wrapper-overhead.bench.ts",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint ."
+    "lint": "oxlint .",
+    "bench:engine": "NODE_ENV=production bun bench/plot-engine.bench.ts"
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",
