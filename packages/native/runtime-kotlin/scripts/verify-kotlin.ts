@@ -184,6 +184,19 @@ class SnapshotStateList<T> internal constructor(
 fun <T> mutableStateListOf(vararg elements: T): SnapshotStateList<T> =
   SnapshotStateList(elements.toMutableList())
 
+// SnapshotStateMap — the per-KEY reactive map PyreonFlowState keys its nodes
+// and selection on (a position write recomposes only that key's readers).
+// FUNCTIONAL for the same reason as the list: the PyreonFlowState smoke test
+// RUNS and its get/put/remove/containsKey must actually work. Mirrors the
+// real surface the runtime touches (MutableMap ops + keys) — a stub that
+// is narrower than the runtime manufactures a phantom bug in correct code.
+class SnapshotStateMap<K, V> internal constructor(
+  private val backing: MutableMap<K, V>,
+) : MutableMap<K, V> by backing
+
+fun <K, V> mutableStateMapOf(vararg pairs: Pair<K, V>): SnapshotStateMap<K, V> =
+  SnapshotStateMap(mutableMapOf(*pairs))
+
 @Composable
 fun <T> remember(key: Any?, calculation: () -> T): T = calculation()
 

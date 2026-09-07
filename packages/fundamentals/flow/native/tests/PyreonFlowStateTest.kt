@@ -81,6 +81,12 @@ fun main() {
     check(g.selectedNodes().isEmpty() && g.selectedEdges().isEmpty(), "clearSelection clears both")
     g.selectAll()
     check(g.selectedNodes().size == 3, "selectAll selects every node")
+    // Web parity: `selectAll` (flow.ts) replaces ONLY the node set. v1 of
+    // both native ports also cleared the edge set — locked in by omission.
+    g.selectEdge("e1")
+    g.selectAll()
+    check(g.selectedEdges() == listOf("e1"), "selectAll leaves edge selection alone (web parity)")
+    check(g.selectedNodes() == listOf("1", "2", "3"), "selectAll keeps node insertion order")
     g.deleteSelected()
     check(g.nodes.isEmpty(), "deleteSelected removes every selected node")
     check(g.edges.isEmpty(), "deleteSelected's node removal cascades to connected edges")
@@ -137,6 +143,18 @@ fun main() {
     check(m.getIncomers("2").map { it.id } == listOf("1"), "getIncomers walks edges INTO the node")
     check(m.getOutgoers("2").map { it.id } == listOf("3"), "getOutgoers walks edges OUT of the node")
     check(m.getIncomers("1").isEmpty(), "a source-only node has no incomers")
+
+    // 10. Edge `type` default — web `normalizeEdge`: `type ?: "bezier"`.
+    val et = seedFlow()
+    check(et.getEdge("e1")?.type == "bezier", "a seeded edge without a type reads 'bezier' (web parity)")
+    et.addEdge(PyreonFlowEdge(id = "e9", source = "1", target = "3"))
+    check(et.getEdge("e9")?.type == "bezier", "addEdge applies the 'bezier' default")
+    et.addEdge(PyreonFlowEdge(id = "e10", source = "1", target = "3", type = "step"))
+    check(et.getEdge("e10")?.type == "step", "an explicit edge type is kept")
+    // Per-id storage: a position write must not disturb order or the other nodes.
+    et.updateNodePosition("2", PyreonXYPosition(50.0, 50.0))
+    check(et.nodes.map { it.id } == listOf("1", "2", "3"), "updateNodePosition keeps insertion order")
+    check(et.getNode("2")?.position == PyreonXYPosition(50.0, 50.0) && et.getNode("1")?.position == PyreonXYPosition(0.0, 0.0), "only the written node moved")
 
     println("PyreonFlowStateTest: all checks passed")
 }
