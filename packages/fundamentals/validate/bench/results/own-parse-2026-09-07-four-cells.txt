@@ -1,0 +1,28 @@
+Own-property parse seam A/B on the process-isolated four-cell runner (bench/four-cells.ts,
+same per-cell worker as bench/validation.ts, pyreon/zod-c interleaved per cell, 3 rounds,
+median-of-medians, ns/op). WITH = the own-property closure installed by the first parse;
+WITHOUT = main (prototype seam, #3316). Order: with, without, with again.
+
+== WITH own-parse (load  2.97 3.87 4.56)
+load=2.97 3.87 4.56 rounds=3
+number.int.range           pyreon    4.65  zod-c    2.76  → 1.68×
+du.3-member                pyreon    8.79  zod-c    7.51  → 1.17×
+object.array-of-objects    pyreon  134.42  zod-c  126.58  → 1.06×
+array.20-objects           pyreon  116.76  zod-c  109.73  → 1.06×
+end load=2.97 3.84 4.55
+== WITHOUT (prototype seam, main) (load  2.97 3.84 4.55)
+load=2.97 3.84 4.55 rounds=3
+number.int.range           pyreon    5.02  zod-c    2.76  → 1.82×
+du.3-member                pyreon    9.04  zod-c    7.25  → 1.25×
+object.array-of-objects    pyreon  136.05  zod-c  123.86  → 1.10×
+array.20-objects           pyreon  117.79  zod-c  105.77  → 1.11×
+end load=2.97 3.83 4.54
+restored=0
+== WITH again (load  2.97 3.83 4.54)
+load=2.97 3.83 4.54 rounds=3
+number.int.range           pyreon    4.61  zod-c    2.76  → 1.67×
+du.3-member                pyreon    9.46  zod-c    8.16  → 1.16×
+object.array-of-objects    pyreon  139.14  zod-c  123.41  → 1.13×
+array.20-objects           pyreon  115.09  zod-c  108.79  → 1.06×
+end load=2.81 3.78 4.52
+exit=done
