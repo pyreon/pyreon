@@ -624,6 +624,8 @@ When a pattern isn't found, the tool returns up to 5 fuzzy-matched suggestions p
 
 ### get_anti_patterns
 
+The compact index clamps a title longer than 120 characters on a word boundary and marks it with `…`; pass any fragment of a title as `name` (a copied `…` is stripped) to get the full entry.
+
 Browse the anti-pattern catalog parsed live from `.claude/rules/anti-patterns.md`. **Token-frugal by default**: with no arguments the tool returns a **compact index** — one line per entry (title + `[detector: <code>]` tag + a one-sentence hook), with the per-category `## <Heading>` markers preserved so categories stay discoverable in a single call. That's roughly 3.3K tokens versus ~14K for the full dump — a ~76% cut on the common "what should I avoid?" orient call. Drill into full bodies deliberately:
 
 - `{ name }` → the single matching entry's full body (cheapest drill-in; case-insensitive title substring match).

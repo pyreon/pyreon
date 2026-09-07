@@ -121,12 +121,28 @@ describe('index hook follows the NEED, not the format', () => {
   })
 
   it('a SELF-DESCRIBING title carries no hook — it would only restate the body', () => {
-    const long = entries.find((e) => e.name.length > 120)
-    expect(long, 'catalog has no long-titled entry to check').toBeDefined()
+    // Over the hook threshold (70) but under the clamp (120): rendered whole.
+    const long = entries.find((e) => e.name.length > 70 && e.name.length <= 120)
+    expect(long, 'catalog has no self-describing unclamped entry to check').toBeDefined()
     const line = lineFor(long!.name)
     expect(line).not.toBe('')
     // Title (+ optional detector tag) and nothing else.
     expect(line.replace(/ `\[detector:[^`]+`$/, '')).toBe(`- **${long!.name}**`)
+  })
+
+  it('a title past the clamp is cut on a word boundary, marked, and still a substring of the real title', () => {
+    const huge = entries.find((e) => e.name.length > 120)
+    expect(huge, 'catalog has no clamped entry to check').toBeDefined()
+    const line = index.split('\n').find((l) => l.startsWith(`- **${huge!.name.slice(0, 40)}`)) ?? ''
+    expect(line).not.toBe('')
+    const shown = line.slice('- **'.length, line.indexOf('**', 4))
+    expect(shown.endsWith('…')).toBe(true)
+    expect(shown.length).toBeLessThanOrEqual(121)
+    // No hook after a clamped title either.
+    expect(line.replace(/ `\[detector:[^`]+`$/, '')).toBe(`- **${shown}**`)
+    // What `get_anti_patterns({ name })` does: strip the marker, substring-match.
+    expect(huge!.name.includes(shown.slice(0, -1))).toBe(true)
+    expect(shown.slice(0, -1).endsWith(' ')).toBe(false)
   })
 
   it('every entry still gets exactly one index line', () => {

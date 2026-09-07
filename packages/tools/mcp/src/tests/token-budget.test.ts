@@ -122,6 +122,19 @@ describe('MCP token budgets', () => {
     })
   })
 
+  it('a clamped index title, copied with its marker, resolves through name lookup', async () => {
+    await withServer(async (client) => {
+      const index = await callText(client, 'get_anti_patterns', {})
+      const clamped = index.split('\n').find((l) => l.startsWith('- **') && l.includes('…**'))
+      expect(clamped, 'index has no clamped title to check').toBeDefined()
+      const shown = clamped!.slice('- **'.length, clamped!.indexOf('**', 4))
+      const body = await callText(client, 'get_anti_patterns', { name: shown })
+      expect(body).not.toContain('No anti-pattern title matches')
+      // Exactly the entry whose title starts with the clamped prefix.
+      expect(body).toContain(shown.slice(0, -1))
+    })
+  })
+
   it('get_anti_patterns({}) is ≥60% smaller than the full catalog', async () => {
     await withServer(async (client) => {
       const index = tok(await callText(client, 'get_anti_patterns', {}))
