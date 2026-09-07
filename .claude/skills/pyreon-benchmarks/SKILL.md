@@ -83,6 +83,25 @@ published it at **4.31×** and #2956/#2973 root-caused and partly fixed it, so
 3.00× is measured PROGRESS against a tracked baseline. It remains the largest
 scenario gap and the honest place to look next.
 
+**`dispose-500`, the lever landed (PR #3325, MERGED 2026-09-07) — LADDER numbers,
+not a board re-run.** On the dispose-500 ablation ladder
+(`examples/benchmark/bench-disposeprofile.ts`, real Chromium, CDP subtree
+attribution, eleven arms interleaved, load 2.2 → 2.0, model check +0.3µs) the
+idiomatic compiled shape went **53.8 → 31.3µs on-CPU per 500-row dispose
+(−42%)**: a bare signal-call prop (`value={sig()}`) now lowers to `_rpd(sig)`, a
+branded thunk carrying the signal's direct-tier surface, and a prop read in a
+template text child to `_bindProp(props, "value", …)`, so the row's text bind
+subscribes on the O(1) `_d1` slot instead of a tracked effect. That is within
+2µs of the hand-held-signal ceiling arm (33.1µs) and leaves **~16µs over Solid's
+15.3µs on the same shape** — the per-row `effect()`'s own teardown plus the
+component wrapper, which this lever does not touch. Two cautions travel with it:
+(1) these are on-CPU ATTRIBUTION figures per op from the ladder, NOT the
+scenario board's wall-clock 40 vs 120µs above — the board has not been re-run,
+so the 3.00× stands until it is; (2) the ladder's own earlier "~19µs of the
+residual is the wrapper" estimate (arms H/I) predicted the lever within ~3µs,
+which is the first time this file's "next lever" hypothesis was confirmed by
+the experiment attached to it rather than replaced.
+
 **`partial update` — THE RETRACTION THAT MATTERS MOST: our published ~4.9× lead over Solid was inflated ~2.3× by the table-layout bug, and must be retracted as explicitly as the Octane/retained-heap artifacts.** `partial update` appends `" !!!"` to a cell's text on every 10th row, WIDENING that cell — under `table-layout: auto` this forced Chromium to re-measure column widths across the WHOLE table, and it penalized Solid disproportionately: Solid drops **4.03ms → 1.39ms (−66%)** on the fix, while every other framework drops only 15–24%. **The record has published "Solid 3.90–3.98ms, ~4.9× Pyreon lead" — that number is wrong. The corrected margin is Pyreon 650µs vs Solid 1.39ms, ~2.1×.** Do not repeat the retracted 4.9× figure anywhere; the true, still-real Pyreon lead on this op is ~2.1×, not a null result — Solid's effect-based `insert` is still slower than Pyreon's `_bindText` direct-subscriber path, just by less than half of what was previously claimed.
 
 **`append`, final: still OUTRIGHT PYREON, margin WIDENED, and vs-Vanilla is now publishable — this supersedes the "1.04×, no vs-Vanilla ratio" figures reported earlier in this campaign.** Two independent `--repeat 5` runs on the table-layout-fixed board both land Pyreon **OUTRIGHT and CI-disjoint**, at **1.14–1.20×** (run 1: Pyreon 14.24ms vs Octane 16.27ms = 1.14×; run 2: Pyreon 14.11ms vs Octane 16.95ms = 1.20×) — WIDER than the previously-reported 1.04×, because a large shared additive layout constant left both sides once the table stopped re-measuring on every append. The bimodality guard (#2901) now passes CLEAN across the whole board: **7 bimodal cells → 0**, every framework 100/100 fast-mode samples, CV 29–43% → **3–7%**. Because Vanilla's own median no longer straddles two timing modes, **a vs-Vanilla ratio is now honest and published**: Pyreon **+4.1% (run 1) / +5.7% (run 2)** over hand-written Vanilla — the earlier instruction in this file to NEVER publish this ratio is superseded specifically because the bimodality that made it dishonest is now fixed at the root.
