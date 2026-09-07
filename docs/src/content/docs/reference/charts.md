@@ -80,6 +80,7 @@ const typedChart = useChart<MyOption>(() => ({
 | --- | --- | --- |
 | [`useChart`](#usechart) | hook | Create a reactive ECharts instance. |
 | [`Chart`](#chart) | component | Declarative chart component that wraps `useChart` internally. |
+| [`Plot`](#plot) | component | The grammar — `<Plot data x>` with MARK CHILDREN (`Plot`, because the package's default entry already exports the EChart |
 | [`PlotChart`](#plotchart) | component | Pyreon's OWN charting engine, from the `@pyreon/charts/plot` subpath — no ECharts, no third-party engine. |
 | [`ChartThemeProvider`](#chartthemeprovider) | component | Provides ONE theme to every `/plot` chart below it. |
 | [`BoxplotChart`](#boxplotchart) | component | A boxplot per category from RAW SAMPLES: `values={(d) => d.samples}` is reduced with `fiveNumber` (min, q1, median, q3,  |
@@ -167,6 +168,45 @@ Declarative chart component that wraps `useChart` internally. Accepts `options` 
 - Relying on the default merge when data shrinks — a signal change that removes a series/point leaves the old one; pass `notMerge` or `replaceMerge="series"`
 
 **See also:** `useChart`
+
+---
+
+### Plot `component`
+
+```ts
+<T>(props: PlotProps<T>) => VNode
+```
+
+The grammar — `<Plot data x>` with MARK CHILDREN (`Plot`, because the package's default entry already exports the ECharts bridge as `<Chart>`). Channels are FIELD NAMES typed against the row (`y="revenue"`) or accessors; marks are JSX children (`<Bar y stack? group?>`, `<Line y>`, `<Area y>`, `<Dot y r?>` — `r` makes area-mapped bubbles) and draw in order; `<Rule y | from to>`, `<Axis x|y|y2 format domain time hidden>`, `<Tip crosshair format>`, `<Legend toggle maxRows>`, `<Zoom inside navigator presets link brush>` and `<Label text at series>` (a datum-anchored point marker) declare annotations, axes, the tooltip, the legend, every zoom surface and markers as data beside the marks. The FAMILY marks cover the row-array hosts with the same grammar — `<Arc value label color? innerRadius?>` (pie / donut), `<Stage value label color? sort? gap?>` (funnel), `<Cell x y value colors? gap?>` (heatmap), `<Candle open high low close upColor? downColor?>` (candlestick, the plot's `x` labels the period) — one family per plot, and `<Plot>` renders that host instead of the cartesian plot (`<Tip>` / `<Legend>` / `<Axis y format>` still apply; a cartesian mark or `<Zoom>` beside one is reported and ignored). A `<Show>` around a mark adds/removes its series. `color="region"` switches to LONG format: one series per distinct value, categories from `x`, gaps where a (category, series) pair is absent, bars grouped unless `stack`. Marks are branded components `<Plot>` scans structurally (never invoked); it resolves them into the `marks={[bars(…)]}` props `<PlotChart>` takes, so the array form is the same spec — `resolveGrammar` is exported for that equivalence. Native: the compiler desugars `<Plot>` to `<PlotChart marks>` (byte-identical emit); the runtime `color` pivot warns by name and renders wide-format.
+
+**Example**
+
+```tsx
+import { Axis, Bar, Legend, Line, Plot, Tip, currency } from '@pyreon/charts/plot'
+
+interface Row { month: string; revenue: number; target: number }
+const rows: Row[] = [{ month: 'Jan', revenue: 3200, target: 3000 }, { month: 'Feb', revenue: 4100, target: 3400 }]
+
+<Plot<Row> data={rows} x="month" title="Revenue vs target" showTitle>
+  <Bar y="revenue" label="Revenue" />
+  <Line y="target" label="Target" />
+  <Axis y format={currency('$')} />
+  <Tip />
+  <Legend />
+</Plot>
+```
+
+**Common mistakes**
+
+- Passing `marks={[…]}` to `<Plot>` — the grammar takes marks as CHILDREN; the array form belongs to `<PlotChart>` (same spec, other spelling)
+- Writing `y={d.revenue}` — a channel is a field NAME (`y="revenue"`) or an accessor (`y={(d) => d.revenue}`); a value is one number for every row
+- Expecting `color="region"` to colour bars by a per-row value — it is the long-format SPLIT (one series per distinct region); for a per-mark colour use `color="#hex"` on the mark
+- Rendering `<Bar>` outside a `<Plot>` — marks are branded descriptors the plot reads; alone they render nothing (and warn on native)
+- Two family marks in one `<Plot>` (`<Arc>` beside `<Stage>`), or a family mark beside `<Bar>` — one family per plot; the first family wins and the rest is reported, never merged
+- Conditionally including a mark with `{cond && <Line …/>}` written once at setup — wrap it in `<Show when={() => cond()}>` (or an accessor child) so the series follows the signal
+- Looking for a `series` array — layering IS the children; a combo chart is a `<Bar>` beside a `<Line>`, a second axis is `<Line axis="right">` + `<Axis y2>`
+
+**See also:** `PlotChart` · `ChartThemeProvider`
 
 ---
 

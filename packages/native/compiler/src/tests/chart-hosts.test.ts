@@ -36,7 +36,7 @@ export function Flows() {
   return (
     <Stack>
       <Text>Energy</Text>
-      <SankeyChart nodes={nodes()} links={links()} height={240} data-testid="flows" title="Energy flows" />
+      <SankeyChart animate={false} nodes={nodes()} links={links()} height={240} data-testid="flows" title="Energy flows" />
     </Stack>
   )
 }`
@@ -49,7 +49,7 @@ const TASKS: GanttTask[] = [
   { id: 'b', name: 'Build', start: '2024-03-08', end: '2024-03-24', dependencies: ['a'] },
 ]
 export function Plan() {
-  return (<Stack><GanttChart tasks={TASKS} /></Stack>)
+  return (<Stack><GanttChart animate={false} tasks={TASKS} /></Stack>)
 }`
 
 const SUNBURST = `import { Stack } from '@pyreon/primitives'
@@ -57,7 +57,7 @@ import { SunburstChart } from '@pyreon/charts/plot'
 import type { TreeNode } from '@pyreon/charts/plot'
 const DATA: TreeNode[] = [{ name: 'root', value: 10 }]
 export function Rings() {
-  return (<Stack><SunburstChart data={DATA} width={200} height={200} innerRatio={0.3} /></Stack>)
+  return (<Stack><SunburstChart animate={false} data={DATA} width={200} height={200} innerRatio={0.3} /></Stack>)
 }`
 
 describe('chart hosts — Swift', () => {
@@ -88,7 +88,7 @@ describe('chart hosts — Swift', () => {
   it('a missing data prop warns by name and emits an EmptyView', () => {
     const r = transform(
       `import { SankeyChart } from '@pyreon/charts/plot'
-export function C() { return <SankeyChart nodes={[]} /> }`,
+export function C() { return <SankeyChart animate={false} nodes={[]} /> }`,
       { target: 'swift' },
     )
     expect(r.warnings.join('\n')).toContain('<SankeyChart>: needs a `links` attribute on native')
@@ -128,7 +128,7 @@ describe('chart hosts — Kotlin', () => {
   it('a missing data prop warns and emits an empty Box', () => {
     const r = transform(
       `import { GraphChart } from '@pyreon/charts/plot'
-export function C() { return <GraphChart links={[]} /> }`,
+export function C() { return <GraphChart animate={false} links={[]} /> }`,
       { target: 'kotlin' },
     )
     expect(r.warnings.join('\n')).toContain('<GraphChart>: needs a `nodes` attribute on native')
@@ -170,8 +170,8 @@ export function Picker() {
   return (
     <Stack>
       <Text>{picked()}</Text>
-      <SankeyChart nodes={nodes()} links={links()} height={240} onSelectIndex={(hit: SankeyHitIndex) => picked.set(hit.node)} />
-      <TreemapChart data={CELLS} width={200} height={100} onSelectIndex={(i: number) => { cell.set(report(i)) }} />
+      <SankeyChart animate={false} nodes={nodes()} links={links()} height={240} onSelectIndex={(hit: SankeyHitIndex) => picked.set(hit.node)} />
+      <TreemapChart animate={false} data={CELLS} width={200} height={100} onSelectIndex={(i: number) => { cell.set(report(i)) }} />
     </Stack>
   )
 }`
@@ -181,9 +181,13 @@ describe('chart hosts — onSelectIndex (tap → the engine index hit)', () => {
     const r = transform(ONSELECT, { target: 'swift' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain(
-      '.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in let hit = hitSankeyIndex(layoutSankey(nodes, links, PyreonChartRect(x: 80.0, y: 8.0, w: max(0.0, Double(pyreonGeo.size.width) - 80.0 * 2.0), h: max(0.0, 240.0 - 16.0)), nil), Double(pyreonTap.location.x), Double(pyreonTap.location.y)); ({ picked = hit.node })() })',
+      'let pyreonLayout = layoutSankey(nodes, links, PyreonChartRect(x: 80.0, y: 8.0, w: max(0.0, Double(pyreonGeo.size.width) - 80.0 * 2.0), h: max(0.0, 240.0 - 16.0)), nil)')
+    // The layout is laid out ONCE and shared by the paint and the hit (it used to be computed twice).
+    expect(r.code).toContain(
+      '.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in let hit = hitSankeyIndex(pyreonLayout, Double(pyreonTap.location.x), Double(pyreonTap.location.y)); ({ picked = hit.node })() })',
     )
-    expect(r.code).toContain('let i = hitTreemapIndex(layoutTreemap(CELLS, PyreonChartRect(x: 0.0, y: 0.0, w: 200.0, h: 100.0), nil), Double(pyreonTap.location.x), Double(pyreonTap.location.y))')
+    expect(r.code).toContain('let pyreonLayout = layoutTreemap(CELLS, PyreonChartRect(x: 0.0, y: 0.0, w: 200.0, h: 100.0), nil)')
+    expect(r.code).toContain('let i = hitTreemapIndex(pyreonLayout, Double(pyreonTap.location.x), Double(pyreonTap.location.y))')
     expect(r.code).toContain('.frame(width: 200.0, height: 100.0)')
   })
   it('Kotlin: detectTapGestures over the same layout, the px tap divided by the density read in the enclosing scope', () => {
@@ -191,10 +195,12 @@ describe('chart hosts — onSelectIndex (tap → the engine index hit)', () => {
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('val pyreonDensity = LocalDensity.current.density')
     expect(r.code).toContain(
-      '.pointerInput(Unit) { detectTapGestures { pyreonTap -> val hit = hitSankeyIndex(layoutSankey(nodes, links, PyreonChartRect(80.0, 8.0, maxOf(0.0, pyreonW - 80.0 * 2.0), maxOf(0.0, 240.0 - 16.0)), null), (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble()); ({ picked = hit.node })() } }',
+      'val pyreonLayout = layoutSankey(nodes, links, PyreonChartRect(80.0, 8.0, maxOf(0.0, pyreonW - 80.0 * 2.0), maxOf(0.0, 240.0 - 16.0)), null)')
+    expect(r.code).toContain(
+      '.pointerInput(pyreonLayout) { detectTapGestures { pyreonTap -> val hit = hitSankeyIndex(pyreonLayout, (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble()); ({ picked = hit.node })() } }',
     )
     // An explicit-width host with a tap still gets the BoxWithConstraints scope (the density lives there).
-    expect(r.code).toContain('val i = hitTreemapIndex(layoutTreemap(CELLS, PyreonChartRect(0.0, 0.0, 200.0, 100.0), null), (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble())')
+    expect(r.code).toContain('val i = hitTreemapIndex(pyreonLayout, (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble())')
   })
   it('a bare function reference is called with the hit', () => {
     const src = `import { Stack } from '@pyreon/primitives'
@@ -205,10 +211,10 @@ function chosen(i: number) {
   return i
 }
 export function Plan() {
-  return (<Stack><GanttChart tasks={TASKS} onSelectIndex={chosen} /></Stack>)
+  return (<Stack><GanttChart animate={false} tasks={TASKS} onSelectIndex={chosen} /></Stack>)
 }`
-    expect(transform(src, { target: 'swift' }).code).toContain('pyreonTap in chosen(hitGanttIndex(layoutGantt(TASKS, ')
-    expect(transform(src, { target: 'kotlin' }).code).toContain('pyreonTap -> chosen(hitGanttIndex(layoutGantt(TASKS, ')
+    expect(transform(src, { target: 'swift' }).code).toContain('pyreonTap in chosen(hitGanttIndex(pyreonLayout, ')
+    expect(transform(src, { target: 'kotlin' }).code).toContain('pyreonTap -> chosen(hitGanttIndex(pyreonLayout, ')
   })
   it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine) accepts the tap emit', () => {
     const r = validateSwiftWithStubs(transform(ONSELECT, { target: 'swift' }).code)
@@ -236,7 +242,7 @@ export function Sales() {
   return (
     <Stack>
       <Text>{picked()}</Text>
-      <FunnelChart data={STAGES} value={(d) => d.total} label={(d, i) => d.name} height={200} onSelect={(i: number) => picked.set(i)} />
+      <FunnelChart animate={false} data={STAGES} value={(d) => d.total} label={(d, i) => d.name} height={200} onSelect={(i: number) => picked.set(i)} />
       <PieChart data={STAGES} value={(d) => d.total} label={(d) => d.name} color={(d) => d.tint} innerRadius={0.4} width={200} height={200} />
       <GaugeChart value={load()} min={0} max={100} thickness={18} valueColor="#b45309" height={120} data-testid="gauge" />
     </Stack>
@@ -270,7 +276,7 @@ describe('chart hosts — accessor-prop hosts (Funnel / Pie) and Gauge', () => {
       `import { FunnelChart, PieChart } from '@pyreon/charts/plot'
 interface Row { n: string; v: number }
 const ROWS: Row[] = [{ n: 'a', v: 1 }]
-export function C() { return (<><FunnelChart data={ROWS} value={(d) => { const twice = d.v * 2; return twice }} label={(d) => d.n} /><PieChart data={ROWS} value={(d) => d.v} label={(d) => d.n} showLegend={true} /></>) }`,
+export function C() { return (<><FunnelChart animate={false} data={ROWS} value={(d) => { const twice = d.v * 2; return twice }} label={(d) => d.n} /><PieChart data={ROWS} value={(d) => d.v} label={(d) => d.n} showLegend={true} /></>) }`,
       { target: 'swift' },
     )
     expect(r.warnings.join('\n')).toContain('<FunnelChart value>: only a single-expression arrow')
@@ -304,7 +310,7 @@ export function Frames() {
   return (
     <Stack>
       <CandlestickChart data={BARS} open={(d) => d.o} high={(d) => d.h} low={(d) => d.l} close={(d) => d.c} x={(d) => d.day} height={180} onSelect={(i: number) => console.log(i)} />
-      <HeatmapChart data={CELLS} x={(d) => d.hour} y={(d) => d.d} value={(d) => d.n} gap={2} width={240} height={160} data-testid="heat" />
+      <HeatmapChart animate={false} data={CELLS} x={(d) => d.hour} y={(d) => d.d} value={(d) => d.n} gap={2} width={240} height={160} data-testid="heat" />
       <RadarChart data={TEAMS} axes={AXES} values={(d) => d.scores} label={(d) => d.name} rings={3} height={220} title="Skills" />
     </Stack>
   )
@@ -355,7 +361,7 @@ const BARS: Bar[] = [{ o: 1, h: 2, l: 0, c: 1 }]
 const CELLS: Cell[] = [{ d: 'a', hour: 'b', n: 1 }]
 const TEAMS: Team[] = [{ name: 'A', scores: [1, 2, 3] }]
 const AXES: RadarAxis[] = [{ label: 'x', max: 5 }, { label: 'y', max: 5 }, { label: 'z', max: 5 }]
-export function C() { return (<><CandlestickChart data={BARS} open={(d) => d.o} high={(d) => d.h} low={(d) => d.l} close={(d) => d.c} theme={{ fontSize: 14 }} /><HeatmapChart data={CELLS} x={(d) => d.hour} y={(d) => d.d} value={(d) => d.n} onSelect={(c) => console.log(c)} /><RadarChart data={TEAMS} axes={AXES} values={(d) => d.scores} label={(d) => d.name} showLegend={true} /></>) }`,
+export function C() { return (<><CandlestickChart data={BARS} open={(d) => d.o} high={(d) => d.h} low={(d) => d.l} close={(d) => d.c} theme={{ fontSize: 14 }} /><HeatmapChart animate={false} data={CELLS} x={(d) => d.hour} y={(d) => d.d} value={(d) => d.n} onSelect={(c) => console.log(c)} /><RadarChart data={TEAMS} axes={AXES} values={(d) => d.scores} label={(d) => d.name} showLegend={true} /></>) }`,
       { target: 'swift' },
     )
     const w = r.warnings.join('\n')
@@ -390,7 +396,7 @@ export function Revenue() {
   return (
     <Stack>
       <Text>{picked()}</Text>
-      <PlotChart
+      <PlotChart animate={false}
         data={MONTHS}
         x={(d) => d.name}
         marks={[bars((d) => d.revenue, { label: 'Revenue', color: '#0f766e' }), line((d) => d.cost, { label: 'Cost', width: 3 })]}
@@ -401,7 +407,7 @@ export function Revenue() {
         onSelect={(i: number) => picked.set(i)}
         data-testid="revenue"
       />
-      <PlotChart data={MONTHS} marks={[area((d, i) => d.cost + i)]} width={240} height={120} />
+      <PlotChart animate={false} data={MONTHS} marks={[area((d, i) => d.cost + i)]} width={240} height={120} />
     </Stack>
   )
 }`
@@ -450,7 +456,7 @@ describe('chart hosts — <PlotChart marks> (the cartesian family)', () => {
 interface Row { n: string; v: number; r: number }
 const ROWS: Row[] = [{ n: 'a', v: 1, r: 2 }]
 const MARKS = [line((d: Row) => d.v)]
-export function C() { return (<><PlotChart data={ROWS} marks={[bubble((d) => d.v, (d) => d.r)]} /><PlotChart data={ROWS} marks={[line((d) => d.v, { curve: monotoneCurve })]} showLegend={true} brush={true} /><PlotChart data={ROWS} marks={MARKS} /></>) }`,
+export function C() { return (<><PlotChart animate={false} data={ROWS} marks={[bubble((d) => d.v, (d) => d.r)]} /><PlotChart animate={false} data={ROWS} marks={[line((d) => d.v, { curve: monotoneCurve })]} showLegend={true} brush={true} /><PlotChart animate={false} data={ROWS} marks={MARKS} /></>) }`,
       { target: 'swift' },
     )
     const w = r.warnings.join('\n')
@@ -486,7 +492,7 @@ const AXES: RadarAxis[] = [{ label: 'x', max: 5 }, { label: 'y', max: 5 }, { lab
 export function Chrome() {
   return (
     <Stack>
-      <PlotChart data={MONTHS} x={(d) => d.name} marks={[bars((d) => d.revenue, { label: 'Revenue' }), line((d) => d.cost, { label: 'Cost' })]} showLegend={true} showTitle={true} title="Revenue" subtitle="by month" legendMaxRows={2} height={220} onSelect={(i: number) => console.log(i)} />
+      <PlotChart animate={false} data={MONTHS} x={(d) => d.name} marks={[bars((d) => d.revenue, { label: 'Revenue' }), line((d) => d.cost, { label: 'Cost' })]} showLegend={true} showTitle={true} title="Revenue" subtitle="by month" legendMaxRows={2} height={220} onSelect={(i: number) => console.log(i)} />
       <PieChart data={TEAMS} value={(d) => d.share} label={(d) => d.name} showLegend={true} width={240} height={200} onSelect={(i: number) => console.log(i)} />
       <RadarChart data={TEAMS} axes={AXES} values={(d) => d.scores} label={(d) => d.name} showLegend={true} height={240} />
     </Stack>
@@ -497,7 +503,7 @@ describe('chart hosts — legend + title chrome (Plot / Pie / Radar)', () => {
   it('Swift: the title block, then the legend, then the plot shifted down by both; the tap subtracts the same offset', () => {
     const r = transform(CHROME, { target: 'swift' })
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('let pyreonTitle: TitleLayout = renderTitle("Revenue", "by month", PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 220.0), TitleOptions(fontSize: 15.0, color: "#5a6b7a", align: "start"))')
+    expect(r.code).toContain('let pyreonTitle: TitleLayout = renderTitle("Revenue", "by month", PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 220.0), TitleOptions(fontSize: 15.0, color: "#1f2937", align: "start"))')
     expect(r.code).toContain('let pyreonLegend: LegendLayout = renderLegend(pyreonSeriesAll.enumerated().map { (pyreonI, pyreonS) in LegendEntry(label: pyreonS.label, color: pyreonS.color, muted: pyreonHidden.contains(pyreonI)) }, PyreonChartRect(x: 0.0, y: pyreonTitle.height, w: Double(pyreonGeo.size.width), h: 220.0 - pyreonTitle.height), LegendOptions(fontSize: 11.0, labelColor: "#5a6b7a", swatch: 10.0, gap: 12.0, orientation: "horizontal", maxRows: 2.0, page: pyreonLegendPage), pyreonChartMeasure)')
     expect(r.code).toContain('let pyreonTop: Double = pyreonTitle.height + pyreonLegend.height')
     expect(r.code).toContain('ChartSpec(width: Double(pyreonGeo.size.width), height: 220.0 - pyreonTop, series: pyreonSeries')
@@ -506,7 +512,7 @@ describe('chart hosts — legend + title chrome (Plot / Pie / Radar)', () => {
     // Pie: slices hoisted so the legend and the arcs share one list; no title block (the pie has no showTitle).
     expect(r.code).toContain('let pyreonItems: [Slice] = TEAMS.enumerated().map { (pyreonI, pyreonD) in Slice(value: Double(pyreonD.share), label: pyreonD.name, color:')
     expect(r.code).toContain('let pyreonTitle: TitleLayout = TitleLayout(cmds: [], height: 0.0)')
-    expect(r.code).toContain('renderLegend(pyreonItems.map { LegendEntry(label: $0.label, color: $0.color) }, PyreonChartRect(x: 0.0, y: pyreonTitle.height, w: 240.0, h: 200.0 - pyreonTitle.height)')
+    expect(r.code).toContain('renderLegend(pieLegend(pyreonItems), PyreonChartRect(x: 0.0, y: pyreonTitle.height, w: 240.0, h: 200.0 - pyreonTitle.height)')
     expect(r.code).toContain('pyreonShiftCmds(renderPie(pyreonItems, PyreonChartRect(x: 0.0, y: 0.0, w: 240.0, h: 200.0 - pyreonTop), PieOptions(')
     expect(r.code).toContain('fitCircle(PyreonChartRect(x: 0.0, y: 0.0, w: 240.0, h: 200.0 - pyreonTop)).radius * 0.0, PyreonChartPt(x: Double(pyreonTap.location.x), y: Double(pyreonTap.location.y) - pyreonTop))')
     // Radar: legend entries from the label accessor and the same palette the series use.
@@ -516,7 +522,7 @@ describe('chart hosts — legend + title chrome (Plot / Pie / Radar)', () => {
   it('Kotlin: the same chrome with the runtime shift', () => {
     const r = transform(CHROME, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('val pyreonTitle: TitleLayout = renderTitle("Revenue", "by month", PyreonChartRect(0.0, 0.0, pyreonW, 220.0), TitleOptions(fontSize = 15.0, color = "#5a6b7a", align = "start"))')
+    expect(r.code).toContain('val pyreonTitle: TitleLayout = renderTitle("Revenue", "by month", PyreonChartRect(0.0, 0.0, pyreonW, 220.0), TitleOptions(fontSize = 15.0, color = "#1f2937", align = "start"))')
     expect(r.code).toContain('val pyreonLegend: LegendLayout = renderLegend(pyreonSeriesAll.mapIndexed { pyreonI, pyreonS -> LegendEntry(label = pyreonS.label, color = pyreonS.color, muted = pyreonHidden.contains(pyreonI)) }, PyreonChartRect(0.0, pyreonTitle.height, pyreonW, 220.0 - pyreonTitle.height), LegendOptions(fontSize = 11.0, labelColor = "#5a6b7a", swatch = 10.0, gap = 12.0, orientation = "horizontal", maxRows = 2.0, page = pyreonLegendPage), ::pyreonChartMeasure)')
     expect(r.code).toContain('PyreonChartCanvas(cmds = pyreonTitle.cmds + pyreonLegend.cmds + pyreonShiftCmds(renderChart(pyreonSpec, ::pyreonChartMeasure), pyreonTop)')
     expect(r.code).toContain('plotHitBars(pyreonSpec, ::pyreonChartMeasure, (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble() - pyreonTop)')
@@ -555,7 +561,7 @@ const BARS: Bar[] = [{ day: 'Mon', o: 10, h: 12, l: 9, c: 11 }]
 export function Props() {
   return (
     <Stack>
-      <PlotChart data={CITIES} x={(d) => d.name} marks={[bars((d) => d.pop, { label: 'Population' }), bubble((d) => d.growth, (d) => d.area, { label: 'Area', minRadius: 4, maxRadius: 20, axis: 'right' })]} theme={{ label: '#222222', fontSize: 12 }} format={compact} xFormat={fixed(1)} y2Format={(v) => plain(v) + '%'} height={200} />
+      <PlotChart animate={false} data={CITIES} x={(d) => d.name} marks={[bars((d) => d.pop, { label: 'Population' }), bubble((d) => d.growth, (d) => d.area, { label: 'Area', minRadius: 4, maxRadius: 20, axis: 'right' })]} theme={{ label: '#222222', fontSize: 12 }} format={compact} xFormat={fixed(1)} y2Format={(v) => plain(v) + '%'} height={200} />
       <CandlestickChart data={BARS} open={(d) => d.o} high={(d) => d.h} low={(d) => d.l} close={(d) => d.c} theme={{ grid: '#eeeeee' }} height={160} />
     </Stack>
   )
@@ -625,23 +631,17 @@ describe('chart hosts — theme overrides, formatters and bubble marks', () => {
       expect(r.code).toContain('PyreonChartCanvas(')
     }
   })
-  it('chrome props the target does not draw yet warn BY NAME on every host (tooltip everywhere; title/legend where not lowered)', () => {
+  it('chrome props a target does not draw warn BY NAME; `animate` on an engine with no entrance is named as inert everywhere', () => {
     const src = `import { TreemapChart, PieChart } from '@pyreon/charts/plot'
 type N = { name: string; value: number }
 const NODES: N[] = [{ name: 'a', value: 1 }]
 type S = { label: string; v: number }
 const SL: S[] = [{ label: 'x', v: 2 }]
-export const A = () => <TreemapChart data={NODES} showTitle title="T" showLegend tooltip height={200} />
+export const A = () => <TreemapChart animate={false} data={NODES} showTitle title="T" showLegend tooltip height={200} />
 export const B = () => <PieChart data={SL} value={(d: S) => d.v} label={(d: S) => d.label} showLegend tooltip animate={false} height={200} />`
     for (const target of ['swift', 'kotlin'] as const) {
       const r = transform(src, { target })
-      expect(r.warnings).toEqual([
-        '<TreemapChart>: `showTitle` is not lowered on native yet; the chart renders without it.',
-        '<TreemapChart>: `showLegend` is not lowered on native yet; the chart renders without it.',
-        '<TreemapChart>: `tooltip` is not lowered on native yet; the chart renders without it.',
-        '<PieChart>: `tooltip` is not lowered on native yet; the chart renders without it.',
-        '<PieChart>: `animate` is not lowered on native yet; the chart renders without it.',
-      ])
+      expect(r.warnings).toEqual(['<PieChart>: `animate` has no effect on any target — its engine draws fully formed; the prop is ignored.'])
       expect(r.code).toContain('PyreonChartCanvas(')
     }
   })
@@ -651,7 +651,7 @@ export const B = () => <PieChart data={SL} value={(d: S) => d.v} label={(d: S) =
 interface Row { v: number }
 const ROWS: Row[] = [{ v: 1 }]
 const DARK = { label: '#fff' }
-export function C() { return <PlotChart data={ROWS} marks={[bars((d) => d.v)]} theme={DARK} /> }`,
+export function C() { return <PlotChart animate={false} data={ROWS} marks={[bars((d) => d.v)]} theme={DARK} /> }`,
       { target: 'swift' },
     )
     expect(r.warnings.join('\n')).toContain('<PlotChart theme>: only an object literal with literal fields lowers on native')
@@ -682,7 +682,7 @@ export function Traffic() {
   return (
     <Stack>
       <Text>{picked()}</Text>
-      <PlotChart data={DAYS} x={(d) => d.label} marks={[bars((d) => d.hits), line((d, i) => d.avg + i)]} dataZoom={true} height={200} onSelect={(i: number) => picked.set(i)} />
+      <PlotChart animate={false} data={DAYS} x={(d) => d.label} marks={[bars((d) => d.hits), line((d, i) => d.avg + i)]} dataZoom={true} height={200} onSelect={(i: number) => picked.set(i)} />
     </Stack>
   )
 }`
@@ -722,7 +722,7 @@ describe('chart hosts — <PlotChart dataZoom> as pinch + pan over a fraction wi
     expect(k.code).not.toContain('detectTransformGestures')
   })
   it('two zoomed hosts in one component get one pair of state properties each (the collector drains per component)', () => {
-    const r = transform(ZOOM.replace('<PlotChart data', '<PlotChart data={DAYS} marks={[bars((d) => d.hits)]} dataZoom={true} height={100} /><PlotChart data'), { target: 'swift' })
+    const r = transform(ZOOM.replace('<PlotChart animate={false} data', '<PlotChart animate={false} data={DAYS} marks={[bars((d) => d.hits)]} dataZoom={true} height={100} /><PlotChart data'), { target: 'swift' })
     expect(r.code.split('@State private var pyreonZoom:').length - 1).toBe(2)
   })
   it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine + gestures) accepts the dataZoom emit', () => {
@@ -750,7 +750,7 @@ export function Traffic() {
   return (
     <Stack>
       <Text>{picked()}</Text>
-      <PlotChart data={DAYS} x={(d) => d.label} marks={[bars((d) => d.hits)]} zoomPresets={[{ label: 'last 2', count: 2 }, { label: 'all', count: 0 }]} height={200} onSelect={(i: number) => picked.set(i)} />
+      <PlotChart animate={false} data={DAYS} x={(d) => d.label} marks={[bars((d) => d.hits)]} zoomPresets={[{ label: 'last 2', count: 2 }, { label: 'all', count: 0 }]} height={200} onSelect={(i: number) => picked.set(i)} />
     </Stack>
   )
 }`
@@ -852,7 +852,7 @@ export function Traffic() {
   return (
     <Stack>
       <Text>{picked()}</Text>
-      <PlotChart data={DAYS} x={(d) => d.label} marks={[bars((d) => d.hits, { label: 'Hits' }), line((d) => d.avg, { label: 'Avg' })]} showLegend={true} legendMaxRows={1} height={200} onSelect={(i: number) => picked.set(i)} />
+      <PlotChart animate={false} data={DAYS} x={(d) => d.label} marks={[bars((d) => d.hits, { label: 'Hits' }), line((d) => d.avg, { label: 'Avg' })]} showLegend={true} legendMaxRows={1} height={200} onSelect={(i: number) => picked.set(i)} />
     </Stack>
   )
 }`
@@ -976,7 +976,7 @@ export function Traffic() {
   return (
     <Stack>
       <Text>{picked()}</Text>
-      <PlotChart data={DAYS} x={(d) => d.label} marks={[line((d) => d.hits)]} navigator={true} height={240} onSelect={(i: number) => picked.set(i)} />
+      <PlotChart animate={false} data={DAYS} x={(d) => d.label} marks={[line((d) => d.hits)]} navigator={true} height={240} onSelect={(i: number) => picked.set(i)} />
     </Stack>
   )
 }`
@@ -1087,7 +1087,7 @@ export function Traffic() {
     <Stack>
       <Text>{picked()}</Text>
       <Text>{sel()}</Text>
-      <PlotChart data={DAYS} x={(d) => d.label} marks={[bars((d) => d.hits)]} brush={true} height={200} onBrush={onBrush} onSelect={(i: number) => picked.set(i)} />
+      <PlotChart animate={false} data={DAYS} x={(d) => d.label} marks={[bars((d) => d.hits)]} brush={true} height={200} onBrush={onBrush} onSelect={(i: number) => picked.set(i)} />
     </Stack>
   )
 }`
@@ -1190,7 +1190,7 @@ export function Activity() {
   return (
     <Stack>
       <Text>{picked()}</Text>
-      <CalendarChart start="2026-01-01" end="2026-02-28" values={{ '2026-01-05': 3, '2026-01-20': 7.5 }} calendar={{ firstDay: 1 }} height={160} onSelectIndex={(i: number) => picked.set(i)} />
+      <CalendarChart animate={false} start="2026-01-01" end="2026-02-28" values={{ '2026-01-05': 3, '2026-01-20': 7.5 }} calendar={{ firstDay: 1 }} height={160} onSelectIndex={(i: number) => picked.set(i)} />
     </Stack>
   )
 }`
@@ -1207,7 +1207,7 @@ export function Cars() {
   return (
     <Stack>
       <Text>{picked()}</Text>
-      <ParallelChart axes={AXES} rows={[['4', 30], ['8', null], ['x', 22]]} gutter={30} height={260} onSelectIndex={(i: number) => picked.set(i)} />
+      <ParallelChart animate={false} axes={AXES} rows={[['4', 30], ['8', null], ['x', 22]]} gutter={30} height={260} onSelectIndex={(i: number) => picked.set(i)} />
     </Stack>
   )
 }`
@@ -1219,15 +1219,19 @@ describe('chart hosts — CalendarChart + ParallelChart lower through literal ad
     const r = transform(CALENDAR, { target: 'swift' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain(
-      'PyreonChartCanvas(cmds: renderCalendar(layoutCalendar("2026-01-01", "2026-02-28", PyreonChartRect(x: 4.0, y: 4.0, w: Double(pyreonGeo.size.width) - 8.0, h: 160.0 - 8.0), CalendarOptions(firstDay: Double(1))), [CalendarValue(date: "2026-01-05", value: 3.0), CalendarValue(date: "2026-01-20", value: 7.5)], CalendarOptions(firstDay: Double(1))))',
+      'let pyreonLayout = layoutCalendar("2026-01-01", "2026-02-28", PyreonChartRect(x: 4.0, y: 4.0, w: Double(pyreonGeo.size.width) - 8.0, h: 160.0 - 8.0), CalendarOptions(firstDay: Double(1)))')
+    expect(r.code).toContain(
+      'PyreonChartCanvas(cmds: renderCalendar(pyreonLayout, [CalendarValue(date: "2026-01-05", value: 3.0), CalendarValue(date: "2026-01-20", value: 7.5)], CalendarOptions(firstDay: Double(1))))',
     )
-    expect(r.code).toContain('hitCalendarIndex(layoutCalendar("2026-01-01", "2026-02-28", ')
+    expect(r.code).toContain('hitCalendarIndex(pyreonLayout, ')
   })
   it('Kotlin: the same through listOf / named args', () => {
     const r = transform(CALENDAR, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain(
-      'renderCalendar(layoutCalendar("2026-01-01", "2026-02-28", PyreonChartRect(4.0, 4.0, pyreonW - 8.0, 160.0 - 8.0), CalendarOptions(firstDay = (1).toDouble())), listOf(CalendarValue(date = "2026-01-05", value = 3.0), CalendarValue(date = "2026-01-20", value = 7.5)), CalendarOptions(firstDay = (1).toDouble()))',
+      'val pyreonLayout = layoutCalendar("2026-01-01", "2026-02-28", PyreonChartRect(4.0, 4.0, pyreonW - 8.0, 160.0 - 8.0), CalendarOptions(firstDay = (1).toDouble()))')
+    expect(r.code).toContain(
+      'renderCalendar(pyreonLayout, listOf(CalendarValue(date = "2026-01-05", value = 3.0), CalendarValue(date = "2026-01-20", value = 7.5)), CalendarOptions(firstDay = (1).toDouble()))',
     )
   })
   it('a values record that is not a literal (a call) warns BY NAME on both targets', () => {
@@ -1243,8 +1247,8 @@ describe('chart hosts — CalendarChart + ParallelChart lower through literal ad
     expect(r.code).toContain(
       'layoutParallel(AXES, [[0.0, 30.0], [2.0, Double.nan], [Double.nan, 22.0]], PyreonChartRect(x: 30.0, y: 8.0, w: max(0.0, Double(pyreonGeo.size.width) - 30.0 * 2.0), h: max(0.0, 260.0 - 16.0)), nil)',
     )
-    expect(r.code).toContain('renderParallel(layoutParallel(')
-    expect(r.code).toContain('hitParallelIndex(layoutParallel(')
+    expect(r.code).toContain('renderParallel(pyreonLayout')
+    expect(r.code).toContain('hitParallelIndex(pyreonLayout')
     const noGutter = transform(PARALLEL.replace(' gutter={30}', ''), { target: 'swift' })
     expect(noGutter.code).toContain('PyreonChartRect(x: 40.0, y: 8.0, w: max(0.0, Double(pyreonGeo.size.width) - 40.0 * 2.0), h: max(0.0, 260.0 - 16.0))')
   })
@@ -1296,7 +1300,7 @@ export function Picks() {
   return (
     <Stack>
       <Text>{hovered()}</Text>
-      <PlotChart data={ROWS} x={(d) => d.k} marks={[bars((d) => d.v)]} height={200} selectedMode="single" onHighlight={(i: number) => hovered.set(i)} />
+      <PlotChart animate={false} data={ROWS} x={(d) => d.k} marks={[bars((d) => d.v)]} height={200} selectedMode="single" onHighlight={(i: number) => hovered.set(i)} />
     </Stack>
   )
 }

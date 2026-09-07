@@ -1,6 +1,13 @@
 package com.pyreon.runtime
 
+import android.provider.Settings
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -388,4 +395,39 @@ fun PyreonGaugeChart(
                 baseline = "bottom"))
     }
     PyreonChartCanvas(cmds, modifier.size(width.dp, height.dp))
+}
+
+// ---- Entrance tween ---------------------------------------------------------
+
+/** The web canvas host's entrance easing: cubic ease-out on a clamped 0..1 `t`. */
+fun pyreonEntranceProgress(t: Double): Double {
+    val c = if (t < 0.0) 0.0 else if (t > 1.0) 1.0 else t
+    val u = 1.0 - c
+    return 1.0 - u * u * u
+}
+
+/**
+ * Drives a chart's one-time entrance (`animate`, on by default): `content`
+ * receives the progress 0..1 on every frame of the tween and 1 afterwards —
+ * the same `progress` the engine's render functions take on the web. Honours
+ * the system animator scale (Developer options → "Animation duration scale"
+ * off, the Android twin of `prefers-reduced-motion`) by rendering fully
+ * formed at once. The Animatable settles at 1, so a finished chart recomposes
+ * no more.
+ */
+@Composable
+fun PyreonChartEntrance(durationMs: Double, content: @Composable (Double) -> Unit) {
+    val context = LocalContext.current
+    val reduceMotion = remember {
+        Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
+    }
+    if (durationMs <= 0.0 || reduceMotion) {
+        content(1.0)
+        return
+    }
+    val t = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        t.animateTo(1f, tween(durationMs.toInt(), easing = LinearEasing))
+    }
+    content(pyreonEntranceProgress(t.value.toDouble()))
 }

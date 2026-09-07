@@ -29,7 +29,7 @@ describe('onSelectIndex on the family hosts', () => {
     const indexHits: SankeyHitIndex[] = []
     const hits: unknown[] = []
     const { container } = mountInBrowser(
-      h(SankeyChart, { nodes: NODES, links: LINKS, width: 480, height: 240, onSelectIndex: (hit: SankeyHitIndex) => indexHits.push(hit), onSelect: (hit: unknown) => hits.push(hit) }),
+      h(SankeyChart, { animate: false, nodes: NODES, links: LINKS, width: 480, height: 240, onSelectIndex: (hit: SankeyHitIndex) => indexHits.push(hit), onSelect: (hit: unknown) => hits.push(hit) }),
     )
     await flush()
     const canvas = container.querySelector('canvas')!
@@ -47,7 +47,7 @@ describe('onSelectIndex on the family hosts', () => {
   it('TreemapChart: a click reports the deepest cell index under the point, -1 outside', async () => {
     const data: TreeNode[] = [{ name: 'a', value: 3 }, { name: 'b', value: 1 }]
     const picked: number[] = []
-    const { container } = mountInBrowser(h(TreemapChart, { data, width: 200, height: 100, onSelectIndex: (i: number) => picked.push(i) }))
+    const { container } = mountInBrowser(h(TreemapChart, { animate: false, data, width: 200, height: 100, onSelectIndex: (i: number) => picked.push(i) }))
     await flush()
     const canvas = container.querySelector('canvas')!
     const cells = layoutTreemap(data, { x: 0, y: 0, w: 200, h: 100 })

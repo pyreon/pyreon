@@ -23,6 +23,93 @@ hydrates nothing it doesn't need, and shares its geometry with the native
 
 ```tsx
 // @check
+import { Axis, Bar, Legend, Line, Plot, Tip, currency } from '@pyreon/charts/plot'
+
+type Row = { month: string; revenue: number; target: number }
+const rows: Row[] = [
+  { month: 'Jan', revenue: 3200, target: 3000 },
+  { month: 'Feb', revenue: 4100, target: 3400 },
+  { month: 'Mar', revenue: 3800, target: 3800 },
+]
+
+export const Revenue = () => (
+  <Plot<Row> data={rows} x="month" title="Monthly revenue vs target" showTitle>
+    <Bar y="revenue" label="Revenue" />
+    <Line y="target" label="Target" />
+    <Axis y format={currency('$')} />
+    <Tip />
+    <Legend />
+  </Plot>
+)
+```
+
+That is the whole grammar: **channels are field names** (`y="revenue"` is
+typed against `Row`; an accessor `y={(d) => d.revenue}` works too), **marks are
+children** (they draw in order, so an `<Area>` under a `<Line>` under `<Dot>`
+is three lines of JSX), and the tooltip, legend, axes, zoom and reference
+lines are **declared as data** beside the marks they apply to. A `<Show>`
+around a mark adds and removes its series like any other Pyreon child.
+
+| Child | Declares |
+| --- | --- |
+| `<Bar y stack? group? />` `<Line y />` `<Area y />` `<Dot y r? />` | The marks. `stack` / `group` combine bars; `r` turns dots into area-mapped bubbles. |
+| `<Rule y label? />` `<Rule from to />` `<Rule x />` | A reference line (horizontal, or vertical at a continuous x) or band. |
+| `<Label text at? series? />` | A datum-anchored label: at the series' `max` / `min`, or at an index. |
+| `<Axis y format domain />` `<Axis x time hidden />` `<Axis y2 … />` | Axis formatting and domains. |
+| `<Tip crosshair? format? />` | The pointer tooltip. |
+| `<Legend toggle? maxRows? />` | The legend (click toggles series). |
+| `<Zoom inside? navigator? presets? link? brush? />` | Pinch/wheel zoom and drag pan, the slider strip, preset buttons, cross-chart linking, the range brush. |
+
+`<Plot color="region">` switches to **long format**: every `y` mark becomes
+one series per distinct `region`, categories come from `x`, a missing
+(category, series) pair is a gap, and bars group side by side unless `stack`.
+
+The **family marks** make the same grammar cover the row-array families — one
+family per plot, and `<Plot>` renders that family's host instead of the
+cartesian plot:
+
+| Family mark | Renders | Channels |
+| --- | --- | --- |
+| `<Arc value label color? innerRadius? />` | A pie (`innerRadius={0}`) or donut. | one slice per row |
+| `<Stage value label color? sort? gap? />` | A funnel, descending by default. | one stage per row |
+| `<Cell x y value colors? gap? />` | A heatmap; duplicate `(x, y)` cells sum. | one observation per row |
+| `<Candle open high low close upColor? downColor? />` | A candlestick; the plot's `x` labels each period. | one period per row |
+
+```tsx
+// @check
+import { Arc, Legend, Plot, Tip } from '@pyreon/charts/plot'
+
+type Share = { browser: string; pct: number }
+const share: Share[] = [
+  { browser: 'Chrome', pct: 65 },
+  { browser: 'Safari', pct: 19 },
+  { browser: 'Firefox', pct: 8 },
+]
+
+export const BrowserShare = () => (
+  <Plot<Share> data={share} title="Browser share" showTitle>
+    <Arc value="pct" label="browser" innerRadius={0.6} />
+    <Tip />
+    <Legend />
+  </Plot>
+)
+```
+
+`<Tip>`, `<Legend>` and `<Axis y format>` apply to a family host too; a
+cartesian mark or `<Zoom>` beside a family mark is reported and ignored.
+
+<Example file="./examples/charts/plot-grammar" title="The grammar — marks as children, a Show around one" />
+
+The grammar and the array form below are ONE spec: `<Plot>` resolves its
+children into the `marks={[bars(…)]}` props `<PlotChart>` takes (`resolveGrammar`
+is exported and tested to produce identical series), and on native the
+compiler desugars `<Plot>` to that element before lowering — the two emit
+byte-identical Swift and Kotlin.
+
+## The array form
+
+```tsx
+// @check
 import { signal } from '@pyreon/reactivity'
 import { PlotChart, bars, line, currency } from '@pyreon/charts/plot'
 
@@ -141,7 +228,8 @@ export const Radials = () => (
 )
 ```
 
-`innerRadius={0}` is a pie; anything up to 1 is a donut.
+`innerRadius={0}` is a pie; anything up to 1 is a donut. In the grammar the
+same chart is `<Plot data={share}><Arc value="pct" label="browser" innerRadius={0.6} /></Plot>`.
 
 ## Finance and matrix charts
 
@@ -333,6 +421,25 @@ they share one prop vocabulary:
 | `onSelect` | The family's rich hit (a cell, an arc, a node, a Sankey node-or-link) or `null`; the row-array hosts (Pie, Funnel, Candlestick, Boxplot, PlotChart) report the row index. |
 | `onSelectIndex` | The engine's INDEX hit, on **every** host — what the native tap gesture reports, so a handler written once works on all three targets. |
 | `theme` / `width` / `height` / `class` / `accessibleTable` | As on `<PlotChart>`. |
+
+The same vocabulary crosses: on iOS and Android every family host draws the
+title block, the legend and the tooltip natively (the tooltip on a **tap**,
+cleared by a tap on nothing). What the legend lists and what a tap says come
+from one crossing module — `treemapLegend`, `sankeyTip`, `pieTip`, … and
+`renderTooltip` in `chrome.ts` — that the web host calls too, so the three
+targets cannot disagree about either. `animate` crosses too: every host whose
+engine takes a `progress` (all of the above except Pie, Radar, Candlestick and
+Gauge, which draw fully formed everywhere) plays the same cubic ease-out
+entrance over `theme.enterMs` inside `PyreonChartEntrance`, off under Reduce
+Motion (iOS) and a zero animator scale (Android) — the web host's
+`prefers-reduced-motion` — and `animate={false}` emits the host exactly as
+before. On an engine with no entrance the prop is named as inert rather than
+as a native gap. The `theme` prop follows too: a named theme or a literal
+colours the title, legend and tooltip box, seeds the options palette (an
+explicit `palette` in the options wins) and paints `theme.background`
+behind the chart on every host, as the web canvas host does. A theme that
+is not a literal (`theme={someVariable}`) cannot be read at compile time;
+it is reported by name and the default applies.
 
 Bars are rounded by default: `theme.radius` (3) rounds the corners away from
 the baseline — top for a positive bar, bottom for a negative one, the far end

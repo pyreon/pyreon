@@ -20,7 +20,7 @@ describe('TreeChart (real browser)', () => {
     const rows = signal(DATA)
     const picked: (TreeLayoutNode | null)[] = []
     const { container } = mountInBrowser(() =>
-      TreeChart({ data: () => rows(), width: 400, height: 300, title: 'Org', onSelect: (n) => picked.push(n) }),
+      TreeChart({ animate: false, data: () => rows(), width: 400, height: 300, title: 'Org', onSelect: (n) => picked.push(n) }),
     )
     await flush()
     const c = container.querySelector('canvas')!

@@ -60,7 +60,8 @@ export function BoxplotChart<T>(props: BoxplotChartProps<T>): VNode {
       )
       return { rows, categories, domain, l, box }
     },
-    render: (g, _measure, theme) => {
+    animates: true,
+    render: (g, _measure, theme, progress) => {
       const cmds: DrawCmd[] = []
       for (const tick of g.l.yTicks) {
         cmds.push({ kind: 'line', from: { x: g.l.plot.x, y: tick.pos }, to: { x: g.l.plot.x + g.l.plot.w, y: tick.pos }, stroke: theme.grid, width: 1.0 })
@@ -69,7 +70,7 @@ export function BoxplotChart<T>(props: BoxplotChartProps<T>): VNode {
       for (const tick of g.l.xTicks) {
         cmds.push({ kind: 'text', text: tick.label, at: { x: tick.pos, y: g.l.plot.y + g.l.plot.h + 6.0 }, fill: theme.label, size: theme.fontSize, align: 'middle', baseline: 'top' })
       }
-      for (const c of renderBoxplot(g.rows, g.l.plot, g.domain, props.box)) cmds.push(c)
+      for (const c of renderBoxplot(g.rows, g.l.plot, g.domain, { ...props.box, progress })) cmds.push(c)
       return shiftCmds(cmds, g.box.x, g.box.y)
     },
     select: (g, px, py) => {

@@ -9,6 +9,8 @@
 // radial trigonometry, the decimation, or the time scales.
 
 export { PlotChart } from './engine/Chart'
+export { Arc, Area, Axis, Bar, Candle, Cell, Dot, Label, Legend, Line, Plot, Rule, Stage, Tip, Zoom, channel, resolveGrammar } from './engine/grammar'
+export type { ArcProps, AxisProps, BarProps, CandleProps, CellProps, Channel, DotProps, FamilyHost, LabelProps, LegendProps, MarkProps, PlotProps, ResolvedGrammar, RuleProps, StageProps, TipProps, ZoomProps } from './engine/grammar'
 export type { PlotChartProps } from './engine/Chart'
 export { GaugeChart, PieChart } from './engine/PieChart'
 export { CandlestickChart } from './engine/CandlestickChart'
@@ -91,6 +93,9 @@ export { bubbleRadii } from './engine/bubble'
 export type { LegendPlan } from './engine/legend'
 export type { LegendEntry, LegendLayout, LegendOptions } from './engine/legend'
 export { placeTooltip, tooltipAt, tooltipLines } from './engine/tooltip'
+export type { Size, TooltipSeries } from './engine/tooltip'
+export { calendarTip, funnelLegend, funnelTip, ganttTip, graphTip, pieLegend, pieTip, polarLegend, polarTip, renderTooltip, riverLegend, riverTip, sankeyLegend, sankeyTip, sunburstLegend, sunburstTip, treeLegend, treeTip, treemapLegend, treemapTip } from './engine/chrome'
+export type { TooltipOptions } from './engine/chrome'
 export type { TooltipContent, TooltipRow } from './engine/tooltip'
 
 // Formatting

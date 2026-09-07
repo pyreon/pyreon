@@ -22,7 +22,7 @@ describe('ParallelChart (real browser)', () => {
     const rows = signal(ROWS)
     const picked: (ParallelLine | null)[] = []
     const { container } = mountInBrowser(() =>
-      ParallelChart({ axes: AXES, rows: () => rows(), width: 400, height: 300, title: 'P', onSelect: (l) => picked.push(l) }),
+      ParallelChart({ animate: false, axes: AXES, rows: () => rows(), width: 400, height: 300, title: 'P', onSelect: (l) => picked.push(l) }),
     )
     await flush()
     const c = container.querySelector('canvas')!

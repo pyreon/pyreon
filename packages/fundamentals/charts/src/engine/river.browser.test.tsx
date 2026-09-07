@@ -19,7 +19,7 @@ describe('RiverChart (real browser)', () => {
     const series = signal(SERIES)
     const picked: (RiverLayer | null)[] = []
     const { container } = mountInBrowser(() =>
-      RiverChart({ series: () => series(), width: 400, height: 200, title: 'R', river: { curve: 'linear' }, onSelect: (l) => picked.push(l) }),
+      RiverChart({ animate: false, series: () => series(), width: 400, height: 200, title: 'R', river: { curve: 'linear' }, onSelect: (l) => picked.push(l) }),
     )
     await flush()
     const c = container.querySelector('canvas')!

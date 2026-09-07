@@ -21,7 +21,7 @@ describe('SankeyChart (real browser)', () => {
     const links = signal(LINKS)
     const picked: SankeyHit[] = []
     const { container } = mountInBrowser(() =>
-      SankeyChart({ nodes: NODES, links: () => links(), width: 400, height: 300, title: 'Flow', onSelect: (h) => picked.push(h) }),
+      SankeyChart({ animate: false, nodes: NODES, links: () => links(), width: 400, height: 300, title: 'Flow', onSelect: (h) => picked.push(h) }),
     )
     await flush()
     const c = container.querySelector('canvas')!

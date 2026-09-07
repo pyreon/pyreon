@@ -690,7 +690,7 @@ export type DeclIR =
    * snapshots the signal (non-reactive), matching web semantics. Non-call,
    * non-arrow inits only (arrows → `function`, calls → signal/computed/hook).
    */
-  | { kind: 'value'; name: string; expr: ExprIR }
+  | { kind: 'value'; name: string; expr: ExprIR; /** The declaration's annotation, when written — it steers an object/array literal to its named struct. */ type?: TypeIR }
   | { kind: 'geolocation'; name: string }
   | { kind: 'websocket'; name: string; url: string }
   | { kind: 'database'; name: string }

@@ -14,6 +14,25 @@ They are INDEPENDENT. Pulling a name from the default entry loads ECharts;
 
 ## `@pyreon/charts/plot` — Pyreon's own engine
 
+```tsx
+import { Axis, Bar, Legend, Line, Plot, Tip, currency } from '@pyreon/charts/plot'
+
+<Plot<Row> data={rows} x="month">
+  <Bar y="revenue" label="Revenue" />
+  <Line y="target" label="Target" />
+  <Axis y format={currency('$')} />
+  <Tip /> <Legend />
+</Plot>
+```
+
+The same grammar covers the row-array families: `<Plot data={share}><Arc value="pct" label="browser" /></Plot>` is a pie or donut, `<Stage>` a funnel, `<Cell x y value>` a heatmap, `<Candle open high low close>` a candlestick — one family per plot, and `<Plot>` renders that host. `<Label text at="max" />` marks a datum, `<Rule x>` draws a vertical reference.
+
+Channels are field names (typed `keyof Row`) or accessors; marks are children
+and draw in order; `<Rule>` / `<Axis>` / `<Tip>` / `<Legend>` / `<Zoom>` declare
+the rest as data. `color="region"` pivots long-format rows into one series per
+value. The `<PlotChart marks={[bars(…)]}>` array form is the same spec and stays
+supported; on native the compiler desugars one to the other.
+
 No third-party engine. The geometry is pure TypeScript over plain data, and the
 platform half is a short backend that walks a flat `DrawCmd[]` — which is what
 makes it tree-shakeable, server-renderable, and — because every family's geometry
