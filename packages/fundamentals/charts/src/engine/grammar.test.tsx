@@ -1,6 +1,6 @@
 import { h } from '@pyreon/core'
 import { Area, Axis, Bar, Dot, Legend, Line, Rule, Tip, Zoom, channel, resolveGrammar } from './grammar'
-import { area, bars, bubble, groupedBars, line, points, stackedBars, resolveMarks } from './marks'
+import { area, bars, bubble, groupedBars, line, stackedBars, resolveMarks } from './marks'
 import { compact } from './format'
 
 interface Row { month: string; revenue: number; cost: number; region: string; size: number }
