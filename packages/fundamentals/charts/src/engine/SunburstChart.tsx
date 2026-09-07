@@ -1,9 +1,9 @@
 // `<SunburstChart>` — a radial hierarchy on a canvas, over the shared canvas host.
 
 import type { VNode } from '@pyreon/core'
-import { canvasHost } from './canvas-host'
+import { canvasHost, orNull } from './canvas-host'
+import { sunburstLegend, sunburstTip } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
-import { plain } from './format'
 import { hitSunburst, hitSunburstIndex, layoutSunburst, renderSunburst } from './sunburst'
 import type { SunburstArc, SunburstOptions } from './sunburst'
 import type { TreeNode } from './treemap'
@@ -37,15 +37,12 @@ export function SunburstChart(props: SunburstChartProps): VNode {
       return { arcs: layoutSunburst(readData(), innerR, outerR, { palette: theme.palette, ...props.sunburst }), center: { x: box.x + box.w / 2.0, y: box.y + box.h / 2.0 } }
     },
     render: (g, measure, theme) => renderSunburst(g.arcs, g.center, { palette: theme.palette, ...props.sunburst }, measure),
-    legend: (g) => g.arcs.filter((a) => a.depth === 0).map((a) => ({ label: a.name, color: a.color })),
+    legend: (g) => sunburstLegend(g.arcs),
     select: (g, px, py) => {
       props.onSelect?.(hitSunburst(g.arcs, g.center, px, py))
       props.onSelectIndex?.(hitSunburstIndex(g.arcs, g.center, px, py))
     },
-    tooltip: (g, px, py) => {
-      const a = hitSunburst(g.arcs, g.center, px, py)
-      return a === null ? null : [a.name, plain(a.value)]
-    },
+    tooltip: (g, px, py) => orNull(sunburstTip(g.arcs, g.center, px, py)),
     a11y: (g) => {
       const leaves = g.arcs.filter((a) => a.leaf)
       return {

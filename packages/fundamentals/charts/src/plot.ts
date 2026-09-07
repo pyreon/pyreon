@@ -93,6 +93,9 @@ export { bubbleRadii } from './engine/bubble'
 export type { LegendPlan } from './engine/legend'
 export type { LegendEntry, LegendLayout, LegendOptions } from './engine/legend'
 export { placeTooltip, tooltipAt, tooltipLines } from './engine/tooltip'
+export type { Size, TooltipSeries } from './engine/tooltip'
+export { calendarTip, funnelLegend, funnelTip, ganttTip, graphTip, pieLegend, pieTip, polarLegend, polarTip, renderTooltip, riverLegend, riverTip, sankeyLegend, sankeyTip, sunburstLegend, sunburstTip, treeLegend, treeTip, treemapLegend, treemapTip } from './engine/chrome'
+export type { TooltipOptions } from './engine/chrome'
 export type { TooltipContent, TooltipRow } from './engine/tooltip'
 
 // Formatting

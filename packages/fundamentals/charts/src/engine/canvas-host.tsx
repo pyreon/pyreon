@@ -28,6 +28,11 @@ const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
  * at the origin and the host moves the result under the chrome. Gradients ride
  * along because their axis is in the shape's coordinate space.
  */
+/** The crossing chrome functions return an EMPTY list for a miss; the host's tooltip contract says `null`. */
+export function orNull(lines: string[]): string[] | null {
+  return lines.length === 0 ? null : lines
+}
+
 export function shiftCmds(cmds: DrawCmd[], dx: Double, dy: Double): DrawCmd[] {
   if (dx === 0 && dy === 0) return cmds
   const pt = (p: { x: Double; y: Double }) => ({ x: p.x + dx, y: p.y + dy })

@@ -181,9 +181,13 @@ describe('chart hosts — onSelectIndex (tap → the engine index hit)', () => {
     const r = transform(ONSELECT, { target: 'swift' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain(
-      '.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in let hit = hitSankeyIndex(layoutSankey(nodes, links, PyreonChartRect(x: 80.0, y: 8.0, w: max(0.0, Double(pyreonGeo.size.width) - 80.0 * 2.0), h: max(0.0, 240.0 - 16.0)), nil), Double(pyreonTap.location.x), Double(pyreonTap.location.y)); ({ picked = hit.node })() })',
+      'let pyreonLayout = layoutSankey(nodes, links, PyreonChartRect(x: 80.0, y: 8.0, w: max(0.0, Double(pyreonGeo.size.width) - 80.0 * 2.0), h: max(0.0, 240.0 - 16.0)), nil)')
+    // The layout is laid out ONCE and shared by the paint and the hit (it used to be computed twice).
+    expect(r.code).toContain(
+      '.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in let hit = hitSankeyIndex(pyreonLayout, Double(pyreonTap.location.x), Double(pyreonTap.location.y)); ({ picked = hit.node })() })',
     )
-    expect(r.code).toContain('let i = hitTreemapIndex(layoutTreemap(CELLS, PyreonChartRect(x: 0.0, y: 0.0, w: 200.0, h: 100.0), nil), Double(pyreonTap.location.x), Double(pyreonTap.location.y))')
+    expect(r.code).toContain('let pyreonLayout = layoutTreemap(CELLS, PyreonChartRect(x: 0.0, y: 0.0, w: 200.0, h: 100.0), nil)')
+    expect(r.code).toContain('let i = hitTreemapIndex(pyreonLayout, Double(pyreonTap.location.x), Double(pyreonTap.location.y))')
     expect(r.code).toContain('.frame(width: 200.0, height: 100.0)')
   })
   it('Kotlin: detectTapGestures over the same layout, the px tap divided by the density read in the enclosing scope', () => {
@@ -191,10 +195,12 @@ describe('chart hosts — onSelectIndex (tap → the engine index hit)', () => {
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('val pyreonDensity = LocalDensity.current.density')
     expect(r.code).toContain(
-      '.pointerInput(Unit) { detectTapGestures { pyreonTap -> val hit = hitSankeyIndex(layoutSankey(nodes, links, PyreonChartRect(80.0, 8.0, maxOf(0.0, pyreonW - 80.0 * 2.0), maxOf(0.0, 240.0 - 16.0)), null), (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble()); ({ picked = hit.node })() } }',
+      'val pyreonLayout = layoutSankey(nodes, links, PyreonChartRect(80.0, 8.0, maxOf(0.0, pyreonW - 80.0 * 2.0), maxOf(0.0, 240.0 - 16.0)), null)')
+    expect(r.code).toContain(
+      '.pointerInput(Unit) { detectTapGestures { pyreonTap -> val hit = hitSankeyIndex(pyreonLayout, (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble()); ({ picked = hit.node })() } }',
     )
     // An explicit-width host with a tap still gets the BoxWithConstraints scope (the density lives there).
-    expect(r.code).toContain('val i = hitTreemapIndex(layoutTreemap(CELLS, PyreonChartRect(0.0, 0.0, 200.0, 100.0), null), (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble())')
+    expect(r.code).toContain('val i = hitTreemapIndex(pyreonLayout, (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble())')
   })
   it('a bare function reference is called with the hit', () => {
     const src = `import { Stack } from '@pyreon/primitives'
@@ -207,8 +213,8 @@ function chosen(i: number) {
 export function Plan() {
   return (<Stack><GanttChart tasks={TASKS} onSelectIndex={chosen} /></Stack>)
 }`
-    expect(transform(src, { target: 'swift' }).code).toContain('pyreonTap in chosen(hitGanttIndex(layoutGantt(TASKS, ')
-    expect(transform(src, { target: 'kotlin' }).code).toContain('pyreonTap -> chosen(hitGanttIndex(layoutGantt(TASKS, ')
+    expect(transform(src, { target: 'swift' }).code).toContain('pyreonTap in chosen(hitGanttIndex(pyreonLayout, ')
+    expect(transform(src, { target: 'kotlin' }).code).toContain('pyreonTap -> chosen(hitGanttIndex(pyreonLayout, ')
   })
   it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine) accepts the tap emit', () => {
     const r = validateSwiftWithStubs(transform(ONSELECT, { target: 'swift' }).code)
@@ -506,7 +512,7 @@ describe('chart hosts — legend + title chrome (Plot / Pie / Radar)', () => {
     // Pie: slices hoisted so the legend and the arcs share one list; no title block (the pie has no showTitle).
     expect(r.code).toContain('let pyreonItems: [Slice] = TEAMS.enumerated().map { (pyreonI, pyreonD) in Slice(value: Double(pyreonD.share), label: pyreonD.name, color:')
     expect(r.code).toContain('let pyreonTitle: TitleLayout = TitleLayout(cmds: [], height: 0.0)')
-    expect(r.code).toContain('renderLegend(pyreonItems.map { LegendEntry(label: $0.label, color: $0.color) }, PyreonChartRect(x: 0.0, y: pyreonTitle.height, w: 240.0, h: 200.0 - pyreonTitle.height)')
+    expect(r.code).toContain('renderLegend(pieLegend(pyreonItems), PyreonChartRect(x: 0.0, y: pyreonTitle.height, w: 240.0, h: 200.0 - pyreonTitle.height)')
     expect(r.code).toContain('pyreonShiftCmds(renderPie(pyreonItems, PyreonChartRect(x: 0.0, y: 0.0, w: 240.0, h: 200.0 - pyreonTop), PieOptions(')
     expect(r.code).toContain('fitCircle(PyreonChartRect(x: 0.0, y: 0.0, w: 240.0, h: 200.0 - pyreonTop)).radius * 0.0, PyreonChartPt(x: Double(pyreonTap.location.x), y: Double(pyreonTap.location.y) - pyreonTop))')
     // Radar: legend entries from the label accessor and the same palette the series use.
@@ -625,7 +631,7 @@ describe('chart hosts — theme overrides, formatters and bubble marks', () => {
       expect(r.code).toContain('PyreonChartCanvas(')
     }
   })
-  it('chrome props the target does not draw yet warn BY NAME on every host (tooltip everywhere; title/legend where not lowered)', () => {
+  it('chrome props the target does not draw yet warn BY NAME (animate everywhere; title / legend / tooltip lower on the family hosts)', () => {
     const src = `import { TreemapChart, PieChart } from '@pyreon/charts/plot'
 type N = { name: string; value: number }
 const NODES: N[] = [{ name: 'a', value: 1 }]
@@ -635,13 +641,7 @@ export const A = () => <TreemapChart data={NODES} showTitle title="T" showLegend
 export const B = () => <PieChart data={SL} value={(d: S) => d.v} label={(d: S) => d.label} showLegend tooltip animate={false} height={200} />`
     for (const target of ['swift', 'kotlin'] as const) {
       const r = transform(src, { target })
-      expect(r.warnings).toEqual([
-        '<TreemapChart>: `showTitle` is not lowered on native yet; the chart renders without it.',
-        '<TreemapChart>: `showLegend` is not lowered on native yet; the chart renders without it.',
-        '<TreemapChart>: `tooltip` is not lowered on native yet; the chart renders without it.',
-        '<PieChart>: `tooltip` is not lowered on native yet; the chart renders without it.',
-        '<PieChart>: `animate` is not lowered on native yet; the chart renders without it.',
-      ])
+      expect(r.warnings).toEqual(['<PieChart>: `animate` is not lowered on native yet; the chart renders without it.'])
       expect(r.code).toContain('PyreonChartCanvas(')
     }
   })
@@ -1219,15 +1219,19 @@ describe('chart hosts — CalendarChart + ParallelChart lower through literal ad
     const r = transform(CALENDAR, { target: 'swift' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain(
-      'PyreonChartCanvas(cmds: renderCalendar(layoutCalendar("2026-01-01", "2026-02-28", PyreonChartRect(x: 4.0, y: 4.0, w: Double(pyreonGeo.size.width) - 8.0, h: 160.0 - 8.0), CalendarOptions(firstDay: Double(1))), [CalendarValue(date: "2026-01-05", value: 3.0), CalendarValue(date: "2026-01-20", value: 7.5)], CalendarOptions(firstDay: Double(1))))',
+      'let pyreonLayout = layoutCalendar("2026-01-01", "2026-02-28", PyreonChartRect(x: 4.0, y: 4.0, w: Double(pyreonGeo.size.width) - 8.0, h: 160.0 - 8.0), CalendarOptions(firstDay: Double(1)))')
+    expect(r.code).toContain(
+      'PyreonChartCanvas(cmds: renderCalendar(pyreonLayout, [CalendarValue(date: "2026-01-05", value: 3.0), CalendarValue(date: "2026-01-20", value: 7.5)], CalendarOptions(firstDay: Double(1))))',
     )
-    expect(r.code).toContain('hitCalendarIndex(layoutCalendar("2026-01-01", "2026-02-28", ')
+    expect(r.code).toContain('hitCalendarIndex(pyreonLayout, ')
   })
   it('Kotlin: the same through listOf / named args', () => {
     const r = transform(CALENDAR, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain(
-      'renderCalendar(layoutCalendar("2026-01-01", "2026-02-28", PyreonChartRect(4.0, 4.0, pyreonW - 8.0, 160.0 - 8.0), CalendarOptions(firstDay = (1).toDouble())), listOf(CalendarValue(date = "2026-01-05", value = 3.0), CalendarValue(date = "2026-01-20", value = 7.5)), CalendarOptions(firstDay = (1).toDouble()))',
+      'val pyreonLayout = layoutCalendar("2026-01-01", "2026-02-28", PyreonChartRect(4.0, 4.0, pyreonW - 8.0, 160.0 - 8.0), CalendarOptions(firstDay = (1).toDouble()))')
+    expect(r.code).toContain(
+      'renderCalendar(pyreonLayout, listOf(CalendarValue(date = "2026-01-05", value = 3.0), CalendarValue(date = "2026-01-20", value = 7.5)), CalendarOptions(firstDay = (1).toDouble()))',
     )
   })
   it('a values record that is not a literal (a call) warns BY NAME on both targets', () => {
@@ -1243,8 +1247,8 @@ describe('chart hosts — CalendarChart + ParallelChart lower through literal ad
     expect(r.code).toContain(
       'layoutParallel(AXES, [[0.0, 30.0], [2.0, Double.nan], [Double.nan, 22.0]], PyreonChartRect(x: 30.0, y: 8.0, w: max(0.0, Double(pyreonGeo.size.width) - 30.0 * 2.0), h: max(0.0, 260.0 - 16.0)), nil)',
     )
-    expect(r.code).toContain('renderParallel(layoutParallel(')
-    expect(r.code).toContain('hitParallelIndex(layoutParallel(')
+    expect(r.code).toContain('renderParallel(pyreonLayout')
+    expect(r.code).toContain('hitParallelIndex(pyreonLayout')
     const noGutter = transform(PARALLEL.replace(' gutter={30}', ''), { target: 'swift' })
     expect(noGutter.code).toContain('PyreonChartRect(x: 40.0, y: 8.0, w: max(0.0, Double(pyreonGeo.size.width) - 40.0 * 2.0), h: max(0.0, 260.0 - 16.0))')
   })

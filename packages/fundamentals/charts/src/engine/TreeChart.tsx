@@ -1,9 +1,9 @@
 // `<TreeChart>` — a node-link hierarchy on a canvas, over the shared canvas host.
 
 import type { VNode } from '@pyreon/core'
-import { canvasHost } from './canvas-host'
+import { canvasHost, orNull } from './canvas-host'
+import { treeLegend, treeTip } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
-import { plain } from './format'
 import { hitTree, hitTreeIndex, layoutTree, renderTree } from './tree'
 import type { TreeLayout, TreeLayoutNode, TreeOptions } from './tree'
 import type { TreeNode } from './treemap'
@@ -29,15 +29,12 @@ export function TreeChart(props: TreeChartProps): VNode {
     },
     layout: (box, _measure, theme) => layoutTree(readData(), box, opts(theme.palette)),
     render: (layout, _measure, theme) => renderTree(layout, opts(theme.palette)),
-    legend: (layout) => layout.nodes.filter((n) => n.depth === 0).map((n) => ({ label: n.name, color: n.color })),
+    legend: treeLegend,
     select: (layout, px, py) => {
       props.onSelect?.(hitTree(layout, px, py, props.tree?.symbolSize))
       props.onSelectIndex?.(hitTreeIndex(layout, px, py, props.tree?.symbolSize))
     },
-    tooltip: (layout, px, py) => {
-      const n = hitTree(layout, px, py, props.tree?.symbolSize)
-      return n === null ? null : n.value === undefined ? [n.name] : [n.name, plain(n.value)]
-    },
+    tooltip: (layout, px, py) => orNull(treeTip(layout, px, py, props.tree?.symbolSize)),
     a11y: (layout) => ({
       title: props.title,
       categories: layout.nodes.map((n) => n.name),

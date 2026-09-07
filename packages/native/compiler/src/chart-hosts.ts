@@ -43,6 +43,8 @@ export interface ChartHostTarget {
   pieOptions: (a: ChartHostArgs) => string
   /** The web hosts' default ChartTheme literal. */
   theme: () => string
+  /** `a ?? b` / `a ?: b`. */
+  coalesce: (a: string, b: string) => string
 }
 
 export interface ChartHostArgs {
@@ -78,6 +80,10 @@ export interface ChartHostSpec {
   readonly gutterDefault?: number
   /** Props that exist on the web but are not lowered — warned BY NAME when present. */
   readonly warnProps?: readonly string[]
+  /** Builds the `[LegendEntry]` expression from a layout — the crossing `xLegend` (absent: the family has no legend, as on the web). */
+  readonly legend?: (layout: string, a: ChartHostArgs, t: ChartHostTarget) => string
+  /** Builds the `[String]` tooltip-lines expression for a tap at (x, y) — the crossing `xTip` (empty = miss). */
+  readonly tooltip?: (layout: string, x: string, y: string, a: ChartHostArgs, t: ChartHostTarget) => string
 }
 
 /** Turns one data prop's IR (with every data prop's IR to hand) into an engine argument, or `'unsupported'` after warning. */
@@ -207,6 +213,8 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     },
     render: (l, a) => `renderSankey(${l}, ${a.options})`,
     hit: (l, x, y) => `hitSankeyIndex(${l}, ${x}, ${y})`,
+    legend: (l) => `sankeyLegend(${l})`,
+    tooltip: (l, x, y) => `sankeyTip(${l}, ${x}, ${y})`,
   },
   GraphChart: {
     data: ['nodes', 'links'],
@@ -215,6 +223,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     layout: (a, t) => `layoutGraph(${a.data[0]}, ${a.data[1]}, ${box00(a, t)}, ${a.options})`,
     render: (l, a, t) => `renderGraph(${l}, ${box00(a, t)}, ${a.options})`,
     hit: (l, x, y) => `hitGraphIndex(${l}, ${x}, ${y})`,
+    tooltip: (l, x, y) => `graphTip(${l}, ${x}, ${y})`,
   },
   TreemapChart: {
     data: ['data'],
@@ -223,6 +232,8 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     layout: (a, t) => `layoutTreemap(${a.data[0]}, ${box00(a, t)}, ${a.options})`,
     render: (l, a) => `renderTreemap(${l}, ${a.options})`,
     hit: (l, x, y) => `hitTreemapIndex(${l}, ${x}, ${y})`,
+    legend: (l) => `treemapLegend(${l})`,
+    tooltip: (l, x, y) => `treemapTip(${l}, ${x}, ${y})`,
   },
   SunburstChart: {
     data: ['data'],
@@ -234,6 +245,8 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     },
     render: (l, a, t) => `renderSunburst(${l}, ${t.pt(`${a.W} / 2.0`, `${a.H} / 2.0`)}, ${a.options})`,
     hit: (l, x, y, a, t) => `hitSunburstIndex(${l}, ${t.pt(`${a.W} / 2.0`, `${a.H} / 2.0`)}, ${x}, ${y})`,
+    legend: (l) => `sunburstLegend(${l})`,
+    tooltip: (l, x, y, a, t) => `sunburstTip(${l}, ${t.pt(`${a.W} / 2.0`, `${a.H} / 2.0`)}, ${x}, ${y})`,
   },
   TreeChart: {
     data: ['data'],
@@ -242,6 +255,8 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     layout: (a, t) => `layoutTree(${a.data[0]}, ${box00(a, t)}, ${a.options})`,
     render: (l, a) => `renderTree(${l}, ${a.options})`,
     hit: (l, x, y, a, t) => `hitTreeIndex(${l}, ${x}, ${y}, ${optField(a, t, 'symbolSize')})`,
+    legend: (l) => `treeLegend(${l})`,
+    tooltip: (l, x, y, a, t) => `treeTip(${l}, ${x}, ${y}, ${optField(a, t, 'symbolSize')})`,
   },
   RiverChart: {
     data: ['series'],
@@ -250,6 +265,8 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     layout: (a, t) => `layoutRiver(${a.data[0]}, ${t.rect('8.0', '8.0', t.max0(`${a.W} - 16.0`), t.max0(`${a.H} - 16.0`))}, ${a.options})`,
     render: (l, a) => `renderRiver(${l}, ${a.options})`,
     hit: (l, x, y, a, t) => `hitRiverIndex(${l}, ${x}, ${y}, ${optField(a, t, 'curve')})`,
+    legend: (l) => `riverLegend(${l})`,
+    tooltip: (l, x, y, a, t) => `riverTip(${l}, ${x}, ${y}, ${optField(a, t, 'curve')})`,
   },
   GanttChart: {
     data: ['tasks'],
@@ -258,6 +275,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     layout: (a, t) => `layoutGantt(${a.data[0]}, ${t.rect('4.0', '4.0', `${a.W} - 8.0`, `${a.H} - 8.0`)}, ${a.options})`,
     render: (l, a) => `renderGantt(${l}, ${a.options})`,
     hit: (l, x, y) => `hitGanttIndex(${l}, ${x}, ${y})`,
+    tooltip: (l, x, y) => `ganttTip(${l}, ${x}, ${y})`,
   },
   PolarChart: {
     data: ['axes', 'series'],
@@ -266,6 +284,9 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     layout: (a, t) => `layoutPolar(${a.data[0]}, ${a.data[1]}, ${box00(a, t)}, ${a.options})`,
     render: (l, a) => `renderPolar(${l}, ${a.options})`,
     hit: (l, x, y) => `hitPolarIndex(${l}, ${x}, ${y})`,
+    // The engine's DEFAULT_PALETTE is a private module constant in the generated Swift; the web default is inlined instead.
+    legend: (_l, a, t) => `polarLegend(${a.data[1]}, ${t.coalesce(optField(a, t, 'palette'), t.list(CHART_HOST_PALETTE.map((c) => JSON.stringify(c))))})`,
+    tooltip: (l, x, y, a) => `polarTip(${l}, ${a.data[1]}, ${x}, ${y})`,
   },
   CalendarChart: {
     data: ['start', 'end', 'values'],
@@ -274,6 +295,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     layout: (a, t) => `layoutCalendar(${a.data[0]}, ${a.data[1]}, ${t.rect('4.0', '4.0', `${a.W} - 8.0`, `${a.H} - 8.0`)}, ${a.options})`,
     render: (l, a) => `renderCalendar(${l}, ${a.data[2]}, ${a.options})`,
     hit: (l, x, y) => `hitCalendarIndex(${l}, ${x}, ${y})`,
+    tooltip: (l, x, y, a) => `calendarTip(${l}, ${a.data[2]}, ${x}, ${y})`,
     adapt: { values: calendarValuesAdapter },
   },
   ParallelChart: {
@@ -482,6 +504,10 @@ export interface AccessorHostSpec {
   readonly render: (items: string, a: ChartHostArgs, t: ChartHostTarget) => string
   /** Builds the index-hit expression for a tap at (x, y). */
   readonly hit: (items: string, x: string, y: string, a: ChartHostArgs, t: ChartHostTarget) => string
+  /** The crossing `xLegend(items)`. */
+  readonly legend: (items: string) => string
+  /** The crossing `xTip(items, …, x, y)` — empty = miss. */
+  readonly tooltip: (items: string, x: string, y: string, a: ChartHostArgs, t: ChartHostTarget) => string
 }
 
 
@@ -498,6 +524,8 @@ export const ACCESSOR_CHART_HOSTS: Readonly<Record<string, AccessorHostSpec>> = 
     defaultHeight: 240,
     render: (items, a, t) => `renderFunnel(${items}, ${t.rect('8.0', '8.0', `${a.W} - 16.0`, `${a.H} - 16.0`)}, ${a.options})`,
     hit: (items, x, y, a, t) => `hitFunnel(${items}, ${t.rect('8.0', '8.0', `${a.W} - 16.0`, `${a.H} - 16.0`)}, ${x}, ${y}, ${a.options})`,
+    legend: (items) => `funnelLegend(${items})`,
+    tooltip: (items, x, y, a, t) => `funnelTip(${items}, ${t.rect('8.0', '8.0', `${a.W} - 16.0`, `${a.H} - 16.0`)}, ${x}, ${y}, ${a.options})`,
   },
   PieChart: {
     data: 'data',
@@ -514,6 +542,8 @@ export const ACCESSOR_CHART_HOSTS: Readonly<Record<string, AccessorHostSpec>> = 
       const fit = `fitCircle(${box00(a, t)})`
       return `hitArc(layoutArcs(${items}), ${fit}.center, ${fit}.radius, ${fit}.radius * ${a.innerRatio}, ${t.pt(x, y)})`
     },
+    legend: (items) => `pieLegend(${items})`,
+    tooltip: (items, x, y, a, t) => `pieTip(${items}, ${box00(a, t)}, ${a.innerRatio}, ${x}, ${y})`,
   },
 }
 
@@ -677,12 +707,22 @@ export const HEAT_RAMP_DEFAULT = ['#eff6ff', '#93c5fd', '#3b82f6', '#1e40af'] as
 export const CHART_CHROME_PROPS: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate']
 const CHROME_LOWERED: Readonly<Record<string, readonly string[]>> = {
   PlotChart: ['showTitle', 'subtitle', 'showLegend'],
-  PieChart: ['showLegend'],
   RadarChart: ['showLegend'],
 }
+/** Title + legend + tap tooltip — what the generic and accessor hosts draw natively through the crossing chrome. */
+const FAMILY_CHROME: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip']
+/** The tooltip box's colours — the web hosts' default theme (surface / grid / text). */
+export const CHART_TOOLTIP_FIELDS: readonly (readonly [string, string])[] = [
+  ['fontSize', CHART_THEME_DEFAULT.fontSize],
+  ['fill', JSON.stringify(CHART_THEME_DEFAULT.surface)],
+  ['border', JSON.stringify(CHART_THEME_DEFAULT.grid)],
+  ['text', JSON.stringify(CHART_THEME_DEFAULT.text)],
+  ['pad', '8.0'],
+  ['radius', '4.0'],
+]
 /** The chrome props `<tag>` does NOT lower — each present one warns. */
 export function chartChromeUnlowered(tag: string): readonly string[] {
-  const lowered = CHROME_LOWERED[tag] ?? []
+  const lowered = CHROME_LOWERED[tag] ?? (Object.hasOwn(CHART_HOSTS, tag) || Object.hasOwn(ACCESSOR_CHART_HOSTS, tag) ? FAMILY_CHROME : [])
   return CHART_CHROME_PROPS.filter((p) => !lowered.includes(p))
 }
 

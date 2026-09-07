@@ -1,9 +1,9 @@
 // `<TreemapChart>` — a squarified hierarchy on a canvas, over the shared canvas host.
 
 import type { VNode } from '@pyreon/core'
-import { canvasHost } from './canvas-host'
+import { canvasHost, orNull } from './canvas-host'
+import { treemapLegend, treemapTip } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
-import { plain } from './format'
 import { hitTreemap, hitTreemapIndex, layoutTreemap, renderTreemap } from './treemap'
 import type { TreeNode, TreemapCell, TreemapOptions } from './treemap'
 
@@ -27,15 +27,12 @@ export function TreemapChart(props: TreemapChartProps): VNode {
     },
     layout: (box, _measure, theme) => layoutTreemap(readData(), box, { palette: theme.palette, ...props.treemap }),
     render: (cells, measure, theme) => renderTreemap(cells, { palette: theme.palette, ...props.treemap }, measure),
-    legend: (cells) => cells.filter((c) => c.depth === 0).map((c) => ({ label: c.name, color: c.color })),
+    legend: treemapLegend,
     select: (cells, px, py) => {
       props.onSelect?.(hitTreemap(cells, px, py))
       props.onSelectIndex?.(hitTreemapIndex(cells, px, py))
     },
-    tooltip: (cells, px, py) => {
-      const c = hitTreemap(cells, px, py)
-      return c === null ? null : [c.name, plain(c.value)]
-    },
+    tooltip: (cells, px, py) => orNull(treemapTip(cells, px, py)),
     a11y: (cells) => {
       const leaves = cells.filter((c) => c.leaf)
       return {

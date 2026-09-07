@@ -7020,7 +7020,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // object/array-literal emit). This widens the supported subset toward
   // "any app" — local consts are ubiquitous.
   if (init.type !== 'CallExpression') {
-    return { kind: 'value', name, expr: parseExpr(init, ctx) }
+    return withValueDeclType({ kind: 'value', name, expr: parseExpr(init, ctx) }, node, ctx)
   }
 
   // RX-1 — `@pyreon/rx` namespace lowering. Source like
@@ -8090,7 +8090,19 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // the same downstream failure it did when dropped. This also unblocks the
   // general object-destructure lowering above, which recurses into exactly
   // this single-binding shape.
-  return { kind: 'value', name, expr: parseExpr(init, ctx) }
+  return withValueDeclType({ kind: 'value', name, expr: parseExpr(init, ctx) }, node, ctx)
+}
+
+/**
+ * A value decl keeps its written annotation (`const e: LegendEntry = { … }`):
+ * the emit steers an object/array literal to the NAMED struct with it, where
+ * the literal's field set alone picked a same-shaped sibling or — with an
+ * optional field omitted — no struct at all (a tuple). Absent annotation,
+ * absent field: the decl is byte-identical to before.
+ */
+function withValueDeclType(d: Extract<DeclIR, { kind: 'value' }>, node: AnyNode, ctx: ParseCtx): DeclIR {
+  const ann = (node.id as AnyNode | undefined)?.typeAnnotation?.typeAnnotation as AnyNode | undefined
+  return ann ? { ...d, type: parseTypeAnnotation(ann, ctx) } : d
 }
 
 /**

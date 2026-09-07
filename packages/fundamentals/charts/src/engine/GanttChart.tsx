@@ -1,7 +1,8 @@
 // `<GanttChart>` — a task timeline on a canvas, over the shared canvas host.
 
 import type { VNode } from '@pyreon/core'
-import { canvasHost } from './canvas-host'
+import { canvasHost, orNull } from './canvas-host'
+import { ganttTip } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
 import { ganttDurationDays, hitGanttIndex, layoutGantt, renderGantt } from './gantt'
 import { hitGantt } from './gantt-web'
@@ -32,10 +33,7 @@ export function GanttChart(props: GanttChartProps): VNode {
       props.onSelect?.(hitGantt(layout, px, py))
       props.onSelectIndex?.(hitGanttIndex(layout, px, py))
     },
-    tooltip: (layout, px, py) => {
-      const r = hitGantt(layout, px, py)
-      return r === null ? null : [r.task.name, `${ganttDurationDays(r)} days`]
-    },
+    tooltip: (layout, px, py) => orNull(ganttTip(layout, px, py)),
     a11y: (layout) => ({
       title: props.title,
       categories: layout.rows.map((r) => r.task.name),

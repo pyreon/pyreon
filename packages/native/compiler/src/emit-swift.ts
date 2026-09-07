@@ -84,7 +84,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartThemeFields, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_TOOLTIP_FIELDS, CHART_THEME_FIELDS, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartThemeFields, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -2441,7 +2441,9 @@ function emitSwiftComponent(c: ComponentIR): string {
   // Source order preserved so a value const can reference an earlier one.
   for (const d of c.decls) {
     if (d.kind === 'value') {
-      lines.push(`    let ${swiftIdent(d.name)} = ${emitSwiftExpr(d.expr, 4)}`)
+      // The written annotation steers an object/array literal to its named struct (see the `let` statement emit).
+      const steer = d.type !== undefined && (d.expr.kind === 'object' || d.expr.kind === 'array') ? d.type : undefined
+      lines.push(`    let ${swiftIdent(d.name)} = ${withExpectedType(steer, () => emitSwiftExpr(d.expr, 4))}`)
     }
   }
   // While emitting a layout's body, its `<RouterView />` emits `content()`.
@@ -3231,7 +3233,9 @@ function emitSwiftDecl(
   // emitSwiftComponent (a stored property can't reference @State at init);
   // this defensive case keeps the emit total if reached elsewhere.
   if (d.kind === 'value') {
-    return `let ${swiftIdent(d.name)} = ${emitSwiftExpr(d.expr, 2)}`
+    // The written annotation steers an object/array literal to its named struct (see the `let` statement emit for the two failure shapes it closes).
+    const steer = d.type !== undefined && (d.expr.kind === 'object' || d.expr.kind === 'array') ? d.type : undefined
+    return `let ${swiftIdent(d.name)} = ${withExpectedType(steer, () => emitSwiftExpr(d.expr, 2))}`
   }
   if (d.kind === 'signal') {
     // Pass the synth ctx so an inline anonymous object type in the
@@ -4125,8 +4129,15 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
         const kw = s.mutable || s.expr.kind === 'new-collection' ? 'var' : 'let'
         const prevTyped = _typedClosureLet
         if (s.expr.kind === 'arrow') _typedClosureLet = true
+        // `const e: LegendEntry = { label, color }` — the ANNOTATION names the
+        // struct, so it steers the literal exactly as a declared return type
+        // steers a `return { … }`. Without it the literal resolved by its
+        // field set alone: `{ label, value, color }` picked `Slice` over the
+        // annotated `TooltipRow` (same names, same types), and a literal that
+        // omitted an optional field matched nothing and emitted a TUPLE.
+        const steer = s.declaredType !== undefined && (s.expr.kind === 'object' || s.expr.kind === 'array') ? s.declaredType : undefined
         try {
-          return `${kw} ${swiftIdent(s.name)}${ann} = ${emitSwiftExpr(s.expr, indent)}`
+          return `${kw} ${swiftIdent(s.name)}${ann} = ${withExpectedType(steer, () => emitSwiftExpr(s.expr, indent))}`
         } finally {
           _typedClosureLet = prevTyped
         }
@@ -11367,6 +11378,7 @@ const SWIFT_CHART_TARGET: ChartHostTarget = {
   nan: 'Double.nan',
   list: (items) => `[${items.join(', ')}]`,
   struct: (name, fields) => `${name}(${fields.map(([k, v]) => `${k}: ${v}`).join(', ')})`,
+  coalesce: (a, b) => `(${a} ?? ${b})`,
   pieOptions: (a) => `PieOptions(innerRadius: ${a.innerRatio}, showLabels: true, labelColor: "#ffffff", fontSize: 11.0)`,
   theme: () => `ChartTheme(axis: ${JSON.stringify(CHART_THEME_DEFAULT.axis)}, grid: ${JSON.stringify(CHART_THEME_DEFAULT.grid)}, label: ${JSON.stringify(CHART_THEME_DEFAULT.label)}, fontSize: ${CHART_THEME_DEFAULT.fontSize})`,
 }
@@ -11478,22 +11490,60 @@ function emitSwiftChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     gutter: swiftChartDouble(e, 'gutter', spec.gutterDefault ?? 80, indent),
     innerRatio: swiftChartDouble(e, 'innerRatio', 0.2, indent),
   }
-  const layout = spec.layout(args, SWIFT_CHART_TARGET)
-  const canvas = `PyreonChartCanvas(cmds: ${spec.render(layout, args, SWIFT_CHART_TARGET)})`
+  // Chrome — the title block, the legend and the tap tooltip — comes from the
+  // crossing `chrome.ts`, the same functions the web canvas host calls, so
+  // "what does the legend list" and "what does a tap say" cannot disagree by
+  // target. The legend's ENTRIES need a layout and the plot's layout needs the
+  // legend's HEIGHT: the entries are read off a probe layout over the full
+  // box (they never depend on the box), the chrome is measured, and the plot
+  // lays out once more in what is left — the web host's two-pass shape.
+  const showLegend = spec.legend !== undefined && readStaticAttr(e, 'showLegend') === true
+  const lets: string[] = []
+  let entries = '[]'
+  if (showLegend) {
+    lets.push(`let pyreonProbe = ${spec.layout(args, SWIFT_CHART_TARGET)}`)
+    entries = spec.legend!('pyreonProbe', args, SWIFT_CHART_TARGET)
+  }
+  const chrome = swiftChartChrome(e, entries, W, H, indent, true)
+  const plotArgs: ChartHostArgs = { ...args, H: chrome.height(H) }
+  const withChrome = chrome.top !== '0.0'
+  lets.push(...chrome.lets)
+  // A hoisted layout `let` only when something else reads it (the tap); the
+  // chrome-free, tap-free host keeps its inline `render(layout(...))`.
+  const tooltip = spec.tooltip !== undefined && readStaticAttr(e, 'tooltip') === true
+  const onSel = e.attrs.find((a) => a.kind === 'event' && a.name === 'selectindex')
+  const tapping = onSel?.kind === 'event' || tooltip
+  const layout = tapping ? 'pyreonLayout' : spec.layout(plotArgs, SWIFT_CHART_TARGET)
+  if (tapping) lets.push(`let pyreonLayout = ${spec.layout(plotArgs, SWIFT_CHART_TARGET)}`)
+  const tipCmds = tooltip
+    ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', CHART_TOOLTIP_FIELDS)}, pyreonChartMeasure)`
+    : ''
+  const canvas = `PyreonChartCanvas(cmds: ${chrome.wrap(spec.render(layout, plotArgs, SWIFT_CHART_TARGET))}${tipCmds})`
   // `onSelectIndex` → a tap (a zero-distance drag, which reports its location)
   // over the engine's index hit, computed against the same layout the canvas
   // painted. `.contentShape` makes the whole canvas — not only its painted
-  // pixels — hit-testable.
-  const onSel = e.attrs.find((a) => a.kind === 'event' && a.name === 'selectindex')
-  const gesture =
-    onSel?.kind === 'event'
-      ? `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in ${swiftChartSelectBody(onSel.handler, spec.hit(layout, 'Double(pyreonTap.location.x)', 'Double(pyreonTap.location.y)', args, SWIFT_CHART_TARGET), indent)} })`
-      : ''
-  const title = readStringAttrExpr(e, 'title', indent)
-  const tail = (title !== undefined ? `.accessibilityLabel(${title})` : '') + emitSwiftLayoutModifiers(e)
-  if (hasWidth) return `${canvas}${gesture}.frame(width: ${W}, height: ${H})${tail}`
-  const pad = ' '.repeat(indent + 2)
-  return `GeometryReader { pyreonGeo in\n${pad}${canvas}${gesture}\n${' '.repeat(indent)}}.frame(height: ${H})${tail}`
+  // pixels — hit-testable. With `tooltip`, the SAME tap also reads the lines
+  // for the point (an empty list clears the box, so a tap on nothing dismisses).
+  let gesture = ''
+  if (tapping) {
+    const tapY = withChrome ? 'Double(pyreonTap.location.y) - pyreonTop' : 'Double(pyreonTap.location.y)'
+    const parts: string[] = []
+    if (tooltip) {
+      _hostStateDecls.push('@State private var pyreonTip: [String] = []')
+      _hostStateDecls.push('@State private var pyreonTipAt: PyreonChartPt = PyreonChartPt(x: 0.0, y: 0.0)')
+      parts.push(`pyreonTip = ${spec.tooltip!(layout, 'Double(pyreonTap.location.x)', tapY, plotArgs, SWIFT_CHART_TARGET)}; pyreonTipAt = PyreonChartPt(x: Double(pyreonTap.location.x), y: Double(pyreonTap.location.y))`)
+    }
+    if (onSel?.kind === 'event') parts.push(swiftChartSelectBody(onSel.handler, spec.hit(layout, 'Double(pyreonTap.location.x)', tapY, plotArgs, SWIFT_CHART_TARGET), indent))
+    gesture = `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in ${parts.join('; ')} })`
+  }
+  if (lets.length === 0) {
+    const title = readStringAttrExpr(e, 'title', indent)
+    const tail = (title !== undefined ? `.accessibilityLabel(${title})` : '') + emitSwiftLayoutModifiers(e)
+    if (hasWidth) return `${canvas}${gesture}.frame(width: ${W}, height: ${H})${tail}`
+    const pad = ' '.repeat(indent + 2)
+    return `GeometryReader { pyreonGeo in\n${pad}${canvas}${gesture}\n${' '.repeat(indent)}}.frame(height: ${H})${tail}`
+  }
+  return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent)
 }
 
 
@@ -11555,22 +11605,34 @@ function emitSwiftAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
   // A pie with a legend hoists its slices so the legend entries and the arcs
   // come from one list; without chrome the inline map stays as it was.
-  const chrome = tag === 'PieChart' ? swiftChartChrome(e, 'pyreonItems.map { LegendEntry(label: $0.label, color: $0.color) }', W, H, indent, false) : { lets: [], top: '0.0', wrap: (p: string) => p, height: (h: string) => h }
+  // The legend's entries come from the crossing `xLegend(items)` (the same
+  // list the web host reads); the tooltip is the crossing `xTip`. See the
+  // generic host for the chrome shape.
+  const chrome = swiftChartChrome(e, spec.legend('pyreonItems'), W, H, indent, true)
+  const tooltip = readStaticAttr(e, 'tooltip') === true
   const withChrome = chrome.top !== '0.0'
-  const items = withChrome ? 'pyreonItems' : mapped
-  const lets = withChrome ? [`let pyreonItems: [${spec.struct}] = ${mapped}`, ...chrome.lets] : []
+  const hoist = withChrome || tooltip
+  const items = hoist ? 'pyreonItems' : mapped
+  const lets = hoist ? [`let pyreonItems: [${spec.struct}] = ${mapped}`, ...chrome.lets] : []
   const args: ChartHostArgs = { data: [], options, W, H: chrome.height(H), gutter: '0.0', innerRatio: swiftChartDouble(e, 'innerRadius', 0, indent) }
-  const canvas = `PyreonChartCanvas(cmds: ${chrome.wrap(spec.render(items, args, SWIFT_CHART_TARGET))})`
-  // Both `onSelect` (already an index on these hosts) and `onSelectIndex` lower to the tap.
+  const tipCmds = tooltip
+    ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', CHART_TOOLTIP_FIELDS)}, pyreonChartMeasure)`
+    : ''
+  const canvas = `PyreonChartCanvas(cmds: ${chrome.wrap(spec.render(items, args, SWIFT_CHART_TARGET))}${tipCmds})`
+  // Both `onSelect` (already an index on these hosts) and `onSelectIndex` lower to the tap; `tooltip` shares it.
   const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
   const tapY = withChrome ? 'Double(pyreonTap.location.y) - pyreonTop' : 'Double(pyreonTap.location.y)'
-  const gesture =
-    onSel?.kind === 'event'
-      ? `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in ${swiftChartSelectBody(onSel.handler, spec.hit(items, 'Double(pyreonTap.location.x)', tapY, args, SWIFT_CHART_TARGET), indent)} })`
-      : ''
+  const parts: string[] = []
+  if (tooltip) {
+    _hostStateDecls.push('@State private var pyreonTip: [String] = []')
+    _hostStateDecls.push('@State private var pyreonTipAt: PyreonChartPt = PyreonChartPt(x: 0.0, y: 0.0)')
+    parts.push(`pyreonTip = ${spec.tooltip(items, 'Double(pyreonTap.location.x)', tapY, args, SWIFT_CHART_TARGET)}; pyreonTipAt = PyreonChartPt(x: Double(pyreonTap.location.x), y: Double(pyreonTap.location.y))`)
+  }
+  if (onSel?.kind === 'event') parts.push(swiftChartSelectBody(onSel.handler, spec.hit(items, 'Double(pyreonTap.location.x)', tapY, args, SWIFT_CHART_TARGET), indent))
+  const gesture = parts.length === 0 ? '' : `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in ${parts.join('; ')} })`
   const title = readStringAttrExpr(e, 'title', indent)
   const tail = (title !== undefined ? `.accessibilityLabel(${title})` : '') + emitSwiftLayoutModifiers(e)
-  if (!withChrome) {
+  if (!hoist) {
     if (hasWidth) return `${canvas}${gesture}.frame(width: ${W}, height: ${H})${tail}`
     const pad = ' '.repeat(indent + 2)
     return `GeometryReader { pyreonGeo in\n${pad}${canvas}${gesture}\n${' '.repeat(indent)}}.frame(height: ${H})${tail}`

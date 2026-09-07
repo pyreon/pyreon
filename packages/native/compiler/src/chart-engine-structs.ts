@@ -6884,6 +6884,154 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "Size",
+    "fields": [
+      {
+        "name": "w",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "h",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "TooltipRow",
+    "fields": [
+      {
+        "name": "label",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "value",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "color",
+        "type": {
+          "kind": "string"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "TooltipContent",
+    "fields": [
+      {
+        "name": "title",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "rows",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "TooltipRow",
+            "args": []
+          }
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "TooltipSeries",
+    "fields": [
+      {
+        "name": "label",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "values",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "Double",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "color",
+        "type": {
+          "kind": "string"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "TooltipOptions",
+    "fields": [
+      {
+        "name": "fontSize",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "fill",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "border",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "text",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "pad",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "radius",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "ZoomWindow",
     "fields": [
       {

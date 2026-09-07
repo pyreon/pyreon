@@ -79,7 +79,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartThemeFields, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_TOOLTIP_FIELDS, CHART_THEME_FIELDS, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartThemeFields, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -2394,7 +2394,8 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   }
   // Phase 5b: a plain value const → a composable-body `val` (captures-once).
   if (d.kind === 'value') {
-    return `val ${kotlinIdent(d.name)} = ${emitKotlinExpr(d.expr, 0)}`
+    const steer = d.type !== undefined && (d.expr.kind === 'object' || d.expr.kind === 'array') ? d.type : undefined
+    return `val ${kotlinIdent(d.name)} = ${withExpectedTypeKotlin(steer, () => emitKotlinExpr(d.expr, 0))}`
   }
   if (d.kind === 'signal') {
     // When the signal's declared type is a known enum, set the active-
@@ -3420,8 +3421,11 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
             : ''
         const prevTyped = _typedLambdaLet
         if (s.expr.kind === 'arrow') _typedLambdaLet = true
+        // The annotation steers an object/array literal to its named struct —
+        // mirror of the Swift let emit (see there for the two failure shapes).
+        const steer = s.declaredType !== undefined && (s.expr.kind === 'object' || s.expr.kind === 'array') ? s.declaredType : undefined
         try {
-          return `${s.mutable ? 'var' : 'val'} ${kotlinIdent(s.name)}${ann} = ${emitKotlinExpr(s.expr, indent)}`
+          return `${s.mutable ? 'var' : 'val'} ${kotlinIdent(s.name)}${ann} = ${withExpectedTypeKotlin(steer, () => emitKotlinExpr(s.expr, indent))}`
         } finally {
           _typedLambdaLet = prevTyped
         }
@@ -9500,6 +9504,7 @@ const KOTLIN_CHART_TARGET: ChartHostTarget = {
   nan: 'Double.NaN',
   list: (items) => `listOf(${items.join(', ')})`,
   struct: (name, fields) => `${name}(${fields.map(([k, v]) => `${k} = ${v}`).join(', ')})`,
+  coalesce: (a, b) => `(${a} ?: ${b})`,
   pieOptions: (a) => `PieOptions(innerRadius = ${a.innerRatio}, showLabels = true, labelColor = "#ffffff", fontSize = 11.0)`,
   theme: () => `ChartTheme(axis = ${JSON.stringify(CHART_THEME_DEFAULT.axis)}, grid = ${JSON.stringify(CHART_THEME_DEFAULT.grid)}, label = ${JSON.stringify(CHART_THEME_DEFAULT.label)}, fontSize = ${CHART_THEME_DEFAULT.fontSize})`,
 }
@@ -9610,17 +9615,48 @@ function emitKotlinChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
     gutter: kotlinChartDouble(e, 'gutter', spec.gutterDefault ?? 80, indent),
     innerRatio: kotlinChartDouble(e, 'innerRatio', 0.2, indent),
   }
-  const layout = spec.layout(args, KOTLIN_CHART_TARGET)
-  const cmds = spec.render(layout, args, KOTLIN_CHART_TARGET)
+  // Chrome from the crossing `chrome.ts` — mirror of the Swift generic host:
+  // a probe layout for the legend's entries, the chrome measured, the plot
+  // laid out in what is left.
+  const showLegend = spec.legend !== undefined && readStaticAttrKotlin(e, 'showLegend') === true
+  const lets: string[] = []
+  let entries = 'listOf<LegendEntry>()'
+  if (showLegend) {
+    lets.push(`val pyreonProbe = ${spec.layout(args, KOTLIN_CHART_TARGET)}`)
+    entries = spec.legend!('pyreonProbe', args, KOTLIN_CHART_TARGET)
+  }
+  const chrome = kotlinChartChrome(e, entries, W, H, indent, true)
+  const plotArgs: ChartHostArgs = { ...args, H: chrome.height(H) }
+  const withChrome = chrome.top !== '0.0'
+  lets.push(...chrome.lets)
+  const tooltip = spec.tooltip !== undefined && readStaticAttrKotlin(e, 'tooltip') === true
+  const onSel = e.attrs.find((a) => a.kind === 'event' && a.name === 'selectindex')
+  const tapping = onSel?.kind === 'event' || tooltip
+  const layout = tapping ? 'pyreonLayout' : spec.layout(plotArgs, KOTLIN_CHART_TARGET)
+  if (tapping) lets.push(`val pyreonLayout = ${spec.layout(plotArgs, KOTLIN_CHART_TARGET)}`)
+  if (tooltip) {
+    lets.push('var pyreonTip by remember { mutableStateOf(listOf<String>()) }')
+    lets.push('var pyreonTipAt by remember { mutableStateOf(PyreonChartPt(0.0, 0.0)) }')
+  }
+  const tipCmds = tooltip
+    ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${KOTLIN_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${KOTLIN_CHART_TARGET.struct('TooltipOptions', CHART_TOOLTIP_FIELDS)}, ::pyreonChartMeasure)`
+    : ''
+  const cmds = `${chrome.wrap(spec.render(layout, plotArgs, KOTLIN_CHART_TARGET))}${tipCmds}`
   // `onSelectIndex` → a tap over the engine's index hit. The tap position is
   // in pixels while the draw list is laid out in dp (PyreonChartCanvas scales
   // by the density when it paints), so the position is divided by the density
-  // read in the enclosing composable scope.
-  const onSel = e.attrs.find((a) => a.kind === 'event' && a.name === 'selectindex')
-  const tap =
-    onSel?.kind === 'event'
-      ? `.pointerInput(Unit) { detectTapGestures { pyreonTap -> ${kotlinChartSelectBody(onSel.handler, spec.hit(layout, '(pyreonTap.x / pyreonDensity).toDouble()', '(pyreonTap.y / pyreonDensity).toDouble()', args, KOTLIN_CHART_TARGET), indent)} } }`
-      : ''
+  // read in the enclosing composable scope. With `tooltip`, the SAME tap also
+  // reads the lines for the point (an empty list clears the box).
+  let tap = ''
+  if (tapping) {
+    const tx = '(pyreonTap.x / pyreonDensity).toDouble()'
+    const tapY = withChrome ? '(pyreonTap.y / pyreonDensity).toDouble() - pyreonTop' : '(pyreonTap.y / pyreonDensity).toDouble()'
+    const parts: string[] = []
+    if (tooltip) parts.push(`pyreonTip = ${spec.tooltip!(layout, tx, tapY, plotArgs, KOTLIN_CHART_TARGET)}; pyreonTipAt = PyreonChartPt(${tx}, (pyreonTap.y / pyreonDensity).toDouble())`)
+    if (onSel?.kind === 'event') parts.push(kotlinChartSelectBody(onSel.handler, spec.hit(layout, tx, tapY, plotArgs, KOTLIN_CHART_TARGET), indent))
+    tap = `.pointerInput(Unit) { detectTapGestures { pyreonTap -> ${parts.join('; ')} } }`
+  }
+  if (lets.length > 0) return kotlinFrameHostWithTap(e, lets, cmds, tap, W, H, hasWidth, indent)
   // Size modifiers first (they are the host's own layout), then the tap, the
   // title as the content description, then the generic tail — testTag / a11y
   // / padding — so `data-testid` reaches the node.
@@ -9692,19 +9728,30 @@ function emitKotlinAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   const H = kotlinChartDouble(e, 'height', spec.defaultHeight, indent)
   const hasWidth = chartAttrExprKotlin(e, 'width') !== undefined
   const W = hasWidth ? kotlinChartDouble(e, 'width', 300, indent) : 'pyreonW'
-  const chrome = tag === 'PieChart' ? kotlinChartChrome(e, 'pyreonItems.map { LegendEntry(label = it.label, color = it.color) }', W, H, indent, false) : { lets: [], top: '0.0', wrap: (p: string) => p, height: (h: string) => h }
+  // Mirror of the Swift accessor host: crossing legend entries + tooltip.
+  const chrome = kotlinChartChrome(e, spec.legend('pyreonItems'), W, H, indent, true)
+  const tooltip = readStaticAttrKotlin(e, 'tooltip') === true
   const withChrome = chrome.top !== '0.0'
-  const items = withChrome ? 'pyreonItems' : mapped
-  const lets = withChrome ? [`val pyreonItems: List<${spec.struct}> = ${mapped}`, ...chrome.lets] : []
+  const hoist = withChrome || tooltip
+  const items = hoist ? 'pyreonItems' : mapped
+  const lets = hoist ? [`val pyreonItems: List<${spec.struct}> = ${mapped}`, ...chrome.lets] : []
+  if (tooltip) {
+    lets.push('var pyreonTip by remember { mutableStateOf(listOf<String>()) }')
+    lets.push('var pyreonTipAt by remember { mutableStateOf(PyreonChartPt(0.0, 0.0)) }')
+  }
   const args: ChartHostArgs = { data: [], options, W, H: chrome.height(H), gutter: '0.0', innerRatio: kotlinChartDouble(e, 'innerRadius', 0, indent) }
-  const cmds = chrome.wrap(spec.render(items, args, KOTLIN_CHART_TARGET))
+  const tipCmds = tooltip
+    ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${KOTLIN_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${KOTLIN_CHART_TARGET.struct('TooltipOptions', CHART_TOOLTIP_FIELDS)}, ::pyreonChartMeasure)`
+    : ''
+  const cmds = `${chrome.wrap(spec.render(items, args, KOTLIN_CHART_TARGET))}${tipCmds}`
+  const tx = '(pyreonTap.x / pyreonDensity).toDouble()'
   const tapY = withChrome ? '(pyreonTap.y / pyreonDensity).toDouble() - pyreonTop' : '(pyreonTap.y / pyreonDensity).toDouble()'
   const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
-  const tap =
-    onSel?.kind === 'event'
-      ? `.pointerInput(Unit) { detectTapGestures { pyreonTap -> ${kotlinChartSelectBody(onSel.handler, spec.hit(items, '(pyreonTap.x / pyreonDensity).toDouble()', tapY, args, KOTLIN_CHART_TARGET), indent)} } }`
-      : ''
-  if (withChrome) return kotlinFrameHostWithTap(e, lets, cmds, tap, W, H, hasWidth, indent)
+  const parts: string[] = []
+  if (tooltip) parts.push(`pyreonTip = ${spec.tooltip(items, tx, tapY, args, KOTLIN_CHART_TARGET)}; pyreonTipAt = PyreonChartPt(${tx}, (pyreonTap.y / pyreonDensity).toDouble())`)
+  if (onSel?.kind === 'event') parts.push(kotlinChartSelectBody(onSel.handler, spec.hit(items, tx, tapY, args, KOTLIN_CHART_TARGET), indent))
+  const tap = parts.length === 0 ? '' : `.pointerInput(Unit) { detectTapGestures { pyreonTap -> ${parts.join('; ')} } }`
+  if (hoist) return kotlinFrameHostWithTap(e, lets, cmds, tap, W, H, hasWidth, indent)
   const size = hasWidth ? `Modifier.width((${W}).dp).height((${H}).dp)` : `Modifier.fillMaxWidth().height((${H}).dp)`
   const generic = emitKotlinLayoutModifier(e)
   const titleRaw = readStaticAttrKotlin(e, 'title')

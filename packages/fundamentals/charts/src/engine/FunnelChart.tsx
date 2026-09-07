@@ -1,9 +1,9 @@
 // `<FunnelChart>` — a conversion funnel on a canvas, over the shared canvas host.
 
 import type { VNode } from '@pyreon/core'
-import { canvasHost } from './canvas-host'
+import { canvasHost, orNull } from './canvas-host'
+import { funnelLegend, funnelTip } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
-import { plain } from './format'
 import { hitFunnel, renderFunnel } from './funnel'
 import type { FunnelOptions, FunnelStage } from './funnel'
 import { paletteAt } from './palette'
@@ -37,17 +37,13 @@ export function FunnelChart<T>(props: FunnelChartProps<T>): VNode {
     },
     layout: (box, _measure, theme) => ({ stages: stages(theme.palette), plot: { x: box.x + 8.0, y: box.y + 8.0, w: box.w - 16.0, h: box.h - 16.0 } }),
     render: (g) => renderFunnel(g.stages, g.plot, props.funnel),
-    legend: (g) => g.stages.map((s) => ({ label: s.label, color: s.color })),
+    legend: (g) => funnelLegend(g.stages),
     select: (g, px, py) => {
       const i = hitFunnel(g.stages, g.plot, px, py, props.funnel)
       props.onSelect?.(i)
       props.onSelectIndex?.(i)
     },
-    tooltip: (g, px, py) => {
-      const i = hitFunnel(g.stages, g.plot, px, py, props.funnel)
-      const s = g.stages[i]
-      return s === undefined ? null : [s.label, plain(s.value)]
-    },
+    tooltip: (g, px, py) => orNull(funnelTip(g.stages, g.plot, px, py, props.funnel)),
     a11y: (g) => ({
       title: props.title,
       categories: g.stages.map((x) => x.label),

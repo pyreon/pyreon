@@ -7,7 +7,8 @@
 // tree-shakeable.
 
 import { h } from '@pyreon/core'
-import { canvasHost } from './canvas-host'
+import { canvasHost, orNull } from './canvas-host'
+import { pieLegend, pieTip } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
 import { resolveChartTheme, useChartTheme } from './theme'
 import { paletteAt } from './palette'
@@ -54,20 +55,13 @@ export function PieChart<T>(props: PieChartProps<T>): VNode {
     layout: (box, _measure, theme) => ({ slices: slices(theme.palette), box }),
     render: (g, _measure, theme) =>
       renderPie(g.slices, g.box, { innerRadius: props.innerRadius ?? 0, showLabels: props.showLabels ?? true, labelColor: '#ffffff', fontSize: theme.fontSize }),
-    legend: (g) => g.slices.map((x) => ({ label: x.label, color: x.color })),
+    legend: (g) => pieLegend(g.slices),
     select: (g, px, py) => {
       const i = hitAt(g, px, py, props.innerRadius ?? 0)
       props.onSelect?.(i)
       props.onSelectIndex?.(i)
     },
-    tooltip: (g, px, py) => {
-      const i = hitAt(g, px, py, props.innerRadius ?? 0)
-      const s = g.slices[i]
-      if (s === undefined) return null
-      let total = 0.0
-      for (const x of g.slices) total += x.value
-      return [s.label, `${plain(s.value)} (${total > 0 ? Math.round((s.value / total) * 100) : 0}%)`]
-    },
+    tooltip: (g, px, py) => orNull(pieTip(g.slices, g.box, props.innerRadius ?? 0, px, py)),
     a11y: (g) => ({
       title: props.title,
       categories: g.slices.map((x) => x.label),
