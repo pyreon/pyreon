@@ -86,7 +86,7 @@ describe('CandlestickChart selection', () => {
 describe('HeatmapChart selection', () => {
   const mountHeat = (over: Record<string, unknown> = {}) =>
     mountInBrowser(() =>
-      HeatmapChart<Obs>({
+      HeatmapChart<Obs>({ animate: false,
         data: OBS,
         x: (d) => d.day,
         y: (d) => d.hour,

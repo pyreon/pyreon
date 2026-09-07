@@ -23,7 +23,7 @@ describe('MapChart (real browser)', () => {
     const values = signal<Record<string, number>>({ A: 1, B: 9 })
     const picked: (GeoRegion | null)[] = []
     const { container } = mountInBrowser(() =>
-      MapChart({ map: WORLD, values: () => values(), width: 400, height: 300, title: 'Map', onSelect: (r) => picked.push(r) }),
+      MapChart({ animate: false, map: WORLD, values: () => values(), width: 400, height: 300, title: 'Map', onSelect: (r) => picked.push(r) }),
     )
     await flush()
     const c = container.querySelector('canvas')!

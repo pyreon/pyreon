@@ -20,7 +20,7 @@ describe('GraphChart (real browser)', () => {
     const links = signal(LINKS)
     const picked: (GraphLayoutNode | null)[] = []
     const { container } = mountInBrowser(() =>
-      GraphChart({ nodes: NODES, links: () => links(), width: 400, height: 300, title: 'Net', onSelect: (n) => picked.push(n) }),
+      GraphChart({ animate: false, nodes: NODES, links: () => links(), width: 400, height: 300, title: 'Net', onSelect: (n) => picked.push(n) }),
     )
     await flush()
     const c = container.querySelector('canvas')!

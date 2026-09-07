@@ -17,7 +17,7 @@ describe('SunburstChart (real browser)', () => {
     const rows = signal(DATA)
     const picked: (SunburstArc | null)[] = []
     const { container } = mountInBrowser(() =>
-      SunburstChart({ data: () => rows(), width: 300, height: 300, title: 'Repo', onSelect: (a) => picked.push(a) }),
+      SunburstChart({ animate: false, data: () => rows(), width: 300, height: 300, title: 'Repo', onSelect: (a) => picked.push(a) }),
     )
     await flush()
     const c = container.querySelector('canvas')!
