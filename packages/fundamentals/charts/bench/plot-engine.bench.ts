@@ -90,7 +90,7 @@ bench('layoutChart only, bars n=10k', () => {
   return () => (layoutChart(sp, measure).plot.w > 0 ? 1 : 0)
 }, 1)
 bench('treemap 1k leaves', () => {
-  const nodes = Array.from({ length: 20 }, (_, g) => ({ name: `g${g}`, children: Array.from({ length: 50 }, (_, i) => ({ name: `n${g}-${i}`, value: 1 + ((g * 50 + i) % 37) })) }))
+  const nodes = Array.from({ length: 20 }, (_g, g) => ({ name: `g${g}`, children: Array.from({ length: 50 }, (_i, i) => ({ name: `n${g}-${i}`, value: 1 + ((g * 50 + i) % 37) })) }))
   return () => renderTreemap(layoutTreemap(nodes, { x: 0, y: 0, w: 960, h: 400 }), undefined, measure).length
 }, 1_000)
 bench('sankey 60 nodes / 200 links', () => {
