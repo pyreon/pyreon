@@ -54,7 +54,9 @@ describe('_bindProp — a prop read binds by descriptor', () => {
 
   it('accessor form and mixed-content position', () => {
     expect(js(`function Row(props) { return <span>{() => props.value}</span> }`)).toContain('_bindProp(props, "value", __t0, __root)')
-    expect(js(`function Row(props) { return <span>x{props.value}</span> }`)).toContain('_bindProp(props, "value", __t0, __root)')
+    // Mixed-content position — an element sibling keeps it mixed (a text-only
+    // `x{props.value}` run fuses into one accessor and binds polymorphically).
+    expect(js(`function Row(props) { return <span>x{props.value}<i></i></span> }`)).toContain('_bindProp(props, "value", __t0, __root)')
   })
 
   it('a deeper chain or a computed key keeps the polymorphic path', () => {

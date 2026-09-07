@@ -222,9 +222,9 @@ export function App() {
       './store': join(root, 'src/store.ts'),
     })
     expect(result).toBeDefined()
-    // Both reads land in the direct text-binding tier (raw signal handed to
-    // `_bindText`) — the optimal emit, no accessor allocation per read.
-    expect(result!.code).toMatch(/_bindText\(count,/)
-    expect(result!.code).toMatch(/_bindText\(double,/)
+    // Both reads are auto-called and the text-only run `{count} / {double}`
+    // becomes ONE fused accessor (text fusion) — no per-read placeholders.
+    expect(result!.code).toMatch(/_fuse\(count\(\), " \/ ", double\(\)\)/)
+    expect(result!.code).not.toMatch(/_bindText\(/)
   })
 })

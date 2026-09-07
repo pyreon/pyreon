@@ -56,6 +56,31 @@ export const ERROR_PATTERNS: ErrorPattern[] = [
     }),
   },
   {
+    // TEXT FUSION (compiler) — `<p>Hello {name}!</p>` now compiles to ONE
+    // accessor child, `() => _fuse("Hello ", name(), "!")`, and the emit
+    // injects `import { _fuse } from "@pyreon/core"`. A project whose
+    // `@pyreon/core` is OLDER than its `@pyreon/compiler` (a partial upgrade,
+    // a stale workspace `lib/`, two copies of core in the tree) has a compiler
+    // that emits the helper and a core that does not export it — the build
+    // fails at the bundler's import check, naming the app's own file, not the
+    // framework. Seen exactly this way in-repo: a rebuilt compiler against a
+    // pre-fusion `core/lib`.
+    pattern: /"?_fuse"? is not exported by|_fuse is not defined|does not provide an export named ['"]_fuse['"]/i,
+    diagnose: () => ({
+      cause:
+        'The Pyreon compiler emitted `_fuse` (text fusion: a static-text run around an interpolation such as `<p>Hello {name}!</p>` is lowered to ONE accessor child so it renders and hydrates without `<!--$-->` range markers), but the `@pyreon/core` your build resolved is older than the compiler and does not export it. The two packages are released as a fixed group, so this is a version skew: a partial upgrade, a second copy of `@pyreon/core` in the dependency tree, or — inside the Pyreon monorepo — a stale `packages/core/core/lib` that Vite reads through the `node` condition.',
+      fix: 'Align `@pyreon/core` and `@pyreon/compiler` (and `@pyreon/vite-plugin`) to the same version — `pyreon upgrade` does this — and make sure only ONE `@pyreon/core` resolves (`pyreon info` reports version skew and duplicates). In the monorepo, run `bun scripts/bootstrap.ts` so the built `lib/` catches up with source.',
+      fixCode: "// every @pyreon/* package on ONE version — the compiler's emit and core's exports move together\n// package.json\n\"@pyreon/core\": \"0.52.0\",\n\"@pyreon/compiler\": \"0.52.0\",\n\"@pyreon/vite-plugin\": \"0.52.0\"\n\n// or, in one step:\n// npx pyreon upgrade",
+// package.json
+"@pyreon/core": "0.52.0",
+"@pyreon/compiler": "0.52.0",
+"@pyreon/vite-plugin": "0.52.0"
+
+// or, in one step:
+// npx pyreon upgrade",
+    }),
+  },
+  {
     // A real, user-facing error in `@pyreon/router`'s loader path that the
     // catalog did not teach at all. A cycle in loader data is one of the few
     // SSR failures that surfaces as a hard 500 with a stack pointing into

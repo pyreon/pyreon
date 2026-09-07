@@ -48,7 +48,7 @@
  * `templateSignature` refuses outright — a different fix, in a different place.
  */
 import { transformJSX } from '@pyreon/compiler'
-import { For, Fragment, _lc, h } from '@pyreon/core'
+import { For, Fragment, _fuse, _lc, h } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import { transformSync } from 'esbuild'
@@ -101,6 +101,7 @@ const RUNTIME_DEPS = {
   _textSlot,
   _mountChild,
   _lc,
+  _fuse,
   bindPolymorphicText,
   h,
   Fragment,

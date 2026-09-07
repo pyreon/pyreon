@@ -45,7 +45,7 @@
  */
 import { query } from '@pyreon/test-utils'
 import { transformJSX } from '@pyreon/compiler'
-import { Fragment, _lc, h } from '@pyreon/core'
+import { Fragment, _fuse, _lc, h } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import { transformSync } from 'esbuild'
@@ -101,6 +101,7 @@ const RUNTIME_DEPS = {
   _textSlot,
   _mountChild,
   _lc,
+  _fuse,
   bindPolymorphicText,
   h,
   Fragment,

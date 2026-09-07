@@ -52,8 +52,16 @@ describe('ssrTemplate — emission shapes', () => {
   })
 
   test('mixed static text + wrapped hole preserves order (markers baked)', () => {
+    // An element sibling keeps the run MIXED; a text-only `a {props.x} b`
+    // FUSES into one sole accessor and takes `_escSole` (asserted below).
+    const out = ssrFast(`function C(props) { return <p>a {props.x} b<i></i></p> }`)
+    expect(out).toContain('_ssr(["<p>a <!--$-->", "<!--/$--> b<i></i></p>"], _esc(props.x))')
+  })
+
+  test('text fusion: a text-only run is ONE `_escSole(_fuse(...))` hole, no markers', () => {
     const out = ssrFast(`function C(props) { return <p>a {props.x} b</p> }`)
-    expect(out).toContain('_ssr(["<p>a <!--$-->", "<!--/$--> b</p>"], _esc(props.x))')
+    expect(out).toContain('_ssr(["<p>", "</p>"], _escSole(_fuse("a ", props.x, " b")))')
+    expect(out).toMatch(/import \{[^}]*_fuse[^}]*\} from "@pyreon\/core"/)
   })
 
   test('.map fast path: ONE _ssrChildren hole, items are plain strings', () => {

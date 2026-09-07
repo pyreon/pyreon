@@ -345,6 +345,8 @@ Two more facts from the same investigation, worth recording precisely so they ar
 
 Reproduce the total: `cd examples/benchmark && bun bench-hydration.ts --repeat 3` (quiet machine, load < 3, load-stamped). The walk/layout split and the CDP subtree attribution are not yet a standalone script — same caveat as the other CDP-profile findings in this file (`clear rows`, deep-tree mount) — reproduce via the CDP driver used for those.
 
+**Status 2026-09-07 — TEXT FUSION landed at the compiler (`<p>Hello {name}!</p>` → one `_fuse(...)` accessor child, marker-free on every path), and it does NOT move this bench.** The fixture's rows are sole-child (`<td>{String(r.id)}</td>`, `<a>{() => r.label()}</a>`), which already elide, so there is no fusable run here and the walk numbers above stand unmeasured-since. It also barely moves the docs site (`/docs/router` 246 → 245 open markers — the prose is markdown through `innerHTML`; a stale July dist had read 629 and inflated the expected lever). Where it bites is JSX text runs: a static census over 682 example/docs/ui TSX files fuses 84 elements, client placeholders 287 → 189, `_ssr`-baked open markers 72 → 34. A timing claim needs a prose-heavy JSX page and a quiet box; neither existed when this landed. See anti-patterns, the `$`-marker entry's SEQUEL.
+
 ### Coverage-expansion scenarios — 2026-08-18 (CORRECTED run), `--repeat 3` (60 pooled samples/op), load 2.35 → 3.45 stamped
 
 Two shapes the nine-op suite structurally cannot see, because every one of its ops runs on a single flat two-level keyed `<tr>` list. **Pyreon LOSES one of them outright**, and the loss survived a fairness correction that shrank it.

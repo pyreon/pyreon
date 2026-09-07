@@ -11,7 +11,7 @@
  * not reproduce the bug at all.
  */
 import { transformJSX } from '@pyreon/compiler'
-import { Fragment, h, Show, _lc, _rp, _rpd, cx } from '@pyreon/core'
+import { Fragment, h, Show, _fuse, _lc, _rp, _rpd, cx } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { transformSync } from 'esbuild'
 import { afterEach, describe, expect, test } from 'vitest'
@@ -21,7 +21,7 @@ import { _bindDirect, _bindText, _bindProp, _mountSlot, _setChild, _setChildAt, 
 const RUNTIME_DEPS = {
   _tpl, _bind, _bindText, _bindProp, _bindDirect, _applyProps, _setStyle, _setAttr,
   _mountSlot, _setChild, _setChildAt, bindPolymorphicText, _rp, _cx: cx,
-  h, Fragment, Show, _lc, signal, document,
+  h, Fragment, Show, _lc, _fuse, signal, document,
 } as const
 const DEP_NAMES = Object.keys(RUNTIME_DEPS)
 const DEP_VALUES = Object.values(RUNTIME_DEPS)

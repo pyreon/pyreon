@@ -29,6 +29,7 @@
 import { transformJSX } from '@pyreon/compiler'
 import { transformSync } from 'esbuild'
 import {
+  _fuse,
   _lc,
   Fragment,
   Show,
@@ -52,6 +53,7 @@ const CLIENT_DEPS: Record<string, unknown> = {
   h,
   Fragment,
   _lc,
+  _fuse,
   _tpl: Template._tpl,
   _bindText: Template._bindText, _bindProp,
   _bindDirect: Template._bindDirect,
@@ -64,6 +66,7 @@ const SSR_DEPS: Record<string, unknown> = {
   h,
   Fragment,
   _lc,
+  _fuse,
   _ssr: (RuntimeServer as Record<string, unknown>)._ssr,
   _esc: (RuntimeServer as Record<string, unknown>)._esc,
   // A component's SOLE element child is exactly the shape whose SSR hole the

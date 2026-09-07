@@ -71,7 +71,9 @@ describe('template sibling-ref chaining — O(K) walks, not O(K²)', () => {
   })
 
   it('chains a mixed-content placeholder off the preceding placeholder', () => {
-    const code = t('<div><span>{a()}{b()}</span></div>')
+    // An element sibling keeps the span MIXED — two bare expressions alone
+    // now FUSE into one sole accessor with no placeholders at all.
+    const code = t('<div><span>{a()}{b()}<i></i></span></div>')
     expect(code).toContain('const __p0 = __e0.firstChild;')
     expect(code).toContain('const __p1 = __p0.nextSibling;')
     expect(code).not.toContain('__e0.firstChild.nextSibling')

@@ -72,6 +72,7 @@ export type { PortalProps } from './portal'
 export { Portal, PortalSymbol } from './portal'
 export {
   _lc,
+  _fuse,
   _rp,
   _rpd,
   _wrapSpread,

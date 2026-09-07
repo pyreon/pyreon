@@ -40,7 +40,7 @@
  * backend fails the duplication specs with `expected 'Count: 77<!--/$-->'`.
  */
 import { transformJSX } from '@pyreon/compiler'
-import { For, Fragment, h } from '@pyreon/core'
+import { For, Fragment, _fuse, h } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import { transformSync } from 'esbuild'
@@ -80,6 +80,7 @@ const tplAdopted = () => counts['runtime.tpl.adopt'] ?? 0
 
 // ─── Real-transform harness ──────────────────────────────────────────────────
 const RUNTIME_DEPS = {
+  _fuse,
   _tpl,
   _bind,
   _bindText,
@@ -145,13 +146,16 @@ async function roundTrip(tree: unknown, client: string) {
 }
 
 describe('compiled mixed-content text slot adopts its SSR text', () => {
+  // NOTE: a text-only `Hello {n()}` now FUSES into one sole accessor (see
+  // `text-fusion.test.tsx`) and never emits a `_textSlot`. The leading `<b>`
+  // keeps each shape here MIXED, which is the path this suite locks.
   it('static text then {dynamic}: renders ONCE and keeps every node', async () => {
     const { html, out, kept, before, dispose } = await roundTrip(
-      h('p', { class: 'a' }, 'Hello ', () => 'Ada'),
-      `const App = () => { const n = signal('Ada'); return <p class="a">Hello {n()}</p> }`,
+      h('p', { class: 'a' }, h('b', null), 'Hello ', () => 'Ada'),
+      `const App = () => { const n = signal('Ada'); return <p class="a"><b></b>Hello {n()}</p> }`,
     )
-    expect(html).toBe('<p class="a">Hello <!--$-->Ada<!--/$--></p>')
-    expect(out).toBe('<p class="a">Hello Ada</p>')
+    expect(html).toBe('<p class="a"><b></b>Hello <!--$-->Ada<!--/$--></p>')
+    expect(out).toBe('<p class="a"><b></b>Hello Ada</p>')
     expect(kept).toBe(before.length) // the SSR text node itself is ADOPTED
     expect(tplAdopted()).toBe(1)
     dispose()
@@ -159,10 +163,10 @@ describe('compiled mixed-content text slot adopts its SSR text', () => {
 
   it('label: {value} — the shape that hydrated to `Count: 77`', async () => {
     const { out, kept, before, dispose } = await roundTrip(
-      h('div', { class: 'b' }, 'Count: ', () => '7'),
-      `const App = () => { const c = signal('7'); return <div class="b">Count: {c()}</div> }`,
+      h('div', { class: 'b' }, h('b', null), 'Count: ', () => '7'),
+      `const App = () => { const c = signal('7'); return <div class="b"><b></b>Count: {c()}</div> }`,
     )
-    expect(out).toBe('<div class="b">Count: 7</div>')
+    expect(out).toBe('<div class="b"><b></b>Count: 7</div>')
     expect(kept).toBe(before.length)
     dispose()
   })
@@ -182,21 +186,21 @@ describe('compiled mixed-content text slot adopts its SSR text', () => {
     // The helper must still land a node the bind can write into, and consume
     // BOTH markers — a stray `<!--/$-->` would diverge from a client mount.
     const { out, dispose } = await roundTrip(
-      h('p', { class: 'e' }, 'x', () => ''),
-      `const App = () => { const t = signal(''); return <p class="e">x{t()}</p> }`,
+      h('p', { class: 'e' }, h('b', null), 'x', () => ''),
+      `const App = () => { const t = signal(''); return <p class="e"><b></b>x{t()}</p> }`,
     )
-    expect(out).toBe('<p class="e">x</p>')
+    expect(out).toBe('<p class="e"><b></b>x</p>')
     dispose()
   })
 
   it('the adopted node stays live — adoption must not strand the binding', async () => {
     const { host, out, dispose } = await roundTrip(
-      h('p', { class: 'r' }, 'v=', () => '1'),
-      `const App = () => { const n = signal('1'); globalThis.__n = n; return <p class="r">v={n()}</p> }`,
+      h('p', { class: 'r' }, h('b', null), 'v=', () => '1'),
+      `const App = () => { const n = signal('1'); globalThis.__n = n; return <p class="r"><b></b>v={n()}</p> }`,
     )
-    expect(out).toBe('<p class="r">v=1</p>')
+    expect(out).toBe('<p class="r"><b></b>v=1</p>')
     ;(globalThis as { __n?: { set(v: string): void } }).__n?.set('2')
-    expect(host.innerHTML).toBe('<p class="r">v=2</p>')
+    expect(host.innerHTML).toBe('<p class="r"><b></b>v=2</p>')
     dispose()
   })
 
@@ -227,12 +231,12 @@ describe('compiled mixed-content text slot adopts its SSR text', () => {
     // the template's inert `<!>` and the helper must behave as the inlined
     // pair did. Guards against "fix adoption, break mounting".
     const App = compileApp(
-      `const App = () => { const n = signal('Zoe'); return <p class="g">Hi {n()}</p> }`,
+      `const App = () => { const n = signal('Zoe'); return <p class="g"><b></b>Hi {n()}</p> }`,
     )
     const host = document.createElement('div')
     document.body.appendChild(host)
     const dispose = mount(h(App as never, null), host)
-    expect(host.innerHTML).toBe('<p class="g">Hi Zoe</p>')
+    expect(host.innerHTML).toBe('<p class="g"><b></b>Hi Zoe</p>')
     dispose()
   })
 })
