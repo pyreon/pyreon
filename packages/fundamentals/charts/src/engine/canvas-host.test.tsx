@@ -4,6 +4,7 @@
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { signal } from '@pyreon/reactivity'
+import { query } from '@pyreon/test-utils'
 import { canvasHost, shiftCmds } from './canvas-host'
 import type { CanvasHostProps, CanvasHostSpec } from './canvas-host'
 import { chartThemes } from './theme'
@@ -94,7 +95,7 @@ describe('canvasHost', () => {
     canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 300, height: 120, right: 300, bottom: 120, x: 0, y: 0, toJSON: () => ({}) })
     canvas.dispatchEvent(new MouseEvent('click', { clientX: 12, clientY: 34, bubbles: true }))
     expect(calls.some((c) => c === 'select:12:34')).toBe(true)
-    const tip = m.root.querySelector('[data-pyreon-chart-tooltip]') as HTMLDivElement
+    const tip = query<HTMLDivElement>(m.root, '[data-pyreon-chart-tooltip]')
     canvas.dispatchEvent(new MouseEvent('mousemove', { clientX: 80, clientY: 30, bubbles: true }))
     expect(tip.style.display).toBe('block')
     expect(tip.textContent).toBe('hit\nline 2')
@@ -108,7 +109,7 @@ describe('canvasHost', () => {
   it('paints the theme ground and reads the theme prop over the scope', () => {
     const { node } = host({ theme: chartThemes.dark, accessibleTable: false })
     const m = mounted(node)
-    expect((m.root.querySelector('canvas') as HTMLCanvasElement).style.background).toMatch(/#141821|rgb\(20, 24, 33\)/)
+    expect((query<HTMLCanvasElement>(m.root, 'canvas')).style.background).toMatch(/#141821|rgb\(20, 24, 33\)/)
     m.dispose()
   })
   it('runs the entrance tween only when the family animates, and skips it when animate is false', () => {
