@@ -644,7 +644,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // to Int. Refine it to Double when a signal/const initializer assigns a
   // fractional literal to that field — additive (only ever flips
   // number→float, never the reverse, so integer structs are untouched).
-  refineStructFloatsFromInitializers(structs, components)
+  refineStructFloatsFromInitializers(structs, components, moduleDecls)
 
   // Same evidence as the pass above, for the shape that has no StructIR to
   // attach it to: an inline object generic (`signal<{ price: number }[]>([{
@@ -2643,6 +2643,12 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
         'Tip',
         'Legend',
         'Zoom',
+        'Label',
+        // The family marks: <Plot> with one of these desugars to the row-array host it names.
+        'Arc',
+        'Stage',
+        'Cell',
+        'Candle',
         'channel',
         // Mark + curve constructors consumed INLINE inside a `marks={[...]}`
         // array literal — the structural marks-array pass (chart-hosts.ts /
@@ -4980,19 +4986,29 @@ function collectObjectLiterals(e: ExprIR): Extract<ExprIR, { kind: 'object' }>[]
 function refineStructFloatsFromInitializers(
   structs: StructIR[],
   components: ComponentIR[],
+  moduleDecls: readonly ModuleDeclIR[],
 ): void {
   if (structs.length === 0) return
   const byName = new Map(structs.map((s) => [s.name, s]))
+  const refine = (type: TypeIR, initial: ExprIR): void => {
+    const structName = structNameOfType(type)
+    if (structName === undefined) return
+    const struct = byName.get(structName)
+    if (struct === undefined) return
+    refineFieldsFromObjectLiterals(struct.fields, collectObjectLiterals(initial))
+  }
   for (const c of components) {
     for (const d of c.decls) {
       if (d.kind !== 'signal') continue
-      const structName = structNameOfType(d.type)
-      if (structName === undefined) continue
-      const struct = byName.get(structName)
-      if (struct === undefined) continue
-      refineFieldsFromObjectLiterals(struct.fields, collectObjectLiterals(d.initial))
+      refine(d.type, d.initial)
     }
   }
+  // The MODULE-level spelling of the same evidence — `const BARS: B[] = [{ l: 0.5 }]`
+  // beside `interface B { l: number }` is how fixture data is written in
+  // nearly every doc and example; the signal-only pass left `l` an Int and
+  // kotlinc rejected the literal (a one-spelling fix, the class this repo
+  // keeps re-learning).
+  for (const d of moduleDecls) refine(d.type, d.initial)
 }
 
 /**

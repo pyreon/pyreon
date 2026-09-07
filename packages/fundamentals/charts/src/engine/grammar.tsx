@@ -21,16 +21,29 @@
 // series per distinct `region` value, categories from `x` — the Plot / Vega
 // idiom — while a chart with no `color` channel is wide-format: one mark, one
 // series, exactly as `<PlotChart>`.
+//
+// The FAMILY marks make the same grammar cover the row-array hosts: `<Arc
+// value label>` is a pie or donut, `<Stage value label>` a funnel, `<Cell x y
+// value>` a heatmap, `<Candle open high low close>` a candlestick — each is
+// the host's own props with channels for its accessors, so `<Plot>` renders
+// that host instead of `<PlotChart>`. One family per plot; a family mark
+// beside a cartesian one is reported and the family wins.
 
 import { Fragment, Show, h, _rp as reactiveProp } from '@pyreon/core'
 import type { VNode, VNodeChild } from '@pyreon/core'
 import { computed } from '@pyreon/reactivity'
 import { PlotChart } from './Chart'
 import type { PlotChartProps } from './Chart'
+import { PieChart } from './PieChart'
+import { FunnelChart } from './FunnelChart'
+import { HeatmapChart } from './HeatmapChart'
+import { CandlestickChart } from './CandlestickChart'
+import type { CandleOptions } from './candlestick'
+import type { FunnelOptions } from './funnel'
 import type { Formatter } from './format'
 import { area, bars, bubble, groupedBars, line, points, stackedBars } from './marks'
 import type { Mark, MarkOptions } from './marks'
-import type { Annotation, ChartTheme } from './render'
+import type { Annotation, ChartTheme, PointMarker } from './render'
 import type { Domain, Double } from './types'
 import type { ChartLink } from './link'
 
@@ -69,6 +82,8 @@ export interface DotProps<T> extends MarkProps<T> {
 export interface RuleProps {
   /** A horizontal reference line at this value. */
   y?: Double
+  /** A vertical reference line at this x value (a continuous `xValue` position). */
+  x?: Double
   /** A band between two values. */
   from?: Double
   to?: Double
@@ -96,6 +111,52 @@ export interface LegendProps {
   /** Click toggles series (default on). */
   toggle?: boolean
   maxRows?: number
+}
+/**
+ * A datum-anchored label — the engine's point marker (ECharts' markPoint).
+ * `Label`, not `Text`: `<Text>` is the canonical primitive, and the native
+ * compiler dispatches on the tag name.
+ */
+export interface LabelProps {
+  /** Which series the marker reads; default the first. */
+  series?: number
+  /** Anchor at the series' maximum / minimum datum, or at a concrete index. */
+  at?: 'max' | 'min' | number
+  text: string
+  color?: string
+  radius?: Double
+}
+/** A pie or donut: one slice per row. */
+export interface ArcProps<T> {
+  value: Channel<T>
+  label: Channel<T, string>
+  /** Per-slice colour channel; the theme palette otherwise. */
+  color?: Channel<T, string>
+  /** 0 is a pie; up to 1 is a donut. */
+  innerRadius?: Double
+  showLabels?: boolean
+}
+/** A funnel: one stage per row, sorted descending by default. */
+export interface StageProps<T> extends Omit<FunnelOptions, 'progress'> {
+  value: Channel<T>
+  label: Channel<T, string>
+  color?: Channel<T, string>
+}
+/** A heatmap: one cell per row at (x, y); duplicates sum. */
+export interface CellProps<T> {
+  x: Channel<T, string>
+  y: Channel<T, string>
+  value: Channel<T>
+  /** The colour ramp, low to high. */
+  colors?: string[]
+  gap?: Double
+}
+/** A candlestick: one period per row; the plot's `x` channel labels it. */
+export interface CandleProps<T> extends CandleOptions {
+  open: Channel<T>
+  high: Channel<T>
+  low: Channel<T>
+  close: Channel<T>
 }
 export interface ZoomProps {
   /** Pinch / wheel zoom + drag pan (default). */
@@ -135,6 +196,20 @@ export const Tip = /* @__PURE__ */ brand<TipProps>('Tip')
 export const Legend = /* @__PURE__ */ brand<LegendProps>('Legend')
 /** Zoom, navigator, presets, brush, linking. */
 export const Zoom = /* @__PURE__ */ brand<ZoomProps>('Zoom')
+/** A datum-anchored label (the engine's point marker). */
+export const Label = /* @__PURE__ */ brand<LabelProps>('Label')
+/** A pie or donut — the family mark for `<PieChart>`. */
+export const Arc = /* @__PURE__ */ brand<ArcProps<any>>('Arc') as <T>(props: ArcProps<T>) => VNode | null
+/** A funnel — the family mark for `<FunnelChart>`. */
+export const Stage = /* @__PURE__ */ brand<StageProps<any>>('Stage') as <T>(props: StageProps<T>) => VNode | null
+/** A heatmap — the family mark for `<HeatmapChart>`. */
+export const Cell = /* @__PURE__ */ brand<CellProps<any>>('Cell') as <T>(props: CellProps<T>) => VNode | null
+/** A candlestick — the family mark for `<CandlestickChart>`. */
+export const Candle = /* @__PURE__ */ brand<CandleProps<any>>('Candle') as <T>(props: CandleProps<T>) => VNode | null
+
+/** The family a mark belongs to, and the host `<Plot>` renders for it. */
+export type FamilyHost = 'pie' | 'funnel' | 'heatmap' | 'candlestick'
+const FAMILY_OF: Readonly<Record<string, FamilyHost>> = { Arc: 'pie', Stage: 'funnel', Cell: 'heatmap', Candle: 'candlestick' }
 
 const markName = (type: unknown): string | undefined =>
   typeof type === 'function' ? ((type as unknown as Record<symbol, string>)[CHART_MARK] as string | undefined) : undefined
@@ -207,6 +282,28 @@ export interface ResolvedGrammar<T> {
   props: Partial<PlotChartProps<T>>
   /** Long-format pivot: the synthesized category rows replace `data`. */
   pivot: { rows: string[]; x: (d: string) => string } | null
+  /** A family mark was given: the host to render and the props (channels as accessors) it takes instead of `<PlotChart>`. */
+  family: { host: FamilyHost; props: Record<string, unknown> } | null
+}
+
+const warnGrammar = (m: string): void => {
+  if (process.env.NODE_ENV !== 'production') console.warn(`[Pyreon] <Plot>: ${m}`)
+}
+
+/** A family mark's props with every channel turned into an accessor. */
+function familyProps<T>(name: string, p: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  const channels: readonly string[] = name === 'Arc' || name === 'Stage' ? ['value', 'label', 'color'] : name === 'Cell' ? ['x', 'y', 'value'] : ['open', 'high', 'low', 'close']
+  const options: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(p)) {
+    if (k === 'children' || v === undefined) continue
+    if (channels.includes(k)) out[k] = channel(v as Channel<T, unknown>)
+    else if (name === 'Stage' || name === 'Candle') options[k] = v
+    else out[k] = v
+  }
+  if (name === 'Stage' && Object.keys(options).length > 0) out.funnel = options
+  if (name === 'Candle' && Object.keys(options).length > 0) out.candle = options
+  return out
 }
 
 /** Resolve mark children + chart channels into `<PlotChart>` props. Pure; called inside the host's effects so channel reads track. */
@@ -214,11 +311,19 @@ export function resolveGrammar<T>(rows: T[], chart: PlotProps<T>, children: VNod
   const nodes = flatChildren(children)
   const props: Partial<PlotChartProps<T>> = {}
   const annotations: Annotation[] = []
+  const markers: PointMarker[] = []
   const rawMarks: { vnode: VNode; name: string }[] = []
+  let family: ResolvedGrammar<T>['family'] = null
   for (const v of nodes) {
     const name = markName(v.type)
     if (name === undefined) continue
     const p = v.props as Record<string, unknown>
+    const familyHost = FAMILY_OF[name]
+    if (familyHost !== undefined) {
+      if (family === null) family = { host: familyHost, props: familyProps<T>(name, p) }
+      else warnGrammar(`one family per plot — <${name}> is ignored beside the ${family.host} mark.`)
+      continue
+    }
     switch (name) {
       case 'Bar':
       case 'Line':
@@ -231,6 +336,18 @@ export function resolveGrammar<T>(rows: T[], chart: PlotProps<T>, children: VNod
         const extra: Partial<Annotation> = { ...(r.label !== undefined ? { label: r.label } : {}), ...(r.color !== undefined ? { color: r.color } : {}) }
         if (r.from !== undefined && r.to !== undefined) annotations.push({ yFrom: r.from, yTo: r.to, ...extra })
         else if (r.y !== undefined) annotations.push({ y: r.y, ...extra })
+        else if (r.x !== undefined) annotations.push({ x: r.x, ...extra })
+        break
+      }
+      case 'Label': {
+        const t = p as unknown as LabelProps
+        const m: PointMarker = { label: t.text }
+        if (t.series !== undefined) m.seriesIndex = t.series
+        if (typeof t.at === 'number') m.atIndex = t.at
+        else if (t.at !== undefined) m.at = t.at
+        if (t.color !== undefined) m.color = t.color
+        if (t.radius !== undefined) m.radius = t.radius
+        markers.push(m)
         break
       }
       case 'Axis': {
@@ -277,10 +394,15 @@ export function resolveGrammar<T>(rows: T[], chart: PlotProps<T>, children: VNod
     }
   }
   if (annotations.length > 0) props.annotations = annotations
+  if (markers.length > 0) props.markers = markers
+  if (family !== null) {
+    if (rawMarks.length > 0) warnGrammar(`a ${family.host} mark beside <${rawMarks[0]!.name}> — the plot renders the ${family.host}; the cartesian marks are ignored.`)
+    return { marks: [], props, pivot: null, family }
+  }
 
   const colorOf = chart.color === undefined ? null : channel<T, string>(chart.color)
   if (colorOf === null) {
-    return { marks: rawMarks.map(({ vnode, name }) => toMark<T>(name, vnode.props as Record<string, unknown>, undefined)), props, pivot: null }
+    return { marks: rawMarks.map(({ vnode, name }) => toMark<T>(name, vnode.props as Record<string, unknown>, undefined)), props, pivot: null, family: null }
   }
   // Long format: pivot rows into (category × series) per `y` mark.
   const xOf = chart.x === undefined ? (_d: T, i: number) => String(i) : channel<T, string>(chart.x)
@@ -321,7 +443,7 @@ export function resolveGrammar<T>(rows: T[], chart: PlotProps<T>, children: VNod
       marks.push(m)
     }
   }
-  return { marks, props, pivot: { rows: categories, x: (d) => d } }
+  return { marks, props, pivot: { rows: categories, x: (d) => d }, family: null }
 }
 
 function toMark<T>(name: string, p: Record<string, unknown>, yOverride: ((d: T, i: number) => Double) | undefined): Mark<T> {
@@ -347,12 +469,28 @@ function toMark<T>(name: string, p: Record<string, unknown>, yOverride: ((d: T, 
  * signal read in a channel or a `<Show>` around a mark repaints like any other
  * reactive input; the children are scanned again each time.
  */
-export function Plot<T>(props: PlotProps<T>): VNode {
+export function Plot<T>(props: PlotProps<T>): VNodeChild {
   const readRows = (): T[] => (typeof props.data === 'function' ? (props.data as () => T[])() : props.data)
   // One scan per change, not one per prop read: every forwarded prop below
   // reads through this computed, which re-resolves when the data, a channel or
   // a child's props change and is otherwise cached.
   const resolved = computed<ResolvedGrammar<T>>(() => resolveGrammar(readRows(), props, props.children))
+  // Which host: the family a mark names, else the plot. Its own computed, so a
+  // data change repaints the host in place and only a family flip (a `<Show>`
+  // around the family mark) remounts.
+  const hostKind = computed<FamilyHost | 'plot'>(() => resolved().family?.host ?? 'plot')
+  const read = (key: string): unknown => (props as unknown as Record<string, unknown>)[key]
+  const familyNode = (kind: FamilyHost): VNode => {
+    const p: Record<string, unknown> = { data: reactiveProp(readRows) }
+    // The canvas host's shared props, then the child-declared switches, then the mark's own channels.
+    for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'animate', 'onSelect', 'accessibleTable', 'class'] as const) p[key] = reactiveProp(() => read(key))
+    for (const key of ['tooltip', 'showLegend', 'format'] as const) p[key] = reactiveProp(() => read(key) ?? (resolved().props as Record<string, unknown>)[key])
+    if (kind === 'candlestick') p.x = reactiveProp(() => (props.x === undefined ? undefined : channel<T, string>(props.x)))
+    const own = resolved().family!.props
+    for (const key of Object.keys(own)) p[key] = reactiveProp(() => resolved().family?.props[key])
+    const host = kind === 'pie' ? PieChart : kind === 'funnel' ? FunnelChart : kind === 'heatmap' ? HeatmapChart : CandlestickChart
+    return h(host as unknown as (p: Record<string, unknown>) => VNode, p)
+  }
   const plotProps: Record<string, unknown> = {
     data: reactiveProp(() => {
       const r = resolved()
@@ -367,10 +505,13 @@ export function Plot<T>(props: PlotProps<T>): VNode {
     xValue: reactiveProp(() => (props.xValue === undefined ? undefined : channel<T, Double>(props.xValue))),
   }
   // Every `<PlotChart>` prop a child can set, forwarded as an accessor; the chart's own props win when both are given.
-  const forwarded = ['format', 'xFormat', 'xTime', 'showXAxis', 'showYAxis', 'y2Format', 'y2Domain', 'tooltip', 'crosshair', 'tooltipFormatter', 'showLegend', 'legendToggle', 'legendMaxRows', 'dataZoom', 'navigator', 'zoomPresets', 'link', 'brush', 'onBrush', 'annotations'] as const
+  const forwarded = ['format', 'xFormat', 'xTime', 'showXAxis', 'showYAxis', 'y2Format', 'y2Domain', 'tooltip', 'crosshair', 'tooltipFormatter', 'showLegend', 'legendToggle', 'legendMaxRows', 'dataZoom', 'navigator', 'zoomPresets', 'link', 'brush', 'onBrush', 'annotations', 'markers'] as const
   for (const key of forwarded) plotProps[key] = reactiveProp(() => (props as unknown as Record<string, unknown>)[key] ?? (resolved().props as Record<string, unknown>)[key])
   for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'showGrid', 'horizontal', 'animate', 'updateAnimation', 'updateDuration', 'maxPoints', 'onSelect', 'keyboard', 'accessibleTable', 'class'] as const) {
     plotProps[key] = reactiveProp(() => (props as unknown as Record<string, unknown>)[key])
   }
-  return h(PlotChart as unknown as (p: Record<string, unknown>) => VNode, plotProps)
+  return () => {
+    const kind = hostKind()
+    return kind === 'plot' ? h(PlotChart as unknown as (p: Record<string, unknown>) => VNode, plotProps) : familyNode(kind)
+  }
 }

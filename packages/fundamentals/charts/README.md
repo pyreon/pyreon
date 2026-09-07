@@ -25,6 +25,8 @@ import { Axis, Bar, Legend, Line, Plot, Tip, currency } from '@pyreon/charts/plo
 </Plot>
 ```
 
+The same grammar covers the row-array families: `<Plot data={share}><Arc value="pct" label="browser" /></Plot>` is a pie or donut, `<Stage>` a funnel, `<Cell x y value>` a heatmap, `<Candle open high low close>` a candlestick — one family per plot, and `<Plot>` renders that host. `<Label text at="max" />` marks a datum, `<Rule x>` draws a vertical reference.
+
 Channels are field names (typed `keyof Row`) or accessors; marks are children
 and draw in order; `<Rule>` / `<Axis>` / `<Tip>` / `<Legend>` / `<Zoom>` declare
 the rest as data. `color="region"` pivots long-format rows into one series per

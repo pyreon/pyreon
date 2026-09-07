@@ -4,7 +4,7 @@
 import { h, Show } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
-import { Bar, Line, Plot, Tip, chartThemes } from '../plot'
+import { Arc, Bar, Line, Plot, Tip, chartThemes } from '../plot'
 
 interface Row { q: string; v: number; w: number }
 const rows = signal<Row[]>([{ q: 'a', v: 5, w: 2 }, { q: 'b', v: 9, w: 4 }])
@@ -47,6 +47,24 @@ describe('<Plot> grammar', () => {
     withLine.set(true)
     await flush()
     expect(red()).toBe(true)
+    unmount()
+  })
+  it('a family mark renders its host: <Arc> paints a pie with the theme palette and reports the slice index on click', async () => {
+    interface Slice { name: string; pct: number }
+    const slices: Slice[] = [{ name: 'a', pct: 60 }, { name: 'b', pct: 40 }]
+    const picked: number[] = []
+    const { container, unmount } = mountInBrowser(
+      h(Plot<Slice>, { data: slices, width: 200, height: 200, animate: false, onSelect: (i: number) => picked.push(i) }, h(Arc<Slice>, { value: 'pct', label: 'name' })),
+    )
+    await flush()
+    const canvas = container.querySelector('canvas')!
+    // The middle row crosses both slices: the first two palette colours are present, and nothing the plot host would draw (its grid) is.
+    const mid = rowColours(canvas, 0.5)
+    expect(mid.has(chartThemes.light.palette[0]!)).toBe(true)
+    expect(mid.has(chartThemes.light.palette[1]!)).toBe(true)
+    canvas.dispatchEvent(new MouseEvent('click', { clientX: canvas.getBoundingClientRect().left + 150, clientY: canvas.getBoundingClientRect().top + 100, bubbles: true }))
+    expect(picked.length).toBe(1)
+    expect(picked[0]).toBeGreaterThanOrEqual(0)
     unmount()
   })
 })

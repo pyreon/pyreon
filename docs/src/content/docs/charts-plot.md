@@ -53,7 +53,8 @@ around a mark adds and removes its series like any other Pyreon child.
 | Child | Declares |
 | --- | --- |
 | `<Bar y stack? group? />` `<Line y />` `<Area y />` `<Dot y r? />` | The marks. `stack` / `group` combine bars; `r` turns dots into area-mapped bubbles. |
-| `<Rule y label? />` `<Rule from to />` | A reference line or band. |
+| `<Rule y label? />` `<Rule from to />` `<Rule x />` | A reference line (horizontal, or vertical at a continuous x) or band. |
+| `<Label text at? series? />` | A datum-anchored label: at the series' `max` / `min`, or at an index. |
 | `<Axis y format domain />` `<Axis x time hidden />` `<Axis y2 … />` | Axis formatting and domains. |
 | `<Tip crosshair? format? />` | The pointer tooltip. |
 | `<Legend toggle? maxRows? />` | The legend (click toggles series). |
@@ -62,6 +63,40 @@ around a mark adds and removes its series like any other Pyreon child.
 `<Plot color="region">` switches to **long format**: every `y` mark becomes
 one series per distinct `region`, categories come from `x`, a missing
 (category, series) pair is a gap, and bars group side by side unless `stack`.
+
+The **family marks** make the same grammar cover the row-array families — one
+family per plot, and `<Plot>` renders that family's host instead of the
+cartesian plot:
+
+| Family mark | Renders | Channels |
+| --- | --- | --- |
+| `<Arc value label color? innerRadius? />` | A pie (`innerRadius={0}`) or donut. | one slice per row |
+| `<Stage value label color? sort? gap? />` | A funnel, descending by default. | one stage per row |
+| `<Cell x y value colors? gap? />` | A heatmap; duplicate `(x, y)` cells sum. | one observation per row |
+| `<Candle open high low close upColor? downColor? />` | A candlestick; the plot's `x` labels each period. | one period per row |
+
+```tsx
+// @check
+import { Arc, Legend, Plot, Tip } from '@pyreon/charts/plot'
+
+type Share = { browser: string; pct: number }
+const share: Share[] = [
+  { browser: 'Chrome', pct: 65 },
+  { browser: 'Safari', pct: 19 },
+  { browser: 'Firefox', pct: 8 },
+]
+
+export const BrowserShare = () => (
+  <Plot<Share> data={share} title="Browser share" showTitle>
+    <Arc value="pct" label="browser" innerRadius={0.6} />
+    <Tip />
+    <Legend />
+  </Plot>
+)
+```
+
+`<Tip>`, `<Legend>` and `<Axis y format>` apply to a family host too; a
+cartesian mark or `<Zoom>` beside a family mark is reported and ignored.
 
 <Example file="./examples/charts/plot-grammar" title="The grammar — marks as children, a Show around one" />
 
@@ -193,7 +228,8 @@ export const Radials = () => (
 )
 ```
 
-`innerRadius={0}` is a pie; anything up to 1 is a donut.
+`innerRadius={0}` is a pie; anything up to 1 is a donut. In the grammar the
+same chart is `<Plot data={share}><Arc value="pct" label="browser" innerRadius={0.6} /></Plot>`.
 
 ## Finance and matrix charts
 

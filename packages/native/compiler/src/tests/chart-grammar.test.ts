@@ -89,3 +89,121 @@ describe('chart grammar — the toolchains accept the desugared emit', () => {
     })
   }
 })
+
+// ---------------------------------------------------------------------------
+// The family marks: `<Plot>` with `<Arc>` / `<Stage>` / `<Cell>` / `<Candle>`
+// desugars to the row-array host it names, byte-identical to writing that
+// host directly — so the accessor inlining, the chrome, the tap and the
+// entrance are inherited. `<Label>` lowers to the plot's point markers and
+// `<Rule x>` to a vertical annotation.
+// ---------------------------------------------------------------------------
+const SLICES = `interface S { name: string; pct: number; tint: string }
+const SL: S[] = [{ name: 'a', pct: 60, tint: '#111111' }, { name: 'b', pct: 40, tint: '#222222' }]
+`
+const ARC = `${HEAD}import { Plot, Arc, Tip, Legend } from '@pyreon/charts/plot'
+${SLICES}export function Share() {
+  return (<Stack><Plot data={SL} title="Share" showTitle width={240} height={200}><Arc value="pct" label="name" color={(d: S) => d.tint} innerRadius={0.5} /><Tip /><Legend /></Plot></Stack>)
+}
+`
+const PIE = `${HEAD}import { PieChart } from '@pyreon/charts/plot'
+${SLICES}export function Share() {
+  return (<Stack><PieChart data={SL} title="Share" showTitle width={240} height={200} value={(d) => d.pct} label={(d) => d.name} color={(d: S) => d.tint} innerRadius={0.5} tooltip showLegend /></Stack>)
+}
+`
+const STAGE = `${HEAD}import { Plot, Stage } from '@pyreon/charts/plot'
+${SLICES}export function Steps() {
+  return (<Stack><Plot data={SL} height={200}><Stage value="pct" label="name" sort="none" gap={4} /></Plot></Stack>)
+}
+`
+const FUNNEL = `${HEAD}import { FunnelChart } from '@pyreon/charts/plot'
+${SLICES}export function Steps() {
+  return (<Stack><FunnelChart data={SL} height={200} value={(d) => d.pct} label={(d) => d.name} funnel={{ sort: 'none', gap: 4 }} /></Stack>)
+}
+`
+const OBS = `interface C { hour: string; day: string; n: number }
+const CELLS: C[] = [{ hour: '1', day: 'Mon', n: 2 }, { hour: '2', day: 'Mon', n: 5 }]
+`
+const CELL = `${HEAD}import { Plot, Cell, Axis, compact } from '@pyreon/charts/plot'
+${OBS}export function Heat() {
+  return (<Stack><Plot data={CELLS} width={240} height={160}><Cell x="hour" y="day" value="n" gap={2} /><Axis y format={compact} /></Plot></Stack>)
+}
+`
+const HEAT = `${HEAD}import { HeatmapChart, compact } from '@pyreon/charts/plot'
+${OBS}export function Heat() {
+  return (<Stack><HeatmapChart data={CELLS} width={240} height={160} x={(d) => d.hour} y={(d) => d.day} value={(d) => d.n} gap={2} format={compact} /></Stack>)
+}
+`
+const BARS = `interface B { day: string; o: number; h: number; l: number; c: number }
+const BARS: B[] = [{ day: 'Mon', o: 1, h: 3, l: 0.5, c: 2 }, { day: 'Tue', o: 2, h: 4, l: 1.5, c: 3 }]
+`
+const CANDLE = `${HEAD}import { Plot, Candle } from '@pyreon/charts/plot'
+${BARS}export function Periods() {
+  return (<Stack><Plot data={BARS} x="day" height={180}><Candle open="o" high="h" low="l" close="c" upColor="#00ff00" /></Plot></Stack>)
+}
+`
+const CANDLESTICK = `${HEAD}import { CandlestickChart } from '@pyreon/charts/plot'
+${BARS}export function Periods() {
+  return (<Stack><CandlestickChart data={BARS} x={(d) => d.day} height={180} open={(d) => d.o} high={(d) => d.h} low={(d) => d.l} close={(d) => d.c} candle={{ upColor: '#00ff00' }} /></Stack>)
+}
+`
+const LABELS = `${HEAD}import { Plot, Bar, Label, Rule } from '@pyreon/charts/plot'
+${DATA}export function Peaks() {
+  return (<Stack><Plot data={MONTHS} x="name" height={200}><Bar y="revenue" /><Label at="max" text="Peak" color="#b42318" /><Label series={0} at={1} text="Feb" radius={6} /><Rule x={0.5} label="launch" /></Plot></Stack>)
+}
+`
+const MARKERS = `${HEAD}import { PlotChart, bars } from '@pyreon/charts/plot'
+${DATA}export function Peaks() {
+  return (<Stack><PlotChart data={MONTHS} x={(d) => d.name} height={200} marks={[bars((d) => d.revenue)]} annotations={[{ x: 0.5, label: 'launch' }]} markers={[{ label: 'Peak', at: 'max', color: '#b42318' }, { label: 'Feb', seriesIndex: 0, atIndex: 1, radius: 6 }]} /></Stack>)
+}
+`
+
+describe('chart grammar — the family marks desugar to the row-array hosts', () => {
+  const pairs: [string, string, string][] = [
+    ['<Arc> → <PieChart>', ARC, PIE],
+    ['<Stage> → <FunnelChart>', STAGE, FUNNEL],
+    ['<Cell> → <HeatmapChart>', CELL, HEAT],
+    ['<Candle> → <CandlestickChart>', CANDLE, CANDLESTICK],
+    ['<Label> / <Rule x> → markers / a vertical annotation', LABELS, MARKERS],
+  ]
+  for (const [name, grammar, direct] of pairs) {
+    for (const target of ['swift', 'kotlin'] as const) {
+      it(`${target}: ${name}, byte-identical to the direct host`, () => {
+        const g = transform(grammar, { target })
+        const d = transform(direct, { target })
+        expect(g.warnings).toEqual(d.warnings)
+        expect(g.code).toBe(d.code)
+      })
+    }
+  }
+  it('what does not apply to a family is reported by name and the host still lowers', () => {
+    const src = `${HEAD}import { Plot, Arc, Stage, Bar, Zoom } from '@pyreon/charts/plot'
+${SLICES}export function Share() {
+  return (<Stack><Plot data={SL} x="name" height={200}><Arc value="pct" label="name" /><Stage value="pct" label="name" /><Bar y="pct" /><Zoom /></Plot></Stack>)
+}
+`
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(src, { target })
+      expect(r.warnings).toEqual([
+        '<Plot x>: a pie has no x channel; it is ignored.',
+        '<Plot>: one family per plot — <Stage> is ignored beside <Arc>.',
+        '<Plot>: <Bar> does not apply to a pie; it is ignored.',
+        '<Plot>: <Zoom> does not apply to a pie; it is ignored.',
+      ])
+      expect(r.code).toContain('renderPie(')
+    }
+  })
+  const fixtures = { ARC, STAGE, CELL, CANDLE, LABELS }
+  // `it(name, { skip }, fn)`, as the legs above: oxlint's no-standalone-expect does not follow the chained form.
+  it('swiftc accepts every family emit', { skip: !isSwiftcAvailable() }, () => {
+    for (const [name, src] of Object.entries(fixtures)) {
+      const r = validateSwiftWithStubs(transform(src, { target: 'swift' }).code)
+      expect(r.ok, `${name}: ${r.error ?? ''}`).toBe(true)
+    }
+  })
+  it('kotlinc accepts every family emit', { skip: !isKotlincAvailable() }, () => {
+    for (const [name, src] of Object.entries(fixtures)) {
+      const r = validateKotlin(transform(src, { target: 'kotlin' }).code)
+      expect(r.ok, `${name}: ${r.error ?? ''}`).toBe(true)
+    }
+  })
+})

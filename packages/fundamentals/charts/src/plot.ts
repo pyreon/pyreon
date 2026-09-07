@@ -9,8 +9,8 @@
 // radial trigonometry, the decimation, or the time scales.
 
 export { PlotChart } from './engine/Chart'
-export { Area, Axis, Bar, Dot, Legend, Line, Plot, Rule, Tip, Zoom, channel, resolveGrammar } from './engine/grammar'
-export type { AxisProps, BarProps, Channel, DotProps, LegendProps, MarkProps, PlotProps, ResolvedGrammar, RuleProps, TipProps, ZoomProps } from './engine/grammar'
+export { Arc, Area, Axis, Bar, Candle, Cell, Dot, Label, Legend, Line, Plot, Rule, Stage, Tip, Zoom, channel, resolveGrammar } from './engine/grammar'
+export type { ArcProps, AxisProps, BarProps, CandleProps, CellProps, Channel, DotProps, FamilyHost, LabelProps, LegendProps, MarkProps, PlotProps, ResolvedGrammar, RuleProps, StageProps, TipProps, ZoomProps } from './engine/grammar'
 export type { PlotChartProps } from './engine/Chart'
 export { GaugeChart, PieChart } from './engine/PieChart'
 export { CandlestickChart } from './engine/CandlestickChart'

@@ -79,7 +79,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_TOOLTIP_FIELDS, CHART_THEME_FIELDS, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_TOOLTIP_FIELDS, CHART_THEME_FIELDS, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -9571,14 +9571,10 @@ function emitKotlinChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   const tag = e.tag
   // The grammar: `<Plot>` with mark children desugars to the `<PlotChart marks>` element the plot emit lowers.
   if (tag === GRAMMAR_CHART_HOST) {
-    const plot = desugarChartGrammar(e, (w) => _emitWarnings.push(w))
-    // The desugared element carries the chrome flags (`<Tip>` → tooltip); name the ones the plot host does not draw here.
-    for (const p of chartChromeUnlowered('PlotChart')) {
-      if (plot.attrs.some((a) => a.kind === 'attr' && a.name === p)) _emitWarnings.push(chartChromeWarning('PlotChart', p))
-    }
-    return kotlinChartEntrance(plot, 'PlotChart', indent, (i) => emitKotlinPlotHost(plot, i))
+    // The grammar desugars to the host it names (`<PlotChart marks>`, or a family host for `<Arc>` / `<Stage>` / `<Cell>` / `<Candle>`) and re-enters here as that element.
+    return emitKotlinChartHost(desugarChartGrammar(e, (w) => _emitWarnings.push(w)), indent)
   }
-  if (Object.hasOwn(GRAMMAR_MARK_TAGS, tag) || GRAMMAR_CONFIG_TAGS.includes(tag)) {
+  if (Object.hasOwn(GRAMMAR_MARK_TAGS, tag) || Object.hasOwn(GRAMMAR_FAMILY_TAGS, tag) || GRAMMAR_CONFIG_TAGS.includes(tag)) {
     _emitWarnings.push(`<${tag}> only means something as a child of <Plot>; on its own it renders nothing.`)
     return 'Box {}'
   }
@@ -10173,9 +10169,10 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   if (readStaticAttrKotlin(e, 'xTime') === true) specArgs.push('xTime = true')
   if (readStaticAttrKotlin(e, 'horizontal') === true) specArgs.push('horizontal = true')
   const ann = chartAttrExprKotlin(e, 'annotations')
-  if (ann !== undefined) specArgs.push(`annotations = ${emitKotlinExpr(ann, indent)}`)
+  // Steered to the engine structs: `{ x, label }` also matches `RiverTick` by field set, and an unsteered literal resolved to it.
+  if (ann !== undefined) specArgs.push(`annotations = ${withExpectedTypeKotlin({ kind: 'array', element: { kind: 'typeRef', name: 'Annotation', args: [] } }, () => emitKotlinExpr(ann, indent))}`)
   const mk = chartAttrExprKotlin(e, 'markers')
-  if (mk !== undefined) specArgs.push(`markers = ${emitKotlinExpr(mk, indent)}`)
+  if (mk !== undefined) specArgs.push(`markers = ${withExpectedTypeKotlin({ kind: 'array', element: { kind: 'typeRef', name: 'PointMarker', args: [] } }, () => emitKotlinExpr(mk, indent))}`)
   if (kotlinChartAnimating(e, 'PlotChart')) specArgs.push('progress = pyreonEntrance')
   lets.push(`val pyreonSpec: ChartSpec = ChartSpec(${specArgs.join(', ')})`)
   if (brushing) {

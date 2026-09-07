@@ -338,7 +338,13 @@ export const UNLOWERED_CHART_HOSTS: Readonly<Record<string, string>> = {
 /** The grammar host and its mark/config children — `<Plot>` desugars to `<PlotChart marks>` before the plot emit runs. */
 export const GRAMMAR_CHART_HOST = 'Plot'
 export const GRAMMAR_MARK_TAGS: Readonly<Record<string, string>> = { Bar: 'bars', Line: 'line', Area: 'area', Dot: 'points' }
-export const GRAMMAR_CONFIG_TAGS: readonly string[] = ['Rule', 'Axis', 'Tip', 'Legend', 'Zoom']
+export const GRAMMAR_CONFIG_TAGS: readonly string[] = ['Rule', 'Axis', 'Tip', 'Legend', 'Zoom', 'Label']
+/** The FAMILY marks: `<Plot>` with one of these desugars to the row-array host it names, channels as accessors. */
+export const GRAMMAR_FAMILY_TAGS: Readonly<Record<string, string>> = { Arc: 'PieChart', Stage: 'FunnelChart', Cell: 'HeatmapChart', Candle: 'CandlestickChart' }
+/** The channels of each family mark (the host's accessor props); every other attr is an option. */
+const FAMILY_CHANNELS: Readonly<Record<string, readonly string[]>> = { Arc: ['value', 'label', 'color'], Stage: ['value', 'label', 'color'], Cell: ['x', 'y', 'value'], Candle: ['open', 'high', 'low', 'close'] }
+/** Where a family mark's option attrs go: an options struct prop, or straight onto the host. */
+const FAMILY_OPTIONS_PROP: Readonly<Record<string, string | undefined>> = { Stage: 'funnel', Candle: 'candle' }
 
 /** Whether a JSX tag is a `@pyreon/charts/plot` host, lowered or not (the grammar's mark tags included, so a stray one warns instead of emitting a phantom component). */
 export function isChartHostTag(tag: string): boolean {
@@ -349,6 +355,7 @@ export function isChartHostTag(tag: string): boolean {
     Object.hasOwn(UNLOWERED_CHART_HOSTS, tag) ||
     tag === GRAMMAR_CHART_HOST ||
     Object.hasOwn(GRAMMAR_MARK_TAGS, tag) ||
+    Object.hasOwn(GRAMMAR_FAMILY_TAGS, tag) ||
     GRAMMAR_CONFIG_TAGS.includes(tag)
   )
 }
@@ -379,9 +386,14 @@ const flagOn = (e: Extract<ExprIR, { kind: 'jsx-element' }>, name: string): bool
  * renders as wide-format.
  */
 export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>, warn: (m: string) => void): Extract<ExprIR, { kind: 'jsx-element' }> {
+  // A family mark names the host: the same grammar, the row-array host's props.
+  const children = e.children.flatMap((c) => (c.kind === 'expr' && c.expr.kind === 'jsx-element' ? [c.expr] : []))
+  const familyMark = children.find((c) => Object.hasOwn(GRAMMAR_FAMILY_TAGS, c.tag))
+  if (familyMark !== undefined) return desugarFamilyGrammar(e, familyMark, children, warn)
   const attrs: AttrIR[] = []
   const marks: ExprIR[] = []
   const annotations: ExprIR[] = []
+  const markers: ExprIR[] = []
   for (const a of e.attrs) {
     if (a.kind === 'attr' && (a.name === 'x' || a.name === 'xValue')) attrs.push({ kind: 'attr', name: a.name, value: channelArrow(a.value) })
     else if (a.kind === 'attr' && a.name === 'color') warn('<Plot color>: the long-format pivot is resolved on the web at runtime and is not lowered on native; the chart renders wide-format (one mark, one series).')
@@ -418,9 +430,11 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
         const y = attrOf(child, 'y')
         const from = attrOf(child, 'from')
         const to = attrOf(child, 'to')
+        const x = attrOf(child, 'x')
         const fields: { name: string; value: ExprIR }[] = []
         if (from !== undefined && to !== undefined) fields.push({ name: 'yFrom', value: from }, { name: 'yTo', value: to })
         else if (y !== undefined) fields.push({ name: 'y', value: y })
+        else if (x !== undefined) fields.push({ name: 'x', value: x })
         else continue
         for (const n of ['label', 'color']) {
           const v = attrOf(child, n)
@@ -449,6 +463,25 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
         attrs.push({ kind: 'attr', name: 'tooltip', value: lit(true) })
         if (flagOn(child, 'crosshair')) attrs.push({ kind: 'attr', name: 'crosshair', value: lit(true) })
         break
+      case 'Label': {
+        // The engine's point marker: `series` → seriesIndex, a numeric `at` → atIndex, a named one → at.
+        const text = attrOf(child, 'text')
+        if (text === undefined) {
+          warn('<Label>: needs a `text`; the marker is skipped on native.')
+          break
+        }
+        const fields: { name: string; value: ExprIR }[] = [{ name: 'label', value: text }]
+        const series = attrOf(child, 'series')
+        if (series !== undefined) fields.push({ name: 'seriesIndex', value: series })
+        const at = attrOf(child, 'at')
+        if (at !== undefined) fields.push({ name: at.kind === 'literal' && typeof at.value === 'number' ? 'atIndex' : 'at', value: at })
+        for (const n of ['color', 'radius']) {
+          const v = attrOf(child, n)
+          if (v !== undefined) fields.push({ name: n, value: v })
+        }
+        markers.push({ kind: 'object', fields })
+        break
+      }
       case 'Legend': {
         attrs.push({ kind: 'attr', name: 'showLegend', value: lit(true) })
         const toggle = attrOf(child, 'toggle')
@@ -478,7 +511,58 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   }
   attrs.push({ kind: 'attr', name: 'marks', value: { kind: 'array', elements: marks } })
   if (annotations.length > 0) attrs.push({ kind: 'attr', name: 'annotations', value: { kind: 'array', elements: annotations } })
+  if (markers.length > 0) attrs.push({ kind: 'attr', name: 'markers', value: { kind: 'array', elements: markers } })
   return { kind: 'jsx-element', tag: 'PlotChart', attrs, children: [] }
+}
+
+/**
+ * `<Plot data><Arc value label /></Plot>` → `<PieChart data value={(d) => d.value} label={…}>`
+ * (and Stage → Funnel, Cell → Heatmap, Candle → Candlestick): the plot's shared
+ * props carry over, the mark's channels become the host's accessors, its
+ * option attrs go where the host keeps them (`funnel={{…}}` / `candle={{…}}`
+ * or straight on), `<Tip>` / `<Legend>` / `<Axis y format>` set the host's
+ * switches. Everything cartesian — the other marks, `<Zoom>`, `<Rule>`,
+ * `<Label>`, the `x` channel except on a candlestick — is reported and ignored,
+ * exactly as the web host does.
+ */
+function desugarFamilyGrammar(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  mark: Extract<ExprIR, { kind: 'jsx-element' }>,
+  children: readonly Extract<ExprIR, { kind: 'jsx-element' }>[],
+  warn: (m: string) => void,
+): Extract<ExprIR, { kind: 'jsx-element' }> {
+  const host = GRAMMAR_FAMILY_TAGS[mark.tag]!
+  const attrs: AttrIR[] = []
+  for (const a of e.attrs) {
+    if (a.kind === 'attr' && a.name === 'x') {
+      if (host === 'CandlestickChart') attrs.push({ kind: 'attr', name: 'x', value: channelArrow(a.value) })
+      else warn(`<Plot x>: a ${host.replace('Chart', '').toLowerCase()} has no x channel; it is ignored.`)
+    } else if (a.kind === 'attr' && (a.name === 'xValue' || a.name === 'color' || a.name === 'horizontal' || a.name === 'showGrid')) {
+      warn(`<Plot ${a.name}>: not a ${host.replace('Chart', '').toLowerCase()} prop; it is ignored.`)
+    } else attrs.push(a)
+  }
+  const channels = FAMILY_CHANNELS[mark.tag]!
+  const optionsProp = FAMILY_OPTIONS_PROP[mark.tag]
+  const options: { name: string; value: ExprIR }[] = []
+  for (const a of mark.attrs) {
+    if (a.kind !== 'attr') continue
+    if (channels.includes(a.name)) attrs.push({ kind: 'attr', name: a.name, value: channelArrow(a.value) })
+    else if (optionsProp !== undefined) options.push({ name: a.name, value: a.value })
+    else attrs.push(a)
+  }
+  if (optionsProp !== undefined && options.length > 0) attrs.push({ kind: 'attr', name: optionsProp, value: { kind: 'object', fields: options } })
+  for (const child of children) {
+    if (child === mark) continue
+    if (Object.hasOwn(GRAMMAR_FAMILY_TAGS, child.tag)) {
+      warn(`<Plot>: one family per plot — <${child.tag}> is ignored beside <${mark.tag}>.`)
+      continue
+    }
+    if (child.tag === 'Tip') attrs.push({ kind: 'attr', name: 'tooltip', value: lit(true) })
+    else if (child.tag === 'Legend') attrs.push({ kind: 'attr', name: 'showLegend', value: lit(true) })
+    else if (child.tag === 'Axis' && !flagOn(child, 'x') && !flagOn(child, 'y2') && attrOf(child, 'format') !== undefined) attrs.push({ kind: 'attr', name: 'format', value: attrOf(child, 'format')! })
+    else warn(`<Plot>: <${child.tag}> does not apply to a ${host.replace('Chart', '').toLowerCase()}; it is ignored.`)
+  }
+  return { kind: 'jsx-element', tag: host, attrs, children: [] }
 }
 
 /** A Double literal the way both targets accept it (`240` → `240.0`). */
