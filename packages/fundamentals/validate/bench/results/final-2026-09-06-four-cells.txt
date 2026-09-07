@@ -1,0 +1,22 @@
+Four-cell re-measurement after #3316 (the parse seam made small enough to inline).
+ONLY the four `parse × valid` cells zod-compiled won on 2026-08-31 were re-run; every
+other figure in final-2026-08-31.txt stands. Same per-cell worker as bench/validation.ts
+(process isolation, its sampler), pyreon/zod-c interleaved per cell, 3 rounds,
+median-of-medians, ns/op. Load averages recorded first and last line (1-min ≤ 1.74).
+
+load=1.74 4.83 30.59 rounds=3
+number.int.range           pyreon    5.03  zod-c    2.80  → 1.80×   (was 7 vs 3, 2.3×)
+du.3-member                pyreon    8.67  zod-c    8.69  → 1.00×   (was a CI-tie; still a tie)
+object.array-of-objects    pyreon  133.46  zod-c  117.03  → 1.14×   (was 138 vs 118, 1.17×)
+array.20-objects           pyreon  116.40  zod-c  108.21  → 1.08×   (was 119 vs 108, 1.10×)
+end load=1.68 4.77 30.42
+
+Seam decomposition on number.int.range, same window (in-process, N=200000, 12 runs,
+bootstrap CI95 — the instrument that chose the #3316 shape):
+P  seam  S.parse(v)            4.83 ns  [  4.63–  4.86]   (was 10.2 before #3316)
+R  raw   compiled(v,ctx)       2.62 ns  [  2.56–  2.63]
+Z  zod-c safeParse(v)          2.62 ns  [  2.58–  2.62]
+seam  (P−R)  =   2.21 ns   of P   4.83  (46%)
+The emitted validator alone (R) is a tie with zod-compiled's whole seam (Z); the
+remaining 2.2ns is the Result envelope + pure-ctx call. On the two deep cells the
+residual is the per-item stripped clone, not the seam.
