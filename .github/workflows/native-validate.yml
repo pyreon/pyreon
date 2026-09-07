@@ -106,7 +106,7 @@ jobs:
             exit 0
           fi
           files=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" --paginate --jq '.[].filename')
-          if echo "$files" | grep -qE '^(packages/native/|examples/native-)'              || echo "$files" | grep -qxE 'bun\.lock|\.bun-version|\.github/workflows/native-validate\.yml'; then
+          if echo "$files" | grep -qE '^(packages/native/|packages/[^/]+/[^/]+/native/|packages/[^/]+/[^/]+/package\.json$|examples/native-)'              || echo "$files" | grep -qxE 'bun\.lock|\.bun-version|\.github/workflows/native-validate\.yml'; then
             echo "run=true" >> "$GITHUB_OUTPUT"
             echo "native surface touched — validating"
           else
@@ -530,3 +530,12 @@ jobs:
         # compiled nothing, for as long as this was the only job that set it. The
         # ubuntu `validate` job has BOTH toolchains and now runs the Kotlin half.
         run: PYREON_COVERAGE_COMPILE=swift bun scripts/check-native-coverage.ts
+      - name: Co-located native sources — compile + RUN the Swift tests (real SDK)
+        # `check-native-cosource` compiles every `packages/*/*/native/swift` and
+        # RUNS its tests, but only where the full SwiftUI/Observation SDK exists.
+        # The ubuntu `validate` job skips that half with a message naming THIS
+        # job — and until now this job never invoked the script, so the Swift
+        # co-source tests (@pyreon/flow's observation-granularity lock, the
+        # table/dnd/sync state ports' behaviour checks) ran on developer laptops
+        # only. Kotlin half re-runs here too; both toolchains are cheap.
+        run: bun scripts/check-native-cosource.ts

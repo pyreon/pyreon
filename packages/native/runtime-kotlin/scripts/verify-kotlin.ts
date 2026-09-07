@@ -1743,7 +1743,10 @@ try {
   })()
 
   if (!javaAvailable) {
-    console.log('[verify-kotlin] java not available; skipping smoke-run (typecheck passed)')
+    // Loud and distinct from ✓: a typecheck-only pass is NOT a behaviour pass. The
+    // @pyreon/flow port shipped a selectAll/deleteSelected divergence past this
+    // line because the smoke never ran locally (java off PATH) and the log read ✓.
+    console.log('[verify-kotlin] ⚠ SKIPPED smoke-run — `java` not on PATH (typecheck only). Put a JDK on PATH (e.g. /opt/homebrew/opt/openjdk/bin) to RUN the behaviour test.')
   } else {
     const smokeResult = spawnSync(
       'java',

@@ -69,11 +69,11 @@ Same source. Three idiomatic outputs (web rendered live; iOS/Android emitted as 
   - **`useFetch` needs its response type on iOS**: `useFetch<Resp>(url)`. Without the generic the Swift emit decodes into `Any`, which cannot conform to `Decodable`, so the iOS build fails — Android compiles either way. The compiler now warns rather than letting you find out at build time.
   - **`useParams()` must be destructured**: `const { id } = useParams()` lowers per key. Binding the whole object (`const p = useParams(); p.id`) reads a property off a native dictionary/map and compiles on neither target.
 
-**❌ Web-only by design** (a hard DOM/canvas/vendor dependency the compiler has no path for — these will NOT be *native-rendered* as SwiftUI/Compose; PMTC can't compile echarts/CodeMirror/elkjs/etc. But several CAN be **hosted in a `<WebView>`** — see the bridge escape hatch right after this table):
+**❌ Web-only by design** (a hard DOM/canvas/vendor dependency the compiler has no path for — these will NOT be *native-rendered* as SwiftUI/Compose; PMTC can't compile echarts/CodeMirror/ProseMirror/etc. But several CAN be **hosted in a `<WebView>`** — see the bridge escape hatch right after this table):
 
 | Package | Blocking dependency |
 |---|---|
-| `@pyreon/flow` | `elkjs` layout engine + SVG/CSS-transform pan-zoom + DOM pointer events |
+| `@pyreon/flow` (the `<Flow>` JSX host) | SVG/CSS-transform pan-zoom + DOM pointer events; `createFlow` itself DOES lower (`PyreonFlowState` on both targets — see the tier table), the host/gestures/layout/chrome do not yet |
 | `@pyreon/charts` (the `echarts` facade: `Chart`, `useChart`, `<OptionChart>`) | `echarts` (renders to `<canvas>`) — **but `@pyreon/charts/plot` is NOT in this table**: Pyreon's own plot engine and its hosts render natively (see the Charts row of the capability matrix) |
 | `@pyreon/code` | CodeMirror 6 (DOM editor) + a `<canvas>` minimap |
 | `@pyreon/dnd` | `@atlaskit/pragmatic-drag-and-drop` (HTML5 drag events on `HTMLElement`) |
@@ -83,7 +83,7 @@ Same source. Three idiomatic outputs (web rendered live; iOS/Android emitted as 
 | `@pyreon/hotkeys` | `window` keyboard listeners |
 | `@pyreon/elements`, `@pyreon/styler`, `@pyreon/rocketstyle`, `@pyreon/coolgrid`, `@pyreon/kinetic`, `@pyreon/unistyle`, `@pyreon/ui-core`, `@pyreon/ui-components` | the web CSS-in-JS / DOM stack (Layer 3b) — native apps use `@pyreon/primitives` (Layer 3a) instead |
 
-**🌉 Escape hatch — host a web-only component in a `<WebView>` (the bridge).** The "❌" packages can't be *native-rendered*, but a `<WebView>` embeds a real browser engine (WKWebView on iOS, Android WebView), so the web component runs *inside* it — echarts' canvas, flow's elkjs+SVG, CodeMirror, a document preview. The bridge is **bidirectional**:
+**🌉 Escape hatch — host a web-only component in a `<WebView>` (the bridge).** The "❌" packages can't be *native-rendered*, but a `<WebView>` embeds a real browser engine (WKWebView on iOS, Android WebView), so the web component runs *inside* it — echarts' canvas, flow's SVG host, CodeMirror, a document preview. The bridge is **bidirectional**:
 
 - **Forward** — `data={metrics()}` is pushed into the page as `window.__pyreonData` (+ a `pyreondata` event) so the hosted component updates live, no reload.
 - **Reverse** — the page calls `window.pyreonPostMessage(payload)` → your native `onMessage={(m) => …}` closure.
@@ -1257,7 +1257,7 @@ project as well as the workspace.
 ## WebView host — embedding web-only-rich viz (charts / flow)
 
 Some libraries are **structurally web-only** — `@pyreon/charts` (ECharts),
-`@pyreon/flow` (elkjs), `@pyreon/code` (CodeMirror), `@pyreon/document`
+`@pyreon/flow` (the SVG host — its `createFlow` state lowers), `@pyreon/code` (CodeMirror), `@pyreon/document`
 (pdfmake) all wrap a browser-runtime engine and cannot compile to SwiftUI
 / Compose. The multiplatform answer is a **hybrid**: a substantial native
 shell (the canonical primitives) with the heavy viz hosted in a
@@ -1329,7 +1329,7 @@ handler).
 Four packages wrap a web engine that has no native equivalent and cannot
 be reimplemented as a native view: `@pyreon/charts` (ECharts, a canvas
 engine), `@pyreon/code` (CodeMirror 6, a DOM editor), `@pyreon/rich-text`
-(TipTap/ProseMirror, a DOM editor), and `@pyreon/flow` (an elk/SVG
+(TipTap/ProseMirror, a DOM editor), and `@pyreon/flow` (an SVG
 layout). Rather than leave them web-only, each ships a **`./webview`
 subpath** that builds a self-contained host page and runs the SAME web
 bundle inside the `<WebView>` documented above:
