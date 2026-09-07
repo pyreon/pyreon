@@ -94,6 +94,14 @@ jobs:
     outputs:
       run: ${{ steps.diff.outputs.run }}
     steps:
+      # The classifier reads changed package.json manifests at the PR head, so
+      # it needs the merge-ref checkout (default depth is enough).
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
       - name: Check changed paths against the native dependency surface
         id: diff
         env:
@@ -105,19 +113,20 @@ jobs:
             echo "non-PR event — always validate"
             exit 0
           fi
-          files=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" --paginate --jq '.[].filename')
-          if echo "$files" | grep -qE '^(packages/native/|packages/[^/]+/[^/]+/native/|packages/[^/]+/[^/]+/package\.json$|examples/native-)'              || echo "$files" | grep -qxE 'bun\.lock|\.bun-version|\.github/workflows/native-validate\.yml'; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            echo "native surface touched — validating"
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "no native-surface change — validate job skips (reports success to branch protection)"
-          fi
+          # ONE classifier for both native workflows (scripts/native-surface-touched.ts,
+          # fail-closed: every uncertainty RUNS the lanes). The inline regex it
+          # replaced counted the JSX compiler's napi crate (packages/core/compiler/native/)
+          # and EVERY package.json as native surface — measured 2026-09-07 at ~2h of
+          # runner time (50 min macOS swiftc + 50 min iOS + 30 min Android) per
+          # affected PR, on 6 of the last 40 PRs.
+          gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" --paginate --jq '.[].filename' \
+            | bun scripts/native-surface-touched.ts --self=.github/workflows/native-validate.yml
 
   validate:
     name: Validate emitted Swift + Kotlin
     needs: decide
-    if: needs.decide.outputs.run == 'true'
+    # Fail-closed: a decide that could not run must not SKIP the gate.
+    if: (success() && needs.decide.outputs.run == 'true') || (failure() && needs.decide.result != 'success')
     runs-on: ubuntu-latest
     # Derived, not guessed (the ws-relay backstop rule). RE-DERIVED 2026-07-29
     # with the SAME formula, because the suite outgrew the previous budget —
@@ -238,6 +247,15 @@ jobs:
       - name: Verify kotlinc availability
         run: kotlinc -version
 
+      # Restore-only: the bun tarball store ci.yml's Install saves on main (the
+      # one writer under this prefix; check-cache-key-sync locks that). A miss
+      # costs ~1 s; a hit turns the 3-6 min cold install below into ~40 s.
+      - name: Restore bun install cache (read-only)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-install-cache-${{ runner.os }}-
       - name: Install workspace deps
         run: bun install --frozen-lockfile
 
@@ -435,7 +453,8 @@ jobs:
   validate-swift-typecheck:
     name: Validate emitted Swift (real-SDK typecheck, macOS)
     needs: decide
-    if: needs.decide.outputs.run == 'true'
+    # Fail-closed: a decide that could not run must not SKIP the gate.
+    if: (success() && needs.decide.outputs.run == 'true') || (failure() && needs.decide.result != 'success')
     # macOS runners ship the REAL SwiftUI SDK, which the Linux swift toolchain
     # the `validate` job above uses does NOT — so `isSwiftUIAvailable()` is
     # true here and the ~58 `it.skipIf(!isSwiftUIAvailable())` real-SDK
@@ -506,14 +525,46 @@ jobs:
           swiftc -typecheck "${RUNNER_TEMP}/pyreon-swiftui-probe.swift"
           echo "SwiftUI SDK present — validateSwiftTypecheck blocks WILL run"
 
+      # Restore-only: the bun tarball store ci.yml's Install saves on main (the
+      # one writer under this prefix; check-cache-key-sync locks that). A miss
+      # costs ~1 s; a hit turns the 3-6 min cold install below into ~40 s.
+      - name: Restore bun install cache (read-only)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-install-cache-${{ runner.os }}-
       - name: Install workspace deps
         run: bun install --frozen-lockfile
+
+      # The verdict store is what makes this lane affordable. validate-cache.ts
+      # keys every verdict on (validator kind, the compiler's OWN version string,
+      # the exact stub text, the exact compiled bytes), so a hit is correct across
+      # runs and across Xcode releases by construction — a new swiftc simply
+      # misses. Before this step the lane re-ran EVERY real-SDK -typecheck cold:
+      # measured 2026-09-07 at 2153-3465 s per PR (36-58 min of a 5-slot macOS
+      # pool), against ~45 s warm on the Linux twin. Same lineage discipline as
+      # the Linux job: one save per run under a run-scoped key, restore takes the
+      # newest under the prefix, so a cancelled run never loses the store. The
+      # nightly `schedule` run is deliberately UNCACHED — it exists to catch a
+      # toolchain release changing strictness.
+      - name: Restore native compile-verdict cache (macOS real-SDK typecheck)
+        if: github.event_name != 'schedule'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/pyreon-native-validate
+          key: native-verdicts-ci-${{ runner.os }}-typecheck-${{ github.run_id }}
+          restore-keys: |
+            native-verdicts-ci-${{ runner.os }}-typecheck-
 
       - name: Run native-compiler tests (real-SDK Swift -typecheck)
         # macos-15 ships the real SwiftUI SDK → isSwiftUIAvailable()=true → the
         # real-SDK `swiftc -typecheck` blocks run (they SKIP on ubuntu). Kotlin
         # blocks skip (no kotlinc); the ubuntu `validate` job covers Kotlin.
         run: bun run --filter='@pyreon/native-compiler' test
+        env:
+          PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate
+          PYREON_VALIDATE_NO_CACHE: ${{ github.event_name == 'schedule' && '1' || '0' }}
 
       - name: Native coverage — COMPILE every registry snippet
         # The coverage gate normally judges a package by transform WARNINGS and
@@ -530,6 +581,9 @@ jobs:
         # compiled nothing, for as long as this was the only job that set it. The
         # ubuntu `validate` job has BOTH toolchains and now runs the Kotlin half.
         run: PYREON_COVERAGE_COMPILE=swift bun scripts/check-native-coverage.ts
+        env:
+          PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate
+          PYREON_VALIDATE_NO_CACHE: ${{ github.event_name == 'schedule' && '1' || '0' }}
       - name: Co-located native sources — compile + RUN the Swift tests (real SDK)
         # `check-native-cosource` compiles every `packages/*/*/native/swift` and
         # RUNS its tests, but only where the full SwiftUI/Observation SDK exists.

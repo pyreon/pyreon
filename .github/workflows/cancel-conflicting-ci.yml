@@ -62,3 +62,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: bun scripts/cancel-conflicting-ci.ts
+
+      # Same cadence, same permissions, one fewer workflow run: prune the
+      # SUPERSEDED cache generations on main (older tarball-store / node_modules /
+      # Playwright / bootstrap copies that no restore can ever pick — restore
+      # takes the newest under the prefix). Measured 2026-09-07: 5.8 GB of a
+      # 9.9 GB budget, and at capacity GitHub evicts the small, old native
+      # compile-verdict store first, which turns a 1-min native test cell into a
+      # 25-min timeout-cancel. Keeping the budget clear is what keeps it warm.
+      # Deletes only on refs/heads/main, only known families, never the newest
+      # of a lineage, never an entry younger than 30 min; an empty listing
+      # aborts rather than deleting nothing "successfully".
+      - name: Prune superseded cache generations on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bun scripts/prune-superseded-caches.ts --apply

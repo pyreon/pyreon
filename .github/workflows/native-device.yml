@@ -81,32 +81,35 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      native: ${{ steps.detect.outputs.native }}
+      native: ${{ steps.detect.outputs.run }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
       - name: Detect native-path changes
         id: detect
         run: |
+          set -euo pipefail
           if [ "${{ github.event_name }}" != "pull_request" ]; then
-            echo "native=true" >> "$GITHUB_OUTPUT"
+            echo "run=true" >> "$GITHUB_OUTPUT"
             echo "Non-PR event (${{ github.event_name }}) → native=true (full run)."
             exit 0
           fi
-          # Fail-closed: any diff failure → native=true.
+          # ONE classifier for both native workflows (scripts/native-surface-touched.ts,
+          # fail-closed: every uncertainty RUNS the lanes; see native-validate.yml
+          # for the two over-matches the inline regex it replaced carried).
+          # Fail-closed: any diff failure → run=true.
           git fetch origin "${{ github.base_ref }}" || true
           if FILES=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD"); then
-            if printf '%s\n' "$FILES" | grep -qE '^(packages/native/|packages/[^/]+/[^/]+/native/|packages/[^/]+/[^/]+/package\.json$|examples/native-|\.github/workflows/native-device\.yml$)'; then
-              NATIVE=true
-            else
-              NATIVE=false
-            fi
+            printf '%s\n' "$FILES" | bun scripts/native-surface-touched.ts --self=.github/workflows/native-device.yml
           else
-            NATIVE=true
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "diff failed → native=true (fail-closed)"
           fi
-          echo "native=$NATIVE" >> "$GITHUB_OUTPUT"
-          echo "Native paths changed: $NATIVE"
 
   ios-build:
     # Runs when: non-PR event (nightly / dispatch) · the PR touches native
@@ -208,6 +211,15 @@ jobs:
       # budget — the 1.2 GB Linux bun-install entries are the bigger tenant
       # and would need looking at first.
 
+      # Restore-only: the bun tarball store ci.yml's Install saves on main (the
+      # one writer under this prefix; check-cache-key-sync locks that). A miss
+      # costs ~1 s; a hit turns the 3-6 min cold install below into ~40 s.
+      - name: Restore bun install cache (read-only)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-install-cache-${{ runner.os }}-
       - name: Install workspace deps (bootstraps @pyreon/native-cli used by the preBuildScript)
         run: |
           # Retry the install — a transient registry tarball-extract flake
@@ -228,6 +240,16 @@ jobs:
           done
           echo "::error::bun install failed after 3 attempts"
           exit 1
+
+      # macOS tarball store — ONE writer, the nightly schedule run on main. Same
+      # prefix + path as ci.yml's Linux writer (runner.os keeps them apart), so
+      # check-cache-key-sync sees one lineage. Restored read-only above.
+      - name: Save bun install cache (nightly only)
+        if: github.event_name == 'schedule'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -588,6 +610,15 @@ jobs:
       - name: Verify gradle availability
         run: gradle --version
 
+      # Restore-only: the bun tarball store ci.yml's Install saves on main (the
+      # one writer under this prefix; check-cache-key-sync locks that). A miss
+      # costs ~1 s; a hit turns the 3-6 min cold install below into ~40 s.
+      - name: Restore bun install cache (read-only)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-install-cache-${{ runner.os }}-
       - name: Install workspace deps (bootstraps @pyreon/native-cli)
         run: |
           # Retry the install — a transient registry tarball-extract flake
