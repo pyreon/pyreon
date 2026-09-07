@@ -247,15 +247,13 @@ jobs:
       - name: Verify kotlinc availability
         run: kotlinc -version
 
-      # Restore-only: the bun tarball store ci.yml's Install saves on main (the
-      # one writer under this prefix; check-cache-key-sync locks that). A miss
-      # costs ~1 s; a hit turns the 3-6 min cold install below into ~40 s.
-      - name: Restore bun install cache (read-only)
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-          restore-keys: bun-install-cache-${{ runner.os }}-
+      # No bun tarball-store restore here, on measurement (2026-09-07, PR #3344):
+      # the restore costs ~56 s for the 2 GB store and the download+link phase
+      # went 58 s -> 78 s WITH it — the runner's registry fetch is already fast.
+      # What this step actually spends (~100 s on Linux) is the postinstall
+      # lib/ bootstrap (76 packages + the Rust binary), which no download cache
+      # can help; restoring ci.yml's `bootstrap-ubuntu-*` lib/ cache instead is
+      # the untested lever.
       - name: Install workspace deps
         run: bun install --frozen-lockfile
 
@@ -527,7 +525,9 @@ jobs:
 
       # Restore-only: the bun tarball store ci.yml's Install saves on main (the
       # one writer under this prefix; check-cache-key-sync locks that). A miss
-      # costs ~1 s; a hit turns the 3-6 min cold install below into ~40 s.
+      # costs ~1 s. UNMEASURED on macOS until the nightly seeds the store; the
+      # Linux twin measured a net LOSS (see the validate job), so if the first
+      # warm macOS run does not show the install phase shrinking, remove this.
       - name: Restore bun install cache (read-only)
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
