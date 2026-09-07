@@ -213,6 +213,18 @@ struct PyreonFlowStateTests {
         )
         check(pyreonFlowEdgeColor("not-a-color") == Color.gray, "an unrecognized color string falls back to gray")
 
+        // 6. A stroke prebuilds its path/color/dash ONCE, at construction — the
+        // draw closure must find nothing left to parse or allocate per edge.
+        let stroke = PyreonFlowEdgeStroke(id: "e1", segments: [.move(0, 0), .line(100, 50)], color: "#f00", dash: [4, 2])
+        check(stroke.path.boundingRect == pyreonFlowEdgePath([.move(0, 0), .line(100, 50)]).boundingRect, "stroke prebuilds its unscaled path")
+        check(stroke.resolvedColor == Color(red: 1, green: 0, blue: 0), "stroke parses its color once")
+        check(stroke.dashCG == [4, 2], "stroke converts its dash once")
+        var moved = stroke
+        moved.segments = [.move(0, 0), .line(10, 10)]
+        check(moved.path.boundingRect.width == 10, "reassigning segments rebuilds the cached path")
+        check(stroke == stroke && stroke != moved, "strokes are Equatable (so an unchanged draw list can be skipped)")
+        check(PyreonFlowEdgeCanvas(edges: [stroke]) == PyreonFlowEdgeCanvas(edges: [stroke]), "the canvas is Equatable over edges + viewport")
+
         print("PyreonFlowEdgeCanvasTests: edge canvas checks passed")
     }
 
