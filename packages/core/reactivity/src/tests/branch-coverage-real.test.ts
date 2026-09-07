@@ -1130,7 +1130,7 @@ describe('reactive-devtools — getFireSummaries collision branches', () => {
   test('getReactiveGraph: host with null _s skips edge emission (line 561 FALSE arm)', async () => {
     // Register a node with a host that has _s = null (no subscribers).
     const node = (() => {}) as object
-    const host: { _s1: (() => void) | null; _s: Set<() => void> | null } = {
+    const host: { _s1: (() => void) | null; _s: Set<() => void> | (() => void) | null } = {
       _s1: null,
       _s: null,
     }

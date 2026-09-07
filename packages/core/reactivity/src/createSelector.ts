@@ -12,10 +12,12 @@ function notifyBucket(host: SubscriberHost): void {
   // locally, so a subscriber that promotes the tier mid-call is unaffected.
   const s1 = host._s1
   if (s1 !== null) {
+    const s2 = host._s as (() => void) | null
     s1()
+    if (s2 !== null && (host._s === s2 || host._s1 === s2)) s2()
     return
   }
-  const bucket = host._s
+  const bucket = host._s as Set<() => void> | null
   if (bucket === null || bucket.size === 0) return
   const originalSize = bucket.size
   let i = 0
@@ -260,7 +262,7 @@ export function createSelector<T>(source: () => T): Selector<T> {
    */
   const sweep = (): void => {
     for (const [key, host] of subs) {
-      if (host._s1 === null && (host._s === null || host._s.size === 0)) subs.delete(key)
+      if (host._s1 === null && (host._s === null || (host._s as Set<() => void>).size === 0)) subs.delete(key)
     }
     // Amortize: the next sweep waits until the live set could have doubled, so
     // total sweep work stays O(1) per key inserted.

@@ -85,6 +85,8 @@ published it at **4.31×** and #2956/#2973 root-caused and partly fixed it, so
 3.00× is measured PROGRESS against a tracked baseline. It remains the largest
 scenario gap and the honest place to look next.
 
+**`dispose-500` — the board re-run (7 Sept, load 3.0 → 5.3) did NOT move: Solid 35µs vs Pyreon 115µs (3.29×, was 3.00×).** The #3325 lever cannot reach the board's row, which receives its signal as an ACCESSOR prop (`value={row.value}`, a member expression the compiler leaves as `_rp(() => row.value)`) and reads `{() => props.value()}` — the wrapper-accessor shape, not the idiomatic `value={sig()}` the ladder's J arm measured. The lever that DOES reach it is in the reactivity core (`perf/reactivity-two-inline-slots`): the profile of the benched shape was 68% two `dispose` closures whose only real work was `deps.length = 0` (a slow V8 length-setter store — `pop()` instead: A 60.8 → 43.4µs on-CPU, paired run, Solid flat), and then 61% `removeSubscriber`, because a row whose signal carries an `effect()` AND a text bind has TWO tracking subscribers and the one-slot tier put the second in a Set (a second inline slot, stored in the existing `_s` field to keep 152 B/signal: A → ~20µs, wall 95 → ~36µs, Solid 14.7/26.8 in the same run — ~1.35×). Board re-run with that change is owed.
+
 **`dispose-500`, the lever landed (PR #3325, MERGED 2026-09-07) — LADDER numbers,
 not a board re-run.** On the dispose-500 ablation ladder
 (`examples/benchmark/bench-disposeprofile.ts`, real Chromium, CDP subtree
