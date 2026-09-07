@@ -62,7 +62,7 @@ import {
   createSignal,
   useContext as solidUseContext,
 } from 'solid-js'
-import { insert, render as solidRender } from 'solid-js/web'
+import { insert, render as solidRender, template as solidTemplate } from 'solid-js/web'
 import { flushSync as svelteFlushSync, mount as svelteMount, unmount as svelteUnmount } from 'svelte'
 import {
   createApp,
@@ -397,7 +397,25 @@ function vueTarget(): TreeTarget {
 //     }), null);
 //
 // So the faithful arm defines an accessor per child, re-reading the parent's
-// props on access. This is the same justification standard PR #2878 used for
+// props on access.
+//
+// The ELEMENTS are compiler-faithful too (2026-09-07 correction). The same
+// compile emits, for the whole component:
+//
+//     var _tmpl$ = _$template(`<span class=leaf>`),
+//       _tmpl$2 = _$template(`<div class=branch>`);
+//     …
+//     var _el$ = _tmpl$();            // cloneNode, NOT document.createElement
+//     _$insert(_el$, get);            // the accessor itself, no wrapper arrow
+//     …
+//     var _el$2 = _tmpl$2();
+//     _$insert(_el$2, _$createComponent(SolidNode, { get depth() {…} }), null);
+//
+// An earlier version of this arm hand-wrote `document.createElement` +
+// `className` + `appendChild` for those lines — cheaper than the clone and the
+// `insert` the toolchain actually produces, i.e. a handicap in SOLID's favour
+// (measured: createElement 64 vs Pyreon's cloneNode 129 profile samples on the
+// same op). Corrected with the same standard as the getter props above. This is the same justification standard PR #2878 used for
 // Vue's `shallowRef` and Svelte's `$state.raw`: put the rival on the path its
 // own toolchain produces, then measure.
 //
@@ -408,19 +426,22 @@ function vueTarget(): TreeTarget {
 
 const SolidCtx = solidCreateContext<() => string>(() => '')
 
+// The `_tmpl$` hoists the compiler emits (see the comment above).
+const solidLeafTmpl = solidTemplate('<span class=leaf>')
+const solidBranchTmpl = solidTemplate('<div class=branch>')
+const solidRootTmpl = solidTemplate('<div class=tree-root>')
+
 /** false = compiler-faithful getter props; true = the eager-object diagnostic. */
 let solidEagerProps = false
 
 function SolidNode(props: { depth: number }): Node {
   if (props.depth <= 1) {
     const get = solidUseContext(SolidCtx)
-    const span = document.createElement('span')
-    span.className = 'leaf'
-    insert(span, () => get())
+    const span = solidLeafTmpl() as HTMLElement
+    insert(span, get)
     return span
   }
-  const div = document.createElement('div')
-  div.className = 'branch'
+  const div = solidBranchTmpl() as HTMLElement
   // Two separate props objects, one per child — exactly as the compiler emits.
   for (let i = 0; i < 2; i++) {
     const childProps = solidEagerProps
@@ -430,7 +451,7 @@ function SolidNode(props: { depth: number }): Node {
             return props.depth - 1
           },
         }
-    div.appendChild(createComponent(SolidNode, childProps) as Node)
+    insert(div, createComponent(SolidNode, childProps), null)
   }
   return div
 }
@@ -448,9 +469,8 @@ function solidTarget(eagerProps: boolean): TreeTarget {
           createComponent(SolidCtx.Provider, {
             value: value,
             get children() {
-              const root = document.createElement('div')
-              root.className = 'tree-root'
-              root.appendChild(createComponent(SolidNode, { depth: TREE_DEPTH }) as Node)
+              const root = solidRootTmpl() as HTMLElement
+              insert(root, createComponent(SolidNode, { depth: TREE_DEPTH }), null)
               return root
             },
           }) as unknown as Node,
