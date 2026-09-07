@@ -69,6 +69,8 @@ export const ENGINE_FILES = [
   'plot-hit',
   'title',
   'legend',
+  'tooltip',
+  'chrome',
   'bubble',
   'zoom',
   'presets',

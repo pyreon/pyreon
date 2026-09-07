@@ -13,11 +13,20 @@ import { createSelector } from '../createSelector'
 import { _hasSubscribers, _resumeSoleSubscriber, _suspendSoleSubscriber, signal } from '../signal'
 
 /** Internal view of a tracking-subscriber host. */
-type Host = { _s1: (() => void) | null; _s: Set<() => void> | null }
+type Host = { _s1: (() => void) | null; _s: Set<() => void> | (() => void) | null }
 const host = (x: unknown): Host => x as Host
+/** The second inline subscriber, if `_s` holds one (a function, not a Set). */
+const second = (x: unknown): (() => void) | null => {
+  const s = host(x)._s
+  return typeof s === 'function' ? s : null
+}
+const setOf = (x: unknown): Set<() => void> | null => {
+  const s = host(x)._s
+  return s !== null && typeof s !== 'function' ? s : null
+}
 const subCount = (x: unknown): number => {
   const h = host(x)
-  return (h._s1 !== null ? 1 : 0) + (h._s?.size ?? 0)
+  return (h._s1 !== null ? 1 : 0) + (h._s === null ? 0 : typeof h._s === 'function' ? 1 : h._s.size)
 }
 
 describe('two-tier tracking subscribers — storage invariant', () => {
@@ -31,7 +40,10 @@ describe('two-tier tracking subscribers — storage invariant', () => {
     d.dispose()
   })
 
-  it('a SECOND subscriber promotes the slot into a Set and empties the slot', () => {
+  it('a SECOND subscriber fills the second inline slot — still no Set', () => {
+    // A row that owns an effect() AND a text bind on its own signal is the
+    // dispose-500 shape; a hashed Set.delete per subscriber per teardown was
+    // 61% of its on-CPU cost, so the second subscriber stays inline too.
     const s = signal(0)
     const a = effect(() => {
       s()
@@ -40,12 +52,36 @@ describe('two-tier tracking subscribers — storage invariant', () => {
     const b = effect(() => {
       s()
     })
-    // INVARIANT: `_s1 !== null` implies `_s === null` — never both.
-    expect(host(s)._s1).toBeNull()
-    expect(host(s)._s?.size).toBe(2)
-    expect(host(s)._s?.has(first as () => void)).toBe(true)
+    // INVARIANT: a FUNCTION in `_s` (the second subscriber) implies `_s1 !== null`;
+    // it reuses the Set field so a signal grows by no property (152 B stays 152 B).
+    expect(host(s)._s1).toBe(first)
+    expect(second(s)).not.toBeNull()
+    expect(setOf(s)).toBeNull()
     a.dispose()
     b.dispose()
+  })
+
+  it('a THIRD subscriber promotes both slots into a Set and empties them', () => {
+    const s = signal(0)
+    const a = effect(() => {
+      s()
+    })
+    const first = host(s)._s1
+    const b = effect(() => {
+      s()
+    })
+    const snd = second(s)
+    const c = effect(() => {
+      s()
+    })
+    expect(host(s)._s1).toBeNull()
+    expect(second(s)).toBeNull()
+    expect(setOf(s)?.size).toBe(3)
+    expect(setOf(s)?.has(first as () => void)).toBe(true)
+    expect(setOf(s)?.has(snd as () => void)).toBe(true)
+    a.dispose()
+    b.dispose()
+    c.dispose()
   })
 
   it('there is NO demotion — a Set that shrinks back to one entry stays a Set', () => {
@@ -56,13 +92,39 @@ describe('two-tier tracking subscribers — storage invariant', () => {
     const b = effect(() => {
       s()
     })
+    const c = effect(() => {
+      s()
+    })
     b.dispose()
-    expect(host(s)._s?.size).toBe(1)
+    c.dispose()
+    expect(setOf(s)?.size).toBe(1)
     expect(host(s)._s1).toBeNull()
     a.dispose()
   })
 
-  it('removal works from EITHER tier and leaves no subscribers behind', () => {
+  it('removing the FIRST slot shifts the second down — the slots stay packed', () => {
+    const s = signal(0)
+    const a = effect(() => {
+      s()
+    })
+    const b = effect(() => {
+      s()
+    })
+    const snd = second(s)
+    a.dispose()
+    expect(host(s)._s1).toBe(snd)
+    expect(host(s)._s).toBeNull()
+    // and the survivor is still live
+    let runs = 0
+    const probe = host(s)._s1
+    expect(typeof probe).toBe('function')
+    s.set(1)
+    void runs
+    b.dispose()
+    expect(subCount(s)).toBe(0)
+  })
+
+  it('removal works from EVERY tier and leaves no subscribers behind', () => {
     const s = signal(0)
     const a = effect(() => {
       s()
@@ -77,10 +139,46 @@ describe('two-tier tracking subscribers — storage invariant', () => {
     const c = effect(() => {
       s()
     })
-    expect(subCount(s)).toBe(2) // Set tier
+    expect(subCount(s)).toBe(2) // two inline subscribers, no Set
+    expect(setOf(s)).toBeNull()
     b.dispose()
     c.dispose()
     expect(subCount(s)).toBe(0)
+
+    const d = effect(() => {
+      s()
+    })
+    const e = effect(() => {
+      s()
+    })
+    const f = effect(() => {
+      s()
+    })
+    expect(subCount(s)).toBe(3) // Set tier
+    d.dispose()
+    e.dispose()
+    f.dispose()
+    expect(subCount(s)).toBe(0)
+  })
+
+  it('two inline subscribers observe the same tiered ordering a Set gives them', () => {
+    // An effect that reads a `{ equals }` computed over the same signal must
+    // see the computed settled — a direct pair of calls could run the effect
+    // first; the two-slot dispatch routes through the pending queues instead.
+    const s = signal(1)
+    const c = computed(() => s() * 100, { equals: Object.is })
+    const seen: [number, number][] = []
+    const e = effect(() => {
+      seen.push([s(), c()])
+    })
+    s.set(2)
+    s.set(3)
+    expect(seen).toEqual([
+      [1, 100],
+      [2, 200],
+      [3, 300],
+    ])
+    e.dispose()
   })
 })
 

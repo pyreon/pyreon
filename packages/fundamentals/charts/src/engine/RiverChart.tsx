@@ -1,7 +1,8 @@
 // `<RiverChart>` — a theme river (streamgraph) on a canvas, over the shared canvas host.
 
 import type { VNode } from '@pyreon/core'
-import { canvasHost } from './canvas-host'
+import { canvasHost, orNull } from './canvas-host'
+import { riverLegend, riverTip } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
 import { hitRiver, hitRiverIndex, layoutRiver, renderRiver } from './river'
 import type { RiverLayer, RiverLayout, RiverOptions, RiverSeries } from './river'
@@ -26,16 +27,14 @@ export function RiverChart(props: RiverChartProps): VNode {
       readSeries()
     },
     layout: (box, _measure, theme) => layoutRiver(readSeries(), { x: box.x + 8.0, y: box.y + 8.0, w: Math.max(0.0, box.w - 16.0), h: Math.max(0.0, box.h - 16.0) }, opts(theme.palette)),
-    render: (layout, measure, theme) => renderRiver(layout, opts(theme.palette), measure),
-    legend: (layout) => layout.layers.map((l) => ({ label: l.name, color: l.color })),
+    animates: true,
+    render: (layout, measure, theme, progress) => renderRiver(layout, { ...opts(theme.palette), progress }, measure),
+    legend: riverLegend,
     select: (layout, px, py) => {
       props.onSelect?.(hitRiver(layout, px, py, props.river?.curve))
       props.onSelectIndex?.(hitRiverIndex(layout, px, py, props.river?.curve))
     },
-    tooltip: (layout, px, py) => {
-      const l = hitRiver(layout, px, py, props.river?.curve)
-      return l === null ? null : [l.name]
-    },
+    tooltip: (layout, px, py) => orNull(riverTip(layout, px, py, props.river?.curve)),
     a11y: () => {
       const series = readSeries()
       let n = 0

@@ -147,7 +147,7 @@ export const LPIH_RATE_TAU_MS = 1000
  */
 interface SubscriberHostLike {
   _s1: (() => void) | null
-  _s: Set<() => void> | null
+  _s: Set<() => void> | (() => void) | null
 }
 
 interface NodeRec {
@@ -558,8 +558,11 @@ export function getReactiveGraph(): ReactiveGraph {
       // single-subscriber source (the overwhelmingly common shape) would report
       // zero subscribers and contribute no edges.
       const s1 = host?._s1 ?? null
-      const subs = host?._s ?? null
-      const subCount = (s1 !== null ? 1 : 0) + (subs?.size ?? 0)
+      const tier2 = host?._s ?? null
+      // Second tier: a function is the second inline subscriber, a Set the promoted store.
+      const subs: Iterable<() => void> | null =
+        tier2 === null ? null : typeof tier2 === 'function' ? [tier2] : tier2
+      const subCount = (s1 !== null ? 1 : 0) + (tier2 === null ? 0 : typeof tier2 === 'function' ? 1 : tier2.size)
       // `preview()` is total (its own try/catch returns '[unstringifiable]'),
       // and `_v` on our registered nodes is a plain property (signal) or a
       // getter that never throws (computed's getter routes errors through

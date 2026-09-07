@@ -1,9 +1,9 @@
 // `<GraphChart>` — a node-link graph on a canvas, over the shared canvas host.
 
 import type { VNode } from '@pyreon/core'
-import { canvasHost } from './canvas-host'
+import { canvasHost, orNull } from './canvas-host'
+import { graphTip } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
-import { plain } from './format'
 import { hitGraphIndex, layoutGraph, renderGraph } from './graph'
 import { hitGraph } from './graph-hit'
 import type { GraphLayout, GraphLayoutNode, GraphLink, GraphNode, GraphOptions } from './graph'
@@ -34,15 +34,13 @@ export function GraphChart(props: GraphChartProps): VNode {
       readLinks()
     },
     layout: (box, _measure, theme) => ({ layout: layoutGraph(readNodes(), readLinks(), box, opts(theme.palette)), box }),
-    render: (g, _measure, theme) => renderGraph(g.layout, g.box, opts(theme.palette)),
+    animates: true,
+    render: (g, _measure, theme, progress) => renderGraph(g.layout, g.box, { ...opts(theme.palette), progress }),
     select: (g, px, py) => {
       props.onSelect?.(hitGraph(g.layout, px, py))
       props.onSelectIndex?.(hitGraphIndex(g.layout, px, py))
     },
-    tooltip: (g, px, py) => {
-      const n = hitGraph(g.layout, px, py)
-      return n === null ? null : n.value === undefined ? [n.name] : [n.name, plain(n.value)]
-    },
+    tooltip: (g, px, py) => orNull(graphTip(g.layout, px, py)),
     a11y: (g) => ({
       title: props.title,
       categories: g.layout.nodes.map((n) => n.name),

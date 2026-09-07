@@ -19,7 +19,7 @@
 // BY NAME (`UNLOWERED_CHART_HOSTS`) rather than falling through to the generic
 // component emit, which would name a SwiftUI/Compose view that does not exist.
 
-import type { ExprIR } from './types'
+import type { AttrIR, ExprIR } from './types'
 
 /** Per-target expression helpers the host specs build their draw list with. */
 export interface ChartHostTarget {
@@ -43,6 +43,21 @@ export interface ChartHostTarget {
   pieOptions: (a: ChartHostArgs) => string
   /** The web hosts' default ChartTheme literal. */
   theme: () => string
+  /** `a ?? b` / `a ?: b`. */
+  coalesce: (a: string, b: string) => string
+  /**
+   * The options struct with `progress` set to the entrance: `Struct(progress: p)`
+   * when no options were given, else a copy of the user's value with the one
+   * field replaced (Swift mutates a `var` copy, Kotlin `.copy(progress = p)`).
+   */
+  withProgress: (options: string, struct: string, progress: string) => string
+  /**
+   * The options with the theme palette as the DEFAULT — `Struct(palette: p)`
+   * when no options were given, else a copy whose `palette` is filled only
+   * when the user left it unset (the web host's `{ palette: theme.palette,
+   * ...props.x }` merge; an explicit palette in the options wins).
+   */
+  withPalette: (options: string, struct: string, palette: string) => string
 }
 
 export interface ChartHostArgs {
@@ -57,6 +72,8 @@ export interface ChartHostArgs {
   gutter: string
   /** `innerRatio` (Sunburst) — a Double expression. */
   innerRatio: string
+  /** The theme's font size as emitted text (the pie's label size); the default when absent. */
+  fontSize?: string
 }
 
 export interface ChartHostSpec {
@@ -64,6 +81,10 @@ export interface ChartHostSpec {
   readonly data: readonly string[]
   /** The options prop (an `XOptions` struct); optional. */
   readonly options: string
+  /** The engine struct the options prop holds — steers an inline literal and names the entrance copy. */
+  readonly optionsStruct: string
+  /** The options struct has a `palette` — the theme's palette is its default (the web host's merge). */
+  readonly paletteOption?: true
   /** The web host's default `height`. */
   readonly defaultHeight: number
   /** Builds the layout expression (`layoutX(...)`). */
@@ -78,6 +99,10 @@ export interface ChartHostSpec {
   readonly gutterDefault?: number
   /** Props that exist on the web but are not lowered — warned BY NAME when present. */
   readonly warnProps?: readonly string[]
+  /** Builds the `[LegendEntry]` expression from a layout — the crossing `xLegend` (absent: the family has no legend, as on the web). */
+  readonly legend?: (layout: string, a: ChartHostArgs, t: ChartHostTarget) => string
+  /** Builds the `[String]` tooltip-lines expression for a tap at (x, y) — the crossing `xTip` (empty = miss). */
+  readonly tooltip?: (layout: string, x: string, y: string, a: ChartHostArgs, t: ChartHostTarget) => string
 }
 
 /** Turns one data prop's IR (with every data prop's IR to hand) into an engine argument, or `'unsupported'` after warning. */
@@ -194,12 +219,14 @@ const box00 = (a: ChartHostArgs, t: ChartHostTarget): string => t.rect('0.0', '0
 
 /** `options?.field` — or the target's nil when no options were given (`nil?.x` is not Swift). */
 const optField = (a: ChartHostArgs, t: ChartHostTarget, field: string): string =>
-  a.options === t.nil ? t.nil : `${a.options}?.${field}`
+  a.options === t.nil ? t.nil : `(${a.options}).${field}`
 
 export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
   SankeyChart: {
     data: ['nodes', 'links'],
     options: 'sankey',
+    optionsStruct: 'SankeyOptions',
+    paletteOption: true,
     defaultHeight: 300,
     layout: (a, t) => {
       const box = t.rect(a.gutter, '8.0', t.max0(`${a.W} - ${a.gutter} * 2.0`), t.max0(`${a.H} - 16.0`))
@@ -207,26 +234,37 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     },
     render: (l, a) => `renderSankey(${l}, ${a.options})`,
     hit: (l, x, y) => `hitSankeyIndex(${l}, ${x}, ${y})`,
+    legend: (l) => `sankeyLegend(${l})`,
+    tooltip: (l, x, y) => `sankeyTip(${l}, ${x}, ${y})`,
   },
   GraphChart: {
     data: ['nodes', 'links'],
     options: 'graph',
+    optionsStruct: 'GraphOptions',
+    paletteOption: true,
     defaultHeight: 300,
     layout: (a, t) => `layoutGraph(${a.data[0]}, ${a.data[1]}, ${box00(a, t)}, ${a.options})`,
     render: (l, a, t) => `renderGraph(${l}, ${box00(a, t)}, ${a.options})`,
     hit: (l, x, y) => `hitGraphIndex(${l}, ${x}, ${y})`,
+    tooltip: (l, x, y) => `graphTip(${l}, ${x}, ${y})`,
   },
   TreemapChart: {
     data: ['data'],
     options: 'treemap',
+    optionsStruct: 'TreemapOptions',
+    paletteOption: true,
     defaultHeight: 300,
     layout: (a, t) => `layoutTreemap(${a.data[0]}, ${box00(a, t)}, ${a.options})`,
     render: (l, a) => `renderTreemap(${l}, ${a.options})`,
     hit: (l, x, y) => `hitTreemapIndex(${l}, ${x}, ${y})`,
+    legend: (l) => `treemapLegend(${l})`,
+    tooltip: (l, x, y) => `treemapTip(${l}, ${x}, ${y})`,
   },
   SunburstChart: {
     data: ['data'],
     options: 'sunburst',
+    optionsStruct: 'SunburstOptions',
+    paletteOption: true,
     defaultHeight: 300,
     layout: (a, t) => {
       const outer = t.max0(`${t.min(a.W, a.H)} / 2.0 - 4.0`)
@@ -234,51 +272,73 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     },
     render: (l, a, t) => `renderSunburst(${l}, ${t.pt(`${a.W} / 2.0`, `${a.H} / 2.0`)}, ${a.options})`,
     hit: (l, x, y, a, t) => `hitSunburstIndex(${l}, ${t.pt(`${a.W} / 2.0`, `${a.H} / 2.0`)}, ${x}, ${y})`,
+    legend: (l) => `sunburstLegend(${l})`,
+    tooltip: (l, x, y, a, t) => `sunburstTip(${l}, ${t.pt(`${a.W} / 2.0`, `${a.H} / 2.0`)}, ${x}, ${y})`,
   },
   TreeChart: {
     data: ['data'],
     options: 'tree',
+    optionsStruct: 'TreeOptions',
+    paletteOption: true,
     defaultHeight: 300,
     layout: (a, t) => `layoutTree(${a.data[0]}, ${box00(a, t)}, ${a.options})`,
     render: (l, a) => `renderTree(${l}, ${a.options})`,
     hit: (l, x, y, a, t) => `hitTreeIndex(${l}, ${x}, ${y}, ${optField(a, t, 'symbolSize')})`,
+    legend: (l) => `treeLegend(${l})`,
+    tooltip: (l, x, y, a, t) => `treeTip(${l}, ${x}, ${y}, ${optField(a, t, 'symbolSize')})`,
   },
   RiverChart: {
     data: ['series'],
     options: 'river',
+    optionsStruct: 'RiverOptions',
+    paletteOption: true,
     defaultHeight: 300,
     layout: (a, t) => `layoutRiver(${a.data[0]}, ${t.rect('8.0', '8.0', t.max0(`${a.W} - 16.0`), t.max0(`${a.H} - 16.0`))}, ${a.options})`,
     render: (l, a) => `renderRiver(${l}, ${a.options})`,
     hit: (l, x, y, a, t) => `hitRiverIndex(${l}, ${x}, ${y}, ${optField(a, t, 'curve')})`,
+    legend: (l) => `riverLegend(${l})`,
+    tooltip: (l, x, y, a, t) => `riverTip(${l}, ${x}, ${y}, ${optField(a, t, 'curve')})`,
   },
   GanttChart: {
     data: ['tasks'],
     options: 'gantt',
+    optionsStruct: 'GanttOptions',
+    paletteOption: true,
     defaultHeight: 320,
     layout: (a, t) => `layoutGantt(${a.data[0]}, ${t.rect('4.0', '4.0', `${a.W} - 8.0`, `${a.H} - 8.0`)}, ${a.options})`,
     render: (l, a) => `renderGantt(${l}, ${a.options})`,
     hit: (l, x, y) => `hitGanttIndex(${l}, ${x}, ${y})`,
+    tooltip: (l, x, y) => `ganttTip(${l}, ${x}, ${y})`,
   },
   PolarChart: {
     data: ['axes', 'series'],
     options: 'polar',
+    optionsStruct: 'PolarOptions',
+    paletteOption: true,
     defaultHeight: 300,
     layout: (a, t) => `layoutPolar(${a.data[0]}, ${a.data[1]}, ${box00(a, t)}, ${a.options})`,
     render: (l, a) => `renderPolar(${l}, ${a.options})`,
     hit: (l, x, y) => `hitPolarIndex(${l}, ${x}, ${y})`,
+    // The engine's DEFAULT_PALETTE is a private module constant in the generated Swift; the web default is inlined instead.
+    legend: (_l, a, t) => `polarLegend(${a.data[1]}, ${t.coalesce(optField(a, t, 'palette'), t.list(CHART_HOST_PALETTE.map((c) => JSON.stringify(c))))})`,
+    tooltip: (l, x, y, a) => `polarTip(${l}, ${a.data[1]}, ${x}, ${y})`,
   },
   CalendarChart: {
     data: ['start', 'end', 'values'],
     options: 'calendar',
+    optionsStruct: 'CalendarOptions',
     defaultHeight: 140,
     layout: (a, t) => `layoutCalendar(${a.data[0]}, ${a.data[1]}, ${t.rect('4.0', '4.0', `${a.W} - 8.0`, `${a.H} - 8.0`)}, ${a.options})`,
     render: (l, a) => `renderCalendar(${l}, ${a.data[2]}, ${a.options})`,
     hit: (l, x, y) => `hitCalendarIndex(${l}, ${x}, ${y})`,
+    tooltip: (l, x, y, a) => `calendarTip(${l}, ${a.data[2]}, ${x}, ${y})`,
     adapt: { values: calendarValuesAdapter },
   },
   ParallelChart: {
     data: ['axes', 'rows'],
     options: 'parallel',
+    optionsStruct: 'ParallelOptions',
+    paletteOption: true,
     defaultHeight: 300,
     gutterDefault: 40,
     layout: (a, t) => `layoutParallel(${a.data[0]}, ${a.data[1]}, ${t.rect(a.gutter, '8.0', t.max0(`${a.W} - ${a.gutter} * 2.0`), t.max0(`${a.H} - 16.0`))}, ${a.options})`,
@@ -295,9 +355,234 @@ export const UNLOWERED_CHART_HOSTS: Readonly<Record<string, string>> = {
   BoxplotChart: 'the boxplot host reduces raw samples per row (`fiveNumber`) on the web side; a native lowering is a follow-up',
 }
 
-/** Whether a JSX tag is a `@pyreon/charts/plot` host, lowered or not. */
+/** The grammar host and its mark/config children — `<Plot>` desugars to `<PlotChart marks>` before the plot emit runs. */
+export const GRAMMAR_CHART_HOST = 'Plot'
+export const GRAMMAR_MARK_TAGS: Readonly<Record<string, string>> = { Bar: 'bars', Line: 'line', Area: 'area', Dot: 'points' }
+export const GRAMMAR_CONFIG_TAGS: readonly string[] = ['Rule', 'Axis', 'Tip', 'Legend', 'Zoom', 'Label']
+/** The FAMILY marks: `<Plot>` with one of these desugars to the row-array host it names, channels as accessors. */
+export const GRAMMAR_FAMILY_TAGS: Readonly<Record<string, string>> = { Arc: 'PieChart', Stage: 'FunnelChart', Cell: 'HeatmapChart', Candle: 'CandlestickChart' }
+/** The channels of each family mark (the host's accessor props); every other attr is an option. */
+const FAMILY_CHANNELS: Readonly<Record<string, readonly string[]>> = { Arc: ['value', 'label', 'color'], Stage: ['value', 'label', 'color'], Cell: ['x', 'y', 'value'], Candle: ['open', 'high', 'low', 'close'] }
+/** Where a family mark's option attrs go: an options struct prop, or straight onto the host. */
+const FAMILY_OPTIONS_PROP: Readonly<Record<string, string | undefined>> = { Stage: 'funnel', Candle: 'candle' }
+
+/** Whether a JSX tag is a `@pyreon/charts/plot` host, lowered or not (the grammar's mark tags included, so a stray one warns instead of emitting a phantom component). */
 export function isChartHostTag(tag: string): boolean {
-  return Object.hasOwn(CHART_HOSTS, tag) || Object.hasOwn(ACCESSOR_CHART_HOSTS, tag) || Object.hasOwn(FRAME_CHART_HOSTS, tag) || Object.hasOwn(UNLOWERED_CHART_HOSTS, tag)
+  return (
+    Object.hasOwn(CHART_HOSTS, tag) ||
+    Object.hasOwn(ACCESSOR_CHART_HOSTS, tag) ||
+    Object.hasOwn(FRAME_CHART_HOSTS, tag) ||
+    Object.hasOwn(UNLOWERED_CHART_HOSTS, tag) ||
+    tag === GRAMMAR_CHART_HOST ||
+    Object.hasOwn(GRAMMAR_MARK_TAGS, tag) ||
+    Object.hasOwn(GRAMMAR_FAMILY_TAGS, tag) ||
+    GRAMMAR_CONFIG_TAGS.includes(tag)
+  )
+}
+
+const lit = (value: string | number | boolean): ExprIR => ({ kind: 'literal', value })
+const ident = (name: string): ExprIR => ({ kind: 'identifier', name })
+/** `"field"` → `(d) => d.field`; an accessor passes through. */
+function channelArrow(v: ExprIR): ExprIR {
+  if (v.kind === 'literal' && typeof v.value === 'string') return { kind: 'arrow', params: ['d'], body: { kind: 'member', object: ident('d'), property: v.value } }
+  return v
+}
+const attrOf = (e: Extract<ExprIR, { kind: 'jsx-element' }>, name: string): ExprIR | undefined => {
+  const a = e.attrs.find((x) => x.kind === 'attr' && x.name === name)
+  return a?.kind === 'attr' ? a.value : undefined
+}
+const flagOn = (e: Extract<ExprIR, { kind: 'jsx-element' }>, name: string): boolean => {
+  const v = attrOf(e, name)
+  return v !== undefined && !(v.kind === 'literal' && v.value === false)
+}
+
+/**
+ * `<Plot data x>` with mark children → the `<PlotChart data x marks={[…]}>`
+ * element the plot emit already lowers, so the grammar is the SAME spec on
+ * native as on the web. Field-name channels become accessors; mark children
+ * become mark calls with their options; Rule/Axis/Tip/Legend/Zoom become the
+ * plot props they set on the web. A long-format `color` channel (a pivot the
+ * web resolves at runtime) is not lowered — it warns by name and the chart
+ * renders as wide-format.
+ */
+export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>, warn: (m: string) => void): Extract<ExprIR, { kind: 'jsx-element' }> {
+  // A family mark names the host: the same grammar, the row-array host's props.
+  const children = e.children.flatMap((c) => (c.kind === 'expr' && c.expr.kind === 'jsx-element' ? [c.expr] : []))
+  const familyMark = children.find((c) => Object.hasOwn(GRAMMAR_FAMILY_TAGS, c.tag))
+  if (familyMark !== undefined) return desugarFamilyGrammar(e, familyMark, children, warn)
+  const attrs: AttrIR[] = []
+  const marks: ExprIR[] = []
+  const annotations: ExprIR[] = []
+  const markers: ExprIR[] = []
+  for (const a of e.attrs) {
+    if (a.kind === 'attr' && (a.name === 'x' || a.name === 'xValue')) attrs.push({ kind: 'attr', name: a.name, value: channelArrow(a.value) })
+    else if (a.kind === 'attr' && a.name === 'color') warn('<Plot color>: the long-format pivot is resolved on the web at runtime and is not lowered on native; the chart renders wide-format (one mark, one series).')
+    else attrs.push(a)
+  }
+  for (const c of e.children) {
+    if (c.kind !== 'expr' || c.expr.kind !== 'jsx-element') continue
+    const child = c.expr
+    const tag = child.tag
+    const markKind = GRAMMAR_MARK_TAGS[tag]
+    if (markKind !== undefined) {
+      const y = attrOf(child, 'y')
+      if (y === undefined) {
+        warn(`<${tag}>: needs a \`y\` channel; the mark is skipped on native.`)
+        continue
+      }
+      const stack = flagOn(child, 'stack')
+      const group = flagOn(child, 'group')
+      const r = attrOf(child, 'r')
+      const callee = tag === 'Bar' ? (stack ? 'stackedBars' : group ? 'groupedBars' : 'bars') : tag === 'Dot' && r !== undefined ? 'bubble' : markKind
+      const fields: { name: string; value: ExprIR }[] = []
+      for (const a of child.attrs) {
+        if (a.kind !== 'attr' || ['y', 'r', 'stack', 'group'].includes(a.name)) continue
+        fields.push({ name: a.name, value: a.value })
+      }
+      const args: ExprIR[] = [channelArrow(y)]
+      if (callee === 'bubble' && r !== undefined) args.push(channelArrow(r))
+      if (fields.length > 0) args.push({ kind: 'object', fields })
+      marks.push({ kind: 'call', callee: ident(callee), args })
+      continue
+    }
+    switch (tag) {
+      case 'Rule': {
+        const y = attrOf(child, 'y')
+        const from = attrOf(child, 'from')
+        const to = attrOf(child, 'to')
+        const x = attrOf(child, 'x')
+        const fields: { name: string; value: ExprIR }[] = []
+        if (from !== undefined && to !== undefined) fields.push({ name: 'yFrom', value: from }, { name: 'yTo', value: to })
+        else if (y !== undefined) fields.push({ name: 'y', value: y })
+        else if (x !== undefined) fields.push({ name: 'x', value: x })
+        else continue
+        for (const n of ['label', 'color']) {
+          const v = attrOf(child, n)
+          if (v !== undefined) fields.push({ name: n, value: v })
+        }
+        annotations.push({ kind: 'object', fields })
+        break
+      }
+      case 'Axis': {
+        const format = attrOf(child, 'format')
+        const domain = attrOf(child, 'domain')
+        if (flagOn(child, 'x')) {
+          if (format !== undefined) attrs.push({ kind: 'attr', name: 'xFormat', value: format })
+          if (flagOn(child, 'time')) attrs.push({ kind: 'attr', name: 'xTime', value: lit(true) })
+          if (flagOn(child, 'hidden')) attrs.push({ kind: 'attr', name: 'showXAxis', value: lit(false) })
+        } else if (flagOn(child, 'y2')) {
+          if (format !== undefined) attrs.push({ kind: 'attr', name: 'y2Format', value: format })
+          if (domain !== undefined) attrs.push({ kind: 'attr', name: 'y2Domain', value: domain })
+        } else {
+          if (format !== undefined) attrs.push({ kind: 'attr', name: 'format', value: format })
+          if (flagOn(child, 'hidden')) attrs.push({ kind: 'attr', name: 'showYAxis', value: lit(false) })
+        }
+        break
+      }
+      case 'Tip':
+        attrs.push({ kind: 'attr', name: 'tooltip', value: lit(true) })
+        if (flagOn(child, 'crosshair')) attrs.push({ kind: 'attr', name: 'crosshair', value: lit(true) })
+        break
+      case 'Label': {
+        // The engine's point marker: `series` → seriesIndex, a numeric `at` → atIndex, a named one → at.
+        const text = attrOf(child, 'text')
+        if (text === undefined) {
+          warn('<Label>: needs a `text`; the marker is skipped on native.')
+          break
+        }
+        const fields: { name: string; value: ExprIR }[] = [{ name: 'label', value: text }]
+        const series = attrOf(child, 'series')
+        if (series !== undefined) fields.push({ name: 'seriesIndex', value: series })
+        const at = attrOf(child, 'at')
+        if (at !== undefined) fields.push({ name: at.kind === 'literal' && typeof at.value === 'number' ? 'atIndex' : 'at', value: at })
+        for (const n of ['color', 'radius']) {
+          const v = attrOf(child, n)
+          if (v !== undefined) fields.push({ name: n, value: v })
+        }
+        markers.push({ kind: 'object', fields })
+        break
+      }
+      case 'Legend': {
+        attrs.push({ kind: 'attr', name: 'showLegend', value: lit(true) })
+        const toggle = attrOf(child, 'toggle')
+        if (toggle !== undefined) attrs.push({ kind: 'attr', name: 'legendToggle', value: toggle })
+        const maxRows = attrOf(child, 'maxRows')
+        if (maxRows !== undefined) attrs.push({ kind: 'attr', name: 'legendMaxRows', value: maxRows })
+        break
+      }
+      case 'Zoom': {
+        const inside = attrOf(child, 'inside')
+        if (inside === undefined || !(inside.kind === 'literal' && inside.value === false)) attrs.push({ kind: 'attr', name: 'dataZoom', value: lit(true) })
+        if (flagOn(child, 'navigator')) attrs.push({ kind: 'attr', name: 'navigator', value: lit(true) })
+        const presets = attrOf(child, 'presets')
+        if (presets !== undefined) attrs.push({ kind: 'attr', name: 'zoomPresets', value: presets })
+        const link = attrOf(child, 'link')
+        if (link !== undefined) attrs.push({ kind: 'attr', name: 'link', value: link })
+        const brush = attrOf(child, 'brush')
+        if (brush !== undefined) {
+          attrs.push({ kind: 'attr', name: 'brush', value: lit(true) })
+          attrs.push({ kind: 'event', name: 'brush', handler: brush })
+        }
+        break
+      }
+      default:
+        warn(`<Plot>: child <${tag}> is not a mark or a chart setting; it is ignored on native.`)
+    }
+  }
+  attrs.push({ kind: 'attr', name: 'marks', value: { kind: 'array', elements: marks } })
+  if (annotations.length > 0) attrs.push({ kind: 'attr', name: 'annotations', value: { kind: 'array', elements: annotations } })
+  if (markers.length > 0) attrs.push({ kind: 'attr', name: 'markers', value: { kind: 'array', elements: markers } })
+  return { kind: 'jsx-element', tag: 'PlotChart', attrs, children: [] }
+}
+
+/**
+ * `<Plot data><Arc value label /></Plot>` → `<PieChart data value={(d) => d.value} label={…}>`
+ * (and Stage → Funnel, Cell → Heatmap, Candle → Candlestick): the plot's shared
+ * props carry over, the mark's channels become the host's accessors, its
+ * option attrs go where the host keeps them (`funnel={{…}}` / `candle={{…}}`
+ * or straight on), `<Tip>` / `<Legend>` / `<Axis y format>` set the host's
+ * switches. Everything cartesian — the other marks, `<Zoom>`, `<Rule>`,
+ * `<Label>`, the `x` channel except on a candlestick — is reported and ignored,
+ * exactly as the web host does.
+ */
+function desugarFamilyGrammar(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  mark: Extract<ExprIR, { kind: 'jsx-element' }>,
+  children: readonly Extract<ExprIR, { kind: 'jsx-element' }>[],
+  warn: (m: string) => void,
+): Extract<ExprIR, { kind: 'jsx-element' }> {
+  const host = GRAMMAR_FAMILY_TAGS[mark.tag]!
+  const attrs: AttrIR[] = []
+  for (const a of e.attrs) {
+    if (a.kind === 'attr' && a.name === 'x') {
+      if (host === 'CandlestickChart') attrs.push({ kind: 'attr', name: 'x', value: channelArrow(a.value) })
+      else warn(`<Plot x>: a ${host.replace('Chart', '').toLowerCase()} has no x channel; it is ignored.`)
+    } else if (a.kind === 'attr' && (a.name === 'xValue' || a.name === 'color' || a.name === 'horizontal' || a.name === 'showGrid')) {
+      warn(`<Plot ${a.name}>: not a ${host.replace('Chart', '').toLowerCase()} prop; it is ignored.`)
+    } else attrs.push(a)
+  }
+  const channels = FAMILY_CHANNELS[mark.tag]!
+  const optionsProp = FAMILY_OPTIONS_PROP[mark.tag]
+  const options: { name: string; value: ExprIR }[] = []
+  for (const a of mark.attrs) {
+    if (a.kind !== 'attr') continue
+    if (channels.includes(a.name)) attrs.push({ kind: 'attr', name: a.name, value: channelArrow(a.value) })
+    else if (optionsProp !== undefined) options.push({ name: a.name, value: a.value })
+    else attrs.push(a)
+  }
+  if (optionsProp !== undefined && options.length > 0) attrs.push({ kind: 'attr', name: optionsProp, value: { kind: 'object', fields: options } })
+  for (const child of children) {
+    if (child === mark) continue
+    if (Object.hasOwn(GRAMMAR_FAMILY_TAGS, child.tag)) {
+      warn(`<Plot>: one family per plot — <${child.tag}> is ignored beside <${mark.tag}>.`)
+      continue
+    }
+    if (child.tag === 'Tip') attrs.push({ kind: 'attr', name: 'tooltip', value: lit(true) })
+    else if (child.tag === 'Legend') attrs.push({ kind: 'attr', name: 'showLegend', value: lit(true) })
+    else if (child.tag === 'Axis' && !flagOn(child, 'x') && !flagOn(child, 'y2') && attrOf(child, 'format') !== undefined) attrs.push({ kind: 'attr', name: 'format', value: attrOf(child, 'format')! })
+    else warn(`<Plot>: <${child.tag}> does not apply to a ${host.replace('Chart', '').toLowerCase()}; it is ignored.`)
+  }
+  return { kind: 'jsx-element', tag: host, attrs, children: [] }
 }
 
 /** A Double literal the way both targets accept it (`240` → `240.0`). */
@@ -336,11 +621,17 @@ export interface AccessorHostSpec {
   readonly fields: readonly AccessorField[]
   /** The options prop (`funnel`), or none. */
   readonly options?: string
+  /** The engine struct `options` holds; a host without one (Pie) neither steers nor animates. */
+  readonly optionsStruct?: string
   readonly defaultHeight: number
   /** Builds the draw-list expression from the mapped items. */
   readonly render: (items: string, a: ChartHostArgs, t: ChartHostTarget) => string
   /** Builds the index-hit expression for a tap at (x, y). */
   readonly hit: (items: string, x: string, y: string, a: ChartHostArgs, t: ChartHostTarget) => string
+  /** The crossing `xLegend(items)`. */
+  readonly legend: (items: string) => string
+  /** The crossing `xTip(items, …, x, y)` — empty = miss. */
+  readonly tooltip: (items: string, x: string, y: string, a: ChartHostArgs, t: ChartHostTarget) => string
 }
 
 
@@ -354,9 +645,12 @@ export const ACCESSOR_CHART_HOSTS: Readonly<Record<string, AccessorHostSpec>> = 
       { name: 'color', prop: 'color', fallback: 'palette' },
     ],
     options: 'funnel',
+    optionsStruct: 'FunnelOptions',
     defaultHeight: 240,
     render: (items, a, t) => `renderFunnel(${items}, ${t.rect('8.0', '8.0', `${a.W} - 16.0`, `${a.H} - 16.0`)}, ${a.options})`,
     hit: (items, x, y, a, t) => `hitFunnel(${items}, ${t.rect('8.0', '8.0', `${a.W} - 16.0`, `${a.H} - 16.0`)}, ${x}, ${y}, ${a.options})`,
+    legend: (items) => `funnelLegend(${items})`,
+    tooltip: (items, x, y, a, t) => `funnelTip(${items}, ${t.rect('8.0', '8.0', `${a.W} - 16.0`, `${a.H} - 16.0`)}, ${x}, ${y}, ${a.options})`,
   },
   PieChart: {
     data: 'data',
@@ -373,6 +667,8 @@ export const ACCESSOR_CHART_HOSTS: Readonly<Record<string, AccessorHostSpec>> = 
       const fit = `fitCircle(${box00(a, t)})`
       return `hitArc(layoutArcs(${items}), ${fit}.center, ${fit}.radius, ${fit}.radius * ${a.innerRatio}, ${t.pt(x, y)})`
     },
+    legend: (items) => `pieLegend(${items})`,
+    tooltip: (items, x, y, a, t) => `pieTip(${items}, ${box00(a, t)}, ${a.innerRatio}, ${x}, ${y})`,
   },
 }
 
@@ -528,21 +824,60 @@ export const CHART_HOST_PALETTE: readonly string[] = CHART_THEME_DEFAULT.palette
 export const HEAT_RAMP_DEFAULT = ['#eff6ff', '#93c5fd', '#3b82f6', '#1e40af'] as const
 
 /**
- * The shared canvas host's chrome props (canvas-host.tsx). On native, PlotChart
- * / Pie / Radar draw the title and legend (the #3265 chrome emit); everything
- * else — and the tooltip and entrance animation everywhere — is web-only for
- * now, and MUST warn by name rather than drop silently.
+ * The shared canvas host's chrome props (canvas-host.tsx). On native, the
+ * plot host draws the title and legend (the #3265 chrome emit); the family
+ * hosts draw title, legend and a tap tooltip through the crossing `chrome.ts`;
+ * and every host whose engine takes an entrance `progress` plays the same
+ * cubic ease-out entrance the web host does (`PyreonChartEntrance`). What a
+ * target does NOT draw MUST warn by name rather than drop silently.
  */
 export const CHART_CHROME_PROPS: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate']
 const CHROME_LOWERED: Readonly<Record<string, readonly string[]>> = {
-  PlotChart: ['showTitle', 'subtitle', 'showLegend'],
-  PieChart: ['showLegend'],
+  PlotChart: ['showTitle', 'subtitle', 'showLegend', 'animate'],
+  HeatmapChart: ['animate'],
   RadarChart: ['showLegend'],
+}
+/** Title + legend + tap tooltip — what the generic and accessor hosts draw natively through the crossing chrome. */
+const FAMILY_CHROME: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip']
+/**
+ * Whether `<tag>`'s engine takes an entrance `progress` — the same set the web
+ * canvas host tweens (`animates: true`). A host outside it (Pie, Radar,
+ * Candlestick, Gauge) draws fully formed on EVERY target, so `animate` there
+ * is inert rather than "not lowered yet".
+ */
+export function chartHostAnimates(tag: string): boolean {
+  if (tag === 'PlotChart' || tag === 'HeatmapChart') return true
+  const host = CHART_HOSTS[tag]
+  if (host !== undefined) return host.optionsStruct !== undefined
+  return ACCESSOR_CHART_HOSTS[tag]?.optionsStruct !== undefined
 }
 /** The chrome props `<tag>` does NOT lower — each present one warns. */
 export function chartChromeUnlowered(tag: string): readonly string[] {
-  const lowered = CHROME_LOWERED[tag] ?? []
+  const family = Object.hasOwn(CHART_HOSTS, tag) || Object.hasOwn(ACCESSOR_CHART_HOSTS, tag)
+  const lowered = [...(CHROME_LOWERED[tag] ?? (family ? FAMILY_CHROME : [])), ...(family && chartHostAnimates(tag) ? ['animate'] : [])]
   return CHART_CHROME_PROPS.filter((p) => !lowered.includes(p))
+}
+/** The warning for a chrome prop `<tag>` carries but does not draw — `animate` on an engine with no entrance is inert everywhere, not a native gap. */
+export function chartChromeWarning(tag: string, prop: string): string {
+  if (prop === 'animate' && !chartHostAnimates(tag)) return `<${tag}>: \`animate\` has no effect on any target — its engine draws fully formed; the prop is ignored.`
+  return `<${tag}>: \`${prop}\` is not lowered on native yet; the chart renders without it.`
+}
+/** The entrance duration — the theme's `enterMs` (a literal object or a named theme), else the default; the family hosts read nothing else off `theme`, so this never warns. */
+export function chartEnterMs(theme: ExprIR | undefined, tag: string, list: (items: readonly string[]) => string): string {
+  return chartThemeFields(theme, tag, () => {}, list).enterMs
+}
+/** The resolved theme as emitted TEXT per field — what `chartThemeFields` returns. */
+export type ChartThemeText = Record<keyof typeof CHART_THEME_DEFAULT, string>
+/** The tooltip box from the theme — the web host's `tooltipStyle` (surface / grid / text, radius at least 4). */
+export function chartTooltipFields(t: ChartThemeText): readonly (readonly [string, string])[] {
+  return [
+    ['fontSize', t.fontSize],
+    ['fill', t.surface],
+    ['border', t.grid],
+    ['text', t.text],
+    ['pad', '8.0'],
+    ['radius', chartDouble(Math.max(4, Number(t.radius)))],
+  ]
 }
 
 /** The hosts with a dedicated emitter each (a fixed frame or a second data prop). */

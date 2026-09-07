@@ -644,7 +644,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // to Int. Refine it to Double when a signal/const initializer assigns a
   // fractional literal to that field — additive (only ever flips
   // number→float, never the reverse, so integer structs are untouched).
-  refineStructFloatsFromInitializers(structs, components)
+  refineStructFloatsFromInitializers(structs, components, moduleDecls)
 
   // Same evidence as the pass above, for the shape that has no StructIR to
   // attach it to: an inline object generic (`signal<{ price: number }[]>([{
@@ -2632,6 +2632,24 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
         'ChartThemeProvider',
         'chartThemes',
         'palettes',
+        // The grammar: <Plot> desugars to <PlotChart marks>; its mark/config children are consumed by that desugar.
+        'Plot',
+        'Bar',
+        'Line',
+        'Area',
+        'Dot',
+        'Rule',
+        'Axis',
+        'Tip',
+        'Legend',
+        'Zoom',
+        'Label',
+        // The family marks: <Plot> with one of these desugars to the row-array host it names.
+        'Arc',
+        'Stage',
+        'Cell',
+        'Candle',
+        'channel',
         // Mark + curve constructors consumed INLINE inside a `marks={[...]}`
         // array literal — the structural marks-array pass (chart-hosts.ts /
         // emit{Swift,Kotlin}.ts's PLOT_MARK_KINDS + the special-cased
@@ -4968,19 +4986,29 @@ function collectObjectLiterals(e: ExprIR): Extract<ExprIR, { kind: 'object' }>[]
 function refineStructFloatsFromInitializers(
   structs: StructIR[],
   components: ComponentIR[],
+  moduleDecls: readonly ModuleDeclIR[],
 ): void {
   if (structs.length === 0) return
   const byName = new Map(structs.map((s) => [s.name, s]))
+  const refine = (type: TypeIR, initial: ExprIR): void => {
+    const structName = structNameOfType(type)
+    if (structName === undefined) return
+    const struct = byName.get(structName)
+    if (struct === undefined) return
+    refineFieldsFromObjectLiterals(struct.fields, collectObjectLiterals(initial))
+  }
   for (const c of components) {
     for (const d of c.decls) {
       if (d.kind !== 'signal') continue
-      const structName = structNameOfType(d.type)
-      if (structName === undefined) continue
-      const struct = byName.get(structName)
-      if (struct === undefined) continue
-      refineFieldsFromObjectLiterals(struct.fields, collectObjectLiterals(d.initial))
+      refine(d.type, d.initial)
     }
   }
+  // The MODULE-level spelling of the same evidence — `const BARS: B[] = [{ l: 0.5 }]`
+  // beside `interface B { l: number }` is how fixture data is written in
+  // nearly every doc and example; the signal-only pass left `l` an Int and
+  // kotlinc rejected the literal (a one-spelling fix, the class this repo
+  // keeps re-learning).
+  for (const d of moduleDecls) refine(d.type, d.initial)
 }
 
 /**
@@ -7008,7 +7036,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // object/array-literal emit). This widens the supported subset toward
   // "any app" — local consts are ubiquitous.
   if (init.type !== 'CallExpression') {
-    return { kind: 'value', name, expr: parseExpr(init, ctx) }
+    return withValueDeclType({ kind: 'value', name, expr: parseExpr(init, ctx) }, node, ctx)
   }
 
   // RX-1 — `@pyreon/rx` namespace lowering. Source like
@@ -8078,7 +8106,19 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // the same downstream failure it did when dropped. This also unblocks the
   // general object-destructure lowering above, which recurses into exactly
   // this single-binding shape.
-  return { kind: 'value', name, expr: parseExpr(init, ctx) }
+  return withValueDeclType({ kind: 'value', name, expr: parseExpr(init, ctx) }, node, ctx)
+}
+
+/**
+ * A value decl keeps its written annotation (`const e: LegendEntry = { … }`):
+ * the emit steers an object/array literal to the NAMED struct with it, where
+ * the literal's field set alone picked a same-shaped sibling or — with an
+ * optional field omitted — no struct at all (a tuple). Absent annotation,
+ * absent field: the decl is byte-identical to before.
+ */
+function withValueDeclType(d: Extract<DeclIR, { kind: 'value' }>, node: AnyNode, ctx: ParseCtx): DeclIR {
+  const ann = (node.id as AnyNode | undefined)?.typeAnnotation?.typeAnnotation as AnyNode | undefined
+  return ann ? { ...d, type: parseTypeAnnotation(ann, ctx) } : d
 }
 
 /**

@@ -21,7 +21,7 @@ describe('BoxplotChart (real browser)', () => {
     const rows = signal(DATA)
     const picked: number[] = []
     const { container } = mountInBrowser(() =>
-      BoxplotChart<Row>({ data: () => rows(), values: (d) => d.obs, x: (d) => d.group, width: 400, height: 240, title: 'Spread', onSelect: (i) => picked.push(i) }),
+      BoxplotChart<Row>({ animate: false, data: () => rows(), values: (d) => d.obs, x: (d) => d.group, width: 400, height: 240, title: 'Spread', onSelect: (i) => picked.push(i) }),
     )
     await flush()
     const c = container.querySelector('canvas')!

@@ -19,7 +19,7 @@ describe('GanttChart (real browser)', () => {
     ])
     const picked: (GanttRow | null)[] = []
     const { container } = mountInBrowser(() =>
-      GanttChart({ tasks: () => tasks(), width: 500, height: 160, title: 'Plan', onSelect: (r) => picked.push(r) }),
+      GanttChart({ animate: false, tasks: () => tasks(), width: 500, height: 160, title: 'Plan', onSelect: (r) => picked.push(r) }),
     )
     await flush()
     const c = container.querySelector('canvas')!

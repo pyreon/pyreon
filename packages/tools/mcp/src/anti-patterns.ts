@@ -382,6 +382,25 @@ const INDEX_HOOK_MAX = 100
  * path that should stay a single call.
  */
 const INDEX_HOOK_TITLE_MAX = 70
+/**
+ * Index-line TITLE clamp. This catalog's titles carry the whole claim and run
+ * to 150–300 characters; at ~270 entries the hook-free index still crossed the
+ * 12,000-token design boundary in `token-budget.test.ts` (12,005 on
+ * 2026-09-08, when adding ONE entry became impossible). Discovery needs the
+ * claim's HEAD, not its tail — the qualifier after the dash is what the entry
+ * body is for — so a title past this length is cut on a word boundary and
+ * marked `…`. Lookup is a substring match (`name` in `get_anti_patterns`) and
+ * strips a trailing `…`, so any copied index fragment still resolves. Measured
+ * on that index: 12,005 → well under the boundary with every line still one
+ * claim. Prefer this over paginating: the discovery path stays ONE call.
+ */
+const INDEX_TITLE_MAX = 120
+function clampTitle(name: string): string {
+  if (name.length <= INDEX_TITLE_MAX) return name
+  const slice = name.slice(0, INDEX_TITLE_MAX)
+  const lastSpace = slice.lastIndexOf(' ')
+  return `${slice.slice(0, lastSpace > 60 ? lastSpace : INDEX_TITLE_MAX).trimEnd()}…`
+}
 
 function indexHook(description: string): string {
   // First non-empty line, first sentence-ish, bounded.
@@ -406,7 +425,7 @@ export function formatAntiPatternsIndex(entries: AntiPatternEntry[]): string {
   const parts: string[] = [
     `# Pyreon Anti-Patterns — index (${entries.length} total, ${byCategory.size} categor${byCategory.size === 1 ? 'y' : 'ies'})`,
     '',
-    'Compact index — one line per entry. For the full body of an entry call `get_anti_patterns({ name: "<title>" })`; for every entry in a category call `get_anti_patterns({ category: "<slug>" })`; for the entire catalog (~14K tokens) call `get_anti_patterns({ full: true })`. Entries tagged `[detector: <code>]` are caught statically by the `validate` tool.',
+    'Compact index — one line per entry; a long title is clamped with `…`. For the full body of an entry call `get_anti_patterns({ name: "<any fragment of the title>" })`; for every entry in a category call `get_anti_patterns({ category: "<slug>" })`; for the entire catalog (~14K tokens) call `get_anti_patterns({ full: true })`. Entries tagged `[detector: <code>]` are caught statically by the `validate` tool.',
     '',
   ]
   for (const [, catEntries] of byCategory) {
@@ -419,7 +438,7 @@ export function formatAntiPatternsIndex(entries: AntiPatternEntry[]): string {
           : ''
       const hook =
         entry.name.length <= INDEX_HOOK_TITLE_MAX ? ` — ${indexHook(entry.description)}` : ''
-      parts.push(`- **${entry.name}**${tag}${hook}`)
+      parts.push(`- **${clampTitle(entry.name)}**${tag}${hook}`)
     }
     parts.push('')
   }

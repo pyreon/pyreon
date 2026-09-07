@@ -18,7 +18,7 @@ const DATA: Obs[] = [
 describe('HeatmapChart', () => {
   it('paints hotter cells differently from colder ones, in a real browser', async () => {
     const { container } = mountInBrowser(() =>
-      HeatmapChart<Obs>({
+      HeatmapChart<Obs>({ animate: false,
         data: DATA,
         x: (d) => d.day,
         y: (d) => d.hour,
@@ -49,7 +49,7 @@ describe('HeatmapChart', () => {
 
   it('describes itself to assistive tech from the data', async () => {
     const { container } = mountInBrowser(() =>
-      HeatmapChart<Obs>({
+      HeatmapChart<Obs>({ animate: false,
         data: DATA,
         x: (d) => d.day,
         y: (d) => d.hour,

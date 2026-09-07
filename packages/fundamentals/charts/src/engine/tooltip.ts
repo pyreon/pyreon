@@ -6,7 +6,13 @@
 
 import { plain } from './format'
 import type { Formatter } from './format'
-import type { Double, Rect } from './types'
+import type { Double, Pt, Rect } from './types'
+
+/** A box's extent — a named shape so the placement crosses to native. */
+export interface Size {
+  w: Double
+  h: Double
+}
 
 export interface TooltipRow {
   label: string
@@ -19,17 +25,21 @@ export interface TooltipContent {
   rows: TooltipRow[]
 }
 
+/** A plotted series as the tooltip reads it — a named shape so this module crosses to native. */
+export interface TooltipSeries {
+  label: string
+  values: Double[]
+  color: string
+}
+
 /** Everything plotted at one datum index, for a shared-axis tooltip. */
-export function tooltipAt(
-  index: number,
-  categories: string[],
-  series: { label: string; values: Double[]; color: string }[],
-): TooltipContent {
+export function tooltipAt(index: number, categories: string[], series: TooltipSeries[]): TooltipContent {
   const rows: TooltipRow[] = []
   for (const s of series) {
     const v = s.values[index]
     if (v === undefined) continue
-    rows.push({ label: s.label, value: v, color: s.color })
+    const row: TooltipRow = { label: s.label, value: v, color: s.color }
+    rows.push(row)
   }
   return { title: categories[index] ?? `${index + 1}`, rows }
 }
@@ -49,12 +59,7 @@ export function tooltipLines(c: TooltipContent, format?: Formatter): string[] {
  * clamping slides the tooltip over the very datum it describes. Vertically it
  * clamps, since there is usually nothing to occlude above or below.
  */
-export function placeTooltip(
-  at: { x: Double; y: Double },
-  size: { w: Double; h: Double },
-  bounds: Rect,
-  offset: Double,
-): { x: Double; y: Double } {
+export function placeTooltip(at: Pt, size: Size, bounds: Rect, offset: Double): Pt {
   let x = at.x + offset
   if (x + size.w > bounds.x + bounds.w) x = at.x - offset - size.w
   if (x < bounds.x) x = bounds.x

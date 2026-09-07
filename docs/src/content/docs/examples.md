@@ -1,13 +1,17 @@
 ---
 title: "Examples"
-description: "A gallery of 69 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
+description: "A gallery of 70 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
 ---
 
 # Examples
 
-Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 69 examples across 33 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
+Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 70 examples across 33 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
 
 ## Charts
+
+### Plot Grammar
+
+<Example file="./examples/charts/plot-grammar" />
 
 ### Plot Marks
 

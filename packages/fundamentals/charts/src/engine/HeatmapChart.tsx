@@ -50,7 +50,8 @@ export function HeatmapChart<T>(props: HeatmapChartProps<T>): VNode {
       readData()
     },
     layout: (box, measure, theme) => ({ grid: resolve(readData()), box, theme, measure }),
-    render: (g, measure, theme) => shiftCmds(renderHeatChart(g.grid, g.box.w, g.box.h, theme, props.colors ?? HEAT_RAMP, props.gap ?? 1.0, measure), g.box.x, g.box.y),
+    animates: true,
+    render: (g, measure, theme, progress) => shiftCmds(renderHeatChart(g.grid, g.box.w, g.box.h, theme, props.colors ?? HEAT_RAMP, props.gap ?? 1.0, measure, progress), g.box.x, g.box.y),
     select: (g, px, py) => {
       const idx = cellAt(g, px, py)
       props.onSelectIndex?.(idx)

@@ -18,7 +18,7 @@ describe('TreemapChart (real browser)', () => {
     const rows = signal(DATA)
     const picked: (TreemapCell | null)[] = []
     const { container } = mountInBrowser(() =>
-      TreemapChart({ data: () => rows(), width: 400, height: 300, title: 'Repo', onSelect: (c) => picked.push(c) }),
+      TreemapChart({ animate: false, data: () => rows(), width: 400, height: 300, title: 'Repo', onSelect: (c) => picked.push(c) }),
     )
     await flush()
     const c = container.querySelector('canvas')!

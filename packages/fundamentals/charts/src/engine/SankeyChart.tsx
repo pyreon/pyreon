@@ -1,9 +1,9 @@
 // `<SankeyChart>` — a flow diagram on a canvas, over the shared canvas host.
 
 import type { VNode } from '@pyreon/core'
-import { canvasHost } from './canvas-host'
+import { canvasHost, orNull } from './canvas-host'
+import { sankeyLegend, sankeyTip } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
-import { plain } from './format'
 import { hitSankeyIndex, layoutSankey, renderSankey } from './sankey'
 import type { SankeyHitIndex, SankeyLayout, SankeyLink, SankeyNode, SankeyOptions } from './sankey'
 import { hitSankey } from './sankey-hit'
@@ -38,21 +38,14 @@ export function SankeyChart(props: SankeyChartProps): VNode {
       const g = props.gutter ?? 80.0
       return layoutSankey(readNodes(), readLinks(), { x: box.x + g, y: box.y + 8.0, w: Math.max(0.0, box.w - g * 2.0), h: Math.max(0.0, box.h - 16.0) }, opts(theme.palette))
     },
-    render: (layout, _measure, theme) => renderSankey(layout, opts(theme.palette)),
-    legend: (layout) => layout.nodes.map((n) => ({ label: n.name, color: n.color })),
+    animates: true,
+    render: (layout, _measure, theme, progress) => renderSankey(layout, { ...opts(theme.palette), progress }),
+    legend: sankeyLegend,
     select: (layout, px, py) => {
       props.onSelect?.(hitSankey(layout, px, py))
       props.onSelectIndex?.(hitSankeyIndex(layout, px, py))
     },
-    tooltip: (layout, px, py) => {
-      const hit = hitSankey(layout, px, py)
-      if (hit === null) return null
-      if (hit.kind === 'node') return [hit.node.name, plain(hit.node.value)]
-      const l = hit.link
-      const from = layout.nodes[l.source]
-      const to = layout.nodes[l.target]
-      return [`${from?.name ?? l.source} → ${to?.name ?? l.target}`, plain(l.value)]
-    },
+    tooltip: (layout, px, py) => orNull(sankeyTip(layout, px, py)),
     a11y: (layout) => ({
       title: props.title,
       categories: layout.nodes.map((n) => n.name),

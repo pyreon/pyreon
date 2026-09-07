@@ -173,6 +173,13 @@ export abstract class Schema<T> {
   private _pureCtx?: ParseCtx | undefined
 
   /**
+   * The own-property `parse` closure installed for a pure-JIT tree (see
+   * `installOwnParse`), remembered so invalidation removes exactly that
+   * closure and never a caller's own assignment.
+   */
+  private _ownParse?: ((input: unknown) => Result<T>) | undefined
+
+  /**
    * Build-attached specialized VERDICT function (`@pyreon/compiler`'s
    * `emitValidator` via `@pyreon/vite-plugin`). When present, {@link is} uses it
    * directly — a monomorphic, fully-inlined boolean check with no op-array
@@ -702,6 +709,13 @@ export abstract class Schema<T> {
   /** Invalidate the cached closure (called when ops change). */
   _invalidateCompile(): void {
     this._compiled = undefined
+    // The own-property parse seam closes over the artifact being dropped.
+    // Delete ONLY the closure this class installed — an own `parse` a caller
+    // assigned themselves (a subclass override on an instance) is theirs.
+    if (this._ownParse !== undefined) {
+      if (this.parse === this._ownParse) delete (this as { parse?: unknown }).parse
+      this._ownParse = undefined
+    }
     // The reused pure ctx is only valid for the compiled tree it was created
     // with — a post-compile chained op (`.refine()` on an already-parsed
     // schema) may make the recompiled tree impure.
@@ -747,6 +761,21 @@ export abstract class Schema<T> {
       // A `_jitPure`-branded validator (no fallback ⇒ no user code / Promise /
       // pending) unlocks the reused-ctx fast seams — see {@link _pureCtx}.
       this._pureCtx = jit !== null && (jit as JitValidator)._jitPure === true ? makeCtx() : undefined
+      // OWN-PROPERTY parse seam (pure trees only). The prototype `parse` is
+      // already tiny (#3316) and still read 2.2ns over the emitted validator
+      // alone: its two `this` loads go through a many-field instance and its
+      // call target is monomorphic only per process. A closure that captures
+      // `_compiled` + `_pureCtx` and is installed as the instance's OWN `parse`
+      // has neither cost — measured on the `number.int.range` cell (bun, load
+      // 2.9, in-process interleaved, CI95-disjoint): 4.98 → 3.40ns. It is
+      // built in the SAME pass as the artifact it closes over, and
+      // `_invalidateCompile` deletes it with that artifact, so the two can
+      // never disagree. A subclass that overrides `parse` keeps its override
+      // (the prototype identity check), and a non-pure tree keeps the
+      // prototype method — nothing changes for either.
+      if (this._pureCtx !== undefined && this.parse === Schema.prototype.parse) {
+        installOwnParse(this, this._compiled, this._pureCtx)
+      }
     }
     return this._compiled
   }
@@ -771,6 +800,25 @@ export abstract class Schema<T> {
  * been materialized by a failure wrapper / array flush; reset to the shared
  * sentinel so the next parse starts allocation-free again.
  */
+/**
+ * Install `schema.parse` as an OWN property closing over the pure-JIT artifact
+ * and its reused ctx — see the note in `_getCompiled`. Same body as the
+ * prototype method's pure branch, minus the `this` loads.
+ */
+function installOwnParse<T>(schema: Schema<T>, compiled: SyncValidator, pure: ParseCtx): void {
+  const parse = (input: unknown): Result<T> => {
+    const value = compiled(input, pure)
+    if (pure.issues.length === 0) return { ok: true, value: value as T }
+    return pureFail(pure)
+  }
+  // Plain assignment, not `defineProperty` with custom attributes: JSC keeps a
+  // plain-assigned own property on a cacheable structure, while a
+  // non-enumerable define pushed the instance to a slow lookup and gave the
+  // whole gain back (5.25ns, measured — same as no change at all).
+  ;(schema as { parse: (input: unknown) => Result<T> }).parse = parse
+  ;(schema as unknown as { _ownParse: typeof parse })._ownParse = parse
+}
+
 function pureFail<T>(pure: ParseCtx): Result<T> {
   const issues = pure.issues
   pure.issues = []

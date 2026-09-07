@@ -30,12 +30,16 @@ function promotedThenShrunk(): { sig: ReturnType<typeof signal<number>>; runs: (
   const b = effect(() => {
     sig()
   })
-  // Two tracking subscribers → `_s1` promoted into `_s`.
+  const c = effect(() => {
+    sig()
+  })
+  // Three tracking subscribers → both inline slots promoted into `_s`.
   const internals = accessInternal<{ _s1: unknown; _s: Set<unknown> | null }>(sig)
   expect(internals._s1).toBeNull()
-  expect(internals._s?.size).toBe(2)
+  expect(internals._s?.size).toBe(3)
 
-  b.dispose() // back to one — but the Set stays (no demotion)
+  b.dispose()
+  c.dispose() // back to one — but the Set stays (no demotion)
   expect(internals._s?.size).toBe(1)
   void a
   return { sig, runs: () => n }
@@ -62,13 +66,16 @@ describe('_suspendSoleSubscriber / _resumeSoleSubscriber — Set shapes', () => 
     const b = effect(() => {
       sig()
     })
-    const internals = accessInternal<{ _s: Set<unknown> | null }>(sig)
-    expect(internals._s?.size).toBe(2)
+    const internals = accessInternal<{ _s1: unknown; _s: unknown }>(sig)
+    // Two subscribers live inline: `_s1` and a FUNCTION in `_s` (no Set yet).
+    expect(internals._s1).not.toBeNull()
+    expect(typeof internals._s).toBe('function')
 
     // The precondition ("the sole subscriber IS the caller's listener") cannot
     // hold with two, so the fast path must decline rather than detach one.
     expect(_suspendSoleSubscriber(sig)).toBeNull()
-    expect(internals._s?.size).toBe(2)
+    expect(internals._s1).not.toBeNull()
+    expect(typeof internals._s).toBe('function')
 
     a.dispose()
     b.dispose()

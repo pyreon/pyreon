@@ -64,8 +64,29 @@ export interface SubscriberHost {
    * demotion (a Set that shrinks back to one entry stays a Set).
    */
   _s1: (() => void) | null
-  /** @internal subscriber Set — allocated on PROMOTION from `_s1` (>=2 subscribers) */
-  _s: Set<() => void> | null
+  /**
+   * INVARIANT for the second tier below: a FUNCTION in `_s` implies `_s1 !==
+   * null` (the slots fill in order and `removeSubscriber` shifts the second
+   * down); a `Set` in `_s` implies `_s1 === null`. The THIRD subscriber
+   * promotes both into the Set.
+   *
+   * Why two: the "sole subscriber" census behind `_s1` counted flat row lists
+   * and computed chains. A row that owns an `effect()` AND a text bind on the
+   * same signal — the dispose-500 scenario, and any list row with a derived
+   * side effect — has exactly TWO, and paid a hashed `Set.delete` per
+   * subscriber per dispose (~52ns each, 61% of the on-CPU teardown once the
+   * dispose closures were cheap). Two inline slots make that shape hash-free
+   * at the cost of one more null check on notify.
+   */
+  /**
+   * @internal The SECOND subscriber, or the promoted Set. A FUNCTION here is
+   * the second inline subscriber (implies `_s1 !== null`); a `Set` holds ≥3
+   * (implies `_s1 === null`). One field carries both so a signal stays at its
+   * pre-two-slot size: an extra property measured +24 B per signal (152 → 176)
+   * under V8's in-object slack, which on a 10k-row page is the whole retained-
+   * heap margin the board tracks. `typeof _s === 'function'` is the tier test.
+   */
+  _s: Set<() => void> | (() => void) | null
 }
 
 /**
@@ -79,9 +100,9 @@ export interface SubscriberHost {
  */
 export function addSubscriber(host: SubscriberHost, sub: () => void): void {
   const s1 = host._s1
-  if (s1 === sub) return // already the sole subscriber — idempotent, no hash
+  if (s1 === sub) return // already inline — idempotent, no hash
   if (s1 === null) {
-    const s = host._s
+    const s = host._s as Set<() => void> | null // `_s1 === null` ⇒ never a function
     if (s === null) {
       host._s1 = sub
       return
@@ -89,9 +110,16 @@ export function addSubscriber(host: SubscriberHost, sub: () => void): void {
     s.add(sub)
     return
   }
-  // Promote: the slot is occupied by a DIFFERENT subscriber.
+  const s2 = host._s as (() => void) | null // `_s1 !== null` ⇒ never a Set
+  if (s2 === sub) return
+  if (s2 === null) {
+    host._s = sub
+    return
+  }
+  // Promote: both slots are occupied by DIFFERENT subscribers.
   const set = new Set<() => void>()
   set.add(s1)
+  set.add(s2)
   set.add(sub)
   host._s1 = null
   host._s = set
@@ -99,11 +127,19 @@ export function addSubscriber(host: SubscriberHost, sub: () => void): void {
 
 /** Remove `sub` from `host`'s tracking subscribers. No-op when absent. */
 export function removeSubscriber(host: SubscriberHost, sub: () => void): void {
+  const s = host._s
   if (host._s1 === sub) {
-    host._s1 = null
+    // Keep the slots packed: `_s1` is the one every reader checks first.
+    // `_s` is a function or null here (never a Set while `_s1` is occupied).
+    host._s1 = s as (() => void) | null
+    host._s = null
     return
   }
-  host._s?.delete(sub)
+  if (s === sub) {
+    host._s = null
+    return
+  }
+  if (s !== null && typeof s !== 'function') s.delete(sub)
 }
 
 /**

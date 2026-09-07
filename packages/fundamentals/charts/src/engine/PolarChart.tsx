@@ -1,14 +1,13 @@
 // `<PolarChart>` — bars and lines on a polar coordinate system, over the shared canvas host.
 
 import type { VNode } from '@pyreon/core'
-import { canvasHost } from './canvas-host'
+import { canvasHost, orNull } from './canvas-host'
+import { polarLegend, polarTip } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
-import { plain } from './format'
 import { hitPolarIndex, layoutPolar, renderPolar } from './polar'
 import type { PolarAxes, PolarHitIndex, PolarLayout, PolarOptions, PolarSeries } from './polar'
 import { hitPolar } from './polar-hit'
 import type { PolarHit } from './polar-hit'
-import { paletteAt } from './palette'
 
 export interface PolarChartProps extends CanvasHostProps {
   axes: PolarAxes
@@ -31,22 +30,14 @@ export function PolarChart(props: PolarChartProps): VNode {
       readSeries()
     },
     layout: (box, _measure, theme) => layoutPolar(props.axes, readSeries(), box, opts(theme.palette)),
-    render: (layout, _measure, theme) => renderPolar(layout, opts(theme.palette)),
-    legend: (_layout, theme) => readSeries().map((s, i) => ({ label: s.name, color: s.color ?? paletteAt(theme.palette, i) })),
+    animates: true,
+    render: (layout, _measure, theme, progress) => renderPolar(layout, { ...opts(theme.palette), progress }),
+    legend: (_layout, theme) => polarLegend(readSeries(), theme.palette),
     select: (layout, px, py) => {
       props.onSelect?.(hitPolar(layout, px, py))
       props.onSelectIndex?.(hitPolarIndex(layout, px, py))
     },
-    tooltip: (layout, px, py) => {
-      const hit = hitPolar(layout, px, py)
-      if (hit === null) return null
-      const series = readSeries()
-      if (hit.kind === 'sector') {
-        const s = series[hit.sector.series]
-        return [s?.name ?? `Series ${hit.sector.series + 1}`, plain(hit.sector.value)]
-      }
-      return [plain(hit.point.value)]
-    },
+    tooltip: (layout, px, py) => orNull(polarTip(layout, readSeries(), px, py)),
     a11y: () => ({
       title: props.title,
       categories: props.axes.categories,
