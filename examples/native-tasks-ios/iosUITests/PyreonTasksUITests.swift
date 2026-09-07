@@ -434,6 +434,30 @@ final class PyreonTasksUITests: XCTestCase {
         // appearing is the DETERMINISTIC discriminator vs the old inert
         // wrapper, which never showed a fallback. The Suspense's content
         // (lc-quote, from the good fetch) also renders after it settles.
+        // Flow-native proof: createFlow → PyreonFlowState on the device. Each
+        // assertion reads a value the NATIVE engine produced — a count after
+        // addNode, the zoom after zoomIn, the selection after selectNode. The
+        // labels are read as text so a wrong VALUE fails, not just a missing
+        // element.
+        let flowNav = app.buttons["tasks-flow"].firstMatch
+        XCTAssertTrue(flowNav.exists, "Flow button missing on tasks page")
+        tapAfterScrolling(flowNav, in: app)
+        let flowPage = app.otherElements["flow-page"].firstMatch
+        XCTAssertTrue(flowPage.waitForExistence(timeout: 15), "Flow page did not render")
+        let nodeCount = app.staticTexts["flow-node-count"].firstMatch
+        XCTAssertTrue(nodeCount.waitForExistence(timeout: 10), "flow-node-count missing")
+        XCTAssertEqual(nodeCount.label, "2", "seeded node count")
+        XCTAssertEqual(app.staticTexts["flow-edge-count"].firstMatch.label, "1", "seeded edge count")
+        XCTAssertEqual(app.staticTexts["flow-zoom"].firstMatch.label, "zoom 1.0", "initial zoom")
+        tapAfterScrolling(app.buttons["flow-add"].firstMatch, in: app)
+        XCTAssertTrue(waitForLabel(nodeCount, "3", timeout: 5), "addNode did not reach the native engine (label: \(nodeCount.label))")
+        tapAfterScrolling(app.buttons["flow-select"].firstMatch, in: app)
+        XCTAssertTrue(waitForLabel(app.staticTexts["flow-selected-count"].firstMatch, "1", timeout: 5), "selectNode did not reach the native engine")
+        tapAfterScrolling(app.buttons["flow-zoom-in"].firstMatch, in: app)
+        XCTAssertTrue(waitForLabel(app.staticTexts["flow-zoom"].firstMatch, "zoom 1.2", timeout: 5), "zoomIn did not reach the native engine (label: \(app.staticTexts["flow-zoom"].firstMatch.label))")
+        tapAfterScrolling(app.buttons["flow-back"].firstMatch, in: app)
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 10), "flow-back did not return to tasks")
+
         let lifecycleNav = app.buttons["tasks-lifecycle"].firstMatch
         XCTAssertTrue(lifecycleNav.exists, "Lifecycle button missing on tasks page")
         lifecycleNav.tap()

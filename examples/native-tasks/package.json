@@ -14,6 +14,7 @@
   },
   "devDependencies": {
     "@pyreon/core": "workspace:*",
+    "@pyreon/flow": "workspace:*",
     "@pyreon/form": "workspace:*",
     "@pyreon/machine": "workspace:*",
     "@pyreon/native-cli": "workspace:*",
@@ -29,6 +30,7 @@
     "@pyreon/coolgrid": "workspace:*",
     "@pyreon/dnd": "workspace:*",
     "@pyreon/elements": "workspace:*",
+    "@pyreon/flow": "workspace:*",
     "@pyreon/hooks": "workspace:*",
     "@pyreon/hotkeys": "workspace:*",
     "@pyreon/http": "workspace:*",

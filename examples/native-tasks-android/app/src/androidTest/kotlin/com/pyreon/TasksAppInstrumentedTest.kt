@@ -501,6 +501,25 @@ class TasksAppInstrumentedTest {
         // ErrorBoundary wraps a fetch to a MISSING path → rejects →
         // hasError true → fallback renders. waitUntil because the fetch
         // crosses a real network hop.
+        // Flow-native proof: createFlow → PyreonFlowState on the device. Value
+        // assertions on what the NATIVE engine produced. No performScrollTo: the
+        // tasks page and FlowScreen are plain Stacks (no Scroll ancestor), and
+        // scrollToNode throws without one — the scroll-first rule is for
+        // Column(verticalScroll) pages only.
+        composeRule.onNodeWithTag("tasks-flow").performClick()
+        assertTagDisplayed("flow-page", "after tasks-flow (/tasks -> /flow)")
+        composeRule.onNodeWithTag("flow-node-count").assertTextEquals("2")
+        composeRule.onNodeWithTag("flow-edge-count").assertTextEquals("1")
+        composeRule.onNodeWithTag("flow-zoom").assertTextEquals("zoom 1.0")
+        composeRule.onNodeWithTag("flow-add").performClick()
+        composeRule.onNodeWithTag("flow-node-count").assertTextEquals("3")
+        composeRule.onNodeWithTag("flow-select").performClick()
+        composeRule.onNodeWithTag("flow-selected-count").assertTextEquals("1")
+        composeRule.onNodeWithTag("flow-zoom-in").performClick()
+        composeRule.onNodeWithTag("flow-zoom").assertTextEquals("zoom 1.2")
+        composeRule.onNodeWithTag("flow-back").performClick()
+        assertTagDisplayed("tasks-page", "after flow-back (/flow -> /tasks)")
+
         composeRule
             .onNodeWithTag("tasks-lifecycle")
             .performClick()
@@ -849,7 +868,7 @@ class TasksAppInstrumentedTest {
         // validation: the schema-driven form. `isValid` derives from errors and
         // an untouched field has none, so submit is what runs the schema.
         composeRule.onNodeWithTag("toolkit-schema-name").performScrollTo().performTextInput("ab")
-        composeRule.onNodeWithTag("toolkit-schema-submit").performScrollTo().performClick()
+        composeRule.onNodeWithTag("toolkit-schema-submit").performClick()
         waitForTagText("toolkit-schema-valid", "false")
 
         // WebView bridge — mirror of the iOS assertion. The hosted page echoes
