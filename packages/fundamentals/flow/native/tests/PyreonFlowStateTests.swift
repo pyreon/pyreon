@@ -90,6 +90,12 @@ struct PyreonFlowStateTests {
         check(g.selectedNodes().isEmpty && g.selectedEdges().isEmpty, "clearSelection clears both")
         g.selectAll()
         check(g.selectedNodes().count == 3, "selectAll selects every node")
+        // Web parity: `selectAll` (flow.ts) replaces ONLY the node set. v1 of
+        // both native ports also cleared the edge set — locked in by omission.
+        g.selectEdge("e1")
+        g.selectAll()
+        check(g.selectedEdges() == ["e1"], "selectAll leaves edge selection alone (web parity)")
+        check(g.selectedNodes() == ["1", "2", "3"], "selectAll keeps node insertion order")
         g.deleteSelected()
         check(g.nodes.isEmpty, "deleteSelected removes every selected node")
         check(g.edges.isEmpty, "deleteSelected's node removal cascades to connected edges")
@@ -142,7 +148,7 @@ struct PyreonFlowStateTests {
         let k = seedFlow()
         k.fitView()
         check(k.viewport == PyreonFlowViewport(), "fitView no-ops before containerSize is set")
-        k.containerSize = (width: 800, height: 400)
+        k.containerSize = PyreonFlowContainerSize(width: 800, height: 400)
         k.fitView()
         check(k.viewport.zoom > 0 && k.viewport.zoom <= 4, "fitView picks a real, clamped zoom")
         // The graph spans x:[0,550] (node 3 at x=400 + default width 150), so
@@ -157,6 +163,41 @@ struct PyreonFlowStateTests {
         check(m.getIncomers("2").map { $0.id } == ["1"], "getIncomers walks edges INTO the node")
         check(m.getOutgoers("2").map { $0.id } == ["3"], "getOutgoers walks edges OUT of the node")
         check(m.getIncomers("1").isEmpty, "a source-only node has no incomers")
+
+        // 10. Edge `type` default — web `normalizeEdge`: `type ?? 'bezier'`.
+        let et = seedFlow()
+        check(et.getEdge("e1")?.type == "bezier", "a seeded edge without a type reads 'bezier' (web parity)")
+        et.addEdge(PyreonFlowEdge(id: "e9", source: "1", target: "3"))
+        check(et.getEdge("e9")?.type == "bezier", "addEdge applies the 'bezier' default")
+        et.addEdge(PyreonFlowEdge(id: "e10", source: "1", target: "3", type: "step"))
+        check(et.getEdge("e10")?.type == "step", "an explicit edge type is kept")
+
+        // 11. Observation granularity — THE performance contract. A tracker
+        // reading node "1" must not fire when node "2" moves. With one
+        // `@Observable` array property (v1) it did: 1000/1000 node views
+        // invalidated per drag frame at N = 1,000. Per-node boxes make a
+        // position write invalidate only that node's readers (web: O(1+deg)).
+        let ob = seedFlow()
+        nonisolated(unsafe) var firedForNode1 = 0
+        @Sendable func track1() {
+            withObservationTracking {
+                _ = ob.getNode("1")?.position
+            } onChange: {
+                firedForNode1 += 1
+                track1()
+            }
+        }
+        track1()
+        ob.updateNodePosition("2", PyreonXYPosition(x: 5, y: 5))
+        ob.zoomTo(2)
+        ob.selectNode("3")
+        check(firedForNode1 == 0, "moving node 2 / zooming / selecting must NOT invalidate a reader of node 1 (got \(firedForNode1))")
+        ob.updateNodePosition("1", PyreonXYPosition(x: 7, y: 7))
+        check(firedForNode1 == 1, "moving node 1 invalidates its reader exactly once (got \(firedForNode1))")
+        nonisolated(unsafe) var firedForAll = 0
+        withObservationTracking { _ = ob.nodes.count } onChange: { firedForAll += 1 }
+        ob.updateNodePosition("2", PyreonXYPosition(x: 9, y: 9))
+        check(firedForAll == 1, "a reader of the whole `nodes` array still sees every change")
 
         print("PyreonFlowStateTests: state checks passed")
     }
