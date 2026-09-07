@@ -263,12 +263,12 @@ if (__url.searchParams.get('profileClear') === '1') {
     setStatus('profileDispose ready')
   })()
 } else if (__url.searchParams.get('profileTree') === '1') {
-  // CPU-profiling target for bench-treeprofile.ts — mounts the deep-tree
-  // scenario's Pyreon, Solid and Vanilla arms side by side, exposing
-  // __treeBench drivers for all three; never runs the timed suite.
+  // CPU-profiling target for bench-treeladder.ts — the deep-tree mount
+  // ablation ladder (eight arms behind named __mountTree* frames); never
+  // runs the timed suite.
   void (async () => {
     const { setupTreeProfile } = await import('./impl/profile-tree')
-    setupTreeProfile(makeContainer(), makeContainer(), makeContainer())
+    setupTreeProfile(makeContainer)
     setStatus('profileTree ready')
   })()
 } else if (__url.searchParams.get('mode') === 'scenarios') {
