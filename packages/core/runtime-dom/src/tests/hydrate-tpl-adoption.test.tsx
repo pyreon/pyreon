@@ -33,6 +33,7 @@ import {
   _bindDirect,
   _bindText,
   _mountSlot,
+  _textSlot,
   _setAttr,
   _setClass,
   _setStyle,
@@ -69,6 +70,7 @@ const RUNTIME_DEPS = {
   _setAttr,
   _setClass,
   _mountSlot,
+  _textSlot,
   bindPolymorphicText,
   h,
   Fragment,
@@ -204,16 +206,23 @@ describe('compiled-template hydration adoption', () => {
   })
 
   it('SWAP fallback (adoption-bail shape) keeps LIVE anchors — list ops after a swapped hydration', async () => {
-    // A row with a conditional slot compiles to a template containing a `<!>`
-    // placeholder — templateSignature refuses it, so every row takes the
-    // interpretive NativeItem SWAP. Before the anchor fix, each ForEntry then
-    // pointed at its DETACHED SSR node and every later op corrupted the list.
+    // This spec exercises the SWAP path — the interpretive NativeItem swap a
+    // row takes when template adoption BAILS. Before the anchor fix, each
+    // ForEntry then pointed at its DETACHED SSR node and every later op
+    // corrupted the list. Every SHAPE this fixture used to bail on now adopts
+    // (mid text slot: collapsed; mid element slot: parked — see
+    // `TplSig.midSlots`), so the bail is forced the way it happens in
+    // practice: a server/client DIVERGENCE. The client template bakes a static
+    // `class="row"` the server never rendered; the static-skeleton gate refuses
+    // the row and it swaps. The adopting twins of the old shapes live in
+    // `hydrate-mid-text-slot-adoption.test.tsx` and
+    // `hydrate-mid-element-slot-adoption.test.tsx`.
     const BAIL_SRC = `
 const App = () => (
   <div>
     <For each={() => rows()} by={(r) => r.id}>
       {(r) => (
-        <section>
+        <section class="row">
           {cond() ? <i>x</i> : null}
           <a>{() => r.label()}</a>
         </section>
@@ -229,7 +238,7 @@ const App = () => (
           each: () => rows(),
           by: (r: Row) => r.id,
           children: (r: Row) =>
-            h('section', null, () => null, h('a', null, () => r.label())),
+            h('section', null, () => h('i', null, 'x'), h('a', null, () => r.label())),
         }),
       )
     const srvRows = mk([1, 2, 3])
@@ -239,9 +248,9 @@ const App = () => (
     document.body.appendChild(host)
 
     const rows = signal(mk([1, 2, 3]))
-    const App = compileApp(BAIL_SRC, { rows: () => rows(), cond: () => false })
+    const App = compileApp(BAIL_SRC, { rows: () => rows(), cond: () => true })
     const dispose = hydrateRoot(host, h(App as never, null))
-    expect(tplAdopted()).toBe(0) // adoption bailed — swap path
+    expect(tplAdopted()).toBe(0) // adoption bailed (static attr the server lacks) — swap path
     const labels = () => Array.from(host.querySelectorAll('a')).map((a) => a.textContent)
     expect(labels()).toEqual(['L1', 'L2', 'L3'])
 

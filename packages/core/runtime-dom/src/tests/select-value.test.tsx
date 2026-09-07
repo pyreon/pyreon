@@ -38,7 +38,7 @@ import { _bind, signal } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import { transformSync } from 'esbuild'
 import { _tpl, _bindText, _bindDirect } from '../template'
-import { _applyProps, _setStyle, _mountSlot, hydrateRoot, mountChild } from '../index'
+import { _applyProps, _setStyle, _mountSlot, _textSlot, hydrateRoot, mountChild } from '../index'
 
 // ─── Compiled-template harness ───────────────────────────────────────────────
 // Same shape as compiler-integration.test.tsx, plus an esbuild classic-JSX
@@ -57,6 +57,7 @@ const RUNTIME_DEPS = {
   _applyProps,
   _setStyle,
   _mountSlot,
+  _textSlot,
   _rp,
   _cx: cx,
   h,

@@ -119,6 +119,20 @@ describe('stripWithMask matches the reference implementation', () => {
     })
   }
 
+  // This spec's cost is REPO-SIZE-BOUND, and it runs under `Coverage (Full)`'s
+  // 4-way package parallelism, so it must not sit on the shared 20 s default.
+  // Measured 2026-09-06 on the same tree: 3.6 s alone, 26.4 s under that load —
+  // a ~7x inflation that crossed 20 s and reddened main on two consecutive
+  // runs (#3306, #3309; a third, #3307, was still queued when this landed), reported as `STACK_TRACE_ERROR` with no text
+  // because a vitest TIMEOUT rendered through the JSON reporter drops its
+  // message. The gate's own diagnostic then blamed an OOM'd worker; peak RSS
+  // was ~630 MB. CI `retry: 2` cannot save it — every retry runs under the same
+  // sustained load. Derived, not guessed: ~4.5x the observed worst case, and a
+  // genuine hang still fails inside two minutes. Not gated behind
+  // PYREON_SKIP_SLOW_TESTS on purpose — this is the corpus-level correctness
+  // lock for the lexical stripper, not a nice-to-have.
+  const WHOLE_REPO_SCAN_TIMEOUT_MS = 120_000
+
   it('agrees on every source file in this repo', () => {
     // The load-bearing spec. Fixtures cover what the author thought of; the
     // repo covers what people actually write.
@@ -152,5 +166,5 @@ describe('stripWithMask matches the reference implementation', () => {
       if (failures.length >= 3) break
     }
     expect(failures).toEqual([])
-  })
+  }, WHOLE_REPO_SCAN_TIMEOUT_MS)
 })

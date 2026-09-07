@@ -172,6 +172,51 @@ describe('formatChangelog', () => {
     expect(versionHeadings).toHaveLength(1)
   })
 
+  // The spec above is the one that went red on the 0.52.0 release PR — and it
+  // was RIGHT. Five changesets in that release wrote their bodies with `## …`
+  // headings; changesets indents a body under its bullet, the parser strips
+  // the indent, and the heading resurfaced at column zero, indistinguishable
+  // from a version boundary. One version rendered six `## ` lines. Main was
+  // green only because its CHANGELOG had not been regenerated yet. The spec
+  // above locks the property against the REAL changelog; these lock the
+  // mechanism against a synthetic one, so the fix is proven directly rather
+  // than by the coincidence of what this release happened to contain.
+  describe('body headings never collide with the version heading', () => {
+    const synthetic = (change: string) => ({
+      packageName: '@pyreon/synthetic',
+      path: '/x/CHANGELOG.md',
+      dir: '/x',
+      entries: [{ version: '9.9.9', changes: [change], dependencyUpdates: [], empty: false }],
+    })
+
+    it('a body `## Title` is DEMOTED — the version stays the only `## ` line', () => {
+      const out = formatChangelog(synthetic('Lead line. (abc123)\n\n## Title\n\nprose'), { limit: 1 })
+      const h2 = out.split('\n').filter((l) => l.startsWith('## '))
+      expect(h2).toEqual(['## 9.9.9'])
+      expect(out).toContain('### Title')
+      expect(out).not.toContain('\n## Title')
+    })
+
+    it('relative structure is kept: h3 -> h4, deeper heading stays deeper', () => {
+      const out = formatChangelog(synthetic('Lead\n\n## A\n\n### B\n\n#### C'), { limit: 1 })
+      expect(out).toContain('### A')
+      expect(out).toContain('#### B')
+      expect(out).toContain('##### C')
+    })
+
+    it('a body h1 floors at h3 — it must not become an h2 and collide either', () => {
+      const out = formatChangelog(synthetic('Lead\n\n# Shout'), { limit: 1 })
+      expect(out.split('\n').filter((l) => l.startsWith('## '))).toEqual(['## 9.9.9'])
+      expect(out).toContain('### Shout')
+    })
+
+    it('CONTROL: a body with NO headings passes through byte-identical', () => {
+      const body = 'Plain lead. (abc123)\n\n- nested bullet\n- another, with # inside text\n\nmore prose'
+      const out = formatChangelog(synthetic(body), { limit: 1 })
+      expect(out).toContain(`- ${body}`)
+    })
+  })
+
   it('omits Updated-dependencies bullets by default', () => {
     const q = findChangelog(registry, 'query')!
     const out = formatChangelog(q, { limit: 10 })

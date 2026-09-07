@@ -48,7 +48,7 @@ import { _bind, signal } from '@pyreon/reactivity'
 import { transformSync } from 'esbuild'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mountChild } from '../index'
-import { _bindDirect, _bindText, _mountSlot, _setChild, _setChildAt, _tpl } from '../template'
+import { _bindDirect, _bindText, _mountSlot, _textSlot, _setChild, _setChildAt, _tpl } from '../template'
 
 // ─── Counter sink (mirrors for-clear-replace-fast.test.tsx) ──────────────────
 const g = globalThis as { __pyreon_count__?: ((name: string, n?: number) => void) | undefined }
@@ -77,6 +77,7 @@ const RUNTIME_DEPS = {
   _bindText,
   _bindDirect,
   _mountSlot,
+  _textSlot,
   _setChild,
   _setChildAt,
   _rp,

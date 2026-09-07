@@ -61,6 +61,7 @@ export {
   _bindText,
   _mountChild,
   _mountSlot,
+  _textSlot,
   _setChild,
   _setChildAt,
   _rsCollapse,

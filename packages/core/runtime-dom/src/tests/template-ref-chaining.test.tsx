@@ -23,7 +23,7 @@ import { transformSync } from 'esbuild'
 import { Fragment, h, _rp, cx } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 
-import { _tpl, _bindText, _bindDirect, _mountSlot, _setChild, _setChildAt } from '../template'
+import { _tpl, _bindText, _bindDirect, _mountSlot, _textSlot, _setChild, _setChildAt } from '../template'
 import { _applyProps, _setAttr, _setClass, _setStyle, mountChild } from '../index'
 
 const RUNTIME_DEPS = {
@@ -38,6 +38,7 @@ const RUNTIME_DEPS = {
   _setChild,
   _setChildAt,
   _mountSlot,
+  _textSlot,
   _rp,
   _cx: cx,
   h,

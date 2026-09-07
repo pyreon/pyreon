@@ -20,7 +20,7 @@ import { transformSync } from 'esbuild'
 import { createContext, Fragment, h, provide, useContext, _rp, cx } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
-import { _tpl, _bindText, _bindDirect, _mountSlot, _setChild, _setChildAt } from '../template'
+import { _tpl, _bindText, _bindDirect, _mountSlot, _textSlot, _setChild, _setChildAt } from '../template'
 import {
   _applyProps,
   _setStyle,
@@ -53,6 +53,7 @@ const RUNTIME_DEPS = {
   _applyProps,
   _setStyle,
   _mountSlot,
+  _textSlot,
   _setChild,
   _setChildAt,
   bindPolymorphicText,

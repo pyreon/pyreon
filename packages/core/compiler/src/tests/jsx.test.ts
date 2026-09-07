@@ -858,20 +858,24 @@ describe('JSX transform — template emission', () => {
     expect(result).toContain('.firstChild')
   })
 
-  test('mixed content KEEPS the comment+replaceChild shape (adjacent text would merge)', () => {
+  test('mixed content KEEPS the comment placeholder (adjacent text would merge)', () => {
     // `<p>foo {x()} bar</p>` — baked spaces would merge with the static
     // text runs during parsing and break childNodes indexing; the comment
     // placeholder shape must stay.
     const result = t('<p>foo {x()} bar</p>')
     expect(result).toContain('<!>')
-    expect(result).toContain('createTextNode')
-    expect(result).toContain('replaceChild')
+    // The invariant is the COMMENT PLACEHOLDER — a baked space would merge with
+    // the adjacent static text during parsing. `_textSlot` replaced the inlined
+    // `createTextNode + replaceChild` pair that used to consume it; it is
+    // adoption-aware, which the inlined pair could not be.
+    expect(result).toContain('_textSlot(')
+    expect(result).not.toContain('createTextNode')
   })
 
   test('adjacent expressions KEEP comment placeholders (no baked-space merging)', () => {
     const result = t('<span>{a()}{b()}</span>')
     expect(result).toContain('<!>')
-    expect(result).toContain('replaceChild')
+    expect(result).toContain('_textSlot(')
     expect(result).not.toContain('<span>  </span>')
   })
 

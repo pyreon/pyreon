@@ -7955,6 +7955,53 @@ function isKotlinLazyListChild(e: ExprIR): boolean {
   return e.kind === 'jsx-element' && e.tag === 'For'
 }
 
+/**
+ * Does a `<For>` live ANYWHERE under these children, through any number of
+ * non-scrolling containers? The direct-child check above is right for the
+ * unwrap fast path (a lone `<For>` IS the scroller), but the measure-time
+ * crash does not care about depth: `<Scroll><Stack><For/></Stack></Scroll>`
+ * nests a LazyColumn under `verticalScroll` exactly as a direct child does,
+ * and the old `e.children.some(...)` could not see it. Device-found on
+ * native-tasks' stats page (#3294), where a `<For>` one level down crashed
+ * Android with no compile-time diagnostic — the author's own comment there
+ * named this gap.
+ *
+ * A nested `<Scroll>` is a boundary ONLY when it will emit its own scroll
+ * modifier. The first cut treated every nested `<Scroll>` as opaque — and
+ * that was wrong in exactly the case that matters: a nested lazy-only
+ * `<Scroll><For/></Scroll>` is UNWRAPPED by the `lazyOnly` fast path below
+ * into a bare LazyColumn with no wrapper of its own, so that LazyColumn lands
+ * directly under the OUTER `verticalScroll` and crashes identically. Only a
+ * nested Scroll with MIXED children keeps its `verticalScroll` and is a real
+ * boundary — and its nested-lazy hazard is its own, reported by its own emit,
+ * so the outer walk must not descend and double-report it.
+ */
+function containsLazyListDeep(children: readonly ChildIR[]): boolean {
+  for (const c of children) {
+    if (c.kind !== 'expr') continue
+    const e = c.expr
+    if (e.kind === 'jsx-element') {
+      if (e.tag === 'For') return true
+      if (e.tag === 'Scroll') {
+        // Transparent when it unwraps (lone `<For>`): the LazyColumn bubbles
+        // up to the outer scroller. Opaque when it keeps its own modifier.
+        const lone = e.children.filter((k) => k.kind === 'expr')
+        const unwraps =
+          lone.length === 1 &&
+          lone[0]!.kind === 'expr' &&
+          isKotlinLazyListChild(lone[0]!.expr) &&
+          readStaticAttrKotlin(e, 'axis') !== 'horizontal'
+        if (unwraps) return true
+        continue
+      }
+      if (containsLazyListDeep(e.children)) return true
+    } else if (e.kind === 'jsx-fragment') {
+      if (containsLazyListDeep(e.children)) return true
+    }
+  }
+  return false
+}
+
 function emitKotlinScroll(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,
@@ -8014,9 +8061,14 @@ function emitKotlinScroll(
   // kept — but the nested-lazy shape throws at MEASURE time on Android, so
   // the long-promised warning is now actually emitted (the comment above
   // claimed it; the code never did — comment/code drift).
-  if (!horizontal && e.children.some((c) => c.kind === 'expr' && isKotlinLazyListChild(c.expr))) {
+  // The walk is RECURSIVE: a `<For>` inside a `<Stack>` inside this `<Scroll>`
+  // nests exactly the same LazyColumn-under-verticalScroll and throws exactly
+  // the same measure-time exception — depth is not a property Compose checks.
+  // The direct-children `.some(...)` this replaced missed that shape, and the
+  // gap was found the expensive way (a device crash, #3294) rather than here.
+  if (!horizontal && containsLazyListDeep(e.children)) {
     _emitWarnings.push(
-      '<Scroll> with a <For> among OTHER children nests a LazyColumn inside Column(Modifier.verticalScroll()) on Android — an IllegalStateException at MEASURE time ("measured with an infinity maximum height"). Move the <For> into its own <Scroll>, or render the header as a plain sibling above a <Scroll><For/></Scroll>.',
+      '<Scroll> with a <For> among OTHER children (at ANY depth — inside a <Stack>, an <Inline>, a fragment) nests a LazyColumn inside Column(Modifier.verticalScroll()) on Android — an IllegalStateException at MEASURE time ("measured with an infinity maximum height"). Move the <For> into its own <Scroll>, or render the header as a plain sibling above a <Scroll><For/></Scroll>.',
     )
   }
   const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')

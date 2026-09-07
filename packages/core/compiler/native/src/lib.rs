@@ -546,6 +546,7 @@ struct Ctx<'a> {
     needs_apply_props_import: bool,
     needs_bind_spread_import: bool,
     needs_mount_slot_import: bool,
+    needs_text_slot_import: bool,
     /// `_mountChild` — the APPEND form of an absorbed COMPONENT child
     /// (`templatize_component_children`), used when nothing static follows it.
     needs_mount_child_import: bool,
@@ -756,6 +757,7 @@ impl<'a> Ctx<'a> {
             needs_apply_props_import: false,
             needs_bind_spread_import: false,
             needs_mount_slot_import: false,
+            needs_text_slot_import: false,
             needs_mount_child_import: false,
             props_names: FxHashSet::default(),
             prop_derived_vars: FxHashMap::default(),
@@ -879,6 +881,9 @@ impl<'a> Ctx<'a> {
             }
             if self.needs_mount_slot_import {
                 imports.push("_mountSlot");
+            }
+            if self.needs_text_slot_import {
+                imports.push("_textSlot");
             }
             if self.needs_mount_child_import {
                 imports.push("_mountChild");
@@ -6923,6 +6928,16 @@ fn attr_is_dynamic(attr: &JSXAttributeItem, tag: &str) -> bool {
     }
 }
 
+fn children_have_expression(children: &[JSXChild]) -> bool {
+    children.iter().any(|c| match c {
+        JSXChild::ExpressionContainer(ec) => {
+            !matches!(ec.expression, JSXExpression::EmptyExpression(_))
+        }
+        JSXChild::Fragment(f) => children_have_expression(&f.children),
+        _ => false,
+    })
+}
+
 fn element_has_dynamic(el: &JSXElement, tpl_components: bool) -> bool {
     let tag = jsx_tag_name(el);
     if el
@@ -6934,12 +6949,11 @@ fn element_has_dynamic(el: &JSXElement, tpl_components: bool) -> bool {
         return true;
     }
     if !is_self_closing(el) {
-        if el.children.iter().any(|c| match c {
-            JSXChild::ExpressionContainer(ec) => {
-                !matches!(ec.expression, JSXExpression::EmptyExpression(_))
-            }
-            _ => false,
-        }) {
+        // Mirrors the JS backend: looks THROUGH fragments, because a
+        // fragment-wrapped expression flattens to a placeholder child of this
+        // element at emit time and its phase-2 line needs a phase-1 parent
+        // const (see jsx.ts `childrenHaveExpression`).
+        if children_have_expression(&el.children) {
             return true;
         }
         // PZ-08: an absorbed component child emits a phase-2 `_mountChild` /
@@ -7805,10 +7819,16 @@ fn emit_reactive_text_child(
     // baked text runs would merge during parsing.
     if needs_placeholder {
         let p_var = tb.hoist_placeholder_ref(parent_ref, child_node_idx);
+        // MIXED CONTENT (mirrors jsx.ts). The inlined `createTextNode +
+        // replaceChild` this used to emit is right for a CLONE and wrong for an
+        // ADOPTED container, where the placeholder ref resolves to the live
+        // `<!--$-->` opening the range that already holds this slot's
+        // server-rendered text — so it replaced the OPEN MARKER and the value
+        // rendered twice. `_textSlot` is the same clone-vs-marked-range
+        // discrimination `_mountSlot` already does, and it ADOPTS the text.
+        ctx.needs_text_slot_import = true;
         tb.bind_lines
-            .push(format!("const {} = document.createTextNode(\"\")", t_var));
-        tb.bind_lines
-            .push(format!("{}.replaceChild({}, {})", parent_ref, t_var, p_var));
+            .push(format!("const {} = _textSlot({}, {})", t_var, parent_ref, p_var));
     } else {
         // Pristine-clone capture — phase 1 (see TemplateBuilder header).
         // Sole-text child, so the canonical walk is child 0 of `var_name` — no
@@ -8015,9 +8035,18 @@ fn process_one_child(
                 tb.needs_mount_slot = true;
                 let placeholder = tb.hoist_placeholder_ref(parent_ref, child_node_idx);
                 let d = tb.next_disp();
+                // Mirrors the JS backend: a DYNAMIC children expression is
+                // wrapped in an accessor via the same `should_wrap` the h()/SSR
+                // emit uses, so the client carries the same number of reactive
+                // levels as the server markup (see jsx.ts for the failure).
+                let slot_arg = if is_children_expression(expr, &expr_text) && should_wrap(expr, ctx) {
+                    format!("() => ({})", expr_text)
+                } else {
+                    expr_text.clone()
+                };
                 tb.bind_lines.push(format!(
                     "const {} = _mountSlot({}, {}, {})",
-                    d, expr_text, parent_ref, placeholder
+                    d, slot_arg, parent_ref, placeholder
                 ));
                 return Some("<!>".to_string());
             }

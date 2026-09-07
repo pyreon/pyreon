@@ -80,6 +80,93 @@ describe('<Scroll> wrapping a lazy list (Kotlin)', () => {
     expect(kotlin(MIXED).code).toContain('verticalScroll(rememberScrollState())')
   })
 
+  // The warning for the MIXED shape checked only DIRECT children. A `<For>`
+  // one container down nests the identical LazyColumn under the identical
+  // `verticalScroll` and throws the identical measure-time exception — depth
+  // is not something Compose consults. native-tasks' stats page (#3294) put a
+  // `<For>` inside a `<Stack>` inside a `<Scroll>` and crashed the Android
+  // emulator with no compile-time diagnostic; the author's own workaround
+  // comment named this exact gap. The warning now recurses.
+  describe('the nested-lazy warning walks the WHOLE subtree', () => {
+    const WARN = 'measured with an infinity maximum height'
+    const warnings = (src: string) => (kotlin(src).warnings ?? []).join('\n')
+
+    it('a <For> inside a <Stack> inside the <Scroll> — the #3294 shape — WARNS', () => {
+      const NESTED = LIST.replace(
+        '<Scroll>\n        <For',
+        '<Scroll><Stack><Text>Header</Text>\n        <For',
+      ).replace('</For>\n      </Scroll>', '</For></Stack>\n      </Scroll>')
+      expect(NESTED).toContain('<Scroll><Stack>') // the replace actually fired
+      expect(warnings(NESTED)).toContain(WARN)
+      expect(warnings(NESTED)).toContain('at ANY depth')
+    })
+
+    it('two containers deep still warns — depth is not a boundary', () => {
+      const DEEP = LIST.replace(
+        '<Scroll>\n        <For',
+        '<Scroll><Stack><Stack>\n        <For',
+      ).replace('</For>\n      </Scroll>', '</For></Stack></Stack>\n      </Scroll>')
+      expect(DEEP).toContain('<Stack><Stack>')
+      expect(warnings(DEEP)).toContain(WARN)
+    })
+
+    it('a nested lazy-only <Scroll> is TRANSPARENT — it unwraps, so its LazyColumn lands under the OUTER scroller', () => {
+      // <Scroll><Stack><Scroll><For/></Scroll></Stack></Scroll>. My first cut
+      // called the inner Scroll a boundary and asserted NO warning here. That
+      // was the bug: the lazyOnly fast path emits the inner pair as a bare
+      // LazyColumn with no wrapper, so it sits directly under the outer
+      // verticalScroll and crashes exactly as a direct child would. Confirmed
+      // against the emit, not the source.
+      const INNER_LAZY = LIST.replace(
+        '<Scroll>\n        <For',
+        '<Scroll><Stack><Scroll>\n        <For',
+      ).replace('</For>\n      </Scroll>', '</For></Scroll></Stack>\n      </Scroll>')
+      expect(INNER_LAZY).toContain('<Stack><Scroll>')
+      expect(kotlin(INNER_LAZY).code).not.toMatch(/verticalScroll[\s\S]*verticalScroll/) // inner emits NO wrapper
+      expect(warnings(INNER_LAZY)).toContain(WARN)
+    })
+
+    it('a nested MIXED <Scroll> is a real boundary — it keeps its own modifier and reports its own hazard once', () => {
+      // <Scroll><Stack><Scroll><Text/><For/></Scroll></Stack></Scroll>: the
+      // inner Scroll keeps verticalScroll (mixed children), so the nested
+      // LazyColumn is ITS hazard. The outer walk must not descend into it, or
+      // one crash gets two warnings.
+      const INNER_MIXED = LIST.replace(
+        '<Scroll>\n        <For',
+        '<Scroll><Stack><Scroll><Text>H</Text>\n        <For',
+      ).replace('</For>\n      </Scroll>', '</For></Scroll></Stack>\n      </Scroll>')
+      expect(INNER_MIXED).toContain('<Scroll><Text>H</Text>')
+      const ws = (kotlin(INNER_MIXED).warnings ?? []).filter((w) => w.includes(WARN))
+      expect(ws).toHaveLength(1)
+    })
+
+    it('CONTROL: a nested <Stack> with NO <For> anywhere stays silent', () => {
+      // A warning that fires on any nesting at all would be worse than the
+      // gap it closes — every padded page has a Stack under its Scroll.
+      const PLAIN = LIST.replace(
+        '<For each={rows} by={(r) => r.id}>{(r) => <Text>{r.label}</Text>}</For>',
+        '<Stack><Text>one</Text><Text>two</Text></Stack>',
+      )
+      expect(PLAIN).not.toContain('<For')
+      expect(warnings(PLAIN)).not.toContain(WARN)
+    })
+
+    it('the DIRECT-child MIXED shape still warns (the original contract holds)', () => {
+      const MIXED = LIST.replace('<Scroll>', '<Scroll><Text>Header</Text>')
+      expect(warnings(MIXED)).toContain(WARN)
+    })
+
+    it.skipIf(!isKotlincAvailable())('the nested shape still emits COMPILABLE Kotlin — the warning is advisory, not a bail', () => {
+      // The author keeps their tree; the diagnostic just stops being silent.
+      const NESTED = LIST.replace(
+        '<Scroll>\n        <For',
+        '<Scroll><Stack><Text>Header</Text>\n        <For',
+      ).replace('</For>\n      </Scroll>', '</For></Stack>\n      </Scroll>')
+      const res = validateKotlin(kotlin(NESTED).code)
+      expect(res.ok, res.error ?? '').toBe(true)
+    })
+  })
+
   it('KEEPS the wrapper on a HORIZONTAL scroll (a different axis, no conflict)', () => {
     // LazyColumn scrolls vertically; a horizontalScroll Row around it is a
     // legitimate two-axis arrangement, not the forbidden nesting.

@@ -1262,6 +1262,7 @@ export function transformJSX_JS(
   let needsApplyPropsImportGlobal = false
   let needsBindSpreadImportGlobal = false
   let needsMountSlotImportGlobal = false
+  let needsTextSlotImportGlobal = false
   let needsMountComponentImportGlobal = false
   let needsCxImportGlobal = false
   let needsSetStyleImportGlobal = false
@@ -3756,6 +3757,7 @@ export function transformJSX_JS(
     if (needsApplyPropsImportGlobal) runtimeDomImports.push('_applyProps')
     if (needsBindSpreadImportGlobal) runtimeDomImports.push('_bindSpread')
     if (needsMountSlotImportGlobal) runtimeDomImports.push('_mountSlot')
+    if (needsTextSlotImportGlobal) runtimeDomImports.push('_textSlot')
     if (needsMountComponentImportGlobal) runtimeDomImports.push('_mountChild')
     if (needsBindPolyImportGlobal) runtimeDomImports.push('bindPolymorphicText')
     if (needsSetChildImportGlobal) runtimeDomImports.push('_setChild')
@@ -4013,6 +4015,7 @@ export function transformJSX_JS(
     let needsApplyPropsImport = false
     let needsBindSpreadImport = false
     let needsMountSlotImport = false
+    let needsTextSlotImport = false
     let needsMountComponentImport = false
     let needsCxImport = false
     let needsSetStyle = false
@@ -4834,8 +4837,15 @@ export function transformJSX_JS(
       // parsing and break childNodes indexing.
       if (needsPlaceholder) {
         const pVar = hoistPlaceholderRef(parentRef, childNodeIdx)
-        bindLines.push(`const ${tVar} = document.createTextNode("")`)
-        bindLines.push(`${parentRef}.replaceChild(${tVar}, ${pVar})`)
+        // MIXED CONTENT. The inlined `createTextNode + replaceChild` this used
+        // to emit is right for a CLONE and wrong for an ADOPTED container,
+        // where the placeholder ref resolves to the live `<!--$-->` opening the
+        // range that already holds this slot's server-rendered text — so it
+        // replaced the OPEN MARKER and the value rendered twice. `_textSlot` is
+        // the same clone-vs-marked-range discrimination `_mountSlot` already
+        // does for element slots, and it ADOPTS the server's text node.
+        needsTextSlotImport = true
+        bindLines.push(`const ${tVar} = _textSlot(${parentRef}, ${pVar})`)
       } else {
         // Pristine-clone capture — phase 1 (see buildTemplateCall header).
         // Sole-text child, so the canonical walk is child 0 of `varName` — no
@@ -5065,20 +5075,29 @@ export function transformJSX_JS(
       return false
     }
 
+    function childrenHaveExpression(children: N[]): boolean {
+      return children.some(
+        (c: N) =>
+          (c.type === 'JSXExpressionContainer' &&
+            c.expression &&
+            c.expression.type !== 'JSXEmptyExpression') ||
+          (c.type === 'JSXFragment' && childrenHaveExpression(jsxChildren(c))),
+      )
+    }
+
     function elementHasDynamic(node: N): boolean {
       const nodeTag = jsxTagName(node)
       if (jsxAttrs(node).some((a: N) => attrIsDynamic(a, nodeTag))) return true
       if (!isSelfClosing(node)) {
-        if (
-          jsxChildren(node).some(
-            (c: N) =>
-              c.type === 'JSXExpressionContainer' &&
-              c.expression &&
-              c.expression.type !== 'JSXEmptyExpression',
-          )
-        ) {
-          return true
-        }
+        // Looks THROUGH fragments: `<b><i/><>{x}</></b>` flattens to a
+        // placeholder child of `<b>` at emit time, so `<b>` must hold a
+        // phase-1 const exactly as if the expression were written bare —
+        // otherwise its walk is inlined into the phase-2 `_setChildAt` /
+        // `_mountSlot` line and evaluated AFTER an earlier placeholder was
+        // replaced (`_setChildAt(__p0.nextSibling, …)` with `__p0` already
+        // detached: `null.replaceChild`). Found by the compiled-path parity
+        // fuzz; the same predicate on the same (flattened) input the emit uses.
+        if (childrenHaveExpression(jsxChildren(node))) return true
         // PZ-08: an absorbed component child emits a phase-2 `_mountChild` /
         // `_mountSlot` line, so this element's own ref MUST be a phase-1
         // const. Without this the walk was inlined into the phase-2 line and
@@ -5196,7 +5215,23 @@ export function transformJSX_JS(
         needsMountSlotImport = true
         const placeholder = hoistPlaceholderRef(parentRef, childNodeIdx)
         const d = nextDisp()
-        bindLines.push(`const ${d} = _mountSlot(${expr}, ${parentRef}, ${placeholder})`)
+        // Wrap a DYNAMIC children expression (`props.children` — a prop read)
+        // in an accessor, exactly as the h()/SSR emit does via `shouldWrap`.
+        // Passing it BARE handed `_mountSlot` the CHILD's own accessor as the
+        // slot's accessor: one reactive level on the client where the SSR
+        // markup carried two (`<!--$--><!--$-->…<!--/$--><!--/$-->`), so
+        // hydration adopted the outer range and mis-walked the inner one —
+        // the child's text mounted a second time beside its server node —
+        // and a reactive `children` prop was frozen at bind time. The
+        // predicate is shared with the h() path so the two emits cannot
+        // disagree again; a static local `children` stays bare on both. An
+        // ELEMENT-valued const (`const el = <div/>` … `{el}`) is deliberately
+        // NOT wrapped: a VNode is never an accessor, hydration's literal branch
+        // walks the server range for it already, and its prop-derived class
+        // stays reactive through the inlined element (r15 specs).
+        const slotArg =
+          isChildrenExpression(childExpr, expr) && shouldWrap(childExpr) ? `() => (${expr})` : expr
+        bindLines.push(`const ${d} = _mountSlot(${slotArg}, ${parentRef}, ${placeholder})`)
         return '<!>'
       }
       // PZ-02 fix: a call to an in-file JSX-returning helper (`{cell(x)}`,
@@ -5360,6 +5395,7 @@ export function transformJSX_JS(
     if (needsApplyPropsImport) needsApplyPropsImportGlobal = true
     if (needsBindSpreadImport) needsBindSpreadImportGlobal = true
     if (needsMountSlotImport) needsMountSlotImportGlobal = true
+    if (needsTextSlotImport) needsTextSlotImportGlobal = true
     if (needsMountComponentImport) needsMountComponentImportGlobal = true
     if (needsCxImport) needsCxImportGlobal = true
     if (needsSetStyle) needsSetStyleImportGlobal = true
