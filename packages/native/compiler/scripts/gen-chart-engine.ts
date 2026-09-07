@@ -39,6 +39,7 @@ const REPO = join(HERE, '../../../..')
 /** Engine modules, in dependency order (types first — the strip targets). */
 export const ENGINE_FILES = [
   'types',
+  'palette',
   'corners',
   'gradient',
   'format',

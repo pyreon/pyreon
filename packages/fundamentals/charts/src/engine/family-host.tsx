@@ -5,6 +5,7 @@
 // have no host yet — they fall back to the facade's SVG).
 
 import { h } from '@pyreon/core'
+import { paletteAt } from './palette'
 import type { VNode } from '@pyreon/core'
 import type { FamilyPlan } from './option-family'
 import { GaugeChart, PieChart } from './PieChart'
@@ -24,7 +25,6 @@ import { RiverChart } from './RiverChart'
 import { MapChart } from './MapChart'
 import type { Double } from './types'
 
-const PALETTE = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
 
 export interface FamilyHostOptions {
   width: Double
@@ -35,7 +35,7 @@ export interface FamilyHostOptions {
 
 type Named = { name: string; color: string | undefined }
 const colorOf = (rows: Named[]): ((d: Named, i: number) => string) | undefined =>
-  rows.some((r) => r.color !== undefined) ? (d, i) => d.color ?? PALETTE[i % PALETTE.length]! : undefined
+  rows.some((r) => r.color !== undefined) ? (d, i) => d.color ?? paletteAt([], i) : undefined
 
 /** The family host for a plan, or null when the family renders through the facade's SVG only. */
 export function familyHostNode(plan: FamilyPlan, o: FamilyHostOptions): VNode | null {

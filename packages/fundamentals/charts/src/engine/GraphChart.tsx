@@ -1,121 +1,52 @@
-// `<GraphChart>` — a node/link network on a canvas.
+// `<GraphChart>` — a node-link graph on a canvas, over the shared canvas host.
 
-import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
-import { effect } from '@pyreon/reactivity'
-import { paint, prepareCanvas } from './canvas-web'
+import { canvasHost } from './canvas-host'
+import type { CanvasHostProps } from './canvas-host'
+import { plain } from './format'
 import { hitGraphIndex, layoutGraph, renderGraph } from './graph'
 import { hitGraph } from './graph-hit'
 import type { GraphLayout, GraphLayoutNode, GraphLink, GraphNode, GraphOptions } from './graph'
-import { chartTable, describeChart } from './a11y'
-import type { Double, Rect } from './types'
+import type { Rect } from './types'
 
-const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
-
-export interface GraphChartProps {
+export interface GraphChartProps extends CanvasHostProps {
   nodes: GraphNode[] | (() => GraphNode[])
   links: GraphLink[] | (() => GraphLink[])
-  width?: Double
-  height?: Double
   graph?: GraphOptions
-  title?: string
+  /** Fired with the node under the click, or null for a miss. */
   onSelect?: (node: GraphLayoutNode | null) => void
   /** The engine's INDEX hit — the multiplatform-safe twin of `onSelect` (what the native tap gesture reports). */
   onSelectIndex?: (hit: number) => void
-  accessibleTable?: boolean
-  class?: string
 }
 
-function drawWidth(el: HTMLCanvasElement, explicit: Double | undefined): Double {
-  if (explicit !== undefined) return explicit
-  const box = el.parentElement
-  const w = box === null ? 0 : box.clientWidth
-  return w > 0 ? w : 300
-}
+interface Geometry { layout: GraphLayout; box: Rect }
 
 export function GraphChart(props: GraphChartProps): VNode {
-  let canvas: HTMLCanvasElement | null = null
-  let sizeObserver: ResizeObserver | null = null
   const readNodes = (): GraphNode[] => (typeof props.nodes === 'function' ? props.nodes() : props.nodes)
   const readLinks = (): GraphLink[] => (typeof props.links === 'function' ? props.links() : props.links)
-  const boxFor = (w: Double, hgt: Double): Rect => ({ x: 0.0, y: 0.0, w, h: hgt })
-  const layoutFor = (w: Double, hgt: Double): GraphLayout => layoutGraph(readNodes(), readLinks(), boxFor(w, hgt), props.graph)
-
-  const draw = (): void => {
-    const el = canvas
-    if (el === null) return
-    const w = drawWidth(el, props.width)
-    const hgt = props.height ?? 300
-    const ctx = prepareCanvas(el, w, hgt)
-    if (ctx === null) return
-    paint(ctx, renderGraph(layoutFor(w, hgt), boxFor(w, hgt), props.graph), w, hgt, FONT)
-  }
-
-  effect(() => {
-    readNodes()
-    readLinks()
-    draw()
-  })
-
-  const handleClick = (ev: MouseEvent): void => {
-    const el = canvas
-    const cb = props.onSelect
-    const cbi = props.onSelectIndex
-    if (el === null || (cb === undefined && cbi === undefined)) return
-    const w = drawWidth(el, props.width)
-    const hgt = props.height ?? 300
-    const r = el.getBoundingClientRect()
-    const layout = layoutFor(w, hgt)
-    const px = ev.clientX - r.left
-    const py = ev.clientY - r.top
-    if (cb !== undefined) cb(hitGraph(layout, px, py))
-    if (cbi !== undefined) cbi(hitGraphIndex(layout, px, py))
-  }
-
-  const a11y = () => {
-    const nodes = layoutFor(300, 300).nodes
-    return {
-      title: props.title,
-      categories: nodes.map((n) => n.name),
-      series: [{ label: props.title ?? 'Graph', values: nodes.map((n) => n.value ?? 1), kind: 'bars' }],
-    }
-  }
-
-  const canvasNode = h('canvas', {
-    class: props.class,
-    role: 'img',
-    'aria-label': () => describeChart(a11y()),
-    ref: (el: HTMLCanvasElement | null) => {
-      canvas = el
-      sizeObserver?.disconnect()
-      sizeObserver = null
-      if (el === null) return
-      draw()
-      const box = el.parentElement
-      if (box === null || typeof ResizeObserver === 'undefined') return
-      sizeObserver = new ResizeObserver(() => {
-        if (canvas === null) return
-        const next = drawWidth(canvas, props.width)
-        const dpr = typeof globalThis.devicePixelRatio === 'number' ? globalThis.devicePixelRatio : 1
-        if (Math.round(next * dpr) === canvas.width) return
-        draw()
-      })
-      sizeObserver.observe(box)
+  const opts = (palette: readonly string[]): GraphOptions => ({ palette, ...props.graph })
+  return canvasHost<Geometry>({
+    props,
+    defaultHeight: 300,
+    caption: 'Graph data',
+    track: () => {
+      readNodes()
+      readLinks()
     },
-    onClick: handleClick,
+    layout: (box, _measure, theme) => ({ layout: layoutGraph(readNodes(), readLinks(), box, opts(theme.palette)), box }),
+    render: (g, _measure, theme) => renderGraph(g.layout, g.box, opts(theme.palette)),
+    select: (g, px, py) => {
+      props.onSelect?.(hitGraph(g.layout, px, py))
+      props.onSelectIndex?.(hitGraphIndex(g.layout, px, py))
+    },
+    tooltip: (g, px, py) => {
+      const n = hitGraph(g.layout, px, py)
+      return n === null ? null : n.value === undefined ? [n.name] : [n.name, plain(n.value)]
+    },
+    a11y: (g) => ({
+      title: props.title,
+      categories: g.layout.nodes.map((n) => n.name),
+      series: [{ label: props.title ?? 'Graph', values: g.layout.nodes.map((n) => n.value ?? 1), kind: 'bars' }],
+    }),
   })
-  if (props.accessibleTable === false) return canvasNode
-  const table = (): VNode => {
-    const t = chartTable(a11y())
-    return h(
-      'div',
-      { style: 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0;margin:-1px;padding:0' },
-      h('table', null,
-        h('caption', null, props.title ?? 'Graph data'),
-        h('thead', null, h('tr', null, ...t.headers.map((x) => h('th', { scope: 'col' }, x)))),
-        h('tbody', null, ...t.rows.map((r) => h('tr', null, h('th', { scope: 'row' }, r[0] ?? ''), ...r.slice(1).map((c) => h('td', null, c))))),
-      ),
-    )
-  }
-  return h('div', { style: 'position:relative' }, canvasNode, () => table())
 }

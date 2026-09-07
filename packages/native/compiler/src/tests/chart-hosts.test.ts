@@ -248,7 +248,7 @@ describe('chart hosts — accessor-prop hosts (Funnel / Pie) and Gauge', () => {
     const r = transform(ACCESSOR, { target: 'swift' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain(
-      'renderFunnel(STAGES.enumerated().map { (pyreonI, pyreonD) in FunnelStage(value: Double(pyreonD.total), label: pyreonD.name, color: ["#0f766e", "#b45309", "#1d4ed8", "#b42318", "#15803d", "#7c3aed"][pyreonI % 6]) }, PyreonChartRect(x: 8.0, y: 8.0, w: Double(pyreonGeo.size.width) - 16.0, h: 200.0 - 16.0), nil)',
+      'renderFunnel(STAGES.enumerated().map { (pyreonI, pyreonD) in FunnelStage(value: Double(pyreonD.total), label: pyreonD.name, color: ["#4f7df3", "#f97362", "#22c3a6", "#a66cff", "#ffb020", "#2fb7e8", "#f45fa3", "#7bc950", "#8892a6", "#c47a3d"][pyreonI % 10]) }, PyreonChartRect(x: 8.0, y: 8.0, w: Double(pyreonGeo.size.width) - 16.0, h: 200.0 - 16.0), nil)',
     )
     expect(r.code).toContain('let i = hitFunnel(STAGES.enumerated().map { (pyreonI, pyreonD) in FunnelStage(')
     expect(r.code).toContain(
@@ -260,7 +260,7 @@ describe('chart hosts — accessor-prop hosts (Funnel / Pie) and Gauge', () => {
   it('Kotlin: mapIndexed with the same inlined accessors; the pie options and gauge text mirror Swift', () => {
     const r = transform(ACCESSOR, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('renderFunnel(STAGES.mapIndexed { pyreonI, pyreonD -> FunnelStage(value = (pyreonD.total).toDouble(), label = pyreonD.name, color = listOf("#0f766e", "#b45309", "#1d4ed8", "#b42318", "#15803d", "#7c3aed")[pyreonI % 6]) }, PyreonChartRect(8.0, 8.0, pyreonW - 16.0, 200.0 - 16.0), null)')
+    expect(r.code).toContain('renderFunnel(STAGES.mapIndexed { pyreonI, pyreonD -> FunnelStage(value = (pyreonD.total).toDouble(), label = pyreonD.name, color = listOf("#4f7df3", "#f97362", "#22c3a6", "#a66cff", "#ffb020", "#2fb7e8", "#f45fa3", "#7bc950", "#8892a6", "#c47a3d")[pyreonI % 10]) }, PyreonChartRect(8.0, 8.0, pyreonW - 16.0, 200.0 - 16.0), null)')
     expect(r.code).toContain('PieOptions(innerRadius = 0.4, showLabels = true, labelColor = "#ffffff", fontSize = 11.0)')
     expect(r.code).toContain('renderGauge((load).toDouble(), PyreonChartRect(0.0, 0.0, pyreonW, 120.0 * 2.0), GaugeOptions(min = 0.0, max = 100.0, sweep = Math.PI, thickness = 18.0, trackColor = "rgba(132,150,165,0.22)", valueColor = "#b45309")) + listOf(PyreonDrawCmd(kind = "text", fill = "#10161d", text = plain((load).toDouble())')
     expect(r.code).toContain('.testTag("gauge")')
@@ -328,7 +328,7 @@ describe('chart hosts — cartesian-frame hosts (Candlestick / Heatmap) and Rada
     )
     expect(r.code).toContain('.accessibilityIdentifier("heat")')
     expect(r.code).toContain(
-      'let pyreonSeries: [RadarSeries] = TEAMS.enumerated().map { (pyreonI, pyreonD) in RadarSeries(values: (pyreonD.scores).map { pyreonChartDouble($0) }, color: ["#0f766e", "#b45309", "#1d4ed8", "#b42318", "#15803d", "#7c3aed"][pyreonI % 6], fillAlpha: 0.25) }',
+      'let pyreonSeries: [RadarSeries] = TEAMS.enumerated().map { (pyreonI, pyreonD) in RadarSeries(values: (pyreonD.scores).map { pyreonChartDouble($0) }, color: ["#4f7df3", "#f97362", "#22c3a6", "#a66cff", "#ffb020", "#2fb7e8", "#f45fa3", "#7bc950", "#8892a6", "#c47a3d"][pyreonI % 10], fillAlpha: 0.25) }',
     )
     expect(r.code).toContain(
       'renderRadar(AXES, pyreonSeries, PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 220.0), RadarOptions(rings: 3, gridColor: "rgba(132,150,165,0.35)", labelColor: "#5a6b7a", fontSize: 11.0, showLabels: true))',
@@ -413,11 +413,11 @@ describe('chart hosts — <PlotChart marks> (the cartesian family)', () => {
     expect(r.code).toContain('let pyreonValues0: [Double] = MONTHS.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(pyreonD.revenue) }')
     expect(r.code).toContain('let pyreonValues1: [Double] = MONTHS.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(pyreonD.cost) }')
     expect(r.code).toContain(
-      'let pyreonSeries: [Series] = [Series(kind: "bars", values: pyreonValues0, color: "#0f766e", width: 2.0, radius: 3.0, label: "Revenue", showValues: false), Series(kind: "line", values: pyreonValues1, color: "#b45309", width: 3.0, radius: 3.0, label: "Cost", showValues: false)]',
+      'let pyreonSeries: [Series] = [Series(kind: "bars", values: pyreonValues0, color: "#0f766e", width: 2.0, radius: 3.0, label: "Revenue", showValues: false), Series(kind: "line", values: pyreonValues1, color: "#f97362", width: 3.0, radius: 3.0, label: "Cost", showValues: false)]',
     )
     expect(r.code).toContain('let pyreonCats: [String] = MONTHS.enumerated().map { (pyreonI, pyreonD) in pyreonD.name }')
     expect(r.code).toContain(
-      'let pyreonSpec: ChartSpec = ChartSpec(width: Double(pyreonGeo.size.width), height: 180.0, series: pyreonSeries, categories: pyreonCats, theme: ChartTheme(axis: "#8496a5", grid: "rgba(132,150,165,0.18)", label: "#5a6b7a", fontSize: 11.0), showXAxis: true, showYAxis: true, showGrid: false, annotations: GOAL)',
+      'let pyreonSpec: ChartSpec = ChartSpec(width: Double(pyreonGeo.size.width), height: 180.0, series: pyreonSeries, categories: pyreonCats, theme: ChartTheme(palette: ["#4f7df3", "#f97362", "#22c3a6", "#a66cff", "#ffb020", "#2fb7e8", "#f45fa3", "#7bc950", "#8892a6", "#c47a3d"], background: "", surface: "#ffffff", text: "#1f2937", label: "#5a6b7a", axis: "#8496a5", grid: "rgba(132,150,165,0.18)", fontFamily: "", fontSize: 11.0, titleSize: 15.0, radius: 3.0, enterMs: 700.0, updateMs: 350.0), showXAxis: true, showYAxis: true, showGrid: false, annotations: GOAL)',
     )
     expect(r.code).toContain('PyreonChartCanvas(cmds: renderChart(pyreonSpec, pyreonChartMeasure))')
     expect(r.code).toContain('let i = plotHitBars(pyreonSpec, pyreonChartMeasure, Double(pyreonTap.location.x), Double(pyreonTap.location.y))')
@@ -426,7 +426,7 @@ describe('chart hosts — <PlotChart marks> (the cartesian family)', () => {
     // The second chart: an index-using accessor, no x, a given width (Group, no reader).
     expect(r.code).toContain('let pyreonValues0: [Double] = MONTHS.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(pyreonD.cost + pyreonI) }')
     expect(r.code).toContain('let pyreonCats: [String] = []')
-    expect(r.code).toContain('Series(kind: "area", values: pyreonValues0, color: "#0f766e", width: 2.0, radius: 3.0, label: "Series 1", showValues: false)')
+    expect(r.code).toContain('Series(kind: "area", values: pyreonValues0, color: "#4f7df3", width: 2.0, radius: 3.0, label: "Series 1", showValues: false)')
     expect(r.code).toContain('ChartSpec(width: 240.0, height: 120.0, series: pyreonSeries, categories: pyreonCats,')
   })
   it('Kotlin: the same series and spec as named-argument data classes', () => {
@@ -434,15 +434,15 @@ describe('chart hosts — <PlotChart marks> (the cartesian family)', () => {
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('val pyreonValues0: List<Double> = MONTHS.mapIndexed { pyreonI, pyreonD -> (pyreonD.revenue).toDouble() }')
     expect(r.code).toContain(
-      'val pyreonSeries: List<Series> = listOf(Series(kind = "bars", values = pyreonValues0, color = "#0f766e", width = 2.0, radius = 3.0, label = "Revenue", showValues = false), Series(kind = "line", values = pyreonValues1, color = "#b45309", width = 3.0, radius = 3.0, label = "Cost", showValues = false))',
+      'val pyreonSeries: List<Series> = listOf(Series(kind = "bars", values = pyreonValues0, color = "#0f766e", width = 2.0, radius = 3.0, label = "Revenue", showValues = false), Series(kind = "line", values = pyreonValues1, color = "#f97362", width = 3.0, radius = 3.0, label = "Cost", showValues = false))',
     )
     expect(r.code).toContain(
-      'val pyreonSpec: ChartSpec = ChartSpec(width = pyreonW, height = 180.0, series = pyreonSeries, categories = pyreonCats, theme = ChartTheme(axis = "#8496a5", grid = "rgba(132,150,165,0.18)", label = "#5a6b7a", fontSize = 11.0), showXAxis = true, showYAxis = true, showGrid = false, annotations = GOAL)',
+      'val pyreonSpec: ChartSpec = ChartSpec(width = pyreonW, height = 180.0, series = pyreonSeries, categories = pyreonCats, theme = ChartTheme(palette = listOf("#4f7df3", "#f97362", "#22c3a6", "#a66cff", "#ffb020", "#2fb7e8", "#f45fa3", "#7bc950", "#8892a6", "#c47a3d"), background = "", surface = "#ffffff", text = "#1f2937", label = "#5a6b7a", axis = "#8496a5", grid = "rgba(132,150,165,0.18)", fontFamily = "", fontSize = 11.0, titleSize = 15.0, radius = 3.0, enterMs = 700.0, updateMs = 350.0), showXAxis = true, showYAxis = true, showGrid = false, annotations = GOAL)',
     )
     expect(r.code).toContain('PyreonChartCanvas(cmds = renderChart(pyreonSpec, ::pyreonChartMeasure)')
     expect(r.code).toContain('val i = plotHitBars(pyreonSpec, ::pyreonChartMeasure, (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble())')
     expect(r.code).toContain('.testTag("revenue")')
-    expect(r.code).toContain('Series(kind = "area", values = pyreonValues0, color = "#0f766e", width = 2.0, radius = 3.0, label = "Series 1", showValues = false)')
+    expect(r.code).toContain('Series(kind = "area", values = pyreonValues0, color = "#4f7df3", width = 2.0, radius = 3.0, label = "Series 1", showValues = false)')
   })
   it('a curve option and a non-literal marks array are reported by name; a bubble mark lowers; brush (every prop now) stays quiet', () => {
     const r = transform(
@@ -510,7 +510,7 @@ describe('chart hosts — legend + title chrome (Plot / Pie / Radar)', () => {
     expect(r.code).toContain('pyreonShiftCmds(renderPie(pyreonItems, PyreonChartRect(x: 0.0, y: 0.0, w: 240.0, h: 200.0 - pyreonTop), PieOptions(')
     expect(r.code).toContain('fitCircle(PyreonChartRect(x: 0.0, y: 0.0, w: 240.0, h: 200.0 - pyreonTop)).radius * 0.0, PyreonChartPt(x: Double(pyreonTap.location.x), y: Double(pyreonTap.location.y) - pyreonTop))')
     // Radar: legend entries from the label accessor and the same palette the series use.
-    expect(r.code).toContain('renderLegend(TEAMS.enumerated().map { (pyreonI, pyreonD) in LegendEntry(label: pyreonD.name, color: ["#0f766e", "#b45309", "#1d4ed8", "#b42318", "#15803d", "#7c3aed"][pyreonI % 6]) }')
+    expect(r.code).toContain('renderLegend(TEAMS.enumerated().map { (pyreonI, pyreonD) in LegendEntry(label: pyreonD.name, color: ["#4f7df3", "#f97362", "#22c3a6", "#a66cff", "#ffb020", "#2fb7e8", "#f45fa3", "#7bc950", "#8892a6", "#c47a3d"][pyreonI % 10]) }')
     expect(r.code).toContain('pyreonShiftCmds(renderRadar(AXES, pyreonSeries, PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 240.0 - pyreonTop), RadarOptions(')
   })
   it('Kotlin: the same chrome with the runtime shift', () => {
@@ -565,19 +565,85 @@ describe('chart hosts — theme overrides, formatters and bubble marks', () => {
   it('Swift: a literal theme merges over the default; formatters lower by name, factory call or closure; a bubble mark carries area-mapped radii', () => {
     const r = transform(PROPS, { target: 'swift' })
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('theme: ChartTheme(axis: "#8496a5", grid: "rgba(132,150,165,0.18)", label: "#222222", fontSize: 12.0), showXAxis: true, showYAxis: true, showGrid: true, yFormat: compact, xFormat: fixed(1), y2Format: { v in plain(v) + "%" })')
+    expect(r.code).toContain('theme: ChartTheme(palette: ["#4f7df3", "#f97362", "#22c3a6", "#a66cff", "#ffb020", "#2fb7e8", "#f45fa3", "#7bc950", "#8892a6", "#c47a3d"], background: "", surface: "#ffffff", text: "#1f2937", label: "#222222", axis: "#8496a5", grid: "rgba(132,150,165,0.18)", fontFamily: "", fontSize: 12.0, titleSize: 15.0, radius: 3.0, enterMs: 700.0, updateMs: 350.0), showXAxis: true, showYAxis: true, showGrid: true, yFormat: compact, xFormat: fixed(1), y2Format: { v in plain(v) + "%" })')
     expect(r.code).toContain('let pyreonRadii1: [Double] = bubbleRadii(CITIES.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(pyreonD.area) }, 4.0, 20.0)')
-    expect(r.code).toContain('Series(kind: "points", values: pyreonValues1, color: "#b45309", width: 2.0, radius: 3.0, label: "Area", showValues: false, radii: pyreonRadii1, axis: "right")')
-    expect(r.code).toContain('let pyreonTheme: ChartTheme = ChartTheme(axis: "#8496a5", grid: "#eeeeee", label: "#5a6b7a", fontSize: 11.0)')
+    expect(r.code).toContain('Series(kind: "points", values: pyreonValues1, color: "#f97362", width: 2.0, radius: 3.0, label: "Area", showValues: false, radii: pyreonRadii1, axis: "right")')
+    expect(r.code).toContain('let pyreonTheme: ChartTheme = ChartTheme(palette: ["#4f7df3", "#f97362", "#22c3a6", "#a66cff", "#ffb020", "#2fb7e8", "#f45fa3", "#7bc950", "#8892a6", "#c47a3d"], background: "", surface: "#ffffff", text: "#1f2937", label: "#5a6b7a", axis: "#8496a5", grid: "#eeeeee", fontFamily: "", fontSize: 11.0, titleSize: 15.0, radius: 3.0, enterMs: 700.0, updateMs: 350.0)')
     expect(r.code).toContain('renderCandlestickChart(pyreonCandles, Double(pyreonGeo.size.width), 160.0, pyreonCats, pyreonTheme, nil, pyreonChartMeasure)')
   })
   it('Kotlin: the same, with a bare formatter as a function reference', () => {
     const r = transform(PROPS, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('theme = ChartTheme(axis = "#8496a5", grid = "rgba(132,150,165,0.18)", label = "#222222", fontSize = 12.0), showXAxis = true, showYAxis = true, showGrid = true, yFormat = ::compact, xFormat = fixed(1), y2Format = { v -> plain(v) + "%" })')
+    expect(r.code).toContain('theme = ChartTheme(palette = listOf("#4f7df3", "#f97362", "#22c3a6", "#a66cff", "#ffb020", "#2fb7e8", "#f45fa3", "#7bc950", "#8892a6", "#c47a3d"), background = "", surface = "#ffffff", text = "#1f2937", label = "#222222", axis = "#8496a5", grid = "rgba(132,150,165,0.18)", fontFamily = "", fontSize = 12.0, titleSize = 15.0, radius = 3.0, enterMs = 700.0, updateMs = 350.0), showXAxis = true, showYAxis = true, showGrid = true, yFormat = ::compact, xFormat = fixed(1), y2Format = { v -> plain(v) + "%" })')
     expect(r.code).toContain('val pyreonRadii1: List<Double> = bubbleRadii(CITIES.mapIndexed { pyreonI, pyreonD -> (pyreonD.area).toDouble() }, 4.0, 20.0)')
-    expect(r.code).toContain('Series(kind = "points", values = pyreonValues1, color = "#b45309", width = 2.0, radius = 3.0, label = "Area", showValues = false, radii = pyreonRadii1, axis = "right")')
-    expect(r.code).toContain('val pyreonTheme: ChartTheme = ChartTheme(axis = "#8496a5", grid = "#eeeeee", label = "#5a6b7a", fontSize = 11.0)')
+    expect(r.code).toContain('Series(kind = "points", values = pyreonValues1, color = "#f97362", width = 2.0, radius = 3.0, label = "Area", showValues = false, radii = pyreonRadii1, axis = "right")')
+    expect(r.code).toContain('val pyreonTheme: ChartTheme = ChartTheme(palette = listOf("#4f7df3", "#f97362", "#22c3a6", "#a66cff", "#ffb020", "#2fb7e8", "#f45fa3", "#7bc950", "#8892a6", "#c47a3d"), background = "", surface = "#ffffff", text = "#1f2937", label = "#5a6b7a", axis = "#8496a5", grid = "#eeeeee", fontFamily = "", fontSize = 11.0, titleSize = 15.0, radius = 3.0, enterMs = 700.0, updateMs = 350.0)')
+  })
+  it('a theme palette colours every mark with no `color` on both targets, and a bad palette warns BY NAME', () => {
+    const src = PLOT.replace('marks={[bars((d) => d.revenue, { label: \'Revenue\', color: \'#0f766e\' }), line((d) => d.cost, { label: \'Cost\', width: 3 })]}', "theme={{ palette: ['#111111', '#222222'] }} marks={[bars((d) => d.revenue, { label: 'Revenue' }), line((d) => d.cost, { label: 'Cost', width: 3 })]}")
+    const s = transform(src, { target: 'swift' })
+    expect(s.warnings).toEqual([])
+    expect(s.code).toContain('theme: ChartTheme(palette: ["#111111", "#222222"], background: "", surface: "#ffffff"')
+    expect(s.code).toContain('Series(kind: "bars", values: pyreonValues0, color: "#111111"')
+    expect(s.code).toContain('Series(kind: "line", values: pyreonValues1, color: "#222222"')
+    const k = transform(src, { target: 'kotlin' })
+    expect(k.warnings).toEqual([])
+    expect(k.code).toContain('theme = ChartTheme(palette = listOf("#111111", "#222222"), background = "", surface = "#ffffff"')
+    expect(k.code).toContain('Series(kind = "bars", values = pyreonValues0, color = "#111111"')
+    expect(k.code).toContain('Series(kind = "line", values = pyreonValues1, color = "#222222"')
+    const bad = transform(src.replace("palette: ['#111111', '#222222']", 'palette: PALETTE'), { target: 'swift' })
+    expect(bad.warnings).toEqual(['<PlotChart theme>: `palette` must be a non-empty array of string literals or a `palettes.<name>` reference on native; the default palette applies.'])
+    expect(bad.code).toContain('Series(kind: "bars", values: pyreonValues0, color: "#4f7df3"')
+  })
+  it('`palettes.<name>` and `chartThemes.dark` resolve at compile time on both targets', () => {
+    const base = PLOT.replace("import { PlotChart, area, bars, line } from '@pyreon/charts/plot'", "import { PlotChart, area, bars, line, chartThemes, palettes } from '@pyreon/charts/plot'")
+    const named = base.replace('marks={[bars((d) => d.revenue, { label: \'Revenue\', color: \'#0f766e\' }), line((d) => d.cost, { label: \'Cost\', width: 3 })]}', "theme={{ palette: palettes.okabeIto }} marks={[bars((d) => d.revenue, { label: 'Revenue' }), line((d) => d.cost, { label: 'Cost', width: 3 })]}")
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(named, { target })
+      expect(r.warnings).toEqual([])
+      expect(r.code).toContain('"#e69f00"')
+      expect(r.code).toContain(target === 'swift' ? 'color: "#e69f00"' : 'color = "#e69f00"')
+      expect(r.code).toContain(target === 'swift' ? 'color: "#56b4e9"' : 'color = "#56b4e9"')
+    }
+    const dark = base.replace('marks={[bars((d) => d.revenue, { label: \'Revenue\', color: \'#0f766e\' }), line((d) => d.cost, { label: \'Cost\', width: 3 })]}', "theme={chartThemes.dark} marks={[bars((d) => d.revenue, { label: 'Revenue' }), line((d) => d.cost, { label: 'Cost', width: 3 })]}")
+    const s = transform(dark, { target: 'swift' })
+    expect(s.warnings).toEqual([])
+    expect(s.code).toContain('background: "#141821", surface: "#1c2230", text: "#e6eaf2", label: "#9aa5b5", axis: "#5d6878", grid: "rgba(154,165,181,0.16)"')
+    expect(s.code).toContain('color: "#7b9bff"')
+    const k = transform(dark, { target: 'kotlin' })
+    expect(k.warnings).toEqual([])
+    expect(k.code).toContain('background = "#141821", surface = "#1c2230"')
+    const unknown = transform(named.replace('palettes.okabeIto', 'palettes.nope'), { target: 'swift' })
+    expect(unknown.warnings).toEqual(['<PlotChart theme>: `palettes.nope` is not a named palette (pyreon, pyreonDark, echarts6, echarts5, echartsDark, observable10, tableau10, okabeIto, tailwind); the default palette applies.'])
+  })
+  it('<ChartThemeProvider> is transparent on both targets: its children render, and it says so BY NAME', () => {
+    const src = PLOT.replace("import { PlotChart, area, bars, line } from '@pyreon/charts/plot'", "import { ChartThemeProvider, PlotChart, area, bars, line } from '@pyreon/charts/plot'").replace('<Stack>', '<Stack><ChartThemeProvider mode="dark">').replace('</Stack>', '</ChartThemeProvider></Stack>')
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(src, { target })
+      expect(r.warnings).toEqual(['<ChartThemeProvider>: not lowered on native — its children render unthemed by it; give each chart its own `theme` (`theme={chartThemes.dark}` or a literal).'])
+      expect(r.code).not.toContain('ChartThemeProvider(')
+      expect(r.code).toContain('PyreonChartCanvas(')
+    }
+  })
+  it('chrome props the target does not draw yet warn BY NAME on every host (tooltip everywhere; title/legend where not lowered)', () => {
+    const src = `import { TreemapChart, PieChart } from '@pyreon/charts/plot'
+type N = { name: string; value: number }
+const NODES: N[] = [{ name: 'a', value: 1 }]
+type S = { label: string; v: number }
+const SL: S[] = [{ label: 'x', v: 2 }]
+export const A = () => <TreemapChart data={NODES} showTitle title="T" showLegend tooltip height={200} />
+export const B = () => <PieChart data={SL} value={(d: S) => d.v} label={(d: S) => d.label} showLegend tooltip animate={false} height={200} />`
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(src, { target })
+      expect(r.warnings).toEqual([
+        '<TreemapChart>: `showTitle` is not lowered on native yet; the chart renders without it.',
+        '<TreemapChart>: `showLegend` is not lowered on native yet; the chart renders without it.',
+        '<TreemapChart>: `tooltip` is not lowered on native yet; the chart renders without it.',
+        '<PieChart>: `tooltip` is not lowered on native yet; the chart renders without it.',
+        '<PieChart>: `animate` is not lowered on native yet; the chart renders without it.',
+      ])
+      expect(r.code).toContain('PyreonChartCanvas(')
+    }
   })
   it('a non-literal theme keeps the default and says so', () => {
     const r = transform(
@@ -589,7 +655,7 @@ export function C() { return <PlotChart data={ROWS} marks={[bars((d) => d.v)]} t
       { target: 'swift' },
     )
     expect(r.warnings.join('\n')).toContain('<PlotChart theme>: only an object literal with literal fields lowers on native')
-    expect(r.code).toContain('theme: ChartTheme(axis: "#8496a5", grid: "rgba(132,150,165,0.18)", label: "#5a6b7a", fontSize: 11.0)')
+    expect(r.code).toContain('theme: ChartTheme(palette: ["#4f7df3", "#f97362", "#22c3a6", "#a66cff", "#ffb020", "#2fb7e8", "#f45fa3", "#7bc950", "#8892a6", "#c47a3d"], background: "", surface: "#ffffff", text: "#1f2937", label: "#5a6b7a", axis: "#8496a5", grid: "rgba(132,150,165,0.18)", fontFamily: "", fontSize: 11.0, titleSize: 15.0, radius: 3.0, enterMs: 700.0, updateMs: 350.0)')
   })
   it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine) accepts the theme, formatter and bubble emits', () => {
     const r = validateSwiftWithStubs(transform(PROPS, { target: 'swift' }).code)
@@ -1197,8 +1263,8 @@ describe('chart hosts — CalendarChart + ParallelChart lower through literal ad
       expect(colored.code).toContain('renderParallel(')
     }
   })
-  it('OptionChart is the only host left without a lowering', () => {
-    expect(Object.keys(UNLOWERED_CHART_HOSTS)).toEqual(['OptionChart'])
+  it('OptionChart and BoxplotChart are the hosts left without a lowering (the boxplot host reached /plot with the theme wave; its lowering is owed)', () => {
+    expect(Object.keys(UNLOWERED_CHART_HOSTS)).toEqual(['OptionChart', 'BoxplotChart'])
   })
   it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine) accepts both hosts', () => {
     for (const src of [CALENDAR, PARALLEL]) {

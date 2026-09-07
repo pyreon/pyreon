@@ -1746,6 +1746,21 @@ const geometry = () => props.shape
         '// crashes on older compilers — two fragment-wrapped texts in one template\n// <p><>{""}</><b class="c1"><i>x</i><>{label}</></b></p>\n\n// same output, no fragments\n<p>{""}<b class="c1"><i>x</i>{label}</b></p>',
     }),
   },
+  {
+    // A hydration mismatch inside a reactive range now sweeps the server DOM
+    // the client did not claim immediately. The warning the user sees names
+    // the shape; the residual is the CAUSE of that mismatch — server-only
+    // state (a module-level query client warm from an earlier request) that
+    // renders data the client cannot reproduce on its first render.
+    pattern: /Hydration mismatch \(tag\): expected (\w+), got (\w+) at [^\n]*> reactive/,
+    diagnose: (m) => ({
+      cause:
+        `A reactive accessor's FIRST client render (<${m[1]}>) is not what the server rendered (<${m[2]}>), so hydration could not adopt the server subtree and re-mounted the client's render. The common shape is DATA on the server and a PLACEHOLDER on the client (a list vs "Loading…"). The usual reason is server-only state: a module-level QueryClient/store that stayed warm from an EARLIER request served the data synchronously during SSR, while the browser's fresh cache starts cold. Current runtime-dom removes the unclaimed server nodes at once; older versions left them on screen — visible, countable, with no handlers — until the accessor's next run, so a click on a server-rendered button did nothing.`,
+      fix: 'Make the server and the client agree on the FIRST render: create the query client / store per request (`runWithRequestContext`, a factory called in the route or `createApp`), or gate the fetch on `isServer` so SSR renders the same placeholder the client will; or hand the server data to the client through the loader-data pipeline (`useLoaderData`) so the client\'s first render has it too. Upgrade `@pyreon/runtime-dom` so a residual mismatch never leaves dead server DOM behind.',
+      fixCode:
+        '// server renders rows from a cache warmed by an earlier request;\n// the client renders "Loading…" and the two disagree\nconst client = new QueryClient() // module-level — shared across SSR requests\n\n// per-request client: SSR and the browser both start cold\nexport function App() {\n  const client = createQueryClient()\n  return <QueryClientProvider client={client}>…</QueryClientProvider>\n}',
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */

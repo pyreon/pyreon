@@ -11,6 +11,7 @@
 // lives in family-svg.ts.
 
 import type { Double, DrawCmd, MeasureText, Rect } from './types'
+import { DEFAULT_PALETTE, paletteAt } from './palette'
 
 export interface TreeNode {
   name: string
@@ -33,6 +34,8 @@ export interface TreemapCell {
 }
 
 export interface TreemapOptions {
+  /** Series colours for nodes without one; defaults to the theme palette. */
+  palette?: readonly string[] | undefined
   /** Inner padding around a parent's children, in pixels. */
   padding?: Double | undefined
   /** Only lay out this many levels (1 = top level only). */
@@ -44,7 +47,6 @@ export interface TreemapOptions {
   progress?: Double | undefined
 }
 
-const TREEMAP_PALETTE = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']
 
 /** A node's value: its own, else the sum of its children (iterative — a deep tree must not recurse). */
 export function nodeValue(node: TreeNode): Double {
@@ -189,6 +191,7 @@ interface TreemapFrame {
 
 /** Lay out the whole hierarchy into flat cells (parents before children). */
 export function layoutTreemap(nodes: TreeNode[], rect: Rect, options?: TreemapOptions): TreemapCell[] {
+  const palette = options?.palette ?? DEFAULT_PALETTE
   const cells: TreemapCell[] = []
   const padding = options?.padding ?? 2.0
   const maxDepth = options?.maxDepth ?? 64.0
@@ -217,7 +220,7 @@ export function layoutTreemap(nodes: TreeNode[], rect: Rect, options?: TreemapOp
       const idx = order[k]!
       const node = frame.children[idx]!
       const r = rects[k]!
-      const color = node.color ?? (frame.hasInherited ? frame.inherited : TREEMAP_PALETTE[idx % TREEMAP_PALETTE.length]!)
+      const color = node.color ?? (frame.hasInherited ? frame.inherited : paletteAt(palette, idx))
       const kids = node.children ?? []
       const cellPath: number[] = []
       for (const p of frame.path) cellPath.push(p)

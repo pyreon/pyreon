@@ -1,6 +1,7 @@
 // Marks → draw commands. The whole chart, as plain data.
 
 import { computeLayout, layoutBars, layoutBarsH, layoutSeriesPoints, layoutSeriesPointsAt } from './layout'
+import { DEFAULT_PALETTE } from './palette'
 import { layoutGroupedBars, layoutStackedBars, stackedExtent } from './stack'
 import type { Formatter } from './format'
 import type { LayoutConfig, PlotLayout } from './layout'
@@ -92,11 +93,45 @@ export interface PointMarker {
   radius?: Double | undefined
 }
 
+/**
+ * The chart's token map — every colour, size and timing a chart draws with.
+ *
+ * ONE theme feeds every family, the legend, the title, the tooltip and the
+ * accessible description; `defaultTheme` is the light theme and
+ * `chartThemes.dark` (theme.ts) its dark twin. Hosts resolve a theme from
+ * `<ChartThemeProvider>` / the system colour scheme and merge the `theme`
+ * prop over it, so a chart with no props already reads right on both grounds.
+ *
+ * It crosses to native as a struct, which is why every field is a plain
+ * string / Double / string list and none is optional: a partial is merged on
+ * the web (`resolveChartTheme`) and at COMPILE time on native (`chart-hosts`).
+ */
 export interface ChartTheme {
-  axis: string
-  grid: string
+  /** Series colours in draw order; marks without a `color` cycle through it. */
+  palette: readonly string[]
+  /** Chart ground; '' paints nothing (the host's own background shows). */
+  background: string
+  /** Card surfaces — the tooltip, the legend pager. */
+  surface: string
+  /** Primary text: titles, tooltip values, value labels. */
+  text: string
+  /** Secondary text: axis tick labels, legend entries, subtitles. */
   label: string
+  /** Axis lines and the crosshair. */
+  axis: string
+  /** Grid lines and hover bands. */
+  grid: string
+  /** Font family for every text command; '' inherits the host's font. */
+  fontFamily: string
   fontSize: Double
+  /** Title size; the subtitle uses `fontSize`. */
+  titleSize: Double
+  /** Corner radius bars fall back to when a mark sets none. */
+  radius: Double
+  /** Entrance animation length, ms; 0 disables it. */
+  enterMs: Double
+  /** Data-update tween length, ms; 0 snaps. */
+  updateMs: Double
 }
 
 /**
@@ -170,11 +205,34 @@ export interface ChartSpec {
   emphasis?: Emphasis | undefined
 }
 
+/**
+ * The corners a plain bar gets from the theme when its mark set none: the
+ * two corners AWAY from the baseline (top for a positive vertical bar, right
+ * for a positive horizontal one), so the bar still reads as growing from zero.
+ * Zero radius returns undefined — a square rect, byte-identical to before.
+ * Stacked and grouped bars keep their mark corners only: rounding every
+ * segment breaks a stack.
+ */
+export function themeCorners(radius: Double, positive: boolean, horizontal: boolean): Double[] | undefined {
+  if (radius <= 0.0) return undefined
+  if (horizontal) return positive ? [0.0, radius, radius, 0.0] : [radius, 0.0, 0.0, radius]
+  return positive ? [radius, radius, 0.0, 0.0] : [0.0, 0.0, radius, radius]
+}
+
 export const defaultTheme: ChartTheme = {
+  palette: DEFAULT_PALETTE,
+  background: '',
+  surface: '#ffffff',
+  text: '#1f2937',
+  label: '#5a6b7a',
   axis: '#8496a5',
   grid: 'rgba(132,150,165,0.18)',
-  label: '#5a6b7a',
+  fontFamily: '',
   fontSize: 11.0,
+  titleSize: 15.0,
+  radius: 3.0,
+  enterMs: 700.0,
+  updateMs: 350.0,
 }
 
 /** 0 = plain, 1 = highlighted (a hover or a dispatched `highlight`), 2 = selected. */
@@ -598,10 +656,11 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
     if (spec.horizontal === true) {
       if (s.kind !== 'bars') continue
       const rects = layoutBarsH(s.values, plot, yDomain, 0.25)
-      for (const r of rects) {
+      for (let ri = 0; ri < rects.length; ri++) {
+        const r = rects[ri]!
         const grown = growRectH(r)
         if (s.symbol === undefined) {
-          out.push(rectCmd(grown, s.color, s.corners, sGrad))
+          out.push(rectCmd(grown, s.color, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, true), sGrad))
         } else if (s.symbolRepeat === true) {
           // Repeat a unit symbol along the bar (left to right); a partial last symbol is dropped.
           const unit = grown.h
@@ -650,10 +709,11 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
 
     if (s.kind === 'bars') {
       const rects = layoutBars(s.values, plot, sDomain, 0.25)
-      for (const r of rects) {
+      for (let ri = 0; ri < rects.length; ri++) {
+        const r = rects[ri]!
         const grown = growRect(r, sDomain)
         if (s.symbol === undefined) {
-          out.push(rectCmd(grown, s.color, s.corners, sGrad))
+          out.push(rectCmd(grown, s.color, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, false), sGrad))
         } else if (s.symbolRepeat === true) {
           // Repeat a unit symbol up the bar; a partial last symbol is dropped.
           // (Horizontal charts left this loop above, so the bar is vertical.)

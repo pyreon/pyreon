@@ -5,6 +5,7 @@
 // later, the family components) consume directly.
 
 import type { EChartsOption, OptionWarning } from './option'
+import { paletteAt } from './palette'
 import { calendarToSvg, candlestickToSvg, funnelToSvg, gaugeToSvg, graphToSvg, heatmapToSvg, parallelToSvg, pieToSvg, polarToSvg, radarToSvg, riverToSvg, sankeyToSvg, sunburstToSvg, treeToSvg, treemapToSvg } from './family-svg'
 import type { TreeNode, TreemapOptions } from './treemap'
 import type { SunburstOptions } from './sunburst'
@@ -162,7 +163,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
   const title = isObj(titleRaw) && typeof titleRaw['text'] === 'string' ? (titleRaw['text'] as string) : undefined
   const legendRaw = option['legend']
   const showLegend = legendRaw !== undefined && !(isObj(legendRaw) && legendRaw['show'] === false)
-  const palette: string[] = Array.isArray(option['color']) ? (option['color'] as unknown[]).filter((c): c is string => typeof c === 'string') : []
+  const palette: readonly string[] = Array.isArray(option['color']) ? (option['color'] as unknown[]).filter((c): c is string => typeof c === 'string') : []
   const data = Array.isArray(s['data']) ? (s['data'] as unknown[]) : []
   if (!Array.isArray(s['data'])) {
     warn('series-data-shape', 'series[0].data', 'Series data must be an array; treated as empty.')
@@ -931,7 +932,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
         data: plan.rows,
         value: (d) => d.value,
         label: (d) => d.name,
-        ...(hasColors ? { color: (d: { color: string | undefined }, i: number) => d.color ?? PALETTE[i % PALETTE.length]! } : {}),
+        ...(hasColors ? { color: (d: { color: string | undefined }, i: number) => d.color ?? paletteAt([], i) } : {}),
         innerRadius: plan.innerRadius,
         showLabels: plan.showLabels,
         showLegend: plan.showLegend,
@@ -959,7 +960,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
         axes: plan.axes,
         values: (d) => d.values,
         label: (d) => d.name,
-        ...(hasColors ? { color: (d: { color: string | undefined }, i: number) => d.color ?? PALETTE[i % PALETTE.length]! } : {}),
+        ...(hasColors ? { color: (d: { color: string | undefined }, i: number) => d.color ?? paletteAt([], i) } : {}),
         fillAlpha: plan.fillAlpha,
         showLegend: plan.showLegend,
         width,
@@ -986,7 +987,7 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
         data: plan.rows,
         value: (d) => d.value,
         label: (d) => d.name,
-        ...(hasColors ? { color: (d: { color: string | undefined }, i: number) => d.color ?? PALETTE[i % PALETTE.length]! } : {}),
+        ...(hasColors ? { color: (d: { color: string | undefined }, i: number) => d.color ?? paletteAt([], i) } : {}),
         funnel: plan.funnel,
         width,
         height,
@@ -1127,4 +1128,3 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
   }
 }
 
-const PALETTE = ['#0f766e', '#b45309', '#1d4ed8', '#b42318', '#15803d', '#7c3aed']

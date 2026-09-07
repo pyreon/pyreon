@@ -51,6 +51,10 @@ export { cornerRadii, hasCorners, polygonCmd, rectCmd } from './engine/corners'
 export { gradientFor, gradientSolid, seriesGradient } from './engine/gradient'
 export type { SeriesGradient } from './engine/gradient'
 export { defaultTheme, emphasisLevel, emphasisOutline, layoutChart, renderChart, resolveYDomain, seriesMaxLength } from './engine/render'
+export { DARK_PALETTE, DEFAULT_PALETTE, paletteAt } from './engine/palette'
+export { palettes } from './engine/palettes'
+export { ChartThemeContext, ChartThemeProvider, chartThemes, resolveChartTheme, systemChartMode, tooltipStyle, useChartTheme } from './engine/theme'
+export type { ChartThemeMode, ChartThemeProviderProps } from './engine/theme'
 export type { Annotation, ChartSpec, ChartTheme, Emphasis, Series } from './engine/render'
 export {
   bandTicks,
@@ -176,6 +180,12 @@ export { funnelToSvg } from './engine/family-svg'
 export type { FunnelToSvgOptions } from './engine/family-svg'
 export { FunnelChart } from './engine/FunnelChart'
 export type { FunnelChartProps } from './engine/FunnelChart'
+export { BoxplotChart } from './engine/BoxplotChart'
+export type { BoxplotChartProps } from './engine/BoxplotChart'
+export { boxplotExtent, boxplotToSvg, fiveNumber, hitBox, renderBoxplot } from './engine/boxplot'
+export type { BoxplotOptions, BoxplotToSvgOptions, FiveNumber } from './engine/boxplot'
+export { bollinger, ema, emaValues, sma, smaValues, stdevValues, trend, trendValues } from './engine/indicators'
+
 
 // Coordinates — calendar, parallel, polar, single axis, theme river, geo
 export { calendarCellValues, calendarDomain, civilFromDays, daysFromCivil, formatIsoDays, hitCalendarIndex, layoutCalendar, parseIsoDays, renderCalendar, weekdayOfDays } from './engine/calendar'

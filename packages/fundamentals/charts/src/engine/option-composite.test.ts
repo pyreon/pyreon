@@ -96,7 +96,8 @@ describe('multi-grid', () => {
     expect(svg.match(/<title/g)).toHaveLength(1)
     expect(svg).toContain('translate(40 20)')
     expect(svg).toContain('translate(40 180)')
-    expect(svg).toContain('<rect')
+    // A bar under the default theme is a rounded `<path>` (theme.radius = 3); a square rect only when radius is 0.
+    expect(svg).toMatch(/<(rect|path)/)
     expect(svg).toContain('<polyline')
   })
   it('composeSvg strips nested titles and places parts by offset', () => {

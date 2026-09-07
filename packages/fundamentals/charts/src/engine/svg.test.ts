@@ -184,7 +184,8 @@ describe('renderSvg', () => {
     }
     const measure = measureApprox()
     const svg = renderSvg(renderChart(spec, measure), 320, 200, { title: 'Monthly' })
-    expect(svg).toContain('<rect')
+    // A bar under the default theme is a rounded `<path>` (theme.radius = 3); a square rect only when radius is 0.
+    expect(svg).toMatch(/<(rect|path)/)
     expect(svg).toContain('<polyline')
     expect(svg).toContain('Jan')
     // Every coordinate is finite and rounded — no NaN leaked from layout.

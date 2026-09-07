@@ -8,11 +8,11 @@
 // and the svg half in family-svg.ts.
 
 import { civilFromDays, daysFromCivil, parseIsoDays, weekdayOfDays } from './calendar'
+import { DEFAULT_PALETTE } from './palette'
 import { approxTextWidth } from './treemap'
 import type { Domain, Double, DrawCmd, MeasureText, Pt, Rect } from './types'
 
 const GANTT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-const GANTT_PALETTE = ['#2563eb', '#16a34a', '#f59e0b', '#dc2626', '#7c3aed', '#0891b2', '#db2777', '#65a30d']
 
 export interface GanttTask {
   id: string
@@ -108,7 +108,7 @@ export interface GanttOptions {
   showDependencies?: boolean | undefined
   /** Entrance progress 0..1; bars grow from their start. */
   progress?: Double | undefined
-  palette?: string[] | undefined
+  palette?: readonly string[] | undefined
 }
 
 /** The tick unit for a span in days. */
@@ -205,7 +205,7 @@ function ganttRowIndex(rows: GanttRow[], id: string): number {
 export function layoutGantt(tasks: GanttTask[], box: Rect, options?: GanttOptions, measure?: MeasureText): GanttLayout {
   const fontSize = options?.fontSize ?? 12.0
   const m: MeasureText = measure ?? approxTextWidth
-  const palette = options?.palette ?? GANTT_PALETTE
+  const palette = options?.palette ?? DEFAULT_PALETTE
   const sDay: Double[] = []
   const eDay: Double[] = []
   for (const task of tasks) {

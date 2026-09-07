@@ -163,7 +163,10 @@ export function prepareCanvas(
   canvas: HTMLCanvasElement,
   width: number,
   height: number,
+  background: string = '',
 ): CanvasRenderingContext2D | null {
+  // The theme's ground, or transparent — set on the element so it survives every repaint.
+  canvas.style.background = background
   const dpr = typeof globalThis.devicePixelRatio === 'number' ? globalThis.devicePixelRatio : 1
   canvas.width = Math.max(1, Math.round(width * dpr))
   canvas.height = Math.max(1, Math.round(height * dpr))
