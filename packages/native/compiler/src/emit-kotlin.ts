@@ -9654,7 +9654,8 @@ function emitKotlinChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
     const parts: string[] = []
     if (tooltip) parts.push(`pyreonTip = ${spec.tooltip!(layout, tx, tapY, plotArgs, KOTLIN_CHART_TARGET)}; pyreonTipAt = PyreonChartPt(${tx}, (pyreonTap.y / pyreonDensity).toDouble())`)
     if (onSel?.kind === 'event') parts.push(kotlinChartSelectBody(onSel.handler, spec.hit(layout, tx, tapY, plotArgs, KOTLIN_CHART_TARGET), indent))
-    tap = `.pointerInput(Unit) { detectTapGestures { pyreonTap -> ${parts.join('; ')} } }`
+    // Keyed on the layout the lambda captures: a `pointerInput(Unit)` keeps the FIRST composition's val (the plot host's #3294 lesson).
+    tap = `.pointerInput(pyreonLayout) { detectTapGestures { pyreonTap -> ${parts.join('; ')} } }`
   }
   if (lets.length > 0) return kotlinFrameHostWithTap(e, lets, cmds, tap, W, H, hasWidth, indent)
   // Size modifiers first (they are the host's own layout), then the tap, the
@@ -9750,7 +9751,8 @@ function emitKotlinAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   const parts: string[] = []
   if (tooltip) parts.push(`pyreonTip = ${spec.tooltip(items, tx, tapY, args, KOTLIN_CHART_TARGET)}; pyreonTipAt = PyreonChartPt(${tx}, (pyreonTap.y / pyreonDensity).toDouble())`)
   if (onSel?.kind === 'event') parts.push(kotlinChartSelectBody(onSel.handler, spec.hit(items, tx, tapY, args, KOTLIN_CHART_TARGET), indent))
-  const tap = parts.length === 0 ? '' : `.pointerInput(Unit) { detectTapGestures { pyreonTap -> ${parts.join('; ')} } }`
+  // Hoisted items are a captured val — key the tap on them (see the generic host).
+  const tap = parts.length === 0 ? '' : `.pointerInput(${hoist ? 'pyreonItems' : 'Unit'}) { detectTapGestures { pyreonTap -> ${parts.join('; ')} } }`
   if (hoist) return kotlinFrameHostWithTap(e, lets, cmds, tap, W, H, hasWidth, indent)
   const size = hasWidth ? `Modifier.width((${W}).dp).height((${H}).dp)` : `Modifier.fillMaxWidth().height((${H}).dp)`
   const generic = emitKotlinLayoutModifier(e)

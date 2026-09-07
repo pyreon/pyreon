@@ -197,7 +197,7 @@ describe('chart hosts — onSelectIndex (tap → the engine index hit)', () => {
     expect(r.code).toContain(
       'val pyreonLayout = layoutSankey(nodes, links, PyreonChartRect(80.0, 8.0, maxOf(0.0, pyreonW - 80.0 * 2.0), maxOf(0.0, 240.0 - 16.0)), null)')
     expect(r.code).toContain(
-      '.pointerInput(Unit) { detectTapGestures { pyreonTap -> val hit = hitSankeyIndex(pyreonLayout, (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble()); ({ picked = hit.node })() } }',
+      '.pointerInput(pyreonLayout) { detectTapGestures { pyreonTap -> val hit = hitSankeyIndex(pyreonLayout, (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble()); ({ picked = hit.node })() } }',
     )
     // An explicit-width host with a tap still gets the BoxWithConstraints scope (the density lives there).
     expect(r.code).toContain('val i = hitTreemapIndex(pyreonLayout, (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble())')
