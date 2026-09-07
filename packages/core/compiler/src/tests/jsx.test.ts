@@ -14,15 +14,30 @@ describe('JSX transform — children', () => {
   })
 
   test('does NOT wrap string literal child', () => {
-    expect(t(`<div>{"static"}</div>`)).not.toContain('() =>')
+    // A literal child BAKES into the template HTML — no accessor, no runtime
+    // set call (the `() => null` is the empty bind, not a wrap).
+    const out = t(`<div>{"static"}</div>`)
+    expect(out).toContain('_tpl("<div>static</div>"')
+    expect(out).not.toContain('_bind')
+    expect(out).not.toContain('_setChild')
   })
 
   test('does NOT wrap numeric literal child', () => {
-    expect(t('<div>{42}</div>')).not.toContain('() =>')
+    // A literal child BAKES into the template HTML — no accessor, no runtime
+    // set call (the `() => null` is the empty bind, not a wrap).
+    const out = t('<div>{42}</div>')
+    expect(out).toContain('_tpl("<div>42</div>"')
+    expect(out).not.toContain('_bind')
+    expect(out).not.toContain('_setChild')
   })
 
   test('does NOT wrap null child', () => {
-    expect(t('<div>{null}</div>')).not.toContain('() =>')
+    // A literal child BAKES into the template HTML — no accessor, no runtime
+    // set call (the `() => null` is the empty bind, not a wrap).
+    const out = t('<div>{null}</div>')
+    expect(out).toContain('_tpl("<div></div>"')
+    expect(out).not.toContain('_bind')
+    expect(out).not.toContain('_setChild')
   })
 
   test('does NOT double-wrap existing arrow function', () => {
@@ -77,19 +92,38 @@ describe('JSX transform — children', () => {
   })
 
   test('does NOT wrap boolean true literal', () => {
-    expect(t('<div>{true}</div>')).not.toContain('() =>')
+    // A literal child BAKES into the template HTML — no accessor, no runtime
+    // set call (the `() => null` is the empty bind, not a wrap).
+    const out = t('<div>{true}</div>')
+    expect(out).toContain('_tpl("<div></div>"')
+    expect(out).not.toContain('_bind')
+    expect(out).not.toContain('_setChild')
   })
 
   test('does NOT wrap boolean false literal', () => {
-    expect(t('<div>{false}</div>')).not.toContain('() =>')
+    // A literal child BAKES into the template HTML — no accessor, no runtime
+    // set call (the `() => null` is the empty bind, not a wrap).
+    const out = t('<div>{false}</div>')
+    expect(out).toContain('_tpl("<div></div>"')
+    expect(out).not.toContain('_bind')
+    expect(out).not.toContain('_setChild')
   })
 
   test('does NOT wrap undefined literal', () => {
-    expect(t('<div>{undefined}</div>')).not.toContain('() =>')
+    // A literal child BAKES into the template HTML — no accessor, no runtime
+    // set call (the `() => null` is the empty bind, not a wrap).
+    const out = t('<div>{undefined}</div>')
+    expect(out).toContain('_tpl("<div></div>"')
+    expect(out).not.toContain('_bind')
+    expect(out).not.toContain('_setChild')
   })
 
   test('does NOT wrap template literal without calls (no substitution)', () => {
-    expect(t('<div>{`hello`}</div>')).not.toContain('() =>')
+    // A substitution-free template literal is a literal: it bakes.
+    const out = t('<div>{`hello`}</div>')
+    expect(out).toContain('_tpl("<div>hello</div>"')
+    expect(out).not.toContain('_bind')
+    expect(out).not.toContain('_setChild')
   })
 
   test('wraps template literal containing a call', () => {

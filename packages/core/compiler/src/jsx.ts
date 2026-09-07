@@ -4245,7 +4245,14 @@ export function transformJSX_JS(
       // the client either, so an option's own `selected` attribute isn't
       // clobbered. NOT a silent catch-all: null falls through to the
       // dynamic path; nothing is dropped.
-      const isSelectValue = tag === 'select' && htmlAttrName === 'value'
+      // `<textarea value>` is the same class: a textarea's value is its TEXT
+      // CONTENT and the `value` content attribute is dead, so a baked
+      // `value="0"` mounted an EMPTY textarea on the client (found by the
+      // compiled-path parity fuzz's swap dump). Routing it to the dynamic
+      // path emits the one-time `_setValue` property set the reactive form
+      // already uses. Named for the select case it was written for.
+      const isSelectValue =
+        (tag === 'select' || tag === 'textarea') && htmlAttrName === 'value'
       // No `isStatic` pre-gate: the arms below are self-evidently-static
       // shapes, and the two backends' static classifiers disagreed on the
       // margins (JS said `-5` was dynamic → runtime setAttribute; Rust said
@@ -4754,7 +4761,9 @@ export function transformJSX_JS(
         // parsed `.value` as a double-quoted JS literal (quote/backslash/
         // control-safe, independent of the JSX quote style) — the same
         // `.value` the bake path reads.
-        if (tag === 'select' && htmlAttrName === 'value') {
+        // `<textarea value="0">` is the same dead-attribute class (its value is
+        // its text content): a baked attribute mounted an EMPTY textarea.
+        if ((tag === 'select' || tag === 'textarea') && htmlAttrName === 'value') {
           bindLines.push(attrSetter(htmlAttrName, varName, escapeJsString(attr.value.value), tag))
           return ''
         }
@@ -4992,7 +5001,12 @@ export function transformJSX_JS(
     }
 
     type FlatChild =
-      | { kind: 'text'; text: string }
+      // `html` is the text ALREADY escaped for the `<template>` parser. Adjacent
+      // text entries are merged at classification: the parser produces ONE
+      // text node for `a{"b"}` / `{54}{60}`, and every later sibling's
+      // placeholder ref is a child-index walk, so the flat list must count
+      // child NODES, not source tokens.
+      | { kind: 'text'; html: string }
       | { kind: 'element'; node: N; elemIdx: number }
       | { kind: 'expression'; expression: N }
       // A COMPONENT child absorbed into this template (`templatizeComponentChildren`).
@@ -5009,7 +5023,7 @@ export function transformJSX_JS(
       if (child.type === 'JSXText') {
         const raw = child.value ?? child.raw ?? ''
         const cleaned = cleanJsxText(raw)
-        if (cleaned) out.push({ kind: 'text', text: cleaned })
+        if (cleaned) pushText(out, escapeHtmlText(cleaned))
         return
       }
       if (child.type === 'JSXElement') {
@@ -5024,11 +5038,39 @@ export function transformJSX_JS(
       }
       if (child.type === 'JSXExpressionContainer') {
         const expr = child.expression
-        if (expr && expr.type !== 'JSXEmptyExpression')
+        if (expr && expr.type !== 'JSXEmptyExpression') {
+          // A LITERAL expression child — `{"t"}`, `{54}`, `{null}` — bakes into
+          // the template exactly like plain JSX text. It used to emit a `<!>`
+          // placeholder + `_setChildAt(parent, p, "t")`: a runtime call per
+          // literal on every mount, and — because the server renders the same
+          // literal as plain text with no range markers — the ONE shape that
+          // made the compiled-template adopt verifier bail on an otherwise
+          // adoptable element (78 of 300 root swaps in the compiled-path
+          // parity fuzz, none of them anything else). `null`/booleans/
+          // `undefined` render nothing on both sides and contribute no node.
+          const lit = literalChildText(unwrapTypeLayers(expr))
+          if (lit !== null) {
+            lens(
+              expr.start as number,
+              expr.end as number,
+              'static-text',
+              'baked once into the DOM — never re-renders (a literal)',
+            )
+            if (lit !== '') pushText(out, escapeLiteralText(lit))
+            return
+          }
           out.push({ kind: 'expression', expression: expr })
+        }
         return
       }
       if (child.type === 'JSXFragment') recurse(jsxChildren(child))
+    }
+
+    /** Append template text, merging into a preceding text entry (see FlatChild). */
+    function pushText(out: FlatChild[], html: string): void {
+      const last = out[out.length - 1]
+      if (last !== undefined && last.kind === 'text') last.html += html
+      else out.push({ kind: 'text', html })
     }
 
     function flattenChildren(children: N[]): FlatChild[] {
@@ -5079,7 +5121,7 @@ export function transformJSX_JS(
       // phase-1 ref so the deferred line doesn't re-walk a mutated sibling
       // chain.
       if (
-        tag === 'select' &&
+        (tag === 'select' || tag === 'textarea') &&
         name === 'value' &&
         attr.value &&
         (attr.value.type === 'StringLiteral' ||
@@ -5097,7 +5139,7 @@ export function transformJSX_JS(
       // `<select value={…}>` (PZ-09): every non-omitted shape — including
       // static ones staticAttrToHtml routed to null above — emits a deferred
       // property bind line, so the element needs a ref.
-      if (tag === 'select' && name === 'value') return true
+      if ((tag === 'select' || tag === 'textarea') && name === 'value') return true
       return !isStatic(expr)
     }
 
@@ -5214,7 +5256,7 @@ export function transformJSX_JS(
       useMultiExpr: boolean,
       childNodeIdx: number,
     ): string | null {
-      if (child.kind === 'text') return escapeHtmlText(child.text)
+      if (child.kind === 'text') return child.html
       if (child.kind === 'component') {
         // The component's own source range is PRESERVED as a hole rather than
         // sliced. Slicing would emit the raw text and silently drop every
@@ -5929,6 +5971,74 @@ function escapeHtmlAttr(s: string): string {
  */
 function escapeJsString(s: string): string {
   return JSON.stringify(s)
+}
+
+/**
+ * The compile-time text of a LITERAL JSX expression child, or `null` when the
+ * expression is not one. Mirrors what the runtime renders for the value:
+ * strings verbatim, `null`/`undefined`/booleans as nothing, and a numeric
+ * literal by its source when that source IS its `String()` form — a plain
+ * decimal with no exponent, no leading zeros and no trailing fraction zeros,
+ * at most 15 significant digits (so no rounding can separate the two). Any
+ * other number (`1e3`, `0x10`, `1.50`, `-1`) keeps the runtime path; both
+ * backends apply the identical predicate so their emits stay byte-equal.
+ */
+function literalChildText(node: N): string | null {
+  switch (node.type) {
+    case 'StringLiteral':
+      return typeof node.value === 'string' ? node.value : null
+    case 'NumericLiteral':
+      return bakeableNumberRaw(node.raw)
+    case 'Literal': {
+      const v = node.value
+      if (typeof v === 'string') return v
+      if (v === null) return ''
+      if (typeof v === 'boolean') return ''
+      if (typeof v === 'number') return bakeableNumberRaw(node.raw)
+      return null
+    }
+    case 'NullLiteral':
+      return ''
+    case 'BooleanLiteral':
+      return ''
+    case 'Identifier':
+      return node.name === 'undefined' ? '' : null
+    case 'TemplateLiteral': {
+      if ((node.expressions ?? []).length !== 0) return null
+      const cooked = node.quasis?.[0]?.value?.cooked
+      return typeof cooked === 'string' ? cooked : null
+    }
+    default:
+      return null
+  }
+}
+
+function bakeableNumberRaw(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  if (!/^(0|[1-9]\d*)(\.\d*[1-9])?$/.test(raw)) return null
+  return raw.replace('.', '').length <= 15 ? raw : null
+}
+
+/** Escape a literal string for the `<template>` parser: `&` is ALWAYS data here
+ * (a JS string `"&amp;"` is six characters), unlike JSX text where an entity is
+ * left intact — so this is the unconditional twin of `escapeHtmlText`. `>` is
+ * escaped too: the template emitter never places a raw `>` in text (plain JSX
+ * text containing one bails to h()), and the compiled-template adopt verifier
+ * refuses a template that does — `&gt;` parses to the identical text node. */
+function escapeLiteralText(s: string): string {
+  // Line terminators become numeric entities: the template HTML is emitted
+  // as a double-quoted JS string that escapes only `\\` and `"` (plain JSX text
+  // can never carry a newline, a literal can — `<pre>{"// a\nb"}</pre>` broke
+  // the docs build with `Unterminated string`). The <template> parser decodes
+  // the entity back, so the DOM text is byte-identical.
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\n/g, '&#10;')
+    .replace(/\r/g, '&#13;')
+    .replace(/\u2028/g, '&#8232;')
+    .replace(/\u2029/g, '&#8233;')
 }
 
 function escapeHtmlText(s: string): string {
