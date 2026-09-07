@@ -146,7 +146,7 @@
     "@types/node": "^26.4.1",
     "@unhead/ssr": "^3.4.0",
     "@unhead/vue": "^3.4.0",
-    "@vitest/browser": "^4.1.11",
+    "@vitest/browser": "^5.0.0",
     "@vitest/coverage-v8": "^4.1.11",
     "@vitus-labs/tools-rolldown": "^2.7.1",
     "@vitus-labs/tools-typescript": "^2.7.1",
