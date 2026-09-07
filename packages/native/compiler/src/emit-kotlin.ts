@@ -9848,6 +9848,10 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     lets.push('var pyreonZoom by remember { mutableStateOf(ZoomWindow(start = 0.0, end = 1.0)) }')
     lets.push(`val pyreonRange: SliceRange = sliceRange(pyreonZoom, ${data}.size)`)
     lets.push(`val pyreonRows = ${data}.subList(pyreonRange.from, pyreonRange.to)`)
+    // `onZoom` — one effect keyed on the window state covers pinch, pan, a
+    // preset tap and the navigator alike, as the web's single observer does.
+    const onZoom = e.attrs.find((a) => a.kind === 'event' && a.name === 'zoom')
+    if (onZoom?.kind === 'event') lets.push(`LaunchedEffect(pyreonZoom) { ${kotlinChartSelectBody(onZoom.handler, 'pyreonZoom', indent)} }`)
   }
   if (navigating) {
     lets.push('var pyreonNavKind by remember { mutableStateOf(0) }')
@@ -9924,6 +9928,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     lets.push(`val pyreonXValues: List<Double> = ${kotlinPlotRowMap(rows, `(${body}).toDouble()`, windowed)}`)
   }
   const present = PLOT_UNLOWERED_PROPS.filter((p) => chartAttrExprKotlin(e, p) !== undefined || e.attrs.some((a) => a.kind === 'event' && 'on' + a.name === p.toLowerCase()))
+  if (!windowed && e.attrs.some((a) => a.kind === 'event' && a.name === 'zoom')) _emitWarnings.push('<PlotChart onZoom>: needs `dataZoom`, `zoomPresets` or `navigator` — without a window there is nothing to report.')
   if (present.length > 0) _emitWarnings.push(`<${tag}>: ${present.map((p) => `\`${p}\``).join(', ')} ${present.length === 1 ? 'is' : 'are'} not lowered on native yet; the chart renders without.`)
   const H = kotlinChartDouble(e, 'height', 200, indent)
   const hasWidth = chartAttrExprKotlin(e, 'width') !== undefined

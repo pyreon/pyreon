@@ -791,6 +791,29 @@ export function Traffic() {
   )
 }`
 
+const ON_ZOOM = LEGEND.replace('showLegend={true}', "showLegend={true} dataZoom={true} onZoom={(w: ZoomWindow) => zoomText.set(String(w.start))}").replace("import { PlotChart, bars, line } from '@pyreon/charts/plot'", "import { PlotChart, bars, line } from '@pyreon/charts/plot'\nimport type { ZoomWindow } from '@pyreon/charts/plot'").replace('const picked = signal(-1)', "const picked = signal(-1)\n  const zoomText = signal('')")
+
+describe('<PlotChart onZoom> — one observer over the window state on both targets', () => {
+  it('Swift: an onChange over the window fields runs the handler with the ZoomWindow', () => {
+    const r = transform(ON_ZOOM, { target: 'swift' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('.onChange(of: [pyreonZoom.start, pyreonZoom.end]) { let w = pyreonZoom;')
+  })
+  it('Kotlin: a LaunchedEffect keyed on the window runs the handler', () => {
+    const r = transform(ON_ZOOM, { target: 'kotlin' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('LaunchedEffect(pyreonZoom) { val w = pyreonZoom;')
+  })
+  it('without a window (no dataZoom / presets / navigator) the prop warns by name on both targets', () => {
+    const src = ON_ZOOM.replace(' dataZoom={true}', '')
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(src, { target })
+      expect(r.warnings.join('\n')).toContain('<PlotChart onZoom>: needs `dataZoom`, `zoomPresets` or `navigator`')
+      expect(r.code).not.toContain('pyreonZoom')
+    }
+  })
+})
+
 const LEGEND_NO_TOGGLE = LEGEND.replace('showLegend={true}', 'showLegend={true} legendToggle={false}')
 const LEGEND_NO_PAGING = LEGEND.replace(' legendMaxRows={1}', '')
 const LEGEND_WITH_PRESETS = LEGEND.replace('showLegend={true}', "showLegend={true} zoomPresets={[{ label: 'last 2', count: 2 }, { label: 'all', count: 0 }]}")

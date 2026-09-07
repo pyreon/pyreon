@@ -74,7 +74,7 @@ import { announce } from '@pyreon/a11y'
 import { useUrlState } from '@pyreon/url-state'
 import { signal, computed } from '@pyreon/reactivity'
 import { FunnelChart, GaugeChart, HeatmapChart, PieChart, PlotChart, RadarChart, SankeyChart, TreemapChart, bars, line } from '@pyreon/charts/plot'
-import type { BrushRange, RadarAxis, SankeyHitIndex, SankeyLink, SankeyNode, TreeNode } from '@pyreon/charts/plot'
+import type { BrushRange, RadarAxis, SankeyHitIndex, SankeyLink, SankeyNode, TreeNode, ZoomWindow } from '@pyreon/charts/plot'
 import { useForm } from '@pyreon/form'
 import { useFetch, useCrashReporter } from '@pyreon/hooks'
 import { defineStore } from '@pyreon/store'
@@ -507,6 +507,9 @@ function StatsPage() {
   const flowPick = signal(-1)
   // The bar index the last tap on the score chart reported (-1 = none yet).
   const barPick = signal(-1)
+  // The window as text, so a device assertion can name it — pinch, presets
+  // and the navigator all report through the same onZoom.
+  const zoomText = signal('0-100')
   // The brush's committed range as text ('none' when cleared) — #3277: a NAMED
   // handler taking BrushRange | null narrows on every target.
   const brushSel = signal('none')
@@ -562,8 +565,10 @@ function StatsPage() {
         title="Scores by subject"
         data-testid="stats-bars"
         onSelect={(i: number) => barPick.set(i)}
+        onZoom={(w: ZoomWindow) => zoomText.set(`${Math.round(w.start * 100)}-${Math.round(w.end * 100)}`)}
       />
       <Text data-testid="stats-bars-pick">{String(barPick())}</Text>
+      <Text data-testid="stats-zoom">{zoomText()}</Text>
       <PlotChart
         data={SCORE_ROWS}
         x={(d: ScoreRow) => d.subject}

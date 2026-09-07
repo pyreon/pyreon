@@ -592,6 +592,11 @@ final class PyreonTasksUITests: XCTestCase {
         let stripW = barsW - 16
         let navOrigin = statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
         navOrigin.withOffset(CGVector(dx: 10, dy: navY)).press(forDuration: 0.2, thenDragTo: navOrigin.withOffset(CGVector(dx: 10 + stripW * 0.55, dy: navY)))
+        let zoomText = app.staticTexts["stats-zoom"].firstMatch
+        XCTAssertTrue(
+            waitForLabel(zoomText, "55-100", timeout: 10),
+            "onZoom did not report the window the navigator drag produced (label: \(zoomText.label))"
+        )
         statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 90, dy: 100)).tap()
         XCTAssertTrue(
             waitForLabel(barPick, "1", timeout: 10),

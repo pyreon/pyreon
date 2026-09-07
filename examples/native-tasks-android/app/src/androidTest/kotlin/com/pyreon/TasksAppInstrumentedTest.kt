@@ -626,6 +626,9 @@ class TasksAppInstrumentedTest {
                 repeat(10) { moveBy(Offset(stripW * 0.055f, 0f)) }
                 up()
             }
+        // The window itself, through onZoom: a failure here names what the
+        // drag did (or did not) do before any tap is interpreted.
+        waitForTagText("stats-zoom", "55-100")
         composeRule
             .onNodeWithTag("stats-bars")
             .performTouchInput { click(Offset(90f * flowDensity, 100f * flowDensity)) }
