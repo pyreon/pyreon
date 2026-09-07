@@ -904,7 +904,8 @@ server.tool(
       // 1. `name` → the single matching entry's full body. Most
       //    token-frugal "I need THIS one" path.
       if (name && name.trim().length > 0) {
-        const q = name.trim().toLowerCase()
+        // A title copied from the compact index may carry its clamp marker.
+        const q = name.trim().replace(/…$/u, '').trimEnd().toLowerCase()
         const matches = all.filter((e) => e.name.toLowerCase().includes(q))
         if (matches.length === 0) {
           const titles = all.slice(0, 30).map((e) => `  - ${e.name}`).join('\n')
