@@ -86,6 +86,7 @@ import {
   RouterProvider,
   RouterView,
 } from '@pyreon/router'
+import { createFlow } from '@pyreon/flow'
 
 type Task = { id: number; title: string; done: boolean }
 type Quote = { id: number; text: string; author: string }
@@ -242,6 +243,9 @@ function TasksPage() {
         <Button onPress={() => navigate('/lifecycle')} data-testid="tasks-lifecycle">
           Lifecycle
         </Button>
+        <Button onPress={() => navigate('/flow')} data-testid="tasks-flow">
+          Flow
+        </Button>
         <Button onPress={() => navigate('/stats')} data-testid="tasks-stats">
           Stats
         </Button>
@@ -294,6 +298,56 @@ function QuotesPage() {
           Refetch
         </Button>
         <Button onPress={() => navigate('/tasks')} data-testid="quotes-back">
+          Back to tasks
+        </Button>
+      </Inline>
+    </Stack>
+  )
+}
+
+function FlowScreen() {
+  const navigate = useNavigate()
+  // Flow-native device proof: `createFlow` lowers to PyreonFlowState on both
+  // targets (#3295). Until this screen existed, NO example called it and no
+  // device assertion touched @pyreon/flow — the port was unit-tested and
+  // stub-typechecked, never proven to run. Every value below is read from
+  // the native engine: node count after addNode, zoom after zoomIn, the
+  // selection count after selectNode. Only the lowered v1 surface is used —
+  // `<Flow>`, gestures and layout warn by name and stay off this screen.
+  const flow = createFlow({
+    nodes: [
+      { id: 'a', position: { x: 0, y: 0 }, data: { label: 'Start' } },
+      { id: 'b', position: { x: 200, y: 0 }, data: { label: 'End' } },
+    ],
+    edges: [{ id: 'e1', source: 'a', target: 'b' }],
+    minZoom: 0.5,
+    maxZoom: 2,
+  })
+  const nodeCount = computed(() => flow.nodes().length)
+  const edgeCount = computed(() => flow.edges().length)
+  const selectedCount = computed(() => flow.selectedNodes().length)
+  const zoomLabel = computed(() => `zoom ${flow.zoom()}`)
+  return (
+    <Stack gap={3} padding={4} data-testid="flow-page">
+      <Text>Flow</Text>
+      <Text data-testid="flow-node-count">{nodeCount}</Text>
+      <Text data-testid="flow-edge-count">{edgeCount}</Text>
+      <Text data-testid="flow-selected-count">{selectedCount}</Text>
+      <Text data-testid="flow-zoom">{zoomLabel}</Text>
+      <Inline gap={2}>
+        <Button
+          onPress={() => flow.addNode({ id: 'c', position: { x: 400, y: 0 }, data: { label: 'Extra' } })}
+          data-testid="flow-add"
+        >
+          Add node
+        </Button>
+        <Button onPress={() => flow.selectNode('a')} data-testid="flow-select">
+          Select A
+        </Button>
+        <Button onPress={() => flow.zoomIn()} data-testid="flow-zoom-in">
+          Zoom in
+        </Button>
+        <Button onPress={() => navigate('/tasks')} data-testid="flow-back">
           Back to tasks
         </Button>
       </Inline>
@@ -959,6 +1013,11 @@ export function TasksApp() {
       {
         path: '/dashboard',
         component: DashboardPage,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/flow',
+        component: FlowScreen,
         beforeEnter: () => useApp().store.isAuthed(),
       },
     ],
