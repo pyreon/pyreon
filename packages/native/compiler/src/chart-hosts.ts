@@ -760,11 +760,14 @@ export function chartThemeFields(
   tag: string,
   warn: (m: string) => void,
   list: (items: readonly string[]) => string,
+  scope?: RawChartTheme,
 ): Record<keyof typeof CHART_THEME_DEFAULT, string> {
   const out = {} as Record<keyof typeof CHART_THEME_DEFAULT, string>
   const named = namedChartTheme(v)
-  const base = named ?? CHART_THEME_DEFAULT
-  const palette = named === undefined ? chartThemePalette(v, tag, warn) : (named.palette as readonly string[])
+  // A named theme replaces the scope wholesale (as on the web, where a `theme`
+  // prop is merged OVER the provider's — and a whole theme has every field).
+  const base = named ?? scope ?? CHART_THEME_DEFAULT
+  const palette = named === undefined ? chartThemePalette(v, tag, warn, base.palette as readonly string[]) : (named.palette as readonly string[])
   for (const f of CHART_THEME_FIELDS) {
     const d = base[f.name]
     out[f.name] = f.kind === 'strings' ? list(palette.map((c) => JSON.stringify(c))) : f.kind === 'number' ? (d as string) : JSON.stringify(d)
@@ -797,24 +800,71 @@ function namedChartTheme(v: ExprIR | undefined): (typeof CHART_THEMES)['light'] 
  * literals), a named `palettes.<name>` reference, or the default. Marks without
  * a `color` cycle through it.
  */
-export function chartThemePalette(v: ExprIR | undefined, tag: string, warn: (m: string) => void): readonly string[] {
+export function chartThemePalette(v: ExprIR | undefined, tag: string, warn: (m: string) => void, fallback: readonly string[] = CHART_THEME_DEFAULT.palette): readonly string[] {
   const named = namedChartTheme(v)
   if (named !== undefined) return named.palette as readonly string[]
-  if (v === undefined || v.kind !== 'object') return CHART_THEME_DEFAULT.palette
+  if (v === undefined || v.kind !== 'object') return fallback
   const f = v.fields.find((x) => x.name === 'palette')
-  if (f === undefined) return CHART_THEME_DEFAULT.palette
+  if (f === undefined) return fallback
   const pv = f.value
   if (pv.kind === 'member' && pv.object.kind === 'identifier' && pv.object.name === 'palettes') {
     const found = NAMED_PALETTES[pv.property]
     if (found !== undefined) return found
     warn(`<${tag} theme>: \`palettes.${pv.property}\` is not a named palette (${Object.keys(NAMED_PALETTES).join(', ')}); the default palette applies.`)
-    return CHART_THEME_DEFAULT.palette
+    return fallback
   }
   if (pv.kind !== 'array' || pv.elements.length === 0 || pv.elements.some((it) => it.kind !== 'literal' || typeof it.value !== 'string')) {
     warn(`<${tag} theme>: \`palette\` must be a non-empty array of string literals or a \`palettes.<name>\` reference on native; the default palette applies.`)
-    return CHART_THEME_DEFAULT.palette
+    return fallback
   }
   return pv.elements.map((it) => (it as { value: string }).value)
+}
+
+/** A theme as RAW values (the shape of `CHART_THEME_DEFAULT` / a `CHART_THEMES` entry): what a provider scope carries. */
+export type RawChartTheme = Readonly<Record<keyof typeof CHART_THEME_DEFAULT, string | readonly string[]>>
+
+/**
+ * `<ChartThemeProvider mode theme>` as a compile-time scope: the mode's theme
+ * (light / dark) with the provider's literal `theme` fields laid over it, over
+ * an outer scope when providers nest. The web resolves the same three layers
+ * at runtime (mode → provider overrides → the chart's own `theme`, which
+ * `chartThemeFields` lays over this scope). What cannot be read at compile
+ * time is named: a mode that is not a string literal (the web tracks the
+ * system scheme, or an app's reactive mode — natively the light theme
+ * applies), and a non-literal `theme`.
+ */
+export function chartThemeScope(e: ExprIR & { kind: 'jsx-element' }, warn: (m: string) => void, outer?: RawChartTheme): RawChartTheme {
+  const modeAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'mode')
+  const modeV = modeAttr?.kind === 'attr' ? modeAttr.value : undefined
+  let base: RawChartTheme = outer ?? CHART_THEME_DEFAULT
+  if (modeV === undefined) {
+    if (outer === undefined) warn('<ChartThemeProvider>: without a literal `mode` the web follows the system scheme; natively the light theme applies — pin `mode="dark"` (or give each chart its own `theme`).')
+  } else if (modeV.kind === 'literal' && (modeV.value === 'light' || modeV.value === 'dark')) {
+    base = CHART_THEMES[modeV.value]
+  } else {
+    warn('<ChartThemeProvider mode>: only the literal "light" / "dark" lowers on native (a reactive mode cannot be read at compile time); the light theme applies.')
+  }
+  const themeAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'theme')
+  const themeV = themeAttr?.kind === 'attr' ? themeAttr.value : undefined
+  if (themeV === undefined) return base
+  const raw: Record<string, string | readonly string[]> = { ...base }
+  const named = namedChartTheme(themeV)
+  if (named !== undefined) return named
+  if (themeV.kind !== 'object' || (themeV.spreads !== undefined && themeV.spreads.length > 0)) {
+    warn('<ChartThemeProvider theme>: only an object literal with literal fields lowers on native; the mode\'s theme applies.')
+    return base
+  }
+  raw.palette = chartThemePalette(themeV, 'ChartThemeProvider', warn, base.palette as readonly string[])
+  for (const f of themeV.fields) {
+    const spec = CHART_THEME_FIELDS.find((x) => x.name === f.name)
+    if (spec === undefined || spec.kind === 'strings') continue
+    if (f.value.kind !== 'literal' || typeof f.value.value !== spec.kind) {
+      warn(`<ChartThemeProvider theme>: \`${f.name}\` must be a ${spec.kind} literal on native; the mode's value applies.`)
+      continue
+    }
+    raw[spec.name] = spec.kind === 'number' ? chartDouble(f.value.value as number) : (f.value.value as string)
+  }
+  return raw as RawChartTheme
 }
 
 /** The palette the web Funnel / Pie hosts colour unaccessored rows with — the theme's. */
@@ -863,8 +913,8 @@ export function chartChromeWarning(tag: string, prop: string): string {
   return `<${tag}>: \`${prop}\` is not lowered on native yet; the chart renders without it.`
 }
 /** The entrance duration — the theme's `enterMs` (a literal object or a named theme), else the default; the family hosts read nothing else off `theme`, so this never warns. */
-export function chartEnterMs(theme: ExprIR | undefined, tag: string, list: (items: readonly string[]) => string): string {
-  return chartThemeFields(theme, tag, () => {}, list).enterMs
+export function chartEnterMs(theme: ExprIR | undefined, tag: string, list: (items: readonly string[]) => string, scope?: RawChartTheme): string {
+  return chartThemeFields(theme, tag, () => {}, list, scope).enterMs
 }
 /** The resolved theme as emitted TEXT per field — what `chartThemeFields` returns. */
 export type ChartThemeText = Record<keyof typeof CHART_THEME_DEFAULT, string>

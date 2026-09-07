@@ -79,8 +79,8 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
-import type { ChartHostArgs, ChartHostTarget, ChartThemeText } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
+import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
   stretchAlignWarning,
@@ -6100,10 +6100,16 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // engine (chart-hosts.ts); accessor-prop hosts warn by name.
   if (isChartHostTag(tag)) return emitKotlinChartHost(e, indent)
   // `<ChartThemeProvider>` — transparent on native; see the Swift twin for why.
+  // `<ChartThemeProvider>` — a compile-time theme scope; see the Swift twin.
   if (tag === 'ChartThemeProvider') {
-    _emitWarnings.push(`<ChartThemeProvider>: not lowered on native — its children render unthemed by it; give each chart its own \`theme\` (\`theme={chartThemes.dark}\` or a literal).`)
-    const inner = ' '.repeat(indent + 2)
-    return `Box {\n${e.children.map((c) => inner + emitKotlinChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
+    const prev = _chartThemeScope
+    _chartThemeScope = chartThemeScope(e, (w) => _emitWarnings.push(w), prev ?? undefined)
+    try {
+      const inner = ' '.repeat(indent + 2)
+      return `Box {\n${e.children.map((c) => inner + emitKotlinChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
+    } finally {
+      _chartThemeScope = prev
+    }
   }
   // Phase 5 — walled tags. Mirror of the Swift dispatcher entry.
   // Compose has no equivalent for Suspense / ErrorBoundary / KeepAlive
@@ -9524,7 +9530,7 @@ function kotlinChartAnimating(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: 
 /** The host composable inside `PyreonChartEntrance`, which hands the tween's progress down as `pyreonEntrance` (mirror of the Swift emitter). */
 function kotlinChartEntrance(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: string, indent: number, inner: (indent: number) => string): string {
   if (!kotlinChartAnimating(e, tag)) return inner(indent)
-  const ms = chartEnterMs(chartAttrExprKotlin(e, 'theme'), tag, KOTLIN_CHART_TARGET.list)
+  const ms = chartEnterMs(chartAttrExprKotlin(e, 'theme'), tag, KOTLIN_CHART_TARGET.list, _chartThemeScope ?? undefined)
   const pad = ' '.repeat(indent + 2)
   return `PyreonChartEntrance(${ms}) { pyreonEntrance ->\n${pad}${inner(indent + 2)}\n${' '.repeat(indent)}}`
 }
@@ -9572,7 +9578,7 @@ function emitKotlinChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   const inner = emitKotlinChartHostInner(e, indent)
   // `theme.background` — the ground the web host paints; see the Swift emitter. A Box carries it, since the host is a composable call.
   if (e.tag === GRAMMAR_CHART_HOST || inner === 'Box {}') return inner
-  const bg = chartThemeFields(chartAttrExprKotlin(e, 'theme'), e.tag, () => {}, KOTLIN_CHART_TARGET.list).background
+  const bg = chartThemeFields(chartAttrExprKotlin(e, 'theme'), e.tag, () => {}, KOTLIN_CHART_TARGET.list, _chartThemeScope ?? undefined).background
   if (bg === '""') return inner
   const pad = ' '.repeat(indent + 2)
   return `Box(modifier = Modifier.background(pyreonChartColor(${bg}))) {\n${pad}${inner}\n${' '.repeat(indent)}}`
@@ -9637,7 +9643,7 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   const optV = chartAttrExprKotlin(e, spec.options)
   const userOptions = optV === undefined ? 'null' : withExpectedTypeKotlin(chartStructRefKotlin(spec.optionsStruct), () => emitKotlinExpr(optV, indent))
   const tf = kotlinChartThemeFields(e, tag)
-  const themed = chartAttrExprKotlin(e, 'theme') !== undefined
+  const themed = kotlinChartThemed(e)
   const themeLets: string[] = []
   let options = userOptions
   if (themed && spec.paletteOption === true) {
@@ -9752,7 +9758,7 @@ function emitKotlinAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     return 'Box {}'
   }
   const tf = kotlinChartThemeFields(e, tag)
-  const themed = chartAttrExprKotlin(e, 'theme') !== undefined
+  const themed = kotlinChartThemed(e)
   const fieldArgs: string[] = []
   for (const f of spec.fields) {
     const acc = kotlinChartAccessor(e, tag, f.prop, indent)
@@ -9946,7 +9952,7 @@ function emitKotlinRadarHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   const colorAcc = kotlinChartAccessor(e, tag, 'color', indent)
   if (colorAcc === 'unsupported') return 'Box {}'
   const tf = kotlinChartThemeFields(e, tag)
-  const color = colorAcc ?? (chartAttrExprKotlin(e, 'theme') !== undefined ? `${tf.palette}[pyreonI % ${tf.palette}.size]` : `listOf(${CHART_HOST_PALETTE.map((c) => JSON.stringify(c)).join(', ')})[pyreonI % ${CHART_HOST_PALETTE.length}]`)
+  const color = colorAcc ?? (kotlinChartThemed(e) ? `${tf.palette}[pyreonI % ${tf.palette}.size]` : `listOf(${CHART_HOST_PALETTE.map((c) => JSON.stringify(c)).join(', ')})[pyreonI % ${CHART_HOST_PALETTE.length}]`)
   const fillAlpha = kotlinChartDouble(e, 'fillAlpha', 0.25, indent)
   const lets = [`val pyreonSeries: List<RadarSeries> = ${data}.mapIndexed { pyreonI, pyreonD -> RadarSeries(values = (${values}).map { it.toDouble() }, color = ${color}, fillAlpha = ${fillAlpha}) }`]
   const H = kotlinChartDouble(e, 'height', 260, indent)
@@ -10079,7 +10085,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   if (legend.paging) lets.push('var pyreonLegendPage by remember { mutableStateOf(0.0) }')
   const rows = windowed ? 'pyreonRows' : data
   // The theme's palette colours marks with no `color` (the theme builder already warned about a bad literal, so this parse stays silent).
-  const pyreonPalette = chartThemePalette(chartAttrExprKotlin(e, 'theme'), tag, () => {})
+  const pyreonPalette = chartThemePalette(chartAttrExprKotlin(e, 'theme'), tag, () => {}, _chartThemeScope === null ? undefined : (_chartThemeScope.palette as readonly string[]))
   const series: string[] = []
   let navValues = ''
   for (let k = 0; k < marksV.elements.length; k++) {
@@ -10360,7 +10366,12 @@ function kotlinChartTheme(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: stri
 }
 /** Mirror of the Swift emitter: the theme per field as emitted text, read once per host. */
 function kotlinChartThemeFields(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: string): ChartThemeText {
-  return chartThemeFields(chartAttrExprKotlin(e, 'theme'), tag, (w) => _emitWarnings.push(w), (items) => `listOf(${items.join(', ')})`)
+  return chartThemeFields(chartAttrExprKotlin(e, 'theme'), tag, (w) => _emitWarnings.push(w), (items) => `listOf(${items.join(', ')})`, _chartThemeScope ?? undefined)
+}
+/** The enclosing `<ChartThemeProvider>`'s resolved theme, while its children are emitted (mirror of the Swift emitter). */
+let _chartThemeScope: RawChartTheme | null = null
+function kotlinChartThemed(e: Extract<ExprIR, { kind: 'jsx-element' }>): boolean {
+  return chartAttrExprKotlin(e, 'theme') !== undefined || _chartThemeScope !== null
 }
 function kotlinChartThemeFrom(f: ChartThemeText): string {
   return `ChartTheme(${CHART_THEME_FIELDS.map((x) => `${x.name} = ${f[x.name]}`).join(', ')})`

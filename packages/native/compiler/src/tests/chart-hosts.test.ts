@@ -622,13 +622,17 @@ describe('chart hosts — theme overrides, formatters and bubble marks', () => {
     const unknown = transform(named.replace('palettes.okabeIto', 'palettes.nope'), { target: 'swift' })
     expect(unknown.warnings).toEqual(['<PlotChart theme>: `palettes.nope` is not a named palette (pyreon, pyreonDark, echarts6, echarts5, echartsDark, observable10, tableau10, okabeIto, tailwind); the default palette applies.'])
   })
-  it('<ChartThemeProvider> is transparent on both targets: its children render, and it says so BY NAME', () => {
+  it('<ChartThemeProvider mode="dark"> is a compile-time scope on both targets: its chart children inherit the theme, byte-identical to their own theme={chartThemes.dark}', () => {
     const src = PLOT.replace("import { PlotChart, area, bars, line } from '@pyreon/charts/plot'", "import { ChartThemeProvider, PlotChart, area, bars, line } from '@pyreon/charts/plot'").replace('<Stack>', '<Stack><ChartThemeProvider mode="dark">').replace('</Stack>', '</ChartThemeProvider></Stack>')
+    const own = PLOT.replace("import { PlotChart, area, bars, line } from '@pyreon/charts/plot'", "import { chartThemes, PlotChart, area, bars, line } from '@pyreon/charts/plot'").replace('<PlotChart animate={false}', '<PlotChart animate={false} theme={chartThemes.dark}')
     for (const target of ['swift', 'kotlin'] as const) {
       const r = transform(src, { target })
-      expect(r.warnings).toEqual(['<ChartThemeProvider>: not lowered on native — its children render unthemed by it; give each chart its own `theme` (`theme={chartThemes.dark}` or a literal).'])
+      const o = transform(own, { target })
+      expect(r.warnings).toEqual([])
       expect(r.code).not.toContain('ChartThemeProvider(')
-      expect(r.code).toContain('PyreonChartCanvas(')
+      expect(r.code).toContain('background: "#141821"'.replace(': ', target === 'swift' ? ': ' : ' = '))
+      // The provider wraps its children in a Group / Box; inside it the chart's emit is the own-theme emit.
+      expect(r.code.replace(/^\s+/gm, '')).toContain(o.code.split('\n').find((l) => l.includes('ChartTheme('))!.trim())
     }
   })
   it('chrome props a target does not draw warn BY NAME; `animate` on an engine with no entrance is named as inert everywhere', () => {

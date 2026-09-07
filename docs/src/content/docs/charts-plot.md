@@ -400,8 +400,12 @@ the rest cycle through `theme.palette`.
 
 On native the theme is a struct: `theme={chartThemes.dark}` and
 `theme={{ palette: palettes.okabeIto }}` resolve at compile time, a literal
-merges over the defaults, and `<ChartThemeProvider>` is transparent (its
-children render; theme each chart there).
+merges over the defaults, and `<ChartThemeProvider mode theme>` is a
+compile-time scope its chart children inherit — mode, then the provider's
+literal overrides, then the chart's own `theme`, the web's three layers in
+the web's order. A reactive `mode` (an app's own signal) or an absent one
+(the web follows the system scheme) cannot be read at compile time; the
+light theme applies and the compiler says so by name.
 
 ## Every host, one surface
 
