@@ -199,7 +199,7 @@
   },
   "dependencies": {
     "@tanstack/query-core": "^5.102.8",
-    "@vitest/browser-playwright": "^4.1.11"
+    "@vitest/browser-playwright": "^5.0.0"
   },
   "loom": {
     "devPaths": [

@@ -151,7 +151,7 @@
     "@pyreon/ui-core": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@testing-library/jest-dom": "^7.0.1",
-    "@vitest/browser-playwright": "^4.1.11",
+    "@vitest/browser-playwright": "^5.0.0",
     "@vitus-labs/tools-rolldown": "^2.6.3"
   },
   "engines": {
