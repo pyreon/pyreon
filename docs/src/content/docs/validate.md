@@ -895,8 +895,7 @@ object-with-array-of-objects 134 vs 117 (1.14×, was 1.17×), array-of-20 116 vs
 was 1.10×). Only those four cells were re-run, interleaved per cell at a 1-minute load under
 2; every other number on this page is still the 2026-08-31 run. On the scalar cell the
 emitted validator alone now ties compiled Zod's whole call (2.6ns each) — the remaining
-2.2ns is the `Result` envelope. On the two deep cells the residual is the per-item
-stripped clone, not the seam.
+2.2ns is the `Result` envelope. On the two deep cells the residual was attributed to the per-item stripped clone; that read rested on zod-compiled returning its input by reference, which its emitted parser does not do (it builds an object literal per item too). What did differ per array — materialising `ctx.path` on every parse — is now skipped for pure-inline element subtrees, worth a nominal 5–13% on the object cell and nothing on the 20-item array in two quiet-box runs (CI-overlap); the rest of that gap has no named mechanism yet.
 
 Three structural reasons for the residual, none of them "we are simply slower":
 
