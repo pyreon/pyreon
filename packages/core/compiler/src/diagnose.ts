@@ -1761,6 +1761,24 @@ const geometry = () => props.shape
         '// server renders rows from a cache warmed by an earlier request;\n// the client renders "Loading…" and the two disagree\nconst client = new QueryClient() // module-level — shared across SSR requests\n\n// per-request client: SSR and the browser both start cold\nexport function App() {\n  const client = createQueryClient()\n  return <QueryClientProvider client={client}>…</QueryClientProvider>\n}',
     }),
   },
+  {
+    // A compiled slot's STATIC children (`<div>{rows}</div>` with a plain
+    // array) tear down as a unit with the clone; only an ACCESSOR slot keeps a
+    // per-node remover, because it must clear its own range on every flip.
+    // The residual footgun is outside code detaching one of those range nodes
+    // (a DOM library that re-parents or removes rows behind the framework):
+    // the boundary's next flip walks its range and `removeChild`s a node that
+    // is no longer where it was mounted.
+    pattern:
+      /removeChild[^\n]{0,120}not a child of this node[\s\S]{0,400}(mountReactive|clearBetween|_mountSlot|mountKeyedList|mountFor)/,
+    diagnose: () => ({
+      cause:
+        'A reactive boundary (`<Show>`, `{cond && <el/>}`, an accessor slot, a keyed list) tried to remove a node from its previous render, and that node had already been moved or removed by code outside the framework — a DOM-manipulating library, a manual `el.remove()`, a drag library re-parenting a row. The boundary owns the DOM between its markers and clears that range itself on every flip; a STATIC slot child (`<div>{rows}</div>` with a plain array) leaves with its clone instead and never hits this, so the crash means something external reached inside a REACTIVE range.',
+      fix: 'Do not detach nodes that a reactive boundary owns. Give the external library its own host element (a `ref` on a stable wrapper the boundary renders ONCE), let it manage the DOM inside that host, and tear it down in the `ref` cleanup / `onUnmount` — never from a signal flip. If rows must move, drive the order through state (a `<For>` over the reordered array) rather than moving nodes.',
+      fixCode:
+        '// crashes: the library re-parents rows the boundary owns\n// <Show when={() => open()}><ul>{rows.map(r => <li>{r}</li>)}</ul></Show>\n// sortable.mount(ul) // moves <li> nodes outside Pyreon\n\n// give the library a host the boundary never touches\n<Show when={() => open()}>\n  <ul ref={(el) => { const s = sortable.mount(el); return () => s.destroy() }} />\n</Show>',
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */

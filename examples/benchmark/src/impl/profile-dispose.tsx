@@ -36,6 +36,7 @@ import { effect, effectScope, signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
 import { createComponent, createEffect, createSignal } from 'solid-js'
 import { insert, render as solidRender, template } from 'solid-js/web'
+import { PyreonFxList } from './scenario-effects-pyreon'
 
 const ROWS = 500
 
@@ -292,6 +293,16 @@ export function setupDisposeProfile(hosts: Record<string, HTMLElement>): void {
   function __disposeI(): void { (liveI as () => void)(); liveI = null }
   let liveJ: (() => void) | null = null
   let liveK: (() => void) | null = null
+  // L: the SCENARIO BOARD's own shape, verbatim — `scenario-effects.ts`'s
+  // pyreonTarget: rows carry the SIGNAL (`{ value: s }`), mounted through the
+  // compiled `PyreonFxList` component. Exists because the board read 125µs
+  // while arm A read ~35µs wall on the same reactivity build; whichever of the
+  // two differences (signal-as-prop, the compiled list component) carries the
+  // gap shows up here, attributed.
+  const boardRows = sigs.map((s) => ({ value: s }))
+  let liveL: (() => void) | null = null
+  function __mountL(): void { liveL = mount(ph(PyreonFxList as never, { rows: boardRows, sink }), hosts.L as HTMLElement) }
+  function __disposeL(): void { (liveL as () => void)(); liveL = null }
   function __mountJ(): void { liveJ = (arms.J_rpdFull as Arm).mount() }
   function __disposeJ(): void { (liveJ as () => void)(); liveJ = null }
   function __mountK(): void { liveK = (arms.K_rpFull as Arm).mount() }
@@ -299,11 +310,11 @@ export function setupDisposeProfile(hosts: Record<string, HTMLElement>): void {
 
   const mounters: Record<string, () => void> = {
     A: __mountA, B: __mountB, C: __mountC, D: __mountD, E: __mountE, F: __mountF, G: __mountG,
-    H: __mountH, I: __mountI, J: __mountJ, K: __mountK,
+    H: __mountH, I: __mountI, J: __mountJ, K: __mountK, L: __mountL,
   }
   const disposers: Record<string, () => void> = {
     A: __disposeA, B: __disposeB, C: __disposeC, D: __disposeD, E: __disposeE, F: __disposeF, G: __disposeG,
-    H: __disposeH, I: __disposeI, J: __disposeJ, K: __disposeK,
+    H: __disposeH, I: __disposeI, J: __disposeJ, K: __disposeK, L: __disposeL,
   }
 
   ;(globalThis as Record<string, unknown>).__disposeBench = {

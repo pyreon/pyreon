@@ -81,7 +81,7 @@ const MAX_PASSES = 32
 /** Anything that carries two-tier tracking-subscriber storage (signal or computed). */
 interface LazySource {
   _s1: (() => void) | null
-  _s: Set<() => void> | null
+  _s: Set<() => void> | (() => void) | null
 }
 interface LazyTarget extends LazySource {
   _dirty: boolean
@@ -385,14 +385,20 @@ export function propagateLazyDirty(host: LazySource, owner: LazyTarget | null = 
   // The chain hop reads the `_s1` INLINE SLOT — the shape a linear
   // signal->computed->computed chain always has — so a hop costs a field read
   // rather than materialising a Set iterator (`_s.values().next()`) per level.
-  let subs: Set<() => void>
+  let subs: Iterable<() => void>
   for (;;) {
     const s1 = host._s1
     let sub: LazyNotify
     if (s1 !== null) {
+      // Two inline subscribers: not a chain hop — fan out as a Set would.
+      const s2 = host._s as (() => void) | null
+      if (s2 !== null) {
+        subs = [s1, s2]
+        break
+      }
       sub = s1 as LazyNotify
     } else {
-      const s = host._s
+      const s = host._s as Set<() => void> | null
       if (s === null) return
       if (s.size !== 1) {
         subs = s

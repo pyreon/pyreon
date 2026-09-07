@@ -132,7 +132,7 @@ export function setErrorHandler(fn: (err: unknown) => void): void {
 function cleanupLocalDeps(deps: SubscriberHost[], fn: () => void): void {
   if (deps.length === 1) {
     removeSubscriber(deps[0] as SubscriberHost, fn)
-    deps.length = 0
+    deps.pop()
   } else if (deps.length > 1) {
     for (let i = 0; i < deps.length; i++) removeSubscriber(deps[i] as SubscriberHost, fn)
     deps.length = 0
@@ -359,8 +359,13 @@ export function _bind(fn: () => void): () => void {
   const dispose = () => {
     if (disposed) return
     disposed = true
-    for (const h of deps) removeSubscriber(h, run)
-    deps.length = 0
+    if (deps.length === 1) {
+      removeSubscriber(deps[0] as SubscriberHost, run)
+      deps.pop()
+    } else {
+      for (const h of deps) removeSubscriber(h, run)
+      deps.length = 0
+    }
   }
 
   // Auto-register with scope so template bindings are disposed during teardown
@@ -433,10 +438,11 @@ export function renderEffect(fn: () => void): () => void {
     disposed = true
     if (deps.length === 1) {
       removeSubscriber(deps[0] as SubscriberHost, run)
+      deps.pop()
     } else {
       for (const h of deps) removeSubscriber(h, run)
+      deps.length = 0
     }
-    deps.length = 0
   }
 
   // Auto-register with scope so render effects are disposed during teardown

@@ -82,8 +82,8 @@ interface ComputedFn<T> {
    * exactly like `signal`. Eliminates one object allocation per computed.
    */
   _s1: (() => void) | null
-  /** @internal tracking subscriber Set — allocated on PROMOTION from `_s1` */
-  _s: Set<() => void> | null
+  /** @internal second inline subscriber (a function) OR the promoted Set — see `SubscriberHost` */
+  _s: Set<() => void> | (() => void) | null
   /** @internal single direct-updater inline slot — mirrors `signal._d1` */
   _d1: (() => void) | null
   /** @internal direct-updater Set — allocated on PROMOTION from `_d1` (≥2 subscribers) */

@@ -93,8 +93,8 @@ interface SignalFn<T> {
   _v: T
   /** @internal sole tracking subscriber — inline slot (see `SubscriberHost`) */
   _s1: (() => void) | null
-  /** @internal tracking subscriber Set — allocated on PROMOTION from `_s1` */
-  _s: Set<() => void> | null
+  /** @internal second inline subscriber (a function) OR the promoted Set — see `SubscriberHost` */
+  _s: Set<() => void> | (() => void) | null
   /** @internal direct updater single-subscriber fast slot — first subscriber lives here */
   _d1: (() => void) | null
   /** @internal direct updater Set — allocated on PROMOTION from `_d1` (≥2 subscribers) */
@@ -162,8 +162,10 @@ function _set(this: SignalFn<unknown>, newValue: unknown) {
   if (isBatching()) {
     if (_d1) enqueuePendingNotification(_d1)
     else if (_d) notifyDirect(_d)
-    if (_s1) enqueuePendingNotification(_s1)
-    else if (_s) notifySubscribers(_s)
+    if (_s1) {
+      enqueuePendingNotification(_s1)
+      if (_s) enqueuePendingNotification(_s as () => void)
+    } else if (_s) notifySubscribers(_s as Set<() => void>)
   } else {
     // INLINE batch window — no `batch(closure)` allocation, and the
     // notifications THIS write owns dispatch DIRECTLY instead of round-tripping
@@ -186,8 +188,19 @@ function _set(this: SignalFn<unknown>, newValue: unknown) {
       // to reach the sole subscriber — two throwaway objects on the hottest
       // path. The inline slot is a plain field read.
       if (_s1) {
-        _s1()
-      } else if (_s) notifySubscribers(_s)
+        // ONE inline subscriber dispatches directly (the historical fast path).
+        // TWO route through the pending queues exactly as a promoted Set does:
+        // the two-tier drain orders a `{ equals }` computed's refresh BEFORE an
+        // effect that reads it, which a direct pair of calls cannot promise,
+        // and it applies the Set path's cap-iteration rule (a listener added
+        // or removed by the first callback is not fired or is skipped now).
+        if (_s === null) {
+          _s1()
+        } else {
+          enqueuePendingNotification(_s1)
+          enqueuePendingNotification(_s as () => void)
+        }
+      } else if (_s) notifySubscribers(_s as Set<() => void>)
     } finally {
       closeInlineBatch()
     }
@@ -212,8 +225,10 @@ function _trigger(this: SignalFn<unknown>) {
   if (isBatching()) {
     if (_d1) enqueuePendingNotification(_d1)
     else if (_d) notifyDirect(_d)
-    if (_s1) enqueuePendingNotification(_s1)
-    else if (_s) notifySubscribers(_s)
+    if (_s1) {
+      enqueuePendingNotification(_s1)
+      if (_s) enqueuePendingNotification(_s as () => void)
+    } else if (_s) notifySubscribers(_s as Set<() => void>)
   } else {
     openInlineBatch()
     try {
@@ -221,8 +236,19 @@ function _trigger(this: SignalFn<unknown>) {
         _d1()
       } else if (_d) notifyDirect(_d)
       if (_s1) {
-        _s1()
-      } else if (_s) notifySubscribers(_s)
+        // ONE inline subscriber dispatches directly (the historical fast path).
+        // TWO route through the pending queues exactly as a promoted Set does:
+        // the two-tier drain orders a `{ equals }` computed's refresh BEFORE an
+        // effect that reads it, which a direct pair of calls cannot promise,
+        // and it applies the Set path's cap-iteration rule (a listener added
+        // or removed by the first callback is not fired or is skipped now).
+        if (_s === null) {
+          _s1()
+        } else {
+          enqueuePendingNotification(_s1)
+          enqueuePendingNotification(_s as () => void)
+        }
+      } else if (_s) notifySubscribers(_s as Set<() => void>)
     } finally {
       closeInlineBatch()
     }
@@ -251,11 +277,16 @@ function _subscribe(this: SignalFn<unknown>, listener: () => void): () => void {
  * `createStore`) cannot re-derive the check and miss a tier as the storage
  * evolves.
  */
+/** @internal Count the second tracking tier: a function is one subscriber, a Set its size. */
+export function _tierCount(s: Set<() => void> | (() => void) | null): number {
+  return s === null ? 0 : typeof s === 'function' ? 1 : s.size
+}
+
 export function _hasSubscribers<T>(sig: Signal<T> | (() => T)): boolean {
   const s = sig as unknown as SignalFn<T>
   return (
     s._s1 != null ||
-    (s._s != null && s._s.size > 0) ||
+    (s._s != null && (typeof s._s === 'function' || s._s.size > 0)) ||
     s._d1 != null ||
     (s._d != null && s._d.size > 0)
   )
@@ -317,12 +348,14 @@ export function _suspendSoleSubscriber<T>(sig: Signal<T>): SoleSubscriberToken |
   const s = sig as unknown as SignalFn<T>
   const s1 = s._s1
   if (s1 !== null) {
-    // Invariant `_s1 !== null => _s === null` makes this the whole story.
+    // Two inline subscribers is not "sole" — the caller takes its
+    // per-listener path (`_suspendSubscriber`).
+    if (s._s !== null) return null
     s._s1 = null
     return s1
   }
   const set = s._s
-  if (set === null || set.size !== 1) return null
+  if (set === null || typeof set === 'function' || set.size !== 1) return null
   s._s = null
   return set
 }
@@ -418,7 +451,7 @@ function _debug(this: SignalFn<unknown>): SignalDebugInfo<unknown> {
   return {
     name: this.label,
     value: this._v,
-    subscriberCount: (this._s1 !== null ? 1 : 0) + (this._s?.size ?? 0),
+    subscriberCount: (this._s1 !== null ? 1 : 0) + _tierCount(this._s),
   }
 }
 

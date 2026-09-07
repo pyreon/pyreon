@@ -61,6 +61,37 @@ if (process.env.NODE_ENV !== 'production') _mountingStack = []
  * This function is the hot path — all child types are handled inline to avoid
  * function call overhead in tight render loops (1000+ calls per list render).
  */
+/**
+ * Mount a STATIC child (a value, never an accessor) as part of a freshly built
+ * element — the same depth window `mountElement` gives its own children, so
+ * descendants return effect-only cleanups and their DOM leaves with the
+ * ancestor as a unit instead of one `removeChild` each.
+ *
+ * Exists for the compiled template's slots and holes: `_tpl` binds run outside
+ * `mountElement`, so `<div class="list">{children}</div>` — the ordinary list
+ * container, a static array of 500 component rows — used to hand every row a
+ * real remover. On teardown that was 500 individual `removeChild` calls, each
+ * a style-invalidating DOM mutation on a live tree, before the container was
+ * itself removed: 64% of the dispose-500 board's Pyreon time (43µs of 66µs
+ * on-CPU, 116µs wall against 26µs for the same rows mounted through `h()`).
+ *
+ * Only for values. A FUNCTION child is a reactive boundary that re-renders its
+ * range and must own real removers (`mountReactive` resets the depth itself),
+ * so callers keep it on `mountChild`.
+ */
+export function mountChildAsUnit(
+  child: VNodeChild | VNodeChild[],
+  parent: Node,
+  anchor: Node | null,
+): Cleanup {
+  _elementDepth++
+  try {
+    return mountChild(child, parent, anchor)
+  } finally {
+    _elementDepth--
+  }
+}
+
 export function mountChild(
   child: VNodeChild | VNodeChild[] | (() => VNodeChild | VNodeChild[]),
   parent: Node,
