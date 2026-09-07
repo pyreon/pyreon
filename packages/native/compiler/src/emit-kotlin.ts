@@ -5,6 +5,16 @@
 // `derivedStateOf { ... }`, JSX elements to Composable function calls.
 
 import {
+  HANDLED_FLOW_EDGE_FIELDS,
+  HANDLED_FLOW_NODE_FIELDS,
+  LOWERED_FLOW_METHODS,
+  LOWERED_FLOW_PROPERTY_READS,
+  droppedFlowFieldsWarning,
+  flowFitViewWarning,
+  flowSignalWriteWarning,
+  unloweredFlowMemberWarning,
+} from './flow-lowering'
+import {
   ICON_MAP,
   isCanonicalPrimitive,
   FIELD_KEYBOARD_KOTLIN,
@@ -3097,8 +3107,9 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
  * through to generic emission — correct for a non-literal argument (an
  * identifier already holding a `PyreonFlowNode`).
  */
-function kotlinFlowNodeLiteral(arg: ExprIR): string | null {
+function kotlinFlowNodeLiteral(arg: ExprIR, flowName: string): string | null {
   if (arg.kind !== 'object') return null
+  warnDroppedFlowFieldsKt(`createFlow binding \`${flowName}\` addNode(...)`, 'node', arg)
   const field = (n: string): ExprIR | undefined => arg.fields.find((f) => f.name === n)?.value
   const idExpr = field('id')
   const posExpr = field('position')
@@ -3122,8 +3133,9 @@ function kotlinFlowNodeLiteral(arg: ExprIR): string | null {
 }
 
 /** `addEdge({...})` — the `PyreonFlowEdge` twin of `kotlinFlowNodeLiteral`. */
-function kotlinFlowEdgeLiteral(arg: ExprIR): string | null {
+function kotlinFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
   if (arg.kind !== 'object') return null
+  warnDroppedFlowFieldsKt(`createFlow binding \`${flowName}\` addEdge(...)`, 'edge', arg)
   const field = (n: string): ExprIR | undefined => arg.fields.find((f) => f.name === n)?.value
   const idExpr = field('id')
   const sourceExpr = field('source')
@@ -3141,6 +3153,14 @@ function kotlinFlowEdgeLiteral(arg: ExprIR): string | null {
     ...(animatedExpr ? [`animated = ${emitKotlinExpr(animatedExpr, 0)}`] : []),
   ]
   return `PyreonFlowEdge(${parts.join(', ')})`
+}
+
+/** Names every literal field the native node/edge type does not carry. */
+function warnDroppedFlowFieldsKt(site: string, kind: 'node' | 'edge', lit: ExprIR): void {
+  if (lit.kind !== 'object') return
+  const handled = kind === 'node' ? HANDLED_FLOW_NODE_FIELDS : HANDLED_FLOW_EDGE_FIELDS
+  const dropped = lit.fields.map((f) => f.name).filter((n) => !handled.has(n))
+  if (dropped.length > 0) _emitWarnings.push(droppedFlowFieldsWarning(site, kind, dropped))
 }
 
 /** `updateNodePosition(id, {x, y})` — the `PyreonXYPosition` twin. */
@@ -4442,13 +4462,20 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         e.callee.object.kind === 'identifier' &&
         _flowStateNamesKt.has(e.callee.object.name)
       ) {
-        if (e.callee.property === 'addNode' && e.args.length === 1) {
-          const lit = kotlinFlowNodeLiteral(e.args[0]!)
-          if (lit !== null) return `${kotlinIdent(e.callee.object.name)}.addNode(${lit})`
+        const flowName = e.callee.object.name
+        const member = e.callee.property
+        // Nothing silent inside the boundary — mirrors emit-swift.ts exactly.
+        if (!LOWERED_FLOW_METHODS.has(member) && !LOWERED_FLOW_PROPERTY_READS.has(member)) {
+          _emitWarnings.push(unloweredFlowMemberWarning(flowName, member))
         }
-        if (e.callee.property === 'addEdge' && e.args.length === 1) {
-          const lit = kotlinFlowEdgeLiteral(e.args[0]!)
-          if (lit !== null) return `${kotlinIdent(e.callee.object.name)}.addEdge(${lit})`
+        if (member === 'fitView') _emitWarnings.push(flowFitViewWarning(flowName))
+        if (member === 'addNode' && e.args.length === 1) {
+          const lit = kotlinFlowNodeLiteral(e.args[0]!, flowName)
+          if (lit !== null) return `${kotlinIdent(flowName)}.addNode(${lit})`
+        }
+        if (member === 'addEdge' && e.args.length === 1) {
+          const lit = kotlinFlowEdgeLiteral(e.args[0]!, flowName)
+          if (lit !== null) return `${kotlinIdent(flowName)}.addEdge(${lit})`
         }
         if (e.callee.property === 'updateNodePosition' && e.args.length === 2) {
           const lit = kotlinFlowPositionLiteral(e.args[1]!)
@@ -4456,6 +4483,17 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             return `${kotlinIdent(e.callee.object.name)}.updateNodePosition(${emitKotlinExpr(e.args[0]!, indent)}, ${lit})`
           }
         }
+      }
+      // A signal WRITE on a flow-state property — read-only natively; name it.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'member' &&
+        e.callee.object.object.kind === 'identifier' &&
+        _flowStateNamesKt.has(e.callee.object.object.name) &&
+        LOWERED_FLOW_PROPERTY_READS.has(e.callee.object.property) &&
+        (e.callee.property === 'set' || e.callee.property === 'update')
+      ) {
+        _emitWarnings.push(flowSignalWriteWarning(e.callee.object.object.name, e.callee.object.property, e.callee.property))
       }
       // PyreonFlowState property reads drop parens — web `flow.nodes()` /
       // `flow.edges()` / `flow.viewport()` / `flow.zoom()` are Signal/Computed

@@ -9,6 +9,16 @@
 // computed properties. Phase 1 grows a real inference pass.
 
 import {
+  HANDLED_FLOW_EDGE_FIELDS,
+  HANDLED_FLOW_NODE_FIELDS,
+  LOWERED_FLOW_METHODS,
+  LOWERED_FLOW_PROPERTY_READS,
+  droppedFlowFieldsWarning,
+  flowFitViewWarning,
+  flowSignalWriteWarning,
+  unloweredFlowMemberWarning,
+} from './flow-lowering'
+import {
   ICON_MAP,
   isCanonicalPrimitive,
   FIELD_KEYBOARD_SWIFT,
@@ -3870,8 +3880,9 @@ function emitSwiftDecl(
  * which is correct for the common non-literal case (an identifier already
  * holding a `PyreonFlowNode`).
  */
-function swiftFlowNodeLiteral(arg: ExprIR): string | null {
+function swiftFlowNodeLiteral(arg: ExprIR, flowName: string): string | null {
   if (arg.kind !== 'object') return null
+  warnDroppedFlowFields(`createFlow binding \`${flowName}\` addNode(...)`, 'node', arg)
   const field = (n: string): ExprIR | undefined => arg.fields.find((f) => f.name === n)?.value
   const idExpr = field('id')
   const posExpr = field('position')
@@ -3895,8 +3906,9 @@ function swiftFlowNodeLiteral(arg: ExprIR): string | null {
 }
 
 /** `addEdge({...})` — the `PyreonFlowEdge` twin of `swiftFlowNodeLiteral`. */
-function swiftFlowEdgeLiteral(arg: ExprIR): string | null {
+function swiftFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
   if (arg.kind !== 'object') return null
+  warnDroppedFlowFields(`createFlow binding \`${flowName}\` addEdge(...)`, 'edge', arg)
   const field = (n: string): ExprIR | undefined => arg.fields.find((f) => f.name === n)?.value
   const idExpr = field('id')
   const sourceExpr = field('source')
@@ -3914,6 +3926,19 @@ function swiftFlowEdgeLiteral(arg: ExprIR): string | null {
     ...(animatedExpr ? [`animated: ${emitSwiftExpr(animatedExpr, 0)}`] : []),
   ]
   return `PyreonFlowEdge(${parts.join(', ')})`
+}
+
+/** Names every literal field the native node/edge type does not carry. */
+function warnDroppedFlowFields(site: string, kind: 'node' | 'edge', lit: ExprIR): void {
+  if (lit.kind !== 'object') return
+  const handled = kind === 'node' ? HANDLED_FLOW_NODE_FIELDS : HANDLED_FLOW_EDGE_FIELDS
+  const dropped = lit.fields.map((f) => f.name).filter((n) => !handled.has(n))
+  if (dropped.length > 0) _emitWarnings.push(droppedFlowFieldsWarning(site, kind, dropped))
+}
+
+/** `undefined` / `null` in a Swift argument position. */
+function isNilArg(x: ExprIR): boolean {
+  return (x.kind === 'identifier' && x.name === 'undefined') || (x.kind as string) === 'null' || (x.kind as string) === 'undefined'
 }
 
 /** `updateNodePosition(id, {x, y})` — the `PyreonXYPosition` twin. */
@@ -5328,13 +5353,34 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         e.callee.object.kind === 'identifier' &&
         _flowStateNamesSwift.has(e.callee.object.name)
       ) {
-        if (e.callee.property === 'addNode' && e.args.length === 1) {
-          const lit = swiftFlowNodeLiteral(e.args[0]!)
-          if (lit !== null) return `${swiftIdent(e.callee.object.name)}.addNode(${lit})`
+        const flowName = e.callee.object.name
+        const member = e.callee.property
+        // Nothing silent inside the boundary: every member that is not in the
+        // v1 surface is NAMED here (it is still emitted as written — the native
+        // build is where it fails, but now the author heard about it first).
+        if (!LOWERED_FLOW_METHODS.has(member) && !LOWERED_FLOW_PROPERTY_READS.has(member)) {
+          _emitWarnings.push(unloweredFlowMemberWarning(flowName, member))
         }
-        if (e.callee.property === 'addEdge' && e.args.length === 1) {
-          const lit = swiftFlowEdgeLiteral(e.args[0]!)
-          if (lit !== null) return `${swiftIdent(e.callee.object.name)}.addEdge(${lit})`
+        if (member === 'fitView') _emitWarnings.push(flowFitViewWarning(flowName))
+        // Swift's labeled parameters: the web call is positional, the port's
+        // second parameter is labeled — an unlabeled emit fails ONLY on iOS.
+        if ((member === 'selectNode' || member === 'selectEdge') && e.args.length === 2) {
+          return `${swiftIdent(flowName)}.${member}(${emitSwiftExpr(e.args[0]!, indent)}, additive: ${emitSwiftExpr(e.args[1]!, indent)})`
+        }
+        if (member === 'fitView' && e.args.length >= 1) {
+          const first = e.args[0]!
+          const ids = isNilArg(first) ? 'nil' : emitSwiftExpr(first, indent)
+          return e.args.length === 2
+            ? `${swiftIdent(flowName)}.fitView(${ids}, padding: ${emitSwiftExpr(e.args[1]!, indent)})`
+            : `${swiftIdent(flowName)}.fitView(${ids})`
+        }
+        if (member === 'addNode' && e.args.length === 1) {
+          const lit = swiftFlowNodeLiteral(e.args[0]!, flowName)
+          if (lit !== null) return `${swiftIdent(flowName)}.addNode(${lit})`
+        }
+        if (member === 'addEdge' && e.args.length === 1) {
+          const lit = swiftFlowEdgeLiteral(e.args[0]!, flowName)
+          if (lit !== null) return `${swiftIdent(flowName)}.addEdge(${lit})`
         }
         if (e.callee.property === 'updateNodePosition' && e.args.length === 2) {
           const lit = swiftFlowPositionLiteral(e.args[1]!)
@@ -5342,6 +5388,18 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             return `${swiftIdent(e.callee.object.name)}.updateNodePosition(${emitSwiftExpr(e.args[0]!, indent)}, ${lit})`
           }
         }
+      }
+      // A signal WRITE on a flow-state property (`flow.nodes.set(...)`): the
+      // native port exposes the collections read-only — name it.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'member' &&
+        e.callee.object.object.kind === 'identifier' &&
+        _flowStateNamesSwift.has(e.callee.object.object.name) &&
+        LOWERED_FLOW_PROPERTY_READS.has(e.callee.object.property) &&
+        (e.callee.property === 'set' || e.callee.property === 'update')
+      ) {
+        _emitWarnings.push(flowSignalWriteWarning(e.callee.object.object.name, e.callee.object.property, e.callee.property))
       }
       // PyreonFlowState PROPERTY reads: web `flow.nodes()` / `flow.edges()` /
       // `flow.viewport()` / `flow.zoom()` are Signal/Computed accessor CALLS —
