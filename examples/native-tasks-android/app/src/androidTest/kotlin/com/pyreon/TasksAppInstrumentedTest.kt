@@ -487,6 +487,24 @@ class TasksAppInstrumentedTest {
         // ErrorBoundary wraps a fetch to a MISSING path → rejects →
         // hasError true → fallback renders. waitUntil because the fetch
         // crosses a real network hop.
+        // Flow-native proof: createFlow → PyreonFlowState on the device. Value
+        // assertions on what the NATIVE engine produced. performScrollTo before
+        // every click — the page is a Column(verticalScroll) and a tap past the
+        // fold lands on nothing (the repo's Compose rule).
+        composeRule.onNodeWithTag("tasks-flow").performScrollTo().performClick()
+        assertTagDisplayed("flow-page", "after tasks-flow (/tasks -> /flow)")
+        composeRule.onNodeWithTag("flow-node-count").assertTextEquals("2")
+        composeRule.onNodeWithTag("flow-edge-count").assertTextEquals("1")
+        composeRule.onNodeWithTag("flow-zoom").assertTextEquals("zoom 1.0")
+        composeRule.onNodeWithTag("flow-add").performScrollTo().performClick()
+        composeRule.onNodeWithTag("flow-node-count").assertTextEquals("3")
+        composeRule.onNodeWithTag("flow-select").performScrollTo().performClick()
+        composeRule.onNodeWithTag("flow-selected-count").assertTextEquals("1")
+        composeRule.onNodeWithTag("flow-zoom-in").performScrollTo().performClick()
+        composeRule.onNodeWithTag("flow-zoom").assertTextEquals("zoom 1.2")
+        composeRule.onNodeWithTag("flow-back").performScrollTo().performClick()
+        assertTagDisplayed("tasks-page", "after flow-back (/flow -> /tasks)")
+
         composeRule
             .onNodeWithTag("tasks-lifecycle")
             .performClick()

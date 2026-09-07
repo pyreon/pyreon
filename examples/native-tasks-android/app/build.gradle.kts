@@ -49,6 +49,8 @@ android {
                 srcDir("../../../packages/fundamentals/permissions/native/kotlin")
                 srcDir("../../../packages/fundamentals/query/native/kotlin")
                 srcDir("../../../packages/fundamentals/hooks/native/kotlin")
+                // Flow-native device proof (FlowScreen): PyreonFlowState + the edge geometry/canvas.
+                srcDir("../../../packages/fundamentals/flow/native/kotlin")
                 // Added with the ToolkitScreen. The stub gate knows these types
                 // and the real Gradle build does not until their co-source is
                 // on the source set — which is exactly the gap a stub cannot
