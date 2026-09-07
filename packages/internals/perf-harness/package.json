@@ -34,6 +34,6 @@
     "@pyreon/unistyle": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
     "happy-dom": "^20.11.6",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.0"
   }
 }
