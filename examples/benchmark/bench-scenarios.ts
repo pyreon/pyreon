@@ -135,6 +135,11 @@ const SCENARIOS: { id: string; label: string; frameworks: string[] }[] = [
       'Svelte 5',
     ].filter((f) => (NARROW ? NARROW.includes(f) : true)),
   },
+  {
+    id: 'flow',
+    label: 'flow diagram — @pyreon/flow vs React Flow 12 (500 nodes / 499 edges)',
+    frameworks: ['Pyreon', 'React Flow 12'].filter((f) => (NARROW ? NARROW.includes(f) : true)),
+  },
 ]
 
 /**

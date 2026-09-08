@@ -16,21 +16,24 @@
     "bench:hydration": "bun bench-hydration.ts",
     "bench:apppage": "bun bench-apppage.ts",
     "bench:scenarios": "bun bench-scenarios.ts",
-    "bench:crossover": "bun bench-crossover.ts"
+    "bench:crossover": "bun bench-crossover.ts",
+    "bench:flow": "bun bench-scenarios.ts --scenario flow"
   },
   "dependencies": {
     "@pyreon/core": "workspace:*",
+    "@pyreon/flow": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
+    "@vue/server-renderer": "^3.5.42",
+    "@xyflow/react": "^12.8.0",
+    "octane": "0.2.2",
     "preact": "^10.29.8",
+    "preact-render-to-string": "^6.7.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "solid-js": "^1.9.15",
     "svelte": "^5.57.0",
-    "vue": "^3.5.42",
-    "octane": "0.2.2",
-    "preact-render-to-string": "^6.7.0",
-    "@vue/server-renderer": "^3.5.42"
+    "vue": "^3.5.42"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.11.6",

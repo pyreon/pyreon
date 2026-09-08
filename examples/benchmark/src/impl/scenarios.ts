@@ -8,6 +8,7 @@
 import type { BenchSuite } from '../runner'
 import { DBMON_FRAMEWORKS, runDbmon } from './scenario-dbmon'
 import { EFFECTS_FRAMEWORKS, runEffects } from './scenario-effects'
+import { FLOW_FRAMEWORKS, runFlow } from './scenario-flow'
 import { MEMO_FRAMEWORKS, runMemo } from './scenario-memo'
 import { runTree, TREE_FRAMEWORKS } from './scenario-tree'
 
@@ -42,6 +43,12 @@ export const SCENARIOS: ScenarioDef[] = [
     label: 'memoization wall — blocked vs passthrough derived update',
     frameworks: MEMO_FRAMEWORKS,
     run: runMemo,
+  },
+  {
+    id: 'flow',
+    label: 'flow diagram — @pyreon/flow vs React Flow 12 (500 nodes)',
+    frameworks: FLOW_FRAMEWORKS,
+    run: runFlow,
   },
 ]
 
