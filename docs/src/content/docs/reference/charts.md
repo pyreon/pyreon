@@ -357,7 +357,7 @@ const candles: Candle[] = [{ t: 1704067200000, close: 101 }, { t: 1704153600000,
 <T>(options: ChartToSvgOptions<T>) => string
 ```
 
-Render a chart to a standalone `<svg>` STRING. Pure — no DOM, no canvas, no measurement context — so it runs in an SSG build, a serverless function or an email pipeline, where a canvas surface does not exist. Output is deterministic (coordinates rounded to two decimals, negative zero normalised), which makes an SVG snapshot a real assertion about geometry rather than a pixel flake. Labels are XML-escaped. The `<svg>` is `role="img"` named by its `<title>`; given a title and no description, the long form is DERIVED from the data via `describeChart`. Text width comes from `measureApprox` by default — an honest estimate, since a server has no font metrics; pass `canvasMeasure(ctx, font)` in a browser when label widths must be exact. The whole family has the same one-call form: `pieToSvg`, `gaugeToSvg`, `radarToSvg`, `candlestickToSvg`, `heatmapToSvg` — every chart type the engine draws renders on a server.
+Render a chart to a standalone `<svg>` STRING. Pure — no DOM, no canvas, no measurement context — so it runs in an SSG build, a serverless function or an email pipeline, where a canvas surface does not exist. Output is deterministic (coordinates rounded to two decimals, negative zero normalised), which makes an SVG snapshot a real assertion about geometry rather than a pixel flake. Labels are XML-escaped. The `<svg>` is `role="img"` named by its `<title>`; given a title and no description, the long form is DERIVED from the data via `describeChart`. Text width comes from `measureApprox` by default — an honest estimate, since a server has no font metrics; pass `canvasMeasure(ctx, font)` in a browser when label widths must be exact. The whole family has the same one-call form — `pieToSvg`, `gaugeToSvg`, `radarToSvg`, `candlestickToSvg`, `heatmapToSvg`, `funnelToSvg`, `treemapToSvg`, `sunburstToSvg`, `treeToSvg`, `riverToSvg`, `polarToSvg`, `sankeyToSvg`, `graphToSvg`, `calendarToSvg`, `ganttToSvg`, `parallelToSvg`, `boxplotToSvg` — so every chart type the engine draws renders on a server. Each takes the same `theme` its canvas host takes, and reads the same fields from it, so the static export matches the chart the browser paints.
 
 **Example**
 
@@ -382,6 +382,7 @@ const svg = chartToSvg({
 - Passing a title and assuming that is enough for a screen reader — a graphic whose only accessible text is its name says a chart exists and nothing about what it shows; leave `description` unset to get the derived one, or write your own
 - Rendering several charts into one page without changing `svg.idPrefix` — the `<title>`/`<desc>` ids collide and `aria-labelledby` resolves to the first one
 - Reaching for it to get a PNG — it emits vector markup; rasterize with the canvas backend (`paint`) or a downstream converter
+- Omitting `theme` on a themed app and expecting the export to match — a helper given no theme renders the LIGHT default, so a dark page ships a light-mode chart into its own markup; pass the same theme the host has
 
 **See also:** `PlotChart`
 
