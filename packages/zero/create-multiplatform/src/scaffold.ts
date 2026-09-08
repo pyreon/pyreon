@@ -292,6 +292,15 @@ targets:
       - path: generated
         type: group
         optional: true
+      # Co-located Swift from feature packages (@pyreon/form, /store, ...),
+      # staged here by \`pyreon-native wire --ios-out\` on every build.
+      # Android reads its source roots at Gradle configure time; project.yml
+      # is static, so a package installed AFTER \`xcodegen generate\` could
+      # never be picked up. Staging into one fixed group makes the path
+      # constant and the contents current.
+      - path: PyreonNative
+        type: group
+        optional: true
       # WebView viz bundle (\`web/\` → \`pyreon-native stage-web\`). A
       # \`type: group\` flattens the staged html/js/css into the app
       # bundle's resource root, so PyreonWebView's
@@ -388,6 +397,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "\${SCRIPT_DIR}/.." && pwd)"
 mkdir -p "\${PROJECT_DIR}/ios/generated"
+# Stage co-located Swift (@pyreon/form, /store, ...) into ios/PyreonNative,
+# which project.yml lists as a static source group. Runs before the compile so
+# a package installed since the last build is present for this one.
+npx pyreon-native wire --ios-out="\${PROJECT_DIR}/ios/PyreonNative"
+
 npx pyreon-native build --target=ios --source="\${PROJECT_DIR}/src" --out="\${PROJECT_DIR}/ios/generated"
 # Asset pipeline: shared assets/ → Assets.xcassets (skipped when empty).
 if [[ -d "\${PROJECT_DIR}/assets" ]]; then

@@ -16,7 +16,7 @@ import { materializeAssets, type AssetTarget } from './assets'
 import { stageWebBundle, webBundleOutSubdir, type WebBundleTarget } from './web-bundle'
 import { startLspServer } from './lsp'
 import { scanFontDir } from './fonts'
-import { renderAndroidSrcDirsFile, wireApp } from './wire'
+import { renderAndroidSrcDirsFile, stageIosSources, wireApp } from './wire'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import type { TargetLanguage } from '@pyreon/native-compiler'
@@ -43,6 +43,7 @@ interface ParsedArgs {
   app?: string
   /** `wire` only: write the Android srcDirs list to this file. */
   androidOut?: string
+  iosOut?: string
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -93,6 +94,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     else if (key === 'fonts') out.fonts = value
     else if (key === 'app') out.app = value
     else if (key === 'android-out') out.androidOut = value
+    else if (key === 'ios-out') out.iosOut = value
   }
   return out
 }
@@ -113,7 +115,7 @@ Usage:
   pyreon-native check  --lsp   (stdio LSP server — editor diagnostics)
   pyreon-native assets --target=<ios|android|web> --source=<dir> --out=<dir>
   pyreon-native stage-web --target=<ios|android> --source=<dir> --out=<dir>
-  pyreon-native wire   [--app=<dir>] [--android-out=<file>] [--json]
+  pyreon-native wire   [--app=<dir>] [--android-out=<file>] [--ios-out=<dir>] [--json]
 
 check is the fast authoring-loop command: it runs the PMTC compiler for
 both targets IN MEMORY (no build, no xcodegen/gradle, no file writes) and
@@ -372,6 +374,8 @@ function runStageWeb(parsed: ParsedArgs): number {
  *
  *   --app=<dir>            App dir to resolve from (default cwd).
  *   --android-out=<file>   Write the Gradle srcDirs list to this file.
+ *   --ios-out=<dir>        Stage co-located Swift sources into this dir, which
+ *                          the Xcode project lists as one static source group.
  *   --json                 Print the full wiring as JSON (machine/CI).
  *
  * A DECLARED-but-missing native dir is a real misconfiguration → exit 2.
@@ -395,9 +399,17 @@ function runWire(parsed: ParsedArgs): number {
     }
   }
 
+  if (parsed.iosOut) {
+    const outDir = resolve(appDir, parsed.iosOut)
+    const staged = stageIosSources(wiring, outDir)
+    if (!parsed.json) {
+      console.log(`[pyreon-native] staged ${staged} co-located Swift file(s) → ${outDir}`)
+    }
+  }
+
   if (parsed.json) {
     console.log(JSON.stringify(wiring, null, 2))
-  } else if (!parsed.androidOut) {
+  } else if (!parsed.androidOut && !parsed.iosOut) {
     console.log(`[pyreon-native] resolved native sources for ${appDir}:`)
     console.log(`  Android srcDirs (${wiring.androidSrcDirs.length}):`)
     for (const d of wiring.androidSrcDirs) console.log(`    ${d}`)
