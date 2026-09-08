@@ -166,15 +166,16 @@ export function chartTable(input: A11yInput): A11yTable {
   for (const s of input.series) {
     const other: Double[] = s.values2 ?? []
     const rs: Double[] = s.rValues ?? []
+    // Independent columns, not a chain: a series carrying BOTH a second
+    // bound and a size channel must contribute both, and an `else if` here
+    // silently dropped the size for any series that also had bounds.
     if (other.length > 0) {
       headers.push(`${s.label} (upper)`)
       headers.push(`${s.label} (lower)`)
-    } else if (rs.length > 0) {
-      headers.push(s.label)
-      headers.push(`${s.label} (size)`)
     } else {
       headers.push(s.label)
     }
+    if (rs.length > 0) headers.push(`${s.label} (size)`)
   }
 
   let n = input.categories.length
@@ -190,10 +191,11 @@ export function chartTable(input: A11yInput): A11yTable {
       const other: Double[] = s.values2 ?? []
       const rs: Double[] = s.rValues ?? []
       const two = other.length > 0
-      const sized = !two && rs.length > 0
+      const sized = rs.length > 0
       if (i >= s.values.length) {
         row.push('')
-        if (two || sized) row.push('')
+        if (two) row.push('')
+        if (sized) row.push('')
         continue
       }
       const v = s.values[i]!
@@ -205,7 +207,8 @@ export function chartTable(input: A11yInput): A11yTable {
           const v2 = other[i]!
           row.push(v2 !== v2 ? '' : fmt(v2))
         }
-      } else if (sized) {
+      }
+      if (sized) {
         if (i >= rs.length) row.push('')
         else {
           const r = rs[i]!

@@ -8501,12 +8501,10 @@ public func chartTable(_ input: A11yInput) -> A11yTable {
         headers.append("\(s.label) (upper)")
         headers.append("\(s.label) (lower)")
       } else {
-        if rs.count > 0 {
-          headers.append(s.label)
-          headers.append("\(s.label) (size)")
-        } else {
-          headers.append(s.label)
-        }
+        headers.append(s.label)
+      }
+      if rs.count > 0 {
+        headers.append("\(s.label) (size)")
       }
     }
     var n = input.categories.count
@@ -8522,10 +8520,13 @@ public func chartTable(_ input: A11yInput) -> A11yTable {
         let other = (s.values2 ?? [])
         let rs = (s.rValues ?? [])
         let two = other.count > 0
-        let sized = !two && rs.count > 0
+        let sized = rs.count > 0
         if i >= s.values.count {
           row.append("")
-          if two || sized {
+          if two {
+            row.append("")
+          }
+          if sized {
             row.append("")
           }
           continue
@@ -8539,14 +8540,13 @@ public func chartTable(_ input: A11yInput) -> A11yTable {
             let v2 = other[i]
             row.append(v2 != v2 ? "" : fmt(v2))
           }
-        } else {
-          if sized {
-            if i >= rs.count {
-              row.append("")
-            } else {
-              let r = rs[i]
-              row.append(r != r ? "" : fmt(r))
-            }
+        }
+        if sized {
+          if i >= rs.count {
+            row.append("")
+          } else {
+            let r = rs[i]
+            row.append(r != r ? "" : fmt(r))
           }
         }
       }

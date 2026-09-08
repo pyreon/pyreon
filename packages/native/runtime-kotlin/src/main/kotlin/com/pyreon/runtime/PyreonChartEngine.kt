@@ -6815,12 +6815,10 @@ fun chartTable(input: A11yInput): A11yTable {
         headers.add("${s.label} (upper)")
         headers.add("${s.label} (lower)")
       } else {
-        if (rs.length > 0) {
-          headers.add(s.label)
-          headers.add("${s.label} (size)")
-        } else {
-          headers.add(s.label)
-        }
+        headers.add(s.label)
+      }
+      if (rs.length > 0) {
+        headers.add("${s.label} (size)")
       }
     }
     var n = input.categories.length
@@ -6836,10 +6834,13 @@ fun chartTable(input: A11yInput): A11yTable {
         val other = (s.values2 ?: listOf())
         val rs = (s.rValues ?: listOf())
         val two = other.length > 0
-        val sized = !two && rs.length > 0
+        val sized = rs.length > 0
         if (i >= s.values.length) {
           row.add("")
-          if (two || sized) {
+          if (two) {
+            row.add("")
+          }
+          if (sized) {
             row.add("")
           }
           continue
@@ -6853,14 +6854,13 @@ fun chartTable(input: A11yInput): A11yTable {
             val v2 = other[i]
             row.add(if (v2 != v2) "" else fmt(v2))
           }
-        } else {
-          if (sized) {
-            if (i >= rs.length) {
-              row.add("")
-            } else {
-              val r = rs[i]
-              row.add(if (r != r) "" else fmt(r))
-            }
+        }
+        if (sized) {
+          if (i >= rs.length) {
+            row.add("")
+          } else {
+            val r = rs[i]
+            row.add(if (r != r) "" else fmt(r))
           }
         }
       }
