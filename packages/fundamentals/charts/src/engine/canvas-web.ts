@@ -16,11 +16,22 @@ import type { ChartGradient, DrawCmd, MeasureText, Pt } from './types'
  * how every later label renders.
  */
 export function canvasMeasure(ctx: CanvasRenderingContext2D, fontFamily: string): MeasureText {
+  // Memoized per measurer: a frame measures every tick label, every legend
+  // entry and every preset button, and a hover re-measures the same strings.
+  // `measureText` is a real layout call in Chromium; the cache turns the
+  // repeats into a Map lookup. Bounded, and the bound is per FONT — a new
+  // family or a new context gets a new measurer and a new cache.
+  const cache = new Map<string, number>()
   return (text, fontSize) => {
+    const key = fontSize + '|' + text
+    const hit = cache.get(key)
+    if (hit !== undefined) return hit
     const prev = ctx.font
     ctx.font = `${fontSize}px ${fontFamily}`
     const w = ctx.measureText(text).width
     ctx.font = prev
+    if (cache.size >= 4096) cache.clear()
+    cache.set(key, w)
     return w
   }
 }

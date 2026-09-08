@@ -36,6 +36,18 @@ export function TreeChart(props: TreeChartProps): VNode {
       props.onSelectIndex?.(hitTreeIndex(layout, px, py, props.tree?.symbolSize))
     },
     tooltip: (layout, px, py) => orNull(treeTip(layout, px, py, props.tree?.symbolSize)),
+    pick: (layout, i) => {
+      const node = layout.nodes[i]
+      if (node === undefined) return
+      props.onSelect?.(node)
+      props.onSelectIndex?.(i)
+    },
+    focusRect: (layout, i) => {
+      const node = layout.nodes[i]
+      if (node === undefined) return null
+      const r = (props.tree?.symbolSize ?? 8.0) / 2.0 + 3.0
+      return { x: node.at.x - r, y: node.at.y - r, w: r * 2.0, h: r * 2.0 }
+    },
     a11y: (layout) => ({
       title: props.title,
       categories: layout.nodes.map((n) => n.name),

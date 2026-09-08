@@ -31,15 +31,22 @@ describe('marks', () => {
   })
 
   /**
-   * A NaN in the domain makes every scale NaN, and the chart vanishes with
-   * nothing to trace it by. Zero is visibly wrong at the right datum, which is
-   * the better failure — and the reason this is a substitution, not a throw.
+   * A missing measurement is a GAP, not a zero: the engine skips the bar,
+   * breaks the line and leaves it out of the domain, so the chart never states
+   * a value nobody measured. `null`/`undefined` from a sparse row land here too.
    */
-  it('substitutes zero for a non-finite accessor result', () => {
+  it('keeps a non-finite accessor result as a gap (NaN)', () => {
     const [s] = resolveMarks(DATA, [bars<Row>(() => Number.NaN)])
-    expect(s!.values).toEqual([0, 0])
+    expect(s!.values.every((v) => Number.isNaN(v))).toBe(true)
     const [inf] = resolveMarks(DATA, [bars<Row>(() => Number.POSITIVE_INFINITY)])
-    expect(inf!.values).toEqual([0, 0])
+    expect(inf!.values.every((v) => Number.isNaN(v))).toBe(true)
+    const [nul] = resolveMarks(DATA, [bars<Row>(() => null as unknown as number)])
+    expect(nul!.values.every((v) => Number.isNaN(v))).toBe(true)
+  })
+
+  it('carries a line dash through to the series', () => {
+    const [d] = resolveMarks(DATA, [line<Row>((x) => x.revenue, { dash: [4, 2] })])
+    expect(d!.dash).toEqual([4, 2])
   })
 
   it('applies option defaults and overrides', () => {

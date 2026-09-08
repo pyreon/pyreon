@@ -44,6 +44,12 @@ export function SunburstChart(props: SunburstChartProps): VNode {
       props.onSelectIndex?.(hitSunburstIndex(g.arcs, g.center, px, py))
     },
     tooltip: (g, px, py) => orNull(sunburstTip(g.arcs, g.center, px, py)),
+    pick: (g, i) => {
+      const leaf = g.arcs.filter((a) => a.leaf)[i]
+      if (leaf === undefined) return
+      props.onSelect?.(leaf)
+      props.onSelectIndex?.(g.arcs.indexOf(leaf))
+    },
     a11y: (g) => {
       const leaves = g.arcs.filter((a) => a.leaf)
       return {

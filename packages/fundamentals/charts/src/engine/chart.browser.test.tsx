@@ -373,7 +373,7 @@ describe('legend, stacking and tooltip in a real browser', () => {
       const canvas = container.querySelector('canvas')!
       const box = canvas.getBoundingClientRect()
       canvas.dispatchEvent(
-        new MouseEvent('mousemove', {
+        new PointerEvent('pointermove', {
           bubbles: true, clientX: box.left + 264, clientY: box.top + 150,
         }),
       )
@@ -390,12 +390,12 @@ describe('legend, stacking and tooltip in a real browser', () => {
       const canvas = container.querySelector('canvas')!
       const box = canvas.getBoundingClientRect()
       canvas.dispatchEvent(
-        new MouseEvent('mousemove', {
+        new PointerEvent('pointermove', {
           bubbles: true, clientX: box.left + 264, clientY: box.top + 150,
         }),
       )
       await flush()
-      canvas.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }))
+      canvas.dispatchEvent(new PointerEvent('pointerleave', { bubbles: true }))
       await flush()
       const tip = query<HTMLElement>(container, '[data-pyreon-chart-tooltip]')
       expect(tip.style.display).toBe('none')

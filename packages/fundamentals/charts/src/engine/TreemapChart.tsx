@@ -34,6 +34,14 @@ export function TreemapChart(props: TreemapChartProps): VNode {
       props.onSelectIndex?.(hitTreemapIndex(cells, px, py))
     },
     tooltip: (cells, px, py) => orNull(treemapTip(cells, px, py)),
+    // The keyboard walks the LEAVES (what the accessible table lists); the ring and the pick address the leaf's cell.
+    pick: (cells, i) => {
+      const leaf = cells.filter((c) => c.leaf)[i]
+      if (leaf === undefined) return
+      props.onSelect?.(leaf)
+      props.onSelectIndex?.(cells.indexOf(leaf))
+    },
+    focusRect: (cells, i) => cells.filter((c) => c.leaf)[i]?.rect ?? null,
     a11y: (cells) => {
       const leaves = cells.filter((c) => c.leaf)
       return {

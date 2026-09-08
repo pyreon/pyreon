@@ -3,7 +3,7 @@
 import type { VNode } from '@pyreon/core'
 import { canvasHost } from './canvas-host'
 import type { CanvasHostProps } from './canvas-host'
-import { calendarDomain, layoutCalendar, renderCalendar } from './calendar'
+import { calendarDomain, hitCalendarIndex, layoutCalendar, renderCalendar } from './calendar'
 import { calendarValues, hitCalendar } from './calendar-web'
 import type { CalendarCell, CalendarLayout, CalendarOptions } from './calendar'
 import { plain } from './format'
@@ -17,6 +17,8 @@ export interface CalendarChartProps extends CanvasHostProps {
   calendar?: CalendarOptions
   /** Fired with the day cell under the click, or null for a miss. */
   onSelect?: (cell: CalendarCell | null) => void
+  /** The cell's INDEX under the click (into the layout's cells), or -1 — the multiplatform-safe twin of `onSelect`. */
+  onSelectIndex?: (index: number) => void
 }
 
 export function CalendarChart(props: CalendarChartProps): VNode {
@@ -33,6 +35,19 @@ export function CalendarChart(props: CalendarChartProps): VNode {
     render: (layout, _measure, _theme, progress) => renderCalendar(layout, calendarValues(readValues()), { ...props.calendar, progress }),
     select: (layout, px, py) => {
       props.onSelect?.(hitCalendar(layout, px, py))
+      props.onSelectIndex?.(hitCalendarIndex(layout, px, py))
+    },
+    // The keyboard walks the days WITH data (what the accessible table lists).
+    pick: (layout, i) => {
+      const values = readValues()
+      const cell = layout.cells.filter((c) => values[c.date] !== undefined)[i]
+      if (cell === undefined) return
+      props.onSelect?.(cell)
+      props.onSelectIndex?.(layout.cells.indexOf(cell))
+    },
+    focusRect: (layout, i) => {
+      const values = readValues()
+      return layout.cells.filter((c) => values[c.date] !== undefined)[i]?.rect ?? null
     },
     tooltip: (layout, px, py) => {
       const c = hitCalendar(layout, px, py)

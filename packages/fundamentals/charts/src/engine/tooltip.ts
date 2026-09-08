@@ -37,7 +37,8 @@ export function tooltipAt(index: number, categories: string[], series: TooltipSe
   const rows: TooltipRow[] = []
   for (const s of series) {
     const v = s.values[index]
-    if (v === undefined) continue
+    // A gap (NaN) has no row: the tooltip lists what was measured.
+    if (v === undefined || v !== v) continue
     const row: TooltipRow = { label: s.label, value: v, color: s.color }
     rows.push(row)
   }

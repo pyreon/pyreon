@@ -18,7 +18,7 @@ describe('FunnelChart (real browser)', () => {
     const rows = signal(DATA)
     const picked: number[] = []
     const { container } = mountInBrowser(() =>
-      FunnelChart<Row>({ animate: false, data: () => rows(), value: (d) => d.n, label: (d) => d.stage, width: 300, height: 240, title: 'Conversion', onSelect: (i) => picked.push(i) }),
+      FunnelChart<Row>({ animate: false, updateAnimation: false, data: () => rows(), value: (d) => d.n, label: (d) => d.stage, width: 300, height: 240, title: 'Conversion', onSelect: (i) => picked.push(i) }),
     )
     await flush()
     const c = container.querySelector('canvas')!

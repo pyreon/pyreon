@@ -106,7 +106,7 @@ describe('PlotChart plumb (real browser)', () => {
     await flush()
     const c = canvasOf(container)
     const r = c.getBoundingClientRect()
-    c.dispatchEvent(new MouseEvent('mousemove', { clientX: r.left + 210, clientY: r.top + 150, bubbles: true }))
+    c.dispatchEvent(new PointerEvent('pointermove', { clientX: r.left + 210, clientY: r.top + 150, bubbles: true }))
     await flush()
     const tip: HTMLElement = container.querySelector('[data-pyreon-chart-tooltip]')!
     expect(tip.textContent).toBe('custom:50')

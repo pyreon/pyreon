@@ -232,7 +232,10 @@ export function layoutBars(
   const zero = yDomain.min < 0.0 && yDomain.max > 0.0 ? 0.0 : yDomain.min
   const zeroY = scaleLinear(yDomain, plot.y + plot.h, plot.y, zero)
   for (let i = 0; i < n; i++) {
-    const v = values[i]!
+    const raw = values[i]!
+    // A gap (NaN) is a zero-height bar at the zero line: it draws nothing and
+    // no pointer can land in it, which is what "no measurement" should look like.
+    const v = raw === raw ? raw : zero
     const vy = scaleLinear(yDomain, plot.y + plot.h, plot.y, v)
     const top = vy < zeroY ? vy : zeroY
     const h = Math.abs(zeroY - vy)
@@ -314,7 +317,8 @@ export function layoutBarsH(
   const zero = vDomain.min < 0.0 && vDomain.max > 0.0 ? 0.0 : vDomain.min
   const zeroX = scaleLinear(vDomain, plot.x, plot.x + plot.w, zero)
   for (let i = 0; i < n; i++) {
-    const v = values[i]!
+    const raw = values[i]!
+    const v = raw === raw ? raw : zero
     const vx = scaleLinear(vDomain, plot.x, plot.x + plot.w, v)
     const left = vx < zeroX ? vx : zeroX
     out.push({

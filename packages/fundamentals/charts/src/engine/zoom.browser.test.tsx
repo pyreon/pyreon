@@ -41,10 +41,10 @@ const drag = (el: HTMLCanvasElement, fromX: number, toX: number, shift = false):
     cancelable: true,
     shiftKey: shift,
   })
-  el.dispatchEvent(new MouseEvent('mousedown', opts(fromX)))
-  el.dispatchEvent(new MouseEvent('mousemove', opts((fromX + toX) / 2)))
-  el.dispatchEvent(new MouseEvent('mousemove', opts(toX)))
-  el.dispatchEvent(new MouseEvent('mouseup', opts(toX)))
+  el.dispatchEvent(new PointerEvent('pointerdown', opts(fromX)))
+  el.dispatchEvent(new PointerEvent('pointermove', opts((fromX + toX) / 2)))
+  el.dispatchEvent(new PointerEvent('pointermove', opts(toX)))
+  el.dispatchEvent(new PointerEvent('pointerup', opts(toX)))
 }
 
 const canvasOf = (container: HTMLElement): HTMLCanvasElement => {
@@ -131,8 +131,8 @@ describe('dataZoom + brush (real browser)', () => {
     // click and is re-armed by the next mousedown.
     const rr = canvas.getBoundingClientRect()
     const at = { clientX: rr.left + 50, clientY: rr.top + 50, bubbles: true }
-    canvas.dispatchEvent(new MouseEvent('mousedown', at))
-    canvas.dispatchEvent(new MouseEvent('mouseup', at))
+    canvas.dispatchEvent(new PointerEvent('pointerdown', at))
+    canvas.dispatchEvent(new PointerEvent('pointerup', at))
     canvas.dispatchEvent(new MouseEvent('click', at))
     await flush()
     expect(got).toHaveLength(2)

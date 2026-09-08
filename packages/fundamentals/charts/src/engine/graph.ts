@@ -96,9 +96,10 @@ function graphSeedState(seed: Double): Double {
 
 /** Node index by id, or -1. */
 function graphIndexOf(nodes: GraphNode[], id: string): number {
-  let found = -1
-  for (let i = 0; i < nodes.length; i++) if (found < 0 && nodes[i]!.id === id) found = i
-  return found
+  // Returns at the first match: the guard form kept walking every node per
+  // lookup, and a layout does two lookups per LINK, so the scan was O(L·N).
+  for (let i = 0; i < nodes.length; i++) if (nodes[i]!.id === id) return i
+  return -1
 }
 
 /** Symbol radius: base/2 for a valueless node, up to 2× for the largest value. */

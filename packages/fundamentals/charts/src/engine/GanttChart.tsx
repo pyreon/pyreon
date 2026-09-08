@@ -35,6 +35,13 @@ export function GanttChart(props: GanttChartProps): VNode {
       props.onSelectIndex?.(hitGanttIndex(layout, px, py))
     },
     tooltip: (layout, px, py) => orNull(ganttTip(layout, px, py)),
+    pick: (layout, i) => {
+      const row = layout.rows[i]
+      if (row === undefined) return
+      props.onSelect?.(row)
+      props.onSelectIndex?.(i)
+    },
+    focusRect: (layout, i) => layout.rows[i]?.rect ?? null,
     a11y: (layout) => ({
       title: props.title,
       categories: layout.rows.map((r) => r.task.name),

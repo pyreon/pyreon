@@ -48,6 +48,11 @@ export function ParallelChart(props: ParallelChartProps): VNode {
       props.onSelect?.(line)
       props.onSelectIndex?.(line === null ? -1 : line.index)
     },
+    pick: (layout, i) => {
+      const line = layout.lines[i] ?? null
+      props.onSelect?.(line)
+      props.onSelectIndex?.(line === null ? -1 : line.index)
+    },
     tooltip: (layout, px, py) => {
       const line = hitParallel(layout, px, py)
       if (line === null) return null

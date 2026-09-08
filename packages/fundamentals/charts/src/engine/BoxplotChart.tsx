@@ -78,6 +78,16 @@ export function BoxplotChart<T>(props: BoxplotChartProps<T>): VNode {
       props.onSelect?.(i)
       props.onSelectIndex?.(i)
     },
+    pick: (_g, i) => {
+      props.onSelect?.(i)
+      props.onSelectIndex?.(i)
+    },
+    focusRect: (g, i) => {
+      const n = g.rows.length
+      if (i < 0 || i >= n) return null
+      const bw = g.l.plot.w / n
+      return { x: g.box.x + g.l.plot.x + bw * i, y: g.box.y + g.l.plot.y, w: bw, h: g.l.plot.h }
+    },
     tooltip: (g, px, py) => {
       const r = g.rows[hitAt(g, px, py)]
       if (r === undefined) return null
