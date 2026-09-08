@@ -51,3 +51,13 @@ appears, and refusing beat lying. The invariant worth keeping is therefore "a
 marker never lands somewhere the datum is not", not "these shapes have no
 markers" — so the anchor is now read back from the same layout the paint used:
 the top centre of a vertical segment, the right end of a horizontal one.
+
+**The grammar got `<Layer>` and `<Band>` too — and that gap was self-inflicted.**
+`stackedArea` was added to the native compiler's tag map first, which quietly
+claimed a `<Layer>` the web grammar had never heard of: the same source would
+have compiled natively and rendered nothing in a browser. Both tags now exist
+as components, `<Band low high>` has its own desugar branch (a region has two
+bounds and no single `y`, so the generic path rejected it), and the two copies
+of the tag set — the grammar's and the compiler's — are asserted against each
+other from both ends, since the compiler cannot import the package that really
+owns them.

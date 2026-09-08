@@ -357,7 +357,7 @@ export const UNLOWERED_CHART_HOSTS: Readonly<Record<string, string>> = {
 
 /** The grammar host and its mark/config children — `<Plot>` desugars to `<PlotChart marks>` before the plot emit runs. */
 export const GRAMMAR_CHART_HOST = 'Plot'
-export const GRAMMAR_MARK_TAGS: Readonly<Record<string, string>> = { Bar: 'bars', Line: 'line', Area: 'area', Dot: 'points', Layer: 'stackedArea' }
+export const GRAMMAR_MARK_TAGS: Readonly<Record<string, string>> = { Bar: 'bars', Line: 'line', Area: 'area', Dot: 'points', Layer: 'stackedArea', Band: 'band' }
 export const GRAMMAR_CONFIG_TAGS: readonly string[] = ['Rule', 'Axis', 'Tip', 'Legend', 'Zoom', 'Label', 'Scale', 'Histogram']
 /** The FAMILY marks: `<Plot>` with one of these desugars to the row-array host it names, channels as accessors. */
 export const GRAMMAR_FAMILY_TAGS: Readonly<Record<string, string>> = { Arc: 'PieChart', Stage: 'FunnelChart', Cell: 'HeatmapChart', Candle: 'CandlestickChart' }
@@ -445,6 +445,26 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
     const tag = child.tag
     const markKind = GRAMMAR_MARK_TAGS[tag]
     if (markKind !== undefined) {
+      // `<Band>` is the one mark with no `y`: a region has two bounds and no
+      // single value, so it takes `low`/`high` and lowers to `band(low, high)`
+      // — whose SERIES value is the upper bound, hence the argument order.
+      if (tag === 'Band') {
+        const lo = attrOf(child, 'low')
+        const hi = attrOf(child, 'high')
+        if (lo === undefined || hi === undefined) {
+          warn('<Band>: needs both a `low` and a `high` channel; the mark is skipped on native.')
+          continue
+        }
+        const bandFields: { name: string; value: ExprIR }[] = []
+        for (const a of child.attrs) {
+          if (a.kind !== 'attr' || a.name === 'low' || a.name === 'high') continue
+          bandFields.push({ name: a.name, value: a.value })
+        }
+        const bandArgs: ExprIR[] = [channelArrow(lo), channelArrow(hi)]
+        if (bandFields.length > 0) bandArgs.push({ kind: 'object', fields: bandFields })
+        marks.push({ kind: 'call', callee: ident('band'), args: bandArgs })
+        continue
+      }
       const y = attrOf(child, 'y')
       if (y === undefined) {
         warn(`<${tag}>: needs a \`y\` channel; the mark is skipped on native.`)

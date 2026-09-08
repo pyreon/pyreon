@@ -63,6 +63,38 @@ describe('<PlotChart> band / stackedArea on native', () => {
     expect(r.warnings.some((w) => w.includes('band'))).toBe(true)
   })
 
+  it('the GRAMMAR forms desugar to the same marks the array form builds', () => {
+    // `<Plot><Layer/><Band/></Plot>` is the other spelling of the same spec.
+    // `<Band>` is the one mark with no `y` — a region has two bounds and no
+    // single value — so it needs its own desugar branch, and without it the
+    // generic path rejected it as "needs a `y` channel".
+    const src = `import { Plot, Layer, Band } from '@pyreon/charts/plot'
+interface Row { m: string; a: number; lo: number; hi: number }
+const ROWS: Row[] = [{ m: 'Jan', a: 3, lo: 1, hi: 5 }]
+export function App() {
+  return <Plot data={ROWS} x="m" height={200}><Layer y="a" /><Band low="lo" high="hi" /></Plot>
+}
+`
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(src, { target })
+      expect(r.warnings, target).toEqual([])
+      expect(r.code, target).toContain('"stackedArea"')
+      expect(r.code, target).toContain('"band"')
+    }
+  })
+
+  it('a <Band> missing a bound is named, not reported as a missing `y`', () => {
+    const src = `import { Plot, Band } from '@pyreon/charts/plot'
+interface Row { m: string; lo: number }
+const ROWS: Row[] = [{ m: 'Jan', lo: 1 }]
+export function App() {
+  return <Plot data={ROWS} x="m"><Band low="lo" /></Plot>
+}
+`
+    const r = transform(src, { target: 'swift' })
+    expect(r.warnings.some((w) => w.includes('`low` and a `high`'))).toBe(true)
+  })
+
   it.skipIf(!isSwiftUIAvailable())('swiftc accepts both emits', () => {
     for (const src of [STACKED, BAND]) {
       const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(ENGINE_SWIFT) + '\n' + transform(src, { target: 'swift' }).code)

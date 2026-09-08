@@ -2674,6 +2674,8 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
         'waterfall',
         'stackedArea',
         'band',
+        'Layer',
+        'Band',
         'smooth',
         'step',
         // Engine arithmetic that crosses verbatim (bin.ts is in ENGINE_FILES).
