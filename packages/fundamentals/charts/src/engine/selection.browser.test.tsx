@@ -32,7 +32,7 @@ const OBS: Obs[] = [
 
 const at = (el: HTMLElement, type: string, x: number, y: number): void => {
   const r = el.getBoundingClientRect()
-  el.dispatchEvent(new MouseEvent(type, { clientX: r.left + x, clientY: r.top + y, bubbles: true }))
+  el.dispatchEvent(new PointerEvent(type.replace('mouse', 'pointer'), { clientX: r.left + x, clientY: r.top + y, bubbles: true }))
 }
 
 describe('CandlestickChart selection', () => {
@@ -71,13 +71,13 @@ describe('CandlestickChart selection', () => {
     const canvas = query<HTMLCanvasElement>(container, 'canvas')
     const tip = query<HTMLDivElement>(container, '[data-pyreon-chart-tooltip]')
     expect(tip.style.display).toBe('none')
-    at(canvas, 'mousemove', 170, 100)
+    at(canvas, 'pointermove', 170, 100)
     await flush()
     expect(tip.style.display).toBe('block')
     expect(tip.textContent).toContain('Tue')
     expect(tip.textContent).toContain('O 15')
     expect(tip.textContent).toContain('C 13')
-    canvas.dispatchEvent(new MouseEvent('mouseleave'))
+    canvas.dispatchEvent(new PointerEvent('pointerleave'))
     await flush()
     expect(tip.style.display).toBe('none')
   })
@@ -117,13 +117,13 @@ describe('HeatmapChart selection', () => {
     await flush()
     const canvas = query<HTMLCanvasElement>(container, 'canvas')
     const tip = query<HTMLDivElement>(container, '[data-pyreon-chart-tooltip]')
-    at(canvas, 'mousemove', 100, 40)
+    at(canvas, 'pointermove', 100, 40)
     await flush()
     expect(tip.style.display).toBe('block')
     expect(tip.textContent).toContain('09')
     expect(tip.textContent).toContain('Mon')
     expect(tip.textContent).toContain('5')
-    at(canvas, 'mousemove', 250, 40)
+    at(canvas, 'pointermove', 250, 40)
     await flush()
     // Sweeping onto an EMPTY position hides the tooltip rather than lying.
     expect(tip.style.display).toBe('none')

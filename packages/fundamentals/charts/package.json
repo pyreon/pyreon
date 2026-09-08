@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/charts",
   "version": "0.51.0",
-  "description": "Reactive ECharts bridge for Pyreon \u2014 lazy loading, signal-driven, Canvas by default",
+  "description": "Charts for Pyreon \u2014 a first-party multiplatform engine (`@pyreon/charts/plot`: 21 chart families over a flat draw list, on the web, iOS and Android) plus a reactive, lazy-loaded ECharts bridge",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/charts#readme",
   "bugs": {
@@ -68,6 +68,7 @@
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
     "@pyreon/runtime-dom": "workspace:^",
+    "@pyreon/runtime-server": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",

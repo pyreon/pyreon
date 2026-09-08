@@ -6,23 +6,15 @@
 // pie carried the axis layout it never uses. Two components keep both
 // tree-shakeable.
 
-import { h } from '@pyreon/core'
 import { canvasHost, orNull } from './canvas-host'
 import { pieLegend, pieTip } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
-import { resolveChartTheme, useChartTheme } from './theme'
 import { paletteAt } from './palette'
-import type { ChartTheme } from './render'
 import type { VNode } from '@pyreon/core'
-import { effect } from '@pyreon/reactivity'
 import { fitCircle, hitArc, layoutArcs, renderGauge, renderPie } from './arc'
 import type { GaugeOptions, Slice } from './arc'
-import { paint, prepareCanvas } from './canvas-web'
 import { plain } from './format'
 import type { Double, Rect } from './types'
-import { observeWidth, radialWidth } from './radial-host'
-
-const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 
 
 export interface PieChartProps<T> extends CanvasHostProps {
@@ -62,6 +54,10 @@ export function PieChart<T>(props: PieChartProps<T>): VNode {
       props.onSelectIndex?.(i)
     },
     tooltip: (g, px, py) => orNull(pieTip(g.slices, g.box, props.innerRadius ?? 0, px, py)),
+    pick: (_g, i) => {
+      props.onSelect?.(i)
+      props.onSelectIndex?.(i)
+    },
     a11y: (g) => ({
       title: props.title,
       categories: g.slices.map((x) => x.label),
@@ -77,88 +73,73 @@ function hitAt(g: PieGeometry, px: Double, py: Double, innerRadius: Double): num
   return hitArc(layoutArcs(g.slices), center, radius, radius * innerRadius, { x: px, y: py })
 }
 
-export interface GaugeChartProps {
-  /** Token overrides merged over the theme in scope (`<ChartThemeProvider>`, else the system scheme). */
-  theme?: Partial<ChartTheme>
+export interface GaugeChartProps extends CanvasHostProps {
   value: Double | (() => Double)
   min?: Double
   max?: Double
-  width?: Double
-  height?: Double
   thickness?: Double
   trackColor?: string
   valueColor?: string
   /** Draw the value in the middle. */
   showValue?: boolean
-  title?: string
-  class?: string
 }
 
-/** A single-value gauge. */
+interface GaugeGeometry {
+  value: Double
+  min: Double
+  max: Double
+  box: Rect
+}
+
+/**
+ * A single-value gauge — over the shared canvas host like every other family,
+ * so it carries the same theme, title, accessible description and data table
+ * (the manifest promised that contract; the earlier hand-rolled canvas kept
+ * none of it).
+ */
 export function GaugeChart(props: GaugeChartProps): VNode {
-  const themeOf = useChartTheme()
-  const theme = (): ChartTheme => resolveChartTheme(themeOf(), props.theme)
-  let canvas: HTMLCanvasElement | null = null
-  let sizeObserver: ResizeObserver | null = null
   const readValue = (): Double => {
     const v = props.value
     return typeof v === 'function' ? (v as () => Double)() : v
   }
-
-  const draw = (): void => {
-    const el = canvas
-    if (el === null) return
-    const w = radialWidth(el, props.width, 240)
-    const hgt = props.height ?? 140
-    const ctx = prepareCanvas(el, w, hgt, theme().background)
-    if (ctx === null) return
-    const min = props.min ?? 0
-    const max = props.max ?? 100
-    const v = readValue()
-    const opts: GaugeOptions = {
-      min,
-      max,
-      sweep: Math.PI,
-      thickness: props.thickness ?? 22,
-      trackColor: props.trackColor ?? theme().grid,
-      valueColor: props.valueColor ?? paletteAt(theme().palette, 0),
-    }
-    // A half-circle occupies the top half of its box, so the drawing box is
-    // twice the visible height — otherwise the arc is squashed into a quarter.
-    const cmds = renderGauge(v, { x: 0, y: 0, w, h: hgt * 2 }, opts)
-    if (props.showValue !== false) {
-      cmds.push({
-        kind: 'text',
-        text: plain(v),
-        at: { x: w / 2, y: hgt - 6 },
-        fill: theme().text,
-        size: 20,
-        align: 'middle',
-        baseline: 'bottom',
-      })
-    }
-    paint(ctx, cmds, w, hgt, FONT)
-  }
-
-  effect(() => {
-    readValue()
-    draw()
-  })
-
-  return h('canvas', {
-    class: props.class,
-    role: 'img',
-    'aria-label': () =>
-      `${props.title ?? 'Gauge'}: ${plain(readValue())} of ${plain(props.max ?? 100)}`,
-    ref: (el: HTMLCanvasElement | null) => {
-      canvas = el
-      if (el === null) {
-        sizeObserver?.disconnect()
-        sizeObserver = null
-        return
-      }
-      draw()
-      sizeObserver = observeWidth(el, () => radialWidth(el, props.width, 240), draw)
+  return canvasHost<GaugeGeometry>({
+    props,
+    defaultHeight: 140,
+    caption: 'Gauge',
+    track: () => {
+      readValue()
     },
+    layout: (box) => ({ value: readValue(), min: props.min ?? 0, max: props.max ?? 100, box }),
+    render: (g, _measure, theme) => {
+      const opts: GaugeOptions = {
+        min: g.min,
+        max: g.max,
+        sweep: Math.PI,
+        thickness: props.thickness ?? 22,
+        trackColor: props.trackColor ?? theme.grid,
+        valueColor: props.valueColor ?? paletteAt(theme.palette, 0),
+      }
+      // A half-circle occupies the top half of its box, so the drawing box is
+      // twice the visible height — otherwise the arc is squashed into a quarter.
+      const cmds = renderGauge(g.value, { x: g.box.x, y: g.box.y, w: g.box.w, h: g.box.h * 2 }, opts)
+      if (props.showValue !== false) {
+        cmds.push({
+          kind: 'text',
+          text: plain(g.value),
+          at: { x: g.box.x + g.box.w / 2, y: g.box.y + g.box.h - 6 },
+          fill: theme.text,
+          size: 20,
+          align: 'middle',
+          baseline: 'bottom',
+        })
+      }
+      return cmds
+    },
+    describe: (g) => `${props.title ?? 'Gauge'}: ${plain(g.value)} of ${plain(g.max)}`,
+    a11y: (g) => ({
+      title: props.title,
+      categories: [props.title ?? 'Gauge'],
+      series: [{ label: 'Value', values: [g.value], kind: 'gauge' }],
+    }),
   })
 }

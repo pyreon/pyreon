@@ -4,8 +4,9 @@ import * as plot from '../plot'
 // Every family, coordinate and facade entry point is reachable from the public
 // subpath — a module that exists but is not exported is not shipped.
 const EXPECTED = [
-  'PlotChart', 'PieChart', 'GaugeChart', 'RadarChart', 'CandlestickChart', 'HeatmapChart',
-  // BoxplotChart / boxplotToSvg join once #3211 (a sibling branch) lands.
+  'PlotChart', 'PieChart', 'GaugeChart', 'RadarChart', 'CandlestickChart', 'HeatmapChart', 'BoxplotChart', 'boxplotToSvg',
+  // The shared host is public — the extension point for a family of your own — with its animation primitives.
+  'canvasHost', 'shiftCmds', 'tweenCmds', 'sameCmdShape', 'cmdsEqual', 'easeOutCubic', 'renderChartIn', 'plotHitIndexIn', 'plotHitBarsIn', 'hitRadarIndex',
   'FunnelChart', 'TreemapChart', 'SunburstChart', 'TreeChart', 'SankeyChart', 'GraphChart',
   'CalendarChart', 'ParallelChart', 'PolarChart', 'RiverChart', 'MapChart',
   'funnelToSvg', 'treemapToSvg', 'sunburstToSvg', 'treeToSvg', 'sankeyToSvg', 'graphToSvg',

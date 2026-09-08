@@ -43,6 +43,8 @@ export interface Series {
   corners?: Double[] | undefined
   /** Linear-gradient fill for bar-family and area series; resolved against the plot box. */
   gradient?: SeriesGradient | undefined
+  /** Dash pattern for a line's stroke (`[on, off]` in px) — the target-line look; `line` only. */
+  dash?: Double[] | undefined
 }
 
 /**
@@ -397,13 +399,26 @@ export function layoutChart(spec: ChartSpec, measure: MeasureText): PlotLayout {
  * and labels draw last so nothing can cover them.
  */
 export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
+  return renderChartIn(spec, measure, layoutChart(spec, measure))
+}
+
+/**
+ * `renderChart` over a layout the caller already computed.
+ *
+ * A host lays the chart out once per frame and then asks four questions of the
+ * same geometry — paint it, hit-test it, place the crosshair, draw the focus
+ * ring. Before this every one of those recomputed `layoutChart` (which measures
+ * every tick label), so one pointer move cost four to six layouts. The layout
+ * is a pure function of the spec, so handing it in changes nothing but the
+ * work; `renderChart` is that call with the layout made for you.
+ */
+export function renderChartIn(spec: ChartSpec, measure: MeasureText, l: PlotLayout): DrawCmd[] {
   const yDomain = resolveYDomain(spec)
   // Non-optional on purpose: when no right axis exists this aliases the left
   // domain and is simply never consulted — the binding shape Swift can carry
   // through every branch below without narrowing.
   const useY2 = hasRightAxis(spec)
   const y2Domain = useY2 ? resolveY2Domain(spec) : yDomain
-  const l = layoutChart(spec, measure)
   const plot = l.plot
   const t = spec.theme
   const out: DrawCmd[] = []
@@ -688,6 +703,8 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
         for (let i = 0; i < rects.length; i++) {
           const r = rects[i]!
           const v = s.values[i]!
+          // A gap has no value to print.
+          if (!isFiniteValue(v)) continue
           // The label sits just past the bar's far end — right of a positive
           // bar, left of a negative one.
           out.push({
@@ -744,6 +761,7 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
         for (let i = 0; i < rects.length; i++) {
           const r = rects[i]!
           const v = s.values[i]!
+          if (!isFiniteValue(v)) continue
           // A negative bar hangs below the zero line, so its label goes under
           // its bottom edge — above the top would sit ON the zero line.
           out.push({
@@ -763,7 +781,7 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
       for (const run of splitRuns(s.values, place)) {
         const pts = reveal(shape(run))
         if (pts.length > 1) {
-          out.push({ kind: 'polyline', points: pts, stroke: s.color, width: s.width })
+          out.push({ kind: 'polyline', points: pts, stroke: s.color, width: s.width, dash: s.dash })
         }
       }
     } else if (s.kind === 'area') {
@@ -986,12 +1004,17 @@ function symbolCommand(cell: Rect, symbol: 'rect' | 'circle' | 'diamond' | 'tria
 
 /** Bar rects for a series index — what a hit test runs against. */
 export function barsFor(spec: ChartSpec, index: number, measure: MeasureText): Rect[] {
+  return barsForIn(spec, index, layoutChart(spec, measure).plot)
+}
+
+/** `barsFor` over a plot rect the caller already laid out. */
+export function barsForIn(spec: ChartSpec, index: number, plot: Rect): Rect[] {
   const s = spec.series[index]
   if (s === undefined || s.kind !== 'bars') return []
   // The hit rects must come from the SAME domain the bars were drawn with,
   // or a right-axis bar reports hits where the left-axis geometry would be.
   const dom = seriesOnRightAxis(s, spec) ? resolveY2Domain(spec) : resolveYDomain(spec)
-  return layoutBars(s.values, layoutChart(spec, measure).plot, dom, 0.25)
+  return layoutBars(s.values, plot, dom, 0.25)
 }
 
 /**
@@ -1015,8 +1038,12 @@ export function stackedHitAt(
   px: Double,
   py: Double,
 ): number {
+  return stackedHitIn(spec, layoutChart(spec, measure).plot, px, py)
+}
+
+/** `stackedHitAt` over a plot rect the caller already laid out. */
+export function stackedHitIn(spec: ChartSpec, plot: Rect, px: Double, py: Double): number {
   if (spec.horizontal === true) return -1
-  const plot = layoutChart(spec, measure).plot
   const yDomain = resolveYDomain(spec)
   for (const kind of ['stacked', 'grouped'] as const) {
     const series = spec.series.filter((s) => s.kind === kind)

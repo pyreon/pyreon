@@ -28,12 +28,12 @@ describe('linked charts (real browser)', () => {
     expect(z).not.toBe('all')
     expect(b.getAttribute('data-pyreon-zoom')).toBe(z)
     // Hover on A moves the crosshair datum on B too.
-    a.dispatchEvent(new MouseEvent('mousemove', { clientX: r.left + 200, clientY: r.top + 100, bubbles: true }))
+    a.dispatchEvent(new PointerEvent('pointermove', { clientX: r.left + 200, clientY: r.top + 100, bubbles: true }))
     await flush()
     const hv = a.getAttribute('data-pyreon-hover')!
     expect(Number(hv)).toBeGreaterThanOrEqual(0)
     expect(b.getAttribute('data-pyreon-hover')).toBe(hv)
-    a.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }))
+    a.dispatchEvent(new PointerEvent('pointerleave', { bubbles: true }))
     await flush()
     expect(b.getAttribute('data-pyreon-hover')).toBe('-1')
     // A double-click on B resets both.

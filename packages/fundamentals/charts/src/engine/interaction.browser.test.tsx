@@ -143,11 +143,11 @@ describe('crosshair', () => {
   const moveAt = (canvas: HTMLCanvasElement, x: number, y: number): void => {
     const r = canvas.getBoundingClientRect()
     canvas.dispatchEvent(
-      new MouseEvent('mousemove', { clientX: r.left + x, clientY: r.top + y, bubbles: true }),
+      new PointerEvent('pointermove', { clientX: r.left + x, clientY: r.top + y, bubbles: true }),
     )
   }
   const leave = (canvas: HTMLCanvasElement): void => {
-    canvas.dispatchEvent(new MouseEvent('mouseleave', { bubbles: false }))
+    canvas.dispatchEvent(new PointerEvent('pointerleave', { bubbles: false }))
   }
 
   it('hover draws the rule, leave removes it', async () => {

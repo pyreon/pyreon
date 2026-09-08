@@ -89,9 +89,10 @@ export function sankeyRgba(hex: string, alpha: Double): string {
 
 /** Node index by name, or -1. */
 function sankeyIndexOf(nodes: SankeyNode[], name: string): number {
-  let found = -1
-  for (let i = 0; i < nodes.length; i++) if (found < 0 && nodes[i]!.name === name) found = i
-  return found
+  // Returns at the first match: the guard form kept walking every node per
+  // lookup, and a layout does two lookups per LINK, so the scan was O(L·N).
+  for (let i = 0; i < nodes.length; i++) if (nodes[i]!.name === name) return i
+  return -1
 }
 
 /** Lay out the flow graph into `box`. */

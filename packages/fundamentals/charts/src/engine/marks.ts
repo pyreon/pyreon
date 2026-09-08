@@ -100,6 +100,12 @@ export interface MarkOptions {
    * `'horizontal'`.
    */
   gradient?: SeriesGradient
+  /**
+   * Dash pattern for a `line` mark's stroke, `[on, off]` in px — the
+   * target / forecast line look. The engine's draw command already carried
+   * one for annotations; this is the mark-level way to ask for it.
+   */
+  dash?: Double[]
 }
 
 /** A mark bound to its accessor, resolved against data at render time. */
@@ -200,21 +206,21 @@ export function bubble<T>(
 /**
  * Resolve marks against data into the engine's `Series[]`.
  *
- * A non-finite accessor result becomes 0 rather than propagating: `NaN` in a
- * domain makes every scale NaN, and the failure surfaces as a blank chart with
- * nothing to trace it by. Zero is visibly wrong at the right datum, which is
- * the better failure.
+ * A non-finite accessor result — `null`, `undefined`, `NaN`, an Infinity — is
+ * a GAP, not a zero: the engine skips the bar, breaks the line, draws no dot,
+ * and leaves it out of the domain. Every established charting library reads a
+ * missing measurement that way, because plotting it as zero states something
+ * false about the data (a sensor that did not report is not a sensor that
+ * read 0). A caller who wants zero says so in the accessor (`d.v ?? 0`).
  */
 export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly string[] = DEFAULT_PALETTE): Series[] {
   return marks.map((m, seriesIndex) => {
     const raw: Double[] = []
     for (let i = 0; i < data.length; i++) {
       const v = m.y(data[i]!, i)
-      raw.push(Number.isFinite(v) ? v : 0)
+      raw.push(Number.isFinite(v) ? v : Number.NaN)
     }
-    // A transform's NaNs are deliberate gaps and survive; a raw accessor's
-    // non-finite result was zeroed above (a visible wrong datum beats a
-    // silently missing one when the CALLER's accessor is broken).
+    // A transform sees the gaps and may fill or keep them.
     const values = m.transform === undefined ? raw : m.transform(raw)
     // The r channel resolves to RADII here, area-mapped over the series'
     // own extent, so the engine only ever sees pixels.
@@ -244,6 +250,7 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly s
       symbolRepeat: m.options.symbolRepeat,
       corners: normalizeCorners(m.options.borderRadius),
       gradient: m.options.gradient,
+      dash: m.options.dash,
     }
   })
 }

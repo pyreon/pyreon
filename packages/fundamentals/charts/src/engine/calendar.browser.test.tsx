@@ -16,7 +16,7 @@ describe('CalendarChart (real browser)', () => {
     const values = signal<Record<string, number>>({ '2024-01-03': 8 })
     const picked: (CalendarCell | null)[] = []
     const { container } = mountInBrowser(() =>
-      CalendarChart({ animate: false, start: '2024-01-01', end: '2024-01-28', values: () => values(), width: 400, height: 140, title: 'Jan', onSelect: (c) => picked.push(c) }),
+      CalendarChart({ animate: false, updateAnimation: false, start: '2024-01-01', end: '2024-01-28', values: () => values(), width: 400, height: 140, title: 'Jan', onSelect: (c) => picked.push(c) }),
     )
     await flush()
     const c = container.querySelector('canvas')!

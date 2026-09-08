@@ -43,11 +43,11 @@ describe('resolveGrammar — wide form (no color channel)', () => {
       h(Bar<Row>, { y: 'revenue' }),
       h(Rule, { y: 9, label: 'goal', color: '#f00' }),
       h(Rule, { from: 2, to: 4 }),
-      h(Axis, { y: true, format: compact }),
+      h(Axis, { y: true, format: compact, domain: { min: 0, max: 50 } }),
       h(Axis, { x: true, time: true, hidden: true }),
       h(Axis, { y2: true, domain: { min: 0, max: 1 } }),
       h(Tip, { crosshair: true }),
-      h(Legend, { toggle: false, maxRows: 2 }),
+      h(Legend, { toggle: false, maxRows: 2, position: 'bottom' }),
       h(Zoom, { navigator: true, presets: [{ label: '1M', count: 30 }], brush: onBrush }),
     ])
     expect(g.props.annotations).toEqual([{ y: 9, label: 'goal', color: '#f00' }, { yFrom: 2, yTo: 4 }])
@@ -55,6 +55,9 @@ describe('resolveGrammar — wide form (no color channel)', () => {
     expect(g.props.xTime).toBe(true)
     expect(g.props.showXAxis).toBe(false)
     expect(g.props.y2Domain).toEqual({ min: 0, max: 1 })
+    // `<Axis y domain>` pins the LEFT domain — it used to be read only on the y2 branch.
+    expect(g.props.yDomain).toEqual({ min: 0, max: 50 })
+    expect(g.props.legendPosition).toBe('bottom')
     expect(g.props.tooltip).toBe(true)
     expect(g.props.crosshair).toBe(true)
     expect(g.props.showLegend).toBe(true)

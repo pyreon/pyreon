@@ -9,7 +9,7 @@ Common mistakes and anti-patterns across Pyreon, grouped by area, each with its 
 
 ## Categories
 
-- **[Reactivity Mistakes](/docs/troubleshooting/reactivity)** — 28 entries
+- **[Reactivity Mistakes](/docs/troubleshooting/reactivity)** — 29 entries
 - **[JSX Mistakes](/docs/troubleshooting/jsx)** — 25 entries
 - **[Context & Provider Mistakes](/docs/troubleshooting/context)** — 6 entries
 - **[Architecture Mistakes](/docs/troubleshooting/architecture)** — 70 entries
@@ -17,7 +17,7 @@ Common mistakes and anti-patterns across Pyreon, grouped by area, each with its 
 - **[SSR-rendering Mistakes](/docs/troubleshooting/ssr)** — 23 entries
 - **[SSG / e2e Test-Server Mistakes](/docs/troubleshooting/ssg)** — 16 entries
 - **[Bundling Mistakes](/docs/troubleshooting/bundling)** — 4 entries
-- **[Testing Mistakes](/docs/troubleshooting/testing)** — 23 entries
+- **[Testing Mistakes](/docs/troubleshooting/testing)** — 24 entries
 - **[Lifecycle & Cleanup Mistakes](/docs/troubleshooting/lifecycle)** — 33 entries
 - **[Build Pipeline Mistakes](/docs/troubleshooting/build)** — 48 entries
 - **[CI / Build Gate Mistakes](/docs/troubleshooting/ci)** — 21 entries

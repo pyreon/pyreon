@@ -21,7 +21,7 @@ describe('PolarChart (real browser)', () => {
     const series = signal(SERIES)
     const picked: PolarHit[] = []
     const { container } = mountInBrowser(() =>
-      PolarChart({ animate: false, axes: AXES, series: () => series(), width: 300, height: 300, title: 'P', onSelect: (h) => picked.push(h) }),
+      PolarChart({ animate: false, updateAnimation: false, axes: AXES, series: () => series(), width: 300, height: 300, title: 'P', onSelect: (h) => picked.push(h) }),
     )
     await flush()
     const c = container.querySelector('canvas')!

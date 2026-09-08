@@ -44,8 +44,9 @@ import type { Formatter } from './format'
 import { area, bars, bubble, groupedBars, line, points, stackedBars } from './marks'
 import type { Mark, MarkOptions } from './marks'
 import type { Annotation, ChartTheme, PointMarker } from './render'
+import type { LegendPosition } from './canvas-host'
 import type { Domain, Double } from './types'
-import type { ChartLink } from './link'
+import type { ChartHandle, ChartLink } from './link'
 
 /** A channel: a field name of the row type, or an accessor. */
 export type Channel<T, V = Double> = (keyof T & string) | ((d: T, index: number) => V)
@@ -111,6 +112,8 @@ export interface LegendProps {
   /** Click toggles series (default on). */
   toggle?: boolean
   maxRows?: number
+  /** Where the legend sits; `top` by default. */
+  position?: LegendPosition
 }
 /**
  * A datum-anchored label — the engine's point marker (ECharts' markPoint).
@@ -159,7 +162,7 @@ export interface CandleProps<T> extends CandleOptions {
   close: Channel<T>
 }
 export interface ZoomProps {
-  /** Pinch / wheel zoom + drag pan (default). */
+  /** Wheel zoom + drag pan with a mouse, pinch zoom + drag pan on touch (default). */
   inside?: boolean
   /** The slider strip under the plot. */
   navigator?: boolean
@@ -270,9 +273,23 @@ export interface PlotProps<T> {
   showGrid?: boolean
   maxPoints?: number
   onSelect?: (index: number) => void
+  /** The engine's INDEX hit — the multiplatform-safe twin of `onSelect` (identical here). */
+  onSelectIndex?: (index: number) => void
   keyboard?: boolean
   accessibleTable?: boolean
   class?: string
+  /** The events/actions model — see `<PlotChart>`: an imperative handle, click-to-pin selection and the change callbacks. */
+  handle?: ChartHandle
+  selectedMode?: 'single' | 'multiple'
+  onSelectChange?: (selected: number[]) => void
+  onHighlight?: (index: number) => void
+  onLegendChange?: (hidden: number[]) => void
+  onZoom?: (window: { start: number; end: number } | null) => void
+  emphasis?: boolean
+  /** Names for the tooltip, the legend and the accessible table when a mark sets no `label`. */
+  seriesLabels?: string[]
+  toolbox?: PlotChartProps<T>['toolbox']
+  onSaveImage?: PlotChartProps<T>['onSaveImage']
   children?: VNodeChild
 }
 
@@ -361,6 +378,7 @@ export function resolveGrammar<T>(rows: T[], chart: PlotProps<T>, children: VNod
           if (a.domain !== undefined) props.y2Domain = a.domain
         } else {
           if (a.format !== undefined) props.format = a.format
+          if (a.domain !== undefined) props.yDomain = a.domain
           if (a.hidden === true) props.showYAxis = false
         }
         break
@@ -377,6 +395,7 @@ export function resolveGrammar<T>(rows: T[], chart: PlotProps<T>, children: VNod
         props.showLegend = true
         if (l.toggle === false) props.legendToggle = false
         if (l.maxRows !== undefined) props.legendMaxRows = l.maxRows
+        if (l.position !== undefined) props.legendPosition = l.position
         break
       }
       case 'Zoom': {
@@ -483,8 +502,13 @@ export function Plot<T>(props: PlotProps<T>): VNodeChild {
   const familyNode = (kind: FamilyHost): VNode => {
     const p: Record<string, unknown> = { data: reactiveProp(readRows) }
     // The canvas host's shared props, then the child-declared switches, then the mark's own channels.
-    for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'animate', 'onSelect', 'accessibleTable', 'class'] as const) p[key] = reactiveProp(() => read(key))
-    for (const key of ['tooltip', 'showLegend', 'format'] as const) p[key] = reactiveProp(() => read(key) ?? (resolved().props as Record<string, unknown>)[key])
+    for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'animate', 'updateAnimation', 'updateDuration', 'keyboard', 'onSelect', 'onSelectIndex', 'accessibleTable', 'class', 'onSaveImage'] as const) p[key] = reactiveProp(() => read(key))
+    for (const key of ['tooltip', 'showLegend', 'legendPosition', 'format'] as const) p[key] = reactiveProp(() => read(key) ?? (resolved().props as Record<string, unknown>)[key])
+    // The family hosts take a PNG-only toolbox; the plot's `'svg'` form maps to it.
+    p.toolbox = reactiveProp(() => {
+      const tb = read('toolbox') as PlotProps<T>['toolbox']
+      return tb === undefined ? undefined : { saveAsImage: tb.saveAsImage !== undefined && tb.saveAsImage !== false }
+    })
     if (kind === 'candlestick') p.x = reactiveProp(() => (props.x === undefined ? undefined : channel<T, string>(props.x)))
     const own = resolved().family!.props
     for (const key of Object.keys(own)) p[key] = reactiveProp(() => resolved().family?.props[key])
@@ -505,11 +529,23 @@ export function Plot<T>(props: PlotProps<T>): VNodeChild {
     xValue: reactiveProp(() => (props.xValue === undefined ? undefined : channel<T, Double>(props.xValue))),
   }
   // Every `<PlotChart>` prop a child can set, forwarded as an accessor; the chart's own props win when both are given.
-  const forwarded = ['format', 'xFormat', 'xTime', 'showXAxis', 'showYAxis', 'y2Format', 'y2Domain', 'tooltip', 'crosshair', 'tooltipFormatter', 'showLegend', 'legendToggle', 'legendMaxRows', 'dataZoom', 'navigator', 'zoomPresets', 'link', 'brush', 'onBrush', 'annotations', 'markers'] as const
+  const forwarded = ['format', 'xFormat', 'xTime', 'showXAxis', 'showYAxis', 'yDomain', 'y2Format', 'y2Domain', 'tooltip', 'crosshair', 'tooltipFormatter', 'showLegend', 'legendToggle', 'legendMaxRows', 'legendPosition', 'dataZoom', 'navigator', 'zoomPresets', 'link', 'brush', 'onBrush', 'annotations', 'markers'] as const
   for (const key of forwarded) plotProps[key] = reactiveProp(() => (props as unknown as Record<string, unknown>)[key] ?? (resolved().props as Record<string, unknown>)[key])
-  for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'showGrid', 'horizontal', 'animate', 'updateAnimation', 'updateDuration', 'maxPoints', 'onSelect', 'keyboard', 'accessibleTable', 'class'] as const) {
+  // Every other `<PlotChart>` prop, the events/actions model included — the grammar reaches the whole host.
+  for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'showGrid', 'horizontal', 'animate', 'updateAnimation', 'updateDuration', 'maxPoints', 'keyboard', 'accessibleTable', 'class', 'handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'onZoom', 'emphasis', 'seriesLabels', 'toolbox', 'onSaveImage'] as const) {
     plotProps[key] = reactiveProp(() => (props as unknown as Record<string, unknown>)[key])
   }
+  // `onSelect` and `onSelectIndex` are one callback on the plot host.
+  plotProps.onSelect = reactiveProp(() => {
+    const a = props.onSelect
+    const b = props.onSelectIndex
+    if (a === undefined) return b
+    if (b === undefined) return a
+    return (i: number): void => {
+      a(i)
+      b(i)
+    }
+  })
   return () => {
     const kind = hostKind()
     return kind === 'plot' ? h(PlotChart as unknown as (p: Record<string, unknown>) => VNode, plotProps) : familyNode(kind)

@@ -2,8 +2,9 @@
 // the web host's click / tooltip and the native tap ask the SAME question.
 
 import { hitBar, hitNearestX, layoutSeriesPoints } from './layout'
-import { barsFor, layoutChart, resolveYDomain, stackedHitAt } from './render'
+import { barsForIn, layoutChart, resolveYDomain, stackedHitIn } from './render'
 import type { ChartSpec } from './render'
+import type { PlotLayout } from './layout'
 import type { Double, MeasureText } from './types'
 
 /**
@@ -13,12 +14,17 @@ import type { Double, MeasureText } from './types'
  * scatter has no rect to hit, so a click beside its points is a miss.
  */
 export function plotHitBars(spec: ChartSpec, measure: MeasureText, px: Double, py: Double): number {
+  return plotHitBarsIn(spec, layoutChart(spec, measure), px, py)
+}
+
+/** `plotHitBars` over a layout the caller already computed — one layout per frame, not one per question. */
+export function plotHitBarsIn(spec: ChartSpec, l: PlotLayout, px: Double, py: Double): number {
   for (let i = 0; i < spec.series.length; i++) {
     if (spec.series[i]!.kind !== 'bars') continue
-    const idx = hitBar(barsFor(spec, i, measure), px, py)
+    const idx = hitBar(barsForIn(spec, i, l.plot), px, py)
     if (idx >= 0) return idx
   }
-  return stackedHitAt(spec, measure, px, py)
+  return stackedHitIn(spec, l.plot, px, py)
 }
 
 /**
@@ -27,11 +33,15 @@ export function plotHitBars(spec: ChartSpec, measure: MeasureText, px: Double, p
  * follow). A bar-only first series with no hit stays a miss.
  */
 export function plotHitIndex(spec: ChartSpec, measure: MeasureText, px: Double, py: Double): number {
-  const barHit = plotHitBars(spec, measure, px, py)
+  return plotHitIndexIn(spec, layoutChart(spec, measure), px, py)
+}
+
+/** `plotHitIndex` over a layout the caller already computed. */
+export function plotHitIndexIn(spec: ChartSpec, l: PlotLayout, px: Double, py: Double): number {
+  const barHit = plotHitBarsIn(spec, l, px, py)
   if (barHit >= 0) return barHit
   if (spec.series.length === 0) return -1
   const first = spec.series[0]!
   if (first.kind === 'bars' || first.kind === 'stacked' || first.kind === 'grouped') return -1
-  const l = layoutChart(spec, measure)
   return hitNearestX(layoutSeriesPoints(first.values, l.plot, resolveYDomain(spec)), px)
 }

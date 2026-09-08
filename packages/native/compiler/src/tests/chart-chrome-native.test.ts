@@ -90,10 +90,11 @@ describe('family chrome — title, legend and tap tooltip lower on both targets'
       expect(r.code).toContain(target === 'swift' ? 'renderTreemap(layoutTreemap(DATA,' : 'renderTreemap(layoutTreemap(DATA,')
     }
   })
-  it('every chrome prop lowers on a family host whose engine animates; `animate` alone stays named on the fully-formed engines; the plot host keeps its own list', () => {
-    expect(chartChromeUnlowered('TreemapChart')).toEqual([])
-    expect(chartChromeUnlowered('PieChart')).toEqual(['animate'])
-    expect(chartChromeUnlowered('PlotChart')).toEqual([])
+  it('the drawn chrome lowers on a family host whose engine animates; `animate` alone stays named on the fully-formed engines; the web-only interaction props are named on every host, the plot host included', () => {
+    const webOnly = ['legendPosition', 'keyboard', 'updateAnimation', 'updateDuration', 'toolbox', 'onSaveImage', 'accessibleTable']
+    expect(chartChromeUnlowered('TreemapChart')).toEqual(webOnly)
+    expect(chartChromeUnlowered('PieChart')).toEqual(['animate', ...webOnly])
+    expect(chartChromeUnlowered('PlotChart')).toEqual(webOnly)
   })
 })
 

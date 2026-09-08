@@ -103,7 +103,8 @@ export function chartTable(input: A11yInput): A11yTable {
     const row = [input.categories[i] ?? `${i + 1}`]
     for (const s of input.series) {
       const v = s.values[i]
-      row.push(v === undefined ? '' : fmt(v))
+      // A gap is an empty cell, not the word NaN.
+      row.push(v === undefined || v !== v ? '' : fmt(v))
     }
     rows.push(row)
   }
