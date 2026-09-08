@@ -4008,12 +4008,28 @@ export function transformJSX_JS(
         if (isRoot) continue
         return true
       }
-      if (
-        attr.type === 'JSXAttribute' &&
-        attr.name?.type === 'JSXIdentifier' &&
-        attr.name.name === 'key'
-      )
-        return true
+      if (attr.type !== 'JSXAttribute') continue
+      // A NAMESPACED attribute name (`xlink:href`, `xml:lang`) parses as
+      // `JSXNamespacedName`, not `JSXIdentifier` — and every name reader in the
+      // template emitter is written `name?.type === 'JSXIdentifier' ? … : ''`,
+      // so the qualified name arrives as the EMPTY STRING. That produced two
+      // different wrong answers, neither of them an error: this backend baked
+      // `<use ="/static">` into the template HTML and emitted
+      // `_setAttr(el, "", u)` for the dynamic form, while the Rust backend
+      // dropped the attribute outright — so `<use xlink:href="#icon">`, the SVG
+      // sprite idiom, rendered nothing in every compiled app.
+      //
+      // Bail the element to `h()` rather than teach ~10 name readers a second
+      // spelling: the runtime path already sets a qualified name correctly
+      // (`setStaticProp` -> the SVG `setAttribute` branch) and runs the url
+      // guard over it (`xlink:href` is in `URL_ATTRS`), so the shape lands on
+      // the proven path instead of a second, differently-broken one. This is
+      // the repo's own rule about a catch-all that reports "handled, emit
+      // nothing": an unrecognized shape must fall through to the runtime, never
+      // silently vanish. Mirrored byte-for-byte by `has_bail_attr` in
+      // `native/src/lib.rs`.
+      if (attr.name?.type === 'JSXNamespacedName') return true
+      if (attr.name?.type === 'JSXIdentifier' && attr.name.name === 'key') return true
     }
     return false
   }
