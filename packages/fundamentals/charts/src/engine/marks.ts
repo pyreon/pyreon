@@ -15,7 +15,7 @@ import { DEFAULT_PALETTE, paletteAt } from './palette'
 import { bubbleRadii } from './bubble'
 import type { SeriesGradient } from './gradient'
 import type { Double, Pt } from './types'
-import { binValues } from './bin'
+import { binLabel, binValues } from './bin'
 import type { Bin } from './bin'
 import { plain } from './format'
 import type { Formatter } from './format'
@@ -346,7 +346,9 @@ export function histogram<T>(rows: T[], x: Accessor<T>, options: HistogramOption
   if (options.color !== undefined) markOptions.color = options.color
   return {
     data,
-    x: (b: Bin) => `${fmt(b.x0)}–${fmt(b.x1)}`,
+    // The DEFAULT label is the engine's `binLabel`, which the native
+    // desugar also calls; a custom `format` still overrides it.
+    x: (b: Bin) => (options.format === undefined ? binLabel(b) : `${fmt(b.x0)}–${fmt(b.x1)}`),
     marks: [bars<Bin>((b) => b.count, markOptions)],
   }
 }

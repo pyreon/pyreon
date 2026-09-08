@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
-import { chartChromeUnlowered } from '../chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, FRAME_CHART_HOSTS, chartChromeUnlowered } from '../chart-hosts'
 import { isKotlincAvailable, isSwiftUIAvailable, validateKotlin, validateSwiftTypecheck } from '../validate'
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '../../../../..')
@@ -57,20 +57,38 @@ describe('<PlotChart rtl> on native', () => {
     }
   })
 
-  it('every host built through the chrome seam lowers `rtl`', () => {
-    // The seam is what makes this cheap: `mirror` and `tapX` live on the
-    // chrome, so a family host gets both halves by construction instead of
-    // each emitter remembering to take them.
-    for (const tag of ['PlotChart', 'TreemapChart', 'PieChart', 'SankeyChart', 'PolarChart', 'GanttChart', 'RadarChart']) {
-      expect(chartChromeUnlowered(tag), `${tag} should lower rtl`).not.toContain('rtl')
-    }
-    const out = transform(`import { TreemapChart } from '@pyreon/charts'
+  it('EVERY native chart host lowers `rtl` — asserted over the registry, not a list', () => {
+    // Totality on purpose. A hand-written list of tags passes forever while a
+    // host added next month silently ignores the prop; asking the registry
+    // means a new host has to answer the question. `rtl` reaches the family
+    // and accessor hosts through the chrome seam and the three frame hosts
+    // (gauge, candlestick, heatmap) through `swiftRtl` / `kotlinRtl`.
+    const tags = [...Object.keys(CHART_HOSTS), ...Object.keys(ACCESSOR_CHART_HOSTS), ...Object.keys(FRAME_CHART_HOSTS)]
+    expect(tags.length).toBeGreaterThan(10)
+    const unlowered = tags.filter((t) => chartChromeUnlowered(t).includes('rtl'))
+    expect(unlowered, 'these hosts would drop `rtl` silently').toEqual([])
+  })
+
+  it('the three hosts that bypass the chrome seam still mirror, on both targets', () => {
+    // They build their canvas directly, so they were the ones that could have
+    // been left behind — and a gauge is the case with no tap at all, where
+    // only the paint half exists to get wrong.
+    const cases: [string, string][] = [
+      ['GaugeChart', `<GaugeChart value={0.4} rtl />`],
+      ['CandlestickChart', `<CandlestickChart data={[{ o: 1, h: 3, l: 0, c: 2, d: 'Mon' }]} open={(r) => r.o} high={(r) => r.h} low={(r) => r.l} close={(r) => r.c} x={(r) => r.d} rtl />`],
+      ['HeatmapChart', `<HeatmapChart data={[{ r: 'a', c: 'b', v: 1 }]} x={(d) => d.r} y={(d) => d.c} value={(d) => d.v} rtl />`],
+    ]
+    for (const [tag, jsx] of cases) {
+      for (const target of ['swift', 'kotlin'] as const) {
+        const out = transform(`import { ${tag} } from '@pyreon/charts'
 export function App() {
-  return <TreemapChart data={[{ name: 'a', value: 1 }]} rtl />
+  return ${jsx}
 }
-`, { target: 'swift' })
-    expect(out.code).toContain('pyreonMirrorCmds(')
-    expect(out.warnings.filter((w) => w.includes('`rtl`'))).toEqual([])
+`, { target })
+        expect(out.code, `${tag} on ${target} must mirror`).toContain('pyreonMirrorCmds(')
+        expect(out.warnings.filter((w) => w.includes('`rtl`')), `${tag} on ${target}`).toEqual([])
+      }
+    }
   })
 
   it('a FAMILY host mirrors its tap too, on both targets', () => {
@@ -95,22 +113,6 @@ export function App() {
       const off = transform(src(''), { target })
       expect(off.code).not.toContain('pyreonMirrorCmds')
     }
-  })
-
-  it('a host whose emitter BYPASSES the chrome seam names `rtl` rather than dropping it', () => {
-    // Gauge, Candlestick and Heatmap build their canvas without the chrome,
-    // so they get neither half — and say so. A prop added to FAMILY_CHROME
-    // must never silently claim a host whose emitter never reads it, which is
-    // why those three carry explicit lists.
-    for (const tag of ['GaugeChart', 'CandlestickChart', 'HeatmapChart']) {
-      expect(chartChromeUnlowered(tag), `${tag} should NOT claim rtl`).toContain('rtl')
-    }
-    const out = transform(`import { GaugeChart } from '@pyreon/charts'
-export function App() {
-  return <GaugeChart value={0.4} rtl />
-}
-`, { target: 'swift' })
-    expect(out.warnings.some((w) => w.includes('`rtl`'))).toBe(true)
   })
 
   it.skipIf(!isSwiftUIAvailable())('the RTL emit type-checks against the real SwiftUI SDK', () => {

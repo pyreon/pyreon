@@ -43,3 +43,23 @@ never sets `rtl` still carries it — measured +86 B gz on the pie import and
 every host: putting the mirror behind an opt-in import would make the prop
 silently do nothing unless the consumer also imported the seam, which is the
 typed-but-unimplemented shape this PR otherwise avoids.
+
+Also closes two of the three limits this batch started with:
+
+`<Histogram>` now crosses. It was named web-only because it is not a mark —
+it REPLACES the plot's rows with bins — so the native form is that same
+substitution expressed in the IR: the row basis becomes
+`binValues(rows.map(x), bins)`, the category is the engine's own `binLabel`
+(newly shared with the web `histogram()` helper, so the two cannot label a
+bin differently), and the mark is an ordinary bar over `count`. Everything
+downstream — tooltip, accessible table, selection — comes from paths that
+already worked. Kotlin needed the channel widened through
+`pyreonChartDouble`, which the Swift runtime already had and the Kotlin one
+now does: PMTC types a bare `number` as Int, so an un-widened map is a
+`List<Int>` that `binValues` refuses. kotlinc catches that; swiftc does not.
+
+`locale` and `facet` stay web-only, and now say WHY rather than "not lowered
+yet": `locale` formats through `Intl`, which the crossed engine cannot call,
+and `facet` renders a grid of sub-plots rather than a chart setting. "Yet" is
+the right word for work not done and the wrong word for a mechanism, because
+a reader waits for a release that is never coming.

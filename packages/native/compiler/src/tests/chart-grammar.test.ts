@@ -69,7 +69,7 @@ describe('chart grammar — <Plot> children desugar to <PlotChart marks>', () =>
   it('<Tip> lowers to the tooltip flag (the plot host draws it on tap); <Axis x time hidden> and a brush on <Zoom> map to their plot props', () => {
     const src = GRAMMAR.replace(DATA, DATA + BRUSH_FN).replace('<Legend />', '<Legend /><Tip crosshair /><Axis x time hidden /><Zoom brush={onBrush} inside={false} />').replace('<Zoom navigator presets={[{ label: \'1M\', count: 30 }]} />', '')
     const r = transform(src, { target: 'kotlin' })
-    expect(r.warnings).not.toContain('<PlotChart>: `tooltip` is not lowered on native yet; the chart renders without it.')
+    expect(r.warnings).not.toContain('<PlotChart>: `tooltip` is not lowered on native; the chart renders without it.')
     expect(r.code).toContain('renderTooltip(pyreonTip, pyreonTipAt,')
     expect(r.code).toContain('onBrush(pyreonSel)')
     expect(r.code).toContain('showXAxis = false')

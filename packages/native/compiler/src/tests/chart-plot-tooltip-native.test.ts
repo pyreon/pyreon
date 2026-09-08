@@ -79,7 +79,7 @@ describe('<PlotChart tooltip> — a tap tooltip on both targets', () => {
     const inline = transform(FORMATTED.replace('tooltipFormatter={describe}', 'tooltipFormatter={(c: TooltipContent) => c.title}'), { target: 'swift' })
     expect(inline.warnings).toEqual(['<PlotChart tooltipFormatter>: must be a NAMED function on native — an inline arrow is not lowered; the default lines apply.'])
     const g = transform(GRAMMAR, { target: 'kotlin' })
-    expect(g.warnings).toEqual(['<PlotChart>: `crosshair` is not lowered on native yet; the chart renders without.'])
+    expect(g.warnings).toEqual(['<PlotChart>: `crosshair` is not lowered on native; the chart renders without.'])
     expect(g.code).toContain('renderTooltip(pyreonTip, pyreonTipAt,')
   })
   it('without tooltip the plot host emits exactly as before', () => {

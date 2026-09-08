@@ -153,6 +153,18 @@ fun pyreonShiftCmds(cmds: List<PyreonDrawCmd>, dy: Double): List<PyreonDrawCmd> 
     }
 
 /**
+ * Widen a chart channel to `Double`.
+ *
+ * The Swift twin of the same name exists because PMTC types a bare `number`
+ * as `Int` and every engine function takes `Double`; emitting the coercion by
+ * NAME lets one target-neutral desugar serve both backends instead of each
+ * spelling its own conversion.
+ */
+fun pyreonChartDouble(v: Double): Double = v
+
+fun pyreonChartDouble(v: Int): Double = v.toDouble()
+
+/**
  * Mirror a draw list about the canvas's vertical centreline — a right-to-left
  * chart IS the mirror of its left-to-right one.
  *

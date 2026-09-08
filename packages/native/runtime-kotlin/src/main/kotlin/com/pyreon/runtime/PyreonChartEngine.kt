@@ -6408,3 +6408,5 @@ fun binValues(values: List<Double>, count: Double): List<Bin> {
     }
     return out
   }
+
+fun binLabel(b: Bin): String = "${plain(b.x0)}–${plain(b.x1)}"

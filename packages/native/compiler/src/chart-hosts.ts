@@ -380,6 +380,25 @@ export function isChartHostTag(tag: string): boolean {
   )
 }
 
+/**
+ * Apply an accessor to an argument. An arrow is INLINED (its parameter
+ * substituted) rather than called, so the emitted native code reads
+ * `d.age` instead of `((d) => d.age)(d)` — the emitters lower a member
+ * expression cleanly and an immediately-applied lambda far less so.
+ */
+function callArrow(fn: ExprIR, arg: ExprIR): ExprIR {
+  if (fn.kind === 'arrow' && fn.params.length === 1) return substituteIdent(fn.body, fn.params[0]!, arg)
+  return { kind: 'call', callee: fn, args: [arg] }
+}
+
+/** Replace every free `name` in `e` with `to` — enough for the accessor shapes the grammar produces. */
+function substituteIdent(e: ExprIR, name: string, to: ExprIR): ExprIR {
+  if (e.kind === 'identifier') return e.name === name ? to : e
+  if (e.kind === 'member') return { ...e, object: substituteIdent(e.object, name, to) }
+  if (e.kind === 'call') return { ...e, callee: substituteIdent(e.callee, name, to), args: e.args.map((a) => substituteIdent(a, name, to)) }
+  return e
+}
+
 const lit = (value: string | number | boolean): ExprIR => ({ kind: 'literal', value })
 const ident = (name: string): ExprIR => ({ kind: 'identifier', name })
 /** `"field"` → `(d) => d.field`; an accessor passes through. */
@@ -411,6 +430,7 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   const familyMark = children.find((c) => Object.hasOwn(GRAMMAR_FAMILY_TAGS, c.tag))
   if (familyMark !== undefined) return desugarFamilyGrammar(e, familyMark, children, warn)
   const attrs: AttrIR[] = []
+  let histogram: { x: ExprIR; bins: ExprIR } | undefined
   const marks: ExprIR[] = []
   const annotations: ExprIR[] = []
   const markers: ExprIR[] = []
@@ -499,10 +519,23 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
         if (flagOn(child, 'normalize')) attrs.push({ kind: 'attr', name: 'stackNormalize', value: lit(true) })
         break
       }
-      case 'Histogram':
-        // Binning the rows is a web-side data reshape (`histogram()` over `binValues`); the engine's `binValues` crosses, the row pivot does not yet.
-        warn('<Plot>: <Histogram> bins the rows on the web only; the plot renders without it on native. Bin with `binValues` and draw the counts with `<Bar>`.')
+      case 'Histogram': {
+        // `histogram()` on the web is not a mark — it REPLACES the plot's rows
+        // with bins and draws one bar per bin. So the native form is the same
+        // substitution, expressed in the IR: the row basis becomes
+        // `binValues(rows.map(x), bins)`, the category is the engine's own
+        // `binLabel` (shared with the web helper, so the two cannot label a
+        // bin differently), and the mark is an ordinary bar over `count` —
+        // which means the tooltip, the accessible table and selection all
+        // come from the paths that already work.
+        const hx = attrOf(child, 'x')
+        if (hx === undefined) {
+          warn('<Histogram>: needs an `x` channel; the plot renders without it on native.')
+          break
+        }
+        histogram = { x: channelArrow(hx), bins: attrOf(child, 'bins') ?? lit(10) }
         break
+      }
       case 'Tip':
         attrs.push({ kind: 'attr', name: 'tooltip', value: lit(true) })
         if (flagOn(child, 'crosshair')) attrs.push({ kind: 'attr', name: 'crosshair', value: lit(true) })
@@ -551,6 +584,37 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
       }
       default:
         warn(`<Plot>: child <${tag}> is not a mark or a chart setting; it is ignored on native.`)
+    }
+  }
+  if (histogram !== undefined) {
+    // The substitution, in one place: rows → bins, x → the bin's label, marks
+    // → one bar over the count. Any mark the author also wrote is dropped
+    // WITH A WARNING rather than silently, because those marks read the
+    // ORIGINAL rows and there are none left to read.
+    const dataAttr = attrs.find((a) => a.kind === 'attr' && a.name === 'data')
+    const rows = dataAttr?.kind === 'attr' ? dataAttr.value : undefined
+    if (rows === undefined) {
+      warn('<Histogram>: <Plot> needs a `data` attribute to bin; the plot renders without it on native.')
+    } else {
+      if (marks.length > 0) warn('<Histogram>: a mark beside it reads the ORIGINAL rows, which the histogram replaces with bins; it is dropped on native.')
+      const binned: ExprIR = {
+        kind: 'call',
+        callee: ident('binValues'),
+        args: [
+          // The channel is coerced through the runtime's `pyreonChartDouble`:
+          // PMTC types a bare `number` as Int, and `binValues` takes Doubles,
+          // so an un-coerced map is a `List<Int>` that Kotlin refuses.
+          { kind: 'call', callee: { kind: 'member', object: rows, property: 'map' }, args: [{ kind: 'arrow', params: ['d'], body: { kind: 'call', callee: ident('pyreonChartDouble'), args: [callArrow(histogram.x, ident('d'))] } }] },
+          { kind: 'call', callee: ident('pyreonChartDouble'), args: [histogram.bins] },
+        ],
+      }
+      const keep = attrs.filter((a) => !(a.kind === 'attr' && (a.name === 'data' || a.name === 'x' || a.name === 'xValue')))
+      attrs.length = 0
+      attrs.push(...keep)
+      attrs.push({ kind: 'attr', name: 'data', value: binned })
+      attrs.push({ kind: 'attr', name: 'x', value: { kind: 'arrow', params: ['b'], body: { kind: 'call', callee: ident('binLabel'), args: [ident('b')] } } })
+      marks.length = 0
+      marks.push({ kind: 'call', callee: ident('bars'), args: [{ kind: 'arrow', params: ['b'], body: { kind: 'member', object: ident('b'), property: 'count' } }, { kind: 'object', fields: [{ name: 'label', value: lit('Count') }] }] })
     }
   }
   attrs.push({ kind: 'attr', name: 'marks', value: { kind: 'array', elements: marks } })
@@ -921,13 +985,14 @@ export const HEAT_RAMP_DEFAULT = ['#eff6ff', '#93c5fd', '#3b82f6', '#1e40af'] as
 export const CHART_CHROME_PROPS: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'legendPosition', 'keyboard', 'updateAnimation', 'updateDuration', 'toolbox', 'onSaveImage', 'accessibleTable', 'rtl']
 const CHROME_LOWERED: Readonly<Record<string, readonly string[]>> = {
   PlotChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'rtl'],
-  // Gauge / Candlestick / Heatmap build their canvas WITHOUT the chrome
-  // seam, so they do NOT get `rtl` from it. Spelling their lists out keeps
-  // `FAMILY_CHROME` honest: adding a prop there must not silently claim it
-  // for a host whose emitter never reads it.
-  GaugeChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip'],
-  CandlestickChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip'],
-  HeatmapChart: ['animate'],
+  // Gauge / Candlestick / Heatmap build their canvas without the chrome seam,
+  // so they take the RTL pair from `swiftRtl` / `kotlinRtl` directly. Their
+  // lists stay spelled out: adding a prop to `FAMILY_CHROME` must never
+  // silently claim a host whose emitter does not read it, which is exactly
+  // what happened when `rtl` first went in there.
+  GaugeChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'rtl'],
+  CandlestickChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'rtl'],
+  HeatmapChart: ['animate', 'rtl'],
   RadarChart: ['showLegend', 'rtl'],
 }
 /** Title + legend + tap tooltip — what the generic and accessor hosts draw natively through the crossing chrome. */
@@ -1044,4 +1109,25 @@ export const PLOT_SPEC_LITERAL_PROPS: ReadonlyArray<{ name: string; kind: 'strin
  * BY NAME; the chart renders without it. Event props are matched against the
  * parser's lowercased event names, so `onHighlight` is found as `highlight`.
  */
+/**
+ * Why a prop is web-only, where the answer is a MECHANISM rather than a
+ * to-do. "Not lowered yet" is the right thing to say about work not done; it
+ * is the wrong thing to say about a prop that cannot cross, because a reader
+ * waits for a release that is never coming.
+ */
+const PLOT_UNLOWERED_REASON: Readonly<Record<string, string>> = {
+  locale: 'it formats through `Intl`, which the crossed engine cannot call — native charts format with the engine\'s own formatters',
+  facet: 'it renders a GRID of sub-plots rather than a chart setting; compose the panels yourself',
+  facetColumns: 'it sizes the `facet` grid, which is web-only',
+}
+
+/** The one warning both emitters raise for the props `<PlotChart>` does not lower. */
+export function plotUnloweredWarning(tag: string, present: readonly string[]): string {
+  const named = present.map((p) => {
+    const why = PLOT_UNLOWERED_REASON[p]
+    return why === undefined ? `\`${p}\`` : `\`${p}\` (${why})`
+  })
+  return `<${tag}>: ${named.join(', ')} ${present.length === 1 ? 'is' : 'are'} not lowered on native; the chart renders without.`
+}
+
 export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'emphasis', 'maxPoints', 'crosshair', 'link', 'keyboard', 'updateAnimation', 'updateDuration', 'seriesLabels', 'toolbox', 'onSaveImage', 'accessibleTable', 'legendPosition', 'yDomain', 'locale', 'facet', 'facetColumns']

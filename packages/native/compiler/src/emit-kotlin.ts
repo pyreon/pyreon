@@ -79,7 +79,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -9856,7 +9856,7 @@ function emitKotlinGaugeHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   const size = hasWidth ? `Modifier.width((${W}).dp).height((${H}).dp)` : `Modifier.fillMaxWidth().height((${H}).dp)`
   const generic = emitKotlinLayoutModifier(e)
   const titleMod = kotlinChartA11y(e, describe)
-  const canvas = `PyreonChartCanvas(cmds = ${cmds}, modifier = ${size + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))})`
+  const canvas = `PyreonChartCanvas(cmds = ${kotlinRtl(e, W).mirror(cmds)}, modifier = ${size + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))})`
   if (hasWidth) return canvas
   const pad = ' '.repeat(indent + 2)
   return `BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {\n${pad}val pyreonW = maxWidth.value.toDouble()\n${pad}${canvas}\n${' '.repeat(indent)}}`
@@ -10163,7 +10163,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   }
   const present = PLOT_UNLOWERED_PROPS.filter((p) => chartAttrExprKotlin(e, p) !== undefined || e.attrs.some((a) => a.kind === 'event' && 'on' + a.name === p.toLowerCase()))
   if (!windowed && e.attrs.some((a) => a.kind === 'event' && a.name === 'zoom')) _emitWarnings.push('<PlotChart onZoom>: needs `dataZoom`, `zoomPresets` or `navigator` — without a window there is nothing to report.')
-  if (present.length > 0) _emitWarnings.push(`<${tag}>: ${present.map((p) => `\`${p}\``).join(', ')} ${present.length === 1 ? 'is' : 'are'} not lowered on native yet; the chart renders without.`)
+  if (present.length > 0) _emitWarnings.push(plotUnloweredWarning(tag, present))
   const H = kotlinChartDouble(e, 'height', 200, indent)
   const hasWidth = chartAttrExprKotlin(e, 'width') !== undefined
   const W = hasWidth ? kotlinChartDouble(e, 'width', 300, indent) : 'pyreonW'
@@ -10343,16 +10343,31 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
 }
 
 /** `kotlinFrameHost` with hoisted `val`s in the BoxWithConstraints scope (always emitted, so the vals have a scope). */
+/**
+ * RTL for a chart host: the mirror for its draw list and the tap-x
+ * translation that must accompany it. Handed out as a PAIR — see the Swift
+ * twin; a host that takes one without the other reports the wrong item for
+ * right-to-left users only.
+ */
+function kotlinRtl(e: Extract<ExprIR, { kind: 'jsx-element' }>, W: string): { mirror: (cmds: string) => string; tapX: (raw: string) => string } {
+  const rtl = readStaticAttrKotlin(e, 'rtl') === true
+  return {
+    mirror: (cmds) => (rtl ? `pyreonMirrorCmds(${cmds}, ${W})` : cmds),
+    tapX: (raw) => (rtl ? `(${W} - ${raw})` : raw),
+  }
+}
+
 function kotlinFrameHostLets(e: Extract<ExprIR, { kind: 'jsx-element' }>, lets: readonly string[], cmds: string, hit: ((x: string, y: string) => string) | null, W: string, H: string, hasWidth: boolean, indent: number, names: readonly string[] = ['selectindex', 'select'], describe?: string): string {
+  const { mirror, tapX } = kotlinRtl(e, W)
   const onSel = hit === null ? undefined : e.attrs.find((a) => a.kind === 'event' && names.includes(a.name))
   const tap =
     onSel?.kind === 'event' && hit !== null
-      ? `.pointerInput(Unit) { detectTapGestures { pyreonTap -> ${kotlinChartSelectBody(onSel.handler, hit('(pyreonTap.x / pyreonDensity).toDouble()', '(pyreonTap.y / pyreonDensity).toDouble()'), indent)} } }`
+      ? `.pointerInput(Unit) { detectTapGestures { pyreonTap -> ${kotlinChartSelectBody(onSel.handler, hit(tapX('(pyreonTap.x / pyreonDensity).toDouble()'), '(pyreonTap.y / pyreonDensity).toDouble()'), indent)} } }`
       : ''
   const size = hasWidth ? `Modifier.width((${W}).dp).height((${H}).dp)` : `Modifier.fillMaxWidth().height((${H}).dp)`
   const generic = emitKotlinLayoutModifier(e)
   const titleMod = kotlinChartA11y(e, describe)
-  const canvas = `PyreonChartCanvas(cmds = ${cmds}, modifier = ${size + tap + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))})`
+  const canvas = `PyreonChartCanvas(cmds = ${mirror(cmds)}, modifier = ${size + tap + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))})`
   const pad = ' '.repeat(indent + 2)
   const widthLine = hasWidth ? '' : `${pad}val pyreonW = maxWidth.value.toDouble()\n`
   const densityLine = tap === '' ? '' : `${pad}val pyreonDensity = LocalDensity.current.density\n`
@@ -10382,9 +10397,7 @@ function kotlinChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries:
   const titleRaw = readStaticAttrKotlin(e, 'title')
   const showTitle = withTitle && readStaticAttrKotlin(e, 'showTitle') === true && typeof titleRaw === 'string'
   const showLegend = readStaticAttrKotlin(e, 'showLegend') === true
-  const rtl = readStaticAttrKotlin(e, 'rtl') === true
-  const mirror = (cmds: string): string => (rtl ? `pyreonMirrorCmds(${cmds}, ${W})` : cmds)
-  const tapX = (raw: string): string => (rtl ? `(${W} - ${raw})` : raw)
+  const { mirror, tapX } = kotlinRtl(e, W)
   if (!showTitle && !showLegend) return { lets: [], top: '0.0', wrap: (p) => p, height: (h) => h, mirror, tapX }
   const lets: string[] = []
   if (showTitle) {

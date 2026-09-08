@@ -91,6 +91,63 @@ describe('batch-2 spec switches lower as literals', () => {
   })
 })
 
+describe('<Histogram> crosses — the row basis becomes bins', () => {
+  const HIST = `import { Plot, Histogram } from '@pyreon/charts/plot'
+interface Row { age: number }
+const ROWS: Row[] = [{ age: 21 }, { age: 34 }, { age: 29 }]
+export function App() {
+  return <Plot data={ROWS} height={220}><Histogram x="age" bins={5} /></Plot>
+}
+`
+
+  it('Swift: rows are binned, the category is the engine label, the mark is a bar over the count', () => {
+    const r = transform(HIST, { target: 'swift' })
+    // No warning: `<Histogram>` used to be named as web-only, because it is
+    // not a mark — it REPLACES the plot's rows. The desugar performs that
+    // same substitution in the IR.
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('binValues(ROWS.map({ d in pyreonChartDouble(d.age) })')
+    expect(r.code).toContain('binLabel(')
+    expect(r.code).toContain('kind: "bars"')
+    expect(r.code).toContain('label: "Count"')
+  })
+
+  it('Kotlin: the same substitution, and the channel is widened to Double', () => {
+    const r = transform(HIST, { target: 'kotlin' })
+    expect(r.warnings).toEqual([])
+    // The coercion is load-bearing on this target and not the other: PMTC
+    // types a bare `number` as Int, so an un-widened map is a `List<Int>`
+    // that `binValues` refuses — kotlinc catches it, swiftc does not.
+    expect(r.code).toContain('binValues(ROWS.map({ d -> pyreonChartDouble(d.age) })')
+    expect(r.code).toContain('binLabel(')
+  })
+
+  it('a mark beside the histogram is NAMED, not silently dropped', () => {
+    // Those marks read the ORIGINAL rows, and after the substitution there
+    // are none left to read — so dropping them is right, and saying so is
+    // the difference between a limitation and a bug.
+    const withMark = HIST.replace('<Histogram x="age" bins={5} />', '<Histogram x="age" bins={5} /><Bar y="age" />').replace('Plot, Histogram', 'Plot, Histogram, Bar')
+    const r = transform(withMark, { target: 'swift' })
+    expect(r.warnings.some((w) => w.includes('reads the ORIGINAL rows'))).toBe(true)
+  })
+
+  it('a histogram with no `x` channel is reported rather than emitting an empty plot', () => {
+    const noX = HIST.replace(' x="age"', '')
+    const r = transform(noX, { target: 'swift' })
+    expect(r.warnings.some((w) => w.includes('<Histogram>: needs an `x` channel'))).toBe(true)
+  })
+
+  it.skipIf(!isSwiftUIAvailable())('swiftc accepts the histogram emit', () => {
+    const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(ENGINE_SWIFT) + '\n' + transform(HIST, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+
+  it.skipIf(!isKotlincAvailable())('kotlinc accepts the histogram emit', () => {
+    const r = validateKotlin(transform(HIST, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+})
+
 describe('<Scale> and the widened <Axis> desugar; <Bar waterfall> picks the waterfall mark', () => {
   it('Swift: the grammar reaches the same spec fields the props do', () => {
     const r = transform(GRAMMAR, { target: 'swift' })
@@ -158,11 +215,17 @@ export function App() {
     for (const target of ['swift', 'kotlin'] as const) {
       const r = transform(src, { target })
       const all = r.warnings.join('\n')
-      // `errorLow` / `errorHigh` LOWER now (see the error-bar block below) —
-      // what stays web-only here is the row reshape, Intl and the panel grid.
+      // `errorLow` / `errorHigh` lower (the error-bar block below) and so
+      // does `<Histogram>` (its own block above). What stays web-only is
+      // `locale` — Intl, which the crossed engine cannot call — and `facet`,
+      // a grid of sub-plots rather than a spec field. Both are NAMED.
       expect(all, target).not.toContain('is a per-row accessor')
+      // The old "web only" line is gone; what this fixture now reports about
+      // the histogram is the `<Bar>` standing beside it, which the row
+      // substitution legitimately drops.
+      expect(all, target).not.toContain('bins the rows on the web only')
+      expect(all, target).toContain('reads the ORIGINAL rows')
       expect(all, target).toContain('`locale`')
-      expect(all, target).toContain('<Histogram> bins the rows on the web only')
       expect(all, target).toContain('`facet`')
     }
   })

@@ -2142,4 +2142,6 @@ fun pyreonChartMeasure(text: String, size: Double): Double = text.length * size 
 fun pyreonChartColor(s: String): Color = Color(0)
 fun pyreonShiftCmds(cmds: List<PyreonDrawCmd>, dy: Double): List<PyreonDrawCmd> = cmds
 fun pyreonMirrorCmds(cmds: List<PyreonDrawCmd>, width: Double): List<PyreonDrawCmd> = cmds
+fun pyreonChartDouble(v: Double): Double = v
+fun pyreonChartDouble(v: Int): Double = v.toDouble()
 `

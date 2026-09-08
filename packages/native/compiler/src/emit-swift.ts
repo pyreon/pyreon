@@ -84,7 +84,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -11721,7 +11721,7 @@ function emitSwiftGaugeHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const text = showValue
     ? ` + [PyreonDrawCmd(kind: "text", fill: "#10161d", text: plain(${value}), at: PyreonChartPt(x: ${W} / 2.0, y: ${H} - 6.0), size: 20.0, align: "middle", baseline: "bottom")]`
     : ''
-  const canvas = `PyreonChartCanvas(cmds: renderGauge(${value}, PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${H} * 2.0), ${opts})${text})`
+  const canvas = `PyreonChartCanvas(cmds: ${swiftRtl(e, W).mirror(`renderGauge(${value}, PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${H} * 2.0), ${opts})${text}`)})`
   const tail = swiftChartA11y(e, undefined, indent) + emitSwiftLayoutModifiers(e)
   if (hasWidth) return `${canvas}.frame(width: ${W}, height: ${H})${tail}`
   const pad = ' '.repeat(indent + 2)
@@ -11773,6 +11773,24 @@ function swiftChartA11y(e: Extract<ExprIR, { kind: 'jsx-element' }>, describe: s
   return `.accessibilityLabel(${title ?? JSON.stringify(chartDefaultLabel(e.tag))})`
 }
 
+/**
+ * RTL for a chart host: the mirror for its finished draw list, and the tap-x
+ * translation that must accompany it.
+ *
+ * Returned as a PAIR, and every caller takes both. The paint and the pointer
+ * are one contract — a host that mirrors what it draws but hit-tests the raw
+ * x reports the item on the opposite side of the chart, silently, and only
+ * for right-to-left users. Handing them out separately is how one of six
+ * emitters ends up with half.
+ */
+function swiftRtl(e: Extract<ExprIR, { kind: 'jsx-element' }>, W: string): { mirror: (cmds: string) => string; tapX: (raw: string) => string } {
+  const rtl = readStaticAttr(e, 'rtl') === true
+  return {
+    mirror: (cmds) => (rtl ? `pyreonMirrorCmds(${cmds}, ${W})` : cmds),
+    tapX: (raw) => (rtl ? `(${W} - ${raw})` : raw),
+  }
+}
+
 function swiftFrameHost(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   lets: readonly string[],
@@ -11795,10 +11813,10 @@ function swiftFrameHost(
   return `GeometryReader { pyreonGeo in\n${body}${pad}${canvas}${gesture}${a11y}\n${' '.repeat(indent)}}.frame(height: ${H})${tail}`
 }
 
-function swiftChartGesture(e: Extract<ExprIR, { kind: 'jsx-element' }>, hit: (x: string, y: string) => string, indent: number, names: readonly string[] = ['selectindex', 'select']): string {
+function swiftChartGesture(e: Extract<ExprIR, { kind: 'jsx-element' }>, hit: (x: string, y: string) => string, indent: number, names: readonly string[] = ['selectindex', 'select'], tapX: (raw: string) => string = (raw) => raw): string {
   const onSel = e.attrs.find((a) => a.kind === 'event' && names.includes(a.name))
   if (onSel?.kind !== 'event') return ''
-  return `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in ${swiftChartSelectBody(onSel.handler, hit('Double(pyreonTap.location.x)', 'Double(pyreonTap.location.y)'), indent)} })`
+  return `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in ${swiftChartSelectBody(onSel.handler, hit(tapX('Double(pyreonTap.location.x)'), 'Double(pyreonTap.location.y)'), indent)} })`
 }
 
 /** `<CandlestickChart data open high low close x? candle? height width title>` → the shared frame over the mapped candles. */
@@ -11831,8 +11849,9 @@ function emitSwiftCandlestickHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, i
   const H = swiftChartDouble(e, 'height', 200, indent)
   const hasWidth = chartAttrExpr(e, 'width') !== undefined
   const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
-  const canvas = `PyreonChartCanvas(cmds: renderCandlestickChart(pyreonCandles, ${W}, ${H}, pyreonCats, pyreonTheme, ${options}, pyreonChartMeasure))`
-  const gesture = swiftChartGesture(e, (x, y) => `hitCandlestickChart(pyreonCandles, ${W}, ${H}, pyreonCats, pyreonTheme.fontSize, pyreonChartMeasure, ${x}, ${y})`, indent)
+  const rtlC = swiftRtl(e, W)
+  const canvas = `PyreonChartCanvas(cmds: ${rtlC.mirror(`renderCandlestickChart(pyreonCandles, ${W}, ${H}, pyreonCats, pyreonTheme, ${options}, pyreonChartMeasure)`)})`
+  const gesture = swiftChartGesture(e, (x, y) => `hitCandlestickChart(pyreonCandles, ${W}, ${H}, pyreonCats, pyreonTheme.fontSize, pyreonChartMeasure, ${x}, ${y})`, indent, ['selectindex', 'select'], rtlC.tapX)
   return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent)
 }
 
@@ -11870,8 +11889,9 @@ function emitSwiftHeatmapHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
   const H = swiftChartDouble(e, 'height', 200, indent)
   const hasWidth = chartAttrExpr(e, 'width') !== undefined
   const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
-  const canvas = `PyreonChartCanvas(cmds: renderHeatChart(pyreonGrid, ${W}, ${H}, pyreonTheme, ${stops}, ${gap}, pyreonChartMeasure${swiftChartAnimating(e, tag) ? ', pyreonEntrance' : ''}))`
-  const gesture = swiftChartGesture(e, (x, y) => `hitHeatChart(pyreonGrid, ${W}, ${H}, pyreonTheme.fontSize, ${gap}, pyreonChartMeasure, ${x}, ${y})`, indent, ['selectindex'])
+  const rtlH = swiftRtl(e, W)
+  const canvas = `PyreonChartCanvas(cmds: ${rtlH.mirror(`renderHeatChart(pyreonGrid, ${W}, ${H}, pyreonTheme, ${stops}, ${gap}, pyreonChartMeasure${swiftChartAnimating(e, tag) ? ', pyreonEntrance' : ''})`)})`
+  const gesture = swiftChartGesture(e, (x, y) => `hitHeatChart(pyreonGrid, ${W}, ${H}, pyreonTheme.fontSize, ${gap}, pyreonChartMeasure, ${x}, ${y})`, indent, ['selectindex'], rtlH.tapX)
   return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent)
 }
 
@@ -12098,7 +12118,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     lets.push(`let pyreonXValues: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${body})`, 'Double', windowed)}`)
   }
   const present = PLOT_UNLOWERED_PROPS.filter((p) => chartAttrExpr(e, p) !== undefined || e.attrs.some((a) => a.kind === 'event' && 'on' + a.name === p.toLowerCase()))
-  if (present.length > 0) _emitWarnings.push(`<${tag}>: ${present.map((p) => `\`${p}\``).join(', ')} ${present.length === 1 ? 'is' : 'are'} not lowered on native yet; the chart renders without.`)
+  if (present.length > 0) _emitWarnings.push(plotUnloweredWarning(tag, present))
   const H = swiftChartDouble(e, 'height', 200, indent)
   const hasWidth = chartAttrExpr(e, 'width') !== undefined
   const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
@@ -12332,9 +12352,7 @@ function swiftChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries: 
   const title = readStringAttrExpr(e, 'title', indent)
   const showTitle = withTitle && readStaticAttr(e, 'showTitle') === true && title !== undefined
   const showLegend = readStaticAttr(e, 'showLegend') === true
-  const rtl = readStaticAttr(e, 'rtl') === true
-  const mirror = (cmds: string): string => (rtl ? `pyreonMirrorCmds(${cmds}, ${W})` : cmds)
-  const tapX = (raw: string): string => (rtl ? `(${W} - ${raw})` : raw)
+  const { mirror, tapX } = swiftRtl(e, W)
   if (!showTitle && !showLegend) return { lets: [], top: '0.0', wrap: (p) => p, height: (h) => h, mirror, tapX }
   const lets: string[] = []
   if (showTitle) {

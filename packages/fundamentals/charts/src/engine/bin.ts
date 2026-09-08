@@ -4,6 +4,7 @@
 // web `histogram()` helper turns rows into bins here, and a native host can
 // do the same over a `[Double]`.
 
+import { plain } from './format'
 import { niceDomain, niceStep } from './scale'
 import type { Double } from './types'
 
@@ -65,4 +66,16 @@ export function binValues(values: Double[], count: Double): Bin[] {
     out[idx]!.count = out[idx]!.count + 1.0
   }
   return out
+}
+
+/**
+ * A bin's axis label — its half-open range, `x0–x1`.
+ *
+ * In the engine rather than in the web `histogram()` helper because the
+ * native `<Histogram>` desugar needs the SAME string: a bin labelled one way
+ * on the web and another on iOS is the kind of divergence nobody notices
+ * until a screenshot is compared.
+ */
+export function binLabel(b: Bin): string {
+  return `${plain(b.x0)}–${plain(b.x1)}`
 }

@@ -8039,3 +8039,5 @@ public func binValues(_ values: [Double], _ count: Double) -> [Bin] {
     }
     return out
   }
+
+public func binLabel(_ b: Bin) -> String { "\(plain(b.x0))–\(plain(b.x1))" }
