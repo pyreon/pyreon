@@ -11897,8 +11897,9 @@ function emitSwiftBoxplotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
   const hasWidth = chartAttrExpr(e, 'width') !== undefined
   const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
   // The entrance reaches the RENDER only (its trailing `progress`, as the heat host's); the hit reads the frame without it.
-  const canvas = `PyreonChartCanvas(cmds: renderBoxplotChart(pyreonBoxes, ${W}, ${H}, pyreonCats, pyreonTheme, ${options}, pyreonChartMeasure${swiftChartAnimating(e, tag) ? ', nil, pyreonEntrance' : ''}))`
-  const gesture = swiftChartGesture(e, (x, y) => `hitBoxplotChart(pyreonBoxes.count, ${W}, ${H}, pyreonCats, pyreonTheme.fontSize, pyreonChartMeasure, ${x}, ${y}, pyreonBoxes)`, indent)
+  const rtlB = swiftRtl(e, W)
+  const canvas = `PyreonChartCanvas(cmds: ${rtlB.mirror(`renderBoxplotChart(pyreonBoxes, ${W}, ${H}, pyreonCats, pyreonTheme, ${options}, pyreonChartMeasure${swiftChartAnimating(e, tag) ? ', nil, pyreonEntrance' : ''})`)})`
+  const gesture = swiftChartGesture(e, (x, y) => `hitBoxplotChart(pyreonBoxes.count, ${W}, ${H}, pyreonCats, pyreonTheme.fontSize, pyreonChartMeasure, ${x}, ${y}, pyreonBoxes)`, indent, ['selectindex', 'select'], rtlB.tapX)
   return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent)
 }
 

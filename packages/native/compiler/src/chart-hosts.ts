@@ -1019,6 +1019,7 @@ const CHROME_LOWERED: Readonly<Record<string, readonly string[]>> = {
   GaugeChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'rtl'],
   CandlestickChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'rtl'],
   HeatmapChart: ['animate', 'rtl'],
+  BoxplotChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'rtl'],
   RadarChart: ['showLegend', 'rtl'],
 }
 /** Title + legend + tap tooltip — what the generic and accessor hosts draw natively through the crossing chrome. */
