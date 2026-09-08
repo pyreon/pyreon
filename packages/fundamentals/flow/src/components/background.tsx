@@ -42,8 +42,7 @@ export function Background(props: BackgroundProps): VNodeChild {
     if (variant === 'dots') {
       return (
         <svg
-          role="img"
-          aria-label="background pattern"
+          aria-hidden="true"
           class="pyreon-flow-background"
           style="position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none;"
         >
@@ -67,8 +66,7 @@ export function Background(props: BackgroundProps): VNodeChild {
     if (variant === 'lines') {
       return (
         <svg
-          role="img"
-          aria-label="background pattern"
+          aria-hidden="true"
           class="pyreon-flow-background"
           style="position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none;"
         >
@@ -107,8 +105,7 @@ export function Background(props: BackgroundProps): VNodeChild {
     // cross
     return (
       <svg
-        role="img"
-        aria-label="background pattern"
+        aria-hidden="true"
         class="pyreon-flow-background"
         style="position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none;"
       >

@@ -87,6 +87,19 @@ export interface FlowNode<TData = Record<string, unknown>> {
   selectable?: boolean
   /** Whether the node can be connected to */
   connectable?: boolean
+  /**
+   * Whether the node is a keyboard focus stop (`tabindex=0`) — default: true.
+   * A focused node takes Enter/Space (select) and the arrow keys (move).
+   * `false` keeps the node reachable by pointer only. See also
+   * {@link FlowConfig.nodesFocusable} and {@link FlowConfig.disableKeyboardA11y}.
+   */
+  focusable?: boolean
+  /**
+   * Accessible name announced when the node receives focus. Without it a
+   * screen reader reads the node's own content, which is usually right —
+   * set this when the content is an icon or a chart.
+   */
+  ariaLabel?: string
   /** Custom class name */
   class?: string
   /** Custom style */
@@ -149,6 +162,13 @@ export interface FlowEdge {
   type?: EdgeType
   label?: string
   animated?: boolean
+  /**
+   * Whether the edge is a keyboard focus stop — default: true. A focused
+   * edge takes Enter/Space (select). See {@link FlowConfig.edgesFocusable}.
+   */
+  focusable?: boolean
+  /** Accessible name — default `"Edge from <source> to <target>"`. */
+  ariaLabel?: string
   class?: string
   style?: string
   /** Marker at the START (source end). Omitted → no start marker. */
@@ -327,6 +347,27 @@ export interface FlowConfig<TData = Record<string, unknown>> {
   nodesConnectable?: boolean
   /** Whether nodes are selectable by default — default: true */
   nodesSelectable?: boolean
+  /**
+   * Whether nodes are keyboard focus stops by default — default: true.
+   * Per-node `focusable: false` still wins.
+   */
+  nodesFocusable?: boolean
+  /** Whether edges are keyboard focus stops by default — default: true. */
+  edgesFocusable?: boolean
+  /**
+   * Turn off the keyboard accessibility layer entirely: nodes and edges get
+   * `tabindex=-1`, no `aria-describedby` instructions, no arrow-key moves.
+   * The canvas itself stays focusable (Delete / Escape / undo shortcuts).
+   * Default: false. Mirrors React Flow's `disableKeyboardA11y`.
+   */
+  disableKeyboardA11y?: boolean
+  /**
+   * Reduced-motion policy for `fitView` / `animateViewport` / animated
+   * `layout()`. `'auto'` (default) honours the user's
+   * `prefers-reduced-motion: reduce` media query and JUMPS instead of
+   * animating; `true` always jumps; `false` always animates.
+   */
+  reducedMotion?: boolean | 'auto'
   /** Whether to allow multi-selection — default: true */
   multiSelect?: boolean
   /** Drag boundaries for nodes — [[minX, minY], [maxX, maxY]] */

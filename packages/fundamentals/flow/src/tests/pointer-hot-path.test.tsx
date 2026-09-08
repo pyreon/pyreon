@@ -194,7 +194,7 @@ describe('pointer hot paths (P8)', () => {
     const { container, cleanup } = mountReactive(h(Flow, { instance: flow }))
     cleanups.push(cleanup)
     const box = container.querySelector('.pyreon-flow-selection-box')!
-    const guides = container.querySelector('svg[aria-label="helper lines"]')!
+    const guides = container.querySelector('svg.pyreon-flow-helper-lines')!
     expect(box).toBeTruthy()
     expect(guides).toBeTruthy()
     expect(box.getAttribute('style') ?? '').toContain('display: none')
@@ -218,7 +218,7 @@ describe('pointer hot paths (P8)', () => {
     const nodeEl = container.querySelector<HTMLElement>('[data-nodeid="a"]')!
     nodeEl.dispatchEvent(pev('pointerdown', 0, 0))
     flowEl.dispatchEvent(pev('pointermove', 299, 40)) // raw x=299 → snaps to 300
-    expect(container.querySelector('svg[aria-label="helper lines"]')).toBe(guides)
+    expect(container.querySelector('svg.pyreon-flow-helper-lines')).toBe(guides)
     expect(guides.getAttribute('style') ?? '').not.toContain('display: none')
     const vline = guides.querySelectorAll('line')[0]!
     expect(vline.getAttribute('x1')).toBe('300')

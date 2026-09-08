@@ -1,4 +1,5 @@
 import { useContext, type VNodeChild } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 import type { ControlsProps, FlowInstance } from '../types'
 import { FlowContext } from './flow-context'
 
@@ -120,6 +121,9 @@ export function Controls(props: ControlsProps & { instance?: FlowInstance }): VN
     position = 'bottom-left',
   } = props
 
+  // Lock-button state (interactive `aria-pressed`, see the button below).
+  const locked = signal(false)
+
   // Resolve the instance from an explicit prop, else the <Flow> context.
   const instance = props.instance ?? useContext(FlowContext)
   if (!instance) return null
@@ -144,7 +148,13 @@ export function Controls(props: ControlsProps & { instance?: FlowInstance }): VN
             controls column. */}
         <div style="display: contents;">
         {showZoomIn && (
-          <button type="button" style={btnStyle} title="Zoom in" onClick={() => instance.zoomIn()}>
+          <button
+            type="button"
+            style={btnStyle}
+            title="Zoom in"
+            aria-label="Zoom in"
+            onClick={() => instance.zoomIn()}
+          >
             <ZoomInIcon />
           </button>
         )}
@@ -153,6 +163,7 @@ export function Controls(props: ControlsProps & { instance?: FlowInstance }): VN
             type="button"
             style={btnStyle}
             title="Zoom out"
+            aria-label="Zoom out"
             onClick={() => instance.zoomOut()}
           >
             <ZoomOutIcon />
@@ -163,6 +174,7 @@ export function Controls(props: ControlsProps & { instance?: FlowInstance }): VN
             type="button"
             style={btnStyle}
             title="Fit view"
+            aria-label="Fit view"
             onClick={() => instance.fitView()}
           >
             <FitViewIcon />
@@ -172,10 +184,18 @@ export function Controls(props: ControlsProps & { instance?: FlowInstance }): VN
           <button
             type="button"
             style={btnStyle}
-            title="Lock/unlock"
+            title={() => (locked() ? 'Unlock' : 'Lock')}
+            aria-label="Lock the canvas"
+            aria-pressed={() => (locked() ? 'true' : 'false')}
             onClick={() => {
-              // Toggle pan/zoom by updating config
-              // This is a simple toggle — could be improved with state
+              // The lock freezes the canvas: no pan, no zoom, no node drag.
+              // `instance.config` is read LIVE by every gesture handler, so
+              // flipping the flags is enough (was a no-op button before).
+              const next = !locked.peek()
+              locked.set(next)
+              instance.config.pannable = !next
+              instance.config.zoomable = !next
+              instance.config.nodesDraggable = !next
             }}
           >
             <LockIcon />

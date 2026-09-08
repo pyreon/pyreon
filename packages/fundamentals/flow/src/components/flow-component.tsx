@@ -1,5 +1,5 @@
-import { For, isClient, provide, type VNodeChild, cx } from '@pyreon/core'
-import { batch, signal } from '@pyreon/reactivity'
+import { For, createUniqueId, isClient, provide, type VNodeChild, cx } from '@pyreon/core'
+import { batch, effect, signal } from '@pyreon/reactivity'
 import {
   collectEdgeMarkers,
   DEFAULT_MARKER_END,
@@ -258,8 +258,16 @@ function EdgeLayer(props: {
   instance: FlowInstance
   connectionState: () => ConnectionState
   edgeTypes?: EdgeTypeMap
+  /** False under `config.disableKeyboardA11y` — edges drop out of the tab order. */
+  keyboardA11y: boolean
+  /** id of the visually-hidden keyboard instructions for edges. */
+  edgeDescId: string
 }): VNodeChild {
-  const { instance, connectionState, edgeTypes } = props
+  const { instance, connectionState, edgeTypes, keyboardA11y, edgeDescId } = props
+
+  const edgeTabIndex = (e: FlowEdge): number =>
+    keyboardA11y && e.focusable !== false && instance.config.edgesFocusable !== false ? 0 : -1
+  const edgeName = (e: FlowEdge): string => e.ariaLabel ?? `Edge from ${e.source} to ${e.target}`
 
   // <For> keys edges by id and runs the children function ONCE per
   // id. Per-edge accessors read the instance's per-edge geometry computed
@@ -278,8 +286,8 @@ function EdgeLayer(props: {
   // geometry on every drag frame; see flow.ts "Per-id computeds".)
   return () => (
     <svg
-      role="img"
-      aria-label="flow edges"
+      role="group"
+      aria-label="Edges"
       class="pyreon-flow-edges"
       style="position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible;"
     >
@@ -379,13 +387,30 @@ function EdgeLayer(props: {
                   const m = resolveEdgeMarkers(liveEdge(), defaultEndMarker(instance)).end
                   return m ? `url(#${markerId(m)})` : undefined
                 }}
-                class={() => (liveEdge().animated ? 'pyreon-flow-edge-animated' : '')}
+                class={() =>
+                  `pyreon-flow-edge-path ${liveEdge().animated ? 'pyreon-flow-edge-animated' : ''}`
+                }
                 style={() =>
                   `stroke: ${isSelected() ? 'var(--pyreon-flow-accent, #3b82f6)' : 'var(--pyreon-flow-edge, #999)'}; stroke-width: ${isSelected() ? 2 : 1.5}px; pointer-events: stroke; cursor: pointer; ${liveEdge().style ?? ''}`
                 }
+                role="button"
+                aria-label={() => edgeName(liveEdge())}
+                aria-describedby={keyboardA11y ? edgeDescId : undefined}
+                {...{
+                  // SVG attribute names are case-sensitive and the runtime
+                  // always `setAttribute`s on SVG, so the JSX `tabIndex` prop
+                  // would land as an unrecognised `tabIndex` attribute —
+                  // the lowercase spelling is the only one a browser honours.
+                  tabindex: () => edgeTabIndex(liveEdge()),
+                }}
                 onClick={() => {
                   if (edgeId) instance.selectEdge(edgeId)
                   instance._emit.edgeClick(liveEdge())
+                }}
+                onKeyDown={(e: KeyboardEvent) => {
+                  if (e.key !== 'Enter' && e.key !== ' ') return
+                  e.preventDefault()
+                  if (edgeId) instance.selectEdge(edgeId, e.shiftKey)
                 }}
               />
               {() => {
@@ -445,6 +470,12 @@ function NodeLayer(props: {
   instance: FlowInstance
   nodeTypes: NodeTypeMap
   draggingNodeId: () => string
+  /** False under `config.disableKeyboardA11y` — nodes drop out of the tab order. */
+  keyboardA11y: boolean
+  /** id of the visually-hidden keyboard instructions for nodes. */
+  nodeDescId: string
+  /** Push a message to the canvas live region. */
+  announce: (message: string) => void
   onNodePointerDown: (e: PointerEvent, node: FlowNode) => void
   onHandlePointerDown: (
     e: PointerEvent,
@@ -454,7 +485,58 @@ function NodeLayer(props: {
     position: Position,
   ) => void
 }): VNodeChild {
-  const { instance, nodeTypes, draggingNodeId, onNodePointerDown, onHandlePointerDown } = props
+  const {
+    instance,
+    nodeTypes,
+    draggingNodeId,
+    onNodePointerDown,
+    onHandlePointerDown,
+    keyboardA11y,
+    nodeDescId,
+    announce,
+  } = props
+
+  // ── Keyboard (per node) ──────────────────────────────────────────────────
+  // Enter / Space select; the arrow keys move a draggable node by 10 flow
+  // units (Shift: 100). Delete / Escape / undo are NOT handled here — they
+  // bubble to the canvas handler, which already owns them. Keys from an
+  // editable or interactive descendant are left to that control.
+  const ARROW: Record<string, [number, number]> = {
+    ArrowLeft: [-1, 0],
+    ArrowRight: [1, 0],
+    ArrowUp: [0, -1],
+    ArrowDown: [0, 1],
+  }
+  const handleNodeKeyDown = (e: KeyboardEvent, id: string) => {
+    if (!keyboardA11y) return
+    const target = e.target as HTMLElement | null
+    if (target && target.closest('input, textarea, select, button, a, [contenteditable="true"]')) {
+      return
+    }
+    const n = instance.getNode(id)
+    if (!n) return
+    if (e.key === 'Enter' || e.key === ' ') {
+      if (n.selectable === false || instance.config.nodesSelectable === false) return
+      e.preventDefault()
+      instance.selectNode(id, e.shiftKey)
+      return
+    }
+    const step = ARROW[e.key]
+    if (!step) return
+    if (n.draggable === false || instance.config.nodesDraggable === false) return
+    e.preventDefault()
+    const k = e.shiftKey ? 100 : 10
+    // One history entry per key PRESS, not per auto-repeat frame.
+    if (!e.repeat) instance.pushHistory()
+    if (!instance.isNodeSelected(id)) instance.selectNode(id)
+    instance.moveSelectedNodes(step[0] * k, step[1] * k)
+    const moved = instance.getNode(id)
+    if (moved) {
+      announce(
+        `Moved ${moved.ariaLabel ?? `node ${id}`} to ${Math.round(moved.position.x)}, ${Math.round(moved.position.y)}`,
+      )
+    }
+  }
 
   // ONE ResizeObserver shared by ALL node wrappers (P8) — it used to be one
   // observer PER node (N observer objects at N nodes, measured 301
@@ -611,6 +693,18 @@ function NodeLayer(props: {
               }; ${n.style ?? ''}`
             }}
             data-nodeid={id}
+            tabIndex={() =>
+              keyboardA11y &&
+              node().focusable !== false &&
+              instance.config.nodesFocusable !== false
+                ? 0
+                : -1
+            }
+            role="group"
+            aria-roledescription="node"
+            aria-label={() => node().ariaLabel}
+            aria-describedby={keyboardA11y ? nodeDescId : undefined}
+            onKeyDown={(e: KeyboardEvent) => handleNodeKeyDown(e, id)}
             onClick={(e: MouseEvent) => {
               e.stopPropagation()
               // selectable / nodesSelectable gate user click-selection (mirrors
@@ -1344,7 +1438,60 @@ export function Flow(props: FlowComponentProps): VNodeChild {
     }
   }
 
-  const containerStyle = `position: relative; width: 100%; height: 100%; overflow: hidden; outline: none; touch-action: none; ${props.style ?? ''}`
+  // No inline `outline: none` — that hid KEYBOARD focus too (WCAG 2.4.7).
+  // Every UA stylesheet draws its ring under `:focus-visible` only, so a
+  // pointer click leaves the canvas ring-free while Tab shows it; `flowStyles`
+  // themes the ring with `--pyreon-flow-accent`.
+  const containerStyle = `position: relative; width: 100%; height: 100%; overflow: hidden; touch-action: none; ${props.style ?? ''}`
+
+  // ── Accessibility ────────────────────────────────────────────────────────
+  const keyboardA11y = instance.config.disableKeyboardA11y !== true
+  const a11yId = createUniqueId()
+  const nodeDescId = `${a11yId}-node-desc`
+  const edgeDescId = `${a11yId}-edge-desc`
+  // Live region text. An identical message is dropped: `selectNode` writes
+  // two selection signals un-batched, so the effect below runs twice per
+  // call with the same result, and a repeated announcement is noise for the
+  // screen-reader user anyway.
+  const liveText = signal('')
+  const announce = (message: string) => {
+    if (message === liveText.peek()) return
+    liveText.set(message)
+  }
+  // A keyboard move both selects (maybe) and moves. Delegated handlers run
+  // inside a batch, so the selection effect below drains AFTER the handler's
+  // own announcement and would overwrite "Moved …" with "1 node selected" —
+  // the move message is parked here and the effect re-issues it instead.
+  let pendingMove: string | null = null
+  const announceMove = (message: string) => {
+    pendingMove = message
+    announce(message)
+  }
+  // Selection changes are announced whichever input caused them; the mount
+  // run is skipped so an initial selection does not fire on page load.
+  let selectionSeen = false
+  effect(() => {
+    const nodeCount = instance.selectedNodes().length
+    const edgeCount = instance.selectedEdges().length
+    if (!selectionSeen) {
+      selectionSeen = true
+      return
+    }
+    if (pendingMove !== null) {
+      const message = pendingMove
+      pendingMove = null
+      announce(message)
+      return
+    }
+    if (nodeCount === 0 && edgeCount === 0) {
+      announce('Selection cleared')
+      return
+    }
+    const parts: string[] = []
+    if (nodeCount > 0) parts.push(`${nodeCount} node${nodeCount === 1 ? '' : 's'}`)
+    if (edgeCount > 0) parts.push(`${edgeCount} edge${edgeCount === 1 ? '' : 's'}`)
+    announce(`${parts.join(' and ')} selected`)
+  })
 
   return (
     <div
@@ -1362,6 +1509,25 @@ export function Flow(props: FlowComponentProps): VNodeChild {
       onTouchMove={handleTouchMove}
       onKeyDown={handleKeyDown}
     >
+      {keyboardA11y && (
+        <div id={nodeDescId} class="pyreon-flow-a11y-hidden">
+          Press Enter or Space to select the node. Use the arrow keys to move a selected node,
+          hold Shift for larger steps. Delete removes the selection, Escape clears it.
+        </div>
+      )}
+      {keyboardA11y && (
+        <div id={edgeDescId} class="pyreon-flow-a11y-hidden">
+          Press Enter or Space to select the edge. Delete removes the selection.
+        </div>
+      )}
+      <div
+        class="pyreon-flow-a11y-hidden pyreon-flow-a11y-live"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {() => liveText()}
+      </div>
       {children}
       {/* The viewport div is mounted STATICALLY and only its `style` string is
           a reactive thunk. It used to be the body of a reactive child accessor
@@ -1398,6 +1564,8 @@ export function Flow(props: FlowComponentProps): VNodeChild {
             <EdgeLayer
               instance={instance}
               connectionState={() => connectionState()}
+              keyboardA11y={keyboardA11y}
+              edgeDescId={edgeDescId}
               {...(edgeTypes != null ? { edgeTypes } : {})}
             />
             {/* Selection box + helper lines are mounted STATICALLY and only
@@ -1420,8 +1588,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
               }}
             />
             <svg
-              role="img"
-              aria-label="helper lines"
+              aria-hidden="true"
               class="pyreon-flow-helper-lines"
               style={() => {
                 const lines = helperLines()
@@ -1456,6 +1623,9 @@ export function Flow(props: FlowComponentProps): VNodeChild {
               instance={instance}
               nodeTypes={nodeTypes}
               draggingNodeId={draggingNodeId}
+              keyboardA11y={keyboardA11y}
+              nodeDescId={nodeDescId}
+              announce={announceMove}
               onNodePointerDown={handleNodePointerDown}
               onHandlePointerDown={handleHandlePointerDown}
             />

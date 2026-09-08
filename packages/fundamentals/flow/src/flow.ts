@@ -639,7 +639,7 @@ export function createFlow<TData = Record<string, unknown>>(
 
     const positions = await computeLayout(measuredNodes, currentEdges, algorithm, options)
 
-    const animate = options.animate !== false
+    const animate = options.animate !== false && !reducedMotion()
     const duration = options.animationDuration ?? 300
 
     if (!animate) {
@@ -1348,6 +1348,21 @@ export function createFlow<TData = Record<string, unknown>>(
 
   // ── Viewport animation ─────────────────────────────────────────────────
 
+  /**
+   * Whether motion should be skipped: `config.reducedMotion` wins when set to
+   * a boolean; `'auto'` (default) reads `prefers-reduced-motion: reduce`.
+   * `matchMedia` is guarded so SSR and bare Node stay animation-capable
+   * (they never reach a frame anyway — `_raf` is a no-op there).
+   */
+  function reducedMotion(): boolean {
+    if (config.reducedMotion === true) return true
+    if (config.reducedMotion === false) return false
+    return (
+      typeof matchMedia === 'function' &&
+      matchMedia('(prefers-reduced-motion: reduce)').matches === true
+    )
+  }
+
   function animateViewport(
     target: Partial<{ x: number; y: number; zoom: number }>,
     duration = 300,
@@ -1363,6 +1378,13 @@ export function createFlow<TData = Record<string, unknown>>(
       x: target.x ?? start.x,
       y: target.y ?? start.y,
       zoom: target.zoom ?? start.zoom,
+    }
+
+    // Reduced motion (WCAG 2.3.3): land on the target synchronously instead
+    // of tweening — the same end state, no intermediate frames.
+    if (duration <= 0 || reducedMotion()) {
+      viewport.set(end)
+      return
     }
     const startTime = performance.now()
 
