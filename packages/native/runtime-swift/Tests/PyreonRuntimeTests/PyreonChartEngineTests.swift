@@ -9,7 +9,14 @@ import XCTest
 @testable import PyreonRuntime
 
 final class PyreonChartEngineTests: XCTestCase {
-    private let theme = ChartTheme(axis: "#888", grid: "#eee", label: "#333", fontSize: 12.0)
+    // Every field, because `ChartTheme` crosses as a struct where none is
+    // optional (the web merges a partial in `resolveChartTheme`, native does
+    // it at compile time) — so the synthesized init has no defaults to lean
+    // on. This call omitted nine of them and had never compiled.
+    private let theme = ChartTheme(
+        palette: ["#4f7df3", "#f97362", "#22c3a6"], background: "#ffffff", surface: "#ffffff",
+        text: "#111827", label: "#333", axis: "#888", grid: "#eee", fontFamily: "",
+        fontSize: 12.0, titleSize: 15.0, radius: 3.0, enterMs: 700.0, updateMs: 350.0)
     /// Text measure the web renderer gets from the canvas context —
     /// a monospace-ish approximation is fine for geometry assertions.
     private let measure: (String, Double) -> Double = { text, size in
