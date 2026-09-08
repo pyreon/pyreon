@@ -84,7 +84,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning } from './chart-hosts'
+import { PLOT_INDICATOR_MARKS, ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -11576,6 +11576,33 @@ const SWIFT_CHART_TARGET: ChartHostTarget = {
   theme: () => `ChartTheme(axis: ${JSON.stringify(CHART_THEME_DEFAULT.axis)}, grid: ${JSON.stringify(CHART_THEME_DEFAULT.grid)}, label: ${JSON.stringify(CHART_THEME_DEFAULT.label)}, fontSize: ${CHART_THEME_DEFAULT.fontSize})`,
 }
 
+/**
+ * The `values` expression for a derived (indicator) mark: the mapped rows
+ * handed to the crossing engine function, with its window when it takes one.
+ *
+ * The window must be a NUMERIC LITERAL — a runtime window would be an `Int`
+ * expression the engine could take, but nothing in the emit tracks its type,
+ * and silently lowering a wrong one is worse than naming the limit.
+ */
+function swiftIndicatorValues(
+  ind: { readonly fn: string; readonly takesWindow: boolean },
+  m: Extract<ExprIR, { kind: 'call' }>,
+  rowMap: string,
+  tag: string,
+  k: number,
+  _indent: number,
+): string | 'unsupported' {
+  if (!ind.takesWindow) return `${ind.fn}(${rowMap})`
+  const w = m.args[1]
+  if (w === undefined || w.kind !== 'literal' || typeof w.value !== 'number') {
+    _emitWarnings.push(
+      `<${tag}> mark ${k + 1}: \`${ind.fn.replace('Values', '')}\` needs a NUMERIC LITERAL window on native (\`sma(y, 20)\`); emitting an EmptyView().`,
+    )
+    return 'unsupported'
+  }
+  return `${ind.fn}(${rowMap}, ${Math.trunc(w.value)})`
+}
+
 /** `{ kind: 'typeRef' }` for an engine struct — steers an inline options literal (`tree={{ symbolSize: 8 }}`) to `TreeOptions` instead of a synthesized `__Obj`. */
 function chartStructRef(name: string | undefined): TypeIR | undefined {
   return name === undefined ? undefined : { kind: 'typeRef', name, args: [] }
@@ -12285,7 +12312,11 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     // every other mark: the SERIES value is the upper bound and the second
     // channel is the lower one, so the accessor picked below is args[1].
     const isBand = callee === 'band'
-    const kind = callee === undefined ? undefined : bubble ? 'points' : PLOT_MARK_KINDS[callee]
+    // A DERIVED mark: the accessor gives the raw series and a crossing engine
+    // function turns it into the drawn one (`sma` → `smaValues`), the same
+    // shape as `bubble` → `bubbleRadii`.
+    const indicator = callee === undefined ? undefined : PLOT_INDICATOR_MARKS[callee]
+    const kind = callee === undefined ? undefined : bubble ? 'points' : (indicator?.kind ?? PLOT_MARK_KINDS[callee])
     if (m.kind !== 'call' || kind === undefined) {
       _emitWarnings.push(`<${tag}> mark ${k + 1}: this mark is not lowered on native; emitting an EmptyView().`)
       return 'EmptyView()'
@@ -12303,10 +12334,13 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     }
     const body = swiftAccessorExpr(y, tag, `mark ${k + 1}`, indent)
     if (body === 'unsupported') return 'EmptyView()'
-    const optsArg = bubble || isBand ? m.args[2] : m.args[1]
+    const optsArg = bubble || isBand || indicator?.takesWindow === true ? m.args[2] : m.args[1]
     const opts = swiftMarkOptionArgs(optsArg, tag, k, pyreonPalette)
     if (opts === 'unsupported') return 'EmptyView()'
-    lets.push(`let pyreonValues${k}: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${body})`, 'Double', windowed)}`)
+    const rowMap = swiftPlotRowMap(rows, `pyreonChartDouble(${body})`, 'Double', windowed)
+    const derivedValues = indicator === undefined ? undefined : swiftIndicatorValues(indicator, m, rowMap, tag, k, indent)
+    if (derivedValues === 'unsupported') return 'EmptyView()'
+    lets.push(`let pyreonValues${k}: [Double] = ${derivedValues ?? rowMap}`)
     // The bounds ride the same row map the values do — `errLow`/`errHigh` are
     // the LAST Series fields on both targets, so they append.
     const errArgs = swiftMarkErrorArgs(optsArg, tag, k, rows, windowed, indent, lets)

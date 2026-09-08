@@ -79,7 +79,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning } from './chart-hosts'
+import { PLOT_INDICATOR_MARKS, ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -9626,6 +9626,25 @@ const KOTLIN_CHART_TARGET: ChartHostTarget = {
   theme: () => `ChartTheme(axis = ${JSON.stringify(CHART_THEME_DEFAULT.axis)}, grid = ${JSON.stringify(CHART_THEME_DEFAULT.grid)}, label = ${JSON.stringify(CHART_THEME_DEFAULT.label)}, fontSize = ${CHART_THEME_DEFAULT.fontSize})`,
 }
 
+/** The `values` expression for a derived (indicator) mark — mirror of `swiftIndicatorValues`. */
+function kotlinIndicatorValues(
+  ind: { readonly fn: string; readonly takesWindow: boolean },
+  m: Extract<ExprIR, { kind: 'call' }>,
+  rowMap: string,
+  tag: string,
+  k: number,
+): string | 'unsupported' {
+  if (!ind.takesWindow) return `${ind.fn}(${rowMap})`
+  const w = m.args[1]
+  if (w === undefined || w.kind !== 'literal' || typeof w.value !== 'number') {
+    _emitWarnings.push(
+      `<${tag}> mark ${k + 1}: \`${ind.fn.replace('Values', '')}\` needs a NUMERIC LITERAL window on native (\`sma(y, 20)\`); emitting an empty Box().`,
+    )
+    return 'unsupported'
+  }
+  return `${ind.fn}(${rowMap}, ${Math.trunc(w.value)})`
+}
+
 /** `{ kind: 'typeRef' }` for an engine struct — steers an inline options literal to the named data class (mirror of the Swift emitter). */
 function chartStructRefKotlin(name: string | undefined): TypeIR | undefined {
   return name === undefined ? undefined : { kind: 'typeRef', name, args: [] }
@@ -10256,7 +10275,9 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     // `band(low, high, options)` reads its channels in the opposite order to
     // every other mark (see the Swift twin).
     const isBand = callee === 'band'
-    const kind = callee === undefined ? undefined : bubble ? 'points' : PLOT_MARK_KINDS[callee]
+    // A DERIVED mark — mirror of the Swift emitter.
+    const indicator = callee === undefined ? undefined : PLOT_INDICATOR_MARKS[callee]
+    const kind = callee === undefined ? undefined : bubble ? 'points' : (indicator?.kind ?? PLOT_MARK_KINDS[callee])
     if (m.kind !== 'call' || kind === undefined) {
       _emitWarnings.push(`<${tag}> mark ${k + 1}: this mark is not lowered on native; emitting an empty Box().`)
       return 'Box {}'
@@ -10274,10 +10295,13 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     }
     const body = kotlinAccessorExpr(y, tag, `mark ${k + 1}`, indent)
     if (body === 'unsupported') return 'Box {}'
-    const optsArg = bubble || isBand ? m.args[2] : m.args[1]
+    const optsArg = bubble || isBand || indicator?.takesWindow === true ? m.args[2] : m.args[1]
     const opts = kotlinMarkOptionArgs(optsArg, tag, k, pyreonPalette)
     if (opts === 'unsupported') return 'Box {}'
-    lets.push(`val pyreonValues${k}: List<Double> = ${kotlinPlotRowMap(rows, `(${body}).toDouble()`, windowed)}`)
+    const rowMap = kotlinPlotRowMap(rows, `(${body}).toDouble()`, windowed)
+    const derivedValues = indicator === undefined ? undefined : kotlinIndicatorValues(indicator, m, rowMap, tag, k)
+    if (derivedValues === 'unsupported') return 'Box {}'
+    lets.push(`val pyreonValues${k}: List<Double> = ${derivedValues ?? rowMap}`)
     // The bounds ride the same row map the values do (mirror of the Swift emitter).
     const errArgs = kotlinMarkErrorArgs(optsArg, tag, k, rows, windowed, indent, lets)
     if (errArgs === 'unsupported') return 'Box {}'

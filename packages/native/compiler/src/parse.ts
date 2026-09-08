@@ -2684,6 +2684,11 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
         'waterfall',
         'stackedArea',
         'band',
+        // Indicator marks — derived series over the crossing arithmetic in
+        // `indicator-values.ts` (`sma` → `smaValues`).
+        'sma',
+        'ema',
+        'trend',
         'StackedArea',
         'Band',
         'smooth',
