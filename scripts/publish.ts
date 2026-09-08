@@ -14,6 +14,7 @@
 import { writeFileSync } from 'node:fs'
 import { appendFile, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { PUBLISH_ATTEMPTS, PUBLISH_BACKOFF_MS, isTransientPublishError } from './publish-retry'
 import { topoSortByWorkspaceDeps } from './publish-order'
 import { runPool } from './run-pool'
 import { stripBunCondition, stripSrcFromFiles } from './strip-bun-condition'
@@ -99,14 +100,10 @@ for (const dir of packageDirs) {
 // `^X.Y.Z`. They version-lock to the parent via changesets.
 const stubBase = join(PACKAGES_DIR, 'core', 'compiler', 'npm')
 try {
-  const stubDirs = (await readdir(stubBase, { withFileTypes: true })).filter(
-    (d) => d.isDirectory(),
-  )
+  const stubDirs = (await readdir(stubBase, { withFileTypes: true })).filter((d) => d.isDirectory())
   for (const sub of stubDirs) {
     try {
-      const pkg = JSON.parse(
-        await readFile(join(stubBase, sub.name, 'package.json'), 'utf-8'),
-      )
+      const pkg = JSON.parse(await readFile(join(stubBase, sub.name, 'package.json'), 'utf-8'))
       if (pkg.name) versionMap.set(pkg.name, pkg.version)
     } catch {
       // skip a stub dir without package.json
@@ -146,7 +143,6 @@ function resolveWorkspaceDeps(
   }
   return resolved
 }
-
 
 // ── Signal-safe manifest restore ─────────────────────────────────────────────
 //
@@ -323,11 +319,7 @@ for (const dir of packageDirs) {
     // `optionalDependencies` is the field that broke the 0.18.0 compiler
     // release (shipped as literal `"workspace:^"` → `npm i` hard-fails
     // with `EUNSUPPORTEDPROTOCOL`). Must be resolved too.
-    optionalDependencies: resolveWorkspaceDeps(
-      pkg.optionalDependencies,
-      pkg.name,
-      resolveErrors,
-    ),
+    optionalDependencies: resolveWorkspaceDeps(pkg.optionalDependencies, pkg.name, resolveErrors),
   }
 
   // Defense-in-depth: a `workspace:` range surviving into ANY dep field
@@ -447,13 +439,34 @@ for (const { dirPath, pkgPath, raw, pkg, resolved } of publishOrder) {
     // "first-publish needs bootstrap" vs real failures. The captured
     // stderr is forwarded verbatim so the user still sees npm's full
     // output in CI logs (no loss of diagnostic info).
-    const result = Bun.spawnSync(args, {
+    // Retry TRANSIENT npm-side failures (see scripts/publish-retry.ts for the
+    // classification and the release it would have saved). Never on --dry-run:
+    // a dry run has no transient failure mode worth waiting 60 s on.
+    let result: ReturnType<typeof Bun.spawnSync> = Bun.spawnSync(args, {
       cwd: dirPath,
       stdout: 'pipe',
       stderr: 'pipe',
     })
-    const stdoutText = new TextDecoder().decode(result.stdout)
-    const stderrText = new TextDecoder().decode(result.stderr)
+    let stdoutText = new TextDecoder().decode(result.stdout)
+    let stderrText = new TextDecoder().decode(result.stderr)
+    for (
+      let attempt = 1;
+      result.exitCode !== 0 &&
+      !dryRun &&
+      attempt < PUBLISH_ATTEMPTS &&
+      isTransientPublishError(stderrText);
+      attempt++
+    ) {
+      if (stderrText) process.stderr.write(stderrText)
+      const wait = PUBLISH_BACKOFF_MS[attempt] ?? 0
+      console.warn(
+        `🔁 ${pkg.name}@${pkg.version} — transient npm error on attempt ${attempt}/${PUBLISH_ATTEMPTS}; retrying in ${wait / 1000}s`,
+      )
+      Bun.sleepSync(wait)
+      result = Bun.spawnSync(args, { cwd: dirPath, stdout: 'pipe', stderr: 'pipe' })
+      stdoutText = new TextDecoder().decode(result.stdout)
+      stderrText = new TextDecoder().decode(result.stderr)
+    }
     // Forward npm's output so CI logs / interactive runs still show it.
     if (stdoutText) process.stdout.write(stdoutText)
     if (stderrText) process.stderr.write(stderrText)
@@ -622,15 +635,9 @@ if (needsBootstrap.length > 0) {
     '\n   For each, from the REPO ROOT: `bun scripts/publish.ts --only=<pkg>`\n' +
       '   (a bare `bun publish` skips the manifest rewrite — see above)',
   )
-  console.warn(
-    '   with a classic npm token, then add a Trusted Publisher on npmjs.com',
-  )
-  console.warn(
-    '   (GitHub Actions → pyreon/pyreon → release.yml, no environment).',
-  )
-  console.warn(
-    '   Subsequent publishes go through OIDC like the rest of the suite.',
-  )
+  console.warn('   with a classic npm token, then add a Trusted Publisher on npmjs.com')
+  console.warn('   (GitHub Actions → pyreon/pyreon → release.yml, no environment).')
+  console.warn('   Subsequent publishes go through OIDC like the rest of the suite.')
 }
 
 if (failed.length > 0) {

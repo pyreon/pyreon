@@ -22,7 +22,7 @@
 // to fail in `validate-fast` in milliseconds, before a PR is opened and spends
 // an hour discovering it cannot merge.
 
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -38,7 +38,10 @@ export const MIN_BOOTSTRAP_TIMEOUT = 12
 
 export interface JobTimeout {
   job: string
+  /** Numeric budget; null when absent OR when declared as an expression (see `declared`). */
   timeout: number | null
+  /** True when `timeout-minutes:` is present at all — a `${{ … }}` expression counts. */
+  declared?: boolean
   usesSetup: boolean
   restoresBootstrap: boolean
 }
@@ -72,16 +75,27 @@ export function parseJobTimeouts(workflowText: string): JobTimeout[] {
     // default is 'true', so absence means it DOES restore.
     const restoresBootstrap = usesSetup && !/restore-bootstrap:\s*'false'/.test(code)
     const m = /^\s{4}timeout-minutes:\s*(\d+)\s*$/m.exec(text)
+    const declared = m !== null || /^\s{4}timeout-minutes:\s*\S/m.test(code)
     out.push({
       job: current,
       timeout: m ? Number(m[1]) : null,
+      declared,
       usesSetup,
       restoresBootstrap,
     })
     body = []
   }
 
+  // Only the `jobs:` block: `on:` also nests 2-space keys (`push:`,
+  // `schedule:`), which are not jobs.
+  let inJobs = false
   for (const line of lines) {
+    if (/^jobs:\s*$/.test(line)) {
+      inJobs = true
+      continue
+    }
+    if (/^[a-z]/.test(line)) inJobs = false
+    if (!inJobs) continue
     const m = /^ {2}([a-z][a-z0-9-]*):\s*$/.exec(line)
     if (m) {
       flush()
@@ -100,6 +114,19 @@ export interface Violation {
 }
 
 /**
+ * A job with NO `timeout-minutes` runs on GitHub's 6-hour default. On a
+ * 20-slot org-wide pool a hung job then holds a slot for six hours; the four
+ * such jobs found 2026-09-08 (codeql, dependency-audit, scorecard, the nightly
+ * notifier) were all in workflows this gate never scanned.
+ */
+export function findMissingTimeouts(jobs: JobTimeout[]): string[] {
+  return jobs
+    .filter((j) => j.timeout === null && !(j.declared ?? false))
+    .map((j) => j.job)
+    .sort()
+}
+
+/**
  * A job is a violation when it restores the bootstrap cache but budgets at or
  * under the measured floor. A job with NO `timeout-minutes` is not flagged —
  * GitHub's 360-minute default is generous, wasteful on a hang, but never the
@@ -114,7 +141,13 @@ export function findTimeoutViolations(jobs: JobTimeout[], floor: number): Violat
 
 // ─── main ─────────────────────────────────────────────────────────────────
 
-const WORKFLOWS = ['.github/workflows/ci.yml']
+// EVERY workflow: the bootstrap-budget rule only bites ci.yml (the only user
+// of setup-pyreon), but the every-job-has-a-timeout rule is repo-wide.
+const WORKFLOWS = readdirSync(join(REPO, '.github/workflows'))
+  .filter((f) => f.endsWith('.yml'))
+  .sort()
+  .map((f) => `.github/workflows/${f}`)
+const allMissing: Array<{ file: string; job: string }> = []
 const allViolations: Array<Violation & { file: string }> = []
 let scanned = 0
 
@@ -129,13 +162,23 @@ for (const rel of WORKFLOWS) {
   for (const v of findTimeoutViolations(jobs, MIN_BOOTSTRAP_TIMEOUT)) {
     allViolations.push({ ...v, file: rel })
   }
+  for (const job of findMissingTimeouts(jobs)) allMissing.push({ file: rel, job })
+}
+
+if (allMissing.length > 0) {
+  console.error(
+    `[check-ci-job-timeouts] FAILED — ${allMissing.length} job(s) declare no timeout-minutes (GitHub's default is 6 HOURS; a hung job holds one of the org's 20 slots for all of it):`,
+  )
+  for (const m of allMissing) console.error(`  ${m.file}  ${m.job}`)
+  process.exit(1)
 }
 
 if (allViolations.length > 0) {
   console.error(
     `[check-ci-job-timeouts] FAILED — ${allViolations.length} job(s) restore the bootstrap cache (~6 min) but budget under ${MIN_BOOTSTRAP_TIMEOUT} min:`,
   )
-  for (const v of allViolations) console.error(`  ${v.file}  ${v.job}  timeout-minutes: ${v.timeout}`)
+  for (const v of allViolations)
+    console.error(`  ${v.file}  ${v.job}  timeout-minutes: ${v.timeout}`)
   console.error(
     `\nSuch a job spends its whole budget inside setup-pyreon and is cancelled before its
 check runs. A cancelled job never satisfies a required status check and shows no
@@ -148,4 +191,6 @@ lib-free gates do.`,
   process.exit(1)
 }
 
-console.log(`[check-ci-job-timeouts] ✓ ${scanned} job(s) scanned, no under-budgeted bootstrap jobs`)
+console.log(
+  `[check-ci-job-timeouts] ✓ ${scanned} job(s) scanned, every job declares a timeout, no under-budgeted bootstrap jobs`,
+)

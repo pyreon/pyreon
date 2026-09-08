@@ -95,6 +95,63 @@ export function repoVersion(pkg: string, root: string = repoRoot): string {
  * AFTER the JS release, so an existence sweep during release.yml's post-publish
  * step would false-fail on them (same reasoning as the sentinel `--native` gate).
  */
+/**
+ * Every publishable package WITH its repo version — the input the lag sweep
+ * needs. Same enumeration as `enumeratePublishable`, kept as one walk.
+ */
+export function enumeratePublishableVersions(
+  root: string = repoRoot,
+): Array<{ pkg: string; repo: string }> {
+  const out: Array<{ pkg: string; repo: string }> = []
+  const packagesDir = join(root, 'packages')
+  for (const category of readdirSync(packagesDir)) {
+    const catDir = join(packagesDir, category)
+    let entries: string[]
+    try {
+      entries = readdirSync(catDir)
+    } catch {
+      continue
+    }
+    for (const dir of entries) {
+      try {
+        const p = JSON.parse(readFileSync(join(catDir, dir, 'package.json'), 'utf-8')) as {
+          name?: string
+          private?: boolean
+          version?: string
+        }
+        if (p.name?.startsWith('@pyreon/') && p.private !== true && typeof p.version === 'string')
+          out.push({ pkg: p.name, repo: p.version })
+      } catch {
+        /* no package.json at this level */
+      }
+    }
+  }
+  return out.sort((a, b) => a.pkg.localeCompare(b.pkg))
+}
+
+/**
+ * The PARTIAL-RELEASE class: a package that EXISTS on npm but whose latest is
+ * behind the version the repo has already cut. The sentinel check above sees
+ * only 3-4 packages; this sees all of them. It is what the 0.51.0 release
+ * needed — npm returned E422 (sigstore provenance verification) on four
+ * native packages, a fifth was correctly blocked behind them, and for a month
+ * the daily gate reported "OK 4/4 sentinels" while every fresh multiplatform
+ * scaffold installed a 0.50.0 native compiler against a 0.51.0 core.
+ */
+export function classifyLag(
+  sweep: ReadonlyArray<{ pkg: string; npm: string | null }>,
+  repo: ReadonlyArray<{ pkg: string; repo: string }>,
+): Array<{ pkg: string; repo: string; npm: string }> {
+  const byPkg = new Map(repo.map((r) => [r.pkg, r.repo]))
+  const out: Array<{ pkg: string; repo: string; npm: string }> = []
+  for (const s of sweep) {
+    const r = byPkg.get(s.pkg)
+    if (s.npm === null || r === undefined) continue
+    if (cmpSemver(r, s.npm) > 0) out.push({ pkg: s.pkg, repo: r, npm: s.npm })
+  }
+  return out.sort((a, b) => a.pkg.localeCompare(b.pkg))
+}
+
 export function enumeratePublishable(root: string = repoRoot): string[] {
   const names: string[] = []
   const packagesDir = join(root, 'packages')
@@ -108,9 +165,10 @@ export function enumeratePublishable(root: string = repoRoot): string[] {
     }
     for (const dir of entries) {
       try {
-        const p = JSON.parse(
-          readFileSync(join(catDir, dir, 'package.json'), 'utf-8'),
-        ) as { name?: string; private?: boolean }
+        const p = JSON.parse(readFileSync(join(catDir, dir, 'package.json'), 'utf-8')) as {
+          name?: string
+          private?: boolean
+        }
         if (p.name?.startsWith('@pyreon/') && p.private !== true) names.push(p.name)
       } catch {
         /* no package.json at this level — skip */
@@ -124,9 +182,9 @@ export function enumeratePublishable(root: string = repoRoot): string[] {
  * Pure classification for the existence sweep: packages whose npm lookup
  * returned null have NEVER been published — the first-publish-bootstrap class.
  */
-export function classifyExistence(
-  results: ReadonlyArray<{ pkg: string; npm: string | null }>,
-): { absent: string[] } {
+export function classifyExistence(results: ReadonlyArray<{ pkg: string; npm: string | null }>): {
+  absent: string[]
+} {
   return { absent: results.filter((r) => r.npm === null).map((r) => r.pkg) }
 }
 
@@ -142,7 +200,9 @@ export const NPM_NAME_RE = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]
 
 async function npmLatest(pkg: string): Promise<string | null> {
   if (!NPM_NAME_RE.test(pkg)) {
-    throw new Error(`invalid npm package name read from a workspace package.json: ${JSON.stringify(pkg)}`)
+    throw new Error(
+      `invalid npm package name read from a workspace package.json: ${JSON.stringify(pkg)}`,
+    )
   }
   const res = await fetch(`https://registry.npmjs.org/${pkg}/latest`, {
     headers: { Accept: 'application/json' },
@@ -244,13 +304,51 @@ if (import.meta.main) {
       )
     }
     const { absent } = classifyExistence(sweep)
+    // ── Lag sweep (the partial-release class) — over EVERY package ─────
+    const lagging = classifyLag(sweep, enumeratePublishableVersions())
+    if (json) console.warn(JSON.stringify({ lagging }, null, 2))
+    // `--lag-json`: ONE machine-readable line on STDOUT (everything else this
+    // script prints goes to stderr) — what release.yml's resume-detect reads.
+    // Only packages lagging the CURRENT repo version are resumable: the tag
+    // that job checks out is v<repo version>.
+    if (process.argv.includes('--lag-json')) {
+      const repoNow = repoVersion('@pyreon/core')
+      const current = lagging.filter((l) => l.repo === repoNow)
+      console.log(
+        JSON.stringify({
+          version: current.length > 0 ? repoNow : '',
+          packages: current.map((l) => l.pkg),
+        }),
+      )
+    }
+    if (lagging.length > 0) {
+      console.error(
+        `[check-published-state] PARTIAL RELEASE — ${lagging.length} package(s) exist on npm but lag the version the repo has cut:`,
+      )
+      for (const r of lagging) console.error(`  ${r.pkg}: repo=${r.repo} but npm latest=${r.npm}`)
+      const version = lagging[0]!.repo
+      console.error(
+        `  The publish step of release ${version} did not complete for these packages\n` +
+          `  (a transient npm error — E422 provenance verification, 5xx — or a package\n` +
+          `  whose Trusted Publisher is not configured). release.yml's "Resume partial\n` +
+          `  release" job republishes from the v${version} tag on the next main push;\n` +
+          `  trigger it now with: gh workflow run release.yml\n` +
+          `  A package that keeps failing with E404/E422 needs its Trusted Publisher on\n` +
+          `  npmjs.com (GitHub Actions → pyreon/pyreon → release.yml).`,
+      )
+      console.error(
+        `::error title=Partial release ${version}::${lagging.map((r) => r.pkg).join(', ')} lag on npm`,
+      )
+    }
     if (absent.length > 0) {
       console.error(
         `[check-published-state] MISSING PACKAGE(S) — publishable in the repo but do not exist on npm (first-publish bootstrap pending):`,
       )
       for (const pkg of absent) {
         console.error(`  - ${pkg}`)
-        console.error(`::warning title=First-publish bootstrap needed::${pkg} is not on npm — OIDC cannot create a package. Bootstrap it from the REPO ROOT with 'bun scripts/publish.ts --only=${pkg}' (with your npm auth), then add a Trusted Publisher on npmjs.com (GitHub Actions → pyreon/pyreon → release.yml). A bare 'bun publish' would ship workspace:* deps and src/.`)
+        console.error(
+          `::warning title=First-publish bootstrap needed::${pkg} is not on npm — OIDC cannot create a package. Bootstrap it from the REPO ROOT with 'bun scripts/publish.ts --only=${pkg}' (with your npm auth), then add a Trusted Publisher on npmjs.com (GitHub Actions → pyreon/pyreon → release.yml). A bare 'bun publish' would ship workspace:* deps and src/.`,
+        )
       }
       console.error(
         `  OIDC trusted publishing cannot CREATE a package. One-time manual fix per package:\n` +
@@ -266,8 +364,9 @@ if (import.meta.main) {
       )
       process.exit(1)
     }
+    if (lagging.length > 0) process.exit(1)
     console.warn(
-      `[check-published-state] existence sweep OK — all ${all.length} publishable packages exist on npm.`,
+      `[check-published-state] existence + lag sweep OK — all ${all.length} publishable packages exist on npm at the repo version.`,
     )
   } catch (err) {
     console.error(`[check-published-state] registry/lookup error (not failing):`, err)
