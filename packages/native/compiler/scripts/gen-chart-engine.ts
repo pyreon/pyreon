@@ -77,6 +77,7 @@ export const ENGINE_FILES = [
   'legend-toggle',
   'navigator',
   'brush',
+  'a11y',
 ] as const
 
 const RENAMES: ReadonlyArray<readonly [string, string]> = [

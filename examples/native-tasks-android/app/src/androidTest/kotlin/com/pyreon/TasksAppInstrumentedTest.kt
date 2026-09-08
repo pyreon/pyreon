@@ -35,6 +35,7 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.printToString
+import androidx.compose.ui.test.assertContentDescriptionContains
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
@@ -586,6 +587,19 @@ class TasksAppInstrumentedTest {
             .onNodeWithTag("stats-bars")
             .performScrollTo()
             .assertIsDisplayed()
+        // The canvas carries the engine's DATA DESCRIPTION as its content
+        // description (the web `aria-label`'s sentence), so TalkBack says what
+        // the chart shows rather than announcing an unlabelled Canvas. Asserted
+        // through the stable `assertContentDescriptionContains` rather than a
+        // typed semantics read — this file's own note says an untyped config
+        // read is the construct that compiles here, and a diagnostic must not
+        // be the thing that breaks the build.
+        composeRule
+            .onNodeWithTag("stats-bars")
+            .assertContentDescriptionContains("Scores by subject", substring = true)
+        composeRule
+            .onNodeWithTag("stats-bars")
+            .assertContentDescriptionContains("3 categories", substring = true)
         composeRule
             .onNodeWithTag("stats-bars-pick")
             .assertTextEquals("-1")

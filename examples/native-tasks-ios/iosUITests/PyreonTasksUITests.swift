@@ -553,6 +553,20 @@ final class PyreonTasksUITests: XCTestCase {
         let statsBars = app.descendants(matching: .any).matching(identifier: "stats-bars").firstMatch
         XCTAssertTrue(statsBars.waitForExistence(timeout: 10), "bar chart canvas missing on stats page")
         XCTAssertGreaterThan(statsBars.frame.height, 100, "bar chart canvas has no height")
+        // The canvas carries the engine's DATA DESCRIPTION as its accessibility
+        // label — the sentence the web `aria-label` reads — so VoiceOver says
+        // what the chart shows instead of announcing a blank rectangle. Built
+        // from the same series the canvas painted, so the title, the series
+        // label and the range are all in it.
+        let barsLabel = statsBars.label
+        XCTAssertTrue(
+            barsLabel.contains("Scores by subject"),
+            "bar chart canvas is not described for VoiceOver (label: \(barsLabel))"
+        )
+        XCTAssertTrue(
+            barsLabel.contains("Score") && barsLabel.contains("3 categories"),
+            "the description does not carry the painted series and categories (label: \(barsLabel))"
+        )
         let barPick = app.staticTexts["stats-bars-pick"].firstMatch
         XCTAssertTrue(barPick.waitForExistence(timeout: 10), "bar pick text missing")
         XCTAssertEqual(barPick.label, "-1", "no tap yet, bar pick should be -1")

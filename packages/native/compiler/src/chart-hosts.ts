@@ -585,6 +585,19 @@ function desugarFamilyGrammar(
   return { kind: 'jsx-element', tag: host, attrs, children: [] }
 }
 
+/**
+ * The accessible name a chart canvas gets when the author gave it neither an
+ * `accessibilityLabel` nor a `title` — the family word: `PieChart` → "Pie
+ * chart", `PlotChart` → "Chart". A canvas is one opaque node to a screen
+ * reader; unnamed it is a blank rectangle, which is what every native chart
+ * host was before this default (the web host's caption is the same idea).
+ */
+export function chartDefaultLabel(tag: string): string {
+  const family = tag.replace(/Chart$/, '')
+  if (family === '' || family === 'Plot' || family === 'Option') return 'Chart'
+  return `${family} chart`
+}
+
 /** A Double literal the way both targets accept it (`240` → `240.0`). */
 export function chartDouble(n: number): string {
   return Number.isInteger(n) ? `${n}.0` : `${n}`

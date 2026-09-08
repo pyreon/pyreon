@@ -84,7 +84,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -11599,8 +11599,7 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
     gesture = `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in ${parts.join('; ')} })`
   }
   if (lets.length === 0) {
-    const title = readStringAttrExpr(e, 'title', indent)
-    const tail = (title !== undefined ? `.accessibilityLabel(${title})` : '') + emitSwiftLayoutModifiers(e)
+    const tail = swiftChartA11y(e, undefined, indent) + emitSwiftLayoutModifiers(e)
     if (hasWidth) return `${canvas}${gesture}.frame(width: ${W}, height: ${H})${tail}`
     const pad = ' '.repeat(indent + 2)
     return `GeometryReader { pyreonGeo in\n${pad}${canvas}${gesture}\n${' '.repeat(indent)}}.frame(height: ${H})${tail}`
@@ -11697,8 +11696,7 @@ function emitSwiftAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   }
   if (onSel?.kind === 'event') parts.push(swiftChartSelectBody(onSel.handler, spec.hit(items, 'Double(pyreonTap.location.x)', tapY, args, SWIFT_CHART_TARGET), indent))
   const gesture = parts.length === 0 ? '' : `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in ${parts.join('; ')} })`
-  const title = readStringAttrExpr(e, 'title', indent)
-  const tail = (title !== undefined ? `.accessibilityLabel(${title})` : '') + emitSwiftLayoutModifiers(e)
+  const tail = swiftChartA11y(e, undefined, indent) + emitSwiftLayoutModifiers(e)
   if (!hoist) {
     if (hasWidth) return `${canvas}${gesture}.frame(width: ${W}, height: ${H})${tail}`
     const pad = ' '.repeat(indent + 2)
@@ -11724,8 +11722,7 @@ function emitSwiftGaugeHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     ? ` + [PyreonDrawCmd(kind: "text", fill: "#10161d", text: plain(${value}), at: PyreonChartPt(x: ${W} / 2.0, y: ${H} - 6.0), size: 20.0, align: "middle", baseline: "bottom")]`
     : ''
   const canvas = `PyreonChartCanvas(cmds: renderGauge(${value}, PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${H} * 2.0), ${opts})${text})`
-  const title = readStringAttrExpr(e, 'title', indent)
-  const tail = (title !== undefined ? `.accessibilityLabel(${title})` : '') + emitSwiftLayoutModifiers(e)
+  const tail = swiftChartA11y(e, undefined, indent) + emitSwiftLayoutModifiers(e)
   if (hasWidth) return `${canvas}.frame(width: ${W}, height: ${H})${tail}`
   const pad = ' '.repeat(indent + 2)
   return `GeometryReader { pyreonGeo in\n${pad}${canvas}\n${' '.repeat(indent)}}.frame(height: ${H})${tail}`
@@ -11761,6 +11758,21 @@ function swiftChartMap(
  * The host's view: a GeometryReader (width from the reader) or a Group (width
  * given) whose builder holds the hoisted `let`s and then the canvas.
  */
+/**
+ * The canvas's accessible name, in the web host's order of precedence: an
+ * explicit `accessibilityLabel`, else the engine's data DESCRIPTION when the
+ * host can build one (`describeChart` over the plot's series — the sentence
+ * the web `aria-label` carries), else `title`, else the family word. Every
+ * native chart canvas is therefore named; before this only a titled host was.
+ */
+function swiftChartA11y(e: Extract<ExprIR, { kind: 'jsx-element' }>, describe: string | undefined, indent: number): string {
+  const explicit = readStringAttrExpr(e, 'accessibilityLabel', indent)
+  if (explicit !== undefined) return `.accessibilityLabel(${explicit})`
+  if (describe !== undefined) return `.accessibilityLabel(${describe})`
+  const title = readStringAttrExpr(e, 'title', indent)
+  return `.accessibilityLabel(${title ?? JSON.stringify(chartDefaultLabel(e.tag))})`
+}
+
 function swiftFrameHost(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   lets: readonly string[],
@@ -11770,13 +11782,17 @@ function swiftFrameHost(
   H: string,
   hasWidth: boolean,
   indent: number,
+  describe?: string,
 ): string {
-  const title = readStringAttrExpr(e, 'title', indent)
-  const tail = (title !== undefined ? `.accessibilityLabel(${title})` : '') + emitSwiftLayoutModifiers(e)
+  // The label sits INSIDE the scope with the hoisted `let`s: a data
+  // description reads `pyreonSeries` / `pyreonCats`, which do not exist
+  // outside the GeometryReader / Group.
+  const a11y = swiftChartA11y(e, describe, indent)
+  const tail = emitSwiftLayoutModifiers(e)
   const pad = ' '.repeat(indent + 2)
   const body = lets.map((l) => `${pad}${l}\n`).join('')
-  if (hasWidth) return `Group {\n${body}${pad}${canvas}${gesture}.frame(width: ${W}, height: ${H})${tail}\n${' '.repeat(indent)}}`
-  return `GeometryReader { pyreonGeo in\n${body}${pad}${canvas}${gesture}\n${' '.repeat(indent)}}.frame(height: ${H})${tail}`
+  if (hasWidth) return `Group {\n${body}${pad}${canvas}${gesture}${a11y}.frame(width: ${W}, height: ${H})${tail}\n${' '.repeat(indent)}}`
+  return `GeometryReader { pyreonGeo in\n${body}${pad}${canvas}${gesture}${a11y}\n${' '.repeat(indent)}}.frame(height: ${H})${tail}`
 }
 
 function swiftChartGesture(e: Extract<ExprIR, { kind: 'jsx-element' }>, hit: (x: string, y: string) => string, indent: number, names: readonly string[] = ['selectindex', 'select']): string {
@@ -12233,7 +12249,11 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     if (windowed) gesture += `.onChange(of: [pyreonZoom.start, pyreonZoom.end]) { ${swiftChartSelectBody(onZoom.handler, 'pyreonZoom', indent)} }`
     else _emitWarnings.push('<PlotChart onZoom>: needs `dataZoom`, `zoomPresets` or `navigator` — without a window there is nothing to report.')
   }
-  if (!navigating) return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent)
+  // The data description the web `aria-label` carries, from the same series
+  // and categories the canvas painted (hidden series excluded, as on the web).
+  const plotTitle = readStringAttrExpr(e, 'title', indent)
+  const describe = `describeChart(A11yInput(title: ${plotTitle ?? 'nil'}, categories: pyreonCats, series: pyreonSeries.map { A11ySeries(label: $0.label, values: $0.values, kind: $0.kind) }, format: ${yFormat ?? 'nil'}))`
+  if (!navigating) return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent, describe)
   // The navigator's drag lives on a clear overlay over the strip (above the
   // preset strip), a sibling of the canvas: a touch that starts there is the
   // navigator's alone, so the plot's gestures never see it. The grab (band or
@@ -12243,7 +12263,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     `Color.clear.contentShape(Rectangle()).frame(height: pyreonNavigator.height)${presets === undefined ? '' : '.padding(.bottom, pyreonPresetStrip.height)'}` +
     `.gesture(DragGesture(minimumDistance: 0).onChanged { pyreonNav in if pyreonNavKind == 0 { pyreonNavAnchor = pyreonZoom; pyreonNavKind = navigatorHit(pyreonNavigator.strip, pyreonZoom, Double(pyreonNav.startLocation.x)) }; pyreonZoom = navigatorDrag(pyreonNavKind, pyreonNavAnchor, Double(pyreonNav.translation.width) / pyreonNavigator.strip.w) }` +
     `.onEnded { _ in pyreonNavKind = 0${zoomed ? '; pyreonZoomAnchor = pyreonZoom' : ''} })`
-  return swiftFrameHost(e, lets, `ZStack(alignment: .bottom) { ${canvas}${gesture}; ${overlay} }`, '', W, H, hasWidth, indent)
+  return swiftFrameHost(e, lets, `ZStack(alignment: .bottom) { ${canvas}${gesture}; ${overlay} }`, '', W, H, hasWidth, indent, describe)
 }
 
 
