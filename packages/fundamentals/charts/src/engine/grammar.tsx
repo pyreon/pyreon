@@ -234,8 +234,14 @@ export const Area = /* @__PURE__ */ brand<MarkProps<any>>('Area') as <T>(props: 
 /** Dots; with `r`, area-mapped bubbles. */
 export const Dot = /* @__PURE__ */ brand<DotProps<any>>('Dot') as <T>(props: DotProps<T>) => VNode | null
 
-/** Areas stacked on one another — `stackedArea`'s grammar form. */
-export const Layer = /* @__PURE__ */ brand<MarkProps<any>>('Layer') as <T>(props: MarkProps<T>) => VNode | null
+/**
+ * Areas stacked on one another — `stackedArea`'s grammar form.
+ *
+ * NOT `<Layer>`: that name is taken by the canonical `@pyreon/primitives`
+ * z-stack, and one canonical name means one concept. Naming it after its own
+ * mark also matches every sibling (`bars`→`<Bar>`, `band`→`<Band>`).
+ */
+export const StackedArea = /* @__PURE__ */ brand<MarkProps<any>>('StackedArea') as <T>(props: MarkProps<T>) => VNode | null
 
 /**
  * A filled REGION between two channels — `band`'s grammar form.
@@ -416,7 +422,7 @@ export function resolveGrammar<T>(rows: T[], chart: PlotProps<T>, children: VNod
       case 'Line':
       case 'Area':
       case 'Dot':
-      case 'Layer':
+      case 'StackedArea':
       case 'Band':
         rawMarks.push({ vnode: v, name })
         break
@@ -581,7 +587,7 @@ function toMark<T>(name: string, p: Record<string, unknown>, yOverride: ((d: T, 
       return line<T>(y, options)
     case 'Area':
       return area<T>(y, options)
-    case 'Layer':
+    case 'StackedArea':
       return stackedArea<T>(y, options)
     case 'Band':
       // `low`/`high` rather than `y`: a region has two bounds and no single

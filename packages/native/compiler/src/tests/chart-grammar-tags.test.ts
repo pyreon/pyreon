@@ -2,8 +2,8 @@
 //
 // `GRAMMAR_MARK_TAGS` is the compiler's copy of a set that is really owned by
 // `@pyreon/charts`' grammar. When `stackedArea` was added, the compiler's copy
-// got a `Layer` entry and the web grammar did not get a `Layer` component —
-// so the same source compiled natively and rendered nothing in a browser. A
+// got a tag entry the web grammar had no component for — so the same source
+// compiled natively and rendered nothing in a browser. A
 // copy of a set in a package that cannot import the original is exactly where
 // that happens, so the agreement is asserted rather than assumed.
 //
@@ -22,7 +22,7 @@ const EXPECTED: Readonly<Record<string, string>> = {
   Line: 'line',
   Area: 'area',
   Dot: 'points',
-  Layer: 'stackedArea',
+  StackedArea: 'stackedArea',
   Band: 'band',
 }
 

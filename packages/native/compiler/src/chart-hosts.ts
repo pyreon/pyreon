@@ -357,7 +357,7 @@ export const UNLOWERED_CHART_HOSTS: Readonly<Record<string, string>> = {
 
 /** The grammar host and its mark/config children — `<Plot>` desugars to `<PlotChart marks>` before the plot emit runs. */
 export const GRAMMAR_CHART_HOST = 'Plot'
-export const GRAMMAR_MARK_TAGS: Readonly<Record<string, string>> = { Bar: 'bars', Line: 'line', Area: 'area', Dot: 'points', Layer: 'stackedArea', Band: 'band' }
+export const GRAMMAR_MARK_TAGS: Readonly<Record<string, string>> = { Bar: 'bars', Line: 'line', Area: 'area', Dot: 'points', StackedArea: 'stackedArea', Band: 'band' }
 export const GRAMMAR_CONFIG_TAGS: readonly string[] = ['Rule', 'Axis', 'Tip', 'Legend', 'Zoom', 'Label', 'Scale', 'Histogram']
 /** The FAMILY marks: `<Plot>` with one of these desugars to the row-array host it names, channels as accessors. */
 export const GRAMMAR_FAMILY_TAGS: Readonly<Record<string, string>> = { Arc: 'PieChart', Stage: 'FunnelChart', Cell: 'HeatmapChart', Candle: 'CandlestickChart' }

@@ -5,9 +5,9 @@
 // through one and not the other is a hole.
 //
 // This test exists because `stackedArea` was added to the native compiler's
-// tag map FIRST, which quietly claimed a `<Layer>` the web grammar had never
-// heard of: the same source would have compiled natively and rendered nothing
-// on the web. The compiler's copy of the table is asserted against this one in
+// tag map FIRST, quietly claiming a tag the web grammar had never heard of:
+// the same source would have compiled natively and rendered nothing on the
+// web. The compiler's copy of the table is asserted against this one in
 // `packages/native/compiler/src/tests/chart-grammar-tags.test.ts` — it cannot
 // be imported from here, because the charts package's `rootDir` does not
 // contain it and a relative reach across packages breaks `tsc` for everyone.
@@ -26,7 +26,7 @@ export const GRAMMAR_TAG_KINDS: Readonly<Record<string, string>> = {
   Line: 'line',
   Area: 'area',
   Dot: 'points',
-  Layer: 'stackedArea',
+  StackedArea: 'stackedArea',
   Band: 'band',
 }
 
@@ -44,7 +44,7 @@ describe('grammar ⇄ array form', () => {
       Line: { y: 'a' },
       Area: { y: 'a' },
       Dot: { y: 'a' },
-      Layer: { y: 'a' },
+      StackedArea: { y: 'a' },
       Band: { low: 'lo', high: 'hi' },
     }
     for (const [tag, kind] of Object.entries(GRAMMAR_TAG_KINDS)) {
