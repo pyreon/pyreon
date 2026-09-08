@@ -1299,13 +1299,46 @@ const src = \`data:image/svg+xml,\${encodeURIComponent(svgSource)}\``,
     }),
   },
   {
+    // @pyreon/router redirect boundary. A blocked target is rewritten to "/",
+    // which is the right runtime behaviour and an awful debugging experience:
+    // the redirect "works", the user lands on the home page, and nothing
+    // connects that to the target that was written. The 2026-09 fix broadened
+    // the protocol-relative check from the `//` spelling to the whole class of
+    // authority-delimiter prefixes (`\\host`, `/\host`, `\/host` — the URL
+    // parser treats `\` as `/` in authority position), so three more spellings
+    // now block, and the commonest way to meet ANY of them is not an attack: a
+    // legitimately-intended protocol-relative CDN URL blocks identically.
+    pattern: /Blocked redirect target/,
+    diagnose: () => ({
+      cause:
+        'A `redirect()` / `router.push()` target was refused by the router\u2019s redirect boundary and rewritten to "/". A target is blocked when it begins with an AUTHORITY DELIMITER \u2014 two or more characters from `/` and `\\` in any order (`//host`, `\\\\host`, `/\\host`, `\\/host`), all of which the URL parser resolves to `https://host/` \u2014 or when it carries any scheme other than http(s) (`javascript:`, `data:`, `mailto:`, \u2026). Both shapes are open-redirect vectors when the target comes from user input such as a `?next=` parameter, and the boundary cannot tell an intended protocol-relative URL apart from an injected one.',
+      fix: 'For an in-app navigation use a root-relative path ("/dashboard"). To leave the site deliberately, write the scheme out in full ("https://cdn.example.com/x") instead of relying on a protocol-relative URL. If the target came from user input, validate it against an allowlist BEFORE redirecting \u2014 the boundary is a backstop, not authorization.',
+      fixCode: `// \u2717 blocked \u2014 protocol-relative, and its backslash twins
+// redirect('//cdn.example.com/logo.png')
+// redirect('/\\\\evil.com')
+
+// \u2713 in-app
+redirect('/dashboard')
+// \u2713 off-site, stated explicitly
+redirect('https://cdn.example.com/logo.png')
+
+// \u2713 user-supplied \u2014 allowlist first
+const next = allowed.has(params.next) ? params.next : '/'
+redirect(next)`,
+    }),
+  },
+  {
     // runtime-dom URL-injection guard. The warning fires when a
     // javascript:/data: URL is dropped from a URL-bearing attribute
     // (href/src/action/formaction/poster/cite/data). data:image/* is allowed
     // on image elements (<img>/<source>/<video> via src/srcset/poster) — this
     // is why <Image>/<OptimizedImage> blur+color placeholders work; the
     // post-0.28.0 fix stopped this guard from over-blocking them.
-    pattern: /Blocked unsafe URL in "(\w+)" attribute/,
+    // `[\w:-]+`, not `\w+`: the guard also covers `xlink:href`, whose
+    // qualified name contains a COLON — `\w+` silently failed to match it, so
+    // the one URL attribute that is easiest to get wrong was the one this
+    // entry could not explain.
+    pattern: /Blocked unsafe URL in "([\w:-]+)" attribute/,
     diagnose: (m) => ({
       cause: `A \`javascript:\` or \`data:\` URL was blocked in the "${m[1]}" attribute to prevent injection. \`data:image/*\` URIs are allowed ONLY on image elements (\`<img>\`/\`<source>\`/\`<video>\` via \`src\`/\`srcset\`/\`poster\`); \`data:text/html\` on \`<iframe>\`/\`<object>\`, scripted SVG (\`<script>\`/\`on*=\`), \`data:\` on \`<a href>\`/\`<form action>\`, and \`javascript:\` anywhere stay blocked.`,
       fix: 'For an image/placeholder data URI, render it on an <img>/<source>/<video> src/srcset/poster. For everything else use a real URL — the runtime blocks javascript:/data: in URL attributes by design.',

@@ -210,3 +210,40 @@ describe('useAudioRecorder', () => {
     expect(opened).toBe(1)
   })
 })
+
+describe('useAudioRecorder — permission that resolves after the view is gone', () => {
+  afterEach(() => {
+    for (const s of scopes.splice(0)) s.dispose()
+    // biome-ignore lint: test teardown of defineProperty'd globals
+    delete (globalThis as unknown as Record<string, unknown>).MediaRecorder
+  })
+
+  it('stops the tracks of a stream granted AFTER the scope disposed', async () => {
+    const { stops, stream } = fakeStream()
+    let grant!: () => void
+    const pending = new Promise<void>((r) => (grant = r))
+    stub(globalThis.navigator, 'mediaDevices', {
+      getUserMedia: async () => (await pending, stream),
+    })
+    let started = 0
+    stub(
+      globalThis,
+      'MediaRecorder',
+      class {
+        start() {
+          started++
+        }
+      },
+    )
+    const r = mountHook()
+    const p = r.start()
+    // The user is still looking at the permission prompt when the route
+    // changes. `stream` is null at this point, so teardown stops nothing.
+    for (const s of scopes.splice(0)) s.dispose()
+    grant()
+    await expect(p).resolves.toBe(false)
+    expect(stops).toHaveLength(1)
+    expect(started).toBe(0)
+    expect(r.recording()).toBe(false)
+  })
+})

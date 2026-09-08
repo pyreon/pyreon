@@ -1,12 +1,13 @@
 {
-  "sha": "1e0ba46b",
+  "sha": "cb6132e",
   "app": "perf-dashboard",
   "journey": "dashboard",
   "mode": "dev",
   "runs": 5,
-  "timestamp": "2026-05-13T11:18:50.206Z",
-  "medianWallMs": 5047,
-  "medianHeapBytes": 10000000,
+  "timestamp": "2026-09-08T08:20:31.049Z",
+  "host": "ci:Linux",
+  "medianWallMs": 5062,
+  "medianHeapBytes": 13400000,
   "counters": {
     "reactivity.signalWrite": 252
   }

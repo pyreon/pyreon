@@ -1868,11 +1868,16 @@ function resolveRelativePath(to: string, from: string): string {
 
 /**
  * Internal-nav-only sanitizer: returns a same-origin path, or `/` for anything
- * else (a cross-origin URL, protocol-relative host, or a non-http(s) scheme).
+ * else (a cross-origin URL, an authority-delimiter prefix that introduces a host
+ * — `//host` and equally `\\host` / `/\host` / `\/host`, since the URL parser
+ * reads `\` as `/` there — or a non-http(s) scheme).
  * Used by the same-origin call sites (route-config redirects, `push`/`replace`
  * of a string path) that navigate WITHIN the router. Redirect-TARGET application
  * (which may legitimately be cross-origin) goes through `applyRedirect` instead.
- * Shares its classification with the SSR handler via `classifyRedirectTarget`.
+ * Shares its classification with the SSR handler via `classifyRedirectTarget` —
+ * it DELEGATES rather than re-deriving a policy, which is what keeps the two in
+ * step. A second hand-rolled prefix test here is how the client and the server
+ * would come to disagree about what counts as off-origin.
  */
 function sanitizePath(path: string): string {
   const c = classifyRedirectTarget(path)
