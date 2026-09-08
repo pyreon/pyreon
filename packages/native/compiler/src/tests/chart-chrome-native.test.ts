@@ -8,6 +8,9 @@
 import { describe, expect, it } from 'vitest'
 import { chartChromeUnlowered } from '../chart-hosts'
 import { transform } from '../index'
+import { kotlinTheme, swiftTheme } from './chart-theme-text'
+const SW = swiftTheme()
+const KT = kotlinTheme()
 import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
 
 const TREEMAP = `import { TreemapChart } from '@pyreon/charts/plot'
@@ -41,12 +44,12 @@ describe('family chrome — title, legend and tap tooltip lower on both targets'
   it('Swift: a probe layout feeds the crossing legend, the plot lays out under the chrome, the tap reads the tooltip', () => {
     const r = transform(TREEMAP, { target: 'swift' })
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('let pyreonProbe = layoutTreemap(DATA, PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 200.0), nil)')
+    expect(r.code).toContain('let pyreonProbe = layoutTreemap(DATA, PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 200.0), pyreonOptions)')
     expect(r.code).toContain('renderTitle("Files", "by size",')
     expect(r.code).toContain('renderLegend(treemapLegend(pyreonProbe),')
-    expect(r.code).toContain('let pyreonLayout = layoutTreemap(DATA, PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 200.0 - pyreonTop), nil)')
+    expect(r.code).toContain('let pyreonLayout = layoutTreemap(DATA, PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 200.0 - pyreonTop), pyreonOptions)')
     expect(r.code).toContain('@State private var pyreonTip: [String] = []')
-    expect(r.code).toContain('+ renderTooltip(pyreonTip, pyreonTipAt, PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 200.0), TooltipOptions(fontSize: 11.0, fill: "#ffffff", border: "rgba(132,150,165,0.18)", text: "#1f2937", pad: 8.0, radius: 4.0), pyreonChartMeasure)')
+    expect(r.code).toContain(`+ renderTooltip(pyreonTip, pyreonTipAt, PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 200.0), TooltipOptions(fontSize: 11.0, fill: ${SW.surface}, border: ${SW.grid}, text: ${SW.text}, pad: 8.0, radius: 4.0), pyreonChartMeasure)`)
     expect(r.code).toContain('pyreonTip = treemapTip(pyreonLayout, Double(pyreonTap.location.x), Double(pyreonTap.location.y) - pyreonTop)')
     // The select handler shares the tap and still receives the index.
     expect(r.code).toContain('let i = hitTreemapIndex(pyreonLayout, Double(pyreonTap.location.x), Double(pyreonTap.location.y) - pyreonTop)')
@@ -54,11 +57,11 @@ describe('family chrome — title, legend and tap tooltip lower on both targets'
   it('Kotlin: the same shape with remembered tooltip state and a density-scaled tap', () => {
     const r = transform(TREEMAP, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('val pyreonProbe = layoutTreemap(DATA, PyreonChartRect(0.0, 0.0, pyreonW, 200.0), null)')
+    expect(r.code).toContain('val pyreonProbe = layoutTreemap(DATA, PyreonChartRect(0.0, 0.0, pyreonW, 200.0), pyreonOptions)')
     expect(r.code).toContain('renderLegend(treemapLegend(pyreonProbe),')
     expect(r.code).toContain('var pyreonTip by remember { mutableStateOf(listOf<String>()) }')
     expect(r.code).toContain('pyreonTip = treemapTip(pyreonLayout, (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble() - pyreonTop)')
-    expect(r.code).toContain('+ renderTooltip(pyreonTip, pyreonTipAt, PyreonChartRect(0.0, 0.0, pyreonW, 200.0), TooltipOptions(fontSize = 11.0, fill = "#ffffff", border = "rgba(132,150,165,0.18)", text = "#1f2937", pad = 8.0, radius = 4.0), ::pyreonChartMeasure)')
+    expect(r.code).toContain(`+ renderTooltip(pyreonTip, pyreonTipAt, PyreonChartRect(0.0, 0.0, pyreonW, 200.0), TooltipOptions(fontSize = 11.0, fill = ${KT.surface}, border = ${KT.grid}, text = ${KT.text}, pad = 8.0, radius = 4.0), ::pyreonChartMeasure)`)
   })
   it('an accessor host (pie) hoists its items once for the legend, the arcs and the tooltip', () => {
     const sw = transform(PIE, { target: 'swift' })
@@ -75,10 +78,10 @@ describe('family chrome — title, legend and tap tooltip lower on both targets'
   it('a series host (polar) reads the legend from its series + the options palette, falling back to the engine default', () => {
     const sw = transform(POLAR, { target: 'swift' })
     expect(sw.warnings).toEqual([])
-    expect(sw.code).toContain('renderLegend(polarLegend(SERIES, (nil ?? ["#4f7df3",')
+    expect(sw.code).toContain('renderLegend(polarLegend(SERIES, ((pyreonOptions).palette ?? [')
     expect(sw.code).toContain('pyreonTip = polarTip(pyreonLayout, SERIES,')
     const kt = transform(POLAR, { target: 'kotlin' })
-    expect(kt.code).toContain('polarLegend(SERIES, (null ?: listOf("#4f7df3",')
+    expect(kt.code).toContain('polarLegend(SERIES, ((pyreonOptions).palette ?: listOf(')
   })
   it('a host with no chrome props emits byte-identically to before (no probe, no state, inline layout)', () => {
     for (const target of ['swift', 'kotlin'] as const) {
@@ -98,6 +101,8 @@ describe('family chrome — title, legend and tap tooltip lower on both targets'
     expect(chartChromeUnlowered('TreemapChart')).toEqual(webOnly)
     expect(chartChromeUnlowered('PieChart')).toEqual(['animate', ...webOnly])
     expect(chartChromeUnlowered('PlotChart')).toEqual(webOnly)
+    // A table-driven host with no crossing tip reports `tooltip` too (Parallel's lines are built from the raw rows on the web).
+    expect(chartChromeUnlowered('ParallelChart')).toEqual(['tooltip', ...webOnly])
   })
 })
 

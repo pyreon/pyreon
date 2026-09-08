@@ -20,7 +20,7 @@ import {
   calendarToSvg, candlestickToSvg, funnelToSvg, ganttToSvg, gaugeToSvg, graphToSvg, heatmapToSvg, parallelToSvg,
   pieToSvg, polarToSvg, radarToSvg, riverToSvg, sankeyToSvg, sunburstToSvg, treeToSvg, treemapToSvg,
 } from './family-svg'
-import { boxplotToSvg } from './boxplot'
+import { boxplotToSvg } from './boxplot-svg'
 import type { TreeNode } from './treemap'
 
 interface Row { month: string; revenue: number; cost: number }

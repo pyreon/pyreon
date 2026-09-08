@@ -3,13 +3,11 @@
 import type { VNode } from '@pyreon/core'
 import { canvasHost, shiftCmds } from './canvas-host'
 import type { CanvasHostProps } from './canvas-host'
-import { boxplotExtent, fiveNumber, hitBox, renderBoxplot } from './boxplot'
+import { fiveNumber, hitBox } from './boxplot'
 import type { BoxplotOptions, FiveNumber } from './boxplot'
+import { boxplotFrame, renderBoxplotChart } from './boxplot-chart'
 import type { Formatter } from './format'
-import { computeLayout } from './layout'
-import type { PlotLayout } from './layout'
-import { niceDomain } from './scale'
-import type { Domain, Double, DrawCmd, Rect } from './types'
+import type { Double, MeasureText, Rect } from './types'
 
 export interface BoxplotChartProps<T> extends CanvasHostProps {
   data: T[] | (() => T[])
@@ -25,11 +23,11 @@ export interface BoxplotChartProps<T> extends CanvasHostProps {
   onSelectIndex?: (index: number) => void
 }
 
-interface Geometry { rows: FiveNumber[]; categories: string[]; domain: Domain; l: PlotLayout; box: Rect }
+interface Geometry { rows: FiveNumber[]; categories: string[]; box: Rect; plot: Rect; fontSize: Double; measure: MeasureText }
 
 export function BoxplotChart<T>(props: BoxplotChartProps<T>): VNode {
   const readData = (): T[] => (typeof props.data === 'function' ? (props.data as () => T[])() : props.data)
-  const hitAt = (g: Geometry, px: Double, py: Double): number => hitBox(g.rows.length, g.l.plot, px - g.box.x, py - g.box.y)
+  const hitAt = (g: Geometry, px: Double, py: Double): number => hitBox(g.rows.length, g.plot, px - g.box.x, py - g.box.y)
   return canvasHost<Geometry>({
     props,
     defaultHeight: 240,
@@ -41,38 +39,12 @@ export function BoxplotChart<T>(props: BoxplotChartProps<T>): VNode {
       const data = readData()
       const rows = data.map((d, i) => fiveNumber(props.values(d, i)))
       const categories = props.x !== undefined ? data.map((d, i) => props.x!(d, i)) : rows.map((_, i) => `${i + 1}`)
-      const domain = niceDomain(boxplotExtent(rows), 5.0)
-      const l = computeLayout(
-        {
-          width: box.w,
-          height: box.h,
-          xDomain: { min: 0.0, max: rows.length > 1 ? rows.length - 1 : 1.0 },
-          yDomain: domain,
-          categories: props.x !== undefined ? categories : [],
-          fontSize: theme.fontSize,
-          xTickCount: 5.0,
-          yTickCount: 5.0,
-          showXAxis: true,
-          showYAxis: true,
-          yFormat: props.format,
-        },
-        measure,
-      )
-      return { rows, categories, domain, l, box }
+      // The frame the canvas and the native hosts share (`boxplot-chart.ts`); its plot rect is what the hit test runs against.
+      const plot = boxplotFrame(rows, box.w, box.h, props.x !== undefined ? categories : [], theme.fontSize, measure, props.format).layout.plot
+      return { rows, categories, box, plot, fontSize: theme.fontSize, measure }
     },
     animates: true,
-    render: (g, _measure, theme, progress) => {
-      const cmds: DrawCmd[] = []
-      for (const tick of g.l.yTicks) {
-        cmds.push({ kind: 'line', from: { x: g.l.plot.x, y: tick.pos }, to: { x: g.l.plot.x + g.l.plot.w, y: tick.pos }, stroke: theme.grid, width: 1.0 })
-        cmds.push({ kind: 'text', text: tick.label, at: { x: g.l.plot.x - 6.0, y: tick.pos }, fill: theme.label, size: theme.fontSize, align: 'end', baseline: 'middle' })
-      }
-      for (const tick of g.l.xTicks) {
-        cmds.push({ kind: 'text', text: tick.label, at: { x: tick.pos, y: g.l.plot.y + g.l.plot.h + 6.0 }, fill: theme.label, size: theme.fontSize, align: 'middle', baseline: 'top' })
-      }
-      for (const c of renderBoxplot(g.rows, g.l.plot, g.domain, { ...props.box, progress })) cmds.push(c)
-      return shiftCmds(cmds, g.box.x, g.box.y)
-    },
+    render: (g, measure, theme, progress) => shiftCmds(renderBoxplotChart(g.rows, g.box.w, g.box.h, props.x !== undefined ? g.categories : [], theme, props.box ?? {}, measure, props.format, progress), g.box.x, g.box.y),
     select: (g, px, py) => {
       const i = hitAt(g, px, py)
       props.onSelect?.(i)
@@ -85,8 +57,8 @@ export function BoxplotChart<T>(props: BoxplotChartProps<T>): VNode {
     focusRect: (g, i) => {
       const n = g.rows.length
       if (i < 0 || i >= n) return null
-      const bw = g.l.plot.w / n
-      return { x: g.box.x + g.l.plot.x + bw * i, y: g.box.y + g.l.plot.y, w: bw, h: g.l.plot.h }
+      const bw = g.plot.w / n
+      return { x: g.box.x + g.plot.x + bw * i, y: g.box.y + g.plot.y, w: bw, h: g.plot.h }
     },
     tooltip: (g, px, py) => {
       const r = g.rows[hitAt(g, px, py)]

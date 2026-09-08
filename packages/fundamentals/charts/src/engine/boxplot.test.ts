@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { boxplotExtent, boxplotToSvg, fiveNumber, hitBox, renderBoxplot } from './boxplot'
+import { boxplotExtent, fiveNumber, hitBox, renderBoxplot } from './boxplot'
+import { boxplotToSvg } from './boxplot-svg'
 import { compileFamily, familyToSvg } from './option-family'
 
 const plot = { x: 0, y: 0, w: 300, h: 100 }

@@ -115,6 +115,34 @@ export function App() {
     }
   })
 
+  it('mirrors EXACTLY once per host — a double mirror is the identity, and silent', () => {
+    // The bug this pins shipped green: `kotlinFrameHostLets` mirrors what it
+    // is handed, and the Kotlin radar ALSO pre-mirrored, so `<RadarChart rtl>`
+    // rendered left-to-right on Android while every structural check passed —
+    // a mirror is its own inverse, so applying it twice looks like applying it
+    // never. Counting is the only assertion that can tell those apart.
+    const src = (tag: string, props: string, rtl: string): string => `import { ${tag} } from '@pyreon/charts'
+interface Row { m: string; a: number; b: number }
+const ROWS: Row[] = [{ m: 'x', a: 1, b: 2 }]
+export function App() {
+  return <${tag} ${props}${rtl} />
+}
+`
+    const cases: [string, string][] = [
+      ['RadarChart', `data={ROWS} axes={[{ label: 'a', max: 3 }, { label: 'b', max: 3 }]} values={(d) => [d.a, d.b]} label={(d) => d.m}`],
+      ['PieChart', `data={ROWS} value={(d) => d.a} label={(d) => d.m}`],
+      ['GaugeChart', `value={0.4}`],
+    ]
+    for (const [tag, props] of cases) {
+      for (const target of ['swift', 'kotlin'] as const) {
+        const on = transform(src(tag, props, ' rtl'), { target }).code
+        const off = transform(src(tag, props, ''), { target }).code
+        expect((on.match(/pyreonMirrorCmds/g) ?? []).length, `${tag} on ${target} must mirror exactly once`).toBe(1)
+        expect((off.match(/pyreonMirrorCmds/g) ?? []).length, `${tag} on ${target} must not mirror when LTR`).toBe(0)
+      }
+    }
+  })
+
   it.skipIf(!isSwiftUIAvailable())('the RTL emit type-checks against the real SwiftUI SDK', () => {
     const r = validateSwiftTypecheck(
       read(CANVAS_SWIFT) + '\n' + read(ENGINE_SWIFT) + '\n' + transform(RTL, { target: 'swift' }).code,

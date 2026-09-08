@@ -260,23 +260,26 @@ export const REGISTRY: RegistryEntry[] = [
   // webview host): every plot family's geometry is GENERATED into
   // PyreonChartEngine.swift/.kt, and the data-prop hosts (<SankeyChart>,
   // <GraphChart>, <TreemapChart>, <SunburstChart>, <TreeChart>, <RiverChart>,
-  // <GanttChart>, <PolarChart>) lower to PyreonChartCanvas over that engine —
-  // a NATIVE view, not a hosted web page. The accessor-prop hosts (PlotChart,
-  // Pie, Gauge, Radar, Funnel, Heatmap, Candlestick, Calendar, Parallel) warn
-  // by name; a subpath import is skipped by the export check by design.
+  // <GanttChart>, <PolarChart>) and the accessor / frame hosts (PlotChart,
+  // Pie, Gauge, Radar, Funnel, Heatmap, Candlestick, Boxplot, Calendar,
+  // Parallel) all lower to PyreonChartCanvas over that engine — a NATIVE view,
+  // not a hosted web page; OptionChart and MapChart decline BY NAME. A subpath
+  // import is skipped by the export check by design.
   {
     name: '@pyreon/charts/plot',
     mechanism: 'pmtc-lowers',
     rationale:
-      'the plot engine is generated into the native runtimes and its data-prop family hosts lower to PyreonChartCanvas (a native Canvas over the same draw list); accessor-prop hosts warn by name',
+      'the plot engine is generated into the native runtimes and every host but OptionChart / MapChart lowers to PyreonChartCanvas (a native Canvas over the same draw list); a bare host follows the runtime colour scheme',
     snippet: `import { signal } from '@pyreon/reactivity'
 import { Stack, Text } from '@pyreon/primitives'
-import { SankeyChart } from '@pyreon/charts/plot'
+import { BoxplotChart, SankeyChart } from '@pyreon/charts/plot'
 import type { SankeyLink, SankeyNode } from '@pyreon/charts/plot'
+interface Row { team: string; samples: number[] }
+const ROWS: Row[] = [{ team: 'a', samples: [1, 2, 3] }]
 export function C() {
   const nodes = signal<SankeyNode[]>([{ name: 'Coal' }, { name: 'Power' }])
   const links = signal<SankeyLink[]>([{ source: 'Coal', target: 'Power', value: 10 }])
-  return (<Stack><Text>Energy</Text><SankeyChart nodes={nodes()} links={links()} height={240} /></Stack>)
+  return (<Stack><Text>Energy</Text><SankeyChart nodes={nodes()} links={links()} height={240} /><BoxplotChart data={ROWS} values={(d) => d.samples} x={(d) => d.team} height={160} /></Stack>)
 }`,
   },
   // ── pmtc-lowers: authoring API lowers clean, no runtime container needed ──

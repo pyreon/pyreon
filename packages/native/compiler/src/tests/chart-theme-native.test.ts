@@ -9,6 +9,9 @@
 // except that the title colour is the web's.
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
+import { kotlinTheme, swiftTheme } from './chart-theme-text'
+const SW = swiftTheme()
+const KT = kotlinTheme()
 import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
 
 const HEAD = `import type { TreeNode } from '@pyreon/charts/plot'
@@ -72,21 +75,22 @@ describe('family-host theme — chrome, tooltip, palette and ground follow the t
     expect(k.code).toContain('color = listOf("#111111", "#222222")[pyreonI % listOf("#111111", "#222222").size]')
     expect(k.code).toContain('Box(modifier = Modifier.background(pyreonChartColor("#000000"))) {')
   })
-  it('without a theme nothing is added: no ground, no palette seed, the default tooltip — and the title in the web\'s text colour', () => {
+  it('without a theme the host follows the RUNTIME colour scheme: the ground, the palette seed, the tooltip and the title colour switch on it', () => {
     for (const target of ['swift', 'kotlin'] as const) {
       const r = transform(PLAIN, { target })
+      const t = target === 'swift' ? SW : KT
       expect(r.warnings).toEqual([])
-      expect(r.code).not.toContain('pyreonChartColor(')
-      expect(r.code).not.toContain('pyreonOptions')
-      expect(r.code).toContain(target === 'swift' ? 'color: "#1f2937", align: "start"' : 'color = "#1f2937", align = "start"')
-      expect(r.code).toContain(target === 'swift' ? 'fill: "#ffffff", border: "rgba(132,150,165,0.18)", text: "#1f2937"' : 'fill = "#ffffff", border = "rgba(132,150,165,0.18)", text = "#1f2937"')
+      expect(r.code).toContain(`pyreonChartColor(${t.background})`)
+      expect(r.code).toContain('pyreonOptions')
+      expect(r.code).toContain(target === 'swift' ? `color: ${t.text}, align: "start"` : `color = ${t.text}, align = "start"`)
+      expect(r.code).toContain(target === 'swift' ? `fill: ${t.surface}, border: ${t.grid}, text: ${t.text}` : `fill = ${t.surface}, border = ${t.grid}, text = ${t.text}`)
     }
   })
-  it('a non-literal theme is reported ONCE per host (the fields are read once and shared), and the default applies', () => {
+  it('a non-literal theme is reported ONCE per host (the fields are read once and shared), and the default — the runtime scheme — applies', () => {
     for (const target of ['swift', 'kotlin'] as const) {
       const r = transform(VARIABLE, { target })
       expect(r.warnings).toEqual(['<TreemapChart theme>: only an object literal with literal fields lowers on native; the default theme applies.'])
-      expect(r.code).not.toContain('pyreonChartColor(')
+      expect(r.code).toContain(`pyreonChartColor(${(target === 'swift' ? SW : KT).background})`)
     }
   })
   const fixtures = { DARK, DARK_OPTS, LITERAL, PLAIN }
