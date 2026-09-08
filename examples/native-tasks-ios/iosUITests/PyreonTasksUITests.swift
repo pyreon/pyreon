@@ -696,9 +696,26 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertEqual(dashLoad.label, "40", "gauge load should start at 40")
         app.buttons["dash-load-up"].firstMatch.tap()
         XCTAssertTrue(waitForLabel(dashLoad, "65", timeout: 10), "Load +25 did not move the gauge's signal (label: \(dashLoad.label))")
-        for id in ["dash-gauge", "dash-pie", "dash-radar", "dash-heat", "dash-tree"] {
+        for id in ["dash-gauge", "dash-pie", "dash-radar", "dash-heat", "dash-tree", "dash-box"] {
             XCTAssertTrue(app.descendants(matching: .any).matching(identifier: id).firstMatch.exists, "\(id) canvas missing on dashboard")
         }
+        // The radar's tap (it had NONE on either target): the first axis points
+        // straight up, the Core team scores 4 of 5 on it, the radius is
+        // min(W, 200)/2 − 3·fontSize = 67 with the labels on, so the vertex sits
+        // at (W/2, 100 − 67·0.8 ≈ 46) — inside the engine's 8pt tolerance.
+        let dashRadar = app.descendants(matching: .any).matching(identifier: "dash-radar").firstMatch
+        let radarHit = app.staticTexts["dash-radar-hit"].firstMatch
+        XCTAssertEqual(radarHit.label, "none", "no radar tap yet")
+        dashRadar.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0)).withOffset(CGVector(dx: 0, dy: 46)).tap()
+        XCTAssertTrue(waitForLabel(radarHit, "S0A0", timeout: 10), "tap on the radar's first vertex did not report series 0 / axis 0 (label: \(radarHit.label))")
+        // The boxplot host crossed: two bands, a tap in the left third is box 0, in the right third box 1.
+        let dashBox = app.descendants(matching: .any).matching(identifier: "dash-box").firstMatch
+        let boxPick = app.staticTexts["dash-box-pick"].firstMatch
+        XCTAssertEqual(boxPick.label, "-1", "no boxplot tap yet")
+        dashBox.coordinate(withNormalizedOffset: CGVector(dx: 0.35, dy: 0.5)).tap()
+        XCTAssertTrue(waitForLabel(boxPick, "0", timeout: 10), "tap on the left band did not select box 0 (label: \(boxPick.label))")
+        dashBox.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5)).tap()
+        XCTAssertTrue(waitForLabel(boxPick, "1", timeout: 10), "tap on the right band did not select box 1 (label: \(boxPick.label))")
         app.buttons["dash-back"].firstMatch.tap()
         XCTAssertTrue(tasksPage.waitForExistence(timeout: 15), "Did not return to tasks after dashboard Back")
 

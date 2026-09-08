@@ -738,9 +738,28 @@ class TasksAppInstrumentedTest {
             .performScrollTo()
             .performClick()
         waitForTagText("dash-load", "65")
-        for (id in listOf("dash-gauge", "dash-pie", "dash-radar", "dash-heat", "dash-tree")) {
+        for (id in listOf("dash-gauge", "dash-pie", "dash-radar", "dash-heat", "dash-tree", "dash-box")) {
             composeRule.onNodeWithTag(id).assertExists()
         }
+        // The radar's tap (see the iOS twin for the geometry: the first vertex
+        // sits at (W/2, 46dp) on a 200dp-tall radar with labels on).
+        composeRule.onNodeWithTag("dash-radar-hit").assertTextEquals("none")
+        composeRule
+            .onNodeWithTag("dash-radar")
+            .performScrollTo()
+            .performTouchInput { click(Offset(width / 2f, 46f * flowDensity)) }
+        waitForTagText("dash-radar-hit", "S0A0")
+        // The boxplot host crossed: a tap in the left third is box 0, in the right third box 1.
+        composeRule.onNodeWithTag("dash-box-pick").assertTextEquals("-1")
+        composeRule
+            .onNodeWithTag("dash-box")
+            .performScrollTo()
+            .performTouchInput { click(Offset(width * 0.35f, height / 2f)) }
+        waitForTagText("dash-box-pick", "0")
+        composeRule
+            .onNodeWithTag("dash-box")
+            .performTouchInput { click(Offset(width * 0.8f, height / 2f)) }
+        waitForTagText("dash-box-pick", "1")
         composeRule
             .onNodeWithTag("dash-back")
             .performScrollTo()

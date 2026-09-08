@@ -80,20 +80,20 @@ describe('chart entrance — the web tween crosses to both targets', () => {
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('PyreonChartEntrance(durationMs: 700.0) { pyreonEntrance in')
     // The literal is steered to the engine struct (no `__Obj0`), and the copy sets only `progress`.
-    expect(r.code).toContain('let pyreonOpts: TreemapOptions = { () -> TreemapOptions in var pyreonO = TreemapOptions(padding: Double(2)); pyreonO.progress = pyreonEntrance; return pyreonO }()')
+    expect(r.code).toContain('let pyreonOpts: TreemapOptions = { () -> TreemapOptions in var pyreonO = pyreonOptions; pyreonO.progress = pyreonEntrance; return pyreonO }()')
     expect(r.code).toContain('renderTreemap(pyreonLayout, pyreonOpts)')
-    expect(r.code).toContain('let pyreonLayout = layoutTreemap(DATA, PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 200.0), TreemapOptions(padding: Double(2)))')
+    expect(r.code).toContain('let pyreonLayout = layoutTreemap(DATA, PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 200.0), pyreonOptions)')
     expect(r.code).not.toContain('__Obj')
     // Absent options: the struct is constructed with the progress alone.
-    expect(transform(TREEMAP_PLAIN, { target: 'swift' }).code).toContain('let pyreonOpts: TreemapOptions = TreemapOptions(progress: pyreonEntrance)')
+    expect(transform(TREEMAP_PLAIN, { target: 'swift' }).code).toContain('let pyreonOpts: TreemapOptions = { () -> TreemapOptions in var pyreonO = pyreonOptions; pyreonO.progress = pyreonEntrance; return pyreonO }()')
   })
   it('Kotlin: the same shape through data-class copy', () => {
     const r = transform(TREEMAP, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('PyreonChartEntrance(700.0) { pyreonEntrance ->')
-    expect(r.code).toContain('val pyreonOpts: TreemapOptions = (TreemapOptions(padding = (2).toDouble())).copy(progress = pyreonEntrance)')
+    expect(r.code).toContain('val pyreonOpts: TreemapOptions = (pyreonOptions).copy(progress = pyreonEntrance)')
     expect(r.code).toContain('renderTreemap(pyreonLayout, pyreonOpts)')
-    expect(transform(TREEMAP_PLAIN, { target: 'kotlin' }).code).toContain('val pyreonOpts: TreemapOptions = TreemapOptions(progress = pyreonEntrance)')
+    expect(transform(TREEMAP_PLAIN, { target: 'kotlin' }).code).toContain('val pyreonOpts: TreemapOptions = (pyreonOptions).copy(progress = pyreonEntrance)')
   })
   it('the accessor host (Funnel), the plot host (ChartSpec.progress) and the heatmap wrapper all take the entrance', () => {
     for (const target of ['swift', 'kotlin'] as const) {
@@ -136,9 +136,9 @@ describe('chart entrance — the web tween crosses to both targets', () => {
     const s = transform(TREE_OPTIONS, { target: 'swift' })
     expect(s.warnings).toEqual([])
     expect(s.code).not.toContain('__Obj')
-    expect(s.code).toContain('treeTip(pyreonLayout, Double(pyreonTap.location.x), Double(pyreonTap.location.y), (TreeOptions(symbolSize: Double(8))).symbolSize)')
+    expect(s.code).toContain('treeTip(pyreonLayout, Double(pyreonTap.location.x), Double(pyreonTap.location.y), (pyreonOptions).symbolSize)')
     const k = transform(TREE_OPTIONS, { target: 'kotlin' })
-    expect(k.code).toContain('(TreeOptions(symbolSize = (8).toDouble())).symbolSize')
+    expect(k.code).toContain('(pyreonOptions).symbolSize')
   })
   // One compile per fixture: two of them declare the same `DATA` / `Files`.
   const sources = { TREEMAP, TREEMAP_PLAIN, FUNNEL, PLOT, HEAT, TREE_OPTIONS }

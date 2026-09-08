@@ -77,8 +77,9 @@ describe('<ChartThemeProvider> — a compile-time theme scope on both targets', 
       expect(p.warnings).toEqual([])
       expect(o.warnings).toEqual([])
       expect(chartLines(p.code)).toEqual(chartLines(o.code))
-      // The outside sibling: no ground, no palette seed.
-      expect(p.code.split('pyreonChartColor').length).toBe(3)
+      // The outside sibling follows the runtime scheme (its own ground, switched), so three grounds now.
+      expect(p.code.split('pyreonChartColor').length).toBe(4)
+      expect(p.code).toContain(target === 'swift' ? 'pyreonColorScheme == .dark' : 'isSystemInDarkTheme()')
     })
   }
   it('layers: mode → outer provider overrides → inner provider → the chart\'s own theme, each over the last', () => {

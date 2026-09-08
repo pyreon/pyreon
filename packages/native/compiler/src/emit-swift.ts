@@ -84,7 +84,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -2364,6 +2364,12 @@ function emitSwiftComponent(c: ComponentIR): string {
   // ships the primitive). Each useColorScheme decl's computed
   // property reads `pyreonColorScheme` to derive the "light"/"dark"
   // string.
+  // Reserved rather than filled: a chart host with no theme reads the scheme
+  // too (its colours become `pyreonColorScheme == .dark ? …` conditionals),
+  // and that is only discovered while the BODY is emitted — the same slot
+  // shape `useSizeClass` needs below.
+  const colorSchemeSlot = lines.length
+  const colorSchemeDeclared = _usesColorScheme
   if (_usesColorScheme) {
     lines.push(
       `  @Environment(\\.colorScheme) private var pyreonColorScheme: ColorScheme`,
@@ -2838,6 +2844,10 @@ function emitSwiftComponent(c: ComponentIR): string {
       0,
       `  @Environment(\\.horizontalSizeClass) private var pyreonSizeClass: UserInterfaceSizeClass?`,
     )
+  }
+  // The colour-scheme slot, when a chart host in the body was the first reader (see its reservation above).
+  if (_usesColorScheme && !colorSchemeDeclared) {
+    lines.splice(colorSchemeSlot, 0, `  @Environment(\\.colorScheme) private var pyreonColorScheme: ColorScheme`)
   }
   _activePropsParamName = undefined
   _signalEnumTypes = new Map()
@@ -11464,7 +11474,7 @@ function emitSwiftChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   // default is transparent, so a host without a theme is emitted as before).
   // The grammar element has no ground of its own: its desugared host does.
   if (e.tag === GRAMMAR_CHART_HOST || inner === 'EmptyView()') return inner
-  const bg = chartThemeFields(chartAttrExpr(e, 'theme'), e.tag, () => {}, SWIFT_CHART_TARGET.list, _chartThemeScope ?? undefined).background
+  const bg = chartThemeFields(chartAttrExpr(e, 'theme'), e.tag, () => {}, SWIFT_CHART_TARGET.list, _chartThemeScope ?? undefined, swiftChartScheme).background
   return bg === '""' ? inner : `${inner}.background(pyreonChartColor(${bg}))`
 }
 
@@ -11485,6 +11495,7 @@ function emitSwiftChartHostInner(e: Extract<ExprIR, { kind: 'jsx-element' }>, in
   }
   if (tag === 'GaugeChart') return emitSwiftGaugeHost(e, indent)
   if (tag === 'CandlestickChart') return emitSwiftCandlestickHost(e, indent)
+  if (tag === 'BoxplotChart') return swiftChartEntrance(e, tag, indent, (i) => emitSwiftBoxplotHost(e, i))
   if (tag === 'HeatmapChart') return swiftChartEntrance(e, tag, indent, (i) => emitSwiftHeatmapHost(e, i))
   if (tag === 'RadarChart') return emitSwiftRadarHost(e, indent)
   if (tag === 'PlotChart') return swiftChartEntrance(e, tag, indent, (i) => emitSwiftPlotHost(e, i))
@@ -11570,6 +11581,9 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
   // chrome-free, tap-free host keeps its inline `render(layout(...))`.
   const tooltip = spec.tooltip !== undefined && readStaticAttr(e, 'tooltip') === true
   const onSel = e.attrs.find((a) => a.kind === 'event' && a.name === 'selectindex')
+  // A rich-hit `onSelect` (a cell, a node, a Sankey node-or-link) has no native
+  // shape; it used to vanish with no diagnostic on all eleven of these hosts.
+  if (e.attrs.some((a) => a.kind === 'event' && a.name === 'select')) _emitWarnings.push(chartRichSelectWarning(tag))
   const tapping = onSel?.kind === 'event' || tooltip
   const layout = tapping ? 'pyreonLayout' : spec.layout(plotArgs, SWIFT_CHART_TARGET)
   if (tapping) lets.push(`let pyreonLayout = ${spec.layout(plotArgs, SWIFT_CHART_TARGET)}`)
@@ -11855,6 +11869,39 @@ function emitSwiftCandlestickHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, i
   return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent)
 }
 
+/** `<BoxplotChart data values x? box? format? height width title onSelect? onSelectIndex?>` → five-number summaries per row + the shared frame (`renderBoxplotChart`). */
+function emitSwiftBoxplotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const tag = 'BoxplotChart'
+  const dataV = chartAttrExpr(e, 'data')
+  if (dataV === undefined) {
+    _emitWarnings.push(`<${tag}>: needs a \`data\` attribute on native; emitting an EmptyView().`)
+    return 'EmptyView()'
+  }
+  const data = emitSwiftExpr(dataV, indent)
+  // `values` yields the raw samples of a row; the engine's `fiveNumber` reduces them natively.
+  const rowsM = swiftChartMap(e, tag, data, 'values', (b) => `fiveNumber((${b}).map { pyreonChartDouble($0) })`, indent)
+  if (rowsM === 'unsupported') return 'EmptyView()'
+  if (rowsM === null) {
+    _emitWarnings.push(`<${tag}>: needs a \`values\` accessor on native; emitting an EmptyView().`)
+    return 'EmptyView()'
+  }
+  const lets = [`let pyreonBoxes: [FiveNumber] = ${rowsM}`]
+  const catsM = swiftChartMap(e, tag, data, 'x', (b) => b, indent)
+  if (catsM === 'unsupported') return 'EmptyView()'
+  lets.push(`let pyreonCats: [String] = ${catsM ?? '[]'}`)
+  lets.push(`let pyreonTheme: ChartTheme = ${swiftChartTheme(e, tag)}`)
+  if (chartAttrExpr(e, 'format') !== undefined) _emitWarnings.push(`<${tag} format>: a formatter is not lowered on native; the axis prints plain numbers.`)
+  const optV = chartAttrExpr(e, 'box')
+  const options = optV === undefined ? 'BoxplotOptions()' : emitSwiftExpr(optV, indent)
+  const H = swiftChartDouble(e, 'height', 240, indent)
+  const hasWidth = chartAttrExpr(e, 'width') !== undefined
+  const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
+  // The entrance reaches the RENDER only (its trailing `progress`, as the heat host's); the hit reads the frame without it.
+  const canvas = `PyreonChartCanvas(cmds: renderBoxplotChart(pyreonBoxes, ${W}, ${H}, pyreonCats, pyreonTheme, ${options}, pyreonChartMeasure${swiftChartAnimating(e, tag) ? ', nil, pyreonEntrance' : ''}))`
+  const gesture = swiftChartGesture(e, (x, y) => `hitBoxplotChart(pyreonBoxes.count, ${W}, ${H}, pyreonCats, pyreonTheme.fontSize, pyreonChartMeasure, ${x}, ${y}, pyreonBoxes)`, indent)
+  return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent)
+}
+
 /** `<HeatmapChart data x y value colors? gap? height width title onSelectIndex?>` → heatGridFrom over the mapped rows + the shared frame. */
 function emitSwiftHeatmapHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const tag = 'HeatmapChart'
@@ -11941,8 +11988,14 @@ function emitSwiftRadarHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const showV = chartAttrExpr(e, 'showLabels')
   const showLabels = showV === undefined ? 'true' : typeof showRaw === 'boolean' ? String(showRaw) : emitSwiftExpr(showV, indent)
   const opts = `RadarOptions(rings: ${rings}, gridColor: "rgba(132,150,165,0.35)", labelColor: "#5a6b7a", fontSize: 11.0, showLabels: ${showLabels})`
-  const canvas = `PyreonChartCanvas(cmds: ${chrome.mirror(chrome.wrap(`renderRadar(${emitSwiftExpr(axesV, indent)}, pyreonSeries, PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${chrome.height(H)}), ${opts})`))})`
-  return swiftFrameHost(e, lets, canvas, '', W, H, hasWidth, indent)
+  const box = `PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${chrome.height(H)})`
+  const canvas = `PyreonChartCanvas(cmds: ${chrome.mirror(chrome.wrap(`renderRadar(${emitSwiftExpr(axesV, indent)}, pyreonSeries, ${box}, ${opts})`))})`
+  // The tap: the engine's `hitRadarIndex` (a `{ series, axis }` — the shape BOTH
+  // web callbacks receive), against the same box the canvas painted, the
+  // chrome's height taken off the tap's y. Radar had no tap on either target.
+  const tapY = chrome.top === '0.0' ? 'Double(pyreonTap.location.y)' : `Double(pyreonTap.location.y) - ${chrome.top}`
+  const gesture = swiftChartGesture(e, (x) => `hitRadarIndex(${emitSwiftExpr(axesV, indent)}, pyreonSeries, ${box}, ${opts}, ${x}, ${tapY}, 8.0)`, indent, ['selectindex', 'select'], chrome.tapX)
+  return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent)
 }
 
 
@@ -12397,13 +12450,20 @@ function swiftChartTheme(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: strin
 }
 /** The resolved theme per field as emitted text — read ONCE per host (it warns on a non-literal theme) and shared by the chrome, the tooltip and the palette default. */
 function swiftChartThemeFields(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: string): ChartThemeText {
-  return chartThemeFields(chartAttrExpr(e, 'theme'), tag, (w) => _emitWarnings.push(w), (items) => `[${items.join(', ')}]`, _chartThemeScope ?? undefined)
+  return chartThemeFields(chartAttrExpr(e, 'theme'), tag, (w) => _emitWarnings.push(w), (items) => `[${items.join(', ')}]`, _chartThemeScope ?? undefined, swiftChartScheme)
+}
+/** The runtime colour-scheme switch: SwiftUI's `colorScheme` environment (injected into the view once any host reads it). */
+function swiftChartScheme(light: string, dark: string): string {
+  _usesColorScheme = true
+  return `(pyreonColorScheme == .dark ? ${dark} : ${light})`
 }
 /** The enclosing `<ChartThemeProvider>`'s resolved theme, while its children are emitted. */
 let _chartThemeScope: RawChartTheme | null = null
 /** Whether the host is themed at all — by its own `theme` or by a provider scope. */
 function swiftChartThemed(e: Extract<ExprIR, { kind: 'jsx-element' }>): boolean {
-  return chartAttrExpr(e, 'theme') !== undefined || _chartThemeScope !== null
+  // Always: with neither a theme nor a provider the host still follows the runtime colour scheme.
+  void e
+  return true
 }
 function swiftChartThemeFrom(f: ChartThemeText): string {
   return `ChartTheme(${CHART_THEME_FIELDS.map((x) => `${x.name}: ${f[x.name]}`).join(', ')})`

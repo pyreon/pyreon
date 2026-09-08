@@ -352,7 +352,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
 /** Plot hosts that exist on the web but have no native lowering yet, with the reason. */
 export const UNLOWERED_CHART_HOSTS: Readonly<Record<string, string>> = {
   OptionChart: 'the ECharts option facade is web-only',
-  BoxplotChart: 'the boxplot host reduces raw samples per row (`fiveNumber`) on the web side; a native lowering is a follow-up',
+  MapChart: 'the geo host reduces GeoJSON topology (`layoutGeo`) on the web side; a native lowering is a follow-up',
 }
 
 /** The grammar host and its mark/config children — `<Plot>` desugars to `<PlotChart marks>` before the plot emit runs. */
@@ -862,16 +862,37 @@ export function chartThemeFields(
   warn: (m: string) => void,
   list: (items: readonly string[]) => string,
   scope?: RawChartTheme,
+  scheme?: (light: string, dark: string) => string,
 ): Record<keyof typeof CHART_THEME_DEFAULT, string> {
   const out = {} as Record<keyof typeof CHART_THEME_DEFAULT, string>
   const named = namedChartTheme(v)
   // A named theme replaces the scope wholesale (as on the web, where a `theme`
   // prop is merged OVER the provider's — and a whole theme has every field).
   const base = named ?? scope ?? CHART_THEME_DEFAULT
+  // No theme, no provider: the web host follows the SYSTEM colour scheme
+  // (`prefers-color-scheme`, live). A bare chart on a phone used to be
+  // hard-wired to the light theme — with no warning — while the same source
+  // followed dark mode in a browser. With a `scheme` switch from the emitter,
+  // every field the two built-in themes disagree on becomes a runtime
+  // conditional over the platform's own scheme read (SwiftUI's `colorScheme`
+  // environment, Compose's `isSystemInDarkTheme()`); the fields they agree on
+  // (sizes, timings) stay literals. A literal `theme` override still lays over
+  // the LIGHT base — a partial theme on the web merges over the mode's theme,
+  // which is what the fields below then do per field.
+  const runtime = scheme !== undefined && named === undefined && scope === undefined
+  const dark = CHART_THEMES.dark
   const palette = named === undefined ? chartThemePalette(v, tag, warn, base.palette as readonly string[]) : (named.palette as readonly string[])
+  const paletteExplicit = named !== undefined || chartThemePaletteGiven(v)
   for (const f of CHART_THEME_FIELDS) {
     const d = base[f.name]
-    out[f.name] = f.kind === 'strings' ? list(palette.map((c) => JSON.stringify(c))) : f.kind === 'number' ? (d as string) : JSON.stringify(d)
+    if (f.kind === 'strings') {
+      const light = list(palette.map((c) => JSON.stringify(c)))
+      out[f.name] = runtime && !paletteExplicit ? scheme(light, list((dark.palette as readonly string[]).map((c) => JSON.stringify(c)))) : light
+    } else if (f.kind === 'number') out[f.name] = d as string
+    else {
+      const dv = dark[f.name] as string
+      out[f.name] = runtime && dv !== d ? scheme(JSON.stringify(d), JSON.stringify(dv)) : JSON.stringify(d)
+    }
   }
   if (v === undefined || named !== undefined) return out
   if (v.kind !== 'object' || (v.spreads !== undefined && v.spreads.length > 0)) {
@@ -888,6 +909,11 @@ export function chartThemeFields(
     out[spec.name] = spec.kind === 'number' ? chartDouble(f.value.value as number) : JSON.stringify(f.value.value)
   }
   return out
+}
+
+/** Whether a `theme` literal names its own `palette` (a literal list or a `palettes.<name>` reference). */
+function chartThemePaletteGiven(v: ExprIR | undefined): boolean {
+  return v !== undefined && v.kind === 'object' && v.fields.some((f) => f.name === 'palette')
 }
 
 /** `theme={chartThemes.dark}` — a whole built-in theme by reference. */
@@ -1004,7 +1030,7 @@ const FAMILY_CHROME: readonly string[] = ['showTitle', 'subtitle', 'showLegend',
  * is inert rather than "not lowered yet".
  */
 export function chartHostAnimates(tag: string): boolean {
-  if (tag === 'PlotChart' || tag === 'HeatmapChart') return true
+  if (tag === 'PlotChart' || tag === 'HeatmapChart' || tag === 'BoxplotChart') return true
   const host = CHART_HOSTS[tag]
   if (host !== undefined) return host.optionsStruct !== undefined
   return ACCESSOR_CHART_HOSTS[tag]?.optionsStruct !== undefined
@@ -1012,8 +1038,17 @@ export function chartHostAnimates(tag: string): boolean {
 /** The chrome props `<tag>` does NOT lower — each present one warns. */
 export function chartChromeUnlowered(tag: string): readonly string[] {
   const family = Object.hasOwn(CHART_HOSTS, tag) || Object.hasOwn(ACCESSOR_CHART_HOSTS, tag)
-  const lowered = [...(CHROME_LOWERED[tag] ?? (family ? FAMILY_CHROME : [])), ...(family && chartHostAnimates(tag) ? ['animate'] : [])]
+  // A table-driven host draws the tap tooltip only through a crossing `xTip`;
+  // one without it (Parallel — its lines are built from the raw rows on the
+  // web) must REPORT `tooltip` rather than pass the policy's "lowered" verdict.
+  const familyChrome = FAMILY_CHROME.filter((p) => p !== 'tooltip' || !Object.hasOwn(CHART_HOSTS, tag) || CHART_HOSTS[tag]!.tooltip !== undefined)
+  const lowered = [...(CHROME_LOWERED[tag] ?? (family ? familyChrome : [])), ...(family && chartHostAnimates(tag) ? ['animate'] : [])]
   return CHART_CHROME_PROPS.filter((p) => !lowered.includes(p))
+}
+
+/** The warning for a rich-hit `onSelect` on a host whose native tap can only report the engine's INDEX hit. */
+export function chartRichSelectWarning(tag: string): string {
+  return `<${tag} onSelect>: the rich-hit callback is not lowered on native — use \`onSelectIndex\` (the engine's index hit, the shape the tap reports on every target).`
 }
 /** The warning for a chrome prop `<tag>` carries but does not draw — `animate` on an engine with no entrance is inert everywhere, not a native gap. */
 export function chartChromeWarning(tag: string, prop: string): string {
@@ -1039,7 +1074,7 @@ export function chartTooltipFields(t: ChartThemeText): readonly (readonly [strin
 }
 
 /** The hosts with a dedicated emitter each (a fixed frame or a second data prop). */
-export const FRAME_CHART_HOSTS: Readonly<Record<string, true>> = { GaugeChart: true, CandlestickChart: true, HeatmapChart: true, RadarChart: true, PlotChart: true }
+export const FRAME_CHART_HOSTS: Readonly<Record<string, true>> = { GaugeChart: true, CandlestickChart: true, HeatmapChart: true, RadarChart: true, PlotChart: true, BoxplotChart: true }
 
 
 // ---------------------------------------------------------------------------
@@ -1130,4 +1165,8 @@ export function plotUnloweredWarning(tag: string, present: readonly string[]): s
   return `<${tag}>: ${named.join(', ')} ${present.length === 1 ? 'is' : 'are'} not lowered on native; the chart renders without.`
 }
 
+// The shared chrome props every host carries (`legendPosition`, `keyboard`,
+// `updateAnimation`, `updateDuration`, `toolbox`, `onSaveImage`,
+// `accessibleTable`) are reported through `chartChromeUnlowered` for the plot
+// host too — listing them here as well would warn twice.
 export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'emphasis', 'maxPoints', 'crosshair', 'link', 'keyboard', 'updateAnimation', 'updateDuration', 'seriesLabels', 'toolbox', 'onSaveImage', 'accessibleTable', 'legendPosition', 'yDomain', 'locale', 'facet', 'facetColumns']

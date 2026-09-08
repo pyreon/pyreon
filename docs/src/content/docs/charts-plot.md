@@ -528,7 +528,12 @@ series, a named `tooltipFormatter` lowers, and `crosshair` — a hover concept �
 stays web-only and says so). What the legend lists and what a tap says come
 from one crossing module — `treemapLegend`, `sankeyTip`, `pieTip`, … and
 `renderTooltip` in `chrome.ts` — that the web host calls too, so the three
-targets cannot disagree about either. `animate` crosses too: every host whose
+targets cannot disagree about either. `<BoxplotChart>` crosses (its
+`fiveNumber` reduction runs in the generated engine) and `<RadarChart>`'s tap
+reports the engine's `{ series, axis }` hit on every target; `<OptionChart>`
+and `<MapChart>` decline by name. A host with no `theme` and no provider
+follows the phone's colour scheme at runtime, as it follows
+`prefers-color-scheme` in a browser. `animate` crosses too: every host whose
 engine takes a `progress` (all of the above except Pie, Radar, Candlestick and
 Gauge, which draw fully formed everywhere) plays the same cubic ease-out
 entrance over `theme.enterMs` inside `PyreonChartEntrance`, off under Reduce

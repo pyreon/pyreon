@@ -65,6 +65,8 @@ export const ENGINE_FILES = [
   'gantt',
   'parallel',
   'candlestick-chart',
+  'boxplot',
+  'boxplot-chart',
   'heat-chart',
   'plot-hit',
   'title',

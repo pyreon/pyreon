@@ -3,17 +3,13 @@
 // The finance family's sibling: a box (Q1..Q3) with a median line, whiskers
 // to the fences, and outliers as dots — rects, lines and circles, which every
 // backend already executes. Pure and Double-only so it can join the native
-// engine. Written in the native subset (no closures in structs, coalesce
-// before branching, no Int/Double mixing).
+// engine — and it does: this module and `boxplot-chart.ts` (the axes and the
+// frame) are generated into PyreonChartEngine.swift/.kt. Written in the native
+// subset (no closures in structs, coalesce before branching, no Int/Double
+// mixing); the server-side `boxplotToSvg` lives in `boxplot-svg.ts`.
 
-import { computeLayout } from './layout'
-import { defaultTheme } from './render'
-import type { ChartTheme } from './render'
-import { niceDomain, scaleLinear } from './scale'
-import { measureApprox, renderSvg } from './svg'
-import type { SvgOptions } from './svg'
-import type { Formatter } from './format'
-import type { Domain, Double, DrawCmd, MeasureText, Rect } from './types'
+import { scaleLinear } from './scale'
+import type { Domain, Double, DrawCmd, Rect } from './types'
 
 /** One category's summary. */
 export interface FiveNumber {
@@ -162,65 +158,4 @@ export function hitBox(count: number, plot: Rect, px: Double, py: Double): numbe
     jf = jf + 1.0
   }
   return idx
-}
-
-export interface BoxplotToSvgOptions<T> {
-  data: T[]
-  /** Raw observations per datum — summarised with `fiveNumber`. */
-  values: (d: T, index: number) => Double[]
-  x?: (d: T, index: number) => string
-  width?: Double
-  height?: Double
-  theme?: Partial<ChartTheme>
-  box?: BoxplotOptions
-  format?: Formatter
-  measure?: MeasureText
-  title?: string
-  description?: string
-  svg?: Omit<SvgOptions, 'title' | 'description'>
-  /** Precomputed summaries (index-aligned with `data`) — skips `fiveNumber`. */
-  summaries?: FiveNumber[]
-}
-
-/** Boxplot → `<svg>` string, server-safe. */
-export function boxplotToSvg<T>(options: BoxplotToSvgOptions<T>): string {
-  const width = options.width ?? 640.0
-  const height = options.height ?? 320.0
-  const t = { ...defaultTheme, ...options.theme }
-  const rows = options.summaries ?? options.data.map((d, i) => fiveNumber(options.values(d, i)))
-  const domain = niceDomain(boxplotExtent(rows), 5.0)
-  const measure = options.measure ?? measureApprox()
-  const l = computeLayout(
-    {
-      width,
-      height,
-      xDomain: { min: 0.0, max: rows.length > 1 ? rows.length - 1 : 1.0 },
-      yDomain: domain,
-      categories: options.x !== undefined ? options.data.map((d, i) => options.x!(d, i)) : [],
-      fontSize: t.fontSize,
-      xTickCount: 5.0,
-      yTickCount: 5.0,
-      showXAxis: true,
-      showYAxis: true,
-      yFormat: options.format,
-    },
-    measure,
-  )
-  const cmds: DrawCmd[] = []
-  for (const tick of l.yTicks) {
-    cmds.push({ kind: 'line', from: { x: l.plot.x, y: tick.pos }, to: { x: l.plot.x + l.plot.w, y: tick.pos }, stroke: t.grid, width: 1.0 })
-    cmds.push({ kind: 'text', text: tick.label, at: { x: l.plot.x - 6.0, y: tick.pos }, fill: t.label, size: t.fontSize, align: 'end', baseline: 'middle' })
-  }
-  for (const tick of l.xTicks) {
-    cmds.push({ kind: 'text', text: tick.label, at: { x: tick.pos, y: l.plot.y + l.plot.h + 6.0 }, fill: t.label, size: t.fontSize, align: 'middle', baseline: 'top' })
-  }
-  for (const c of renderBoxplot(rows, l.plot, domain, options.box)) cmds.push(c)
-  const description =
-    options.description ??
-    (options.title !== undefined ? `${options.title}: ${rows.length} boxes, medians ${rows.map((r) => r.median).join(', ')}.` : undefined)
-  return renderSvg(cmds, width, height, {
-    ...options.svg,
-    ...(options.title !== undefined ? { title: options.title } : {}),
-    ...(description !== undefined && description !== '' ? { description } : {}),
-  })
 }
