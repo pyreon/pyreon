@@ -83,6 +83,15 @@ export function useWakeLock(): WakeLockControls {
         wakeLock: { request: (t: string) => Promise<Sentinel> }
       }
       const held = await nav.wakeLock.request('screen')
+      if (!wanted || sentinel !== null) {
+        // `release()` or the scope's cleanup ran while the request was in
+        // flight — `sentinel` was still null then, so they released nothing.
+        // Give this one straight back, or the screen stays lit for a view
+        // that no longer exists. (A non-null `sentinel` means the browser
+        // handed a lock to a newer, superseding acquisition; keep that one.)
+        void held.release()
+        return active()
+      }
       sentinel = held
       // The browser releases the sentinel itself when the document hides,
       // and tells us ONLY through this event. Without listening, `sentinel`

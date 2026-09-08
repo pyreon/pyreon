@@ -43,6 +43,29 @@ const doc = (fields: Array<{ name: string; type: IrType; pattern?: string }>): I
 const emitWith = (pattern: string): string =>
   emitSchemas(doc([{ name: 'v', type: { kind: 'string' }, pattern }]), { native: false }).build('').contents
 
+const CR = String.fromCharCode(13)
+const LS = String.fromCharCode(0x2028)
+const PS = String.fromCharCode(0x2029)
+
+/**
+ * COMPILE the emitted module.
+ *
+ * `expect(out).not.toContain('.regex(')` passes vacuously whenever the emit is
+ * broken some other way, and it says nothing about whether the file is still
+ * well-formed SOURCE. The bug this guards was never a wrong constraint: a
+ * `pattern` carrying a raw line terminator emitted `.regex(/a<LF>b/)`, which is
+ * `Unterminated regular expression literal '/a'` — every model in the file
+ * gone, not one constraint. So the assertion has to be "does this parse".
+ */
+const compiles = (contents: string): void => {
+  const body = contents
+    .replace(/^import\s+.*$/gm, '')
+    .replace(/^export type .*$/gm, '')
+    .replace(/^export const /gm, 'const ')
+  // eslint-disable-next-line no-new-func
+  new Function('s', body)
+}
+
 describe('pattern constraints — only portable regexes survive', () => {
   it('keeps an ordinary portable pattern', () => {
     expect(emitWith('^[a-z]+$')).toContain('.regex(/^[a-z]+$/)')
@@ -64,7 +87,43 @@ describe('pattern constraints — only portable regexes survive', () => {
   it('drops a pattern containing a slash — it cannot be spelled as a literal', () => {
     // The emit writes `/${pattern}/`, so an unescaped `/` would terminate the
     // literal early and produce something that does not parse.
-    expect(emitWith('^a/b$')).not.toContain('.regex(')
+    const out = emitWith('^a/b$')
+    expect(out).not.toContain('.regex(')
+    expect(() => compiles(out)).not.toThrow()
+  })
+
+  it.each([
+    ['LF', '\n'],
+    ['CR', CR],
+    ['U+2028', LS],
+    ['U+2029', PS],
+  ])(
+    'drops a pattern containing %s — a line terminator ends a regex literal too',
+    (_label, terminator) => {
+      // `/` was refused from the start; the four line terminators were not, and
+      // they end a literal exactly as `/` does — `RegularExpressionChar` is
+      // built from `RegularExpressionNonTerminator` ("SourceCharacter but not
+      // LineTerminator"), so they are illegal anywhere in one, character class
+      // included. `{"pattern": "a\nb"}` is legal OpenAPI, so this was reachable
+      // from a spec nobody wrote in bad faith.
+      //
+      // The parse assertion is the load-bearing one: pre-fix it threw
+      // `Unterminated regular expression literal '/a'` and took the WHOLE
+      // schemas module with it.
+      const out = emitWith(`a${terminator}b`)
+      expect(() => compiles(out)).not.toThrow()
+      expect(out).not.toContain('.regex(')
+    },
+  )
+
+  it('KEEPS a pattern carrying a raw control character', () => {
+    // The refusal must be exactly the terminator set, not "anything unusual".
+    // A control character is a legal `RegularExpressionNonTerminator`, so
+    // dropping it would be a silent constraint loss with no cause — and this
+    // spec is what stops the guard from being widened into one.
+    const out = emitWith(`a${String.fromCharCode(1)}b`)
+    expect(out).toContain('.regex(')
+    expect(() => compiles(out)).not.toThrow()
   })
 
   it('drops a pattern JS itself cannot compile', () => {

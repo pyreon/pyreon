@@ -89,6 +89,12 @@ atlas-snapshots/
 atlas-dist
 atlas-dist-*/
 
+# Loom scan artifact — `loom scan` writes `loom-report.json` next to the root
+# manifest (that is the documented machine surface + CI gate input), so running
+# the documented gate in this repo drops a ~580KB file in the tree. Same shape
+# as `atlas-catalog.json` above: generated on every run, never committed.
+loom-report.json
+
 # Kotlin 2.x per-project session dirs (error logs etc.) — emitted next to
 # gradle builds in the native example apps
 .kotlin/

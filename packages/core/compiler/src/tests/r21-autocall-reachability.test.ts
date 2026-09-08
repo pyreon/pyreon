@@ -34,18 +34,28 @@
  *      (baking both hands the decision to the HTML parser = FIRST-wins,
  *      the opposite semantic) + emit a `duplicate-jsx-attr` warning.
  */
+import { createRequire } from 'node:module'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it, test } from 'vitest'
 import { transformJSX_JS } from '../jsx'
 
-let nativeTransform:
-  | ((code: string, filename: string, ssr: boolean, known: string[] | null) => {
-      code: string
-      warnings: Array<{ message: string; line: number; column: number; code: string }>
-    })
-  | null = null
+type NativeTransform = (code: string, filename: string, ssr: boolean, known: string[] | null) => {
+  code: string
+  warnings: Array<{ message: string; line: number; column: number; code: string }>
+}
+
+let nativeTransform: NativeTransform | null = null
 try {
-  const path = require('node:path')
-  const native = require(path.join(__dirname, '..', '..', 'native', 'pyreon-compiler.node'))
+  // A napi `.node` addon cannot be loaded through `await import()`, so this
+  // is the legitimate `createRequire` case: the CJS-only globals are not
+  // defined in a real-Node ESM run (bun defines them, which is why a
+  // bun-run suite never caught it).
+  const requireAddon = createRequire(import.meta.url)
+  const here = dirname(fileURLToPath(import.meta.url))
+  const native = requireAddon(join(here, '..', '..', 'native', 'pyreon-compiler.node')) as {
+    transformJsx: NativeTransform
+  }
   nativeTransform = native.transformJsx
 } catch {
   // Native not available — equivalence half skips; JS-form assertions still run.

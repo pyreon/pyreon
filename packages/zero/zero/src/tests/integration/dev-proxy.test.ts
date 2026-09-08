@@ -28,6 +28,11 @@ import pyreon from "@pyreon/vite-plugin";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { zeroPlugin } from "../../vite-plugin";
+import {
+	DEV_SERVER_BOOT_TIMEOUT_MS,
+	DEV_SERVER_TEST_TIMEOUT_MS,
+	devFetch,
+} from "./dev-server-budget";
 
 const FIXTURE_DIR = resolve(import.meta.dirname, "fixture");
 
@@ -35,6 +40,12 @@ let backend: Server;
 let backendPort: number;
 let server: ViteDevServer;
 let baseUrl: string;
+
+// Snapshot for `devFetch`'s failure message — a thunk, so it costs nothing on
+// the passing path and only runs when a request has already failed.
+const state = () =>
+	`baseUrl=${baseUrl} listening=${Boolean(server?.httpServer?.listening)} ` +
+	`backendPort=${backendPort}`;
 
 beforeAll(async () => {
 	// Tiny real backend — answers EVERYTHING with JSON + a marker header so
@@ -92,7 +103,7 @@ beforeAll(async () => {
 	if (address && typeof address === "object") {
 		baseUrl = `http://localhost:${address.port}`;
 	}
-}, 30_000);
+}, DEV_SERVER_BOOT_TIMEOUT_MS);
 
 afterAll(async () => {
 	await server?.close();
@@ -101,10 +112,14 @@ afterAll(async () => {
 	});
 });
 
-describe("PZ-11 — zero dev honors vite server.proxy", () => {
+describe("PZ-11 — zero dev honors vite server.proxy", { timeout: DEV_SERVER_TEST_TIMEOUT_MS }, () => {
 	it("proxies /api/<context> with Accept: */* (fetch default) to the backend", async () => {
 		// Pre-fix: the SSR catch-all swallowed this with 404 _404.tsx HTML.
-		const res = await fetch(`${baseUrl}/api/proxied/hello`);
+		const res = await devFetch(
+			`${baseUrl}/api/proxied/hello`,
+			"proxied /api/ context reaches the backend",
+			{ observe: state },
+		);
 		expect(res.status).toBe(200);
 		expect(res.headers.get("x-proxied-backend")).toBe("hit");
 		const body = (await res.json()) as { proxied: boolean; url: string };
@@ -116,9 +131,11 @@ describe("PZ-11 — zero dev honors vite server.proxy", () => {
 		// Pre-fix: the 404 handler swallowed /backend/* in ALL modes (its
 		// /api/ skip didn't cover other proxy prefixes); in mode:'ssr' the
 		// SSR catch-all swallowed it first.
-		const res = await fetch(`${baseUrl}/backend/x`, {
-			headers: { accept: "text/html" },
-		});
+		const res = await devFetch(
+			`${baseUrl}/backend/x`,
+			"proxied NON-/api prefix with Accept: text/html",
+			{ headers: { accept: "text/html" }, observe: state },
+		);
 		expect(res.status).toBe(200);
 		expect(res.headers.get("x-proxied-backend")).toBe("hit");
 		const body = (await res.json()) as { url: string };
@@ -126,7 +143,11 @@ describe("PZ-11 — zero dev honors vite server.proxy", () => {
 	});
 
 	it("matches proxy contexts on the FULL url including the query string", async () => {
-		const res = await fetch(`${baseUrl}/backend/data?q=1`);
+		const res = await devFetch(
+			`${baseUrl}/backend/data?q=1`,
+			"proxy context matched on the full url incl. query",
+			{ observe: state },
+		);
 		expect(res.status).toBe(200);
 		expect(res.headers.get("x-proxied-backend")).toBe("hit");
 		const body = (await res.json()) as { url: string };
@@ -134,7 +155,9 @@ describe("PZ-11 — zero dev honors vite server.proxy", () => {
 	});
 
 	it("honors ^-prefixed RegExp proxy contexts", async () => {
-		const res = await fetch(`${baseUrl}/rx/123`);
+		const res = await devFetch(`${baseUrl}/rx/123`, "^-prefixed RegExp proxy context", {
+			observe: state,
+		});
 		expect(res.status).toBe(200);
 		expect(res.headers.get("x-proxied-backend")).toBe("hit");
 	});
@@ -143,7 +166,11 @@ describe("PZ-11 — zero dev honors vite server.proxy", () => {
 		// /api/health is BOTH an fs api route AND a proxy context. The dev
 		// API dispatcher runs first — fs wins (matches production, where
 		// server.proxy doesn't exist).
-		const res = await fetch(`${baseUrl}/api/health`);
+		const res = await devFetch(
+			`${baseUrl}/api/health`,
+			"fs api route wins over a same-prefix proxy context",
+			{ observe: state },
+		);
 		expect(res.status).toBe(200);
 		expect(res.headers.get("x-proxied-backend")).toBeNull();
 		const body = (await res.json()) as { status: string };
@@ -151,8 +178,9 @@ describe("PZ-11 — zero dev honors vite server.proxy", () => {
 	});
 
 	it("page routes still SSR (guards don't over-next)", async () => {
-		const res = await fetch(`${baseUrl}/`, {
+		const res = await devFetch(`${baseUrl}/`, "dev SSR render of the index page", {
 			headers: { accept: "text/html" },
+			observe: state,
 		});
 		expect(res.status).toBe(200);
 		const html = await res.text();
@@ -160,7 +188,11 @@ describe("PZ-11 — zero dev honors vite server.proxy", () => {
 	});
 
 	it("unmatched non-proxy paths still render the 404 page", async () => {
-		const res = await fetch(`${baseUrl}/definitely-not-a-route`);
+		const res = await devFetch(
+			`${baseUrl}/definitely-not-a-route`,
+			"dev SSR render of the 404 page",
+			{ observe: state },
+		);
 		expect(res.status).toBe(404);
 		const html = await res.text();
 		expect(html).toContain("404 — Page Not Found");
@@ -178,7 +210,11 @@ describe("PZ-11 — zero dev honors vite server.proxy", () => {
 		// Pre-fix: 404 + the _404.tsx HTML. Post-fix: falls through zero's
 		// middlewares to Vite (whose html fallback serves the SPA shell for
 		// Accept: */*) — the key contract is zero does NOT terminate it.
-		const res = await fetch(`${baseUrl}/api/unhandled-by-anyone`);
+		const res = await devFetch(
+			`${baseUrl}/api/unhandled-by-anyone`,
+			"unmatched /api/* falls through past zero",
+			{ observe: state },
+		);
 		const html = await res.text();
 		expect(html).not.toContain("404 — Page Not Found");
 		expect(res.status).not.toBe(404);
@@ -188,9 +224,11 @@ describe("PZ-11 — zero dev honors vite server.proxy", () => {
 		// `isApiRoute` only claims `.ts`/`.js` files — an `api/*.tsx` file is
 		// a page route. The /api/ skip is gated on pageRouteMatches so this
 		// still server-renders (production parity).
-		const res = await fetch(`${baseUrl}/api/page`, {
-			headers: { accept: "text/html" },
-		});
+		const res = await devFetch(
+			`${baseUrl}/api/page`,
+			"dev SSR render of a PAGE route under /api/",
+			{ headers: { accept: "text/html" }, observe: state },
+		);
 		expect(res.status).toBe(200);
 		const html = await res.text();
 		expect(html).toContain("Page under api prefix");

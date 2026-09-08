@@ -6,8 +6,24 @@
 // was caused by the two renderers carrying independent copies that drifted.
 // Pure string logic, zero deps — runs identically in the browser and Node.
 
-/** URL-bearing attributes guarded against `javascript:` / `data:` injection. */
-export const URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'poster', 'cite', 'data'])
+/**
+ * URL-bearing attributes guarded against `javascript:` / `data:` injection.
+ * `xlink:href` is SVG's URL attribute — its qualified name is not `href`, so a
+ * plain `href` check misses `<a xlink:href="javascript:…">` inside inline SVG
+ * (clickable in every browser). The DOMParser sanitizer already guards it by
+ * `localName`; listing it here gives the h(), compiled-template and SSR
+ * renderers the same verdict from the same set.
+ */
+export const URL_ATTRS = new Set([
+  'href',
+  'src',
+  'action',
+  'formaction',
+  'poster',
+  'cite',
+  'data',
+  'xlink:href',
+])
 
 /** Matches the `javascript:` / `data:` URI prefixes the guard rejects by default. */
 export const UNSAFE_URL_RE = /^\s*(?:javascript|data):/i

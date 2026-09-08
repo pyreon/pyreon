@@ -1,4 +1,6 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -1237,14 +1239,11 @@ describe('ISR auth-read build warning (Tier-2 G3)', () => {
 
 describe('collectFileRouteModes — routeRules integration (Tier-4)', () => {
   it('rule applies when no file/layout declaration; file declaration wins over rule', async () => {
-    const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = require('node:fs')
-    const { tmpdir } = require('node:os')
-    const path = require('node:path')
-    const dir = mkdtempSync(path.join(tmpdir(), 'pyreon-rules-'))
+    const dir = mkdtempSync(join(tmpdir(), 'pyreon-rules-'))
     try {
       const write = (rel: string, body: string) => {
-        const full = path.join(dir, rel)
-        mkdirSync(path.dirname(full), { recursive: true })
+        const full = join(dir, rel)
+        mkdirSync(dirname(full), { recursive: true })
         writeFileSync(full, body)
       }
       write('blog/post.tsx', 'export default () => null')
@@ -1327,20 +1326,18 @@ describe("mode: 'auto' inference (EXPERIMENTAL)", () => {
   })
 
   it('resolveAutoModeSync + collectFileRouteModes(auto) agree on a real fixture', async () => {
-    const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = require('node:fs')
-    const { tmpdir } = require('node:os')
-    const path = require('node:path')
-    const dir = mkdtempSync(path.join(tmpdir(), 'pyreon-auto-'))
+    const dir = mkdtempSync(join(tmpdir(), 'pyreon-auto-'))
     try {
       const write = (rel: string, body: string) => {
-        const full = path.join(dir, rel)
-        mkdirSync(path.dirname(full), { recursive: true })
+        const full = join(dir, rel)
+        mkdirSync(dirname(full), { recursive: true })
         writeFileSync(full, body)
       }
       write('index.tsx', 'export default () => null')
       write('dash.tsx', 'export default () => null\nexport const loader = async () => ({})')
-      const nodeFs = require('node:fs')
-      const sync = resolveAutoModeSync(dir, undefined, nodeFs)
+      const sync = resolveAutoModeSync(dir, undefined, {
+        existsSync, readdirSync, readFileSync, statSync,
+      })
       expect(sync).toEqual({ mode: 'ssr', pages: 2 })
 
       const entries = await collectFileRouteModes(dir, 'auto')
