@@ -57,15 +57,57 @@ describe('<PlotChart rtl> on native', () => {
     }
   })
 
-  it('a family that does not lower `rtl` names it', () => {
-    // The alternative — a host prop silently ignored on one target — is the
-    // typed-but-unimplemented shape. `rtl` joins the chrome-prop list, so
-    // every family that has not lowered it warns by name for free.
-    expect(chartChromeUnlowered('PlotChart')).not.toContain('rtl')
-    expect(chartChromeUnlowered('TreemapChart')).toContain('rtl')
+  it('every host built through the chrome seam lowers `rtl`', () => {
+    // The seam is what makes this cheap: `mirror` and `tapX` live on the
+    // chrome, so a family host gets both halves by construction instead of
+    // each emitter remembering to take them.
+    for (const tag of ['PlotChart', 'TreemapChart', 'PieChart', 'SankeyChart', 'PolarChart', 'GanttChart', 'RadarChart']) {
+      expect(chartChromeUnlowered(tag), `${tag} should lower rtl`).not.toContain('rtl')
+    }
     const out = transform(`import { TreemapChart } from '@pyreon/charts'
 export function App() {
   return <TreemapChart data={[{ name: 'a', value: 1 }]} rtl />
+}
+`, { target: 'swift' })
+    expect(out.code).toContain('pyreonMirrorCmds(')
+    expect(out.warnings.filter((w) => w.includes('`rtl`'))).toEqual([])
+  })
+
+  it('a FAMILY host mirrors its tap too, on both targets', () => {
+    // The paint half is easy to add and easy to add ALONE. This asserts the
+    // pair on a host that is not the plot: a treemap that painted mirrored
+    // and hit-tested raw would report the cell on the opposite side.
+    const src = (rtl: string): string => `import { TreemapChart } from '@pyreon/charts'
+export function App() {
+  return <TreemapChart data={[{ name: 'a', value: 1 }]}${rtl} onSelectIndex={(i) => console.log(i)} />
+}
+`
+    const sw = transform(src(' rtl'), { target: 'swift' })
+    expect(sw.code).toContain('pyreonMirrorCmds(')
+    expect(sw.code).toContain('- Double(pyreonTap.location.x))')
+
+    const kt = transform(src(' rtl'), { target: 'kotlin' })
+    expect(kt.code).toContain('pyreonMirrorCmds(')
+    expect(kt.code).toContain('- (pyreonTap.x / pyreonDensity).toDouble())')
+
+    // And an LTR family emit is untouched.
+    for (const target of ['swift', 'kotlin'] as const) {
+      const off = transform(src(''), { target })
+      expect(off.code).not.toContain('pyreonMirrorCmds')
+    }
+  })
+
+  it('a host whose emitter BYPASSES the chrome seam names `rtl` rather than dropping it', () => {
+    // Gauge, Candlestick and Heatmap build their canvas without the chrome,
+    // so they get neither half — and say so. A prop added to FAMILY_CHROME
+    // must never silently claim a host whose emitter never reads it, which is
+    // why those three carry explicit lists.
+    for (const tag of ['GaugeChart', 'CandlestickChart', 'HeatmapChart']) {
+      expect(chartChromeUnlowered(tag), `${tag} should NOT claim rtl`).toContain('rtl')
+    }
+    const out = transform(`import { GaugeChart } from '@pyreon/charts'
+export function App() {
+  return <GaugeChart value={0.4} rtl />
 }
 `, { target: 'swift' })
     expect(out.warnings.some((w) => w.includes('`rtl`'))).toBe(true)

@@ -11580,7 +11580,7 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
   const tipCmds = tooltip
     ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, pyreonChartMeasure)`
     : ''
-  const canvas = `PyreonChartCanvas(cmds: ${chrome.wrap(spec.render(layout, renderArgs, SWIFT_CHART_TARGET))}${tipCmds})`
+  const canvas = `PyreonChartCanvas(cmds: ${chrome.mirror(chrome.wrap(spec.render(layout, renderArgs, SWIFT_CHART_TARGET)))}${tipCmds})`
   // `onSelectIndex` → a tap (a zero-distance drag, which reports its location)
   // over the engine's index hit, computed against the same layout the canvas
   // painted. `.contentShape` makes the whole canvas — not only its painted
@@ -11593,9 +11593,9 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
     if (tooltip) {
       _hostStateDecls.push('@State private var pyreonTip: [String] = []')
       _hostStateDecls.push('@State private var pyreonTipAt: PyreonChartPt = PyreonChartPt(x: 0.0, y: 0.0)')
-      parts.push(`pyreonTip = ${spec.tooltip!(layout, 'Double(pyreonTap.location.x)', tapY, plotArgs, SWIFT_CHART_TARGET)}; pyreonTipAt = PyreonChartPt(x: Double(pyreonTap.location.x), y: Double(pyreonTap.location.y))`)
+      parts.push(`pyreonTip = ${spec.tooltip!(layout, chrome.tapX('Double(pyreonTap.location.x)'), tapY, plotArgs, SWIFT_CHART_TARGET)}; pyreonTipAt = PyreonChartPt(x: Double(pyreonTap.location.x), y: Double(pyreonTap.location.y))`)
     }
-    if (onSel?.kind === 'event') parts.push(swiftChartSelectBody(onSel.handler, spec.hit(layout, 'Double(pyreonTap.location.x)', tapY, plotArgs, SWIFT_CHART_TARGET), indent))
+    if (onSel?.kind === 'event') parts.push(swiftChartSelectBody(onSel.handler, spec.hit(layout, chrome.tapX('Double(pyreonTap.location.x)'), tapY, plotArgs, SWIFT_CHART_TARGET), indent))
     gesture = `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in ${parts.join('; ')} })`
   }
   if (lets.length === 0) {
@@ -11684,7 +11684,7 @@ function emitSwiftAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   const tipCmds = tooltip
     ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, pyreonChartMeasure)`
     : ''
-  const canvas = `PyreonChartCanvas(cmds: ${chrome.wrap(spec.render(items, animating ? { ...args, options: 'pyreonOpts' } : args, SWIFT_CHART_TARGET))}${tipCmds})`
+  const canvas = `PyreonChartCanvas(cmds: ${chrome.mirror(chrome.wrap(spec.render(items, animating ? { ...args, options: 'pyreonOpts' } : args, SWIFT_CHART_TARGET)))}${tipCmds})`
   // Both `onSelect` (already an index on these hosts) and `onSelectIndex` lower to the tap; `tooltip` shares it.
   const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
   const tapY = withChrome ? 'Double(pyreonTap.location.y) - pyreonTop' : 'Double(pyreonTap.location.y)'
@@ -11692,9 +11692,9 @@ function emitSwiftAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   if (tooltip) {
     _hostStateDecls.push('@State private var pyreonTip: [String] = []')
     _hostStateDecls.push('@State private var pyreonTipAt: PyreonChartPt = PyreonChartPt(x: 0.0, y: 0.0)')
-    parts.push(`pyreonTip = ${spec.tooltip(items, 'Double(pyreonTap.location.x)', tapY, args, SWIFT_CHART_TARGET)}; pyreonTipAt = PyreonChartPt(x: Double(pyreonTap.location.x), y: Double(pyreonTap.location.y))`)
+    parts.push(`pyreonTip = ${spec.tooltip(items, chrome.tapX('Double(pyreonTap.location.x)'), tapY, args, SWIFT_CHART_TARGET)}; pyreonTipAt = PyreonChartPt(x: Double(pyreonTap.location.x), y: Double(pyreonTap.location.y))`)
   }
-  if (onSel?.kind === 'event') parts.push(swiftChartSelectBody(onSel.handler, spec.hit(items, 'Double(pyreonTap.location.x)', tapY, args, SWIFT_CHART_TARGET), indent))
+  if (onSel?.kind === 'event') parts.push(swiftChartSelectBody(onSel.handler, spec.hit(items, chrome.tapX('Double(pyreonTap.location.x)'), tapY, args, SWIFT_CHART_TARGET), indent))
   const gesture = parts.length === 0 ? '' : `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in ${parts.join('; ')} })`
   const tail = swiftChartA11y(e, undefined, indent) + emitSwiftLayoutModifiers(e)
   if (!hoist) {
@@ -11921,7 +11921,7 @@ function emitSwiftRadarHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const showV = chartAttrExpr(e, 'showLabels')
   const showLabels = showV === undefined ? 'true' : typeof showRaw === 'boolean' ? String(showRaw) : emitSwiftExpr(showV, indent)
   const opts = `RadarOptions(rings: ${rings}, gridColor: "rgba(132,150,165,0.35)", labelColor: "#5a6b7a", fontSize: 11.0, showLabels: ${showLabels})`
-  const canvas = `PyreonChartCanvas(cmds: ${chrome.wrap(`renderRadar(${emitSwiftExpr(axesV, indent)}, pyreonSeries, PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${chrome.height(H)}), ${opts})`)})`
+  const canvas = `PyreonChartCanvas(cmds: ${chrome.mirror(chrome.wrap(`renderRadar(${emitSwiftExpr(axesV, indent)}, pyreonSeries, PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${chrome.height(H)}), ${opts})`))})`
   return swiftFrameHost(e, lets, canvas, '', W, H, hasWidth, indent)
 }
 
@@ -12201,14 +12201,13 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   // the plot and the extras mirror together and no layout code changes. The
   // tooltip is deliberately NOT mirrored: it is drawn at the raw tap point,
   // which is already a visual coordinate.
-  const rtl = readStaticAttr(e, 'rtl') === true
   const painted = `${chrome.wrap(`renderChart(pyreonSpec, pyreonChartMeasure)${brushing ? ' + pyreonBrushCmds' : ''}`)}${extraCmds}`
-  const canvas = `PyreonChartCanvas(cmds: ${rtl ? `pyreonMirrorCmds(${painted}, ${W})` : painted}${tipCmds})`
+  const canvas = `PyreonChartCanvas(cmds: ${chrome.mirror(painted)}${tipCmds})`
   const tapY = chrome.top === '0.0' ? 'Double(pyreonTap.location.y)' : 'Double(pyreonTap.location.y) - pyreonTop'
   // The hit test speaks the UNMIRRORED geometry the engine laid out, so an
   // RTL tap is mirrored back before it is asked about. Painting mirrored and
   // hit-testing unmirrored would report the bar at the opposite end.
-  const tapX = rtl ? `(${W} - Double(pyreonTap.location.x))` : 'Double(pyreonTap.location.x)'
+  const tapX = chrome.tapX('Double(pyreonTap.location.x)')
   const localHit = `plotHitBars(pyreonSpec, pyreonChartMeasure, ${tapX}, ${tapY})`
   // Under a window the hit is LOCAL to the slice; the callback speaks GLOBAL indices, as on the web.
   // With a tooltip the local hit is bound once (`pyreonLocal`) and both read it; without one the emit is as before.
@@ -12314,13 +12313,29 @@ interface SwiftChartChrome {
   wrap: (plot: string) => string
   /** The plot's height once the chrome is subtracted. */
   height: (H: string) => string
+  /**
+   * RTL: mirror a finished draw list about the canvas centreline, or hand it
+   * back untouched.
+   *
+   * Lives on the chrome rather than in each host emitter because it TRAVELS
+   * WITH `tapX`. The paint and the pointer are one contract — a host that
+   * mirrors its list and not its taps reports the wrong item, silently, in
+   * one locale — and shipping them as a pair is what stops the next host
+   * from taking half of it.
+   */
+  mirror: (cmds: string) => string
+  /** RTL: a tap's x in the UNMIRRORED geometry the engine laid out. */
+  tapX: (raw: string) => string
 }
 
 function swiftChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries: string, W: string, H: string, indent: number, withTitle: boolean, t: ChartThemeText, page?: string): SwiftChartChrome {
   const title = readStringAttrExpr(e, 'title', indent)
   const showTitle = withTitle && readStaticAttr(e, 'showTitle') === true && title !== undefined
   const showLegend = readStaticAttr(e, 'showLegend') === true
-  if (!showTitle && !showLegend) return { lets: [], top: '0.0', wrap: (p) => p, height: (h) => h }
+  const rtl = readStaticAttr(e, 'rtl') === true
+  const mirror = (cmds: string): string => (rtl ? `pyreonMirrorCmds(${cmds}, ${W})` : cmds)
+  const tapX = (raw: string): string => (rtl ? `(${W} - ${raw})` : raw)
+  if (!showTitle && !showLegend) return { lets: [], top: '0.0', wrap: (p) => p, height: (h) => h, mirror, tapX }
   const lets: string[] = []
   if (showTitle) {
     const subtitle = readStringAttrExpr(e, 'subtitle', indent) ?? 'nil'
@@ -12342,6 +12357,8 @@ function swiftChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries: 
     top: 'pyreonTop',
     wrap: (p) => `pyreonTitle.cmds + pyreonLegend.cmds + pyreonShiftCmds(${p}, pyreonTop)`,
     height: (h) => `${h} - pyreonTop`,
+    mirror,
+    tapX,
   }
 }
 

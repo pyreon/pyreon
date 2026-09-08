@@ -27,9 +27,15 @@ name the wrong bar in one locale only.
 Native lowers through `pyreonMirrorCmds` in both runtimes, hand-written per
 target for the same reason `pyreonShiftCmds` is (the draw command is a union
 in TypeScript and a flat struct on native). All three implementations are
-executed against the same commands and compared, so they cannot drift. `rtl`
-on a family host is not lowered on native yet and warns by name rather than
-being dropped.
+executed against the same commands and compared, so they cannot drift.
+
+On native both halves live on the CHROME helper — `mirror` beside `tapX` —
+so every host built through it (the plot, treemap, sankey, pie, polar, gantt,
+radar, …) gets the paint and the pointer together rather than each emitter
+remembering to take both. The three hosts whose emitters bypass the chrome
+(gauge, candlestick, heatmap) name `rtl` as unlowered instead of dropping it,
+and carry explicit prop lists so that adding a prop to the shared default can
+never silently claim a host that does not read it.
 
 Cost: the mirror is a static import of every canvas host, so a chart that
 never sets `rtl` still carries it — measured +86 B gz on the pie import and

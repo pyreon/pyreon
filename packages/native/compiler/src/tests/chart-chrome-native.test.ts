@@ -92,12 +92,11 @@ describe('family chrome — title, legend and tap tooltip lower on both targets'
   })
   it('the drawn chrome lowers on a family host whose engine animates; `animate` alone stays named on the fully-formed engines; the web-only interaction props are named on every host, the plot host included', () => {
     const webOnly = ['legendPosition', 'keyboard', 'updateAnimation', 'updateDuration', 'toolbox', 'onSaveImage', 'accessibleTable']
-    // `rtl` lowers on the PLOT host (it mirrors the finished draw list and
-    // mirrors every tap back); the family hosts have not taken it yet, so it
-    // is named there rather than dropped.
-    const familyWebOnly = [...webOnly, 'rtl']
-    expect(chartChromeUnlowered('TreemapChart')).toEqual(familyWebOnly)
-    expect(chartChromeUnlowered('PieChart')).toEqual(['animate', ...familyWebOnly])
+    // `rtl` lowers wherever the chrome seam builds the canvas — which is every
+    // host here. The three that bypass it (Gauge, Candlestick, Heatmap) name
+    // it instead; see chart-rtl-native.test.ts.
+    expect(chartChromeUnlowered('TreemapChart')).toEqual(webOnly)
+    expect(chartChromeUnlowered('PieChart')).toEqual(['animate', ...webOnly])
     expect(chartChromeUnlowered('PlotChart')).toEqual(webOnly)
   })
 })

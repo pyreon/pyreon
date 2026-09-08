@@ -921,11 +921,17 @@ export const HEAT_RAMP_DEFAULT = ['#eff6ff', '#93c5fd', '#3b82f6', '#1e40af'] as
 export const CHART_CHROME_PROPS: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'legendPosition', 'keyboard', 'updateAnimation', 'updateDuration', 'toolbox', 'onSaveImage', 'accessibleTable', 'rtl']
 const CHROME_LOWERED: Readonly<Record<string, readonly string[]>> = {
   PlotChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'rtl'],
+  // Gauge / Candlestick / Heatmap build their canvas WITHOUT the chrome
+  // seam, so they do NOT get `rtl` from it. Spelling their lists out keeps
+  // `FAMILY_CHROME` honest: adding a prop there must not silently claim it
+  // for a host whose emitter never reads it.
+  GaugeChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip'],
+  CandlestickChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip'],
   HeatmapChart: ['animate'],
-  RadarChart: ['showLegend'],
+  RadarChart: ['showLegend', 'rtl'],
 }
 /** Title + legend + tap tooltip — what the generic and accessor hosts draw natively through the crossing chrome. */
-const FAMILY_CHROME: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip']
+const FAMILY_CHROME: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'rtl']
 /**
  * Whether `<tag>`'s engine takes an entrance `progress` — the same set the web
  * canvas host tweens (`animates: true`). A host outside it (Pie, Radar,

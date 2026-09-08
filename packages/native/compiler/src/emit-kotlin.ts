@@ -9700,7 +9700,7 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   const tipCmds = tooltip
     ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${KOTLIN_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${KOTLIN_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, ::pyreonChartMeasure)`
     : ''
-  const cmds = `${chrome.wrap(spec.render(layout, renderArgs, KOTLIN_CHART_TARGET))}${tipCmds}`
+  const cmds = `${chrome.mirror(chrome.wrap(spec.render(layout, renderArgs, KOTLIN_CHART_TARGET)))}${tipCmds}`
   // `onSelectIndex` → a tap over the engine's index hit. The tap position is
   // in pixels while the draw list is laid out in dp (PyreonChartCanvas scales
   // by the density when it paints), so the position is divided by the density
@@ -9708,10 +9708,13 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   // reads the lines for the point (an empty list clears the box).
   let tap = ''
   if (tapping) {
-    const tx = '(pyreonTap.x / pyreonDensity).toDouble()'
+    // The HIT reads the unmirrored geometry (`chrome.tapX`); the tooltip's
+    // ANCHOR stays raw, because the tooltip is drawn unmirrored at the finger.
+    const rawTx = '(pyreonTap.x / pyreonDensity).toDouble()'
+    const tx = chrome.tapX(rawTx)
     const tapY = withChrome ? '(pyreonTap.y / pyreonDensity).toDouble() - pyreonTop' : '(pyreonTap.y / pyreonDensity).toDouble()'
     const parts: string[] = []
-    if (tooltip) parts.push(`pyreonTip = ${spec.tooltip!(layout, tx, tapY, plotArgs, KOTLIN_CHART_TARGET)}; pyreonTipAt = PyreonChartPt(${tx}, (pyreonTap.y / pyreonDensity).toDouble())`)
+    if (tooltip) parts.push(`pyreonTip = ${spec.tooltip!(layout, tx, tapY, plotArgs, KOTLIN_CHART_TARGET)}; pyreonTipAt = PyreonChartPt(${rawTx}, (pyreonTap.y / pyreonDensity).toDouble())`)
     if (onSel?.kind === 'event') parts.push(kotlinChartSelectBody(onSel.handler, spec.hit(layout, tx, tapY, plotArgs, KOTLIN_CHART_TARGET), indent))
     // Keyed on the layout the lambda captures: a `pointerInput(Unit)` keeps the FIRST composition's val (the plot host's #3294 lesson).
     tap = `.pointerInput(pyreonLayout) { detectTapGestures { pyreonTap -> ${parts.join('; ')} } }`
@@ -9807,12 +9810,13 @@ function emitKotlinAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   const tipCmds = tooltip
     ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${KOTLIN_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${KOTLIN_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, ::pyreonChartMeasure)`
     : ''
-  const cmds = `${chrome.wrap(spec.render(items, animating ? { ...args, options: 'pyreonOpts' } : args, KOTLIN_CHART_TARGET))}${tipCmds}`
-  const tx = '(pyreonTap.x / pyreonDensity).toDouble()'
+  const cmds = `${chrome.mirror(chrome.wrap(spec.render(items, animating ? { ...args, options: 'pyreonOpts' } : args, KOTLIN_CHART_TARGET)))}${tipCmds}`
+  const rawTx = '(pyreonTap.x / pyreonDensity).toDouble()'
+  const tx = chrome.tapX(rawTx)
   const tapY = withChrome ? '(pyreonTap.y / pyreonDensity).toDouble() - pyreonTop' : '(pyreonTap.y / pyreonDensity).toDouble()'
   const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
   const parts: string[] = []
-  if (tooltip) parts.push(`pyreonTip = ${spec.tooltip(items, tx, tapY, args, KOTLIN_CHART_TARGET)}; pyreonTipAt = PyreonChartPt(${tx}, (pyreonTap.y / pyreonDensity).toDouble())`)
+  if (tooltip) parts.push(`pyreonTip = ${spec.tooltip(items, tx, tapY, args, KOTLIN_CHART_TARGET)}; pyreonTipAt = PyreonChartPt(${rawTx}, (pyreonTap.y / pyreonDensity).toDouble())`)
   if (onSel?.kind === 'event') parts.push(kotlinChartSelectBody(onSel.handler, spec.hit(items, tx, tapY, args, KOTLIN_CHART_TARGET), indent))
   // Hoisted items are a captured val — key the tap on them (see the generic host).
   const tap = parts.length === 0 ? '' : `.pointerInput(${hoist ? 'pyreonItems' : 'Unit'}) { detectTapGestures { pyreonTap -> ${parts.join('; ')} } }`
@@ -9985,7 +9989,7 @@ function emitKotlinRadarHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   const showV = chartAttrExprKotlin(e, 'showLabels')
   const showLabels = showV === undefined ? 'true' : typeof showRaw === 'boolean' ? String(showRaw) : emitKotlinExpr(showV, indent)
   const opts = `RadarOptions(rings = ${rings}, gridColor = "rgba(132,150,165,0.35)", labelColor = "#5a6b7a", fontSize = 11.0, showLabels = ${showLabels})`
-  const cmds = chrome.wrap(`renderRadar(${emitKotlinExpr(axesV, indent)}, pyreonSeries, PyreonChartRect(0.0, 0.0, ${W}, ${chrome.height(H)}), ${opts})`)
+  const cmds = chrome.mirror(chrome.wrap(`renderRadar(${emitKotlinExpr(axesV, indent)}, pyreonSeries, PyreonChartRect(0.0, 0.0, ${W}, ${chrome.height(H)}), ${opts})`))
   return kotlinFrameHostLets(e, lets, cmds, null, W, H, hasWidth, indent)
 }
 
@@ -10251,9 +10255,8 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   // plot and extras mirror together and no layout code changes. The tooltip
   // is deliberately NOT mirrored — it is drawn at the raw tap point, which is
   // already a visual coordinate.
-  const rtl = readStaticAttrKotlin(e, 'rtl') === true
   const painted = `${chrome.wrap(`renderChart(pyreonSpec, ::pyreonChartMeasure)${brushing ? ' + pyreonBrushCmds' : ''}`)}${extraCmds}`
-  const cmds = `${rtl ? `pyreonMirrorCmds(${painted}, ${W})` : painted}${tipCmds}`
+  const cmds = `${chrome.mirror(painted)}${tipCmds}`
   const localHit = (x: string, y: string): string => `plotHitBars(pyreonSpec, ::pyreonChartMeasure, ${x}, ${chrome.top === '0.0' ? y : `${y} - pyreonTop`})`
   const hit = (x: string, y: string): string => {
     if (tooltip) return windowed ? '(if (pyreonLocal < 0) -1 else pyreonLocal + pyreonRange.from)' : 'pyreonLocal'
@@ -10265,7 +10268,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   // speaks the UNMIRRORED geometry the engine laid out, so an RTL tap is
   // mirrored back before it is asked about.
   const rawTapX = '(pyreonTap.x / pyreonDensity).toDouble()'
-  const tapX = rtl ? `(${W} - ${rawTapX})` : rawTapX
+  const tapX = chrome.tapX(rawTapX)
   const tapYExpr = '(pyreonTap.y / pyreonDensity).toDouble()'
   let tap = ''
   if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging || brushing || tooltip) {
@@ -10365,13 +10368,24 @@ interface KotlinChartChrome {
   top: string
   wrap: (plot: string) => string
   height: (H: string) => string
+  /**
+   * RTL: mirror a finished draw list about the canvas centreline, or hand it
+   * back untouched. Paired with `tapX` on purpose — a host that mirrors its
+   * paint and not its taps reports the wrong item, silently, in one locale.
+   */
+  mirror: (cmds: string) => string
+  /** RTL: a tap's x in the UNMIRRORED geometry the engine laid out. */
+  tapX: (raw: string) => string
 }
 
 function kotlinChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries: string, W: string, H: string, indent: number, withTitle: boolean, t: ChartThemeText, page?: string): KotlinChartChrome {
   const titleRaw = readStaticAttrKotlin(e, 'title')
   const showTitle = withTitle && readStaticAttrKotlin(e, 'showTitle') === true && typeof titleRaw === 'string'
   const showLegend = readStaticAttrKotlin(e, 'showLegend') === true
-  if (!showTitle && !showLegend) return { lets: [], top: '0.0', wrap: (p) => p, height: (h) => h }
+  const rtl = readStaticAttrKotlin(e, 'rtl') === true
+  const mirror = (cmds: string): string => (rtl ? `pyreonMirrorCmds(${cmds}, ${W})` : cmds)
+  const tapX = (raw: string): string => (rtl ? `(${W} - ${raw})` : raw)
+  if (!showTitle && !showLegend) return { lets: [], top: '0.0', wrap: (p) => p, height: (h) => h, mirror, tapX }
   const lets: string[] = []
   if (showTitle) {
     const subRaw = readStaticAttrKotlin(e, 'subtitle')
@@ -10394,6 +10408,8 @@ function kotlinChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries:
     top: 'pyreonTop',
     wrap: (p) => `pyreonTitle.cmds + pyreonLegend.cmds + pyreonShiftCmds(${p}, pyreonTop)`,
     height: (h) => `${h} - pyreonTop`,
+    mirror,
+    tapX,
   }
 }
 
