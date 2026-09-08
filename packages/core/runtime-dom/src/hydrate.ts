@@ -456,7 +456,28 @@ function adoptReactiveRange(
       c = nx
     }
   }
-  return cleanup
+  // `startMarker` is the STABLE origin every walk above starts from — the
+  // per-run cleanup and the claimed-set scan both need it to survive each
+  // re-render, so it must NOT be removed there (do that and the walk's
+  // `nextSibling` is null, it clears nothing, and the previous render is left
+  // on screen under the new one). `cleanup` is `mountReactive`'s FINAL
+  // disposer, and after it runs nothing walks from here again — so this is the
+  // one place the marker can go. Mirrors `mountReactive`'s own
+  // `marker.parentNode?.removeChild(marker)`, tolerance for an
+  // already-detached marker included.
+  //
+  // HONEST SCOPE: this is hygiene, not an observable fix, and it ships without
+  // a regression test on purpose rather than with one that cannot fail. The
+  // only consumer of this cleanup today is `hydrateRoot`'s dispose, which tears
+  // down the whole container — so the marker's parent is removed with it and no
+  // public-API assertion can tell the two versions apart (verified in both
+  // directions). It is kept because the marker is otherwise a permanent
+  // artifact of adoption in a live document, and because a future consumer that
+  // disposes a range WITHOUT destroying its parent would leak one per range.
+  return () => {
+    cleanup()
+    startMarker.parentNode?.removeChild(startMarker)
+  }
 }
 
 /**

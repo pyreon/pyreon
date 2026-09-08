@@ -64,8 +64,10 @@ export type RedirectClass =
  *    the server it becomes a `Location:` header. **The target is trusted to the
  *    caller** — validate an untrusted `?next=` / user-supplied value against an
  *    allowlist before passing it, exactly as with any framework's redirect.
- *  - `block`     — a protocol-relative URL (`//host`, an open-redirect
- *    obfuscation vector) or any non-`http(s)` scheme (`javascript:`, `data:`,
+ *  - `block`     — a target whose leading run of AUTHORITY DELIMITERS introduces
+ *    a host (`//host`, and equally `\\host` / `/\host` / `\/host` — the URL
+ *    parser treats `\` as `/` there; all four are open-redirect obfuscation
+ *    vectors) or any non-`http(s)` scheme (`javascript:`, `data:`,
  *    `vbscript:`, `mailto:`, …). Never a valid navigation target; routed to `/`.
  *  - `internal`  — a same-origin path; handled by the router as an SPA nav.
  */
@@ -125,11 +127,53 @@ function normaliseTarget(target: string): string {
 export function classifyRedirectTarget(target: string): RedirectClass {
   const t = normaliseTarget(target)
   if (/^https?:\/\//i.test(t)) return { kind: 'external', url: t }
-  if (t.startsWith('//')) return { kind: 'block', url: '/' }
+  // A leading run of AUTHORITY DELIMITERS, not just the `//` spelling. The
+  // WHATWG URL parser treats `\` as a synonym for `/` in a special scheme's
+  // authority position, so the prefix that introduces a HOST is any TWO
+  // characters drawn from `[/\]` in any order: `//host`, `\\host`, `/\host`
+  // and `\/host` ALL resolve to `https://host/`. Blocking the CLASS rather than
+  // the four spellings also covers every longer run (`///host`, `//\host`,
+  // `/\\host`, …), which resolve off-origin identically.
+  //
+  // A SINGLE leading delimiter is NOT an authority, and this boundary was read
+  // off the parser rather than assumed: `\evil.com` resolves to
+  // `<origin>/evil.com` and a bare `\` to `<origin>/` — exactly like their `/`
+  // twins — so one character stays `internal`. Interior backslashes are path
+  // separators (`/a\b` → `<origin>/a/b`) and are likewise left alone.
+  //
+  // `{2}` with no `+` is deliberate: anchored and fixed-length, it cannot
+  // backtrack, so it keeps the linear-time property the normalisation above
+  // exists to preserve. "Two or more" needs no quantifier — a run of three
+  // delimiters still begins with two.
+  if (/^[/\\]{2}/.test(t)) return blocked(target, 'it begins with an authority delimiter (`//`, `\\\\`, `/\\` or `\\/`), which the URL parser reads as the start of a HOST')
   // Any other explicit scheme (javascript:, data:, mailto:, tel:, …) is not a
   // navigation target — block it. A bare path has no leading `scheme:`.
-  if (/^[a-z][a-z0-9+.-]*:/i.test(t)) return { kind: 'block', url: '/' }
+  if (/^[a-z][a-z0-9+.-]*:/i.test(t))
+    return blocked(target, 'it carries an explicit scheme, and only `http:`/`https:` are navigable')
   return { kind: 'internal', url: t }
+}
+
+/**
+ * Build a `block` verdict AND say so in dev.
+ *
+ * A blocked target is silently rewritten to `/`, which is the right runtime
+ * behaviour and a miserable debugging experience: the redirect "works", the
+ * user lands on the home page, and nothing anywhere connects that to the target
+ * that was written. The commonest way to meet it is not an attack at all — a
+ * legitimately-intended protocol-relative CDN URL (`//cdn.example.com/x`) is
+ * indistinguishable from the open-redirect vector and blocks the same way.
+ *
+ * Dev-only, and gated with the bare `process.env.NODE_ENV` check rather than a
+ * `__DEV__` alias so bundlers actually fold it (see `no-process-dev-gate`).
+ */
+function blocked(target: string, why: string): RedirectClass {
+  if (process.env.NODE_ENV !== 'production') {
+    console.warn(
+      `[Pyreon] Blocked redirect target ${JSON.stringify(target)} — ${why}. Redirecting to "/" instead. ` +
+        'Use a root-relative path ("/dashboard") for an in-app redirect, or an absolute `https://` URL to leave the site.',
+    )
+  }
+  return { kind: 'block', url: '/' }
 }
 
 /** Server-safe redirect target: `external`/`internal` pass through, everything else → `/`. */
