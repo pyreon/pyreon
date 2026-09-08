@@ -207,6 +207,30 @@ function fieldSchema(field: IrField, opts: SchemaExprOptions, depth: number): st
 }
 
 /**
+ * Every character that ENDS a regex literal.
+ *
+ * The emit writes `/${pattern}/`, so this is a lexical question about the
+ * emitted source, not a semantic one about the regex. A literal is terminated
+ * by `/` -- and by all four JavaScript line terminators. `RegularExpressionChar`
+ * is built from `RegularExpressionNonTerminator`, which is "SourceCharacter but
+ * not LineTerminator", so LF, CR, U+2028 and U+2029 are illegal ANYWHERE in a
+ * literal, character class included. A raw control character is NOT a
+ * terminator and stays legal, which is why a pattern carrying U+0001 parses
+ * while one carrying a raw newline does not.
+ *
+ * A `pattern` holding a raw newline is legal OpenAPI. Pre-fix it emitted
+ * `.regex(/a<LF>b/)` -> `Unterminated regular expression literal '/a'`, which
+ * does not drop one constraint: it kills the whole generated schemas module,
+ * for every model in it.
+ *
+ * The package already knows this class in three other contexts -- `q()`
+ * escapes all four for a string literal, `safeLineComment` collapses them for a
+ * `//` comment, `jsonLiteral` re-escapes the two `JSON.stringify` leaves raw.
+ * The regex literal is the fifth surface.
+ */
+const REGEX_LITERAL_TERMINATOR = /[/\r\n\u2028\u2029]/
+
+/**
  * Accept only patterns whose syntax means the same thing in JS,
  * NSRegularExpression and java.util.regex.
  *
@@ -216,7 +240,10 @@ function fieldSchema(field: IrField, opts: SchemaExprOptions, depth: number): st
  */
 function portableRegex(pattern: string): boolean {
   if (/\(\?<|\\[pPk]|\(\?\(|\\Z|\\z|\\A/.test(pattern)) return false
-  if (pattern.includes('/')) return false
+  // Refuse, rather than escape: `/` has always been refused here and a
+  // constraint silently dropped is the documented cost of this predicate,
+  // while a pattern that cannot be SPELLED as a literal is a broken module.
+  if (REGEX_LITERAL_TERMINATOR.test(pattern)) return false
   try {
     new RegExp(pattern)
     return true

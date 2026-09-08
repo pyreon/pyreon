@@ -113,3 +113,5 @@ A `pyreon.config.*` that exists but fails to load is a **named error**, never a 
 ```
 
 The machine surface is `loom-report.json` — stable issue codes, structured evidence per finding, and the full model (packages, edges, depths, reach) for your own tooling.
+
+It is written **next to the root manifest** — the workspace root, not a `dist/` or a temp dir — because that is where a CI step and your own tooling look for it without being told. It is a generated artifact, regenerated on every scan, so **gitignore it**: on a large monorepo it is hundreds of kilobytes, and running the gate above then `git add .` is enough to commit it by accident. Use `--no-write` when you only want the exit code (that is what `pyreon doctor`'s `dependency-fabric` gate does — auditing a repo must not leave a file in it), or `--json` to send the report to stdout instead.

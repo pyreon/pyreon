@@ -36,7 +36,7 @@
 //   parser for each; NAMES catch the whole observed class at a fraction of
 //   the cost and none of the false positives.
 
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { findNativeRuntime, nativeRuntimeRoots } from './native-runtime-locations'
@@ -251,7 +251,6 @@ export function stubMembersFor(
 /** Every `PyreonX` type name that has a runtime source on this platform. */
 function runtimeTypeNames(kind: 'swift' | 'kotlin'): string[] {
   const names = new Set<string>()
-  const { readdirSync } = require('node:fs') as typeof import('node:fs')
   for (const root of nativeRuntimeRoots(REPO, kind)) {
     for (const f of readdirSync(root)) {
       const m = /^(Pyreon[A-Za-z0-9_]*)\.(swift|kt)$/.exec(f)
