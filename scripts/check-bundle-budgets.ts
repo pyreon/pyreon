@@ -38,7 +38,8 @@
  *                                         # (use AFTER intentional growth)
  */
 
-import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { parseSync, Visitor } from 'oxc-parser'
@@ -88,6 +89,19 @@ function getBudgetsPath(): string {
 }
 
 const BUDGETS_PATH = getBudgetsPath()
+
+/**
+ * Process-scoped scratch root for bundler output and the barrel-safe entries.
+ *
+ * `mkdtemp` rather than a fixed `/tmp/check-bundle-budgets` path: on a shared
+ * machine a predictable temp path can be pre-created (or symlinked) by another
+ * user, and BOTH things written here are inputs the gate then trusts — the
+ * generated entry is handed to the bundler, and the bundler's own output is
+ * what gets measured. Redirecting either would let someone else decide the
+ * number this gate reports. `mkdtemp` creates the directory atomically with
+ * 0700, so neither can be pre-empted. (CodeQL `js/insecure-temporary-file`.)
+ */
+const SCRATCH_ROOT = mkdtempSync(join(tmpdir(), 'pyreon-bundle-budgets-'))
 
 /**
  * Override `<REPO_ROOT>/packages` discovery with a custom directory.
@@ -689,7 +703,7 @@ async function buildEntry(
       // outdir is required when splitting:true. Bun writes files but
       // we read from result.outputs in memory, so the directory is
       // basically a sink — set to a Bun-managed temp.
-      outdir: `/tmp/check-bundle-budgets/${pkg.name.replace('@', '').replace('/', '-')}${outSuffix}`,
+      outdir: join(SCRATCH_ROOT, `${pkg.name.replace('@', '').replace('/', '-')}${outSuffix}`),
       external: [
         // Externalize all workspace packages — measure THIS package's
         // unique bytes, not bytes from cross-package deps.
@@ -740,7 +754,7 @@ async function buildEntry(
  * `export { default } from …` is a build error against a package without it.
  */
 function writeBarrelSafeEntry(pkg: PackageInfo): string {
-  const dir = join('/tmp/check-bundle-budgets/_barrel-safe', pkg.name.replace(/[@/]/g, '-'))
+  const dir = join(SCRATCH_ROOT, 'barrel-safe', pkg.name.replace(/[@/]/g, '-'))
   mkdirSync(dir, { recursive: true })
   const file = join(dir, 'entry.js')
   const spec = JSON.stringify(pkg.entry)
