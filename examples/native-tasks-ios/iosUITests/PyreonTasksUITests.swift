@@ -65,6 +65,34 @@ final class PyreonTasksUITests: XCTestCase {
     /// perform on a SwiftUI ScrollView. Bounded rather than open-ended: a
     /// missing element must fail as "never became hittable" after a known
     /// number of swipes, not spin.
+    /// Swipe until `element` is hittable, and report how many swipes it took.
+    ///
+    /// Separate from `tapAfterScrolling` because a COORDINATE tap needs the
+    /// scrolling without the tap: `element.coordinate(withNormalizedOffset:)`
+    /// is relative to the element, so it is correct once the element is on
+    /// screen and meaningless before — an off-screen coordinate tap lands
+    /// somewhere else entirely and reports a MISS, which reads as a broken hit
+    /// test rather than a test that never touched the chart. That is exactly
+    /// how the boxplot band assertion first failed on the simulator.
+    @discardableResult
+    private func scrollIntoView(
+        _ element: XCUIElement,
+        in app: XCUIApplication,
+        maxSwipes: Int = 8
+    ) -> Int {
+        let scroller = app.scrollViews.firstMatch
+        var swipes = 0
+        while swipes < maxSwipes && !(element.exists && element.isHittable) {
+            if scroller.exists {
+                scroller.swipeUp()
+            } else {
+                app.swipeUp()
+            }
+            swipes += 1
+        }
+        return swipes
+    }
+
     private func tapAfterScrolling(
         _ element: XCUIElement,
         in app: XCUIApplication,
@@ -76,16 +104,7 @@ final class PyreonTasksUITests: XCTestCase {
             element.tap()
             return
         }
-        let scroller = app.scrollViews.firstMatch
-        var swipes = 0
-        while swipes < maxSwipes && !(element.exists && element.isHittable) {
-            if scroller.exists {
-                scroller.swipeUp()
-            } else {
-                app.swipeUp()
-            }
-            swipes += 1
-        }
+        let swipes = scrollIntoView(element, in: app, maxSwipes: maxSwipes)
         XCTAssertTrue(
             element.exists && element.isHittable,
             // The count is in the message on purpose: "not hittable" and "not
@@ -706,12 +725,21 @@ final class PyreonTasksUITests: XCTestCase {
         let dashRadar = app.descendants(matching: .any).matching(identifier: "dash-radar").firstMatch
         let radarHit = app.staticTexts["dash-radar-hit"].firstMatch
         XCTAssertEqual(radarHit.label, "none", "no radar tap yet")
+        // A coordinate tap is relative to the element, so the element has to be
+        // ON SCREEN first — see `scrollIntoView`.
+        scrollIntoView(dashRadar, in: app)
+        XCTAssertTrue(dashRadar.isHittable, "radar canvas never became hittable")
         dashRadar.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0)).withOffset(CGVector(dx: 0, dy: 46)).tap()
         XCTAssertTrue(waitForLabel(radarHit, "S0A0", timeout: 10), "tap on the radar's first vertex did not report series 0 / axis 0 (label: \(radarHit.label))")
         // The boxplot host crossed: two bands, a tap in the left third is box 0, in the right third box 1.
         let dashBox = app.descendants(matching: .any).matching(identifier: "dash-box").firstMatch
         let boxPick = app.staticTexts["dash-box-pick"].firstMatch
         XCTAssertEqual(boxPick.label, "-1", "no boxplot tap yet")
+        // The boxplot sits last on the dashboard, below the fold on a phone —
+        // the first version of this assertion tapped an off-screen coordinate
+        // and read the resulting -1 as a failed hit test.
+        scrollIntoView(dashBox, in: app)
+        XCTAssertTrue(dashBox.isHittable, "boxplot canvas never became hittable")
         dashBox.coordinate(withNormalizedOffset: CGVector(dx: 0.35, dy: 0.5)).tap()
         XCTAssertTrue(waitForLabel(boxPick, "0", timeout: 10), "tap on the left band did not select box 0 (label: \(boxPick.label))")
         dashBox.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5)).tap()
