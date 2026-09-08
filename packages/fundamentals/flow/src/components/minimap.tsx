@@ -80,10 +80,11 @@ export function MiniMap(props: MiniMapProps & { instance?: FlowInstance }): VNod
       let maxY = Number.NEGATIVE_INFINITY
       for (const node of nodes) {
         const { width: w, height: h } = getEffectiveDimensions(node, measured.get(node.id))
-        minX = Math.min(minX, node.position.x)
-        minY = Math.min(minY, node.position.y)
-        maxX = Math.max(maxX, node.position.x + w)
-        maxY = Math.max(maxY, node.position.y + h)
+        const p = node.parentId ? instance.getAbsolutePosition(node.id) : node.position
+        minX = Math.min(minX, p.x)
+        minY = Math.min(minY, p.y)
+        maxX = Math.max(maxX, p.x + w)
+        maxY = Math.max(maxY, p.y + h)
       }
       const graphW = maxX - minX + MINIMAP_PADDING * 2
       const graphH = maxY - minY + MINIMAP_PADDING * 2
@@ -110,7 +111,69 @@ export function MiniMap(props: MiniMapProps & { instance?: FlowInstance }): VNod
     }
   }
 
+  // Drag on the minimap pans the graph (React Flow `pannable`): a pointer
+  // move of `d` minimap px is `d / scale` flow units. A drag that never
+  // moved still centers on the click through `handleClick`.
+  let panPointer: { id: number; x: number; y: number; moved: boolean } | null = null
+  let suppressClick = false
+  const handlePointerDown = (e: PointerEvent): void => {
+    if (props.pannable === false) return
+    panPointer = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false }
+    ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+  }
+  const handlePointerMove = (e: PointerEvent): void => {
+    if (!panPointer || e.pointerId !== panPointer.id) return
+    const b = bounds()
+    if (b.empty) return
+    const dx = e.clientX - panPointer.x
+    const dy = e.clientY - panPointer.y
+    if (!panPointer.moved && Math.abs(dx) < 2 && Math.abs(dy) < 2) return
+    panPointer.moved = true
+    panPointer.x = e.clientX
+    panPointer.y = e.clientY
+    const vp = instance.viewport.peek()
+    instance.viewport.set({
+      ...vp,
+      x: vp.x - (dx / b.scale) * vp.zoom,
+      y: vp.y - (dy / b.scale) * vp.zoom,
+    })
+  }
+  const handlePointerUp = (e: PointerEvent): void => {
+    if (!panPointer || e.pointerId !== panPointer.id) return
+    const moved = panPointer.moved
+    panPointer = null
+    // A drag is not a click: swallow the click that follows it.
+    if (moved) suppressClick = true
+  }
+
+  const handleWheel = (e: WheelEvent): void => {
+    // The canvas's own wheel handler sits above us — one wheel, one zoom, and
+    // a non-zoomable minimap swallows the wheel rather than zooming the
+    // canvas from a panel that says it does not.
+    e.stopPropagation()
+    if (props.zoomable === false || instance.config.zoomable === false) return
+    e.preventDefault()
+    const vp = instance.viewport.peek()
+    const cs = instance.containerSize.peek()
+    const factor = 1 + -e.deltaY * 0.001
+    const newZoom = Math.min(
+      Math.max(vp.zoom * factor, instance.config.minZoom ?? 0.1),
+      instance.config.maxZoom ?? 4,
+    )
+    // Zoom around the canvas center (the minimap has no meaningful anchor).
+    const scale = newZoom / vp.zoom
+    instance.viewport.set({
+      x: cs.width / 2 - (cs.width / 2 - vp.x) * scale,
+      y: cs.height / 2 - (cs.height / 2 - vp.y) * scale,
+      zoom: newZoom,
+    })
+  }
+
   const handleClick = (e: MouseEvent): void => {
+    if (suppressClick) {
+      suppressClick = false
+      return
+    }
     const b = bounds() // event handler — untracked read
     if (b.empty) return
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
@@ -134,6 +197,10 @@ export function MiniMap(props: MiniMapProps & { instance?: FlowInstance }): VNod
         `position: absolute; bottom: 10px; right: 10px; width: ${widthOf()}px; height: ${heightOf()}px; border: 1px solid var(--pyreon-flow-panel-border, #ddd); background: var(--pyreon-flow-panel-bg, #fff); border-radius: 4px; overflow: hidden; z-index: 5; cursor: pointer;`
       }
       onClick={handleClick}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onWheel={handleWheel}
     >
       <svg
         role="img"
@@ -162,9 +229,10 @@ export function MiniMap(props: MiniMapProps & { instance?: FlowInstance }): VNod
                 const n = instance._nodeById(id)() ?? initialNode
                 const b = bounds()
                 const d = getEffectiveDimensions(n, instance.measurements().get(id))
+                const p = n.parentId ? instance._absPositionById(id)() : n.position
                 return {
-                  x: (n.position.x - b.minX + MINIMAP_PADDING) * b.scale,
-                  y: (n.position.y - b.minY + MINIMAP_PADDING) * b.scale,
+                  x: (p.x - b.minX + MINIMAP_PADDING) * b.scale,
+                  y: (p.y - b.minY + MINIMAP_PADDING) * b.scale,
                   w: d.width * b.scale,
                   h: d.height * b.scale,
                 }

@@ -113,6 +113,71 @@ export const flowStyles = `
   background: var(--pyreon-flow-controls-active, #e5e7eb) !important;
 }
 
+/* ── Color modes ──────────────────────────────────────────────────────────── */
+
+/* Dark values for every --pyreon-flow-* variable. Applied by
+   <Flow colorMode="dark">, or by colorMode="system" under a dark OS scheme.
+   Set the same variables on an ancestor to override any of them. */
+.pyreon-flow[data-color-mode="dark"] {
+  --pyreon-flow-node-bg: #1f2937;
+  --pyreon-flow-node-color: #f3f4f6;
+  --pyreon-flow-node-border: #374151;
+  --pyreon-flow-node-selected: #60a5fa;
+  --pyreon-flow-edge: #6b7280;
+  --pyreon-flow-edge-label: #9ca3af;
+  --pyreon-flow-accent: #60a5fa;
+  --pyreon-flow-accent-bg: rgba(96, 165, 250, 0.12);
+  --pyreon-flow-selection-glow: rgba(96, 165, 250, 0.35);
+  --pyreon-flow-handle-bg: #374151;
+  --pyreon-flow-handle-border: #6b7280;
+  --pyreon-flow-handle-valid: #4ade80;
+  --pyreon-flow-panel-bg: #111827;
+  --pyreon-flow-panel-border: #374151;
+  --pyreon-flow-panel-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  --pyreon-flow-control-color: #e5e7eb;
+  --pyreon-flow-control-muted: #9ca3af;
+  --pyreon-flow-controls-hover: #1f2937;
+  --pyreon-flow-controls-active: #374151;
+  --pyreon-flow-minimap-node: #374151;
+  --pyreon-flow-minimap-mask: rgba(0, 0, 0, 0.4);
+  --pyreon-flow-toolbar-bg: #111827;
+  --pyreon-flow-toolbar-border: #374151;
+  --pyreon-flow-bg-pattern: #374151;
+  --pyreon-flow-resizer-bg: #60a5fa;
+  background: #0b1220;
+}
+
+@media (prefers-color-scheme: dark) {
+  .pyreon-flow[data-color-mode="system"] {
+    --pyreon-flow-node-bg: #1f2937;
+    --pyreon-flow-node-color: #f3f4f6;
+    --pyreon-flow-node-border: #374151;
+    --pyreon-flow-node-selected: #60a5fa;
+    --pyreon-flow-edge: #6b7280;
+    --pyreon-flow-edge-label: #9ca3af;
+    --pyreon-flow-accent: #60a5fa;
+    --pyreon-flow-accent-bg: rgba(96, 165, 250, 0.12);
+    --pyreon-flow-selection-glow: rgba(96, 165, 250, 0.35);
+    --pyreon-flow-handle-bg: #374151;
+    --pyreon-flow-handle-border: #6b7280;
+    --pyreon-flow-handle-valid: #4ade80;
+    --pyreon-flow-panel-bg: #111827;
+    --pyreon-flow-panel-border: #374151;
+    --pyreon-flow-panel-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    --pyreon-flow-control-color: #e5e7eb;
+    --pyreon-flow-control-muted: #9ca3af;
+    --pyreon-flow-controls-hover: #1f2937;
+    --pyreon-flow-controls-active: #374151;
+    --pyreon-flow-minimap-node: #374151;
+    --pyreon-flow-minimap-mask: rgba(0, 0, 0, 0.4);
+    --pyreon-flow-toolbar-bg: #111827;
+    --pyreon-flow-toolbar-border: #374151;
+    --pyreon-flow-bg-pattern: #374151;
+    --pyreon-flow-resizer-bg: #60a5fa;
+    background: #0b1220;
+  }
+}
+
 /* ── Accessibility ────────────────────────────────────────────────────────── */
 
 /* Keyboard focus is shown, pointer focus is not — the UA stylesheets already

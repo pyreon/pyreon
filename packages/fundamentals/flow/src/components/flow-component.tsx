@@ -104,6 +104,7 @@ function MarkerDef(props: { id: string, marker: EdgeMarker }): VNodeChild {
 const VIRTUAL_MARGIN = 200
 
 function nodeInViewport<T>(
+  instance: FlowInstance<T>,
   n: FlowNode<T>,
   v: Viewport,
   cw: number,
@@ -113,8 +114,9 @@ function nodeInViewport<T>(
   const dims = getEffectiveDimensions(n, measured.get(n.id))
   const w = dims.width * v.zoom
   const h = dims.height * v.zoom
-  const sx = n.position.x * v.zoom + v.x
-  const sy = n.position.y * v.zoom + v.y
+  const p = n.parentId ? instance.getAbsolutePosition(n.id) : n.position
+  const sx = p.x * v.zoom + v.x
+  const sy = p.y * v.zoom + v.y
   return (
     sx + w > -VIRTUAL_MARGIN
     && sx < cw + VIRTUAL_MARGIN
@@ -123,8 +125,32 @@ function nodeInViewport<T>(
   )
 }
 
+/**
+ * Parents before children (stable otherwise) so a child's DOM sits above its
+ * parent's — React Flow's z-order for sub-flows. Only allocates when the
+ * graph has a `parentId` at all.
+ */
+function parentsFirst<T>(list: FlowNode<T>[]): FlowNode<T>[] {
+  if (!list.some((n) => n.parentId)) return list
+  const byId = new Map(list.map((n) => [n.id, n]))
+  const depth = new Map<string, number>()
+  const depthOf = (n: FlowNode<T>): number => {
+    const cached = depth.get(n.id)
+    if (cached !== undefined) return cached
+    depth.set(n.id, 0) // cycle guard
+    const parent = n.parentId ? byId.get(n.parentId) : undefined
+    const d = parent && parent !== n ? depthOf(parent) + 1 : 0
+    depth.set(n.id, d)
+    return d
+  }
+  return list
+    .map((n, i) => ({ n, i, d: depthOf(n) }))
+    .sort((a, b) => a.d - b.d || a.i - b.i)
+    .map((x) => x.n)
+}
+
 function visibleNodeList<T>(instance: FlowInstance<T>): FlowNode<T>[] {
-  const raw = instance.nodes()
+  const raw = parentsFirst(instance.nodes())
   // `hidden` nodes stay in the graph but never reach the DOM. The filter
   // only allocates when at least one node is hidden, so the common graph
   // keeps handing `<For>` the same array reference.
@@ -135,7 +161,7 @@ function visibleNodeList<T>(instance: FlowInstance<T>): FlowNode<T>[] {
   // Pre-measurement (0×0) → render all, else everything would be hidden.
   if (!width || !height) return all
   const measured = instance.measurements()
-  return all.filter((n) => nodeInViewport(n, v, width, height, measured))
+  return all.filter((n) => nodeInViewport(instance, n, v, width, height, measured))
 }
 
 function visibleEdgeList<T>(instance: FlowInstance<T>): FlowEdge[] {
@@ -155,8 +181,8 @@ function visibleEdgeList<T>(instance: FlowInstance<T>): FlowEdge[] {
     const s = nm.get(e.source)
     const t = nm.get(e.target)
     return (
-      (!!s && nodeInViewport(s, v, width, height, measured))
-      || (!!t && nodeInViewport(t, v, width, height, measured))
+      (!!s && nodeInViewport(instance, s, v, width, height, measured))
+      || (!!t && nodeInViewport(instance, t, v, width, height, measured))
     )
   })
 }
@@ -854,7 +880,8 @@ function NodeLayer(props: {
               // `pointer-events: auto` re-enables interaction on the node under the
               // `pointer-events: none` viewport (see the viewport div) — without it
               // the node inherits `none` and drag/click/select all stop working.
-              return `position: absolute; pointer-events: auto; transform: translate(${n.position.x}px, ${n.position.y}px); z-index: ${
+              const p = n.parentId ? instance._absPositionById(id)() : n.position
+              return `position: absolute; pointer-events: auto; transform: translate(${p.x}px, ${p.y}px); z-index: ${
                 isDragging() ? 1000 : isSelected() ? 100 : 0
               }; ${n.style ?? ''}`
             }}
@@ -1023,6 +1050,13 @@ export interface FlowComponentProps {
    * `"Flow diagram"`.
    */
   ariaLabel?: string
+  /**
+   * Color scheme — `'light'` (default), `'dark'`, or `'system'` (follows
+   * `prefers-color-scheme`). Rendered as `data-color-mode` on the container;
+   * `flowStyles` carries the dark values for every `--pyreon-flow-*` variable,
+   * and your own overrides still win.
+   */
+  colorMode?: 'light' | 'dark' | 'system'
   children?: VNodeChild
 }
 
@@ -1126,6 +1160,20 @@ export function Flow(props: FlowComponentProps): VNodeChild {
         if (nid === node.id) continue
         const n = instance.getNode(nid)
         if (n) startPositions.set(nid, { ...n.position })
+      }
+    }
+    // A child whose ancestor is also dragged moves WITH it (its position is
+    // relative), so writing it too would move it twice.
+    for (const nid of [...startPositions.keys()]) {
+      let pid = instance.getNode(nid)?.parentId
+      const seen = new Set<string>()
+      while (pid && !seen.has(pid)) {
+        if (startPositions.has(pid)) {
+          startPositions.delete(nid)
+          break
+        }
+        seen.add(pid)
+        pid = instance.getNode(pid)?.parentId
       }
     }
 
@@ -1415,17 +1463,51 @@ export function Flow(props: FlowComponentProps): VNodeChild {
             helperLines.set({ x: snap.x, y: snap.y })
           }
         }
-        // Update all dragged nodes from their starting positions
-        instance.nodes.update((nds) =>
-          nds.map((n) => {
+        // Update all dragged nodes from their starting positions, honouring a
+        // per-node `extent` ('parent' box / own box) and growing an
+        // `expandParent` parent that the child was dragged past.
+        const measured = instance.measurements.peek()
+        instance.nodes.update((nds) => {
+          const byId = new Map(nds.map((n) => [n.id, n]))
+          const grow = new Map<string, { w: number; h: number }>()
+          const next = nds.map((n) => {
             const start = drag.startPositions.get(n.id)
             if (!start) return n
-            return {
-              ...n,
-              position: { x: start.x + actualDx, y: start.y + actualDy },
+            let pos = { x: start.x + actualDx, y: start.y + actualDy }
+            const parent = n.parentId ? byId.get(n.parentId) : undefined
+            const own = getEffectiveDimensions(n, measured.get(n.id))
+            if (n.extent === 'parent' && parent) {
+              const pd = getEffectiveDimensions(parent, measured.get(parent.id))
+              pos = {
+                x: Math.min(Math.max(pos.x, 0), Math.max(0, pd.width - own.width)),
+                y: Math.min(Math.max(pos.y, 0), Math.max(0, pd.height - own.height)),
+              }
+            } else if (Array.isArray(n.extent)) {
+              const [[minX, minY], [maxX, maxY]] = n.extent
+              pos = {
+                x: Math.min(Math.max(pos.x, minX), Math.max(minX, maxX - own.width)),
+                y: Math.min(Math.max(pos.y, minY), Math.max(minY, maxY - own.height)),
+              }
             }
-          }),
-        )
+            if (n.expandParent && parent) {
+              pos = { x: Math.max(0, pos.x), y: Math.max(0, pos.y) }
+              const pd = getEffectiveDimensions(parent, measured.get(parent.id))
+              const g = grow.get(parent.id) ?? { w: pd.width, h: pd.height }
+              g.w = Math.max(g.w, pos.x + own.width)
+              g.h = Math.max(g.h, pos.y + own.height)
+              grow.set(parent.id, g)
+            }
+            return { ...n, position: pos }
+          })
+          if (grow.size === 0) return next
+          return next.map((n) => {
+            const g = grow.get(n.id)
+            if (!g) return n
+            const pd = getEffectiveDimensions(n, measured.get(n.id))
+            if (g.w === pd.width && g.h === pd.height) return n
+            return { ...n, width: g.w, height: g.h }
+          })
+        })
       })
       // Per-frame drag listener (React Flow `onNodeDrag`) — the primary node's
       // LIVE state, after the batched write above landed.
@@ -1487,8 +1569,9 @@ export function Flow(props: FlowComponentProps): VNodeChild {
           // Effective box — a rubber-band selection must hit-test the node's
           // REAL rendered rect, not the 150×40 phantom.
           const { width: w, height: h } = getEffectiveDimensions(node, measured.get(node.id))
-          const nx = node.position.x
-          const ny = node.position.y
+          const abs = node.parentId ? instance.getAbsolutePosition(node.id) : node.position
+          const nx = abs.x
+          const ny = abs.y
           // 'partial' (default): any overlap; 'full': the box contains the node.
           const hit =
             instance.config.selectionMode === 'full'
@@ -1818,6 +1901,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
     <div
       ref={containerRef}
       class={cx(['pyreon-flow', props.class])}
+      data-color-mode={props.colorMode ?? 'light'}
       style={containerStyle}
       tabIndex={0}
       role="group"

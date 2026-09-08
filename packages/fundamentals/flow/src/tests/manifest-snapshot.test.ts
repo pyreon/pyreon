@@ -142,7 +142,7 @@ describe('gen-docs — flow snapshot', () => {
     ])
     // Spot-check the highest-density entry — createFlow is the
     // flagship API and carries the largest mistakes list.
-    expect(record['flow/createFlow']!.mistakes?.split('\n').length).toBe(19)
+    expect(record['flow/createFlow']!.mistakes?.split('\n').length).toBe(21)
     // The layout engine is Pyreon's own — assert the property that actually
     // matters to a consumer (no external layout dependency), not the name of a
     // package that is no longer there.

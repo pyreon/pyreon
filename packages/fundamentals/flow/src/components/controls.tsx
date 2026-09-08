@@ -202,6 +202,7 @@ export function Controls(props: ControlsProps & { instance?: FlowInstance }): VN
           </button>
         )}
         </div>
+        {props.children}
         <div
           style="font-size: 10px; text-align: center; color: var(--pyreon-flow-control-muted, #999); padding: 2px 0; user-select: none;"
           title="Current zoom level"

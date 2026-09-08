@@ -115,8 +115,21 @@ export interface FlowNode<TData = Record<string, unknown>> {
   sourceHandles?: HandleConfig[]
   /** Target handles */
   targetHandles?: HandleConfig[]
-  /** Parent node id for grouping */
+  /**
+   * Parent node id. A child's `position` is RELATIVE to its parent's
+   * top-left (React Flow's sub-flow model): the parent moves its children,
+   * edges and `fitView` use the absolute position (`getAbsolutePosition`).
+   */
   parentId?: string
+  /**
+   * Drag boundary for THIS node. `'parent'` keeps a child inside its
+   * parent's box; a `[[minX, minY], [maxX, maxY]]` box is in the node's own
+   * coordinate space (relative to the parent when it has one). Overrides the
+   * global `nodeExtent` for this node.
+   */
+  extent?: 'parent' | [[number, number], [number, number]]
+  /** Grow the parent to contain this node when it is dragged past the parent's edge. */
+  expandParent?: boolean
   /** Whether this node is a group */
   group?: boolean
 }
@@ -795,6 +808,8 @@ export interface FlowInstance<TData = Record<string, unknown>> {
   getChildNodes: (parentId: string) => FlowNode<TData>[]
   /** Get absolute position of a node (accounting for parent offsets) */
   getAbsolutePosition: (nodeId: string) => XYPosition
+  /** @internal — reactive absolute position per id (parent chain folded in); equality-gated. */
+  _absPositionById: (id: string) => Computed<XYPosition>
 
   // ── Edge reconnecting ──────────────────────────────────────────────────
 
@@ -1037,6 +1052,10 @@ export interface MiniMapProps {
   maskColor?: string
   width?: number
   height?: number
+  /** Drag on the minimap pans the viewport — default: true. A click still centers. */
+  pannable?: boolean
+  /** Wheel on the minimap zooms the viewport — default: true. */
+  zoomable?: boolean
 }
 
 export interface ControlsProps {
@@ -1045,6 +1064,8 @@ export interface ControlsProps {
   showFitView?: boolean
   showLock?: boolean
   position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+  /** Extra controls appended after the built-in buttons (`<button>`s inherit the control styling). */
+  children?: VNodeChild
 }
 
 export interface PanelProps {

@@ -5240,6 +5240,8 @@ const json = flow.toJSON(); flow.fromJSON(json)       // round-trip serializatio
 - Passing \`isValidConnection\` as a prop on \`<Flow>\` (React Flow) — here it is a \`createFlow\` config key, alongside \`connectionRadius\`.
 - Hunting for a \`interactionWidth\` prop on \`<Flow>\` — hit width is per edge (\`interactionWidth\`) with a config default (\`edgeInteractionWidth\`, 20px); a click near a hairline edge already lands on it.
 - Building a "figma-like" canvas by intercepting pointer events yourself — \`selectionOnDrag: true\` + \`panOnDrag: [1, 2]\` is the whole recipe, and \`deleteKeys\` / \`multiSelectionKey\` / \`selectionKey\` cover the key remaps.
+- Giving a child node (\`parentId\`) an ABSOLUTE position — a child position is relative to its parent; read \`getAbsolutePosition(id)\` when you need the canvas coordinate.
+- Wiring your own drag math to keep a child inside its group — \`extent: 'parent'\` clamps it and \`expandParent: true\` grows the group instead.
 - Forgetting to declare \`@pyreon/runtime-dom\` in consumer app deps — flow's JSX emits \`_tpl()\` which needs runtime-dom imports
 - Reading \`NodeComponentProps.data\` / \`.selected\` / \`.dragging\` as plain values — all three are REACTIVE ACCESSORS: \`props.data()\`, \`props.selected()\`, \`props.dragging()\`
 - Calling \`props.data()\` OUTSIDE a reactive scope — captures the value once at component setup, defeating the per-node reactivity. Read it inside JSX expression thunks, \`effect\`, or \`computed\`
