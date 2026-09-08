@@ -25,11 +25,21 @@ import pyreon from "@pyreon/vite-plugin";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { zeroPlugin } from "../../vite-plugin";
+import {
+	DEV_SERVER_BOOT_TIMEOUT_MS,
+	DEV_SERVER_TEST_TIMEOUT_MS,
+	devFetch,
+} from "./dev-server-budget";
 
 const FIXTURE_DIR = resolve(import.meta.dirname, "fixture");
 
 let server: ViteDevServer;
 let baseUrl: string;
+
+// Snapshot for `devFetch`'s failure message — a thunk, so it costs nothing on
+// the passing path and only runs when a request has already failed.
+const state = () =>
+	`baseUrl=${baseUrl} viteListening=${Boolean(server?.httpServer?.listening)}`;
 
 beforeAll(async () => {
 	server = await createServer({
@@ -61,15 +71,19 @@ beforeAll(async () => {
 	if (address && typeof address === "object") {
 		baseUrl = `http://localhost:${address.port}`;
 	}
-}, 30_000);
+}, DEV_SERVER_BOOT_TIMEOUT_MS);
 
 afterAll(async () => {
 	await server?.close();
 });
 
-describe("dev 404 — mode: 'ssg' uses user's _404.tsx (regression)", () => {
+describe("dev 404 — mode: 'ssg' uses user's _404.tsx (regression)", { timeout: DEV_SERVER_TEST_TIMEOUT_MS }, () => {
 	it("uses the user's _404 component on an unmatched URL", async () => {
-		const res = await fetch(`${baseUrl}/this-route-does-not-exist`);
+		const res = await devFetch(
+			`${baseUrl}/this-route-does-not-exist`,
+			"dev SSR render of the user _404 page",
+			{ observe: state },
+		);
 		expect(res.status).toBe(404);
 		const html = await res.text();
 		// The fixture's `_404.ts` renders `<h1>404 — Page Not Found</h1>` and
@@ -81,7 +95,11 @@ describe("dev 404 — mode: 'ssg' uses user's _404.tsx (regression)", () => {
 	});
 
 	it("emits the user's _404 component WRAPPED in the layout/app chrome", async () => {
-		const res = await fetch(`${baseUrl}/another-unmatched-path`);
+		const res = await devFetch(
+			`${baseUrl}/another-unmatched-path`,
+			"dev SSR 404 render with layout/app chrome",
+			{ observe: state },
+		);
 		expect(res.status).toBe(404);
 		const html = await res.text();
 		// The render goes through renderSsr → createApp → renderWithHead, so
@@ -95,14 +113,20 @@ describe("dev 404 — mode: 'ssg' uses user's _404.tsx (regression)", () => {
 	it("known routes still serve normally (not 404)", async () => {
 		// Smoke test that the new render path doesn't accidentally claim
 		// matched URLs are 404s.
-		const aboutRes = await fetch(`${baseUrl}/about`);
+		const aboutRes = await devFetch(`${baseUrl}/about`, "matched route /about", {
+			observe: state,
+		});
 		// In ssg mode the dev server doesn't pre-render matched routes
 		// server-side (Vite serves the SPA shell), so status is 200.
 		expect(aboutRes.status).toBe(200);
 	});
 
 	it("path with deeply-nested segments still routes through _404", async () => {
-		const res = await fetch(`${baseUrl}/foo/bar/baz/qux`);
+		const res = await devFetch(
+			`${baseUrl}/foo/bar/baz/qux`,
+			"deeply-nested unmatched path routes through _404",
+			{ observe: state },
+		);
 		expect(res.status).toBe(404);
 		const html = await res.text();
 		expect(html).toContain("Page Not Found");
@@ -112,7 +136,11 @@ describe("dev 404 — mode: 'ssg' uses user's _404.tsx (regression)", () => {
 		// `/foo.css` has a file extension and the middleware skips it via
 		// `if (/\.\w+$/.test(pathname)) return next()`. The 404 handler
 		// should not produce HTML for it — Vite's static handling does.
-		const res = await fetch(`${baseUrl}/foo.css`);
+		const res = await devFetch(
+			`${baseUrl}/foo.css`,
+			"static-asset-shaped path falls through to Vite",
+			{ observe: state },
+		);
 		// Vite returns 404 with a plain "Not found" or similar for missing
 		// static files — NOT the rendered user component.
 		const html = await res.text()
@@ -127,7 +155,11 @@ describe("dev 404 — mode: 'ssg' uses user's _404.tsx (regression)", () => {
 		// returns false → falls through to next middleware. If this regressed
 		// (e.g. dynamic segments stopped matching), the dynamic route would
 		// be hit by the 404 handler and we'd see the _404 component.
-		const res = await fetch(`${baseUrl}/users/42`);
+		const res = await devFetch(
+			`${baseUrl}/users/42`,
+			"dynamic route /users/[id] is not 404d",
+			{ observe: state },
+		);
 		expect(res.status).toBe(200);
 		const html = await res.text();
 		// Must NOT contain the _404's distinctive heading — if it did,
@@ -140,9 +172,11 @@ describe("dev 404 — mode: 'ssg' uses user's _404.tsx (regression)", () => {
 		// An explicit JSON Accept skips handle404 entirely → no HTML render → no _404 component.
 		// (Real API routes go through a different middleware; this test
 		// covers the FILTER that prevents the HTML 404 from interfering.)
-		const res = await fetch(`${baseUrl}/api/unknown-endpoint`, {
-			headers: { Accept: "application/json" },
-		});
+		const res = await devFetch(
+			`${baseUrl}/api/unknown-endpoint`,
+			"JSON-Accept request skips the HTML 404 path",
+			{ headers: { Accept: "application/json" }, observe: state },
+		);
 		const text = await res.text();
 		expect(text).not.toContain("Page Not Found");
 		// Specifically NOT an HTML doctype — the handle404 path was skipped.
@@ -160,7 +194,11 @@ describe("dev 404 — mode: 'ssg' uses user's _404.tsx (regression)", () => {
 		// a 404 case. This test asserts the matched-route path is
 		// unaffected. The actual SSR error during render is in the
 		// existing SSR test under `mode: 'ssr'`.
-		const res = await fetch(`${baseUrl}/broken`);
+		const res = await devFetch(
+			`${baseUrl}/broken`,
+			"matched /broken route is not treated as a 404",
+			{ observe: state },
+		);
 		// `/broken` IS in the fixture's routes (broken.tsx) — pattern match
 		// succeeds. handle404 returns false → next() → Vite serves the SPA
 		// shell. Status 200 (NOT 404).

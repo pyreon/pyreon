@@ -35,8 +35,13 @@ import { isEsmFile } from '../../utils/project-deps'
  * - `typeof require === 'function'` — that is UMD/environment DETECTION, not
  *   a call, and flagging it would break the one idiom written specifically to
  *   be safe in both module systems;
- * - a locally bound `require` (a parameter or an import), which is somebody's
- *   own function that happens to share the name.
+ * - a locally bound `require` — a parameter, an import, or a `const require =
+ *   createRequire(import.meta.url)`. The last one is not a courtesy: it is the
+ *   ESCAPE HATCH this rule's own message recommends, and the one legitimate way
+ *   to load a CJS-only artifact (a napi `.node` addon, a built CJS bundle) from
+ *   an ES module. Flagging it made the prescribed fix unusable, which is how
+ *   `vite-plugin`'s `plain-build.test.ts` — already correct, with a comment
+ *   saying why — showed up as a finding.
  */
 export const noRequireInEsm: Rule = {
   meta: {
@@ -45,6 +50,12 @@ export const noRequireInEsm: Rule = {
     description:
       '`require()` in a `"type": "module"` package throws at runtime — and Bun defines `require` in ESM, so a bun-run test suite cannot catch it.',
     severity: 'error',
+    // BOTH surfaces. A `.test.ts` in a `"type": "module"` package throws
+    // `require is not defined` under real Node exactly as `src/` does, and the
+    // `source` default meant no health gate ever looked: this repo was carrying
+    // 47 such calls across ten test files, all green, because bun defines
+    // `require` in ESM — the very reason this rule is static and not a test.
+    scanTarget: ['source', 'test'],
     fixable: false,
   },
   create(context) {
@@ -52,7 +63,7 @@ export const noRequireInEsm: Rule = {
     // but the answer cannot change mid-file.
     if (!isEsmFile(context.getFilePath())) return {}
 
-    /** Depth of enclosing scopes that bind their own `require`. */
+    /** How many enclosing bindings currently shadow the global `require`. */
     let shadowed = 0
 
     const bindsRequire = (node: any): boolean => {
@@ -60,14 +71,19 @@ export const noRequireInEsm: Rule = {
       return params.some((p) => p?.type === 'Identifier' && String(p.name) === 'require')
     }
 
-    const fnStack: boolean[] = []
+    // One entry per open function frame, counting the `require` bindings that
+    // frame OWNS — its parameter, plus any `const require = …` declared inside
+    // it. Exiting the frame releases exactly those. A binding declared at
+    // MODULE scope is owned by no frame and is never released, which is
+    // correct: it shadows for the rest of the file.
+    const fnStack: number[] = []
     const enterFn = (node: any) => {
       const binds = bindsRequire(node)
-      fnStack.push(binds)
+      fnStack.push(binds ? 1 : 0)
       if (binds) shadowed += 1
     }
     const exitFn = () => {
-      if (fnStack.pop() === true) shadowed -= 1
+      shadowed -= fnStack.pop() ?? 0
     }
 
     const callbacks: VisitorCallbacks = {
@@ -77,6 +93,16 @@ export const noRequireInEsm: Rule = {
       'FunctionExpression:exit': exitFn,
       ArrowFunctionExpression: enterFn,
       'ArrowFunctionExpression:exit': exitFn,
+
+      VariableDeclarator(node: any) {
+        // `const require = createRequire(import.meta.url)` — the documented
+        // escape hatch. Counted like a parameter binding so it is released when
+        // its enclosing function exits; at module scope it holds for the file.
+        if (node?.id?.type !== 'Identifier' || String(node.id.name) !== 'require') return
+        shadowed += 1
+        const top = fnStack.length - 1
+        if (top >= 0) fnStack[top] = (fnStack[top] ?? 0) + 1
+      },
 
       ImportDeclaration(node: any) {
         // `import { require } from '...'` — somebody else's function.

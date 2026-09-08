@@ -2,7 +2,9 @@
  * The core engine over the synthetic fixture — one assertion block per issue
  * class the fixture encodes, plus the graph analysis and the report fold.
  */
-import { rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   analyzeGraph,
@@ -176,9 +178,6 @@ describe('lexical primitives', () => {
 
 describe('@types satisfaction + ignores', () => {
   it('a declared @types twin satisfies a type-only import (the mdast pattern)', () => {
-    const { mkdirSync, mkdtempSync, writeFileSync, rmSync: rm } = require('node:fs') as typeof import('node:fs')
-    const { tmpdir } = require('node:os') as typeof import('node:os')
-    const { join } = require('node:path') as typeof import('node:path')
     const root = mkdtempSync(join(tmpdir(), 'loom-types-'))
     try {
       writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'r', workspaces: ['p/*'] }))
@@ -195,14 +194,11 @@ import type { T } from '@scope/thing'`)
       const r = buildReport(root)
       expect(r.issues.filter((i) => i.code === 'phantom-dep')).toHaveLength(0)
     } finally {
-      rm(root, { recursive: true, force: true })
+      rmSync(root, { recursive: true, force: true })
     }
   })
 
   it('loom.ignore downgrades matches to info WITH the reason; missing reason throws', () => {
-    const { mkdirSync, mkdtempSync, writeFileSync, rmSync: rm } = require('node:fs') as typeof import('node:fs')
-    const { tmpdir } = require('node:os') as typeof import('node:os')
-    const { join } = require('node:path') as typeof import('node:path')
     const root = mkdtempSync(join(tmpdir(), 'loom-ignore-'))
     try {
       writeFileSync(
@@ -229,7 +225,7 @@ import type { T } from '@scope/thing'`)
       )
       expect(() => buildReport(root)).toThrow(/reason/)
     } finally {
-      rm(root, { recursive: true, force: true })
+      rmSync(root, { recursive: true, force: true })
     }
   })
 })

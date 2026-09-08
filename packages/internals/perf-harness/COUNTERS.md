@@ -10,12 +10,16 @@ Canonical list of every counter name emitted through `globalThis.__pyreon_count_
 - **action** — what happened (`resolve`, `mount`, `navigate`)
 - **variant** (optional) — a qualifier like `.hit` for cache hits, `.fallback-scan` for unusual paths
 
-> **The `.hit` suffix is load-bearing.** `scripts/perf/diff.ts` treats counters
-> whose name ends in `.hit` as success counters — a DROP is a regression
+> **Two suffixes are load-bearing.** `scripts/perf/diff.ts` treats counters
+> whose name ends in `.hit` — or in `Fast`, the reconciler fast-path family
+> (`runtime.mountFor.insertFast` and its `removeFast` / `clearFast` /
+> `replaceFast` siblings) — as SUCCESS counters, where a DROP is a regression
 > (cache stopped working), not an improvement. Every other counter measures
-> work, so an INCREASE is a regression. Rename accordingly when adding new
-> counters: if the counter measures "how many times a fast path fired,"
-> end the name in `.hit`; otherwise don't.
+> work, so an INCREASE is a regression. Name accordingly when adding a new
+> counter: if a DROP is the bad direction — a cache answering, a cheap path
+> winning — end the name in `.hit` or `Fast`; otherwise don't. Getting this
+> wrong is silent in both directions: the good news reads as a regression,
+> and the regression the counter exists to catch reads as good news.
 
 ## Counters
 

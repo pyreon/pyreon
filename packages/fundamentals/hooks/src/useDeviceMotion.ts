@@ -61,8 +61,12 @@ export function useDeviceMotion(): DeviceMotionControls {
     if (r) rotation.set({ x: r.beta ?? 0, y: r.gamma ?? 0, z: r.alpha ?? 0 })
   }
 
+  /** Bumped by every stop, so a start still awaiting its prompt can tell. */
+  let gen = 0
+
   const stop = () => {
     if (!isClient) return
+    gen++
     window.removeEventListener('devicemotion', onMotion)
     active.set(false)
   }
@@ -97,17 +101,19 @@ export function useDeviceMotion(): DeviceMotionControls {
       // iOS Safari only. Elsewhere the method is absent and motion flows
       // without a prompt — so its ABSENCE is a grant, not a failure.
       if (typeof DME.requestPermission === 'function') {
+        const mine = gen
         try {
           if ((await DME.requestPermission()) !== 'granted') return false
         } catch {
           // Thrown when not called from a user gesture. Ordinary, not fatal.
           return false
         }
-        // `active` only flips below, so a second call arriving during the
-        // permission prompt passes the check above too — and `addEventListener`
-        // with a DIFFERENT closure each time would attach the handler twice,
-        // doubling every reading. Re-check now that the await has settled.
+        // Two things can happen during the prompt: a concurrent caller can
+        // finish first (then `active` is already true — join it), or the
+        // scope can dispose / `stop()` can run (then `gen` moved — attaching
+        // now would leave a sensor listener running past its view).
         if (active()) return true
+        if (mine !== gen) return false
       }
       window.addEventListener('devicemotion', onMotion)
       active.set(true)

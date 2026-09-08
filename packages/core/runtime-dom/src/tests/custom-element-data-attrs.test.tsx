@@ -12,6 +12,7 @@
  * fails the first spec with `expected null to be 'CartBadge'`.
  */
 import { h } from '@pyreon/core'
+import { query } from '@pyreon/test-utils'
 import { describe, expect, it } from 'vitest'
 import { mount } from '../index'
 
@@ -38,7 +39,9 @@ describe('custom elements — data-*/aria-* are attributes', () => {
     const host = document.createElement('div')
     const payload = { rows: [1, 2, 3] }
     mount(h('x-grid' as never, { data: payload } as never), host)
-    const el = host.querySelector('x-grid') as HTMLElement & { data?: unknown }
+    // `query` throws a named error when the element is missing; the cast that
+    // remains is about the custom-element PROPERTY, not about nullability.
+    const el = query(host, 'x-grid') as HTMLElement & { data?: unknown }
     expect(el.data).toBe(payload) // identity — property, not stringified attr
     expect(el.getAttribute('data')).toBeNull()
   })
