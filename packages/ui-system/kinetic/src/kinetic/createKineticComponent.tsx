@@ -5,7 +5,7 @@ import CollapseRenderer from './CollapseRenderer'
 import GroupRenderer from './GroupRenderer'
 import StaggerRenderer from './StaggerRenderer'
 import TransitionRenderer from './TransitionRenderer'
-import { toShowAccessor } from '../show-accessor'
+import { showAccessorFrom } from '../show-accessor'
 import type { ClassConfig, KineticComponent, KineticConfig, KineticMode } from './types'
 
 /** Keys that are kinetic-specific and should not be forwarded as HTML attrs. */
@@ -53,7 +53,6 @@ const createKineticComponent = <Tag extends string, Mode extends KineticMode = '
     ]
 
     const {
-      show,
       appear,
       unmount,
       timeout,
@@ -65,7 +64,6 @@ const createKineticComponent = <Tag extends string, Mode extends KineticMode = '
       onLeave,
       onAfterLeave,
     } = kineticProps as {
-      show?: boolean | (() => boolean)
       appear?: boolean
       unmount?: boolean
       timeout?: number
@@ -74,8 +72,12 @@ const createKineticComponent = <Tag extends string, Mode extends KineticMode = '
       reverseLeave?: boolean
     } & Partial<TransitionCallbacks>
 
-    // Absent or value-shaped `show` (see toShowAccessor) — both crash on `show()`.
-    const showAccessor = toShowAccessor(show)
+    // Absent or value-shaped `show` (see toShowAccessor) — both crash on
+    // `show()`. Read off `kineticProps` PER CALL rather than destructured
+    // above: the compiler emits `show={sig}` as a getter that splitProps
+    // preserved, and destructuring it here would fire it once and freeze the
+    // element hidden (see showAccessorFrom).
+    const showAccessor = showAccessorFrom(kineticProps)
 
     const callbacks: Partial<TransitionCallbacks> = {
       onEnter: onEnter ?? config.onEnter,

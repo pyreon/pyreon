@@ -1,7 +1,7 @@
 import type { VNode } from '@pyreon/core'
 import { createRef, Show } from '@pyreon/core'
 import { runUntracked, signal, watch } from '@pyreon/reactivity'
-import { toShowAccessor } from './show-accessor'
+import { showAccessorFrom } from './show-accessor'
 import type { CollapseProps, TransitionStage } from './types'
 import useAnimationEnd from './useAnimationEnd'
 import { useReducedMotion } from './useReducedMotion'
@@ -22,7 +22,8 @@ const Collapse = (props: CollapseProps): VNode | null => {
     onAfterLeave: props.onAfterLeave,
   }
 
-  const showAcc = toShowAccessor(props.show)
+  // Re-reads `props.show` per call — `show={sig}` arrives as a live getter.
+  const showAcc = showAccessorFrom(props)
   const initialShow = showAcc()
   // When appear=true and show starts true, mount but defer animation until ref is wired
   const needsAppear = appear && initialShow

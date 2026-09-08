@@ -1,6 +1,6 @@
 import { createRef } from '@pyreon/core'
 import { runUntracked, signal, watch } from '@pyreon/reactivity'
-import { toShowAccessor } from './show-accessor'
+import { showAccessorFrom } from './show-accessor'
 import type { TransitionStage, TransitionStateResult } from './types'
 
 export type UseTransitionState = (options: {
@@ -8,8 +8,11 @@ export type UseTransitionState = (options: {
   appear?: boolean | undefined
 }) => TransitionStateResult
 
-const useTransitionState: UseTransitionState = ({ show: showProp, appear = false }) => {
-  const show = toShowAccessor(showProp)
+const useTransitionState: UseTransitionState = (options) => {
+  const appear = options.appear ?? false
+  // NOT destructured: `options.show` may be a live getter (a caller passing
+  // its own `props` straight through), so it is read per call, never once.
+  const show = showAccessorFrom(options)
   const initialShow = show()
   // When appear=true and show starts true, mount the element (stage='entered')
   // but defer the enter animation until the ref is connected.

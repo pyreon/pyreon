@@ -7,7 +7,7 @@ import type {
   TransitionEasing,
   TransitionProps,
 } from './types'
-import { toShowAccessor } from './show-accessor'
+import { showAccessorFrom } from './show-accessor'
 import useAnimationEnd from './useAnimationEnd'
 import { useReducedMotion } from './useReducedMotion'
 import useTransitionState from './useTransitionState'
@@ -120,7 +120,8 @@ const Transition = (props: TransitionProps): VNode | null => {
     shouldMount,
     complete,
   } = useTransitionState({
-    show: toShowAccessor(props.show),
+    // Re-reads `props.show` per call — `show={sig}` arrives as a live getter.
+    show: showAccessorFrom(props),
     appear,
   })
 
@@ -238,7 +239,7 @@ const Transition = (props: TransitionProps): VNode | null => {
   // The SSR bug (children dropped from prerendered HTML) only fires for
   // the initially-HIDDEN case below, because `<Show when={false}>`
   // renders `null` on the server.
-  const wasInitiallyShown = toShowAccessor(props.show)()
+  const wasInitiallyShown = showAccessorFrom(props)()
   if (wasInitiallyShown) {
     return (
       <Show

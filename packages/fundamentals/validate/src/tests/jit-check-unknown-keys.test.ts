@@ -102,10 +102,19 @@ describe('verdict JIT — strict emits the CHEAPER shape when it can', () => {
     return String(fn)
   }
 
-  it('all-required shape uses a key COUNT, not a per-key scan', () => {
+  it('all-required shape short-circuits on an OWN-KEY PROOF, and only then skips the scan', () => {
+    // The invariant this locks: a VALID all-required object never pays the
+    // per-key `Set#has` scan. The proof it pays instead is "own-key count is
+    // N AND every declared key is own" — a COUNT ALONE is not a membership
+    // test (a prototype-carried field passes the field check with zero own
+    // keys; a typo'd key in place of a real one keeps the count at N), which
+    // is the bug the previous form of this test encoded. The scan must
+    // remain in the body, gated behind the proof's failure.
     const body = src(s.object({ a: s.number(), b: s.string() }).strict())
-    expect(body).toMatch(/Object\.keys\([^)]*\)\.length !== 2/)
-    expect(body).not.toContain('.has(')
+    expect(body).toMatch(
+      /if \((\w+)\.length !== 2 \|\| !\(Object\.hasOwn\(input, "a"\) && Object\.hasOwn\(input, "b"\)\)\) \{ for \(/,
+    )
+    expect(body).toContain('.has(')
   })
 
   it('a field that can be validly ABSENT falls back to the SCAN', () => {
@@ -115,7 +124,8 @@ describe('verdict JIT — strict emits the CHEAPER shape when it can', () => {
     // validly absent, which is exactly the shape that needs the scan.
     const body = src(s.object({ a: s.number(), b: s.undefined() }).strict())
     expect(body).toContain('.has(')
-    expect(body).not.toMatch(/Object\.keys\([^)]*\)\.length !==/)
+    expect(body).not.toMatch(/\.length !== \d+ \|\|/)
+    expect(body).not.toContain('Object.hasOwn(')
   })
 
   it('the scan rejects what the count would have accepted, and accepts what it would have rejected', () => {

@@ -133,9 +133,35 @@ describe('verdict JIT — objects, arrays, discriminated unions', () => {
     s.object({ kind: s.literal('label'), text: s.string(), size: s.number() }),
   ])
   const nestedDu = s.object({ shape: du, id: s.number().int() })
+  // `.strict()` takes a SEPARATE emit (an own-key proof gating a membership
+  // scan), so it needs the inputs that break a count: prototype-carried
+  // fields (zero own keys, still valid) and a typo'd key (N own keys, one of
+  // them undeclared). See strict-prototype-keys.test.ts for the class.
+  const strictFlat = s.object({ name: s.string().min(2), age: s.number().int(), active: s.boolean() }).strict()
+  const strictNested = s.object({ id: s.number().int(), user: strictFlat }).strict()
+  class Carried {
+    get name() {
+      return 'Ada'
+    }
+    get age() {
+      return 36
+    }
+    get active() {
+      return true
+    }
+  }
 
   function* inputs(): Generator<unknown> {
     yield { name: 'Ada', age: 36, active: true }
+    yield Object.create({ name: 'Ada', age: 36, active: true })
+    yield new Carried()
+    yield Object.assign(Object.create({ name: 'Ada', age: 36, active: true }), { zzz: 1 })
+    yield Object.assign(Object.create({ name: 'Ada', age: 36 }), { active: true })
+    yield { nmae: 'Ada', age: 36, active: true }
+    yield { name: 'Ada', age: 36, active: true, extra: 1 }
+    yield { id: 1, user: Object.create({ name: 'Ada', age: 36, active: true }) }
+    yield { id: 1, user: { nmae: 'Ada', age: 36, active: true } }
+    yield Object.create({ id: 1, user: { name: 'Ada', age: 36, active: true } })
     yield { name: 'A', age: 999, active: 'no' }
     yield { name: 'Ada', age: 36 }
     yield { id: 1, user: { name: 'Ada', addr: { city: 'Paris', zip: '75001' } } }
@@ -169,7 +195,7 @@ describe('verdict JIT — objects, arrays, discriminated unions', () => {
   const cases: Array<[string, Schema<unknown>]> = [
     ['flat', flat], ['nested', nested], ['withArr', withArr], ['withEmail', withEmail],
     ['arrPrim', arrPrim], ['arrObj', arrObj], ['arrBounded', arrBounded],
-    ['du', du], ['nestedDu', nestedDu],
+    ['du', du], ['nestedDu', nestedDu], ['strictFlat', strictFlat], ['strictNested', strictNested],
   ]
   for (const [name, sc] of cases) {
     it(name, () => {
@@ -177,7 +203,7 @@ describe('verdict JIT — objects, arrays, discriminated unions', () => {
     })
   }
   it('the verdict emitter actually served these schemas', () => {
-    expect(cases.filter(([, sc]) => hasVerdict(sc)).length).toBe(9)
+    expect(cases.filter(([, sc]) => hasVerdict(sc)).length).toBe(11)
   })
 })
 
@@ -213,24 +239,99 @@ describe('verdict JIT — randomized fuzz (seeded)', () => {
   it('2000 random schema × input pairs: is() ≡ parse().ok', () => {
     const r = rng(0x51ed270b)
     const pick = <T,>(xs: T[]): T => xs[Math.floor(r() * xs.length)]!
-    const leaf = (): Schema<unknown> =>
+    // Each generator yields the schema AND a value that satisfies it. Pairing
+    // the two is what makes the `.strict()` half of this fuzz load-bearing:
+    // the own-key divergences (a prototype-carried object, a typo'd key) only
+    // show up when every FIELD check passes, so a schema-independent value
+    // list reaches them by coincidence and, measured against the broken
+    // build, never did.
+    type Gen = { sc: Schema<unknown>; valid: unknown }
+    const leaf = (): Gen =>
       pick([
-        s.string(), s.string().min(2), s.string().max(8), s.string().length(4),
-        s.string().regex(/^x/), s.string().nonEmpty(), s.string().email(),
-        s.number(), s.number().int(), s.number().min(0), s.number().max(100),
-        s.number().between(0, 50), s.number().multipleOf(3), s.number().positive(),
-        s.boolean(), s.literal('on'), s.literal(42), s.bigint(), s.date(),
-      ] as Array<Schema<unknown>>)
-    const build = (depth: number): Schema<unknown> => {
+        { sc: s.string(), valid: 'x' },
+        { sc: s.string().min(2), valid: 'xx' },
+        { sc: s.string().max(8), valid: 'xxxx' },
+        { sc: s.string().length(4), valid: 'xxxx' },
+        { sc: s.string().regex(/^x/), valid: 'xy' },
+        { sc: s.string().nonEmpty(), valid: 'x' },
+        { sc: s.string().email(), valid: 'ada@example.com' },
+        { sc: s.number(), valid: 1 },
+        { sc: s.number().int(), valid: 3 },
+        { sc: s.number().min(0), valid: 42 },
+        { sc: s.number().max(100), valid: 1 },
+        { sc: s.number().between(0, 50), valid: 3 },
+        { sc: s.number().multipleOf(3), valid: 42 },
+        { sc: s.number().positive(), valid: 1 },
+        { sc: s.boolean(), valid: true },
+        { sc: s.literal('on'), valid: 'on' },
+        { sc: s.literal(42), valid: 42 },
+        { sc: s.bigint(), valid: 42n },
+        { sc: s.date(), valid: new Date('2026-01-01') },
+      ] as Gen[])
+    const build = (depth: number): Gen => {
       const k = pick(depth >= 2 ? ['leaf'] : ['leaf', 'leaf', 'obj', 'arr'])
       if (k === 'leaf') return leaf()
-      if (k === 'arr') return s.array(build(depth + 1)) as unknown as Schema<unknown>
+      if (k === 'arr') {
+        const inner = build(depth + 1)
+        return { sc: s.array(inner.sc) as unknown as Schema<unknown>, valid: [inner.valid, inner.valid] }
+      }
       const n = 1 + Math.floor(r() * 3)
       const shape: Record<string, Schema<unknown>> = {}
-      for (let i = 0; i < n; i++) shape[`f${i}`] = build(depth + 1)
-      return s.object(shape) as unknown as Schema<unknown>
+      const valid: Record<string, unknown> = {}
+      for (let i = 0; i < n; i++) {
+        const child = build(depth + 1)
+        shape[`f${i}`] = child.sc
+        valid[`f${i}`] = child.valid
+      }
+      const obj = s.object(shape)
+      // Half the objects are strict, so the own-key proof is exercised on
+      // roughly half the pairs below.
+      return { sc: (r() < 0.5 ? obj.strict() : obj) as unknown as Schema<unknown>, valid }
     }
-    const values = (): unknown =>
+
+    const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+      typeof v === 'object' && v !== null && !Array.isArray(v) && !(v instanceof Date)
+
+    /**
+     * The inputs that break an own-key COUNT, derived from a value the schema
+     * ACCEPTS so every field check passes and only the strict scan can differ:
+     *
+     * - prototype-carried: zero own keys, all fields readable through the
+     *   chain (the `is()` false / `parse().ok` true divergence);
+     * - a typo'd key: own-key count unchanged, one key undeclared (the
+     *   unreported `unrecognized_keys` divergence);
+     * - prototype-carried plus one extra own key: count 1, must still reject;
+     * - the same twins applied one level DOWN, so a nested strict object is
+     *   reached too.
+     */
+    const twins = (valid: unknown): unknown[] => {
+      if (!isPlainObject(valid)) return []
+      const keys = Object.keys(valid)
+      const out: unknown[] = [
+        Object.create(valid) as unknown,
+        Object.assign(Object.create(valid) as object, { zz: 1 }),
+      ]
+      if (keys.length > 0) {
+        const [first, ...rest] = keys as [string, ...string[]]
+        const typo: Record<string, unknown> = { [`${first}_typo`]: valid[first] }
+        for (const k of rest) typo[k] = valid[k]
+        out.push(typo)
+        const nested = valid[first]
+        if (isPlainObject(nested)) {
+          out.push({ ...valid, [first]: Object.create(nested) as unknown })
+          const innerKeys = Object.keys(nested)
+          if (innerKeys.length > 0) {
+            const ik = innerKeys[0]!
+            const innerTypo: Record<string, unknown> = {}
+            for (const k of innerKeys) innerTypo[k === ik ? `${k}_typo` : k] = nested[k]
+            out.push({ ...valid, [first]: innerTypo })
+          }
+        }
+      }
+      return out
+    }
+
+    const literals = (): unknown =>
       pick([
         'x', 'xx', 'xxxx', '', 'ada@example.com', 'nope', 0, 1, 3, 42, 101, 1.5, -1,
         NaN, true, false, 42n, new Date('2026-01-01'), null, undefined, {}, [],
@@ -239,16 +340,25 @@ describe('verdict JIT — randomized fuzz (seeded)', () => {
       ])
 
     let covered = 0
+    let strictTwins = 0
     for (let i = 0; i < 2000; i++) {
-      const sc = build(0)
-      const input = values()
-      if (agree(sc, input, `fuzz#${i}`)) covered++
+      const g = build(0)
+      const derived = twins(g.valid)
+      // Half the pairs are schema-derived (the valid instance and its
+      // own-key twins), half are the loose literal soup that policed every
+      // other emitter branch before `.strict()` had its own.
+      const input =
+        derived.length > 0 && r() < 0.5 ? pick([g.valid, ...derived]) : literals()
+      if (input !== g.valid && derived.includes(input)) strictTwins++
+      if (agree(g.sc, input, `fuzz#${i}`)) covered++
     }
-    // A fuzz that never reaches the verdict emitter proves nothing about it.
+    // A fuzz that never reaches the verdict emitter proves nothing about it,
+    // and one that never reaches a count-breaking input proves nothing about
+    // `.strict()`.
     expect(covered, 'fuzz never exercised the verdict emitter').toBeGreaterThan(1000)
+    expect(strictTwins, 'fuzz never fed an own-key-breaking input').toBeGreaterThan(150)
   })
 })
-
 describe('verdict JIT — cache invalidation', () => {
   it('a chained op after `.is()` has already compiled a verdict is honoured', () => {
     // `_getCheck()` memoizes, including a `null` refusal, so a chained op must

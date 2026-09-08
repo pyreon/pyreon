@@ -220,11 +220,11 @@ export function splitTopLevelRules(cssText: string): string[] {
 // Dev-time counter sink — see styler/resolve.ts for the contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
-// Dev-mode gate. `import.meta.env.DEV` is literal-replaced by Vite at build
-// time and tree-shakes to zero bytes in prod. The previous
-// `process.env.NODE_ENV !== 'production'` form was dead code in real Vite
-// browser bundles (Vite does not polyfill `process`), so insertRule failures
-// were silently swallowed in production — masking malformed CSS bugs.
+// Dev-mode gates in this file are the bare `process.env.NODE_ENV !==
+// 'production'` form — the bundler-agnostic library standard (every consumer
+// bundler define-replaces it; enforced by `pyreon/no-process-dev-gate`). NOT
+// `typeof process` (dead in Vite browser bundles) and NOT `import.meta.env.DEV`
+// (Vite/Rolldown-only — silent in a Webpack/esbuild/Bun consumer).
 const PREFIX = 'pyr'
 const ATTR = 'data-pyreon-styler'
 const DEFAULT_MAX_CACHE_SIZE = 10000
@@ -264,7 +264,31 @@ interface StylerSSRState {
   flushedIdx: number
   /** Whether the streaming `@layer` ordering statement was emitted this request. */
   layerDeclEmitted: boolean
+  /**
+   * Cache keys (className / keyframe name / global key) whose rules THIS
+   * request's buffer already carries. The className dedup (`cache`) is
+   * per-INSTANCE and lives for the process, so a second request rendering a
+   * class the first one already inserted hits `cache` and — before this set
+   * existed — pushed NOTHING into its own buffer: its flush was `''` and the
+   * page shipped class names with no CSS on every streamed request after the
+   * first. Dedup of the SSR BUFFER has to be scoped like the buffer itself.
+   *
+   * Lifetime is the buffer's: a request bag's set dies with the request, and
+   * the instance state's is cleared alongside `buffer` by `resetSSRBuffer` /
+   * `reset` / `clearAll`, so it introduces no retention the buffer beside it
+   * did not already have. It is deliberately NOT pruned by `evictKeys` — a
+   * key evicted mid-capture is one this capture's buffer already carries, so
+   * dropping it from `seen` would re-emit the rule rather than free anything.
+   */
+  seen: Set<string>
 }
+
+const freshSSRState = (): StylerSSRState => ({
+  buffer: [],
+  flushedIdx: 0,
+  layerDeclEmitted: false,
+  seen: new Set(),
+})
 
 export class StyleSheet {
   private cache = new Map<string, string>()
@@ -285,11 +309,12 @@ export class StyleSheet {
   // watermark (`flushedIdx`) lets the pipeline emit `<style>` inline per Suspense
   // boundary. Under a per-request styler scope (runtime-server, concurrent
   // streaming) these live on the request bag; otherwise on this instance object.
-  private readonly _instanceSSR: StylerSSRState = {
-    buffer: [],
-    flushedIdx: 0,
-    layerDeclEmitted: false,
-  }
+  private readonly _instanceSSR: StylerSSRState = freshSSRState()
+  // SSR only: the final rule text per cache key, so a request whose render
+  // references a class the instance-wide `cache` already knows can still push
+  // that class's rules into ITS OWN buffer (see `StylerSSRState.seen`).
+  // Evicted in lockstep with `cache` (`evictKeys`) and cleared with it.
+  private ssrRules = new Map<string, string[]>()
 
   /**
    * The active SSR state — request-scoped when a streaming render is in flight,
@@ -311,7 +336,7 @@ export class StyleSheet {
     if (bag) {
       let s = bag.__pyreonStylerSSR as StylerSSRState | undefined
       if (!s) {
-        s = { buffer: [], flushedIdx: 0, layerDeclEmitted: false }
+        s = freshSSRState()
         bag.__pyreonStylerSSR = s
       }
       return s
@@ -483,6 +508,7 @@ export class StyleSheet {
     const ruleRefs = new Set<CSSRule>()
     for (const key of keys) {
       this.cache.delete(key)
+      this.ssrRules.delete(key)
       const ics = this.icKeysByClass.get(key)
       if (ics) {
         for (const ic of ics) this.insertCache.delete(ic)
@@ -720,6 +746,7 @@ export class StyleSheet {
     if (icHit) {
       if (process.env.NODE_ENV !== 'production')
         _countSink.__pyreon_count__?.('styler.sheet.insert.hit')
+      if (this.isSSR) this.pushSSR(icHit)
       return icHit
     }
 
@@ -729,6 +756,7 @@ export class StyleSheet {
     if (this.cache.has(className)) {
       this.insertCache.set(icKey, className)
       this.trackIcKey(className, icKey)
+      if (this.isSSR) this.pushSSR(className)
       return className
     }
 
@@ -751,9 +779,8 @@ export class StyleSheet {
     const finalRules = layerName ? rules.map((r) => `@layer ${layerName}{${r}}`) : rules
 
     if (this.isSSR) {
-      for (const rule of finalRules) {
-        this._ssr.buffer.push(rule)
-      }
+      this.ssrRules.set(className, finalRules)
+      this.pushSSR(className)
     } else if (this.sheet) {
       for (const rule of finalRules) {
         try {
@@ -773,9 +800,27 @@ export class StyleSheet {
     return className
   }
 
+  /**
+   * Push a cache key's rules into the ACTIVE request's SSR buffer, once per
+   * request. Every SSR-side emit goes through here — the scoped insert, the
+   * cache-hit early returns, keyframes and globals — so the per-request dedup
+   * is one predicate, not four.
+   */
+  private pushSSR(key: string): void {
+    const st = this._ssr
+    if (st.seen.has(key)) return
+    const rules = this.ssrRules.get(key)
+    if (!rules) return
+    st.seen.add(key)
+    for (const rule of rules) st.buffer.push(rule)
+  }
+
   /** Insert a @keyframes rule. Deduplicates by animation name. */
   insertKeyframes(name: string, body: string): void {
-    if (this.cache.has(name)) return
+    if (this.cache.has(name)) {
+      if (this.isSSR) this.pushSSR(name)
+      return
+    }
 
     this.evictIfNeeded()
     this.cache.set(name, name)
@@ -783,7 +828,8 @@ export class StyleSheet {
     const rule = `@keyframes ${name}{${body}}`
 
     if (this.isSSR) {
-      this._ssr.buffer.push(rule)
+      this.ssrRules.set(name, [rule])
+      this.pushSSR(name)
     } else if (this.sheet) {
       try {
         const at = this.sheet.insertRule(rule, this.sheet.cssRules.length)
@@ -802,13 +848,17 @@ export class StyleSheet {
     const h = hash(cssText)
     const key = `global-${h}`
 
-    if (this.cache.has(key)) return
+    if (this.cache.has(key)) {
+      if (this.isSSR) this.pushSSR(key)
+      return
+    }
 
     this.evictIfNeeded()
     this.cache.set(key, key)
 
     if (this.isSSR) {
-      this._ssr.buffer.push(cssText)
+      this.ssrRules.set(key, [cssText])
+      this.pushSSR(key)
     } else if (this.sheet) {
       // When @layer isn't supported (e.g. happy-dom in tests, pre-2022
       // engines), the init probe leaves `supportsLayer` false. The scoped
@@ -902,10 +952,23 @@ export class StyleSheet {
    * Idempotent by `key` (the resolver's FNV hash of the bundle).
    */
   injectRules(rules: readonly string[], key: string): void {
-    if (this.injectedBundles.has(key)) return
+    // SSR keys the buffer push on a NAMESPACED key, because `injectedBundles`
+    // is per-INSTANCE (process-lifetime) exactly like `cache` — so a second
+    // request rendering a collapsed component the first one already injected
+    // would hit the dedup, push nothing into ITS buffer, and ship the
+    // collapsed class names with no rules. Same bug, same fix, same predicate
+    // as `insert`/`insertKeyframes`/`insertGlobal` (see `pushSSR`); the
+    // `bundle-` prefix keeps a bundle hash from colliding with a className or
+    // a user-chosen keyframe name in the shared `ssrRules` map.
+    const ssrKey = `bundle-${key}`
+    if (this.injectedBundles.has(key)) {
+      if (this.isSSR) this.pushSSR(ssrKey)
+      return
+    }
     this.injectedBundles.add(key)
     if (this.isSSR) {
-      for (const rule of rules) this._ssr.buffer.push(rule)
+      this.ssrRules.set(ssrKey, [...rules])
+      this.pushSSR(ssrKey)
       return
     }
     if (!this.sheet) return
@@ -944,18 +1007,17 @@ export class StyleSheet {
    * `injectedBundles` runtime dedup at consumer sites silently breaks
    * even when the underlying rule bundles are identical.
    *
-   * Important context — the resolver MUST also pair this with per-test
-   * resolver isolation OR truly-distinct dimension props per render to
-   * actually produce non-empty `getStyleRules()` slices: `insert()`
-   * short-circuits at `cache.has(className)` / `insertCache.get(icKey)`
-   * when a className has been seen, AND cache layers above the styler
-   * (styled.tsx `classCache` / `elClassCache` keyed on rocketstyle's
-   * `$rocketstyle`/`$rocketstate` identity, and rocketstyle's `_rsMemo`)
-   * survive between resolves within a single nested-Vite-SSR lifetime.
-   * A second resolve sharing dimension props with a prior one will hit
-   * the styled-component cache, skip `sheet.insert()` entirely, and
-   * leave the just-reset buffer empty for that className. The fix is
-   * resolver-level isolation (fresh nested Vite SSR per build) plus
+   * Clears the per-request "seen" set with the buffer, so a className the
+   * instance-wide `cache` already knows is pushed AGAIN into the fresh
+   * buffer on its next `insert()` (`pushSSR`). What this can NOT do is
+   * reach cache layers ABOVE the styler (styled.tsx `classCache` /
+   * `elClassCache` keyed on rocketstyle's `$rocketstyle`/`$rocketstate`
+   * identity, and rocketstyle's `_rsMemo`), which survive between resolves
+   * within a single nested-Vite-SSR lifetime: a second resolve sharing
+   * dimension props with a prior one hits the styled-component cache and
+   * never calls `sheet.insert()` at all, leaving the just-reset buffer
+   * empty for that className. The resolver therefore still needs
+   * resolver-level isolation (fresh nested Vite SSR per build) alongside
    * this buffer-reset to keep concurrent captures from interleaving.
    *
    * Internal-use only — NEVER call this from a request-handling path
@@ -967,6 +1029,7 @@ export class StyleSheet {
     this._ssr.buffer = []
     this._ssr.flushedIdx = 0
     this._ssr.layerDeclEmitted = false
+    this._ssr.seen.clear()
   }
 
   /**
@@ -1053,6 +1116,8 @@ export class StyleSheet {
     this._ssr.buffer = []
     this._ssr.flushedIdx = 0
     this._ssr.layerDeclEmitted = false
+    this._ssr.seen.clear()
+    this.ssrRules.clear()
     this.cache.clear()
     this.insertCache.clear()
     this.icKeysByClass.clear()
@@ -1062,6 +1127,7 @@ export class StyleSheet {
   /** Clear the dedup cache. Useful for HMR / dev-time reloads. */
   clearCache(): void {
     this.cache.clear()
+    this.ssrRules.clear()
     this.insertCache.clear()
     this.icKeysByClass.clear()
     this.domRules.clear()
@@ -1080,6 +1146,7 @@ export class StyleSheet {
    */
   clearAll(): void {
     this.cache.clear()
+    this.ssrRules.clear()
     this.insertCache.clear()
     this.icKeysByClass.clear()
     this.domRules.clear()
@@ -1087,6 +1154,7 @@ export class StyleSheet {
     this._ssr.buffer = []
     this._ssr.flushedIdx = 0
     this._ssr.layerDeclEmitted = false
+    this._ssr.seen.clear()
     if (this.sheet) {
       while (this.sheet.cssRules.length > 0) {
         this.sheet.deleteRule(0)

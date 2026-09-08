@@ -326,3 +326,40 @@ describe('@pyreon/kinetic browser smoke', () => {
     unmount()
   })
 })
+
+describe('kinetic `show` as the compiled `_rp` reactive prop (real Chromium)', () => {
+  // `show={isOpen}` compiles to `show: _rp(() => isOpen())`. Reading that
+  // getter ONCE at setup froze the accessor and left the element at opacity
+  // 0 forever — silently, since the children stay mounted. This asserts the
+  // INLINE STYLE the fade preset drives actually moves in a real browser,
+  // through the whole double-rAF enter cycle, for the compiled shape and the
+  // explicit-accessor control. See show-reactive-prop.test.tsx (happy-dom).
+  for (const [label, shape] of [
+    ['_rp getter', (sig: () => boolean) => _rp(() => sig())],
+    ['explicit accessor (control)', (sig: () => boolean) => () => sig()],
+  ] as const) {
+    it(`${label}: fades in when the signal flips`, async () => {
+      const sig = signal(false)
+      const { container, unmount } = mountInBrowser(
+        h(
+          Transition,
+          {
+            show: shape(sig),
+            enterStyle: { opacity: 0 },
+            enterToStyle: { opacity: 1 },
+            enterTransition: 'opacity 20ms linear',
+            leaveToStyle: { opacity: 0 },
+          },
+          h('div', { 'data-id': 'rp' }, 'hi'),
+        ),
+      )
+      const el = container.querySelector('[data-id="rp"]') as HTMLElement
+      expect(el.style.opacity).toBe('0')
+      sig.set(true)
+      await flush()
+      await new Promise((r) => setTimeout(r, 120))
+      expect(el.style.opacity).toBe('1')
+      unmount()
+    })
+  }
+})
