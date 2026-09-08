@@ -23,6 +23,8 @@ export interface RecordFile {
   mode: string
   runs: number
   timestamp: string
+  /** Where the recording ran (`local` / `ci:Linux`). Absent on pre-2026-09 files. */
+  host?: string
   medianWallMs: number
   medianHeapBytes: number
   counters: Record<string, number>
@@ -46,15 +48,24 @@ export interface DiffResult {
 }
 
 /**
- * "Hit" counters (suffix `.hit`) measure successful cache hits — a DROP
- * means cache stopped working, which is a regression. All other counters
- * measure work done — increases are regressions, drops are improvements.
+ * SUCCESS counters count a cheap path WINNING, so a DROP is the regression
+ * and a rise is the improvement. Everything else counts work done, where the
+ * signs are the other way round. Two naming conventions mark them, and the
+ * name is the whole classification — there is no catalog metadata:
  *
- * This naming convention is what lets the diff tool flip the sign
- * correctly without extra catalog metadata.
+ *   - `.hit` suffix — a cache answered instead of recomputing.
+ *   - `Fast` suffix — a reconciler fast path handled an update instead of
+ *     falling through to the general algorithm (`runtime.mountFor.insertFast`
+ *     and its `removeFast` / `clearFast` / `replaceFast` siblings).
+ *
+ * The `Fast` family predates this function and was silently read as WORK, so
+ * a fast path that started firing was reported as a regression (measured: a
+ * chat journey's `insertFast` 0 → 10 after #2669 landed the contiguous-
+ * insertion path, flagged 🔴) while a fast path that STOPPED firing — the
+ * genuine regression, and the reason those counters exist — was invisible.
  */
-function isHitCounter(name: string): boolean {
-  return name.endsWith('.hit')
+function isSuccessCounter(name: string): boolean {
+  return name.endsWith('.hit') || name.endsWith('Fast')
 }
 
 export function diffRecords(
@@ -74,21 +85,23 @@ export function diffRecords(
     const pct = before === 0 ? null : delta / before
     // A regression is a MEANINGFUL movement in the BAD direction:
     //   - work counters (default): UP is bad
-    //   - hit counters (.hit suffix): DOWN is bad (cache stopped working)
+    //   - success counters (.hit / Fast): DOWN is bad (the cheap path stopped
+    //     winning — a cache went cold, or a reconciler fast path stopped
+    //     firing and every update now takes the general algorithm)
     //
     // Tiny absolute movements are filtered by requiring the ABSOLUTE delta
     // exceed max(3, before * threshold). Prevents 0 → 1 or 2 → 3 from
     // tripping the gate on rarely-hit counters.
     const absoluteFloor = Math.max(3, before * threshold)
-    const badMove = isHitCounter(name) ? -delta : delta
+    const badMove = isSuccessCounter(name) ? -delta : delta
     const regressed = badMove > absoluteFloor
     entries.push({ name, before, after, delta, pct, regressed })
   }
   // Sort by "bad move" magnitude descending so the worst regressions bubble
   // up regardless of whether they're hit-drops or work-spikes.
   entries.sort((a, b) => {
-    const badA = isHitCounter(a.name) ? -a.delta : a.delta
-    const badB = isHitCounter(b.name) ? -b.delta : b.delta
+    const badA = isSuccessCounter(a.name) ? -a.delta : a.delta
+    const badB = isSuccessCounter(b.name) ? -b.delta : b.delta
     return badB - badA
   })
 
@@ -106,11 +119,20 @@ export function formatMarkdown(
   current: RecordFile,
   diff: DiffResult,
 ): string {
+  // Only the COUNTER table is gated; wall-clock and heap are informational.
+  // Say so when the two recordings come from different machine classes,
+  // because that is exactly when the percentages look alarming and mean
+  // nothing — a laptop baseline against a CI runner reads as +570%.
+  const hostNote =
+    baseline.host !== undefined && current.host !== undefined && baseline.host !== current.host
+      ? `\n> ⚠️ Recorded on different hosts (baseline \`${baseline.host}\`, current \`${current.host}\`).\n> Wall-clock and heap below are NOT comparable; only the counter table is meaningful.\n`
+      : ''
+
   const header = `# perf diff — ${current.app} / ${current.journey}
 
 **baseline** \`${baseline.sha}\` @ ${baseline.timestamp} — ${baseline.runs} run(s) median
 **current** \`${current.sha}\` @ ${current.timestamp} — ${current.runs} run(s) median
-
+${hostNote}
 | metric | baseline | current | Δ | % |
 | --- | ---: | ---: | ---: | ---: |
 | wall-clock (ms) | ${baseline.medianWallMs} | ${current.medianWallMs} | ${signed(diff.wallMsDelta)} | ${pctOf(baseline.medianWallMs, diff.wallMsDelta)} |

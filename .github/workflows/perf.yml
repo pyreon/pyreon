@@ -139,9 +139,13 @@ jobs:
           path: perf-results/${{ steps.sha.outputs.sha }}-${{ matrix.app }}-${{ matrix.journey }}.json
           retention-days: 30
 
+      # Runs on EVERY event, not just pull_request. A scheduled run that only
+      # RECORDS has no verdict, so nothing on main could ever report drift —
+      # the recording succeeded and the workflow went green regardless of what
+      # the numbers said. The comparison is cheap; only the POSTING is
+      # PR-specific, so that is where the event check belongs.
       - name: Diff against baseline (if present)
         id: diff
-        if: github.event_name == 'pull_request'
         continue-on-error: true
         run: |
           baseline="perf-results/baseline-${{ matrix.app }}-${{ matrix.journey }}.json"
@@ -154,6 +158,21 @@ jobs:
             echo "No baseline committed at $baseline — skipping diff." > "$summary"
             echo "(add one via a nightly run artifact when ready.)" >> "$summary"
             echo "summary_path=$summary" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The nightly's verdict has nowhere to be posted (no PR), so it goes to
+      # the run summary plus a warning annotation. Advisory by design: a
+      # counter regression on main must be VISIBLE without turning a data
+      # collection run red.
+      - name: Publish diff to the run summary
+        if: github.event_name != 'pull_request' && steps.diff.outputs.summary_path != ''
+        run: |
+          {
+            echo "## ${{ matrix.app }} / ${{ matrix.journey }}"
+            cat "${{ steps.diff.outputs.summary_path }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.diff.outputs.regressed }}" = "true" ]; then
+            echo "::warning title=perf drift on ${{ matrix.journey }}::A counter regressed against the committed baseline. See the run summary for the table."
           fi
 
       # Best-effort: this workflow is ADVISORY — a PR comment must never turn
