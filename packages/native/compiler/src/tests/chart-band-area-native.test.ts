@@ -64,15 +64,15 @@ describe('<PlotChart> band / stackedArea on native', () => {
   })
 
   it('the GRAMMAR forms desugar to the same marks the array form builds', () => {
-    // `<Plot><Layer/><Band/></Plot>` is the other spelling of the same spec.
+    // `<Plot><StackedArea/><Band/></Plot>` is the other spelling of the same spec.
     // `<Band>` is the one mark with no `y` — a region has two bounds and no
     // single value — so it needs its own desugar branch, and without it the
     // generic path rejected it as "needs a `y` channel".
-    const src = `import { Plot, Layer, Band } from '@pyreon/charts/plot'
+    const src = `import { Plot, StackedArea, Band } from '@pyreon/charts/plot'
 interface Row { m: string; a: number; lo: number; hi: number }
 const ROWS: Row[] = [{ m: 'Jan', a: 3, lo: 1, hi: 5 }]
 export function App() {
-  return <Plot data={ROWS} x="m" height={200}><Layer y="a" /><Band low="lo" high="hi" /></Plot>
+  return <Plot data={ROWS} x="m" height={200}><StackedArea y="a" /><Band low="lo" high="hi" /></Plot>
 }
 `
     for (const target of ['swift', 'kotlin'] as const) {

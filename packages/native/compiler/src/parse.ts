@@ -2515,7 +2515,7 @@ const RX_V1_METHODS = new Set([
   'average',
 ])
 
-const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
+export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
   [
     '@pyreon/rx',
     {
@@ -2674,7 +2674,7 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
         'waterfall',
         'stackedArea',
         'band',
-        'Layer',
+        'StackedArea',
         'Band',
         'smooth',
         'step',

@@ -12283,9 +12283,9 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   // cannot be a function reference and is reported.
   const tooltip = readStaticAttr(e, 'tooltip') === true
   const tipFormatter = chartAttrExpr(e, 'tooltipFormatter')
-  let tipLines = `tooltipLines(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label: $0.label, values: $0.values, color: $0.color) })${yFormat === undefined ? '' : `, ${yFormat}`})`
+  let tipLines = `tooltipLines(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label: $0.label, values: $0.values, color: $0.color, values2: $0.values2) })${yFormat === undefined ? '' : `, ${yFormat}`})`
   if (tooltip && tipFormatter !== undefined) {
-    if (tipFormatter.kind === 'identifier') tipLines = `${swiftIdent(tipFormatter.name)}(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label: $0.label, values: $0.values, color: $0.color) })).components(separatedBy: "\\n")`
+    if (tipFormatter.kind === 'identifier') tipLines = `${swiftIdent(tipFormatter.name)}(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label: $0.label, values: $0.values, color: $0.color, values2: $0.values2) })).components(separatedBy: "\\n")`
     else _emitWarnings.push('<PlotChart tooltipFormatter>: must be a NAMED function on native — an inline arrow is not lowered; the default lines apply.')
   }
   if (tooltip) {
@@ -12379,7 +12379,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   // The data description the web `aria-label` carries, from the same series
   // and categories the canvas painted (hidden series excluded, as on the web).
   const plotTitle = readStringAttrExpr(e, 'title', indent)
-  const describe = `describeChart(A11yInput(title: ${plotTitle ?? 'nil'}, categories: pyreonCats, series: pyreonSeries.map { A11ySeries(label: $0.label, values: $0.values, kind: $0.kind) }, format: ${yFormat ?? 'nil'}))`
+  const describe = `describeChart(A11yInput(title: ${plotTitle ?? 'nil'}, categories: pyreonCats, series: pyreonSeries.map { A11ySeries(label: $0.label, values: $0.values, kind: $0.kind, values2: $0.values2, errLow: $0.errLow, errHigh: $0.errHigh) }, format: ${yFormat ?? 'nil'}))`
   if (!navigating) return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent, describe)
   // The navigator's drag lives on a clear overlay over the strip (above the
   // preset strip), a sibling of the canvas: a touch that starts there is the

@@ -436,7 +436,7 @@ describe('chart hosts — <PlotChart marks> (the cartesian family)', () => {
     // bare title — the sentence the web `aria-label` carries, with the title
     // inside it. The invariant is unchanged (a titled host is named by its
     // title); the label says more than the title alone did.
-    expect(r.code).toContain('.accessibilityLabel(describeChart(A11yInput(title: "Revenue by month", categories: pyreonCats, series: pyreonSeries.map { A11ySeries(label: $0.label, values: $0.values, kind: $0.kind) }, format: nil)))')
+    expect(r.code).toContain('.accessibilityLabel(describeChart(A11yInput(title: "Revenue by month", categories: pyreonCats, series: pyreonSeries.map { A11ySeries(label: $0.label, values: $0.values, kind: $0.kind, values2: $0.values2, errLow: $0.errLow, errHigh: $0.errHigh) }, format: nil)))')
     expect(r.code).toContain('.accessibilityIdentifier("revenue")')
     // The second chart: an index-using accessor, no x, a given width (Group, no reader).
     expect(r.code).toContain('let pyreonValues0: [Double] = MONTHS.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(pyreonD.cost + pyreonI) }')

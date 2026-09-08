@@ -10299,9 +10299,9 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   // `tooltip` as a tap — mirror of the Swift emitter (a named `tooltipFormatter` lowers; an inline one is reported).
   const tooltip = readStaticAttrKotlin(e, 'tooltip') === true
   const tipFormatter = chartAttrExprKotlin(e, 'tooltipFormatter')
-  let tipLines = `tooltipLines(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label = it.label, values = it.values, color = it.color) })${yFormat === undefined ? '' : `, ${yFormat}`})`
+  let tipLines = `tooltipLines(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label = it.label, values = it.values, color = it.color, values2 = it.values2) })${yFormat === undefined ? '' : `, ${yFormat}`})`
   if (tooltip && tipFormatter !== undefined) {
-    if (tipFormatter.kind === 'identifier') tipLines = `${kotlinIdent(tipFormatter.name)}(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label = it.label, values = it.values, color = it.color) })).split("\\n")`
+    if (tipFormatter.kind === 'identifier') tipLines = `${kotlinIdent(tipFormatter.name)}(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label = it.label, values = it.values, color = it.color, values2 = it.values2) })).split("\\n")`
     else _emitWarnings.push('<PlotChart tooltipFormatter>: must be a NAMED function on native — an inline arrow is not lowered; the default lines apply.')
   }
   if (tooltip) {
@@ -10397,7 +10397,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     : undefined
   // The data description the web `aria-label` carries (mirror of the Swift emitter).
   const plotTitleRaw = readStaticAttrKotlin(e, 'title')
-  const describe = `describeChart(A11yInput(title = ${typeof plotTitleRaw === 'string' ? JSON.stringify(plotTitleRaw) : 'null'}, categories = pyreonCats, series = pyreonSeries.map { A11ySeries(label = it.label, values = it.values, kind = it.kind) }, format = ${yFormat ?? 'null'}))`
+  const describe = `describeChart(A11yInput(title = ${typeof plotTitleRaw === 'string' ? JSON.stringify(plotTitleRaw) : 'null'}, categories = pyreonCats, series = pyreonSeries.map { A11ySeries(label = it.label, values = it.values, kind = it.kind, values2 = it.values2, errLow = it.errLow, errHigh = it.errHigh) }, format = ${yFormat ?? 'null'}))`
   return kotlinFrameHostWithDensity(e, lets, cmds, tap, W, H, hasWidth, indent, windowed || tap !== '', overlay, describe)
 }
 

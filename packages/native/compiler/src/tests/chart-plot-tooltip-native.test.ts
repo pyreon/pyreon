@@ -56,14 +56,14 @@ describe('<PlotChart tooltip> — a tap tooltip on both targets', () => {
     const r = transform(TIP, { target: 'swift' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('@State private var pyreonTip: [String] = []')
-    expect(r.code).toContain('let pyreonLocal = plotHitBars(pyreonSpec, pyreonChartMeasure, Double(pyreonTap.location.x), Double(pyreonTap.location.y)); pyreonTip = pyreonLocal < 0 ? [] : tooltipLines(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label: $0.label, values: $0.values, color: $0.color) }), compact); pyreonTipAt = PyreonChartPt(x: Double(pyreonTap.location.x), y: Double(pyreonTap.location.y)); let i = pyreonLocal')
+    expect(r.code).toContain('let pyreonLocal = plotHitBars(pyreonSpec, pyreonChartMeasure, Double(pyreonTap.location.x), Double(pyreonTap.location.y)); pyreonTip = pyreonLocal < 0 ? [] : tooltipLines(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label: $0.label, values: $0.values, color: $0.color, values2: $0.values2) }), compact); pyreonTipAt = PyreonChartPt(x: Double(pyreonTap.location.x), y: Double(pyreonTap.location.y)); let i = pyreonLocal')
     expect(r.code).toContain(`+ renderTooltip(pyreonTip, pyreonTipAt, PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 200.0), TooltipOptions(fontSize: 11.0, fill: ${SW.surface}, border: ${SW.grid}, text: ${SW.text}, pad: 8.0, radius: 4.0), pyreonChartMeasure)`)
   })
   it('Kotlin: the same, with remembered state and the density-scaled tap', () => {
     const r = transform(TIP, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('var pyreonTip by remember { mutableStateOf(listOf<String>()) }')
-    expect(r.code).toContain('val pyreonLocal = plotHitBars(pyreonSpec, ::pyreonChartMeasure, (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble()); pyreonTip = if (pyreonLocal < 0) listOf() else tooltipLines(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label = it.label, values = it.values, color = it.color) }), ::compact); pyreonTipAt = PyreonChartPt(')
+    expect(r.code).toContain('val pyreonLocal = plotHitBars(pyreonSpec, ::pyreonChartMeasure, (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble()); pyreonTip = if (pyreonLocal < 0) listOf() else tooltipLines(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label = it.label, values = it.values, color = it.color, values2 = it.values2) }), ::compact); pyreonTipAt = PyreonChartPt(')
     expect(r.code).toContain(`+ renderTooltip(pyreonTip, pyreonTipAt, PyreonChartRect(0.0, 0.0, pyreonW, 200.0), TooltipOptions(fontSize = 11.0, fill = ${KT.surface}, border = ${KT.grid}, text = ${KT.text}, pad = 8.0, radius = 4.0), ::pyreonChartMeasure)`)
   })
   it('a tooltip alone installs the tap; under a window the select maps the local hit to the global index', () => {
@@ -77,7 +77,7 @@ describe('<PlotChart tooltip> — a tap tooltip on both targets', () => {
   it('a named tooltipFormatter lowers (its string split on newlines); the grammar\'s <Tip> draws too and names crosshair as web-only', () => {
     const f = transform(FORMATTED, { target: 'swift' })
     expect(f.warnings).toEqual([])
-    expect(f.code).toContain('pyreonTip = pyreonLocal < 0 ? [] : describe(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label: $0.label, values: $0.values, color: $0.color) })).components(separatedBy: "\\n")')
+    expect(f.code).toContain('pyreonTip = pyreonLocal < 0 ? [] : describe(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label: $0.label, values: $0.values, color: $0.color, values2: $0.values2) })).components(separatedBy: "\\n")')
     expect(transform(FORMATTED, { target: 'kotlin' }).code).toContain(').split("\\n")')
     const inline = transform(FORMATTED.replace('tooltipFormatter={describe}', 'tooltipFormatter={(c: TooltipContent) => c.title}'), { target: 'swift' })
     expect(inline.warnings).toEqual(['<PlotChart tooltipFormatter>: must be a NAMED function on native — an inline arrow is not lowered; the default lines apply.'])
