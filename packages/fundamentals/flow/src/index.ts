@@ -49,8 +49,6 @@ export type {
   WaypointPathParams,
 } from './edges'
 export {
-  collectEdgeMarkers,
-  DEFAULT_MARKER_END,
   DEFAULT_NODE_HEIGHT,
   DEFAULT_NODE_WIDTH,
   getBezierPath,
@@ -64,11 +62,15 @@ export {
   getStepPath,
   getStraightPath,
   getWaypointPath,
+  resolveHandleAnchor,
+} from './edges'
+export {
+  collectEdgeMarkers,
+  DEFAULT_MARKER_END,
   markerId,
   resolveEdgeMarkers,
-  resolveHandleAnchor,
   resolveMarker,
-} from './edges'
+} from './markers'
 // Core
 export { createFlow } from './flow'
 export { useFlow } from './use-flow'
