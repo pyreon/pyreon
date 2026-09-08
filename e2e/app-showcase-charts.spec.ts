@@ -173,35 +173,66 @@ test.describe('app-showcase /dashboard — plot engine interaction', () => {
     // screen (synthetic events do not care, which is how a host suite can be
     // green while a page hover does nothing). Scroll it in first.
     await canvas.scrollIntoViewIfNeeded()
-    const box = (await canvas.boundingBox())!
-    expect(box.width).toBeGreaterThan(100)
+    expect((await canvas.boundingBox())!.width).toBeGreaterThan(100)
 
     // The first mark is bars, so the tooltip answers only ON a bar — a gap
     // between bars is a miss by contract, and a point above a SHORT bar is a
     // miss too. So sweep a GRID, not one row: the spec knows neither the
     // gutter, the band width, nor which bars are tall.
     //
-    // And POLL the sweep rather than running it once. The chart plays its
-    // entrance on mount (bars rise over ~700ms), so a single pass that starts
-    // early finds every bar too short to hit and reports a miss that is really
-    // a race — the flake this spec had before it polled.
+    // The box is re-read on every pass. Reading it once and sweeping the
+    // captured coordinates is the stale-coordinate bug: the dashboard is still
+    // settling while this runs (images, the sibling ECharts pair, the query
+    // that gates this very chart), so a box measured early names a rectangle
+    // the canvas has since moved out of, and every probe lands on whatever now
+    // occupies those pixels. That reports "the hit test is broken" for a chart
+    // that was simply somewhere else — and it reports it deterministically, so
+    // it does not even read as a race.
+    //
+    // The poll covers the other half: the chart plays its entrance on mount
+    // (bars rise over ~700ms), so a pass that starts early finds every bar too
+    // short to hit.
     const tooltip = wrap.locator('[data-pyreon-chart-tooltip]')
     let x = 0
     let y = 0
     const sweep = async (): Promise<boolean> => {
+      const b = await canvas.boundingBox()
+      if (b === null) return false
       for (const fy of [0.75, 0.6, 0.45, 0.3]) {
         for (let fx = 0.12; fx < 0.95; fx += 0.04) {
-          x = box.x + box.width * fx
-          y = box.y + box.height * fy
+          x = b.x + b.width * fx
+          y = b.y + b.height * fy
           await page.mouse.move(x, y)
           if (await tooltip.isVisible()) return true
         }
       }
       return false
     }
-    await expect
-      .poll(sweep, { timeout: 15_000, message: 'no pointer position on the chart produced a tooltip' })
-      .toBe(true)
+    // On failure, say what is actually under the pointer. "No position
+    // produced a tooltip" is true of a covered canvas, a moved canvas and a
+    // broken hit test alike, and those want three different fixes.
+    const diagnose = async (): Promise<string> => {
+      const at = await page.evaluate(
+        ([px, py]) => {
+          const el = document.elementFromPoint(px as number, py as number)
+          if (el === null) return 'nothing (outside the viewport)'
+          const id = el.getAttribute('data-testid')
+          return `<${el.tagName.toLowerCase()}${id === null ? '' : ` data-testid="${id}"`}>`
+        },
+        [x, y],
+      )
+      const b = await canvas.boundingBox()
+      return `last probe (${Math.round(x)},${Math.round(y)}) hit ${at}; canvas box is ${
+        b === null ? 'gone' : `${Math.round(b.x)},${Math.round(b.y)} ${Math.round(b.width)}x${Math.round(b.height)}`
+      }`
+    }
+    let ok = false
+    try {
+      await expect.poll(sweep, { timeout: 15_000 }).toBe(true)
+      ok = true
+    } finally {
+      if (!ok) console.log(`[charts e2e] sweep found no tooltip — ${await diagnose()}`)
+    }
     await expect(tooltip).toBeVisible()
     await expect(tooltip).not.toHaveText('')
 
@@ -223,7 +254,8 @@ test.describe('app-showcase /dashboard — plot engine interaction', () => {
     await expect(picked).toHaveText('2')
 
     // Leaving hides the tooltip.
-    await page.mouse.move(box.x + box.width + 40, box.y + box.height + 40)
+    const away = (await canvas.boundingBox())!
+    await page.mouse.move(away.x + away.width + 40, away.y + away.height + 40)
     await expect(tooltip).toBeHidden()
   })
 })
