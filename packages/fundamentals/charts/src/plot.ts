@@ -116,6 +116,11 @@ export { lttb, minMaxBuckets } from './engine/decimate'
 // hit / a11y in, chrome + interaction + animation + accessibility out).
 export { canvasMeasure, paint, prepareCanvas } from './engine/canvas-web'
 export { A11Y_TABLE_MAX, canvasHost, orNull, shiftCmds } from './engine/canvas-host'
+// The RTL mirror. Exported because a host built outside this package (a
+// custom family, an SSR pipeline that composes its own list) needs the same
+// seam the built-in hosts use, and re-deriving it is how the two directions
+// drift apart.
+export { mirrorCmds, mirrorPoint, mirrorX } from './engine/rtl'
 export type { CanvasHostProps, CanvasHostSpec, LegendPosition } from './engine/canvas-host'
 // Animation primitives — the entrance easing, the value tween and the draw-list tween.
 export { easeOutCubic, sameShape, sameValues, tweenValues } from './engine/tween'

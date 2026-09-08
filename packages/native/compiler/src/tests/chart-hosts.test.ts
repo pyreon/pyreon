@@ -466,8 +466,12 @@ export function C() { return (<><PlotChart animate={false} data={ROWS} marks={[b
     const w = r.warnings.join('\n')
     expect(w).not.toContain('bubble')
     expect(w).toContain('<PlotChart> mark 1: a `curve` callback is not lowered')
-    // Every PlotChart prop lowers now; the by-name warning list is empty and must stay silent.
-    expect(w).not.toContain('is not lowered on native yet')
+    // Every PlotChart prop lowers here; the by-name PROP list must stay
+    // silent. Matched on the list warning's own tail rather than on "is not
+    // lowered on native", which the `curve` message above also contains —
+    // the shortened string would assert the absence of a warning the very
+    // next line requires.
+    expect(w).not.toContain('the chart renders without.')
     expect(w).toContain('<PlotChart marks>: must be an inline array of mark calls')
   })
   it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine + measurer) accepts the plot emit', () => {
@@ -1318,7 +1322,7 @@ describe('PlotChart events/actions props on native', () => {
   it('warn BY NAME — attrs AND event props — and the chart still lowers', () => {
     for (const target of ['swift', 'kotlin'] as const) {
       const r = transform(EVENTS_MODEL, { target })
-      expect(r.warnings.some((w) => w.includes('`selectedMode`, `onHighlight` are not lowered on native yet'))).toBe(true)
+      expect(r.warnings.some((w) => w.includes('`selectedMode`, `onHighlight` are not lowered on native'))).toBe(true)
       expect(r.code).toContain('renderChart(')
     }
   })

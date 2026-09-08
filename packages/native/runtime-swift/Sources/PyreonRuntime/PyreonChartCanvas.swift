@@ -165,6 +165,43 @@ public func pyreonShiftCmds(_ cmds: [PyreonDrawCmd], _ dy: Double) -> [PyreonDra
 /// `rgba(r, g, b, a)` (what `withAlpha` and the ramps emit). An unknown
 /// string paints clear rather than trapping: a wrong color must never take
 /// the chart down.
+/// Mirror a draw list about the canvas's vertical centreline — a right-to-left
+/// chart IS the mirror of its left-to-right one.
+///
+/// The twin of `mirrorCmds` in the web engine (`engine/rtl.ts`), hand-written
+/// here for the same reason `pyreonShiftCmds` is: the draw command is a
+/// discriminated union in TypeScript and this flat struct on native, so the
+/// web switch has no lowering. `native-chart-mirror-parity.test.ts` runs the
+/// same commands through both and compares the numbers, so the two cannot
+/// drift.
+///
+/// A rect's `x` is its LEFT edge, so the mirrored left edge is the mirror of
+/// its RIGHT edge; corner radii swap left-to-right; a text anchor flips and a
+/// rotated label's angle negates. Strings are never reversed.
+public func pyreonMirrorCmds(_ cmds: [PyreonDrawCmd], _ width: Double) -> [PyreonDrawCmd] {
+    func mx(_ x: Double) -> Double { width - x }
+    func mp(_ p: PyreonChartPt) -> PyreonChartPt { PyreonChartPt(x: mx(p.x), y: p.y) }
+    var out: [PyreonDrawCmd] = []
+    out.reserveCapacity(cmds.count)
+    for c in cmds {
+        var m = c
+        if let r = c.rect { m.rect = PyreonChartRect(x: mx(r.x + r.w), y: r.y, w: r.w, h: r.h) }
+        if let f = c.from { m.from = mp(f) }
+        if let t = c.to { m.to = mp(t) }
+        if let pts = c.points { m.points = pts.map { mp($0) } }
+        if let ctr = c.center { m.center = mp(ctr) }
+        if let at = c.at { m.at = mp(at) }
+        if let cs = c.corners, cs.count == 4 { m.corners = [cs[1], cs[0], cs[3], cs[2]] }
+        if let g = c.grad {
+            m.grad = PyreonChartGradient(from: mp(g.from), to: mp(g.to), stops: g.stops)
+        }
+        if let a = c.align { m.align = a == "start" ? "end" : a == "end" ? "start" : a }
+        if let r = c.rotate { m.rotate = -r }
+        out.append(m)
+    }
+    return out
+}
+
 public func pyreonChartColor(_ s: String) -> Color {
     let str = s.trimmingCharacters(in: .whitespaces)
     if str.hasPrefix("#") {

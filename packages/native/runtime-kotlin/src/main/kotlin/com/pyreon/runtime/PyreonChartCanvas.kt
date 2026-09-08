@@ -153,6 +153,52 @@ fun pyreonShiftCmds(cmds: List<PyreonDrawCmd>, dy: Double): List<PyreonDrawCmd> 
     }
 
 /**
+ * Widen a chart channel to `Double`.
+ *
+ * The Swift twin of the same name exists because PMTC types a bare `number`
+ * as `Int` and every engine function takes `Double`; emitting the coercion by
+ * NAME lets one target-neutral desugar serve both backends instead of each
+ * spelling its own conversion.
+ */
+fun pyreonChartDouble(v: Double): Double = v
+
+fun pyreonChartDouble(v: Int): Double = v.toDouble()
+
+/**
+ * Mirror a draw list about the canvas's vertical centreline — a right-to-left
+ * chart IS the mirror of its left-to-right one.
+ *
+ * The twin of `mirrorCmds` in the web engine (`engine/rtl.ts`), hand-written
+ * here for the same reason `pyreonShiftCmds` is: the draw command is a
+ * discriminated union in TypeScript and this flat struct on native, so the
+ * web switch has no lowering. `native-chart-mirror-parity.test.ts` runs the
+ * same commands through both and compares the numbers, so the two cannot
+ * drift.
+ *
+ * A rect's `x` is its LEFT edge, so the mirrored left edge is the mirror of
+ * its RIGHT edge; corner radii swap left-to-right; a text anchor flips and a
+ * rotated label's angle negates. Strings are never reversed.
+ */
+fun pyreonMirrorCmds(cmds: List<PyreonDrawCmd>, width: Double): List<PyreonDrawCmd> {
+    fun mx(x: Double): Double = width - x
+    fun mp(p: PyreonChartPt): PyreonChartPt = PyreonChartPt(mx(p.x), p.y)
+    return cmds.map { c ->
+        c.copy(
+            rect = c.rect?.let { PyreonChartRect(mx(it.x + it.w), it.y, it.w, it.h) },
+            from = c.from?.let { mp(it) },
+            to = c.to?.let { mp(it) },
+            points = c.points?.map { mp(it) },
+            center = c.center?.let { mp(it) },
+            at = c.at?.let { mp(it) },
+            corners = c.corners?.let { if (it.size == 4) listOf(it[1], it[0], it[3], it[2]) else it },
+            grad = c.grad?.let { PyreonChartGradient(mp(it.from), mp(it.to), it.stops) },
+            align = c.align?.let { if (it == "start") "end" else if (it == "end") "start" else it },
+            rotate = c.rotate?.let { -it },
+        )
+    }
+}
+
+/**
  * A Compose brush from the engine's gradient, or null when there is none (the
  * caller then paints the solid colour).
  */
