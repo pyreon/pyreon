@@ -100,11 +100,18 @@ export function chartTable(input: A11yInput): A11yTable {
 
   const rows: string[][] = []
   for (let i = 0; i < n; i++) {
-    const row = [input.categories[i] ?? `${i + 1}`]
+    // Bounds-checked, not coalesced: a subscript past the end is a crash on
+    // Swift, not an `undefined` — and a series may be longer than the
+    // categories (or shorter than its siblings).
+    const row: string[] = [i < input.categories.length ? input.categories[i]! : `${i + 1}`]
     for (const s of input.series) {
-      const v = s.values[i]
-      // A gap is an empty cell, not the word NaN.
-      row.push(v === undefined || v !== v ? '' : fmt(v))
+      if (i >= s.values.length) {
+        row.push('')
+        continue
+      }
+      const v = s.values[i]!
+      // A gap (NaN) is an empty cell, not the word NaN.
+      row.push(v !== v ? '' : fmt(v))
     }
     rows.push(row)
   }

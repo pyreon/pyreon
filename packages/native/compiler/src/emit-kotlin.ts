@@ -79,7 +79,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -9614,7 +9614,16 @@ function emitKotlinChartHostInner(e: Extract<ExprIR, { kind: 'jsx-element' }>, i
 }
 
 /** The table-driven hosts (`CHART_HOSTS`) — mirror of the Swift generic host. */
+/** Mirror of the Swift emitter's `swiftChartA11y`: explicit `accessibilityLabel` › the data description › `title` › the family word. */
+function kotlinChartA11y(e: Extract<ExprIR, { kind: 'jsx-element' }>, describe: string | undefined): string {
+  const explicit = readStringAttrExprKotlin(e, 'accessibilityLabel', 0)
+  const titleRaw = readStaticAttrKotlin(e, 'title')
+  const label = explicit ?? describe ?? (typeof titleRaw === 'string' ? JSON.stringify(titleRaw) : JSON.stringify(chartDefaultLabel(e.tag)))
+  return `.semantics { contentDescription = ${label} }`
+}
+
 function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const describe: string | undefined = undefined
   const tag = e.tag
   const spec = CHART_HOSTS[tag]!
   for (const p of spec.warnProps ?? []) {
@@ -9713,8 +9722,7 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   // / padding — so `data-testid` reaches the node.
   const size = hasWidth ? `Modifier.width((${W}).dp).height((${H}).dp)` : `Modifier.fillMaxWidth().height((${H}).dp)`
   const generic = emitKotlinLayoutModifier(e)
-  const titleRaw = readStaticAttrKotlin(e, 'title')
-  const titleMod = typeof titleRaw === 'string' ? `.semantics { contentDescription = ${JSON.stringify(titleRaw)} }` : ''
+  const titleMod = kotlinChartA11y(e, describe)
   const modifier = size + tap + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))
   const canvas = `PyreonChartCanvas(cmds = ${cmds}, modifier = ${modifier})`
   // A tap needs the density from a composable scope, so a tappable host always
@@ -9750,6 +9758,7 @@ function kotlinChartAccessor(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: s
 }
 
 function emitKotlinAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const describe: string | undefined = undefined
   const tag = e.tag
   const spec = ACCESSOR_CHART_HOSTS[tag]!
   const dataV = chartAttrExprKotlin(e, spec.data)
@@ -9810,8 +9819,7 @@ function emitKotlinAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   if (hoist) return kotlinFrameHostWithTap(e, lets, cmds, tap, W, H, hasWidth, indent)
   const size = hasWidth ? `Modifier.width((${W}).dp).height((${H}).dp)` : `Modifier.fillMaxWidth().height((${H}).dp)`
   const generic = emitKotlinLayoutModifier(e)
-  const titleRaw = readStaticAttrKotlin(e, 'title')
-  const titleMod = typeof titleRaw === 'string' ? `.semantics { contentDescription = ${JSON.stringify(titleRaw)} }` : ''
+  const titleMod = kotlinChartA11y(e, describe)
   const modifier = size + tap + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))
   const canvas = `PyreonChartCanvas(cmds = ${cmds}, modifier = ${modifier})`
   if (hasWidth && tap === '') return canvas
@@ -9823,6 +9831,7 @@ function emitKotlinAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
 
 /** Mirror of the Swift gauge host: renderGauge over a double-height box + the value text. */
 function emitKotlinGaugeHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const describe: string | undefined = undefined
   const valueV = chartAttrExprKotlin(e, 'value')
   if (valueV === undefined) {
     _emitWarnings.push('<GaugeChart>: needs a `value` attribute on native; emitting an empty Box().')
@@ -9842,8 +9851,7 @@ function emitKotlinGaugeHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   const cmds = `renderGauge(${value}, PyreonChartRect(0.0, 0.0, ${W}, ${H} * 2.0), ${opts})${text}`
   const size = hasWidth ? `Modifier.width((${W}).dp).height((${H}).dp)` : `Modifier.fillMaxWidth().height((${H}).dp)`
   const generic = emitKotlinLayoutModifier(e)
-  const titleRaw = readStaticAttrKotlin(e, 'title')
-  const titleMod = typeof titleRaw === 'string' ? `.semantics { contentDescription = ${JSON.stringify(titleRaw)} }` : ''
+  const titleMod = kotlinChartA11y(e, describe)
   const canvas = `PyreonChartCanvas(cmds = ${cmds}, modifier = ${size + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))})`
   if (hasWidth) return canvas
   const pad = ' '.repeat(indent + 2)
@@ -10300,11 +10308,14 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const overlay = navigating
     ? `Box(modifier = Modifier.fillMaxWidth().offset(y = ((${H})${below}).dp).height((pyreonNavigator.height).dp).pointerInput(Unit) { awaitEachGesture { val pyreonDown = awaitFirstDown(requireUnconsumed = false); pyreonNavAnchor = pyreonZoom; pyreonNavDx = 0.0; pyreonNavKind = navigatorHit(pyreonNavigator.strip, pyreonZoom, (pyreonDown.position.x / pyreonDensity).toDouble()); drag(pyreonDown.id) { pyreonChange -> val pyreonStep = pyreonChange.positionChange(); pyreonChange.consume(); pyreonNavDx = pyreonNavDx + (pyreonStep.x / pyreonDensity).toDouble(); pyreonZoom = navigatorDrag(pyreonNavKind, pyreonNavAnchor, pyreonNavDx / pyreonNavigator.strip.w) }; pyreonNavKind = 0 } })`
     : undefined
-  return kotlinFrameHostWithDensity(e, lets, cmds, tap, W, H, hasWidth, indent, windowed || tap !== '', overlay)
+  // The data description the web `aria-label` carries (mirror of the Swift emitter).
+  const plotTitleRaw = readStaticAttrKotlin(e, 'title')
+  const describe = `describeChart(A11yInput(title = ${typeof plotTitleRaw === 'string' ? JSON.stringify(plotTitleRaw) : 'null'}, categories = pyreonCats, series = pyreonSeries.map { A11ySeries(label = it.label, values = it.values, kind = it.kind) }, format = ${yFormat ?? 'null'}))`
+  return kotlinFrameHostWithDensity(e, lets, cmds, tap, W, H, hasWidth, indent, windowed || tap !== '', overlay, describe)
 }
 
 /** `kotlinFrameHost` with hoisted `val`s in the BoxWithConstraints scope (always emitted, so the vals have a scope). */
-function kotlinFrameHostLets(e: Extract<ExprIR, { kind: 'jsx-element' }>, lets: readonly string[], cmds: string, hit: ((x: string, y: string) => string) | null, W: string, H: string, hasWidth: boolean, indent: number, names: readonly string[] = ['selectindex', 'select']): string {
+function kotlinFrameHostLets(e: Extract<ExprIR, { kind: 'jsx-element' }>, lets: readonly string[], cmds: string, hit: ((x: string, y: string) => string) | null, W: string, H: string, hasWidth: boolean, indent: number, names: readonly string[] = ['selectindex', 'select'], describe?: string): string {
   const onSel = hit === null ? undefined : e.attrs.find((a) => a.kind === 'event' && names.includes(a.name))
   const tap =
     onSel?.kind === 'event' && hit !== null
@@ -10312,8 +10323,7 @@ function kotlinFrameHostLets(e: Extract<ExprIR, { kind: 'jsx-element' }>, lets: 
       : ''
   const size = hasWidth ? `Modifier.width((${W}).dp).height((${H}).dp)` : `Modifier.fillMaxWidth().height((${H}).dp)`
   const generic = emitKotlinLayoutModifier(e)
-  const titleRaw = readStaticAttrKotlin(e, 'title')
-  const titleMod = typeof titleRaw === 'string' ? `.semantics { contentDescription = ${JSON.stringify(titleRaw)} }` : ''
+  const titleMod = kotlinChartA11y(e, describe)
   const canvas = `PyreonChartCanvas(cmds = ${cmds}, modifier = ${size + tap + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))})`
   const pad = ' '.repeat(indent + 2)
   const widthLine = hasWidth ? '' : `${pad}val pyreonW = maxWidth.value.toDouble()\n`
@@ -10363,11 +10373,10 @@ function kotlinChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries:
 }
 
 /** A frame host whose tap modifier is already built (the pie's hit needs the chrome offset, which `kotlinFrameHostLets` cannot express). */
-function kotlinFrameHostWithTap(e: Extract<ExprIR, { kind: 'jsx-element' }>, lets: readonly string[], cmds: string, tap: string, W: string, H: string, hasWidth: boolean, indent: number): string {
+function kotlinFrameHostWithTap(e: Extract<ExprIR, { kind: 'jsx-element' }>, lets: readonly string[], cmds: string, tap: string, W: string, H: string, hasWidth: boolean, indent: number, describe?: string): string {
   const size = hasWidth ? `Modifier.width((${W}).dp).height((${H}).dp)` : `Modifier.fillMaxWidth().height((${H}).dp)`
   const generic = emitKotlinLayoutModifier(e)
-  const titleRaw = readStaticAttrKotlin(e, 'title')
-  const titleMod = typeof titleRaw === 'string' ? `.semantics { contentDescription = ${JSON.stringify(titleRaw)} }` : ''
+  const titleMod = kotlinChartA11y(e, describe)
   const canvas = `PyreonChartCanvas(cmds = ${cmds}, modifier = ${size + tap + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))})`
   const pad = ' '.repeat(indent + 2)
   const widthLine = hasWidth ? '' : `${pad}val pyreonW = maxWidth.value.toDouble()\n`
@@ -10431,11 +10440,10 @@ function kotlinPlotRowMap(rows: string, body: string, zoomed: boolean): string {
 }
 
 /** `kotlinFrameHostWithTap` that can also force the density line (the transform gesture reads it even without a tap). */
-function kotlinFrameHostWithDensity(e: Extract<ExprIR, { kind: 'jsx-element' }>, lets: readonly string[], cmds: string, tap: string, W: string, H: string, hasWidth: boolean, indent: number, needsDensity: boolean, overlay?: string): string {
+function kotlinFrameHostWithDensity(e: Extract<ExprIR, { kind: 'jsx-element' }>, lets: readonly string[], cmds: string, tap: string, W: string, H: string, hasWidth: boolean, indent: number, needsDensity: boolean, overlay?: string, describe?: string): string {
   const size = hasWidth ? `Modifier.width((${W}).dp).height((${H}).dp)` : `Modifier.fillMaxWidth().height((${H}).dp)`
   const generic = emitKotlinLayoutModifier(e)
-  const titleRaw = readStaticAttrKotlin(e, 'title')
-  const titleMod = typeof titleRaw === 'string' ? `.semantics { contentDescription = ${JSON.stringify(titleRaw)} }` : ''
+  const titleMod = kotlinChartA11y(e, describe)
   const pad = ' '.repeat(indent + 2)
   const identity = titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))
   // With an overlay the host is a Box carrying the size + identity modifiers; the
