@@ -2499,7 +2499,7 @@ describeNative('text fusion — parity', () => {
 /**
  * A NAMESPACED attribute name (`xlink:href`, `xml:lang`) parses as
  * `JSXNamespacedName`, not `JSXIdentifier`. Every name reader in the template
- * emitter is written `name?.type === 'JSXIdentifier' ? … : ''`, so the
+ * emitter used to be written `name?.type === 'JSXIdentifier' ? … : ''`, so the
  * qualified name arrived as the EMPTY STRING — and the two backends then
  * produced two DIFFERENT wrong answers, neither of them an error:
  *
@@ -2509,27 +2509,46 @@ describeNative('text fusion — parity', () => {
  *           dynamic → no setter emitted at all
  *
  * So `<use xlink:href="#icon">` — the SVG sprite idiom — rendered nothing in
- * every compiled app, silently, and differently per backend. Both now BAIL the
- * element to `h()`, where the runtime sets the qualified name correctly and
- * runs the url guard over it (`xlink:href` is in `URL_ATTRS`).
+ * every compiled app, silently, and differently per backend.
  *
- * The equivalence assertion is the load-bearing half: a bail is only a fix if
- * BOTH backends take it, and a one-sided bail is exactly the byte-divergence
- * this file exists to catch.
+ * Both backends now read the name through ONE helper (`jsxAttrName` /
+ * `jsx_attr_name`), so the qualified name reaches the bake, the dynamic setter
+ * and the prescan alike, and the element KEEPS its template. The bail that
+ * stood here first was the safe half of the fix and is gone: it cost the
+ * element its template AND landed on an `h()` path that was itself wrong for
+ * this shape (`setAttribute('xlink:href')` writes a null-namespace attribute an
+ * SVG `<use>` ignores — measured `bbox.width === 0` in Chromium), so it moved
+ * the bug rather than closing it. The namespace is resolved in the runtime now;
+ * see `foreignAttrNamespace` in runtime-dom's props.ts.
+ *
+ * The equivalence assertion is the load-bearing half: a one-sided fix is
+ * exactly the byte-divergence this file exists to catch, and the corpus here is
+ * the ONLY thing that exercises the shape on both backends.
  */
-describeNative('namespaced attribute names bail to h() on both backends', () => {
+describeNative('namespaced attribute names — both backends emit identically', () => {
   const shapes = [
     '<div><use xlink:href={u} /></div>',
     '<div><use xlink:href="/static" /></div>',
     '<div><a xlink:href={u}>x</a></div>',
     '<div><span xml:lang="cs">x</span></div>',
     '<svg><use xlink:href={u} /></svg>',
-    // Mixed with ordinary attributes — the whole element bails, not just the
-    // namespaced attribute, because a partially-baked element would lose it.
+    '<svg><use xlink:href="#icon" /></svg>',
+    // Mixed with ordinary attributes on the same element.
     '<div><use href={a} xlink:href={b} class="c" /></div>',
-    // A namespaced attribute on a NESTED element bails that element; the
-    // ancestor loses its template too (it can no longer bake the subtree).
+    // A namespaced attribute on a NESTED element, with static siblings whose
+    // ref walks must survive it.
     '<div><p>ok</p><use xlink:href={u} /></div>',
+    '<svg><title>t</title><use xlink:href={u} class="i" /><desc>d</desc></svg>',
+    // Two namespaced attributes on one element.
+    '<svg><use xlink:href="#a" xlink:title="t" /></svg>',
+    // A namespaced attribute on the ROOT element.
+    '<use xlink:href={u} />',
+    // A namespaced attribute inside a `.map` row (the per-item emit path).
+    '<ul>{items.map((i) => <use xlink:href={i.id} />)}</ul>',
+    // Namespaced on a COMPONENT — must reach the props object, not the template.
+    '<Comp xlink:href={u} />',
+    // Duplicate namespaced attrs — JSX last-wins, which the emitter dedupes.
+    '<svg><use xlink:href="#a" xlink:href="#b" /></svg>',
   ]
   for (const src of shapes) {
     test(`client: ${src}`, () => compare(src))
@@ -2537,21 +2556,25 @@ describeNative('namespaced attribute names bail to h() on both backends', () => 
     test(`ssr _ssr: ${src}`, () => compareSsrTemplate(src))
   }
 
-  test('the bail is REAL on both backends — no _tpl, no empty-named setter', () => {
-    for (const src of ['<div><use xlink:href={u} /></div>', '<div><use xlink:href="/s" /></div>']) {
+  test('the element KEEPS its template and carries the QUALIFIED name', () => {
+    for (const [src, expected] of [
+      ['<div><use xlink:href={u} /></div>', '_setAttr(__e0, "xlink:href", u)'],
+      ['<div><use xlink:href="/static" /></div>', 'xlink:href=\\"/static\\"'],
+    ] as const) {
       for (const [name, code] of [
         ['js', transformJSX_JS(src, 'test.tsx').code],
         ['native', nativeTransform!(src, 'test.tsx', false, null).code],
       ] as const) {
-        expect(code, `${name}: must not templatize`).not.toContain('_tpl(')
-        expect(code, `${name}: must not emit an empty-named setter`).not.toContain('_setAttr(__e0, ""')
-        // …and the attribute SURVIVES into the output for the runtime to apply.
-        expect(code, `${name}: attribute must survive`).toContain('xlink:href')
+        expect(code, `${name}: must templatize`).toContain('_tpl(')
+        expect(code, `${name}: must carry the qualified name`).toContain(expected)
+        // The two pre-fix wrong answers, one per backend.
+        expect(code, `${name}: no empty-named setter`).not.toContain('_setAttr(__e0, ""')
+        expect(code, `${name}: no empty-named bake`).not.toContain('<use =')
       }
     }
   })
 
-  test('an ordinary attribute on the same tag still templatizes (the bail is scoped)', () => {
+  test('an ordinary attribute on the same tag is byte-identical to before', () => {
     for (const code of [
       transformJSX_JS('<div><use href={u} /></div>', 'test.tsx').code,
       nativeTransform!('<div><use href={u} /></div>', 'test.tsx', false, null).code,
