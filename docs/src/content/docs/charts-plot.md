@@ -163,7 +163,16 @@ draw in array order.
 | `groupedBars(y, options?)` | Side-by-side bars per category. |
 | `bubble(y, r, options?)` | Points with a per-datum radius channel. |
 | `waterfall(y, options?)` | Floating steps from running total to running total (the bridge chart); `negativeColor` fills the falls, dashed connectors carry the level across. |
+| `stackedArea(y, options?)` | Shares over time: one filled area per mark, each between the running total below it and its own top, so the topmost outline is the total. |
+| `band(low, high, options?)` | A filled REGION between two channels — a confidence interval or a min/max range. Two accessors, not one: a region has two bounds and no single value, so its floor is the data rather than the axis an `area` closes to. `showValues` labels the HIGH edge; the tooltip and the accessible table carry both. |
+| `bollinger(y, window, k?)` | The ±k·σ envelope as a filled `band` plus its middle line — an ARRAY of two marks to spread. Its bounds are computed from the series (a rolling window), which is what `band` supports through `transform`/`transform2`. |
 | `histogram(rows, x, options?)` | Not a mark but a spread: bins the `x` channel (`bins`, nice-step edges) and returns `{ data, x, marks }` for `<PlotChart {...histogram(rows, (d) => d.age, { bins: 12 })} />`. |
+
+<Example file="./examples/charts/plot-marks-intervals" title="The marks that are not one value per category" />
+
+That second demo covers the shapes the table above describes and the first demo
+does not draw: an interval, a rolling envelope, shares over time, a running
+total, and a raw sample binned.
 
 `bars`, `line`, `area` and `points` also take `errorLow` / `errorHigh`
 accessors: a capped whisker from the low bound to the high one through each
