@@ -824,7 +824,9 @@ function NodeLayer(props: {
         ) {
           warnedNodeTypes.add(initialNode.type)
           console.warn(
-            `[Pyreon] <Flow>: node "${initialNode.id}" has type "${initialNode.type}" but nodeTypes has no such key (known: ${Object.keys(nodeTypes).map((k) => `"${k}"`).join(', ')}) — rendering the default node.`,
+            `[Pyreon] <Flow>: node "${initialNode.id}" has type "${initialNode.type}" but nodeTypes has no such key (known: ${Object.keys(nodeTypes)
+              .sort()
+              .map((k) => `"${k}"`).join(', ')}) — rendering the default node.`,
           )
         }
 
