@@ -1,6 +1,6 @@
 // Marks → draw commands. The whole chart, as plain data.
 
-import { computeLayout, layoutBars, layoutBarsH, layoutSeriesPoints, layoutSeriesPointsAt } from './layout'
+import { computeLayout, layoutBars, layoutBarsH, layoutSeriesPoints, layoutSeriesPointsAt, layoutSeriesPointsH } from './layout'
 import { DEFAULT_PALETTE } from './palette'
 import { layoutGroupedBars, layoutGroupedBarsH, layoutStackedBars, layoutStackedBarsH, layoutWaterfall, normalizeStack, stackCumulative, stackedExtent, waterfallExtent } from './stack'
 import type { Formatter } from './format'
@@ -1217,11 +1217,9 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   // under an area fill marks nothing) and UNDER the axis labels.
   const markers = spec.markers ?? []
   for (const m of markers) {
-    if (spec.horizontal === true) continue
     const rawSeriesIndex = m.seriesIndex ?? 0.0
     const s = spec.series[Math.floor(rawSeriesIndex)]
     if (s === undefined) continue
-    if (s.kind === 'stacked' || s.kind === 'grouped') continue
     const n = s.values.length
     if (n === 0) continue
     let idx = -1
@@ -1254,11 +1252,23 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     if (idx < 0) continue
     const mDomain = seriesOnRightAxis(s, spec) ? y2Domain : yDomain
     const xsM = spec.xValues ?? []
-    const pts =
-      xsM.length > 0
-        ? layoutSeriesPointsAt(s.values, xsM, plot, mDomain, l.xDomainUsed)
-        : layoutSeriesPoints(s.values, plot, mDomain)
-    const p = pts[idx]
+    // The anchor is whatever the mark's own geometry put there. Markers used
+    // to skip the flipped frame and the set-laid-out kinds entirely — a
+    // silent no-op on three shapes, while annotations drew on all of them.
+    //
+    //   * stacked / grouped: the TOP CENTRE of that series' own segment, so
+    //     the marker sits on the piece it names rather than at the raw value,
+    //     which is not where a stacked datum is drawn at all.
+    //   * horizontal: the band-centred placement the flipped bars use.
+    const segMarker = markerAnchor(spec, rawSeriesIndex, idx, plot, yDomain)
+    const p =
+      segMarker.length > 0
+        ? segMarker[0]
+        : spec.horizontal === true
+          ? layoutSeriesPointsH(s.values, plot, mDomain)[idx]
+          : xsM.length > 0
+            ? layoutSeriesPointsAt(s.values, xsM, plot, mDomain, l.xDomainUsed)[idx]
+            : layoutSeriesPoints(s.values, plot, mDomain)[idx]
     if (p === undefined) continue
     const mColor = m.color ?? s.color
     out.push({ kind: 'circle', center: p, radius: (m.radius ?? 4.0) * progress, fill: mColor })
@@ -1473,6 +1483,71 @@ export function stackedHitAt(
 }
 
 /** `stackedHitAt` over a plot rect the caller already laid out. */
+/**
+ * Where a marker sits on a SET-laid-out series (`stacked` / `grouped`).
+ *
+ * Addressed by SERIES INDEX, and returning a 0- or 1-element list rather than
+ * an optional. Both are the engine's native subset speaking, and both were
+ * found by the generator rather than by review: an optional return lowers to
+ * nothing, and comparing two `Series` with `===` cannot lower at all, because
+ * a Series is a STRUCT on Swift and Kotlin — there is no identity to compare.
+ * Everything here is index arithmetic for that reason.
+ *
+ * The anchor matters because a stacked datum is NOT drawn at its raw value:
+ * it is drawn at its running total, in a segment whose x is a band centre.
+ * Putting a marker through the point-like placement would land it where the
+ * data never appears, which is why markers used to skip these kinds outright
+ * rather than land in the wrong place. Reading the segment back from the same
+ * layout the paint used is what makes the anchor honest.
+ */
+export function markerAnchor(spec: ChartSpec, seriesIdx: Double, idx: number, plot: Rect, yDomain: Domain): Pt[] {
+  const out: Pt[] = []
+  // `seriesIdx` stays a DOUBLE and is matched by a Double counter rather than
+  // used as a subscript: the caller has it as `Math.floor(...)`, which lowers
+  // to a Swift `Double`, and handing that to an Int parameter is the same
+  // Int/Double slip the argmax branches above already document. Scanning
+  // costs one pass over a series list the render is walking anyway.
+  let kind = ''
+  let f = 0.0
+  for (const q of spec.series) {
+    if (f === seriesIdx) kind = q.kind
+    f = f + 1.0
+  }
+  if (kind !== 'stacked' && kind !== 'grouped') return out
+  // Which of the same-kind peers this series is — counted by position, since
+  // the peers list is what the joint layout is built from.
+  let which = -1
+  let seen = 0
+  let g = 0.0
+  for (const q of spec.series) {
+    if (q.kind === kind) {
+      if (g === seriesIdx) which = seen
+      seen = seen + 1
+    }
+    g = g + 1.0
+  }
+  if (which < 0) return out
+  const values = spec.series.filter((q) => q.kind === kind).map((q) => q.values)
+  const flipped = spec.horizontal === true
+  const segs =
+    kind === 'stacked'
+      ? flipped
+        ? layoutStackedBarsH(values, plot, yDomain, 0.25)
+        : layoutStackedBars(values, plot, yDomain, 0.25)
+      : flipped
+        ? layoutGroupedBarsH(values, plot, yDomain, 0.25)
+        : layoutGroupedBars(values, plot, yDomain, 0.25)
+  for (const seg of segs) {
+    if (seg.seriesIndex !== which) continue
+    if (seg.datumIndex !== idx) continue
+    // The FAR edge of the segment, centred on its other axis — the top of a
+    // vertical bar, the right end of a horizontal one.
+    if (flipped) out.push({ x: seg.rect.x + seg.rect.w, y: seg.rect.y + seg.rect.h / 2.0 })
+    else out.push({ x: seg.rect.x + seg.rect.w / 2.0, y: seg.rect.y })
+  }
+  return out
+}
+
 export function stackedHitIn(raw: ChartSpec, plot: Rect, px: Double, py: Double): number {
   const spec = geometrySpec(raw)
   const yDomain = resolveYDomain(spec)

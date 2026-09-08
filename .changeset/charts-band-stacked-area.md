@@ -41,3 +41,13 @@ the segment for stacked and stackedArea, which have no free edge to hang a
 label from. A stack prints the segment's OWN value, not the running total the
 outline already shows. The lock is total over the mark kinds, so a kind added
 later has to answer the question.
+
+**`markers` now draw on the horizontal frame and on stacked / grouped
+series.** They were skipped on all three — a silent no-op on shapes where
+`annotations` drew perfectly well. The skip was not arbitrary: a stacked datum
+is drawn at its RUNNING TOTAL in a band-centred segment, so pushing it through
+the point-like placement would have put the marker where the data never
+appears, and refusing beat lying. The invariant worth keeping is therefore "a
+marker never lands somewhere the datum is not", not "these shapes have no
+markers" — so the anchor is now read back from the same layout the paint used:
+the top centre of a vertical segment, the right end of a horizontal one.

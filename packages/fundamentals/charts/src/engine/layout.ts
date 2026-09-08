@@ -392,6 +392,29 @@ export function layoutSeriesPoints(values: Double[], plot: Rect, yDomain: Domain
  * rather than reading past the end, because a caller whose accessors disagree
  * should get a short chart, not a crash or a NaN coordinate.
  */
+/**
+ * `layoutSeriesPoints` on the flipped frame: the value runs along x and the
+ * datum sits at its BAND centre down y.
+ *
+ * Bands rather than the vertical version's edge-to-edge spread, because the
+ * horizontal frame is a category axis by construction — `layoutBarsH` places
+ * its bars on bands, and a marker that did not agree with them would float
+ * between two bars.
+ */
+export function layoutSeriesPointsH(values: Double[], plot: Rect, vDomain: Domain): Pt[] {
+  const n = values.length
+  const out: Pt[] = []
+  if (n === 0) return out
+  const band = plot.h / n
+  for (let i = 0; i < n; i++) {
+    out.push({
+      x: scaleLinear(vDomain, plot.x, plot.x + plot.w, values[i]!),
+      y: plot.y + band * i + band / 2.0,
+    })
+  }
+  return out
+}
+
 export function layoutSeriesPointsAt(
   values: Double[],
   xs: Double[],

@@ -2775,6 +2775,19 @@ public func layoutSeriesPoints(_ values: [Double], _ plot: PyreonChartRect, _ yD
     return out
   }
 
+public func layoutSeriesPointsH(_ values: [Double], _ plot: PyreonChartRect, _ vDomain: Domain) -> [PyreonChartPt] {
+    let n = values.count
+    var out: [PyreonChartPt] = []
+    if n == 0 {
+      return out
+    }
+    let band = Double(plot.h) / Double(n)
+    for i in 0..<n {
+      out.append(PyreonChartPt(x: scaleLinear(vDomain, plot.x, plot.x + plot.w, values[i]), y: plot.y + band * Double(i) + band / 2.0))
+    }
+    return out
+  }
+
 public func layoutSeriesPointsAt(_ values: [Double], _ xs: [Double], _ plot: PyreonChartRect, _ yDomain: Domain, _ xDomain: Domain) -> [PyreonChartPt] {
     let n = min(values.count, xs.count)
     var out: [PyreonChartPt] = []
@@ -3764,15 +3777,9 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
     }
     let markers = (spec.markers ?? [])
     for m in markers {
-      if spec.horizontal == true {
-        continue
-      }
       let rawSeriesIndex = (m.seriesIndex ?? 0.0)
       let s = spec.series[Int(floor(Double(rawSeriesIndex)))]
       if s == nil {
-        continue
-      }
-      if s.kind == "stacked" || s.kind == "grouped" {
         continue
       }
       let n = s.values.count
@@ -3816,8 +3823,8 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
       }
       let mDomain = seriesOnRightAxis(s, spec) ? y2Domain : yDomain
       let xsM = (spec.xValues ?? [])
-      let pts = xsM.count > 0 ? layoutSeriesPointsAt(s.values, xsM, plot, mDomain, l.xDomainUsed) : layoutSeriesPoints(s.values, plot, mDomain)
-      let p = pts[idx]
+      let segMarker = markerAnchor(spec, rawSeriesIndex, idx, plot, yDomain)
+      let p = segMarker.count > 0 ? segMarker[0] : spec.horizontal == true ? layoutSeriesPointsH(s.values, plot, mDomain)[idx] : xsM.count > 0 ? layoutSeriesPointsAt(s.values, xsM, plot, mDomain, l.xDomainUsed)[idx] : layoutSeriesPoints(s.values, plot, mDomain)[idx]
       if p == nil {
         continue
       }
@@ -3945,6 +3952,53 @@ public func barsForIn(_ raw: ChartSpec, _ index: Int, _ plot: PyreonChartRect) -
   }
 
 public func stackedHitAt(_ spec: ChartSpec, _ measure: (String, Double) -> Double, _ px: Double, _ py: Double) -> Int { stackedHitIn(spec, layoutChart(spec, measure).plot, px, py) }
+
+public func markerAnchor(_ spec: ChartSpec, _ seriesIdx: Double, _ idx: Int, _ plot: PyreonChartRect, _ yDomain: Domain) -> [PyreonChartPt] {
+    var out: [PyreonChartPt] = []
+    var kind = ""
+    var f = 0.0
+    for q in spec.series {
+      if f == seriesIdx {
+        kind = q.kind
+      }
+      f = f + 1.0
+    }
+    if kind != "stacked" && kind != "grouped" {
+      return out
+    }
+    var which = -1
+    var seen = 0
+    var g = 0.0
+    for q in spec.series {
+      if q.kind == kind {
+        if g == seriesIdx {
+          which = seen
+        }
+        seen = seen + 1
+      }
+      g = g + 1.0
+    }
+    if which < 0 {
+      return out
+    }
+    let values = spec.series.filter({ q in q.kind == kind }).map({ q in q.values })
+    let flipped = spec.horizontal == true
+    let segs = kind == "stacked" ? flipped ? layoutStackedBarsH(values, plot, yDomain, 0.25) : layoutStackedBars(values, plot, yDomain, 0.25) : flipped ? layoutGroupedBarsH(values, plot, yDomain, 0.25) : layoutGroupedBars(values, plot, yDomain, 0.25)
+    for seg in segs {
+      if seg.seriesIndex != which {
+        continue
+      }
+      if seg.datumIndex != idx {
+        continue
+      }
+      if flipped {
+        out.append(PyreonChartPt(x: seg.rect.x + seg.rect.w, y: seg.rect.y + Double(seg.rect.h) / 2.0))
+      } else {
+        out.append(PyreonChartPt(x: seg.rect.x + Double(seg.rect.w) / 2.0, y: seg.rect.y))
+      }
+    }
+    return out
+  }
 
 public func stackedHitIn(_ raw: ChartSpec, _ plot: PyreonChartRect, _ px: Double, _ py: Double) -> Int {
     let spec = geometrySpec(raw)

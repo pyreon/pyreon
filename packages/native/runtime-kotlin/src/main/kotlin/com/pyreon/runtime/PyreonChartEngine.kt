@@ -1107,6 +1107,19 @@ fun layoutSeriesPoints(values: List<Double>, plot: PyreonChartRect, yDomain: Dom
     return out
   }
 
+fun layoutSeriesPointsH(values: List<Double>, plot: PyreonChartRect, vDomain: Domain): List<PyreonChartPt> {
+    val n = values.length
+    val out: MutableList<PyreonChartPt> = mutableListOf()
+    if (n == 0) {
+      return out
+    }
+    val band = (plot.h).toDouble() / (n).toDouble()
+    for (i in 0 until n) {
+      out.add(PyreonChartPt(x = scaleLinear(vDomain, plot.x, plot.x + plot.w, values[i]), y = plot.y + band * i + (band).toDouble() / (2.0).toDouble()))
+    }
+    return out
+  }
+
 fun layoutSeriesPointsAt(values: List<Double>, xs: List<Double>, plot: PyreonChartRect, yDomain: Domain, xDomain: Domain): List<PyreonChartPt> {
     val n = Math.min(values.length, xs.length)
     val out: MutableList<PyreonChartPt> = mutableListOf()
@@ -2096,15 +2109,9 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
     }
     val markers = (spec.markers ?: listOf())
     for (m in markers) {
-      if (spec.horizontal == true) {
-        continue
-      }
       val rawSeriesIndex = (m.seriesIndex ?: 0.0)
       val s = spec.series[(Math.floor(rawSeriesIndex)).toInt()]
       if (s == null) {
-        continue
-      }
-      if (s.kind == "stacked" || s.kind == "grouped") {
         continue
       }
       val n = s.values.length
@@ -2148,8 +2155,8 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
       }
       val mDomain = if (seriesOnRightAxis(s, spec)) y2Domain else yDomain
       val xsM = (spec.xValues ?: listOf())
-      val pts = if (xsM.length > 0) layoutSeriesPointsAt(s.values, xsM, plot, mDomain, l.xDomainUsed) else layoutSeriesPoints(s.values, plot, mDomain)
-      val p = pts[idx]
+      val segMarker = markerAnchor(spec, rawSeriesIndex, idx, plot, yDomain)
+      val p = if (segMarker.length > 0) segMarker[0] else if (spec.horizontal == true) layoutSeriesPointsH(s.values, plot, mDomain)[idx] else if (xsM.length > 0) layoutSeriesPointsAt(s.values, xsM, plot, mDomain, l.xDomainUsed)[idx] else layoutSeriesPoints(s.values, plot, mDomain)[idx]
       if (p == null) {
         continue
       }
@@ -2277,6 +2284,53 @@ fun barsForIn(raw: ChartSpec, index: Int, plot: PyreonChartRect): List<PyreonCha
   }
 
 fun stackedHitAt(spec: ChartSpec, measure: (String, Double) -> Double, px: Double, py: Double): Int = stackedHitIn(spec, layoutChart(spec, measure).plot, px, py)
+
+fun markerAnchor(spec: ChartSpec, seriesIdx: Double, idx: Int, plot: PyreonChartRect, yDomain: Domain): List<PyreonChartPt> {
+    val out: MutableList<PyreonChartPt> = mutableListOf()
+    var kind = ""
+    var f = 0.0
+    for (q in spec.series) {
+      if (f == seriesIdx) {
+        kind = q.kind
+      }
+      f = f + 1.0
+    }
+    if (kind != "stacked" && kind != "grouped") {
+      return out
+    }
+    var which = -1
+    var seen = 0
+    var g = 0.0
+    for (q in spec.series) {
+      if (q.kind == kind) {
+        if (g == seriesIdx) {
+          which = seen
+        }
+        seen = seen + 1
+      }
+      g = g + 1.0
+    }
+    if (which < 0) {
+      return out
+    }
+    val values = spec.series.filter({ q -> q.kind == kind }).map({ q -> q.values })
+    val flipped = spec.horizontal == true
+    val segs = if (kind == "stacked") if (flipped) layoutStackedBarsH(values, plot, yDomain, 0.25) else layoutStackedBars(values, plot, yDomain, 0.25) else if (flipped) layoutGroupedBarsH(values, plot, yDomain, 0.25) else layoutGroupedBars(values, plot, yDomain, 0.25)
+    for (seg in segs) {
+      if (seg.seriesIndex != which) {
+        continue
+      }
+      if (seg.datumIndex != idx) {
+        continue
+      }
+      if (flipped) {
+        out.add(PyreonChartPt(x = seg.rect.x + seg.rect.w, y = seg.rect.y + (seg.rect.h).toDouble() / (2.0).toDouble()))
+      } else {
+        out.add(PyreonChartPt(x = seg.rect.x + (seg.rect.w).toDouble() / (2.0).toDouble(), y = seg.rect.y))
+      }
+    }
+    return out
+  }
 
 fun stackedHitIn(raw: ChartSpec, plot: PyreonChartRect, px: Double, py: Double): Int {
     val spec = geometrySpec(raw)
