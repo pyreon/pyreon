@@ -176,17 +176,32 @@ test.describe('app-showcase /dashboard — plot engine interaction', () => {
     const box = (await canvas.boundingBox())!
     expect(box.width).toBeGreaterThan(100)
 
-    // The first mark is bars, so the tooltip answers only ON a bar (a gap
-    // between bars is a miss by contract). Sweep the row at 60% height until
-    // a bar answers — the spec does not know the gutter or the band width.
-    const y = box.y + box.height * 0.6
+    // The first mark is bars, so the tooltip answers only ON a bar — a gap
+    // between bars is a miss by contract, and a point above a SHORT bar is a
+    // miss too. So sweep a GRID, not one row: the spec knows neither the
+    // gutter, the band width, nor which bars are tall.
+    //
+    // And POLL the sweep rather than running it once. The chart plays its
+    // entrance on mount (bars rise over ~700ms), so a single pass that starts
+    // early finds every bar too short to hit and reports a miss that is really
+    // a race — the flake this spec had before it polled.
     const tooltip = wrap.locator('[data-pyreon-chart-tooltip]')
     let x = 0
-    for (let fx = 0.12; fx < 0.95; fx += 0.03) {
-      x = box.x + box.width * fx
-      await page.mouse.move(x, y)
-      if (await tooltip.isVisible()) break
+    let y = 0
+    const sweep = async (): Promise<boolean> => {
+      for (const fy of [0.75, 0.6, 0.45, 0.3]) {
+        for (let fx = 0.12; fx < 0.95; fx += 0.04) {
+          x = box.x + box.width * fx
+          y = box.y + box.height * fy
+          await page.mouse.move(x, y)
+          if (await tooltip.isVisible()) return true
+        }
+      }
+      return false
     }
+    await expect
+      .poll(sweep, { timeout: 15_000, message: 'no pointer position on the chart produced a tooltip' })
+      .toBe(true)
     await expect(tooltip).toBeVisible()
     await expect(tooltip).not.toHaveText('')
 
