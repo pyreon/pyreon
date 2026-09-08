@@ -31,7 +31,7 @@ skill costs a fraction of the full detail, and you pull one package on demand.
 | `@pyreon/hotkeys` | Keyboard shortcuts — KEY-BUCKETED dispatch (miss path = one Map lookup, flat vs registry size; bench-proven fastest vs tinykeys/hotkeys-js/mousetrap), reference-counted scopes, `mod` alias, sequential combos (`g t`), comma-lists (`ctrl+s, mod+p`), keyup bindings, `once`/`ignoreRepeat`, selective `enableOnInputs: ['input']`, element `target`s (one shared listener per target, detached with last hotkey), shifted-symbol shortcuts (`?` fires on Shift+/), `getPressedKeys()`/`isKeyPressed` (lazy, blur-cleared), programmatic `trigger()`, conflict detection, SSR-safe |
 | `@pyreon/permissions` | Reactive permissions — RBAC/ABAC/flags/tiers |
 | `@pyreon/machine` | Reactive state machines — constrained signals + typed transitions; `StateOf`/`EventOf` (state/event unions from INSTANCE or config — `InferStates`/`InferEvents` are config-only and yield `never` on an instance) |
-| `@pyreon/flow` | Reactive flow diagrams — signal-native nodes/edges, pan/zoom, elkjs layout |
+| `@pyreon/flow` | Reactive flow diagrams — signal-native nodes/edges, pan/zoom, a built-in seven-mode layout engine (code-split), React Flow-parity API + a11y |
 | `@pyreon/code` | Reactive code editor — CodeMirror 6, minimap, diff, tabbed |
 | `@pyreon/rich-text` | Reactive WYSIWYG — signal-backed TipTap/ProseMirror, lazy, a11y-labeled |
 | `@pyreon/document` | Universal document rendering — 18 primitives, 20 output formats |

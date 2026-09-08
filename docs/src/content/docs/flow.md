@@ -1,9 +1,9 @@
 ---
 title: Flow
-description: Reactive flow diagrams for Pyreon — signal-native nodes, edges, pan/zoom, auto-layout via elkjs.
+description: Reactive flow diagrams for Pyreon — signal-native nodes, edges, pan/zoom, a built-in seven-mode layout engine.
 ---
 
-`@pyreon/flow` provides reactive flow diagrams for Pyreon. Signal-native nodes and edges, pan/zoom without D3, auto-layout via lazy-loaded elkjs, and per-node O(1) reactivity. Built from the ground up for signal-based frameworks — each node mounts **exactly once** across the lifetime of the graph, and a drag, selection click, or `updateNode` patches that node in place instead of remounting it.
+`@pyreon/flow` provides reactive flow diagrams for Pyreon. Signal-native nodes and edges, pan/zoom without D3, a built-in seven-mode layout engine (code-split, zero dependencies), and per-node O(1) reactivity. Built from the ground up for signal-based frameworks — each node mounts **exactly once** across the lifetime of the graph, and a drag, selection click, or `updateNode` patches that node in place instead of remounting it.
 
 <PackageBadge name="@pyreon/flow" href="/docs/flow" />
 
@@ -68,7 +68,7 @@ No callbacks, no `applyNodeChanges`. The flow instance manages everything.
 
 ### Playground
 
-The kitchen-sink demo — every visible feature in one graph. Click an **auto-layout** button (`layered →`, `layered ↓`, `tree`, `force`) and the nodes animate to the elkjs-computed positions. The edges show the full **arrow** vocabulary: filled `ArrowClosed`, open `Arrow` chevrons, per-edge colours, and a both-ends marker. Drag any node, click to select, drag from a node edge to connect.
+The kitchen-sink demo — every visible feature in one graph. Click an **auto-layout** button (`layered →`, `layered ↓`, `tree`, `force`) and the nodes animate to the engine-computed positions. The edges show the full **arrow** vocabulary: filled `ArrowClosed`, open `Arrow` chevrons, per-edge colours, and a both-ends marker. Drag any node, click to select, drag from a node edge to connect.
 
 <Example file="./examples/flow/flow-playground" title="Flow playground — arrows + auto-layout + every overlay" />
 
@@ -600,7 +600,7 @@ const flow = createFlow({
 
 The [playground](#playground) above has live `layered`, `tree`, and `force` buttons — click them to watch the layout animate.
 
-Layout nodes automatically using elkjs (lazy-loaded — the elkjs chunk is only fetched when `flow.layout()` is first called):
+Layout nodes automatically with the built-in layout engine (seven modes — `layered`, `force`, `stress`, `tree`, `radial`, `box`, `rectpacking` — pure geometry, zero dependencies, code-split so a flow that never calls `layout()` does not load it). The engine chunk is fetched the first time `flow.layout()` runs:
 
 ```tsx
 // Layered layout (DAG/pipeline)
@@ -1200,7 +1200,7 @@ flow.dispose() // cancel in-flight animations + clear all listeners
 | ----------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------ |
 | `createFlow<TData>(config?)`        | `(config?: FlowConfig<TData>) => FlowInstance<TData>`                           | Create a reactive flow instance                              |
 | `useFlow<TData>(config)`            | `(config: FlowConfig<TData>) => FlowInstance<TData>`                           | `createFlow` + auto-dispose on unmount (component-scoped)    |
-| `computeLayout<TData>(...)`         | `(nodes, edges, algorithm?, options?) => Promise<Array<{ id, position }>>`      | Standalone elkjs layout (lazy-loaded); doesn't mutate a flow |
+| `computeLayout<TData>(...)`         | `(nodes, edges, algorithm?, options?) => Promise<Array<{ id, position }>>`      | Standalone layout through the built-in engine (code-split); doesn't mutate a flow |
 
 ### `FlowInstance` — state
 
@@ -1238,7 +1238,7 @@ flow.dispose() // cancel in-flight animations + clear all listeners
 | `panTo(pos)` / `focusNode(id, zoom?)` / `animateViewport(target, ms?)` | `void`         | Move the viewport                            |
 | `isNodeVisible(id)`                               | `boolean`                            | Is the node within the viewport              |
 | `getNodeDimensions(id)`                           | `Dimensions`                         | Effective node box: explicit → measured → 150×40 (`{0,0}` for unknown id) |
-| `layout(algorithm?, options?)`                    | `Promise<void>`                      | Auto-layout via elkjs                        |
+| `layout(algorithm?, options?)`                    | `Promise<void>`                      | Auto-layout via the built-in engine          |
 | `batch(fn)`                                       | `void`                               | Coalesce mutations into one notification     |
 | `getConnectedEdges(id)`                           | `FlowEdge[]`                         | Edges touching a node                        |
 | `getIncomers(id)` / `getOutgoers(id)`             | `FlowNode[]`                         | Upstream / downstream nodes                  |
@@ -1282,8 +1282,8 @@ flow.dispose() // cancel in-flight animations + clear all listeners
 | ---------------------- | ---------------------------- | ----------------------------- |
 | Update 1 of 1000 nodes | New array → diff all         | 1 signal → 1 DOM update       |
 | Node re-render on drag | Re-render of affected nodes  | Patch in place — node mounts once |
-| Dependencies           | React + D3                   | No D3; elkjs lazy-loaded on first `layout()` |
+| Dependencies           | React + D3                   | No D3, no layout dependency — the seven-mode engine is built in and code-split |
 | State management       | 3 callbacks + `applyChanges` | Automatic — zero boilerplate  |
-| Auto-layout            | Separate elkjs setup         | `flow.layout('layered')`      |
-| Undo/redo              | DIY                          | Built-in (manual `pushHistory`) |
-| Connection rules       | `isValidConnection` callback | Declarative config            |
+| Auto-layout            | Separate elkjs/dagre setup   | `flow.layout('layered')` — seven modes built in |
+| Undo/redo              | DIY                          | Built-in, automatic checkpoints on every mutation |
+| Connection rules       | `isValidConnection` callback | Declarative `connectionRules` AND an `isValidConnection` veto |

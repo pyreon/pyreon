@@ -2,13 +2,13 @@
 
 Reactive flow diagrams — signal-native nodes, edges, pan/zoom, auto-layout.
 
-Build node/edge diagrams (workflow editors, mind maps, BPMN, story graphs, infra topology) with Pyreon's fine-grained reactivity. Each node and edge has its own per-property signal — a 60fps drag in a 1000-node graph is O(1) per frame, not O(N). Custom node and edge renderers receive REACTIVE ACCESSORS (`data()` / `selected()` / `dragging()` / source/target coordinates), so a custom node mounts EXACTLY ONCE across the lifetime of the graph and patches in place on every change. Pan/zoom via pointer events + CSS transforms (no D3). Auto-layout via elkjs, lazy-loaded on first use.
+Build node/edge diagrams (workflow editors, mind maps, BPMN, story graphs, infra topology) with Pyreon's fine-grained reactivity. Each node and edge has its own per-property signal — a 60fps drag in a 1000-node graph is O(1) per frame, not O(N). Custom node and edge renderers receive REACTIVE ACCESSORS (`data()` / `selected()` / `dragging()` / source/target coordinates), so a custom node mounts EXACTLY ONCE across the lifetime of the graph and patches in place on every change. Pan/zoom via pointer events + CSS transforms (no D3). Auto-layout through a built-in seven-mode engine — pure geometry, zero dependencies, code-split so it loads on the first `layout()`.
 
 ## Install
 
 ```bash
 bun add @pyreon/flow @pyreon/core @pyreon/reactivity @pyreon/runtime-dom
-# elkjs is bundled as a runtime dependency, lazy-loaded
+# no layout dependency — the seven-mode engine is built in and code-split
 ```
 
 `@pyreon/runtime-dom` is a peer because the JSX templates emit `_tpl()` calls — declare it in your app's deps.
@@ -70,7 +70,7 @@ The `TData` generic flows through to `FlowNode<TData>` and `NodeComponentProps<T
 | Clipboard / history | `copySelected` / `paste(offset?)` / `pushHistory` / `undo` / `redo` |
 | Viewport | `zoomIn` / `zoomOut` / `zoomTo` / `panTo` / `focusNode` / `animateViewport` / `fitView(ids?, padding?)` |
 | Geometry | `getNodeDimensions(id)` — effective box: explicit → measured → 150×40 default |
-| Auto-layout | `layout(algorithm?, options?)` — Promise, elkjs lazy-loaded, fed measured node sizes |
+| Auto-layout | `layout(algorithm?, options?)` — Promise, built-in seven-mode engine (code-split), fed measured node sizes |
 | Graph queries | `getConnectedEdges` / `getIncomers` / `getOutgoers` / `isValidConnection` / `findNodes` / `searchNodes` |
 | Listeners | `onConnect` / `onNodesChange` / `onNodeClick` / `onEdgeClick` / `onNodeDragStart` / `onNodeDragEnd` / `onNodeDoubleClick` |
 | Serialization | `toJSON()` / `fromJSON(data)` |
@@ -117,7 +117,7 @@ Each node mounts ONCE per graph lifetime. Drags, selection clicks, and `updateNo
 
 Same accessor contract — `EdgeComponentProps` exposes `sourceX()` / `sourceY()` / `targetX()` / `targetY()` / `selected()` as reactive accessors. Use the path helpers (`getBezierPath`, `getSmoothStepPath`, `getStraightPath`, `getStepPath`, `getWaypointPath`) inside the render to compute `d`.
 
-## Auto-layout via elkjs
+## Auto-layout
 
 ```ts
 await flow.layout('layered', { direction: 'RIGHT', nodeSpacing: 50, layerSpacing: 100 })
@@ -189,7 +189,7 @@ Position.Left // 'left'
 - **Custom node / edge renderers must read props as accessors** (`props.data()`, not `props.data`). Reading the bare property captures a snapshot and your node won't react to `updateNode` writes.
 - **JSX components aren't generic at the call site** — write `useFlow<MyData>(...)` then pass the instance to `<Flow instance={flow}>`. `<Flow<MyData> />` is a TypeScript syntax error.
 - **`LayoutOptions.direction` / `layerSpacing` / `edgeRouting` apply to layered/tree only** — silently ignored by `force` / `stress` / `radial` / `box` / `rectpacking`. Dev mode logs a warning.
-- **elkjs is lazy-loaded on first `flow.layout()` call** — the first layout takes longer than subsequent ones.
+- **The layout engine is code-split** — the first `flow.layout()` call fetches its chunk, so it takes longer than subsequent ones; every mode is pure geometry with no external dependency.
 - **`flow.dispose()` is final** — listeners detach, signals stop updating. Don't reuse a disposed instance. `useFlow` wires this up for you on unmount.
 
 ## Multiplatform — `@pyreon/flow/webview`
