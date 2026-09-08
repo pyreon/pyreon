@@ -28,7 +28,20 @@ const MINIMAP_PADDING = 40
  */
 export function MiniMap(props: MiniMapProps & { instance?: FlowInstance }): VNodeChild {
   // Resolve the instance from an explicit prop, else the <Flow> context.
-  const instance = props.instance ?? useContext(FlowContext)
+  // `let`, NOT `const` — LOAD-BEARING. The compiler's reactive-props inlining
+  // re-invokes a prop-derived `const`'s initializer at every use site, so a
+  // handler closing over it would re-run `useContext(FlowContext)` OUTSIDE the
+  // setup frame, where it returns `null` — the delegated click then threw
+  // `Cannot read properties of null` and the panel silently did nothing in any
+  // real (vite-plugin-compiled) app. `let` bindings are skipped by the inliner.
+  // Found by a real-Chromium test; the happy-dom suites use a different JSX
+  // transform and cannot see it. `<Controls>` has the SAME context-resolution
+  // shape and is fine, because its handlers are created inside its reactive
+  // render thunk (a render effect captures and restores the context owner) —
+  // the hazard is a handler at component-BODY scope. See anti-patterns
+  // "reactive-props inlining of a stateful factory".
+  // oxlint-disable-next-line prefer-const
+  let instance = props.instance ?? useContext(FlowContext)
   if (!instance) return null
 
   // The minimap is mounted STATICALLY and patched in place (P4 — the P0
