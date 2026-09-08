@@ -2,10 +2,19 @@
 /**
  * check-bundle-budgets — bundle-size budget gate.
  *
- * For every published `@pyreon/*` package, bundles `src/index.ts` with
- * Bun's bundler (minified, browser target, workspace-externalized) and
- * asserts the gzipped size is ≤ the budget locked in
- * `scripts/bundle-budgets.json`.
+ * For every published `@pyreon/*` package, bundles the BUILT main entry
+ * (`lib/index.js` — the exact code that ships to npm, not the TS source)
+ * with Bun's bundler (minified, workspace-externalized) and asserts the
+ * gzipped size is ≤ the budget locked in `scripts/bundle-budgets.json`.
+ *
+ * A gate that derives a NUMBER has to be able to say the number is invalid,
+ * so every bundle is checked before it is compared to a budget — see
+ * {@link diagnoseMeasurement}. Seven packages were previously guarded by a
+ * budget over an un-importable stub (`@pyreon/lint` held a 512-byte budget
+ * over a package that really measures ~65 KB), because a pure re-export
+ * barrel bundles to an export clause whose bindings the bundler already
+ * dropped. A measurement that cannot be trusted is now reported as a
+ * FAILURE, never as a small size.
  *
  * Why this exists: an audit caught `@pyreon/flow` shipping 6.8 MB
  * unpacked. The 6.8 MB number was misleading (3.8 MB was source maps,
@@ -29,8 +38,8 @@
  *                                         # (use AFTER intentional growth)
  */
 
-import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { parseSync, Visitor } from 'oxc-parser'
 
@@ -67,7 +76,18 @@ declare const Bun: {
 // `import.meta.dir` is absent from TypeScript's `ImportMeta` unless a program
 // declares bun types, so reaching for it breaks any tsconfig that does not.
 const REPO_ROOT = resolve(import.meta.dirname, '..')
-const BUDGETS_PATH = join(REPO_ROOT, 'scripts', 'bundle-budgets.json')
+/**
+ * Override the budgets file. Companion to `--packages-root=`, and used by the
+ * same regression test: the thin-headroom ratchet is a property of the FILE, so
+ * it can only be exercised against a controlled one. Production runs never pass it.
+ */
+function getBudgetsPath(): string {
+  const flag = process.argv.find((arg) => arg.startsWith('--budgets='))
+  if (flag) return resolve(flag.slice('--budgets='.length))
+  return join(REPO_ROOT, 'scripts', 'bundle-budgets.json')
+}
+
+const BUDGETS_PATH = getBudgetsPath()
 
 /**
  * Override `<REPO_ROOT>/packages` discovery with a custom directory.
@@ -88,6 +108,17 @@ interface PackageInfo {
   dir: string
   entry: string
   externals: string[]
+  /**
+   * Bytes of the package's OWN built code that a consumer importing the main
+   * entry statically pulls in — the transitive closure of `lib/index.js` over
+   * RELATIVE static imports. Dynamic `import()` is deliberately not followed:
+   * it is the lazy boundary, and the whole point of `splitting: true` below is
+   * to keep those chunks out of the number.
+   *
+   * This is the denominator of the "did the measurement actually reach the
+   * implementation?" check in {@link diagnoseMeasurement}.
+   */
+  reachBytes: number
 }
 
 /**
@@ -117,7 +148,18 @@ function findPackages(): PackageInfo[] {
   const packagesRoot = getPackagesRoot()
   for (const cat of readdirSync(packagesRoot)) {
     const catDir = join(packagesRoot, cat)
-    for (const pkg of readdirSync(catDir)) {
+    // A stray FILE in the packages root used to crash discovery outright:
+    // `readdirSync` on a file throws ENOTDIR, and that throw was outside the
+    // per-package try/catch. The gate dying on an unrelated file is a worse
+    // failure than skipping it.
+    let categoryEntries: string[]
+    try {
+      if (!statSync(catDir).isDirectory()) continue
+      categoryEntries = readdirSync(catDir)
+    } catch {
+      continue
+    }
+    for (const pkg of categoryEntries) {
       const pkgDir = join(catDir, pkg)
       const pjPath = join(pkgDir, 'package.json')
       try {
@@ -160,7 +202,13 @@ function findPackages(): PackageInfo[] {
         // transitive — silently dropped from the measurement before
         // this fix landed. See gap #2 investigation in fix PR.
         const externals = collectBareModuleImports(join(pkgDir, 'lib'))
-        result.push({ name: pj.name, dir: pkgDir, entry, externals })
+        result.push({
+          name: pj.name,
+          dir: pkgDir,
+          entry,
+          externals,
+          reachBytes: staticReachBytes(entry),
+        })
       } catch {
         // Skip — no package.json or unreadable
       }
@@ -306,18 +354,321 @@ function collectBareModuleImports(dir: string): string[] {
   return [...found]
 }
 
+/**
+ * Bytes of the transitive closure of `entry` over RELATIVE static imports
+ * (`import`, `export … from`, `export * from`). Dynamic `import()` is NOT
+ * followed — it is the lazy-chunk boundary the budget deliberately excludes.
+ *
+ * Used as the denominator for the "the bundle never reached the
+ * implementation" check. It is measured against the package's OWN built
+ * output rather than `src/`, so it is directly comparable to the bundle:
+ * the same code, before bundling and tree-shaking rather than after.
+ */
+function staticReachBytes(entry: string): number {
+  const seen = new Set<string>()
+  const stack = [entry]
+  let bytes = 0
+  const resolveRelative = (from: string, spec: string): string | null => {
+    const base = resolve(dirname(from), spec)
+    for (const candidate of [base, base + '.js', join(base, 'index.js')]) {
+      try {
+        if (statSync(candidate).isFile()) return candidate
+      } catch {
+        // not this candidate — try the next
+      }
+    }
+    return null
+  }
+  while (stack.length > 0) {
+    const file = stack.pop() as string
+    if (seen.has(file)) continue
+    seen.add(file)
+    let src: string
+    try {
+      src = readFileSync(file, 'utf8')
+    } catch {
+      continue
+    }
+    bytes += Buffer.byteLength(src, 'utf-8')
+    let program
+    try {
+      program = parseSync(file, src, { sourceType: 'module', lang: 'js' }).program
+    } catch {
+      continue
+    }
+    const push = (spec: unknown): void => {
+      if (typeof spec !== 'string' || !spec.startsWith('.')) return
+      const resolved = resolveRelative(file, spec)
+      if (resolved) stack.push(resolved)
+    }
+    try {
+      new Visitor({
+        ImportDeclaration: (node: any) => push(node.source?.value),
+        ExportNamedDeclaration: (node: any) => {
+          if (node.source) push(node.source.value)
+        },
+        ExportAllDeclaration: (node: any) => push(node.source?.value),
+      }).visit(program)
+    } catch {
+      // Partial closure is still a useful denominator.
+    }
+  }
+  return bytes
+}
+
+/**
+ * Export specifiers in `code` whose LOCAL name is not bound anywhere in the
+ * module — i.e. `export { i as Chart }` with no `i` in scope.
+ *
+ * Such a module is not merely small, it is INVALID: instantiating it is an
+ * early SyntaxError (`Export 'i' is not defined in module`), so it could never
+ * have been the code a consumer ships. Finding one is a PROOF that the
+ * measurement is not a measurement — no threshold, no judgement call.
+ *
+ * Only specifiers on a source-less `export { … }` are checked; a re-export
+ * with a source (`export { x } from './y'`) needs no local binding.
+ */
+function unboundExportSpecifiers(code: string): string[] {
+  let program
+  try {
+    program = parseSync('bundle.js', code, { sourceType: 'module', lang: 'js' }).program
+  } catch {
+    // Unparseable output is itself a broken measurement, but the bundler would
+    // have failed first; leave that path to the build error.
+    return []
+  }
+  const bound = new Set<string>()
+  const exported: { local: string; as: string }[] = []
+  const bindPattern = (pat: any): void => {
+    if (!pat) return
+    switch (pat.type) {
+      case 'Identifier':
+        bound.add(pat.name)
+        break
+      case 'ObjectPattern':
+        for (const prop of pat.properties ?? []) bindPattern(prop.value ?? prop.argument)
+        break
+      case 'ArrayPattern':
+        for (const el of pat.elements ?? []) bindPattern(el)
+        break
+      case 'AssignmentPattern':
+        bindPattern(pat.left)
+        break
+      case 'RestElement':
+        bindPattern(pat.argument)
+        break
+      default:
+        break
+    }
+  }
+  for (const node of program.body as any[]) {
+    switch (node.type) {
+      case 'ImportDeclaration':
+        for (const spec of node.specifiers ?? []) if (spec.local?.name) bound.add(spec.local.name)
+        break
+      case 'VariableDeclaration':
+        for (const decl of node.declarations ?? []) bindPattern(decl.id)
+        break
+      case 'FunctionDeclaration':
+      case 'ClassDeclaration':
+        if (node.id?.name) bound.add(node.id.name)
+        break
+      case 'ExportDefaultDeclaration':
+        if (node.declaration?.id?.name) bound.add(node.declaration.id.name)
+        break
+      case 'ExportNamedDeclaration': {
+        const decl = node.declaration
+        if (decl?.type === 'VariableDeclaration') {
+          for (const d of decl.declarations ?? []) bindPattern(d.id)
+        } else if (decl?.id?.name) {
+          bound.add(decl.id.name)
+        }
+        if (!node.source) {
+          for (const spec of node.specifiers ?? []) {
+            if (spec.local?.name) {
+              exported.push({ local: spec.local.name, as: spec.exported?.name ?? spec.local.name })
+            }
+          }
+        }
+        break
+      }
+      default:
+        break
+    }
+  }
+  return exported.filter((e) => !bound.has(e.local)).map((e) => `${e.local} as ${e.as}`)
+}
+
+/** Does `entry` expose a default export? (`export *` does not carry one.) */
+function hasDefaultExport(entry: string): boolean {
+  let program
+  try {
+    const src = readFileSync(entry, 'utf8')
+    program = parseSync(entry, src, { sourceType: 'module', lang: 'js' }).program
+  } catch {
+    return false
+  }
+  for (const node of program.body as any[]) {
+    if (node.type === 'ExportDefaultDeclaration') return true
+    if (
+      node.type === 'ExportNamedDeclaration' &&
+      (node.specifiers ?? []).some((s: any) => s.exported?.name === 'default')
+    ) {
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * The floor below which the reach-ratio check is not applied, and the ratio it
+ * enforces. See {@link diagnoseMeasurement} for the reasoning and the measured
+ * distribution these came from.
+ */
+const REACH_RATIO_FLOOR_BYTES = 4096
+const MIN_REACH_RATIO = 0.05
+
+/**
+ * The gzip output differs slightly between the machine a contributor measures
+ * on (macOS) and the ubuntu runner that gates the PR — measured at ~177 B on a
+ * 16.5 KB package, about 1.1%. A budget with LESS headroom than that delta is
+ * not merely tight, it is UN-SATISFIABLE: the same commit gets a different
+ * verdict per machine, so `validate-fast` passes locally and CI goes red, and
+ * re-running locally only reconfirms the wrong answer.
+ *
+ * This is the same defect class as the empty-bundle detection above — a
+ * measurement the gate cannot make reliably, reported as a verdict about the
+ * package — so it is checked in the same place rather than left as advice
+ * printed after a failure has already been declared.
+ *
+ * Note tight is not itself bad: a small budget makes the gate MORE sensitive to
+ * real growth, which is the point. The failure mode is specifically headroom
+ * below the measurement's own noise.
+ */
+const GZIP_PLATFORM_VARIANCE = 0.015
+const GZIP_PLATFORM_VARIANCE_FLOOR_BYTES = 64
+
+/**
+ * Prints the KNOWN thin-headroom debt on every run, green or red.
+ *
+ * Grandfathered entries are visible rather than silent: a list that is only
+ * consulted when something fails is a list nobody reads, and the whole failure
+ * mode here is that the condition is invisible until CI disagrees with you.
+ */
+function printThinHeadroom(
+  known: { name: string; current: number; budget: number; headroom: number; required: number }[],
+  recovered: string[],
+): void {
+  /* eslint-disable no-console */
+  if (known.length > 0) {
+    console.log(
+      `  ⚠ ${known.length} budget(s) sit below the ~${(GZIP_PLATFORM_VARIANCE * 100).toFixed(1)}% macOS/ubuntu gzip variance and cannot be measured reliably (grandfathered in "_thinHeadroom"):`,
+    )
+    for (const t of known) {
+      console.log(
+        `      ${t.name}: ${t.headroom} B of headroom, needs ${Math.ceil(t.required)} B — raise to ${Math.ceil(t.current + t.required)} B to retire it`,
+      )
+    }
+  }
+  for (const name of recovered) {
+    console.log(
+      `  ✓ ${name} now has enough headroom — remove it from "_thinHeadroom" in scripts/bundle-budgets.json (the list only shrinks)`,
+    )
+  }
+  /* eslint-enable no-console */
+}
+
+/** The minimum headroom a budget needs to be measurable on both platforms. */
+function requiredHeadroom(measured: number): number {
+  return Math.max(GZIP_PLATFORM_VARIANCE_FLOOR_BYTES, measured * GZIP_PLATFORM_VARIANCE)
+}
+
+/**
+ * Decides whether a bundle is a MEASUREMENT or a measurement FAILURE, and
+ * returns the failure's explanation (or `null` when the number is sound).
+ *
+ * Two signals, and they are not the same kind of thing:
+ *
+ * 1. **Invalid module (a proof).** Every export specifier must resolve to a
+ *    local binding. A bundle that fails this cannot be instantiated at all, so
+ *    whatever it weighs is not the weight of anything shippable. This is the
+ *    signal that actually caught the whole class: a pure re-export barrel
+ *    (`import { t as useHead } from './_chunks/…'; export { useHead }`) has
+ *    nothing in its body referencing the imported bindings, so the bundler
+ *    drops them as unused and leaves the export clause dangling. Seven
+ *    packages were measuring an un-importable stub this way.
+ *
+ * 2. **Reach ratio (a heuristic backstop).** A bundle whose raw bytes are a
+ *    negligible fraction of the code the entry statically reaches did not pull
+ *    the implementation in. This exists to catch a future variant that is
+ *    *valid* but gutted, which signal 1 cannot see.
+ *
+ * **Telling "shook away" apart from "genuinely small".** The ratio is
+ * scale-free — a package is compared against ITS OWN reachable source, never
+ * against an absolute floor — so a genuinely tiny package (`@pyreon/config`,
+ * a single 973-byte module, measures 237 B ⇒ 0.24) passes for exactly the same
+ * reason a large one does, and a re-export-only package over EXTERNALISED
+ * workspace deps (`@pyreon/meta`, whose reachable closure is just its own
+ * entry) is compared against that entry and passes at 1.26. Nothing here needs
+ * a hand-maintained exemption list, which would rot. The `REACH_RATIO_FLOOR_BYTES`
+ * guard only skips packages whose entire reachable tree is smaller than a few
+ * KB, where minifier preamble noise makes any ratio meaningless.
+ *
+ * The 0.05 threshold has ~4x margin: measured across all 71 budgeted packages,
+ * the lowest LEGITIMATE ratio is 0.2004 (`@pyreon/reactivity`), and the cluster
+ * above it starts at 0.2020. Be honest about the limit, though — the ratio
+ * alone would NOT have caught two of the seven: `@pyreon/storybook` sat at
+ * 0.0687 and `@pyreon/meta` at 0.5374, a perfectly healthy-looking number for a
+ * bundle that could not be imported. Signal 1 is the detector; signal 2 is
+ * defence in depth, not a substitute.
+ */
+function diagnoseMeasurement(code: string, raw: number, pkg: PackageInfo): string | null {
+  const unbound = unboundExportSpecifiers(code)
+  if (unbound.length > 0) {
+    const shown = unbound.slice(0, 4).join(', ')
+    const more = unbound.length > 4 ? `, +${unbound.length - 4} more` : ''
+    return (
+      `the bundle is not a valid module — ${unbound.length} export(s) reference a binding that does not exist (${shown}${more}). ` +
+      `Importing it fails with "Export '${unbound[0]?.split(' ')[0]}' is not defined in module", so ${raw} B is not this package's size. ` +
+      `Likely cause: lib/index.js is a pure re-export barrel — nothing in its body uses the imported bindings, so the bundler dropped them and left the export clause dangling.`
+    )
+  }
+  if (pkg.reachBytes >= REACH_RATIO_FLOOR_BYTES && raw < pkg.reachBytes * MIN_REACH_RATIO) {
+    const pct = ((raw / pkg.reachBytes) * 100).toFixed(2)
+    return (
+      `the bundle is ${raw} B against ${pkg.reachBytes} B of statically-reachable built code (${pct}%, floor ${(MIN_REACH_RATIO * 100).toFixed(0)}%) — ` +
+      `the implementation never made it into the measurement. ` +
+      `Likely cause: the entry is a re-export barrel that shook away, or an import the bundler resolved to nothing.`
+    )
+  }
+  return null
+}
+
 interface BundleResult {
   name: string
   raw: number
   gzip: number
   failed?: boolean
   error?: string
+  /** Set when the number cannot be trusted — see {@link diagnoseMeasurement}. */
+  unmeasurable?: string
+  /** Set when the direct build was invalid and the barrel-safe entry was used. */
+  repaired?: boolean
 }
 
-async function measurePackage(pkg: PackageInfo): Promise<BundleResult> {
+/**
+ * Builds `entry` with the gate's settings. Split out of {@link measurePackage}
+ * so the same options can be applied to the real entry AND to the barrel-safe
+ * wrapper entry without the two drifting apart.
+ */
+async function buildEntry(
+  pkg: PackageInfo,
+  entrypoint: string,
+  outSuffix: string,
+): Promise<{ code: string } | { error: string }> {
   try {
     const result = await Bun.build({
-      entrypoints: [pkg.entry],
+      entrypoints: [entrypoint],
       minify: true,
       // target: 'bun' auto-externalizes Node builtins (`module`,
       // `child_process`, `fs`, etc.) which is what server-side
@@ -338,7 +689,7 @@ async function measurePackage(pkg: PackageInfo): Promise<BundleResult> {
       // outdir is required when splitting:true. Bun writes files but
       // we read from result.outputs in memory, so the directory is
       // basically a sink — set to a Bun-managed temp.
-      outdir: `/tmp/check-bundle-budgets/${pkg.name.replace('@', '').replace('/', '-')}`,
+      outdir: `/tmp/check-bundle-budgets/${pkg.name.replace('@', '').replace('/', '-')}${outSuffix}`,
       external: [
         // Externalize all workspace packages — measure THIS package's
         // unique bytes, not bytes from cross-package deps.
@@ -364,37 +715,95 @@ async function measurePackage(pkg: PackageInfo): Promise<BundleResult> {
       define: { 'process.env.NODE_ENV': '"production"' },
     })
     if (!result.success) {
-      return {
-        name: pkg.name,
-        raw: 0,
-        gzip: 0,
-        failed: true,
-        error: result.logs.map((l) => String(l)).join('\n'),
-      }
+      return { error: result.logs.map((l) => String(l)).join('\n') }
     }
     // Pick ONLY the entry-point output (kind: 'entry-point') —
     // ignore split chunks emitted from dynamic imports.
-    const entry = result.outputs.find((o) => o.kind === 'entry-point')
-    if (!entry) {
-      return { name: pkg.name, raw: 0, gzip: 0, failed: true, error: 'no entry-point output' }
-    }
-    const code = await entry.text()
-    const raw = Buffer.byteLength(code, 'utf-8')
-    const gzip = gzipSync(code, { level: 9 }).byteLength
-    return { name: pkg.name, raw, gzip }
+    const out = result.outputs.find((o) => o.kind === 'entry-point')
+    if (!out) return { error: 'no entry-point output' }
+    return { code: await out.text() }
   } catch (err) {
-    return {
-      name: pkg.name,
-      raw: 0,
-      gzip: 0,
-      failed: true,
-      error: err instanceof Error ? err.message : String(err),
-    }
+    return { error: err instanceof Error ? err.message : String(err) }
   }
 }
 
-// ─── Main ────────────────────────────────────────────────────────────────
+/**
+ * Writes a wrapper module that re-exports everything from `pkg.entry`, so the
+ * bundler sees the package's exports being CONSUMED rather than merely
+ * re-declared. That is the whole repair: a pure re-export barrel has nothing in
+ * its body referencing its imported bindings, so bundling it directly lets them
+ * shake away; making the entry a dependency of a module that re-exports it
+ * keeps them live.
+ *
+ * `export *` deliberately does not carry `default`, so the default re-export is
+ * emitted only when the entry actually has one — an unconditional
+ * `export { default } from …` is a build error against a package without it.
+ */
+function writeBarrelSafeEntry(pkg: PackageInfo): string {
+  const dir = join('/tmp/check-bundle-budgets/_barrel-safe', pkg.name.replace(/[@/]/g, '-'))
+  mkdirSync(dir, { recursive: true })
+  const file = join(dir, 'entry.js')
+  const spec = JSON.stringify(pkg.entry)
+  const lines = [`export * from ${spec}`]
+  if (hasDefaultExport(pkg.entry)) lines.push(`export { default } from ${spec}`)
+  writeFileSync(file, lines.join('\n') + '\n')
+  return file
+}
 
+/**
+ * Measures one package, and refuses to report a number it cannot stand behind.
+ *
+ * The direct build is tried FIRST and kept whenever it is sound, because it is
+ * the exact thing a consumer bundles — measured across all 71 budgeted
+ * packages, the barrel-safe wrapper changes 64 of them by 0.0-0.5% but it is
+ * not free everywhere: an entry with no named exports at all (`@pyreon/zero-cli`
+ * is a side-effect-only CLI script) or one whose only export is `default` under
+ * `sideEffects: false` (`@pyreon/create-zero`) collapses to 28 B through the
+ * wrapper. So the wrapper is a REPAIR applied on proof of breakage, never a
+ * blanket change of how everything is measured — which also means this fix
+ * re-baselines only the packages that were actually wrong.
+ */
+async function measurePackage(pkg: PackageInfo): Promise<BundleResult> {
+  const direct = await buildEntry(pkg, pkg.entry, '')
+  if ('error' in direct) {
+    return { name: pkg.name, raw: 0, gzip: 0, failed: true, error: direct.error }
+  }
+
+  let code = direct.code
+  let repaired = false
+  let diagnosis = diagnoseMeasurement(code, Buffer.byteLength(code, 'utf-8'), pkg)
+
+  // `PYREON_BUDGETS_NO_REPAIR=1` disables the repair so the DETECTOR can be
+  // asserted on its own. Without it the two are only testable together, and a
+  // detector that is never exercised against a broken bundle is a detector
+  // nobody has proof of — see the regression test in `@pyreon/test-utils`.
+  if (diagnosis !== null && process.env.PYREON_BUDGETS_NO_REPAIR !== '1') {
+    const wrapped = await buildEntry(pkg, writeBarrelSafeEntry(pkg), '-barrel-safe')
+    if (!('error' in wrapped)) {
+      const rawWrapped = Buffer.byteLength(wrapped.code, 'utf-8')
+      const wrappedDiagnosis = diagnoseMeasurement(wrapped.code, rawWrapped, pkg)
+      if (wrappedDiagnosis === null) {
+        code = wrapped.code
+        repaired = true
+        diagnosis = null
+      } else {
+        diagnosis = wrappedDiagnosis
+      }
+    }
+  }
+
+  const raw = Buffer.byteLength(code, 'utf-8')
+  const gzip = gzipSync(code, { level: 9 }).byteLength
+  // A number we cannot stand behind is reported as a FAILURE, never as a small
+  // size. A budget compared against a bundle that shook to nothing is a gate
+  // that cannot fail, which this repo treats as worse than no gate at all.
+  if (diagnosis !== null) {
+    return { name: pkg.name, raw, gzip, unmeasurable: diagnosis }
+  }
+  return { name: pkg.name, raw, gzip, ...(repaired ? { repaired: true } : {}) }
+}
+
+// ─── Main ────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2)
@@ -410,28 +819,47 @@ async function main(): Promise<void> {
 
   // Measure all in parallel — Bun.build is async and CPU-light per call.
   const results: BundleResult[] = await Promise.all(packages.map(measurePackage))
+  // A package whose bundle could not be trusted is EXCLUDED from `measured`.
+  // Leaving it in would let a meaningless number be compared against a budget
+  // and pass — the exact shape this gate exists to make impossible.
   const measured = results
-    .filter((r) => !r.failed)
+    .filter((r) => !r.failed && !r.unmeasurable)
     .sort((a, b) => a.name.localeCompare(b.name))
+  const unmeasurable = results
+    .filter((r) => r.unmeasurable)
+    .map((r) => ({ name: r.name, raw: r.raw, reason: r.unmeasurable as string }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+  const repaired = results
+    .filter((r) => r.repaired)
+    .map((r) => r.name)
+    .sort()
   const failures = [
-    ...results
-      .filter((r) => r.failed)
-      .map((r) => ({ name: r.name, error: r.error ?? 'unknown' })),
+    ...results.filter((r) => r.failed).map((r) => ({ name: r.name, error: r.error ?? 'unknown' })),
     // A package that never built is a failure to MEASURE, not an absence of
     // one — reported alongside bundle errors rather than dropped.
     ...missingBuilds.map((name) => ({
       name,
-      error: 'no lib/index.js — the package declares a JS entry but was not built. Run `bun scripts/bootstrap.ts`.',
+      error:
+        'no lib/index.js — the package declares a JS entry but was not built. Run `bun scripts/bootstrap.ts`.',
     })),
   ].sort((a, b) => a.name.localeCompare(b.name))
 
   // ── Update mode: write fresh budgets and exit ─────────────────────
   if (updateMode) {
-    if (failures.length > 0) {
+    if (unmeasurable.length > 0) {
       // eslint-disable-next-line no-console
       console.error(
-        `✗ Cannot regenerate budgets — ${failures.length} package(s) failed to bundle:`,
+        `✗ Cannot regenerate budgets — ${unmeasurable.length} package(s) could not be measured:`,
       )
+      for (const u of unmeasurable) {
+        // eslint-disable-next-line no-console
+        console.error(`  ${u.name}: ${u.reason}`)
+      }
+      process.exit(1)
+    }
+    if (failures.length > 0) {
+      // eslint-disable-next-line no-console
+      console.error(`✗ Cannot regenerate budgets — ${failures.length} package(s) failed to bundle:`)
       for (const f of failures) {
         // eslint-disable-next-line no-console
         console.error(`  ${f.name}: ${f.error.split('\n')[0]}`)
@@ -465,9 +893,18 @@ async function main(): Promise<void> {
     const onlyArg = args.find((a) => a.startsWith('--update='))
     const only = onlyArg?.slice('--update='.length)
 
+    let carriedThinHeadroom: unknown
+    try {
+      carriedThinHeadroom = (
+        JSON.parse(readFileSync(BUDGETS_PATH, 'utf8')) as Record<string, unknown>
+      )._thinHeadroom
+    } catch {
+      carriedThinHeadroom = undefined
+    }
     const budgets: Record<string, unknown> = {
-      _doc: 'Per-package main-entry budgets in BYTES (minified + gzipped). Externalizes @pyreon/*, node:*, and every bare-module import auto-collected from each package\'s lib/ tree — this is the unique code each package adds to a consumer bundle. Seeded at 25% headroom. `--update` is a RATCHET: it RAISES a budget only for a package that is actually OVER (intentional growth, reviewed in the same PR), and LOWERS one only when you NAME it (`--update=@pyreon/pkg`) — a stale or partial lib/ measures SMALLER than the real package, so an unscoped drop is far more likely to be a bad measurement than a real shrink. Everything else stays byte-identical.',
+      _doc: "Per-package main-entry budgets in BYTES (minified + gzipped). Externalizes @pyreon/*, node:*, and every bare-module import auto-collected from each package's lib/ tree — this is the unique code each package adds to a consumer bundle. Seeded at 25% headroom. `--update` is a RATCHET: it RAISES a budget only for a package that is actually OVER (intentional growth, reviewed in the same PR), and LOWERS one only when you NAME it (`--update=@pyreon/pkg`) — a stale or partial lib/ measures SMALLER than the real package, so an unscoped drop is far more likely to be a bad measurement than a real shrink. Everything else stays byte-identical.",
       _units: 'bytes (gzipped)',
+      ...(carriedThinHeadroom === undefined ? {} : { _thinHeadroom: carriedThinHeadroom }),
     }
     const raised: string[] = []
     const lowered: string[] = []
@@ -505,9 +942,7 @@ async function main(): Promise<void> {
         if (!shouldLowerUnscoped(only !== undefined)) {
           const dropPct = ((prev - ideal) / prev) * 100
           budgets[r.name] = prev
-          refused.push(
-            `${r.name} ${prev} → ${ideal} (−${dropPct.toFixed(1)}%, measured ${r.gzip})`,
-          )
+          refused.push(`${r.name} ${prev} → ${ideal} (−${dropPct.toFixed(1)}%, measured ${r.gzip})`)
           continue
         }
         budgets[r.name] = ideal
@@ -547,7 +982,7 @@ async function main(): Promise<void> {
     )
     process.exit(1)
   }
-  const budgets = JSON.parse(budgetsRaw) as Record<string, number | string>
+  const budgets = JSON.parse(budgetsRaw) as Record<string, number | string | object>
 
   interface Violation {
     name: string
@@ -564,11 +999,45 @@ async function main(): Promise<void> {
   const violations: Violation[] = []
   const missing: MissingBudget[] = []
 
+  // ── Un-satisfiable budgets (headroom below the platform gzip variance) ──
+  //
+  // Ratcheted rather than gated outright, and the distinction is deliberate: a
+  // thin budget is a defect in the BUDGET FILE, not in the package, so failing
+  // on the ones that already exist would redden every unrelated PR — the
+  // red-on-arrival shape this repo treats as a dead gate. What must not happen
+  // is CREATING a new one, so an entry that is thin and not grandfathered in
+  // `_thinHeadroom` fails, and the list can only shrink.
+  const thinRaw = budgets._thinHeadroom
+  const grandfathered = new Set(
+    thinRaw && typeof thinRaw === 'object' && !Array.isArray(thinRaw)
+      ? Object.keys(thinRaw as Record<string, string>).filter((k) => !k.startsWith('_'))
+      : [],
+  )
+  interface ThinBudget {
+    name: string
+    current: number
+    budget: number
+    headroom: number
+    required: number
+  }
+  const thinNew: ThinBudget[] = []
+  const thinKnown: ThinBudget[] = []
+  const recovered: string[] = []
+
   for (const r of measured) {
     const budget = budgets[r.name]
     if (typeof budget !== 'number') {
       missing.push({ name: r.name, current: r.gzip })
       continue
+    }
+    const headroom = budget - r.gzip
+    const required = requiredHeadroom(r.gzip)
+    if (headroom >= 0 && headroom < required) {
+      const entry = { name: r.name, current: r.gzip, budget, headroom, required }
+      if (grandfathered.has(r.name)) thinKnown.push(entry)
+      else thinNew.push(entry)
+    } else if (grandfathered.has(r.name)) {
+      recovered.push(r.name)
     }
     if (r.gzip > budget) {
       const overBy = r.gzip - budget
@@ -584,10 +1053,41 @@ async function main(): Promise<void> {
 
   if (jsonMode) {
     // eslint-disable-next-line no-console
-    console.log(JSON.stringify({ violations, missing, failures, measured }, null, 2))
-  } else if (violations.length === 0 && missing.length === 0 && failures.length === 0) {
+    console.log(
+      JSON.stringify(
+        {
+          violations,
+          missing,
+          failures,
+          unmeasurable,
+          repaired,
+          thinNew,
+          thinKnown,
+          recovered,
+          measured,
+        },
+        null,
+        2,
+      ),
+    )
+  } else if (
+    violations.length === 0 &&
+    missing.length === 0 &&
+    failures.length === 0 &&
+    unmeasurable.length === 0 &&
+    thinNew.length === 0
+  ) {
     // eslint-disable-next-line no-console
     console.log(`✓ All ${measured.length} package(s) within budget.`)
+    if (repaired.length > 0) {
+      // The repair is reported rather than applied silently: a barrel that only
+      // measures correctly through the wrapper is a real condition of the built
+      // output, and a gate that quietly heals one hides it until it changes shape.
+      // eslint-disable-next-line no-console
+      console.log(
+        `  note: ${repaired.length} package(s) bundle their entry to an invalid module directly and were measured through the barrel-safe entry: ${repaired.join(', ')}`,
+      )
+    }
   } else {
     if (violations.length > 0) {
       // eslint-disable-next-line no-console
@@ -600,7 +1100,7 @@ async function main(): Promise<void> {
         // ~177 B on a 16.5 KB package, about 1.1% — so say so when the overage
         // is inside that band, instead of leaving the next person to rediscover
         // it. (`--update` gives 25% headroom; these are hand-set values.)
-        const withinNoise = v.overBy <= Math.max(64, v.current * 0.015)
+        const withinNoise = v.overBy <= requiredHeadroom(v.current)
         const note = withinNoise
           ? `\n      ↳ that is within the ~1.5% macOS/ubuntu gzip variance — this budget has too little headroom to be measured reliably. Raise it clear of the noise rather than shaving the package.`
           : ''
@@ -626,6 +1126,36 @@ async function main(): Promise<void> {
         `\nNew package? Run \`bun run check-bundle-budgets --update\` to add it. Review the value in the diff.`,
       )
     }
+    if (thinNew.length > 0) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `\n✗ ${thinNew.length} budget(s) have LESS headroom than the measurement's own noise:\n`,
+      )
+      for (const t of thinNew) {
+        // eslint-disable-next-line no-console
+        console.error(
+          `  ${t.name}: budget ${t.budget} B is only ${t.headroom} B above the measured ${t.current} B — needs at least ${Math.ceil(t.required)} B (~${(GZIP_PLATFORM_VARIANCE * 100).toFixed(1)}%). Suggested budget: ${Math.ceil(t.current + t.required)} B.`,
+        )
+      }
+      // eslint-disable-next-line no-console
+      console.error(
+        `\nA budget this tight is not strict, it is UN-SATISFIABLE: gzip differs by ~1.1% between macOS and the ubuntu runner, so the same commit passes locally and fails CI, and re-running locally only reconfirms the wrong answer. Raise the budget clear of the noise. If it genuinely must stay this tight, add the package to "_thinHeadroom" in scripts/bundle-budgets.json with a reason — that list can only shrink.`,
+      )
+    }
+    if (unmeasurable.length > 0) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `\n✗ ${unmeasurable.length} package(s) could not be MEASURED (their budget is guarding nothing):\n`,
+      )
+      for (const u of unmeasurable) {
+        // eslint-disable-next-line no-console
+        console.error(`  ${u.name}: ${u.reason}`)
+      }
+      // eslint-disable-next-line no-console
+      console.error(
+        `\nThis is a failure of the gate, not of the package: a budget compared against a bundle that shook to nothing can never fail, which is worse than having no budget. Do NOT "fix" it by lowering the budget to the reported size. Fix the measurement.`,
+      )
+    }
     if (failures.length > 0) {
       // eslint-disable-next-line no-console
       console.error(`\n✗ ${failures.length} package(s) failed to bundle:\n`)
@@ -640,7 +1170,15 @@ async function main(): Promise<void> {
     }
   }
 
-  if (violations.length > 0 || missing.length > 0 || failures.length > 0) {
+  if (!jsonMode) printThinHeadroom(thinKnown, recovered)
+
+  if (
+    violations.length > 0 ||
+    missing.length > 0 ||
+    failures.length > 0 ||
+    unmeasurable.length > 0 ||
+    thinNew.length > 0
+  ) {
     process.exit(1)
   }
 }
