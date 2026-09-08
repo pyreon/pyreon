@@ -41,6 +41,13 @@ export type { FlowLayers } from './components/flow-context'
 export { FlowLayersContext } from './components/flow-context'
 export { Panel } from './components/panel'
 // Edge path utilities
+export type {
+  BezierPathParams,
+  SmoothStepPathParams,
+  StepPathParams,
+  StraightPathParams,
+  WaypointPathParams,
+} from './edges'
 export {
   collectEdgeMarkers,
   DEFAULT_MARKER_END,
