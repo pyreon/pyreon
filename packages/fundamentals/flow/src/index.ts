@@ -43,7 +43,10 @@ export { Panel } from './components/panel'
 // Edge path utilities
 export type {
   BezierPathParams,
+  FloatingEndpoints,
   HandleAnchor,
+  NodeBoxDimensions,
+  SmartHandlePositions,
   SmoothStepPathParams,
   StepPathParams,
   StraightPathParams,

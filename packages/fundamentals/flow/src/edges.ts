@@ -132,6 +132,33 @@ export function resolveHandleAnchor(
 }
 
 /**
+ * The two nodes' auto-detected handle sides for an edge.
+ *
+ * Named rather than inline for the reason `HandleAnchor` is: PMTC resolves a
+ * named object shape declared in the same file into one struct, where an
+ * anonymous return type makes the return-type render and the returned value
+ * synthesize two DIFFERENT data classes on Kotlin — which does not compile.
+ */
+export interface SmartHandlePositions {
+  sourcePosition: Position
+  targetPosition: Position
+}
+
+/** The measured node box a floating endpoint is computed against. */
+export interface NodeBoxDimensions {
+  sourceW: number
+  sourceH: number
+  targetW: number
+  targetH: number
+}
+
+/** Where a floating (auto-routed) edge meets each node's border. */
+export interface FloatingEndpoints {
+  source: HandleAnchor
+  target: HandleAnchor
+}
+
+/**
  * Auto-detect the best handle position based on relative node positions.
  * If the node has configured handles, uses those. Otherwise picks the
  * closest edge (top/right/bottom/left) based on direction to the other node.
@@ -143,8 +170,8 @@ export function resolveHandleAnchor(
 export function getSmartHandlePositions(
   sourceNode: FlowNode,
   targetNode: FlowNode,
-  dims?: { sourceW: number; sourceH: number; targetW: number; targetH: number },
-): { sourcePosition: Position; targetPosition: Position } {
+  dims?: NodeBoxDimensions,
+): SmartHandlePositions {
   const sw = dims?.sourceW ?? sourceNode.width ?? 150
   const sh = dims?.sourceH ?? sourceNode.height ?? 40
   const tw = dims?.targetW ?? targetNode.width ?? 150
@@ -261,11 +288,8 @@ function sideOfPoint(box: Box, point: XYPosition): Position {
 export function getFloatingEndpoints(
   sourceNode: FlowNode,
   targetNode: FlowNode,
-  dims: { sourceW: number; sourceH: number; targetW: number; targetH: number },
-): {
-  source: { x: number; y: number; position: Position }
-  target: { x: number; y: number; position: Position }
-} {
+  dims: NodeBoxDimensions,
+): FloatingEndpoints {
   const sBox: Box = {
     x: sourceNode.position.x,
     y: sourceNode.position.y,

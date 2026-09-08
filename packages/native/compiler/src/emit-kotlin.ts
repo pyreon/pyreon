@@ -287,6 +287,20 @@ function expectedStructForKotlin(fields: readonly { name: string }[]): string | 
 
 /** The declared return type of the top-level function being emitted; steers a `return { … }` literal to its named struct. */
 let _currentReturnTypeKotlin: TypeIR | undefined
+
+/** Mirror of `withEnumReturnCtx` in emit-swift.ts — see that copy. */
+function withEnumReturnCtxKotlin<T>(fn: () => T): T {
+  const rt = _currentReturnTypeKotlin
+  const isEnum = rt !== undefined && rt.kind === 'typeRef' && _enumNames.has(rt.name)
+  if (!isEnum) return fn()
+  const prev = _activeEnumType
+  _activeEnumType = (rt as { name: string }).name
+  try {
+    return fn()
+  } finally {
+    _activeEnumType = prev
+  }
+}
 function withExpectedTypeKotlin<T>(t: TypeIR | undefined, fn: () => T): T {
   const prev = _expectedTypeKotlin
   _expectedTypeKotlin = t
@@ -3314,6 +3328,20 @@ function emitKotlinFunction(
       else _kotlinExprInferCtx.locals.delete(sv.name)
     }
   }
+  // An ANONYMOUS object return type is not representable coherently: the
+  // return-type render synthesizes a data class from the enclosing name
+  // (`PyreonHelpersData`) while the returned literal synthesizes its own
+  // (`__Obj0`), so the emit is `fun pair(…): PyreonHelpersData = __Obj0(…)` —
+  // two identical data classes and a "return type mismatch" from kotlinc.
+  // Warn rather than guess which name wins: NAMING the type is a one-line
+  // source fix that makes both halves agree, and it is what PMTC resolves
+  // best anyway (a named object shape in the same file becomes one struct).
+  // Swift is unaffected — it emits a tuple, which is valid there.
+  if (d.returnType.kind === 'object') {
+    _pushKotlinEmitWarning(
+      `Function \`${d.name}\` returns an ANONYMOUS object type, which Kotlin cannot represent coherently — the return type and the returned value synthesize two different data classes, so the emit does not compile ("return type mismatch"). Declare a named shape (\`interface ${d.name.charAt(0).toUpperCase() + d.name.slice(1)}Result { … }\`) and annotate the return with it.`,
+    )
+  }
   // Kotlin function return-type clause. Unknown return type degrades
   // to `Unit` (void); a known return type emits as `: T`.
   const retType = d.returnType.kind === 'unknown' ? '' : `: ${kotlinType(d.returnType, ctx)}`
@@ -3465,8 +3493,11 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       const keyword = ctx.lambdaLabel ? `return@${ctx.lambdaLabel}` : 'return'
       const ex = s.expr
       if (ex === undefined) return keyword
-      // A returned object literal takes the enclosing function's declared struct.
-      return `${keyword} ${withExpectedTypeKotlin(ex.kind === 'object' ? _currentReturnTypeKotlin : undefined, () => emitKotlinExpr(ex, indent))}`
+      // A returned object literal takes the enclosing function's declared struct;
+      // a returned string LITERAL takes its declared ENUM. Mirror of the Swift
+      // branch — kotlinc rejects the raw string with "return type mismatch:
+      // expected 'Side', actual 'String'".
+      return `${keyword} ${withEnumReturnCtxKotlin(() => withExpectedTypeKotlin(ex.kind === 'object' ? _currentReturnTypeKotlin : undefined, () => emitKotlinExpr(ex, indent)))}`
     }
     case 'expr':
       // A bare `i++` / `i--` STATEMENT is side-effect-only → `i += 1` /
@@ -4818,6 +4849,18 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // lower to `fold(initial, reducer)` — handled below.
       if (e.callee.kind === 'member') {
         const obj = emitKotlinExpr(e.callee.object, indent)
+        // A method call whose RECEIVER chain is optional must keep the chain
+        // optional: `m?.handles?.filter(…)`. The member emit already
+        // propagates `?.` for a property read, but every array/string method
+        // below hard-coded a plain dot, so `m?.handles.filter(…)` reached
+        // kotlinc as "only safe (?.) or non-null asserted (!!.) calls are
+        // allowed on a nullable receiver" — with no warning from PMTC.
+        //
+        // The INDEX form (`${obj}[i]`) is deliberately untouched: Kotlin has no
+        // `?[`, so an optional receiver there needs `?.get(i)`, which is a
+        // different rewrite and is left as a named gap rather than half-done.
+        const objDot =
+          e.callee.optional === true || chainHasOptional(e.callee.object) ? '?.' : '.'
         const prop = e.callee.property
         // Labeled-return wiring for MULTI-STATEMENT plain (1-param)
         // callbacks — the call site knows the emitted Kotlin method name
@@ -4849,7 +4892,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             cb.stmts !== undefined &&
             cb.stmts.length > 0
           ) {
-            return `${obj}.${label}(${emitKotlinPlainCallback(cb, indent, label)})`
+            return `${obj}${objDot}${label}(${emitKotlinPlainCallback(cb, indent, label)})`
           }
         }
         const argExprs = e.args.map((a) => emitKotlinExpr(a, indent))
@@ -4860,15 +4903,15 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           if (recvT.kind === 'map') {
             if (prop === 'set' && e.args.length === 2) return `${obj}[${argExprs[0]!}] = ${argExprs[1]!}`
             if (prop === 'get' && e.args.length === 1) return `${obj}[${argExprs[0]!}]`
-            if (prop === 'has' && e.args.length === 1) return `${obj}.containsKey(${argExprs[0]!})`
-            if (prop === 'delete' && e.args.length === 1) return `${obj}.remove(${argExprs[0]!})`
-            if (prop === 'clear' && e.args.length === 0) return `${obj}.clear()`
+            if (prop === 'has' && e.args.length === 1) return `${obj}${objDot}containsKey(${argExprs[0]!})`
+            if (prop === 'delete' && e.args.length === 1) return `${obj}${objDot}remove(${argExprs[0]!})`
+            if (prop === 'clear' && e.args.length === 0) return `${obj}${objDot}clear()`
           }
           if (recvT.kind === 'set') {
-            if (prop === 'add' && e.args.length === 1) return `${obj}.add(${argExprs[0]!})`
-            if (prop === 'has' && e.args.length === 1) return `${obj}.contains(${argExprs[0]!})`
-            if (prop === 'delete' && e.args.length === 1) return `${obj}.remove(${argExprs[0]!})`
-            if (prop === 'clear' && e.args.length === 0) return `${obj}.clear()`
+            if (prop === 'add' && e.args.length === 1) return `${obj}${objDot}add(${argExprs[0]!})`
+            if (prop === 'has' && e.args.length === 1) return `${obj}${objDot}contains(${argExprs[0]!})`
+            if (prop === 'delete' && e.args.length === 1) return `${obj}${objDot}remove(${argExprs[0]!})`
+            if (prop === 'clear' && e.args.length === 0) return `${obj}${objDot}clear()`
           }
         }
         switch (prop) {
@@ -4882,10 +4925,10 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             if (cb) {
               const el = kotlinIdent(cb.params[0]!)
               const idx = kotlinIdent(cb.params[1]!)
-              return `${obj}.withIndex().any({ (${idx}, ${el}) ->${emitKotlinIndexedBody(cb, indent, 'any')}})`
+              return `${obj}${objDot}withIndex().any({ (${idx}, ${el}) ->${emitKotlinIndexedBody(cb, indent, 'any')}})`
             }
             if (e.args.length === 1) {
-              return `${obj}.any(${argExprs[0]!})`
+              return `${obj}${objDot}any(${argExprs[0]!})`
             }
             break
           }
@@ -4894,10 +4937,10 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             if (cb) {
               const el = kotlinIdent(cb.params[0]!)
               const idx = kotlinIdent(cb.params[1]!)
-              return `${obj}.withIndex().all({ (${idx}, ${el}) ->${emitKotlinIndexedBody(cb, indent, 'all')}})`
+              return `${obj}${objDot}withIndex().all({ (${idx}, ${el}) ->${emitKotlinIndexedBody(cb, indent, 'all')}})`
             }
             if (e.args.length === 1) {
-              return `${obj}.all(${argExprs[0]!})`
+              return `${obj}${objDot}all(${argExprs[0]!})`
             }
             break
           }
@@ -4908,9 +4951,9 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             if (cb) {
               const el = kotlinIdent(cb.params[0]!)
               const idx = kotlinIdent(cb.params[1]!)
-              return `${obj}.filterIndexed({ ${idx}, ${el} ->${emitKotlinIndexedBody(cb, indent, 'filterIndexed')}})`
+              return `${obj}${objDot}filterIndexed({ ${idx}, ${el} ->${emitKotlinIndexedBody(cb, indent, 'filterIndexed')}})`
             }
-            if (e.args.length === 1) return `${obj}.filter(${argExprs[0]!})`
+            if (e.args.length === 1) return `${obj}${objDot}filter(${argExprs[0]!})`
             break
           }
           case 'map':
@@ -4927,13 +4970,13 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               const el = kotlinIdent(cb.params[0]!)
               const idx = kotlinIdent(cb.params[1]!)
               const fn = prop === 'map' ? 'mapIndexed' : 'forEachIndexed'
-              return `${obj}.${fn}({ ${idx}, ${el} ->${emitKotlinIndexedBody(cb, indent, fn)}})`
+              return `${obj}${objDot}${fn}({ ${idx}, ${el} ->${emitKotlinIndexedBody(cb, indent, fn)}})`
             }
             break
           }
           case 'includes':
             if (e.args.length === 1) {
-              return `${obj}.contains(${argExprs[0]!})`
+              return `${obj}${objDot}contains(${argExprs[0]!})`
             }
             break
           // `arr.push(x)` is Kotlin's `add` on a MutableList. Mirrors the
@@ -4941,10 +4984,10 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           // matters.
           case 'push':
             if (e.args.length === 1) {
-              return `${obj}.add(${argExprs[0]!})`
+              return `${obj}${objDot}add(${argExprs[0]!})`
             }
             if (e.args.length > 1) {
-              return `${obj}.addAll(listOf(${argExprs.join(', ')}))`
+              return `${obj}${objDot}addAll(listOf(${argExprs.join(', ')}))`
             }
             break
           case 'charAt':
@@ -4971,7 +5014,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             // Char → falls through to the generic emit (mirrors the Swift
             // single-char-pad restriction).
             const padArg = e.args[1]
-            if (e.args.length === 1) return `${obj}.${prop}(${argExprs[0]!})`
+            if (e.args.length === 1) return `${obj}${objDot}${prop}(${argExprs[0]!})`
             if (
               e.args.length >= 2 &&
               padArg !== undefined &&
@@ -4981,7 +5024,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               padArg.value !== "'" &&
               padArg.value !== '\\'
             ) {
-              return `${obj}.${prop}(${argExprs[0]!}, '${padArg.value}')`
+              return `${obj}${objDot}${prop}(${argExprs[0]!}, '${padArg.value}')`
             }
             break
           }
@@ -4991,7 +5034,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             // (Kotlin's joinToString default is ", ", which differs).
             // (Kotlin String.split / .replace already match JS as-is.)
             if (e.args.length <= 1) {
-              return `${obj}.joinToString(${e.args.length === 1 ? argExprs[0]! : '","'})`
+              return `${obj}${objDot}joinToString(${e.args.length === 1 ? argExprs[0]! : '","'})`
             }
             break
           case 'concat':
@@ -5016,7 +5059,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
                 const count = emitKotlinExpr(objExpr.args[0]!, indent)
                 return `List(${count}) { ${argExprs[0]!} }`
               }
-              return `List(${obj}.size) { ${argExprs[0]!} }`
+              return `List(${obj}${objDot}size) { ${argExprs[0]!} }`
             }
             break
           }
@@ -5031,12 +5074,12 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               const atT = inferType(e.callee.object, _kotlinExprInferCtx)
               if (atT.kind === 'string') {
                 _emitWarnings.push(
-                  `${obj}.at(...): String.at has no Kotlin lowering yet (Char-vs-String mismatch) — emitting the raw call, which fails to compile. Use string slicing or restructure.`,
+                  `${obj}${objDot}at(...): String.at has no Kotlin lowering yet (Char-vs-String mismatch) — emitting the raw call, which fails to compile. Use string slicing or restructure.`,
                 )
                 break
               }
               const i = argExprs[0]!
-              return `${obj}.getOrNull(if ((${i}) < 0) ${obj}.size + (${i}) else (${i}))`
+              return `${obj}${objDot}getOrNull(if ((${i}) < 0) ${obj}${objDot}size + (${i}) else (${i}))`
             }
             break
           }
@@ -5059,23 +5102,23 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             if (negSlice) {
               switch (negSlice.kind) {
                 case 'last':
-                  return `${obj}.takeLast(${negSlice.n})`
+                  return `${obj}${objDot}takeLast(${negSlice.n})`
                 case 'dropLast':
-                  return `${obj}.dropLast(${negSlice.n})`
+                  return `${obj}${objDot}dropLast(${negSlice.n})`
                 case 'dropFirstLast':
-                  return `${obj}.drop(${negSlice.s}).dropLast(${negSlice.n})`
+                  return `${obj}${objDot}drop(${negSlice.s}).dropLast(${negSlice.n})`
                 case 'suffixDropLast':
-                  return `${obj}.takeLast(${negSlice.m}).dropLast(${negSlice.n})`
+                  return `${obj}${objDot}takeLast(${negSlice.m}).dropLast(${negSlice.n})`
               }
             }
             if (noNegative) {
-              if (e.args.length === 1) return `${obj}.drop(${argExprs[0]!})`
+              if (e.args.length === 1) return `${obj}${objDot}drop(${argExprs[0]!})`
               if (e.args.length === 2) {
-                return `${obj}.drop(${argExprs[0]!}).take(maxOf(0, (${argExprs[1]!}) - (${argExprs[0]!})))`
+                return `${obj}${objDot}drop(${argExprs[0]!}).take(maxOf(0, (${argExprs[1]!}) - (${argExprs[0]!})))`
               }
               if (e.args.length === 0) {
                 if (sliceObjType.kind === 'string') return obj
-                if (sliceObjType.kind === 'array') return `${obj}.toList()`
+                if (sliceObjType.kind === 'array') return `${obj}${objDot}toList()`
               }
             }
             break
@@ -5094,16 +5137,16 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               if (cb) {
                 const el = kotlinIdent(cb.params[0]!)
                 const idx = kotlinIdent(cb.params[1]!)
-                return `(${obj}.withIndex().firstOrNull({ (${idx}, ${el}) ->${emitKotlinIndexedBody(cb, indent, 'firstOrNull')}})?.index ?: -1)`
+                return `(${obj}${objDot}withIndex().firstOrNull({ (${idx}, ${el}) ->${emitKotlinIndexedBody(cb, indent, 'firstOrNull')}})?.index ?: -1)`
               }
             }
-            if (e.args.length === 1) return `${obj}.indexOfFirst(${argExprs[0]!})`
+            if (e.args.length === 1) return `${obj}${objDot}indexOfFirst(${argExprs[0]!})`
             break
           case 'replaceAll':
             // JS `str.replaceAll(a, b)` → Kotlin `String.replace(a, b)`
             // (Kotlin's `replace` is replace-ALL — faithful; Swift uses
             // `replacingOccurrences`).
-            if (e.args.length === 2) return `${obj}.replace(${argExprs[0]!}, ${argExprs[1]!})`
+            if (e.args.length === 2) return `${obj}${objDot}replace(${argExprs[0]!}, ${argExprs[1]!})`
             break
           case 'replace':
             // JS `str.replace(a, b)` with a STRING pattern replaces only the
@@ -5120,19 +5163,19 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             // the other uncompilable, and no warning on either. "Deliberately
             // not mapped" only holds if something catches the shape.
             if (e.args.length === 2) {
-              return `${obj}.replaceFirst(${argExprs[0]!}, ${argExprs[1]!})`
+              return `${obj}${objDot}replaceFirst(${argExprs[0]!}, ${argExprs[1]!})`
             }
             break
           case 'flat':
             // JS `arr.flat()` (one level) → Kotlin `flatten()` (Swift:
             // `flatMap { $0 }`). No-arg (depth-1) form only.
-            if (e.args.length === 0) return `${obj}.flatten()`
+            if (e.args.length === 0) return `${obj}${objDot}flatten()`
             break
           case 'reverse':
             // JS `arr.reverse()` → Kotlin `reversed()` (non-mutating, returns
             // a new List<T> — render-safe, mirrors `rx.reverse`; Swift:
             // `Array(reversed())`).
-            if (e.args.length === 0) return `${obj}.reversed()`
+            if (e.args.length === 0) return `${obj}${objDot}reversed()`
             break
           case 'reduce':
             // JS `arr.reduce(reducer, initial)` → Kotlin `fold(initial,
@@ -5141,7 +5184,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             // rx.reduce. The 1-arg form (`arr.reduce(cb)`) IS valid
             // Kotlin `reduce {}` → falls through to the generic emit.
             if (e.args.length === 2) {
-              return `${obj}.fold(${argExprs[1]!}, ${argExprs[0]!})`
+              return `${obj}${objDot}fold(${argExprs[1]!}, ${argExprs[0]!})`
             }
             break
           case 'toFixed': {
@@ -5162,10 +5205,10 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             break
           }
           case 'toUpperCase':
-            if (e.args.length === 0) return `${obj}.uppercase()`
+            if (e.args.length === 0) return `${obj}${objDot}uppercase()`
             break
           case 'toLowerCase':
-            if (e.args.length === 0) return `${obj}.lowercase()`
+            if (e.args.length === 0) return `${obj}${objDot}lowercase()`
             break
           case 'sort': {
             // JS `arr.sort((a,b) => <numeric>)` → Kotlin
@@ -5218,7 +5261,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
                 bodyT.kind === 'number' && bodyT.float === true
                   ? `(${body}).compareTo(0.0)`
                   : body
-              return `${obj}.sortedWith(Comparator { ${ps} -> ${cmpBody} })`
+              return `${obj}${objDot}sortedWith(Comparator { ${ps} -> ${cmpBody} })`
             }
             break
           }

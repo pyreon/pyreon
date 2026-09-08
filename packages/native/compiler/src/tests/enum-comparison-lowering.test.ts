@@ -57,7 +57,7 @@ describe('enum-aware comparison — Swift', () => {
   const { code, warnings } = transform(SRC, { target: 'swift' })
 
   it('emits the enum declaration', () => {
-    expect(code).toContain('enum Position: String {')
+    expect(code).toContain('enum Position: String, Codable {')
   })
 
   it('lowers a literal compared against a PARAMETER', () => {
