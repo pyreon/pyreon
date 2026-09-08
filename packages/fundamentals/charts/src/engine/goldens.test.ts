@@ -38,6 +38,7 @@ const GOLDENS: Record<string, () => string> = {
   'plot-area-points': () => chartToSvg({ data: ROWS, marks: [area<Row>((d) => d.revenue), points<Row>((d) => d.cost)], x: (d) => d.month, ...SIZE }),
   'plot-stacked': () => chartToSvg({ data: ROWS, marks: [stackedBars<Row>((d) => d.revenue), stackedBars<Row>((d) => d.cost)], x: (d) => d.month, ...SIZE }),
   'plot-horizontal': () => chartToSvg({ data: ROWS, marks: [bars<Row>((d) => d.revenue)], x: (d) => d.month, horizontal: true, ...SIZE }),
+  'plot-horizontal-stacked': () => chartToSvg({ data: ROWS, marks: [stackedBars<Row>((d) => d.revenue), stackedBars<Row>((d) => d.cost)], x: (d) => d.month, horizontal: true, ...SIZE }),
   'plot-annotated': () => chartToSvg({ data: ROWS, marks: [bars<Row>((d) => d.revenue)], x: (d) => d.month, annotations: [{ y: 100, label: 'goal' }, { yFrom: 130, yTo: 150 }], ...SIZE }),
   pie: () => pieToSvg({ data: ROWS, value: (d) => d.revenue, label: (d) => d.month, innerRadius: 0.5, showLabels: true, ...SIZE }),
   gauge: () => gaugeToSvg({ value: 0.72, max: 1, showValue: true, ...SIZE }),
