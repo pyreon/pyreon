@@ -7,7 +7,8 @@
 import { describe, expect, it } from 'vitest'
 import { chartToSvg } from './svg-chart'
 import { chartTable, describeChart } from './a11y'
-import { band, bars, line } from './marks'
+import { tooltipAt, tooltipLines } from './tooltip'
+import { band, bars, line, resolveMarks } from './marks'
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { PlotChart } from './Chart'
@@ -132,6 +133,16 @@ describe('error bars reach the numbers table', () => {
 })
 
 describe('the LIVE chart, not just the SVG helper', () => {
+  it('a mounted <PlotChart> hands the tooltip a band row with both bounds', () => {
+    // `Chart.tsx` passes the frame's own `Series[]` to `tooltipAt`, so the
+    // field rides along structurally rather than through a mapping — which
+    // is exactly the difference from the a11y path, where a field-by-field
+    // map dropped it. Asserted so a future refactor to a mapping is caught.
+    const series = resolveMarks(ROWS, [band<Row>((d: Row) => d.lo, (d: Row) => d.hi)])
+    const c = tooltipAt(0, ['a', 'b'], series)
+    expect(c.rows[0]!.value2).toBe(5)
+  })
+
   // `Chart.tsx` builds its a11y input field by field, and that mapping is
   // exactly where `values2` went missing — a spec that renders through
   // `chartToSvg` twice proves nothing about it, which the first version of
@@ -156,5 +167,35 @@ describe('the LIVE chart, not just the SVG helper', () => {
     const cells = [...el.querySelectorAll('tbody tr')].map((tr) => [...tr.querySelectorAll('td, th')].map((c) => c.textContent))
     expect(cells).toEqual([['a', '3', '5'], ['b', '6', '2']])
     el.remove()
+  })
+})
+
+describe('the tooltip reads a band as an interval', () => {
+  // Third consumer of the same field. `values2` was added to `Series`, and
+  // every downstream shape that projects a Series into its OWN narrower type
+  // dropped it silently: the value labels, the accessible description and
+  // table, and this. A row carrying only the high edge reports one number for
+  // a mark whose whole meaning is the pair.
+  it('a two-channel row carries both bounds, and prints low to high', () => {
+    const c = tooltipAt(1, ['a', 'b'], [
+      { label: 'Range', values: [3, 6], values2: [5, 2], color: '#111' },
+      { label: 'Actual', values: [4, 5], color: '#222' },
+    ])
+    expect(c.rows[0]!.value).toBe(6)
+    expect(c.rows[0]!.value2).toBe(2)
+    expect(c.rows[1]!.value2).toBeUndefined()
+    expect(tooltipLines(c)).toEqual(['b', 'Range: 2 to 6', 'Actual: 5'])
+  })
+
+  it('a gap in the second channel degrades to the one-number row', () => {
+    const c = tooltipAt(0, ['a'], [{ label: 'R', values: [3], values2: [Number.NaN], color: '#111' }])
+    expect(c.rows[0]!.value2).toBeUndefined()
+    expect(tooltipLines(c)).toEqual(['a', 'R: 3'])
+  })
+
+  it('a shorter second channel does not read past its end', () => {
+    const c = tooltipAt(1, ['a', 'b'], [{ label: 'R', values: [3, 6], values2: [5], color: '#111' }])
+    expect(c.rows[0]!.value2).toBeUndefined()
+    expect(tooltipLines(c)).toEqual(['b', 'R: 6'])
   })
 })

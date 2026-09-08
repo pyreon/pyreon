@@ -231,11 +231,11 @@ data class LegendPlan(var row: List<Double>, var xs: List<Double>, var rows: Dou
 
 data class Size(var w: Double, var h: Double)
 
-data class TooltipRow(var label: String, var value: Double, var color: String)
+data class TooltipRow(var label: String, var value: Double, var color: String, var value2: Double? = null)
 
 data class TooltipContent(var title: String, var rows: List<TooltipRow>)
 
-data class TooltipSeries(var label: String, var values: List<Double>, var color: String)
+data class TooltipSeries(var label: String, var values: List<Double>, var color: String, var values2: List<Double>? = null)
 
 data class TooltipOptions(var fontSize: Double, var fill: String, var border: String, var text: String, var pad: Double, var radius: Double)
 
@@ -6088,7 +6088,14 @@ fun tooltipAt(index: Int, categories: List<String>, series: List<TooltipSeries>)
       if (v == null || v != v) {
         continue
       }
-      val row = TooltipRow(label = s.label, value = v, color = s.color)
+      var row = TooltipRow(label = s.label, value = v, color = s.color)
+      val other = (s.values2 ?: listOf())
+      if (index < other.length) {
+        val v2 = other[index]
+        if (v2 == v2) {
+          row = TooltipRow(label = s.label, value = v, color = s.color, value2 = v2)
+        }
+      }
       rows.add(row)
     }
     return TooltipContent(title = (categories[index] ?: "${index + 1}"), rows = rows)
@@ -6098,7 +6105,12 @@ fun tooltipLines(c: TooltipContent, format: ((Double) -> String)? = null): List<
     val fmt = (format ?: ::plain)
     val out = mutableListOf(c.title)
     for (r in c.rows) {
-      out.add("${r.label}: ${fmt(r.value)}")
+      val lo = (r.value2 ?: ((0.0).toDouble() / (0.0).toDouble()))
+      if (lo == lo) {
+        out.add("${r.label}: ${fmt(lo)} to ${fmt(r.value)}")
+      } else {
+        out.add("${r.label}: ${fmt(r.value)}")
+      }
     }
     return out
   }

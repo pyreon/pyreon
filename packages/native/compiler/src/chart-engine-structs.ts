@@ -7480,6 +7480,22 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         "type": {
           "kind": "string"
         }
+      },
+      {
+        "name": "value2",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
       }
     ],
     "external": true
@@ -7531,6 +7547,25 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         "name": "color",
         "type": {
           "kind": "string"
+        }
+      },
+      {
+        "name": "values2",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "typeRef",
+                "name": "Double",
+                "args": []
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
         }
       }
     ],

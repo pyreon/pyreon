@@ -1751,10 +1751,12 @@ public struct TooltipRow: Codable {
   public var label: String
   public var value: Double
   public var color: String
-  public init(label: String, value: Double, color: String) {
+  public var value2: Double? = nil
+  public init(label: String, value: Double, color: String, value2: Double? = nil) {
     self.label = label
     self.value = value
     self.color = color
+    self.value2 = value2
   }
 }
 
@@ -1771,10 +1773,12 @@ public struct TooltipSeries: Codable {
   public var label: String
   public var values: [Double]
   public var color: String
-  public init(label: String, values: [Double], color: String) {
+  public var values2: [Double]? = nil
+  public init(label: String, values: [Double], color: String, values2: [Double]? = nil) {
     self.label = label
     self.values = values
     self.color = color
+    self.values2 = values2
   }
 }
 
@@ -7762,7 +7766,14 @@ public func tooltipAt(_ index: Int, _ categories: [String], _ series: [TooltipSe
       if v == nil || v != v {
         continue
       }
-      let row = TooltipRow(label: s.label, value: v, color: s.color)
+      var row = TooltipRow(label: s.label, value: v, color: s.color)
+      let other = (s.values2 ?? [])
+      if index < other.count {
+        let v2 = other[index]
+        if v2 == v2 {
+          row = TooltipRow(label: s.label, value: v, color: s.color, value2: v2)
+        }
+      }
       rows.append(row)
     }
     return TooltipContent(title: (categories[index] ?? "\(index + 1)"), rows: rows)
@@ -7772,7 +7783,12 @@ public func tooltipLines(_ c: TooltipContent, _ format: ((Double) -> String)? = 
     let fmt = (format ?? plain)
     var out = [c.title]
     for r in c.rows {
-      out.append("\(r.label): \(fmt(r.value))")
+      let lo = (r.value2 ?? (0.0 / 0.0))
+      if lo == lo {
+        out.append("\(r.label): \(fmt(lo)) to \(fmt(r.value))")
+      } else {
+        out.append("\(r.label): \(fmt(r.value))")
+      }
     }
     return out
   }
