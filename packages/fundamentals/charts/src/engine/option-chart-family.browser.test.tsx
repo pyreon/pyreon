@@ -11,9 +11,10 @@ describe('OptionChart family routing (real browser)', () => {
     const seen: [string, unknown][] = []
     const { container } = mountInBrowser(h(OptionChart, { option: () => option(), width: 300, height: 200, onFamilySelect: (kind: string, hit: unknown) => seen.push([kind, hit]) }))
     await flush()
-    // The host canvas is live; OptionChart's own canvas is hidden and no svg fallback was used.
+    // The host canvas is the ONLY canvas: the cartesian surface (the shared
+    // host) mounts only for a cartesian plan, and no svg fallback was used.
     const canvases = Array.from(container.querySelectorAll('canvas'))
-    expect(canvases).toHaveLength(2)
+    expect(canvases).toHaveLength(1)
     expect(container.querySelector('svg')).toBeNull()
     const live = canvases.find((c) => c.style.display !== 'none')!
     const r = live.getBoundingClientRect()

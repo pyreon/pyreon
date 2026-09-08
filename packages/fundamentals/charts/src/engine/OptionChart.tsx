@@ -9,7 +9,8 @@
 import { h, onMount } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import { batch, effect, signal } from '@pyreon/reactivity'
-import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
+import { canvasHost } from './canvas-host'
+import type { CanvasHostProps } from './canvas-host'
 import { compiledCommands, optionToSvg, planOption } from './option'
 import type { CompiledOption, EChartsOption, OptionPlan } from './option'
 import { familyHostNode } from './family-host'
@@ -20,12 +21,9 @@ import { visualMapCommands } from './visual-map'
 import { barsFor, layoutChart, resolveY2Domain, resolveYDomain, seriesOnRightAxis } from './render'
 import type { ChartSpec } from './render'
 import { hitBar, hitNearestX, layoutSeriesPoints } from './layout'
-import { measureApprox } from './svg'
-import { chartTable, describeChart } from './a11y'
+import { plain } from './format'
 import type { ThemeDefinition } from './theme-registry'
-import type { Double, DrawCmd, MeasureText } from './types'
-
-const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
+import type { Double, DrawCmd, MeasureText, Rect } from './types'
 
 export interface OptionHit {
   seriesIndex: number
@@ -35,11 +33,18 @@ export interface OptionHit {
   value: Double
 }
 
-export interface OptionChartProps {
+/**
+ * The cartesian surface rides the SHARED canvas host (`canvasHost`), so it
+ * carries the host's whole interaction stack — `tooltip`, `keyboard` (on by
+ * default), `toolbox` / `onSaveImage`, `accessibleTable`, `onSelectIndex` —
+ * exactly as every family host does. The option's own `theme` (a registered
+ * ECharts-shaped theme) and `locale` stay the facade's; the host's
+ * `ChartTheme` prop is not taken here because the compiled option already
+ * resolved its colours.
+ */
+export interface OptionChartProps extends Omit<CanvasHostProps, 'theme' | 'showTitle' | 'subtitle' | 'showLegend' | 'legendPosition' | 'animate' | 'updateAnimation' | 'updateDuration'> {
   /** An ECharts-shaped option. An accessor makes it reactive; a plain object is static. */
   option: EChartsOption | (() => EChartsOption)
-  width?: Double
-  height?: Double
   /** A registered theme name or an inline definition (see `registerTheme`). */
   theme?: string | ThemeDefinition
   /** BCP 47 tag for axis-label formatting (see `registerLocale`). */
@@ -50,12 +55,10 @@ export interface OptionChartProps {
   onTimelineChange?: (index: number) => void
   /** Fired with the datum under a click (cartesian plans), or null for a miss. */
   onSelect?: (hit: OptionHit | null) => void
+  /** The datum INDEX under a click (or the keyboard's pick), -1 for a miss — the multiplatform-safe twin of `onSelect`. */
+  onSelectIndex?: (index: number) => void
   /** Fired by a family host (pie, sankey, treemap, …) with ITS hit value, tagged with the family kind. */
   onFamilySelect?: (kind: FamilyPlan['kind'], hit: unknown) => void
-  /** Accessible name; defaults to the option's title. */
-  title?: string
-  accessibleTable?: boolean
-  class?: string
 }
 
 /** Move a command by (dx, dy) — a multi-grid part painted at its rect. */
@@ -78,8 +81,17 @@ function offsetCmd(c: DrawCmd, dx: Double, dy: Double): DrawCmd {
 
 const canvasable = (p: OptionPlan): boolean => p.kind === 'cartesian' || (p.kind === 'grids' && p.parts.every((q) => q.plan.kind === 'cartesian'))
 
+/** What the shared host lays out for a cartesian plan: the compiled commands and the plan the hit test reads. */
+interface OptionGeometry {
+  cmds: DrawCmd[]
+  plan: OptionPlan
+  option: EChartsOption
+  measure: MeasureText
+  w: Double
+  hgt: Double
+}
+
 export function OptionChart(props: OptionChartProps): VNode {
-  let canvas: HTMLCanvasElement | null = null
   let svgHost: HTMLDivElement | null = null
   // The auto-played step; -1 = not started (use the option's currentIndex).
   const step = signal(-1)
@@ -166,12 +178,17 @@ export function OptionChart(props: OptionChartProps): VNode {
       if (host !== null) host.innerHTML = optionToSvg(opt, compileOpts(w, hgt, idx))
       return
     }
+    // A cartesian plan paints through the shared host below.
     mode.set('canvas')
-    const el = canvas
-    if (el === null) return
-    const ctx = prepareCanvas(el, w, hgt)
-    if (ctx === null) return
-    const measure = canvasMeasure(ctx, FONT)
+  })
+
+  /** The cartesian draw list for the host's box — the same commands `optionToSvg` serialises. */
+  const cartesian = (w: Double, hgt: Double, measure: MeasureText): OptionGeometry => {
+    const opt = readOption()
+    const idx = stepIndex()
+    const steps = timelineSteps(opt)
+    const stripH = steps === null ? 0.0 : TIMELINE_HEIGHT
+    const plan = planOption(opt, compileOpts(w, hgt - stripH, idx))
     const resolved = resolveTimeline(opt, idx).option as EChartsOption
     const cmds: DrawCmd[] = []
     if (plan.kind === 'cartesian') {
@@ -185,8 +202,8 @@ export function OptionChart(props: OptionChartProps): VNode {
       for (const c of graphicCommands(resolved, w, hgt - stripH).cmds) cmds.push(c)
     }
     if (steps !== null) for (const c of timelineCommands({ ...steps, current: idx ?? steps.current }, w, hgt - stripH, stripH)) cmds.push(c)
-    paint(ctx, cmds, w, hgt, FONT)
-  })
+    return { cmds, plan, option: resolved, measure, w, hgt }
+  }
 
   effect(() => {
     readOption()
@@ -230,31 +247,33 @@ export function OptionChart(props: OptionChartProps): VNode {
     return best
   }
 
-  const hitAt = (px: Double, py: Double): OptionHit | null => {
-    const opt = readOption()
-    const idx = stepIndex()
-    const w = width()
-    const stripH = timelineSteps(opt) === null ? 0.0 : TIMELINE_HEIGHT
-    const plan = planOption(opt, compileOpts(w, height() - stripH, idx))
-    const ctx = canvas === null ? null : canvas.getContext('2d')
-    const measure = ctx === null ? measureApprox() : canvasMeasure(ctx, FONT)
-    if (plan.kind === 'cartesian') return hitIn(plan.compiled, resolveTimeline(opt, idx).option as EChartsOption, measure, px, py)
+  const hitAt = (g: OptionGeometry, px: Double, py: Double): OptionHit | null => {
+    const plan = g.plan
+    if (plan.kind === 'cartesian') return hitIn(plan.compiled, g.option, g.measure, px, py)
     if (plan.kind === 'grids') {
       for (const part of plan.parts) {
         const r = part.rect
         if (part.plan.kind !== 'cartesian' || px < r.x || px > r.x + r.w || py < r.y || py > r.y + r.h) continue
-        return hitIn(part.plan.compiled, {}, measure, px - r.x, py - r.y)
+        return hitIn(part.plan.compiled, {}, g.measure, px - r.x, py - r.y)
       }
     }
     return null
   }
 
-  const handleClick = (ev: MouseEvent): void => {
-    const el = canvas
-    const cb = props.onSelect
-    if (el === null || cb === undefined) return
-    const r = el.getBoundingClientRect()
-    cb(hitAt(ev.clientX - r.left, ev.clientY - r.top))
+  /** The first cartesian spec of the geometry — the keyboard and the table walk its rows. */
+  const firstSpec = (g: OptionGeometry): { spec: ChartSpec; top: Double; dx: Double; dy: Double } | null => {
+    if (g.plan.kind === 'cartesian') {
+      const top = compiledCommands(g.plan.compiled, g.option, g.measure).top
+      return { spec: { ...g.plan.compiled.spec, height: Math.max(0.0, g.plan.compiled.spec.height - top) }, top, dx: 0.0, dy: 0.0 }
+    }
+    if (g.plan.kind === 'grids') {
+      const part = g.plan.parts.find((p) => p.plan.kind === 'cartesian')
+      if (part !== undefined && part.plan.kind === 'cartesian') {
+        const top = compiledCommands(part.plan.compiled, {}, g.measure).top
+        return { spec: { ...part.plan.compiled.spec, height: Math.max(0.0, part.plan.compiled.spec.height - top) }, top, dx: part.rect.x, dy: part.rect.y }
+      }
+    }
+    return null
   }
 
   const a11y = () => {
@@ -275,18 +294,75 @@ export function OptionChart(props: OptionChartProps): VNode {
     }
   }
 
-  const canvasNode = h('canvas', {
-    class: props.class,
-    role: 'img',
-    'aria-label': () => describeChart(a11y()),
-    'data-pyreon-step': () => String(stepIndex() ?? -1),
-    style: () => (mode() === 'canvas' ? '' : 'display:none'),
-    ref: (el: HTMLCanvasElement | null) => {
-      canvas = el
-      if (el !== null) draw()
+  // The cartesian surface: the shared host paints the compiled commands and
+  // owns the pointer, keyboard, tooltip, toolbox and accessible-table paths.
+  // The host's `title` chrome stays off — a compiled option draws its own
+  // `title` — and it takes the props the facade shares with every host.
+  const hostProps: CanvasHostProps = {
+    ...(props.width !== undefined ? { width: props.width } : {}),
+    height: props.height ?? 320.0,
+    ...(props.title !== undefined ? { title: props.title } : {}),
+    ...(props.tooltip !== undefined ? { tooltip: props.tooltip } : {}),
+    ...(props.keyboard !== undefined ? { keyboard: props.keyboard } : {}),
+    ...(props.toolbox !== undefined ? { toolbox: props.toolbox } : {}),
+    ...(props.onSaveImage !== undefined ? { onSaveImage: props.onSaveImage } : {}),
+    ...(props.accessibleTable !== undefined ? { accessibleTable: props.accessibleTable } : {}),
+    ...(props.class !== undefined ? { class: props.class } : {}),
+    animate: false,
+    updateAnimation: false,
+  }
+  const hit = (g: OptionGeometry, i: number): OptionHit | null => {
+    const f = firstSpec(g)
+    if (f === null || i < 0) return null
+    const s = f.spec.series[0]
+    if (s === undefined || i >= s.values.length) return null
+    return { seriesIndex: 0, dataIndex: i, name: f.spec.categories[i] ?? String(i), value: s.values[i] ?? NaN }
+  }
+  const canvasNode = canvasHost<OptionGeometry>({
+    props: hostProps,
+    defaultHeight: 320,
+    caption: 'Chart data',
+    track: () => {
+      readOption()
+      step()
+      void props.timelineIndex
     },
-    onClick: handleClick,
+    layout: (box, measure) => cartesian(box.w, box.h, measure),
+    render: (g) => g.cmds,
+    select: (g, px, py) => {
+      const h1 = hitAt(g, px, py)
+      props.onSelect?.(h1)
+      props.onSelectIndex?.(h1 === null ? -1 : h1.dataIndex)
+    },
+    tooltip: (g, px, py) => {
+      const h1 = hitAt(g, px, py)
+      if (h1 === null) return null
+      const f = firstSpec(g)
+      const label = f?.spec.series[h1.seriesIndex]?.label ?? `Series ${h1.seriesIndex + 1}`
+      return [h1.name, `${label}: ${plain(h1.value)}`]
+    },
+    pick: (g, i) => {
+      const h1 = hit(g, i)
+      if (h1 === null) return
+      props.onSelect?.(h1)
+      props.onSelectIndex?.(i)
+    },
+    focusRect: (g, i): Rect | null => {
+      const f = firstSpec(g)
+      if (f === null) return null
+      const s = f.spec.series[0]
+      if (s === undefined || i < 0 || i >= s.values.length) return null
+      if (s.kind === 'bars') {
+        const r = barsFor(f.spec, 0, g.measure)[i]
+        return r === undefined ? null : { x: r.x + f.dx, y: r.y + f.dy + f.top, w: r.w, h: r.h }
+      }
+      const plot = layoutChart(f.spec, g.measure).plot
+      const p = layoutSeriesPoints(s.values, plot, seriesOnRightAxis(s, f.spec) ? resolveY2Domain(f.spec) : resolveYDomain(f.spec))[i]
+      return p === undefined ? null : { x: p.x + f.dx - 6.0, y: p.y + f.dy + f.top - 6.0, w: 12.0, h: 12.0 }
+    },
+    a11y: () => a11y(),
   })
+  const canvasSlot = (): VNode | null => (mode() === 'canvas' ? canvasNode : null)
   const svgNode = h('div', {
     style: () => (mode() === 'svg' ? '' : 'display:none'),
     ref: (el: HTMLDivElement | null) => {
@@ -295,19 +371,5 @@ export function OptionChart(props: OptionChartProps): VNode {
     },
   })
   const hostSlot = (): VNode | null => (mode() === 'host' ? hostNode() : null)
-  if (props.accessibleTable === false) return h('div', { style: 'position:relative' }, canvasNode, svgNode, hostSlot)
-  const table = (): VNode | null => {
-    const t = chartTable(a11y())
-    if (t.rows.length === 0) return null
-    return h(
-      'div',
-      { style: 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0;margin:-1px;padding:0' },
-      h('table', null,
-        h('caption', null, a11y().title ?? 'Chart data'),
-        h('thead', null, h('tr', null, ...t.headers.map((x) => h('th', { scope: 'col' }, x)))),
-        h('tbody', null, ...t.rows.map((r) => h('tr', null, h('th', { scope: 'row' }, r[0] ?? ''), ...r.slice(1).map((c) => h('td', null, c))))),
-      ),
-    )
-  }
-  return h('div', { style: 'position:relative' }, canvasNode, svgNode, hostSlot, () => table())
+  return h('div', { style: 'position:relative', 'data-pyreon-step': () => String(stepIndex() ?? -1) }, canvasSlot, svgNode, hostSlot)
 }

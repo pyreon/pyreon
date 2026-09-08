@@ -44,7 +44,8 @@ describe('OptionChart (real browser)', () => {
     const { container } = mountInBrowser(h(OptionChart, { option: { singleAxis: { type: 'value' }, series: [{ type: 'scatter', coordinateSystem: 'singleAxis', data: [[1, 2], [3, 4]] }] }, width: 300, height: 200 }))
     await flush()
     expect(container.querySelector('svg')).not.toBeNull()
-    expect(container.querySelector('canvas')!.style.display).toBe('none')
+    // No canvas at all: the cartesian surface mounts only for a cartesian plan.
+    expect(container.querySelector('canvas')).toBeNull()
   })
 
   it('a timeline auto-plays at its interval and stops when the option loses it', async () => {
@@ -57,7 +58,8 @@ describe('OptionChart (real browser)', () => {
     // and then bound, so `() => OptionChart(...)` would run the setup (and start the interval) TWICE.
     const { container } = mountInBrowser(h(OptionChart, { option: () => option(), width: 300, height: 200, onTimelineChange: (i: number) => changes.push(i) }))
     await flush()
-    const c = container.querySelector('canvas')!
+    // The step rides the wrapper (the canvas itself belongs to the shared host).
+    const c = container.querySelector('[data-pyreon-step]')!
     expect(c.getAttribute('data-pyreon-step')).toBe('0')
     await wait(170)
     expect(c.getAttribute('data-pyreon-step')).toBe('1')

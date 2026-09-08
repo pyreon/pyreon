@@ -60,6 +60,8 @@ export interface PlotChartProps<T> {
   showGrid?: boolean
   /** Fired with the datum index when a bar is tapped, or -1 for a miss. */
   onSelect?: (index: number) => void
+  /** The engine's INDEX hit — identical to `onSelect` here; the name every host shares, so a native tap and a grammar `<Plot>` bind the same way. */
+  onSelectIndex?: (index: number) => void
   /** Draw a legend, using each mark's `label`. */
   showLegend?: boolean
   /** Where the legend sits; `top` by default. `left`/`right` stack the entries beside the plot. */
@@ -833,6 +835,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       selected.set(mode === 'single' ? (has ? [] : [global]) : has ? cur.filter((i) => i !== global) : [...cur, global])
     }
     if (props.onSelect !== undefined) props.onSelect(global)
+    if (props.onSelectIndex !== undefined) props.onSelectIndex(global)
   }
 
   const handleKeyDown = (ev: KeyboardEvent): void => {
@@ -1271,7 +1274,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
         return
       }
     }
-    if (props.onSelect === undefined && props.selectedMode === undefined) return
+    if (props.onSelect === undefined && props.onSelectIndex === undefined && props.selectedMode === undefined) return
     const f = frameNow()
     if (f === null) return
     const rect = el.getBoundingClientRect()

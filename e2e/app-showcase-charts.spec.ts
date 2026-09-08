@@ -154,3 +154,61 @@ test.describe('app-showcase /dashboard — the plot engine, real compiler', () =
     expect(errors, `page errors:\n${errors.join('\n')}`).toHaveLength(0)
   })
 })
+
+/**
+ * The interaction leg: the plot-engine chart on the same page, driven the way
+ * a user drives it — a real pointer hover shows the tooltip, a real click
+ * reports the bar's index, the keyboard walks the bars and Enter reports one.
+ * The hosts' own browser suites cover these paths under vitest's JSX
+ * transform; this is the only place they run under the SHIPPED compiler and
+ * the real `@pyreon/vite-plugin`, which is where template-path bugs live.
+ */
+test.describe('app-showcase /dashboard — plot engine interaction', () => {
+  test('hover shows the tooltip, a click and the keyboard both report a bar', async ({ page }) => {
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' })
+    const wrap = page.getByTestId('plot-engine-chart')
+    const canvas = wrap.locator('canvas').first()
+    await expect(canvas).toBeVisible({ timeout: 15_000 })
+    // The chart sits below the fold: a real pointer only reaches what is on
+    // screen (synthetic events do not care, which is how a host suite can be
+    // green while a page hover does nothing). Scroll it in first.
+    await canvas.scrollIntoViewIfNeeded()
+    const box = (await canvas.boundingBox())!
+    expect(box.width).toBeGreaterThan(100)
+
+    // The first mark is bars, so the tooltip answers only ON a bar (a gap
+    // between bars is a miss by contract). Sweep the row at 60% height until
+    // a bar answers — the spec does not know the gutter or the band width.
+    const y = box.y + box.height * 0.6
+    const tooltip = wrap.locator('[data-pyreon-chart-tooltip]')
+    let x = 0
+    for (let fx = 0.12; fx < 0.95; fx += 0.03) {
+      x = box.x + box.width * fx
+      await page.mouse.move(x, y)
+      if (await tooltip.isVisible()) break
+    }
+    await expect(tooltip).toBeVisible()
+    await expect(tooltip).not.toHaveText('')
+
+    await page.mouse.click(x, y)
+    const picked = page.getByTestId('plot-engine-picked')
+    await expect(picked).not.toHaveText('-1')
+    const clicked = Number(await picked.textContent())
+    expect(clicked).toBeGreaterThanOrEqual(0)
+    expect(clicked).toBeLessThan(7)
+
+    // Keyboard: focus the canvas, walk right twice, Enter reports the focused bar.
+    await canvas.focus()
+    await page.keyboard.press('Home')
+    await page.keyboard.press('ArrowRight')
+    await page.keyboard.press('ArrowRight')
+    const live = wrap.locator('[role="status"]')
+    await expect(live).not.toHaveText('')
+    await page.keyboard.press('Enter')
+    await expect(picked).toHaveText('2')
+
+    // Leaving hides the tooltip.
+    await page.mouse.move(box.x + box.width + 40, box.y + box.height + 40)
+    await expect(tooltip).toBeHidden()
+  })
+})
