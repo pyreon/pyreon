@@ -35,18 +35,24 @@
  * Tracking is preserved by construction: the read happens when the caller
  * calls, so it lands in whatever `watch`/`effect`/render scope is active then.
  *
- * SCOPE, stated because it is not obvious: `show` is the only prop routed
- * through this, and every SIBLING prop read at setup off the same
- * getter-bearing holder (`transition`, `timeout`, `interval`, the callbacks —
- * see the destructures in `createKineticComponent` and the `props.x ?? default`
- * reads in `Transition`/`Collapse`) carries the identical freeze. Nothing about
- * the compiler's emission is specific to `show`: `transition={sig()}` lowers to
- * `_rp` exactly the same way. `show` is singled out because its freeze is the
- * one that is INVISIBLE — the element renders, the children mount, nothing
- * throws, and it simply never becomes visible; a frozen `timeout` or
- * `transition` is a configuration value that is almost never driven by a signal
- * and degrades to "the first value wins" rather than to a blank screen.
- * Widening this to a holder-wide read is a follow-up, not an oversight.
+ * SCOPE. `show` is the only prop routed through THIS helper, and that is now a
+ * statement about tracking rather than about coverage. Its siblings carried the
+ * identical freeze — nothing about the compiler's emission is specific to
+ * `show` — and they are handled in `live-prop.ts`; the split between the two is
+ * the thing worth remembering:
+ *
+ * - `show` is the state machine's INPUT, so it is read TRACKED. `watch(showAcc)`
+ *   must re-run when it changes; that is how a flip starts an animation.
+ * - Every other prop is CONFIGURATION consumed during a cycle, so `readLive`
+ *   reads it UNTRACKED. A tracked read there would subscribe the stage watcher
+ *   to its own styling, and changing an easing string mid-flight would restart
+ *   the animation instead of restyling it.
+ *
+ * `show` was fixed first because its freeze is the INVISIBLE one — the element
+ * renders, the children mount, nothing throws, and it simply never becomes
+ * visible. The siblings degrade to "the first value wins", which is quieter but
+ * not smaller: a frozen callback fires into the closure the parent had at
+ * mount, seconds later, with no visual trace at all.
  */
 export const showAccessorFrom = (holder: { show?: unknown }): (() => boolean) => {
   return () => {

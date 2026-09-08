@@ -1,26 +1,24 @@
 import type { VNode } from '@pyreon/core'
 import { createRef, Show } from '@pyreon/core'
 import { runUntracked, signal, watch } from '@pyreon/reactivity'
+import { readLive, readLiveValue } from './live-prop'
 import { showAccessorFrom } from './show-accessor'
-import type { CollapseProps, TransitionStage } from './types'
+import type { CollapseProps, TransitionCallbacks, TransitionStage } from './types'
 import useAnimationEnd from './useAnimationEnd'
 import { useReducedMotion } from './useReducedMotion'
 
 const Collapse = (props: CollapseProps): VNode | null => {
-  const transition = props.transition ?? 'height 300ms ease'
+  // LIVE: written to `style.transition` on every stage change, so the shorthand
+  // in force should be the current one.
+  const transition = () => readLiveValue<string>(props, 'transition') ?? 'height 300ms ease'
+  // CONSTRUCTION-TIME: a first-mount question, spent once the ref wires up.
   const appear = props.appear ?? false
-  const timeout = props.timeout ?? 5000
+  // LIVE: the animation-end deadline is re-armed on each active cycle.
+  const timeout = () => readLiveValue<number>(props, 'timeout') ?? 5000
 
   const reducedMotion = useReducedMotion()
   let wrapperRef: { current: HTMLDivElement | null } = createRef<HTMLDivElement>()
   const contentRef = createRef<HTMLDivElement>()
-
-  const callbacks = {
-    onEnter: props.onEnter,
-    onAfterEnter: props.onAfterEnter,
-    onLeave: props.onLeave,
-    onAfterLeave: props.onAfterLeave,
-  }
 
   // Re-reads `props.show` per call — `show={sig}` arrives as a live getter.
   const showAcc = showAccessorFrom(props)
@@ -89,42 +87,42 @@ const Collapse = (props: CollapseProps): VNode | null => {
 
       if (reducedMotion()) {
         if (currentStage === 'entering') {
-          callbacks.onEnter?.()
+          readLive<TransitionCallbacks['onEnter']>(props, 'onEnter')?.()
           wrapper.style.height = 'auto'
           wrapper.style.overflow = ''
-          callbacks.onAfterEnter?.()
+          readLive<TransitionCallbacks['onAfterEnter']>(props, 'onAfterEnter')?.()
           stage.set('entered')
         } else if (currentStage === 'leaving') {
-          callbacks.onLeave?.()
+          readLive<TransitionCallbacks['onLeave']>(props, 'onLeave')?.()
           wrapper.style.height = '0px'
           wrapper.style.overflow = 'hidden'
-          callbacks.onAfterLeave?.()
+          readLive<TransitionCallbacks['onAfterLeave']>(props, 'onAfterLeave')?.()
           stage.set('hidden')
         }
         return
       }
 
       if (currentStage === 'entering') {
-        callbacks.onEnter?.()
+        readLive<TransitionCallbacks['onEnter']>(props, 'onEnter')?.()
         const height = content.scrollHeight
         wrapper.style.transition = 'none'
         wrapper.style.height = '0px'
         wrapper.style.overflow = 'hidden'
         // Force reflow so the browser registers height: 0
         void wrapper.offsetHeight
-        wrapper.style.transition = transition
+        wrapper.style.transition = transition()
         wrapper.style.height = `${height}px`
       }
 
       if (currentStage === 'leaving') {
-        callbacks.onLeave?.()
+        readLive<TransitionCallbacks['onLeave']>(props, 'onLeave')?.()
         const height = content.scrollHeight
         wrapper.style.transition = 'none'
         wrapper.style.height = `${height}px`
         wrapper.style.overflow = 'hidden'
         // Force reflow
         void wrapper.offsetHeight
-        wrapper.style.transition = transition
+        wrapper.style.transition = transition()
         wrapper.style.height = '0px'
       }
     },
@@ -147,10 +145,10 @@ const Collapse = (props: CollapseProps): VNode | null => {
           wrapper.style.overflow = ''
           wrapper.style.transition = ''
         }
-        callbacks.onAfterEnter?.()
+        readLive<TransitionCallbacks['onAfterEnter']>(props, 'onAfterEnter')?.()
         stage.set('entered')
       } else {
-        callbacks.onAfterLeave?.()
+        readLive<TransitionCallbacks['onAfterLeave']>(props, 'onAfterLeave')?.()
         stage.set('hidden')
       }
     },

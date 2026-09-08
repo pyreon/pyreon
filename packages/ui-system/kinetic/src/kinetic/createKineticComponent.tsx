@@ -5,6 +5,7 @@ import CollapseRenderer from './CollapseRenderer'
 import GroupRenderer from './GroupRenderer'
 import StaggerRenderer from './StaggerRenderer'
 import TransitionRenderer from './TransitionRenderer'
+import { readLive, readLiveValue } from '../live-prop'
 import { showAccessorFrom } from '../show-accessor'
 import type { ClassConfig, KineticComponent, KineticConfig, KineticMode } from './types'
 
@@ -52,38 +53,69 @@ const createKineticComponent = <Tag extends string, Mode extends KineticMode = '
       Record<string, unknown>,
     ]
 
-    const {
-      appear,
-      unmount,
-      timeout,
-      transition,
-      interval,
-      reverseLeave,
-      onEnter,
-      onAfterEnter,
-      onLeave,
-      onAfterLeave,
-    } = kineticProps as {
-      appear?: boolean
-      unmount?: boolean
-      timeout?: number
-      transition?: string
-      interval?: number
-      reverseLeave?: boolean
-    } & Partial<TransitionCallbacks>
-
-    // Absent or value-shaped `show` (see toShowAccessor) — both crash on
-    // `show()`. Read off `kineticProps` PER CALL rather than destructured
-    // above: the compiler emits `show={sig}` as a getter that splitProps
-    // preserved, and destructuring it here would fire it once and freeze the
-    // element hidden (see showAccessorFrom).
+    // DELIBERATELY NOT DESTRUCTURED. The split above exists to preserve the
+    // compiler's `_rp` getters on `kineticProps`; a destructure here reads all
+    // ten of them at setup and throws that away again — the identical freeze
+    // `showAccessorFrom` fixes for `show`, for `show`'s siblings. What each one
+    // becomes instead is decided per prop below and in `live-prop.ts`.
+    //
+    // Absent or value-shaped `show` (see showAccessorFrom) — both crash on
+    // `show()`. Read off `kineticProps` PER CALL, TRACKED: it is the state
+    // machine's input, so `watch` must subscribe to it.
     const showAccessor = showAccessorFrom(kineticProps)
 
+    // CONSTRUCTION-TIME, read once here on purpose.
+    //
+    // `appear` answers "animate on the FIRST mount?". `useTransitionState` /
+    // CollapseRenderer consume it to pick the initial stage and to arm a
+    // one-shot latch (`appearTriggered`) that is spent the moment the ref
+    // wires up. There is no later use for a newer value, so a live read would
+    // be misleading rather than useful.
+    //
+    // `interval` / `reverseLeave` are consumed by StaggerRenderer's `.map()`
+    // over an ALREADY-RESOLVED child array, baking `--kinetic-delay` into each
+    // child's static style object. Making them live would require a
+    // function-valued `style` on children that may be COMPONENTS — changing
+    // what `props.style` is for the child, to track a value nobody drives from
+    // a signal over a static child list.
+    const appearAtMount = readLive<boolean>(kineticProps, 'appear')
+    const intervalAtMount = readLive<number>(kineticProps, 'interval')
+    const reverseLeaveAtMount = readLive<boolean>(kineticProps, 'reverseLeave')
+
+    // LIVE. Each is consumed once per animation CYCLE, long after setup:
+    // `timeout` arms the animation-end deadline, `transition` is written to
+    // `style.transition` on every stage change, `unmount` is consulted by
+    // `<Show>`'s fallback on every hide. The renderers resolve them at their
+    // own point of use (`resolveLive`), so a plain value from the chain config
+    // still works unchanged.
+    const timeoutLive = () => readLiveValue<number>(kineticProps, 'timeout')
+    const transitionLive = () => readLiveValue<string>(kineticProps, 'transition')
+    const unmountLive = () => readLiveValue<boolean>(kineticProps, 'unmount')
+
+    // LIVE HOLDER, not a snapshot. A frozen callback is the sharpest member of
+    // this class: it fires on a stage change or a `transitionend` seconds
+    // later, so the stale one calls into the closure the parent had at mount.
+    // The renderers read these through `readLive` at the moment they invoke
+    // them, so a swapped handler is honoured on the next cycle.
     const callbacks: Partial<TransitionCallbacks> = {
-      onEnter: onEnter ?? config.onEnter,
-      onAfterEnter: onAfterEnter ?? config.onAfterEnter,
-      onLeave: onLeave ?? config.onLeave,
-      onAfterLeave: onAfterLeave ?? config.onAfterLeave,
+      get onEnter() {
+        return readLive<TransitionCallbacks['onEnter']>(kineticProps, 'onEnter') ?? config.onEnter
+      },
+      get onAfterEnter() {
+        return (
+          readLive<TransitionCallbacks['onAfterEnter']>(kineticProps, 'onAfterEnter') ??
+          config.onAfterEnter
+        )
+      },
+      get onLeave() {
+        return readLive<TransitionCallbacks['onLeave']>(kineticProps, 'onLeave') ?? config.onLeave
+      },
+      get onAfterLeave() {
+        return (
+          readLive<TransitionCallbacks['onAfterLeave']>(kineticProps, 'onAfterLeave') ??
+          config.onAfterLeave
+        )
+      },
     }
 
     // Carve `children` out of the HTML pass-through set — also via
@@ -99,9 +131,9 @@ const createKineticComponent = <Tag extends string, Mode extends KineticMode = '
           config={config}
           htmlProps={restHtml}
           show={showAccessor}
-          appear={appear}
-          timeout={timeout}
-          transition={transition}
+          appear={appearAtMount}
+          timeout={timeoutLive}
+          transition={transitionLive}
           callbacks={callbacks}
         >
           {children as VNode | VNode[]}
@@ -115,10 +147,10 @@ const createKineticComponent = <Tag extends string, Mode extends KineticMode = '
           config={config}
           htmlProps={restHtml}
           show={showAccessor}
-          appear={appear}
-          timeout={timeout}
-          interval={interval}
-          reverseLeave={reverseLeave}
+          appear={appearAtMount}
+          timeout={timeoutLive}
+          interval={intervalAtMount}
+          reverseLeave={reverseLeaveAtMount}
           callbacks={callbacks}
         >
           {children as VNode[]}
@@ -131,8 +163,8 @@ const createKineticComponent = <Tag extends string, Mode extends KineticMode = '
         <GroupRenderer
           config={config}
           htmlProps={restHtml}
-          appear={appear}
-          timeout={timeout}
+          appear={appearAtMount}
+          timeout={timeoutLive}
           callbacks={callbacks}
         >
           {children as VNode[]}
@@ -146,9 +178,9 @@ const createKineticComponent = <Tag extends string, Mode extends KineticMode = '
         config={config}
         htmlProps={restHtml}
         show={showAccessor}
-        appear={appear}
-        unmount={unmount}
-        timeout={timeout}
+        appear={appearAtMount}
+        unmount={unmountLive}
+        timeout={timeoutLive}
         callbacks={callbacks}
       >
         {children as VNode | VNode[]}
