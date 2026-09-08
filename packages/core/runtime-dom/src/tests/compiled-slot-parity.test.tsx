@@ -18,7 +18,7 @@
  * the fragment predicate fails the third with the crash.
  */
 import { transformJSX } from '@pyreon/compiler'
-import { _lc, _rp, _rpd, _wrapSpread, For, Fragment, h, Show } from '@pyreon/core'
+import { _fuse, _lc, _rp, _rpd, _wrapSpread, For, Fragment, h, Show } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import { transformSync } from 'esbuild'
@@ -36,7 +36,7 @@ afterEach(() => {
 
 const RUNTIME_DEPS = {
   _tpl, _bind, _bindText, _bindProp, _bindDirect, _applyProps, _setStyle, _setAttr, _setClass, _mountSlot, _textSlot,
-  _setChild, _setChildAt, _mountChild, _setHtml, bindPolymorphicText, h, Fragment, For, Show, _lc, _rp,
+  _setChild, _setChildAt, _mountChild, _setHtml, bindPolymorphicText, h, Fragment, For, Show, _lc, _fuse, _rp,
   _wrapSpread, signal,
 }
 const DEP_NAMES = Object.keys(RUNTIME_DEPS)

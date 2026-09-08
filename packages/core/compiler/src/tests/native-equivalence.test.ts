@@ -2443,3 +2443,45 @@ describeNative('`_mountSlot` sole-slot verdict (both backends)', () => {
     expect(both(`const A = () => <p>{() => n()}</p>`)).toContain('__root.firstChild')
   })
 })
+
+describeNative('text fusion — parity', () => {
+  // `<p>Hello {name}!</p>` lowers to ONE `_fuse(...)` accessor child on the
+  // client, `_ssr` and h() paths (see jsx.ts `fuseTextChildren`). The native
+  // backend must emit the same bytes AND draw the same fusion boundary — a
+  // backend that fuses one shape more or less than the other diverges on the
+  // wire, not just in the template.
+  const SIG = `const name = signal('x'); const n = signal(1); `
+  const shapes = [
+    SIG + `const v = <p>Hello {name}!</p>`,
+    SIG + `const v = <p>{name}{n}</p>`,
+    SIG + `const v = <p>{n} items</p>`,
+    SIG + `const v = <p>{"a"}{name} {"b"}{54}</p>`,
+    SIG + `const v = <p>x {() => name()} y</p>`,
+    SIG + `const v = <p>a "q" \\ {name}</p>`,
+    `function C(props){ return <p>Hello {props.name}!</p> }`,
+    `function C(props){ return <div><p>Hello {props.name}!</p><i>{props.n} items</i></div> }`,
+    `function C(props){ return <ul>{props.items.map((r) => <li>{r.a} / {r.b}</li>)}</ul> }`,
+    // boundary: none of these fuse, on either backend
+    SIG + `const v = <p>{name()}</p>`,
+    `const x = 1; const v = <p>Hello {x}!</p>`,
+    SIG + `const v = <p>Hello {name}!<i></i></p>`,
+    `function C(props){ return <p>a {props.children} b</p> }`,
+    `const cell = (v) => <b>{v}</b>; ` + SIG + `const v = <p>a {cell(n())} b</p>`,
+    SIG + `const v = <p>a {n() && <i/>} b</p>`,
+    `const el = <b/>; ` + SIG + `const v = <p>{name} {el}</p>`,
+    SIG + `const v = <Comp>Hello {name}!</Comp>`,
+    SIG + `const v = <p>{name}<>!</></p>`,
+  ]
+  for (const src of shapes) {
+    test(`client: ${src}`, () => compare(src))
+    test(`ssr h(): ${src}`, () => compareSsr(src))
+    test(`ssr _ssr: ${src}`, () => compareSsrTemplate(src))
+  }
+  test('lens parity on a fused run with a static part', () =>
+    compareLens(`const x = 1; ` + SIG + `const v = <p>Hello {name}, {x}!</p>`))
+  test('the fused emit is real on both backends', () => {
+    const src = SIG + `const v = <p>Hello {name}!</p>`
+    expect(transformJSX_JS(src, 'test.tsx').code).toContain('_fuse("Hello ", name(), "!")')
+    expect(nativeTransform!(src, 'test.tsx', false, null).code).toContain('_fuse("Hello ", name(), "!")')
+  })
+})

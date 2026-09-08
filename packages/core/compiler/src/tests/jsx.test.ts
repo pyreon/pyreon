@@ -434,8 +434,14 @@ describe('JSX transform — mixed', () => {
     expect(result).toContain('_bindText(text,')
   })
 
-  test('preserves static siblings of dynamic children', () => {
+  test('preserves static siblings of dynamic children (as ONE fused text)', () => {
     const result = t('<div>static{count()}</div>')
+    expect(result).toContain('_tpl("<div> </div>"')
+    expect(result).toContain('bindPolymorphicText(() => (_fuse("static", count())), __t0, __root)')
+  })
+
+  test('static siblings of a dynamic child stay in place beside an element', () => {
+    const result = t('<div>static{count()}<i></i></div>')
     expect(result).toContain('_tpl(')
     expect(result).toContain('static')
     expect(result).toContain('_bindText(count,')
@@ -896,7 +902,9 @@ describe('JSX transform — template emission', () => {
     // `<p>foo {x()} bar</p>` — baked spaces would merge with the static
     // text runs during parsing and break childNodes indexing; the comment
     // placeholder shape must stay.
-    const result = t('<p>foo {x()} bar</p>')
+    // An element sibling keeps the paragraph MIXED; without one the text run
+    // FUSES into a sole accessor (see the text-fusion block below).
+    const result = t('<p>foo {x()} bar<i></i></p>')
     expect(result).toContain('<!>')
     // The invariant is the COMMENT PLACEHOLDER — a baked space would merge with
     // the adjacent static text during parsing. `_textSlot` replaced the inlined
@@ -907,7 +915,7 @@ describe('JSX transform — template emission', () => {
   })
 
   test('adjacent expressions KEEP comment placeholders (no baked-space merging)', () => {
-    const result = t('<span>{a()}{b()}</span>')
+    const result = t('<span>{a()}{b()}<i></i></span>')
     expect(result).toContain('<!>')
     expect(result).toContain('_textSlot(')
     expect(result).not.toContain('<span>  </span>')
@@ -988,7 +996,7 @@ describe('JSX transform — template emission', () => {
   })
 
   test('handles multiple expression children', () => {
-    const result = t('<div><span>{a()}{b()}</span></div>')
+    const result = t('<div><span>{a()}{b()}<i></i></span></div>')
     expect(result).toContain('_tpl(')
     // Both are single-signal → _bindText
     expect(result).toContain('_bindText(a,')
@@ -1670,20 +1678,22 @@ describe('JSX transform — pure call detection', () => {
 // ─── Per-text-node bind (separate bindings) ─────────────────────────────────
 
 describe('JSX transform — per-text-node bind', () => {
-  test('two adjacent signal calls produce two separate _bindText calls', () => {
-    const result = t('<div>{a()}{b()}</div>')
+  // A text-only run of several expressions FUSES into one accessor (see the
+  // text-fusion block); an element sibling is what keeps the bindings separate.
+  test('two adjacent signal calls beside an element produce two separate _bindText calls', () => {
+    const result = t('<div>{a()}{b()}<i></i></div>')
     expect(result).toContain('_bindText(a,')
     expect(result).toContain('_bindText(b,')
   })
 
-  test('two signal expressions with text between produce separate bindings', () => {
-    const result = t('<div>{a()} and {b()}</div>')
+  test('two signal expressions with text between (beside an element) produce separate bindings', () => {
+    const result = t('<div>{a()} and {b()}<i></i></div>')
     expect(result).toContain('_bindText(a,')
     expect(result).toContain('_bindText(b,')
   })
 
-  test('three signal calls produce three separate _bindText calls', () => {
-    const result = t('<div>{a()}{b()}{c()}</div>')
+  test('three signal calls beside an element produce three separate _bindText calls', () => {
+    const result = t('<div>{a()}{b()}{c()}<i></i></div>')
     expect(result).toContain('_bindText(a,')
     expect(result).toContain('_bindText(b,')
     expect(result).toContain('_bindText(c,')
@@ -2293,8 +2303,7 @@ describe('JSX transform — signal auto-call', () => {
     const result = t(
       'function C() { const count = signal(0); const doubled = computed(() => count() * 2); return <div>{count} + {doubled}</div> }',
     )
-    expect(result).toContain('bindPolymorphicText(() => (count()')
-    expect(result).toContain('bindPolymorphicText(() => (doubled()')
+    expect(result).toContain('bindPolymorphicText(() => (_fuse(count(), " + ", doubled())')
   })
 
   test('signal in arrow function child is NOT auto-called (already reactive)', () => {

@@ -1,3 +1,4 @@
+import * as core from '@pyreon/core'
 import { h } from '@pyreon/core'
 import * as reactivity from '@pyreon/reactivity'
 import * as runtimeDom from '@pyreon/runtime-dom'
@@ -76,13 +77,19 @@ export function compileAndMount(
   // it ever needs to (rare).
   const runtimeKeys = Object.keys(runtimeDom)
   const reactivityKeys = Object.keys(reactivity).filter((k) => !runtimeKeys.includes(k))
-  const contextKeys = Object.keys(context).filter(
+  // Core helpers the compiler injects from `@pyreon/core` (`_fuse`, `_lc`,
+  // `_rp`, …) — stripped with the other imports above, so bind them too.
+  const coreKeys = Object.keys(core).filter(
     (k) => !runtimeKeys.includes(k) && !reactivityKeys.includes(k),
   )
-  const allKeys = [...runtimeKeys, ...reactivityKeys, ...contextKeys]
+  const contextKeys = Object.keys(context).filter(
+    (k) => !runtimeKeys.includes(k) && !reactivityKeys.includes(k) && !coreKeys.includes(k),
+  )
+  const allKeys = [...runtimeKeys, ...reactivityKeys, ...coreKeys, ...contextKeys]
   const allValues = [
     ...runtimeKeys.map((k) => (runtimeDom as Record<string, unknown>)[k]),
     ...reactivityKeys.map((k) => (reactivity as Record<string, unknown>)[k]),
+    ...coreKeys.map((k) => (core as Record<string, unknown>)[k]),
     ...contextKeys.map((k) => context[k]),
   ]
 

@@ -29,7 +29,7 @@
  * the retention assertions this lock would be inert.
  */
 import { transformJSX } from '@pyreon/compiler'
-import { For, Fragment, h } from '@pyreon/core'
+import { For, Fragment, _fuse, h } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import { transformSync } from 'esbuild'
@@ -72,6 +72,7 @@ const tplAdopted = () => counts['runtime.tpl.adopt'] ?? 0
 
 // ─── Real-transform harness ──────────────────────────────────────────────────
 const RUNTIME_DEPS = {
+  _fuse,
   _tpl,
   _bind,
   _bindText,
@@ -145,19 +146,23 @@ const set = (name: string, v: string) =>
   (globalThis as unknown as Record<string, { set(v: string): void } | undefined>)[name]?.set(v)
 
 describe('mid text slot — static content AFTER the interpolation', () => {
-  it('`Hello {n()}!` adopts every node and stays reactive on the SAME text node', async () => {
+  // NOTE: a text-only `Hello {n()}!` now FUSES into one sole accessor (see
+  // `text-fusion.test.tsx`) and never reaches the mid-slot path. The trailing
+  // `<i>` keeps each shape here MIXED, which is what the mid-slot mechanism
+  // exists for.
+  it('`Hello {n()}!<i/>` adopts every node and stays reactive on the SAME text node', async () => {
     const { html, out, before, host, dispose } = await roundTrip(
-      h('p', { class: 'm' }, 'Hello ', () => 'Ada', '!'),
-      `const App = () => { const n = signal('Ada'); globalThis.__m1 = n; return <p class="m">Hello {n()}!</p> }`,
+      h('p', { class: 'm' }, 'Hello ', () => 'Ada', '!', h('i', null)),
+      `const App = () => { const n = signal('Ada'); globalThis.__m1 = n; return <p class="m">Hello {n()}!<i></i></p> }`,
     )
-    expect(html).toBe('<p class="m">Hello <!--$-->Ada<!--/$-->!</p>')
-    expect(out).toBe('<p class="m">Hello Ada!</p>')
+    expect(html).toBe('<p class="m">Hello <!--$-->Ada<!--/$-->!<i></i></p>')
+    expect(out).toBe('<p class="m">Hello Ada!<i></i></p>')
     expect(retained(before, host)).toBe(before.length)
     expect(tplAdopted()).toBe(1)
     const adopted = host.firstChild!.childNodes[1] as Text
     expect(before).toContain(adopted)
     set('__m1', 'Bob')
-    expect(host.innerHTML).toBe('<p class="m">Hello Bob!</p>')
+    expect(host.innerHTML).toBe('<p class="m">Hello Bob!<i></i></p>')
     expect(host.firstChild!.childNodes[1]).toBe(adopted) // identity, not a swap
     dispose()
   })
@@ -176,27 +181,27 @@ describe('mid text slot — static content AFTER the interpolation', () => {
 
   it('two slots — a MID slot composes with the TRAILING `_textSlot` path', async () => {
     const { html, out, before, host, dispose } = await roundTrip(
-      h('p', { class: 't' }, () => 'A', ' and ', () => 'B'),
-      `const App = () => { const a = signal('A'); const b = signal('B'); globalThis.__ta = a; globalThis.__tb = b; return <p class="t">{a()} and {b()}</p> }`,
+      h('p', { class: 't' }, () => 'A', ' and ', () => 'B', h('i', null)),
+      `const App = () => { const a = signal('A'); const b = signal('B'); globalThis.__ta = a; globalThis.__tb = b; return <p class="t">{a()} and {b()}<i></i></p> }`,
     )
-    expect(html).toBe('<p class="t"><!--$-->A<!--/$--> and <!--$-->B<!--/$--></p>')
-    expect(out).toBe('<p class="t">A and B</p>')
+    expect(html).toBe('<p class="t"><!--$-->A<!--/$--> and <!--$-->B<!--/$--><i></i></p>')
+    expect(out).toBe('<p class="t">A and B<i></i></p>')
     expect(retained(before, host)).toBe(before.length)
     set('__ta', 'X'); set('__tb', 'Y')
-    expect(host.innerHTML).toBe('<p class="t">X and Y</p>')
+    expect(host.innerHTML).toBe('<p class="t">X and Y<i></i></p>')
     dispose()
   })
 
   it('an EMPTY mid range collapses to an empty text node and adopts the element', async () => {
     const { html, out, before, host, dispose } = await roundTrip(
-      h('p', { class: 'e' }, 'Hello ', () => '', '!'),
-      `const App = () => { const e = signal(''); globalThis.__e = e; return <p class="e">Hello {e()}!</p> }`,
+      h('p', { class: 'e' }, 'Hello ', () => '', '!', h('i', null)),
+      `const App = () => { const e = signal(''); globalThis.__e = e; return <p class="e">Hello {e()}!<i></i></p> }`,
     )
-    expect(html).toBe('<p class="e">Hello <!--$--><!--/$-->!</p>')
-    expect(out).toBe('<p class="e">Hello !</p>')
+    expect(html).toBe('<p class="e">Hello <!--$--><!--/$-->!<i></i></p>')
+    expect(out).toBe('<p class="e">Hello !<i></i></p>')
     expect(retained(before, host)).toBe(before.length)
     set('__e', 'x')
-    expect(host.innerHTML).toBe('<p class="e">Hello x!</p>')
+    expect(host.innerHTML).toBe('<p class="e">Hello x!<i></i></p>')
     dispose()
   })
 })
@@ -233,10 +238,10 @@ describe('mid slot — the refusal stays exactly as narrow as it must', () => {
 
   it('server rendered FEWER ranges than the template has placeholders — bails to a correct rebuild', async () => {
     const { out, before, host, dispose } = await roundTrip(
-      h('p', { class: 'd1' }, 'Hello ', '!'),
-      `const App = () => { const n = signal('Ada'); return <p class="d1">Hello {n()}!</p> }`,
+      h('p', { class: 'd1' }, 'Hello ', '!', h('i', null)),
+      `const App = () => { const n = signal('Ada'); return <p class="d1">Hello {n()}!<i></i></p> }`,
     )
-    expect(out).toBe('<p class="d1">Hello Ada!</p>')
+    expect(out).toBe('<p class="d1">Hello Ada!<i></i></p>')
     expect(retained(before, host)).toBeLessThan(before.length)
     dispose()
   })

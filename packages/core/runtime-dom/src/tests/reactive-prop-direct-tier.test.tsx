@@ -11,7 +11,7 @@
  * subscriber census, which is what the dispose-500 ladder measures.
  */
 import { transformJSX } from '@pyreon/compiler'
-import { _lc, _rp, _rpd, _wrapSpread, For, Fragment, h, mergeProps } from '@pyreon/core'
+import { _fuse, _lc, _rp, _rpd, _wrapSpread, For, Fragment, h, mergeProps } from '@pyreon/core'
 import { _bind, _hasSubscribers, computed, signal } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import { transformSync } from 'esbuild'
@@ -38,7 +38,7 @@ afterEach(() => {
 const RUNTIME_DEPS = {
   _tpl, _bind, _bindText, _bindDirect, _bindProp, _applyProps, _setStyle, _setAttr, _setClass, _mountSlot,
   _textSlot, _setChild, _setChildAt, _mountChild, _setHtml, _setValue, bindPolymorphicText, h, Fragment, For,
-  _lc, _rp, _rpd, _wrapSpread, signal, computed, mergeProps,
+  _lc, _fuse, _rp, _rpd, _wrapSpread, signal, computed, mergeProps,
 }
 const DEP_NAMES = Object.keys(RUNTIME_DEPS)
 const DEP_VALUES = Object.values(RUNTIME_DEPS)

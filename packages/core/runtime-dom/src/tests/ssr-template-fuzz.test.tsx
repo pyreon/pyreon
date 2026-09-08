@@ -15,7 +15,7 @@
  */
 import { transformJSX_JS } from '@pyreon/compiler'
 import type { VNode, VNodeChild } from '@pyreon/core'
-import { h } from '@pyreon/core'
+import { _fuse, h } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
 import { signal } from '@pyreon/reactivity'
 import { _esc, _escSole, _ssr, _ssrAttr, _ssrAttrGen, _ssrAttrUrl, _ssrChildren, _ssrItem, renderToString } from '@pyreon/runtime-server'
@@ -163,6 +163,42 @@ function elOracle(el: ElNode, ctx: FuzzCtx, mode: 'recursed' | 'mapitem', it?: R
   // aren't signals), so the h() oracle passes the bare value; renderProp does
   // the escaping/name-map/cx in both paths.
   for (const a of el.attrs) props[a.name] = a.dyn ? ctx.data[a.ref!] : a.value
+  // TEXT FUSION — mirror the compiler's `fuseTextChildren`: children that are
+  // ONLY text / literal / `data.fN` / `sN()` parts, with at least one signal
+  // read and at least two parts after adjacent-text folding, become ONE
+  // accessor child `() => _fuse(...)` on both the h() and the `_ssr` emit.
+  const fusable =
+    el.children.length >= 2 &&
+    el.children.every((n) => n.k === 'text' || n.k === 'bare' || n.k === 'sig') &&
+    el.children.some((n) => n.k === 'sig')
+  if (fusable) {
+    const parts: (() => unknown)[] = []
+    let lastText: { s: string } | null = null
+    for (const n of el.children) {
+      if (n.k === 'text') {
+        if (n.s === '') continue
+        if (lastText !== null) lastText.s += n.s
+        else {
+          const t = { s: n.s }
+          lastText = t
+          parts.push(() => t.s)
+        }
+        continue
+      }
+      lastText = null
+      if (n.k === 'bare') {
+        const ref = n.ref
+        parts.push(() => ctx.data[ref])
+      } else if (n.k === 'sig') {
+        const s = ctx.sigs[n.ref]!
+        parts.push(() => s())
+      }
+    }
+    if (parts.length >= 2) {
+      const fused = () => _fuse(...parts.map((p) => p()))
+      return h(el.tag, Object.keys(props).length ? props : null, fused as never)
+    }
+  }
   const kids = el.children.map((n) => childOracle(n, ctx, mode, it))
   return h(el.tag, Object.keys(props).length ? props : null, ...kids)
 }
@@ -269,6 +305,7 @@ function evalFast(src: string, ctx: FuzzCtx): VNode {
     '_ssrItem',
     '_esc',
     '_escSole',
+    '_fuse',
     '_ssrAttr',
     '_ssrAttrGen',
     '_ssrAttrUrl',
@@ -280,7 +317,7 @@ function evalFast(src: string, ctx: FuzzCtx): VNode {
     'a1',
     `${body}\nreturn Node`,
   )
-  return fn(_ssr, _ssrChildren, _ssrItem, _esc, _escSole, _ssrAttr, _ssrAttrGen, _ssrAttrUrl, ctx.data, ctx.sigs.s0, ctx.sigs.s1, ctx.sigs.s2, ctx.arrs.a0, ctx.arrs.a1)
+  return fn(_ssr, _ssrChildren, _ssrItem, _esc, _escSole, _fuse, _ssrAttr, _ssrAttrGen, _ssrAttrUrl, ctx.data, ctx.sigs.s0, ctx.sigs.s1, ctx.sigs.s2, ctx.arrs.a0, ctx.arrs.a1)
 }
 
 // Override with PYREON_FUZZ_SEEDS=5000 when the SSR emit shape changes.

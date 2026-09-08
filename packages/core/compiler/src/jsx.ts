@@ -1253,6 +1253,7 @@ export function transformJSX_JS(
   let needsRpImport = false
   let needsRpdImport = false
   let needsLcImport = false
+  let needsFuseImport = false
   let needsWrapSpreadImport = false
   let needsBindTextImportGlobal = false
   let needsBindPropImportGlobal = false
@@ -2210,6 +2211,100 @@ export function transformJSX_JS(
     return only
   }
 
+  /**
+   * TEXT FUSION — Vue's compile-time trick, in Pyreon's polymorphic form.
+   *
+   * An element whose children are ONLY text and text-position expressions —
+   * `<p>Hello {name}!</p>`, `<td>{a}{b}</td>`, `<li>{n} items</li>` — lowers
+   * to ONE accessor child: `() => _fuse("Hello ", name(), "!")`. Every emit
+   * path then sees a SOLE accessor child, which is the one shape already
+   * proven marker-free end to end: the `_tpl` path bakes its `' '` placeholder
+   * and binds `.firstChild`; the `_ssr` path emits `_escSole(...)`; the h()
+   * path renders through `renderElement`'s sole-child elision; and hydration
+   * adopts the server's single text node in place. Before this the same
+   * element carried one `<!--$-->…<!--/$-->` range PER interpolation, and the
+   * `$`-marker normalization those ranges force was measured as ~20% of the
+   * hydration walk (see the benchmarks skill, "Hydration walk decomposition") —
+   * the one cost Vue never pays, because `{{a}}{{b}}` is one text child there.
+   *
+   * `_fuse` (in `@pyreon/core`) keeps Pyreon's semantics where Vue has none to
+   * keep: a part that is a VNode / array / function at runtime makes it return
+   * the PARTS ARRAY instead of a string, and both consumers (`bindPolymorphicText`
+   * on the client, `_escSole`/`renderNode` on the server) already mount an
+   * array in that position. So a `{sig()}` that later holds a VNode still
+   * upgrades to a subtree — nothing stringifies to "[object Object]".
+   *
+   * Scope is deliberately EXACT and identical in both backends: every child is
+   * JSXText or an expression container; no element, fragment, component or
+   * spread child; no expression the template path would route to `_mountSlot`
+   * (a `children` read, an element-valued const, an in-file JSX helper call,
+   * inline JSX); at least TWO parts after literal folding and at least ONE
+   * reactive one. A static-only mix keeps its baked shape (it adopts already),
+   * and a lone expression keeps its single-signal direct-tier fast path.
+   * Applies to DOM elements only — a component's children are its props, and
+   * their shape is the component's contract.
+   */
+  function fuseTextChildren(el: N): string | null {
+    const kids = jsxChildren(el)
+    if (kids.length < 2) return null
+    type Part = { lit: string } | { expr: string }
+    const parts: Part[] = []
+    const pushLit = (t: string): void => {
+      if (t === '') return
+      const last = parts[parts.length - 1]
+      if (last !== undefined && 'lit' in last) last.lit += t
+      else parts.push({ lit: t })
+    }
+    const spans: { start: number; end: number; reactive: boolean }[] = []
+    let anyReactive = false
+    for (const c of kids) {
+      if (c.type === 'JSXText') {
+        pushLit(cleanJsxText((c.value ?? c.raw ?? '') as string))
+        continue
+      }
+      if (c.type !== 'JSXExpressionContainer') return null
+      const raw = c.expression
+      if (!raw || raw.type === 'JSXEmptyExpression') continue
+      const u = unwrapTypeLayers(raw)
+      const lit = literalChildText(u)
+      if (lit !== null) {
+        pushLit(lit)
+        continue
+      }
+      let text: string
+      let reactive: boolean
+      if (u.type === 'ArrowFunctionExpression' && u.body?.type !== 'BlockStatement') {
+        text = sliceExpr(u.body)
+        reactive = true
+      } else if (u.type === 'ArrowFunctionExpression' || u.type === 'FunctionExpression') {
+        text = `(${sliceExpr(u)})()`
+        reactive = true
+      } else {
+        text = sliceExpr(u)
+        reactive = isDynamic(u)
+      }
+      // The `_mountSlot` shapes of `processOneChild`, verbatim — a fused part
+      // must be something the text path would have bound as text.
+      if (isChildrenExpression(u, text)) return null
+      if (u.type === 'Identifier' && elementVars.has(u.name)) return null
+      if (!reactive && IDENT_RE.test(text) && elementVars.has(text)) return null
+      if (isJsxHelperCall(u)) return null
+      if (containsJSXInExpr(u)) return null
+      parts.push({ expr: text })
+      spans.push({ start: u.start as number, end: u.end as number, reactive })
+      if (reactive) anyReactive = true
+    }
+    if (!anyReactive || parts.length < 2) return null
+    for (const sp of spans) {
+      if (sp.reactive)
+        lens(sp.start, sp.end, 'reactive', 'live — this text re-renders whenever its signals change')
+      else
+        lens(sp.start, sp.end, 'static-text', 'baked once into the DOM — never re-renders (no signal read here)')
+    }
+    needsFuseImport = true
+    return `_fuse(${parts.map((p) => ('lit' in p ? ssrStaticLit(p.lit) : p.expr)).join(', ')})`
+  }
+
   /** Serialize one expression child. Returns false to bail the element. */
   /**
    * SSR: lower an eligible DOM `JSXElement` to its `_ssr(...)` string form (the
@@ -2450,9 +2545,17 @@ export function transformJSX_JS(
     // A self-closing non-void tag (`<div />`) has no children to walk; it
     // still gets its closing tag, matching the h() path's `<div></div>`.
     if (!selfClosing) {
-      const sole = ssrSoleChild(el)
-      for (const child of jsxChildren(el)) {
-        if (!ssrSerializeChild(buf, child, mode, child === sole)) return false
+      // Text fusion (see `fuseTextChildren`): the children become ONE sole
+      // accessor child, so this is exactly the `_escSole` shape — no markers
+      // on either side, byte-identical to the h() path's fused emit.
+      const fused = fuseTextChildren(el)
+      if (fused !== null) {
+        emitEscSoleHole(buf, fused)
+      } else {
+        const sole = ssrSoleChild(el)
+        for (const child of jsxChildren(el)) {
+          if (!ssrSerializeChild(buf, child, mode, child === sole)) return false
+        }
       }
     }
     ssrEmitStatic(buf, `</${tag}>`)
@@ -3724,6 +3827,20 @@ export function transformJSX_JS(
         if (attr.type === 'JSXAttribute') handleJsxAttribute(attr, node)
         else if (attr.type === 'JSXSpreadAttribute') handleJsxSpreadAttribute(attr, node)
       }
+      // Text fusion on the h() path (see `fuseTextChildren`): the whole child
+      // span becomes ONE accessor child, so `renderElement` elides its markers
+      // (byte-identical to the `_ssr` emit) and hydration adopts the one text.
+      // DOM elements only — a component's children are its props.
+      const hTag = jsxTagName(node)
+      const fusedH = hTag !== '' && isLowerCase(hTag) && !isSelfClosing(node) ? fuseTextChildren(node) : null
+      if (fusedH !== null) {
+        replacements.push({
+          start: node.openingElement.end as number,
+          end: node.closingElement.start as number,
+          text: `{() => ${fusedH}}`,
+        })
+        return
+      }
       for (const child of jsxChildren(node)) {
         if (child.type === 'JSXExpressionContainer') handleJsxExpression(child, node)
         else walkNode(child)
@@ -3827,12 +3944,13 @@ export function transformJSX_JS(
     preamble = `import { ${ssrImports.join(', ')} } from "@pyreon/runtime-server";\n` + preamble
   }
 
-  if (needsRpImport || needsRpdImport || needsLcImport || needsWrapSpreadImport || needsCxImportGlobal) {
+  if (needsRpImport || needsRpdImport || needsLcImport || needsFuseImport || needsWrapSpreadImport || needsCxImportGlobal) {
     const coreImports: string[] = []
     // Alias to an internal name — `cx` is a PUBLIC export users import
     // directly (e.g. a hand-written component that also uses `class={…}`),
     // so injecting a bare `cx` import would collide ("already declared").
     if (needsCxImportGlobal) coreImports.push('cx as _cx')
+    if (needsFuseImport) coreImports.push('_fuse')
     if (needsLcImport) coreImports.push('_lc')
     if (needsRpImport) coreImports.push('_rp')
     if (needsRpdImport) coreImports.push('_rpd')
@@ -4975,6 +5093,22 @@ export function transformJSX_JS(
       return needsPlaceholder ? '<!>' : ' '
     }
 
+    /**
+     * The fused-text bind: the sole-text pristine-clone capture of
+     * `emitReactiveTextChild` plus the polymorphic binder — `_fuse` decides
+     * text-vs-subtree at runtime, so the single-signal direct tier does not
+     * apply (see `fuseTextChildren`).
+     */
+    function emitFusedTextChild(fused: string, varName: string, parentRef: string): string {
+      const tVar = nextTextVar()
+      const canonical = canonicalWalk(canonicalBase(varName), 0, true)
+      captureRef(tVar, chainFromCaptured(canonical).expr, canonical)
+      needsBindPolyImportGlobal = true
+      const d = nextDisp()
+      bindLines.push(`const ${d} = bindPolymorphicText(() => (${fused}), ${tVar}, ${parentRef})`)
+      return ' '
+    }
+
     function emitStaticTextChild(
       expr: string,
       varName: string,
@@ -5414,6 +5548,14 @@ export function transformJSX_JS(
       varName: string,
       accessor: string,
     ): { html: string; isHole: boolean } | null {
+      // Text fusion (see `fuseTextChildren`): ONE accessor child in the
+      // sole-dynamic-text form — `' '` baked, `.firstChild` bound — the shape
+      // hydration adopts without a marker in sight.
+      const fused = fuseTextChildren(el)
+      if (fused !== null) {
+        const html = emitFusedTextChild(fused, varName, accessor === '__root' ? '__root' : varName)
+        return { html, isHole: false }
+      }
       const flatChildren = flattenChildren(jsxChildren(el))
       const hasComponent = flatChildren.some((c) => c.kind === 'component')
       // Re-derived from the SAME predicate on the SAME input the prescan used,

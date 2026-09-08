@@ -20,7 +20,7 @@
  */
 import { transformJSX } from '@pyreon/compiler'
 import { transformSync } from 'esbuild'
-import { Fragment, h, _rp, _rpd, cx } from '@pyreon/core'
+import { Fragment, h, _fuse, _rp, _rpd, cx } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 
 import { _tpl, _bindText, _bindDirect, _mountSlot, _textSlot, _setChild, _setChildAt } from '../template'
@@ -41,6 +41,7 @@ const RUNTIME_DEPS = {
   _mountSlot,
   _textSlot,
   _rp,
+  _fuse,
   _rpd,
   _cx: cx,
   h,
@@ -139,7 +140,9 @@ describe('compiled sibling-ref chaining — shortened walks resolve identically'
   it('mixed-content placeholders chained off each other replace the right nodes', () => {
     const a = signal('1')
     const b = signal('2')
-    const src = `export function App() { return <div><span>{a()}{b()}</span></div> }`
+    // An element sibling keeps the span MIXED (text fusion would otherwise
+    // collapse two expressions into one sole accessor with no placeholders).
+    const src = `export function App() { return <div><span>{a()}{b()}<i></i></span></div> }`
     const { container, cleanup } = mountSource(src, { a, b })
     expect(container.querySelector('span')?.textContent).toBe('12')
     b.set('9')

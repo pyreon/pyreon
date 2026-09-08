@@ -30,7 +30,7 @@
  */
 import { transformSync } from 'esbuild'
 import { transformJSX } from '@pyreon/compiler'
-import { For, Fragment, _lc, createReactiveContext, h, provide, useContext } from '@pyreon/core'
+import { For, Fragment, _fuse, _lc, createReactiveContext, h, provide, useContext } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
@@ -64,6 +64,7 @@ const RUNTIME_DEPS = {
   _textSlot,
   _mountChild,
   _lc,
+  _fuse,
   bindPolymorphicText,
   h,
   Fragment,

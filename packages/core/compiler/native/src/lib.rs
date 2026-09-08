@@ -531,6 +531,7 @@ struct Ctx<'a> {
     needs_rp_import: bool,
     needs_rpd_import: bool,
     needs_lc_import: bool,
+    needs_fuse_import: bool,
     needs_wrap_spread_import: bool,
     needs_cx_import: bool,
     needs_set_style_import: bool,
@@ -744,6 +745,7 @@ impl<'a> Ctx<'a> {
             needs_rp_import: false,
             needs_rpd_import: false,
             needs_lc_import: false,
+            needs_fuse_import: false,
             needs_wrap_spread_import: false,
             needs_cx_import: false,
             needs_set_style_import: false,
@@ -977,6 +979,7 @@ impl<'a> Ctx<'a> {
         if self.needs_rp_import
             || self.needs_rpd_import
             || self.needs_lc_import
+            || self.needs_fuse_import
             || self.needs_wrap_spread_import
             || self.needs_cx_import
         {
@@ -985,6 +988,9 @@ impl<'a> Ctx<'a> {
             // directly, so a bare injected `cx` import collides.
             if self.needs_cx_import {
                 core_imports.push("cx as _cx");
+            }
+            if self.needs_fuse_import {
+                core_imports.push("_fuse");
             }
             if self.needs_lc_import {
                 core_imports.push("_lc");
@@ -4564,6 +4570,17 @@ fn handle_jsx_element(el: &JSXElement, ctx: &mut Ctx) {
         }
     }
 
+    // Text fusion on the h() path (see `fuse_text_children`): the whole child
+    // span becomes ONE accessor child. DOM elements only. Mirrors JS.
+    if !is_component && !tag.is_empty() && !is_self_closing(el) {
+        if let Some(fused) = fuse_text_children(el, ctx) {
+            let start = el.opening_element.span.end;
+            let end = el.closing_element.as_ref().map(|c| c.span.start).unwrap_or(start);
+            ctx.add_replacement(start, end, format!("{{() => {}}}", fused));
+            return;
+        }
+    }
+
     // Process children
     let old_parent_is_jsx = ctx.parent_is_jsx;
     let old_parent_is_component = ctx.parent_is_component_jsx_element;
@@ -5664,6 +5681,131 @@ fn ssr_lower_nested_elements(expr: &Expression, ctx: &mut Ctx) -> Option<String>
     }
 }
 
+/// A JS identifier — mirrors jsx.ts `IDENT_RE` (`^[A-Za-z_$][\w$]*$`).
+fn is_ident_text(s: &str) -> bool {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() || c == '_' || c == '$' => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
+}
+
+/// TEXT FUSION — mirrors jsx.ts `fuseTextChildren` byte-for-byte (the
+/// rationale lives there). An element whose children are ONLY text and
+/// text-position expressions lowers to ONE accessor child
+/// `() => _fuse("Hello ", name(), "!")`, the sole-child shape every emit path
+/// renders and hydrates without range markers. Scope is EXACT: JSXText and
+/// expression containers only; no element/fragment/component/spread child; no
+/// `_mountSlot` shape (a `children` read, an element-valued const, an in-file
+/// JSX helper call, inline JSX); at least two parts after literal folding and
+/// at least one reactive one. DOM elements only.
+fn fuse_text_children(el: &JSXElement, ctx: &mut Ctx) -> Option<String> {
+    if el.children.len() < 2 {
+        return None;
+    }
+    enum Part {
+        Lit(String),
+        Expr(String),
+    }
+    let mut parts: Vec<Part> = Vec::new();
+    let mut spans: Vec<(u32, u32, bool)> = Vec::new();
+    let mut any_reactive = false;
+    fn push_lit(parts: &mut Vec<Part>, t: &str) {
+        if t.is_empty() {
+            return;
+        }
+        if let Some(Part::Lit(prev)) = parts.last_mut() {
+            prev.push_str(t);
+        } else {
+            parts.push(Part::Lit(t.to_string()));
+        }
+    }
+    for c in &el.children {
+        match c {
+            JSXChild::Text(t) => {
+                let cleaned = clean_jsx_text(t.value.as_str());
+                push_lit(&mut parts, &cleaned);
+            }
+            JSXChild::ExpressionContainer(container) => {
+                let raw = match jsx_expr_as_expression(&container.expression) {
+                    Some(e) => e,
+                    None => continue,
+                };
+                let u = unwrap_type_layers(raw);
+                if let Some(lit) = literal_child_text(u) {
+                    push_lit(&mut parts, &lit);
+                    continue;
+                }
+                let (text, reactive) = match u {
+                    Expression::ArrowFunctionExpression(arrow) => match arrow.get_expression() {
+                        Some(body) => (slice_expr(body, ctx), true),
+                        None => (format!("({})()", slice_expr(u, ctx)), true),
+                    },
+                    Expression::FunctionExpression(_) => (format!("({})()", slice_expr(u, ctx)), true),
+                    _ => {
+                        let t = slice_expr(u, ctx);
+                        let r = is_dynamic(u, ctx);
+                        (t, r)
+                    }
+                };
+                // The `_mountSlot` shapes of `process_one_child`, verbatim.
+                if is_children_expression(u, &text) {
+                    return None;
+                }
+                if matches!(u, Expression::Identifier(id) if ctx.element_vars.contains(id.name.as_str())) {
+                    return None;
+                }
+                if !reactive && is_ident_text(&text) && ctx.element_vars.contains(&text) {
+                    return None;
+                }
+                if is_jsx_helper_call(u, ctx) {
+                    return None;
+                }
+                if contains_jsx_in_expr(u) {
+                    return None;
+                }
+                let sp = u.span();
+                parts.push(Part::Expr(text));
+                spans.push((sp.start, sp.end, reactive));
+                if reactive {
+                    any_reactive = true;
+                }
+            }
+            _ => return None,
+        }
+    }
+    if !any_reactive || parts.len() < 2 {
+        return None;
+    }
+    for (start, end, reactive) in spans {
+        if reactive {
+            ctx.lens(
+                start,
+                end,
+                "reactive",
+                "live — this text re-renders whenever its signals change".to_string(),
+            );
+        } else {
+            ctx.lens(
+                start,
+                end,
+                "static-text",
+                "baked once into the DOM — never re-renders (no signal read here)".to_string(),
+            );
+        }
+    }
+    ctx.needs_fuse_import = true;
+    let rendered: Vec<String> = parts
+        .iter()
+        .map(|p| match p {
+            Part::Lit(t) => ssr_static_lit(t),
+            Part::Expr(e) => e.clone(),
+        })
+        .collect();
+    Some(format!("_fuse({})", rendered.join(", ")))
+}
+
 fn ssr_serialize_expr_child(
     buf: &mut SsrBuf,
     container: &JSXExpressionContainer,
@@ -5944,10 +6086,16 @@ fn ssr_serialize_element(buf: &mut SsrBuf, el: &JSXElement, mode: SsrMode, ctx: 
     // A self-closing non-void tag (`<div />`) has no children to walk; it still
     // gets its closing tag, matching the h() path's `<div></div>`.
     if !self_closing {
-        let sole = ssr_sole_child(el);
-        for (i, child) in el.children.iter().enumerate() {
-            if !ssr_serialize_child(buf, child, mode, sole == Some(i), ctx) {
-                return false;
+        // Text fusion (see `fuse_text_children`): ONE sole accessor child →
+        // the `_escSole` shape, no markers on either side. Mirrors JS.
+        if let Some(fused) = fuse_text_children(el, ctx) {
+            emit_esc_sole_hole(buf, fused, ctx);
+        } else {
+            let sole = ssr_sole_child(el);
+            for (i, child) in el.children.iter().enumerate() {
+                if !ssr_serialize_child(buf, child, mode, sole == Some(i), ctx) {
+                    return false;
+                }
             }
         }
     }
@@ -8042,6 +8190,27 @@ fn emit_reactive_text_child(
     }
 }
 
+/// The fused-text bind — mirrors jsx.ts `emitFusedTextChild`: the sole-text
+/// pristine-clone capture plus the polymorphic binder.
+fn emit_fused_text_child(
+    fused: &str,
+    var_name: &str,
+    parent_ref: &str,
+    tb: &mut TemplateBuilder,
+) -> String {
+    let t_var = tb.next_text_var();
+    let canonical = canonical_walk(&tb.canonical_base(var_name), 0, true);
+    let (expr, _) = tb.chain_from_captured(&canonical);
+    tb.capture_ref(t_var.clone(), &expr, canonical);
+    tb.needs_bind_poly = true;
+    let d = tb.next_disp();
+    tb.bind_lines.push(format!(
+        "const {} = bindPolymorphicText(() => ({}), {}, {})",
+        d, fused, t_var, parent_ref
+    ));
+    " ".to_string()
+}
+
 fn emit_static_text_child(
     expr_text: &str,
     var_name: &str,
@@ -8304,6 +8473,13 @@ fn process_children(
     tb: &mut TemplateBuilder,
     ctx: &mut Ctx,
 ) -> Option<(String, bool)> {
+    // Text fusion (see `fuse_text_children`): ONE accessor child in the
+    // sole-dynamic-text form — `' '` baked, `.firstChild` bound. Mirrors JS.
+    if let Some(fused) = fuse_text_children(el, ctx) {
+        let parent_ref = if accessor == "__root" { "__root" } else { var_name };
+        let html = emit_fused_text_child(&fused, var_name, parent_ref, tb);
+        return Some((html, false));
+    }
     let flat = flatten_children(&el.children, ctx.templatize_component_children);
     let has_component = flat.iter().any(|c| matches!(c, FlatChild::Component(_)));
     // Re-derived from the SAME predicate on the SAME input the prescan used, so

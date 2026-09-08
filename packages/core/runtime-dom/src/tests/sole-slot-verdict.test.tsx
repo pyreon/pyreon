@@ -28,7 +28,7 @@
  * client mount AND a node count (a duplicate is the failure mode).
  */
 import { transformJSX } from '@pyreon/compiler'
-import { _lc, _rp, _rpd, _wrapSpread, For, Fragment, h, Show } from '@pyreon/core'
+import { _fuse, _lc, _rp, _rpd, _wrapSpread, For, Fragment, h, Show } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import { transformSync } from 'esbuild'
@@ -80,6 +80,7 @@ const RUNTIME_DEPS = {
   For,
   Show,
   _lc,
+  _fuse,
   _rp,
   _wrapSpread,
   signal,
