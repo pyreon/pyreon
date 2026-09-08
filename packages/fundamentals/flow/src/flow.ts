@@ -426,7 +426,9 @@ export function createFlow<TData = Record<string, unknown>>(
   // ── Node operations ──────────────────────────────────────────────────────
 
   function getNode(id: string): FlowNode<TData> | undefined {
-    return nodes.peek().find((n) => n.id === id)
+    // O(1) through the id map (it was an O(N) `find`, and `getNode` sits on
+    // every drag frame via updateNodePosition / snap / collisions).
+    return untrack(() => nodeMap()).get(id)
   }
 
   function addNode(node: FlowNode<TData>): void {
@@ -1787,9 +1789,13 @@ export function createFlow<TData = Record<string, unknown>>(
     ) {
       return
     }
-    const next = new Map(cur)
-    next.set(id, { width, height, ...(handles ? { handles } : {}) })
-    measurements.set(next)
+    // In-place write + forced notify. The previous `new Map(cur)` per node
+    // made a 1,000-node mount copy ~500,000 entries (N writes × N-entry
+    // copies) before the first frame; the Map's IDENTITY carries no meaning
+    // to any reader (they all `get(id)` inside a tracking scope), so mutate
+    // and `trigger()` — O(1) per measurement, the same notifications as before.
+    cur.set(id, { width, height, ...(handles ? { handles } : {}) })
+    measurements.trigger()
   }
 
   // Drop a node's measurement on unmount so a removed id can't strand a stale
@@ -1797,9 +1803,8 @@ export function createFlow<TData = Record<string, unknown>>(
   const _clearNodeMeasurement = (id: string): void => {
     const cur = measurements.peek()
     if (!cur.has(id)) return
-    const next = new Map(cur)
-    next.delete(id)
-    measurements.set(next)
+    cur.delete(id)
+    measurements.trigger()
   }
 
   return {
