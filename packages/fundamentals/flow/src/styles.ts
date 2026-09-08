@@ -112,4 +112,52 @@ export const flowStyles = `
 .pyreon-flow-controls button:active {
   background: var(--pyreon-flow-controls-active, #e5e7eb) !important;
 }
+
+/* ── Accessibility ────────────────────────────────────────────────────────── */
+
+/* Keyboard focus is shown, pointer focus is not — the UA stylesheets already
+   draw their default ring under :focus-visible only; these rules theme it. */
+.pyreon-flow:focus-visible {
+  outline: 2px solid var(--pyreon-flow-accent, #3b82f6);
+  outline-offset: -2px;
+}
+
+.pyreon-flow-node:focus-visible {
+  outline: 2px solid var(--pyreon-flow-accent, #3b82f6);
+  outline-offset: 2px;
+}
+
+.pyreon-flow-edge-path:focus-visible {
+  outline: 2px solid var(--pyreon-flow-accent, #3b82f6);
+  outline-offset: 4px;
+}
+
+.pyreon-flow:focus:not(:focus-visible),
+.pyreon-flow-node:focus:not(:focus-visible),
+.pyreon-flow-edge-path:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Screen-reader-only text: keyboard instructions + the live region. */
+.pyreon-flow-a11y-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pyreon-flow,
+  .pyreon-flow *,
+  .pyreon-flow-controls,
+  .pyreon-flow-controls * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
 `

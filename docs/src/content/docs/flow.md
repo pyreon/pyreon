@@ -983,6 +983,30 @@ Position.Bottom // 'bottom'
 Position.Left   // 'left'
 ```
 
+## Accessibility
+
+`<Flow>` follows the React Flow keyboard model. The canvas is a focusable `role="group"` named by `ariaLabel` (default "Flow diagram"); every node and edge is a focus stop in DOM order after it.
+
+| Key | On a node | On an edge | On the canvas |
+| --- | --- | --- | --- |
+| `Tab` / `Shift+Tab` | next / previous node or edge | same | leaves the canvas |
+| `Enter` / `Space` | select (`Shift` adds to the selection) | select | — |
+| `←` `→` `↑` `↓` | move the node 10 units (`Shift`: 100), selecting it first; one undo entry per key press | — | — |
+| `Delete` / `Backspace` | delete the selection | delete the selection | delete the selection |
+| `Escape` | clear the selection | clear the selection | clear the selection |
+| `Cmd/Ctrl+A` · `C` · `V` · `Z` · `Shift+Z` | select all · copy · paste · undo · redo (bubble up from any focus stop) | | |
+
+What a screen reader gets:
+
+- Nodes carry `role="group"` and `aria-roledescription="node"`; the node's own content is its name unless you set `ariaLabel`. Edges are `role="button"` named `"Edge from <source> to <target>"` (or `ariaLabel`).
+- Both point `aria-describedby` at a visually-hidden instruction text inside the canvas, so the keys above are announced on focus.
+- A polite live region announces selection changes ("2 nodes and 1 edge selected", "Selection cleared") and keyboard moves ("Moved node a to 10, 0").
+- The background pattern and helper lines are `aria-hidden`; the edge layer is a named `group` so its focusable paths stay in the accessibility tree.
+
+Focus is visible only for keyboard users: `flowStyles` themes `:focus-visible` on the canvas, nodes and edges with `--pyreon-flow-accent` (a pointer click draws no ring). The stylesheet also disables the package's transitions and the animated-edge dash under `prefers-reduced-motion: reduce`, and `fitView()` / `animateViewport()` / animated `layout()` jump straight to their target under that setting — override with `reducedMotion: false | true` in the config.
+
+Opt-outs: `focusable: false` on a node or edge, `nodesFocusable: false` / `edgesFocusable: false` for the default, and `disableKeyboardA11y: true` to drop nodes and edges from the tab order entirely (the canvas keeps its shortcuts).
+
 ## Cleanup
 
 ```tsx
