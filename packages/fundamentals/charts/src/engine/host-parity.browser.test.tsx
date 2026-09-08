@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest'
 import { signal } from '@pyreon/reactivity'
 import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
+import { query } from '@pyreon/test-utils'
 import { TreemapChart } from './TreemapChart'
 import { GaugeChart, PieChart } from './PieChart'
 import { CalendarChart } from './CalendarChart'
@@ -102,7 +103,7 @@ describe('accessibility wiring on a family host', () => {
     expect(canvas.getAttribute('aria-label')).toBe('Load: 42 of 100')
     const id = canvas.getAttribute('aria-describedby')
     expect(id).not.toBeNull()
-    const table = container.querySelector(`#${id}`) as HTMLTableElement
+    const table = query<HTMLTableElement>(container, `#${id}`)
     expect(table.tagName).toBe('TABLE')
     expect(table.querySelector('caption')!.textContent).toBe('Load')
     expect(table.textContent).toContain('42')
@@ -214,7 +215,7 @@ describe('touch and toolbox', () => {
     )
     await flush()
     const canvas = container.querySelector('canvas')!
-    const tip = container.querySelector('[data-pyreon-chart-tooltip]') as HTMLDivElement
+    const tip = query<HTMLDivElement>(container, '[data-pyreon-chart-tooltip]')
     pointer(canvas, 'pointerdown', 100, 60, { pointerType: 'touch' })
     expect(tip.style.display).toBe('block')
     expect(tip.textContent).toContain('%')

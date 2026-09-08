@@ -396,7 +396,9 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     theme() // a provider mode flip repaints (draw() bails before reading it until the ref attaches)
     // `peek`, not a read: reading the version here would subscribe this
     // effect to its own write and re-run it once per batch pass (32 times,
-    // cancelling the update tween on every pass).
+    // cancelling the update tween on every pass) — the intentional
+    // loop-prevention use the lint rule cannot tell from a stale read.
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     a11yVersion.set(a11yVersion.peek() + 1)
     draw()
   })
