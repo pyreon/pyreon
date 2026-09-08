@@ -21,11 +21,21 @@ import pyreon from "@pyreon/vite-plugin";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { zeroPlugin } from "../../vite-plugin";
+import {
+	DEV_SERVER_BOOT_TIMEOUT_MS,
+	DEV_SERVER_TEST_TIMEOUT_MS,
+	devFetch,
+} from "./dev-server-budget";
 
 const FIXTURE_DIR = resolve(import.meta.dirname, "fixture-i18n-404");
 
 let server: ViteDevServer;
 let baseUrl: string;
+
+// Snapshot for `devFetch`'s failure message — a thunk, so it costs nothing on
+// the passing path and only runs when a request has already failed.
+const state = () =>
+	`baseUrl=${baseUrl} viteListening=${Boolean(server?.httpServer?.listening)}`;
 
 beforeAll(async () => {
 	server = await createServer({
@@ -63,15 +73,19 @@ beforeAll(async () => {
 	if (address && typeof address === "object") {
 		baseUrl = `http://localhost:${address.port}`;
 	}
-}, 30_000);
+}, DEV_SERVER_BOOT_TIMEOUT_MS);
 
 afterAll(async () => {
 	await server?.close();
 });
 
-describe("dev 404 — i18n route duplication (`mode: 'ssg' + i18n config`)", () => {
+describe("dev 404 — i18n route duplication (`mode: 'ssg' + i18n config`)", { timeout: DEV_SERVER_TEST_TIMEOUT_MS }, () => {
 	it("default-locale unprefixed unmatched URL uses _404 with layout chrome", async () => {
-		const res = await fetch(`${baseUrl}/totally-unknown`);
+		const res = await devFetch(
+			`${baseUrl}/totally-unknown`,
+			"default-locale unmatched URL renders _404 + layout",
+			{ observe: state },
+		);
 		expect(res.status).toBe(404);
 		const html = await res.text();
 		expect(html).toContain("i18n Not Found");
@@ -84,7 +98,11 @@ describe("dev 404 — i18n route duplication (`mode: 'ssg' + i18n config`)", () 
 		// `prefix-except-default` (the default strategy): non-default
 		// locales get explicit prefixes. `/de/unknown` should hit the
 		// de-locale layout's notFoundComponent.
-		const res = await fetch(`${baseUrl}/de/this-route-doesnt-exist`);
+		const res = await devFetch(
+			`${baseUrl}/de/this-route-doesnt-exist`,
+			"de-prefixed unmatched URL renders _404",
+			{ observe: state },
+		);
 		expect(res.status).toBe(404);
 		const html = await res.text();
 		expect(html).toContain("i18n Not Found");
@@ -93,14 +111,22 @@ describe("dev 404 — i18n route duplication (`mode: 'ssg' + i18n config`)", () 
 
 	it("third-locale prefixed unmatched URL also routes through _404", async () => {
 		// Lock multi-locale coverage — not just `de`.
-		const res = await fetch(`${baseUrl}/cs/missing-page`);
+		const res = await devFetch(
+			`${baseUrl}/cs/missing-page`,
+			"cs-prefixed unmatched URL renders _404",
+			{ observe: state },
+		);
 		expect(res.status).toBe(404);
 		const html = await res.text();
 		expect(html).toContain("i18n Not Found");
 	});
 
 	it("matched root index (default locale) serves 200", async () => {
-		const res = await fetch(`${baseUrl}/`);
+		const res = await devFetch(
+			`${baseUrl}/`,
+			"matched root index (default locale)",
+			{ observe: state },
+		);
 		expect(res.status).toBe(200);
 	});
 });

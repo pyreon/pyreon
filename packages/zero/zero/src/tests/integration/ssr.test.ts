@@ -5,11 +5,22 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { renderErrorOverlay } from "../../error-overlay";
 import { render404Page } from "../../not-found";
 import { zeroPlugin } from "../../vite-plugin";
+import {
+	DEV_SERVER_BOOT_TIMEOUT_MS,
+	DEV_SERVER_TEST_TIMEOUT_MS,
+	devFetch,
+	devServerOp,
+} from "./dev-server-budget";
 
 const FIXTURE_DIR = resolve(import.meta.dirname, "fixture");
 
 let server: ViteDevServer;
 let baseUrl: string;
+
+// Snapshot for the failure message — a thunk, so it costs nothing on the
+// passing path and only runs when an operation has already failed.
+const state = () =>
+	`baseUrl=${baseUrl} listening=${Boolean(server?.httpServer?.listening)}`;
 
 beforeAll(async () => {
 	server = await createServer({
@@ -38,69 +49,91 @@ beforeAll(async () => {
 	if (address && typeof address === "object") {
 		baseUrl = `http://localhost:${address.port}`;
 	}
-}, 30_000);
+}, DEV_SERVER_BOOT_TIMEOUT_MS);
 
 afterAll(async () => {
 	await server?.close();
 });
 
-describe("SSR integration", () => {
+describe("SSR integration", { timeout: DEV_SERVER_TEST_TIMEOUT_MS }, () => {
 	it("boots the Vite dev server", () => {
 		expect(baseUrl).toBeDefined();
 		expect(baseUrl).toMatch(/^http:\/\/localhost:\d+$/);
 	});
 
 	it("resolves virtual:zero/routes module", async () => {
-		const mod = await server.ssrLoadModule("virtual:zero/routes");
+		const mod = await devServerOp(
+			"ssrLoadModule virtual:zero/routes (first load — transforms the graph)",
+			() => server.ssrLoadModule("virtual:zero/routes"),
+			{ observe: state },
+		);
 		expect(mod.routes).toBeDefined();
 		expect(Array.isArray(mod.routes)).toBe(true);
 		expect(mod.routes.length).toBeGreaterThan(0);
 	});
 
 	it("generates routes for fixture pages", async () => {
-		const mod = await server.ssrLoadModule("virtual:zero/routes");
+		const mod = await devServerOp(
+			"ssrLoadModule virtual:zero/routes (fixture page routes)",
+			() => server.ssrLoadModule("virtual:zero/routes"),
+			{ observe: state },
+		);
 		const paths = flattenPaths(mod.routes);
 		expect(paths).toContain("/");
 		expect(paths).toContain("/about");
 	});
 
 	it("generates route for dynamic [id] param", async () => {
-		const mod = await server.ssrLoadModule("virtual:zero/routes");
+		const mod = await devServerOp(
+			"ssrLoadModule virtual:zero/routes (dynamic [id] route)",
+			() => server.ssrLoadModule("virtual:zero/routes"),
+			{ observe: state },
+		);
 		const paths = flattenPaths(mod.routes);
 		expect(paths.some((p: string) => p.includes(":id"))).toBe(true);
 	});
 
 	it("wires renderMode into route meta", async () => {
-		const mod = await server.ssrLoadModule("virtual:zero/routes");
+		const mod = await devServerOp(
+			"ssrLoadModule virtual:zero/routes (renderMode meta)",
+			() => server.ssrLoadModule("virtual:zero/routes"),
+			{ observe: state },
+		);
 		const route = mod.routes.find((r: { path: string }) => r.path === "/");
 		expect(route).toBeDefined();
 		expect(route.meta).toBeDefined();
 	});
 
 	it("serves index.html on GET /", async () => {
-		const res = await fetch(`${baseUrl}/`);
+		const res = await devFetch(`${baseUrl}/`, "GET / (index.html)", {
+			observe: state,
+		});
 		expect(res.status).toBe(200);
 		const html = await res.text();
 		expect(html).toContain('<div id="app">');
 	});
 
 	it("serves the about page", async () => {
-		const res = await fetch(`${baseUrl}/about`);
+		const res = await devFetch(`${baseUrl}/about`, "GET /about", { observe: state });
 		expect(res.status).toBe(200);
 		const html = await res.text();
 		expect(html).toContain("<!DOCTYPE html>");
 	});
 
 	it("returns HTML for dynamic routes", async () => {
-		const res = await fetch(`${baseUrl}/users/42`);
+		const res = await devFetch(`${baseUrl}/users/42`, "GET /users/42 (dynamic route)", {
+			observe: state,
+		});
 		expect(res.status).toBe(200);
 		const html = await res.text();
 		expect(html).toContain('<div id="app">');
 	});
 
 	it("loads virtual modules via plugin resolveId", async () => {
-		const resolved = await server.pluginContainer.resolveId(
-			"virtual:zero/routes",
+		const resolved = await devServerOp(
+			"pluginContainer.resolveId virtual:zero/routes",
+			() => server.pluginContainer.resolveId("virtual:zero/routes"),
+			{ observe: state },
 		);
 		expect(resolved).toBeTruthy();
 		expect(resolved?.id).toContain("virtual:zero/routes");
@@ -129,7 +162,11 @@ describe("SSR integration", () => {
 	// ─── 404 handling ──────────────────────────────────────────────────────────
 
 	it("returns 404 status for unknown routes", async () => {
-		const res = await fetch(`${baseUrl}/this-route-does-not-exist`);
+		const res = await devFetch(
+			`${baseUrl}/this-route-does-not-exist`,
+			"GET an unknown route (expects 404)",
+			{ observe: state },
+		);
 		expect(res.status).toBe(404);
 		const html = await res.text();
 		// Dev mode returns a static 404 page (component SSR requires document)
@@ -138,7 +175,11 @@ describe("SSR integration", () => {
 	});
 
 	it("returns 404 with proper HTML structure", async () => {
-		const res = await fetch(`${baseUrl}/nonexistent/deeply/nested/path`);
+		const res = await devFetch(
+			`${baseUrl}/nonexistent/deeply/nested/path`,
+			"GET a deeply-nested unknown route",
+			{ observe: state },
+		);
 		expect(res.status).toBe(404);
 		const html = await res.text();
 		expect(html).toContain("<!DOCTYPE html>");
@@ -146,17 +187,25 @@ describe("SSR integration", () => {
 	});
 
 	it("returns 200 for known routes (not 404)", async () => {
-		const aboutRes = await fetch(`${baseUrl}/about`);
+		const aboutRes = await devFetch(`${baseUrl}/about`, "GET /about (known route, 1 of 2)", {
+			observe: state,
+		});
 		expect(aboutRes.status).toBe(200);
 
-		const homeRes = await fetch(`${baseUrl}/`);
+		const homeRes = await devFetch(`${baseUrl}/`, "GET / (known route, 2 of 2)", {
+			observe: state,
+		});
 		expect(homeRes.status).toBe(200);
 	});
 
 	// ─── Error handling ────────────────────────────────────────────────────────
 
 	it("generates routes for the broken page fixture", async () => {
-		const mod = await server.ssrLoadModule("virtual:zero/routes");
+		const mod = await devServerOp(
+			"ssrLoadModule virtual:zero/routes (broken page fixture)",
+			() => server.ssrLoadModule("virtual:zero/routes"),
+			{ observe: state },
+		);
 		const paths = flattenPaths(mod.routes);
 		expect(paths).toContain("/broken");
 	});
@@ -165,7 +214,9 @@ describe("SSR integration", () => {
 		// In `mode: "ssr"` dev, the zero plugin actually server-renders each
 		// matched route. A component that throws produces a 500 with the dev
 		// error overlay page (not the SPA shell).
-		const res = await fetch(`${baseUrl}/broken`);
+		const res = await devFetch(`${baseUrl}/broken`, "GET /broken (expects the SSR error overlay)", {
+			observe: state,
+		});
 		expect(res.status).toBe(500);
 		const html = await res.text();
 		expect(html).toContain("SSR Error");
@@ -176,12 +227,18 @@ describe("SSR integration", () => {
 		// The zero dev SSR middleware should produce fully rendered markup
 		// before the client entry runs. This separates true SSR from the old
 		// "serve index.html + hydrate on client" dev behavior.
-		const homeRes = await fetch(`${baseUrl}/`);
+		const homeRes = await devFetch(`${baseUrl}/`, "GET / server-rendered markup (1 of 2)", {
+			observe: state,
+		});
 		expect(homeRes.status).toBe(200);
 		const homeHtml = await homeRes.text();
 		expect(homeHtml).toContain("Hello from Zero");
 
-		const userRes = await fetch(`${baseUrl}/users/42`);
+		const userRes = await devFetch(
+			`${baseUrl}/users/42`,
+			"GET /users/42 server-rendered markup + loader data (2 of 2)",
+			{ observe: state },
+		);
 		expect(userRes.status).toBe(200);
 		const userHtml = await userRes.text();
 		// Loader data flows through to the server-rendered markup
@@ -201,7 +258,11 @@ describe("SSR integration", () => {
 		expect(code).toContain("/api/health");
 		expect(code).toContain("apiRoutes");
 
-		const mod = await server.ssrLoadModule("virtual:zero/api-routes");
+		const mod = await devServerOp(
+			"ssrLoadModule virtual:zero/api-routes",
+			() => server.ssrLoadModule("virtual:zero/api-routes"),
+			{ observe: state },
+		);
 		expect(mod.apiRoutes).toBeDefined();
 		expect(Array.isArray(mod.apiRoutes)).toBe(true);
 		const healthRoute = mod.apiRoutes.find(
@@ -214,7 +275,9 @@ describe("SSR integration", () => {
 	// ─── Static assets ────────────────────────────────────────────────────────
 
 	it("serves static assets (index.html exists)", async () => {
-		const res = await fetch(`${baseUrl}/`);
+		const res = await devFetch(`${baseUrl}/`, "GET / (static asset serving)", {
+			observe: state,
+		});
 		expect(res.status).toBe(200);
 		const html = await res.text();
 		expect(html).toContain("<!DOCTYPE html>");

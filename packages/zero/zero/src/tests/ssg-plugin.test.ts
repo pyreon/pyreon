@@ -1,3 +1,7 @@
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import * as path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SSG_BUILD_FLAG, SSR_BUILD_FLAG, _enterInnerBuild, _exitInnerBuild } from '../build-flags'
 import { _internal, ssgPlugin } from '../ssg-plugin'
@@ -305,9 +309,6 @@ describe('ssgPlugin', () => {
     // We exercise autoDetectStaticPaths against a fixture directory built
     // on-the-fly with mkdtempSync. Each test writes a minimal route tree,
     // optionally a getStaticPaths registry, and asserts the expanded paths.
-    const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = require('node:fs')
-    const { tmpdir } = require('node:os')
-    const path = require('node:path')
 
     function makeFixture(files: Record<string, string>) {
       const root = mkdtempSync(path.join(tmpdir(), 'pyreon-ssg-fixture-'))
@@ -1165,12 +1166,9 @@ describe('ssgPlugin', () => {
     // partial state).
 
     it('writes the target file with the given content', async () => {
-      const { mkdtempSync, rmSync, readFileSync } = await import('node:fs')
-      const { join: pathJoin } = await import('node:path')
-      const { tmpdir } = await import('node:os')
-      const dir = mkdtempSync(pathJoin(tmpdir(), 'pyreon-atomic-'))
+      const dir = mkdtempSync(path.join(tmpdir(), 'pyreon-atomic-'))
       try {
-        const target = pathJoin(dir, '_redirects')
+        const target = path.join(dir, '_redirects')
         await _internal.writeFileAtomic(target, '/old /new 301\n')
         expect(readFileSync(target, 'utf8')).toBe('/old /new 301\n')
       } finally {
@@ -1184,12 +1182,9 @@ describe('ssgPlugin', () => {
       // than swallowing. The cleanup-on-error branch is best-effort and
       // unit-untestable cross-platform (Linux/macOS/Windows differ on what
       // failure modes leave behind), so we don't assert tmp absence here.
-      const { mkdtempSync, rmSync } = await import('node:fs')
-      const { join: pathJoin } = await import('node:path')
-      const { tmpdir } = await import('node:os')
-      const dir = mkdtempSync(pathJoin(tmpdir(), 'pyreon-atomic-'))
+      const dir = mkdtempSync(path.join(tmpdir(), 'pyreon-atomic-'))
       try {
-        const target = pathJoin(dir, 'nonexistent-subdir', 'file')
+        const target = path.join(dir, 'nonexistent-subdir', 'file')
         await expect(_internal.writeFileAtomic(target, 'x')).rejects.toThrow()
       } finally {
         rmSync(dir, { recursive: true, force: true })
@@ -1197,12 +1192,9 @@ describe('ssgPlugin', () => {
     })
 
     it('overwrites an existing file atomically', async () => {
-      const { mkdtempSync, rmSync, readFileSync, writeFileSync } = await import('node:fs')
-      const { join: pathJoin } = await import('node:path')
-      const { tmpdir } = await import('node:os')
-      const dir = mkdtempSync(pathJoin(tmpdir(), 'pyreon-atomic-'))
+      const dir = mkdtempSync(path.join(tmpdir(), 'pyreon-atomic-'))
       try {
-        const target = pathJoin(dir, 'data.json')
+        const target = path.join(dir, 'data.json')
         writeFileSync(target, '{"old": true}\n')
         await _internal.writeFileAtomic(target, '{"new": true}\n')
         expect(readFileSync(target, 'utf8')).toBe('{"new": true}\n')
@@ -1635,10 +1627,6 @@ describe('ssgPlugin', () => {
   // cache primitive's contract that the finally wiring relies on.
 
   describe('mkdirOnce cache (PR-S13)', () => {
-    const { mkdtempSync, rmSync } = require('node:fs')
-    const { tmpdir } = require('node:os')
-    const path = require('node:path')
-
     it('deduplicates mkdir per directory string (cache size grows once per unique path)', async () => {
       const root = mkdtempSync(path.join(tmpdir(), 'pyreon-mkdir-cache-'))
       try {
@@ -1721,10 +1709,8 @@ describe('ssgPlugin', () => {
       // `try { ... } finally { _resetMkdirCache() }`. We look for the
       // exact pattern of a finally-block that calls `_resetMkdirCache()`
       // — that pattern doesn't exist pre-PR-S13.
-      const { readFileSync } = require('node:fs')
-      const { join: pathJoin } = require('node:path')
       const src = readFileSync(
-        pathJoin(__dirname, '..', 'ssg-plugin.ts'),
+        path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'ssg-plugin.ts'),
         'utf-8',
       )
 
@@ -1808,9 +1794,6 @@ describe("format 'both' auto-canonical (Tier-2 H)", () => {
   })
 
   it("writeRouteOutputs injects canonical into BOTH copies under format 'both'", async () => {
-    const { mkdtempSync, rmSync, readFileSync } = require('node:fs')
-    const { tmpdir } = require('node:os')
-    const path = require('node:path')
     const dist = mkdtempSync(path.join(tmpdir(), 'pyreon-canon-'))
     try {
       const ok = await _internal.writeRouteOutputs(
@@ -1832,9 +1815,6 @@ describe("format 'both' auto-canonical (Tier-2 H)", () => {
   })
 
   it('does NOT inject when a canonical already exists or format is single', async () => {
-    const { mkdtempSync, rmSync, readFileSync } = require('node:fs')
-    const { tmpdir } = require('node:os')
-    const path = require('node:path')
     const dist = mkdtempSync(path.join(tmpdir(), 'pyreon-canon2-'))
     try {
       await _internal.writeRouteOutputs(
@@ -1855,9 +1835,6 @@ describe("format 'both' auto-canonical (Tier-2 H)", () => {
   })
 
   it('does NOT canonicalize meta-refresh redirect stubs', async () => {
-    const { mkdtempSync, rmSync, readFileSync } = require('node:fs')
-    const { tmpdir } = require('node:os')
-    const path = require('node:path')
     const dist = mkdtempSync(path.join(tmpdir(), 'pyreon-canon3-'))
     try {
       await _internal.writeRouteOutputs(
@@ -1877,9 +1854,6 @@ describe("format 'both' auto-canonical (Tier-2 H)", () => {
 
 describe('SSG completeness warning — routeRules exemption (Tier-4)', () => {
   it('does NOT warn when a routeRule declares the dynamic route non-static', async () => {
-    const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = require('node:fs')
-    const { tmpdir } = require('node:os')
-    const path = require('node:path')
     const root = mkdtempSync(path.join(tmpdir(), 'pyreon-rules-warn-'))
     for (const [rel, body] of Object.entries({
       'index.tsx': 'export default () => null',

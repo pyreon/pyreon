@@ -30,11 +30,21 @@ import pyreon from "@pyreon/vite-plugin";
 import { createServer, type ViteDevServer } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { zeroPlugin } from "../../vite-plugin";
+import {
+	DEV_SERVER_BOOT_TIMEOUT_MS,
+	DEV_SERVER_TEST_TIMEOUT_MS,
+	devFetch,
+} from "./dev-server-budget";
 
 const FIXTURE_DIR = resolve(import.meta.dirname, "fixture-redirect-loader-404");
 
 let server: ViteDevServer;
 let baseUrl: string;
+
+// Snapshot for the failure message — a thunk, so it costs nothing on the
+// passing path and only runs when a request has already failed.
+const state = () =>
+	`baseUrl=${baseUrl} listening=${Boolean(server?.httpServer?.listening)}`;
 
 beforeAll(async () => {
 	server = await createServer({
@@ -63,17 +73,22 @@ beforeAll(async () => {
 	if (address && typeof address === "object") {
 		baseUrl = `http://localhost:${address.port}`;
 	}
-}, 30_000);
+}, DEV_SERVER_BOOT_TIMEOUT_MS);
 
 afterAll(async () => {
 	await server?.close();
 });
 
-describe("dev 404 — parent layout loader throws redirect()", () => {
+describe("dev 404 — parent layout loader throws redirect()", { timeout: DEV_SERVER_TEST_TIMEOUT_MS }, () => {
 	it("layout loader fires on unmatched URL — _404 component never renders", async () => {
-		const res = await fetch(`${baseUrl}/this-doesnt-exist`, {
-			redirect: "manual", // we want to see the raw response, not follow
-		});
+		const res = await devFetch(
+			`${baseUrl}/this-doesnt-exist`,
+			"unmatched URL whose layout loader throws redirect()",
+			{
+				redirect: "manual", // we want to see the raw response, not follow
+				observe: state,
+			},
+		);
 		const html = await res.text();
 		// Critical anti-assertion: if the layout loader's `throw redirect()`
 		// was suppressed, the synthetic _404 chain would render and this
@@ -94,9 +109,11 @@ describe("dev 404 — parent layout loader throws redirect()", () => {
 		// "you're not allowed here, redirect away"). Pre-fix in
 		// `mode: 'ssg'` the loader never even ran, so this contract was
 		// unreachable; the test locks the post-fix correctness.
-		const res = await fetch(`${baseUrl}/protected-page-that-doesnt-exist`, {
-			redirect: "manual",
-		});
+		const res = await devFetch(
+			`${baseUrl}/protected-page-that-doesnt-exist`,
+			"redirect-throwing loader must not expose the _404 body",
+			{ redirect: "manual", observe: state },
+		);
 		const html = await res.text();
 		expect(html).not.toContain("should NOT be visible");
 		// The response was handled somehow (not crashed / hung).

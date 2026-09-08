@@ -196,9 +196,16 @@ describe('runLintGate — config diagnostics surface', () => {
     process.chdir(cwd)
     try {
       const result = await runLintGate({ cwd })
-      const cfg = result.findings.find((f) => f.category === 'architecture')
+      // Select by CODE, not by category. The gate emits more than one kind of
+      // architecture finding (a `scanTarget` pass that matched no files also
+      // reports there), so `find(category === 'architecture')` picked whichever
+      // happened to be pushed first — it was only ever testing the ORDER of two
+      // unrelated things. The invariant being locked is that a malformed rule
+      // option surfaces as a finding, and `lint/config-*` is what says so.
+      const cfg = result.findings.find((f) => f.code.startsWith('lint/config-'))
       // The config diagnostic must surface as a finding (severity mapped).
       expect(cfg).toBeDefined()
+      expect(cfg!.category).toBe('architecture')
       expect(cfg!.message).toMatch(/exemptPaths|option/i)
     } finally {
       process.chdir(prevCwd)

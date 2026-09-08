@@ -1,12 +1,13 @@
 {
-  "sha": "1e0ba46b",
+  "sha": "cb6132e",
   "app": "perf-dashboard",
   "journey": "modalCycle",
   "mode": "dev",
   "runs": 5,
-  "timestamp": "2026-05-13T11:18:16.137Z",
-  "medianWallMs": 33,
-  "medianHeapBytes": 10000000,
+  "timestamp": "2026-09-08T08:51:57.361Z",
+  "host": "ci:Linux",
+  "medianWallMs": 86,
+  "medianHeapBytes": 14300000,
   "counters": {
     "reactivity.signalWrite": 2,
     "reactivity.effectRun": 3,

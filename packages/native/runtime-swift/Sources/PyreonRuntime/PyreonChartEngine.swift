@@ -6,11 +6,11 @@
 
 import Foundation
 
-public enum TreeOrient: String {
+public enum TreeOrient: String, Codable {
   case LR, RL, TB, BT, radial
 }
 
-public enum GanttTickUnit: String {
+public enum GanttTickUnit: String, Codable {
   case day, week, month, quarter, year
 }
 

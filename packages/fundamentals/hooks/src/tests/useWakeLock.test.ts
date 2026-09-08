@@ -210,3 +210,48 @@ describe('useWakeLock', () => {
     expect(request).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('useWakeLock — acquisition that settles after the view is gone', () => {
+  afterEach(() => {
+    for (const s of scopes.splice(0)) s.dispose()
+    // biome-ignore lint: test teardown of a defineProperty'd global
+    delete (globalThis.navigator as unknown as Record<string, unknown>).wakeLock
+  })
+
+  /** A request whose resolution the test controls — the permission prompt. */
+  function installDeferredWakeLock() {
+    const s = makeSentinel()
+    let resolve!: () => void
+    const pending = new Promise<void>((r) => (resolve = r))
+    Object.defineProperty(globalThis.navigator, 'wakeLock', {
+      value: { request: async () => (await pending, s) },
+      configurable: true,
+      writable: true,
+    })
+    return { s, resolve }
+  }
+
+  it('releases a lock that resolves AFTER the scope disposed', async () => {
+    const { s, resolve } = installDeferredWakeLock()
+    const w = mountHook()
+    const req = w.request()
+    // Unmount while the request is in flight: `sentinel` is still null here,
+    // so the cleanup has nothing to release — the resolving request must.
+    for (const sc of scopes.splice(0)) sc.dispose()
+    resolve()
+    await expect(req).resolves.toBe(false)
+    expect(s.releasedCount).toBe(1)
+    expect(w.active()).toBe(false)
+  })
+
+  it('releases a lock that resolves AFTER release() was called', async () => {
+    const { s, resolve } = installDeferredWakeLock()
+    const w = mountHook()
+    const req = w.request()
+    await w.release()
+    resolve()
+    await expect(req).resolves.toBe(false)
+    expect(s.releasedCount).toBe(1)
+    expect(w.active()).toBe(false)
+  })
+})

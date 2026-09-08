@@ -88,6 +88,15 @@ interface ParseCtx {
    * sites passed args, an uncompilable emit on BOTH targets with no
    * warning (the dominant real-world props shape).
    */
+  /**
+   * Locally-declared string-literal union aliases (`type Position = 'top' | …`),
+   * collected in the same pre-pass as the object aliases. They lower to a real
+   * native enum, so a helper whose first parameter is one resolves on both
+   * targets exactly as a struct does — without this the props-type check
+   * reported an unresolvable type for working code, and the only way to silence
+   * it was to stop using the enum.
+   */
+  enumTypeNames: Set<string>
   objectTypeAliases: Map<string, Extract<TypeIR, { kind: 'object' }>>
   /**
    * Locally-declared FUNCTION-type aliases (`type Formatter = (v: Double) =>
@@ -356,6 +365,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     source,
     storeHookNames: new Set(),
     objectTypeAliases: new Map(),
+    enumTypeNames: new Set(),
     fnTypeAliases: new Map(),
     storeAliases: new Map(),
     toastNames: new Set(),
@@ -5656,6 +5666,8 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     // warnings from double-firing, and the consts are read-only lookup either way.
     stringConsts: ctx.stringConsts,
     objectTypeAliases: new Map(),
+    // Shared, not copied — the pre-pass POPULATES this for the main ctx.
+    enumTypeNames: ctx.enumTypeNames,
     fnTypeAliases: new Map(),
     storeAliases: new Map(),
     toastNames: new Set(),
@@ -5699,6 +5711,14 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     // declines (generic, `extends`, method members) is one this never claims to
     // resolve — the two cannot drift into disagreeing about which interfaces
     // exist.
+    // A string-literal union alias lowers to a native enum. Register the name
+    // in the SAME pre-pass, so a helper declared earlier in the file than the
+    // alias still resolves a parameter typed with it. `tryEnumFromTypeAlias` is
+    // the one predicate for "is this an enum", shared with the lifting pass, so
+    // the two cannot disagree about which aliases are enums.
+    const preEnum = tryEnumFromTypeAlias(node, scratch)
+    if (preEnum) ctx.enumTypeNames.add(preEnum.name)
+
     let iface: AnyNode | null = null
     if (
       node.type === 'ExportNamedDeclaration' &&
@@ -6236,7 +6256,25 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
   // a value. `props.length === 0` is therefore dropped in favour of the return
   // check it was standing in for. Nullish returns stay COMPONENTS so a
   // `return null` render path keeps emitting `EmptyView()`.
+  //
+  // REFINEMENT: "nullish return means component" reads the VALUE when the
+  // function may have stated its KIND. A helper with a nullable return type
+  // (`resolveHandleAnchor(...): { x, y, position } | null`) ends in `return
+  // null` for the ordinary reason — it found nothing — and was therefore
+  // emitted as a view whose top-level `if`s were DROPPED, i.e. the logic
+  // silently gutted. A component never annotates its return that way: it is
+  // unannotated, or `VNodeChild` / `JSX.Element`. So an explicit NON-VIEW
+  // return annotation overrides the value signal, and an unannotated
+  // `return null` still emits `EmptyView()` exactly as before.
+  const returnAnno = (fn.returnType as { typeAnnotation?: AnyNode } | undefined)?.typeAnnotation
+  const annoText =
+    returnAnno !== undefined
+      ? ctx.source.slice(returnAnno.start as number, returnAnno.end as number)
+      : ''
+  const VIEW_RETURN_TYPES = /^(VNodeChild|JSX\.Element|Element|ReactNode|VNode|void|null)$/
+  const hasNonViewReturnAnnotation = annoText !== '' && !VIEW_RETURN_TYPES.test(annoText.trim())
   const returnsNothing =
+    !hasNonViewReturnAnnotation &&
     returnExpr.kind === 'literal' && (returnExpr.value === null || returnExpr.value === undefined)
   // camelCase is the third condition, and it is what keeps a RENDER-PROP
   // component out of the helper path. Such a component takes `children` and
@@ -6482,6 +6520,12 @@ function resolvePropsObjectType(t: TypeIR, ctx: ParseCtx): TypeIR {
     const resolved = ctx.objectTypeAliases.get(t.name)
     if (resolved !== undefined) return resolved
     if (NATIVE_PRIMITIVE_TYPE_NAMES.has(t.name) || CHART_ENGINE_STRUCT_NAMES.has(t.name)) return t
+    // A locally-declared string-literal union lowers to a native enum, so a
+    // parameter typed with it emits verbatim and compiles — the same reason
+    // the native primitives above are exempt. Warning on it told the author to
+    // fix working code, and the suggested remedy (declare an object shape) is
+    // wrong for an enum.
+    if (ctx.enumTypeNames.has(t.name)) return t
     // A typeRef named after a native primitive emits VERBATIM as that native
     // type — `type Double = number` is the documented cross-target alias
     // (tsc resolves the alias, PMTC reads the NAME). Warning here tells the
@@ -10256,11 +10300,25 @@ function parseStatement(node: AnyNode, ctx: ParseCtx): StatementIR | null {
       }
       const d = declarators[0]!
       const declName = d.id?.name as string | undefined
-      if (!declName || !d.init) return null
+      if (!declName) return null
       const ann = (d.id as AnyNode | undefined)?.typeAnnotation?.typeAnnotation as
         | AnyNode
         | undefined
       const declaredType = ann ? parseTypeAnnotation(ann, ctx) : undefined
+      // `let out: string` with no initializer — assigned later, typically once
+      // per branch. Dropping it (the old behavior) left every later assignment
+      // naming a variable that was never declared, which both toolchains reject
+      // and PMTC never warned about. The annotation is REQUIRED: without it
+      // there is nothing to declare, so say so rather than guess.
+      if (!d.init) {
+        if (declaredType === undefined) {
+          ctx.warnings.push(
+            `\`let ${declName}\` has no initializer and no type annotation, so there is nothing to declare natively — it was dropped, and any later assignment to it will not compile. Annotate it (\`let ${declName}: string\`) or give it an initial value.`,
+          )
+          return null
+        }
+        return { kind: 'declare', name: declName, declaredType }
+      }
       return declaredType === undefined
         ? { kind: 'let', name: declName, expr: parseExpr(d.init, ctx) }
         : { kind: 'let', name: declName, expr: parseExpr(d.init, ctx), declaredType }

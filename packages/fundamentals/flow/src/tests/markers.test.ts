@@ -14,7 +14,7 @@ import {
   markerId,
   resolveEdgeMarkers,
   resolveMarker,
-} from '../edges'
+} from '../markers'
 import type { FlowEdge } from '../types'
 import { MarkerType } from '../types'
 
