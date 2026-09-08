@@ -312,6 +312,9 @@ jobs:
         # real SDK. Both targets are now named explicitly and a missing toolchain
         # FAILS rather than logs.
         run: PYREON_COVERAGE_COMPILE=kotlin bun scripts/check-native-coverage.ts
+        env:
+          PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate
+          PYREON_VALIDATE_NO_CACHE: ${{ github.event_name == 'schedule' && '1' || '0' }}
 
       - name: Verify co-located native runtime sources
         # Each cross-platform package ships its native runtime beside its src/
@@ -323,6 +326,9 @@ jobs:
         # outside @pyreon/native-runtime-*'s src/, so this gate compiles +
         # smoke-runs them against the stub harness. Skips a toolchain gracefully.
         run: bun scripts/check-native-cosource.ts
+        env:
+          PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate
+          PYREON_VALIDATE_NO_CACHE: ${{ github.event_name == 'schedule' && '1' || '0' }}
 
       - name: Scaffolded multiplatform app compiles for both targets
         # `create-multiplatform` is what `pyreon new --native` runs — the entry
@@ -594,3 +600,6 @@ jobs:
         # table/dnd/sync state ports' behaviour checks) ran on developer laptops
         # only. Kotlin half re-runs here too; both toolchains are cheap.
         run: bun scripts/check-native-cosource.ts
+        env:
+          PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate
+          PYREON_VALIDATE_NO_CACHE: ${{ github.event_name == 'schedule' && '1' || '0' }}
