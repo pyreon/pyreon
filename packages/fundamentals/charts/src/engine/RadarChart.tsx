@@ -5,7 +5,7 @@ import { canvasHost } from './canvas-host'
 import type { CanvasHostProps } from './canvas-host'
 import { plain } from './format'
 import { paletteAt } from './palette'
-import { hitRadarIndex, renderRadar } from './radar'
+import { hitRadarIndex, radarPolygon, renderRadar } from './radar'
 import type { RadarAxis, RadarHitIndex, RadarOptions, RadarSeries } from './radar'
 import type { Double, Rect } from './types'
 
@@ -64,6 +64,23 @@ export function RadarChart<T>(props: RadarChartProps<T>): VNode {
       if (hit.series < 0) return null
       const v = g.series[hit.series]!.values[hit.axis]
       return [g.labels[hit.series] ?? `Series ${hit.series + 1}`, `${g.axes[hit.axis]?.label ?? ''}: ${plain(v ?? 0)}`]
+    },
+    // The keyboard walks the AXES (the table's rows): Enter picks the first
+    // series' vertex on the focused axis, the ring wraps that vertex.
+    pick: (g, i) => {
+      if (i < 0 || i >= g.axes.length || g.series.length === 0) return
+      const hit = { series: 0, axis: i }
+      props.onSelect?.(hit)
+      props.onSelectIndex?.(hit)
+    },
+    focusRect: (g, i) => {
+      const first = g.series[0]
+      if (first === undefined || i < 0 || i >= g.axes.length) return null
+      // The engine's own radius rule (renderRadar): labels reserve three lines.
+      const r = Math.min(g.box.w, g.box.h) / 2.0 - (g.opts.showLabels === true ? g.opts.fontSize * 3.0 : 0.0)
+      const center = { x: g.box.x + g.box.w / 2.0, y: g.box.y + g.box.h / 2.0 }
+      const p = radarPolygon(first.values, g.axes, center, Math.max(0.0, r))[i]
+      return p === undefined ? null : { x: p.x - 6.0, y: p.y - 6.0, w: 12.0, h: 12.0 }
     },
     a11y: (g) => ({
       title: props.title,

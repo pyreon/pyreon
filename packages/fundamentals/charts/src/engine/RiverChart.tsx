@@ -35,6 +35,34 @@ export function RiverChart(props: RiverChartProps): VNode {
       props.onSelectIndex?.(hitRiverIndex(layout, px, py, props.river?.curve))
     },
     tooltip: (layout, px, py) => orNull(riverTip(layout, px, py, props.river?.curve)),
+    // The keyboard walks the LAYERS (one table row each): Enter picks the
+    // focused layer, the ring wraps its two edges.
+    pick: (layout, i) => {
+      const layer = layout.layers[i]
+      if (layer === undefined) return
+      props.onSelect?.(layer)
+      props.onSelectIndex?.(i)
+    },
+    focusRect: (layout, i) => {
+      const layer = layout.layers[i]
+      if (layer === undefined) return null
+      let x0 = Infinity
+      let x1 = -Infinity
+      let y0 = Infinity
+      let y1 = -Infinity
+      for (const p of layer.top) {
+        if (p.x < x0) x0 = p.x
+        if (p.x > x1) x1 = p.x
+        if (p.y < y0) y0 = p.y
+        if (p.y > y1) y1 = p.y
+      }
+      for (const p of layer.bottom) {
+        if (p.y < y0) y0 = p.y
+        if (p.y > y1) y1 = p.y
+      }
+      if (x0 === Infinity) return null
+      return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+    },
     a11y: () => {
       const series = readSeries()
       let n = 0

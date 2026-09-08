@@ -164,7 +164,7 @@ export interface CanvasHostSpec<L> {
   animates?: boolean | undefined
 }
 
-/** Measures the PARENT, never the canvas (the pinned-width trap — see radial-host.ts). */
+/** Measures the PARENT, never the canvas: a canvas pinned to its own last width can never shrink with its container (the pinned-width trap). */
 function drawWidth(el: HTMLCanvasElement, explicit: Double | undefined): Double {
   if (explicit !== undefined) return explicit
   const box = el.parentElement

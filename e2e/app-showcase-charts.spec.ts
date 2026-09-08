@@ -154,3 +154,108 @@ test.describe('app-showcase /dashboard — the plot engine, real compiler', () =
     expect(errors, `page errors:\n${errors.join('\n')}`).toHaveLength(0)
   })
 })
+
+/**
+ * The interaction leg: the plot-engine chart on the same page, driven the way
+ * a user drives it — a real pointer hover shows the tooltip, a real click
+ * reports the bar's index, the keyboard walks the bars and Enter reports one.
+ * The hosts' own browser suites cover these paths under vitest's JSX
+ * transform; this is the only place they run under the SHIPPED compiler and
+ * the real `@pyreon/vite-plugin`, which is where template-path bugs live.
+ */
+test.describe('app-showcase /dashboard — plot engine interaction', () => {
+  test('hover shows the tooltip, a click and the keyboard both report a bar', async ({ page }) => {
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' })
+    const wrap = page.getByTestId('plot-engine-chart')
+    const canvas = wrap.locator('canvas').first()
+    await expect(canvas).toBeVisible({ timeout: 15_000 })
+    // The chart sits below the fold: a real pointer only reaches what is on
+    // screen (synthetic events do not care, which is how a host suite can be
+    // green while a page hover does nothing). Scroll it in first.
+    await canvas.scrollIntoViewIfNeeded()
+    expect((await canvas.boundingBox())!.width).toBeGreaterThan(100)
+
+    // The first mark is bars, so the tooltip answers only ON a bar — a gap
+    // between bars is a miss by contract, and a point above a SHORT bar is a
+    // miss too. So sweep a GRID, not one row: the spec knows neither the
+    // gutter, the band width, nor which bars are tall.
+    //
+    // The box is re-read on every pass. Reading it once and sweeping the
+    // captured coordinates is the stale-coordinate bug: the dashboard is still
+    // settling while this runs (images, the sibling ECharts pair, the query
+    // that gates this very chart), so a box measured early names a rectangle
+    // the canvas has since moved out of, and every probe lands on whatever now
+    // occupies those pixels. That reports "the hit test is broken" for a chart
+    // that was simply somewhere else — and it reports it deterministically, so
+    // it does not even read as a race.
+    //
+    // The poll covers the other half: the chart plays its entrance on mount
+    // (bars rise over ~700ms), so a pass that starts early finds every bar too
+    // short to hit.
+    const tooltip = wrap.locator('[data-pyreon-chart-tooltip]')
+    let x = 0
+    let y = 0
+    const sweep = async (): Promise<boolean> => {
+      const b = await canvas.boundingBox()
+      if (b === null) return false
+      for (const fy of [0.75, 0.6, 0.45, 0.3]) {
+        for (let fx = 0.12; fx < 0.95; fx += 0.04) {
+          x = b.x + b.width * fx
+          y = b.y + b.height * fy
+          await page.mouse.move(x, y)
+          if (await tooltip.isVisible()) return true
+        }
+      }
+      return false
+    }
+    // On failure, say what is actually under the pointer. "No position
+    // produced a tooltip" is true of a covered canvas, a moved canvas and a
+    // broken hit test alike, and those want three different fixes.
+    const diagnose = async (): Promise<string> => {
+      const at = await page.evaluate(
+        ([px, py]) => {
+          const el = document.elementFromPoint(px as number, py as number)
+          if (el === null) return 'nothing (outside the viewport)'
+          const id = el.getAttribute('data-testid')
+          return `<${el.tagName.toLowerCase()}${id === null ? '' : ` data-testid="${id}"`}>`
+        },
+        [x, y],
+      )
+      const b = await canvas.boundingBox()
+      return `last probe (${Math.round(x)},${Math.round(y)}) hit ${at}; canvas box is ${
+        b === null ? 'gone' : `${Math.round(b.x)},${Math.round(b.y)} ${Math.round(b.width)}x${Math.round(b.height)}`
+      }`
+    }
+    let ok = false
+    try {
+      await expect.poll(sweep, { timeout: 15_000 }).toBe(true)
+      ok = true
+    } finally {
+      if (!ok) console.log(`[charts e2e] sweep found no tooltip — ${await diagnose()}`)
+    }
+    await expect(tooltip).toBeVisible()
+    await expect(tooltip).not.toHaveText('')
+
+    await page.mouse.click(x, y)
+    const picked = page.getByTestId('plot-engine-picked')
+    await expect(picked).not.toHaveText('-1')
+    const clicked = Number(await picked.textContent())
+    expect(clicked).toBeGreaterThanOrEqual(0)
+    expect(clicked).toBeLessThan(7)
+
+    // Keyboard: focus the canvas, walk right twice, Enter reports the focused bar.
+    await canvas.focus()
+    await page.keyboard.press('Home')
+    await page.keyboard.press('ArrowRight')
+    await page.keyboard.press('ArrowRight')
+    const live = wrap.locator('[role="status"]')
+    await expect(live).not.toHaveText('')
+    await page.keyboard.press('Enter')
+    await expect(picked).toHaveText('2')
+
+    // Leaving hides the tooltip.
+    const away = (await canvas.boundingBox())!
+    await page.mouse.move(away.x + away.width + 40, away.y + away.height + 40)
+    await expect(tooltip).toBeHidden()
+  })
+})

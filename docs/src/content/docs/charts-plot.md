@@ -596,6 +596,14 @@ lowering (writing `<PieChart>` in shared source and getting SwiftUI/Compose)
 is landing chart-by-chart — see the
 [multiplatform capability matrix](/docs/multiplatform) for current status.
 
+## How the engine is verified
+
+- **Engine geometry** is pure and runs in the node suite (scales, layout, marks, stacks, arcs, formatting, a11y, decimation — ~98% there).
+- **Every canvas host** runs in real Chromium: its own family suite (geometry, click, reactive repaint) plus one shared sweep that drives all twenty hosts through the same paths — the accessible surface, tooltip hit / miss / leave, click and keyboard selection through both callbacks, PNG export. Browser coverage over the host files is a gate with measured floors; the node run excludes exactly those files, and the two lists are kept in sync so a host is never measured nowhere.
+- **Draw-list goldens** — one SVG per family for a fixed dataset, committed and compared byte-for-byte. The SVG is the draw list the canvases paint, and it is deterministic across platforms where a pixel baseline is not.
+- **The shipped compiler**: the app-showcase e2e hovers, clicks and keyboards the plot-engine chart on a real page under `@pyreon/vite-plugin` — the hosts' own suites run under vitest's JSX transform, and template-path bugs live in the difference.
+- **Native**: the generated Swift/Kotlin engines are drift-locked and compiled by the real toolchains per PR; device assertions ride the tasks showcase.
+
 ## Choosing between `/plot` and the ECharts bridge
 
 | | `@pyreon/charts/plot` | `@pyreon/charts` (ECharts) |

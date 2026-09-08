@@ -16,6 +16,16 @@
  *     shape implies (an empty measurement is a bug, not a win).
  *   - Author-judge disclosed: the engine's author wrote AND runs this bench.
  *
+ *   - COMPARISON arm: the same bar / line charts through ECharts' server-side
+ *     renderer (`echarts.init(null, null, { ssr: true, renderer: 'svg' })` →
+ *     `renderToSVGString()`) against the engine's `renderSvg(renderChart(…))`.
+ *     Both produce an SVG string from a spec with no DOM, which is the one
+ *     surface the two share — the canvas paths are not comparable here (the
+ *     engine's canvas executor needs a real 2D context; ECharts' needs a real
+ *     DOM). Same rows, same size, animation off, axes + grid on both sides.
+ *     ECharts renders MORE chrome by default (a legend, tick labels styled
+ *     per theme), so the number is "spec → SVG string" and nothing finer.
+ *
  * Run: NODE_ENV=production bun packages/fundamentals/charts/bench/plot-engine.bench.ts
  */
 process.env.NODE_ENV = 'production'
@@ -25,7 +35,8 @@ import type { ChartSpec, Series } from '../src/engine/render'
 import { lttb } from '../src/engine/decimate'
 import { layoutTreemap, renderTreemap } from '../src/engine/treemap'
 import { layoutSankey, renderSankey } from '../src/engine/sankey'
-import { measureApprox } from '../src/engine/svg'
+import { measureApprox, renderSvg } from '../src/engine/svg'
+import * as echarts from 'echarts'
 
 const K = 15
 const measure = measureApprox()
@@ -98,3 +109,20 @@ bench('sankey 60 nodes / 200 links', () => {
   const links = Array.from({ length: 200 }, (_, i) => ({ source: `n${i % 30}`, target: `n${30 + ((i * 7) % 30)}`, value: 1 + (i % 9) }))
   return () => renderSankey(layoutSankey(nodes, links, { x: 80, y: 8, w: 800, h: 384 })).length
 }, 200)
+
+// ─── Comparison arm: spec → SVG string, engine vs ECharts SSR ────────────────
+console.log(`\nspec → SVG string, engine vs ECharts ${(echarts as { version?: string }).version ?? ''} (SSR renderer), K=${K}\n`)
+for (const [kind, n] of [['bars', 1_000], ['bars', 10_000], ['line', 10_000]] as const) {
+  const sp = spec(kind, n, 1)
+  bench(`pyreon  ${kind} n=${n} → svg`, () => () => renderSvg(renderChart(sp, measure), 960, 400).length, 1000)
+  const data = sp.series[0]!.values
+  bench(`echarts ${kind} n=${n} → svg`, () => () => {
+    const chart = echarts.init(null, null, { renderer: 'svg', ssr: true, width: 960, height: 400 })
+    chart.setOption({ animation: false, xAxis: { type: 'category', data: sp.categories }, yAxis: { type: 'value' }, series: [{ type: kind === 'bars' ? 'bar' : 'line', data }] })
+    const out = chart.renderToSVGString().length
+    chart.dispose()
+    return out
+  }, 1000)
+}
+// ECharts keeps a scheduler alive after dispose; the bench is done.
+process.exit(0)

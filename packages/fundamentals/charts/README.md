@@ -518,6 +518,18 @@ Both `@pyreon/charts` and [`echarts-for-react`](https://github.com/hustcc/echart
 
 Protocol: per-impl **process isolation** (fresh `bun` child per impl ×3, pooled samples — impls never share a heap/JIT/order bias, the store-bench lesson) + bootstrap CI95 with 🤝 tie detection. The update win is the fine-grained-reactivity story: a signal change re-runs one effect that calls `setOption` — no component re-render, no VDOM diff, no prop deep-compare. Mount is now a statistical **tie** — the earlier "~1.65× slower" was single-process order bias plus the pre-fast-path async loader (warm mounts have been synchronous since the cached-modules fast path landed). Reproduce: `bun run --filter=@pyreon/charts bench`. *Author-run micro-bench (Bun/JSC + happy-dom, stubbed engine) — magnitudes/ratios are the signal, not the last digit; it measures wrapper JS, not chart render speed (identical ECharts for both). A vue-echarts driver (the feature-leading competitor) is a tracked follow-up — beating the React wrapper is a scoped claim.*
 
+## Performance — the plot engine vs ECharts, spec → SVG
+
+The one surface the two engines share with no DOM is "a spec in, an SVG string out": the plot engine's `renderSvg(renderChart(spec))` against ECharts' server-side renderer (`echarts.init(null, null, { ssr: true, renderer: 'svg' })` → `renderToSVGString()`), same rows, same 960×400 size, axes and grid on both sides, animation off.
+
+| Chart | `@pyreon/charts/plot` | ECharts 6.1 SSR | ratio |
+| --- | --- | --- | --- |
+| bars, 1,000 rows | 1.40 ms | 6.89 ms | **4.9×** |
+| bars, 10,000 rows | 13.4 ms | 59.0 ms | **4.4×** |
+| line, 10,000 rows | 6.10 ms | 11.6 ms | **1.9×** |
+
+Measured 2026-09-08, Bun 1.x on an M3 Max, K=15 medians, `NODE_ENV=production`; reproduce with `bun run --filter=@pyreon/charts bench:engine`. Read it as that surface and nothing finer: ECharts draws more chrome by default (a themed legend, styled ticks), the engine emits one command per datum where ECharts batches a line into one path, and neither number is a canvas paint — the canvas executors need a real 2D context on one side and a real DOM on the other, so they are not comparable here. The engine's own layout + render throughput (bars ×10k, line ×100k, treemap, sankey, LTTB) prints above these rows in the same run. *Author-run bench; magnitudes are the signal.*
+
 ## Multiplatform — `@pyreon/charts/webview`
 
 The ECharts bridge (`@pyreon/charts`) is web-only — ECharts is a canvas engine that can't compile to SwiftUI/Compose. To ship an ECharts chart on iOS/Android, host the real engine inside a native `<WebView>` — the sanctioned Pyreon multiplatform mechanism, with a bidirectional data bridge. (The plot engine takes the other road: its geometry is generated INTO the native runtimes — see the next section.)

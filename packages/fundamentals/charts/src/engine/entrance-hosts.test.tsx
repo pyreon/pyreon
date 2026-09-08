@@ -83,6 +83,14 @@ describe('the family hosts play the entrance', () => {
       if (!f.endsWith('Chart.tsx')) continue
       const src = readFileSync(join(dir, f), 'utf8')
       if (!src.includes('canvasHost<')) continue
+      // OptionChart's cartesian surface rides the shared host too, but its
+      // render is a PRECOMPILED command list (`compiledCommands`, the same one
+      // `optionToSvg` serialises) with no progress parameter — the option
+      // facade draws fully formed on every target, so it declares no entrance.
+      if (f === 'OptionChart.tsx') {
+        expect(src.includes('animate: false')).toBe(true)
+        continue
+      }
       // The render function the host calls, and the module that exports it.
       const call = /render: \([^)]*\) =>[\s\S]*?\b(render[A-Z][A-Za-z]*)\(/.exec(src)
       expect(call, f).not.toBeNull()

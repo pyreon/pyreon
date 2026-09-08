@@ -7,7 +7,7 @@ import { plain } from './format'
 import type { Formatter } from './format'
 import { HEAT_RAMP } from './heat'
 import type { HeatGrid } from './heat'
-import { heatGridFrom, hitHeatChart, renderHeatChart } from './heat-chart'
+import { heatGridFrom, heatPlotFor, hitHeatChart, renderHeatChart } from './heat-chart'
 import type { ChartTheme } from './render'
 import type { Double, MeasureText, Rect } from './types'
 
@@ -64,6 +64,25 @@ export function HeatmapChart<T>(props: HeatmapChartProps<T>): VNode {
       if (c === undefined) return null
       const fmt = props.format ?? plain
       return [`${g.grid.rows[c.row]!} \u00b7 ${g.grid.cols[c.col]!}: ${fmt(c.value)}`]
+    },
+    // The keyboard walks the COLUMNS — the accessible table's rows, which is
+    // what the live region announces (one column per row, a cell per series).
+    // Enter picks the column's first cell; the ring wraps the column.
+    pick: (g, i) => {
+      const col = g.grid.cols[i]
+      if (col === undefined) return
+      let ci = -1
+      for (let k = 0; k < g.grid.cells.length; k++) if (ci < 0 && g.grid.cells[k]!.col === i) ci = k
+      props.onSelectIndex?.(ci)
+      const c = g.grid.cells[ci]
+      if (props.onSelect !== undefined) props.onSelect(c === undefined ? null : { x: col, y: g.grid.rows[c.row]!, value: c.value })
+    },
+    focusRect: (g, i) => {
+      if (i < 0 || i >= g.grid.cols.length || g.grid.rows.length === 0) return null
+      const plot = heatPlotFor(g.grid, g.box.w, g.box.h, g.theme.fontSize, g.measure)
+      const cw = plot.w / g.grid.cols.length
+      const gap = props.gap ?? 1.0
+      return { x: g.box.x + plot.x + cw * i + gap / 2.0, y: g.box.y + plot.y, w: Math.max(0.0, cw - gap), h: plot.h }
     },
     describe: (g) => {
       const title = props.title ?? 'Heatmap'

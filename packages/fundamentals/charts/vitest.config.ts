@@ -10,9 +10,12 @@ export default defineNodeConfig({
   // use-chart.ts: ResizeObserver callback (line 97 chart.resize) +
   // init/setOption error paths require real Chromium — covered by
   // charts.browser.test.tsx in real-Chromium @vitest/browser.
-  // The plot engine's three PLATFORM files. Each needs a real canvas 2D
-  // context or a mounted DOM, so the node run scores them 0 while they are
-  // fully exercised in real Chromium:
+  // The plot engine's PLATFORM files. Each needs a real canvas 2D context or
+  // a mounted DOM, so the node run scores them 0 while they are exercised in
+  // real Chromium — and that claim is MEASURED there: the browser config gates
+  // coverage over this same list (host-sweep.browser.test.tsx drives every
+  // host through the shared paths), so an exclusion here is never an
+  // unverified promise. Keep the two lists in sync.
   //   Chart.tsx      -> engine/chart.browser.test.tsx (11 specs, pixel-level)
   //   PieChart.tsx   -> engine/pie.browser.test.tsx   (10 specs, pixel-level)
   //   canvas-web.ts  -> both of the above, which assert painted pixels
@@ -29,12 +32,13 @@ export default defineNodeConfig({
     // without a real 2d context.
     'src/engine/HeatmapChart.tsx',
     'src/engine/CandlestickChart.tsx',
-    // Covered by radar-chart.browser.test.tsx (real Chromium) — same canvas-host
-    // rationale; radial-host.ts is the width-measure/ResizeObserver seam those
-    // components exercise, meaningless without a real layout engine.
+    // Covered by radar-chart.browser.test.tsx (real Chromium) — same canvas-host rationale.
     'src/engine/RadarChart.tsx',
-    'src/engine/radial-host.ts',
     'src/engine/canvas-web.ts',
+    // The shared host itself: canvas-host.test.tsx covers its wiring in
+    // happy-dom, but the paint / pointer / keyboard / export paths need a real
+    // 2d context and are measured by the BROWSER gate (vitest.browser.config.ts).
+    'src/engine/canvas-host.tsx',
     // The family canvas hosts — each is covered ONLY by its real-Chromium
     // *.browser.test.tsx (funnel / treemap / sunburst / tree / sankey / graph /
     // calendar / parallel / polar / river), which paints and hit-tests a live
