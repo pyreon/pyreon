@@ -2,7 +2,7 @@
 
 import { computeLayout, layoutBars, layoutBarsH, layoutSeriesPoints, layoutSeriesPointsAt } from './layout'
 import { DEFAULT_PALETTE } from './palette'
-import { layoutGroupedBars, layoutStackedBars, layoutWaterfall, normalizeStack, stackedExtent, waterfallExtent } from './stack'
+import { layoutGroupedBars, layoutGroupedBarsH, layoutStackedBars, layoutStackedBarsH, layoutWaterfall, normalizeStack, stackedExtent, waterfallExtent } from './stack'
 import type { Formatter } from './format'
 import type { LayoutConfig, PlotLayout } from './layout'
 import { extent, niceDomain, scaleLinear } from './scale'
@@ -773,9 +773,16 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   // Stacked and grouped series are laid out TOGETHER — each needs to know the
   // others to place its bars — so they are drawn as a set before the
   // independent marks rather than one at a time in the loop below.
-  const stackedSeries = spec.horizontal === true ? [] : spec.series.filter((s) => s.kind === 'stacked')
+  // The flipped frame gets the SAME marks, through the horizontal twins.
+  // Before this, `horizontal` simply filtered stacked and grouped series out:
+  // the chart drew its axes and nothing else, with no warning — a population
+  // pyramid or a ranked breakdown rendered as an empty box.
+  const stackedSeries = spec.series.filter((s) => s.kind === 'stacked')
   if (stackedSeries.length > 0) {
-    for (const seg of layoutStackedBars(stackedSeries.map((s) => s.values), plot, yDomain, 0.25)) {
+    const stackSegs = spec.horizontal === true
+      ? layoutStackedBarsH(stackedSeries.map((s) => s.values), plot, yDomain, 0.25)
+      : layoutStackedBars(stackedSeries.map((s) => s.values), plot, yDomain, 0.25)
+    for (const seg of stackSegs) {
       const rS = growRect(seg.rect, yDomain)
       const gS = seriesGradient(stackedSeries[seg.seriesIndex]!.gradient, plot)
       out.push(rectCmd(rS, stackedSeries[seg.seriesIndex]!.color, stackedSeries[seg.seriesIndex]!.corners, gS.stops.length === 0 ? undefined : gS))
@@ -783,9 +790,12 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       if (lvlS > 0) out.push(emphasisOutline(rS, lvlS, t.label))
     }
   }
-  const groupedSeries = spec.horizontal === true ? [] : spec.series.filter((s) => s.kind === 'grouped')
+  const groupedSeries = spec.series.filter((s) => s.kind === 'grouped')
   if (groupedSeries.length > 0) {
-    for (const seg of layoutGroupedBars(groupedSeries.map((s) => s.values), plot, yDomain, 0.25)) {
+    const groupSegs = spec.horizontal === true
+      ? layoutGroupedBarsH(groupedSeries.map((s) => s.values), plot, yDomain, 0.25)
+      : layoutGroupedBars(groupedSeries.map((s) => s.values), plot, yDomain, 0.25)
+    for (const seg of groupSegs) {
       const rG = growRect(seg.rect, yDomain)
       const gG = seriesGradient(groupedSeries[seg.seriesIndex]!.gradient, plot)
       out.push(rectCmd(rG, groupedSeries[seg.seriesIndex]!.color, groupedSeries[seg.seriesIndex]!.corners, gG.stops.length === 0 ? undefined : gG))
@@ -1305,17 +1315,24 @@ export function stackedHitAt(
 
 /** `stackedHitAt` over a plot rect the caller already laid out. */
 export function stackedHitIn(raw: ChartSpec, plot: Rect, px: Double, py: Double): number {
-  if (raw.horizontal === true) return -1
   const spec = geometrySpec(raw)
   const yDomain = resolveYDomain(spec)
+  // The hit reads the SAME layout the paint used, per orientation. It used to
+  // bail on the horizontal frame — correct while nothing was drawn there, and
+  // a silently dead tap the moment something was.
+  const flipped = raw.horizontal === true
   for (const kind of ['stacked', 'grouped'] as const) {
     const series = spec.series.filter((s) => s.kind === kind)
     if (series.length === 0) continue
     const values = series.map((s) => s.values)
     const segs =
       kind === 'stacked'
-        ? layoutStackedBars(values, plot, yDomain, 0.25)
-        : layoutGroupedBars(values, plot, yDomain, 0.25)
+        ? flipped
+          ? layoutStackedBarsH(values, plot, yDomain, 0.25)
+          : layoutStackedBars(values, plot, yDomain, 0.25)
+        : flipped
+          ? layoutGroupedBarsH(values, plot, yDomain, 0.25)
+          : layoutGroupedBars(values, plot, yDomain, 0.25)
     for (const seg of segs) {
       const r = seg.rect
       if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return seg.datumIndex

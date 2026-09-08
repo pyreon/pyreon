@@ -2862,6 +2862,72 @@ public func layoutStackedBars(_ seriesValues: [[Double]], _ plot: PyreonChartRec
     return out
   }
 
+public func layoutStackedBarsH(_ seriesValues: [[Double]], _ plot: PyreonChartRect, _ vDomain: Domain, _ gapRatio: Double) -> [StackSegment] {
+    var out: [StackSegment] = []
+    if seriesValues.count == 0 {
+      return out
+    }
+    var n = 0
+    for s in seriesValues {
+      if s.count > n {
+        n = s.count
+      }
+    }
+    if n == 0 {
+      return out
+    }
+    let ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
+    let band = Double(plot.h) / Double(n)
+    let bh = band * (1.0 - ratio)
+    for i in 0..<n {
+      var acc = 0.0
+      for s in 0..<seriesValues.count {
+        let v = (seriesValues[s][i] ?? 0.0)
+        if !(v > 0.0) {
+          continue
+        }
+        let xEnd = scaleLinear(vDomain, plot.x, plot.x + plot.w, acc + v)
+        let xStart = scaleLinear(vDomain, plot.x, plot.x + plot.w, acc)
+        out.append(StackSegment(rect: PyreonChartRect(x: xStart < xEnd ? xStart : xEnd, y: plot.y + band * Double(i) + (band - bh) / 2.0, w: Double(abs(xEnd - xStart)), h: bh), seriesIndex: s, datumIndex: i, value: v))
+        acc = acc + v
+      }
+    }
+    return out
+  }
+
+public func layoutGroupedBarsH(_ seriesValues: [[Double]], _ plot: PyreonChartRect, _ vDomain: Domain, _ gapRatio: Double) -> [StackSegment] {
+    var out: [StackSegment] = []
+    let k = seriesValues.count
+    if k == 0 {
+      return out
+    }
+    var n = 0
+    for s in seriesValues {
+      if s.count > n {
+        n = s.count
+      }
+    }
+    if n == 0 {
+      return out
+    }
+    let ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
+    let band = Double(plot.h) / Double(n)
+    let groupH = band * (1.0 - ratio)
+    let barH = groupH / Double(k)
+    let zero = vDomain.min < 0.0 && vDomain.max > 0.0 ? 0.0 : vDomain.min
+    let zeroX = scaleLinear(vDomain, plot.x, plot.x + plot.w, zero)
+    for i in 0..<n {
+      let gy = plot.y + band * Double(i) + (band - groupH) / 2.0
+      for s in 0..<k {
+        let raw = (seriesValues[s][i] ?? 0.0)
+        let v = raw == raw ? raw : zero
+        let vx = scaleLinear(vDomain, plot.x, plot.x + plot.w, v)
+        out.append(StackSegment(rect: PyreonChartRect(x: vx < zeroX ? vx : zeroX, y: gy + barH * Double(s), w: abs(vx - zeroX), h: barH), seriesIndex: s, datumIndex: i, value: v))
+      }
+    }
+    return out
+  }
+
 public func stackHasNegatives(_ seriesValues: [[Double]]) -> Bool {
     for s in seriesValues {
       for v in s {
@@ -3343,9 +3409,10 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
         }
       }
     }
-    let stackedSeries = spec.horizontal == true ? [] : spec.series.filter({ s in s.kind == "stacked" })
+    let stackedSeries = spec.series.filter({ s in s.kind == "stacked" })
     if stackedSeries.count > 0 {
-      for seg in layoutStackedBars(stackedSeries.map({ s in s.values }), plot, yDomain, 0.25) {
+      let stackSegs = spec.horizontal == true ? layoutStackedBarsH(stackedSeries.map({ s in s.values }), plot, yDomain, 0.25) : layoutStackedBars(stackedSeries.map({ s in s.values }), plot, yDomain, 0.25)
+      for seg in stackSegs {
         let rS = growRect(seg.rect, yDomain)
         let gS = seriesGradient(stackedSeries[seg.seriesIndex].gradient, plot)
         out.append(rectCmd(rS, stackedSeries[seg.seriesIndex].color, stackedSeries[seg.seriesIndex].corners, gS.stops.count == 0 ? nil : gS))
@@ -3355,9 +3422,10 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
         }
       }
     }
-    let groupedSeries = spec.horizontal == true ? [] : spec.series.filter({ s in s.kind == "grouped" })
+    let groupedSeries = spec.series.filter({ s in s.kind == "grouped" })
     if groupedSeries.count > 0 {
-      for seg in layoutGroupedBars(groupedSeries.map({ s in s.values }), plot, yDomain, 0.25) {
+      let groupSegs = spec.horizontal == true ? layoutGroupedBarsH(groupedSeries.map({ s in s.values }), plot, yDomain, 0.25) : layoutGroupedBars(groupedSeries.map({ s in s.values }), plot, yDomain, 0.25)
+      for seg in groupSegs {
         let rG = growRect(seg.rect, yDomain)
         let gG = seriesGradient(groupedSeries[seg.seriesIndex].gradient, plot)
         out.append(rectCmd(rG, groupedSeries[seg.seriesIndex].color, groupedSeries[seg.seriesIndex].corners, gG.stops.count == 0 ? nil : gG))
@@ -3759,18 +3827,16 @@ public func barsForIn(_ raw: ChartSpec, _ index: Int, _ plot: PyreonChartRect) -
 public func stackedHitAt(_ spec: ChartSpec, _ measure: (String, Double) -> Double, _ px: Double, _ py: Double) -> Int { stackedHitIn(spec, layoutChart(spec, measure).plot, px, py) }
 
 public func stackedHitIn(_ raw: ChartSpec, _ plot: PyreonChartRect, _ px: Double, _ py: Double) -> Int {
-    if raw.horizontal == true {
-      return -1
-    }
     let spec = geometrySpec(raw)
     let yDomain = resolveYDomain(spec)
+    let flipped = raw.horizontal == true
     for kind in ["stacked", "grouped"] {
       let series = spec.series.filter({ s in s.kind == kind })
       if series.count == 0 {
         continue
       }
       let values = series.map({ s in s.values })
-      let segs = kind == "stacked" ? layoutStackedBars(values, plot, yDomain, 0.25) : layoutGroupedBars(values, plot, yDomain, 0.25)
+      let segs = kind == "stacked" ? flipped ? layoutStackedBarsH(values, plot, yDomain, 0.25) : layoutStackedBars(values, plot, yDomain, 0.25) : flipped ? layoutGroupedBarsH(values, plot, yDomain, 0.25) : layoutGroupedBars(values, plot, yDomain, 0.25)
       for seg in segs {
         let r = seg.rect
         if px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h {
