@@ -7,6 +7,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
+import { query } from '@pyreon/test-utils'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { PlotChart } from './Chart'
 import { bars } from './marks'
@@ -51,7 +52,7 @@ describe('RTL through the canvas host', () => {
       }),
     )
     await flush()
-    return container.querySelector('canvas') as HTMLCanvasElement
+    return query(container, 'canvas')
   }
 
   it('paints the mirror: the value gutter swaps sides', async () => {
