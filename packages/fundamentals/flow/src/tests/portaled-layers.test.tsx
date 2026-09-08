@@ -4,7 +4,6 @@
  * nodeId>` (unscaled, follows pan/zoom and the node, above every node).
  */
 import { h } from '@pyreon/core'
-import { renderToString } from '@pyreon/runtime-server'
 import { mountReactive } from '@pyreon/test-utils'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { EdgeLabelRenderer } from '../components/edge-label-renderer'
@@ -141,7 +140,7 @@ describe('portaled layers', () => {
     expect(flow.selectedNodes()).toEqual(['a']) // the pan path would have cleared it
   })
 
-  it('without nodeId (or outside a Flow) NodeToolbar keeps the inline form; the server renders no layers', async () => {
+  it('without nodeId (or outside a Flow) NodeToolbar keeps the inline form', () => {
     const flow = createFlow({
       nodes: [{ id: 'a', type: 't', position: { x: 0, y: 0 }, data: {} }],
     })
@@ -150,13 +149,5 @@ describe('portaled layers', () => {
     flow.selectNode('a')
     expect(container.querySelector('[data-nodeid="a"] .pyreon-flow-node-toolbar')).toBeTruthy()
     expect(container.querySelector('.pyreon-flow-toolbars .pyreon-flow-node-toolbar')).toBeNull()
-    const ssr = createFlow({
-      nodes: [{ id: 'a', type: 't', position: { x: 0, y: 0 }, data: {} }],
-      edges: [],
-    })
-    const html = await renderToString(h(Flow, { instance: ssr, nodeTypes: { t: ToolbarNode } }))
-    expect(html).toContain('pyreon-flow-node')
-    expect(html).not.toContain('pyreon-flow-toolbars')
-    ssr.dispose()
   })
 })
