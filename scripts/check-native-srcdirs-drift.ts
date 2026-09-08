@@ -51,6 +51,30 @@ export function packagesInWiring(dirs: readonly string[]): Set<string> {
   return out
 }
 
+/** `- path: ../../packages/<cat>/x/native/swift` in an XcodeGen spec → `x`. */
+export function packagesInXcodeGen(projectYml: string): Set<string> {
+  const out = new Set<string>()
+  for (const m of projectYml.matchAll(/-\s*path:\s*(\S+)/g)) {
+    const p = m[1] ?? ''
+    if (p.includes('native/runtime-swift') || p.includes('native/router-swift')) continue
+    const hit = /\/([^/]+)\/native\/swift/.exec(p)
+    if (hit?.[1]) out.add(hit[1])
+  }
+  return out
+}
+
+/** Absolute `…/node_modules/@pyreon/x/native/swift` → `x`. */
+export function packagesInIosWiring(sources: ReadonlyArray<{ dirs: string[] }>): Set<string> {
+  const out = new Set<string>()
+  for (const t of sources) {
+    for (const d of t.dirs) {
+      const hit = /@pyreon\/([^/]+)\/native\/swift/.exec(d)
+      if (hit?.[1]) out.add(hit[1])
+    }
+  }
+  return out
+}
+
 /**
  * How many `@pyreon/*` dependencies the shared example DECLARES. Used only to
  * tell an under-installed checkout apart from real drift: `wireApp` resolves
@@ -122,6 +146,35 @@ async function main(): Promise<number> {
     if (finding) findings.push(finding)
   }
 
+  // The iOS half. It exists because the gate's own history is that this class
+  // bit "again on the iOS side" — and until the co-source staging landed there
+  // was no iOS consumption path to check at all, so the examples' hand-written
+  // `sources:` lists were the only wiring and nothing compared them to the
+  // resolver a real app uses.
+  for (const pair of [
+    { ios: 'native-tasks-ios', shared: 'native-tasks' },
+    { ios: 'native-finance-ios', shared: 'native-finance' },
+    { ios: 'native-counter-ios', shared: 'native-counter' },
+  ]) {
+    const ymlPath = join(REPO, 'examples', pair.ios, 'project.yml')
+    const sharedDir = join(REPO, 'examples', pair.shared)
+    if (!existsSync(ymlPath) || !existsSync(sharedDir)) continue
+    checked += 1
+    const spec = packagesInXcodeGen(readFileSync(ymlPath, 'utf8'))
+    const wired = packagesInIosWiring(wireApp(sharedDir).iosTargetSources)
+    const declared = declaredPyreonDeps(join(sharedDir, 'package.json'))
+    if (declared > 0 && wired.size === 0) {
+      console.error(
+        `[check-native-srcdirs-drift] ✗ ${pair.shared} declares ${declared} @pyreon/* ` +
+          `dependencies but \`wire\` resolved NONE for iOS — this checkout is not ` +
+          `installed. Run \`bun install\`.`,
+      )
+      return 1
+    }
+    const finding = compareSets(pair.ios, spec, wired)
+    if (finding) findings.push(finding)
+  }
+
   // An empty scan is a SKIP masquerading as a pass — the failure mode this
   // repo has hit before with file-scanning gates.
   if (checked === 0) {
@@ -130,12 +183,12 @@ async function main(): Promise<number> {
   }
 
   if (findings.length > 0) {
-    console.error('[check-native-srcdirs-drift] ✗ hardcoded Gradle srcDirs disagree with `pyreon-native wire`:\n')
+    console.error('[check-native-srcdirs-drift] ✗ hardcoded native source lists disagree with `pyreon-native wire`:\n')
     for (const f of findings) {
       console.error(`  ${f.example}`)
       if (f.missingFromGradle.length > 0) {
         console.error(`    MISSING from build.gradle.kts: ${f.missingFromGradle.join(', ')}`)
-        console.error(`      → a real gradle build fails with an unresolved reference; add a srcDir for each.`)
+        console.error(`      → a real build fails with an unresolved reference; add a source entry for each.`)
       }
       if (f.extraInGradle.length > 0) {
         console.error(`    EXTRA in build.gradle.kts: ${f.extraInGradle.join(', ')}`)
