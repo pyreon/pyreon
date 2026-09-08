@@ -79,9 +79,11 @@ export function verdictKey(inputs: {
   source: string
   test: string
   typecheckOnly: boolean
+  /** Namespace; the default is the Kotlin runtime service verification. `check-native-cosource` keys its Swift verdicts under 'swift-cosource'. */
+  kind?: string
 }): string {
   return createHash('sha256')
-    .update('kotlin-runtime-service\0')
+    .update(`${inputs.kind ?? 'kotlin-runtime-service'}\0`)
     .update(inputs.compilerVersion)
     .update('\0')
     .update(inputs.harness)
@@ -101,7 +103,11 @@ export function readVerdict(key: string): Verdict | undefined {
     const parsed = JSON.parse(readFileSync(join(dir, `${key}.json`), 'utf8')) as unknown
     // Validate the SHAPE before trusting it — a half-written or hand-edited
     // file must read as a miss, not as a verdict.
-    if (typeof parsed === 'object' && parsed !== null && typeof (parsed as Verdict).ok === 'boolean') {
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      typeof (parsed as Verdict).ok === 'boolean'
+    ) {
       return { ok: (parsed as Verdict).ok }
     }
     return undefined

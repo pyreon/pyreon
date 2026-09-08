@@ -66,3 +66,13 @@ describe('verdictKey', () => {
     )
   })
 })
+
+describe('verdictKey — kind namespace', () => {
+  const base = { compilerVersion: 'kotlinc 2.0.21', harness: 'h', source: 's', test: 't', typecheckOnly: false }
+  it('a Swift co-source verdict never shares a key with a Kotlin one for identical bytes', () => {
+    expect(verdictKey({ ...base, kind: 'swift-cosource' })).not.toBe(verdictKey(base))
+  })
+  it('the default kind is the Kotlin runtime service (existing stores stay valid)', () => {
+    expect(verdictKey(base)).toBe(verdictKey({ ...base, kind: 'kotlin-runtime-service' }))
+  })
+})
