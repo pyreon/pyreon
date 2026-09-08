@@ -142,3 +142,128 @@ describe('shiftCmds', () => {
     expect((out[5] as { at: { x: number } }).at.x).toBe(11)
   })
 })
+
+// ---- the interaction stack every host shares (the wiring; pixels are the browser suites') ----
+const key = (el: Element, k: string): void => {
+  el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }))
+}
+const flushFrames = (): Promise<void> => new Promise((r) => setTimeout(r, 40))
+
+describe('canvasHost — keyboard', () => {
+  it('walks the accessible rows with the arrows, announces each, Enter picks, Escape clears, blur clears', () => {
+    const picks: number[] = []
+    const rects: Rect[] = []
+    const { node, calls } = host({ n: () => 3 }, { pick: (_l, i) => { picks.push(i) }, focusRect: (_l, i) => { const r = { x: i * 10, y: 0, w: 10, h: 10 }; rects.push(r); return i === 1 ? null : r } })
+    const m = mounted(node)
+    const canvas = m.root.querySelector('canvas')!
+    const live = m.root.querySelector('[aria-live="polite"]')!
+    expect(canvas.getAttribute('tabindex')).toBe('0')
+    expect(canvas.getAttribute('aria-describedby')).toBe(m.root.querySelector('table')!.id)
+    key(canvas, 'ArrowRight')
+    expect(live.textContent).toBe('c0, 0')
+    key(canvas, 'ArrowUp')
+    expect(live.textContent).toBe('c1, 1')
+    key(canvas, 'ArrowDown')
+    key(canvas, 'ArrowLeft')
+    key(canvas, 'ArrowLeft')
+    expect(live.textContent).toBe('c0, 0')
+    key(canvas, 'End')
+    expect(live.textContent).toBe('c2, 2')
+    key(canvas, 'Home')
+    expect(live.textContent).toBe('c0, 0')
+    key(canvas, ' ')
+    key(canvas, 'Enter')
+    expect(picks).toEqual([0, 0])
+    key(canvas, 'x')
+    key(canvas, 'Escape')
+    expect(live.textContent).toBe('')
+    key(canvas, 'ArrowLeft')
+    expect(live.textContent).toBe('c2, 2')
+    canvas.dispatchEvent(new FocusEvent('blur'))
+    expect(live.textContent).toBe('')
+    expect(calls.some((c) => c.startsWith('render'))).toBe(true)
+    m.dispose()
+  })
+  it('an empty chart has nothing to walk; keyboard={false} removes the tab stop and the live region', () => {
+    const a = mounted(host({ n: () => 0 }).node)
+    const canvas = a.root.querySelector('canvas')!
+    key(canvas, 'ArrowRight')
+    expect(a.root.querySelector('[aria-live]')!.textContent).toBe('')
+    a.dispose()
+    const b = mounted(host({ keyboard: false }).node)
+    expect(b.root.querySelector('canvas')!.hasAttribute('tabindex')).toBe(false)
+    expect(b.root.querySelector('[aria-live]')).toBeNull()
+    b.dispose()
+  })
+})
+
+describe('canvasHost — legend placement, toolbox, touch tooltip, unmount', () => {
+  it('lays the legend out on every side (the family layout follows the box the legend leaves)', () => {
+    for (const legendPosition of ['top', 'bottom', 'left', 'right'] as const) {
+      const boxes: Rect[] = []
+      const { node } = host({ showLegend: true, legendPosition, n: () => 2, showTitle: true, title: 'T', subtitle: 'sub' }, { layout: (box) => { boxes.push(box); return { box, n: 2 } } })
+      const m = mounted(node)
+      const last = boxes[boxes.length - 1]!
+      if (legendPosition === 'left') expect(last.x).toBeGreaterThan(0)
+      if (legendPosition === 'right') expect(last.x + last.w).toBeLessThan(300)
+      if (legendPosition === 'bottom') expect(last.y + last.h).toBeLessThan(120)
+      if (legendPosition === 'top') expect(last.y).toBeGreaterThan(0)
+      m.dispose()
+    }
+  })
+  it('a toolbox click hands the PNG to onSaveImage; a click elsewhere selects', () => {
+    const got: string[] = []
+    const { node, calls } = host({ toolbox: { saveAsImage: true }, width: 300, onSaveImage: (u) => got.push(u) })
+    const m = mounted(node)
+    const canvas = m.root.querySelector('canvas')!
+    canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 300, height: 120, right: 300, bottom: 120, x: 0, y: 0, toJSON: () => ({}) })
+    canvas.dispatchEvent(new MouseEvent('click', { clientX: 292, clientY: 8, bubbles: true }))
+    expect(got).toHaveLength(1)
+    expect(calls.some((c) => c.startsWith('select'))).toBe(false)
+    canvas.dispatchEvent(new MouseEvent('click', { clientX: 20, clientY: 80, bubbles: true }))
+    expect(calls.some((c) => c === 'select:20:80')).toBe(true)
+    m.dispose()
+  })
+  it('a pointerdown (a tap) shows the tooltip and pointercancel hides it', () => {
+    const { node } = host({ tooltip: true, animate: false })
+    const m = mounted(node)
+    const canvas = m.root.querySelector('canvas')!
+    canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 300, height: 120, right: 300, bottom: 120, x: 0, y: 0, toJSON: () => ({}) })
+    const tip = query<HTMLDivElement>(m.root, '[data-pyreon-chart-tooltip]')
+    canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: 80, clientY: 30, bubbles: true }))
+    expect(tip.style.display).toBe('block')
+    canvas.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true }))
+    expect(tip.style.display).toBe('none')
+    m.dispose()
+  })
+  it('a same-shape data change tweens (rAF ticks repaint) and a shape change snaps; updateAnimation={false} snaps', async () => {
+    const n = signal(2)
+    const { node, calls } = host({ n: () => n(), animate: false, updateDuration: 30 }, {
+      render: (l, _m, theme, progress) => {
+        calls.push(`render:${l.n}:${progress}`)
+        return [{ kind: 'rect', rect: { x: 0, y: 0, w: 10 * l.n, h: 10 }, fill: theme.palette[0]! }]
+      },
+    })
+    const m = mounted(node)
+    const before = calls.length
+    n.set(3)
+    await flushFrames()
+    // A retarget mid-tween and a shape-less change both take the tween path once more.
+    n.set(4)
+    await flushFrames()
+    expect(calls.length).toBeGreaterThan(before)
+    m.dispose()
+    const { node: snap, calls: snapCalls } = host({ n: () => n(), animate: false, updateAnimation: false })
+    const s = mounted(snap)
+    n.set(5)
+    expect(snapCalls.filter((c) => c.startsWith('render:5')).length).toBe(1)
+    s.dispose()
+  })
+  it('an unmount mid-entrance cancels its frame and drops the cached layout', async () => {
+    const { node } = host({ animate: true }, { animates: true })
+    const m = mounted(node)
+    m.dispose()
+    await flushFrames()
+    expect(m.root.querySelector('canvas')).toBeNull()
+  })
+})

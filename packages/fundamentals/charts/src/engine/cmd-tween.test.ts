@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { sameCmdShape, tweenCmds } from './cmd-tween'
+import { cmdsEqual, sameCmdShape, tweenCmds } from './cmd-tween'
 import type { DrawCmd } from './types'
 
 const A: DrawCmd[] = [
@@ -46,5 +46,28 @@ describe('tweenCmds — the draw-list update animation', () => {
     const g1: DrawCmd = { kind: 'rect', rect: { x: 0, y: 0, w: 1, h: 1 }, fill: '#000', grad: { from: { x: 0, y: 0 }, to: { x: 0, y: 50 }, stops: [{ offset: 0, color: '#b' }] } }
     const f = tweenCmds([g0], [g1], 0.5)[0] as DrawCmd & { kind: 'rect' }
     expect(f.grad).toEqual({ from: { x: 0, y: 0 }, to: { x: 0, y: 75 }, stops: [{ offset: 0, color: '#b' }] })
+  })
+})
+
+describe('cmdsEqual — the "nothing moved" test the host snaps on', () => {
+  const L: DrawCmd = { kind: 'line', from: { x: 0, y: 0 }, to: { x: 1, y: 1 }, stroke: '#000', width: 1 }
+  const P: DrawCmd = { kind: 'polygon', points: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }], fill: '#000' }
+  it('equal lists are equal; every numeric field and a rect fill discriminate', () => {
+    expect(cmdsEqual(A, A)).toBe(true)
+    expect(cmdsEqual(A, B)).toBe(false)
+    expect(cmdsEqual([L, P], [L, P])).toBe(true)
+    expect(cmdsEqual([L], [{ ...L, to: { x: 2, y: 1 } }])).toBe(false)
+    expect(cmdsEqual([P], [{ ...P, points: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 1 }] }])).toBe(false)
+    expect(cmdsEqual([A[2]!], [{ ...(A[2] as DrawCmd & { kind: 'circle' }), radius: 9 }])).toBe(false)
+    expect(cmdsEqual([A[3]!], [{ ...(A[3] as DrawCmd & { kind: 'text' }), size: 12 }])).toBe(false)
+    expect(cmdsEqual([A[0]!], [{ ...(A[0] as DrawCmd & { kind: 'rect' }), fill: '#f00' }])).toBe(false)
+    expect(cmdsEqual(A, [...A, L])).toBe(false)
+  })
+  it('tweens lines and polygons, and keeps a gradient absent when only one side has one', () => {
+    const f = tweenCmds([L, P], [{ ...L, to: { x: 3, y: 1 } }, { ...P, points: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 3, y: 1 } ] }], 0.5)
+    expect(f[0]).toMatchObject({ kind: 'line', to: { x: 2, y: 1 } })
+    expect(f[1]).toMatchObject({ kind: 'polygon', points: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 1 }] })
+    const g1: DrawCmd = { kind: 'rect', rect: { x: 0, y: 0, w: 1, h: 1 }, fill: '#000', grad: { from: { x: 0, y: 0 }, to: { x: 0, y: 50 }, stops: [] } }
+    expect((tweenCmds([A[0]!], [g1], 0.5)[0] as DrawCmd & { kind: 'rect' }).grad).toEqual(g1.grad)
   })
 })
