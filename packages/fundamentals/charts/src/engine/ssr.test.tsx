@@ -44,6 +44,43 @@ describe('server render of the hosts', () => {
     }
   })
 
+  // The canvas must carry its box, or the page lays it out at the HTML default
+  // 300x150 and everything below it jumps when hydration paints. Asserted on the
+  // RAW SSR string: a hydrated-DOM assertion false-passes, because the client
+  // sizes the canvas correctly either way.
+  it('reserves the canvas box server-side — exact dimensions, never a guess', async () => {
+    const row = [{ m: 'a', v: 1 }]
+    const canvasOf = (html: string): string => html.match(/<canvas[^>]*>/)?.[0] ?? 'NO CANVAS'
+
+    // Explicit dimensions reach the markup — both of them.
+    const explicit = canvasOf(
+      await renderToString(
+        h(() => PlotChart<Row>({ data: row, x: (d) => d.m, marks: [bars((d) => d.v)], width: 640, height: 320 }), null),
+      ),
+    )
+    expect(explicit).toContain('width="640"')
+    expect(explicit).toContain('height="320"')
+
+    // Auto width: the HEIGHT is still statically known (`?? 200`), so the
+    // vertical shift — the one that moves the rest of the page — is gone...
+    const auto = canvasOf(
+      await renderToString(h(() => PlotChart<Row>({ data: row, x: (d) => d.m, marks: [bars((d) => d.v)] }), null)),
+    )
+    expect(auto).toContain('height="200"')
+    // ...and no width is invented, because it is the parent's measured
+    // clientWidth and the server cannot know it.
+    expect(auto).not.toContain('width=')
+
+    // The family hosts reserve their own per-family default height.
+    const pie = canvasOf(
+      await renderToString(
+        h(() => PieChart<{ n: string; v: number }>({ data: [{ n: 'x', v: 1 }], value: (d) => d.v, label: (d) => d.n }), null),
+      ),
+    )
+    expect(pie).toMatch(/height="\d+"/)
+    expect(pie).not.toContain('width=')
+  })
+
   it('the <Plot> grammar renders on the server', async () => {
     const html = await renderToString(h(() => Plot<Row>({ data: [{ m: 'a', v: 1 }], x: 'm', children: h(Bar<Row>, { y: 'v' }) }), null))
     expect(html).toContain('<canvas')

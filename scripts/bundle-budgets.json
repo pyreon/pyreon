@@ -49,7 +49,7 @@
   "@pyreon/server": 3328,
   "@pyreon/sized-map": 512,
   "@pyreon/solid-compat": 4864,
-  "@pyreon/state-tree": 5632,
+  "@pyreon/state-tree": 5888,
   "@pyreon/storage": 3072,
   "@pyreon/store": 3200,
   "@pyreon/storybook": 256,

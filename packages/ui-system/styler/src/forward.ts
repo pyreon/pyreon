@@ -226,12 +226,30 @@ export const filterProps = (props: Record<string, unknown>): Record<string, unkn
   // `buildProps.copyDescriptor` on the internal render path, and matches what
   // the manifest documents this helper as doing. Static props are unaffected
   // (a data descriptor copies identically).
+  //
+  // `configurable: true` is FORCED on the copy: a source descriptor created by
+  // `Object.defineProperty` without an explicit flag is non-configurable, and
+  // preserving that makes the copied key impossible to redefine downstream
+  // (`TypeError: Cannot redefine property`). Mirrors `mergeProps` in
+  // `@pyreon/core`, which forces it for the same reason.
   const keep = (key: string): void => {
     const d = Object.getOwnPropertyDescriptor(props, key)
-    if (d) Object.defineProperty(filtered, key, d)
+    /* v8 ignore next -- `Object.keys` guarantees an own descriptor; only an
+       exotic Proxy whose ownKeys/getOwnPropertyDescriptor disagree gets here */
+    if (!d) return
+    Object.defineProperty(filtered, key, { ...d, configurable: true })
   }
 
-  for (const key in props) {
+  // OWN enumerable string keys, not `for...in`. `for...in` also walks the
+  // prototype chain, while `keep` reads an OWN descriptor — so an INHERITED
+  // enumerable prop was iterated and then silently dropped, forwarding nothing
+  // and reporting nothing. Own-only makes the two halves agree by construction
+  // and matches the rest of the layer: `@pyreon/ui-core`'s `omit`/`pick` and
+  // `@pyreon/core`'s `mergeProps`/`splitProps` are all own-key operations, and
+  // a descriptor copy is an own-property concept in the first place (copying an
+  // inherited accessor onto the target would silently sever the prototype link
+  // and rebind its `this`).
+  for (const key of Object.keys(props)) {
     // Skip transient props ($-prefixed) — used for styling-only props
     if (key.charCodeAt(0) === 36) continue // '$'
 
@@ -314,16 +332,22 @@ export const buildProps = (
     }
   }
 
-  // Helper: copy a prop's OWN descriptor (preserves getters) into result.
-  // Falls back to a no-op if the source has no own descriptor for the key.
+  // Helper: copy a prop's OWN descriptor (preserves getters) into result,
+  // forcing `configurable: true` so the copied key stays redefinable
+  // downstream — see the same note on `filterProps.keep` above.
   const copyDescriptor = (key: string): void => {
     const d = Object.getOwnPropertyDescriptor(rawProps, key)
-    if (d) Object.defineProperty(result, key, d)
+    /* v8 ignore next -- `Object.keys` guarantees an own descriptor; only an
+       exotic Proxy whose ownKeys/getOwnPropertyDescriptor disagree gets here */
+    if (!d) return
+    Object.defineProperty(result, key, { ...d, configurable: true })
   }
 
-  // Component target — forward all props except as/className/class and $-prefixed
+  // Component target — forward all props except as/className/class and $-prefixed.
+  // Own keys only — same reason as `filterProps` above: `copyDescriptor` reads an
+  // OWN descriptor, so `for...in` would enumerate inherited props and drop them.
   if (!isDOM) {
-    for (const key in rawProps) {
+    for (const key of Object.keys(rawProps)) {
       if (key === 'as' || key === 'className' || key === 'class') continue
       if (key.charCodeAt(0) === 36) continue // $-prefixed transient
       copyDescriptor(key)
@@ -333,7 +357,7 @@ export const buildProps = (
 
   // DOM element with custom shouldForwardProp
   if (customFilter) {
-    for (const key in rawProps) {
+    for (const key of Object.keys(rawProps)) {
       if (key === 'as' || key === 'className' || key === 'class') continue
       if (customFilter(key)) copyDescriptor(key)
     }
@@ -341,7 +365,7 @@ export const buildProps = (
   }
 
   // DOM element with default filtering
-  for (const key in rawProps) {
+  for (const key of Object.keys(rawProps)) {
     if (key === 'as' || key === 'className' || key === 'class') continue
     if (key.charCodeAt(0) === 36) continue // $-prefixed transient
     if (key.startsWith('data-') || key.startsWith('aria-')) {

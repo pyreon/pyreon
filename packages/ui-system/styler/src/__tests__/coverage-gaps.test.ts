@@ -317,18 +317,21 @@ describe('buildProps — uncovered branches', () => {
     expect(result.class).toBe('')
   })
 
-  it('copyDescriptor over an inherited enumerable key (no own descriptor → no copy)', () => {
-    // `for...in` enumerates inherited enumerable props, but
-    // getOwnPropertyDescriptor only returns own ones → `if (d)` is false
-    // for the inherited key, so it is not copied.
+  it('an inherited enumerable key is not forwarded (own-key iteration)', () => {
+    // INVARIANT (unchanged): inherited props are not forwarded — the same
+    // own-properties-only semantic `@pyreon/ui-core`'s `omit`/`pick` and
+    // `@pyreon/core`'s `mergeProps`/`splitProps` all assert.
+    //
+    // What changed is the MECHANISM, and this spec used to assert the broken
+    // one: `for...in` enumerated the inherited key and `copyDescriptor` then
+    // found no own descriptor and dropped it. Iteration and copy now agree —
+    // the key is never enumerated at all.
     const proto = { inheritedProp: 'fromProto' }
     const rawProps: Record<string, any> = Object.create(proto)
     rawProps.id = 'own'
     // isDOM=false routes every non-as/class/$ key through copyDescriptor.
     const result = buildProps(rawProps, 'pyr-gen', false)
     expect(result.id).toBe('own')
-    // inheritedProp is enumerated by for-in but has no OWN descriptor →
-    // copyDescriptor's `if (d)` is false and it is not forwarded.
     expect(Object.prototype.hasOwnProperty.call(result, 'inheritedProp')).toBe(false)
   })
 })

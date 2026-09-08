@@ -111,6 +111,7 @@
     "check-distribution": "bun scripts/check-distribution.ts",
     "check-export-entries": "bun scripts/check-export-entries.ts",
     "check-doc-claims": "bun scripts/check-doc-claims.ts",
+    "check-leak-ratchet": "bun scripts/check-leak-ratchet.ts",
     "check-lint-ratchet": "bun scripts/check-lint-ratchet.ts",
     "check-manifest-depth": "bun scripts/check-manifest-depth.ts",
     "check-multiplatform-tier": "bun scripts/check-multiplatform-tier.ts",
