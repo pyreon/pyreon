@@ -100,6 +100,13 @@ export interface FlowNode<TData = Record<string, unknown>> {
    * set this when the content is an icon or a chart.
    */
   ariaLabel?: string
+  /**
+   * Hidden nodes are kept in the graph (ids, edges, selection, JSON) but not
+   * rendered; edges touching a hidden node are not rendered either.
+   */
+  hidden?: boolean
+  /** `false` exempts the node from `deleteSelected()` / the Delete key. */
+  deletable?: boolean
   /** Custom class name */
   class?: string
   /** Custom style */
@@ -169,6 +176,10 @@ export interface FlowEdge {
   focusable?: boolean
   /** Accessible name — default `"Edge from <source> to <target>"`. */
   ariaLabel?: string
+  /** Hidden edges stay in the graph but are not rendered. */
+  hidden?: boolean
+  /** `false` exempts the edge from `deleteSelected()` / the Delete key. */
+  deletable?: boolean
   class?: string
   style?: string
   /** Marker at the START (source end). Omitted → no start marker. */
@@ -243,6 +254,16 @@ export type NodeChange =
   | { type: 'dimensions'; id: string; dimensions: Dimensions }
   | { type: 'select'; id: string; selected: boolean }
   | { type: 'remove'; id: string }
+
+export type EdgeChange =
+  | { type: 'add'; edge: FlowEdge }
+  | { type: 'select'; id: string; selected: boolean }
+  | { type: 'remove'; id: string }
+
+/** Options for the viewport setters — `duration > 0` animates (ms). */
+export interface ViewportOptions {
+  duration?: number
+}
 
 // ─── Edge path result ────────────────────────────────────────────────────────
 
@@ -368,6 +389,32 @@ export interface FlowConfig<TData = Record<string, unknown>> {
    * animating; `true` always jumps; `false` always animates.
    */
   reducedMotion?: boolean | 'auto'
+  /** Whether nodes can be deleted by `deleteSelected()` — default: true */
+  nodesDeletable?: boolean
+  /** Whether edges can be deleted by `deleteSelected()` — default: true */
+  edgesDeletable?: boolean
+  /**
+   * Per-connection veto consulted by `isValidConnection()` (and so by every
+   * interactive connection drop) BEFORE `connectionRules`. Return `false` to
+   * refuse. Mirrors React Flow's `isValidConnection`.
+   */
+  isValidConnection?: (connection: Connection) => boolean
+  /**
+   * Snap distance, in SCREEN pixels, for a connection dropped NEAR a target
+   * handle rather than on it: the nearest handle within the radius receives
+   * the connection. `0` (default) requires a drop on the handle itself.
+   */
+  connectionRadius?: number
+  /**
+   * Automatic undo checkpoints — default: true. Every structural mutation
+   * (`addNode(s)`/`removeNode(s)`/`addEdge(s)`/`removeEdge(s)`/`setNodes`/
+   * `setEdges`/`updateNodeData`/`deleteSelected`/`paste`/`fromJSON`/`layout`)
+   * records a checkpoint before it applies, so `undo()` works with no manual
+   * `pushHistory()` calls. `false` restores the manual model. A checkpoint
+   * is skipped when nothing changed since the previous one, so a manual
+   * `pushHistory()` right before a mutation never double-records.
+   */
+  autoHistory?: boolean
   /** Whether to allow multi-selection — default: true */
   multiSelect?: boolean
   /** Drag boundaries for nodes — [[minX, minY], [maxX, maxY]] */
@@ -470,6 +517,19 @@ export interface FlowInstance<TData = Record<string, unknown>> {
   updateNode: (id: string, update: Partial<FlowNode<TData>>) => void
   /** Update a node's position */
   updateNodePosition: (id: string, position: XYPosition) => void
+  /** Merge into (or replace, via a function) a node's `data`. */
+  updateNodeData: (
+    id: string,
+    data: Partial<TData> | ((node: FlowNode<TData>) => Partial<TData>),
+  ) => void
+  /** Plain (untracked) read of the node array. */
+  getNodes: () => FlowNode<TData>[]
+  /** Add many nodes in one batch (duplicate ids are ignored, as in `addNode`). */
+  addNodes: (nodes: FlowNode<TData>[]) => void
+  /** Replace the node array (or map it via a function). Selection is pruned to the ids that remain. */
+  setNodes: (nodes: FlowNode<TData>[] | ((nodes: FlowNode<TData>[]) => FlowNode<TData>[])) => void
+  /** Remove many nodes (and their edges) in one batch. */
+  removeNodes: (ids: Iterable<string>) => void
 
   // ── Edge operations ──────────────────────────────────────────────────────
 
@@ -479,6 +539,16 @@ export interface FlowInstance<TData = Record<string, unknown>> {
   addEdge: (edge: FlowEdge) => void
   /** Remove an edge */
   removeEdge: (id: string) => void
+  /** Plain (untracked) read of the edge array. */
+  getEdges: () => FlowEdge[]
+  /** Add many edges in one batch. */
+  addEdges: (edges: FlowEdge[]) => void
+  /** Replace the edge array (or map it via a function). Ids/types are normalised as in `addEdge`. */
+  setEdges: (edges: FlowEdge[] | ((edges: FlowEdge[]) => FlowEdge[])) => void
+  /** Remove many edges in one batch. */
+  removeEdges: (ids: Iterable<string>) => void
+  /** Merge fields into an edge. */
+  updateEdge: (id: string, update: Partial<FlowEdge>) => void
   /** Check if a connection is valid (based on rules) */
   isValidConnection: (connection: Connection) => boolean
 
@@ -514,16 +584,32 @@ export interface FlowInstance<TData = Record<string, unknown>> {
 
   // ── Viewport ─────────────────────────────────────────────────────────────
 
-  /** Fit view to show all nodes */
-  fitView: (nodeIds?: string[], padding?: number) => void
-  /** Set zoom level */
-  zoomTo: (zoom: number) => void
-  /** Zoom in */
-  zoomIn: () => void
-  /** Zoom out */
-  zoomOut: () => void
+  /** Fit view to show all nodes; `duration` animates */
+  fitView: (nodeIds?: string[], padding?: number, options?: ViewportOptions) => void
+  /** Set zoom level; `duration` animates */
+  zoomTo: (zoom: number, options?: ViewportOptions) => void
+  /** Zoom in; `duration` animates */
+  zoomIn: (options?: ViewportOptions) => void
+  /** Zoom out; `duration` animates */
+  zoomOut: (options?: ViewportOptions) => void
   /** Pan to position */
   panTo: (position: XYPosition) => void
+  /** Plain (untracked) read of the viewport. */
+  getViewport: () => Viewport
+  /** Set the viewport (partial — omitted fields keep their value); `duration` animates. */
+  setViewport: (viewport: Partial<Viewport>, options?: ViewportOptions) => void
+  /** Center the viewport on a FLOW coordinate, optionally changing zoom; `duration` animates. */
+  setCenter: (x: number, y: number, options?: ViewportOptions & { zoom?: number }) => void
+  /**
+   * Convert a SCREEN point (`clientX`/`clientY`) to flow coordinates, using
+   * the mounted canvas's rect and the current viewport. Without a mounted
+   * `<Flow>` the point is treated as canvas-relative.
+   */
+  screenToFlowPosition: (position: XYPosition) => XYPosition
+  /** Inverse of {@link FlowInstance.screenToFlowPosition}. */
+  flowToScreenPosition: (position: XYPosition) => XYPosition
+  /** @internal — `<Flow>` registers its container element for the screen↔flow conversions. */
+  _setContainer: (el: HTMLElement | null) => void
   /** Check if a node is visible in the current viewport */
   isNodeVisible: (id: string) => boolean
 
@@ -562,6 +648,26 @@ export interface FlowInstance<TData = Record<string, unknown>> {
   onNodeDragEnd: (callback: (node: FlowNode<TData>) => void) => () => void
   /** Called when a node is double-clicked */
   onNodeDoubleClick: (callback: (node: FlowNode<TData>) => void) => () => void
+  /** Called with a batch of edge changes (add / remove / select). */
+  onEdgesChange: (callback: (changes: EdgeChange[]) => void) => () => void
+  /** Called whenever the node or edge selection changes (after the initial state). */
+  onSelectionChange: (
+    callback: (selection: { nodes: FlowNode<TData>[]; edges: FlowEdge[] }) => void,
+  ) => () => void
+  /** Called on every viewport write (pan, zoom, animation frame). */
+  onViewportChange: (callback: (viewport: Viewport) => void) => () => void
+  /** Called with the nodes removed by `deleteSelected()` / `removeNode(s)`. */
+  onNodesDelete: (callback: (nodes: FlowNode<TData>[]) => void) => () => void
+  /** Called with the edges removed by `deleteSelected()` / `removeEdge(s)` / a node removal. */
+  onEdgesDelete: (callback: (edges: FlowEdge[]) => void) => () => void
+  /** Called on every drag FRAME with the node's live state (after dragStart, before dragEnd). */
+  onNodeDrag: (callback: (node: FlowNode<TData>) => void) => () => void
+  /** Called when the user starts drawing a connection from a handle. */
+  onConnectStart: (callback: (start: { nodeId: string; handleId: string }) => void) => () => void
+  /** Called when a connection drag ends — with the connection made, or `null` when dropped nowhere. */
+  onConnectEnd: (callback: (connection: Connection | null) => void) => () => void
+  /** Called for a click on the empty canvas (not on a node, edge or panel). */
+  onPaneClick: (callback: (event: MouseEvent) => void) => () => void
 
   // ── Copy / Paste ─────────────────────────────────────────────────────────
 
@@ -730,6 +836,10 @@ export interface FlowInstance<TData = Record<string, unknown>> {
     nodeDoubleClick: (node: FlowNode<TData>) => void
     nodeClick: (node: FlowNode<TData>) => void
     edgeClick: (edge: FlowEdge) => void
+    nodeDrag: (node: FlowNode<TData>) => void
+    connectStart: (start: { nodeId: string; handleId: string }) => void
+    connectEnd: (connection: Connection | null) => void
+    paneClick: (event: MouseEvent) => void
   }
 
   // ── Config ───────────────────────────────────────────────────────────────

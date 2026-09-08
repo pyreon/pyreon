@@ -25,6 +25,7 @@ import type {
   NodeComponentProps,
   NodeMeasurement,
   Viewport,
+  XYPosition,
 } from '../types'
 import { MarkerType, Position } from '../types'
 
@@ -121,7 +122,11 @@ function nodeInViewport<T>(
 }
 
 function visibleNodeList<T>(instance: FlowInstance<T>): FlowNode<T>[] {
-  const all = instance.nodes()
+  const raw = instance.nodes()
+  // `hidden` nodes stay in the graph but never reach the DOM. The filter
+  // only allocates when at least one node is hidden, so the common graph
+  // keeps handing `<For>` the same array reference.
+  const all = raw.some((n) => n.hidden) ? raw.filter((n) => !n.hidden) : raw
   if (!instance.config.onlyRenderVisibleElements) return all
   const v = instance.viewport()
   const { width, height } = instance.containerSize()
@@ -132,12 +137,17 @@ function visibleNodeList<T>(instance: FlowInstance<T>): FlowNode<T>[] {
 }
 
 function visibleEdgeList<T>(instance: FlowInstance<T>): FlowEdge[] {
-  const all = instance.edges()
+  const raw = instance.edges()
+  const nm = instance.nodeMap()
+  // An edge is hidden by its own flag OR by either endpoint being hidden.
+  const anyHidden = raw.some((e) => e.hidden) || instance.nodes().some((n) => n.hidden)
+  const all = anyHidden
+    ? raw.filter((e) => !e.hidden && !nm.get(e.source)?.hidden && !nm.get(e.target)?.hidden)
+    : raw
   if (!instance.config.onlyRenderVisibleElements) return all
   const v = instance.viewport()
   const { width, height } = instance.containerSize()
   if (!width || !height) return all
-  const nm = instance.nodeMap()
   const measured = instance.measurements()
   return all.filter((e) => {
     const s = nm.get(e.source)
@@ -147,6 +157,50 @@ function visibleEdgeList<T>(instance: FlowInstance<T>): FlowEdge[] {
       || (!!t && nodeInViewport(t, v, width, height, measured))
     )
   })
+}
+
+/**
+ * The closest target-capable handle to a FLOW point within `radius` flow
+ * units, excluding `excludeNodeId`. Measured `<Handle>` dots are used when the
+ * node has them; a node without measured handles falls back to its declared
+ * left-middle target anchor (the same default the edge geometry draws to).
+ */
+function nearestTargetHandle<T>(
+  instance: FlowInstance<T>,
+  point: XYPosition,
+  radius: number,
+  excludeNodeId: string,
+): { nodeId: string; handleId: string } | null {
+  const measured = instance.measurements.peek()
+  let best: { nodeId: string; handleId: string } | null = null
+  let bestD = radius * radius
+  for (const node of instance.nodes.peek()) {
+    if (node.id === excludeNodeId || node.hidden) continue
+    if (node.connectable === false) continue
+    const m = measured.get(node.id)
+    const dims = getEffectiveDimensions(node, m)
+    const candidates: { id: string; x: number; y: number }[] = []
+    if (m?.handles && m.handles.length > 0) {
+      for (const hd of m.handles) {
+        if (hd.type !== 'target') continue
+        candidates.push({ id: hd.id, x: node.position.x + hd.x, y: node.position.y + hd.y })
+      }
+    }
+    if (candidates.length === 0) {
+      const p = getHandlePosition(Position.Left, node.position.x, node.position.y, dims.width, dims.height)
+      candidates.push({ id: 'target', x: p.x, y: p.y })
+    }
+    for (const c of candidates) {
+      const dx = c.x - point.x
+      const dy = c.y - point.y
+      const d = dx * dx + dy * dy
+      if (d <= bestD) {
+        bestD = d
+        best = { nodeId: node.id, handleId: c.id }
+      }
+    }
+  }
+  return best
 }
 
 // ─── Node type registry ──────────────────────────────────────────────────────
@@ -1002,6 +1056,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
       currentX: handlePos.x,
       currentY: handlePos.y,
     })
+    instance._emit.connectStart({ nodeId, handleId })
 
     const container = (e.target as HTMLElement).closest('.pyreon-flow') as HTMLElement
     if (container) {
@@ -1165,6 +1220,10 @@ export function Flow(props: FlowComponentProps): VNodeChild {
           }),
         )
       })
+      // Per-frame drag listener (React Flow `onNodeDrag`) — the primary node's
+      // LIVE state, after the batched write above landed.
+      const dragged = instance.getNode(drag.nodeId)
+      if (dragged) instance._emit.nodeDrag(dragged)
       return
     }
 
@@ -1256,30 +1315,48 @@ export function Flow(props: FlowComponentProps): VNodeChild {
         // cursor. Hit-test the real drop target by cursor position instead.
         const dropEl = isClient ? document.elementFromPoint(e.clientX, e.clientY) : null
         const handle = dropEl?.closest('.pyreon-flow-handle') ?? null
+        let targetNodeId = ''
+        let targetHandleId = 'target'
         if (handle) {
-          const targetNodeId = handle.closest('.pyreon-flow-node')?.getAttribute('data-nodeid') ?? ''
-          const targetHandleId = handle.getAttribute('data-handleid') ?? 'target'
+          targetNodeId = handle.closest('.pyreon-flow-node')?.getAttribute('data-nodeid') ?? ''
+          targetHandleId = handle.getAttribute('data-handleid') ?? 'target'
+        } else if ((instance.config.connectionRadius ?? 0) > 0) {
+          // No handle under the pointer: snap to the nearest TARGET handle
+          // within `connectionRadius` (screen px → flow units at this zoom).
+          const nearest = nearestTargetHandle(
+            instance,
+            instance.screenToFlowPosition({ x: e.clientX, y: e.clientY }),
+            (instance.config.connectionRadius ?? 0) / instance.viewport.peek().zoom,
+            conn.sourceNodeId,
+          )
+          if (nearest) {
+            targetNodeId = nearest.nodeId
+            targetHandleId = nearest.handleId
+          }
+        }
 
-          if (targetNodeId && targetNodeId !== conn.sourceNodeId) {
-            const connection: Connection = {
-              source: conn.sourceNodeId,
-              target: targetNodeId,
-              sourceHandle: conn.sourceHandleId,
-              targetHandle: targetHandleId,
-            }
+        let made: Connection | null = null
+        if (targetNodeId && targetNodeId !== conn.sourceNodeId) {
+          const connection: Connection = {
+            source: conn.sourceNodeId,
+            target: targetNodeId,
+            sourceHandle: conn.sourceHandleId,
+            targetHandle: targetHandleId,
+          }
 
-            if (instance.isValidConnection(connection)) {
-              instance.addEdge({
-                source: connection.source,
-                target: connection.target,
-                ...(connection.sourceHandle != null ? { sourceHandle: connection.sourceHandle } : {}),
-                ...(connection.targetHandle != null ? { targetHandle: connection.targetHandle } : {}),
-              })
-            }
+          if (instance.isValidConnection(connection)) {
+            instance.addEdge({
+              source: connection.source,
+              target: connection.target,
+              ...(connection.sourceHandle != null ? { sourceHandle: connection.sourceHandle } : {}),
+              ...(connection.targetHandle != null ? { targetHandle: connection.targetHandle } : {}),
+            })
+            made = connection
           }
         }
 
         connectionState.set({ ...emptyConnection })
+        instance._emit.connectEnd(made)
       }
 
       isPanning = false
@@ -1406,6 +1483,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
       resizeObserver.disconnect()
       resizeObserver = null
     }
+    instance._setContainer(el as HTMLElement | null)
     if (!el) return
 
     const updateSize = () => {
@@ -1508,6 +1586,19 @@ export function Flow(props: FlowComponentProps): VNodeChild {
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onKeyDown={handleKeyDown}
+      onClick={(e: MouseEvent) => {
+        // A click that reached the container without a node / edge / panel
+        // stopping it is a PANE click (React Flow `onPaneClick`).
+        const t = e.target as HTMLElement | null
+        if (
+          t?.closest(
+            '.pyreon-flow-node, .pyreon-flow-edges, .pyreon-flow-controls, .pyreon-flow-minimap, .pyreon-flow-panel',
+          )
+        ) {
+          return
+        }
+        instance._emit.paneClick(e)
+      }}
     >
       {keyboardA11y && (
         <div id={nodeDescId} class="pyreon-flow-a11y-hidden">

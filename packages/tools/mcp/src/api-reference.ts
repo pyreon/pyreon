@@ -5234,7 +5234,11 @@ await flow.layout('layered', { direction: 'RIGHT', nodeSpacing: 50, layerSpacing
 // force/stress/radial/box/rectpacking silently ignore them. nodeSpacing applies to all algorithms.
 const json = flow.toJSON(); flow.fromJSON(json)       // round-trip serialization`,
     notes: 'Create a reactive flow instance. Generic over node data shape — `createFlow<MyData>(...)` returns `FlowInstance<MyData>` so `node.data.kind` narrows correctly without an `[key: string]: unknown` index signature on consumer types. Defaults to `Record<string, unknown>` when no generic is supplied. The returned instance owns signal-native nodes / edges and exposes CRUD, selection, viewport (zoom / pan / fitView), and auto-layout from the built-in engine (pure, synchronous, deterministic — no chunk to fetch). Pan / zoom uses pointer events + CSS transforms — no D3. See also: useFlow, FlowInstance, Flow.',
-    mistakes: `- Forgetting to declare \`@pyreon/runtime-dom\` in consumer app deps — flow's JSX emits \`_tpl()\` which needs runtime-dom imports
+    mistakes: `- Calling \`pushHistory()\` before every mutation out of habit — mutations checkpoint themselves (\`autoHistory\`, default on) and a manual push right before one is deduped; set \`autoHistory: false\` only if you want the manual model back.
+- Reading \`flow.nodes()\` inside an event handler to get a snapshot — that is a TRACKED read; use \`getNodes()\` / \`getEdges()\` / \`getViewport()\` for plain reads.
+- Computing a drop position from \`clientX - rect.left\` by hand — \`screenToFlowPosition\` already folds in the container rect, pan and zoom (and \`flowToScreenPosition\` is its inverse).
+- Passing \`isValidConnection\` as a prop on \`<Flow>\` (React Flow) — here it is a \`createFlow\` config key, alongside \`connectionRadius\`.
+- Forgetting to declare \`@pyreon/runtime-dom\` in consumer app deps — flow's JSX emits \`_tpl()\` which needs runtime-dom imports
 - Reading \`NodeComponentProps.data\` / \`.selected\` / \`.dragging\` as plain values — all three are REACTIVE ACCESSORS: \`props.data()\`, \`props.selected()\`, \`props.dragging()\`
 - Calling \`props.data()\` OUTSIDE a reactive scope — captures the value once at component setup, defeating the per-node reactivity. Read it inside JSX expression thunks, \`effect\`, or \`computed\`
 - Adding \`[key: string]: unknown\` index signature to your node data interface — no longer needed now that \`createFlow\` is generic. Pass \`createFlow<MyData>(...)\` instead
