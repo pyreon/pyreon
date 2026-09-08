@@ -740,6 +740,8 @@ function NodeLayer(props: {
   // registry and the observer (0 targets) is dropped with this closure.
   let sharedResizeObserver: ResizeObserver | null = null
   const measureCallbacks = new Map<Element, () => void>()
+  // Dev-only: unknown `nodeTypes` keys already warned for, per <Flow> mount.
+  const warnedNodeTypes = new Set<string>()
   const observeNode = (el: Element, measure: () => void): void => {
     if (typeof ResizeObserver === 'function') {
       measureCallbacks.set(el, measure)
@@ -754,6 +756,13 @@ function NodeLayer(props: {
   const unobserveNode = (el: Element): void => {
     measureCallbacks.delete(el)
     sharedResizeObserver?.unobserve(el)
+    // The last node leaving (every wrapper's ref(null) on layer unmount) is
+    // the observer's end of life — `unobserve` alone leaves a live, empty
+    // ResizeObserver behind for as long as this closure is reachable.
+    if (measureCallbacks.size === 0 && sharedResizeObserver) {
+      sharedResizeObserver.disconnect()
+      sharedResizeObserver = null
+    }
   }
 
   // <For> keys nodes by id and runs the children function exactly
@@ -805,6 +814,21 @@ function NodeLayer(props: {
 
         const NodeComponent =
           (initialNode.type && nodeTypes[initialNode.type]) || nodeTypes.default!
+        // A typo'd `type` renders the default node and nothing says so — the
+        // same silent-fallback shape as an unknown handle id. Once per type.
+        if (
+          process.env.NODE_ENV !== 'production' &&
+          initialNode.type &&
+          !nodeTypes[initialNode.type] &&
+          !warnedNodeTypes.has(initialNode.type)
+        ) {
+          warnedNodeTypes.add(initialNode.type)
+          console.warn(
+            `[Pyreon] <Flow>: node "${initialNode.id}" has type "${initialNode.type}" but nodeTypes has no such key (known: ${Object.keys(nodeTypes)
+              .sort()
+              .map((k) => `"${k}"`).join(', ')}) — rendering the default node.`,
+          )
+        }
 
         // Measure the rendered node so edge geometry anchors to the REAL size
         // (not the 150×40 fallback). Mirrors the container `ref` idiom: observe

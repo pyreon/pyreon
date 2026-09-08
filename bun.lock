@@ -1718,6 +1718,7 @@
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.11.6",
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/runtime-server": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vite-plugin": "workspace:*",

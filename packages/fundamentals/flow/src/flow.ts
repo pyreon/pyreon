@@ -478,6 +478,17 @@ export function createFlow<TData = Record<string, unknown>>(
   }
 
   function addNode(node: FlowNode<TData>): void {
+    // A duplicate id would corrupt `nodeMap` (last write wins) and `<For by>`
+    // keying (two rows, one key) with no error anywhere downstream — refuse it
+    // the way `addEdge` already does, and say so in dev.
+    if (untrack(() => nodeMap()).has(node.id)) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn(
+          `[Pyreon] flow.addNode: a node with id "${node.id}" already exists — ignored. Use updateNode(id, …) to change it, or pick a unique id.`,
+        )
+      }
+      return
+    }
     checkpoint()
     nodes.update((nds) => [...nds, node])
   }
@@ -593,6 +604,20 @@ export function createFlow<TData = Record<string, unknown>>(
     // Don't add duplicate edges
     const existing = edges.peek()
     if (existing.some((e) => e.id === newEdge.id)) return
+
+    // An edge whose endpoint is not in the graph is kept (the renderer skips
+    // it and it becomes live the moment the node arrives — the load-order
+    // shape xyflow also allows), but silently is how a typo'd id hides for a
+    // whole session: name it in dev.
+    if (process.env.NODE_ENV !== 'production') {
+      const known = untrack(() => nodeMap())
+      const missing = [newEdge.source, newEdge.target].filter((id) => !known.has(id))
+      if (missing.length > 0) {
+        console.warn(
+          `[Pyreon] flow.addEdge("${newEdge.id}"): node id${missing.length > 1 ? 's' : ''} ${missing.map((m) => `"${m}"`).join(', ')} not in the graph — the edge will not render until ${missing.length > 1 ? 'they exist' : 'it exists'}.`,
+        )
+      }
+    }
 
     checkpoint()
     edges.update((eds) => [...eds, newEdge])
@@ -1764,6 +1789,11 @@ export function createFlow<TData = Record<string, unknown>>(
       _caf(_viewportFrameId)
       _viewportFrameId = null
     }
+
+    // History holds up to `maxHistory` shallow (N+E)-reference snapshots —
+    // the largest thing a disposed instance would otherwise keep alive.
+    undoStack.length = 0
+    redoStack.length = 0
 
     connectListeners.clear()
     nodesChangeListeners.clear()

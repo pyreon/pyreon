@@ -104,7 +104,7 @@ export async function computeLayout<TData = Record<string, unknown>>(
   options: LayoutOptions = {},
 ): Promise<Array<{ id: string; position: { x: number; y: number } }>> {
   warnIgnoredOptions(algorithm, options)
-  // Loaded on demand, exactly as elkjs was: an app that renders a flow but
+  // Loaded on demand (the code-split the former elkjs dependency had): an app that renders a flow but
   // never calls `.layout()` should not pay for the algorithms. The difference
   // is the size of what gets fetched — a ~2 KB chunk instead of ~1.4 MB.
   //

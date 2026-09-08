@@ -1183,6 +1183,14 @@ What a screen reader gets:
 Focus is visible only for keyboard users: `flowStyles` themes `:focus-visible` on the canvas, nodes and edges with `--pyreon-flow-accent` (a pointer click draws no ring). The stylesheet also disables the package's transitions and the animated-edge dash under `prefers-reduced-motion: reduce`, and `fitView()` / `animateViewport()` / animated `layout()` jump straight to their target under that setting — override with `reducedMotion: false | true` in the config.
 
 Opt-outs: `focusable: false` on a node or edge, `nodesFocusable: false` / `edgesFocusable: false` for the default, and `disableKeyboardA11y: true` to drop nodes and edges from the tab order entirely (the canvas keeps its shortcuts).
+## SSR and hydration
+
+`<Flow>` renders on the server. Nothing in the package touches `window`, `document`, `ResizeObserver` or `requestAnimationFrame` at setup — every browser API sits behind a `typeof` guard or inside a `ref`/`onMount`, so `renderToString` produces the container, the node layer with every node at its declared `position`, and the edge layer with paths built from explicit `width`/`height` or the 150×40 default (measured sizes only exist on the client). On hydration the client adopts that DOM, the shared `ResizeObserver` measures the real node boxes, and edge geometry re-anchors to them — a node that renders larger than its declared size shifts its edge endpoints once, on the first measurement.
+
+Two things to know:
+
+- **`fitView: true` runs against the default 800×600 container on the server** and again on the client's first real measurement, so an SSR page can paint one frame at the default viewport before fitting. Pass an explicit `viewport` (or `width`/`height` on the nodes) to make the server frame final.
+- **Layout is client-only by default.** `flow.layout()` code-splits the engine behind a dynamic import; call it in `onMount` (or run it at build time and ship the positions) rather than during render.
 
 ## Cleanup
 

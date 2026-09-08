@@ -1668,23 +1668,7 @@ describe('focusNode', () => {
   })
 })
 
-// ─── Layout (with elkjs mock) ─────────────────────────────────────────────
-
-vi.mock('elkjs/lib/elk.bundled.js', () => {
-  const layout = vi.fn(async (graph: any) => ({
-    children: graph.children.map((c: any, i: number) => ({
-      id: c.id,
-      x: i * 100,
-      y: i * 50,
-    })),
-  }))
-
-  return {
-    default: class MockELK {
-      layout = layout
-    },
-  }
-})
+// ─── Layout ───────────────────────────────────────────────────────────────
 
 describe('computeLayout', () => {
   it('computes positions for nodes using layered algorithm', async () => {
@@ -1959,11 +1943,9 @@ describe('warnIgnoredOptions — gate pattern regression', () => {
     const layoutPath = path.resolve(import.meta.dirname, '../layout.ts')
     const layoutSource = fs.readFileSync(layoutPath, 'utf-8')
 
-    // Stub the elkjs dynamic import so the bundle is self-contained.
-    const harness = layoutSource.replace(
-      "import('elkjs/lib/elk.bundled.js')",
-      "Promise.resolve({ default: class { layout(g){ return Promise.resolve({children:[]}) } } })",
-    )
+    // `layout.ts` code-splits its own `./layout-engine` (no external engine
+    // since elkjs was replaced) — the source bundles as-is.
+    const harness = layoutSource
 
     async function bundle(mode: 'dev' | 'prod') {
       const result = await esbuild.build({
