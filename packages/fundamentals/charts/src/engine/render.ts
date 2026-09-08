@@ -27,7 +27,17 @@ export interface Series {
   label: string
   /** Densifier applied to line/area points — `smooth`/`step` from ./curve. */
   curve?: ((points: Pt[]) => Pt[]) | undefined
-  /** Draw each value above its bar. */
+  /**
+   * Label each datum with its value.
+   *
+   * Honoured by EVERY mark kind, with the placement each one allows: outside
+   * the free edge for `bars`, `grouped` and `waterfall` (above a positive
+   * value, below a negative one), above the point for `line`, `area` and
+   * `points`, and INSIDE the segment for `stacked` and `stackedArea`, which
+   * have no free edge to hang a label from. The value printed is the
+   * datum's OWN — for a stack that is the segment, not the running total the
+   * outline already shows.
+   */
   showValues?: boolean | undefined
   /** Per-datum radii (the bubble channel), already mapped to pixels. */
   radii?: Double[] | undefined
@@ -796,12 +806,27 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     const stackSegs = spec.horizontal === true
       ? layoutStackedBarsH(stackedSeries.map((s) => s.values), plot, yDomain, 0.25)
       : layoutStackedBars(stackedSeries.map((s) => s.values), plot, yDomain, 0.25)
+    const fmtS = spec.yFormat ?? plain
     for (const seg of stackSegs) {
       const rS = growRect(seg.rect, yDomain)
       const gS = seriesGradient(stackedSeries[seg.seriesIndex]!.gradient, plot)
       out.push(rectCmd(rS, stackedSeries[seg.seriesIndex]!.color, stackedSeries[seg.seriesIndex]!.corners, gS.stops.length === 0 ? undefined : gS))
       const lvlS = emphasisLevel(spec, seg.datumIndex)
       if (lvlS > 0) out.push(emphasisOutline(rS, lvlS, t.label))
+      // A stacked segment labels INSIDE itself: its value is the segment's
+      // own, not the running total, and there is no outside edge to hang it
+      // from that would not collide with the segment above.
+      if (stackedSeries[seg.seriesIndex]!.showValues === true && progress >= 1.0) {
+        out.push({
+          kind: 'text',
+          text: fmtS(seg.value),
+          at: { x: rS.x + rS.w / 2.0, y: rS.y + rS.h / 2.0 },
+          fill: t.label,
+          size: t.fontSize,
+          align: 'middle',
+          baseline: 'middle',
+        })
+      }
     }
   }
   const groupedSeries = spec.series.filter((s) => s.kind === 'grouped')
@@ -809,12 +834,26 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     const groupSegs = spec.horizontal === true
       ? layoutGroupedBarsH(groupedSeries.map((s) => s.values), plot, yDomain, 0.25)
       : layoutGroupedBars(groupedSeries.map((s) => s.values), plot, yDomain, 0.25)
+    const fmtG = spec.yFormat ?? plain
     for (const seg of groupSegs) {
       const rG = growRect(seg.rect, yDomain)
       const gG = seriesGradient(groupedSeries[seg.seriesIndex]!.gradient, plot)
       out.push(rectCmd(rG, groupedSeries[seg.seriesIndex]!.color, groupedSeries[seg.seriesIndex]!.corners, gG.stops.length === 0 ? undefined : gG))
       const lvlG = emphasisLevel(spec, seg.datumIndex)
       if (lvlG > 0) out.push(emphasisOutline(rG, lvlG, t.label))
+      // A grouped bar has a free outer edge, so it labels OUTSIDE like a
+      // plain bar — above a positive one, below a negative one.
+      if (groupedSeries[seg.seriesIndex]!.showValues === true && progress >= 1.0) {
+        out.push({
+          kind: 'text',
+          text: fmtG(seg.value),
+          at: { x: rG.x + rG.w / 2.0, y: seg.value < 0.0 ? rG.y + rG.h + 4.0 : rG.y - 4.0 },
+          fill: t.label,
+          size: t.fontSize,
+          align: 'middle',
+          baseline: seg.value < 0.0 ? 'top' : 'bottom',
+        })
+      }
     }
   }
 
@@ -841,6 +880,25 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         for (let i = lower.length - 1; i >= 0; i--) poly.push(lower[i]!)
         const gA = seriesGradient(sA.gradient, plot)
         out.push(polygonCmd(poly, sA.color, gA.stops.length === 0 ? undefined : gA))
+        // Like a stacked SEGMENT, a stacked band labels inside itself with
+        // its OWN value — the running total is what the outline already
+        // shows, and a label repeating it would say nothing per series.
+        if (sA.showValues === true && progress >= 1.0) {
+          const fmtA = spec.yFormat ?? plain
+          for (let i = 0; i < upper.length; i++) {
+            const v = i < sA.values.length ? sA.values[i]! : 0.0 / 0.0
+            if (!isFiniteValue(v)) continue
+            out.push({
+              kind: 'text',
+              text: fmtA(v),
+              at: { x: upper[i]!.x, y: (upper[i]!.y + lower[i]!.y) / 2.0 },
+              fill: t.label,
+              size: t.fontSize,
+              align: 'middle',
+              baseline: 'middle',
+            })
+          }
+        }
       }
     }
   }
@@ -1089,6 +1147,38 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           center: pts[i]!,
           radius: fullR * progress,
           fill: s.color,
+        })
+      }
+    }
+
+    // `showValues` on the POINT-LIKE kinds: a label above each datum.
+    //
+    // Bars have carried this since the beginning; line, area and points
+    // silently ignored it, which read as "the option does not apply" and was
+    // really "nobody wrote the branch" — labelling the points of a line is as
+    // ordinary a request as labelling bars. Bars keep their own placement
+    // (below a negative bar, above a positive one, measured from the rect);
+    // here the anchor is the placed point itself.
+    if (
+      s.showValues === true &&
+      progress >= 1.0 &&
+      (s.kind === 'line' || s.kind === 'area' || s.kind === 'points')
+    ) {
+      const fmtP = spec.yFormat ?? plain
+      const labelPts = place(s.values)
+      for (let i = 0; i < labelPts.length; i++) {
+        const v = printed(sIdx, i)
+        // A gap has no value to print — same rule as the bars.
+        if (!isFiniteValue(v)) continue
+        out.push({
+          kind: 'text',
+          text: fmtP(v),
+          // Above the point, clear of a dot of the series' own radius.
+          at: { x: labelPts[i]!.x, y: labelPts[i]!.y - (s.radius + 5.0) },
+          fill: t.label,
+          size: t.fontSize,
+          align: 'middle',
+          baseline: 'bottom',
         })
       }
     }

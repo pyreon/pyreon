@@ -3445,6 +3445,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
     let stackedSeries = spec.series.filter({ s in s.kind == "stacked" })
     if stackedSeries.count > 0 {
       let stackSegs = spec.horizontal == true ? layoutStackedBarsH(stackedSeries.map({ s in s.values }), plot, yDomain, 0.25) : layoutStackedBars(stackedSeries.map({ s in s.values }), plot, yDomain, 0.25)
+      let fmtS = (spec.yFormat ?? plain)
       for seg in stackSegs {
         let rS = growRect(seg.rect, yDomain)
         let gS = seriesGradient(stackedSeries[seg.seriesIndex].gradient, plot)
@@ -3453,11 +3454,15 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
         if lvlS > 0 {
           out.append(emphasisOutline(rS, lvlS, t.label))
         }
+        if stackedSeries[seg.seriesIndex].showValues == true && progress >= 1.0 {
+          out.append(PyreonDrawCmd(kind: "text", fill: t.label, text: fmtS(seg.value), at: PyreonChartPt(x: rS.x + Double(rS.w) / 2.0, y: rS.y + Double(rS.h) / 2.0), size: t.fontSize, align: "middle", baseline: "middle"))
+        }
       }
     }
     let groupedSeries = spec.series.filter({ s in s.kind == "grouped" })
     if groupedSeries.count > 0 {
       let groupSegs = spec.horizontal == true ? layoutGroupedBarsH(groupedSeries.map({ s in s.values }), plot, yDomain, 0.25) : layoutGroupedBars(groupedSeries.map({ s in s.values }), plot, yDomain, 0.25)
+      let fmtG = (spec.yFormat ?? plain)
       for seg in groupSegs {
         let rG = growRect(seg.rect, yDomain)
         let gG = seriesGradient(groupedSeries[seg.seriesIndex].gradient, plot)
@@ -3465,6 +3470,9 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
         let lvlG = emphasisLevel(spec, seg.datumIndex)
         if lvlG > 0 {
           out.append(emphasisOutline(rG, lvlG, t.label))
+        }
+        if groupedSeries[seg.seriesIndex].showValues == true && progress >= 1.0 {
+          out.append(PyreonDrawCmd(kind: "text", fill: t.label, text: fmtG(seg.value), at: PyreonChartPt(x: rG.x + Double(rG.w) / 2.0, y: seg.value < 0.0 ? rG.y + rG.h + 4.0 : rG.y - 4.0), size: t.fontSize, align: "middle", baseline: seg.value < 0.0 ? "top" : "bottom"))
         }
       }
     }
@@ -3492,6 +3500,16 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
           }
           let gA = seriesGradient(sA.gradient, plot)
           out.append(polygonCmd(poly, sA.color, gA.stops.count == 0 ? nil : gA))
+          if sA.showValues == true && progress >= 1.0 {
+            let fmtA = (spec.yFormat ?? plain)
+            for i in 0..<upper.count {
+              let v = i < sA.values.count ? sA.values[i] : 0.0 / 0.0
+              if !isFiniteValue(v) {
+                continue
+              }
+              out.append(PyreonDrawCmd(kind: "text", fill: t.label, text: fmtA(v), at: PyreonChartPt(x: upper[i].x, y: Double((upper[i].y + lower[i].y)) / 2.0), size: t.fontSize, align: "middle", baseline: "middle"))
+            }
+          }
         }
       }
     }
@@ -3702,6 +3720,17 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
               }
             }
           }
+        }
+      }
+      if s.showValues == true && progress >= 1.0 && (s.kind == "line" || s.kind == "area" || s.kind == "points") {
+        let fmtP = (spec.yFormat ?? plain)
+        let labelPts = place(s.values)
+        for i in 0..<labelPts.count {
+          let v = printed(sIdx, i)
+          if !isFiniteValue(v) {
+            continue
+          }
+          out.append(PyreonDrawCmd(kind: "text", fill: t.label, text: fmtP(v), at: PyreonChartPt(x: labelPts[i].x, y: labelPts[i].y - (s.radius + 5.0)), size: t.fontSize, align: "middle", baseline: "bottom"))
         }
       }
       let eLow = (s.errLow ?? [])

@@ -1777,6 +1777,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
     val stackedSeries = spec.series.filter({ s -> s.kind == "stacked" })
     if (stackedSeries.length > 0) {
       val stackSegs = if (spec.horizontal == true) layoutStackedBarsH(stackedSeries.map({ s -> s.values }), plot, yDomain, 0.25) else layoutStackedBars(stackedSeries.map({ s -> s.values }), plot, yDomain, 0.25)
+      val fmtS = (spec.yFormat ?: ::plain)
       for (seg in stackSegs) {
         val rS = growRect(seg.rect, yDomain)
         val gS = seriesGradient(stackedSeries[seg.seriesIndex].gradient, plot)
@@ -1785,11 +1786,15 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
         if (lvlS > 0) {
           out.add(emphasisOutline(rS, lvlS, t.label))
         }
+        if (stackedSeries[seg.seriesIndex].showValues == true && progress >= 1.0) {
+          out.add(PyreonDrawCmd(kind = "text", fill = t.label, text = fmtS(seg.value), at = PyreonChartPt(x = rS.x + (rS.w).toDouble() / (2.0).toDouble(), y = rS.y + (rS.h).toDouble() / (2.0).toDouble()), size = t.fontSize, align = "middle", baseline = "middle"))
+        }
       }
     }
     val groupedSeries = spec.series.filter({ s -> s.kind == "grouped" })
     if (groupedSeries.length > 0) {
       val groupSegs = if (spec.horizontal == true) layoutGroupedBarsH(groupedSeries.map({ s -> s.values }), plot, yDomain, 0.25) else layoutGroupedBars(groupedSeries.map({ s -> s.values }), plot, yDomain, 0.25)
+      val fmtG = (spec.yFormat ?: ::plain)
       for (seg in groupSegs) {
         val rG = growRect(seg.rect, yDomain)
         val gG = seriesGradient(groupedSeries[seg.seriesIndex].gradient, plot)
@@ -1797,6 +1802,9 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
         val lvlG = emphasisLevel(spec, seg.datumIndex)
         if (lvlG > 0) {
           out.add(emphasisOutline(rG, lvlG, t.label))
+        }
+        if (groupedSeries[seg.seriesIndex].showValues == true && progress >= 1.0) {
+          out.add(PyreonDrawCmd(kind = "text", fill = t.label, text = fmtG(seg.value), at = PyreonChartPt(x = rG.x + (rG.w).toDouble() / (2.0).toDouble(), y = if (seg.value < 0.0) rG.y + rG.h + 4.0 else rG.y - 4.0), size = t.fontSize, align = "middle", baseline = if (seg.value < 0.0) "top" else "bottom"))
         }
       }
     }
@@ -1824,6 +1832,16 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
           }
           val gA = seriesGradient(sA.gradient, plot)
           out.add(polygonCmd(poly, sA.color, if (gA.stops.length == 0) null else gA))
+          if (sA.showValues == true && progress >= 1.0) {
+            val fmtA = (spec.yFormat ?: ::plain)
+            for (i in 0 until upper.length) {
+              val v = if (i < sA.values.length) sA.values[i] else (0.0).toDouble() / (0.0).toDouble()
+              if (!isFiniteValue(v)) {
+                continue
+              }
+              out.add(PyreonDrawCmd(kind = "text", fill = t.label, text = fmtA(v), at = PyreonChartPt(x = upper[i].x, y = ((upper[i].y + lower[i].y)).toDouble() / (2.0).toDouble()), size = t.fontSize, align = "middle", baseline = "middle"))
+            }
+          }
         }
       }
     }
@@ -2034,6 +2052,17 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
               }
             }
           }
+        }
+      }
+      if (s.showValues == true && progress >= 1.0 && (s.kind == "line" || s.kind == "area" || s.kind == "points")) {
+        val fmtP = (spec.yFormat ?: ::plain)
+        val labelPts = place(s.values)
+        for (i in 0 until labelPts.length) {
+          val v = printed(sIdx, i)
+          if (!isFiniteValue(v)) {
+            continue
+          }
+          out.add(PyreonDrawCmd(kind = "text", fill = t.label, text = fmtP(v), at = PyreonChartPt(x = labelPts[i].x, y = labelPts[i].y - (s.radius + 5.0)), size = t.fontSize, align = "middle", baseline = "bottom"))
         }
       }
       val eLow = (s.errLow ?: listOf())
