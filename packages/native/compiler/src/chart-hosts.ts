@@ -20,6 +20,7 @@
 // component emit, which would name a SwiftUI/Compose view that does not exist.
 
 import type { AttrIR, ExprIR } from './types'
+import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
 
 /** Per-target expression helpers the host specs build their draw list with. */
 export interface ChartHostTarget {
@@ -52,12 +53,23 @@ export interface ChartHostTarget {
    */
   withProgress: (options: string, struct: string, progress: string) => string
   /**
-   * The options with the theme palette as the DEFAULT — `Struct(palette: p)`
-   * when no options were given, else a copy whose `palette` is filled only
-   * when the user left it unset (the web host's `{ palette: theme.palette,
-   * ...props.x }` merge; an explicit palette in the options wins).
+   * The options with the theme's values as DEFAULTS — `Struct(palette: p)`
+   * when no options were given, else a copy whose named fields are filled
+   * only where the user left them unset (the web host's merge; an explicit
+   * value in the options wins).
    */
-  withPalette: (options: string, struct: string, palette: string) => string
+  withThemeDefaults: (options: string, struct: string, fields: ReadonlyArray<readonly [string, string]>) => string
+}
+
+/** An option field the theme supplies a default for, and the theme field it reads. */
+export type ChartThemeField = 'palette' | 'labelColor' | 'gridColor' | 'axisColor'
+
+/** The `ChartTheme` field each option field defaults from — one place, both emitters. */
+export const CHART_THEME_SOURCE: Readonly<Record<ChartThemeField, 'palette' | 'label' | 'grid' | 'axis'>> = {
+  palette: 'palette',
+  labelColor: 'label',
+  gridColor: 'grid',
+  axisColor: 'axis',
 }
 
 export interface ChartHostArgs {
@@ -83,8 +95,14 @@ export interface ChartHostSpec {
   readonly options: string
   /** The engine struct the options prop holds — steers an inline literal and names the entrance copy. */
   readonly optionsStruct: string
-  /** The options struct has a `palette` — the theme's palette is its default (the web host's merge). */
-  readonly paletteOption?: true
+  /**
+   * Option fields whose default is the THEME's value — the web host's
+   * `{ palette: theme.palette, labelColor: theme.label, ...props.x }` merge,
+   * field for field. An explicit value in the user's options still wins.
+   * A family that draws its labels ON its own fill (treemap, sunburst, river)
+   * defaults only `palette`: white-on-block is deliberate, not a theme value.
+   */
+  readonly themeDefaults?: readonly ChartThemeField[]
   /** The web host's default `height`. */
   readonly defaultHeight: number
   /** Builds the layout expression (`layoutX(...)`). */
@@ -226,7 +244,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     data: ['nodes', 'links'],
     options: 'sankey',
     optionsStruct: 'SankeyOptions',
-    paletteOption: true,
+    themeDefaults: ['palette', 'labelColor'],
     defaultHeight: 300,
     layout: (a, t) => {
       const box = t.rect(a.gutter, '8.0', t.max0(`${a.W} - ${a.gutter} * 2.0`), t.max0(`${a.H} - 16.0`))
@@ -241,7 +259,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     data: ['nodes', 'links'],
     options: 'graph',
     optionsStruct: 'GraphOptions',
-    paletteOption: true,
+    themeDefaults: ['palette', 'labelColor'],
     defaultHeight: 300,
     layout: (a, t) => `layoutGraph(${a.data[0]}, ${a.data[1]}, ${box00(a, t)}, ${a.options})`,
     render: (l, a, t) => `renderGraph(${l}, ${box00(a, t)}, ${a.options})`,
@@ -252,7 +270,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     data: ['data'],
     options: 'treemap',
     optionsStruct: 'TreemapOptions',
-    paletteOption: true,
+    themeDefaults: ['palette'],
     defaultHeight: 300,
     layout: (a, t) => `layoutTreemap(${a.data[0]}, ${box00(a, t)}, ${a.options})`,
     render: (l, a) => `renderTreemap(${l}, ${a.options})`,
@@ -264,7 +282,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     data: ['data'],
     options: 'sunburst',
     optionsStruct: 'SunburstOptions',
-    paletteOption: true,
+    themeDefaults: ['palette'],
     defaultHeight: 300,
     layout: (a, t) => {
       const outer = t.max0(`${t.min(a.W, a.H)} / 2.0 - 4.0`)
@@ -279,7 +297,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     data: ['data'],
     options: 'tree',
     optionsStruct: 'TreeOptions',
-    paletteOption: true,
+    themeDefaults: ['palette', 'labelColor'],
     defaultHeight: 300,
     layout: (a, t) => `layoutTree(${a.data[0]}, ${box00(a, t)}, ${a.options})`,
     render: (l, a) => `renderTree(${l}, ${a.options})`,
@@ -291,7 +309,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     data: ['series'],
     options: 'river',
     optionsStruct: 'RiverOptions',
-    paletteOption: true,
+    themeDefaults: ['palette'],
     defaultHeight: 300,
     layout: (a, t) => `layoutRiver(${a.data[0]}, ${t.rect('8.0', '8.0', t.max0(`${a.W} - 16.0`), t.max0(`${a.H} - 16.0`))}, ${a.options})`,
     render: (l, a) => `renderRiver(${l}, ${a.options})`,
@@ -303,7 +321,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     data: ['tasks'],
     options: 'gantt',
     optionsStruct: 'GanttOptions',
-    paletteOption: true,
+    themeDefaults: ['palette', 'labelColor', 'gridColor'],
     defaultHeight: 320,
     layout: (a, t) => `layoutGantt(${a.data[0]}, ${t.rect('4.0', '4.0', `${a.W} - 8.0`, `${a.H} - 8.0`)}, ${a.options})`,
     render: (l, a) => `renderGantt(${l}, ${a.options})`,
@@ -314,7 +332,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     data: ['axes', 'series'],
     options: 'polar',
     optionsStruct: 'PolarOptions',
-    paletteOption: true,
+    themeDefaults: ['palette', 'labelColor', 'gridColor'],
     defaultHeight: 300,
     layout: (a, t) => `layoutPolar(${a.data[0]}, ${a.data[1]}, ${box00(a, t)}, ${a.options})`,
     render: (l, a) => `renderPolar(${l}, ${a.options})`,
@@ -327,6 +345,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     data: ['start', 'end', 'values'],
     options: 'calendar',
     optionsStruct: 'CalendarOptions',
+    themeDefaults: ['labelColor'],
     defaultHeight: 140,
     layout: (a, t) => `layoutCalendar(${a.data[0]}, ${a.data[1]}, ${t.rect('4.0', '4.0', `${a.W} - 8.0`, `${a.H} - 8.0`)}, ${a.options})`,
     render: (l, a) => `renderCalendar(${l}, ${a.data[2]}, ${a.options})`,
@@ -338,7 +357,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     data: ['axes', 'rows'],
     options: 'parallel',
     optionsStruct: 'ParallelOptions',
-    paletteOption: true,
+    themeDefaults: ['palette', 'labelColor', 'axisColor'],
     defaultHeight: 300,
     gutterDefault: 40,
     layout: (a, t) => `layoutParallel(${a.data[0]}, ${a.data[1]}, ${t.rect(a.gutter, '8.0', t.max0(`${a.W} - ${a.gutter} * 2.0`), t.max0(`${a.H} - 16.0`))}, ${a.options})`,
@@ -1063,6 +1082,26 @@ export function chartEnterMs(theme: ExprIR | undefined, tag: string, list: (item
 /** The resolved theme as emitted TEXT per field — what `chartThemeFields` returns. */
 export type ChartThemeText = Record<keyof typeof CHART_THEME_DEFAULT, string>
 /** The tooltip box from the theme — the web host's `tooltipStyle` (surface / grid / text, radius at least 4). */
+/**
+ * The `[optionField, themeValue]` pairs a host defaults from the theme — the
+ * ONE place the web host's `{ palette: theme.palette, labelColor: theme.label,
+ * ...props.x }` merge is spelled for both emitters.
+ */
+export function chartThemeDefaultFields(spec: ChartHostSpec, t: ChartThemeText): ReadonlyArray<readonly [string, string]> {
+  const fields = spec.themeDefaults ?? []
+  if (fields.length === 0) return []
+  // Swift's memberwise init takes its arguments in DECLARATION order, so the
+  // pairs are sorted by the field's position in the GENERATED struct rather
+  // than by however the spec happens to list them — a restated order is one
+  // regeneration away from emitting Swift that will not compile.
+  const decl = CHART_ENGINE_STRUCTS.find((st) => st.name === spec.optionsStruct)
+  const at = (f: string): number => {
+    const i = decl?.fields.findIndex((d) => d.name === f) ?? -1
+    return i < 0 ? Number.MAX_SAFE_INTEGER : i
+  }
+  return [...fields].sort((a, b) => at(a) - at(b)).map((f) => [f, t[CHART_THEME_SOURCE[f]]] as const)
+}
+
 export function chartTooltipFields(t: ChartThemeText): readonly (readonly [string, string])[] {
   return [
     ['fontSize', t.fontSize],

@@ -84,7 +84,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -11401,7 +11401,10 @@ const SWIFT_CHART_TARGET: ChartHostTarget = {
   struct: (name, fields) => `${name}(${fields.map(([k, v]) => `${k}: ${v}`).join(', ')})`,
   coalesce: (a, b) => `(${a} ?? ${b})`,
   withProgress: (options, struct, progress) => (options === 'nil' ? `${struct}(progress: ${progress})` : `{ () -> ${struct} in var pyreonO = ${options}; pyreonO.progress = ${progress}; return pyreonO }()`),
-  withPalette: (options, struct, palette) => (options === 'nil' ? `${struct}(palette: ${palette})` : `{ () -> ${struct} in var pyreonO = ${options}; if pyreonO.palette == nil { pyreonO.palette = ${palette} }; return pyreonO }()`),
+  withThemeDefaults: (options, struct, fields) =>
+    options === 'nil'
+      ? `${struct}(${fields.map(([f, v]) => `${f}: ${v}`).join(', ')})`
+      : `{ () -> ${struct} in var pyreonO = ${options}; ${fields.map(([f, v]) => `pyreonO.${f} = pyreonO.${f} ?? ${v}`).join('; ')}; return pyreonO }()`,
   pieOptions: (a) => `PieOptions(innerRadius: ${a.innerRatio}, showLabels: true, labelColor: "#ffffff", fontSize: ${a.fontSize ?? '11.0'})`,
   theme: () => `ChartTheme(axis: ${JSON.stringify(CHART_THEME_DEFAULT.axis)}, grid: ${JSON.stringify(CHART_THEME_DEFAULT.grid)}, label: ${JSON.stringify(CHART_THEME_DEFAULT.label)}, fontSize: ${CHART_THEME_DEFAULT.fontSize})`,
 }
@@ -11544,8 +11547,9 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
   const themed = swiftChartThemed(e)
   const themeLets: string[] = []
   let options = userOptions
-  if (themed && spec.paletteOption === true) {
-    themeLets.push(`let pyreonOptions: ${spec.optionsStruct} = ${SWIFT_CHART_TARGET.withPalette(userOptions, spec.optionsStruct, tf.palette)}`)
+  const themeFields = chartThemeDefaultFields(spec, tf)
+  if (themed && themeFields.length > 0) {
+    themeLets.push(`let pyreonOptions: ${spec.optionsStruct} = ${SWIFT_CHART_TARGET.withThemeDefaults(userOptions, spec.optionsStruct, themeFields)}`)
     options = 'pyreonOptions'
   }
   const H = swiftChartDouble(e, 'height', spec.defaultHeight, indent)

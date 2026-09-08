@@ -4,6 +4,7 @@ import type { VNode } from '@pyreon/core'
 import { canvasHost, orNull } from './canvas-host'
 import { graphTip } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
+import type { ChartTheme } from './render'
 import { hitGraphIndex, layoutGraph, renderGraph } from './graph'
 import { hitGraph } from './graph-hit'
 import type { GraphLayout, GraphLayoutNode, GraphLink, GraphNode, GraphOptions } from './graph'
@@ -24,7 +25,7 @@ interface Geometry { layout: GraphLayout; box: Rect }
 export function GraphChart(props: GraphChartProps): VNode {
   const readNodes = (): GraphNode[] => (typeof props.nodes === 'function' ? props.nodes() : props.nodes)
   const readLinks = (): GraphLink[] => (typeof props.links === 'function' ? props.links() : props.links)
-  const opts = (palette: readonly string[]): GraphOptions => ({ palette, ...props.graph })
+  const opts = (t: ChartTheme): GraphOptions => ({ palette: t.palette, labelColor: t.label, ...props.graph })
   return canvasHost<Geometry>({
     props,
     defaultHeight: 300,
@@ -33,9 +34,9 @@ export function GraphChart(props: GraphChartProps): VNode {
       readNodes()
       readLinks()
     },
-    layout: (box, _measure, theme) => ({ layout: layoutGraph(readNodes(), readLinks(), box, opts(theme.palette)), box }),
+    layout: (box, _measure, theme) => ({ layout: layoutGraph(readNodes(), readLinks(), box, opts(theme)), box }),
     animates: true,
-    render: (g, _measure, theme, progress) => renderGraph(g.layout, g.box, { ...opts(theme.palette), progress }),
+    render: (g, _measure, theme, progress) => renderGraph(g.layout, g.box, { ...opts(theme), progress }),
     select: (g, px, py) => {
       props.onSelect?.(hitGraph(g.layout, px, py))
       props.onSelectIndex?.(hitGraphIndex(g.layout, px, py))
