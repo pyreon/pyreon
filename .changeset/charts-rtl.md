@@ -30,3 +30,10 @@ in TypeScript and a flat struct on native). All three implementations are
 executed against the same commands and compared, so they cannot drift. `rtl`
 on a family host is not lowered on native yet and warns by name rather than
 being dropped.
+
+Cost: the mirror is a static import of every canvas host, so a chart that
+never sets `rtl` still carries it — measured +86 B gz on the pie import and
++31 B on the SVG one. That is the trade for `rtl` meaning the same thing on
+every host: putting the mirror behind an opt-in import would make the prop
+silently do nothing unless the consumer also imported the seam, which is the
+typed-but-unimplemented shape this PR otherwise avoids.
