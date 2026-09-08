@@ -9,7 +9,7 @@
 // Three layers tested:
 //   1. Parser — recognises TSTypeAliasDeclaration of all-string-literal
 //      unions and lifts to EnumIR.
-//   2. Swift emit — produces `enum Filter: String { case ... }` + .set
+//   2. Swift emit — produces `enum Filter: String, Codable { case ... }` + .set
 //      call sites rewrite `"all"` → `.all`.
 //   3. Kotlin emit — produces `enum class Filter { ... }` + .set
 //      call sites rewrite `"all"` → `Filter.all` (qualified per Kotlin
@@ -86,7 +86,9 @@ describe('Swift emit — string-literal union enum', () => {
       `,
       { target: 'swift' },
     )
-    expect(out.code).toContain('enum Filter: String {\n  case all, active, completed\n}')
+    // `, Codable`: a struct holding an enum-typed field only conforms when the
+    // ENUM declares it — see `silent-lowering-gaps.test.ts`.
+    expect(out.code).toContain('enum Filter: String, Codable {\n  case all, active, completed\n}')
     expect(out.code).toContain('@State private var filter: Filter = .all')
   })
 

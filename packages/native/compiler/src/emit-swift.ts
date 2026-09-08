@@ -305,6 +305,25 @@ let _expectedType: TypeIR | undefined
 /** The declared return type of the top-level function being emitted; steers a `return { … }` literal to its named struct. */
 let _currentReturnType: TypeIR | undefined
 
+/**
+ * Run `fn` with the active-enum context set to the enclosing function's
+ * declared return type when that type is a known enum, so a returned string
+ * literal emits as a case. Restores the previous context — a nested closure
+ * inside the returned expression has its own return type.
+ */
+function withEnumReturnCtx<T>(fn: () => T): T {
+  const rt = _currentReturnType
+  const isEnum = rt !== undefined && rt.kind === 'typeRef' && _enumNames.has(rt.name)
+  if (!isEnum) return fn()
+  const prev = _activeEnumType
+  _activeEnumType = (rt as { name: string }).name
+  try {
+    return fn()
+  } finally {
+    _activeEnumType = prev
+  }
+}
+
 /** The struct `_expectedType` names, when it accepts the literal's fields (every unset field optional). */
 function expectedStructFor(fields: readonly { name: string }[]): string | null {
   const t = _expectedType
@@ -1198,6 +1217,13 @@ export function emitSwift(
   _synthExprStructs = []
   _synthExprStructKeys = new Map()
   _activeInferCtx = emptyInferenceCtx()
+  // `_exprInferCtx` was NOT reset here, so after an emit it kept pointing at
+  // the last component's context — structs, locals and all — and the NEXT
+  // file's top-level helpers inferred against it. Harmless while nothing read
+  // it during a helper emit; the moment helper params are seeded into it (so
+  // an optional param lowers its condition) the staleness becomes a
+  // cross-FILE wrong answer. Reset it with its sibling.
+  _exprInferCtx = emptyInferenceCtx()
   _componentNames = new Set()
   _styledComponents = new Map()
   _rocketstyleComponents = new Map()
@@ -1994,7 +2020,15 @@ const SWIFT_PARSE_RESULT = `struct PyreonParseResult<T> {
  */
 function emitSwiftEnum(e: EnumIR): string {
   const cases = e.cases.join(', ')
-  return `enum ${e.name}: String {\n  case ${cases}\n}`
+  // `, Codable`: a struct emitted `: Codable` (which is every synthesized
+  // struct) does NOT conform once it holds an enum-typed field, because Swift
+  // synthesizes Codable for a RawRepresentable enum only when the enum
+  // DECLARES it. A geometry struct with a `position: Position` field therefore
+  // failed with "type 'HandleConfig' does not conform to protocol 'Decodable'"
+  // — an error about the struct, pointing nowhere near the enum that caused
+  // it. Free for an unused enum, and it keeps the storage / URL round-trip the
+  // `: String` raw value exists for.
+  return `enum ${e.name}: String, Codable {\n  case ${cases}\n}`
 }
 
 /**
@@ -4048,12 +4082,25 @@ function emitSwiftFunction(
   // WITHOUT it, a helper param is neither a signal nor a const, so it infers
   // `unknown` and the coercion never fires. Restored in `finally` (scoped to
   // this body), mirroring the element-callback seed+restore.
+  //
+  // Seeded into BOTH inference contexts. They are the same object for a
+  // component, and different for a file of top-level helpers — and the
+  // condition lowering (`swiftCondition` → `classifyOptionalCondition`) reads
+  // `_exprInferCtx`, so seeding only `_activeInferCtx` left an optional PARAM
+  // untyped there: `function widthOf(first: H | undefined) { if (first) … }`
+  // emitted `if first {`, which swiftc rejects ("optional type 'H?' cannot be
+  // used as a boolean; test for '!= nil' instead") — with no warning.
   const paramSaved = d.params.map((p) => ({
     name: p.name,
     had: _activeInferCtx.locals.has(p.name),
     prev: _activeInferCtx.locals.get(p.name),
+    hadExpr: _exprInferCtx.locals.has(p.name),
+    prevExpr: _exprInferCtx.locals.get(p.name),
   }))
-  for (const p of d.params) _activeInferCtx.locals.set(p.name, p.type)
+  for (const p of d.params) {
+    _activeInferCtx.locals.set(p.name, p.type)
+    _exprInferCtx.locals.set(p.name, p.type)
+  }
   try {
     if (
       d.body.length === 1 &&
@@ -4090,6 +4137,8 @@ function emitSwiftFunction(
     for (const s of paramSaved) {
       if (s.had) _activeInferCtx.locals.set(s.name, s.prev!)
       else _activeInferCtx.locals.delete(s.name)
+      if (s.hadExpr) _exprInferCtx.locals.set(s.name, s.prevExpr!)
+      else _exprInferCtx.locals.delete(s.name)
     }
   }
 }
@@ -4186,7 +4235,12 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       const ex = s.expr
       if (ex === undefined) return 'return'
       // A returned object literal takes the enclosing function's declared struct.
-      return `return ${withExpectedType(ex.kind === 'object' ? _currentReturnType : undefined, () => emitSwiftExpr(ex, indent))}`
+      // A returned string LITERAL takes the enclosing function's declared ENUM:
+      // `function sideFor(): Side { return 'bottom' }` is how the source states
+      // an enum result, and emitting the raw string is a swiftc type error
+      // ("cannot convert value of type 'String' to specified type 'Side'").
+      // Comparisons already rewrite the literal; the return position did not.
+      return `return ${withEnumReturnCtx(() => withExpectedType(ex.kind === 'object' ? _currentReturnType : undefined, () => emitSwiftExpr(ex, indent)))}`
     }
     case 'expr':
       // A bare `i++` / `i--` STATEMENT is side-effect-only → `i += 1` /
@@ -5895,6 +5949,20 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       }
       if (e.callee.kind === 'member') {
         const obj = emitSwiftExpr(e.callee.object, indent)
+        // A method call on an OPTIONAL receiver keeps the chain optional:
+        // `m.handles?.filter(…)`. The member-READ emit decides this per link,
+        // but every array/string method below hard-coded a plain dot, so the
+        // `?.` the source wrote was dropped and swiftc rejected the result
+        // ("value of optional type '[H]?' must be unwrapped to refer to member
+        // 'filter'") — with no warning from PMTC.
+        //
+        // Gated on the source's OWN `?.` rather than on inference: Swift
+        // auto-propagates after the first link, and adding a `?.` to a
+        // chain-unwrapped non-optional field is itself an error (the
+        // `find()?.name?.length` regression the member-read comment records).
+        // The INDEX form (`${obj}[i]`) is untouched — an optional receiver
+        // there needs a different rewrite, left as a named gap.
+        const objDot = e.callee.optional === true ? '?.' : '.'
         const prop = e.callee.property
         const argExprs = emitSwiftMemberCallArgs(e, indent)
         // Map/Set method vocabulary — typed off the receiver's inferred
@@ -5908,14 +5976,14 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (prop === 'set' && e.args.length === 2) return `${obj}[${argExprs[0]!}] = ${argExprs[1]!}`
             if (prop === 'get' && e.args.length === 1) return `${obj}[${argExprs[0]!}]`
             if (prop === 'has' && e.args.length === 1) return `(${obj}[${argExprs[0]!}] != nil)`
-            if (prop === 'delete' && e.args.length === 1) return `${obj}.removeValue(forKey: ${argExprs[0]!})`
-            if (prop === 'clear' && e.args.length === 0) return `${obj}.removeAll()`
+            if (prop === 'delete' && e.args.length === 1) return `${obj}${objDot}removeValue(forKey: ${argExprs[0]!})`
+            if (prop === 'clear' && e.args.length === 0) return `${obj}${objDot}removeAll()`
           }
           if (recvT.kind === 'set') {
-            if (prop === 'add' && e.args.length === 1) return `${obj}.insert(${argExprs[0]!})`
-            if (prop === 'has' && e.args.length === 1) return `${obj}.contains(${argExprs[0]!})`
-            if (prop === 'delete' && e.args.length === 1) return `${obj}.remove(${argExprs[0]!})`
-            if (prop === 'clear' && e.args.length === 0) return `${obj}.removeAll()`
+            if (prop === 'add' && e.args.length === 1) return `${obj}${objDot}insert(${argExprs[0]!})`
+            if (prop === 'has' && e.args.length === 1) return `${obj}${objDot}contains(${argExprs[0]!})`
+            if (prop === 'delete' && e.args.length === 1) return `${obj}${objDot}remove(${argExprs[0]!})`
+            if (prop === 'clear' && e.args.length === 0) return `${obj}${objDot}removeAll()`
           }
         }
         switch (prop) {
@@ -5931,7 +5999,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             break
           case 'trim':
             if (e.args.length === 0) {
-              return `${obj}.trimmingCharacters(in: .whitespacesAndNewlines)`
+              return `${obj}${objDot}trimmingCharacters(in: .whitespacesAndNewlines)`
             }
             break
           case 'some': {
@@ -5945,10 +6013,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (cb) {
               const el = swiftIdent(cb.params[0]!)
               const idx = swiftIdent(cb.params[1]!)
-              return `${obj}.enumerated().contains(where: ${emitSwiftIndexedClosure(cb, idx, el, indent, e.callee.object)})`
+              return `${obj}${objDot}enumerated().contains(where: ${emitSwiftIndexedClosure(cb, idx, el, indent, e.callee.object)})`
             }
             if (e.args.length === 1) {
-              return `${obj}.contains(where: ${argExprs[0]!})`
+              return `${obj}${objDot}contains(where: ${argExprs[0]!})`
             }
             break
           }
@@ -5957,10 +6025,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (cb) {
               const el = swiftIdent(cb.params[0]!)
               const idx = swiftIdent(cb.params[1]!)
-              return `${obj}.enumerated().allSatisfy(${emitSwiftIndexedClosure(cb, idx, el, indent, e.callee.object)})`
+              return `${obj}${objDot}enumerated().allSatisfy(${emitSwiftIndexedClosure(cb, idx, el, indent, e.callee.object)})`
             }
             if (e.args.length === 1) {
-              return `${obj}.allSatisfy(${argExprs[0]!})`
+              return `${obj}${objDot}allSatisfy(${argExprs[0]!})`
             }
             break
           }
@@ -5973,9 +6041,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (cb) {
               const el = swiftIdent(cb.params[0]!)
               const idx = swiftIdent(cb.params[1]!)
-              return `${obj}.enumerated().filter(${emitSwiftIndexedClosure(cb, idx, el, indent, e.callee.object)}).map({ $0.element })`
+              return `${obj}${objDot}enumerated().filter(${emitSwiftIndexedClosure(cb, idx, el, indent, e.callee.object)}).map({ $0.element })`
             }
-            if (e.args.length === 1) return `${obj}.filter(${argExprs[0]!})`
+            if (e.args.length === 1) return `${obj}${objDot}filter(${argExprs[0]!})`
             break
           }
           case 'map':
@@ -5993,13 +6061,13 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (cb) {
               const el = swiftIdent(cb.params[0]!)
               const idx = swiftIdent(cb.params[1]!)
-              return `${obj}.enumerated().${prop}(${emitSwiftIndexedClosure(cb, idx, el, indent, e.callee.object)})`
+              return `${obj}${objDot}enumerated().${prop}(${emitSwiftIndexedClosure(cb, idx, el, indent, e.callee.object)})`
             }
             break
           }
           case 'find':
             if (e.args.length === 1) {
-              return `${obj}.first(where: ${argExprs[0]!})`
+              return `${obj}${objDot}first(where: ${argExprs[0]!})`
             }
             break
           case 'findLast':
@@ -6008,12 +6076,12 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // mirrors `.find` (`T | undefined`). Kotlin's `findLast` matches
             // JS as-is, so no Kotlin mapping.
             if (e.args.length === 1) {
-              return `${obj}.last(where: ${argExprs[0]!})`
+              return `${obj}${objDot}last(where: ${argExprs[0]!})`
             }
             break
           case 'includes':
             if (e.args.length === 1) {
-              return `${obj}.contains(${argExprs[0]!})`
+              return `${obj}${objDot}contains(${argExprs[0]!})`
             }
             break
           // `arr.push(x)` is Swift's `append`. Unmapped, it emitted a verbatim
@@ -6022,11 +6090,11 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           // non-trivial pure logic is written, so this blocked it outright.
           case 'push':
             if (e.args.length === 1) {
-              return `${obj}.append(${argExprs[0]!})`
+              return `${obj}${objDot}append(${argExprs[0]!})`
             }
             // Multi-arg push appends them all, in order.
             if (e.args.length > 1) {
-              return `${obj}.append(contentsOf: [${argExprs.join(', ')}])`
+              return `${obj}${objDot}append(contentsOf: [${argExprs.join(', ')}])`
             }
             break
           case 'lastIndexOf':
@@ -6037,7 +6105,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (e.args.length === 1) {
               const liT = inferType(e.callee.object, _activeInferCtx)
               if (liT.kind === 'array') {
-                return `(${obj}.lastIndex(of: ${argExprs[0]!}) ?? -1)`
+                return `(${obj}${objDot}lastIndex(of: ${argExprs[0]!}) ?? -1)`
               }
               _emitWarnings.push(
                 `.lastIndexOf on a non-array receiver has no Swift lowering yet — emitting the raw call, which fails to compile. Use a supported shape or compute the index differently.`,
@@ -6056,9 +6124,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (e.args.length === 1) {
               const idxType = inferType(e.callee.object, _activeInferCtx)
               if (idxType.kind === 'string') {
-                return `(${obj}.range(of: ${argExprs[0]!}).map { ${obj}.distance(from: ${obj}.startIndex, to: $0.lowerBound) } ?? -1)`
+                return `(${obj}${objDot}range(of: ${argExprs[0]!}).map { ${obj}${objDot}distance(from: ${obj}${objDot}startIndex, to: $0.lowerBound) } ?? -1)`
               }
-              return `(${obj}.firstIndex(of: ${argExprs[0]!}) ?? -1)`
+              return `(${obj}${objDot}firstIndex(of: ${argExprs[0]!}) ?? -1)`
             }
             break
           }
@@ -6075,15 +6143,15 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // (matching the JS number). `Array(s.utf16)` gives O(1)
             // integer indexing; out-of-range crashes (JS returns NaN) —
             // bounds are the caller's concern, same v1 rule as `charAt`.
-            if (e.args.length === 1) return `Double(Array(${obj}.utf16)[Int(${argExprs[0]!})])`
+            if (e.args.length === 1) return `Double(Array(${obj}${objDot}utf16)[Int(${argExprs[0]!})])`
             break
           case 'startsWith':
             // JS String.startsWith → Swift `hasPrefix` (Kotlin's
             // startsWith is valid as-is, no mapping there).
-            if (e.args.length === 1) return `${obj}.hasPrefix(${argExprs[0]!})`
+            if (e.args.length === 1) return `${obj}${objDot}hasPrefix(${argExprs[0]!})`
             break
           case 'endsWith':
-            if (e.args.length === 1) return `${obj}.hasSuffix(${argExprs[0]!})`
+            if (e.args.length === 1) return `${obj}${objDot}hasSuffix(${argExprs[0]!})`
             break
           case 'join':
             // JS `arr.join(sep?)` → Swift `[String].joined(separator:)`.
@@ -6099,9 +6167,11 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               // failed SILENT on [Int] — caught by the idiom-sweep canary).
               const jt = inferType(e.callee.object, _activeInferCtx)
               if (jt.kind === 'array' && jt.element.kind !== 'string') {
+                // NOT `objDot`: a `?.` here would leave the chain optional and
+                // the trailing `.joined` would not type-check.
                 return `${obj}.map { String($0) }.joined(separator: ${sep})`
               }
-              return `${obj}.joined(separator: ${sep})`
+              return `${obj}${objDot}joined(separator: ${sep})`
             }
             break
           case 'split':
@@ -6109,7 +6179,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // (Foundation; multi-char separator, returns [String], faithful
             // to JS string-separator split). Kotlin's `split` matches JS
             // as-is, so it needs no mapping there.
-            if (e.args.length === 1) return `${obj}.components(separatedBy: ${argExprs[0]!})`
+            if (e.args.length === 1) return `${obj}${objDot}components(separatedBy: ${argExprs[0]!})`
             break
           case 'substring': {
             // JS `str.substring(start, end?)` — Swift String has NO
@@ -6121,9 +6191,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // `String.substring(start, end?)` matches JS, so no Kotlin map.
             const noNegative = e.args.every((a) => a.kind !== 'unary')
             if (noNegative) {
-              if (e.args.length === 1) return `String(${obj}.dropFirst(${argExprs[0]!}))`
+              if (e.args.length === 1) return `String(${obj}${objDot}dropFirst(${argExprs[0]!}))`
               if (e.args.length === 2) {
-                return `String(${obj}.dropFirst(${argExprs[0]!}).prefix(max(0, (${argExprs[1]!}) - (${argExprs[0]!}))))`
+                return `String(${obj}${objDot}dropFirst(${argExprs[0]!}).prefix(max(0, (${argExprs[1]!}) - (${argExprs[0]!}))))`
               }
             }
             break
@@ -6148,7 +6218,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (e.args.length >= 1 && okPad) {
               const len = argExprs[0]!
               const pad = e.args.length >= 2 ? argExprs[1]! : '" "'
-              const fill = `String(repeating: ${pad}, count: max(0, (${len}) - ${obj}.count))`
+              const fill = `String(repeating: ${pad}, count: max(0, (${len}) - ${obj}${objDot}count))`
               return prop === 'padStart' ? `(${fill} + ${obj})` : `(${obj} + ${fill})`
             }
             break
@@ -6182,7 +6252,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
                 const count = emitSwiftExpr(objExpr.args[0]!, indent)
                 return `Array(repeating: ${argExprs[0]!}, count: ${count})`
               }
-              return `Array(repeating: ${argExprs[0]!}, count: ${obj}.count)`
+              return `Array(repeating: ${argExprs[0]!}, count: ${obj}${objDot}count)`
             }
             break
           }
@@ -6201,13 +6271,13 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               const atT = inferType(e.callee.object, _activeInferCtx)
               if (atT.kind === 'string') {
                 _emitWarnings.push(
-                  `${obj}.at(...): String.at has no Swift lowering yet (String indices are not integers) — emitting the raw call, which fails to compile. Use string slicing or restructure.`,
+                  `${obj}${objDot}at(...): String.at has no Swift lowering yet (String indices are not integers) — emitting the raw call, which fails to compile. Use string slicing or restructure.`,
                 )
                 break
               }
               const i = argExprs[0]!
-              const resolved = `(${i} < 0 ? ${obj}.count + (${i}) : (${i}))`
-              return `(${obj}.indices.contains(${resolved}) ? ${obj}[${resolved}] : nil)`
+              const resolved = `(${i} < 0 ? ${obj}${objDot}count + (${i}) : (${i}))`
+              return `(${obj}${objDot}indices.contains(${resolved}) ? ${obj}[${resolved}] : nil)`
             }
             break
           }
@@ -6268,6 +6338,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
                     break
                 }
                 const body = `${wrap}(${recv}.${tail})`
+                // NOT `objDot`: this is Swift's `Optional.map`, which unwraps the
+                // optional itself — a `?.map` would unwrap FIRST and then hit
+                // `Sequence.map`, so `$0` becomes a Character on a `String?`
+                // ("value of type 'String.Element' has no member 'dropFirst'").
                 return optional ? `${obj}.map { ${body} }` : body
               }
               if (noNegative) {
@@ -6276,6 +6350,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
                 else if (e.args.length === 1) body = `${wrap}(${recv}.dropFirst(${argExprs[0]!}))`
                 else if (e.args.length === 2)
                   body = `${wrap}(${recv}.dropFirst(${argExprs[0]!}).prefix(max(0, (${argExprs[1]!}) - (${argExprs[0]!}))))`
+                // NOT `objDot`: this is Swift's `Optional.map`, which unwraps the
+                // optional itself — a `?.map` would unwrap FIRST and then hit
+                // `Sequence.map`, so `$0` becomes a Character on a `String?`
+                // ("value of type 'String.Element' has no member 'dropFirst'").
                 if (body !== null) return optional ? `${obj}.map { ${body} }` : body
               }
             }
@@ -6298,10 +6376,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               if (cb) {
                 const el = swiftIdent(cb.params[0]!)
                 const idx = swiftIdent(cb.params[1]!)
-                return `(${obj}.enumerated().first(where: ${emitSwiftIndexedClosure(cb, idx, el, indent, e.callee.object)})?.offset ?? -1)`
+                return `(${obj}${objDot}enumerated().first(where: ${emitSwiftIndexedClosure(cb, idx, el, indent, e.callee.object)})?.offset ?? -1)`
               }
             }
-            if (e.args.length === 1) return `(${obj}.firstIndex(where: ${argExprs[0]!}) ?? -1)`
+            if (e.args.length === 1) return `(${obj}${objDot}firstIndex(where: ${argExprs[0]!}) ?? -1)`
             break
           case 'replaceAll':
             // JS `str.replaceAll(a, b)` → Swift `replacingOccurrences(of:with:)`
@@ -6309,7 +6387,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // which is first-only in JS and handled below). Kotlin's
             // `String.replace(a, b)` is also replace-all.
             if (e.args.length === 2) {
-              return `${obj}.replacingOccurrences(of: ${argExprs[0]!}, with: ${argExprs[1]!})`
+              return `${obj}${objDot}replacingOccurrences(of: ${argExprs[0]!}, with: ${argExprs[1]!})`
             }
             break
           case 'replace':
@@ -6343,14 +6421,14 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // JS `arr.flat()` (one level) → Swift `flatMap { $0 }` (Kotlin:
             // `flatten()`). Only the no-arg (depth-1) form maps cleanly; a
             // numeric `flat(depth)` falls through to the generic emit.
-            if (e.args.length === 0) return `${obj}.flatMap { $0 }`
+            if (e.args.length === 0) return `${obj}${objDot}flatMap { $0 }`
             break
           case 'reverse':
             // JS `arr.reverse()` → Swift `Array(reversed())`. JS reverse
             // mutates in place AND returns the array; the native idiom is the
             // non-mutating `reversed()` (render-safe, matches `rx.reverse`),
             // wrapped in `Array(...)` so the result is a concrete `[T]`.
-            if (e.args.length === 0) return `Array(${obj}.reversed())`
+            if (e.args.length === 0) return `Array(${obj}${objDot}reversed())`
             break
           case 'reduce':
             // JS `arr.reduce(reducer, initial)` → Swift `reduce(initial,
@@ -6360,7 +6438,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // no-initial form (`arr.reduce(cb)`) needs a seed-from-first
             // shape, so it falls through to the generic emit.
             if (e.args.length === 2) {
-              return `${obj}.reduce(${argExprs[1]!}, ${argExprs[0]!})`
+              return `${obj}${objDot}reduce(${argExprs[1]!}, ${argExprs[0]!})`
             }
             // Seedless `arr.reduce(fn)` — JS uses arr[0] as the seed and folds
             // over the REST. Swift has no 1-arg reduce (the bare `reduce({…})`
@@ -6376,7 +6454,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               e.callee.kind === 'member' &&
               isReReadableExpr(e.callee.object)
             ) {
-              return `${obj}.dropFirst().reduce(${obj}[0], ${argExprs[0]!})`
+              return `${obj}${objDot}dropFirst().reduce(${obj}[0], ${argExprs[0]!})`
             }
             if (e.args.length === 1) {
               _emitWarnings.push(
@@ -6402,10 +6480,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             break
           }
           case 'toUpperCase':
-            if (e.args.length === 0) return `${obj}.uppercased()`
+            if (e.args.length === 0) return `${obj}${objDot}uppercased()`
             break
           case 'toLowerCase':
-            if (e.args.length === 0) return `${obj}.lowercased()`
+            if (e.args.length === 0) return `${obj}${objDot}lowercased()`
             break
           case 'sort': {
             // JS `arr.sort((a,b) => <numeric>)` → Swift
@@ -6429,7 +6507,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
                 break
               }
               const ps = cmp!.params.map((p) => swiftIdent(p)).join(', ')
-              return `${obj}.sorted(by: { ${ps} in (${emitSwiftExpr(cmp!.body, indent)}) < 0 })`
+              return `${obj}${objDot}sorted(by: { ${ps} in (${emitSwiftExpr(cmp!.body, indent)}) < 0 })`
             }
             break
           }
