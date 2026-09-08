@@ -84,7 +84,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -12053,6 +12053,10 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     const opts = swiftMarkOptionArgs(optsArg, tag, k, pyreonPalette)
     if (opts === 'unsupported') return 'EmptyView()'
     lets.push(`let pyreonValues${k}: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${body})`, 'Double', windowed)}`)
+    // The bounds ride the same row map the values do — `errLow`/`errHigh` are
+    // the LAST Series fields on both targets, so they append.
+    const errArgs = swiftMarkErrorArgs(optsArg, tag, k, rows, windowed, indent, lets)
+    if (errArgs === 'unsupported') return 'EmptyView()'
     // The navigator shows the first mark over EVERY row, whatever the window.
     if (k === 0 && navigating) navValues = swiftPlotRowMap(data, `pyreonChartDouble(${body})`, 'Double', false)
     if (bubble) {
@@ -12067,9 +12071,9 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       lets.push(`let pyreonRadii${k}: [Double] = bubbleRadii(${swiftPlotRowMap(rows, `pyreonChartDouble(${rBody})`, 'Double', windowed)}, ${range[0]}, ${range[1]})`)
       const at = opts.findIndex((o) => o.startsWith('showValues:')) + 1
       const withRadii = [...opts.slice(0, at), `radii: pyreonRadii${k}`, ...opts.slice(at)]
-      series.push(`Series(kind: "points", values: pyreonValues${k}, ${withRadii.join(', ')})`)
+      series.push(`Series(kind: "points", values: pyreonValues${k}, ${[...withRadii, ...errArgs].join(', ')})`)
     } else {
-      series.push(`Series(kind: ${JSON.stringify(kind)}, values: pyreonValues${k}, ${opts.join(', ')})`)
+      series.push(`Series(kind: ${JSON.stringify(kind)}, values: pyreonValues${k}, ${[...opts, ...errArgs].join(', ')})`)
     }
   }
   if (legend.toggling) {
@@ -12152,6 +12156,17 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   const mk = chartAttrExpr(e, 'markers')
   if (mk !== undefined) specArgs.push(`markers: ${withExpectedType({ kind: 'array', element: { kind: 'typeRef', name: 'PointMarker', args: [] } }, () => emitSwiftExpr(mk, indent))}`)
   if (swiftChartAnimating(e, 'PlotChart')) specArgs.push('progress: pyreonEntrance')
+  // The batch-2 spec switches: a literal each, AFTER `progress` (Swift's init order is the struct's field order).
+  for (const p of PLOT_SPEC_LITERAL_PROPS) {
+    const raw = readStaticAttr(e, p.name)
+    const v = chartAttrExpr(e, p.name)
+    if (v === undefined) continue
+    if (typeof raw !== p.kind) {
+      _emitWarnings.push(`<${tag}>: \`${p.name}\` must be a ${p.kind} literal on native; the prop is ignored.`)
+      continue
+    }
+    specArgs.push(`${p.name}: ${p.kind === 'string' ? JSON.stringify(raw) : String(raw)}`)
+  }
   lets.push(`let pyreonSpec: ChartSpec = ChartSpec(${specArgs.join(', ')})`)
   if (brushing) {
     // The band lives in PLOT space: the live span while dragging, else the
@@ -12360,6 +12375,37 @@ function swiftChartFormatter(e: Extract<ExprIR, { kind: 'jsx-element' }>, prop: 
 /** `<HeatmapChart data x y value colors? gap? theme? height width title onSelectIndex?>` → heatGridFrom over the mapped rows + the shared frame. */
 
 /** `<PlotChart data marks x? xValue? showXAxis? showYAxis? showGrid? horizontal? xTime? annotations? markers? y2Domain? theme? format? xFormat? y2Format? showLegend? showTitle? onSelect? …>` */
+
+/**
+ * The error-bar bounds of one mark's options as `errLow:` / `errHigh:` Series
+ * args, mapping each accessor over the SAME rows the values came from (the
+ * bubble radius channel's shape). Both bounds are needed for a whisker, so
+ * exactly one is named and dropped. `lets` receives the two row maps.
+ */
+function swiftMarkErrorArgs(
+  opts: ExprIR | undefined,
+  tag: string,
+  seriesIndex: number,
+  rows: string,
+  windowed: boolean,
+  indent: number,
+  lets: string[],
+): string[] | 'unsupported' {
+  if (opts === undefined || opts.kind !== 'object') return []
+  const low = opts.fields.find((f) => f.name === 'errorLow')?.value
+  const high = opts.fields.find((f) => f.name === 'errorHigh')?.value
+  if (low === undefined && high === undefined) return []
+  if (low === undefined || high === undefined) {
+    _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: an error bar needs BOTH \`errorLow\` and \`errorHigh\`; the bound given alone is ignored (as on the web).`)
+    return []
+  }
+  const lowBody = swiftAccessorExpr(low, tag, `mark ${seriesIndex + 1} errorLow`, indent)
+  const highBody = swiftAccessorExpr(high, tag, `mark ${seriesIndex + 1} errorHigh`, indent)
+  if (lowBody === 'unsupported' || highBody === 'unsupported') return 'unsupported'
+  lets.push(`let pyreonErrLow${seriesIndex}: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${lowBody})`, 'Double', windowed)}`)
+  lets.push(`let pyreonErrHigh${seriesIndex}: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${highBody})`, 'Double', windowed)}`)
+  return [`errLow: pyreonErrLow${seriesIndex}`, `errHigh: pyreonErrHigh${seriesIndex}`]
+}
 
 /** `[minRadius, maxRadius]` of a bubble's options literal, the web defaults (3, 18) when absent. */
 function swiftBubbleRange(opts: ExprIR | undefined): [string, string] {

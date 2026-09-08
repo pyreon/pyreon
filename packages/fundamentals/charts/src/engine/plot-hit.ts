@@ -2,7 +2,7 @@
 // the web host's click / tooltip and the native tap ask the SAME question.
 
 import { hitBar, hitNearestX, layoutSeriesPoints } from './layout'
-import { barsForIn, layoutChart, resolveYDomain, stackedHitIn } from './render'
+import { barsForIn, geometrySpec, layoutChart, resolveYDomain, stackedHitIn } from './render'
 import type { ChartSpec } from './render'
 import type { PlotLayout } from './layout'
 import type { Double, MeasureText } from './types'
@@ -20,7 +20,8 @@ export function plotHitBars(spec: ChartSpec, measure: MeasureText, px: Double, p
 /** `plotHitBars` over a layout the caller already computed — one layout per frame, not one per question. */
 export function plotHitBarsIn(spec: ChartSpec, l: PlotLayout, px: Double, py: Double): number {
   for (let i = 0; i < spec.series.length; i++) {
-    if (spec.series[i]!.kind !== 'bars') continue
+    const kind = spec.series[i]!.kind
+    if (kind !== 'bars' && kind !== 'waterfall') continue
     const idx = hitBar(barsForIn(spec, i, l.plot), px, py)
     if (idx >= 0) return idx
   }
@@ -37,11 +38,14 @@ export function plotHitIndex(spec: ChartSpec, measure: MeasureText, px: Double, 
 }
 
 /** `plotHitIndex` over a layout the caller already computed. */
-export function plotHitIndexIn(spec: ChartSpec, l: PlotLayout, px: Double, py: Double): number {
-  const barHit = plotHitBarsIn(spec, l, px, py)
+export function plotHitIndexIn(raw: ChartSpec, l: PlotLayout, px: Double, py: Double): number {
+  const barHit = plotHitBarsIn(raw, l, px, py)
   if (barHit >= 0) return barHit
+  // Nearest-x runs over the VIEW (a log chart's points sit where the log
+  // view put them) — the index it reports is the same row either way.
+  const spec = geometrySpec(raw)
   if (spec.series.length === 0) return -1
   const first = spec.series[0]!
-  if (first.kind === 'bars' || first.kind === 'stacked' || first.kind === 'grouped') return -1
+  if (first.kind === 'bars' || first.kind === 'stacked' || first.kind === 'grouped' || first.kind === 'waterfall') return -1
   return hitNearestX(layoutSeriesPoints(first.values, l.plot, resolveYDomain(spec)), px)
 }

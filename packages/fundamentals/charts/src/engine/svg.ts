@@ -164,7 +164,9 @@ export function svgCommand(c: DrawCmd, fontFamily: string, gradientId?: string):
   if (c.kind === 'circle') {
     return `<circle cx="${n(c.center.x)}" cy="${n(c.center.y)}" r="${n(c.radius)}" fill="${esc(c.fill)}"/>`
   }
-  return `<text x="${n(c.at.x)}" y="${n(c.at.y)}" fill="${esc(c.fill)}" font-size="${n(c.size)}" font-family="${esc(fontFamily)}" text-anchor="${ANCHOR[c.align]}" dominant-baseline="${BASELINE[c.baseline]}">${esc(c.text)}</text>`
+  const rot = c.rotate ?? 0
+  const transform = rot === 0 ? '' : ` transform="rotate(${n(rot)} ${n(c.at.x)} ${n(c.at.y)})"`
+  return `<text x="${n(c.at.x)}" y="${n(c.at.y)}" fill="${esc(c.fill)}" font-size="${n(c.size)}" font-family="${esc(fontFamily)}" text-anchor="${ANCHOR[c.align]}" dominant-baseline="${BASELINE[c.baseline]}"${transform}>${esc(c.text)}</text>`
 }
 
 /** Options for {@link renderSvg}. */

@@ -2650,6 +2650,11 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
         'Stage',
         'Cell',
         'Candle',
+        // The scale switches and the binned mark: `<Scale>` desugars to spec
+        // fields, `<Histogram>` warns by name in the desugar (the row
+        // reshape is web-side) — neither is a missing symbol.
+        'Scale',
+        'Histogram',
         'channel',
         // Mark + curve constructors consumed INLINE inside a `marks={[...]}`
         // array literal — the structural marks-array pass (chart-hosts.ts /
@@ -2665,8 +2670,11 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
         'line',
         'points',
         'stackedBars',
+        'waterfall',
         'smooth',
         'step',
+        // Engine arithmetic that crosses verbatim (bin.ts is in ENGINE_FILES).
+        'binValues',
         // Formatter constructors — a chart's `format`/`xFormat`/`yFormat`/
         // `y2Format` prop lowers a bare name (`plain`, `compact`) or a
         // factory CALL (`fixed(2)`, `currency("$", 2)`, `percent(1)`) via

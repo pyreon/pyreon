@@ -157,7 +157,18 @@ export function paint(
       ctx.textAlign = c.align === 'middle' ? 'center' : c.align
       ctx.textBaseline =
         c.baseline === 'middle' ? 'middle' : c.baseline === 'top' ? 'top' : 'alphabetic'
-      ctx.fillText(c.text, c.at.x, c.at.y)
+      const rot = c.rotate ?? 0
+      if (rot !== 0) {
+        // Rotate about the anchor: the text's own align/baseline then apply
+        // in the rotated frame, which is what a slanted axis label wants.
+        ctx.save()
+        ctx.translate(c.at.x, c.at.y)
+        ctx.rotate((rot * Math.PI) / 180)
+        ctx.fillText(c.text, 0, 0)
+        ctx.restore()
+      } else {
+        ctx.fillText(c.text, c.at.x, c.at.y)
+      }
     }
   }
   ctx.restore()

@@ -78,6 +78,8 @@ export const ENGINE_FILES = [
   'navigator',
   'brush',
   'a11y',
+
+  'bin',
 ] as const
 
 const RENAMES: ReadonlyArray<readonly [string, string]> = [

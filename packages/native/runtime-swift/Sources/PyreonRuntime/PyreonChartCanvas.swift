@@ -71,6 +71,8 @@ public struct PyreonDrawCmd: Codable, Equatable {
     public var size: Double?
     public var align: String?
     public var baseline: String?
+    /// Rotation about `at` in degrees, clockwise positive — a slanted axis label.
+    public var rotate: Double?
     // Full defaulted-parameter init in the GENERATED engine's field order —
     // the emitted geometry constructs commands as named-subset calls
     // (`PyreonDrawCmd(kind: "rect", rect: r, fill: f)`), and Swift requires
@@ -95,7 +97,8 @@ public struct PyreonDrawCmd: Codable, Equatable {
         at: PyreonChartPt? = nil,
         size: Double? = nil,
         align: String? = nil,
-        baseline: String? = nil
+        baseline: String? = nil,
+        rotate: Double? = nil
     ) {
         self.kind = kind
         self.rect = rect
@@ -115,6 +118,7 @@ public struct PyreonDrawCmd: Codable, Equatable {
         self.size = size
         self.align = align
         self.baseline = baseline
+        self.rotate = rotate
     }
 }
 
@@ -330,7 +334,17 @@ public struct PyreonChartCanvas: View {
                     case "middle": y = at.y - m.height / 2.0
                     default: y = at.y - m.height  // bottom ≈ alphabetic
                     }
-                    context.draw(resolved, in: CGRect(x: x, y: y, width: m.width, height: m.height))
+                    let rot = c.rotate ?? 0.0
+                    if rot != 0.0 {
+                        // Rotate about the anchor; align/baseline apply in the
+                        // rotated frame (the web canvas's translate + rotate).
+                        var rc = context
+                        rc.translateBy(x: at.x, y: at.y)
+                        rc.rotate(by: Angle(degrees: rot))
+                        rc.draw(resolved, in: CGRect(x: x - at.x, y: y - at.y, width: m.width, height: m.height))
+                    } else {
+                        context.draw(resolved, in: CGRect(x: x, y: y, width: m.width, height: m.height))
+                    }
                 default:
                     continue
                 }

@@ -31,9 +31,10 @@
 
 import { Fragment, Show, h, _rp as reactiveProp } from '@pyreon/core'
 import type { VNode, VNodeChild } from '@pyreon/core'
-import { computed } from '@pyreon/reactivity'
+import { computed, signal } from '@pyreon/reactivity'
+import type { Signal } from '@pyreon/reactivity'
 import { PlotChart } from './Chart'
-import type { PlotChartProps } from './Chart'
+import type { AxisLabelMode, PlotChartProps } from './Chart'
 import { PieChart } from './PieChart'
 import { FunnelChart } from './FunnelChart'
 import { HeatmapChart } from './HeatmapChart'
@@ -41,9 +42,10 @@ import { CandlestickChart } from './CandlestickChart'
 import type { CandleOptions } from './candlestick'
 import type { FunnelOptions } from './funnel'
 import type { Formatter } from './format'
-import { area, bars, bubble, groupedBars, line, points, stackedBars } from './marks'
-import type { Mark, MarkOptions } from './marks'
-import type { Annotation, ChartTheme, PointMarker } from './render'
+import { area, bars, bubble, groupedBars, histogram, line, points, resolveMarks, stackedBars, waterfall } from './marks'
+import type { ErrorOptions, Mark, MarkOptions } from './marks'
+import { defaultTheme, logBounds, resolveYDomain } from './render'
+import type { Annotation, ChartSpec, ChartTheme, PointMarker } from './render'
 import type { LegendPosition } from './canvas-host'
 import type { Domain, Double } from './types'
 import type { ChartHandle, ChartLink } from './link'
@@ -67,12 +69,17 @@ export interface MarkProps<T> extends Omit<MarkOptions, 'color'> {
   y: Channel<T>
   /** Fixed colour; the theme palette otherwise. */
   color?: string
+  /** Error-bar bounds — both needed; a whisker from low to high through each datum. */
+  errorLow?: Channel<T>
+  errorHigh?: Channel<T>
 }
 export interface BarProps<T> extends MarkProps<T> {
   /** Stack this bar on the other stacked bars (one segment per mark, or per `color` value in long form). */
   stack?: boolean
   /** Place side by side with the other grouped bars. */
   group?: boolean
+  /** Floating bars from running total to running total — the waterfall; `negativeColor` fills the falls. */
+  waterfall?: boolean
 }
 export interface DotProps<T> extends MarkProps<T> {
   /** A radius channel turns dots into bubbles (area-mapped). */
@@ -98,10 +105,41 @@ export interface AxisProps {
   y2?: boolean
   format?: Formatter
   domain?: Domain
-  /** x only: the tick labels are calendar steps (epoch-ms `xValue`). */
+  /** x or y: the tick labels are calendar steps (epoch-ms values). */
   time?: boolean
   /** Hide the axis. */
   hidden?: boolean
+  /** A title in its own line outside the tick labels. */
+  title?: string
+  /** x only: what the labels do when they run out of room (`auto` rotates categories, thins numbers). */
+  labels?: AxisLabelMode
+  /** y only: the scale type; `<Scale y="log">` is the same switch. */
+  scale?: 'linear' | 'log'
+}
+/**
+ * The scales, as one element: `<Scale y="log" />`, `<Scale x="time" />`,
+ * `<Scale normalize />` for a 100% stack. `<Axis>` carries the same switches
+ * per axis; this is the place to state them together.
+ */
+export interface ScaleProps {
+  y?: 'linear' | 'log' | 'time'
+  x?: 'linear' | 'time'
+  /** Draw the stacked bars as shares of each column. */
+  normalize?: boolean
+}
+/**
+ * A histogram of one value channel: the rows are binned and the plot draws
+ * one bar per bin (count on y, the bin's range as its category). Replaces
+ * the data the way the long-format pivot does; other marks are ignored.
+ */
+export interface HistogramProps<T> {
+  x: Channel<T>
+  /** Target bin count; default 10. */
+  bins?: number
+  label?: string
+  color?: string
+  /** Formats the bin edges in the category labels. */
+  format?: Formatter
 }
 export interface TipProps {
   /** Custom lines; default is the engine's category + one line per series. */
@@ -201,6 +239,10 @@ export const Legend = /* @__PURE__ */ brand<LegendProps>('Legend')
 export const Zoom = /* @__PURE__ */ brand<ZoomProps>('Zoom')
 /** A datum-anchored label (the engine's point marker). */
 export const Label = /* @__PURE__ */ brand<LabelProps>('Label')
+/** The scale switches — see {@link ScaleProps}. */
+export const Scale = /* @__PURE__ */ brand<ScaleProps>('Scale')
+/** A binned value channel drawn as bars — see {@link HistogramProps}. */
+export const Histogram = /* @__PURE__ */ brand<HistogramProps<any>>('Histogram') as <T>(props: HistogramProps<T>) => VNode | null
 /** A pie or donut — the family mark for `<PieChart>`. */
 export const Arc = /* @__PURE__ */ brand<ArcProps<any>>('Arc') as <T>(props: ArcProps<T>) => VNode | null
 /** A funnel — the family mark for `<FunnelChart>`. */
@@ -290,6 +332,17 @@ export interface PlotProps<T> {
   seriesLabels?: string[]
   toolbox?: PlotChartProps<T>['toolbox']
   onSaveImage?: PlotChartProps<T>['onSaveImage']
+  /** A BCP 47 tag formatting numbers and dates through Intl — see `<PlotChart locale>`. */
+  locale?: string
+  /**
+   * Small multiples: one panel per distinct value of this channel, in a
+   * grid, every panel sharing the y domain (a facet whose axis differs from
+   * its neighbour's cannot be compared to it). Each panel is titled with its
+   * value. The other channels, marks and switches apply to every panel.
+   */
+  facet?: Channel<T, string>
+  /** Panels per row; default 2. */
+  facetColumns?: number
   children?: VNodeChild
 }
 
@@ -297,8 +350,8 @@ export interface PlotProps<T> {
 export interface ResolvedGrammar<T> {
   marks: Mark<T>[]
   props: Partial<PlotChartProps<T>>
-  /** Long-format pivot: the synthesized category rows replace `data`. */
-  pivot: { rows: string[]; x: (d: string) => string } | null
+  /** Long-format pivot (or a histogram's bins): the synthesized rows replace `data`, and `x` labels them. */
+  pivot: { rows: unknown[]; x: (d: unknown, index: number) => string } | null
   /** A family mark was given: the host to render and the props (channels as accessors) it takes instead of `<PlotChart>`. */
   family: { host: FamilyHost; props: Record<string, unknown> } | null
 }
@@ -373,16 +426,33 @@ export function resolveGrammar<T>(rows: T[], chart: PlotProps<T>, children: VNod
           if (a.format !== undefined) props.xFormat = a.format
           if (a.time === true) props.xTime = true
           if (a.hidden === true) props.showXAxis = false
+          if (a.title !== undefined) props.xTitle = a.title
+          if (a.labels !== undefined) props.xLabels = a.labels
         } else if (a.y2 === true) {
           if (a.format !== undefined) props.y2Format = a.format
           if (a.domain !== undefined) props.y2Domain = a.domain
+          if (a.title !== undefined) props.y2Title = a.title
         } else {
           if (a.format !== undefined) props.format = a.format
           if (a.domain !== undefined) props.yDomain = a.domain
           if (a.hidden === true) props.showYAxis = false
+          if (a.title !== undefined) props.yTitle = a.title
+          if (a.time === true) props.yTime = true
+          if (a.scale !== undefined) props.yScale = a.scale
         }
         break
       }
+      case 'Scale': {
+        const sc = p as ScaleProps
+        if (sc.y === 'log' || sc.y === 'linear') props.yScale = sc.y
+        if (sc.y === 'time') props.yTime = true
+        if (sc.x === 'time') props.xTime = true
+        if (sc.normalize === true) props.stackNormalize = true
+        break
+      }
+      case 'Histogram':
+        rawMarks.push({ vnode: v, name })
+        break
       case 'Tip': {
         const t = p as TipProps
         props.tooltip = true
@@ -417,6 +487,20 @@ export function resolveGrammar<T>(rows: T[], chart: PlotProps<T>, children: VNod
   if (family !== null) {
     if (rawMarks.length > 0) warnGrammar(`a ${family.host} mark beside <${rawMarks[0]!.name}> — the plot renders the ${family.host}; the cartesian marks are ignored.`)
     return { marks: [], props, pivot: null, family }
+  }
+
+  // A histogram replaces the rows with its bins; it is the whole plot.
+  const hist = rawMarks.find((m) => m.name === 'Histogram')
+  if (hist !== undefined) {
+    if (rawMarks.length > 1) warnGrammar(`<Histogram> beside another mark — the plot draws the histogram; the other marks are ignored.`)
+    const hp = hist.vnode.props as unknown as HistogramProps<T>
+    const opts: Parameters<typeof histogram>[2] = {}
+    if (hp.bins !== undefined) opts.bins = hp.bins
+    if (hp.label !== undefined) opts.label = hp.label
+    if (hp.color !== undefined) opts.color = hp.color
+    if (hp.format !== undefined) opts.format = hp.format
+    const built = histogram(rows, channel<T, Double>(hp.x), opts)
+    return { marks: built.marks as unknown as Mark<T>[], props, pivot: { rows: built.data, x: (d) => built.x(d as (typeof built.data)[number]) }, family: null }
   }
 
   const colorOf = chart.color === undefined ? null : channel<T, string>(chart.color)
@@ -462,16 +546,18 @@ export function resolveGrammar<T>(rows: T[], chart: PlotProps<T>, children: VNod
       marks.push(m)
     }
   }
-  return { marks, props, pivot: { rows: categories, x: (d) => d }, family: null }
+  return { marks, props, pivot: { rows: categories, x: (d) => d as string }, family: null }
 }
 
 function toMark<T>(name: string, p: Record<string, unknown>, yOverride: ((d: T, i: number) => Double) | undefined): Mark<T> {
   const y = yOverride ?? channel<T, Double>(p.y as Channel<T>)
-  const { y: _y, r, stack, group, minRadius, maxRadius, ...rest } = p as Record<string, unknown> & { r?: Channel<T>; stack?: boolean; group?: boolean; minRadius?: Double; maxRadius?: Double }
-  const options = rest as MarkOptions
+  const { y: _y, r, stack, group, waterfall: isWaterfall, minRadius, maxRadius, errorLow, errorHigh, ...rest } = p as Record<string, unknown> & { r?: Channel<T>; stack?: boolean; group?: boolean; waterfall?: boolean; minRadius?: Double; maxRadius?: Double; errorLow?: Channel<T>; errorHigh?: Channel<T> }
+  const options = rest as ErrorOptions<T>
+  if (errorLow !== undefined) options.errorLow = channel<T, Double>(errorLow)
+  if (errorHigh !== undefined) options.errorHigh = channel<T, Double>(errorHigh)
   switch (name) {
     case 'Bar':
-      return stack === true ? stackedBars<T>(y, options) : group === true ? groupedBars<T>(y, options) : bars<T>(y, options)
+      return isWaterfall === true ? waterfall<T>(y, options) : stack === true ? stackedBars<T>(y, options) : group === true ? groupedBars<T>(y, options) : bars<T>(y, options)
     case 'Line':
       return line<T>(y, options)
     case 'Area':
@@ -529,10 +615,10 @@ export function Plot<T>(props: PlotProps<T>): VNodeChild {
     xValue: reactiveProp(() => (props.xValue === undefined ? undefined : channel<T, Double>(props.xValue))),
   }
   // Every `<PlotChart>` prop a child can set, forwarded as an accessor; the chart's own props win when both are given.
-  const forwarded = ['format', 'xFormat', 'xTime', 'showXAxis', 'showYAxis', 'yDomain', 'y2Format', 'y2Domain', 'tooltip', 'crosshair', 'tooltipFormatter', 'showLegend', 'legendToggle', 'legendMaxRows', 'legendPosition', 'dataZoom', 'navigator', 'zoomPresets', 'link', 'brush', 'onBrush', 'annotations', 'markers'] as const
+  const forwarded = ['format', 'xFormat', 'xTime', 'showXAxis', 'showYAxis', 'yDomain', 'y2Format', 'y2Domain', 'tooltip', 'crosshair', 'tooltipFormatter', 'showLegend', 'legendToggle', 'legendMaxRows', 'legendPosition', 'dataZoom', 'navigator', 'zoomPresets', 'link', 'brush', 'onBrush', 'annotations', 'markers', 'xTitle', 'yTitle', 'y2Title', 'xLabels', 'yScale', 'yTime', 'stackNormalize'] as const
   for (const key of forwarded) plotProps[key] = reactiveProp(() => (props as unknown as Record<string, unknown>)[key] ?? (resolved().props as Record<string, unknown>)[key])
   // Every other `<PlotChart>` prop, the events/actions model included — the grammar reaches the whole host.
-  for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'showGrid', 'horizontal', 'animate', 'updateAnimation', 'updateDuration', 'maxPoints', 'keyboard', 'accessibleTable', 'class', 'handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'onZoom', 'emphasis', 'seriesLabels', 'toolbox', 'onSaveImage'] as const) {
+  for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'showGrid', 'horizontal', 'animate', 'updateAnimation', 'updateDuration', 'maxPoints', 'keyboard', 'accessibleTable', 'class', 'handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'onZoom', 'emphasis', 'seriesLabels', 'toolbox', 'onSaveImage', 'locale'] as const) {
     plotProps[key] = reactiveProp(() => (props as unknown as Record<string, unknown>)[key])
   }
   // `onSelect` and `onSelectIndex` are one callback on the plot host.
@@ -546,8 +632,89 @@ export function Plot<T>(props: PlotProps<T>): VNodeChild {
       b(i)
     }
   })
+  if (props.facet !== undefined) return facetGrid(props, readRows, plotProps)
   return () => {
     const kind = hostKind()
     return kind === 'plot' ? h(PlotChart as unknown as (p: Record<string, unknown>) => VNode, plotProps) : familyNode(kind)
   }
+}
+
+/**
+ * Small multiples. The rows split by the facet channel into panels, each an
+ * ordinary `<PlotChart>` over ITS rows (re-resolving the marks per panel, so
+ * a long-format pivot works inside a facet) and titled with its value. Every
+ * panel takes the SHARED y domain derived over ALL rows — the point of a
+ * facet grid is comparison, and panels on their own scales cannot be
+ * compared. A new value adds a panel; panels whose value persists keep
+ * their identity across data changes (each reads its rows through a signal).
+ */
+function facetGrid<T>(props: PlotProps<T>, readRows: () => T[], base: Record<string, unknown>): VNodeChild {
+  const facetOf = channel<T, string>(props.facet!)
+  const panelRows = new Map<string, Signal<T[]>>()
+  /**
+   * The panel's rows signal — created once per facet VALUE, then written.
+   * A helper rather than an inline `signal(...)` in the grouping loop: one
+   * signal per panel is the point (the panel keeps its identity across data
+   * changes), but a bare `signal()` in a loop body is the shape that usually
+   * means a signal per RENDER, so `pyreon/no-signal-in-loop` flags it — and
+   * the named helper says which of the two this is.
+   */
+  const writePanel = (key: string, rows: T[]): void => {
+    const existing = panelRows.get(key)
+    if (existing === undefined) panelRows.set(key, signal(rows))
+    else existing.set(rows)
+  }
+  // The keys, in first-seen order; rows land in each panel's signal.
+  const keys = computed<string[]>(() => {
+    const rows = readRows()
+    const groups = new Map<string, T[]>()
+    for (let i = 0; i < rows.length; i++) {
+      const k = facetOf(rows[i]!, i)
+      const g = groups.get(k)
+      if (g === undefined) groups.set(k, [rows[i]!])
+      else g.push(rows[i]!)
+    }
+    const out: string[] = []
+    for (const [k, g] of groups) {
+      writePanel(k, g)
+      out.push(k)
+    }
+    return out
+  }, { equals: (a, b) => a.length === b.length && a.every((k, i) => k === b[i]) })
+  // The shared y domain over every row, through the same marks each panel
+  // draws — the log view pins its decades, the ordinary view its extent.
+  const shared = computed<Domain | undefined>(() => {
+    const r = resolveGrammar(readRows(), props, props.children)
+    if (r.props.yDomain !== undefined) return r.props.yDomain
+    if (r.family !== null || r.marks.length === 0) return undefined
+    const rows = r.pivot === null ? readRows() : (r.pivot.rows as T[])
+    const spec: ChartSpec = {
+      width: 1.0, height: 1.0, series: resolveMarks(rows, r.marks), categories: [], theme: defaultTheme,
+      showXAxis: true, showYAxis: true, showGrid: false,
+      yScale: r.props.yScale,
+      stackNormalize: r.props.stackNormalize,
+    }
+    return spec.yScale === 'log' ? logBounds(spec) : resolveYDomain(spec)
+  })
+  const cols = props.facetColumns ?? 2
+  const panel = (key: string): VNode => {
+    const rows = panelRows.get(key)!
+    const resolved = computed<ResolvedGrammar<T>>(() => resolveGrammar(rows(), props, props.children))
+    const p: Record<string, unknown> = { ...base }
+    p.data = reactiveProp(() => {
+      const r = resolved()
+      return r.pivot === null ? rows() : r.pivot.rows
+    })
+    p.marks = reactiveProp(() => resolved().marks)
+    p.x = reactiveProp(() => {
+      const r = resolved()
+      if (r.pivot !== null) return r.pivot.x
+      return props.x === undefined ? undefined : channel<T, string>(props.x)
+    })
+    p.yDomain = reactiveProp(() => shared())
+    p.title = key
+    p.showTitle = true
+    return h(PlotChart as unknown as (p: Record<string, unknown>) => VNode, p)
+  }
+  return h('div', { class: 'pyreon-plot-facets', style: `display:grid;grid-template-columns:repeat(${cols},minmax(0,1fr));gap:12px` }, () => keys().map(panel))
 }

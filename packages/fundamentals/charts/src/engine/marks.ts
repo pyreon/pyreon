@@ -15,6 +15,10 @@ import { DEFAULT_PALETTE, paletteAt } from './palette'
 import { bubbleRadii } from './bubble'
 import type { SeriesGradient } from './gradient'
 import type { Double, Pt } from './types'
+import { binValues } from './bin'
+import type { Bin } from './bin'
+import { plain } from './format'
+import type { Formatter } from './format'
 
 /** Reads one numeric channel out of a datum. */
 export type Accessor<T> = (d: T, index: number) => Double
@@ -106,6 +110,19 @@ export interface MarkOptions {
    * one for annotations; this is the mark-level way to ask for it.
    */
   dash?: Double[]
+  /** The fill a `waterfall` step takes when its value is negative; a translucent `color` otherwise. */
+  negativeColor?: string
+}
+
+/**
+ * Error-bar bounds for `bars`, `line`, `area` and `points`: a whisker from
+ * `errorLow` to `errorHigh` through each datum. Both accessors are needed;
+ * a gap in either draws no whisker for that datum. The bounds join the
+ * domain, so a whisker never leaves the axis.
+ */
+export interface ErrorOptions<T> extends MarkOptions {
+  errorLow?: Accessor<T>
+  errorHigh?: Accessor<T>
 }
 
 /** A mark bound to its accessor, resolved against data at render time. */
@@ -125,6 +142,9 @@ export interface Mark<T> {
    * zero.
    */
   transform?: ((values: Double[]) => Double[]) | undefined
+  /** Error-bar bounds; see `ErrorOptions`. */
+  errorLow?: Accessor<T> | undefined
+  errorHigh?: Accessor<T> | undefined
 }
 
 /**
@@ -133,13 +153,25 @@ export interface Mark<T> {
  * position and an explicit `color` always wins.
  */
 
-function mark<T>(kind: Series['kind'], y: Accessor<T>, options: MarkOptions): Mark<T> {
-  return { kind, y, options, r: undefined, transform: undefined }
+function mark<T>(kind: Series['kind'], y: Accessor<T>, options: ErrorOptions<T>): Mark<T> {
+  return { kind, y, options, r: undefined, transform: undefined, errorLow: options.errorLow, errorHigh: options.errorHigh }
 }
 
 /** Vertical bars, one per datum, measured from the zero line. */
-export function bars<T>(y: Accessor<T>, options: MarkOptions = {}): Mark<T> {
+export function bars<T>(y: Accessor<T>, options: ErrorOptions<T> = {}): Mark<T> {
   return mark('bars', y, options)
+}
+
+/**
+ * Floating bars from running total to running total — the waterfall (bridge)
+ * chart. Each datum is a STEP: a positive value rises from where the previous
+ * step ended, a negative one falls from it (in `negativeColor`), and a gap
+ * leaves the level alone. The domain spans every running total, so the
+ * chart shows the path from the first level to the last; a total bar is a
+ * datum whose value is the sum so far, like any other.
+ */
+export function waterfall<T>(y: Accessor<T>, options: MarkOptions = {}): Mark<T> {
+  return mark('waterfall', y, options)
 }
 
 /**
@@ -160,17 +192,17 @@ export function groupedBars<T>(y: Accessor<T>, options: MarkOptions = {}): Mark<
 }
 
 /** A polyline through every datum. */
-export function line<T>(y: Accessor<T>, options: MarkOptions = {}): Mark<T> {
+export function line<T>(y: Accessor<T>, options: ErrorOptions<T> = {}): Mark<T> {
   return mark('line', y, options)
 }
 
 /** A filled band between the line and the baseline. */
-export function area<T>(y: Accessor<T>, options: MarkOptions = {}): Mark<T> {
+export function area<T>(y: Accessor<T>, options: ErrorOptions<T> = {}): Mark<T> {
   return mark('area', y, options)
 }
 
 /** A dot per datum. */
-export function points<T>(y: Accessor<T>, options: MarkOptions = {}): Mark<T> {
+export function points<T>(y: Accessor<T>, options: ErrorOptions<T> = {}): Mark<T> {
   return mark('points', y, options)
 }
 
@@ -234,6 +266,21 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly s
       for (let i = 0; i < data.length; i++) rRaw.push(rAcc(data[i]!, i))
       radii = bubbleRadii(rRaw, m.minRadius ?? 3.0, m.maxRadius ?? 18.0)
     }
+    // Error bounds resolve like values: a non-finite bound is a gap.
+    const lowAcc = m.errorLow
+    const highAcc = m.errorHigh
+    let errLow: Double[] | undefined = undefined
+    let errHigh: Double[] | undefined = undefined
+    if (lowAcc !== undefined && highAcc !== undefined) {
+      errLow = []
+      errHigh = []
+      for (let i = 0; i < data.length; i++) {
+        const lo = lowAcc(data[i]!, i)
+        const hi = highAcc(data[i]!, i)
+        errLow.push(Number.isFinite(lo) ? lo : Number.NaN)
+        errHigh.push(Number.isFinite(hi) ? hi : Number.NaN)
+      }
+    }
     return {
       kind: m.kind,
       values,
@@ -251,6 +298,9 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly s
       corners: normalizeCorners(m.options.borderRadius),
       gradient: m.options.gradient,
       dash: m.options.dash,
+      negativeColor: m.options.negativeColor,
+      errLow,
+      errHigh,
     }
   })
 }
@@ -259,4 +309,44 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly s
 export function resolveCategories<T>(data: T[], x?: (d: T, index: number) => string): string[] {
   if (x === undefined) return []
   return data.map((d, i) => x(d, i))
+}
+
+export interface HistogramOptions {
+  /** Target bin count (the nice-step rule decides the actual number); default 10. */
+  bins?: number
+  /** Legend / tooltip / table name for the count series. */
+  label?: string
+  color?: string
+  /** Formats the bin edges in the category labels; the axis `format` otherwise. */
+  format?: Formatter
+}
+
+/** What `histogram()` returns — spread it into `<PlotChart>`: `<PlotChart {...histogram(rows, x)} />`. */
+export interface HistogramProps {
+  data: Bin[]
+  x: (b: Bin) => string
+  marks: Mark<Bin>[]
+}
+
+/**
+ * Bin a value channel and count each bin — the histogram, as data plus a
+ * `bars` mark over it, so it plots through the ordinary bar path (tooltip,
+ * table, selection and the native lowering all come for free). The bin
+ * label is its `[x0, x1)` range; `onSelect` reports the BIN index.
+ */
+export function histogram<T>(rows: T[], x: Accessor<T>, options: HistogramOptions = {}): HistogramProps {
+  const values: Double[] = []
+  for (let i = 0; i < rows.length; i++) {
+    const v = x(rows[i]!, i)
+    values.push(Number.isFinite(v) ? v : Number.NaN)
+  }
+  const data = binValues(values, options.bins ?? 10)
+  const fmt = options.format ?? plain
+  const markOptions: MarkOptions = { label: options.label ?? 'Count' }
+  if (options.color !== undefined) markOptions.color = options.color
+  return {
+    data,
+    x: (b: Bin) => `${fmt(b.x0)}–${fmt(b.x1)}`,
+    marks: [bars<Bin>((b) => b.count, markOptions)],
+  }
 }
