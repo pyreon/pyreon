@@ -5,7 +5,7 @@ import { DEFAULT_PALETTE } from './palette'
 import { layoutGroupedBars, layoutStackedBars, layoutWaterfall, normalizeStack, stackedExtent, waterfallExtent } from './stack'
 import type { Formatter } from './format'
 import type { LayoutConfig, PlotLayout } from './layout'
-import { extent, niceDomain, scaleLinear } from './scale'
+import { extent, isFiniteNumber, niceDomain, scaleLinear } from './scale'
 import { percent, plain } from './format'
 import { countToDouble } from './brush'
 import { polygonCmd, rectCmd } from './corners'
@@ -474,13 +474,9 @@ function deriveOver(series: Series[]): Domain {
   return niceDomain(withZero, 5.0)
 }
 
-/**
- * Finite check written for the native subset: a NaN is the only value that is
- * not equal to itself, and the engine never produces infinities. `Number.*`
- * has no lowering inside this module, so the comparison IS the check.
- */
+/** Finite check — `isFiniteNumber` from `./scale` (NaN AND infinity are gaps; `Number.*` has no native lowering). */
 function isFiniteValue(v: Double): boolean {
-  return v === v
+  return isFiniteNumber(v)
 }
 
 /** Longest series length — the x extent for a numeric axis. */

@@ -2146,10 +2146,15 @@ public func niceDomain(_ d: Domain, _ targetCount: Double) -> Domain {
     return Domain(min: floor(Double(Double(d.min) / step)) * step, max: ceil(Double(Double(d.max) / step)) * step)
   }
 
+public func isFiniteNumber(_ v: Double) -> Bool { v == v && v - v == 0.0 }
+
 public func makeTicks(_ d: Domain, _ r0: Double, _ r1: Double, _ count: Double, _ format: ((Double) -> String)? = nil) -> [Tick] {
     let fmt = (format ?? formatTick)
     var out: [Tick] = []
     if count <= 0.0 {
+      return out
+    }
+    if !isFiniteNumber(d.min) || !isFiniteNumber(d.max) {
       return out
     }
     let span = d.max - d.min
@@ -2181,18 +2186,28 @@ public func formatTick(_ v: Double) -> String {
   }
 
 public func extent(_ values: [Double]) -> Domain {
-    if values.count == 0 {
-      return Domain(min: 0.0, max: 1.0)
-    }
-    var lo = values[0]
-    var hi = values[0]
+    var seen = false
+    var lo = 0.0
+    var hi = 1.0
     for v in values {
-      if v < lo {
+      if !isFiniteNumber(v) {
+        continue
+      }
+      if !seen {
         lo = v
-      }
-      if v > hi {
         hi = v
+        seen = true
+      } else {
+        if v < lo {
+          lo = v
+        }
+        if v > hi {
+          hi = v
+        }
       }
+    }
+    if !seen {
+      return Domain(min: 0.0, max: 1.0)
     }
     return Domain(min: lo, max: hi)
   }
@@ -2748,7 +2763,7 @@ public func layoutBars(_ values: [Double], _ plot: PyreonChartRect, _ yDomain: D
     let zeroY = scaleLinear(yDomain, plot.y + plot.h, plot.y, zero)
     for i in 0..<n {
       let raw = values[i]
-      let v = raw == raw ? raw : zero
+      let v = isFiniteNumber(raw) ? raw : zero
       let vy = scaleLinear(yDomain, plot.y + plot.h, plot.y, v)
       let top = vy < zeroY ? vy : zeroY
       let h = abs(zeroY - vy)
@@ -2795,7 +2810,7 @@ public func layoutBarsH(_ values: [Double], _ plot: PyreonChartRect, _ vDomain: 
     let zeroX = scaleLinear(vDomain, plot.x, plot.x + plot.w, zero)
     for i in 0..<n {
       let raw = values[i]
-      let v = raw == raw ? raw : zero
+      let v = isFiniteNumber(raw) ? raw : zero
       let vx = scaleLinear(vDomain, plot.x, plot.x + plot.w, v)
       let left = vx < zeroX ? vx : zeroX
       out.append(PyreonChartRect(x: left, y: plot.y + band * Double(i) + (band - bh) / 2.0, w: abs(vx - zeroX), h: bh))
@@ -2921,7 +2936,7 @@ public func layoutGroupedBars(_ seriesValues: [[Double]], _ plot: PyreonChartRec
       let gx = plot.x + band * Double(i) + (band - groupW) / 2.0
       for s in 0..<k {
         let raw = (seriesValues[s][i] ?? 0.0)
-        let v = raw == raw ? raw : zero
+        let v = isFiniteNumber(raw) ? raw : zero
         let vy = scaleLinear(yDomain, plot.y + plot.h, plot.y, v)
         out.append(StackSegment(rect: PyreonChartRect(x: gx + barW * Double(s), y: vy < zeroY ? vy : zeroY, w: barW, h: abs(zeroY - vy)), seriesIndex: s, datumIndex: i, value: v))
       }
@@ -2962,7 +2977,7 @@ public func normalizeStack(_ seriesValues: [[Double]]) -> [[Double]] {
       for i in 0..<s.count {
         let v = s[i]
         let total = totals[i]
-        row.append(total > 0.0 ? Double(v) / Double(total) : v == v ? 0.0 : v)
+        row.append(total > 0.0 ? Double(v) / Double(total) : isFiniteNumber(v) ? 0.0 : v)
       }
       out.append(row)
     }
@@ -2981,7 +2996,7 @@ public func layoutWaterfall(_ values: [Double], _ plot: PyreonChartRect, _ yDoma
     var acc = 0.0
     for i in 0..<n {
       let v = values[i]
-      if v != v {
+      if !isFiniteNumber(v) {
         continue
       }
       let start = acc
@@ -2999,7 +3014,7 @@ public func waterfallExtent(_ values: [Double]) -> Domain {
     var lo = 0.0
     var hi = 0.0
     for v in values {
-      if v != v {
+      if !isFiniteNumber(v) {
         continue
       }
       acc = acc + v
@@ -3203,7 +3218,7 @@ public func deriveOver(_ series: [Series]) -> Domain {
     return niceDomain(withZero, 5.0)
   }
 
-public func isFiniteValue(_ v: Double) -> Bool { v == v }
+public func isFiniteValue(_ v: Double) -> Bool { isFiniteNumber(v) }
 
 public func seriesMaxLength(_ series: [Series]) -> Int {
     var n = 0
@@ -4892,7 +4907,7 @@ public func riverValue(_ s: RiverSeries, _ i: Int) -> Double {
       return 0.0
     }
     let v = s.values[i]
-    if v != v {
+    if !isFiniteNumber(v) {
       return 0.0
     }
     return v < 0.0 ? 0.0 : v
@@ -5251,7 +5266,7 @@ public func layoutPolar(_ axes: PolarAxes, _ series: [PolarSeries], _ box: Pyreo
           continue
         }
         let v = s.values[i]
-        if v != v {
+        if !isFiniteNumber(v) {
           continue
         }
         if col >= 0 {
@@ -5309,7 +5324,7 @@ public func layoutPolar(_ axes: PolarAxes, _ series: [PolarSeries], _ box: Pyreo
         for i in 0..<n {
           if i < s.values.count {
             let v = s.values[i]
-            if v == v {
+            if isFiniteNumber(v) {
               let inner = (slot * barGap) / 2.0
               let width = (slot - slot * barGap) / columnsF
               let a0 = start + dir * slot * iF + dir * (inner + width * colF)
@@ -5334,7 +5349,7 @@ public func layoutPolar(_ axes: PolarAxes, _ series: [PolarSeries], _ box: Pyreo
         for i in 0..<n {
           if i < s.values.count {
             let v = s.values[i]
-            if v == v {
+            if isFiniteNumber(v) {
               let r = innerR + (outerR - innerR) * polarFrac(v, domainLo, domainHi)
               points.append(PolarPoint(series: si, index: i, at: pointOnCircle(center, r, start + dir * slot * (iF + 0.5)), color: color, value: v))
             }
@@ -5373,7 +5388,7 @@ public func layoutPolar(_ axes: PolarAxes, _ series: [PolarSeries], _ box: Pyreo
         for i in 0..<n {
           if i < s.values.count {
             let v = s.values[i]
-            if v == v {
+            if isFiniteNumber(v) {
               let r0 = innerR + ring * iF + (ring * barGap) / 2.0
               let width = (ring - ring * barGap) / columnsF
               let sweep = dir * POLAR_TAU * polarFrac(v, domainLo, domainHi)
@@ -5396,7 +5411,7 @@ public func layoutPolar(_ axes: PolarAxes, _ series: [PolarSeries], _ box: Pyreo
         for i in 0..<n {
           if i < s.values.count {
             let v = s.values[i]
-            if v == v {
+            if isFiniteNumber(v) {
               points.append(PolarPoint(series: si, index: i, at: pointOnCircle(center, innerR + ring * (iF + 0.5), start + dir * POLAR_TAU * polarFrac(v, domainLo, domainHi)), color: color, value: v))
             }
           }
@@ -6401,7 +6416,7 @@ public func calendarCellValues(_ layout: CalendarLayout, _ values: [CalendarValu
     for v in values {
       let p = parseIsoDays(v.date)
       vDays.append(p.days)
-      vOk.append(p.ok && v.value == v.value)
+      vOk.append(p.ok && isFiniteNumber(v.value))
     }
     var iF = 0.0
     for i in 0..<layout.cells.count {
@@ -6853,7 +6868,7 @@ public func ganttDurationDays(_ row: GanttRow) -> Double {
   }
 
 public func parallelPlace(_ axis: ParallelLayoutAxis, _ v: Double) -> ParallelPlaced {
-    if v != v {
+    if !isFiniteNumber(v) {
       return ParallelPlaced(ok: false, y: 0.0)
     }
     let lo = axis.domain.min
@@ -6915,7 +6930,7 @@ public func layoutParallel(_ axes: [ParallelAxis], _ rows: [[Double]], _ box: Py
               continue
             }
             let v = r[a]
-            if v != v {
+            if !isFiniteNumber(v) {
               continue
             }
             if !seen || v < lo {
@@ -7100,7 +7115,7 @@ public func hitCandlestickChart(_ candles: [Ohlc], _ w: Double, _ h: Double, _ c
 public func fiveNumber(_ values: [Double]) -> FiveNumber {
     var sorted: [Double] = []
     for v in values {
-      if v == v {
+      if isFiniteNumber(v) {
         sorted.append(v)
       }
     }
@@ -7312,7 +7327,7 @@ public func heatGridFrom(_ xs: [String], _ ys: [String], _ values: [Double]) -> 
       }
       rowOf.append(ri)
       let v = i < values.count ? values[i] : 0.0
-      vals.append(v == v ? v : 0.0)
+      vals.append(isFiniteNumber(v) ? v : 0.0)
     }
     return buildHeatGrid(cols, rows, colOf, rowOf, vals)
   }
@@ -7513,7 +7528,7 @@ public func tooltipAt(_ index: Int, _ categories: [String], _ series: [TooltipSe
     var rows: [TooltipRow] = []
     for s in series {
       let v = s.values[index]
-      if v == nil || v != v {
+      if v == nil || !isFiniteNumber(v) {
         continue
       }
       let row = TooltipRow(label: s.label, value: v, color: s.color)
@@ -7789,7 +7804,7 @@ public func bubbleRadii(_ raw: [Double], _ minR: Double, _ maxR: Double) -> [Dou
     var clean: [Double] = []
     var hi = 0.0
     for v in raw {
-      let c = v == v && v > 0.0 ? v : 0.0
+      let c = isFiniteNumber(v) && v > 0.0 ? v : 0.0
       clean.append(c)
       if c > hi {
         hi = c
@@ -8011,7 +8026,7 @@ public func renderNavigator(_ values: [Double], _ color: String, _ win: ZoomWind
       var seen = false
       for i in 0..<values.count {
         let v = values[i]
-        if v == v {
+        if isFiniteNumber(v) {
           if !seen {
             lo = v
             hi = v
@@ -8030,7 +8045,7 @@ public func renderNavigator(_ values: [Double], _ color: String, _ win: ZoomWind
         var safe: [Double] = []
         for i in 0..<values.count {
           let v = values[i]
-          safe.append(v != v ? lo : v)
+          safe.append(!isFiniteNumber(v) ? lo : v)
         }
         let pts = layoutSeriesPoints(safe, strip, Domain(min: lo < 0.0 ? lo : 0.0, max: hi <= lo ? lo + 1.0 : hi))
         let last = pts[pts.count - 1]
@@ -8200,7 +8215,7 @@ public func chartTable(_ input: A11yInput) -> A11yTable {
           continue
         }
         let v = s.values[i]
-        row.append(v != v ? "" : fmt(v))
+        row.append(isFiniteNumber(v) ? fmt(v) : "")
       }
       rows.append(row)
     }
@@ -8210,7 +8225,7 @@ public func chartTable(_ input: A11yInput) -> A11yTable {
 public func binValues(_ values: [Double], _ count: Double) -> [Bin] {
     var finite: [Double] = []
     for v in values {
-      if v == v {
+      if isFiniteNumber(v) {
         finite.append(v)
       }
     }

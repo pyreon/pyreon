@@ -4,6 +4,7 @@
 // the native host both call it.
 
 import type { Double } from './types'
+import { isFiniteNumber } from './scale'
 
 /**
  * Map raw magnitudes to radii between `minR` and `maxR` by AREA (a sqrt
@@ -15,7 +16,7 @@ export function bubbleRadii(raw: Double[], minR: Double, maxR: Double): Double[]
   const clean: Double[] = []
   let hi = 0.0
   for (const v of raw) {
-    const c = v === v && v > 0.0 ? v : 0.0
+    const c = isFiniteNumber(v) && v > 0.0 ? v : 0.0
     clean.push(c)
     if (c > hi) hi = c
   }

@@ -4,7 +4,7 @@
 // a category axis and wrong for a scatter plot — there, x is a measured value
 // like y, and pretending otherwise silently redraws the data.
 
-import { scaleLinear } from './scale'
+import { isFiniteNumber, scaleLinear } from './scale'
 import type { Domain, Double, Pt, Rect } from './types'
 
 /** One band's worth of stacked segments, bottom to top. */
@@ -113,7 +113,7 @@ export function layoutGroupedBars(
     for (let s = 0; s < k; s++) {
       const raw = seriesValues[s]![i] ?? 0.0
       // A gap draws a zero-height bar at the zero line — nothing to see, nothing to hit.
-      const v = raw === raw ? raw : zero
+      const v = isFiniteNumber(raw) ? raw : zero
       const vy = scaleLinear(yDomain, plot.y + plot.h, plot.y, v)
       out.push({
         rect: {
@@ -183,7 +183,7 @@ export function normalizeStack(seriesValues: Double[][]): Double[][] {
       const v = s[i]!
       const total = totals[i]!
       // A gap stays NaN (NaN / x is NaN); a zero total maps everything to 0.
-      row.push(total > 0.0 ? v / total : v === v ? 0.0 : v)
+      row.push(total > 0.0 ? v / total : isFiniteNumber(v) ? 0.0 : v)
     }
     out.push(row)
   }
@@ -222,7 +222,7 @@ export function layoutWaterfall(
   let acc = 0.0
   for (let i = 0; i < n; i++) {
     const v = values[i]!
-    if (v !== v) continue
+    if (!isFiniteNumber(v)) continue
     const start = acc
     const end = acc + v
     const y0 = scaleLinear(yDomain, plot.y + plot.h, plot.y, start)
@@ -245,7 +245,7 @@ export function waterfallExtent(values: Double[]): Domain {
   let lo = 0.0
   let hi = 0.0
   for (const v of values) {
-    if (v !== v) continue
+    if (!isFiniteNumber(v)) continue
     acc = acc + v
     if (acc < lo) lo = acc
     if (acc > hi) hi = acc
