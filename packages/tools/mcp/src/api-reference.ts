@@ -5429,7 +5429,7 @@ const edges = [{ id: 'e1', source: 'a', target: 'b',
   },
 
   'flow/edge-path-helpers': {
-    signature: 'getBezierPath / getSmoothStepPath / getStraightPath / getStepPath / getWaypointPath / getEdgePath => { path: string; labelX: number; labelY: number } · getHandlePosition / getSmartHandlePositions',
+    signature: 'getBezierPath / getSmoothStepPath / getStraightPath / getStepPath / getWaypointPath / getEdgePath => { path: string; labelX: number; labelY: number } · getEffectiveDimensions / getFloatingEndpoints / getNodeIntersection / getSmartHandlePositions / resolveHandleAnchor (anchoring) · collectEdgeMarkers / resolveEdgeMarkers / resolveMarker / markerId / DEFAULT_MARKER_END (markers) · DEFAULT_NODE_WIDTH / DEFAULT_NODE_HEIGHT · getHandlePosition / getSmartHandlePositions',
     example: `import { getBezierPath } from '@pyreon/flow'
 
 const MyEdge = (props) => {

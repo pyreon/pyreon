@@ -218,6 +218,15 @@ export const SCENARIOS: Scenario[] = [
     imports: ['chartToSvg'],
   },
   {
+    id: '@pyreon/flow::core',
+    pkg: '@pyreon/flow',
+    dir: 'fundamentals/flow',
+    // A flow that never calls `layout()` must not pull the 932-line
+    // layout engine: `layout.ts` code-splits it behind a dynamic import, and
+    // this is the lock that the split stays a split.
+    imports: ['createFlow', 'Flow', 'Background', 'Controls', 'MiniMap'],
+  },
+  {
     id: '@pyreon/charts::plot-pie',
     pkg: '@pyreon/charts',
     dir: 'fundamentals/charts',

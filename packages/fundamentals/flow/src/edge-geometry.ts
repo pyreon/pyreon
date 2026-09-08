@@ -35,6 +35,7 @@ import { Position } from './types'
 // HAS handle info (measured or config); pre-measurement nodes are skipped so
 // the first un-measured frame can't false-positive.
 const _warnedHandleIds = new Set<string>()
+const WARNED_HANDLE_IDS_CAP = 1000
 
 function warnUnknownHandleOnce(
   edge: FlowEdge,
@@ -61,6 +62,10 @@ function warnUnknownHandleOnce(
     if (known.includes(handleId)) return
     const key = `${edge.id ?? `${edge.source}->${edge.target}`}:${side}`
     if (_warnedHandleIds.has(key)) return
+    // Module-level and keyed by edge+side: unbounded across a long session of
+    // regenerated edge ids (leak class C). A warning cache only has to
+    // suppress REPEATS, so resetting it past a cap costs one extra warning.
+    if (_warnedHandleIds.size >= WARNED_HANDLE_IDS_CAP) _warnedHandleIds.clear()
     _warnedHandleIds.add(key)
     // oxlint-disable-next-line no-console
     console.warn(

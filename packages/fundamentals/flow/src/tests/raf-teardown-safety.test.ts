@@ -15,10 +15,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createFlow } from '../flow'
 
-// elkjs cold-loads on the first `flow.layout()` call. Vitest's default
-// 5s timeout is too tight for fresh CI envs (measured 6.5s on GitHub
-// Actions). Subsequent calls hit elkjs warm in <100ms, so this only
-// matters for whichever test in this file runs first.
+// The layout engine chunk cold-loads on the first `flow.layout()` call
+// (a dynamic import of `./layout-engine`). Vitest's default 5s timeout was
+// too tight for fresh CI envs back when elkjs sat behind that import
+// (measured 6.5s on GitHub Actions); the pure engine is far cheaper, but the
+// headroom is kept so the first test in this file cannot flake on a cold
+// transform.
 vi.setConfig({ testTimeout: 30_000 })
 
 describe('rAF teardown safety', () => {

@@ -346,6 +346,23 @@ const NodeWithToolbar = (props) => (
       seeAlso: ['NodeResizer', 'Handle'],
     },
     {
+      name: 'flowStyles',
+      kind: 'constant',
+      signature: 'flowStyles: string',
+      summary:
+        'The package stylesheet as ONE plain string — every `.pyreon-flow-*` rule with its `--pyreon-flow-*` custom-property fallbacks (26 theme vars, all documented under "Theming"). Inject it once per document (`<style>{flowStyles}</style>`, a `useHead` style, or your CSS pipeline); it is an inert string with no side effects, so `sideEffects: false` tree-shakes it out of apps that ship their own CSS. Theme by overriding the variables on an ancestor, never by editing the string.',
+      example: `import { flowStyles } from '@pyreon/flow'
+
+// once, near the root
+<style>{flowStyles}</style>
+<div style="--pyreon-flow-edge: #7c3aed; --pyreon-flow-node-bg: #111">
+  <Flow instance={flow} />
+</div>`,
+      mistakes: [
+        'Forgetting to inject it — nodes render unstyled and edges invisible (the SVG has no stroke), which reads as a geometry bug.',
+        'Injecting it per <Flow> instance — it is document-scoped; N copies are N identical stylesheets.',
+      ],
+      seeAlso: ['Flow', 'Background'],
       name: 'EdgeLabelRenderer',
       kind: 'component',
       signature: 'EdgeLabelRenderer(props: { children?: VNodeChild }) => VNodeChild',
@@ -390,7 +407,7 @@ const edges = [{ id: 'e1', source: 'a', target: 'b',
       name: 'edge-path-helpers',
       kind: 'function',
       signature:
-        'getBezierPath / getSmoothStepPath / getStraightPath / getStepPath / getWaypointPath / getEdgePath => { path: string; labelX: number; labelY: number } · getHandlePosition / getSmartHandlePositions',
+        'getBezierPath / getSmoothStepPath / getStraightPath / getStepPath / getWaypointPath / getEdgePath => { path: string; labelX: number; labelY: number } · getEffectiveDimensions / getFloatingEndpoints / getNodeIntersection / getSmartHandlePositions / resolveHandleAnchor (anchoring) · collectEdgeMarkers / resolveEdgeMarkers / resolveMarker / markerId / DEFAULT_MARKER_END (markers) · DEFAULT_NODE_WIDTH / DEFAULT_NODE_HEIGHT · getHandlePosition / getSmartHandlePositions',
       summary:
         'SVG-path builders for CUSTOM edge components. `getBezierPath`, `getSmoothStepPath`, `getStraightPath`, `getStepPath`, `getWaypointPath` take a single OPTIONS object (`{ sourceX, sourceY, sourcePosition?, targetX, targetY, targetPosition?, … }`) and return an `EdgePathResult` object `{ path, labelX, labelY }`. `getEdgePath(type, sourceX, sourceY, sourcePos, targetX, targetY, targetPos)` is the POSITIONAL-arg dispatcher (unknown type → bezier). `getHandlePosition(position, nodeX, nodeY, nodeW, nodeH)` returns the `{ x, y }` anchor on a node edge; `getSmartHandlePositions(sourceNode, targetNode)` auto-picks the closest facing sides.',
       example: `import { getBezierPath } from '@pyreon/flow'

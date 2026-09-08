@@ -505,7 +505,7 @@ const edges = [{ id: 'e1', source: 'a', target: 'b',
 ### edge-path-helpers `function`
 
 ```ts
-getBezierPath / getSmoothStepPath / getStraightPath / getStepPath / getWaypointPath / getEdgePath => { path: string; labelX: number; labelY: number } · getHandlePosition / getSmartHandlePositions
+getBezierPath / getSmoothStepPath / getStraightPath / getStepPath / getWaypointPath / getEdgePath => { path: string; labelX: number; labelY: number } · getEffectiveDimensions / getFloatingEndpoints / getNodeIntersection / getSmartHandlePositions / resolveHandleAnchor (anchoring) · collectEdgeMarkers / resolveEdgeMarkers / resolveMarker / markerId / DEFAULT_MARKER_END (markers) · DEFAULT_NODE_WIDTH / DEFAULT_NODE_HEIGHT · getHandlePosition / getSmartHandlePositions
 ```
 
 SVG-path builders for CUSTOM edge components. `getBezierPath`, `getSmoothStepPath`, `getStraightPath`, `getStepPath`, `getWaypointPath` take a single OPTIONS object (`{ sourceX, sourceY, sourcePosition?, targetX, targetY, targetPosition?, … }`) and return an `EdgePathResult` object `{ path, labelX, labelY }`. `getEdgePath(type, sourceX, sourceY, sourcePos, targetX, targetY, targetPos)` is the POSITIONAL-arg dispatcher (unknown type → bezier). `getHandlePosition(position, nodeX, nodeY, nodeW, nodeH)` returns the `{ x, y }` anchor on a node edge; `getSmartHandlePositions(sourceNode, targetNode)` auto-picks the closest facing sides.
