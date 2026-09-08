@@ -44,7 +44,7 @@ const key = (el: HTMLElement, k: string): void => {
 }
 const at = (el: HTMLElement, type: string, x: number, y: number): void => {
   const r = el.getBoundingClientRect()
-  el.dispatchEvent(new MouseEvent(type, { clientX: r.left + x, clientY: r.top + y, bubbles: true }))
+  el.dispatchEvent(new PointerEvent(type.replace('mouse', 'pointer'), { clientX: r.left + x, clientY: r.top + y, bubbles: true }))
 }
 
 describe('selectedMode', () => {
@@ -157,12 +157,12 @@ describe('createChartHandle', () => {
     const { container } = mountChart({ onHighlight: (i: number) => hi.push(i) })
     await flush()
     const c = canvasOf(container)
-    at(c, 'mousemove', 200, 120)
+    at(c, 'pointermove', 200, 120)
     await flush()
     expect(hi.length).toBe(1)
     expect(hi[0]).toBeGreaterThanOrEqual(0)
     expect(c.getAttribute('data-pyreon-hover')).toBe(String(hi[0]))
-    at(c, 'mouseleave', 0, 0)
+    at(c, 'pointerleave', 0, 0)
     await flush()
     expect(hi[hi.length - 1]).toBe(-1)
   })

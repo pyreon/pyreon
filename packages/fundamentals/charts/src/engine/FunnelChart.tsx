@@ -45,6 +45,10 @@ export function FunnelChart<T>(props: FunnelChartProps<T>): VNode {
       props.onSelectIndex?.(i)
     },
     tooltip: (g, px, py) => orNull(funnelTip(g.stages, g.plot, px, py, props.funnel)),
+    pick: (_g, i) => {
+      props.onSelect?.(i)
+      props.onSelectIndex?.(i)
+    },
     a11y: (g) => ({
       title: props.title,
       categories: g.stages.map((x) => x.label),

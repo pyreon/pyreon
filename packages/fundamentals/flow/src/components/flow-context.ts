@@ -12,3 +12,16 @@ import type { FlowInstance } from '../types'
  * plain context — read once at child mount — is the right shape.
  */
 export const FlowContext = createContext<FlowInstance | null>(null)
+
+/**
+ * The overlay layers a mounted `<Flow>` owns: HTML edge labels live INSIDE
+ * the viewport (they pan and zoom with the graph), node toolbars live in the
+ * container (they follow their node but are never scaled). `null` on the
+ * server and outside a `<Flow>` — consumers fall back to inline rendering.
+ */
+export interface FlowLayers {
+  edgeLabels: HTMLElement
+  toolbars: HTMLElement
+}
+
+export const FlowLayersContext = createContext<FlowLayers | null>(null)

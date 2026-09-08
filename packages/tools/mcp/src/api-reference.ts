@@ -5238,6 +5238,10 @@ const json = flow.toJSON(); flow.fromJSON(json)       // round-trip serializatio
 - Reading \`flow.nodes()\` inside an event handler to get a snapshot — that is a TRACKED read; use \`getNodes()\` / \`getEdges()\` / \`getViewport()\` for plain reads.
 - Computing a drop position from \`clientX - rect.left\` by hand — \`screenToFlowPosition\` already folds in the container rect, pan and zoom (and \`flowToScreenPosition\` is its inverse).
 - Passing \`isValidConnection\` as a prop on \`<Flow>\` (React Flow) — here it is a \`createFlow\` config key, alongside \`connectionRadius\`.
+- Hunting for a \`interactionWidth\` prop on \`<Flow>\` — hit width is per edge (\`interactionWidth\`) with a config default (\`edgeInteractionWidth\`, 20px); a click near a hairline edge already lands on it.
+- Building a "figma-like" canvas by intercepting pointer events yourself — \`selectionOnDrag: true\` + \`panOnDrag: [1, 2]\` is the whole recipe, and \`deleteKeys\` / \`multiSelectionKey\` / \`selectionKey\` cover the key remaps.
+- Giving a child node (\`parentId\`) an ABSOLUTE position — a child position is relative to its parent; read \`getAbsolutePosition(id)\` when you need the canvas coordinate.
+- Wiring your own drag math to keep a child inside its group — \`extent: 'parent'\` clamps it and \`expandParent: true\` grows the group instead.
 - Forgetting to declare \`@pyreon/runtime-dom\` in consumer app deps — flow's JSX emits \`_tpl()\` which needs runtime-dom imports
 - Reading \`NodeComponentProps.data\` / \`.selected\` / \`.dragging\` as plain values — all three are REACTIVE ACCESSORS: \`props.data()\`, \`props.selected()\`, \`props.dragging()\`
 - Calling \`props.data()\` OUTSIDE a reactive scope — captures the value once at component setup, defeating the per-node reactivity. Read it inside JSX expression thunks, \`effect\`, or \`computed\`
@@ -5376,7 +5380,7 @@ const ResizableNode = (props) => (
   },
 
   'flow/NodeToolbar': {
-    signature: `NodeToolbar(props: { position?: 'top' | 'bottom' | 'left' | 'right'; offset?: number; showOnSelect?: boolean; selected?: boolean | (() => boolean); style?: string; class?: string; children?: VNodeChild }) => VNodeChild`,
+    signature: `NodeToolbar(props: { nodeId?: string; position?: 'top' | 'bottom' | 'left' | 'right'; align?: 'start' | 'center' | 'end'; offset?: number; showOnSelect?: boolean; selected?: boolean | (() => boolean); style?: string; class?: string; children?: VNodeChild }) => VNodeChild`,
     example: `import { NodeToolbar } from '@pyreon/flow'
 
 const NodeWithToolbar = (props) => (
@@ -5390,6 +5394,29 @@ const NodeWithToolbar = (props) => (
     notes: 'A floating toolbar placed beside its host node (default `position: "top"`, `offset` 8px). Returns a REACTIVE thunk that reads `selected` and renders `null` when `showOnSelect` (default true) and the node is not selected — so it shows/hides with live selection. Put action buttons for a node (delete, duplicate, edit) here. See also: NodeResizer, Handle.',
     mistakes: `- Expecting it to escape node clipping like React Flow — it is NOT a portal; it renders inline as an absolutely-positioned div, so an ancestor \`overflow: hidden\` CLIPS it. The host node must be \`position: relative\`.
 - Passing a bare boolean \`selected={someValue}\` — that snapshots selection and never updates. Pass the reactive accessor (the custom node's \`props.selected\`, which is \`() => boolean\`) so show/hide tracks live selection.`,
+  },
+
+  'flow/EdgeLabelRenderer': {
+    signature: 'EdgeLabelRenderer(props: { children?: VNodeChild }) => VNodeChild',
+    example: `function LabeledEdge(props: EdgeComponentProps) {
+  return (
+    <>
+      <path d={() => getBezierPath({ ... }).path} style="fill: none; stroke: #999;" />
+      <EdgeLabelRenderer>
+        <div
+          class="nopan"
+          style={() => \`position: absolute; pointer-events: all; transform: translate(-50%, -50%) translate(\${props.labelX()}px, \${props.labelY()}px);\`}
+        >
+          <button onClick={() => flow.removeEdge(props.edge.id!)}>×</button>
+        </div>
+      </EdgeLabelRenderer>
+    </>
+  )
+}`,
+    notes: 'HTML edge labels for CUSTOM edges. SVG `<text>` cannot hold buttons, inputs or wrapped rich text, so a custom edge wraps its label in this component: the children are portaled into a `<div>` layer INSIDE the viewport (they pan and zoom with the graph) and position themselves with the `EdgeComponentProps.labelX` / `labelY` accessors (the built-in label anchor for the same edge). The layer is `pointer-events: none`; an interactive label opts back in with `pointer-events: all` plus the `nopan` class so a click on it does not start a canvas pan. Renders nothing outside a mounted `<Flow>` and on the server. React Flow `<EdgeLabelRenderer>`. See also: NodeToolbar, Flow.',
+    mistakes: `- Rendering the label as a plain \`<div>\` inside the edge — it lands inside the \`<svg>\`, which browsers do not render as HTML.
+- Positioning with \`left\`/\`top\` in pixels — the layer is INSIDE the zoomed viewport, so use a \`transform: translate(labelX, labelY)\` in flow units; the viewport transform does the rest.
+- Forgetting \`pointer-events: all\` + \`nopan\` on an interactive label — the layer ignores the pointer, and a click that reaches the canvas starts a pan.`,
   },
 
   'flow/MarkerType / Position': {
@@ -5616,7 +5643,7 @@ const cpu = signal(42)
 
 <PieChart data={() => slices()} label={(d: Slice) => d.name} value={(d: Slice) => d.amount} innerRadius={0.6} />
 <GaugeChart value={() => cpu()} min={0} max={100} title="CPU" />`,
-    notes: 'Pie and donut from the same engine (`@pyreon/charts/plot`); `innerRadius` is what makes it a donut. `GaugeChart` is its sibling for a single value against a range. Both carry the same accessibility contract as `PlotChart` — a `role="img"` graphic with a derived description — rather than being a decorative canvas with no accessible text. See also: PlotChart.',
+    notes: 'Pie and donut from the same engine (`@pyreon/charts/plot`); `innerRadius` is what makes it a donut. `GaugeChart` is its sibling for a single value against a range. Both carry the same accessibility contract as `PlotChart` — a `role="img"` graphic with a derived description, `aria-describedby` its hidden data table, keyboard-walkable — because both are built on the shared canvas host every family is (`canvasHost`, exported: layout / render / hit / a11y in, chrome + pointer + keyboard + animation + table out). See also: PlotChart.',
     mistakes: `- Using a pie for more than a handful of slices — angular area is hard to compare; the engine will draw it, which is not the same as it reading well
 - Omitting \`label\` and expecting a legend — the slice labels are what name the data`,
   },

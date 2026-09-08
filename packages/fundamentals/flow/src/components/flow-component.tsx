@@ -1,5 +1,5 @@
 import { For, createUniqueId, isClient, provide, type VNodeChild, cx } from '@pyreon/core'
-import { batch, effect, signal } from '@pyreon/reactivity'
+import { batch, computed, effect, signal } from '@pyreon/reactivity'
 import {
   collectEdgeMarkers,
   DEFAULT_MARKER_END,
@@ -10,7 +10,7 @@ import {
   resolveEdgeMarkers,
   resolveHandleAnchor,
 } from '../edges'
-import { FlowContext } from './flow-context'
+import { FlowContext, FlowLayersContext, type FlowLayers } from './flow-context'
 import type {
   Connection,
   EdgeGeometry,
@@ -26,6 +26,8 @@ import type {
   NodeMeasurement,
   Viewport,
   XYPosition,
+  ConnectionLineProps,
+  ModifierKey,
 } from '../types'
 import { MarkerType, Position } from '../types'
 
@@ -102,6 +104,7 @@ function MarkerDef(props: { id: string, marker: EdgeMarker }): VNodeChild {
 const VIRTUAL_MARGIN = 200
 
 function nodeInViewport<T>(
+  instance: FlowInstance<T>,
   n: FlowNode<T>,
   v: Viewport,
   cw: number,
@@ -111,8 +114,9 @@ function nodeInViewport<T>(
   const dims = getEffectiveDimensions(n, measured.get(n.id))
   const w = dims.width * v.zoom
   const h = dims.height * v.zoom
-  const sx = n.position.x * v.zoom + v.x
-  const sy = n.position.y * v.zoom + v.y
+  const p = n.parentId ? instance.getAbsolutePosition(n.id) : n.position
+  const sx = p.x * v.zoom + v.x
+  const sy = p.y * v.zoom + v.y
   return (
     sx + w > -VIRTUAL_MARGIN
     && sx < cw + VIRTUAL_MARGIN
@@ -121,8 +125,32 @@ function nodeInViewport<T>(
   )
 }
 
+/**
+ * Parents before children (stable otherwise) so a child's DOM sits above its
+ * parent's — React Flow's z-order for sub-flows. Only allocates when the
+ * graph has a `parentId` at all.
+ */
+function parentsFirst<T>(list: FlowNode<T>[]): FlowNode<T>[] {
+  if (!list.some((n) => n.parentId)) return list
+  const byId = new Map(list.map((n) => [n.id, n]))
+  const depth = new Map<string, number>()
+  const depthOf = (n: FlowNode<T>): number => {
+    const cached = depth.get(n.id)
+    if (cached !== undefined) return cached
+    depth.set(n.id, 0) // cycle guard
+    const parent = n.parentId ? byId.get(n.parentId) : undefined
+    const d = parent && parent !== n ? depthOf(parent) + 1 : 0
+    depth.set(n.id, d)
+    return d
+  }
+  return list
+    .map((n, i) => ({ n, i, d: depthOf(n) }))
+    .sort((a, b) => a.d - b.d || a.i - b.i)
+    .map((x) => x.n)
+}
+
 function visibleNodeList<T>(instance: FlowInstance<T>): FlowNode<T>[] {
-  const raw = instance.nodes()
+  const raw = parentsFirst(instance.nodes())
   // `hidden` nodes stay in the graph but never reach the DOM. The filter
   // only allocates when at least one node is hidden, so the common graph
   // keeps handing `<For>` the same array reference.
@@ -133,7 +161,7 @@ function visibleNodeList<T>(instance: FlowInstance<T>): FlowNode<T>[] {
   // Pre-measurement (0×0) → render all, else everything would be hidden.
   if (!width || !height) return all
   const measured = instance.measurements()
-  return all.filter((n) => nodeInViewport(n, v, width, height, measured))
+  return all.filter((n) => nodeInViewport(instance, n, v, width, height, measured))
 }
 
 function visibleEdgeList<T>(instance: FlowInstance<T>): FlowEdge[] {
@@ -153,8 +181,8 @@ function visibleEdgeList<T>(instance: FlowInstance<T>): FlowEdge[] {
     const s = nm.get(e.source)
     const t = nm.get(e.target)
     return (
-      (!!s && nodeInViewport(s, v, width, height, measured))
-      || (!!t && nodeInViewport(t, v, width, height, measured))
+      (!!s && nodeInViewport(instance, s, v, width, height, measured))
+      || (!!t && nodeInViewport(instance, t, v, width, height, measured))
     )
   })
 }
@@ -251,6 +279,34 @@ interface ConnectionState {
   sourceY: number
   currentX: number
   currentY: number
+  /**
+   * Set while an existing edge's endpoint is being dragged: `end` is the
+   * end that moves; the `source*` fields above hold the FIXED end.
+   */
+  reconnect?: { edgeId: string; end: 'source' | 'target' }
+}
+
+/** Does `e` carry the configured modifier? `null` never matches. */
+function modifierHeld(e: MouseEvent | KeyboardEvent, key: ModifierKey | null | undefined): boolean {
+  switch (key) {
+    case 'shift':
+      return e.shiftKey
+    case 'ctrl':
+      return e.ctrlKey
+    case 'meta':
+      return e.metaKey
+    case 'alt':
+      return e.altKey
+    default:
+      return false
+  }
+}
+
+const DEFAULT_DELETE_KEYS = ['Delete', 'Backspace']
+
+function multiSelectionKey(instance: FlowInstance): ModifierKey | null {
+  const k = instance.config.multiSelectionKey
+  return k === undefined ? 'shift' : k
 }
 
 const emptyConnection: ConnectionState = {
@@ -316,12 +372,75 @@ function EdgeLayer(props: {
   keyboardA11y: boolean
   /** id of the visually-hidden keyboard instructions for edges. */
   edgeDescId: string
+  connectionLine?: ((props: ConnectionLineProps) => VNodeChild) | undefined
+  /** Start a reconnect drag of `end` of `edge` (owned by `<Flow>`'s connection state). */
+  onReconnectStart: (e: PointerEvent, edge: FlowEdge, end: 'source' | 'target', geometry: EdgeGeometry) => void
 }): VNodeChild {
-  const { instance, connectionState, edgeTypes, keyboardA11y, edgeDescId } = props
+  const {
+    instance,
+    connectionState,
+    edgeTypes,
+    keyboardA11y,
+    edgeDescId,
+    connectionLine,
+    onReconnectStart,
+  } = props
 
   const edgeTabIndex = (e: FlowEdge): number =>
     keyboardA11y && e.focusable !== false && instance.config.edgesFocusable !== false ? 0 : -1
   const edgeName = (e: FlowEdge): string => e.ariaLabel ?? `Edge from ${e.source} to ${e.target}`
+
+  // `active` alone, `equals`-gated: the connection-line accessor below reads
+  // THIS, so a pointer move (a new `connectionState` object per frame) patches
+  // the path's `d` in place instead of re-mounting the line.
+  const connectionActive = computed(() => connectionState().active, { equals: Object.is })
+
+  const interactionWidth = (e: FlowEdge): number =>
+    e.interactionWidth ?? instance.config.edgeInteractionWidth ?? 20
+  const reconnectable = (e: FlowEdge): boolean =>
+    e.reconnectable !== false && instance.config.edgesReconnectable !== false
+
+  /**
+   * Shared per-edge chrome: the invisible wide hit path (a hairline edge is
+   * otherwise unclickable — React Flow's `interactionWidth`) and, while the
+   * edge is selected, the two reconnect handles at its endpoints.
+   */
+  const edgeChrome = (
+    edgeId: string | undefined,
+    liveEdge: () => FlowEdge,
+    geometry: () => EdgeGeometry | null,
+    isSelected: () => boolean,
+  ) => [
+    <path
+      class="pyreon-flow-edge-interaction"
+      d={() => geometry()?.path ?? ''}
+      fill="none"
+      style={() =>
+        `stroke: transparent; stroke-width: ${interactionWidth(liveEdge())}px; pointer-events: stroke; cursor: pointer;`
+      }
+      onClick={() => {
+        if (edgeId) instance.selectEdge(edgeId)
+        instance._emit.edgeClick(liveEdge())
+      }}
+    />,
+    () => {
+      if (!isSelected() || !reconnectable(liveEdge())) return null
+      const g = geometry()
+      if (!g) return null
+      const updater = (end: 'source' | 'target', x: number, y: number) => (
+        <circle
+          class={cx(['pyreon-flow-edge-updater', 'pyreon-flow-edge-updater-' + end])}
+          data-end={end}
+          cx={String(x)}
+          cy={String(y)}
+          r="6"
+          style="fill: var(--pyreon-flow-accent, #3b82f6); fill-opacity: 0.35; stroke: var(--pyreon-flow-accent, #3b82f6); stroke-width: 1.5px; pointer-events: all; cursor: crosshair;"
+          onPointerDown={(e: PointerEvent) => onReconnectStart(e, liveEdge(), end, g)}
+        />
+      )
+      return [updater('source', g.sourceX, g.sourceY), updater('target', g.targetX, g.targetY)]
+    },
+  ]
 
   // <For> keys edges by id and runs the children function ONCE per
   // id. Per-edge accessors read the instance's per-edge geometry computed
@@ -417,7 +536,10 @@ function EdgeLayer(props: {
                   sourcePosition={() => geometry()?.sourcePosition ?? Position.Right}
                   targetPosition={() => geometry()?.targetPosition ?? Position.Left}
                   selected={isSelected}
+                  labelX={() => geometry()?.labelX ?? 0}
+                  labelY={() => geometry()?.labelY ?? 0}
                 />
+                {edgeChrome(edgeId, liveEdge, geometry, isSelected)}
               </g>
             )
           }
@@ -467,6 +589,7 @@ function EdgeLayer(props: {
                   if (edgeId) instance.selectEdge(edgeId, e.shiftKey)
                 }}
               />
+              {edgeChrome(edgeId, liveEdge, geometry, isSelected)}
               {() => {
                 const e = liveEdge()
                 const g = geometry()
@@ -493,21 +616,36 @@ function EdgeLayer(props: {
         the cursor without re-mounting the parent svg.
       */}
       {() => {
-        const conn = connectionState()
-        if (!conn.active) return null
+        if (!connectionActive()) return null
+        const linePath = () => {
+          const conn = connectionState()
+          return getEdgePath(
+            instance.config.connectionLineType ?? 'bezier',
+            conn.sourceX,
+            conn.sourceY,
+            conn.sourcePosition,
+            conn.currentX,
+            conn.currentY,
+            Position.Left,
+          ).path
+        }
+        if (connectionLine) {
+          const Line = connectionLine
+          return (
+            <Line
+              sourceX={() => connectionState().sourceX}
+              sourceY={() => connectionState().sourceY}
+              targetX={() => connectionState().currentX}
+              targetY={() => connectionState().currentY}
+              sourcePosition={() => connectionState().sourcePosition}
+              path={linePath}
+            />
+          )
+        }
         return (
           <path
-            d={
-              getEdgePath(
-                'bezier',
-                conn.sourceX,
-                conn.sourceY,
-                conn.sourcePosition,
-                conn.currentX,
-                conn.currentY,
-                Position.Left,
-              ).path
-            }
+            class="pyreon-flow-connection-line"
+            d={linePath}
             // stroke via `style`, not the presentation attr — `var()` is INVALID
             // in an SVG presentation attribute (value dropped → stroke:none).
             style="fill: none; stroke: var(--pyreon-flow-accent, #3b82f6); stroke-width: 2; stroke-dasharray: 5,5;"
@@ -742,7 +880,8 @@ function NodeLayer(props: {
               // `pointer-events: auto` re-enables interaction on the node under the
               // `pointer-events: none` viewport (see the viewport div) — without it
               // the node inherits `none` and drag/click/select all stop working.
-              return `position: absolute; pointer-events: auto; transform: translate(${n.position.x}px, ${n.position.y}px); z-index: ${
+              const p = n.parentId ? instance._absPositionById(id)() : n.position
+              return `position: absolute; pointer-events: auto; transform: translate(${p.x}px, ${p.y}px); z-index: ${
                 isDragging() ? 1000 : isSelected() ? 100 : 0
               }; ${n.style ?? ''}`
             }}
@@ -766,7 +905,7 @@ function NodeLayer(props: {
               // itself still fires regardless.
               const n = node()
               if (n.selectable !== false && instance.config.nodesSelectable !== false) {
-                instance.selectNode(id, e.shiftKey)
+                instance.selectNode(id, modifierHeld(e, multiSelectionKey(instance)))
               }
               instance._emit.nodeClick(node())
             }}
@@ -877,6 +1016,10 @@ export type EdgeComponentProps = {
   targetPosition: () => Position
   /** Reactive accessor — re-evaluates when edge selection changes */
   selected: () => boolean
+  /** Reactive accessor — the built-in label anchor X (for `<EdgeLabelRenderer>`) */
+  labelX: () => number
+  /** Reactive accessor — the built-in label anchor Y (for `<EdgeLabelRenderer>`) */
+  labelY: () => number
 }
 
 type EdgeTypeMap = Record<string, (props: EdgeComponentProps) => VNodeChild>
@@ -895,6 +1038,8 @@ export interface FlowComponentProps {
   nodeTypes?: NodeTypeMap
   /** Custom edge type renderers */
   edgeTypes?: EdgeTypeMap
+  /** Custom renderer for the in-progress connection line (see `ConnectionLineProps`). */
+  connectionLine?: (props: ConnectionLineProps) => VNodeChild
   style?: string
   class?: string
   /**
@@ -905,6 +1050,13 @@ export interface FlowComponentProps {
    * `"Flow diagram"`.
    */
   ariaLabel?: string
+  /**
+   * Color scheme — `'light'` (default), `'dark'`, or `'system'` (follows
+   * `prefers-color-scheme`). Rendered as `data-color-mode` on the container;
+   * `flowStyles` carries the dark values for every `--pyreon-flow-*` variable,
+   * and your own overrides still win.
+   */
+  colorMode?: 'light' | 'dark' | 'system'
   children?: VNodeChild
 }
 
@@ -929,12 +1081,28 @@ export interface FlowComponentProps {
  * ```
  */
 export function Flow(props: FlowComponentProps): VNodeChild {
-  const { instance, children, edgeTypes } = props
+  const { instance, children, edgeTypes, connectionLine } = props
 
   // Make the instance available to child components (MiniMap / Controls)
   // so `<Flow instance={flow}><MiniMap /></Flow>` works without passing
   // `instance` to every child — an explicit child `instance` prop still wins.
   provide(FlowContext, instance)
+
+  // Overlay layers (client only): HTML edge labels inside the viewport,
+  // node toolbars in the container. Created at setup so a portaling child
+  // has a target the moment it mounts; attached to the DOM by the refs below.
+  const layers: FlowLayers | null = isClient
+    ? { edgeLabels: document.createElement('div'), toolbars: document.createElement('div') }
+    : null
+  if (layers) {
+    layers.edgeLabels.className = 'pyreon-flow-edge-labels'
+    layers.edgeLabels.style.cssText =
+      'position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; z-index: 4;'
+    layers.toolbars.className = 'pyreon-flow-toolbars'
+    layers.toolbars.style.cssText =
+      'position: absolute; inset: 0; pointer-events: none; z-index: 20; overflow: visible;'
+  }
+  provide(FlowLayersContext, layers)
 
   const nodeTypes: NodeTypeMap = {
     default: DefaultNode,
@@ -994,6 +1162,20 @@ export function Flow(props: FlowComponentProps): VNodeChild {
         if (n) startPositions.set(nid, { ...n.position })
       }
     }
+    // A child whose ancestor is also dragged moves WITH it (its position is
+    // relative), so writing it too would move it twice.
+    for (const nid of [...startPositions.keys()]) {
+      let pid = instance.getNode(nid)?.parentId
+      const seen = new Set<string>()
+      while (pid && !seen.has(pid)) {
+        if (startPositions.has(pid)) {
+          startPositions.delete(nid)
+          break
+        }
+        seen.add(pid)
+        pid = instance.getNode(pid)?.parentId
+      }
+    }
 
     // Save undo state before drag
     instance.pushHistory()
@@ -1014,7 +1196,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
       startPositions,
     })
 
-    instance.selectNode(node.id, e.shiftKey)
+    instance.selectNode(node.id, modifierHeld(e, multiSelectionKey(instance)))
 
     instance._emit.nodeDragStart(node)
 
@@ -1067,27 +1249,89 @@ export function Flow(props: FlowComponentProps): VNodeChild {
 
   // ── Zoom ───────────────────────────────────────────────────────────────
 
-  const handleWheel = (e: WheelEvent) => {
-    if (instance.config.zoomable === false) return
-    e.preventDefault()
-
-    const delta = -e.deltaY * 0.001
+  /** Zoom by `factor` around a client point (wheel / double-click anchor). */
+  const zoomAround = (container: HTMLElement, clientX: number, clientY: number, factor: number) => {
+    const vp = instance.viewport.peek()
     const newZoom = Math.min(
-      Math.max(instance.viewport.peek().zoom * (1 + delta), instance.config.minZoom ?? 0.1),
+      Math.max(vp.zoom * factor, instance.config.minZoom ?? 0.1),
       instance.config.maxZoom ?? 4,
     )
-
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    const mouseX = e.clientX - rect.left
-    const mouseY = e.clientY - rect.top
-    const vp = instance.viewport.peek()
+    const rect = container.getBoundingClientRect()
+    const mouseX = clientX - rect.left
+    const mouseY = clientY - rect.top
     const scale = newZoom / vp.zoom
-
     instance.viewport.set({
       x: mouseX - (mouseX - vp.x) * scale,
       y: mouseY - (mouseY - vp.y) * scale,
       zoom: newZoom,
     })
+  }
+
+  const handleWheel = (e: WheelEvent) => {
+    const cfg = instance.config
+    const zoomKeyHeld =
+      modifierHeld(e, cfg.zoomActivationKey === undefined ? 'ctrl' : cfg.zoomActivationKey) ||
+      // Cmd on macOS is the same gesture as Ctrl elsewhere.
+      (cfg.zoomActivationKey === undefined && e.metaKey)
+    if (cfg.panOnScroll && !zoomKeyHeld) {
+      if (cfg.pannable === false) return
+      if (cfg.preventScrolling !== false) e.preventDefault()
+      const speed = cfg.panOnScrollSpeed ?? 0.5
+      // Shift+wheel on a mouse reports a vertical delta the user means horizontally.
+      const dx = e.shiftKey && e.deltaX === 0 ? e.deltaY : e.deltaX
+      const dy = e.shiftKey && e.deltaX === 0 ? 0 : e.deltaY
+      const vp = instance.viewport.peek()
+      instance.viewport.set({ ...vp, x: vp.x - dx * speed, y: vp.y - dy * speed })
+      return
+    }
+    if (cfg.zoomable === false || cfg.zoomOnScroll === false) return
+    if (cfg.preventScrolling !== false) e.preventDefault()
+    zoomAround(e.currentTarget as HTMLElement, e.clientX, e.clientY, 1 + -e.deltaY * 0.001)
+  }
+
+  const handleDoubleClick = (e: MouseEvent) => {
+    if (!instance.config.zoomOnDoubleClick || instance.config.zoomable === false) return
+    const target = e.target as HTMLElement
+    if (
+      target.closest(
+        '.pyreon-flow-node, .pyreon-flow-edges, .pyreon-flow-controls, .pyreon-flow-minimap, .pyreon-flow-panel',
+      )
+    ) {
+      return
+    }
+    zoomAround(e.currentTarget as HTMLElement, e.clientX, e.clientY, 1.2)
+  }
+
+  // ── Edge reconnection ──────────────────────────────────────────────────
+
+  /**
+   * Drag an existing edge's endpoint: the OTHER end stays fixed (stored in
+   * the connection state's `source*` fields so the live line draws from it)
+   * and the pointerup drop resolves the moved end via `reconnectEdge`.
+   */
+  const handleReconnectStart = (
+    e: PointerEvent,
+    edge: FlowEdge,
+    end: 'source' | 'target',
+    g: EdgeGeometry,
+  ) => {
+    e.stopPropagation()
+    e.preventDefault()
+    if (!edge.id) return
+    const fixedIsSource = end === 'target'
+    connectionState.set({
+      active: true,
+      sourceNodeId: fixedIsSource ? edge.source : edge.target,
+      sourceHandleId: (fixedIsSource ? edge.sourceHandle : edge.targetHandle) ?? (fixedIsSource ? 'source' : 'target'),
+      sourcePosition: fixedIsSource ? g.sourcePosition : g.targetPosition,
+      sourceX: fixedIsSource ? g.sourceX : g.targetX,
+      sourceY: fixedIsSource ? g.sourceY : g.targetY,
+      currentX: fixedIsSource ? g.targetX : g.sourceX,
+      currentY: fixedIsSource ? g.targetY : g.sourceY,
+      reconnect: { edgeId: edge.id, end },
+    })
+    const container = (e.target as Element).closest('.pyreon-flow') as HTMLElement | null
+    if (container) container.setPointerCapture(e.pointerId)
   }
 
   // ── Pan ────────────────────────────────────────────────────────────────
@@ -1099,8 +1343,6 @@ export function Flow(props: FlowComponentProps): VNodeChild {
   let panStartVpY = 0
 
   const handlePointerDown = (e: PointerEvent) => {
-    if (instance.config.pannable === false) return
-
     const target = e.target as HTMLElement
     if (target.closest('.pyreon-flow-node')) return
     if (target.closest('.pyreon-flow-handle')) return
@@ -1112,14 +1354,26 @@ export function Flow(props: FlowComponentProps): VNodeChild {
     // class as the node-toolbar `.nodrag` bail in the node `onPointerDown`.
     if (
       target.closest(
-        '.pyreon-flow-controls, .pyreon-flow-minimap, .pyreon-flow-panel, .nodrag, button, input, textarea, select, a',
+        '.pyreon-flow-controls, .pyreon-flow-minimap, .pyreon-flow-panel, .pyreon-flow-node-toolbar, .nopan, .nodrag, button, input, textarea, select, a',
       )
     ) {
       return
     }
 
-    // Shift+drag on empty space → selection box
-    if (e.shiftKey && instance.config.multiSelect !== false) {
+    // Which gesture does this button start? The selection key wins; then
+    // `selectionOnDrag` turns a plain drag into a box (buttons listed in a
+    // `panOnDrag` array still pan — the figma-like `[1, 2]` preset); then a
+    // pan, if this button is allowed to.
+    const cfg = instance.config
+    const panOnDrag = cfg.panOnDrag ?? true
+    const buttonPans =
+      cfg.pannable !== false &&
+      (panOnDrag === true || (Array.isArray(panOnDrag) && panOnDrag.includes(e.button)))
+    const selectionKeyHeld = modifierHeld(e, cfg.selectionKey === undefined ? 'shift' : cfg.selectionKey)
+    const startsSelection =
+      cfg.multiSelect !== false &&
+      (selectionKeyHeld || (cfg.selectionOnDrag === true && !(Array.isArray(panOnDrag) && buttonPans)))
+    if (startsSelection) {
       const container = e.currentTarget as HTMLElement
       const rect = container.getBoundingClientRect()
       gestureRect = rect
@@ -1137,6 +1391,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
       container.setPointerCapture(e.pointerId)
       return
     }
+    if (!buttonPans) return
 
     isPanning = true
     panStartX = e.clientX
@@ -1208,17 +1463,51 @@ export function Flow(props: FlowComponentProps): VNodeChild {
             helperLines.set({ x: snap.x, y: snap.y })
           }
         }
-        // Update all dragged nodes from their starting positions
-        instance.nodes.update((nds) =>
-          nds.map((n) => {
+        // Update all dragged nodes from their starting positions, honouring a
+        // per-node `extent` ('parent' box / own box) and growing an
+        // `expandParent` parent that the child was dragged past.
+        const measured = instance.measurements.peek()
+        instance.nodes.update((nds) => {
+          const byId = new Map(nds.map((n) => [n.id, n]))
+          const grow = new Map<string, { w: number; h: number }>()
+          const next = nds.map((n) => {
             const start = drag.startPositions.get(n.id)
             if (!start) return n
-            return {
-              ...n,
-              position: { x: start.x + actualDx, y: start.y + actualDy },
+            let pos = { x: start.x + actualDx, y: start.y + actualDy }
+            const parent = n.parentId ? byId.get(n.parentId) : undefined
+            const own = getEffectiveDimensions(n, measured.get(n.id))
+            if (n.extent === 'parent' && parent) {
+              const pd = getEffectiveDimensions(parent, measured.get(parent.id))
+              pos = {
+                x: Math.min(Math.max(pos.x, 0), Math.max(0, pd.width - own.width)),
+                y: Math.min(Math.max(pos.y, 0), Math.max(0, pd.height - own.height)),
+              }
+            } else if (Array.isArray(n.extent)) {
+              const [[minX, minY], [maxX, maxY]] = n.extent
+              pos = {
+                x: Math.min(Math.max(pos.x, minX), Math.max(minX, maxX - own.width)),
+                y: Math.min(Math.max(pos.y, minY), Math.max(minY, maxY - own.height)),
+              }
             }
-          }),
-        )
+            if (n.expandParent && parent) {
+              pos = { x: Math.max(0, pos.x), y: Math.max(0, pos.y) }
+              const pd = getEffectiveDimensions(parent, measured.get(parent.id))
+              const g = grow.get(parent.id) ?? { w: pd.width, h: pd.height }
+              g.w = Math.max(g.w, pos.x + own.width)
+              g.h = Math.max(g.h, pos.y + own.height)
+              grow.set(parent.id, g)
+            }
+            return { ...n, position: pos }
+          })
+          if (grow.size === 0) return next
+          return next.map((n) => {
+            const g = grow.get(n.id)
+            if (!g) return n
+            const pd = getEffectiveDimensions(n, measured.get(n.id))
+            if (g.w === pd.width && g.h === pd.height) return n
+            return { ...n, width: g.w, height: g.h }
+          })
+        })
       })
       // Per-frame drag listener (React Flow `onNodeDrag`) — the primary node's
       // LIVE state, after the batched write above landed.
@@ -1280,12 +1569,15 @@ export function Flow(props: FlowComponentProps): VNodeChild {
           // Effective box — a rubber-band selection must hit-test the node's
           // REAL rendered rect, not the 150×40 phantom.
           const { width: w, height: h } = getEffectiveDimensions(node, measured.get(node.id))
-          const nx = node.position.x
-          const ny = node.position.y
-          // Node is within box if any part overlaps
-          if (nx + w > minX && nx < maxX && ny + h > minY && ny < maxY) {
-            hitIds.push(node.id)
-          }
+          const abs = node.parentId ? instance.getAbsolutePosition(node.id) : node.position
+          const nx = abs.x
+          const ny = abs.y
+          // 'partial' (default): any overlap; 'full': the box contains the node.
+          const hit =
+            instance.config.selectionMode === 'full'
+              ? nx >= minX && nx + w <= maxX && ny >= minY && ny + h <= maxY
+              : nx + w > minX && nx < maxX && ny + h > minY && ny < maxY
+          if (hit) hitIds.push(node.id)
         }
         // ONE Set write for the whole band (P6) — the old shape was
         // `clearSelection()` + an additive `selectNode` per hit, each copying
@@ -1337,21 +1629,45 @@ export function Flow(props: FlowComponentProps): VNodeChild {
 
         let made: Connection | null = null
         if (targetNodeId && targetNodeId !== conn.sourceNodeId) {
-          const connection: Connection = {
-            source: conn.sourceNodeId,
-            target: targetNodeId,
-            sourceHandle: conn.sourceHandleId,
-            targetHandle: targetHandleId,
-          }
+          if (conn.reconnect) {
+            // Endpoint drag: the fixed end is in `source*`, the dropped
+            // handle becomes the moved end. Dropped nowhere (no handle) the
+            // edge is left as it was.
+            const edge = instance.getEdge(conn.reconnect.edgeId)
+            if (edge) {
+              const next: Connection =
+                conn.reconnect.end === 'target'
+                  ? { source: edge.source, target: targetNodeId, targetHandle: targetHandleId }
+                  : { source: targetNodeId, target: edge.target, sourceHandle: targetHandleId }
+              if (edge.sourceHandle != null && conn.reconnect.end === 'target') next.sourceHandle = edge.sourceHandle
+              if (edge.targetHandle != null && conn.reconnect.end === 'source') next.targetHandle = edge.targetHandle
+              if (instance.isValidConnection(next)) {
+                instance.reconnectEdge(
+                  conn.reconnect.edgeId,
+                  conn.reconnect.end === 'target'
+                    ? { target: targetNodeId, targetHandle: targetHandleId }
+                    : { source: targetNodeId, sourceHandle: targetHandleId },
+                )
+                made = next
+              }
+            }
+          } else {
+            const connection: Connection = {
+              source: conn.sourceNodeId,
+              target: targetNodeId,
+              sourceHandle: conn.sourceHandleId,
+              targetHandle: targetHandleId,
+            }
 
-          if (instance.isValidConnection(connection)) {
-            instance.addEdge({
-              source: connection.source,
-              target: connection.target,
-              ...(connection.sourceHandle != null ? { sourceHandle: connection.sourceHandle } : {}),
-              ...(connection.targetHandle != null ? { targetHandle: connection.targetHandle } : {}),
-            })
-            made = connection
+            if (instance.isValidConnection(connection)) {
+              instance.addEdge({
+                source: connection.source,
+                target: connection.target,
+                ...(connection.sourceHandle != null ? { sourceHandle: connection.sourceHandle } : {}),
+                ...(connection.targetHandle != null ? { targetHandle: connection.targetHandle } : {}),
+              })
+              made = connection
+            }
           }
         }
 
@@ -1383,7 +1699,9 @@ export function Flow(props: FlowComponentProps): VNodeChild {
       return
     }
 
-    if (e.key === 'Delete' || e.key === 'Backspace') {
+    const deleteKeys =
+      instance.config.deleteKeys === undefined ? DEFAULT_DELETE_KEYS : (instance.config.deleteKeys ?? [])
+    if (deleteKeys.includes(e.key)) {
       instance.pushHistory()
       instance.deleteSelected()
     }
@@ -1430,7 +1748,11 @@ export function Flow(props: FlowComponentProps): VNodeChild {
   }
 
   const handleTouchMove = (e: TouchEvent) => {
-    if (e.touches.length === 2 && instance.config.zoomable !== false) {
+    if (
+      e.touches.length === 2 &&
+      instance.config.zoomable !== false &&
+      instance.config.zoomOnPinch !== false
+    ) {
       e.preventDefault()
       const t1 = e.touches[0]!
       const t2 = e.touches[1]!
@@ -1484,7 +1806,11 @@ export function Flow(props: FlowComponentProps): VNodeChild {
       resizeObserver = null
     }
     instance._setContainer(el as HTMLElement | null)
-    if (!el) return
+    if (!el) {
+      layers?.toolbars.remove()
+      return
+    }
+    if (layers) el.appendChild(layers.toolbars)
 
     const updateSize = () => {
       // A ResizeObserver batch queued before `disconnect()` can still deliver
@@ -1575,11 +1901,13 @@ export function Flow(props: FlowComponentProps): VNodeChild {
     <div
       ref={containerRef}
       class={cx(['pyreon-flow', props.class])}
+      data-color-mode={props.colorMode ?? 'light'}
       style={containerStyle}
       tabIndex={0}
       role="group"
       aria-label={props.ariaLabel ?? 'Flow diagram'}
       onWheel={handleWheel}
+      onDblClick={handleDoubleClick}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -1629,6 +1957,10 @@ export function Flow(props: FlowComponentProps): VNodeChild {
           reading display values" anti-pattern. Pan/zoom is now one cssText
           write per frame; the browser composites the transform. */}
       <div
+        ref={(el: Element | null) => {
+          if (el && layers) el.appendChild(layers.edgeLabels)
+          else layers?.edgeLabels.remove()
+        }}
         class="pyreon-flow-viewport"
         // `width/height: 100%` on the viewport is load-bearing, NOT cosmetic:
         // without a definite size this absolutely-positioned, shrink-to-fit div
@@ -1657,6 +1989,8 @@ export function Flow(props: FlowComponentProps): VNodeChild {
               connectionState={() => connectionState()}
               keyboardA11y={keyboardA11y}
               edgeDescId={edgeDescId}
+              connectionLine={connectionLine}
+              onReconnectStart={handleReconnectStart}
               {...(edgeTypes != null ? { edgeTypes } : {})}
             />
             {/* Selection box + helper lines are mounted STATICALLY and only

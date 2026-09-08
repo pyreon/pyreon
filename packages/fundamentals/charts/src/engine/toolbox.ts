@@ -74,10 +74,10 @@ export function hitToolbox(tools: ToolboxTool[], boxes: Rect[], px: Double, py: 
 }
 
 /** Expand a toolbox config into the ordered tool list the layout draws. */
-export function toolboxTools(cfg: { saveAsImage?: boolean; restore?: boolean; magicType?: ('line' | 'bar')[] }): ToolboxTool[] {
+export function toolboxTools(cfg: { saveAsImage?: boolean | 'svg' | 'png' | undefined; restore?: boolean | undefined; magicType?: ('line' | 'bar')[] | undefined }): ToolboxTool[] {
   const out: ToolboxTool[] = []
   for (const t of cfg.magicType ?? []) out.push(t === 'line' ? 'magicLine' : 'magicBar')
   if (cfg.restore === true) out.push('restore')
-  if (cfg.saveAsImage === true) out.push('saveAsImage')
+  if (cfg.saveAsImage === true || cfg.saveAsImage === 'svg' || cfg.saveAsImage === 'png') out.push('saveAsImage')
   return out
 }

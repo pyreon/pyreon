@@ -222,6 +222,20 @@ jobs:
           path: ~/.bun/install/cache
           key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: bun-install-cache-${{ runner.os }}-
+      # Read-only restore of ci.yml's SOURCE-HASHED lib/ (ci's Install is the
+      # one writer). bootstrap.ts decides staleness by CONTENT hash, never
+      # mtime, so a prefix-restored older lib/ is safe: it rebuilds only the
+      # packages whose source changed. Measured before this: every native job
+      # rebuilt all 76 packages from nothing — ~150 s of a ~210 s install.
+      - name: Restore source-hashed lib/ (read-only)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            packages/*/*/lib
+            .bootstrap-cache.json
+          key: bootstrap-ubuntu-${{ hashFiles('packages/*/*/src/**', 'packages/*/*/package.json', 'packages/*/*/tsconfig.json', 'tsconfig.json', 'scripts/bootstrap.ts', 'bun.lock') }}
+          restore-keys: |
+            bootstrap-ubuntu-
       - name: Install workspace deps (bootstraps @pyreon/native-cli used by the preBuildScript)
         run: |
           # Retry the install — a transient registry tarball-extract flake
@@ -235,13 +249,15 @@ jobs:
           # re-download the SAME pinned versions (no resolution drift).
           n=0
           until [ "$n" -ge 3 ]; do
-            bun install --frozen-lockfile && exit 0
+            PYREON_BOOTSTRAP_SKIP=1 bun install --frozen-lockfile && exit 0
             n=$((n + 1))
             echo "::warning::bun install attempt $n failed — retrying in $((n * 10))s"
             sleep $((n * 10))
           done
           echo "::error::bun install failed after 3 attempts"
           exit 1
+      - name: Build lib/ (incremental over the restored cache; the preBuildScript needs @pyreon/native-cli built)
+        run: bun scripts/bootstrap.ts
 
       # macOS tarball store — ONE writer, the nightly schedule run on main. Same
       # prefix + path as ci.yml's Linux writer (runner.os keeps them apart), so
@@ -619,6 +635,20 @@ jobs:
       # lib/ bootstrap (76 packages + the Rust binary), which no download cache
       # can help; restoring ci.yml's `bootstrap-ubuntu-*` lib/ cache instead is
       # the untested lever.
+      # Read-only restore of ci.yml's SOURCE-HASHED lib/ (ci's Install is the
+      # one writer). bootstrap.ts decides staleness by CONTENT hash, never
+      # mtime, so a prefix-restored older lib/ is safe: it rebuilds only the
+      # packages whose source changed. Measured before this: every native job
+      # rebuilt all 76 packages from nothing — ~150 s of a ~210 s install.
+      - name: Restore source-hashed lib/ (read-only)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            packages/*/*/lib
+            .bootstrap-cache.json
+          key: bootstrap-ubuntu-${{ hashFiles('packages/*/*/src/**', 'packages/*/*/package.json', 'packages/*/*/tsconfig.json', 'tsconfig.json', 'scripts/bootstrap.ts', 'bun.lock') }}
+          restore-keys: |
+            bootstrap-ubuntu-
       - name: Install workspace deps (bootstraps @pyreon/native-cli)
         run: |
           # Retry the install — a transient registry tarball-extract flake
@@ -632,13 +662,15 @@ jobs:
           # re-download the SAME pinned versions (no resolution drift).
           n=0
           until [ "$n" -ge 3 ]; do
-            bun install --frozen-lockfile && exit 0
+            PYREON_BOOTSTRAP_SKIP=1 bun install --frozen-lockfile && exit 0
             n=$((n + 1))
             echo "::warning::bun install attempt $n failed — retrying in $((n * 10))s"
             sleep $((n * 10))
           done
           echo "::error::bun install failed after 3 attempts"
           exit 1
+      - name: Build lib/ (incremental over the restored cache; the preBuildScript needs @pyreon/native-cli built)
+        run: bun scripts/bootstrap.ts
 
       - name: Emit Kotlin (PMTC .tsx → generated/*.kt)
         working-directory: examples/native-todomvc-android

@@ -393,7 +393,7 @@ const svg = chartToSvg({
 (props: PieChartProps) => VNodeChild
 ```
 
-Pie and donut from the same engine (`@pyreon/charts/plot`); `innerRadius` is what makes it a donut. `GaugeChart` is its sibling for a single value against a range. Both carry the same accessibility contract as `PlotChart` — a `role="img"` graphic with a derived description — rather than being a decorative canvas with no accessible text.
+Pie and donut from the same engine (`@pyreon/charts/plot`); `innerRadius` is what makes it a donut. `GaugeChart` is its sibling for a single value against a range. Both carry the same accessibility contract as `PlotChart` — a `role="img"` graphic with a derived description, `aria-describedby` its hidden data table, keyboard-walkable — because both are built on the shared canvas host every family is (`canvasHost`, exported: layout / render / hit / a11y in, chrome + pointer + keyboard + animation + table out).
 
 **Example**
 

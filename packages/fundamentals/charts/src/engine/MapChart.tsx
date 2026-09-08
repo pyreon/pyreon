@@ -17,6 +17,8 @@ export interface MapChartProps extends CanvasHostProps {
   options?: GeoOptions
   /** Fired with the region under the click, or null for a miss. */
   onSelect?: (region: GeoRegion | null) => void
+  /** The region's INDEX under the click (into the layout's regions), or -1 — the multiplatform-safe twin of `onSelect`. */
+  onSelectIndex?: (index: number) => void
 }
 
 export function MapChart(props: MapChartProps): VNode {
@@ -33,8 +35,17 @@ export function MapChart(props: MapChartProps): VNode {
     animates: true,
     render: (layout, measure, _theme, progress) => renderGeo(layout, readValues(), { ...props.options, progress }, measure),
     select: (layout, px, py) => {
-      props.onSelect?.(hitGeo(layout, px, py))
+      const r = hitGeo(layout, px, py)
+      props.onSelect?.(r)
+      props.onSelectIndex?.(r === null ? -1 : layout.regions.indexOf(r))
     },
+    pick: (layout, i) => {
+      const r = layout.regions[i]
+      if (r === undefined) return
+      props.onSelect?.(r)
+      props.onSelectIndex?.(i)
+    },
+    focusRect: (layout, i) => layout.regions[i]?.bbox ?? null,
     tooltip: (layout, px, py) => {
       const r = hitGeo(layout, px, py)
       if (r === null) return null

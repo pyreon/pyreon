@@ -156,7 +156,7 @@ draw in array order.
 | Mark | Draws |
 | --- | --- |
 | `bars(y, options?)` | Vertical bars from the zero line. |
-| `line(y, options?)` | A polyline through the values. |
+| `line(y, options?)` | A polyline through the values; `dash: [4, 2]` draws it dashed (a target or a forecast). |
 | `area(y, options?)` | A filled area under the line. |
 | `points(y, options?)` | Discrete points. |
 | `stackedBars(y, options?)` | One stack segment per mark — combine several. |
@@ -195,6 +195,13 @@ export const Curves = () => (
 - **Horizontal bars** — `horizontal` flips the frame (categories on Y, bars
   growing rightward). Bar-family marks only; the left gutter sizes itself from
   the widest category label, which is the reason horizontal bars exist.
+- **Pinned domains** — `yDomain` / `y2Domain` (or `<Axis y domain>` /
+  `<Axis y2 domain>`); derived from the data when absent.
+- **Gaps** — a `null`, `undefined`, `NaN` or infinite accessor result is a
+  gap, not a zero: the bar is skipped, the line breaks, no dot is drawn, the
+  value stays out of the domain, the tooltip row and the table cell are empty.
+  A measurement nobody took must not read as `0`; `d.v ?? 0` says otherwise
+  where that is the truth.
 
 One `format` formatter applies to the y axis, the tooltip and the accessible
 description — an axis that says `$3.2K` beside a tooltip that says `3204.55`
@@ -278,8 +285,14 @@ in without pre-aggregating.
 `annotations` draws reference rules and bands (the target line, the healthy
 range) between the grid and the series. `animate` (on by default) plays an
 entrance — bars rise, lines draw left-to-right — and turns itself off under
-`prefers-reduced-motion`. Data **updates** are deliberately not animated: an
-update should read as the new truth, not a morph.
+`prefers-reduced-motion`. A data **update** of the same shape tweens from the
+previous frame to the new one (`updateAnimation`, on by default, over
+`theme.updateMs` or `updateDuration`); a shape change — a row added, a series
+removed — snaps, because there is no path between two different shapes that
+means anything. `<PlotChart>` tweens its VALUES; every family host tweens its
+DRAW LIST (two frames of the same shape interpolate command by command), so a
+treemap cell glides to its new rect and a slice sweeps to its new angle
+without the host knowing what a value is.
 
 Animation lives in the engine as a parameter, not in the hosts as an effect:
 `renderChart` at `progress: 0.4` is a pure function returning the 40%-grown
@@ -426,12 +439,14 @@ they share one prop vocabulary:
 | Prop | Does |
 | --- | --- |
 | `title` / `subtitle` / `showTitle` | Names the chart for assistive tech and the hidden table; `showTitle` draws the block above the chart. |
-| `showLegend` | A legend above the chart for families with named entries (series, slices, stages, top-level nodes). |
-| `tooltip` | A pointer tooltip with the family's own lines (a slice's share, a candle's OHLC, a cell's value, a node's name). Off by default — a static report has no pointer. |
-| `animate` | The entrance tween on first paint (`theme.enterMs`); off under `prefers-reduced-motion`. |
+| `showLegend` / `legendPosition` | A legend for families with named entries (series, slices, stages, top-level nodes) — `top` by default, or `bottom`, `left`, `right`. |
+| `tooltip` | A tooltip with the family's own lines (a slice's share, a candle's OHLC, a cell's value, a node's name), following the pointer or the last touch. Off by default — a static report has no pointer. |
+| `animate` / `updateAnimation` / `updateDuration` | The entrance tween on first paint (`theme.enterMs`) and the update tween on a same-shape data change (`theme.updateMs`); both off under `prefers-reduced-motion`. |
+| `keyboard` | On by default: the canvas is focusable, Arrow / Home / End walk the items the accessible table lists, each is announced in a live region and ringed where the family can place a ring, Enter / Space select through the family's callbacks, Escape clears. |
+| `toolbox` / `onSaveImage` | `{ saveAsImage: true }` draws a download button; the family hosts save the canvas as a PNG (the vector form is the family's `*ToSvg`), `<PlotChart>` saves an SVG or, with `'png'`, the canvas. |
 | `onSelect` | The family's rich hit (a cell, an arc, a node, a Sankey node-or-link) or `null`; the row-array hosts (Pie, Funnel, Candlestick, Boxplot, PlotChart) report the row index. |
 | `onSelectIndex` | The engine's INDEX hit, on **every** host — what the native tap gesture reports, so a handler written once works on all three targets. |
-| `theme` / `width` / `height` / `class` / `accessibleTable` | As on `<PlotChart>`. |
+| `theme` / `width` / `height` / `class` / `accessibleTable` | As on `<PlotChart>`. The canvas is `aria-describedby` its table; the table stops at 1,000 rows and says so in its caption. |
 
 The same vocabulary crosses: on iOS and Android every host — `<PlotChart>`
 and `<Plot>` included — draws the title block, the legend and the tooltip
@@ -490,6 +505,9 @@ for hosts that build specs by hand.
 - `zoomPresets={[{ label: '1m', count: 30 }, { label: '3m', count: 90 }, { label: 'All', count: 0 }]}` — the Highcharts range selector; a strip of buttons under the plot.
 - `keyboard` — focus the canvas and walk the data with Arrow / Home / End; the focused datum gets a dashed ring and is announced through a live region, Enter / Space fire `onSelect`, Escape clears.
 - `updateAnimation` (default on) — a data change of the same shape tweens to the new frame instead of snapping; `updateDuration` sets the length; `prefers-reduced-motion` disables it.
+- **Touch** — every handler is a pointer handler: a finger drags, pans and brushes as a mouse does, two fingers pinch-zoom the window around their midpoint, and a tap shows the tooltip. A zoomable chart sets `touch-action: none`; a static one leaves the page free to scroll over it.
+- `legendPosition` — `top` (default), `bottom`, `left` or `right`; a side legend narrows the plot.
+- `yDomain` — pin the left y domain (`<Axis y domain>` in the grammar).
 - `link={createChartLink()}` — pass the same link to several charts and their zoom window and crosshair datum stay in sync (ECharts `connect`).
 
 ```tsx
@@ -591,6 +609,6 @@ is landing chart-by-chart — see the
 | --- | --- | --- |
 | Dependencies | none | `echarts` peer |
 | Bundle | pay per imported mark | lazy-loaded per chart type |
-| SSR | pure-string SVG | client-only render |
+| SSR | `chartToSvg` / every `*ToSvg` is a pure string; the components render a canvas + the data table on the server and paint on the client | client-only render |
 | Native | shared generated geometry | web-only |
 | Series breadth | growing first-party set | the full ECharts catalog |

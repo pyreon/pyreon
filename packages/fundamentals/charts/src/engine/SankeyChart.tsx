@@ -46,6 +46,16 @@ export function SankeyChart(props: SankeyChartProps): VNode {
       props.onSelectIndex?.(hitSankeyIndex(layout, px, py))
     },
     tooltip: (layout, px, py) => orNull(sankeyTip(layout, px, py)),
+    // Enter on a node selects it through the same hit path a click takes, at the node's centre.
+    pick: (layout, i) => {
+      const node = layout.nodes[i]
+      if (node === undefined) return
+      const cx = node.rect.x + node.rect.w / 2.0
+      const cy = node.rect.y + node.rect.h / 2.0
+      props.onSelect?.(hitSankey(layout, cx, cy))
+      props.onSelectIndex?.(hitSankeyIndex(layout, cx, cy))
+    },
+    focusRect: (layout, i) => layout.nodes[i]?.rect ?? null,
     a11y: (layout) => ({
       title: props.title,
       categories: layout.nodes.map((n) => n.name),

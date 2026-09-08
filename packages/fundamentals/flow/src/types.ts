@@ -115,8 +115,21 @@ export interface FlowNode<TData = Record<string, unknown>> {
   sourceHandles?: HandleConfig[]
   /** Target handles */
   targetHandles?: HandleConfig[]
-  /** Parent node id for grouping */
+  /**
+   * Parent node id. A child's `position` is RELATIVE to its parent's
+   * top-left (React Flow's sub-flow model): the parent moves its children,
+   * edges and `fitView` use the absolute position (`getAbsolutePosition`).
+   */
   parentId?: string
+  /**
+   * Drag boundary for THIS node. `'parent'` keeps a child inside its
+   * parent's box; a `[[minX, minY], [maxX, maxY]]` box is in the node's own
+   * coordinate space (relative to the parent when it has one). Overrides the
+   * global `nodeExtent` for this node.
+   */
+  extent?: 'parent' | [[number, number], [number, number]]
+  /** Grow the parent to contain this node when it is dragged past the parent's edge. */
+  expandParent?: boolean
   /** Whether this node is a group */
   group?: boolean
 }
@@ -180,6 +193,17 @@ export interface FlowEdge {
   hidden?: boolean
   /** `false` exempts the edge from `deleteSelected()` / the Delete key. */
   deletable?: boolean
+  /**
+   * Whether a selected edge shows draggable endpoint handles that reconnect
+   * it to another handle — default: true (see `FlowConfig.edgesReconnectable`).
+   */
+  reconnectable?: boolean
+  /**
+   * Width, in px, of the invisible hit area around the edge — default: the
+   * config's `edgeInteractionWidth` (20). A hairline edge is otherwise
+   * unclickable.
+   */
+  interactionWidth?: number
   class?: string
   style?: string
   /** Marker at the START (source end). Omitted → no start marker. */
@@ -246,6 +270,23 @@ export interface Connection {
 }
 
 export type ConnectionRule = Record<string, { outputs: string[] }>
+
+/** A keyboard modifier, matched against the corresponding `KeyboardEvent`/`MouseEvent` flag. */
+export type ModifierKey = 'shift' | 'ctrl' | 'meta' | 'alt'
+
+/**
+ * Props of a custom connection line (`<Flow connectionLine={MyLine}>`):
+ * every field is a reactive accessor that follows the pointer, and `path`
+ * is the built-in path of `config.connectionLineType` for the same points.
+ */
+export interface ConnectionLineProps {
+  sourceX: () => number
+  sourceY: () => number
+  targetX: () => number
+  targetY: () => number
+  sourcePosition: () => Position
+  path: () => string
+}
 
 // ─── Node Change Events ──────────────────────────────────────────────────────
 
@@ -423,6 +464,55 @@ export interface FlowConfig<TData = Record<string, unknown>> {
   pannable?: boolean
   /** Whether zooming is enabled — default: true */
   zoomable?: boolean
+  /**
+   * Pan on pointer drag over the empty canvas — default: true. `false`
+   * disables; an array restricts it to those mouse buttons (`0` left,
+   * `1` middle, `2` right), the React Flow shape `panOnDrag={[1, 2]}`.
+   */
+  panOnDrag?: boolean | number[]
+  /**
+   * The wheel PANS instead of zooming — default: false. Shift+wheel pans
+   * horizontally; Ctrl/Cmd+wheel still zooms (`zoomActivationKey`).
+   */
+  panOnScroll?: boolean
+  /** Pan distance per wheel unit under `panOnScroll` — default: 0.5 */
+  panOnScrollSpeed?: number
+  /** Wheel zooms — default: true (`zoomable: false` also disables it). */
+  zoomOnScroll?: boolean
+  /** Two-finger pinch zooms — default: true. */
+  zoomOnPinch?: boolean
+  /** Double-click on the empty canvas zooms in one step around the pointer — default: false. */
+  zoomOnDoubleClick?: boolean
+  /**
+   * A plain drag over the empty canvas draws a selection box instead of
+   * panning — default: false. Pair with `panOnDrag: [1, 2]` to keep panning
+   * on the middle / right button (the React Flow "figma-like" preset).
+   */
+  selectionOnDrag?: boolean
+  /**
+   * Selection-box hit rule — `'partial'` (default) selects every node the
+   * box touches, `'full'` only nodes it fully contains.
+   */
+  selectionMode?: 'partial' | 'full'
+  /**
+   * Keys that delete the selection — default: `['Delete', 'Backspace']`.
+   * `null` disables keyboard deletion. Compared against `KeyboardEvent.key`.
+   */
+  deleteKeys?: string[] | null
+  /** Modifier that ADDS a click to the selection — default: `'shift'`; `null` disables. */
+  multiSelectionKey?: ModifierKey | null
+  /** Modifier that turns a canvas drag into a selection box — default: `'shift'`; `null` disables. */
+  selectionKey?: ModifierKey | null
+  /** Modifier that zooms under `panOnScroll` — default: `'ctrl'` (Cmd on macOS also counts). */
+  zoomActivationKey?: ModifierKey | null
+  /** Whether selected edges show reconnect handles — default: true */
+  edgesReconnectable?: boolean
+  /** Default invisible hit width, in px, around every edge — default: 20 */
+  edgeInteractionWidth?: number
+  /** Path type of the in-progress connection line — default: `'bezier'` */
+  connectionLineType?: EdgeType
+  /** Call `preventDefault()` on wheel events the canvas handles — default: true */
+  preventScrolling?: boolean
   /** Fit view on initial render — default: false */
   fitView?: boolean
   /** Padding for fitView — default: 0.1 */
@@ -718,6 +808,8 @@ export interface FlowInstance<TData = Record<string, unknown>> {
   getChildNodes: (parentId: string) => FlowNode<TData>[]
   /** Get absolute position of a node (accounting for parent offsets) */
   getAbsolutePosition: (nodeId: string) => XYPosition
+  /** @internal — reactive absolute position per id (parent chain folded in); equality-gated. */
+  _absPositionById: (id: string) => Computed<XYPosition>
 
   // ── Edge reconnecting ──────────────────────────────────────────────────
 
@@ -960,6 +1052,10 @@ export interface MiniMapProps {
   maskColor?: string
   width?: number
   height?: number
+  /** Drag on the minimap pans the viewport — default: true. A click still centers. */
+  pannable?: boolean
+  /** Wheel on the minimap zooms the viewport — default: true. */
+  zoomable?: boolean
 }
 
 export interface ControlsProps {
@@ -968,6 +1064,8 @@ export interface ControlsProps {
   showFitView?: boolean
   showLock?: boolean
   position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+  /** Extra controls appended after the built-in buttons (`<button>`s inherit the control styling). */
+  children?: VNodeChild
 }
 
 export interface PanelProps {

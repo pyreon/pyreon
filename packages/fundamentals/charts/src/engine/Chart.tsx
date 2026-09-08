@@ -5,8 +5,10 @@
 // no third-party engine and is the path to native rendering; that one keeps the
 // full ECharts feature set for the long tail.
 
-import { h } from '@pyreon/core'
-import { lttb } from './decimate'
+import { createUniqueId, h } from '@pyreon/core'
+import { A11Y_TABLE_MAX, shiftCmds } from './canvas-host'
+import type { LegendPosition } from './canvas-host'
+import { lttb, minMaxBuckets } from './decimate'
 import { resolveChartTheme, tooltipStyle, useChartTheme } from './theme'
 import type { VNode } from '@pyreon/core'
 import { batch, effect, isClient, signal, untrack } from '@pyreon/reactivity'
@@ -20,14 +22,16 @@ import { renderSvg } from './svg'
 import type { ToolboxTool } from './toolbox'
 import { placeTooltip, tooltipAt, tooltipLines } from './tooltip'
 import type { TooltipContent } from './tooltip'
-import { layoutChart, renderChart, resolveY2Domain, resolveYDomain, seriesOnRightAxis } from './render'
+import { layoutChart, renderChart, renderChartIn, resolveY2Domain, resolveYDomain, seriesOnRightAxis } from './render'
 import { layoutSeriesPoints, layoutSeriesPointsAt } from './layout'
+import type { PlotLayout } from './layout'
 import type { Annotation, ChartSpec, ChartTheme, PointMarker, Series } from './render'
 import { scaleLinear } from './scale'
 import { resolveCategories, resolveMarks } from './marks'
-import { plotHitBars, plotHitIndex } from './plot-hit'
+import { plotHitBarsIn, plotHitIndexIn } from './plot-hit'
 import type { Mark } from './marks'
 import { chartTable, describeChart } from './a11y'
+import type { A11yInput } from './a11y'
 import { brushBand, brushRange, renderBrushBand } from './brush'
 import { hideHiddenSeries, legendHitIndex, legendToggle, pagerHit } from './legend-toggle'
 import { navigatorDrag, navigatorHit, renderNavigator } from './navigator'
@@ -40,30 +44,6 @@ import type { Domain, DrawCmd, Double, Rect } from './types'
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 
-
-/**
- * Move a draw command down the canvas.
- *
- * Used to sit the plot below the legend. Translating the emitted commands
- * rather than threading an origin through the engine keeps the engine's
- * coordinate space at (0,0) — every layout function stays expressible without
- * knowing what else the host drew.
- */
-function shiftCmd(c: DrawCmd, dy: Double): DrawCmd {
-  switch (c.kind) {
-    case 'rect':
-      return { ...c, rect: { ...c.rect, y: c.rect.y + dy } }
-    case 'line':
-      return { ...c, from: { ...c.from, y: c.from.y + dy }, to: { ...c.to, y: c.to.y + dy } }
-    case 'polyline':
-    case 'polygon':
-      return { ...c, points: c.points.map((p) => ({ ...p, y: p.y + dy })) }
-    case 'circle':
-      return { ...c, center: { ...c.center, y: c.center.y + dy } }
-    default:
-      return { ...c, at: { ...c.at, y: c.at.y + dy } }
-  }
-}
 
 export interface PlotChartProps<T> {
   /** The rows. An accessor makes it reactive; a plain array is static. */
@@ -80,8 +60,10 @@ export interface PlotChartProps<T> {
   showGrid?: boolean
   /** Fired with the datum index when a bar is tapped, or -1 for a miss. */
   onSelect?: (index: number) => void
-  /** Draw a legend above the plot, using each mark's `label`. */
+  /** Draw a legend, using each mark's `label`. */
   showLegend?: boolean
+  /** Where the legend sits; `top` by default. `left`/`right` stack the entries beside the plot. */
+  legendPosition?: LegendPosition
   /**
    * Click a legend entry to hide/show its series. On by default with
    * `showLegend` — it is what a legend is FOR once there are several series.
@@ -255,6 +237,11 @@ export interface PlotChartProps<T> {
   /** Datum-anchored point markers (max / min / a concrete index). */
   markers?: PointMarker[]
   /**
+   * Pin the left y domain. Derived from the data when absent — bars from
+   * zero, lines from their own extent (see `resolveYDomain`).
+   */
+  yDomain?: Domain
+  /**
    * Right y axis. Marks opt in with `axis: 'right'`; the domain derives from
    * those marks unless pinned here, and `y2Format` labels that axis (the
    * left keeps `format`). Stacked/grouped marks and horizontal charts stay
@@ -283,19 +270,20 @@ export interface PlotChartProps<T> {
   tooltipFormatter?: (content: TooltipContent) => string
   /**
    * Toolbox buttons at the top-right (ECharts' `toolbox`). `saveAsImage`
-   * downloads the current frame as an SVG (the engine's own serializer —
-   * vector, and the same draw list the canvas shows); `restore` resets zoom,
-   * brush, legend toggles and any magicType override; `magicType` offers
-   * line / bar switches for the independent marks.
+   * downloads the current frame — `true` / `'svg'` as an SVG (the engine's
+   * own serializer: vector, and the same draw list the canvas shows),
+   * `'png'` as the canvas's pixels; `restore` resets zoom, brush, legend
+   * toggles and any magicType override; `magicType` offers line / bar
+   * switches for the independent marks.
    */
-  toolbox?: { saveAsImage?: boolean; restore?: boolean; magicType?: ('line' | 'bar')[] }
-  /** Called with the SVG string on saveAsImage instead of triggering a download. */
-  onSaveImage?: (svg: string) => void
+  toolbox?: { saveAsImage?: boolean | 'svg' | 'png'; restore?: boolean; magicType?: ('line' | 'bar')[] }
+  /** Called with the image (an SVG string, or a PNG data URL) on saveAsImage instead of triggering a download. */
+  onSaveImage?: (data: string, format: 'svg' | 'png') => void
   /**
    * Animate the first paint — bars rise, lines draw, points grow. On by
    * default because an entrance orients the eye; OFF automatically under
-   * `prefers-reduced-motion`, which is a request, not a hint. Data UPDATES
-   * are not animated: an update should read as the new truth, not a morph.
+   * `prefers-reduced-motion`, which is a request, not a hint. A later data
+   * change of the same shape tweens to the new frame (`updateAnimation`).
    */
   animate?: boolean
   /**
@@ -353,7 +341,8 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     entranceStarted = true
     if (props.animate === false || prefersReducedMotion()) return
     if (typeof requestAnimationFrame !== 'function') return
-    const duration = 400.0
+    const duration = theme().enterMs
+    if (duration <= 0.0) return
     let start = -1.0
     const tick = (now: number): void => {
       if (start < 0.0) start = now
@@ -404,9 +393,19 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   // land one legend-height too high — which is what happened before a
   // legend and a click could coexist.
   let topOffset = 0.0
-  // Pixels consumed BELOW the plot (preset strip, navigator) on the last draw;
+  // Pixels consumed BELOW the plot (preset strip, navigator, a bottom legend) on the last draw;
   // every hit test shrinks the plot height by it, as `topOffset` shifts it.
   let bottomOffset = 0.0
+  // Pixels consumed LEFT of the plot (a left legend) on the last draw; hit tests come left by it.
+  let leftOffset = 0.0
+  // The width the plot region was drawn at (the canvas minus a side legend).
+  let plotW = 0.0
+  // What the last draw laid out — the pointer handlers and the click ask THIS
+  // spec and layout, not a fresh one: a draw runs on every tracked change, so
+  // the cache is never stale, and one pointer move stopped costing four to six
+  // `layoutChart` calls (every one of which measures every tick label).
+  let frameCache: { spec: ChartSpec; layout: PlotLayout; w: Double; hgt: Double } | null = null
+  const tableId = createUniqueId()
   // Navigator strip rect from the last draw + the in-flight band drag.
   let navRect: Rect | null = null
   // 1 = band, 2 = left handle, 3 = right handle (the engine's `navigatorHit`).
@@ -431,7 +430,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       tweenFrom = null
       return
     }
-    const duration = props.updateDuration ?? 400.0
+    const duration = props.updateDuration ?? theme().updateMs
     let start = -1.0
     if (tweenFrame !== 0.0 && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(tweenFrame)
     const tick = (now: number): void => {
@@ -449,7 +448,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   const tweened = (spec: ChartSpec): ChartSpec => {
     const cur = spec.series.map((x) => x.values)
     if (tweenT >= 1.0 || tweenFrom === null) {
-      const enabled = props.updateAnimation !== false && !prefersReducedMotion() && entrance >= 1.0
+      const enabled = props.updateAnimation !== false && !prefersReducedMotion() && entrance >= 1.0 && (props.updateDuration ?? theme().updateMs) > 0.0
       if (enabled && lastValues !== null && sameShape(lastValues, cur) && !sameValues(lastValues, cur)) {
         tweenFrom = lastValues
         lastValues = cur
@@ -517,8 +516,11 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   // navigation map back through it (`lastKeep`) — a decimated chart reports
   // the GLOBAL index of the row it drew, never a position in the thinned list.
   let lastKeep: number[] | null = null
+  // The inverse of `lastKeep`, built once per decimation: a pinned selection
+  // looked its row up with `indexOf` — O(kept) per pin, per spec build.
+  let keepPos: Map<number, number> | null = null
   /** The visible (thinned) row for a slice index, or -1 when decimation dropped it. */
-  const visibleIndexOf = (sliceIndex: number, keep: number[] | null): number => (keep === null ? sliceIndex : keep.indexOf(sliceIndex))
+  const visibleIndexOf = (sliceIndex: number, keep: number[] | null): number => (keep === null ? sliceIndex : (keepPos?.get(sliceIndex) ?? -1))
   const globalOf = (visibleIndex: number, off: number): number => (lastKeep === null ? visibleIndex : (lastKeep[visibleIndex] ?? visibleIndex)) + off
   const decimateRows = (rows: T[]): number[] | null => {
     const max = props.maxPoints
@@ -533,7 +535,10 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const off = viewRange(allRows).from
     const visible = viewRows(allRows)
     const keep = decimateRows(visible)
-    lastKeep = keep
+    if (keep !== lastKeep) {
+      lastKeep = keep
+      keepPos = keep === null ? null : new Map(keep.map((k, i) => [k, i]))
+    }
     const rows = keep === null ? visible : keep.map((i) => visible[i]!)
     /** The GLOBAL row index behind visible row `i`. */
     const gi = (i: number): number => (keep === null ? i : keep[i]!) + off
@@ -565,6 +570,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       : {}),
     annotations: props.annotations,
     markers: props.markers,
+    yDomain: props.yDomain,
     y2Domain: props.y2Domain,
     y2Format: props.y2Format,
     horizontal: props.horizontal === true,
@@ -620,31 +626,61 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       for (const c of tl.cmds) legendCmds.push(c)
     }
     titleH = titleH + toolH
+    // The legend: above the plot by default, else below it or in a column
+    // beside it. A side legend narrows the plot; a bottom one sits under the
+    // navigator and the presets.
+    const legendPos = props.legendPosition ?? 'top'
+    let legendBottom = 0.0
+    let legendLeft = 0.0
+    let legendRight = 0.0
     if (props.showLegend === true) {
       const series = resolveMarks(rows, props.marks, theme().palette)
       const hidden = hiddenSeries()
-      const l = renderLegend(
-        series.map((x, i) => ({ label: x.label, color: x.color, muted: hidden.includes(i) })),
-        { x: 0, y: titleH, w, h: hgt - titleH },
-        {
-          fontSize: theme().fontSize,
-          labelColor: theme().label,
-          swatch: 10,
-          gap: 12,
-          orientation: 'horizontal',
-          maxRows: props.legendMaxRows,
-          page: legendPage(),
-        },
-        measure,
-      )
-      legendH = l.height
-      for (const c of l.cmds) legendCmds.push(c)
-      legendBoxes = l.boxes
-      legendPager = l.pager ?? null
+      const entries = series.map((x, i) => ({ label: x.label, color: x.color, muted: hidden.includes(i) }))
+      const side = legendPos === 'left' || legendPos === 'right'
+      const opts = {
+        fontSize: theme().fontSize,
+        labelColor: theme().label,
+        swatch: 10,
+        gap: 12,
+        orientation: side ? ('vertical' as const) : ('horizontal' as const),
+        maxRows: props.legendMaxRows,
+        page: legendPage(),
+      }
+      if (side) {
+        let col = 0.0
+        for (const e of entries) col = Math.max(col, 10.0 + 4.0 + measure(e.label, theme().fontSize) + 12.0)
+        col = Math.min(col, w * 0.4)
+        const lx = legendPos === 'left' ? 8.0 : w - col
+        const l = renderLegend(entries, { x: lx, y: titleH + 8, w: col, h: hgt - titleH }, opts, measure)
+        for (const c of l.cmds) legendCmds.push(c)
+        legendBoxes = l.boxes
+        legendPager = l.pager ?? null
+        if (legendPos === 'left') legendLeft = col + 8
+        else legendRight = col + 8
+      } else if (legendPos === 'bottom') {
+        // Its height decides where it sits: lay it out at the top to learn the height, then move it down.
+        const probe = renderLegend(entries, { x: 0, y: 0, w, h: hgt }, opts, measure)
+        const ly = hgt - probe.height
+        const l = renderLegend(entries, { x: 0, y: ly, w, h: probe.height }, opts, measure)
+        for (const c of l.cmds) legendCmds.push(c)
+        legendBoxes = l.boxes
+        legendPager = l.pager ?? null
+        legendBottom = l.height + 4
+      } else {
+        const l = renderLegend(entries, { x: 0, y: titleH, w, h: hgt - titleH }, opts, measure)
+        legendH = l.height
+        for (const c of l.cmds) legendCmds.push(c)
+        legendBoxes = l.boxes
+        legendPager = l.pager ?? null
+      }
     }
 
     const top = titleH + legendH
     topOffset = top
+    leftOffset = legendLeft
+    const pw = Math.max(0.0, w - legendLeft - legendRight)
+    plotW = pw
     // Zoom presets take a strip under the plot. The engine lays it out and
     // hit-tests it (iOS and Android place the same buttons); the boxes are
     // kept for the click handler.
@@ -657,7 +693,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
         presetItems,
         rows.length,
         zoomWin() ?? { start: 0.0, end: 1.0 },
-        { x: 0.0, y: 0.0, w, h: hgt },
+        { x: 0.0, y: 0.0, w: pw, h: hgt - legendBottom },
         {
           fontSize: 11.0,
           padX: 8.0,
@@ -671,27 +707,34 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
         },
         measure,
       )
-      presetCmds = strip.cmds
-      presetBoxes = strip.boxes
+      presetCmds = shiftCmds(strip.cmds, legendLeft, 0.0)
+      presetBoxes = legendLeft === 0.0 ? strip.boxes : strip.boxes.map((b) => ({ ...b, x: b.x + legendLeft }))
       presetH = strip.height
     }
-    presetBoxesJson.set(JSON.stringify(presetBoxes))
+    // Test hooks: written only when the value moved, so a tween frame does not
+    // allocate two strings and notify two signals for nothing.
+    const presetsJson = JSON.stringify(presetBoxes)
+    if (presetsJson !== untrack(presetBoxesJson)) presetBoxesJson.set(presetsJson)
     const navH = props.navigator === true ? 36.0 : 0.0
-    bottomOffset = presetH + navH
-    const spec = tweened(buildSpec(rows, w, hgt - top - presetH - navH))
-    const cmds = renderChart(spec, measure)
-    const navCmds = navigatorCmds(rows, w, hgt - presetH - navH, navH)
-    navJson.set(JSON.stringify(navRect))
-    // Shift the plot down past the title + legend. Translating the emitted
-    // commands rather than threading an origin through the engine keeps the
-    // engine's coordinate space at (0,0) and this concern in the host.
-    const shifted = top === 0.0 ? cmds : cmds.map((c) => shiftCmd(c, top))
-    const cross = crosshairCmds(spec, measure)
-    const crossShifted = top === 0.0 ? cross : cross.map((c) => shiftCmd(c, top))
-    const band = brushCmds(spec, measure)
-    const bandShifted = top === 0.0 ? band : band.map((c) => shiftCmd(c, top))
-    const ring = focusRingCmds(spec, measure)
-    const ringShifted = top === 0.0 ? ring : ring.map((c) => shiftCmd(c, top))
+    bottomOffset = presetH + navH + legendBottom
+    const spec = tweened(buildSpec(rows, pw, hgt - top - presetH - navH - legendBottom))
+    // ONE layout per frame: the paint, the crosshair, the brush band and the
+    // focus ring all read it, and the pointer handlers read it from the cache.
+    const l = layoutChart(spec, measure)
+    frameCache = { spec, layout: l, w, hgt }
+    const cmds = renderChartIn(spec, measure, l)
+    const navCmds = shiftCmds(navigatorCmds(rows, pw, hgt - presetH - navH - legendBottom, navH), legendLeft, 0.0)
+    if (navRect !== null && legendLeft !== 0.0) navRect = { ...navRect, x: navRect.x + legendLeft }
+    const navStr = JSON.stringify(navRect)
+    if (navStr !== untrack(navJson)) navJson.set(navStr)
+    // Shift the plot down past the title + legend (and right past a side
+    // legend). Translating the emitted commands rather than threading an
+    // origin through the engine keeps the engine's coordinate space at (0,0)
+    // and this concern in the host.
+    const shifted = shiftCmds(cmds, legendLeft, top)
+    const crossShifted = shiftCmds(crosshairCmds(spec, l), legendLeft, top)
+    const bandShifted = shiftCmds(brushCmds(spec, l), legendLeft, top)
+    const ringShifted = shiftCmds(focusRingCmds(spec, l), legendLeft, top)
     const frame = [...legendCmds, ...shifted, ...bandShifted, ...crossShifted, ...ringShifted, ...navCmds, ...presetCmds]
     // Capture what was actually painted so `saveAsImage` serializes THIS
     // frame rather than re-deriving one. Declared beside the toolbox for
@@ -703,15 +746,28 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     paint(ctx, frame, w, hgt, FONT)
   }
 
+  // The navigator's series over ALL rows, resolved once per data change (the
+  // strip was re-resolving every row on every entrance and tween frame) and
+  // thinned to the strip's width — a 36px-tall overview needs the min/max
+  // envelope per pixel column, not 100k points.
+  let navCache: { rows: T[]; marks: Mark<T>[]; w: Double; values: Double[]; color: string } | null = null
+  const navigatorSeries = (allRows: T[], w: Double): { values: Double[]; color: string } => {
+    const c = navCache
+    if (c !== null && c.rows === allRows && c.marks === props.marks && c.w === w) return c
+    const first = resolveMarks(allRows, props.marks, theme().palette).find((x) => x.values.length > 1)
+    const buckets = Math.max(1, Math.floor(w / 2.0))
+    const next = { rows: allRows, marks: props.marks, w, values: minMaxBuckets(first?.values ?? [], buckets), color: first?.color ?? '#000000' }
+    navCache = next
+    return next
+  }
   /** The navigator strip — engine-laid-out (iOS and Android drive the same one); `navRect` is what the drag measures against. */
   const navigatorCmds = (allRows: T[], w: Double, y0: Double, navH: Double): DrawCmd[] => {
     navRect = null
     if (props.navigator !== true || navH <= 0.0) return []
-    const series = resolveMarks(allRows, props.marks)
-    const first = series.find((x) => x.values.length > 1)
+    const nav = navigatorSeries(allRows, w)
     const l = renderNavigator(
-      first?.values ?? [],
-      first?.color ?? '#000000',
+      nav.values,
+      nav.color,
       zoomWin() ?? { start: 0.0, end: 1.0 },
       { x: 0.0, y: 0.0, w, h: y0 + navH },
       theme().grid,
@@ -721,10 +777,9 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   }
 
   /** A dashed rectangle around the focused datum's column — the keyboard focus ring. */
-  const focusRingCmds = (spec: ChartSpec, measure: (t: string, size: Double) => Double): DrawCmd[] => {
+  const focusRingCmds = (spec: ChartSpec, l: PlotLayout): DrawCmd[] => {
     const idx = focusIdx()
     if (idx < 0 || props.horizontal === true) return []
-    const l = layoutChart(spec, measure)
     const plot = l.plot
     let cx = -1.0
     let bw = 16.0
@@ -806,12 +861,11 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
    * LAST so nothing covers it. Bars get the rule only — the bar itself is the
    * marker.
    */
-  const crosshairCmds = (spec: ChartSpec, measure: (t: string, size: Double) => Double): DrawCmd[] => {
+  const crosshairCmds = (spec: ChartSpec, l: PlotLayout): DrawCmd[] => {
     const out: DrawCmd[] = []
     if (props.crosshair !== true || props.horizontal === true) return out
     const idx = hoverIdx()
     if (idx < 0) return out
-    const l = layoutChart(spec, measure)
     const plot = l.plot
     let cx = -1.0
     if (spec.xValues !== undefined && spec.xValues.length > 0) {
@@ -852,9 +906,9 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   }
 
   /** The brush band — the live drag, or the committed selection projected through the window (engine-drawn; iOS and Android paint the same band). */
-  const brushCmds = (spec: ChartSpec, measure: (t: string, size: Double) => Double): DrawCmd[] => {
+  const brushCmds = (spec: ChartSpec, l: PlotLayout): DrawCmd[] => {
     if (props.brush !== true || props.horizontal === true) return []
-    const plot = layoutChart(spec, measure).plot
+    const plot = l.plot
     const live = brushDrag
     if (live !== null) return renderBrushBand(plot, live.a < live.b ? live.a : live.b, live.a < live.b ? live.b : live.a, spec.theme.axis)
     const committed = brushSel()
@@ -863,16 +917,25 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     return band.visible ? renderBrushBand(plot, band.lo, band.hi, spec.theme.axis) : []
   }
 
-  /** The plot rect at the current size — gestures are plot-relative. */
-  const plotNow = (): Rect | null => {
+  /**
+   * The spec + layout the pointer handlers hit-test: the last draw's, re-laid
+   * only when the canvas size moved under it (a resize the observer has not
+   * yet repainted for).
+   */
+  const frameNow = (): { spec: ChartSpec; layout: PlotLayout } | null => {
     const el = canvas
     if (el === null) return null
-    const ctx = el.getContext('2d')
-    if (ctx === null) return null
     const w = drawWidth(el, props.width)
     const hgt = props.height ?? 200
-    return layoutChart(buildSpec(readData(), w, hgt - topOffset - bottomOffset), canvasMeasure(ctx, FONT)).plot
+    const c = frameCache
+    if (c !== null && c.w === w && c.hgt === hgt) return c
+    const ctx = el.getContext('2d')
+    if (ctx === null) return null
+    const spec = buildSpec(readData(), plotW > 0.0 ? plotW : w, hgt - topOffset - bottomOffset)
+    return { spec, layout: layoutChart(spec, canvasMeasure(ctx, FONT)) }
   }
+  /** The plot rect at the current size (in PLOT space — right of a side legend, under the chrome) — gestures are plot-relative. */
+  const plotNow = (): Rect | null => frameNow()?.layout.plot ?? null
 
   // Repaint whenever anything the spec reads changes. Registered here rather
   // than in onMount so the first paint happens as soon as the ref lands.
@@ -903,17 +966,12 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
    * line/area chart wants: sweeping horizontally should pick the point in the
    * cursor's column however far the line sits vertically from the pointer.
    */
-  const datumAt = (px: Double, py: Double, w: Double, hgt: Double): number => {
-    const el = canvas
-    if (el === null) return -1
-    const ctx = el.getContext('2d')
-    if (ctx === null) return -1
-    const measure = canvasMeasure(ctx, FONT)
+  const datumAt = (px: Double, py: Double): number => {
+    const f = frameNow()
+    if (f === null) return -1
     // Hit-test in PLOT space: the plot was drawn `topOffset` px down, under
-    // the title + legend, so the pointer's y comes back up by that much.
-    const spec = buildSpec(readData(), w, hgt - topOffset - bottomOffset)
-    py = py - topOffset
-    return plotHitIndex(spec, measure, px, py)
+    // the title + legend, and `leftOffset` px right of a side legend.
+    return plotHitIndexIn(f.spec, f.layout, px - leftOffset, py - topOffset)
   }
   const handleWheel = (ev: WheelEvent): void => {
     if (props.dataZoom !== true) return
@@ -926,18 +984,57 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // either behavior alone.
     ev.preventDefault()
     const rect = el.getBoundingClientRect()
-    const px = ev.clientX - rect.left
+    const px = ev.clientX - rect.left - leftOffset
     const frac = plot.w <= 0.0 ? 0.5 : (px - plot.x) / plot.w
     const win = zoomWin() ?? { start: 0.0, end: 1.0 }
     const next = zoomWindow(win, ev.deltaY > 0 ? 1.25 : 0.8, frac)
     zoomWin.set(isFullWindow(next) ? null : next)
   }
 
-  const handleDown = (ev: MouseEvent): void => {
+  // Touch: every pointer currently down on the canvas, for the pinch. Two
+  // fingers zoom the window around their midpoint by the ratio of their
+  // distance to the distance they started at; one finger is a drag like a mouse.
+  const pointers = new Map<number, { x: Double; y: Double }>()
+  let pinch: { dist: Double; win: ZoomWindow } | null = null
+  const pinchDistance = (): Double => {
+    const pts = [...pointers.values()]
+    if (pts.length < 2) return 0.0
+    const dx = pts[0]!.x - pts[1]!.x
+    const dy = pts[0]!.y - pts[1]!.y
+    return Math.sqrt(dx * dx + dy * dy)
+  }
+  const pinchCenterFrac = (plot: Rect): Double => {
+    const pts = [...pointers.values()]
+    if (pts.length < 2 || plot.w <= 0.0) return 0.5
+    const mid = (pts[0]!.x + pts[1]!.x) / 2.0 - leftOffset
+    return (mid - plot.x) / plot.w
+  }
+
+  const handleDown = (ev: PointerEvent): void => {
     if (props.dataZoom !== true && props.brush !== true && props.navigator !== true) return
     const el = canvas
     if (el === null) return
     const rect = el.getBoundingClientRect()
+    pointers.set(ev.pointerId, { x: ev.clientX - rect.left, y: ev.clientY - rect.top })
+    // A drag that leaves the canvas must still end here, not on whatever
+    // element the pointer is over when it lifts.
+    // A synthetic pointer (a test's dispatched event) has no active pointer to capture — that is not an error worth surfacing.
+    if (typeof el.setPointerCapture === 'function') {
+      try {
+        el.setPointerCapture(ev.pointerId)
+      } catch {
+        /* no active pointer with this id */
+      }
+    }
+    if (pointers.size === 2 && props.dataZoom === true) {
+      pinch = { dist: pinchDistance(), win: zoomWin() ?? { start: 0.0, end: 1.0 } }
+      dragMode = null
+      brushDrag = null
+      navDrag = null
+      suppressClick = true
+      ev.preventDefault()
+      return
+    }
     dragStartX = ev.clientX - rect.left
     dragLastX = dragStartX
     dragMoved = false
@@ -962,13 +1059,19 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     if (dragMode !== null) ev.preventDefault()
   }
 
-  const endDrag = (): void => {
+  const endDrag = (ev?: PointerEvent): void => {
+    if (ev !== undefined) pointers.delete(ev.pointerId)
+    if (pinch !== null) {
+      // The pinch ends when the second finger lifts; the remaining finger does not start a pan.
+      if (pointers.size < 2) pinch = null
+      return
+    }
     if (dragMode === 'brush' && dragMoved) {
       const plot = plotNow()
       const rows = readData()
       if (plot !== null && rows.length > 0) {
         const win = zoomWin() ?? { start: 0.0, end: 1.0 }
-        const range = brushRange(plot.x, plot.w, dragStartX, dragLastX, win, rows.length)
+        const range = brushRange(plot.x, plot.w, dragStartX - leftOffset, dragLastX - leftOffset, win, rows.length)
         brushSel.set(range)
         if (props.onBrush !== undefined) props.onBrush(range)
       }
@@ -980,9 +1083,24 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     draw()
   }
 
-  const handleMove = (ev: MouseEvent): void => {
+  const handleMove = (ev: PointerEvent): void => {
     const el = canvas
     if (el === null) return
+    if (pointers.has(ev.pointerId)) {
+      const r0 = el.getBoundingClientRect()
+      pointers.set(ev.pointerId, { x: ev.clientX - r0.left, y: ev.clientY - r0.top })
+    }
+    if (pinch !== null && pointers.size >= 2) {
+      const plot = plotNow()
+      const d = pinchDistance()
+      if (plot !== null && d > 0.0 && pinch.dist > 0.0) {
+        // Fingers apart = zoom in = a narrower window.
+        const next = zoomWindow(pinch.win, pinch.dist / d, pinchCenterFrac(plot))
+        zoomWin.set(isFullWindow(next) ? null : next)
+      }
+      ev.preventDefault()
+      return
+    }
     if (dragMode !== null) {
       const rect0 = el.getBoundingClientRect()
       const x = ev.clientX - rect0.left
@@ -1015,7 +1133,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const rect = el.getBoundingClientRect()
     const px = ev.clientX - rect.left
     const py = ev.clientY - rect.top
-    const idx = datumAt(px, py, w, hgt)
+    const idx = datumAt(px, py)
     if (props.crosshair === true || eventsOn) hoverIdx.set(idx)
     const box = tip
     if (props.tooltip !== true || box === null) return
@@ -1023,17 +1141,16 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       box.style.display = 'none'
       return
     }
-    const rows = readData()
-    const series = resolveMarks(rows, props.marks)
-    const lines = tooltipLines(
-      tooltipAt(idx, resolveCategories(rows, props.x), series),
-      props.format,
-    )
+    // The frame's spec already holds the visible rows' series and categories —
+    // the tooltip reads the same numbers the chart drew (a hidden series is
+    // zeroed there, so it is skipped here).
+    const f = frameNow()
+    if (f === null) return
+    const hidden = hiddenSeries()
+    const series = f.spec.series.filter((_x, i) => !hidden.includes(i))
+    const content = tooltipAt(idx, f.spec.categories, series)
     const custom = props.tooltipFormatter
-    box.textContent =
-      custom === undefined
-        ? lines.join('\n')
-        : custom(tooltipAt(idx, resolveCategories(rows, props.x), series))
+    box.textContent = custom === undefined ? tooltipLines(content, props.format).join('\n') : custom(content)
     box.style.display = 'block'
     // Measure AFTER filling it: placement depends on the rendered size, and a
     // stale size flips the tooltip on the wrong side at the edge.
@@ -1043,7 +1160,10 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     box.style.top = `${at.y}px`
   }
 
-  const handleLeave = (): void => {
+  const handleLeave = (ev?: PointerEvent): void => {
+    // With the pointer captured a drag never "leaves"; a leave is a real exit.
+    if (ev !== undefined) pointers.delete(ev.pointerId)
+    pinch = null
     if (dragMode !== null) endDrag()
     hoverIdx.set(-1)
     if (tip !== null) tip.style.display = 'none'
@@ -1105,15 +1225,26 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
           // that never pays off. See anti-patterns.md — saveAsImage is now a
           // permanent, unavoidable part of the plot-minimal bundle; the
           // import-budget and tree-shake suite are relocked accordingly.
-          const svg = renderSvg(lastFrame, lastW, lastH, { fontFamily: FONT, ...(props.title !== undefined ? { title: props.title } : {}) })
-          if (props.onSaveImage !== undefined) props.onSaveImage(svg)
-          else if (isClient && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
-            const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }))
-            const a = document.createElement('a')
-            a.href = url
-            a.download = (props.title ?? 'chart') + '.svg'
-            a.click()
-            URL.revokeObjectURL(url)
+          if (props.toolbox?.saveAsImage === 'png') {
+            const url = el.toDataURL('image/png')
+            if (props.onSaveImage !== undefined) props.onSaveImage(url, 'png')
+            else if (isClient) {
+              const a = document.createElement('a')
+              a.href = url
+              a.download = (props.title ?? 'chart') + '.png'
+              a.click()
+            }
+          } else {
+            const svg = renderSvg(lastFrame, lastW, lastH, { fontFamily: FONT, ...(props.title !== undefined ? { title: props.title } : {}) })
+            if (props.onSaveImage !== undefined) props.onSaveImage(svg, 'svg')
+            else if (isClient && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+              const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }))
+              const a = document.createElement('a')
+              a.href = url
+              a.download = (props.title ?? 'chart') + '.svg'
+              a.click()
+              URL.revokeObjectURL(url)
+            }
           }
         }
         return
@@ -1141,34 +1272,31 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       }
     }
     if (props.onSelect === undefined && props.selectedMode === undefined) return
-    const ctx = el.getContext('2d')
-    if (ctx === null) return
-    const w = drawWidth(el, props.width)
-    const hgt = props.height ?? 200
-    const spec = buildSpec(readData(), w, hgt - topOffset - bottomOffset)
-    const measure = canvasMeasure(ctx, FONT)
+    const f = frameNow()
+    if (f === null) return
     const rect = el.getBoundingClientRect()
-    const px = ev.clientX - rect.left
-    // Plot space (see datumAt): the plot sits under the title + legend.
+    // Plot space (see datumAt): the plot sits under the title + legend and right of a side legend.
+    const px = ev.clientX - rect.left - leftOffset
     const py = ev.clientY - rect.top - topOffset
     // Callbacks speak GLOBAL indices — the caller's data never zoomed.
     // `plotHitBars` (native-crossing, plot-hit.ts) owns EVERY mark kind now —
     // plain, stacked, and grouped bars all place their rects through it, so
     // there is no separate loop here to keep in sync with it.
     const off = viewRange(readData()).from
-    const idx = plotHitBars(spec, measure, px, py)
+    const idx = plotHitBarsIn(f.spec, f.layout, px, py)
     pickDatum(idx < 0 ? idx : globalOf(idx, off))
   })
 
-  const a11yInput = (): {
-    title?: string | undefined
-    categories: string[]
-    series: { label: string; values: Double[]; kind: string }[]
-    format?: Formatter | undefined
-  } => {
+  // The a11y input is read by the description, the table and every keystroke;
+  // resolving the marks over all rows each time was a full O(N) pass per read.
+  // Memoized on the inputs' identity — a new rows array or marks array is a new pass.
+  let a11yMemo: { rows: T[]; marks: Mark<T>[]; labels: string[] | undefined; format: Formatter | undefined; title: string | undefined; input: A11yInput } | null = null
+  const a11yInput = (): A11yInput => {
     const rows = readData()
+    const m = a11yMemo
+    if (m !== null && m.rows === rows && m.marks === props.marks && m.labels === props.seriesLabels && m.format === props.format && m.title === props.title) return m.input
     const resolved = resolveMarks(rows, props.marks)
-    return {
+    const input: A11yInput = {
       title: props.title,
       // The spoken description says the same numbers the axis shows. A chart
       // whose axis reads "$3.2K" and whose description reads "3204.55" is one
@@ -1181,6 +1309,8 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
         kind: s.kind,
       })),
     }
+    a11yMemo = { rows, marks: props.marks, labels: props.seriesLabels, format: props.format, title: props.title, input }
+    return input
   }
 
   const canvasNode = h('canvas', {
@@ -1189,14 +1319,23 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // thing rather than being skipped over entirely.
     role: 'img',
     'aria-label': () => describeChart(a11yInput()),
+    ...(props.accessibleTable === false ? {} : { 'aria-describedby': tableId }),
+    // A zoomable/brushable/navigable chart owns its touches; a static one
+    // leaves the page free to scroll over it.
+    ...(props.dataZoom === true || props.brush === true || props.navigator === true ? { style: 'touch-action:none' } : {}),
     ref: (el: HTMLCanvasElement | null) => {
       canvas = el
       sizeObserver?.disconnect()
       sizeObserver = null
       if (el === null) {
-        if (entranceFrame !== 0.0 && typeof cancelAnimationFrame === 'function') {
-          cancelAnimationFrame(entranceFrame)
+        // Unmounted mid-animation: neither frame may keep the closure alive.
+        if (typeof cancelAnimationFrame === 'function') {
+          if (entranceFrame !== 0.0) cancelAnimationFrame(entranceFrame)
+          if (tweenFrame !== 0.0) cancelAnimationFrame(tweenFrame)
         }
+        entranceFrame = 0.0
+        tweenFrame = 0.0
+        frameCache = null
         return
       }
       startEntrance()
@@ -1235,11 +1374,13 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     'data-pyreon-selected': () => selected().join(','),
     ...(keyboardOn ? { tabIndex: 0, onKeyDown: handleKeyDown, onBlur: () => batch(() => { focusIdx.set(-1); announce.set('') }) } : {}),
     ...(props.dataZoom === true ? { onWheel: handleWheel, onDblClick: () => zoomWin.set(null) } : {}),
+    // Pointer events, not mouse events: a finger drags, pans, brushes and
+    // pinches exactly as a mouse does — and the tooltip follows a touch.
     ...(props.dataZoom === true || props.brush === true || props.navigator === true
-      ? { onMouseDown: handleDown, onMouseUp: endDrag }
+      ? { onPointerDown: handleDown, onPointerUp: endDrag, onPointerCancel: handleLeave }
       : {}),
     ...(props.tooltip === true || props.crosshair === true || props.dataZoom === true || props.brush === true || props.navigator === true || eventsOn
-      ? { onMouseMove: handleMove, onMouseLeave: handleLeave }
+      ? { onPointerMove: handleMove, onPointerLeave: handleLeave }
       : {}),
   })
 
@@ -1302,6 +1443,10 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   // from the accessibility tree along with the visual layout.
   const table = (): VNode => {
     const t = chartTable(a11yInput())
+    // Capped: a 100k-row chart drawn through `maxPoints` must not also
+    // materialize 100k table rows in the DOM; the caption says what was cut.
+    const shown = t.rows.length > A11Y_TABLE_MAX ? t.rows.slice(0, A11Y_TABLE_MAX) : t.rows
+    const caption = (props.title ?? 'Chart data') + (shown.length < t.rows.length ? ` (first ${A11Y_TABLE_MAX} of ${t.rows.length} rows)` : '')
     // The clip styles go on a WRAPPER, not the table. A `<table>` uses auto
     // layout and expands to its content regardless of `width: 1px`, so styling
     // the table directly leaves ~126px of visible layout — which the browser
@@ -1314,13 +1459,13 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       },
       h(
       'table',
-      null,
-      h('caption', null, props.title ?? 'Chart data'),
+      { id: tableId },
+      h('caption', null, caption),
       h('thead', null, h('tr', null, ...t.headers.map((x) => h('th', { scope: 'col' }, x)))),
       h(
         'tbody',
         null,
-        ...t.rows.map((r) =>
+        ...shown.map((r) =>
           h('tr', null, h('th', { scope: 'row' }, r[0] ?? ''), ...r.slice(1).map((c) => h('td', null, c))),
         ),
       ),

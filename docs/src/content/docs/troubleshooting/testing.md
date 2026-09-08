@@ -115,6 +115,12 @@ Use `bun run test` (runs vitest via package scripts)
 
 ---
 
+### An inked-pixel COUNT cannot see a change on a canvas that is already fully painted
+
+(2026-09). `inkedPixels()` (non-transparent count) is the charts suites' standard "did it draw" proof — and on a treemap, a heatmap or any host whose ground is painted it reads the same number before and after ANY change (60000 of 60000 on a 300×200 treemap), so a keyboard focus ring or an update tween asserts as a no-op. Use a channel CHECKSUM (a weighted sum over every RGBA byte) when the claim is "the frame moved", and keep the count for "something was drawn at all". Sibling trap in the same suite: a `flush()` is one rAF, so a snapshot after it is already a tween TICK, not t=0 — assert a tween by sampling through it (more than two distinct frames) rather than by pinning a frame at a time. Reference: `charts/src/engine/host-parity.browser.test.tsx:checksum`.
+
+---
+
 ### Missing cleanup
 
 Always clean up mounted components, dispose effects

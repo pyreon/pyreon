@@ -53,6 +53,16 @@ export function CandlestickChart<T>(props: CandlestickChartProps<T>): VNode {
       props.onSelect?.(i)
       props.onSelectIndex?.(i)
     },
+    pick: (_g, i) => {
+      props.onSelect?.(i)
+      props.onSelectIndex?.(i)
+    },
+    focusRect: (g, i) => {
+      const n = g.candles.length
+      if (i < 0 || i >= n) return null
+      const bw = g.plot.w / n
+      return { x: g.box.x + g.plot.x + bw * i, y: g.box.y + g.plot.y, w: bw, h: g.plot.h }
+    },
     tooltip: (g, px, py) => {
       const idx = hitAt(g, px, py)
       const c = g.candles[idx]

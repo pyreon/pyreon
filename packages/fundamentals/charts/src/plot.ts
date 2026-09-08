@@ -27,7 +27,7 @@ export { buildHeatGrid, HEAT_RAMP, hitHeatCell, rampColor, renderHeat } from './
 export { colorRamp } from './engine/heat-ramp'
 export type { HeatCell, HeatGrid, HeatmapOptions } from './engine/heat'
 export { heatGridFrom, heatPlotFor, hitHeatChart, renderHeatChart } from './engine/heat-chart'
-export { plotHitBars, plotHitIndex } from './engine/plot-hit'
+export { plotHitBars, plotHitBarsIn, plotHitIndex, plotHitIndexIn } from './engine/plot-hit'
 export type { GaugeChartProps, PieChartProps } from './engine/PieChart'
 
 // Marks
@@ -52,12 +52,12 @@ export { smooth, step } from './engine/curve'
 export { cornerRadii, hasCorners, polygonCmd, rectCmd } from './engine/corners'
 export { gradientFor, gradientSolid, seriesGradient } from './engine/gradient'
 export type { SeriesGradient } from './engine/gradient'
-export { defaultTheme, emphasisLevel, emphasisOutline, layoutChart, renderChart, resolveYDomain, seriesMaxLength } from './engine/render'
+export { barsFor, barsForIn, defaultTheme, emphasisLevel, emphasisOutline, layoutChart, renderChart, renderChartIn, resolveY2Domain, resolveYDomain, seriesMaxLength, seriesOnRightAxis, stackedHitAt, stackedHitIn, themeCorners } from './engine/render'
 export { DARK_PALETTE, DEFAULT_PALETTE, paletteAt } from './engine/palette'
 export { palettes } from './engine/palettes'
 export { ChartThemeContext, ChartThemeProvider, chartThemes, resolveChartTheme, systemChartMode, tooltipStyle, useChartTheme } from './engine/theme'
 export type { ChartThemeMode, ChartThemeProviderProps } from './engine/theme'
-export type { Annotation, ChartSpec, ChartTheme, Emphasis, Series } from './engine/render'
+export type { Annotation, ChartSpec, ChartTheme, Emphasis, PointMarker, Series } from './engine/render'
 export {
   bandTicks,
   bandTicksY,
@@ -78,8 +78,8 @@ export { formatTime, logTicks, scaleLog, timeTicks } from './engine/scale-extra'
 // Radial family
 export { arcPolygon, fitCircle, hitArc, layoutArcs, pointOnCircle, renderGauge, renderPie } from './engine/arc'
 export type { ArcGeometry, GaugeOptions, PieOptions, Slice } from './engine/arc'
-export { radarAngles, radarPolygon, renderRadar, withAlpha } from './engine/radar'
-export type { RadarAxis, RadarOptions, RadarSeries } from './engine/radar'
+export { hitRadarIndex, radarAngles, radarPolygon, renderRadar, withAlpha } from './engine/radar'
+export type { RadarAxis, RadarHitIndex, RadarOptions, RadarSeries } from './engine/radar'
 export { RadarChart } from './engine/RadarChart'
 export type { RadarChartProps } from './engine/RadarChart'
 
@@ -109,8 +109,15 @@ export type { A11yInput, A11ySeries, A11yTable } from './engine/a11y'
 // Large-series decimation
 export { lttb, minMaxBuckets } from './engine/decimate'
 
-// Web backend — canvas
+// Web backend — canvas, and the shared canvas host every family component is
+// made of: the extension point for a family of your own (layout / render /
+// hit / a11y in, chrome + interaction + animation + accessibility out).
 export { canvasMeasure, paint, prepareCanvas } from './engine/canvas-web'
+export { A11Y_TABLE_MAX, canvasHost, orNull, shiftCmds } from './engine/canvas-host'
+export type { CanvasHostProps, CanvasHostSpec, LegendPosition } from './engine/canvas-host'
+// Animation primitives — the entrance easing, the value tween and the draw-list tween.
+export { easeOutCubic, sameShape, sameValues, tweenValues } from './engine/tween'
+export { cmdsEqual, sameCmdShape, tweenCmds } from './engine/cmd-tween'
 
 // SVG backend — a pure DrawCmd[] → string, so it runs on a server as readily
 // as in a browser. `chartToSvg` is the one-call form.

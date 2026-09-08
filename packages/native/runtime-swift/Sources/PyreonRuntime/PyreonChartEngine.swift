@@ -246,7 +246,8 @@ public struct Series {
   public var symbolRepeat: Bool? = nil
   public var corners: [Double]? = nil
   public var gradient: SeriesGradient? = nil
-  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, showValues: Bool? = nil, radii: [Double]? = nil, axis: String? = nil, effect: Bool? = nil, symbol: String? = nil, symbolRepeat: Bool? = nil, corners: [Double]? = nil, gradient: SeriesGradient? = nil) {
+  public var dash: [Double]? = nil
+  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, showValues: Bool? = nil, radii: [Double]? = nil, axis: String? = nil, effect: Bool? = nil, symbol: String? = nil, symbolRepeat: Bool? = nil, corners: [Double]? = nil, gradient: SeriesGradient? = nil, dash: [Double]? = nil) {
     self.kind = kind
     self.values = values
     self.color = color
@@ -262,6 +263,7 @@ public struct Series {
     self.symbolRepeat = symbolRepeat
     self.corners = corners
     self.gradient = gradient
+    self.dash = dash
   }
 }
 
@@ -2540,7 +2542,8 @@ public func layoutBars(_ values: [Double], _ plot: PyreonChartRect, _ yDomain: D
     let zero = yDomain.min < 0.0 && yDomain.max > 0.0 ? 0.0 : yDomain.min
     let zeroY = scaleLinear(yDomain, plot.y + plot.h, plot.y, zero)
     for i in 0..<n {
-      let v = values[i]
+      let raw = values[i]
+      let v = raw == raw ? raw : zero
       let vy = scaleLinear(yDomain, plot.y + plot.h, plot.y, v)
       let top = vy < zeroY ? vy : zeroY
       let h = abs(zeroY - vy)
@@ -2586,7 +2589,8 @@ public func layoutBarsH(_ values: [Double], _ plot: PyreonChartRect, _ vDomain: 
     let zero = vDomain.min < 0.0 && vDomain.max > 0.0 ? 0.0 : vDomain.min
     let zeroX = scaleLinear(vDomain, plot.x, plot.x + plot.w, zero)
     for i in 0..<n {
-      let v = values[i]
+      let raw = values[i]
+      let v = raw == raw ? raw : zero
       let vx = scaleLinear(vDomain, plot.x, plot.x + plot.w, v)
       let left = vx < zeroX ? vx : zeroX
       out.append(PyreonChartRect(x: left, y: plot.y + band * Double(i) + (band - bh) / 2.0, w: abs(vx - zeroX), h: bh))
@@ -2641,7 +2645,7 @@ public func layoutStackedBars(_ seriesValues: [[Double]], _ plot: PyreonChartRec
       var acc = 0.0
       for s in 0..<seriesValues.count {
         let v = (seriesValues[s][i] ?? 0.0)
-        if v <= 0.0 {
+        if !(v > 0.0) {
           continue
         }
         let yTop = scaleLinear(yDomain, plot.y + plot.h, plot.y, acc + v)
@@ -2711,7 +2715,8 @@ public func layoutGroupedBars(_ seriesValues: [[Double]], _ plot: PyreonChartRec
     for i in 0..<n {
       let gx = plot.x + band * Double(i) + (band - groupW) / 2.0
       for s in 0..<k {
-        let v = (seriesValues[s][i] ?? 0.0)
+        let raw = (seriesValues[s][i] ?? 0.0)
+        let v = raw == raw ? raw : zero
         let vy = scaleLinear(yDomain, plot.y + plot.h, plot.y, v)
         out.append(StackSegment(rect: PyreonChartRect(x: gx + barW * Double(s), y: vy < zeroY ? vy : zeroY, w: barW, h: abs(zeroY - vy)), seriesIndex: s, datumIndex: i, value: v))
       }
@@ -2839,11 +2844,12 @@ public func layoutChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double
     return computeLayout(cfg, measure)
   }
 
-public func renderChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double) -> [PyreonDrawCmd] {
+public func renderChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double) -> [PyreonDrawCmd] { renderChartIn(spec, measure, layoutChart(spec, measure)) }
+
+public func renderChartIn(_ spec: ChartSpec, _ measure: (String, Double) -> Double, _ l: PlotLayout) -> [PyreonDrawCmd] {
     let yDomain = resolveYDomain(spec)
     let useY2 = hasRightAxis(spec)
     let y2Domain = useY2 ? resolveY2Domain(spec) : yDomain
-    let l = layoutChart(spec, measure)
     let plot = l.plot
     let t = spec.theme
     var out: [PyreonDrawCmd] = []
@@ -3029,6 +3035,9 @@ public func renderChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double
           for i in 0..<rects.count {
             let r = rects[i]
             let v = s.values[i]
+            if !isFiniteValue(v) {
+              continue
+            }
             out.append(PyreonDrawCmd(kind: "text", fill: t.label, text: fmt(v), at: PyreonChartPt(x: v < 0.0 ? r.x - 4.0 : r.x + r.w + 4.0, y: r.y + Double(r.h) / 2.0), size: t.fontSize, align: v < 0.0 ? "end" : "start", baseline: "middle"))
           }
         }
@@ -3075,6 +3084,9 @@ public func renderChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double
           for i in 0..<rects.count {
             let r = rects[i]
             let v = s.values[i]
+            if !isFiniteValue(v) {
+              continue
+            }
             out.append(PyreonDrawCmd(kind: "text", fill: t.label, text: fmt(v), at: PyreonChartPt(x: r.x + Double(r.w) / 2.0, y: v < 0.0 ? r.y + r.h + 4.0 : r.y - 4.0), size: t.fontSize, align: "middle", baseline: v < 0.0 ? "top" : "bottom"))
           }
         }
@@ -3083,7 +3095,7 @@ public func renderChart(_ spec: ChartSpec, _ measure: (String, Double) -> Double
           for run in splitRuns(s.values, place) {
             let pts = reveal(shape(run))
             if pts.count > 1 {
-              out.append(PyreonDrawCmd(kind: "polyline", stroke: s.color, width: s.width, points: pts))
+              out.append(PyreonDrawCmd(kind: "polyline", stroke: s.color, width: s.width, dash: s.dash, points: pts))
             }
           }
         } else {
@@ -3258,20 +3270,23 @@ public func symbolCommand(_ cell: PyreonChartRect, _ symbol: String, _ fill: Str
     return PyreonDrawCmd(kind: "rect", rect: cell, fill: fill)
   }
 
-public func barsFor(_ spec: ChartSpec, _ index: Int, _ measure: (String, Double) -> Double) -> [PyreonChartRect] {
+public func barsFor(_ spec: ChartSpec, _ index: Int, _ measure: (String, Double) -> Double) -> [PyreonChartRect] { barsForIn(spec, index, layoutChart(spec, measure).plot) }
+
+public func barsForIn(_ spec: ChartSpec, _ index: Int, _ plot: PyreonChartRect) -> [PyreonChartRect] {
     let s = spec.series[index]
     if s == nil || s.kind != "bars" {
       return []
     }
     let dom = seriesOnRightAxis(s, spec) ? resolveY2Domain(spec) : resolveYDomain(spec)
-    return layoutBars(s.values, layoutChart(spec, measure).plot, dom, 0.25)
+    return layoutBars(s.values, plot, dom, 0.25)
   }
 
-public func stackedHitAt(_ spec: ChartSpec, _ measure: (String, Double) -> Double, _ px: Double, _ py: Double) -> Int {
+public func stackedHitAt(_ spec: ChartSpec, _ measure: (String, Double) -> Double, _ px: Double, _ py: Double) -> Int { stackedHitIn(spec, layoutChart(spec, measure).plot, px, py) }
+
+public func stackedHitIn(_ spec: ChartSpec, _ plot: PyreonChartRect, _ px: Double, _ py: Double) -> Int {
     if spec.horizontal == true {
       return -1
     }
-    let plot = layoutChart(spec, measure).plot
     let yDomain = resolveYDomain(spec)
     for kind in ["stacked", "grouped"] {
       let series = spec.series.filter({ s in s.kind == kind })
@@ -5082,13 +5097,12 @@ public func sankeyRgba(_ hex: String, _ alpha: Double) -> String {
   }
 
 public func sankeyIndexOf(_ nodes: [SankeyNode], _ name: String) -> Int {
-    var found = -1
     for i in 0..<nodes.count {
-      if found < 0 && nodes[i].name == name {
-        found = i
+      if nodes[i].name == name {
+        return i
       }
     }
-    return found
+    return -1
   }
 
 public func layoutSankey(_ nodes: [SankeyNode], _ links: [SankeyLink], _ box: PyreonChartRect, _ options: SankeyOptions? = nil) -> SankeyLayout {
@@ -5497,13 +5511,12 @@ public func graphSeedState(_ seed: Double) -> Double {
   }
 
 public func graphIndexOf(_ nodes: [GraphNode], _ id: String) -> Int {
-    var found = -1
     for i in 0..<nodes.count {
-      if found < 0 && nodes[i].id == id {
-        found = i
+      if nodes[i].id == id {
+        return i
       }
     }
-    return found
+    return -1
   }
 
 public func graphRadius(_ value: Double, _ hasValue: Bool, _ maxValue: Double, _ base: Double) -> Double {
@@ -6695,21 +6708,25 @@ public func renderHeatChart(_ grid: HeatGrid, _ w: Double, _ h: Double, _ theme:
 
 public func hitHeatChart(_ grid: HeatGrid, _ w: Double, _ h: Double, _ fontSize: Double, _ gap: Double, _ measure: (String, Double) -> Double, _ px: Double, _ py: Double) -> Int { hitHeatCell(grid, heatPlotFor(grid, w, h, fontSize, measure), gap, px, py) }
 
-public func plotHitBars(_ spec: ChartSpec, _ measure: (String, Double) -> Double, _ px: Double, _ py: Double) -> Int {
+public func plotHitBars(_ spec: ChartSpec, _ measure: (String, Double) -> Double, _ px: Double, _ py: Double) -> Int { plotHitBarsIn(spec, layoutChart(spec, measure), px, py) }
+
+public func plotHitBarsIn(_ spec: ChartSpec, _ l: PlotLayout, _ px: Double, _ py: Double) -> Int {
     for i in 0..<spec.series.count {
       if spec.series[i].kind != "bars" {
         continue
       }
-      let idx = hitBar(barsFor(spec, i, measure), px, py)
+      let idx = hitBar(barsForIn(spec, i, l.plot), px, py)
       if idx >= 0 {
         return idx
       }
     }
-    return stackedHitAt(spec, measure, px, py)
+    return stackedHitIn(spec, l.plot, px, py)
   }
 
-public func plotHitIndex(_ spec: ChartSpec, _ measure: (String, Double) -> Double, _ px: Double, _ py: Double) -> Int {
-    let barHit = plotHitBars(spec, measure, px, py)
+public func plotHitIndex(_ spec: ChartSpec, _ measure: (String, Double) -> Double, _ px: Double, _ py: Double) -> Int { plotHitIndexIn(spec, layoutChart(spec, measure), px, py) }
+
+public func plotHitIndexIn(_ spec: ChartSpec, _ l: PlotLayout, _ px: Double, _ py: Double) -> Int {
+    let barHit = plotHitBarsIn(spec, l, px, py)
     if barHit >= 0 {
       return barHit
     }
@@ -6720,7 +6737,6 @@ public func plotHitIndex(_ spec: ChartSpec, _ measure: (String, Double) -> Doubl
     if first.kind == "bars" || first.kind == "stacked" || first.kind == "grouped" {
       return -1
     }
-    let l = layoutChart(spec, measure)
     return hitNearestX(layoutSeriesPoints(first.values, l.plot, resolveYDomain(spec)), px)
   }
 
@@ -6841,7 +6857,7 @@ public func tooltipAt(_ index: Int, _ categories: [String], _ series: [TooltipSe
     var rows: [TooltipRow] = []
     for s in series {
       let v = s.values[index]
-      if v == nil {
+      if v == nil || v != v {
         continue
       }
       let row = TooltipRow(label: s.label, value: v, color: s.color)

@@ -21,7 +21,19 @@
 // SwiftUI SDK). An EMPTY scan is a SKIP + warning, never a silent clean pass.
 
 import { execSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import {
+  readVerdict,
+  verdictKey,
+  writeVerdict,
+} from '../packages/native/runtime-kotlin/scripts/verdict-cache'
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -163,7 +175,52 @@ console.log(
   `[check-native-cosource] ${pkgs.length} co-located package(s); kotlinc=${kotlinc} swiftc=${swiftc} swiftFullSdk=${swiftFullSdk}`,
 )
 
-const verifyKotlin = join(ROOT, 'packages', 'native', 'runtime-kotlin', 'scripts', 'verify-kotlin.ts')
+const verifyKotlin = join(
+  ROOT,
+  'packages',
+  'native',
+  'runtime-kotlin',
+  'scripts',
+  'verify-kotlin.ts',
+)
+
+// ── Verdict cache ─────────────────────────────────────────────────────────
+// A co-source verification is a pure function of (compiler version, the
+// harness whose bytes carry the stubs, the exact source + test bytes, the
+// mode) — the same contract verify-all.ts and validate-cache.ts document. This
+// script used to spawn every compile fresh: 307 s on the Linux lane (Kotlin)
+// and 206 s on macOS (Swift) per native PR, both re-deriving verdicts nothing
+// had changed. Only OK verdicts are stored (a failure re-runs so its output
+// is printed); a missing toolchain never reaches the cache. Honors
+// PYREON_VALIDATE_CACHE_DIR / PYREON_VALIDATE_NO_CACHE like its siblings.
+const readOr = (f: string): string => {
+  try {
+    return readFileSync(f, 'utf8')
+  } catch {
+    return ''
+  }
+}
+const bytesOf = (files: readonly string[]): string =>
+  files.map((f) => `${f.slice(ROOT.length)}\0${readOr(f)}`).join('\0')
+const toolVersion = (bin: string, flag: string): string => {
+  const p = spawnSync(bin, [flag], { encoding: 'utf8' })
+  return `${p.stdout ?? ''}${p.stderr ?? ''}`.trim() || 'unknown'
+}
+const kotlincVersion = kotlinc ? toolVersion('kotlinc', '-version') : ''
+const swiftcVersion = swiftc ? toolVersion('swiftc', '--version') : ''
+const kotlinHarness = readOr(verifyKotlin)
+let cacheHits = 0
+/** Run `compute` unless an OK verdict for exactly these inputs is cached; store an OK result. */
+function cached(key: string, label: string, compute: () => boolean): boolean {
+  if (readVerdict(key)?.ok === true) {
+    cacheHits++
+    console.log(`  ✓ ${label} (cached verdict)`)
+    return true
+  }
+  const ok = compute()
+  if (ok) writeVerdict(key, { ok: true })
+  return ok
+}
 
 for (const pkg of pkgs) {
   // --- Kotlin ---
@@ -183,7 +240,16 @@ for (const pkg of pkgs) {
       // PyreonStorageBackends or PyreonJson) via a `@base/<File>.kt` prefix —
       // the co-located runtime compiles against it but does not own it.
       const baseRuntimeDir = join(
-        ROOT, 'packages', 'native', 'runtime-kotlin', 'src', 'main', 'kotlin', 'com', 'pyreon', 'runtime',
+        ROOT,
+        'packages',
+        'native',
+        'runtime-kotlin',
+        'src',
+        'main',
+        'kotlin',
+        'com',
+        'pyreon',
+        'runtime',
       )
       const resolveGroupFile = (f: string): string =>
         f.startsWith('@base/')
@@ -220,7 +286,9 @@ for (const pkg of pkgs) {
         const missing = abs.filter((f) => !existsSync(f))
         if (missing.length > 0) {
           failures++
-          console.error(`  ✗ ${pkg.name} [kotlin ${svc}]: declared file(s) not found:\n    ${missing.join('\n    ')}`)
+          console.error(
+            `  ✗ ${pkg.name} [kotlin ${svc}]: declared file(s) not found:\n    ${missing.join('\n    ')}`,
+          )
           continue
         }
         // Tests whose base (minus "Test") matches a group file's base.
@@ -235,13 +303,27 @@ for (const pkg of pkgs) {
             : [{ label: 'typecheck-only', extra: ['--typecheck-only'] }]
         for (const run of runs) {
           const args = [verifyKotlin, `--files=${abs.join(',')}`, `--service=${svc}`, ...run.extra]
-          const r = spawnSync('bun', args, { encoding: 'utf8' })
-          if (r.status !== 0) {
-            failures++
-            console.error(`  ✗ ${pkg.name} [kotlin ${svc} · ${run.label}]:\n${r.stdout}\n${r.stderr}`)
-          } else {
+          const typecheckOnly = run.extra.includes('--typecheck-only')
+          const testFile = run.extra.find((e) => e.startsWith('--test='))?.slice('--test='.length)
+          const key = verdictKey({
+            compilerVersion: kotlincVersion,
+            harness: kotlinHarness,
+            source: bytesOf(abs),
+            test: testFile ? bytesOf([testFile]) : '',
+            typecheckOnly,
+          })
+          const ok = cached(key, `${pkg.name} [kotlin ${svc} · ${run.label}]`, () => {
+            const r = spawnSync('bun', args, { encoding: 'utf8' })
+            if (r.status !== 0) {
+              console.error(
+                `  ✗ ${pkg.name} [kotlin ${svc} · ${run.label}]:\n${r.stdout}\n${r.stderr}`,
+              )
+              return false
+            }
             console.log(`  ✓ ${pkg.name} [kotlin ${svc} · ${run.label}] (${files.length} file(s))`)
-          }
+            return true
+          })
+          if (!ok) failures++
         }
       }
     } else {
@@ -256,13 +338,25 @@ for (const pkg of pkgs) {
       const args = [verifyKotlin, `--source-dir=${pkg.kotlinDir}`, `--service=${svc}`]
       if (test) args.push(`--test=${test}`)
       else args.push('--typecheck-only')
-      const r = spawnSync('bun', args, { encoding: 'utf8' })
-      if (r.status !== 0) {
-        failures++
-        console.error(`  ✗ ${pkg.name} [kotlin]:\n${r.stdout}\n${r.stderr}`)
-      } else {
-        console.log(`  ✓ ${pkg.name} [kotlin] (${ktFiles.length} file(s))`)
-      }
+      const key = verdictKey({
+        compilerVersion: kotlincVersion,
+        harness: kotlinHarness,
+        source: bytesOf(ktFiles),
+        test: test ? bytesOf([test]) : '',
+        typecheckOnly: !test,
+      })
+      const ok = cached(key, `${pkg.name} [kotlin]`, () => {
+        const r = spawnSync('bun', args, { encoding: 'utf8' })
+        if (r.status !== 0) {
+          console.error(`  ✗ ${pkg.name} [kotlin]:\n${r.stdout}\n${r.stderr}`)
+          return false
+        }
+        console.log(
+          `  ✓ ${pkg.name} [kotlin]` + (test ? ' (compiled + ran test)' : ' (typecheck-only)'),
+        )
+        return true
+      })
+      if (!ok) failures++
     }
   }
 
@@ -276,7 +370,18 @@ for (const pkg of pkgs) {
       const srcFiles = filesUnder(pkg.swiftDir, '.swift')
       const testFiles = pkg.testsDir ? filesUnder(pkg.testsDir, '.swift') : []
       // Typecheck the source alone; if a test exists, compile source+test and RUN it.
-      if (testFiles.length > 0) {
+      const swiftKey = verdictKey({
+        kind: 'swift-cosource',
+        compilerVersion: swiftcVersion,
+        harness: '',
+        source: bytesOf(srcFiles),
+        test: bytesOf(testFiles),
+        typecheckOnly: testFiles.length === 0,
+      })
+      if (readVerdict(swiftKey)?.ok === true) {
+        cacheHits++
+        console.log(`  ✓ ${pkg.name} [swift] (cached verdict)`)
+      } else if (testFiles.length > 0) {
         const bin = join('/tmp', `pyreon-cosource-${pkg.name.replace(/[^a-z0-9]/gi, '_')}`)
         // `-parse-as-library`: the test file provides `@main` (top-level
         // statements are illegal when compiling multiple files); the source
@@ -296,6 +401,7 @@ for (const pkg of pkgs) {
             console.error(`  ✗ ${pkg.name} [swift] test run:\n${run.stdout}\n${run.stderr}`)
           } else {
             console.log(`  ✓ ${pkg.name} [swift] (compiled + ran tests)`)
+            writeVerdict(swiftKey, { ok: true })
           }
         }
       } else {
@@ -305,6 +411,7 @@ for (const pkg of pkgs) {
           console.error(`  ✗ ${pkg.name} [swift] typecheck:\n${r.stderr}`)
         } else {
           console.log(`  ✓ ${pkg.name} [swift] (typecheck)`)
+          writeVerdict(swiftKey, { ok: true })
         }
       }
     }
@@ -315,4 +422,6 @@ if (failures > 0) {
   console.error(`[check-native-cosource] ${failures} failure(s)`)
   process.exit(1)
 }
-console.log('[check-native-cosource] ✓ all co-located native sources verified')
+console.log(
+  `[check-native-cosource] ✓ all co-located native sources verified (${cacheHits} cached verdict(s))`,
+)

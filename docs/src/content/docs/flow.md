@@ -267,6 +267,21 @@ flow.updateNodeData('a', { label: 'A!' }) // merge into data (or a function of t
 ### `hidden` and `deletable`
 
 A node or edge with `hidden: true` stays in the graph (ids, edges, selection, JSON) but is not rendered — an edge touching a hidden node disappears with it. `deletable: false` exempts an element from `deleteSelected()` and the Delete key (it stays selected so the user can see it survived); `nodesDeletable: false` / `edgesDeletable: false` set the default. An edge whose endpoint node is deleted goes regardless of its own flag.
+### Sub-flows (parent / child nodes)
+
+```ts
+const flow = createFlow({
+  nodes: [
+    { id: 'group', position: { x: 100, y: 200 }, width: 400, height: 300, group: true, data: {} },
+    // A child's position is RELATIVE to its parent's top-left.
+    { id: 'a', parentId: 'group', position: { x: 20, y: 30 }, data: {}, extent: 'parent' },
+    { id: 'b', parentId: 'group', position: { x: 200, y: 30 }, data: {}, expandParent: true },
+  ],
+})
+flow.getAbsolutePosition('a') // { x: 120, y: 230 }
+```
+
+React Flow's sub-flow model: a child keeps its relative `position`, renders at the absolute one, and moves with its parent (one write on the parent — dragging a parent and a selected child together never double-moves the child). Edges, `fitView`, `focusNode`, the selection box, viewport culling and the minimap all use absolute positions. Parents render before their children so a child sits on top. `extent: 'parent'` keeps a dragged child inside its parent's box (an `[[minX, minY], [maxX, maxY]]` extent clamps it to a box in its own coordinate space); `expandParent: true` grows the parent's `width` / `height` to contain a child dragged past its edge.
 
 ## Edge Operations
 
@@ -440,6 +455,13 @@ flow.setEdges((edges) => edges.filter((e) => !e.animated))
 flow.removeEdges(['ab'])
 flow.updateEdge('ab', { label: 'renamed' })
 ```
+### Hit width and reconnection
+
+Every edge carries an invisible interaction path around its visible line (`edgeInteractionWidth`, default 20px; per-edge `interactionWidth`), so a hairline edge is clickable. A selected edge shows two endpoint handles: drag one onto another node's handle to reconnect that end (the other end stays fixed, `isValidConnection` / `connectionRules` are consulted, and a drop on nothing leaves the edge as it was). Turn the handles off per edge with `reconnectable: false` or globally with `edgesReconnectable: false`.
+
+### Connection line
+
+`connectionLineType` (`'bezier'` default, `'straight'`, `'smoothstep'`, `'step'`) picks the built-in in-progress line; `<Flow connectionLine={MyLine}>` replaces it with your own component, mounted once per drag with accessor props (`sourceX/Y`, `targetX/Y`, `sourcePosition`, and the built-in `path` for the same points) that follow the pointer without re-mounting.
 
 ## Edge Anchoring & Node Measurement
 
@@ -547,6 +569,32 @@ flow.flowToScreenPosition(node.position) // anchor a popover to a node
 ```
 
 A plain write cancels an in-flight animation. The screen conversions use the mounted `<Flow>` container's rect; with no mounted canvas a screen point is read as canvas-relative.
+### Pan and zoom options
+
+```ts
+const flow = createFlow({
+  panOnDrag: [1, 2], // pan with the middle / right button only (default: true = any button)
+  selectionOnDrag: true, // a plain left-drag draws a selection box (the "figma" preset)
+  selectionMode: 'full', // box must CONTAIN a node ('partial', the default, touches)
+  panOnScroll: true, // the wheel pans; Shift+wheel horizontally; Ctrl/Cmd+wheel zooms
+  panOnScrollSpeed: 0.5,
+  zoomOnScroll: true,
+  zoomOnPinch: true,
+  zoomOnDoubleClick: true, // double-click the empty canvas: one zoom step around the pointer
+  preventScrolling: true, // preventDefault() on handled wheel events
+})
+```
+
+### Keys
+
+```ts
+const flow = createFlow({
+  deleteKeys: ['Delete', 'Backspace'], // null disables keyboard deletion
+  multiSelectionKey: 'shift', // modifier that ADDS a click to the selection ('ctrl' | 'meta' | 'alt' | null)
+  selectionKey: 'shift', // modifier that turns a canvas drag into a selection box
+  zoomActivationKey: 'ctrl', // zoom modifier under panOnScroll (Cmd also counts by default)
+})
+```
 
 ## Auto-Layout
 
@@ -929,6 +977,61 @@ Props: `position` is `'top'` / `'bottom'` / `'left'` / `'right'` (a string, **no
 `<NodeToolbar position="top">` takes a plain string (`'top' | 'bottom' | 'left' | 'right'`), not the `Position` enum — and it's driven by `selected`, not a `nodeId`. Pass `selected={props.selected}` (the accessor) so the toolbar tracks live selection.
 :::
 
+### HTML edge labels
+
+SVG `<text>` cannot hold buttons or wrapped rich text. A custom edge wraps its label in `<EdgeLabelRenderer>`: the children are portaled into a `<div>` layer inside the viewport (they pan and zoom with the graph) and position themselves with the edge's `labelX` / `labelY` accessors.
+
+```tsx
+import { EdgeLabelRenderer, getBezierPath, type EdgeComponentProps } from '@pyreon/flow'
+
+function LabeledEdge(props: EdgeComponentProps) {
+  return (
+    <>
+      <path d={() => getBezierPath({ /* … */ }).path} style="fill: none; stroke: #999;" />
+      <EdgeLabelRenderer>
+        <div
+          class="nopan"
+          style={() =>
+            `position: absolute; pointer-events: all; transform: translate(-50%, -50%) translate(${props.labelX()}px, ${props.labelY()}px);`
+          }
+        >
+          <button onClick={() => flow.removeEdge(props.edge.id!)}>×</button>
+        </div>
+      </EdgeLabelRenderer>
+    </>
+  )
+}
+```
+
+The layer is `pointer-events: none`; an interactive label opts back in with `pointer-events: all` and the `nopan` class (so a click on it does not start a canvas pan).
+
+### Portaled node toolbar
+
+Pass the node's id and `<NodeToolbar>` leaves the node: it renders in the canvas's toolbar layer, follows the node through pan and zoom **without being scaled**, is never clipped by the node's `overflow`, and sits above every node. `position` (`top` | `bottom` | `left` | `right`), `offset` and `align` (`start` | `center` | `end`) place it.
+
+```tsx
+function EditableNode(props: NodeComponentProps) {
+  return (
+    <div class="node">
+      <NodeToolbar nodeId={props.id} selected={props.selected} position="top" align="end">
+        <button onClick={() => duplicate(props.id)}>Duplicate</button>
+      </NodeToolbar>
+      {props.data().label}
+    </div>
+  )
+}
+```
+
+Without `nodeId` the toolbar renders inline inside the node as before (and on the server, where there are no layers).
+
+### Minimap interaction
+
+Dragging on `<MiniMap>` pans the graph and the wheel zooms it around the canvas center; a click still centers on the clicked point. `pannable={false}` / `zoomable={false}` turn either off.
+
+### Controls children
+
+`<Controls>` accepts children rendered after the built-in buttons — a `<button>` picks up the control styling.
+
 ## Theming
 
 Every color the flow renderer emits goes through a `--pyreon-flow-*` CSS custom property with the historical light-mode value as fallback — **zero setup for light apps, one CSS block to re-skin everything** (dark mode, brand colors). Set them on the flow container or any ancestor:
@@ -980,7 +1083,11 @@ Rows marked `flowStyles` live in the optional injected stylesheet (below); every
 SVG strokes/fills are set via the `style` attribute, never SVG presentation attributes — `var()` is invalid in a presentation attribute (the value would be dropped and the shape would render invisible). Follow the same rule in custom edge renderers.
 :::
 
-### `flowStyles` — hover & animation states
+#### Color modes
+
+`<Flow colorMode="dark">` (or `"system"`, which follows `prefers-color-scheme`) renders `data-color-mode` on the canvas, and `flowStyles` carries a dark value for every `--pyreon-flow-*` variable behind it — nodes, edges, panels, controls, minimap, toolbar, handles and the background pattern. Your own variable overrides on an ancestor still win, so a custom theme needs no changes.
+
+## `flowStyles` — hover & animation states
 
 Inline styles can't express `:hover` / `@keyframes`, so those polish states ship as an exported CSS string. Inject it once at app root:
 

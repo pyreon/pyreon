@@ -43,7 +43,9 @@ export function layoutStackedBars(
     let acc = 0.0
     for (let s = 0; s < seriesValues.length; s++) {
       const v = seriesValues[s]![i] ?? 0.0
-      if (v <= 0.0) continue
+      // `!(v > 0)` rather than `v <= 0`: a gap (NaN) fails both comparisons,
+      // and a gap in a stack is a zero-height segment, never a NaN column.
+      if (!(v > 0.0)) continue
       const yTop = scaleLinear(yDomain, plot.y + plot.h, plot.y, acc + v)
       const yBot = scaleLinear(yDomain, plot.y + plot.h, plot.y, acc)
       out.push({
@@ -109,7 +111,9 @@ export function layoutGroupedBars(
   for (let i = 0; i < n; i++) {
     const gx = plot.x + band * i + (band - groupW) / 2.0
     for (let s = 0; s < k; s++) {
-      const v = seriesValues[s]![i] ?? 0.0
+      const raw = seriesValues[s]![i] ?? 0.0
+      // A gap draws a zero-height bar at the zero line — nothing to see, nothing to hit.
+      const v = raw === raw ? raw : zero
       const vy = scaleLinear(yDomain, plot.y + plot.h, plot.y, v)
       out.push({
         rect: {

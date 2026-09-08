@@ -37,6 +37,12 @@ An `{ equals }` computed re-evaluated ONLY inside its queued recompute and never
 
 ---
 
+### An effect that bumps a version signal it also READS re-runs itself once per batch pass — 32 times, silently
+
+(the `canvasHost` `a11yVersion` instance, 2026-09). `effect(() => { track(); version.set(version() + 1); draw() })` subscribes the effect to `version` through the read, so its own write re-queues it; the two-tier batch drains it up to `MAX_PASSES` (32) and stops without a warning. The symptom was NOT a loop but a cancelled animation: every re-run called `draw()`, which saw "nothing changed" and cancelled the update tween the first run had started, so the tween never ticked. **Rule: a counter an effect maintains for OTHER readers is written with `.peek()` (`version.set(version.peek() + 1)`) — never read inside the effect that writes it.** Detection: the repeated `draw()` was invisible until a `console.log` counted it; a tween that "snaps" with reduced-motion off and a same-shape frame is this class first. Reference: `packages/fundamentals/charts/src/engine/canvas-host.tsx` (the draw effect).
+
+---
+
 ### Missing batch
 
 3+ signal updates without `batch()` → unnecessary re-renders

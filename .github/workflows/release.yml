@@ -337,11 +337,17 @@ jobs:
       - name: Compare every publishable package against npm
         id: lag
         run: |
+          # GitHub runs `run:` under `bash -e`: a non-zero command substitution
+          # in an assignment aborts the step. The probe EXITS 1 precisely when
+          # there is lag to resume, so it must run with -e off. (The first live
+          # run died here with nothing printed — run 34201482228.)
+          set +e
           set -uo pipefail
           # --lag-json prints ONE JSON line on stdout: {version, packages} for
           # packages lagging the CURRENT repo version (exit 1 = lag found,
           # exit 2 = registry unreachable → resume nothing).
           lag=$(bun scripts/check-published-state.ts --lag-json 2>/dev/null); code=$?
+          set -e
           if [ "$code" -eq 2 ] || [ -z "$lag" ]; then echo "registry lookup failed — not resuming"; echo "version=" >> "$GITHUB_OUTPUT"; echo "packages=" >> "$GITHUB_OUTPUT"; exit 0; fi
           echo "lag: $lag"
           printf 'version=%s\n' "$(printf '%s' "$lag" | bun -e 'console.log(JSON.parse(require("fs").readFileSync(0,"utf8")).version)')" >> "$GITHUB_OUTPUT"
