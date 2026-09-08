@@ -254,6 +254,20 @@ const node = flow.getNode('2') // FlowNode<TData> | undefined
 Don't mutate the array returned by `flow.nodes()` directly — go through `addNode` / `updateNode` / `removeNode` so the internal signals fire. A direct push won't update the DOM.
 :::
 
+### Batch node operations
+
+```ts
+flow.getNodes() // plain (untracked) read
+flow.addNodes([n1, n2]) // one batch; duplicate ids are ignored
+flow.setNodes((nodes) => nodes.filter((n) => n.id !== 'x')) // edges + selection pruned to survivors
+flow.removeNodes(['a', 'b']) // nodes and their edges, one batch
+flow.updateNodeData('a', { label: 'A!' }) // merge into data (or a function of the node)
+```
+
+### `hidden` and `deletable`
+
+A node or edge with `hidden: true` stays in the graph (ids, edges, selection, JSON) but is not rendered — an edge touching a hidden node disappears with it. `deletable: false` exempts an element from `deleteSelected()` and the Delete key (it stays selected so the user can see it survived); `nodesDeletable: false` / `edgesDeletable: false` set the default. An edge whose endpoint node is deleted goes regardless of its own flag.
+
 ## Edge Operations
 
 ```tsx
@@ -417,6 +431,16 @@ const flow = createFlow({
 `markerEnd: null` is **not** the same as omitting `markerEnd`. `null` is the explicit "no end arrow" opt-out that overrides `defaultMarkerEnd`; **omitting** `markerEnd` falls back to the flow default (a closed arrowhead unless you set `defaultMarkerEnd: null`). `markerStart` is omitted by default (no start arrow). Resolved marker defaults: `color: '#999'`, `width: 10`, `height: 7`, `strokeWidth: 1`.
 :::
 
+### Batch edge operations
+
+```ts
+flow.getEdges()
+flow.addEdges([{ source: 'a', target: 'b' }]) // normalised (id/type/defaults), deduped, emits onConnect + onEdgesChange
+flow.setEdges((edges) => edges.filter((e) => !e.animated))
+flow.removeEdges(['ab'])
+flow.updateEdge('ab', { label: 'renamed' })
+```
+
 ## Edge Anchoring & Node Measurement
 
 Where exactly an edge attaches to a node is resolved per endpoint, in priority order:
@@ -510,6 +534,20 @@ const flow = createFlow({
 
 Measured (60-frame drag): N=1000 `1.34ms → 0.31ms`, N=3000 `3.36ms → 0.78ms`. Default stays `true` so existing apps keep helper-line snapping; set `false` when you don't need it (or use `snapToGrid` for grid quantization instead, which is a separate, cheap mechanism).
 
+### Viewport helpers
+
+```ts
+flow.getViewport() // { x, y, zoom } — untracked read
+flow.setViewport({ zoom: 2 }) // partial write; omitted fields keep their value
+flow.setViewport({ x: 0, y: 0, zoom: 1 }, { duration: 300 }) // animated
+flow.setCenter(400, 200, { zoom: 1.5, duration: 200 }) // center on a FLOW point
+flow.zoomTo(2, { duration: 150 }) // zoomIn / zoomOut / fitView take the same options
+flow.screenToFlowPosition({ x: e.clientX, y: e.clientY }) // drop a node where the pointer is
+flow.flowToScreenPosition(node.position) // anchor a popover to a node
+```
+
+A plain write cancels an in-flight animation. The screen conversions use the mounted `<Flow>` container's rect; with no mounted canvas a screen point is read as canvas-relative.
+
 ## Auto-Layout
 
 The [playground](#playground) above has live `layered`, `tree`, and `force` buttons — click them to watch the layout animate.
@@ -588,6 +626,18 @@ flow.isValidConnection({ source: '1', target: '2' }) // boolean
 The rule field is **`outputs`**, keyed by the **source node's `type`** — not `allowedTargets`. A source whose type has no rule entry is allowed to connect anywhere (the rules are an allowlist applied only to types that appear in the map). `isValidConnection` resolves each endpoint's `type` (defaulting to `'default'`) and returns `false` if either node id doesn't exist.
 :::
 
+### Custom validation and drop snapping
+
+```ts
+const flow = createFlow({
+  // Vetoed before connectionRules — return false to refuse.
+  isValidConnection: (c) => c.source !== c.target,
+  // A drop within 20 screen pixels of a target handle connects to it
+  // (React Flow's connectionRadius); 0 requires a drop ON the handle.
+  connectionRadius: 20,
+})
+```
+
 ## Graph Queries
 
 ```tsx
@@ -620,6 +670,10 @@ flow.redo()        // re-apply an undone snapshot
 :::note
 The undo/redo history is **manual** — call `flow.pushHistory()` before a mutation you want to be undoable. The history is capped at 50 snapshots; a fresh `pushHistory` clears the redo stack. `undo`/`redo` clear the current selection.
 :::
+
+### Automatic checkpoints
+
+Every structural mutation — `addNode(s)`, `removeNode(s)`, `addEdge(s)`, `removeEdge(s)`, `setNodes`, `setEdges`, `updateNodeData`, `deleteSelected`, `paste`, `fromJSON`, `layout` — records a checkpoint before it applies, and a node drag records one at pointerdown, so `undo()` works with no manual `pushHistory()` calls. A checkpoint is skipped when nothing changed since the previous one, so calling `pushHistory()` yourself right before a mutation never double-records. `autoHistory: false` in the config restores the manual model.
 
 ## Copy / Paste
 
@@ -695,6 +749,22 @@ flow.onNodeDragStart((node) => { /* drag begins */ })
 flow.onNodeDragEnd((node) => { /* drag ends */ })
 flow.onNodeDoubleClick((node) => { /* double click */ })
 ```
+
+### Full listener surface
+
+| Listener | Fires |
+| --- | --- |
+| `onNodesChange(changes)` | position / dimensions / remove batches |
+| `onEdgesChange(changes)` | `add` / `remove` batches |
+| `onSelectionChange({ nodes, edges })` | every selection write, with the live objects (not at creation) |
+| `onViewportChange(viewport)` | every viewport write, animation frames included |
+| `onNodesDelete(nodes)` / `onEdgesDelete(edges)` | what `deleteSelected()` / `removeNode(s)` / `removeEdge(s)` removed (an edge removed with its node is reported too) |
+| `onNodeDragStart` / `onNodeDrag` / `onNodeDragEnd` | drag lifecycle; `onNodeDrag` is per frame with the live node |
+| `onConnectStart({ nodeId, handleId })` / `onConnectEnd(connection \| null)` | a connection drag starting / ending (null = dropped nowhere) |
+| `onConnect(connection)` | an edge added by a drop or `addEdge(s)` |
+| `onNodeClick` / `onNodeDoubleClick` / `onEdgeClick` / `onPaneClick(event)` | clicks; the pane is the empty canvas |
+
+Every registrar returns an unsubscribe; `dispose()` clears them all.
 
 ## Batch Operations
 

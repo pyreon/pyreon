@@ -1,10 +1,11 @@
 import type { Computed } from '@pyreon/reactivity'
-import { batch, computed, getCurrentScope, setCurrentScope, signal } from '@pyreon/reactivity'
+import { batch, computed, getCurrentScope, setCurrentScope, signal, untrack } from '@pyreon/reactivity'
 import { computeEdgeGeometry } from './edge-geometry'
 import { getEffectiveDimensions } from './edges'
 import { computeLayout } from './layout'
 import type {
   Connection,
+  EdgeChange,
   Dimensions,
   EdgeGeometry,
   FlowConfig,
@@ -17,6 +18,8 @@ import type {
   NodeChange,
   NodeMeasurement,
   SnapSession,
+  Viewport,
+  ViewportOptions,
   XYPosition,
 } from './types'
 
@@ -351,9 +354,73 @@ export function createFlow<TData = Record<string, unknown>>(
   const nodeDragStartListeners = new Set<(node: FlowNode<TData>) => void>()
   const nodeDragEndListeners = new Set<(node: FlowNode<TData>) => void>()
   const nodeDoubleClickListeners = new Set<(node: FlowNode<TData>) => void>()
+  const edgesChangeListeners = new Set<(changes: EdgeChange[]) => void>()
+  const selectionListeners = new Set<
+    (selection: { nodes: FlowNode<TData>[]; edges: FlowEdge[] }) => void
+  >()
+  const viewportListeners = new Set<(viewport: Viewport) => void>()
+  const nodesDeleteListeners = new Set<(nodes: FlowNode<TData>[]) => void>()
+  const edgesDeleteListeners = new Set<(edges: FlowEdge[]) => void>()
+  const nodeDragListeners = new Set<(node: FlowNode<TData>) => void>()
+  const connectStartListeners = new Set<(start: { nodeId: string; handleId: string }) => void>()
+  const connectEndListeners = new Set<(connection: Connection | null) => void>()
+  const paneClickListeners = new Set<(event: MouseEvent) => void>()
 
   function emitNodeChanges(changes: NodeChange[]) {
     for (const cb of nodesChangeListeners) cb(changes)
+  }
+  function emitEdgeChanges(changes: EdgeChange[]) {
+    if (changes.length === 0) return
+    for (const cb of edgesChangeListeners) cb(changes)
+  }
+  function emitDeleted(removedNodes: FlowNode<TData>[], removedEdges: FlowEdge[]) {
+    if (removedNodes.length > 0) {
+      emitNodeChanges(removedNodes.map((n) => ({ type: 'remove', id: n.id })))
+      for (const cb of nodesDeleteListeners) cb(removedNodes)
+    }
+    if (removedEdges.length > 0) {
+      emitEdgeChanges(removedEdges.map((e) => ({ type: 'remove', id: e.id! })))
+      for (const cb of edgesDeleteListeners) cb(removedEdges)
+    }
+  }
+
+  // Selection / viewport listeners ride the signals themselves — one
+  // subscription per set, fired once per settled write (batched writes
+  // deliver once), no reactive frame of their own to dispose.
+  const unsubSelection = [selectedNodeIds, selectedEdgeIds].map((sig) =>
+    sig.subscribe(() => {
+      if (selectionListeners.size === 0) return
+      const nm = untrack(() => nodeMap())
+      const em = untrack(() => edgeMap())
+      const sel = {
+        nodes: [...selectedNodeIds.peek()].map((id) => nm.get(id)).filter(Boolean) as FlowNode<TData>[],
+        edges: [...selectedEdgeIds.peek()].map((id) => em.get(id)).filter(Boolean) as FlowEdge[],
+      }
+      for (const cb of selectionListeners) cb(sel)
+    }),
+  )
+  const unsubViewport = viewport.subscribe(() => {
+    if (viewportListeners.size === 0) return
+    const v = viewport.peek()
+    for (const cb of viewportListeners) cb(v)
+  })
+
+  // ── Automatic history ────────────────────────────────────────────────────
+  // `mutationVersion` bumps on every node/edge write; `pushHistory` records a
+  // checkpoint only when the version moved since the last one, so an explicit
+  // `pushHistory()` followed by an auto-checkpointing mutation (the Delete-key
+  // path, a drag) never double-records. `checkpoint()` is the auto entry:
+  // a no-op under `autoHistory: false`.
+  let mutationVersion = 0
+  let checkpointVersion = -1
+  const unsubVersion = [nodes, edges].map((sig) =>
+    sig.subscribe(() => {
+      mutationVersion++
+    }),
+  )
+  function checkpoint(): void {
+    if (config.autoHistory === false) return
+    pushHistory()
   }
 
   // ── Node operations ──────────────────────────────────────────────────────
@@ -363,25 +430,91 @@ export function createFlow<TData = Record<string, unknown>>(
   }
 
   function addNode(node: FlowNode<TData>): void {
+    checkpoint()
     nodes.update((nds) => [...nds, node])
   }
 
-  function removeNode(id: string): void {
+  function addNodes(list: FlowNode<TData>[]): void {
+    if (list.length === 0) return
+    checkpoint()
+    const known = new Set(untrack(() => nodeMap()).keys())
+    const fresh: FlowNode<TData>[] = []
+    for (const n of list) {
+      if (known.has(n.id)) continue
+      known.add(n.id)
+      fresh.push(n)
+    }
+    if (fresh.length === 0) return
+    nodes.update((nds) => [...nds, ...fresh])
+  }
+
+  function getNodes(): FlowNode<TData>[] {
+    return nodes.peek()
+  }
+
+  function setNodes(
+    next: FlowNode<TData>[] | ((current: FlowNode<TData>[]) => FlowNode<TData>[]),
+  ): void {
+    checkpoint()
+    const resolved = typeof next === 'function' ? next(nodes.peek()) : next
+    const ids = new Set(resolved.map((n) => n.id))
     batch(() => {
-      nodes.update((nds) => nds.filter((n) => n.id !== id))
-      // Remove connected edges
-      edges.update((eds) => eds.filter((e) => e.source !== id && e.target !== id))
+      nodes.set(resolved)
+      // Edges whose endpoint left the graph go with it (the same rule
+      // `removeNode` applies); selection is pruned to survivors.
+      const keptEdges = edges.peek().filter((e) => ids.has(e.source) && ids.has(e.target))
+      const keptEdgeIds = new Set(keptEdges.map((e) => e.id!))
+      edges.set(keptEdges)
+      selectedNodeIds.update((set) => {
+        const pruned = new Set([...set].filter((id) => ids.has(id)))
+        return pruned.size === set.size ? set : pruned
+      })
+      selectedEdgeIds.update((set) => {
+        const pruned = new Set([...set].filter((id) => keptEdgeIds.has(id)))
+        return pruned.size === set.size ? set : pruned
+      })
+    })
+  }
+
+  function removeNodes(ids: Iterable<string>): void {
+    const gone = new Set(ids)
+    if (gone.size === 0) return
+    const removedNodes = nodes.peek().filter((n) => gone.has(n.id))
+    if (removedNodes.length === 0) return
+    checkpoint()
+    const removedEdges = edges.peek().filter((e) => gone.has(e.source) || gone.has(e.target))
+    batch(() => {
+      nodes.update((nds) => nds.filter((n) => !gone.has(n.id)))
+      edges.update((eds) => eds.filter((e) => !gone.has(e.source) && !gone.has(e.target)))
       selectedNodeIds.update((set) => {
         const next = new Set(set)
-        next.delete(id)
+        for (const id of gone) next.delete(id)
         return next
       })
     })
-    emitNodeChanges([{ type: 'remove', id }])
+    emitDeleted(removedNodes, removedEdges)
+  }
+
+  function removeNode(id: string): void {
+    removeNodes([id])
   }
 
   function updateNode(id: string, update: Partial<FlowNode<TData>>): void {
     nodes.update((nds) => nds.map((n) => (n.id === id ? { ...n, ...update } : n)))
+  }
+
+  function updateNodeData(
+    id: string,
+    data: Partial<TData> | ((node: FlowNode<TData>) => Partial<TData>),
+  ): void {
+    checkpoint()
+    nodes.update((nds) =>
+      nds.map((n) => {
+        if (n.id !== id) return n
+        const patch = typeof data === 'function' ? data(n) : data
+        return { ...n, data: { ...n.data, ...patch } }
+      }),
+    )
   }
 
   function updateNodePosition(id: string, position: XYPosition): void {
@@ -413,7 +546,9 @@ export function createFlow<TData = Record<string, unknown>>(
     const existing = edges.peek()
     if (existing.some((e) => e.id === newEdge.id)) return
 
+    checkpoint()
     edges.update((eds) => [...eds, newEdge])
+    emitEdgeChanges([{ type: 'add', edge: newEdge }])
 
     // Notify connect listeners
     const connection: Connection = {
@@ -425,18 +560,75 @@ export function createFlow<TData = Record<string, unknown>>(
     for (const cb of connectListeners) cb(connection)
   }
 
-  function removeEdge(id: string): void {
+  function removeEdges(ids: Iterable<string>): void {
+    const gone = new Set(ids)
+    if (gone.size === 0) return
+    const removed = edges.peek().filter((e) => gone.has(e.id!))
+    if (removed.length === 0) return
+    checkpoint()
     batch(() => {
-      edges.update((eds) => eds.filter((e) => e.id !== id))
+      edges.update((eds) => eds.filter((e) => !gone.has(e.id!)))
       selectedEdgeIds.update((set) => {
         const next = new Set(set)
-        next.delete(id)
+        for (const id of gone) next.delete(id)
         return next
+      })
+    })
+    emitDeleted([], removed)
+  }
+
+  function removeEdge(id: string): void {
+    removeEdges([id])
+  }
+
+  function getEdges(): FlowEdge[] {
+    return edges.peek()
+  }
+
+  function addEdges(list: FlowEdge[]): void {
+    if (list.length === 0) return
+    const known = new Set(edges.peek().map((e) => e.id))
+    const fresh: FlowEdge[] = []
+    for (const e of list) {
+      const ne = normalizeEdge(e)
+      if (known.has(ne.id)) continue
+      known.add(ne.id)
+      fresh.push(ne)
+    }
+    if (fresh.length === 0) return
+    checkpoint()
+    edges.update((eds) => [...eds, ...fresh])
+    emitEdgeChanges(fresh.map((edge) => ({ type: 'add', edge })))
+    for (const ne of fresh) {
+      const connection: Connection = {
+        source: ne.source,
+        target: ne.target,
+        ...(ne.sourceHandle != null ? { sourceHandle: ne.sourceHandle } : {}),
+        ...(ne.targetHandle != null ? { targetHandle: ne.targetHandle } : {}),
+      }
+      for (const cb of connectListeners) cb(connection)
+    }
+  }
+
+  function setEdges(next: FlowEdge[] | ((current: FlowEdge[]) => FlowEdge[])): void {
+    checkpoint()
+    const resolved = (typeof next === 'function' ? next(edges.peek()) : next).map(normalizeEdge)
+    const ids = new Set(resolved.map((e) => e.id))
+    batch(() => {
+      edges.set(resolved)
+      selectedEdgeIds.update((set) => {
+        const pruned = new Set([...set].filter((id) => ids.has(id)))
+        return pruned.size === set.size ? set : pruned
       })
     })
   }
 
+  function updateEdge(id: string, update: Partial<FlowEdge>): void {
+    edges.update((eds) => eds.map((e) => (e.id === id ? { ...e, ...update } : e)))
+  }
+
   function isValidConnection(connection: Connection): boolean {
+    if (config.isValidConnection && !config.isValidConnection(connection)) return false
     if (!connectionRules) return true
 
     // Find source node type
@@ -516,33 +708,59 @@ export function createFlow<TData = Record<string, unknown>>(
   }
 
   function deleteSelected(): void {
-    batch(() => {
-      const nodeIdsToRemove = selectedNodeIds.peek()
-      const edgeIdsToRemove = selectedEdgeIds.peek()
+    // `deletable: false` (and the config defaults) exempt an element: it stays
+    // in the graph AND stays selected, so the user sees it survived. An edge
+    // touching a deleted node goes regardless of its own flag — it has no
+    // endpoint to draw to.
+    const nodeIdsToRemove = new Set<string>()
+    if (config.nodesDeletable !== false) {
+      const nm = untrack(() => nodeMap())
+      for (const id of selectedNodeIds.peek()) {
+        if (nm.get(id)?.deletable !== false) nodeIdsToRemove.add(id)
+      }
+    }
+    const edgeIdsToRemove = new Set<string>()
+    if (config.edgesDeletable !== false) {
+      const em = untrack(() => edgeMap())
+      for (const id of selectedEdgeIds.peek()) {
+        if (em.get(id)?.deletable !== false) edgeIdsToRemove.add(id)
+      }
+    }
+    if (nodeIdsToRemove.size === 0 && edgeIdsToRemove.size === 0) return
 
+    const removedNodes = nodes.peek().filter((n) => nodeIdsToRemove.has(n.id))
+    const removedEdges = edges.peek().filter(
+      (e) =>
+        edgeIdsToRemove.has(e.id!) || nodeIdsToRemove.has(e.source) || nodeIdsToRemove.has(e.target),
+    )
+    const removedEdgeIds = new Set(removedEdges.map((e) => e.id!))
+    checkpoint()
+    batch(() => {
       if (nodeIdsToRemove.size > 0) {
         nodes.update((nds) => nds.filter((n) => !nodeIdsToRemove.has(n.id)))
-        // Also remove edges connected to deleted nodes
-        edges.update((eds) =>
-          eds.filter(
-            (e) =>
-              !nodeIdsToRemove.has(e.source) &&
-              !nodeIdsToRemove.has(e.target) &&
-              !edgeIdsToRemove.has(e.id!),
-          ),
-        )
-      } else if (edgeIdsToRemove.size > 0) {
-        edges.update((eds) => eds.filter((e) => !edgeIdsToRemove.has(e.id!)))
       }
-
-      selectedNodeIds.set(new Set())
-      selectedEdgeIds.set(new Set())
+      if (removedEdgeIds.size > 0) {
+        edges.update((eds) => eds.filter((e) => !removedEdgeIds.has(e.id!)))
+      }
+      selectedNodeIds.update((set) => {
+        const next = new Set([...set].filter((id) => !nodeIdsToRemove.has(id)))
+        return next.size === set.size ? set : next
+      })
+      selectedEdgeIds.update((set) => {
+        const next = new Set([...set].filter((id) => !removedEdgeIds.has(id)))
+        return next.size === set.size ? set : next
+      })
     })
+    emitDeleted(removedNodes, removedEdges)
   }
 
   // ── Viewport ─────────────────────────────────────────────────────────────
 
-  function fitView(nodeIds?: string[], padding = config.fitViewPadding ?? 0.1): void {
+  function fitView(
+    nodeIds?: string[],
+    padding = config.fitViewPadding ?? 0.1,
+    options?: ViewportOptions,
+  ): void {
     const targetNodes = nodeIds ? nodes.peek().filter((n) => nodeIds.includes(n.id)) : nodes.peek()
 
     if (targetNodes.length === 0) return
@@ -572,32 +790,73 @@ export function createFlow<TData = Record<string, unknown>>(
     const centerX = (minX + maxX) / 2
     const centerY = (minY + maxY) / 2
 
-    viewport.set({
-      x: containerWidth / 2 - centerX * newZoom,
-      y: containerHeight / 2 - centerY * newZoom,
-      zoom: newZoom,
-    })
+    setViewport(
+      {
+        x: containerWidth / 2 - centerX * newZoom,
+        y: containerHeight / 2 - centerY * newZoom,
+        zoom: newZoom,
+      },
+      options,
+    )
   }
 
-  function zoomTo(z: number): void {
-    viewport.update((v) => ({
-      ...v,
-      zoom: Math.min(Math.max(z, minZoom), maxZoom),
-    }))
+  function zoomTo(z: number, options?: ViewportOptions): void {
+    setViewport({ zoom: Math.min(Math.max(z, minZoom), maxZoom) }, options)
   }
 
-  function zoomIn(): void {
-    viewport.update((v) => ({
-      ...v,
-      zoom: Math.min(v.zoom * 1.2, maxZoom),
-    }))
+  function zoomIn(options?: ViewportOptions): void {
+    setViewport({ zoom: Math.min(viewport.peek().zoom * 1.2, maxZoom) }, options)
   }
 
-  function zoomOut(): void {
-    viewport.update((v) => ({
-      ...v,
-      zoom: Math.max(v.zoom / 1.2, minZoom),
-    }))
+  function zoomOut(options?: ViewportOptions): void {
+    setViewport({ zoom: Math.max(viewport.peek().zoom / 1.2, minZoom) }, options)
+  }
+
+  function getViewport(): Viewport {
+    return viewport.peek()
+  }
+
+  function setViewport(target: Partial<Viewport>, options?: ViewportOptions): void {
+    const duration = options?.duration ?? 0
+    if (duration > 0) {
+      animateViewport(target, duration)
+      return
+    }
+    // Cancel an in-flight animation so it cannot overwrite this write.
+    if (_viewportFrameId !== null) {
+      _caf(_viewportFrameId)
+      _viewportFrameId = null
+    }
+    viewport.update((v) => ({ ...v, ...target }))
+  }
+
+  function setCenter(x: number, y: number, options?: ViewportOptions & { zoom?: number }): void {
+    const z = Math.min(Math.max(options?.zoom ?? viewport.peek().zoom, minZoom), maxZoom)
+    const { width: cw, height: ch } = containerSize.peek()
+    setViewport({ x: -x * z + cw / 2, y: -y * z + ch / 2, zoom: z }, options)
+  }
+
+  // The mounted canvas, registered by `<Flow>`; the screen↔flow conversions
+  // need its rect. Absent (SSR, headless instance) a screen point is read as
+  // canvas-relative.
+  let containerEl: HTMLElement | null = null
+  function _setContainer(el: HTMLElement | null): void {
+    containerEl = el
+  }
+  function containerOrigin(): XYPosition {
+    if (!containerEl) return { x: 0, y: 0 }
+    const r = containerEl.getBoundingClientRect()
+    return { x: r.left, y: r.top }
+  }
+  function screenToFlowPosition(p: XYPosition): XYPosition {
+    const o = containerOrigin()
+    const v = viewport.peek()
+    return { x: (p.x - o.x - v.x) / v.zoom, y: (p.y - o.y - v.y) / v.zoom }
+  }
+  function flowToScreenPosition(p: XYPosition): XYPosition {
+    const o = containerOrigin()
+    const v = viewport.peek()
+    return { x: p.x * v.zoom + v.x + o.x, y: p.y * v.zoom + v.y + o.y }
   }
 
   function panTo(position: XYPosition): void {
@@ -639,6 +898,7 @@ export function createFlow<TData = Record<string, unknown>>(
 
     const positions = await computeLayout(measuredNodes, currentEdges, algorithm, options)
 
+    checkpoint()
     const animate = options.animate !== false && !reducedMotion()
     const duration = options.animationDuration ?? 300
 
@@ -769,6 +1029,22 @@ export function createFlow<TData = Record<string, unknown>>(
     return () => nodeDoubleClickListeners.delete(callback)
   }
 
+  function listen<T>(set: Set<T>): (callback: T) => () => void {
+    return (callback) => {
+      set.add(callback)
+      return () => set.delete(callback)
+    }
+  }
+  const onEdgesChange = listen(edgesChangeListeners)
+  const onSelectionChange = listen(selectionListeners)
+  const onViewportChange = listen(viewportListeners)
+  const onNodesDelete = listen(nodesDeleteListeners)
+  const onEdgesDelete = listen(edgesDeleteListeners)
+  const onNodeDrag = listen(nodeDragListeners)
+  const onConnectStart = listen(connectStartListeners)
+  const onConnectEnd = listen(connectEndListeners)
+  const onPaneClick = listen(paneClickListeners)
+
   // ── Copy / Paste ────────────────────────────────────────────────────────
 
   let clipboard: { nodes: FlowNode<TData>[]; edges: FlowEdge[] } | null = null
@@ -788,6 +1064,7 @@ export function createFlow<TData = Record<string, unknown>>(
 
   function paste(offset: XYPosition = { x: 50, y: 50 }): void {
     if (!clipboard) return
+    checkpoint()
 
     const idMap = new Map<string, string>()
     const newNodes: FlowNode<TData>[] = []
@@ -855,6 +1132,8 @@ export function createFlow<TData = Record<string, unknown>>(
   })
 
   function pushHistory(): void {
+    if (mutationVersion === checkpointVersion) return
+    checkpointVersion = mutationVersion
     undoStack.push(historySnapshot())
     if (undoStack.length > maxHistory) undoStack.shift()
     redoStack.length = 0
@@ -1332,6 +1611,7 @@ export function createFlow<TData = Record<string, unknown>>(
     edges: FlowEdge[]
     viewport?: { x: number; y: number; zoom: number }
   }): void {
+    checkpoint()
     batch(() => {
       nodes.set(data.nodes)
       edges.set(
@@ -1412,6 +1692,19 @@ export function createFlow<TData = Record<string, unknown>>(
   // ── Dispose ──────────────────────────────────────────────────────────────
 
   function dispose(): void {
+    for (const u of unsubSelection) u()
+    unsubViewport()
+    for (const u of unsubVersion) u()
+    edgesChangeListeners.clear()
+    selectionListeners.clear()
+    viewportListeners.clear()
+    nodesDeleteListeners.clear()
+    edgesDeleteListeners.clear()
+    nodeDragListeners.clear()
+    connectStartListeners.clear()
+    connectEndListeners.clear()
+    paneClickListeners.clear()
+    containerEl = null
     // Cancel any in-flight animations to prevent stale state mutations
     if (_layoutFrameId !== null) {
       _caf(_layoutFrameId)
@@ -1531,9 +1824,19 @@ export function createFlow<TData = Record<string, unknown>>(
     removeNode,
     updateNode,
     updateNodePosition,
+    updateNodeData,
+    getNodes,
+    addNodes,
+    setNodes,
+    removeNodes,
     getEdge,
     addEdge,
     removeEdge,
+    getEdges,
+    addEdges,
+    setEdges,
+    removeEdges,
+    updateEdge,
     isValidConnection,
     selectNode,
     deselectNode,
@@ -1549,6 +1852,12 @@ export function createFlow<TData = Record<string, unknown>>(
     zoomIn,
     zoomOut,
     panTo,
+    getViewport,
+    setViewport,
+    setCenter,
+    screenToFlowPosition,
+    flowToScreenPosition,
+    _setContainer,
     isNodeVisible,
     layout,
     batch: batchOp,
@@ -1562,6 +1871,15 @@ export function createFlow<TData = Record<string, unknown>>(
     onNodeDragStart,
     onNodeDragEnd,
     onNodeDoubleClick,
+    onEdgesChange,
+    onSelectionChange,
+    onViewportChange,
+    onNodesDelete,
+    onEdgesDelete,
+    onNodeDrag,
+    onConnectStart,
+    onConnectEnd,
+    onPaneClick,
     /** @internal — drives the Flow component's re-fit after first measure */
     _fitViewConfigured: !!config.fitView,
     /** @internal — used by Flow component to emit events */
@@ -1580,6 +1898,18 @@ export function createFlow<TData = Record<string, unknown>>(
       },
       edgeClick: (edge: FlowEdge) => {
         for (const cb of edgeClickListeners) cb(edge)
+      },
+      nodeDrag: (node: FlowNode<TData>) => {
+        for (const cb of nodeDragListeners) cb(node)
+      },
+      connectStart: (start: { nodeId: string; handleId: string }) => {
+        for (const cb of connectStartListeners) cb(start)
+      },
+      connectEnd: (connection: Connection | null) => {
+        for (const cb of connectEndListeners) cb(connection)
+      },
+      paneClick: (event: MouseEvent) => {
+        for (const cb of paneClickListeners) cb(event)
       },
     },
     copySelected,
