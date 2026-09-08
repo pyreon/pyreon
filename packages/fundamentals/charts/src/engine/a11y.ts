@@ -26,6 +26,16 @@ export interface A11ySeries {
    * leaves it unset and every sentence below is unchanged.
    */
   values2?: Double[] | undefined
+  /**
+   * Error-bar bounds, where the series has them.
+   *
+   * Unlike `values2` these DECORATE a datum rather than replace it — the
+   * series still has one value per category — so they read as a parenthesis
+   * on the number rather than as a second column. Omitting them left the
+   * table silent about uncertainty a sighted reader can see drawn.
+   */
+  errLow?: Double[] | undefined
+  errHigh?: Double[] | undefined
 }
 
 export interface A11yInput {
@@ -121,6 +131,23 @@ export interface A11yTable {
  * is read as one long unstructured string, while a table lets a screen reader
  * navigate by row and column the way it would any other tabular data.
  */
+/**
+ * A cell's number, with its whisker in parentheses when it has one.
+ *
+ * `3 (2 to 4)` rather than two more columns: an error bar is a bound ON a
+ * value, so splitting it out would suggest three independent series where
+ * there is one. A band is the opposite case and does get two columns.
+ */
+function withError(fmt: Formatter, v: Double, s: A11ySeries, i: number): string {
+  const lo: Double[] = s.errLow ?? []
+  const hi: Double[] = s.errHigh ?? []
+  if (i >= lo.length || i >= hi.length) return fmt(v)
+  const l = lo[i]!
+  const h = hi[i]!
+  if (l !== l || h !== h) return fmt(v)
+  return `${fmt(v)} (${fmt(l)} to ${fmt(h)})`
+}
+
 export function chartTable(input: A11yInput): A11yTable {
   const fmt = input.format ?? plain
   // A two-channel series gets two COLUMNS. One column holding only the high
@@ -157,7 +184,7 @@ export function chartTable(input: A11yInput): A11yTable {
       }
       const v = s.values[i]!
       // A gap (NaN) is an empty cell, not the word NaN.
-      row.push(v !== v ? '' : fmt(v))
+      row.push(v !== v ? '' : withError(fmt, v, s, i))
       if (two) {
         if (i >= other.length) row.push('')
         else {

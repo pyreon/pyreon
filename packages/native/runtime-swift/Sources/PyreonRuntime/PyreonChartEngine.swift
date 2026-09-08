@@ -1892,11 +1892,15 @@ public struct A11ySeries: Codable {
   public var values: [Double]
   public var kind: String
   public var values2: [Double]? = nil
-  public init(label: String, values: [Double], kind: String, values2: [Double]? = nil) {
+  public var errLow: [Double]? = nil
+  public var errHigh: [Double]? = nil
+  public init(label: String, values: [Double], kind: String, values2: [Double]? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil) {
     self.label = label
     self.values = values
     self.kind = kind
     self.values2 = values2
+    self.errLow = errLow
+    self.errHigh = errHigh
   }
 }
 
@@ -8437,6 +8441,20 @@ public func describeChart(_ input: A11yInput) -> String {
     return { (s: String, f: String, r: String) -> String in s.replacingOccurrences(of: f, with: r, options: [], range: s.range(of: f)) }(parts.joined(separator: " "), " .", ".")
   }
 
+public func withError(_ fmt: (Double) -> String, _ v: Double, _ s: A11ySeries, _ i: Int) -> String {
+    let lo = (s.errLow ?? [])
+    let hi = (s.errHigh ?? [])
+    if i >= lo.count || i >= hi.count {
+      return fmt(v)
+    }
+    let l = lo[i]
+    let h = hi[i]
+    if l != l || h != h {
+      return fmt(v)
+    }
+    return "\(fmt(v)) (\(fmt(l)) to \(fmt(h)))"
+  }
+
 public func chartTable(_ input: A11yInput) -> A11yTable {
     let fmt = (input.format ?? plain)
     var headers = ["Category"]
@@ -8469,7 +8487,7 @@ public func chartTable(_ input: A11yInput) -> A11yTable {
           continue
         }
         let v = s.values[i]
-        row.append(v != v ? "" : fmt(v))
+        row.append(v != v ? "" : withError(fmt, v, s, i))
         if two {
           if i >= other.count {
             row.append("")

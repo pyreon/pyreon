@@ -255,7 +255,7 @@ data class BrushRange(var start: Int, var end: Int)
 
 data class BrushBand(var visible: Boolean, var lo: Double, var hi: Double)
 
-data class A11ySeries(var label: String, var values: List<Double>, var kind: String, var values2: List<Double>? = null)
+data class A11ySeries(var label: String, var values: List<Double>, var kind: String, var values2: List<Double>? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null)
 
 data class A11yInput(var title: String? = null, var categories: List<String>, var series: List<A11ySeries>, var format: ((Double) -> String)? = null)
 
@@ -6767,6 +6767,20 @@ fun describeChart(input: A11yInput): String {
     return parts.joinToString(" ").replaceFirst(" .", ".")
   }
 
+fun withError(fmt: (Double) -> String, v: Double, s: A11ySeries, i: Int): String {
+    val lo = (s.errLow ?: listOf())
+    val hi = (s.errHigh ?: listOf())
+    if (i >= lo.length || i >= hi.length) {
+      return fmt(v)
+    }
+    val l = lo[i]
+    val h = hi[i]
+    if (l != l || h != h) {
+      return fmt(v)
+    }
+    return "${fmt(v)} (${fmt(l)} to ${fmt(h)})"
+  }
+
 fun chartTable(input: A11yInput): A11yTable {
     val fmt = (input.format ?: ::plain)
     val headers = mutableListOf("Category")
@@ -6799,7 +6813,7 @@ fun chartTable(input: A11yInput): A11yTable {
           continue
         }
         val v = s.values[i]
-        row.add(if (v != v) "" else fmt(v))
+        row.add(if (v != v) "" else withError(fmt, v, s, i))
         if (two) {
           if (i >= other.length) {
             row.add("")

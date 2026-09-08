@@ -7871,6 +7871,44 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
             }
           ]
         }
+      },
+      {
+        "name": "errLow",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "typeRef",
+                "name": "Double",
+                "args": []
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "errHigh",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "typeRef",
+                "name": "Double",
+                "args": []
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
       }
     ],
     "external": true

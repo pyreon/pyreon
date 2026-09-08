@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest'
 import { chartToSvg } from './svg-chart'
 import { chartTable, describeChart } from './a11y'
-import { band, line } from './marks'
+import { band, bars, line } from './marks'
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { PlotChart } from './Chart'
@@ -81,6 +81,53 @@ describe('a band is accessible as an interval', () => {
     expect(desc).toContain('lower bound')
     // The line series keeps the plain sentence in the same paragraph.
     expect(desc).toMatch(/Series 2, line: /)
+  })
+})
+
+describe('error bars reach the numbers table', () => {
+  // A whisker is a bound ON a value, so it reads as a parenthesis rather than
+  // as extra columns — a band is the opposite case and gets two columns.
+  // Either way the table's whole purpose is the numbers, and it was omitting
+  // ones a sighted reader can see drawn.
+  it('a whiskered datum carries its bounds in the cell', () => {
+    const t = chartTable({
+      categories: ['a', 'b'],
+      series: [{ label: 'S', kind: 'bars', values: [3, 6], errLow: [2, 5], errHigh: [4, 7] }],
+    })
+    expect(t.headers).toEqual(['Category', 'S'])
+    expect(t.rows).toEqual([['a', '3 (2 to 4)'], ['b', '6 (5 to 7)']])
+  })
+
+  it('a series with no whiskers is unchanged, and a partial one degrades per datum', () => {
+    const t = chartTable({
+      categories: ['a', 'b'],
+      series: [
+        { label: 'Plain', kind: 'bars', values: [1, 2] },
+        // Shorter bound arrays: the datum past the end keeps the bare number
+        // rather than reading a bound that is not there.
+        { label: 'Partial', kind: 'bars', values: [1, 2], errLow: [0], errHigh: [3] },
+      ],
+    })
+    expect(t.rows).toEqual([['a', '1', '1 (0 to 3)'], ['b', '2', '2']])
+  })
+
+  it('<PlotChart> forwards the whiskers too', () => {
+    const el = document.createElement('div')
+    document.body.appendChild(el)
+    mount(
+      h(PlotChart<Row>, {
+        data: ROWS,
+        x: (d: Row) => d.m,
+        marks: [bars<Row>((d: Row) => d.hi, { errorLow: (d: Row) => d.lo, errorHigh: (d: Row) => d.hi + 1 })],
+        title: 'M',
+        width: 320,
+        height: 180,
+      }),
+      el,
+    )
+    const cells = [...el.querySelectorAll('tbody tr')].map((tr) => [...tr.querySelectorAll('td, th')].map((c) => c.textContent))
+    expect(cells).toEqual([['a', '3 (5 to 4)'], ['b', '6 (2 to 7)']])
+    el.remove()
   })
 })
 
