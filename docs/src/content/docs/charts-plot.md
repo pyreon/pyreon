@@ -170,7 +170,9 @@ accessors: a capped whisker from the low bound to the high one through each
 datum, both bounds joining the domain so a whisker never leaves the axis.
 
 Options (`MarkOptions`): `label` (legend/tooltip/a11y name), `color`, `width`
-(stroke), `radius` (points), `showValues` (value labels above bars), and
+(stroke), `radius` (points), `showValues` (a value label per datum — on
+every kind, not only bars: a line, area or point labels the placed point, a
+bar labels its rect, and a `band` labels its HIGH edge), and
 `curve` — an imported interpolator, not a string:
 
 ```tsx
