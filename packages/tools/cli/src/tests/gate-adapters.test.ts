@@ -423,6 +423,59 @@ describe('runLintGate', () => {
     fs.rmSync(cwd, { recursive: true, force: true })
   })
 
+  // ── the `scanTarget` extra passes must not evaporate silently ────────────
+  //
+  // The PRIMARY scan already refuses to read an empty file list as a clean
+  // pass (`emptyScanResult`). The two `scanTarget` passes were added beside
+  // that guard and `continue`d on an empty match, so a pass that reached zero
+  // files left the gate GREEN while the rules it exists to run — the ones
+  // whose SUBJECT is a test file or a package-root config — reported nothing.
+  // These specs are the lock: a pass that scanned nothing must SAY so.
+  it('WARNS when the `test` / `packageConfig` passes match no files', async () => {
+    const cwd = makeTmpDir()
+    writeWorkspaceRoot(cwd)
+    writePkg(cwd, 'packages/core/app')
+    // Source only. No `*.test.*`, no `tests/`, no `vitest.config.ts`.
+    writeFile(cwd, 'packages/core/app/src/index.ts', `export const x = 1\n`)
+
+    const result = await runLintGate({ cwd })
+    assertShape(result, 'lint')
+    const codes = result.findings.map((f) => f.code)
+    expect(codes).toContain('lint/empty-scan-test')
+    expect(codes).toContain('lint/empty-scan-packageConfig')
+
+    const testWarn = result.findings.find((f) => f.code === 'lint/empty-scan-test')
+    expect(testWarn?.severity).toBe('warning')
+    // The message must NAME the rules that went unenforced — "a pass was
+    // skipped" without them is the same non-answer as skipping quietly.
+    expect(testWarn?.message).toContain('did not run')
+    expect(testWarn?.message).toContain('pyreon/no-query-selector-cast-in-test')
+
+    fs.rmSync(cwd, { recursive: true, force: true })
+  })
+
+  it('does NOT warn for a pass that actually found files', async () => {
+    // The quiet counterpart. Without it the spec above would pass just as well
+    // against a gate that warns unconditionally.
+    const cwd = makeTmpDir()
+    writeWorkspaceRoot(cwd)
+    writePkg(cwd, 'packages/core/app')
+    writeFile(cwd, 'packages/core/app/src/index.ts', `export const x = 1\n`)
+    writeFile(cwd, 'packages/core/app/src/tests/x.test.ts', `export const y = 1\n`)
+    writeFile(
+      cwd,
+      'packages/core/app/vitest.config.ts',
+      `export default {}\n`,
+    )
+
+    const result = await runLintGate({ cwd })
+    const codes = result.findings.map((f) => f.code)
+    expect(codes).not.toContain('lint/empty-scan-test')
+    expect(codes).not.toContain('lint/empty-scan-packageConfig')
+
+    fs.rmSync(cwd, { recursive: true, force: true })
+  })
+
   it('maps warn → warning and info → info severities (mapLintSeverity)', async () => {
     const cwd = makeTmpDir()
     // `no-nested-effect` is a WARN rule; `no-eager-import` is an INFO

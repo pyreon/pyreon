@@ -17,7 +17,7 @@
 
 import * as path from 'node:path'
 
-import { lint, allRules } from '@pyreon/lint'
+import { lint, allRules, targetsScan } from '@pyreon/lint'
 
 import type { Severity as LintSeverity } from '@pyreon/lint'
 
@@ -35,6 +35,7 @@ import {
   isTestSourceFile,
 } from '../utils/walk'
 import {
+  describeWorkspaceRoots,
   resolveWorkspaceRoots,
   type WorkspaceRoots,
 } from '../utils/workspace-roots'
@@ -137,10 +138,16 @@ export const runLintGate = async (
   // reintroduce precisely the noise the source-scan exclusions exist to avoid.
   const extraScans: Array<{
     target: 'test' | 'packageConfig'
+    /** Human name for the failure message — `scanned nothing` must say what. */
+    what: string
     predicate: (relPath: string) => boolean
   }> = [
-    { target: 'test', predicate: isTestSourceFile },
-    { target: 'packageConfig', predicate: isPackageConfigFile },
+    { target: 'test', what: 'test files', predicate: isTestSourceFile },
+    {
+      target: 'packageConfig',
+      what: 'package-root config files',
+      predicate: isPackageConfigFile,
+    },
   ]
 
   const fileResults = [...result.files]
@@ -151,12 +158,41 @@ export const runLintGate = async (
 
   for (const scan of extraScans) {
     const targetRuleIds = allRules
-      .filter((r) => r.meta.scanTarget === scan.target)
+      // `targetsScan`, not `=== scan.target`: a rule may declare a LIST of
+      // surfaces, and an equality test against a list matches nothing at all.
+      .filter((r) => targetsScan(r.meta, scan.target))
       .map((r) => r.meta.id)
     if (targetRuleIds.length === 0) continue
 
     const targetFiles = collectFilesMatching(ws, scan.predicate)
-    if (targetFiles.length === 0) continue
+    if (targetFiles.length === 0) {
+      // The PRIMARY scan twenty lines up refuses to read an empty file list as
+      // a clean pass — `emptyScanResult` skips LOUDLY, because a gate that
+      // inspected nothing must not score like a gate that inspected everything.
+      // This loop was added beside that guard and `continue`d silently, so an
+      // extra pass that evaporated left the gate green while every rule it
+      // exists to run reported nothing. Same class as its own neighbour's
+      // comment, one level down: the fix is not to skip quietly but to say so.
+      //
+      // A `warning` rather than an `error`: the rules genuinely did not run, so
+      // claiming a clean bill is wrong, but a repo that legitimately has no
+      // test files yet is not BROKEN. It shows in the report, it costs score,
+      // and it names the rules that went unenforced.
+      findings.push({
+        category: 'architecture',
+        severity: 'warning',
+        code: `lint/empty-scan-${scan.target}`,
+        gate: 'lint',
+        message:
+          `[Pyreon] doctor lint: the \`${scan.target}\` pass matched NO ` +
+          `${scan.what} under ${describeWorkspaceRoots(ws)}, so ` +
+          `${targetRuleIds.length} rule(s) whose SUBJECT is a ${scan.what.replace(/s$/, '')} ` +
+          `did not run and cannot have passed: ${targetRuleIds.join(', ')}. ` +
+          'A scan that matched nothing is not a clean result — check the ' +
+          'workspace layout or pass --roots <glob,...>.',
+      })
+      continue
+    }
 
     // Everything EXCEPT the target rules is forced off. The target rules are
     // omitted from the overrides so they keep whatever severity the project's

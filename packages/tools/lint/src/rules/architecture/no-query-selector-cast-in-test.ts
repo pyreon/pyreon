@@ -1,6 +1,15 @@
 import type { Rule, VisitorCallbacks } from '../../types'
+
 import { isTestFile } from '../../utils/file-roles'
 import { isProjectDependency } from '../../utils/project-deps'
+
+/**
+ * oxc's visitor hands untyped nodes (`VisitorCallback = (node: any) => void`),
+ * and this rule walks a TYPE tree whose shape varies per node kind. One loose
+ * alias beats a partial interface that silently stops matching when a new node
+ * kind is added — which is the failure this rule already shipped once.
+ */
+type AnyNode = any
 
 /**
  * `pyreon/no-query-selector-cast-in-test` — flags
@@ -19,10 +28,27 @@ import { isProjectDependency } from '../../utils/project-deps'
  *      `query(root, selector)` helper from `@pyreon/test-utils`
  *      would narrow automatically via `HTMLElementTagNameMap`.
  *
- * **What it checks**: any `as HTMLXxxElement` cast (or
- * `as HTMLXxxElement | null` union) where the cast EXPRESSION is a
- * `.querySelector(...)` call. The rule fires on `*.test.{ts,tsx}` files
- * only — production code's `as HTML...Element` casts are out of scope.
+ * **What it checks**: a `querySelector` / `querySelectorAll` call, HOWEVER
+ * REACHED, cast to a type that MENTIONS an HTML element type. That is the
+ * class; an earlier cut enumerated two shapes of it (a bare
+ * `MemberExpression` callee, and a `TSTypeReference` / `TSUnionType`
+ * annotation) and measurably fired ZERO times on three ordinary ones:
+ *
+ *   c?.querySelector('a')       as HTMLAnchorElement      // ChainExpression
+ *   el.querySelector('x')       as HTMLElement & { _x }   // TSIntersectionType
+ *   el.querySelectorAll('x')    as NodeListOf<HTMLDivElement>
+ *
+ * The third is the sharpest: this docblock's own "or `queryAll` for
+ * `querySelectorAll`" advice named a case the matcher could not see, because
+ * `querySelectorAll` was never in the callee test and `NodeListOf<…>` hides
+ * the element type one level down in `typeArguments`. Enumerating shapes is
+ * the smell — the rule now unwraps `ChainExpression` on the callee side and
+ * WALKS the annotation (union, intersection, parenthesised, array, and type
+ * arguments) on the type side, so a shape nobody has written yet is covered
+ * by construction.
+ *
+ * The rule fires on `*.test.{ts,tsx}` files only — production code's
+ * `as HTML...Element` casts are out of scope.
  *
  * **Fix**: import `query` (or `queryOptional` for `... | null` shapes,
  * or `queryAll` for `querySelectorAll`) from `@pyreon/test-utils`:
@@ -52,7 +78,7 @@ export const noQuerySelectorCastInTest: Rule = {
     id: 'pyreon/no-query-selector-cast-in-test',
     category: 'architecture',
     description:
-      'In test files, `el.querySelector(X) as HTMLY` should use the typed `query()` / `queryOptional()` helper from `@pyreon/test-utils` (locks in PRs #956 + #963).',
+      'In test files, a `querySelector` / `querySelectorAll` call cast to a type mentioning an HTML element should use the typed `query()` / `queryOptional()` / `queryAll()` helper from `@pyreon/test-utils` (locks in PRs #956 + #963).',
     severity: 'error',
     requiresDependency: '@pyreon/test-utils',
     scope: 'monorepo',
@@ -85,75 +111,133 @@ export const noQuerySelectorCastInTest: Rule = {
     if (!isProjectDependency(filePath, '@pyreon/test-utils')) return {}
 
 
-    return {
-      TSAsExpression(node: {
-        expression?: {
-          type?: string
-          callee?: { type?: string; property?: { name?: string } }
-        }
-        typeAnnotation?: {
-          type?: string
-          typeName?: { name?: string }
-          types?: { type?: string; typeName?: { name?: string } }[]
-        }
-        start?: number
-        end?: number
-      }) {
-        // Bail unless cast EXPRESSION is `.querySelector(...)`.
-        const expr = node.expression
+    /**
+     * Peel every wrapper that can sit between a cast and the call it is about.
+     *
+     * `a?.b()` and `a.b?.()` both wrap the call in a `ChainExpression` — the
+     * cast expression is then not a `CallExpression` at all, which is why the
+     * optional-chain form fired zero times. `x as unknown as T` nests a second
+     * `TSAsExpression`, and `x!` a `TSNonNullExpression`. All of them are
+     * spellings, not different defects, so they are peeled rather than
+     * enumerated at the match site. Depth-bounded: a peel loop over untyped
+     * nodes must not be able to spin.
+     */
+    const unwrap = (n: AnyNode): AnyNode => {
+      let cur = n
+      for (let i = 0; i < 8; i += 1) {
+        const t = cur?.type
         if (
-          expr?.type !== 'CallExpression' ||
-          expr.callee?.type !== 'MemberExpression' ||
-          expr.callee.property?.name !== 'querySelector'
+          t === 'ChainExpression' ||
+          t === 'TSAsExpression' ||
+          t === 'TSSatisfiesExpression' ||
+          t === 'TSTypeAssertion' ||
+          t === 'TSNonNullExpression' ||
+          t === 'ParenthesizedExpression'
         ) {
-          return
+          cur = cur.expression as AnyNode
+          continue
         }
+        break
+      }
+      return cur
+    }
 
-        // Bail unless TARGET type is HTMLXxxElement (handle both plain
-        // `as HTMLY` and `as HTMLY | null` union forms).
-        const ann = node.typeAnnotation
-        if (!ann) return
+    /** `querySelector` → 'one', `querySelectorAll` → 'all', anything else null. */
+    const queryCallKind = (raw: AnyNode): 'one' | 'all' | null => {
+      const call = unwrap(raw)
+      if (call?.type !== 'CallExpression') return null
+      const callee = unwrap(call.callee as AnyNode)
+      if (callee?.type !== 'MemberExpression') return null
+      const name = (callee.property as { name?: string } | undefined)?.name
+      if (name === 'querySelector') return 'one'
+      if (name === 'querySelectorAll') return 'all'
+      return null
+    }
 
-        const isHtmlElementName = (n?: string): boolean =>
-          typeof n === 'string' && /^HTML[A-Z]?\w*Element$/.test(n)
+    const isHtmlElementName = (n?: string): boolean =>
+      typeof n === 'string' && /^HTML[A-Z]?\w*Element$/.test(n)
 
-        let isHtmlCast = false
-        if (ann.type === 'TSTypeReference') {
-          isHtmlCast = isHtmlElementName(ann.typeName?.name)
-        } else if (ann.type === 'TSUnionType' && Array.isArray(ann.types)) {
-          // `HTMLY | null` — accept if ANY member is HTMLXxxElement.
-          isHtmlCast = ann.types.some(
-            (t) =>
-              t.type === 'TSTypeReference' && isHtmlElementName(t.typeName?.name),
-          )
+    /**
+     * Does this annotation MENTION an HTML element type anywhere?
+     *
+     * A cast target is a tree, not a name: `HTMLElement & {…}`,
+     * `NodeListOf<HTMLDivElement>`, `HTMLDivElement[]`, `(HTMLElement | null)`
+     * all carry one, and testing only the root node misses every one of them.
+     * Depth-bounded so a pathological annotation cannot spin.
+     */
+    const mentionsHtmlElement = (t: AnyNode, depth = 0): boolean => {
+      if (!t || typeof t !== 'object' || depth > 8) return false
+      switch (t.type) {
+        case 'TSTypeReference': {
+          if (isHtmlElementName((t.typeName as { name?: string } | undefined)?.name)) return true
+          // `NodeListOf<HTMLDivElement>`, `Array<HTMLElement>`, … — the element
+          // type the author actually means lives in the type arguments.
+          const params =
+            (t.typeArguments as { params?: AnyNode[] } | undefined)?.params ?? []
+          return params.some((p) => mentionsHtmlElement(p, depth + 1))
         }
-        if (!isHtmlCast) return
-
-        // Decide which helper to suggest in the message — peek at the
-        // type annotation. If `... | null`, suggest `queryOptional`,
-        // else `query`. Either way the migration is not auto-fixable
-        // because intent ambiguity (`as HTMLElement` may have masked
-        // optional-ness — see PR #963's latent-bug fixes).
-        const hasNullUnion =
-          ann.type === 'TSUnionType' &&
-          ann.types?.some(
-            (t) => t.type === 'TSNullKeyword' || t.type === 'TSUndefinedKeyword',
+        case 'TSUnionType':
+        case 'TSIntersectionType':
+          return ((t.types as AnyNode[] | undefined) ?? []).some((m) =>
+            mentionsHtmlElement(m, depth + 1),
           )
-        const helper = hasNullUnion ? 'queryOptional' : 'query'
+        case 'TSParenthesizedType':
+          return mentionsHtmlElement(t.typeAnnotation as AnyNode, depth + 1)
+        case 'TSArrayType':
+          return mentionsHtmlElement(t.elementType as AnyNode, depth + 1)
+        default:
+          return false
+      }
+    }
 
-        context.report({
-          message:
-            `[Pyreon] In test files, replace \`X.querySelector(S) as HTMLY\` ` +
-            `with \`${helper}(X, S)\` from \`@pyreon/test-utils\`. ` +
-            `The helper narrows via \`HTMLElementTagNameMap\` for tag selectors ` +
-            `(no explicit generic needed) and accepts an explicit ` +
-            `\`<HTMLY>\` for attribute / class / ID selectors. ` +
-            `If the element may be null, use \`queryOptional\` and guard the ` +
+    /** `T | null` / `T | undefined` at the TOP level of the annotation. */
+    const hasNullMember = (t: AnyNode): boolean =>
+      t?.type === 'TSUnionType' &&
+      ((t.types as AnyNode[] | undefined) ?? []).some(
+        (m) => m?.type === 'TSNullKeyword' || m?.type === 'TSUndefinedKeyword',
+      )
+
+    const check = (node: AnyNode): void => {
+      const kind = queryCallKind(node.expression as AnyNode)
+      if (kind === null) return
+
+      const ann = node.typeAnnotation as AnyNode
+      if (!ann || !mentionsHtmlElement(ann)) return
+
+      // Which helper to name. `querySelectorAll` has exactly one answer;
+      // for the single form, a `| null` / `| undefined` target says the author
+      // already knew it could miss, so `queryOptional` is the honest swap.
+      // Never auto-fixed: `as HTMLElement` on a NON-optional target may still
+      // have been masking optional-ness, and that intent is not recoverable
+      // from the cast (PR #963 found 12 latent bugs of exactly that shape).
+      const helper =
+        kind === 'all' ? 'queryAll' : hasNullMember(ann) ? 'queryOptional' : 'query'
+      const called = kind === 'all' ? 'querySelectorAll' : 'querySelector'
+      const extra =
+        kind === 'all'
+          ? ` \`queryAll\` returns a real \`Array\`, not a \`NodeList\`, so ` +
+            `\`.map\` / \`.filter\` work without \`[].slice.call\`.`
+          : ` If the element may be null, use \`queryOptional\` and guard the ` +
             `downstream code — PR #963 found 12 latent bugs where ` +
-            `\`as HTMLElement\` masked actual nullability.`,
-          span: { start: node.start ?? 0, end: node.end ?? 0 },
-        })
-      },
+            `\`as HTMLElement\` masked actual nullability.`
+
+      context.report({
+        message:
+          `[Pyreon] In test files, replace \`X.${called}(S) as …\` ` +
+          `with \`${helper}(X, S)\` from \`@pyreon/test-utils\`. ` +
+          `The helper narrows via \`HTMLElementTagNameMap\` for tag selectors ` +
+          `(no explicit generic needed) and accepts an explicit ` +
+          `\`<HTMLY>\` for attribute / class / ID selectors.` +
+          extra,
+        span: { start: node.start ?? 0, end: node.end ?? 0 },
+      })
+    }
+
+    return {
+      TSAsExpression: check,
+      // `<HTMLY>expr` — the angle-bracket cast. Legal in `.ts` (not `.tsx`),
+      // and the same defect with a different spelling.
+      TSTypeAssertion: check,
     }
   },
 }

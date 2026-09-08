@@ -226,4 +226,91 @@ describe('pyreon/no-query-selector-cast-in-test', () => {
     expect(diagIds(result)).not.toContain('pyreon/no-query-selector-cast-in-test')
   })
 
+  // ── The shapes the two-node-type matcher could not see ───────────────────
+  //
+  // Every one of these was MEASURED firing zero times before the fix, against
+  // a rule configured `error` and counted in the docs — the structurally-dead
+  // shape, one level down from the structurally-dead rule this file's
+  // `scanTarget` work was about. Three of them are ordinary test code and one,
+  // `querySelectorAll`, was named in the rule's OWN docblock as `queryAll`'s
+  // case while the callee test only ever accepted `querySelector`.
+  //
+  // Each FIRES case is paired with a QUIET counterpart, so a fixture cannot
+  // pass by reporting unconditionally.
+  describe('shapes beyond the plain member call + bare type reference', () => {
+    const fires = (source: string): ReturnType<typeof lintFile> =>
+      lint(source, 'packages/some/src/tests/shapes.test.ts')
+
+    it.each([
+      [
+        'an optional-chained receiver (ChainExpression wraps the call)',
+        `const a = c?.querySelector('a') as HTMLAnchorElement`,
+        `import { queryOptional } from '@pyreon/test-utils'\nconst a = c && queryOptional(c, 'a')`,
+      ],
+      [
+        'an optional CALL (`querySelector?.()`, also a ChainExpression)',
+        `const a = el.querySelector?.('a') as HTMLAnchorElement`,
+        `import { queryOptional } from '@pyreon/test-utils'\nconst a = queryOptional(el, 'a')`,
+      ],
+      [
+        'an INTERSECTION target (`HTMLElement & { … }`)',
+        `const a = el.querySelector('x') as HTMLElement & { _pyreonRef?: number }`,
+        `import { query } from '@pyreon/test-utils'\nconst a = query(el, 'x') as unknown as { _pyreonRef?: number }`,
+      ],
+      [
+        'a parenthesised target',
+        `const a = el.querySelector('a') as (HTMLAnchorElement)`,
+        `import { query } from '@pyreon/test-utils'\nconst a = query(el, 'a')`,
+      ],
+      [
+        'the angle-bracket cast spelling',
+        `const a = <HTMLAnchorElement>el.querySelector('a')`,
+        `import { query } from '@pyreon/test-utils'\nconst a = query(el, 'a')`,
+      ],
+      [
+        'a double cast through `unknown`',
+        `const a = el.querySelector('x') as unknown as HTMLDivElement`,
+        `import { query } from '@pyreon/test-utils'\nconst a = query<HTMLDivElement>(el, 'x')`,
+      ],
+    ])('FIRES on %s — and stays QUIET on the fixed form', (_label, bad, good) => {
+      expect(diagIds(fires(bad))).toContain('pyreon/no-query-selector-cast-in-test')
+      expect(diagIds(fires(good))).not.toContain('pyreon/no-query-selector-cast-in-test')
+    })
+
+    it('FIRES on `querySelectorAll` and names `queryAll`', () => {
+      // The rule's own docblock advertised `queryAll` for this case while the
+      // callee test accepted `querySelector` only, so the advice pointed at a
+      // shape the matcher could not reach. `NodeListOf<…>` also hides the
+      // element type one level down, in `typeArguments`.
+      const findings = fires(
+        `const rows = el.querySelectorAll('tr') as NodeListOf<HTMLTableRowElement>`,
+      ).diagnostics.filter((d) => d.ruleId === 'pyreon/no-query-selector-cast-in-test')
+      expect(findings).toHaveLength(1)
+      expect(findings[0]?.message).toContain('`queryAll(X, S)`')
+    })
+
+    it('FIRES on `querySelectorAll` spread into an ARRAY type', () => {
+      const findings = fires(
+        `const rows = [...el.querySelectorAll('tr')] as HTMLTableRowElement[]`,
+      ).diagnostics.filter((d) => d.ruleId === 'pyreon/no-query-selector-cast-in-test')
+      // The spread makes the cast expression an ArrayExpression, so the CALL is
+      // no longer the thing being cast — deliberately out of scope, documented
+      // here so the boundary is a decision rather than an accident.
+      expect(findings).toHaveLength(0)
+    })
+
+    it('stays QUIET on a non-HTML element target nested in a union', () => {
+      // The walk must not degrade into "any type reference at all".
+      expect(
+        diagIds(fires(`const a = el.querySelector('a') as SVGElement | null`)),
+      ).not.toContain('pyreon/no-query-selector-cast-in-test')
+    })
+
+    it('stays QUIET on a different call cast to an HTML element', () => {
+      expect(
+        diagIds(fires(`const a = el.closest('a') as HTMLAnchorElement & { x?: 1 }`)),
+      ).not.toContain('pyreon/no-query-selector-cast-in-test')
+    })
+  })
+
 })

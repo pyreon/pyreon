@@ -1,15 +1,12 @@
 import { For, createUniqueId, isClient, provide, type VNodeChild, cx } from '@pyreon/core'
 import { batch, computed, effect, signal } from '@pyreon/reactivity'
 import {
-  collectEdgeMarkers,
-  DEFAULT_MARKER_END,
   getEdgePath,
   getEffectiveDimensions,
   getHandlePosition,
-  markerId,
-  resolveEdgeMarkers,
   resolveHandleAnchor,
 } from '../edges'
+import { collectEdgeMarkers, DEFAULT_MARKER_END, markerId, resolveEdgeMarkers } from '../markers'
 import { FlowContext, FlowLayersContext, type FlowLayers } from './flow-context'
 import type {
   Connection,

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { execSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { readFile, rm, mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -1248,7 +1249,6 @@ describe('bun adapter — runtime contract', () => {
   // vitest-on-Bun. The monorepo runs everything through bun, so PATH
   // having `bun` is a hard pre-condition we can rely on.
   function findBunBin(): string | null {
-    const { execSync } = require('node:child_process') as typeof import('node:child_process')
     try {
       const path = execSync('which bun', { encoding: 'utf-8' }).trim()
       return path || null
@@ -1501,7 +1501,6 @@ describe('node adapter — runtime contract', () => {
   // technically allows spawning without it. We resolve explicitly to
   // surface a clear skip reason if it's missing.
   function findNodeBin(): string | null {
-    const { execSync } = require('node:child_process') as typeof import('node:child_process')
     try {
       const path = execSync('which node', { encoding: 'utf-8' }).trim()
       return path || null
