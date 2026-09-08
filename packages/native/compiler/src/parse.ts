@@ -4,6 +4,7 @@
 // starter fixtures use are recognised. Anything outside that set is
 // either passed through as unknown or surfaces a warning.
 
+import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
 import { HANDLED_FLOW_EDGE_FIELDS, HANDLED_FLOW_NODE_FIELDS, droppedFlowFieldsWarning } from './flow-lowering'
 import { warnUnlowerdCrdtMembers } from './parse-crdt-surface'
 import { parseSync } from 'oxc-parser'
@@ -6460,12 +6461,14 @@ function parseProps(
  */
 /** Type names that are REAL primitive types on both native targets. */
 const NATIVE_PRIMITIVE_TYPE_NAMES = new Set(['Double', 'Float', 'Int', 'Bool', 'String'])
+/** The generated chart engine's structs — declared by the runtime, so a helper typed against one (`(c: TooltipContent) => string`) resolves on the target. */
+const CHART_ENGINE_STRUCT_NAMES = new Set(CHART_ENGINE_STRUCTS.map((s) => s.name))
 
 function resolvePropsObjectType(t: TypeIR, ctx: ParseCtx): TypeIR {
   if (t.kind === 'typeRef' && t.args.length === 0) {
     const resolved = ctx.objectTypeAliases.get(t.name)
     if (resolved !== undefined) return resolved
-    if (NATIVE_PRIMITIVE_TYPE_NAMES.has(t.name)) return t
+    if (NATIVE_PRIMITIVE_TYPE_NAMES.has(t.name) || CHART_ENGINE_STRUCT_NAMES.has(t.name)) return t
     // A typeRef named after a native primitive emits VERBATIM as that native
     // type — `type Double = number` is the documented cross-target alias
     // (tsc resolves the alias, PMTC reads the NAME). Warning here tells the

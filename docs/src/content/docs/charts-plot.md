@@ -426,9 +426,12 @@ they share one prop vocabulary:
 | `onSelectIndex` | The engine's INDEX hit, on **every** host — what the native tap gesture reports, so a handler written once works on all three targets. |
 | `theme` / `width` / `height` / `class` / `accessibleTable` | As on `<PlotChart>`. |
 
-The same vocabulary crosses: on iOS and Android every family host draws the
-title block, the legend and the tooltip natively (the tooltip on a **tap**,
-cleared by a tap on nothing). What the legend lists and what a tap says come
+The same vocabulary crosses: on iOS and Android every host — `<PlotChart>`
+and `<Plot>` included — draws the title block, the legend and the tooltip
+natively (the tooltip on a **tap**, cleared by a tap on nothing; the plot's
+lines come from the crossing `tooltipAt` / `tooltipLines` over the sliced
+series, a named `tooltipFormatter` lowers, and `crosshair` — a hover concept —
+stays web-only and says so). What the legend lists and what a tap says come
 from one crossing module — `treemapLegend`, `sankeyTip`, `pieTip`, … and
 `renderTooltip` in `chrome.ts` — that the web host calls too, so the three
 targets cannot disagree about either. `animate` crosses too: every host whose

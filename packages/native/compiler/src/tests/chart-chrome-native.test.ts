@@ -93,7 +93,7 @@ describe('family chrome — title, legend and tap tooltip lower on both targets'
   it('every chrome prop lowers on a family host whose engine animates; `animate` alone stays named on the fully-formed engines; the plot host keeps its own list', () => {
     expect(chartChromeUnlowered('TreemapChart')).toEqual([])
     expect(chartChromeUnlowered('PieChart')).toEqual(['animate'])
-    expect(chartChromeUnlowered('PlotChart')).toEqual(['tooltip'])
+    expect(chartChromeUnlowered('PlotChart')).toEqual([])
   })
 })
 
