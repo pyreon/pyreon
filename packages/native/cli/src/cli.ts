@@ -16,7 +16,7 @@ import { materializeAssets, type AssetTarget } from './assets'
 import { stageWebBundle, webBundleOutSubdir, type WebBundleTarget } from './web-bundle'
 import { startLspServer } from './lsp'
 import { scanFontDir } from './fonts'
-import { renderAndroidSrcDirsFile, stageIosSources, wireApp } from './wire'
+import { renderAndroidSrcDirsFile, stageIosWiring, wireApp } from './wire'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import type { TargetLanguage } from '@pyreon/native-compiler'
@@ -374,8 +374,10 @@ function runStageWeb(parsed: ParsedArgs): number {
  *
  *   --app=<dir>            App dir to resolve from (default cwd).
  *   --android-out=<file>   Write the Gradle srcDirs list to this file.
- *   --ios-out=<dir>        Stage co-located Swift sources into this dir, which
- *                          the Xcode project lists as one static source group.
+ *   --ios-out=<dir>        The Xcode project dir. Stages co-located Swift into
+ *                          <dir>/PyreonNative and links the SwiftPM runtimes
+ *                          into <dir>/PyreonPackages, both of which the spec
+ *                          references by a constant path.
  *   --json                 Print the full wiring as JSON (machine/CI).
  *
  * A DECLARED-but-missing native dir is a real misconfiguration → exit 2.
@@ -400,10 +402,13 @@ function runWire(parsed: ParsedArgs): number {
   }
 
   if (parsed.iosOut) {
-    const outDir = resolve(appDir, parsed.iosOut)
-    const staged = stageIosSources(wiring, outDir)
+    const iosDir = resolve(appDir, parsed.iosOut)
+    const { staged, linked } = stageIosWiring(wiring, iosDir)
     if (!parsed.json) {
-      console.log(`[pyreon-native] staged ${staged} co-located Swift file(s) → ${outDir}`)
+      console.log(
+        `[pyreon-native] ${iosDir}: staged ${staged} co-located Swift file(s), ` +
+          `linked ${linked} SwiftPM package(s)`,
+      )
     }
   }
 

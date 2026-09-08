@@ -26,8 +26,8 @@
 //
 // Node fs only.
 
-import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, symlinkSync } from 'node:fs'
+import { basename, dirname, join } from 'node:path'
 import {
   type NativeSourceResolution,
   findPackageDir,
@@ -195,6 +195,60 @@ export function stageIosSources(wiring: NativeWiring, outDir: string): number {
     }
   }
   return staged
+}
+
+/**
+ * Point the Xcode project at each SwiftPM runtime through a fixed path.
+ *
+ * The scaffold hardcoded `../node_modules/@pyreon/native-runtime-swift`, which
+ * only exists in a flat install. Under hoisting or pnpm the package lives
+ * somewhere else entirely and `xcodegen generate` fails the spec outright —
+ * `Invalid local package "PyreonRuntime"`, then `Could not resolve package
+ * dependencies`. `wire` already resolves the real location; this is the
+ * consumption half.
+ *
+ * A symlink rather than a copy: an SwiftPM package is a build INPUT that Xcode
+ * resolves and builds in place, so copying it would duplicate a whole package
+ * per app and break incremental builds. The link gives the spec a constant
+ * relative path (`PyreonPackages/<name>`) whose target is whatever the install
+ * layout actually produced — the same trade as staging the co-located sources,
+ * for a thing that cannot be staged.
+ *
+ * Returns the linked package count. The directory is rebuilt each run, so a
+ * link to a package that moved cannot go stale.
+ */
+export function linkIosPackages(wiring: NativeWiring, outDir: string): number {
+  rmSync(outDir, { recursive: true, force: true })
+  mkdirSync(outDir, { recursive: true })
+  let linked = 0
+  for (const pkg of wiring.iosSpmPackages) {
+    // Name the link after the package DIRECTORY, not the Swift module: the
+    // spec's `packages:` key already carries the module name, and two modules
+    // could ship from one package root.
+    const link = join(outDir, basename(pkg.path))
+    symlinkSync(pkg.path, link)
+    linked++
+  }
+  return linked
+}
+
+/**
+ * Make an iOS project's whole Pyreon wiring current: co-located Swift staged
+ * into `PyreonNative/`, SwiftPM runtimes linked into `PyreonPackages/`.
+ *
+ * One call because they are one question — "what does this app's dependency
+ * graph mean for the Xcode project?" — and a caller that ran only half would
+ * get a project that compiles the feature sources and cannot resolve the
+ * runtime they import, or the reverse.
+ */
+export function stageIosWiring(
+  wiring: NativeWiring,
+  iosDir: string,
+): { staged: number; linked: number } {
+  return {
+    staged: stageIosSources(wiring, join(iosDir, 'PyreonNative')),
+    linked: linkIosPackages(wiring, join(iosDir, 'PyreonPackages')),
+  }
 }
 
 // Re-export so the CLI + tests import the resolver family through one module.

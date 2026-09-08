@@ -147,10 +147,15 @@ describe('buildScaffold — native runtime delivery wiring (local-proof-found fi
 
   it('iOS project.yml wires the SPM runtimes + paths relative to ios/', () => {
     const yml = get('ios/project.yml')
-    // SPM package paths: node_modules is at the project ROOT, project.yml
-    // is in ios/, so the path must be ../node_modules (bug #5).
-    expect(yml).toContain('path: ../node_modules/@pyreon/native-runtime-swift')
-    expect(yml).toContain('path: ../node_modules/@pyreon/native-router-swift')
+    // SPM packages are reached through LINKS that `wire --ios-out` points at
+    // the install's real layout. The previous hardcoded
+    // `../node_modules/@pyreon/...` only exists in a FLAT install; under
+    // hoisting or pnpm `xcodegen generate` fails the spec outright with
+    // `Invalid local package`, which is a worse failure than a missing symbol
+    // because it happens before any compile.
+    expect(yml).toContain('path: PyreonPackages/native-runtime-swift')
+    expect(yml).toContain('path: PyreonPackages/native-router-swift')
+    expect(yml).not.toContain('path: ../node_modules/@pyreon/native-runtime-swift')
     // Target depends on both SPM packages.
     expect(yml).toContain('package: PyreonRuntime')
     expect(yml).toContain('package: PyreonRouter')
@@ -176,7 +181,10 @@ describe('buildScaffold — native runtime delivery wiring (local-proof-found fi
     expect(yml).toContain('- path: PyreonNative')
     const sh = get('scripts/build-ios.sh')
     expect(sh).toContain('pyreon-native wire --ios-out=')
-    expect(sh).toContain('/ios/PyreonNative')
+    // --ios-out takes the PROJECT dir and manages both halves; a caller that
+    // ran only one would get a project that compiles the feature sources and
+    // cannot resolve the runtime they import, or the reverse.
+    expect(sh).toContain('/ios"')
     // Staging must precede the TSX compile: the emitted App.swift references
     // these symbols, so a restage afterwards would be a build too late.
     expect(sh.indexOf('--ios-out=')).toBeLessThan(sh.indexOf('build --target=ios'))
