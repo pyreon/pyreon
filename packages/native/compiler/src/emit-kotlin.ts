@@ -120,8 +120,13 @@ let _enumNames: Set<string> = new Set()
  * Mirror of the Swift helper — see `enumTypeOfExpr` in emit-swift.ts.
  */
 function enumTypeOfExpr(x: ExprIR): string | undefined {
-  const named = (t: TypeIR): string | undefined =>
-    t.kind === 'typeRef' && t.args.length === 0 && _enumNames.has(t.name) ? t.name : undefined
+  const named = (raw: TypeIR): string | undefined => {
+    // An OPTIONAL field (`side?: Side`) is a union with undefined, so the
+    // enum is one branch in. Unwrapping matters for the `??` default
+    // position, where the left operand is optional by construction.
+    const t = unwrapOptionalType(raw)
+    return t.kind === 'typeRef' && t.args.length === 0 && _enumNames.has(t.name) ? t.name : undefined
+  }
   const direct = named(inferType(x, _kotlinExprInferCtx))
   if (direct !== undefined) return direct
   // The inference ctx's struct table is built PER COMPONENT, so a file of
@@ -304,10 +309,23 @@ function withEnumReturnCtxKotlin<T>(fn: () => T): T {
 function withExpectedTypeKotlin<T>(t: TypeIR | undefined, fn: () => T): T {
   const prev = _expectedTypeKotlin
   _expectedTypeKotlin = t
+  // Mirror of the Swift helper — an enum expected type sets the active-enum
+  // context so a string literal in that position emits as a qualified case.
+  const prevEnum = _activeEnumType
+  const unwrapped = t === undefined ? undefined : unwrapOptionalType(t)
+  if (
+    unwrapped !== undefined &&
+    unwrapped.kind === 'typeRef' &&
+    unwrapped.args.length === 0 &&
+    _enumNames.has(unwrapped.name)
+  ) {
+    _activeEnumType = unwrapped.name
+  }
   try {
     return fn()
   } finally {
     _expectedTypeKotlin = prev
+    _activeEnumType = prevEnum
   }
 }
 /** G1: every signal name in scope — see emit-swift.ts for the rationale. */
@@ -3417,6 +3435,12 @@ let _typedLambdaLet = false
 
 function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): string {
   switch (s.kind) {
+    // Mirror of the Swift branch — `var`, since a later statement assigns it.
+    // Kotlin's definite-assignment analysis accepts an uninitialised local
+    // whose every path assigns before use.
+    case 'declare':
+      _kotlinExprInferCtx.locals.set(s.name, s.declaredType)
+      return `var ${kotlinIdent(s.name)}: ${kotlinType(s.declaredType, ctx)}`
     case 'let':
       // `var` when a later `assign` reassigns this local (markReassigned-
       // LocalsMutable), else immutable `val`.
@@ -5603,7 +5627,17 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           // `format ?: plainF` is "function invocation expected" without it.
           return x.kind === 'identifier' && _helperFnNames.has(x.name) ? `::${x.name}` : raw
         }
-        return `(${fnRef(e.left)} ?: ${fnRef(e.right)})`
+        // Mirror of the Swift branch: an enum-typed optional's DEFAULT is
+        // written as the literal the union declares, and Kotlin rejects the
+        // raw string just as swiftc does.
+        const enumType = enumTypeOfExpr(e.left)
+        const prev = _activeEnumType
+        if (enumType !== undefined) _activeEnumType = enumType
+        try {
+          return `(${fnRef(e.left)} ?: ${fnRef(e.right)})`
+        } finally {
+          _activeEnumType = prev
+        }
       }
       return `${emitKotlinExpr(e.left, indent)} ${e.op} ${emitKotlinExpr(e.right, indent)}`
     case 'ternary': {

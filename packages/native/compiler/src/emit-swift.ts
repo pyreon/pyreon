@@ -135,8 +135,13 @@ let _enumNames: Set<string> = new Set()
  * comparison actually an enum case?" question.
  */
 function enumTypeOfExpr(x: ExprIR): string | undefined {
-  const named = (t: TypeIR): string | undefined =>
-    t.kind === 'typeRef' && t.args.length === 0 && _enumNames.has(t.name) ? t.name : undefined
+  const named = (raw: TypeIR): string | undefined => {
+    // An OPTIONAL field (`side?: Side`) is a union with undefined, so the
+    // enum is one branch in. Unwrapping matters for the `??` default
+    // position, where the left operand is optional by construction.
+    const t = unwrapOptionalType(raw)
+    return t.kind === 'typeRef' && t.args.length === 0 && _enumNames.has(t.name) ? t.name : undefined
+  }
   const direct = named(inferType(x, _activeInferCtx))
   if (direct !== undefined) return direct
   // The inference ctx's struct table is built PER COMPONENT, so a file of
@@ -339,10 +344,28 @@ function expectedStructFor(fields: readonly { name: string }[]): string | null {
 function withExpectedType<T>(t: TypeIR | undefined, fn: () => T): T {
   const prev = _expectedType
   _expectedType = t
+  // An expected type that IS an enum also sets the active-enum context, so a
+  // string literal in that position emits as a case. This is the general form
+  // of a rewrite that had been added one POSITION at a time — comparison,
+  // return, `??` — each time a new position turned up in a real emit. Every
+  // remaining position (a struct field, a call argument, an array element)
+  // already threads its expected type through here, so hooking it once covers
+  // them and any position added later.
+  const prevEnum = _activeEnumType
+  const unwrapped = t === undefined ? undefined : unwrapOptionalType(t)
+  if (
+    unwrapped !== undefined &&
+    unwrapped.kind === 'typeRef' &&
+    unwrapped.args.length === 0 &&
+    _enumNames.has(unwrapped.name)
+  ) {
+    _activeEnumType = unwrapped.name
+  }
   try {
     return fn()
   } finally {
     _expectedType = prev
+    _activeEnumType = prevEnum
   }
 }
 /**
@@ -3107,6 +3130,9 @@ function inlineValueConstsInStmts(stmts: StatementIR[]): StatementIR[] {
   if (_componentValueConstExprs.size === 0) return stmts
   const mapStmt = (s: StatementIR): StatementIR => {
     switch (s.kind) {
+      // A declaration-only `let out: string` carries no expression to inline.
+      case 'declare':
+        return s
       case 'let':
         return { ...s, expr: inlineValueConsts(s.expr) }
       case 'assign':
@@ -4170,6 +4196,14 @@ let _typedClosureLet = false
 
 function emitSwiftStatement(s: StatementIR, indent: number): string {
   switch (s.kind) {
+    // `let out: string` with no initializer. Always `var`: the whole point of
+    // the shape is that a later statement assigns it. Swift's definite-
+    // initialization analysis accepts this as long as every path assigns
+    // before use, which is exactly what the source already guarantees.
+    case 'declare':
+      _activeInferCtx.locals.set(s.name, s.declaredType)
+      _exprInferCtx.locals.set(s.name, s.declaredType)
+      return `var ${swiftIdent(s.name)}: ${swiftType(s.declaredType)}`
     case 'let':
       // `var` when a later `assign` reassigns this local (markReassigned-
       // LocalsMutable), else immutable `let`.
@@ -6912,7 +6946,20 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // precedence is LOWER than JS's (a bare `x ?? y > 0` parses as
       // `x ?? (y > 0)` in Swift).
       if (e.op === '??') {
-        return `(${emitSwiftExpr(e.left, indent)} ?? ${emitSwiftExpr(e.right, indent)})`
+        // A DEFAULT for an enum-typed optional is written as the literal the
+        // union declares (`params.sourcePosition ?? 'bottom'`), and emitting it
+        // raw is a type error on both targets ("binary operator '??' cannot be
+        // applied to operands of type 'Position?' and 'String'"). Same rewrite
+        // the comparison and return positions take — this is the third and
+        // last place a bare literal stands in for a case.
+        const enumType = enumTypeOfExpr(e.left)
+        const prev = _activeEnumType
+        if (enumType !== undefined) _activeEnumType = enumType
+        try {
+          return `(${emitSwiftExpr(e.left, indent)} ?? ${emitSwiftExpr(e.right, indent)})`
+        } finally {
+          _activeEnumType = prev
+        }
       }
       return `${emitSwiftExpr(e.left, indent)} ${e.op} ${emitSwiftExpr(e.right, indent)}`
     case 'ternary': {

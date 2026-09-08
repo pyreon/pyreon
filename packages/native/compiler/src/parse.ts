@@ -10296,11 +10296,25 @@ function parseStatement(node: AnyNode, ctx: ParseCtx): StatementIR | null {
       }
       const d = declarators[0]!
       const declName = d.id?.name as string | undefined
-      if (!declName || !d.init) return null
+      if (!declName) return null
       const ann = (d.id as AnyNode | undefined)?.typeAnnotation?.typeAnnotation as
         | AnyNode
         | undefined
       const declaredType = ann ? parseTypeAnnotation(ann, ctx) : undefined
+      // `let out: string` with no initializer — assigned later, typically once
+      // per branch. Dropping it (the old behavior) left every later assignment
+      // naming a variable that was never declared, which both toolchains reject
+      // and PMTC never warned about. The annotation is REQUIRED: without it
+      // there is nothing to declare, so say so rather than guess.
+      if (!d.init) {
+        if (declaredType === undefined) {
+          ctx.warnings.push(
+            `\`let ${declName}\` has no initializer and no type annotation, so there is nothing to declare natively — it was dropped, and any later assignment to it will not compile. Annotate it (\`let ${declName}: string\`) or give it an initial value.`,
+          )
+          return null
+        }
+        return { kind: 'declare', name: declName, declaredType }
+      }
       return declaredType === undefined
         ? { kind: 'let', name: declName, expr: parseExpr(d.init, ctx) }
         : { kind: 'let', name: declName, expr: parseExpr(d.init, ctx), declaredType }
