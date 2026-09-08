@@ -196,3 +196,26 @@ describe('useDeviceMotion', () => {
     }
   })
 })
+
+describe('useDeviceMotion — prompt that resolves after the view is gone', () => {
+  it('does not attach the sensor listener when the scope disposed mid-prompt', async () => {
+    let grant!: () => void
+    const pending = new Promise<void>((r) => (grant = r))
+    installDME(async () => (await pending, 'granted'))
+    const m = mountHook()
+    const p = m.start()
+    for (const s of scopes.splice(0)) s.dispose()
+    grant()
+    await expect(p).resolves.toBe(false)
+    expect(m.active()).toBe(false)
+    // The discriminating assertion is STATE, not listener call counts: the
+    // cleanup's removeEventListener runs BEFORE the broken attach, so counts
+    // balance against the broken code too.
+    window.dispatchEvent(
+      Object.assign(new Event('devicemotion'), {
+        accelerationIncludingGravity: { x: 9, y: 0, z: 0 },
+      }),
+    )
+    expect(m.acceleration().x).toBe(0)
+  })
+})

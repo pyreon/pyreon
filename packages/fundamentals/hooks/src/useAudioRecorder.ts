@@ -69,7 +69,15 @@ export function useAudioRecorder(): AudioRecorderControls {
     return ok
   }
 
+  /**
+   * Bumped by every teardown. An acquisition that resolves against a stale
+   * generation lost to an unmount or a `stop()` that ran DURING the await —
+   * it must release what it just got, because nothing else can any more.
+   */
+  let gen = 0
+
   const teardown = () => {
+    gen++
     // Releasing the tracks is what turns the OS recording indicator off. A
     // stream outliving its view leaves the mic hot with nothing listening —
     // the privacy-visible form of a leak.
@@ -107,7 +115,17 @@ export function useAudioRecorder(): AudioRecorderControls {
       // leaving the mic indicator on with nothing able to stop it.
       if (starting !== null) return starting
       const inFlight = (async (): Promise<boolean> => {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        const mine = gen
+        const got = await navigator.mediaDevices.getUserMedia({ audio: true })
+        if (mine !== gen) {
+          // The view unmounted (or `stop()` ran) while the permission prompt
+          // was up — the widest window there is, and the one the hesitating
+          // user is in. `teardown` had nothing to stop then; stop it now, or
+          // the OS recording indicator stays on for a component that is gone.
+          for (const t of got.getTracks()) t.stop()
+          return false
+        }
+        stream = got
         chunks = []
         const r = new MediaRecorder(stream)
         r.ondataavailable = (e: BlobEvent) => {
