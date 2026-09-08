@@ -111,6 +111,7 @@ flow.fromJSON({ nodes, edges })    // restore from saved state
 | [`Panel`](#panel) | component | Overlay panel positioned absolutely relative to the flow viewport. |
 | [`NodeResizer`](#noderesizer) | component | Render drag handles inside a custom node to resize it. |
 | [`NodeToolbar`](#nodetoolbar) | component | A floating toolbar placed beside its host node (default `position: "top"`, `offset` 8px). |
+| [`flowStyles`](#flowstyles) | constant | The package stylesheet as ONE plain string — every `.pyreon-flow-*` rule with its `--pyreon-flow-*` custom-property fall |
 | [`EdgeLabelRenderer`](#edgelabelrenderer) | component | HTML edge labels for CUSTOM edges. |
 | [`MarkerType / Position`](#markertype-position) | constant | The two flow enums. |
 | [`edge-path-helpers`](#edge-path-helpers) | function | SVG-path builders for CUSTOM edge components. |
@@ -440,6 +441,35 @@ const NodeWithToolbar = (props) => (
 - Passing a bare boolean `selected={someValue}` — that snapshots selection and never updates. Pass the reactive accessor (the custom node's `props.selected`, which is `() => boolean`) so show/hide tracks live selection.
 
 **See also:** `NodeResizer` · `Handle`
+
+---
+
+### flowStyles `constant`
+
+```ts
+flowStyles: string
+```
+
+The package stylesheet as ONE plain string — every `.pyreon-flow-*` rule with its `--pyreon-flow-*` custom-property fallbacks (26 theme vars, all documented under "Theming"). Inject it once per document (`<style>{flowStyles}</style>`, a `useHead` style, or your CSS pipeline); it is an inert string with no side effects, so `sideEffects: false` tree-shakes it out of apps that ship their own CSS. Theme by overriding the variables on an ancestor, never by editing the string.
+
+**Example**
+
+```tsx
+import { flowStyles } from '@pyreon/flow'
+
+// once, near the root
+<style>{flowStyles}</style>
+<div style="--pyreon-flow-edge: #7c3aed; --pyreon-flow-node-bg: #111">
+  <Flow instance={flow} />
+</div>
+```
+
+**Common mistakes**
+
+- Forgetting to inject it — nodes render unstyled and edges invisible (the SVG has no stroke), which reads as a geometry bug.
+- Injecting it per &lt;Flow&gt; instance — it is document-scoped; N copies are N identical stylesheets.
+
+**See also:** `Flow` · `Background`
 
 ---
 

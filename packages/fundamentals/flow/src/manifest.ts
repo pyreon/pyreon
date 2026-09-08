@@ -363,6 +363,8 @@ const NodeWithToolbar = (props) => (
         'Injecting it per <Flow> instance — it is document-scoped; N copies are N identical stylesheets.',
       ],
       seeAlso: ['Flow', 'Background'],
+    },
+    {
       name: 'EdgeLabelRenderer',
       kind: 'component',
       signature: 'EdgeLabelRenderer(props: { children?: VNodeChild }) => VNodeChild',

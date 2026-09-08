@@ -5396,6 +5396,20 @@ const NodeWithToolbar = (props) => (
 - Passing a bare boolean \`selected={someValue}\` — that snapshots selection and never updates. Pass the reactive accessor (the custom node's \`props.selected\`, which is \`() => boolean\`) so show/hide tracks live selection.`,
   },
 
+  'flow/flowStyles': {
+    signature: 'flowStyles: string',
+    example: `import { flowStyles } from '@pyreon/flow'
+
+// once, near the root
+<style>{flowStyles}</style>
+<div style="--pyreon-flow-edge: #7c3aed; --pyreon-flow-node-bg: #111">
+  <Flow instance={flow} />
+</div>`,
+    notes: 'The package stylesheet as ONE plain string — every `.pyreon-flow-*` rule with its `--pyreon-flow-*` custom-property fallbacks (26 theme vars, all documented under "Theming"). Inject it once per document (`<style>{flowStyles}</style>`, a `useHead` style, or your CSS pipeline); it is an inert string with no side effects, so `sideEffects: false` tree-shakes it out of apps that ship their own CSS. Theme by overriding the variables on an ancestor, never by editing the string. See also: Flow, Background.',
+    mistakes: `- Forgetting to inject it — nodes render unstyled and edges invisible (the SVG has no stroke), which reads as a geometry bug.
+- Injecting it per <Flow> instance — it is document-scoped; N copies are N identical stylesheets.`,
+  },
+
   'flow/EdgeLabelRenderer': {
     signature: 'EdgeLabelRenderer(props: { children?: VNodeChild }) => VNodeChild',
     example: `function LabeledEdge(props: EdgeComponentProps) {
