@@ -1159,10 +1159,17 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     // ordinary a request as labelling bars. Bars keep their own placement
     // (below a negative bar, above a positive one, measured from the rect);
     // here the anchor is the placed point itself.
+    //
+    // `band` joins them for the same reason, one kind later: it takes
+    // `MarkOptions`, so it ACCEPTS `showValues`, and drew nothing. It needs no
+    // special anchor — a band's `values` IS its high edge, so the shared point
+    // placement lands the label on the boundary the reader points at. Only the
+    // high edge is labelled: one label per datum, on the line the mark is
+    // anchored to. (`stackedArea` was already covered by the stacked path.)
     if (
       s.showValues === true &&
       progress >= 1.0 &&
-      (s.kind === 'line' || s.kind === 'area' || s.kind === 'points')
+      (s.kind === 'line' || s.kind === 'area' || s.kind === 'points' || s.kind === 'band')
     ) {
       const fmtP = spec.yFormat ?? plain
       const labelPts = place(s.values)

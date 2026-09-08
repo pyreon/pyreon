@@ -30,6 +30,7 @@ const KINDS: Record<string, (o?: marks.MarkOptions) => Mark<Row>[]> = {
   stackedBars: (o) => [marks.stackedBars<Row>(y, o), marks.stackedBars<Row>(y2, o)],
   groupedBars: (o) => [marks.groupedBars<Row>(y, o), marks.groupedBars<Row>(y2, o)],
   stackedArea: (o) => [marks.stackedArea<Row>(y, o), marks.stackedArea<Row>(y2, o)],
+  band: (o) => [marks.band<Row>(y2, y, o)],
 }
 
 const draw = (mk: (o?: marks.MarkOptions) => Mark<Row>[], o?: marks.MarkOptions): string =>
@@ -49,9 +50,11 @@ describe('showValues', () => {
     // by simply not appearing in the table above.
     const declared = ['bars', 'line', 'area', 'points', 'stacked', 'grouped', 'waterfall', 'stackedArea', 'band']
     const tested = new Set(Object.values(KINDS).flatMap((mk) => mk().map((m) => m.kind)))
-    // `band` is the one kind with no single value per datum to print — it is
-    // a region, and its two bounds are already the drawing.
-    const missing = declared.filter((k) => k !== 'band' && !tested.has(k as never))
+    // No exemptions. `band` carried one — "a region has no single value to
+    // print" — and that was a rationale for a branch nobody had written: its
+    // HIGH edge is a perfectly good single value, and labelling it is what
+    // every other kind does.
+    const missing = declared.filter((k) => !tested.has(k as never))
     expect(missing, 'a mark kind exists that this test never exercises').toEqual([])
   })
 
