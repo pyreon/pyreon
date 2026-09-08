@@ -207,6 +207,13 @@ async function main() {
     mode: args.mode,
     runs: args.runs,
     timestamp: new Date().toISOString(),
+    // WHERE this ran. Wall-clock and heap are only comparable between two
+    // recordings from the same machine class, and a committed baseline is
+    // compared against CI runs forever — so a baseline recorded on a laptop
+    // makes every future comparison read as a huge regression that is really
+    // just a faster machine. Stamping it lets `perf:diff` say so out loud
+    // instead of printing a confident wrong percentage.
+    host: process.env.CI === 'true' ? `ci:${process.env.RUNNER_OS ?? 'unknown'}` : 'local',
     medianWallMs: median(wallMs),
     medianHeapBytes: median(heapBytes),
     counters,

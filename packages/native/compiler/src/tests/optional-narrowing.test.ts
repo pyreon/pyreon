@@ -72,19 +72,26 @@ describe('optional-narrowing ternary → nil-coalescing', () => {
     expect(transform(src, { target: 'swift' }).code).not.toContain('(n ?? 1.0)')
   })
 
-  it('an UNKNOWN-typed check still rewrites — the asymmetry decides the default', () => {
-    // Inference through a typed PARAM is unknown at the emit site today. The
-    // rewrite is value-preserving either way (on a non-optional the absent
-    // branch is dead and `x ?? fb` is x), and the failure modes are not
-    // symmetric: coalescing a non-optional is a WARNING on both targets,
-    // while a missing unwrap is a hard ERROR.
+  it('skips a PROVABLY non-optional PARAM, exactly as it does a local', () => {
+    // This spec previously asserted the OPPOSITE, and said why in its own
+    // comment: "inference through a typed PARAM is unknown at the emit site
+    // today", so the rewrite fired on the asymmetry argument (coalescing a
+    // non-optional is only a warning; a missing unwrap is an error).
+    //
+    // Helper params are now seeded into the expression inference context — the
+    // change that lets `if (optionalParam)` lower to `if let` — so the type IS
+    // known here, and a `Double` param is provably not optional. The invariant
+    // the old assertion protected is unchanged (the rewrite must be
+    // value-preserving); what changed is that the emit no longer produces a
+    // coalesce swiftc would warn about. It now matches the sibling spec below,
+    // which asserts the same thing for a local.
     const src = `
       function f(n: Double): Double {
         return n === undefined ? 1.0 : n
       }
       export function P() { return <Text>{String(f(2.0))}</Text> }
     `
-    expect(transform(src, { target: 'swift' }).code).toContain('(n ?? 1.0)')
+    expect(transform(src, { target: 'swift' }).code).not.toContain('(n ?? 1.0)')
   })
 
   it('matches the null-literal on either side', () => {

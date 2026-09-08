@@ -1,6 +1,7 @@
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
+import { query } from '@pyreon/test-utils'
 import type { RouteRecord } from '../index'
 import {
   createRouter,
@@ -324,22 +325,23 @@ describe('router integration — layouts persist across child navigation', () =>
     // Tag the LIVE layout DOM node. A layout re-mount replaces this element
     // with a fresh one (losing the expando) — that re-mount is what resets a
     // sidebar's scroll position and flashes the chrome on every navigation.
-    const layoutEl = el.querySelector('[data-testid="layout"]') as
-      | (HTMLElement & { __layoutProbe?: string })
-      | null
-    expect(layoutEl).toBeTruthy()
-    layoutEl!.__layoutProbe = 'persisted'
+    // `query` throws a named error when the node is absent, so the `| null`
+    // half of the old cast was never a real branch — it only silenced TS.
+    const layoutEl = query(el, '[data-testid="layout"]') as HTMLElement & {
+      __layoutProbe?: string
+    }
+    layoutEl.__layoutProbe = 'persisted'
 
     await router.push('/app/b')
 
     // The leaf page swapped (A → B) — the param/loader-consuming depth re-mounts…
     expect(el.querySelector('[data-testid="page"]')?.textContent).toBe('B')
     // …but the PARENT layout (same record) is the SAME element — mounted once.
-    const layoutAfter = el.querySelector('[data-testid="layout"]') as
-      | (HTMLElement & { __layoutProbe?: string })
-      | null
+    const layoutAfter = query(el, '[data-testid="layout"]') as HTMLElement & {
+      __layoutProbe?: string
+    }
     expect(layoutAfter).toBe(layoutEl)
-    expect(layoutAfter!.__layoutProbe).toBe('persisted')
+    expect(layoutAfter.__layoutProbe).toBe('persisted')
   })
 
   test('a parameterised parent layout with its OWN loader: persists on same-param nav, refreshes data on param change', async () => {
@@ -383,18 +385,18 @@ describe('router integration — layouts persist across child navigation', () =>
     expect(el.querySelector('[data-testid="ulayout-data"]')?.textContent).toBe('user-42')
 
     // (1) Same-param child nav: parent data unchanged → mount once preserved.
-    const layoutEl = el.querySelector('[data-testid="ulayout"]') as
-      | (HTMLElement & { __probe?: string })
-      | null
-    layoutEl!.__probe = 'persisted'
+    const layoutEl = query(el, '[data-testid="ulayout"]') as HTMLElement & {
+      __probe?: string
+    }
+    layoutEl.__probe = 'persisted'
     await router.push('/users/42/settings')
     await new Promise((r) => setTimeout(r, 20))
     expect(el.querySelector('[data-testid="upage"]')?.textContent).toBe('settings')
-    const sameParam = el.querySelector('[data-testid="ulayout"]') as
-      | (HTMLElement & { __probe?: string })
-      | null
+    const sameParam = query(el, '[data-testid="ulayout"]') as HTMLElement & {
+      __probe?: string
+    }
     expect(sameParam).toBe(layoutEl) // NOT re-mounted
-    expect(sameParam!.__probe).toBe('persisted')
+    expect(sameParam.__probe).toBe('persisted')
     expect(el.querySelector('[data-testid="ulayout-data"]')?.textContent).toBe('user-42')
 
     // (2) Param-change nav: parent loader re-runs → FRESH data shown.

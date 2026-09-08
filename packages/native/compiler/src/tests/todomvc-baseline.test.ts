@@ -60,7 +60,7 @@ describe('TodoMVC compile baseline', () => {
   it('Swift emit — current partial output', () => {
     const out = transform(source, { target: 'swift' })
     expect(out.code).toMatchInlineSnapshot(`
-      "enum Filter: String {
+      "enum Filter: String, Codable {
         case all, active, completed
       }
 

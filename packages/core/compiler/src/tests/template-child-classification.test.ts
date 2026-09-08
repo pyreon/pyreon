@@ -26,15 +26,30 @@
  * Both fixes are mirrored byte-identically in the Rust backend (the
  * describeNative blocks below + the seeded fuzz grammar police the seam).
  */
+import { createRequire } from 'node:module'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { transformJSX_JS } from '../jsx'
 
 // Load native if available (same convention as native-equivalence.test.ts).
-let nativeTransform:
-  | ((code: string, filename: string, ssr: boolean, known: string[] | null) => { code: string })
-  | null = null
+type NativeTransform = (
+  code: string,
+  filename: string,
+  ssr: boolean,
+  known: string[] | null,
+) => { code: string }
+
+let nativeTransform: NativeTransform | null = null
 try {
-  const path = require('node:path')
-  const native = require(path.join(__dirname, '..', '..', 'native', 'pyreon-compiler.node'))
+  // A napi `.node` addon cannot be loaded through `await import()`, so this
+  // is the legitimate `createRequire` case: the CJS-only globals are not
+  // defined in a real-Node ESM run (bun defines them, which is why a
+  // bun-run suite never caught it).
+  const requireAddon = createRequire(import.meta.url)
+  const here = dirname(fileURLToPath(import.meta.url))
+  const native = requireAddon(join(here, '..', '..', 'native', 'pyreon-compiler.node')) as {
+    transformJsx: NativeTransform
+  }
   nativeTransform = native.transformJsx
 } catch {
   // Native not available — cross-backend blocks skip.

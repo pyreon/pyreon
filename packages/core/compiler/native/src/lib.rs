@@ -6546,6 +6546,23 @@ fn has_bail_attr(el: &JSXElement, is_root: bool) -> bool {
                 return true;
             }
             JSXAttributeItem::Attribute(a) => {
+                // A NAMESPACED attribute name (`xlink:href`, `xml:lang`) is
+                // `JSXAttributeName::NamespacedName`, and every name reader in
+                // the template emitter matches only `Identifier` — so the
+                // qualified name reaches none of them and this backend DROPPED
+                // the attribute outright (the JS backend instead baked a
+                // malformed `<use ="/static">` and emitted `_setAttr(el, "", u)`).
+                // `<use xlink:href="#icon">`, the SVG sprite idiom, therefore
+                // rendered nothing in every compiled app, silently and
+                // differently per backend.
+                //
+                // Bail the element to `h()`: the runtime path sets a qualified
+                // name correctly and runs the url guard over it. Mirrors
+                // `hasBailAttr` in `src/jsx.ts` byte-for-byte — see the longer
+                // rationale there.
+                if matches!(a.name, JSXAttributeName::NamespacedName(_)) {
+                    return true;
+                }
                 if let JSXAttributeName::Identifier(id) = &a.name {
                     if id.name.as_str() == "key" {
                         return true;

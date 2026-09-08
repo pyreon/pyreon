@@ -8,6 +8,7 @@
  * constructor, execute, mount the result, and assert DOM state.
  */
 import { transformJSX } from '@pyreon/compiler'
+import { query } from '@pyreon/test-utils'
 import { Fragment, h, _rp, _rpd, cx } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { _tpl, _bindText, _bindDirect, _setChild, _setChildAt } from '../template'
@@ -711,7 +712,7 @@ describe('Compiler integration — class/style binding fidelity', () => {
   test('object style thunk applies + reacts (was cssText = object → no styles)', () => {
     const color = signal('red')
     const { container } = compileAndMount(`<div style={() => ({ color: color() })}>y</div>`, { color })
-    const div = container.querySelector('div')! as HTMLDivElement
+    const div = query(container, 'div')
     expect(div.style.color).toBe('red')
     color.set('blue')
     expect(div.style.color).toBe('blue')
@@ -720,7 +721,7 @@ describe('Compiler integration — class/style binding fidelity', () => {
   test('object style literal with a signal is reactive (was a one-shot Object.assign)', () => {
     const color = signal('red')
     const { container } = compileAndMount(`<div style={{ color: color() }}>y</div>`, { color })
-    const div = container.querySelector('div')! as HTMLDivElement
+    const div = query(container, 'div')
     expect(div.style.color).toBe('red')
     color.set('green')
     expect(div.style.color).toBe('green')
@@ -736,7 +737,7 @@ describe('Compiler integration — class/style binding fidelity', () => {
       `<div style={() => { tick(); return 'color: red; font-size: 14px' }}>y</div>`,
       { tick },
     )
-    const div = container.querySelector('div')! as HTMLDivElement
+    const div = query(container, 'div')
     let proto: object | null = Object.getPrototypeOf(div.style)
     let desc: PropertyDescriptor | undefined
     while (proto !== null) {

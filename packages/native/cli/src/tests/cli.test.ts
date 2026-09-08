@@ -3,7 +3,7 @@
 // directly with a mocked argv. Output goes via console.error /
 // console.log; tests capture both.
 
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { tmpdir } from 'node:os'
@@ -197,7 +197,7 @@ describe('@pyreon/native-cli main()', () => {
     )
     const nm = join(app, 'node_modules', '@pyreon', 'native-runtime-kotlin')
     const ktDir = join(nm, 'src', 'main', 'kotlin')
-    require('node:fs').mkdirSync(ktDir, { recursive: true })
+    mkdirSync(ktDir, { recursive: true })
     writeFileSync(
       join(nm, 'package.json'),
       JSON.stringify({ name: '@pyreon/native-runtime-kotlin', pyreon: { native: { kotlin: { dir: 'src/main/kotlin' } } } }),
@@ -219,7 +219,7 @@ describe('@pyreon/native-cli main()', () => {
       JSON.stringify({ name: 'app', dependencies: { '@pyreon/query': 'latest' } }),
     )
     const nm = join(app, 'node_modules', '@pyreon', 'query')
-    require('node:fs').mkdirSync(nm, { recursive: true })
+    mkdirSync(nm, { recursive: true })
     writeFileSync(
       join(nm, 'package.json'),
       JSON.stringify({ name: '@pyreon/query', pyreon: { native: { swift: { dir: 'native/swift' } } } }),
