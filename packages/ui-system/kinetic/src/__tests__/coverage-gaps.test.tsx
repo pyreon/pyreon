@@ -201,6 +201,9 @@ describe('Transition — leave path + unmount:false fallback', () => {
     expect(vnode).not.toBeNull()
     const showProps = vnode?.props as Record<string, unknown>
     expect(showProps.fallback).toBeTruthy()
+    // Still a plain VNode: a STATIC `unmount` cannot change, so the fallback
+    // stays a value and no reactive boundary is created (see `isDynamicProp`).
+    // A getter-backed `unmount` gets the accessor form — live-props.test.tsx.
     const fb = showProps.fallback as VNode
     const fbStyle = (fb.props as Record<string, unknown>).style as Record<string, unknown>
     expect(fbStyle.display).toBe('none')
@@ -223,6 +226,11 @@ describe('TransitionItem — leave path + unmount:false fallback + propless chil
     const vnode = TransitionItem({ show, unmount: false, children: child() } as any)
     const showProps = vnode?.props as Record<string, unknown>
     expect(showProps.fallback).toBeTruthy()
+    // Still a plain VNode here, deliberately: TransitionItem is internal and
+    // neither of its two callers (StaggerRenderer / GroupRenderer) passes
+    // `unmount` at all, so there is no user prop for it to freeze. The public
+    // `<Transition>` / `TransitionRenderer` fallbacks ARE accessors — see the
+    // sibling specs above and below.
     const fb = showProps.fallback as VNode
     const fbStyle = (fb.props as Record<string, unknown>).style as Record<string, unknown>
     expect(fbStyle.display).toBe('none')
@@ -276,6 +284,7 @@ describe('TransitionRenderer — leave path style guards + unmount:false fallbac
     })
     const showProps = vnode?.props as Record<string, unknown>
     expect(showProps.fallback).toBeTruthy()
+    // Plain VNode, for the same reason as the `<Transition>` case above.
     const fb = showProps.fallback as VNode
     const fbStyle = (fb.props as Record<string, unknown>).style as Record<string, unknown>
     expect(fbStyle.display).toBe('none')

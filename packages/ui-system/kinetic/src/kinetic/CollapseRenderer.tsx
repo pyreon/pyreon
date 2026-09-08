@@ -1,6 +1,7 @@
 import type { VNode } from '@pyreon/core'
 import { createRef, h, mergeProps, Show } from '@pyreon/core'
 import { runUntracked, signal, watch } from '@pyreon/reactivity'
+import { readLive, resolveLive } from '../live-prop'
 import type { CSSProperties, TransitionCallbacks, TransitionStage } from '../types'
 import useAnimationEnd from '../useAnimationEnd'
 import { useReducedMotion } from '../useReducedMotion'
@@ -10,9 +11,13 @@ type CollapseRendererProps = {
   config: KineticConfig
   htmlProps: Record<string, unknown>
   show: () => boolean
+  /** Construction-time — a first-mount question, spent once the ref wires up. */
   appear?: boolean | undefined
-  timeout?: number | undefined
-  transition?: string | undefined
+  /** Live: the animation-end deadline is re-armed per cycle. */
+  timeout?: number | (() => number | undefined) | undefined
+  /** Live: written to `style.transition` on every stage change. */
+  transition?: string | (() => string | undefined) | undefined
+  /** A LIVE HOLDER — read each entry through `readLive` at the point of call. */
   callbacks: Partial<TransitionCallbacks>
   children: VNode | VNode[]
 }
@@ -36,9 +41,13 @@ const CollapseRenderer = ({
   let wrapperRef: { current: HTMLElement | null } = createRef<HTMLElement>()
   const contentRef = createRef<HTMLDivElement>()
 
+  // `appear` is a construction-time question (see the prop doc); the other two
+  // are accessors resolved at each point of USE, so a prop that arrived as a
+  // compiler `_rp` getter is re-read per cycle rather than frozen at setup.
   const effectiveAppear = appear ?? config.appear ?? false
-  const effectiveTimeout = timeout ?? config.timeout ?? 5000
-  const effectiveTransition = transition ?? config.transition ?? 'height 300ms ease'
+  const effectiveTimeout = () => resolveLive(timeout) ?? config.timeout ?? 5000
+  const effectiveTransition = () =>
+    resolveLive(transition) ?? config.transition ?? 'height 300ms ease'
 
   const initialShow = show()
   const needsAppear = effectiveAppear && initialShow
@@ -101,42 +110,42 @@ const CollapseRenderer = ({
 
       if (reducedMotion()) {
         if (currentStage === 'entering') {
-          callbacks.onEnter?.()
+          readLive<TransitionCallbacks['onEnter']>(callbacks, 'onEnter')?.()
           wrapper.style.height = 'auto'
           wrapper.style.overflow = ''
-          callbacks.onAfterEnter?.()
+          readLive<TransitionCallbacks['onAfterEnter']>(callbacks, 'onAfterEnter')?.()
           stage.set('entered')
         } else if (currentStage === 'leaving') {
-          callbacks.onLeave?.()
+          readLive<TransitionCallbacks['onLeave']>(callbacks, 'onLeave')?.()
           wrapper.style.height = '0px'
           wrapper.style.overflow = 'hidden'
-          callbacks.onAfterLeave?.()
+          readLive<TransitionCallbacks['onAfterLeave']>(callbacks, 'onAfterLeave')?.()
           stage.set('hidden')
         }
         return
       }
 
       if (currentStage === 'entering') {
-        callbacks.onEnter?.()
+        readLive<TransitionCallbacks['onEnter']>(callbacks, 'onEnter')?.()
         const height = content.scrollHeight
         wrapper.style.transition = 'none'
         wrapper.style.height = '0px'
         wrapper.style.overflow = 'hidden'
         // Force reflow
         void wrapper.offsetHeight
-        wrapper.style.transition = effectiveTransition
+        wrapper.style.transition = effectiveTransition()
         wrapper.style.height = `${height}px`
       }
 
       if (currentStage === 'leaving') {
-        callbacks.onLeave?.()
+        readLive<TransitionCallbacks['onLeave']>(callbacks, 'onLeave')?.()
         const height = content.scrollHeight
         wrapper.style.transition = 'none'
         wrapper.style.height = `${height}px`
         wrapper.style.overflow = 'hidden'
         // Force reflow
         void wrapper.offsetHeight
-        wrapper.style.transition = effectiveTransition
+        wrapper.style.transition = effectiveTransition()
         wrapper.style.height = '0px'
       }
     },
@@ -158,10 +167,10 @@ const CollapseRenderer = ({
           wrapper.style.overflow = ''
           wrapper.style.transition = ''
         }
-        callbacks.onAfterEnter?.()
+        readLive<TransitionCallbacks['onAfterEnter']>(callbacks, 'onAfterEnter')?.()
         stage.set('entered')
       } else {
-        callbacks.onAfterLeave?.()
+        readLive<TransitionCallbacks['onAfterLeave']>(callbacks, 'onAfterLeave')?.()
         stage.set('hidden')
       }
     },

@@ -1,6 +1,7 @@
 import type { VNode } from '@pyreon/core'
-import { splitProps } from '@pyreon/core'
+import { h, mergeProps, splitProps } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
+import { readLive, readLiveValue } from './live-prop'
 import Transition from './Transition'
 import type { ClassTransitionProps, StyleTransitionProps, TransitionCallbacks } from './types'
 
@@ -8,7 +9,7 @@ export type TransitionGroupProps = ClassTransitionProps &
   StyleTransitionProps &
   TransitionCallbacks & {
     appear?: boolean | undefined
-    timeout?: number | undefined
+    timeout?: number | (() => number | undefined) | undefined
     /**
      * Children can be a static array OR a reactive accessor `() => VNode[]`.
      * When passed as an accessor, TransitionGroup tracks changes and
@@ -50,6 +51,7 @@ const TransitionGroup = (props: TransitionGroupProps): VNode | null => {
     'timeout',
     'onAfterLeave',
   ])
+  // CONSTRUCTION-TIME: a first-mount question (see `<Transition>`).
   const appear = own.appear ?? false
   const prevMap = new Map<string | number, VNode>()
   const leavingMap = new Map<string | number, VNode>()
@@ -70,7 +72,7 @@ const TransitionGroup = (props: TransitionGroupProps): VNode | null => {
 
   const handleAfterLeave = (key: string | number) => {
     leavingMap.delete(key)
-    own.onAfterLeave?.()
+    readLive<TransitionCallbacks['onAfterLeave']>(own, 'onAfterLeave')?.()
     forceUpdate.update((c) => c + 1)
   }
 
@@ -118,17 +120,23 @@ const TransitionGroup = (props: TransitionGroupProps): VNode | null => {
           const isInitial = initialKeys.has(key)
           const isShowing = currentMap.has(key)
 
-          return (
-            <Transition
-              key={key}
-              show={() => isShowing}
-              appear={isInitial ? appear : true}
-              timeout={own.timeout}
-              {...transitionProps}
-              onAfterLeave={() => handleAfterLeave(key)}
-            >
-              {element}
-            </Transition>
+          // `h` + `mergeProps`, NOT a JSX spread: this package's JSX runs
+          // through the ordinary automatic runtime, so `{...transitionProps}`
+          // is a plain object spread that READS every key — firing each `_rp`
+          // getter `splitProps` preserved and freezing every forwarded
+          // transition prop. `mergeProps` copies descriptors instead.
+          return h(
+            Transition,
+            mergeProps(transitionProps as Record<string, unknown>, {
+              key,
+              show: () => isShowing,
+              appear: isInitial ? appear : true,
+              // A thunk, so a `timeout` that arrived as an `_rp` getter is
+              // re-read when each child re-arms its deadline.
+              timeout: () => readLiveValue<number>(own, 'timeout'),
+              onAfterLeave: () => handleAfterLeave(key),
+            }),
+            element,
           )
         })}
       </>

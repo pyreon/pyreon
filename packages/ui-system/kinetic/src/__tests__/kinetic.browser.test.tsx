@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { _rp, h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
-import { queryOptional } from '@pyreon/test-utils'
+import { query, queryOptional } from '@pyreon/test-utils'
 import kinetic from '../kinetic'
 import { nextFrame, mergeClassNames } from '../utils'
 import Transition from '../Transition'
@@ -353,7 +353,7 @@ describe('kinetic `show` as the compiled `_rp` reactive prop (real Chromium)', (
           h('div', { 'data-id': 'rp' }, 'hi'),
         ),
       )
-      const el = container.querySelector('[data-id="rp"]') as HTMLElement
+      const el = query(container, '[data-id="rp"]')
       expect(el.style.opacity).toBe('0')
       sig.set(true)
       await flush()
@@ -362,4 +362,122 @@ describe('kinetic `show` as the compiled `_rp` reactive prop (real Chromium)', (
       unmount()
     })
   }
+})
+
+describe('kinetic config props are read live, in real Chromium', () => {
+  // The happy-dom half of this lives in `live-props.test.tsx`; these are the
+  // assertions only a real browser can make — a COMPUTED style after the
+  // double-rAF enter cycle, and a callback fire count through a real
+  // `transitionend`. Every prop below arrives in the shape the compiler emits
+  // for `x={sig}`: an `_rp` thunk that `makeReactiveProps` installs as a
+  // getter, which the pre-fix code read once at setup and kept forever.
+
+  it('the enter/enterTo STYLES in force at the flip are the ones painted', async () => {
+    const sig = signal(false)
+    const to = signal({ opacity: 0.25 })
+    const { container, unmount } = mountInBrowser(
+      h(
+        Transition,
+        {
+          show: () => sig(),
+          enterStyle: { opacity: 0 },
+          enterToStyle: _rp(() => to()),
+          enterTransition: 'opacity 20ms linear',
+          leaveToStyle: { opacity: 0 },
+        },
+        h('div', { 'data-id': 'sty' }, 'hi'),
+      ),
+    )
+    const el = query(container, '[data-id="sty"]')
+    expect(el.style.opacity).toBe('0')
+    // Swap the enter-to state BEFORE the flip. The pre-fix build captured
+    // `enterToStyle` at setup, so it painted 0.25 whatever this said.
+    to.set({ opacity: 0.75 })
+    sig.set(true)
+    await flush()
+    await new Promise((r) => setTimeout(r, 120))
+    expect(getComputedStyle(el).opacity).toBe('0.75')
+    unmount()
+  })
+
+  it('the enter CLASS in force at the flip is the one on the element', async () => {
+    const sig = signal(false)
+    const cls = signal('cls-A')
+    const { container, unmount } = mountInBrowser(
+      h(
+        Transition,
+        { show: () => sig(), enter: _rp(() => cls()), leaveTo: 'k-gone' },
+        h('div', { 'data-id': 'cls' }, 'hi'),
+      ),
+    )
+    cls.set('cls-B')
+    sig.set(true)
+    await flush()
+    const el = query(container, '[data-id="cls"]')
+    expect(el.classList.contains('cls-B')).toBe(true)
+    expect(el.classList.contains('cls-A')).toBe(false)
+    unmount()
+  })
+
+  it('a swapped onAfterEnter is the handler a real transitionend calls', async () => {
+    const sig = signal(false)
+    let staleCalls = 0
+    let freshCalls = 0
+    const handler = signal(() => {
+      staleCalls += 1
+    })
+    const { unmount } = mountInBrowser(
+      h(
+        Transition,
+        {
+          show: () => sig(),
+          onAfterEnter: _rp(() => handler()),
+          enterStyle: { opacity: 0 },
+          enterToStyle: { opacity: 1 },
+          enterTransition: 'opacity 20ms linear',
+          leaveToStyle: { opacity: 0 },
+        },
+        h('div', { 'data-id': 'cb' }, 'hi'),
+      ),
+    )
+    handler.set(() => {
+      freshCalls += 1
+    })
+    sig.set(true)
+    await flush()
+    await new Promise((r) => setTimeout(r, 200))
+    expect(staleCalls, 'the handler captured at mount must NOT fire').toBe(0)
+    expect(freshCalls, 'the handler in force when the transition ended').toBe(1)
+    unmount()
+  })
+
+  it('kinetic(tag): a swapped onAfterEnter is the one a real transitionend calls', async () => {
+    const K = kinetic('div')
+      .enter({ opacity: 0 })
+      .enterTo({ opacity: 1 })
+      .enterTransition('opacity 20ms linear')
+      .leaveTo({ opacity: 0 })
+    const sig = signal(false)
+    let staleCalls = 0
+    let freshCalls = 0
+    const handler = signal(() => {
+      staleCalls += 1
+    })
+    const { unmount } = mountInBrowser(
+      h(
+        K,
+        { show: () => sig(), onAfterEnter: _rp(() => handler()), 'data-id': 'kcb' },
+        h('span', {}, 'hi'),
+      ),
+    )
+    handler.set(() => {
+      freshCalls += 1
+    })
+    sig.set(true)
+    await flush()
+    await new Promise((r) => setTimeout(r, 200))
+    expect(staleCalls).toBe(0)
+    expect(freshCalls).toBe(1)
+    unmount()
+  })
 })

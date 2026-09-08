@@ -1,5 +1,6 @@
 import type { Ref } from '@pyreon/core'
 import { watch } from '@pyreon/reactivity'
+import { resolveLive } from './live-prop'
 
 const DEFAULT_TIMEOUT = 5000
 
@@ -7,10 +8,20 @@ export type UseAnimationEnd = (options: {
   ref: Ref<HTMLElement>
   onEnd: () => void
   active: () => boolean
-  timeout?: number | undefined
+  /**
+   * Fallback deadline in ms, or an ACCESSOR for one.
+   *
+   * The accessor form exists because the deadline is re-armed on every active
+   * cycle, so it is a live value, not a construction-time one: a caller whose
+   * `timeout` prop arrives as a compiler `_rp` getter must be able to hand the
+   * read down rather than resolving it once at setup and freezing it. The
+   * resolution happens inside the watch below, UNTRACKED — see `live-prop.ts`
+   * for why a tracked read there would restart the animation instead.
+   */
+  timeout?: number | (() => number | undefined) | undefined
 }) => void
 
-const useAnimationEnd: UseAnimationEnd = ({ ref, onEnd, active, timeout = DEFAULT_TIMEOUT }) => {
+const useAnimationEnd: UseAnimationEnd = ({ ref, onEnd, active, timeout }) => {
   let called = false
 
   watch(
@@ -50,7 +61,9 @@ const useAnimationEnd: UseAnimationEnd = ({ ref, onEnd, active, timeout = DEFAUL
       el.addEventListener('transitionend', handleEnd)
       el.addEventListener('animationend', handleEnd)
 
-      const timer = setTimeout(done, timeout)
+      // Resolved HERE, not at setup: one read per active cycle, so the
+      // deadline in force is the current one.
+      const timer = setTimeout(done, resolveLive(timeout) ?? DEFAULT_TIMEOUT)
 
       return () => {
         el.removeEventListener('transitionend', handleEnd)

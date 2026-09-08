@@ -177,15 +177,15 @@ useAnimationEnd({ ref: elementRef, active: () => stage() === 'entering' || stage
       name: 'useAnimationEnd',
       kind: 'hook',
       signature:
-        '(options: { ref: Ref<HTMLElement>; onEnd: () => void; active: () => boolean; timeout?: number }) => void',
+        '(options: { ref: Ref<HTMLElement>; onEnd: () => void; active: () => boolean; timeout?: number | (() => number | undefined) }) => void',
       summary:
-        'Listens for `transitionend` / `animationend` on `ref.current` while `active()` is true and calls `onEnd` exactly once when the animation finishes — or after `timeout` ms (default 5000) as a safety fallback if the event never fires. Events bubbling from child elements are ignored (`e.target` must be the element itself). Listeners attach when `active` flips true and are cleaned up when it flips false. Its signature type is exported as `UseAnimationEnd`.',
+        'Listens for `transitionend` / `animationend` on `ref.current` while `active()` is true and calls `onEnd` exactly once when the animation finishes — or after `timeout` ms (default 5000) as a safety fallback if the event never fires. Events bubbling from child elements are ignored (`e.target` must be the element itself). Listeners attach when `active` flips true and are cleaned up when it flips false. `timeout` also accepts an ACCESSOR (`() => number`): the deadline is re-armed on every active cycle, so a caller whose own `timeout` prop arrives as a compiler-emitted getter can forward the read instead of resolving it once at setup and freezing it. Its signature type is exported as `UseAnimationEnd`.',
       params: [
         {
           name: 'options',
-          type: '{ ref: Ref<HTMLElement>; onEnd: () => void; active: () => boolean; timeout?: number }',
+          type: '{ ref: Ref<HTMLElement>; onEnd: () => void; active: () => boolean; timeout?: number | (() => number | undefined) }',
           description:
-            'Element ref object, one-shot end callback, reactive listen-gate accessor, and safety timeout in ms (default 5000).',
+            'Element ref object, one-shot end callback, reactive listen-gate accessor, and safety timeout in ms — a number or an accessor for one (default 5000).',
         },
       ],
       returns: { type: 'void', description: 'Registers reactive listeners; nothing to consume.' },
@@ -196,6 +196,7 @@ useAnimationEnd({ ref: elementRef, active: () => stage() === 'entering' || stage
   onEnd: () => complete(),
 })`,
       mistakes: [
+        'Resolving a signal-driven `timeout` at setup (`timeout: ms()`) instead of passing the accessor (`timeout: () => ms()`) — the deadline is re-armed per cycle, so a resolved value freezes at its mount-time reading',
         'Passing a callback ref — the option is a `Ref<HTMLElement>` OBJECT; the hook reads `ref.current` when `active` flips true',
         'Setting `timeout` shorter than the actual transition duration — the fallback timer calls `onEnd` early, before the animation finishes',
         'Expecting `onEnd` for a child element\'s transition — bubbled events where `e.target !== el` are deliberately ignored',
