@@ -925,8 +925,23 @@ export function runLayout<T>(
       pos = layeredLayout(boxes, edges, options)
   }
 
-  return boxes.map((b) => ({
-    id: b.id,
-    position: pos.get(b.id) ?? { x: 0, y: 0 },
-  }))
+  // Origin anchoring is a `runLayout` CONTRACT, so it is applied here, after
+  // whatever the algorithm did. The per-algorithm `normalise` runs BEFORE
+  // `relaxOverlaps`, and the relaxation pushes boxes apart in both
+  // directions — on a crowded random graph it pushed some past the origin
+  // (found by the seeded property sweep: force/stress/radial/tree drifted to
+  // -58 / -7 / -28 / -21 while the 12-node fixture never did).
+  let minX = Number.POSITIVE_INFINITY
+  let minY = Number.POSITIVE_INFINITY
+  for (const p of pos.values()) {
+    if (p.x < minX) minX = p.x
+    if (p.y < minY) minY = p.y
+  }
+  const shiftX = Number.isFinite(minX) && minX < 0 ? -minX : 0
+  const shiftY = Number.isFinite(minY) && minY < 0 ? -minY : 0
+
+  return boxes.map((b) => {
+    const p = pos.get(b.id) ?? { x: 0, y: 0 }
+    return { id: b.id, position: { x: p.x + shiftX, y: p.y + shiftY } }
+  })
 }
