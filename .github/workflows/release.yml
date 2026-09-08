@@ -302,6 +302,94 @@ jobs:
   # canary testing big changes before they land on main. Each push to the
   # branch publishes a NEW snapshot version (e.g. 0.15.1-alpha-20260514).
   # Consumers opt in via `bun add @pyreon/zero@next`.
+  # ── Resume a PARTIAL release ──────────────────────────────────────────
+  # The publish step is idempotent per package (skip-if-published), but it
+  # only runs when a Version PR merges. So when npm rejects a few packages
+  # mid-publish — 0.51.0 lost the whole @pyreon/native-* stack to a transient
+  # E422 provenance-verification error — nothing republishes them until the
+  # NEXT release, and users install a stale native compiler against a fresh
+  # core for as long as that takes (a month, in that instance). The daily
+  # published-state gate now reports that lag; this job closes it: it detects
+  # any publishable package whose npm latest is behind the version the repo
+  # has cut, checks out THAT version's tag (never main — a month of unreleased
+  # work must not ship under a released number), builds, and re-runs the
+  # idempotent publish. Fills holes in the CURRENT release only; a package
+  # that keeps failing needs its Trusted Publisher configured on npmjs.com,
+  # which the job says by name.
+  resume-detect:
+    # always(): the case this exists for is the stable job having FAILED
+    # mid-publish. A cancelled run is the only thing that must not resume.
+    needs: stable
+    if: always() && github.ref == 'refs/heads/main' && needs.stable.result != 'cancelled'
+    name: Detect a partial release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.lag.outputs.version }}
+      packages: ${{ steps.lag.outputs.packages }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+      - name: Compare every publishable package against npm
+        id: lag
+        run: |
+          set -uo pipefail
+          # --lag-json prints ONE JSON line on stdout: {version, packages} for
+          # packages lagging the CURRENT repo version (exit 1 = lag found,
+          # exit 2 = registry unreachable → resume nothing).
+          lag=$(bun scripts/check-published-state.ts --lag-json 2>/dev/null); code=$?
+          if [ "$code" -eq 2 ] || [ -z "$lag" ]; then echo "registry lookup failed — not resuming"; echo "version=" >> "$GITHUB_OUTPUT"; echo "packages=" >> "$GITHUB_OUTPUT"; exit 0; fi
+          echo "lag: $lag"
+          printf 'version=%s\n' "$(printf '%s' "$lag" | bun -e 'console.log(JSON.parse(require("fs").readFileSync(0,"utf8")).version)')" >> "$GITHUB_OUTPUT"
+          printf 'packages=%s\n' "$(printf '%s' "$lag" | bun -e 'console.log(JSON.parse(require("fs").readFileSync(0,"utf8")).packages.join(" "))')" >> "$GITHUB_OUTPUT"
+
+  resume-publish:
+    needs: resume-detect
+    if: needs.resume-detect.outputs.version != ''
+    name: Resume partial release
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Announce
+        run: echo "::notice title=Resuming release ${{ needs.resume-detect.outputs.version }}::republishing from tag v${{ needs.resume-detect.outputs.version }} — ${{ needs.resume-detect.outputs.packages }}"
+      # The TAG, never main: the tarball must be the code that release cut.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/v${{ needs.resume-detect.outputs.version }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+      - name: Restore bun dependencies
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-install-cache-${{ runner.os }}-
+      - run: bun install --frozen-lockfile
+        env:
+          PYREON_BOOTSTRAP_SKIP: '1'
+      - name: Disable local git hooks for the publish flow
+        run: git config core.hooksPath /dev/null
+      - name: Build + republish (idempotent — already-published versions are skipped)
+        run: bun run release
+      - name: Verify npm now matches the released version
+        run: bun scripts/check-published-state.ts
+
   prerelease:
     if: startsWith(github.ref, 'refs/heads/release/')
     name: Publish Prerelease

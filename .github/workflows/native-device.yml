@@ -969,6 +969,7 @@ jobs:
     if: always() && github.event_name == 'schedule'
     needs: [ios-build, android-build]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       issues: write
     steps:

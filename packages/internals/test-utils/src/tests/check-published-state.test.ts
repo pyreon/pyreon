@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
+  classifyLag,
   cmpSemver,
   NATIVE_SENTINELS,
   NPM_NAME_RE,
@@ -86,9 +87,7 @@ describe('check-published-state — existence sweep (first-publish-bootstrap cla
   // WEEKS of releases while the docs advertised it. The sweep turns
   // "publishable in repo but absent on npm" into a red, actionable run.
   it('enumeratePublishable: real workspace — non-private @pyreon/* at packages/*/*, no native stubs', async () => {
-    const { enumeratePublishable } = await import(
-      '../../../../../scripts/check-published-state'
-    )
+    const { enumeratePublishable } = await import('../../../../../scripts/check-published-state')
     const all = enumeratePublishable(REPO_ROOT)
     expect(all.length).toBeGreaterThanOrEqual(60)
     expect(all).toContain('@pyreon/core')
@@ -101,9 +100,7 @@ describe('check-published-state — existence sweep (first-publish-bootstrap cla
   })
 
   it('classifyExistence: null npm = never published → absent', async () => {
-    const { classifyExistence } = await import(
-      '../../../../../scripts/check-published-state'
-    )
+    const { classifyExistence } = await import('../../../../../scripts/check-published-state')
     const { absent } = classifyExistence([
       { pkg: '@pyreon/core', npm: '0.46.0' },
       { pkg: '@pyreon/rich-text', npm: null },
@@ -113,9 +110,7 @@ describe('check-published-state — existence sweep (first-publish-bootstrap cla
   })
 
   it('classifyExistence: all present → empty (healthy state)', async () => {
-    const { classifyExistence } = await import(
-      '../../../../../scripts/check-published-state'
-    )
+    const { classifyExistence } = await import('../../../../../scripts/check-published-state')
     expect(classifyExistence([{ pkg: '@pyreon/core', npm: '0.46.0' }]).absent).toEqual([])
   })
 })
@@ -127,7 +122,13 @@ describe('check-published-state — existence sweep (first-publish-bootstrap cla
 // extra path segments can reach fetch).
 describe('NPM_NAME_RE — registry-URL boundary', () => {
   it('accepts every real workspace package-name shape', () => {
-    for (const name of ['@pyreon/zero', '@pyreon/ui-core', 'lodash', 'query-string', '@a/b.c-d_e~f']) {
+    for (const name of [
+      '@pyreon/zero',
+      '@pyreon/ui-core',
+      'lodash',
+      'query-string',
+      '@a/b.c-d_e~f',
+    ]) {
       expect(NPM_NAME_RE.test(name)).toBe(true)
     }
   })
@@ -148,5 +149,37 @@ describe('NPM_NAME_RE — registry-URL boundary', () => {
     ]) {
       expect(NPM_NAME_RE.test(name)).toBe(false)
     }
+  })
+})
+
+describe('classifyLag — the partial-release class, over EVERY package', () => {
+  const repo = [
+    { pkg: '@pyreon/core', repo: '0.51.0' },
+    { pkg: '@pyreon/native-compiler', repo: '0.51.0' },
+    { pkg: '@pyreon/lathe', repo: '0.51.0' },
+  ]
+  it('reports a package whose npm latest is behind the repo version', () => {
+    const lag = classifyLag(
+      [
+        { pkg: '@pyreon/core', npm: '0.51.0' },
+        { pkg: '@pyreon/native-compiler', npm: '0.50.0' },
+      ],
+      repo,
+    )
+    expect(lag).toEqual([{ pkg: '@pyreon/native-compiler', repo: '0.51.0', npm: '0.50.0' }])
+  })
+  it("ignores a never-published package (that is the existence sweep's job) and an unknown one", () => {
+    expect(
+      classifyLag(
+        [
+          { pkg: '@pyreon/lathe', npm: null },
+          { pkg: '@pyreon/ghost', npm: '0.1.0' },
+        ],
+        repo,
+      ),
+    ).toEqual([])
+  })
+  it('does not flag npm AHEAD of the repo (a release cut from a branch)', () => {
+    expect(classifyLag([{ pkg: '@pyreon/core', npm: '0.52.0' }], repo)).toEqual([])
   })
 })

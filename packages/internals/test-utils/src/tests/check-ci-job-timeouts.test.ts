@@ -14,6 +14,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   MIN_BOOTSTRAP_TIMEOUT,
+  findMissingTimeouts,
   findTimeoutViolations,
   parseJobTimeouts,
 } from '../../../../../scripts/check-ci-job-timeouts'
@@ -31,7 +32,7 @@ describe('parseJobTimeouts', () => {
 `),
     )
     expect(out).toEqual([
-      { job: 'budgets', timeout: 5, usesSetup: true, restoresBootstrap: true },
+      { job: 'budgets', timeout: 5, usesSetup: true, restoresBootstrap: true, declared: true },
     ])
   })
 
@@ -195,5 +196,49 @@ describe('comments are not uses (regression: a prose mention tripped the gate)',
     expect(findTimeoutViolations(parseJobTimeouts(wf), MIN_BOOTSTRAP_TIMEOUT)).toEqual([
       { job: 'sneaky', timeout: 8 },
     ])
+  })
+})
+
+describe('findMissingTimeouts — every job declares a budget', () => {
+  it('names a job with no timeout-minutes', () => {
+    const jobs = parseJobTimeouts(
+      [
+        'jobs:',
+        '  a:',
+        '    runs-on: ubuntu-latest',
+        '  b:',
+        '    runs-on: ubuntu-latest',
+        '    timeout-minutes: 5',
+      ].join('\n'),
+    )
+    expect(findMissingTimeouts(jobs)).toEqual(['a'])
+  })
+  it('accepts an expression-valued timeout as declared', () => {
+    const jobs = parseJobTimeouts(
+      [
+        'jobs:',
+        '  cell:',
+        '    runs-on: ubuntu-latest',
+        "    timeout-minutes: ${{ startsWith(matrix.name, 'native') && 25 || 20 }}",
+      ].join('\n'),
+    )
+    expect(jobs[0]!.declared).toBe(true)
+    expect(findMissingTimeouts(jobs)).toEqual([])
+  })
+  it("does not read the on: block's 2-space keys as jobs", () => {
+    const jobs = parseJobTimeouts(
+      [
+        'on:',
+        '  push:',
+        '    branches: [main]',
+        '  schedule:',
+        "    - cron: '1 2 * * *'",
+        'jobs:',
+        '  only:',
+        '    runs-on: ubuntu-latest',
+        '    timeout-minutes: 3',
+      ].join('\n'),
+    )
+    expect(jobs.map((j) => j.job)).toEqual(['only'])
   })
 })

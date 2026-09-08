@@ -36,6 +36,7 @@ jobs:
   audit:
     name: bun audit (advisory)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
