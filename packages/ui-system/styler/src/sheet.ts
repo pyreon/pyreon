@@ -309,7 +309,20 @@ export class StyleSheet {
   // watermark (`flushedIdx`) lets the pipeline emit `<style>` inline per Suspense
   // boundary. Under a per-request styler scope (runtime-server, concurrent
   // streaming) these live on the request bag; otherwise on this instance object.
-  private readonly _instanceSSR: StylerSSRState = freshSSRState()
+  // Inlined rather than `= freshSSRState()`. A class FIELD initializer that
+  // calls a function is a call the bundler cannot prove pure, and that defeats
+  // the `/* @__PURE__ */` on the `sheet` singleton below — measured under the
+  // pinned bun (1.3.14), a `useTheme`-only import went 1148 -> 4412 gz because
+  // the whole StyleSheet class stopped shaking away. Object and `new Set()`
+  // literals are special-cased as pure, so the same state written inline costs
+  // nothing. `freshSSRState()` is still used from METHOD bodies, where a call
+  // is not part of the construction the annotation is about.
+  private readonly _instanceSSR: StylerSSRState = {
+    buffer: [],
+    flushedIdx: 0,
+    layerDeclEmitted: false,
+    seen: new Set(),
+  }
   // SSR only: the final rule text per cache key, so a request whose render
   // references a class the instance-wide `cache` already knows can still push
   // that class's rules into ITS OWN buffer (see `StylerSSRState.seen`).
