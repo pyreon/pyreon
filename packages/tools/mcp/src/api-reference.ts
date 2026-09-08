@@ -5378,7 +5378,7 @@ const ResizableNode = (props) => (
   },
 
   'flow/NodeToolbar': {
-    signature: `NodeToolbar(props: { position?: 'top' | 'bottom' | 'left' | 'right'; offset?: number; showOnSelect?: boolean; selected?: boolean | (() => boolean); style?: string; class?: string; children?: VNodeChild }) => VNodeChild`,
+    signature: `NodeToolbar(props: { nodeId?: string; position?: 'top' | 'bottom' | 'left' | 'right'; align?: 'start' | 'center' | 'end'; offset?: number; showOnSelect?: boolean; selected?: boolean | (() => boolean); style?: string; class?: string; children?: VNodeChild }) => VNodeChild`,
     example: `import { NodeToolbar } from '@pyreon/flow'
 
 const NodeWithToolbar = (props) => (
@@ -5392,6 +5392,29 @@ const NodeWithToolbar = (props) => (
     notes: 'A floating toolbar placed beside its host node (default `position: "top"`, `offset` 8px). Returns a REACTIVE thunk that reads `selected` and renders `null` when `showOnSelect` (default true) and the node is not selected — so it shows/hides with live selection. Put action buttons for a node (delete, duplicate, edit) here. See also: NodeResizer, Handle.',
     mistakes: `- Expecting it to escape node clipping like React Flow — it is NOT a portal; it renders inline as an absolutely-positioned div, so an ancestor \`overflow: hidden\` CLIPS it. The host node must be \`position: relative\`.
 - Passing a bare boolean \`selected={someValue}\` — that snapshots selection and never updates. Pass the reactive accessor (the custom node's \`props.selected\`, which is \`() => boolean\`) so show/hide tracks live selection.`,
+  },
+
+  'flow/EdgeLabelRenderer': {
+    signature: 'EdgeLabelRenderer(props: { children?: VNodeChild }) => VNodeChild',
+    example: `function LabeledEdge(props: EdgeComponentProps) {
+  return (
+    <>
+      <path d={() => getBezierPath({ ... }).path} style="fill: none; stroke: #999;" />
+      <EdgeLabelRenderer>
+        <div
+          class="nopan"
+          style={() => \`position: absolute; pointer-events: all; transform: translate(-50%, -50%) translate(\${props.labelX()}px, \${props.labelY()}px);\`}
+        >
+          <button onClick={() => flow.removeEdge(props.edge.id!)}>×</button>
+        </div>
+      </EdgeLabelRenderer>
+    </>
+  )
+}`,
+    notes: 'HTML edge labels for CUSTOM edges. SVG `<text>` cannot hold buttons, inputs or wrapped rich text, so a custom edge wraps its label in this component: the children are portaled into a `<div>` layer INSIDE the viewport (they pan and zoom with the graph) and position themselves with the `EdgeComponentProps.labelX` / `labelY` accessors (the built-in label anchor for the same edge). The layer is `pointer-events: none`; an interactive label opts back in with `pointer-events: all` plus the `nopan` class so a click on it does not start a canvas pan. Renders nothing outside a mounted `<Flow>` and on the server. React Flow `<EdgeLabelRenderer>`. See also: NodeToolbar, Flow.',
+    mistakes: `- Rendering the label as a plain \`<div>\` inside the edge — it lands inside the \`<svg>\`, which browsers do not render as HTML.
+- Positioning with \`left\`/\`top\` in pixels — the layer is INSIDE the zoomed viewport, so use a \`transform: translate(labelX, labelY)\` in flow units; the viewport transform does the rest.
+- Forgetting \`pointer-events: all\` + \`nopan\` on an interactive label — the layer ignores the pointer, and a click that reaches the canvas starts a pan.`,
   },
 
   'flow/MarkerType / Position': {
