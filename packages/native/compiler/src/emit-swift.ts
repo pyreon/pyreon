@@ -84,8 +84,8 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
-import type { ChartHostArgs, ChartHostTarget, ChartThemeText } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
+import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
   stretchAlignWarning,
@@ -7357,10 +7357,21 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   // native hosts take their theme by prop (chart-hosts.ts chartThemeFields),
   // so the provider is transparent here — children render, and the emit
   // names the gap once so nobody expects the provider to recolour them.
+  // `<ChartThemeProvider mode theme>` provides a theme through CONTEXT on the
+  // web. Natively it is a compile-time SCOPE: the resolved theme is pushed
+  // while its children are emitted, and a chart host without its own `theme`
+  // reads it (chart-hosts.ts chartThemeScope / chartThemeFields). Saved and
+  // restored around the children — providers nest, and a sibling must not
+  // inherit.
   if (tag === 'ChartThemeProvider') {
-    _emitWarnings.push(`<ChartThemeProvider>: not lowered on native — its children render unthemed by it; give each chart its own \`theme\` (\`theme={chartThemes.dark}\` or a literal).`)
-    const inner = ' '.repeat(indent + 2)
-    return `Group {\n${e.children.map((c) => inner + emitSwiftChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
+    const prev = _chartThemeScope
+    _chartThemeScope = chartThemeScope(e, (w) => _emitWarnings.push(w), prev ?? undefined)
+    try {
+      const inner = ' '.repeat(indent + 2)
+      return `Group {\n${e.children.map((c) => inner + emitSwiftChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
+    } finally {
+      _chartThemeScope = prev
+    }
   }
   // Phase 5 — walled tags. SwiftUI has no equivalent for these three:
   //   - <Suspense fallback>:   no async-render-suspend mechanism
@@ -11403,7 +11414,7 @@ function swiftChartAnimating(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: s
  */
 function swiftChartEntrance(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: string, indent: number, inner: (indent: number) => string): string {
   if (!swiftChartAnimating(e, tag)) return inner(indent)
-  const ms = chartEnterMs(chartAttrExpr(e, 'theme'), tag, SWIFT_CHART_TARGET.list)
+  const ms = chartEnterMs(chartAttrExpr(e, 'theme'), tag, SWIFT_CHART_TARGET.list, _chartThemeScope ?? undefined)
   const pad = ' '.repeat(indent + 2)
   return `PyreonChartEntrance(durationMs: ${ms}) { pyreonEntrance in\n${pad}${inner(indent + 2)}\n${' '.repeat(indent)}}`
 }
@@ -11453,7 +11464,7 @@ function emitSwiftChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   // default is transparent, so a host without a theme is emitted as before).
   // The grammar element has no ground of its own: its desugared host does.
   if (e.tag === GRAMMAR_CHART_HOST || inner === 'EmptyView()') return inner
-  const bg = chartThemeFields(chartAttrExpr(e, 'theme'), e.tag, () => {}, SWIFT_CHART_TARGET.list).background
+  const bg = chartThemeFields(chartAttrExpr(e, 'theme'), e.tag, () => {}, SWIFT_CHART_TARGET.list, _chartThemeScope ?? undefined).background
   return bg === '""' ? inner : `${inner}.background(pyreonChartColor(${bg}))`
 }
 
@@ -11519,7 +11530,7 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
   // The theme, read once: chrome colours, the tooltip box, and — when the
   // options struct has a palette — its default, as the web host merges it.
   const tf = swiftChartThemeFields(e, tag)
-  const themed = chartAttrExpr(e, 'theme') !== undefined
+  const themed = swiftChartThemed(e)
   const themeLets: string[] = []
   let options = userOptions
   if (themed && spec.paletteOption === true) {
@@ -11633,7 +11644,7 @@ function emitSwiftAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
     return 'EmptyView()'
   }
   const tf = swiftChartThemeFields(e, tag)
-  const themed = chartAttrExpr(e, 'theme') !== undefined
+  const themed = swiftChartThemed(e)
   const fieldArgs: string[] = []
   for (const f of spec.fields) {
     const acc = swiftChartAccessor(e, tag, f.prop, indent)
@@ -11867,7 +11878,7 @@ function emitSwiftRadarHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const colorAcc = swiftChartAccessor(e, tag, 'color', indent)
   if (colorAcc === 'unsupported') return 'EmptyView()'
   const tf = swiftChartThemeFields(e, tag)
-  const color = colorAcc ?? (chartAttrExpr(e, 'theme') !== undefined ? `${tf.palette}[pyreonI % ${tf.palette}.count]` : `[${CHART_HOST_PALETTE.map((c) => JSON.stringify(c)).join(', ')}][pyreonI % ${CHART_HOST_PALETTE.length}]`)
+  const color = colorAcc ?? (swiftChartThemed(e) ? `${tf.palette}[pyreonI % ${tf.palette}.count]` : `[${CHART_HOST_PALETTE.map((c) => JSON.stringify(c)).join(', ')}][pyreonI % ${CHART_HOST_PALETTE.length}]`)
   const fillAlpha = swiftChartDouble(e, 'fillAlpha', 0.25, indent)
   const lets = [
     `let pyreonSeries: [RadarSeries] = ${data}.enumerated().map { (pyreonI, pyreonD) in RadarSeries(values: (${values}).map { pyreonChartDouble($0) }, color: ${color}, fillAlpha: ${fillAlpha}) }`,
@@ -12003,7 +12014,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   if (legend.paging) _hostStateDecls.push('@State private var pyreonLegendPage: Double = 0.0')
   const rows = windowed ? 'pyreonRows' : data
   // The theme's palette colours marks with no `color` (the theme builder already warned about a bad literal, so this parse stays silent).
-  const pyreonPalette = chartThemePalette(chartAttrExpr(e, 'theme'), tag, () => {})
+  const pyreonPalette = chartThemePalette(chartAttrExpr(e, 'theme'), tag, () => {}, _chartThemeScope === null ? undefined : (_chartThemeScope.palette as readonly string[]))
   const series: string[] = []
   let navValues = ''
   for (let k = 0; k < marksV.elements.length; k++) {
@@ -12275,7 +12286,13 @@ function swiftChartTheme(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: strin
 }
 /** The resolved theme per field as emitted text — read ONCE per host (it warns on a non-literal theme) and shared by the chrome, the tooltip and the palette default. */
 function swiftChartThemeFields(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: string): ChartThemeText {
-  return chartThemeFields(chartAttrExpr(e, 'theme'), tag, (w) => _emitWarnings.push(w), (items) => `[${items.join(', ')}]`)
+  return chartThemeFields(chartAttrExpr(e, 'theme'), tag, (w) => _emitWarnings.push(w), (items) => `[${items.join(', ')}]`, _chartThemeScope ?? undefined)
+}
+/** The enclosing `<ChartThemeProvider>`'s resolved theme, while its children are emitted. */
+let _chartThemeScope: RawChartTheme | null = null
+/** Whether the host is themed at all — by its own `theme` or by a provider scope. */
+function swiftChartThemed(e: Extract<ExprIR, { kind: 'jsx-element' }>): boolean {
+  return chartAttrExpr(e, 'theme') !== undefined || _chartThemeScope !== null
 }
 function swiftChartThemeFrom(f: ChartThemeText): string {
   return `ChartTheme(${CHART_THEME_FIELDS.map((x) => `${x.name}: ${f[x.name]}`).join(', ')})`
