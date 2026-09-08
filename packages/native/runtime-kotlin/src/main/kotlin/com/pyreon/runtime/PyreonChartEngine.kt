@@ -1132,7 +1132,7 @@ fun layoutBarsH(values: List<Double>, plot: PyreonChartRect, vDomain: Domain, ga
       val v = if (raw == raw) raw else zero
       val vx = scaleLinear(vDomain, plot.x, plot.x + plot.w, v)
       val left = if (vx < zeroX) vx else zeroX
-      out.add(PyreonChartRect(x = left, y = plot.y + band * i + ((band - bh)).toDouble() / (2.0).toDouble(), w = (Math.abs(vx - zeroX)).toDouble(), h = bh))
+      out.add(PyreonChartRect(x = left, y = plot.y + band * i + ((band - bh)).toDouble() / (2.0).toDouble(), w = Math.abs(vx - zeroX), h = bh))
     }
     return out
   }
@@ -1257,7 +1257,7 @@ fun layoutGroupedBars(seriesValues: List<List<Double>>, plot: PyreonChartRect, y
         val raw = (seriesValues[s][i] ?: 0.0)
         val v = if (raw == raw) raw else zero
         val vy = scaleLinear(yDomain, plot.y + plot.h, plot.y, v)
-        out.add(StackSegment(rect = PyreonChartRect(x = gx + barW * s, y = if (vy < zeroY) vy else zeroY, w = barW, h = (Math.abs(zeroY - vy)).toDouble()), seriesIndex = s, datumIndex = i, value = v))
+        out.add(StackSegment(rect = PyreonChartRect(x = gx + barW * s, y = if (vy < zeroY) vy else zeroY, w = barW, h = Math.abs(zeroY - vy)), seriesIndex = s, datumIndex = i, value = v))
       }
     }
     return out
@@ -5819,7 +5819,7 @@ fun renderLegend(entries: List<LegendEntry>, box: PyreonChartRect, opts: LegendO
       val y = box.y + (r - firstRow) * rowH
       val textW = measure(e.label, opts.fontSize)
       val entryW = opts.swatch + 4.0 + textW + opts.gap
-      boxes.add(PyreonChartRect(x = x, y = y, w = entryW - opts.gap, h = (rowH - opts.gap).toDouble()))
+      boxes.add(PyreonChartRect(x = x, y = y, w = entryW - opts.gap, h = rowH - opts.gap))
       cmds.add(PyreonDrawCmd(kind = "rect", rect = PyreonChartRect(x = x, y = y + ((rowH - opts.gap - opts.swatch)).toDouble() / (2.0).toDouble(), w = opts.swatch, h = opts.swatch), fill = if (e.muted == true) withAlpha(e.color, 0.25) else e.color))
       cmds.add(PyreonDrawCmd(kind = "text", fill = if (e.muted == true) withAlpha(opts.labelColor, 0.45) else opts.labelColor, text = e.label, at = PyreonChartPt(x = x + opts.swatch + 4.0, y = y + ((rowH - opts.gap)).toDouble() / (2.0).toDouble()), size = opts.fontSize, align = "start", baseline = "middle"))
     }
@@ -5839,7 +5839,7 @@ fun renderLegend(entries: List<LegendEntry>, box: PyreonChartRect, opts: LegendO
     cmds.add(PyreonDrawCmd(kind = "text", fill = if (canPrev) opts.labelColor else withAlpha(opts.labelColor, 0.35), text = "‹", at = PyreonChartPt(x = prevX + (arrowW).toDouble() / (2.0).toDouble(), y = py + mid), size = opts.fontSize, align = "middle", baseline = "middle"))
     cmds.add(PyreonDrawCmd(kind = "text", fill = opts.labelColor, text = "${plain(page + 1.0)}/${plain(pages)}", at = PyreonChartPt(x = ((prevX + arrowW + nextX)).toDouble() / (2.0).toDouble(), y = py + mid), size = opts.fontSize, align = "middle", baseline = "middle"))
     cmds.add(PyreonDrawCmd(kind = "text", fill = if (canNext) opts.labelColor else withAlpha(opts.labelColor, 0.35), text = "›", at = PyreonChartPt(x = nextX + (arrowW).toDouble() / (2.0).toDouble(), y = py + mid), size = opts.fontSize, align = "middle", baseline = "middle"))
-    val pager = LegendPager(page = page, pages = pages, hasPrev = canPrev, prev = PyreonChartRect(x = prevX, y = py, w = arrowW, h = (rowH - opts.gap).toDouble()), hasNext = canNext, next = PyreonChartRect(x = nextX, y = py, w = arrowW, h = (rowH - opts.gap).toDouble()))
+    val pager = LegendPager(page = page, pages = pages, hasPrev = canPrev, prev = PyreonChartRect(x = prevX, y = py, w = arrowW, h = rowH - opts.gap), hasNext = canNext, next = PyreonChartRect(x = nextX, y = py, w = arrowW, h = rowH - opts.gap))
     return LegendLayout(cmds = cmds, height = height, boxes = boxes, pager = pager)
   }
 
