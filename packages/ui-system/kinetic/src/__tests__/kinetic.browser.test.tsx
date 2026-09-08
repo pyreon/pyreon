@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { _rp, h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
-import { queryOptional } from '@pyreon/test-utils'
+import { query, queryOptional } from '@pyreon/test-utils'
 import kinetic from '../kinetic'
 import { nextFrame, mergeClassNames } from '../utils'
 import Transition from '../Transition'
@@ -353,7 +353,7 @@ describe('kinetic `show` as the compiled `_rp` reactive prop (real Chromium)', (
           h('div', { 'data-id': 'rp' }, 'hi'),
         ),
       )
-      const el = container.querySelector('[data-id="rp"]') as HTMLElement
+      const el = query<HTMLElement>(container, '[data-id="rp"]')
       expect(el.style.opacity).toBe('0')
       sig.set(true)
       await flush()

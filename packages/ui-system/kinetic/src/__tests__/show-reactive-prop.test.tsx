@@ -21,6 +21,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { _rp, h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
+import { query } from '@pyreon/test-utils'
 import { mount } from '@pyreon/runtime-dom'
 import Collapse from '../Collapse'
 import Stagger from '../Stagger'
@@ -59,7 +60,7 @@ describe('kinetic `show` as a compiler-emitted reactive prop (`_rp` getter)', ()
         const root = mountIn(
           h(Transition, { show: shape(sig), onEnter, ...CLASSES }, h('div', { 'data-id': 't' }, 'hi')),
         )
-        const el = root.querySelector('[data-id="t"]') as HTMLElement
+        const el = query<HTMLElement>(root, '[data-id="t"]')
         expect(el.classList.contains('k-gone')).toBe(true)
         sig.set(true)
         expect(onEnter).toHaveBeenCalledTimes(1)
@@ -88,7 +89,7 @@ describe('kinetic `show` as a compiler-emitted reactive prop (`_rp` getter)', ()
       const sig = signal(false)
       const onEnter = vi.fn()
       const root = mountIn(h(Fade, { show: _rp(() => sig()), onEnter, 'data-id': 'k' }, h('span', {}, 'hi')))
-      const el = root.querySelector('[data-id="k"]') as HTMLElement
+      const el = query<HTMLElement>(root, '[data-id="k"]')
       expect(el.style.opacity).toBe('0')
       sig.set(true)
       expect(onEnter).toHaveBeenCalledTimes(1)
