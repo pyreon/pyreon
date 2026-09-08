@@ -225,16 +225,21 @@ export function getHandlePosition(
   nodeHeight: number,
   _handleId?: string,
 ): XYPosition {
-  switch (position) {
-    case Position.Top:
-      return { x: nodeX + nodeWidth / 2, y: nodeY }
-    case Position.Right:
-      return { x: nodeX + nodeWidth, y: nodeY + nodeHeight / 2 }
-    case Position.Bottom:
-      return { x: nodeX + nodeWidth / 2, y: nodeY + nodeHeight }
-    case Position.Left:
-      return { x: nodeX, y: nodeY + nodeHeight / 2 }
+  // One assignment + one return, rather than a return per case: PMTC lowers a
+  // function whose value leaves through a single `return`.
+  let x = nodeX
+  let y = nodeY + nodeHeight / 2
+  if (position === Position.Top) {
+    x = nodeX + nodeWidth / 2
+    y = nodeY
+  } else if (position === Position.Right) {
+    x = nodeX + nodeWidth
+    y = nodeY + nodeHeight / 2
+  } else if (position === Position.Bottom) {
+    x = nodeX + nodeWidth / 2
+    y = nodeY + nodeHeight
   }
+  return { x, y }
 }
 
 interface Box {
@@ -320,7 +325,7 @@ export function getFloatingEndpoints(
  * // path = "M0,0 C100,0 100,100 200,100"
  * ```
  */
-export function getBezierPath(params: {
+export interface BezierPathParams {
   sourceX: number
   sourceY: number
   sourcePosition?: Position
@@ -328,16 +333,20 @@ export function getBezierPath(params: {
   targetY: number
   targetPosition?: Position
   curvature?: number
-}): EdgePathResult {
-  const {
-    sourceX,
-    sourceY,
-    sourcePosition = Position.Bottom,
-    targetX,
-    targetY,
-    targetPosition = Position.Top,
-    curvature = 0.25,
-  } = params
+}
+
+export function getBezierPath(params: BezierPathParams): EdgePathResult {
+  // Explicit reads, not a defaulted destructure: PMTC lowers a flat field read
+  // plus `??` but not nested / defaulted destructuring, and this file is the
+  // SOURCE the native geometry engine is generated from (see
+  // packages/native/compiler/scripts/gen-flow-geometry.ts). Same values.
+  const sourceX = params.sourceX
+  const sourceY = params.sourceY
+  const sourcePosition = params.sourcePosition ?? Position.Bottom
+  const targetX = params.targetX
+  const targetY = params.targetY
+  const targetPosition = params.targetPosition ?? Position.Top
+  const curvature = params.curvature ?? 0.25
 
   const distX = Math.abs(targetX - sourceX)
   const distY = Math.abs(targetY - sourceY)
@@ -403,7 +412,7 @@ export function getBezierPath(params: {
 /**
  * Calculate a smoothstep edge path — horizontal/vertical segments with rounded corners.
  */
-export function getSmoothStepPath(params: {
+export interface SmoothStepPathParams {
   sourceX: number
   sourceY: number
   sourcePosition?: Position
@@ -412,17 +421,17 @@ export function getSmoothStepPath(params: {
   targetPosition?: Position
   borderRadius?: number
   offset?: number
-}): EdgePathResult {
-  const {
-    sourceX,
-    sourceY,
-    sourcePosition = Position.Bottom,
-    targetX,
-    targetY,
-    targetPosition = Position.Top,
-    borderRadius = 5,
-    offset = 20,
-  } = params
+}
+
+export function getSmoothStepPath(params: SmoothStepPathParams): EdgePathResult {
+  const sourceX = params.sourceX
+  const sourceY = params.sourceY
+  const sourcePosition = params.sourcePosition ?? Position.Bottom
+  const targetX = params.targetX
+  const targetY = params.targetY
+  const targetPosition = params.targetPosition ?? Position.Top
+  const borderRadius = params.borderRadius ?? 5
+  const offset = params.offset ?? 20
 
   const isHorizontalSource = sourcePosition === Position.Left || sourcePosition === Position.Right
   const isHorizontalTarget = targetPosition === Position.Left || targetPosition === Position.Right
@@ -512,13 +521,18 @@ export function getSmoothStepPath(params: {
 /**
  * Calculate a straight edge path — direct line between two points.
  */
-export function getStraightPath(params: {
+export interface StraightPathParams {
   sourceX: number
   sourceY: number
   targetX: number
   targetY: number
-}): EdgePathResult {
-  const { sourceX, sourceY, targetX, targetY } = params
+}
+
+export function getStraightPath(params: StraightPathParams): EdgePathResult {
+  const sourceX = params.sourceX
+  const sourceY = params.sourceY
+  const targetX = params.targetX
+  const targetY = params.targetY
   const center = getCenter({ x: sourceX, y: sourceY }, { x: targetX, y: targetY })
 
   return {
@@ -535,7 +549,7 @@ export function getStraightPath(params: {
 /**
  * Calculate a step edge path — right-angle segments with no rounding.
  */
-export function getStepPath(params: {
+export interface StepPathParams {
   sourceX: number
   sourceY: number
   sourcePosition?: Position
@@ -544,22 +558,41 @@ export function getStepPath(params: {
   targetPosition?: Position
   /** Straight run-out from each endpoint before the first turn — default 20 */
   offset?: number
-}): EdgePathResult {
-  return getSmoothStepPath({ ...params, borderRadius: 0 })
+}
+
+export function getStepPath(params: StepPathParams): EdgePathResult {
+  // Explicit field copy rather than a spread: PMTC has no object spread, and a
+  // step edge is a smooth-step edge with zero corner radius.
+  return getSmoothStepPath({
+    sourceX: params.sourceX,
+    sourceY: params.sourceY,
+    sourcePosition: params.sourcePosition ?? Position.Bottom,
+    targetX: params.targetX,
+    targetY: params.targetY,
+    targetPosition: params.targetPosition ?? Position.Top,
+    borderRadius: 0,
+    offset: params.offset ?? 20,
+  })
 }
 
 /**
  * Calculate an edge path that passes through waypoints.
  * Uses line segments with optional smoothing.
  */
-export function getWaypointPath(params: {
+export interface WaypointPathParams {
   sourceX: number
   sourceY: number
   targetX: number
   targetY: number
   waypoints: XYPosition[]
-}): EdgePathResult {
-  const { sourceX, sourceY, targetX, targetY, waypoints } = params
+}
+
+export function getWaypointPath(params: WaypointPathParams): EdgePathResult {
+  const sourceX = params.sourceX
+  const sourceY = params.sourceY
+  const targetX = params.targetX
+  const targetY = params.targetY
+  const waypoints = params.waypoints
 
   if (waypoints.length === 0) {
     return getStraightPath({ sourceX, sourceY, targetX, targetY })
@@ -598,39 +631,45 @@ export function getEdgePath(
   targetPosition: Position,
   options?: EdgePathOptions,
 ): EdgePathResult {
-  switch (type) {
-    case 'smoothstep':
-      return getSmoothStepPath({
-        sourceX,
-        sourceY,
-        sourcePosition,
-        targetX,
-        targetY,
-        targetPosition,
-        ...(options?.borderRadius !== undefined ? { borderRadius: options.borderRadius } : {}),
-        ...(options?.offset !== undefined ? { offset: options.offset } : {}),
-      })
-    case 'straight':
-      return getStraightPath({ sourceX, sourceY, targetX, targetY })
-    case 'step':
-      return getStepPath({
-        sourceX,
-        sourceY,
-        sourcePosition,
-        targetX,
-        targetY,
-        targetPosition,
-        ...(options?.offset !== undefined ? { offset: options.offset } : {}),
-      })
-    default:
-      return getBezierPath({
-        sourceX,
-        sourceY,
-        sourcePosition,
-        targetX,
-        targetY,
-        targetPosition,
-        ...(options?.curvature !== undefined ? { curvature: options.curvature } : {}),
-      })
+  // Explicit fields with `??` defaults instead of conditional spreads (PMTC
+  // has neither spread nor a per-case return), and one return at the end.
+  const borderRadius = options?.borderRadius ?? 5
+  const offset = options?.offset ?? 20
+  const curvature = options?.curvature ?? 0.25
+  let result: EdgePathResult
+  if (type === 'smoothstep') {
+    result = getSmoothStepPath({
+      sourceX,
+      sourceY,
+      sourcePosition,
+      targetX,
+      targetY,
+      targetPosition,
+      borderRadius,
+      offset,
+    })
+  } else if (type === 'straight') {
+    result = getStraightPath({ sourceX, sourceY, targetX, targetY })
+  } else if (type === 'step') {
+    result = getStepPath({
+      sourceX,
+      sourceY,
+      sourcePosition,
+      targetX,
+      targetY,
+      targetPosition,
+      offset,
+    })
+  } else {
+    result = getBezierPath({
+      sourceX,
+      sourceY,
+      sourcePosition,
+      targetX,
+      targetY,
+      targetPosition,
+      curvature,
+    })
   }
+  return result
 }
