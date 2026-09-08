@@ -135,6 +135,7 @@ describe('gen-docs — flow snapshot', () => {
       'flow/Panel',
       'flow/NodeResizer',
       'flow/NodeToolbar',
+      'flow/EdgeLabelRenderer',
       'flow/MarkerType / Position',
       'flow/edge-path-helpers',
       'flow/computeLayout',

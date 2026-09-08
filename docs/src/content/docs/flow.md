@@ -929,7 +929,53 @@ Props: `position` is `'top'` / `'bottom'` / `'left'` / `'right'` (a string, **no
 `<NodeToolbar position="top">` takes a plain string (`'top' | 'bottom' | 'left' | 'right'`), not the `Position` enum — and it's driven by `selected`, not a `nodeId`. Pass `selected={props.selected}` (the accessor) so the toolbar tracks live selection.
 :::
 
-## Theming
+### HTML edge labels
+
+SVG `<text>` cannot hold buttons or wrapped rich text. A custom edge wraps its label in `<EdgeLabelRenderer>`: the children are portaled into a `<div>` layer inside the viewport (they pan and zoom with the graph) and position themselves with the edge's `labelX` / `labelY` accessors.
+
+```tsx
+import { EdgeLabelRenderer, getBezierPath, type EdgeComponentProps } from '@pyreon/flow'
+
+function LabeledEdge(props: EdgeComponentProps) {
+  return (
+    <>
+      <path d={() => getBezierPath({ /* … */ }).path} style="fill: none; stroke: #999;" />
+      <EdgeLabelRenderer>
+        <div
+          class="nopan"
+          style={() =>
+            `position: absolute; pointer-events: all; transform: translate(-50%, -50%) translate(${props.labelX()}px, ${props.labelY()}px);`
+          }
+        >
+          <button onClick={() => flow.removeEdge(props.edge.id!)}>×</button>
+        </div>
+      </EdgeLabelRenderer>
+    </>
+  )
+}
+```
+
+The layer is `pointer-events: none`; an interactive label opts back in with `pointer-events: all` and the `nopan` class (so a click on it does not start a canvas pan).
+
+### Portaled node toolbar
+
+Pass the node's id and `<NodeToolbar>` leaves the node: it renders in the canvas's toolbar layer, follows the node through pan and zoom **without being scaled**, is never clipped by the node's `overflow`, and sits above every node. `position` (`top` | `bottom` | `left` | `right`), `offset` and `align` (`start` | `center` | `end`) place it.
+
+```tsx
+function EditableNode(props: NodeComponentProps) {
+  return (
+    <div class="node">
+      <NodeToolbar nodeId={props.id} selected={props.selected} position="top" align="end">
+        <button onClick={() => duplicate(props.id)}>Duplicate</button>
+      </NodeToolbar>
+      {props.data().label}
+    </div>
+  )
+}
+```
+
+Without `nodeId` the toolbar renders inline inside the node as before (and on the server, where there are no layers).
+
 
 Every color the flow renderer emits goes through a `--pyreon-flow-*` CSS custom property with the historical light-mode value as fallback — **zero setup for light apps, one CSS block to re-skin everything** (dark mode, brand colors). Set them on the flow container or any ancestor:
 

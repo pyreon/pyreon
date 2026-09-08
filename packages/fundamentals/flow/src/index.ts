@@ -35,6 +35,10 @@ export type { NodeResizerProps } from './components/node-resizer'
 export { NodeResizer } from './components/node-resizer'
 export type { NodeToolbarProps } from './components/node-toolbar'
 export { NodeToolbar } from './components/node-toolbar'
+export type { EdgeLabelRendererProps } from './components/edge-label-renderer'
+export { EdgeLabelRenderer } from './components/edge-label-renderer'
+export type { FlowLayers } from './components/flow-context'
+export { FlowLayersContext } from './components/flow-context'
 export { Panel } from './components/panel'
 // Edge path utilities
 export {

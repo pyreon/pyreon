@@ -10,7 +10,7 @@ import {
   resolveEdgeMarkers,
   resolveHandleAnchor,
 } from '../edges'
-import { FlowContext } from './flow-context'
+import { FlowContext, FlowLayersContext, type FlowLayers } from './flow-context'
 import type {
   Connection,
   EdgeGeometry,
@@ -417,6 +417,8 @@ function EdgeLayer(props: {
                   sourcePosition={() => geometry()?.sourcePosition ?? Position.Right}
                   targetPosition={() => geometry()?.targetPosition ?? Position.Left}
                   selected={isSelected}
+                  labelX={() => geometry()?.labelX ?? 0}
+                  labelY={() => geometry()?.labelY ?? 0}
                 />
               </g>
             )
@@ -877,6 +879,10 @@ export type EdgeComponentProps = {
   targetPosition: () => Position
   /** Reactive accessor — re-evaluates when edge selection changes */
   selected: () => boolean
+  /** Reactive accessor — the built-in label anchor X (for `<EdgeLabelRenderer>`) */
+  labelX: () => number
+  /** Reactive accessor — the built-in label anchor Y (for `<EdgeLabelRenderer>`) */
+  labelY: () => number
 }
 
 type EdgeTypeMap = Record<string, (props: EdgeComponentProps) => VNodeChild>
@@ -935,6 +941,22 @@ export function Flow(props: FlowComponentProps): VNodeChild {
   // so `<Flow instance={flow}><MiniMap /></Flow>` works without passing
   // `instance` to every child — an explicit child `instance` prop still wins.
   provide(FlowContext, instance)
+
+  // Overlay layers (client only): HTML edge labels inside the viewport,
+  // node toolbars in the container. Created at setup so a portaling child
+  // has a target the moment it mounts; attached to the DOM by the refs below.
+  const layers: FlowLayers | null = isClient
+    ? { edgeLabels: document.createElement('div'), toolbars: document.createElement('div') }
+    : null
+  if (layers) {
+    layers.edgeLabels.className = 'pyreon-flow-edge-labels'
+    layers.edgeLabels.style.cssText =
+      'position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; z-index: 4;'
+    layers.toolbars.className = 'pyreon-flow-toolbars'
+    layers.toolbars.style.cssText =
+      'position: absolute; inset: 0; pointer-events: none; z-index: 20; overflow: visible;'
+  }
+  provide(FlowLayersContext, layers)
 
   const nodeTypes: NodeTypeMap = {
     default: DefaultNode,
@@ -1112,7 +1134,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
     // class as the node-toolbar `.nodrag` bail in the node `onPointerDown`.
     if (
       target.closest(
-        '.pyreon-flow-controls, .pyreon-flow-minimap, .pyreon-flow-panel, .nodrag, button, input, textarea, select, a',
+        '.pyreon-flow-controls, .pyreon-flow-minimap, .pyreon-flow-panel, .pyreon-flow-node-toolbar, .nopan, .nodrag, button, input, textarea, select, a',
       )
     ) {
       return
@@ -1484,7 +1506,11 @@ export function Flow(props: FlowComponentProps): VNodeChild {
       resizeObserver = null
     }
     instance._setContainer(el as HTMLElement | null)
-    if (!el) return
+    if (!el) {
+      layers?.toolbars.remove()
+      return
+    }
+    if (layers) el.appendChild(layers.toolbars)
 
     const updateSize = () => {
       // A ResizeObserver batch queued before `disconnect()` can still deliver
@@ -1629,6 +1655,10 @@ export function Flow(props: FlowComponentProps): VNodeChild {
           reading display values" anti-pattern. Pan/zoom is now one cssText
           write per frame; the browser composites the transform. */}
       <div
+        ref={(el: Element | null) => {
+          if (el && layers) el.appendChild(layers.edgeLabels)
+          else layers?.edgeLabels.remove()
+        }}
         class="pyreon-flow-viewport"
         // `width/height: 100%` on the viewport is load-bearing, NOT cosmetic:
         // without a definite size this absolutely-positioned, shrink-to-fit div
