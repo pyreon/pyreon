@@ -3,7 +3,6 @@ import type {
   EdgePathOptions,
   EdgePathResult,
   EdgeSegment,
-  FlowEdge,
   FlowNode,
   HandleConfig,
   HandleType,
@@ -40,6 +39,59 @@ export function getEffectiveDimensions(
 // ─── Handle-anchor resolution ──────────────────────────────────────────────
 
 /**
+ * The point an edge attaches to on a node, plus the handle's declared side
+ * (which drives the path's departure/approach tangent).
+ *
+ * Named rather than inline because this file is compiled to Swift and Kotlin:
+ * PMTC resolves a named object shape declared in the same file and synthesizes
+ * a struct for it, where an anonymous return type has no name to emit.
+ */
+export interface HandleAnchor {
+  x: number
+  y: number
+  position: Position
+}
+
+/**
+ * Anchor at a MEASURED handle dot's real rendered center.
+ *
+ * Lifted out of `resolveHandleAnchor` — it was an inner arrow closing over
+ * `node`. That reads well and does not cross: PMTC lowers an arrow returning an
+ * object literal to a tuple, which is not valid Kotlin, and it does so WITHOUT
+ * a warning. A top-level function taking what it needs is the same code with a
+ * shape both compilers can represent.
+ */
+function anchorFromMeasuredHandle(node: FlowNode<any>, h: MeasuredHandle): HandleAnchor {
+  return {
+    x: node.position.x + h.x,
+    y: node.position.y + h.y,
+    position: h.position,
+  }
+}
+
+/**
+ * Anchor at a CONFIG handle's side midpoint.
+ *
+ * The spread this replaces (`...getHandlePosition(…)`) was dropped SILENTLY by
+ * the native emit, so the Kotlin geometry would have returned an anchor with no
+ * coordinates at all. Naming the fields is what makes the crossing honest.
+ */
+function anchorFromConfigHandle(
+  node: FlowNode<any>,
+  h: HandleConfig,
+  dims: Dimensions,
+): HandleAnchor {
+  const point = getHandlePosition(
+    h.position,
+    node.position.x,
+    node.position.y,
+    dims.width,
+    dims.height,
+  )
+  return { x: point.x, y: point.y, position: h.position }
+}
+
+/**
  * Resolve the exact point an edge attaches to on `node`, honoring handles.
  *
  * Priority:
@@ -61,31 +113,21 @@ export function resolveHandleAnchor(
   type: HandleType,
   dims: Dimensions,
   measurement?: NodeMeasurement | undefined,
-): { x: number; y: number; position: Position } | null {
-  const measuredOfType = measurement?.handles?.filter((h) => h.type === type)
-  const config = type === 'source' ? node.sourceHandles : node.targetHandles
+): HandleAnchor | null {
+  const measuredOfType = measurement?.handles?.filter((h) => h.type === type) ?? []
+  const config = (type === 'source' ? node.sourceHandles : node.targetHandles) ?? []
 
-  const anchorFromMeasured = (h: MeasuredHandle) => ({
-    x: node.position.x + h.x,
-    y: node.position.y + h.y,
-    position: h.position,
-  })
-  const anchorFromConfig = (h: HandleConfig) => ({
-    ...getHandlePosition(h.position, node.position.x, node.position.y, dims.width, dims.height),
-    position: h.position,
-  })
-
-  if (handleId) {
-    const measured = measuredOfType?.find((h) => h.id === handleId)
-    if (measured) return anchorFromMeasured(measured)
-    const configured = config?.find((h) => h.id === handleId)
-    if (configured) return anchorFromConfig(configured)
+  if (handleId !== undefined) {
+    const measured = measuredOfType.find((h) => h.id === handleId)
+    if (measured !== undefined) return anchorFromMeasuredHandle(node, measured)
+    const configured = config.find((h) => h.id === handleId)
+    if (configured !== undefined) return anchorFromConfigHandle(node, configured, dims)
     // Unknown id — fall through to the first-handle rule below so the edge
     // still renders somewhere sensible (the caller dev-warns).
   }
 
-  if (measuredOfType?.length) return anchorFromMeasured(measuredOfType[0]!)
-  if (config?.length) return anchorFromConfig(config[0]!)
+  if (measuredOfType.length > 0) return anchorFromMeasuredHandle(node, measuredOfType[0]!)
+  if (config.length > 0) return anchorFromConfigHandle(node, config[0]!, dims)
   return null
 }
 
