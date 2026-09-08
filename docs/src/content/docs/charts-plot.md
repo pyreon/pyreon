@@ -294,6 +294,13 @@ opt out) and derives an `aria-label` from the actual data via `describeChart`.
 Pass `title` to name the chart — without it the description falls back to a
 bare "Chart".
 
+Natively the same sentence is the canvas's accessibility label: `a11y.ts`
+crosses with the engine, so VoiceOver and TalkBack read `describeChart` over
+the series the canvas painted. The precedence matches the web — an explicit
+`accessibilityLabel`, else the data description, else `title`, else the family
+word — so a chart is never an unnamed rectangle on any target. The offscreen
+TABLE is web-only (a native canvas has no DOM to put it in).
+
 ## Server-side SVG
 
 `chartToSvg` builds the same chart as a pure SVG string — no DOM, no canvas —
