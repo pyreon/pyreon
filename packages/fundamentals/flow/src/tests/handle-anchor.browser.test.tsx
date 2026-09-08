@@ -159,7 +159,7 @@ describe('handle-anchored edges in real browser', () => {
     expect(Math.abs(b.y - 75)).toBeLessThanOrEqual(4)
 
     // Each edge starts at ITS dot's y.
-    const paths = [...container.querySelectorAll('.pyreon-flow-edges path')] as SVGPathElement[]
+    const paths = [...container.querySelectorAll('.pyreon-flow-edges path:not(.pyreon-flow-edge-interaction)')] as SVGPathElement[]
     const starts = paths
       .map((p) => /^M(-?[\d.]+),(-?[\d.]+)/.exec(p.getAttribute('d') ?? ''))
       .filter((m): m is RegExpExecArray => m !== null)

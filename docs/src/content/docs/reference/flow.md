@@ -158,6 +158,8 @@ const json = flow.toJSON(); flow.fromJSON(json)       // round-trip serializatio
 - Reading `flow.nodes()` inside an event handler to get a snapshot — that is a TRACKED read; use `getNodes()` / `getEdges()` / `getViewport()` for plain reads.
 - Computing a drop position from `clientX - rect.left` by hand — `screenToFlowPosition` already folds in the container rect, pan and zoom (and `flowToScreenPosition` is its inverse).
 - Passing `isValidConnection` as a prop on `<Flow>` (React Flow) — here it is a `createFlow` config key, alongside `connectionRadius`.
+- Hunting for a `interactionWidth` prop on `<Flow>` — hit width is per edge (`interactionWidth`) with a config default (`edgeInteractionWidth`, 20px); a click near a hairline edge already lands on it.
+- Building a "figma-like" canvas by intercepting pointer events yourself — `selectionOnDrag: true` + `panOnDrag: [1, 2]` is the whole recipe, and `deleteKeys` / `multiSelectionKey` / `selectionKey` cover the key remaps.
 - Forgetting to declare `@pyreon/runtime-dom` in consumer app deps — flow's JSX emits `_tpl()` which needs runtime-dom imports
 - Reading `NodeComponentProps.data` / `.selected` / `.dragging` as plain values — all three are REACTIVE ACCESSORS: `props.data()`, `props.selected()`, `props.dragging()`
 - Calling `props.data()` OUTSIDE a reactive scope — captures the value once at component setup, defeating the per-node reactivity. Read it inside JSX expression thunks, `effect`, or `computed`

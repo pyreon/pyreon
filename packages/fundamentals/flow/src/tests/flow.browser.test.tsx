@@ -399,7 +399,7 @@ describe('flow in real browser', () => {
 
     // Per-edge refs: 3 of the 4 edge paths carry marker-end; the markerEnd:null
     // edge has none. Exactly one edge carries a marker-start.
-    const paths = [...svg.querySelectorAll('path[d]')]
+    const paths = [...svg.querySelectorAll('path[d]:not(.pyreon-flow-edge-interaction)')]
     expect(paths.length).toBe(4)
     const withEnd = paths.filter((p) => p.getAttribute('marker-end'))
     expect(withEnd.length).toBe(3)

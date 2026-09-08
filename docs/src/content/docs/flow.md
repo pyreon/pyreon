@@ -440,6 +440,13 @@ flow.setEdges((edges) => edges.filter((e) => !e.animated))
 flow.removeEdges(['ab'])
 flow.updateEdge('ab', { label: 'renamed' })
 ```
+### Hit width and reconnection
+
+Every edge carries an invisible interaction path around its visible line (`edgeInteractionWidth`, default 20px; per-edge `interactionWidth`), so a hairline edge is clickable. A selected edge shows two endpoint handles: drag one onto another node's handle to reconnect that end (the other end stays fixed, `isValidConnection` / `connectionRules` are consulted, and a drop on nothing leaves the edge as it was). Turn the handles off per edge with `reconnectable: false` or globally with `edgesReconnectable: false`.
+
+### Connection line
+
+`connectionLineType` (`'bezier'` default, `'straight'`, `'smoothstep'`, `'step'`) picks the built-in in-progress line; `<Flow connectionLine={MyLine}>` replaces it with your own component, mounted once per drag with accessor props (`sourceX/Y`, `targetX/Y`, `sourcePosition`, and the built-in `path` for the same points) that follow the pointer without re-mounting.
 
 ## Edge Anchoring & Node Measurement
 
@@ -547,6 +554,32 @@ flow.flowToScreenPosition(node.position) // anchor a popover to a node
 ```
 
 A plain write cancels an in-flight animation. The screen conversions use the mounted `<Flow>` container's rect; with no mounted canvas a screen point is read as canvas-relative.
+### Pan and zoom options
+
+```ts
+const flow = createFlow({
+  panOnDrag: [1, 2], // pan with the middle / right button only (default: true = any button)
+  selectionOnDrag: true, // a plain left-drag draws a selection box (the "figma" preset)
+  selectionMode: 'full', // box must CONTAIN a node ('partial', the default, touches)
+  panOnScroll: true, // the wheel pans; Shift+wheel horizontally; Ctrl/Cmd+wheel zooms
+  panOnScrollSpeed: 0.5,
+  zoomOnScroll: true,
+  zoomOnPinch: true,
+  zoomOnDoubleClick: true, // double-click the empty canvas: one zoom step around the pointer
+  preventScrolling: true, // preventDefault() on handled wheel events
+})
+```
+
+### Keys
+
+```ts
+const flow = createFlow({
+  deleteKeys: ['Delete', 'Backspace'], // null disables keyboard deletion
+  multiSelectionKey: 'shift', // modifier that ADDS a click to the selection ('ctrl' | 'meta' | 'alt' | null)
+  selectionKey: 'shift', // modifier that turns a canvas drag into a selection box
+  zoomActivationKey: 'ctrl', // zoom modifier under panOnScroll (Cmd also counts by default)
+})
+```
 
 ## Auto-Layout
 
