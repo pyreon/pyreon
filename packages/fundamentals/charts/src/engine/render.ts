@@ -2,11 +2,11 @@
 
 import { computeLayout, layoutBars, layoutBarsH, layoutSeriesPoints, layoutSeriesPointsAt } from './layout'
 import { DEFAULT_PALETTE } from './palette'
-import { layoutGroupedBars, layoutStackedBars, stackedExtent } from './stack'
+import { layoutGroupedBars, layoutStackedBars, layoutWaterfall, normalizeStack, stackedExtent, waterfallExtent } from './stack'
 import type { Formatter } from './format'
 import type { LayoutConfig, PlotLayout } from './layout'
 import { extent, niceDomain, scaleLinear } from './scale'
-import { plain } from './format'
+import { percent, plain } from './format'
 import { countToDouble } from './brush'
 import { polygonCmd, rectCmd } from './corners'
 import { seriesGradient } from './gradient'
@@ -16,7 +16,7 @@ import type { DrawCmd, Domain, MeasureText, Pt, Rect, Double } from './types'
 
 /** One drawable series. */
 export interface Series {
-  kind: 'bars' | 'line' | 'area' | 'points' | 'stacked' | 'grouped'
+  kind: 'bars' | 'line' | 'area' | 'points' | 'stacked' | 'grouped' | 'waterfall'
   values: Double[]
   color: string
   /** Stroke width for line/area outlines; ignored by bars and points. */
@@ -45,6 +45,15 @@ export interface Series {
   gradient?: SeriesGradient | undefined
   /** Dash pattern for a line's stroke (`[on, off]` in px) — the target-line look; `line` only. */
   dash?: Double[] | undefined
+  /** The fill a `waterfall` step takes when its value is negative; `color` otherwise. */
+  negativeColor?: string | undefined
+  /**
+   * Error-bar bounds, index-aligned with `values` — a whisker from `errLow[i]`
+   * to `errHigh[i]` through each bar centre / point. A gap in either bound
+   * draws no whisker for that datum. `bars`, `line`, `area` and `points`.
+   */
+  errLow?: Double[] | undefined
+  errHigh?: Double[] | undefined
 }
 
 /**
@@ -205,6 +214,29 @@ export interface ChartSpec {
   progress?: Double | undefined
   /** Hover + selection emphasis; absent draws nothing extra. */
   emphasis?: Emphasis | undefined
+  /**
+   * The left y scale. `'log'` draws the chart in the LOG VIEW — see
+   * `logView`: every mark lays out linearly over `log10(v / lo)`, the ticks
+   * are decades labelled with the real values, non-positive values are gaps.
+   * Bars grow from the axis floor (`lo`), the only place a log bar can start.
+   */
+  yScale?: 'linear' | 'log' | undefined
+  /** Label the y axis with calendar steps — the y twin of `xTime`. */
+  yTime?: boolean | undefined
+  /**
+   * Draw the stacked series as SHARES of each column (the 100% stacked bar):
+   * every column is scaled to its total, the domain is `{0, 1}` and the y
+   * labels read as percent unless `yFormat` says otherwise. The tooltip and
+   * the accessible table keep the raw values — the share is a view, not a
+   * data edit.
+   */
+  stackNormalize?: boolean | undefined
+  /** Axis titles, drawn in a line of their own outside the tick labels. */
+  xTitle?: string | undefined
+  yTitle?: string | undefined
+  y2Title?: string | undefined
+  /** How the x tick labels react to running out of room — see `LayoutConfig.xLabels`. */
+  xLabels?: 'auto' | 'rotate' | 'thin' | 'all' | undefined
 }
 
 /**
@@ -282,6 +314,96 @@ export function resolveY2Domain(spec: ChartSpec): Domain {
 }
 
 /**
+ * The positive bounds a log axis spans — the decade floor below the smallest
+ * positive left-axis value and the decade ceiling above the largest, or the
+ * pinned `yDomain` when it is positive. `{1, 10}` when nothing is positive,
+ * so an all-gap chart still draws an axis.
+ */
+export function logBounds(spec: ChartSpec): Domain {
+  const pinned = spec.yDomain ?? { min: 0.0, max: 0.0 }
+  if (spec.yDomain !== undefined && pinned.min > 0.0 && pinned.max > pinned.min) return pinned
+  let lo = 0.0
+  let hi = 0.0
+  for (const s of leftAxisSeries(spec)) {
+    for (const v of s.values) {
+      if (!(v > 0.0)) continue
+      if (lo === 0.0 || v < lo) lo = v
+      if (v > hi) hi = v
+    }
+  }
+  if (lo === 0.0) return { min: 1.0, max: 10.0 }
+  const floor = Math.pow(10.0, Math.floor(Math.log10(lo)))
+  let ceil = Math.pow(10.0, Math.ceil(Math.log10(hi)))
+  if (ceil <= floor) ceil = floor * 10.0
+  return { min: floor, max: ceil }
+}
+
+/**
+ * The spec every geometry function actually lays out — the same spec unless
+ * it asks for a VIEW of its data.
+ *
+ * `yScale: 'log'` replaces each left-axis value with `log10(v / lo)` (a
+ * non-positive value becomes a gap) and pins the domain to
+ * `{0, log10(hi / lo)}`, so bars, lines, points, hits and the crosshair all
+ * lay out through the ordinary linear arithmetic while the axis draws
+ * decades. `stackNormalize` replaces the stacked series with each column's
+ * shares and pins `{0, 1}`. The transform lives HERE, in one function every
+ * entry point calls, rather than in each host: the tooltip and the table
+ * read the ORIGINAL spec, which is how they keep showing real values.
+ */
+export function geometrySpec(spec: ChartSpec): ChartSpec {
+  const isLog = spec.yScale === 'log'
+  const norm = spec.stackNormalize === true
+  if (!isLog && !norm) return spec
+  const lb = isLog ? logBounds(spec) : { min: 1.0, max: 10.0 }
+  const viewMax = isLog ? Math.log10(lb.max / lb.min) : 1.0
+  // Initialised in one expression: a typed empty-array `let` lowers to a
+  // `val` on Kotlin, so a later reassignment would not compile there.
+  const stacked: Double[][] = norm ? normalizeStack(spec.series.filter((s) => s.kind === 'stacked').map((s) => s.values)) : []
+  let si = 0
+  const series: Series[] = []
+  for (const s of spec.series) {
+    if (norm && s.kind === 'stacked') {
+      series.push({ ...s, values: si < stacked.length ? stacked[si]! : s.values })
+      si = si + 1
+    } else if (isLog && !seriesOnRightAxis(s, spec)) {
+      const values: Double[] = []
+      for (const v of s.values) values.push(v > 0.0 ? Math.log10(v / lb.min) : (0.0 / 0.0))
+      const lows: Double[] = []
+      const highs: Double[] = []
+      for (const v of s.errLow ?? []) lows.push(v > 0.0 ? Math.log10(v / lb.min) : (0.0 / 0.0))
+      for (const v of s.errHigh ?? []) highs.push(v > 0.0 ? Math.log10(v / lb.min) : (0.0 / 0.0))
+      series.push({ ...s, values, errLow: s.errLow === undefined ? undefined : lows, errHigh: s.errHigh === undefined ? undefined : highs })
+    } else {
+      series.push(s)
+    }
+  }
+  const notes: Annotation[] = []
+  for (const a of spec.annotations ?? []) {
+    if (!isLog) {
+      notes.push(a)
+      continue
+    }
+    // Coalesce-first (the Swift-narrowing idiom): each bound is read as a
+    // plain Double and its presence decided separately; a non-positive bound
+    // has no place on a log axis and is dropped like a gap.
+    const ay = a.y ?? 0.0
+    const yF = a.yFrom ?? 0.0
+    const yT = a.yTo ?? 0.0
+    notes.push({
+      ...a,
+      y: a.y !== undefined && ay > 0.0 ? Math.log10(ay / lb.min) : undefined,
+      yFrom: a.yFrom !== undefined && yF > 0.0 ? Math.log10(yF / lb.min) : undefined,
+      yTo: a.yTo !== undefined && yT > 0.0 ? Math.log10(yT / lb.min) : undefined,
+    })
+  }
+  // The pinned view domain: a normalized stack always spans 0..1; a log
+  // view spans its decades; the two together stay a log view of shares.
+  const yDomain: Domain = isLog ? { min: 0.0, max: viewMax } : { min: 0.0, max: 1.0 }
+  return { ...spec, series, yDomain, annotations: spec.annotations === undefined ? undefined : notes, yScale: 'linear', stackNormalize: false }
+}
+
+/**
  * Does this series scale on the RIGHT axis?
  *
  * Three deliberate pins, none silent: stacked/grouped are laid out as ONE set
@@ -330,9 +452,20 @@ function deriveOver(series: Series[]): Domain {
   const all: Double[] = []
   let hasBars = false
   for (const s of series) {
-    if (s.kind === 'bars' || s.kind === 'area' || s.kind === 'grouped') hasBars = true
-    // Gaps (NaN) carry no extent.
+    if (s.kind === 'bars' || s.kind === 'area' || s.kind === 'grouped' || s.kind === 'waterfall') hasBars = true
+    if (s.kind === 'waterfall') {
+      // A waterfall's extent is its RUNNING TOTALS, not its steps — a chart
+      // of +5, +5, +5 must reach 15.
+      const we = waterfallExtent(s.values)
+      all.push(we.min)
+      all.push(we.max)
+      continue
+    }
+    // Gaps (NaN) carry no extent — and so do error bars beyond them: the
+    // whisker must stay inside the axis.
     for (const v of s.values) if (isFiniteValue(v)) all.push(v)
+    for (const v of s.errLow ?? []) if (isFiniteValue(v)) all.push(v)
+    for (const v of s.errHigh ?? []) if (isFiniteValue(v)) all.push(v)
   }
   const e = extent(all)
   const withZero: Domain = hasBars
@@ -358,8 +491,11 @@ export function seriesMaxLength(series: Series[]): number {
 }
 
 /** Lay the chart out without drawing it — exposed for hit-testing. */
-export function layoutChart(spec: ChartSpec, measure: MeasureText): PlotLayout {
+export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
+  const spec = geometrySpec(raw)
   const n = seriesMaxLength(spec.series)
+  const isLog = raw.yScale === 'log'
+  const lb = isLog ? logBounds(raw) : { min: 1.0, max: 10.0 }
   const cfg: LayoutConfig = {
     width: spec.width,
     height: spec.height,
@@ -379,7 +515,8 @@ export function layoutChart(spec: ChartSpec, measure: MeasureText): PlotLayout {
     // EMPTY object literal — which PMTC has no lowering for, so the idiom costs
     // this module its native-readiness for nothing. The engine exists to
     // compile, so it is written in the subset that does.
-    yFormat: spec.yFormat,
+    // A normalized stack reads as percent unless the caller formats it.
+    yFormat: spec.yFormat ?? (raw.stackNormalize === true ? percent(0) : undefined),
     xFormat: spec.xFormat,
     // undefined when unused, so the layout's right gutter stays the slim
     // default for every single-axis chart.
@@ -387,6 +524,14 @@ export function layoutChart(spec: ChartSpec, measure: MeasureText): PlotLayout {
     y2Format: spec.y2Format,
     xTime: spec.xTime === true,
     horizontal: spec.horizontal === true,
+    xTitle: spec.xTitle,
+    yTitle: spec.yTitle,
+    y2Title: spec.y2Title,
+    yLog: isLog,
+    yLogMin: lb.min,
+    yLogMax: lb.max,
+    yTime: spec.yTime === true,
+    xLabels: spec.xLabels,
   }
   return computeLayout(cfg, measure)
 }
@@ -412,7 +557,15 @@ export function renderChart(spec: ChartSpec, measure: MeasureText): DrawCmd[] {
  * is a pure function of the spec, so handing it in changes nothing but the
  * work; `renderChart` is that call with the layout made for you.
  */
-export function renderChartIn(spec: ChartSpec, measure: MeasureText, l: PlotLayout): DrawCmd[] {
+export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayout): DrawCmd[] {
+  // Geometry runs over the VIEW; printed values (value labels) read the
+  // original series through `printed`, so a log chart labels a bar "1000",
+  // not "3".
+  const spec = geometrySpec(raw)
+  const printed = (k: number, i: number): Double => {
+    const sv = raw.series[k]!.values
+    return i < sv.length ? sv[i]! : 0.0 / 0.0
+  }
   const yDomain = resolveYDomain(spec)
   // Non-optional on purpose: when no right axis exists this aliases the left
   // domain and is simply never consulted — the binding shape Swift can carry
@@ -641,7 +794,8 @@ export function renderChartIn(spec: ChartSpec, measure: MeasureText, l: PlotLayo
     }
   }
 
-  for (const s of spec.series) {
+  for (let sIdx = 0; sIdx < spec.series.length; sIdx++) {
+    const s = spec.series[sIdx]!
     if (s.kind === 'stacked' || s.kind === 'grouped') continue
     // One helper rather than three call-site conditionals: line, area and
     // points must agree about placement, or an area fill drifts away from the
@@ -702,7 +856,7 @@ export function renderChartIn(spec: ChartSpec, measure: MeasureText, l: PlotLayo
         const fmt = spec.yFormat ?? plain
         for (let i = 0; i < rects.length; i++) {
           const r = rects[i]!
-          const v = s.values[i]!
+          const v = printed(sIdx, i)
           // A gap has no value to print.
           if (!isFiniteValue(v)) continue
           // The label sits just past the bar's far end — right of a positive
@@ -760,7 +914,7 @@ export function renderChartIn(spec: ChartSpec, measure: MeasureText, l: PlotLayo
         const fmt = spec.yFormat ?? plain
         for (let i = 0; i < rects.length; i++) {
           const r = rects[i]!
-          const v = s.values[i]!
+          const v = printed(sIdx, i)
           if (!isFiniteValue(v)) continue
           // A negative bar hangs below the zero line, so its label goes under
           // its bottom edge — above the top would sit ON the zero line.
@@ -768,6 +922,40 @@ export function renderChartIn(spec: ChartSpec, measure: MeasureText, l: PlotLayo
             kind: 'text',
             text: fmt(v),
             at: { x: r.x + r.w / 2.0, y: v < 0.0 ? r.y + r.h + 4.0 : r.y - 4.0 },
+            fill: t.label,
+            size: t.fontSize,
+            align: 'middle',
+            baseline: v < 0.0 ? 'top' : 'bottom',
+          })
+        }
+      }
+    } else if (s.kind === 'waterfall') {
+      // Floating bars from running total to running total, joined by a thin
+      // dashed connector so the eye carries the level across each gap.
+      const steps = layoutWaterfall(s.values, plot, sDomain, 0.25)
+      for (let si = 0; si < steps.length; si++) {
+        const st = steps[si]!
+        const fill = st.value < 0.0 ? s.negativeColor ?? withAlpha(s.color, 0.55) : s.color
+        // Grows from its START level, not the axis zero: a step that begins
+        // at 40 and adds 5 must rise from 40.
+        const startY = scaleLinear(sDomain, plot.y + plot.h, plot.y, st.start)
+        const grownH = st.rect.h * progress
+        const grown: Rect = progress >= 1.0 ? st.rect : { x: st.rect.x, y: st.value >= 0.0 ? startY - grownH : startY, w: st.rect.w, h: grownH }
+        out.push(rectCmd(grown, fill, s.corners, sGrad))
+        const lvlW = emphasisLevel(spec, st.datumIndex)
+        if (lvlW > 0) out.push(emphasisOutline(grown, lvlW, t.label))
+        if (si + 1 < steps.length && progress >= 1.0) {
+          const next = steps[si + 1]!
+          const level = scaleLinear(sDomain, plot.y + plot.h, plot.y, st.end)
+          out.push({ kind: 'line', from: { x: st.rect.x + st.rect.w, y: level }, to: { x: next.rect.x, y: level }, stroke: t.axis, width: 1.0, dash: [2.0, 2.0] })
+        }
+        if (s.showValues === true && progress >= 1.0) {
+          const fmt = spec.yFormat ?? plain
+          const v = printed(sIdx, st.datumIndex)
+          out.push({
+            kind: 'text',
+            text: fmt(v),
+            at: { x: st.rect.x + st.rect.w / 2.0, y: v < 0.0 ? st.rect.y + st.rect.h + 4.0 : st.rect.y - 4.0 },
             fill: t.label,
             size: t.fontSize,
             align: 'middle',
@@ -823,6 +1011,35 @@ export function renderChartIn(spec: ChartSpec, measure: MeasureText, l: PlotLayo
           radius: fullR * progress,
           fill: s.color,
         })
+      }
+    }
+
+    // Error bars: a whisker through each datum's centre from its low bound
+    // to its high one, capped, once the entrance has settled — a whisker
+    // growing with its bar would misstate the bounds along the way. Bars
+    // centre on their rects, the point-like kinds on their placed points.
+    const eLow = s.errLow ?? []
+    const eHigh = s.errHigh ?? []
+    if (eLow.length > 0 && eHigh.length > 0 && progress >= 1.0 && s.kind !== 'waterfall') {
+      const centres: Double[] = []
+      if (s.kind === 'bars') {
+        for (const r of layoutBars(s.values, plot, sDomain, 0.25)) centres.push(r.x + r.w / 2.0)
+      } else {
+        for (const p of place(s.values)) centres.push(p.x)
+      }
+      const cap = 4.0
+      for (let i = 0; i < centres.length; i++) {
+        // Bounds-checked rather than coalesced: a Swift array subscript is
+        // never optional, so `?? ` there is a warning and a dead branch.
+        const lo = i < eLow.length ? eLow[i]! : 0.0 / 0.0
+        const hi = i < eHigh.length ? eHigh[i]! : 0.0 / 0.0
+        if (!isFiniteValue(lo) || !isFiniteValue(hi)) continue
+        const cx = centres[i]!
+        const yLo = scaleLinear(sDomain, plot.y + plot.h, plot.y, lo)
+        const yHi = scaleLinear(sDomain, plot.y + plot.h, plot.y, hi)
+        out.push({ kind: 'line', from: { x: cx, y: yLo }, to: { x: cx, y: yHi }, stroke: t.text, width: 1.0 })
+        out.push({ kind: 'line', from: { x: cx - cap, y: yLo }, to: { x: cx + cap, y: yLo }, stroke: t.text, width: 1.0 })
+        out.push({ kind: 'line', from: { x: cx - cap, y: yHi }, to: { x: cx + cap, y: yHi }, stroke: t.text, width: 1.0 })
       }
     }
   }
@@ -893,7 +1110,10 @@ export function renderChartIn(spec: ChartSpec, measure: MeasureText, l: PlotLayo
   // The anchors hold in BOTH frames: y-side labels sit left of the plot,
   // x-side labels below it — only what the ticks CONTAIN differs (categories
   // vs values in the horizontal frame).
-  for (const tick of l.yTicks) {
+  for (let ti = 0; ti < l.yTicks.length; ti++) {
+    const tick = l.yTicks[ti]!
+    // The horizontal frame's category labels thin like x labels do.
+    if (l.yLabelEvery > 1 && ti % l.yLabelEvery !== 0) continue
     out.push({
       kind: 'text',
       text: tick.label,
@@ -915,16 +1135,49 @@ export function renderChartIn(spec: ChartSpec, measure: MeasureText, l: PlotLayo
       baseline: 'middle',
     })
   }
-  for (const tick of l.xTicks) {
-    out.push({
-      kind: 'text',
-      text: tick.label,
-      at: { x: tick.pos, y: plot.y + plot.h + 6.0 },
-      fill: t.label,
-      size: t.fontSize,
-      align: 'middle',
-      baseline: 'top',
-    })
+  for (let ti = 0; ti < l.xTicks.length; ti++) {
+    const tick = l.xTicks[ti]!
+    if (l.xLabelEvery > 1 && ti % l.xLabelEvery !== 0) continue
+    if (l.xLabelRotate !== 0.0) {
+      // Slanted: the label's END sits at the tick and the text hangs
+      // down-left along the rotation, which is where the gutter made room.
+      out.push({
+        kind: 'text',
+        text: tick.label,
+        at: { x: tick.pos, y: plot.y + plot.h + 6.0 },
+        fill: t.label,
+        size: t.fontSize,
+        align: 'end',
+        baseline: 'middle',
+        rotate: l.xLabelRotate,
+      })
+    } else {
+      out.push({
+        kind: 'text',
+        text: tick.label,
+        at: { x: tick.pos, y: plot.y + plot.h + 6.0 },
+        fill: t.label,
+        size: t.fontSize,
+        align: 'middle',
+        baseline: 'top',
+      })
+    }
+  }
+
+  // Axis titles sit in the line the layout reserved outside the tick
+  // labels: the x title centred under the plot, the y titles rotated to run
+  // along their axes.
+  const xTitle = spec.xTitle ?? ''
+  if (xTitle !== '' && spec.showXAxis) {
+    out.push({ kind: 'text', text: xTitle, at: { x: plot.x + plot.w / 2.0, y: spec.height - 2.0 }, fill: t.label, size: t.fontSize, align: 'middle', baseline: 'bottom' })
+  }
+  const yTitle = spec.yTitle ?? ''
+  if (yTitle !== '' && spec.showYAxis) {
+    out.push({ kind: 'text', text: yTitle, at: { x: t.fontSize * 0.9, y: plot.y + plot.h / 2.0 }, fill: t.label, size: t.fontSize, align: 'middle', baseline: 'middle', rotate: -90.0 })
+  }
+  const y2Title = spec.y2Title ?? ''
+  if (y2Title !== '' && useY2 && spec.showYAxis) {
+    out.push({ kind: 'text', text: y2Title, at: { x: spec.width - t.fontSize * 0.9, y: plot.y + plot.h / 2.0 }, fill: t.label, size: t.fontSize, align: 'middle', baseline: 'middle', rotate: 90.0 })
   }
 
   return out
@@ -1008,12 +1261,21 @@ export function barsFor(spec: ChartSpec, index: number, measure: MeasureText): R
 }
 
 /** `barsFor` over a plot rect the caller already laid out. */
-export function barsForIn(spec: ChartSpec, index: number, plot: Rect): Rect[] {
+export function barsForIn(raw: ChartSpec, index: number, plot: Rect): Rect[] {
+  const spec = geometrySpec(raw)
   const s = spec.series[index]
-  if (s === undefined || s.kind !== 'bars') return []
+  if (s === undefined || (s.kind !== 'bars' && s.kind !== 'waterfall')) return []
   // The hit rects must come from the SAME domain the bars were drawn with,
   // or a right-axis bar reports hits where the left-axis geometry would be.
   const dom = seriesOnRightAxis(s, spec) ? resolveY2Domain(spec) : resolveYDomain(spec)
+  if (s.kind === 'waterfall') {
+    // Index-aligned with the values: a gap's slot is an empty rect nothing
+    // can land in, so the datum index a hit reports stays the row's.
+    const rects: Rect[] = []
+    for (let i = 0; i < s.values.length; i++) rects.push({ x: 0.0, y: 0.0, w: -1.0, h: -1.0 })
+    for (const st of layoutWaterfall(s.values, plot, dom, 0.25)) rects[st.datumIndex] = st.rect
+    return rects
+  }
   return layoutBars(s.values, plot, dom, 0.25)
 }
 
@@ -1042,8 +1304,9 @@ export function stackedHitAt(
 }
 
 /** `stackedHitAt` over a plot rect the caller already laid out. */
-export function stackedHitIn(spec: ChartSpec, plot: Rect, px: Double, py: Double): number {
-  if (spec.horizontal === true) return -1
+export function stackedHitIn(raw: ChartSpec, plot: Rect, px: Double, py: Double): number {
+  if (raw.horizontal === true) return -1
+  const spec = geometrySpec(raw)
   const yDomain = resolveYDomain(spec)
   for (const kind of ['stacked', 'grouped'] as const) {
     const series = spec.series.filter((s) => s.kind === kind)

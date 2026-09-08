@@ -73,6 +73,8 @@ data class PyreonDrawCmd(
     var size: Double? = null,
     var align: String? = null,
     var baseline: String? = null,
+    /** Rotation about `at` in degrees, clockwise positive — a slanted axis label. */
+    var rotate: Double? = null,
 )
 
 /**
@@ -307,7 +309,18 @@ fun PyreonChartCanvas(
                         "middle" -> at.y.toFloat() - (fm.ascent + fm.descent) / 2f
                         else -> at.y.toFloat()
                     }
-                    drawContext.canvas.nativeCanvas.drawText(txt, at.x.toFloat(), y, paint)
+                    val rot = c.rotate ?: 0.0
+                    if (rot != 0.0) {
+                        // Rotate about the anchor; align/baseline apply in the
+                        // rotated frame (the web canvas's translate + rotate).
+                        val nc = drawContext.canvas.nativeCanvas
+                        nc.save()
+                        nc.rotate(rot.toFloat(), at.x.toFloat(), at.y.toFloat())
+                        nc.drawText(txt, at.x.toFloat(), y, paint)
+                        nc.restore()
+                    } else {
+                        drawContext.canvas.nativeCanvas.drawText(txt, at.x.toFloat(), y, paint)
+                    }
                 }
             }
         }

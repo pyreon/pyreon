@@ -155,3 +155,100 @@ export function layoutScatter(
   }
   return out
 }
+
+/**
+ * Scale every column of a stack to its total, so each series reads as a
+ * SHARE of the column (the 100% stacked bar). A column whose positives sum to
+ * zero stays zero, and a gap (NaN) stays a gap — it contributes nothing to
+ * the total and draws nothing. The chart's domain is then `{0, 1}`, labelled
+ * as percent by default.
+ */
+export function normalizeStack(seriesValues: Double[][]): Double[][] {
+  let n = 0
+  for (const s of seriesValues) if (s.length > n) n = s.length
+  const totals: Double[] = []
+  for (let i = 0; i < n; i++) {
+    let sum = 0.0
+    for (const s of seriesValues) {
+      // Bounds-checked, not coalesced: a Swift subscript is never optional.
+      const v = i < s.length ? s[i]! : 0.0
+      if (v > 0.0) sum = sum + v
+    }
+    totals.push(sum)
+  }
+  const out: Double[][] = []
+  for (const s of seriesValues) {
+    const row: Double[] = []
+    for (let i = 0; i < s.length; i++) {
+      const v = s[i]!
+      const total = totals[i]!
+      // A gap stays NaN (NaN / x is NaN); a zero total maps everything to 0.
+      row.push(total > 0.0 ? v / total : v === v ? 0.0 : v)
+    }
+    out.push(row)
+  }
+  return out
+}
+
+/** One waterfall step: the floating bar from the running total before it to the total after it. */
+export interface WaterfallStep {
+  rect: Rect
+  datumIndex: number
+  value: Double
+  /** Running total before this step. */
+  start: Double
+  /** Running total after it. */
+  end: Double
+}
+
+/**
+ * Floating bars, each rising (or falling) from where the previous one ended
+ * — the waterfall / bridge chart. A positive value grows upward from the
+ * running total, a negative one hangs below it; a gap (NaN) draws no bar and
+ * leaves the total where it was.
+ */
+export function layoutWaterfall(
+  values: Double[],
+  plot: Rect,
+  yDomain: Domain,
+  gapRatio: Double,
+): WaterfallStep[] {
+  const out: WaterfallStep[] = []
+  const n = values.length
+  if (n === 0) return out
+  const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
+  const band = plot.w / n
+  const bw = band * (1.0 - ratio)
+  let acc = 0.0
+  for (let i = 0; i < n; i++) {
+    const v = values[i]!
+    if (v !== v) continue
+    const start = acc
+    const end = acc + v
+    const y0 = scaleLinear(yDomain, plot.y + plot.h, plot.y, start)
+    const y1 = scaleLinear(yDomain, plot.y + plot.h, plot.y, end)
+    out.push({
+      rect: { x: plot.x + band * i + (band - bw) / 2.0, y: y0 < y1 ? y0 : y1, w: bw, h: Math.abs(y1 - y0) },
+      datumIndex: i,
+      value: v,
+      start,
+      end,
+    })
+    acc = end
+  }
+  return out
+}
+
+/** The domain a waterfall needs — every running total, and zero. */
+export function waterfallExtent(values: Double[]): Domain {
+  let acc = 0.0
+  let lo = 0.0
+  let hi = 0.0
+  for (const v of values) {
+    if (v !== v) continue
+    acc = acc + v
+    if (acc < lo) lo = acc
+    if (acc > hi) hi = acc
+  }
+  return { min: lo, max: hi === lo ? lo + 1.0 : hi }
+}

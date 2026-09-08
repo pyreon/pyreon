@@ -1,6 +1,7 @@
 // Log and time scales.
 
 import { plain } from './format'
+import { scaleLinear } from './scale'
 import type { Formatter } from './format'
 import type { Domain, Double, Tick } from './types'
 
@@ -148,4 +149,40 @@ export function formatTime(ms: Double, step: Double): string {
   if (step >= DAY) return `${p2(month)}-${p2(day)}`
   if (step >= MINUTE) return `${p2(hours)}:${p2(minutes)}`
   return `${p2(hours)}:${p2(minutes)}:${p2(seconds)}`
+}
+
+/**
+ * Ticks for a chart drawn in the LOG VIEW — see `logView` in render.ts.
+ *
+ * The view maps a value `v` to `log10(v / lo)`, so the axis domain is
+ * `{ 0, log10(hi / lo) }` and every mark lays out LINEARLY over it. The ticks
+ * are the only place the real values reappear: one per decade inside
+ * `[lo, hi]`, positioned on the view domain and labelled with the decade.
+ * A span under two decades adds the 2× and 5× minors so a 10..80 axis is not
+ * a single tick.
+ */
+export function logViewTicks(lo: Double, hi: Double, r0: Double, r1: Double, format?: Formatter): Tick[] {
+  const fmt = format ?? plain
+  const out: Tick[] = []
+  if (!(lo > 0.0) || !(hi > lo)) return out
+  const view: Domain = { min: 0.0, max: Math.log10(hi / lo) }
+  const from = Math.floor(Math.log10(lo))
+  const to = Math.ceil(Math.log10(hi))
+  const minors = to - from < 2.0
+  const limit = 48
+  let count = 0
+  let e = from
+  while (e <= to && count < limit) {
+    const base = Math.pow(10.0, e)
+    const mults: Double[] = minors ? [1.0, 2.0, 5.0] : [1.0]
+    for (const m of mults) {
+      const v = base * m
+      if (v >= lo * 0.999999 && v <= hi * 1.000001 && count < limit) {
+        out.push({ value: v, pos: scaleLinear(view, r0, r1, Math.log10(v / lo)), label: fmt(v) })
+        count = count + 1
+      }
+    }
+    e = e + 1.0
+  }
+  return out
 }

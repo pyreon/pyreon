@@ -159,9 +159,15 @@ draw in array order.
 | `line(y, options?)` | A polyline through the values; `dash: [4, 2]` draws it dashed (a target or a forecast). |
 | `area(y, options?)` | A filled area under the line. |
 | `points(y, options?)` | Discrete points. |
-| `stackedBars(y, options?)` | One stack segment per mark — combine several. |
+| `stackedBars(y, options?)` | One stack segment per mark — combine several; `stackNormalize` on the chart draws them as shares (the 100% stack). |
 | `groupedBars(y, options?)` | Side-by-side bars per category. |
 | `bubble(y, r, options?)` | Points with a per-datum radius channel. |
+| `waterfall(y, options?)` | Floating steps from running total to running total (the bridge chart); `negativeColor` fills the falls, dashed connectors carry the level across. |
+| `histogram(rows, x, options?)` | Not a mark but a spread: bins the `x` channel (`bins`, nice-step edges) and returns `{ data, x, marks }` for `<PlotChart {...histogram(rows, (d) => d.age, { bins: 12 })} />`. |
+
+`bars`, `line`, `area` and `points` also take `errorLow` / `errorHigh`
+accessors: a capped whisker from the low bound to the high one through each
+datum, both bounds joining the domain so a whisker never leaves the axis.
 
 Options (`MarkOptions`): `label` (legend/tooltip/a11y name), `color`, `width`
 (stroke), `radius` (points), `showValues` (value labels above bars), and
@@ -203,10 +209,76 @@ export const Curves = () => (
   A measurement nobody took must not read as `0`; `d.v ?? 0` says otherwise
   where that is the truth.
 
+- **Log y scale** — `yScale="log"` (or `<Scale y="log">` / `<Axis y scale="log">`)
+  draws every left-axis mark in the log view: decades on the axis (with the
+  2× and 5× minors under two decades), non-positive values as gaps, bars
+  growing from the axis floor. Tooltip, table and value labels keep the real
+  values — the view is geometry, not a data edit. A right axis stays linear.
+- **Time y axis** — `yTime` (or `<Scale y="time">`), the twin of `xTime`.
+- **Axis titles** — `xTitle` / `yTitle` / `y2Title` (or `<Axis x title>`), each
+  in a line of its own outside the tick labels, the y titles running along
+  their axes.
+- **Labels that do not fit** — `xLabels`: `auto` (default) slants overflowing
+  category labels 45° and thins numeric ones to every k-th; `rotate` and
+  `thin` force one; `all` draws every label upright and lets them collide.
+  The horizontal frame thins its category rows the same way.
+- **Locale** — `locale="de-DE"` formats numbers (and, under a time axis, the
+  dates) through `Intl` on every surface: `1.234,5`, `12. Mär.`. An explicit
+  `format` / `xFormat` wins; `registerLocale` refines what Intl produces.
+
 One `format` formatter applies to the y axis, the tooltip and the accessible
 description — an axis that says `$3.2K` beside a tooltip that says `3204.55`
 reads as a bug. `plain`, `fixed`, `percent`, `currency` and `compact` ship in
 the same subpath; any `(v: number) => string` works.
+
+## Scales, shares and small multiples
+
+```tsx
+// @check
+import { Axis, Bar, Histogram, Plot, Scale } from '@pyreon/charts/plot'
+
+const sales = [
+  { month: 'Jan', region: 'eu', units: 120, lo: 100, hi: 140 },
+  { month: 'Jan', region: 'us', units: 80, lo: 70, hi: 95 },
+  { month: 'Feb', region: 'eu', units: 150, lo: 130, hi: 170 },
+  { month: 'Feb', region: 'us', units: 90, lo: 75, hi: 100 },
+]
+
+export const Shares = () => (
+  <Plot data={sales} x="month" color="region">
+    <Scale normalize />
+    <Axis y title="Share of units" />
+    <Bar y="units" stack />
+  </Plot>
+)
+
+export const Facets = () => (
+  <Plot data={sales} x="month" facet="region" facetColumns={2}>
+    <Bar y="units" errorLow="lo" errorHigh="hi" />
+    <Axis x title="Month" labels="rotate" />
+  </Plot>
+)
+
+export const Ages = () => (
+  <Plot data={sales}>
+    <Histogram x="units" bins={5} label="Months" />
+  </Plot>
+)
+```
+
+- `<Scale y="log" | "time" x="time" normalize>` states the scales together;
+  `<Axis>` carries the same switches per axis, plus `title` and (on x)
+  `labels`.
+- `<Bar waterfall negativeColor>` is the waterfall; `<Bar y errorLow errorHigh>`
+  (and `<Line>`, `<Area>`, `<Dot>`) draw error bars from two channels.
+- `<Histogram x bins label color format>` bins the `x` channel and draws one
+  bar per bin; it replaces the rows the way the long-format pivot does, so it
+  is the whole plot.
+- `facet="region"` renders small multiples: one titled panel per distinct
+  value in a `facetColumns`-wide grid, every panel sharing the y domain (a
+  facet on its own scale cannot be compared to its neighbour). The marks,
+  channels and switches apply to every panel; a new value adds a panel, and a
+  value that persists keeps its panel across data changes.
 
 ## Radial charts
 
@@ -610,6 +682,15 @@ is landing chart-by-chart — see the
 - **Draw-list goldens** — one SVG per family for a fixed dataset, committed and compared byte-for-byte. The SVG is the draw list the canvases paint, and it is deterministic across platforms where a pixel baseline is not.
 - **The shipped compiler**: the app-showcase e2e hovers, clicks and keyboards the plot-engine chart on a real page under `@pyreon/vite-plugin` — the hosts' own suites run under vitest's JSX transform, and template-path bugs live in the difference.
 - **Native**: the generated Swift/Kotlin engines are drift-locked and compiled by the real toolchains per PR; device assertions ride the tasks showcase.
+The scale switches cross with the engine: `yScale`, `yTime`, `stackNormalize`,
+the axis titles and `xLabels` lower as literals on both targets (`<Scale>` and
+`<Axis title labels scale time>` desugar to them), the waterfall mark lowers,
+and the slanted labels paint through the native canvases' own rotation.
+Error bars cross too: `errorLow` / `errorHigh` map over the same rows the
+values do (the bubble radius channel's shape) into the engine's `errLow` /
+`errHigh`. What stays on the web is named at compile time rather than dropped:
+`<Histogram>` (the row reshape; `binValues` itself crosses), `locale` (Intl)
+and `facet` (a DOM panel grid).
 
 ## Choosing between `/plot` and the ECharts bridge
 

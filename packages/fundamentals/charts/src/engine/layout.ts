@@ -1,7 +1,7 @@
 // Plot-area layout and per-mark geometry.
 
 import { makeTicks, scaleLinear } from './scale'
-import { timeTicks } from './scale-extra'
+import { logViewTicks, timeTicks } from './scale-extra'
 import type { Formatter } from './format'
 import type { Domain, MeasureText, Pt, Rect, Tick, Double } from './types'
 
@@ -28,6 +28,18 @@ export interface PlotLayout {
    * with lands beside its own tick — the two must come from one source.
    */
   xDomainUsed: Domain
+  /**
+   * Rotation applied to the x tick labels, degrees (0 = upright). `-45` when
+   * the category labels would overlap — the labels then hang down-left from
+   * their ticks, and the bottom gutter was sized for the slant.
+   */
+  xLabelRotate: Double
+  /** Draw every k-th x label (1 = all): the thinning that keeps a dense numeric axis legible. */
+  xLabelEvery: number
+  /** Same for the y-side labels — the horizontal frame's categories. */
+  yLabelEvery: number
+  /** The gutters the plot sits inside — where axis titles are placed. */
+  gutters: Gutters
 }
 
 export interface LayoutConfig {
@@ -80,6 +92,26 @@ export interface LayoutConfig {
    * bars exist, so the gutter math is the feature, not a detail.
    */
   horizontal?: boolean | undefined
+  /** Axis titles; each one widens its gutter by a line. */
+  xTitle?: string | undefined
+  yTitle?: string | undefined
+  y2Title?: string | undefined
+  /**
+   * The y domain is a LOG VIEW (`log10(v / yLogMin)`, see `logView`): the
+   * ticks are decades between `yLogMin` and `yLogMax`, labelled with the
+   * real values.
+   */
+  yLog?: boolean | undefined
+  yLogMin?: Double | undefined
+  yLogMax?: Double | undefined
+  /** Label the y axis with calendar steps — the y twin of `xTime`. */
+  yTime?: boolean | undefined
+  /**
+   * What to do when the x labels do not fit: `auto` (default) rotates
+   * category labels and thins numeric ones, `rotate` / `thin` force one,
+   * `all` draws every label upright and lets them overlap.
+   */
+  xLabels?: 'auto' | 'rotate' | 'thin' | 'all' | undefined
 }
 
 /**
@@ -100,6 +132,21 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   const padRight = 12.0
   const labelGap = 6.0
   const tickLen = 4.0
+  const titleH = cfg.fontSize + labelGap
+  const isLog = cfg.yLog === true
+  const logMin = cfg.yLogMin ?? 1.0
+  const logMax = cfg.yLogMax ?? 10.0
+
+  // The y-side value ticks, over a pixel range. Three labellings share one
+  // domain: the linear ladder, the calendar steps, and the log view's
+  // decades — chosen once here so the provisional (gutter-sizing) pass and
+  // the final pass cannot disagree.
+  const valueTicksY = (r0: Double, r1: Double): Tick[] =>
+    isLog
+      ? logViewTicks(logMin, logMax, r0, r1, cfg.yFormat)
+      : cfg.yTime === true
+        ? timeTicks(cfg.yDomain, r0, r1, cfg.yTickCount, cfg.yFormat)
+        : makeTicks(cfg.yDomain, r0, r1, cfg.yTickCount, cfg.yFormat)
 
   // Provisional y-side labels, purely to size the left gutter. Vertical
   // charts measure VALUE labels there; a horizontal chart puts CATEGORIES on
@@ -111,7 +158,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
       ? cfg.categories
       : []
     : cfg.showYAxis
-      ? makeTicks(cfg.yDomain, cfg.height, 0.0, cfg.yTickCount, cfg.yFormat).map((t) => t.label)
+      ? valueTicksY(cfg.height, 0.0).map((t) => t.label)
       : []
   let widest = 0.0
   for (const label of provisionalLabels) {
@@ -119,8 +166,9 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
     if (w > widest) widest = w
   }
 
-  const left = cfg.showYAxis ? widest + labelGap + tickLen : 0.0
-  const bottom = cfg.showXAxis ? cfg.fontSize + labelGap + tickLen : 0.0
+  const yTitleH = cfg.yTitle !== undefined && cfg.yTitle !== '' && cfg.showYAxis ? titleH : 0.0
+  const left = (cfg.showYAxis ? widest + labelGap + tickLen : 0.0) + yTitleH
+  const xTitleH = cfg.xTitle !== undefined && cfg.xTitle !== '' && cfg.showXAxis ? titleH : 0.0
 
   // Coalesced before the guard (the Swift-narrowing idiom used throughout):
   // the sentinel domain is never read unless `hasY2` is true.
@@ -133,7 +181,49 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
       if (w > widest2) widest2 = w
     }
   }
-  const right = hasY2 ? widest2 + labelGap + tickLen : padRight
+  const y2TitleH = hasY2 && cfg.y2Title !== undefined && cfg.y2Title !== '' ? titleH : 0.0
+  const right = (hasY2 ? widest2 + labelGap + tickLen : padRight) + y2TitleH
+
+  // The x labels get the room that is left. Whether they FIT decides the
+  // bottom gutter — a rotated label needs its slant's height — so the
+  // labels are provisionally laid out over the width the plot will have,
+  // measured, and the mode is chosen before the plot rect exists.
+  const provisionalW = Math.max(0.0, cfg.width - left - right)
+  const mode = cfg.xLabels ?? 'auto'
+  let rotate = 0.0
+  let every = 1
+  let slantH = 0.0
+  if (cfg.showXAxis && cfg.horizontal !== true) {
+    const xLabels = cfg.categories.length > 0
+      ? cfg.categories
+      : (cfg.xTime === true
+          ? timeTicks(cfg.xDomain, 0.0, provisionalW, cfg.xTickCount, cfg.xFormat)
+          : makeTicks(cfg.xDomain, 0.0, provisionalW, cfg.xTickCount, cfg.xFormat)).map((t) => t.label)
+    let need = 0.0
+    let widestX = 0.0
+    for (const label of xLabels) {
+      const w = measure(label, cfg.fontSize)
+      need = need + w + labelGap
+      if (w > widestX) widestX = w
+    }
+    const overflow = need > provisionalW && xLabels.length > 1
+    const wantRotate = mode === 'rotate' || (mode === 'auto' && overflow && cfg.categories.length > 0)
+    if (wantRotate && xLabels.length > 0) {
+      rotate = -45.0
+      // A label slanted 45° spans (w + fontSize) * sin 45° below the axis.
+      slantH = (widestX + cfg.fontSize) * 0.7071 - cfg.fontSize
+      if (slantH < 0.0) slantH = 0.0
+      // Even slanted, a label needs about a line of horizontal room.
+      const bandW = provisionalW / xLabels.length
+      const perLabel = cfg.fontSize * 1.3
+      if (bandW < perLabel && bandW > 0.0) every = ceilRatio(perLabel, bandW)
+    } else if (mode !== 'all' && overflow && (mode === 'thin' || mode === 'auto')) {
+      every = ceilRatio(need, provisionalW)
+    }
+  }
+
+  const bottom = (cfg.showXAxis ? cfg.fontSize + labelGap + tickLen + slantH : 0.0) + xTitleH
+  const gutters: Gutters = { left, right, top: padTop, bottom }
 
   const plot: Rect = {
     x: left,
@@ -151,14 +241,20 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
     const xTicks = cfg.showXAxis
       ? makeTicks(cfg.yDomain, plot.x, plot.x + plot.w, cfg.yTickCount, cfg.yFormat)
       : []
-    return { plot, xTicks, yTicks, y2Ticks: [], xDomainUsed: cfg.xDomain }
+    // Category bands too narrow for a line of text draw every k-th label.
+    let yEvery = 1
+    const nCat = cfg.categories.length
+    if (nCat > 0 && plot.h > 0.0) {
+      const bandH = plot.h / nCat
+      const perLabel = cfg.fontSize + 2.0
+      if (bandH < perLabel) yEvery = ceilRatio(perLabel, bandH)
+    }
+    return { plot, xTicks, yTicks, y2Ticks: [], xDomainUsed: cfg.xDomain, xLabelRotate: 0.0, xLabelEvery: 1, yLabelEvery: yEvery, gutters }
   }
 
   // y grows DOWNWARD in screen space, so the domain min maps to the plot's
   // bottom edge and the max to its top — the range is deliberately inverted.
-  const yTicks = cfg.showYAxis
-    ? makeTicks(cfg.yDomain, plot.y + plot.h, plot.y, cfg.yTickCount, cfg.yFormat)
-    : []
+  const yTicks = cfg.showYAxis ? valueTicksY(plot.y + plot.h, plot.y) : []
 
   const xTicks = cfg.showXAxis
     ? cfg.categories.length > 0
@@ -172,7 +268,24 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
     ? makeTicks(y2dom, plot.y + plot.h, plot.y, cfg.yTickCount, cfg.y2Format)
     : []
 
-  return { plot, xTicks, yTicks, y2Ticks, xDomainUsed: cfg.xDomain }
+  return { plot, xTicks, yTicks, y2Ticks, xDomainUsed: cfg.xDomain, xLabelRotate: rotate, xLabelEvery: every, yLabelEvery: 1, gutters }
+}
+
+/**
+ * `ceil(need / room)` as an INT, by counting — the native subset has no
+ * Double→Int assignment (`Math.ceil` yields a Double on both targets), so
+ * the ratio is walked in whole rooms. Bounded: past 200 the labels are
+ * already unreadable and the count stops mattering.
+ */
+function ceilRatio(need: Double, room: Double): number {
+  if (!(room > 0.0)) return 1
+  let every = 1
+  let acc = room
+  while (acc < need && every < 200) {
+    every = every + 1
+    acc = acc + room
+  }
+  return every
 }
 
 /** One tick per category, centred on its band. */

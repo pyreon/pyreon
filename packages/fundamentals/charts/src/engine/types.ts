@@ -129,4 +129,11 @@ export type DrawCmd =
       align: 'start' | 'middle' | 'end'
       /** Vertical anchor, same idea. */
       baseline: 'top' | 'middle' | 'bottom'
+      /**
+       * Rotation in degrees about `at`, clockwise positive (the canvas
+       * convention). `align`/`baseline` anchor the text in the ROTATED frame,
+       * so a `-45` label with `align: 'end'` hangs down-left from its tick.
+       * Absent is unrotated and serializes byte-identically to before.
+       */
+      rotate?: Double | undefined
     }

@@ -358,7 +358,7 @@ export const UNLOWERED_CHART_HOSTS: Readonly<Record<string, string>> = {
 /** The grammar host and its mark/config children — `<Plot>` desugars to `<PlotChart marks>` before the plot emit runs. */
 export const GRAMMAR_CHART_HOST = 'Plot'
 export const GRAMMAR_MARK_TAGS: Readonly<Record<string, string>> = { Bar: 'bars', Line: 'line', Area: 'area', Dot: 'points' }
-export const GRAMMAR_CONFIG_TAGS: readonly string[] = ['Rule', 'Axis', 'Tip', 'Legend', 'Zoom', 'Label']
+export const GRAMMAR_CONFIG_TAGS: readonly string[] = ['Rule', 'Axis', 'Tip', 'Legend', 'Zoom', 'Label', 'Scale', 'Histogram']
 /** The FAMILY marks: `<Plot>` with one of these desugars to the row-array host it names, channels as accessors. */
 export const GRAMMAR_FAMILY_TAGS: Readonly<Record<string, string>> = { Arc: 'PieChart', Stage: 'FunnelChart', Cell: 'HeatmapChart', Candle: 'CandlestickChart' }
 /** The channels of each family mark (the host's accessor props); every other attr is an option. */
@@ -432,11 +432,12 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
       }
       const stack = flagOn(child, 'stack')
       const group = flagOn(child, 'group')
+      const isWaterfall = flagOn(child, 'waterfall')
       const r = attrOf(child, 'r')
-      const callee = tag === 'Bar' ? (stack ? 'stackedBars' : group ? 'groupedBars' : 'bars') : tag === 'Dot' && r !== undefined ? 'bubble' : markKind
+      const callee = tag === 'Bar' ? (isWaterfall ? 'waterfall' : stack ? 'stackedBars' : group ? 'groupedBars' : 'bars') : tag === 'Dot' && r !== undefined ? 'bubble' : markKind
       const fields: { name: string; value: ExprIR }[] = []
       for (const a of child.attrs) {
-        if (a.kind !== 'attr' || ['y', 'r', 'stack', 'group'].includes(a.name)) continue
+        if (a.kind !== 'attr' || ['y', 'r', 'stack', 'group', 'waterfall'].includes(a.name)) continue
         fields.push({ name: a.name, value: a.value })
       }
       const args: ExprIR[] = [channelArrow(y)]
@@ -466,19 +467,42 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
       case 'Axis': {
         const format = attrOf(child, 'format')
         const domain = attrOf(child, 'domain')
+        const title = attrOf(child, 'title')
         if (flagOn(child, 'x')) {
           if (format !== undefined) attrs.push({ kind: 'attr', name: 'xFormat', value: format })
           if (flagOn(child, 'time')) attrs.push({ kind: 'attr', name: 'xTime', value: lit(true) })
           if (flagOn(child, 'hidden')) attrs.push({ kind: 'attr', name: 'showXAxis', value: lit(false) })
+          if (title !== undefined) attrs.push({ kind: 'attr', name: 'xTitle', value: title })
+          const labels = attrOf(child, 'labels')
+          if (labels !== undefined) attrs.push({ kind: 'attr', name: 'xLabels', value: labels })
         } else if (flagOn(child, 'y2')) {
           if (format !== undefined) attrs.push({ kind: 'attr', name: 'y2Format', value: format })
           if (domain !== undefined) attrs.push({ kind: 'attr', name: 'y2Domain', value: domain })
+          if (title !== undefined) attrs.push({ kind: 'attr', name: 'y2Title', value: title })
         } else {
           if (format !== undefined) attrs.push({ kind: 'attr', name: 'format', value: format })
           if (flagOn(child, 'hidden')) attrs.push({ kind: 'attr', name: 'showYAxis', value: lit(false) })
+          if (title !== undefined) attrs.push({ kind: 'attr', name: 'yTitle', value: title })
+          if (flagOn(child, 'time')) attrs.push({ kind: 'attr', name: 'yTime', value: lit(true) })
+          const scale = attrOf(child, 'scale')
+          if (scale !== undefined) attrs.push({ kind: 'attr', name: 'yScale', value: scale })
         }
         break
       }
+      case 'Scale': {
+        // `<Scale y="log" | "time" x="time" normalize>` — the same switches `<Axis>` carries, stated together.
+        const y = attrOf(child, 'y')
+        if (y !== undefined && y.kind === 'literal' && y.value === 'time') attrs.push({ kind: 'attr', name: 'yTime', value: lit(true) })
+        else if (y !== undefined) attrs.push({ kind: 'attr', name: 'yScale', value: y })
+        const x = attrOf(child, 'x')
+        if (x !== undefined && x.kind === 'literal' && x.value === 'time') attrs.push({ kind: 'attr', name: 'xTime', value: lit(true) })
+        if (flagOn(child, 'normalize')) attrs.push({ kind: 'attr', name: 'stackNormalize', value: lit(true) })
+        break
+      }
+      case 'Histogram':
+        // Binning the rows is a web-side data reshape (`histogram()` over `binValues`); the engine's `binValues` crosses, the row pivot does not yet.
+        warn('<Plot>: <Histogram> bins the rows on the web only; the plot renders without it on native. Bin with `binValues` and draw the counts with `<Bar>`.')
+        break
       case 'Tip':
         attrs.push({ kind: 'attr', name: 'tooltip', value: lit(true) })
         if (flagOn(child, 'crosshair')) attrs.push({ kind: 'attr', name: 'crosshair', value: lit(true) })
@@ -963,6 +987,7 @@ export const PLOT_MARK_KINDS: Readonly<Record<string, string>> = {
   line: 'line',
   area: 'area',
   points: 'points',
+  waterfall: 'waterfall',
 }
 
 /** Mark options that lower as literal fields of `Series`, with their default when absent. */
@@ -976,6 +1001,35 @@ export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'effect', kind: 'boolean' },
   { name: 'symbol', kind: 'string' },
   { name: 'symbolRepeat', kind: 'boolean' },
+  { name: 'negativeColor', kind: 'string' },
+]
+
+/**
+ * Mark options that are ACCESSORS rather than literals: `errorLow` /
+ * `errorHigh`, a per-datum bound each. They lower like the bubble mark's
+ * radius channel — mapped over the same rows the values came from, into
+ * `Series.errLow` / `errHigh` — so an emitter reads them here rather than
+ * through the literal-field path, which would reject a function.
+ *
+ * BOTH are needed for a whisker (a single bound has no extent), so exactly
+ * one is a named warning rather than a silent half-drop.
+ */
+export const PLOT_MARK_ACCESSOR_OPTIONS: readonly string[] = ['errorLow', 'errorHigh']
+
+/**
+ * The literal `<PlotChart>` props that land on the spec as they are — a
+ * string or boolean literal each, in `ChartSpec` field order — so the batch-2
+ * switches (the log view, calendar y labels, the 100% stack, axis titles,
+ * the label mode) lower on every target through the generated engine.
+ */
+export const PLOT_SPEC_LITERAL_PROPS: ReadonlyArray<{ name: string; kind: 'string' | 'boolean' }> = [
+  { name: 'yScale', kind: 'string' },
+  { name: 'yTime', kind: 'boolean' },
+  { name: 'stackNormalize', kind: 'boolean' },
+  { name: 'xTitle', kind: 'string' },
+  { name: 'yTitle', kind: 'string' },
+  { name: 'y2Title', kind: 'string' },
+  { name: 'xLabels', kind: 'string' },
 ]
 
 /**
@@ -984,4 +1038,4 @@ export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'strin
  * BY NAME; the chart renders without it. Event props are matched against the
  * parser's lowercased event names, so `onHighlight` is found as `highlight`.
  */
-export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'emphasis', 'maxPoints', 'crosshair', 'link', 'keyboard', 'updateAnimation', 'updateDuration', 'seriesLabels', 'toolbox', 'onSaveImage', 'accessibleTable', 'legendPosition', 'yDomain']
+export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'emphasis', 'maxPoints', 'crosshair', 'link', 'keyboard', 'updateAnimation', 'updateDuration', 'seriesLabels', 'toolbox', 'onSaveImage', 'accessibleTable', 'legendPosition', 'yDomain', 'locale', 'facet', 'facetColumns']

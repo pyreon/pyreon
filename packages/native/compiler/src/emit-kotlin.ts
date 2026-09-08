@@ -79,7 +79,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -10116,6 +10116,9 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     const opts = kotlinMarkOptionArgs(optsArg, tag, k, pyreonPalette)
     if (opts === 'unsupported') return 'Box {}'
     lets.push(`val pyreonValues${k}: List<Double> = ${kotlinPlotRowMap(rows, `(${body}).toDouble()`, windowed)}`)
+    // The bounds ride the same row map the values do (mirror of the Swift emitter).
+    const errArgs = kotlinMarkErrorArgs(optsArg, tag, k, rows, windowed, indent, lets)
+    if (errArgs === 'unsupported') return 'Box {}'
     if (k === 0 && navigating) navValues = kotlinPlotRowMap(data, `(${body}).toDouble()`, false)
     if (bubble) {
       const r = m.args[1]
@@ -10129,9 +10132,9 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
       lets.push(`val pyreonRadii${k}: List<Double> = bubbleRadii(${kotlinPlotRowMap(rows, `(${rBody}).toDouble()`, windowed)}, ${range[0]}, ${range[1]})`)
       const at = opts.findIndex((o) => o.startsWith('showValues =')) + 1
       const withRadii = [...opts.slice(0, at), `radii = pyreonRadii${k}`, ...opts.slice(at)]
-      series.push(`Series(kind = "points", values = pyreonValues${k}, ${withRadii.join(', ')})`)
+      series.push(`Series(kind = "points", values = pyreonValues${k}, ${[...withRadii, ...errArgs].join(', ')})`)
     } else {
-      series.push(`Series(kind = ${JSON.stringify(kind)}, values = pyreonValues${k}, ${opts.join(', ')})`)
+      series.push(`Series(kind = ${JSON.stringify(kind)}, values = pyreonValues${k}, ${[...opts, ...errArgs].join(', ')})`)
     }
   }
   if (legend.toggling) {
@@ -10211,6 +10214,17 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const mk = chartAttrExprKotlin(e, 'markers')
   if (mk !== undefined) specArgs.push(`markers = ${withExpectedTypeKotlin({ kind: 'array', element: { kind: 'typeRef', name: 'PointMarker', args: [] } }, () => emitKotlinExpr(mk, indent))}`)
   if (kotlinChartAnimating(e, 'PlotChart')) specArgs.push('progress = pyreonEntrance')
+  // The batch-2 spec switches: a literal each, straight onto the spec.
+  for (const p of PLOT_SPEC_LITERAL_PROPS) {
+    const raw = readStaticAttrKotlin(e, p.name)
+    const v = chartAttrExprKotlin(e, p.name)
+    if (v === undefined) continue
+    if (typeof raw !== p.kind) {
+      _emitWarnings.push(`<${tag}>: \`${p.name}\` must be a ${p.kind} literal on native; the prop is ignored.`)
+      continue
+    }
+    specArgs.push(`${p.name} = ${p.kind === 'string' ? JSON.stringify(raw) : String(raw)}`)
+  }
   lets.push(`val pyreonSpec: ChartSpec = ChartSpec(${specArgs.join(', ')})`)
   if (brushing) {
     lets.push('val pyreonPlot: PyreonChartRect = layoutChart(pyreonSpec, ::pyreonChartMeasure).plot')
@@ -10402,6 +10416,32 @@ function kotlinChartThemed(e: Extract<ExprIR, { kind: 'jsx-element' }>): boolean
 }
 function kotlinChartThemeFrom(f: ChartThemeText): string {
   return `ChartTheme(${CHART_THEME_FIELDS.map((x) => `${x.name} = ${f[x.name]}`).join(', ')})`
+}
+
+/** Mirror of the Swift emitter's `swiftMarkErrorArgs`: the error-bar bounds as `errLow =` / `errHigh =` Series args over the same rows. */
+function kotlinMarkErrorArgs(
+  opts: ExprIR | undefined,
+  tag: string,
+  seriesIndex: number,
+  rows: string,
+  windowed: boolean,
+  indent: number,
+  lets: string[],
+): string[] | 'unsupported' {
+  if (opts === undefined || opts.kind !== 'object') return []
+  const low = opts.fields.find((f) => f.name === 'errorLow')?.value
+  const high = opts.fields.find((f) => f.name === 'errorHigh')?.value
+  if (low === undefined && high === undefined) return []
+  if (low === undefined || high === undefined) {
+    _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: an error bar needs BOTH \`errorLow\` and \`errorHigh\`; the bound given alone is ignored (as on the web).`)
+    return []
+  }
+  const lowBody = kotlinAccessorExpr(low, tag, `mark ${seriesIndex + 1} errorLow`, indent)
+  const highBody = kotlinAccessorExpr(high, tag, `mark ${seriesIndex + 1} errorHigh`, indent)
+  if (lowBody === 'unsupported' || highBody === 'unsupported') return 'unsupported'
+  lets.push(`val pyreonErrLow${seriesIndex}: List<Double> = ${kotlinPlotRowMap(rows, `(${lowBody}).toDouble()`, windowed)}`)
+  lets.push(`val pyreonErrHigh${seriesIndex}: List<Double> = ${kotlinPlotRowMap(rows, `(${highBody}).toDouble()`, windowed)}`)
+  return [`errLow = pyreonErrLow${seriesIndex}`, `errHigh = pyreonErrHigh${seriesIndex}`]
 }
 
 /** A `Formatter` prop as a Kotlin `(Double) -> String`: a bare engine formatter becomes a function reference; a factory call or an arrow lowers as is. */

@@ -22,9 +22,10 @@ import { renderSvg } from './svg'
 import type { ToolboxTool } from './toolbox'
 import { placeTooltip, tooltipAt, tooltipLines } from './tooltip'
 import type { TooltipContent } from './tooltip'
-import { layoutChart, renderChart, renderChartIn, resolveY2Domain, resolveYDomain, seriesOnRightAxis } from './render'
+import { geometrySpec, layoutChart, renderChart, renderChartIn, resolveY2Domain, resolveYDomain, seriesOnRightAxis } from './render'
 import { layoutSeriesPoints, layoutSeriesPointsAt } from './layout'
 import type { PlotLayout } from './layout'
+import { dateFormatter, numberFormatter } from './locale'
 import type { Annotation, ChartSpec, ChartTheme, PointMarker, Series } from './render'
 import { scaleLinear } from './scale'
 import { resolveCategories, resolveMarks } from './marks'
@@ -294,7 +295,47 @@ export interface PlotChartProps<T> {
    * blank rectangle to anyone not looking at it.
    */
   accessibleTable?: boolean
+  /**
+   * The left y scale. `'log'` draws every left-axis mark in the log view:
+   * decades on the axis, non-positive values as gaps, bars growing from the
+   * axis floor. The tooltip and the table keep the real values.
+   */
+  yScale?: 'linear' | 'log'
+  /** Label the y axis with calendar steps — the y twin of `xTime` (values are epoch ms). */
+  yTime?: boolean
+  /**
+   * Draw the stacked marks as SHARES of each column (the 100% stacked bar).
+   * The axis reads as percent unless `format` says otherwise; tooltip and
+   * table keep the raw values.
+   */
+  stackNormalize?: boolean
+  /** Axis titles, each drawn in a line of its own outside the tick labels. */
+  xTitle?: string
+  yTitle?: string
+  y2Title?: string
+  /**
+   * What the x tick labels do when they run out of room: `'auto'` (default)
+   * slants category labels 45° and thins numeric ones, `'rotate'` / `'thin'`
+   * force one, `'all'` draws every label upright and lets them collide.
+   */
+  xLabels?: AxisLabelMode
+  /**
+   * A BCP 47 tag that formats the numbers (axis, tooltip, table, value
+   * labels) and, with `xTime` / `yTime`, the dates through `Intl` — `de-DE`
+   * reads `1.234,5` and `12. Mär.`. An explicit `format` / `xFormat` wins;
+   * a registered locale pack (`registerLocale`) refines what Intl produces.
+   * Web only: Intl has no native lowering, so a native host keeps the
+   * engine's plain labels.
+   */
+  locale?: string
 }
+
+/**
+ * How the x tick labels react to running out of room — the union
+ * `LayoutConfig.xLabels` takes, named for the web props (the engine keeps
+ * the inline union so it lowers as a plain String).
+ */
+export type AxisLabelMode = 'auto' | 'rotate' | 'thin' | 'all'
 
 /**
  * A chart, drawn on a canvas from the engine's command list.
@@ -533,6 +574,18 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     return lttb(pts, max).map((pt) => pt.x)
   }
 
+  // The number formatter every surface shares: the explicit `format`, else
+  // the locale's Intl formatter (built once per tag), else the engine's
+  // plain labels. `xFormat` gets the locale's DATE formatter under `xTime`.
+  let localeMemo: { tag: string; number: Formatter; date: Formatter } | null = null
+  const localeFmts = (tag: string): { number: Formatter; date: Formatter } => {
+    if (localeMemo === null || localeMemo.tag !== tag) localeMemo = { tag, number: numberFormatter(tag), date: dateFormatter(tag) }
+    return localeMemo
+  }
+  const resolvedFormat = (): Formatter | undefined => props.format ?? (props.locale === undefined ? undefined : localeFmts(props.locale).number)
+  const resolvedXFormat = (): Formatter | undefined =>
+    props.xFormat ?? (props.locale === undefined ? undefined : props.xTime === true ? localeFmts(props.locale).date : undefined)
+
   const buildSpec = (allRows: T[], w: Double, hgt: Double): ChartSpec => {
     const off = viewRange(allRows).from
     const visible = viewRows(allRows)
@@ -564,9 +617,16 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     showXAxis: props.showXAxis ?? true,
     showYAxis: props.showYAxis ?? true,
     showGrid: props.showGrid ?? true,
-    ...(props.format !== undefined ? { yFormat: props.format } : {}),
-    ...(props.xFormat !== undefined ? { xFormat: props.xFormat } : {}),
+    yFormat: resolvedFormat(),
+    xFormat: resolvedXFormat(),
     ...(props.xTime === true ? { xTime: true } : {}),
+    yScale: props.yScale,
+    yTime: props.yTime === true,
+    stackNormalize: props.stackNormalize === true,
+    xTitle: props.xTitle,
+    yTitle: props.yTitle,
+    y2Title: props.y2Title,
+    xLabels: props.xLabels,
     ...(props.xValue !== undefined
       ? { xValues: rows.map((d, i) => props.xValue!(d, gi(i))) }
       : {}),
@@ -890,16 +950,19 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       width: 1.0,
       dash: [4.0, 4.0],
     })
-    const yDomain = resolveYDomain(spec)
-    const y2Domain = resolveY2Domain(spec)
-    for (const sr of spec.series) {
+    // The markers sit where the VIEW placed the points — a log chart's
+    // crosshair must land on the drawn line, not on the raw value.
+    const g = geometrySpec(spec)
+    const yDomain = resolveYDomain(g)
+    const y2Domain = resolveY2Domain(g)
+    for (const sr of g.series) {
       if (sr.kind !== 'line' && sr.kind !== 'area' && sr.kind !== 'points') continue
       if (idx >= sr.values.length) continue
       // A right-axis series places its marker on ITS domain.
-      const dom = seriesOnRightAxis(sr, spec) ? y2Domain : yDomain
+      const dom = seriesOnRightAxis(sr, g) ? y2Domain : yDomain
       const pts =
-        spec.xValues !== undefined && spec.xValues.length > 0
-          ? layoutSeriesPointsAt(sr.values, spec.xValues, plot, dom, l.xDomainUsed)
+        g.xValues !== undefined && g.xValues.length > 0
+          ? layoutSeriesPointsAt(sr.values, g.xValues, plot, dom, l.xDomainUsed)
           : layoutSeriesPoints(sr.values, plot, dom)
       const p = pts[idx]
       if (p === undefined) continue
@@ -1153,7 +1216,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const series = f.spec.series.filter((_x, i) => !hidden.includes(i))
     const content = tooltipAt(idx, f.spec.categories, series)
     const custom = props.tooltipFormatter
-    box.textContent = custom === undefined ? tooltipLines(content, props.format).join('\n') : custom(content)
+    box.textContent = custom === undefined ? tooltipLines(content, resolvedFormat()).join('\n') : custom(content)
     box.style.display = 'block'
     // Measure AFTER filling it: placement depends on the rendered size, and a
     // stale size flips the tooltip on the wrong side at the edge.
@@ -1297,14 +1360,15 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   const a11yInput = (): A11yInput => {
     const rows = readData()
     const m = a11yMemo
-    if (m !== null && m.rows === rows && m.marks === props.marks && m.labels === props.seriesLabels && m.format === props.format && m.title === props.title) return m.input
+    const fmtNow = resolvedFormat()
+    if (m !== null && m.rows === rows && m.marks === props.marks && m.labels === props.seriesLabels && m.format === fmtNow && m.title === props.title) return m.input
     const resolved = resolveMarks(rows, props.marks)
     const input: A11yInput = {
       title: props.title,
       // The spoken description says the same numbers the axis shows. A chart
       // whose axis reads "$3.2K" and whose description reads "3204.55" is one
       // chart to a sighted reader and another to a screen-reader user.
-      format: props.format,
+      format: fmtNow,
       categories: resolveCategories(rows, props.x),
       series: resolved.map((s, i) => ({
         label: props.seriesLabels?.[i] ?? `Series ${i + 1}`,
@@ -1312,7 +1376,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
         kind: s.kind,
       })),
     }
-    a11yMemo = { rows, marks: props.marks, labels: props.seriesLabels, format: props.format, title: props.title, input }
+    a11yMemo = { rows, marks: props.marks, labels: props.seriesLabels, format: fmtNow, title: props.title, input }
     return input
   }
 

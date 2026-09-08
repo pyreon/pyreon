@@ -9,9 +9,9 @@
 // radial trigonometry, the decimation, or the time scales.
 
 export { PlotChart } from './engine/Chart'
-export { Arc, Area, Axis, Bar, Candle, Cell, Dot, Label, Legend, Line, Plot, Rule, Stage, Tip, Zoom, channel, resolveGrammar } from './engine/grammar'
-export type { ArcProps, AxisProps, BarProps, CandleProps, CellProps, Channel, DotProps, FamilyHost, LabelProps, LegendProps, MarkProps, PlotProps, ResolvedGrammar, RuleProps, StageProps, TipProps, ZoomProps } from './engine/grammar'
-export type { PlotChartProps } from './engine/Chart'
+export { Arc, Area, Axis, Bar, Candle, Cell, Dot, Histogram, Label, Legend, Line, Plot, Rule, Scale, Stage, Tip, Zoom, channel, resolveGrammar } from './engine/grammar'
+export type { ArcProps, AxisProps, BarProps, CandleProps, CellProps, Channel, DotProps, FamilyHost, HistogramProps as HistogramMarkProps, LabelProps, LegendProps, MarkProps, PlotProps, ResolvedGrammar, RuleProps, ScaleProps, StageProps, TipProps, ZoomProps } from './engine/grammar'
+export type { AxisLabelMode, PlotChartProps } from './engine/Chart'
 export { GaugeChart, PieChart } from './engine/PieChart'
 export { CandlestickChart } from './engine/CandlestickChart'
 export type { CandlestickChartProps } from './engine/CandlestickChart'
@@ -43,7 +43,9 @@ export {
   resolveMarks,
   stackedBars,
 } from './engine/marks'
-export type { Accessor, BubbleOptions, Mark, MarkOptions } from './engine/marks'
+export type { Accessor, BubbleOptions, ErrorOptions, HistogramOptions, HistogramProps, Mark, MarkOptions } from './engine/marks'
+export { binValues } from './engine/bin'
+export type { Bin } from './engine/bin'
 
 // Curves — imported bindings, like the marks, so an unused curve tree-shakes.
 export { smooth, step } from './engine/curve'
@@ -52,7 +54,7 @@ export { smooth, step } from './engine/curve'
 export { cornerRadii, hasCorners, polygonCmd, rectCmd } from './engine/corners'
 export { gradientFor, gradientSolid, seriesGradient } from './engine/gradient'
 export type { SeriesGradient } from './engine/gradient'
-export { barsFor, barsForIn, defaultTheme, emphasisLevel, emphasisOutline, layoutChart, renderChart, renderChartIn, resolveY2Domain, resolveYDomain, seriesMaxLength, seriesOnRightAxis, stackedHitAt, stackedHitIn, themeCorners } from './engine/render'
+export { barsFor, barsForIn, defaultTheme, emphasisLevel, emphasisOutline, geometrySpec, layoutChart, logBounds, renderChart, renderChartIn, resolveY2Domain, resolveYDomain, seriesMaxLength, seriesOnRightAxis, stackedHitAt, stackedHitIn, themeCorners } from './engine/render'
 export { DARK_PALETTE, DEFAULT_PALETTE, paletteAt } from './engine/palette'
 export { palettes } from './engine/palettes'
 export { ChartThemeContext, ChartThemeProvider, chartThemes, resolveChartTheme, systemChartMode, tooltipStyle, useChartTheme } from './engine/theme'
@@ -73,7 +75,7 @@ export type { Gutters, LayoutConfig, PlotLayout } from './engine/layout'
 
 // Scales
 export { extent, formatTick, makeTicks, niceDomain, niceStep, scaleLinear } from './engine/scale'
-export { formatTime, logTicks, scaleLog, timeTicks } from './engine/scale-extra'
+export { formatTime, logTicks, logViewTicks, scaleLog, timeTicks } from './engine/scale-extra'
 
 // Radial family
 export { arcPolygon, fitCircle, hitArc, layoutArcs, pointOnCircle, renderGauge, renderPie } from './engine/arc'
@@ -84,8 +86,8 @@ export { RadarChart } from './engine/RadarChart'
 export type { RadarChartProps } from './engine/RadarChart'
 
 // Stacked / grouped / scatter
-export { layoutGroupedBars, layoutScatter, layoutStackedBars, stackHasNegatives, stackedExtent } from './engine/stack'
-export type { StackSegment } from './engine/stack'
+export { layoutGroupedBars, layoutScatter, layoutStackedBars, layoutWaterfall, normalizeStack, stackHasNegatives, stackedExtent, waterfallExtent } from './engine/stack'
+export type { StackSegment, WaterfallStep } from './engine/stack'
 
 // Legend + tooltip
 export { legendPlan, renderLegend } from './engine/legend'
