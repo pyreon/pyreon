@@ -10246,7 +10246,14 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     lets.push('var pyreonTipAt by remember { mutableStateOf(PyreonChartPt(0.0, 0.0)) }')
   }
   const tipCmds = tooltip ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${KOTLIN_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${KOTLIN_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, ::pyreonChartMeasure)` : ''
-  const cmds = `${chrome.wrap(`renderChart(pyreonSpec, ::pyreonChartMeasure)${brushing ? ' + pyreonBrushCmds' : ''}`)}${extraCmds}${tipCmds}`
+  // `rtl` — the same seam the web host uses (`present` in canvas-host.tsx):
+  // the FINISHED list is mirrored about the canvas centreline, so chrome,
+  // plot and extras mirror together and no layout code changes. The tooltip
+  // is deliberately NOT mirrored — it is drawn at the raw tap point, which is
+  // already a visual coordinate.
+  const rtl = readStaticAttrKotlin(e, 'rtl') === true
+  const painted = `${chrome.wrap(`renderChart(pyreonSpec, ::pyreonChartMeasure)${brushing ? ' + pyreonBrushCmds' : ''}`)}${extraCmds}`
+  const cmds = `${rtl ? `pyreonMirrorCmds(${painted}, ${W})` : painted}${tipCmds}`
   const localHit = (x: string, y: string): string => `plotHitBars(pyreonSpec, ::pyreonChartMeasure, ${x}, ${chrome.top === '0.0' ? y : `${y} - pyreonTop`})`
   const hit = (x: string, y: string): string => {
     if (tooltip) return windowed ? '(if (pyreonLocal < 0) -1 else pyreonLocal + pyreonRange.from)' : 'pyreonLocal'
@@ -10254,13 +10261,17 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     return windowed ? `run { val pyreonHit = ${local}; if (pyreonHit < 0) -1 else pyreonHit + pyreonRange.from }` : local
   }
   const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
-  const tapX = '(pyreonTap.x / pyreonDensity).toDouble()'
+  // The hit test — the plot's and every chrome hit that shares this x —
+  // speaks the UNMIRRORED geometry the engine laid out, so an RTL tap is
+  // mirrored back before it is asked about.
+  const rawTapX = '(pyreonTap.x / pyreonDensity).toDouble()'
+  const tapX = rtl ? `(${W} - ${rawTapX})` : rawTapX
   const tapYExpr = '(pyreonTap.y / pyreonDensity).toDouble()'
   let tap = ''
   if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging || brushing || tooltip) {
     const selectOnly = onSel?.kind === 'event' ? kotlinChartSelectBody(onSel.handler, hit(tapX, tapYExpr), indent) : ''
     const select = tooltip
-      ? `val pyreonLocal = ${localHit(tapX, tapYExpr)}; pyreonTip = if (pyreonLocal < 0) listOf() else ${tipLines}; pyreonTipAt = PyreonChartPt(${tapX}, ${tapYExpr})${selectOnly === '' ? '' : `; ${selectOnly}`}`
+      ? `val pyreonLocal = ${localHit(tapX, tapYExpr)}; pyreonTip = if (pyreonLocal < 0) listOf() else ${tipLines}; pyreonTipAt = PyreonChartPt(${rawTapX}, ${tapYExpr})${selectOnly === '' ? '' : `; ${selectOnly}`}`
       : selectOnly
     const decls: string[] = []
     const branches: string[] = []

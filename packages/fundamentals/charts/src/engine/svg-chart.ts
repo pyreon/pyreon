@@ -9,6 +9,7 @@ import { describeChart } from './a11y'
 import type { Mark } from './marks'
 import { resolveCategories, resolveMarks } from './marks'
 import { defaultTheme, renderChart } from './render'
+import { mirrorCmds } from './rtl'
 import type { Annotation, ChartTheme, PointMarker } from './render'
 import { measureApprox, renderSvg } from './svg'
 import type { Formatter } from './format'
@@ -21,6 +22,11 @@ export interface ChartToSvgOptions<T> {
   marks: Mark<T>[]
   /** Category label per datum. Omit for a purely numeric x axis. */
   x?: (d: T, index: number) => string
+  /**
+   * Lay the chart out right-to-left — the mirror of the LTR drawing about the
+   * canvas centreline. Text is repositioned, never reversed.
+   */
+  rtl?: boolean
   width?: Double
   height?: Double
   theme?: ChartTheme
@@ -98,7 +104,10 @@ export function chartToSvg<T>(options: ChartToSvgOptions<T>): string {
     horizontal: options.horizontal === true,
   }
   const measure = options.measure ?? measureApprox()
-  const cmds = renderChart(spec, measure)
+  // Same seam as the canvas host's `present`: RTL is the mirror of the
+  // finished list, so the static path and the live one cannot drift.
+  const drawn = renderChart(spec, measure)
+  const cmds = options.rtl === true ? mirrorCmds(drawn, width) : drawn
 
   const description =
     options.description ??

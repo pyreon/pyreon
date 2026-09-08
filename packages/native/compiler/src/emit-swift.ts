@@ -12196,9 +12196,20 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     _hostStateDecls.push('@State private var pyreonTipAt: PyreonChartPt = PyreonChartPt(x: 0.0, y: 0.0)')
   }
   const tipCmds = tooltip ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, pyreonChartMeasure)` : ''
-  const canvas = `PyreonChartCanvas(cmds: ${chrome.wrap(`renderChart(pyreonSpec, pyreonChartMeasure)${brushing ? ' + pyreonBrushCmds' : ''}`)}${extraCmds}${tipCmds})`
+  // `rtl` — the same seam the web host uses (`present` in canvas-host.tsx):
+  // the FINISHED list is mirrored about the canvas centreline, so the chrome,
+  // the plot and the extras mirror together and no layout code changes. The
+  // tooltip is deliberately NOT mirrored: it is drawn at the raw tap point,
+  // which is already a visual coordinate.
+  const rtl = readStaticAttr(e, 'rtl') === true
+  const painted = `${chrome.wrap(`renderChart(pyreonSpec, pyreonChartMeasure)${brushing ? ' + pyreonBrushCmds' : ''}`)}${extraCmds}`
+  const canvas = `PyreonChartCanvas(cmds: ${rtl ? `pyreonMirrorCmds(${painted}, ${W})` : painted}${tipCmds})`
   const tapY = chrome.top === '0.0' ? 'Double(pyreonTap.location.y)' : 'Double(pyreonTap.location.y) - pyreonTop'
-  const localHit = `plotHitBars(pyreonSpec, pyreonChartMeasure, Double(pyreonTap.location.x), ${tapY})`
+  // The hit test speaks the UNMIRRORED geometry the engine laid out, so an
+  // RTL tap is mirrored back before it is asked about. Painting mirrored and
+  // hit-testing unmirrored would report the bar at the opposite end.
+  const tapX = rtl ? `(${W} - Double(pyreonTap.location.x))` : 'Double(pyreonTap.location.x)'
+  const localHit = `plotHitBars(pyreonSpec, pyreonChartMeasure, ${tapX}, ${tapY})`
   // Under a window the hit is LOCAL to the slice; the callback speaks GLOBAL indices, as on the web.
   // With a tooltip the local hit is bound once (`pyreonLocal`) and both read it; without one the emit is as before.
   const hit = tooltip
@@ -12216,7 +12227,12 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     // One tap, several surfaces, in canvas coordinates: the legend pager, a
     // legend entry, a preset button, a committed brush (a plain tap clears it),
     // then the plot. First hit wins — the web's order.
-    const cx = 'Double(pyreonTap.location.x)'
+    // Every chrome hit — the legend pager, a legend entry, a preset button —
+    // reads the same mirrored x as the plot's own hit test. They are all
+    // painted through the one mirror, so they must all be asked in the one
+    // coordinate space; leaving these raw is how a chart paints RTL and then
+    // toggles the wrong series.
+    const cx = tapX
     const cy = 'Double(pyreonTap.location.y)'
     const decls: string[] = []
     const branches: string[] = []

@@ -32,6 +32,7 @@ import type { ToolboxTool } from './toolbox'
 import { placeTooltip } from './tooltip'
 import { easeOutCubic } from './tween'
 import type { ChartGradient, DrawCmd, Double, MeasureText, Rect } from './types'
+import { mirrorCmds, mirrorX } from './rtl'
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 /** The accessible table stops here — a 100k-row table is a 100k-node DOM, and no reader walks it. */
@@ -125,6 +126,16 @@ export interface CanvasHostProps {
   toolbox?: { saveAsImage?: boolean }
   /** Called with the PNG data URL on saveAsImage instead of triggering a download. */
   onSaveImage?: (dataUrl: string) => void
+  /**
+   * Lay the chart out right-to-left: bands run from the right, the value axis
+   * moves to the right gutter, the legend's swatch sits right of its label.
+   *
+   * Implemented as a mirror of the finished draw list about the canvas's
+   * vertical centreline (`./rtl`), so every family gets it from one seam
+   * rather than each honouring a flag of its own. Text is repositioned, never
+   * reversed — laying a chart out right-to-left does not reverse "Revenue".
+   */
+  rtl?: boolean
   /** Render the hidden data table (default on). */
   accessibleTable?: boolean
   class?: string
@@ -358,6 +369,15 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     paint(ctx, [...f.chrome, ...shownFamily(), ...ringCmds(f)], f.w, f.hgt, FONT)
   }
 
+  /**
+   * The last step before pixels: right-to-left charts are the mirror of the
+   * list about the canvas centreline. It sits HERE, after the chrome, the
+   * family and the focus ring have been concatenated, so all three mirror
+   * together and nothing downstream has to know about direction.
+   */
+  const present = (list: DrawCmd[], w: Double): DrawCmd[] =>
+    props.rtl === true ? mirrorCmds(list, w) : list
+
   const draw = (): void => {
     const el = canvas
     if (el === null) return
@@ -378,7 +398,7 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
         tweenTo = family
         lastFamily = family
         startTween()
-        paint(ctx, [...f.chrome, ...tweenCmds(tweenFrom, family, 0.0), ...ringCmds(f)], w, hgt, FONT)
+        paint(ctx, present([...f.chrome, ...tweenCmds(tweenFrom, family, 0.0), ...ringCmds(f)], w), w, hgt, FONT)
         return
       }
       // A shape change snaps, and cancels any tween still running toward the old shape.
@@ -388,7 +408,7 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
       tweenTo = null
       lastFamily = family
     }
-    paint(ctx, [...f.chrome, ...family, ...ringCmds(f)], w, hgt, FONT)
+    paint(ctx, present([...f.chrome, ...family, ...ringCmds(f)], w), w, hgt, FONT)
   }
 
   effect(() => {
@@ -416,7 +436,12 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
 
   const localPoint = (el: HTMLCanvasElement, ev: { clientX: number; clientY: number }): { x: Double; y: Double } => {
     const r = el.getBoundingClientRect()
-    return { x: ev.clientX - r.left, y: ev.clientY - r.top }
+    const x = ev.clientX - r.left
+    // Hit tests, the tooltip's crossing read and the keyboard all speak the
+    // UNMIRRORED geometry the family laid out, so an RTL pointer is mirrored
+    // back here rather than mirroring every consumer. One seam in, one seam
+    // out — `present` is the other.
+    return { x: props.rtl === true ? mirrorX(x, r.width) : x, y: ev.clientY - r.top }
   }
 
   const saveImage = (el: HTMLCanvasElement): void => {

@@ -2141,4 +2141,5 @@ fun PyreonChartEntrance(durationMs: Double, content: @Composable (Double) -> Uni
 fun pyreonChartMeasure(text: String, size: Double): Double = text.length * size * 0.6
 fun pyreonChartColor(s: String): Color = Color(0)
 fun pyreonShiftCmds(cmds: List<PyreonDrawCmd>, dy: Double): List<PyreonDrawCmd> = cmds
+fun pyreonMirrorCmds(cmds: List<PyreonDrawCmd>, width: Double): List<PyreonDrawCmd> = cmds
 `

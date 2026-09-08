@@ -23,6 +23,7 @@ import type { ToolboxTool } from './toolbox'
 import { placeTooltip, tooltipAt, tooltipLines } from './tooltip'
 import type { TooltipContent } from './tooltip'
 import { geometrySpec, layoutChart, renderChart, renderChartIn, resolveY2Domain, resolveYDomain, seriesOnRightAxis } from './render'
+import { mirrorCmds } from './rtl'
 import { layoutSeriesPoints, layoutSeriesPointsAt } from './layout'
 import type { PlotLayout } from './layout'
 import { dateFormatter, numberFormatter } from './locale'
@@ -294,6 +295,17 @@ export interface PlotChartProps<T> {
    * single opaque node to a screen reader — without the table a chart is a
    * blank rectangle to anyone not looking at it.
    */
+  /**
+   * Lay the chart out right-to-left.
+   *
+   * The chart is painted as the mirror of its LTR drawing about the canvas's
+   * vertical centreline, and every pointer is mirrored back before it is hit
+   * tested — so bands run from the right, the value axis moves to the right
+   * gutter, and a click still reports the category it landed on. Text is
+   * repositioned, never reversed: laying a chart out right-to-left does not
+   * reverse "Revenue" or "1.2M".
+   */
+  rtl?: boolean
   accessibleTable?: boolean
   /**
    * The left y scale. `'log'` draws every left-axis mark in the log view:
@@ -805,7 +817,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     lastFrame = frame
     lastW = w
     lastH = hgt
-    paint(ctx, frame, w, hgt, FONT)
+    paint(ctx, props.rtl === true ? mirrorCmds(frame, w) : frame, w, hgt, FONT)
   }
 
   // The navigator's series over ALL rows, resolved once per data change (the
@@ -1039,6 +1051,22 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // the title + legend, and `leftOffset` px right of a side legend.
     return plotHitIndexIn(f.spec, f.layout, px - leftOffset, py - topOffset)
   }
+  /**
+   * A pointer's x in CHART coordinates.
+   *
+   * Under `rtl` the chart is painted as the mirror of the drawing about the
+   * canvas centreline, so every hit test — the plot, the legend pager, the
+   * preset strip, the toolbox, a pan, a brush — has to mirror its input back
+   * or it answers about the opposite side of the chart. One helper rather
+   * than a copy of `ev.clientX - rect.left` per handler, because that is exactly the
+   * shape where one call site gets forgotten and only one interaction is
+   * silently wrong.
+   */
+  const localX = (clientX: Double, rect: { left: Double; width: Double }): Double => {
+    const x = clientX - rect.left
+    return props.rtl === true ? rect.width - x : x
+  }
+
   const handleWheel = (ev: WheelEvent): void => {
     if (props.dataZoom !== true) return
     const el = canvas
@@ -1050,7 +1078,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // either behavior alone.
     ev.preventDefault()
     const rect = el.getBoundingClientRect()
-    const px = ev.clientX - rect.left - leftOffset
+    const px = localX(ev.clientX, rect) - leftOffset
     const frac = plot.w <= 0.0 ? 0.5 : (px - plot.x) / plot.w
     const win = zoomWin() ?? { start: 0.0, end: 1.0 }
     const next = zoomWindow(win, ev.deltaY > 0 ? 1.25 : 0.8, frac)
@@ -1081,7 +1109,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const el = canvas
     if (el === null) return
     const rect = el.getBoundingClientRect()
-    pointers.set(ev.pointerId, { x: ev.clientX - rect.left, y: ev.clientY - rect.top })
+    pointers.set(ev.pointerId, { x: localX(ev.clientX, rect), y: ev.clientY - rect.top })
     // A drag that leaves the canvas must still end here, not on whatever
     // element the pointer is over when it lifts.
     // A synthetic pointer (a test's dispatched event) has no active pointer to capture — that is not an error worth surfacing.
@@ -1101,7 +1129,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       ev.preventDefault()
       return
     }
-    dragStartX = ev.clientX - rect.left
+    dragStartX = localX(ev.clientX, rect)
     dragLastX = dragStartX
     dragMoved = false
     // A press inside the navigator strip grabs the band or one of its handles.
@@ -1154,7 +1182,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     if (el === null) return
     if (pointers.has(ev.pointerId)) {
       const r0 = el.getBoundingClientRect()
-      pointers.set(ev.pointerId, { x: ev.clientX - r0.left, y: ev.clientY - r0.top })
+      pointers.set(ev.pointerId, { x: localX(ev.clientX, r0), y: ev.clientY - r0.top })
     }
     if (pinch !== null && pointers.size >= 2) {
       const plot = plotNow()
@@ -1169,7 +1197,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     }
     if (dragMode !== null) {
       const rect0 = el.getBoundingClientRect()
-      const x = ev.clientX - rect0.left
+      const x = localX(ev.clientX, rect0)
       if (Math.abs(x - dragStartX) > 3.0) dragMoved = true
       if (dragMode === 'nav') {
         if (navDrag !== null && navRect !== null && navRect.w > 0.0) {
@@ -1197,7 +1225,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     const w = drawWidth(el, props.width)
     const hgt = props.height ?? 200
     const rect = el.getBoundingClientRect()
-    const px = ev.clientX - rect.left
+    const px = localX(ev.clientX, rect)
     const py = ev.clientY - rect.top
     const idx = datumAt(px, py)
     if (props.crosshair === true || eventsOn) hoverIdx.set(idx)
@@ -1249,7 +1277,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // Zoom presets: a click on a button sets the window and stops here.
     if (presetBoxes.length > 0) {
       const r0 = el.getBoundingClientRect()
-      const hit = presetHit(presetBoxes, ev.clientX - r0.left, ev.clientY - r0.top)
+      const hit = presetHit(presetBoxes, localX(ev.clientX, r0), ev.clientY - r0.top)
       if (hit >= 0) {
         const it = props.zoomPresets?.[hit]
         const next = presetWindow(it === undefined ? 0 : it.count, readData().length)
@@ -1268,7 +1296,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // exactly what is on screen.
     if (toolList.length > 0) {
       const r0 = el.getBoundingClientRect()
-      const tool = hitToolbox(toolList, toolboxBoxes, ev.clientX - r0.left, ev.clientY - r0.top)
+      const tool = hitToolbox(toolList, toolboxBoxes, localX(ev.clientX, r0), ev.clientY - r0.top)
       if (tool !== null) {
         if (tool === 'restore') {
           // One notify cycle for the five resets, not five redraws.
@@ -1318,7 +1346,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     }
     if (props.showLegend === true && legendPager !== null) {
       const r0 = el.getBoundingClientRect()
-      const lx = ev.clientX - r0.left
+      const lx = localX(ev.clientX, r0)
       const ly = ev.clientY - r0.top
       const p = legendPager
       const d = pagerHit(p, lx, ly)
@@ -1329,7 +1357,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     }
     if (props.showLegend === true && props.legendToggle !== false && legendBoxes.length > 0) {
       const r0 = el.getBoundingClientRect()
-      const lx = ev.clientX - r0.left
+      const lx = localX(ev.clientX, r0)
       const ly = ev.clientY - r0.top
       const i = legendHitIndex(legendBoxes, lx, ly)
       if (i >= 0) {
@@ -1342,7 +1370,7 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     if (f === null) return
     const rect = el.getBoundingClientRect()
     // Plot space (see datumAt): the plot sits under the title + legend and right of a side legend.
-    const px = ev.clientX - rect.left - leftOffset
+    const px = localX(ev.clientX, rect) - leftOffset
     const py = ev.clientY - rect.top - topOffset
     // Callbacks speak GLOBAL indices — the caller's data never zoomed.
     // `plotHitBars` (native-crossing, plot-hit.ts) owns EVERY mark kind now —

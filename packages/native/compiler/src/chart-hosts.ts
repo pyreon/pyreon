@@ -918,9 +918,9 @@ export const HEAT_RAMP_DEFAULT = ['#eff6ff', '#93c5fd', '#3b82f6', '#1e40af'] as
  * cubic ease-out entrance the web host does (`PyreonChartEntrance`). What a
  * target does NOT draw MUST warn by name rather than drop silently.
  */
-export const CHART_CHROME_PROPS: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'legendPosition', 'keyboard', 'updateAnimation', 'updateDuration', 'toolbox', 'onSaveImage', 'accessibleTable']
+export const CHART_CHROME_PROPS: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'legendPosition', 'keyboard', 'updateAnimation', 'updateDuration', 'toolbox', 'onSaveImage', 'accessibleTable', 'rtl']
 const CHROME_LOWERED: Readonly<Record<string, readonly string[]>> = {
-  PlotChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate'],
+  PlotChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'rtl'],
   HeatmapChart: ['animate'],
   RadarChart: ['showLegend'],
 }
