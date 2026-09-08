@@ -1,5 +1,6 @@
 import type { VNode } from '@pyreon/core'
 import { splitProps } from '@pyreon/core'
+import { showAccessorFrom } from './show-accessor'
 import Transition from './Transition'
 import type { CSSProperties, StaggerProps } from './types'
 import { cloneVNode, resolveChildren } from './utils'
@@ -17,6 +18,11 @@ const Stagger = (props: StaggerProps): VNode | null => {
     'children',
     'onAfterLeave',
   ])
+  // An ACCESSOR, not `own.show`: the map below runs at setup, so forwarding the
+  // VALUE would fire the compiler's `_rp` getter once and hand every child
+  // `<Transition>` a frozen boolean — the same freeze `showAccessorFrom` exists
+  // to prevent, one level up. `<Transition>` normalizes the function form.
+  const showAcc = showAccessorFrom(own)
   const interval = own.interval ?? 50
   const reverseLeave = own.reverseLeave ?? false
   const appear = own.appear ?? false
@@ -45,7 +51,7 @@ const Stagger = (props: StaggerProps): VNode | null => {
         return (
           <Transition
             key={(child as VNode & { key?: string | number }).key ?? index}
-            show={own.show}
+            show={showAcc}
             appear={appear}
             timeout={timeout + maxDelay}
             {...transitionProps}

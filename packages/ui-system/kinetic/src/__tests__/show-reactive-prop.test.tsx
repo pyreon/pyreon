@@ -23,6 +23,7 @@ import { _rp, h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
 import Collapse from '../Collapse'
+import Stagger from '../Stagger'
 import Transition from '../Transition'
 import { kinetic } from '../index'
 import { fade } from '../presets'
@@ -123,6 +124,39 @@ describe('kinetic `show` as a compiler-emitted reactive prop (`_rp` getter)', ()
         expect(root.querySelector('[data-id="c"]')).toBeNull()
         sig.set(true)
         expect(root.querySelector('[data-id="c"]')?.textContent).toBe('hi')
+      })
+    }
+  })
+
+  describe('<Stagger>', () => {
+    // The site the original bug list missed: `<Stagger>` forwarded `own.show`
+    // as a VALUE into a `.map()` that runs at setup, so every child
+    // `<Transition>` received a frozen boolean even after the five named sites
+    // were fixed. It forwards the accessor now.
+    for (const [label, shape] of [
+      ['_rp getter (the compiled `show={sig}` shape)', (sig: () => boolean) => _rp(() => sig())],
+      ['explicit accessor (control)', (sig: () => boolean) => () => sig()],
+    ] as const) {
+      it(`${label}: the flip reaches every staggered child`, () => {
+        const sig = signal(false)
+        const root = mountIn(
+          h(
+            Stagger,
+            { show: shape(sig), ...CLASSES },
+            h('div', { 'data-id': 'a' }, 'a'),
+            h('div', { 'data-id': 'b' }, 'b'),
+          ),
+        )
+        const ids = ['a', 'b'] as const
+        for (const id of ids) {
+          expect(root.querySelector(`[data-id="${id}"]`)!.classList.contains('k-gone')).toBe(true)
+        }
+        sig.set(true)
+        for (const id of ids) {
+          const el = root.querySelector(`[data-id="${id}"]`)!
+          expect(el.classList.contains('k-gone'), id).toBe(false)
+          expect(el.classList.contains('k-ing'), id).toBe(true)
+        }
       })
     }
   })

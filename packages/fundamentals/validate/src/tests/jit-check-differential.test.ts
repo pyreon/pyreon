@@ -139,6 +139,13 @@ describe('verdict JIT — objects, arrays, discriminated unions', () => {
   // them undeclared). See strict-prototype-keys.test.ts for the class.
   const strictFlat = s.object({ name: s.string().min(2), age: s.number().int(), active: s.boolean() }).strict()
   const strictNested = s.object({ id: s.number().int(), user: strictFlat }).strict()
+  // The FOURTH call site of the shared strict predicate: a discriminated-union
+  // MEMBER (jit.ts emits `strictScan`/`strictReport` for object fields AND for
+  // DU members). Without this the DU arm of the emit is unexercised.
+  const strictDu = s.discriminatedUnion('kind', [
+    s.object({ kind: s.literal('text'), text: s.string(), size: s.number() }).strict(),
+    s.object({ kind: s.literal('label'), label: s.string() }).strict(),
+  ])
   class Carried {
     get name() {
       return 'Ada'
@@ -162,6 +169,10 @@ describe('verdict JIT — objects, arrays, discriminated unions', () => {
     yield { id: 1, user: Object.create({ name: 'Ada', age: 36, active: true }) }
     yield { id: 1, user: { nmae: 'Ada', age: 36, active: true } }
     yield Object.create({ id: 1, user: { name: 'Ada', age: 36, active: true } })
+    yield Object.create({ kind: 'text', text: 'hi', size: 2 })
+    yield { kind: 'text', txet: 'hi', size: 2 }
+    yield { kind: 'label', lable: 'hi' }
+    yield Object.assign(Object.create({ kind: 'label', label: 'hi' }), { zzz: 1 })
     yield { name: 'A', age: 999, active: 'no' }
     yield { name: 'Ada', age: 36 }
     yield { id: 1, user: { name: 'Ada', addr: { city: 'Paris', zip: '75001' } } }
@@ -196,6 +207,7 @@ describe('verdict JIT — objects, arrays, discriminated unions', () => {
     ['flat', flat], ['nested', nested], ['withArr', withArr], ['withEmail', withEmail],
     ['arrPrim', arrPrim], ['arrObj', arrObj], ['arrBounded', arrBounded],
     ['du', du], ['nestedDu', nestedDu], ['strictFlat', strictFlat], ['strictNested', strictNested],
+    ['strictDu', strictDu],
   ]
   for (const [name, sc] of cases) {
     it(name, () => {
@@ -203,7 +215,7 @@ describe('verdict JIT — objects, arrays, discriminated unions', () => {
     })
   }
   it('the verdict emitter actually served these schemas', () => {
-    expect(cases.filter(([, sc]) => hasVerdict(sc)).length).toBe(11)
+    expect(cases.filter(([, sc]) => hasVerdict(sc)).length).toBe(12)
   })
 })
 

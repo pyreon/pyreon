@@ -34,6 +34,19 @@
  *
  * Tracking is preserved by construction: the read happens when the caller
  * calls, so it lands in whatever `watch`/`effect`/render scope is active then.
+ *
+ * SCOPE, stated because it is not obvious: `show` is the only prop routed
+ * through this, and every SIBLING prop read at setup off the same
+ * getter-bearing holder (`transition`, `timeout`, `interval`, the callbacks —
+ * see the destructures in `createKineticComponent` and the `props.x ?? default`
+ * reads in `Transition`/`Collapse`) carries the identical freeze. Nothing about
+ * the compiler's emission is specific to `show`: `transition={sig()}` lowers to
+ * `_rp` exactly the same way. `show` is singled out because its freeze is the
+ * one that is INVISIBLE — the element renders, the children mount, nothing
+ * throws, and it simply never becomes visible; a frozen `timeout` or
+ * `transition` is a configuration value that is almost never driven by a signal
+ * and degrades to "the first value wins" rather than to a blank screen.
+ * Widening this to a holder-wide read is a follow-up, not an oversight.
  */
 export const showAccessorFrom = (holder: { show?: unknown }): (() => boolean) => {
   return () => {
