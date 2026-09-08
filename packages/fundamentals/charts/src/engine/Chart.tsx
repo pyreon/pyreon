@@ -1402,6 +1402,9 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
         label: props.seriesLabels?.[i] ?? `Series ${i + 1}`,
         values: s.values,
         kind: s.kind,
+        // A band's low edge. Mapping field by field is how it went missing:
+        // the Series carries it and this object did not name it.
+        ...(s.values2 !== undefined ? { values2: s.values2 } : {}),
       })),
     }
     a11yMemo = { rows, marks: props.marks, labels: props.seriesLabels, format: fmtNow, title: props.title, input }

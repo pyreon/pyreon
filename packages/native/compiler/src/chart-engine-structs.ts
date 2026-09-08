@@ -7852,6 +7852,25 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         "type": {
           "kind": "string"
         }
+      },
+      {
+        "name": "values2",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "typeRef",
+                "name": "Double",
+                "args": []
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
       }
     ],
     "external": true

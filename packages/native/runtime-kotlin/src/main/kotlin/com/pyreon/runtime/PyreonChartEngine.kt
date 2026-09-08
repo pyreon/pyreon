@@ -255,7 +255,7 @@ data class BrushRange(var start: Int, var end: Int)
 
 data class BrushBand(var visible: Boolean, var lo: Double, var hi: Double)
 
-data class A11ySeries(var label: String, var values: List<Double>, var kind: String)
+data class A11ySeries(var label: String, var values: List<Double>, var kind: String, var values2: List<Double>? = null)
 
 data class A11yInput(var title: String? = null, var categories: List<String>, var series: List<A11ySeries>, var format: ((Double) -> String)? = null)
 
@@ -2067,7 +2067,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
           }
         }
       }
-      if (s.showValues == true && progress >= 1.0 && (s.kind == "line" || s.kind == "area" || s.kind == "points")) {
+      if (s.showValues == true && progress >= 1.0 && (s.kind == "line" || s.kind == "area" || s.kind == "points" || s.kind == "band")) {
         val fmtP = (spec.yFormat ?: ::plain)
         val labelPts = place(s.values)
         for (i in 0 until labelPts.length) {
@@ -6746,6 +6746,22 @@ fun describeChart(input: A11yInput): String {
       val last = s.values[s.values.length - 1]
       val dir = if (last > first) "rising" else if (last < first) "falling" else "flat"
       val at = { i: Int -> if (input.categories[i] != null) " at ${input.categories[i]}" else "" }
+      val other = (s.values2 ?: listOf())
+      if (other.length > 0) {
+        var olo = other[0]
+        var ohi = other[0]
+        for (i in 0 until other.length) {
+          val v = other[i]
+          if (v < olo) {
+            olo = v
+          }
+          if (v > ohi) {
+            ohi = v
+          }
+        }
+        parts.add("${s.label}, ${s.kind}: upper bound ${dir} from ${fmt(first)} to ${fmt(last)}, " + "ranging ${fmt(lo)}${at(loAt)} to ${fmt(hi)}${at(hiAt)}; " + "lower bound ranging ${fmt(olo)} to ${fmt(ohi)}.")
+        continue
+      }
       parts.add("${s.label}, ${s.kind}: ${dir} from ${fmt(first)} to ${fmt(last)}, " + "ranging ${fmt(lo)}${at(loAt)} to ${fmt(hi)}${at(hiAt)}.")
     }
     return parts.joinToString(" ").replaceFirst(" .", ".")
@@ -6755,7 +6771,13 @@ fun chartTable(input: A11yInput): A11yTable {
     val fmt = (input.format ?: ::plain)
     val headers = mutableListOf("Category")
     for (s in input.series) {
-      headers.add(s.label)
+      val other = (s.values2 ?: listOf())
+      if (other.length > 0) {
+        headers.add("${s.label} (upper)")
+        headers.add("${s.label} (lower)")
+      } else {
+        headers.add(s.label)
+      }
     }
     var n = input.categories.length
     for (s in input.series) {
@@ -6767,12 +6789,25 @@ fun chartTable(input: A11yInput): A11yTable {
     for (i in 0 until n) {
       val row = mutableListOf(if (i < input.categories.length) input.categories[i] else "${i + 1}")
       for (s in input.series) {
+        val other = (s.values2 ?: listOf())
+        val two = other.length > 0
         if (i >= s.values.length) {
           row.add("")
+          if (two) {
+            row.add("")
+          }
           continue
         }
         val v = s.values[i]
         row.add(if (v != v) "" else fmt(v))
+        if (two) {
+          if (i >= other.length) {
+            row.add("")
+          } else {
+            val v2 = other[i]
+            row.add(if (v2 != v2) "" else fmt(v2))
+          }
+        }
       }
       rows.add(row)
     }

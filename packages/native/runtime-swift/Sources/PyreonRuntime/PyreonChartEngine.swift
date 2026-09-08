@@ -1891,10 +1891,12 @@ public struct A11ySeries: Codable {
   public var label: String
   public var values: [Double]
   public var kind: String
-  public init(label: String, values: [Double], kind: String) {
+  public var values2: [Double]? = nil
+  public init(label: String, values: [Double], kind: String, values2: [Double]? = nil) {
     self.label = label
     self.values = values
     self.kind = kind
+    self.values2 = values2
   }
 }
 
@@ -3735,7 +3737,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
           }
         }
       }
-      if s.showValues == true && progress >= 1.0 && (s.kind == "line" || s.kind == "area" || s.kind == "points") {
+      if s.showValues == true && progress >= 1.0 && (s.kind == "line" || s.kind == "area" || s.kind == "points" || s.kind == "band") {
         let fmtP = (spec.yFormat ?? plain)
         let labelPts = place(s.values)
         for i in 0..<labelPts.count {
@@ -8414,6 +8416,22 @@ public func describeChart(_ input: A11yInput) -> String {
       let last = s.values[s.values.count - 1]
       let dir = last > first ? "rising" : last < first ? "falling" : "flat"
       let at = { (i: Int) in input.categories[i] != nil ? " at \(input.categories[i])" : "" }
+      let other = (s.values2 ?? [])
+      if other.count > 0 {
+        var olo = other[0]
+        var ohi = other[0]
+        for i in 0..<other.count {
+          let v = other[i]
+          if v < olo {
+            olo = v
+          }
+          if v > ohi {
+            ohi = v
+          }
+        }
+        parts.append("\(s.label), \(s.kind): upper bound \(dir) from \(fmt(first)) to \(fmt(last)), " + "ranging \(fmt(lo))\(at(loAt)) to \(fmt(hi))\(at(hiAt)); " + "lower bound ranging \(fmt(olo)) to \(fmt(ohi)).")
+        continue
+      }
       parts.append("\(s.label), \(s.kind): \(dir) from \(fmt(first)) to \(fmt(last)), " + "ranging \(fmt(lo))\(at(loAt)) to \(fmt(hi))\(at(hiAt)).")
     }
     return { (s: String, f: String, r: String) -> String in s.replacingOccurrences(of: f, with: r, options: [], range: s.range(of: f)) }(parts.joined(separator: " "), " .", ".")
@@ -8423,7 +8441,13 @@ public func chartTable(_ input: A11yInput) -> A11yTable {
     let fmt = (input.format ?? plain)
     var headers = ["Category"]
     for s in input.series {
-      headers.append(s.label)
+      let other = (s.values2 ?? [])
+      if other.count > 0 {
+        headers.append("\(s.label) (upper)")
+        headers.append("\(s.label) (lower)")
+      } else {
+        headers.append(s.label)
+      }
     }
     var n = input.categories.count
     for s in input.series {
@@ -8435,12 +8459,25 @@ public func chartTable(_ input: A11yInput) -> A11yTable {
     for i in 0..<n {
       var row = [i < input.categories.count ? input.categories[i] : "\(i + 1)"]
       for s in input.series {
+        let other = (s.values2 ?? [])
+        let two = other.count > 0
         if i >= s.values.count {
           row.append("")
+          if two {
+            row.append("")
+          }
           continue
         }
         let v = s.values[i]
         row.append(v != v ? "" : fmt(v))
+        if two {
+          if i >= other.count {
+            row.append("")
+          } else {
+            let v2 = other[i]
+            row.append(v2 != v2 ? "" : fmt(v2))
+          }
+        }
       }
       rows.append(row)
     }
