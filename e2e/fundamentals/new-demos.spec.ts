@@ -315,8 +315,9 @@ test.describe('Flow demo — reactive graph + add/fit', () => {
     await expect(page.locator('[data-testid=flow-canvas] .pyreon-flow-controls')).toBeVisible()
     // The Controls body rendered (not a null-return): its zoom-in button exists.
     await expect(page.locator('[data-testid=flow-canvas] button[title="Zoom in"]')).toBeVisible()
-    // 4 seed edges render as SVG paths.
-    await expect(page.locator('[data-testid=flow-canvas] .pyreon-flow-edges path')).toHaveCount(4)
+    // 4 seed edges render as SVG paths (each edge also carries an invisible
+    // interaction path — excluded by class).
+    await expect(page.locator('[data-testid=flow-canvas] .pyreon-flow-edges path:not(.pyreon-flow-edge-interaction)')).toHaveCount(4)
   })
 
   test('add-node button increments count', async ({ page }) => {
