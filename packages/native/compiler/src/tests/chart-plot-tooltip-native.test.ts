@@ -7,6 +7,9 @@
 // reported. `crosshair` (a hover concept) is named as web-only.
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
+import { kotlinTheme, swiftTheme } from './chart-theme-text'
+const SW = swiftTheme()
+const KT = kotlinTheme()
 import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
 
 const HEAD = `import { signal } from '@pyreon/reactivity'
@@ -54,14 +57,14 @@ describe('<PlotChart tooltip> — a tap tooltip on both targets', () => {
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('@State private var pyreonTip: [String] = []')
     expect(r.code).toContain('let pyreonLocal = plotHitBars(pyreonSpec, pyreonChartMeasure, Double(pyreonTap.location.x), Double(pyreonTap.location.y)); pyreonTip = pyreonLocal < 0 ? [] : tooltipLines(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label: $0.label, values: $0.values, color: $0.color) }), compact); pyreonTipAt = PyreonChartPt(x: Double(pyreonTap.location.x), y: Double(pyreonTap.location.y)); let i = pyreonLocal')
-    expect(r.code).toContain('+ renderTooltip(pyreonTip, pyreonTipAt, PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 200.0), TooltipOptions(fontSize: 11.0, fill: "#ffffff", border: "rgba(132,150,165,0.18)", text: "#1f2937", pad: 8.0, radius: 4.0), pyreonChartMeasure)')
+    expect(r.code).toContain(`+ renderTooltip(pyreonTip, pyreonTipAt, PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 200.0), TooltipOptions(fontSize: 11.0, fill: ${SW.surface}, border: ${SW.grid}, text: ${SW.text}, pad: 8.0, radius: 4.0), pyreonChartMeasure)`)
   })
   it('Kotlin: the same, with remembered state and the density-scaled tap', () => {
     const r = transform(TIP, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('var pyreonTip by remember { mutableStateOf(listOf<String>()) }')
     expect(r.code).toContain('val pyreonLocal = plotHitBars(pyreonSpec, ::pyreonChartMeasure, (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble()); pyreonTip = if (pyreonLocal < 0) listOf() else tooltipLines(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label = it.label, values = it.values, color = it.color) }), ::compact); pyreonTipAt = PyreonChartPt(')
-    expect(r.code).toContain('+ renderTooltip(pyreonTip, pyreonTipAt, PyreonChartRect(0.0, 0.0, pyreonW, 200.0), TooltipOptions(fontSize = 11.0, fill = "#ffffff", border = "rgba(132,150,165,0.18)", text = "#1f2937", pad = 8.0, radius = 4.0), ::pyreonChartMeasure)')
+    expect(r.code).toContain(`+ renderTooltip(pyreonTip, pyreonTipAt, PyreonChartRect(0.0, 0.0, pyreonW, 200.0), TooltipOptions(fontSize = 11.0, fill = ${KT.surface}, border = ${KT.grid}, text = ${KT.text}, pad = 8.0, radius = 4.0), ::pyreonChartMeasure)`)
   })
   it('a tooltip alone installs the tap; under a window the select maps the local hit to the global index', () => {
     const s = transform(TIP_ONLY, { target: 'swift' })

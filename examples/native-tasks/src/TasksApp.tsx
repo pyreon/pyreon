@@ -73,8 +73,8 @@ import { Toaster, toast } from '@pyreon/toast'
 import { announce } from '@pyreon/a11y'
 import { useUrlState } from '@pyreon/url-state'
 import { signal, computed } from '@pyreon/reactivity'
-import { FunnelChart, GaugeChart, HeatmapChart, PieChart, PlotChart, RadarChart, SankeyChart, TreemapChart, bars, line } from '@pyreon/charts/plot'
-import type { BrushRange, RadarAxis, SankeyHitIndex, SankeyLink, SankeyNode, TreeNode, ZoomWindow } from '@pyreon/charts/plot'
+import { BoxplotChart, FunnelChart, GaugeChart, HeatmapChart, PieChart, PlotChart, RadarChart, SankeyChart, TreemapChart, bars, line } from '@pyreon/charts/plot'
+import type { BrushRange, RadarAxis, RadarHitIndex, SankeyHitIndex, SankeyLink, SankeyNode, TreeNode, ZoomWindow } from '@pyreon/charts/plot'
 import { useForm } from '@pyreon/form'
 import { useFetch, useCrashReporter } from '@pyreon/hooks'
 import { defineStore } from '@pyreon/store'
@@ -521,6 +521,13 @@ interface HeatCellRow {
 }
 const HEAT_CELLS: HeatCellRow[] = [{ d: 'Mon', hour: '09', n: 3 }, { d: 'Mon', hour: '10', n: 5 }, { d: 'Tue', hour: '09', n: 1 }, { d: 'Tue', hour: '10', n: 4 }]
 const TREE: TreeNode[] = [{ name: 'src', value: 60 }, { name: 'docs', value: 25 }, { name: 'tests', value: 15 }]
+// The boxplot on native: raw samples per row, reduced to five-number
+// summaries by the generated engine's `fiveNumber` on every target.
+interface Spread {
+  team: string
+  samples: number[]
+}
+const SPREAD: Spread[] = [{ team: 'web', samples: [3, 4, 5, 9, 4] }, { team: 'native', samples: [1, 2, 2, 8, 3] }]
 
 function DashboardPage() {
   const navigate = useNavigate()
@@ -528,6 +535,9 @@ function DashboardPage() {
   const stagePick = signal(-1)
   const stageName = computed(() => (stagePick() < 0 ? 'none' : stages()[stagePick()]!.name))
   const load = signal(40)
+  // The radar's tap reports the engine's `{ series, axis }` hit — a struct on every target.
+  const radarHit = signal('none')
+  const boxPick = signal(-1)
   return (
     <Scroll direction="vertical" data-testid="dash-scroll">
       <Stack gap={3} padding={4} data-testid="dash-page">
@@ -542,7 +552,10 @@ function DashboardPage() {
           Load +25
         </Button>
         <PieChart data={SLICES} value={(d: PieSlice) => d.total} label={(d: PieSlice) => d.name} color={(d: PieSlice) => d.tint} innerRadius={0.4} height={200} data-testid="dash-pie" />
-        <RadarChart data={TEAMS} axes={SKILL_AXES} values={(d: Team) => d.scores} label={(d: Team) => d.name} rings={3} height={200} title="Skills" data-testid="dash-radar" />
+        <RadarChart data={TEAMS} axes={SKILL_AXES} values={(d: Team) => d.scores} label={(d: Team) => d.name} rings={3} height={200} title="Skills" data-testid="dash-radar" onSelectIndex={(h: RadarHitIndex) => radarHit.set(h.series < 0 ? 'miss' : 'S' + String(h.series) + 'A' + String(h.axis))} />
+        <Text data-testid="dash-radar-hit">{radarHit()}</Text>
+        <BoxplotChart data={SPREAD} values={(d: Spread) => d.samples} x={(d: Spread) => d.team} height={160} data-testid="dash-box" onSelectIndex={(i: number) => boxPick.set(i)} />
+        <Text data-testid="dash-box-pick">{String(boxPick())}</Text>
         <HeatmapChart data={HEAT_CELLS} x={(d: HeatCellRow) => d.hour} y={(d: HeatCellRow) => d.d} value={(d: HeatCellRow) => d.n} gap={2} height={160} data-testid="dash-heat" />
         <TreemapChart data={TREE} height={180} data-testid="dash-tree" />
         <Button onPress={() => navigate('/tasks')} data-testid="dash-back">

@@ -79,7 +79,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -9610,7 +9610,7 @@ function emitKotlinChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   const inner = emitKotlinChartHostInner(e, indent)
   // `theme.background` — the ground the web host paints; see the Swift emitter. A Box carries it, since the host is a composable call.
   if (e.tag === GRAMMAR_CHART_HOST || inner === 'Box {}') return inner
-  const bg = chartThemeFields(chartAttrExprKotlin(e, 'theme'), e.tag, () => {}, KOTLIN_CHART_TARGET.list, _chartThemeScope ?? undefined).background
+  const bg = chartThemeFields(chartAttrExprKotlin(e, 'theme'), e.tag, () => {}, KOTLIN_CHART_TARGET.list, _chartThemeScope ?? undefined, kotlinChartScheme).background
   if (bg === '""') return inner
   const pad = ' '.repeat(indent + 2)
   return `Box(modifier = Modifier.background(pyreonChartColor(${bg}))) {\n${pad}${inner}\n${' '.repeat(indent)}}`
@@ -9633,6 +9633,7 @@ function emitKotlinChartHostInner(e: Extract<ExprIR, { kind: 'jsx-element' }>, i
   }
   if (tag === 'GaugeChart') return emitKotlinGaugeHost(e, indent)
   if (tag === 'CandlestickChart') return emitKotlinCandlestickHost(e, indent)
+  if (tag === 'BoxplotChart') return kotlinChartEntrance(e, tag, indent, (i) => emitKotlinBoxplotHost(e, i))
   if (tag === 'HeatmapChart') return kotlinChartEntrance(e, tag, indent, (i) => emitKotlinHeatmapHost(e, i))
   if (tag === 'RadarChart') return emitKotlinRadarHost(e, indent)
   if (tag === 'PlotChart') return kotlinChartEntrance(e, tag, indent, (i) => emitKotlinPlotHost(e, i))
@@ -9718,6 +9719,7 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   lets.push(...chrome.lets)
   const tooltip = spec.tooltip !== undefined && readStaticAttrKotlin(e, 'tooltip') === true
   const onSel = e.attrs.find((a) => a.kind === 'event' && a.name === 'selectindex')
+  if (e.attrs.some((a) => a.kind === 'event' && a.name === 'select')) _emitWarnings.push(chartRichSelectWarning(tag))
   const tapping = onSel?.kind === 'event' || tooltip
   const layout = tapping ? 'pyreonLayout' : spec.layout(plotArgs, KOTLIN_CHART_TARGET)
   if (tapping) lets.push(`val pyreonLayout = ${spec.layout(plotArgs, KOTLIN_CHART_TARGET)}`)
@@ -9941,6 +9943,36 @@ function emitKotlinCandlestickHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
   return kotlinFrameHostLets(e, lets, cmds, (x, y) => `hitCandlestickChart(pyreonCandles, ${W}, ${H}, pyreonCats, pyreonTheme.fontSize, ::pyreonChartMeasure, ${x}, ${y})`, W, H, hasWidth, indent)
 }
 
+/** `<BoxplotChart data values x? box? height width title onSelect? onSelectIndex?>` → five-number summaries per row + the shared frame (mirror of the Swift emitter). */
+function emitKotlinBoxplotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const tag = 'BoxplotChart'
+  const dataV = chartAttrExprKotlin(e, 'data')
+  if (dataV === undefined) {
+    _emitWarnings.push(`<${tag}>: needs a \`data\` attribute on native; emitting an empty Box().`)
+    return 'Box {}'
+  }
+  const data = emitKotlinExpr(dataV, indent)
+  const rowsM = kotlinChartMap(e, tag, data, 'values', (b) => `fiveNumber((${b}).map { it.toDouble() })`, indent)
+  if (rowsM === 'unsupported') return 'Box {}'
+  if (rowsM === null) {
+    _emitWarnings.push(`<${tag}>: needs a \`values\` accessor on native; emitting an empty Box().`)
+    return 'Box {}'
+  }
+  const lets = [`val pyreonBoxes: List<FiveNumber> = ${rowsM}`]
+  const catsM = kotlinChartMap(e, tag, data, 'x', (b) => b, indent)
+  if (catsM === 'unsupported') return 'Box {}'
+  lets.push(`val pyreonCats: List<String> = ${catsM ?? 'listOf<String>()'}`)
+  lets.push(`val pyreonTheme: ChartTheme = ${kotlinChartTheme(e, tag)}`)
+  if (chartAttrExprKotlin(e, 'format') !== undefined) _emitWarnings.push(`<${tag} format>: a formatter is not lowered on native; the axis prints plain numbers.`)
+  const optV = chartAttrExprKotlin(e, 'box')
+  const options = optV === undefined ? 'BoxplotOptions()' : emitKotlinExpr(optV, indent)
+  const H = kotlinChartDouble(e, 'height', 240, indent)
+  const hasWidth = chartAttrExprKotlin(e, 'width') !== undefined
+  const W = hasWidth ? kotlinChartDouble(e, 'width', 300, indent) : 'pyreonW'
+  const cmds = `renderBoxplotChart(pyreonBoxes, ${W}, ${H}, pyreonCats, pyreonTheme, ${options}, ::pyreonChartMeasure${kotlinChartAnimating(e, tag) ? ', null, pyreonEntrance' : ''})`
+  return kotlinFrameHostLets(e, lets, cmds, (x, y) => `hitBoxplotChart(pyreonBoxes.size, ${W}, ${H}, pyreonCats, pyreonTheme.fontSize, ::pyreonChartMeasure, ${x}, ${y}, pyreonBoxes)`, W, H, hasWidth, indent)
+}
+
 function emitKotlinHeatmapHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const tag = 'HeatmapChart'
   const dataV = chartAttrExprKotlin(e, 'data')
@@ -10021,8 +10053,16 @@ function emitKotlinRadarHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   const showV = chartAttrExprKotlin(e, 'showLabels')
   const showLabels = showV === undefined ? 'true' : typeof showRaw === 'boolean' ? String(showRaw) : emitKotlinExpr(showV, indent)
   const opts = `RadarOptions(rings = ${rings}, gridColor = "rgba(132,150,165,0.35)", labelColor = "#5a6b7a", fontSize = 11.0, showLabels = ${showLabels})`
-  const cmds = chrome.mirror(chrome.wrap(`renderRadar(${emitKotlinExpr(axesV, indent)}, pyreonSeries, PyreonChartRect(0.0, 0.0, ${W}, ${chrome.height(H)}), ${opts})`))
-  return kotlinFrameHostLets(e, lets, cmds, null, W, H, hasWidth, indent)
+  const box = `PyreonChartRect(0.0, 0.0, ${W}, ${chrome.height(H)})`
+  // NOT `chrome.mirror` here: `kotlinFrameHostLets` mirrors what it is
+  // handed, so pre-mirroring would apply the mirror TWICE — and a mirror is
+  // its own inverse, so the chart would silently render left-to-right under
+  // `rtl`. The Swift twin DOES mirror here because `swiftFrameHost` takes an
+  // already-built canvas and cannot.
+  const cmds = chrome.wrap(`renderRadar(${emitKotlinExpr(axesV, indent)}, pyreonSeries, ${box}, ${opts})`)
+  // The tap: `hitRadarIndex` against the painted box, the chrome's height off the y (see the Swift twin).
+  const hit = (x: string, y: string): string => `hitRadarIndex(${emitKotlinExpr(axesV, indent)}, pyreonSeries, ${box}, ${opts}, ${x}, ${chrome.top === '0.0' ? y : `${y} - ${chrome.top}`}, 8.0)`
+  return kotlinFrameHostLets(e, lets, cmds, hit, W, H, hasWidth, indent)
 }
 
 
@@ -10392,9 +10432,14 @@ function kotlinRtl(e: Extract<ExprIR, { kind: 'jsx-element' }>, W: string): { mi
 function kotlinFrameHostLets(e: Extract<ExprIR, { kind: 'jsx-element' }>, lets: readonly string[], cmds: string, hit: ((x: string, y: string) => string) | null, W: string, H: string, hasWidth: boolean, indent: number, names: readonly string[] = ['selectindex', 'select'], describe?: string): string {
   const { mirror, tapX } = kotlinRtl(e, W)
   const onSel = hit === null ? undefined : e.attrs.find((a) => a.kind === 'event' && names.includes(a.name))
+  // Keyed on every hoisted `val` (the grid, the candles, the series, the
+  // theme): a `pointerInput(Unit)` keeps the FIRST composition's captures, so a
+  // tap after a data change resolved against the old geometry — the plot
+  // host's #3294 lesson, which this shared frame host had not learned.
+  const keys = lets.map((l) => /^val (\w+)/.exec(l)?.[1]).filter((k): k is string => k !== undefined)
   const tap =
     onSel?.kind === 'event' && hit !== null
-      ? `.pointerInput(Unit) { detectTapGestures { pyreonTap -> ${kotlinChartSelectBody(onSel.handler, hit(tapX('(pyreonTap.x / pyreonDensity).toDouble()'), '(pyreonTap.y / pyreonDensity).toDouble()'), indent)} } }`
+      ? `.pointerInput(${keys.length === 0 ? 'Unit' : keys.join(', ')}) { detectTapGestures { pyreonTap -> ${kotlinChartSelectBody(onSel.handler, hit(tapX('(pyreonTap.x / pyreonDensity).toDouble()'), '(pyreonTap.y / pyreonDensity).toDouble()'), indent)} } }`
       : ''
   const size = hasWidth ? `Modifier.width((${W}).dp).height((${H}).dp)` : `Modifier.fillMaxWidth().height((${H}).dp)`
   const generic = emitKotlinLayoutModifier(e)
@@ -10479,12 +10524,18 @@ function kotlinChartTheme(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: stri
 }
 /** Mirror of the Swift emitter: the theme per field as emitted text, read once per host. */
 function kotlinChartThemeFields(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: string): ChartThemeText {
-  return chartThemeFields(chartAttrExprKotlin(e, 'theme'), tag, (w) => _emitWarnings.push(w), (items) => `listOf(${items.join(', ')})`, _chartThemeScope ?? undefined)
+  return chartThemeFields(chartAttrExprKotlin(e, 'theme'), tag, (w) => _emitWarnings.push(w), (items) => `listOf(${items.join(', ')})`, _chartThemeScope ?? undefined, kotlinChartScheme)
+}
+/** The runtime colour-scheme switch: Compose's `isSystemInDarkTheme()` (a composable read; every host's theme literal sits in composable scope). */
+function kotlinChartScheme(light: string, dark: string): string {
+  return `(if (isSystemInDarkTheme()) ${dark} else ${light})`
 }
 /** The enclosing `<ChartThemeProvider>`'s resolved theme, while its children are emitted (mirror of the Swift emitter). */
 let _chartThemeScope: RawChartTheme | null = null
 function kotlinChartThemed(e: Extract<ExprIR, { kind: 'jsx-element' }>): boolean {
-  return chartAttrExprKotlin(e, 'theme') !== undefined || _chartThemeScope !== null
+  // Always: with neither a theme nor a provider the host still follows the runtime colour scheme (mirror of the Swift emitter).
+  void e
+  return true
 }
 function kotlinChartThemeFrom(f: ChartThemeText): string {
   return `ChartTheme(${CHART_THEME_FIELDS.map((x) => `${x.name} = ${f[x.name]}`).join(', ')})`
