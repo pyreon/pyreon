@@ -326,6 +326,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+      actions: read # read prior Resume job conclusions
     outputs:
       version: ${{ steps.lag.outputs.version }}
       packages: ${{ steps.lag.outputs.packages }}
@@ -336,6 +337,8 @@ jobs:
           bun-version-file: .bun-version
       - name: Compare every publishable package against npm
         id: lag
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           # GitHub runs `run:` under `bash -e`: a non-zero command substitution
           # in an assignment aborts the step. The probe EXITS 1 precisely when
@@ -350,13 +353,46 @@ jobs:
           set -e
           if [ "$code" -eq 2 ] || [ -z "$lag" ]; then echo "registry lookup failed — not resuming"; echo "version=" >> "$GITHUB_OUTPUT"; echo "packages=" >> "$GITHUB_OUTPUT"; exit 0; fi
           echo "lag: $lag"
-          printf 'version=%s\n' "$(printf '%s' "$lag" | bun -e 'console.log(JSON.parse(require("fs").readFileSync(0,"utf8")).version)')" >> "$GITHUB_OUTPUT"
-          printf 'packages=%s\n' "$(printf '%s' "$lag" | bun -e 'console.log(JSON.parse(require("fs").readFileSync(0,"utf8")).packages.join(" "))')" >> "$GITHUB_OUTPUT"
+          version=$(printf '%s' "$lag" | bun -e 'console.log(JSON.parse(require("fs").readFileSync(0,"utf8")).version)')
+          packages=$(printf '%s' "$lag" | bun -e 'console.log(JSON.parse(require("fs").readFileSync(0,"utf8")).packages.join(" "))')
+          # ── Attempt ONCE per version ────────────────────────────────────
+          # A resume republishes from the release TAG, which is right for the
+          # artifact and means a release broken BY ITS OWN TAG can never be
+          # rescued this way. 0.51.0 is exactly that: its six @pyreon/native-*
+          # manifests carried no `repository` field, so npm's provenance check
+          # rejects them (E422 "repository.url is \"\""); #2727 fixed the
+          # manifests on main the same day, so the NEXT release ships them
+          # correctly — but re-running the tag fails identically forever.
+          # Without this guard the Release workflow would go red on every push
+          # to main. Attempt once, then stop and escalate: the daily
+          # published-state gate stays the alarm.
+          if [ -n "$version" ]; then
+            prior=$(gh api "repos/${{ github.repository }}/actions/workflows/release.yml/runs?branch=main&per_page=30" \
+              --jq '.workflow_runs[].id' 2>/dev/null \
+              | head -30 \
+              | while read -r rid; do
+                  # Also match the unversioned name: it existed only between
+                  # this job landing (#3357) and the version being added to it,
+                  # a window in which every attempt was for 0.51.0. Matching it
+                  # saves one more doomed ~10-min publish of that tag.
+                  gh api "repos/${{ github.repository }}/actions/runs/$rid/jobs" </dev/null \
+                    --jq ".jobs[] | select(.name == \"Resume partial release $version\" or .name == \"Resume partial release\") | select(.conclusion == \"failure\") | .id" 2>/dev/null
+                done | head -1)
+            if [ -n "${prior:-}" ]; then
+              echo "::warning title=Resume already attempted for $version::A previous run tried to republish $packages from tag v$version and FAILED. A resume builds from the TAG, so a release broken by its own tag cannot be rescued this way — the fix has to ride the NEXT release (check main's manifests), or the package needs its npm Trusted Publisher configured. Not retrying; the daily published-state gate remains the alarm."
+              version=''
+              packages=''
+            fi
+          fi
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+          printf 'packages=%s\n' "$packages" >> "$GITHUB_OUTPUT"
 
   resume-publish:
     needs: resume-detect
     if: needs.resume-detect.outputs.version != ''
-    name: Resume partial release
+    # The version is IN the job name so `resume-detect` can see whether this
+    # exact version was already attempted (see its prior-attempt guard).
+    name: Resume partial release ${{ needs.resume-detect.outputs.version }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:

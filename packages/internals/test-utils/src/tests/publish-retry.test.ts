@@ -1,8 +1,10 @@
 // Which npm publish failures publish.ts retries. The 0.51.0 release lost
-// four packages to a transient E422 provenance-verification error with no
-// retry; the classifier must retry that class and NEVER retry the ones where
-// the same PUT fails identically forever (no Trusted Publisher, auth) or
-// already succeeded (cannot-publish-over).
+// four packages to an E422 provenance-verification error with no retry. That
+// error turned out to be DETERMINISTIC (the manifests had no `repository`
+// field, so provenance rejects the tag forever) — so the classifier must
+// retry only what there is evidence for (5xx, dropped sockets) and never the
+// ones where the same PUT fails identically forever (provenance, no Trusted
+// Publisher, auth) or already succeeded (cannot-publish-over).
 
 import { describe, expect, it } from 'vitest'
 import {
@@ -13,9 +15,6 @@ import {
 
 describe('isTransientPublishError', () => {
   it.each([
-    [
-      'npm error code E422\nnpm error 422 Unprocessable Entity - PUT https://registry.npmjs.org/@pyreon%2fnative-compiler - Error verifying sigstore provenance bundle: Failed to validate',
-    ],
     ['npm error code E503\nnpm error 503 Service Unavailable'],
     ['npm error code ECONNRESET\nnpm error network socket hang up'],
     ['npm ERR! code E500'],
@@ -32,6 +31,13 @@ describe('isTransientPublishError', () => {
     ['npm error code E401\nnpm error 401 Unauthorized'],
     ['npm error code EOTP'],
     [''],
+    // The one that had to be learned from a live release: provenance
+    // verification compares the PUBLISHED manifest against the building repo,
+    // so a mismatch reproduces on every attempt. 0.51.0 lost four packages to
+    // it and a resume a month later hit it again on the same tag.
+    [
+      'npm error code E422\nnpm error 422 Unprocessable Entity - PUT https://registry.npmjs.org/@pyreon%2fnative-runtime-kotlin - Error verifying sigstore provenance bundle: Failed to validate repository information: package.json: "repository.url" is "", expected to match "https://github.com/pyreon/pyreon" from provenance',
+    ],
   ])('never retries: %s', (stderr) => {
     expect(isTransientPublishError(stderr)).toBe(false)
   })
