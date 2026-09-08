@@ -56,6 +56,20 @@ function fromField(a: Anchor): number {
 describe('enum-aware comparison — Swift', () => {
   const { code, warnings } = transform(SRC, { target: 'swift' })
 
+  it('lowers every shape WITHOUT bailing', () => {
+    // Load-bearing, not decoration: the rewrite could be "achieved" by
+    // declining to lower one of these shapes, and a warning is how PMTC says
+    // it declined — asserting the emit alone cannot tell the two apart.
+    //
+    // Not a blanket zero, because there is a known FALSE POSITIVE here that a
+    // follow-up removes: a parameter typed with a locally-declared union warns
+    // that its props type is unresolvable, when a union lowers to a native
+    // enum and resolves fine. Asserting zero would either fail today or force
+    // this spec to be weakened later; asserting the ABSENCE OF A BAIL says
+    // what this fix is actually responsible for.
+    expect(warnings.filter((w) => !w.includes('props type'))).toEqual([])
+  })
+
   it('emits the enum declaration', () => {
     expect(code).toContain('enum Position: String {')
   })
@@ -84,7 +98,12 @@ describe('enum-aware comparison — Swift', () => {
 })
 
 describe('enum-aware comparison — Kotlin', () => {
-  const { code } = transform(SRC, { target: 'kotlin' })
+  const { code, warnings } = transform(SRC, { target: 'kotlin' })
+
+  it('lowers every shape WITHOUT bailing', () => {
+    // Mirror of the Swift spec — see it for why this is not a blanket zero.
+    expect(warnings.filter((w) => !w.includes('props type'))).toEqual([])
+  })
 
   it('emits the enum declaration', () => {
     expect(code).toContain('enum class Position {')
