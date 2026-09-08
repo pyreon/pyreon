@@ -158,6 +158,7 @@ export function createFlow<TData = Record<string, unknown>>(
     const m = new Map<string, FlowNode<TData>>()
     for (const n of nodes()) m.set(n.id, n)
     sweepCache(nodeByIdCache, m)
+    sweepCache(absPosCache, m)
     sweepCache(nodeSelectedCache, m)
     return m
   })
@@ -193,6 +194,7 @@ export function createFlow<TData = Record<string, unknown>>(
   // dispose+delete per id. (3) exercised by `tests/drag-fanout.test.tsx`
   // (removal sweep + instance dispose + remount specs).
   const nodeByIdCache = new Map<string, Computed<FlowNode<TData> | undefined>>()
+  const absPosCache = new Map<string, Computed<XYPosition>>()
   const edgeByIdCache = new Map<string, Computed<FlowEdge | undefined>>()
   const edgeGeometryCache = new Map<string, Computed<EdgeGeometry | null>>()
   const nodeSelectedCache = new Map<string, Computed<boolean>>()
@@ -253,6 +255,43 @@ export function createFlow<TData = Record<string, unknown>>(
     return c
   }
 
+  /**
+   * Reactive ABSOLUTE position: the node's own `position` plus every
+   * ancestor's, so a parent drag re-derives its children's placement with no
+   * per-child write. Equality-gated on x/y so an unrelated node write does
+   * not re-notify edge geometry. A cyclic / self parent link stops the walk.
+   */
+  const _absPositionById = (id: string): Computed<XYPosition> => {
+    let c = absPosCache.get(id)
+    if (!c) {
+      c = detachedComputed(() =>
+        computed<XYPosition>(
+          () => {
+            const n = _nodeById(id)()
+            if (!n) return { x: 0, y: 0 }
+            if (!n.parentId || n.parentId === id) return n.position
+            const seen = new Set<string>([id])
+            let x = n.position.x
+            let y = n.position.y
+            let pid: string | undefined = n.parentId
+            while (pid && !seen.has(pid)) {
+              seen.add(pid)
+              const p: FlowNode<TData> | undefined = _nodeById(pid)()
+              if (!p) break
+              x += p.position.x
+              y += p.position.y
+              pid = p.parentId
+            }
+            return { x, y }
+          },
+          { equals: (a, b) => a.x === b.x && a.y === b.y },
+        ),
+      )
+      absPosCache.set(id, c)
+    }
+    return c
+  }
+
   const _edgeById = (id: string): Computed<FlowEdge | undefined> => {
     let c = edgeByIdCache.get(id)
     if (!c) {
@@ -308,10 +347,17 @@ export function createFlow<TData = Record<string, unknown>>(
           const sourceNode = _nodeById(e.source)()
           const targetNode = _nodeById(e.target)()
           if (!sourceNode || !targetNode) return null
+          // Sub-flow children hold RELATIVE positions; geometry needs absolute.
+          const s = sourceNode.parentId
+            ? { ...sourceNode, position: _absPositionById(sourceNode.id)() }
+            : sourceNode
+          const t = targetNode.parentId
+            ? { ...targetNode, position: _absPositionById(targetNode.id)() }
+            : targetNode
           // Read `measurements()` reactively so the edge re-derives its path
           // the moment a node's real rendered size lands (first-frame snap
           // from the 150×40 fallback to the measured box → the edge connects).
-          return computeEdgeGeometry(e, sourceNode, targetNode, measurements())
+          return computeEdgeGeometry(e, s, t, measurements())
         }),
       )
       edgeGeometryCache.set(id, c)
@@ -774,10 +820,11 @@ export function createFlow<TData = Record<string, unknown>>(
 
     for (const node of targetNodes) {
       const { width: w, height: h } = nodeDims(node)
-      minX = Math.min(minX, node.position.x)
-      minY = Math.min(minY, node.position.y)
-      maxX = Math.max(maxX, node.position.x + w)
-      maxY = Math.max(maxY, node.position.y + h)
+      const p = node.parentId ? getAbsolutePosition(node.id) : node.position
+      minX = Math.min(minX, p.x)
+      minY = Math.min(minY, p.y)
+      maxX = Math.max(maxX, p.x + w)
+      maxY = Math.max(maxY, p.y + h)
     }
 
     const graphWidth = maxX - minX
@@ -1579,8 +1626,9 @@ export function createFlow<TData = Record<string, unknown>>(
     if (!node) return
 
     const { width: w, height: h } = nodeDims(node)
-    const centerX = node.position.x + w / 2
-    const centerY = node.position.y + h / 2
+    const abs = node.parentId ? getAbsolutePosition(nodeId) : node.position
+    const centerX = abs.x + w / 2
+    const centerY = abs.y + h / 2
     const z = focusZoom ?? viewport.peek().zoom
     const { width: cw, height: ch } = containerSize.peek()
 
@@ -1734,6 +1782,8 @@ export function createFlow<TData = Record<string, unknown>>(
     edgeByIdCache.clear()
     for (const c of nodeByIdCache.values()) disposeCached(c as Computed<unknown>)
     nodeByIdCache.clear()
+    for (const c of absPosCache.values()) disposeCached(c as Computed<unknown>)
+    absPosCache.clear()
     for (const c of nodeSelectedCache.values()) disposeCached(c as Computed<unknown>)
     nodeSelectedCache.clear()
     for (const c of edgeSelectedCache.values()) disposeCached(c as Computed<unknown>)
@@ -1927,6 +1977,7 @@ export function createFlow<TData = Record<string, unknown>>(
     _createSnapSession: createSnapSession,
     getChildNodes,
     getAbsolutePosition,
+    _absPositionById,
     addEdgeWaypoint,
     removeEdgeWaypoint,
     updateEdgeWaypoint,

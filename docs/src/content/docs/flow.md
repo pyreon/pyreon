@@ -267,6 +267,21 @@ flow.updateNodeData('a', { label: 'A!' }) // merge into data (or a function of t
 ### `hidden` and `deletable`
 
 A node or edge with `hidden: true` stays in the graph (ids, edges, selection, JSON) but is not rendered — an edge touching a hidden node disappears with it. `deletable: false` exempts an element from `deleteSelected()` and the Delete key (it stays selected so the user can see it survived); `nodesDeletable: false` / `edgesDeletable: false` set the default. An edge whose endpoint node is deleted goes regardless of its own flag.
+### Sub-flows (parent / child nodes)
+
+```ts
+const flow = createFlow({
+  nodes: [
+    { id: 'group', position: { x: 100, y: 200 }, width: 400, height: 300, group: true, data: {} },
+    // A child's position is RELATIVE to its parent's top-left.
+    { id: 'a', parentId: 'group', position: { x: 20, y: 30 }, data: {}, extent: 'parent' },
+    { id: 'b', parentId: 'group', position: { x: 200, y: 30 }, data: {}, expandParent: true },
+  ],
+})
+flow.getAbsolutePosition('a') // { x: 120, y: 230 }
+```
+
+React Flow's sub-flow model: a child keeps its relative `position`, renders at the absolute one, and moves with its parent (one write on the parent — dragging a parent and a selected child together never double-moves the child). Edges, `fitView`, `focusNode`, the selection box, viewport culling and the minimap all use absolute positions. Parents render before their children so a child sits on top. `extent: 'parent'` keeps a dragged child inside its parent's box (an `[[minX, minY], [maxX, maxY]]` extent clamps it to a box in its own coordinate space); `expandParent: true` grows the parent's `width` / `height` to contain a child dragged past its edge.
 
 ## Edge Operations
 
@@ -1009,6 +1024,15 @@ function EditableNode(props: NodeComponentProps) {
 
 Without `nodeId` the toolbar renders inline inside the node as before (and on the server, where there are no layers).
 
+### Minimap interaction
+
+Dragging on `<MiniMap>` pans the graph and the wheel zooms it around the canvas center; a click still centers on the clicked point. `pannable={false}` / `zoomable={false}` turn either off.
+
+### Controls children
+
+`<Controls>` accepts children rendered after the built-in buttons — a `<button>` picks up the control styling.
+
+## Theming
 
 Every color the flow renderer emits goes through a `--pyreon-flow-*` CSS custom property with the historical light-mode value as fallback — **zero setup for light apps, one CSS block to re-skin everything** (dark mode, brand colors). Set them on the flow container or any ancestor:
 
@@ -1059,7 +1083,11 @@ Rows marked `flowStyles` live in the optional injected stylesheet (below); every
 SVG strokes/fills are set via the `style` attribute, never SVG presentation attributes — `var()` is invalid in a presentation attribute (the value would be dropped and the shape would render invisible). Follow the same rule in custom edge renderers.
 :::
 
-### `flowStyles` — hover & animation states
+#### Color modes
+
+`<Flow colorMode="dark">` (or `"system"`, which follows `prefers-color-scheme`) renders `data-color-mode` on the canvas, and `flowStyles` carries a dark value for every `--pyreon-flow-*` variable behind it — nodes, edges, panels, controls, minimap, toolbar, handles and the background pattern. Your own variable overrides on an ancestor still win, so a custom theme needs no changes.
+
+## `flowStyles` — hover & animation states
 
 Inline styles can't express `:hover` / `@keyframes`, so those polish states ship as an exported CSS string. Inject it once at app root:
 
