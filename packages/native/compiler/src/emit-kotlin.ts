@@ -10144,19 +10144,28 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     const m = marksV.elements[k]!
     const callee = m.kind === 'call' && m.callee.kind === 'identifier' ? m.callee.name : undefined
     const bubble = callee === 'bubble'
+    // `band(low, high, options)` reads its channels in the opposite order to
+    // every other mark (see the Swift twin).
+    const isBand = callee === 'band'
     const kind = callee === undefined ? undefined : bubble ? 'points' : PLOT_MARK_KINDS[callee]
     if (m.kind !== 'call' || kind === undefined) {
       _emitWarnings.push(`<${tag}> mark ${k + 1}: this mark is not lowered on native; emitting an empty Box().`)
       return 'Box {}'
     }
-    const y = m.args[0]
+    const y = isBand ? m.args[1] : m.args[0]
     if (y === undefined) {
-      _emitWarnings.push(`<${tag}> mark ${k + 1}: needs an accessor; emitting an empty Box().`)
+      // Named per mark: `band` takes TWO accessors, so "needs an accessor"
+      // on its own leaves the reader guessing which one is missing.
+      _emitWarnings.push(
+        isBand
+          ? `<${tag}> mark ${k + 1}: \`band\` needs both an upper and a lower accessor — \`band(low, high)\`; emitting an empty Box().`
+          : `<${tag}> mark ${k + 1}: needs an accessor; emitting an empty Box().`,
+      )
       return 'Box {}'
     }
     const body = kotlinAccessorExpr(y, tag, `mark ${k + 1}`, indent)
     if (body === 'unsupported') return 'Box {}'
-    const optsArg = bubble ? m.args[2] : m.args[1]
+    const optsArg = bubble || isBand ? m.args[2] : m.args[1]
     const opts = kotlinMarkOptionArgs(optsArg, tag, k, pyreonPalette)
     if (opts === 'unsupported') return 'Box {}'
     lets.push(`val pyreonValues${k}: List<Double> = ${kotlinPlotRowMap(rows, `(${body}).toDouble()`, windowed)}`)
@@ -10177,6 +10186,16 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
       const at = opts.findIndex((o) => o.startsWith('showValues =')) + 1
       const withRadii = [...opts.slice(0, at), `radii = pyreonRadii${k}`, ...opts.slice(at)]
       series.push(`Series(kind = "points", values = pyreonValues${k}, ${[...withRadii, ...errArgs].join(', ')})`)
+    } else if (isBand) {
+      const lo = m.args[0]
+      if (lo === undefined) {
+        _emitWarnings.push(`<${tag}> mark ${k + 1}: \`band\` needs a lower-bound accessor; emitting an empty Box().`)
+        return 'Box {}'
+      }
+      const loBody = kotlinAccessorExpr(lo, tag, `mark ${k + 1} lower bound`, indent)
+      if (loBody === 'unsupported') return 'Box {}'
+      lets.push(`val pyreonLow${k}: List<Double> = ${kotlinPlotRowMap(rows, `(${loBody}).toDouble()`, windowed)}`)
+      series.push(`Series(kind = "band", values = pyreonValues${k}, ${[...opts, ...errArgs, `values2 = pyreonLow${k}`].join(', ')})`)
     } else {
       series.push(`Series(kind = ${JSON.stringify(kind)}, values = pyreonValues${k}, ${[...opts, ...errArgs].join(', ')})`)
     }

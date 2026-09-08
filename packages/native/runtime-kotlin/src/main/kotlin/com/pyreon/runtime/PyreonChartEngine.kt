@@ -51,7 +51,7 @@ data class StackSegment(var rect: PyreonChartRect, var seriesIndex: Int, var dat
 
 data class WaterfallStep(var rect: PyreonChartRect, var datumIndex: Int, var value: Double, var start: Double, var end: Double)
 
-data class Series(var kind: String, var values: List<Double>, var color: String, var width: Double, var radius: Double, var label: String, var curve: ((List<PyreonChartPt>) -> List<PyreonChartPt>)? = null, var showValues: Boolean? = null, var radii: List<Double>? = null, var axis: String? = null, var effect: Boolean? = null, var symbol: String? = null, var symbolRepeat: Boolean? = null, var corners: List<Double>? = null, var gradient: SeriesGradient? = null, var dash: List<Double>? = null, var negativeColor: String? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null)
+data class Series(var kind: String, var values: List<Double>, var color: String, var width: Double, var radius: Double, var label: String, var curve: ((List<PyreonChartPt>) -> List<PyreonChartPt>)? = null, var showValues: Boolean? = null, var radii: List<Double>? = null, var axis: String? = null, var effect: Boolean? = null, var symbol: String? = null, var symbolRepeat: Boolean? = null, var corners: List<Double>? = null, var gradient: SeriesGradient? = null, var dash: List<Double>? = null, var negativeColor: String? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var values2: List<Double>? = null)
 
 data class Annotation(var y: Double? = null, var x: Double? = null, var yFrom: Double? = null, var yTo: Double? = null, var label: String? = null, var color: String? = null)
 
@@ -1262,6 +1262,32 @@ fun layoutGroupedBarsH(seriesValues: List<List<Double>>, plot: PyreonChartRect, 
     return out
   }
 
+fun stackCumulative(seriesValues: List<List<Double>>): List<List<Double>> {
+    val out: MutableList<List<Double>> = mutableListOf()
+    var n = 0
+    for (s in seriesValues) {
+      if (s.length > n) {
+        n = s.length
+      }
+    }
+    val acc: MutableList<Double> = mutableListOf()
+    for (i in 0 until n) {
+      acc.add(0.0)
+    }
+    for (s in seriesValues) {
+      val row: MutableList<Double> = mutableListOf()
+      for (i in 0 until n) {
+        val v = if (i < s.length) s[i] else 0.0
+        if (v > 0.0) {
+          acc[i] = acc[i] + v
+        }
+        row.add(acc[i])
+      }
+      out.add(row)
+    }
+    return out
+  }
+
 fun stackHasNegatives(seriesValues: List<List<Double>>): Boolean {
     for (s in seriesValues) {
       for (v in s) {
@@ -1524,7 +1550,7 @@ fun seriesOnRightAxis(s: Series, spec: ChartSpec): Boolean {
     if (spec.horizontal == true) {
       return false
     }
-    if (s.kind == "stacked" || s.kind == "grouped") {
+    if (s.kind == "stacked" || s.kind == "grouped" || s.kind == "stackedArea") {
       return false
     }
     if (s.axis != "right") {
@@ -1532,7 +1558,7 @@ fun seriesOnRightAxis(s: Series, spec: ChartSpec): Boolean {
     }
     var hasLeft = false
     for (q in spec.series) {
-      val qRight = q.axis == "right" && q.kind != "stacked" && q.kind != "grouped"
+      val qRight = q.axis == "right" && q.kind != "stacked" && q.kind != "grouped" && q.kind != "stackedArea"
       if (!qRight) {
         hasLeft = true
       }
@@ -1554,12 +1580,12 @@ fun leftAxisSeries(spec: ChartSpec): List<Series> = spec.series.filter({ s -> !s
 fun rightAxisSeries(spec: ChartSpec): List<Series> = spec.series.filter({ s -> seriesOnRightAxis(s, spec) })
 
 fun deriveOver(series: List<Series>): Domain {
-    val stacked = series.filter({ s -> s.kind == "stacked" })
+    val stacked = series.filter({ s -> s.kind == "stacked" || s.kind == "stackedArea" })
     if (stacked.length > 0) {
       val e = stackedExtent(stacked.map({ s -> s.values }))
       val others: MutableList<Double> = mutableListOf()
       for (s in series) {
-        if (s.kind != "stacked") {
+        if (s.kind != "stacked" && s.kind != "stackedArea") {
           for (v in s.values) {
             if (isFiniteValue(v)) {
               others.add(v)
@@ -1573,7 +1599,7 @@ fun deriveOver(series: List<Series>): Domain {
     val all: MutableList<Double> = mutableListOf()
     var hasBars = false
     for (s in series) {
-      if (s.kind == "bars" || s.kind == "area" || s.kind == "grouped" || s.kind == "waterfall") {
+      if (s.kind == "bars" || s.kind == "area" || s.kind == "grouped" || s.kind == "waterfall" || s.kind == "stackedArea") {
         hasBars = true
       }
       if (s.kind == "waterfall") {
@@ -1583,6 +1609,11 @@ fun deriveOver(series: List<Series>): Domain {
         continue
       }
       for (v in s.values) {
+        if (isFiniteValue(v)) {
+          all.add(v)
+        }
+      }
+      for (v in (s.values2 ?: listOf())) {
         if (isFiniteValue(v)) {
           all.add(v)
         }
@@ -1769,9 +1800,36 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
         }
       }
     }
+    val areaStack = if (spec.horizontal == true) listOf() else spec.series.filter({ s -> s.kind == "stackedArea" })
+    if (areaStack.length > 0) {
+      val tops = stackCumulative(areaStack.map({ s -> s.values }))
+      for (k in 0 until areaStack.length) {
+        val sA = areaStack[k]
+        val top = tops[k]
+        val below = if (k == 0) listOf() else tops[k - 1]
+        val upper: MutableList<PyreonChartPt> = mutableListOf()
+        val lower: MutableList<PyreonChartPt> = mutableListOf()
+        for (i in 0 until top.length) {
+          val xAt = plot.x + ((plot.w).toDouble() / (Math.max(1.0, countToDouble(top.length))).toDouble()) * (countToDouble(i) + 0.5)
+          upper.add(PyreonChartPt(x = xAt, y = scaleLinear(yDomain, plot.y + plot.h, plot.y, top[i])))
+          lower.add(PyreonChartPt(x = xAt, y = scaleLinear(yDomain, plot.y + plot.h, plot.y, if (k == 0) yDomain.min else below[i])))
+        }
+        if (upper.length > 1) {
+          val poly: MutableList<PyreonChartPt> = mutableListOf()
+          for (p in upper) {
+            poly.add(p)
+          }
+          for (i in lower.length - 1 downTo 0) {
+            poly.add(lower[i])
+          }
+          val gA = seriesGradient(sA.gradient, plot)
+          out.add(polygonCmd(poly, sA.color, if (gA.stops.length == 0) null else gA))
+        }
+      }
+    }
     for (sIdx in 0 until spec.series.length) {
       val s = spec.series[sIdx]
-      if (s.kind == "stacked" || s.kind == "grouped") {
+      if (s.kind == "stacked" || s.kind == "grouped" || s.kind == "stackedArea") {
         continue
       }
       val xs = (spec.xValues ?: listOf())
@@ -1912,36 +1970,67 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
               }
             }
           } else {
-            if (s.kind == "area") {
-              for (run in splitRuns(s.values, place)) {
-                val pts = reveal(shape(run))
-                if (pts.length > 1) {
-                  val poly: MutableList<PyreonChartPt> = mutableListOf()
-                  for (p in pts) {
-                    poly.add(p)
-                  }
-                  poly.add(PyreonChartPt(x = pts[pts.length - 1].x, y = plot.y + plot.h))
-                  poly.add(PyreonChartPt(x = pts[0].x, y = plot.y + plot.h))
+            if (s.kind == "band") {
+              val lows = (s.values2 ?: listOf())
+              val paired: MutableList<Double> = mutableListOf()
+              for (i in 0 until s.values.length) {
+                val lo = if (i < lows.length) lows[i] else (0.0).toDouble() / (0.0).toDouble()
+                paired.add(if (isFiniteValue(s.values[i]) && isFiniteValue(lo)) s.values[i] else (0.0).toDouble() / (0.0).toDouble())
+              }
+              for (run in splitRuns(paired, place)) {
+                var upper = reveal(shape(run))
+                if (upper.length < 2) {
+                  continue
+                }
+                val loRun: MutableList<Double> = mutableListOf()
+                for (i in 0 until paired.length) {
+                  loRun.add(if (isFiniteValue(paired[i])) (if (i < lows.length) lows[i] else (0.0).toDouble() / (0.0).toDouble()) else (0.0).toDouble() / (0.0).toDouble())
+                }
+                val lowerRuns = splitRuns(loRun, place)
+                var lower = if (lowerRuns.length > 0) reveal(shape(lowerRuns[0])) else listOf()
+                val poly: MutableList<PyreonChartPt> = mutableListOf()
+                for (p in upper) {
+                  poly.add(p)
+                }
+                for (i in lower.length - 1 downTo 0) {
+                  poly.add(lower[i])
+                }
+                if (poly.length > 2) {
                   out.add(polygonCmd(poly, s.color, sGrad))
                 }
               }
             } else {
-              val pts = place(s.values)
-              val radii = (s.radii ?: listOf())
-              for (i in 0 until pts.length) {
-                if (!isFiniteValue(s.values[i])) {
-                  continue
+              if (s.kind == "area") {
+                for (run in splitRuns(s.values, place)) {
+                  val pts = reveal(shape(run))
+                  if (pts.length > 1) {
+                    val poly: MutableList<PyreonChartPt> = mutableListOf()
+                    for (p in pts) {
+                      poly.add(p)
+                    }
+                    poly.add(PyreonChartPt(x = pts[pts.length - 1].x, y = plot.y + plot.h))
+                    poly.add(PyreonChartPt(x = pts[0].x, y = plot.y + plot.h))
+                    out.add(polygonCmd(poly, s.color, sGrad))
+                  }
                 }
-                val fullR = if (radii.length > 0) (radii[i] ?: s.radius) else s.radius
-                if (s.effect == true) {
-                  out.add(PyreonDrawCmd(kind = "circle", fill = withAlpha(s.color, 0.12), center = pts[i], radius = fullR * 2.6 * progress))
-                  out.add(PyreonDrawCmd(kind = "circle", fill = withAlpha(s.color, 0.25), center = pts[i], radius = fullR * 1.7 * progress))
+              } else {
+                val pts = place(s.values)
+                val radii = (s.radii ?: listOf())
+                for (i in 0 until pts.length) {
+                  if (!isFiniteValue(s.values[i])) {
+                    continue
+                  }
+                  val fullR = if (radii.length > 0) (radii[i] ?: s.radius) else s.radius
+                  if (s.effect == true) {
+                    out.add(PyreonDrawCmd(kind = "circle", fill = withAlpha(s.color, 0.12), center = pts[i], radius = fullR * 2.6 * progress))
+                    out.add(PyreonDrawCmd(kind = "circle", fill = withAlpha(s.color, 0.25), center = pts[i], radius = fullR * 1.7 * progress))
+                  }
+                  val lvlP = emphasisLevel(spec, i)
+                  if (lvlP > 0) {
+                    out.add(PyreonDrawCmd(kind = "circle", fill = withAlpha(t.label, 0.35), center = pts[i], radius = fullR * progress + (if (lvlP == 2) 4.0 else 3.0)))
+                  }
+                  out.add(PyreonDrawCmd(kind = "circle", fill = s.color, center = pts[i], radius = fullR * progress))
                 }
-                val lvlP = emphasisLevel(spec, i)
-                if (lvlP > 0) {
-                  out.add(PyreonDrawCmd(kind = "circle", fill = withAlpha(t.label, 0.35), center = pts[i], radius = fullR * progress + (if (lvlP == 2) 4.0 else 3.0)))
-                }
-                out.add(PyreonDrawCmd(kind = "circle", fill = s.color, center = pts[i], radius = fullR * progress))
               }
             }
           }

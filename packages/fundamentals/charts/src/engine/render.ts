@@ -2,7 +2,7 @@
 
 import { computeLayout, layoutBars, layoutBarsH, layoutSeriesPoints, layoutSeriesPointsAt } from './layout'
 import { DEFAULT_PALETTE } from './palette'
-import { layoutGroupedBars, layoutGroupedBarsH, layoutStackedBars, layoutStackedBarsH, layoutWaterfall, normalizeStack, stackedExtent, waterfallExtent } from './stack'
+import { layoutGroupedBars, layoutGroupedBarsH, layoutStackedBars, layoutStackedBarsH, layoutWaterfall, normalizeStack, stackCumulative, stackedExtent, waterfallExtent } from './stack'
 import type { Formatter } from './format'
 import type { LayoutConfig, PlotLayout } from './layout'
 import { extent, niceDomain, scaleLinear } from './scale'
@@ -16,7 +16,7 @@ import type { DrawCmd, Domain, MeasureText, Pt, Rect, Double } from './types'
 
 /** One drawable series. */
 export interface Series {
-  kind: 'bars' | 'line' | 'area' | 'points' | 'stacked' | 'grouped' | 'waterfall'
+  kind: 'bars' | 'line' | 'area' | 'points' | 'stacked' | 'grouped' | 'waterfall' | 'band' | 'stackedArea'
   values: Double[]
   color: string
   /** Stroke width for line/area outlines; ignored by bars and points. */
@@ -54,6 +54,17 @@ export interface Series {
    */
   errLow?: Double[] | undefined
   errHigh?: Double[] | undefined
+  /**
+   * The SECOND value channel, for marks that span two values per datum.
+   *
+   * `band` uses it as the lower bound (`values` is the upper), which is what
+   * a confidence interval, a min/max range or a forecast cone is. Kept apart
+   * from `errLow`/`errHigh` deliberately: those are whiskers DECORATING a
+   * value, drawn per datum and never filled, while this is the mark's own
+   * geometry — sharing one field would make "draw a whisker" and "draw a
+   * region" the same request.
+   */
+  values2?: Double[] | undefined
 }
 
 /**
@@ -414,11 +425,11 @@ export function geometrySpec(spec: ChartSpec): ChartSpec {
  */
 export function seriesOnRightAxis(s: Series, spec: ChartSpec): boolean {
   if (spec.horizontal === true) return false
-  if (s.kind === 'stacked' || s.kind === 'grouped') return false
+  if (s.kind === 'stacked' || s.kind === 'grouped' || s.kind === 'stackedArea') return false
   if (s.axis !== 'right') return false
   let hasLeft = false
   for (const q of spec.series) {
-    const qRight = q.axis === 'right' && q.kind !== 'stacked' && q.kind !== 'grouped'
+    const qRight = q.axis === 'right' && q.kind !== 'stacked' && q.kind !== 'grouped' && q.kind !== 'stackedArea'
     if (!qRight) hasLeft = true
   }
   return hasLeft
@@ -441,18 +452,18 @@ function rightAxisSeries(spec: ChartSpec): Series[] {
 function deriveOver(series: Series[]): Domain {
   // A STACK's domain is its tallest TOTAL, not its tallest value — taking the
   // max of the individual series would clip the stack at the top.
-  const stacked = series.filter((s) => s.kind === 'stacked')
+  const stacked = series.filter((s) => s.kind === 'stacked' || s.kind === 'stackedArea')
   if (stacked.length > 0) {
     const e = stackedExtent(stacked.map((s) => s.values))
     const others: Double[] = []
-    for (const s of series) if (s.kind !== 'stacked') for (const v of s.values) if (isFiniteValue(v)) others.push(v)
+    for (const s of series) if (s.kind !== 'stacked' && s.kind !== 'stackedArea') for (const v of s.values) if (isFiniteValue(v)) others.push(v)
     const max = others.length > 0 ? Math.max(e.max, extent(others).max) : e.max
     return niceDomain({ min: 0.0, max }, 5.0)
   }
   const all: Double[] = []
   let hasBars = false
   for (const s of series) {
-    if (s.kind === 'bars' || s.kind === 'area' || s.kind === 'grouped' || s.kind === 'waterfall') hasBars = true
+    if (s.kind === 'bars' || s.kind === 'area' || s.kind === 'grouped' || s.kind === 'waterfall' || s.kind === 'stackedArea') hasBars = true
     if (s.kind === 'waterfall') {
       // A waterfall's extent is its RUNNING TOTALS, not its steps — a chart
       // of +5, +5, +5 must reach 15.
@@ -464,6 +475,9 @@ function deriveOver(series: Series[]): Domain {
     // Gaps (NaN) carry no extent — and so do error bars beyond them: the
     // whisker must stay inside the axis.
     for (const v of s.values) if (isFiniteValue(v)) all.push(v)
+    // A band's lower bound is data too; without it a band dipping below every
+    // `values` entry is clipped at the axis floor.
+    for (const v of s.values2 ?? []) if (isFiniteValue(v)) all.push(v)
     for (const v of s.errLow ?? []) if (isFiniteValue(v)) all.push(v)
     for (const v of s.errHigh ?? []) if (isFiniteValue(v)) all.push(v)
   }
@@ -804,9 +818,36 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     }
   }
 
+  // Stacked areas are laid out as a SET, like stacked bars: each band is
+  // filled between the running total below it and its own top, so the
+  // outline of the topmost series is the total.
+  const areaStack = spec.horizontal === true ? [] : spec.series.filter((s) => s.kind === 'stackedArea')
+  if (areaStack.length > 0) {
+    const tops = stackCumulative(areaStack.map((s) => s.values))
+    for (let k = 0; k < areaStack.length; k++) {
+      const sA = areaStack[k]!
+      const top = tops[k]!
+      const below = k === 0 ? [] : tops[k - 1]!
+      const upper: Pt[] = []
+      const lower: Pt[] = []
+      for (let i = 0; i < top.length; i++) {
+        const xAt = plot.x + (plot.w / Math.max(1.0, countToDouble(top.length))) * (countToDouble(i) + 0.5)
+        upper.push({ x: xAt, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, top[i]!) })
+        lower.push({ x: xAt, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, k === 0 ? yDomain.min : below[i]!) })
+      }
+      if (upper.length > 1) {
+        const poly: Pt[] = []
+        for (const p of upper) poly.push(p)
+        for (let i = lower.length - 1; i >= 0; i--) poly.push(lower[i]!)
+        const gA = seriesGradient(sA.gradient, plot)
+        out.push(polygonCmd(poly, sA.color, gA.stops.length === 0 ? undefined : gA))
+      }
+    }
+  }
+
   for (let sIdx = 0; sIdx < spec.series.length; sIdx++) {
     const s = spec.series[sIdx]!
-    if (s.kind === 'stacked' || s.kind === 'grouped') continue
+    if (s.kind === 'stacked' || s.kind === 'grouped' || s.kind === 'stackedArea') continue
     // One helper rather than three call-site conditionals: line, area and
     // points must agree about placement, or an area fill drifts away from the
     // line it is meant to sit under.
@@ -981,6 +1022,34 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         if (pts.length > 1) {
           out.push({ kind: 'polyline', points: pts, stroke: s.color, width: s.width, dash: s.dash })
         }
+      }
+    } else if (s.kind === 'band') {
+      // A region between two value channels — a confidence interval, a
+      // min/max range, a forecast cone. The polygon runs along the UPPER
+      // bound and back along the LOWER one, so the two edges are the data
+      // rather than the plot floor an `area` closes to.
+      //
+      // Gap handling is deliberately joint: a datum is part of the band only
+      // when BOTH bounds are finite, because half a bound is not a region.
+      const lows = s.values2 ?? []
+      const paired: Double[] = []
+      for (let i = 0; i < s.values.length; i++) {
+        const lo = i < lows.length ? lows[i]! : 0.0 / 0.0
+        paired.push(isFiniteValue(s.values[i]!) && isFiniteValue(lo) ? s.values[i]! : 0.0 / 0.0)
+      }
+      for (const run of splitRuns(paired, place)) {
+        const upper = reveal(shape(run))
+        if (upper.length < 2) continue
+        // The lower edge is placed through the SAME pipeline (curve, reveal)
+        // so a smoothed band's two edges cannot drift apart.
+        const loRun: Double[] = []
+        for (let i = 0; i < paired.length; i++) loRun.push(isFiniteValue(paired[i]!) ? (i < lows.length ? lows[i]! : 0.0 / 0.0) : 0.0 / 0.0)
+        const lowerRuns = splitRuns(loRun, place)
+        const lower = lowerRuns.length > 0 ? reveal(shape(lowerRuns[0]!)) : []
+        const poly: Pt[] = []
+        for (const p of upper) poly.push(p)
+        for (let i = lower.length - 1; i >= 0; i--) poly.push(lower[i]!)
+        if (poly.length > 2) out.push(polygonCmd(poly, s.color, sGrad))
       }
     } else if (s.kind === 'area') {
       // Gap-splitting (a non-finite value breaks the fill into runs, same

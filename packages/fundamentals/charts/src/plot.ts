@@ -31,18 +31,7 @@ export { plotHitBars, plotHitBarsIn, plotHitIndex, plotHitIndexIn } from './engi
 export type { GaugeChartProps, PieChartProps } from './engine/PieChart'
 
 // Marks
-export {
-  area,
-  bars,
-  bubble,
-  groupedBars,
-  line,
-  normalizeCorners,
-  points,
-  resolveCategories,
-  resolveMarks,
-  stackedBars,
-} from './engine/marks'
+export { area, band, bars, bubble, groupedBars, histogram, line, normalizeCorners, points, resolveCategories, resolveMarks, stackedArea, stackedBars, waterfall } from './engine/marks'
 export type { Accessor, BubbleOptions, ErrorOptions, HistogramOptions, HistogramProps, Mark, MarkOptions } from './engine/marks'
 export { binValues } from './engine/bin'
 export type { Bin } from './engine/bin'

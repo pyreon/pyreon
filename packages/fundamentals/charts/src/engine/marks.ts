@@ -132,6 +132,8 @@ export interface Mark<T> {
   options: MarkOptions
   /** Per-datum radius accessor — the bubble channel; `points` only. */
   r?: Accessor<T> | undefined
+  /** The SECOND value accessor — a `band`'s lower bound. */
+  y2?: Accessor<T> | undefined
   /** Rendered-radius bounds for the r channel. */
   minRadius?: Double | undefined
   maxRadius?: Double | undefined
@@ -199,6 +201,35 @@ export function line<T>(y: Accessor<T>, options: ErrorOptions<T> = {}): Mark<T> 
 /** A filled band between the line and the baseline. */
 export function area<T>(y: Accessor<T>, options: ErrorOptions<T> = {}): Mark<T> {
   return mark('area', y, options)
+}
+
+/**
+ * A filled REGION between two value channels — a confidence interval, a
+ * min/max range, a forecast cone.
+ *
+ * Distinct from `area`, which closes to the axis floor: a band's two edges
+ * are both data. Distinct from the `errorLow`/`errorHigh` whiskers too —
+ * those decorate a value per datum, this IS the mark. Pair it with a `line`
+ * over the same rows to get the usual "estimate with its interval" chart.
+ *
+ * A datum joins the band only when BOTH bounds are finite; half a bound is
+ * not a region, so it reads as a gap.
+ */
+export function band<T>(low: Accessor<T>, high: Accessor<T>, options: MarkOptions = {}): Mark<T> {
+  return { kind: 'band', y: high, y2: low, options, r: undefined, transform: undefined, errorLow: undefined, errorHigh: undefined }
+}
+
+/**
+ * Areas stacked on one another — the shares-over-time chart.
+ *
+ * `stackedBars`' continuous sibling: each series is filled between the
+ * running total below it and its own top, so the outline of the topmost
+ * series is the total. Only non-negative values stack, on the same reasoning
+ * as the bars — a mixed-sign stack has segments that overlap and a top that
+ * is not the total.
+ */
+export function stackedArea<T>(y: Accessor<T>, options: MarkOptions = {}): Mark<T> {
+  return mark('stackedArea', y, options)
 }
 
 /** A dot per datum. */
@@ -281,9 +312,21 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly s
         errHigh.push(Number.isFinite(hi) ? hi : Number.NaN)
       }
     }
+    // The band's lower bound resolves exactly like `values`, so a non-finite
+    // bound is a gap on the same terms.
+    let values2: Double[] | undefined = undefined
+    const y2Acc = m.y2
+    if (y2Acc !== undefined) {
+      values2 = []
+      for (let i = 0; i < data.length; i++) {
+        const v2 = y2Acc(data[i]!, i)
+        values2.push(Number.isFinite(v2) ? v2 : Number.NaN)
+      }
+    }
     return {
       kind: m.kind,
       values,
+      values2,
       color: m.options.color ?? paletteAt(palette, seriesIndex),
       width: m.options.width ?? 2,
       radius: m.options.radius ?? 3,

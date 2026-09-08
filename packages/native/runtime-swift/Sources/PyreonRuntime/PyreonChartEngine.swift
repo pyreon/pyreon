@@ -289,7 +289,8 @@ public struct Series {
   public var negativeColor: String? = nil
   public var errLow: [Double]? = nil
   public var errHigh: [Double]? = nil
-  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, showValues: Bool? = nil, radii: [Double]? = nil, axis: String? = nil, effect: Bool? = nil, symbol: String? = nil, symbolRepeat: Bool? = nil, corners: [Double]? = nil, gradient: SeriesGradient? = nil, dash: [Double]? = nil, negativeColor: String? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil) {
+  public var values2: [Double]? = nil
+  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, showValues: Bool? = nil, radii: [Double]? = nil, axis: String? = nil, effect: Bool? = nil, symbol: String? = nil, symbolRepeat: Bool? = nil, corners: [Double]? = nil, gradient: SeriesGradient? = nil, dash: [Double]? = nil, negativeColor: String? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil, values2: [Double]? = nil) {
     self.kind = kind
     self.values = values
     self.color = color
@@ -309,6 +310,7 @@ public struct Series {
     self.negativeColor = negativeColor
     self.errLow = errLow
     self.errHigh = errHigh
+    self.values2 = values2
   }
 }
 
@@ -2928,6 +2930,32 @@ public func layoutGroupedBarsH(_ seriesValues: [[Double]], _ plot: PyreonChartRe
     return out
   }
 
+public func stackCumulative(_ seriesValues: [[Double]]) -> [[Double]] {
+    var out: [[Double]] = []
+    var n = 0
+    for s in seriesValues {
+      if s.count > n {
+        n = s.count
+      }
+    }
+    var acc: [Double] = []
+    for i in 0..<n {
+      acc.append(0.0)
+    }
+    for s in seriesValues {
+      var row: [Double] = []
+      for i in 0..<n {
+        let v = i < s.count ? s[i] : 0.0
+        if v > 0.0 {
+          acc[i] = acc[i] + v
+        }
+        row.append(acc[i])
+      }
+      out.append(row)
+    }
+    return out
+  }
+
 public func stackHasNegatives(_ seriesValues: [[Double]]) -> Bool {
     for s in seriesValues {
       for v in s {
@@ -3190,7 +3218,7 @@ public func seriesOnRightAxis(_ s: Series, _ spec: ChartSpec) -> Bool {
     if spec.horizontal == true {
       return false
     }
-    if s.kind == "stacked" || s.kind == "grouped" {
+    if s.kind == "stacked" || s.kind == "grouped" || s.kind == "stackedArea" {
       return false
     }
     if s.axis != "right" {
@@ -3198,7 +3226,7 @@ public func seriesOnRightAxis(_ s: Series, _ spec: ChartSpec) -> Bool {
     }
     var hasLeft = false
     for q in spec.series {
-      let qRight = q.axis == "right" && q.kind != "stacked" && q.kind != "grouped"
+      let qRight = q.axis == "right" && q.kind != "stacked" && q.kind != "grouped" && q.kind != "stackedArea"
       if !qRight {
         hasLeft = true
       }
@@ -3220,12 +3248,12 @@ public func leftAxisSeries(_ spec: ChartSpec) -> [Series] { spec.series.filter({
 public func rightAxisSeries(_ spec: ChartSpec) -> [Series] { spec.series.filter({ s in seriesOnRightAxis(s, spec) }) }
 
 public func deriveOver(_ series: [Series]) -> Domain {
-    let stacked = series.filter({ s in s.kind == "stacked" })
+    let stacked = series.filter({ s in s.kind == "stacked" || s.kind == "stackedArea" })
     if stacked.count > 0 {
       let e = stackedExtent(stacked.map({ s in s.values }))
       var others: [Double] = []
       for s in series {
-        if s.kind != "stacked" {
+        if s.kind != "stacked" && s.kind != "stackedArea" {
           for v in s.values {
             if isFiniteValue(v) {
               others.append(v)
@@ -3239,7 +3267,7 @@ public func deriveOver(_ series: [Series]) -> Domain {
     var all: [Double] = []
     var hasBars = false
     for s in series {
-      if s.kind == "bars" || s.kind == "area" || s.kind == "grouped" || s.kind == "waterfall" {
+      if s.kind == "bars" || s.kind == "area" || s.kind == "grouped" || s.kind == "waterfall" || s.kind == "stackedArea" {
         hasBars = true
       }
       if s.kind == "waterfall" {
@@ -3249,6 +3277,11 @@ public func deriveOver(_ series: [Series]) -> Domain {
         continue
       }
       for v in s.values {
+        if isFiniteValue(v) {
+          all.append(v)
+        }
+      }
+      for v in (s.values2 ?? []) {
         if isFiniteValue(v) {
           all.append(v)
         }
@@ -3435,9 +3468,36 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
         }
       }
     }
+    let areaStack = spec.horizontal == true ? [] : spec.series.filter({ s in s.kind == "stackedArea" })
+    if areaStack.count > 0 {
+      let tops = stackCumulative(areaStack.map({ s in s.values }))
+      for k in 0..<areaStack.count {
+        let sA = areaStack[k]
+        let top = tops[k]
+        let below = k == 0 ? [] : tops[k - 1]
+        var upper: [PyreonChartPt] = []
+        var lower: [PyreonChartPt] = []
+        for i in 0..<top.count {
+          let xAt = plot.x + (Double(plot.w) / max(1.0, countToDouble(top.count))) * (countToDouble(i) + 0.5)
+          upper.append(PyreonChartPt(x: xAt, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, top[i])))
+          lower.append(PyreonChartPt(x: xAt, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, k == 0 ? yDomain.min : below[i])))
+        }
+        if upper.count > 1 {
+          var poly: [PyreonChartPt] = []
+          for p in upper {
+            poly.append(p)
+          }
+          for i in stride(from: lower.count - 1, through: 0, by: -1) {
+            poly.append(lower[i])
+          }
+          let gA = seriesGradient(sA.gradient, plot)
+          out.append(polygonCmd(poly, sA.color, gA.stops.count == 0 ? nil : gA))
+        }
+      }
+    }
     for sIdx in 0..<spec.series.count {
       let s = spec.series[sIdx]
-      if s.kind == "stacked" || s.kind == "grouped" {
+      if s.kind == "stacked" || s.kind == "grouped" || s.kind == "stackedArea" {
         continue
       }
       let xs = (spec.xValues ?? [])
@@ -3578,36 +3638,67 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
               }
             }
           } else {
-            if s.kind == "area" {
-              for run in splitRuns(s.values, place) {
-                let pts = reveal(shape(run))
-                if pts.count > 1 {
-                  var poly: [PyreonChartPt] = []
-                  for p in pts {
-                    poly.append(p)
-                  }
-                  poly.append(PyreonChartPt(x: pts[pts.count - 1].x, y: plot.y + plot.h))
-                  poly.append(PyreonChartPt(x: pts[0].x, y: plot.y + plot.h))
+            if s.kind == "band" {
+              let lows = (s.values2 ?? [])
+              var paired: [Double] = []
+              for i in 0..<s.values.count {
+                let lo = i < lows.count ? lows[i] : 0.0 / 0.0
+                paired.append(isFiniteValue(s.values[i]) && isFiniteValue(lo) ? s.values[i] : 0.0 / 0.0)
+              }
+              for run in splitRuns(paired, place) {
+                var upper = reveal(shape(run))
+                if upper.count < 2 {
+                  continue
+                }
+                var loRun: [Double] = []
+                for i in 0..<paired.count {
+                  loRun.append(isFiniteValue(paired[i]) ? (i < lows.count ? lows[i] : 0.0 / 0.0) : 0.0 / 0.0)
+                }
+                let lowerRuns = splitRuns(loRun, place)
+                var lower = lowerRuns.count > 0 ? reveal(shape(lowerRuns[0])) : []
+                var poly: [PyreonChartPt] = []
+                for p in upper {
+                  poly.append(p)
+                }
+                for i in stride(from: lower.count - 1, through: 0, by: -1) {
+                  poly.append(lower[i])
+                }
+                if poly.count > 2 {
                   out.append(polygonCmd(poly, s.color, sGrad))
                 }
               }
             } else {
-              let pts = place(s.values)
-              let radii = (s.radii ?? [])
-              for i in 0..<pts.count {
-                if !isFiniteValue(s.values[i]) {
-                  continue
+              if s.kind == "area" {
+                for run in splitRuns(s.values, place) {
+                  let pts = reveal(shape(run))
+                  if pts.count > 1 {
+                    var poly: [PyreonChartPt] = []
+                    for p in pts {
+                      poly.append(p)
+                    }
+                    poly.append(PyreonChartPt(x: pts[pts.count - 1].x, y: plot.y + plot.h))
+                    poly.append(PyreonChartPt(x: pts[0].x, y: plot.y + plot.h))
+                    out.append(polygonCmd(poly, s.color, sGrad))
+                  }
                 }
-                let fullR = radii.count > 0 ? (radii[i] ?? s.radius) : s.radius
-                if s.effect == true {
-                  out.append(PyreonDrawCmd(kind: "circle", fill: withAlpha(s.color, 0.12), center: pts[i], radius: fullR * 2.6 * progress))
-                  out.append(PyreonDrawCmd(kind: "circle", fill: withAlpha(s.color, 0.25), center: pts[i], radius: fullR * 1.7 * progress))
+              } else {
+                let pts = place(s.values)
+                let radii = (s.radii ?? [])
+                for i in 0..<pts.count {
+                  if !isFiniteValue(s.values[i]) {
+                    continue
+                  }
+                  let fullR = radii.count > 0 ? (radii[i] ?? s.radius) : s.radius
+                  if s.effect == true {
+                    out.append(PyreonDrawCmd(kind: "circle", fill: withAlpha(s.color, 0.12), center: pts[i], radius: fullR * 2.6 * progress))
+                    out.append(PyreonDrawCmd(kind: "circle", fill: withAlpha(s.color, 0.25), center: pts[i], radius: fullR * 1.7 * progress))
+                  }
+                  let lvlP = emphasisLevel(spec, i)
+                  if lvlP > 0 {
+                    out.append(PyreonDrawCmd(kind: "circle", fill: withAlpha(t.label, 0.35), center: pts[i], radius: fullR * progress + (lvlP == 2 ? 4.0 : 3.0)))
+                  }
+                  out.append(PyreonDrawCmd(kind: "circle", fill: s.color, center: pts[i], radius: fullR * progress))
                 }
-                let lvlP = emphasisLevel(spec, i)
-                if lvlP > 0 {
-                  out.append(PyreonDrawCmd(kind: "circle", fill: withAlpha(t.label, 0.35), center: pts[i], radius: fullR * progress + (lvlP == 2 ? 4.0 : 3.0)))
-                }
-                out.append(PyreonDrawCmd(kind: "circle", fill: s.color, center: pts[i], radius: fullR * progress))
               }
             }
           }
