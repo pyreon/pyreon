@@ -20,7 +20,7 @@ import type { VNode } from '@pyreon/core'
 import { batch, effect, isClient, signal } from '@pyreon/reactivity'
 import { chartTable, describeChart } from './a11y'
 import type { A11yInput } from './a11y'
-import { canvasMeasure, paint, prepareCanvas, ssrCanvasBox } from './canvas-web'
+import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
 import { cmdsEqual, sameCmdShape, tweenCmds } from './cmd-tween'
 import { legendPlan, renderLegend } from './legend'
 import type { LegendEntry } from './legend'
@@ -552,10 +552,6 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
 
   const canvasNode = h('canvas', {
     class: props.class,
-    // Reserve the box server-side — see `ssrCanvasBox`. `props.height ??
-    // spec.defaultHeight` is the same expression the layout uses, so the
-    // height is the real one; an auto width is deliberately not invented.
-    ...ssrCanvasBox(props.width, props.height ?? spec.defaultHeight),
     // `img` + a label is what makes the canvas announce as a single described
     // thing; the table it is described BY carries the numbers.
     role: 'img',

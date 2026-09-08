@@ -12,7 +12,7 @@ import { lttb, minMaxBuckets } from './decimate'
 import { resolveChartTheme, tooltipStyle, useChartTheme } from './theme'
 import type { VNode } from '@pyreon/core'
 import { batch, effect, isClient, signal, untrack } from '@pyreon/reactivity'
-import { canvasMeasure, paint, prepareCanvas, ssrCanvasBox } from './canvas-web'
+import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
 import { renderLegend } from './legend'
 import type { LegendPager } from './legend'
 import { renderTitle } from './title'
@@ -1410,12 +1410,6 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
 
   const canvasNode = h('canvas', {
     class: props.class,
-    // Reserve the box server-side so the chart does not lay out at the canvas
-    // default 300x150 and then jump on hydrate. `props.height ?? 200` is the
-    // same expression `layout()` uses, so this is the real height, not a
-    // guess; see `ssrCanvasBox` for why an auto width is deliberately omitted
-    // and why these must stay plain numbers rather than accessors.
-    ...ssrCanvasBox(props.width, props.height ?? 200),
     // `img` + a label is what makes the canvas announce as a single described
     // thing rather than being skipped over entirely.
     role: 'img',

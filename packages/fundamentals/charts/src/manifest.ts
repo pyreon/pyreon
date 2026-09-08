@@ -188,7 +188,6 @@ const sales = signal<Row[]>([{ month: 'Jan', revenue: 120, target: 100 }])
         'Expecting `crosshair` on a `horizontal` chart — the pointer sweeps rows there and a vertical rule would mislead, so it is a documented no-op; the tooltip still works',
         'Painting a 100k-point series without `maxPoints` — every point becomes a command on every repaint; `maxPoints={1000}` thins the visible slice with LTTB (marks stay aligned, hits report the GLOBAL row index) and the picture is the same to the eye',
         'Reading rounded bars as a style bug — `theme.radius` (3) rounds the corners away from the baseline by default; `theme={{ radius: 0 }}` is square, and a mark\'s own `borderRadius` always wins',
-        'Expecting an SSR\'d AUTO-WIDTH chart to reserve its full box — the server emits the real `height` (statically known, so no vertical shift), but the auto width is the PARENT\'s measured `clientWidth`, which no server can know, so the canvas reserves the default 300px wide until hydration measures. Pass an explicit `width` when a horizontal shift matters; both dimensions are then emitted exactly',
       ],
       seeAlso: ['chartToSvg', 'PieChart'],
     },

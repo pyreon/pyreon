@@ -175,45 +175,6 @@ export function paint(
 }
 
 /**
- * The intrinsic-size props an SSR'd `<canvas>` needs so it reserves its box
- * before the client ever paints.
- *
- * An unsized `<canvas>` lays out at the HTML default 300x150, so a
- * server-rendered chart occupied the wrong box until hydration ran
- * `prepareCanvas` — a layout shift on every chart on the page, and one that
- * moved everything below it. Neither host emitted a dimension: an explicit
- * `width={640} height={320}` was dropped exactly like an omitted one.
- *
- * Nothing here is a GUESS. The height is always statically known on the server
- * (`props.height ?? <host default>` — no measurement is involved), and an
- * explicit width is the same number the client uses. Both are the values
- * `prepareCanvas` will compute; they are simply emitted early.
- *
- * WIDTH IS OMITTED WHEN THE CHART IS AUTO-WIDTH, deliberately. That width is
- * the PARENT's measured `clientWidth` (see `drawWidth`), which the server
- * cannot know, and the canvas default of 300 is already the same fallback
- * `drawWidth` uses when the parent measures 0. A CSS `width:100%` would only
- * approximate it — `clientWidth` includes the parent's padding — and a string
- * `style` is applied as `cssText`, which REPLACES the whole declaration and
- * would wipe the `width`/`height`/`background` longhands `prepareCanvas`
- * writes. So an auto-width chart reserves its correct HEIGHT (the shift that
- * moves the rest of the page) and keeps a horizontal-only residual.
- *
- * These are plain numbers, NOT accessors, and must stay that way: `width` and
- * `height` on a canvas are the BACKING STORE, which `prepareCanvas` sets
- * DPR-scaled on every draw. A reactive binding here would re-fire with the
- * un-scaled CSS value and leave the chart soft until the next paint. A later
- * change to a signal-driven `height` is picked up by `draw()`, which re-runs
- * `prepareCanvas` — this value only has to be right for the first paint.
- */
-export function ssrCanvasBox(
-  width: number | undefined,
-  height: number,
-): { height: number; width?: number } {
-  return width === undefined ? { height } : { height, width }
-}
-
-/**
  * Size a canvas for the device pixel ratio and return its context.
  *
  * Without the DPR scale a chart is visibly soft on every retina display — the
