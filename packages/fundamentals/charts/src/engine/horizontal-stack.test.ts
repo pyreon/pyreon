@@ -24,8 +24,8 @@ const measure = (t: string, s: number): number => t.length * s * 0.55
 const spec = (kind: 'stacked' | 'grouped'): ChartSpec => ({
   ...SIZE,
   series: [
-    { kind, label: 'a', values: [3, 6], color: '#4f8' },
-    { kind, label: 'b', values: [5, 2], color: '#88f' },
+    { kind, label: 'a', values: [3, 6], color: '#4f8', width: 2, radius: 3 },
+    { kind, label: 'b', values: [5, 2], color: '#88f', width: 2, radius: 3 },
   ],
   categories: ['Jan', 'Feb'],
   theme: { axis: '#333', grid: '#eee', label: '#666', bg: '#fff', series: ['#4f8', '#88f'], fontSize: 11 } as never,
