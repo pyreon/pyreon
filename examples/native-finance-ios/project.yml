@@ -72,14 +72,14 @@ targets:
       - path: ios
         type: group
       - path: generated
+      # Kept in step with `pyreon-native wire` by check-native-srcdirs-drift:
+      # the set here must equal what the shared example's DECLARED dependencies
+      # resolve to, which is what a scaffolded consumer app gets.
       - path: ../../packages/fundamentals/storage/native/swift
       - path: ../../packages/fundamentals/hooks/native/swift
       - path: ../../packages/fundamentals/form/native/swift
       - path: ../../packages/fundamentals/store/native/swift
-      - path: ../../packages/fundamentals/state-tree/native/swift
-      - path: ../../packages/fundamentals/machine/native/swift
-      - path: ../../packages/fundamentals/i18n/native/swift
-      - path: ../../packages/fundamentals/permissions/native/swift
+      - path: ../../packages/core/sized-map/native/swift
       - path: ../../packages/fundamentals/query/native/swift
         type: group
         # `optional: true` — generated/ may not exist before the first
