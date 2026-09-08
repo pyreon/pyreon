@@ -127,6 +127,34 @@ import type {
 // Identical module-state pattern to `_activePropsParamName` below —
 // the emitter avoids ctx-threading at 22+ call sites.
 let _enumNames: Set<string> = new Set()
+
+/**
+ * The enum name an expression's INFERRED type names, or undefined.
+ * Only a bare (non-generic) `typeRef` that is a known emitted enum
+ * qualifies — this is the "is a string literal on the other side of this
+ * comparison actually an enum case?" question.
+ */
+function enumTypeOfExpr(x: ExprIR): string | undefined {
+  const named = (t: TypeIR): string | undefined =>
+    t.kind === 'typeRef' && t.args.length === 0 && _enumNames.has(t.name) ? t.name : undefined
+  const direct = named(inferType(x, _activeInferCtx))
+  if (direct !== undefined) return direct
+  // The inference ctx's struct table is built PER COMPONENT, so a file of
+  // pure top-level helpers — which is exactly what a generated engine is —
+  // emits against an empty one, and a member read on a declared struct
+  // types as `unknown` there. Resolve that shape from the file-level struct
+  // table instead, which is populated for every file.
+  if (x.kind === 'member') {
+    const baseT = inferType(x.object, _activeInferCtx)
+    if (baseT.kind === 'typeRef') {
+      const f = _structDefs
+        .find((s) => s.name === baseT.name)
+        ?.fields.find((fl) => fl.name === x.property)
+      if (f !== undefined) return named(f.type)
+    }
+  }
+  return undefined
+}
 /**
  * Component names emitted in this transform. Used by the generic
  * JSX emit to distinguish user-defined components (`<TodoRow>`,
@@ -6706,21 +6734,38 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // the existing `.set()` enum-aware emit (search `_activeEnumType`
       // in this file for the structural reference).
       //
-      // Detection: LHS is `call(callee=identifier, args=[])` where the
-      // identifier is in `_signalEnumTypes`. That's the canonical
-      // signal-read shape for an enum-typed signal (`filter()`).
+      // Detection, in two tiers. Tier 1 is the signal-read shape
+      // (`call(callee=identifier, args=[])` whose identifier is in
+      // `_signalEnumTypes`) — the canonical `filter()` read. Tier 2 asks
+      // the type inferencer, which covers EVERY OTHER enum-typed operand:
+      // a function PARAMETER (`p: Position`), a struct FIELD
+      // (`node.sourcePosition`), a local, an element of an enum-typed
+      // array. Tier 1 alone left those emitting `p == "top"`, which is a
+      // hard swiftc error ("cannot convert value of type 'Position' to
+      // expected argument type 'String'") — see the anti-patterns entry
+      // "a lowering that ships COMPLETE but that no import path can
+      // reach": the only in-tree consumer of a union-alias enum declared
+      // one and never compared against it, so this had never been run.
+      //
+      // Either SIDE may be the enum (`p === 'top'` and `'top' === p` are
+      // both idiomatic), so the context is taken from whichever operand
+      // resolves. Setting it for both emits is safe: the enum-typed
+      // operand is by construction not a string literal, so the rewrite
+      // can only ever land on the literal side.
       const left = e.left
       let prevEnumType: string | undefined
+      let enumType: string | undefined
       if (
         left.kind === 'call' &&
         left.callee.kind === 'identifier' &&
         left.args.length === 0
       ) {
-        const enumType = _signalEnumTypes.get(left.callee.name)
-        if (enumType !== undefined) {
-          prevEnumType = _activeEnumType
-          _activeEnumType = enumType
-        }
+        enumType = _signalEnumTypes.get(left.callee.name)
+      }
+      enumType ??= enumTypeOfExpr(e.left) ?? enumTypeOfExpr(e.right)
+      if (enumType !== undefined) {
+        prevEnumType = _activeEnumType
+        _activeEnumType = enumType
       }
       const leftStr = emitSwiftExpr(e.left, indent)
       const rightStr = emitSwiftExpr(e.right, indent)

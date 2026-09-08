@@ -114,6 +114,32 @@ import type {
 // `_enumNames` / `_signalEnumTypes` / `_activeEnumType` comment for
 // the structural rationale (avoiding ctx-threading at all call sites).
 let _enumNames: Set<string> = new Set()
+
+/**
+ * The enum name an expression's INFERRED type names, or undefined.
+ * Mirror of the Swift helper — see `enumTypeOfExpr` in emit-swift.ts.
+ */
+function enumTypeOfExpr(x: ExprIR): string | undefined {
+  const named = (t: TypeIR): string | undefined =>
+    t.kind === 'typeRef' && t.args.length === 0 && _enumNames.has(t.name) ? t.name : undefined
+  const direct = named(inferType(x, _kotlinExprInferCtx))
+  if (direct !== undefined) return direct
+  // The inference ctx's struct table is built PER COMPONENT, so a file of
+  // pure top-level helpers — which is exactly what a generated engine is —
+  // emits against an empty one, and a member read on a declared struct
+  // types as `unknown` there. Resolve that shape from the file-level struct
+  // table instead, which is populated for every file.
+  if (x.kind === 'member') {
+    const baseT = inferType(x.object, _kotlinExprInferCtx)
+    if (baseT.kind === 'typeRef') {
+      const f = _kotlinStructDefs
+        .find((s) => s.name === baseT.name)
+        ?.fields.find((fl) => fl.name === x.property)
+      if (f !== undefined) return named(f.type)
+    }
+  }
+  return undefined
+}
 /**
  * Struct name → sorted-field-names key. Mirror of emit-swift.ts's
  * `_structFieldsToName`. See that file for the structural rationale.
@@ -5477,21 +5503,27 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // because Kotlin's `==` is type-checked (unlike JS's `===`,
       // which the source uses freely across the enum/string boundary).
       //
-      // Detection: LHS is `call(callee=identifier, args=[])` where the
-      // identifier is in `_signalEnumTypes`. That's the canonical
-      // signal-read shape for an enum-typed signal (`filter()`).
+      // Detection, in two tiers — mirror of the Swift branch (read its
+      // comment for the full rationale). Tier 1 is the signal-read shape;
+      // tier 2 asks the type inferencer, which covers a function
+      // PARAMETER, a struct FIELD, a local, or an enum-typed array
+      // element. Tier 1 alone left those emitting `p == "top"`, which
+      // kotlinc rejects with "operator '==' cannot be applied to
+      // 'Position' and 'String'". Either side may be the enum.
       const left = e.left
       let prevEnumType: string | undefined
+      let enumType: string | undefined
       if (
         left.kind === 'call' &&
         left.callee.kind === 'identifier' &&
         left.args.length === 0
       ) {
-        const enumType = _signalEnumTypes.get(left.callee.name)
-        if (enumType !== undefined) {
-          prevEnumType = _activeEnumType
-          _activeEnumType = enumType
-        }
+        enumType = _signalEnumTypes.get(left.callee.name)
+      }
+      enumType ??= enumTypeOfExpr(e.left) ?? enumTypeOfExpr(e.right)
+      if (enumType !== undefined) {
+        prevEnumType = _activeEnumType
+        _activeEnumType = enumType
       }
       const leftStr = emitKotlinExpr(e.left, indent)
       const rightStr = emitKotlinExpr(e.right, indent)
