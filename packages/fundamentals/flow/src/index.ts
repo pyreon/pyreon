@@ -99,6 +99,8 @@ export type {
   SnapSession,
   Viewport,
   XYPosition,
+  ConnectionLineProps,
+  ModifierKey,
 } from './types'
 // Types
 export { MarkerType, Position } from './types'
