@@ -123,3 +123,190 @@ export function structuralPropDynamicWarning(
     `which lowers on both targets.`
   )
 }
+
+/**
+ * A prop whose value is BAKED into a native initializer argument (or a
+ * compile-time modifier) at emit time, given a non-static value.
+ *
+ * Distinct from `structuralPropDynamicWarning` above: those props pick between
+ * two different native CONSTRUCTS, so no single expression can carry both
+ * branches. These ones would be perfectly expressible as a runtime value — the
+ * emitter simply reads them through the static-literal reader and has nowhere
+ * to put a dynamic one. Either way the author wrote a value and got the
+ * default, which is why both warn.
+ *
+ * The shipped instance: `<Video controls={show()}>`, `<Audio muted={sig()}>`,
+ * `<Text truncate={sig()}>` and their siblings all emitted BYTE-IDENTICALLY to
+ * omitting the prop. `controls={false}` (static) was correct, so the shape that
+ * failed was exactly the one a signal-driven UI is written in — and it failed
+ * with zero warnings on both targets.
+ */
+export function bakedPropDynamicWarning(
+  tag: string,
+  prop: string,
+  isStatic: boolean,
+  present: boolean,
+): string | undefined {
+  if (!present || isStatic) return undefined
+  return (
+    `<${tag} ${prop}> was given a non-static value, which does NOT lower on iOS or Android — the ` +
+    `prop is dropped and the default applies. It is baked into the native emit at compile time, so ` +
+    `it cannot follow a signal. Use a static value, or branch the element itself ` +
+    `(\`{on() ? <${tag} … ${prop} /> : <${tag} … />}\`), which lowers on both targets.`
+  )
+}
+
+/**
+ * `a || b` / `a && b` where an operand is provably NOT a Bool.
+ *
+ * JS `||` and `&&` are VALUE-producing over truthiness — `name() || 'anon'`
+ * evaluates to a string. Swift and Kotlin `||`/`&&` are Bool-only operators, so
+ * the verbatim emit is `cannot convert value of type 'String' to expected
+ * argument type 'Bool'` (swiftc) / `condition type mismatch` (kotlinc). It was
+ * emitted verbatim with no warning, which makes the commonest JS defaulting
+ * idiom a silent mis-emit.
+ *
+ * NOT auto-desugared, deliberately. `a || b` → `a == <falsy> ? b : a` needs (i)
+ * a per-type notion of falsy (`''`, `0`, `NaN`, `null`), and (ii) a guarantee
+ * that `a` is safely re-evaluable — it is often a call. The repo already made
+ * this call for the `||=` sibling, whose corpus entry records that "a naive
+ * parse-time desugar … is UNSOUND". A warning that names the operand type and
+ * the two working spellings is the honest lowering until a type-aware one
+ * exists.
+ *
+ * Gated on a PROVABLY non-Bool operand: an operand the inferer cannot resolve
+ * stays silent, because a genuinely-boolean expression whose type is merely
+ * invisible here is the common correct case.
+ */
+export function nonBooleanLogicalWarning(
+  op: '&&' | '||',
+  side: 'left' | 'right',
+  typeName: string,
+): string {
+  return (
+    `\`${op}\` with a non-boolean ${side} operand (\`${typeName}\`) does NOT lower to iOS or Android — ` +
+    `Swift and Kotlin \`${op}\` are Bool-only operators, while JS \`${op}\` produces a VALUE from ` +
+    `truthiness. The emit is passed through verbatim and will not compile. Use \`??\` for a ` +
+    `null/undefined default, or make the test explicit (\`name() !== '' ? name() : 'anon'\`).`
+  )
+}
+
+/**
+ * JS `Array.prototype` / `String.prototype` methods PMTC has NO lowering for.
+ *
+ * An unmapped member call used to fall out of the emitters' arm-less
+ * `switch (prop)` straight into the GENERIC member emit, which re-emits the
+ * callee verbatim: `xs.toSorted()` became Swift `xs.toSorted()` (`value of type
+ * '[Int]' has no member 'toSorted'`) and Kotlin `xs.toSorted()` (`unresolved
+ * reference`). No warning on either target, in EITHER expression or statement
+ * position — the original report said statement position warned; it does not,
+ * because both positions share one expression emitter.
+ *
+ * This is the "deliberately not mapped is only a decision if something CATCHES
+ * the shape" class, at switch scale: a method nobody wrote a `case` for is
+ * indistinguishable from one someone declined on purpose, and both ship broken.
+ *
+ * Why a NAMED SET rather than a blanket warning at the fallthrough: several
+ * methods reach the fallthrough and are CORRECT there, because the native
+ * stdlib happens to spell them the same way — measured on both real toolchains,
+ * `map` / `filter` / `forEach` / `reduce` / `flatMap` / `indexOf` /
+ * `lastIndexOf` / `substring` / `trim` / `split` / `startsWith` / `padEnd` /
+ * `padStart` / `repeat` all compile as emitted. A blanket warning would fire on
+ * every one of them. `unmapped-methods.test.ts` keeps the set honest in the
+ * other direction: it fails if any name here gains a `case` in either emitter.
+ *
+ * `codePointAt` is the sharp one and is in the set even though Kotlin compiles
+ * it (`java.lang.String.codePointAt` exists): JS returns `number | undefined`
+ * and is out-of-bounds-safe, Java returns `int` and THROWS. A silent semantic
+ * divergence is worse than a silent compile failure, not better.
+ */
+export const UNMAPPED_ARRAY_METHODS: readonly string[] = [
+  'copyWithin',
+  'entries',
+  'findLastIndex',
+  'keys',
+  'pop',
+  'reduceRight',
+  'shift',
+  'splice',
+  'toReversed',
+  'toSorted',
+  'toSpliced',
+  'unshift',
+  'values',
+  'with',
+]
+
+export const UNMAPPED_STRING_METHODS: readonly string[] = [
+  'codePointAt',
+  'localeCompare',
+  'normalize',
+  'substr',
+  'toLocaleLowerCase',
+  'toLocaleUpperCase',
+]
+
+/** Per-method remedy, so the warning says what to write instead. */
+const UNMAPPED_METHOD_REMEDY: Readonly<Record<string, string>> = {
+  copyWithin: 'build the result with `.map()` or a `<For>`-friendly derivation',
+  entries: 'use `.map((v, i) => …)`, whose index form DOES lower',
+  findLastIndex: 'reverse the search, or use `.findIndex()` on a reversed copy',
+  keys: 'use `.map((v, i) => i)`',
+  pop: 'read `xs[xs.length - 1]` and set the shortened array explicitly',
+  reduceRight: 'use `.reduce()` over a reversed copy — note the callback arg ORDER differs on Kotlin',
+  shift: 'read `xs[0]` and set the shortened array explicitly',
+  splice: 'use `.filter()` / `.slice()` to build the new array',
+  toReversed: 'use `.reverse()`, which lowers on both targets',
+  toSorted: 'use `.sort((a, b) => …)` with an explicit comparator — JS `sort()` with no comparator compares as STRINGS, which no native sort does',
+  toSpliced: 'use `.filter()` / `.slice()` to build the new array',
+  unshift: 'build the new array explicitly (`[x, ...xs]`)',
+  values: 'iterate the array directly',
+  with: 'use `.map((v, i) => (i === n ? next : v))`',
+  codePointAt: 'use `.charCodeAt()` — and note JS is out-of-bounds-SAFE where the native forms throw',
+  localeCompare: 'compare with `<` / `>` — neither native form is locale-aware anyway',
+  normalize: 'normalize before the value reaches shared source',
+  substr: 'use `.slice(start, end)` (`substr` is deprecated in JS too)',
+  toLocaleLowerCase: 'use `.toLowerCase()` — the locale-aware form has no cross-target equivalent',
+  toLocaleUpperCase: 'use `.toUpperCase()` — the locale-aware form has no cross-target equivalent',
+}
+
+/** `undefined` when the call is not an unmapped array/string method. */
+export function unmappedMethodWarning(
+  method: string,
+  receiver: 'array' | 'string',
+): string | undefined {
+  const set = receiver === 'array' ? UNMAPPED_ARRAY_METHODS : UNMAPPED_STRING_METHODS
+  if (!set.includes(method)) return undefined
+  const remedy = UNMAPPED_METHOD_REMEDY[method] ?? 'spell the operation with a lowered method'
+  return (
+    `\`.${method}()\` on ${receiver === 'array' ? 'an array' : 'a string'} has no lowering in PMTC — it is emitted VERBATIM and does ` +
+    `not compile on iOS or Android. Instead, ${remedy}.`
+  )
+}
+
+/**
+ * `.sort()` with no comparator, or with one PMTC cannot lower.
+ *
+ * `sort` HAS a case in both emitters, gated on a 2-param arrow comparator —
+ * every other shape `break`s out of the switch and lands on the verbatim
+ * re-emit, so the commonest spelling of all (`xs.sort()`) was a silent
+ * mis-emit that the unmapped-METHOD set cannot catch: `sort` is mapped.
+ *
+ * The no-comparator form also has a semantic trap worth naming in the message:
+ * JS `sort()` with no comparator converts elements to STRINGS and compares
+ * those, so `[10, 9, 1].sort()` is `[1, 10, 9]`. No native sort does that, so
+ * even a "faithful" mapping to `sorted()` would answer differently from the
+ * web — which is why this warns rather than lowering.
+ */
+export function unloweredSortWarning(reason: 'no-comparator' | 'shape'): string {
+  const head =
+    reason === 'no-comparator'
+      ? '`.sort()` with no comparator does not lower to iOS or Android'
+      : '`.sort(…)` with this comparator shape does not lower to iOS or Android'
+  return (
+    `${head} — the emit falls through verbatim and will not compile. Pass a 2-parameter ` +
+    `expression comparator (\`.sort((a, b) => a - b)\`). Note JS \`sort()\` with no comparator ` +
+    `compares elements as STRINGS (\`[10, 9, 1]\` sorts to \`[1, 10, 9]\`), which no native sort ` +
+    `does — so the comparator is required for the two platforms to agree with the web anyway.`
+  )
+}

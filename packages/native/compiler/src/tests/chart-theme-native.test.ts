@@ -89,11 +89,23 @@ describe('family-host theme — chrome, tooltip, palette and ground follow the t
   it('a non-literal theme is reported ONCE per host (the fields are read once and shared), and the default — the runtime scheme — applies', () => {
     for (const target of ['swift', 'kotlin'] as const) {
       const r = transform(VARIABLE, { target })
-      expect(r.warnings).toEqual(['<TreemapChart theme>: only an object literal with literal fields lowers on native; the default theme applies.'])
+      // Two warnings now: the theme one this spec is about, plus the
+      // `Partial<ChartTheme>` annotation being DECLINED. That annotation used
+      // to be emitted verbatim (`private let T: Partial<ChartTheme>`), which
+      // is why VARIABLE was excluded from the compile fixtures below.
+      expect(r.warnings).toEqual([
+        '`Partial<…>` has no native form in PMTC — a native struct has ONE field set, and `Partial` is that set with every field made optional — spell the optional fields directly (`{ text?: string }`), which lowers to a struct / data class with `= nil` / `= null` defaults. The annotation is dropped, so a `const` keeps its initializer\'s own type; a parameter or field degrades to `Any`.',
+        '<TreemapChart theme>: only an object literal with literal fields lowers on native; the default theme applies.',
+      ])
       expect(r.code).toContain(`pyreonChartColor(${(target === 'swift' ? SW : KT).background})`)
     }
   })
-  const fixtures = { DARK, DARK_OPTS, LITERAL, PLAIN }
+  // VARIABLE is BACK in the compile set. It was excluded because its
+  // `Partial<ChartTheme>` annotation leaked verbatim into the emit
+  // (`cannot find type 'Partial' in scope` / `unresolved reference`), so the
+  // one fixture in this file that exercises a non-literal theme was also the
+  // one no toolchain ever compiled.
+  const fixtures = { DARK, DARK_OPTS, LITERAL, PLAIN, VARIABLE }
   it('swiftc accepts the themed hosts (the ground modifier, the palette copy, the colour parser)', { skip: !isSwiftcAvailable() }, () => {
     for (const [name, src] of Object.entries(fixtures)) {
       const r = validateSwiftWithStubs(transform(src, { target: 'swift' }).code)

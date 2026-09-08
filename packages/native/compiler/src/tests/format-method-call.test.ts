@@ -43,9 +43,11 @@ describe('toFixed / toUpperCase / toLowerCase method-call emit', () => {
   })
 
   describe('Kotlin', () => {
-    it('toFixed(2) → "%.2f".format(n)', () => {
+    it('toFixed(2) → "%.2f".format(Locale.ROOT, n) — locale-INVARIANT like JS', () => {
       const out = transform(N('n().toFixed(2)'), { target: 'kotlin' }).code
-      expect(out).toContain('"%.2f".format(n)')
+      // The 1-arg `format` uses Locale.getDefault(): under Locale.GERMANY it
+      // yields `1234,57` where JS `toFixed` and the Swift emit give `1234.57`.
+      expect(out).toContain('"%.2f".format(java.util.Locale.ROOT, n)')
       expect(out).not.toContain('.toFixed(')
     })
     it('toUpperCase() → .uppercase()', () => {

@@ -47,10 +47,12 @@ ${body}
 }`
 
 describe('P1 — Swift optional-chain fix + batch-3 finds', () => {
-  it('Swift: `find()?.name?.length` emits ONE ?. then plain access (`?.name.count`)', () => {
+  it('Swift: `find()?.name?.length` emits ONE ?. then plain access (`?.name.utf16.count`)', () => {
     const rs = transform(A(`  const out = computed(() => items().find((i: Item) => i.id === 9)?.name?.length ?? 0)`), { target: 'swift' })
-    expect(rs.code).toContain('?.name.count')
-    expect(rs.code).not.toContain('?.name?.count')
+    // `.utf16.count` because the receiver is a STRING — Swift's `.count` is
+    // grapheme clusters where JS/Kotlin `.length` is UTF-16 units.
+    expect(rs.code).toContain('?.name.utf16.count')
+    expect(rs.code).not.toContain('?.name?.utf16.count')
   })
   it('Kotlin: the propagation stays (required there — `?.name?.length`)', () => {
     const rk = transform(A(`  const out = computed(() => items().find((i: Item) => i.id === 9)?.name?.length ?? 0)`), { target: 'kotlin' })

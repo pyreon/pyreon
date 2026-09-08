@@ -2054,11 +2054,11 @@ public func gradientSolid(_ g: PyreonChartGradient, _ fallback: String) -> Strin
   }
 
 public func plain(_ v: Double) -> String {
-    let r = (Double(v)).rounded()
+    let r = ((Double(v)) + 0.5).rounded(.down)
     if abs(v - r) < 0.000001 {
       return "\(r)"
     }
-    return "\((Double(v * 1000.0)).rounded() / 1000.0)"
+    return "\(((Double(v * 1000.0)) + 0.5).rounded(.down) / 1000.0)"
   }
 
 public func compact(_ v: Double) -> String {
@@ -2077,24 +2077,24 @@ public func compact(_ v: Double) -> String {
   }
 
 public func trim(_ v: Double) -> String {
-    let r = (Double(v * 10.0)).rounded() / 10.0
-    return ((r).truncatingRemainder(dividingBy: 1) == 0) ? "\((Double(r)).rounded())" : "\(r)"
+    let r = ((Double(v * 10.0)) + 0.5).rounded(.down) / 10.0
+    return ((r).truncatingRemainder(dividingBy: 1) == 0) ? "\(((Double(r)) + 0.5).rounded(.down))" : "\(r)"
   }
 
 public func fixed(_ places: Int) -> (Double) -> String {
     let p = max(0, min(10, places))
     let mul = pow(Double(10.0), Double(p))
     return { v in
-      let r = (Double(v * mul)).rounded() / mul
+      let r = ((Double(v * mul)) + 0.5).rounded(.down) / mul
       if p == 0 {
-        return "\((Double(r)).rounded())"
+        return "\(((Double(r)) + 0.5).rounded(.down))"
       }
       let s = "\(r)"
       let dot = (s.range(of: ".").map { s.distance(from: s.startIndex, to: $0.lowerBound) } ?? -1)
       if dot < 0 {
         return "\(s).\(String(repeating: "0", count: p))"
       }
-      let decimals = s.count - dot - 1
+      let decimals = s.utf16.count - dot - 1
       return decimals >= p ? s : "\(s)\(String(repeating: "0", count: p - decimals))"
     }
   }
@@ -2173,11 +2173,11 @@ public func makeTicks(_ d: Domain, _ r0: Double, _ r1: Double, _ count: Double, 
   }
 
 public func formatTick(_ v: Double) -> String {
-    let r = (Double(v)).rounded()
+    let r = ((Double(v)) + 0.5).rounded(.down)
     if abs(v - r) < 0.000001 {
       return "\(r)"
     }
-    return "\((Double(v * 1000.0)).rounded() / 1000.0)"
+    return "\(((Double(v * 1000.0)) + 0.5).rounded(.down) / 1000.0)"
   }
 
 public func extent(_ values: [Double]) -> Domain {
@@ -2439,7 +2439,7 @@ public func renderPie(_ slices: [Slice], _ box: PyreonChartRect, _ opts: PieOpti
           continue
         }
         let at = pointOnCircle(center, (radius + inner) / 2.0, a.mid)
-        out.append(PyreonDrawCmd(kind: "text", fill: opts.labelColor, text: "\((Double(a.fraction * 100.0)).rounded())%", at: at, size: opts.fontSize, align: "middle", baseline: "middle"))
+        out.append(PyreonDrawCmd(kind: "text", fill: opts.labelColor, text: "\(((Double(a.fraction * 100.0)) + 0.5).rounded(.down))%", at: at, size: opts.fontSize, align: "middle", baseline: "middle"))
       }
     }
     return out
@@ -3939,7 +3939,7 @@ public func rampColor(_ stops: [String], _ t: Double) -> String {
     if n == 1 || t <= 0.0 {
       let s0 = stops[0]
       let o0 = heatHashOffset(s0)
-      return "rgb(\((Double(heatChannel(s0, o0))).rounded()), \((Double(heatChannel(s0, o0 + 2))).rounded()), \((Double(heatChannel(s0, o0 + 4))).rounded()))"
+      return "rgb(\(((Double(heatChannel(s0, o0))) + 0.5).rounded(.down)), \(((Double(heatChannel(s0, o0 + 2))) + 0.5).rounded(.down)), \(((Double(heatChannel(s0, o0 + 4))) + 0.5).rounded(.down)))"
     }
     let clamped = t >= 1.0 ? 1.0 : t
     var spanF = 0.0
@@ -3966,7 +3966,7 @@ public func rampColor(_ stops: [String], _ t: Double) -> String {
     let r = heatChannel(a, oa) + (heatChannel(b, ob) - heatChannel(a, oa)) * frac
     let g = heatChannel(a, oa + 2) + (heatChannel(b, ob + 2) - heatChannel(a, oa + 2)) * frac
     let bl = heatChannel(a, oa + 4) + (heatChannel(b, ob + 4) - heatChannel(a, oa + 4)) * frac
-    return "rgb(\((Double(r)).rounded()), \((Double(g)).rounded()), \((Double(bl)).rounded()))"
+    return "rgb(\(((Double(r)) + 0.5).rounded(.down)), \(((Double(g)) + 0.5).rounded(.down)), \(((Double(bl)) + 0.5).rounded(.down)))"
   }
 
 public func renderHeat(_ options: HeatmapOptions) -> [PyreonDrawCmd] {
@@ -4383,9 +4383,9 @@ public func tintHex(_ hex: String, _ t: Double) -> String {
     if hex.count < 7 {
       return hex
     }
-    let r = (Double(hexPair(hex, 1) + (255.0 - hexPair(hex, 1)) * t)).rounded()
-    let g = (Double(hexPair(hex, 3) + (255.0 - hexPair(hex, 3)) * t)).rounded()
-    let b = (Double(hexPair(hex, 5) + (255.0 - hexPair(hex, 5)) * t)).rounded()
+    let r = ((Double(hexPair(hex, 1) + (255.0 - hexPair(hex, 1)) * t)) + 0.5).rounded(.down)
+    let g = ((Double(hexPair(hex, 3) + (255.0 - hexPair(hex, 3)) * t)) + 0.5).rounded(.down)
+    let b = ((Double(hexPair(hex, 5) + (255.0 - hexPair(hex, 5)) * t)) + 0.5).rounded(.down)
     return "rgb(\(r), \(g), \(b))"
   }
 
@@ -5177,7 +5177,7 @@ public func polarTicks(_ lo: Double, _ hi: Double) -> [Double] {
     }
     var `guard` = 0
     while v <= hi + 1e-9 && `guard` < 1000 {
-      out.append((Double(v * 1000000.0)).rounded() / 1000000.0)
+      out.append(((Double(v * 1000000.0)) + 0.5).rounded(.down) / 1000000.0)
       v = v + step
       `guard` = `guard` + 1
     }
@@ -5569,7 +5569,7 @@ public func sankeyRgba(_ hex: String, _ alpha: Double) -> String {
     let r = sankeyHexDigit(Double(Array(hex.utf16)[Int(1)])) * 16.0 + sankeyHexDigit(Double(Array(hex.utf16)[Int(2)]))
     let g = sankeyHexDigit(Double(Array(hex.utf16)[Int(3)])) * 16.0 + sankeyHexDigit(Double(Array(hex.utf16)[Int(4)]))
     let b = sankeyHexDigit(Double(Array(hex.utf16)[Int(5)])) * 16.0 + sankeyHexDigit(Double(Array(hex.utf16)[Int(6)]))
-    return "rgba(\((Double(r)).rounded()), \((Double(g)).rounded()), \((Double(b)).rounded()), \(alpha))"
+    return "rgba(\(((Double(r)) + 0.5).rounded(.down)), \(((Double(g)) + 0.5).rounded(.down)), \(((Double(b)) + 0.5).rounded(.down)), \(alpha))"
   }
 
 public func sankeyIndexOf(_ nodes: [SankeyNode], _ name: String) -> Int {
@@ -6312,7 +6312,7 @@ public func formatIsoDays(_ days: Double) -> String {
     let mp = c.month < 10.0 ? "0" : ""
     let dp = c.day < 10.0 ? "0" : ""
     let yp = c.year < 1000.0 ? (c.year < 100.0 ? (c.year < 10.0 ? "000" : "00") : "0") : ""
-    return "\(yp)\((Double(c.year)).rounded())-\(mp)\((Double(c.month)).rounded())-\(dp)\((Double(c.day)).rounded())"
+    return "\(yp)\(((Double(c.year)) + 0.5).rounded(.down))-\(mp)\(((Double(c.month)) + 0.5).rounded(.down))-\(dp)\(((Double(c.day)) + 0.5).rounded(.down))"
   }
 
 public func layoutCalendar(_ start: String, _ end: String, _ box: PyreonChartRect, _ options: CalendarOptions? = nil) -> CalendarLayout {
@@ -6582,8 +6582,8 @@ public func ganttTicks(_ lo: Double, _ hi: Double, _ unit: String) -> [GanttTick
       if t >= lo {
         let c = civilFromDays(t)
         let q = floor(Double((c.month - 1.0) / 3.0)) + 1.0
-        let year = "\((Double(c.year)).rounded())"
-        let label = unit == "day" || unit == "week" ? "\((Double(c.day)).rounded()) \(ganttMonthName(c.month))" : unit == "month" ? (sameYear ? ganttMonthName(c.month) : "\(ganttMonthName(c.month)) \(year)") : unit == "quarter" ? "Q\((Double(q)).rounded()) \(year)" : year
+        let year = "\(((Double(c.year)) + 0.5).rounded(.down))"
+        let label = unit == "day" || unit == "week" ? "\(((Double(c.day)) + 0.5).rounded(.down)) \(ganttMonthName(c.month))" : unit == "month" ? (sameYear ? ganttMonthName(c.month) : "\(ganttMonthName(c.month)) \(year)") : unit == "quarter" ? "Q\(((Double(q)) + 0.5).rounded(.down)) \(year)" : year
         out.append(GanttTick(at: t, x: 0.0, label: label))
       }
       t = ganttNextTick(t, unit)

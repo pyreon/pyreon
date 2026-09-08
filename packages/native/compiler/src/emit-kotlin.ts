@@ -39,6 +39,11 @@ import {
   exprHasOptionalLink,
   structShapeKey,
   literalShapeKey,
+  resolveForElementKey,
+  forMissingByWarning,
+  classifyNonBooleanLogicalOperand,
+  exprContainsJsx,
+  jsxInStringifiedChildWarning,
 } from './expr-utils'
 import {
   nilCoalesceTernary,
@@ -84,6 +89,10 @@ import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } fr
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
   stretchAlignWarning,
+  bakedPropDynamicWarning,
+  nonBooleanLogicalWarning,
+  unloweredSortWarning,
+  unmappedMethodWarning,
   structuralPropDynamicWarning,
   unloweredPropWarning,
 } from './unlowered-props'
@@ -5119,11 +5128,22 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             }
             break
           case 'toFixed': {
-            // JS `n.toFixed(d)` → Kotlin `"%.<d>f".format(n)` (the
-            // analytical currency/percent format; `String.format` is
+            // JS `n.toFixed(d)` → Kotlin `"%.<d>f".format(Locale.ROOT, n)`
+            // (the analytical currency/percent format; `String.format` is
             // a kotlin.text stdlib extension — no import needed). v1:
             // literal digit count (or 0-arg default 0) — a dynamic count
             // falls through to the generic emit.
+            //
+            // `Locale.ROOT` is load-bearing, not tidiness. The 1-arg
+            // `"%.2f".format(x)` uses `Locale.getDefault()`, so the DECIMAL
+            // SEPARATOR follows the device: executed under `Locale.GERMANY`
+            // it yields `1234,57` where JS `toFixed` and the Swift emit both
+            // give `1234.57`. A number formatted for display is one thing; a
+            // number that silently changes shape per device is a data bug
+            // (it round-trips differently, sorts differently, and breaks any
+            // downstream `toDouble()`). JS `toFixed` is locale-INVARIANT, so
+            // the lowering must be too — the fully-qualified name avoids
+            // adding an import to every emitted file.
             const digits =
               e.args.length === 0
                 ? '0'
@@ -5131,7 +5151,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
                   ? String(e.args[0]!.value)
                   : null
             if (digits !== null) {
-              return `"%.${digits}f".format(${obj})`
+              return `"%.${digits}f".format(java.util.Locale.ROOT, ${obj})`
             }
             break
           }
@@ -5194,6 +5214,11 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
                   : body
               return `${obj}.sortedWith(Comparator { ${ps} -> ${cmpBody} })`
             }
+            // Swift twin's rationale — `sort()` with no comparator broke out
+            // of this case into the verbatim re-emit, silently.
+            _emitWarnings.push(
+              unloweredSortWarning(e.args.length === 0 ? 'no-comparator' : 'shape'),
+            )
             break
           }
           case 'toLocaleString':
@@ -5209,6 +5234,9 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             break
         }
       }
+      // Swift twin's rationale — a JS Array/String method with no lowering
+      // reaches this verbatim re-emit; name it.
+      warnUnmappedMemberMethod(e)
       const callee = emitKotlinExpr(e.callee, indent)
       const args = e.args.map((a) => emitKotlinExpr(a, indent)).join(', ')
       // Optional call `f?.()` → Kotlin's nullable-function invocation
@@ -5530,6 +5558,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         }
         return `(${fnRef(e.left)} ?: ${fnRef(e.right)})`
       }
+      warnNonBooleanLogical(e.op, e.left, e.right, (x) => inferType(x, _kotlinExprInferCtx))
       return `${emitKotlinExpr(e.left, indent)} ${e.op} ${emitKotlinExpr(e.right, indent)}`
     case 'ternary': {
       // Kotlin doesn't have a ternary operator; the idiomatic form is an
@@ -5757,6 +5786,16 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
     case 'object': {
       const argExpected = _argExpectedTypesKotlin.get(e)
       if (_expectedTypeKotlin === undefined && argExpected !== undefined) return withExpectedTypeKotlin(argExpected, () => emitKotlinExpr(e, indent))
+      // Swift twin's rationale: a MAP-typed expectation wants a dictionary, not
+      // a data class. `kotlinType` renders `map` as `MutableMap<K, V>`, so the
+      // literal has to be `mutableMapOf(…)` for the two to agree.
+      if (_expectedTypeKotlin?.kind === 'map' && (!e.spreads || e.spreads.length === 0)) {
+        const vT = _expectedTypeKotlin.value
+        const entries = e.fields
+          .map((f) => `${JSON.stringify(f.name)} to ${withExpectedTypeKotlin(vT, () => emitKotlinExpr(f.value, indent))}`)
+          .join(', ')
+        return `mutableMapOf(${entries})`
+      }
       // G4 — partial-update form. When the object has EXACTLY ONE
       // spread and that spread argument is a bare identifier (typical
       // shape: `{ ...t, done: !t.done }` inside a `.map(t => ...)`
@@ -6291,6 +6330,15 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
     readStaticAttrKotlin(e, 'truncate') === true
       ? `, maxLines = 1, overflow = TextOverflow.Ellipsis`
       : ''
+  {
+    const _w = bakedPropDynamicWarning(
+      'Text',
+      'truncate',
+      readStaticAttrKotlin(e, 'truncate') !== undefined,
+      e.attrs.some((a) => a.kind === 'attr' && a.name === 'truncate'),
+    )
+    if (_w !== undefined) _emitWarnings.push(_w)
+  }
   // Custom font → fontFamily = pyreonFont("<resource-name>") — a
   // runtime res/font lookup (PyreonAssets.kt), so no PostScript map is
   // needed on Android (Compose loads the font file directly).
@@ -6590,6 +6638,41 @@ function emitKotlinAction(handler: ExprIR, indent: number): string {
   return `{ ${emitKotlinExpr(handler, indent)} }`
 }
 
+
+/**
+ * Push a named warning when a `&&` / `||` operand is provably not a Bool.
+ * The classification is shared with the other target so the two can never
+ * disagree about which shapes are loud.
+ */
+function warnNonBooleanLogical(
+  op: '&&' | '||',
+  left: ExprIR,
+  right: ExprIR,
+  infer: (e: ExprIR) => TypeIR,
+): void {
+  for (const [side, operand] of [['left', left], ['right', right]] as const) {
+    const bad = classifyNonBooleanLogicalOperand(infer(operand))
+    if (bad !== undefined) {
+      const w = nonBooleanLogicalWarning(op, side, bad.name)
+      if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+    }
+  }
+}
+
+
+/** Mirror of emit-swift's `warnUnmappedMemberMethod` — see its doc comment. */
+function warnUnmappedMemberMethod(e: Extract<ExprIR, { kind: 'call' }>): void {
+  if (e.callee.kind !== 'member') return
+  const t = inferType(e.callee.object, _kotlinExprInferCtx)
+  const base = t.kind === 'union'
+    ? t.branches.find((b) => b.kind !== 'null' && b.kind !== 'undefined')
+    : t
+  const recv = base?.kind === 'array' ? 'array' : base?.kind === 'string' ? 'string' : undefined
+  if (recv === undefined) return
+  const w = unmappedMethodWarning(e.callee.property, recv)
+  if (w !== undefined && !_emitWarnings.includes(w)) _emitWarnings.push(w)
+}
+
 function emitKotlinFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const each = e.attrs.find((a) => a.kind === 'attr' && a.name === 'each') as
     | Extract<AttrIR, { kind: 'attr' }>
@@ -6617,6 +6700,22 @@ function emitKotlinFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
         `<For by={…}>: only an identity key ((x) => x) or a member key ((x) => x.field) lowers to a Compose items() key — this by-callback matches neither; emitting key = { it.id } which likely fails to compile. Key on a field or the element itself.`,
       )
     }
+  } else if (by) {
+    // Swift twin's rationale: `by` present but not an arrow silently kept the
+    // `it.id` default.
+    _emitWarnings.push(
+      `<For by={…}>: only an inline arrow lowers to a Compose items() key — a function REFERENCE cannot be read as a key here; emitting key = { it.id } which likely fails to compile. Inline the key ((x) => x.field).`,
+    )
+  } else {
+    const elemT = each
+      ? inferType(unwrapAccessorArrow(each.value), _kotlinExprInferCtx)
+      : undefined
+    const verdict = resolveForElementKey(
+      elemT?.kind === 'array' ? elemT.element : undefined,
+      _kotlinExprInferCtx.structs,
+    )
+    if (verdict.kind === 'self') kotlinKey = 'it'
+    else if (verdict.kind === 'no-id') _emitWarnings.push(forMissingByWarning(verdict.what, 'kotlin'))
   }
   const idPath = kotlinKey
 
@@ -7798,6 +7897,42 @@ function emitKotlinAudio(
   if (typeof src !== 'string') return emitKotlinGeneric(e, indent)
   const args = [`url = ${JSON.stringify(src)}`]
   if (readStaticAttrKotlin(e, 'autoPlay') === true) args.push('autoPlay = true')
+  {
+    const _w = bakedPropDynamicWarning(
+      'Audio',
+      'autoPlay',
+      readStaticAttrKotlin(e, 'autoPlay') !== undefined,
+      e.attrs.some((a) => a.kind === 'attr' && a.name === 'autoPlay'),
+    )
+    if (_w !== undefined) _emitWarnings.push(_w)
+  }
+  {
+    const _w = bakedPropDynamicWarning(
+      'Audio',
+      'loop',
+      readStaticAttrKotlin(e, 'loop') !== undefined,
+      e.attrs.some((a) => a.kind === 'attr' && a.name === 'loop'),
+    )
+    if (_w !== undefined) _emitWarnings.push(_w)
+  }
+  {
+    const _w = bakedPropDynamicWarning(
+      'Audio',
+      'muted',
+      readStaticAttrKotlin(e, 'muted') !== undefined,
+      e.attrs.some((a) => a.kind === 'attr' && a.name === 'muted'),
+    )
+    if (_w !== undefined) _emitWarnings.push(_w)
+  }
+  {
+    const _w = bakedPropDynamicWarning(
+      'Audio',
+      'volume',
+      readStaticAttrKotlin(e, 'volume') !== undefined,
+      e.attrs.some((a) => a.kind === 'attr' && a.name === 'volume'),
+    )
+    if (_w !== undefined) _emitWarnings.push(_w)
+  }
   if (readStaticAttrKotlin(e, 'loop') === true) args.push('loop = true')
   if (readStaticAttrKotlin(e, 'muted') === true) args.push('muted = true')
   const volume = readStaticAttrKotlin(e, 'volume')
@@ -7834,6 +7969,42 @@ function emitKotlinVideo(
   // true, unlike every other boolean here, and had no runtime parameter to
   // land on until now (`useController` was hardcoded).
   if (readStaticAttrKotlin(e, 'controls') === false) args.push('controls = false')
+  {
+    const _w = bakedPropDynamicWarning(
+      'Video',
+      'autoPlay',
+      readStaticAttrKotlin(e, 'autoPlay') !== undefined,
+      e.attrs.some((a) => a.kind === 'attr' && a.name === 'autoPlay'),
+    )
+    if (_w !== undefined) _emitWarnings.push(_w)
+  }
+  {
+    const _w = bakedPropDynamicWarning(
+      'Video',
+      'loop',
+      readStaticAttrKotlin(e, 'loop') !== undefined,
+      e.attrs.some((a) => a.kind === 'attr' && a.name === 'loop'),
+    )
+    if (_w !== undefined) _emitWarnings.push(_w)
+  }
+  {
+    const _w = bakedPropDynamicWarning(
+      'Video',
+      'muted',
+      readStaticAttrKotlin(e, 'muted') !== undefined,
+      e.attrs.some((a) => a.kind === 'attr' && a.name === 'muted'),
+    )
+    if (_w !== undefined) _emitWarnings.push(_w)
+  }
+  {
+    const _w = bakedPropDynamicWarning(
+      'Video',
+      'controls',
+      readStaticAttrKotlin(e, 'controls') !== undefined,
+      e.attrs.some((a) => a.kind === 'attr' && a.name === 'controls'),
+    )
+    if (_w !== undefined) _emitWarnings.push(_w)
+  }
   const statusAttr = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'event' }> =>
       a.kind === 'event' && a.name === 'statuschange',
@@ -9212,6 +9383,13 @@ function kotlinExprProducesView(e: ExprIR): boolean {
 function emitKotlinChild(c: ChildIR, indent: number): string {
   if (c.kind === 'text') return `Text(text = ${JSON.stringify(c.value)})`
   if (!kotlinExprProducesView(c.expr)) {
+    // Swift twin's rationale. Compose is the WORSE half of this bug: the
+    // stringified list compiles and renders a debug description, where Swift
+    // at least produces something visibly wrong in the same place.
+    if (exprContainsJsx(c.expr)) {
+      const w = jsxInStringifiedChildWarning('kotlin')
+      if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+    }
     // Value expression child of a container — wrap in Text string-
     // interpolation, the same shape `<Text>{expr}</Text>` emits.
     // A template child already emits a Kotlin String literal, so use it as

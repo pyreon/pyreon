@@ -1074,3 +1074,195 @@ export function literalShapeKey(
   }
   return parts.sort().join(',')
 }
+
+/**
+ * What key a `<For>` should use when the source gave no `by` callback.
+ *
+ * `<For each={items}>` with no `by` defaulted to SwiftUI `id: \.id` /
+ * Compose `key = { it.id }` — correct for a record list and an UNCOMPILABLE
+ * SILENT mis-emit for anything else: `value of type 'String' has no member
+ * 'id'` (swiftc) / `unresolved reference 'id'` (kotlinc) for a `string[]` or
+ * `number[]`, and the same for a struct that simply has no `id` field.
+ *
+ * This is the SAME defect PR #1984 fixed one guard later — there for an
+ * identity `by={(x) => x}` callback, whose own comment calls it "an
+ * uncompilable SILENT mis-emit". The no-`by` spelling was left behind, so the
+ * fix stayed folklore about one shape instead of becoming the rule about the
+ * class. `by` is optional in the JSX types, so omitting it is the FIRST thing
+ * someone writes.
+ *
+ * Verdicts, and why `unknown` stays silent: a warning is only emitted when the
+ * element type PROVES there is no `id` to key on. An element the inferer cannot
+ * resolve keeps the historical `.id` fallback with no warning — a record list
+ * whose type is merely invisible here is the common correct case, and warning
+ * on it would train people to ignore the warning that matters.
+ */
+export type ForKeyVerdict =
+  /** A primitive element — key on the value itself (`\.self` / `it`). */
+  | { kind: 'self' }
+  /** The element provably carries an `id` field — the historical default is right. */
+  | { kind: 'id' }
+  /** Not resolvable here — keep `.id`, say nothing. */
+  | { kind: 'unknown' }
+  /** Provably has NO `id` — the caller warns, naming `what`. */
+  | { kind: 'no-id'; what: string }
+
+export function resolveForElementKey(
+  elem: TypeIR | undefined,
+  structs: ReadonlyMap<string, ReadonlyMap<string, TypeIR>>,
+): ForKeyVerdict {
+  if (elem === undefined) return { kind: 'unknown' }
+  switch (elem.kind) {
+    case 'string':
+    case 'number':
+    case 'boolean':
+      // Hashable on both targets — key on the element itself.
+      return { kind: 'self' }
+    case 'object':
+      return elem.fields.some((f) => f.name === 'id')
+        ? { kind: 'id' }
+        : { kind: 'no-id', what: `an object with fields (${elem.fields.map((f) => f.name).join(', ') || 'none'})` }
+    case 'typeRef': {
+      const fields = structs.get(elem.name)
+      // An UNKNOWN name is not a proof of absence — PMTC does not follow
+      // imports, so a type declared elsewhere lands here with no fields.
+      if (fields === undefined) return { kind: 'unknown' }
+      return fields.has('id') ? { kind: 'id' } : { kind: 'no-id', what: `\`${elem.name}\`, which has no \`id\` field` }
+    }
+    default:
+      return { kind: 'unknown' }
+  }
+}
+
+/** The shared text for both targets, so the two can never drift apart. */
+export function forMissingByWarning(what: string, target: 'swift' | 'kotlin'): string {
+  const emitted = target === 'swift' ? 'id: \\.id' : 'key = { it.id }'
+  return (
+    `<For each={…}> without a \`by\` key: the element is ${what}, so the default ` +
+    `\`${emitted}\` does not compile on ${target === 'swift' ? 'iOS' : 'Android'}. ` +
+    `Add \`by={(x) => x}\` to key on the element itself, or \`by={(x) => x.someField}\` ` +
+    `to key on a field.`
+  )
+}
+
+/**
+ * Name a PROVABLY non-Bool operand of a `&&` / `||`, or `undefined` when both
+ * sides are boolean-or-unresolvable. See `nonBooleanLogicalWarning` for why
+ * this warns rather than desugars, and why `unknown` must stay silent.
+ *
+ * `null` / `undefined` operands are excluded on purpose: `x && y` where `x` is
+ * nullable is a shape the OPTIONAL machinery already handles at the condition
+ * seam, and flagging it here would fire on correct code.
+ */
+export function classifyNonBooleanLogicalOperand(
+  t: TypeIR,
+): { name: string } | undefined {
+  switch (t.kind) {
+    case 'string':
+      return { name: 'string' }
+    case 'number':
+      return { name: 'number' }
+    case 'array':
+      return { name: 'array' }
+    case 'map':
+      return { name: 'map' }
+    case 'set':
+      return { name: 'set' }
+    case 'object':
+      return { name: 'object' }
+    case 'typeRef':
+      // A named struct / data class. `Promise` is excluded — an awaited value
+      // is not a truthiness test anyone writes here.
+      return t.name === 'Promise' ? undefined : { name: t.name }
+    default:
+      // boolean, union, function, null, undefined, unknown — silent.
+      return undefined
+  }
+}
+
+/**
+ * Does this expression contain a JSX node ANYWHERE inside it?
+ *
+ * Written as a TOTAL walk (mirroring `exprReferencesIdent`'s discipline) rather
+ * than the shallow `*ProducesView` predicates, whose whole job is the opposite
+ * question: "is the RESULT of this expression a view?".
+ *
+ * The gap between the two is where `{items.map((i) => <Text>{i}</Text>)}` fell.
+ * A `call` is not view-producing, so both emitters routed it to the
+ * stringification arm and emitted Swift `Text(verbatim: "\\(items.map({ … }))")`
+ * / Kotlin `Text(text = "${items.map { … }}")` — the JSX children built and then
+ * INTERPOLATED INTO A STRING, on both targets, with zero warnings. `<For>` is
+ * the spelling that works, and nothing said so.
+ *
+ * Deliberately conservative in ONE direction only: it answers "is there JSX in
+ * here", which is a sound trigger for a warning because a stringified
+ * expression that builds views is never what the author meant.
+ */
+export function exprContainsJsx(e: ExprIR): boolean {
+  switch (e.kind) {
+    case 'jsx-element':
+    case 'jsx-fragment':
+      return true
+    case 'paren':
+      return exprContainsJsx(e.inner)
+    case 'call':
+      return exprContainsJsx(e.callee) || e.args.some(exprContainsJsx)
+    case 'arrow':
+      return (
+        (e.body !== undefined && exprContainsJsx(e.body)) ||
+        (e.stmts ?? []).some(stmtContainsJsx)
+      )
+    case 'member':
+      return exprContainsJsx(e.object)
+    case 'index':
+      return exprContainsJsx(e.object) || exprContainsJsx(e.index)
+    case 'logical':
+      return exprContainsJsx(e.left) || exprContainsJsx(e.right)
+    case 'binary':
+    case 'comparison':
+      return exprContainsJsx(e.left) || exprContainsJsx(e.right)
+    case 'ternary':
+      return (
+        exprContainsJsx(e.cond) || exprContainsJsx(e.then) || exprContainsJsx(e.otherwise)
+      )
+    case 'unary':
+      return exprContainsJsx(e.argument)
+    case 'await':
+      return exprContainsJsx(e.expr)
+    case 'array':
+      return e.elements.some(exprContainsJsx)
+    case 'object':
+      return (
+        e.fields.some((f) => exprContainsJsx(f.value)) ||
+        (e.spreads ?? []).some(exprContainsJsx)
+      )
+    case 'spread':
+      return exprContainsJsx(e.argument)
+    case 'template':
+      return e.exprs.some(exprContainsJsx)
+    default:
+      // literal / identifier / update / json-stringify / schema-validate /
+      // toast-call / announce-call / rx-call / new-collection / new-sized-map —
+      // none can carry JSX in the shapes PMTC parses.
+      return false
+  }
+}
+
+function stmtContainsJsx(s: { kind: string; expr?: ExprIR }): boolean {
+  return s.expr !== undefined && exprContainsJsx(s.expr)
+}
+
+/**
+ * `<For>` is the only list spelling that lowers. Shared so the two targets can
+ * never drift on the remedy they name.
+ */
+export function jsxInStringifiedChildWarning(target: 'swift' | 'kotlin'): string {
+  const emitted = target === 'swift' ? 'Text(verbatim: "\\(…)")' : 'Text(text = "${…}")'
+  return (
+    `A JSX-producing expression used as a child does NOT lower to a list on iOS or Android — ` +
+    `it is interpolated into a string (\`${emitted}\`), so the elements are rendered as their ` +
+    `debug description instead of as views. \`{items.map((x) => <Row … />)}\` is the shape that ` +
+    `hits this; use \`<For each={items} by={(x) => x.id}>{(x) => <Row … />}</For>\`, which lowers ` +
+    `to SwiftUI \`ForEach\` / Compose \`items()\`.`
+  )
+}

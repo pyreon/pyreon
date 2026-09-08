@@ -44,6 +44,11 @@ import {
   exprReferencesIdent,
   structShapeKey,
   literalShapeKey,
+  resolveForElementKey,
+  forMissingByWarning,
+  classifyNonBooleanLogicalOperand,
+  exprContainsJsx,
+  jsxInStringifiedChildWarning,
 } from './expr-utils'
 import {
   nilCoalesceTernary,
@@ -89,6 +94,10 @@ import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } fr
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
   stretchAlignWarning,
+  bakedPropDynamicWarning,
+  nonBooleanLogicalWarning,
+  unloweredSortWarning,
+  unmappedMethodWarning,
   structuralPropDynamicWarning,
   unloweredPropWarning,
 } from './unlowered-props'
@@ -2045,6 +2054,79 @@ function emitSwiftModuleDecl(md: ModuleDeclIR): string {
 // readable. Safe because emit is synchronous within a single call.
 let _activePropsParamName: string | undefined
 
+/**
+ * Decl kinds whose Swift emit appends a LIFECYCLE modifier to the component
+ * body — `.task`, `.onAppear`, `.onDisappear`, or the `.background(Button…)`
+ * a keyboard shortcut rides on.
+ *
+ * Every one of them needs a STABLE-IDENTITY host. SwiftUI redistributes a
+ * modifier attached to a transparent `Group { if … else … }` onto the
+ * conditional's BRANCHES, so the modifier is torn down and re-applied on every
+ * state flip: a `.task` is cancelled and restarted (the device-found fetch
+ * thrash), an `.onDisappear { stop() }` fires while the view is still on
+ * screen. `emitSwiftComponent` wraps the body in a concrete `ZStack` when any
+ * of these is present.
+ *
+ * Kotlin needs no equivalent — its harness is a `LaunchedEffect(Unit)` SIBLING
+ * node keyed on a stable `Unit`, which recomposition does not cancel.
+ */
+const LIFECYCLE_HOST_DECL_KINDS: ReadonlySet<DeclIR['kind']> = new Set([
+  'app-state',
+  'crash-reporter',
+  'debounced-value',
+  'fetch',
+  'form',
+  'hotkey',
+  'network-status',
+  'on-mount',
+  'push',
+  'query',
+  'rate-limited',
+  'sortable',
+  'table-state',
+  'tick',
+])
+
+
+/**
+ * Push a named warning when a `&&` / `||` operand is provably not a Bool.
+ * The classification is shared with the other target so the two can never
+ * disagree about which shapes are loud.
+ */
+function warnNonBooleanLogical(
+  op: '&&' | '||',
+  left: ExprIR,
+  right: ExprIR,
+  infer: (e: ExprIR) => TypeIR,
+): void {
+  for (const [side, operand] of [['left', left], ['right', right]] as const) {
+    const bad = classifyNonBooleanLogicalOperand(infer(operand))
+    if (bad !== undefined) {
+      const w = nonBooleanLogicalWarning(op, side, bad.name)
+      if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+    }
+  }
+}
+
+
+/**
+ * Warn when a member call reaching the GENERIC (verbatim) emit is a JS
+ * Array/String method PMTC has no lowering for. Gated on a PROVABLY array or
+ * string receiver so a same-named method on a user type or a service container
+ * never fires.
+ */
+function warnUnmappedMemberMethod(e: Extract<ExprIR, { kind: 'call' }>): void {
+  if (e.callee.kind !== 'member') return
+  const t = inferType(e.callee.object, _activeInferCtx)
+  const base = t.kind === 'union'
+    ? t.branches.find((b) => b.kind !== 'null' && b.kind !== 'undefined')
+    : t
+  const recv = base?.kind === 'array' ? 'array' : base?.kind === 'string' ? 'string' : undefined
+  if (recv === undefined) return
+  const w = unmappedMethodWarning(e.callee.property, recv)
+  if (w !== undefined && !_emitWarnings.includes(w)) _emitWarnings.push(w)
+}
+
 function emitSwiftComponent(c: ComponentIR): string {
   // Store field types thread into the inference ctx so computeds over
   // store reads (`useApp().store.tasks().filter(...).length`) infer a
@@ -2465,51 +2547,28 @@ function emitSwiftComponent(c: ComponentIR): string {
   // a stable host that fires ONCE on appear; the inner conditional's
   // flips no longer touch the ZStack's identity. (Non-fetch components
   // keep the bare body — no `.task`, no restart hazard.)
-  const _hasFetchDecl = c.decls.some((d) => d.kind === 'fetch' || d.kind === 'query')
-  // table-state decls wire their reactive data in `.onAppear` (below), which
-  // needs the same stable-identity host as fetch/onMount.
-  const _hasTableDecl = c.decls.some((d) => d.kind === 'table-state')
-  // on-mount shares the stable-identity requirement: .onAppear on a
-  // transparent Group is redistributed onto conditional branches and
-  // RE-FIRES per flip — the same device-found class as .task.
-  const _hasOnMount = c.decls.some((d) => d.kind === 'on-mount')
-  // A `.task` on a TRANSPARENT Group is redistributed onto the conditional
-  // branches inside it, so it is cancelled and restarted on every state
-  // flip — the device-found bug the fetch harness already guards against.
-  // Timers need the same stable host.
-  const _hasTick = c.decls.some((d) => d.kind === 'tick')
-  // Same stable-host requirement as every other .task: on a transparent
-  // Group the modifier is redistributed onto the conditional branches.
-  const _hasDebounced = c.decls.some((d) => d.kind === 'debounced-value')
-  // network-status needs the same stable host: its `.onAppear { net.start() }`
-  // / `.onDisappear { net.stop() }` pair on a transparent Group would be
-  // redistributed onto conditional branches — a branch flip would STOP the
-  // monitor while the view is still on screen. (start() is idempotent, so a
-  // spurious re-appear is safe; a spurious disappear is not.)
-  const _hasNetDecl = c.decls.some((d) => d.kind === 'network-status')
-  // push shares network-status's stable-host requirement for the same
-  // reason: `.onAppear { push.start() }` / `.onDisappear { push.stop() }` on
-  // a transparent Group would be redistributed onto conditional branches — a
-  // branch flip would tear the notification-center delegate away while the
-  // view is still on screen.
-  const _hasPushDecl = c.decls.some((d) => d.kind === 'push')
-  // app-state shares the stable-host requirement: its onAppear-start on a
-  // transparent Group would be redistributed onto conditional branches.
-  const _hasAppStateDecl = c.decls.some((d) => d.kind === 'app-state')
-  // crash-reporter: same stable-host requirement — its onAppear-start on a
-  // transparent Group would be redistributed onto conditional branches.
-  const _hasCrashDecl = c.decls.some((d) => d.kind === 'crash-reporter')
-  if (
-    _hasFetchDecl ||
-    _hasOnMount ||
-    _hasDebounced ||
-    _hasTick ||
-    _hasNetDecl ||
-    _hasPushDecl ||
-    _hasAppStateDecl ||
-    _hasCrashDecl ||
-    _hasTableDecl
-  ) {
+  // The list is a SET declared beside the harness, not a chain of `_has*`
+  // booleans. It was the latter, and had already been widened five times —
+  // each widening adding one more thing to remember, in a place ~60 lines
+  // from the emit that creates the requirement. Four kinds that DO emit a
+  // lifecycle modifier were never added: `rate-limited`, `form`, `hotkey`
+  // and `sortable` — the last of which carries a comment saying it has "the
+  // same `.onAppear` rationale as table-state", which IS in the list. So a
+  // `useSortable` beside a `<Suspense>` emitted `.onAppear` on exactly the
+  // transparent `Group { if … else … }` every comment above says must never
+  // happen.
+  //
+  // The invariant to hold when adding a decl kind: if its emit appends
+  // `.task` / `.onAppear` / `.onDisappear` / `.background(Button…)` to the
+  // component body, it belongs here. `lifecycleHostKinds.test.ts` derives
+  // the answer from the emitter source rather than trusting this list.
+  //
+  // `form` is in the set unconditionally although it only emits `.onAppear`
+  // when it carries an `onSubmit`: over-wrapping is a redundant `ZStack`
+  // around a body that did not need a stable host, which is inert, while
+  // under-wrapping is the device-found restart bug.
+  const needsStableLifecycleHost = c.decls.some((d) => LIFECYCLE_HOST_DECL_KINDS.has(d.kind))
+  if (needsStableLifecycleHost) {
     lines.push(`    ZStack {`)
     lines.push(`      ${emitSwiftReturnExpr(c.returnExpr, 6)}`)
     lines.push(`    }`)
@@ -4984,11 +5043,22 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           // `Math.abs(intCount)` must stay Int) — so they are NOT coerced.
           //
           // `ceil`/`floor`/`round`/`trunc` are INTEGER-VALUED in JS (page
-          // counts, indices) — the Foundation funcs return Double, so the
-          // result is wrapped `Int(…)` so it stays an Int usable in `page <
-          // pageCount` and prints "4" not "4.0" (matches `inferMathCall` → Int).
+          // counts, indices). Note the emit does NOT wrap them in `Int(…)` —
+          // the Foundation funcs return Double and an `Int(…)` wrap poisoned
+          // every downstream mixed expression (see the `floor` comment below);
+          // `inferMathCall` still types them Int so an Int-typed binding is
+          // coerced at its own site.
+          //
+          // `Math.round` is NOT `.rounded()`. Swift's default rounding rule is
+          // `.toNearestOrAwayFromZero`; JS `Math.round` is `floor(x + 0.5)`,
+          // which breaks ties toward POSITIVE infinity. They disagree on every
+          // negative half — executed on real toolchains over
+          // [-0.5, -1.5, 2.5, -2.5]: JS/Kotlin `0 -1 3 -2`, `.rounded()`
+          // `-1 -2 3 -3`. Kotlin needs no remap: `java.lang.Math.round` is
+          // SPECIFIED as `floor(x + 0.5)`, so it already matches JS (correct,
+          // if by a coincidence of Java's own choice of rule).
           case 'round':
-            if (args.length === 1) return `(Double(${args[0]!})).rounded()`
+            if (args.length === 1) return `((Double(${args[0]!})) + 0.5).rounded(.down)`
             break
           // floor/ceil/trunc return DOUBLE — JS Math.floor returns a
           // NUMBER, and the old `Int(floor(...))` wrap poisoned every
@@ -6403,6 +6473,13 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               const ps = cmp!.params.map((p) => swiftIdent(p)).join(', ')
               return `${obj}.sorted(by: { ${ps} in (${emitSwiftExpr(cmp!.body, indent)}) < 0 })`
             }
+            // Every OTHER shape — `sort()` with no comparator above all —
+            // used to break out silently into the verbatim re-emit. `sort` is
+            // MAPPED, so the unmapped-method guard at the fallthrough cannot
+            // see it; the warning has to live in its own case.
+            _emitWarnings.push(
+              unloweredSortWarning(e.args.length === 0 ? 'no-comparator' : 'shape'),
+            )
             break
           }
           case 'toLocaleString':
@@ -6432,6 +6509,11 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         // circuits here BEFORE the bare-identifier generic tail below. Mirror
         // that tail's optional-call lowering (`f?(args)`) or the `?` is
         // silently dropped and the emit invokes a nil closure at runtime.
+        // A JS Array/String method with NO lowering falls through to this
+        // verbatim re-emit. Name it — see `unmappedMethodWarning` for why the
+        // set is explicit rather than a blanket fallthrough warning (several
+        // methods legitimately reach here and compile).
+        warnUnmappedMemberMethod(e)
         if (e.optional === true)
           return `${emitSwiftExpr(e.callee, indent)}?(${argExprs.join(', ')})`
         return `${emitSwiftExpr(e.callee, indent)}(${argExprs.join(', ')})`
@@ -6616,7 +6698,30 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // recvProvablyNonNull arm (their declared union type is visible).
       const dot = e.optional === true && !recvProvablyNonNull ? '?.' : '.'
       if (e.property === 'length') {
-        return `${emitSwiftExpr(e.object, indent)}${dot}count`
+        // `.utf16.count`, NOT `.count`, for a STRING receiver. Swift's
+        // `String.count` counts GRAPHEME CLUSTERS; JS `.length` and Kotlin
+        // `.length` both count UTF-16 code units. Executed on all three:
+        // `"👍".length` is 2 in JS and Kotlin, `.count` is 1 in Swift and
+        // `.utf16.count` is 2. Every string-length comparison in shared
+        // source therefore answered differently on iOS — silently, since
+        // both spellings compile.
+        //
+        // The same correction already shipped at ONE call site (the form
+        // min/max-length validator, `emitSwiftScalarConstraints`, which
+        // carries this exact 👍 rationale); this is the general member emit
+        // it was never applied to — a fix that stayed folklore instead of
+        // becoming the rule.
+        //
+        // ARRAY `.length` keeps `.count` (correct there), so the switch is
+        // gated on a PROVABLY-string receiver: an `unknown` receiver keeps
+        // the old spelling rather than guessing, since `.utf16` does not
+        // exist on an array and a wrong guess would break the compile
+        // instead of the answer.
+        const lenRecv = recvType.kind === 'union'
+          ? recvType.branches.find((b) => b.kind !== 'null' && b.kind !== 'undefined')
+          : recvType
+        const suffix = lenRecv?.kind === 'string' ? 'utf16.count' : 'count'
+        return `${emitSwiftExpr(e.object, indent)}${dot}${suffix}`
       }
       return `${emitSwiftExpr(e.object, indent)}${dot}${swiftIdent(e.property)}`
     }
@@ -6791,6 +6896,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       if (e.op === '??') {
         return `(${emitSwiftExpr(e.left, indent)} ?? ${emitSwiftExpr(e.right, indent)})`
       }
+      warnNonBooleanLogical(e.op, e.left, e.right, (x) => inferType(x, _activeInferCtx))
       return `${emitSwiftExpr(e.left, indent)} ${e.op} ${emitSwiftExpr(e.right, indent)}`
     case 'ternary': {
       // Swift ternary syntax is identical to JS — EXCEPT Swift requires the
@@ -7048,6 +7154,20 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // A literal whose CALL parameter names a struct is emitted under that struct.
       const argExpected = _argExpectedTypes.get(e)
       if (_expectedType === undefined && argExpected !== undefined) return withExpectedType(argExpected, () => emitSwiftExpr(e, indent))
+      // A MAP-typed expectation (`Record<string, number>`, `Map<K, V>`) wants a
+      // DICTIONARY, not a struct. Without this the annotation and the value
+      // disagreed — `let M: [String: Int] = __Obj0(a: 1)` — because the type
+      // lowered to a dictionary while the literal beside it was still
+      // struct-synthesized. A spread has no dictionary form here, so it keeps
+      // the struct path.
+      if (_expectedType?.kind === 'map' && (!e.spreads || e.spreads.length === 0)) {
+        const vT = _expectedType.value
+        if (e.fields.length === 0) return '[:]'
+        const entries = e.fields
+          .map((f) => `${JSON.stringify(f.name)}: ${withExpectedType(vT, () => emitSwiftExpr(f.value, indent))}`)
+          .join(', ')
+        return `[${entries}]`
+      }
       // G4 — partial-update form. When the object has EXACTLY ONE
       // spread and that spread argument is a bare identifier (typical
       // shape: `{ ...t, done: !t.done }` inside `.map(t => ...)`),
@@ -7735,6 +7855,15 @@ function emitSwiftText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (readStaticAttr(e, 'truncate') === true) {
     result += `.lineLimit(1).truncationMode(.tail)`
   }
+  {
+    const _w = bakedPropDynamicWarning(
+      'Text',
+      'truncate',
+      readStaticAttr(e, 'truncate') !== undefined,
+      e.attrs.some((a) => a.kind === 'attr' && a.name === 'truncate'),
+    )
+    if (_w !== undefined) _emitWarnings.push(_w)
+  }
   // `size` / `weight` — documented props on the canonical Text that produced NO
   // emit on either target, with no warning, exactly like `truncate` above did.
   // A heading written `<Text size="lg" weight="bold">` rendered at body size and
@@ -8072,6 +8201,24 @@ function emitSwiftFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
         `<For by={…}>: only an identity key ((x) => x) or a member key ((x) => x.field) lowers to a SwiftUI ForEach id — this by-callback matches neither; emitting id: \\.id which likely fails to compile. Key on a field or the element itself.`,
       )
     }
+  } else if (by) {
+    // `by` present but NOT an arrow (`by={keyFn}`) — the block above is
+    // skipped and `idKey` silently keeps 'id'. Same silent-fallback hole as
+    // the missing-`by` case below, one guard over.
+    _emitWarnings.push(
+      `<For by={…}>: only an inline arrow lowers to a SwiftUI ForEach id — a function REFERENCE has no KeyPath analog; emitting id: \\.id which likely fails to compile. Inline the key ((x) => x.field).`,
+    )
+  } else {
+    // No `by` at all. Resolve the ELEMENT type and key on the element itself
+    // when it is a primitive — see `resolveForElementKey` for why an
+    // unresolvable element stays silent.
+    const elemT = each ? inferType(unwrapAccessorArrow(each.value), _activeInferCtx) : undefined
+    const verdict = resolveForElementKey(
+      elemT?.kind === 'array' ? elemT.element : undefined,
+      _activeInferCtx.structs,
+    )
+    if (verdict.kind === 'self') idKey = 'self'
+    else if (verdict.kind === 'no-id') _emitWarnings.push(forMissingByWarning(verdict.what, 'swift'))
   }
   const idPath = idKey
 
@@ -9670,6 +9817,42 @@ function emitSwiftAudio(
   if (typeof src !== 'string') return emitSwiftGeneric(e, indent)
   const args = [`url: URL(string: ${JSON.stringify(src)})`]
   if (readStaticAttr(e, 'autoPlay') === true) args.push('autoPlay: true')
+  {
+    const _w = bakedPropDynamicWarning(
+      'Audio',
+      'autoPlay',
+      readStaticAttr(e, 'autoPlay') !== undefined,
+      e.attrs.some((a) => a.kind === 'attr' && a.name === 'autoPlay'),
+    )
+    if (_w !== undefined) _emitWarnings.push(_w)
+  }
+  {
+    const _w = bakedPropDynamicWarning(
+      'Audio',
+      'loop',
+      readStaticAttr(e, 'loop') !== undefined,
+      e.attrs.some((a) => a.kind === 'attr' && a.name === 'loop'),
+    )
+    if (_w !== undefined) _emitWarnings.push(_w)
+  }
+  {
+    const _w = bakedPropDynamicWarning(
+      'Audio',
+      'muted',
+      readStaticAttr(e, 'muted') !== undefined,
+      e.attrs.some((a) => a.kind === 'attr' && a.name === 'muted'),
+    )
+    if (_w !== undefined) _emitWarnings.push(_w)
+  }
+  {
+    const _w = bakedPropDynamicWarning(
+      'Audio',
+      'volume',
+      readStaticAttr(e, 'volume') !== undefined,
+      e.attrs.some((a) => a.kind === 'attr' && a.name === 'volume'),
+    )
+    if (_w !== undefined) _emitWarnings.push(_w)
+  }
   if (readStaticAttr(e, 'loop') === true) args.push('loop: true')
   if (readStaticAttr(e, 'muted') === true) args.push('muted: true')
   const volume = readStaticAttr(e, 'volume')
@@ -9719,6 +9902,42 @@ function emitSwiftVideo(
   // parameter, and the Kotlin one hardcoded `useController = true`. Typed and
   // documented on all three targets, honoured on none.
   if (readStaticAttr(e, 'controls') === false) args.push('controls: false')
+  {
+    const _w = bakedPropDynamicWarning(
+      'Video',
+      'autoPlay',
+      readStaticAttr(e, 'autoPlay') !== undefined,
+      e.attrs.some((a) => a.kind === 'attr' && a.name === 'autoPlay'),
+    )
+    if (_w !== undefined) _emitWarnings.push(_w)
+  }
+  {
+    const _w = bakedPropDynamicWarning(
+      'Video',
+      'loop',
+      readStaticAttr(e, 'loop') !== undefined,
+      e.attrs.some((a) => a.kind === 'attr' && a.name === 'loop'),
+    )
+    if (_w !== undefined) _emitWarnings.push(_w)
+  }
+  {
+    const _w = bakedPropDynamicWarning(
+      'Video',
+      'muted',
+      readStaticAttr(e, 'muted') !== undefined,
+      e.attrs.some((a) => a.kind === 'attr' && a.name === 'muted'),
+    )
+    if (_w !== undefined) _emitWarnings.push(_w)
+  }
+  {
+    const _w = bakedPropDynamicWarning(
+      'Video',
+      'controls',
+      readStaticAttr(e, 'controls') !== undefined,
+      e.attrs.some((a) => a.kind === 'attr' && a.name === 'controls'),
+    )
+    if (_w !== undefined) _emitWarnings.push(_w)
+  }
   const statusAttr = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'event' }> =>
       a.kind === 'event' && a.name === 'statuschange',
@@ -11038,6 +11257,15 @@ function emitSwiftReturnExpr(expr: ExprIR, indent: number): string {
 function emitSwiftChild(c: ChildIR, indent: number): string {
   if (c.kind === 'text') return `Text(${JSON.stringify(c.value)})`
   if (!swiftExprProducesView(c.expr)) {
+    // The expression is about to be STRINGIFIED. If it builds JSX anywhere
+    // inside, the author wrote a list and is getting a debug description —
+    // `{items.map((i) => <Row/>)}` is the shape. `<For>` is what lowers.
+    // See `exprContainsJsx` for why the shallow view-producing predicate
+    // cannot see this.
+    if (exprContainsJsx(c.expr)) {
+      const w = jsxInStringifiedChildWarning('swift')
+      if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+    }
     // Value expression child of a container (`<Button>{t.done ? 'done'
     // : 'todo'}</Button>`, `<Stack>{count}</Stack>`) — wrap in Text
     // string-interpolation, the same shape `<Text>{expr}</Text>` emits.

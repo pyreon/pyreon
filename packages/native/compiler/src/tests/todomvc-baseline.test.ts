@@ -88,7 +88,7 @@ describe('TodoMVC compile baseline', () => {
         private var hasCompleted: Bool { todos.contains(where: { t in t.done }) }
         private func addTodo() {
           let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-          if text.count == 0 {
+          if text.utf16.count == 0 {
             return
           }
           let maxId = todos.reduce(0, { m, t in (t.id > m ? t.id : m) })
@@ -408,7 +408,7 @@ describe('TodoMVC gap-tracking baseline', () => {
   it('Phase 2 — Swift TS-method translation (.length / .trim() / .some)', () => {
     // Phase 2 follow-up. The compiler rewrites TS methods that don't
     // exist (or have different semantics) in Swift:
-    //   .length        → .count (universal on String + Array)
+    //   .length        → .utf16.count on a String, .count on an Array
     //   .trim()        → .trimmingCharacters(in: .whitespacesAndNewlines)
     //   .some(p)       → .contains(where: p)
     // Closes the bulk of TodoMVC's remaining typecheck blockers
@@ -416,7 +416,7 @@ describe('TodoMVC gap-tracking baseline', () => {
     const out = transform(source, { target: 'swift' })
     expect(out.code).toContain('trimmingCharacters(in: .whitespacesAndNewlines)')
     expect(out.code).toContain('todos.contains(where: { t in t.done })')
-    expect(out.code).toContain('text.count == 0')
+    expect(out.code).toContain('text.utf16.count == 0')
     // No leftover TS-method names that would fail Swift typecheck.
     expect(out.code).not.toContain('.length')
     expect(out.code).not.toContain('.trim()')
