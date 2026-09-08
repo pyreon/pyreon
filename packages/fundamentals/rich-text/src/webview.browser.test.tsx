@@ -8,7 +8,7 @@
  * bridge — forward content/editable push, reverse edit, the loop guard —
  * against a genuine TipTap editor.
  */
-import { query } from '@pyreon/test-utils'
+import { query, queryOptional } from '@pyreon/test-utils'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
@@ -86,7 +86,10 @@ async function waitForEditor(iframe: HTMLIFrameElement): Promise<HTMLElement> {
   const start = performance.now()
   for (;;) {
     const win = iframe.contentWindow as (Window & { __pyreonRichTextError?: string }) | null
-    const pm = iframe.contentDocument?.querySelector('.ProseMirror') as HTMLElement | null
+    // The iframe's document genuinely can be null before it loads, so the
+    // nullability is REAL here — it is branched on, not cast away.
+    const doc = iframe.contentDocument
+    const pm = doc === null ? null : queryOptional(doc, '.ProseMirror')
     if (win?.__pyreonRichTextError) throw new Error('host error: ' + win.__pyreonRichTextError)
     if (pm && (pm.textContent ?? '').length > 0) return pm
     if (performance.now() - start > 8000) throw new Error('editor did not boot / content not applied: err=' + win?.__pyreonRichTextError)

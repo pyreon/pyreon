@@ -3,6 +3,9 @@ import type { FileRole } from './utils/file-roles'
 
 export type Severity = 'error' | 'warn' | 'info' | 'off'
 
+/** A file surface a rule can be ABOUT. See {@link RuleMeta.scanTarget}. */
+export type ScanTarget = 'source' | 'test' | 'packageConfig'
+
 export interface SourceLocation {
   line: number
   column: number
@@ -183,8 +186,16 @@ export interface RuleMeta {
    * - `test`  — `*.test.*` / `*.spec.*` and files under `tests/`. Fixtures
    *   stay excluded: they hold anti-patterns on purpose.
    * - `packageConfig` — per-package root config (`vitest.config.ts`, …).
+   *
+   * A LIST when a rule is genuinely about more than one surface. That is not a
+   * convenience: `no-require-in-esm` is about every file in a `"type":
+   * "module"` package, and a `.test.ts` there fails under real Node exactly as
+   * `src/` does — 47 such calls were sitting in this repo's own test files,
+   * invisible because the rule declared no target and therefore got the
+   * `source` default. Forcing a single value would have meant choosing WHICH
+   * half of a rule's subject to enforce.
    */
-  scanTarget?: 'source' | 'test' | 'packageConfig'
+  scanTarget?: ScanTarget | readonly ScanTarget[]
   /**
    * Which FILE ROLES this rule applies to — server, client, both.
    *

@@ -6,6 +6,13 @@
  * These specs EXECUTE the emitted module and assert nothing injected ran.
  * Inspecting the string is not enough -- the payloads below all produce output
  * that reads perfectly plausibly.
+ *
+ * FIVE lexical contexts a spec string can reach, each with its own terminator:
+ * a `//` line comment (any line terminator), a block comment (`*\/`), a string
+ * literal (the quote, the backslash and all four line terminators), a JSON
+ * literal pasted into source (U+2028/U+2029, which `JSON.stringify` leaves
+ * raw), and a REGEX literal (`/` AND all four line terminators). The last was
+ * the one nobody wrote a sanitizer for.
  */
 import { s } from '@pyreon/validate'
 import { resolveConfig } from '../core/config'
@@ -14,6 +21,7 @@ import { q, safeBlockComment, safeLineComment } from '../emit/writer'
 
 const CR = String.fromCharCode(13)
 const LS = String.fromCharCode(0x2028)
+const PS = String.fromCharCode(0x2029)
 
 /** A spec whose every author-controlled string carries a payload. */
 function hostileSpec(): string {
@@ -178,6 +186,92 @@ describe('spec-controlled strings cannot inject code', () => {
     expect(op?.path).toBe('/x/:userId')
     expect(op?.pathParams[0]?.name).toBe('userId')
     expect(out.files.find((f) => f.path === 'queries/x.ts')?.contents).toContain('userId: string')
+  })
+
+  it('a `pattern` cannot break out of the REGEX literal it is emitted into', () => {
+    // The FIFTH context. `portableRegex` refused `/` from the start -- its own
+    // comment says why, "the emit writes `/${pattern}/`" -- but not the four
+    // line terminators, which end a regex literal exactly as `/` does
+    // (`RegularExpressionChar` is built from `RegularExpressionNonTerminator`,
+    // "SourceCharacter but not LineTerminator", so they are illegal anywhere in
+    // one, character class included).
+    //
+    // `{"pattern": "a\nb"}` is legal OpenAPI, so this needed no bad faith to
+    // reach. Pre-fix the emitted module threw `Unterminated regular expression
+    // literal '/a'` on parse -- which is worse than a dropped constraint: every
+    // model in `schemas.ts` went with it, so a single hostile-or-careless
+    // pattern is a build-time DoS on the consumer.
+    //
+    // Arbitrary-code injection is not reachable through this context as long as
+    // `/` stays refused (you cannot CLOSE the literal without one), so the
+    // load-bearing half here is that the module still EXECUTES. The payload
+    // check stays anyway: it is what would catch a future "escape it instead"
+    // rewrite that escaped some terminators and not others.
+    const patterns: Record<string, string> = {
+      lf: 'a\nglobalThis.__REGEX_PWNED = 1;',
+      cr: `a${CR}globalThis.__REGEX_PWNED = 1;`,
+      ls: `a${LS}globalThis.__REGEX_PWNED = 1;`,
+      ps: `a${PS}globalThis.__REGEX_PWNED = 1;`,
+      slash: 'a/, globalThis.__REGEX_PWNED = 1, /b',
+      // A portable pattern in the SAME model, so "nothing broke" cannot be
+      // satisfied by the emitter having stopped emitting `.regex(` at all.
+      ok: '^[a-z]+$',
+    }
+    const spec = JSON.stringify({
+      openapi: '3.0.3',
+      info: { title: 'T', version: '1' },
+      servers: [{ url: 'https://e.test' }],
+      paths: {},
+      components: {
+        schemas: {
+          E: {
+            type: 'object',
+            required: Object.keys(patterns),
+            properties: Object.fromEntries(
+              Object.entries(patterns).map(([k, pattern]) => [k, { type: 'string', pattern }]),
+            ),
+          },
+        },
+      },
+    })
+    const out = generate(spec, resolveConfig({ input: 'x', plugins: ['schemas'] }))
+    const schemas = out.files.find((f) => f.path === 'schemas.ts')
+    expect(schemas).toBeDefined()
+
+    delete (globalThis as Record<string, unknown>).__REGEX_PWNED
+    // Parses AND runs. Pre-fix this line threw the SyntaxError.
+    expect(() => executeAndCatchInjection(schemas!.contents)).not.toThrow()
+    expect((globalThis as Record<string, unknown>).__REGEX_PWNED).toBeUndefined()
+
+    // Exactly one constraint survived: the portable one.
+    expect([...schemas!.contents.matchAll(/\.regex\(/g)]).toHaveLength(1)
+    expect(schemas!.contents).toContain('.regex(/^[a-z]+$/)')
+  })
+
+  it('carries no RAW line terminator into a regex literal either', () => {
+    // The string-literal sibling above asserts this for `q()`. A regex literal
+    // has no escape syntax available at emit time -- it is refused instead --
+    // so the invariant is the same but the mechanism is not.
+    const spec = JSON.stringify({
+      openapi: '3.0.3',
+      info: { title: 'T', version: '1' },
+      servers: [{ url: 'https://e.test' }],
+      paths: {},
+      components: {
+        schemas: {
+          E: {
+            type: 'object',
+            required: ['v'],
+            properties: { v: { type: 'string', pattern: `a${LS}b` } },
+          },
+        },
+      },
+    })
+    const schemas =
+      generate(spec, resolveConfig({ input: 'x', plugins: ['schemas'] })).files.find(
+        (f) => f.path === 'schemas.ts',
+      )?.contents ?? ''
+    expect(schemas).not.toContain(LS)
   })
 
   describe('the sanitizers themselves', () => {

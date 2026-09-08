@@ -22,6 +22,7 @@
  */
 import { transformSync } from 'esbuild'
 import { transformJSX } from '@pyreon/compiler'
+import { query } from '@pyreon/test-utils'
 import { Fragment, h, _rp, _rpd, cx } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { _tpl, _bindText, _bindDirect } from '../template'
@@ -83,7 +84,7 @@ describe('compiler auto-call — runtime regression locks (native-first path)', 
     const { container, s1 } = mountCompiled(
       PRELUDE + 'const view = <button onClick={() => s1.set(s1 + 1)}>go</button>',
     )
-    const btn = container.querySelector('button') as HTMLButtonElement & {
+    const btn = query(container, 'button') as HTMLButtonElement & {
       __ev_click?: (e: unknown) => void
     }
     // Template-path handlers attach via the delegation expando — invoke it

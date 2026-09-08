@@ -14,7 +14,7 @@
 // without per-file `import` statements.
 
 import { describe, expect, it } from 'vitest'
-import { mountReactive, query } from '@pyreon/test-utils'
+import { mountReactive, query, queryAll } from '@pyreon/test-utils'
 import { BUILT_IN_COMPONENTS } from '../_shared/built-ins'
 import {
   APICard,
@@ -101,7 +101,8 @@ describe('PR-K — <Tabs>', () => {
         ]}
       />,
     )
-    const tabs = container.querySelectorAll('.pyreon-tabs__tab') as NodeListOf<HTMLButtonElement>
+    // `queryAll` returns a real Array, so indexing/`.map` need no NodeList cast.
+    const tabs = queryAll<HTMLButtonElement>(container, '.pyreon-tabs__tab')
     tabs[1]!.click()
     expect(tabs[1]!.className).toContain('pyreon-tabs__tab--active')
     cleanup()
