@@ -144,6 +144,15 @@ export interface Mark<T> {
    * zero.
    */
   transform?: ((values: Double[]) => Double[]) | undefined
+  /**
+   * The SECOND channel's whole-series transform, for a band whose bounds are
+   * COMPUTED from the series rather than read off each datum.
+   *
+   * A rolling envelope (Bollinger) needs the whole window, so its bounds
+   * cannot come from a per-datum accessor. Both channels start from the same
+   * raw `y` values and each takes its own transform.
+   */
+  transform2?: ((values: Double[]) => Double[]) | undefined
   /** Error-bar bounds; see `ErrorOptions`. */
   errorLow?: Accessor<T> | undefined
   errorHigh?: Accessor<T> | undefined
@@ -315,8 +324,13 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly s
     // The band's lower bound resolves exactly like `values`, so a non-finite
     // bound is a gap on the same terms.
     let values2: Double[] | undefined = undefined
+    const t2 = m.transform2
     const y2Acc = m.y2
-    if (y2Acc !== undefined) {
+    if (t2 !== undefined) {
+      // A computed second channel reads the same RAW series the first one
+      // transformed — both bounds of a rolling envelope come from one input.
+      values2 = t2(raw)
+    } else if (y2Acc !== undefined) {
       values2 = []
       for (let i = 0; i < data.length; i++) {
         const v2 = y2Acc(data[i]!, i)
