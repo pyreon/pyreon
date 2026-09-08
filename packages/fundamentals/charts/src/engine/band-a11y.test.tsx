@@ -8,13 +8,16 @@ import { describe, expect, it } from 'vitest'
 import { chartToSvg } from './svg-chart'
 import { chartTable, describeChart } from './a11y'
 import { tooltipAt, tooltipLines } from './tooltip'
-import { band, bars, line, resolveMarks } from './marks'
+import { band, bars, bubble, line, resolveMarks } from './marks'
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { PlotChart } from './Chart'
 
 interface Row { m: string; lo: number; hi: number }
 const ROWS: Row[] = [{ m: 'a', lo: 5, hi: 3 }, { m: 'b', lo: 2, hi: 6 }]
+
+interface Bub { m: string; y: number; pop: number }
+const BUBBLES: Bub[] = [{ m: 'a', y: 3, pop: 12 }, { m: 'b', y: 6, pop: 40 }]
 
 describe('a band is accessible as an interval', () => {
   it('the description states both bounds', () => {
@@ -197,5 +200,34 @@ describe('the tooltip reads a band as an interval', () => {
     const c = tooltipAt(1, ['a', 'b'], [{ label: 'R', values: [3, 6], values2: [5], color: '#111' }])
     expect(c.rows[0]!.value2).toBeUndefined()
     expect(tooltipLines(c)).toEqual(['b', 'R: 6'])
+  })
+})
+
+describe("a bubble's size channel is data, not just a radius", () => {
+  // Fourth instance of the same class, and the one that hid best: `Series`
+  // DID carry the channel — as `radii`, already mapped to pixels. So the
+  // tooltip and the table were not omitting a field they had, they were
+  // holding a measurement of the DRAWING where the reader needs the datum.
+  // `rValues` keeps the raw numbers beside the pixels.
+  it('the tooltip names the size, and the table gives it a column', () => {
+    const series = resolveMarks(BUBBLES, [bubble<Bub>((d: Bub) => d.y, (d: Bub) => d.pop)])
+    expect(series[0]!.rValues).toEqual([12, 40])
+    // The radii are pixels and are NOT what gets reported.
+    expect(series[0]!.radii![0]).not.toBe(12)
+
+    const c = tooltipAt(1, ['a', 'b'], series)
+    expect(c.rows[0]!.size).toBe(40)
+    expect(tooltipLines(c)).toEqual(['b', 'Series 1: 6 (size 40)'])
+
+    const t = chartTable({ categories: ['a', 'b'], series })
+    expect(t.headers).toEqual(['Category', 'Series 1', 'Series 1 (size)'])
+    expect(t.rows).toEqual([['a', '3', '12'], ['b', '6', '40']])
+  })
+
+  it('a series with no size channel is unchanged', () => {
+    const series = resolveMarks(BUBBLES, [line<Bub>((d: Bub) => d.y)])
+    const t = chartTable({ categories: ['a', 'b'], series })
+    expect(t.headers).toEqual(['Category', 'Series 1'])
+    expect(tooltipLines(tooltipAt(0, ['a', 'b'], series))).toEqual(['a', 'Series 1: 3'])
   })
 })

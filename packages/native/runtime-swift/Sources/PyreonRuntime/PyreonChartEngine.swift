@@ -278,6 +278,7 @@ public struct Series {
   public var label: String
   public var curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil
   public var showValues: Bool? = nil
+  public var rValues: [Double]? = nil
   public var radii: [Double]? = nil
   public var axis: String? = nil
   public var effect: Bool? = nil
@@ -290,7 +291,7 @@ public struct Series {
   public var errLow: [Double]? = nil
   public var errHigh: [Double]? = nil
   public var values2: [Double]? = nil
-  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, showValues: Bool? = nil, radii: [Double]? = nil, axis: String? = nil, effect: Bool? = nil, symbol: String? = nil, symbolRepeat: Bool? = nil, corners: [Double]? = nil, gradient: SeriesGradient? = nil, dash: [Double]? = nil, negativeColor: String? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil, values2: [Double]? = nil) {
+  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, showValues: Bool? = nil, rValues: [Double]? = nil, radii: [Double]? = nil, axis: String? = nil, effect: Bool? = nil, symbol: String? = nil, symbolRepeat: Bool? = nil, corners: [Double]? = nil, gradient: SeriesGradient? = nil, dash: [Double]? = nil, negativeColor: String? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil, values2: [Double]? = nil) {
     self.kind = kind
     self.values = values
     self.color = color
@@ -299,6 +300,7 @@ public struct Series {
     self.label = label
     self.curve = curve
     self.showValues = showValues
+    self.rValues = rValues
     self.radii = radii
     self.axis = axis
     self.effect = effect
@@ -1752,11 +1754,13 @@ public struct TooltipRow: Codable {
   public var value: Double
   public var color: String
   public var value2: Double? = nil
-  public init(label: String, value: Double, color: String, value2: Double? = nil) {
+  public var size: Double? = nil
+  public init(label: String, value: Double, color: String, value2: Double? = nil, size: Double? = nil) {
     self.label = label
     self.value = value
     self.color = color
     self.value2 = value2
+    self.size = size
   }
 }
 
@@ -1774,11 +1778,13 @@ public struct TooltipSeries: Codable {
   public var values: [Double]
   public var color: String
   public var values2: [Double]? = nil
-  public init(label: String, values: [Double], color: String, values2: [Double]? = nil) {
+  public var rValues: [Double]? = nil
+  public init(label: String, values: [Double], color: String, values2: [Double]? = nil, rValues: [Double]? = nil) {
     self.label = label
     self.values = values
     self.color = color
     self.values2 = values2
+    self.rValues = rValues
   }
 }
 
@@ -1898,13 +1904,15 @@ public struct A11ySeries: Codable {
   public var values2: [Double]? = nil
   public var errLow: [Double]? = nil
   public var errHigh: [Double]? = nil
-  public init(label: String, values: [Double], kind: String, values2: [Double]? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil) {
+  public var rValues: [Double]? = nil
+  public init(label: String, values: [Double], kind: String, values2: [Double]? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil, rValues: [Double]? = nil) {
     self.label = label
     self.values = values
     self.kind = kind
     self.values2 = values2
     self.errLow = errLow
     self.errHigh = errHigh
+    self.rValues = rValues
   }
 }
 
@@ -7774,6 +7782,13 @@ public func tooltipAt(_ index: Int, _ categories: [String], _ series: [TooltipSe
           row = TooltipRow(label: s.label, value: v, color: s.color, value2: v2)
         }
       }
+      let rs = (s.rValues ?? [])
+      if index < rs.count {
+        let r = rs[index]
+        if r == r {
+          row = TooltipRow(label: row.label, value: row.value, color: row.color, value2: row.value2, size: r)
+        }
+      }
       rows.append(row)
     }
     return TooltipContent(title: (categories[index] ?? "\(index + 1)"), rows: rows)
@@ -7784,10 +7799,15 @@ public func tooltipLines(_ c: TooltipContent, _ format: ((Double) -> String)? = 
     var out = [c.title]
     for r in c.rows {
       let lo = (r.value2 ?? (0.0 / 0.0))
+      let sz = (r.size ?? (0.0 / 0.0))
       if lo == lo {
         out.append("\(r.label): \(fmt(lo)) to \(fmt(r.value))")
       } else {
-        out.append("\(r.label): \(fmt(r.value))")
+        if sz == sz {
+          out.append("\(r.label): \(fmt(r.value)) (size \(fmt(sz)))")
+        } else {
+          out.append("\(r.label): \(fmt(r.value))")
+        }
       }
     }
     return out
@@ -8476,11 +8496,17 @@ public func chartTable(_ input: A11yInput) -> A11yTable {
     var headers = ["Category"]
     for s in input.series {
       let other = (s.values2 ?? [])
+      let rs = (s.rValues ?? [])
       if other.count > 0 {
         headers.append("\(s.label) (upper)")
         headers.append("\(s.label) (lower)")
       } else {
-        headers.append(s.label)
+        if rs.count > 0 {
+          headers.append(s.label)
+          headers.append("\(s.label) (size)")
+        } else {
+          headers.append(s.label)
+        }
       }
     }
     var n = input.categories.count
@@ -8494,10 +8520,12 @@ public func chartTable(_ input: A11yInput) -> A11yTable {
       var row = [i < input.categories.count ? input.categories[i] : "\(i + 1)"]
       for s in input.series {
         let other = (s.values2 ?? [])
+        let rs = (s.rValues ?? [])
         let two = other.count > 0
+        let sized = !two && rs.count > 0
         if i >= s.values.count {
           row.append("")
-          if two {
+          if two || sized {
             row.append("")
           }
           continue
@@ -8510,6 +8538,15 @@ public func chartTable(_ input: A11yInput) -> A11yTable {
           } else {
             let v2 = other[i]
             row.append(v2 != v2 ? "" : fmt(v2))
+          }
+        } else {
+          if sized {
+            if i >= rs.count {
+              row.append("")
+            } else {
+              let r = rs[i]
+              row.append(r != r ? "" : fmt(r))
+            }
           }
         }
       }

@@ -51,7 +51,7 @@ data class StackSegment(var rect: PyreonChartRect, var seriesIndex: Int, var dat
 
 data class WaterfallStep(var rect: PyreonChartRect, var datumIndex: Int, var value: Double, var start: Double, var end: Double)
 
-data class Series(var kind: String, var values: List<Double>, var color: String, var width: Double, var radius: Double, var label: String, var curve: ((List<PyreonChartPt>) -> List<PyreonChartPt>)? = null, var showValues: Boolean? = null, var radii: List<Double>? = null, var axis: String? = null, var effect: Boolean? = null, var symbol: String? = null, var symbolRepeat: Boolean? = null, var corners: List<Double>? = null, var gradient: SeriesGradient? = null, var dash: List<Double>? = null, var negativeColor: String? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var values2: List<Double>? = null)
+data class Series(var kind: String, var values: List<Double>, var color: String, var width: Double, var radius: Double, var label: String, var curve: ((List<PyreonChartPt>) -> List<PyreonChartPt>)? = null, var showValues: Boolean? = null, var rValues: List<Double>? = null, var radii: List<Double>? = null, var axis: String? = null, var effect: Boolean? = null, var symbol: String? = null, var symbolRepeat: Boolean? = null, var corners: List<Double>? = null, var gradient: SeriesGradient? = null, var dash: List<Double>? = null, var negativeColor: String? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var values2: List<Double>? = null)
 
 data class Annotation(var y: Double? = null, var x: Double? = null, var yFrom: Double? = null, var yTo: Double? = null, var label: String? = null, var color: String? = null)
 
@@ -231,11 +231,11 @@ data class LegendPlan(var row: List<Double>, var xs: List<Double>, var rows: Dou
 
 data class Size(var w: Double, var h: Double)
 
-data class TooltipRow(var label: String, var value: Double, var color: String, var value2: Double? = null)
+data class TooltipRow(var label: String, var value: Double, var color: String, var value2: Double? = null, var size: Double? = null)
 
 data class TooltipContent(var title: String, var rows: List<TooltipRow>)
 
-data class TooltipSeries(var label: String, var values: List<Double>, var color: String, var values2: List<Double>? = null)
+data class TooltipSeries(var label: String, var values: List<Double>, var color: String, var values2: List<Double>? = null, var rValues: List<Double>? = null)
 
 data class TooltipOptions(var fontSize: Double, var fill: String, var border: String, var text: String, var pad: Double, var radius: Double)
 
@@ -255,7 +255,7 @@ data class BrushRange(var start: Int, var end: Int)
 
 data class BrushBand(var visible: Boolean, var lo: Double, var hi: Double)
 
-data class A11ySeries(var label: String, var values: List<Double>, var kind: String, var values2: List<Double>? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null)
+data class A11ySeries(var label: String, var values: List<Double>, var kind: String, var values2: List<Double>? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var rValues: List<Double>? = null)
 
 data class A11yInput(var title: String? = null, var categories: List<String>, var series: List<A11ySeries>, var format: ((Double) -> String)? = null)
 
@@ -6096,6 +6096,13 @@ fun tooltipAt(index: Int, categories: List<String>, series: List<TooltipSeries>)
           row = TooltipRow(label = s.label, value = v, color = s.color, value2 = v2)
         }
       }
+      val rs = (s.rValues ?: listOf())
+      if (index < rs.length) {
+        val r = rs[index]
+        if (r == r) {
+          row = TooltipRow(label = row.label, value = row.value, color = row.color, value2 = row.value2, size = r)
+        }
+      }
       rows.add(row)
     }
     return TooltipContent(title = (categories[index] ?: "${index + 1}"), rows = rows)
@@ -6106,10 +6113,15 @@ fun tooltipLines(c: TooltipContent, format: ((Double) -> String)? = null): List<
     val out = mutableListOf(c.title)
     for (r in c.rows) {
       val lo = (r.value2 ?: ((0.0).toDouble() / (0.0).toDouble()))
+      val sz = (r.size ?: ((0.0).toDouble() / (0.0).toDouble()))
       if (lo == lo) {
         out.add("${r.label}: ${fmt(lo)} to ${fmt(r.value)}")
       } else {
-        out.add("${r.label}: ${fmt(r.value)}")
+        if (sz == sz) {
+          out.add("${r.label}: ${fmt(r.value)} (size ${fmt(sz)})")
+        } else {
+          out.add("${r.label}: ${fmt(r.value)}")
+        }
       }
     }
     return out
@@ -6798,11 +6810,17 @@ fun chartTable(input: A11yInput): A11yTable {
     val headers = mutableListOf("Category")
     for (s in input.series) {
       val other = (s.values2 ?: listOf())
+      val rs = (s.rValues ?: listOf())
       if (other.length > 0) {
         headers.add("${s.label} (upper)")
         headers.add("${s.label} (lower)")
       } else {
-        headers.add(s.label)
+        if (rs.length > 0) {
+          headers.add(s.label)
+          headers.add("${s.label} (size)")
+        } else {
+          headers.add(s.label)
+        }
       }
     }
     var n = input.categories.length
@@ -6816,10 +6834,12 @@ fun chartTable(input: A11yInput): A11yTable {
       val row = mutableListOf(if (i < input.categories.length) input.categories[i] else "${i + 1}")
       for (s in input.series) {
         val other = (s.values2 ?: listOf())
+        val rs = (s.rValues ?: listOf())
         val two = other.length > 0
+        val sized = !two && rs.length > 0
         if (i >= s.values.length) {
           row.add("")
-          if (two) {
+          if (two || sized) {
             row.add("")
           }
           continue
@@ -6832,6 +6852,15 @@ fun chartTable(input: A11yInput): A11yTable {
           } else {
             val v2 = other[i]
             row.add(if (v2 != v2) "" else fmt(v2))
+          }
+        } else {
+          if (sized) {
+            if (i >= rs.length) {
+              row.add("")
+            } else {
+              val r = rs[i]
+              row.add(if (r != r) "" else fmt(r))
+            }
           }
         }
       }

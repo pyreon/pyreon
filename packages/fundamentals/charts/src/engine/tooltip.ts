@@ -27,6 +27,13 @@ export interface TooltipRow {
    * renderer can lay the interval out however it likes.
    */
   value2?: Double | undefined
+  /**
+   * The bubble channel's raw value, where the series has one.
+   *
+   * A bubble's size IS a variable; a row naming only its y leaves the reader
+   * comparing areas by eye, which is the thing tooltips exist to avoid.
+   */
+  size?: Double | undefined
 }
 
 export interface TooltipContent {
@@ -41,6 +48,8 @@ export interface TooltipSeries {
   color: string
   /** The series' second channel, where it has one — see `TooltipRow.value2`. */
   values2?: Double[] | undefined
+  /** The bubble channel's RAW values, where the series has them. */
+  rValues?: Double[] | undefined
 }
 
 /** Everything plotted at one datum index, for a shared-axis tooltip. */
@@ -62,6 +71,11 @@ export function tooltipAt(index: number, categories: string[], series: TooltipSe
       // A NaN bound is a gap in the second channel, not a printed NaN.
       if (v2 === v2) row = { label: s.label, value: v, color: s.color, value2: v2 }
     }
+    const rs: Double[] = s.rValues ?? []
+    if (index < rs.length) {
+      const r = rs[index]!
+      if (r === r) row = { label: row.label, value: row.value, color: row.color, value2: row.value2, size: r }
+    }
     rows.push(row)
   }
   return { title: categories[index] ?? `${index + 1}`, rows }
@@ -77,7 +91,9 @@ export function tooltipLines(c: TooltipContent, format?: Formatter): string[] {
     const lo: Double = r.value2 ?? (0.0 / 0.0)
     // Low to high reads as a range; the channel order is the band's own
     // (`values` is the HIGH edge), so it is stated low-first here.
+    const sz: Double = r.size ?? (0.0 / 0.0)
     if (lo === lo) out.push(`${r.label}: ${fmt(lo)} to ${fmt(r.value)}`)
+    else if (sz === sz) out.push(`${r.label}: ${fmt(r.value)} (size ${fmt(sz)})`)
     else out.push(`${r.label}: ${fmt(r.value)}`)
   }
   return out

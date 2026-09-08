@@ -10291,9 +10291,12 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
       const rBody = kotlinAccessorExpr(r, tag, `mark ${k + 1} radius`, indent)
       if (rBody === 'unsupported') return 'Box {}'
       const range = kotlinBubbleRange(optsArg)
-      lets.push(`val pyreonRadii${k}: List<Double> = bubbleRadii(${kotlinPlotRowMap(rows, `(${rBody}).toDouble()`, windowed)}, ${range[0]}, ${range[1]})`)
+      // The RAW r values beside the pixel radii — the mirror of the Swift
+      // emitter; the table and tooltip report the datum, not the radius.
+      lets.push(`val pyreonRRaw${k}: List<Double> = ${kotlinPlotRowMap(rows, `(${rBody}).toDouble()`, windowed)}`)
+      lets.push(`val pyreonRadii${k}: List<Double> = bubbleRadii(pyreonRRaw${k}, ${range[0]}, ${range[1]})`)
       const at = opts.findIndex((o) => o.startsWith('showValues =')) + 1
-      const withRadii = [...opts.slice(0, at), `radii = pyreonRadii${k}`, ...opts.slice(at)]
+      const withRadii = [...opts.slice(0, at), `rValues = pyreonRRaw${k}`, `radii = pyreonRadii${k}`, ...opts.slice(at)]
       series.push(`Series(kind = "points", values = pyreonValues${k}, ${[...withRadii, ...errArgs].join(', ')})`)
     } else if (isBand) {
       const lo = m.args[0]
@@ -10408,9 +10411,9 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   // `tooltip` as a tap — mirror of the Swift emitter (a named `tooltipFormatter` lowers; an inline one is reported).
   const tooltip = readStaticAttrKotlin(e, 'tooltip') === true
   const tipFormatter = chartAttrExprKotlin(e, 'tooltipFormatter')
-  let tipLines = `tooltipLines(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label = it.label, values = it.values, color = it.color, values2 = it.values2) })${yFormat === undefined ? '' : `, ${yFormat}`})`
+  let tipLines = `tooltipLines(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label = it.label, values = it.values, color = it.color, values2 = it.values2, rValues = it.rValues) })${yFormat === undefined ? '' : `, ${yFormat}`})`
   if (tooltip && tipFormatter !== undefined) {
-    if (tipFormatter.kind === 'identifier') tipLines = `${kotlinIdent(tipFormatter.name)}(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label = it.label, values = it.values, color = it.color, values2 = it.values2) })).split("\\n")`
+    if (tipFormatter.kind === 'identifier') tipLines = `${kotlinIdent(tipFormatter.name)}(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label = it.label, values = it.values, color = it.color, values2 = it.values2, rValues = it.rValues) })).split("\\n")`
     else _emitWarnings.push('<PlotChart tooltipFormatter>: must be a NAMED function on native — an inline arrow is not lowered; the default lines apply.')
   }
   if (tooltip) {
@@ -10506,7 +10509,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     : undefined
   // The data description the web `aria-label` carries (mirror of the Swift emitter).
   const plotTitleRaw = readStaticAttrKotlin(e, 'title')
-  const describe = `describeChart(A11yInput(title = ${typeof plotTitleRaw === 'string' ? JSON.stringify(plotTitleRaw) : 'null'}, categories = pyreonCats, series = pyreonSeries.map { A11ySeries(label = it.label, values = it.values, kind = it.kind, values2 = it.values2, errLow = it.errLow, errHigh = it.errHigh) }, format = ${yFormat ?? 'null'}))`
+  const describe = `describeChart(A11yInput(title = ${typeof plotTitleRaw === 'string' ? JSON.stringify(plotTitleRaw) : 'null'}, categories = pyreonCats, series = pyreonSeries.map { A11ySeries(label = it.label, values = it.values, kind = it.kind, values2 = it.values2, errLow = it.errLow, errHigh = it.errHigh, rValues = it.rValues) }, format = ${yFormat ?? 'null'}))`
   return kotlinFrameHostWithDensity(e, lets, cmds, tap, W, H, hasWidth, indent, windowed || tap !== '', overlay, describe)
 }
 

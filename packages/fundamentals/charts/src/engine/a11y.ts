@@ -36,6 +36,14 @@ export interface A11ySeries {
    */
   errLow?: Double[] | undefined
   errHigh?: Double[] | undefined
+  /**
+   * The bubble channel's RAW values, where the series has them.
+   *
+   * A bubble encodes a third variable in its AREA, which is the one channel a
+   * reader who cannot see the chart has no way to recover — so it reads as a
+   * second cell, like the value it sits beside.
+   */
+  rValues?: Double[] | undefined
 }
 
 export interface A11yInput {
@@ -157,9 +165,13 @@ export function chartTable(input: A11yInput): A11yTable {
   const headers = ['Category']
   for (const s of input.series) {
     const other: Double[] = s.values2 ?? []
+    const rs: Double[] = s.rValues ?? []
     if (other.length > 0) {
       headers.push(`${s.label} (upper)`)
       headers.push(`${s.label} (lower)`)
+    } else if (rs.length > 0) {
+      headers.push(s.label)
+      headers.push(`${s.label} (size)`)
     } else {
       headers.push(s.label)
     }
@@ -176,10 +188,12 @@ export function chartTable(input: A11yInput): A11yTable {
     const row: string[] = [i < input.categories.length ? input.categories[i]! : `${i + 1}`]
     for (const s of input.series) {
       const other: Double[] = s.values2 ?? []
+      const rs: Double[] = s.rValues ?? []
       const two = other.length > 0
+      const sized = !two && rs.length > 0
       if (i >= s.values.length) {
         row.push('')
-        if (two) row.push('')
+        if (two || sized) row.push('')
         continue
       }
       const v = s.values[i]!
@@ -190,6 +204,12 @@ export function chartTable(input: A11yInput): A11yTable {
         else {
           const v2 = other[i]!
           row.push(v2 !== v2 ? '' : fmt(v2))
+        }
+      } else if (sized) {
+        if (i >= rs.length) row.push('')
+        else {
+          const r = rs[i]!
+          row.push(r !== r ? '' : fmt(r))
         }
       }
     }

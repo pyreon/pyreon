@@ -297,6 +297,9 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly s
     // The r channel resolves to RADII here, area-mapped over the series'
     // own extent, so the engine only ever sees pixels.
     let radii: Double[] | undefined = undefined
+    // The RAW r values are kept beside the pixel radii: the reader wants the
+    // datum's number, not the size it was drawn at.
+    let rValues: Double[] | undefined = undefined
     const rAcc = m.r
     if (rAcc !== undefined) {
       // The sqrt-scaled min/max mapping now lives in the shared `bubbleRadii`
@@ -305,6 +308,7 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly s
       const rRaw: Double[] = []
       for (let i = 0; i < data.length; i++) rRaw.push(rAcc(data[i]!, i))
       radii = bubbleRadii(rRaw, m.minRadius ?? 3.0, m.maxRadius ?? 18.0)
+      rValues = rRaw
     }
     // Error bounds resolve like values: a non-finite bound is a gap.
     const lowAcc = m.errorLow
@@ -348,6 +352,7 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly s
       curve: m.options.curve,
       showValues: m.options.showValues === true,
       radii,
+      rValues,
       axis: m.options.axis,
       effect: m.options.effect,
       symbol: m.options.symbol,

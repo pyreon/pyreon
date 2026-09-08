@@ -436,7 +436,7 @@ describe('chart hosts — <PlotChart marks> (the cartesian family)', () => {
     // bare title — the sentence the web `aria-label` carries, with the title
     // inside it. The invariant is unchanged (a titled host is named by its
     // title); the label says more than the title alone did.
-    expect(r.code).toContain('.accessibilityLabel(describeChart(A11yInput(title: "Revenue by month", categories: pyreonCats, series: pyreonSeries.map { A11ySeries(label: $0.label, values: $0.values, kind: $0.kind, values2: $0.values2, errLow: $0.errLow, errHigh: $0.errHigh) }, format: nil)))')
+    expect(r.code).toContain('.accessibilityLabel(describeChart(A11yInput(title: "Revenue by month", categories: pyreonCats, series: pyreonSeries.map { A11ySeries(label: $0.label, values: $0.values, kind: $0.kind, values2: $0.values2, errLow: $0.errLow, errHigh: $0.errHigh, rValues: $0.rValues) }, format: nil)))')
     expect(r.code).toContain('.accessibilityIdentifier("revenue")')
     // The second chart: an index-using accessor, no x, a given width (Group, no reader).
     expect(r.code).toContain('let pyreonValues0: [Double] = MONTHS.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(pyreonD.cost + pyreonI) }')
@@ -585,8 +585,11 @@ describe('chart hosts — theme overrides, formatters and bubble marks', () => {
     const r = transform(PROPS, { target: 'swift' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain(`theme: ${swiftThemeLiteral({ label: '"#222222"', fontSize: '12.0' })}, showXAxis: true, showYAxis: true, showGrid: true, yFormat: compact, xFormat: fixed(1), y2Format: { v in plain(v) + "%" })`)
-    expect(r.code).toContain('let pyreonRadii1: [Double] = bubbleRadii(CITIES.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(pyreonD.area) }, 4.0, 20.0)')
-    expect(r.code).toContain('Series(kind: "points", values: pyreonValues1, color: "#f97362", width: 2.0, radius: 3.0, label: "Area", showValues: false, radii: pyreonRadii1, axis: "right")')
+    // The RAW r values are bound too: the tooltip and the accessible table
+    // report the datum, not the pixel radius it was drawn at.
+    expect(r.code).toContain('let pyreonRRaw1: [Double] = CITIES.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(pyreonD.area) }')
+    expect(r.code).toContain('let pyreonRadii1: [Double] = bubbleRadii(pyreonRRaw1, 4.0, 20.0)')
+    expect(r.code).toContain('Series(kind: "points", values: pyreonValues1, color: "#f97362", width: 2.0, radius: 3.0, label: "Area", showValues: false, rValues: pyreonRRaw1, radii: pyreonRadii1, axis: "right")')
     expect(r.code).toContain(`let pyreonTheme: ChartTheme = ${swiftThemeLiteral({ grid: '"#eeeeee"' })}`)
     expect(r.code).toContain('renderCandlestickChart(pyreonCandles, Double(pyreonGeo.size.width), 160.0, pyreonCats, pyreonTheme, nil, pyreonChartMeasure)')
   })
@@ -594,8 +597,9 @@ describe('chart hosts — theme overrides, formatters and bubble marks', () => {
     const r = transform(PROPS, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain(`theme = ${kotlinThemeLiteral({ label: '"#222222"', fontSize: '12.0' })}, showXAxis = true, showYAxis = true, showGrid = true, yFormat = ::compact, xFormat = fixed(1), y2Format = { v -> plain(v) + "%" })`)
-    expect(r.code).toContain('val pyreonRadii1: List<Double> = bubbleRadii(CITIES.mapIndexed { pyreonI, pyreonD -> (pyreonD.area).toDouble() }, 4.0, 20.0)')
-    expect(r.code).toContain('Series(kind = "points", values = pyreonValues1, color = "#f97362", width = 2.0, radius = 3.0, label = "Area", showValues = false, radii = pyreonRadii1, axis = "right")')
+    expect(r.code).toContain('val pyreonRRaw1: List<Double> = CITIES.mapIndexed { pyreonI, pyreonD -> (pyreonD.area).toDouble() }')
+    expect(r.code).toContain('val pyreonRadii1: List<Double> = bubbleRadii(pyreonRRaw1, 4.0, 20.0)')
+    expect(r.code).toContain('Series(kind = "points", values = pyreonValues1, color = "#f97362", width = 2.0, radius = 3.0, label = "Area", showValues = false, rValues = pyreonRRaw1, radii = pyreonRadii1, axis = "right")')
     expect(r.code).toContain(`val pyreonTheme: ChartTheme = ${kotlinThemeLiteral({ grid: '"#eeeeee"' })}`)
   })
   it('a theme palette colours every mark with no `color` on both targets, and a bad palette warns BY NAME', () => {

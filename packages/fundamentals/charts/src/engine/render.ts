@@ -39,6 +39,15 @@ export interface Series {
    * outline already shows.
    */
   showValues?: boolean | undefined
+  /**
+   * The bubble channel's RAW values, before the pixel mapping.
+   *
+   * `radii` is what the engine draws with; this is what the datum SAID. The
+   * tooltip and the accessible table need the second — "radius 12" is a
+   * measurement of the drawing, not of the data — and without it a bubble
+   * chart's third variable is readable only by eye.
+   */
+  rValues?: Double[] | undefined
   /** Per-datum radii (the bubble channel), already mapped to pixels. */
   radii?: Double[] | undefined
   /** Which y axis the series scales against; absent = left. See `seriesOnRightAxis`. */
