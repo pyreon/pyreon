@@ -127,12 +127,21 @@ runs:
     # this replaces claimed the install "corrects a stale prefix-match
     # restore"; the repo's own rule says it does not.
     #
-    # That matters most for the MEASURING gates. `check-import-budgets` and
-    # `check-bundle-budgets` bundle against the installed tree, so a stale
-    # one makes their verdict a function of which cache the runner happened
-    # to match rather than of the commit — and it fails PERMISSIVELY, green
-    # on a tree that is not the one merging. Two ubuntu Builds days apart
-    # read `plot-minimal` 141 B apart, one exact-key and one prefix-fallback.
+    # The path is taken on any PR whose `bun.lock` differs from every cached
+    # entry — i.e. exactly the dependency-changing PRs where a resolution
+    # difference matters most. It matters there for the MEASURING gates:
+    # `check-import-budgets` and `check-bundle-budgets` bundle against the
+    # installed tree, so on those PRs they measure a HYBRID of two dependency
+    # trees, which is neither the old one nor the new one.
+    #
+    # This is NOT the other way a budget verdict goes stale, and the two are
+    # easy to conflate: a run whose merge ref was fixed BEFORE a lockfile
+    # change merged checks out the older lockfile and gets a perfectly exact
+    # cache hit for it (observed: two ubuntu Builds 141 B apart, both exact
+    # hits, one on main's lockfile and one on the pre-#3398 one, 87 minutes of
+    # queue between run creation and job start). That is concurrent-merge
+    # staleness — the class CLAUDE.md documents for Docs Sync — and its answer
+    # is detection on main after the merge, not anything this step can do.
     #
     # So the stale tree is REMOVED rather than topped up. On a full miss
     # these paths do not exist and the removal is a no-op; the bun download
