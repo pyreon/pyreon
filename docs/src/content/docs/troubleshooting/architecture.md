@@ -235,7 +235,7 @@ the Pyreon compiler emits an INLINE reactive dimension prop — `state={sig() ? 
 
 ### `as unknown as VNodeChild` on JSX returns
 
-This cast is unnecessary — `JSX.Element` (VNode) is already assignable to `VNodeChild`. Never add it; remove it where found.
+This cast is unnecessary — `JSX.Element` (VNode) is already assignable to `VNodeChild`. Never add it; remove it where found. **The one shape where it IS load-bearing is a NULLABLE union**: `child: VNodeChild | null` in `h()` rest position matches no overload, so removing the cast there is a TS2769 (`@pyreon/router`'s `RouterView` is the standing instance). The detector has no type checker and cannot tell the two apart, so that site carries `// pyreon-lint-ignore pyreon-patterns/as-unknown-as-vnodechild` — the SAME comment convention that silences a lint rule, honoured by `detectPyreonPatterns` / `detectReactPatterns` since 2026-09. **General rule: a pattern matcher without types will have findings that are correct code, and the alternative to a local escape hatch is a permanent false positive or a change that makes the code worse — so put the reasoning in a comment above the line and suppress by CODE, never bare.**
 
 **Detected by:** `as-unknown-as-vnodechild` — surfaced by `@pyreon/lint` / `pyreon doctor` / MCP `validate`.
 

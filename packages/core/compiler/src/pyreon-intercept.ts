@@ -101,6 +101,7 @@
  */
 
 import { detectPlain } from './plain'
+import { filterSuppressed } from './detector-suppression'
 import ts from 'typescript'
 import { assertClassicTs } from './ts'
 
@@ -1522,7 +1523,11 @@ export function detectPyreonPatterns(code: string, filename = 'input.tsx'): Pyre
   visit(ctx, sf)
   // Sort by (line, column) for stable ordering when multiple patterns fire.
   ctx.diagnostics.sort((a, b) => a.line - b.line || a.column - b.column)
-  return ctx.diagnostics
+  // …then drop what a `// pyreon-lint-ignore` above the line silenced. A
+  // pattern matcher without a type checker has findings that are correct code
+  // it cannot tell apart, and the alternative to an escape hatch is changing
+  // correct code to quiet a tool.
+  return filterSuppressed(ctx.diagnostics, code, 'pyreon-patterns')
 }
 
 /** Fast regex pre-filter — returns true if the code is worth a full AST walk. */

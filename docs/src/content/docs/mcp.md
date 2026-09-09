@@ -101,7 +101,7 @@ The server makes no network calls and runs no long scans at startup — it retur
 An AI assistant's training data has a cutoff and is averaged across many frameworks — it tends to "fall back to React" or invent plausible-but-wrong Pyreon APIs. The MCP server closes that gap by exposing Pyreon's structured knowledge as callable tools the assistant reaches for *before* writing code:
 
 - **`get_api`** answers "what does this API do, and how do I avoid the common mistakes?" from the same manifest that generates the docs.
-- **`validate`** catches "coming-from-React" and "using-Pyreon-wrong" mistakes statically, with line/column and an auto-fix suggestion — before the code is pasted.
+- **`validate`** catches "coming-from-React" and "using-Pyreon-wrong" mistakes statically, with line/column and an auto-fix suggestion — before the code is pasted. A finding that is genuinely correct code (the detectors have no type checker) can be silenced where it sits with `// pyreon-lint-ignore <code>` on the line above — the same comment `@pyreon/lint` uses, accepting either the bare code or the prefixed id the doctor prints.
 - **`get_pattern` / `get_anti_patterns`** are proactive: fetch the canonical shape (or the foot-gun catalog) *before* writing, not after a bug ships.
 - **`diagnose` / `explain_error`** turn a runtime error string (or a full dev-mode error report with the reactive trace) into structured fix context.
 - The **`audit_*`** tools and **`get_routes` / `get_components` / `get_content_*`** introspect your real project so generated code references things that actually exist.

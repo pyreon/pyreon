@@ -18,7 +18,7 @@ Pyreon-specific lint rules powered by `oxc-parser`. Covers reactivity (16), JSX 
 - Per-rule options via tuple form in config or `--rule-options id='{json}'`
 - AstCache (FNV-1a hash) for repeat runs
 - LSP server for IDE integration (startLspServer)
-- Inline suppression: // pyreon-lint-ignore &lt;rule&gt; OR // pyreon-lint-disable-next-line &lt;rule&gt;
+- Inline suppression: // pyreon-lint-ignore &lt;rule&gt; OR // pyreon-lint-disable-next-line &lt;rule&gt; — the same comment also silences a `pyreon doctor` / MCP `validate` DETECTOR finding, by its bare code or the prefixed id the tool prints (`pyreon-patterns/as-unknown-as-vnodechild`)
 
 ## Complete example
 

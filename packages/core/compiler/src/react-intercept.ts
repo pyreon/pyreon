@@ -13,6 +13,7 @@
  */
 
 import ts from 'typescript'
+import { filterSuppressed } from './detector-suppression'
 import { assertClassicTs } from './ts'
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -705,7 +706,9 @@ export function detectReactPatterns(code: string, filename = 'input.tsx'): React
   }
 
   detectVisit(ctx, sf)
-  return ctx.diagnostics
+  // Same escape hatch as the pyreon detectors — one comment convention for
+  // every finding a user sees, whichever matcher produced it.
+  return filterSuppressed(ctx.diagnostics, code, 'react-patterns')
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
