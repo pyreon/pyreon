@@ -51,6 +51,7 @@ import { readdirSync, existsSync, readFileSync, appendFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { isModuleEntry } from './is-entry'
+import { isTestPath } from './test-paths'
 
 const PACKAGE_DIRS = [
   'packages/core',
@@ -886,6 +887,70 @@ interface PackageInfo {
   branchThreshold: number
 }
 
+/**
+ * Every instrumentable TypeScript source a package carries (tests excluded).
+ *
+ * `isTestPath` is the repo's single definition of a test path, shared with
+ * `check-changeset-required` and `check-diagnose-catalog` — so this cannot
+ * drift into disagreeing with them about what counts as source.
+ */
+function instrumentableSources(pkgDir: string): string[] {
+  const srcDir = join(pkgDir, 'src')
+  if (!existsSync(srcDir)) return []
+  const out: string[] = []
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules') continue
+        walk(full)
+      } else if (/\.tsx?$/.test(entry.name) && !isTestPath(full)) {
+        out.push(full)
+      }
+    }
+  }
+  walk(srcDir)
+  return out
+}
+
+/**
+ * A package whose `test` script does not run vitest.
+ *
+ * The four `@pyreon/native-{runtime,router}-{swift,kotlin}` packages ship
+ * Swift/Kotlin SOURCE consumed by SPM and Gradle. Their `test` script runs
+ * `swift test` / `verify-kotlin.ts`, and they contain ZERO TypeScript — so a
+ * JS coverage pass over them measures 0/0 files. This gate rightly refuses to
+ * call 0/0 a pass, but for these packages "measured nothing" is the TRUTH
+ * rather than a failure: there is no JS to cover, and their real gate is the
+ * Swift/Kotlin toolchain plus the device jobs.
+ *
+ * Two things make this a classification rather than a hole:
+ *
+ * 1. The discriminator is the CONFIG FILE, never a name list. A package that
+ *    runs vitest has a `vitest.config.ts`; one that doesn't, doesn't. A name
+ *    list would need editing every time a package is added, and the edit that
+ *    gets forgotten is the one that hides a package.
+ * 2. The claim is VERIFIED, not trusted. A package with no vitest config that
+ *    nonetheless carries instrumentable TypeScript is a REAL hole — someone
+ *    shipped JS with no suite wired — and is reported as a problem instead of
+ *    skipped. Checking a skip list in only one direction is exactly how it
+ *    rots into a place where packages hide.
+ */
+export function classifyNonVitestPackage(
+  pkgDir: string,
+): { kind: 'vitest' } | { kind: 'no-js'; sources: 0 } | { kind: 'unwired'; sources: number } {
+  if (existsSync(join(pkgDir, 'vitest.config.ts'))) return { kind: 'vitest' }
+  const sources = instrumentableSources(pkgDir)
+  return sources.length === 0
+    ? { kind: 'no-js', sources: 0 }
+    : { kind: 'unwired', sources: sources.length }
+}
+
+/** Packages skipped because they run no vitest at all, for the report. */
+const nonVitestPackages: string[] = []
+/** Packages with TypeScript source but NO vitest config — a real hole. */
+const unwiredPackages: { name: string; sources: number }[] = []
+
 /** Collect all testable packages. */
 function collectPackages(): PackageInfo[] {
   const packages: PackageInfo[] = []
@@ -903,6 +968,16 @@ function collectPackages(): PackageInfo[] {
       const pkg = JSON.parse(readFileSync(pkgJson, 'utf-8'))
       if (!pkg.scripts?.test) continue
       if (pkg.scripts.test.startsWith('echo')) continue // skip placeholder scripts
+
+      const classified = classifyNonVitestPackage(pkgDir)
+      if (classified.kind === 'no-js') {
+        nonVitestPackages.push(pkg.name)
+        continue
+      }
+      if (classified.kind === 'unwired') {
+        unwiredPackages.push({ name: pkg.name, sources: classified.sources })
+        continue
+      }
 
       packages.push({
         dir: pkgDir,
@@ -1257,7 +1332,10 @@ const { results, problems, staleDeclarations } = await runWithConcurrency(packag
 const sorted = results.sort((a, b) => a.package.localeCompare(b.package))
 const sortedProblems = problems.sort((a, b) => a.package.localeCompare(b.package))
 const hasFailures =
-  sorted.some(isFailingResult) || sortedProblems.length > 0 || staleDeclarations.length > 0
+  sorted.some(isFailingResult) ||
+  sortedProblems.length > 0 ||
+  staleDeclarations.length > 0 ||
+  unwiredPackages.length > 0
 
 // Build report
 const reportLines: string[] = [
@@ -1299,6 +1377,37 @@ if (sortedProblems.length > 0) {
     `\u274c ${sortedProblems.length} package(s) could not be measured \u2014 their thresholds were NOT enforced:`,
     '',
     ...sortedProblems.map((p) => `  ${describeProblem(p)}`),
+  )
+}
+
+if (nonVitestPackages.length > 0) {
+  // Visible, never silent: a skipped package must be nameable from the report,
+  // or "not measured" is indistinguishable from "measured and fine" — the
+  // exact confusion this gate exists to remove.
+  reportLines.push(
+    '',
+    `\u2139\ufe0f  ${nonVitestPackages.length} package(s) run no vitest and carry no TypeScript, ` +
+      `so a JS coverage percentage is not a signal for them:`,
+    ...nonVitestPackages
+      .slice()
+      .sort()
+      .map((n) => `  ${n} — ships Swift/Kotlin source; gated by its own toolchain + the device jobs.`),
+  )
+}
+
+if (unwiredPackages.length > 0) {
+  reportLines.push(
+    '',
+    `\u274c ${unwiredPackages.length} package(s) have TypeScript source but NO vitest.config.ts — ` +
+      `their coverage is not measured by anything:`,
+    ...unwiredPackages
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(
+        (p) =>
+          `  ${p.name}: ${p.sources} instrumentable source file(s), no vitest config. ` +
+          `Add one (see @pyreon/vitest-config), or the package ships JS nothing measures.`,
+      ),
   )
 }
 
