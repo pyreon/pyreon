@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { compileFamily } from './option-family'
 import { familyHostNode } from './family-host'
-import { registerMap } from './geo'
+import { registerMap } from './geo-web'
 import { PieChart, GaugeChart } from './PieChart'
 import { RadarChart } from './RadarChart'
 import { CandlestickChart } from './CandlestickChart'

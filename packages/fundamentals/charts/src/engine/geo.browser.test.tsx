@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { signal } from '@pyreon/reactivity'
 import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
 import { MapChart } from './MapChart'
-import { layoutGeo } from './geo'
-import type { GeoJson, GeoRegion } from './geo'
+import { layoutGeo } from './geo-web'
+import type { GeoRegion } from './geo'
+import type { GeoJson } from './geo-web'
 
 const WORLD: GeoJson = {
   type: 'FeatureCollection',

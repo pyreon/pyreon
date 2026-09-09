@@ -1,7 +1,9 @@
 // Points on a map — scatter / effectScatter with `coordinateSystem: 'geo'`.
 
-import { layoutGeo, renderGeo, geoProject } from './geo'
-import type { GeoJson, GeoLayout, GeoOptions } from './geo'
+import { renderGeo, geoProject } from './geo'
+import { layoutGeo } from './geo-web'
+import type { GeoLayout, GeoOptions } from './geo'
+import type { GeoJson } from './geo-web'
 import { withAlpha } from './radar'
 import { measureApprox, renderSvg } from './svg'
 import type { SvgOptions } from './svg'
@@ -122,7 +124,7 @@ export function geoPointsToSvg(o: GeoPointsToSvgOptions): string {
   const layout = layoutGeo(o.geo, { x: 0.0, y: 0.0, w: width, h: height }, o.map)
   const m = o.measure ?? measureApprox()
   const paths = o.paths ?? []
-  const cmds = [...renderGeo(layout, {}, o.map, m), ...renderGeoPaths(layout, paths, o.options), ...renderGeoPoints(layout, o.points, o.options, m)]
+  const cmds = [...renderGeo(layout, [], o.map, m), ...renderGeoPaths(layout, paths, o.options), ...renderGeoPoints(layout, o.points, o.options, m)]
   const description = o.description ?? (o.title !== undefined ? `${o.title}: ${o.points.length} points and ${paths.length} paths over ${layout.regions.length} regions.` : undefined)
   return renderSvg(cmds, width, height, {
     ...o.svg,

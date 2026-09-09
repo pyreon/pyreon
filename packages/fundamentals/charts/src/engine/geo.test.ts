@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { geoDomain, geoToSvg, getMap, hitGeo, layoutGeo, listMaps, projectLonLat, registerMap, renderGeo, geoProject } from './geo'
-import type { GeoJson } from './geo'
+import { geoDomain, hitGeo, projectLonLat, renderGeo, geoProject } from './geo'
+import { geoToSvg, getMap, layoutGeo, listMaps, registerMap, geoValues } from './geo-web'
+import type { GeoJson } from './geo-web'
 import { compileFamily, familyToSvg } from './option-family'
 
 // Two squares side by side (10° each) plus a multipolygon of two smaller squares.
@@ -46,8 +47,10 @@ describe('geo layout', () => {
   })
   it('renders fills by value (empty colour for no data), borders, labels only where they fit; entrance fades', () => {
     const l = layoutGeo(world, box)
-    const values = { West: 1, East: 9 }
-    expect(geoDomain(l, values)).toEqual([1, 9])
+    // The crossing half takes a value LIST; `geoValues` is the web adapter,
+    // so the assertions below are unchanged — only the shape handed in is.
+    const values = geoValues({ West: 1, East: 9 })
+    expect(geoDomain(l, values)).toEqual({ min: 1, max: 9 })
     // A wide measure so the 40px islands cannot hold their 50px label.
     const cmds = renderGeo(l, values, { showLabels: true }, (text, size) => text.length * size)
     const polys = cmds.filter((c) => c.kind === 'polygon')
@@ -92,7 +95,7 @@ describe('map option mapping', () => {
     })!
     if (f.plan.kind !== 'map') throw new Error('kind')
     expect(f.plan.values).toEqual({ West: 3, East: 7 })
-    expect(f.plan.options).toMatchObject({ showLabels: true, borderColor: '#ff0000', domain: [0, 10], stops: ['#ffffff', '#000000'] })
+    expect(f.plan.options).toMatchObject({ showLabels: true, borderColor: '#ff0000', domain: { min: 0, max: 10 }, stops: ['#ffffff', '#000000'] })
     expect(f.warnings.map((w) => w.code)).toEqual(['series-data-shape'])
     expect(familyToSvg(f.plan)).toContain('<polygon')
     const missing = compileFamily({ series: [{ type: 'map', map: 'not-registered', data: [] }] })!
