@@ -23,10 +23,17 @@ export default defineNodeConfig({
   // would require 11+ targeted tests per Transition variant. Real-Chromium
   // e2e (e2e/compat-layers/vue-compat.spec.ts) exercises the production
   // shapes of these.
+  // Ratcheted 95/86 -> 97/92 (measured 97.92/92.72/97.35/99.66). The gap was
+  // the COMPONENT-RENDER-CONTEXT half of `watch`: every existing watch test
+  // called it at module scope, which takes a different branch entirely, so the
+  // hook-slot path (register once, reuse across re-renders, stop on unmount)
+  // was unreached for both the single-source and array forms. Covering it also
+  // surfaced a real bug — an `immediate` watcher fired TWICE at setup — fixed
+  // in the same change.
   coverageThresholds: {
-    statements: 95,
-    branches: 86,
-    functions: 95,
-    lines: 95,
+    statements: 97,
+    branches: 92,
+    functions: 97,
+    lines: 99,
   },
 })

@@ -261,10 +261,10 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
       'DOM renderer. Branches at ~86% — residual gap in template fast paths, hydrate NativeItem swaps, transition timing arms only reachable via compiler-emitted templates in real Chromium (covered by ui-showcase e2e). Statements ratcheted 93 → 94 (measured 94.59) after the props.ts reactive getter-descriptor / applySelectValueProp / applyAttrProp aria-boolean paths and binding-registry.ts no-doc + stale-graph-node guards gained behavioral tests; the remaining sub-95 statements are devtools.ts reactive-overlay + DOM→signal picker machinery (e2e/reactive-overlay.spec.ts) and hydrate.ts parity-fuzz recovery arms that land with e2e-tier coverage. LOWERED 94 → 92 statements / 86 → 83 branches (2026-08): the row-plan replay hydrator (hydration-plan.ts, PR #2694) landed at 72.57% statements / 59.34% branches and dragged the package under its own gate, reddening Coverage (Full) on EVERY main run. `hydration-plan.test.tsx` covers the bail contract — the refusals a fast path\'s correctness rests on — plus tplAdoptVerify, lifting that file to 78% and the package to 92.90 / 84.01. The residual is the replay INTERNALS (adopt-plan build/replay, signature matching), which need real SSR row fixtures rather than synthetic vnodes; that is the tracked lift back to 94/86. This is visible debt, not a new normal.',
   },
   '@pyreon/vue-compat': {
-    currentStatements: 95,
-    currentBranches: 86,
+    currentStatements: 97,
+    currentBranches: 92,
     reason:
-      'Vue 3 compat shim. Branches at ~86% — residual gap in Transition/TransitionGroup class-prop forwarders. Real-Chromium e2e (`e2e/compat-layers/vue-compat.spec.ts`) covers production shapes.',
+      'Vue compat layer. Ratcheted 95/86 -> 97/92 (measured 97.92/92.72). The gap was the COMPONENT-RENDER-CONTEXT half of `watch`: every existing watch test called it at module scope, which takes a different branch entirely, so the hook-slot path (register once, reuse across re-renders, stop on unmount) was unreached for both the single-source and array forms — and the array form of `watch([a, b], cb)` had no test at all. Covering it surfaced a real bug: an `immediate` watcher fired TWICE at setup, `(5, undefined)` then a spurious `(5, 5)`, so every immediate watcher with a side effect did it twice on mount; fixed across all four watch variants in the same change. Also covers readonly/shallowReadonly enforcement (a proxy that accepts a write is worse than no proxy) and the twelve Vue-to-Pyreon Transition class mappings, of which the suite passed two.',
   },
   '@pyreon/store': {
     currentStatements: 100,
@@ -273,10 +273,10 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
       'Composition-store engine. The prior 98% thresholds were VACUOUS — the default `src/**/index.ts` barrel coverage-exclude dropped the entire implementation (index.ts IS the module, not a re-export barrel), so the gate measured only ~42 registry/hydration statements. Un-excluded at the 2026-07 excellence pass (PR #2167): statements/functions/lines now at a true 100%, branches at 92% — the residual is the prod side of `process.env.NODE_ENV !== \'production\'` dev-warning gates (unknown-patch-key + same-id-redefinition warnings), which never executes under the vitest `development` NODE_ENV. Those arms are structurally uncoverable from node vitest without a second production-mode bundle-inspection pass; lift to 95 is not meaningful debt.',
   },
   '@pyreon/router': {
-    currentStatements: 91,
-    currentBranches: 85,
+    currentStatements: 96,
+    currentBranches: 92,
     reason:
-      'Router. Re-baselined 95/88 → 91/85 at the 2026-07 coverage-gate restoration (measured 91.78/85.12): View Transitions API integration (browser-only), scroll restoration timing arms, prefetch IntersectionObserver paths, route-change announcer (router.browser.test.tsx), RouterLink link-DX warning paths, serverLoader/invalidateLoader arms — exercised by Playwright e2e (ssr-showcase, ssg-i18n) + the router browser suite rather than node vitest.',
+      'Router. Ratcheted 91/85 → 96/92 (measured 96.59/92.19) by covering the error paths of whole features that had none: the single-fetch server-loader pipeline on BOTH sides (including the three generation checks that stop a stale response overwriting a newer navigation, and the chain-INDEX keying that a path-keyed version silently collided), the pending-loader timing machine (delay, minimum-display floor, timer teardown), the not-found trie tiebreakers on both the layout and page tracks, the shared beforeunload refcount, SWR background revalidation, and a NODE-environment file for the isServer arms happy-dom makes unreachable by construction. Every guard bisect-verified individually. The residual is two-tier and deliberately not chased: ~20 env-gate arms a node run cannot reach, and ~10 RouterLink external/target/rel branches covered by routerlink-external.browser.test.tsx — duplicating those in node would move the number without reducing risk. Aspiration stays 95 branches.',
   },
   '@pyreon/vite-plugin': {
     currentStatements: 94,
@@ -285,10 +285,10 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
       'Vite plugin. Residual gap in Vite plugin hooks invoked by Vite itself (not directly testable from vitest). 48 helper-function tests landed in PR #1323; further lift needs integration tests covered by `verify-modes`. Re-baselined 95/88 → 94/87 at the 2026-07 coverage-gate restoration (measured 94.58/87.84 locally; usually SKIPPED on CI by the gate’s 120s per-package timeout, so the drift went unnoticed).',
   },
   '@pyreon/solid-compat': {
-    currentStatements: 95,
-    currentBranches: 89,
+    currentStatements: 96,
+    currentBranches: 91,
     reason:
-      'Solid compat shim. Branches at ~89% — residual gap in createResource / createMutable proxy traps. Real-Chromium e2e covers production shapes.',
+      'Solid compat layer. Ratcheted 95/89 -> 96/91 (measured 96.68/91.77) by covering `setStore`\'s path forms (nested, array index, function updater, filter predicate), `createResource`\'s staleness guards on both the resolve and reject arms, and the store proxy\'s traps over a path whose value has vanished. That surfaced a real bug: the proxy target was a plain `{}` regardless of the value, so a store-wrapped ARRAY threw `TypeError: trap reported non-configurability for property length` on `JSON.stringify` and reported false for `Array.isArray` — while `.length`, indexing and `.map()` all worked, so a store looked healthy until something serialized it. 91 rather than 92 is the honest node-run ceiling: of the 25 branches left, four are NODE_ENV arms and most of the rest are defensive arms no caller can reach (safeAssign\'s zero-length path, the `!desc` continues, the sync half of the fetch-version check). Raise it when one becomes reachable, not by covering it.',
   },
   '@pyreon/svelte-compat': {
     currentStatements: 95,

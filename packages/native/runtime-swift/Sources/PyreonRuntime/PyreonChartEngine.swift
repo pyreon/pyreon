@@ -870,8 +870,9 @@ public struct RiverOptions: Codable {
   public var fontSize: Double? = nil
   public var labelColor: String? = nil
   public var axisColor: String? = nil
+  public var tickColor: String? = nil
   public var progress: Double? = nil
-  public init(palette: [String]? = nil, categories: [String]? = nil, baseline: String? = nil, curve: String? = nil, showLabels: Bool? = nil, showAxis: Bool? = nil, fontSize: Double? = nil, labelColor: String? = nil, axisColor: String? = nil, progress: Double? = nil) {
+  public init(palette: [String]? = nil, categories: [String]? = nil, baseline: String? = nil, curve: String? = nil, showLabels: Bool? = nil, showAxis: Bool? = nil, fontSize: Double? = nil, labelColor: String? = nil, axisColor: String? = nil, tickColor: String? = nil, progress: Double? = nil) {
     self.palette = palette
     self.categories = categories
     self.baseline = baseline
@@ -881,6 +882,7 @@ public struct RiverOptions: Codable {
     self.fontSize = fontSize
     self.labelColor = labelColor
     self.axisColor = axisColor
+    self.tickColor = tickColor
     self.progress = progress
   }
 }
@@ -5476,6 +5478,7 @@ public func renderRiver(_ layout: RiverLayout, _ options: RiverOptions? = nil, _
     let fontSize = (options?.fontSize ?? 11.0)
     let labelColor = (options?.labelColor ?? "#ffffff")
     let axisColor = (options?.axisColor ?? "#94a3b8")
+    let tickColor = (options?.tickColor ?? "#64748b")
     let m = (measure ?? approxTextWidth)
     if progress <= 0.0 || layout.xs.count < 2 {
       return out
@@ -5493,7 +5496,7 @@ public func renderRiver(_ layout: RiverLayout, _ options: RiverOptions? = nil, _
       let y = layout.plot.y + layout.plot.h
       out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: layout.plot.x, y: y), to: PyreonChartPt(x: layout.plot.x + layout.plot.w, y: y), stroke: axisColor, width: 1.0))
       for t in layout.ticks {
-        out.append(PyreonDrawCmd(kind: "text", fill: "#64748b", text: t.label, at: PyreonChartPt(x: t.x, y: y + 4.0), size: fontSize, align: "middle", baseline: "top"))
+        out.append(PyreonDrawCmd(kind: "text", fill: tickColor, text: t.label, at: PyreonChartPt(x: t.x, y: y + 4.0), size: fontSize, align: "middle", baseline: "top"))
       }
     }
     if options?.showLabels != false {

@@ -15,18 +15,53 @@ import { renderRadar } from './radar'
 import { paletteAt } from './palette'
 import { chartThemes } from './theme'
 import { defaultTheme } from './render'
+import * as familySvg from './family-svg'
 import {
   calendarToSvg,
+  candlestickToSvg,
+  funnelToSvg,
   ganttToSvg,
   gaugeToSvg,
   graphToSvg,
+  heatmapToSvg,
   parallelToSvg,
   pieToSvg,
   polarToSvg,
   radarToSvg,
+  riverToSvg,
   sankeyToSvg,
+  sunburstToSvg,
   treeToSvg,
+  treemapToSvg,
 } from './family-svg'
+
+interface Candle { o: number; h: number; l: number; c: number }
+interface Cell { x: string; y: string; v: number }
+interface Row { n: string; v: number }
+const rows: Row[] = [{ n: 'a', v: 10 }, { n: 'b', v: 6 }, { n: 'c', v: 3 }]
+const tree = { name: 'root', children: [{ name: 'a', value: 8 }, { name: 'b', value: 4 }] }
+
+/**
+ * Colours a family draws that are deliberately theme-INDEPENDENT, and why.
+ *
+ * Kept as an allowlist rather than a looser assertion because the interesting
+ * failure is a light token surviving into a dark render, and `#ffffff` is both
+ * a legitimate on-fill label AND the light theme's own `surface`.
+ */
+const themeIndependent: Readonly<Record<string, readonly string[]>> = {
+  // A label drawn ON a palette-filled shape. White reads on every palette
+  // entry in both themes; taking `text` here would put dark ink on a dark fill.
+  funnelToSvg: ['#ffffff'],
+  treemapToSvg: ['#ffffff'],
+  sunburstToSvg: ['#ffffff'],
+  // Pie's slice labels sit on the slice for the same reason. Note this entry
+  // is not a rubber stamp: `#ffffff` is also the LIGHT theme's `surface`, so
+  // the allowlist is what forces each one to be looked at rather than assumed.
+  pieToSvg: ['#ffffff'],
+  // River's band labels, likewise on the band. Its AXIS text is a different
+  // surface and is themed — that split is the whole point of `tickColor`.
+  riverToSvg: ['#ffffff'],
+}
 
 const dark = chartThemes.dark
 
@@ -78,33 +113,74 @@ describe('static SVG ⇄ canvas theme parity', () => {
 
   // Every helper whose canvas twin defaults a chrome colour from the theme.
   const cases: ReadonlyArray<readonly [string, () => string, readonly string[]]> = [
-    ['pie', () => pieToSvg({ data: [{ v: 1 }], value: (d: { v: number }) => d.v, label: () => 'a', showLegend: true, theme: dark }), [dark.label]],
-    ['gauge', () => gaugeToSvg({ value: 3, theme: dark }), [dark.text, dark.grid]],
-    ['radar', () => radarToSvg({ data: [{ v: [1, 2, 3] }], axes: [{ label: 'a', max: 4 }, { label: 'b', max: 4 }, { label: 'c', max: 4 }], values: (d: { v: number[] }) => d.v, label: () => 's', theme: dark }), [dark.grid, dark.label]],
-    ['tree', () => treeToSvg({ data: [{ name: 'docs', value: 30 }, { name: 'src', children: [{ name: 'core', value: 50 }] }], theme: dark }), [dark.label]],
-    ['sankey', () => sankeyToSvg({ nodes: [{ name: 'a' }, { name: 'b' }], links: [{ source: 'a', target: 'b', value: 5 }], theme: dark }), [dark.label]],
-    ['graph', () => graphToSvg({ nodes: [{ id: 'a', name: 'a' }, { id: 'b', name: 'b' }], links: [{ source: 'a', target: 'b' }], graph: { showLabels: true }, theme: dark }), [dark.label]],
-    ['polar', () => polarToSvg({ axes: { categories: ['a', 'b'] }, series: [{ name: 's', kind: 'bar', values: [1, 2] }], theme: dark }), [dark.label, dark.grid]],
-    ['calendar', () => calendarToSvg({ start: '2024-01-01', end: '2024-02-11', values: { '2024-01-03': 3 }, theme: dark }), [dark.label]],
-    ['gantt', () => ganttToSvg({ tasks: [{ id: '1', name: 'Design', start: '2024-01-01', end: '2024-01-10' }], theme: dark }), [dark.label, dark.grid]],
+    ['pieToSvg', () => pieToSvg({ data: [{ v: 1 }], value: (d: { v: number }) => d.v, label: () => 'a', showLegend: true, theme: dark }), [dark.label]],
+    ['gaugeToSvg', () => gaugeToSvg({ value: 3, theme: dark }), [dark.text, dark.grid]],
+    ['radarToSvg', () => radarToSvg({ data: [{ v: [1, 2, 3] }], axes: [{ label: 'a', max: 4 }, { label: 'b', max: 4 }, { label: 'c', max: 4 }], values: (d: { v: number[] }) => d.v, label: () => 's', theme: dark }), [dark.grid, dark.label]],
+    ['treeToSvg', () => treeToSvg({ data: [{ name: 'docs', value: 30 }, { name: 'src', children: [{ name: 'core', value: 50 }] }], theme: dark }), [dark.label]],
+    ['sankeyToSvg', () => sankeyToSvg({ nodes: [{ name: 'a' }, { name: 'b' }], links: [{ source: 'a', target: 'b', value: 5 }], theme: dark }), [dark.label]],
+    ['graphToSvg', () => graphToSvg({ nodes: [{ id: 'a', name: 'a' }, { id: 'b', name: 'b' }], links: [{ source: 'a', target: 'b' }], graph: { showLabels: true }, theme: dark }), [dark.label]],
+    ['polarToSvg', () => polarToSvg({ axes: { categories: ['a', 'b'] }, series: [{ name: 's', kind: 'bar', values: [1, 2] }], theme: dark }), [dark.label, dark.grid]],
+    ['calendarToSvg', () => calendarToSvg({ start: '2024-01-01', end: '2024-02-11', values: { '2024-01-03': 3 }, theme: dark }), [dark.label]],
+    ['ganttToSvg', () => ganttToSvg({ tasks: [{ id: '1', name: 'Design', start: '2024-01-01', end: '2024-01-10' }], theme: dark }), [dark.label, dark.grid]],
     // Grouped, so the LANE BAND is drawn. Threading the label through the
     // theme without the band under it made a dark gantt light-grey text on a
     // fixed near-white band — about 1.9:1, i.e. worse than before the theme
     // reached it at all. The band follows `grid`: a translucent neutral is
     // the one value that reads on both grounds.
-    ['gantt (grouped lanes)', () => ganttToSvg({ tasks: [{ id: '1', name: 'D', start: '2024-01-01', end: '2024-01-10', group: 'Web' }, { id: '2', name: 'S', start: '2024-01-20', end: '2024-01-25', group: 'App' }], theme: dark }), [dark.label, dark.grid]],
-    ['parallel', () => parallelToSvg({ axes: [{ name: 'a' }, { name: 'b' }], rows: [[1, 10], [2, 20]], theme: dark }), [dark.label, dark.axis]],
+    ['ganttToSvg (grouped lanes)', () => ganttToSvg({ tasks: [{ id: '1', name: 'D', start: '2024-01-01', end: '2024-01-10', group: 'Web' }, { id: '2', name: 'S', start: '2024-01-20', end: '2024-01-25', group: 'App' }], theme: dark }), [dark.label, dark.grid]],
+    ['parallelToSvg', () => parallelToSvg({ axes: [{ name: 'a' }, { name: 'b' }], rows: [[1, 10], [2, 20]], theme: dark }), [dark.label, dark.axis]],
+    // ---- the six the table used to omit ----------------------------------
+    // Not an oversight with no consequence: every unthemed literal still in the
+    // engine was in one of these six, because a family the table does not reach
+    // is a family nothing asks to read the theme.
+    ['candlestickToSvg', () => candlestickToSvg({ data: [{ o: 1, h: 3, l: 0.5, c: 2 }, { o: 2, h: 4, l: 1.5, c: 1.8 }], open: (d: Candle) => d.o, high: (d: Candle) => d.h, low: (d: Candle) => d.l, close: (d: Candle) => d.c, x: (_d: Candle, i: number) => `p${i}`, theme: dark }), [dark.label, dark.grid]],
+    ['heatmapToSvg', () => heatmapToSvg({ data: [{ x: 'a', y: 'p', v: 1 }, { x: 'b', y: 'q', v: 5 }], x: (d: Cell) => d.x, y: (d: Cell) => d.y, value: (d: Cell) => d.v, theme: dark }), [dark.label]],
+    ['riverToSvg', () => riverToSvg({ series: [{ name: 's1', values: [1, 4, 2, 6] }, { name: 's2', values: [2, 1, 5, 3] }], theme: dark }), [dark.label, dark.axis]],
+    // The three below draw their labels ON a palette-filled shape, so white is
+    // correct on either ground and they carry no themed chrome of their own —
+    // see `themeIndependent`. The case still earns its place: it asserts they
+    // leak no LIGHT token, which is the half that can regress.
+    ['funnelToSvg', () => funnelToSvg({ data: rows, value: (d: Row) => d.v, label: (d: Row) => d.n, theme: dark }), []],
+    ['treemapToSvg', () => treemapToSvg({ data: [tree], theme: dark }), []],
+    ['sunburstToSvg', () => sunburstToSvg({ data: [tree], theme: dark }), []],
   ]
 
+  /** Light-theme values that have no business in a dark render. */
+  const lightOnly = (helper: string): string[] => {
+    const allowed = new Set(themeIndependent[helper] ?? [])
+    const out: string[] = []
+    for (const [k, v] of Object.entries(defaultTheme)) {
+      if (typeof v === 'string' && v.startsWith('#') && v !== (dark as unknown as Record<string, unknown>)[k] && !allowed.has(v)) out.push(v)
+    }
+    for (const c of defaultTheme.palette) if (!dark.palette.includes(c) && !allowed.has(c)) out.push(c)
+    return out
+  }
+
   for (const [name, render, expected] of cases) {
-    it(`${name}ToSvg renders its chrome from the supplied theme`, () => {
+    it(`${name} renders its chrome from the supplied theme`, () => {
       const svg = render()
       for (const colour of expected) expect(svg, `${name}: expected ${colour}`).toContain(colour)
-      // The light default must be GONE — otherwise the helper is drawing chrome
-      // it never routed through the theme at all.
-      expect(svg, `${name}: still carries the light label`).not.toContain(defaultTheme.label)
+      // The light defaults must be GONE — otherwise the helper is drawing chrome
+      // it never routed through the theme at all. Checking EVERY light-only
+      // token, not just `label`: a family can thread one field and inline the
+      // next, which is how river shipped drawing themed bands over a fixed
+      // slate axis.
+      const helper = name.split(' ')[0]!
+      for (const leaked of lightOnly(helper)) {
+        expect(svg, `${name}: leaked the light ${leaked}`).not.toContain(leaked)
+      }
     })
   }
+
+  it('every *ToSvg helper family-svg exports has a case above', () => {
+    // The hole this closes: the table covered ten of sixteen helpers, and all
+    // six it missed drew something the theme never reached. A list checked in
+    // one direction only proves things about the entries it happens to have.
+    const exported = Object.keys(familySvg).filter((k) => k.endsWith('ToSvg')).sort()
+    const covered = new Set(cases.map(([name]) => name.split(' ')[0]!))
+    expect(exported.filter((h) => !covered.has(h)), 'helpers with no theme case').toEqual([])
+    expect(exported.length).toBeGreaterThanOrEqual(16)
+  })
 })
 
 describe('the gantt lane band follows its label', () => {

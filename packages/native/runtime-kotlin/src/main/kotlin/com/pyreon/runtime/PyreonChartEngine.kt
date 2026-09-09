@@ -117,7 +117,7 @@ data class RiverTick(var x: Double, var label: String)
 
 data class RiverLayout(var layers: List<RiverLayer>, var xs: List<Double>, var ticks: List<RiverTick>, var plot: PyreonChartRect)
 
-data class RiverOptions(var palette: List<String>? = null, var categories: List<String>? = null, var baseline: String? = null, var curve: String? = null, var showLabels: Boolean? = null, var showAxis: Boolean? = null, var fontSize: Double? = null, var labelColor: String? = null, var axisColor: String? = null, var progress: Double? = null)
+data class RiverOptions(var palette: List<String>? = null, var categories: List<String>? = null, var baseline: String? = null, var curve: String? = null, var showLabels: Boolean? = null, var showAxis: Boolean? = null, var fontSize: Double? = null, var labelColor: String? = null, var axisColor: String? = null, var tickColor: String? = null, var progress: Double? = null)
 
 data class PolarSeries(var name: String, var kind: String, var values: List<Double>, var color: String? = null, var stack: String? = null)
 
@@ -3685,6 +3685,7 @@ fun renderRiver(layout: RiverLayout, options: RiverOptions? = null, measure: ((S
     val fontSize = (options?.fontSize ?: 11.0)
     val labelColor = (options?.labelColor ?: "#ffffff")
     val axisColor = (options?.axisColor ?: "#94a3b8")
+    val tickColor = (options?.tickColor ?: "#64748b")
     val m = (measure ?: ::approxTextWidth)
     if (progress <= 0.0 || layout.xs.length < 2) {
       return out
@@ -3702,7 +3703,7 @@ fun renderRiver(layout: RiverLayout, options: RiverOptions? = null, measure: ((S
       val y = layout.plot.y + layout.plot.h
       out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = layout.plot.x, y = y), to = PyreonChartPt(x = layout.plot.x + layout.plot.w, y = y), stroke = axisColor, width = 1.0))
       for (t in layout.ticks) {
-        out.add(PyreonDrawCmd(kind = "text", fill = "#64748b", text = t.label, at = PyreonChartPt(x = t.x, y = y + 4.0), size = fontSize, align = "middle", baseline = "top"))
+        out.add(PyreonDrawCmd(kind = "text", fill = tickColor, text = t.label, at = PyreonChartPt(x = t.x, y = y + 4.0), size = fontSize, align = "middle", baseline = "top"))
       }
     }
     if (options?.showLabels != false) {

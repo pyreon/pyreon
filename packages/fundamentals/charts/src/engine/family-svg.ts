@@ -683,7 +683,7 @@ export function riverToSvg(options: RiverToSvgOptions): string {
   const width = options.width ?? 640.0
   const height = options.height ?? 320.0
   const layout = layoutRiver(options.series, { x: 8.0, y: 8.0, w: Math.max(0.0, width - 16.0), h: Math.max(0.0, height - 16.0) }, { palette: t.palette, ...options.river })
-  const cmds = renderRiver(layout, { palette: t.palette, ...options.river }, options.measure ?? measureApprox())
+  const cmds = renderRiver(layout, { palette: t.palette, axisColor: t.axis, tickColor: t.label, ...options.river }, options.measure ?? measureApprox())
   const description =
     options.description ??
     (options.title !== undefined ? `${options.title}: ${options.series.length} streams over ${layout.xs.length} points (${options.series.map((s) => s.name).join(', ')}).` : undefined)

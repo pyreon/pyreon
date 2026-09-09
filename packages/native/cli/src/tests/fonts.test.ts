@@ -9,7 +9,8 @@
 // length@8, offset@10); the android-name collision throw in scanFontDir;
 // the res/font sanitized copy in materializeAndroidFonts.
 
-import { copyFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { writeFixtureFont } from './font-fixture'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -25,11 +26,22 @@ import {
 let dir = ''
 let out = ''
 
-// A renamed system TTF: filename says "Brand", the sfnt name table
-// still says its real PostScript name — the exact trap the extraction
-// must clear. Resolved at runtime so the test is host-font-agnostic.
-const SYSTEM_TTF = '/System/Library/Fonts/Supplemental/Trattatello.ttf'
-const hasSystemFont = existsSync(SYSTEM_TTF)
+// A renamed TTF: the filename says "Brand", the sfnt name table says its real
+// PostScript name — the exact trap the extraction must clear.
+//
+// SYNTHESIZED, not borrowed from the host. This was gated on
+// `/System/Library/Fonts/Supplemental/Trattatello.ttf`, a macOS-only absolute
+// path, while this package's tests run on ubuntu — so four specs, including
+// the one this file calls "the device-critical extraction", had never executed
+// in CI. Only on a developer's Mac, which is the least useful place for them.
+//
+// A fixture is the right answer rather than a louder skip: the trap is a
+// filename that disagrees with the name table, and that is a property of the
+// BYTES, which `writeFixtureFont` writes exactly. Both platform encodings are
+// covered — Windows/UTF-16BE and Mac-Roman — which the borrowed font could not
+// do either.
+const FIXTURE_PS_NAME = 'Trattatello'
+const putFont = (target: string, ps = FIXTURE_PS_NAME): void => writeFixtureFont(target, ps)
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'pyreon-fonts-'))
@@ -57,20 +69,22 @@ describe('sanitizeFontResourceName', () => {
 })
 
 describe('readPostScriptName — the device-critical extraction', () => {
-  it.skipIf(!hasSystemFont)(
-    'reads the sfnt PostScript name, NOT the filename (rename trap)',
-    () => {
-      copyFileSync(SYSTEM_TTF, join(dir, 'Brand.ttf'))
-      // Filename is "Brand"; the embedded PostScript name is the font's
-      // real internal name — they MUST differ for this test to mean
-      // anything, and the extraction must return the internal one.
-      const ps = readPostScriptName(join(dir, 'Brand.ttf'))
-      expect(ps).not.toBe('Brand')
-      expect(ps.length).toBeGreaterThan(0)
-      // Trattatello's PostScript name is "Trattatello".
-      expect(ps).toBe('Trattatello')
-    },
-  )
+  it('reads the sfnt PostScript name, NOT the filename (rename trap)', () => {
+    putFont(join(dir, 'Brand.ttf'))
+    // Filename is "Brand"; the embedded PostScript name is the font's
+    // real internal name — they MUST differ for this test to mean
+    // anything, and the extraction must return the internal one.
+    const ps = readPostScriptName(join(dir, 'Brand.ttf'))
+    expect(ps).not.toBe('Brand')
+    expect(ps.length).toBeGreaterThan(0)
+    // Trattatello's PostScript name is "Trattatello".
+    expect(ps).toBe('Trattatello')
+  })
+
+  it('reads a Mac-Roman name record too', () => {
+    writeFixtureFont(join(dir, 'Brand.ttf'), 'MacRomanName', 'mac')
+    expect(readPostScriptName(join(dir, 'Brand.ttf'))).toBe('MacRomanName')
+  })
 
   it('falls back to the basename on a non-font / unreadable file', () => {
     writeFileSync(join(dir, 'Bogus.ttf'), 'not a real font')
@@ -79,8 +93,8 @@ describe('readPostScriptName — the device-critical extraction', () => {
 })
 
 describe('scanFontDir + materializers', () => {
-  it.skipIf(!hasSystemFont)('scan carries the PostScript name through', () => {
-    copyFileSync(SYSTEM_TTF, join(dir, 'Brand.ttf'))
+  it('scan carries the PostScript name through', () => {
+    putFont(join(dir, 'Brand.ttf'))
     const fonts = scanFontDir(dir)
     expect(fonts.length).toBe(1)
     expect(fonts[0]!.name).toBe('Brand')
@@ -88,8 +102,8 @@ describe('scanFontDir + materializers', () => {
     expect(fonts[0]!.postScriptName).toBe('Trattatello')
   })
 
-  it.skipIf(!hasSystemFont)('iOS: copies the font + a manifest with the PostScript name', () => {
-    copyFileSync(SYSTEM_TTF, join(dir, 'Brand.ttf'))
+  it('iOS: copies the font + a manifest with the PostScript name', () => {
+    putFont(join(dir, 'Brand.ttf'))
     const r = materializeIosFonts(scanFontDir(dir), out)
     expect(r.fonts).toBe(1)
     expect(readdirSync(join(out, 'fonts')).sort()).toEqual(['Brand.ttf', '_pyreon-fonts.json'])
@@ -101,8 +115,8 @@ describe('scanFontDir + materializers', () => {
     })
   })
 
-  it.skipIf(!hasSystemFont)('Android: copies to res/font with the sanitized name', () => {
-    copyFileSync(SYSTEM_TTF, join(dir, 'Brand.ttf'))
+  it('Android: copies to res/font with the sanitized name', () => {
+    putFont(join(dir, 'Brand.ttf'))
     const r = materializeAndroidFonts(scanFontDir(dir), out)
     expect(r.fonts).toBe(1)
     expect(readdirSync(join(out, 'res', 'font'))).toEqual(['brand.ttf'])
