@@ -62,6 +62,24 @@ const PACKAGE_DIRS = [
   // UNSCANNED by this gate — so ui-components/ui-primitives coverage was
   // never enforced and sat RED locally with nobody catching it.
   'packages/ui',
+  // Previously UNSCANNED, the same class as the `packages/ui` note above, one
+  // category over: test-utils, manifest, perf-harness, ansi, vitest-config.
+  // `@pyreon/test-utils` declares an explicit 95/95/95 that nothing was
+  // checking.
+  //
+  // `packages/native` is DELIBERATELY still absent, and that is a finding
+  // rather than an omission — measured on this branch:
+  //
+  //   @pyreon/native-cli       76.37% stmts / 70.68% branches  (floor 95)
+  //   @pyreon/native-compiler  TIMED OUT at 600s, unmeasurable
+  //
+  // `@pyreon/native-compiler` is the most-changed package in this release at
+  // 55k lines and is PUBLISHED, and its suite spawns real swiftc/kotlinc, so
+  // it cannot be measured inside this gate's per-package budget at all. Adding
+  // the root today would red the gate on a package nobody can currently
+  // measure, which is a decision about the suite's runtime, not a scan-root
+  // edit. The numbers are recorded here so the next person starts from them.
+  'packages/internals',
 ]
 const DEFAULT_THRESHOLD = 95
 const MINIMUM_FLOOR = 95
@@ -165,6 +183,12 @@ interface FloorExemption {
   reason: string
 }
 const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
+  '@pyreon/manifest': {
+    currentStatements: 95,
+    currentBranches: 94,
+    reason:
+      'Newly MEASURED, not newly regressed: `packages/internals` was outside PACKAGE_DIRS, so none of the five internals packages had ever been scanned by this gate. Four of them pass outright — ansi 100%, perf-harness 100%, test-utils 99.3%, and vitest-config has no instrumentable source. This one measures 98.12% statements / 94.39% branches, i.e. 0.61pp under the branch floor, and is recorded at the MEASURED actual so the widened scan root can land without lowering anything. Ratchet it back to 95 with the branch specs; do not raise this to absorb a regression.',
+  },
   '@pyreon/charts': {
     currentStatements: 94,
     currentBranches: 85,
