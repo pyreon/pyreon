@@ -2525,7 +2525,7 @@ const RX_V1_METHODS = new Set([
   'average',
 ])
 
-const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
+export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
   [
     '@pyreon/rx',
     {
@@ -2682,6 +2682,10 @@ const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = new Map([
         'points',
         'stackedBars',
         'waterfall',
+        'stackedArea',
+        'band',
+        'StackedArea',
+        'Band',
         'smooth',
         'step',
         // Engine arithmetic that crosses verbatim (bin.ts is in ENGINE_FILES).

@@ -4,6 +4,7 @@ import type { VNode } from '@pyreon/core'
 import { canvasHost, orNull } from './canvas-host'
 import { ganttTip } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
+import type { ChartTheme } from './render'
 import { ganttDurationDays, hitGanttIndex, layoutGantt, renderGantt } from './gantt'
 import { hitGantt } from './gantt-web'
 import type { GanttLayout, GanttOptions, GanttRow, GanttTask } from './gantt'
@@ -19,7 +20,7 @@ export interface GanttChartProps extends CanvasHostProps {
 
 export function GanttChart(props: GanttChartProps): VNode {
   const readTasks = (): GanttTask[] => (typeof props.tasks === 'function' ? props.tasks() : props.tasks)
-  const opts = (palette: readonly string[]): GanttOptions => ({ palette, ...props.gantt })
+  const opts = (t: ChartTheme): GanttOptions => ({ palette: t.palette, labelColor: t.label, gridColor: t.grid, laneColor: t.grid, ...props.gantt })
   return canvasHost<GanttLayout>({
     props,
     defaultHeight: 320,
@@ -27,9 +28,9 @@ export function GanttChart(props: GanttChartProps): VNode {
     track: () => {
       readTasks()
     },
-    layout: (box, measure, theme) => layoutGantt(readTasks(), { x: box.x + 4.0, y: box.y + 4.0, w: box.w - 8.0, h: box.h - 8.0 }, opts(theme.palette), measure),
+    layout: (box, measure, theme) => layoutGantt(readTasks(), { x: box.x + 4.0, y: box.y + 4.0, w: box.w - 8.0, h: box.h - 8.0 }, opts(theme), measure),
     animates: true,
-    render: (layout, _measure, theme, progress) => renderGantt(layout, { ...opts(theme.palette), progress }),
+    render: (layout, _measure, theme, progress) => renderGantt(layout, { ...opts(theme), progress }),
     select: (layout, px, py) => {
       props.onSelect?.(hitGantt(layout, px, py))
       props.onSelectIndex?.(hitGanttIndex(layout, px, py))

@@ -117,13 +117,52 @@ runs:
         path: ~/.bun/install/cache
         key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
         restore-keys: bun-install-cache-${{ runner.os }}-
+    # A prefix-key restore hands this job a node_modules built from a
+    # DIFFERENT lockfile, and installing over it does not converge:
+    # `.claude/rules/testing.md` ("never trust an incremental bun layout")
+    # records that neither a plain `bun install` NOR `bun install --force`
+    # clears the stale peer-hash instance dirs under `node_modules/.bun` —
+    # their internal symlinks keep pointing at the old versions, so the
+    # on-disk resolution silently disagrees with the lockfile. The comment
+    # this replaces claimed the install "corrects a stale prefix-match
+    # restore"; the repo's own rule says it does not.
+    #
+    # It matters most for the MEASURING gates: `check-import-budgets` and
+    # `check-bundle-budgets` bundle against the installed tree, so a hybrid
+    # one is measured as if it were a real dependency tree.
+    #
+    # This has happened. #3390's Build (job 102273316243) asked for
+    # `node-modules-Linux-bun-edcc7173…` — the pre-#3398 lockfile its checkout
+    # carried — and its log reads `Cache hit for restore-key:` followed by
+    # `…-231904df…`, main's POST-#3398 tree; the fallback below then installed
+    # over it. It measured `plot-minimal` at 23008 where #3404 read 23149,
+    # which is how main went 49 B over its own budget unnoticed.
+    #
+    # (The phrasing is the discriminator and is easy to read past: the same
+    # job prints `Cache hit for:` for an EXACT match and `Cache hit for
+    # restore-key:` for a PREFIX fallback.)
+    #
+    # A PR whose lockfile matches no cached entry is not exotic — it is what
+    # any long-queued PR becomes the moment a deps PR merges ahead of it.
+    #
+    # What this does NOT fix: that Build would still have measured the
+    # pre-#3398 tree, which never merged. Self-consistent, still not a
+    # function of what merges — concurrent-merge staleness, the class
+    # CLAUDE.md documents for Docs Sync, whose answer is detection on main
+    # after the merge rather than anything this step can do.
+    #
+    # So the stale tree is REMOVED rather than topped up. On a full miss
+    # these paths do not exist and the removal is a no-op; the bun download
+    # cache restored in the step above keeps the fresh install off the
+    # registry.
     - name: Fallback bun install (cache miss)
       if: inputs.restore-node-modules == 'true' && steps.nm-cache.outputs.cache-hit != 'true'
       shell: bash
       env:
         PYREON_BOOTSTRAP_SKIP: '1'
       run: |
-        echo "::warning::node_modules exact-key miss — running bun install (corrects a stale prefix-match restore or a full miss)."
+        echo "::warning::node_modules exact-key miss — discarding any prefix-restored tree and installing fresh."
+        rm -rf node_modules packages/*/*/node_modules examples/*/node_modules docs/node_modules
         bun install --frozen-lockfile
     # lib/ differs per push (source changes), so the per-run key stays the
     # PRIMARY (exact-fresh) attempt — but it now degrades through the

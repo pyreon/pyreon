@@ -161,6 +161,38 @@ export function layoutGroupedBarsH(
   return out
 }
 
+/**
+ * Cumulative tops for a stacked set — `out[s][i]` is the running total THROUGH
+ * series `s` at datum `i`.
+ *
+ * Shared by the stacked AREA render, which needs the baseline (the row above
+ * it in this table) as well as its own top, and cannot get that from the bar
+ * layout because a bar segment is a rect and an area needs the two curves.
+ *
+ * Only non-negative values accumulate, matching `layoutStackedBars`: a
+ * mixed-sign stack has overlapping segments and a top that is not the total,
+ * which no reading of the chart recovers.
+ */
+export function stackCumulative(seriesValues: Double[][]): Double[][] {
+  const out: Double[][] = []
+  let n = 0
+  for (const s of seriesValues) if (s.length > n) n = s.length
+  const acc: Double[] = []
+  for (let i = 0; i < n; i++) acc.push(0.0)
+  for (const s of seriesValues) {
+    const row: Double[] = []
+    for (let i = 0; i < n; i++) {
+      const v = i < s.length ? s[i]! : 0.0
+      // `v > 0` rather than `!(v <= 0)`: a gap (NaN) fails it and contributes
+      // nothing, which is what a gap in a stack means.
+      if (v > 0.0) acc[i] = acc[i]! + v
+      row.push(acc[i]!)
+    }
+    out.push(row)
+  }
+  return out
+}
+
 /** True when any value would be dropped from a stack. */
 export function stackHasNegatives(seriesValues: Double[][]): boolean {
   for (const s of seriesValues) for (const v of s) if (v < 0.0) return true

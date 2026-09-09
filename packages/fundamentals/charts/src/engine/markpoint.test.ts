@@ -88,11 +88,22 @@ describe('point markers (markPoint)', () => {
     expect(marker.center.y).toBeCloseTo(leftTop, 5)
   })
 
-  it('stacked/grouped and horizontal frames skip markers (joint layouts)', () => {
+  it('stacked/grouped and horizontal frames DRAW markers, anchored to their own geometry', () => {
+    // This asserted zero markers on both shapes, on the grounds that their
+    // layouts are joint. The skip was real and the reasoning was sound as far
+    // as it went: a stacked datum is drawn at its running total in a
+    // band-centred segment, so the point-like placement would have put the
+    // marker where the data never appears. Refusing beat lying.
+    //
+    // What it was protecting is therefore "a marker never lands somewhere the
+    // datum is not" — not "these shapes have no markers". That invariant is
+    // now met by reading the anchor back from the same layout the paint used,
+    // so the marker is drawn AND in the right place; `marker-anchors.test.ts`
+    // pins the position itself.
     const stacked = renderChart(spec([S({ kind: 'stacked' })], [{ at: 'max' }]), measure)
-    expect(circles(stacked)).toHaveLength(0)
+    expect(circles(stacked)).toHaveLength(1)
     const horiz = renderChart(spec([S({ kind: 'bars' })], [{ at: 'max' }], { horizontal: true }), measure)
-    expect(circles(horiz)).toHaveLength(0)
+    expect(circles(horiz)).toHaveLength(1)
   })
 
   it('markers grow with the entrance and hold their label until settled', () => {
