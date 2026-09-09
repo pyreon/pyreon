@@ -22,7 +22,7 @@
     "unbounded-cache::packages/core/router/src/components.tsx": 1,
     "unbounded-cache::packages/core/runtime-dom/src/sanitizer.ts": 1,
     "unbounded-cache::packages/core/runtime-server/src/index.ts": 2,
-    "unbounded-cache::packages/fundamentals/charts/src/engine/geo.ts": 1,
+    "unbounded-cache::packages/fundamentals/charts/src/engine/geo-web.ts": 1,
     "unbounded-cache::packages/fundamentals/charts/src/engine/locale.ts": 1,
     "unbounded-cache::packages/fundamentals/charts/src/engine/theme-registry.ts": 1,
     "unbounded-cache::packages/fundamentals/code/src/languages.ts": 1,

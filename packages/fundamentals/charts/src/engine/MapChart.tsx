@@ -4,8 +4,10 @@ import type { VNode } from '@pyreon/core'
 import { canvasHost } from './canvas-host'
 import type { CanvasHostProps } from './canvas-host'
 import { plain } from './format'
-import { geoDomain, getMap, hitGeo, layoutGeo, renderGeo } from './geo'
-import type { GeoJson, GeoLayout, GeoOptions, GeoRegion } from './geo'
+import { geoDomain, geoValueOf, hitGeo, renderGeo } from './geo'
+import { geoValues, getMap, layoutGeo } from './geo-web'
+import type { GeoLayout, GeoOptions, GeoRegion } from './geo'
+import type { GeoJson } from './geo-web'
 import type { Double } from './types'
 
 const EMPTY: GeoJson = { type: 'FeatureCollection', features: [] }
@@ -40,7 +42,7 @@ export function MapChart(props: MapChartProps): VNode {
     render: (layout, measure, theme, progress) =>
       renderGeo(
         layout,
-        readValues(),
+        geoValues(readValues()),
         {
           emptyColor: theme.muted,
           borderColor: theme.background === '' ? '#ffffff' : theme.background,
@@ -70,12 +72,14 @@ export function MapChart(props: MapChartProps): VNode {
       return v === undefined ? [r.name] : [r.name, plain(v)]
     },
     a11y: (layout) => {
-      const values = readValues()
-      const [lo, hi] = geoDomain(layout, values)
+      const values = geoValues(readValues())
+      const dom = geoDomain(layout, values)
+      const lo = dom.min
+      const hi = dom.max
       return {
         title: props.title,
         categories: layout.regions.map((r) => r.name),
-        series: [{ label: props.title ?? `Values from ${lo} to ${hi}`, values: layout.regions.map((r) => values[r.name] ?? NaN), kind: 'bars' }],
+        series: [{ label: props.title ?? `Values from ${lo} to ${hi}`, values: layout.regions.map((r) => geoValueOf(values, r.name)), kind: 'bars' }],
       }
     },
   })

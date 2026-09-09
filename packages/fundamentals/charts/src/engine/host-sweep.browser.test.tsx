@@ -34,7 +34,7 @@ import { TreeChart } from './TreeChart'
 import { TreemapChart } from './TreemapChart'
 import { PlotChart } from './Chart'
 import { bars, line } from './marks'
-import type { GeoJson } from './geo'
+import type { GeoJson } from './geo-web'
 import type { TreeNode } from './treemap'
 
 interface Share { name: string; share: number }

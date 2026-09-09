@@ -20,8 +20,9 @@ import type { RiverOptions, RiverSeries } from './river'
 import { boxplotToSvg } from './boxplot-svg'
 import type { FiveNumber } from './boxplot'
 import { resolveDataset } from './option-layer'
-import { geoToSvg, getMap } from './geo'
-import type { GeoJson, GeoOptions } from './geo'
+import { geoToSvg, getMap } from './geo-web'
+import type { GeoOptions } from './geo'
+import type { GeoJson } from './geo-web'
 import { geoPointsToSvg } from './geo-points'
 import type { GeoPath, GeoPoint, GeoPointsOptions } from './geo-points'
 import { singleAxisToSvg } from './single-axis'
@@ -437,7 +438,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
       ...(typeof item['borderColor'] === 'string' ? { borderColor: item['borderColor'] as string } : {}),
       ...(num(item['borderWidth']) !== null ? { borderWidth: num(item['borderWidth']) as number } : {}),
       ...(stops.length >= 2 ? { stops } : {}),
-      ...(vmMin !== null && vmMax !== null ? { domain: [vmMin, vmMax] as [Double, Double] } : {}),
+      ...(vmMin !== null && vmMax !== null ? { domain: { min: vmMin, max: vmMax } } : {}),
     }
     return { plan: { kind: 'map', geo, values, options, title }, warnings, supported }
   }

@@ -5952,6 +5952,362 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "GeoRegion",
+    "fields": [
+      {
+        "name": "name",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "rings",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "array",
+            "element": {
+              "kind": "typeRef",
+              "name": "PyreonChartPt",
+              "args": []
+            }
+          }
+        }
+      },
+      {
+        "name": "centroid",
+        "type": {
+          "kind": "typeRef",
+          "name": "PyreonChartPt",
+          "args": []
+        }
+      },
+      {
+        "name": "bbox",
+        "type": {
+          "kind": "typeRef",
+          "name": "PyreonChartRect",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "GeoShape",
+    "fields": [
+      {
+        "name": "name",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "rings",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "array",
+            "element": {
+              "kind": "typeRef",
+              "name": "PyreonChartPt",
+              "args": []
+            }
+          }
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "GeoValue",
+    "fields": [
+      {
+        "name": "region",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "value",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "GeoTransform",
+    "fields": [
+      {
+        "name": "minX",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "maxY",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "scale",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "ox",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "oy",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "projection",
+        "type": {
+          "kind": "typeRef",
+          "name": "GeoProjection",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "GeoLayout",
+    "fields": [
+      {
+        "name": "regions",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "GeoRegion",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "transform",
+        "type": {
+          "kind": "typeRef",
+          "name": "GeoTransform",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "GeoOptions",
+    "fields": [
+      {
+        "name": "projection",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "GeoProjection",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "padding",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "nameProperty",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "stops",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "string"
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "domain",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Domain",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "emptyColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "borderColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "borderWidth",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "showLabels",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "fontSize",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "labelColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "progress",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "GanttTask",
     "fields": [
       {

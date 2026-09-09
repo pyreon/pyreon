@@ -21,8 +21,8 @@ import {
   pieToSvg, polarToSvg, radarToSvg, riverToSvg, sankeyToSvg, sunburstToSvg, treeToSvg, treemapToSvg,
 } from './family-svg'
 import { boxplotToSvg } from './boxplot-svg'
-import { geoToSvg } from './geo'
-import type { GeoJson } from './geo'
+import { geoToSvg } from './geo-web'
+import type { GeoJson } from './geo-web'
 import type { TreeNode } from './treemap'
 
 interface Row { month: string; revenue: number; cost: number }

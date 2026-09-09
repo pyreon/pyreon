@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { geoPointRadii, geoPointsToSvg, hitGeoPoint, renderGeoPaths, renderGeoPoints } from './geo-points'
-import { layoutGeo, registerMap } from './geo'
-import type { GeoJson } from './geo'
+import { layoutGeo, registerMap } from './geo-web'
+import type { GeoJson } from './geo-web'
 import { compileFamily, familyToSvg, isFamilyOption } from './option-family'
 
 const world: GeoJson = {

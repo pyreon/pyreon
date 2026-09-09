@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { compileOption, optionToSvg, planOption } from './option'
 import type { EChartsOption, OptionPlan, OptionWarning } from './option'
 import { compileFamily } from './option-family'
-import { registerMap } from './geo'
+import { registerMap } from './geo-web'
 
 // A gallery-shaped corpus: each fixture is written the way an ECharts user
 // writes it. `expectClean` fixtures must compile with ZERO warnings and render.

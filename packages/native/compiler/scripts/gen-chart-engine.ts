@@ -62,6 +62,7 @@ export const ENGINE_FILES = [
   'sankey',
   'graph',
   'calendar',
+  'geo',
   'gantt',
   'parallel',
   'candlestick-chart',
