@@ -1,11 +1,8 @@
 import type {
   Dimensions,
-  EdgeMarker,
-  EdgeMarkerSpec,
   EdgePathOptions,
   EdgePathResult,
   EdgeSegment,
-  FlowEdge,
   FlowNode,
   HandleConfig,
   HandleType,
@@ -13,72 +10,7 @@ import type {
   NodeMeasurement,
   XYPosition,
 } from './types'
-import { MarkerType, Position } from './types'
-
-// ─── Edge markers ──────────────────────────────────────────────────────────
-//
-// React Flow parity: per-edge configurable arrowheads, deduplicated into one
-// `<defs>` block. These helpers are pure + exported so they can be unit-tested
-// without mounting a flow.
-
-// Default marker colour = the SAME themeable var the edge stroke uses, so an
-// unstyled arrowhead matches its line (a natural line→arrow→box connection)
-// and re-themes with it. `MarkerGlyph` sets it via `style` (a `var()` is invalid
-// in an SVG presentation attribute); `markerId` sanitizes it to a stable dedup
-// token distinct from an explicit `#999`, so the two never collapse to one def.
-const DEFAULT_MARKER_COLOR = 'var(--pyreon-flow-edge, #999)'
-const DEFAULT_MARKER_W = 10
-const DEFAULT_MARKER_H = 7
-const DEFAULT_MARKER_STROKE = 1
-
-/** The historical built-in arrowhead — the default when no marker is specified. */
-export const DEFAULT_MARKER_END: EdgeMarker = { type: MarkerType.ArrowClosed }
-
-/** Normalize a marker spec (bare `MarkerType`, full object, or null) to a
- *  fully-resolved {@link EdgeMarker} with defaults applied, or `null` for none. */
-export function resolveMarker(spec: EdgeMarkerSpec | null | undefined): EdgeMarker | null {
-  if (spec == null) return null
-  const m = typeof spec === 'string' ? { type: spec } : spec
-  return {
-    type: m.type,
-    color: m.color ?? DEFAULT_MARKER_COLOR,
-    width: m.width ?? DEFAULT_MARKER_W,
-    height: m.height ?? DEFAULT_MARKER_H,
-    strokeWidth: m.strokeWidth ?? DEFAULT_MARKER_STROKE,
-  }
-}
-
-/** Deterministic, DOM-id-safe key for a resolved marker — identical configs
- *  collapse to one `<marker>` def. Color is sanitized to `[a-z0-9]`. */
-export function markerId(m: EdgeMarker): string {
-  const color = (m.color ?? DEFAULT_MARKER_COLOR).toLowerCase().replace(/[^a-z0-9]/g, '')
-  return `pyreon-flow-marker-${m.type}-${color}-${m.width}x${m.height}-${m.strokeWidth}`
-}
-
-/** Resolve an edge's start/end markers, applying the flow-level default end. */
-export function resolveEdgeMarkers(
-  edge: FlowEdge,
-  defaultMarkerEnd: EdgeMarkerSpec | null | undefined,
-): { start: EdgeMarker | null, end: EdgeMarker | null } {
-  // `markerEnd` absent → flow default; `markerEnd: null` → explicitly none.
-  const endSpec = 'markerEnd' in edge ? edge.markerEnd : defaultMarkerEnd
-  return { start: resolveMarker(edge.markerStart), end: resolveMarker(endSpec) }
-}
-
-/** Collect every distinct marker across all edges into an id→marker map, so the
- *  `<defs>` block renders each unique config exactly once. */
-export function collectEdgeMarkers(
-  edges: readonly FlowEdge[],
-  defaultMarkerEnd: EdgeMarkerSpec | null | undefined,
-): Map<string, EdgeMarker> {
-  const out = new Map<string, EdgeMarker>()
-  for (const edge of edges) {
-    const { start, end } = resolveEdgeMarkers(edge, defaultMarkerEnd)
-    if (start) out.set(markerId(start), start)
-    if (end) out.set(markerId(end), end)
-  }
-  return out
-}
+import { Position } from './types'
 
 // ─── Effective node dimensions ─────────────────────────────────────────────
 
@@ -107,6 +39,59 @@ export function getEffectiveDimensions(
 // ─── Handle-anchor resolution ──────────────────────────────────────────────
 
 /**
+ * The point an edge attaches to on a node, plus the handle's declared side
+ * (which drives the path's departure/approach tangent).
+ *
+ * Named rather than inline because this file is compiled to Swift and Kotlin:
+ * PMTC resolves a named object shape declared in the same file and synthesizes
+ * a struct for it, where an anonymous return type has no name to emit.
+ */
+export interface HandleAnchor {
+  x: number
+  y: number
+  position: Position
+}
+
+/**
+ * Anchor at a MEASURED handle dot's real rendered center.
+ *
+ * Lifted out of `resolveHandleAnchor` — it was an inner arrow closing over
+ * `node`. That reads well and does not cross: PMTC lowers an arrow returning an
+ * object literal to a tuple, which is not valid Kotlin, and it does so WITHOUT
+ * a warning. A top-level function taking what it needs is the same code with a
+ * shape both compilers can represent.
+ */
+function anchorFromMeasuredHandle(node: FlowNode<any>, h: MeasuredHandle): HandleAnchor {
+  return {
+    x: node.position.x + h.x,
+    y: node.position.y + h.y,
+    position: h.position,
+  }
+}
+
+/**
+ * Anchor at a CONFIG handle's side midpoint.
+ *
+ * The spread this replaces (`...getHandlePosition(…)`) was dropped SILENTLY by
+ * the native emit, so the Kotlin geometry would have returned an anchor with no
+ * coordinates at all. Naming the fields is what makes the crossing honest.
+ */
+function anchorFromConfigHandle(
+  node: FlowNode<any>,
+  h: HandleConfig,
+  dims: Dimensions,
+): HandleAnchor {
+  const point = getHandlePosition(
+    h.position,
+    node.position.x,
+    node.position.y,
+    dims.width,
+    dims.height,
+  )
+  return { x: point.x, y: point.y, position: h.position }
+}
+
+/**
  * Resolve the exact point an edge attaches to on `node`, honoring handles.
  *
  * Priority:
@@ -128,32 +113,49 @@ export function resolveHandleAnchor(
   type: HandleType,
   dims: Dimensions,
   measurement?: NodeMeasurement | undefined,
-): { x: number; y: number; position: Position } | null {
-  const measuredOfType = measurement?.handles?.filter((h) => h.type === type)
-  const config = type === 'source' ? node.sourceHandles : node.targetHandles
+): HandleAnchor | null {
+  const measuredOfType = measurement?.handles?.filter((h) => h.type === type) ?? []
+  const config = (type === 'source' ? node.sourceHandles : node.targetHandles) ?? []
 
-  const anchorFromMeasured = (h: MeasuredHandle) => ({
-    x: node.position.x + h.x,
-    y: node.position.y + h.y,
-    position: h.position,
-  })
-  const anchorFromConfig = (h: HandleConfig) => ({
-    ...getHandlePosition(h.position, node.position.x, node.position.y, dims.width, dims.height),
-    position: h.position,
-  })
-
-  if (handleId) {
-    const measured = measuredOfType?.find((h) => h.id === handleId)
-    if (measured) return anchorFromMeasured(measured)
-    const configured = config?.find((h) => h.id === handleId)
-    if (configured) return anchorFromConfig(configured)
+  if (handleId !== undefined) {
+    const measured = measuredOfType.find((h) => h.id === handleId)
+    if (measured !== undefined) return anchorFromMeasuredHandle(node, measured)
+    const configured = config.find((h) => h.id === handleId)
+    if (configured !== undefined) return anchorFromConfigHandle(node, configured, dims)
     // Unknown id — fall through to the first-handle rule below so the edge
     // still renders somewhere sensible (the caller dev-warns).
   }
 
-  if (measuredOfType?.length) return anchorFromMeasured(measuredOfType[0]!)
-  if (config?.length) return anchorFromConfig(config[0]!)
+  if (measuredOfType.length > 0) return anchorFromMeasuredHandle(node, measuredOfType[0]!)
+  if (config.length > 0) return anchorFromConfigHandle(node, config[0]!, dims)
   return null
+}
+
+/**
+ * The two nodes' auto-detected handle sides for an edge.
+ *
+ * Named rather than inline for the reason `HandleAnchor` is: PMTC resolves a
+ * named object shape declared in the same file into one struct, where an
+ * anonymous return type makes the return-type render and the returned value
+ * synthesize two DIFFERENT data classes on Kotlin — which does not compile.
+ */
+export interface SmartHandlePositions {
+  sourcePosition: Position
+  targetPosition: Position
+}
+
+/** The measured node box a floating endpoint is computed against. */
+export interface NodeBoxDimensions {
+  sourceW: number
+  sourceH: number
+  targetW: number
+  targetH: number
+}
+
+/** Where a floating (auto-routed) edge meets each node's border. */
+export interface FloatingEndpoints {
+  source: HandleAnchor
+  target: HandleAnchor
 }
 
 /**
@@ -168,8 +170,8 @@ export function resolveHandleAnchor(
 export function getSmartHandlePositions(
   sourceNode: FlowNode,
   targetNode: FlowNode,
-  dims?: { sourceW: number; sourceH: number; targetW: number; targetH: number },
-): { sourcePosition: Position; targetPosition: Position } {
+  dims?: NodeBoxDimensions,
+): SmartHandlePositions {
   const sw = dims?.sourceW ?? sourceNode.width ?? 150
   const sh = dims?.sourceH ?? sourceNode.height ?? 40
   const tw = dims?.targetW ?? targetNode.width ?? 150
@@ -178,8 +180,14 @@ export function getSmartHandlePositions(
   const dx = targetNode.position.x + tw / 2 - (sourceNode.position.x + sw / 2)
   const dy = targetNode.position.y + th / 2 - (sourceNode.position.y + sh / 2)
 
-  const sourceHandle = sourceNode.sourceHandles?.[0]
-  const targetHandle = targetNode.targetHandles?.[0]
+  // Bound through a non-optional local rather than `handles?.[0]`. Swift's
+  // safe-index lowering needs a re-readable, non-optional receiver (it names
+  // the receiver and the index twice), so the optional-chained form emitted an
+  // UNGUARDED index that traps out of bounds. Identical on the web.
+  const sourceHandles = sourceNode.sourceHandles ?? []
+  const targetHandles = targetNode.targetHandles ?? []
+  const sourceHandle = sourceHandles.length > 0 ? sourceHandles[0] : undefined
+  const targetHandle = targetHandles.length > 0 ? targetHandles[0] : undefined
 
   const sourcePosition = sourceHandle
     ? sourceHandle.position
@@ -286,11 +294,8 @@ function sideOfPoint(box: Box, point: XYPosition): Position {
 export function getFloatingEndpoints(
   sourceNode: FlowNode,
   targetNode: FlowNode,
-  dims: { sourceW: number; sourceH: number; targetW: number; targetH: number },
-): {
-  source: { x: number; y: number; position: Position }
-  target: { x: number; y: number; position: Position }
-} {
+  dims: NodeBoxDimensions,
+): FloatingEndpoints {
   const sBox: Box = {
     x: sourceNode.position.x,
     y: sourceNode.position.y,

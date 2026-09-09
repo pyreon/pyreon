@@ -9,6 +9,7 @@ import { withAlpha } from './radar'
 import type { DrawCmd, Double, Pt, Rect } from './types'
 import { clampWindow } from './zoom'
 import type { ZoomWindow } from './zoom'
+import { isFiniteNumber } from './scale'
 
 export interface NavigatorLayout {
   cmds: DrawCmd[]
@@ -51,8 +52,8 @@ export function renderNavigator(
     let seen = false
     for (let i = 0; i < values.length; i++) {
       const v = values[i]!
-      // A NaN never compares equal to itself; it is skipped, like the web.
-      if (v === v) {
+      // A non-finite value is a gap; it is skipped, like the web.
+      if (isFiniteNumber(v)) {
         if (!seen) {
           lo = v
           hi = v
@@ -67,7 +68,7 @@ export function renderNavigator(
       const safe: Double[] = []
       for (let i = 0; i < values.length; i++) {
         const v = values[i]!
-        safe.push(v !== v ? lo : v)
+        safe.push(!isFiniteNumber(v) ? lo : v)
       }
       const pts = layoutSeriesPoints(safe, strip, { min: lo < 0.0 ? lo : 0.0, max: hi <= lo ? lo + 1.0 : hi })
       const last = pts[pts.length - 1]!

@@ -38,12 +38,14 @@ export type {
   RuleMeta,
   RuleOptions,
   RuleOptionsSchema,
+  ScanTarget,
   Severity,
   SourceLocation,
   Span,
   VisitorCallbacks,
 } from './types'
 export { isPathExempt } from './utils/exempt-paths'
+export { scanTargetsOf, targetsScan } from './utils/scan-target'
 export { isTestFile } from './utils/file-roles'
 export { isProjectDependency } from './utils/project-deps'
 export {

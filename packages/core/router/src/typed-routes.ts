@@ -147,7 +147,22 @@ function currentOrigin(): string {
 export function classifyHref(to: string, config?: LinkConfig): LinkKind {
   if (!to) return 'internal'
   if (to[0] === '#') return 'hash'
-  if (to.startsWith('//')) return 'external' // protocol-relative
+  // Protocol-relative — matched as the CLASS of authority-delimiter prefixes,
+  // not just the `//` spelling, for the same reason `classifyRedirectTarget`
+  // does: the URL parser treats `\` as a synonym for `/` in a special scheme's
+  // authority position, so `\\host`, `/\host` and `\/host` all resolve to
+  // `https://host/` exactly as `//host` does.
+  //
+  // This one is a LINK classifier rather than the redirect boundary, and the
+  // consequence of missing it is subtler than it looks: `internal` renders a
+  // real `href` and relies on the click handler to route it through
+  // `sanitizePath`, but a ctrl-click / middle-click NEVER reaches that handler —
+  // the browser resolves the raw href itself and lands on `evil.com`. Note
+  // `external` is the SAFE verdict here (plain anchor, full navigation), which
+  // is what `//host` has always received; this extends that same treatment to
+  // the spellings the parser cannot tell apart. A SINGLE leading delimiter is
+  // not an authority (`\evil.com` → `<origin>/evil.com`) and stays internal.
+  if (/^[/\\]{2}/.test(to)) return 'external'
   if (HANDLER_RE.test(to)) return 'protocol'
   if (ABS_HTTP_RE.test(to)) {
     const origin = currentOrigin()

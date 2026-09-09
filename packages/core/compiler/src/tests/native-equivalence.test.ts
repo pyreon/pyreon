@@ -4,31 +4,41 @@
  * and asserts identical output. This catches any behavioral divergence
  * between the two backends.
  */
+import { createRequire } from 'node:module'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { rocketstyleCollapseKey, serializeStaticChildren, transformJSX_JS } from '../jsx'
 import type { ReactivitySpan } from '../jsx'
 
 // Load native if available
-let nativeTransform:
-  | ((
-      code: string,
-      filename: string,
-      ssr: boolean,
-      knownSignals: string[] | null,
-      reactivityLens?: boolean,
-      collapse?: unknown,
-      ssrTemplate?: boolean,
-      templatizeComponentChildren?: boolean,
-    ) => {
-      code: string
-      usesTemplates?: boolean | null
-      warnings: Array<{ message: string; line: number; column: number; code: string }>
-      reactivityLens?: ReactivitySpan[] | null
-    })
-  | null = null
+type NativeTransform = (
+  code: string,
+  filename: string,
+  ssr: boolean,
+  knownSignals: string[] | null,
+  reactivityLens?: boolean,
+  collapse?: unknown,
+  ssrTemplate?: boolean,
+  templatizeComponentChildren?: boolean,
+) => {
+  code: string
+  usesTemplates?: boolean | null
+  warnings: Array<{ message: string; line: number; column: number; code: string }>
+  reactivityLens?: ReactivitySpan[] | null
+}
+
+let nativeTransform: NativeTransform | null = null
 
 try {
-  const path = require('node:path')
-  const native = require(path.join(__dirname, '..', '..', 'native', 'pyreon-compiler.node'))
+  // A napi `.node` addon cannot be loaded through `await import()`, so this
+  // is the legitimate `createRequire` case: the CJS-only globals are not
+  // defined in a real-Node ESM run (bun defines them, which is why a
+  // bun-run suite never caught it).
+  const requireAddon = createRequire(import.meta.url)
+  const here = dirname(fileURLToPath(import.meta.url))
+  const native = requireAddon(join(here, '..', '..', 'native', 'pyreon-compiler.node')) as {
+    transformJsx: NativeTransform
+  }
   nativeTransform = native.transformJsx
 } catch {
   // Native not available — skip tests
@@ -2483,5 +2493,71 @@ describeNative('text fusion — parity', () => {
     const src = SIG + `const v = <p>Hello {name}!</p>`
     expect(transformJSX_JS(src, 'test.tsx').code).toContain('_fuse("Hello ", name(), "!")')
     expect(nativeTransform!(src, 'test.tsx', false, null).code).toContain('_fuse("Hello ", name(), "!")')
+  })
+})
+
+/**
+ * A NAMESPACED attribute name (`xlink:href`, `xml:lang`) parses as
+ * `JSXNamespacedName`, not `JSXIdentifier`. Every name reader in the template
+ * emitter is written `name?.type === 'JSXIdentifier' ? … : ''`, so the
+ * qualified name arrived as the EMPTY STRING — and the two backends then
+ * produced two DIFFERENT wrong answers, neither of them an error:
+ *
+ *   JS      static  → baked `<use ="/static">` (malformed HTML) into `_tpl`
+ *           dynamic → `_setAttr(el, "", u)` (writes an empty-named attribute)
+ *   native  static  → attribute DROPPED from the baked HTML
+ *           dynamic → no setter emitted at all
+ *
+ * So `<use xlink:href="#icon">` — the SVG sprite idiom — rendered nothing in
+ * every compiled app, silently, and differently per backend. Both now BAIL the
+ * element to `h()`, where the runtime sets the qualified name correctly and
+ * runs the url guard over it (`xlink:href` is in `URL_ATTRS`).
+ *
+ * The equivalence assertion is the load-bearing half: a bail is only a fix if
+ * BOTH backends take it, and a one-sided bail is exactly the byte-divergence
+ * this file exists to catch.
+ */
+describeNative('namespaced attribute names bail to h() on both backends', () => {
+  const shapes = [
+    '<div><use xlink:href={u} /></div>',
+    '<div><use xlink:href="/static" /></div>',
+    '<div><a xlink:href={u}>x</a></div>',
+    '<div><span xml:lang="cs">x</span></div>',
+    '<svg><use xlink:href={u} /></svg>',
+    // Mixed with ordinary attributes — the whole element bails, not just the
+    // namespaced attribute, because a partially-baked element would lose it.
+    '<div><use href={a} xlink:href={b} class="c" /></div>',
+    // A namespaced attribute on a NESTED element bails that element; the
+    // ancestor loses its template too (it can no longer bake the subtree).
+    '<div><p>ok</p><use xlink:href={u} /></div>',
+  ]
+  for (const src of shapes) {
+    test(`client: ${src}`, () => compare(src))
+    test(`ssr h(): ${src}`, () => compareSsr(src))
+    test(`ssr _ssr: ${src}`, () => compareSsrTemplate(src))
+  }
+
+  test('the bail is REAL on both backends — no _tpl, no empty-named setter', () => {
+    for (const src of ['<div><use xlink:href={u} /></div>', '<div><use xlink:href="/s" /></div>']) {
+      for (const [name, code] of [
+        ['js', transformJSX_JS(src, 'test.tsx').code],
+        ['native', nativeTransform!(src, 'test.tsx', false, null).code],
+      ] as const) {
+        expect(code, `${name}: must not templatize`).not.toContain('_tpl(')
+        expect(code, `${name}: must not emit an empty-named setter`).not.toContain('_setAttr(__e0, ""')
+        // …and the attribute SURVIVES into the output for the runtime to apply.
+        expect(code, `${name}: attribute must survive`).toContain('xlink:href')
+      }
+    }
+  })
+
+  test('an ordinary attribute on the same tag still templatizes (the bail is scoped)', () => {
+    for (const code of [
+      transformJSX_JS('<div><use href={u} /></div>', 'test.tsx').code,
+      nativeTransform!('<div><use href={u} /></div>', 'test.tsx', false, null).code,
+    ]) {
+      expect(code).toContain('_tpl(')
+      expect(code).toContain('_setAttr(__e0, "href", u)')
+    }
   })
 })

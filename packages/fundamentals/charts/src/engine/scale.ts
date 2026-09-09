@@ -50,6 +50,16 @@ export function niceDomain(d: Domain, targetCount: Double): Domain {
 }
 
 /**
+ * Is `v` a finite number? Written for the native subset: `Number.isFinite`
+ * has no lowering in the engine, but a NaN is the only value not equal to
+ * itself and an infinity is the only one whose self-difference is NaN — so
+ * the two comparisons ARE the check, on every target.
+ */
+export function isFiniteNumber(v: Double): boolean {
+  return v === v && v - v === 0.0
+}
+
+/**
  * Ticks across a domain, positioned along a pixel range.
  *
  * `count` is a TARGET, not a guarantee — the whole point of nice steps is that
@@ -68,6 +78,10 @@ export function makeTicks(
   const fmt = format ?? formatTick
   const out: Tick[] = []
   if (count <= 0.0) return out
+  // A non-finite bound has no ticks: the loop below would step NaN 1000
+  // times (or Infinity zero times past `first`) and emit a thousand NaN
+  // labels for a domain that was never a domain.
+  if (!isFiniteNumber(d.min) || !isFiniteNumber(d.max)) return out
   const span = d.max - d.min
   if (span <= 0.0) {
     out.push({ value: d.min, pos: scaleLinear(d, r0, r1, d.min), label: fmt(d.min) })
@@ -96,14 +110,22 @@ export function formatTick(v: Double): string {
   return `${Math.round(v * 1000.0) / 1000.0}`
 }
 
-/** The min/max of a series, or a unit domain when the series is empty. */
+/** The min/max of the FINITE values of a series, or a unit domain when there are none (empty, or all NaN/Infinity). */
 export function extent(values: Double[]): Domain {
-  if (values.length === 0) return { min: 0.0, max: 1.0 }
-  let lo = values[0]!
-  let hi = values[0]!
+  let seen = false
+  let lo = 0.0
+  let hi = 1.0
   for (const v of values) {
-    if (v < lo) lo = v
-    if (v > hi) hi = v
+    if (!isFiniteNumber(v)) continue
+    if (!seen) {
+      lo = v
+      hi = v
+      seen = true
+    } else {
+      if (v < lo) lo = v
+      if (v > hi) hi = v
+    }
   }
+  if (!seen) return { min: 0.0, max: 1.0 }
   return { min: lo, max: hi }
 }

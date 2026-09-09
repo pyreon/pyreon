@@ -515,11 +515,19 @@ export function applyStyleProp(el: HTMLElement, value: unknown): void {
   const prev = _prevStyleKeys.get(el)
 
   if (value == null) {
-    // Explicit null/undefined: clear whatever object-mode keys we set.
+    // Explicit null/undefined: clear whatever object-mode keys we set …
     if (prev) {
       for (const propName of prev) el.style.removeProperty(propName)
       _prevStyleKeys.delete(el)
     }
+    // … AND a whole STRING declaration this function last wrote. The object
+    // branch tracked its keys and cleared them; the string branch tracked its
+    // text only for the skip-if-equal compare, so `style={c ? 'color:red' :
+    // undefined}` kept `color: red` forever — the same nullish-flip that an
+    // object style honoured. Clear `cssText` only when the string cache says
+    // WE wrote the declaration (never wipe a style set by someone else), and
+    // drop the cache so the next string is written rather than skipped.
+    if (_prevStyleText.delete(el)) el.style.cssText = ''
     return
   }
 
@@ -613,6 +621,19 @@ export function applyAttrProp(el: Element, key: string, value: unknown): void {
     // the call runs in a tracked frame, so signal reads stay live.
     value = (value as () => unknown)()
   }
+  // URL guard — the SAME predicate `setStaticProp` runs as its FIRST branch
+  // (`isBlockedUrl`), so a compiled `<a href={u}>` refuses exactly what the h()
+  // and SSR paths refuse. This helper is the sink for EVERY dynamic
+  // `href`/`src`/`action`/`formaction`/`data`/`poster`/`cite`/`xlink:href` the
+  // template path emits — including `_bindDirect`'s bare-signal updater
+  // `(v) => _setAttr(el, name, v)` — so a missing branch here is not a
+  // divergence on an edge case, it is `javascript:` reaching the DOM from every
+  // compiled app while the runtime path blocks it. Runs AFTER the accessor
+  // resolution above for the same reason `_ssrAttrUrl` resolves first: the
+  // guard inspects strings, and a function returning `javascript:` would sail
+  // past it. A blocked write leaves the attribute untouched (the last SAFE
+  // value stays), mirroring `setStaticProp`'s early return.
+  if (isBlockedUrl(el, key, value)) return
   if (value == null) {
     el.removeAttribute(key)
     return
@@ -671,6 +692,19 @@ const DEFAULT_VALUE_INIT = Symbol('pyreon.defaultValueInit')
  */
 export function applyValueProp(el: Element, value: unknown): void {
   const node = el as HTMLInputElement
+  // Nullish FIRST — the branch `setStaticProp` runs before it ever reaches this
+  // helper, and the one the compiled path skipped: `HTMLInputElement.value` is
+  // `[LegacyNullToEmptyString]`, which maps `null` → '' but NOT `undefined`, so
+  // a compiled `<input value={maybe}>` showed the literal text "undefined"
+  // while h() (removeAttribute) and SSR (no attribute) rendered an empty box.
+  // Normalize both to the empty string and leave `defaultValue` alone: SSR
+  // serializes nullish as NO attribute, so inventing `value=""` would be a
+  // hydration mismatch, and a nullish FIRST application must not consume the
+  // one-shot default establishment below (the real initial value may follow).
+  if (value == null) {
+    if (node.value !== '') node.value = ''
+    return
+  }
   // The live property is authoritative and always assigned — that is the whole
   // reason `value` is a DOM_PROP rather than an attribute (a stale typed value
   // must be resettable by a signal write).
@@ -683,11 +717,6 @@ export function applyValueProp(el: Element, value: unknown): void {
   if (seen[DEFAULT_VALUE_INIT]) return
   seen[DEFAULT_VALUE_INIT] = true
 
-  // A nullish value serializes to NO attribute on the server, so the client must
-  // not invent `value=""` here — that would be a fresh hydration mismatch. The
-  // element keeps the empty default it was born with.
-  if (value == null) return
-
   // Read the property back rather than re-coercing `value`: `node.value` has
   // already been through the IDL's own ToString (and `[LegacyNullToEmptyString]`),
   // so assigning it verbatim makes the default EXACTLY the live value with no
@@ -695,8 +724,15 @@ export function applyValueProp(el: Element, value: unknown): void {
   node.defaultValue = node.value
 }
 
-function setStaticProp(el: Element, key: string, value: unknown): void {
-  // Block javascript:/data: URI injection in URL-bearing attributes.
+/**
+ * The url-guard predicate shared by `setStaticProp` (h() path) and
+ * `applyAttrProp` (`_setAttr`, compiled path): true when `key` is a URL-bearing
+ * attribute and `value` is a `javascript:`/`data:` URL that is not a safe image
+ * data URI on an image-context element. ONE function so the two paths cannot
+ * drift on what they refuse — the sanitizer (`sanitizer.ts`) and SSR
+ * (`renderProp`) run the same three checks over the same `URL_ATTRS`.
+ */
+function isBlockedUrl(el: Element, key: string, value: unknown): boolean {
   if (
     URL_ATTRS.has(key) &&
     typeof value === 'string' &&
@@ -706,8 +742,23 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
     if (process.env.NODE_ENV !== 'production') {
       console.warn(`[Pyreon] Blocked unsafe URL in "${key}" attribute: ${value}`)
     }
-    return
+    return true
   }
+  return false
+}
+
+// INVARIANT (every `_setX` the compiler emits): `applyAttrProp` (`_setAttr`),
+// `applyValueProp` (`_setValue`), `applyStyleProp` (`_setStyle`),
+// `applyClassProp` (`_setClass`) and `applyDangerousHtml` (`_setHtml`) are each
+// entered by the compiled template path AFTER the compiler has ROUTED the
+// attribute by name — so each helper must carry every branch of
+// `setStaticProp` that sits ABOVE that helper's own dispatch point (the url
+// guard, the nullish branch, …), or the compiled path silently writes what
+// the h() path refuses. `setx-superset-differential.test.tsx` locks the three
+// paths (compiled / h() / SSR) against each other.
+function setStaticProp(el: Element, key: string, value: unknown): void {
+  // Block javascript:/data: URI injection in URL-bearing attributes.
+  if (isBlockedUrl(el, key, value)) return
 
   if (key === 'class' || key === 'className') {
     applyClassProp(el, value)

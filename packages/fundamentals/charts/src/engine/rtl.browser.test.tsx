@@ -1,9 +1,13 @@
 // RTL through the LIVE host, in real Chromium.
 //
-// The unit test proves the mirror; this proves the two seams that use it are
+// The unit test proves the mirror; this proves the seams that use it are
 // consistent with each other. A chart that PAINTS mirrored but REPORTS the
 // unmirrored index is worse than no RTL at all — every click would name the
 // wrong bar, silently, and only in one locale.
+//
+// The third seam is chart -> SCREEN: the tooltip is a real DOM node, so its
+// `style.left` is measured here rather than reasoned about. happy-dom has no
+// layout, so only this file can say where the box actually lands.
 
 import { describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
@@ -35,6 +39,11 @@ function paintedColumns(canvas: HTMLCanvasElement): number[] {
 function clickAt(canvas: HTMLCanvasElement, x: number, y: number): void {
   const r = canvas.getBoundingClientRect()
   canvas.dispatchEvent(new MouseEvent('click', { clientX: r.left + x, clientY: r.top + y, bubbles: true }))
+}
+
+function moveAt(canvas: HTMLCanvasElement, x: number, y: number): void {
+  const r = canvas.getBoundingClientRect()
+  canvas.dispatchEvent(new PointerEvent('pointermove', { clientX: r.left + x, clientY: r.top + y, bubbles: true }))
 }
 
 describe('RTL through the canvas host', () => {
@@ -103,5 +112,40 @@ describe('RTL through the canvas host', () => {
     const canvas = await mount(true, (i) => picks.push(i))
     clickAt(canvas, W * 0.12, H * 0.8)
     expect(picks).toEqual([ROWS.length - 1])
+  })
+
+  it('the tooltip lands on the POINTER, not its mirror image', async () => {
+    // The seam this pins: `localX` mirrors the pointer INTO chart space, and
+    // `placeTooltip` answers in that space — so writing the answer straight to
+    // `style.left` (a SCREEN coordinate) put the box on the far side of the
+    // canvas. Measured, not asserted structurally: the numbers only exist in a
+    // browser that lays the box out.
+    for (const rtl of [false, true]) {
+      const { container } = mountInBrowser(
+        h(PlotChart, {
+          data: ROWS,
+          x: (_d: number, i: number) => `c${i}`,
+          marks: [bars((d: number) => d)],
+          width: W,
+          height: H,
+          animate: false,
+          rtl,
+          tooltip: true,
+        }),
+      )
+      await flush()
+      const canvas = query<HTMLCanvasElement>(container, 'canvas')
+      const tip = query<HTMLDivElement>(container, '[data-pyreon-chart-tooltip]')
+      const probe = W * 0.15
+      moveAt(canvas, probe, H * 0.85)
+      await flush()
+      expect(tip.style.display, `rtl=${rtl}: no tooltip at x=${probe}`).toBe('block')
+      const left = parseFloat(tip.style.left)
+      const right = left + tip.offsetWidth
+      // The box brackets the pointer (placeTooltip offsets by 12 and flips at
+      // the edge, so allow its own width either side) — never a canvas away.
+      const dist = probe < left ? left - probe : probe > right ? probe - right : 0
+      expect(dist, `rtl=${rtl}: tooltip [${left}, ${right}] is not near the pointer at ${probe}`).toBeLessThan(tip.offsetWidth + 24)
+    }
   })
 })

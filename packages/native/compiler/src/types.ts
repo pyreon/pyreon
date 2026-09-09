@@ -1060,6 +1060,18 @@ export type StatementIR =
       methodMutated?: boolean | undefined
     }
   /**
+   * `let out: string` — a DECLARATION with no initializer, assigned later
+   * (typically once per branch of an `if`/`switch`). Ordinary TypeScript, and
+   * previously DROPPED: the parser returned null for a declarator with no
+   * `init`, so every later assignment referenced a name that was never
+   * declared ("cannot find 'out' in scope" / "unresolved reference"), with no
+   * warning. Distinct from `let` because there is no expression to emit, and
+   * the ANNOTATION is not optional here — it is the only thing that says what
+   * the variable's type is, so a declaration without one is warned and dropped
+   * rather than guessed at.
+   */
+  | { kind: 'declare'; name: string; declaredType: TypeIR }
+  /**
    * Reassignment of a plain local / member / index target:
    * `t = t + x`, `acc += 1`. Signals reassign via `.set()` (a call, the
    * `expr` kind), so a raw `AssignmentExpression` is ALWAYS a plain

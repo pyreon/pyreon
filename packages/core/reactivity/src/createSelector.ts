@@ -2,19 +2,47 @@ import { effect } from './effect'
 import { type SubscriberHost, trackSubscriber } from './tracking'
 
 /**
+ * Is `fn` currently a subscriber of `host`, across every shape the two-tier
+ * store can be in? `_s1` holds the sole/first subscriber, `_s` holds EITHER the
+ * second inline subscriber (a function) OR the promoted Set of three-or-more.
+ * Asking only the inline tiers is the bug this exists to prevent — see
+ * `notifyBucket`. The `typeof s !== 'function'` discriminator mirrors
+ * `removeSubscriber` in `tracking.ts`, so the two agree on what `_s` holds.
+ */
+function isSubscribed(host: SubscriberHost, fn: () => void): boolean {
+  if (host._s1 === fn) return true
+  const s = host._s
+  if (s === fn) return true
+  return s !== null && typeof s !== 'function' && (s as Set<() => void>).has(fn)
+}
+
+/**
  * Notify a subscriber bucket without snapshot allocation.
  * Caps iteration at the original size to avoid infinite loops from
  * re-inserted entries (same pattern as notifySubscribers in tracking.ts).
  */
 function notifyBucket(host: SubscriberHost): void {
   // Inline slot first — the dominant shape (one effect watching one key), and
-  // the read is a plain field rather than a materialised Set iterator. Captured
-  // locally, so a subscriber that promotes the tier mid-call is unaffected.
+  // the read is a plain field rather than a materialised Set iterator. BOTH
+  // inline subscribers are snapshotted BEFORE the first dispatch, because the
+  // dispatch can move them: this is the same capture-then-dispatch shape
+  // `signal.ts`'s `_set`/`_trigger` and `batch.ts`'s `propagateLazyDirty` use.
   const s1 = host._s1
   if (s1 !== null) {
     const s2 = host._s as (() => void) | null
     s1()
-    if (s2 !== null && (host._s === s2 || host._s1 === s2)) s2()
+    // `s2` is dispatched only if it is STILL subscribed — but "still
+    // subscribed" must be asked of ALL THREE storage shapes, not just the two
+    // it could have been in at entry. Re-reading `host._s === s2 || host._s1
+    // === s2` was an identity compare against the INLINE tiers only, so when
+    // `s1()` registered a THIRD subscriber `addSubscriber` PROMOTED both inline
+    // slots into a Set — `_s` becomes that Set and `_s1` becomes null, so
+    // neither compare matched and `s2` was silently skipped despite being live
+    // inside the Set. v0.51.0 iterated the Set with a size cap and was correct;
+    // the inline fast path reintroduced the hole. A subscriber registered
+    // DURING this pass is still deliberately not notified here — same
+    // semantics as the Set branch's `originalSize` cap below.
+    if (s2 !== null && isSubscribed(host, s2)) s2()
     return
   }
   const bucket = host._s as Set<() => void> | null

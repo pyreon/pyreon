@@ -26,24 +26,34 @@
  * Deterministic (mulberry32 PRNG, fixed seed range) — a failure prints its
  * seed; reproduce with the same seed in scripts or a debugger.
  */
+import { createRequire } from 'node:module'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, test } from 'vitest'
 import { transformJSX_JS } from '../jsx'
 
-let nativeTransform:
-  | ((
-      code: string,
-      filename: string,
-      ssr: boolean,
-      known: string[] | null,
-      reactivityLens?: boolean,
-      collapse?: unknown,
-      ssrTemplate?: boolean,
-      templatizeComponentChildren?: boolean,
-    ) => { code: string })
-  | null = null
+type NativeTransform = (
+  code: string,
+  filename: string,
+  ssr: boolean,
+  known: string[] | null,
+  reactivityLens?: boolean,
+  collapse?: unknown,
+  ssrTemplate?: boolean,
+  templatizeComponentChildren?: boolean,
+) => { code: string }
+
+let nativeTransform: NativeTransform | null = null
 try {
-  const path = require('node:path')
-  const native = require(path.join(__dirname, '..', '..', 'native', 'pyreon-compiler.node'))
+  // A napi `.node` addon cannot be loaded through `await import()`, so this
+  // is the legitimate `createRequire` case: the CJS-only globals are not
+  // defined in a real-Node ESM run (bun defines them, which is why a
+  // bun-run suite never caught it).
+  const requireAddon = createRequire(import.meta.url)
+  const here = dirname(fileURLToPath(import.meta.url))
+  const native = requireAddon(join(here, '..', '..', 'native', 'pyreon-compiler.node')) as {
+    transformJsx: NativeTransform
+  }
   nativeTransform = native.transformJsx
 } catch {
   // Native not available — suite skips (same convention as native-equivalence).
@@ -259,6 +269,22 @@ function genComponent(seed: number): string {
 // nothing — a gate that cannot fail is worse than no gate.
 const SEEDS = Math.max(1, Number(process.env.PYREON_FUZZ_SEEDS) || 300)
 
+/**
+ * Wall-clock budget for the sweep, DERIVED from the seed count rather than
+ * fixed. vitest's default is 20s, which the committed 300-seed budget clears in
+ * ~1.6s — but the documented discovery command (`PYREON_FUZZ_SEEDS=10000`) does
+ * not: past roughly 3,000 seeds the sweep is killed mid-run, so the one command
+ * this file tells you to reach for could not finish. A timeout that scales with
+ * the work makes the documentation runnable.
+ *
+ * ~12ms/seed is the measured rate (300 seeds × 4 modes in ~1.6s) rounded up
+ * about 2x for a loaded CI runner, plus a flat 20s of headroom so the small
+ * committed run keeps exactly the budget it has today. This is a BACKSTOP, not
+ * a target: it must EXCEED the work, and it is derived from the same constant
+ * the work is, so the two cannot drift (the `ws-relay` lesson).
+ */
+const SWEEP_TIMEOUT_MS = 20_000 + SEEDS * 25
+
 // Three compilation modes exercised per seed: client (`ssr:false`), SSR h()
 // (`ssr:true`), and SSR compile-to-string (`ssr:true, ssrTemplate:true`). The
 // third exercises the native `_ssr` emit across the whole grammar — the
@@ -282,7 +308,7 @@ const MODES: {
 ]
 
 describeNative('seeded differential fuzz — JS ≡ Rust, client + SSR', () => {
-  test(`${SEEDS} seeds × 3 modes are byte-identical`, () => {
+  test(`${SEEDS} seeds × 3 modes are byte-identical`, { timeout: SWEEP_TIMEOUT_MS }, () => {
     const failures: string[] = []
     let firstDivergence = ''
     for (let seed = 1; seed <= SEEDS; seed++) {
@@ -331,7 +357,7 @@ describeNative('seeded differential fuzz — JS ≡ Rust, client + SSR', () => {
   // from) and the mixed form (`_mountSlot` + `<!>`). Thresholds are ~⅓ below the
   // observed values so ordinary grammar drift doesn't red it, while a mode that
   // silently went dead does.
-  test(`the ${MODES[3]!.label} mode actually changes the emit`, () => {
+  test(`the ${MODES[3]!.label} mode actually changes the emit`, { timeout: SWEEP_TIMEOUT_MS }, () => {
     let differs = 0
     let appendForm = 0
     let componentSlotForm = 0
