@@ -4,12 +4,18 @@ export default defineNodeConfig({
   category: 'fundamentals',
   environment: 'happy-dom',
   excludeBrowserTests: true,
-  // ECharts mounts via canvas + real layout — exercised by
-  // chart-component.browser.test.tsx and app-showcase e2e. Node-side
-  // unit coverage skips it.
-  // use-chart.ts: ResizeObserver callback (line 97 chart.resize) +
-  // init/setOption error paths require real Chromium — covered by
-  // charts.browser.test.tsx in real-Chromium @vitest/browser.
+  // `chart-component.tsx` and `use-chart.ts` used to be excluded here on the
+  // grounds that real Chromium covers them. Both halves of that were wrong.
+  // The browser config's coverage `include` list never named either file, so
+  // the claim was measured NOWHERE — the exact "unverified promise" the note
+  // below forbids, and the drift its "keep the two lists in sync" line
+  // predicted. And the node run covers them well anyway: 100% for
+  // chart-component.tsx and 87.1% statements / 72.1% branches for
+  // use-chart.ts, because the node suite drives both directly. Only the
+  // ResizeObserver callback and the init/setOption error paths genuinely need
+  // Chromium, and losing measurement of the other ~87% to protect that ~13%
+  // is a bad trade. They are measured here now; `coverage-lists-in-sync`
+  // makes the whole class impossible to reintroduce silently.
   // The plot engine's PLATFORM files. Each needs a real canvas 2D context or
   // a mounted DOM, so the node run scores them 0 while they are exercised in
   // real Chromium — and that claim is MEASURED there: the browser config gates
@@ -23,8 +29,6 @@ export default defineNodeConfig({
   // decimation) is pure and stays in the node run at ~98%, so this excludes
   // the backend and not the logic.
   coverageExclude: [
-    'src/chart-component.tsx',
-    'src/use-chart.ts',
     'src/engine/Chart.tsx',
     'src/engine/PieChart.tsx',
     // Covered by heatmap.browser.test.tsx / candlestick.browser.test.tsx
