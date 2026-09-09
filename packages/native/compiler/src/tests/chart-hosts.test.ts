@@ -1445,7 +1445,11 @@ describe('PlotChart events/actions props on native', () => {
   it('warn BY NAME — attrs AND event props — and the chart still lowers', () => {
     for (const target of ['swift', 'kotlin'] as const) {
       const r = transform(EVENTS_MODEL, { target })
-      expect(r.warnings.some((w) => w.includes('`selectedMode`, `onHighlight` are not lowered on native'))).toBe(true)
+      // Both props in ONE warning, each carrying its own reason.
+      const w = r.warnings.find((x) => x.includes('`selectedMode`'))
+      expect(w, 'no selectedMode warning').toBeDefined()
+      expect(w).toContain('`onHighlight` (')
+      expect(w).toContain('are not lowered on native')
       expect(r.code).toContain('renderChart(')
     }
   })

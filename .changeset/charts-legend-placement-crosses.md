@@ -25,3 +25,11 @@ The four hosts whose engines draw their own frame (Gauge, Candlestick, Heatmap,
 Boxplot) do not read the prop and still say so. `legendColumnWidth` moved from
 the web host into `legend.ts` with it, and the runtime gained
 `pyreonShiftCmdsXY` for the two-axis offset a side legend needs.
+
+Separately, every unlowered `<PlotChart>` prop now says WHY. Sixteen of the
+nineteen warned with only their name — a status, not a reason — against this
+repo's own standard, which `<MapChart>`'s decline had a spec for and nothing
+held the rest to. The reasons divide deliberately into two kinds: a prop whose
+MECHANISM is the web platform (a DOM element, a hover, a download) and one that
+is EMIT WORK, so a reader can tell a wall from a backlog item.
+

@@ -11,7 +11,7 @@
 // the emitters cannot re-derive it and the positions cannot diverge again.
 
 import { describe, expect, it } from 'vitest'
-import { chartChromeUnlowered, PLOT_UNLOWERED_PROPS } from '../chart-hosts'
+import { chartChromeUnlowered, PLOT_UNLOWERED_PROPS, plotUnloweredWarning } from '../chart-hosts'
 import { transform } from '../index'
 import { isKotlincAvailable, isSwiftcAvailable, isSwiftUIAvailable, validateKotlin, validateSwiftTypecheck, validateSwiftWithStubs } from '../validate'
 import { readFileSync } from 'node:fs'
@@ -109,6 +109,37 @@ describe('legendPosition lowers on both targets', () => {
     for (const pos of ['top', 'bottom', 'left', 'right'] as const) {
       const r = validateKotlin(kotlin(` legendPosition="${pos}"`).code)
       expect(r.ok, `${pos}: ${r.error ?? ''}`).toBe(true)
+    }
+  })
+})
+
+// A reason is what a user gets INSTEAD of the feature, so a bare name is a
+// status, not a diagnosis. `<MapChart>`'s decline had a spec asserting it
+// "names the blocker and a path, not just a status" — and sixteen of the
+// nineteen unlowered plot props warned with only their name, held to nothing.
+describe('every unlowered plot prop says WHY, not just its name', () => {
+  it('has a reason for each, and each names a mechanism rather than a status', () => {
+    for (const prop of PLOT_UNLOWERED_PROPS) {
+      const why = plotUnloweredWarning('PlotChart', [prop])
+      expect(why, prop).toContain(`\`${prop}\` (`)
+      // A status ("not supported yet", "a follow-up") is the shape this is
+      // meant to replace; a reason is longer than the prop name and says
+      // something about HOW it works.
+      // Greedy to the CLOSER, not to the first `)`: a reason may itself
+      // contain parens (`createChartHandle().dispatch`), and a lazy match
+      // would measure those two characters instead of the sentence.
+      const reason = new RegExp('`' + prop + '` \\((.*)\\) (?:is|are) not lowered').exec(why)?.[1] ?? ''
+      expect(reason.length, `${prop}: reason too short to be one`).toBeGreaterThan(30)
+      expect(reason, prop).not.toMatch(/^(not supported|unsupported|a follow-up|todo)/i)
+    }
+  })
+
+  it('names the emit-work ones as unbuilt rather than impossible', () => {
+    // The distinction is the point: a reader must be able to tell a wall from
+    // a backlog item.
+    for (const prop of ['emphasis', 'selectedMode', 'maxPoints', 'updateAnimation'] as const) {
+      const why = plotUnloweredWarning('PlotChart', [prop])
+      expect(why, prop).toMatch(/missing|not yet|unbuilt|waits on|emit work|needs/)
     }
   })
 })
