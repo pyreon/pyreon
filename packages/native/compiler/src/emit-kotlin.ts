@@ -10529,6 +10529,15 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     lets.push('var pyreonBrushB by remember { mutableStateOf(-1.0) }')
   }
   if (legend.toggling) lets.push('var pyreonHidden by remember { mutableStateOf(listOf<Int>()) }')
+  // `selectedMode` — the Swift half's twin. A TAP pins a datum, which is the
+  // half of the events model a touch target actually has; `emphasis`'s hover
+  // band and `onHighlight` are mouseover-driven and stay declined. The engine
+  // draws a pinned datum from `ChartSpec.emphasis`; this is the state saying
+  // which. Declared HERE rather than beside the spec arg because Compose reads
+  // the state from `lets`, which is emitted before the spec is built.
+  const pinMode = readStaticAttrKotlin(e, 'selectedMode')
+  const pinning = pinMode === 'single' || pinMode === 'multiple'
+  if (pinning) lets.push('var pyreonSelected by remember { mutableStateOf(listOf<Int>()) }')
   if (legend.paging) lets.push('var pyreonLegendPage by remember { mutableStateOf(0.0) }')
   const rows = windowed ? 'pyreonRows' : data
   // The theme's palette colours marks with no `color` (the theme builder already warned about a bad literal, so this parse stays silent).
@@ -10695,6 +10704,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const mk = chartAttrExprKotlin(e, 'markers')
   if (mk !== undefined) specArgs.push(`markers = ${withExpectedTypeKotlin({ kind: 'array', element: { kind: 'typeRef', name: 'PointMarker', args: [] } }, () => emitKotlinExpr(mk, indent))}`)
   if (kotlinChartAnimating(e, 'PlotChart')) specArgs.push('progress = pyreonEntrance')
+  if (pinning) specArgs.push('emphasis = Emphasis(highlight = -1, selected = pyreonSelected)')
   // The batch-2 spec switches: a literal each, straight onto the spec.
   for (const p of PLOT_SPEC_LITERAL_PROPS) {
     const raw = readStaticAttrKotlin(e, p.name)
@@ -10751,11 +10761,22 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const plotX = chrome.plotX(rawTapX)
   const tapYExpr = '(pyreonTap.y / pyreonDensity).toDouble()'
   let tap = ''
-  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging || brushing || tooltip) {
-    const selectOnly = onSel?.kind === 'event' ? kotlinChartSelectBody(onSel.handler, hit(plotX, tapYExpr), indent) : ''
-    const select = tooltip
+  // `pinning` joins the gate: a chart with ONLY `selectedMode` has no other
+  // reason to install a tap, and without it the pin never runs.
+  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging || brushing || tooltip || pinning) {
+    // With pinning on, the hit is computed ONCE into a local: the pin, the
+    // change callback and `onSelect` all name the same pick.
+    const pick = pinning ? 'pyreonPick' : hit(plotX, tapYExpr)
+    const selectOnly = onSel?.kind === 'event' ? kotlinChartSelectBody(onSel.handler, pick, indent) : ''
+    const onSelChange = chartEventHandler(e, 'selectchange')
+    const pinBody = pinning
+      ? `val pyreonPick = ${hit(plotX, tapYExpr)}; val pyreonNextSel = pinSelection(pyreonSelected, pyreonPick, ${pinMode === 'multiple'}); pyreonSelected = pyreonNextSel` +
+        (onSelChange === undefined ? '' : `; ${kotlinChartSelectBody(onSelChange, 'pyreonNextSel', indent)}`)
+      : ''
+    const selectBase = tooltip
       ? `val pyreonLocal = ${localHit(plotX, tapYExpr)}; pyreonTip = if (pyreonLocal < 0) listOf() else ${tipLines}; pyreonTipAt = PyreonChartPt(${rawTapX}, ${tapYExpr})${selectOnly === '' ? '' : `; ${selectOnly}`}`
       : selectOnly
+    const select = pinBody === '' ? selectBase : selectBase === '' ? pinBody : `${pinBody}; ${selectBase}`
     const decls: string[] = []
     const branches: string[] = []
     if (legend.paging) {

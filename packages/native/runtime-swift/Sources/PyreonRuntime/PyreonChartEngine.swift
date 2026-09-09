@@ -9006,6 +9006,36 @@ public func legendToggle(_ hidden: [Int], _ i: Int) -> [Int] {
     return out
   }
 
+public func pinSelection(_ selected: [Int], _ global: Int, _ multiple: Bool) -> [Int] {
+    if global < 0 {
+      return selected
+    }
+    var has = false
+    for k in 0..<selected.count {
+      if selected[k] == global {
+        has = true
+      }
+    }
+    if !multiple {
+      var one: [Int] = []
+      if !has {
+        one.append(global)
+      }
+      return one
+    }
+    var out: [Int] = []
+    for k in 0..<selected.count {
+      let s = selected[k]
+      if s != global {
+        out.append(s)
+      }
+    }
+    if !has {
+      out.append(global)
+    }
+    return out
+  }
+
 public func hideHiddenSeries(_ series: [Series], _ hidden: [Int]) -> [Series] {
     if hidden.count == 0 {
       return series
