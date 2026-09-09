@@ -195,7 +195,8 @@ describe('legend placement', () => {
     const r = canvas.getBoundingClientRect()
     canvas.dispatchEvent(new MouseEvent('click', { clientX: r.left + 350, clientY: r.top + 100, bubbles: true }))
     expect(picked).toEqual([2])
-    // And the same x on a top legend is the SECOND bar — the plot was not shifted there.
+    // The same x on a top legend is ALSO the last bar — the far-right click
+    // agrees across layouts, which is why the discriminating pair below exists.
     const top = mountInBrowser(() =>
       PlotChart<{ m: string; v: number }>({ data: [{ m: 'a', v: 3 }, { m: 'b', v: 6 }, { m: 'c', v: 9 }], x: (d) => d.m, marks: [bars((d) => d.v, { label: 'A very long legend label' })], width: 400, height: 200, animate: false, showLegend: true, onSelect: (i) => picked.push(i) }),
     )
@@ -204,6 +205,24 @@ describe('legend placement', () => {
     const r2 = c2.getBoundingClientRect()
     c2.dispatchEvent(new MouseEvent('click', { clientX: r2.left + 350, clientY: r2.top + 100, bubbles: true }))
     expect(picked).toEqual([2, 2])
+    // …and the far-right bar is the one x that agrees, so it proves nothing on
+    // its own. THIS is the discriminating pair: with the legend in a left
+    // column the plot starts well right of 0, so x = 280 is over the middle
+    // bar and x = 200 is over the short first one (a miss at this y); with the
+    // legend on top the plot spans the full width and the two swap.
+    //
+    // The spec used to claim the difference in a comment and assert only the
+    // agreeing click — a comment is not a test.
+    const clickAt = (c: HTMLCanvasElement, x: number): number => {
+      const box = c.getBoundingClientRect()
+      picked.length = 0
+      c.dispatchEvent(new MouseEvent('click', { clientX: box.left + x, clientY: box.top + 100, bubbles: true }))
+      return picked[0] ?? Number.NaN
+    }
+    expect(clickAt(canvas, 280), 'left legend: x=280 is the middle bar').toBe(1)
+    expect(clickAt(canvas, 200), 'left legend: x=200 is past the plot start but over the short bar').toBe(-1)
+    expect(clickAt(c2, 200), 'top legend: x=200 is the middle bar').toBe(1)
+    expect(clickAt(c2, 280), 'top legend: x=280 falls between bars').toBe(-1)
     expect(inked(canvas, 0, 200)).toBeGreaterThan(0)
   })
 })
