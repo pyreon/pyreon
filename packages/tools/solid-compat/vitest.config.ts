@@ -21,10 +21,24 @@ export default defineNodeConfig({
   // arms, deep applyAtPath with empty path × non-fn value, stale-rejection
   // signal-eviction sweep). Reaching 95% would require refactoring out the
   // genuinely-dead defensive arms — a separate cleanup PR.
+  // Ratcheted 95/89 -> 96/91 (measured 96.68/91.77/97.22/98.28) by covering
+  // `setStore`'s path forms, `createResource`'s staleness guards and the store
+  // proxy's traps over a vanished path — which surfaced a real bug: a
+  // store-wrapped ARRAY threw on `JSON.stringify` and reported false for
+  // `Array.isArray`, fixed in the same change.
+  //
+  // 91 rather than 92 is the honest ceiling for the node run. Of the 25
+  // branches left, four are `NODE_ENV !== 'production'` arms and most of the
+  // rest are defensive arms no caller can reach: `safeAssign`'s zero-length
+  // path (the dispatcher only ever produces a path of length >= 1 or takes the
+  // draft form), the `!desc` continues (`Object.getOwnPropertyDescriptors`
+  // never yields a key without one), and the SYNC half of the fetch-version
+  // check (nothing can interleave before a synchronous throw is caught).
+  // Raise this when one of them becomes reachable, not by covering it.
   coverageThresholds: {
-    statements: 95,
-    lines: 95,
-    branches: 89,
-    functions: 95,
+    statements: 96,
+    lines: 98,
+    branches: 91,
+    functions: 97,
   },
 })
