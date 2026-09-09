@@ -1,5 +1,5 @@
 import { signal, wrapSignal } from '@pyreon/reactivity'
-import { getEntry, removeEntry, setEntry } from './registry'
+import { getEntry, releaseEntry, retainEntry, setEntry } from './registry'
 import type { CookieOptions, StorageSignal } from './types'
 import { deserialize, isBrowser, serialize } from './utils'
 
@@ -138,9 +138,18 @@ export function useCookie<T>(
   defaultValue: T,
   options: CookieOptions<T> = {},
 ): StorageSignal<T> {
-  // Return existing signal if already registered
+  // Same-key consumers each retain the per-key registry refcount, so the entry
+  // is destroyed on the LAST `.remove()` and not the first. `useStorage` was
+  // fixed this way in #725/#729 and the registry's own docstring states the
+  // contract ("per-consumer `.remove()` goes through `releaseEntry`") — this
+  // backend kept the pre-fix shape, so one consumer's `.remove()` orphaned
+  // every sibling: `clearStorage`/`removeStorage` stopped seeing their signal,
+  // and the next call for the same key minted a SECOND, independent one.
   const existing = getEntry<T>('cookie', key)
-  if (existing) return existing.signal
+  if (existing) {
+    retainEntry('cookie', key)
+    return existing.signal
+  }
 
   // Read initial value from cookie
   const raw = readCookie(key)
@@ -159,9 +168,11 @@ export function useCookie<T>(
   }) as unknown as StorageSignal<T>
 
   storageSig.remove = () => {
+    // The VALUE is always cleared — that is what the caller asked for. Only the
+    // registry entry is refcounted, matching `createStorageSignal`'s contract.
     sig.set(defaultValue)
     deleteCookie(key, options)
-    removeEntry('cookie', key)
+    releaseEntry('cookie', key)
   }
 
   setEntry('cookie', key, storageSig, defaultValue, options)

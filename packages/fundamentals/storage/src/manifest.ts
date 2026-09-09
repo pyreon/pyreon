@@ -5,7 +5,7 @@ export default defineManifest({
   title: 'Reactive Storage',
   tagline: 'Reactive client-side storage — localStorage, sessionStorage, cookies, IndexedDB',
   description:
-    'Signal-backed persistence for Pyreon. Every stored value is a reactive signal that persists writes automatically to the underlying storage backend. `useStorage` (localStorage, cross-tab synced), `useSessionStorage`, `useCookie` (SSR-readable, configurable expiry), `useIndexedDB` (large data, debounced writes), and `useMemoryStorage` (ephemeral, SSR-safe). All hooks return `StorageSignal<T>` which extends `Signal<T>` with `.remove()`. `createStorage(backend)` enables custom backends (encrypted, remote, etc.). SSR-safe — browser-API hooks return the default value on the server.',
+    'Signal-backed persistence for Pyreon. Every stored value is a reactive signal that persists writes automatically to the underlying storage backend. `useStorage` (localStorage, cross-tab synced), `useSessionStorage`, `useCookie` (SSR-readable, configurable expiry), `useIndexedDB` (large data, debounced writes), and `useMemoryStorage` (ephemeral, SSR-safe). All hooks return `StorageSignal<T>` which extends `Signal<T>` with `.remove()`. Calling the same hook with the same key ANYWHERE returns the SAME signal, refcounted across every backend — so one consumer calling `.remove()` clears the stored value without orphaning the siblings still holding it; the entry is destroyed on the last release. `createStorage(backend)` enables custom backends (encrypted, remote, etc.). SSR-safe — browser-API hooks return the default value on the server.',
   category: 'universal',
   multiplatform: {
     tier: 'service-backend',
@@ -76,6 +76,7 @@ theme.remove()    // delete from storage, reset to default`,
         'Expecting cross-tab sync with `useSessionStorage` — only `useStorage` (localStorage) fires storage events across tabs',
         'Storing non-serializable values (functions, class instances) without custom `serializer`/`deserializer` — JSON.stringify drops them silently',
         'Reading `.remove()` return value — it returns void, not the removed value',
+        'Treating `.remove()` as a per-consumer teardown that leaves other consumers alone — it always clears the STORED VALUE (that is what you asked for) and resets the shared signal. What is refcounted is the registry entry, so `removeStorage`/`clearStorage` keep seeing a key while any consumer still holds it.',
         'Evolving the stored shape without `version` + `migrate` — a user with the OLD shape on disk loads it as-is (or `onError`/default if it no longer parses). Bump `version` and provide `migrate` to transform the old shape; a pre-versioning value is migrated as version `0`.',
         'Assuming a `.set()` that exceeds quota throws — the in-memory signal always updates; the `setItem` failure is routed to `onError` (a notification) instead of throwing. Provide `onError` to surface quota problems to the user.',
       ],
