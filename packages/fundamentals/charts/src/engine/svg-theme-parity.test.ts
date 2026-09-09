@@ -87,6 +87,12 @@ describe('static SVG ⇄ canvas theme parity', () => {
     ['polar', () => polarToSvg({ axes: { categories: ['a', 'b'] }, series: [{ name: 's', kind: 'bar', values: [1, 2] }], theme: dark }), [dark.label, dark.grid]],
     ['calendar', () => calendarToSvg({ start: '2024-01-01', end: '2024-02-11', values: { '2024-01-03': 3 }, theme: dark }), [dark.label]],
     ['gantt', () => ganttToSvg({ tasks: [{ id: '1', name: 'Design', start: '2024-01-01', end: '2024-01-10' }], theme: dark }), [dark.label, dark.grid]],
+    // Grouped, so the LANE BAND is drawn. Threading the label through the
+    // theme without the band under it made a dark gantt light-grey text on a
+    // fixed near-white band — about 1.9:1, i.e. worse than before the theme
+    // reached it at all. The band follows `grid`: a translucent neutral is
+    // the one value that reads on both grounds.
+    ['gantt (grouped lanes)', () => ganttToSvg({ tasks: [{ id: '1', name: 'D', start: '2024-01-01', end: '2024-01-10', group: 'Web' }, { id: '2', name: 'S', start: '2024-01-20', end: '2024-01-25', group: 'App' }], theme: dark }), [dark.label, dark.grid]],
     ['parallel', () => parallelToSvg({ axes: [{ name: 'a' }, { name: 'b' }], rows: [[1, 10], [2, 20]], theme: dark }), [dark.label, dark.axis]],
   ]
 
@@ -99,4 +105,35 @@ describe('static SVG ⇄ canvas theme parity', () => {
       expect(svg, `${name}: still carries the light label`).not.toContain(defaultTheme.label)
     })
   }
+})
+
+describe('the gantt lane band follows its label', () => {
+  // A themed label on an UNTHEMED band is worse than neither being themed:
+  // before the theme reached the label, dark `#374151` text on near-white
+  // `#f3f4f6` was readable on every ground. Threading only the label made a
+  // dark gantt light-grey on near-white.
+  const grouped = [
+    { id: '1', name: 'D', start: '2024-01-01', end: '2024-01-10', group: 'Web' },
+    { id: '2', name: 'S', start: '2024-01-20', end: '2024-01-25', group: 'App' },
+  ]
+
+  it('a dark gantt draws no fixed near-white band', () => {
+    const svg = ganttToSvg({ tasks: grouped, width: 400, height: 220, theme: dark })
+    expect(svg).not.toContain('#f3f4f6')
+    expect(svg).toContain(dark.grid)
+  })
+
+  it('and an explicit laneColor still wins', () => {
+    const svg = ganttToSvg({ tasks: grouped, width: 400, height: 220, theme: dark, gantt: { laneColor: '#123456' } })
+    expect(svg).toContain('#123456')
+  })
+
+  it('the default theme is unchanged where it was already fine', () => {
+    // The light ground kept working throughout; the band moves to the theme's
+    // own neutral rather than staying a literal, so this asserts the VALUE
+    // rather than that nothing moved.
+    const svg = ganttToSvg({ tasks: grouped, width: 400, height: 220 })
+    expect(svg).toContain(defaultTheme.grid)
+    expect(svg).not.toContain('#f3f4f6')
+  })
 })

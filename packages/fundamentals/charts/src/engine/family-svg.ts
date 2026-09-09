@@ -835,8 +835,8 @@ export function ganttToSvg(options: GanttToSvgOptions): string {
   const width = options.width ?? 720.0
   const height = options.height ?? 320.0
   const measure = options.measure ?? measureApprox()
-  const layout = layoutGantt(options.tasks, { x: 4.0, y: 4.0, w: width - 8.0, h: height - 8.0 }, { palette: t.palette, labelColor: t.label, gridColor: t.grid, ...options.gantt }, measure)
-  const cmds = renderGantt(layout, { palette: t.palette, labelColor: t.label, gridColor: t.grid, ...options.gantt })
+  const layout = layoutGantt(options.tasks, { x: 4.0, y: 4.0, w: width - 8.0, h: height - 8.0 }, { palette: t.palette, labelColor: t.label, gridColor: t.grid, laneColor: t.grid, ...options.gantt }, measure)
+  const cmds = renderGantt(layout, { palette: t.palette, labelColor: t.label, gridColor: t.grid, laneColor: t.grid, ...options.gantt })
   const description =
     options.description ??
     (options.title !== undefined

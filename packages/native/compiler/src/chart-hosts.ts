@@ -62,7 +62,7 @@ export interface ChartHostTarget {
 }
 
 /** An option field the theme supplies a default for, and the theme field it reads. */
-export type ChartThemeField = 'palette' | 'labelColor' | 'gridColor' | 'axisColor'
+export type ChartThemeField = 'palette' | 'labelColor' | 'gridColor' | 'axisColor' | 'laneColor'
 
 /** The `ChartTheme` field each option field defaults from — one place, both emitters. */
 export const CHART_THEME_SOURCE: Readonly<Record<ChartThemeField, 'palette' | 'label' | 'grid' | 'axis'>> = {
@@ -70,6 +70,8 @@ export const CHART_THEME_SOURCE: Readonly<Record<ChartThemeField, 'palette' | 'l
   labelColor: 'label',
   gridColor: 'grid',
   axisColor: 'axis',
+  // The gantt lane band, for the same reason its label is themed.
+  laneColor: 'grid',
 }
 
 export interface ChartHostArgs {
@@ -321,7 +323,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     data: ['tasks'],
     options: 'gantt',
     optionsStruct: 'GanttOptions',
-    themeDefaults: ['palette', 'labelColor', 'gridColor'],
+    themeDefaults: ['palette', 'labelColor', 'gridColor', 'laneColor'],
     defaultHeight: 320,
     layout: (a, t) => `layoutGantt(${a.data[0]}, ${t.rect('4.0', '4.0', `${a.W} - 8.0`, `${a.H} - 8.0`)}, ${a.options})`,
     render: (l, a) => `renderGantt(${l}, ${a.options})`,
