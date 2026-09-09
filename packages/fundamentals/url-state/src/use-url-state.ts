@@ -94,7 +94,26 @@ function createUrlSignal<T>(
       return values.length > 0 ? (values as T) : defaultValue
     }
     const raw = getParam(key)
-    return raw !== null ? deserialize(raw) : defaultValue
+    if (raw === null) return defaultValue
+    // A URL is UNTRUSTED input — hand-edited, truncated by a chat client,
+    // shared from an older version of the app. The inferred object serializer
+    // is `JSON.parse`, so `?f={oops` threw out of here at component SETUP and
+    // took the page down; a custom `deserialize` can throw on garbage just as
+    // easily. Falling back to the default matches what the number serializer
+    // already did for `?page=abc`, and keeps the failure to one param.
+    try {
+      return deserialize(raw)
+    } catch (err) {
+      // Loud in dev, because the other reason this fires is a serializer that
+      // genuinely disagrees with what the app writes — which a silent default
+      // would hide for as long as the URL happens to be well-formed.
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn(
+          `[Pyreon] url-state: could not deserialize ?${key}=${raw} — using the default. ${String(err)}`,
+        )
+      }
+      return defaultValue
+    }
   }
 
   const state = signal<T>(readFromUrl())

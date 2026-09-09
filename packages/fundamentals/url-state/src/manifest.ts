@@ -51,10 +51,10 @@ const a = useUrlState('page', 1)
 const b = useUrlState('page', 1)
 a.set(5)  // b() is now 5 too, and b's onChange fires
 
-// Router integration — uses router.replace() when available
+// Router integration — router.replace() by default, router.push() for { replace: false }
 import { useRouter } from '@pyreon/router'
 const router = useRouter()
-setUrlRouter(router)  // now useUrlState uses router.replace() internally
+setUrlRouter(router)  // replace() by default; push() honours { replace: false }
 
 // SSR-safe — initializes to the default on the server, reads window.location on the client
 // No typeof window checks needed in your components`,
@@ -68,7 +68,7 @@ setUrlRouter(router)  // now useUrlState uses router.replace() internally
     'batchUrlUpdates() — coalesce a multi-param update into ONE history entry',
     'clearOnDefault: false — keep a param in the URL at its default value',
     'SSR-safe — initializes to the default on the server (reads the URL on the client)',
-    'setUrlRouter() for @pyreon/router integration',
+    'setUrlRouter() for @pyreon/router integration (replace() by default, push() for { replace: false })',
   ],
   api: [
     {
@@ -92,9 +92,11 @@ const tags = useUrlState('tags', [] as string[], { arrayFormat: 'repeat' })
 tags.set(['a', 'b'])  // ?tags=a&tags=b`,
       mistakes: [
         'Using pushState behavior (adds history entries per keystroke) — useUrlState defaults to replaceState; if you pass `{ replace: false }` on a high-frequency input, the browser back button breaks',
+        'Expecting a malformed value in the URL to surface as an error — it does not, by design: a URL is untrusted input (hand-edited, truncated by a chat client, shared from an older build), so a value the serializer cannot read falls back to the default and dev-warns naming the param, rather than throwing out of component setup.',
         'Forgetting the default value — the type is inferred from it and determines the auto-coercion strategy (number default = coerce to number, boolean default = coerce to boolean)',
         'Reading useUrlState in a non-reactive scope at component setup — the signal reads the URL once; wrap in a reactive scope to track URL changes',
         'Calling setUrlRouter before the router is available — SSR renders may not have a router instance yet',
+        'Assuming a hand-rolled router object with only `replace` honours `{ replace: false }` — it cannot, so the update is downgraded to a replace and Back will not undo it. Give it a `push(path)`; a dev warning fires once if you do not.',
       ],
       seeAlso: ['setUrlRouter'],
     },
@@ -103,13 +105,14 @@ tags.set(['a', 'b'])  // ?tags=a&tags=b`,
       kind: 'function',
       signature: '(router: UrlRouter) => void',
       summary:
-        'Configure useUrlState to use a @pyreon/router instance for URL updates instead of raw `history.replaceState`. When set, URL changes go through the router\'s navigation system, ensuring route guards, middleware, and scroll management integrate correctly.',
+        'Configure useUrlState to use a @pyreon/router instance for URL updates instead of the raw history API. When set, URL changes go through the router\'s navigation system, ensuring route guards, middleware, and scroll management integrate correctly. The router needs `replace(path)`; `push(path)` is optional but is what makes `{ replace: false }` mean anything — without it a push-intent update falls back to `replace` and dev-warns once, so Back will not undo it. `@pyreon/router` has both.',
       example: `import { useRouter } from '@pyreon/router'
 import { setUrlRouter } from '@pyreon/url-state'
 
 const router = useRouter()
 setUrlRouter(router)
-// Now useUrlState uses router.replace() internally`,
+// Now useUrlState routes through the router: replace() by default,
+// push() for a { replace: false } update (so Back undoes it)`,
       seeAlso: ['useUrlState'],
     },
     {

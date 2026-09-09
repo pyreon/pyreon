@@ -16,29 +16,63 @@ export function getParamAll(key: string): string[] {
 }
 
 /**
- * Minimal router-like interface — only the `replace` method is needed.
+ * Minimal router-like interface: `replace` is required, `push` optional.
  * This avoids a hard dependency on `@pyreon/router`.
  */
 export interface UrlRouter {
-  // Return type is intentionally `unknown`-wide: url-state calls `replace`
-  // purely for its side effect and ignores the result, so ANY router whose
+  // Return type is intentionally `unknown`-wide: url-state calls these purely
+  // for their side effect and ignores the result, so ANY router whose
   // `replace(path)` returns nothing OR a promise of anything satisfies the
   // bridge. `@pyreon/router`'s `replace` returns `Promise<NavigationResult>`
   // (since #2171) — narrowing this to `Promise<void>` broke `setUrlRouter(useRouter())`.
   replace(path: string): void | Promise<unknown>
+  /**
+   * Optional, and the difference between `replace: false` meaning something and
+   * meaning nothing.
+   *
+   * `useUrlState(key, def, { replace: false })` asks for a history ENTRY, so
+   * the user can press Back to undo a filter change. Without this the router
+   * branch called `replace` for both intents, so every such update was silently
+   * downgraded — and only in router-wired apps, since the raw-history branch
+   * had honoured the flag all along.
+   *
+   * A router without `push` still works: the update falls back to `replace` and
+   * dev-warns once, rather than pretending.
+   */
+  push?(path: string): void | Promise<unknown>
 }
 
 /** Module-level router reference. Set via `setUrlRouter()`. */
 let _router: UrlRouter | null = null
 
+/**
+ * A router without `push` cannot honour `replace: false`. Say so ONCE rather
+ * than silently downgrading every update for the life of the page — the silent
+ * downgrade is the bug this warning replaces.
+ */
+let _warnedNoPush = false
+
 /** Register a router to use for URL updates instead of the raw history API. */
 export function setUrlRouter(router: UrlRouter | null): void {
   _router = router
+  // A different router deserves its own verdict — the previous one's missing
+  // `push` says nothing about this one.
+  _warnedNoPush = false
 }
 
 /** @internal */
 export function getUrlRouter(): UrlRouter | null {
   return _router
+}
+
+function warnRouterCannotPush(): void {
+  if (_warnedNoPush) return
+  _warnedNoPush = true
+  if (process.env.NODE_ENV !== 'production') {
+    console.warn(
+      '[Pyreon] url-state: `replace: false` asks for a history entry, but the router passed to `setUrlRouter()` has no `push` method — falling back to `replace`, so Back will not undo these updates. Give the router a `push(path)`, or drop `replace: false`.',
+    )
+  }
 }
 
 /** Read the current URL's search params. Client-only — callers guard SSR. */
@@ -55,6 +89,12 @@ function currentParams(): URLSearchParams {
  * history API. This is the ONE place that touches `history` / the router —
  * `setParams`, `setParamRepeated`, and `commitParams` all funnel through it,
  * so the router-vs-history branch can't drift between write paths.
+ *
+ * It CAN still drift in what each branch supports, which is the subtler failure:
+ * the history branch honoured `replace` from the start while the router branch
+ * called `replace()` for both intents, so `replace: false` was a no-op in
+ * exactly the apps that wire a router. Funnelling the CALL through one place
+ * does not by itself make the two agree about what the call means.
  */
 function commit(params: URLSearchParams, replace: boolean): void {
   if (!isClient) return
@@ -62,6 +102,11 @@ function commit(params: URLSearchParams, replace: boolean): void {
   const url = search ? `${window.location.pathname}?${search}` : window.location.pathname
 
   if (_router) {
+    if (!replace && typeof _router.push === 'function') {
+      _router.push(url)
+      return
+    }
+    if (!replace) warnRouterCannotPush()
     _router.replace(url)
     return
   }
