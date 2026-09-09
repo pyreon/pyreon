@@ -1,5 +1,5 @@
 {
-  "lockfileVersion": 1,
+  "lockfileVersion": 3,
   "configVersion": 1,
   "workspaces": {
     "": {
@@ -37,7 +37,7 @@
         "find-my-way": "^9.9.0",
         "goober": "^2.1.19",
         "happy-dom": "^20.11.6",
-        "hono": "^4.13.7",
+        "hono": "^4.13.5",
         "next": "^16.3.4",
         "oxc-parser": "^0.148.0",
         "oxc-transform": "^0.148.0",
@@ -3146,6 +3146,9 @@
     },
   },
   "overrides": {
+    "@changesets/parse": {
+      "js-yaml": "^4.3.2",
+    },
     "@codemirror/language": "6.12.4",
     "@codemirror/state": "6.7.2",
     "@codemirror/view": "6.43.11",
