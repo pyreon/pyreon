@@ -7853,6 +7853,82 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "LegendPlacement",
+    "fields": [
+      {
+        "name": "cmds",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "PyreonDrawCmd",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "top",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "bottom",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "left",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "right",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "boxes",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "PyreonChartRect",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "pager",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "LegendPager",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "Size",
     "fields": [
       {
@@ -8617,7 +8693,9 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "LegendLayout",
   "LegendOptions",
   "LegendPager",
+  "LegendPlacement",
   "LegendPlan",
+  "LegendPosition",
   "NavigatorLayout",
   "Ohlc",
   "ParallelAxis",

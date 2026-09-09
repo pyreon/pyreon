@@ -14,6 +14,8 @@ enum class GeoProjection { equirectangular, mercator }
 
 enum class GanttTickUnit { day, week, month, quarter, year }
 
+enum class LegendPosition { top, bottom, left, right }
+
 
 
 data class Tick(var value: Double, var pos: Double, var label: String)
@@ -242,6 +244,8 @@ data class LegendPager(var page: Double, var pages: Double, var hasPrev: Boolean
 data class LegendLayout(var cmds: List<PyreonDrawCmd>, var height: Double, var boxes: List<PyreonChartRect>, var pager: LegendPager? = null)
 
 data class LegendPlan(var row: List<Double>, var xs: List<Double>, var rows: Double)
+
+data class LegendPlacement(var cmds: List<PyreonDrawCmd>, var top: Double, var bottom: Double, var left: Double, var right: Double, var boxes: List<PyreonChartRect>, var pager: LegendPager? = null)
 
 data class Size(var w: Double, var h: Double)
 
@@ -6391,6 +6395,44 @@ fun renderLegend(entries: List<LegendEntry>, box: PyreonChartRect, opts: LegendO
     cmds.add(PyreonDrawCmd(kind = "text", fill = if (canNext) opts.labelColor else withAlpha(opts.labelColor, 0.35), text = "›", at = PyreonChartPt(x = nextX + (arrowW).toDouble() / (2.0).toDouble(), y = py + mid), size = opts.fontSize, align = "middle", baseline = "middle"))
     val pager = LegendPager(page = page, pages = pages, hasPrev = canPrev, prev = PyreonChartRect(x = prevX, y = py, w = arrowW, h = rowH - opts.gap), hasNext = canNext, next = PyreonChartRect(x = nextX, y = py, w = arrowW, h = rowH - opts.gap))
     return LegendLayout(cmds = cmds, height = height, boxes = boxes, pager = pager)
+  }
+
+fun legendColumnWidth(entries: List<LegendEntry>, opts: LegendOptions, measure: (String, Double) -> Double): Double {
+    var w = 0.0
+    for (e in entries) {
+      val ew = opts.swatch + 4.0 + measure(e.label, opts.fontSize) + opts.gap
+      if (ew > w) {
+        w = ew
+      }
+    }
+    return w
+  }
+
+fun placeLegend(entries: List<LegendEntry>, area: PyreonChartRect, position: LegendPosition, opts: LegendOptions, measure: (String, Double) -> Double): LegendPlacement {
+    val empty = LegendPlacement(cmds = listOf(), top = 0.0, bottom = 0.0, left = 0.0, right = 0.0, boxes = listOf())
+    if (entries.length == 0) {
+      return empty
+    }
+    val pad = 8.0
+    if (position == LegendPosition.left || position == LegendPosition.right) {
+      val col = Math.min(legendColumnWidth(entries, opts, measure), area.w * 0.4)
+      val lx = if (position == LegendPosition.left) area.x + pad else area.x + area.w - col
+      val vertical = opts.copy(orientation = "vertical")
+      val l = renderLegend(entries, PyreonChartRect(x = lx, y = area.y + pad, w = col, h = area.h), vertical, measure)
+      val inset = col + pad
+      return LegendPlacement(cmds = l.cmds, top = 0.0, bottom = 0.0, left = if (position == LegendPosition.left) inset else 0.0, right = if (position == LegendPosition.right) inset else 0.0, boxes = l.boxes, pager = l.pager)
+    }
+    val horizontal = opts.copy(orientation = "horizontal")
+    val wrapW = area.w - pad * 2.0
+    if (position == LegendPosition.bottom) {
+      val rows = legendPlan(entries, PyreonChartRect(x = pad, y = 0.0, w = wrapW, h = area.h), horizontal, measure, wrapW).rows
+      val rowH = Math.max(10.0, opts.fontSize) + 12.0
+      val lh = rows * rowH
+      val l = renderLegend(entries, PyreonChartRect(x = area.x + pad, y = area.y + area.h - lh, w = wrapW, h = lh), horizontal, measure)
+      return LegendPlacement(cmds = l.cmds, top = 0.0, bottom = l.height + pad, left = 0.0, right = 0.0, boxes = l.boxes, pager = l.pager)
+    }
+    val l = renderLegend(entries, PyreonChartRect(x = area.x + pad, y = area.y + pad, w = wrapW, h = area.h), horizontal, measure)
+    return LegendPlacement(cmds = l.cmds, top = l.height + pad, bottom = 0.0, left = 0.0, right = 0.0, boxes = l.boxes, pager = l.pager)
   }
 
 fun tooltipAt(index: Int, categories: List<String>, series: List<TooltipSeries>): TooltipContent {

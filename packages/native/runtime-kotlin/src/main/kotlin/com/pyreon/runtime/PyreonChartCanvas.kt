@@ -140,17 +140,25 @@ fun pyreonChartMeasure(text: String, size: Double): Double {
  * legend it drew at (0, 0). Translating the commands keeps every layout
  * function at (0, 0), exactly as the web hosts do (shiftCmd in Chart.tsx).
  */
-fun pyreonShiftCmds(cmds: List<PyreonDrawCmd>, dy: Double): List<PyreonDrawCmd> =
-    cmds.map { c ->
+fun pyreonShiftCmds(cmds: List<PyreonDrawCmd>, dy: Double): List<PyreonDrawCmd> = pyreonShiftCmdsXY(cmds, 0.0, dy)
+
+/**
+ * The two-axis form: a legend placed on the LEFT indents the plot as well as
+ * a title pushes it down, so the host needs both offsets in one pass.
+ */
+fun pyreonShiftCmdsXY(cmds: List<PyreonDrawCmd>, dx: Double, dy: Double): List<PyreonDrawCmd> {
+    if (dx == 0.0 && dy == 0.0) return cmds
+    return cmds.map { c ->
         c.copy(
-            rect = c.rect?.let { PyreonChartRect(it.x, it.y + dy, it.w, it.h) },
-            from = c.from?.let { PyreonChartPt(it.x, it.y + dy) },
-            to = c.to?.let { PyreonChartPt(it.x, it.y + dy) },
-            points = c.points?.map { PyreonChartPt(it.x, it.y + dy) },
-            center = c.center?.let { PyreonChartPt(it.x, it.y + dy) },
-            at = c.at?.let { PyreonChartPt(it.x, it.y + dy) },
+            rect = c.rect?.let { PyreonChartRect(it.x + dx, it.y + dy, it.w, it.h) },
+            from = c.from?.let { PyreonChartPt(it.x + dx, it.y + dy) },
+            to = c.to?.let { PyreonChartPt(it.x + dx, it.y + dy) },
+            points = c.points?.map { PyreonChartPt(it.x + dx, it.y + dy) },
+            center = c.center?.let { PyreonChartPt(it.x + dx, it.y + dy) },
+            at = c.at?.let { PyreonChartPt(it.x + dx, it.y + dy) },
         )
     }
+}
 
 /**
  * Widen a chart channel to `Double`.

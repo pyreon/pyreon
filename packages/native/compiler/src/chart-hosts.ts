@@ -1234,7 +1234,7 @@ export const CHART_HOST_PALETTE: readonly string[] = CHART_THEME_DEFAULT.palette
  */
 export const CHART_CHROME_PROPS: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'legendPosition', 'keyboard', 'updateAnimation', 'updateDuration', 'toolbox', 'onSaveImage', 'accessibleTable', 'rtl']
 const CHROME_LOWERED: Readonly<Record<string, readonly string[]>> = {
-  PlotChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'rtl'],
+  PlotChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'rtl', 'legendPosition'],
   // Gauge / Candlestick / Heatmap build their canvas without the chrome seam,
   // so they take the RTL pair from `swiftRtl` / `kotlinRtl` directly. Their
   // lists stay spelled out: adding a prop to `FAMILY_CHROME` must never
@@ -1244,10 +1244,18 @@ const CHROME_LOWERED: Readonly<Record<string, readonly string[]>> = {
   CandlestickChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'rtl'],
   HeatmapChart: ['animate', 'rtl'],
   BoxplotChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'rtl'],
-  RadarChart: ['showLegend', 'rtl'],
+  RadarChart: ['showLegend', 'rtl', 'legendPosition'],
 }
-/** Title + legend + tap tooltip — what the generic and accessor hosts draw natively through the crossing chrome. */
-const FAMILY_CHROME: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'rtl']
+/**
+ * Title + legend + tap tooltip — what the generic and accessor hosts draw
+ * natively through the crossing chrome.
+ *
+ * `legendPosition` is here and NOT on Boxplot / Gauge / Candlestick / Heatmap:
+ * those four build their canvas without the chrome seam (their engines draw
+ * their own frame), so nothing there reads the prop. Claiming it per-CLASS is
+ * exactly the mistake the `CHROME_LOWERED` comment above records.
+ */
+const FAMILY_CHROME: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'rtl', 'legendPosition']
 /**
  * Whether `<tag>`'s engine takes an entrance `progress` — the same set the web
  * canvas host tweens (`animates: true`). A host outside it (Pie, Radar,
@@ -1450,4 +1458,4 @@ export function plotUnloweredWarning(tag: string, present: readonly string[]): s
 // `updateAnimation`, `updateDuration`, `toolbox`, `onSaveImage`,
 // `accessibleTable`) are reported through `chartChromeUnlowered` for the plot
 // host too — listing them here as well would warn twice.
-export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'emphasis', 'maxPoints', 'crosshair', 'link', 'keyboard', 'updateAnimation', 'updateDuration', 'seriesLabels', 'toolbox', 'onSaveImage', 'accessibleTable', 'legendPosition', 'locale', 'facet', 'facetColumns']
+export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'emphasis', 'maxPoints', 'crosshair', 'link', 'keyboard', 'updateAnimation', 'updateDuration', 'seriesLabels', 'toolbox', 'onSaveImage', 'accessibleTable', 'locale', 'facet', 'facetColumns']

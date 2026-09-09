@@ -12083,7 +12083,7 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
     entries = spec.legend!('pyreonProbe', args, SWIFT_CHART_TARGET)
   }
   const chrome = swiftChartChrome(e, entries, W, H, indent, true, tf)
-  const plotArgs: ChartHostArgs = { ...args, H: chrome.height(H) }
+  const plotArgs: ChartHostArgs = { ...args, W: chrome.width(W), H: chrome.height(H) }
   const withChrome = chrome.top !== '0.0'
   lets.push(...chrome.lets)
   // A hoisted layout `let` only when something else reads it (the tap); the
@@ -12203,7 +12203,7 @@ function emitSwiftAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   const items = hoist ? 'pyreonItems' : mapped
   const lets = hoist ? [`let pyreonItems: [${spec.struct}] = ${mapped}`, ...chrome.lets] : []
   if (animating) lets.push(`let pyreonOpts: ${spec.optionsStruct} = ${SWIFT_CHART_TARGET.withProgress(options, spec.optionsStruct!, 'pyreonEntrance')}`)
-  const args: ChartHostArgs = { data: [], options, W, H: chrome.height(H), gutter: '0.0', innerRatio: swiftChartDouble(e, 'innerRadius', 0, indent), fontSize: tf.fontSize }
+  const args: ChartHostArgs = { data: [], options, W: chrome.width(W), H: chrome.height(H), gutter: '0.0', innerRatio: swiftChartDouble(e, 'innerRadius', 0, indent), fontSize: tf.fontSize }
   const tipCmds = tooltip
     ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, pyreonChartMeasure)`
     : ''
@@ -12504,7 +12504,7 @@ function emitSwiftRadarHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const showV = chartAttrExpr(e, 'showLabels')
   const showLabels = showV === undefined ? 'true' : typeof showRaw === 'boolean' ? String(showRaw) : emitSwiftExpr(showV, indent)
   const opts = `RadarOptions(rings: ${rings}, gridColor: "rgba(132,150,165,0.35)", labelColor: "#5a6b7a", fontSize: 11.0, showLabels: ${showLabels})`
-  const box = `PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${chrome.height(H)})`
+  const box = `PyreonChartRect(x: 0.0, y: 0.0, w: ${chrome.width(W)}, h: ${chrome.height(H)})`
   const canvas = `PyreonChartCanvas(cmds: ${chrome.mirror(chrome.wrap(`renderRadar(${emitSwiftExpr(axesV, indent)}, pyreonSeries, ${box}, ${opts})`))})`
   // The tap: the engine's `hitRadarIndex` (a `{ series, axis }` — the shape BOTH
   // web callbacks receive), against the same box the canvas painted, the
@@ -12763,7 +12763,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   }
   const below = `${belowNav}${navigating ? ' - pyreonNavigator.height' : ''}`
   const specArgs = [
-    `width: ${W}`,
+    `width: ${chrome.width(W)}`,
     `height: ${chrome.height(H)}${below}`,
     'series: pyreonSeries',
     'categories: pyreonCats',
@@ -12950,10 +12950,14 @@ interface SwiftChartChrome {
   lets: string[]
   /** `'0.0'` when there is no chrome — callers then leave their emit untouched. */
   top: string
-  /** Wraps the plot's draw list: `title + legend + shift(plot, top)`. */
+  /** `'0.0'` unless the legend sits on the LEFT, which indents the plot. */
+  left: string
+  /** Wraps the plot's draw list: `title + legend + shift(plot, left, top)`. */
   wrap: (plot: string) => string
   /** The plot's height once the chrome is subtracted. */
   height: (H: string) => string
+  /** The plot's width once a side legend is subtracted. */
+  width: (W: string) => string
   /**
    * RTL: mirror a finished draw list about the canvas centreline, or hand it
    * back untouched.
@@ -12974,7 +12978,7 @@ function swiftChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries: 
   const showTitle = withTitle && readStaticAttr(e, 'showTitle') === true && title !== undefined
   const showLegend = readStaticAttr(e, 'showLegend') === true
   const { mirror, tapX } = swiftRtl(e, W)
-  if (!showTitle && !showLegend) return { lets: [], top: '0.0', wrap: (p) => p, height: (h) => h, mirror, tapX }
+  if (!showTitle && !showLegend) return { lets: [], top: '0.0', left: '0.0', wrap: (p) => p, height: (h) => h, width: (w) => w, mirror, tapX }
   const lets: string[] = []
   if (showTitle) {
     const subtitle = readStringAttrExpr(e, 'subtitle', indent) ?? 'nil'
@@ -12986,19 +12990,48 @@ function swiftChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries: 
     const maxRowsRaw = readStaticAttr(e, 'legendMaxRows')
     const maxRows = typeof maxRowsRaw === 'number' ? `, maxRows: ${chartDouble(maxRowsRaw)}` : ''
     const pageArg = page === undefined ? '' : `, page: ${page}`
-    lets.push(`let pyreonLegend: LegendLayout = renderLegend(${entries}, PyreonChartRect(x: 0.0, y: pyreonTitle.height, w: ${W}, h: ${H} - pyreonTitle.height), LegendOptions(fontSize: ${t.fontSize}, labelColor: ${t.label}, swatch: 10.0, gap: 12.0, orientation: "horizontal"${maxRows}${pageArg}), pyreonChartMeasure)`)
+    // PLACEMENT is the engine's (`placeLegend`), the same call the web host
+    // makes — not four branches re-derived here. The emit used to draw the
+    // legend at x: 0 with the full width while the web host inset it by 8 on
+    // each side, so a legend sat 8px further left on a phone than in a
+    // browser and the plot 8px higher; that divergence goes with the split.
+    lets.push(
+      `let pyreonLegend: LegendPlacement = placeLegend(${entries}, PyreonChartRect(x: 0.0, y: pyreonTitle.height, w: ${W}, h: ${H} - pyreonTitle.height), ${swiftLegendPosition(e)}, `
+        + `LegendOptions(fontSize: ${t.fontSize}, labelColor: ${t.label}, swatch: 10.0, gap: 12.0, orientation: "horizontal"${maxRows}${pageArg}), pyreonChartMeasure)`,
+    )
   } else {
-    lets.push('let pyreonLegend: LegendLayout = LegendLayout(cmds: [], height: 0.0, boxes: [])')
+    lets.push('let pyreonLegend: LegendPlacement = LegendPlacement(cmds: [], top: 0.0, bottom: 0.0, left: 0.0, right: 0.0, boxes: [])')
   }
-  lets.push('let pyreonTop: Double = pyreonTitle.height + pyreonLegend.height')
+  lets.push('let pyreonTop: Double = pyreonTitle.height + pyreonLegend.top')
+  // Only the insets a legend at THIS position can actually take are emitted,
+  // so a top legend (the default, and every chart before this) keeps the exact
+  // shift and height it had.
+  const pos = swiftLegendPosition(e)
+  const side = showLegend && (pos === '.left' || pos === '.right')
+  const below = showLegend && pos === '.bottom'
   return {
     lets,
     top: 'pyreonTop',
-    wrap: (p) => `pyreonTitle.cmds + pyreonLegend.cmds + pyreonShiftCmds(${p}, pyreonTop)`,
-    height: (h) => `${h} - pyreonTop`,
+    left: side ? 'pyreonLegend.left' : '0.0',
+    wrap: (p) =>
+      side
+        ? `pyreonTitle.cmds + pyreonLegend.cmds + pyreonShiftCmdsXY(${p}, pyreonLegend.left, pyreonTop)`
+        : `pyreonTitle.cmds + pyreonLegend.cmds + pyreonShiftCmds(${p}, pyreonTop)`,
+    height: (h) => (below ? `${h} - pyreonTop - pyreonLegend.bottom` : `${h} - pyreonTop`),
+    width: (w) => (side ? `${w} - pyreonLegend.left - pyreonLegend.right` : w),
     mirror,
-    tapX,
+    // A left legend indents the plot, so a tap's x has to come back out of it
+    // — folded into `tapX` rather than left to each call site, for the same
+    // reason `tapX` folds in the RTL unmirror: the five hosts that read a tap
+    // would otherwise each have to remember, and four of them would.
+    tapX: side ? (raw) => `${tapX(raw)} - pyreonLegend.left` : tapX,
   }
+}
+
+/** `legendPosition` as the engine's enum case; the default (and any non-literal) is `top`, as on the web. */
+function swiftLegendPosition(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const raw = readStaticAttr(e, 'legendPosition')
+  return typeof raw === 'string' && (raw === 'bottom' || raw === 'left' || raw === 'right') ? `.${raw}` : '.top'
 }
 
 /** `<RadarChart data axes values label color? fillAlpha? rings? showLabels? showLegend? height width title>` → renderRadar over the mapped series. */

@@ -18,6 +18,10 @@ public enum GanttTickUnit: String, Codable {
   case day, week, month, quarter, year
 }
 
+public enum LegendPosition: String, Codable {
+  case top, bottom, left, right
+}
+
 public struct Tick: Codable {
   public var value: Double
   public var pos: Double
@@ -1837,6 +1841,25 @@ public struct LegendPlan: Codable {
     self.row = row
     self.xs = xs
     self.rows = rows
+  }
+}
+
+public struct LegendPlacement: Codable {
+  public var cmds: [PyreonDrawCmd]
+  public var top: Double
+  public var bottom: Double
+  public var left: Double
+  public var right: Double
+  public var boxes: [PyreonChartRect]
+  public var pager: LegendPager? = nil
+  public init(cmds: [PyreonDrawCmd], top: Double, bottom: Double, left: Double, right: Double, boxes: [PyreonChartRect], pager: LegendPager? = nil) {
+    self.cmds = cmds
+    self.top = top
+    self.bottom = bottom
+    self.left = left
+    self.right = right
+    self.boxes = boxes
+    self.pager = pager
   }
 }
 
@@ -8163,6 +8186,44 @@ public func renderLegend(_ entries: [LegendEntry], _ box: PyreonChartRect, _ opt
     cmds.append(PyreonDrawCmd(kind: "text", fill: canNext ? opts.labelColor : withAlpha(opts.labelColor, 0.35), text: "›", at: PyreonChartPt(x: nextX + arrowW / 2.0, y: py + mid), size: opts.fontSize, align: "middle", baseline: "middle"))
     let pager = LegendPager(page: page, pages: pages, hasPrev: canPrev, prev: PyreonChartRect(x: prevX, y: py, w: arrowW, h: rowH - opts.gap), hasNext: canNext, next: PyreonChartRect(x: nextX, y: py, w: arrowW, h: rowH - opts.gap))
     return LegendLayout(cmds: cmds, height: height, boxes: boxes, pager: pager)
+  }
+
+public func legendColumnWidth(_ entries: [LegendEntry], _ opts: LegendOptions, _ measure: (String, Double) -> Double) -> Double {
+    var w = 0.0
+    for e in entries {
+      let ew = opts.swatch + 4.0 + measure(e.label, opts.fontSize) + opts.gap
+      if ew > w {
+        w = ew
+      }
+    }
+    return w
+  }
+
+public func placeLegend(_ entries: [LegendEntry], _ area: PyreonChartRect, _ position: LegendPosition, _ opts: LegendOptions, _ measure: (String, Double) -> Double) -> LegendPlacement {
+    let empty = LegendPlacement(cmds: [], top: 0.0, bottom: 0.0, left: 0.0, right: 0.0, boxes: [])
+    if entries.count == 0 {
+      return empty
+    }
+    let pad = 8.0
+    if position == .left || position == .right {
+      let col = min(legendColumnWidth(entries, opts, measure), area.w * 0.4)
+      let lx = position == .left ? area.x + pad : area.x + area.w - col
+      let vertical = { var c = opts; c.orientation = "vertical"; return c }()
+      let l = renderLegend(entries, PyreonChartRect(x: lx, y: area.y + pad, w: col, h: area.h), vertical, measure)
+      let inset = col + pad
+      return LegendPlacement(cmds: l.cmds, top: 0.0, bottom: 0.0, left: position == .left ? inset : 0.0, right: position == .right ? inset : 0.0, boxes: l.boxes, pager: l.pager)
+    }
+    let horizontal = { var c = opts; c.orientation = "horizontal"; return c }()
+    let wrapW = area.w - pad * 2.0
+    if position == .bottom {
+      let rows = legendPlan(entries, PyreonChartRect(x: pad, y: 0.0, w: wrapW, h: area.h), horizontal, measure, wrapW).rows
+      let rowH = max(10.0, opts.fontSize) + 12.0
+      let lh = rows * rowH
+      let l = renderLegend(entries, PyreonChartRect(x: area.x + pad, y: area.y + area.h - lh, w: wrapW, h: lh), horizontal, measure)
+      return LegendPlacement(cmds: l.cmds, top: 0.0, bottom: l.height + pad, left: 0.0, right: 0.0, boxes: l.boxes, pager: l.pager)
+    }
+    let l = renderLegend(entries, PyreonChartRect(x: area.x + pad, y: area.y + pad, w: wrapW, h: area.h), horizontal, measure)
+    return LegendPlacement(cmds: l.cmds, top: l.height + pad, bottom: 0.0, left: 0.0, right: 0.0, boxes: l.boxes, pager: l.pager)
   }
 
 public func tooltipAt(_ index: Int, _ categories: [String], _ series: [TooltipSeries]) -> TooltipContent {
