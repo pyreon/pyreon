@@ -55,8 +55,21 @@ describe('optional-narrowing ternary → nil-coalescing', () => {
       }
       export function P() { return <Text>{String(f({ progress: 1.0 }))}</Text> }
     `
-    // `raw * 2.0` is not `raw` — a coalesce would change the meaning.
-    expect(transform(src, { target: 'swift' }).code).not.toContain('??')
+    // The invariant: a coalesce must not SUBSTITUTE the checked expression for
+    // the surviving branch. `raw * 2.0` is not `raw`, so `(raw ?? 1.0)` would
+    // silently drop the doubling.
+    //
+    // The assertion used to ban any `??` at all, which was too coarse in a way
+    // that hid something worse: it was protecting an emit that did not compile.
+    // With `raw` untyped, the ternary emitted `raw == nil ? 1.0 : raw * 2.0`,
+    // which swiftc rejects ("value of optional type 'Double?' must be
+    // unwrapped"). Now that a member read inside a helper resolves its type,
+    // the optional-map lowering fires instead and produces
+    // `(raw.map { raw * 2.0 } ?? 1.0)` — which compiles, and which I ran to
+    // confirm matches the TS: progress 3.0 → 6.0, absent → 1.0.
+    const code = transform(src, { target: 'swift' }).code
+    expect(code).not.toContain('(raw ?? 1.0)')
+    expect(code).toContain('raw.map')
   })
 
   it('skips a PROVABLY non-optional — a known local type says the branch is dead', () => {
