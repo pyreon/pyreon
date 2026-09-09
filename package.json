@@ -111,6 +111,7 @@
     "check-distribution": "bun scripts/check-distribution.ts",
     "check-export-entries": "bun scripts/check-export-entries.ts",
     "check-doc-claims": "bun scripts/check-doc-claims.ts",
+    "check-leak-ratchet": "bun scripts/check-leak-ratchet.ts",
     "check-lint-ratchet": "bun scripts/check-lint-ratchet.ts",
     "check-manifest-depth": "bun scripts/check-manifest-depth.ts",
     "check-multiplatform-tier": "bun scripts/check-multiplatform-tier.ts",
@@ -195,7 +196,9 @@
     "dompurify": "^3.4.14",
     "tar": "^7.5.22",
     "sigstore": "^5.0.0",
-    "uuid": "^11.1.1"
+    "uuid": "^11.1.1",
+    "fast-uri": "^3.1.6",
+    "qs": "^6.16.0"
   },
   "dependencies": {
     "@tanstack/query-core": "^5.102.8",

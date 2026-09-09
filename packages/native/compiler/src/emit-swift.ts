@@ -1127,6 +1127,21 @@ export function emitSwift(
   // Declared structs for per-component inference (typed object-array
   // element fields — `todos().map(t => t.id)` resolves `t.id` to Int).
   _structDefs = structs
+  // File-scope inference baseline. Both contexts are otherwise only assigned
+  // PER COMPONENT, so a file of pure top-level helpers — which is exactly what
+  // a generated engine is — emitted every expression against an EMPTY one: no
+  // structs, so a member read typed as `unknown` and every inference-driven
+  // lowering (enum switch, Int×Double coercion, optional handling) silently
+  // skipped inside helper bodies. Seeded with the file's structs AND the
+  // helper return types, so a local bound from a helper call types too.
+  // Overwritten per component, so a component-bearing file is unaffected.
+  _activeInferCtx = buildInferenceCtx([], [], structs, [], undefined, _helperReturns)
+  // BOTH contexts: Swift keeps two (`_activeInferCtx` for the type-gated call
+  // lowerings, `_exprInferCtx` for the condition + optional lowerings), and
+  // they alias only inside a component. A helper-only file has two distinct
+  // objects, so seeding one leaves the other empty — which is how an optional
+  // field read still emitted `if hs {` after the structs were available.
+  _exprInferCtx = buildInferenceCtx([], [], structs, [], undefined, _helperReturns)
   // v2 — per-hook method registry for the chain-call rewrite.
   _storeMethodNames = new Map(
     stores.map((st) => [st.hookName, new Set((st.methods ?? []).map((m) => m.name))]),

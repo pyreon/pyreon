@@ -4,6 +4,7 @@
 // parallel.ts is crossed into the native engine and speaks in numeric rows.
 
 import { hitParallelIndex } from './parallel'
+import { isFiniteNumber } from './scale'
 import type { ParallelAxis, ParallelLayout, ParallelLine } from './parallel'
 import type { Double, Pt } from './types'
 
@@ -22,7 +23,7 @@ export function parallelRows(axes: ParallelAxis[], rows: ParallelRow[]): Double[
       else if (typeof v === 'string') {
         const idx = axis.type === 'category' ? (axis.categories ?? []).indexOf(v) : -1
         values.push(idx < 0 ? Number.NaN : idx)
-      } else values.push(v !== v ? Number.NaN : v)
+      } else values.push(isFiniteNumber(v) ? v : Number.NaN)
     }
     out.push(values)
   }

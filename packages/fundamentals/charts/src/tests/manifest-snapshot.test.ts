@@ -78,6 +78,8 @@ describe('gen-docs — charts snapshot', () => {
       >
       > **Events**: \`onEvents\` is the general handler map — any ECharts event by name (\`legendselectchanged\`, \`datazoom\`, \`brushselected\`, \`finished\`, …); each handler gets \`(params, instance)\`. \`onClick\`/\`onMouseover\`/\`onMouseout\` are shorthands merged in (they WIN on a key collision). Binding is leak-safe: a changed handler swaps the listener (no pile-up) and all are removed on unmount.
       >
+      > **A non-finite value is a GAP, everywhere**: In \`@pyreon/charts/plot\`, NaN AND Infinity are gaps: they are dropped from every domain (\`extent\`, the auto axis, the parallel/calendar/boxplot/histogram domains), draw as nothing (a zero-height bar at the zero line, a break in a line, an absent parallel segment), are absent from the tooltip and the accessible table, and are silence in \`sonifyValues\`. \`makeTicks\` returns ZERO ticks for a non-finite BOUND rather than a thousand NaN labels. \`isFiniteNumber\` is the engine's predicate and is exported — it is written in the native subset (\`v === v && v - v === 0\`) because \`Number.isFinite\` has no lowering inside the crossing engine, and it is what a custom mark or family should use so its gaps match the built-ins'.
+      >
       > **Theme is not reactive**: Reactive theme: pass \`theme\` as an ACCESSOR (\`() => (dark() ? 'dark' : null)\`) — a flip disposes + re-inits with the current option/group/events preserved (ECharts has no in-place swap; dispose+re-init is the mechanism, as in vue-echarts). A plain value stays static. For map charts, \`await getCore()\` then \`core.registerMap(...)\` BEFORE rendering a \`map\` series.
       "
     `)

@@ -601,6 +601,15 @@ export function emitKotlin(
   // Declared structs for per-component inference (typed object-array
   // element fields — `todos().map(t => t.id)` resolves `t.id` to Int).
   _kotlinStructDefs = structs
+  // File-scope inference baseline. Both contexts are otherwise only assigned
+  // PER COMPONENT, so a file of pure top-level helpers — which is exactly what
+  // a generated engine is — emitted every expression against an EMPTY one: no
+  // structs, so a member read typed as `unknown` and every inference-driven
+  // lowering (enum switch, Int×Double coercion, optional handling) silently
+  // skipped inside helper bodies. Seeded with the file's structs AND the
+  // helper return types, so a local bound from a helper call types too.
+  // Overwritten per component, so a component-bearing file is unaffected.
+  _kotlinExprInferCtx = buildInferenceCtx([], [], structs, [], undefined, _helperReturns)
   for (const md of moduleDecls) {
     if (md.mutable) continue // `var` (TS `let`) is mutable — unsafe to inline
     if (md.initial.kind !== 'literal') continue // only direct literals
