@@ -21,6 +21,8 @@ import {
   pieToSvg, polarToSvg, radarToSvg, riverToSvg, sankeyToSvg, sunburstToSvg, treeToSvg, treemapToSvg,
 } from './family-svg'
 import { boxplotToSvg } from './boxplot-svg'
+import { geoToSvg } from './geo'
+import type { GeoJson } from './geo'
 import type { TreeNode } from './treemap'
 
 interface Row { month: string; revenue: number; cost: number }
@@ -31,6 +33,20 @@ const ROWS: Row[] = [
   { month: 'Apr', revenue: 140, cost: 100 },
 ]
 const TREE: TreeNode[] = [{ name: 'docs', value: 30 }, { name: 'src', children: [{ name: 'core', value: 50 }, { name: 'ui', value: 20 }] }]
+// Two squares side by side plus a MULTIPOLYGON of two smaller ones — the same
+// shape `geo.test.ts` uses, so the golden exercises both geometry kinds. That
+// matters here specifically: `Polygon` and `MultiPolygon` are the union that
+// the normalisation in #3411 collapses, and this is the only golden that would
+// notice if that reduction started dropping one of them.
+const WORLD: GeoJson = {
+  type: 'FeatureCollection',
+  features: [
+    { type: 'Feature', properties: { name: 'West' }, geometry: { type: 'Polygon', coordinates: [[[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]] } },
+    { type: 'Feature', properties: { name: 'East' }, geometry: { type: 'Polygon', coordinates: [[[10, 0], [20, 0], [20, 10], [10, 10], [10, 0]]] } },
+    { type: 'Feature', properties: { name: 'Isles' }, geometry: { type: 'MultiPolygon', coordinates: [[[[0, 12], [2, 12], [2, 14], [0, 14], [0, 12]]], [[[18, 12], [20, 12], [20, 14], [18, 14], [18, 12]]]] } },
+  ],
+}
+
 const SIZE = { width: 480, height: 280 }
 
 const GOLDENS: Record<string, () => string> = {
@@ -57,6 +73,9 @@ const GOLDENS: Record<string, () => string> = {
   gantt: () => ganttToSvg({ tasks: [{ id: '1', name: 'Design', start: '2024-01-01', end: '2024-01-10', progress: 0.5 }, { id: '2', name: 'Build', start: '2024-01-08', end: '2024-01-20' }, { id: '3', name: 'Ship', start: '2024-01-20' }], ...SIZE }),
   parallel: () => parallelToSvg({ axes: [{ name: 'a' }, { name: 'b' }, { name: 'c' }], rows: [[1, 10, 5], [2, 20, 3], [3, 30, 9]], ...SIZE }),
   boxplot: () => boxplotToSvg({ data: [{ g: 'A', obs: [1, 2, 3, 4, 5] }, { g: 'B', obs: [3, 5, 7, 9, 40] }], values: (d) => d.obs, x: (d) => d.g, ...SIZE }),
+  // `map` was the only family host without a golden. One region deliberately
+  // has NO value, so the ramp AND the no-data fill are both in the output.
+  map: () => geoToSvg({ geo: WORLD, values: { West: 10, East: 40 }, ...SIZE }),
 }
 
 describe('draw-list goldens (SVG per family)', () => {
