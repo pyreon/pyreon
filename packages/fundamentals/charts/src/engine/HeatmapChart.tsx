@@ -5,7 +5,6 @@ import { canvasHost, shiftCmds } from './canvas-host'
 import type { CanvasHostProps } from './canvas-host'
 import { plain } from './format'
 import type { Formatter } from './format'
-import { HEAT_RAMP } from './heat'
 import type { HeatGrid } from './heat'
 import { heatGridFrom, heatPlotFor, hitHeatChart, renderHeatChart } from './heat-chart'
 import type { ChartTheme } from './render'
@@ -51,7 +50,7 @@ export function HeatmapChart<T>(props: HeatmapChartProps<T>): VNode {
     },
     layout: (box, measure, theme) => ({ grid: resolve(readData()), box, theme, measure }),
     animates: true,
-    render: (g, measure, theme, progress) => shiftCmds(renderHeatChart(g.grid, g.box.w, g.box.h, theme, props.colors ?? HEAT_RAMP, props.gap ?? 1.0, measure, progress), g.box.x, g.box.y),
+    render: (g, measure, theme, progress) => shiftCmds(renderHeatChart(g.grid, g.box.w, g.box.h, theme, props.colors ?? theme.ramp, props.gap ?? 1.0, measure, progress), g.box.x, g.box.y),
     select: (g, px, py) => {
       const idx = cellAt(g, px, py)
       props.onSelectIndex?.(idx)

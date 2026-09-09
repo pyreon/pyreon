@@ -74,7 +74,7 @@ export function renderHeatChart(
   w: Double,
   h: Double,
   theme: ChartTheme,
-  stops: string[],
+  stops: readonly string[],
   gap: Double,
   measure: MeasureText,
   progress?: Double,

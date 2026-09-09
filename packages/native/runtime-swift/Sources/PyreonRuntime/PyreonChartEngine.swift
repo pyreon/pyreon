@@ -358,13 +358,17 @@ public struct ChartTheme: Codable {
   public var label: String
   public var axis: String
   public var grid: String
+  public var positive: String
+  public var negative: String
+  public var muted: String
+  public var ramp: [String]
   public var fontFamily: String
   public var fontSize: Double
   public var titleSize: Double
   public var radius: Double
   public var enterMs: Double
   public var updateMs: Double
-  public init(palette: [String], background: String, surface: String, text: String, label: String, axis: String, grid: String, fontFamily: String, fontSize: Double, titleSize: Double, radius: Double, enterMs: Double, updateMs: Double) {
+  public init(palette: [String], background: String, surface: String, text: String, label: String, axis: String, grid: String, positive: String, negative: String, muted: String, ramp: [String], fontFamily: String, fontSize: Double, titleSize: Double, radius: Double, enterMs: Double, updateMs: Double) {
     self.palette = palette
     self.background = background
     self.surface = surface
@@ -372,6 +376,10 @@ public struct ChartTheme: Codable {
     self.label = label
     self.axis = axis
     self.grid = grid
+    self.positive = positive
+    self.negative = negative
+    self.muted = muted
+    self.ramp = ramp
     self.fontFamily = fontFamily
     self.fontSize = fontSize
     self.titleSize = titleSize
@@ -1969,7 +1977,7 @@ private let START = -Double.pi / 2.0
 
 private let RADAR_START = -Double.pi / 2.0
 
-private let defaultTheme: ChartTheme = ChartTheme(palette: DEFAULT_PALETTE, background: "", surface: "#ffffff", text: "#1f2937", label: "#5a6b7a", axis: "#8496a5", grid: "rgba(132,150,165,0.18)", fontFamily: "", fontSize: 11.0, titleSize: 15.0, radius: 3.0, enterMs: 700.0, updateMs: 350.0)
+private let defaultTheme: ChartTheme = ChartTheme(palette: DEFAULT_PALETTE, background: "", surface: "#ffffff", text: "#1f2937", label: "#5a6b7a", axis: "#8496a5", grid: "rgba(132,150,165,0.18)", positive: "#15803d", negative: "#b42318", muted: "#e2e8f0", ramp: ["#eff6ff", "#93c5fd", "#3b82f6", "#1e40af"], fontFamily: "", fontSize: 11.0, titleSize: 15.0, radius: 3.0, enterMs: 700.0, updateMs: 350.0)
 
 private let HEAT_RAMP = ["#eff6ff", "#93c5fd", "#3b82f6", "#1e40af"]
 
@@ -7363,7 +7371,7 @@ public func renderCandlestickChart(_ candles: [Ohlc], _ w: Double, _ h: Double, 
     for tick in l.xTicks {
       cmds.append(PyreonDrawCmd(kind: "text", fill: theme.label, text: tick.label, at: PyreonChartPt(x: tick.pos, y: l.plot.y + l.plot.h + 6.0), size: theme.fontSize, align: "middle", baseline: "top"))
     }
-    let body = renderCandles(candles, l.plot, f.domain, options)
+    let body = renderCandles(candles, l.plot, f.domain, CandleOptions(upColor: (options?.upColor ?? theme.positive), downColor: (options?.downColor ?? theme.negative), widthRatio: options?.widthRatio))
     for c in body {
       cmds.append(c)
     }

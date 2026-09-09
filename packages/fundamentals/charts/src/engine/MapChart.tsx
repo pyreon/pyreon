@@ -33,7 +33,24 @@ export function MapChart(props: MapChartProps): VNode {
     },
     layout: (box) => layoutGeo(geo(), box, props.options),
     animates: true,
-    render: (layout, measure, _theme, progress) => renderGeo(layout, readValues(), { ...props.options, progress }, measure),
+    // Took `_theme` and threw it away, so a geo chart was the one host that
+    // followed no theme at all. The border SEPARATES filled regions, so it
+    // reads the ground rather than a token of its own; `background: ''` means
+    // "inherit the page", whose realistic value is white.
+    render: (layout, measure, theme, progress) =>
+      renderGeo(
+        layout,
+        readValues(),
+        {
+          emptyColor: theme.muted,
+          borderColor: theme.background === '' ? '#ffffff' : theme.background,
+          stops: theme.ramp,
+          labelColor: theme.label,
+          ...props.options,
+          progress,
+        },
+        measure,
+      ),
     select: (layout, px, py) => {
       const r = hitGeo(layout, px, py)
       props.onSelect?.(r)

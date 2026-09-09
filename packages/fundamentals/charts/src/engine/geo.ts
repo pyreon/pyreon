@@ -43,7 +43,7 @@ export interface GeoOptions {
   padding?: Double | undefined
   /** Property holding the region name; default `name`. */
   nameProperty?: string | undefined
-  stops?: string[] | undefined
+  stops?: readonly string[] | undefined
   domain?: [Double, Double] | undefined
   emptyColor?: string | undefined
   borderColor?: string | undefined
