@@ -330,6 +330,26 @@ const SUITES: Suite[] = [
     ],
   },
   {
+    // The broad toolkit smoke: its screen mounts a component from most
+    // fundamentals packages, so a fundamentals change can blank it.
+    //
+    // The tri-target trap makes the WEB half load-bearing: `examples/
+    // native-tasks` is SHARED source, compiled by PMTC for iOS/Android
+    // and BUNDLED here. iOS and Android are gated in native-device.yml;
+    // nothing gated web, so a shared-source change proven on a simulator
+    // and an emulator could still fail to resolve or render in a browser.
+    name: 'native-tasks-web',
+    script: 'test:e2e:native-tasks-web',
+    triggers: [
+      ...RENDER_CORE,
+      'packages/core/primitives/',
+      'packages/fundamentals/',
+      'examples/native-tasks/',
+      'examples/native-tasks-web/',
+      'e2e/native-tasks-web',
+    ],
+  },
+  {
     name: 'native-router-demo-web',
     script: 'test:e2e:native-router-demo-web',
     triggers: [
