@@ -12812,6 +12812,18 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   const mk = chartAttrExpr(e, 'markers')
   if (mk !== undefined) specArgs.push(`markers: ${withExpectedType({ kind: 'array', element: { kind: 'typeRef', name: 'PointMarker', args: [] } }, () => emitSwiftExpr(mk, indent))}`)
   if (swiftChartAnimating(e, 'PlotChart')) specArgs.push('progress: pyreonEntrance')
+  // `selectedMode` — a TAP pins a datum, which is the half of the events model
+  // a touch target actually has. (`emphasis`'s hover band and `onHighlight`
+  // are mouseover-driven and stay declined, for the same reason `crosshair`
+  // does.) The engine already draws a pinned datum from `ChartSpec.emphasis`;
+  // this is the host state that says which. It goes here because Swift's init
+  // is positional and `emphasis` follows `progress` in the struct.
+  const pinMode = readStaticAttr(e, 'selectedMode')
+  const pinning = pinMode === 'single' || pinMode === 'multiple'
+  if (pinning) {
+    _hostStateDecls.push('@State private var pyreonSelected: [Int] = []')
+    specArgs.push('emphasis: Emphasis(highlight: -1, selected: pyreonSelected)')
+  }
   // The batch-2 spec switches: a literal each, AFTER `progress` (Swift's init order is the struct's field order).
   for (const p of PLOT_SPEC_LITERAL_PROPS) {
     const raw = readStaticAttr(e, p.name)
@@ -12875,11 +12887,22 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       : localHit
   const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
   let gesture = ''
-  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging || brushing || tooltip) {
-    const selectOnly = onSel?.kind === 'event' ? swiftChartSelectBody(onSel.handler, hit, indent) : ''
-    const select = tooltip
+  // `pinning` joins the gate: a chart with ONLY `selectedMode` has no other
+  // reason to install a tap, and without it the pin never runs.
+  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging || brushing || tooltip || pinning) {
+    // With pinning on, the hit is computed ONCE into a local: the pin, the
+    // change callback and `onSelect` all name the same pick.
+    const pick = pinning ? 'pyreonPick' : hit
+    const selectOnly = onSel?.kind === 'event' ? swiftChartSelectBody(onSel.handler, pick, indent) : ''
+    const onSelChange = chartEventHandler(e, 'selectchange')
+    const pinBody = pinning
+      ? `let pyreonPick = ${hit}; let pyreonNextSel = pinSelection(pyreonSelected, pyreonPick, ${pinMode === 'multiple'}); pyreonSelected = pyreonNextSel` +
+        (onSelChange === undefined ? '' : `; ${swiftChartSelectBody(onSelChange, 'pyreonNextSel', indent)}`)
+      : ''
+    const selectBase = tooltip
       ? `let pyreonLocal = ${localHit}; pyreonTip = pyreonLocal < 0 ? [] : ${tipLines}; pyreonTipAt = PyreonChartPt(x: Double(pyreonTap.location.x), y: Double(pyreonTap.location.y))${selectOnly === '' ? '' : `; ${selectOnly}`}`
       : selectOnly
+    const select = pinBody === '' ? selectBase : selectBase === '' ? pinBody : `${pinBody}; ${selectBase}`
     // One tap, several surfaces, in canvas coordinates: the legend pager, a
     // legend entry, a preset button, a committed brush (a plain tap clears it),
     // then the plot. First hit wins — the web's order.

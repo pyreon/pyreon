@@ -33,6 +33,40 @@ export function legendToggle(hidden: number[], i: number): number[] {
 }
 
 /**
+ * Apply a pick to the pinned selection (ECharts `selectedMode`) — a NEW array;
+ * the host keeps the old one as state.
+ *
+ * `'single'` keeps at most one datum and a re-pick CLEARS it; `'multiple'`
+ * toggles membership. A miss (`global < 0`) leaves the selection alone, because
+ * clearing is an explicit `unselect` / `restore` rather than a stray tap.
+ *
+ * It lives beside `legendToggle` for the same reason that one does: the web
+ * host, iOS and Android all hold the selection as state and must agree on what
+ * a pick means. It was inline in `<Chart>`'s `pickDatum` until the native hosts
+ * needed it, and re-deriving it in two emitters is how the three targets would
+ * come to disagree about what a second tap does.
+ */
+export function pinSelection(selected: number[], global: number, multiple: boolean): number[] {
+  if (global < 0) return selected
+  let has = false
+  for (let k = 0; k < selected.length; k++) {
+    if (selected[k] === global) has = true
+  }
+  if (!multiple) {
+    const one: number[] = []
+    if (!has) one.push(global)
+    return one
+  }
+  const out: number[] = []
+  for (let k = 0; k < selected.length; k++) {
+    const s = selected[k]!
+    if (s !== global) out.push(s)
+  }
+  if (!has) out.push(global)
+  return out
+}
+
+/**
  * Apply the toggle to resolved series.
  *
  * A hidden series keeps its SLOT — colors, labels and tooltip columns stay

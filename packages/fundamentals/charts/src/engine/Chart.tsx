@@ -35,7 +35,7 @@ import type { Mark } from './marks'
 import { chartTable, describeChart } from './a11y'
 import type { A11yInput } from './a11y'
 import { brushBand, brushRange, renderBrushBand } from './brush'
-import { hideHiddenSeries, legendHitIndex, legendToggle, pagerHit } from './legend-toggle'
+import { hideHiddenSeries, legendHitIndex, legendToggle, pagerHit, pinSelection } from './legend-toggle'
 import { navigatorDrag, navigatorHit, renderNavigator } from './navigator'
 import { presetHit, presetWindow, renderPresets } from './presets'
 import { isFullWindow, panWindow, sliceRange, zoomWindow } from './zoom'
@@ -895,11 +895,15 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
   /** A datum was picked (click or keyboard): pin it per `selectedMode`, then report the pick. */
   const pickDatum = (global: number): void => {
     const mode = props.selectedMode
-    if (mode !== undefined && global >= 0) {
-      const cur = selected()
-      const has = cur.includes(global)
-      selected.set(mode === 'single' ? (has ? [] : [global]) : has ? cur.filter((i) => i !== global) : [...cur, global])
-    }
+    // Through the shared helper rather than inline: the two native hosts hold
+    // the same state and must agree with this on what a second tap does.
+    //
+    // The `global >= 0` guard stays even though `pinSelection` handles a miss
+    // by returning the set unchanged — writing the same reference back would
+    // still re-run the effect that watches `selected`, and this path is a tap.
+    // The helper keeps its own guard for the native hosts, which call it
+    // unconditionally.
+    if (mode !== undefined && global >= 0) selected.set(pinSelection(selected(), global, mode === 'multiple'))
     if (props.onSelect !== undefined) props.onSelect(global)
     if (props.onSelectIndex !== undefined) props.onSelectIndex(global)
   }
