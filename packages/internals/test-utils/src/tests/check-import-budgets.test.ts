@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildEntrySource,
+  budgetTag,
   compareToBudgets,
   SCENARIOS,
+  VERSION_NOISE_BYTES,
   type MeasuredImport,
 } from '../../../../../scripts/check-import-budgets'
 
@@ -139,5 +141,42 @@ describe('VERSION_NOISE_BYTES', () => {
     // The number a reader acts on is the distance from the lock, not from an
     // internal allowance they cannot see.
     expect(compareToBudgets(measured(601), { 'p::x': 596 }).regressions[0]?.overBy).toBe(5)
+  })
+})
+
+// The table's LABEL and the gate's VERDICT share one threshold. They drifted:
+// the verdict tolerates `budget + VERSION_NOISE_BYTES` (gzip differs by a few
+// bytes across zlib versions) while the label used a bare `>`, so a CI run
+// printed `OVER @pyreon/charts::plot-svg gz=12624 budget=12620` one line above
+// `all 15 scenario(s) within budget`. Four bytes inside the tolerance, and the
+// only visible signal said the opposite of the verdict — someone triaging that
+// Build chases an entry that is not the failure. (Someone did: me.)
+describe('the table label agrees with the verdict', () => {
+  const measured = (id: string, gzip: number) => ({ id, gzip, failed: false }) as never
+
+  it('a scenario the verdict PASSES is never labelled OVER', () => {
+    // Exactly at the tolerance edge — the shape that produced the wrong label.
+    const budget = 12620
+    const gzip = budget + VERSION_NOISE_BYTES
+    expect(compareToBudgets([measured('x', gzip)], { x: budget }).regressions).toEqual([])
+    expect(budgetTag(gzip, budget)).not.toBe('OVER')
+  })
+
+  it('a scenario the verdict FAILS is labelled OVER', () => {
+    const budget = 12620
+    const gzip = budget + VERSION_NOISE_BYTES + 1
+    expect(compareToBudgets([measured('x', gzip)], { x: budget }).regressions).toHaveLength(1)
+    expect(budgetTag(gzip, budget)).toBe('OVER')
+  })
+
+  it('over budget but inside the noise reads `near`, not `ok` and not `OVER`', () => {
+    // Hiding it as `ok` would be the opposite failure: a budget silently
+    // absorbing growth it should be re-examined for.
+    expect(budgetTag(12621, 12620)).toBe('near')
+  })
+
+  it('`ok` and `NEW` are unchanged', () => {
+    expect(budgetTag(12619, 12620)).toBe('ok')
+    expect(budgetTag(12619, undefined)).toBe('NEW')
   })
 })

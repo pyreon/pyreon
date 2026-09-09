@@ -49,6 +49,8 @@ import {
   classifyNonBooleanLogicalOperand,
   exprContainsJsx,
   jsxInStringifiedChildWarning,
+  isNullableType,
+  optionalSpreadWarning,
 } from './expr-utils'
 import {
   nilCoalesceTernary,
@@ -7373,6 +7375,13 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // type-context the Phase 1 inferer doesn't yet carry.
       if (e.spreads && e.spreads.length === 1 && e.spreads[0]!.kind === 'identifier') {
         const target = emitSwiftExpr(e.spreads[0]!, indent)
+        // An OPTIONAL source lowers to `var c = o` where `o` is `T?`, so the
+        // member assignment and the return type both fail. TypeScript accepts
+        // the spread, so without this the first signal is a swiftc gate whose
+        // error names generated Swift rather than the source line.
+        if (isNullableType(inferType(e.spreads[0]!, _activeInferCtx))) {
+          _emitWarnings.push(optionalSpreadWarning((e.spreads[0]! as Extract<ExprIR, { kind: 'identifier' }>).name))
+        }
         const overrides = e.fields
           .map((f) => `c.${swiftIdent(f.name)} = ${emitSwiftExpr(f.value, indent)}`)
           .join('; ')

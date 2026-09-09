@@ -44,6 +44,8 @@ import {
   classifyNonBooleanLogicalOperand,
   exprContainsJsx,
   jsxInStringifiedChildWarning,
+  isNullableType,
+  optionalSpreadWarning,
 } from './expr-utils'
 import {
   nilCoalesceTernary,
@@ -5926,6 +5928,12 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // tuple-literal emit.
       if (e.spreads && e.spreads.length === 1 && e.spreads[0]!.kind === 'identifier') {
         const target = emitKotlinExpr(e.spreads[0]!, indent)
+        // Mirror of the Swift emitter: `.copy` on a nullable receiver is
+        // rejected outright, and TypeScript accepts the spread, so without
+        // this the first signal is a kotlinc gate naming generated Kotlin.
+        if (isNullableType(inferType(e.spreads[0]!, _kotlinExprInferCtx))) {
+          _emitWarnings.push(optionalSpreadWarning((e.spreads[0]! as Extract<ExprIR, { kind: 'identifier' }>).name))
+        }
         const overrides = e.fields
           .map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`)
           .join(', ')
