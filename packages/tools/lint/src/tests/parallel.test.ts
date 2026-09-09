@@ -14,6 +14,7 @@ import {
 } from '../parallel'
 import { lintSlice } from '../lint-worker'
 import { getPreset } from '../config/presets'
+import { hasBuiltLib } from '@pyreon/test-utils/built-lib'
 
 /**
  * The parallel driver exists because linting is embarrassingly parallel and
@@ -202,7 +203,7 @@ describe('the BUILT worker actually spawns', () => {
   const LIB_WORKER = join(import.meta.dirname, '..', '..', 'lib', 'lint-worker.js')
   const LIB_INDEX = join(import.meta.dirname, '..', '..', 'lib', 'index.js')
 
-  it.skipIf(!existsSync(LIB_INDEX))(
+  it.skipIf(!hasBuiltLib(LIB_INDEX, "the BUILT _workerEntry()'s resolution"))(
     'the BUILT _workerEntry() resolves to a file that exists',
     async () => {
       // THE spec that catches the real bug. Under `src` the relative guess
@@ -217,7 +218,7 @@ describe('the BUILT worker actually spawns', () => {
     },
   )
 
-  it.skipIf(!existsSync(LIB_WORKER))(
+  it.skipIf(!hasBuiltLib(LIB_WORKER, "the built lint worker running in a real worker thread"))(
     'loads lib/lint-worker.js in a real worker and returns results',
     async () => {
       const { Worker } = await import('node:worker_threads')
@@ -241,12 +242,6 @@ describe('the BUILT worker actually spawns', () => {
     },
   )
 
-  it('lib/lint-worker.js is built in this environment (the spec above is NOT skipped)', () => {
-    // A skipped suite must never masquerade as coverage. Bootstrap builds lib/.
-    expect(existsSync(LIB_WORKER), `missing ${LIB_WORKER} — run bun scripts/bootstrap.ts`).toBe(
-      true,
-    )
-  })
 })
 
 describe('planRun — the decision is explicit, not an exception', () => {

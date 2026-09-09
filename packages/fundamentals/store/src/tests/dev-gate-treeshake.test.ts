@@ -1,8 +1,9 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
 import { describe, expect, it } from 'vitest'
+import { hasBuiltLib } from '@pyreon/test-utils/built-lib'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const SRC_INDEX = path.resolve(here, '..', 'index.ts')
@@ -55,7 +56,7 @@ describe('store dev-gate — no tree-shake-defeating alias', () => {
     expect(src).toContain("process.env.NODE_ENV !== 'production'")
   })
 
-  it.skipIf(!existsSync(LIB_INDEX))(
+  it.skipIf(!hasBuiltLib(LIB_INDEX, "the store's dev-gate stripping in a production consumer bundle"))(
     'published lib → esbuild consumer bundle with production define drops dev strings',
     async () => {
       const out = await build({
@@ -77,7 +78,7 @@ describe('store dev-gate — no tree-shake-defeating alias', () => {
     20000,
   )
 
-  it.skipIf(!existsSync(LIB_INDEX))(
+  it.skipIf(!hasBuiltLib(LIB_INDEX, "the store's dev-gate stripping (dev-mode sanity arm)"))(
     'published lib → dev-mode esbuild bundle PRESERVES dev strings (sanity)',
     async () => {
       const out = await build({

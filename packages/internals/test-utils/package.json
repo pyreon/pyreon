@@ -22,6 +22,11 @@
       "import": "./src/happy-dom-hashchange-guard.ts",
       "types": "./src/happy-dom-hashchange-guard.ts"
     },
+    "./built-lib": {
+      "bun": "./src/built-lib.ts",
+      "import": "./src/built-lib.ts",
+      "types": "./src/built-lib.ts"
+    },
     "./globals": {
       "types": "./src/globals.d.ts"
     }

@@ -21,10 +21,11 @@
  * after Bootstrap) — the guard below skips with a clear message if not.
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
+import { hasBuiltLib } from '@pyreon/test-utils/built-lib'
 
 const PKG_ROOT = resolve(__dirname, '..', '..')
 const BIN = join(PKG_ROOT, 'bin', 'pyreon-lint.js')
@@ -54,7 +55,7 @@ afterAll(() => {
 })
 
 describe('pyreon-lint bin invokes the CLI (not a no-op)', () => {
-  it.skipIf(!existsSync(LIB_CLI))(
+  it.skipIf(!hasBuiltLib(LIB_CLI, "the published pyreon-lint bin's liveness"))(
     'exits 1 on a file with an error-severity finding (the no-op bin exits 0)',
     () => {
       // `pyreon/no-signal-call-write` is error-severity by default; this is
@@ -67,7 +68,7 @@ describe('pyreon-lint bin invokes the CLI (not a no-op)', () => {
     },
   )
 
-  it.skipIf(!existsSync(LIB_CLI))('exits 0 on a clean file', () => {
+  it.skipIf(!hasBuiltLib(LIB_CLI, "the published pyreon-lint bin's liveness"))('exits 0 on a clean file', () => {
     const file = fixture(
       'clean.ts',
       `const count = signal(0)\nfunction inc() { count.set(5) }\nexport { inc }\n`,
@@ -75,10 +76,4 @@ describe('pyreon-lint bin invokes the CLI (not a no-op)', () => {
     expect(runBin([file])).toBe(0)
   })
 
-  it('lib/cli.js is built in this environment (the specs above are NOT skipped)', () => {
-    // Fail loudly if the bin's target is missing — a skipped suite must not
-    // masquerade as coverage. Bootstrap builds lib/; if this fires, run
-    // `bun scripts/bootstrap.ts`.
-    expect(existsSync(LIB_CLI)).toBe(true)
-  })
 })

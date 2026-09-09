@@ -9,11 +9,12 @@
 // Markers are STRING LITERALS from each family, never identifiers: names are
 // minified, so `bundle.includes('renderRadar')` is vacuous and passes against
 // a bundle that contains the whole radial engine.
-import { existsSync, rmSync, writeFileSync } from 'node:fs'
+import { rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
 import { describe, expect, it } from 'vitest'
+import { hasBuiltLib } from '@pyreon/test-utils/built-lib'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const PLOT = join(here, '..', '..', 'lib', 'plot.js')
@@ -48,7 +49,7 @@ async function bundle(imports: readonly string[]): Promise<string> {
   }
 }
 
-describe.skipIf(!existsSync(PLOT))('plot — the families are tree-shaken, not merely small', () => {
+describe.skipIf(!hasBuiltLib(PLOT, "the plot families' tree-shaking"))('plot — the families are tree-shaken, not merely small', () => {
   it('a bar+line chart pulls none of the family geometry', async () => {
     const code = await bundle(['PlotChart', 'bars', 'line'])
     const present = FAMILY_MARKERS.filter(([, m]) => code.includes(`"${m}"`) || code.includes(`'${m}'`))

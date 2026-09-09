@@ -1111,6 +1111,14 @@ jobs:
           # Harmless for non-native cells: validate-cache only engages when a
           # validator actually runs.
           PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate
+          # This job restores the bootstrap, so `packages/*/lib/` is present.
+          # Seven specs across charts / store / lint MEASURE that built output
+          # and guard themselves on its existence — correct locally, where a
+          # fresh worktree has none, and wrong here, where a skip would be a
+          # green suite that proved nothing. `hasBuiltLib` turns an absent
+          # artifact into a hard failure naming it when this is set (the same
+          # contract PYREON_REQUIRE_NATIVE_VALIDATE has for the toolchains).
+          PYREON_REQUIRE_BUILT_LIB: '1'
           MEMBERS: ${{ matrix.members }}
         run: |
           # A cell runs a BATCH of categories sequentially. No `set -e` around
