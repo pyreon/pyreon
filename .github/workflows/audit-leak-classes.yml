@@ -15,11 +15,17 @@ name: Audit Leak Classes
 #     so contributors making leak-class-relevant changes can opt in
 #     to a pre-merge audit.
 #
-# Does NOT block merges. The lint rules `pyreon/promise-race-needs-
-# cleartimeout` and `pyreon/init-fn-needs-idempotency` (in the
-# `recommended` preset since #743) are the gating signal for the
-# 2 high-precision classes. This audit catches the rest at
-# wider-tolerance — its output is for manual triage.
+# The REPORT is advisory — the audit is permissive by design and its
+# findings are for manual triage, not proof of a leak. What IS gated is
+# GROWTH: `check-leak-ratchet` compares the findings against the
+# committed `leak-baseline.json`, which can only shrink. That gate runs
+# in `validate-fast`, in the pre-push hook and in CI's lib-free gate
+# job, so a new finding surfaces on the PR that introduces it; this
+# nightly is the drift check behind it, and is not a required context.
+#
+# The lint rules `pyreon/promise-race-needs-cleartimeout` and
+# `pyreon/init-fn-needs-idempotency` (in the `recommended` preset since
+# #743) remain the high-precision gating signal for their 2 classes.
 
 on:
   workflow_dispatch:
@@ -82,7 +88,7 @@ jobs:
           {
             echo "## audit-leak-classes — ${{ steps.audit.outputs.total }} finding(s)"
             echo ""
-            echo "The audit is **advisory** — findings are for manual triage, NOT a blocker. See \`.claude/rules/anti-patterns.md\` \"Memory Leak Classes\" for the canonical fix shapes."
+            echo "The audit is **permissive** — a finding is a prompt to triage, not proof of a leak. GROWTH is gated separately by \`bun run check-leak-ratchet\` against \`leak-baseline.json\`. See \`.claude/rules/anti-patterns.md\` \"Memory Leak Classes\" for the canonical fix shapes."
             echo ""
             echo "<details><summary>Full report</summary>"
             echo ""
@@ -99,15 +105,19 @@ jobs:
           path: audit-out/
           retention-days: 30
 
-      # Soft signal — if findings exceed a generous ceiling, fail the
-      # job so the team notices a sudden spike. Threshold tuned to the
-      # current baseline (~19) + 2x headroom for organic growth.
-      # Update this number when the leak-hunt sweep proves the ceiling
-      # is too low.
-      - name: Soft regression check
-        run: |
-          if [ "${{ steps.audit.outputs.total }}" -gt 40 ]; then
-            echo "::error::audit-leak-classes count (${{ steps.audit.outputs.total }}) exceeds soft ceiling of 40. Investigate recent merges for new leak-class instances."
-            exit 1
-          fi
-          echo "audit-leak-classes count: ${{ steps.audit.outputs.total }} (under ceiling of 40)"
+      # Ratchet against the committed baseline, not a bare ceiling.
+      #
+      # This used to be `if total -gt 40`, with a comment claiming "current
+      # baseline (~19) + 2x headroom". The repo had since reached exactly 40,
+      # so there was NO headroom: the next module-level cache anyone added
+      # reddened this nightly. And a total can only report that some number
+      # moved — it cannot name the new finding, and it nets a fix against a
+      # new leak to zero.
+      #
+      # `leak-baseline.json` is keyed per `detector::file`, can only shrink,
+      # and names WHICH file gained WHICH leak class. Same discipline as
+      # `lint-baseline.json`. The gate also runs in `validate-fast` and in
+      # CI's lib-free gate job, so a regression now surfaces on the PR that
+      # causes it rather than on the next night's run.
+      - name: Leak ratchet
+        run: bun run check-leak-ratchet

@@ -11,6 +11,7 @@
 import { arcPolygon, pointOnCircle } from './arc'
 import { DEFAULT_PALETTE, paletteAt } from './palette'
 import type { Domain, Double, DrawCmd, Pt, Rect } from './types'
+import { isFiniteNumber } from './scale'
 
 const POLAR_TAU = Math.PI * 2.0
 
@@ -187,7 +188,7 @@ export function layoutPolar(axes: PolarAxes, series: PolarSeries[], box: Rect, o
     for (let i = 0; i < n; i++) {
       if (i >= s.values.length) continue
       const v = s.values[i]!
-      if (v !== v) continue
+      if (!isFiniteNumber(v)) continue
       if (col >= 0) {
         const at = col * n + i
         const top = stackTop[at]! + v
@@ -228,7 +229,7 @@ export function layoutPolar(axes: PolarAxes, series: PolarSeries[], box: Rect, o
       for (let i = 0; i < n; i++) {
         if (i < s.values.length) {
           const v = s.values[i]!
-          if (v === v) {
+          if (isFiniteNumber(v)) {
             const inner = (slot * barGap) / 2.0
             const width = (slot - slot * barGap) / columnsF
             const a0 = start + dir * slot * iF + dir * (inner + width * colF)
@@ -260,7 +261,7 @@ export function layoutPolar(axes: PolarAxes, series: PolarSeries[], box: Rect, o
       for (let i = 0; i < n; i++) {
         if (i < s.values.length) {
           const v = s.values[i]!
-          if (v === v) {
+          if (isFiniteNumber(v)) {
             const r = innerR + (outerR - innerR) * polarFrac(v, domainLo, domainHi)
             points.push({ series: si, index: i, at: pointOnCircle(center, r, start + dir * slot * (iF + 0.5)), color, value: v })
           }
@@ -295,7 +296,7 @@ export function layoutPolar(axes: PolarAxes, series: PolarSeries[], box: Rect, o
       for (let i = 0; i < n; i++) {
         if (i < s.values.length) {
           const v = s.values[i]!
-          if (v === v) {
+          if (isFiniteNumber(v)) {
             const r0 = innerR + ring * iF + (ring * barGap) / 2.0
             const width = (ring - ring * barGap) / columnsF
             const sweep = dir * POLAR_TAU * polarFrac(v, domainLo, domainHi)
@@ -325,7 +326,7 @@ export function layoutPolar(axes: PolarAxes, series: PolarSeries[], box: Rect, o
       for (let i = 0; i < n; i++) {
         if (i < s.values.length) {
           const v = s.values[i]!
-          if (v === v) {
+          if (isFiniteNumber(v)) {
             points.push({ series: si, index: i, at: pointOnCircle(center, innerR + ring * (iF + 0.5), start + dir * POLAR_TAU * polarFrac(v, domainLo, domainHi)), color, value: v })
           }
         }

@@ -739,6 +739,26 @@ export function unwrapOptionalType(t: TypeIR): TypeIR {
  *     (no lowering — the emitter renders the condition verbatim).
  * One definition of the two forms, shared across both targets and every site.
  */
+/**
+ * Normalize the `Double` / `Float` ALIAS to `number` + float.
+ *
+ * The alias arrives as an unresolved `typeRef` (an annotated param, a helper
+ * return, a struct field), and it IS a number — but a `typeRef` and a `number`
+ * are different `kind`s, so any unification that compares kinds treats them as
+ * unrelated types. That is why a ternary mixing a `Double`-typed binding with a
+ * fractional LITERAL degraded to `unknown`, taking every downstream
+ * type-gated lowering with it (`span * progress` lost its Int→Double coercion
+ * and stopped compiling).
+ *
+ * The `binary` case had its own copy of this; it is shared now so the two
+ * cannot disagree about whether `Double` is a number.
+ */
+export function normalizeNumericAlias(t: TypeIR): TypeIR {
+  return t.kind === 'typeRef' && (t.name === 'Double' || t.name === 'Float')
+    ? { kind: 'number', float: true }
+    : t
+}
+
 export function classifyOptionalCondition(
   e: ExprIR,
   ctx: InferenceCtx,
@@ -1892,12 +1912,8 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       // without this, `const r = Math.round(v * 100.0) / 100.0` over a
       // `v: Double` param seeded `r` as UNKNOWN, which defeated every
       // downstream type-gated lowering (Number.isInteger warned raw).
-      const numAlias = (t: TypeIR): TypeIR =>
-        t.kind === 'typeRef' && (t.name === 'Double' || t.name === 'Float')
-          ? { kind: 'number', float: true }
-          : t
-      const left = numAlias(inferType(expr.left, ctx))
-      const right = numAlias(inferType(expr.right, ctx))
+      const left = normalizeNumericAlias(inferType(expr.left, ctx))
+      const right = normalizeNumericAlias(inferType(expr.right, ctx))
       // String concat: `'a' + name` or `name + 'b'` — if EITHER side
       // is a string and the op is `+`, the result is a string.
       if (expr.op === '+' && (left.kind === 'string' || right.kind === 'string')) {
@@ -1988,7 +2004,11 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       // float-ness (`-rate()` over a Double stays Double; was always Int →
       // a wrong Int annotation / coercion downstream).
       if (expr.op === '!') return { kind: 'boolean' }
-      const at = inferType(expr.argument, ctx)
+      // Alias-normalized for the same reason the binary and ternary cases are:
+      // `-rect.w` over a `Double`-typed field is a Double, and reading the
+      // unresolved `typeRef` as "not a number" typed it Int — which put a
+      // redundant `Double(...)` back around the negation.
+      const at = normalizeNumericAlias(inferType(expr.argument, ctx))
       // Only attach `float` when true — `exactOptionalPropertyTypes` forbids
       // an explicit `float: undefined`.
       return at.kind === 'number' && at.float === true
@@ -1999,8 +2019,11 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       // `cond ? a : b` — return the type of either branch (assuming
       // both branches have the same type). If they differ, degrade
       // to unknown.
-      const t = inferType(expr.then, ctx)
-      const o = inferType(expr.otherwise, ctx)
+      // Normalize the Double/Float alias FIRST: `cond ? 1.0 : someDouble` mixes
+      // a `number` with a `typeRef`, which the kind comparison below reads as
+      // two unrelated types and degrades to `unknown`.
+      const t = normalizeNumericAlias(inferType(expr.then, ctx))
+      const o = normalizeNumericAlias(inferType(expr.otherwise, ctx))
       if (t.kind === o.kind) {
         // Mixed Int/Double numeric branches — `cond ? 1 : 2.5` unifies to
         // Double in JS (and Swift, which types both integer + float LITERAL
