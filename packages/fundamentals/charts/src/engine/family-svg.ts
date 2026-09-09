@@ -35,7 +35,7 @@ import { layoutGraph, renderGraph } from './graph'
 import type { GraphLink, GraphNode, GraphOptions } from './graph'
 import { calendarDomain, formatIsoDays, layoutCalendar, renderCalendar } from './calendar'
 import { layoutGantt, renderGantt } from './gantt'
-import type { GanttOptions, GanttTask } from './gantt'
+import type { GanttLayout, GanttOptions, GanttTask } from './gantt'
 import { layoutParallel, renderParallel } from './parallel'
 import type { ParallelAxis, ParallelOptions } from './parallel'
 import { parallelRows } from './parallel-web'
@@ -62,6 +62,33 @@ const LEGEND_OPTS = {
   swatch: 10.0,
   gap: 12.0,
   orientation: 'horizontal' as const,
+}
+
+/**
+ * The TASKS' own extent, not the axis domain.
+ *
+ * `layout.domain` is the tasks' range padded by a quarter unit so the bars do
+ * not touch the frame — reading it out in a sentence that says "1 task from X
+ * to Y" describes the padding as if it were the work: a task starting on the
+ * 1st was announced as starting on the previous 31st.
+ */
+function taskExtent(layout: GanttLayout): { min: Double; max: Double } {
+  let min = layout.domain.max
+  let max = layout.domain.min
+  for (const r of layout.rows) {
+    if (r.startDay < min) min = r.startDay
+    if (r.endDay > max) max = r.endDay
+  }
+  return min <= max ? { min, max } : { min: layout.domain.min, max: layout.domain.max }
+}
+
+/**
+ * `1 flow` / `2 flows` — these sentences are READ ALOUD, and "1 flows" is the
+ * kind of thing that makes a screen reader sound like a debug log. The plot
+ * description already pluralised its series count; the families did not.
+ */
+function count(n: Double, one: string, many: string): string {
+  return n === 1 ? `1 ${one}` : `${n} ${many}`
 }
 
 /** The a11y tail every helper shares: explicit wins, else derive from data. */
@@ -690,7 +717,7 @@ export function sankeyToSvg(options: SankeyToSvgOptions): string {
   for (const l of layout.links) total = total + l.value
   const description =
     options.description ??
-    (options.title !== undefined ? `${options.title}: ${layout.nodes.length} nodes, ${layout.links.length} flows totalling ${total}.` : undefined)
+    (options.title !== undefined ? `${options.title}: ${count(layout.nodes.length, 'node', 'nodes')}, ${count(layout.links.length, 'flow', 'flows')} totalling ${total}.` : undefined)
   return renderSvg(cmds, width, height, {
     ...options.svg,
     ...(options.title !== undefined ? { title: options.title } : {}),
@@ -722,7 +749,7 @@ export function graphToSvg(options: GraphToSvgOptions): string {
   void (options.measure ?? measureApprox())
   const description =
     options.description ??
-    (options.title !== undefined ? `${options.title}: ${layout.nodes.length} nodes, ${layout.links.length} links.` : undefined)
+    (options.title !== undefined ? `${options.title}: ${count(layout.nodes.length, 'node', 'nodes')}, ${count(layout.links.length, 'link', 'links')}.` : undefined)
   return renderSvg(cmds, width, height, {
     ...options.svg,
     ...(options.title !== undefined ? { title: options.title } : {}),
@@ -789,7 +816,7 @@ export function ganttToSvg(options: GanttToSvgOptions): string {
   const description =
     options.description ??
     (options.title !== undefined
-      ? `${options.title}: ${layout.rows.length} tasks from ${formatIsoDays(Math.floor(layout.domain.min))} to ${formatIsoDays(Math.floor(layout.domain.max))}.`
+      ? `${options.title}: ${count(layout.rows.length, 'task', 'tasks')} from ${formatIsoDays(Math.floor(taskExtent(layout).min))} to ${formatIsoDays(Math.floor(taskExtent(layout).max))}.`
       : undefined)
   return renderSvg(cmds, width, height, {
     ...options.svg,
