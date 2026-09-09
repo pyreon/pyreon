@@ -90,11 +90,13 @@ describe('Parser-A — const arrow function as DeclIR.function', () => {
     expect(out.warnings).toEqual([])
     expect(out.code).toContain('private func addTodo()')
     // Phase 2 TS-method translation: `.trim()` rewrites to Swift's
-    // canonical String trimming form, and `.length` rewrites to `.count`.
+    // canonical String trimming form, and `.length` on a STRING rewrites to
+    // `.utf16.count` (JS/Kotlin `.length` counts UTF-16 units; Swift's `.count`
+    // counts grapheme clusters).
     expect(out.code).toContain(
       'let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)',
     )
-    expect(out.code).toContain('if text.count == 0 {')
+    expect(out.code).toContain('if text.utf16.count == 0 {')
     // Phase 2.5: nextId++ emits an IIFE that preserves post-increment
     // semantics (old value AND side-effect). Pre-fix shape was
     // `nextId + 1` — wrong VALUE + dropped side-effect.

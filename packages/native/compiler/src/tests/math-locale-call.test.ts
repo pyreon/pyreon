@@ -25,8 +25,12 @@ describe('Math.* namespace emit (Swift mapping)', () => {
   // Double — Swift has no implicit Int→Double, so a bare Int arg is rejected.
   // `Double(x)` is identity on a Double, safe for any arg. abs/min/max stay
   // GENERIC (Int-preserving) and are NOT coerced — see below.
-  it('Math.round → (Double(x)).rounded()', () => {
-    expect(swift('Math.round(n())')).toContain('(Double(n)).rounded()')
+  it('Math.round → floor(x + 0.5), which is what JS Math.round IS', () => {
+    // NOT `.rounded()`: Swift's default rule is toNearestOrAwayFromZero and
+    // JS breaks ties toward +Infinity, so the two disagree on every negative
+    // half (`Math.round(-0.5)` is `0` in JS/Kotlin, `-1` with `.rounded()`).
+    expect(swift('Math.round(n())')).toContain('((Double(n)) + 0.5).rounded(.down)')
+    expect(swift('Math.round(n())')).not.toMatch(/\(Double\(n\)\)\.rounded\(\)/)
     expect(swift('Math.round(n())')).not.toContain('Math.round')
   })
   // `not.toContain('Math.')` is the load-bearing assertion — only the absence

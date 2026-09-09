@@ -10523,6 +10523,203 @@ function parseGenericTypeArg(callExpr: AnyNode, ctx: ParseCtx): TypeIR {
   return parseTypeAnnotation(params[0]!, ctx)
 }
 
+/**
+ * TypeScript's complete set of BUILT-IN utility types (the "Utility Types"
+ * chapter of the handbook, i.e. everything declared in `lib.es5.d.ts`).
+ *
+ * The list is CLOSED by the language, which is the only reason enumerating it
+ * is honest rather than the usual hand-maintained silent hole: a totality test
+ * (`ts-utility-types.test.ts`) pins this array against the documented set, so a
+ * name added by a future TS release fails a test instead of silently leaking.
+ */
+export const TS_UTILITY_TYPE_NAMES = [
+  'Awaited',
+  'Capitalize',
+  'ConstructorParameters',
+  'Exclude',
+  'Extract',
+  'InstanceType',
+  'Lowercase',
+  'NoInfer',
+  'NonNullable',
+  'Omit',
+  'OmitThisParameter',
+  'Parameters',
+  'Partial',
+  'Pick',
+  'Readonly',
+  'Record',
+  'Required',
+  'ReturnType',
+  'ThisParameterType',
+  'ThisType',
+  'Uncapitalize',
+  'Uppercase',
+] as const
+
+const TS_UTILITY_TYPE_SET: ReadonlySet<string> = new Set(TS_UTILITY_TYPE_NAMES)
+
+/** Push a warning at most once per distinct message — a config type used at ten
+ *  sites is ONE thing to fix, and ten identical lines bury the other findings. */
+function warnOnce(ctx: ParseCtx, message: string): void {
+  if (!ctx.warnings.includes(message)) ctx.warnings.push(message)
+}
+
+/**
+ * Resolve a type to the OBJECT shape it names, when we can see one: an inline
+ * `{ … }` literal, or a zero-arg reference to a local `type X = { … }` alias.
+ * An IMPORTED name resolves to nothing — PMTC does not follow imports — which
+ * is exactly the case `Partial<…>` has to decline rather than guess at.
+ */
+function resolveObjectShape(
+  t: TypeIR,
+  ctx: ParseCtx,
+): Extract<TypeIR, { kind: 'object' }> | undefined {
+  if (t.kind === 'object') return t
+  if (t.kind === 'typeRef' && t.args.length === 0) return ctx.objectTypeAliases.get(t.name)
+  return undefined
+}
+
+/** Strip the nullish branches from a union; a non-union passes through. */
+function stripNullish(t: TypeIR): TypeIR {
+  if (t.kind !== 'union') return t
+  const kept = t.branches.filter((b) => b.kind !== 'null' && b.kind !== 'undefined')
+  if (kept.length === 0) return { kind: 'unknown' }
+  if (kept.length === 1) return kept[0]!
+  return { kind: 'union', branches: kept }
+}
+
+/**
+ * Lower a TS built-in utility type, or DECLINE it by name. Returns `null` when
+ * `name` is not a utility type at all (the caller falls through to the ordinary
+ * `typeRef` pass-through, which is correct for a user's own generic).
+ *
+ * The split is by whether the utility has a faithful native form:
+ *
+ *  - LOWERED. `Record<K, V>` is a dictionary (`[K: V]` / `Map<K, V>`);
+ *    `Readonly<X>` is a no-op at the type level because every emitted binding
+ *    is already `let` / `val`; `Required<X>` and `NonNullable<X>` narrow, so
+ *    erasing to the base is a sound WIDENING; `NoInfer<X>` is a pure inference
+ *    marker; `Awaited<Promise<T>>` is `T`; the four string-case utilities are
+ *    `string`. `Partial<X>` genuinely CHANGES the field set, so it lowers only
+ *    when the field set is visible — every field re-wrapped optional, which is
+ *    the same `T | undefined` convention `x?: T` already parses to.
+ *
+ *  - DECLINED. `Pick`/`Omit`/`Exclude`/`Extract` and the function-introspection
+ *    family need type-level computation PMTC has no evaluator for. They warn BY
+ *    NAME and degrade to `unknown`, which drops the annotation on a `const`
+ *    (the initializer's own type stands, and compiles) rather than emitting a
+ *    name no native compiler can resolve.
+ *
+ * Note what is deliberately NOT done: erasing `Partial<X>` to `X` when `X` is
+ * unresolvable. That reads like the obvious move and is UNSOUND — a value of
+ * `Partial<X>` may omit fields `X` requires, so `let T: X = <partial literal>`
+ * trades "cannot find type" for "cannot convert value", which is no better.
+ */
+function lowerUtilityType(
+  name: string,
+  args: TypeIR[],
+  node: AnyNode,
+  ctx: ParseCtx,
+): TypeIR | null {
+  if (!TS_UTILITY_TYPE_SET.has(name)) return null
+  const spelled = `${name}<…>`
+  const decline = (why: string): TypeIR => {
+    warnOnce(
+      ctx,
+      `\`${spelled}\` has no native form in PMTC — ${why} The annotation is dropped, ` +
+        `so a \`const\` keeps its initializer's own type; a parameter or field degrades to \`Any\`.`,
+    )
+    return { kind: 'unknown' }
+  }
+
+  switch (name) {
+    case 'Record': {
+      // `Record<string, number>` IS a dictionary — `[String: Int]` /
+      // `Map<String, Int>`. Only the 2-arg spelling; anything else is malformed
+      // TS and better declined than guessed at.
+      if (args.length !== 2) return decline('it takes a key type and a value type.')
+      return { kind: 'map', key: args[0]!, value: args[1]! }
+    }
+    case 'Readonly':
+    case 'NoInfer':
+      // Both erase: every emitted binding is already immutable (`let` / `val`),
+      // and `NoInfer` exists purely to steer TS's own inference.
+      if (args.length !== 1) return decline('it takes exactly one type argument.')
+      return args[0]!
+    case 'Required': {
+      // Narrowing — erasing to the base is a sound widening. When the field set
+      // is visible, do the real thing and drop the optional wrappers.
+      if (args.length !== 1) return decline('it takes exactly one type argument.')
+      const shape = resolveObjectShape(args[0]!, ctx)
+      if (shape === undefined) return args[0]!
+      return {
+        kind: 'object',
+        fields: shape.fields.map((f) => ({ name: f.name, type: stripNullish(f.type) })),
+      }
+    }
+    case 'NonNullable':
+      if (args.length !== 1) return decline('it takes exactly one type argument.')
+      return stripNullish(args[0]!)
+    case 'Awaited': {
+      // `Awaited<Promise<T>>` is `T`; `Awaited<T>` on a non-thenable is `T`.
+      if (args.length !== 1) return decline('it takes exactly one type argument.')
+      const inner = args[0]!
+      if (inner.kind === 'typeRef' && inner.name === 'Promise' && inner.args.length === 1) {
+        return inner.args[0]!
+      }
+      return inner
+    }
+    case 'Uppercase':
+    case 'Lowercase':
+    case 'Capitalize':
+    case 'Uncapitalize':
+      // String-literal manipulation — the runtime type is just a string.
+      return { kind: 'string' }
+    case 'Partial':
+      // DECLINED, and the reasoning is worth keeping because the two obvious
+      // lowerings were both tried and both produce an emit that does not
+      // compile. (a) Erase to the base type: UNSOUND, because a `Partial<X>`
+      // value may omit fields `X` requires, so `let T: X = <partial literal>`
+      // only trades "cannot find type 'Partial'" for "cannot convert value".
+      // (b) Re-wrap every field optional: the object literal beside it is
+      // struct-synthesized SEPARATELY, and the two are matched by FIELD-NAME
+      // SET — so `Partial<Th>` resolves to `Th` while its own literal
+      // resolves to a fresh `__Obj0`, and the emit is `let T: Th = __Obj0(…)`.
+      // Dropping the annotation is the only one of the three that compiles:
+      // the initializer's own synthesized struct stands, which is what the
+      // un-annotated spelling already does.
+      return decline(
+        `a native struct has ONE field set, and \`Partial\` is that set with every ` +
+          `field made optional — spell the optional fields directly ` +
+          `(\`{ text?: string }\`), which lowers to a struct / data class with ` +
+          `\`= nil\` / \`= null\` defaults.`,
+      )
+    case 'Pick':
+    case 'Omit':
+      return decline(
+        `selecting keys needs a type-level evaluator the native compiler does not have — ` +
+          `spell the resulting object type (\`{ a: number }\`), which lowers to a struct / data class.`,
+      )
+    case 'Exclude':
+    case 'Extract':
+      return decline(
+        `filtering a union needs a type-level evaluator the native compiler does not have — ` +
+          `spell the resulting type directly.`,
+      )
+    default:
+      // Parameters / ConstructorParameters / ReturnType / InstanceType /
+      // ThisParameterType / OmitThisParameter / ThisType — every one of these
+      // reads a type OUT of a function or class, and PMTC lowers neither
+      // classes nor top-level generic inference.
+      void node
+      return decline(
+        `it reads a type out of a function or class signature, which the native compiler ` +
+          `cannot evaluate — spell the type directly.`,
+      )
+  }
+}
+
 function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
   switch (node.type) {
     case 'TSNumberKeyword':
@@ -10643,6 +10840,21 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
       // `ReadonlyArray<T>` is the long spelling of `readonly T[]` — the same
       // runtime array, lowered as one (see the TSTypeOperator case).
       if (name === 'ReadonlyArray' && args.length === 1) return { kind: 'array', element: args[0]! }
+      // TypeScript's BUILT-IN utility types. Neither Swift nor Kotlin has any
+      // of these names, so the pass-through arm below emitted the TS spelling
+      // verbatim — `Partial<ChartTheme>` became `private let T:
+      // Partial<ChartTheme>`, which is `cannot find type 'Partial' in scope`
+      // (swiftc) / `unresolved reference` (kotlinc), with ZERO warnings on
+      // either target. Silent-wrong-emit, and `Partial<T>` on a config object
+      // is an entirely ordinary thing to write.
+      //
+      // The set is CLOSED by the language (lib.es5.d.ts), which is what makes
+      // an enumeration honest here rather than the usual hand-maintained
+      // silent-hole: a totality test pins it against the documented list.
+      // Each name is either LOWERED to a native form or DECLINED BY NAME —
+      // never emitted.
+      const utility = lowerUtilityType(name, args, node, ctx)
+      if (utility !== null) return utility
       // A zero-arg typeRef naming a local FUNCTION-type alias substitutes to
       // the function type itself — see ParseCtx.fnTypeAliases for why
       // substitution beats a name-preserving typealias emit.

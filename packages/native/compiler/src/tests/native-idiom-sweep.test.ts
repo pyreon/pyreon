@@ -163,6 +163,39 @@ const CORPUS: Array<[string, string, string?]> = [
   ['computed object key', `  const k = "a"; const out = computed(() => { const o = { [k]: 1 }; return String(o) })`, 'out()'],
   ['regex literal test', `  const out = computed(() => /he/.test(s()))`],
   ['call-arg spread', `  function f(a: number, b: number) { return a + b }; const out = computed(() => { const xs = [1, 2]; return f(...xs) })`],
+  // Unmapped Array/String methods. Every one of these used to reach the
+  // emitters' arm-less `switch (prop)` and fall through to a VERBATIM re-emit
+  // with no warning, in BOTH expression and statement position — the original
+  // report claimed statement position warned, and it did not, because the two
+  // share one expression emitter. All now warn by name, so this canary locks
+  // them LOUD: a future change that maps one must make it COMPILE, and a
+  // change that silences one without mapping it fails here.
+  ['arr.sort()', `  const out = computed(() => nums().sort().length)`],
+  ['arr.pop', `  const out = computed(() => nums().pop())`],
+  ['arr.shift', `  const out = computed(() => nums().shift())`],
+  ['arr.splice', `  const out = computed(() => nums().splice(0, 1).length)`],
+  ['arr.toSorted', `  const out = computed(() => nums().toSorted().length)`],
+  ['arr.toReversed', `  const out = computed(() => nums().toReversed().length)`],
+  ['arr.toSpliced', `  const out = computed(() => nums().toSpliced(0, 1).length)`],
+  ['arr.with', `  const out = computed(() => nums().with(0, 9).length)`],
+  ['arr.copyWithin', `  const out = computed(() => nums().copyWithin(0, 1).length)`],
+  ['arr.entries', `  const out = computed(() => nums().entries())`],
+  ['arr.keys', `  const out = computed(() => nums().keys())`],
+  ['arr.values', `  const out = computed(() => nums().values())`],
+  ['arr.reduceRight', `  const out = computed(() => nums().reduceRight((a: number, b: number) => a + b, 0))`],
+  ['arr.findLastIndex', `  const out = computed(() => nums().findLastIndex((x: number) => x > 1))`],
+  ['arr.unshift', `  const out = computed(() => nums().unshift(0))`],
+  ['str.codePointAt', `  const out = computed(() => s().codePointAt(0))`],
+  ['str.localeCompare', `  const out = computed(() => s().localeCompare("b"))`],
+  ['str.normalize', `  const out = computed(() => s().normalize())`, 'out()'],
+  ['str.substr', `  const out = computed(() => s().substr(1))`, 'out()'],
+  ['str.toLocaleUpperCase', `  const out = computed(() => s().toLocaleUpperCase())`, 'out()'],
+  ['str.toLocaleLowerCase', `  const out = computed(() => s().toLocaleLowerCase())`, 'out()'],
+  // Value-producing `||` / `&&`. Swift and Kotlin `||`/`&&` are Bool-only, so
+  // the verbatim emit does not compile — LOCKED loud for the same reason the
+  // `||=` statement entries below are: a naive desugar is unsound.
+  ['logical || string default', `  const out = computed(() => s() || "anon")`, 'out()'],
+  ['logical && numeric', `  const out = computed(() => nums().length && 1)`],
 ]
 
 // Statement-context idioms (handler body). A separate wrapper because these

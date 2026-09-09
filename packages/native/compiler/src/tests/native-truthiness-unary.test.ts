@@ -48,7 +48,8 @@ ${body}
 describe('P1 — truthiness unary + isNaN + loud guards (sweep batch 2)', () => {
   it('Swift: `!!x` on a number lowers to `(x != 0)`; `!x` to `(x == 0)`', () => {
     const dd = transform(A(`  const out = computed(() => !!s().length)`), { target: 'swift' })
-    expect(dd.code).toContain('(s.count != 0)')
+    // `.utf16.count` on a string — see the String.length entry.
+    expect(dd.code).toContain('(s.utf16.count != 0)')
     const sn = transform(A(`  const out = computed(() => !nums().length)`), { target: 'swift' })
     expect(sn.code).toContain('(nums.count == 0)')
   })
