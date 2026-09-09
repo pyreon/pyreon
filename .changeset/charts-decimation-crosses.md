@@ -35,3 +35,9 @@ never needed 100k points, least of all on a phone.
 `lttbIndices` is exported from `@pyreon/charts/plot` alongside `lttb`, which
 keeps its `Pt[]` signature and its real-x semantics — collapsing the two would
 silently change what "largest triangle" means for unevenly spaced data.
+
+Because the arithmetic now crosses, the compiler stops claiming otherwise:
+`lttbIndices` and `minMaxBuckets` are exempt from the `@pyreon/charts/plot`
+web-only warning (beside `binValues`, same reason), and the `maxPoints` decline
+names the pre-decimation remedy instead of just saying "not lowered". `lttb`
+keeps warning — it takes `Pt[]`, which is why the arithmetic was split out of it.
