@@ -178,12 +178,31 @@ export function safeLineComment(value: string): string {
  * JSDoc block and the remainder of the value lands in CODE position.
  */
 export function safeBlockComment(value: string): string {
-  return value
-    .split('*/')
-    .join('*\\/')
-    .replace(/[\r\u2028\u2029]/g, '\n')
-    // eslint-disable-next-line no-control-regex
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
+  return (
+    value
+      // ORDER IS LOAD-BEARING: every step that REMOVES characters runs before
+      // the step that BREAKS the terminator, because a removal can re-join a
+      // `*` and a `/` the break never saw. Stripping second was a code-
+      // execution bug: `A book *<NUL>/ globalThis.PWNED = 1; /*` has no `*/`
+      // for `split` to find, and the control-strip then reconstituted it —
+      //
+      //   /** A book */ globalThis.PWNED = 1; /* */
+      //   export const Book = 1
+      //
+      // which is VALID JavaScript with an injected statement at code position,
+      // in every generated file, executing on import. Because the output
+      // parses, nothing downstream flags it.
+      //
+      // Generalisation of the repo's "escape the escape character first" rule:
+      // a step that removes characters must precede a step that breaks a
+      // multi-character terminator. `safeLineComment` already has these two in
+      // the correct order.
+      .replace(/[\r\u2028\u2029]/g, '\n')
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
+      .split('*/')
+      .join('*\\/')
+  )
 }
 
 /** The header every generated file carries. */

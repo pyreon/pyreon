@@ -275,6 +275,48 @@ describe('spec-controlled strings cannot inject code', () => {
   })
 
   describe('the sanitizers themselves', () => {
+    // The order of safeBlockComment's steps is load-bearing. It used to BREAK
+    // the terminator first and STRIP control characters second, so a control
+    // character sitting between the `*` and the `/` hid the terminator from
+    // `split` and the strip then re-joined it:
+    //
+    //   in   'A book *<NUL>/ globalThis.PWNED = 1; /*'
+    //   out  'A book */ globalThis.PWNED = 1; /*'
+    //
+    //   /** A book */ globalThis.PWNED = 1; /* */
+    //
+    // which is VALID JavaScript with an injected statement at code position,
+    // in every generated file, executing on import — and because it parses,
+    // nothing downstream flags it. A removal step must precede a step that
+    // breaks a multi-character terminator.
+    for (const [label, code] of [
+      ['NUL', 0],
+      ['SOH', 1],
+      ['BS', 8],
+      ['VT', 11],
+      ['FF', 12],
+      ['SO', 14],
+      ['US', 31],
+      ['DEL', 127],
+    ] as Array<[string, number]>) {
+      it(`a ${label} between * and / cannot reconstitute the terminator`, () => {
+        const payload = `A book *${String.fromCharCode(code)}/ globalThis.PWNED = 1; /*`
+        const out = safeBlockComment(payload)
+        expect(out, `${label} re-joined the terminator`).not.toContain('*/')
+      })
+    }
+
+    it('the emitted block stays a comment (evaluated, not inspected)', () => {
+      const payload = `x *${String.fromCharCode(0)}/ globalThis.__LATHE_PWNED__ = 1; /*`
+      const emitted = `/** ${safeBlockComment(payload)} */\nexport const ok = 1`
+      const g = globalThis as unknown as Record<string, unknown>
+      delete g.__LATHE_PWNED__
+      // A string-level assertion passes on output that merely LOOKS right;
+      // running it is what proves nothing escaped comment position.
+      new Function(emitted.replace('export const', 'const'))()
+      expect(g.__LATHE_PWNED__, 'an injected statement executed').toBeUndefined()
+    })
+
     it('safeBlockComment removes every comment terminator', () => {
       expect(safeBlockComment('a */ b')).not.toContain('*/')
       expect(safeBlockComment('a */ b */ c')).not.toContain('*/')
