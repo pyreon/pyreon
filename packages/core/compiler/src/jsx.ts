@@ -2322,7 +2322,28 @@ export function transformJSX_JS(
     let anyReactive = false
     for (const c of kids) {
       if (c.type === 'JSXText') {
-        pushLit(cleanJsxText((c.value ?? c.raw ?? '') as string))
+        const cleaned = cleanJsxText((c.value ?? c.raw ?? '') as string)
+        // JSXText is HTML source: the parser decodes `&nbsp;` / `&amp;` /
+        // `&mdash;` before it ever reaches a DOM text node. Fusion moves that
+        // text into a JS STRING LITERAL handed to `bindPolymorphicText`, which
+        // assigns `Text.data` — an assignment that parses nothing. So a fused
+        // `<span>{n()}&nbsp;items</span>` renders the literal characters
+        // `&nbsp;items`, while the unfused `<span>&nbsp;items</span>` bakes into
+        // the `_tpl` HTML string and decodes correctly. Same divergence on the
+        // SSR arm, where `_escSole` escapes the `&` into `&amp;nbsp;`.
+        //
+        // Bail so the shape falls back to the pre-fusion path, which was
+        // correct. The bail is on ANY `&` rather than an entity-shaped regex:
+        // a bare `&` is harmless either way, HTML decodes some entities without
+        // the trailing semicolon, and being conservative here can only cost a
+        // fusion opportunity — never correctness. `ssrSerializeChild` already
+        // bails on the same character for the same reason.
+        //
+        // NOTE this covers JSXText only. `{'&nbsp;'}` is a JS string literal
+        // whose characters are already final; JSX does not decode it, so it is
+        // correctly fused as-is.
+        if (cleaned.includes('&')) return null
+        pushLit(cleaned)
         continue
       }
       if (c.type !== 'JSXExpressionContainer') return null
