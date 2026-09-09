@@ -6,7 +6,7 @@ export default defineManifest({
   tagline:
     'Toast notifications — toast(), toast.success/error/warning/info/loading, Toaster component, a11y',
   description:
-    'Imperative toast notifications for Pyreon. Call `toast()` from anywhere in your app — no provider or context needed. Preset variants (`toast.success`, `toast.error`, etc.), a `toast.promise()` helper for async operations, and `toast.update()` for loading-to-success patterns. Render `<Toaster />` once at the app root — it uses Portal, animated enter/leave CSS transitions, auto-dismiss, and pause-on-hover-and-focus. Accessible with a type-aware live-region role — `role="alert"` (assertive) for error/warning, `role="status"` (polite) for info/success — plus `aria-atomic`.',
+    'Imperative toast notifications for Pyreon. Call `toast()` from anywhere in your app — no provider or context needed. Preset variants (`toast.success`, `toast.error`, etc.), a `toast.promise()` helper for async operations, and `toast.update()` for loading-to-success patterns. Render `<Toaster />` once at the app root — it uses Portal, animated enter/leave CSS transitions, auto-dismiss, and a countdown that suspends on hover, on keyboard focus, and while the tab is hidden. Accessible with a type-aware live-region role — `role="alert"` (assertive) for error/warning, `role="status"` (polite) for info/success — plus `aria-atomic`.',
   category: 'browser',
   multiplatform: {
     tier: 'web-only',
@@ -67,7 +67,7 @@ toast.remove()          // hard-remove all`,
     'toast.remove(id?) — hard-remove one or all instantly (no leave animation)',
     'Per-toast description (secondary line), custom icon, and action button',
     'Animated enter AND leave — a dismissed toast fades + collapses in place, siblings reflow smoothly',
-    '<Toaster /> with Portal, CSS transitions, auto-dismiss, pause on hover/focus, configurable default duration',
+    '<Toaster /> with Portal, CSS transitions, auto-dismiss, a countdown suspended on hover / focus / a hidden tab, configurable default duration',
     'Accessible: type-aware live regions — role="alert" (assertive) for error/warning, role="status" (polite) for info/success',
   ],
   api: [
@@ -116,7 +116,7 @@ toast.dismiss()    // all`,
       kind: 'component',
       signature: '(props?: ToasterProps) => VNodeChild',
       summary:
-        'Render container for toast notifications. Mount once at the app root. Renders via Portal with CSS transitions, auto-dismiss timer, and pause-on-hover behavior. Position configurable via `position` prop (`top-right`, `top-left`, `bottom-right`, `bottom-left`, `top-center`, `bottom-center`). Duration configurable via `duration` prop (default 4000ms).',
+        'Render container for toast notifications. Mount once at the app root. Renders via Portal with CSS transitions, auto-dismiss timer, and a countdown suspended on hover, on keyboard focus, and while the tab is hidden. Position configurable via `position` prop (`top-right`, `top-left`, `bottom-right`, `bottom-left`, `top-center`, `bottom-center`). Duration configurable via `duration` prop (default 4000ms).',
       example: `<Toaster position="top-right" duration={5000} />`,
       mistakes: [
         'Mounting multiple `<Toaster />` instances — toasts render in all of them, causing duplicates',
@@ -135,8 +135,8 @@ toast.dismiss()    // all`,
       note: '`@pyreon/runtime-dom` is required because `<Toaster />` JSX emits `_tpl()` calls — declare it in consumer app dependencies.',
     },
     {
-      label: 'Pause on hover',
-      note: 'The auto-dismiss timer pauses while the user hovers over a toast and resumes when the cursor leaves. This is built into `<Toaster />` with no configuration needed.',
+      label: 'When the countdown is suspended',
+      note: 'The auto-dismiss timer suspends while the pointer is over the stack, while keyboard focus is inside it, and while the tab is hidden — a four-second toast is four seconds of ATTENTION, not of wall clock, so one raised just before the user switches tabs is still there when they come back. The three are INDEPENDENT holds: releasing one (a `mouseleave`) does not restart the clock while another (focus still inside) is outstanding. Built into `<Toaster />` with no configuration needed.',
     },
   ],
 })

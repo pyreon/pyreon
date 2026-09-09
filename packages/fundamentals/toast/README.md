@@ -2,7 +2,7 @@
 
 Imperative toast notifications — call `toast()` from anywhere, render `<Toaster />` once.
 
-A provider-less toast system: one `<Toaster />` mounted at the root, and any code (component bodies, event handlers, async functions, stores, route loaders) calls `toast(message)` / `toast.success(message)` / `toast.promise(promise, ...)` to enqueue. Backed by a signal so the Toaster picks updates up reactively. Includes auto-dismiss, pause-on-hover-and-focus, action buttons, an animated enter/leave, the loading → success / error promise pattern, and type-aware accessibility (`role="alert"` for error/warning, `role="status"` for info/success).
+A provider-less toast system: one `<Toaster />` mounted at the root, and any code (component bodies, event handlers, async functions, stores, route loaders) calls `toast(message)` / `toast.success(message)` / `toast.promise(promise, ...)` to enqueue. Backed by a signal so the Toaster picks updates up reactively. Includes auto-dismiss that suspends on hover, on keyboard focus, and while the tab is hidden, action buttons, an animated enter/leave, the loading → success / error promise pattern, and type-aware accessibility (`role="alert"` for error/warning, `role="status"` for info/success).
 
 ## Install
 
@@ -91,7 +91,7 @@ Positions: `'top-left'` · `'top-center'` · `'top-right'` · `'bottom-left'` ·
 The Toaster:
 
 - Renders into a Portal so it sits above any z-index stack
-- Pauses auto-dismiss timers on hover AND on keyboard focus, resumes on leave/blur (the remaining duration is preserved per toast)
+- Suspends auto-dismiss on hover, on keyboard focus, AND while the tab is hidden; resumes on leave / blur / return (the remaining duration is preserved per toast). The three are independent holds, so a `mouseleave` does not restart the clock while focus is still inside the stack
 - Announces toasts with a **type-aware** live-region role — `role="alert"` (assertive) for error/warning, `role="status"` (polite) for info/success — plus `aria-atomic="true"`; the role implies its own `aria-live`, so the container is a plain labeled landmark (no double-announce)
 - Animates entry AND exit via CSS transitions (no external animation lib): a dismissed toast fades + collapses in place, and its siblings reflow smoothly
 

@@ -7676,7 +7676,7 @@ toast.dismiss()    // all`,
   'toast/Toaster': {
     signature: '(props?: ToasterProps) => VNodeChild',
     example: '<Toaster position="top-right" duration={5000} />',
-    notes: 'Render container for toast notifications. Mount once at the app root. Renders via Portal with CSS transitions, auto-dismiss timer, and pause-on-hover behavior. Position configurable via `position` prop (`top-right`, `top-left`, `bottom-right`, `bottom-left`, `top-center`, `bottom-center`). Duration configurable via `duration` prop (default 4000ms). See also: toast.',
+    notes: 'Render container for toast notifications. Mount once at the app root. Renders via Portal with CSS transitions, auto-dismiss timer, and a countdown suspended on hover, on keyboard focus, and while the tab is hidden. Position configurable via `position` prop (`top-right`, `top-left`, `bottom-right`, `bottom-left`, `top-center`, `bottom-center`). Duration configurable via `duration` prop (default 4000ms). See also: toast.',
     mistakes: `- Mounting multiple \`<Toaster />\` instances — toasts render in all of them, causing duplicates
 - Conditional rendering of \`<Toaster />\` — if unmounted, toasts created via \`toast()\` are queued but invisible until the Toaster mounts`,
   },

@@ -58,7 +58,7 @@
   "@pyreon/sync": 3072,
   "@pyreon/table": 3340,
   "@pyreon/testing": 5120,
-  "@pyreon/toast": 3072,
+  "@pyreon/toast": 3120,
   "@pyreon/ui-core": 3700,
   "@pyreon/unistyle": 12032,
   "@pyreon/url-state": 1664,
