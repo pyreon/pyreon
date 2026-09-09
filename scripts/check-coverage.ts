@@ -273,10 +273,10 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
       'Composition-store engine. The prior 98% thresholds were VACUOUS — the default `src/**/index.ts` barrel coverage-exclude dropped the entire implementation (index.ts IS the module, not a re-export barrel), so the gate measured only ~42 registry/hydration statements. Un-excluded at the 2026-07 excellence pass (PR #2167): statements/functions/lines now at a true 100%, branches at 92% — the residual is the prod side of `process.env.NODE_ENV !== \'production\'` dev-warning gates (unknown-patch-key + same-id-redefinition warnings), which never executes under the vitest `development` NODE_ENV. Those arms are structurally uncoverable from node vitest without a second production-mode bundle-inspection pass; lift to 95 is not meaningful debt.',
   },
   '@pyreon/router': {
-    currentStatements: 91,
-    currentBranches: 85,
+    currentStatements: 96,
+    currentBranches: 92,
     reason:
-      'Router. Re-baselined 95/88 → 91/85 at the 2026-07 coverage-gate restoration (measured 91.78/85.12): View Transitions API integration (browser-only), scroll restoration timing arms, prefetch IntersectionObserver paths, route-change announcer (router.browser.test.tsx), RouterLink link-DX warning paths, serverLoader/invalidateLoader arms — exercised by Playwright e2e (ssr-showcase, ssg-i18n) + the router browser suite rather than node vitest.',
+      'Router. Ratcheted 91/85 → 96/92 (measured 96.59/92.19) by covering the error paths of whole features that had none: the single-fetch server-loader pipeline on BOTH sides (including the three generation checks that stop a stale response overwriting a newer navigation, and the chain-INDEX keying that a path-keyed version silently collided), the pending-loader timing machine (delay, minimum-display floor, timer teardown), the not-found trie tiebreakers on both the layout and page tracks, the shared beforeunload refcount, SWR background revalidation, and a NODE-environment file for the isServer arms happy-dom makes unreachable by construction. Every guard bisect-verified individually. The residual is two-tier and deliberately not chased: ~20 env-gate arms a node run cannot reach, and ~10 RouterLink external/target/rel branches covered by routerlink-external.browser.test.tsx — duplicating those in node would move the number without reducing risk. Aspiration stays 95 branches.',
   },
   '@pyreon/vite-plugin': {
     currentStatements: 94,
