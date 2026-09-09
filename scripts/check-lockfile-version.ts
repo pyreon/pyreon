@@ -92,8 +92,13 @@ export function checkLockfileVersion(
             `  the FIRST step with "Unknown lockfile version" — on every job that installs,\n` +
             `  which reads as several unrelated red checks.\n\n`
           : `  An older bun regenerated it.\n\n`) +
-        `  Fix: regenerate with the pinned version and commit the result.\n` +
+        `  Usually the fix is to regenerate with the pinned version and commit the result:\n` +
         `    bunx bun@${policy.bunVersion} install\n\n` +
+        `  But check WHY the newer bun was used first. If your change needs a feature the\n` +
+        `  pin lacks — a nested override, say, which bun ${policy.bunVersion} will not apply to an\n` +
+        `  entry the existing lock already satisfies — regenerating SILENTLY DROPS it and\n` +
+        `  --frozen-lockfile still passes. Then the answer is to bump .bun-version and this\n` +
+        `  policy together, not to regenerate.\n\n` +
         `  bun only rewrites the lockfile when a resolution changes, which is why a\n` +
         `  mismatched local bun can go unnoticed until the first dependency edit.`,
     }

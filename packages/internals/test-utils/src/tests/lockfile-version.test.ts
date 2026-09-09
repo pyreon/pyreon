@@ -29,6 +29,14 @@ describe('the lockfile format matches the pinned bun', () => {
     expect(v.error).toContain(`bunx bun@${LOCKFILE_POLICY.bunVersion} install`)
     // The reason four checks go red at once is the part a reader needs.
     expect(v.error).toContain('Unknown lockfile version')
+    // "Just regenerate" is not always right, and getting that wrong deletes
+    // someone's fix rather than failing loudly: observed on #3433, where a
+    // NESTED override (`overrides["@changesets/parse"]["js-yaml"]`) resolves to
+    // 4.3.2 under bun 1.4 and to 4.3.1 under the pin — because 1.3.14 will not
+    // apply an override to an entry the existing lock already satisfies — and
+    // `--frozen-lockfile` passes either way.
+    expect(v.error).toContain('SILENTLY DROPS')
+    expect(v.error).toContain('bump .bun-version')
   })
 
   it('rejects an OLDER lockfile too, without claiming a newer bun wrote it', () => {
