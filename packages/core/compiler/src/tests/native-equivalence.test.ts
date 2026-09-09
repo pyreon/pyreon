@@ -4,31 +4,41 @@
  * and asserts identical output. This catches any behavioral divergence
  * between the two backends.
  */
+import { createRequire } from 'node:module'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { rocketstyleCollapseKey, serializeStaticChildren, transformJSX_JS } from '../jsx'
 import type { ReactivitySpan } from '../jsx'
 
 // Load native if available
-let nativeTransform:
-  | ((
-      code: string,
-      filename: string,
-      ssr: boolean,
-      knownSignals: string[] | null,
-      reactivityLens?: boolean,
-      collapse?: unknown,
-      ssrTemplate?: boolean,
-      templatizeComponentChildren?: boolean,
-    ) => {
-      code: string
-      usesTemplates?: boolean | null
-      warnings: Array<{ message: string; line: number; column: number; code: string }>
-      reactivityLens?: ReactivitySpan[] | null
-    })
-  | null = null
+type NativeTransform = (
+  code: string,
+  filename: string,
+  ssr: boolean,
+  knownSignals: string[] | null,
+  reactivityLens?: boolean,
+  collapse?: unknown,
+  ssrTemplate?: boolean,
+  templatizeComponentChildren?: boolean,
+) => {
+  code: string
+  usesTemplates?: boolean | null
+  warnings: Array<{ message: string; line: number; column: number; code: string }>
+  reactivityLens?: ReactivitySpan[] | null
+}
+
+let nativeTransform: NativeTransform | null = null
 
 try {
-  const path = require('node:path')
-  const native = require(path.join(__dirname, '..', '..', 'native', 'pyreon-compiler.node'))
+  // A napi `.node` addon cannot be loaded through `await import()`, so this
+  // is the legitimate `createRequire` case: the CJS-only globals are not
+  // defined in a real-Node ESM run (bun defines them, which is why a
+  // bun-run suite never caught it).
+  const requireAddon = createRequire(import.meta.url)
+  const here = dirname(fileURLToPath(import.meta.url))
+  const native = requireAddon(join(here, '..', '..', 'native', 'pyreon-compiler.node')) as {
+    transformJsx: NativeTransform
+  }
   nativeTransform = native.transformJsx
 } catch {
   // Native not available — skip tests

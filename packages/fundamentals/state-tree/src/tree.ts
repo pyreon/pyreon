@@ -2,9 +2,37 @@ import { instanceMeta, isModelInstance } from './registry'
 
 // Bound for the ancestor-walk cycle guards in `getRoot` / `getPath`. A
 // well-formed tree never approaches this; it exists only so a corrupt
-// parent chain (shouldn't happen — parent is set to an ancestor on write)
-// can never loop forever. Chosen far above any realistic model nesting.
+// parent chain can never loop forever. Chosen far above any realistic model
+// nesting, so reaching it is never a deep tree — it is always a CYCLE.
+//
+// A cycle IS constructible through the public API: `a.child.set(b)` makes `b`
+// a child of `a`, and `b.child.set(a)` then makes `a` a child of `b`. Both
+// walks below therefore THROW when the bound is reached rather than returning
+// whatever they happen to be holding — hitting the bound means the invariant
+// these functions rest on (the parent chain is acyclic) is already broken, and
+// there is no correct answer left to return. Returning one silently produced a
+// wrong root on the hot `reference()` resolve path, every call, forever.
 const MAX_TREE_DEPTH = 100_000
+
+/**
+ * Build the throw for a parent chain that exceeded `MAX_TREE_DEPTH`. Named
+ * separately so both walks report the same diagnosis, and so the message
+ * carries enough about the node to find it (models carry no name, so the key
+ * it is attached under plus its state keys are the identifying detail we have).
+ */
+function cyclicChainError(fn: string, node: object): Error {
+  const meta = instanceMeta.get(node)
+  const key = meta?.parentKey
+  const where = key === undefined ? 'a root-attached node' : `the node at key "${key}"`
+  const keys = meta?.stateKeys?.length ? ` (state keys: ${meta.stateKeys.join(', ')})` : ''
+  return new Error(
+    `[Pyreon] state-tree ${fn}: cyclic parent chain — walked ${MAX_TREE_DEPTH} ancestors ` +
+      `from ${where}${keys} without reaching a root. A model instance's parent chain must be ` +
+      'acyclic. This happens when two instances are written into each other ' +
+      '(`a.child.set(b)` then `b.child.set(a)`), which makes each the other\'s parent. ' +
+      'Detach one side before reading the tree.',
+  )
+}
 
 // ─── Internal parent-tracking ──────────────────────────────────────────────────
 
@@ -117,16 +145,16 @@ export function isRoot(node: object): boolean {
  */
 export function getRoot<T extends object = object>(node: object): T {
   let current = node
-  // Guard against a pathological cycle (shouldn't happen — parent is set to an
-  // ancestor on write — but never loop forever). A bounded depth counter
-  // replaces a per-call `Set` allocation: `getRoot` is on the hot reference-
-  // resolve path (once per `reference()` read) and the parent chain is a tree,
-  // so the Set was pure garbage — a parentless root allocated one for a loop
-  // that never ran. MAX_TREE_DEPTH is far beyond any real nesting.
+  // A bounded depth counter replaces a per-call `Set` cycle-guard: `getRoot` is
+  // on the hot reference-resolve path (once per `reference()` read) and the
+  // parent chain is a tree, so the Set was pure garbage — a parentless root
+  // allocated one for a loop that never ran. Exceeding the bound THROWS (see
+  // `cyclicChainError`): there is no root to return, so returning `current`
+  // would be a silently wrong answer on every subsequent read.
   let parent = metaOrThrow(current, 'getRoot').parent
   let depth = 0
-  while (parent !== undefined && depth < MAX_TREE_DEPTH) {
-    depth++
+  while (parent !== undefined) {
+    if (++depth > MAX_TREE_DEPTH) throw cyclicChainError('getRoot', node)
     current = parent
     parent = instanceMeta.get(current)?.parent
   }
@@ -142,22 +170,24 @@ export function getRoot<T extends object = object>(node: object): T {
  * getPath(child) // "/todos"
  */
 export function getPath(node: object): string {
+  // Collected leaf-to-root then reversed, rather than `unshift`ed. Same result,
+  // but `unshift` is O(n) per hop — which made the cycle guard below O(n²) and
+  // cost ~700ms of array-shuffling before it could report the corruption.
   const segments: string[] = []
   let current: object | undefined = node
   // Bounded depth counter instead of a per-call `Set` cycle-guard — same
-  // rationale as `getRoot`: the ancestor chain is a tree, so the Set only ever
-  // guarded a cycle that cannot occur in a well-formed tree.
+  // rationale (and the same throw-on-bound) as `getRoot`.
   let depth = 0
-  while (current !== undefined && depth < MAX_TREE_DEPTH) {
-    depth++
+  while (current !== undefined) {
+    if (++depth > MAX_TREE_DEPTH) throw cyclicChainError('getPath', node)
     const meta = instanceMeta.get(current)
     if (!meta) {
       if (current === node) throw new Error('[Pyreon] state-tree getPath: not a model instance')
       /* v8 ignore next -- defensive: a parent reached via parentKey always has meta; only the start node can lack it */
       break
     }
-    if (meta.parentKey !== undefined) segments.unshift(meta.parentKey)
+    if (meta.parentKey !== undefined) segments.push(meta.parentKey)
     current = meta.parent
   }
-  return segments.length > 0 ? `/${segments.join('/')}` : ''
+  return segments.length > 0 ? `/${segments.reverse().join('/')}` : ''
 }

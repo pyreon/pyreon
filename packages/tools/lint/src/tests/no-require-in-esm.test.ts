@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { allRules } from '../rules/index'
 import { lintFile } from '../runner'
+import { scanTargetsOf, targetsScan } from '../utils/scan-target'
 
 /**
  * `require()` in a `"type": "module"` package.
@@ -113,6 +114,56 @@ describe('pyreon/no-require-in-esm', () => {
       expect(found[0]?.message).toContain('await import')
       // The line that stops the next person trusting a green suite.
       expect(found[0]?.message).toContain('Bun defines')
+    })
+  })
+
+  describe('createRequire — the escape hatch the message itself recommends', () => {
+    // The rule told you to load a CJS-only artifact some other way and then
+    // flagged the only way there is. `vite-plugin`'s `plain-build.test.ts` was
+    // already doing it correctly, with a comment explaining why, and showed up
+    // as a finding — which is the tell that the rule, not the code, was wrong.
+    const HATCH = "import { createRequire } from 'node:module'\n"
+
+    it('stays QUIET on a module-scope `const require = createRequire(...)`', () => {
+      const src = `${HATCH}const require = createRequire(import.meta.url)\nconst m = require('./built.cjs')`
+      expect(at('/x/src/a.mts', src)).toHaveLength(0)
+    })
+
+    it('stays QUIET when the binding is inside the function that uses it', () => {
+      const src = `${HATCH}export function load(p: string) {\n  const require = createRequire(import.meta.url)\n  return require(p)\n}`
+      expect(at('/x/src/a.mts', src)).toHaveLength(0)
+    })
+
+    it('RESUMES firing once that function scope closes', () => {
+      // The quiet half above must be a scoped release, not a file-wide mute —
+      // otherwise one `createRequire` anywhere disables the rule for the file.
+      const src = `${HATCH}function load(p: string) {\n  const require = createRequire(import.meta.url)\n  return require(p)\n}\nconst fs = require('node:fs')`
+      const found = at('/x/src/a.mts', src)
+      expect(found).toHaveLength(1)
+      expect(found[0]?.message).toContain("'node:fs'")
+    })
+
+    it('still fires on a bare require in the SAME file, before the hatch', () => {
+      const src = `const fs = require('node:fs')\n${HATCH}const require = createRequire(import.meta.url)`
+      expect(at('/x/src/a.mts', src)).toHaveLength(1)
+    })
+  })
+
+  describe('scanTarget — the rule is about test files too', () => {
+    it('declares BOTH surfaces', () => {
+      // A `.test.ts` in a `"type": "module"` package throws
+      // `require is not defined` under real Node exactly as `src/` does, and
+      // the `source` DEFAULT meant no health gate ever collected one. This repo
+      // was carrying 47 such calls across ten test files, all green, because
+      // bun defines `require` in ESM — which is this rule's entire premise.
+      expect(scanTargetsOf(rules[0]!.meta)).toEqual(['source', 'test'])
+      expect(targetsScan(rules[0]!.meta, 'test')).toBe(true)
+      expect(targetsScan(rules[0]!.meta, 'source')).toBe(true)
+      expect(targetsScan(rules[0]!.meta, 'packageConfig')).toBe(false)
+    })
+
+    it('fires in a test file exactly as it does in src', () => {
+      expect(at('/x/src/tests/a.test.mts', `const fs = require('node:fs')`)).toHaveLength(1)
     })
   })
 

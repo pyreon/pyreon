@@ -11,6 +11,7 @@
 import { plain } from './format'
 import { DEFAULT_PALETTE, paletteAt } from './palette'
 import { sankeyRgba } from './sankey'
+import { isFiniteNumber } from './scale'
 import type { Domain, Double, DrawCmd, Pt, Rect } from './types'
 
 
@@ -80,9 +81,11 @@ export interface ParallelOptions {
   progress?: Double | undefined
 }
 
-/** Y for a raw datum on an axis; a NaN, or a category index outside the axis, is a gap. */
+/** Y for a raw datum on an axis; a non-finite value, or a category index outside the axis, is a gap. */
 export function parallelPlace(axis: ParallelLayoutAxis, v: Double): ParallelPlaced {
-  if (v !== v) return { ok: false, y: 0.0 }
+  // An infinity is a gap, not a clamp: `(v - lo) / span` is Infinity, which
+  // clamps to the axis end and draws a line the data never had.
+  if (!isFiniteNumber(v)) return { ok: false, y: 0.0 }
   const lo = axis.domain.min
   const span = axis.domain.max - lo
   if (axis.isCategory && (v < 0.0 || v > axis.domain.max)) return { ok: false, y: 0.0 }
@@ -131,7 +134,7 @@ export function layoutParallel(axes: ParallelAxis[], rows: Double[][], box: Rect
       for (const r of rows) {
         if (a >= r.length) continue
         const v = r[a]!
-        if (v !== v) continue
+        if (!isFiniteNumber(v)) continue
         if (!seen || v < lo) lo = v
         if (!seen || v > hi) hi = v
         seen = true

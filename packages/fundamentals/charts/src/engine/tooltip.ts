@@ -6,6 +6,7 @@
 
 import { plain } from './format'
 import type { Formatter } from './format'
+import { isFiniteNumber } from './scale'
 import type { Double, Pt, Rect } from './types'
 
 /** A box's extent — a named shape so the placement crosses to native. */
@@ -37,8 +38,9 @@ export function tooltipAt(index: number, categories: string[], series: TooltipSe
   const rows: TooltipRow[] = []
   for (const s of series) {
     const v = s.values[index]
-    // A gap (NaN) has no row: the tooltip lists what was measured.
-    if (v === undefined || v !== v) continue
+    // A gap has no row: the tooltip lists what was MEASURED, so a non-finite
+    // value — dropped from the geometry — is absent here too, never "Infinity".
+    if (v === undefined || !isFiniteNumber(v)) continue
     const row: TooltipRow = { label: s.label, value: v, color: s.color }
     rows.push(row)
   }

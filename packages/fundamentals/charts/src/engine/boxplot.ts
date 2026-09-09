@@ -8,7 +8,7 @@
 // subset (no closures in structs, coalesce before branching, no Int/Double
 // mixing); the server-side `boxplotToSvg` lives in `boxplot-svg.ts`.
 
-import { scaleLinear } from './scale'
+import { isFiniteNumber, scaleLinear } from './scale'
 import type { Domain, Double, DrawCmd, Rect } from './types'
 
 /** One category's summary. */
@@ -40,7 +40,7 @@ export interface BoxplotOptions {
  */
 export function fiveNumber(values: Double[]): FiveNumber {
   const sorted: Double[] = []
-  for (const v of values) if (v === v) sorted.push(v)
+  for (const v of values) if (isFiniteNumber(v)) sorted.push(v)
   sorted.sort((a, b) => a - b)
   const n = sorted.length
   if (n === 0) return { min: 0.0, q1: 0.0, median: 0.0, q3: 0.0, max: 0.0, outliers: [] }
