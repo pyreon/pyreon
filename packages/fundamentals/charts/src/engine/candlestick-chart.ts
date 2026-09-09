@@ -90,7 +90,18 @@ export function renderCandlestickChart(
       baseline: 'top',
     })
   }
-  const body = renderCandles(candles, l.plot, f.domain, options)
+  // Up/down are SEMANTIC, and the constants they used to fall back to were
+  // tuned on a white page — `#b42318` reads 2.70:1 on the dark ground.
+  //
+  // Built field by field rather than `{ ...theme defaults, ...options }`: this
+  // file CROSSES, and spreading an OPTIONAL lowers to a member access on
+  // `CandleOptions?` that neither toolchain accepts. TypeScript is happy with
+  // it, so only the swiftc/kotlinc gates catch the shape.
+  const body = renderCandles(candles, l.plot, f.domain, {
+    upColor: options?.upColor ?? theme.positive,
+    downColor: options?.downColor ?? theme.negative,
+    widthRatio: options?.widthRatio,
+  })
   for (const c of body) cmds.push(c)
   return cmds
 }

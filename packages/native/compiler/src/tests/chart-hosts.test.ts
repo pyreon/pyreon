@@ -1239,7 +1239,7 @@ describe('chart hosts — CalendarChart + ParallelChart lower through literal ad
     // the options reach the engine as `pyreonOptions` — an explicit
     // `calendar={{ labelColor }}` still wins, per `withThemeDefaults`.
     expect(r.code).toContain(
-      'let pyreonOptions: CalendarOptions = { () -> CalendarOptions in var pyreonO = CalendarOptions(firstDay: Double(1)); pyreonO.labelColor = pyreonO.labelColor ?? (pyreonColorScheme == .dark ? "#9aa5b5" : "#5a6b7a"); return pyreonO }()')
+      'let pyreonOptions: CalendarOptions = { () -> CalendarOptions in var pyreonO = CalendarOptions(firstDay: Double(1)); pyreonO.labelColor = pyreonO.labelColor ?? (pyreonColorScheme == .dark ? "#9aa5b5" : "#5a6b7a"); pyreonO.stops = pyreonO.stops ?? (pyreonColorScheme == .dark ? ["#172033", "#1d4ed8", "#3b82f6", "#93c5fd"] : ["#eff6ff", "#93c5fd", "#3b82f6", "#1e40af"]); pyreonO.emptyColor = pyreonO.emptyColor ?? (pyreonColorScheme == .dark ? "#2a3140" : "#e2e8f0"); return pyreonO }()')
     expect(r.code).toContain(
       'layoutCalendar("2026-01-01", "2026-02-28", PyreonChartRect(x: 4.0, y: 4.0, w: Double(pyreonGeo.size.width) - 8.0, h: 160.0 - 8.0), pyreonOptions)')
     expect(r.code).toContain(
@@ -1251,7 +1251,7 @@ describe('chart hosts — CalendarChart + ParallelChart lower through literal ad
     const r = transform(CALENDAR, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain(
-      'val pyreonOptions: CalendarOptions = (CalendarOptions(firstDay = (1).toDouble())).let { it.copy(labelColor = it.labelColor ?: (if (isSystemInDarkTheme()) "#9aa5b5" else "#5a6b7a")) }')
+      'val pyreonOptions: CalendarOptions = (CalendarOptions(firstDay = (1).toDouble())).let { it.copy(labelColor = it.labelColor ?: (if (isSystemInDarkTheme()) "#9aa5b5" else "#5a6b7a"), stops = it.stops ?: (if (isSystemInDarkTheme()) listOf("#172033", "#1d4ed8", "#3b82f6", "#93c5fd") else listOf("#eff6ff", "#93c5fd", "#3b82f6", "#1e40af")), emptyColor = it.emptyColor ?: (if (isSystemInDarkTheme()) "#2a3140" else "#e2e8f0")) }')
     expect(r.code).toContain(
       'layoutCalendar("2026-01-01", "2026-02-28", PyreonChartRect(4.0, 4.0, pyreonW - 8.0, 160.0 - 8.0), pyreonOptions)')
     expect(r.code).toContain(

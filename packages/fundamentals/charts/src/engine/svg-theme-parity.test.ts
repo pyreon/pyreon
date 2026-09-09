@@ -218,3 +218,73 @@ describe('theme colour contrast', () => {
     expect(contrast(defaultTheme.label, '#ffffff')).toBeGreaterThanOrEqual(3)
   })
 })
+
+// The theme swapped `palette` and its text/axis/grid tokens, and nothing else.
+// Every other colour the engine drew was a module constant chosen against a
+// white page, and seven of them were fed by no host at all — so a dark chart
+// got them verbatim. The sharpest case was the value RAMP, shared by heatmap,
+// calendar and geo: `['#eff6ff','#93c5fd','#3b82f6','#1e40af']` runs light to
+// dark, so against `#141821` its contrast ran 16.32:1 down to 2.04:1 AS THE
+// VALUE ROSE. A dark calendar therefore read backwards — its 40 empty cells
+// were the loudest thing on it (14.41:1) and its highest-value cell the
+// quietest. These lock the invariants, not the values.
+describe('semantic and ramp tokens', () => {
+  const luminance = (hex: string): number => {
+    const h = hex.replace('#', '')
+    const ch = [0, 2, 4].map((i) => Number.parseInt(h.slice(i, i + 2), 16) / 255)
+    const lin = ch.map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4))
+    return 0.2126 * lin[0]! + 0.7152 * lin[1]! + 0.0722 * lin[2]!
+  }
+  const contrast = (a: string, b: string): number => {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x)
+    return (hi! + 0.05) / (lo! + 0.05)
+  }
+  const themes = [
+    ['light', defaultTheme, '#ffffff'],
+    ['dark', chartThemes.dark, chartThemes.dark.background],
+  ] as const
+
+  for (const [mode, theme, ground] of themes) {
+    it(`${mode}: the ramp rises in contrast against its own ground`, () => {
+      // The invariant, not the palette: a higher value must never read quieter
+      // than a lower one. Direction is what broke, so direction is what is
+      // asserted — a differently-hued ramp still passes.
+      const cs = theme.ramp.map((s) => contrast(s, ground))
+      for (let i = 1; i < cs.length; i++) expect(cs[i]!).toBeGreaterThan(cs[i - 1]!)
+    })
+
+    it(`${mode}: \`positive\` and \`negative\` clear 3:1 on their own ground`, () => {
+      // WCAG 1.4.11 — an up/down candle and a highlighted line are the data.
+      expect(contrast(theme.positive, ground)).toBeGreaterThanOrEqual(3)
+      expect(contrast(theme.negative, ground)).toBeGreaterThanOrEqual(3)
+    })
+
+    it(`${mode}: \`muted\` RECEDES into its own ground, but stays tellable from zero`, () => {
+      // The INVERSE bar, and the reason one value cannot serve both grounds:
+      // an empty cell's job is to be quiet. `#e2e8f0` does that on white
+      // (1.23:1) and the opposite on dark (14.41:1).
+      expect(contrast(theme.muted, ground)).toBeLessThan(1.5)
+      // …but not invisible, and not the same as the ramp's floor: "no data"
+      // and "zero" are different readings and must not collapse. (Written the
+      // other way round first — asserting `muted` be QUIETER than ramp[0] —
+      // which both themes failed, because that invariant is wrong: 1.23 vs
+      // 1.09 light, 1.25 vs 1.21 dark. The test was wrong, not the values.)
+      expect(theme.muted).not.toBe(theme.ramp[0])
+      expect(contrast(theme.muted, theme.ramp[0]!)).toBeGreaterThan(1.05)
+    })
+  }
+
+  it('a dark calendar stops drawing the light-mode empty fill and ramp', () => {
+    const args = { start: '2024-01-01', end: '2024-02-11', values: { '2024-01-03': 3, '2024-01-17': 9 } }
+    const darkSvg = calendarToSvg({ ...args, theme: dark })
+    // The two constants that used to ship on every ground.
+    expect(darkSvg).not.toContain('#e2e8f0')
+    expect(darkSvg).not.toContain('#1e40af')
+    expect(darkSvg).toContain(dark.muted)
+    // …and light is deliberately UNCHANGED: the new light values are the old
+    // constants, so this fix moves dark only.
+    const lightSvg = calendarToSvg(args)
+    expect(lightSvg).toContain('#e2e8f0')
+    expect(lightSvg).toContain(defaultTheme.muted)
+  })
+})

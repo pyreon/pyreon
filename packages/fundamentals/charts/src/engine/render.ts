@@ -132,6 +132,24 @@ export interface ChartTheme {
   axis: string
   /** Grid lines and hover bands. */
   grid: string
+  /** Semantically GOOD: a candle that closed up. Not a palette colour. */
+  positive: string
+  /** Semantically BAD, or "look here": a down candle, today's rule, a
+   * highlighted parallel line. Not a palette colour. */
+  negative: string
+  /**
+   * A cell or region with NO data. Its job is to recede into `background`, so
+   * it is definitionally theme-relative — a single value cannot serve both
+   * grounds (`#e2e8f0` reads 1.23:1 on white and 14.41:1 on `#141821`, where
+   * it becomes the loudest thing on the chart).
+   */
+  muted: string
+  /**
+   * The value ramp for heatmap, calendar and geo, low to high. Must rise in
+   * CONTRAST against this theme's own `background`, or the chart inverts and
+   * higher values read as quieter.
+   */
+  ramp: readonly string[]
   /** Font family for every text command; '' inherits the host's font. */
   fontFamily: string
   fontSize: Double
@@ -261,6 +279,10 @@ export const defaultTheme: ChartTheme = {
   label: '#5a6b7a',
   axis: '#8496a5',
   grid: 'rgba(132,150,165,0.18)',
+  positive: '#15803d',
+  negative: '#b42318',
+  muted: '#e2e8f0',
+  ramp: ['#eff6ff', '#93c5fd', '#3b82f6', '#1e40af'],
   fontFamily: '',
   fontSize: 11.0,
   titleSize: 15.0,

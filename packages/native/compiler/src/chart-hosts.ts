@@ -62,10 +62,24 @@ export interface ChartHostTarget {
 }
 
 /** An option field the theme supplies a default for, and the theme field it reads. */
-export type ChartThemeField = 'palette' | 'labelColor' | 'gridColor' | 'axisColor' | 'laneColor' | 'linkColor'
+export type ChartThemeField =
+  | 'palette'
+  | 'labelColor'
+  | 'gridColor'
+  | 'axisColor'
+  | 'laneColor'
+  | 'linkColor'
+  | 'upColor'
+  | 'downColor'
+  | 'todayColor'
+  | 'highlightColor'
+  | 'emptyColor'
+  | 'stops'
 
 /** The `ChartTheme` field each option field defaults from — one place, both emitters. */
-export const CHART_THEME_SOURCE: Readonly<Record<ChartThemeField, 'palette' | 'label' | 'grid' | 'axis'>> = {
+export const CHART_THEME_SOURCE: Readonly<
+  Record<ChartThemeField, 'palette' | 'label' | 'grid' | 'axis' | 'positive' | 'negative' | 'muted' | 'ramp'>
+> = {
   palette: 'palette',
   labelColor: 'label',
   gridColor: 'grid',
@@ -78,6 +92,20 @@ export const CHART_THEME_SOURCE: Readonly<Record<ChartThemeField, 'palette' | 'l
   // (#9aa5b5) to within (6, 2, -3) — so dark is visually unchanged and only
   // light, where the fixed grey sat at 2.56:1, actually moves.
   linkColor: 'label',
+  // Semantic, not palette: a candle's direction, today's rule, a highlighted
+  // line. Their old constants were tuned on a white page — `#b42318` reads
+  // 2.70:1 on the dark ground, under 1.4.11's 3:1.
+  upColor: 'positive',
+  downColor: 'negative',
+  todayColor: 'negative',
+  highlightColor: 'negative',
+  // A cell with NO data has to recede into the ground, which is definitionally
+  // theme-relative: `#e2e8f0` recedes on white (1.23:1) and GLOWS on dark
+  // (14.41:1), where it became the loudest mark on the chart.
+  emptyColor: 'muted',
+  // The value ramp must rise in contrast against its OWN ground, or a higher
+  // value reads as quieter — the light ramp ran 16.32:1 down to 2.04:1 on dark.
+  stops: 'ramp',
 }
 
 export interface ChartHostArgs {
@@ -329,7 +357,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     data: ['tasks'],
     options: 'gantt',
     optionsStruct: 'GanttOptions',
-    themeDefaults: ['palette', 'labelColor', 'gridColor', 'laneColor'],
+    themeDefaults: ['palette', 'labelColor', 'gridColor', 'laneColor', 'todayColor'],
     defaultHeight: 320,
     layout: (a, t) => `layoutGantt(${a.data[0]}, ${t.rect('4.0', '4.0', `${a.W} - 8.0`, `${a.H} - 8.0`)}, ${a.options})`,
     render: (l, a) => `renderGantt(${l}, ${a.options})`,
@@ -353,7 +381,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     data: ['start', 'end', 'values'],
     options: 'calendar',
     optionsStruct: 'CalendarOptions',
-    themeDefaults: ['labelColor'],
+    themeDefaults: ['labelColor', 'emptyColor', 'stops'],
     defaultHeight: 140,
     layout: (a, t) => `layoutCalendar(${a.data[0]}, ${a.data[1]}, ${t.rect('4.0', '4.0', `${a.W} - 8.0`, `${a.H} - 8.0`)}, ${a.options})`,
     render: (l, a) => `renderCalendar(${l}, ${a.data[2]}, ${a.options})`,
@@ -365,7 +393,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     data: ['axes', 'rows'],
     options: 'parallel',
     optionsStruct: 'ParallelOptions',
-    themeDefaults: ['palette', 'labelColor', 'axisColor'],
+    themeDefaults: ['palette', 'labelColor', 'axisColor', 'highlightColor'],
     defaultHeight: 300,
     gutterDefault: 40,
     layout: (a, t) => `layoutParallel(${a.data[0]}, ${a.data[1]}, ${t.rect(a.gutter, '8.0', t.max0(`${a.W} - ${a.gutter} * 2.0`), t.max0(`${a.H} - 16.0`))}, ${a.options})`,
@@ -815,6 +843,10 @@ export const CHART_THEME_DEFAULT = {
   label: '#5a6b7a',
   axis: '#8496a5',
   grid: 'rgba(132,150,165,0.18)',
+  positive: '#15803d',
+  negative: '#b42318',
+  muted: '#e2e8f0',
+  ramp: ['#eff6ff', '#93c5fd', '#3b82f6', '#1e40af'],
   fontFamily: '',
   fontSize: '11.0',
   titleSize: '15.0',
@@ -851,6 +883,10 @@ export const CHART_THEMES: Readonly<Record<'light' | 'dark', Readonly<Record<key
     label: '#9aa5b5',
     axis: '#5d6878',
     grid: 'rgba(154,165,181,0.16)',
+    positive: '#22c55e',
+    negative: '#f87171',
+    muted: '#2a3140',
+    ramp: ['#172033', '#1d4ed8', '#3b82f6', '#93c5fd'],
     fontFamily: '',
     fontSize: '11.0',
     titleSize: '15.0',
@@ -869,6 +905,10 @@ export const CHART_THEME_FIELDS: readonly { name: keyof typeof CHART_THEME_DEFAU
   { name: 'label', kind: 'string' },
   { name: 'axis', kind: 'string' },
   { name: 'grid', kind: 'string' },
+  { name: 'positive', kind: 'string' },
+  { name: 'negative', kind: 'string' },
+  { name: 'muted', kind: 'string' },
+  { name: 'ramp', kind: 'strings' },
   { name: 'fontFamily', kind: 'string' },
   { name: 'fontSize', kind: 'number' },
   { name: 'titleSize', kind: 'number' },
@@ -913,8 +953,20 @@ export function chartThemeFields(
   for (const f of CHART_THEME_FIELDS) {
     const d = base[f.name]
     if (f.kind === 'strings') {
-      const light = list(palette.map((c) => JSON.stringify(c)))
-      out[f.name] = runtime && !paletteExplicit ? scheme(light, list((dark.palette as readonly string[]).map((c) => JSON.stringify(c)))) : light
+      // `palette` has its own resolution (a named `palettes.x`, an explicit
+      // `palette` prop), so it keeps that path; every OTHER list field reads
+      // its own value. Reading `palette` for all of them was correct only
+      // while it was the sole list field — the moment `ramp` joined, a
+      // calendar's value ramp emitted the CATEGORICAL palette.
+      const isPalette = f.name === 'palette'
+      const lightList = isPalette ? palette : (d as readonly string[])
+      const darkList = (isPalette ? dark.palette : dark[f.name]) as readonly string[]
+      const light = list(lightList.map((c) => JSON.stringify(c)))
+      const pinned = isPalette && paletteExplicit
+      out[f.name] =
+        runtime && !pinned && darkList.join('\u0000') !== lightList.join('\u0000')
+          ? scheme(light, list(darkList.map((c) => JSON.stringify(c))))
+          : light
     } else if (f.kind === 'number') out[f.name] = d as string
     else {
       const dv = dark[f.name] as string
@@ -928,12 +980,37 @@ export function chartThemeFields(
   }
   for (const f of v.fields) {
     const spec = CHART_THEME_FIELDS.find((x) => x.name === f.name)
-    if (spec === undefined || spec.kind === 'strings') continue
+    if (spec === undefined) continue
+    if (spec.kind === 'strings') {
+      // `palette` is resolved above (it also accepts a `palettes.<name>`
+      // reference). Any other list field takes a literal array of string
+      // literals here — silently dropping it would be the documented
+      // silent-lowering-gap class.
+      if (spec.name === 'palette') continue
+      const items = chartStringListLiteral(f.value)
+      if (items === undefined) {
+        warn(`<${tag} theme>: \`${f.name}\` must be an array of string literals on native; its default applies.`)
+        continue
+      }
+      out[spec.name] = list(items.map((c) => JSON.stringify(c)))
+      continue
+    }
     if (f.value.kind !== 'literal' || typeof f.value.value !== spec.kind) {
       warn(`<${tag} theme>: \`${f.name}\` must be a ${spec.kind} literal on native; its default applies.`)
       continue
     }
     out[spec.name] = spec.kind === 'number' ? chartDouble(f.value.value as number) : JSON.stringify(f.value.value)
+  }
+  return out
+}
+
+/** An array of string literals, or `undefined` for anything else. */
+function chartStringListLiteral(v: ExprIR): readonly string[] | undefined {
+  if (v.kind !== 'array') return undefined
+  const out: string[] = []
+  for (const el of v.elements) {
+    if (el.kind !== 'literal' || typeof el.value !== 'string') return undefined
+    out.push(el.value)
   }
   return out
 }

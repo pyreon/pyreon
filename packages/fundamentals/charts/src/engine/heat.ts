@@ -99,7 +99,7 @@ function heatHashOffset(hex: string): number {
  * interpolated piecewise between them. No stops → black; one stop → that
  * stop. Returns `rgb(r, g, b)`, which every backend's fill accepts.
  */
-export function rampColor(stops: string[], t: Double): string {
+export function rampColor(stops: readonly string[], t: Double): string {
   const n = stops.length
   if (n === 0) return 'rgb(0, 0, 0)'
   if (n === 1 || t <= 0.0) {
@@ -137,7 +137,7 @@ export interface HeatmapOptions {
   grid: HeatGrid
   plot: Rect
   /** Ramp stops (`#rrggbb`); default `HEAT_RAMP`. */
-  stops?: string[] | undefined
+  stops?: readonly string[] | undefined
   /** Gap between cells in pixels — the grout that makes cells readable. */
   gap?: Double | undefined
   /** Entrance progress 0..1; cells scale up from their centres. */

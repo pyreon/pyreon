@@ -64,7 +64,7 @@ export interface CalendarOptions {
   fontSize?: Double | undefined
   labelColor?: string | undefined
   /** Colour stops for the value ramp; default the heat ramp. */
-  stops?: string[] | undefined
+  stops?: readonly string[] | undefined
   /** Colour for days without a value. */
   emptyColor?: string | undefined
   /** Fixed value domain; default the data's min/max. */

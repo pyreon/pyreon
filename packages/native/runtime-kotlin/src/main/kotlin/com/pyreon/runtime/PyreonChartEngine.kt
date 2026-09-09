@@ -57,7 +57,7 @@ data class Annotation(var y: Double? = null, var x: Double? = null, var yFrom: D
 
 data class PointMarker(var seriesIndex: Double? = null, var at: String? = null, var atIndex: Double? = null, var label: String? = null, var color: String? = null, var radius: Double? = null)
 
-data class ChartTheme(var palette: List<String>, var background: String, var surface: String, var text: String, var label: String, var axis: String, var grid: String, var fontFamily: String, var fontSize: Double, var titleSize: Double, var radius: Double, var enterMs: Double, var updateMs: Double)
+data class ChartTheme(var palette: List<String>, var background: String, var surface: String, var text: String, var label: String, var axis: String, var grid: String, var positive: String, var negative: String, var muted: String, var ramp: List<String>, var fontFamily: String, var fontSize: Double, var titleSize: Double, var radius: Double, var enterMs: Double, var updateMs: Double)
 
 data class Emphasis(var highlight: Int, var selected: List<Int>)
 
@@ -281,7 +281,7 @@ private val START = (-kotlin.math.PI).toDouble() / (2.0).toDouble()
 
 private val RADAR_START = (-kotlin.math.PI).toDouble() / (2.0).toDouble()
 
-private val defaultTheme: ChartTheme = ChartTheme(palette = DEFAULT_PALETTE, background = "", surface = "#ffffff", text = "#1f2937", label = "#5a6b7a", axis = "#8496a5", grid = "rgba(132,150,165,0.18)", fontFamily = "", fontSize = 11.0, titleSize = 15.0, radius = 3.0, enterMs = 700.0, updateMs = 350.0)
+private val defaultTheme: ChartTheme = ChartTheme(palette = DEFAULT_PALETTE, background = "", surface = "#ffffff", text = "#1f2937", label = "#5a6b7a", axis = "#8496a5", grid = "rgba(132,150,165,0.18)", positive = "#15803d", negative = "#b42318", muted = "#e2e8f0", ramp = listOf("#eff6ff", "#93c5fd", "#3b82f6", "#1e40af"), fontFamily = "", fontSize = 11.0, titleSize = 15.0, radius = 3.0, enterMs = 700.0, updateMs = 350.0)
 
 private val HEAT_RAMP = listOf("#eff6ff", "#93c5fd", "#3b82f6", "#1e40af")
 
@@ -5501,7 +5501,7 @@ fun renderCandlestickChart(candles: List<Ohlc>, w: Double, h: Double, categories
     for (tick in l.xTicks) {
       cmds.add(PyreonDrawCmd(kind = "text", fill = theme.label, text = tick.label, at = PyreonChartPt(x = tick.pos, y = l.plot.y + l.plot.h + 6.0), size = theme.fontSize, align = "middle", baseline = "top"))
     }
-    val body = renderCandles(candles, l.plot, f.domain, options)
+    val body = renderCandles(candles, l.plot, f.domain, CandleOptions(upColor = (options?.upColor ?: theme.positive), downColor = (options?.downColor ?: theme.negative), widthRatio = options?.widthRatio))
     for (c in body) {
       cmds.add(c)
     }

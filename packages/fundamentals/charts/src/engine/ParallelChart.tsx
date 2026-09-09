@@ -27,7 +27,7 @@ export interface ParallelChartProps extends CanvasHostProps {
 export function ParallelChart(props: ParallelChartProps): VNode {
   const readRows = (): ParallelRow[] => (typeof props.rows === 'function' ? props.rows() : props.rows)
   const opts = (t: ChartTheme): ParallelOptions => {
-    const base: ParallelOptions = { palette: t.palette, labelColor: t.label, axisColor: t.axis, ...props.parallel }
+    const base: ParallelOptions = { palette: t.palette, labelColor: t.label, axisColor: t.axis, highlightColor: t.negative, ...props.parallel }
     const colorOf = props.rowColor
     return colorOf === undefined ? base : { ...base, lineColors: parallelLineColors(readRows(), colorOf) }
   }

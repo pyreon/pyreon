@@ -454,7 +454,8 @@ const { spec, warnings } = compileOption(myEchartsOption)
 
 One token map draws every chart. `ChartTheme` is `palette` (series colours in
 draw order), `background`, `surface` (tooltip and pager cards), `text`, `label`
-(ticks and legend entries), `axis`, `grid`, `fontFamily`, `fontSize`,
+(ticks and legend entries), `axis`, `grid`, the three semantic tokens
+`positive` / `negative` / `muted`, the value `ramp`, `fontFamily`, `fontSize`,
 `titleSize`, `radius` (the bar corner marks fall back to) and the two animation
 lengths `enterMs` / `updateMs`. Every host, family, legend, title, tooltip and
 accessible description reads from it, so a chart with no props already looks
@@ -466,6 +467,18 @@ right on both grounds:
   `mode={useMode}` hands PyreonUI's reactive mode straight through, and
   `theme={{ … }}` merges token overrides for every chart below it.
 - **The `theme` prop** on any host merges over whatever is in scope.
+
+The last four tokens exist because a colour that is not a series colour still
+has to change with the ground. `positive` and `negative` are semantic — an up
+or down candle, today's rule on a gantt, a highlighted parallel line — and are
+never palette entries. `muted` fills a cell or region with **no data**; its job
+is to recede into `background`, so it cannot be one value for both modes.
+`ramp` is the low-to-high value ramp behind `<HeatmapChart>`, `<CalendarChart>`
+and `<MapChart>`, and it must gain contrast against its own `background` as the
+value rises — a ramp that runs light-to-dark reads correctly on a white page
+and backwards on a dark one, where the highest value becomes the faintest mark.
+A per-family option (`emptyColor`, `upColor`, `stops`, …) still wins over the
+token.
 
 ```tsx
 // @check

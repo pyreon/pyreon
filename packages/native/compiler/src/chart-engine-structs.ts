@@ -1831,6 +1831,33 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         }
       },
       {
+        "name": "positive",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "negative",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "muted",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "ramp",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "string"
+          }
+        }
+      },
+      {
         "name": "fontFamily",
         "type": {
           "kind": "string"

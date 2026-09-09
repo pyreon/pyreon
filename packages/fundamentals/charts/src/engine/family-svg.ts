@@ -17,7 +17,7 @@ import { renderRadar } from './radar'
 import type { RadarAxis } from './radar'
 import { ohlcExtent, renderCandles } from './candlestick'
 import type { CandleOptions, Ohlc } from './candlestick'
-import { buildHeatGrid, HEAT_RAMP, renderHeat } from './heat'
+import { buildHeatGrid, renderHeat } from './heat'
 import { renderFunnel } from './funnel'
 import { layoutTreemap, renderTreemap } from './treemap'
 import type { TreeNode, TreemapOptions } from './treemap'
@@ -366,7 +366,7 @@ export function candlestickToSvg<T>(options: CandlestickToSvgOptions<T>): string
       baseline: 'top',
     })
   }
-  for (const c of renderCandles(candles, l.plot, domain, options.candle ?? {})) cmds.push(c)
+  for (const c of renderCandles(candles, l.plot, domain, { upColor: t.positive, downColor: t.negative, ...options.candle })) cmds.push(c)
 
   const fmt = options.format ?? plain
   return renderSvg(cmds, width, height, svgTail(options.svg, options.title, options.description, () => {
@@ -447,7 +447,7 @@ export function heatmapToSvg<T>(options: HeatmapToSvgOptions<T>): string {
   const cmds: DrawCmd[] = renderHeat({
     grid,
     plot,
-    stops: options.colors ?? HEAT_RAMP,
+    stops: options.colors ?? t.ramp,
     gap: options.gap,
   })
   const nc = grid.cols.length
@@ -797,9 +797,9 @@ export function calendarToSvg(options: CalendarToSvgOptions): string {
   const t = themeOf(options.theme)
   const width = options.width ?? 720.0
   const height = options.height ?? 140.0
-  const layout = layoutCalendar(options.start, options.end, { x: 4.0, y: 4.0, w: width - 8.0, h: height - 8.0 }, { labelColor: t.label, ...options.calendar })
+  const layout = layoutCalendar(options.start, options.end, { x: 4.0, y: 4.0, w: width - 8.0, h: height - 8.0 }, { labelColor: t.label, emptyColor: t.muted, stops: t.ramp, ...options.calendar })
   const vals = calendarValues(options.values)
-  const cmds = renderCalendar(layout, vals, { labelColor: t.label, ...options.calendar })
+  const cmds = renderCalendar(layout, vals, { labelColor: t.label, emptyColor: t.muted, stops: t.ramp, ...options.calendar })
   void (options.measure ?? measureApprox())
   let filled = 0
   for (const c of layout.cells) if (options.values[c.date] !== undefined) filled++
@@ -835,8 +835,8 @@ export function ganttToSvg(options: GanttToSvgOptions): string {
   const width = options.width ?? 720.0
   const height = options.height ?? 320.0
   const measure = options.measure ?? measureApprox()
-  const layout = layoutGantt(options.tasks, { x: 4.0, y: 4.0, w: width - 8.0, h: height - 8.0 }, { palette: t.palette, labelColor: t.label, gridColor: t.grid, laneColor: t.grid, ...options.gantt }, measure)
-  const cmds = renderGantt(layout, { palette: t.palette, labelColor: t.label, gridColor: t.grid, laneColor: t.grid, ...options.gantt })
+  const layout = layoutGantt(options.tasks, { x: 4.0, y: 4.0, w: width - 8.0, h: height - 8.0 }, { palette: t.palette, labelColor: t.label, gridColor: t.grid, laneColor: t.grid, todayColor: t.negative, ...options.gantt }, measure)
+  const cmds = renderGantt(layout, { palette: t.palette, labelColor: t.label, gridColor: t.grid, laneColor: t.grid, todayColor: t.negative, ...options.gantt })
   const description =
     options.description ??
     (options.title !== undefined
@@ -872,7 +872,7 @@ export function parallelToSvg(options: ParallelToSvgOptions): string {
   const height = options.height ?? 360.0
   const gutter = 40.0
   const layout = layoutParallel(options.axes, parallelRows(options.axes, options.rows), { x: gutter, y: 8.0, w: Math.max(0.0, width - gutter * 2.0), h: Math.max(0.0, height - 16.0) }, { palette: t.palette, labelColor: t.label, axisColor: t.axis, ...options.parallel })
-  const cmds = renderParallel(layout, { palette: t.palette, labelColor: t.label, axisColor: t.axis, ...options.parallel })
+  const cmds = renderParallel(layout, { palette: t.palette, labelColor: t.label, axisColor: t.axis, highlightColor: t.negative, ...options.parallel })
   void (options.measure ?? measureApprox())
   const description =
     options.description ??

@@ -30,9 +30,9 @@ export function CalendarChart(props: CalendarChartProps): VNode {
     track: () => {
       readValues()
     },
-    layout: (box, _measure, theme) => layoutCalendar(props.start, props.end, { x: box.x + 4.0, y: box.y + 4.0, w: box.w - 8.0, h: box.h - 8.0 }, { labelColor: theme.label, ...props.calendar }),
+    layout: (box, _measure, theme) => layoutCalendar(props.start, props.end, { x: box.x + 4.0, y: box.y + 4.0, w: box.w - 8.0, h: box.h - 8.0 }, { labelColor: theme.label, emptyColor: theme.muted, stops: theme.ramp, ...props.calendar }),
     animates: true,
-    render: (layout, _measure, theme, progress) => renderCalendar(layout, calendarValues(readValues()), { labelColor: theme.label, ...props.calendar, progress }),
+    render: (layout, _measure, theme, progress) => renderCalendar(layout, calendarValues(readValues()), { labelColor: theme.label, emptyColor: theme.muted, stops: theme.ramp, ...props.calendar, progress }),
     select: (layout, px, py) => {
       props.onSelect?.(hitCalendar(layout, px, py))
       props.onSelectIndex?.(hitCalendarIndex(layout, px, py))
