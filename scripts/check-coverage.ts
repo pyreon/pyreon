@@ -180,14 +180,16 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
   },
   // ── Statements + branches < floor ───────────────────────────────────
   '@pyreon/flow': {
-    currentStatements: 98,
-    currentBranches: 90,
+    currentStatements: 99,
+    currentBranches: 92,
     reason:
-      'Node-graph canvas. Statements are ABOVE the 95 floor (98.49 measured); only branches sit under it, and the shortfall is ONE file: ' +
-      '`layout-engine.ts` at 75.63% branches, the in-house engine that replaced elkjs in #2933 (the tree\'s last copyleft dependency). ' +
-      'Its algorithmic fallbacks — cycle-breaking, ranking, ordering — carry many branches the current tests do not drive. Every other ' +
-      'file in the package is at 99%+ branches, so this is one bounded, nameable gap rather than a thin package. Raising it means ' +
-      'exercising the layout algorithm directly, which is real work and tracked separately.',
+      'Node-graph canvas. Statements are ABOVE the 95 floor (99.15 measured); only branches sit under it, at 92.72. ' +
+      'Ratcheted 98/90 -> 99/92 by the 92%+ campaign: the shortfall named here was `layout-engine.ts` at 75.63% branches ' +
+      '(the in-house engine that replaced elkjs in #2933), and three new suites took it to 83.97 — malformed graphs ' +
+      '(dangling edges, cycles, self-loops, forests, across all SEVEN algorithms; the prior tests ran five and only ever ' +
+      'passed well-formed input), the `direction` option including the UP/LEFT axis flip, and the edge API no-op guards ' +
+      'driven through the undo stack. The residual is the engine\'s numeric ordering/crossing-reduction arms plus ' +
+      'flow.ts interaction paths the real-Chromium suites drive. Raise in lockstep as tests land; never lower.',
   },
   '@pyreon/compiler': {
     currentStatements: 91,
@@ -237,10 +239,18 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
       'CLI tool. Re-baselined 95/85 → 88/76 at the 2026-07 coverage-gate restoration (measured 88.88/76.91): the CLI-unification wave (`pyreon new`/`mcp`/`add`/`check`/`upgrade` npx-delegator + subprocess paths) and the doctor gates that shell out to real repo scans (check-bundle-budgets, audit-types, native-audit, audit-leak-classes) landed with integration-tier coverage. Multi-PR per-subcommand work to lift back.',
   },
   '@pyreon/server': {
-    currentStatements: 95,
-    currentBranches: 86,
+    currentStatements: 98,
+    currentBranches: 92,
     reason:
-      'SSR server. Branches at ~86% — residual gap is client-side island() path (browser-only client.ts hydration scheduling) covered by islands.browser.test.tsx in real Chromium but unreachable from node-process vitest. PRs #1335 + #1336 added happy-dom coverage for bare island() invocation; further lift to 95 requires real-browser mount tests.',
+      'SSR server. Statements are ABOVE the 95 floor (98.48 measured); only branches sit under it, at 92.11. ' +
+      'Ratcheted 95/86 -> 98/92 by the 92%+ campaign. The reason this entry previously gave — "the client-side island() ' +
+      'path is browser-only and unreachable from node-process vitest" — was true of the hydration SCHEDULING and wrongly ' +
+      'generalised to the whole client half: the server-island client path (self-activation ref, fragment fetch, the ' +
+      'idempotency stamp shared by two activation paths, all three failure modes) had ZERO coverage purely because its ' +
+      'only suite runs under `node`, where `isClient` is false. Under happy-dom it is entirely reachable. Also added: the ' +
+      'island props codec against a malformed `data-props` attribute, and prerender resilience incl. the leak-class-I ' +
+      'timer clear. The residual IS genuinely browser-only (islands.browser.test.tsx in real Chromium) plus two arms the ' +
+      'source documents as unreachable.',
   },
   '@pyreon/zero': {
     currentStatements: 94,
