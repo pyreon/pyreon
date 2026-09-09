@@ -79,6 +79,17 @@ export function verdictKey(inputs: {
   source: string
   test: string
   typecheckOnly: boolean
+  /**
+   * Did the run actually EXECUTE the behaviour test, or only compile it?
+   *
+   * Load-bearing, and not implied by `typecheckOnly`: `verify-kotlin` asks for
+   * a full run and then degrades to compile-only when no JDK is on PATH,
+   * exiting 0 either way. Without this in the key both outcomes hash the same,
+   * so one JDK-less run writes an "ok" that every later run replays — including
+   * runs on a machine that COULD have executed the test. Defaults to `true` so
+   * an existing caller's key is unchanged.
+   */
+  smokeRuns?: boolean
   /** Namespace; the default is the Kotlin runtime service verification. `check-native-cosource` keys its Swift verdicts under 'swift-cosource'. */
   kind?: string
 }): string {
@@ -93,6 +104,8 @@ export function verdictKey(inputs: {
     .update(inputs.test)
     .update('\0')
     .update(inputs.typecheckOnly ? 'typecheck' : 'full')
+    .update('\0')
+    .update((inputs.smokeRuns ?? true) ? 'smoke' : 'nosmoke')
     .digest('hex')
 }
 

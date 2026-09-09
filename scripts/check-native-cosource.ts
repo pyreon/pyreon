@@ -27,6 +27,10 @@ import {
   writeVerdict,
 } from '../packages/native/runtime-kotlin/scripts/verdict-cache'
 import {
+  kotlinOutcomeLabel,
+  smokeSkipped,
+} from '../packages/native/runtime-kotlin/scripts/smoke-marker'
+import {
   existsSync,
   mkdtempSync,
   readdirSync,
@@ -207,6 +211,33 @@ const toolVersion = (bin: string, flag: string): string => {
   return `${p.stdout ?? ''}${p.stderr ?? ''}`.trim() || 'unknown'
 }
 const kotlincVersion = kotlinc ? toolVersion('kotlinc', '-version') : ''
+
+/**
+ * Can the Kotlin SMOKE actually run here?
+ *
+ * `verify-kotlin` builds a JAR and runs its `main()` through `java`. With no
+ * JDK it degrades to typecheck-only, warns on stdout, and exits 0 — and this
+ * script discards a successful child's stdout, so the warning was invisible and
+ * the line below reported "(compiled + ran test)" purely because a `*Test.kt`
+ * FILE existed. Every Kotlin behaviour assertion in the repo was then
+ * typecheck-only on any machine without a JDK, while the log said otherwise.
+ * (The @pyreon/flow port shipped a real selectAll/deleteSelected divergence
+ * exactly this way.)
+ *
+ * macOS ships a `/usr/bin/java` stub that satisfies `command -v` and then fails
+ * with an install prompt, so the probe has to EXECUTE it, not just find it.
+ */
+const javaRuns = (() => {
+  try {
+    return spawnSync('java', ['-version'], { encoding: 'utf8' }).status === 0
+  } catch {
+    return false
+  }
+})()
+
+/** A skipped smoke is a broken runner under the same flag the toolchains use. */
+const requireNativeValidate = process.env.PYREON_REQUIRE_NATIVE_VALIDATE === '1'
+
 const swiftcVersion = swiftc ? toolVersion('swiftc', '--version') : ''
 const kotlinHarness = readOr(verifyKotlin)
 let cacheHits = 0
@@ -311,6 +342,10 @@ for (const pkg of pkgs) {
             source: bytesOf(abs),
             test: testFile ? bytesOf([testFile]) : '',
             typecheckOnly,
+            // A typecheck-only outcome must never be REPLAYED as a behaviour
+            // pass: without this the same key covers both, so one JDK-less run
+            // caches an "ok" that every later run (JDK or not) reuses.
+            smokeRuns: typecheckOnly ? false : javaRuns,
           })
           const ok = cached(key, `${pkg.name} [kotlin ${svc} · ${run.label}]`, () => {
             const r = spawnSync('bun', args, { encoding: 'utf8' })
@@ -320,7 +355,17 @@ for (const pkg of pkgs) {
               )
               return false
             }
-            console.log(`  ✓ ${pkg.name} [kotlin ${svc} · ${run.label}] (${files.length} file(s))`)
+            const skipped = !typecheckOnly && smokeSkipped(r.stdout ?? '')
+            if (skipped && requireNativeValidate) {
+              console.error(
+                `  ✗ ${pkg.name} [kotlin ${svc} · ${run.label}]: the behaviour test only TYPECHECKED — no JDK on PATH, and PYREON_REQUIRE_NATIVE_VALIDATE=1.\n${r.stdout}`,
+              )
+              return false
+            }
+            console.log(
+              `  ✓ ${pkg.name} [kotlin ${svc} · ${run.label}] (${files.length} file(s))` +
+                (skipped ? ' ⚠ typecheck-only — smoke SKIPPED, no JDK' : ''),
+            )
             return true
           })
           if (!ok) failures++
@@ -344,6 +389,9 @@ for (const pkg of pkgs) {
         source: bytesOf(ktFiles),
         test: test ? bytesOf([test]) : '',
         typecheckOnly: !test,
+        // See the sibling branch: a typecheck-only outcome and a real
+        // behaviour pass must not share a cache key.
+        smokeRuns: test ? javaRuns : false,
       })
       const ok = cached(key, `${pkg.name} [kotlin]`, () => {
         const r = spawnSync('bun', args, { encoding: 'utf8' })
@@ -351,8 +399,19 @@ for (const pkg of pkgs) {
           console.error(`  ✗ ${pkg.name} [kotlin]:\n${r.stdout}\n${r.stderr}`)
           return false
         }
+        const skipped = Boolean(test) && smokeSkipped(r.stdout ?? '')
+        if (skipped && requireNativeValidate) {
+          console.error(
+            `  ✗ ${pkg.name} [kotlin]: the behaviour test only TYPECHECKED — no JDK on PATH, and PYREON_REQUIRE_NATIVE_VALIDATE=1.\n${r.stdout}`,
+          )
+          return false
+        }
+        // Report what HAPPENED, not what the file layout implies. The old line
+        // said "compiled + ran test" whenever a `*Test.kt` existed, whether or
+        // not a JVM was there to run it.
         console.log(
-          `  ✓ ${pkg.name} [kotlin]` + (test ? ' (compiled + ran test)' : ' (typecheck-only)'),
+          `  ✓ ${pkg.name} [kotlin]` +
+            kotlinOutcomeLabel({ hasTest: Boolean(test), smokeSkipped: skipped }),
         )
         return true
       })
