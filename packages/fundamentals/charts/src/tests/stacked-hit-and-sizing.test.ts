@@ -114,8 +114,20 @@ describe('stacked and grouped bars are hit-testable', () => {
     expect(stackedHitAt(onlyStacked, measure, r.x + r.w / 2, r.y + r.h / 2)).toBeGreaterThanOrEqual(0)
   })
 
-  it('a horizontal spec returns -1 — stacked/grouped are vertical-only', () => {
-    expect(stackedHitAt({ ...spec('stacked'), horizontal: true }, measure, 100, 100)).toBe(-1)
+  it('a horizontal spec hits its own bands — and still misses outside them', () => {
+    // This test used to assert -1 unconditionally, on the grounds that
+    // stacked/grouped were "vertical-only". They were, because the horizontal
+    // render filtered them out and drew nothing — so the assertion was
+    // describing a gap rather than protecting an invariant.
+    //
+    // The invariant worth keeping is the one underneath it: a tap must never
+    // report a band it did not land in. That is what is asserted now, on both
+    // sides — a point inside the first band's stack hits it, a point above
+    // the plot hits nothing.
+    const flipped = { ...spec('stacked'), horizontal: true }
+    const plot = layoutChart(flipped, measure).plot
+    expect(stackedHitAt(flipped, measure, plot.x + 4, plot.y + plot.h * 0.25)).toBe(0)
+    expect(stackedHitAt(flipped, measure, plot.x + 4, plot.y - 25)).toBe(-1)
   })
 })
 

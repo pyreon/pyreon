@@ -1,11 +1,11 @@
 // Marks → draw commands. The whole chart, as plain data.
 
-import { computeLayout, layoutBars, layoutBarsH, layoutSeriesPoints, layoutSeriesPointsAt } from './layout'
+import { computeLayout, layoutBars, layoutBarsH, layoutSeriesPoints, layoutSeriesPointsAt, layoutSeriesPointsH } from './layout'
 import { DEFAULT_PALETTE } from './palette'
-import { layoutGroupedBars, layoutStackedBars, layoutWaterfall, normalizeStack, stackedExtent, waterfallExtent } from './stack'
+import { layoutGroupedBars, layoutGroupedBarsH, layoutStackedBars, layoutStackedBarsH, layoutWaterfall, normalizeStack, stackCumulative, stackedExtent, waterfallExtent } from './stack'
 import type { Formatter } from './format'
 import type { LayoutConfig, PlotLayout } from './layout'
-import { extent, niceDomain, scaleLinear } from './scale'
+import { extent, isFiniteNumber, niceDomain, scaleLinear } from './scale'
 import { percent, plain } from './format'
 import { countToDouble } from './brush'
 import { polygonCmd, rectCmd } from './corners'
@@ -16,7 +16,7 @@ import type { DrawCmd, Domain, MeasureText, Pt, Rect, Double } from './types'
 
 /** One drawable series. */
 export interface Series {
-  kind: 'bars' | 'line' | 'area' | 'points' | 'stacked' | 'grouped' | 'waterfall'
+  kind: 'bars' | 'line' | 'area' | 'points' | 'stacked' | 'grouped' | 'waterfall' | 'band' | 'stackedArea'
   values: Double[]
   color: string
   /** Stroke width for line/area outlines; ignored by bars and points. */
@@ -27,8 +27,27 @@ export interface Series {
   label: string
   /** Densifier applied to line/area points — `smooth`/`step` from ./curve. */
   curve?: ((points: Pt[]) => Pt[]) | undefined
-  /** Draw each value above its bar. */
+  /**
+   * Label each datum with its value.
+   *
+   * Honoured by EVERY mark kind, with the placement each one allows: outside
+   * the free edge for `bars`, `grouped` and `waterfall` (above a positive
+   * value, below a negative one), above the point for `line`, `area` and
+   * `points`, and INSIDE the segment for `stacked` and `stackedArea`, which
+   * have no free edge to hang a label from. The value printed is the
+   * datum's OWN — for a stack that is the segment, not the running total the
+   * outline already shows.
+   */
   showValues?: boolean | undefined
+  /**
+   * The bubble channel's RAW values, before the pixel mapping.
+   *
+   * `radii` is what the engine draws with; this is what the datum SAID. The
+   * tooltip and the accessible table need the second — "radius 12" is a
+   * measurement of the drawing, not of the data — and without it a bubble
+   * chart's third variable is readable only by eye.
+   */
+  rValues?: Double[] | undefined
   /** Per-datum radii (the bubble channel), already mapped to pixels. */
   radii?: Double[] | undefined
   /** Which y axis the series scales against; absent = left. See `seriesOnRightAxis`. */
@@ -54,6 +73,17 @@ export interface Series {
    */
   errLow?: Double[] | undefined
   errHigh?: Double[] | undefined
+  /**
+   * The SECOND value channel, for marks that span two values per datum.
+   *
+   * `band` uses it as the lower bound (`values` is the upper), which is what
+   * a confidence interval, a min/max range or a forecast cone is. Kept apart
+   * from `errLow`/`errHigh` deliberately: those are whiskers DECORATING a
+   * value, drawn per datum and never filled, while this is the mark's own
+   * geometry — sharing one field would make "draw a whisker" and "draw a
+   * region" the same request.
+   */
+  values2?: Double[] | undefined
 }
 
 /**
@@ -414,11 +444,11 @@ export function geometrySpec(spec: ChartSpec): ChartSpec {
  */
 export function seriesOnRightAxis(s: Series, spec: ChartSpec): boolean {
   if (spec.horizontal === true) return false
-  if (s.kind === 'stacked' || s.kind === 'grouped') return false
+  if (s.kind === 'stacked' || s.kind === 'grouped' || s.kind === 'stackedArea') return false
   if (s.axis !== 'right') return false
   let hasLeft = false
   for (const q of spec.series) {
-    const qRight = q.axis === 'right' && q.kind !== 'stacked' && q.kind !== 'grouped'
+    const qRight = q.axis === 'right' && q.kind !== 'stacked' && q.kind !== 'grouped' && q.kind !== 'stackedArea'
     if (!qRight) hasLeft = true
   }
   return hasLeft
@@ -441,18 +471,18 @@ function rightAxisSeries(spec: ChartSpec): Series[] {
 function deriveOver(series: Series[]): Domain {
   // A STACK's domain is its tallest TOTAL, not its tallest value — taking the
   // max of the individual series would clip the stack at the top.
-  const stacked = series.filter((s) => s.kind === 'stacked')
+  const stacked = series.filter((s) => s.kind === 'stacked' || s.kind === 'stackedArea')
   if (stacked.length > 0) {
     const e = stackedExtent(stacked.map((s) => s.values))
     const others: Double[] = []
-    for (const s of series) if (s.kind !== 'stacked') for (const v of s.values) if (isFiniteValue(v)) others.push(v)
+    for (const s of series) if (s.kind !== 'stacked' && s.kind !== 'stackedArea') for (const v of s.values) if (isFiniteValue(v)) others.push(v)
     const max = others.length > 0 ? Math.max(e.max, extent(others).max) : e.max
     return niceDomain({ min: 0.0, max }, 5.0)
   }
   const all: Double[] = []
   let hasBars = false
   for (const s of series) {
-    if (s.kind === 'bars' || s.kind === 'area' || s.kind === 'grouped' || s.kind === 'waterfall') hasBars = true
+    if (s.kind === 'bars' || s.kind === 'area' || s.kind === 'grouped' || s.kind === 'waterfall' || s.kind === 'stackedArea') hasBars = true
     if (s.kind === 'waterfall') {
       // A waterfall's extent is its RUNNING TOTALS, not its steps — a chart
       // of +5, +5, +5 must reach 15.
@@ -464,6 +494,9 @@ function deriveOver(series: Series[]): Domain {
     // Gaps (NaN) carry no extent — and so do error bars beyond them: the
     // whisker must stay inside the axis.
     for (const v of s.values) if (isFiniteValue(v)) all.push(v)
+    // A band's lower bound is data too; without it a band dipping below every
+    // `values` entry is clipped at the axis floor.
+    for (const v of s.values2 ?? []) if (isFiniteValue(v)) all.push(v)
     for (const v of s.errLow ?? []) if (isFiniteValue(v)) all.push(v)
     for (const v of s.errHigh ?? []) if (isFiniteValue(v)) all.push(v)
   }
@@ -474,13 +507,9 @@ function deriveOver(series: Series[]): Domain {
   return niceDomain(withZero, 5.0)
 }
 
-/**
- * Finite check written for the native subset: a NaN is the only value that is
- * not equal to itself, and the engine never produces infinities. `Number.*`
- * has no lowering inside this module, so the comparison IS the check.
- */
+/** Finite check — `isFiniteNumber` from `./scale` (NaN AND infinity are gaps; `Number.*` has no native lowering). */
 function isFiniteValue(v: Double): boolean {
-  return v === v
+  return isFiniteNumber(v)
 }
 
 /** Longest series length — the x extent for a numeric axis. */
@@ -773,30 +802,115 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   // Stacked and grouped series are laid out TOGETHER — each needs to know the
   // others to place its bars — so they are drawn as a set before the
   // independent marks rather than one at a time in the loop below.
-  const stackedSeries = spec.horizontal === true ? [] : spec.series.filter((s) => s.kind === 'stacked')
+  // The flipped frame gets the SAME marks, through the horizontal twins.
+  // Before this, `horizontal` simply filtered stacked and grouped series out:
+  // the chart drew its axes and nothing else, with no warning — a population
+  // pyramid or a ranked breakdown rendered as an empty box.
+  const stackedSeries = spec.series.filter((s) => s.kind === 'stacked')
   if (stackedSeries.length > 0) {
-    for (const seg of layoutStackedBars(stackedSeries.map((s) => s.values), plot, yDomain, 0.25)) {
+    const stackSegs = spec.horizontal === true
+      ? layoutStackedBarsH(stackedSeries.map((s) => s.values), plot, yDomain, 0.25)
+      : layoutStackedBars(stackedSeries.map((s) => s.values), plot, yDomain, 0.25)
+    const fmtS = spec.yFormat ?? plain
+    for (const seg of stackSegs) {
       const rS = growRect(seg.rect, yDomain)
       const gS = seriesGradient(stackedSeries[seg.seriesIndex]!.gradient, plot)
       out.push(rectCmd(rS, stackedSeries[seg.seriesIndex]!.color, stackedSeries[seg.seriesIndex]!.corners, gS.stops.length === 0 ? undefined : gS))
       const lvlS = emphasisLevel(spec, seg.datumIndex)
       if (lvlS > 0) out.push(emphasisOutline(rS, lvlS, t.label))
+      // A stacked segment labels INSIDE itself: its value is the segment's
+      // own, not the running total, and there is no outside edge to hang it
+      // from that would not collide with the segment above.
+      if (stackedSeries[seg.seriesIndex]!.showValues === true && progress >= 1.0) {
+        out.push({
+          kind: 'text',
+          text: fmtS(seg.value),
+          at: { x: rS.x + rS.w / 2.0, y: rS.y + rS.h / 2.0 },
+          fill: t.label,
+          size: t.fontSize,
+          align: 'middle',
+          baseline: 'middle',
+        })
+      }
     }
   }
-  const groupedSeries = spec.horizontal === true ? [] : spec.series.filter((s) => s.kind === 'grouped')
+  const groupedSeries = spec.series.filter((s) => s.kind === 'grouped')
   if (groupedSeries.length > 0) {
-    for (const seg of layoutGroupedBars(groupedSeries.map((s) => s.values), plot, yDomain, 0.25)) {
+    const groupSegs = spec.horizontal === true
+      ? layoutGroupedBarsH(groupedSeries.map((s) => s.values), plot, yDomain, 0.25)
+      : layoutGroupedBars(groupedSeries.map((s) => s.values), plot, yDomain, 0.25)
+    const fmtG = spec.yFormat ?? plain
+    for (const seg of groupSegs) {
       const rG = growRect(seg.rect, yDomain)
       const gG = seriesGradient(groupedSeries[seg.seriesIndex]!.gradient, plot)
       out.push(rectCmd(rG, groupedSeries[seg.seriesIndex]!.color, groupedSeries[seg.seriesIndex]!.corners, gG.stops.length === 0 ? undefined : gG))
       const lvlG = emphasisLevel(spec, seg.datumIndex)
       if (lvlG > 0) out.push(emphasisOutline(rG, lvlG, t.label))
+      // A grouped bar has a free outer edge, so it labels OUTSIDE like a
+      // plain bar — above a positive one, below a negative one.
+      if (groupedSeries[seg.seriesIndex]!.showValues === true && progress >= 1.0) {
+        out.push({
+          kind: 'text',
+          text: fmtG(seg.value),
+          at: { x: rG.x + rG.w / 2.0, y: seg.value < 0.0 ? rG.y + rG.h + 4.0 : rG.y - 4.0 },
+          fill: t.label,
+          size: t.fontSize,
+          align: 'middle',
+          baseline: seg.value < 0.0 ? 'top' : 'bottom',
+        })
+      }
+    }
+  }
+
+  // Stacked areas are laid out as a SET, like stacked bars: each band is
+  // filled between the running total below it and its own top, so the
+  // outline of the topmost series is the total.
+  const areaStack = spec.horizontal === true ? [] : spec.series.filter((s) => s.kind === 'stackedArea')
+  if (areaStack.length > 0) {
+    const tops = stackCumulative(areaStack.map((s) => s.values))
+    for (let k = 0; k < areaStack.length; k++) {
+      const sA = areaStack[k]!
+      const top = tops[k]!
+      const below = k === 0 ? [] : tops[k - 1]!
+      const upper: Pt[] = []
+      const lower: Pt[] = []
+      for (let i = 0; i < top.length; i++) {
+        const xAt = plot.x + (plot.w / Math.max(1.0, countToDouble(top.length))) * (countToDouble(i) + 0.5)
+        upper.push({ x: xAt, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, top[i]!) })
+        lower.push({ x: xAt, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, k === 0 ? yDomain.min : below[i]!) })
+      }
+      if (upper.length > 1) {
+        const poly: Pt[] = []
+        for (const p of upper) poly.push(p)
+        for (let i = lower.length - 1; i >= 0; i--) poly.push(lower[i]!)
+        const gA = seriesGradient(sA.gradient, plot)
+        out.push(polygonCmd(poly, sA.color, gA.stops.length === 0 ? undefined : gA))
+        // Like a stacked SEGMENT, a stacked band labels inside itself with
+        // its OWN value — the running total is what the outline already
+        // shows, and a label repeating it would say nothing per series.
+        if (sA.showValues === true && progress >= 1.0) {
+          const fmtA = spec.yFormat ?? plain
+          for (let i = 0; i < upper.length; i++) {
+            const v = i < sA.values.length ? sA.values[i]! : 0.0 / 0.0
+            if (!isFiniteValue(v)) continue
+            out.push({
+              kind: 'text',
+              text: fmtA(v),
+              at: { x: upper[i]!.x, y: (upper[i]!.y + lower[i]!.y) / 2.0 },
+              fill: t.label,
+              size: t.fontSize,
+              align: 'middle',
+              baseline: 'middle',
+            })
+          }
+        }
+      }
     }
   }
 
   for (let sIdx = 0; sIdx < spec.series.length; sIdx++) {
     const s = spec.series[sIdx]!
-    if (s.kind === 'stacked' || s.kind === 'grouped') continue
+    if (s.kind === 'stacked' || s.kind === 'grouped' || s.kind === 'stackedArea') continue
     // One helper rather than three call-site conditionals: line, area and
     // points must agree about placement, or an area fill drifts away from the
     // line it is meant to sit under.
@@ -972,6 +1086,34 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           out.push({ kind: 'polyline', points: pts, stroke: s.color, width: s.width, dash: s.dash })
         }
       }
+    } else if (s.kind === 'band') {
+      // A region between two value channels — a confidence interval, a
+      // min/max range, a forecast cone. The polygon runs along the UPPER
+      // bound and back along the LOWER one, so the two edges are the data
+      // rather than the plot floor an `area` closes to.
+      //
+      // Gap handling is deliberately joint: a datum is part of the band only
+      // when BOTH bounds are finite, because half a bound is not a region.
+      const lows = s.values2 ?? []
+      const paired: Double[] = []
+      for (let i = 0; i < s.values.length; i++) {
+        const lo = i < lows.length ? lows[i]! : 0.0 / 0.0
+        paired.push(isFiniteValue(s.values[i]!) && isFiniteValue(lo) ? s.values[i]! : 0.0 / 0.0)
+      }
+      for (const run of splitRuns(paired, place)) {
+        const upper = reveal(shape(run))
+        if (upper.length < 2) continue
+        // The lower edge is placed through the SAME pipeline (curve, reveal)
+        // so a smoothed band's two edges cannot drift apart.
+        const loRun: Double[] = []
+        for (let i = 0; i < paired.length; i++) loRun.push(isFiniteValue(paired[i]!) ? (i < lows.length ? lows[i]! : 0.0 / 0.0) : 0.0 / 0.0)
+        const lowerRuns = splitRuns(loRun, place)
+        const lower = lowerRuns.length > 0 ? reveal(shape(lowerRuns[0]!)) : []
+        const poly: Pt[] = []
+        for (const p of upper) poly.push(p)
+        for (let i = lower.length - 1; i >= 0; i--) poly.push(lower[i]!)
+        if (poly.length > 2) out.push(polygonCmd(poly, s.color, sGrad))
+      }
     } else if (s.kind === 'area') {
       // Gap-splitting (a non-finite value breaks the fill into runs, same
       // as the line branch above) combined with gradient fill support — two
@@ -1014,6 +1156,45 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       }
     }
 
+    // `showValues` on the POINT-LIKE kinds: a label above each datum.
+    //
+    // Bars have carried this since the beginning; line, area and points
+    // silently ignored it, which read as "the option does not apply" and was
+    // really "nobody wrote the branch" — labelling the points of a line is as
+    // ordinary a request as labelling bars. Bars keep their own placement
+    // (below a negative bar, above a positive one, measured from the rect);
+    // here the anchor is the placed point itself.
+    //
+    // `band` joins them for the same reason, one kind later: it takes
+    // `MarkOptions`, so it ACCEPTS `showValues`, and drew nothing. It needs no
+    // special anchor — a band's `values` IS its high edge, so the shared point
+    // placement lands the label on the boundary the reader points at. Only the
+    // high edge is labelled: one label per datum, on the line the mark is
+    // anchored to. (`stackedArea` was already covered by the stacked path.)
+    if (
+      s.showValues === true &&
+      progress >= 1.0 &&
+      (s.kind === 'line' || s.kind === 'area' || s.kind === 'points' || s.kind === 'band')
+    ) {
+      const fmtP = spec.yFormat ?? plain
+      const labelPts = place(s.values)
+      for (let i = 0; i < labelPts.length; i++) {
+        const v = printed(sIdx, i)
+        // A gap has no value to print — same rule as the bars.
+        if (!isFiniteValue(v)) continue
+        out.push({
+          kind: 'text',
+          text: fmtP(v),
+          // Above the point, clear of a dot of the series' own radius.
+          at: { x: labelPts[i]!.x, y: labelPts[i]!.y - (s.radius + 5.0) },
+          fill: t.label,
+          size: t.fontSize,
+          align: 'middle',
+          baseline: 'bottom',
+        })
+      }
+    }
+
     // Error bars: a whisker through each datum's centre from its low bound
     // to its high one, capped, once the entrance has settled — a whisker
     // growing with its bar would misstate the bounds along the way. Bars
@@ -1048,11 +1229,9 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   // under an area fill marks nothing) and UNDER the axis labels.
   const markers = spec.markers ?? []
   for (const m of markers) {
-    if (spec.horizontal === true) continue
     const rawSeriesIndex = m.seriesIndex ?? 0.0
     const s = spec.series[Math.floor(rawSeriesIndex)]
     if (s === undefined) continue
-    if (s.kind === 'stacked' || s.kind === 'grouped') continue
     const n = s.values.length
     if (n === 0) continue
     let idx = -1
@@ -1085,11 +1264,23 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     if (idx < 0) continue
     const mDomain = seriesOnRightAxis(s, spec) ? y2Domain : yDomain
     const xsM = spec.xValues ?? []
-    const pts =
-      xsM.length > 0
-        ? layoutSeriesPointsAt(s.values, xsM, plot, mDomain, l.xDomainUsed)
-        : layoutSeriesPoints(s.values, plot, mDomain)
-    const p = pts[idx]
+    // The anchor is whatever the mark's own geometry put there. Markers used
+    // to skip the flipped frame and the set-laid-out kinds entirely — a
+    // silent no-op on three shapes, while annotations drew on all of them.
+    //
+    //   * stacked / grouped: the TOP CENTRE of that series' own segment, so
+    //     the marker sits on the piece it names rather than at the raw value,
+    //     which is not where a stacked datum is drawn at all.
+    //   * horizontal: the band-centred placement the flipped bars use.
+    const segMarker = markerAnchor(spec, rawSeriesIndex, idx, plot, yDomain)
+    const p =
+      segMarker.length > 0
+        ? segMarker[0]
+        : spec.horizontal === true
+          ? layoutSeriesPointsH(s.values, plot, mDomain)[idx]
+          : xsM.length > 0
+            ? layoutSeriesPointsAt(s.values, xsM, plot, mDomain, l.xDomainUsed)[idx]
+            : layoutSeriesPoints(s.values, plot, mDomain)[idx]
     if (p === undefined) continue
     const mColor = m.color ?? s.color
     out.push({ kind: 'circle', center: p, radius: (m.radius ?? 4.0) * progress, fill: mColor })
@@ -1304,18 +1495,90 @@ export function stackedHitAt(
 }
 
 /** `stackedHitAt` over a plot rect the caller already laid out. */
+/**
+ * Where a marker sits on a SET-laid-out series (`stacked` / `grouped`).
+ *
+ * Addressed by SERIES INDEX, and returning a 0- or 1-element list rather than
+ * an optional. Both are the engine's native subset speaking, and both were
+ * found by the generator rather than by review: an optional return lowers to
+ * nothing, and comparing two `Series` with `===` cannot lower at all, because
+ * a Series is a STRUCT on Swift and Kotlin — there is no identity to compare.
+ * Everything here is index arithmetic for that reason.
+ *
+ * The anchor matters because a stacked datum is NOT drawn at its raw value:
+ * it is drawn at its running total, in a segment whose x is a band centre.
+ * Putting a marker through the point-like placement would land it where the
+ * data never appears, which is why markers used to skip these kinds outright
+ * rather than land in the wrong place. Reading the segment back from the same
+ * layout the paint used is what makes the anchor honest.
+ */
+export function markerAnchor(spec: ChartSpec, seriesIdx: Double, idx: number, plot: Rect, yDomain: Domain): Pt[] {
+  const out: Pt[] = []
+  // `seriesIdx` stays a DOUBLE and is matched by a Double counter rather than
+  // used as a subscript: the caller has it as `Math.floor(...)`, which lowers
+  // to a Swift `Double`, and handing that to an Int parameter is the same
+  // Int/Double slip the argmax branches above already document. Scanning
+  // costs one pass over a series list the render is walking anyway.
+  let kind = ''
+  let f = 0.0
+  for (const q of spec.series) {
+    if (f === seriesIdx) kind = q.kind
+    f = f + 1.0
+  }
+  if (kind !== 'stacked' && kind !== 'grouped') return out
+  // Which of the same-kind peers this series is — counted by position, since
+  // the peers list is what the joint layout is built from.
+  let which = -1
+  let seen = 0
+  let g = 0.0
+  for (const q of spec.series) {
+    if (q.kind === kind) {
+      if (g === seriesIdx) which = seen
+      seen = seen + 1
+    }
+    g = g + 1.0
+  }
+  if (which < 0) return out
+  const values = spec.series.filter((q) => q.kind === kind).map((q) => q.values)
+  const flipped = spec.horizontal === true
+  const segs =
+    kind === 'stacked'
+      ? flipped
+        ? layoutStackedBarsH(values, plot, yDomain, 0.25)
+        : layoutStackedBars(values, plot, yDomain, 0.25)
+      : flipped
+        ? layoutGroupedBarsH(values, plot, yDomain, 0.25)
+        : layoutGroupedBars(values, plot, yDomain, 0.25)
+  for (const seg of segs) {
+    if (seg.seriesIndex !== which) continue
+    if (seg.datumIndex !== idx) continue
+    // The FAR edge of the segment, centred on its other axis — the top of a
+    // vertical bar, the right end of a horizontal one.
+    if (flipped) out.push({ x: seg.rect.x + seg.rect.w, y: seg.rect.y + seg.rect.h / 2.0 })
+    else out.push({ x: seg.rect.x + seg.rect.w / 2.0, y: seg.rect.y })
+  }
+  return out
+}
+
 export function stackedHitIn(raw: ChartSpec, plot: Rect, px: Double, py: Double): number {
-  if (raw.horizontal === true) return -1
   const spec = geometrySpec(raw)
   const yDomain = resolveYDomain(spec)
+  // The hit reads the SAME layout the paint used, per orientation. It used to
+  // bail on the horizontal frame — correct while nothing was drawn there, and
+  // a silently dead tap the moment something was.
+  const flipped = raw.horizontal === true
   for (const kind of ['stacked', 'grouped'] as const) {
     const series = spec.series.filter((s) => s.kind === kind)
     if (series.length === 0) continue
     const values = series.map((s) => s.values)
     const segs =
       kind === 'stacked'
-        ? layoutStackedBars(values, plot, yDomain, 0.25)
-        : layoutGroupedBars(values, plot, yDomain, 0.25)
+        ? flipped
+          ? layoutStackedBarsH(values, plot, yDomain, 0.25)
+          : layoutStackedBars(values, plot, yDomain, 0.25)
+        : flipped
+          ? layoutGroupedBarsH(values, plot, yDomain, 0.25)
+          : layoutGroupedBars(values, plot, yDomain, 0.25)
     for (const seg of segs) {
       const r = seg.rect
       if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return seg.datumIndex

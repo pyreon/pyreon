@@ -625,3 +625,64 @@ test.describe('docs rendering', () => {
     await expect(items).toHaveCount(0)
   })
 })
+
+test.describe('the charts-plot page mounts every mark it documents', () => {
+  // The mark table and the prose are checked by gates; the DRAWING is not.
+  // `band`, `stackedArea`, `waterfall`, `histogram` and `bollinger` were all
+  // documented before anything rendered them, which is how the gaps this
+  // page's examples now demonstrate stayed invisible — a capability no
+  // example exercises is verified by nothing.
+  //
+  // This runs against the real docs build, so it is the only place the new
+  // marks go through the REAL compiler into a REAL browser.
+  test('every example resolves and paints, with no console error', async ({ page }) => {
+    const errors: string[] = []
+    page.on('pageerror', (e) => errors.push(String(e)))
+    page.on('console', (m) => {
+      if (m.type() === 'error') errors.push(m.text())
+    })
+
+    await page.goto('/docs/charts-plot')
+    await page.waitForLoadState('networkidle')
+    await revealExamples(page)
+
+    // Nothing failed to resolve and nothing is stuck on its skeleton — the
+    // two states an example can sit in while LOOKING like it rendered.
+    await expect(page.locator('.pyreon-example__error')).toHaveCount(0)
+    await expect(page.locator('.pyreon-example__loading')).toHaveCount(0)
+
+    // The intervals example alone mounts five charts; the page has three
+    // examples in total, so a canvas count below five means one silently
+    // dropped its marks.
+    const canvases = page.locator('.pyreon-example canvas')
+    expect(await canvases.count()).toBeGreaterThanOrEqual(5)
+
+    // Painted, not merely present: a chart that threw mid-render leaves an
+    // element with a zero-sized backing store.
+    const painted = await canvases.evaluateAll((els) =>
+      els.filter((el) => (el as HTMLCanvasElement).width > 0 && (el as HTMLCanvasElement).height > 0).length,
+    )
+    expect(painted).toBe(await canvases.count())
+
+    expect(errors, errors.join('\n')).toEqual([])
+  })
+
+  test("a band's two bounds reach the rendered a11y table", async ({ page }) => {
+    // The offscreen table is the reader-facing surface the whole
+    // `values2`/`errLow`/`rValues` arc was about; asserting it here proves it
+    // survives the real build, not just the unit harness.
+    //
+    // Page-level on purpose, and the name says so: TWO examples on this page
+    // draw a band (the explicit one and `bollinger`'s envelope), so scoping
+    // this to one of them would assert less than it appears to. Removing the
+    // explicit band alone leaves it green — which is correct, because the
+    // claim is about the FEATURE reaching the browser, not about one figure.
+    await page.goto('/docs/charts-plot')
+    await page.waitForLoadState('networkidle')
+    await revealExamples(page)
+
+    const headers = await page.locator('.pyreon-example table th').allTextContents()
+    expect(headers.some((h) => h.includes('(upper)')), headers.join(' | ')).toBe(true)
+    expect(headers.some((h) => h.includes('(lower)')), headers.join(' | ')).toBe(true)
+  })
+})

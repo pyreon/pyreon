@@ -29,7 +29,7 @@
 // that host instead of `<PlotChart>`. One family per plot; a family mark
 // beside a cartesian one is reported and the family wins.
 
-import { Fragment, Show, h, _rp as reactiveProp } from '@pyreon/core'
+import { For, Fragment, Show, h, _rp as reactiveProp } from '@pyreon/core'
 import type { VNode, VNodeChild } from '@pyreon/core'
 import { computed, signal } from '@pyreon/reactivity'
 import type { Signal } from '@pyreon/reactivity'
@@ -42,7 +42,7 @@ import { CandlestickChart } from './CandlestickChart'
 import type { CandleOptions } from './candlestick'
 import type { FunnelOptions } from './funnel'
 import type { Formatter } from './format'
-import { area, bars, bubble, groupedBars, histogram, line, points, resolveMarks, stackedBars, waterfall } from './marks'
+import { area, band, bars, bubble, groupedBars, histogram, line, points, resolveMarks, stackedArea, stackedBars, waterfall } from './marks'
 import type { ErrorOptions, Mark, MarkOptions } from './marks'
 import { defaultTheme, logBounds, resolveYDomain } from './render'
 import type { Annotation, ChartSpec, ChartTheme, PointMarker } from './render'
@@ -81,6 +81,12 @@ export interface BarProps<T> extends MarkProps<T> {
   /** Floating bars from running total to running total — the waterfall; `negativeColor` fills the falls. */
   waterfall?: boolean
 }
+/** `<Band low high>` — the region's two bounds. */
+export interface BandProps<T> extends Omit<MarkProps<T>, 'y'> {
+  low: Channel<T>
+  high: Channel<T>
+}
+
 export interface DotProps<T> extends MarkProps<T> {
   /** A radius channel turns dots into bubbles (area-mapped). */
   r?: Channel<T>
@@ -227,6 +233,23 @@ export const Line = /* @__PURE__ */ brand<MarkProps<any>>('Line') as <T>(props: 
 export const Area = /* @__PURE__ */ brand<MarkProps<any>>('Area') as <T>(props: MarkProps<T>) => VNode | null
 /** Dots; with `r`, area-mapped bubbles. */
 export const Dot = /* @__PURE__ */ brand<DotProps<any>>('Dot') as <T>(props: DotProps<T>) => VNode | null
+
+/**
+ * Areas stacked on one another — `stackedArea`'s grammar form.
+ *
+ * NOT `<Layer>`: that name is taken by the canonical `@pyreon/primitives`
+ * z-stack, and one canonical name means one concept. Naming it after its own
+ * mark also matches every sibling (`bars`→`<Bar>`, `band`→`<Band>`).
+ */
+export const StackedArea = /* @__PURE__ */ brand<MarkProps<any>>('StackedArea') as <T>(props: MarkProps<T>) => VNode | null
+
+/**
+ * A filled REGION between two channels — `band`'s grammar form.
+ *
+ * Two channels rather than one, so it takes `low` and `high` instead of `y`;
+ * every other mark's single `y` would have nothing to be.
+ */
+export const Band = /* @__PURE__ */ brand<BandProps<any>>('Band') as <T>(props: BandProps<T>) => VNode | null
 /** A reference line or band. */
 export const Rule = /* @__PURE__ */ brand<RuleProps>('Rule')
 /** Axis configuration. */
@@ -283,6 +306,19 @@ function flatChildren(children: VNodeChild): VNode[] {
     }
     if (v.type === Fragment) {
       for (const x of v.children) walk(x)
+      return
+    }
+    // `<For each>` around marks: resolve its items through the render callback
+    // here, exactly as a `.map()` child already resolves — the whole walk runs
+    // inside the resolving computed, so an accessor `each` tracks. (The runtime
+    // `<For>` never mounts here: a mark is data, not DOM.)
+    if ((v.type as unknown) === For) {
+      const fp = v.props as { each?: unknown; children?: unknown }
+      const each = typeof fp.each === 'function' ? (fp.each as () => unknown)() : fp.each
+      const render = typeof fp.children === 'function' ? fp.children : v.children[0]
+      if (Array.isArray(each) && typeof render === 'function') {
+        for (const item of each) walk((render as (item: unknown) => VNodeChild)(item))
+      }
       return
     }
     out.push(v)
@@ -356,6 +392,13 @@ export interface ResolvedGrammar<T> {
   family: { host: FamilyHost; props: Record<string, unknown> } | null
 }
 
+const describeChild = (v: VNode): string => {
+  const t = v.type as unknown
+  if (typeof t === 'string') return `<${t}>`
+  if (typeof t === 'function') return `<${(t as { name?: string }).name || 'Component'}>`
+  return String(t)
+}
+
 const warnGrammar = (m: string): void => {
   if (process.env.NODE_ENV !== 'production') console.warn(`[Pyreon] <Plot>: ${m}`)
 }
@@ -386,7 +429,12 @@ export function resolveGrammar<T>(rows: T[], chart: PlotProps<T>, children: VNod
   let family: ResolvedGrammar<T>['family'] = null
   for (const v of nodes) {
     const name = markName(v.type)
-    if (name === undefined) continue
+    if (name === undefined) {
+      // A child that is not a mark renders NOTHING here, so say so: a silent
+      // skip reads as "my chart is empty" rather than "wrong child".
+      warnGrammar(`unrecognized child ${describeChild(v)} — only mark components (<Bar>, <Line>, <Rule>, …) render inside <Plot>; it is ignored.`)
+      continue
+    }
     const p = v.props as Record<string, unknown>
     const familyHost = FAMILY_OF[name]
     if (familyHost !== undefined) {
@@ -399,6 +447,8 @@ export function resolveGrammar<T>(rows: T[], chart: PlotProps<T>, children: VNod
       case 'Line':
       case 'Area':
       case 'Dot':
+      case 'StackedArea':
+      case 'Band':
         rawMarks.push({ vnode: v, name })
         break
       case 'Rule': {
@@ -562,6 +612,12 @@ function toMark<T>(name: string, p: Record<string, unknown>, yOverride: ((d: T, 
       return line<T>(y, options)
     case 'Area':
       return area<T>(y, options)
+    case 'StackedArea':
+      return stackedArea<T>(y, options)
+    case 'Band':
+      // `low`/`high` rather than `y`: a region has two bounds and no single
+      // value, so the shared `y` channel has nothing to carry here.
+      return band<T>(channel<T, Double>(p.low as Channel<T>), channel<T, Double>(p.high as Channel<T>), options)
     default:
       return r === undefined ? points<T>(y, options) : bubble<T>(y, channel<T, Double>(r), { ...options, ...(minRadius !== undefined ? { minRadius } : {}), ...(maxRadius !== undefined ? { maxRadius } : {}) })
   }

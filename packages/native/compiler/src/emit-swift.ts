@@ -84,7 +84,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -1118,6 +1118,21 @@ export function emitSwift(
   // Declared structs for per-component inference (typed object-array
   // element fields — `todos().map(t => t.id)` resolves `t.id` to Int).
   _structDefs = structs
+  // File-scope inference baseline. Both contexts are otherwise only assigned
+  // PER COMPONENT, so a file of pure top-level helpers — which is exactly what
+  // a generated engine is — emitted every expression against an EMPTY one: no
+  // structs, so a member read typed as `unknown` and every inference-driven
+  // lowering (enum switch, Int×Double coercion, optional handling) silently
+  // skipped inside helper bodies. Seeded with the file's structs AND the
+  // helper return types, so a local bound from a helper call types too.
+  // Overwritten per component, so a component-bearing file is unaffected.
+  _activeInferCtx = buildInferenceCtx([], [], structs, [], undefined, _helperReturns)
+  // BOTH contexts: Swift keeps two (`_activeInferCtx` for the type-gated call
+  // lowerings, `_exprInferCtx` for the condition + optional lowerings), and
+  // they alias only inside a component. A helper-only file has two distinct
+  // objects, so seeding one leaves the other empty — which is how an optional
+  // field read still emitted `if hs {` after the structs were available.
+  _exprInferCtx = buildInferenceCtx([], [], structs, [], undefined, _helperReturns)
   // v2 — per-hook method registry for the chain-call rewrite.
   _storeMethodNames = new Map(
     stores.map((st) => [st.hookName, new Set((st.methods ?? []).map((m) => m.name))]),
@@ -11571,7 +11586,10 @@ const SWIFT_CHART_TARGET: ChartHostTarget = {
   struct: (name, fields) => `${name}(${fields.map(([k, v]) => `${k}: ${v}`).join(', ')})`,
   coalesce: (a, b) => `(${a} ?? ${b})`,
   withProgress: (options, struct, progress) => (options === 'nil' ? `${struct}(progress: ${progress})` : `{ () -> ${struct} in var pyreonO = ${options}; pyreonO.progress = ${progress}; return pyreonO }()`),
-  withPalette: (options, struct, palette) => (options === 'nil' ? `${struct}(palette: ${palette})` : `{ () -> ${struct} in var pyreonO = ${options}; if pyreonO.palette == nil { pyreonO.palette = ${palette} }; return pyreonO }()`),
+  withThemeDefaults: (options, struct, fields) =>
+    options === 'nil'
+      ? `${struct}(${fields.map(([f, v]) => `${f}: ${v}`).join(', ')})`
+      : `{ () -> ${struct} in var pyreonO = ${options}; ${fields.map(([f, v]) => `pyreonO.${f} = pyreonO.${f} ?? ${v}`).join('; ')}; return pyreonO }()`,
   pieOptions: (a) => `PieOptions(innerRadius: ${a.innerRatio}, showLabels: true, labelColor: "#ffffff", fontSize: ${a.fontSize ?? '11.0'})`,
   theme: () => `ChartTheme(axis: ${JSON.stringify(CHART_THEME_DEFAULT.axis)}, grid: ${JSON.stringify(CHART_THEME_DEFAULT.grid)}, label: ${JSON.stringify(CHART_THEME_DEFAULT.label)}, fontSize: ${CHART_THEME_DEFAULT.fontSize})`,
 }
@@ -11714,8 +11732,9 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
   const themed = swiftChartThemed(e)
   const themeLets: string[] = []
   let options = userOptions
-  if (themed && spec.paletteOption === true) {
-    themeLets.push(`let pyreonOptions: ${spec.optionsStruct} = ${SWIFT_CHART_TARGET.withPalette(userOptions, spec.optionsStruct, tf.palette)}`)
+  const themeFields = chartThemeDefaultFields(spec, tf)
+  if (themed && themeFields.length > 0) {
+    themeLets.push(`let pyreonOptions: ${spec.optionsStruct} = ${SWIFT_CHART_TARGET.withThemeDefaults(userOptions, spec.optionsStruct, themeFields)}`)
     options = 'pyreonOptions'
   }
   const H = swiftChartDouble(e, 'height', spec.defaultHeight, indent)
@@ -12281,19 +12300,29 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     const m = marksV.elements[k]!
     const callee = m.kind === 'call' && m.callee.kind === 'identifier' ? m.callee.name : undefined
     const bubble = callee === 'bubble'
+    // `band(low, high, options)` reads its channels in the opposite order to
+    // every other mark: the SERIES value is the upper bound and the second
+    // channel is the lower one, so the accessor picked below is args[1].
+    const isBand = callee === 'band'
     const kind = callee === undefined ? undefined : bubble ? 'points' : PLOT_MARK_KINDS[callee]
     if (m.kind !== 'call' || kind === undefined) {
       _emitWarnings.push(`<${tag}> mark ${k + 1}: this mark is not lowered on native; emitting an EmptyView().`)
       return 'EmptyView()'
     }
-    const y = m.args[0]
+    const y = isBand ? m.args[1] : m.args[0]
     if (y === undefined) {
-      _emitWarnings.push(`<${tag}> mark ${k + 1}: needs an accessor; emitting an EmptyView().`)
+      // Named per mark: `band` takes TWO accessors, so "needs an accessor" on
+      // its own leaves the reader guessing which one is missing.
+      _emitWarnings.push(
+        isBand
+          ? `<${tag}> mark ${k + 1}: \`band\` needs both an upper and a lower accessor — \`band(low, high)\`; emitting an EmptyView().`
+          : `<${tag}> mark ${k + 1}: needs an accessor; emitting an EmptyView().`,
+      )
       return 'EmptyView()'
     }
     const body = swiftAccessorExpr(y, tag, `mark ${k + 1}`, indent)
     if (body === 'unsupported') return 'EmptyView()'
-    const optsArg = bubble ? m.args[2] : m.args[1]
+    const optsArg = bubble || isBand ? m.args[2] : m.args[1]
     const opts = swiftMarkOptionArgs(optsArg, tag, k, pyreonPalette)
     if (opts === 'unsupported') return 'EmptyView()'
     lets.push(`let pyreonValues${k}: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${body})`, 'Double', windowed)}`)
@@ -12312,10 +12341,28 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       const rBody = swiftAccessorExpr(r, tag, `mark ${k + 1} radius`, indent)
       if (rBody === 'unsupported') return 'EmptyView()'
       const range = swiftBubbleRange(optsArg)
-      lets.push(`let pyreonRadii${k}: [Double] = bubbleRadii(${swiftPlotRowMap(rows, `pyreonChartDouble(${rBody})`, 'Double', windowed)}, ${range[0]}, ${range[1]})`)
+      // The RAW r values are bound too, not just their pixel mapping: the
+      // tooltip and the accessible table report the datum, not the radius.
+      // `rValues` precedes `radii` in the generated struct, and Swift's
+      // memberwise init takes its arguments in declaration order.
+      lets.push(`let pyreonRRaw${k}: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${rBody})`, 'Double', windowed)}`)
+      lets.push(`let pyreonRadii${k}: [Double] = bubbleRadii(pyreonRRaw${k}, ${range[0]}, ${range[1]})`)
       const at = opts.findIndex((o) => o.startsWith('showValues:')) + 1
-      const withRadii = [...opts.slice(0, at), `radii: pyreonRadii${k}`, ...opts.slice(at)]
+      const withRadii = [...opts.slice(0, at), `rValues: pyreonRRaw${k}`, `radii: pyreonRadii${k}`, ...opts.slice(at)]
       series.push(`Series(kind: "points", values: pyreonValues${k}, ${[...withRadii, ...errArgs].join(', ')})`)
+    } else if (isBand) {
+      const lo = m.args[0]
+      if (lo === undefined) {
+        _emitWarnings.push(`<${tag}> mark ${k + 1}: \`band\` needs a lower-bound accessor; emitting an EmptyView().`)
+        return 'EmptyView()'
+      }
+      const loBody = swiftAccessorExpr(lo, tag, `mark ${k + 1} lower bound`, indent)
+      if (loBody === 'unsupported') return 'EmptyView()'
+      lets.push(`let pyreonLow${k}: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${loBody})`, 'Double', windowed)}`)
+      // `values2` is the LAST Series field on both targets, so it appends
+      // after the error bounds — Swift's init is positional even when
+      // labelled.
+      series.push(`Series(kind: "band", values: pyreonValues${k}, ${[...opts, ...errArgs, `values2: pyreonLow${k}`].join(', ')})`)
     } else {
       series.push(`Series(kind: ${JSON.stringify(kind)}, values: pyreonValues${k}, ${[...opts, ...errArgs].join(', ')})`)
     }
@@ -12430,9 +12477,9 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   // cannot be a function reference and is reported.
   const tooltip = readStaticAttr(e, 'tooltip') === true
   const tipFormatter = chartAttrExpr(e, 'tooltipFormatter')
-  let tipLines = `tooltipLines(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label: $0.label, values: $0.values, color: $0.color) })${yFormat === undefined ? '' : `, ${yFormat}`})`
+  let tipLines = `tooltipLines(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label: $0.label, values: $0.values, color: $0.color, values2: $0.values2, rValues: $0.rValues) })${yFormat === undefined ? '' : `, ${yFormat}`})`
   if (tooltip && tipFormatter !== undefined) {
-    if (tipFormatter.kind === 'identifier') tipLines = `${swiftIdent(tipFormatter.name)}(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label: $0.label, values: $0.values, color: $0.color) })).components(separatedBy: "\\n")`
+    if (tipFormatter.kind === 'identifier') tipLines = `${swiftIdent(tipFormatter.name)}(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label: $0.label, values: $0.values, color: $0.color, values2: $0.values2, rValues: $0.rValues) })).components(separatedBy: "\\n")`
     else _emitWarnings.push('<PlotChart tooltipFormatter>: must be a NAMED function on native — an inline arrow is not lowered; the default lines apply.')
   }
   if (tooltip) {
@@ -12526,7 +12573,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   // The data description the web `aria-label` carries, from the same series
   // and categories the canvas painted (hidden series excluded, as on the web).
   const plotTitle = readStringAttrExpr(e, 'title', indent)
-  const describe = `describeChart(A11yInput(title: ${plotTitle ?? 'nil'}, categories: pyreonCats, series: pyreonSeries.map { A11ySeries(label: $0.label, values: $0.values, kind: $0.kind) }, format: ${yFormat ?? 'nil'}))`
+  const describe = `describeChart(A11yInput(title: ${plotTitle ?? 'nil'}, categories: pyreonCats, series: pyreonSeries.map { A11ySeries(label: $0.label, values: $0.values, kind: $0.kind, values2: $0.values2, errLow: $0.errLow, errHigh: $0.errHigh, rValues: $0.rValues) }, format: ${yFormat ?? 'nil'}))`
   if (!navigating) return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent, describe)
   // The navigator's drag lives on a clear overlay over the strip (above the
   // preset strip), a sibling of the canvas: a touch that starts there is the

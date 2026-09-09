@@ -180,8 +180,14 @@ export function getSmartHandlePositions(
   const dx = targetNode.position.x + tw / 2 - (sourceNode.position.x + sw / 2)
   const dy = targetNode.position.y + th / 2 - (sourceNode.position.y + sh / 2)
 
-  const sourceHandle = sourceNode.sourceHandles?.[0]
-  const targetHandle = targetNode.targetHandles?.[0]
+  // Bound through a non-optional local rather than `handles?.[0]`. Swift's
+  // safe-index lowering needs a re-readable, non-optional receiver (it names
+  // the receiver and the index twice), so the optional-chained form emitted an
+  // UNGUARDED index that traps out of bounds. Identical on the web.
+  const sourceHandles = sourceNode.sourceHandles ?? []
+  const targetHandles = targetNode.targetHandles ?? []
+  const sourceHandle = sourceHandles.length > 0 ? sourceHandles[0] : undefined
+  const targetHandle = targetHandles.length > 0 ? targetHandles[0] : undefined
 
   const sourcePosition = sourceHandle
     ? sourceHandle.position

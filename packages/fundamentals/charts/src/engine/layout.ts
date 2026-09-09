@@ -1,6 +1,6 @@
 // Plot-area layout and per-mark geometry.
 
-import { makeTicks, scaleLinear } from './scale'
+import { isFiniteNumber, makeTicks, scaleLinear } from './scale'
 import { logViewTicks, timeTicks } from './scale-extra'
 import type { Formatter } from './format'
 import type { Domain, MeasureText, Pt, Rect, Tick, Double } from './types'
@@ -346,9 +346,10 @@ export function layoutBars(
   const zeroY = scaleLinear(yDomain, plot.y + plot.h, plot.y, zero)
   for (let i = 0; i < n; i++) {
     const raw = values[i]!
-    // A gap (NaN) is a zero-height bar at the zero line: it draws nothing and
-    // no pointer can land in it, which is what "no measurement" should look like.
-    const v = raw === raw ? raw : zero
+    // A gap is a zero-height bar at the zero line: it draws nothing and no
+    // pointer can land in it, which is what "no measurement" should look like.
+    // An infinity is a gap too — scaled it is an infinite rect.
+    const v = isFiniteNumber(raw) ? raw : zero
     const vy = scaleLinear(yDomain, plot.y + plot.h, plot.y, v)
     const top = vy < zeroY ? vy : zeroY
     const h = Math.abs(zeroY - vy)
@@ -392,6 +393,29 @@ export function layoutSeriesPoints(values: Double[], plot: Rect, yDomain: Domain
  * rather than reading past the end, because a caller whose accessors disagree
  * should get a short chart, not a crash or a NaN coordinate.
  */
+/**
+ * `layoutSeriesPoints` on the flipped frame: the value runs along x and the
+ * datum sits at its BAND centre down y.
+ *
+ * Bands rather than the vertical version's edge-to-edge spread, because the
+ * horizontal frame is a category axis by construction — `layoutBarsH` places
+ * its bars on bands, and a marker that did not agree with them would float
+ * between two bars.
+ */
+export function layoutSeriesPointsH(values: Double[], plot: Rect, vDomain: Domain): Pt[] {
+  const n = values.length
+  const out: Pt[] = []
+  if (n === 0) return out
+  const band = plot.h / n
+  for (let i = 0; i < n; i++) {
+    out.push({
+      x: scaleLinear(vDomain, plot.x, plot.x + plot.w, values[i]!),
+      y: plot.y + band * i + band / 2.0,
+    })
+  }
+  return out
+}
+
 export function layoutSeriesPointsAt(
   values: Double[],
   xs: Double[],
@@ -431,7 +455,7 @@ export function layoutBarsH(
   const zeroX = scaleLinear(vDomain, plot.x, plot.x + plot.w, zero)
   for (let i = 0; i < n; i++) {
     const raw = values[i]!
-    const v = raw === raw ? raw : zero
+    const v = isFiniteNumber(raw) ? raw : zero
     const vx = scaleLinear(vDomain, plot.x, plot.x + plot.w, v)
     const left = vx < zeroX ? vx : zeroX
     out.push({

@@ -20,7 +20,7 @@ import type { VNode } from '@pyreon/core'
 import { batch, effect, isClient, signal } from '@pyreon/reactivity'
 import { chartTable, describeChart } from './a11y'
 import type { A11yInput } from './a11y'
-import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
+import { canvasMeasure, canvasSizeAttrs, paint, prepareCanvas } from './canvas-web'
 import { cmdsEqual, sameCmdShape, tweenCmds } from './cmd-tween'
 import { legendPlan, renderLegend } from './legend'
 import type { LegendEntry } from './legend'
@@ -32,7 +32,7 @@ import type { ToolboxTool } from './toolbox'
 import { placeTooltip } from './tooltip'
 import { easeOutCubic } from './tween'
 import type { ChartGradient, DrawCmd, Double, MeasureText, Rect } from './types'
-import { mirrorCmds, mirrorX } from './rtl'
+import { mirrorCmds, mirrorX, screenRectX } from './rtl'
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 /** The accessible table stops here — a 100k-row table is a 100k-node DOM, and no reader walks it. */
@@ -79,6 +79,7 @@ export type LegendPosition = 'top' | 'bottom' | 'left' | 'right'
 
 /** The props every canvas host accepts — the chrome, sizing, theme, interaction and a11y surface. */
 export interface CanvasHostProps {
+
   width?: Double
   height?: Double
   /** Token overrides merged over the theme in scope (`<ChartThemeProvider>`, else the system scheme). */
@@ -489,7 +490,9 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     // Measure AFTER filling it: placement depends on the rendered size.
     const size = { w: box.offsetWidth, h: box.offsetHeight }
     const at = placeTooltip(p, size, { x: 0, y: 0, w: f.w, h: f.hgt }, 12)
-    box.style.left = `${at.x}px`
+    // `p` is CHART space (mirrored in by `localPoint`); the tooltip is a DOM
+    // node in SCREEN space, so its left edge mirrors back out (`./rtl`).
+    box.style.left = `${screenRectX(at.x, size.w, f.w, props.rtl === true)}px`
     box.style.top = `${at.y}px`
   }
   const handleLeave = (): void => {
@@ -557,6 +560,9 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     role: 'img',
     'aria-label': () => (spec.describe === undefined ? describeChart(a11yNow()) : spec.describe(layoutForA11y())),
     ...(props.accessibleTable === false ? {} : { 'aria-describedby': tableId }),
+    // The SSR box (see `canvasSizeAttrs`): without it a hydrated chart shifts
+    // from the 300x150 canvas default to its real size on the first paint.
+    ...canvasSizeAttrs(props.width, props.height ?? spec.defaultHeight, false),
     ref: (el: HTMLCanvasElement | null) => {
       canvas = el
       sizeObserver?.disconnect()
