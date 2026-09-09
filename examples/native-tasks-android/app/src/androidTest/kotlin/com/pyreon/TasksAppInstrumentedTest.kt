@@ -684,6 +684,26 @@ class TasksAppInstrumentedTest {
         composeRule
             .onNodeWithTag("stats-brush-sel")
             .assertTextEquals("none")
+
+        // The INDICATOR marks, on the device — mirror of the iOS assertion.
+        // `sma` lowers to the crossing `smaValues` and the `bollinger` spread
+        // expands to a band plus its middle line; "upper bound" in the content
+        // description is true only if the two-channel a11y crossing worked AND
+        // the envelope arithmetic produced numbers. `performScrollTo` because a
+        // tap is not the only thing a Compose node needs to be reachable for.
+        composeRule
+            .onNodeWithTag("stats-indicators")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule
+            .onNodeWithTag("stats-indicators")
+            .assertContentDescriptionContains("Weekly load", substring = true)
+        composeRule
+            .onNodeWithTag("stats-indicators")
+            .assertContentDescriptionContains("upper bound", substring = true)
+        composeRule
+            .onNodeWithTag("stats-indicators")
+            .assertContentDescriptionContains("lower bound", substring = true)
         composeRule
             .onNodeWithTag("stats-brush")
             .performScrollTo()

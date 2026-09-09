@@ -8439,12 +8439,25 @@ public func describeChart(_ input: A11yInput) -> String {
         parts.append("\(s.label): empty.")
         continue
       }
-      var lo = s.values[0]
-      var hi = s.values[0]
+      var lo = 0.0
+      var hi = 0.0
       var loAt = 0
       var hiAt = 0
+      var first = 0.0
+      var last = 0.0
+      var seen = 0
       for i in 0..<s.values.count {
         let v = s.values[i]
+        if v != v {
+          continue
+        }
+        if seen == 0 {
+          lo = v
+          hi = v
+          loAt = i
+          hiAt = i
+          first = v
+        }
         if v < lo {
           lo = v
           loAt = i
@@ -8453,26 +8466,41 @@ public func describeChart(_ input: A11yInput) -> String {
           hi = v
           hiAt = i
         }
+        last = v
+        seen = seen + 1
       }
-      let first = s.values[0]
-      let last = s.values[s.values.count - 1]
+      if seen == 0 {
+        parts.append("\(s.label): empty.")
+        continue
+      }
       let dir = last > first ? "rising" : last < first ? "falling" : "flat"
       let at = { (i: Int) in input.categories[i] != nil ? " at \(input.categories[i])" : "" }
       let other = (s.values2 ?? [])
       if other.count > 0 {
-        var olo = other[0]
-        var ohi = other[0]
+        var olo = 0.0
+        var ohi = 0.0
+        var oseen = 0
         for i in 0..<other.count {
           let v = other[i]
+          if v != v {
+            continue
+          }
+          if oseen == 0 {
+            olo = v
+            ohi = v
+          }
           if v < olo {
             olo = v
           }
           if v > ohi {
             ohi = v
           }
+          oseen = oseen + 1
         }
-        parts.append("\(s.label), \(s.kind): upper bound \(dir) from \(fmt(first)) to \(fmt(last)), " + "ranging \(fmt(lo))\(at(loAt)) to \(fmt(hi))\(at(hiAt)); " + "lower bound ranging \(fmt(olo)) to \(fmt(ohi)).")
-        continue
+        if oseen > 0 {
+          parts.append("\(s.label), \(s.kind): upper bound \(dir) from \(fmt(first)) to \(fmt(last)), " + "ranging \(fmt(lo))\(at(loAt)) to \(fmt(hi))\(at(hiAt)); " + "lower bound ranging \(fmt(olo)) to \(fmt(ohi)).")
+          continue
+        }
       }
       parts.append("\(s.label), \(s.kind): \(dir) from \(fmt(first)) to \(fmt(last)), " + "ranging \(fmt(lo))\(at(loAt)) to \(fmt(hi))\(at(hiAt)).")
     }

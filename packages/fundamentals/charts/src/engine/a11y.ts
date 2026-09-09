@@ -83,17 +83,42 @@ export function describeChart(input: A11yInput): string {
       parts.push(`${s.label}: empty.`)
       continue
     }
-    let lo = s.values[0]!
-    let hi = s.values[0]!
+    // GAPS are skipped, not narrated. The scan used to start at `values[0]`
+    // and compare with `<` / `>`, and a NaN loses both comparisons — so a
+    // series whose first points are gaps (every rolling indicator: the
+    // leading `window - 1` have no average yet) described itself as
+    // "flat from NaN to 60, ranging NaN at Mon". The table already treats a
+    // gap as an empty cell; this is the same rule for the sentence.
+    let lo = 0.0
+    let hi = 0.0
     let loAt = 0
     let hiAt = 0
+    let first = 0.0
+    let last = 0.0
+    let seen = 0
     for (let i = 0; i < s.values.length; i++) {
       const v = s.values[i]!
+      // A NaN is the only value not equal to itself — the engine's gap test.
+      if (v !== v) continue
+      if (seen === 0) {
+        lo = v
+        hi = v
+        loAt = i
+        hiAt = i
+        first = v
+      }
       if (v < lo) { lo = v; loAt = i }
       if (v > hi) { hi = v; hiAt = i }
+      last = v
+      seen = seen + 1
     }
-    const first = s.values[0]!
-    const last = s.values[s.values.length - 1]!
+    if (seen === 0) {
+      // Present but entirely gaps — a rolling window shorter than its own
+      // period, say. "Empty" is the honest word and it is already this
+      // function's word for nothing to describe.
+      parts.push(`${s.label}: empty.`)
+      continue
+    }
     const dir = last > first ? 'rising' : last < first ? 'falling' : 'flat'
     const at = (i: number): string =>
       input.categories[i] !== undefined ? ` at ${input.categories[i]!}` : ''
@@ -105,19 +130,30 @@ export function describeChart(input: A11yInput): string {
     // cleanly and reads the same.
     const other: Double[] = s.values2 ?? []
     if (other.length > 0) {
-      let olo = other[0]!
-      let ohi = other[0]!
+      // Gaps skipped here too — a band's lower edge is a rolling window as
+      // often as its upper one is.
+      let olo = 0.0
+      let ohi = 0.0
+      let oseen = 0
       for (let i = 0; i < other.length; i++) {
         const v = other[i]!
+        if (v !== v) continue
+        if (oseen === 0) {
+          olo = v
+          ohi = v
+        }
         if (v < olo) olo = v
         if (v > ohi) ohi = v
+        oseen = oseen + 1
       }
-      parts.push(
-        `${s.label}, ${s.kind}: upper bound ${dir} from ${fmt(first)} to ${fmt(last)}, ` +
-          `ranging ${fmt(lo)}${at(loAt)} to ${fmt(hi)}${at(hiAt)}; ` +
-          `lower bound ranging ${fmt(olo)} to ${fmt(ohi)}.`,
-      )
-      continue
+      if (oseen > 0) {
+        parts.push(
+          `${s.label}, ${s.kind}: upper bound ${dir} from ${fmt(first)} to ${fmt(last)}, ` +
+            `ranging ${fmt(lo)}${at(loAt)} to ${fmt(hi)}${at(hiAt)}; ` +
+            `lower bound ranging ${fmt(olo)} to ${fmt(ohi)}.`,
+        )
+        continue
+      }
     }
     parts.push(
       `${s.label}, ${s.kind}: ${dir} from ${fmt(first)} to ${fmt(last)}, ` +

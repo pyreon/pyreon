@@ -6753,12 +6753,25 @@ fun describeChart(input: A11yInput): String {
         parts.add("${s.label}: empty.")
         continue
       }
-      var lo = s.values[0]
-      var hi = s.values[0]
+      var lo = 0.0
+      var hi = 0.0
       var loAt = 0
       var hiAt = 0
+      var first = 0.0
+      var last = 0.0
+      var seen = 0
       for (i in 0 until s.values.length) {
         val v = s.values[i]
+        if (v != v) {
+          continue
+        }
+        if (seen == 0) {
+          lo = v
+          hi = v
+          loAt = i
+          hiAt = i
+          first = v
+        }
         if (v < lo) {
           lo = v
           loAt = i
@@ -6767,26 +6780,41 @@ fun describeChart(input: A11yInput): String {
           hi = v
           hiAt = i
         }
+        last = v
+        seen = seen + 1
       }
-      val first = s.values[0]
-      val last = s.values[s.values.length - 1]
+      if (seen == 0) {
+        parts.add("${s.label}: empty.")
+        continue
+      }
       val dir = if (last > first) "rising" else if (last < first) "falling" else "flat"
       val at = { i: Int -> if (input.categories[i] != null) " at ${input.categories[i]}" else "" }
       val other = (s.values2 ?: listOf())
       if (other.length > 0) {
-        var olo = other[0]
-        var ohi = other[0]
+        var olo = 0.0
+        var ohi = 0.0
+        var oseen = 0
         for (i in 0 until other.length) {
           val v = other[i]
+          if (v != v) {
+            continue
+          }
+          if (oseen == 0) {
+            olo = v
+            ohi = v
+          }
           if (v < olo) {
             olo = v
           }
           if (v > ohi) {
             ohi = v
           }
+          oseen = oseen + 1
         }
-        parts.add("${s.label}, ${s.kind}: upper bound ${dir} from ${fmt(first)} to ${fmt(last)}, " + "ranging ${fmt(lo)}${at(loAt)} to ${fmt(hi)}${at(hiAt)}; " + "lower bound ranging ${fmt(olo)} to ${fmt(ohi)}.")
-        continue
+        if (oseen > 0) {
+          parts.add("${s.label}, ${s.kind}: upper bound ${dir} from ${fmt(first)} to ${fmt(last)}, " + "ranging ${fmt(lo)}${at(loAt)} to ${fmt(hi)}${at(hiAt)}; " + "lower bound ranging ${fmt(olo)} to ${fmt(ohi)}.")
+          continue
+        }
       }
       parts.add("${s.label}, ${s.kind}: ${dir} from ${fmt(first)} to ${fmt(last)}, " + "ranging ${fmt(lo)}${at(loAt)} to ${fmt(hi)}${at(hiAt)}.")
     }
