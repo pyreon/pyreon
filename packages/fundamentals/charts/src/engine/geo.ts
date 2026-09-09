@@ -4,25 +4,12 @@
 // once at startup (ECharts' registerMap shape), bounded by the app's map
 // count, and looked up by name from the option facade.
 
-import { HEAT_RAMP } from './heat'
-import { colorRamp } from './heat-ramp'
-import { measureApprox, renderSvg } from './svg'
-import type { SvgOptions } from './svg'
-import type { Double, DrawCmd, MeasureText, Pt, Rect } from './types'
+import { HEAT_RAMP, rampColor } from './heat'
+import { approxTextWidth } from './treemap'
+import type { Domain, Double, DrawCmd, MeasureText, Pt, Rect } from './types'
 import { isFiniteNumber } from './scale'
 
 export type GeoProjection = 'equirectangular' | 'mercator'
-
-export interface GeoFeature {
-  type: 'Feature'
-  properties?: Record<string, unknown> | null | undefined
-  geometry: { type: 'Polygon'; coordinates: number[][][] } | { type: 'MultiPolygon'; coordinates: number[][][][] } | null
-}
-
-export interface GeoJson {
-  type: 'FeatureCollection'
-  features: GeoFeature[]
-}
 
 export interface GeoRegion {
   name: string
@@ -55,6 +42,36 @@ export interface GeoShape {
  * information as five numbers plus the projection lets `geoProject` do the
  * work, and overlays reuse it exactly as before.
  */
+/**
+ * One region's value, as a LIST entry rather than a record key.
+ *
+ * `Record<string, Double>` is the natural web shape and does not cross: the
+ * emitted Swift subscripts a dictionary, which yields `Double?`, and PMTC's
+ * `!== undefined` narrowing does not carry to the target — so the lookup fails
+ * to compile. The same trade is already made in `calendar-web.ts`, whose
+ * crossing half "speaks in `{ date, value }` lists — the shapes that have a
+ * native form". `geoValues()` in `geo-web.ts` is the adapter.
+ */
+export interface GeoValue {
+  /** The region name, matched against `GeoRegion.name`. */
+  region: string
+  value: Double
+}
+
+/**
+ * A region with no value. `NaN` and `Infinity` are JS globals that emit
+ * VERBATIM in a crossing file — no lowering, and no warning either, so the
+ * generated Swift says `cannot find 'NaN' in scope`. `0.0 / 0.0` is the
+ * engine's spelling for a gap (see `indicator-values.ts`).
+ */
+const GEO_NA: Double = 0.0 / 0.0
+
+/** Linear scan for a region's value; the list is one entry per region. */
+export function geoValueOf(values: GeoValue[], name: string): Double {
+  for (const v of values) if (v.region === name) return v.value
+  return GEO_NA
+}
+
 export interface GeoTransform {
   minX: Double
   maxY: Double
@@ -82,7 +99,7 @@ export interface GeoOptions {
   /** Property holding the region name; default `name`. */
   nameProperty?: string | undefined
   stops?: readonly string[] | undefined
-  domain?: [Double, Double] | undefined
+  domain?: Domain | undefined
   emptyColor?: string | undefined
   borderColor?: string | undefined
   borderWidth?: Double | undefined
@@ -93,24 +110,6 @@ export interface GeoOptions {
   progress?: Double | undefined
 }
 
-const registry = new Map<string, GeoJson>()
-
-/** Register (or replace) a map under a name for `type: 'map'` options. */
-export function registerMap(name: string, geo: GeoJson): void {
-  registry.set(name, geo)
-}
-
-/** A registered map, or null. */
-export function getMap(name: string): GeoJson | null {
-  return registry.get(name) ?? null
-}
-
-/** Registered map names. */
-export function listMaps(): string[] {
-  return Array.from(registry.keys())
-}
-
-/** Longitude/latitude → unit-ish coordinates (x east, y NORTH-up; flipped at fit time). */
 export function projectLonLat(lon: Double, lat: Double, projection: GeoProjection): Pt {
   if (projection === 'mercator') {
     const clamped = lat > 85.0 ? 85.0 : lat < -85.0 ? -85.0 : lat
@@ -122,7 +121,10 @@ export function projectLonLat(lon: Double, lat: Double, projection: GeoProjectio
 
 function ringArea(ring: Pt[]): Double {
   let a = 0.0
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) a = a + (ring[j]!.x * ring[i]!.y - ring[i]!.x * ring[j]!.y)
+  for (let i = 0; i < ring.length; i++) {
+    const j = i === 0 ? ring.length - 1 : i - 1
+    a = a + (ring[j]!.x * ring[i]!.y - ring[i]!.x * ring[j]!.y)
+  }
   return a / 2.0
 }
 
@@ -131,7 +133,8 @@ function ringCentroid(ring: Pt[]): Pt | null {
   if (Math.abs(a) < 1e-12) return null
   let cx = 0.0
   let cy = 0.0
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+  for (let i = 0; i < ring.length; i++) {
+    const j = i === 0 ? ring.length - 1 : i - 1
     const f = ring[j]!.x * ring[i]!.y - ring[i]!.x * ring[j]!.y
     cx = cx + (ring[j]!.x + ring[i]!.x) * f
     cy = cy + (ring[j]!.y + ring[i]!.y) * f
@@ -139,57 +142,31 @@ function ringCentroid(ring: Pt[]): Pt | null {
   return { x: cx / (6.0 * a), y: cy / (6.0 * a) }
 }
 
-/**
- * GeoJSON to normalised shapes — the WEB half, and the only part that touches
- * the `Polygon | MultiPolygon` union or the untyped `properties` bag. Both are
- * why the geo host does not cross; reducing here means everything downstream
- * works on `GeoShape[]`, which does.
- */
-export function geoShapes(geo: GeoJson, projection: GeoProjection = 'equirectangular', nameProperty = 'name'): GeoShape[] {
-  const out: GeoShape[] = []
-  for (let fi = 0; fi < geo.features.length; fi++) {
-    const f = geo.features[fi]!
-    const g = f.geometry
-    if (g === null) continue
-    const polys: number[][][][] = g.type === 'Polygon' ? [g.coordinates] : g.coordinates
-    const rings: Pt[][] = []
-    for (const poly of polys) {
-      const outer = poly[0]
-      if (outer === undefined || outer.length < 3) continue
-      const ring: Pt[] = []
-      for (const c of outer) ring.push(projectLonLat(c[0] ?? 0.0, c[1] ?? 0.0, projection))
-      rings.push(ring)
-    }
-    const propName = f.properties?.[nameProperty]
-    out.push({ name: typeof propName === 'string' ? propName : 'Region ' + String(fi + 1), rings })
-  }
-  return out
-}
-
-/** Project every feature's outer rings and fit them into `box` (aspect preserved, centred). */
-export function layoutGeo(geo: GeoJson, box: Rect, options?: GeoOptions): GeoLayout {
-  return layoutGeoShapes(geoShapes(geo, options?.projection ?? 'equirectangular', options?.nameProperty ?? 'name'), box, options)
-}
-
-/**
- * Normalised shapes to a laid-out map. This is the CROSSING half: `GeoShape[]`
- * in, `GeoLayout` out, no union and no closure anywhere in the signature.
- */
 export function layoutGeoShapes(shapes: GeoShape[], box: Rect, options?: GeoOptions): GeoLayout {
   const projection = options?.projection ?? 'equirectangular'
   const pad = options?.padding ?? 4.0
   const raw = shapes
-  let minX = Infinity
-  let maxX = -Infinity
-  let minY = Infinity
-  let maxY = -Infinity
+  // Seeded from the first point rather than Infinity sentinels — `river.ts`
+  // and `treemap.ts` carry the same note, for the same reason.
+  let minX = 0.0
+  let maxX = 0.0
+  let minY = 0.0
+  let maxY = 0.0
+  let seen = 0
   for (const sh of raw) {
     for (const ring of sh.rings) {
       for (const p of ring) {
+        if (seen === 0) {
+          minX = p.x
+          maxX = p.x
+          minY = p.y
+          maxY = p.y
+        }
         if (p.x < minX) minX = p.x
         if (p.x > maxX) maxX = p.x
         if (p.y < minY) minY = p.y
         if (p.y > maxY) maxY = p.y
+        seen = seen + 1
       }
     }
   }
@@ -203,76 +180,104 @@ export function layoutGeoShapes(shapes: GeoShape[], box: Rect, options?: GeoOpti
   const toPx = (p: Pt): Pt => ({ x: ox + (p.x - minX) * scale, y: oy + (maxY - p.y) * scale })
   const regions: GeoRegion[] = raw.map((r) => {
     const rings = r.rings.map((ring) => ring.map(toPx))
-    let bx0 = Infinity
-    let by0 = Infinity
-    let bx1 = -Infinity
-    let by1 = -Infinity
-    let best: Pt[] | null = null
+    let bx0 = 0.0
+    let by0 = 0.0
+    let bx1 = 0.0
+    let by1 = 0.0
+    let bseen = 0
+    // An index rather than `Pt[] | null`: a null-initialised typed local has
+    // no contextual type on either target ('nil' requires a contextual type /
+    // Nothing? expected).
+    let bestAt = -1
     let bestArea = -1.0
-    for (const ring of rings) {
+    for (let ri = 0; ri < rings.length; ri++) {
+      const ring = rings[ri]!
       for (const p of ring) {
+        if (bseen === 0) {
+          bx0 = p.x
+          by0 = p.y
+          bx1 = p.x
+          by1 = p.y
+        }
         if (p.x < bx0) bx0 = p.x
         if (p.y < by0) by0 = p.y
         if (p.x > bx1) bx1 = p.x
         if (p.y > by1) by1 = p.y
+        bseen = bseen + 1
       }
       const a = Math.abs(ringArea(ring))
       if (a > bestArea) {
         bestArea = a
-        best = ring
+        bestAt = ri
       }
     }
-    const bbox: Rect = bx0 === Infinity ? { x: box.x, y: box.y, w: 0.0, h: 0.0 } : { x: bx0, y: by0, w: bx1 - bx0, h: by1 - by0 }
-    const centroid = (best === null ? null : ringCentroid(best)) ?? { x: bbox.x + bbox.w / 2.0, y: bbox.y + bbox.h / 2.0 }
+    const bbox: Rect = bseen === 0 ? { x: box.x, y: box.y, w: 0.0, h: 0.0 } : { x: bx0, y: by0, w: bx1 - bx0, h: by1 - by0 }
+    const fallback: Pt = { x: bbox.x + bbox.w / 2.0, y: bbox.y + bbox.h / 2.0 }
+    const centroid = bestAt < 0 ? fallback : ringCentroid(rings[bestAt]!) ?? fallback
     return { name: r.name, rings, centroid, bbox }
   })
   return { regions, transform: { minX, maxY, scale, ox, oy, projection } }
 }
 
 /** Value extent over the regions that have data. */
-export function geoDomain(layout: GeoLayout, values: Record<string, Double>): [Double, Double] {
-  let lo = Infinity
-  let hi = -Infinity
+export function geoDomain(layout: GeoLayout, values: GeoValue[]): Domain {
+  let lo = 0.0
+  let hi = 0.0
+  let seen = 0
   for (const r of layout.regions) {
-    const v = values[r.name]
-    if (v === undefined || !isFiniteNumber(v)) continue
+    const v = geoValueOf(values, r.name)
+    if (!isFiniteNumber(v)) continue
+    if (seen === 0) {
+      lo = v
+      hi = v
+    }
     if (v < lo) lo = v
     if (v > hi) hi = v
+    seen = seen + 1
   }
-  return lo === Infinity ? [0.0, 0.0] : [lo, hi]
+  return seen === 0 ? { min: 0.0, max: 0.0 } : { min: lo, max: hi }
 }
 
 /** Render fills, borders, then labels. */
-export function renderGeo(layout: GeoLayout, values: Record<string, Double>, options?: GeoOptions, measure?: MeasureText): DrawCmd[] {
+export function renderGeo(layout: GeoLayout, values: GeoValue[], options?: GeoOptions, measure?: MeasureText): DrawCmd[] {
   const out: DrawCmd[] = []
-  const ramp = colorRamp(options?.stops ?? HEAT_RAMP)
+  const stops = options?.stops ?? HEAT_RAMP
   const emptyColor = options?.emptyColor ?? '#e2e8f0'
   const border = options?.borderColor ?? '#ffffff'
   const borderWidth = options?.borderWidth ?? 1.0
-  const [lo, hi] = options?.domain ?? geoDomain(layout, values)
+  const dom = options?.domain ?? geoDomain(layout, values)
+  const lo = dom.min
+  const hi = dom.max
   const span = hi - lo
   const rawP = options?.progress ?? 1.0
   const progress = rawP < 0.0 ? 0.0 : rawP > 1.0 ? 1.0 : rawP
   const fontSize = options?.fontSize ?? 10.0
   const labelColor = options?.labelColor ?? '#1e293b'
-  const m = measure ?? measureApprox()
+  const m: MeasureText = measure ?? approxTextWidth
   for (const r of layout.regions) {
-    const v = values[r.name]
-    const has = v !== undefined && isFiniteNumber(v) && progress > 0.0
+    const v = geoValueOf(values, r.name)
+    const has = isFiniteNumber(v) && progress > 0.0
     const t = !has ? 0.0 : span <= 0.0 ? 1.0 : ((v - lo) / span) * progress
-    const fill = has ? ramp(t < 0.0 ? 0.0 : t > 1.0 ? 1.0 : t) : emptyColor
+    const fill = has ? rampColor(stops, t < 0.0 ? 0.0 : t > 1.0 ? 1.0 : t) : emptyColor
     for (const ring of r.rings) out.push({ kind: 'polygon', points: ring, fill })
   }
-  for (const r of layout.regions) for (const ring of r.rings) out.push({ kind: 'polyline', points: [...ring, ring[0]!], stroke: border, width: borderWidth })
+  for (const r of layout.regions) {
+    for (const ring of r.rings) {
+      const closed: Pt[] = []
+      for (const p of ring) closed.push(p)
+      closed.push(ring[0]!)
+      out.push({ kind: 'polyline', points: closed, stroke: border, width: borderWidth })
+    }
+  }
   if (options?.showLabels === true && progress >= 1.0) {
     for (const r of layout.regions) {
       // A label goes on LAND: the centroid must sit inside one of the region's
       // rings (a multi-island region's centroid is usually in the water between
       // them), and the text must fit THAT ring's box, not the union's.
-      let host: Pt[] | null = null
-      for (const ring of r.rings) if (pointInRing(ring, r.centroid.x, r.centroid.y)) host = ring
-      if (host === null) continue
-      const b = ringBox(host)
+      let hostAt = -1
+      for (let hri = 0; hri < r.rings.length; hri++) if (pointInRing(r.rings[hri]!, r.centroid.x, r.centroid.y)) hostAt = hri
+      if (hostAt < 0) continue
+      const b = ringBox(r.rings[hostAt]!)
       if (m(r.name, fontSize) > b.w || fontSize > b.h) continue
       out.push({ kind: 'text', text: r.name, at: r.centroid, fill: labelColor, size: fontSize, align: 'middle', baseline: 'middle' })
     }
@@ -281,25 +286,37 @@ export function renderGeo(layout: GeoLayout, values: Record<string, Double>, opt
 }
 
 function ringBox(ring: Pt[]): Rect {
-  let x0 = Infinity
-  let y0 = Infinity
-  let x1 = -Infinity
-  let y1 = -Infinity
+  let x0 = 0.0
+  let y0 = 0.0
+  let x1 = 0.0
+  let y1 = 0.0
+  let seen = 0
   for (const p of ring) {
+    if (seen === 0) {
+      x0 = p.x
+      y0 = p.y
+      x1 = p.x
+      y1 = p.y
+    }
     if (p.x < x0) x0 = p.x
     if (p.y < y0) y0 = p.y
     if (p.x > x1) x1 = p.x
     if (p.y > y1) y1 = p.y
+    seen = seen + 1
   }
-  return x0 === Infinity ? { x: 0.0, y: 0.0, w: 0.0, h: 0.0 } : { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+  return seen === 0 ? { x: 0.0, y: 0.0, w: 0.0, h: 0.0 } : { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
 }
 
 function pointInRing(ring: Pt[], px: Double, py: Double): boolean {
   let inside = false
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+  for (let i = 0; i < ring.length; i++) {
+    const j = i === 0 ? ring.length - 1 : i - 1
     const a = ring[i]!
     const b = ring[j]!
-    if (a.y > py !== b.y > py && px < ((b.x - a.x) * (py - a.y)) / (b.y - a.y) + a.x) inside = !inside
+    // Parenthesised: Swift puts `>` and `!==` in the same non-associative
+    // precedence group, so the chained form is a compile error there even
+    // though JS reads it fine.
+    if ((a.y > py) !== (b.y > py) && px < ((b.x - a.x) * (py - a.y)) / (b.y - a.y) + a.x) inside = !inside
   }
   return inside
 }
@@ -314,31 +331,3 @@ export function hitGeo(layout: GeoLayout, px: Double, py: Double): GeoRegion | n
   return null
 }
 
-export interface GeoToSvgOptions {
-  geo: GeoJson
-  values: Record<string, Double>
-  width?: Double
-  height?: Double
-  options?: GeoOptions
-  measure?: MeasureText
-  title?: string
-  description?: string
-  svg?: Omit<SvgOptions, 'title' | 'description'>
-}
-
-/** Map → `<svg>` string, server-safe. */
-export function geoToSvg(o: GeoToSvgOptions): string {
-  const width = o.width ?? 640.0
-  const height = o.height ?? 400.0
-  const layout = layoutGeo(o.geo, { x: 0.0, y: 0.0, w: width, h: height }, o.options)
-  const cmds = renderGeo(layout, o.values, o.options, o.measure ?? measureApprox())
-  const [lo, hi] = geoDomain(layout, o.values)
-  let filled = 0
-  for (const r of layout.regions) if (o.values[r.name] !== undefined) filled++
-  const description = o.description ?? (o.title !== undefined ? `${o.title}: ${layout.regions.length} regions, ${filled} with values from ${lo} to ${hi}.` : undefined)
-  return renderSvg(cmds, width, height, {
-    ...o.svg,
-    ...(o.title !== undefined ? { title: o.title } : {}),
-    ...(description !== undefined && description !== '' ? { description } : {}),
-  })
-}
