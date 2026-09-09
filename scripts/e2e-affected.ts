@@ -221,6 +221,15 @@ const SUITES: Suite[] = [
       // cost that gets a suite disabled again).
       'docs/src/components/',
       'docs/src/routes/',
+      // A live `<Example>` is site CODE — it mounts, it can throw, and the
+      // suite asserts it paints. Prose stays free; these do not.
+      'docs/src/examples/',
+      // …and the package those examples exercise. The charts specs here are
+      // the only place the plot marks go through the REAL compiler into a
+      // REAL browser, so a charts change that does not run them is a spec
+      // that was written, correct, and never run — the failure this whole
+      // suite exists because of.
+      'packages/fundamentals/charts/',
       'docs/vite-plugins/',
       'docs/vite.config.ts',
       'docs/content.config.ts',

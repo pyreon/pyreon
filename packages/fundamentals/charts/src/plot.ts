@@ -9,8 +9,8 @@
 // radial trigonometry, the decimation, or the time scales.
 
 export { PlotChart } from './engine/Chart'
-export { Arc, Area, Axis, Bar, Candle, Cell, Dot, Histogram, Label, Legend, Line, Plot, Rule, Scale, Stage, Tip, Zoom, channel, resolveGrammar } from './engine/grammar'
-export type { ArcProps, AxisProps, BarProps, CandleProps, CellProps, Channel, DotProps, FamilyHost, HistogramProps as HistogramMarkProps, LabelProps, LegendProps, MarkProps, PlotProps, ResolvedGrammar, RuleProps, ScaleProps, StageProps, TipProps, ZoomProps } from './engine/grammar'
+export { Arc, Area, Axis, Band, Bar, Candle, Cell, Dot, Histogram, Label, Legend, Line, Plot, Rule, Scale, StackedArea, Stage, Tip, Zoom, channel, resolveGrammar } from './engine/grammar'
+export type { ArcProps, AxisProps, BandProps, BarProps, CandleProps, CellProps, Channel, DotProps, FamilyHost, HistogramProps as HistogramMarkProps, LabelProps, LegendProps, MarkProps, PlotProps, ResolvedGrammar, RuleProps, ScaleProps, StageProps, TipProps, ZoomProps } from './engine/grammar'
 export type { AxisLabelMode, PlotChartProps } from './engine/Chart'
 export { GaugeChart, PieChart } from './engine/PieChart'
 export { CandlestickChart } from './engine/CandlestickChart'
@@ -31,18 +31,7 @@ export { plotHitBars, plotHitBarsIn, plotHitIndex, plotHitIndexIn } from './engi
 export type { GaugeChartProps, PieChartProps } from './engine/PieChart'
 
 // Marks
-export {
-  area,
-  bars,
-  bubble,
-  groupedBars,
-  line,
-  normalizeCorners,
-  points,
-  resolveCategories,
-  resolveMarks,
-  stackedBars,
-} from './engine/marks'
+export { area, band, bars, bubble, groupedBars, histogram, line, normalizeCorners, points, resolveCategories, resolveMarks, stackedArea, stackedBars, waterfall } from './engine/marks'
 export type { Accessor, BubbleOptions, ErrorOptions, HistogramOptions, HistogramProps, Mark, MarkOptions } from './engine/marks'
 export { binValues } from './engine/bin'
 export type { Bin } from './engine/bin'

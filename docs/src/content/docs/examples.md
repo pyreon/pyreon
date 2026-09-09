@@ -1,11 +1,11 @@
 ---
 title: "Examples"
-description: "A gallery of 70 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
+description: "A gallery of 71 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
 ---
 
 # Examples
 
-Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 70 examples across 33 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
+Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 71 examples across 33 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
 
 ## Charts
 
@@ -16,6 +16,10 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 ### Plot Marks
 
 <Example file="./examples/charts/plot-marks" />
+
+### Plot Marks Intervals
+
+<Example file="./examples/charts/plot-marks-intervals" />
 
 ### Plot Theme
 

@@ -132,6 +132,8 @@ export interface Mark<T> {
   options: MarkOptions
   /** Per-datum radius accessor — the bubble channel; `points` only. */
   r?: Accessor<T> | undefined
+  /** The SECOND value accessor — a `band`'s lower bound. */
+  y2?: Accessor<T> | undefined
   /** Rendered-radius bounds for the r channel. */
   minRadius?: Double | undefined
   maxRadius?: Double | undefined
@@ -142,6 +144,15 @@ export interface Mark<T> {
    * zero.
    */
   transform?: ((values: Double[]) => Double[]) | undefined
+  /**
+   * The SECOND channel's whole-series transform, for a band whose bounds are
+   * COMPUTED from the series rather than read off each datum.
+   *
+   * A rolling envelope (Bollinger) needs the whole window, so its bounds
+   * cannot come from a per-datum accessor. Both channels start from the same
+   * raw `y` values and each takes its own transform.
+   */
+  transform2?: ((values: Double[]) => Double[]) | undefined
   /** Error-bar bounds; see `ErrorOptions`. */
   errorLow?: Accessor<T> | undefined
   errorHigh?: Accessor<T> | undefined
@@ -201,6 +212,35 @@ export function area<T>(y: Accessor<T>, options: ErrorOptions<T> = {}): Mark<T> 
   return mark('area', y, options)
 }
 
+/**
+ * A filled REGION between two value channels — a confidence interval, a
+ * min/max range, a forecast cone.
+ *
+ * Distinct from `area`, which closes to the axis floor: a band's two edges
+ * are both data. Distinct from the `errorLow`/`errorHigh` whiskers too —
+ * those decorate a value per datum, this IS the mark. Pair it with a `line`
+ * over the same rows to get the usual "estimate with its interval" chart.
+ *
+ * A datum joins the band only when BOTH bounds are finite; half a bound is
+ * not a region, so it reads as a gap.
+ */
+export function band<T>(low: Accessor<T>, high: Accessor<T>, options: MarkOptions = {}): Mark<T> {
+  return { kind: 'band', y: high, y2: low, options, r: undefined, transform: undefined, errorLow: undefined, errorHigh: undefined }
+}
+
+/**
+ * Areas stacked on one another — the shares-over-time chart.
+ *
+ * `stackedBars`' continuous sibling: each series is filled between the
+ * running total below it and its own top, so the outline of the topmost
+ * series is the total. Only non-negative values stack, on the same reasoning
+ * as the bars — a mixed-sign stack has segments that overlap and a top that
+ * is not the total.
+ */
+export function stackedArea<T>(y: Accessor<T>, options: MarkOptions = {}): Mark<T> {
+  return mark('stackedArea', y, options)
+}
+
 /** A dot per datum. */
 export function points<T>(y: Accessor<T>, options: ErrorOptions<T> = {}): Mark<T> {
   return mark('points', y, options)
@@ -257,6 +297,9 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly s
     // The r channel resolves to RADII here, area-mapped over the series'
     // own extent, so the engine only ever sees pixels.
     let radii: Double[] | undefined = undefined
+    // The RAW r values are kept beside the pixel radii: the reader wants the
+    // datum's number, not the size it was drawn at.
+    let rValues: Double[] | undefined = undefined
     const rAcc = m.r
     if (rAcc !== undefined) {
       // The sqrt-scaled min/max mapping now lives in the shared `bubbleRadii`
@@ -265,6 +308,7 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly s
       const rRaw: Double[] = []
       for (let i = 0; i < data.length; i++) rRaw.push(rAcc(data[i]!, i))
       radii = bubbleRadii(rRaw, m.minRadius ?? 3.0, m.maxRadius ?? 18.0)
+      rValues = rRaw
     }
     // Error bounds resolve like values: a non-finite bound is a gap.
     const lowAcc = m.errorLow
@@ -281,9 +325,26 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly s
         errHigh.push(Number.isFinite(hi) ? hi : Number.NaN)
       }
     }
+    // The band's lower bound resolves exactly like `values`, so a non-finite
+    // bound is a gap on the same terms.
+    let values2: Double[] | undefined = undefined
+    const t2 = m.transform2
+    const y2Acc = m.y2
+    if (t2 !== undefined) {
+      // A computed second channel reads the same RAW series the first one
+      // transformed — both bounds of a rolling envelope come from one input.
+      values2 = t2(raw)
+    } else if (y2Acc !== undefined) {
+      values2 = []
+      for (let i = 0; i < data.length; i++) {
+        const v2 = y2Acc(data[i]!, i)
+        values2.push(Number.isFinite(v2) ? v2 : Number.NaN)
+      }
+    }
     return {
       kind: m.kind,
       values,
+      values2,
       color: m.options.color ?? paletteAt(palette, seriesIndex),
       width: m.options.width ?? 2,
       radius: m.options.radius ?? 3,
@@ -291,6 +352,7 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly s
       curve: m.options.curve,
       showValues: m.options.showValues === true,
       radii,
+      rValues,
       axis: m.options.axis,
       effect: m.options.effect,
       symbol: m.options.symbol,
