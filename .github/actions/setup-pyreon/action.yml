@@ -127,21 +127,29 @@ runs:
     # this replaces claimed the install "corrects a stale prefix-match
     # restore"; the repo's own rule says it does not.
     #
-    # The path is taken on any PR whose `bun.lock` differs from every cached
-    # entry — i.e. exactly the dependency-changing PRs where a resolution
-    # difference matters most. It matters there for the MEASURING gates:
-    # `check-import-budgets` and `check-bundle-budgets` bundle against the
-    # installed tree, so on those PRs they measure a HYBRID of two dependency
-    # trees, which is neither the old one nor the new one.
+    # It matters most for the MEASURING gates: `check-import-budgets` and
+    # `check-bundle-budgets` bundle against the installed tree, so a hybrid
+    # one is measured as if it were a real dependency tree.
     #
-    # This is NOT the other way a budget verdict goes stale, and the two are
-    # easy to conflate: a run whose merge ref was fixed BEFORE a lockfile
-    # change merged checks out the older lockfile and gets a perfectly exact
-    # cache hit for it (observed: two ubuntu Builds 141 B apart, both exact
-    # hits, one on main's lockfile and one on the pre-#3398 one, 87 minutes of
-    # queue between run creation and job start). That is concurrent-merge
-    # staleness — the class CLAUDE.md documents for Docs Sync — and its answer
-    # is detection on main after the merge, not anything this step can do.
+    # This has happened. #3390's Build (job 102273316243) asked for
+    # `node-modules-Linux-bun-edcc7173…` — the pre-#3398 lockfile its checkout
+    # carried — and its log reads `Cache hit for restore-key:` followed by
+    # `…-231904df…`, main's POST-#3398 tree; the fallback below then installed
+    # over it. It measured `plot-minimal` at 23008 where #3404 read 23149,
+    # which is how main went 49 B over its own budget unnoticed.
+    #
+    # (The phrasing is the discriminator and is easy to read past: the same
+    # job prints `Cache hit for:` for an EXACT match and `Cache hit for
+    # restore-key:` for a PREFIX fallback.)
+    #
+    # A PR whose lockfile matches no cached entry is not exotic — it is what
+    # any long-queued PR becomes the moment a deps PR merges ahead of it.
+    #
+    # What this does NOT fix: that Build would still have measured the
+    # pre-#3398 tree, which never merged. Self-consistent, still not a
+    # function of what merges — concurrent-merge staleness, the class
+    # CLAUDE.md documents for Docs Sync, whose answer is detection on main
+    # after the merge rather than anything this step can do.
     #
     # So the stale tree is REMOVED rather than topped up. On a full miss
     # these paths do not exist and the removal is a no-op; the bun download
