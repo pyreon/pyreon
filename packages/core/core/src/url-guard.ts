@@ -25,6 +25,81 @@ export const URL_ATTRS = new Set([
   'xlink:href',
 ])
 
+/**
+ * Is this prop a URL-bearing attribute, under EITHER spelling?
+ *
+ * `URL_ATTRS` holds ATTRIBUTE names, but every guard call site is handed the
+ * JSX PROP name — and for `formaction` the two differ. `formAction` is an
+ * advertised typed prop (`jsx-runtime.ts`), so the idiomatic TSX spelling was
+ * the one that missed the set, while the lowercase spelling nobody writes was
+ * guarded. Measured before this fix:
+ *
+ *   <button formAction="javascript:alert(1)">  ->  formaction="javascript:alert(1)"
+ *   <button formaction="javascript:alert(1)">  ->  (blocked)
+ *
+ * and `formaction` overrides `<form action>`, which is in the set precisely
+ * because `javascript:` executes on submit. Same shape as the `xlink:href`
+ * drift: a guard keyed on one spelling of a thing that has several. Resolve
+ * the name before asking, in ONE place, so no call site can key on the wrong
+ * one again.
+ */
+export function isUrlAttr(key: string): boolean {
+  if (URL_ATTRS.has(key)) return true
+  // Only pay the lowercase when the key could differ — a camelCase alias is
+  // the only way to miss, and almost every prop is already lowercase.
+  for (let i = 0; i < key.length; i++) {
+    const c = key.charCodeAt(i)
+    if (c >= 65 && c <= 90) return URL_ATTRS.has(key.toLowerCase())
+  }
+  return false
+}
+
+/**
+ * HTML event-handler CONTENT attributes, lowercase — the spelling that is
+ * executable markup rather than a Pyreon prop.
+ *
+ * Pyreon documents the camelCase form (`onClick`), and the SSR skip used to
+ * require an uppercase third character. So the LOWERCASE spelling — the one
+ * that is a real inline handler — fell straight through and was serialized:
+ *
+ *   h('div', { onclick: 'alert(1)' })           -> <div onclick="alert(1)">
+ *   h('img', { src: 'x', onerror: 'alert(1)' })  -> <img src="x" onerror="alert(1)">
+ *
+ * live in the server-rendered HTML, which the browser runs before any framework
+ * code. The reachable vector is a spread of a user-keyed object — verbatim the
+ * threat model `UNSAFE_ATTR_NAME_RE` already documents, and invisible to it
+ * because `onclick` contains no breakout character.
+ *
+ * A NAME SET rather than `/^on[a-z]/`, deliberately. The broad regex also eats
+ * `once` and `onyx`, which are not handlers and which an existing spec asserts
+ * must still render — an attribute that merely starts with "on" is ordinary
+ * data. So: every real handler name is refused, an unknown `on*` name is kept.
+ * Adding a name can only ever refuse more; the cost of a missing one is this
+ * bug, so err toward listing it.
+ */
+export const EVENT_HANDLER_ATTRS = new Set([
+  'onabort', 'onafterprint', 'onanimationcancel', 'onanimationend', 'onanimationiteration',
+  'onanimationstart', 'onauxclick', 'onbeforeinput', 'onbeforematch', 'onbeforeprint',
+  'onbeforetoggle', 'onbeforeunload', 'onblur', 'oncancel', 'oncanplay', 'oncanplaythrough',
+  'onchange', 'onclick', 'onclose', 'oncontextlost', 'oncontextmenu', 'oncontextrestored',
+  'oncopy', 'oncuechange', 'oncut', 'ondblclick', 'ondrag', 'ondragend', 'ondragenter',
+  'ondragleave', 'ondragover', 'ondragstart', 'ondrop', 'ondurationchange', 'onemptied',
+  'onended', 'onerror', 'onfocus', 'onfocusin', 'onfocusout', 'onformdata',
+  'ongotpointercapture', 'onhashchange', 'oninput', 'oninvalid', 'onkeydown', 'onkeypress',
+  'onkeyup', 'onlanguagechange', 'onload', 'onloadeddata', 'onloadedmetadata', 'onloadstart',
+  'onlostpointercapture', 'onmessage', 'onmessageerror', 'onmousedown', 'onmouseenter',
+  'onmouseleave', 'onmousemove', 'onmouseout', 'onmouseover', 'onmouseup', 'onoffline',
+  'ononline', 'onpagehide', 'onpageshow', 'onpaste', 'onpause', 'onplay', 'onplaying',
+  'onpointercancel', 'onpointerdown', 'onpointerenter', 'onpointerleave', 'onpointermove',
+  'onpointerout', 'onpointerover', 'onpointerrawupdate', 'onpointerup', 'onpopstate',
+  'onprogress', 'onratechange', 'onrejectionhandled', 'onreset', 'onresize', 'onscroll',
+  'onscrollend', 'onsecuritypolicyviolation', 'onseeked', 'onseeking', 'onselect',
+  'onslotchange', 'onstalled', 'onstorage', 'onsubmit', 'onsuspend', 'ontimeupdate',
+  'ontoggle', 'ontouchcancel', 'ontouchend', 'ontouchmove', 'ontouchstart',
+  'ontransitioncancel', 'ontransitionend', 'ontransitionrun', 'ontransitionstart',
+  'onunhandledrejection', 'onunload', 'onvolumechange', 'onwaiting', 'onwheel',
+])
+
 /** Matches the `javascript:` / `data:` URI prefixes the guard rejects by default. */
 export const UNSAFE_URL_RE = /^\s*(?:javascript|data):/i
 
