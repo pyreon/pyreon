@@ -54,11 +54,11 @@ describe('yDomain lowers to both targets', () => {
 
   it.skipIf(!isSwiftcAvailable())('swiftc accepts the emit', () => {
     const r = validateSwiftWithStubs(transform(SRC, { target: 'swift' }).code)
-    expect(r.ok, r.output).toBe(true)
+    expect(r.ok, r.error).toBe(true)
   })
 
   it.skipIf(!isKotlincAvailable())('kotlinc accepts the emit', () => {
     const r = validateKotlin(transform(SRC, { target: 'kotlin' }).code)
-    expect(r.ok, r.output).toBe(true)
+    expect(r.ok, r.error).toBe(true)
   })
 })
