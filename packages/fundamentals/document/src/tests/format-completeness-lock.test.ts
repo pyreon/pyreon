@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 /**
  * THE 18-PRIMITIVE × 20-FORMAT COMPLETENESS LOCK.
  *
@@ -314,10 +317,36 @@ describe('18-primitive × 20-format completeness lock', () => {
     })
   }
 
-  it('covers every registered format (a new format must add an expectation)', async () => {
-    const { renderText } = { renderText: null } // placeholder to keep imports minimal
-    void renderText
-    const formats = Object.keys(EXPECTATIONS)
-    expect(formats.length).toBe(20)
+  // This spec is named "covers every registered format" and used to be
+  // `expect(Object.keys(EXPECTATIONS).length).toBe(20)` — the fixture map
+  // counted against ITSELF. Nothing related it to the format registry, so a
+  // 21st format whose expectation was skipped still read 20 and stayed green,
+  // and the fix a reader would apply is to bump the number.
+  //
+  // `OutputFormat` is a type-only union with no runtime array, so the union
+  // DECLARATION is the second source of truth. Read it and relate the two in
+  // BOTH directions — a totality check in one direction is the silent-hole
+  // shape this repo keeps re-finding.
+  it('covers every format declared in OutputFormat, and declares no phantom', () => {
+    const typesSrc = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), '..', 'types.ts'),
+      'utf-8',
+    )
+    const union = /export type OutputFormat =([\s\S]*?)(?:\n\n|\nexport |\n\/\*\*)/.exec(typesSrc)
+    expect(union, 'could not find the OutputFormat union — this spec must not pass vacuously').not.toBeNull()
+    const declared = [...(union?.[1] ?? '').matchAll(/'([a-z0-9-]+)'/gi)].map((m) => m[1]!)
+    expect(declared.length, 'the union parse found nothing').toBeGreaterThan(10)
+
+    const covered = Object.keys(EXPECTATIONS)
+    const missing = declared.filter((f) => !covered.includes(f))
+    const phantom = covered.filter((f) => !declared.includes(f))
+    expect(
+      missing,
+      `declared in OutputFormat but with no EXPECTATIONS entry: ${missing.join(', ')}`,
+    ).toEqual([])
+    expect(
+      phantom,
+      `has an EXPECTATIONS entry but is not in OutputFormat: ${phantom.join(', ')}`,
+    ).toEqual([])
   })
 })
