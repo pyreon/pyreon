@@ -12772,6 +12772,14 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     `showYAxis: ${bool('showYAxis', true)}`,
     `showGrid: ${bool('showGrid', true)}`,
   ]
+  // `yDomain` is ChartSpec field 9, so it goes here — BEFORE `yFormat` — and
+  // the position is read off the generated struct rather than restated, since
+  // Swift's memberwise init takes its arguments in declaration order. Its
+  // sibling `y2Domain` has lowered as a one-liner all along; this one was in
+  // PLOT_UNLOWERED_PROPS, so a native chart could not pin its y range and said
+  // so in a warning.
+  const yDom = chartAttrExpr(e, 'yDomain')
+  if (yDom !== undefined) specArgs.push(`yDomain: ${emitSwiftExpr(yDom, indent)}`)
   const yFormat = swiftChartFormatter(e, 'format', indent)
   if (yFormat !== undefined) specArgs.push(`yFormat: ${yFormat}`)
   const xFormat = swiftChartFormatter(e, 'xFormat', indent)

@@ -10650,6 +10650,9 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     `showYAxis = ${bool('showYAxis', true)}`,
     `showGrid = ${bool('showGrid', true)}`,
   ]
+  // Mirror of the Swift emitter — ChartSpec field 9, before `yFormat`.
+  const yDom = chartAttrExprKotlin(e, 'yDomain')
+  if (yDom !== undefined) specArgs.push(`yDomain = ${emitKotlinExpr(yDom, indent)}`)
   const yFormat = kotlinChartFormatter(e, 'format', indent)
   if (yFormat !== undefined) specArgs.push(`yFormat = ${yFormat}`)
   const xFormat = kotlinChartFormatter(e, 'xFormat', indent)
