@@ -36,6 +36,7 @@
  */
 
 import { execSync, spawnSync } from 'node:child_process'
+import { SMOKE_SKIPPED_MARKER } from './smoke-marker'
 import { mkdtempSync, writeFileSync, rmSync, readdirSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname, resolve } from 'node:path'
@@ -96,6 +97,7 @@ const TEST_FILE = TEST_OVERRIDE
 // --typecheck-only` skips the JAR bundling + smoke run (used by the
 // workspace `typecheck` script to avoid CI parallel-load timeouts).
 const typecheckOnly = process.argv.includes('--typecheck-only')
+
 
 const kotlinc = (() => {
   try {
@@ -1799,7 +1801,21 @@ try {
     // Loud and distinct from ✓: a typecheck-only pass is NOT a behaviour pass. The
     // @pyreon/flow port shipped a selectAll/deleteSelected divergence past this
     // line because the smoke never ran locally (java off PATH) and the log read ✓.
-    console.log('[verify-kotlin] ⚠ SKIPPED smoke-run — `java` not on PATH (typecheck only). Put a JDK on PATH (e.g. /opt/homebrew/opt/openjdk/bin) to RUN the behaviour test.')
+    //
+    // The marker is a STABLE TOKEN, not just prose, because callers need to
+    // know: `check-native-cosource` spawns this script, discards its stdout on
+    // success, and used to report "(compiled + ran test)" from the mere
+    // EXISTENCE of a test file — so this warning was invisible and the gate
+    // claimed a behaviour pass that never happened.
+    console.log(`${SMOKE_SKIPPED_MARKER} — \`java\` not on PATH (typecheck only). Put a JDK on PATH (e.g. /opt/homebrew/opt/openjdk/bin) to RUN the behaviour test.`)
+    // Same contract the swiftc/kotlinc absence already has: a CI runner that
+    // cannot run the behaviour test is a broken runner, not a passing gate.
+    if (process.env.PYREON_REQUIRE_NATIVE_VALIDATE === '1') {
+      console.error(
+        '[verify-kotlin] FAILED — PYREON_REQUIRE_NATIVE_VALIDATE=1 and the smoke could not run (no JDK).',
+      )
+      process.exit(1)
+    }
   } else {
     const smokeResult = spawnSync(
       'java',

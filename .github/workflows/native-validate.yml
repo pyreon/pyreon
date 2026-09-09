@@ -343,8 +343,16 @@ jobs:
         # Co-located native runtimes (@pyreon/<pkg>/native/{swift,kotlin}/) live
         # outside @pyreon/native-runtime-*'s src/, so this gate compiles +
         # smoke-runs them against the stub harness. Skips a toolchain gracefully.
+        #
+        # PYREON_REQUIRE_NATIVE_VALIDATE=1 covers one more way to skip than the
+        # toolchains: the Kotlin behaviour test needs a JVM to RUN, and without
+        # one `verify-kotlin` compiles it, warns, and exits 0 — so every Kotlin
+        # assertion in the repo was typecheck-only while the log read
+        # "(compiled + ran test)". This runner has a JDK; if it ever stops
+        # having one that is a broken runner, not a passing gate.
         run: bun scripts/check-native-cosource.ts
         env:
+          PYREON_REQUIRE_NATIVE_VALIDATE: '1'
           PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate
           PYREON_VALIDATE_NO_CACHE: ${{ github.event_name == 'schedule' && '1' || '0' }}
 
@@ -635,6 +643,13 @@ jobs:
         # co-source tests (@pyreon/flow's observation-granularity lock, the
         # table/dnd/sync state ports' behaviour checks) ran on developer laptops
         # only. Kotlin half re-runs here too; both toolchains are cheap.
+        #
+        # Deliberately NOT PYREON_REQUIRE_NATIVE_VALIDATE=1, unlike the ubuntu
+        # sibling: whether a macOS runner image carries a working JDK is not
+        # something this change verified, and turning an unverified assumption
+        # into a required check is how a green gate becomes a blocked queue. The
+        # script now NAMES a skipped smoke in its output, so this job's log
+        # answers the question — promote the flag here once it has.
         run: bun scripts/check-native-cosource.ts
         env:
           PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate
