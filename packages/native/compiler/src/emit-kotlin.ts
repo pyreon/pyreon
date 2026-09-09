@@ -79,7 +79,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, HEAT_RAMP_DEFAULT, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -9630,7 +9630,10 @@ const KOTLIN_CHART_TARGET: ChartHostTarget = {
   struct: (name, fields) => `${name}(${fields.map(([k, v]) => `${k} = ${v}`).join(', ')})`,
   coalesce: (a, b) => `(${a} ?: ${b})`,
   withProgress: (options, struct, progress) => (options === 'null' ? `${struct}(progress = ${progress})` : `(${options}).copy(progress = ${progress})`),
-  withPalette: (options, struct, palette) => (options === 'null' ? `${struct}(palette = ${palette})` : `(${options}).let { if (it.palette == null) it.copy(palette = ${palette}) else it }`),
+  withThemeDefaults: (options, struct, fields) =>
+    options === 'null'
+      ? `${struct}(${fields.map(([f, v]) => `${f} = ${v}`).join(', ')})`
+      : `(${options}).let { it.copy(${fields.map(([f, v]) => `${f} = it.${f} ?: ${v}`).join(', ')}) }`,
   pieOptions: (a) => `PieOptions(innerRadius = ${a.innerRatio}, showLabels = true, labelColor = "#ffffff", fontSize = ${a.fontSize ?? '11.0'})`,
   theme: () => `ChartTheme(axis = ${JSON.stringify(CHART_THEME_DEFAULT.axis)}, grid = ${JSON.stringify(CHART_THEME_DEFAULT.grid)}, label = ${JSON.stringify(CHART_THEME_DEFAULT.label)}, fontSize = ${CHART_THEME_DEFAULT.fontSize})`,
 }
@@ -9774,8 +9777,9 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   const themed = kotlinChartThemed(e)
   const themeLets: string[] = []
   let options = userOptions
-  if (themed && spec.paletteOption === true) {
-    themeLets.push(`val pyreonOptions: ${spec.optionsStruct} = ${KOTLIN_CHART_TARGET.withPalette(userOptions, spec.optionsStruct, tf.palette)}`)
+  const themeFields = chartThemeDefaultFields(spec, tf)
+  if (themed && themeFields.length > 0) {
+    themeLets.push(`val pyreonOptions: ${spec.optionsStruct} = ${KOTLIN_CHART_TARGET.withThemeDefaults(userOptions, spec.optionsStruct, themeFields)}`)
     options = 'pyreonOptions'
   }
   const H = kotlinChartDouble(e, 'height', spec.defaultHeight, indent)
