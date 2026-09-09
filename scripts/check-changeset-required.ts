@@ -385,6 +385,21 @@ export interface GateInputs {
   hasSkipLabel: boolean
   /** PR author login, e.g. `dependabot[bot]`. Absent for local runs. */
   prAuthor?: string | undefined
+  /**
+   * Changeset paths that declare NO package — a content-free `---\n---` file.
+   *
+   * The gate counts changeset ACTIVITY by path, so any `.changeset/*.md`
+   * satisfied it, content unread. An empty changeset is a legitimate artifact
+   * (`changeset --empty`) when a PR genuinely does not affect consumers — but
+   * in that case this gate never DEMANDS one, because `consumerFiles` is empty
+   * and it returns `skip-no-consumer-files` first. So by the time we are asking,
+   * an empty changeset is the one answer that cannot be right: it satisfies the
+   * gate while recording nothing, and the loss is the CHANGELOG entry, which is
+   * the gate's entire purpose.
+   *
+   * Read in `main()` so `evaluateGate` stays pure.
+   */
+  vacuousChangesets?: readonly string[] | undefined
 }
 
 /**
@@ -444,7 +459,8 @@ export function evaluateGate(inp: GateInputs): GateResult {
     }
   }
 
-  const activity = inp.files.filter(isChangesetFile)
+  const vacuous = new Set(inp.vacuousChangesets ?? [])
+  const activity = inp.files.filter((f) => isChangesetFile(f) && !vacuous.has(f))
   if (activity.length > 0) {
     return { kind: 'ok-changeset-activity', activity }
   }
@@ -472,7 +488,24 @@ function git(...args: string[]): string {
   return execFileSync('git', args, { encoding: 'utf8' }).trim()
 }
 
-function changedFiles(baseRef: string): string[] {
+/**
+ * The changed files, or `null` when the diff could not be OBTAINED.
+ *
+ * The distinction is the whole point. This used to `catch { return [] }`, which
+ * makes a git failure indistinguishable from "this PR touched nothing relevant"
+ * — and the caller then printed a POSITIVE assertion about a diff it never had:
+ *
+ *   $ BASE_REF=this-ref-does-not-exist bun scripts/check-changeset-required.ts
+ *   fatal: ambiguous argument 'origin/this-ref-does-not-exist...HEAD'
+ *   [check-changeset-required] PR does not touch any published package source
+ *   EXIT=0
+ *
+ * on a PINNED REQUIRED check. Not firing in CI today (`fetch-depth: 0` resolves
+ * `origin/main`), but live for a shallow clone, a non-`origin` remote, a renamed
+ * base branch, and any local run in a clone lacking the ref — i.e. exactly the
+ * situations where a human is least likely to read the log.
+ */
+function changedFiles(baseRef: string): string[] | null {
   // `git diff --name-only` requires the merge-base form
   // `<base>...HEAD` to compare only commits unique to HEAD, not the
   // union of both branches' changes since divergence. Use the
@@ -481,8 +514,13 @@ function changedFiles(baseRef: string): string[] {
   try {
     const out = git('diff', '--name-only', '--diff-filter=ACDMRTUXB', `origin/${baseRef}...HEAD`)
     return out.length === 0 ? [] : out.split('\n')
-  } catch {
-    return []
+  } catch (err) {
+    // Loud, and NOT an empty diff.
+    console.error(
+      `[check-changeset-required] could not compute the diff against origin/${baseRef}: ` +
+        `${err instanceof Error ? err.message : String(err)}`,
+    )
+    return null
   }
 }
 
@@ -503,8 +541,35 @@ function main(): void {
 
   const repoRoot = resolve(import.meta.dirname, '..')
   const files = changedFiles(BASE_REF)
+  if (files === null) {
+    // Fail CLOSED. A gate that cannot see the diff has verified nothing, and
+    // this one is a pinned required check — reporting success here asserts a
+    // fact about a diff that was never obtained.
+    console.error(
+      `[check-changeset-required] REFUSING to pass: the diff could not be computed, so this gate ` +
+        `verified NOTHING. Check that origin/${BASE_REF} exists in this clone ` +
+        `(CI uses fetch-depth: 0; a shallow clone or a renamed base branch will not have it).`,
+    )
+    process.exit(1)
+  }
   const packages = discoverPackages(repoRoot)
   const ignoredNames = new Set(readChangesetIgnore(repoRoot))
+
+  // A changeset that declares no package records nothing. Read the ADDED ones
+  // here (side effects stay out of `evaluateGate`); a deleted changeset has no
+  // content to read and still counts as activity, which is correct — that is
+  // the Version PR consuming them.
+  const vacuousChangesets = files.filter((f) => {
+    if (!isChangesetFile(f)) return false
+    let text: string
+    try {
+      text = readFileSync(join(repoRoot, f), 'utf-8')
+    } catch {
+      return false // deleted by this PR — activity, not vacuity
+    }
+    const fm = /^---\r?\n([\s\S]*?)\r?\n?---/.exec(text)
+    return fm !== null && fm[1]!.trim() === ''
+  })
 
   const result = evaluateGate({
     files,
@@ -513,6 +578,7 @@ function main(): void {
     repoRoot,
     hasSkipLabel: HAS_SKIP_LABEL,
     prAuthor: process.env['PR_AUTHOR'],
+    vacuousChangesets,
   })
 
   switch (result.kind) {

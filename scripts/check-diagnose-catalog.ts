@@ -206,15 +206,37 @@ function git(...args: string[]): string {
   return execFileSync('git', args, { encoding: 'utf8' }).trim()
 }
 
-function changedFiles(baseRef: string): string[] {
+/**
+ * The changed files, or `null` when the diff could not be OBTAINED.
+ *
+ * The distinction is the whole point. This used to `catch { return [] }`, which
+ * makes a git failure indistinguishable from "this PR touched nothing relevant"
+ * — and the caller then printed a POSITIVE assertion about a diff it never had:
+ *
+ *   $ BASE_REF=this-ref-does-not-exist bun scripts/check-diagnose-catalog.ts
+ *   fatal: ambiguous argument 'origin/this-ref-does-not-exist...HEAD'
+ *   [check-diagnose-catalog] PR does not touch any published package source
+ *   EXIT=0
+ *
+ * on a PINNED REQUIRED check. Not firing in CI today (`fetch-depth: 0` resolves
+ * `origin/main`), but live for a shallow clone, a non-`origin` remote, a renamed
+ * base branch, and any local run in a clone lacking the ref — i.e. exactly the
+ * situations where a human is least likely to read the log.
+ */
+function changedFiles(baseRef: string): string[] | null {
   // `git diff --name-only` requires the merge-base form `<base>...HEAD`
   // to compare only commits unique to HEAD, not the union of both
   // branches' changes since divergence.
   try {
     const out = git('diff', '--name-only', `origin/${baseRef}...HEAD`)
     return out.length === 0 ? [] : out.split('\n')
-  } catch {
-    return []
+  } catch (err) {
+    // Loud, and NOT an empty diff.
+    console.error(
+      `[check-diagnose-catalog] could not compute the diff against origin/${baseRef}: ` +
+        `${err instanceof Error ? err.message : String(err)}`,
+    )
+    return null
   }
 }
 
@@ -328,6 +350,17 @@ function main(): void {
   const HAS_SKIP_LABEL = process.env['HAS_SKIP_LABEL'] === 'true'
 
   const files = changedFiles(BASE_REF)
+  if (files === null) {
+    // Fail CLOSED. A gate that cannot see the diff has verified nothing, and
+    // this one is a pinned required check — reporting success here asserts a
+    // fact about a diff that was never obtained.
+    console.error(
+      `[check-diagnose-catalog] REFUSING to pass: the diff could not be computed, so this gate ` +
+        `verified NOTHING. Check that origin/${BASE_REF} exists in this clone ` +
+        `(CI uses fetch-depth: 0; a shallow clone or a renamed base branch will not have it).`,
+    )
+    process.exit(1)
+  }
   const baseSource = readFileAt(`origin/${BASE_REF}`, CATALOG_FILE)
   const headSource = readFileAtHead(CATALOG_FILE)
 

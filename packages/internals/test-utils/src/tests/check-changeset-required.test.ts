@@ -840,6 +840,47 @@ describe('evaluateGate — Dependabot manifest-only carve-out', () => {
     hasSkipLabel: false,
   }
 
+  // An EMPTY changeset (`---\n---`, what `changeset --empty` produces) satisfied
+  // the gate, because activity was counted by PATH with the content unread. One
+  // live instance in 513: a feature PR that changed real source in three
+  // published packages shipped one, so the work got no CHANGELOG entry — which
+  // is the gate's entire purpose. The fixed group meant the version still moved,
+  // so nothing else caught it.
+  //
+  // An empty changeset is legitimate when a PR does not affect consumers — but
+  // then this gate never demands one, because `skip-no-consumer-files` returns
+  // first. By the time we are asking, it is the one answer that cannot be right.
+  it('an EMPTY changeset does not satisfy the gate', () => {
+    const r = evaluateGate({
+      ...base,
+      files: ['packages/core/router/src/router.ts', '.changeset/brave-laws-brush.md'],
+      vacuousChangesets: ['.changeset/brave-laws-brush.md'],
+    })
+    expect(r.kind, 'a content-free changeset records nothing').toBe('fail-no-changeset')
+  })
+
+  it('a REAL changeset still satisfies it', () => {
+    const r = evaluateGate({
+      ...base,
+      files: ['packages/core/router/src/router.ts', '.changeset/real-one.md'],
+      vacuousChangesets: [],
+    })
+    expect(r.kind).toBe('ok-changeset-activity')
+  })
+
+  it('one empty changeset does not poison a real one alongside it', () => {
+    const r = evaluateGate({
+      ...base,
+      files: [
+        'packages/core/router/src/router.ts',
+        '.changeset/empty.md',
+        '.changeset/real.md',
+      ],
+      vacuousChangesets: ['.changeset/empty.md'],
+    })
+    expect(r.kind).toBe('ok-changeset-activity')
+  })
+
   it('lets a Dependabot manifest-only PR through', () => {
     const r = evaluateGate({
       ...base,
