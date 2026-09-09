@@ -68,7 +68,19 @@ public final class PyreonTableState<T> {
     public private(set) var sortColumn: String?
     public private(set) var sortDirection: PyreonSortDirection = .asc
     public private(set) var filterValue: String = ""
-    public private(set) var page: Int = 0
+    private var rawPage: Int = 0
+
+    /// The page the reader is actually on.
+    ///
+    /// `setPage` clamps on the way IN, but the row set can shrink underneath a
+    /// page that was valid when it was set — deleting rows, or a refetch that
+    /// returns fewer — and neither routes through `setFilter`'s reset. The raw
+    /// value then points past the end and `rows()` returns an empty window, so
+    /// the list renders BLANK while `pageCount()` reports a smaller number than
+    /// `page`. Clamping on READ keeps `page`, `pageCount()` and `rows()` from
+    /// ever disagreeing, and restores the reader's place after a transient
+    /// shrink instead of stranding them on the last page.
+    public var page: Int { clampPage(rawPage) }
     public private(set) var selected: [String] = []
 
     public init(
@@ -129,7 +141,7 @@ public final class PyreonTableState<T> {
     // ── filtering ─────────────────────────────────────────────────────────────
     public func setFilter(_ query: String) {
         filterValue = query
-        page = 0
+        rawPage = 0
     }
 
     // ── pagination ──────────────────────────────────────────────────────────────
@@ -142,9 +154,9 @@ public final class PyreonTableState<T> {
         let maxPage = pageCount() - 1
         return index < 0 ? 0 : (index > maxPage ? maxPage : index)
     }
-    public func setPage(_ index: Int) { page = clampPage(index) }
-    public func nextPage() { page = clampPage(page + 1) }
-    public func prevPage() { page = clampPage(page - 1) }
+    public func setPage(_ index: Int) { rawPage = clampPage(index) }
+    public func nextPage() { rawPage = clampPage(page + 1) }
+    public func prevPage() { rawPage = clampPage(page - 1) }
 
     // ── selection ────────────────────────────────────────────────────────────────
     public func isSelected(_ id: String) -> Bool { selected.contains(id) }

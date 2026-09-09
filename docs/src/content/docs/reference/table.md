@@ -240,7 +240,7 @@ Fine-grained visible-cells accessor for a row — the cells-LIST companion to `f
 <T>(options: { data: () => readonly T[]; columns?: TableColumn<T>[]; pageSize?: number; rowId?: (row: T, i: number) => string; filterFn?: (row: T, q: string, cols: TableColumn<T>[]) => boolean }) => TableState<T>
 ```
 
-The dependency-free, MULTIPLATFORM-portable table-state core — the alternative to `useTable` (which binds `@tanstack/table-core` and is web-only-rich). Pure signal logic (no DOM, no TanStack), so the SAME source drives sort / filter / paginate / row-selection on web AND, via co-located native Swift/Kotlin ports (`PyreonTableState`, behaviour-identical + compile-and-run verified), on iOS/Android — you render `rows()` with native `<For>` (tables ARE native: SwiftUI List / Compose LazyColumn), no WebView. `data` is an ACCESSOR so a `signal()`/`computed()` source stays reactive; `rows()` re-derives filtered → sorted → paginated. `toggleSort` cycles none → asc → desc → none; the filter is case-insensitive across every column (override with `filterFn`); `pageSize: 0` disables pagination. A `createTableState`-only import tree-shakes TanStack out entirely.
+The dependency-free, MULTIPLATFORM-portable table-state core — the alternative to `useTable` (which binds `@tanstack/table-core` and is web-only-rich). Pure signal logic (no DOM, no TanStack), so the SAME source drives sort / filter / paginate / row-selection on web AND, via co-located native Swift/Kotlin ports (`PyreonTableState`, behaviour-identical + compile-and-run verified), on iOS/Android — you render `rows()` with native `<For>` (tables ARE native: SwiftUI List / Compose LazyColumn), no WebView. `data` is an ACCESSOR so a `signal()`/`computed()` source stays reactive; `rows()` re-derives filtered → sorted → paginated. `toggleSort` cycles none → asc → desc → none; the filter is case-insensitive across every column (override with `filterFn`); `pageSize: 0` disables pagination. `page()` is CLAMPED against the live row count, so a page that falls off the end when the data shrinks reports the last page rather than rendering a blank table, and a transient shrink returns the reader to where they were. Empty cells (`null`/`undefined`) sort as ONE rank, so rows with nothing in the sorted column keep their relative order. A `createTableState`-only import tree-shakes TanStack out entirely.
 
 **Example**
 
@@ -254,6 +254,7 @@ table.toggleSort('name'); table.setFilter('li')
 **Common mistakes**
 
 - Passing `data` as a plain array instead of an accessor `() => data()` — the table then never re-derives when the source signal changes.
+- Expecting a data shrink to reset the page: `setFilter` resets to page 0, but deleting rows or a refetch that returns fewer does not. `page()` is clamped on READ, so it and `rows()` and `pageCount()` always agree — but the RAW page you last set is remembered, which is why a transient shrink returns you to it.
 - Reaching for it when you need grouping / faceting / column pinning / virtual sizing — those stay on the full `useTable` (TanStack) web path; this is the common 80% (sort/filter/paginate/select).
 
 **See also:** `useTable`

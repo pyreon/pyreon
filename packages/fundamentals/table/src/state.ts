@@ -54,7 +54,11 @@ export interface TableState<T> {
   setFilter(query: string): void
 
   // ── pagination ─────────────────────────────────────────────────────────────
-  /** The current 0-based page. */
+  /**
+   * The current 0-based page, always within `[0, pageCount()-1]`. Clamped
+   * against the LIVE row count, so a page that falls off the end when the data
+   * shrinks reports the last page rather than an empty window.
+   */
   page: () => number
   /** Total pages for the current filtered set (>= 1; always 1 when pagination is off). */
   pageCount: () => number
@@ -105,7 +109,12 @@ const defaultFilter = <T,>(row: T, query: string, columns: readonly TableColumn<
  */
 const compareValues = (a: unknown, b: unknown): number => {
   if (a === b) return 0
-  if (a == null) return -1
+  // `null` and `undefined` are the SAME rank — an empty cell is an empty cell.
+  // Ranking one above the other made the comparator claim both `a < b` and
+  // `b < a` (each hits the `a == null` arm), which is not a valid ordering: the
+  // sort then reorders empty rows against each other for no reason, and the
+  // result depends on where they happened to sit in the input.
+  if (a == null) return b == null ? 0 : -1
   if (b == null) return 1
   if (typeof a === 'number' && typeof b === 'number') return a - b
   const as = String(a).toLowerCase()
@@ -174,17 +183,35 @@ export function createTableState<T>(options: TableStateOptions<T>): TableState<T
     return count === 0 ? 1 : Math.ceil(count / pageSize)
   })
 
-  const rows = computed(() => {
-    const list = sorted()
-    if (pageSize <= 0) return list
-    const start = page() * pageSize
-    return list.slice(start, start + pageSize)
-  })
-
   const clampPage = (index: number): number => {
     const max = pageCount() - 1
     return index < 0 ? 0 : index > max ? max : index
   }
+
+  /**
+   * The page the reader is actually on.
+   *
+   * `setPage` clamps on the way IN, but the row set can shrink underneath a
+   * page that was valid when it was set: deleting rows, a refetch returning
+   * fewer, a parent narrowing the data — none of which route through
+   * `setFilter`'s reset. The raw signal then points past the end and `rows()`
+   * slices an empty window, so the table renders BLANK while `pageCount()`
+   * cheerfully reports a smaller number than `page()`.
+   *
+   * Deriving it (rather than writing the signal back from an effect) keeps
+   * `page()`, `pageCount()` and `rows()` from ever disagreeing, and has a
+   * deliberate side benefit: a transient shrink — a filter typed and cleared, a
+   * refetch — restores the reader's place instead of silently sending them to
+   * the last page and leaving them there.
+   */
+  const effectivePage = computed(() => clampPage(page()))
+
+  const rows = computed(() => {
+    const list = sorted()
+    if (pageSize <= 0) return list
+    const start = effectivePage() * pageSize
+    return list.slice(start, start + pageSize)
+  })
 
   return {
     sortColumn: () => sortColumn(),
@@ -206,16 +233,16 @@ export function createTableState<T>(options: TableStateOptions<T>): TableState<T
       page.set(0) // a new filter can shrink the set — start at the first page
     },
 
-    page: () => page(),
+    page: () => effectivePage(),
     pageCount: () => pageCount(),
     setPage(index) {
       page.set(clampPage(index))
     },
     nextPage() {
-      page.set(clampPage(page() + 1))
+      page.set(clampPage(effectivePage() + 1))
     },
     prevPage() {
-      page.set(clampPage(page() - 1))
+      page.set(clampPage(effectivePage() - 1))
     },
 
     isSelected: (id) => selectedSet().has(id),

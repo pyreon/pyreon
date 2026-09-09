@@ -76,6 +76,25 @@ struct PyreonTableStateTests {
         p.setPage(-5)
         check(p.page == 0, "page clamps low")
 
+        // 6. A shrinking data source never leaves the reader on a blank page.
+        //    `setFilter` resets to page 0, but nothing else does — so a page
+        //    that was valid when it was set can fall off the end when rows go
+        //    away, and `rows()` would slice an empty window.
+        var live = seed + [Row(id: 5, name: "Edsger", age: 72), Row(id: 6, name: "Barbara", age: 51)]
+        let d = makeTable([], pageSize: 2)
+        d.setData { live }
+        d.setPage(2)
+        check(d.rows().map { $0.id } == [5, 6], "page 2 before the shrink")
+
+        live = Array(live.prefix(4)) // 3 pages → 2
+        check(d.pageCount() == 2, "page count after the shrink")
+        check(d.page == 1, "page clamped to the last page after a shrink")
+        check(d.rows().map { $0.id } == [3, 4], "the page went blank after a shrink")
+
+        live = []
+        check(d.page == 0, "page settles at 0 when the data empties")
+        check(d.rows().isEmpty, "no rows when the data empties")
+
         // 5. Selection toggles by rowId.
         let s = makeTable(seed)
         check(!s.isSelected("1"), "not selected initially")
