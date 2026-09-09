@@ -67,19 +67,15 @@ const PACKAGE_DIRS = [
   // `@pyreon/test-utils` declares an explicit 95/95/95 that nothing was
   // checking.
   //
-  // `packages/native` is DELIBERATELY still absent, and that is a finding
-  // rather than an omission — measured on this branch:
-  //
-  //   @pyreon/native-cli       76.37% stmts / 70.68% branches  (floor 95)
-  //   @pyreon/native-compiler  TIMED OUT at 600s, unmeasurable
-  //
-  // `@pyreon/native-compiler` is the most-changed package in this release at
-  // 55k lines and is PUBLISHED, and its suite spawns real swiftc/kotlinc, so
-  // it cannot be measured inside this gate's per-package budget at all. Adding
-  // the root today would red the gate on a package nobody can currently
-  // measure, which is a decision about the suite's runtime, not a scan-root
-  // edit. The numbers are recorded here so the next person starts from them.
   'packages/internals',
+  // `@pyreon/native-compiler` is the most-changed package in this release at
+  // 55k lines, and PUBLISHED — and its coverage had never been measured. Its
+  // suite spawns real swiftc/kotlinc, so the run is dominated by the VERDICT
+  // CACHE: cold it exceeds ten minutes, warm it is fast. The cache lives in
+  // `node_modules/.cache/pyreon-native-validate`, i.e. per checkout, which is
+  // why a fresh worktree measures cold and CI (which restores it via
+  // `PYREON_VALIDATE_CACHE_DIR`) does not. See `NATIVE_TIMEOUT_MS`.
+  'packages/native',
 ]
 const DEFAULT_THRESHOLD = 95
 const MINIMUM_FLOOR = 95
@@ -131,6 +127,19 @@ const SERIAL_PACKAGES = new Set(['@pyreon/zero', '@pyreon/mcp', '@pyreon/vite-pl
  * next CI run says so in the table rather than leaving it to be guessed at.
  */
 const PACKAGE_TIMEOUT_MS = 600_000
+/**
+ * `@pyreon/native-compiler` spawns real `swiftc`/`kotlinc` — hundreds of them —
+ * so its wall time is a function of the VERDICT CACHE, not of the suite. Warm
+ * it is fast; cold it exceeds the shared budget, which is what a fresh checkout
+ * always is. CI restores the cache (`PYREON_VALIDATE_CACHE_DIR`), so this
+ * headroom is for the cold local run rather than the normal path.
+ *
+ * A timeout here is still a LOUD failure that says the thresholds were not
+ * enforced — raising it buys a measurement, it does not paper over one.
+ */
+const NATIVE_TIMEOUT_MS = 1_800_000
+const timeoutFor = (pkg: string): number =>
+  pkg === '@pyreon/native-compiler' ? NATIVE_TIMEOUT_MS : PACKAGE_TIMEOUT_MS
 
 /**
  * The vitest CLI entry, run under `node` (see the spawn comment in
@@ -183,6 +192,18 @@ interface FloorExemption {
   reason: string
 }
 const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
+  '@pyreon/native-compiler': {
+    currentStatements: 88,
+    currentBranches: 82,
+    reason:
+      'Newly MEASURED, not newly regressed: `packages/native` was outside PACKAGE_DIRS, so the most-changed package in this release (55k lines of churn) — and a PUBLISHED one — had never had its coverage measured at all. Two runs gave 89.12/83.19 and 88.80/83.09 — its coverage is NOT deterministic, since which validate specs execute depends on toolchain availability and verdict-cache state, so the floor sits BELOW the observed range rather than at the best run; pinning a single measurement would make the gate flake. Recorded at the actual so the gate can hold the line while it is ratcheted up; a floor the gate can enforce is worth more than one it cannot see. NOTE the run is dominated by the validate VERDICT CACHE (it spawns real swiftc/kotlinc): warm it is fast, cold it exceeds the shared per-package budget, which is why NATIVE_TIMEOUT_MS exists.',
+  },
+  '@pyreon/native-cli': {
+    currentStatements: 76,
+    currentBranches: 70,
+    reason:
+      'Newly MEASURED for the same reason as its sibling above — published, never scanned. First measurement: 76.37% statements / 70.68% branches / 82.17% functions / 78.05% lines. This is the lowest figure in the table and the honest one; the font-extraction specs were additionally gated on a macOS-only system path and had never run in CI either (fixed separately). Ratchet up; never lower to absorb a regression.',
+  },
   '@pyreon/manifest': {
     currentStatements: 95,
     currentBranches: 94,
@@ -784,7 +805,7 @@ function runCoverage(
     const timer = setTimeout(() => {
       timedOut = true
       child.kill('SIGTERM')
-    }, PACKAGE_TIMEOUT_MS)
+    }, timeoutFor(pkgName))
 
     child.on('close', (code, signal) => {
       clearTimeout(timer)
