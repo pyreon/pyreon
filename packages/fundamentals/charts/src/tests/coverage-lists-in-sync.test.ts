@@ -24,7 +24,7 @@
  * which is a browser-only dependency this node suite must not load; and the
  * lists are literal string arrays, so reading them is exact.
  */
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
@@ -66,7 +66,6 @@ describe('node coverageExclude ⇄ browser coverage include', () => {
   it('every listed path points at a file that exists', () => {
     // A stale entry is silent in both directions: an exclusion for a deleted
     // file protects nothing, and an include for one measures nothing.
-    const { existsSync } = require('node:fs') as typeof import('node:fs')
     const missing = [...new Set([...nodeExcluded, ...browserIncluded])].filter(
       (f) => !f.includes('*') && !existsSync(join(PKG_ROOT, f)),
     )
