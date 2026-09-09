@@ -5,7 +5,7 @@ import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
 import { query } from '@pyreon/test-utils'
 import { PlotChart } from './Chart'
 import { bars, line } from './marks'
-import { renderLegend } from './legend'
+import { placeLegend } from './legend'
 import { canvasMeasure } from './canvas-web'
 
 interface Row {
@@ -43,16 +43,25 @@ const inked = (canvas: HTMLCanvasElement): number => {
   return n
 }
 
-/** The legend entry hit boxes exactly as the component computes them. */
+/**
+ * The legend entry hit boxes exactly as the component computes them.
+ *
+ * Through `placeLegend` — the same call the host makes — rather than a
+ * `renderLegend` at (0, 0) that RE-DERIVES the placement. The re-derived form
+ * silently went 8px stale the moment the host's own padding moved, and a
+ * click-target helper that drifts from its component turns a layout change
+ * into a mysterious interaction failure.
+ */
 function legendBoxAt(canvas: HTMLCanvasElement, labels: string[], colors: string[], w: number, h: number, i: number) {
   const ctx = canvas.getContext('2d')!
-  const l = renderLegend(
+  const placed = placeLegend(
     labels.map((label, k) => ({ label, color: colors[k]! })),
     { x: 0, y: 0, w, h },
+    'top',
     { fontSize: 11, labelColor: '#5a6b7a', swatch: 10, gap: 12, orientation: 'horizontal' },
     canvasMeasure(ctx, FONT),
   )
-  return l.boxes[i]!
+  return placed.boxes[i]!
 }
 
 const clickAt = (canvas: HTMLCanvasElement, x: number, y: number): void => {

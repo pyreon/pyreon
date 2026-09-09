@@ -13,7 +13,7 @@ import { resolveChartTheme, tooltipStyle, useChartTheme } from './theme'
 import type { VNode } from '@pyreon/core'
 import { batch, effect, isClient, signal, untrack } from '@pyreon/reactivity'
 import { canvasMeasure, canvasSizeAttrs, paint, prepareCanvas } from './canvas-web'
-import { renderLegend } from './legend'
+import { placeLegend } from './legend'
 import type { LegendPager } from './legend'
 import { renderTitle } from './title'
 import { sameShape, sameValues, tweenValues } from './tween'
@@ -703,6 +703,12 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // The legend: above the plot by default, else below it or in a column
     // beside it. A side legend narrows the plot; a bottom one sits under the
     // navigator and the presets.
+    // Placement is the ENGINE's `placeLegend`, the same call `canvas-host.tsx`
+    // and both native emitters make. This host used to carry its OWN copy of
+    // the four branches — a THIRD implementation — and the copies had already
+    // drifted: a top legend sat at x = 0 here and x = 8 in the family hosts, a
+    // bottom one reserved `height + 4` here and `height + 8` there. Neither
+    // difference was reported by anything.
     const legendPos = props.legendPosition ?? 'top'
     let legendBottom = 0.0
     let legendLeft = 0.0
@@ -711,43 +717,28 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
       const series = resolveMarks(rows, props.marks, theme().palette)
       const hidden = hiddenSeries()
       const entries = series.map((x, i) => ({ label: x.label, color: x.color, muted: hidden.includes(i) }))
-      const side = legendPos === 'left' || legendPos === 'right'
-      const opts = {
-        fontSize: theme().fontSize,
-        labelColor: theme().label,
-        swatch: 10,
-        gap: 12,
-        orientation: side ? ('vertical' as const) : ('horizontal' as const),
-        maxRows: props.legendMaxRows,
-        page: legendPage(),
-      }
-      if (side) {
-        let col = 0.0
-        for (const e of entries) col = Math.max(col, 10.0 + 4.0 + measure(e.label, theme().fontSize) + 12.0)
-        col = Math.min(col, w * 0.4)
-        const lx = legendPos === 'left' ? 8.0 : w - col
-        const l = renderLegend(entries, { x: lx, y: titleH + 8, w: col, h: hgt - titleH }, opts, measure)
-        for (const c of l.cmds) legendCmds.push(c)
-        legendBoxes = l.boxes
-        legendPager = l.pager ?? null
-        if (legendPos === 'left') legendLeft = col + 8
-        else legendRight = col + 8
-      } else if (legendPos === 'bottom') {
-        // Its height decides where it sits: lay it out at the top to learn the height, then move it down.
-        const probe = renderLegend(entries, { x: 0, y: 0, w, h: hgt }, opts, measure)
-        const ly = hgt - probe.height
-        const l = renderLegend(entries, { x: 0, y: ly, w, h: probe.height }, opts, measure)
-        for (const c of l.cmds) legendCmds.push(c)
-        legendBoxes = l.boxes
-        legendPager = l.pager ?? null
-        legendBottom = l.height + 4
-      } else {
-        const l = renderLegend(entries, { x: 0, y: titleH, w, h: hgt - titleH }, opts, measure)
-        legendH = l.height
-        for (const c of l.cmds) legendCmds.push(c)
-        legendBoxes = l.boxes
-        legendPager = l.pager ?? null
-      }
+      const placed = placeLegend(
+        entries,
+        { x: 0, y: titleH, w, h: hgt - titleH },
+        legendPos,
+        {
+          fontSize: theme().fontSize,
+          labelColor: theme().label,
+          swatch: 10,
+          gap: 12,
+          orientation: 'horizontal',
+          maxRows: props.legendMaxRows,
+          page: legendPage(),
+        },
+        measure,
+      )
+      for (const c of placed.cmds) legendCmds.push(c)
+      legendBoxes = placed.boxes
+      legendPager = placed.pager ?? null
+      legendH = placed.top
+      legendBottom = placed.bottom
+      legendLeft = placed.left
+      legendRight = placed.right
     }
 
     const top = titleH + legendH
