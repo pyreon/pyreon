@@ -107,7 +107,10 @@ export function generateRssFeed(config: RssConfig): string {
     config.lastBuildDate
     ?? config.items.find((i) => i.pubDate)?.pubDate
   if (lastBuild) {
-    lines.push(`    <lastBuildDate>${toRfc822(lastBuild)}</lastBuildDate>`)
+    // `toRfc822` returns its INPUT VERBATIM when `new Date()` yields NaN, so
+    // the fallback branch is exactly the one that must still be escaped —
+    // every other RSS field already is.
+    lines.push(`    <lastBuildDate>${escapeXmlRss(toRfc822(lastBuild))}</lastBuildDate>`)
   }
   for (const item of config.items) {
     const link = joinRssUrl(config.origin, item.link)
@@ -119,7 +122,8 @@ export function generateRssFeed(config: RssConfig): string {
       `      <guid isPermaLink="${item.guid ? 'false' : 'true'}">${escapeXmlRss(guid)}</guid>`,
     )
     if (item.pubDate) {
-      lines.push(`      <pubDate>${toRfc822(item.pubDate)}</pubDate>`)
+      // See `lastBuildDate` above: the unparseable-date fallback is raw input.
+      lines.push(`      <pubDate>${escapeXmlRss(toRfc822(item.pubDate))}</pubDate>`)
     }
     if (item.author) lines.push(`      <author>${escapeXmlRss(item.author)}</author>`)
     if (item.categories) {
