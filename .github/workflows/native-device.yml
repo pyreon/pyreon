@@ -259,6 +259,35 @@ jobs:
       - name: Build lib/ (incremental over the restored cache; the preBuildScript needs @pyreon/native-cli built)
         run: bun scripts/bootstrap.ts
 
+      # The ONLY place the Swift packages' own `swift test` runs in CI. Both
+      # `native-runtime-swift` and `native-router-swift` self-skip off Darwin —
+      # the right default for a dev on Linux, since SwiftUI is Darwin-only — and
+      # every other runner that would reach them is ubuntu. So 105 assertions
+      # (12 on the GENERATED chart engine, 93 on the router) executed
+      # exclusively on a developer's Mac, via the pre-push hook, and only when
+      # that dev's affected set happened to include the package.
+      #
+      # runtime-swift went red on main because of it: a `ChartTheme` token added
+      # on the web regenerates the Swift struct and breaks the test's own
+      # construction of one. Nothing noticed for as long as that took.
+      #
+      # A glob rather than two names, so the next `native-*-swift` package is
+      # covered on the day it is created rather than the day someone remembers.
+      #
+      # Placed BEFORE xcodegen deliberately: ~5s warm against this job's ~62m of
+      # xcodebuild, and the apps below consume these exact modules, so a broken
+      # PyreonRuntime should abort in seconds rather than an hour in.
+      - name: Unit-test the Swift packages (PyreonRuntime, PyreonRouter)
+        # The probe is the gate, not decoration: those `test` scripts self-skip
+        # when swift is off PATH and exit 0, so without this the step would
+        # report green having run nothing — the precise shape it exists to close.
+        run: |
+          command -v swift >/dev/null 2>&1 || {
+            echo "::error::swift is not on PATH; the native-*-swift suites would self-skip and this gate would be green-but-empty"
+            exit 1
+          }
+          bun run --filter='@pyreon/native-*-swift' test
+
       # macOS tarball store — ONE writer, the nightly schedule run on main. Same
       # prefix + path as ci.yml's Linux writer (runner.os keeps them apart), so
       # check-cache-key-sync sees one lineage. Restored read-only above.
