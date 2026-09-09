@@ -2894,7 +2894,7 @@ public func layoutStackedBarsH(_ seriesValues: [[Double]], _ plot: PyreonChartRe
       return out
     }
     let ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
-    let band = Double(plot.h) / Double(n)
+    let band = plot.h / Double(n)
     let bh = band * (1.0 - ratio)
     for i in 0..<n {
       var acc = 0.0
@@ -2928,7 +2928,7 @@ public func layoutGroupedBarsH(_ seriesValues: [[Double]], _ plot: PyreonChartRe
       return out
     }
     let ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
-    let band = Double(plot.h) / Double(n)
+    let band = plot.h / Double(n)
     let groupH = band * (1.0 - ratio)
     let barH = groupH / Double(k)
     let zero = vDomain.min < 0.0 && vDomain.max > 0.0 ? 0.0 : vDomain.min

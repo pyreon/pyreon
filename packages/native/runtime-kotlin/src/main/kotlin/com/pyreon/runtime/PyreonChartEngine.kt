@@ -1271,7 +1271,7 @@ fun layoutGroupedBarsH(seriesValues: List<List<Double>>, plot: PyreonChartRect, 
         val raw = (seriesValues[s][i] ?: 0.0)
         val v = if (raw == raw) raw else zero
         val vx = scaleLinear(vDomain, plot.x, plot.x + plot.w, v)
-        out.add(StackSegment(rect = PyreonChartRect(x = if (vx < zeroX) vx else zeroX, y = gy + barH * s, w = (Math.abs(vx - zeroX)).toDouble(), h = barH), seriesIndex = s, datumIndex = i, value = v))
+        out.add(StackSegment(rect = PyreonChartRect(x = if (vx < zeroX) vx else zeroX, y = gy + barH * s, w = Math.abs(vx - zeroX), h = barH), seriesIndex = s, datumIndex = i, value = v))
       }
     }
     return out
