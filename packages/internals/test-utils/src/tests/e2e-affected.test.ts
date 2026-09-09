@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
 import {
   forcesFullRun,
   selectSuites,
@@ -155,5 +158,50 @@ describe('selectSuites', () => {
       )
       expect(s.triggers.length).toBeGreaterThan(0)
     }
+  })
+
+  // SUITES is the ONLY thing CI selects from: ci.yml resolves the matrix via
+  // `e2e-affected.ts --scripts-for`, and even `all: true` returns SUITES. So a
+  // `test:e2e:*` script that exists, has a playwright config, and has a spec is
+  // STILL never run by anyone unless it is also registered here.
+  //
+  // The shape above is the list -> reality direction (every suite names a
+  // well-formed script). It cannot see the reverse, and the reverse is what
+  // actually happened: `test:e2e:native-tasks-web` shipped with a config, a
+  // root script and an 11.9 KB spec while both its siblings were registered
+  // and it was not, so its three tests ran nowhere. A list checked in one
+  // direction is the silent-hole shape this repo keeps re-finding.
+  describe('the registry is TOTAL over the root test:e2e* scripts', () => {
+    const REPO_ROOT = join(import.meta.dirname, '..', '..', '..', '..', '..')
+    const scripts = Object.keys(
+      (
+        JSON.parse(
+          readFileSync(join(REPO_ROOT, 'package.json'), 'utf-8'),
+        ) as { scripts: Record<string, string> }
+      ).scripts,
+    ).filter((k) => k === 'test:e2e' || k.startsWith('test:e2e:'))
+
+    it('finds the root scripts at all (guards the path above)', () => {
+      expect(scripts.length).toBeGreaterThan(10)
+    })
+
+    it('every root test:e2e* script is registered as a suite', () => {
+      const registered = new Set(SUITES.map((s) => s.script))
+      const orphans = scripts.filter((s) => !registered.has(s))
+      expect(
+        orphans,
+        `these e2e scripts exist but no SUITES entry selects them, so CI never runs them: ${orphans.join(', ')}`,
+      ).toEqual([])
+    })
+
+    it('every suite names a script that actually exists', () => {
+      const ghosts = SUITES.map((s) => s.script).filter(
+        (s) => !scripts.includes(s),
+      )
+      expect(
+        ghosts,
+        `these SUITES entries name a root script that does not exist, so the cell would fail at run time: ${ghosts.join(', ')}`,
+      ).toEqual([])
+    })
   })
 })
