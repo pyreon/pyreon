@@ -4,9 +4,9 @@
 // are generic in the row type, which PMTC cannot represent, so they stay web.
 import type { Accessor, Mark, MarkOptions } from './marks'
 import type { Double } from './types'
-import { emaValues, smaValues, stdevValues, trendValues } from './indicator-values'
+import { bollingerEdge, emaValues, smaValues, stdevValues, trendValues } from './indicator-values'
 
-export { emaValues, smaValues, stdevValues, trendValues }
+export { bollingerEdge, emaValues, smaValues, stdevValues, trendValues }
 
 
 function derived<T>(y: Accessor<T>, transform: (values: Double[]) => Double[], options: MarkOptions): Mark<T> {
@@ -45,17 +45,10 @@ export function trend<T>(y: Accessor<T>, options: MarkOptions = {}): Mark<T> {
  * repo's pre-1.0 preference for a clean API over a compatibility shim.
  */
 export function bollinger<T>(y: Accessor<T>, window: number, k: Double = 2.0, options: MarkOptions = {}): Mark<T>[] {
-  const edge = (sign: Double): ((v: Double[]) => Double[]) => (v: Double[]): Double[] => {
-    const mid = smaValues(v, Math.floor(window))
-    const sd = stdevValues(v, Math.floor(window))
-    const out: Double[] = []
-    for (let i = 0; i < v.length; i++) {
-      const m = mid[i]!
-      const s = sd[i]!
-      out.push(Number.isFinite(m) && Number.isFinite(s) ? m + sign * k * s : NaN)
-    }
-    return out
-  }
+  // The edge arithmetic lives in the crossing module, so the native emit and
+  // this one cannot drift — it used to be inlined here.
+  const edge = (sign: Double): ((v: Double[]) => Double[]) => (v: Double[]): Double[] =>
+    bollingerEdge(v, Math.floor(window), k, sign)
   const label = options.label ?? 'Bollinger'
   return [
     {

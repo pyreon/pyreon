@@ -18,7 +18,13 @@ parameter, and the generator refuses an emit with warnings, so one generic
 function in the file would take the whole thing with it. That is why the split
 exists, and it mirrors `boxplot.ts` / `boxplot-chart.ts`.
 
-`bollinger` still warns by name: it returns an ARRAY of marks to spread, which
-is a different shape from a mark call, and lowering it to a single line would
-be a wrong answer rather than a missing one. A non-literal window warns too,
-naming the limit rather than lowering a window the emit cannot type.
+`bollinger` lowers too. It returns an ARRAY of marks, so it arrives as a
+spread element rather than a call, and the emitters expand it into the two
+Series it names — the envelope as a band (upper in `values`, lower in
+`values2`) and its middle line. Its edge arithmetic moved into the crossing
+module as `bollingerEdge`, which the web form now calls as well, so the two
+cannot drift.
+
+A non-literal window or width still warns by name rather than lowering
+something the emit cannot type, as does a spread of anything other than
+`bollinger`.

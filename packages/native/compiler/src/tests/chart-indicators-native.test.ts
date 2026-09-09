@@ -34,6 +34,14 @@ export function App() {
 }
 `
 
+const BB = `import { PlotChart, bollinger } from '@pyreon/charts/plot'
+interface Row { m: string; v: number }
+const ROWS: Row[] = [{ m: 'Jan', v: 10 }, { m: 'Feb', v: 14 }, { m: 'Mar', v: 9 }]
+export function App() {
+  return <PlotChart data={ROWS} x={(d) => d.m} marks={[...bollinger((d) => d.v, 3)]} height={200} />
+}
+`
+
 describe('indicator marks lower to the crossing arithmetic', () => {
   it('Swift: each derived mark calls its engine function over the mapped rows', () => {
     const r = transform(SRC, { target: 'swift' })
@@ -69,19 +77,50 @@ describe('indicator marks lower to the crossing arithmetic', () => {
     }
   })
 
-  it('bollinger still warns BY NAME — it is an array spread, not a mark call', () => {
-    // Deliberate: it returns two marks to spread, which is a different shape.
-    // Lowering it to a single line would be a wrong answer rather than a
-    // missing one.
-    const bb = `import { PlotChart, bollinger } from '@pyreon/charts/plot'
-interface Row { m: string; v: number }
-const ROWS: Row[] = [{ m: 'Jan', v: 10 }]
-export function App() {
-  return <PlotChart data={ROWS} x={(d) => d.m} marks={[...bollinger((d) => d.v, 3)]} height={200} />
-}
-`
-    const r = transform(bb, { target: 'swift' })
-    expect(r.warnings.join('\n')).toContain('bollinger')
+  it('a bollinger SPREAD expands to the two Series it names', () => {
+    // It returns an ARRAY of marks, so it arrives as a spread element rather
+    // than a call — the envelope as a band (upper in `values`, lower in
+    // `values2`) plus the middle line, which is exactly the web shape.
+    const r = transform(BB, { target: 'swift' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('let pyreonUpper0: [Double] = bollingerEdge(pyreonRaw0, 3, 2.0, 1.0)')
+    expect(r.code).toContain('let pyreonLower0: [Double] = bollingerEdge(pyreonRaw0, 3, 2.0, -1.0)')
+    expect(r.code).toContain('let pyreonMid0: [Double] = smaValues(pyreonRaw0, 3)')
+    expect(r.code).toContain('Series(kind: "band", values: pyreonUpper0')
+    expect(r.code).toContain('values2: pyreonLower0)')
+    expect(r.code).toContain('Series(kind: "line", values: pyreonMid0')
+  })
+
+  it('Kotlin: the spread expands the same way', () => {
+    const r = transform(BB, { target: 'kotlin' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('val pyreonUpper0: List<Double> = bollingerEdge(pyreonRaw0, 3, 2.0, 1.0)')
+    expect(r.code).toContain('val pyreonLower0: List<Double> = bollingerEdge(pyreonRaw0, 3, 2.0, -1.0)')
+    expect(r.code).toContain('Series(kind = "band", values = pyreonUpper0')
+    expect(r.code).toContain('values2 = pyreonLower0)')
+  })
+
+  it.skipIf(!isKotlincAvailable())('kotlinc accepts the expanded spread', () => {
+    const r = validateKotlin(transform(BB, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+
+  it.skipIf(!isSwiftUIAvailable())('swiftc accepts the expanded spread', () => {
+    const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(ENGINE_SWIFT) + '\n' + transform(BB, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+
+  it('an explicit width lowers; a non-literal one is NAMED', () => {
+    const withK = BB.replace('bollinger((d) => d.v, 3)', 'bollinger((d) => d.v, 3, 1.5)')
+    expect(transform(withK, { target: 'swift' }).code).toContain('bollingerEdge(pyreonRaw0, 3, 1.5, 1.0)')
+    const dynK = BB.replace('bollinger((d) => d.v, 3)', 'bollinger((d) => d.v, 3, K)').replace('const ROWS', 'const K = 1.5\nconst ROWS')
+    expect(transform(dynK, { target: 'swift' }).warnings.join('\n')).toContain('width must be a numeric literal')
+  })
+
+  it('a spread of anything ELSE is named rather than guessed at', () => {
+    const other = BB.replace('...bollinger((d) => d.v, 3)', '...someMarks')
+      .replace('const ROWS', 'const someMarks: never[] = []\nconst ROWS')
+    expect(transform(other, { target: 'swift' }).warnings.join('\n')).toContain('only `...bollinger(')
   })
 
   it.skipIf(!isSwiftUIAvailable())('swiftc accepts the emitted indicator calls', () => {

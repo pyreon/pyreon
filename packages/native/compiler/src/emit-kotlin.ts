@@ -9645,6 +9645,53 @@ function kotlinIndicatorValues(
   return `${ind.fn}(${rowMap}, ${Math.trunc(w.value)})`
 }
 
+/** The two Series a `...bollinger(...)` spread expands to — mirror of `swiftBollingerSpread`. */
+function kotlinBollingerSpread(
+  arg: ExprIR,
+  tag: string,
+  k: number,
+  rows: string,
+  windowed: boolean,
+  indent: number,
+  lets: string[],
+  palette: readonly string[],
+): string[] | 'unsupported' {
+  const call = arg.kind === 'call' && arg.callee.kind === 'identifier' && arg.callee.name === 'bollinger' ? arg : undefined
+  if (call === undefined) {
+    _emitWarnings.push(`<${tag}> mark ${k + 1}: only \`...bollinger(y, window)\` is lowered as a spread; emitting an empty Box().`)
+    return 'unsupported'
+  }
+  const y = call.args[0]
+  const w = call.args[1]
+  if (y === undefined || w === undefined || w.kind !== 'literal' || typeof w.value !== 'number') {
+    _emitWarnings.push(`<${tag}> mark ${k + 1}: \`bollinger\` needs an accessor and a NUMERIC LITERAL window on native; emitting an empty Box().`)
+    return 'unsupported'
+  }
+  const kArg = call.args[2]
+  let sd = '2.0'
+  if (kArg !== undefined) {
+    if (kArg.kind !== 'literal' || typeof kArg.value !== 'number') {
+      _emitWarnings.push(`<${tag}> mark ${k + 1}: \`bollinger\`'s width must be a numeric literal on native; emitting an empty Box().`)
+      return 'unsupported'
+    }
+    sd = String(kArg.value).includes('.') ? String(kArg.value) : `${kArg.value}.0`
+  }
+  const body = kotlinAccessorExpr(y, tag, `mark ${k + 1}`, indent)
+  if (body === 'unsupported') return 'unsupported'
+  const opts = kotlinMarkOptionArgs(call.args[3], tag, k, palette)
+  if (opts === 'unsupported') return 'unsupported'
+  const win = Math.trunc(w.value)
+  const rowMap = kotlinPlotRowMap(rows, `(${body}).toDouble()`, windowed)
+  lets.push(`val pyreonRaw${k}: List<Double> = ${rowMap}`)
+  lets.push(`val pyreonUpper${k}: List<Double> = bollingerEdge(pyreonRaw${k}, ${win}, ${sd}, 1.0)`)
+  lets.push(`val pyreonLower${k}: List<Double> = bollingerEdge(pyreonRaw${k}, ${win}, ${sd}, -1.0)`)
+  lets.push(`val pyreonMid${k}: List<Double> = smaValues(pyreonRaw${k}, ${win})`)
+  return [
+    `Series(kind = "band", values = pyreonUpper${k}, ${[...opts, `values2 = pyreonLower${k}`].join(', ')})`,
+    `Series(kind = "line", values = pyreonMid${k}, ${opts.join(', ')})`,
+  ]
+}
+
 /** `{ kind: 'typeRef' }` for an engine struct — steers an inline options literal to the named data class (mirror of the Swift emitter). */
 function chartStructRefKotlin(name: string | undefined): TypeIR | undefined {
   return name === undefined ? undefined : { kind: 'typeRef', name, args: [] }
@@ -10270,6 +10317,13 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   let navValues = ''
   for (let k = 0; k < marksV.elements.length; k++) {
     const m = marksV.elements[k]!
+    // `...bollinger(...)` — mirror of the Swift emitter.
+    if (m.kind === 'spread') {
+      const expanded = kotlinBollingerSpread(m.argument, tag, k, rows, windowed, indent, lets, pyreonPalette)
+      if (expanded === 'unsupported') return 'Box {}'
+      for (const line of expanded) series.push(line)
+      continue
+    }
     const callee = m.kind === 'call' && m.callee.kind === 'identifier' ? m.callee.name : undefined
     const bubble = callee === 'bubble'
     // `band(low, high, options)` reads its channels in the opposite order to

@@ -8658,6 +8658,18 @@ public func trendValues(_ values: [Double]) -> [Double] {
     return out
   }
 
+public func bollingerEdge(_ values: [Double], _ window: Int, _ k: Double, _ sign: Double) -> [Double] {
+    let mid = smaValues(values, window)
+    let sd = stdevValues(values, window)
+    var out: [Double] = []
+    for i in 0..<values.count {
+      let m = mid[i]
+      let s = sd[i]
+      out.append(finite(m) && finite(s) ? m + sign * k * s : GAP)
+    }
+    return out
+  }
+
 public func binValues(_ values: [Double], _ count: Double) -> [Bin] {
     var finite: [Double] = []
     for v in values {

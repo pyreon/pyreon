@@ -1115,10 +1115,14 @@ export const FRAME_CHART_HOSTS: Readonly<Record<string, true>> = { GaugeChart: t
  * arithmetic. The functions live in `indicator-values.ts`, which is in
  * `ENGINE_FILES` for exactly this.
  *
- * `bollinger` is deliberately ABSENT: it returns an ARRAY of marks spread into
- * `marks={[...]}`, which is a different shape from a single mark call, and it
- * warns by name rather than lowering to something that is not it.
+ * `bollinger` is absent from this table because it is not a single mark: it
+ * returns an ARRAY spread into `marks={[...]}`, so the emitters expand it
+ * separately into the two Series it names (a band and its middle line).
+ * `PLOT_SPREAD_MARKS` lists it, so the import allowlist's parity spec can see
+ * it the same way it sees these.
  */
+export const PLOT_SPREAD_MARKS: readonly string[] = ['bollinger']
+
 export const PLOT_INDICATOR_MARKS: Readonly<Record<string, { readonly fn: string; readonly kind: string; readonly takesWindow: boolean }>> = {
   sma: { fn: 'smaValues', kind: 'line', takesWindow: true },
   ema: { fn: 'emaValues', kind: 'line', takesWindow: true },

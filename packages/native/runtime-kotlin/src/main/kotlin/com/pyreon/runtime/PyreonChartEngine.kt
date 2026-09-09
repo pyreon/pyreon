@@ -6972,6 +6972,18 @@ fun trendValues(values: List<Double>): List<Double> {
     return out
   }
 
+fun bollingerEdge(values: List<Double>, window: Int, k: Double, sign: Double): List<Double> {
+    val mid = smaValues(values, window)
+    val sd = stdevValues(values, window)
+    val out: MutableList<Double> = mutableListOf()
+    for (i in 0 until values.length) {
+      val m = mid[i]
+      val s = sd[i]
+      out.add(if (finite(m) && finite(s)) m + sign * k * s else GAP)
+    }
+    return out
+  }
+
 fun binValues(values: List<Double>, count: Double): List<Bin> {
     val finite: MutableList<Double> = mutableListOf()
     for (v in values) {

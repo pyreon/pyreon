@@ -11603,6 +11603,62 @@ function swiftIndicatorValues(
   return `${ind.fn}(${rowMap}, ${Math.trunc(w.value)})`
 }
 
+/**
+ * The two Series a `...bollinger(y, window, k?)` spread expands to.
+ *
+ * The web form returns a filled `band` (upper in `values`, lower in
+ * `values2`) plus the middle line, and this emits exactly that pair — the
+ * arithmetic is the crossing `bollingerEdge` / `smaValues`, so the two cannot
+ * drift.
+ */
+function swiftBollingerSpread(
+  arg: ExprIR,
+  tag: string,
+  k: number,
+  rows: string,
+  windowed: boolean,
+  indent: number,
+  lets: string[],
+  palette: readonly string[],
+): string[] | 'unsupported' {
+  const call = arg.kind === 'call' && arg.callee.kind === 'identifier' && arg.callee.name === 'bollinger' ? arg : undefined
+  if (call === undefined) {
+    _emitWarnings.push(`<${tag}> mark ${k + 1}: only \`...bollinger(y, window)\` is lowered as a spread; emitting an EmptyView().`)
+    return 'unsupported'
+  }
+  const y = call.args[0]
+  const w = call.args[1]
+  if (y === undefined || w === undefined || w.kind !== 'literal' || typeof w.value !== 'number') {
+    _emitWarnings.push(`<${tag}> mark ${k + 1}: \`bollinger\` needs an accessor and a NUMERIC LITERAL window on native; emitting an EmptyView().`)
+    return 'unsupported'
+  }
+  const kArg = call.args[2]
+  // The web default is 2 standard deviations; a non-literal k is the same
+  // limit as a non-literal window and is named the same way.
+  let sd = '2.0'
+  if (kArg !== undefined) {
+    if (kArg.kind !== 'literal' || typeof kArg.value !== 'number') {
+      _emitWarnings.push(`<${tag}> mark ${k + 1}: \`bollinger\`'s width must be a numeric literal on native; emitting an EmptyView().`)
+      return 'unsupported'
+    }
+    sd = kArg.value.toFixed(1).includes('.') ? String(kArg.value) : `${kArg.value}.0`
+  }
+  const body = swiftAccessorExpr(y, tag, `mark ${k + 1}`, indent)
+  if (body === 'unsupported') return 'unsupported'
+  const opts = swiftMarkOptionArgs(call.args[3], tag, k, palette)
+  if (opts === 'unsupported') return 'unsupported'
+  const win = Math.trunc(w.value)
+  const rowMap = swiftPlotRowMap(rows, `pyreonChartDouble(${body})`, 'Double', windowed)
+  lets.push(`let pyreonRaw${k}: [Double] = ${rowMap}`)
+  lets.push(`let pyreonUpper${k}: [Double] = bollingerEdge(pyreonRaw${k}, ${win}, ${sd}, 1.0)`)
+  lets.push(`let pyreonLower${k}: [Double] = bollingerEdge(pyreonRaw${k}, ${win}, ${sd}, -1.0)`)
+  lets.push(`let pyreonMid${k}: [Double] = smaValues(pyreonRaw${k}, ${win})`)
+  return [
+    `Series(kind: "band", values: pyreonUpper${k}, ${[...opts, `values2: pyreonLower${k}`].join(', ')})`,
+    `Series(kind: "line", values: pyreonMid${k}, ${opts.join(', ')})`,
+  ]
+}
+
 /** `{ kind: 'typeRef' }` for an engine struct — steers an inline options literal (`tree={{ symbolSize: 8 }}`) to `TreeOptions` instead of a synthesized `__Obj`. */
 function chartStructRef(name: string | undefined): TypeIR | undefined {
   return name === undefined ? undefined : { kind: 'typeRef', name, args: [] }
@@ -12306,6 +12362,15 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   let navValues = ''
   for (let k = 0; k < marksV.elements.length; k++) {
     const m = marksV.elements[k]!
+    // `...bollinger(y, window, k)` — the one mark constructor that returns an
+    // ARRAY, so it arrives as a spread element rather than a call. It expands
+    // to the two Series it names: the envelope as a band, and its middle.
+    if (m.kind === 'spread') {
+      const expanded = swiftBollingerSpread(m.argument, tag, k, rows, windowed, indent, lets, pyreonPalette)
+      if (expanded === 'unsupported') return 'EmptyView()'
+      for (const line of expanded) series.push(line)
+      continue
+    }
     const callee = m.kind === 'call' && m.callee.kind === 'identifier' ? m.callee.name : undefined
     const bubble = callee === 'bubble'
     // `band(low, high, options)` reads its channels in the opposite order to

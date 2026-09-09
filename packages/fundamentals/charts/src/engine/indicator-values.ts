@@ -137,3 +137,24 @@ export function trendValues(values: Double[]): Double[] {
   for (let i = 0; i < n; i++) out.push(intercept + slope * i)
   return out
 }
+
+/**
+ * One edge of a Bollinger envelope: the SMA plus `sign * k` standard
+ * deviations, index-aligned with `values`.
+ *
+ * A separate crossing function rather than a closure over `smaValues` and
+ * `stdevValues`, because a closure is exactly what cannot cross — and the web
+ * `bollinger` had inlined this arithmetic, so the two would have drifted the
+ * moment either changed. `sign` is +1 for the upper bound, -1 for the lower.
+ */
+export function bollingerEdge(values: Double[], window: number, k: Double, sign: Double): Double[] {
+  const mid = smaValues(values, window)
+  const sd = stdevValues(values, window)
+  const out: Double[] = []
+  for (let i = 0; i < values.length; i++) {
+    const m = mid[i]!
+    const s = sd[i]!
+    out.push(finite(m) && finite(s) ? m + sign * k * s : GAP)
+  }
+  return out
+}

@@ -328,7 +328,7 @@ const groups: Group[] = [{ name: 'eu', samples: [12, 15, 14, 30, 11] }, { name: 
 <T>(y: Accessor<T>, window: number, options?: MarkOptions) => Mark<T>
 ```
 
-Indicator MARKS over a value accessor, for the finance and telemetry charts that draw a signal beside its smoothing: `sma(y, window)` (simple moving average), `ema(y, window)` (exponential), `trend(y)` (least-squares line) and `bollinger(y, window, k?)` (the ±k·σ envelope as a FILLED `band` plus its middle line, returned as an ARRAY of marks to spread into `marks` — two marks, not three lines: a band's bounds can be computed from the series via `transform`/`transform2`, which is the only shape a rolling window fits). Each is a mark like `line`, so it layers in the same `marks={[…]}` array, takes the same `label` / `color` / `width` options, and the leading `window - 1` points are gaps rather than zeros. The value forms `smaValues` / `emaValues` / `stdevValues` / `trendValues` are exported for hosts that need the numbers, and live in a separate crossing module so `sma` / `ema` / `trend` LOWER to iOS and Android (with a numeric-literal window); `bollinger` stays web-only because it returns an array to spread rather than a single mark.
+Indicator MARKS over a value accessor, for the finance and telemetry charts that draw a signal beside its smoothing: `sma(y, window)` (simple moving average), `ema(y, window)` (exponential), `trend(y)` (least-squares line) and `bollinger(y, window, k?)` (the ±k·σ envelope as a FILLED `band` plus its middle line, returned as an ARRAY of marks to spread into `marks` — two marks, not three lines: a band's bounds can be computed from the series via `transform`/`transform2`, which is the only shape a rolling window fits). Each is a mark like `line`, so it layers in the same `marks={[…]}` array, takes the same `label` / `color` / `width` options, and the leading `window - 1` points are gaps rather than zeros. The value forms `smaValues` / `emaValues` / `stdevValues` / `trendValues` are exported for hosts that need the numbers, and live in a separate crossing module so `sma` / `ema` / `trend` LOWER to iOS and Android (with a numeric-literal window), and `bollinger` does too — its array spread expands to the band and the middle line it names.
 
 **Example**
 
@@ -347,6 +347,7 @@ const candles: Candle[] = [{ t: 1704067200000, close: 101 }, { t: 1704153600000,
 - Pre-computing the average into the data and drawing it with `line` — the indicator mark re-derives on every data change and keeps the warm-up gap honest; a baked column silently freezes when the window changes
 - Reading the first `window - 1` points as missing data — they are gaps by design (no average exists yet); the engine draws the polyline from the first full window
 - Destructuring `bollinger`'s result as three lines — it is TWO marks now, a filled `band` and its middle line; index it, or spread it, but do not assume the arity
+- Passing a computed window or width to an indicator in a NATIVE app — the emit needs numeric literals to lower them and names the limit rather than guessing; a runtime window keeps the mark web-only
 
 **See also:** `PlotChart` · `CandlestickChart`
 

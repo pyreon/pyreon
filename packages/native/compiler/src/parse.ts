@@ -2689,6 +2689,9 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
         'sma',
         'ema',
         'trend',
+        // The one that arrives as an array SPREAD, expanded to its two
+        // Series by the emitters.
+        'bollinger',
         'StackedArea',
         'Band',
         'smooth',

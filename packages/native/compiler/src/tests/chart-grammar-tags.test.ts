@@ -14,7 +14,7 @@
 // declarations, one contract, both checked — and the pair is what fails when
 // someone adds a mark to one side only.
 import { describe, expect, it } from 'vitest'
-import { GRAMMAR_MARK_TAGS, PLOT_MARK_KINDS, PLOT_INDICATOR_MARKS } from '../chart-hosts'
+import { GRAMMAR_MARK_TAGS, PLOT_MARK_KINDS, PLOT_INDICATOR_MARKS, PLOT_SPREAD_MARKS } from '../chart-hosts'
 import { UNLOWERED_PYREON_MODULES } from '../parse'
 
 /** Mirrors `GRAMMAR_TAG_KINDS` in the charts package's grammar-parity test. */
@@ -67,6 +67,7 @@ describe("the import allowlist knows every grammar tag too", () => {
       ...Object.keys(GRAMMAR_MARK_TAGS),
       ...Object.keys(PLOT_MARK_KINDS),
       ...Object.keys(PLOT_INDICATOR_MARKS),
+      ...PLOT_SPREAD_MARKS,
     ]
     const missing = [...new Set(lowered)].filter((tag) => entry!.supported?.has(tag) !== true)
     expect(missing, 'lowered marks the import scan would wrongly call unlowered').toEqual([])
