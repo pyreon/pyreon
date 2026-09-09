@@ -7,7 +7,9 @@
 //   - `<RadarChart>` gets a tap on both targets (it had none — both callbacks
 //     vanished with zero warnings);
 //   - a rich-hit `onSelect` on a table-driven host WARNS instead of vanishing;
-//   - `<ParallelChart tooltip>` and `<MapChart>` warn instead of passing as lowered;
+//   - `<ParallelChart tooltip>` warns instead of passing as lowered, and
+//     `<MapChart>`'s two web-only `map` shapes (a registry name, raw GeoJSON)
+//     refuse BY NAME now that its projected-shapes form lowers;
 //   - the Kotlin frame hosts key their tap on the vals it captures.
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -180,8 +182,10 @@ describe('what does not cross says so by name', () => {
       const r = transform(RICH_SELECT, { target })
       expect(r.warnings.some((w) => w.includes('<TreemapChart onSelect>') && w.includes('onSelectIndex'))).toBe(true)
       expect(r.warnings.some((w) => w.includes('<ParallelChart>') && w.includes('`tooltip`'))).toBe(true)
-      expect(r.warnings.some((w) => w.startsWith('<MapChart> has no native lowering yet'))).toBe(true)
+      // The web-only `map` shape: named, with the shape that DOES cross.
+      expect(r.warnings.some((w) => w.includes('<MapChart map="…">') && w.includes('`GeoShape[]` const'))).toBe(true)
       expect(r.code).not.toContain('MapChart(')
+      expect(r.code).not.toContain('layoutGeoShapes(')
     }
   })
   it('the Kotlin heat host keys its tap on the grid it captures, not Unit', () => {

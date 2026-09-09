@@ -457,7 +457,7 @@ Relations use node/link lists: `<SankeyChart nodes links>` lays flows out by lon
 
 ## Coordinates
 
-Beyond the cartesian grid the engine ships the ECharts coordinate systems as families of their own: `<CalendarChart start end values>` (the contribution-graph grid, strict ISO dates), `<ParallelChart axes rows>` (parallel coordinates with category or value axes and highlighted rows), `<PolarChart axes series>` (radial or concentric bars and polar lines), `<RiverChart series>` (a silhouette streamgraph), a single axis (`layoutSingleAxis`), and `<MapChart map values>` over GeoJSON registered with `registerMap` — regions filled by value through the same colour ramp the heatmap uses, with `renderGeoPoints` / `renderGeoPaths` for scatter and flight paths on top.
+Beyond the cartesian grid the engine ships the ECharts coordinate systems as families of their own: `<CalendarChart start end values>` (the contribution-graph grid, strict ISO dates), `<ParallelChart axes rows>` (parallel coordinates with category or value axes and highlighted rows), `<PolarChart axes series>` (radial or concentric bars and polar lines), `<RiverChart series>` (a silhouette streamgraph), a single axis (`layoutSingleAxis`), and `<MapChart map values>` over GeoJSON registered with `registerMap`, passed inline, or projected first with `geoShapes(json)` into a `GeoShape[]` (the form that crosses to iOS and Android) — regions filled by value through the same colour ramp the heatmap uses, with `renderGeoPoints` / `renderGeoPaths` for scatter and flight paths on top.
 
 ## ECharts option compatibility
 
@@ -563,8 +563,13 @@ from one crossing module — `treemapLegend`, `sankeyTip`, `pieTip`, … and
 `renderTooltip` in `chrome.ts` — that the web host calls too, so the three
 targets cannot disagree about either. `<BoxplotChart>` crosses (its
 `fiveNumber` reduction runs in the generated engine) and `<RadarChart>`'s tap
-reports the engine's `{ series, axis }` hit on every target; `<OptionChart>`
-and `<MapChart>` decline by name. A host with no `theme` and no provider
+reports the engine's `{ series, axis }` hit on every target. `<MapChart>`
+crosses from a **precomputed `GeoShape[]`** — raw GeoJSON's `geometry` is a
+`Polygon | MultiPolygon` union whose `coordinates` sit at two different array
+depths, which the native struct lowering refuses to merge. Project once with
+`geoShapes(json)` on the web or in a build step and pass the const; the
+registry name, the raw FeatureCollection and `geoShapes()` itself stay web and
+decline by name, as `<OptionChart>` does. A host with no `theme` and no provider
 follows the phone's colour scheme at runtime, as it follows
 `prefers-color-scheme` in a browser. `animate` crosses too: every host whose
 engine takes a `progress` (all of the above except Pie, Radar, Candlestick and

@@ -75,10 +75,11 @@ export type ChartThemeField =
   | 'highlightColor'
   | 'emptyColor'
   | 'stops'
+  | 'borderColor'
 
 /** The `ChartTheme` field each option field defaults from — one place, both emitters. */
 export const CHART_THEME_SOURCE: Readonly<
-  Record<ChartThemeField, 'palette' | 'label' | 'grid' | 'axis' | 'positive' | 'negative' | 'muted' | 'ramp'>
+  Record<ChartThemeField, 'palette' | 'label' | 'grid' | 'axis' | 'positive' | 'negative' | 'muted' | 'ramp' | 'pageGround'>
 > = {
   palette: 'palette',
   labelColor: 'label',
@@ -106,6 +107,10 @@ export const CHART_THEME_SOURCE: Readonly<
   // The value ramp must rise in contrast against its OWN ground, or a higher
   // value reads as quieter — the light ramp ran 16.32:1 down to 2.04:1 on dark.
   stops: 'ramp',
+  // The geo border SEPARATES two filled regions, so it reads the PAGE rather
+  // than a token of its own — `pageGround`, which is `background` with its
+  // "inherit the page" empty string already resolved to white.
+  borderColor: 'pageGround',
 }
 
 export interface ChartHostArgs {
@@ -159,8 +164,21 @@ export interface ChartHostSpec {
   readonly tooltip?: (layout: string, x: string, y: string, a: ChartHostArgs, t: ChartHostTarget) => string
 }
 
-/** Turns one data prop's IR (with every data prop's IR to hand) into an engine argument, or `'unsupported'` after warning. */
-export type ChartHostAdapter = (attrs: Readonly<Record<string, ExprIR>>, t: ChartHostTarget, warn: (msg: string) => void, resolve: (name: string) => ExprIR | undefined) => string | 'unsupported'
+/**
+ * Turns one data prop's IR (with every data prop's IR to hand) into an engine
+ * argument, or `'unsupported'` after warning.
+ *
+ * `emit` is the host emitter's own expression emitter — an adapter that only
+ * has to REFUSE a web-only literal shape (geo) hands everything else straight
+ * through, rather than re-deriving the emit for the shapes that already cross.
+ */
+export type ChartHostAdapter = (
+  attrs: Readonly<Record<string, ExprIR>>,
+  t: ChartHostTarget,
+  warn: (msg: string) => void,
+  resolve: (name: string) => ExprIR | undefined,
+  emit: (e: ExprIR) => string,
+) => string | 'unsupported'
 
 // ---------------------------------------------------------------------------
 // Literal adapters. Two hosts take props with no native form — a RECORD
@@ -267,6 +285,65 @@ export const parallelRowsAdapter: ChartHostAdapter = (attrs, t, warn, resolve) =
     out.push(t.list(cells))
   }
   return t.list(out)
+}
+
+// ---------------------------------------------------------------------------
+// Geo. Two of `<MapChart map>`'s three shapes are web-only and one crosses, so
+// the adapter's job is to REFUSE the two by name rather than to translate: a
+// registry name reads a module map that exists only in the web bundle, and raw
+// GeoJSON's `geometry` is a `Polygon | MultiPolygon` union whose `coordinates`
+// are `number[][][]` and `number[][][][]` — one field at two depths, which the
+// fat-struct lowering correctly refuses to merge. `GeoShape[]` is that union
+// already normalised to rings, so it crosses and is handed through untouched.
+//
+// `geoShapes()` itself reads GeoJSON, so it does not cross either — shared
+// source passes a PRECOMPUTED `GeoShape[]`, projected on the web or in a build
+// step.
+//
+// `values` is the opposite case: the web shape is a RECORD, which does not
+// cross, but an inline one is literal enough to become the crossing list here
+// (what `geoValues` computes at runtime on the web).
+// ---------------------------------------------------------------------------
+
+export const geoShapesAdapter: ChartHostAdapter = (attrs, _t, warn, resolve, emit) => {
+  const raw = attrs['map']!
+  const lit = literalOf(raw, resolve)
+  if (lit !== undefined && litString(lit) !== undefined) {
+    warn(
+      '<MapChart map="…">: the map REGISTRY is web-only — `registerMap` fills a module map that no native target has. '
+        + 'Pass a `GeoShape[]` const instead (project the GeoJSON once with `geoShapes(json)` on the web or in a build step); that shape lowers. Emitting nothing.',
+    )
+    return 'unsupported'
+  }
+  if (lit !== undefined && lit.kind === 'object') {
+    warn(
+      "<MapChart map={…}>: raw GeoJSON does not cross — `geometry` is a `Polygon | MultiPolygon` union whose `coordinates` are `number[][][]` and `number[][][][]`, one field at two depths. "
+        + 'Normalise it first, OUTSIDE the shared source: `geoShapes(json)` (web-only itself) yields the `GeoShape[]` const that lowers. Emitting nothing.',
+    )
+    return 'unsupported'
+  }
+  return emit(raw)
+}
+
+/** `values={{ DE: 83, … }}` → `[GeoValue(region:value:)]`; a `GeoValue[]` passes through. */
+export const geoValuesAdapter: ChartHostAdapter = (attrs, t, warn, resolve, emit) => {
+  const raw = attrs['values']!
+  const lit = literalOf(raw, resolve)
+  if (lit === undefined || lit.kind !== 'object') return emit(raw)
+  if (lit.spreads !== undefined && lit.spreads.length > 0) {
+    warn('<MapChart values>: a record literal with a spread does not cross; pass a `GeoValue[]` instead. Emitting nothing.')
+    return 'unsupported'
+  }
+  const items: string[] = []
+  for (const f of lit.fields) {
+    const n = litNumber(f.value)
+    if (n === undefined) {
+      warn(`<MapChart values>: the value for "${f.name}" must be a number literal on native; emitting nothing.`)
+      return 'unsupported'
+    }
+    items.push(t.struct('GeoValue', [['region', JSON.stringify(f.name)], ['value', chartDouble(n)]]))
+  }
+  return t.list(items)
 }
 
 const box00 = (a: ChartHostArgs, t: ChartHostTarget): string => t.rect('0.0', '0.0', a.W, a.H)
@@ -389,6 +466,18 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     tooltip: (l, x, y, a) => `calendarTip(${l}, ${a.data[2]}, ${x}, ${y})`,
     adapt: { values: calendarValuesAdapter },
   },
+  MapChart: {
+    data: ['map', 'values'],
+    options: 'options',
+    optionsStruct: 'GeoOptions',
+    themeDefaults: ['stops', 'emptyColor', 'borderColor', 'labelColor'],
+    defaultHeight: 300,
+    layout: (a, t) => `layoutGeoShapes(${a.data[0]}, ${box00(a, t)}, ${a.options})`,
+    render: (l, a) => `renderGeo(${l}, ${a.data[1]}, ${a.options})`,
+    hit: (l, x, y) => `hitGeoIndex(${l}, ${x}, ${y})`,
+    tooltip: (l, x, y, a) => `geoTip(${l}, ${a.data[1]}, ${x}, ${y})`,
+    adapt: { map: geoShapesAdapter, values: geoValuesAdapter },
+  },
   ParallelChart: {
     data: ['axes', 'rows'],
     options: 'parallel',
@@ -407,9 +496,6 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
 /** Plot hosts that exist on the web but have no native lowering yet, with the reason. */
 export const UNLOWERED_CHART_HOSTS: Readonly<Record<string, string>> = {
   OptionChart: 'the ECharts option facade is web-only',
-  MapChart:
-    'GeoJSON\'s `geometry` is a `Polygon | MultiPolygon` union whose `coordinates` are `number[][][]` and `number[][][][]` — different depths for the same field, so the fat-struct lowering correctly refuses to merge them (a merged field would be `Any`). '
-    + 'The geometry itself is not the obstacle: 2-deep `Pt[][]` rings, closure fields and 4-deep arrays all cross today. The unblock is a data-shape change — normalise the two geometry kinds to ONE representation before crossing, and cross the projected regions rather than the GeoJSON.',
 }
 
 /** The grammar host and its mark/config children — `<Plot>` desugars to `<PlotChart marks>` before the plot emit runs. */
@@ -952,8 +1038,8 @@ export function chartThemeFields(
   list: (items: readonly string[]) => string,
   scope?: RawChartTheme,
   scheme?: (light: string, dark: string) => string,
-): Record<keyof typeof CHART_THEME_DEFAULT, string> {
-  const out = {} as Record<keyof typeof CHART_THEME_DEFAULT, string>
+): ChartThemeText {
+  const out = {} as ChartThemeText
   const named = namedChartTheme(v)
   // A named theme replaces the scope wholesale (as on the web, where a `theme`
   // prop is merged OVER the provider's — and a whole theme has every field).
@@ -970,6 +1056,17 @@ export function chartThemeFields(
   // which is what the fields below then do per field.
   const runtime = scheme !== undefined && named === undefined && scope === undefined
   const dark = CHART_THEMES.dark
+  // `background: ''` means "inherit the page" — no colour to paint with. A
+  // mark that reads the GROUND resolves it to white, exactly as the web host
+  // does; tracked as raw VALUES so a literal `theme={{ background }}` override
+  // below flows into it before the text is built.
+  let bgLight = base.background as string
+  const setGround = (): void => {
+    const ground = (c: string): string => (c === '' ? '#ffffff' : c)
+    const gl = ground(bgLight)
+    const gd = ground(dark.background as string)
+    out.pageGround = runtime && gd !== gl && scheme !== undefined ? scheme(JSON.stringify(gl), JSON.stringify(gd)) : JSON.stringify(gl)
+  }
   const palette = named === undefined ? chartThemePalette(v, tag, warn, base.palette as readonly string[]) : (named.palette as readonly string[])
   const paletteExplicit = named !== undefined || chartThemePaletteGiven(v)
   for (const f of CHART_THEME_FIELDS) {
@@ -995,6 +1092,7 @@ export function chartThemeFields(
       out[f.name] = runtime && dv !== d ? scheme(JSON.stringify(d), JSON.stringify(dv)) : JSON.stringify(d)
     }
   }
+  setGround()
   if (v === undefined || named !== undefined) return out
   if (v.kind !== 'object' || (v.spreads !== undefined && v.spreads.length > 0)) {
     warn(`<${tag} theme>: only an object literal with literal fields lowers on native; the default theme applies.`)
@@ -1022,7 +1120,9 @@ export function chartThemeFields(
       continue
     }
     out[spec.name] = spec.kind === 'number' ? chartDouble(f.value.value as number) : JSON.stringify(f.value.value)
+    if (spec.name === 'background') bgLight = f.value.value as string
   }
+  setGround()
   return out
 }
 
@@ -1185,7 +1285,18 @@ export function chartEnterMs(theme: ExprIR | undefined, tag: string, list: (item
   return chartThemeFields(theme, tag, () => {}, list, scope).enterMs
 }
 /** The resolved theme as emitted TEXT per field — what `chartThemeFields` returns. */
-export type ChartThemeText = Record<keyof typeof CHART_THEME_DEFAULT, string>
+/**
+ * The theme's fields as EMITTED text, plus one DERIVED entry.
+ *
+ * `pageGround` is `background` with its "inherit the page" empty string
+ * resolved to white — the one theme field a chart cannot paint with, and the
+ * value a mark that reads the GROUND (a geo border separating two filled
+ * regions) has to default from. The web host spells the same rule inline as
+ * `theme.background === '' ? '#ffffff' : theme.background`; deriving it here
+ * keeps it on the emitted-text side, where the value may be a runtime
+ * colour-scheme conditional rather than a literal.
+ */
+export type ChartThemeText = Record<keyof typeof CHART_THEME_DEFAULT | 'pageGround', string>
 /** The tooltip box from the theme — the web host's `tooltipStyle` (surface / grid / text, radius at least 4). */
 /**
  * The `[optionField, themeValue]` pairs a host defaults from the theme — the

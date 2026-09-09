@@ -5736,17 +5736,24 @@ const repo: TreeNode[] = [
 
   'charts/MapChart': {
     signature: '(props: MapChartProps) => VNode',
-    example: `import { MapChart, registerMap } from '@pyreon/charts/plot'
-import type { GeoJson } from '@pyreon/charts/plot'
+    example: `import { MapChart, geoShapes, registerMap } from '@pyreon/charts/plot'
+import type { GeoJson, GeoShape } from '@pyreon/charts/plot'
 
 declare const euGeoJson: GeoJson
 registerMap('eu', euGeoJson)
-<MapChart map="eu" values={{ DE: 83, FR: 68, PL: 38 }} options={{ showLabels: true }} height={360} onSelect={(r) => r && console.log(r.name)} />`,
-    notes: `GeoJSON regions filled by value. Register a FeatureCollection once with \`registerMap(name, geojson)\` (ECharts' shape) or pass it directly; \`layoutGeo\` projects Polygon / MultiPolygon outer rings (equirectangular or Mercator) and fits them into the box with aspect preserved and north up; \`renderGeo\` colours through the SAME ramp the heatmap uses so a \`visualMap\` strip cannot disagree with the map; \`hitGeo\` is ring-accurate. \`renderGeoPoints\` / \`renderGeoPaths\` draw scatter, effectScatter halos and flight paths on top through \`layout.project\`. The other coordinate families follow the same pattern: \`<CalendarChart>\` (contribution grid, strict ISO dates), \`<ParallelChart>\`, \`<PolarChart>\` (radial or concentric bars, polar lines), \`<RiverChart>\` (silhouette streamgraph) and \`layoutSingleAxis\`. See also: TreemapChart, HeatmapChart.`,
+// Web: the registry name, or the FeatureCollection, reads fine.
+<MapChart map="eu" values={{ DE: 83, FR: 68, PL: 38 }} options={{ showLabels: true }} height={360} onSelect={(r) => r && console.log(r.name)} />
+
+// Shared source (web + iOS + Android): only a PRECOMPUTED GeoShape[] crosses.
+// geoShapes() reads GeoJSON, so project on the web or in a build step, not here.
+const euShapes: GeoShape[] = geoShapes(euGeoJson)
+<MapChart map={euShapes} values={{ DE: 83, FR: 68, PL: 38 }} height={360} onSelectIndex={(i) => console.log(i)} />`,
+    notes: `GeoJSON regions filled by value. \`map\` takes three shapes: a name registered once with \`registerMap(name, geojson)\` (ECharts' shape), a FeatureCollection directly, or already-projected \`GeoShape[]\` (what \`geoShapes(json)\` returns) — the third is the one that LOWERS TO NATIVE (a \`Polygon | MultiPolygon\` union puts one field at two array depths, which the native struct lowering refuses to merge; the two web-only shapes warn by name at compile time, and \`geoShapes\` itself reads GeoJSON so shared source passes a PRECOMPUTED const). \`layoutGeoShapes\` fits the rings into the box with aspect preserved and north up; \`renderGeo\` colours through the SAME ramp the heatmap uses so a \`visualMap\` strip cannot disagree with the map; \`hitGeoIndex\` is ring-accurate. \`renderGeoPoints\` / \`renderGeoPaths\` draw scatter, effectScatter halos and flight paths on top through \`layout.project\`. The other coordinate families follow the same pattern: \`<CalendarChart>\` (contribution grid, strict ISO dates), \`<ParallelChart>\`, \`<PolarChart>\` (radial or concentric bars, polar lines), \`<RiverChart>\` (silhouette streamgraph) and \`layoutSingleAxis\`. See also: TreemapChart, HeatmapChart.`,
     mistakes: `- Keying \`values\` by a property the features do not carry — the region name comes from \`properties.name\` by default; pass \`options.nameProperty\` for ISO codes or ids
 - Expecting hole rings (lakes) to be cut out — only outer rings are drawn; a hole renders as part of its region
 - Passing coordinates in Mercator metres — \`projectLonLat\` takes DEGREES (lon, lat) and projects itself; pre-projected data double-projects
-- Using a hand-picked colour per region instead of \`values\` — the fill is a value → colour mapping through the ramp so the accessible table and any visualMap strip stay truthful`,
+- Using a hand-picked colour per region instead of \`values\` — the fill is a value → colour mapping through the ramp so the accessible table and any visualMap strip stay truthful
+- Reaching for \`registerMap\` in SHARED multiplatform source — the registry is a module map no native target has, and neither raw GeoJSON nor \`geoShapes()\` crosses; pass a PRECOMPUTED \`GeoShape[]\` const (projected on the web or in a build step) and the warnings go away`,
   },
 
   'charts/optionToSvg': {

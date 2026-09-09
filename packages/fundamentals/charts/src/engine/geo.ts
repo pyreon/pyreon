@@ -323,11 +323,23 @@ function pointInRing(ring: Pt[], px: Double, py: Double): boolean {
 
 /** The region under a point (last drawn wins), or null. */
 export function hitGeo(layout: GeoLayout, px: Double, py: Double): GeoRegion | null {
+  const i = hitGeoIndex(layout, px, py)
+  return i < 0 ? null : layout.regions[i]!
+}
+
+/**
+ * The INDEX of the region under a point, or -1 — the multiplatform-safe twin
+ * of `hitGeo`, and the one a native host can call. `hitGeo` returns
+ * `GeoRegion | null`, and the web side derived the index with
+ * `regions.indexOf(...)`, which is a second linear scan and has no place in a
+ * crossing file. Same shape as `hitCalendarIndex` / `hitTreemapIndex`.
+ */
+export function hitGeoIndex(layout: GeoLayout, px: Double, py: Double): number {
   for (let i = layout.regions.length - 1; i >= 0; i--) {
     const r = layout.regions[i]!
     if (px < r.bbox.x || px > r.bbox.x + r.bbox.w || py < r.bbox.y || py > r.bbox.y + r.bbox.h) continue
-    for (const ring of r.rings) if (pointInRing(ring, px, py)) return r
+    for (const ring of r.rings) if (pointInRing(ring, px, py)) return i
   }
-  return null
+  return -1
 }
 

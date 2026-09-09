@@ -12037,7 +12037,7 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
     // A prop whose web shape has no native form goes through its literal adapter.
     const adapter = spec.adapt?.[name]
     if (adapter !== undefined) {
-      const adapted = adapter(attrs, SWIFT_CHART_TARGET, (m) => _emitWarnings.push(m), (n) => _moduleConstExprs.get(n))
+      const adapted = adapter(attrs, SWIFT_CHART_TARGET, (m) => _emitWarnings.push(m), (n) => _moduleConstExprs.get(n), (x) => emitSwiftExpr(x, indent))
       if (adapted === 'unsupported') return 'EmptyView()'
       data.push(adapted)
     } else {

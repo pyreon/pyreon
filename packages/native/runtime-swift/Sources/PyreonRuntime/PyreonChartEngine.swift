@@ -7129,6 +7129,11 @@ public func pointInRing(_ ring: [PyreonChartPt], _ px: Double, _ py: Double) -> 
   }
 
 public func hitGeo(_ layout: GeoLayout, _ px: Double, _ py: Double) -> GeoRegion? {
+    let i = hitGeoIndex(layout, px, py)
+    return i < 0 ? nil : layout.regions[i]
+  }
+
+public func hitGeoIndex(_ layout: GeoLayout, _ px: Double, _ py: Double) -> Int {
     for i in stride(from: layout.regions.count - 1, through: 0, by: -1) {
       let r = layout.regions[i]
       if px < r.bbox.x || px > r.bbox.x + r.bbox.w || py < r.bbox.y || py > r.bbox.y + r.bbox.h {
@@ -7136,11 +7141,11 @@ public func hitGeo(_ layout: GeoLayout, _ px: Double, _ py: Double) -> GeoRegion
       }
       for ring in r.rings {
         if pointInRing(ring, px, py) {
-          return r
+          return i
         }
       }
     }
-    return nil
+    return -1
   }
 
 public func ganttUnitFor(_ spanDays: Double) -> String {
@@ -8408,6 +8413,16 @@ public func calendarTip(_ layout: CalendarLayout, _ values: [CalendarValue], _ p
       }
     }
     return [date]
+  }
+
+public func geoTip(_ layout: GeoLayout, _ values: [GeoValue], _ px: Double, _ py: Double) -> [String] {
+    let i = hitGeoIndex(layout, px, py)
+    if i < 0 {
+      return []
+    }
+    let name = layout.regions[i].name
+    let v = geoValueOf(values, name)
+    return v == v ? [name, plain(v)] : [name]
   }
 
 public func funnelTip(_ stages: [FunnelStage], _ plot: PyreonChartRect, _ px: Double, _ py: Double, _ options: FunnelOptions? = nil) -> [String] {
