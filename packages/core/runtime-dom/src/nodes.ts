@@ -95,7 +95,25 @@ export function mountReactive(
     // changed primitive, a new array) compares unequal and behaves exactly as
     // before. Only a value that is literally the one already mounted is
     // skipped, and for that one the DOM is already correct.
-    if (value === lastValue) {
+    // ...but identity alone is the WRONG test, because `===` cannot separate
+    // "the same value, unchanged" from "the same value, mutated in place" — and
+    // Pyreon ships two APIs whose entire purpose is the latter. `signal.trigger()`
+    // is public and manifest-documented as "force-notifies subscribers after an
+    // in-place mutation" (the Vue `triggerRef` semantic), and `createStore`'s
+    // proxy cache hands back an identical reference for a nested array on every
+    // read. Skipping on identity made both silently do nothing:
+    //
+    //   const rows = signal([<li>a</li>, <li>b</li>])   // unkeyed -> mountReactive
+    //   rows.peek().push(<li>c</li>); rows.trigger()    // third row never mounted
+    //
+    // So gate the skip on what actually makes a re-mount destructive: a value
+    // carrying construction-time DOM and bindings, i.e. a `_tpl` NativeItem. That
+    // is exactly the `_lc`-memoized shape #3082 was written for — tearing one down
+    // disposes bindings the re-mount does not rebuild, leaving one live, forever
+    // stale node. Every other value (a VNode, an array, a primitive) is rebuilt
+    // correctly by a re-mount, which is the pre-#3082 behaviour and is what
+    // `trigger()` and store mutation depend on.
+    if (value === lastValue && (value as { __isNative?: boolean } | null)?.__isNative === true) {
       if (process.env.NODE_ENV !== 'production') {
         _countSink.__pyreon_count__?.('runtime.mountReactive.identitySkip')
       }
