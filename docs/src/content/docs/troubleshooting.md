@@ -5,14 +5,14 @@ description: "Common Pyreon mistakes and their fixes, grouped by area — the er
 
 # Troubleshooting
 
-Common mistakes and anti-patterns across Pyreon, grouped by area, each with its fix. Distilled from the framework's own anti-pattern catalog (355 entries) — the same source MCP `get_anti_patterns` serves to AI agents. Many are caught automatically by [`@pyreon/lint`](/docs/lint), `pyreon doctor`, or MCP `validate`; the detector code is noted on each entry that has one.
+Common mistakes and anti-patterns across Pyreon, grouped by area, each with its fix. Distilled from the framework's own anti-pattern catalog (358 entries) — the same source MCP `get_anti_patterns` serves to AI agents. Many are caught automatically by [`@pyreon/lint`](/docs/lint), `pyreon doctor`, or MCP `validate`; the detector code is noted on each entry that has one.
 
 ## Categories
 
-- **[Reactivity Mistakes](/docs/troubleshooting/reactivity)** — 30 entries
+- **[Reactivity Mistakes](/docs/troubleshooting/reactivity)** — 31 entries
 - **[JSX Mistakes](/docs/troubleshooting/jsx)** — 25 entries
 - **[Context & Provider Mistakes](/docs/troubleshooting/context)** — 6 entries
-- **[Architecture Mistakes](/docs/troubleshooting/architecture)** — 72 entries
+- **[Architecture Mistakes](/docs/troubleshooting/architecture)** — 73 entries
 - **[Islands Mistakes](/docs/troubleshooting/islands)** — 11 entries
 - **[SSR-rendering Mistakes](/docs/troubleshooting/ssr)** — 23 entries
 - **[SSG / e2e Test-Server Mistakes](/docs/troubleshooting/ssg)** — 16 entries
@@ -22,5 +22,5 @@ Common mistakes and anti-patterns across Pyreon, grouped by area, each with its 
 - **[Build Pipeline Mistakes](/docs/troubleshooting/build)** — 55 entries
 - **[CI / Build Gate Mistakes](/docs/troubleshooting/ci)** — 21 entries
 - **[Best-Practice Mistakes (opt-in `@pyreon/lint` rules)](/docs/troubleshooting/best-practices)** — 10 entries
-- **[Library API-Shape Mistakes](/docs/troubleshooting/library-api)** — 9 entries
+- **[Library API-Shape Mistakes](/docs/troubleshooting/library-api)** — 10 entries
 - **[Documentation Mistakes](/docs/troubleshooting/documentation)** — 16 entries
