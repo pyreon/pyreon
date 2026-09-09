@@ -190,8 +190,15 @@ describe('OptionChart — the host passthrough is TOTAL over CanvasHostProps (fi
       rtl: true,
     }
     const out = hostPropsFor(every) as Record<string, unknown>
-    for (const k of Object.keys(HOST_PASSTHROUGH_KEYS)) expect(out[k], k).toBe((every as Record<string, unknown>)[k])
-    expect(out).toMatchObject({ height: 320, animate: false, updateAnimation: false })
+    // The passthrough is forwarded as ACCESSORS — a value copy pinned every
+    // signal-driven prop at its mount-time value. The invariant this spec
+    // exists for is TOTALITY over `HOST_PASSTHROUGH_KEYS`, which is unchanged;
+    // only the read is.
+    const read = (v: unknown): unknown => (typeof v === 'function' ? (v as () => unknown)() : v)
+    for (const k of Object.keys(HOST_PASSTHROUGH_KEYS))
+      expect(read(out[k]), k).toBe((every as Record<string, unknown>)[k])
+    expect(read(out.height)).toBe(320)
+    expect(out).toMatchObject({ animate: false, updateAnimation: false })
     expect('option' in out).toBe(false)
     // An absent prop is absent (not `undefined`) so the host's defaults apply.
     const bare = hostPropsFor({ option: {} })

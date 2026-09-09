@@ -359,6 +359,20 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     return r === null ? [] : [focusRing(r)]
   }
 
+  /**
+   * The presentation transform. EVERY paint must go through this: it is the
+   * last step before pixels, and it is what makes an RTL chart RTL.
+   *
+   * It lives here, above both paint paths, because having two of them is
+   * exactly how it got dropped — `draw()` applied it and `paintCached()` did
+   * not, so an RTL chart un-mirrored on the tween's every tick, on each arrow
+   * key, on Escape and on blur, and the tween's final frame SETTLED unmirrored
+   * while the pointer seam kept mirroring. The chrome and family are cached
+   * BEFORE this runs, so there was no compensation downstream either.
+   */
+  const present = (list: DrawCmd[], w: Double): DrawCmd[] =>
+    props.rtl === true ? mirrorCmds(list, w) : list
+
   /** Paint the cached frame with the family commands to show now — the tween's tick path, no layout. */
   const paintCached = (): void => {
     const el = canvas
@@ -367,7 +381,7 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     const t = theme()
     const ctx = prepareCanvas(el, f.w, f.hgt, t.background)
     if (ctx === null) return
-    paint(ctx, [...f.chrome, ...shownFamily(), ...ringCmds(f)], f.w, f.hgt, FONT)
+    paint(ctx, present([...f.chrome, ...shownFamily(), ...ringCmds(f)], f.w), f.w, f.hgt, FONT)
   }
 
   /**
@@ -376,8 +390,6 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
    * family and the focus ring have been concatenated, so all three mirror
    * together and nothing downstream has to know about direction.
    */
-  const present = (list: DrawCmd[], w: Double): DrawCmd[] =>
-    props.rtl === true ? mirrorCmds(list, w) : list
 
   const draw = (): void => {
     const el = canvas

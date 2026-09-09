@@ -6,7 +6,7 @@
 // two host-less shapes render through `optionToSvg` into an inline `<svg>`. A
 // `timeline` steps on `autoPlay` or is driven by `timelineIndex`.
 
-import { h, onMount } from '@pyreon/core'
+import { h, onMount, _rp as reactiveProp } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import { batch, effect, signal } from '@pyreon/reactivity'
 import { canvasHost } from './canvas-host'
@@ -112,15 +112,34 @@ export const HOST_PASSTHROUGH_KEYS: { readonly [K in HostPassthrough]: true } = 
   rtl: true,
 }
 
-/** The shared host's props for an option chart: every passthrough key present on `props`, plus the facade's fixed values. */
+/**
+ * The shared host's props for an option chart: every passthrough key, plus the
+ * facade's fixed values.
+ *
+ * Forwarded as ACCESSORS, not values. `<OptionChart>` receives a signal-driven
+ * prop as a getter (the compiler emits `_rp(() => …)` and `makeReactiveProps`
+ * installs it as one), and this function runs ONCE at setup — so reading
+ * `props[k]` here would fire that getter and pin the result forever. The host
+ * reads `width`, `height`, `title` and `rtl` lazily, so they WOULD have been
+ * live; a value copy is what froze them. `<OptionChart width={w()} />` then
+ * ignored every later `w.set(...)`, laying out at the mount-time width.
+ *
+ * `reactiveProp` re-brands each key as a thunk that `makeReactiveProps` turns
+ * back into a getter on the host's props — the same idiom `grammar.tsx` uses to
+ * forward ~60 keys to these hosts. The `undefined` filter moves INSIDE the thunk
+ * so an initially-absent prop can still become present later.
+ */
 export function hostPropsFor(props: OptionChartProps): CanvasHostProps {
-  const out: CanvasHostProps = { height: props.height ?? 320.0, animate: false, updateAnimation: false }
-  const sink = out as Record<string, unknown>
+  const sink: Record<string, unknown> = { animate: false, updateAnimation: false }
+  sink.height = reactiveProp(() => props.height ?? 320.0)
   for (const k of Object.keys(HOST_PASSTHROUGH_KEYS) as HostPassthrough[]) {
-    const v = props[k]
-    if (v !== undefined) sink[k] = v
+    // PRESENCE is decided with `in`, which does not fire the getter, and is a
+    // static property of the call site: `<OptionChart width={w()} />` always has
+    // the key, whatever `w()` currently returns. An absent key must stay absent
+    // so the host's own defaults apply. Only the VALUE is deferred.
+    if (k in props) sink[k] = reactiveProp(() => props[k])
   }
-  return out
+  return sink as CanvasHostProps
 }
 
 export function OptionChart(props: OptionChartProps): VNode {
