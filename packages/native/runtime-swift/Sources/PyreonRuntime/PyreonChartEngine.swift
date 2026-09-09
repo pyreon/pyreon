@@ -8530,7 +8530,7 @@ public func withError(_ fmt: (Double) -> String, _ v: Double, _ s: A11ySeries, _
     }
     let l = lo[i]
     let h = hi[i]
-    if l != l || h != h {
+    if !isFiniteNumber(l) || !isFiniteNumber(h) {
       return fmt(v)
     }
     return "\(fmt(v)) (\(fmt(l)) to \(fmt(h)))"

@@ -6844,7 +6844,7 @@ fun withError(fmt: (Double) -> String, v: Double, s: A11ySeries, i: Int): String
     }
     val l = lo[i]
     val h = hi[i]
-    if (l != l || h != h) {
+    if (!isFiniteNumber(l) || !isFiniteNumber(h)) {
       return fmt(v)
     }
     return "${fmt(v)} (${fmt(l)} to ${fmt(h)})"

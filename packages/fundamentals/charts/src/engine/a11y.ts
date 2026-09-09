@@ -189,7 +189,8 @@ function withError(fmt: Formatter, v: Double, s: A11ySeries, i: number): string 
   if (i >= lo.length || i >= hi.length) return fmt(v)
   const l = lo[i]!
   const h = hi[i]!
-  if (l !== l || h !== h) return fmt(v)
+  // Infinities are gaps too, matching the cell rule beside it (#3390).
+  if (!isFiniteNumber(l) || !isFiniteNumber(h)) return fmt(v)
   return `${fmt(v)} (${fmt(l)} to ${fmt(h)})`
 }
 
