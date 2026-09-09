@@ -64,8 +64,20 @@ class PyreonTableState<T>(
     val filterValue: String
         get() = _filterValue.value
     private val _page = mutableStateOf(0)
+    /**
+     * The page the reader is actually on.
+     *
+     * `setPage` clamps on the way IN, but the row set can shrink underneath a
+     * page that was valid when it was set — deleting rows, or a refetch that
+     * returns fewer — and neither routes through `setFilter`'s reset. The raw
+     * value then points past the end and `rows()` returns an empty window, so
+     * the list renders BLANK while `pageCount()` reports a smaller number than
+     * `page`. Clamping on READ keeps `page`, `pageCount()` and `rows()` from
+     * ever disagreeing, and restores the reader's place after a transient
+     * shrink instead of stranding them on the last page.
+     */
     val page: Int
-        get() = _page.value
+        get() = clampPage(_page.value)
     private val _selected = mutableStateOf<List<String>>(emptyList())
     val selected: List<String>
         get() = _selected.value
