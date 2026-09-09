@@ -7704,9 +7704,11 @@ const tags = useUrlState('tags', [] as string[], { arrayFormat: 'repeat' })
 tags.set(['a', 'b'])  // ?tags=a&tags=b`,
     notes: 'Create a reactive signal synced to a URL search parameter. Type is inferred from the default value — numbers, booleans, strings, and arrays are auto-coerced. Uses `replaceState` by default (no history entries). Returns a `UrlStateSignal<T>` with `.set()`, `.reset()`, and `.remove()`. Schema mode overload: `useUrlState({ page: 1, sort: "name" })` creates multiple synced signals from a single call. SSR-safe — initializes to the default value on the server (does NOT read the request URL). See also: setUrlRouter.',
     mistakes: `- Using pushState behavior (adds history entries per keystroke) — useUrlState defaults to replaceState; if you pass \`{ replace: false }\` on a high-frequency input, the browser back button breaks
+- Expecting a malformed value in the URL to surface as an error — it does not, by design: a URL is untrusted input (hand-edited, truncated by a chat client, shared from an older build), so a value the serializer cannot read falls back to the default and dev-warns naming the param, rather than throwing out of component setup.
 - Forgetting the default value — the type is inferred from it and determines the auto-coercion strategy (number default = coerce to number, boolean default = coerce to boolean)
 - Reading useUrlState in a non-reactive scope at component setup — the signal reads the URL once; wrap in a reactive scope to track URL changes
-- Calling setUrlRouter before the router is available — SSR renders may not have a router instance yet`,
+- Calling setUrlRouter before the router is available — SSR renders may not have a router instance yet
+- Assuming a hand-rolled router object with only \`replace\` honours \`{ replace: false }\` — it cannot, so the update is downgraded to a replace and Back will not undo it. Give it a \`push(path)\`; a dev warning fires once if you do not.`,
   },
 
   'url-state/setUrlRouter': {
@@ -7716,8 +7718,9 @@ import { setUrlRouter } from '@pyreon/url-state'
 
 const router = useRouter()
 setUrlRouter(router)
-// Now useUrlState uses router.replace() internally`,
-    notes: `Configure useUrlState to use a @pyreon/router instance for URL updates instead of raw \`history.replaceState\`. When set, URL changes go through the router's navigation system, ensuring route guards, middleware, and scroll management integrate correctly. See also: useUrlState.`,
+// Now useUrlState routes through the router: replace() by default,
+// push() for a { replace: false } update (so Back undoes it)`,
+    notes: `Configure useUrlState to use a @pyreon/router instance for URL updates instead of the raw history API. When set, URL changes go through the router's navigation system, ensuring route guards, middleware, and scroll management integrate correctly. The router needs \`replace(path)\`; \`push(path)\` is optional but is what makes \`{ replace: false }\` mean anything — without it a push-intent update falls back to \`replace\` and dev-warns once, so Back will not undo it. \`@pyreon/router\` has both. See also: useUrlState.`,
   },
 
   'url-state/batchUrlUpdates': {

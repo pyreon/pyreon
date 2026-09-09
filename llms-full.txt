@@ -2604,10 +2604,10 @@ const a = useUrlState('page', 1)
 const b = useUrlState('page', 1)
 a.set(5)  // b() is now 5 too, and b's onChange fires
 
-// Router integration — uses router.replace() when available
+// Router integration — router.replace() by default, router.push() for { replace: false }
 import { useRouter } from '@pyreon/router'
 const router = useRouter()
-setUrlRouter(router)  // now useUrlState uses router.replace() internally
+setUrlRouter(router)  // replace() by default; push() honours { replace: false }
 
 // SSR-safe — initializes to the default on the server, reads window.location on the client
 // No typeof window checks needed in your components
