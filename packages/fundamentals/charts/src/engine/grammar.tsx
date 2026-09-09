@@ -42,7 +42,7 @@ import { CandlestickChart } from './CandlestickChart'
 import type { CandleOptions } from './candlestick'
 import type { FunnelOptions } from './funnel'
 import type { Formatter } from './format'
-import { area, bars, bubble, groupedBars, histogram, line, points, resolveMarks, stackedBars, waterfall } from './marks'
+import { area, band, bars, bubble, groupedBars, histogram, line, points, resolveMarks, stackedArea, stackedBars, waterfall } from './marks'
 import type { ErrorOptions, Mark, MarkOptions } from './marks'
 import { defaultTheme, logBounds, resolveYDomain } from './render'
 import type { Annotation, ChartSpec, ChartTheme, PointMarker } from './render'
@@ -81,6 +81,12 @@ export interface BarProps<T> extends MarkProps<T> {
   /** Floating bars from running total to running total — the waterfall; `negativeColor` fills the falls. */
   waterfall?: boolean
 }
+/** `<Band low high>` — the region's two bounds. */
+export interface BandProps<T> extends Omit<MarkProps<T>, 'y'> {
+  low: Channel<T>
+  high: Channel<T>
+}
+
 export interface DotProps<T> extends MarkProps<T> {
   /** A radius channel turns dots into bubbles (area-mapped). */
   r?: Channel<T>
@@ -227,6 +233,23 @@ export const Line = /* @__PURE__ */ brand<MarkProps<any>>('Line') as <T>(props: 
 export const Area = /* @__PURE__ */ brand<MarkProps<any>>('Area') as <T>(props: MarkProps<T>) => VNode | null
 /** Dots; with `r`, area-mapped bubbles. */
 export const Dot = /* @__PURE__ */ brand<DotProps<any>>('Dot') as <T>(props: DotProps<T>) => VNode | null
+
+/**
+ * Areas stacked on one another — `stackedArea`'s grammar form.
+ *
+ * NOT `<Layer>`: that name is taken by the canonical `@pyreon/primitives`
+ * z-stack, and one canonical name means one concept. Naming it after its own
+ * mark also matches every sibling (`bars`→`<Bar>`, `band`→`<Band>`).
+ */
+export const StackedArea = /* @__PURE__ */ brand<MarkProps<any>>('StackedArea') as <T>(props: MarkProps<T>) => VNode | null
+
+/**
+ * A filled REGION between two channels — `band`'s grammar form.
+ *
+ * Two channels rather than one, so it takes `low` and `high` instead of `y`;
+ * every other mark's single `y` would have nothing to be.
+ */
+export const Band = /* @__PURE__ */ brand<BandProps<any>>('Band') as <T>(props: BandProps<T>) => VNode | null
 /** A reference line or band. */
 export const Rule = /* @__PURE__ */ brand<RuleProps>('Rule')
 /** Axis configuration. */
@@ -424,6 +447,8 @@ export function resolveGrammar<T>(rows: T[], chart: PlotProps<T>, children: VNod
       case 'Line':
       case 'Area':
       case 'Dot':
+      case 'StackedArea':
+      case 'Band':
         rawMarks.push({ vnode: v, name })
         break
       case 'Rule': {
@@ -587,6 +612,12 @@ function toMark<T>(name: string, p: Record<string, unknown>, yOverride: ((d: T, 
       return line<T>(y, options)
     case 'Area':
       return area<T>(y, options)
+    case 'StackedArea':
+      return stackedArea<T>(y, options)
+    case 'Band':
+      // `low`/`high` rather than `y`: a region has two bounds and no single
+      // value, so the shared `y` channel has nothing to carry here.
+      return band<T>(channel<T, Double>(p.low as Channel<T>), channel<T, Double>(p.high as Channel<T>), options)
     default:
       return r === undefined ? points<T>(y, options) : bubble<T>(y, channel<T, Double>(r), { ...options, ...(minRadius !== undefined ? { minRadius } : {}), ...(maxRadius !== undefined ? { maxRadius } : {}) })
   }
