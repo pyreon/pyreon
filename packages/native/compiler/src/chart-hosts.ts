@@ -418,6 +418,19 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     legend: (l) => `treeLegend(${l})`,
     tooltip: (l, x, y, a, t) => `treeTip(${l}, ${x}, ${y}, ${optField(a, t, 'symbolSize')})`,
   },
+  ChordChart: {
+    data: ['nodes', 'links'],
+    options: 'chord',
+    optionsStruct: 'ChordOptions',
+    themeDefaults: ['palette', 'labelColor'],
+    defaultHeight: 360,
+    layout: (a, t) =>
+      `layoutChord(${a.data[0]}, ${a.data[1]}, ${t.rect('8.0', '8.0', t.max0(`${a.W} - 16.0`), t.max0(`${a.H} - 16.0`))}, ${a.options})`,
+    render: (l, a) => `renderChord(${l}, ${a.options})`,
+    hit: (l, x, y) => `hitChordIndex(${l}, ${x}, ${y})`,
+    legend: (l) => `chordLegend(${l})`,
+    tooltip: (l, x, y) => `chordTip(${l}, ${x}, ${y})`,
+  },
   RiverChart: {
     data: ['series'],
     options: 'river',

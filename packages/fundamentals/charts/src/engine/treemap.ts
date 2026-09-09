@@ -11,7 +11,7 @@
 // lives in family-svg.ts.
 
 import type { Double, DrawCmd, MeasureText, Rect } from './types'
-import { DEFAULT_PALETTE, paletteAt } from './palette'
+import { DEFAULT_PALETTE, hexDigit, paletteAt } from './palette'
 
 export interface TreeNode {
   name: string
@@ -251,13 +251,6 @@ export function layoutTreemap(nodes: TreeNode[], rect: Rect, options?: TreemapOp
 }
 
 /** One hex digit's value from its char code (0 for anything else). */
-function hexDigit(c: Double): Double {
-  if (c >= 48.0 && c <= 57.0) return c - 48.0
-  if (c >= 97.0 && c <= 102.0) return c - 87.0
-  if (c >= 65.0 && c <= 70.0) return c - 55.0
-  return 0.0
-}
-
 /** The channel at `at` of a `#rrggbb` string as 0..255 (0 when malformed). */
 function hexPair(hex: string, at: number): Double {
   if (hex.length < at + 2) return 0.0

@@ -16,6 +16,7 @@ import { FunnelChart } from './FunnelChart'
 import { TreemapChart } from './TreemapChart'
 import { SunburstChart } from './SunburstChart'
 import { TreeChart } from './TreeChart'
+import { ChordChart } from './ChordChart'
 import { SankeyChart } from './SankeyChart'
 import { GraphChart } from './GraphChart'
 import { CalendarChart } from './CalendarChart'
@@ -82,6 +83,8 @@ export function familyHostNode(plan: FamilyPlan, o: FamilyHostOptions): VNode | 
       return h(SankeyChart, { nodes: plan.nodes, links: plan.links, sankey: plan.sankey, ...size, ...title, ...sel('sankey') })
     case 'graph':
       return h(GraphChart, { nodes: plan.nodes, links: plan.links, graph: plan.graph, ...size, ...title, ...sel('graph') })
+    case 'chord':
+      return h(ChordChart, { nodes: plan.nodes, links: plan.links, chord: plan.chord, ...size, ...title, ...sel('chord') })
     case 'calendar':
       return h(CalendarChart, { start: plan.start, end: plan.end, values: plan.values, calendar: plan.calendar, ...size, ...title, ...sel('calendar') })
     case 'parallel':

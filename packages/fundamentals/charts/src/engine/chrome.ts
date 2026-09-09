@@ -34,6 +34,8 @@ import { paletteAt } from './palette'
 import { hitPolarIndex } from './polar'
 import type { PolarLayout, PolarSeries } from './polar'
 import { hitRiverIndex } from './river'
+import { hitChordIndex } from './chord'
+import type { ChordLayout } from './chord'
 import type { RiverLayout } from './river'
 import { hitSankeyIndex } from './sankey'
 import type { SankeyLayout } from './sankey'
@@ -91,6 +93,16 @@ export function riverLegend(layout: RiverLayout): LegendEntry[] {
   const out: LegendEntry[] = []
   for (const l of layout.layers) {
     const e: LegendEntry = { label: l.name, color: l.color }
+    out.push(e)
+  }
+  return out
+}
+
+/** One entry per node arc, in ring order. */
+export function chordLegend(layout: ChordLayout): LegendEntry[] {
+  const out: LegendEntry[] = []
+  for (const a of layout.arcs) {
+    const e: LegendEntry = { label: a.name, color: a.color }
     out.push(e)
   }
   return out
@@ -167,6 +179,13 @@ export function treeTip(layout: TreeLayout, px: Double, py: Double, symbolSize?:
 export function riverTip(layout: RiverLayout, px: Double, py: Double, curve?: 'smooth' | 'linear'): string[] {
   const i = hitRiverIndex(layout, px, py, curve)
   return i < 0 ? [] : [layout.layers[i]!.name]
+}
+
+export function chordTip(layout: ChordLayout, px: Double, py: Double): string[] {
+  const i = hitChordIndex(layout, px, py)
+  if (i < 0) return []
+  const a = layout.arcs[i]!
+  return [a.name, plain(a.total)]
 }
 
 export function sankeyTip(layout: SankeyLayout, px: Double, py: Double): string[] {
