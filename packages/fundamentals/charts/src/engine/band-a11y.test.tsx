@@ -9,6 +9,7 @@ import { chartToSvg } from './svg-chart'
 import { chartTable, describeChart } from './a11y'
 import { tooltipAt, tooltipLines } from './tooltip'
 import { band, bars, bubble, line, resolveMarks } from './marks'
+import { bollinger, sma } from './indicators'
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { PlotChart } from './Chart'
@@ -229,5 +230,63 @@ describe("a bubble's size channel is data, not just a radius", () => {
     const t = chartTable({ categories: ['a', 'b'], series })
     expect(t.headers).toEqual(['Category', 'Series 1'])
     expect(tooltipLines(tooltipAt(0, ['a', 'b'], series))).toEqual(['a', 'Series 1: 3'])
+  })
+})
+
+describe('gaps are skipped, not narrated', () => {
+  // The scan started at `values[0]` and compared with `<` / `>`, and a NaN
+  // loses BOTH comparisons — so a series whose leading points are gaps (every
+  // rolling indicator: the first `window - 1` have no average yet) described
+  // itself as "flat from NaN to 60, ranging NaN at Mon". A screen reader read
+  // "NaN" aloud. The table already treated a gap as an empty cell; this is
+  // the same rule for the sentence.
+  it('a leading gap does not become NaN in the sentence', () => {
+    const d = describeChart({
+      title: 'T',
+      categories: ['a', 'b', 'c', 'd'],
+      series: [{ label: 'Avg', kind: 'line', values: [Number.NaN, Number.NaN, 5, 9] }],
+    })
+    expect(d).not.toContain('NaN')
+    // Direction and range come from the FINITE values, and the categories
+    // they are attributed to are the ones those values sit at.
+    expect(d).toContain('Avg, line: rising from 5 to 9, ranging 5 at c to 9 at d.')
+  })
+
+  it('an all-gap series is empty, which is the honest word', () => {
+    const d = describeChart({
+      title: 'T',
+      categories: ['a', 'b'],
+      series: [{ label: 'Avg', kind: 'line', values: [Number.NaN, Number.NaN] }],
+    })
+    expect(d).toContain('Avg: empty.')
+    expect(d).not.toContain('NaN')
+  })
+
+  it("a band whose lower edge is all gaps drops the clause rather than printing NaN", () => {
+    const d = describeChart({
+      title: 'T',
+      categories: ['a', 'b'],
+      series: [{ label: 'Env', kind: 'band', values: [3, 6], values2: [Number.NaN, Number.NaN] }],
+    })
+    expect(d).not.toContain('NaN')
+    expect(d).not.toContain('lower bound')
+    expect(d).toContain('Env, band: rising from 3 to 6')
+  })
+
+  it('a real indicator chart describes itself without NaN', () => {
+    // The shape that found this: a rolling window over six points.
+    const rows = [41, 55, 38, 62, 47, 71].map((load, i) => ({ day: `d${i}`, load }))
+    const series = resolveMarks(rows, [
+      sma<{ day: string; load: number }>((d) => d.load, 3, { label: 'Average' }),
+      ...bollinger<{ day: string; load: number }>((d) => d.load, 3, 1.5, { label: 'Envelope' }),
+    ])
+    const d = describeChart({
+      title: 'Weekly load',
+      categories: rows.map((r) => r.day),
+      series: series.map((x) => ({ label: x.label, values: x.values, kind: x.kind, ...(x.values2 !== undefined ? { values2: x.values2 } : {}) })),
+    })
+    expect(d).not.toContain('NaN')
+    expect(d).toContain('upper bound')
+    expect(d).toContain('lower bound')
   })
 })
