@@ -32,10 +32,48 @@ export interface GeoRegion {
   bbox: Rect
 }
 
+/**
+ * A feature reduced to its outer rings in PROJECTION space (lon/lat run
+ * through `projectLonLat`), before the fit into a box.
+ *
+ * This is the shape that crosses. GeoJSON's own `geometry` is a
+ * `Polygon | MultiPolygon` union whose `coordinates` are `number[][][]` and
+ * `number[][][][]` — one field at two array depths, which the fat-struct
+ * lowering refuses to merge rather than producing an `Any`. Normalising to
+ * rings up front removes the union, and `Pt[][]` compiles on both targets.
+ */
+export interface GeoShape {
+  name: string
+  rings: Pt[][]
+}
+
+/**
+ * The fit-into-box transform, as DATA rather than a closure.
+ *
+ * It was `project: (lon, lat) => Pt`, which reads well and cannot cross — a
+ * generated struct is `Codable`, and a function field is not. The same
+ * information as five numbers plus the projection lets `geoProject` do the
+ * work, and overlays reuse it exactly as before.
+ */
+export interface GeoTransform {
+  minX: Double
+  maxY: Double
+  scale: Double
+  ox: Double
+  oy: Double
+  projection: GeoProjection
+}
+
 export interface GeoLayout {
   regions: GeoRegion[]
   /** Pixel transform used, so overlays (scatter on geo) can reuse it. */
-  project: (lon: Double, lat: Double) => Pt
+  transform: GeoTransform
+}
+
+/** The `layout.project(lon, lat)` closure, as a free function over the data. */
+export function geoProject(t: GeoTransform, lon: Double, lat: Double): Pt {
+  const p = projectLonLat(lon, lat, t.projection)
+  return { x: t.ox + (p.x - t.minX) * t.scale, y: t.oy + (t.maxY - p.y) * t.scale }
 }
 
 export interface GeoOptions {
@@ -101,16 +139,14 @@ function ringCentroid(ring: Pt[]): Pt | null {
   return { x: cx / (6.0 * a), y: cy / (6.0 * a) }
 }
 
-/** Project every feature's outer rings and fit them into `box` (aspect preserved, centred). */
-export function layoutGeo(geo: GeoJson, box: Rect, options?: GeoOptions): GeoLayout {
-  const projection = options?.projection ?? 'equirectangular'
-  const pad = options?.padding ?? 4.0
-  const nameProp = options?.nameProperty ?? 'name'
-  const raw: { name: string; rings: Pt[][] }[] = []
-  let minX = Infinity
-  let maxX = -Infinity
-  let minY = Infinity
-  let maxY = -Infinity
+/**
+ * GeoJSON to normalised shapes — the WEB half, and the only part that touches
+ * the `Polygon | MultiPolygon` union or the untyped `properties` bag. Both are
+ * why the geo host does not cross; reducing here means everything downstream
+ * works on `GeoShape[]`, which does.
+ */
+export function geoShapes(geo: GeoJson, projection: GeoProjection = 'equirectangular', nameProperty = 'name'): GeoShape[] {
+  const out: GeoShape[] = []
   for (let fi = 0; fi < geo.features.length; fi++) {
     const f = geo.features[fi]!
     const g = f.geometry
@@ -121,18 +157,41 @@ export function layoutGeo(geo: GeoJson, box: Rect, options?: GeoOptions): GeoLay
       const outer = poly[0]
       if (outer === undefined || outer.length < 3) continue
       const ring: Pt[] = []
-      for (const c of outer) {
-        const p = projectLonLat(c[0] ?? 0.0, c[1] ?? 0.0, projection)
-        ring.push(p)
+      for (const c of outer) ring.push(projectLonLat(c[0] ?? 0.0, c[1] ?? 0.0, projection))
+      rings.push(ring)
+    }
+    const propName = f.properties?.[nameProperty]
+    out.push({ name: typeof propName === 'string' ? propName : 'Region ' + String(fi + 1), rings })
+  }
+  return out
+}
+
+/** Project every feature's outer rings and fit them into `box` (aspect preserved, centred). */
+export function layoutGeo(geo: GeoJson, box: Rect, options?: GeoOptions): GeoLayout {
+  return layoutGeoShapes(geoShapes(geo, options?.projection ?? 'equirectangular', options?.nameProperty ?? 'name'), box, options)
+}
+
+/**
+ * Normalised shapes to a laid-out map. This is the CROSSING half: `GeoShape[]`
+ * in, `GeoLayout` out, no union and no closure anywhere in the signature.
+ */
+export function layoutGeoShapes(shapes: GeoShape[], box: Rect, options?: GeoOptions): GeoLayout {
+  const projection = options?.projection ?? 'equirectangular'
+  const pad = options?.padding ?? 4.0
+  const raw = shapes
+  let minX = Infinity
+  let maxX = -Infinity
+  let minY = Infinity
+  let maxY = -Infinity
+  for (const sh of raw) {
+    for (const ring of sh.rings) {
+      for (const p of ring) {
         if (p.x < minX) minX = p.x
         if (p.x > maxX) maxX = p.x
         if (p.y < minY) minY = p.y
         if (p.y > maxY) maxY = p.y
       }
-      rings.push(ring)
     }
-    const propName = f.properties?.[nameProp]
-    raw.push({ name: typeof propName === 'string' ? propName : 'Region ' + String(fi + 1), rings })
   }
   const innerW = Math.max(0.0, box.w - pad * 2.0)
   const innerH = Math.max(0.0, box.h - pad * 2.0)
@@ -167,7 +226,7 @@ export function layoutGeo(geo: GeoJson, box: Rect, options?: GeoOptions): GeoLay
     const centroid = (best === null ? null : ringCentroid(best)) ?? { x: bbox.x + bbox.w / 2.0, y: bbox.y + bbox.h / 2.0 }
     return { name: r.name, rings, centroid, bbox }
   })
-  return { regions, project: (lon, lat) => toPx(projectLonLat(lon, lat, projection)) }
+  return { regions, transform: { minX, maxY, scale, ox, oy, projection } }
 }
 
 /** Value extent over the regions that have data. */
