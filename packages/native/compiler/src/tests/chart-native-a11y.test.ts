@@ -54,7 +54,7 @@ describe('every native chart canvas is named (Swift)', () => {
     expect(r.warnings).toEqual([])
   })
   it('the plot host is DESCRIBED from its painted series and categories, through the chart format, titled', () => {
-    expect(r.code).toContain('.accessibilityLabel(describeChart(A11yInput(title: "Sales", categories: pyreonCats, series: pyreonSeries.map { A11ySeries(label: $0.label, values: $0.values, kind: $0.kind) }, format: compact)))')
+    expect(r.code).toContain('.accessibilityLabel(describeChart(A11yInput(title: "Sales", categories: pyreonCats, series: pyreonSeries.map { A11ySeries(label: $0.label, values: $0.values, kind: $0.kind, values2: $0.values2, errLow: $0.errLow, errHigh: $0.errHigh, rValues: $0.rValues) }, format: compact)))')
   })
   it('an explicit accessibilityLabel wins over the description and over the family word', () => {
     expect(r.code).toContain('.accessibilityLabel("Explicit name")')
@@ -83,7 +83,7 @@ describe('every native chart canvas is named (Kotlin)', () => {
     expect(r.warnings).toEqual([])
   })
   it('the plot host is described; explicit labels, titles and the family word follow the same precedence', () => {
-    expect(r.code).toContain('.semantics { contentDescription = describeChart(A11yInput(title = "Sales", categories = pyreonCats, series = pyreonSeries.map { A11ySeries(label = it.label, values = it.values, kind = it.kind) }, format = ::compact)) }')
+    expect(r.code).toContain('.semantics { contentDescription = describeChart(A11yInput(title = "Sales", categories = pyreonCats, series = pyreonSeries.map { A11ySeries(label = it.label, values = it.values, kind = it.kind, values2 = it.values2, errLow = it.errLow, errHigh = it.errHigh, rValues = it.rValues) }, format = ::compact)) }')
     expect(r.code).toContain('.semantics { contentDescription = "Explicit name" }')
     expect(r.code).toContain('.semantics { contentDescription = "Repo by size" }')
     expect(r.code).toContain('.semantics { contentDescription = "Share" }')

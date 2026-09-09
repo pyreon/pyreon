@@ -31,15 +31,24 @@ describe('indicator math', () => {
     const t = trendValues([1, NaN, 3, 4])
     expect(t.every(Number.isFinite)).toBe(true)
   })
-  it('marks carry the transform into resolveMarks; bollinger spreads to three lines', () => {
+  it('marks carry the transform into resolveMarks; bollinger is a FILLED band plus its middle line', () => {
+    // Two marks, not three lines: the envelope is a `band` whose bounds are
+    // COMPUTED from the series (`transform`/`transform2`) rather than read
+    // off each datum, which is the only shape a rolling window can take.
     const data = [1, 2, 3, 4, 5]
     const s = resolveMarks(data, [sma((d: number) => d, 2), ...bollinger((d: number) => d, 3, 2, { label: 'BB' }), ema((d: number) => d, 2), trend((d: number) => d)])
-    expect(s).toHaveLength(6)
+    expect(s).toHaveLength(5)
     expect(s[0]!.values[0]).toBeNaN()
     expect(s[0]!.values[1]).toBe(1.5)
-    expect(s.slice(1, 4).map((x) => x.label)).toEqual(['BB upper', 'BB middle', 'BB lower'])
+    expect(s.slice(1, 3).map((x) => x.label)).toEqual(['BB band', 'BB middle'])
+    expect(s[1]!.kind).toBe('band')
+    // Upper in `values`, lower in `values2` — the band's own channel order.
     expect(s[1]!.values[4]!).toBeGreaterThan(s[2]!.values[4]!)
-    expect(s[3]!.values[4]!).toBeLessThan(s[2]!.values[4]!)
+    expect(s[1]!.values2![4]!).toBeLessThan(s[2]!.values[4]!)
+    // Both edges sit symmetrically about the middle, which is what makes it
+    // an envelope rather than two unrelated lines.
+    const mid = s[2]!.values[4]!
+    expect(s[1]!.values[4]! - mid).toBeCloseTo(mid - s[1]!.values2![4]!, 9)
   })
 })
 
