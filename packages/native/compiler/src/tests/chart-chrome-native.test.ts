@@ -46,7 +46,7 @@ describe('family chrome — title, legend and tap tooltip lower on both targets'
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('let pyreonProbe = layoutTreemap(DATA, PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 200.0), pyreonOptions)')
     expect(r.code).toContain('renderTitle("Files", "by size",')
-    expect(r.code).toContain('renderLegend(treemapLegend(pyreonProbe),')
+    expect(r.code).toContain('placeLegend(treemapLegend(pyreonProbe),')
     expect(r.code).toContain('let pyreonLayout = layoutTreemap(DATA, PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 200.0 - pyreonTop), pyreonOptions)')
     expect(r.code).toContain('@State private var pyreonTip: [String] = []')
     expect(r.code).toContain(`+ renderTooltip(pyreonTip, pyreonTipAt, PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 200.0), TooltipOptions(fontSize: 11.0, fill: ${SW.surface}, border: ${SW.grid}, text: ${SW.text}, pad: 8.0, radius: 4.0), pyreonChartMeasure)`)
@@ -58,7 +58,7 @@ describe('family chrome — title, legend and tap tooltip lower on both targets'
     const r = transform(TREEMAP, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('val pyreonProbe = layoutTreemap(DATA, PyreonChartRect(0.0, 0.0, pyreonW, 200.0), pyreonOptions)')
-    expect(r.code).toContain('renderLegend(treemapLegend(pyreonProbe),')
+    expect(r.code).toContain('placeLegend(treemapLegend(pyreonProbe),')
     expect(r.code).toContain('var pyreonTip by remember { mutableStateOf(listOf<String>()) }')
     expect(r.code).toContain('pyreonTip = treemapTip(pyreonLayout, (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble() - pyreonTop)')
     expect(r.code).toContain(`+ renderTooltip(pyreonTip, pyreonTipAt, PyreonChartRect(0.0, 0.0, pyreonW, 200.0), TooltipOptions(fontSize = 11.0, fill = ${KT.surface}, border = ${KT.grid}, text = ${KT.text}, pad = 8.0, radius = 4.0), ::pyreonChartMeasure)`)
@@ -66,19 +66,19 @@ describe('family chrome — title, legend and tap tooltip lower on both targets'
   it('an accessor host (pie) hoists its items once for the legend, the arcs and the tooltip', () => {
     const sw = transform(PIE, { target: 'swift' })
     expect(sw.warnings).toEqual([])
-    expect(sw.code).toContain('renderLegend(pieLegend(pyreonItems),')
+    expect(sw.code).toContain('placeLegend(pieLegend(pyreonItems),')
     expect(sw.code).toContain('renderTitle("Share", nil,')
     // The pie's box is the plot box UNDER the chrome — the same rect renderPie drew into, so the hit and the paint agree.
     expect(sw.code).toContain('pyreonTip = pieTip(pyreonItems, PyreonChartRect(x: 0.0, y: 0.0, w: 240.0, h: 200.0 - pyreonTop), 0.0, Double(pyreonTap.location.x), Double(pyreonTap.location.y) - pyreonTop)')
     const kt = transform(PIE, { target: 'kotlin' })
     expect(kt.warnings).toEqual([])
-    expect(kt.code).toContain('renderLegend(pieLegend(pyreonItems),')
+    expect(kt.code).toContain('placeLegend(pieLegend(pyreonItems),')
     expect(kt.code).toContain('pyreonTip = pieTip(pyreonItems, PyreonChartRect(0.0, 0.0, 240.0, 200.0 - pyreonTop), 0.0,')
   })
   it('a series host (polar) reads the legend from its series + the options palette, falling back to the engine default', () => {
     const sw = transform(POLAR, { target: 'swift' })
     expect(sw.warnings).toEqual([])
-    expect(sw.code).toContain('renderLegend(polarLegend(SERIES, ((pyreonOptions).palette ?? [')
+    expect(sw.code).toContain('placeLegend(polarLegend(SERIES, ((pyreonOptions).palette ?? [')
     expect(sw.code).toContain('pyreonTip = polarTip(pyreonLayout, SERIES,')
     const kt = transform(POLAR, { target: 'kotlin' })
     expect(kt.code).toContain('polarLegend(SERIES, ((pyreonOptions).palette ?: listOf(')
@@ -94,7 +94,10 @@ describe('family chrome — title, legend and tap tooltip lower on both targets'
     }
   })
   it('the drawn chrome lowers on a family host whose engine animates; `animate` alone stays named on the fully-formed engines; the web-only interaction props are named on every host, the plot host included', () => {
-    const webOnly = ['legendPosition', 'keyboard', 'updateAnimation', 'updateDuration', 'toolbox', 'onSaveImage', 'accessibleTable']
+    // `legendPosition` left this list when placement moved into the engine
+    // (`placeLegend`) — the four hosts whose engines draw their own frame keep
+    // it, and chart-legend-position.test.ts pins that split.
+    const webOnly = ['keyboard', 'updateAnimation', 'updateDuration', 'toolbox', 'onSaveImage', 'accessibleTable']
     // `rtl` lowers wherever the chrome seam builds the canvas — which is every
     // host here. The three that bypass it (Gauge, Candlestick, Heatmap) name
     // it instead; see chart-rtl-native.test.ts.

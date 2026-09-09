@@ -146,16 +146,23 @@ public func pyreonChartDouble(_ v: Int) -> Double { Double(v) }
 /// threading an origin through the engine keeps every layout function at
 /// (0, 0), exactly as the web hosts do (`shiftCmd` in Chart.tsx).
 public func pyreonShiftCmds(_ cmds: [PyreonDrawCmd], _ dy: Double) -> [PyreonDrawCmd] {
+    pyreonShiftCmdsXY(cmds, 0.0, dy)
+}
+
+/// The two-axis form: a legend placed on the LEFT indents the plot as well as
+/// a title pushes it down, so the host needs both offsets in one pass.
+public func pyreonShiftCmdsXY(_ cmds: [PyreonDrawCmd], _ dx: Double, _ dy: Double) -> [PyreonDrawCmd] {
+    if dx == 0.0 && dy == 0.0 { return cmds }
     var out: [PyreonDrawCmd] = []
     out.reserveCapacity(cmds.count)
     for c in cmds {
         var s = c
-        if let r = c.rect { s.rect = PyreonChartRect(x: r.x, y: r.y + dy, w: r.w, h: r.h) }
-        if let f = c.from { s.from = PyreonChartPt(x: f.x, y: f.y + dy) }
-        if let t = c.to { s.to = PyreonChartPt(x: t.x, y: t.y + dy) }
-        if let pts = c.points { s.points = pts.map { PyreonChartPt(x: $0.x, y: $0.y + dy) } }
-        if let ctr = c.center { s.center = PyreonChartPt(x: ctr.x, y: ctr.y + dy) }
-        if let at = c.at { s.at = PyreonChartPt(x: at.x, y: at.y + dy) }
+        if let r = c.rect { s.rect = PyreonChartRect(x: r.x + dx, y: r.y + dy, w: r.w, h: r.h) }
+        if let f = c.from { s.from = PyreonChartPt(x: f.x + dx, y: f.y + dy) }
+        if let t = c.to { s.to = PyreonChartPt(x: t.x + dx, y: t.y + dy) }
+        if let pts = c.points { s.points = pts.map { PyreonChartPt(x: $0.x + dx, y: $0.y + dy) } }
+        if let ctr = c.center { s.center = PyreonChartPt(x: ctr.x + dx, y: ctr.y + dy) }
+        if let at = c.at { s.at = PyreonChartPt(x: at.x + dx, y: at.y + dy) }
         out.append(s)
     }
     return out

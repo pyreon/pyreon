@@ -236,6 +236,8 @@ function walkPackage(
 
 const allFindings: Finding[] = []
 const skipped: string[] = []
+// What was actually WALKED, not what was declared — see the success line below.
+const walked: string[] = []
 
 for (const { pkg, dir, subpath } of CLIENT_SAFE_PACKAGES) {
   const pkgDir = join(REPO_ROOT, dir)
@@ -249,6 +251,7 @@ for (const { pkg, dir, subpath } of CLIENT_SAFE_PACKAGES) {
     continue
   }
   const findings = walkPackage(pkg, entry, pkgDir)
+  walked.push(pkg)
   allFindings.push(...findings)
 }
 
@@ -264,10 +267,22 @@ if (skipped.length > 0) {
 }
 
 if (allFindings.length === 0) {
+  // Report what was WALKED. This used to print `CLIENT_SAFE_PACKAGES.length`,
+  // so a run that skipped every entry still said "2 client-safe package(s)
+  // checked" — byte-identical to a real pass, with the reason only in a
+  // `console.warn` that is invisible in a green job. Renaming the `./client`
+  // export key or a package directory would silently turn the gate off while
+  // it asserted it had run.
+  if (walked.length === 0) {
+    console.error(
+      `[check-client-bundle-node-imports] REFUSING to pass: ${skipped.length} package(s) were skipped and NONE was walked, so this gate verified nothing.`,
+    )
+    process.exit(1)
+  }
   console.log(
-    `[check-client-bundle-node-imports] OK — ${CLIENT_SAFE_PACKAGES.length} client-safe package(s) checked, no node:* imports found in any reachable source.`,
+    `[check-client-bundle-node-imports] OK — ${walked.length} of ${CLIENT_SAFE_PACKAGES.length} client-safe package(s) walked (${walked.join(', ')}), no node:* imports found in any reachable source.`,
   )
-  process.exit(0)
+  process.exit(skipped.length > 0 ? 1 : 0)
 }
 
 console.error(

@@ -10056,7 +10056,7 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
     entries = spec.legend!('pyreonProbe', args, KOTLIN_CHART_TARGET)
   }
   const chrome = kotlinChartChrome(e, entries, W, H, indent, true, tf)
-  const plotArgs: ChartHostArgs = { ...args, H: chrome.height(H) }
+  const plotArgs: ChartHostArgs = { ...args, W: chrome.width(W), H: chrome.height(H) }
   const withChrome = chrome.top !== '0.0'
   lets.push(...chrome.lets)
   const tooltip = spec.tooltip !== undefined && readStaticAttrKotlin(e, 'tooltip') === true
@@ -10084,10 +10084,11 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   // reads the lines for the point (an empty list clears the box).
   let tap = ''
   if (tapping) {
-    // The HIT reads the unmirrored geometry (`chrome.tapX`); the tooltip's
-    // ANCHOR stays raw, because the tooltip is drawn unmirrored at the finger.
+    // The HIT reads PLOT space (`chrome.plotX` — unmirrored, and out of a
+    // left legend's indent); the tooltip's ANCHOR stays raw, because the
+    // tooltip is drawn unmirrored at the finger.
     const rawTx = '(pyreonTap.x / pyreonDensity).toDouble()'
-    const tx = chrome.tapX(rawTx)
+    const tx = chrome.plotX(rawTx)
     const tapY = withChrome ? '(pyreonTap.y / pyreonDensity).toDouble() - pyreonTop' : '(pyreonTap.y / pyreonDensity).toDouble()'
     const parts: string[] = []
     if (tooltip) parts.push(`pyreonTip = ${spec.tooltip!(layout, tx, tapY, plotArgs, KOTLIN_CHART_TARGET)}; pyreonTipAt = PyreonChartPt(${rawTx}, (pyreonTap.y / pyreonDensity).toDouble())`)
@@ -10182,13 +10183,13 @@ function emitKotlinAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     lets.push('var pyreonTip by remember { mutableStateOf(listOf<String>()) }')
     lets.push('var pyreonTipAt by remember { mutableStateOf(PyreonChartPt(0.0, 0.0)) }')
   }
-  const args: ChartHostArgs = { data: [], options, W, H: chrome.height(H), gutter: '0.0', innerRatio: kotlinChartDouble(e, 'innerRadius', 0, indent), fontSize: tf.fontSize }
+  const args: ChartHostArgs = { data: [], options, W: chrome.width(W), H: chrome.height(H), gutter: '0.0', innerRatio: kotlinChartDouble(e, 'innerRadius', 0, indent), fontSize: tf.fontSize }
   const tipCmds = tooltip
     ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${KOTLIN_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${KOTLIN_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, ::pyreonChartMeasure)`
     : ''
   const cmds = `${chrome.mirror(chrome.wrap(spec.render(items, animating ? { ...args, options: 'pyreonOpts' } : args, KOTLIN_CHART_TARGET)))}${tipCmds}`
   const rawTx = '(pyreonTap.x / pyreonDensity).toDouble()'
-  const tx = chrome.tapX(rawTx)
+  const tx = chrome.plotX(rawTx)
   const tapY = withChrome ? '(pyreonTap.y / pyreonDensity).toDouble() - pyreonTop' : '(pyreonTap.y / pyreonDensity).toDouble()'
   const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
   const parts: string[] = []
@@ -10396,7 +10397,7 @@ function emitKotlinRadarHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   const showV = chartAttrExprKotlin(e, 'showLabels')
   const showLabels = showV === undefined ? 'true' : typeof showRaw === 'boolean' ? String(showRaw) : emitKotlinExpr(showV, indent)
   const opts = `RadarOptions(rings = ${rings}, gridColor = "rgba(132,150,165,0.35)", labelColor = "#5a6b7a", fontSize = 11.0, showLabels = ${showLabels})`
-  const box = `PyreonChartRect(0.0, 0.0, ${W}, ${chrome.height(H)})`
+  const box = `PyreonChartRect(0.0, 0.0, ${chrome.width(W)}, ${chrome.height(H)})`
   // NOT `chrome.mirror` here: `kotlinFrameHostLets` mirrors what it is
   // handed, so pre-mirroring would apply the mirror TWICE — and a mirror is
   // its own inverse, so the chart would silently render left-to-right under
@@ -10404,7 +10405,11 @@ function emitKotlinRadarHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   // already-built canvas and cannot.
   const cmds = chrome.wrap(`renderRadar(${emitKotlinExpr(axesV, indent)}, pyreonSeries, ${box}, ${opts})`)
   // The tap: `hitRadarIndex` against the painted box, the chrome's height off the y (see the Swift twin).
-  const hit = (x: string, y: string): string => `hitRadarIndex(${emitKotlinExpr(axesV, indent)}, pyreonSeries, ${box}, ${opts}, ${x}, ${chrome.top === '0.0' ? y : `${y} - ${chrome.top}`}, 8.0)`
+  // `kotlinFrameHostLets` builds the tap from its OWN RTL unmirror, so the
+  // chrome's offsets are taken off here: the y by the title + top legend, the
+  // x by a left legend's column (the paint is shifted, the LAYOUT box is not).
+  const hit = (x: string, y: string): string =>
+    `hitRadarIndex(${emitKotlinExpr(axesV, indent)}, pyreonSeries, ${box}, ${opts}, ${chrome.left === '0.0' ? x : `${x} - ${chrome.left}`}, ${chrome.top === '0.0' ? y : `${y} - ${chrome.top}`}, 8.0)`
   return kotlinFrameHostLets(e, lets, cmds, hit, W, H, hasWidth, indent)
 }
 
@@ -10641,7 +10646,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   }
   const below = `${belowNav}${navigating ? ' - pyreonNavigator.height' : ''}`
   const specArgs = [
-    `width = ${W}`,
+    `width = ${chrome.width(W)}`,
     `height = ${chrome.height(H)}${below}`,
     'series = pyreonSeries',
     'categories = pyreonCats',
@@ -10716,17 +10721,20 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     return windowed ? `run { val pyreonHit = ${local}; if (pyreonHit < 0) -1 else pyreonHit + pyreonRange.from }` : local
   }
   const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
-  // The hit test — the plot's and every chrome hit that shares this x —
-  // speaks the UNMIRRORED geometry the engine laid out, so an RTL tap is
-  // mirrored back before it is asked about.
+  // Two x's, because the chrome and the plot are laid out in different
+  // spaces: `tapX` is CANVAS (RTL-unmirrored — an RTL tap is mirrored back
+  // before anything is asked about it) and is what the legend's entries, its
+  // pager and the preset strip are drawn in; `plotX` takes a left legend's
+  // indent off as well, and is what the plot's own hit test reads.
   const rawTapX = '(pyreonTap.x / pyreonDensity).toDouble()'
   const tapX = chrome.tapX(rawTapX)
+  const plotX = chrome.plotX(rawTapX)
   const tapYExpr = '(pyreonTap.y / pyreonDensity).toDouble()'
   let tap = ''
   if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging || brushing || tooltip) {
-    const selectOnly = onSel?.kind === 'event' ? kotlinChartSelectBody(onSel.handler, hit(tapX, tapYExpr), indent) : ''
+    const selectOnly = onSel?.kind === 'event' ? kotlinChartSelectBody(onSel.handler, hit(plotX, tapYExpr), indent) : ''
     const select = tooltip
-      ? `val pyreonLocal = ${localHit(tapX, tapYExpr)}; pyreonTip = if (pyreonLocal < 0) listOf() else ${tipLines}; pyreonTipAt = PyreonChartPt(${rawTapX}, ${tapYExpr})${selectOnly === '' ? '' : `; ${selectOnly}`}`
+      ? `val pyreonLocal = ${localHit(plotX, tapYExpr)}; pyreonTip = if (pyreonLocal < 0) listOf() else ${tipLines}; pyreonTipAt = PyreonChartPt(${rawTapX}, ${tapYExpr})${selectOnly === '' ? '' : `; ${selectOnly}`}`
       : selectOnly
     const decls: string[] = []
     const branches: string[] = []
@@ -10838,16 +10846,22 @@ function kotlinFrameHostLets(e: Extract<ExprIR, { kind: 'jsx-element' }>, lets: 
 interface KotlinChartChrome {
   lets: string[]
   top: string
+  /** `'0.0'` unless the legend sits on the LEFT, which indents the plot. */
+  left: string
   wrap: (plot: string) => string
   height: (H: string) => string
+  /** The plot's width once a side legend is subtracted. */
+  width: (W: string) => string
   /**
    * RTL: mirror a finished draw list about the canvas centreline, or hand it
    * back untouched. Paired with `tapX` on purpose — a host that mirrors its
    * paint and not its taps reports the wrong item, silently, in one locale.
    */
   mirror: (cmds: string) => string
-  /** RTL: a tap's x in the UNMIRRORED geometry the engine laid out. */
+  /** A tap's x in CANVAS space: RTL-unmirrored, but NOT plot-offset — what the chrome hits (legend entries, pager, presets) are laid out in. */
   tapX: (raw: string) => string
+  /** A tap's x in PLOT space: `tapX` minus a left legend's column. The plot's own hit test and its tooltip read this. */
+  plotX: (raw: string) => string
 }
 
 function kotlinChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries: string, W: string, H: string, indent: number, withTitle: boolean, t: ChartThemeText, page?: string): KotlinChartChrome {
@@ -10855,7 +10869,7 @@ function kotlinChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries:
   const showTitle = withTitle && readStaticAttrKotlin(e, 'showTitle') === true && typeof titleRaw === 'string'
   const showLegend = readStaticAttrKotlin(e, 'showLegend') === true
   const { mirror, tapX } = kotlinRtl(e, W)
-  if (!showTitle && !showLegend) return { lets: [], top: '0.0', wrap: (p) => p, height: (h) => h, mirror, tapX }
+  if (!showTitle && !showLegend) return { lets: [], top: '0.0', left: '0.0', wrap: (p) => p, height: (h) => h, width: (w) => w, mirror, tapX, plotX: tapX }
   const lets: string[] = []
   if (showTitle) {
     const subRaw = readStaticAttrKotlin(e, 'subtitle')
@@ -10868,19 +10882,54 @@ function kotlinChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries:
     const maxRowsRaw = readStaticAttrKotlin(e, 'legendMaxRows')
     const maxRows = typeof maxRowsRaw === 'number' ? `, maxRows = ${chartDouble(maxRowsRaw)}` : ''
     const pageArg = page === undefined ? '' : `, page = ${page}`
-    lets.push(`val pyreonLegend: LegendLayout = renderLegend(${entries}, PyreonChartRect(0.0, pyreonTitle.height, ${W}, ${H} - pyreonTitle.height), LegendOptions(fontSize = ${t.fontSize}, labelColor = ${t.label}, swatch = 10.0, gap = 12.0, orientation = "horizontal"${maxRows}${pageArg}), ::pyreonChartMeasure)`)
+    // PLACEMENT is the engine's (`placeLegend`), the same call the web host
+    // makes — not four branches re-derived here. The emit used to draw the
+    // legend at x = 0 with the full width while the web host inset it by 8 on
+    // each side, so a legend sat 8px further left on a phone than in a
+    // browser and the plot 8px higher; that divergence goes with the split.
+    lets.push(
+      `val pyreonLegend: LegendPlacement = placeLegend(${entries}, PyreonChartRect(0.0, pyreonTitle.height, ${W}, ${H} - pyreonTitle.height), ${kotlinLegendPosition(e)}, `
+        + `LegendOptions(fontSize = ${t.fontSize}, labelColor = ${t.label}, swatch = 10.0, gap = 12.0, orientation = "horizontal"${maxRows}${pageArg}), ::pyreonChartMeasure)`,
+    )
   } else {
-    lets.push('val pyreonLegend: LegendLayout = LegendLayout(cmds = listOf(), height = 0.0, boxes = listOf())')
+    lets.push('val pyreonLegend: LegendPlacement = LegendPlacement(cmds = listOf(), top = 0.0, bottom = 0.0, left = 0.0, right = 0.0, boxes = listOf())')
   }
-  lets.push('val pyreonTop: Double = pyreonTitle.height + pyreonLegend.height')
+  lets.push('val pyreonTop: Double = pyreonTitle.height + pyreonLegend.top')
+  // Only the insets a legend at THIS position can actually take are emitted,
+  // so a top legend (the default, and every chart before this) keeps the exact
+  // shift and height it had.
+  const pos = kotlinLegendPosition(e)
+  const side = showLegend && (pos === 'LegendPosition.left' || pos === 'LegendPosition.right')
+  const below = showLegend && pos === 'LegendPosition.bottom'
   return {
     lets,
     top: 'pyreonTop',
-    wrap: (p) => `pyreonTitle.cmds + pyreonLegend.cmds + pyreonShiftCmds(${p}, pyreonTop)`,
-    height: (h) => `${h} - pyreonTop`,
+    left: side ? 'pyreonLegend.left' : '0.0',
+    wrap: (p) =>
+      side
+        ? `pyreonTitle.cmds + pyreonLegend.cmds + pyreonShiftCmdsXY(${p}, pyreonLegend.left, pyreonTop)`
+        : `pyreonTitle.cmds + pyreonLegend.cmds + pyreonShiftCmds(${p}, pyreonTop)`,
+    height: (h) => (below ? `${h} - pyreonTop - pyreonLegend.bottom` : `${h} - pyreonTop`),
+    width: (w) => (side ? `${w} - pyreonLegend.left - pyreonLegend.right` : w),
     mirror,
+    // `tapX` is CANVAS space (RTL-unmirrored) and `plotX` is PLOT space. The
+    // two used to be one function, because nothing had ever moved the plot
+    // HORIZONTALLY — a title and a top legend push it down, and `tapY` was
+    // where the offset lived. A left legend indents it, and folding that into
+    // `tapX` silently broke the CHROME hits, which are laid out in canvas
+    // coordinates: the legend's own entry boxes, its pager and the preset
+    // strip would have been asked about a point 8+col pixels to their left.
+    // Splitting them mirrors what `tapY` already does — chrome reads raw, the
+    // plot reads offset.
     tapX,
+    plotX: side ? (raw) => `${tapX(raw)} - pyreonLegend.left` : tapX,
   }
+}
+
+/** `legendPosition` as the engine's enum case; the default (and any non-literal) is `top`, as on the web. */
+function kotlinLegendPosition(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const raw = readStaticAttrKotlin(e, 'legendPosition')
+  return typeof raw === 'string' && (raw === 'bottom' || raw === 'left' || raw === 'right') ? `LegendPosition.${raw}` : 'LegendPosition.top'
 }
 
 /** A frame host whose tap modifier is already built (the pie's hit needs the chrome offset, which `kotlinFrameHostLets` cannot express). */

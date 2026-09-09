@@ -2184,7 +2184,14 @@ export function transformJSX_JS(
     if (SSR_URL_ATTRS.has(name)) {
       // Unsafe (`javascript:`/`data:`) → renderProp drops it (or keeps it only
       // for safe image data URIs) — too subtle to bake; bail to h().
-      if (SSR_UNSAFE_URL_RE.test(value)) return false
+      // Normalized as well as raw: the browser strips ASCII controls and
+      // spaces from ANYWHERE in a URL before resolving its scheme, so
+      // `java\tscript:alert(1)` is live and the bare regex reads it as safe.
+      // Mirrors `@pyreon/core`'s `isUnsafeUrl`; see its comment for why the
+      // static lint rule was stronger than the runtime guard. Reachable with a
+      // static literal because `@pyreon/lathe` generates JSX from OpenAPI specs.
+      if (SSR_UNSAFE_URL_RE.test(value) || SSR_UNSAFE_URL_RE.test(stripUrlSchemeNoise(value)))
+        return false
       ssrEmitStatic(buf, ` ${name}="${escapeHtmlSsr(value)}"`)
       return true
     }
@@ -6395,6 +6402,10 @@ const SSR_STRING_METHODS = new Set([
   'charAt',
 ])
 const SSR_UNSAFE_URL_RE = /^\s*(?:javascript|data):/i
+// oxlint-disable-next-line no-control-regex
+const SSR_URL_SCHEME_NOISE_RE = /[\u0000-\u0020]/g
+/** Strip what the URL parser strips before resolving a scheme. Mirrors core's `isUnsafeUrl`. */
+const stripUrlSchemeNoise = (v: string): string => v.replace(SSR_URL_SCHEME_NOISE_RE, '')
 
 // React/Babel JSX whitespace algorithm (cleanJSXElementLiteralChild).
 // Same-line text is preserved verbatim so adjacent expressions keep their

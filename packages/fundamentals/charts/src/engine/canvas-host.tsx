@@ -22,8 +22,8 @@ import { chartTable, describeChart } from './a11y'
 import type { A11yInput } from './a11y'
 import { canvasMeasure, canvasSizeAttrs, paint, prepareCanvas } from './canvas-web'
 import { cmdsEqual, sameCmdShape, tweenCmds } from './cmd-tween'
-import { legendPlan, renderLegend } from './legend'
-import type { LegendEntry } from './legend'
+import { placeLegend } from './legend'
+import type { LegendEntry, LegendPosition } from './legend'
 import type { ChartTheme } from './render'
 import { resolveChartTheme, tooltipStyle, useChartTheme } from './theme'
 import { renderTitle } from './title'
@@ -75,7 +75,7 @@ export function shiftCmds(cmds: DrawCmd[], dx: Double, dy: Double): DrawCmd[] {
   })
 }
 
-export type LegendPosition = 'top' | 'bottom' | 'left' | 'right'
+export type { LegendPosition } from './legend'
 
 /** The props every canvas host accepts — the chrome, sizing, theme, interaction and a11y surface. */
 export interface CanvasHostProps {
@@ -282,16 +282,6 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
   /** The family commands to show right now: the tween's frame, else the last full frame. */
   const shownFamily = (): DrawCmd[] => (tweenFrom !== null && tweenTo !== null && tweenT < 1.0 ? tweenCmds(tweenFrom, tweenTo, easeOutCubic(tweenT)) : (lastFamily ?? []))
 
-  /** The vertical legend's column width — the widest entry plus its swatch and gap. */
-  const legendColumnWidth = (entries: LegendEntry[], measure: MeasureText, t: ChartTheme): Double => {
-    let w = 0.0
-    for (const e of entries) {
-      const ew = 10.0 + 4.0 + measure(e.label, t.fontSize) + 12.0
-      if (ew > w) w = ew
-    }
-    return w
-  }
-
   /**
    * Chrome first, then the family in what is left. The title and a wrapped
    * legend report the height they used — a fixed strip would clip or waste.
@@ -320,30 +310,23 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
       // the pre-legend box for the names, then again in what the legend leaves.
       const probe = spec.layout({ x: 0, y: top, w, h: Math.max(0, hgt - top) }, measure, t)
       const entries = spec.legend(probe, t)
-      const pos = props.legendPosition ?? 'top'
       if (entries.length === 0) layout = probe
-      else if (pos === 'left' || pos === 'right') {
-        const col = Math.min(legendColumnWidth(entries, measure, t), w * 0.4)
-        const lx = pos === 'left' ? 8.0 : w - col
-        const l = renderLegend(entries, { x: lx, y: top + 8, w: col, h: hgt - top }, { fontSize: t.fontSize, labelColor: t.label, swatch: 10, gap: 12, orientation: 'vertical' }, measure)
-        for (const c of l.cmds) chrome.push(c)
-        if (pos === 'left') left = col + 8
-        else right = col + 8
-      } else {
-        const opts = { fontSize: t.fontSize, labelColor: t.label, swatch: 10, gap: 12, orientation: 'horizontal' as const }
-        if (pos === 'bottom') {
-          // Its height decides where it sits, so plan it first, then place it.
-          const rows = legendPlan(entries, { x: 8, y: 0, w: w - 16, h: hgt }, opts, measure, w - 16).rows
-          const rowH = Math.max(10.0, t.fontSize) + 12.0
-          const lh = rows * rowH
-          const l = renderLegend(entries, { x: 8, y: hgt - lh, w: w - 16, h: lh }, opts, measure)
-          for (const c of l.cmds) chrome.push(c)
-          bottom = l.height + 8
-        } else {
-          const l = renderLegend(entries, { x: 8, y: top + 8, w: w - 16, h: hgt - top }, opts, measure)
-          for (const c of l.cmds) chrome.push(c)
-          top += l.height + 8
-        }
+      else {
+        // Placement is the ENGINE's — one function the web host and both
+        // native emitters call, so `legendPosition` cannot mean one thing in
+        // a browser and another on a phone.
+        const placed = placeLegend(
+          entries,
+          { x: 0, y: top, w, h: hgt - top },
+          props.legendPosition ?? 'top',
+          { fontSize: t.fontSize, labelColor: t.label, swatch: 10, gap: 12, orientation: 'horizontal' },
+          measure,
+        )
+        for (const c of placed.cmds) chrome.push(c)
+        top += placed.top
+        bottom = placed.bottom
+        left = placed.left
+        right = placed.right
       }
     }
     const box = { x: left, y: top, w: Math.max(0, w - left - right), h: Math.max(0, hgt - top - bottom) }
@@ -359,6 +342,20 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     return r === null ? [] : [focusRing(r)]
   }
 
+  /**
+   * The presentation transform. EVERY paint must go through this: it is the
+   * last step before pixels, and it is what makes an RTL chart RTL.
+   *
+   * It lives here, above both paint paths, because having two of them is
+   * exactly how it got dropped — `draw()` applied it and `paintCached()` did
+   * not, so an RTL chart un-mirrored on the tween's every tick, on each arrow
+   * key, on Escape and on blur, and the tween's final frame SETTLED unmirrored
+   * while the pointer seam kept mirroring. The chrome and family are cached
+   * BEFORE this runs, so there was no compensation downstream either.
+   */
+  const present = (list: DrawCmd[], w: Double): DrawCmd[] =>
+    props.rtl === true ? mirrorCmds(list, w) : list
+
   /** Paint the cached frame with the family commands to show now — the tween's tick path, no layout. */
   const paintCached = (): void => {
     const el = canvas
@@ -367,7 +364,7 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     const t = theme()
     const ctx = prepareCanvas(el, f.w, f.hgt, t.background)
     if (ctx === null) return
-    paint(ctx, [...f.chrome, ...shownFamily(), ...ringCmds(f)], f.w, f.hgt, FONT)
+    paint(ctx, present([...f.chrome, ...shownFamily(), ...ringCmds(f)], f.w), f.w, f.hgt, FONT)
   }
 
   /**
@@ -376,8 +373,6 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
    * family and the focus ring have been concatenated, so all three mirror
    * together and nothing downstream has to know about direction.
    */
-  const present = (list: DrawCmd[], w: Double): DrawCmd[] =>
-    props.rtl === true ? mirrorCmds(list, w) : list
 
   const draw = (): void => {
     const el = canvas

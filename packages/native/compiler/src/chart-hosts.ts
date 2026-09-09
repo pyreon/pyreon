@@ -1234,7 +1234,7 @@ export const CHART_HOST_PALETTE: readonly string[] = CHART_THEME_DEFAULT.palette
  */
 export const CHART_CHROME_PROPS: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'legendPosition', 'keyboard', 'updateAnimation', 'updateDuration', 'toolbox', 'onSaveImage', 'accessibleTable', 'rtl']
 const CHROME_LOWERED: Readonly<Record<string, readonly string[]>> = {
-  PlotChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'rtl'],
+  PlotChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'rtl', 'legendPosition'],
   // Gauge / Candlestick / Heatmap build their canvas without the chrome seam,
   // so they take the RTL pair from `swiftRtl` / `kotlinRtl` directly. Their
   // lists stay spelled out: adding a prop to `FAMILY_CHROME` must never
@@ -1244,10 +1244,18 @@ const CHROME_LOWERED: Readonly<Record<string, readonly string[]>> = {
   CandlestickChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'rtl'],
   HeatmapChart: ['animate', 'rtl'],
   BoxplotChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'rtl'],
-  RadarChart: ['showLegend', 'rtl'],
+  RadarChart: ['showLegend', 'rtl', 'legendPosition'],
 }
-/** Title + legend + tap tooltip — what the generic and accessor hosts draw natively through the crossing chrome. */
-const FAMILY_CHROME: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'rtl']
+/**
+ * Title + legend + tap tooltip — what the generic and accessor hosts draw
+ * natively through the crossing chrome.
+ *
+ * `legendPosition` is here and NOT on Boxplot / Gauge / Candlestick / Heatmap:
+ * those four build their canvas without the chrome seam (their engines draw
+ * their own frame), so nothing there reads the prop. Claiming it per-CLASS is
+ * exactly the mistake the `CHROME_LOWERED` comment above records.
+ */
+const FAMILY_CHROME: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'rtl', 'legendPosition']
 /**
  * Whether `<tag>`'s engine takes an entrance `progress` — the same set the web
  * canvas host tweens (`animates: true`). A host outside it (Pie, Radar,
@@ -1431,10 +1439,44 @@ export const PLOT_SPEC_LITERAL_PROPS: ReadonlyArray<{ name: string; kind: 'strin
  * is the wrong thing to say about a prop that cannot cross, because a reader
  * waits for a release that is never coming.
  */
+/**
+ * WHY each unlowered prop does not lower.
+ *
+ * Every one of them, not a chosen few: a reason is what a user gets INSTEAD of
+ * the feature, and a bare name is a status. Sixteen of these nineteen used to
+ * warn with only their name, against this repo's own standard — the
+ * `<MapChart>` decline had a spec asserting it "names the blocker and a path,
+ * not just a status", and nothing held the rest to it.
+ *
+ * The reasons divide into two kinds, and saying which is the point: a prop
+ * whose MECHANISM is web (a DOM element, a hover, a download) will never
+ * cross, and a prop that is EMIT WORK says so, so the next person reads a
+ * backlog item rather than a wall.
+ */
 const PLOT_UNLOWERED_REASON: Readonly<Record<string, string>> = {
+  // ── Mechanism is the web platform ──────────────────────────────────────
+  handle: '`createChartHandle().dispatch` is an imperative channel into a mounted DOM host; a native chart is a stateless expression with no handle to hold',
+  crosshair: 'it is a HOVER readout, and a touch target has no hover state to read',
+  link: 'it couples two charts through a shared DOM-side controller',
+  keyboard: 'it makes the canvas focusable and announces through a DOM live region; the native canvas is named for VoiceOver / TalkBack instead (`describeChart`, which does cross)',
+  toolbox: 'it draws a DOWNLOAD button, and a phone has nowhere to download to',
+  onSaveImage: 'it fires when that download button is pressed',
+  accessibleTable: 'it renders a hidden DOM `<table>`; the native canvas carries `describeChart`\'s sentence instead',
   locale: 'it formats through `Intl`, which the crossed engine cannot call — native charts format with the engine\'s own formatters',
   facet: 'it renders a GRID of sub-plots rather than a chart setting; compose the panels yourself',
   facetColumns: 'it sizes the `facet` grid, which is web-only',
+  // ── Emit work, not an obstacle ─────────────────────────────────────────
+  // Each of these names what is MISSING, because "not lowered" without that
+  // reads as impossible when it is merely unbuilt.
+  emphasis: 'the engine already draws it from `ChartSpec.emphasis`, which crosses — what is missing is the host STATE saying which datum is emphasised',
+  selectedMode: 'it pins a selection, which needs that same host state (the gesture arcs\' `_hostStateDecls` splice is how it would be held)',
+  onSelectChange: 'it observes the pinned selection, so it waits on `selectedMode`',
+  onHighlight: 'it observes the highlighted datum, so it waits on the same emphasis state',
+  onLegendChange: 'it observes the hidden-series set, which the native legend toggle already holds — the observer is the unbuilt half',
+  maxPoints: 'LTTB decimation lives in `decimate.ts`, which is written in the crossing subset but is not yet in ENGINE_FILES; the host would also have to map a tap\'s index back through the kept rows',
+  seriesLabels: 'it renames the series in the hidden accessible table; the native canvas is named by `describeChart` over the series\' own labels, and feeding it the override is emit work',
+  updateAnimation: 'the update tween interpolates two draw lists through `cmd-tween.ts`, which is web-only; crossing it needs the host to hold the PREVIOUS list',
+  updateDuration: 'it times that same web-only draw-list tween, so it waits on `updateAnimation`',
 }
 
 /** The one warning both emitters raise for the props `<PlotChart>` does not lower. */
@@ -1450,4 +1492,4 @@ export function plotUnloweredWarning(tag: string, present: readonly string[]): s
 // `updateAnimation`, `updateDuration`, `toolbox`, `onSaveImage`,
 // `accessibleTable`) are reported through `chartChromeUnlowered` for the plot
 // host too — listing them here as well would warn twice.
-export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'emphasis', 'maxPoints', 'crosshair', 'link', 'keyboard', 'updateAnimation', 'updateDuration', 'seriesLabels', 'toolbox', 'onSaveImage', 'accessibleTable', 'legendPosition', 'locale', 'facet', 'facetColumns']
+export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'emphasis', 'maxPoints', 'crosshair', 'link', 'keyboard', 'updateAnimation', 'updateDuration', 'seriesLabels', 'toolbox', 'onSaveImage', 'accessibleTable', 'locale', 'facet', 'facetColumns']

@@ -7853,6 +7853,82 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "LegendPlacement",
+    "fields": [
+      {
+        "name": "cmds",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "PyreonDrawCmd",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "top",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "bottom",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "left",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "right",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "boxes",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "PyreonChartRect",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "pager",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "LegendPager",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "Size",
     "fields": [
       {
@@ -8542,4 +8618,157 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     ],
     "external": true
   }
+]
+
+/**
+ * Every TYPE the generated engine declares. A user type of the same name in
+ * a file that also uses a chart host SHADOWS the engine's — the emit builds
+ * engine structs by BARE name, so the constructor resolves to the wrong
+ * type (and in the single-file compile gates it is an outright
+ * `invalid redeclaration`). Neither target lets a type overload.
+ *
+ * Engine FUNCTIONS and module CONSTANTS are deliberately absent: functions
+ * CAN overload, and the constants are emitted `private`, so neither is
+ * fatal in a real two-module app build.
+ */
+export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
+  "A11yInput",
+  "A11ySeries",
+  "A11yTable",
+  "Annotation",
+  "ArcGeometry",
+  "Bin",
+  "BoxplotFrame",
+  "BoxplotOptions",
+  "BrushBand",
+  "BrushRange",
+  "CalendarCell",
+  "CalendarCellValues",
+  "CalendarDate",
+  "CalendarLabel",
+  "CalendarLayout",
+  "CalendarOptions",
+  "CalendarParsed",
+  "CalendarValue",
+  "CandleOptions",
+  "CandlestickFrame",
+  "ChartSpec",
+  "ChartTheme",
+  "Circle",
+  "Domain",
+  "Emphasis",
+  "FiveNumber",
+  "FunnelOptions",
+  "FunnelStage",
+  "FunnelStageGeometry",
+  "GanttDependency",
+  "GanttLane",
+  "GanttLayout",
+  "GanttOptions",
+  "GanttRange",
+  "GanttRow",
+  "GanttTask",
+  "GanttTick",
+  "GanttTickUnit",
+  "GaugeOptions",
+  "GeoLayout",
+  "GeoOptions",
+  "GeoProjection",
+  "GeoRegion",
+  "GeoShape",
+  "GeoTransform",
+  "GeoValue",
+  "GraphLayout",
+  "GraphLayoutLink",
+  "GraphLayoutNode",
+  "GraphLink",
+  "GraphNode",
+  "GraphOptions",
+  "Gutters",
+  "HeatCell",
+  "HeatGrid",
+  "HeatmapOptions",
+  "LayoutConfig",
+  "LegendEntry",
+  "LegendLayout",
+  "LegendOptions",
+  "LegendPager",
+  "LegendPlacement",
+  "LegendPlan",
+  "LegendPosition",
+  "NavigatorLayout",
+  "Ohlc",
+  "ParallelAxis",
+  "ParallelLayout",
+  "ParallelLayoutAxis",
+  "ParallelLine",
+  "ParallelOptions",
+  "ParallelPlaced",
+  "ParallelTick",
+  "PieOptions",
+  "Placed",
+  "PlotLayout",
+  "PointMarker",
+  "PolarAxes",
+  "PolarCategoryLabel",
+  "PolarHitIndex",
+  "PolarLayout",
+  "PolarLine",
+  "PolarOptions",
+  "PolarPoint",
+  "PolarSector",
+  "PolarSeries",
+  "PolarTick",
+  "PresetLayout",
+  "PresetOptions",
+  "PyreonChartGradient",
+  "PyreonChartGradientStop",
+  "PyreonChartPt",
+  "PyreonChartRect",
+  "PyreonDrawCmd",
+  "RadarAxis",
+  "RadarHitIndex",
+  "RadarOptions",
+  "RadarSeries",
+  "RiverLayer",
+  "RiverLayout",
+  "RiverOptions",
+  "RiverSeries",
+  "RiverTick",
+  "SankeyHitIndex",
+  "SankeyLayout",
+  "SankeyLayoutLink",
+  "SankeyLayoutNode",
+  "SankeyLink",
+  "SankeyNode",
+  "SankeyOptions",
+  "Series",
+  "SeriesGradient",
+  "Size",
+  "Slice",
+  "SliceRange",
+  "StackSegment",
+  "SunburstArc",
+  "SunburstFrame",
+  "SunburstOptions",
+  "Tick",
+  "TitleLayout",
+  "TitleOptions",
+  "TooltipContent",
+  "TooltipOptions",
+  "TooltipRow",
+  "TooltipSeries",
+  "TreeFrame",
+  "TreeLayout",
+  "TreeLayoutNode",
+  "TreeLink",
+  "TreeNode",
+  "TreeOptions",
+  "TreeOrient",
+  "TreemapCell",
+  "TreemapFrame",
+  "TreemapOptions",
+  "WaterfallStep",
+  "ZoomPreset",
+  "ZoomWindow"
 ]

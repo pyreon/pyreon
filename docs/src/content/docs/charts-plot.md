@@ -561,7 +561,14 @@ series, a named `tooltipFormatter` lowers, and `crosshair` — a hover concept �
 stays web-only and says so). What the legend lists and what a tap says come
 from one crossing module — `treemapLegend`, `sankeyTip`, `pieTip`, … and
 `renderTooltip` in `chrome.ts` — that the web host calls too, so the three
-targets cannot disagree about either. `<BoxplotChart>` crosses (its
+targets cannot disagree about either. WHERE the legend goes is crossing too:
+`legendPosition` (`top` / `bottom` / `left` / `right`) runs through
+`placeLegend` in `legend.ts`, the one implementation all three targets call, so
+a side legend narrows and indents the plot on a phone exactly as it does in a
+browser. (Before that split the emit drew every legend at the top, at x = 0
+across the full width, while the web host inset it by 8 on each side — a
+divergence nothing reported.) The four hosts whose engines draw their own frame
+— Gauge, Candlestick, Heatmap, Boxplot — do not read the prop and say so. `<BoxplotChart>` crosses (its
 `fiveNumber` reduction runs in the generated engine) and `<RadarChart>`'s tap
 reports the engine's `{ series, axis }` hit on every target. `<MapChart>`
 crosses from a **precomputed `GeoShape[]`** — raw GeoJSON's `geometry` is a

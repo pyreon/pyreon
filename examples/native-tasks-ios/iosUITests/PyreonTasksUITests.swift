@@ -626,16 +626,19 @@ final class PyreonTasksUITests: XCTestCase {
             "after the 'all' preset, a tap on the first band did not bind index 0 again (label: \(barPick.label))"
         )
         // #3272: the legend tap toggle. The chart has no title chrome, so the
-        // legend row is the canvas top: the 'Score' entry box spans x 0…~44, y 0…11.
+        // legend row sits at the canvas top INSET by the engine's 8pt pad
+        // (`placeLegend`, #3416 — the emit used to draw it at x 0, y 0, which
+        // is 8pt left and 8pt above where a browser puts it): the 'Score'
+        // entry box spans x 8…~52, y 8…19, so a tap at (20, 13) is inside it.
         // Hiding the only series leaves no bar geometry, so the band tap reports
         // -1; a second entry tap brings the series back and the band is 0 again.
-        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 20, dy: 6)).tap()
+        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 20, dy: 13)).tap()
         statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 90, dy: 100)).tap()
         XCTAssertTrue(
             waitForLabel(barPick, "-1", timeout: 10),
             "after hiding the series from the legend entry, the band tap did not report -1 (label: \(barPick.label))"
         )
-        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 20, dy: 6)).tap()
+        statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 20, dy: 13)).tap()
         statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 90, dy: 100)).tap()
         XCTAssertTrue(
             waitForLabel(barPick, "0", timeout: 10),
