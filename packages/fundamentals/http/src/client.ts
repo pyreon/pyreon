@@ -144,6 +144,17 @@ function fromResolved(resolved: ResolvedConfig): HttpClient {
   // override earlier keys) is preserved exactly. The fold is LAZY (first
   // request, memoized) so `createHttp`/`extend` stay allocation-lean for
   // clients that are configured but never used on a code path.
+  //
+  // OBSERVABLE CONSEQUENCE, and it is the intended one: a caller who passes a
+  // MUTABLE record and mutates it later sees the value captured at the first
+  // request, not the current one. That is this module's immutability rule
+  // (see the file docblock) applied to header sources, and a function source
+  // is the documented seam for a value that changes per request — it is
+  // re-read every time. Because the fold is lazy, the capture point is the
+  // FIRST REQUEST rather than `createHttp`; a mutation before any request has
+  // gone out is still picked up. Do not "improve" that into an eager fold at
+  // construction without reading `header-source-semantics.test.ts`, which
+  // pins all three behaviours.
   interface FoldedState {
     base: Headers
     dynamic: readonly HeaderSource[]

@@ -1132,7 +1132,7 @@ fun layoutBarsH(values: List<Double>, plot: PyreonChartRect, vDomain: Domain, ga
       val v = if (raw == raw) raw else zero
       val vx = scaleLinear(vDomain, plot.x, plot.x + plot.w, v)
       val left = if (vx < zeroX) vx else zeroX
-      out.add(PyreonChartRect(x = left, y = plot.y + band * i + ((band - bh)).toDouble() / (2.0).toDouble(), w = (Math.abs(vx - zeroX)).toDouble(), h = bh))
+      out.add(PyreonChartRect(x = left, y = plot.y + band * i + ((band - bh)).toDouble() / (2.0).toDouble(), w = Math.abs(vx - zeroX), h = bh))
     }
     return out
   }
@@ -1191,6 +1191,72 @@ fun layoutStackedBars(seriesValues: List<List<Double>>, plot: PyreonChartRect, y
         val yBot = scaleLinear(yDomain, plot.y + plot.h, plot.y, acc)
         out.add(StackSegment(rect = PyreonChartRect(x = plot.x + band * i + ((band - bw)).toDouble() / (2.0).toDouble(), y = yTop, w = bw, h = (Math.abs(yBot - yTop)).toDouble()), seriesIndex = s, datumIndex = i, value = v))
         acc = acc + v
+      }
+    }
+    return out
+  }
+
+fun layoutStackedBarsH(seriesValues: List<List<Double>>, plot: PyreonChartRect, vDomain: Domain, gapRatio: Double): List<StackSegment> {
+    val out: MutableList<StackSegment> = mutableListOf()
+    if (seriesValues.length == 0) {
+      return out
+    }
+    var n = 0
+    for (s in seriesValues) {
+      if (s.length > n) {
+        n = s.length
+      }
+    }
+    if (n == 0) {
+      return out
+    }
+    val ratio = if (gapRatio < 0.0) 0.0 else if (gapRatio > 0.9) 0.9 else gapRatio
+    val band = (plot.h).toDouble() / (n).toDouble()
+    val bh = band * (1.0 - ratio)
+    for (i in 0 until n) {
+      var acc = 0.0
+      for (s in 0 until seriesValues.length) {
+        val v = (seriesValues[s][i] ?: 0.0)
+        if (!(v > 0.0)) {
+          continue
+        }
+        val xEnd = scaleLinear(vDomain, plot.x, plot.x + plot.w, acc + v)
+        val xStart = scaleLinear(vDomain, plot.x, plot.x + plot.w, acc)
+        out.add(StackSegment(rect = PyreonChartRect(x = if (xStart < xEnd) xStart else xEnd, y = plot.y + band * i + ((band - bh)).toDouble() / (2.0).toDouble(), w = (Math.abs(xEnd - xStart)).toDouble(), h = bh), seriesIndex = s, datumIndex = i, value = v))
+        acc = acc + v
+      }
+    }
+    return out
+  }
+
+fun layoutGroupedBarsH(seriesValues: List<List<Double>>, plot: PyreonChartRect, vDomain: Domain, gapRatio: Double): List<StackSegment> {
+    val out: MutableList<StackSegment> = mutableListOf()
+    val k = seriesValues.length
+    if (k == 0) {
+      return out
+    }
+    var n = 0
+    for (s in seriesValues) {
+      if (s.length > n) {
+        n = s.length
+      }
+    }
+    if (n == 0) {
+      return out
+    }
+    val ratio = if (gapRatio < 0.0) 0.0 else if (gapRatio > 0.9) 0.9 else gapRatio
+    val band = (plot.h).toDouble() / (n).toDouble()
+    val groupH = band * (1.0 - ratio)
+    val barH = (groupH).toDouble() / (k).toDouble()
+    val zero = if (vDomain.min < 0.0 && vDomain.max > 0.0) 0.0 else vDomain.min
+    val zeroX = scaleLinear(vDomain, plot.x, plot.x + plot.w, zero)
+    for (i in 0 until n) {
+      val gy = plot.y + band * i + ((band - groupH)).toDouble() / (2.0).toDouble()
+      for (s in 0 until k) {
+        val raw = (seriesValues[s][i] ?: 0.0)
+        val v = if (raw == raw) raw else zero
+        val vx = scaleLinear(vDomain, plot.x, plot.x + plot.w, v)
+        out.add(StackSegment(rect = PyreonChartRect(x = if (vx < zeroX) vx else zeroX, y = gy + barH * s, w = (Math.abs(vx - zeroX)).toDouble(), h = barH), seriesIndex = s, datumIndex = i, value = v))
       }
     }
     return out
@@ -1257,7 +1323,7 @@ fun layoutGroupedBars(seriesValues: List<List<Double>>, plot: PyreonChartRect, y
         val raw = (seriesValues[s][i] ?: 0.0)
         val v = if (raw == raw) raw else zero
         val vy = scaleLinear(yDomain, plot.y + plot.h, plot.y, v)
-        out.add(StackSegment(rect = PyreonChartRect(x = gx + barW * s, y = if (vy < zeroY) vy else zeroY, w = barW, h = (Math.abs(zeroY - vy)).toDouble()), seriesIndex = s, datumIndex = i, value = v))
+        out.add(StackSegment(rect = PyreonChartRect(x = gx + barW * s, y = if (vy < zeroY) vy else zeroY, w = barW, h = Math.abs(zeroY - vy)), seriesIndex = s, datumIndex = i, value = v))
       }
     }
     return out
@@ -1677,9 +1743,10 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
         }
       }
     }
-    val stackedSeries = if (spec.horizontal == true) listOf() else spec.series.filter({ s -> s.kind == "stacked" })
+    val stackedSeries = spec.series.filter({ s -> s.kind == "stacked" })
     if (stackedSeries.length > 0) {
-      for (seg in layoutStackedBars(stackedSeries.map({ s -> s.values }), plot, yDomain, 0.25)) {
+      val stackSegs = if (spec.horizontal == true) layoutStackedBarsH(stackedSeries.map({ s -> s.values }), plot, yDomain, 0.25) else layoutStackedBars(stackedSeries.map({ s -> s.values }), plot, yDomain, 0.25)
+      for (seg in stackSegs) {
         val rS = growRect(seg.rect, yDomain)
         val gS = seriesGradient(stackedSeries[seg.seriesIndex].gradient, plot)
         out.add(rectCmd(rS, stackedSeries[seg.seriesIndex].color, stackedSeries[seg.seriesIndex].corners, if (gS.stops.length == 0) null else gS))
@@ -1689,9 +1756,10 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
         }
       }
     }
-    val groupedSeries = if (spec.horizontal == true) listOf() else spec.series.filter({ s -> s.kind == "grouped" })
+    val groupedSeries = spec.series.filter({ s -> s.kind == "grouped" })
     if (groupedSeries.length > 0) {
-      for (seg in layoutGroupedBars(groupedSeries.map({ s -> s.values }), plot, yDomain, 0.25)) {
+      val groupSegs = if (spec.horizontal == true) layoutGroupedBarsH(groupedSeries.map({ s -> s.values }), plot, yDomain, 0.25) else layoutGroupedBars(groupedSeries.map({ s -> s.values }), plot, yDomain, 0.25)
+      for (seg in groupSegs) {
         val rG = growRect(seg.rect, yDomain)
         val gG = seriesGradient(groupedSeries[seg.seriesIndex].gradient, plot)
         out.add(rectCmd(rG, groupedSeries[seg.seriesIndex].color, groupedSeries[seg.seriesIndex].corners, if (gG.stops.length == 0) null else gG))
@@ -2093,18 +2161,16 @@ fun barsForIn(raw: ChartSpec, index: Int, plot: PyreonChartRect): List<PyreonCha
 fun stackedHitAt(spec: ChartSpec, measure: (String, Double) -> Double, px: Double, py: Double): Int = stackedHitIn(spec, layoutChart(spec, measure).plot, px, py)
 
 fun stackedHitIn(raw: ChartSpec, plot: PyreonChartRect, px: Double, py: Double): Int {
-    if (raw.horizontal == true) {
-      return -1
-    }
     val spec = geometrySpec(raw)
     val yDomain = resolveYDomain(spec)
+    val flipped = raw.horizontal == true
     for (kind in listOf("stacked", "grouped")) {
       val series = spec.series.filter({ s -> s.kind == kind })
       if (series.length == 0) {
         continue
       }
       val values = series.map({ s -> s.values })
-      val segs = if (kind == "stacked") layoutStackedBars(values, plot, yDomain, 0.25) else layoutGroupedBars(values, plot, yDomain, 0.25)
+      val segs = if (kind == "stacked") if (flipped) layoutStackedBarsH(values, plot, yDomain, 0.25) else layoutStackedBars(values, plot, yDomain, 0.25) else if (flipped) layoutGroupedBarsH(values, plot, yDomain, 0.25) else layoutGroupedBars(values, plot, yDomain, 0.25)
       for (seg in segs) {
         val r = seg.rect
         if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) {
@@ -5819,7 +5885,7 @@ fun renderLegend(entries: List<LegendEntry>, box: PyreonChartRect, opts: LegendO
       val y = box.y + (r - firstRow) * rowH
       val textW = measure(e.label, opts.fontSize)
       val entryW = opts.swatch + 4.0 + textW + opts.gap
-      boxes.add(PyreonChartRect(x = x, y = y, w = entryW - opts.gap, h = (rowH - opts.gap).toDouble()))
+      boxes.add(PyreonChartRect(x = x, y = y, w = entryW - opts.gap, h = rowH - opts.gap))
       cmds.add(PyreonDrawCmd(kind = "rect", rect = PyreonChartRect(x = x, y = y + ((rowH - opts.gap - opts.swatch)).toDouble() / (2.0).toDouble(), w = opts.swatch, h = opts.swatch), fill = if (e.muted == true) withAlpha(e.color, 0.25) else e.color))
       cmds.add(PyreonDrawCmd(kind = "text", fill = if (e.muted == true) withAlpha(opts.labelColor, 0.45) else opts.labelColor, text = e.label, at = PyreonChartPt(x = x + opts.swatch + 4.0, y = y + ((rowH - opts.gap)).toDouble() / (2.0).toDouble()), size = opts.fontSize, align = "start", baseline = "middle"))
     }
@@ -5839,7 +5905,7 @@ fun renderLegend(entries: List<LegendEntry>, box: PyreonChartRect, opts: LegendO
     cmds.add(PyreonDrawCmd(kind = "text", fill = if (canPrev) opts.labelColor else withAlpha(opts.labelColor, 0.35), text = "‹", at = PyreonChartPt(x = prevX + (arrowW).toDouble() / (2.0).toDouble(), y = py + mid), size = opts.fontSize, align = "middle", baseline = "middle"))
     cmds.add(PyreonDrawCmd(kind = "text", fill = opts.labelColor, text = "${plain(page + 1.0)}/${plain(pages)}", at = PyreonChartPt(x = ((prevX + arrowW + nextX)).toDouble() / (2.0).toDouble(), y = py + mid), size = opts.fontSize, align = "middle", baseline = "middle"))
     cmds.add(PyreonDrawCmd(kind = "text", fill = if (canNext) opts.labelColor else withAlpha(opts.labelColor, 0.35), text = "›", at = PyreonChartPt(x = nextX + (arrowW).toDouble() / (2.0).toDouble(), y = py + mid), size = opts.fontSize, align = "middle", baseline = "middle"))
-    val pager = LegendPager(page = page, pages = pages, hasPrev = canPrev, prev = PyreonChartRect(x = prevX, y = py, w = arrowW, h = (rowH - opts.gap).toDouble()), hasNext = canNext, next = PyreonChartRect(x = nextX, y = py, w = arrowW, h = (rowH - opts.gap).toDouble()))
+    val pager = LegendPager(page = page, pages = pages, hasPrev = canPrev, prev = PyreonChartRect(x = prevX, y = py, w = arrowW, h = rowH - opts.gap), hasNext = canNext, next = PyreonChartRect(x = nextX, y = py, w = arrowW, h = rowH - opts.gap))
     return LegendLayout(cmds = cmds, height = height, boxes = boxes, pager = pager)
   }
 
