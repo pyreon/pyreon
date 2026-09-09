@@ -1298,6 +1298,23 @@ describe('chart hosts — CalendarChart + ParallelChart lower through literal ad
   it('OptionChart and MapChart are the hosts left without a lowering (Boxplot crossed; Map declines BY NAME instead of falling into the generic component emit)', () => {
     expect(Object.keys(UNLOWERED_CHART_HOSTS)).toEqual(['OptionChart', 'MapChart'])
   })
+
+  // An unlowered reason is what a user gets INSTEAD of the feature, so it has
+  // to say why and what would change it. MapChart's said "a native lowering is
+  // a follow-up", which is a status, not a reason — someone hitting it learns
+  // nothing and has to re-derive the blocker. Asserting the MECHANISM rather
+  // than the prose: a regression back to a vague string fails, a rewording
+  // does not.
+  it('MapChart names the blocker and a path, not just a status', () => {
+    const why = UNLOWERED_CHART_HOSTS.MapChart!
+    // The actual obstacle, measured: GeoJSON's geometry union has one field at
+    // two different array depths, so the fat-struct lowering cannot merge it.
+    expect(why).toContain('MultiPolygon')
+    expect(why).toMatch(/different depths|DIFFERENT/)
+    // …and what would unblock it, so the reason is actionable.
+    expect(why).toMatch(/normalise|normalize/)
+    expect(why).not.toMatch(/is a follow-up\.?$/)
+  })
   it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine) accepts both hosts', () => {
     for (const src of [CALENDAR, PARALLEL]) {
       const r = validateSwiftWithStubs(transform(src, { target: 'swift' }).code)

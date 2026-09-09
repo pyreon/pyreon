@@ -407,7 +407,9 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
 /** Plot hosts that exist on the web but have no native lowering yet, with the reason. */
 export const UNLOWERED_CHART_HOSTS: Readonly<Record<string, string>> = {
   OptionChart: 'the ECharts option facade is web-only',
-  MapChart: 'the geo host reduces GeoJSON topology (`layoutGeo`) on the web side; a native lowering is a follow-up',
+  MapChart:
+    'GeoJSON\'s `geometry` is a `Polygon | MultiPolygon` union whose `coordinates` are `number[][][]` and `number[][][][]` — different depths for the same field, so the fat-struct lowering correctly refuses to merge them (a merged field would be `Any`). '
+    + 'The geometry itself is not the obstacle: 2-deep `Pt[][]` rings, closure fields and 4-deep arrays all cross today. The unblock is a data-shape change — normalise the two geometry kinds to ONE representation before crossing, and cross the projected regions rather than the GeoJSON.',
 }
 
 /** The grammar host and its mark/config children — `<Plot>` desugars to `<PlotChart marks>` before the plot emit runs. */
@@ -1337,4 +1339,4 @@ export function plotUnloweredWarning(tag: string, present: readonly string[]): s
 // `updateAnimation`, `updateDuration`, `toolbox`, `onSaveImage`,
 // `accessibleTable`) are reported through `chartChromeUnlowered` for the plot
 // host too — listing them here as well would warn twice.
-export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'emphasis', 'maxPoints', 'crosshair', 'link', 'keyboard', 'updateAnimation', 'updateDuration', 'seriesLabels', 'toolbox', 'onSaveImage', 'accessibleTable', 'legendPosition', 'yDomain', 'locale', 'facet', 'facetColumns']
+export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'emphasis', 'maxPoints', 'crosshair', 'link', 'keyboard', 'updateAnimation', 'updateDuration', 'seriesLabels', 'toolbox', 'onSaveImage', 'accessibleTable', 'legendPosition', 'locale', 'facet', 'facetColumns']
