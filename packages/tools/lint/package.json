@@ -61,6 +61,7 @@
   "devDependencies": {
     "@pyreon/ansi": "workspace:*",
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/test-utils": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*"
   },

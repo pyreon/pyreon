@@ -1994,6 +1994,7 @@
         "@pyreon/core": "workspace:*",
         "@pyreon/manifest": "workspace:*",
         "@pyreon/runtime-server": "workspace:*",
+        "@pyreon/test-utils": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@vitus-labs/tools-lint": "^2.7.1",
@@ -2442,6 +2443,7 @@
       "devDependencies": {
         "@pyreon/ansi": "workspace:*",
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/test-utils": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
       },
