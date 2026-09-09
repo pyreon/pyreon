@@ -245,3 +245,62 @@ describe('the contract callers rely on', () => {
     expect(keep).toContain(500)
   })
 })
+
+describe('the public Pt[] wrapper', () => {
+  // `lttb` is what `@pyreon/charts/plot` exports and what a caller actually
+  // holds. Everything above tests `lttbIndices`, which is the half that
+  // crosses — so the wrapper was imported here and never used, and that unused
+  // import was the visible end of two unasserted claims the file's own header
+  // makes.
+
+  it('selects the SAME rows as the index function it wraps', () => {
+    // "One implementation underneath, so a native chart and a web chart cannot
+    // thin a series differently." Nothing checked that, and the wrapper does
+    // its own passthrough and mapping on top.
+    for (let seed = 1; seed <= 20; seed++) {
+      const ys = shapes(seed, 300)
+      const points: Pt[] = ys.map((y, i) => ({ x: i, y }))
+      for (const t of [3, 10, 25, 100]) {
+        const viaWrapper = lttb(points, t).map((p) => p.x)
+        const viaIndices = lttbIndices([], ys, t)
+        expect(viaWrapper, `seed ${seed} threshold ${t}`).toEqual(viaIndices)
+      }
+    }
+  })
+
+  it('honours REAL x values rather than collapsing them to the index', () => {
+    // The one behaviour that makes the wrapper more than a convenience, per its
+    // own docstring — and the one a "simplify it to lttbIndices([], ys, t)"
+    // refactor would silently delete while every other spec here stayed green.
+    //
+    // Same y series twice; the second is sampled on a log-spaced clock, the
+    // shape a latency chart actually has. Largest-triangle areas are computed
+    // from x too, so a different clock must pick different rows.
+    const n = 400
+    const ys = shapes(1, n) // smooth, so the choice is driven by geometry
+    const evenly: Pt[] = ys.map((y, i) => ({ x: i, y }))
+    const unevenly: Pt[] = ys.map((y, i) => ({ x: Math.exp(i / 40), y }))
+
+    const a = lttb(evenly, 30).map((p) => p.y)
+    const b = lttb(unevenly, 30).map((p) => p.y)
+    expect(a).toHaveLength(30)
+    expect(b).toHaveLength(30)
+    expect(b, 'x was ignored — the wrapper is collapsing to the index').not.toEqual(a)
+
+    // …and it is not merely different: both still span the series.
+    for (const out of [a, b]) {
+      expect(out[0]).toBe(ys[0])
+      expect(out[out.length - 1]).toBe(ys[n - 1])
+    }
+  })
+
+  it('passes a short series through by IDENTITY, not by rebuilding it', () => {
+    // `lttbIndices` returns `[]` for "nothing was dropped"; the wrapper has to
+    // translate that back. An inverted branch there returns an EMPTY chart, and
+    // a `toHaveLength` assertion on the mapped form cannot tell a passthrough
+    // from a rebuild that happens to keep every row.
+    const points: Pt[] = Array.from({ length: 40 }, (_, i) => ({ x: i, y: i }))
+    expect(lttb(points, 200)).toBe(points)
+    expect(lttb(points, 2), 'a threshold below 3 is also a passthrough').toBe(points)
+  })
+})
