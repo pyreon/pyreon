@@ -57,6 +57,12 @@ export function hasBuiltLib(path: string, what: string): boolean {
   // the suite it belongs to instead of at the end of the run.
   const line = `[pyreon] SKIPPING: ${what} — no built artifact at ${path}. ${fix}\n`
   if (proc?.stderr !== undefined) proc.stderr.write(line)
+  // `dev-guard-warnings` wants a `process.env.NODE_ENV !== 'production'` gate
+  // so a dev warning tree-shakes out of a consumer bundle. Neither half of
+  // that applies: this is a PRIVATE test-only package that ships to nobody,
+  // and the message must be UNCONDITIONAL — guarding it would recreate the
+  // silent skip the file exists to prevent.
+  // pyreon-lint-ignore pyreon/dev-guard-warnings
   else console.warn(line)
   return false
 }
