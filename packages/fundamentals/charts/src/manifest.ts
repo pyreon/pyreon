@@ -11,7 +11,7 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'the DEFAULT export wraps ECharts (a browser canvas engine) and stays web — keep it in a `<Web>` branch or embed it through the `<WebView>` bridge subpath. `@pyreon/charts/plot` is the multiplatform engine: every family and every host except `<OptionChart>` / `<MapChart>` lowers to a native PyreonChartCanvas over the GENERATED engine (a bare host follows the device colour scheme, as it follows `prefers-color-scheme` in a browser). Marks lower too, the indicators included: `sma` / `ema` / `trend` from a numeric-literal window, and `bollinger`\'s array spread expanded to the band and middle line it names (see nativeFrontend and the Charts row of the capability matrix)',
+      'the DEFAULT export wraps ECharts (a browser canvas engine) and stays web — keep it in a `<Web>` branch or embed it through the `<WebView>` bridge subpath. `@pyreon/charts/plot` is the multiplatform engine: every family and every host except `<OptionChart>` lowers to a native PyreonChartCanvas (`<MapChart>` from a precomputed `GeoShape[]`; the map registry, raw GeoJSON and `geoShapes()` stay web and warn by name) over the GENERATED engine (a bare host follows the device colour scheme, as it follows `prefers-color-scheme` in a browser). Marks lower too, the indicators included: `sma` / `ema` / `trend` from a numeric-literal window, and `bollinger`\'s array spread expanded to the band and middle line it names (see nativeFrontend and the Charts row of the capability matrix)',
     nativeFrontend:
       'PyreonChartCanvas over PyreonChartEngine.swift/.kt — every `@pyreon/charts/plot` host (`<PlotChart marks>` incl. dataZoom / presets / legend toggle / navigator / brush, Pie / Gauge / Funnel / Radar / Candlestick / Heatmap, and the data hosts Treemap / Sunburst / Tree / Sankey / Graph / River / Polar / Gantt / Calendar / Parallel) plus the `ChartTheme` token map (`theme={chartThemes.dark}`, `palette: palettes.okabeIto` resolve at compile time on EVERY host — chrome colours, the tooltip box, the options palette default and the painted `background`; before 0.53 the family and accessor hosts ignored `theme` silently); `<ChartThemeProvider mode theme>` is a compile-time scope on native — its chart children inherit the theme of the mode plus the literal overrides of the provider, under their own `theme`; a reactive or absent `mode` warns and the light theme applies. Every host draws its title, legend and TAP tooltip natively (the plot host through the crossing `tooltipAt` / `tooltipLines`, a named `tooltipFormatter` lowering; `crosshair` stays web-only by name), the family hosts from the crossing `chrome.ts` (the same legend/tooltip functions the web host calls) and play the same entrance tween as the web host inside `PyreonChartEntrance` (`animate`, on by default; Reduce Motion honoured); an engine with no entrance (Pie/Radar/Candlestick/Gauge) names `animate` as inert on every target',
   },
@@ -398,18 +398,25 @@ const repo: TreeNode[] = [
       kind: 'component',
       signature: '(props: MapChartProps) => VNode',
       summary:
-        "GeoJSON regions filled by value. Register a FeatureCollection once with `registerMap(name, geojson)` (ECharts' shape) or pass it directly; `layoutGeo` projects Polygon / MultiPolygon outer rings (equirectangular or Mercator) and fits them into the box with aspect preserved and north up; `renderGeo` colours through the SAME ramp the heatmap uses so a `visualMap` strip cannot disagree with the map; `hitGeo` is ring-accurate. `renderGeoPoints` / `renderGeoPaths` draw scatter, effectScatter halos and flight paths on top through `layout.project`. The other coordinate families follow the same pattern: `<CalendarChart>` (contribution grid, strict ISO dates), `<ParallelChart>`, `<PolarChart>` (radial or concentric bars, polar lines), `<RiverChart>` (silhouette streamgraph) and `layoutSingleAxis`.",
-      example: `import { MapChart, registerMap } from '@pyreon/charts/plot'
-import type { GeoJson } from '@pyreon/charts/plot'
+        "GeoJSON regions filled by value. `map` takes three shapes: a name registered once with `registerMap(name, geojson)` (ECharts' shape), a FeatureCollection directly, or already-projected `GeoShape[]` (what `geoShapes(json)` returns) — the third is the one that LOWERS TO NATIVE (a `Polygon | MultiPolygon` union puts one field at two array depths, which the native struct lowering refuses to merge; the two web-only shapes warn by name at compile time, and `geoShapes` itself reads GeoJSON so shared source passes a PRECOMPUTED const). `layoutGeoShapes` fits the rings into the box with aspect preserved and north up; `renderGeo` colours through the SAME ramp the heatmap uses so a `visualMap` strip cannot disagree with the map; `hitGeoIndex` is ring-accurate. `renderGeoPoints` / `renderGeoPaths` draw scatter, effectScatter halos and flight paths on top through `layout.project`. The other coordinate families follow the same pattern: `<CalendarChart>` (contribution grid, strict ISO dates), `<ParallelChart>`, `<PolarChart>` (radial or concentric bars, polar lines), `<RiverChart>` (silhouette streamgraph) and `layoutSingleAxis`.",
+      example: `import { MapChart, geoShapes, registerMap } from '@pyreon/charts/plot'
+import type { GeoJson, GeoShape } from '@pyreon/charts/plot'
 
 declare const euGeoJson: GeoJson
 registerMap('eu', euGeoJson)
-<MapChart map="eu" values={{ DE: 83, FR: 68, PL: 38 }} options={{ showLabels: true }} height={360} onSelect={(r) => r && console.log(r.name)} />`,
+// Web: the registry name, or the FeatureCollection, reads fine.
+<MapChart map="eu" values={{ DE: 83, FR: 68, PL: 38 }} options={{ showLabels: true }} height={360} onSelect={(r) => r && console.log(r.name)} />
+
+// Shared source (web + iOS + Android): only a PRECOMPUTED GeoShape[] crosses.
+// geoShapes() reads GeoJSON, so project on the web or in a build step, not here.
+const euShapes: GeoShape[] = geoShapes(euGeoJson)
+<MapChart map={euShapes} values={{ DE: 83, FR: 68, PL: 38 }} height={360} onSelectIndex={(i) => console.log(i)} />`,
       mistakes: [
         'Keying `values` by a property the features do not carry — the region name comes from `properties.name` by default; pass `options.nameProperty` for ISO codes or ids',
         'Expecting hole rings (lakes) to be cut out — only outer rings are drawn; a hole renders as part of its region',
         'Passing coordinates in Mercator metres — `projectLonLat` takes DEGREES (lon, lat) and projects itself; pre-projected data double-projects',
         'Using a hand-picked colour per region instead of `values` — the fill is a value → colour mapping through the ramp so the accessible table and any visualMap strip stay truthful',
+        'Reaching for `registerMap` in SHARED multiplatform source — the registry is a module map no native target has, and neither raw GeoJSON nor `geoShapes()` crosses; pass a PRECOMPUTED `GeoShape[]` const (projected on the web or in a build step) and the warnings go away',
       ],
       seeAlso: ['TreemapChart', 'HeatmapChart'],
     },

@@ -5357,6 +5357,11 @@ fun pointInRing(ring: List<PyreonChartPt>, px: Double, py: Double): Boolean {
   }
 
 fun hitGeo(layout: GeoLayout, px: Double, py: Double): GeoRegion? {
+    val i = hitGeoIndex(layout, px, py)
+    return if (i < 0) null else layout.regions[i]
+  }
+
+fun hitGeoIndex(layout: GeoLayout, px: Double, py: Double): Int {
     for (i in layout.regions.length - 1 downTo 0) {
       val r = layout.regions[i]
       if (px < r.bbox.x || px > r.bbox.x + r.bbox.w || py < r.bbox.y || py > r.bbox.y + r.bbox.h) {
@@ -5364,11 +5369,11 @@ fun hitGeo(layout: GeoLayout, px: Double, py: Double): GeoRegion? {
       }
       for (ring in r.rings) {
         if (pointInRing(ring, px, py)) {
-          return r
+          return i
         }
       }
     }
-    return null
+    return -1
   }
 
 fun ganttUnitFor(spanDays: Double): String {
@@ -6636,6 +6641,16 @@ fun calendarTip(layout: CalendarLayout, values: List<CalendarValue>, px: Double,
       }
     }
     return listOf(date)
+  }
+
+fun geoTip(layout: GeoLayout, values: List<GeoValue>, px: Double, py: Double): List<String> {
+    val i = hitGeoIndex(layout, px, py)
+    if (i < 0) {
+      return listOf()
+    }
+    val name = layout.regions[i].name
+    val v = geoValueOf(values, name)
+    return if (v == v) listOf(name, plain(v)) else listOf(name)
   }
 
 fun funnelTip(stages: List<FunnelStage>, plot: PyreonChartRect, px: Double, py: Double, options: FunnelOptions? = null): List<String> {

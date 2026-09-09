@@ -10016,7 +10016,7 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   for (const name of spec.data) {
     const adapter = spec.adapt?.[name]
     if (adapter !== undefined) {
-      const adapted = adapter(attrs, KOTLIN_CHART_TARGET, (m) => _emitWarnings.push(m), (n) => _moduleConstExprsKotlin.get(n))
+      const adapted = adapter(attrs, KOTLIN_CHART_TARGET, (m) => _emitWarnings.push(m), (n) => _moduleConstExprsKotlin.get(n), (x) => emitKotlinExpr(x, indent))
       if (adapted === 'unsupported') return 'Box {}'
       data.push(adapted)
     } else {

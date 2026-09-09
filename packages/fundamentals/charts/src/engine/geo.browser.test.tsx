@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { signal } from '@pyreon/reactivity'
 import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
 import { MapChart } from './MapChart'
-import { layoutGeo } from './geo-web'
-import type { GeoRegion } from './geo'
+import { geoShapes, layoutGeo } from './geo-web'
+import type { GeoRegion, GeoValue } from './geo'
 import type { GeoJson } from './geo-web'
 
 const WORLD: GeoJson = {
@@ -39,5 +39,30 @@ describe('MapChart (real browser)', () => {
     await flush()
     expect(pixel(c, a.x, a.y)).not.toBe(before)
     expect(container.querySelector('table')!.textContent).toContain('B')
+  })
+
+  // `GeoShape[]` + `GeoValue[]` is the ONE `map`/`values` pairing that lowers
+  // to iOS and Android (raw GeoJSON's geometry union puts `coordinates` at two
+  // array depths). It has to paint the same pixels as the GeoJSON form here,
+  // or the native map is a second engine wearing the same name.
+  it('the crossing shapes paint the same pixels as the GeoJSON form', async () => {
+    const shapes = geoShapes(WORLD)
+    const list: GeoValue[] = [{ region: 'A', value: 1 }, { region: 'B', value: 9 }]
+    const picked: number[] = []
+    const mounts = [
+      mountInBrowser(() => MapChart({ animate: false, map: WORLD, values: { A: 1, B: 9 }, width: 400, height: 300 })),
+      mountInBrowser(() => MapChart({ animate: false, map: shapes, values: list, width: 400, height: 300, onSelectIndex: (i) => picked.push(i) })),
+    ]
+    await flush()
+    const [json, crossing] = mounts.map((m) => m.container.querySelector('canvas')!)
+    const l = layoutGeo(WORLD, { x: 0, y: 0, w: 400, h: 300 })
+    for (const region of l.regions) {
+      expect(pixel(crossing!, region.centroid.x, region.centroid.y)).toBe(pixel(json!, region.centroid.x, region.centroid.y))
+    }
+    // …and the index tap the native gesture reports agrees with the region.
+    const b = l.regions[1]!.centroid
+    const r = crossing!.getBoundingClientRect()
+    crossing!.dispatchEvent(new MouseEvent('click', { clientX: r.left + b.x, clientY: r.top + b.y, bubbles: true }))
+    expect(picked).toEqual([1])
   })
 })

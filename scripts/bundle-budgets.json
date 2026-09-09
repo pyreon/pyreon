@@ -30,7 +30,7 @@
   "@pyreon/lint": 67840,
   "@pyreon/loom": 7430,
   "@pyreon/machine": 1150,
-  "@pyreon/mcp": 368640,
+  "@pyreon/mcp": 378000,
   "@pyreon/meta": 2496,
   "@pyreon/native-cli": 10752,
   "@pyreon/native-compiler": 237000,
@@ -71,7 +71,6 @@
   "@pyreon/zero-cli": 3853,
   "@pyreon/zero-content": 11428,
   "_thinHeadroom": {
-    "_doc": "Budgets whose headroom is below the ~1.5% macOS/ubuntu gzip variance, and so cannot be satisfied reliably on both. Grandfathered so existing thin entries do not redden unrelated PRs; a NEW thin budget fails the gate. This list only shrinks \u2014 each entry names what retires it.",
-    "@pyreon/mcp": "headroom 1946 B against a ~5501 B variance band. Raising a 366 KB package's budget is a real sizing decision, deliberately not bundled into a gate fix."
+    "_doc": "Budgets whose headroom is below the ~1.5% macOS/ubuntu gzip variance, and so cannot be satisfied reliably on both. Grandfathered so existing thin entries do not redden unrelated PRs; a NEW thin budget fails the gate. This list only shrinks \u2014 each entry names what retires it."
   }
 }

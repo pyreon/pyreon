@@ -1235,6 +1235,29 @@ export function Cars() {
 const PARALLEL_AXES_CALL = PARALLEL.replace('axes={AXES}', 'axes={axesOf()}')
 const PARALLEL_ROW_COLOR = PARALLEL.replace('gutter={30}', "gutter={30} rowColor={(r, i) => (i === 0 ? '#b42318' : '#0f766e')}")
 
+const MAP = `import { signal } from '@pyreon/reactivity'
+import { Stack, Text } from '@pyreon/primitives'
+import { MapChart } from '@pyreon/charts/plot'
+import type { GeoShape } from '@pyreon/charts/plot'
+const SHAPES: GeoShape[] = [
+  { name: 'A', rings: [[{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }]] },
+  { name: 'B', rings: [[{ x: 12, y: 0 }, { x: 20, y: 0 }, { x: 20, y: 8 }]] },
+]
+export function Regions() {
+  const picked = signal(-1)
+  return (
+    <Stack>
+      <Text>{picked()}</Text>
+      <MapChart animate={false} map={SHAPES} values={{ A: 5, B: 9.5 }} options={{ showLabels: true }} height={280} tooltip onSelectIndex={(i: number) => picked.set(i)} />
+    </Stack>
+  )
+}`
+const MAP_REGISTRY = MAP.replace('map={SHAPES}', 'map="world"')
+const MAP_GEOJSON = MAP.replace('map={SHAPES}', "map={{ type: 'FeatureCollection', features: [] }}")
+const MAP_VALUE_LIST = MAP.replace("import type { GeoShape } from '@pyreon/charts/plot'", "import type { GeoShape, GeoValue } from '@pyreon/charts/plot'")
+  .replace('export function Regions()', "const VALUES: GeoValue[] = [{ region: 'A', value: 5 }]\nexport function Regions()")
+  .replace('values={{ A: 5, B: 9.5 }}', 'values={VALUES}')
+
 describe('chart hosts — CalendarChart + ParallelChart lower through literal adapters (the unlowered list is down to OptionChart)', () => {
   it('Swift: a values record becomes [CalendarValue]; the layout is the web host\'s box; the tap is hitCalendarIndex', () => {
     const r = transform(CALENDAR, { target: 'swift' })
@@ -1295,25 +1318,8 @@ describe('chart hosts — CalendarChart + ParallelChart lower through literal ad
       expect(colored.code).toContain('renderParallel(')
     }
   })
-  it('OptionChart and MapChart are the hosts left without a lowering (Boxplot crossed; Map declines BY NAME instead of falling into the generic component emit)', () => {
-    expect(Object.keys(UNLOWERED_CHART_HOSTS)).toEqual(['OptionChart', 'MapChart'])
-  })
-
-  // An unlowered reason is what a user gets INSTEAD of the feature, so it has
-  // to say why and what would change it. MapChart's said "a native lowering is
-  // a follow-up", which is a status, not a reason — someone hitting it learns
-  // nothing and has to re-derive the blocker. Asserting the MECHANISM rather
-  // than the prose: a regression back to a vague string fails, a rewording
-  // does not.
-  it('MapChart names the blocker and a path, not just a status', () => {
-    const why = UNLOWERED_CHART_HOSTS.MapChart!
-    // The actual obstacle, measured: GeoJSON's geometry union has one field at
-    // two different array depths, so the fat-struct lowering cannot merge it.
-    expect(why).toContain('MultiPolygon')
-    expect(why).toMatch(/different depths|DIFFERENT/)
-    // …and what would unblock it, so the reason is actionable.
-    expect(why).toMatch(/normalise|normalize/)
-    expect(why).not.toMatch(/is a follow-up\.?$/)
+  it('OptionChart is the only host left without a lowering (Calendar/Parallel cross through adapters, Map through projected shapes)', () => {
+    expect(Object.keys(UNLOWERED_CHART_HOSTS)).toEqual(['OptionChart'])
   })
   it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine) accepts both hosts', () => {
     for (const src of [CALENDAR, PARALLEL]) {
@@ -1332,6 +1338,90 @@ describe('chart hosts — CalendarChart + ParallelChart lower through literal ad
       const r = validateKotlin(transform(src, { target: 'kotlin' }).code)
       expect(r.ok, r.error ?? '').toBe(true)
     }
+  })
+})
+
+// `<MapChart>` was the last DECLINED host, and the reason was a data shape,
+// not the geometry: raw GeoJSON's `geometry` is a `Polygon | MultiPolygon`
+// union whose `coordinates` are `number[][][]` and `number[][][][]` — one
+// field at two depths, which the fat-struct lowering correctly refuses to
+// merge. `GeoShape[]` is that union already normalised to rings, so the host
+// takes it as a THIRD `map` shape and lowers; the two web-only shapes (a
+// registry name, raw GeoJSON) refuse BY NAME rather than emitting a symbol no
+// target has.
+describe('chart hosts — MapChart lowers from projected shapes; the registry and raw GeoJSON refuse by name', () => {
+  it('Swift: shapes cross verbatim, a values RECORD becomes [GeoValue], the tap is hitGeoIndex and the tip is geoTip', () => {
+    const r = transform(MAP, { target: 'swift' })
+    expect(r.warnings).toEqual([])
+    // The rings cross as the engine's own Pt, so no adapter runs on `map`.
+    expect(r.code).toContain(
+      'private let SHAPES: [GeoShape] = [GeoShape(name: "A", rings: [[PyreonChartPt(x: Double(0), y: Double(0)), PyreonChartPt(x: Double(10), y: Double(0)), PyreonChartPt(x: Double(10), y: Double(10))]])')
+    expect(r.code).toContain('layoutGeoShapes(SHAPES, PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 280.0), pyreonOptions)')
+    expect(r.code).toContain('renderGeo(pyreonLayout, [GeoValue(region: "A", value: 5.0), GeoValue(region: "B", value: 9.5)], pyreonOptions)')
+    expect(r.code).toContain('hitGeoIndex(pyreonLayout, Double(pyreonTap.location.x), Double(pyreonTap.location.y))')
+    expect(r.code).toContain('geoTip(pyreonLayout, [GeoValue(region: "A", value: 5.0), GeoValue(region: "B", value: 9.5)]')
+  })
+
+  it('Kotlin: the same four calls', () => {
+    const r = transform(MAP, { target: 'kotlin' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('layoutGeoShapes(SHAPES, PyreonChartRect(0.0, 0.0, pyreonW, 280.0), pyreonOptions)')
+    expect(r.code).toContain('renderGeo(pyreonLayout, listOf(GeoValue(region = "A", value = 5.0), GeoValue(region = "B", value = 9.5)), pyreonOptions)')
+    expect(r.code).toContain('hitGeoIndex(pyreonLayout,')
+    expect(r.code).toContain('geoTip(pyreonLayout, listOf(GeoValue(region = "A", value = 5.0), GeoValue(region = "B", value = 9.5))')
+  })
+
+  // The border SEPARATES two filled regions, so it reads the page GROUND —
+  // and `background: ''` ("inherit the page") is the one theme field a chart
+  // cannot paint with. A default of `""` there is not a colour: it is the
+  // silent divergence the whole theme pass exists to close, so the resolved
+  // white is asserted rather than the raw field.
+  it('the border defaults from the page ground, with the empty "inherit" background resolved to white', () => {
+    for (const [target, expected] of [
+      ['swift', 'borderColor: (pyreonColorScheme == .dark ? "#141821" : "#ffffff")'],
+      ['kotlin', 'borderColor = (if (isSystemInDarkTheme()) "#141821" else "#ffffff")'],
+    ] as const) {
+      const r = transform(MAP.replace(' options={{ showLabels: true }}', ''), { target })
+      expect(r.code).toContain(expected)
+      expect(r.code).not.toContain('borderColor: ""')
+      expect(r.code).not.toContain('borderColor = ""')
+    }
+  })
+
+  it('a GeoValue[] passes through the adapter untouched', () => {
+    const r = transform(MAP_VALUE_LIST, { target: 'swift' })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain('renderGeo(pyreonLayout, VALUES, pyreonOptions)')
+  })
+
+  it('a registry name refuses BY NAME and names the shape that does cross', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(MAP_REGISTRY, { target })
+      // The remedy names the SHAPE that crosses, not just the refusal.
+      expect(r.warnings.some((w) => w.includes('<MapChart map="…">') && w.includes('registerMap') && w.includes('`GeoShape[]` const'))).toBe(true)
+      expect(r.code).not.toContain('layoutGeoShapes(')
+    }
+  })
+
+  it('raw GeoJSON refuses BY NAME, naming the union depth that blocks it', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(MAP_GEOJSON, { target })
+      expect(r.warnings.some((w) => w.includes('<MapChart map={…}>') && w.includes('MultiPolygon') && w.includes('`GeoShape[]` const'))).toBe(true)
+      expect(r.code).not.toContain('layoutGeoShapes(')
+    }
+  })
+
+  it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine) accepts it', () => {
+    const r = validateSwiftWithStubs(transform(MAP, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isSwiftUIAvailable())('swiftc against real SwiftUI + canvas + engine accepts it', () => {
+    const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(ENGINE_SWIFT) + '\n' + transform(MAP, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isKotlincAvailable())('kotlinc (stub bundle + real engine) accepts it', () => {
+    const r = validateKotlin(transform(MAP, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
   })
 })
 

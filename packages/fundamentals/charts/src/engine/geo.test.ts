@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { geoDomain, hitGeo, projectLonLat, renderGeo, geoProject } from './geo'
-import { geoToSvg, getMap, layoutGeo, listMaps, registerMap, geoValues } from './geo-web'
+import { geoDomain, geoValueOf, hitGeo, hitGeoIndex, layoutGeoShapes, projectLonLat, renderGeo, geoProject } from './geo'
+import { geoShapes, geoToSvg, getMap, layoutGeo, listMaps, registerMap, geoValues } from './geo-web'
+import { geoTip } from './chrome'
 import type { GeoJson } from './geo-web'
 import { compileFamily, familyToSvg } from './option-family'
 
@@ -75,6 +76,36 @@ describe('geo layout', () => {
     expect(hitGeo(l, 200, 30)).toBeNull()
     expect(hitGeo(l, 20, 20)!.name).toBe('Isles')
   })
+  // `GeoShape[]` is the GeoJSON geometry union already normalised to rings —
+  // the one `map` shape that crosses to iOS and Android, because the union's
+  // `coordinates` sit at two different array depths. It has to lay out to the
+  // SAME thing the GeoJSON path does, or the native map is a second engine.
+  it('layoutGeoShapes over geoShapes(json) is identical to layoutGeo over the json', () => {
+    const viaJson = layoutGeo(world, box, { padding: 0 })
+    const viaShapes = layoutGeoShapes(geoShapes(world), box, { padding: 0 })
+    expect(viaShapes).toEqual(viaJson)
+  })
+
+  it('the index hit agrees with the region hit, and -1 is the miss', () => {
+    const l = layoutGeo(world, box, { padding: 0 })
+    for (const [x, y] of [[100, 190], [300, 190], [20, 20], [200, 30]] as const) {
+      const i = hitGeoIndex(l, x, y)
+      expect(i < 0 ? null : l.regions[i]!).toEqual(hitGeo(l, x, y))
+    }
+    expect(hitGeoIndex(l, 200, 30)).toBe(-1)
+  })
+
+  // The tooltip crosses (it is in the native engine's ENGINE_FILES), so a
+  // region with no value must yield ONE line rather than a NaN second one.
+  it('geoTip names the region, and adds the value only where one was recorded', () => {
+    const l = layoutGeo(world, box, { padding: 0 })
+    const values = geoValues({ West: 2 })
+    expect(geoTip(l, values, 100, 190)).toEqual(['West', '2'])
+    expect(geoTip(l, values, 300, 190)).toEqual(['East'])
+    expect(geoTip(l, values, 200, 30)).toEqual([])
+    expect(geoValueOf(values, 'East')).toBeNaN()
+  })
+
   it('registry + svg', () => {
     registerMap('squares', world)
     expect(listMaps()).toContain('squares')

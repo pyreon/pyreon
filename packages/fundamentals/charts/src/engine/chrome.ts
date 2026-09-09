@@ -21,6 +21,8 @@ import type { Slice } from './arc'
 import { hitCalendarIndex } from './calendar'
 import type { CalendarLayout, CalendarValue } from './calendar'
 import { plain } from './format'
+import { geoValueOf, hitGeoIndex } from './geo'
+import type { GeoLayout, GeoValue } from './geo'
 import { hitFunnel } from './funnel'
 import type { FunnelOptions, FunnelStage } from './funnel'
 import { ganttDurationDays, hitGanttIndex } from './gantt'
@@ -222,6 +224,15 @@ export function calendarTip(layout: CalendarLayout, values: CalendarValue[], px:
   const date = layout.cells[i]!.date
   for (const v of values) if (v.date === date) return [date, plain(v.value)]
   return [date]
+}
+
+/** The region's name, and its value when one was recorded for that region. */
+export function geoTip(layout: GeoLayout, values: GeoValue[], px: Double, py: Double): string[] {
+  const i = hitGeoIndex(layout, px, py)
+  if (i < 0) return []
+  const name = layout.regions[i]!.name
+  const v = geoValueOf(values, name)
+  return v === v ? [name, plain(v)] : [name]
 }
 
 export function funnelTip(stages: FunnelStage[], plot: Rect, px: Double, py: Double, options?: FunnelOptions): string[] {
