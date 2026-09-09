@@ -268,6 +268,28 @@ function kotlinStructCtorArgs(
     .join(', ')
 }
 
+/**
+ * An integer literal in a position whose type is KNOWN to be Double, marked so
+ * it emits `4.0` rather than `4`.
+ *
+ * `Record<string, Double> = { '2024-01-03': 4 }` is the natural way to write a
+ * count — a calendar's values ARE integers — and it emitted an Int-valued map
+ * against a Double-valued annotation, which does not compile.
+ *
+ * Applied at the sites that KNOW the element type (a map literal's values, an
+ * array literal's elements), deliberately not at the literal emit reading the
+ * ambient expected type: that type describes an ENCLOSING position, so it also
+ * covers an array index, the argument of `Double(n - 1)` and the operands of
+ * `level == 2` — all Int contexts, all corrupted by a blanket rewrite. That
+ * version was written, and the chart engine's drift lock caught it turning
+ * `slope[0]` into `slope[0.0]`.
+ */
+function asFloatLiteral(v: ExprIR, t: TypeIR | undefined): ExprIR {
+  if (t === undefined || !typeWantsFloat(t)) return v
+  if (v.kind !== 'literal' || typeof v.value !== 'number' || !Number.isInteger(v.value) || v.float === true) return v
+  return { ...v, float: true }
+}
+
 function typeWantsFloat(t: TypeIR): boolean {
   if (t.kind === 'number') return t.float === true
   if (t.kind === 'typeRef') return t.name === 'Double' || t.name === 'Float'
@@ -5912,7 +5934,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       if (_expectedTypeKotlin?.kind === 'map' && (!e.spreads || e.spreads.length === 0)) {
         const vT = _expectedTypeKotlin.value
         const entries = e.fields
-          .map((f) => `${JSON.stringify(f.name)} to ${withExpectedTypeKotlin(vT, () => emitKotlinExpr(f.value, indent))}`)
+          .map((f) => `${JSON.stringify(f.name)} to ${withExpectedTypeKotlin(vT, () => emitKotlinExpr(asFloatLiteral(f.value, vT), indent))}`)
           .join(', ')
         return `mutableMapOf(${entries})`
       }
