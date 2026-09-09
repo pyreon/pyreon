@@ -68,6 +68,8 @@ export function getUrlRouter(): UrlRouter | null {
 function warnRouterCannotPush(): void {
   if (_warnedNoPush) return
   _warnedNoPush = true
+  /* v8 ignore next — the production arm of a dev gate: NODE_ENV is 'test' under
+     vitest, so the false branch is unreachable by construction, not untested. */
   if (process.env.NODE_ENV !== 'production') {
     console.warn(
       '[Pyreon] url-state: `replace: false` asks for a history entry, but the router passed to `setUrlRouter()` has no `push` method — falling back to `replace`, so Back will not undo these updates. Give the router a `push(path)`, or drop `replace: false`.',

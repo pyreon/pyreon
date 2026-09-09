@@ -107,6 +107,8 @@ function createUrlSignal<T>(
       // Loud in dev, because the other reason this fires is a serializer that
       // genuinely disagrees with what the app writes — which a silent default
       // would hide for as long as the URL happens to be well-formed.
+      /* v8 ignore next — the production arm of a dev gate; unreachable under
+         vitest, where NODE_ENV is 'test'. */
       if (process.env.NODE_ENV !== 'production') {
         console.warn(
           `[Pyreon] url-state: could not deserialize ?${key}=${raw} — using the default. ${String(err)}`,
