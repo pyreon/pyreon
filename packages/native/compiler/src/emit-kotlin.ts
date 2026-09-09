@@ -10262,19 +10262,28 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     const m = marksV.elements[k]!
     const callee = m.kind === 'call' && m.callee.kind === 'identifier' ? m.callee.name : undefined
     const bubble = callee === 'bubble'
+    // `band(low, high, options)` reads its channels in the opposite order to
+    // every other mark (see the Swift twin).
+    const isBand = callee === 'band'
     const kind = callee === undefined ? undefined : bubble ? 'points' : PLOT_MARK_KINDS[callee]
     if (m.kind !== 'call' || kind === undefined) {
       _emitWarnings.push(`<${tag}> mark ${k + 1}: this mark is not lowered on native; emitting an empty Box().`)
       return 'Box {}'
     }
-    const y = m.args[0]
+    const y = isBand ? m.args[1] : m.args[0]
     if (y === undefined) {
-      _emitWarnings.push(`<${tag}> mark ${k + 1}: needs an accessor; emitting an empty Box().`)
+      // Named per mark: `band` takes TWO accessors, so "needs an accessor"
+      // on its own leaves the reader guessing which one is missing.
+      _emitWarnings.push(
+        isBand
+          ? `<${tag}> mark ${k + 1}: \`band\` needs both an upper and a lower accessor — \`band(low, high)\`; emitting an empty Box().`
+          : `<${tag}> mark ${k + 1}: needs an accessor; emitting an empty Box().`,
+      )
       return 'Box {}'
     }
     const body = kotlinAccessorExpr(y, tag, `mark ${k + 1}`, indent)
     if (body === 'unsupported') return 'Box {}'
-    const optsArg = bubble ? m.args[2] : m.args[1]
+    const optsArg = bubble || isBand ? m.args[2] : m.args[1]
     const opts = kotlinMarkOptionArgs(optsArg, tag, k, pyreonPalette)
     if (opts === 'unsupported') return 'Box {}'
     lets.push(`val pyreonValues${k}: List<Double> = ${kotlinPlotRowMap(rows, `(${body}).toDouble()`, windowed)}`)
@@ -10291,10 +10300,23 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
       const rBody = kotlinAccessorExpr(r, tag, `mark ${k + 1} radius`, indent)
       if (rBody === 'unsupported') return 'Box {}'
       const range = kotlinBubbleRange(optsArg)
-      lets.push(`val pyreonRadii${k}: List<Double> = bubbleRadii(${kotlinPlotRowMap(rows, `(${rBody}).toDouble()`, windowed)}, ${range[0]}, ${range[1]})`)
+      // The RAW r values beside the pixel radii — the mirror of the Swift
+      // emitter; the table and tooltip report the datum, not the radius.
+      lets.push(`val pyreonRRaw${k}: List<Double> = ${kotlinPlotRowMap(rows, `(${rBody}).toDouble()`, windowed)}`)
+      lets.push(`val pyreonRadii${k}: List<Double> = bubbleRadii(pyreonRRaw${k}, ${range[0]}, ${range[1]})`)
       const at = opts.findIndex((o) => o.startsWith('showValues =')) + 1
-      const withRadii = [...opts.slice(0, at), `radii = pyreonRadii${k}`, ...opts.slice(at)]
+      const withRadii = [...opts.slice(0, at), `rValues = pyreonRRaw${k}`, `radii = pyreonRadii${k}`, ...opts.slice(at)]
       series.push(`Series(kind = "points", values = pyreonValues${k}, ${[...withRadii, ...errArgs].join(', ')})`)
+    } else if (isBand) {
+      const lo = m.args[0]
+      if (lo === undefined) {
+        _emitWarnings.push(`<${tag}> mark ${k + 1}: \`band\` needs a lower-bound accessor; emitting an empty Box().`)
+        return 'Box {}'
+      }
+      const loBody = kotlinAccessorExpr(lo, tag, `mark ${k + 1} lower bound`, indent)
+      if (loBody === 'unsupported') return 'Box {}'
+      lets.push(`val pyreonLow${k}: List<Double> = ${kotlinPlotRowMap(rows, `(${loBody}).toDouble()`, windowed)}`)
+      series.push(`Series(kind = "band", values = pyreonValues${k}, ${[...opts, ...errArgs, `values2 = pyreonLow${k}`].join(', ')})`)
     } else {
       series.push(`Series(kind = ${JSON.stringify(kind)}, values = pyreonValues${k}, ${[...opts, ...errArgs].join(', ')})`)
     }
@@ -10398,9 +10420,9 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   // `tooltip` as a tap — mirror of the Swift emitter (a named `tooltipFormatter` lowers; an inline one is reported).
   const tooltip = readStaticAttrKotlin(e, 'tooltip') === true
   const tipFormatter = chartAttrExprKotlin(e, 'tooltipFormatter')
-  let tipLines = `tooltipLines(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label = it.label, values = it.values, color = it.color) })${yFormat === undefined ? '' : `, ${yFormat}`})`
+  let tipLines = `tooltipLines(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label = it.label, values = it.values, color = it.color, values2 = it.values2, rValues = it.rValues) })${yFormat === undefined ? '' : `, ${yFormat}`})`
   if (tooltip && tipFormatter !== undefined) {
-    if (tipFormatter.kind === 'identifier') tipLines = `${kotlinIdent(tipFormatter.name)}(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label = it.label, values = it.values, color = it.color) })).split("\\n")`
+    if (tipFormatter.kind === 'identifier') tipLines = `${kotlinIdent(tipFormatter.name)}(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label = it.label, values = it.values, color = it.color, values2 = it.values2, rValues = it.rValues) })).split("\\n")`
     else _emitWarnings.push('<PlotChart tooltipFormatter>: must be a NAMED function on native — an inline arrow is not lowered; the default lines apply.')
   }
   if (tooltip) {
@@ -10496,7 +10518,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     : undefined
   // The data description the web `aria-label` carries (mirror of the Swift emitter).
   const plotTitleRaw = readStaticAttrKotlin(e, 'title')
-  const describe = `describeChart(A11yInput(title = ${typeof plotTitleRaw === 'string' ? JSON.stringify(plotTitleRaw) : 'null'}, categories = pyreonCats, series = pyreonSeries.map { A11ySeries(label = it.label, values = it.values, kind = it.kind) }, format = ${yFormat ?? 'null'}))`
+  const describe = `describeChart(A11yInput(title = ${typeof plotTitleRaw === 'string' ? JSON.stringify(plotTitleRaw) : 'null'}, categories = pyreonCats, series = pyreonSeries.map { A11ySeries(label = it.label, values = it.values, kind = it.kind, values2 = it.values2, errLow = it.errLow, errHigh = it.errHigh, rValues = it.rValues) }, format = ${yFormat ?? 'null'}))`
   return kotlinFrameHostWithDensity(e, lets, cmds, tap, W, H, hasWidth, indent, windowed || tap !== '', overlay, describe)
 }
 
