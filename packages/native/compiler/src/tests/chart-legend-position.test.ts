@@ -83,6 +83,35 @@ describe('legendPosition lowers on both targets', () => {
     }
   })
 
+  // The chrome and the plot are laid out in DIFFERENT spaces, and folding the
+  // indent into one shared `tapX` silently broke the chrome hits: the legend's
+  // own entry boxes are in canvas coordinates, so asking them about a
+  // plot-space point misses by the legend's whole width. `tapY` had always
+  // made this distinction (chrome reads raw, the plot subtracts the title);
+  // the x side only needed it once something moved the plot HORIZONTALLY.
+  it('a legend hit reads CANVAS space while the plot hit reads PLOT space', () => {
+    const src = `import { PlotChart, bars } from '@pyreon/charts/plot'
+interface Row { k: string; v: number }
+const ROWS: Row[] = [{ k: 'a', v: 1 }, { k: 'b', v: 2 }]
+export function S() {
+  return <PlotChart data={ROWS} x={(d) => d.k} marks={[bars((d) => d.v)]} showLegend legendPosition="left" height={200} onSelectIndex={(i: number) => console.log(i)} />
+}
+`
+    for (const [target, legendHit, plotHit] of [
+      // The trailing `, ` matters: without it the raw-x string is a PREFIX of
+      // the indented one, so the assertion passes against the very mistake it
+      // is meant to catch.
+      ['swift', 'legendHitIndex(pyreonLegend.boxes, Double(pyreonTap.location.x), ', 'plotHitBars(pyreonSpec, pyreonChartMeasure, Double(pyreonTap.location.x) - pyreonLegend.left'],
+      ['kotlin', 'legendHitIndex(pyreonLegend.boxes, (pyreonTap.x / pyreonDensity).toDouble(), ', 'plotHitBars(pyreonSpec, ::pyreonChartMeasure, (pyreonTap.x / pyreonDensity).toDouble() - pyreonLegend.left'],
+    ] as const) {
+      const code = transform(src, { target }).code
+      // The legend is asked about the RAW x…
+      expect(code, `${target} legend hit`).toContain(legendHit)
+      // …and the plot about the indented one.
+      expect(code, `${target} plot hit`).toContain(plotHit)
+    }
+  })
+
   // The whole point: neither emitter may re-derive placement. `renderLegend`
   // is what they called when they did.
   it('the emitters call the crossing placeLegend, never renderLegend directly', () => {

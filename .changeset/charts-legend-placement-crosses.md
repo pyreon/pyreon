@@ -33,3 +33,10 @@ held the rest to. The reasons divide deliberately into two kinds: a prop whose
 MECHANISM is the web platform (a DOM element, a hover, a download) and one that
 is EMIT WORK, so a reader can tell a wall from a backlog item.
 
+`<PlotChart>` carried its OWN copy of the four branches — a THIRD
+implementation — and the copies had already drifted: a top legend sat at
+`x: 0` there and `x: 8` in the family hosts, and a bottom one reserved
+`height + 4` against `height + 8`. Neither difference was reported by anything.
+It now calls `placeLegend` too, so the plot host, the sixteen family hosts and
+both native emitters share one placement.
+

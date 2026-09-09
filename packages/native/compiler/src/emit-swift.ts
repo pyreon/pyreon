@@ -12116,9 +12116,9 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
     if (tooltip) {
       _hostStateDecls.push('@State private var pyreonTip: [String] = []')
       _hostStateDecls.push('@State private var pyreonTipAt: PyreonChartPt = PyreonChartPt(x: 0.0, y: 0.0)')
-      parts.push(`pyreonTip = ${spec.tooltip!(layout, chrome.tapX('Double(pyreonTap.location.x)'), tapY, plotArgs, SWIFT_CHART_TARGET)}; pyreonTipAt = PyreonChartPt(x: Double(pyreonTap.location.x), y: Double(pyreonTap.location.y))`)
+      parts.push(`pyreonTip = ${spec.tooltip!(layout, chrome.plotX('Double(pyreonTap.location.x)'), tapY, plotArgs, SWIFT_CHART_TARGET)}; pyreonTipAt = PyreonChartPt(x: Double(pyreonTap.location.x), y: Double(pyreonTap.location.y))`)
     }
-    if (onSel?.kind === 'event') parts.push(swiftChartSelectBody(onSel.handler, spec.hit(layout, chrome.tapX('Double(pyreonTap.location.x)'), tapY, plotArgs, SWIFT_CHART_TARGET), indent))
+    if (onSel?.kind === 'event') parts.push(swiftChartSelectBody(onSel.handler, spec.hit(layout, chrome.plotX('Double(pyreonTap.location.x)'), tapY, plotArgs, SWIFT_CHART_TARGET), indent))
     gesture = `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in ${parts.join('; ')} })`
   }
   if (lets.length === 0) {
@@ -12215,9 +12215,9 @@ function emitSwiftAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   if (tooltip) {
     _hostStateDecls.push('@State private var pyreonTip: [String] = []')
     _hostStateDecls.push('@State private var pyreonTipAt: PyreonChartPt = PyreonChartPt(x: 0.0, y: 0.0)')
-    parts.push(`pyreonTip = ${spec.tooltip(items, chrome.tapX('Double(pyreonTap.location.x)'), tapY, args, SWIFT_CHART_TARGET)}; pyreonTipAt = PyreonChartPt(x: Double(pyreonTap.location.x), y: Double(pyreonTap.location.y))`)
+    parts.push(`pyreonTip = ${spec.tooltip(items, chrome.plotX('Double(pyreonTap.location.x)'), tapY, args, SWIFT_CHART_TARGET)}; pyreonTipAt = PyreonChartPt(x: Double(pyreonTap.location.x), y: Double(pyreonTap.location.y))`)
   }
-  if (onSel?.kind === 'event') parts.push(swiftChartSelectBody(onSel.handler, spec.hit(items, chrome.tapX('Double(pyreonTap.location.x)'), tapY, args, SWIFT_CHART_TARGET), indent))
+  if (onSel?.kind === 'event') parts.push(swiftChartSelectBody(onSel.handler, spec.hit(items, chrome.plotX('Double(pyreonTap.location.x)'), tapY, args, SWIFT_CHART_TARGET), indent))
   const gesture = parts.length === 0 ? '' : `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in ${parts.join('; ')} })`
   const tail = swiftChartA11y(e, undefined, indent) + emitSwiftLayoutModifiers(e)
   if (!hoist) {
@@ -12510,7 +12510,7 @@ function emitSwiftRadarHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   // web callbacks receive), against the same box the canvas painted, the
   // chrome's height taken off the tap's y. Radar had no tap on either target.
   const tapY = chrome.top === '0.0' ? 'Double(pyreonTap.location.y)' : `Double(pyreonTap.location.y) - ${chrome.top}`
-  const gesture = swiftChartGesture(e, (x) => `hitRadarIndex(${emitSwiftExpr(axesV, indent)}, pyreonSeries, ${box}, ${opts}, ${x}, ${tapY}, 8.0)`, indent, ['selectindex', 'select'], chrome.tapX)
+  const gesture = swiftChartGesture(e, (x) => `hitRadarIndex(${emitSwiftExpr(axesV, indent)}, pyreonSeries, ${box}, ${opts}, ${x}, ${tapY}, 8.0)`, indent, ['selectindex', 'select'], chrome.plotX)
   return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent)
 }
 
@@ -12849,7 +12849,8 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   // RTL tap is mirrored back before it is asked about. Painting mirrored and
   // hit-testing unmirrored would report the bar at the opposite end.
   const tapX = chrome.tapX('Double(pyreonTap.location.x)')
-  const localHit = `plotHitBars(pyreonSpec, pyreonChartMeasure, ${tapX}, ${tapY})`
+  const plotX = chrome.plotX('Double(pyreonTap.location.x)')
+  const localHit = `plotHitBars(pyreonSpec, pyreonChartMeasure, ${plotX}, ${tapY})`
   // Under a window the hit is LOCAL to the slice; the callback speaks GLOBAL indices, as on the web.
   // With a tooltip the local hit is bound once (`pyreonLocal`) and both read it; without one the emit is as before.
   const hit = tooltip
@@ -12969,8 +12970,10 @@ interface SwiftChartChrome {
    * from taking half of it.
    */
   mirror: (cmds: string) => string
-  /** RTL: a tap's x in the UNMIRRORED geometry the engine laid out. */
+  /** A tap's x in CANVAS space: RTL-unmirrored, but NOT plot-offset — what the chrome hits (legend entries, pager, presets) are laid out in. */
   tapX: (raw: string) => string
+  /** A tap's x in PLOT space: `tapX` minus a left legend's column. The plot's own hit test and its tooltip read this. */
+  plotX: (raw: string) => string
 }
 
 function swiftChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries: string, W: string, H: string, indent: number, withTitle: boolean, t: ChartThemeText, page?: string): SwiftChartChrome {
@@ -12978,7 +12981,7 @@ function swiftChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries: 
   const showTitle = withTitle && readStaticAttr(e, 'showTitle') === true && title !== undefined
   const showLegend = readStaticAttr(e, 'showLegend') === true
   const { mirror, tapX } = swiftRtl(e, W)
-  if (!showTitle && !showLegend) return { lets: [], top: '0.0', left: '0.0', wrap: (p) => p, height: (h) => h, width: (w) => w, mirror, tapX }
+  if (!showTitle && !showLegend) return { lets: [], top: '0.0', left: '0.0', wrap: (p) => p, height: (h) => h, width: (w) => w, mirror, tapX, plotX: tapX }
   const lets: string[] = []
   if (showTitle) {
     const subtitle = readStringAttrExpr(e, 'subtitle', indent) ?? 'nil'
@@ -13020,11 +13023,17 @@ function swiftChartChrome(e: Extract<ExprIR, { kind: 'jsx-element' }>, entries: 
     height: (h) => (below ? `${h} - pyreonTop - pyreonLegend.bottom` : `${h} - pyreonTop`),
     width: (w) => (side ? `${w} - pyreonLegend.left - pyreonLegend.right` : w),
     mirror,
-    // A left legend indents the plot, so a tap's x has to come back out of it
-    // — folded into `tapX` rather than left to each call site, for the same
-    // reason `tapX` folds in the RTL unmirror: the five hosts that read a tap
-    // would otherwise each have to remember, and four of them would.
-    tapX: side ? (raw) => `${tapX(raw)} - pyreonLegend.left` : tapX,
+    // `tapX` is CANVAS space (RTL-unmirrored) and `plotX` is PLOT space. The
+    // two used to be one function, because nothing had ever moved the plot
+    // HORIZONTALLY — a title and a top legend push it down, and `tapY` was
+    // where the offset lived. A left legend indents it, and folding that into
+    // `tapX` silently broke the CHROME hits, which are laid out in canvas
+    // coordinates: the legend's own entry boxes, its pager and the preset
+    // strip would have been asked about a point 8+col pixels to their left.
+    // Splitting them mirrors what `tapY` already does — chrome reads raw, the
+    // plot reads offset.
+    tapX,
+    plotX: side ? (raw) => `${tapX(raw)} - pyreonLegend.left` : tapX,
   }
 }
 
