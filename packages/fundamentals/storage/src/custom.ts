@@ -1,5 +1,5 @@
 import { signal, wrapSignal } from '@pyreon/reactivity'
-import { getEntry, removeEntry, setEntry } from './registry'
+import { getEntry, releaseEntry, retainEntry, setEntry } from './registry'
 import type { StorageBackend, StorageOptions, StorageSignal } from './types'
 import { deserialize, serialize } from './utils'
 
@@ -31,9 +31,18 @@ export function createStorage(
     defaultValue: T,
     options?: StorageOptions<T>,
   ): StorageSignal<T> {
-    // Return existing signal if already registered
+    // Same-key consumers each retain the per-key registry refcount, so the entry
+    // is destroyed on the LAST `.remove()` and not the first. `useStorage` was
+    // fixed this way in #725/#729 and the registry's own docstring states the
+    // contract ("per-consumer `.remove()` goes through `releaseEntry`") — this
+    // backend kept the pre-fix shape, so one consumer's `.remove()` orphaned
+    // every sibling: `clearStorage`/`removeStorage` stopped seeing their signal,
+    // and the next call for the same key minted a SECOND, independent one.
     const existing = getEntry<T>(name, key)
-    if (existing) return existing.signal
+    if (existing) {
+      retainEntry(name, key)
+      return existing.signal
+    }
 
     // Read initial value
     let initialValue = defaultValue
@@ -69,7 +78,7 @@ export function createStorage(
       } catch {
         // Remove failed
       }
-      removeEntry(name, key)
+      releaseEntry(name, key)
     }
 
     setEntry(name, key, storageSig, defaultValue, options)
