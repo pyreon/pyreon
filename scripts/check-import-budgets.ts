@@ -293,6 +293,23 @@ export interface BudgetRegression {
  */
 export const VERSION_NOISE_BYTES = 4
 
+/**
+ * The table label for one scenario, sharing the VERDICT's threshold.
+ *
+ * These drifted: the verdict tolerates `budget + VERSION_NOISE_BYTES` (gzip
+ * differs by a few bytes across zlib versions) while the label used a bare
+ * `>`, so the table printed `OVER` for a scenario the gate had deliberately
+ * passed — `plot-svg gz=12624 budget=12620`, four bytes inside the tolerance,
+ * one line above `all 15 scenario(s) within budget`. Anyone triaging a red
+ * Build reads the OVER and chases the wrong entry. `near` names the in-noise
+ * case instead of hiding it.
+ */
+export function budgetTag(gzip: number, budget: number | undefined): 'NEW' | 'OVER' | 'near' | 'ok' {
+  if (budget === undefined) return 'NEW'
+  if (gzip > budget + VERSION_NOISE_BYTES) return 'OVER'
+  return gzip > budget ? 'near' : 'ok'
+}
+
 export function compareToBudgets(
   measured: MeasuredImport[],
   budgets: Record<string, number>,
@@ -541,7 +558,7 @@ async function main(): Promise<void> {
     for (const m of measured) {
       if (m.failed) continue
       const budget = budgets[m.id]
-      const tag = budget === undefined ? 'NEW' : m.gzip > budget ? 'OVER' : 'ok'
+      const tag = budgetTag(m.gzip, budget)
       console.log(
         `  ${tag.padEnd(4)} ${m.id.padEnd(38)} gz=${String(m.gzip).padStart(5)}` +
           (budget !== undefined ? `  budget=${budget}` : ''),
