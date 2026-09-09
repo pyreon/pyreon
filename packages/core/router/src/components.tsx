@@ -265,6 +265,7 @@ const RouterView: ComponentFn<RouterViewProps> = (props) => {
   // no `h()` overload accepts that union in rest position, so removing it is a
   // TS2769. The `as-unknown-as-vnodechild` detector's premise ("JSX.Element is
   // already assignable") holds for a JSX.Element, not for this nullable union.
+  // pyreon-lint-ignore pyreon-patterns/as-unknown-as-vnodechild
   return h('div', { 'data-pyreon-router-view': true }, child as unknown as VNodeChild)
 }
 
