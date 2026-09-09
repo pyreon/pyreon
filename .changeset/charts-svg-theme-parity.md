@@ -25,3 +25,14 @@ value. Font sizes stay per-family: colour follows the theme, layout does not.
 The native emitters get the same merge, generalised from `palette` alone to
 the named theme fields, so a Compose/SwiftUI chart follows the system colour
 scheme where it previously did not.
+
+Graph and tree edges are themed too, and that one is a contrast bug rather than
+a parity bug: `linkColor` defaulted to a hardcoded `#94a3b8` that no host ever
+overrode, so both paths agreed and both were wrong on light. It reads 6.93:1 on
+the dark ground and **2.56:1 on white** — under WCAG 1.4.11's 3:1 for non-text
+contrast, on the DEFAULT theme. The value was clearly chosen for dark: it is
+dark's own `label` (`#9aa5b5`) to within (6, 2, -3). So it now reads `label`,
+dark is visually unchanged, and only light actually moves. A graph without
+visible edges is a scatter plot, so this is the family's meaning, not its
+chrome — which is also why it reads `label` (5.50:1 / 7.12:1) rather than
+`axis`, whose 3.05:1 / 3.14:1 clears the bar only barely.

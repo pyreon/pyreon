@@ -623,8 +623,8 @@ export function treeToSvg(options: TreeToSvgOptions): string {
   const t = themeOf(options.theme)
   const width = options.width ?? 640.0
   const height = options.height ?? 400.0
-  const layout = layoutTree(options.data, { x: 0.0, y: 0.0, w: width, h: height }, { palette: t.palette, labelColor: t.label, ...options.tree })
-  const cmds = renderTree(layout, { palette: t.palette, labelColor: t.label, ...options.tree })
+  const layout = layoutTree(options.data, { x: 0.0, y: 0.0, w: width, h: height }, { palette: t.palette, labelColor: t.label, linkColor: t.label, ...options.tree })
+  const cmds = renderTree(layout, { palette: t.palette, labelColor: t.label, linkColor: t.label, ...options.tree })
   void (options.measure ?? measureApprox())
   const leaves = layout.nodes.filter((n) => n.leaf).length
   const description =
@@ -762,8 +762,8 @@ export function graphToSvg(options: GraphToSvgOptions): string {
   const width = options.width ?? 640.0
   const height = options.height ?? 400.0
   const box: Rect = { x: 0.0, y: 0.0, w: width, h: height }
-  const layout = layoutGraph(options.nodes, options.links, box, { palette: t.palette, labelColor: t.label, ...options.graph })
-  const cmds = renderGraph(layout, box, { palette: t.palette, labelColor: t.label, ...options.graph })
+  const layout = layoutGraph(options.nodes, options.links, box, { palette: t.palette, labelColor: t.label, linkColor: t.label, ...options.graph })
+  const cmds = renderGraph(layout, box, { palette: t.palette, labelColor: t.label, linkColor: t.label, ...options.graph })
   void (options.measure ?? measureApprox())
   const description =
     options.description ??

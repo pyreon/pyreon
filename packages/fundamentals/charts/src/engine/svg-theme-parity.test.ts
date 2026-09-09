@@ -137,3 +137,84 @@ describe('the gantt lane band follows its label', () => {
     expect(svg).not.toContain('#f3f4f6')
   })
 })
+
+// A colour a family draws a MEANINGFUL mark in has to be readable on the ground
+// its own theme paints. This is separate from the parity above: the two paths
+// can agree perfectly and both be unreadable, which is exactly how graph and
+// tree shipped — `linkColor` defaulted to a hardcoded `#94a3b8` that neither
+// host ever overrode, so both halves drew the same slate. It reads at 6.93:1 on
+// the dark ground and 2.56:1 on white, i.e. it was picked for dark (it is dark's
+// own `label` #9aa5b5 to within (6, 2, -3)) and light was never checked. A graph
+// without visible edges is a scatter plot, so this is WCAG 1.4.11 (non-text
+// contrast, 3:1), not a preference.
+describe('theme colour contrast', () => {
+  /** WCAG 2.x relative luminance. */
+  const luminance = (hex: string): number => {
+    const h = hex.replace('#', '')
+    const ch = [0, 2, 4].map((i) => Number.parseInt(h.slice(i, i + 2), 16) / 255)
+    const lin = ch.map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4))
+    return 0.2126 * lin[0]! + 0.7152 * lin[1]! + 0.0722 * lin[2]!
+  }
+  const contrast = (a: string, b: string): number => {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x)
+    return (hi! + 0.05) / (lo! + 0.05)
+  }
+
+  // The light theme's `background` is '' — it inherits the page — so white is
+  // both the realistic default and the worst case for a light-on-light failure.
+  const grounds: ReadonlyArray<readonly [string, string]> = [
+    ['light', '#ffffff'],
+    ['dark', chartThemes.dark.background],
+  ]
+
+  // `grid` is deliberately excluded and deliberately faint (0.18/0.16 alpha):
+  // a gridline is decorative chrome, and raising it to 3:1 would make it
+  // compete with the series it exists to sit behind.
+  const meaningful = ['label', 'axis'] as const
+
+  for (const [mode, ground] of grounds) {
+    const theme = mode === 'light' ? defaultTheme : chartThemes.dark
+    for (const token of meaningful) {
+      it(`${mode}: \`${token}\` clears 3:1 against its own ground`, () => {
+        expect(contrast(theme[token], ground)).toBeGreaterThanOrEqual(3)
+      })
+    }
+  }
+
+  // Scope, stated because the name could be read wider than it is: this asserts
+  // the SVG half. The canvas half is one `opts` line per component
+  // (GraphChart/TreeChart) and `canvasHost` exposes no draw list, so there is
+  // nothing to assert against without a pixel checksum — which this package has
+  // already found blind on a fully-painted canvas. The native half rides the
+  // `themeDefaults` registry in `@pyreon/native-compiler` and is covered by the
+  // emit locks there.
+  it('graph and tree links read a theme token, not the fixed slate, in the SVG path', () => {
+    // Asserted on `stroke=`, not on the colour anywhere in the document: this
+    // file's existing tree case already expects `dark.label` and passes with the
+    // link unthemed, because tree draws its LABELS in that colour (a `fill`).
+    // Only a link produces a stroke in it.
+    const graphSvg = graphToSvg({
+      nodes: [{ id: 'a', name: 'a' }, { id: 'b', name: 'b' }],
+      links: [{ source: 'a', target: 'b' }],
+      theme: dark,
+    })
+    const treeSvg = treeToSvg({
+      data: [{ name: 'docs', value: 30 }, { name: 'src', children: [{ name: 'core', value: 50 }] }],
+      theme: dark,
+    })
+    for (const svg of [graphSvg, treeSvg]) {
+      expect(svg).toContain(`stroke="${dark.label}"`)
+      expect(svg).not.toContain('#94a3b8')
+    }
+
+    // …and it must MOVE with the theme, or a token that happened to match the
+    // old constant would satisfy the above without being read at all.
+    const lightGraph = graphToSvg({
+      nodes: [{ id: 'a', name: 'a' }, { id: 'b', name: 'b' }],
+      links: [{ source: 'a', target: 'b' }],
+    })
+    expect(lightGraph).toContain(`stroke="${defaultTheme.label}"`)
+    expect(lightGraph).not.toContain(`stroke="${dark.label}"`)
+    expect(contrast(defaultTheme.label, '#ffffff')).toBeGreaterThanOrEqual(3)
+  })
+})

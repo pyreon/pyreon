@@ -62,7 +62,7 @@ export interface ChartHostTarget {
 }
 
 /** An option field the theme supplies a default for, and the theme field it reads. */
-export type ChartThemeField = 'palette' | 'labelColor' | 'gridColor' | 'axisColor' | 'laneColor'
+export type ChartThemeField = 'palette' | 'labelColor' | 'gridColor' | 'axisColor' | 'laneColor' | 'linkColor'
 
 /** The `ChartTheme` field each option field defaults from — one place, both emitters. */
 export const CHART_THEME_SOURCE: Readonly<Record<ChartThemeField, 'palette' | 'label' | 'grid' | 'axis'>> = {
@@ -72,6 +72,12 @@ export const CHART_THEME_SOURCE: Readonly<Record<ChartThemeField, 'palette' | 'l
   axisColor: 'axis',
   // The gantt lane band, for the same reason its label is themed.
   laneColor: 'grid',
+  // A graph/tree edge is DATA, not chrome, so it reads `label` rather than
+  // `axis`: the two families are unreadable without their links, and the
+  // hardcoded value this replaced (#94a3b8) was already dark's own label
+  // (#9aa5b5) to within (6, 2, -3) — so dark is visually unchanged and only
+  // light, where the fixed grey sat at 2.56:1, actually moves.
+  linkColor: 'label',
 }
 
 export interface ChartHostArgs {
@@ -261,7 +267,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     data: ['nodes', 'links'],
     options: 'graph',
     optionsStruct: 'GraphOptions',
-    themeDefaults: ['palette', 'labelColor'],
+    themeDefaults: ['palette', 'labelColor', 'linkColor'],
     defaultHeight: 300,
     layout: (a, t) => `layoutGraph(${a.data[0]}, ${a.data[1]}, ${box00(a, t)}, ${a.options})`,
     render: (l, a, t) => `renderGraph(${l}, ${box00(a, t)}, ${a.options})`,
@@ -299,7 +305,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     data: ['data'],
     options: 'tree',
     optionsStruct: 'TreeOptions',
-    themeDefaults: ['palette', 'labelColor'],
+    themeDefaults: ['palette', 'labelColor', 'linkColor'],
     defaultHeight: 300,
     layout: (a, t) => `layoutTree(${a.data[0]}, ${box00(a, t)}, ${a.options})`,
     render: (l, a) => `renderTree(${l}, ${a.options})`,
