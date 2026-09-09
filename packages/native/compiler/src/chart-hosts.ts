@@ -1121,8 +1121,6 @@ export function chartThemeScope(e: ExprIR & { kind: 'jsx-element' }, warn: (m: s
 /** The palette the web Funnel / Pie hosts colour unaccessored rows with — the theme's. */
 export const CHART_HOST_PALETTE: readonly string[] = CHART_THEME_DEFAULT.palette
 
-/** The heatmap's default ramp (`HEAT_RAMP`), inlined for the same reason. */
-export const HEAT_RAMP_DEFAULT = ['#eff6ff', '#93c5fd', '#3b82f6', '#1e40af'] as const
 
 /**
  * The shared canvas host's chrome props (canvas-host.tsx). On native, the

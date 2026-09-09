@@ -335,7 +335,7 @@ describe('chart hosts — cartesian-frame hosts (Candlestick / Heatmap) and Rada
     expect(r.code).toContain('let pyreonVals: [Double] = CELLS.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(pyreonD.n) }')
     expect(r.code).toContain('let pyreonGrid: HeatGrid = heatGridFrom(pyreonXs, pyreonYs, pyreonVals)')
     expect(r.code).toContain(
-      'renderHeatChart(pyreonGrid, 240.0, 160.0, pyreonTheme, ["#eff6ff", "#93c5fd", "#3b82f6", "#1e40af"], 2.0, pyreonChartMeasure)',
+      'renderHeatChart(pyreonGrid, 240.0, 160.0, pyreonTheme, pyreonTheme.ramp, 2.0, pyreonChartMeasure)',
     )
     expect(r.code).toContain('.accessibilityIdentifier("heat")')
     expect(r.code).toContain(
@@ -350,7 +350,7 @@ describe('chart hosts — cartesian-frame hosts (Candlestick / Heatmap) and Rada
     const r = transform(FRAMES, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('renderCandlestickChart(pyreonCandles, pyreonW, 180.0, pyreonCats, pyreonTheme, null, ::pyreonChartMeasure)')
-    expect(r.code).toContain('renderHeatChart(pyreonGrid, 240.0, 160.0, pyreonTheme, listOf("#eff6ff", "#93c5fd", "#3b82f6", "#1e40af"), 2.0, ::pyreonChartMeasure)')
+    expect(r.code).toContain('renderHeatChart(pyreonGrid, 240.0, 160.0, pyreonTheme, pyreonTheme.ramp, 2.0, ::pyreonChartMeasure)')
     expect(r.code).toContain(`RadarSeries(values = (pyreonD.scores).map { it.toDouble() }, color = ${KT.palette}[pyreonI % ${KT.palette}.size]`)
     expect(r.code).toContain('RadarOptions(rings = 3, gridColor = "rgba(132,150,165,0.35)", labelColor = "#5a6b7a", fontSize = 11.0, showLabels = true)')
     expect(r.code).toContain('.testTag("heat")')

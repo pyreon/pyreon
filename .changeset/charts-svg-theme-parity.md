@@ -84,3 +84,12 @@ remaining tellable from the ramp's floor. That last one failed on the first
 draft of the dark values — `muted` and `ramp[0]` were 1.03:1 apart, so "no
 data" and "zero" were indistinguishable — which is the test catching the
 values, not the values passing the test.
+
+The heatmap needed its own fix, because a FRAME host does not take its ramp
+through `themeDefaults` — the emitters build that argument themselves, and both
+hardwired `HEAT_RAMP_DEFAULT` there. So the inversion was still live on device
+after the web half was fixed. Both now emit `pyreonTheme.ramp`, reading the
+theme the emit already resolved one line above, which picks up a `theme` prop,
+a `<ChartThemeProvider>` scope and the device's colour scheme at once. An
+explicit `colors` prop still wins.
+

@@ -14,7 +14,7 @@ import { CHART_THEMES } from '../chart-hosts'
 const emit = (jsx: string): { code: string; warnings: string[] } => {
   const r = transform(
     `import { CalendarChart } from '@pyreon/charts/plot'\nconst v = {}\nexport function C() { return ${jsx} }`,
-    { filename: 'C.tsx', target: 'swift' },
+    { target: 'swift' },
   )
   return { code: r.code, warnings: [...r.warnings] }
 }
@@ -46,5 +46,37 @@ describe('list-valued theme fields lower per FIELD, not as the palette', () => {
     expect(r.warnings.join('\n')).toContain('`ramp` must be an array of string literals on native')
     // …and the default still applies, so the chart renders.
     expect(stopsArg(r.code)).toContain((CHART_THEMES.light.ramp as readonly string[])[0]!)
+  })
+})
+
+// The heatmap is a FRAME host, so its ramp does not travel through
+// `themeDefaults` like the calendar's — it is a separate argument the emitter
+// builds. Both emitters hardwired `HEAT_RAMP_DEFAULT` there, the light ramp,
+// whose contrast FALLS as the value rises on a dark ground. So the inversion
+// this branch fixes on the web was still live on device: a dark heatmap drew
+// its highest-value cells faintest.
+describe('a frame host reads the ramp from the resolved theme', () => {
+  const HEAT = `import { HeatmapChart } from '@pyreon/charts/plot'
+const CELLS = [{ hour: 'a', d: 'b', n: 1.0 }]
+export function H() { return <HeatmapChart animate={false} data={CELLS} x={(d) => d.hour} y={(d) => d.d} value={(d) => d.n} /> }`
+  const call = (target: 'swift' | 'kotlin'): string =>
+    transform(HEAT, { target }).code.split('\n').map((l) => l.trim()).find((l) => l.includes('renderHeatChart')) ?? ''
+
+  for (const target of ['swift', 'kotlin'] as const) {
+    it(`${target}: the stops argument is the theme's ramp, not a baked constant`, () => {
+      const line = call(target)
+      expect(line).toContain('pyreonTheme.ramp')
+      // The discriminating half — the light ramp's own stops must not appear.
+      // `toContain('pyreonTheme')` alone passes on the broken emit, which
+      // already built the theme for its other arguments.
+      for (const stop of CHART_THEMES.light.ramp as readonly string[]) expect(line).not.toContain(stop)
+    })
+  }
+
+  it('an explicit `colors` prop still wins over the theme', () => {
+    const withColors = HEAT.replace('animate={false}', `animate={false} colors={['#111111', '#222222']}`)
+    const line = transform(withColors, { target: 'swift' }).code.split('\n').map((l) => l.trim()).find((l) => l.includes('renderHeatChart')) ?? ''
+    expect(line).toContain('"#111111"')
+    expect(line).not.toContain('pyreonTheme.ramp')
   })
 })
