@@ -112,15 +112,47 @@ export const HOST_PASSTHROUGH_KEYS: { readonly [K in HostPassthrough]: true } = 
   rtl: true,
 }
 
-/** The shared host's props for an option chart: every passthrough key present on `props`, plus the facade's fixed values. */
+/**
+ * The shared host's props for an option chart: every passthrough key, plus the
+ * facade's fixed values.
+ *
+ * Forwarded as live GETTERS, not copied values. `<OptionChart>` receives a
+ * signal-driven prop as a getter (the compiler emits `_rp(() => …)` and
+ * `makeReactiveProps` installs it), and this function runs ONCE at setup — so
+ * reading `props[k]` here fires that getter and pins the result forever. The
+ * host reads `width`, `height`, `title` and `rtl` lazily, so they WOULD have
+ * been live; a value copy is what froze them. `<OptionChart width={w()} />`
+ * then ignored every later `w.set(...)`, laying out at the mount-time width.
+ *
+ * GETTERS rather than `_rp` thunks, which is the difference that matters:
+ * `canvasHost({ props: … })` takes a PLAIN OBJECT, not component props, so
+ * nothing runs `makeReactiveProps` over it — a thunk would arrive at
+ * `drawWidth(el, props.width)` as a function and the canvas would size to 0.
+ * A getter reads transparently at every call site while staying live, which is
+ * the descriptor-copy idiom the anti-pattern catalog prescribes for exactly
+ * this "wrapper forwards user props" shape.
+ *
+ * PRESENCE is decided with `in`, which does not fire the getter, and is a
+ * static property of the call site: `<OptionChart width={w()} />` always has
+ * the key, whatever `w()` currently returns. An absent key must stay absent so
+ * the host's own defaults apply. Only the VALUE is deferred.
+ */
 export function hostPropsFor(props: OptionChartProps): CanvasHostProps {
-  const out: CanvasHostProps = { height: props.height ?? 320.0, animate: false, updateAnimation: false }
-  const sink = out as Record<string, unknown>
+  const sink: Record<string, unknown> = { animate: false, updateAnimation: false }
+  Object.defineProperty(sink, 'height', {
+    get: () => props.height ?? 320.0,
+    enumerable: true,
+    configurable: true,
+  })
   for (const k of Object.keys(HOST_PASSTHROUGH_KEYS) as HostPassthrough[]) {
-    const v = props[k]
-    if (v !== undefined) sink[k] = v
+    if (!(k in props)) continue
+    Object.defineProperty(sink, k, {
+      get: () => props[k],
+      enumerable: true,
+      configurable: true,
+    })
   }
-  return out
+  return sink as CanvasHostProps
 }
 
 export function OptionChart(props: OptionChartProps): VNode {
