@@ -1228,6 +1228,29 @@ export const FRAME_CHART_HOSTS: Readonly<Record<string, true>> = { GaugeChart: t
 // defaults (`resolveMarks`), inlined because the engine's are module-private.
 // ---------------------------------------------------------------------------
 
+/**
+ * Indicator mark → the engine function that computes its values.
+ *
+ * These are DERIVED marks: the accessor produces the raw series and the named
+ * engine function turns it into the drawn one, so the lowering is the same
+ * shape as `bubble` → `bubbleRadii` — map the rows, then call the crossing
+ * arithmetic. The functions live in `indicator-values.ts`, which is in
+ * `ENGINE_FILES` for exactly this.
+ *
+ * `bollinger` is absent from this table because it is not a single mark: it
+ * returns an ARRAY spread into `marks={[...]}`, so the emitters expand it
+ * separately into the two Series it names (a band and its middle line).
+ * `PLOT_SPREAD_MARKS` lists it, so the import allowlist's parity spec can see
+ * it the same way it sees these.
+ */
+export const PLOT_SPREAD_MARKS: readonly string[] = ['bollinger']
+
+export const PLOT_INDICATOR_MARKS: Readonly<Record<string, { readonly fn: string; readonly kind: string; readonly takesWindow: boolean }>> = {
+  sma: { fn: 'smaValues', kind: 'line', takesWindow: true },
+  ema: { fn: 'emaValues', kind: 'line', takesWindow: true },
+  trend: { fn: 'trendValues', kind: 'line', takesWindow: false },
+}
+
 /** Mark constructor → the `Series.kind` it produces. `bubble` carries a radius accessor and is declined by name. */
 export const PLOT_MARK_KINDS: Readonly<Record<string, string>> = {
   bars: 'bars',

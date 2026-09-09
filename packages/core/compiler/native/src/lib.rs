@@ -149,6 +149,45 @@ fn is_void_element(tag: &str) -> bool {
     )
 }
 
+/// The QUALIFIED name of a JSX attribute — the ONE reader for the whole emitter.
+///
+/// `xlink:href` parses as `JSXAttributeName::NamespacedName`, and every reader
+/// here used to be spelled `JSXAttributeName::Identifier(id) => …, _ => return`.
+/// The qualified name therefore reached NONE of them and this backend DROPPED
+/// the attribute outright, while the JS backend baked a malformed
+/// `<use ="/static">` — two different wrong answers, neither an error, from one
+/// source file. `<use xlink:href="#icon">` rendered nothing in every compiled
+/// app.
+///
+/// `Cow` rather than `&str` is what made the one-reader shape possible at all:
+/// a namespaced name has to be BUILT (`prefix` + `:` + `local`), so it cannot be
+/// borrowed out of the AST the way an identifier can — which is the structural
+/// reason the readers each grew their own `_ => return` instead. The dominant
+/// identifier path still borrows and allocates nothing.
+///
+/// A site that must treat a namespaced attribute differently asks
+/// `is_namespaced_attr_name` explicitly, so the decision stays visible instead
+/// of hiding in a fallthrough.
+///
+/// Mirrors `jsxAttrName` in `src/jsx.ts`; byte-identity of the two emits is
+/// asserted by the native-equivalence suite.
+fn jsx_attr_name<'a>(name: &'a JSXAttributeName<'a>) -> std::borrow::Cow<'a, str> {
+    match name {
+        JSXAttributeName::Identifier(id) => std::borrow::Cow::Borrowed(id.name.as_str()),
+        JSXAttributeName::NamespacedName(ns) => std::borrow::Cow::Owned(format!(
+            "{}:{}",
+            ns.namespace.name.as_str(),
+            ns.name.name.as_str()
+        )),
+    }
+}
+
+/// Is this attribute's name namespaced (`xlink:href`) rather than a plain
+/// identifier? Mirrors `isNamespacedAttrName` in `src/jsx.ts`.
+fn is_namespaced_attr_name(name: &JSXAttributeName) -> bool {
+    matches!(name, JSXAttributeName::NamespacedName(_))
+}
+
 fn jsx_to_html_attr(name: &str) -> &str {
     match name {
         "className" => "class",
@@ -4620,9 +4659,7 @@ fn check_for_warnings(el: &JSXElement, ctx: &mut Ctx) {
     }
     let has_by = el.opening_element.attributes.iter().any(|attr| {
         if let JSXAttributeItem::Attribute(a) = attr {
-            if let JSXAttributeName::Identifier(id) = &a.name {
-                return id.name.as_str() == "by";
-            }
+            return jsx_attr_name(&a.name) == "by";
         }
         false
     });
@@ -4645,10 +4682,8 @@ fn handle_jsx_attribute(
     is_component: bool,
     ctx: &mut Ctx,
 ) {
-    let name = match &attr.name {
-        JSXAttributeName::Identifier(id) => id.name.as_str(),
-        _ => return,
-    };
+    let name_owned = jsx_attr_name(&attr.name);
+    let name: &str = &name_owned;
     if is_skip_prop(name) || is_event_handler(name) {
         return;
     }
@@ -5431,10 +5466,8 @@ fn ssr_serialize_attr(
         JSXAttributeItem::Attribute(a) => a,
         JSXAttributeItem::SpreadAttribute(_) => return false, // spread → bail
     };
-    let name = match &attr.name {
-        JSXAttributeName::Identifier(id) => id.name.as_str(),
-        _ => return false, // namespaced → bail
-    };
+    let name_owned = jsx_attr_name(&attr.name);
+    let name: &str = &name_owned;
     if name.is_empty() {
         return false;
     }
@@ -5881,10 +5914,8 @@ fn ssr_try_for_keyed(buf: &mut SsrBuf, el: &JSXElement, ctx: &mut Ctx) -> bool {
             JSXAttributeItem::Attribute(a) => a,
             JSXAttributeItem::SpreadAttribute(_) => return false,
         };
-        let name = match &a.name {
-            JSXAttributeName::Identifier(id) => id.name.as_str(),
-            _ => return false,
-        };
+        let name_owned = jsx_attr_name(&a.name);
+        let name: &str = &name_owned;
         let c = match &a.value {
             Some(JSXAttributeValue::ExpressionContainer(c)) => c,
             _ => return false,
@@ -5980,10 +6011,8 @@ fn ssr_try_for_keyed(buf: &mut SsrBuf, el: &JSXElement, ctx: &mut Ctx) -> bool {
 fn ssr_component_child_eligible(el: &JSXElement) -> bool {
     for attr in &el.opening_element.attributes {
         if let JSXAttributeItem::Attribute(a) = attr {
-            if let JSXAttributeName::Identifier(name) = &a.name {
-                if name.name.as_str() == "key" {
-                    return false;
-                }
+            if jsx_attr_name(&a.name) == "key" {
+                return false;
             }
         }
     }
@@ -6059,11 +6088,11 @@ fn ssr_serialize_element(buf: &mut SsrBuf, el: &JSXElement, mode: SsrMode, ctx: 
         return false; // PZ-09 complexity → bail
     }
     // Duplicate plain attrs (JSX last-wins) — baking both is parser-first-wins.
-    let mut seen: FxHashSet<&str> = FxHashSet::default();
+    let mut seen: FxHashSet<String> = FxHashSet::default();
     for a in &el.opening_element.attributes {
         if let JSXAttributeItem::Attribute(attr) = a {
-            if let JSXAttributeName::Identifier(id) = &attr.name {
-                if !seen.insert(id.name.as_str()) {
+            {
+                if !seen.insert(jsx_attr_name(&attr.name).into_owned()) {
                     return false;
                 }
             }
@@ -6546,27 +6575,18 @@ fn has_bail_attr(el: &JSXElement, is_root: bool) -> bool {
                 return true;
             }
             JSXAttributeItem::Attribute(a) => {
-                // A NAMESPACED attribute name (`xlink:href`, `xml:lang`) is
-                // `JSXAttributeName::NamespacedName`, and every name reader in
-                // the template emitter matches only `Identifier` — so the
-                // qualified name reaches none of them and this backend DROPPED
-                // the attribute outright (the JS backend instead baked a
-                // malformed `<use ="/static">` and emitted `_setAttr(el, "", u)`).
-                // `<use xlink:href="#icon">`, the SVG sprite idiom, therefore
-                // rendered nothing in every compiled app, silently and
-                // differently per backend.
-                //
-                // Bail the element to `h()`: the runtime path sets a qualified
-                // name correctly and runs the url guard over it. Mirrors
-                // `hasBailAttr` in `src/jsx.ts` byte-for-byte — see the longer
-                // rationale there.
-                if matches!(a.name, JSXAttributeName::NamespacedName(_)) {
+                // A NAMESPACED name (`xlink:href`) is NOT a bail any more: every
+                // reader in this backend goes through `jsx_attr_name`, so the
+                // qualified name reaches the static bake, the dynamic `_setAttr`
+                // call and the prescan alike. The bail that stood here shipped as
+                // the safe half of the fix; it cost the element its template AND
+                // landed on an `h()` path that was itself wrong for the dynamic
+                // case (`setAttribute('xlink:href')` writes a NULL-namespace
+                // attribute an SVG `<use>` ignores — measured `bbox.width == 0`
+                // in Chromium). The namespace is now resolved in the runtime, so
+                // both paths agree. Mirrors `hasBailAttr` in `src/jsx.ts`.
+                if jsx_attr_name(&a.name) == "key" {
                     return true;
-                }
-                if let JSXAttributeName::Identifier(id) = &a.name {
-                    if id.name.as_str() == "key" {
-                        return true;
-                    }
                 }
             }
         }
@@ -7097,9 +7117,9 @@ fn attr_is_dynamic(attr: &JSXAttributeItem, tag: &str) -> bool {
     match attr {
         JSXAttributeItem::SpreadAttribute(_) => true,
         JSXAttributeItem::Attribute(a) => {
-            let mut attr_name = "";
-            if let JSXAttributeName::Identifier(id) = &a.name {
-                attr_name = id.name.as_str();
+            let attr_name_owned = jsx_attr_name(&a.name);
+            let attr_name: &str = &attr_name_owned;
+            {
                 if attr_name == "ref" {
                     return true;
                 }
@@ -7223,9 +7243,7 @@ const TPL_HTML_ATTR_SUFFIX: &str = " data-pyreon-html";
 fn has_dangerous_html_attr(el: &JSXElement) -> bool {
     el.opening_element.attributes.iter().any(|attr| {
         if let JSXAttributeItem::Attribute(a) = attr {
-            if let JSXAttributeName::Identifier(id) = &a.name {
-                return id.name == "dangerouslySetInnerHTML";
-            }
+            return jsx_attr_name(&a.name) == "dangerouslySetInnerHTML";
         }
         false
     })
@@ -7295,24 +7313,24 @@ fn process_attrs(
     // semantic. Earlier duplicates are dropped with a warning. Spread
     // attributes are untouched. Mirrors the JS backend's processAttrs.
     let attrs = &el.opening_element.attributes;
-    let mut last_plain_idx: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    let mut last_plain_idx: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
     for (i, attr) in attrs.iter().enumerate() {
         if let JSXAttributeItem::Attribute(a) = attr {
-            if let JSXAttributeName::Identifier(id) = &a.name {
-                last_plain_idx.insert(id.name.as_str(), i);
-            }
+            last_plain_idx.insert(jsx_attr_name(&a.name).into_owned(), i);
         }
     }
     let mut html_attrs = String::new();
     for (i, attr) in attrs.iter().enumerate() {
         if let JSXAttributeItem::Attribute(a) = attr {
-            if let JSXAttributeName::Identifier(id) = &a.name {
-                if last_plain_idx.get(id.name.as_str()).copied().unwrap_or(i) > i {
+            {
+                let attr_name = jsx_attr_name(&a.name);
+                if last_plain_idx.get(attr_name.as_ref()).copied().unwrap_or(i) > i {
                     let (line, column) = ctx.line_index.locate(a.span.start);
                     ctx.warnings.push(CompilerWarning {
                         message: format!(
                             "Duplicate JSX attribute `{}` — the later occurrence wins (JSX object semantics); this earlier one is ignored.",
-                            id.name
+                            attr_name
                         ),
                         line,
                         column,
@@ -7332,7 +7350,7 @@ fn process_attrs(
                 // template HTML) the move is a no-op. The general-reactive
                 // form (`reactive_bind_exprs` → the end-of-template combined
                 // `_bind`) is structurally last already and needs no deferral.
-                if tag == "select" && id.name.as_str() == "value" {
+                if tag == "select" && attr_name.as_ref() == "value" {
                     let before = tb.bind_lines.len();
                     html_attrs.push_str(&process_one_attr(attr, var_name, tag, tb, ctx));
                     if tb.bind_lines.len() > before {
@@ -7379,10 +7397,8 @@ fn process_one_attr(
             String::new()
         }
         JSXAttributeItem::Attribute(a) => {
-            let attr_name = match &a.name {
-                JSXAttributeName::Identifier(id) => id.name.as_str(),
-                _ => return String::new(),
-            };
+            let attr_name_owned = jsx_attr_name(&a.name);
+            let attr_name: &str = &attr_name_owned;
             if attr_name == "key" {
                 return String::new();
             }
@@ -9086,10 +9102,14 @@ fn detect_collapsible_shape(
     for attr in &el.opening_element.attributes {
         match attr {
             JSXAttributeItem::Attribute(a) => {
-                let name = match &a.name {
-                    JSXAttributeName::Identifier(id) => id.name.to_string(),
-                    _ => return None, // namespaced → bail
-                };
+                // Namespaced (`xlink:href`) → bail. The collapse path bakes
+                // props into an HTML blob captured from a nested SSR render of
+                // the REAL component; a qualified name there is unverified, so
+                // it declines DELIBERATELY rather than by a reader accident.
+                if is_namespaced_attr_name(&a.name) {
+                    return None;
+                }
+                let name = jsx_attr_name(&a.name).into_owned();
                 let v = a.value.as_ref()?; // boolean attr (no value) → bail
                 match v {
                     JSXAttributeValue::StringLiteral(lit) => {
@@ -9212,10 +9232,14 @@ fn detect_partial_collapsible_shape(
     for attr in &el.opening_element.attributes {
         match attr {
             JSXAttributeItem::Attribute(a) => {
-                let name = match &a.name {
-                    JSXAttributeName::Identifier(id) => id.name.to_string(),
-                    _ => return None, // namespaced → bail
-                };
+                // Namespaced (`xlink:href`) → bail. The collapse path bakes
+                // props into an HTML blob captured from a nested SSR render of
+                // the REAL component; a qualified name there is unverified, so
+                // it declines DELIBERATELY rather than by a reader accident.
+                if is_namespaced_attr_name(&a.name) {
+                    return None;
+                }
+                let name = jsx_attr_name(&a.name).into_owned();
                 let v = a.value.as_ref()?; // boolean attr (no value) → bail
                 match v {
                     JSXAttributeValue::StringLiteral(lit) => {
@@ -9352,10 +9376,14 @@ fn detect_dynamic_collapsible_shape(
     for attr in &el.opening_element.attributes {
         match attr {
             JSXAttributeItem::Attribute(a) => {
-                let name = match &a.name {
-                    JSXAttributeName::Identifier(id) => id.name.to_string(),
-                    _ => return None, // namespaced → bail
-                };
+                // Namespaced (`xlink:href`) → bail. The collapse path bakes
+                // props into an HTML blob captured from a nested SSR render of
+                // the REAL component; a qualified name there is unverified, so
+                // it declines DELIBERATELY rather than by a reader accident.
+                if is_namespaced_attr_name(&a.name) {
+                    return None;
+                }
+                let name = jsx_attr_name(&a.name).into_owned();
                 let v = a.value.as_ref()?; // boolean attr (no value) → bail
                 match v {
                     JSXAttributeValue::StringLiteral(lit) => {
@@ -9562,10 +9590,14 @@ fn detect_static_element_child(el: &JSXElement) -> Option<StaticChildNode> {
     for attr in &el.opening_element.attributes {
         match attr {
             JSXAttributeItem::Attribute(a) => {
-                let name = match &a.name {
-                    JSXAttributeName::Identifier(id) => id.name.to_string(),
-                    _ => return None,
-                };
+                // Namespaced (`xlink:href`) → bail. The collapse path bakes
+                // props into an HTML blob captured from a nested SSR render of
+                // the REAL component; a qualified name there is unverified, so
+                // it declines DELIBERATELY rather than by a reader accident.
+                if is_namespaced_attr_name(&a.name) {
+                    return None;
+                }
+                let name = jsx_attr_name(&a.name).into_owned();
                 // No handlers on a baked child — a static clone can't carry them.
                 if name.as_bytes().len() > 2
                     && name.starts_with("on")
@@ -9671,10 +9703,14 @@ fn detect_element_child_collapsible_shape(
     for attr in &el.opening_element.attributes {
         match attr {
             JSXAttributeItem::Attribute(a) => {
-                let name = match &a.name {
-                    JSXAttributeName::Identifier(id) => id.name.to_string(),
-                    _ => return None,
-                };
+                // Namespaced (`xlink:href`) → bail. The collapse path bakes
+                // props into an HTML blob captured from a nested SSR render of
+                // the REAL component; a qualified name there is unverified, so
+                // it declines DELIBERATELY rather than by a reader accident.
+                if is_namespaced_attr_name(&a.name) {
+                    return None;
+                }
+                let name = jsx_attr_name(&a.name).into_owned();
                 let v = a.value.as_ref()?; // boolean attr → bail
                 match v {
                     JSXAttributeValue::StringLiteral(lit) => {

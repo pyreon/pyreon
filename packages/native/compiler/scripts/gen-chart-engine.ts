@@ -80,6 +80,7 @@ export const ENGINE_FILES = [
   'navigator',
   'brush',
   'a11y',
+  'indicator-values',
 
   'bin',
 ] as const
