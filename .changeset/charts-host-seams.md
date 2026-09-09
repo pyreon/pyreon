@@ -10,8 +10,12 @@ signal-driven prop as a getter (the compiler emits `_rp(() => …)` and
 reading `props[k]` there fired the getter and pinned the result forever. The host
 reads `width`, `height`, `title` and `rtl` LAZILY, so they would have been live;
 the copy is what froze them. `<OptionChart width={w()} />` ignored every later
-`w.set(...)` and laid out at the mount-time width. Now forwarded as accessors,
-the same idiom `grammar.tsx` already uses for ~60 keys into these same hosts.
+`w.set(...)` and laid out at the mount-time width. Now forwarded as live GETTERS — the descriptor-copy idiom the anti-pattern
+catalog prescribes for this "wrapper forwards user props" shape. NOT `_rp`
+thunks: `canvasHost({ props: … })` takes a plain object, not component props,
+so nothing runs `makeReactiveProps` over it and a thunk would arrive at
+`drawWidth(el, props.width)` as a function, sizing the canvas to 0. A getter
+reads transparently at every call site while staying live.
 Presence is still decided with `in`, which does not fire the getter, so an absent
 prop stays absent and the host's defaults still apply.
 

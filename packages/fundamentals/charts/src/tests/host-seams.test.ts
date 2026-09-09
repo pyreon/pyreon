@@ -21,10 +21,12 @@ describe('OptionChart forwards host props REACTIVELY', () => {
   it('a getter-backed prop is still live after hostPropsFor', () => {
     let w = 100
     const out = hostPropsFor(withGetter('width', () => w) as never) as Record<string, unknown>
-    const read = (v: unknown): unknown => (typeof v === 'function' ? (v as () => unknown)() : v)
-    expect(read(out.width)).toBe(100)
+    // A GETTER, so it reads transparently — `canvasHost` takes a plain object,
+    // not component props, so nothing would convert a thunk for it.
+    expect(out.width).toBe(100)
     w = 900
-    expect(read(out.width), 'a value copy would pin this at 100').toBe(900)
+    expect(out.width, 'a value copy would pin this at 100').toBe(900)
+    expect(typeof out.width, 'must not be a raw thunk — the host reads it directly').toBe('number')
   })
 
   it('an ABSENT prop stays absent so the host defaults apply', () => {
@@ -34,8 +36,7 @@ describe('OptionChart forwards host props REACTIVELY', () => {
 
   it('height still defaults when absent', () => {
     const out = hostPropsFor({} as never) as Record<string, unknown>
-    const read = (v: unknown): unknown => (typeof v === 'function' ? (v as () => unknown)() : v)
-    expect(read(out.height)).toBe(320)
+    expect(out.height).toBe(320)
   })
 })
 

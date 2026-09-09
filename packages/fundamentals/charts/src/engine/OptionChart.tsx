@@ -6,7 +6,7 @@
 // two host-less shapes render through `optionToSvg` into an inline `<svg>`. A
 // `timeline` steps on `autoPlay` or is driven by `timelineIndex`.
 
-import { h, onMount, _rp as reactiveProp } from '@pyreon/core'
+import { h, onMount } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import { batch, effect, signal } from '@pyreon/reactivity'
 import { canvasHost } from './canvas-host'
@@ -116,28 +116,41 @@ export const HOST_PASSTHROUGH_KEYS: { readonly [K in HostPassthrough]: true } = 
  * The shared host's props for an option chart: every passthrough key, plus the
  * facade's fixed values.
  *
- * Forwarded as ACCESSORS, not values. `<OptionChart>` receives a signal-driven
- * prop as a getter (the compiler emits `_rp(() => …)` and `makeReactiveProps`
- * installs it as one), and this function runs ONCE at setup — so reading
- * `props[k]` here would fire that getter and pin the result forever. The host
- * reads `width`, `height`, `title` and `rtl` lazily, so they WOULD have been
- * live; a value copy is what froze them. `<OptionChart width={w()} />` then
- * ignored every later `w.set(...)`, laying out at the mount-time width.
+ * Forwarded as live GETTERS, not copied values. `<OptionChart>` receives a
+ * signal-driven prop as a getter (the compiler emits `_rp(() => …)` and
+ * `makeReactiveProps` installs it), and this function runs ONCE at setup — so
+ * reading `props[k]` here fires that getter and pins the result forever. The
+ * host reads `width`, `height`, `title` and `rtl` lazily, so they WOULD have
+ * been live; a value copy is what froze them. `<OptionChart width={w()} />`
+ * then ignored every later `w.set(...)`, laying out at the mount-time width.
  *
- * `reactiveProp` re-brands each key as a thunk that `makeReactiveProps` turns
- * back into a getter on the host's props — the same idiom `grammar.tsx` uses to
- * forward ~60 keys to these hosts. The `undefined` filter moves INSIDE the thunk
- * so an initially-absent prop can still become present later.
+ * GETTERS rather than `_rp` thunks, which is the difference that matters:
+ * `canvasHost({ props: … })` takes a PLAIN OBJECT, not component props, so
+ * nothing runs `makeReactiveProps` over it — a thunk would arrive at
+ * `drawWidth(el, props.width)` as a function and the canvas would size to 0.
+ * A getter reads transparently at every call site while staying live, which is
+ * the descriptor-copy idiom the anti-pattern catalog prescribes for exactly
+ * this "wrapper forwards user props" shape.
+ *
+ * PRESENCE is decided with `in`, which does not fire the getter, and is a
+ * static property of the call site: `<OptionChart width={w()} />` always has
+ * the key, whatever `w()` currently returns. An absent key must stay absent so
+ * the host's own defaults apply. Only the VALUE is deferred.
  */
 export function hostPropsFor(props: OptionChartProps): CanvasHostProps {
   const sink: Record<string, unknown> = { animate: false, updateAnimation: false }
-  sink.height = reactiveProp(() => props.height ?? 320.0)
+  Object.defineProperty(sink, 'height', {
+    get: () => props.height ?? 320.0,
+    enumerable: true,
+    configurable: true,
+  })
   for (const k of Object.keys(HOST_PASSTHROUGH_KEYS) as HostPassthrough[]) {
-    // PRESENCE is decided with `in`, which does not fire the getter, and is a
-    // static property of the call site: `<OptionChart width={w()} />` always has
-    // the key, whatever `w()` currently returns. An absent key must stay absent
-    // so the host's own defaults apply. Only the VALUE is deferred.
-    if (k in props) sink[k] = reactiveProp(() => props[k])
+    if (!(k in props)) continue
+    Object.defineProperty(sink, k, {
+      get: () => props[k],
+      enumerable: true,
+      configurable: true,
+    })
   }
   return sink as CanvasHostProps
 }
