@@ -1,6 +1,7 @@
 import type { VNode } from '@pyreon/core'
 import { createRef, cx, Show } from '@pyreon/core'
 import { watch } from '@pyreon/reactivity'
+import { readCallbacks, readLive, resolveLive } from '../live-prop'
 import type { ClassTransitionProps, StyleTransitionProps, TransitionCallbacks } from '../types'
 import useAnimationEnd from '../useAnimationEnd'
 import { useReducedMotion } from '../useReducedMotion'
@@ -20,9 +21,11 @@ type TransitionItemProps = ClassTransitionProps &
   StyleTransitionProps &
   TransitionCallbacks & {
     show: () => boolean
+    /** Construction-time — a first-mount question, spent once the ref wires up. */
     appear?: boolean | undefined
     unmount?: boolean | undefined
-    timeout?: number | undefined
+    /** Live: the animation-end deadline is re-armed per cycle. */
+    timeout?: number | (() => number | undefined) | undefined
     delay?: number | undefined
     children: VNode
   }
@@ -101,7 +104,8 @@ const TransitionItem = (props: TransitionItemProps): VNode | null => {
   const child = resolveChildren(props.children) as VNode
   const appear = props.appear ?? false
   const unmount = props.unmount ?? true
-  const timeout = props.timeout ?? 5000
+  // Accessor: resolved inside `useAnimationEnd`'s watch, once per active cycle.
+  const timeout = () => resolveLive(props.timeout) ?? 5000
   const reducedMotion = useReducedMotion()
   const { stage, ref: stateRef, shouldMount, complete } = useTransitionState({
     show: props.show,
@@ -117,13 +121,16 @@ const TransitionItem = (props: TransitionItemProps): VNode | null => {
       | undefined,
   )
 
-  const callbacks = {
-    onEnter: props.onEnter,
-    onAfterEnter: props.onAfterEnter,
-    onLeave: props.onLeave,
-    onAfterLeave: props.onAfterLeave,
-  }
-
+  // The four callbacks are read at the POINT OF CALL (`readCallbacks(props)` /
+  // `readLive(props, …)` below), never captured here: StaggerRenderer and
+  // GroupRenderer forward a thunk that re-reads the user's live holder, and a
+  // snapshot taken at setup would freeze it right back.
+  //
+  // `transitionConfig` below IS captured, and that is correct for this
+  // component alone: TransitionItem is internal and its two callers pass
+  // `config.*` — values accumulated by the `.preset()` / `.enter()` chain at
+  // component-DEFINITION time, which no JSX prop can make reactive. If this
+  // ever takes user props directly it needs `Transition.tsx`'s per-cycle read.
   const transitionConfig = {
     enter: props.enter,
     enterFrom: props.enterFrom,
@@ -149,9 +156,9 @@ const TransitionItem = (props: TransitionItemProps): VNode | null => {
       // an unreachable `else if (stage() === 'leaving')` false arm. See the
       // matching note in Transition.tsx.
       if (stage() === 'entering') {
-        callbacks.onAfterEnter?.()
+        readLive<TransitionCallbacks['onAfterEnter']>(props, 'onAfterEnter')?.()
       } else {
-        callbacks.onAfterLeave?.()
+        readLive<TransitionCallbacks['onAfterLeave']>(props, 'onAfterLeave')?.()
       }
       complete()
     },
@@ -164,22 +171,25 @@ const TransitionItem = (props: TransitionItemProps): VNode | null => {
       if (!el) return
 
       if (reducedMotion()) {
-        applyReducedMotion(currentStage, callbacks, complete)
+        applyReducedMotion(currentStage, readCallbacks(props), complete)
         return
       }
 
       if (currentStage === 'entering') {
-        callbacks.onEnter?.()
+        readLive<TransitionCallbacks['onEnter']>(props, 'onEnter')?.()
         return applyEnter(el, transitionConfig)
       }
 
       if (currentStage === 'leaving') {
-        callbacks.onLeave?.()
+        readLive<TransitionCallbacks['onLeave']>(props, 'onLeave')?.()
         return applyLeave(el, transitionConfig)
       }
 
       if (currentStage === 'entered') {
-        removeClasses(el, props.enter)
+        // Untracked like every other config read in a stage watch, for the
+        // reason in `live-prop.ts` — even though both callers pass a static
+        // `config.*` today, so there is no getter here to fire.
+        removeClasses(el, readLive<string>(props, 'enter'))
         el.style.transition = ''
       }
     },

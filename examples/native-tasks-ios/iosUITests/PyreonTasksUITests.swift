@@ -671,6 +671,23 @@ final class PyreonTasksUITests: XCTestCase {
         let statsBrush = app.descendants(matching: .any).matching(identifier: "stats-brush").firstMatch
         XCTAssertTrue(statsBrush.waitForExistence(timeout: 10), "brush chart canvas missing on stats page")
         let brushSel = app.staticTexts["stats-brush-sel"].firstMatch
+
+        // The INDICATOR marks, on the device. `sma` lowers to the crossing
+        // `smaValues` and the `bollinger` spread expands to a band plus its
+        // middle line — so this is the only place that chain runs on a real
+        // simulator rather than through a stub typecheck.
+        //
+        // The band is what makes the label decisive: "upper bound" appears only
+        // if the two-channel a11y crossing worked AND the envelope arithmetic
+        // produced numbers. A chart that emitted nothing would still have a
+        // label, so the title alone would not prove anything.
+        let indicators = app.descendants(matching: .any).matching(identifier: "stats-indicators").firstMatch
+        XCTAssertTrue(indicators.waitForExistence(timeout: 10), "indicator chart canvas missing on stats page")
+        XCTAssertGreaterThan(indicators.frame.height, 60, "indicator chart canvas has no height")
+        let indLabel = indicators.label
+        XCTAssertTrue(indLabel.contains("Weekly load"), "indicator chart label lost its title: \(indLabel)")
+        XCTAssertTrue(indLabel.contains("upper bound"), "the bollinger band did not describe its two bounds: \(indLabel)")
+        XCTAssertTrue(indLabel.contains("lower bound"), "the bollinger band did not describe its two bounds: \(indLabel)")
         XCTAssertTrue(brushSel.waitForExistence(timeout: 10), "brush selection text missing")
         XCTAssertEqual(brushSel.label, "none", "no brush yet, selection should be none")
         let brushOrigin = statsBrush.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))

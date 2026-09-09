@@ -73,7 +73,7 @@ import { Toaster, toast } from '@pyreon/toast'
 import { announce } from '@pyreon/a11y'
 import { useUrlState } from '@pyreon/url-state'
 import { signal, computed } from '@pyreon/reactivity'
-import { BoxplotChart, FunnelChart, GaugeChart, HeatmapChart, PieChart, PlotChart, RadarChart, SankeyChart, TreemapChart, bars, line } from '@pyreon/charts/plot'
+import { BoxplotChart, FunnelChart, GaugeChart, HeatmapChart, PieChart, PlotChart, RadarChart, SankeyChart, TreemapChart, bars, bollinger, line, sma } from '@pyreon/charts/plot'
 import type { BrushRange, RadarAxis, RadarHitIndex, SankeyHitIndex, SankeyLink, SankeyNode, TreeNode, ZoomWindow } from '@pyreon/charts/plot'
 import { useForm } from '@pyreon/form'
 import { useFetch, useCrashReporter } from '@pyreon/hooks'
@@ -485,6 +485,19 @@ interface ScoreRow {
   score: number
 }
 const SCORE_ROWS: ScoreRow[] = [{ subject: 'math', score: 82 }, { subject: 'art', score: 91 }, { subject: 'gym', score: 74 }]
+
+// Enough points for a rolling window to have something to roll over — a
+// 3-point series would leave every indicator a gap and the assertion below
+// would pass on an empty chart.
+interface WeekRow { day: string; load: number }
+const LOAD_ROWS: WeekRow[] = [
+  { day: 'Mon', load: 41 },
+  { day: 'Tue', load: 55 },
+  { day: 'Wed', load: 38 },
+  { day: 'Thu', load: 62 },
+  { day: 'Fri', load: 47 },
+  { day: 'Sat', load: 71 },
+]
 const FLOW_LINKS: SankeyLink[] = [
   { source: 'Backlog', target: 'Doing', value: 8 },
   { source: 'Doing', target: 'Done', value: 5 },
@@ -647,6 +660,24 @@ function StatsPage() {
         onBrush={onBrushRange}
       />
       <Text data-testid="stats-brush-sel">{brushSel()}</Text>
+      {/*
+        The indicator marks, on the device. `sma` lowers to the crossing
+        `smaValues`, and the `bollinger` SPREAD expands to the band plus its
+        middle line — so this chart is the only place the whole chain runs on
+        a real simulator and emulator rather than through a stub typecheck.
+
+        The band is what the assertion reads: its accessible description says
+        "upper bound" / "lower bound", which is only true if the two-channel
+        crossing worked AND the envelope arithmetic produced numbers.
+      */}
+      <PlotChart
+        data={LOAD_ROWS}
+        x={(d: WeekRow) => d.day}
+        marks={[line((d: WeekRow) => d.load, { label: 'Load', color: '#0f766e' }), sma((d: WeekRow) => d.load, 3, { label: 'Average' }), ...bollinger((d: WeekRow) => d.load, 3, 1.5, { label: 'Envelope' })]}
+        height={140}
+        title="Weekly load"
+        data-testid="stats-indicators"
+      />
       <Button onPress={() => navigate('/tasks')} data-testid="stats-back">
         Back to tasks
       </Button>

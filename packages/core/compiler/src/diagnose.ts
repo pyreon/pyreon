@@ -1837,6 +1837,22 @@ const geometry = () => props.shape
         '// crashes: the library re-parents rows the boundary owns\n// <Show when={() => open()}><ul>{rows.map(r => <li>{r}</li>)}</ul></Show>\n// sortable.mount(ul) // moves <li> nodes outside Pyreon\n\n// give the library a host the boundary never touches\n<Show when={() => open()}>\n  <ul ref={(el) => { const s = sortable.mount(el); return () => s.destroy() }} />\n</Show>',
     }),
   },
+  {
+    // A namespaced JSX attribute (`xlink:href`, `xml:lang`) whose name the
+    // template emitter could not read reached the runtime as an EMPTY
+    // qualified name, and `setAttribute('')` throws. Fixed, so this only
+    // reaches someone on an older version — which is exactly who needs the
+    // explanation, because the message names neither JSX nor the attribute.
+    pattern:
+      /InvalidCharacterError[\s\S]{0,200}(setAttribute|String contains an invalid character)/i,
+    diagnose: () => ({
+      cause:
+        'A namespaced JSX attribute — a name with a colon, like `xlink:href` or `xml:lang` — reached a compiler whose template path could only read a plain identifier, so it emitted an EMPTY attribute name and the browser rejected it. The same shape had two other outcomes depending on the path taken: a STATIC namespaced attribute baked malformed HTML, and the native backend dropped the attribute silently. The visible symptom for an SVG sprite is an element that renders nothing at all, because a `<use>` whose href is missing or in the wrong namespace draws nothing.',
+      fix: 'Upgrade: the compiler reads qualified names on both backends now, and the runtime puts `xlink:*` / `xml:*` into their real namespace in foreign content (SVG, MathML) rather than a null-namespace attribute an SVG `<use>` ignores. On an older version, avoid the namespaced spelling — a plain `href` works on `<use>` in every browser that supports SVG2, which is all current ones — or set it from a `ref` with `setAttributeNS`.',
+      fixCode:
+        "// throws on older versions (empty qualified name)\n// <svg><use xlink:href=\"#icon\" /></svg>\n\n// SVG2 spelling — no namespace needed\n<svg><use href=\"#icon\" /></svg>\n\n// or set it explicitly\n<svg><use ref={(el) => el.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', '#icon')} /></svg>",
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */

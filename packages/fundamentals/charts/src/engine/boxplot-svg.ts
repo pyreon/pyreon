@@ -40,7 +40,7 @@ export function boxplotToSvg<T>(options: BoxplotToSvgOptions<T>): string {
   const cmds = renderBoxplotChart(rows, width, height, categories, t, options.box ?? {}, measure, options.format)
   const description =
     options.description ??
-    (options.title !== undefined ? `${options.title}: ${rows.length} boxes, medians ${rows.map((r) => r.median).join(', ')}.` : undefined)
+    (options.title !== undefined ? `${options.title}: ${rows.length === 1 ? '1 box, median' : `${rows.length} boxes, medians`} ${rows.map((r) => r.median).join(', ')}.` : undefined)
   return renderSvg(cmds, width, height, {
     ...options.svg,
     ...(options.title !== undefined ? { title: options.title } : {}),

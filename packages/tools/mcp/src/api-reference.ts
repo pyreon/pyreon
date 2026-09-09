@@ -5621,10 +5621,11 @@ const candles: Candle[] = [{ t: 1704067200000, close: 101 }, { t: 1704153600000,
 
 // bollinger returns the band's marks as an ARRAY: spread it into marks.
 <PlotChart data={candles} xValue={(d: Candle) => d.t} xTime marks={[...bollinger((d: Candle) => d.close, 20), line((d: Candle) => d.close, { label: 'Close' }), sma((d: Candle) => d.close, 20, { label: 'SMA 20' })]} />`,
-    notes: `Indicator MARKS over a value accessor, for the finance and telemetry charts that draw a signal beside its smoothing: \`sma(y, window)\` (simple moving average), \`ema(y, window)\` (exponential), \`trend(y)\` (least-squares line) and \`bollinger(y, window, k?)\` (the ±k·σ envelope as a FILLED \`band\` plus its middle line, returned as an ARRAY of marks to spread into \`marks\` — two marks, not three lines: a band's bounds can be computed from the series via \`transform\`/\`transform2\`, which is the only shape a rolling window fits). Each is a mark like \`line\`, so it layers in the same \`marks={[…]}\` array, takes the same \`label\` / \`color\` / \`width\` options, and the leading \`window - 1\` points are gaps rather than zeros. The value forms \`smaValues\` / \`emaValues\` / \`stdevValues\` / \`trendValues\` are exported for hosts that need the numbers. See also: PlotChart, CandlestickChart.`,
+    notes: `Indicator MARKS over a value accessor, for the finance and telemetry charts that draw a signal beside its smoothing: \`sma(y, window)\` (simple moving average), \`ema(y, window)\` (exponential), \`trend(y)\` (least-squares line) and \`bollinger(y, window, k?)\` (the ±k·σ envelope as a FILLED \`band\` plus its middle line, returned as an ARRAY of marks to spread into \`marks\` — two marks, not three lines: a band's bounds can be computed from the series via \`transform\`/\`transform2\`, which is the only shape a rolling window fits). Each is a mark like \`line\`, so it layers in the same \`marks={[…]}\` array, takes the same \`label\` / \`color\` / \`width\` options, and the leading \`window - 1\` points are gaps rather than zeros. The value forms \`smaValues\` / \`emaValues\` / \`stdevValues\` / \`trendValues\` are exported for hosts that need the numbers, and live in a separate crossing module so \`sma\` / \`ema\` / \`trend\` LOWER to iOS and Android (with a numeric-literal window), and \`bollinger\` does too — its array spread expands to the band and the middle line it names. See also: PlotChart, CandlestickChart.`,
     mistakes: `- Pre-computing the average into the data and drawing it with \`line\` — the indicator mark re-derives on every data change and keeps the warm-up gap honest; a baked column silently freezes when the window changes
 - Reading the first \`window - 1\` points as missing data — they are gaps by design (no average exists yet); the engine draws the polyline from the first full window
-- Destructuring \`bollinger\`'s result as three lines — it is TWO marks now, a filled \`band\` and its middle line; index it, or spread it, but do not assume the arity`,
+- Destructuring \`bollinger\`'s result as three lines — it is TWO marks now, a filled \`band\` and its middle line; index it, or spread it, but do not assume the arity
+- Passing a computed window or width to an indicator in a NATIVE app — the emit needs numeric literals to lower them and names the limit rather than guessing; a runtime window keeps the mark web-only`,
   },
 
   'charts/chartToSvg': {
@@ -9995,15 +9996,16 @@ useAnimationEnd({ ref: elementRef, active: () => stage() === 'entering' || stage
   },
 
   'kinetic/useAnimationEnd': {
-    signature: '(options: { ref: Ref<HTMLElement>; onEnd: () => void; active: () => boolean; timeout?: number }) => void',
+    signature: '(options: { ref: Ref<HTMLElement>; onEnd: () => void; active: () => boolean; timeout?: number | (() => number | undefined) }) => void',
     example: `useAnimationEnd({
   ref: elementRef,                     // Ref<HTMLElement> object, read via .current
   active: () => stage() === 'entering' || stage() === 'leaving',
   timeout: 5000,
   onEnd: () => complete(),
 })`,
-    notes: 'Listens for `transitionend` / `animationend` on `ref.current` while `active()` is true and calls `onEnd` exactly once when the animation finishes — or after `timeout` ms (default 5000) as a safety fallback if the event never fires. Events bubbling from child elements are ignored (`e.target` must be the element itself). Listeners attach when `active` flips true and are cleaned up when it flips false. Its signature type is exported as `UseAnimationEnd`. See also: useTransitionState.',
-    mistakes: `- Passing a callback ref — the option is a \`Ref<HTMLElement>\` OBJECT; the hook reads \`ref.current\` when \`active\` flips true
+    notes: 'Listens for `transitionend` / `animationend` on `ref.current` while `active()` is true and calls `onEnd` exactly once when the animation finishes — or after `timeout` ms (default 5000) as a safety fallback if the event never fires. Events bubbling from child elements are ignored (`e.target` must be the element itself). Listeners attach when `active` flips true and are cleaned up when it flips false. `timeout` also accepts an ACCESSOR (`() => number`): the deadline is re-armed on every active cycle, so a caller whose own `timeout` prop arrives as a compiler-emitted getter can forward the read instead of resolving it once at setup and freezing it. Its signature type is exported as `UseAnimationEnd`. See also: useTransitionState.',
+    mistakes: `- Resolving a signal-driven \`timeout\` at setup (\`timeout: ms()\`) instead of passing the accessor (\`timeout: () => ms()\`) — the deadline is re-armed per cycle, so a resolved value freezes at its mount-time reading
+- Passing a callback ref — the option is a \`Ref<HTMLElement>\` OBJECT; the hook reads \`ref.current\` when \`active\` flips true
 - Setting \`timeout\` shorter than the actual transition duration — the fallback timer calls \`onEnd\` early, before the animation finishes
 - Expecting \`onEnd\` for a child element's transition — bubbled events where \`e.target !== el\` are deliberately ignored
 - Passing a static boolean for \`active\` — it is a reactive accessor; the listeners attach/detach as it flips`,

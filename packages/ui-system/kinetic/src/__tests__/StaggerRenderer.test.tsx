@@ -386,7 +386,9 @@ describe('StaggerRenderer', () => {
     for (let i = 0; i < wrapperChildren.length; i++) {
       const tiProps = wrapperChildren[i]?.props as Record<string, unknown>
       const expectedTimeout = 1000 + i * 100
-      expect(tiProps.timeout).toBe(expectedTimeout)
+      // An ACCESSOR now — the deadline is re-armed per cycle so it stays live
+      // (see live-prop.ts). Same invariant: base + staggerIndex * interval.
+      expect((tiProps.timeout as () => number)()).toBe(expectedTimeout)
     }
   })
 

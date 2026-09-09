@@ -57,10 +57,22 @@ export type TransitionProps = ClassTransitionProps &
     show?: boolean | (() => boolean) | undefined
     /** If true, runs enter animation on initial mount. Default: false. */
     appear?: boolean | undefined
-    /** If true (default), unmounts when hidden. If false, keeps with display:none. */
-    unmount?: boolean | undefined
-    /** Safety timeout in ms. Default: 5000. */
-    timeout?: number | undefined
+    /**
+     * If true (default), unmounts when hidden. If false, keeps with display:none.
+     *
+     * Consulted on every hide, so a value driven by a signal is re-read. Accepts
+     * an accessor for the same reason `show` does: the compiler can hand this
+     * either form, and a BOOLEAN prop that silently treats a function as `true`
+     * inverts the answer with no error to trace it by.
+     */
+    unmount?: boolean | (() => boolean | undefined) | undefined
+    /**
+     * Safety timeout in ms, or an accessor for one. Default: 5000.
+     *
+     * The accessor form exists because the deadline is re-armed on every
+     * animation cycle — it is a live value, not a construction-time one.
+     */
+    timeout?: number | (() => number | undefined) | undefined
     /** Single child element. Must accept ref. */
     children: VNode
   } & TimingTransitionProps
@@ -110,8 +122,8 @@ export type TransitionGroupProps = ClassTransitionProps &
   TransitionCallbacks & {
     /** If true, animates initial children on mount. Default: false. */
     appear?: boolean | undefined
-    /** Safety timeout in ms. Default: 5000. */
-    timeout?: number | undefined
+    /** Safety timeout in ms, or an accessor for one. Default: 5000. */
+    timeout?: number | (() => number | undefined) | undefined
     /** Children with unique keys. */
     children: VNode[]
   }
@@ -127,8 +139,8 @@ export type StaggerProps = ClassTransitionProps &
     reverseLeave?: boolean | undefined
     /** If true, animates on initial mount. Default: false. */
     appear?: boolean | undefined
-    /** Safety timeout in ms. Default: 5000. */
-    timeout?: number | undefined
+    /** Safety timeout in ms, or an accessor for one. Default: 5000. */
+    timeout?: number | (() => number | undefined) | undefined
     /** Children to stagger. */
     children: VNode[]
   }
@@ -136,12 +148,17 @@ export type StaggerProps = ClassTransitionProps &
 export type CollapseProps = TransitionCallbacks & {
   /** Expanded/collapsed state. Accessor or plain boolean; absent = expanded. */
   show?: boolean | (() => boolean) | undefined
-  /** CSS transition for height. Default: "height 300ms ease". */
-  transition?: string | undefined
+  /**
+   * CSS transition for height. Default: "height 300ms ease".
+   *
+   * Re-read on every stage change, so a signal-driven value is honoured; accepts
+   * an accessor as well as a value.
+   */
+  transition?: string | (() => string | undefined) | undefined
   /** If true, animates on initial mount. Default: false. */
   appear?: boolean | undefined
-  /** Safety timeout in ms. Default: 5000. */
-  timeout?: number | undefined
+  /** Safety timeout in ms, or an accessor for one. Default: 5000. */
+  timeout?: number | (() => number | undefined) | undefined
   /** The content to collapse. */
   children: VNode
 }

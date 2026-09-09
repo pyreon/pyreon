@@ -454,6 +454,44 @@ function jsxTagName(node: N): string {
   return name?.type === 'JSXIdentifier' ? name.name : ''
 }
 
+/**
+ * The QUALIFIED name of a JSX attribute — the ONE reader for the whole emitter.
+ *
+ * `xlink:href` parses as a `JSXNamespacedName`, not a `JSXIdentifier`, and every
+ * name reader here used to be spelled `name?.type === 'JSXIdentifier' ? … : ''`.
+ * A namespaced name therefore arrived as the EMPTY STRING at ~10 independent
+ * sites, and each one then did something different and silently wrong with it:
+ * the static bake wrote `<use ="/static">` into the template HTML, the dynamic
+ * setter emitted `_setAttr(el, "", u)`, and the dup-detection / prescan simply
+ * did not see the attribute. `<use xlink:href="#icon">` — the SVG sprite idiom —
+ * rendered nothing in every compiled app.
+ *
+ * A per-site fix would close it one reader at a time and leave the class open for
+ * the next reader anyone adds, so the name is read HERE and nowhere else. A site
+ * that must treat a namespaced attribute differently asks
+ * `isNamespacedAttrName` explicitly, which keeps the decision visible instead of
+ * hiding it in a `''` fallthrough.
+ *
+ * Returns `''` only when there is genuinely no name to read (a spread attribute,
+ * or a malformed node) — the one case every caller already handles.
+ *
+ * Mirrored by `jsx_attr_name` in `native/src/lib.rs`; byte-identity of the two
+ * emits is asserted by the native-equivalence suite.
+ */
+function jsxAttrName(attr: N): string {
+  const name = attr?.name
+  if (!name) return ''
+  if (name.type === 'JSXIdentifier') return name.name as string
+  if (name.type === 'JSXNamespacedName')
+    return `${name.namespace?.name ?? ''}:${name.name?.name ?? ''}`
+  return ''
+}
+
+/** Is this attribute's name namespaced (`xlink:href`) rather than a plain identifier? */
+function isNamespacedAttrName(attr: N): boolean {
+  return attr?.name?.type === 'JSXNamespacedName'
+}
+
 function isSelfClosing(node: N): boolean {
   return node.type === 'JSXElement' && node.openingElement?.selfClosing === true
 }
@@ -626,7 +664,12 @@ function detectCollapsibleShape(
   const props: Record<string, string> = {}
   for (const attr of jsxAttrs(node)) {
     if (attr.type !== 'JSXAttribute') return null // spread → bail
-    const nm = attr.name?.type === 'JSXIdentifier' ? attr.name.name : null
+    // Namespaced (`xlink:href`) → bail. The collapse path bakes props into an
+    // HTML blob captured from a nested SSR render of the REAL component; a
+    // qualified name there is unverified, so it declines DELIBERATELY rather
+    // than by the old `''` accident. Read via the one helper regardless.
+    if (isNamespacedAttrName(attr)) return null
+    const nm = jsxAttrName(attr)
     if (!nm) return null
     const v = attr.value
     if (!v) return null // boolean attr → bail
@@ -683,7 +726,12 @@ export function detectStaticElementChild(node: N): StaticChildNode | null {
   const props: Record<string, string> = {}
   for (const attr of jsxAttrs(node)) {
     if (attr.type !== 'JSXAttribute') return null // spread → bail
-    const nm = attr.name?.type === 'JSXIdentifier' ? attr.name.name : null
+    // Namespaced (`xlink:href`) → bail. The collapse path bakes props into an
+    // HTML blob captured from a nested SSR render of the REAL component; a
+    // qualified name there is unverified, so it declines DELIBERATELY rather
+    // than by the old `''` accident. Read via the one helper regardless.
+    if (isNamespacedAttrName(attr)) return null
+    const nm = jsxAttrName(attr)
     if (!nm) return null
     // No handlers on a baked child — a static clone can't carry them.
     if (EVENT_RE.test(nm)) return null
@@ -779,7 +827,12 @@ export function detectElementChildCollapsibleShape(
   const props: Record<string, string> = {}
   for (const attr of jsxAttrs(node)) {
     if (attr.type !== 'JSXAttribute') return null // spread → bail
-    const nm = attr.name?.type === 'JSXIdentifier' ? attr.name.name : null
+    // Namespaced (`xlink:href`) → bail. The collapse path bakes props into an
+    // HTML blob captured from a nested SSR render of the REAL component; a
+    // qualified name there is unverified, so it declines DELIBERATELY rather
+    // than by the old `''` accident. Read via the one helper regardless.
+    if (isNamespacedAttrName(attr)) return null
+    const nm = jsxAttrName(attr)
     if (!nm) return null
     const v = attr.value
     if (!v) return null // boolean attr → bail
@@ -839,7 +892,12 @@ export function detectPartialCollapsibleShape(
   const handlers: CollapsibleHandler[] = []
   for (const attr of jsxAttrs(node)) {
     if (attr.type !== 'JSXAttribute') return null // spread → bail
-    const nm = attr.name?.type === 'JSXIdentifier' ? attr.name.name : null
+    // Namespaced (`xlink:href`) → bail. The collapse path bakes props into an
+    // HTML blob captured from a nested SSR render of the REAL component; a
+    // qualified name there is unverified, so it declines DELIBERATELY rather
+    // than by the old `''` accident. Read via the one helper regardless.
+    if (isNamespacedAttrName(attr)) return null
+    const nm = jsxAttrName(attr)
     if (!nm) return null
     const v = attr.value
     if (!v) return null // boolean attr → bail
@@ -953,7 +1011,12 @@ export function detectDynamicCollapsibleShape(
   const dynamicProps: DynamicCollapsibleProp[] = []
   for (const attr of jsxAttrs(node)) {
     if (attr.type !== 'JSXAttribute') return null // spread → bail
-    const nm = attr.name?.type === 'JSXIdentifier' ? attr.name.name : null
+    // Namespaced (`xlink:href`) → bail. The collapse path bakes props into an
+    // HTML blob captured from a nested SSR render of the REAL component; a
+    // qualified name there is unverified, so it declines DELIBERATELY rather
+    // than by the old `''` accident. Read via the one helper regardless.
+    if (isNamespacedAttrName(attr)) return null
+    const nm = jsxAttrName(attr)
     if (!nm) return null
     const v = attr.value
     if (!v) return null // boolean attr → bail
@@ -1832,7 +1895,7 @@ export function transformJSX_JS(
    */
   function ssrComponentChildEligible(el: N): boolean {
     for (const a of jsxAttrs(el)) {
-      if (a.type === 'JSXAttribute' && a.name?.type === 'JSXIdentifier' && a.name.name === 'key') {
+      if (a.type === 'JSXAttribute' && jsxAttrName(a) === 'key') {
         return false
       }
     }
@@ -2006,7 +2069,7 @@ export function transformJSX_JS(
   function ssrSerializeAttr(buf: SsrBuf, attr: N, tag: string): boolean {
     if (attr.type === 'JSXSpreadAttribute') return false // spread → bail
     if (attr.type !== 'JSXAttribute') return false
-    const name = attr.name?.type === 'JSXIdentifier' ? attr.name.name : ''
+    const name = jsxAttrName(attr)
     if (!name) return false
     // renderPropSkipped: key/ref/on* render NOTHING server-side — safe to omit.
     if (name === 'key' || name === 'ref') return true
@@ -2427,8 +2490,9 @@ export function transformJSX_JS(
     let eachExpr: N | null = null
     let byExpr: N | null = null
     for (const a of jsxAttrs(el)) {
-      if (a.type !== 'JSXAttribute' || a.name?.type !== 'JSXIdentifier') return false
-      const nm = a.name.name as string
+      if (a.type !== 'JSXAttribute') return false
+      const nm = jsxAttrName(a)
+      if (!nm) return false
       if (!a.value || a.value.type !== 'JSXExpressionContainer') return false
       const v = a.value.expression
       if (!v || v.type === 'JSXEmptyExpression') return false
@@ -2525,10 +2589,11 @@ export function transformJSX_JS(
     // Rare; bail to let the h() path dedupe.
     const seen = new Set<string>()
     for (const a of jsxAttrs(el)) {
-      if (a.type === 'JSXAttribute' && a.name?.type === 'JSXIdentifier') {
-        if (seen.has(a.name.name as string)) return false
-        seen.add(a.name.name as string)
-      }
+      if (a.type !== 'JSXAttribute') continue
+      const nm = jsxAttrName(a)
+      if (!nm) continue
+      if (seen.has(nm)) return false
+      seen.add(nm)
     }
     ssrEmitStatic(buf, `<${tag}`)
     for (const attr of jsxAttrs(el)) {
@@ -2761,7 +2826,7 @@ export function transformJSX_JS(
     if (tagName !== 'For') return
     const hasBy = jsxAttrs(node).some(
       (p: N) =>
-        p.type === 'JSXAttribute' && p.name?.type === 'JSXIdentifier' && p.name.name === 'by',
+        p.type === 'JSXAttribute' && jsxAttrName(p) === 'by',
     )
     if (!hasBy) {
       warn(
@@ -2812,7 +2877,7 @@ export function transformJSX_JS(
   }
 
   function handleJsxAttribute(node: N, parentElement: N): void {
-    const name = node.name?.type === 'JSXIdentifier' ? node.name.name : ''
+    const name = jsxAttrName(node)
     if (SKIP_PROPS.has(name) || EVENT_RE.test(name)) return
     if (!node.value || node.value.type !== 'JSXExpressionContainer') return
     const expr = node.value.expression
@@ -4009,27 +4074,16 @@ export function transformJSX_JS(
         return true
       }
       if (attr.type !== 'JSXAttribute') continue
-      // A NAMESPACED attribute name (`xlink:href`, `xml:lang`) parses as
-      // `JSXNamespacedName`, not `JSXIdentifier` — and every name reader in the
-      // template emitter is written `name?.type === 'JSXIdentifier' ? … : ''`,
-      // so the qualified name arrives as the EMPTY STRING. That produced two
-      // different wrong answers, neither of them an error: this backend baked
-      // `<use ="/static">` into the template HTML and emitted
-      // `_setAttr(el, "", u)` for the dynamic form, while the Rust backend
-      // dropped the attribute outright — so `<use xlink:href="#icon">`, the SVG
-      // sprite idiom, rendered nothing in every compiled app.
-      //
-      // Bail the element to `h()` rather than teach ~10 name readers a second
-      // spelling: the runtime path already sets a qualified name correctly
-      // (`setStaticProp` -> the SVG `setAttribute` branch) and runs the url
-      // guard over it (`xlink:href` is in `URL_ATTRS`), so the shape lands on
-      // the proven path instead of a second, differently-broken one. This is
-      // the repo's own rule about a catch-all that reports "handled, emit
-      // nothing": an unrecognized shape must fall through to the runtime, never
-      // silently vanish. Mirrored byte-for-byte by `has_bail_attr` in
-      // `native/src/lib.rs`.
-      if (attr.name?.type === 'JSXNamespacedName') return true
-      if (attr.name?.type === 'JSXIdentifier' && attr.name.name === 'key') return true
+      // A NAMESPACED name (`xlink:href`) is NOT a bail any more: every reader in
+      // this emitter goes through `jsxAttrName`, so the qualified name reaches
+      // the static bake, the dynamic `_setAttr` call and the prescan alike. The
+      // bail that stood here shipped as the safe half of the fix; it cost the
+      // element its template AND landed on an `h()` path that was itself wrong
+      // for the dynamic case (`setAttribute('xlink:href')` writes a NULL-namespace
+      // attribute, which an SVG `<use>` ignores — measured `bbox.width === 0` in
+      // Chromium). The namespace is now resolved in the runtime, so both paths
+      // agree; see `foreignAttrNamespace` in runtime-dom's props.ts.
+      if (jsxAttrName(attr) === 'key') return true
     }
     return false
   }
@@ -4935,7 +4989,7 @@ export function transformJSX_JS(
         return ''
       }
       if (attr.type !== 'JSXAttribute') return ''
-      const attrName = attr.name?.type === 'JSXIdentifier' ? attr.name.name : ''
+      const attrName = jsxAttrName(attr)
       if (attrName === 'key') return ''
       if (tryEmitSpecialAttr(attr, attrName, varName)) return ''
       return attrInitializerToHtml(attr, JSX_TO_HTML_ATTR[attrName] ?? attrName, varName, tag)
@@ -4953,14 +5007,15 @@ export function transformJSX_JS(
       const lastPlainIdx = new Map<string, number>()
       for (let i = 0; i < attrs.length; i++) {
         const a = attrs[i]!
-        if (a.type === 'JSXAttribute' && a.name?.type === 'JSXIdentifier')
-          lastPlainIdx.set(a.name.name as string, i)
+        if (a.type !== 'JSXAttribute') continue
+        const nm = jsxAttrName(a)
+        if (nm) lastPlainIdx.set(nm, i)
       }
       let htmlAttrs = ''
       for (let i = 0; i < attrs.length; i++) {
         const a = attrs[i]!
-        if (a.type === 'JSXAttribute' && a.name?.type === 'JSXIdentifier') {
-          const name = a.name.name as string
+        if (a.type === 'JSXAttribute' && jsxAttrName(a)) {
+          const name = jsxAttrName(a)
           if ((lastPlainIdx.get(name) ?? i) > i) {
             warn(
               a,
@@ -5263,7 +5318,7 @@ export function transformJSX_JS(
 
     function attrIsDynamic(attr: N, tag: string): boolean {
       if (attr.type !== 'JSXAttribute') return false
-      const name = attr.name?.type === 'JSXIdentifier' ? attr.name.name : ''
+      const name = jsxAttrName(attr)
       if (name === 'ref') return true
       if (EVENT_RE.test(name)) return true
       // `<select value="…">` (plain string form, PZ-09): always emitted as a
@@ -5650,9 +5705,7 @@ export function transformJSX_JS(
       // runtime's defensive re-check refuses anyway.
       const hasDsi = jsxAttrs(el).some(
         (a) =>
-          a.type === 'JSXAttribute' &&
-          a.name?.type === 'JSXIdentifier' &&
-          a.name.name === 'dangerouslySetInnerHTML',
+          a.type === 'JSXAttribute' && jsxAttrName(a) === 'dangerouslySetInnerHTML',
       )
       const isHtmlEl = hasDsi && childHtml === '' && !isHole
       let html = `<${tag}${htmlAttrs}${isHole ? ` ${TPL_HOLE_ATTR}` : ''}${isHtmlEl ? ` ${TPL_HTML_ATTR}` : ''}>${childHtml}`
