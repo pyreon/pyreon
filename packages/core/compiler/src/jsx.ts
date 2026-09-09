@@ -6329,9 +6329,31 @@ const SSR_VOID_TAGS = new Set([
 ])
 
 // URL-bearing attributes guarded by `@pyreon/core/url-guard` on the SSR path.
-// Single-sourced values mirrored here so the compiler can DECIDE (at bake time)
-// whether a static URL literal is safe. Kept in sync with url-guard.ts.
-const SSR_URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'poster', 'cite', 'data'])
+// The compiler cannot IMPORT core's `URL_ATTRS` — it is a build-time tool with
+// no runtime dependency on `@pyreon/core`, and taking one would invert the
+// layering (core is compiled BY this package). So the set is mirrored, and the
+// mirror is IDENTITY-LOCKED against the original by
+// `src/tests/ssr-url-attrs-identity.test.ts`, which imports both and compares
+// them in BOTH directions.
+//
+// A comment claiming "kept in sync" is not a mechanism, and this set proved it:
+// `xlink:href` was added to core's `URL_ATTRS` to close a named vector — SVG's
+// URL attribute, whose qualified name is not `href`, so `<a xlink:href=
+// "javascript:…">` inside inline SVG is clickable in every browser — and both
+// compiler copies stayed at seven entries. An attribute missing here is routed
+// to `_ssrAttrGen`, the lean helper that SKIPS the url-guard regex, so the
+// compiled SSR path emitted a `javascript:` URL that all three other paths
+// blocked. Mirrored in `native/src/lib.rs:ssr_is_url_attr`.
+export const SSR_URL_ATTRS = new Set([
+  'href',
+  'src',
+  'action',
+  'formaction',
+  'poster',
+  'cite',
+  'data',
+  'xlink:href',
+])
 // Methods that ALWAYS return a string on an unambiguous receiver — used to prove
 // a dynamic attr value is non-null-non-boolean (so its attr name+quotes can bake).
 // `Number#toFixed`/`Array#join`/`String#*` all return string; `slice`/`concat`/
