@@ -163,7 +163,7 @@ Prefer these over raw `aria-*` (which is web-only) so the same component is acce
 
 ## Reduced motion
 
-`@pyreon/kinetic` animations (`<Transition>`, `<Collapse>`, the `kinetic()` wrapper) automatically respect the user's `prefers-reduced-motion` setting — when reduced motion is requested, transitions resolve instantly instead of animating. No configuration needed.
+`@pyreon/kinetic` animations automatically respect the user's `prefers-reduced-motion` setting — when reduced motion is requested, transitions resolve instantly instead of animating. This covers every mode of the `kinetic(tag)` factory (`.preset()`, `.collapse()`, `.stagger()`, `.group()`). No configuration needed.
 
 ## Correct ARIA by construction
 

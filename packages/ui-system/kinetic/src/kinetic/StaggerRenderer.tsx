@@ -1,5 +1,6 @@
 import type { VNode } from '@pyreon/core'
 import { h } from '@pyreon/core'
+import { readLive, resolveLive } from '../live-prop'
 import type { CSSProperties, TransitionCallbacks } from '../types'
 import { cloneVNode, resolveChildren } from '../utils'
 import TransitionItem from './TransitionItem'
@@ -9,10 +10,15 @@ type StaggerRendererProps = {
   config: KineticConfig
   htmlProps: Record<string, unknown>
   show: () => boolean
+  /** Construction-time — a first-mount question, spent once the ref wires up. */
   appear?: boolean | undefined
-  timeout?: number | undefined
+  /** Live: the animation-end deadline is re-armed per cycle. */
+  timeout?: number | (() => number | undefined) | undefined
+  /** Construction-time — baked into each child's static delay style below. */
   interval?: number | undefined
+  /** Construction-time — decides which child owns `onAfterLeave`, once. */
   reverseLeave?: boolean | undefined
+  /** A LIVE HOLDER — read each entry through `readLive` at the point of call. */
   callbacks: Partial<TransitionCallbacks>
   children: VNode[]
 }
@@ -36,8 +42,12 @@ const StaggerRenderer = ({
   callbacks,
   children,
 }: StaggerRendererProps): VNode | null => {
+  // `interval` / `reverseLeave` are construction-time: the `.map()` below runs
+  // ONCE over an already-resolved child array and bakes each child's delay into
+  // a static style object. `timeout` is live — it is re-armed per cycle — so it
+  // travels down as an accessor rather than a resolved number.
   const effectiveAppear = appear ?? config.appear ?? false
-  const effectiveTimeout = timeout ?? config.timeout ?? 5000
+  const effectiveTimeout = () => resolveLive(timeout) ?? config.timeout ?? 5000
   const effectiveInterval = interval ?? config.interval ?? 50
   const effectiveReverseLeave = reverseLeave ?? config.reverseLeave ?? false
 
@@ -60,7 +70,7 @@ const StaggerRenderer = ({
         key={(child as VNode & { key?: string | number }).key ?? index}
         show={show}
         appear={effectiveAppear}
-        timeout={effectiveTimeout + maxDelay}
+        timeout={() => effectiveTimeout() + maxDelay}
         enterStyle={config.enterStyle}
         enterToStyle={config.enterToStyle}
         enterTransition={config.enterTransition}
@@ -73,8 +83,14 @@ const StaggerRenderer = ({
         leave={config.leave}
         leaveFrom={config.leaveFrom}
         leaveTo={config.leaveTo}
+        // WHICH child owns the callback is construction-time (an index in a
+        // resolved array); WHAT the callback is, is not — forward a thunk that
+        // re-reads the live holder, instead of the value this setup-time map
+        // would otherwise freeze.
         onAfterLeave={
-          index === (effectiveReverseLeave ? 0 : count - 1) ? callbacks.onAfterLeave : undefined
+          index === (effectiveReverseLeave ? 0 : count - 1)
+            ? () => readLive<TransitionCallbacks['onAfterLeave']>(callbacks, 'onAfterLeave')?.()
+            : undefined
         }
       >
         {cloneVNode(child, {

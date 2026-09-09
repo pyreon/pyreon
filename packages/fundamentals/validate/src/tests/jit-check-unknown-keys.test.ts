@@ -102,10 +102,26 @@ describe('verdict JIT — strict emits the CHEAPER shape when it can', () => {
     return String(fn)
   }
 
-  it('all-required shape uses a key COUNT, not a per-key scan', () => {
+  it('all-required shape short-circuits on a PRESENCE PROOF, and only then skips the scan', () => {
+    // The invariant this locks: a VALID all-required object never pays the
+    // per-key `Set#has` scan. The proof it pays instead is "the counted key
+    // set has N members AND every declared key is one of them".
+    //
+    // Both halves of that sentence are load-bearing, and each was got wrong
+    // once. A COUNT ALONE is not a membership test (a prototype-carried field
+    // passes the field check with zero own keys; a typo'd key in place of a
+    // real one keeps the count at N). And the membership test must be against
+    // the SAME set the count came from — `Object.keys` is own-ENUMERABLE, so
+    // `Object.hasOwn` proves membership in a superset and leaves the hole one
+    // shape over (an own non-enumerable declared key frees a slot for a real
+    // unknown one). Hence `propertyIsEnumerable`, called off `Object.prototype`
+    // so a field named `propertyIsEnumerable` cannot shadow it.
     const body = src(s.object({ a: s.number(), b: s.string() }).strict())
-    expect(body).toMatch(/Object\.keys\([^)]*\)\.length !== 2/)
-    expect(body).not.toContain('.has(')
+    expect(body).toMatch(
+      /if \((\w+)\.length !== 2 \|\| !\(Object\.prototype\.propertyIsEnumerable\.call\(input, "a"\) && Object\.prototype\.propertyIsEnumerable\.call\(input, "b"\)\)\) \{ for \(/,
+    )
+    expect(body).toContain('.has(')
+    expect(body, 'hasOwn proves membership in the WRONG set here').not.toContain('Object.hasOwn(')
   })
 
   it('a field that can be validly ABSENT falls back to the SCAN', () => {
@@ -115,7 +131,8 @@ describe('verdict JIT — strict emits the CHEAPER shape when it can', () => {
     // validly absent, which is exactly the shape that needs the scan.
     const body = src(s.object({ a: s.number(), b: s.undefined() }).strict())
     expect(body).toContain('.has(')
-    expect(body).not.toMatch(/Object\.keys\([^)]*\)\.length !==/)
+    expect(body).not.toMatch(/\.length !== \d+ \|\|/)
+    expect(body).not.toContain('propertyIsEnumerable')
   })
 
   it('the scan rejects what the count would have accepted, and accepts what it would have rejected', () => {

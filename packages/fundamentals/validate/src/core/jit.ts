@@ -328,17 +328,16 @@ const isPlainObject = (s: FieldLike, checkMode = false): boolean =>
   // scan the inline loop silently accepts unknown keys, which is a validation
   // hole — so the gate and the scan must move together.
   //
-  // PARSE mode does NOT cover strict, and the reason is an emission-ORDER
-  // constraint rather than a semantic one. It was attempted: the parse-mode
-  // report must push one `unrecognized_keys` issue PER unknown key, AFTER the
-  // known-field issues (issue order is observable), at `[...effectivePath,
-  // key]`. Appending it after the `genObjectValue` call emits it after the
-  // value has already been RETURNED — dead code, so strict silently accepted
-  // unknown keys and 18 specs caught it. Doing it properly means threading the
-  // report INTO `genObjectValue` so it lands before `onValid` in BOTH its
-  // LITERAL and ASSIGN emissions, and in the DU member path. Contained, but it
-  // is the intricate part of this file and it is where a validation hole
-  // hides, so it wants its own pass. Worth ~3.9x on the harness's parseStrict.
+  // PARSE mode covers strict TOO (`strictReport`, threaded INTO
+  // `genObjectValue` so it lands before `onValid` in both its LITERAL and
+  // ASSIGN emissions and in the DU member path). It took a second pass to get
+  // there, and the constraint that made it one is worth keeping written down:
+  // the report must push one `unrecognized_keys` issue PER unknown key, AFTER
+  // the known-field issues (issue order is observable), at
+  // `[...effectivePath, key]`. The first attempt appended it after the
+  // `genObjectValue` call, i.e. after the value had already been RETURNED —
+  // dead code, so strict silently accepted unknown keys and 18 specs caught
+  // it. Worth ~3.9x on the harness's parseStrict.
   //
   // `_catchall` stays excluded in BOTH modes — it VALIDATES unknown keys, and
   // the inline loop skips them, which would silently pass invalid input.
@@ -479,6 +478,87 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
     const nv = (): string => `t${uid++}`
 
     /**
+     * The condition under which a `.strict()` scan must RUN — i.e. the
+     * short-circuit "this object carries exactly the declared keys" could NOT
+     * be proven. Shared by verdict and parse mode so the two cannot diverge.
+     *
+     * A COUNT IS NOT A MEMBERSHIP TEST. The previous fast path reduced "no
+     * unknown keys" to `Object.keys(x).length === N` on the premise that the
+     * field checks had proven all N declared keys present. They had not — a
+     * field check reads `x.name`, which walks the PROTOTYPE CHAIN, so
+     * `Object.create({ name, age })` (or a class instance with prototype
+     * getters) passes every field check with ZERO own keys. Two divergences
+     * from the interpreter (which scans `Object.keys` + `Object.hasOwn`)
+     * followed, and they are one class:
+     *
+     * - verdict mode returned FALSE for a prototype-carried valid object while
+     *   `parse().ok` was true — breaking the locked `is() ⇔ parse().ok`
+     *   invariant;
+     * - parse mode SKIPPED the scan for `{ nmae: 'Ada', age: 36 }` — a typo'd
+     *   key in place of a real one keeps the own-key count at N, so
+     *   `Unrecognized key "nmae"` was never reported.
+     *
+     * The short-circuit is sound ONLY when it proves membership in the SAME
+     * set the count came from: `|Object.keys(x)| === N` AND every declared key
+     * is in `Object.keys(x)`. N such keys that include all N declared keys are
+     * exactly the declared keys. Any other state — fewer keys
+     * (prototype-carried fields, still valid to the interpreter), more keys,
+     * or N keys with a declared one missing (a typo) — falls through to the
+     * membership scan, which is the interpreter's predicate verbatim. The
+     * proof is emitted only when every declared field must be PRESENT in a
+     * valid object (`fieldDefinedWhenValid`) — an optionally-absent field is
+     * legitimately absent, so for those shapes the scan always runs (as
+     * before).
+     *
+     * The per-key test is `Object.prototype.propertyIsEnumerable.call`, and
+     * the choice is load-bearing: `Object.hasOwn` is TRUE for an own
+     * NON-ENUMERABLE property, which `Object.keys` does not return. Proving
+     * containment in a SUPERSET of the counted set leaves the same hole one
+     * shape over — `{ a, zzz }` plus a non-enumerable own `b` counts 2, proves
+     * `a` and `b` "own", skips the scan, and never reports `zzz`. That is the
+     * identical defect (a cheap predicate that establishes membership in the
+     * wrong set) the count fast path had, and the first cut of this fix
+     * shipped it; it is the reason the differential coverage below runs
+     * against the INTERPRETER and not just against the other emitter. Called
+     * off `Object.prototype`, never off the input — a declared field named
+     * `propertyIsEnumerable` would otherwise shadow it, the same prototype-
+     * member hole the `Set` built from `Object.keys(shape)` avoids.
+     *
+     * COST — stated structurally, because it is NOT MEASURED. On the valid
+     * path the proof adds N `Object.hasOwn` calls against literal keys to the
+     * integer compare that was there before; what it still avoids is the
+     * membership scan's N `Set#has` lookups on dynamically-read keys, which
+     * is the whole reason to keep a short-circuit rather than always scan.
+     * `bench/strict-ab.ts` is the harness (interleaved, process-isolated
+     * arms, each labelled from the emit it actually compiled) — run it on a
+     * QUIET machine. It was written for this change and could not be given
+     * one: at load ~290 the run-to-run spread on the valid cells swung
+     * 0.59×-1.93× on the same cell, so the few-nanosecond effect is below
+     * this instrument's noise under contention. Do not quote a number for
+     * this until someone measures it quiet; the correctness argument above
+     * does not depend on one.
+     */
+    const strictShortCircuitMiss = (
+      shape: Record<string, FieldLike>,
+      srcVar: string,
+      ksv: string,
+    ): string | null => {
+      const shapeKeys = Object.keys(shape)
+      if (!shapeKeys.every((k) => fieldDefinedWhenValid(shape[k]!))) return null
+      // An EMPTY shape has nothing to prove present, and `!()` is a syntax
+      // error — the count alone is the whole predicate there. REACHED, at the
+      // root and nested (`s.object({}).strict()`): without this the emit is
+      // `t0.length !== 0 || !()`, `compileJit`'s try/catch swallows the
+      // SyntaxError, and the WHOLE enclosing schema silently loses its JIT
+      // with every test still green.
+      if (shapeKeys.length === 0) return `${ksv}.length !== 0`
+      const allPresent = shapeKeys
+        .map((k) => `Object.prototype.propertyIsEnumerable.call(${srcVar}, ${JSON.stringify(k)})`)
+        .join(' && ')
+      return `${ksv}.length !== ${shapeKeys.length} || !(${allPresent})`
+    }
+
+    /**
      * Verdict-mode `.strict()`: reject the object if it carries any key the
      * shape does not declare.
      *
@@ -495,37 +575,20 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
      */
     const strictScan = (shape: Record<string, FieldLike>, srcVar: string): string => {
       const shapeKeys = Object.keys(shape)
-      // FAST PATH — when every declared field must be PRESENT in a valid
-      // object, "no unknown keys" reduces to a key COUNT. The known-key checks
-      // above already reject a missing required field (its slot reads
-      // `undefined` and fails its type guard), so at this point the object is
-      // known to carry all N declared keys; carrying exactly N therefore means
-      // it carries nothing else. One integer compare replaces N Set lookups.
-      //
-      // `fieldDefinedWhenValid` is the right predicate: it is false for exactly
-      // the fields that can be validly ABSENT (optional / nullish / default all
-      // route to the `_runInto` fallback), and for those the count identity
-      // breaks — a missing optional plus one extra key sums to N.
-      if (shapeKeys.every((k) => fieldDefinedWhenValid(shape[k]!))) {
-        return `if (Object.keys(${srcVar}).length !== ${shapeKeys.length}) return false;`
-      }
       const setRef = cap(new Set(shapeKeys))
       const ksv = nv()
       const iv = nv()
-      // SLOW PATH — a shape with an optionally-absent field, where the count
-      // identity above does not hold. Scans the input's own keys.
-      //
       // `Object.keys` + an indexed loop, NOT `for...in` + `hasOwnProperty`:
       // the two are semantically identical here (own enumerable string keys)
       // and the allocation-free form measured SLOWER, 97.5ns against 90.4ns on
       // an 8-key shape — the per-key `hasOwnProperty.call` costs more than the
-      // array it avoids. (The array is NOT cheap: dropping the per-key Set
-      // lookups via the count fast path took the same shape 94.7ns -> 67.9ns,
-      // so roughly 57ns of that is `Object.keys` itself. There is no
-      // allocation-free own-key count in JS — `for...in` walks INHERITED
-      // enumerable properties too, so counting with it would diverge from the
-      // interpreter on any object with an enumerable prototype.)
-      return `var ${ksv} = Object.keys(${srcVar}); for (var ${iv} = 0; ${iv} < ${ksv}.length; ${iv}++) { if (!${setRef}.has(${ksv}[${iv}])) return false; }`
+      // array it avoids. (There is no allocation-free own-key count in JS —
+      // `for...in` walks INHERITED enumerable properties too, so counting with
+      // it would diverge from the interpreter on any object with an enumerable
+      // prototype.)
+      const scan = `for (var ${iv} = 0; ${iv} < ${ksv}.length; ${iv}++) { if (!${setRef}.has(${ksv}[${iv}])) return false; }`
+      const miss = strictShortCircuitMiss(shape, srcVar, ksv)
+      return `var ${ksv} = Object.keys(${srcVar}); ${miss ? `if (${miss}) { ${scan} }` : scan}`
     }
 
     /**
@@ -565,18 +628,14 @@ function compileJit(schema: Schema<unknown>, mode: JitMode, emitAsync = true): u
       const iv = nv()
       const kv = nv()
       const idxArg = dynArgs(ps)
-      const shapeKeys = Object.keys(shape)
       // Parse mode must name each offending key, so it cannot reduce to a
-      // count the way verdict mode does — but it can GUARD on one. When every
-      // declared field must be present (the known-key checks above already
-      // reject a missing one), a key count of N means there is nothing to
-      // report, so the valid path skips the per-key lookups entirely and only
-      // a failing object pays for the scan.
-      const guard = shapeKeys.every((k) => fieldDefinedWhenValid(shape[k]!))
-        ? `if (${ksv}.length !== ${shapeKeys.length}) `
-        : ''
+      // count — but it can be short-circuited by the same OWN-key proof
+      // verdict mode uses (see `strictShortCircuitMiss`): a valid object skips
+      // the per-key Set lookups, and only an object that is not provably
+      // exactly-declared pays for the scan.
       const scan = `for (var ${iv} = 0; ${iv} < ${ksv}.length; ${iv}++) { var ${kv} = ${ksv}[${iv}]; if (!${setRef}.has(${kv})) ${report}(ctx, ${kv}${idxArg}); }`
-      return `var ${ksv} = Object.keys(${srcVar}); ${guard}{ ${scan} }`
+      const miss = strictShortCircuitMiss(shape, srcVar, ksv)
+      return `var ${ksv} = Object.keys(${srcVar}); ${miss ? `if (${miss}) { ${scan} }` : scan}`
     }
 
     const genChecks = (ops: CheckOpLike[], ve: string, ps: PathState): string => {

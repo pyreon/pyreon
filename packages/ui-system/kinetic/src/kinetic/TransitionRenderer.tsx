@@ -5,6 +5,7 @@ import type { CSSProperties, TransitionCallbacks } from '../types'
 import useAnimationEnd from '../useAnimationEnd'
 import { useReducedMotion } from '../useReducedMotion'
 import useTransitionState from '../useTransitionState'
+import { isDynamicProp, readCallbacks, readLive, resolveLive } from '../live-prop'
 import { addClasses, mergeRefs, nextFrame, removeClasses, setTransition } from '../utils'
 import type { KineticConfig } from './types'
 
@@ -12,9 +13,13 @@ type TransitionRendererProps = {
   config: KineticConfig
   htmlProps: Record<string, unknown>
   show: () => boolean
+  /** Construction-time — a first-mount question, spent once the ref wires up. */
   appear?: boolean | undefined
-  unmount?: boolean | undefined
-  timeout?: number | undefined
+  /** Live: `<Show>` consults the fallback on every hide, so accept an accessor. */
+  unmount?: boolean | (() => boolean | undefined) | undefined
+  /** Live: the animation-end deadline is re-armed per cycle. */
+  timeout?: number | (() => number | undefined) | undefined
+  /** A LIVE HOLDER — read each entry through `readLive` at the point of call. */
   callbacks: Partial<TransitionCallbacks>
   children: VNode | VNode[]
 }
@@ -92,8 +97,12 @@ const TransitionRenderer = (props: TransitionRendererProps): VNode | null => {
   const elementRef = createRef<HTMLElement>()
   const mergedRef = mergeRefs(elementRef, stateRef)
 
-  const effectiveUnmount = props.unmount ?? props.config.unmount ?? true
-  const effectiveTimeout = props.timeout ?? props.config.timeout ?? 5000
+  // Accessors, not values: resolved at each point of USE so a prop that
+  // arrived as a compiler `_rp` getter is re-read rather than frozen. The
+  // chain config (`.config({ timeout })`) is genuinely static and still
+  // flows through `??` unchanged.
+  const effectiveUnmount = () => resolveLive(props.unmount) ?? props.config.unmount ?? true
+  const effectiveTimeout = () => resolveLive(props.timeout) ?? props.config.timeout ?? 5000
 
   useAnimationEnd({
     ref: elementRef,
@@ -105,9 +114,9 @@ const TransitionRenderer = (props: TransitionRendererProps): VNode | null => {
       // an unreachable `else if (stage() === 'leaving')` false arm. See the
       // matching note in Transition.tsx.
       if (stage() === 'entering') {
-        props.callbacks.onAfterEnter?.()
+        readLive<TransitionCallbacks['onAfterEnter']>(props.callbacks, 'onAfterEnter')?.()
       } else {
-        props.callbacks.onAfterLeave?.()
+        readLive<TransitionCallbacks['onAfterLeave']>(props.callbacks, 'onAfterLeave')?.()
       }
       complete()
     },
@@ -120,17 +129,17 @@ const TransitionRenderer = (props: TransitionRendererProps): VNode | null => {
       if (!el) return
 
       if (reducedMotion()) {
-        applyReducedMotion(currentStage, props.callbacks, complete)
+        applyReducedMotion(currentStage, readCallbacks(props.callbacks), complete)
         return
       }
 
       if (currentStage === 'entering') {
-        props.callbacks.onEnter?.()
+        readLive<TransitionCallbacks['onEnter']>(props.callbacks, 'onEnter')?.()
         return applyEnter(el, props.config)
       }
 
       if (currentStage === 'leaving') {
-        props.callbacks.onLeave?.()
+        readLive<TransitionCallbacks['onLeave']>(props.callbacks, 'onLeave')?.()
         return applyLeave(el, props.config)
       }
 
@@ -157,28 +166,35 @@ const TransitionRenderer = (props: TransitionRendererProps): VNode | null => {
   // spring): content is structural, animation is visual.
   const wasInitiallyShown = props.show()
   if (wasInitiallyShown) {
+    const unmountCanChange = isDynamicProp(props, 'unmount')
+    const hiddenFallback = () =>
+      effectiveUnmount()
+        ? null
+        : h(
+            props.config.tag,
+            // mergeProps keeps every reactive HTML-attr getter; ref + the
+            // hidden-state `display:none` style come last and win. The
+            // `props.htmlProps.style` read seeds the hidden style — display:none
+            // must compose over the user's. UNTRACKED: this body's job is
+            // `effectiveUnmount()`, and a tracked style read here would
+            // subscribe the fallback to it and remount the hidden node whenever
+            // the user's style moved.
+            mergeProps(props.htmlProps, {
+              ref: mergedRef,
+              style: {
+                ...readLive<CSSProperties>(props.htmlProps, 'style'),
+                display: 'none',
+              },
+            }),
+            props.children,
+          )
     return (
       <Show
         when={shouldMount}
-        fallback={
-          effectiveUnmount
-            ? null
-            : h(
-                props.config.tag,
-                // mergeProps keeps every reactive HTML-attr getter; ref + the
-                // hidden-state `display:none` style come last and win. The
-                // one-time `props.htmlProps.style` read seeds the hidden
-                // style — display:none must compose over the user's style.
-                mergeProps(props.htmlProps, {
-                  ref: mergedRef,
-                  style: {
-                    ...(props.htmlProps.style as CSSProperties),
-                    display: 'none',
-                  },
-                }),
-                props.children,
-              )
-        }
+        // Accessor ONLY when `unmount` can change — see `<Transition>`'s note
+        // and `isDynamicProp`. The static case keeps the plain value and never
+        // creates the nested reactive boundary.
+        fallback={unmountCanChange ? hiddenFallback : hiddenFallback()}
       >
         {h(
           props.config.tag,
