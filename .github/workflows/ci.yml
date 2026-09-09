@@ -601,6 +601,9 @@ jobs:
       - name: Lint Ratchet (pyreon-lint advisory baseline)
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: bun run check-pyreon-lint-ratchet
+      - name: Leak Ratchet (audit-leak-classes baseline)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run check-leak-ratchet
       - name: Pyreon Lint Gate
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: bun run lint:pyreon
