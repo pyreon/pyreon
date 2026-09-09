@@ -5,7 +5,7 @@
 // do the same over a `[Double]`.
 
 import { plain } from './format'
-import { niceDomain, niceStep } from './scale'
+import { isFiniteNumber, niceDomain, niceStep } from './scale'
 import type { Double } from './types'
 
 /** One bucket: `[x0, x1)` (the last is closed), and how many values fell in it. */
@@ -25,7 +25,7 @@ export interface Bin {
  */
 export function binValues(values: Double[], count: Double): Bin[] {
   const finite: Double[] = []
-  for (const v of values) if (v === v) finite.push(v)
+  for (const v of values) if (isFiniteNumber(v)) finite.push(v)
   const out: Bin[] = []
   if (finite.length === 0) return out
   let lo = finite[0]!

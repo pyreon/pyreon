@@ -91,6 +91,38 @@ interface OptionGeometry {
   hgt: Double
 }
 
+/** The `CanvasHostProps` keys `OptionChartProps` does NOT take (its own `theme`, and the chrome the compiled option draws itself). */
+type HostOmitted = 'theme' | 'showTitle' | 'subtitle' | 'showLegend' | 'legendPosition' | 'animate' | 'updateAnimation' | 'updateDuration'
+/** Every host key the facade forwards verbatim — the host's whole surface minus the omitted set and the defaulted `height`. */
+type HostPassthrough = Exclude<keyof CanvasHostProps, HostOmitted | 'height'>
+/**
+ * The forwarded keys as a TOTAL record over `HostPassthrough`: adding a key to
+ * `CanvasHostProps` is a type error here until it is listed (or omitted), so a
+ * typed-but-never-forwarded prop — `rtl` shipped that way — cannot recur.
+ */
+export const HOST_PASSTHROUGH_KEYS: { readonly [K in HostPassthrough]: true } = {
+  width: true,
+  title: true,
+  tooltip: true,
+  keyboard: true,
+  toolbox: true,
+  onSaveImage: true,
+  accessibleTable: true,
+  class: true,
+  rtl: true,
+}
+
+/** The shared host's props for an option chart: every passthrough key present on `props`, plus the facade's fixed values. */
+export function hostPropsFor(props: OptionChartProps): CanvasHostProps {
+  const out: CanvasHostProps = { height: props.height ?? 320.0, animate: false, updateAnimation: false }
+  const sink = out as Record<string, unknown>
+  for (const k of Object.keys(HOST_PASSTHROUGH_KEYS) as HostPassthrough[]) {
+    const v = props[k]
+    if (v !== undefined) sink[k] = v
+  }
+  return out
+}
+
 export function OptionChart(props: OptionChartProps): VNode {
   let svgHost: HTMLDivElement | null = null
   // The auto-played step; -1 = not started (use the option's currentIndex).
@@ -298,19 +330,7 @@ export function OptionChart(props: OptionChartProps): VNode {
   // owns the pointer, keyboard, tooltip, toolbox and accessible-table paths.
   // The host's `title` chrome stays off — a compiled option draws its own
   // `title` — and it takes the props the facade shares with every host.
-  const hostProps: CanvasHostProps = {
-    ...(props.width !== undefined ? { width: props.width } : {}),
-    height: props.height ?? 320.0,
-    ...(props.title !== undefined ? { title: props.title } : {}),
-    ...(props.tooltip !== undefined ? { tooltip: props.tooltip } : {}),
-    ...(props.keyboard !== undefined ? { keyboard: props.keyboard } : {}),
-    ...(props.toolbox !== undefined ? { toolbox: props.toolbox } : {}),
-    ...(props.onSaveImage !== undefined ? { onSaveImage: props.onSaveImage } : {}),
-    ...(props.accessibleTable !== undefined ? { accessibleTable: props.accessibleTable } : {}),
-    ...(props.class !== undefined ? { class: props.class } : {}),
-    animate: false,
-    updateAnimation: false,
-  }
+  const hostProps = hostPropsFor(props)
   const hit = (g: OptionGeometry, i: number): OptionHit | null => {
     const f = firstSpec(g)
     if (f === null || i < 0) return null

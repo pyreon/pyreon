@@ -175,6 +175,31 @@ export function paint(
 }
 
 /**
+ * The `<canvas>` size as vnode props, for the server-rendered element.
+ *
+ * `prepareCanvas` sizes the element on the client only, so an SSR canvas
+ * carried no size at all and laid out at the HTML default (300x150) until the
+ * first paint resized it — a guaranteed layout shift on hydrate. The style
+ * fixes the CSS box; the attributes give the same box to a no-CSS reader.
+ * Width is omitted when it is measured from the container (auto width): a
+ * wrong guess would be a shift of its own.
+ */
+export function canvasSizeAttrs(
+  width: number | undefined,
+  height: number,
+  ownsTouches: boolean,
+): { style: string; width?: number; height: number } {
+  const size = width === undefined ? `height:${height}px` : `width:${width}px;height:${height}px`
+  return {
+    // A zoomable/brushable/navigable chart owns its touches; a static one
+    // leaves the page free to scroll over it.
+    style: ownsTouches ? `${size};touch-action:none` : size,
+    ...(width === undefined ? {} : { width }),
+    height,
+  }
+}
+
+/**
  * Size a canvas for the device pixel ratio and return its context.
  *
  * Without the DPR scale a chart is visibly soft on every retina display — the
