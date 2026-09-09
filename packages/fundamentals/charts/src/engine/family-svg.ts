@@ -56,12 +56,24 @@ import { measureApprox, renderSvg } from './svg'
 import type { SvgOptions } from './svg'
 import type { Double, DrawCmd, MeasureText, Pt, Rect } from './types'
 
-const LEGEND_OPTS = {
-  fontSize: 11.0,
-  labelColor: '#5a6b7a',
-  swatch: 10.0,
-  gap: 12.0,
-  orientation: 'horizontal' as const,
+/**
+ * The legend options the CANVAS host builds (`canvas-host.tsx`) — same fields,
+ * same theme sources. A helper that inlined these instead would render a
+ * differently-coloured legend than the same chart drawn on canvas.
+ */
+function legendOpts(t: ChartTheme) {
+  return {
+    fontSize: t.fontSize,
+    labelColor: t.label,
+    swatch: 10.0,
+    gap: 12.0,
+    orientation: 'horizontal' as const,
+  }
+}
+
+/** The theme every helper resolves: explicit fields win, the rest default. */
+function themeOf(theme: Partial<ChartTheme> | undefined): ChartTheme {
+  return { ...defaultTheme, ...theme }
 }
 
 /**
@@ -122,6 +134,8 @@ export interface PieToSvgOptions<T> {
   showLabels?: boolean
   showLegend?: boolean
   measure?: MeasureText
+  /** Chart theme; the canvas host reads the same fields. */
+  theme?: Partial<ChartTheme>
   title?: string
   /** Explicit long description; derived from the data when a title is given. */
   description?: string
@@ -133,10 +147,11 @@ export interface PieToSvgOptions<T> {
 export function pieToSvg<T>(options: PieToSvgOptions<T>): string {
   const width = options.width ?? 320
   const height = options.height ?? 240
+  const t = themeOf(options.theme)
   const slices = options.data.map((d, i) => ({
     value: options.value(d, i),
     label: options.label(d, i),
-    color: options.color?.(d, i) ?? paletteAt(options.palette ?? [], i),
+    color: options.color?.(d, i) ?? paletteAt(options.palette ?? t.palette, i),
   }))
   const measure = options.measure ?? measureApprox()
 
@@ -146,7 +161,7 @@ export function pieToSvg<T>(options: PieToSvgOptions<T>): string {
     const l = renderLegend(
       slices.map((s) => ({ label: s.label, color: s.color })),
       { x: 8, y: 8, w: width - 16, h: height },
-      LEGEND_OPTS,
+      legendOpts(t),
       measure,
     )
     legendH = l.height
@@ -156,7 +171,7 @@ export function pieToSvg<T>(options: PieToSvgOptions<T>): string {
     innerRadius: options.innerRadius ?? 0,
     showLabels: options.showLabels ?? true,
     labelColor: '#ffffff',
-    fontSize: 11,
+    fontSize: t.fontSize,
   })
   for (const c of body) cmds.push(c)
 
@@ -181,6 +196,8 @@ export interface GaugeToSvgOptions {
   /** Print the value in the middle. */
   showValue?: boolean
   format?: Formatter
+  /** Chart theme; the canvas host reads the same fields. */
+  theme?: Partial<ChartTheme>
   title?: string
   description?: string
   svg?: Omit<SvgOptions, 'title' | 'description'>
@@ -193,13 +210,14 @@ export function gaugeToSvg(options: GaugeToSvgOptions): string {
   const min = options.min ?? 0
   const max = options.max ?? 100
   const fmt = options.format ?? plain
+  const t = themeOf(options.theme)
   const opts: GaugeOptions = {
     min,
     max,
     sweep: Math.PI,
     thickness: options.thickness ?? 22,
-    trackColor: options.trackColor ?? 'rgba(132,150,165,0.22)',
-    valueColor: options.valueColor ?? '#0f766e',
+    trackColor: options.trackColor ?? t.grid,
+    valueColor: options.valueColor ?? paletteAt(t.palette, 0),
   }
   // A half-circle occupies the top half of its box, so the drawing box is
   // twice the visible height — the same trick the component uses.
@@ -209,7 +227,7 @@ export function gaugeToSvg(options: GaugeToSvgOptions): string {
       kind: 'text',
       text: fmt(options.value),
       at: { x: width / 2, y: height - 6 },
-      fill: '#10161d',
+      fill: t.text,
       size: 20,
       align: 'middle',
       baseline: 'bottom',
@@ -237,6 +255,8 @@ export interface RadarToSvgOptions<T> {
   width?: Double
   height?: Double
   measure?: MeasureText
+  /** Chart theme; the canvas host reads the same fields. */
+  theme?: Partial<ChartTheme>
   title?: string
   description?: string
   svg?: Omit<SvgOptions, 'title' | 'description'>
@@ -246,8 +266,9 @@ export interface RadarToSvgOptions<T> {
 export function radarToSvg<T>(options: RadarToSvgOptions<T>): string {
   const width = options.width ?? 320
   const height = options.height ?? 260
+  const t = themeOf(options.theme)
   const colorAt = (d: T, i: number): string =>
-    options.color?.(d, i) ?? paletteAt(options.palette ?? [], i)
+    options.color?.(d, i) ?? paletteAt(options.palette ?? t.palette, i)
   const measure = options.measure ?? measureApprox()
 
   let legendH = 0
@@ -256,7 +277,7 @@ export function radarToSvg<T>(options: RadarToSvgOptions<T>): string {
     const l = renderLegend(
       options.data.map((d, i) => ({ label: options.label(d, i), color: colorAt(d, i) })),
       { x: 8, y: 8, w: width - 16, h: height },
-      LEGEND_OPTS,
+      legendOpts(t),
       measure,
     )
     legendH = l.height
@@ -272,9 +293,9 @@ export function radarToSvg<T>(options: RadarToSvgOptions<T>): string {
     { x: 0, y: legendH, w: width, h: height - legendH },
     {
       rings: options.rings ?? 4,
-      gridColor: 'rgba(132,150,165,0.35)',
-      labelColor: '#5a6b7a',
-      fontSize: 11,
+      gridColor: t.grid,
+      labelColor: t.label,
+      fontSize: t.fontSize,
       showLabels: options.showLabels ?? true,
     },
   )
@@ -316,7 +337,7 @@ export interface CandlestickToSvgOptions<T> {
 export function candlestickToSvg<T>(options: CandlestickToSvgOptions<T>): string {
   const width = options.width ?? 640
   const height = options.height ?? 320
-  const t = { ...defaultTheme, ...options.theme }
+  const t = themeOf(options.theme)
   const rows = options.data
   const candles: Ohlc[] = rows.map((d, i) => ({
     open: options.open(d, i),
@@ -420,7 +441,7 @@ function firstSeen<T>(data: T[], of: (d: T, i: number) => string): string[] {
 export function heatmapToSvg<T>(options: HeatmapToSvgOptions<T>): string {
   const width = options.width ?? 640
   const height = options.height ?? 320
-  const t = { ...defaultTheme, ...options.theme }
+  const t = themeOf(options.theme)
   const rows = options.data
   const cols = firstSeen(rows, options.x)
   const yCats = firstSeen(rows, options.y)
@@ -503,6 +524,8 @@ export interface FunnelToSvgOptions<T> {
   height?: Double
   funnel?: FunnelOptions
   measure?: MeasureText
+  /** Chart theme; the canvas host reads the same fields. */
+  theme?: Partial<ChartTheme>
   title?: string
   description?: string
   svg?: Omit<SvgOptions, 'title' | 'description'>
@@ -513,10 +536,11 @@ export interface FunnelToSvgOptions<T> {
 export function funnelToSvg<T>(options: FunnelToSvgOptions<T>): string {
   const width = options.width ?? 480.0
   const height = options.height ?? 320.0
+  const t = themeOf(options.theme)
   const stages: FunnelStage[] = options.data.map((d, i) => ({
     value: options.value(d, i),
     label: options.label(d, i),
-    color: options.color !== undefined ? options.color(d, i) : paletteAt(options.palette ?? [], i),
+    color: options.color !== undefined ? options.color(d, i) : paletteAt(options.palette ?? t.palette, i),
   }))
   const pad = 8.0
   const cmds = renderFunnel(stages, { x: pad, y: pad, w: width - pad * 2.0, h: height - pad * 2.0 }, options.funnel)
@@ -541,6 +565,8 @@ export interface TreemapToSvgOptions {
   height?: Double
   treemap?: TreemapOptions
   measure?: MeasureText
+  /** Chart theme; the canvas host reads the same fields. */
+  theme?: Partial<ChartTheme>
   title?: string
   description?: string
   svg?: Omit<SvgOptions, 'title' | 'description'>
@@ -548,10 +574,11 @@ export interface TreemapToSvgOptions {
 
 /** Treemap → `<svg>` string, server-safe. */
 export function treemapToSvg(options: TreemapToSvgOptions): string {
+  const t = themeOf(options.theme)
   const width = options.width ?? 640.0
   const height = options.height ?? 400.0
-  const cells = layoutTreemap(options.data, { x: 0.0, y: 0.0, w: width, h: height }, options.treemap)
-  const cmds = renderTreemap(cells, options.treemap, options.measure ?? measureApprox())
+  const cells = layoutTreemap(options.data, { x: 0.0, y: 0.0, w: width, h: height }, { palette: t.palette, ...options.treemap })
+  const cmds = renderTreemap(cells, { palette: t.palette, ...options.treemap }, options.measure ?? measureApprox())
   const leaves = cells.filter((c) => c.leaf)
   const description =
     options.description ??
@@ -573,6 +600,8 @@ export interface SunburstToSvgOptions {
   innerRatio?: Double
   sunburst?: SunburstOptions
   measure?: MeasureText
+  /** Chart theme; the canvas host reads the same fields. */
+  theme?: Partial<ChartTheme>
   title?: string
   description?: string
   svg?: Omit<SvgOptions, 'title' | 'description'>
@@ -580,13 +609,14 @@ export interface SunburstToSvgOptions {
 
 /** Sunburst → `<svg>` string, server-safe. */
 export function sunburstToSvg(options: SunburstToSvgOptions): string {
+  const t = themeOf(options.theme)
   const width = options.width ?? 480.0
   const height = options.height ?? 480.0
   const center: Pt = { x: width / 2.0, y: height / 2.0 }
   const outerR = Math.max(0.0, Math.min(width, height) / 2.0 - 4.0)
   const innerR = outerR * (options.innerRatio ?? 0.2)
-  const arcs = layoutSunburst(options.data, innerR, outerR, options.sunburst)
-  const cmds = renderSunburst(arcs, center, options.sunburst, options.measure ?? measureApprox())
+  const arcs = layoutSunburst(options.data, innerR, outerR, { palette: t.palette, ...options.sunburst })
+  const cmds = renderSunburst(arcs, center, { palette: t.palette, ...options.sunburst }, options.measure ?? measureApprox())
   const leaves = arcs.filter((a) => a.leaf)
   const description =
     options.description ??
@@ -608,6 +638,8 @@ export interface TreeToSvgOptions {
   height?: Double
   tree?: TreeOptions
   measure?: MeasureText
+  /** Chart theme; the canvas host reads the same fields. */
+  theme?: Partial<ChartTheme>
   title?: string
   description?: string
   svg?: Omit<SvgOptions, 'title' | 'description'>
@@ -615,10 +647,11 @@ export interface TreeToSvgOptions {
 
 /** Tree → `<svg>` string, server-safe. */
 export function treeToSvg(options: TreeToSvgOptions): string {
+  const t = themeOf(options.theme)
   const width = options.width ?? 640.0
   const height = options.height ?? 400.0
-  const layout = layoutTree(options.data, { x: 0.0, y: 0.0, w: width, h: height }, options.tree)
-  const cmds = renderTree(layout, options.tree)
+  const layout = layoutTree(options.data, { x: 0.0, y: 0.0, w: width, h: height }, { palette: t.palette, labelColor: t.label, linkColor: t.label, ...options.tree })
+  const cmds = renderTree(layout, { palette: t.palette, labelColor: t.label, linkColor: t.label, ...options.tree })
   void (options.measure ?? measureApprox())
   const leaves = layout.nodes.filter((n) => n.leaf).length
   const description =
@@ -637,6 +670,8 @@ export interface RiverToSvgOptions {
   height?: Double
   river?: RiverOptions
   measure?: MeasureText
+  /** Chart theme; the canvas host reads the same fields. */
+  theme?: Partial<ChartTheme>
   title?: string
   description?: string
   svg?: Omit<SvgOptions, 'title' | 'description'>
@@ -644,10 +679,11 @@ export interface RiverToSvgOptions {
 
 /** Theme river → `<svg>` string, server-safe. */
 export function riverToSvg(options: RiverToSvgOptions): string {
+  const t = themeOf(options.theme)
   const width = options.width ?? 640.0
   const height = options.height ?? 320.0
-  const layout = layoutRiver(options.series, { x: 8.0, y: 8.0, w: Math.max(0.0, width - 16.0), h: Math.max(0.0, height - 16.0) }, options.river)
-  const cmds = renderRiver(layout, options.river, options.measure ?? measureApprox())
+  const layout = layoutRiver(options.series, { x: 8.0, y: 8.0, w: Math.max(0.0, width - 16.0), h: Math.max(0.0, height - 16.0) }, { palette: t.palette, ...options.river })
+  const cmds = renderRiver(layout, { palette: t.palette, ...options.river }, options.measure ?? measureApprox())
   const description =
     options.description ??
     (options.title !== undefined ? `${options.title}: ${options.series.length} streams over ${layout.xs.length} points (${options.series.map((s) => s.name).join(', ')}).` : undefined)
@@ -667,6 +703,8 @@ export interface PolarToSvgOptions {
   height?: Double
   polar?: PolarOptions
   measure?: MeasureText
+  /** Chart theme; the canvas host reads the same fields. */
+  theme?: Partial<ChartTheme>
   title?: string
   description?: string
   svg?: Omit<SvgOptions, 'title' | 'description'>
@@ -674,10 +712,11 @@ export interface PolarToSvgOptions {
 
 /** Polar chart → `<svg>` string, server-safe. */
 export function polarToSvg(options: PolarToSvgOptions): string {
+  const t = themeOf(options.theme)
   const width = options.width ?? 480.0
   const height = options.height ?? 480.0
-  const layout = layoutPolar(options.axes, options.series, { x: 0.0, y: 0.0, w: width, h: height }, options.polar)
-  const cmds = renderPolar(layout, options.polar)
+  const layout = layoutPolar(options.axes, options.series, { x: 0.0, y: 0.0, w: width, h: height }, { palette: t.palette, labelColor: t.label, gridColor: t.grid, ...options.polar })
+  const cmds = renderPolar(layout, { palette: t.palette, labelColor: t.label, gridColor: t.grid, ...options.polar })
   void (options.measure ?? measureApprox())
   const description =
     options.description ??
@@ -700,6 +739,8 @@ export interface SankeyToSvgOptions {
   height?: Double
   sankey?: SankeyOptions
   measure?: MeasureText
+  /** Chart theme; the canvas host reads the same fields. */
+  theme?: Partial<ChartTheme>
   title?: string
   description?: string
   svg?: Omit<SvgOptions, 'title' | 'description'>
@@ -707,11 +748,12 @@ export interface SankeyToSvgOptions {
 
 /** Sankey → `<svg>` string, server-safe. Leaves a label gutter on both sides. */
 export function sankeyToSvg(options: SankeyToSvgOptions): string {
+  const t = themeOf(options.theme)
   const width = options.width ?? 640.0
   const height = options.height ?? 400.0
   const gutter = 80.0
-  const layout = layoutSankey(options.nodes, options.links, { x: gutter, y: 8.0, w: Math.max(0.0, width - gutter * 2.0), h: Math.max(0.0, height - 16.0) }, options.sankey)
-  const cmds = renderSankey(layout, options.sankey)
+  const layout = layoutSankey(options.nodes, options.links, { x: gutter, y: 8.0, w: Math.max(0.0, width - gutter * 2.0), h: Math.max(0.0, height - 16.0) }, { palette: t.palette, labelColor: t.label, ...options.sankey })
+  const cmds = renderSankey(layout, { palette: t.palette, labelColor: t.label, ...options.sankey })
   void (options.measure ?? measureApprox())
   let total = 0.0
   for (const l of layout.links) total = total + l.value
@@ -734,6 +776,8 @@ export interface GraphToSvgOptions {
   height?: Double
   graph?: GraphOptions
   measure?: MeasureText
+  /** Chart theme; the canvas host reads the same fields. */
+  theme?: Partial<ChartTheme>
   title?: string
   description?: string
   svg?: Omit<SvgOptions, 'title' | 'description'>
@@ -741,11 +785,12 @@ export interface GraphToSvgOptions {
 
 /** Graph → `<svg>` string, server-safe. */
 export function graphToSvg(options: GraphToSvgOptions): string {
+  const t = themeOf(options.theme)
   const width = options.width ?? 640.0
   const height = options.height ?? 400.0
   const box: Rect = { x: 0.0, y: 0.0, w: width, h: height }
-  const layout = layoutGraph(options.nodes, options.links, box, options.graph)
-  const cmds = renderGraph(layout, box, options.graph)
+  const layout = layoutGraph(options.nodes, options.links, box, { palette: t.palette, labelColor: t.label, linkColor: t.label, ...options.graph })
+  const cmds = renderGraph(layout, box, { palette: t.palette, labelColor: t.label, linkColor: t.label, ...options.graph })
   void (options.measure ?? measureApprox())
   const description =
     options.description ??
@@ -767,6 +812,8 @@ export interface CalendarToSvgOptions {
   height?: Double
   calendar?: CalendarOptions
   measure?: MeasureText
+  /** Chart theme; the canvas host reads the same fields. */
+  theme?: Partial<ChartTheme>
   title?: string
   description?: string
   svg?: Omit<SvgOptions, 'title' | 'description'>
@@ -774,11 +821,12 @@ export interface CalendarToSvgOptions {
 
 /** Calendar → `<svg>` string, server-safe. */
 export function calendarToSvg(options: CalendarToSvgOptions): string {
+  const t = themeOf(options.theme)
   const width = options.width ?? 720.0
   const height = options.height ?? 140.0
-  const layout = layoutCalendar(options.start, options.end, { x: 4.0, y: 4.0, w: width - 8.0, h: height - 8.0 }, options.calendar)
+  const layout = layoutCalendar(options.start, options.end, { x: 4.0, y: 4.0, w: width - 8.0, h: height - 8.0 }, { labelColor: t.label, ...options.calendar })
   const vals = calendarValues(options.values)
-  const cmds = renderCalendar(layout, vals, options.calendar)
+  const cmds = renderCalendar(layout, vals, { labelColor: t.label, ...options.calendar })
   void (options.measure ?? measureApprox())
   let filled = 0
   for (const c of layout.cells) if (options.values[c.date] !== undefined) filled++
@@ -801,6 +849,8 @@ export interface GanttToSvgOptions {
   height?: Double
   gantt?: GanttOptions
   measure?: MeasureText
+  /** Chart theme; the canvas host reads the same fields. */
+  theme?: Partial<ChartTheme>
   title?: string
   description?: string
   svg?: Omit<SvgOptions, 'title' | 'description'>
@@ -808,11 +858,12 @@ export interface GanttToSvgOptions {
 
 /** Gantt → `<svg>` string, server-safe. */
 export function ganttToSvg(options: GanttToSvgOptions): string {
+  const t = themeOf(options.theme)
   const width = options.width ?? 720.0
   const height = options.height ?? 320.0
   const measure = options.measure ?? measureApprox()
-  const layout = layoutGantt(options.tasks, { x: 4.0, y: 4.0, w: width - 8.0, h: height - 8.0 }, options.gantt, measure)
-  const cmds = renderGantt(layout, options.gantt)
+  const layout = layoutGantt(options.tasks, { x: 4.0, y: 4.0, w: width - 8.0, h: height - 8.0 }, { palette: t.palette, labelColor: t.label, gridColor: t.grid, laneColor: t.grid, ...options.gantt }, measure)
+  const cmds = renderGantt(layout, { palette: t.palette, labelColor: t.label, gridColor: t.grid, laneColor: t.grid, ...options.gantt })
   const description =
     options.description ??
     (options.title !== undefined
@@ -834,6 +885,8 @@ export interface ParallelToSvgOptions {
   height?: Double
   parallel?: ParallelOptions
   measure?: MeasureText
+  /** Chart theme; the canvas host reads the same fields. */
+  theme?: Partial<ChartTheme>
   title?: string
   description?: string
   svg?: Omit<SvgOptions, 'title' | 'description'>
@@ -841,11 +894,12 @@ export interface ParallelToSvgOptions {
 
 /** Parallel coordinates → `<svg>` string, server-safe. */
 export function parallelToSvg(options: ParallelToSvgOptions): string {
+  const t = themeOf(options.theme)
   const width = options.width ?? 640.0
   const height = options.height ?? 360.0
   const gutter = 40.0
-  const layout = layoutParallel(options.axes, parallelRows(options.axes, options.rows), { x: gutter, y: 8.0, w: Math.max(0.0, width - gutter * 2.0), h: Math.max(0.0, height - 16.0) }, options.parallel)
-  const cmds = renderParallel(layout, options.parallel)
+  const layout = layoutParallel(options.axes, parallelRows(options.axes, options.rows), { x: gutter, y: 8.0, w: Math.max(0.0, width - gutter * 2.0), h: Math.max(0.0, height - 16.0) }, { palette: t.palette, labelColor: t.label, axisColor: t.axis, ...options.parallel })
+  const cmds = renderParallel(layout, { palette: t.palette, labelColor: t.label, axisColor: t.axis, ...options.parallel })
   void (options.measure ?? measureApprox())
   const description =
     options.description ??

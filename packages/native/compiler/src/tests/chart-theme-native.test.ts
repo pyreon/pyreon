@@ -61,9 +61,9 @@ describe('family-host theme — chrome, tooltip, palette and ground follow the t
   })
   it('an explicit palette in the options wins over the theme; the theme fills it only when unset', () => {
     const s = transform(DARK_OPTS, { target: 'swift' })
-    expect(s.code).toContain('let pyreonOptions: TreemapOptions = { () -> TreemapOptions in var pyreonO = TreemapOptions(padding: Double(2)); if pyreonO.palette == nil { pyreonO.palette = [')
+    expect(s.code).toContain('let pyreonOptions: TreemapOptions = { () -> TreemapOptions in var pyreonO = TreemapOptions(padding: Double(2)); pyreonO.palette = pyreonO.palette ?? [')
     const k = transform(DARK_OPTS, { target: 'kotlin' })
-    expect(k.code).toContain('val pyreonOptions: TreemapOptions = (TreemapOptions(padding = (2).toDouble())).let { if (it.palette == null) it.copy(palette = listOf(')
+    expect(k.code).toContain('val pyreonOptions: TreemapOptions = (TreemapOptions(padding = (2).toDouble())).let { it.copy(palette = it.palette ?: listOf(')
   })
   it('an accessor host: a literal theme drives the slice colours by index, the pie label size and the ground', () => {
     const s = transform(LITERAL, { target: 'swift' })

@@ -191,7 +191,7 @@ data class GanttLayout(var rows: List<GanttRow>, var lanes: List<GanttLane>, var
 
 data class GanttRange(var start: String, var end: String)
 
-data class GanttOptions(var rowHeight: Double? = null, var labelFraction: Double? = null, var fontSize: Double? = null, var labelColor: String? = null, var gridColor: String? = null, var today: String? = null, var todayColor: String? = null, var domain: GanttRange? = null, var showDependencies: Boolean? = null, var progress: Double? = null, var palette: List<String>? = null)
+data class GanttOptions(var rowHeight: Double? = null, var labelFraction: Double? = null, var fontSize: Double? = null, var labelColor: String? = null, var gridColor: String? = null, var laneColor: String? = null, var today: String? = null, var todayColor: String? = null, var domain: GanttRange? = null, var showDependencies: Boolean? = null, var progress: Double? = null, var palette: List<String>? = null)
 
 data class ParallelAxis(var name: String, var type: String? = null, var categories: List<String>? = null, var domain: Domain? = null, var inverse: Boolean? = null)
 
@@ -5363,11 +5363,12 @@ fun renderGantt(layout: GanttLayout, options: GanttOptions? = null): List<Pyreon
     val fontSize = (options?.fontSize ?: 12.0)
     val labelColor = (options?.labelColor ?: "#374151")
     val gridColor = (options?.gridColor ?: "#e5e7eb")
+    val laneColor = (options?.laneColor ?: "#f3f4f6")
     val rawP = (options?.progress ?: 1.0)
     val progress = if (rawP < 0.0) 0.0 else if (rawP > 1.0) 1.0 else rawP
     val showDeps = (options?.showDependencies ?: true)
     for (lane in layout.lanes) {
-      out.add(PyreonDrawCmd(kind = "rect", rect = lane.band, fill = "#f3f4f6"))
+      out.add(PyreonDrawCmd(kind = "rect", rect = lane.band, fill = laneColor))
       out.add(PyreonDrawCmd(kind = "text", fill = labelColor, text = lane.text, at = lane.at, size = fontSize + 1.0, align = "start", baseline = "middle"))
     }
     val plotBottom = layout.plot.y + layout.plot.h

@@ -1239,10 +1239,15 @@ describe('chart hosts — CalendarChart + ParallelChart lower through literal ad
   it('Swift: a values record becomes [CalendarValue]; the layout is the web host\'s box; the tap is hitCalendarIndex', () => {
     const r = transform(CALENDAR, { target: 'swift' })
     expect(r.warnings).toEqual([])
+    // The month/day labels default from the theme (the web host's merge), so
+    // the options reach the engine as `pyreonOptions` — an explicit
+    // `calendar={{ labelColor }}` still wins, per `withThemeDefaults`.
     expect(r.code).toContain(
-      'let pyreonLayout = layoutCalendar("2026-01-01", "2026-02-28", PyreonChartRect(x: 4.0, y: 4.0, w: Double(pyreonGeo.size.width) - 8.0, h: 160.0 - 8.0), CalendarOptions(firstDay: Double(1)))')
+      'let pyreonOptions: CalendarOptions = { () -> CalendarOptions in var pyreonO = CalendarOptions(firstDay: Double(1)); pyreonO.labelColor = pyreonO.labelColor ?? (pyreonColorScheme == .dark ? "#9aa5b5" : "#5a6b7a"); return pyreonO }()')
     expect(r.code).toContain(
-      'PyreonChartCanvas(cmds: renderCalendar(pyreonLayout, [CalendarValue(date: "2026-01-05", value: 3.0), CalendarValue(date: "2026-01-20", value: 7.5)], CalendarOptions(firstDay: Double(1))))',
+      'layoutCalendar("2026-01-01", "2026-02-28", PyreonChartRect(x: 4.0, y: 4.0, w: Double(pyreonGeo.size.width) - 8.0, h: 160.0 - 8.0), pyreonOptions)')
+    expect(r.code).toContain(
+      'renderCalendar(pyreonLayout, [CalendarValue(date: "2026-01-05", value: 3.0), CalendarValue(date: "2026-01-20", value: 7.5)], pyreonOptions)',
     )
     expect(r.code).toContain('hitCalendarIndex(pyreonLayout, ')
   })
@@ -1250,9 +1255,11 @@ describe('chart hosts — CalendarChart + ParallelChart lower through literal ad
     const r = transform(CALENDAR, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain(
-      'val pyreonLayout = layoutCalendar("2026-01-01", "2026-02-28", PyreonChartRect(4.0, 4.0, pyreonW - 8.0, 160.0 - 8.0), CalendarOptions(firstDay = (1).toDouble()))')
+      'val pyreonOptions: CalendarOptions = (CalendarOptions(firstDay = (1).toDouble())).let { it.copy(labelColor = it.labelColor ?: (if (isSystemInDarkTheme()) "#9aa5b5" else "#5a6b7a")) }')
     expect(r.code).toContain(
-      'renderCalendar(pyreonLayout, listOf(CalendarValue(date = "2026-01-05", value = 3.0), CalendarValue(date = "2026-01-20", value = 7.5)), CalendarOptions(firstDay = (1).toDouble()))',
+      'layoutCalendar("2026-01-01", "2026-02-28", PyreonChartRect(4.0, 4.0, pyreonW - 8.0, 160.0 - 8.0), pyreonOptions)')
+    expect(r.code).toContain(
+      'renderCalendar(pyreonLayout, listOf(CalendarValue(date = "2026-01-05", value = 3.0), CalendarValue(date = "2026-01-20", value = 7.5)), pyreonOptions)',
     )
   })
   it('a values record that is not a literal (a call) warns BY NAME on both targets', () => {

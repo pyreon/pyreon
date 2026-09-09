@@ -1467,18 +1467,20 @@ public struct GanttOptions: Codable {
   public var fontSize: Double? = nil
   public var labelColor: String? = nil
   public var gridColor: String? = nil
+  public var laneColor: String? = nil
   public var today: String? = nil
   public var todayColor: String? = nil
   public var domain: GanttRange? = nil
   public var showDependencies: Bool? = nil
   public var progress: Double? = nil
   public var palette: [String]? = nil
-  public init(rowHeight: Double? = nil, labelFraction: Double? = nil, fontSize: Double? = nil, labelColor: String? = nil, gridColor: String? = nil, today: String? = nil, todayColor: String? = nil, domain: GanttRange? = nil, showDependencies: Bool? = nil, progress: Double? = nil, palette: [String]? = nil) {
+  public init(rowHeight: Double? = nil, labelFraction: Double? = nil, fontSize: Double? = nil, labelColor: String? = nil, gridColor: String? = nil, laneColor: String? = nil, today: String? = nil, todayColor: String? = nil, domain: GanttRange? = nil, showDependencies: Bool? = nil, progress: Double? = nil, palette: [String]? = nil) {
     self.rowHeight = rowHeight
     self.labelFraction = labelFraction
     self.fontSize = fontSize
     self.labelColor = labelColor
     self.gridColor = gridColor
+    self.laneColor = laneColor
     self.today = today
     self.todayColor = todayColor
     self.domain = domain
@@ -7049,11 +7051,12 @@ public func renderGantt(_ layout: GanttLayout, _ options: GanttOptions? = nil) -
     let fontSize = (options?.fontSize ?? 12.0)
     let labelColor = (options?.labelColor ?? "#374151")
     let gridColor = (options?.gridColor ?? "#e5e7eb")
+    let laneColor = (options?.laneColor ?? "#f3f4f6")
     let rawP = (options?.progress ?? 1.0)
     let progress = rawP < 0.0 ? 0.0 : rawP > 1.0 ? 1.0 : rawP
     let showDeps = (options?.showDependencies ?? true)
     for lane in layout.lanes {
-      out.append(PyreonDrawCmd(kind: "rect", rect: lane.band, fill: "#f3f4f6"))
+      out.append(PyreonDrawCmd(kind: "rect", rect: lane.band, fill: laneColor))
       out.append(PyreonDrawCmd(kind: "text", fill: labelColor, text: lane.text, at: lane.at, size: fontSize + 1.0, align: "start", baseline: "middle"))
     }
     let plotBottom = layout.plot.y + layout.plot.h
