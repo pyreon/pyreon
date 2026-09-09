@@ -51,10 +51,37 @@ export const UNSAFE_URL_RE = /^\s*(?:javascript|data):/i
  * ` javascript:`, `data:text/html` all still reach — and are still
  * rejected by — the regex. Additive; the guard's behavior is unchanged.
  */
+/**
+ * Strip every ASCII control and space, ANYWHERE in the string, before the
+ * scheme test.
+ *
+ * This is not defensive tidying — it is what the browser does. The URL parser
+ * removes tab and newline from the whole input and trims leading C0-or-space
+ * before resolving a scheme, so `java\tscript:alert(1)`,
+ * `java\nscript:alert(1)` and `\x01javascript:alert(1)` are all LIVE script
+ * URLs. `UNSAFE_URL_RE` tolerates leading `\s*` only, so every one of them
+ * read as safe and was emitted verbatim on all four render paths.
+ *
+ * The repo already knew this in two places and neither was this one:
+ * `@pyreon/router`'s `redirect.ts` implements both WHATWG steps, and
+ * `@pyreon/lint`'s `no-script-url` rule strips exactly this range with a
+ * comment naming `java\tscript:` as the bypass. So the STATIC rule, which only
+ * ever sees literals a developer typed, was strictly stronger than the RUNTIME
+ * guard, which sees attacker-controlled values.
+ *
+ * Only the DECISION is normalized; the emitted value is untouched.
+ */
+// oxlint-disable-next-line no-control-regex
+const URL_SCHEME_NOISE_RE = /[\u0000-\u0020]/g
+
 export function isUnsafeUrl(url: string): boolean {
   const c = url.charCodeAt(0)
+  // The fast path stays sound under normalization: stripping only removes
+  // chars <= 32, so if the FIRST char is printable ASCII and not j/J/d/D it is
+  // still the first char afterwards, and the string still cannot be
+  // `javascript:`/`data:`. Normalizing costs nothing for the common case.
   if (c > 32 && c < 127 && (c | 32) !== 106 && (c | 32) !== 100) return false
-  return UNSAFE_URL_RE.test(url)
+  return UNSAFE_URL_RE.test(url) || UNSAFE_URL_RE.test(url.replace(URL_SCHEME_NOISE_RE, ''))
 }
 
 // A `data:image/...` URI on an image-source attribute renders as a static,

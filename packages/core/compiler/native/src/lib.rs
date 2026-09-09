@@ -5208,7 +5208,15 @@ fn starts_with_ci(s: &str, prefix: &str) -> bool {
 /// `/^\s*(?:javascript|data):/i` — case-insensitive, leading-JS-`\s`-tolerant.
 fn ssr_unsafe_url(value: &str) -> bool {
     let rest = value.trim_start_matches(is_js_regex_space);
-    starts_with_ci(rest, "javascript:") || starts_with_ci(rest, "data:")
+    if starts_with_ci(rest, "javascript:") || starts_with_ci(rest, "data:") {
+        return true;
+    }
+    // The browser strips ASCII controls and spaces from ANYWHERE in a URL
+    // before resolving its scheme, so `java\tscript:alert(1)` is a live script
+    // URL that the leading-only trim above reads as safe. Mirrors core's
+    // `isUnsafeUrl` and the JS twin's `stripUrlSchemeNoise`.
+    let stripped: String = value.chars().filter(|c| *c > '\u{0020}').collect();
+    starts_with_ci(&stripped, "javascript:") || starts_with_ci(&stripped, "data:")
 }
 
 /// A generic attribute (`_ssrAttrGen` fast path is byte-identical): lowercase
