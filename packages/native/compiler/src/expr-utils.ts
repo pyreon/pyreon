@@ -1266,3 +1266,39 @@ export function jsxInStringifiedChildWarning(target: 'swift' | 'kotlin'): string
     `to SwiftUI \`ForEach\` / Compose \`items()\`.`
   )
 }
+
+/**
+ * `T | null` / `T | undefined` — the shape both emitters lower to a Swift
+ * Optional or a Kotlin nullable. Flat by construction (the parser does not
+ * nest unions), so a single `some` is the whole test.
+ */
+export function isNullableType(t: TypeIR | undefined): boolean {
+  return t?.kind === 'union' && t.branches.some((b) => b.kind === 'null' || b.kind === 'undefined')
+}
+
+/**
+ * Spreading an OPTIONAL object emits code neither toolchain accepts, and until
+ * this warning existed it did so in SILENCE on both targets:
+ *
+ *   swift   func f(_ o: Opts?) -> Opts { { var c = o; c.a = "x"; return c }() }
+ *   kotlin  fun f(o: Opts?): Opts = o.copy(a = "x")
+ *
+ * `c` is `Opts?`, so the member assignment and the return type both fail;
+ * `.copy` on a nullable receiver is rejected outright. TypeScript is perfectly
+ * happy with the source — `{ ...undefined }` is legal and contributes nothing —
+ * so the FIRST signal was a swiftc/kotlinc gate, whose error text points at
+ * generated Swift rather than at the line that produced it. One such spread in
+ * `candlestick-chart.ts` cost 35 compile failures across every chart suite.
+ *
+ * There is no honest lowering to fall back to: JS's semantics say the spread
+ * contributes nothing when the source is nullish, but the emitted struct still
+ * needs every field, and the defaults for the ones the literal does not name
+ * are not knowable here. So this NAMES the problem and the emit is unchanged —
+ * a diagnostic, not a behaviour change.
+ */
+export function optionalSpreadWarning(name: string): string {
+  return (
+    `Spreading \`${name}\`, which is optional, has no native lowering: the emit assigns through a Swift Optional / calls \`.copy\` on a Kotlin nullable, and neither compiles. ` +
+    `Build the object field by field instead (\`field: ${name}?.field ?? <fallback>\`), or narrow \`${name}\` to non-optional before the spread.`
+  )
+}
