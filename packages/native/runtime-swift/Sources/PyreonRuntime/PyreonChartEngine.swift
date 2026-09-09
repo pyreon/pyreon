@@ -2569,10 +2569,10 @@ public func withAlpha(_ color: String, _ alpha: Double) -> String {
     }
     let pair = { (at: Double) in code(Double(Array(hex.utf16)[Int(at)])) * 16.0 + code(Double(Array(hex.utf16)[Int(at + 1)])) }
     let single = { (at: Double) in code(Double(Array(hex.utf16)[Int(at)])) * 17.0 }
-    if hex.count == 3 {
+    if hex.utf16.count == 3 {
       return "rgba(\(single(0.0)), \(single(1.0)), \(single(2.0)), \(a))"
     }
-    if hex.count == 6 {
+    if hex.utf16.count == 6 {
       return "rgba(\(pair(0.0)), \(pair(2.0)), \(pair(4.0)), \(a))"
     }
     return color
@@ -3984,14 +3984,14 @@ public func heatHexDigit(_ c: Double) -> Double {
   }
 
 public func heatChannel(_ hex: String, _ at: Int) -> Double {
-    if hex.count < at + 2 {
+    if hex.utf16.count < at + 2 {
       return 0.0
     }
     return heatHexDigit(Double(Array(hex.utf16)[Int(at)])) * 16.0 + heatHexDigit(Double(Array(hex.utf16)[Int(at + 1)]))
   }
 
 public func heatHashOffset(_ hex: String) -> Int {
-    if hex.count > 0 && Double(Array(hex.utf16)[Int(0)]) == 35.0 {
+    if hex.utf16.count > 0 && Double(Array(hex.utf16)[Int(0)]) == 35.0 {
       return 1
     }
     return 0
@@ -4439,14 +4439,14 @@ public func hexDigit(_ c: Double) -> Double {
   }
 
 public func hexPair(_ hex: String, _ at: Int) -> Double {
-    if hex.count < at + 2 {
+    if hex.utf16.count < at + 2 {
       return 0.0
     }
     return hexDigit(Double(Array(hex.utf16)[Int(at)])) * 16.0 + hexDigit(Double(Array(hex.utf16)[Int(at + 1)]))
   }
 
 public func tintHex(_ hex: String, _ t: Double) -> String {
-    if hex.count < 7 {
+    if hex.utf16.count < 7 {
       return hex
     }
     let r = ((Double(hexPair(hex, 1) + (255.0 - hexPair(hex, 1)) * t)) + 0.5).rounded(.down)
@@ -4457,7 +4457,7 @@ public func tintHex(_ hex: String, _ t: Double) -> String {
 
 public func approxTextWidth(_ text: String, _ fontSize: Double) -> Double {
     var units = 0.0
-    for i in 0..<text.count {
+    for i in 0..<text.utf16.count {
       let c = Double(Array(text.utf16)[Int(i)])
       if c >= 48.0 && c <= 57.0 {
         units = units + 0.9
@@ -5629,7 +5629,7 @@ public func sankeyHexDigit(_ c: Double) -> Double {
   }
 
 public func sankeyRgba(_ hex: String, _ alpha: Double) -> String {
-    if hex.count < 7 {
+    if hex.utf16.count < 7 {
       return hex
     }
     let r = sankeyHexDigit(Double(Array(hex.utf16)[Int(1)])) * 16.0 + sankeyHexDigit(Double(Array(hex.utf16)[Int(2)]))
@@ -6345,7 +6345,7 @@ public func calendarDigit(_ c: Double) -> Double {
   }
 
 public func parseIsoDays(_ s: String) -> CalendarParsed {
-    if s.count != 10 || Double(Array(s.utf16)[Int(4)]) != 45.0 || Double(Array(s.utf16)[Int(7)]) != 45.0 {
+    if s.utf16.count != 10 || Double(Array(s.utf16)[Int(4)]) != 45.0 || Double(Array(s.utf16)[Int(7)]) != 45.0 {
       return CalendarParsed(ok: false, days: 0.0)
     }
     let y0 = calendarDigit(Double(Array(s.utf16)[Int(0)]))
