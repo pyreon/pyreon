@@ -5758,6 +5758,13 @@ fn fuse_text_children(el: &JSXElement, ctx: &mut Ctx) -> Option<String> {
         match c {
             JSXChild::Text(t) => {
                 let cleaned = clean_jsx_text(t.value.as_str());
+                // Mirror of the JS twin: JSXText is HTML source, and fusion
+                // moves it into a JS string literal assigned to `Text.data`,
+                // which decodes nothing. Bail so the shape falls back to the
+                // pre-fusion path. See the JS comment for the full reasoning.
+                if cleaned.contains('&') {
+                    return None;
+                }
                 push_lit(&mut parts, &cleaned);
             }
             JSXChild::ExpressionContainer(container) => {
