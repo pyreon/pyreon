@@ -129,17 +129,24 @@ describe('sheet.flushSSRPending — streaming SSR watermark', () => {
   })
 
   it('resetSSRBuffer() resets the watermark without dropping the dedup cache', () => {
-    s.insert('color: red;')
+    const cls = s.insert('color: red;')
     s.flushSSRPending()
 
     s.resetSSRBuffer()
     // After resetSSRBuffer, the buffer is empty AND the watermark is 0.
     expect(s.flushSSRPending()).toBe('')
 
-    // The dedup cache survives, so re-inserting the same CSS hits the
-    // cache and does NOT re-buffer the rule.
+    // The dedup cache survives — the same CSS resolves to the same className
+    // without re-hashing — but the FRESH buffer must carry the rule again:
+    // a buffer reset marks a new capture/request, and a class the cache
+    // already knows still has to reach that capture's flush. (The previous
+    // form of this spec asserted an EMPTY flush here, which encoded the
+    // "second streamed request ships class names with no CSS" bug.)
+    expect(s.has(cls)).toBe(true)
+    expect(s.insert('color: red;')).toBe(cls)
+    expect(s.flushSSRPending()).toContain(`.${cls}{color: red;}`)
+    // …and once per capture only.
     s.insert('color: red;')
-    // Buffer was empty + cache hit → flush still empty.
     expect(s.flushSSRPending()).toBe('')
   })
 

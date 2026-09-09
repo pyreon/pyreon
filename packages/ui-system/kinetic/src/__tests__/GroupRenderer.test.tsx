@@ -262,7 +262,10 @@ describe('GroupRenderer', () => {
     const wrapperChildren = vnode?.children as VNode[]
     const tiProps = wrapperChildren[0]?.props as Record<string, unknown>
 
-    expect(tiProps.timeout).toBe(2000)
+    // `timeout` travels as an ACCESSOR now (it is re-armed per cycle, so it
+    // must stay live — see live-prop.ts). The invariant under test is
+    // unchanged: config.timeout is what it resolves to.
+    expect((tiProps.timeout as () => number)()).toBe(2000)
   })
 
   it('defaults timeout to 5000 when not provided', () => {
@@ -281,7 +284,7 @@ describe('GroupRenderer', () => {
     const wrapperChildren = vnode?.children as VNode[]
     const tiProps = wrapperChildren[0]?.props as Record<string, unknown>
 
-    expect(tiProps.timeout).toBe(5000)
+    expect((tiProps.timeout as () => number)()).toBe(5000)
   })
 
   it('ignores children without keys', () => {
@@ -341,7 +344,7 @@ describe('GroupRenderer', () => {
     const wrapperChildren = vnode?.children as VNode[]
     const tiProps = wrapperChildren[0]?.props as Record<string, unknown>
 
-    expect(tiProps.timeout).toBe(3000)
+    expect((tiProps.timeout as () => number)()).toBe(3000)
   })
 
   it('handleAfterLeave fires the callbacks.onAfterLeave and updates forceUpdateSignal', () => {

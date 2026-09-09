@@ -106,6 +106,14 @@ is exported and tested to produce identical series), and on native the
 compiler desugars `<Plot>` to that element before lowering — the two emit
 byte-identical Swift and Kotlin.
 
+One exception, and it is an omission rather than a design decision: the
+INDICATOR marks (`sma`, `ema`, `trend`, `bollinger`) have no grammar tag, so a
+`<Plot>` that needs a moving average has to be written in the array form. They
+lower to native either way; there is simply no `<SMA>` component yet. A
+`<Plot>` carrying one would also need the long-format pivot to COMPOSE with a
+mark's own `transform` instead of replacing it, which is what makes this its
+own change rather than four more branded components.
+
 ## The array form
 
 ```tsx
@@ -165,7 +173,8 @@ draw in array order.
 | `waterfall(y, options?)` | Floating steps from running total to running total (the bridge chart); `negativeColor` fills the falls, dashed connectors carry the level across. |
 | `stackedArea(y, options?)` | Shares over time: one filled area per mark, each between the running total below it and its own top, so the topmost outline is the total. |
 | `band(low, high, options?)` | A filled REGION between two channels — a confidence interval or a min/max range. Two accessors, not one: a region has two bounds and no single value, so its floor is the data rather than the axis an `area` closes to. `showValues` labels the HIGH edge; the tooltip and the accessible table carry both. |
-| `bollinger(y, window, k?)` | The ±k·σ envelope as a filled `band` plus its middle line — an ARRAY of two marks to spread. Its bounds are computed from the series (a rolling window), which is what `band` supports through `transform`/`transform2`. |
+| `sma(y, window)` / `ema(y, window)` / `trend(y)` | Derived lines: a simple or exponential moving average, or a least-squares trend. The leading `window - 1` points are gaps, not zeros. These LOWER to iOS and Android — the arithmetic crosses through the generated engine — as long as the window is a numeric literal. |
+| `bollinger(y, window, k?)` | The ±k·σ envelope as a filled `band` plus its middle line — an ARRAY of two marks to spread. Its bounds are computed from the series (a rolling window), which is what `band` supports through `transform`/`transform2`. Lowers to native too: the spread expands to the two Series it names, with the envelope arithmetic crossing through the generated engine. |
 | `histogram(rows, x, options?)` | Not a mark but a spread: bins the `x` channel (`bins`, nice-step edges) and returns `{ data, x, marks }` for `<PlotChart {...histogram(rows, (d) => d.age, { bins: 12 })} />`. |
 
 <Example file="./examples/charts/plot-marks-intervals" title="The marks that are not one value per category" />

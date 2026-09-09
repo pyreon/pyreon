@@ -578,6 +578,91 @@ export function applyClassProp(el: Element, value: unknown): void {
   if (el.getAttribute('class') !== resolved) el.setAttribute('class', resolved)
 }
 
+const XHTML_NS = 'http://www.w3.org/1999/xhtml'
+
+/**
+ * The HTML parser's "adjust foreign attributes" table (HTML Standard
+ * §13.2.6.5), which is the ONLY reason a qualified attribute name ever
+ * acquires a namespace in an HTML document.
+ *
+ * It is a CLOSED list, not a prefix rule, and that distinction is load-bearing:
+ * measured in Chromium, `xlink:href` parses into the XLink namespace with
+ * localName `href`, while `xlink:custom` and `xml:base` — same prefixes — stay
+ * NULL-namespace with the colon in their localName. Deriving the namespace from
+ * the prefix would therefore disagree with the parser on exactly the names
+ * nobody tests.
+ *
+ * Why this has to exist at all: the two ways an attribute reaches the DOM do
+ * NOT agree by themselves.
+ *
+ *  • Parsed (SSR bytes, and the compiled template path — `_tpl` builds through
+ *    `innerHTML`) — the parser runs this table, so `<use xlink:href="#i">`
+ *    becomes an XLink-namespaced `href` and the sprite renders.
+ *  • Assigned (`setAttribute('xlink:href', …)`, which every runtime path used)
+ *    — creates a NULL-namespace attribute whose localName is the literal
+ *    string `xlink:href`. An SVG `<use>` ignores it: measured in Chromium,
+ *    `href.baseVal === ''` and `getBBox().width === 0` where the parsed form
+ *    gives `'#icon'` and `100`.
+ *
+ * So a static sprite worked and a dynamic one did not, on the same element, in
+ * the same app — and a server-rendered page silently disagreed with its own
+ * client mount. Resolving the namespace here makes the assigned form reproduce
+ * the parsed form byte-for-byte (verified across the whole table: same
+ * `namespaceURI`, `localName`, `prefix` and `name`).
+ *
+ * Applied ONLY in foreign content, because the parser applies it only there:
+ * `<p xml:lang="cs">` in HTML context parses to a null namespace, and
+ * `setAttribute` already produces exactly that. Adding a namespace for HTML
+ * elements would CREATE the divergence this closes.
+ */
+const FOREIGN_ATTR_NS: Record<string, string> = {
+  'xlink:actuate': 'http://www.w3.org/1999/xlink',
+  'xlink:arcrole': 'http://www.w3.org/1999/xlink',
+  'xlink:href': 'http://www.w3.org/1999/xlink',
+  'xlink:role': 'http://www.w3.org/1999/xlink',
+  'xlink:show': 'http://www.w3.org/1999/xlink',
+  'xlink:title': 'http://www.w3.org/1999/xlink',
+  'xlink:type': 'http://www.w3.org/1999/xlink',
+  'xml:lang': 'http://www.w3.org/XML/1998/namespace',
+  'xml:space': 'http://www.w3.org/XML/1998/namespace',
+  xmlns: 'http://www.w3.org/2000/xmlns/',
+  'xmlns:xlink': 'http://www.w3.org/2000/xmlns/',
+}
+
+/**
+ * The namespace this attribute would have had if the browser had PARSED it on
+ * this element, or `null` when the plain `setAttribute` spelling already agrees.
+ *
+ * The `charCodeAt(0) === 120` probe is a cheap reject for the ~100% of
+ * attributes that cannot be in the table (`x` is the only first letter any
+ * entry has), so the hot path costs one character compare and never touches the
+ * record.
+ */
+export function foreignAttrNamespace(el: Element, key: string): string | null {
+  if (key.charCodeAt(0) !== 120 /* 'x' */) return null
+  const ns = el.namespaceURI
+  if (ns === null || ns === XHTML_NS) return null
+  return FOREIGN_ATTR_NS[key] ?? null
+}
+
+/**
+ * `setAttribute`, upgraded to `setAttributeNS` for the foreign-content
+ * qualified names the HTML parser namespaces. The ONE sink both
+ * `setStaticProp` (h() path) and `applyAttrProp` (`_setAttr`, compiled path)
+ * write string attribute values through, so the two cannot drift on it — the
+ * same reason `_setAttr` exists at all.
+ *
+ * REMOVAL deliberately stays on the plain `removeAttribute(qualifiedName)`,
+ * which the DOM specifies to match by qualified name and which was measured
+ * removing an XLink-namespaced `xlink:href` correctly in Chromium. Adding a
+ * namespaced removal path would be a second spelling with nothing to gain.
+ */
+function setAttrNsAware(el: Element, key: string, value: string): void {
+  const ns = foreignAttrNamespace(el, key)
+  if (ns === null) el.setAttribute(key, value)
+  else el.setAttributeNS(ns, key, value)
+}
+
 /**
  * Apply a GENERIC attribute (not class/style/DOM-property) with the SAME
  * null / boolean-aria / boolean normalization the `h()` path's
@@ -640,15 +725,15 @@ export function applyAttrProp(el: Element, key: string, value: unknown): void {
   }
   if (typeof value === 'boolean') {
     if (key.charCodeAt(0) === 97 /* 'a' */ && key.startsWith('aria-')) {
-      el.setAttribute(key, value ? 'true' : 'false')
+      setAttrNsAware(el, key, value ? 'true' : 'false')
     } else if (value) {
-      el.setAttribute(key, '')
+      setAttrNsAware(el, key, '')
     } else {
       el.removeAttribute(key)
     }
     return
   }
-  el.setAttribute(key, String(value))
+  setAttrNsAware(el, key, String(value))
 }
 
 /**
@@ -784,12 +869,12 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
   // identical markup, and is mirrored branch-for-branch by `applyAttrProp`
   // (`_setAttr`) for the compiler template path — keep the two in lockstep.
   if (typeof value === 'boolean' && key.charCodeAt(0) === 97 /* 'a' */ && key.startsWith('aria-')) {
-    el.setAttribute(key, value ? 'true' : 'false')
+    setAttrNsAware(el, key, value ? 'true' : 'false')
     return
   }
 
   if (typeof value === 'boolean') {
-    if (value) el.setAttribute(key, '')
+    if (value) setAttrNsAware(el, key, '')
     else el.removeAttribute(key)
     return
   }
@@ -798,8 +883,14 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
   // read-only `SVGAnimated*` getters (`SVGRectElement.x`, `SVGMarkerElement.refX`),
   // so `el[key] = value` throws "has only a getter". React/Vue/Solid skip the
   // property-assignment optimization for non-HTML elements for the same reason.
-  if (el.namespaceURI && el.namespaceURI !== 'http://www.w3.org/1999/xhtml') {
-    el.setAttribute(key, String(value))
+  if (el.namespaceURI && el.namespaceURI !== XHTML_NS) {
+    // `setAttrNsAware`, not a bare `setAttribute`: this is the branch every
+    // SVG/MathML attribute lands in, and it is where a QUALIFIED name
+    // (`xlink:href`) needs the namespace the HTML parser would have given it.
+    // Without it the h() path wrote a null-namespace attribute an SVG `<use>`
+    // ignores — so the sprite idiom was broken on this path too, which is why
+    // bailing the compiled path here was not a fix.
+    setAttrNsAware(el, key, String(value))
     return
   }
 
@@ -811,7 +902,7 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
   // marker carried its name in SSR HTML but lost it on every client mount.
   // Matches React/Vue/Solid.
   if (key.startsWith('data-') || key.startsWith('aria-')) {
-    el.setAttribute(key, String(value))
+    setAttrNsAware(el, key, String(value))
     return
   }
 

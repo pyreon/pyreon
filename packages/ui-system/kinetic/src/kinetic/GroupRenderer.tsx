@@ -1,6 +1,7 @@
 import type { VNode } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
+import { readLive, resolveLive } from '../live-prop'
 import type { TransitionCallbacks } from '../types'
 import TransitionItem from './TransitionItem'
 import type { KineticConfig } from './types'
@@ -8,8 +9,11 @@ import type { KineticConfig } from './types'
 type GroupRendererProps = {
   config: KineticConfig
   htmlProps: Record<string, unknown>
+  /** Construction-time — a first-mount question, spent once the ref wires up. */
   appear?: boolean | undefined
-  timeout?: number | undefined
+  /** Live: the animation-end deadline is re-armed per cycle. */
+  timeout?: number | (() => number | undefined) | undefined
+  /** A LIVE HOLDER — read each entry through `readLive` at the point of call. */
   callbacks: Partial<TransitionCallbacks>
   /**
    * Children can be a static array OR a reactive accessor `() => VNode[]`.
@@ -55,7 +59,8 @@ const GroupRenderer = ({
   children,
 }: GroupRendererProps): VNode | null => {
   const effectiveAppear = appear ?? config.appear ?? false
-  const effectiveTimeout = timeout ?? config.timeout ?? 5000
+  // Accessor: the deadline is re-armed per cycle, so it is resolved at use.
+  const effectiveTimeout = () => resolveLive(timeout) ?? config.timeout ?? 5000
 
   const prevMap = new Map<string | number, VNode>()
   const leavingMap = new Map<string | number, VNode>()
@@ -73,7 +78,7 @@ const GroupRenderer = ({
 
   const handleAfterLeave = (key: string | number) => {
     leavingMap.delete(key)
-    callbacks.onAfterLeave?.()
+    readLive<TransitionCallbacks['onAfterLeave']>(callbacks, 'onAfterLeave')?.()
     forceUpdate.update((c) => c + 1)
   }
 

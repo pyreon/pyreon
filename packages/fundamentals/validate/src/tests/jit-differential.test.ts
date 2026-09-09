@@ -163,6 +163,82 @@ describe('JIT differential — objects (flat, nested, with arrays)', () => {
   }
 })
 
+/**
+ * `.strict()` — against the INTERPRETER, which is the only oracle that can see
+ * this emit be wrong.
+ *
+ * The verdict emitter and the parse emitter share ONE predicate
+ * (`strictShortCircuitMiss`), which is what stops them drifting apart — and is
+ * exactly why `jit-check-differential.test.ts` cannot police it: that suite
+ * asserts `is() === parse().ok`, and a wrong SHARED predicate keeps both sides
+ * equally wrong, so they agree and it passes. Two real defects proved that in
+ * one sitting:
+ *
+ * - the own-key COUNT fast path, which said "valid" for a typo'd key and
+ *   "invalid" for a prototype-carried object;
+ * - its first replacement, which proved membership with `Object.hasOwn` — true
+ *   for an own NON-ENUMERABLE property, which `Object.keys` (where the count
+ *   came from) does not return, so `{ a, zzz }` plus a non-enumerable own `b`
+ *   still skipped the scan and never reported `zzz`.
+ *
+ * The second one is the reason this block exists rather than more cases in the
+ * is()/parse() suite: it was invisible there and fails here immediately.
+ */
+describe('JIT differential — `.strict()` unknown-key reporting', () => {
+  const flat = s.object({ a: s.string(), b: s.string() }).strict()
+  const nested = s.object({ id: s.number().int(), inner: flat }).strict()
+  const du = s.discriminatedUnion('kind', [
+    s.object({ kind: s.literal('text'), text: s.string() }).strict(),
+    s.object({ kind: s.literal('label'), label: s.string() }).strict(),
+  ])
+  const withOptional = s.object({ a: s.string(), b: s.string(), opt: s.string().optional() }).strict()
+
+  /** `{ a, zzz }` with an own NON-ENUMERABLE `b` — count N, one key undeclared. */
+  const nonEnumerable = (): Record<string, unknown> => {
+    const o: Record<string, unknown> = { a: 'A', zzz: 'X' }
+    Object.defineProperty(o, 'b', { value: 'B', enumerable: false, configurable: true, writable: true })
+    return o
+  }
+
+  function* strictInputs(): Generator<unknown> {
+    yield { a: 'A', b: 'B' } // exact — must short-circuit
+    yield { a: 'A', b: 'B', zzz: 1 } // extra own key
+    yield { nmae: 'A', b: 'B' } // typo IN PLACE OF a declared key: count stays N
+    yield Object.create({ a: 'A', b: 'B' }) // prototype-carried: zero own keys
+    yield Object.assign(Object.create({ a: 'A', b: 'B' }), { zzz: 1 })
+    yield nonEnumerable() // own but NOT enumerable: hasOwn true, Object.keys no
+    yield { a: 'A', b: 'B', opt: 'O' }
+    yield { a: 'A', b: 'B', opt: 1 }
+    yield { id: 1, inner: { a: 'A', b: 'B' } }
+    yield { id: 1, inner: { nmae: 'A', b: 'B' } }
+    yield { id: 1, inner: nonEnumerable() }
+    yield { id: 1, inner: { a: 'A', b: 'B' }, zzz: 1 }
+    yield { kind: 'text', text: 'x' }
+    yield { kind: 'text', txet: 'x' }
+    yield { kind: 'label', label: 'x', zzz: 1 }
+    yield Object.create({ kind: 'text', text: 'x' })
+    yield { a: 'A', b: 'B', toString: 1 } // a key NAMED like a prototype member
+    yield* BADS
+  }
+
+  const cases: Array<[string, Schema<unknown>]> = [
+    ['flat', flat], ['nested', nested], ['du', du], ['withOptional', withOptional],
+  ]
+  for (const [name, sc] of cases) {
+    it(name, () => {
+      for (const input of strictInputs()) diff(sc, input, name)
+    })
+  }
+
+  it('every one of these schemas is actually SERVED by the JIT', () => {
+    // `diff` returns early when the JIT refuses a shape, so without this the
+    // whole block could pass by comparing nothing.
+    for (const [name, sc] of cases) {
+      expect(tryCompileJit(sc), `${name} must be JIT-compiled`).not.toBeNull()
+    }
+  })
+})
+
 describe('JIT differential — array roots', () => {
   const arrPrim = s.array(s.number().int())
   const arrObj = s.array(s.object({ id: s.number().int(), name: s.string().min(2) }))

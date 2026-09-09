@@ -2,7 +2,7 @@ import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { kinetic } from '../index'
 import { fade } from '../presets'
-import { toShowAccessor } from '../show-accessor'
+import { showAccessorFrom } from '../show-accessor'
 
 /**
  * `show` arrives in three shapes, and two of them used to crash.
@@ -19,26 +19,43 @@ import { toShowAccessor } from '../show-accessor'
  * Same normalization rule as `<Show when>` / `<Match when>`.
  */
 describe('kinetic `show` accepts absent, value, and accessor forms', () => {
-  describe('toShowAccessor', () => {
+  describe('showAccessorFrom', () => {
     it('treats an absent show as shown — an element with no `show` is not conditional', () => {
-      expect(toShowAccessor(undefined)()).toBe(true)
+      expect(showAccessorFrom({})()).toBe(true)
+      expect(showAccessorFrom({ show: undefined })()).toBe(true)
     })
 
     it('accepts the value form the compiler produces for `show={sig}`', () => {
-      expect(toShowAccessor(true)()).toBe(true)
-      expect(toShowAccessor(false)()).toBe(false)
+      expect(showAccessorFrom({ show: true })()).toBe(true)
+      expect(showAccessorFrom({ show: false })()).toBe(false)
     })
 
-    it('passes an accessor through unchanged, so tracking still works', () => {
+    it('calls an accessor form on every read, so tracking lands in the CALLER scope', () => {
       let reads = 0
       const acc = () => {
         reads += 1
         return true
       }
-      const out = toShowAccessor(acc)
-      expect(out).toBe(acc)
-      out()
-      expect(reads).toBe(1)
+      const out = showAccessorFrom({ show: acc })
+      expect(out()).toBe(true)
+      expect(out()).toBe(true)
+      expect(reads).toBe(2)
+    })
+
+    it('re-reads the HOLDER, so a getter-backed `show` stays live', () => {
+      let current: unknown = false
+      const holder = {
+        get show() {
+          return current
+        },
+      }
+      const out = showAccessorFrom(holder)
+      expect(out()).toBe(false)
+      current = true
+      expect(out()).toBe(true)
+      // ...including a swap between the value and accessor forms.
+      current = () => false
+      expect(out()).toBe(false)
     })
   })
 
