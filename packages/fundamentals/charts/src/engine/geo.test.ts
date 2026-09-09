@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { geoDomain, geoToSvg, getMap, hitGeo, layoutGeo, listMaps, projectLonLat, registerMap, renderGeo } from './geo'
+import { geoDomain, geoToSvg, getMap, hitGeo, layoutGeo, listMaps, projectLonLat, registerMap, renderGeo, geoProject } from './geo'
 import type { GeoJson } from './geo'
 import { compileFamily, familyToSvg } from './option-family'
 
@@ -28,7 +28,9 @@ describe('geo layout', () => {
     expect(l.regions[2]!.rings).toHaveLength(2)
     expect(l.regions[2]!.bbox.y).toBeLessThan(west.bbox.y)
     expect(west.centroid).toEqual({ x: 100, y: 190 })
-    expect(l.project(10, 10)).toEqual({ x: 200, y: 90 })
+    // Same invariant, through the data-and-function form that crosses:
+    // `project` was a closure field, which a generated Codable struct cannot have.
+    expect(geoProject(l.transform, 10, 10)).toEqual({ x: 200, y: 90 })
   })
   it('mercator stretches latitude and clamps the poles; a missing geometry or name is tolerated', () => {
     const o = projectLonLat(0, 0, 'mercator')

@@ -1,6 +1,6 @@
 // Points on a map — scatter / effectScatter with `coordinateSystem: 'geo'`.
 
-import { layoutGeo, renderGeo } from './geo'
+import { layoutGeo, renderGeo, geoProject } from './geo'
 import type { GeoJson, GeoLayout, GeoOptions } from './geo'
 import { withAlpha } from './radar'
 import { measureApprox, renderSvg } from './svg'
@@ -54,7 +54,7 @@ export function renderGeoPoints(layout: GeoLayout, points: GeoPoint[], options?:
   const radii = geoPointRadii(points, base)
   for (let i = 0; i < points.length; i++) {
     const p = points[i]!
-    const at = layout.project(p.lon, p.lat)
+    const at = geoProject(layout.transform, p.lon, p.lat)
     const r = radii[i]! * progress
     const fill = p.color ?? color
     if (options?.effect === true) {
@@ -76,7 +76,7 @@ export function renderGeoPaths(layout: GeoLayout, paths: GeoPath[], options?: Ge
   const rawP = options?.progress ?? 1.0
   const progress = rawP < 0.0 ? 0.0 : rawP > 1.0 ? 1.0 : rawP
   for (const path of paths) {
-    const pts = path.coords.map((c) => layout.project(c[0], c[1]))
+    const pts = path.coords.map((c) => geoProject(layout.transform, c[0], c[1]))
     const count = progress >= 1.0 ? pts.length : Math.max(2, Math.floor(pts.length * progress))
     if (pts.length < 2 || progress <= 0.0) continue
     out.push({ kind: 'polyline', points: pts.slice(0, count), stroke: path.color ?? color, width: path.width ?? 1.5 })
@@ -90,7 +90,7 @@ export function hitGeoPoint(layout: GeoLayout, points: GeoPoint[], px: Double, p
   let best = -1
   let bestD = Infinity
   for (let i = 0; i < points.length; i++) {
-    const at = layout.project(points[i]!.lon, points[i]!.lat)
+    const at = geoProject(layout.transform, points[i]!.lon, points[i]!.lat)
     const d = (px - at.x) * (px - at.x) + (py - at.y) * (py - at.y)
     const r = radii[i]! + 3.0
     if (d <= r * r && d < bestD) {
