@@ -29,10 +29,12 @@ on:
     - cron: '*/30 * * * *'
   workflow_dispatch:
 
-permissions:
-  contents: read
-  actions: write # cancel workflow runs
-  pull-requests: read
+# Top level grants nothing: OpenSSF Scorecard zero-scores a workflow whose
+# TOP-level token carries a write, because in a multi-job file that grant
+# reaches every job. This file has one job, so the scopes are equivalent in
+# effect — but stating them per-job keeps the pattern honest as soon as a
+# second job is added, and the same shape is already used in cache-cleanup.yml.
+permissions: {}
 
 concurrency:
   # One at a time; a newer main push supersedes a pending sweep because it
@@ -45,6 +47,10 @@ jobs:
   sweep:
     name: Cancel CI on conflicting PRs
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write # `gh run cancel` — the API's minimum for this
+      pull-requests: read
     # Derived: the script polls mergeability in up to 4 rounds with a 5 s gap
     # (GitHub computes it lazily and a base push invalidates every PR at once),
     # then one API call per in-flight run. At ~60 open PRs that is a few
