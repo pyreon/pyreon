@@ -97,8 +97,11 @@ export type { Formatter } from './engine/format'
 export { chartTable, describeChart } from './engine/a11y'
 export type { A11yInput, A11ySeries, A11yTable } from './engine/a11y'
 
-// Large-series decimation
-export { lttb, minMaxBuckets } from './engine/decimate'
+// Large-series decimation. `lttbIndices` is the crossing form (it reaches
+// iOS/Android through the generated chart engine) and the one the chart itself
+// uses; `lttb` is the `Pt[]` wrapper that keeps real-x semantics for a caller
+// decimating its own unevenly spaced data.
+export { lttb, lttbIndices, minMaxBuckets } from './engine/decimate'
 
 // Web backend — canvas, and the shared canvas host every family component is
 // made of: the extension point for a family of your own (layout / render /

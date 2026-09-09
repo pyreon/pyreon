@@ -8,7 +8,7 @@
 import { createUniqueId, h } from '@pyreon/core'
 import { A11Y_TABLE_MAX, shiftCmds } from './canvas-host'
 import type { LegendPosition } from './canvas-host'
-import { lttb, minMaxBuckets } from './decimate'
+import { lttbIndices, minMaxBuckets } from './decimate-values'
 import { resolveChartTheme, tooltipStyle, useChartTheme } from './theme'
 import type { VNode } from '@pyreon/core'
 import { batch, effect, isClient, signal, untrack } from '@pyreon/reactivity'
@@ -582,8 +582,11 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     if (max === undefined || max < 3 || rows.length <= max) return null
     const first = props.marks[0]
     if (first === undefined) return null
-    const pts = rows.map((d, i) => ({ x: i, y: first.y(d, i) }))
-    return lttb(pts, max).map((pt) => pt.x)
+    // `lttbIndices` with no `xs` treats the index as x — which is what this is,
+    // rows being evenly spaced — so there is no `{x, y}` object per row and no
+    // `.x` read back out afterwards.
+    const keep = lttbIndices([], rows.map((d, i) => first.y(d, i)), max)
+    return keep.length === 0 ? null : keep
   }
 
   // The number formatter every surface shares: the explicit `format`, else

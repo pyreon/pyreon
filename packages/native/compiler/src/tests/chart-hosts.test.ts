@@ -1014,7 +1014,10 @@ describe('chart hosts — <PlotChart navigator> as the engine-laid-out slider st
     expect(r.code).toContain('@State private var pyreonNavAnchor: ZoomWindow = ZoomWindow(start: 0.0, end: 1.0)')
     // The window slices the rows the PLOT draws; the navigator sees every row.
     expect(r.code).toContain('let pyreonValues0: [Double] = pyreonRows.enumerated().map { (_, pyreonD) -> Double in pyreonChartDouble(pyreonD.hits) }')
-    expect(r.code).toContain('let pyreonNavValues: [Double] = DAYS.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(pyreonD.hits) }')
+    // Thinned to the strip's width — one min/max pair per 2px column, the same
+    // envelope the web host draws. Before this the native strip resolved and
+    // painted every row on every frame.
+    expect(r.code).toContain('let pyreonNavValues: [Double] = minMaxBuckets(DAYS.enumerated().map { (pyreonI, pyreonD) in pyreonChartDouble(pyreonD.hits) }, max(1, Int(Double(pyreonGeo.size.width) / 2.0)))')
     expect(r.code).toContain('let pyreonNavigator: NavigatorLayout = renderNavigator(pyreonNavValues, pyreonSeries[0].color, pyreonZoom, PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 240.0), pyreonTheme.grid)')
     expect(r.code).toContain('height: 240.0 - pyreonNavigator.height')
     expect(r.code).toContain('PyreonChartCanvas(cmds: renderChart(pyreonSpec, pyreonChartMeasure) + pyreonNavigator.cmds)')
@@ -1029,7 +1032,7 @@ describe('chart hosts — <PlotChart navigator> as the engine-laid-out slider st
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('var pyreonNavKind by remember { mutableStateOf(0) }')
     expect(r.code).toContain('var pyreonNavAnchor by remember { mutableStateOf(ZoomWindow(start = 0.0, end = 1.0)) }')
-    expect(r.code).toContain('val pyreonNavValues: List<Double> = DAYS.mapIndexed { pyreonI, pyreonD -> (pyreonD.hits).toDouble() }')
+    expect(r.code).toContain('val pyreonNavValues: List<Double> = minMaxBuckets(DAYS.mapIndexed { pyreonI, pyreonD -> (pyreonD.hits).toDouble() }, maxOf(1, (pyreonW / 2.0).toInt()))')
     expect(r.code).toContain('val pyreonNavigator: NavigatorLayout = renderNavigator(pyreonNavValues, pyreonSeries[0].color, pyreonZoom, PyreonChartRect(0.0, 0.0, pyreonW, 240.0), pyreonTheme.grid)')
     expect(r.code).toContain('height = 240.0 - pyreonNavigator.height')
     expect(r.code).toContain('Box(modifier = Modifier.fillMaxWidth().height((240.0).dp)')
