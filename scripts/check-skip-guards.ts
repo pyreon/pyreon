@@ -32,7 +32,9 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 
 const REPO_ROOT = resolve(import.meta.dirname, '..')
-const ROOTS = ['packages', 'examples', 'docs']
+// `contrib` holds no test file today, and that is exactly why it is listed:
+// a root chosen from what currently exists is a hole waiting for the next file.
+const ROOTS = ['packages', 'examples', 'docs', 'contrib']
 const SKIP_DIRS = new Set(['node_modules', 'lib', 'dist', '.git', 'templates', '__goldens__'])
 /**
  * Files that CONTAIN the bad shape as data rather than as code.
