@@ -272,7 +272,13 @@ export function App() {
     for (const target of ['swift', 'kotlin'] as const) {
       const r = transform(half, { target })
       expect(r.warnings.join('\n'), target).toContain('an error bar needs BOTH `errorLow` and `errorHigh`')
-      expect(r.code, target).not.toContain('errLow')
+      // The SERIES must not carry a bound — scoped to the binding and the
+      // argument, because `errLow` also appears in the a11y projection
+      // (`A11ySeries(… errLow: $0.errLow …)`), which is present on every
+      // chart and would make a bare substring check pass for the wrong
+      // reason the moment that projection was added.
+      expect(r.code, target).not.toContain('pyreonErrLow')
+      expect(r.code, target).not.toMatch(/errLow[:=] pyreon/)
     }
   })
   it.skipIf(!isSwiftUIAvailable())('swiftc against real SwiftUI + canvas + engine accepts the bounds', () => {

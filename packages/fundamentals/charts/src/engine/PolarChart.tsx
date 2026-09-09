@@ -4,6 +4,7 @@ import type { VNode } from '@pyreon/core'
 import { canvasHost, orNull } from './canvas-host'
 import { polarLegend, polarTip } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
+import type { ChartTheme } from './render'
 import { hitPolarIndex, layoutPolar, renderPolar } from './polar'
 import type { PolarAxes, PolarHitIndex, PolarLayout, PolarOptions, PolarSeries } from './polar'
 import { hitPolar } from './polar-hit'
@@ -21,7 +22,7 @@ export interface PolarChartProps extends CanvasHostProps {
 
 export function PolarChart(props: PolarChartProps): VNode {
   const readSeries = (): PolarSeries[] => (typeof props.series === 'function' ? props.series() : props.series)
-  const opts = (palette: readonly string[]): PolarOptions => ({ palette, ...props.polar })
+  const opts = (t: ChartTheme): PolarOptions => ({ palette: t.palette, labelColor: t.label, gridColor: t.grid, ...props.polar })
   return canvasHost<PolarLayout>({
     props,
     defaultHeight: 300,
@@ -29,9 +30,9 @@ export function PolarChart(props: PolarChartProps): VNode {
     track: () => {
       readSeries()
     },
-    layout: (box, _measure, theme) => layoutPolar(props.axes, readSeries(), box, opts(theme.palette)),
+    layout: (box, _measure, theme) => layoutPolar(props.axes, readSeries(), box, opts(theme)),
     animates: true,
-    render: (layout, _measure, theme, progress) => renderPolar(layout, { ...opts(theme.palette), progress }),
+    render: (layout, _measure, theme, progress) => renderPolar(layout, { ...opts(theme), progress }),
     legend: (_layout, theme) => polarLegend(readSeries(), theme.palette),
     select: (layout, px, py) => {
       props.onSelect?.(hitPolar(layout, px, py))

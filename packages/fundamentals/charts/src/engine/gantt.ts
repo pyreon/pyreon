@@ -100,6 +100,14 @@ export interface GanttOptions {
   fontSize?: Double | undefined
   labelColor?: string | undefined
   gridColor?: string | undefined
+  /**
+   * The lane band behind a group's label.
+   *
+   * Themed, because the LABEL on it is: a fixed near-white band under
+   * theme-coloured text is readable on a light ground and about 1.9:1 on a
+   * dark one. A translucent neutral (the theme's `grid`) reads on both.
+   */
+  laneColor?: string | undefined
   /** ISO date drawn as a vertical marker; omit for none. */
   today?: string | undefined
   todayColor?: string | undefined
@@ -375,11 +383,12 @@ export function renderGantt(layout: GanttLayout, options?: GanttOptions): DrawCm
   const fontSize = options?.fontSize ?? 12.0
   const labelColor = options?.labelColor ?? '#374151'
   const gridColor = options?.gridColor ?? '#e5e7eb'
+  const laneColor = options?.laneColor ?? '#f3f4f6'
   const rawP = options?.progress ?? 1.0
   const progress = rawP < 0.0 ? 0.0 : rawP > 1.0 ? 1.0 : rawP
   const showDeps = options?.showDependencies ?? true
   for (const lane of layout.lanes) {
-    out.push({ kind: 'rect', rect: lane.band, fill: '#f3f4f6' })
+    out.push({ kind: 'rect', rect: lane.band, fill: laneColor })
     out.push({ kind: 'text', text: lane.text, at: lane.at, fill: labelColor, size: fontSize + 1.0, align: 'start', baseline: 'middle' })
   }
   const plotBottom = layout.plot.y + layout.plot.h
