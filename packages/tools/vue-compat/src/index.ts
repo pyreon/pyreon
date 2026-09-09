@@ -526,11 +526,18 @@ function _watchArray(
     let oldValues: unknown[] | undefined
     let initialized = false
 
+    let skipFirstRun = false
     if (options?.immediate) {
       const current = getters.map((g) => g())
       cb(current, getters.map(() => undefined), onCleanup)
       oldValues = current
       initialized = true
+    // Vue fires an `immediate` watcher EXACTLY once at setup. The effect's
+    // first run re-evaluates the same sources, so without this flag it
+    // reports that evaluation a second time — `(5, undefined)` followed by a
+    // spurious `(5, 5)`. Any immediate watcher with a side effect (a fetch, an
+    // analytics event, a DOM write) therefore did it twice on mount.
+      skipFirstRun = true
     }
 
     let running = false
@@ -540,7 +547,9 @@ function _watchArray(
       running = true
       try {
         const newValues = combined()
-        if (initialized) {
+        if (skipFirstRun) {
+          skipFirstRun = false
+        } else if (initialized) {
           runCleanup()
           cb([...newValues], oldValues ? [...oldValues] : getters.map(() => undefined), onCleanup)
         }
@@ -564,11 +573,18 @@ function _watchArray(
   let oldValues: unknown[] | undefined
   let initialized = false
 
+  let skipFirstRun = false
   if (options?.immediate) {
     const current = getters.map((g) => g())
     cb(current, getters.map(() => undefined), onCleanup)
     oldValues = current
     initialized = true
+  // Vue fires an `immediate` watcher EXACTLY once at setup. The effect's
+  // first run re-evaluates the same sources, so without this flag it
+  // reports that evaluation a second time — `(5, undefined)` followed by a
+  // spurious `(5, 5)`. Any immediate watcher with a side effect (a fetch, an
+  // analytics event, a DOM write) therefore did it twice on mount.
+    skipFirstRun = true
   }
 
   let running = false
@@ -578,7 +594,9 @@ function _watchArray(
     running = true
     try {
       const newValues = combined()
-      if (initialized) {
+      if (skipFirstRun) {
+        skipFirstRun = false
+      } else if (initialized) {
         runCleanup()
         cb([...newValues], oldValues ? [...oldValues] : getters.map(() => undefined), onCleanup)
       }
@@ -627,12 +645,16 @@ function _watchSingle<T>(
     let oldValue: T | undefined
     let initialized = false
 
+    let skipFirstRun = false
     if (options?.immediate) {
       oldValue = undefined
       const current = getter()
       cb(current, oldValue, onCleanup)
       oldValue = current
       initialized = true
+    // Vue fires an `immediate` watcher EXACTLY once at setup; the effect's
+    // first run would otherwise report the same evaluation a second time.
+      skipFirstRun = true
     }
 
     let running = false
@@ -641,7 +663,9 @@ function _watchSingle<T>(
       running = true
       try {
         const newValue = getter()
-        if (initialized) {
+        if (skipFirstRun) {
+          skipFirstRun = false
+        } else if (initialized) {
           runCleanup()
           cb(newValue, oldValue, onCleanup)
         }
@@ -666,12 +690,16 @@ function _watchSingle<T>(
   let oldValue: T | undefined
   let initialized = false
 
+  let skipFirstRun = false
   if (options?.immediate) {
     oldValue = undefined
     const current = getter()
     cb(current, oldValue, onCleanup)
     oldValue = current
     initialized = true
+    // Vue fires an `immediate` watcher EXACTLY once at setup; the effect's
+    // first run would otherwise report the same evaluation a second time.
+    skipFirstRun = true
   }
 
   let running = false
@@ -680,7 +708,9 @@ function _watchSingle<T>(
     running = true
     try {
       const newValue = getter()
-      if (initialized) {
+      if (skipFirstRun) {
+        skipFirstRun = false
+      } else if (initialized) {
         runCleanup()
         cb(newValue, oldValue, onCleanup)
       }

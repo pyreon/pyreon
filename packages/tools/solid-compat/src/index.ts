@@ -941,8 +941,26 @@ export function createStore<T extends object>(
   }
 
   function makeProxy(basePath: string): unknown {
-    // Use a dummy target — all reads go through `raw` via `resolveValue`
-    return new Proxy({} as object, {
+    // The target is a stand-in — every read goes through `raw` via
+    // `resolveValue` — but it must MATCH the value's array-ness, because a
+    // Proxy's invariants are checked against the target rather than against
+    // whatever the traps return.
+    //
+    // With a plain `{}` for an array value, two things broke and neither threw
+    // where you would look. `Object.getOwnPropertyDescriptor` forwarded the
+    // array's `length` descriptor, which is non-configurable, and a Proxy may
+    // only report that for a property the TARGET owns — so
+    // `JSON.stringify(store.someArray)` died with "trap reported
+    // non-configurability for property 'length'" while `.length`, indexing and
+    // `.map()` all worked. And `Array.isArray(proxy)` was false, so anything
+    // that DID serialize produced `{"0":"a","1":"b"}` where an array belonged
+    // — silently wrong in an SSR blob, a localStorage write or a request body.
+    //
+    // Matching the target fixes both, and keeps the descriptor forwarding
+    // truthful: an array target owns a non-configurable `length` of its own.
+    const initial = resolveValue(basePath)
+    const target: object = Array.isArray(initial) ? [] : {}
+    return new Proxy(target, {
       get(_target, prop) {
         if (typeof prop === 'symbol') {
           // @internal — tests inspect the per-path signal cache via
@@ -977,7 +995,15 @@ export function createStore<T extends object>(
       getOwnPropertyDescriptor(_target, prop) {
         const current = resolveValue(basePath)
         if (current !== null && typeof current === 'object') {
-          return Object.getOwnPropertyDescriptor(current, prop)
+          const desc = Object.getOwnPropertyDescriptor(current, prop)
+          // Truthful forwarding is only safe because the target matches the
+          // value's array-ness (see `makeProxy`). A property the target does
+          // NOT own must be reported configurable, or the Proxy invariant
+          // rejects it — which is what a mismatched target caused.
+          if (desc && !Object.getOwnPropertyDescriptor(_target, prop)) {
+            desc.configurable = true
+          }
+          return desc
         }
         return undefined
       },
