@@ -214,8 +214,13 @@ function renderNode(node: DocNode, opts?: RenderOptions): string {
         const colorStyle = hs?.color ? `color:${sanitizeColor(hs.color)};` : ''
         const fontStyle = hs?.bold !== false ? 'font-weight:bold;' : ''
         const alignStyle = col.align ? `text-align:${col.align};` : ''
+        // `width` is typed `number | string` and a string is documented input,
+        // so it reached a `style` attribute raw while every sibling in this
+        // same template literal was guarded (`sanitizeColor`, the escaped
+        // header). A value of `1px" onmouseover="alert(1)` broke out of the
+        // attribute. `sanitizeStyle` is the guard the file already uses.
         const widthStyle = col.width
-          ? `width:${typeof col.width === 'number' ? `${col.width}px` : col.width};`
+          ? `width:${typeof col.width === 'number' ? `${col.width}px` : sanitizeStyle(col.width)};`
           : ''
         html += `<th style="${cellBorder}${bgStyle}${colorStyle}${fontStyle}${alignStyle}${widthStyle}padding:8px">${escapeHtml(col.header)}</th>`
       }

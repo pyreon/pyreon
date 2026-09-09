@@ -1,4 +1,4 @@
-import { escapeXml as esc, sanitizeColor, sanitizeHref, sanitizeImageSrc } from '../sanitize'
+import { escapeXml as esc, sanitizeColor, sanitizeHref, sanitizeImageSrc, sanitizeStyle } from '../sanitize'
 import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
 
 /**
@@ -140,8 +140,13 @@ function renderNode(node: DocNode): string {
           : 'background-color:#f5f5f5;'
         const color = hs?.color ? `color:${sanitizeColor(hs.color)};` : ''
         const align = col.align ? `text-align:${col.align};` : ''
+        // `width` is typed `number | string` and a string is documented input,
+        // so it reached a `style` attribute raw while every sibling in this
+        // same template literal was guarded (`sanitizeColor`, the escaped
+        // header). A value of `1px" onmouseover="alert(1)` broke out of the
+        // attribute. `sanitizeStyle` is the guard the file already uses.
         const width = col.width
-          ? `width:${typeof col.width === 'number' ? `${col.width}px` : col.width};`
+          ? `width:${typeof col.width === 'number' ? `${col.width}px` : sanitizeStyle(col.width)};`
           : ''
         html += `<th style="${bg}${color}font-weight:bold;${align}${width}padding:8px;border-bottom:2px solid #ddd">${esc(col.header)}</th>`
       }
