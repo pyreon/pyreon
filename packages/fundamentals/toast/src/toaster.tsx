@@ -93,6 +93,43 @@ function Toaster(props?: ToasterProps): VNodeChild {
   setupDelegation(host)
   onCleanup(() => host.remove())
 
+  // A backgrounded tab must not burn the auto-dismiss budget.
+  //
+  // The whole point of a 4s toast is four seconds of ATTENTION, not four
+  // seconds of wall clock — a toast raised just before the user switches tabs
+  // is gone before they look back, with no trace that it existed. Sonner and
+  // react-hot-toast both suspend on visibility for this reason.
+  //
+  // `hiddenHold` makes the handler idempotent at the SOURCE (a duplicate
+  // `visibilitychange` for the same state must not take a second hold), and it
+  // is read on setup too, so a Toaster that mounts INTO an already-hidden tab
+  // starts suspended rather than waiting for a transition that already happened.
+  let hiddenHold = false
+  const syncVisibility = (): void => {
+    const hidden = document.visibilityState === 'hidden'
+    if (hidden === hiddenHold) return
+    hiddenHold = hidden
+    if (hidden) _pauseAll('hidden')
+    else _resumeAll('hidden')
+  }
+  syncVisibility()
+  // The Toaster is the pause AUTHORITY for the toast stack, and this listener
+  // is document-scoped with its own onCleanup — the wrapper `useEventListener`
+  // would provide is exactly what is written here, and reaching for it would
+  // add a @pyreon/hooks edge for one listener.
+  // pyreon-lint-disable-next-line pyreon/no-raw-addeventlistener
+  document.addEventListener('visibilitychange', syncVisibility)
+  onCleanup(() => {
+    // pyreon-lint-disable-next-line pyreon/no-raw-addeventlistener
+    document.removeEventListener('visibilitychange', syncVisibility)
+    // Never strand a hold: unmounting while hidden would otherwise freeze the
+    // clock for every later toast, since nothing is left to release it.
+    if (hiddenHold) {
+      hiddenHold = false
+      _resumeAll('hidden')
+    }
+  })
+
   // Promote "entering" toasts to "visible" on next frame.
   // Only runs when there are actually entering toasts (early return guard).
   // Reason for the suppression below: rAF is scheduling reactive state
@@ -145,10 +182,10 @@ function Toaster(props?: ToasterProps): VNodeChild {
         class="pyreon-toast-container"
         style={containerStyle}
         aria-label="Notifications"
-        onMouseEnter={_pauseAll}
-        onMouseLeave={_resumeAll}
-        onFocusIn={_pauseAll}
-        onFocusOut={_resumeAll}
+        onMouseEnter={() => _pauseAll('hover')}
+        onMouseLeave={() => _resumeAll('hover')}
+        onFocusIn={() => _pauseAll('focus')}
+        onFocusOut={() => _resumeAll('focus')}
       >
         <For each={visibleIds} by={(id: string) => id}>
           {(id: string) => <ToastItem id={id} />}

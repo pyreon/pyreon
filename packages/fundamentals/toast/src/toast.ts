@@ -5,11 +5,32 @@ import type { Toast, ToastOptions, ToastPromiseOptions, ToastType } from './type
 // ─── State ───────────────────────────────────────────────────────────────────
 
 let _idCounter = 0
-// True while the container is hover/focus-paused (`_pauseAll` between an enter
-// and the matching leave). A toast created during this window must NOT start
-// counting down under the user's cursor — `startTimer` defers arming it to the
-// next `_resumeAll`. Mirrors react-hot-toast / sonner's global paused state.
-let _paused = false
+
+/**
+ * Why a toast's countdown is suspended right now.
+ *
+ * Three INDEPENDENT sources can hold the auto-dismiss clock, and they overlap
+ * in ordinary use — a keyboard user tabs into a toast (`focus`) and then moves
+ * the mouse across the stack and off it again (`hover` in, `hover` out). A
+ * single boolean cannot express that: the `hover` release cleared the `focus`
+ * hold and the toast dismissed itself out from under the reader.
+ *
+ * Holds are tracked BY IDENTITY rather than by a count, which is the same
+ * reason the context stack removes frames by identity: a count that misses one
+ * release (a focused close button removed by an auto-dismiss may never fire
+ * `focusout`) is stuck forever, whereas a stranded `'focus'` hold is cleared by
+ * the very next `focusout`.
+ */
+export type PauseSource = 'hover' | 'focus' | 'hidden'
+
+/**
+ * The sources currently holding the clock. Non-empty ⟹ paused. A toast created
+ * during this window must NOT start counting down unseen — `startTimer` defers
+ * arming it to the release of the last hold. Mirrors react-hot-toast / sonner's
+ * global paused state, refined by source.
+ */
+const _pauseHolds = new Set<PauseSource>()
+
 const DEFAULT_DURATION = 4000
 
 /**
@@ -90,7 +111,7 @@ function startTimer(t: Toast): void {
   // paused: hold the full duration but DON'T arm the timer — else it would
   // count down and dismiss under the user's cursor. `_resumeAll` arms it (its
   // `duration > 0 && timer === undefined && remaining > 0` guard matches).
-  if (_paused) {
+  if (_pauseHolds.size > 0) {
     t.timerStart = 0
     t.timer = undefined
     return
@@ -253,10 +274,25 @@ function updateToast(
   _toasts.set(next)
 }
 
-// ─── Pause / resume (for hover) ─────────────────────────────────────────────
+// ─── Pause / resume (hover · focus · hidden tab) ────────────────────────────
 
-export function _pauseAll(): void {
-  _paused = true
+/**
+ * Take a hold on the auto-dismiss clock for `source`, banking each running
+ * toast's remaining time.
+ *
+ * Idempotent per source, which is the whole point of a Set: a repeated
+ * `'hover'` enter with no intervening leave does not deepen the hold, so the
+ * next `mouseleave` still releases it. (Re-running the banking pass would in
+ * fact be harmless — every timer is already cleared — so the guard buys
+ * explicitness and an O(1) exit, not correctness. The correctness lives in the
+ * Set.)
+ */
+export function _pauseAll(source: PauseSource = 'hover'): void {
+  if (_pauseHolds.has(source)) return
+  const wasRunning = _pauseHolds.size === 0
+  _pauseHolds.add(source)
+  if (!wasRunning) return
+
   for (const t of _toasts()) {
     if (t.timer !== undefined) {
       clearTimeout(t.timer)
@@ -266,8 +302,19 @@ export function _pauseAll(): void {
   }
 }
 
-export function _resumeAll(): void {
-  _paused = false
+/**
+ * Release `source`'s hold. The clock only restarts once EVERY source has let
+ * go — a `mouseleave` while the keyboard focus is still inside the stack must
+ * not resume.
+ *
+ * An unmatched release (no hold outstanding) still runs the arming pass, which
+ * is a no-op for toasts whose timers are already live; that keeps `_resumeAll()`
+ * safe to call defensively.
+ */
+export function _resumeAll(source: PauseSource = 'hover'): void {
+  _pauseHolds.delete(source)
+  if (_pauseHolds.size > 0) return
+
   for (const t of _toasts()) {
     // Skip toasts already animating out — resuming must not restart an
     // auto-dismiss timer on a toast whose leave is already in flight.
@@ -384,5 +431,5 @@ export function _reset(): void {
   _toasts.set([])
   _idCounter = 0
   _defaultDuration = DEFAULT_DURATION
-  _paused = false
+  _pauseHolds.clear()
 }

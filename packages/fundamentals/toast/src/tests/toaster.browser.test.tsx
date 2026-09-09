@@ -228,3 +228,71 @@ describe('Toaster — description + icon', () => {
     )
   })
 })
+
+// ─── Visibility hold ────────────────────────────────────────────────────────
+
+/**
+ * The clock must not run while the tab is backgrounded.
+ *
+ * This is the Toaster's WIRING, not the store's arithmetic — the store's
+ * per-source hold is unit-tested in `pause-sources.test.ts`, and passes there
+ * whether or not anything ever calls it with `'hidden'`. Only a mounted Toaster
+ * can prove the listener exists, so the spec lives here.
+ *
+ * `document.visibilityState` is read-only in a real browser, so the getter is
+ * replaced for the duration of the test and the event dispatched by hand — the
+ * handler reads the property, so the override is what it sees.
+ */
+describe('Toaster — a hidden tab suspends the auto-dismiss clock', () => {
+  let restore: (() => void) | undefined
+
+  const setVisibility = (state: 'visible' | 'hidden') => {
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => state,
+    })
+    // A silently-failed redefinition would make every assertion below vacuous,
+    // so read it back before dispatching.
+    if (document.visibilityState !== state) {
+      throw new Error(`visibilityState override did not take (${document.visibilityState})`)
+    }
+    restore = () => Reflect.deleteProperty(document, 'visibilityState')
+    document.dispatchEvent(new Event('visibilitychange'))
+  }
+
+  afterEach(() => {
+    restore?.()
+    restore = undefined
+  })
+
+  it('a toast raised before the tab is hidden is still there on return', async () => {
+    toast('background me', { duration: 120 })
+    await nextFrame()
+    expect(toastEl()).not.toBeNull()
+
+    setVisibility('hidden')
+    expect(document.visibilityState, 'the getter override did not take').toBe('hidden')
+
+    await wait(120 + LEAVE_WAIT)
+    expect(toastEl(), 'the toast expired unseen while the tab was hidden').not.toBeNull()
+    expect(toastEl()?.className).not.toContain('--exiting')
+
+    setVisibility('visible')
+    await wait(120 + LEAVE_WAIT)
+    expect(toastEl(), 'the clock never restarted after the tab came back').toBeNull()
+  })
+
+  it('the hidden hold does not defeat pause-on-hover bookkeeping', async () => {
+    // Both holds outstanding, then the tab comes back while the pointer is
+    // still over the stack: the clock must stay suspended.
+    toast('hovered and hidden', { duration: 120 })
+    await nextFrame()
+    const region = document.querySelector('.pyreon-toast-container') as HTMLElement
+    region.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false }))
+    setVisibility('hidden')
+    setVisibility('visible')
+
+    await wait(120 + LEAVE_WAIT)
+    expect(toastEl(), 'the reveal resumed the clock under the pointer').not.toBeNull()
+  })
+})
