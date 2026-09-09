@@ -29,7 +29,7 @@
 // that host instead of `<PlotChart>`. One family per plot; a family mark
 // beside a cartesian one is reported and the family wins.
 
-import { Fragment, Show, h, _rp as reactiveProp } from '@pyreon/core'
+import { For, Fragment, Show, h, _rp as reactiveProp } from '@pyreon/core'
 import type { VNode, VNodeChild } from '@pyreon/core'
 import { computed, signal } from '@pyreon/reactivity'
 import type { Signal } from '@pyreon/reactivity'
@@ -285,6 +285,19 @@ function flatChildren(children: VNodeChild): VNode[] {
       for (const x of v.children) walk(x)
       return
     }
+    // `<For each>` around marks: resolve its items through the render callback
+    // here, exactly as a `.map()` child already resolves — the whole walk runs
+    // inside the resolving computed, so an accessor `each` tracks. (The runtime
+    // `<For>` never mounts here: a mark is data, not DOM.)
+    if ((v.type as unknown) === For) {
+      const fp = v.props as { each?: unknown; children?: unknown }
+      const each = typeof fp.each === 'function' ? (fp.each as () => unknown)() : fp.each
+      const render = typeof fp.children === 'function' ? fp.children : v.children[0]
+      if (Array.isArray(each) && typeof render === 'function') {
+        for (const item of each) walk((render as (item: unknown) => VNodeChild)(item))
+      }
+      return
+    }
     out.push(v)
   }
   walk(children)
@@ -356,6 +369,13 @@ export interface ResolvedGrammar<T> {
   family: { host: FamilyHost; props: Record<string, unknown> } | null
 }
 
+const describeChild = (v: VNode): string => {
+  const t = v.type as unknown
+  if (typeof t === 'string') return `<${t}>`
+  if (typeof t === 'function') return `<${(t as { name?: string }).name || 'Component'}>`
+  return String(t)
+}
+
 const warnGrammar = (m: string): void => {
   if (process.env.NODE_ENV !== 'production') console.warn(`[Pyreon] <Plot>: ${m}`)
 }
@@ -386,7 +406,12 @@ export function resolveGrammar<T>(rows: T[], chart: PlotProps<T>, children: VNod
   let family: ResolvedGrammar<T>['family'] = null
   for (const v of nodes) {
     const name = markName(v.type)
-    if (name === undefined) continue
+    if (name === undefined) {
+      // A child that is not a mark renders NOTHING here, so say so: a silent
+      // skip reads as "my chart is empty" rather than "wrong child".
+      warnGrammar(`unrecognized child ${describeChild(v)} — only mark components (<Bar>, <Line>, <Rule>, …) render inside <Plot>; it is ignored.`)
+      continue
+    }
     const p = v.props as Record<string, unknown>
     const familyHost = FAMILY_OF[name]
     if (familyHost !== undefined) {
