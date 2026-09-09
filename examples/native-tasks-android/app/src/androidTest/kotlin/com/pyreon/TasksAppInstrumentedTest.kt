@@ -786,6 +786,31 @@ class TasksAppInstrumentedTest {
             .performClick()
         assertTagDisplayed("tasks-page", "after dash-back (/dashboard -> /tasks)")
 
+        // The GALLERY — the ten chart families that had never rendered on a
+        // device. Nine of nineteen lowered hosts were device-proven before
+        // this; the other ten rested on stub typechecking, which catches a type
+        // error and cannot catch a chart that paints nothing.
+        //
+        // `performScrollTo` before each: ten charts do not fit on a phone, and a
+        // Compose assertion on an off-screen node is not the same question as
+        // one on a laid-out node.
+        composeRule
+            .onNodeWithTag("tasks-gallery")
+            .performScrollTo()
+            .performClick()
+        assertTagDisplayed("gal-page", "after tasks-gallery (/tasks -> /gallery)")
+        for (tag in listOf(
+            "gal-calendar", "gal-candlestick", "gal-gantt", "gal-graph", "gal-map",
+            "gal-parallel", "gal-polar", "gal-river", "gal-sunburst", "gal-tree",
+        )) {
+            composeRule.onNodeWithTag(tag).performScrollTo().assertIsDisplayed()
+        }
+        composeRule
+            .onNodeWithTag("gal-back")
+            .performScrollTo()
+            .performClick()
+        assertTagDisplayed("tasks-page", "after gal-back (/gallery -> /tasks)")
+
         // Phase 5b: the TOOLKIT screen — where eleven previously snippet-only
         // packages actually run. The web e2e asserts the same values in a
         // browser; this is the Android half. Until it existed the screen was
