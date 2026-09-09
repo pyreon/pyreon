@@ -106,6 +106,14 @@ is exported and tested to produce identical series), and on native the
 compiler desugars `<Plot>` to that element before lowering — the two emit
 byte-identical Swift and Kotlin.
 
+One exception, and it is an omission rather than a design decision: the
+INDICATOR marks (`sma`, `ema`, `trend`, `bollinger`) have no grammar tag, so a
+`<Plot>` that needs a moving average has to be written in the array form. They
+lower to native either way; there is simply no `<SMA>` component yet. A
+`<Plot>` carrying one would also need the long-format pivot to COMPOSE with a
+mark's own `transform` instead of replacing it, which is what makes this its
+own change rather than four more branded components.
+
 ## The array form
 
 ```tsx
