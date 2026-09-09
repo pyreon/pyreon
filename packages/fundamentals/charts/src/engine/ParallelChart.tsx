@@ -3,6 +3,7 @@
 import type { VNode } from '@pyreon/core'
 import { canvasHost } from './canvas-host'
 import type { CanvasHostProps } from './canvas-host'
+import type { ChartTheme } from './render'
 import { layoutParallel, renderParallel } from './parallel'
 import type { ParallelAxis, ParallelLayout, ParallelLine, ParallelOptions } from './parallel'
 import { hitParallel, parallelLineColors, parallelRows } from './parallel-web'
@@ -25,8 +26,8 @@ export interface ParallelChartProps extends CanvasHostProps {
 
 export function ParallelChart(props: ParallelChartProps): VNode {
   const readRows = (): ParallelRow[] => (typeof props.rows === 'function' ? props.rows() : props.rows)
-  const opts = (palette: readonly string[]): ParallelOptions => {
-    const base: ParallelOptions = { palette, ...props.parallel }
+  const opts = (t: ChartTheme): ParallelOptions => {
+    const base: ParallelOptions = { palette: t.palette, labelColor: t.label, axisColor: t.axis, ...props.parallel }
     const colorOf = props.rowColor
     return colorOf === undefined ? base : { ...base, lineColors: parallelLineColors(readRows(), colorOf) }
   }
@@ -39,10 +40,10 @@ export function ParallelChart(props: ParallelChartProps): VNode {
     },
     layout: (box, _measure, theme) => {
       const g = props.gutter ?? 40.0
-      return layoutParallel(props.axes, parallelRows(props.axes, readRows()), { x: box.x + g, y: box.y + 8.0, w: Math.max(0.0, box.w - g * 2.0), h: Math.max(0.0, box.h - 16.0) }, opts(theme.palette))
+      return layoutParallel(props.axes, parallelRows(props.axes, readRows()), { x: box.x + g, y: box.y + 8.0, w: Math.max(0.0, box.w - g * 2.0), h: Math.max(0.0, box.h - 16.0) }, opts(theme))
     },
     animates: true,
-    render: (layout, _measure, theme, progress) => renderParallel(layout, { ...opts(theme.palette), progress }),
+    render: (layout, _measure, theme, progress) => renderParallel(layout, { ...opts(theme), progress }),
     select: (layout, px, py) => {
       const line = hitParallel(layout, px, py)
       props.onSelect?.(line)

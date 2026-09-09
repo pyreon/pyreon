@@ -4,6 +4,7 @@ import type { VNode } from '@pyreon/core'
 import { canvasHost, orNull } from './canvas-host'
 import { sankeyLegend, sankeyTip } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
+import type { ChartTheme } from './render'
 import { hitSankeyIndex, layoutSankey, renderSankey } from './sankey'
 import type { SankeyHitIndex, SankeyLayout, SankeyLink, SankeyNode, SankeyOptions } from './sankey'
 import { hitSankey } from './sankey-hit'
@@ -25,7 +26,7 @@ export interface SankeyChartProps extends CanvasHostProps {
 export function SankeyChart(props: SankeyChartProps): VNode {
   const readNodes = (): SankeyNode[] => (typeof props.nodes === 'function' ? props.nodes() : props.nodes)
   const readLinks = (): SankeyLink[] => (typeof props.links === 'function' ? props.links() : props.links)
-  const opts = (palette: readonly string[]): SankeyOptions => ({ palette, ...props.sankey })
+  const opts = (t: ChartTheme): SankeyOptions => ({ palette: t.palette, labelColor: t.label, ...props.sankey })
   return canvasHost<SankeyLayout>({
     props,
     defaultHeight: 300,
@@ -36,10 +37,10 @@ export function SankeyChart(props: SankeyChartProps): VNode {
     },
     layout: (box, _measure, theme) => {
       const g = props.gutter ?? 80.0
-      return layoutSankey(readNodes(), readLinks(), { x: box.x + g, y: box.y + 8.0, w: Math.max(0.0, box.w - g * 2.0), h: Math.max(0.0, box.h - 16.0) }, opts(theme.palette))
+      return layoutSankey(readNodes(), readLinks(), { x: box.x + g, y: box.y + 8.0, w: Math.max(0.0, box.w - g * 2.0), h: Math.max(0.0, box.h - 16.0) }, opts(theme))
     },
     animates: true,
-    render: (layout, _measure, theme, progress) => renderSankey(layout, { ...opts(theme.palette), progress }),
+    render: (layout, _measure, theme, progress) => renderSankey(layout, { ...opts(theme), progress }),
     legend: sankeyLegend,
     select: (layout, px, py) => {
       props.onSelect?.(hitSankey(layout, px, py))
