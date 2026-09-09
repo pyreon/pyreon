@@ -5148,7 +5148,10 @@ fn ssr_is_void_tag(tag: &str) -> bool {
 fn ssr_is_url_attr(name: &str) -> bool {
     matches!(
         name,
-        "href" | "src" | "action" | "formaction" | "poster" | "cite" | "data"
+        // Mirror of core's `URL_ATTRS` — identity-locked by the JS twin's
+        // test. `xlink:href` is SVG's URL attribute; omitting it routed
+        // `<a xlink:href={evil}>` to the guard-skipping lean helper.
+        "href" | "src" | "action" | "formaction" | "poster" | "cite" | "data" | "xlink:href"
     )
 }
 
