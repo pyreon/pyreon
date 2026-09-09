@@ -580,7 +580,7 @@ function printThinHeadroom(
     )
     for (const t of known) {
       console.log(
-        `      ${t.name}: ${t.headroom} B of headroom, needs ${Math.ceil(t.required)} B — raise to ${Math.ceil(t.current + t.required)} B to retire it`,
+        `      ${t.name}: ${t.headroom} B of headroom, needs ${Math.ceil(t.required)} B — raise to ${suggestedBudget(t.current)} B to retire it`,
       )
     }
   }
@@ -593,8 +593,37 @@ function printThinHeadroom(
 }
 
 /** The minimum headroom a budget needs to be measurable on both platforms. */
-function requiredHeadroom(measured: number): number {
+export function requiredHeadroom(measured: number): number {
   return Math.max(GZIP_PLATFORM_VARIANCE_FLOOR_BYTES, measured * GZIP_PLATFORM_VARIANCE)
+}
+
+/**
+ * How much a SUGGESTED budget carries beyond the bare minimum.
+ *
+ * Deliberately larger than {@link GZIP_PLATFORM_VARIANCE}, because the two
+ * answer different questions. The variance answers "is this budget measurable
+ * on both platforms?" — a property of the budget. The suggestion answers "what
+ * should I set it to?", and it is computed from the number THIS machine
+ * measured, which on macOS runs BELOW the ubuntu figure that actually gates the
+ * PR. Measured on `@pyreon/toast`: macOS 3018 B, ubuntu 3068 B — a 1.66% delta,
+ * above the 1.5% the variance uses.
+ *
+ * So a suggestion pinned to the minimum is short by the very delta the message
+ * warns about: follow it on macOS and CI fails again, a few dozen bytes higher.
+ * That happened three times in one afternoon (`@pyreon/native-compiler`,
+ * `@pyreon/toast`, `@pyreon/table`) before this was fixed. Being generous here
+ * costs a few dozen bytes of slack; being short costs a CI round trip.
+ */
+const SUGGESTION_MARGIN = 0.03
+
+/**
+ * A budget to set, safe on either platform: assume the gating machine measures
+ * up to {@link SUGGESTION_MARGIN} larger than this one, and give THAT figure
+ * the headroom it will be asked for.
+ */
+export function suggestedBudget(measured: number): number {
+  const worstCaseRemote = measured * (1 + SUGGESTION_MARGIN)
+  return Math.ceil(worstCaseRemote + requiredHeadroom(worstCaseRemote))
 }
 
 /**
@@ -1148,7 +1177,7 @@ async function main(): Promise<void> {
       for (const t of thinNew) {
         // eslint-disable-next-line no-console
         console.error(
-          `  ${t.name}: budget ${t.budget} B is only ${t.headroom} B above the measured ${t.current} B — needs at least ${Math.ceil(t.required)} B (~${(GZIP_PLATFORM_VARIANCE * 100).toFixed(1)}%). Suggested budget: ${Math.ceil(t.current + t.required)} B.`,
+          `  ${t.name}: budget ${t.budget} B is only ${t.headroom} B above the measured ${t.current} B — needs at least ${Math.ceil(t.required)} B (~${(GZIP_PLATFORM_VARIANCE * 100).toFixed(1)}%). Suggested budget: ${suggestedBudget(t.current)} B (clear of a gating machine that measures larger than this one).`,
         )
       }
       // eslint-disable-next-line no-console
