@@ -17,10 +17,10 @@
  * hue AND lightness so a legend of two still reads under deuteranopia; the
  * `okabeIto` palette in `theme.ts` is the full colour-vision-safe set.
  */
-export const DEFAULT_PALETTE: string[] = ['#4f7df3', '#f97362', '#22c3a6', '#a66cff', '#ffb020', '#2fb7e8', '#f45fa3', '#7bc950', '#8892a6', '#c47a3d']
+export const DEFAULT_PALETTE: readonly string[] = ['#4f7df3', '#f97362', '#22c3a6', '#a66cff', '#ffb020', '#2fb7e8', '#f45fa3', '#7bc950', '#8892a6', '#c47a3d']
 
 /** The default palette lifted 8–12% for a dark ground — `chartThemes.dark`'s series colours. */
-export const DARK_PALETTE: string[] = ['#7b9bff', '#ff8f7e', '#4adbc0', '#bd93ff', '#ffc44d', '#5dcbf2', '#ff80be', '#9ad870', '#a3acbd', '#d8955e']
+export const DARK_PALETTE: readonly string[] = ['#7b9bff', '#ff8f7e', '#4adbc0', '#bd93ff', '#ffc44d', '#5dcbf2', '#ff80be', '#9ad870', '#a3acbd', '#d8955e']
 
 /** The palette colour for series `index`, cycling; an empty palette falls back to the default. */
 export function paletteAt(palette: readonly string[], index: number): string {

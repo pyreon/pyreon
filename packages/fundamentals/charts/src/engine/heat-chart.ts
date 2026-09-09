@@ -6,6 +6,7 @@ import { buildHeatGrid, hitHeatCell, renderHeat } from './heat'
 import type { HeatGrid } from './heat'
 import type { ChartTheme } from './render'
 import type { Double, DrawCmd, MeasureText, Rect } from './types'
+import { isFiniteNumber } from './scale'
 
 /**
  * A grid from parallel per-datum arrays: the x category, the y category and
@@ -46,7 +47,7 @@ export function heatGridFrom(xs: string[], ys: string[], values: Double[]): Heat
     }
     rowOf.push(ri)
     const v = i < values.length ? values[i]! : 0.0
-    vals.push(v === v ? v : 0.0)
+    vals.push(isFiniteNumber(v) ? v : 0.0)
   }
   return buildHeatGrid(cols, rows, colOf, rowOf, vals)
 }

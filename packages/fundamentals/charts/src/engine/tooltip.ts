@@ -6,6 +6,7 @@
 
 import { plain } from './format'
 import type { Formatter } from './format'
+import { isFiniteNumber } from './scale'
 import type { Double, Pt, Rect } from './types'
 
 /** A box's extent — a named shape so the placement crosses to native. */
@@ -57,8 +58,9 @@ export function tooltipAt(index: number, categories: string[], series: TooltipSe
   const rows: TooltipRow[] = []
   for (const s of series) {
     const v = s.values[index]
-    // A gap (NaN) has no row: the tooltip lists what was measured.
-    if (v === undefined || v !== v) continue
+    // A gap has no row: the tooltip lists what was MEASURED, so a non-finite
+    // value — dropped from the geometry — is absent here too, never "Infinity".
+    if (v === undefined || !isFiniteNumber(v)) continue
     // `let`, not `const`: a `const` lowers to a Swift `let` and a struct
     // property cannot be assigned through one. `?? []` rather than an
     // `!== undefined` guard for the same reason — PMTC does not carry that
@@ -68,13 +70,13 @@ export function tooltipAt(index: number, categories: string[], series: TooltipSe
     const other: Double[] = s.values2 ?? []
     if (index < other.length) {
       const v2 = other[index]!
-      // A NaN bound is a gap in the second channel, not a printed NaN.
-      if (v2 === v2) row = { label: s.label, value: v, color: s.color, value2: v2 }
+      // A non-finite bound is a gap in the second channel, not a printed NaN.
+      if (isFiniteNumber(v2)) row = { label: s.label, value: v, color: s.color, value2: v2 }
     }
     const rs: Double[] = s.rValues ?? []
     if (index < rs.length) {
       const r = rs[index]!
-      if (r === r) row = { label: row.label, value: row.value, color: row.color, value2: row.value2, size: r }
+      if (isFiniteNumber(r)) row = { label: row.label, value: row.value, color: row.color, value2: row.value2, size: r }
     }
     rows.push(row)
   }

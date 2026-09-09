@@ -6,6 +6,7 @@
 import { approxTextWidth } from './treemap'
 import { DEFAULT_PALETTE, paletteAt } from './palette'
 import type { Double, DrawCmd, MeasureText, Pt, Rect } from './types'
+import { isFiniteNumber } from './scale'
 
 
 export interface RiverSeries {
@@ -59,7 +60,7 @@ export interface RiverOptions {
 function riverValue(s: RiverSeries, i: number): Double {
   if (i >= s.values.length) return 0.0
   const v = s.values[i]!
-  if (v !== v) return 0.0
+  if (!isFiniteNumber(v)) return 0.0
   return v < 0.0 ? 0.0 : v
 }
 

@@ -9,6 +9,7 @@ import { colorRamp } from './heat-ramp'
 import { measureApprox, renderSvg } from './svg'
 import type { SvgOptions } from './svg'
 import type { Double, DrawCmd, MeasureText, Pt, Rect } from './types'
+import { isFiniteNumber } from './scale'
 
 export type GeoProjection = 'equirectangular' | 'mercator'
 
@@ -175,7 +176,7 @@ export function geoDomain(layout: GeoLayout, values: Record<string, Double>): [D
   let hi = -Infinity
   for (const r of layout.regions) {
     const v = values[r.name]
-    if (v === undefined || v !== v) continue
+    if (v === undefined || !isFiniteNumber(v)) continue
     if (v < lo) lo = v
     if (v > hi) hi = v
   }
@@ -198,7 +199,7 @@ export function renderGeo(layout: GeoLayout, values: Record<string, Double>, opt
   const m = measure ?? measureApprox()
   for (const r of layout.regions) {
     const v = values[r.name]
-    const has = v !== undefined && v === v && progress > 0.0
+    const has = v !== undefined && isFiniteNumber(v) && progress > 0.0
     const t = !has ? 0.0 : span <= 0.0 ? 1.0 : ((v - lo) / span) * progress
     const fill = has ? ramp(t < 0.0 ? 0.0 : t > 1.0 ? 1.0 : t) : emptyColor
     for (const ring of r.rings) out.push({ kind: 'polygon', points: ring, fill })

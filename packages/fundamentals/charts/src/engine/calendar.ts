@@ -9,6 +9,7 @@
 // and the nullable hit live in calendar-web.ts; the svg half in family-svg.ts.
 
 import { HEAT_RAMP, rampColor } from './heat'
+import { isFiniteNumber } from './scale'
 import type { Domain, Double, DrawCmd, Pt, Rect } from './types'
 
 const CALENDAR_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -246,7 +247,7 @@ export function calendarCellValues(layout: CalendarLayout, values: CalendarValue
   for (const v of values) {
     const p = parseIsoDays(v.date)
     vDays.push(p.days)
-    vOk.push(p.ok && v.value === v.value)
+    vOk.push(p.ok && isFiniteNumber(v.value))
   }
   let iF = 0.0
   for (let i = 0; i < layout.cells.length; i++) {

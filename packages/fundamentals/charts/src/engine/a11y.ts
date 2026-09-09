@@ -11,6 +11,7 @@
 
 import { plain } from './format'
 import type { Formatter } from './format'
+import { isFiniteNumber } from './scale'
 import type { Double } from './types'
 
 export interface A11ySeries {
@@ -152,7 +153,8 @@ function withError(fmt: Formatter, v: Double, s: A11ySeries, i: number): string 
   if (i >= lo.length || i >= hi.length) return fmt(v)
   const l = lo[i]!
   const h = hi[i]!
-  if (l !== l || h !== h) return fmt(v)
+  // Infinities are gaps too, matching the cell rule beside it (#3390).
+  if (!isFiniteNumber(l) || !isFiniteNumber(h)) return fmt(v)
   return `${fmt(v)} (${fmt(l)} to ${fmt(h)})`
 }
 
@@ -199,20 +201,21 @@ export function chartTable(input: A11yInput): A11yTable {
         continue
       }
       const v = s.values[i]!
-      // A gap (NaN) is an empty cell, not the word NaN.
-      row.push(v !== v ? '' : withError(fmt, v, s, i))
+      // A gap is an empty cell, not the word NaN — and an infinity is a gap
+      // too, because the geometry drops it (`isFiniteNumber`).
+      row.push(isFiniteNumber(v) ? withError(fmt, v, s, i) : '')
       if (two) {
         if (i >= other.length) row.push('')
         else {
           const v2 = other[i]!
-          row.push(v2 !== v2 ? '' : fmt(v2))
+          row.push(isFiniteNumber(v2) ? fmt(v2) : '')
         }
       }
       if (sized) {
         if (i >= rs.length) row.push('')
         else {
           const r = rs[i]!
-          row.push(r !== r ? '' : fmt(r))
+          row.push(isFiniteNumber(r) ? fmt(r) : '')
         }
       }
     }

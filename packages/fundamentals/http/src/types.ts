@@ -248,6 +248,16 @@ export interface HttpClientConfig
    * Static headers, or an ACCESSOR evaluated per request (the seam for a
    * token signal: `headers: () => ({ Authorization: \`Bearer ${token()}\` })`).
    *
+   * A STATIC source is read ONCE — on the first request — and reused for
+   * every request after it. Mutating the record you passed in afterwards
+   * therefore does nothing, by design: this is the same immutability the
+   * module docblock describes, where a shared mutable default is the axios
+   * property that leaks one request's header into a concurrent one under
+   * SSR. **A FUNCTION SOURCE IS THE SUPPORTED WAY TO GET A PER-REQUEST
+   * VALUE** — it is re-evaluated on every request, so a token that rotates
+   * belongs there (or in a per-call `options.headers`), never in a record
+   * you plan to reassign.
+   *
    * If you call the client from inside a TRACKED scope (an `effect`), wrap
    * the body in `untrack` — a request is imperative and must not subscribe
    * the surrounding effect to your token signal.

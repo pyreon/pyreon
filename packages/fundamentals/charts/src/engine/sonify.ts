@@ -37,9 +37,13 @@ export interface Sonification {
   playing(): boolean
 }
 
-/** Linear value → frequency map; a value outside the domain clamps to the range's ends. */
+/**
+ * Linear value → frequency map; a FINITE value outside the domain clamps to
+ * the range's ends, and a non-finite one is a gap (NaN → silence), matching
+ * what the geometry does with it rather than sounding it at `maxHz`.
+ */
 export function valueToHz(value: Double, domain: [Double, Double], minHz: Double, maxHz: Double): Double {
-  if (value !== value) return NaN
+  if (!Number.isFinite(value)) return NaN
   const span = domain[1] - domain[0]
   const t = span <= 0.0 ? 0.5 : (value - domain[0]) / span
   const c = t < 0.0 ? 0.0 : t > 1.0 ? 1.0 : t
@@ -50,7 +54,7 @@ const finiteDomain = (values: Double[]): [Double, Double] => {
   let lo = Infinity
   let hi = -Infinity
   for (const v of values) {
-    if (v !== v || !Number.isFinite(v)) continue
+    if (!Number.isFinite(v)) continue
     if (v < lo) lo = v
     if (v > hi) hi = v
   }
@@ -79,6 +83,17 @@ export function sonifyValues(values: Double[], options: SonifyOptions = {}): Son
   let gainNode: GainNode | null = null
   let active = false
   let finish: (() => void) | null = null
+  // The context THIS hook constructed (never a caller-supplied `options.context`,
+  // which the caller owns). Created lazily on the first play and closed when
+  // the run settles: a browser caps live AudioContexts per document (Chrome
+  // at ~6), so one per `play()` that is never closed throws NotSupportedError
+  // on the seventh press.
+  let owned: AudioContext | null = null
+  const contextNow = (): AudioContext => {
+    if (options.context !== undefined) return options.context
+    if (owned === null) owned = new AudioContext()
+    return owned
+  }
 
   const clearTimers = (): void => {
     for (const t of timers) clearTimeout(t)
@@ -101,6 +116,11 @@ export function sonifyValues(values: Double[], options: SonifyOptions = {}): Son
       gainNode.disconnect()
       gainNode = null
     }
+    if (owned !== null) {
+      const ctx = owned
+      owned = null
+      void ctx.close()
+    }
     options.link?.hover.set(-1)
     const done = finish
     finish = null
@@ -116,7 +136,7 @@ export function sonifyValues(values: Double[], options: SonifyOptions = {}): Son
         settle()
         return
       }
-      const ctx = options.context ?? new AudioContext()
+      const ctx = contextNow()
       if (ctx.state === 'suspended') void ctx.resume()
       const o = ctx.createOscillator()
       const g = ctx.createGain()
@@ -129,7 +149,9 @@ export function sonifyValues(values: Double[], options: SonifyOptions = {}): Son
       for (let i = 0; i < n; i++) {
         const hz = frequencies[i]!
         const at = t0 + i * stepSec
-        if (hz !== hz) {
+        // A gap — or a non-finite `minHz`/`maxHz` option, which `setValueAtTime`
+        // would THROW on — is silence for that step.
+        if (!Number.isFinite(hz)) {
           g.gain.setValueAtTime(0.0, at)
           continue
         }
