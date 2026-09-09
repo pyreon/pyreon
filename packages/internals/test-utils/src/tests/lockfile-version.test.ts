@@ -22,14 +22,25 @@ describe('the lockfile format is one the pinned bun can read', () => {
     expect(checkLockfileVersion(lock, pin)).toEqual({ ok: true, error: '' })
   })
 
-  it('accepts the repository under EVERY bun the map knows', () => {
-    // The gate must not depend on which of the pins is current, because two open
-    // PRs disagree about it: this one landed against 1.3.14 while #3440 moves the
-    // pin to 1.4.0, and whichever merges second must not turn the other red.
-    const lock = readFileSync(join(ROOT, 'bun.lock'), 'utf8')
-    for (const pin of Object.keys(BUN_LOCKFILE_SUPPORT)) {
-      expect(checkLockfileVersion(lock, pin), pin).toEqual({ ok: true, error: '' })
-    }
+  it('knows the pin the repository actually declares', () => {
+    // This REPLACES an 'accepts the repository under EVERY bun the map knows'
+    // assertion, whose premise a later change falsified. That spec existed so the
+    // pin move (#3440) and this gate (#3447) could merge in either order, and it
+    // was correct while the lockfile was version 1 — a format BOTH pins read.
+    //
+    // #3433 then landed a NESTED override (`overrides["@changesets/parse"]`),
+    // which 1.3.14 does not record in the lock at all. Under a 1.4.0 pin the lock
+    // must be regenerated to carry it, and that regeneration writes version 3 —
+    // which 1.3.14 cannot read. So the lock and the pin are now COUPLED by
+    // construction, and "readable by every pin" is no longer a property the
+    // repository can have, nor one it should.
+    //
+    // What survives is the invariant that actually protected us: the gate must
+    // know the pin the repo declares, so a bump cannot silently pass by naming a
+    // version nobody has characterised. The current pin reading the current lock
+    // is asserted directly above.
+    const pin = readFileSync(join(ROOT, '.bun-version'), 'utf8').trim()
+    expect(Object.keys(BUN_LOCKFILE_SUPPORT)).toContain(pin)
   })
 
   it('rejects a lockfile the pinned bun cannot read, and says which bun to use', () => {
