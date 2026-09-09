@@ -105,6 +105,7 @@ const GATES: Gate[] = [
   { name: 'check-multiplatform-matrix', cmd: 'bun scripts/check-multiplatform-matrix.ts' },
   { name: 'check-no-legacy-playground', cmd: 'bun scripts/check-no-legacy-playground.ts' },
   { name: 'check-changeset-required', cmd: 'bun scripts/check-changeset-required.ts' },
+  { name: 'check-lockfile-version', cmd: 'bun scripts/check-lockfile-version.ts' },
   // Pairs with the one above: having a changeset is not enough, its SEVERITY
   // must be legal for 0.x. Pure file read, milliseconds — and without it the
   // only feedback on a `major` bump is a CI round trip.
