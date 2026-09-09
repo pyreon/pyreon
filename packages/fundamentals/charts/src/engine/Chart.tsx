@@ -12,7 +12,7 @@ import { lttb, minMaxBuckets } from './decimate'
 import { resolveChartTheme, tooltipStyle, useChartTheme } from './theme'
 import type { VNode } from '@pyreon/core'
 import { batch, effect, isClient, signal, untrack } from '@pyreon/reactivity'
-import { canvasMeasure, paint, prepareCanvas } from './canvas-web'
+import { canvasMeasure, canvasSizeAttrs, paint, prepareCanvas } from './canvas-web'
 import { renderLegend } from './legend'
 import type { LegendPager } from './legend'
 import { renderTitle } from './title'
@@ -23,7 +23,7 @@ import type { ToolboxTool } from './toolbox'
 import { placeTooltip, tooltipAt, tooltipLines } from './tooltip'
 import type { TooltipContent } from './tooltip'
 import { geometrySpec, layoutChart, renderChart, renderChartIn, resolveY2Domain, resolveYDomain, seriesOnRightAxis } from './render'
-import { mirrorCmds } from './rtl'
+import { mirrorCmds, screenRectX } from './rtl'
 import { layoutSeriesPoints, layoutSeriesPointsAt } from './layout'
 import type { PlotLayout } from './layout'
 import { dateFormatter, numberFormatter } from './locale'
@@ -291,11 +291,6 @@ export interface PlotChartProps<T> {
    */
   animate?: boolean
   /**
-   * Drop the offscreen data table. It is on by default because a canvas is a
-   * single opaque node to a screen reader — without the table a chart is a
-   * blank rectangle to anyone not looking at it.
-   */
-  /**
    * Lay the chart out right-to-left.
    *
    * The chart is painted as the mirror of its LTR drawing about the canvas's
@@ -306,6 +301,11 @@ export interface PlotChartProps<T> {
    * reverse "Revenue" or "1.2M".
    */
   rtl?: boolean
+  /**
+   * Drop the offscreen data table. It is on by default because a canvas is a
+   * single opaque node to a screen reader — without the table a chart is a
+   * blank rectangle to anyone not looking at it.
+   */
   accessibleTable?: boolean
   /**
    * The left y scale. `'log'` draws every left-axis mark in the log view:
@@ -814,10 +814,13 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // frame rather than re-deriving one. Declared beside the toolbox for
     // that single reader; without the write it handed `renderSvg` an empty
     // list at 0x0 and the download was a blank <svg> with only its title.
-    lastFrame = frame
+    // The MIRRORED list under `rtl`: an SVG export must be the chart the user
+    // sees, and it is the PNG path's `toDataURL` of the same pixels.
+    const painted = props.rtl === true ? mirrorCmds(frame, w) : frame
+    lastFrame = painted
     lastW = w
     lastH = hgt
-    paint(ctx, props.rtl === true ? mirrorCmds(frame, w) : frame, w, hgt, FONT)
+    paint(ctx, painted, w, hgt, FONT)
   }
 
   // The navigator's series over ALL rows, resolved once per data change (the
@@ -1250,7 +1253,10 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     // stale size flips the tooltip on the wrong side at the edge.
     const size = { w: box.offsetWidth, h: box.offsetHeight }
     const at = placeTooltip({ x: px, y: py }, size, { x: 0, y: 0, w, h: hgt }, 12)
-    box.style.left = `${at.x}px`
+    // `px` is CHART space (mirrored in by `localX`); the tooltip is a DOM node
+    // in SCREEN space, so its left edge mirrors back out — the other half of
+    // the RTL seam (`./rtl`).
+    box.style.left = `${screenRectX(at.x, size.w, w, props.rtl === true)}px`
     box.style.top = `${at.y}px`
   }
 
@@ -1415,9 +1421,11 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
     role: 'img',
     'aria-label': () => describeChart(a11yInput()),
     ...(props.accessibleTable === false ? {} : { 'aria-describedby': tableId }),
-    // A zoomable/brushable/navigable chart owns its touches; a static one
-    // leaves the page free to scroll over it.
-    ...(props.dataZoom === true || props.brush === true || props.navigator === true ? { style: 'touch-action:none' } : {}),
+    // The box the client will paint into, as SSR attributes: `prepareCanvas`
+    // never runs on the server, and a server-rendered canvas with no size is
+    // a 300x150 default that the first client paint resizes — a layout shift
+    // on every hydrated chart. Width is only known when explicit.
+    ...canvasSizeAttrs(props.width, props.height ?? 200, props.dataZoom === true || props.brush === true || props.navigator === true),
     ref: (el: HTMLCanvasElement | null) => {
       canvas = el
       sizeObserver?.disconnect()

@@ -28,14 +28,39 @@
 // is hand-written per target for the same reason `pyreonShiftCmds` is: the
 // draw command is a discriminated union in TypeScript and a flat struct with
 // optional fields on native, so the switch below has no lowering. The two are
-// kept honest by `mirror-parity.test.ts`, which runs the same commands
-// through both and compares.
+// kept honest by `packages/native/compiler/src/tests/native-chart-mirror-parity.test.ts`,
+// which runs the same commands through both and compares.
+//
+// The mirror is a TWO-WAY seam. Screen → chart (`localX` in the hosts) turns a
+// pointer into chart space before a hit test; chart → screen (`screenX` /
+// `screenRectX` below) turns chart geometry back into DOM space before it is
+// written to an overlay's `style.left`. Centralising only the first half was
+// the bug: the tooltip took a chart-space x and landed on the mirror-image
+// side of the pointer. Every DOM overlay positioned by a chart x goes through
+// the second half.
 
 import type { ChartGradient, DrawCmd, Double, Pt } from './types'
 
 /** Mirror one x coordinate about the canvas's vertical centreline. */
 export function mirrorX(x: Double, width: Double): Double {
   return width - x
+}
+
+/**
+ * A chart-space x as a SCREEN x — the mirror-out twin of the hosts' `localX`.
+ * Identity when not `rtl`; under `rtl` the reflection about the centreline.
+ */
+export function screenX(chartX: Double, width: Double, rtl: boolean): Double {
+  return rtl ? mirrorX(chartX, width) : chartX
+}
+
+/**
+ * A chart-space box's LEFT edge as a screen left edge. A box mirrors by its
+ * far edge (the same fact `mirrorCmds` states for a rect): the screen left
+ * of a `rectW`-wide box whose chart left is `chartX` is `width - chartX - rectW`.
+ */
+export function screenRectX(chartX: Double, rectW: Double, width: Double, rtl: boolean): Double {
+  return rtl ? mirrorX(chartX + rectW, width) : chartX
 }
 
 /** Mirror a point's x, leaving y alone. */

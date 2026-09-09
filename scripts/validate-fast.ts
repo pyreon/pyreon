@@ -26,6 +26,7 @@
  *   - check-mcp-docs        (MCP tool added without docs/src/content/docs/mcp.md section)
  *   - loom-scan             (dependency-fabric errors: phantom deps, runtime cycles, drift)
  *   - check-advisory-comment-steps (advisory PR-comment step that can turn a check red)
+ *   - check-leak-ratchet    (a leak-class finding grew above its committed baseline)
  *   - check-lint-ratchet    (oxlint warn-finding count grew above baseline)
  *   - check-multiplatform-tier (published pkg without a declared multiplatform story)
  *   - check-native-coverage (an app-runtime pkg that should cross to native regressed)
@@ -35,7 +36,7 @@
  *                            manifest edits leave the docs-site reference,
  *                            troubleshooting and examples pages stale)
  *
- * 35 gates, ~4-8s warm on an unloaded machine. The point is: catch ALL the
+ * 36 gates, ~4-8s warm on an unloaded machine. The point is: catch ALL the
  * cheap-to-detect failures locally with ONE command before pushing.
  *
  * That number is worth keeping honest, because it is what decides whether
@@ -74,6 +75,7 @@ interface Gate {
 const GATES: Gate[] = [
   { name: 'lint', cmd: 'bun run lint' },
   { name: 'check-lint-ratchet', cmd: 'bun scripts/check-lint-ratchet.ts' },
+  { name: 'check-leak-ratchet', cmd: 'bun scripts/check-leak-ratchet.ts' },
   { name: 'check-multiplatform-tier', cmd: 'bun scripts/check-multiplatform-tier.ts' },
   // The finish-line ratchet: every app-runtime/feature-building package that
   // SHOULD cross to native either lowers clean through PMTC or ships a native
@@ -242,9 +244,10 @@ const CWD = new URL('..', import.meta.url).pathname
  * Why these run CONCURRENTLY.
  *
  * The gates are independent by construction — every one of them either only
- * READS the tree, or writes somewhere no other gate touches. The three that can
+ * READS the tree, or writes somewhere no other gate touches. The four that can
  * write a shared file (`check-lint-ratchet`, `check-pyreon-lint-ratchet`,
- * `check-bundle-budgets`) do so only behind `--update` / `--write-table`, which
+ * `check-leak-ratchet`, `check-bundle-budgets`) do so only behind
+ * `--update` / `--write-table`, which
  * this runner never passes; `check-manifest-examples` owns `.cache/manifest-
  * examples` exclusively. So there is no ordering constraint to respect, and
  * running them one at a time just serialises ~30 process startups behind one

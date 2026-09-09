@@ -4,7 +4,7 @@
 // a category axis and wrong for a scatter plot — there, x is a measured value
 // like y, and pretending otherwise silently redraws the data.
 
-import { scaleLinear } from './scale'
+import { isFiniteNumber, scaleLinear } from './scale'
 import type { Domain, Double, Pt, Rect } from './types'
 
 /** One band's worth of stacked segments, bottom to top. */
@@ -65,6 +65,102 @@ export function layoutStackedBars(
   return out
 }
 
+/**
+ * `layoutStackedBars` on the flipped frame: bands run DOWN the y axis and the
+ * stack grows to the RIGHT along x.
+ *
+ * A separate function rather than a flag inside the vertical one, because the
+ * two differ in every term — which plot dimension the band divides, which
+ * scale the value maps through, and which rect edge the segment starts at —
+ * so a shared body would be a branch on `horizontal` in each of those places
+ * rather than shared arithmetic.
+ */
+export function layoutStackedBarsH(
+  seriesValues: Double[][],
+  plot: Rect,
+  vDomain: Domain,
+  gapRatio: Double,
+): StackSegment[] {
+  const out: StackSegment[] = []
+  if (seriesValues.length === 0) return out
+  let n = 0
+  for (const s of seriesValues) if (s.length > n) n = s.length
+  if (n === 0) return out
+
+  const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
+  const band = plot.h / n
+  const bh = band * (1.0 - ratio)
+
+  for (let i = 0; i < n; i++) {
+    let acc = 0.0
+    for (let s = 0; s < seriesValues.length; s++) {
+      const v = seriesValues[s]![i] ?? 0.0
+      // `!(v > 0)` rather than `v <= 0`: a gap (NaN) fails both comparisons,
+      // and a gap in a stack is a zero-width segment, never a NaN bar.
+      if (!(v > 0.0)) continue
+      const xEnd = scaleLinear(vDomain, plot.x, plot.x + plot.w, acc + v)
+      const xStart = scaleLinear(vDomain, plot.x, plot.x + plot.w, acc)
+      out.push({
+        rect: {
+          x: xStart < xEnd ? xStart : xEnd,
+          y: plot.y + band * i + (band - bh) / 2.0,
+          w: Math.abs(xEnd - xStart),
+          h: bh,
+        },
+        seriesIndex: s,
+        datumIndex: i,
+        value: v,
+      })
+      acc = acc + v
+    }
+  }
+  return out
+}
+
+/** `layoutGroupedBars` on the flipped frame: one bar per series, stacked DOWN each band. */
+export function layoutGroupedBarsH(
+  seriesValues: Double[][],
+  plot: Rect,
+  vDomain: Domain,
+  gapRatio: Double,
+): StackSegment[] {
+  const out: StackSegment[] = []
+  const k = seriesValues.length
+  if (k === 0) return out
+  let n = 0
+  for (const s of seriesValues) if (s.length > n) n = s.length
+  if (n === 0) return out
+
+  const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
+  const band = plot.h / n
+  const groupH = band * (1.0 - ratio)
+  const barH = groupH / k
+  const zero = vDomain.min < 0.0 && vDomain.max > 0.0 ? 0.0 : vDomain.min
+  const zeroX = scaleLinear(vDomain, plot.x, plot.x + plot.w, zero)
+
+  for (let i = 0; i < n; i++) {
+    const gy = plot.y + band * i + (band - groupH) / 2.0
+    for (let s = 0; s < k; s++) {
+      const raw = seriesValues[s]![i] ?? 0.0
+      // A gap draws a zero-width bar at the zero line — nothing to see, nothing to hit.
+      const v = raw === raw ? raw : zero
+      const vx = scaleLinear(vDomain, plot.x, plot.x + plot.w, v)
+      out.push({
+        rect: {
+          x: vx < zeroX ? vx : zeroX,
+          y: gy + barH * s,
+          w: Math.abs(vx - zeroX),
+          h: barH,
+        },
+        seriesIndex: s,
+        datumIndex: i,
+        value: v,
+      })
+    }
+  }
+  return out
+}
+
 /** True when any value would be dropped from a stack. */
 export function stackHasNegatives(seriesValues: Double[][]): boolean {
   for (const s of seriesValues) for (const v of s) if (v < 0.0) return true
@@ -113,7 +209,7 @@ export function layoutGroupedBars(
     for (let s = 0; s < k; s++) {
       const raw = seriesValues[s]![i] ?? 0.0
       // A gap draws a zero-height bar at the zero line — nothing to see, nothing to hit.
-      const v = raw === raw ? raw : zero
+      const v = isFiniteNumber(raw) ? raw : zero
       const vy = scaleLinear(yDomain, plot.y + plot.h, plot.y, v)
       out.push({
         rect: {
@@ -183,7 +279,7 @@ export function normalizeStack(seriesValues: Double[][]): Double[][] {
       const v = s[i]!
       const total = totals[i]!
       // A gap stays NaN (NaN / x is NaN); a zero total maps everything to 0.
-      row.push(total > 0.0 ? v / total : v === v ? 0.0 : v)
+      row.push(total > 0.0 ? v / total : isFiniteNumber(v) ? 0.0 : v)
     }
     out.push(row)
   }
@@ -222,7 +318,7 @@ export function layoutWaterfall(
   let acc = 0.0
   for (let i = 0; i < n; i++) {
     const v = values[i]!
-    if (v !== v) continue
+    if (!isFiniteNumber(v)) continue
     const start = acc
     const end = acc + v
     const y0 = scaleLinear(yDomain, plot.y + plot.h, plot.y, start)
@@ -245,7 +341,7 @@ export function waterfallExtent(values: Double[]): Domain {
   let lo = 0.0
   let hi = 0.0
   for (const v of values) {
-    if (v !== v) continue
+    if (!isFiniteNumber(v)) continue
     acc = acc + v
     if (acc < lo) lo = acc
     if (acc > hi) hi = acc

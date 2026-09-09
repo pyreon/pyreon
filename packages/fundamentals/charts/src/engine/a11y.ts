@@ -11,6 +11,7 @@
 
 import { plain } from './format'
 import type { Formatter } from './format'
+import { isFiniteNumber } from './scale'
 import type { Double } from './types'
 
 export interface A11ySeries {
@@ -110,8 +111,9 @@ export function chartTable(input: A11yInput): A11yTable {
         continue
       }
       const v = s.values[i]!
-      // A gap (NaN) is an empty cell, not the word NaN.
-      row.push(v !== v ? '' : fmt(v))
+      // A gap is an empty cell, not the word NaN — and an infinity is a gap
+      // too, because the geometry drops it (`isFiniteNumber`).
+      row.push(isFiniteNumber(v) ? fmt(v) : '')
     }
     rows.push(row)
   }
