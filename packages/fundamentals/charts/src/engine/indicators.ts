@@ -123,11 +123,21 @@ export function trend<T>(y: Accessor<T>, options: MarkOptions = {}): Mark<T> {
 }
 
 /**
- * Bollinger bands: [upper, middle, lower] as three line marks — spread them
- * into `marks`. `k` is the band width in standard deviations (2 by default).
+ * Bollinger bands: the envelope as a filled `band`, plus the middle line —
+ * two marks, spread them into `marks`. `k` is the band width in standard
+ * deviations (2 by default).
+ *
+ * It used to return THREE lines. The mark is named "bands", every charting
+ * tool draws it as a shaded channel, and a `band` could not express it until
+ * a band's bounds could be COMPUTED from the series rather than read off each
+ * datum (`Mark.transform2`). Three thin lines was the shape the engine could
+ * build, not the shape the indicator is.
+ *
+ * Breaking for anyone destructuring three marks — deliberately, per the
+ * repo's pre-1.0 preference for a clean API over a compatibility shim.
  */
 export function bollinger<T>(y: Accessor<T>, window: number, k: Double = 2.0, options: MarkOptions = {}): Mark<T>[] {
-  const band = (sign: Double): ((v: Double[]) => Double[]) => (v: Double[]): Double[] => {
+  const edge = (sign: Double): ((v: Double[]) => Double[]) => (v: Double[]): Double[] => {
     const mid = smaValues(v, window)
     const sd = stdevValues(v, window)
     const out: Double[] = []
@@ -140,8 +150,16 @@ export function bollinger<T>(y: Accessor<T>, window: number, k: Double = 2.0, op
   }
   const label = options.label ?? 'Bollinger'
   return [
-    derived(y, band(1.0), { ...options, label: label + ' upper' }),
+    {
+      kind: 'band',
+      y,
+      options: { ...options, label: label + ' band' },
+      r: undefined,
+      transform: edge(1.0),
+      transform2: edge(-1.0),
+      errorLow: undefined,
+      errorHigh: undefined,
+    },
     derived(y, (v) => smaValues(v, window), { ...options, label: label + ' middle' }),
-    derived(y, band(-1.0), { ...options, label: label + ' lower' }),
   ]
 }

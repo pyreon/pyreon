@@ -4,6 +4,7 @@ import type { VNode } from '@pyreon/core'
 import { canvasHost, orNull } from './canvas-host'
 import { treeLegend, treeTip } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
+import type { ChartTheme } from './render'
 import { hitTree, hitTreeIndex, layoutTree, renderTree } from './tree'
 import type { TreeLayout, TreeLayoutNode, TreeOptions } from './tree'
 import type { TreeNode } from './treemap'
@@ -19,7 +20,7 @@ export interface TreeChartProps extends CanvasHostProps {
 
 export function TreeChart(props: TreeChartProps): VNode {
   const readData = (): TreeNode[] => (typeof props.data === 'function' ? (props.data as () => TreeNode[])() : props.data)
-  const opts = (palette: readonly string[]): TreeOptions => ({ palette, ...props.tree })
+  const opts = (t: ChartTheme): TreeOptions => ({ palette: t.palette, labelColor: t.label, linkColor: t.label, ...props.tree })
   return canvasHost<TreeLayout>({
     props,
     defaultHeight: 300,
@@ -27,9 +28,9 @@ export function TreeChart(props: TreeChartProps): VNode {
     track: () => {
       readData()
     },
-    layout: (box, _measure, theme) => layoutTree(readData(), box, opts(theme.palette)),
+    layout: (box, _measure, theme) => layoutTree(readData(), box, opts(theme)),
     animates: true,
-    render: (layout, _measure, theme, progress) => renderTree(layout, { ...opts(theme.palette), progress }),
+    render: (layout, _measure, theme, progress) => renderTree(layout, { ...opts(theme), progress }),
     legend: treeLegend,
     select: (layout, px, py) => {
       props.onSelect?.(hitTree(layout, px, py, props.tree?.symbolSize))
