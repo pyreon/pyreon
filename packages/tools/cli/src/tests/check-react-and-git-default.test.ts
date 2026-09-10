@@ -195,8 +195,36 @@ describe('--fix writes the file and reports what it wrote', () => {
 })
 
 describe('with no path arguments it checks what git says changed', () => {
+  // A `GIT_*` variable in the environment OVERRIDES both `cwd` and `-C` for
+  // every git invocation — and a pre-push hook sets `GIT_DIR`,
+  // `GIT_INDEX_FILE` and friends. Left in place, `git init` in the temp dir
+  // no-ops against the OUTER repo and `check`'s own `git diff` reports the
+  // outer repo's changes, so these specs pass standalone and fail inside the
+  // hook that is supposed to gate them. The command under test does not clear
+  // them (a hook that sets GIT_DIR generally MEANS "operate on this repo"), so
+  // the test environment is what has to be honest.
+  const savedGitEnv: Record<string, string | undefined> = {}
+  beforeEach(() => {
+    for (const k of Object.keys(process.env)) {
+      if (k.startsWith('GIT_')) {
+        savedGitEnv[k] = process.env[k]
+        delete process.env[k]
+      }
+    }
+  })
+  afterEach(() => {
+    for (const [k, v] of Object.entries(savedGitEnv)) {
+      if (v !== undefined) process.env[k] = v
+      delete savedGitEnv[k]
+    }
+  })
+
   const git = (...args: string[]) =>
-    execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+    execFileSync('git', ['-C', cwd, ...args], {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
 
   const initRepo = () => {
     git('init', '-q')
