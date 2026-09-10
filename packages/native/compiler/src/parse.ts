@@ -2734,6 +2734,11 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
         'step',
         // Engine arithmetic that crosses verbatim (bin.ts is in ENGINE_FILES).
         'binValues',
+        // Decimation, same shape (decimate-values.ts is in ENGINE_FILES). NOT
+        // `lttb`: that one takes `Pt[]`, which is why the arithmetic was split
+        // out of it — it genuinely stays web and must keep warning by name.
+        'lttbIndices',
+        'minMaxBuckets',
         // Formatter constructors — a chart's `format`/`xFormat`/`yFormat`/
         // `y2Format` prop lowers a bare name (`plain`, `compact`) or a
         // factory CALL (`fixed(2)`, `currency("$", 2)`, `percent(1)`) via

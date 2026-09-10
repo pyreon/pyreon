@@ -1485,7 +1485,8 @@ const PLOT_UNLOWERED_REASON: Readonly<Record<string, string>> = {
   selectedMode: 'it pins a selection, which needs that same host state (the gesture arcs\' `_hostStateDecls` splice is how it would be held)',
   onSelectChange: 'it observes the pinned selection, so it waits on `selectedMode`',
   onHighlight: 'it observes the highlighted datum, so it waits on the same emphasis state',
-  maxPoints: 'LTTB decimation lives in `decimate.ts`, which is written in the crossing subset but is not yet in ENGINE_FILES; the host would also have to map a tap\'s index back through the kept rows',
+  maxPoints:
+    'row thinning is not yet built in the emitter, and the host still needs to map a tap\'s index back through the kept rows — but the ARITHMETIC crosses now (`decimate-values.ts` is in ENGINE_FILES), so decimate before the chart: `const ys: number[] = rows.map(r => r.y * 1.0)` then `const keep = lttbIndices([], ys, 1000)`, and plot `keep.map(i => rows[i])`. The `* 1.0` is load-bearing: a TS `number` field with no fractional initializer lowers to Int while `lttbIndices` takes Double, and without it BOTH toolchains reject the emit with no warning. `lttbIndices` returns the kept INDICES, so a tap still names the row you decimated from',
   seriesLabels: 'it renames the series in the hidden accessible table; the native canvas is named by `describeChart` over the series\' own labels, and feeding it the override is emit work',
   updateAnimation: 'the update tween interpolates two draw lists through `cmd-tween.ts`, which is web-only; crossing it needs the host to hold the PREVIOUS list',
   updateDuration: 'it times that same web-only draw-list tween, so it waits on `updateAnimation`',

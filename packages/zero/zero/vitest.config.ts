@@ -51,14 +51,17 @@ export default defineNodeConfig({
     'src/_layout.tsx',
     'src/routes/**',
   ],
-  // Statements re-baselined 95 → 94 (2026-07 coverage-gate restoration):
-  // measured 94.97 on a local full run — the package was previously SKIPPED
-  // on CI (120s per-package gate timeout on slower runners), so the 0.03pp
-  // shortfall went unnoticed. Aspiration stays 95 — raise back as tests land
-  // (BELOW_FLOOR_EXEMPTIONS entry in scripts/check-coverage.ts mirrors these).
+  // Ratcheted 94/85 → 96/92 (2026-09 coverage campaign). Measured 96.78
+  // statements / 92.23 branches after suites covering hreflang generation,
+  // the dev-server locale redirect, adapter `_routes.json` + `revalidate`,
+  // certificate-cache renewal, the perf-advisor manifest walk, CORS origin
+  // resolution and RSS output. Statements now clear the 95 floor outright;
+  // branches keep an exemption. Raise as tests land, never lower to absorb
+  // a regression (BELOW_FLOOR_EXEMPTIONS in scripts/check-coverage.ts
+  // mirrors these and the drift check requires they match exactly).
   coverageThresholds: {
-    statements: 94,
-    branches: 85,
+    statements: 96,
+    branches: 92,
     functions: 95,
     lines: 95,
   },

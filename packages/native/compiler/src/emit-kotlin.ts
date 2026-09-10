@@ -10651,7 +10651,12 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   }
   const belowNav = presets === undefined ? '' : ' - pyreonPresetStrip.height'
   if (navigating) {
-    lets.push(`val pyreonNavValues: List<Double> = ${navValues}`)
+    // Thinned to the strip's width, exactly as the web host does: a 36px-tall
+    // overview needs the min/max envelope per pixel column, not 100k points.
+    // Without this the native navigator resolved and drew EVERY row on every
+    // frame — the same defect the web host had before `minMaxBuckets` was
+    // wired there, and worse here because the target has less headroom.
+    lets.push(`val pyreonNavValues: List<Double> = minMaxBuckets(${navValues}, maxOf(1, (${W} / 2.0).toInt()))`)
     lets.push(`val pyreonNavigator: NavigatorLayout = renderNavigator(pyreonNavValues, pyreonSeries[0].color, pyreonZoom, PyreonChartRect(0.0, 0.0, ${W}, ${H}${belowNav}), pyreonTheme.grid)`)
   }
   const bool = (name: string, fallback: boolean): string => {
