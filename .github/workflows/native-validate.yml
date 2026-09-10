@@ -334,6 +334,30 @@ jobs:
           PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate
           PYREON_VALIDATE_NO_CACHE: ${{ github.event_name == 'schedule' && '1' || '0' }}
 
+      # The ONLY place the Kotlin runtime packages' own tests run in CI.
+      # `@pyreon/native-{runtime,router}-kotlin` gate their `test` script on
+      # `command -v kotlinc`, which is the right default for a dev with no
+      # Android stack — and every CI runner that would reach them lacks it,
+      # except this one, which installs a pinned kotlinc two steps up.
+      #
+      # Same hole its Swift sibling had, found the same way: `native-runtime-swift`
+      # sat red on main because nothing ran it, and asking the question once
+      # showed four native packages in that state, not one. The Swift pair is
+      # covered on the iOS device job (macOS has swift); this covers the Kotlin
+      # pair here, where kotlinc already exists.
+      #
+      # ~23s for both. Placed before the heavier co-located gate below so a
+      # broken runtime fails early.
+      - name: Unit-test the Kotlin packages (PyreonRuntime, PyreonRouter)
+        # The probe is the gate: both scripts self-skip without kotlinc and exit
+        # 0, so without it this step reports green having run nothing.
+        run: |
+          command -v kotlinc >/dev/null 2>&1 || {
+            echo "::error::kotlinc is not on PATH; the native-*-kotlin suites would self-skip and this gate would be green-but-empty"
+            exit 1
+          }
+          bun run --filter='@pyreon/native-*-kotlin' test
+
       - name: Verify co-located native runtime sources
         # Each cross-platform package ships its native runtime beside its src/
         # (`@pyreon/<pkg>/native/{swift,kotlin}/`, the co-location architecture).
