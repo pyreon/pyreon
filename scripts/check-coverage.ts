@@ -192,10 +192,10 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
       'flow.ts interaction paths the real-Chromium suites drive. Raise in lockstep as tests land; never lower.',
   },
   '@pyreon/compiler': {
-    currentStatements: 91,
-    currentBranches: 85,
+    currentStatements: 93,
+    currentBranches: 86,
     reason:
-      'JSX transform compiler. PR #1079 excluded load-native.ts (napi-rs binary loader) + event-names.ts (DOM-event remap data). Ratcheted 89/83 → 91/85 (measured 91.79/85.56) after validate-emit.ts — the pure TS-compiler-API compile-time @pyreon/validate specializer — gained full behavioral coverage (56.3%→98.9% stmts) of its check vocabulary + emitSchemaSource mini rewrite. Residual gap is the jsx.ts codegen edge-case tail (dual-backend, covered by native-equivalence + fuzz-equivalence in the `test (native)` cell) plus the syntactic audit modules (native-audit/content-audit/island-audit/ssg-audit) and diagnose.ts (exercised by e2e/dev-error-printer.spec.ts). Lifting to 95/95 is multi-PR work tracked as a long-tail effort.',
+      'JSX transform + detectors. Ratcheted 91/85 -> 93/86 by the 92%+ campaign (measured 93.71/86.15, functions 99.18, lines 96.88). The lift came from the project AUDITS — islands, SSG routes, native multiplatform — where the failure mode is a detector whose scan misses the files it is about, reports nothing, and has that render as a clean bill of health under `pyreon doctor`. Both directions per rule: the file that must be found and the file that must be skipped. Branches remain well short of 92 and the residual is structural, not a backlog: ~240 of the 871 uncovered arms are `?? []` guards on AST node fields in plain.ts + plain-migrate.ts that no valid parsed source can produce, and jsx.ts holds 368 more that a purpose-written 42-spec eligibility suite moved by ZERO because the 300-seed differential fuzz already crosses every one of them. Those specs were kept regardless — the fuzz proves byte-identity, which a BAIL satisfies trivially, so it structurally cannot detect the fast path ceasing to fire. Raise in lockstep; never lower.',
   },
   '@pyreon/loom': {
     currentStatements: 95,
