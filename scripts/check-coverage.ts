@@ -172,28 +172,30 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
       'The plot-engine family wave (2026-09, ~30 stacked PRs: funnel through gantt, the ECharts option facade, the option host, the native crossings). Each PR lands one family with statement-level geometry specs; the edge and interaction specs that lift branch coverage arrive in LATER PRs of the same stack, so an intermediate branch measures 94-97% statements and 85-90% branches (theme river: 96.28 / 87.49 with the browser-covered canvas hosts excluded) while the top of the stack sits higher. Recorded at the wave floor rather than lowered per PR; the ratchet back toward 98 is one follow-up once the wave has merged, and the family hosts stay excluded because each is covered only by its real-Chromium spec.',
   },
   '@pyreon/lathe': {
-    currentStatements: 90,
-    currentBranches: 80,
+    currentStatements: 96,
+    currentBranches: 92,
     reason:
-      'Spec-to-client codegen, arrived at 84.46% statements / 72.22% branches and ratcheted to 90.69 / 80.51 in the same PR. It reached main unmeasured: its PR changed a set large enough to trip the PR-time coverage step\'s >15-package cap, so the step SKIPPED and a brand-new package slipped past the mechanism whose stated job is preventing exactly that. (I first attributed this to the ROOT-FILE escalation, a real second hole with the same outcome — `--filter=*` makes that step exit — but `isRootFile` is false for the `scripts/*.ts` paths that PR touched, so it was the cap. The escalation hole is fixed in `affected.ts` regardless.) ' +
-      'The shortfall is real, not an accounting artifact. `src/cli/report.ts` (40 -> 98), `src/emit/mock.ts` (77 -> 98), `src/emit/schema.ts` (71 -> 87) `src/core/naming.ts` (79 -> 97) and `src/input/openapi.ts` (79 -> 87) are done — the fixture generator\'s per-kind shapes and the portable-regex guard, both of which encode cross-target decisions rather than lines. Recorded at the MEASURED actual and ratcheted with it, never lowered to absorb a regression.',
+      'Spec-to-client codegen. Arrived at 84.46/72.22, ratcheted to 90.69/80.51 in its own PR, and now 96/92 in the 2026-09 campaign (measured 96.21/92.14). The suites that closed it cover the surfaces where a mistake is silent because the output is CODE someone else runs: the first-party YAML reader and what it refuses, the OpenAPI reduction and its notes channel, the faker/docs/client emitters, the contract diff `--fail-on-breaking` gates on, the CLI parser, and the layered entry graph. Three bugs fell out of it. The residual is the watch loop, the vite plugin host and the nested-emitter plumbing — surfaces reached by a real build rather than a unit run. Raise as tests land; never lower to absorb a regression.',
   },
+
   // ── Statements + branches < floor ───────────────────────────────────
   '@pyreon/flow': {
-    currentStatements: 98,
-    currentBranches: 90,
+    currentStatements: 99,
+    currentBranches: 92,
     reason:
-      'Node-graph canvas. Statements are ABOVE the 95 floor (98.49 measured); only branches sit under it, and the shortfall is ONE file: ' +
-      '`layout-engine.ts` at 75.63% branches, the in-house engine that replaced elkjs in #2933 (the tree\'s last copyleft dependency). ' +
-      'Its algorithmic fallbacks — cycle-breaking, ranking, ordering — carry many branches the current tests do not drive. Every other ' +
-      'file in the package is at 99%+ branches, so this is one bounded, nameable gap rather than a thin package. Raising it means ' +
-      'exercising the layout algorithm directly, which is real work and tracked separately.',
+      'Node-graph canvas. Statements are ABOVE the 95 floor (99.15 measured); only branches sit under it, at 92.72. ' +
+      'Ratcheted 98/90 -> 99/92 by the 92%+ campaign: the shortfall named here was `layout-engine.ts` at 75.63% branches ' +
+      '(the in-house engine that replaced elkjs in #2933), and three new suites took it to 83.97 — malformed graphs ' +
+      '(dangling edges, cycles, self-loops, forests, across all SEVEN algorithms; the prior tests ran five and only ever ' +
+      'passed well-formed input), the `direction` option including the UP/LEFT axis flip, and the edge API no-op guards ' +
+      'driven through the undo stack. The residual is the engine\'s numeric ordering/crossing-reduction arms plus ' +
+      'flow.ts interaction paths the real-Chromium suites drive. Raise in lockstep as tests land; never lower.',
   },
   '@pyreon/compiler': {
-    currentStatements: 91,
-    currentBranches: 85,
+    currentStatements: 93,
+    currentBranches: 86,
     reason:
-      'JSX transform compiler. PR #1079 excluded load-native.ts (napi-rs binary loader) + event-names.ts (DOM-event remap data). Ratcheted 89/83 → 91/85 (measured 91.79/85.56) after validate-emit.ts — the pure TS-compiler-API compile-time @pyreon/validate specializer — gained full behavioral coverage (56.3%→98.9% stmts) of its check vocabulary + emitSchemaSource mini rewrite. Residual gap is the jsx.ts codegen edge-case tail (dual-backend, covered by native-equivalence + fuzz-equivalence in the `test (native)` cell) plus the syntactic audit modules (native-audit/content-audit/island-audit/ssg-audit) and diagnose.ts (exercised by e2e/dev-error-printer.spec.ts). Lifting to 95/95 is multi-PR work tracked as a long-tail effort.',
+      'JSX transform + detectors. Ratcheted 91/85 -> 93/86 by the 92%+ campaign (measured 93.71/86.15, functions 99.18, lines 96.88). The lift came from the project AUDITS — islands, SSG routes, native multiplatform — where the failure mode is a detector whose scan misses the files it is about, reports nothing, and has that render as a clean bill of health under `pyreon doctor`. Both directions per rule: the file that must be found and the file that must be skipped. Branches remain well short of 92 and the residual is structural, not a backlog: ~240 of the 871 uncovered arms are `?? []` guards on AST node fields in plain.ts + plain-migrate.ts that no valid parsed source can produce, and jsx.ts holds 368 more that a purpose-written 42-spec eligibility suite moved by ZERO because the 300-seed differential fuzz already crosses every one of them. Those specs were kept regardless — the fuzz proves byte-identity, which a BAIL satisfies trivially, so it structurally cannot detect the fast path ceasing to fire. Raise in lockstep; never lower.',
   },
   '@pyreon/loom': {
     currentStatements: 95,
@@ -202,10 +204,10 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
       'Dependency observatory. Statements, functions and lines all clear the floor comfortably (98.31 / 99.09 / 99.27) and are NOT exempted — only branches is, now at 92.65, which clears the 92%+ campaign bar though not the gate\'s 95. Ratcheted 90 -> 92 by covering `core/detect.ts`, where every uncovered arm was a RECOGNITION rule present because the naive detector produced wrong warnings on a real monorepo: the `@types/*` twin (including the scoped `@scope/x` -> `@types/scope__x` mapping, which is not the obvious one), type-only-counts-as-used, and private-vs-published severity. Writing them surfaced a real gap — `if (!prod) continue` skipped the WHOLE package, so one whose runtime imports are all relative or all declared never had its `import type` specifiers checked at all, making `phantom-type-dep` unreachable for exactly the shape where it is the only finding available. The residual is defensive `??` fallbacks spread thin across files that are otherwise 96-99%.',
   },
   '@pyreon/atlas': {
-    currentStatements: 82,
-    currentBranches: 75,
+    currentStatements: 84,
+    currentBranches: 76,
     reason:
-      'AI-native component workbench. FIRST time this package has ever been enforced: it was absent from every CI coverage table because the runner silently dropped any package whose output it could not parse, so its declared 95/95/95 was decorative and the package sat ~15pp under it. Honest first baseline (measured 79.72/75.98, functions 66.06, lines 79.94). The uncovered surface is concentrated and named: `static.ts` (the `atlas build` static-docs generator, landed with no tests), `server.ts`/`plugin.ts`/`run.ts` (the vite-booting dev surface, proven by e2e/atlas-workshop.spec.ts rather than node vitest), `lens.ts`/`lens-client.ts`/`axe.ts` (browser-side instrumentation measured on the page\'s own devtools bridge), and the `A11y*` styled-declaration modules. This is the low end of a deliberate ratchet — raise these thresholds + this entry in lockstep as tests land, never lower.',
+      'AI-native component workbench. FIRST enforced at the 2026-08 gate restoration: it was absent from every CI coverage table because the runner silently dropped any package whose output it could not parse, so its declared 95/95/95 was decorative and the package sat ~15pp under it. Ratcheted 82/75 -> 84/76 by the 92%+ campaign (measured 85.29/76.43, functions 88.91, lines 86.35): `static.ts` gained tests for the `atlas build` page writer\'s path-traversal guard and the site shell\'s HTML escaping of a user-supplied `--title` — both security-relevant, both previously asserted nowhere — and `src/core` went 89.43 -> 97.97 via the two identity qualifiers, which surfaced a real silent-ambiguity bug in the graph. The remaining surface is named and integration-tier: `server.ts` + `plugin.ts` + `run.ts` (the vite-booting dev surface, proven by e2e/atlas-workshop.spec.ts, whose config boots the REAL CLI), `lens.ts`/`lens-client.ts`/`axe.ts` (browser-side instrumentation measured on the page\'s own devtools bridge), and `buildStatic` itself (dynamic-imports vite). Raise these + the package thresholds in lockstep as tests land — never lower.',
   },
   '@pyreon/ui-components': {
     currentStatements: 62,
@@ -215,9 +217,9 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
   },
   '@pyreon/ui-primitives': {
     currentStatements: 95,
-    currentBranches: 90,
+    currentBranches: 92,
     reason:
-      '12 headless behavior primitives (SelectBase/ComboboxBase/CalendarBase/TreeBase/…). Ratcheted across several waves from a 62/54 first baseline: 78/71 (Tree/PinInput/NumberInput/Accordion/Calendar interaction specs), 81/75 (the toggle state machines — the run that surfaced and locked the CheckboxBase + RadioBase label-to-input double-toggle fix), 86/81 (ComboboxBase + TreeBase state machines, driven through the headless state objects), and now 89 -> 90 (measured 90.29) with the TreeBase typeahead specs. Typeahead is the rule pair nothing asserted: a repeated character CYCLES from after the current item while a longer buffer REFINES from at it, and getting either backwards still moves focus — just somewhere the user did not intend, which reports as "the tree feels broken". Below the 92 campaign bar; the residual is spread across the interaction primitives (TreeBase 14 arms, ComboboxBase 11, Calendar/Modal/NumberInput/PinInput 9 each) rather than concentrated, so it wants per-primitive interaction tests, not a threshold edit.',
+      '12 headless behavior primitives (SelectBase/ComboboxBase/CalendarBase/TreeBase/…). Ratcheted across several waves from a 62/54 first baseline — 78/71, then 81/75 (the run that surfaced and locked the CheckboxBase + RadioBase label-to-input double-toggle fix), then 86/81 (Combobox + Tree state machines through the headless state objects) — and now 89 -> 92 by the 92%+ campaign (measured 95.92/92.13), which clears that bar though not the gate\'s 95. The lift is four edge-behaviour suites: TreeBase\'s roving tab stop (without the fallback an untouched tree renders ZERO tab stops and is unreachable by keyboard) and its string-valued ARIA state; NumberInputBase against non-numbers, where the surface promises `value()` is never NaN; PinInputBase\'s paste distribution and length fallback; ModalBase\'s dismissal and its three-step initial-focus chain; ComboboxBase with an empty option list. Plus TreeBase typeahead, the rule PAIR nothing asserted: a repeated character CYCLES from after the current item while a longer buffer REFINES from at it, and getting either backwards still moves focus — just somewhere the user did not intend, which reports as \'the tree feels broken\'. Residual is spread across the remaining primitives (Calendar, RangeSlider, TagsInput, Tabs) rather than concentrated. Raise in lockstep; never lower.',
   },
   // ── Branch < MINIMUM_BRANCH_FLOOR=95 (statements OK at ≥95) ─────────
   // Each entry's `currentBranches` mirrors the package's vitest.config.ts
@@ -237,10 +239,18 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
       'CLI tool. Re-baselined 95/85 → 88/76 at the 2026-07 coverage-gate restoration (measured 88.88/76.91): the CLI-unification wave (`pyreon new`/`mcp`/`add`/`check`/`upgrade` npx-delegator + subprocess paths) and the doctor gates that shell out to real repo scans (check-bundle-budgets, audit-types, native-audit, audit-leak-classes) landed with integration-tier coverage. Multi-PR per-subcommand work to lift back.',
   },
   '@pyreon/server': {
-    currentStatements: 95,
-    currentBranches: 86,
+    currentStatements: 98,
+    currentBranches: 92,
     reason:
-      'SSR server. Branches at ~86% — residual gap is client-side island() path (browser-only client.ts hydration scheduling) covered by islands.browser.test.tsx in real Chromium but unreachable from node-process vitest. PRs #1335 + #1336 added happy-dom coverage for bare island() invocation; further lift to 95 requires real-browser mount tests.',
+      'SSR server. Statements are ABOVE the 95 floor (98.48 measured); only branches sit under it, at 92.11. ' +
+      'Ratcheted 95/86 -> 98/92 by the 92%+ campaign. The reason this entry previously gave — "the client-side island() ' +
+      'path is browser-only and unreachable from node-process vitest" — was true of the hydration SCHEDULING and wrongly ' +
+      'generalised to the whole client half: the server-island client path (self-activation ref, fragment fetch, the ' +
+      'idempotency stamp shared by two activation paths, all three failure modes) had ZERO coverage purely because its ' +
+      'only suite runs under `node`, where `isClient` is false. Under happy-dom it is entirely reachable. Also added: the ' +
+      'island props codec against a malformed `data-props` attribute, and prerender resilience incl. the leak-class-I ' +
+      'timer clear. The residual IS genuinely browser-only (islands.browser.test.tsx in real Chromium) plus two arms the ' +
+      'source documents as unreachable.',
   },
   '@pyreon/zero': {
     currentStatements: 94,
@@ -249,10 +259,10 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
       'Full-stack meta-framework. Branches at ~85% — residual gap in adapter-build SSG/SSR/ISR plugin chains, fs-router auto-detect, image plugin sharp paths exercised by `verify-modes` build matrix + Playwright e2e rather than unit tests. Statements re-baselined 95 → 94 at the 2026-07 coverage-gate restoration (measured 94.97 locally; the package is usually SKIPPED on CI by the gate’s 120s per-package timeout, so the shortfall went unnoticed).',
   },
   '@pyreon/zero-content': {
-    currentStatements: 86,
-    currentBranches: 79,
+    currentStatements: 96,
+    currentBranches: 92,
     reason:
-      'Markdown content layer. The 2026-06 docs cutover (PRs #1448 + #1491) landed substantial integration-tier surface node vitest cannot reach: plugin.ts dev-server search middleware (configureServer), build-mode search-index emission (closeBundle), and optional-dependency dynamic imports (katex/mermaid success paths). Achieved node coverage at true-up: 87.39% statements / 80.79% branches (thresholds carry ~1pp variance margin). The integration paths are exercised daily by the real docs/ build + verify-modes; the Chromium harness (PR 7 follow-up) is the tracked lift back toward 95. Raise the package thresholds + this entry in lockstep as tests land.',
+      'Markdown content layer. Ratcheted 86/79 → 96/92 in the 2026-09 coverage campaign (measured 96.56/92.17). The prior entry recorded the dev-server search middleware and the build-mode index emission as unreachable from node vitest; they were not — a Vite plugin hook is a function on an object, and driving `configureServer` / `transform` / `closeBundle` directly is what surfaced four shipped bugs. What genuinely stays out of reach is the optional-peer success path: katex and mermaid are imported through a specifier assembled at RUNTIME so no bundler resolves it, which also puts it beyond `vi.doMock`. Raise as tests land; never lower to absorb a regression.',
   },
   '@pyreon/runtime-dom': {
     currentStatements: 92,
@@ -303,10 +313,10 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
       'Lint engine. Branches at ~90% — residual gap in 89-rule AST detectors against rare/synthetic source shapes.',
   },
   '@pyreon/mcp': {
-    currentStatements: 94,
-    currentBranches: 86,
+    currentStatements: 96,
+    currentBranches: 92,
     reason:
-      'MCP server. First explicit full thresholds landed at the 2026-07 coverage-gate restoration (measured 94.55/87.64 locally). Branches re-baselined 87 → 86 on 2026-08-04 at the measured 86.12: the atlas + content tool arms added by #2610/#2646 (get_atlas_catalog fallbacks, content walking) grew the optional-chain-dense branch surface faster than its tests, and the drift went unnoticed because the coverage child was dying on CI before printing a summary (turned loud the same day). Ratchet back to 87+ as those arms get specs. Residual gap is tool-handler orchestration + docs-parsing arms against rare doc shapes.',
+      'MCP server. Ratcheted 94/86 → 96/92 in the 2026-09 coverage campaign (measured 96.32/92.91), closing the atlas + content arms the 2026-08-04 entry flagged as owing specs. The residual is tool-handler orchestration — the thin `index.ts` layer that turns a request into one of these renderer calls — plus docs-parsing arms against document shapes the repo does not contain. Raise as tests land; never lower to absorb a regression.',
   },
   '@pyreon/runtime-server': {
     currentStatements: 97,

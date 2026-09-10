@@ -20,6 +20,16 @@ export interface EmitOptions {
    * Android uses a runtime `res/font` lookup, so it doesn't need this.
    */
   fonts?: Record<string, string>
+  /**
+   * The file this source came from, used only in diagnostics.
+   *
+   * A parse error is reported as `file:line:col: message`, and without this
+   * every such message names the default `input.tsx` — a path that does not
+   * exist, so the position is not just unhelpful but actively misleading.
+   * Callers that have a real path should pass it; the default stays for
+   * in-memory callers that genuinely have none.
+   */
+  filename?: string
 }
 
 export interface ComponentIR {

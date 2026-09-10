@@ -46,6 +46,7 @@ export function parseArgv(args: readonly string[]): Argv {
     watch: false,
   }
   const rest: string[] = []
+  let helpRequested = false
   for (let i = 0; i < args.length; i++) {
     const a = args[i] as string
     if (a === '--json') out.json = true
@@ -64,7 +65,10 @@ export function parseArgv(args: readonly string[]): Argv {
     else if (a.startsWith('--validator=')) out.validator = a.slice(12) as ValidatorName
     else if (a === '--plugins') out.plugins = (args[++i] ?? '').split(',').filter(Boolean) as PluginName[]
     else if (a.startsWith('--plugins=')) out.plugins = a.slice(10).split(',').filter(Boolean) as PluginName[]
-    else if (a === '-h' || a === '--help') out.command = 'help'
+    // Tracked separately from `command` because the verb branch below
+    // uses `command === 'help'` as its "no verb given" sentinel — writing
+    // help into `command` here would make a bare path stop working.
+    else if (a === '-h' || a === '--help') helpRequested = true
     else if (!a.startsWith('-')) rest.push(a)
   }
   const verb = rest[0]
@@ -76,6 +80,11 @@ export function parseArgv(args: readonly string[]): Argv {
     out.command = 'generate'
     out.input = verb
   }
+  // `--help` WINS over the verb. `lathe generate --help` previously ran a
+  // generate: the one flag a user types when they are unsure wrote a
+  // client into their repo instead of explaining itself. Every CLI they
+  // know (`git commit --help`, `npm install --help`) prints help there.
+  if (helpRequested) out.command = 'help'
   return out
 }
 
