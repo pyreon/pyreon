@@ -343,10 +343,25 @@ describe('flag parsing', () => {
     // `--cwd --json` is a typo, not a directory named `--json`. Consuming the
     // next flag as a value both loses the flag and scans a path that does not
     // exist.
+    //
+    // Run it from INSIDE the fixture. With no value, `--cwd` correctly falls
+    // back to the process cwd — and the process cwd under vitest is the REPO,
+    // so this spec as first written pointed the scanner at the whole monorepo:
+    // 13.7s and 862 MB in one worker, against ~1.4s and ~320 MB for the rest
+    // of the file. Under the coverage job's 4-way parallelism that sits at
+    // Node's old-space cap, and vitest reports a dead worker as
+    // `STACK_TRACE_ERROR` against whichever spec was in flight — a failure that
+    // names a test and says nothing about memory.
     project()
     await run('scan', dir)
     stdout = []
-    await run('verify', 'Counter', '--cwd', '--json')
+    const cwd = process.cwd()
+    try {
+      process.chdir(dir)
+      await run('verify', 'Counter', '--cwd', '--json')
+    } finally {
+      process.chdir(cwd)
+    }
     expect(outText() + errText(), 'did not scan a directory called --json').not.toContain(
       "'--json'",
     )
