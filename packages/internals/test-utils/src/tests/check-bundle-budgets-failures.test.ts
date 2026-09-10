@@ -2,6 +2,10 @@ import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+// The delta the check inflates an off-gating measurement by. Imported rather
+// than re-typed as `0.011`: a hand-copied literal is a second source of truth
+// that silently stops matching the thing it describes.
+import { GZIP_PLATFORM_DELTA } from '../../../../../scripts/check-bundle-budgets'
 
 /**
  * Subprocess regression test for `scripts/check-bundle-budgets.ts`
@@ -498,7 +502,21 @@ describe('scripts/check-bundle-budgets.ts failure surfacing', () => {
 
       const thin = (json as JsonOutput).thinNew.find((t) => t.name === '@pyreon-test/good-fixture')
       expect(thin).toBeDefined()
-      expect(thin!.headroom).toBe(1)
+      // Headroom is measured against the WORST-CASE gating figure, not this
+      // machine's — that IS the platform-independence fix. `runCheck` spawns
+      // with a minimal env carrying no `CI`, so the subprocess is always the
+      // off-gating arm and inflates by the delta. A budget one byte above the
+      // LOCAL measurement therefore leaves `1 - measured * delta`, which is
+      // fractional by construction.
+      //
+      // The literal `toBe(1)` here was asserting the OLD definition of
+      // headroom. The INVARIANT it was protecting is untouched and still
+      // asserted below: one byte of nominal slack is not enough, so `required`
+      // exceeds it and the check fails. Only the arithmetic is restated.
+      expect(thin!.headroom).toBeCloseTo(1 - measured * GZIP_PLATFORM_DELTA, 6)
+      // …and the inflation is load-bearing, not decorative: without it the
+      // headroom would be exactly the byte the budget was set above.
+      expect(thin!.headroom).toBeLessThan(1)
       // The remedy travels WITH the finding — the operator should not have to
       // work out what "enough headroom" is.
       expect(thin!.required).toBeGreaterThan(thin!.headroom)

@@ -573,7 +573,7 @@ const GZIP_PLATFORM_VARIANCE_FLOOR_BYTES = 64
  * measurement makes the check stricter than the thing it models — measured
  * here, it failed a package CI accepts.
  */
-const GZIP_PLATFORM_DELTA = 0.011
+export const GZIP_PLATFORM_DELTA = 0.011
 
 /**
  * Prints the KNOWN thin-headroom debt on every run, green or red.
