@@ -310,7 +310,7 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
     currentStatements: 95,
     currentBranches: 90,
     reason:
-      'Lint engine. Branches at ~90% — residual gap in 89-rule AST detectors against rare/synthetic source shapes.',
+      'Lint engine. Branches at ~90% — residual gap in the 132 rules AST detectors against rare/synthetic source shapes. MEASURED RESIDUAL, so the next attempt starts from a number rather than a guess: at 90.12% branches, 423 arms are uncovered and 198 of them are defensive narrowings over AST nodes (nullish array fallbacks, node-presence guards, type-tag guards, recursion-depth caps) that a real parse cannot produce. Four shape-matrix suites — 88 specs over ~15 rules, covering each rule\'s recognition surface and its documented quiet cases — moved 37 arms; the rate is ~3 arms per rule matrix, because a rule\'s uncovered arms are mostly its narrowings rather than its shapes. Reaching 92 from here means synthesising malformed ASTs, which asserts nothing about the product. Lift it by writing shape matrices for the rules that have none yet — that is where the bug-preventing tests are.',
   },
   '@pyreon/mcp': {
     currentStatements: 96,

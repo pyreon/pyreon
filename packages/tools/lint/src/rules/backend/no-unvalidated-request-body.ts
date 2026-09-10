@@ -73,6 +73,28 @@ function isBodyRead(node: any): string | null {
   return `${recv}.${prop}()`
 }
 
+/**
+ * `req.body` / `ctx.request.body` — the body as a PROPERTY, not a call.
+ *
+ * The Fetch `Request` this framework's api routes receive exposes the body
+ * through `json()`/`text()`/`formData()`, so the call form above was the whole
+ * rule. Every other server shape a user might write in the same repo —
+ * Express, Koa, Next's pages API, anything behind a body-parser middleware —
+ * hands it over as an already-parsed PROPERTY instead, and those are exactly
+ * the handlers where nothing has validated it: the parser produced `any` and
+ * the annotation on the binding is a comment.
+ *
+ * Gated on the same request-ish receiver as the call form, so `config.body`,
+ * `msg.body` and a `requestId.body` are not this rule's business.
+ */
+function isBodyProperty(node: any): string | null {
+  const n = unwrapTypeLayers(node)
+  if (n?.type !== 'MemberExpression' || n.computed === true) return null
+  if (n.property?.type !== 'Identifier' || String(n.property.name) !== 'body') return null
+  const recv = requestReceiver(n.object)
+  return recv === null ? null : `${recv}.body`
+}
+
 /** Any validating call inside this function body. */
 function hasValidation(node: any, depth = 0): boolean {
   if (!node || typeof node !== 'object' || depth > 10) return false
@@ -121,7 +143,7 @@ export const noUnvalidatedRequestBody: Rule = {
         // sit on either side of the await, so unwrap before AND after.
         const init = unwrapTypeLayers(node?.init)
         const call = init?.type === 'AwaitExpression' ? unwrapTypeLayers(init.argument) : init
-        const what = isBodyRead(call)
+        const what = isBodyRead(call) ?? isBodyProperty(call)
         if (what === null) return
         const fn = fnStack[fnStack.length - 1]
         if (fn && hasValidation(fn.body)) return
