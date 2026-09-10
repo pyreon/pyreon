@@ -22,6 +22,7 @@ import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { mount } from '../index'
 import { foreignAttrNamespace } from '../props'
+import { query } from '@pyreon/test-utils'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 const XLINK_NS = 'http://www.w3.org/1999/xlink'
@@ -110,7 +111,7 @@ describe('an input value establishes its reset default', () => {
     // markup gives a hydrated page and a client-navigated page different
     // `form.reset()` behaviour.
     const dispose = mount(h('input', { value: 'seed' }), container)
-    const input = container.querySelector('input') as HTMLInputElement
+    const input = query(container, 'input')
     expect(input.value).toBe('seed')
     expect(input.defaultValue, 'the reset target is established').toBe('seed')
     dispose()
@@ -121,7 +122,7 @@ describe('an input value establishes its reset default', () => {
     // keystroke; moving the default with it turns `form.reset()` into a no-op.
     const v = signal('seed')
     const dispose = mount(h('input', { value: () => v() }), container)
-    const input = container.querySelector('input') as HTMLInputElement
+    const input = query(container, 'input')
     v.set('typed by the user')
     expect(input.value).toBe('typed by the user')
     expect(input.defaultValue, 'the reset target stays put').toBe('seed')
@@ -130,7 +131,7 @@ describe('an input value establishes its reset default', () => {
 
   it('establishes the default for a TEXTAREA too', () => {
     const dispose = mount(h('textarea', { value: 'body' }), container)
-    const ta = container.querySelector('textarea') as HTMLTextAreaElement
+    const ta = query(container, 'textarea')
     expect(ta.value).toBe('body')
     expect(ta.defaultValue).toBe('body')
     dispose()
@@ -142,7 +143,7 @@ describe('an input value establishes its reset default', () => {
     // the input-only path there would set a property the element does not
     // have.
     const dispose = mount(h('option', { value: 'o' }, 'label'), container)
-    const opt = container.querySelector('option') as HTMLOptionElement
+    const opt = query(container, 'option')
     expect(opt.value).toBe('o')
     dispose()
   })

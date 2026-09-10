@@ -23,6 +23,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { _applyProps, _bindText, _setChildAt, _setValue, mount } from '../index'
+import { query } from '@pyreon/test-utils'
 
 let container: HTMLElement
 
@@ -113,7 +114,7 @@ describe('a NON-delegated event takes its own binding branch', () => {
       h('div', { class: 't', onMouseEnter: () => hits.push(1) }, 'x'),
       container,
     )
-    const el = container.querySelector('.t') as HTMLElement
+    const el = query<HTMLElement>(container, '.t')
     el.dispatchEvent(new MouseEvent('mouseenter'))
     expect(hits).toEqual([1])
     dispose()
@@ -125,7 +126,7 @@ describe('a NON-delegated event takes its own binding branch', () => {
       h('div', { class: 't', onMouseEnter: () => hits.push(1) }, 'x'),
       container,
     )
-    const el = container.querySelector('.t') as HTMLElement
+    const el = query<HTMLElement>(container, '.t')
     el.dispatchEvent(new MouseEvent('mouseenter'))
     dispose()
     el.dispatchEvent(new MouseEvent('mouseenter'))
@@ -156,7 +157,7 @@ describe('`value` on an element that has no reset default', () => {
     // `<progress value>` reflects and has no `defaultValue`. Running the
     // input-only path there would write a property the element does not have.
     const dispose = mount(h('progress', { value: 0.5, max: 1 }), container)
-    const el = container.querySelector('progress') as HTMLProgressElement
+    const el = query(container, 'progress')
     expect(el.value).toBeCloseTo(0.5)
     expect((el as unknown as { defaultValue?: unknown }).defaultValue).toBeUndefined()
     dispose()
@@ -164,7 +165,7 @@ describe('`value` on an element that has no reset default', () => {
 
   it('sets `value` on an <li>, which reflects as an attribute', () => {
     const dispose = mount(h('ol', null, h('li', { value: 3 }, 'third')), container)
-    const li = container.querySelector('li') as HTMLLIElement
+    const li = query(container, 'li')
     expect(li.value).toBe(3)
     dispose()
   })
@@ -176,7 +177,7 @@ describe('`value` on an element that has no reset default', () => {
     // which is a "Clear" button that visibly does nothing.
     const v = signal<string | undefined>('typed')
     const dispose = mount(h('input', { value: () => v() }), container)
-    const input = container.querySelector('input') as HTMLInputElement
+    const input = query(container, 'input')
     expect(input.value).toBe('typed')
     v.set(undefined)
     expect(input.value).toBe('')
@@ -189,7 +190,7 @@ describe('`value` on an element that has no reset default', () => {
     // `form.reset()` restores — one wrong branch, two wrong outcomes.
     const v = signal<string | undefined>('typed')
     const dispose = mount(h('input', { value: () => v() }), container)
-    const input = container.querySelector('input') as HTMLInputElement
+    const input = query(container, 'input')
     expect(input.defaultValue).toBe('typed')
     v.set(undefined)
     expect(input.defaultValue, 'reset still restores the real first value').toBe('typed')
@@ -203,7 +204,7 @@ describe('`value` on an element that has no reset default', () => {
     // drift is invisible until an app is built with the compiler on.
     const v = signal<string | undefined>('typed')
     const dispose = mount(h('input', { value: () => v() }), container)
-    const viaH = container.querySelector('input') as HTMLInputElement
+    const viaH = query(container, 'input')
 
     const compiled = document.createElement('input')
     _setValue(compiled, 'typed')
@@ -222,7 +223,7 @@ describe('`value` on an element that has no reset default', () => {
     // restoring an empty field forever.
     const v = signal<string | undefined>(undefined)
     const dispose = mount(h('input', { value: () => v() }), container)
-    const input = container.querySelector('input') as HTMLInputElement
+    const input = query(container, 'input')
     expect(input.value).toBe('')
     v.set('loaded')
     expect(input.value).toBe('loaded')

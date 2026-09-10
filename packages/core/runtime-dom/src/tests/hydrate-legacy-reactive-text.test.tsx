@@ -20,6 +20,7 @@ import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { hydrateRoot } from '../index'
+import { query } from '@pyreon/test-utils'
 
 let warn: { mock: { calls: unknown[][] } }
 beforeEach(() => {
@@ -102,7 +103,7 @@ describe('a reactive text binding against marker-less server HTML', () => {
       h('div', { class: 'a' }, () => 'FRESH', h('b', { class: 'tail' }, 'T')),
     )
     expect(host.querySelector('.a')?.textContent).toBe('FRESHT')
-    expect((host.querySelector('.a') as HTMLElement).lastElementChild?.className).toBe('tail')
+    expect((query<HTMLElement>(host, '.a')).lastElementChild?.className).toBe('tail')
     dispose()
   })
 

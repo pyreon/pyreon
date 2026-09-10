@@ -30,6 +30,7 @@ import { signal } from '@pyreon/reactivity'
 import { hydrateRoot } from '../hydrate'
 import { disableHydrationWarnings } from '../hydration-debug'
 import { setupDelegation } from '../delegate'
+import { query } from '@pyreon/test-utils'
 
 let container: HTMLElement
 const tick = (ms = 0) => new Promise<void>((r) => setTimeout(r, ms))
@@ -64,7 +65,7 @@ describe('an async component hydrates its SSR range once it settles', () => {
     return tick(20).then(() => {
       expect(container.querySelectorAll('.go').length, 'not duplicated').toBe(1)
       expect(container.querySelector('.go'), 'the SERVER node is adopted').toBe(serverBtn)
-      ;(container.querySelector('.go') as HTMLElement).click()
+      ;(query<HTMLElement>(container, '.go')).click()
       expect(clicks, 'and it is live').toEqual([1])
       dispose()
     })
@@ -91,7 +92,7 @@ describe('an async component hydrates its SSR range once it settles', () => {
         h('button', { class: 'sib', onClick: () => clicks.push('sib') }, 's'),
       ),
     )
-    ;(container.querySelector('.sib') as HTMLElement).click()
+    ;(query<HTMLElement>(container, '.sib')).click()
     expect(clicks, 'the sibling is live before the promise settles').toEqual(['sib'])
     return tick(80).then(() => dispose())
   })

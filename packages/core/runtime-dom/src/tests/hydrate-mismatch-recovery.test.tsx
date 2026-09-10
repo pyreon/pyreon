@@ -35,6 +35,7 @@ import {
   onHydrationMismatch,
 } from '../hydration-debug'
 import type { HydrationMismatchContext } from '../hydration-debug'
+import { query } from '@pyreon/test-utils'
 
 let container: HTMLElement
 let seen: HydrationMismatchContext[]
@@ -306,7 +307,7 @@ describe('a TAG mismatch is reported as a tag mismatch', () => {
         h('button', { onClick: () => clicks.push(1) }, 'go'),
       ),
     )
-    ;(container.querySelector('button') as HTMLElement).click()
+    ;(query(container, 'button')).click()
     expect(clicks, 'the sibling after the mismatch is still bound').toEqual([1])
     dispose()
   })

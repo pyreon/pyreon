@@ -16,6 +16,7 @@ import { signal } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { _setValue, hydrateRoot, mount } from '../index'
+import { query } from '@pyreon/test-utils'
 
 let container: HTMLElement
 beforeEach(() => {
@@ -50,13 +51,13 @@ describe('tearing down after the DOM has already gone', () => {
 
   it('disposes an ELEMENT that was removed first', () => {
     const dispose = mount(h('div', { class: 'gone' }, 'x'), container)
-    ;(container.querySelector('.gone') as HTMLElement).remove()
+    ;(query<HTMLElement>(container, '.gone')).remove()
     expect(() => dispose()).not.toThrow()
   })
 
   it('disposes a whole SUBTREE whose root was removed first', () => {
     const dispose = mount(h('ul', null, h('li', null, 'a'), h('li', null, 'b')), container)
-    ;(container.querySelector('ul') as HTMLElement).remove()
+    ;(query(container, 'ul')).remove()
     expect(() => dispose()).not.toThrow()
   })
 
@@ -89,7 +90,7 @@ describe('tearing down after the DOM has already gone', () => {
     // write does work nobody can see.
     const v = signal('a')
     const dispose = mount(h('div', { class: 'r' }, () => v()), container)
-    const el = container.querySelector('.r') as HTMLElement
+    const el = query<HTMLElement>(container, '.r')
     expect(el.textContent).toBe('a')
     el.remove()
     expect(() => dispose()).not.toThrow()
@@ -164,7 +165,7 @@ describe('the precompiled row binder for a NON-delegated event', () => {
     // row it captured — alive for the page's lifetime.
     const hits: number[] = []
     const { host, dispose } = await hydrated(rows, () => hits.push(1))
-    const first = host.querySelector('.row') as HTMLElement
+    const first = query<HTMLElement>(host, '.row')
     first.dispatchEvent(new MouseEvent('mouseenter'))
     dispose()
     first.dispatchEvent(new MouseEvent('mouseenter'))
@@ -180,7 +181,7 @@ describe('the precompiled row binder for a NON-delegated event', () => {
     const { host, dispose } = await hydrated(rows, 'handleEnter()')
     expect(warn).toHaveBeenCalled()
     expect(warn.mock.calls.some((c) => String(c[0]).includes('onMouseEnter'))).toBe(true)
-    const first = host.querySelector('.row') as HTMLElement
+    const first = query<HTMLElement>(host, '.row')
     expect(() => first.dispatchEvent(new MouseEvent('mouseenter'))).not.toThrow()
     dispose()
   })
@@ -374,14 +375,14 @@ describe('a style prop that is neither a string nor an object', () => {
     // `String(0)` is not valid CSS, so writing it can only corrupt the
     // declaration — the honest outcome is to leave the element unstyled.
     const dispose = mount(h('div', { class: 'n', style: 0 as never }, 'x'), container)
-    const el = container.querySelector('.n') as HTMLElement
+    const el = query<HTMLElement>(container, '.n')
     expect(el.getAttribute('style') ?? '').toBe('')
     dispose()
   })
 
   it('does not write a boolean as CSS', () => {
     const dispose = mount(h('div', { class: 'b', style: true as never }, 'x'), container)
-    const el = container.querySelector('.b') as HTMLElement
+    const el = query<HTMLElement>(container, '.b')
     expect(el.getAttribute('style') ?? '').toBe('')
     dispose()
   })
@@ -391,7 +392,7 @@ describe('a style prop that is neither a string nor an object', () => {
     // where a later, valid style is also ignored.
     const s = signal<unknown>(0)
     const dispose = mount(h('div', { class: 's', style: () => s() }, 'x'), container)
-    const el = container.querySelector('.s') as HTMLElement
+    const el = query<HTMLElement>(container, '.s')
     s.set({ color: 'rgb(1, 2, 3)' })
     expect(el.style.color).toBe('rgb(1, 2, 3)')
     dispose()

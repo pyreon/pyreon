@@ -38,18 +38,26 @@ export default defineNodeConfig({
   // aria-boolean paths and binding-registry.ts no-doc / stale-graph-node guards
   // gained behavioral tests. Branches stay 86 (measured 86.61 — the residual is
   // the compiler-emitted / timing arms covered only by real-Chromium e2e).
-  // Ratcheted 92/94/83 -> 96/97/90 (measured 96.80 / 97.68 / 90.51) by the
-  // 92%+ campaign. Branches do NOT yet clear 92, and that is stated rather
-  // than smoothed over — see the BELOW_FLOOR_EXEMPTIONS entry for what
-  // remains and why.
+  // Ratcheted 92/94/83 -> 97/98/92 (measured 97.43 / 98.11 / 92.03) by the
+  // 92%+ campaign, across two passes.
   //
-  // The lift went at the hydration machinery, which is where this package's
-  // silent failures live: the row-plan bail contract on its VNODE side (a plan
-  // compiled from row 0 replayed over rows whose vnodes differ), the compiled
-  // template adopt verifier's marker scanning and its rows-2..N plan replay,
-  // mismatch recovery, async-component hydration, and the dev overlays that
-  // install global listeners on the user's own app.
-  coverageThresholds: { statements: 96, lines: 97, branches: 90 },
+  // The first pass went at the hydration machinery, which is where this
+  // package's silent failures live: the row-plan bail contract on its VNODE
+  // side (a plan compiled from row 0 replayed over rows whose vnodes differ),
+  // the compiled template adopt verifier's marker scanning and its rows-2..N
+  // plan replay, mismatch recovery, async-component hydration, and the dev
+  // overlays that install global listeners on the user's own app.
+  //
+  // The second went at the paths a WRONG-SHAPED list or a STALE server page
+  // reaches — a list that loses a key, repeats one, or renders a null row; a
+  // server whose text disagrees with the client's; a component that rejects
+  // after its tree was disposed. Five shipped defects came out of it, every
+  // one of them rendering something visibly wrong with nothing in the console.
+  //
+  // The residual (~190 arms) is dominated by production-only NODE_ENV gates
+  // (46, which vitest structurally cannot reach) and TypeScript-forced
+  // defensive narrowings the public API cannot produce.
+  coverageThresholds: { statements: 97, lines: 98, branches: 92 },
   // --expose-gc makes `globalThis.gc` available in the fork workers so the
   // GC-observable retention regression (for-lis-scratch-release.test.tsx)
   // RUNS in CI instead of skipping. One flag, no behavioral change for the

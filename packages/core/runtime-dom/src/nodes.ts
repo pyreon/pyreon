@@ -903,7 +903,16 @@ export function mountFor<T>(
     before: Node | null,
   ) => {
     const result = renderItem(item)
-    if ((result as import('@pyreon/core').NativeItem).__isNative) {
+    // Optional-chained: `renderItem` may legitimately return null/undefined —
+    // `{(r) => r.visible ? <Row/> : null}` is how a row is conditionally
+    // hidden, and the empty-entry branch below exists precisely to give such a
+    // row a placeholder anchor. A bare property read on that null THREW inside
+    // the <For> effect, which is not a broken row but a broken LIST: the error
+    // escaped before any row was placed, so the whole list rendered as its two
+    // markers and nothing else, and the throw surfaced only as an unhandled
+    // effect error in the console. SSR renders the same source correctly, so it
+    // was also a guaranteed hydration divergence.
+    if ((result as import('@pyreon/core').NativeItem | null | undefined)?.__isNative === true) {
       const native = result as import('@pyreon/core').NativeItem
       container.insertBefore(native.el, before)
       cache.set(key, { anchor: native.el, cleanup: native.cleanup, pos, end: null })

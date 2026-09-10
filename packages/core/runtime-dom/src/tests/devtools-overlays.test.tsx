@@ -26,6 +26,7 @@ import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { installDevTools, onOverlayClick, onOverlayMouseMove } from '../devtools'
 import { mount } from '../index'
+import { query } from '@pyreon/test-utils'
 
 type Devtools = {
   version: string
@@ -169,7 +170,7 @@ describe('the component registry tracks what is mounted', () => {
     try {
       const dispose = mount(h(Widget, null), container)
       const entry = dt().getAllComponents().at(-1)!
-      const el = container.querySelector('.w') as HTMLElement
+      const el = query<HTMLElement>(container, '.w')
       el.style.outline = '1px dashed red'
       const before = el.style.outline
       dt().highlight(entry.id)
@@ -235,7 +236,7 @@ describe('the inspector overlay toggles cleanly', () => {
   it('tracks a hovered element while the overlay is open', () => {
     const dispose = mount(h('div', { class: 'target' }, 'x'), container)
     dt().enableOverlay()
-    const target = container.querySelector('.target') as HTMLElement
+    const target = query<HTMLElement>(container, '.target')
     const ev = new MouseEvent('mousemove', { clientX: 1, clientY: 1 })
     Object.defineProperty(ev, 'target', { value: target })
     expect(() => onOverlayMouseMove(ev)).not.toThrow()
@@ -346,7 +347,7 @@ describe('the element picker leaves nothing behind', () => {
     // and a picker you cannot leave is a picker that has taken over the app.
     const dispose = mount(h('div', { class: 'pick-me' }, 'x'), container)
     $p().pick()
-    const target = container.querySelector('.pick-me') as HTMLElement
+    const target = query<HTMLElement>(container, '.pick-me')
     const move = new MouseEvent('mousemove', { bubbles: true })
     Object.defineProperty(move, 'target', { value: target })
     document.dispatchEvent(move)
@@ -363,7 +364,7 @@ describe('the element picker leaves nothing behind', () => {
     // under the pointer. Treating them as pick targets makes the panel
     // unusable from the moment picking starts.
     $p().pick()
-    const button = panel()!.querySelector('button') as HTMLElement
+    const button = query(panel()!, 'button')
     const move = new MouseEvent('mousemove', { bubbles: true })
     Object.defineProperty(move, 'target', { value: button })
     document.dispatchEvent(move)
@@ -376,7 +377,7 @@ describe('the element picker leaves nothing behind', () => {
     // next ordinary click in the app is swallowed too.
     const dispose = mount(h('div', { class: 'pick-me' }, 'x'), container)
     $p().pick()
-    const target = container.querySelector('.pick-me') as HTMLElement
+    const target = query<HTMLElement>(container, '.pick-me')
     const click = new MouseEvent('click', { bubbles: true, cancelable: true })
     Object.defineProperty(click, 'target', { value: target })
     document.dispatchEvent(click)
@@ -388,7 +389,7 @@ describe('the element picker leaves nothing behind', () => {
 
   it('does not select a click INSIDE the overlay', () => {
     $p().pick()
-    const button = panel()!.querySelector('button') as HTMLElement
+    const button = query(panel()!, 'button')
     const click = new MouseEvent('click', { bubbles: true, cancelable: true })
     Object.defineProperty(click, 'target', { value: button })
     document.dispatchEvent(click)
