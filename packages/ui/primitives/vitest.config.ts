@@ -16,7 +16,13 @@ export default defineNodeConfig({
   // state-machine.browser.test.tsx — select/filter/expand/keyboard/props,
   // exercised through the headless state objects; ComboboxBase 54.83 -> 95.96,
   // TreeBase 78.32 -> 98.60).
-  coverageThresholds: { statements: 95, branches: 89, functions: 94, lines: 96 },
+  // Ratcheted branches 89 -> 90 (measured 90.29) with the TreeBase typeahead
+  // specs: `typeaheadMatch` distinguishes a repeated character (a CYCLE, from
+  // after the current item) from a longer buffer (a REFINEMENT, from AT it),
+  // and getting either backwards still moves focus — just somewhere the user
+  // did not intend. Below the 92 bar; the residual is spread across the
+  // interaction primitives rather than concentrated.
+  coverageThresholds: { statements: 95, branches: 90, functions: 94, lines: 96 },
   overrides: {
     // oxc transformer JSX config — these UI packages use Pyreon's JSX
     // import source rather than React's default.

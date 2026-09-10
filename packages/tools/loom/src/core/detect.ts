@@ -163,8 +163,13 @@ export function detectPhantoms(model: WorkspaceModel, imports: ImportScan): Loom
   for (const p of model.packages) {
     const declared = new Set(p.deps.map((d) => d.name))
     declared.add(p.name) // self-imports resolve via exports
-    const prod = imports.prod.get(p.name)
-    if (!prod) continue
+    // NOT `if (!prod) continue` — that skipped the whole package, and the
+    // TYPE-only scan below with it. A package whose runtime imports are all
+    // relative (or all declared) has no entry here at all, so its undeclared
+    // `import type` specifiers were never checked: the one shape where
+    // `phantom-type-dep` is the only finding available is exactly the shape
+    // that was silently exempt from it.
+    const prod = imports.prod.get(p.name) ?? new Map<string, string[]>()
     for (const [dep, files] of prod) {
       if (declared.has(dep)) continue
       // The DefinitelyTyped pattern: `import type { X } from 'mdast'` with
