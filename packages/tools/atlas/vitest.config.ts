@@ -40,11 +40,18 @@ export default defineNodeConfig({
   // Margin held ~1 point under measured for statements and lines, per the
   // platform note above; branches sits closer because the observed macOS/CI
   // delta on this package is ~0.06pp.
+  // Ratcheted 84/76/88/85 -> 87/79/90/88 (measured 87.93 / 79.69 / 90.54 /
+  // 89.13) by the 92%+ campaign. The lift went at the surfaces where a
+  // failure is silent rather than loud: the CLI's exit codes (a command that
+  // cannot do its job and exits 0 reports success for work it did not do),
+  // the dev plugin's RPC channel (a local endpoint that reads files, so its
+  // path guard is a security boundary), and the plugin registry's cost
+  // attribution.
   coverageThresholds: {
-    statements: 84,
-    branches: 76,
-    functions: 88,
-    lines: 85,
+    statements: 87,
+    branches: 79,
+    functions: 90,
+    lines: 88,
   },
   // `src/ui/**` splits cleanly into two halves, and only one is measurable here.
   //
