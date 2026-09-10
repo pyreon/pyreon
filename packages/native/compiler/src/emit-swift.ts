@@ -11964,6 +11964,21 @@ function swiftChartDouble(e: Extract<ExprIR, { kind: 'jsx-element' }>, name: str
  * closure (which captures the binding). A bare function reference is called
  * with the hit directly.
  */
+/**
+ * A JSX event attr's handler expression, or undefined.
+ *
+ * Compared case-INSENSITIVELY because the parser lowercases event names:
+ * `onLegendChange` arrives as `legendchange`. Every event matched here before
+ * was a single word (`brush`, `select`), so the casing never showed — and an
+ * exact match silently returns undefined, which emits a chart that toggles
+ * its legend and never calls the handler.
+ */
+function chartEventHandler(e: Extract<ExprIR, { kind: 'jsx-element' }>, name: string): ExprIR | undefined {
+  const want = name.toLowerCase()
+  const a = e.attrs.find((x) => x.kind === 'event' && x.name.toLowerCase() === want)
+  return a?.kind === 'event' ? a.handler : undefined
+}
+
 function swiftChartSelectBody(handler: ExprIR, hitExpr: string, indent: number): string {
   if (handler.kind === 'arrow') {
     const p = handler.params[0]
@@ -12883,7 +12898,14 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     }
     if (legend.toggling) {
       decls.push(`let pyreonLegendHit = legendHitIndex(pyreonLegend.boxes, ${cx}, ${cy})`)
-      branches.push('if pyreonLegendHit >= 0 { pyreonHidden = legendToggle(pyreonHidden, pyreonLegendHit) }')
+      // The toggled set goes through a LOCAL before the state write, so the
+      // handler is handed the value it will settle on rather than re-reading
+      // `@State` inside the closure that just wrote it.
+      const onLegend = chartEventHandler(e, 'legendChange')
+      const fire = onLegend === undefined ? '' : `; ${swiftChartSelectBody(onLegend, 'pyreonNextHidden', indent)}`
+      branches.push(
+        `if pyreonLegendHit >= 0 { let pyreonNextHidden = legendToggle(pyreonHidden, pyreonLegendHit); pyreonHidden = pyreonNextHidden${fire} }`,
+      )
     }
     if (presets !== undefined) {
       decls.push(`let pyreonPreset = presetHit(pyreonPresetStrip.boxes, ${cx}, ${cy})`)

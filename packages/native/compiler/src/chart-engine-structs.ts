@@ -4081,6 +4081,373 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "ChordNode",
+    "fields": [
+      {
+        "name": "name",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "color",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "ChordLink",
+    "fields": [
+      {
+        "name": "source",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "target",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "value",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "ChordArc",
+    "fields": [
+      {
+        "name": "index",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "name",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "color",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "start",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "end",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "total",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "labelAt",
+        "type": {
+          "kind": "typeRef",
+          "name": "PyreonChartPt",
+          "args": []
+        }
+      },
+      {
+        "name": "labelAlign",
+        "type": {
+          "kind": "string"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "ChordRibbon",
+    "fields": [
+      {
+        "name": "link",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "source",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "target",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "value",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "color",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "sourceStart",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "sourceEnd",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "targetStart",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "targetEnd",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "ChordLayout",
+    "fields": [
+      {
+        "name": "arcs",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "ChordArc",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "ribbons",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "ChordRibbon",
+            "args": []
+          }
+        }
+      },
+      {
+        "name": "circle",
+        "type": {
+          "kind": "typeRef",
+          "name": "Circle",
+          "args": []
+        }
+      },
+      {
+        "name": "thickness",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "box",
+        "type": {
+          "kind": "typeRef",
+          "name": "PyreonChartRect",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "ChordOptions",
+    "fields": [
+      {
+        "name": "palette",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "string"
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "padAngle",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "ringRatio",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "linkOpacity",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "showLabels",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "fontSize",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "labelColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "progress",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "PolarSeries",
     "fields": [
       {
@@ -8668,6 +9035,12 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "CandlestickFrame",
   "ChartSpec",
   "ChartTheme",
+  "ChordArc",
+  "ChordLayout",
+  "ChordLink",
+  "ChordNode",
+  "ChordOptions",
+  "ChordRibbon",
   "Circle",
   "Domain",
   "Emphasis",

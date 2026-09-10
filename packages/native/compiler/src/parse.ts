@@ -5,6 +5,7 @@
 // either passed through as unknown or surfaces a warning.
 
 import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, FRAME_CHART_HOSTS } from './chart-hosts'
 import { HANDLED_FLOW_EDGE_FIELDS, HANDLED_FLOW_NODE_FIELDS, droppedFlowFieldsWarning } from './flow-lowering'
 import { warnUnlowerdCrdtMembers } from './parse-crdt-surface'
 import { parseSync } from 'oxc-parser'
@@ -2617,24 +2618,16 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
       advice:
         'Most `@pyreon/charts/plot` hosts lower to a native PyreonChartCanvas over the generated engine — PieChart/FunnelChart/GaugeChart/CandlestickChart/HeatmapChart/RadarChart/PlotChart/SankeyChart/GraphChart/TreemapChart/SunburstChart/TreeChart/RiverChart/GanttChart/PolarChart/CalendarChart/ParallelChart/BoxplotChart. MapChart lowers from a PRECOMPUTED `GeoShape[]` const — the map registry, raw GeoJSON and `geoShapes()` itself stay web and warn by name (project once on the web or in a build step); OptionChart is deliberately unlowered (see UNLOWERED_CHART_HOSTS for why); the theme lowers per chart (`theme={chartThemes.dark}` / `theme={{ palette: palettes.okabeIto }}`) and `<ChartThemeProvider mode theme>` is a compile-time scope its chart children inherit (a literal `mode` / `theme`; a reactive mode cannot be read at compile time and warns); the ECharts-backed default export is web-only — keep it in a `<Web>` branch, or embed via the `/webview` bridge',
       supported: new Set([
-        'PieChart',
-        'FunnelChart',
-        'GaugeChart',
-        'CandlestickChart',
-        'HeatmapChart',
-        'RadarChart',
-        'PlotChart',
-        'SankeyChart',
-        'GraphChart',
-        'TreemapChart',
-        'SunburstChart',
-        'TreeChart',
-        'RiverChart',
-        'GanttChart',
-        'PolarChart',
-        'CalendarChart',
-        'ParallelChart',
-        'BoxplotChart',
+        // DERIVED from the registries that actually do the lowering, rather
+        // than re-typed. The two disagreed the moment a host was added:
+        // `<ChordChart>` emitted a correct `renderChord(layoutChord(…))` AND
+        // warned that it "has NO native lowering", because it was in
+        // CHART_HOSTS and not in this list. A warning that contradicts the
+        // emit beside it is worse than either being wrong alone — a reader
+        // cannot tell which half to believe.
+        ...Object.keys(CHART_HOSTS),
+        ...Object.keys(ACCESSOR_CHART_HOSTS),
+        ...Object.keys(FRAME_CHART_HOSTS),
         'MapChart',
         // Theme surface: the provider is a TRANSPARENT wrapper on native (its
         // children render; per-chart `theme` props do the theming there), and

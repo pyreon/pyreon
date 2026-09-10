@@ -25,6 +25,8 @@ import { layoutSunburst, renderSunburst, treeDepth } from './sunburst'
 import type { SunburstOptions } from './sunburst'
 import { layoutTree, renderTree } from './tree'
 import type { TreeOptions } from './tree'
+import { layoutChord, renderChord } from './chord'
+import type { ChordLink, ChordNode, ChordOptions } from './chord'
 import { layoutRiver, renderRiver } from './river'
 import type { RiverOptions, RiverSeries } from './river'
 import { layoutPolar, renderPolar } from './polar'
@@ -657,6 +659,42 @@ export function treeToSvg(options: TreeToSvgOptions): string {
   const description =
     options.description ??
     (options.title !== undefined ? `${options.title}: ${layout.nodes.length} nodes, ${leaves} leaves.` : undefined)
+  return renderSvg(cmds, width, height, {
+    ...options.svg,
+    ...(options.title !== undefined ? { title: options.title } : {}),
+    ...(description !== undefined && description !== '' ? { description } : {}),
+  })
+}
+
+export interface ChordToSvgOptions {
+  nodes: ChordNode[]
+  links: ChordLink[]
+  width?: Double
+  height?: Double
+  chord?: ChordOptions
+  measure?: MeasureText
+  /** Chart theme; the canvas host reads the same fields. */
+  theme?: Partial<ChartTheme>
+  title?: string
+  description?: string
+  svg?: Omit<SvgOptions, 'title' | 'description'>
+}
+
+/** Chord diagram → `<svg>` string, server-safe. */
+export function chordToSvg(options: ChordToSvgOptions): string {
+  const t = themeOf(options.theme)
+  const width = options.width ?? 480.0
+  const height = options.height ?? 480.0
+  const measure = options.measure ?? measureApprox()
+  const box = { x: 8.0, y: 8.0, w: Math.max(0.0, width - 16.0), h: Math.max(0.0, height - 16.0) }
+  const chordOpts: ChordOptions = { palette: t.palette, labelColor: t.label, ...options.chord }
+  const layout = layoutChord(options.nodes, options.links, box, chordOpts, measure)
+  const cmds = renderChord(layout, chordOpts, measure)
+  const description =
+    options.description ??
+    (options.title !== undefined
+      ? `${options.title}: ${layout.arcs.length} categories, ${layout.ribbons.length} flows.`
+      : undefined)
   return renderSvg(cmds, width, height, {
     ...options.svg,
     ...(options.title !== undefined ? { title: options.title } : {}),

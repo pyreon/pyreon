@@ -6,7 +6,8 @@
 
 import type { EChartsOption, OptionWarning } from './option'
 import { paletteAt } from './palette'
-import { calendarToSvg, candlestickToSvg, funnelToSvg, gaugeToSvg, graphToSvg, heatmapToSvg, parallelToSvg, pieToSvg, polarToSvg, radarToSvg, riverToSvg, sankeyToSvg, sunburstToSvg, treeToSvg, treemapToSvg } from './family-svg'
+import {
+  chordToSvg, calendarToSvg, candlestickToSvg, funnelToSvg, gaugeToSvg, graphToSvg, heatmapToSvg, parallelToSvg, pieToSvg, polarToSvg, radarToSvg, riverToSvg, sankeyToSvg, sunburstToSvg, treeToSvg, treemapToSvg } from './family-svg'
 import type { TreeNode, TreemapOptions } from './treemap'
 import type { SunburstOptions } from './sunburst'
 import type { TreeOptions, TreeOrient } from './tree'
@@ -42,6 +43,7 @@ export type FamilyPlan =
   | { kind: 'sunburst'; nodes: TreeNode[]; innerRatio: Double; sunburst: SunburstOptions; title: string | undefined }
   | { kind: 'tree'; nodes: TreeNode[]; tree: TreeOptions; title: string | undefined }
   | { kind: 'sankey'; nodes: SankeyNode[]; links: SankeyLink[]; sankey: SankeyOptions; title: string | undefined }
+  | { kind: 'chord'; nodes: ChordNode[]; links: ChordLink[]; chord: ChordOptions; title: string | undefined }
   | { kind: 'graph'; nodes: GraphNode[]; links: GraphLink[]; graph: GraphOptions; title: string | undefined }
   | { kind: 'calendar'; start: string; end: string; values: Record<string, Double>; calendar: CalendarOptions; title: string | undefined }
   | { kind: 'parallel'; axes: ParallelAxis[]; rows: ParallelRow[]; parallel: ParallelOptions; title: string | undefined }
@@ -51,6 +53,8 @@ export type FamilyPlan =
   | { kind: 'map'; geo: GeoJson; values: Record<string, Double>; options: GeoOptions; title: string | undefined }
   | { kind: 'geoPoints'; geo: GeoJson; points: GeoPoint[]; paths: GeoPath[]; map: GeoOptions; options: GeoPointsOptions; title: string | undefined }
   | { kind: 'singleAxis'; axis: SingleAxisSpec; points: SingleAxisPoint[]; options: SingleAxisOptions; title: string | undefined }
+
+import type { ChordLink, ChordNode, ChordOptions } from './chord'
 
 export interface CompiledFamily {
   plan: FamilyPlan
@@ -84,7 +88,7 @@ export interface CompiledFamily {
  * adding different members merge cleanly.
  */
 const MULTI_SERIES_FAMILIES = new Set(['radar', 'polar', 'boxplot', 'geo', 'singleAxis'])
-const FAMILY_TYPES = new Set(['pie', 'gauge', 'radar', 'candlestick', 'heatmap', 'funnel', 'treemap', 'sunburst', 'tree', 'sankey', 'graph', 'parallel', 'themeRiver', 'boxplot', 'map'])
+const FAMILY_TYPES = new Set(['pie', 'gauge', 'radar', 'candlestick', 'heatmap', 'funnel', 'treemap', 'sunburst', 'tree', 'sankey', 'graph', 'parallel', 'themeRiver', 'boxplot', 'map', 'chord'])
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const num = (v: unknown): number | null => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null
@@ -126,6 +130,12 @@ const KNOWN_BY_FAMILY: Record<string, Set<string>> = {
   parallel: new Set(['type', 'name', 'data', 'coordinateSystem', 'parallelIndex', 'lineStyle', 'emphasis', 'inactiveOpacity', 'activeOpacity', 'realtime', 'smooth', 'progressive', 'animation']),
   graph: new Set(['type', 'name', 'data', 'nodes', 'links', 'edges', 'categories', 'layout', 'symbol', 'symbolSize', 'force', 'circular', 'roam', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'draggable', 'edgeSymbol', 'edgeSymbolSize', 'focusNodeAdjacency', 'zoom', 'center', 'left', 'top', 'right', 'bottom', 'width', 'height', 'coordinateSystem']),
   boxplot: new Set(['type', 'name', 'data', 'itemStyle', 'color', 'boxWidth', 'emphasis']),
+  // Sankey's keys, minus the ones only an axis layout has (nodeWidth /
+  // nodeGap / nodeAlign / layoutIterations / orient), plus the two a ring
+  // needs. Deliberately a SUBSET rather than a copy: a spec that carries
+  // `nodeAlign` onto a chord is telling us it was written for a sankey, and
+  // that is worth a named warning rather than a silent no-op.
+  chord: new Set(['type', 'name', 'data', 'nodes', 'links', 'edges', 'padAngle', 'ringSize', 'label', 'itemStyle', 'lineStyle', 'emphasis', 'top', 'left', 'right', 'bottom']),
 }
 
 /**
@@ -717,6 +727,43 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
     return { plan: { kind: 'sankey', nodes, links, sankey, title }, warnings, supported }
   }
 
+  if (type === 'chord') {
+    // ECharts 6's chord takes the same `nodes` + `links` shape as sankey, so
+    // the parsing is deliberately identical — a spec written for one reads on
+    // the other, which is the whole reason a user reaches for chord instead.
+    const rawNodes = Array.isArray(s['nodes']) ? (s['nodes'] as unknown[]) : data
+    const nodes: ChordNode[] = []
+    for (let i = 0; i < rawNodes.length; i++) {
+      const d = rawNodes[i]
+      if (!isObj(d) || typeof d['name'] !== 'string') {
+        warn('series-data-shape', 'series[0].data[' + String(i) + ']', 'A chord node must be an object with a name; it was skipped.')
+        continue
+      }
+      const item = isObj(d['itemStyle']) ? d['itemStyle'] : {}
+      nodes.push({ name: d['name'] as string, ...(typeof item['color'] === 'string' ? { color: item['color'] as string } : {}) })
+    }
+    const rawLinks = Array.isArray(s['links']) ? (s['links'] as unknown[]) : Array.isArray(s['edges']) ? (s['edges'] as unknown[]) : []
+    const links: ChordLink[] = []
+    for (let i = 0; i < rawLinks.length; i++) {
+      const d = rawLinks[i]
+      const v = isObj(d) ? num(d['value']) : null
+      if (!isObj(d) || typeof d['source'] !== 'string' || typeof d['target'] !== 'string' || v === null) {
+        warn('series-data-shape', 'series[0].links[' + String(i) + ']', 'A chord link needs string source/target and a numeric value; it was skipped.')
+        continue
+      }
+      links.push({ source: d['source'] as string, target: d['target'] as string, value: v })
+    }
+    const label = isObj(s['label']) ? s['label'] : {}
+    const pad = num(s['padAngle'])
+    const ring = num(s['ringSize'])
+    const chord: ChordOptions = {
+      showLabels: label['show'] !== false,
+      ...(pad !== null ? { padAngle: pad } : {}),
+      ...(ring !== null ? { ringRatio: ring } : {}),
+    }
+    return { plan: { kind: 'chord', nodes, links, chord, title }, warnings, supported }
+  }
+
   if (type === 'tree') {
     const toNode = (d: unknown, i: number): TreeNode | null => {
       if (!isObj(d)) return null
@@ -1074,6 +1121,15 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
         nodes: plan.nodes,
         links: plan.links,
         sankey: plan.sankey,
+        width,
+        height,
+        ...(plan.title !== undefined ? { title: plan.title } : {}),
+      })
+    case 'chord':
+      return chordToSvg({
+        nodes: plan.nodes,
+        links: plan.links,
+        chord: plan.chord,
         width,
         height,
         ...(plan.title !== undefined ? { title: plan.title } : {}),
