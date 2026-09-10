@@ -17,6 +17,8 @@
  * hue AND lightness so a legend of two still reads under deuteranopia; the
  * `okabeIto` palette in `theme.ts` is the full colour-vision-safe set.
  */
+import type { Double } from './types'
+
 export const DEFAULT_PALETTE: readonly string[] = ['#4f7df3', '#f97362', '#22c3a6', '#a66cff', '#ffb020', '#2fb7e8', '#f45fa3', '#7bc950', '#8892a6', '#c47a3d']
 
 /** The default palette lifted 8–12% for a dark ground — `chartThemes.dark`'s series colours. */
@@ -27,4 +29,19 @@ export function paletteAt(palette: readonly string[], index: number): string {
   const n = palette.length
   if (n === 0) return DEFAULT_PALETTE[index % DEFAULT_PALETTE.length]!
   return palette[index % n]!
+}
+
+/**
+ * One hex digit's value from its char code, or 0.
+ *
+ * Lives here rather than in a family because three of them wanted it and each
+ * had written its own — `sankeyHexDigit` and treemap's `hexDigit` were
+ * byte-identical, and chord would have been a third copy. `palette.ts` is
+ * second in the native ENGINE_FILES order, so every family can reach it.
+ */
+export function hexDigit(c: Double): Double {
+  if (c >= 48.0 && c <= 57.0) return c - 48.0
+  if (c >= 97.0 && c <= 102.0) return c - 87.0
+  if (c >= 65.0 && c <= 70.0) return c - 55.0
+  return 0.0
 }

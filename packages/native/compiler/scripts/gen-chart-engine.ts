@@ -58,6 +58,7 @@ export const ENGINE_FILES = [
   'sunburst',
   'tree',
   'river',
+  'chord',
   'polar',
   'sankey',
   'graph',

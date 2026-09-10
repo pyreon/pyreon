@@ -9936,6 +9936,21 @@ function kotlinChartDouble(e: Extract<ExprIR, { kind: 'jsx-element' }>, name: st
  * without a declared param type). A bare function reference is called with
  * the hit directly.
  */
+/**
+ * A JSX event attr's handler expression, or undefined.
+ *
+ * Compared case-INSENSITIVELY because the parser lowercases event names:
+ * `onLegendChange` arrives as `legendchange`. Every event matched here before
+ * was a single word (`brush`, `select`), so the casing never showed — and an
+ * exact match silently returns undefined, which emits a chart that toggles
+ * its legend and never calls the handler.
+ */
+function chartEventHandler(e: Extract<ExprIR, { kind: 'jsx-element' }>, name: string): ExprIR | undefined {
+  const want = name.toLowerCase()
+  const a = e.attrs.find((x) => x.kind === 'event' && x.name.toLowerCase() === want)
+  return a?.kind === 'event' ? a.handler : undefined
+}
+
 function kotlinChartSelectBody(handler: ExprIR, hitExpr: string, indent: number): string {
   if (handler.kind === 'arrow') {
     const p = handler.params[0]
@@ -10744,7 +10759,13 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     }
     if (legend.toggling) {
       decls.push(`val pyreonLegendHit = legendHitIndex(pyreonLegend.boxes, ${tapX}, ${tapYExpr})`)
-      branches.push('if (pyreonLegendHit >= 0) { pyreonHidden = legendToggle(pyreonHidden, pyreonLegendHit) }')
+      // Same shape as the Swift half: the toggled set goes through a LOCAL so
+      // the handler receives the value the state settles on.
+      const onLegend = chartEventHandler(e, 'legendChange')
+      const fire = onLegend === undefined ? '' : `; ${kotlinChartSelectBody(onLegend, 'pyreonNextHidden', indent)}`
+      branches.push(
+        `if (pyreonLegendHit >= 0) { val pyreonNextHidden = legendToggle(pyreonHidden, pyreonLegendHit); pyreonHidden = pyreonNextHidden${fire} }`,
+      )
     }
     if (presets !== undefined) {
       decls.push(`val pyreonPreset = presetHit(pyreonPresetStrip.boxes, ${tapX}, ${tapYExpr})`)

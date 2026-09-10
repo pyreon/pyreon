@@ -44,8 +44,22 @@
 /** Matches a test/spec/story FILE by suffix: `*.test.ts(x)` / `*.spec.ts(x)` / `*.stories.ts(x)`. */
 export const TEST_FILE_RE = /\.(test|spec|stories)\.tsx?$/
 
-/** Matches anything inside a test/story DIRECTORY at any depth: `…/tests/…`, `…/__tests__/…`, `…/test/…`, `…/__test__/…`, `…/stories/…`. */
-export const TEST_DIR_RE = /\/(tests|__tests__|test|__test__|stories)\//
+/**
+ * Matches anything inside a test/story DIRECTORY at any depth: `…/tests/…`,
+ * `…/__tests__/…`, `…/test/…`, `…/__test__/…`, `…/stories/…`, plus the two
+ * NATIVE conventions this repo also ships — SwiftPM's capitalised `Tests/`
+ * (`packages/native/{runtime,router}-swift/Tests/…`) and Gradle's
+ * `androidTest/` (`examples/native-*-android/app/src/androidTest/…`).
+ *
+ * The native pair is enumerated rather than folded in with a case-insensitive
+ * flag deliberately: this list is read as the repo's inventory of test
+ * conventions, and a bare `i` would silently absorb the next one instead of
+ * making someone add it. They were missing because the classifier was written
+ * for the TypeScript tree — a Swift test edit is provably not shipped
+ * (`runtime-swift`'s `files` is `Package.swift`/`Sources`/`README`/`LICENSE`),
+ * yet `check-changeset-required` demanded a changeset for one.
+ */
+export const TEST_DIR_RE = /\/(tests|__tests__|test|__test__|stories|Tests|androidTest)\//
 
 /**
  * Whether a repo-relative path is test code (a test/spec/story file, OR

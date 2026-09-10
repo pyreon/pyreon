@@ -18,6 +18,7 @@ import { defaultTheme } from './render'
 import * as familySvg from './family-svg'
 import {
   calendarToSvg,
+  chordToSvg,
   candlestickToSvg,
   funnelToSvg,
   ganttToSvg,
@@ -129,6 +130,9 @@ describe('static SVG ⇄ canvas theme parity', () => {
     // the one value that reads on both grounds.
     ['ganttToSvg (grouped lanes)', () => ganttToSvg({ tasks: [{ id: '1', name: 'D', start: '2024-01-01', end: '2024-01-10', group: 'Web' }, { id: '2', name: 'S', start: '2024-01-20', end: '2024-01-25', group: 'App' }], theme: dark }), [dark.label, dark.grid]],
     ['parallelToSvg', () => parallelToSvg({ axes: [{ name: 'a' }, { name: 'b' }], rows: [[1, 10], [2, 20]], theme: dark }), [dark.label, dark.axis]],
+    // Chord came in AFTER the totality spec below, and the spec is what
+    // demanded this line — the helper was added and the suite failed naming it.
+    ['chordToSvg', () => chordToSvg({ nodes: [{ name: 'A' }, { name: 'B' }, { name: 'C' }], links: [{ source: 'A', target: 'B', value: 10 }, { source: 'B', target: 'C', value: 5 }], theme: dark }), [dark.label]],
     // ---- the six the table used to omit ----------------------------------
     // Not an oversight with no consequence: every unthemed literal still in the
     // engine was in one of these six, because a family the table does not reach

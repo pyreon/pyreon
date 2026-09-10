@@ -418,6 +418,19 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     legend: (l) => `treeLegend(${l})`,
     tooltip: (l, x, y, a, t) => `treeTip(${l}, ${x}, ${y}, ${optField(a, t, 'symbolSize')})`,
   },
+  ChordChart: {
+    data: ['nodes', 'links'],
+    options: 'chord',
+    optionsStruct: 'ChordOptions',
+    themeDefaults: ['palette', 'labelColor'],
+    defaultHeight: 360,
+    layout: (a, t) =>
+      `layoutChord(${a.data[0]}, ${a.data[1]}, ${t.rect('8.0', '8.0', t.max0(`${a.W} - 16.0`), t.max0(`${a.H} - 16.0`))}, ${a.options})`,
+    render: (l, a) => `renderChord(${l}, ${a.options})`,
+    hit: (l, x, y) => `hitChordIndex(${l}, ${x}, ${y})`,
+    legend: (l) => `chordLegend(${l})`,
+    tooltip: (l, x, y) => `chordTip(${l}, ${x}, ${y})`,
+  },
   RiverChart: {
     data: ['series'],
     options: 'river',
@@ -1472,7 +1485,6 @@ const PLOT_UNLOWERED_REASON: Readonly<Record<string, string>> = {
   selectedMode: 'it pins a selection, which needs that same host state (the gesture arcs\' `_hostStateDecls` splice is how it would be held)',
   onSelectChange: 'it observes the pinned selection, so it waits on `selectedMode`',
   onHighlight: 'it observes the highlighted datum, so it waits on the same emphasis state',
-  onLegendChange: 'it observes the hidden-series set, which the native legend toggle already holds — the observer is the unbuilt half',
   maxPoints: 'LTTB decimation lives in `decimate.ts`, which is written in the crossing subset but is not yet in ENGINE_FILES; the host would also have to map a tap\'s index back through the kept rows',
   seriesLabels: 'it renames the series in the hidden accessible table; the native canvas is named by `describeChart` over the series\' own labels, and feeding it the override is emit work',
   updateAnimation: 'the update tween interpolates two draw lists through `cmd-tween.ts`, which is web-only; crossing it needs the host to hold the PREVIOUS list',
@@ -1492,4 +1504,4 @@ export function plotUnloweredWarning(tag: string, present: readonly string[]): s
 // `updateAnimation`, `updateDuration`, `toolbox`, `onSaveImage`,
 // `accessibleTable`) are reported through `chartChromeUnlowered` for the plot
 // host too — listing them here as well would warn twice.
-export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'emphasis', 'maxPoints', 'crosshair', 'link', 'keyboard', 'updateAnimation', 'updateDuration', 'seriesLabels', 'toolbox', 'onSaveImage', 'accessibleTable', 'locale', 'facet', 'facetColumns']
+export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'emphasis', 'maxPoints', 'crosshair', 'link', 'keyboard', 'updateAnimation', 'updateDuration', 'seriesLabels', 'toolbox', 'onSaveImage', 'accessibleTable', 'locale', 'facet', 'facetColumns']

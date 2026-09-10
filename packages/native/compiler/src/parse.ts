@@ -5,6 +5,7 @@
 // either passed through as unknown or surfaces a warning.
 
 import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, FRAME_CHART_HOSTS } from './chart-hosts'
 import { HANDLED_FLOW_EDGE_FIELDS, HANDLED_FLOW_NODE_FIELDS, droppedFlowFieldsWarning } from './flow-lowering'
 import { warnUnlowerdCrdtMembers } from './parse-crdt-surface'
 import { parseSync } from 'oxc-parser'
@@ -359,6 +360,27 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   return parsePyreonClassic(source, filename)
 }
 
+/**
+ * Render an oxc parse error as `file:line:col: message`.
+ *
+ * The offset comes from the first label, which is the one oxc points the
+ * caret at; a label-less error falls back to the start of the file rather
+ * than inventing a position elsewhere in it.
+ */
+function formatParseError(
+  err: { message: string; labels?: { start: number }[] },
+  filename: string,
+  source: string,
+): string {
+  const offset = err.labels?.[0]?.start ?? 0
+  // Count newlines up to the offset. `lastIndexOf` gives the start of the
+  // line the offset sits on, so the column is 1-based from there.
+  const upTo = source.slice(0, offset)
+  const line = upTo.split('\n').length
+  const column = offset - (upTo.lastIndexOf('\n') + 1) + 1
+  return `${filename}:${line}:${column}: ${err.message}`
+}
+
 function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult {
   const ctx: ParseCtx = {
     warnings: [],
@@ -394,6 +416,28 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     stringConsts: new Map(),
   }
   const ast = parseSync(filename, source, { sourceType: 'module', lang: 'tsx' })
+  // A SYNTAX ERROR must stop here, loudly.
+  //
+  // oxc reports these in `ast.errors` and this call used to ignore them, so an
+  // unparseable file produced an EMPTY program — which every pass below then
+  // walked without complaint, yielding `{ code: '', warnings: [] }`. That is
+  // indistinguishable from "a file with nothing to lower" (a types-only
+  // module, an imports-only barrel), so nothing downstream could tell the two
+  // apart, and both of the tools built on this reported success:
+  //
+  //   * `pyreon-native check` — whose entire job is to be a CI gate —
+  //     exited 0 on a file that is not TypeScript;
+  //   * `pyreon-native build` wrote an empty .swift/.kt and exited 0, so the
+  //     failure surfaced later as a missing symbol in Xcode or Gradle, with
+  //     nothing pointing back at the file that failed to parse.
+  //
+  // Throwing routes it through the same path a failed emit takes: `check`
+  // records it as an `error` finding and exits 2, `build` reports the file and
+  // exits 2. The message is formatted `file:line:col: message` because that is
+  // the form `extractPosition` already parses (the same shape swiftc and
+  // kotlinc emit), so the finding is editor-clickable without new plumbing.
+  const fatal = ast.errors.find((e) => e.severity !== 'Warning')
+  if (fatal) throw new Error(formatParseError(fatal, filename, source))
   // Pre-pass: collect every `const <name> = defineStore(...)` hook name
   // BEFORE parsing component bodies, so the store-aliasing diagnostic
   // (`const app = useApp()`) fires regardless of declaration order (a
@@ -2617,24 +2661,16 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
       advice:
         'Most `@pyreon/charts/plot` hosts lower to a native PyreonChartCanvas over the generated engine — PieChart/FunnelChart/GaugeChart/CandlestickChart/HeatmapChart/RadarChart/PlotChart/SankeyChart/GraphChart/TreemapChart/SunburstChart/TreeChart/RiverChart/GanttChart/PolarChart/CalendarChart/ParallelChart/BoxplotChart. MapChart lowers from a PRECOMPUTED `GeoShape[]` const — the map registry, raw GeoJSON and `geoShapes()` itself stay web and warn by name (project once on the web or in a build step); OptionChart is deliberately unlowered (see UNLOWERED_CHART_HOSTS for why); the theme lowers per chart (`theme={chartThemes.dark}` / `theme={{ palette: palettes.okabeIto }}`) and `<ChartThemeProvider mode theme>` is a compile-time scope its chart children inherit (a literal `mode` / `theme`; a reactive mode cannot be read at compile time and warns); the ECharts-backed default export is web-only — keep it in a `<Web>` branch, or embed via the `/webview` bridge',
       supported: new Set([
-        'PieChart',
-        'FunnelChart',
-        'GaugeChart',
-        'CandlestickChart',
-        'HeatmapChart',
-        'RadarChart',
-        'PlotChart',
-        'SankeyChart',
-        'GraphChart',
-        'TreemapChart',
-        'SunburstChart',
-        'TreeChart',
-        'RiverChart',
-        'GanttChart',
-        'PolarChart',
-        'CalendarChart',
-        'ParallelChart',
-        'BoxplotChart',
+        // DERIVED from the registries that actually do the lowering, rather
+        // than re-typed. The two disagreed the moment a host was added:
+        // `<ChordChart>` emitted a correct `renderChord(layoutChord(…))` AND
+        // warned that it "has NO native lowering", because it was in
+        // CHART_HOSTS and not in this list. A warning that contradicts the
+        // emit beside it is worse than either being wrong alone — a reader
+        // cannot tell which half to believe.
+        ...Object.keys(CHART_HOSTS),
+        ...Object.keys(ACCESSOR_CHART_HOSTS),
+        ...Object.keys(FRAME_CHART_HOSTS),
         'MapChart',
         // Theme surface: the provider is a TRANSPARENT wrapper on native (its
         // children render; per-chart `theme` props do the theming there), and

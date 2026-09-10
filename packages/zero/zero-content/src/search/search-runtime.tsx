@@ -136,6 +136,46 @@ function defaultCatalogUrl(): string {
  * default `catalogUrl` is `/search-index.json`, prefixed with the
  * configured `__ZERO_BASE__` for subpath deploys.
  */
+/**
+ * Parse a response as JSON, or explain what actually arrived.
+ *
+ * The only failure worth distinguishing is an HTML body: on every SPA
+ * host a missing file comes back as the fallback page with a 200, so the
+ * raw parse error blames a DOCTYPE for a file that was never written.
+ */
+async function readJsonOrExplain(
+  res: Response,
+  url: string,
+  what: string,
+): Promise<unknown> {
+  // Clone BEFORE parsing: a body can only be read once, so reading the
+  // text after `json()` has consumed it throws and the diagnosis is
+  // lost. `clone` is absent on hand-built test doubles, which is fine —
+  // they degrade to the generic message rather than crashing.
+  const probe = typeof res.clone === 'function' ? res.clone() : null
+  try {
+    return await res.json()
+  } catch {
+    let body = ''
+    if (probe) {
+      try {
+        body = await probe.text()
+      } catch {
+        /* nothing more to learn */
+      }
+    }
+    throw new Error(
+      /^\s*(<!doctype|<html)/i.test(body)
+        ? `[@pyreon/zero-content] ${url} returned HTML, not the ${what}. `
+          + 'The file was not found and the host served its SPA fallback. '
+          + 'Check that the build wrote it (it is emitted only when at least '
+          + 'one collection produced entries) and that `base` matches the '
+          + 'deploy path.'
+        : `[@pyreon/zero-content] ${url} did not contain valid JSON for the ${what}.`,
+    )
+  }
+}
+
 export async function loadSearchIndex(
   catalogUrl?: string,
   fetchFn: typeof fetch = globalThis.fetch,
@@ -151,7 +191,21 @@ export async function loadSearchIndex(
         `[@pyreon/zero-content] Failed to load search catalog from ${catalogUrl}: ${catalogRes.status}`,
       )
     }
-    const catalog = (await catalogRes.json()) as SearchCatalog
+    // A static host answers a MISSING file with its SPA fallback — 200,
+    // and `index.html` as the body — so `res.ok` is true and `.json()`
+    // then throws `Unexpected token '<', "<!DOCTYPE "...`. That message
+    // names a DOCTYPE rather than the search index, which sends whoever
+    // reads it to the wrong place entirely.
+    //
+    // It is reachable in production: `buildSearchIndex` writes the
+    // catalog only when at least one collection produced entries, so a
+    // site whose content has not landed yet, a partial deploy, or a
+    // `base` that does not match the deploy path all arrive here.
+    const catalog = (await readJsonOrExplain(
+      catalogRes,
+      catalogUrl,
+      'search catalog',
+    )) as SearchCatalog
     const ms = new MiniSearch(MS_OPTIONS)
     for (const entry of catalog.collections) {
       const indexRes = await fetchFn(entry.url)
@@ -160,7 +214,11 @@ export async function loadSearchIndex(
           `[@pyreon/zero-content] Failed to load search index ${entry.url}: ${indexRes.status}`,
         )
       }
-      const json = (await indexRes.json()) as { docs?: unknown[] }
+      const json = (await readJsonOrExplain(
+        indexRes,
+        entry.url,
+        'search index chunk',
+      )) as { docs?: unknown[] }
       // Each chunk is `{ docs: SearchDoc[] }` — simpler to round-trip
       // than minisearch's internal format AND easier to merge.
       if (Array.isArray(json.docs)) ms.addAll(json.docs)
