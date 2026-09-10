@@ -856,6 +856,21 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
   }
 
   if (value == null) {
+    // `value` on a form control is a live PROPERTY, and clearing it means
+    // `node.value = ''` — `removeAttribute` leaves whatever the user typed
+    // sitting in the field AND wipes `defaultValue` (the attribute IS the reset
+    // default), so it gets the one case exactly backwards. This generic branch
+    // sits ABOVE the `value` dispatch below, so it claimed the nullish case
+    // before `applyValueProp` — which carries its own, correct, nullish
+    // handling — could ever see it, and the h() path silently kept a stale
+    // value where the compiled path (`_setValue`) cleared it. Reachable by the
+    // ordinary clear-the-field flow: `<input value={draft()} />` with `draft`
+    // going `string | undefined`. Booleans deliberately stay on the generic
+    // path below, where SSR also treats them as presence.
+    if (key === 'value' && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+      applyValueProp(el, value)
+      return
+    }
     el.removeAttribute(key)
     return
   }

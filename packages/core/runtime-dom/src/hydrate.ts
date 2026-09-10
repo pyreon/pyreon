@@ -681,9 +681,19 @@ function hydrateReactiveText(
       next = textNode.splitText(expected.length)
     } else {
       warnHydrationMismatch('text', expected, data, `${path} > reactive`)
+      // REPLACE the stale node rather than inserting beside it. `data` does not
+      // even START with `expected`, so this is not the merged-adjacent-text
+      // case above — the server's node is simply wrong. Leaving it for the next
+      // sibling to consume only works when that sibling is ALSO text; when it
+      // is an element (or there is none) the stale node is never claimed, and
+      // the page renders the corrected value AND the stale one side by side —
+      // then the element sibling mismatches against it and mounts a second
+      // copy of itself too. Advance the cursor past it first, so the following
+      // sibling still hydrates against the server node it belongs to.
+      next = nextReal(domNode)
       textNode = document.createTextNode(expected)
       parent.insertBefore(textNode, domNode)
-      next = domNode
+      domNode.remove()
     }
     const bound = textNode
     const dispose = bindOwnedText(child as () => VNodeChild, bound, parent)
@@ -916,9 +926,24 @@ function hydrateVNode(
         return [cleanup, after ? firstReal(after) : null]
       }
     }
-    // Legacy SSR output (no block markers) — previous behavior.
+    // No block markers — the SSR output for this <For> is unparseable (legacy
+    // output, a truncated stream, markup edited between render and hydrate).
+    // The extent is unknowable, so this branch CLAIMS the rest of the parent
+    // by returning a null cursor. Claiming it means removing it: leaving the
+    // server rows in place renders the list TWICE, with the dead copy after
+    // the live one and carrying none of its handlers.
+    //
+    // Snapshot BEFORE mounting — `mountChild` inserts the client's rows into
+    // this same parent, so a "remove until end" walk afterwards would delete
+    // what was just mounted (the same ordering trap `adoptReactiveRange`'s
+    // keyed branch documents).
+    const stale: ChildNode[] = []
+    for (let n: ChildNode | null = domNode; n; n = n.nextSibling) stale.push(n)
     const marker = insertMarker(parent, domNode, 'pyreon-for')
     const cleanup = mountChild(vnode, parent, marker)
+    for (const n of stale) {
+      if (n.parentNode === parent) n.remove()
+    }
     return [cleanup, null]
   }
 
@@ -1270,13 +1295,23 @@ function hydrateElement(
     return [cleanup, ns !== null && ns.nodeType === 1 ? ns : firstReal(ns)]
   }
 
-  // Mismatch — fall back to fresh mount
+  // Mismatch — fall back to fresh mount.
   const actual =
     domNode?.nodeType === Node.ELEMENT_NODE
       ? (domNode as Element).tagName.toLowerCase()
       : (domNode?.nodeType ?? 'null')
   warnHydrationMismatch('tag', vnode.type, actual, elPath)
-  const cleanup = mountChild(vnode, parent, anchor)
+  // Mount AT THE CURSOR, not at the parent-level anchor — the same fix the
+  // text paths above already carry. `anchor` is the END of the parent's child
+  // list for an element (hydrateElement passes null), so recovering there
+  // APPENDS: a tag mismatch in the middle of a list silently moved the
+  // client's node to the end and reordered everything after it, while every
+  // node-level assertion still passed.
+  const cleanup = mountChild(vnode, parent, domNode ?? anchor)
+  // The server node is deliberately NOT removed here: it is offered to the
+  // NEXT sibling, which frequently adopts it (client [<b>, <i>] against
+  // server [<i>] — the <i> still matches). Whatever no sibling claims is
+  // swept at the element/root boundary, where the extent is known.
   return [cleanup, domNode]
 }
 
