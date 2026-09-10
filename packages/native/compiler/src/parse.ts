@@ -359,6 +359,27 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   return parsePyreonClassic(source, filename)
 }
 
+/**
+ * Render an oxc parse error as `file:line:col: message`.
+ *
+ * The offset comes from the first label, which is the one oxc points the
+ * caret at; a label-less error falls back to the start of the file rather
+ * than inventing a position elsewhere in it.
+ */
+function formatParseError(
+  err: { message: string; labels?: { start: number }[] },
+  filename: string,
+  source: string,
+): string {
+  const offset = err.labels?.[0]?.start ?? 0
+  // Count newlines up to the offset. `lastIndexOf` gives the start of the
+  // line the offset sits on, so the column is 1-based from there.
+  const upTo = source.slice(0, offset)
+  const line = upTo.split('\n').length
+  const column = offset - (upTo.lastIndexOf('\n') + 1) + 1
+  return `${filename}:${line}:${column}: ${err.message}`
+}
+
 function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult {
   const ctx: ParseCtx = {
     warnings: [],
@@ -394,6 +415,28 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     stringConsts: new Map(),
   }
   const ast = parseSync(filename, source, { sourceType: 'module', lang: 'tsx' })
+  // A SYNTAX ERROR must stop here, loudly.
+  //
+  // oxc reports these in `ast.errors` and this call used to ignore them, so an
+  // unparseable file produced an EMPTY program — which every pass below then
+  // walked without complaint, yielding `{ code: '', warnings: [] }`. That is
+  // indistinguishable from "a file with nothing to lower" (a types-only
+  // module, an imports-only barrel), so nothing downstream could tell the two
+  // apart, and both of the tools built on this reported success:
+  //
+  //   * `pyreon-native check` — whose entire job is to be a CI gate —
+  //     exited 0 on a file that is not TypeScript;
+  //   * `pyreon-native build` wrote an empty .swift/.kt and exited 0, so the
+  //     failure surfaced later as a missing symbol in Xcode or Gradle, with
+  //     nothing pointing back at the file that failed to parse.
+  //
+  // Throwing routes it through the same path a failed emit takes: `check`
+  // records it as an `error` finding and exits 2, `build` reports the file and
+  // exits 2. The message is formatted `file:line:col: message` because that is
+  // the form `extractPosition` already parses (the same shape swiftc and
+  // kotlinc emit), so the finding is editor-clickable without new plumbing.
+  const fatal = ast.errors.find((e) => e.severity !== 'Warning')
+  if (fatal) throw new Error(formatParseError(fatal, filename, source))
   // Pre-pass: collect every `const <name> = defineStore(...)` hook name
   // BEFORE parsing component bodies, so the store-aliasing diagnostic
   // (`const app = useApp()`) fires regardless of declaration order (a
