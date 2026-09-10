@@ -1,5 +1,5 @@
 import type { ClassValue, Props } from '@pyreon/core'
-import { cx, isSafeImageDataUri, isUnsafeUrl, normalizeStyleValue, toKebabCase, URL_ATTRS } from '@pyreon/core'
+import { cx, isSafeImageDataUri, isUnsafeUrl, normalizeStyleValue, toKebabCase, isUrlAttr } from '@pyreon/core'
 
 import { batch, renderEffect } from '@pyreon/reactivity'
 import { DELEGATED_EVENTS, delegatedPropName } from './delegate'
@@ -819,7 +819,7 @@ export function applyValueProp(el: Element, value: unknown): void {
  */
 function isBlockedUrl(el: Element, key: string, value: unknown): boolean {
   if (
-    URL_ATTRS.has(key) &&
+    isUrlAttr(key) &&
     typeof value === 'string' &&
     isUnsafeUrl(value) &&
     !isSafeImageDataUri(el.tagName, key, value)

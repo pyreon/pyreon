@@ -57,7 +57,7 @@ function chartEngineShadowWarnings(parsed: ReturnType<typeof parsePyreon>): stri
 }
 
 export function transform(source: string, options: EmitOptions): TransformResult {
-  const parsed = parsePyreon(source)
+  const parsed = parsePyreon(source, options.filename)
   const usesChartEngine = CHART_PLOT_IMPORT.test(source)
   const structs = usesChartEngine ? [...parsed.structs, ...CHART_ENGINE_STRUCTS] : parsed.structs
   const emitted =

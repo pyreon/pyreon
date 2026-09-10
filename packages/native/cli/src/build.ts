@@ -589,6 +589,9 @@ export function build(options: BuildOptions): BuildResult {
     }
     const result = transform(code, {
       target: options.target,
+      // The real path, so a parse error names the file the user has open
+      // rather than the compiler's in-memory default.
+      filename: input,
       ...(options.fonts ? { fonts: options.fonts } : {}),
     })
     for (const w of result.warnings) warnings.push({ file: input, warning: w })

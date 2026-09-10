@@ -37,7 +37,8 @@ import {
   runWithHooks,
   Suspense,
   setContextStackProvider,
-  URL_ATTRS,
+  isUrlAttr,
+  EVENT_HANDLER_ATTRS,
 } from '@pyreon/core'
 
 // Dev-mode perf counter sink — zero coupling to @pyreon/perf-harness; we just
@@ -1733,10 +1734,38 @@ function renderPropSkipped(key: string): boolean {
   // literal attributes, costing bytes and forcing a hydration fix-up.
   if (key === 'key' || key === 'ref') return true
   if (key === 'innerHTML' || key === 'dangerouslySetInnerHTML') return true
-  // on[A-Z]* event props — charCode probe (no regex machinery per prop)
+  // `on*` event props — charCode probe (no regex machinery per prop).
+  //
+  // BOTH cases, deliberately. The camelCase form is the one Pyreon documents,
+  // but the skip used to require an uppercase third character, so the LOWERCASE
+  // spelling — which is the real HTML event-handler content attribute — fell
+  // through and was serialized verbatim:
+  //
+  //   h('div', { onclick: 'alert(1)' })          -> <div onclick="alert(1)">
+  //   h('img', { src: 'x', onerror: 'alert(1)' }) -> <img src="x" onerror="alert(1)">
+  //
+  // i.e. a live inline handler in the server-rendered HTML, which the browser
+  // runs before any framework code. The reachable vector is a spread of a
+  // user-keyed object, which is verbatim the threat model `UNSAFE_ATTR_NAME_RE`
+  // below already documents — and that regex cannot see it, because `onclick`
+  // contains no breakout character.
+  //
+  // This skip also runs BEFORE the `typeof value === 'function'` resolution
+  // further down, which is the second half: a lowercase `on*` holding a
+  // FUNCTION was CALLED during render, so a typo'd `onclick={handleDelete}`
+  // executed `handleDelete` on the server.
+  //
+  // Dropping an unknown `on*` matches React, which refuses to render a
+  // lowercase handler prop for the same reason.
   if (key.length > 2 && key.charCodeAt(0) === 111 && key.charCodeAt(1) === 110) {
     const c = key.charCodeAt(2)
+    // camelCase (`onClick`) is Pyreon's own spelling: any of them is a handler
+    // prop, so the shape alone is enough.
     if (c >= 65 && c <= 90) return true
+    // lowercase is HTML's spelling, where only the REAL handler names are
+    // executable markup — `once` and `onyx` are ordinary attributes and must
+    // still render, which is why this is a name set and not `/^on[a-z]/`.
+    if (c >= 97 && c <= 122 && EVENT_HANDLER_ATTRS.has(key)) return true
   }
   return false
 }
@@ -1800,7 +1829,7 @@ function renderProp(tag: string, key: string, value: unknown): string | null {
   }
 
   if (
-    URL_ATTRS.has(key) &&
+    isUrlAttr(key) &&
     typeof value === 'string' &&
     isUnsafeUrl(value) &&
     !isSafeImageDataUri(tag, key, value)

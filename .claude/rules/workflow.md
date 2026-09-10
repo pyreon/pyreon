@@ -187,6 +187,32 @@ release audit: `Coverage (Full)` (red on every main run), `sync/ws-relay.test.ts
 published no-op that every unit test passed over — see
 `.claude/rules/testing.md` "Test the shipped ENTRY, not the export").
 
+**A WALL-CLOCK THRESHOLD inside a REQUIRED check is this class by
+construction, and the spread WITHIN one attempt is how you prove it.** A gate
+that trips under contention and passes when quiet reads exactly like a real
+regression from any single red run, so the instinct is to hunt the commit that
+slowed things down. Two cheap questions separate them. **(1) Is it
+deterministic?** A real regression fails every time; `Test (browser)` was
+4-pass/1-fail across main's last runs while reddening main plus four PRs inside
+forty minutes at peak board load (2026-09-10) — that is the load, not the code.
+**(2) What is the spread inside a SINGLE attempt?** `perf-stress.browser.test.tsx`
+logged `runs=[343.3, 289.2, 392.9, 502.8, 153.2]` — five timings of identical
+work, in one job, on one machine, varying by 3.3x against a file whose own
+docstring promised "variance <= 15%". A median drawn from that sample is not a
+measurement of the thing under test, so no threshold over it can be meaningful,
+and the argument needs no bisect or archaeology to make.
+
+The fix is not a wider threshold — that only moves the coin flip, the same way
+raising a ratchet count absorbs a finding instead of addressing it. Gate the
+property that holds on ANY machine (here: the workload completed, and disposal
+left zero nodes behind — verified load-bearing by neutering the disposer loop),
+keep REPORTING the duration in the log for whoever is investigating, and leave
+real timing to the advisory lane (`@pyreon/perf-harness`, `perf.yml`, and the
+process-isolated / CI95 discipline in the `pyreon-benchmarks` skill). Note the
+asymmetry that makes this urgent rather than tidy: an advisory perf job that
+flakes costs a re-read, while the same assertion inside a REQUIRED check blocks
+every open PR in the repository.
+
 ## Git Practices — MANDATORY
 
 - **NEVER push directly to main** — always use feature branches + PRs

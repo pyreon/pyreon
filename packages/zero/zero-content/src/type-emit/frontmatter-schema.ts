@@ -69,8 +69,22 @@ export function defaultPermissiveSchema(collection: string): unknown {
   }
 }
 
+/**
+ * Zod's internals across BOTH major versions.
+ *
+ * v3 tags a def with `typeName: 'ZodString'` and exposes an object
+ * schema's shape as a FUNCTION. v4 renamed the tag to `type: 'string'`
+ * and made `shape` a plain object. Reading only v3 is not a type error
+ * and does not throw — `isZodObjectSchema` simply returns false for
+ * every v4 schema, so every collection silently falls back to the
+ * permissive artifact and the editor stops flagging typo'd or missing
+ * frontmatter keys. That is the whole feature, failing quietly.
+ */
 interface ZodFieldShape {
+  /** v3 */
   typeName?: string
+  /** v4 */
+  type?: string
   innerType?: { _def?: ZodFieldShape }
   values?: readonly unknown[]
 }
@@ -78,8 +92,39 @@ interface ZodFieldShape {
 interface ZodSchemaShape {
   _def?: {
     typeName?: string
-    shape?: () => Record<string, { _def?: ZodFieldShape }>
+    type?: string
+    shape?:
+      | (() => Record<string, { _def?: ZodFieldShape }>)
+      | Record<string, { _def?: ZodFieldShape }>
   }
+}
+
+/** The version-independent kind of a def, normalised to the v4 spelling. */
+function defKind(def: ZodFieldShape | undefined): string | undefined {
+  if (!def) return undefined
+  // v3 FIRST: `ZodString` → `string`. Checking `type` first would
+  // return a v3 tag verbatim whenever a caller supplies both fields,
+  // which is how the public `zodTypeNameToJsonSchema` is reached.
+  if (typeof def.typeName === 'string' && def.typeName.startsWith('Zod')) {
+    const rest = def.typeName.slice(3)
+    return rest.charAt(0).toLowerCase() + rest.slice(1)
+  }
+  if (typeof def.type === 'string') {
+    return def.type.startsWith('Zod')
+      ? def.type.charAt(3).toLowerCase() + def.type.slice(4)
+      : def.type
+  }
+  return undefined
+}
+
+/** An object schema's field map, however the installed version exposes it. */
+function shapeOf(
+  def: ZodSchemaShape['_def'],
+): Record<string, { _def?: ZodFieldShape }> | null {
+  const shape = def?.shape
+  if (typeof shape === 'function') return shape()
+  if (shape && typeof shape === 'object') return shape
+  return null
 }
 
 /**
@@ -92,25 +137,28 @@ interface ZodSchemaShape {
 export function zodTypeNameToJsonSchema(
   typeName: string | undefined,
 ): Record<string, unknown> | null {
-  switch (typeName) {
-    case 'ZodString':
+  // Accepts either spelling — a v3 `ZodString` or a v4 `string`.
+  // Under exactOptionalPropertyTypes an explicit `undefined` is not the
+  // same as an absent key, so the field is only set when it has a value.
+  switch (defKind(typeName === undefined ? {} : { typeName, type: typeName })) {
+    case 'string':
       return { type: 'string' }
-    case 'ZodNumber':
+    case 'number':
       return { type: 'number' }
-    case 'ZodBoolean':
+    case 'boolean':
       return { type: 'boolean' }
-    case 'ZodDate':
+    case 'date':
       // YAML dates are typically ISO strings; JSON Schema's
       // `format: 'date-time'` lets editors hint accordingly.
       return { type: 'string', format: 'date-time' }
-    case 'ZodArray':
+    case 'array':
       return { type: 'array' }
-    case 'ZodObject':
+    case 'object':
       return { type: 'object' }
-    case 'ZodLiteral':
+    case 'literal':
       return { type: 'string' }
-    case 'ZodEnum':
-    case 'ZodNativeEnum':
+    case 'enum':
+    case 'nativeEnum':
       return { type: 'string' }
     default:
       return null
@@ -132,20 +180,22 @@ export function zodFieldToJsonSchema(field: {
   // Unwrap modifier layers (optional/nullable/default all wrap an
   // inner type). Capped at depth 6 to avoid pathological cycles.
   for (let i = 0; i < 6 && cur?._def; i++) {
-    const tn = cur._def.typeName
-    if (tn === 'ZodOptional' || tn === 'ZodDefault') {
+    const kind = defKind(cur._def)
+    if (kind === 'optional' || kind === 'default') {
       required = false
       cur = cur._def.innerType
       continue
     }
-    if (tn === 'ZodNullable') {
+    if (kind === 'nullable') {
+      // `null` is still a value the author must write, so this layer
+      // changes the TYPE and never the required-ness.
       cur = cur._def.innerType
       continue
     }
     break
   }
   const schema = cur?._def
-    ? zodTypeNameToJsonSchema(cur._def.typeName) ?? {}
+    ? zodTypeNameToJsonSchema(defKind(cur._def)) ?? {}
     : {}
   return { schema, required }
 }
@@ -160,9 +210,12 @@ export function zodFieldToJsonSchema(field: {
  */
 export function isZodObjectSchema(value: unknown): value is ZodSchemaShape {
   if (value === null || typeof value !== 'object') return false
-  const def = (value as { _def?: { typeName?: unknown; shape?: unknown } })._def
+  const def = (value as { _def?: ZodSchemaShape['_def'] })._def
   if (!def || typeof def !== 'object') return false
-  return def.typeName === 'ZodObject' && typeof def.shape === 'function'
+  if (defKind(def) !== 'object') return false
+  // v3 exposes `shape` as a function, v4 as a plain object.
+  return typeof def.shape === 'function'
+    || (def.shape !== null && typeof def.shape === 'object')
 }
 
 /**
@@ -180,10 +233,8 @@ export function buildJsonSchemaFromZod(
   try {
     const def = schema._def
     if (!def?.shape) return defaultPermissiveSchema(collection)
-    const shape = def.shape()
-    if (!shape || typeof shape !== 'object') {
-      return defaultPermissiveSchema(collection)
-    }
+    const shape = shapeOf(def)
+    if (!shape) return defaultPermissiveSchema(collection)
     const properties: Record<string, unknown> = {}
     const required: string[] = []
     for (const [key, field] of Object.entries(shape)) {
