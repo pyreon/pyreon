@@ -13,19 +13,23 @@ export default defineNodeConfig({
   // per-subcommand tests land (BELOW_FLOOR_EXEMPTIONS entry in
   // scripts/check-coverage.ts mirrors these numbers).
   //
-  // Ratcheted 88/76/94/89 -> 93/83/97/94 by the 92%+ campaign (measured
-  // 93.13 / 83.39 / 97.98 / 94.55). Statements clear 92; branches do not, and
-  // that is stated rather than smoothed over. Four suites over surface that
-  // had none or half: the five npx delegators as a FAMILY (they were each
-  // ~50%, with the half that actually spawns untested — including the exit
-  // code CI reads), `upgrade`'s reporting layer (whose `--json` branch has
-  // its OWN writeFileSync), `check`'s ordering + `--fix` re-detect, and
-  // `plain`'s declined histogram, which CLAUDE.md calls "the build-next
-  // signal" and whose ORDER nothing asserted.
+  // Ratcheted 88/76 -> 93/83 -> 97/92/99/97 by the 92%+ campaign (measured
+  // 97.73 / 92.50 / 100 / 98.01). BOTH bars are now clear.
+  //
+  // The second half of the lift went after the doctor, which is the part of
+  // this package that tells other people their project is healthy — so an
+  // untested branch here is a wrong verdict about someone else's repo. What
+  // landed: the three lockfile readers behind `check-dedup` (a parser that
+  // silently reads nothing reports no duplicates, which is the state it
+  // exists to catch); the report renderer's refusal to show a score for a run
+  // that measured nothing; the `doc-claims` gate end to end, including the
+  // three ways a stale count has actually shipped past it; the scan-surface
+  // predicates that decide what gets audited at all; and the `--ci` exit code,
+  // whose whole contract is which findings may block a merge.
   coverageThresholds: {
-    statements: 93,
-    branches: 83,
-    functions: 97,
-    lines: 94,
+    statements: 97,
+    branches: 92,
+    functions: 99,
+    lines: 97,
   },
 })

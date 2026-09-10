@@ -231,10 +231,10 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
   //   residual gaps are compiler-emitted fast paths and timing-sensitive
   //   animation/transition arms, covered by real-Chromium e2e.
   '@pyreon/cli': {
-    currentStatements: 93,
-    currentBranches: 83,
+    currentStatements: 97,
+    currentBranches: 92,
     reason:
-      'CLI tool. Re-baselined 95/85 -> 88/76 at the 2026-07 gate restoration, then ratcheted 88/76 -> 93/83 by the 92%+ campaign (measured 93.13/83.39, functions 97.98, lines 94.55). STATEMENTS now clear the 92 bar; branches do not, and the residual is stated rather than smoothed over. The lift came from surface that had none or half: the five npx delegators as a family (each sat at ~50% because only argv-building and --dry-run were tested, leaving the half that actually spawns — and forwards the exit code CI reads — unexercised), `upgrade`\'s reporting layer including the `--json` branch\'s own writeFileSync, `check`\'s finding order and its `--fix` re-detect, and `plain`\'s declined histogram. What remains is ~177 scattered branches across the doctor gates that shell out to real repo scans (bundle-budgets, audit-types, audit-leak-classes, doc-claims) plus the doctor text renderer — cross-process paths hard to drive from vitest. Raise in lockstep; never lower.',
+      'CLI tool. Re-baselined 95/85 -> 88/76 at the 2026-07 gate restoration, then ratcheted 88/76 -> 93/83 -> 97/92 by the 92%+ campaign (measured 97.73/92.50, functions 100, lines 98.01). BOTH bars now clear; the entry stays only because branches sit under MINIMUM_BRANCH_FLOOR=95. The second half of the lift targeted the doctor — the part of this package that renders a verdict about SOMEONE ELSE\'s project, where an untested branch is a wrong answer they act on: the three lockfile readers behind check-dedup (a parser that silently reads nothing reports no duplicates, certifying the exact state it exists to catch), the report renderer\'s refusal to print a score for a run that measured nothing, the doc-claims gate end to end (including the escaped-em-dash JSON claim and the count repeated five times with four bumped), the scan-surface predicates that decide what is audited at all, and the --ci exit code contract. What remains is ~80 scattered arms: colour-only ternaries, defensive type narrowings TypeScript cannot see through, and the two gates that shell out to real repo scans. Raise in lockstep; never lower.',
   },
   '@pyreon/server': {
     currentStatements: 95,
