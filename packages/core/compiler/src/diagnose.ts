@@ -40,6 +40,39 @@ export interface ErrorPattern {
  */
 export const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // `<For>`'s row-mount path probed the render result for the NativeItem
+    // marker before checking it was a value at all, so a row rendering `null`
+    // — the ordinary way to hide one — threw before ANY row had been placed.
+    // The list is not partially rendered, it is entirely absent, and the throw
+    // surfaces only as an unhandled effect error, one layer away from the
+    // `<For>` that caused it. Fixed in runtime-dom; what remains to teach is
+    // the symptom, because a pinned app sees an empty list and a message that
+    // names neither the list nor the row.
+    pattern: /Cannot read propert(?:y|ies) of null \(reading '__isNative'\)/i,
+    diagnose: () => ({
+      cause:
+        "A <For> row's render callback returned null or undefined, and the row-mount path read a property off it before checking. The throw escapes the <For> effect before the first row is placed, so the WHOLE list renders as its two markers and nothing else — not just the null row. SSR renders the same source correctly, so a hydrated page also diverges from its own server.",
+      fix: 'Upgrade @pyreon/runtime-dom — a null row is now mounted as an empty placeholder that holds its position. If you are pinned, filter the list instead of returning null from the row, so every item the <For> receives renders something.',
+      fixCode:
+        "// pinned workaround — filter, don't return null from the row\n<For each={() => items().filter((i) => i.visible)} by={(i) => i.id}>\n  {(i) => <Row item={i} />}\n</For>",
+    }),
+  },
+  {
+    // The devtools element picker installs capture-phase, DOCUMENT-level
+    // mousemove/click listeners on the user's own app. Every drag
+    // implementation forwards pointer movement to `document` once the pointer
+    // leaves the handle, and `document` has no box to measure — so the picker
+    // threw inside the app's drag path, which reads as the app's own bug.
+    pattern: /(?:el|target)\.getBoundingClientRect is not a function/i,
+    diagnose: () => ({
+      cause:
+        "Something called getBoundingClientRect on an event target that is not an Element. The usual source is a listener reading `e.target` as an Element: a mousemove or click forwarded to `document` or `window` — which is what a drag implementation does once the pointer leaves its handle — makes the target a Document, which has no box. Pyreon's own devtools picker had this shape and threw inside the app it was inspecting.",
+      fix: 'Upgrade @pyreon/runtime-dom if the frame names devtools.ts. In your own listeners, narrow the target before measuring it: `e.target instanceof Element` (or `(e.target as Node).nodeType === 1`) and bail otherwise.',
+      fixCode:
+        "document.addEventListener('mousemove', (e) => {\n  const el = e.target as Node | null\n  if (!el || el.nodeType !== 1) return // Document/Window — nothing to measure\n  measure(el as Element)\n}, true)",
+    }),
+  },
+  {
     // A hydration walk that expected an ELEMENT and found a COMMENT (nodeType 8)
     // one step past a reactive range is the signature of a slot boundary read
     // wrongly: the walker consumed a nested accessor's markers as if they were
