@@ -329,13 +329,43 @@ export function mountKeyedList(
     entries: [], // grows via growLisArrays / on assignment (mountFor reorder only)
   }
 
-  const collectKeyOrder = (newList: VNode[]): (string | number)[] => {
-    const newKeyOrder: (string | number)[] = []
+  /**
+   * The key sequence this update actually reconciles, DEDUPED first-wins, plus
+   * how many vnodes carried a key at all.
+   *
+   * Both halves are load-bearing. `mountNewEntries` mounts the FIRST vnode for
+   * a key and skips the rest, so the cache — and therefore the DOM — holds the
+   * deduped sequence; every consumer downstream (the position map, the LIS, the
+   * move pass, `currentKeyOrder`) has to agree with it or it addresses rows
+   * that are not there. A raw sequence disagreed in exactly that way: a
+   * duplicate wrote its LAST index into the position map while the cached entry
+   * belonged to the first, so the next reorder computed an already-increasing
+   * sequence, moved nothing, and left the list rendering the PREVIOUS order.
+   *
+   * `keyed` is counted separately because "has duplicates" and "has a keyless
+   * vnode" are different questions with different answers — deduping is the
+   * right response to the first and is silently wrong for the second.
+   */
+  const collectKeyOrder = (newList: VNode[]): { order: (string | number)[]; keyed: number } => {
+    const order: (string | number)[] = []
+    let keyed = 0
+    let seen: Set<string | number> | null = null
     for (const vnode of newList) {
       const key = vnode.key
-      if (key !== null && key !== undefined) newKeyOrder.push(key)
+      if (key === null || key === undefined) continue
+      keyed++
+      // Allocated only once a key repeats — the dominant list has none, and a
+      // Set per update on the hot path would be a real cost for a rare shape.
+      if (seen !== null) {
+        if (seen.has(key)) continue
+        seen.add(key)
+      } else if (order.includes(key)) {
+        seen = new Set(order)
+        continue
+      }
+      order.push(key)
     }
-    return newKeyOrder
+    return { order, keyed }
   }
 
   const removeStaleEntries = (newKeySet: Set<string | number>) => {
@@ -423,6 +453,52 @@ export function mountKeyedList(
     return true
   }
 
+  // ── Not-fully-keyed fallback ───────────────────────────────────────────────
+  // Every path in the keyed reconciler addresses rows BY KEY, so a vnode
+  // without one is invisible to all of them: `collectKeyOrder` omits it,
+  // `mountNewEntries` skips it, and `removeStaleEntries` then evicts the keyed
+  // rows that are no longer in the (short) new key set. A list that was fully
+  // keyed on its first render and later lost a key therefore rendered EMPTY —
+  // or, when only some keys went missing, silently dropped exactly those rows.
+  //
+  // Classification is pinned at the first run (see `mountAccessorChild`), so
+  // this list cannot hand itself back to the general array path; it has to
+  // carry that path itself. A keyless vnode has no identity by definition, so
+  // the only correct reconciliation for it is REPLACE — which is what the
+  // general path would have done for the whole list had the first array been
+  // keyless. Mount positionally, and resume the keyed path the moment an
+  // update is fully keyed again.
+  let unkeyedCleanups: Cleanup[] | null = null
+
+  const dropKeyedState = () => {
+    for (const entry of cache.values()) {
+      _emitCleanup()
+      entry.cleanup()
+      entry.anchor.parentNode?.removeChild(entry.anchor)
+    }
+    cache.clear()
+    curPos.clear()
+    currentKeyOrder = []
+  }
+
+  const disposeUnkeyed = () => {
+    if (unkeyedCleanups === null) return
+    for (const c of unkeyedCleanups) c()
+    unkeyedCleanups = null
+  }
+
+  const renderUnkeyed = (newList: VNode[], liveParent: Node) => {
+    dropKeyedState()
+    disposeUnkeyed()
+    // Sweep whatever the per-item cleanups left behind (anchors, text nodes),
+    // exactly as the empty-list branch does — the range between the markers is
+    // this list's and nothing else's.
+    clearBetween(startMarker, tailMarker)
+    const cleanups: Cleanup[] = []
+    for (const vnode of newList) cleanups.push(mountVNode(vnode, liveParent, tailMarker))
+    unkeyedCleanups = cleanups
+  }
+
   const e = effect(() => {
     const newList = accessor()
     const n = newList.length
@@ -436,6 +512,19 @@ export function mountKeyedList(
       // fragment's contents, so `marker.parentNode` is the live parent. Fall back
       // to `parent` only when the marker is detached (cleanup edge case).
       const liveParent = tailMarker.parentNode ?? parent
+
+      const { order: newKeyOrder, keyed } = collectKeyOrder(newList)
+      if (keyed !== n) {
+        renderUnkeyed(newList, liveParent)
+        return
+      }
+      // Distinct keys actually reconciled. Equal to `n` for the dominant
+      // duplicate-free list; smaller when a key repeats, and every index-based
+      // pass below must be sized by THIS, not by the raw item count.
+      const m = newKeyOrder.length
+      // Fully keyed again (or still) — release anything the fallback owns
+      // before the keyed paths below repopulate the range.
+      disposeUnkeyed()
 
       if (n === 0 && cache.size > 0) {
         for (const entry of cache.values()) {
@@ -461,7 +550,6 @@ export function mountKeyedList(
         return
       }
 
-      const newKeyOrder = collectKeyOrder(newList)
       // Pure contiguous insertion (append / prepend / middle-insert with all old
       // keys surviving in order) mounts the run and skips stale scan + reorder;
       // the shared curPos/currentKeyOrder tail below still runs.
@@ -474,8 +562,8 @@ export function mountKeyedList(
           removeStaleEntries(new Set(newKeyOrder))
         }
 
-        if (currentKeyOrder.length > 0 && n > 0) {
-          lis = keyedListReorder(lis, n, newKeyOrder, curPos, cache, liveParent, tailMarker)
+        if (currentKeyOrder.length > 0 && m > 0) {
+          lis = keyedListReorder(lis, m, newKeyOrder, curPos, cache, liveParent, tailMarker)
         }
       }
 
@@ -490,6 +578,7 @@ export function mountKeyedList(
 
   return () => {
     e.dispose()
+    disposeUnkeyed()
     for (const entry of cache.values()) {
       _emitCleanup()
       entry.cleanup()

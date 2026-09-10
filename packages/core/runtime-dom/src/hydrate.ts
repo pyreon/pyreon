@@ -681,9 +681,19 @@ function hydrateReactiveText(
       next = textNode.splitText(expected.length)
     } else {
       warnHydrationMismatch('text', expected, data, `${path} > reactive`)
+      // REPLACE the stale node rather than inserting beside it. `data` does not
+      // even START with `expected`, so this is not the merged-adjacent-text
+      // case above — the server's node is simply wrong. Leaving it for the next
+      // sibling to consume only works when that sibling is ALSO text; when it
+      // is an element (or there is none) the stale node is never claimed, and
+      // the page renders the corrected value AND the stale one side by side —
+      // then the element sibling mismatches against it and mounts a second
+      // copy of itself too. Advance the cursor past it first, so the following
+      // sibling still hydrates against the server node it belongs to.
+      next = nextReal(domNode)
       textNode = document.createTextNode(expected)
       parent.insertBefore(textNode, domNode)
-      next = domNode
+      domNode.remove()
     }
     const bound = textNode
     const dispose = bindOwnedText(child as () => VNodeChild, bound, parent)
