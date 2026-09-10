@@ -200,10 +200,10 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
       'Newly MEASURED, not newly regressed: `packages/native` was outside PACKAGE_DIRS, so the most-changed package in this release (55k lines of churn) — and a PUBLISHED one — had never had its coverage measured at all. Two runs gave 89.12/83.19 and 88.80/83.09 — its coverage is NOT deterministic, since which validate specs execute depends on toolchain availability and verdict-cache state, so the floor sits BELOW the observed range rather than at the best run; pinning a single measurement would make the gate flake. Recorded at the actual so the gate can hold the line while it is ratcheted up; a floor the gate can enforce is worth more than one it cannot see. NOTE the run is dominated by the validate VERDICT CACHE (it spawns real swiftc/kotlinc): warm it is fast, cold it exceeds the shared per-package budget, which is why NATIVE_TIMEOUT_MS exists.',
   },
   '@pyreon/native-cli': {
-    currentStatements: 76,
-    currentBranches: 70,
+    currentStatements: 89,
+    currentBranches: 82,
     reason:
-      'Newly MEASURED for the same reason as its sibling above — published, never scanned. First measurement: 76.37% statements / 70.68% branches / 82.17% functions / 78.05% lines. This is the lowest figure in the table and the honest one; the font-extraction specs were additionally gated on a macOS-only system path and had never run in CI either (fixed separately). Ratchet up; never lower to absorb a regression.',
+      'Newly MEASURED for the same reason as its sibling above — published, never scanned. The first measurement here was 76.37/70.68/82.17/78.05; #3454 then added the tests that took it to 89/82/94/91, which is what the package now declares and what the `test (native)` cell enforces on ubuntu. Recorded at the actual so the gate can hold the line while it is ratcheted the rest of the way to 95. Ratchet up; never lower to absorb a regression. Watch the platform skew when re-measuring: `check.test.ts` gates three specs on `isSwiftUIAvailable()`, true on macOS and false on every runner, so a Mac reads HIGHER than the machine that gates this — take the figure from CI, not from a local run.',
   },
   '@pyreon/manifest': {
     currentStatements: 95,
