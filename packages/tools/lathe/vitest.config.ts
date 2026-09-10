@@ -24,7 +24,14 @@ export default defineNodeConfig({
   // proven by `e2e/lathe-bookshelf.spec.ts`), `verify/lower.ts` (shells out to
   // the real @pyreon/native-compiler) and `cli/run.ts` (multi-project + --json
   // orchestration).
-  coverageThresholds: { statements: 90, branches: 80, functions: 95, lines: 94 },
+  // Ratcheted 90/80 -> 96/92 (2026-09 coverage campaign). Measured 96.21
+  // statements / 92.14 branches after suites covering the first-party YAML
+  // reader, the OpenAPI reduction and its composition arms, the faker and
+  // docs and client emitters, the API contract diff, the CLI parser and
+  // `pull`, and the layered entry graph. Raise as tests land, never lower
+  // to absorb a regression (BELOW_FLOOR_EXEMPTIONS mirrors these and the
+  // drift check requires they match exactly).
+  coverageThresholds: { statements: 96, branches: 92, functions: 95, lines: 96 },
   coverageExclude: [
     // gen-docs data, no logic (scaffold-recipe convention).
     'src/manifest.ts',

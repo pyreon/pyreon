@@ -172,12 +172,12 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
       'The plot-engine family wave (2026-09, ~30 stacked PRs: funnel through gantt, the ECharts option facade, the option host, the native crossings). Each PR lands one family with statement-level geometry specs; the edge and interaction specs that lift branch coverage arrive in LATER PRs of the same stack, so an intermediate branch measures 94-97% statements and 85-90% branches (theme river: 96.28 / 87.49 with the browser-covered canvas hosts excluded) while the top of the stack sits higher. Recorded at the wave floor rather than lowered per PR; the ratchet back toward 98 is one follow-up once the wave has merged, and the family hosts stay excluded because each is covered only by its real-Chromium spec.',
   },
   '@pyreon/lathe': {
-    currentStatements: 90,
-    currentBranches: 80,
+    currentStatements: 96,
+    currentBranches: 92,
     reason:
-      'Spec-to-client codegen, arrived at 84.46% statements / 72.22% branches and ratcheted to 90.69 / 80.51 in the same PR. It reached main unmeasured: its PR changed a set large enough to trip the PR-time coverage step\'s >15-package cap, so the step SKIPPED and a brand-new package slipped past the mechanism whose stated job is preventing exactly that. (I first attributed this to the ROOT-FILE escalation, a real second hole with the same outcome — `--filter=*` makes that step exit — but `isRootFile` is false for the `scripts/*.ts` paths that PR touched, so it was the cap. The escalation hole is fixed in `affected.ts` regardless.) ' +
-      'The shortfall is real, not an accounting artifact. `src/cli/report.ts` (40 -> 98), `src/emit/mock.ts` (77 -> 98), `src/emit/schema.ts` (71 -> 87) `src/core/naming.ts` (79 -> 97) and `src/input/openapi.ts` (79 -> 87) are done — the fixture generator\'s per-kind shapes and the portable-regex guard, both of which encode cross-target decisions rather than lines. Recorded at the MEASURED actual and ratcheted with it, never lowered to absorb a regression.',
+      'Spec-to-client codegen. Arrived at 84.46/72.22, ratcheted to 90.69/80.51 in its own PR, and now 96/92 in the 2026-09 campaign (measured 96.21/92.14). The suites that closed it cover the surfaces where a mistake is silent because the output is CODE someone else runs: the first-party YAML reader and what it refuses, the OpenAPI reduction and its notes channel, the faker/docs/client emitters, the contract diff `--fail-on-breaking` gates on, the CLI parser, and the layered entry graph. Three bugs fell out of it. The residual is the watch loop, the vite plugin host and the nested-emitter plumbing — surfaces reached by a real build rather than a unit run. Raise as tests land; never lower to absorb a regression.',
   },
+
   // ── Statements + branches < floor ───────────────────────────────────
   '@pyreon/flow': {
     currentStatements: 99,
