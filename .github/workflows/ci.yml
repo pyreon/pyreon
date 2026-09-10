@@ -1599,8 +1599,32 @@ jobs:
             echo "Root-file change → blast radius unknowable; full coverage runs on main."
             exit 0
           fi
-          NAMES=$(printf '%s\n' $FILTER | sed 's/^--filter=//' | paste -sd, -)
-          COUNT=$(printf '%s\n' $FILTER | grep -c . || true)
+          # TOOLCHAIN-BOUND packages are dropped BEFORE the width cap. Bringing
+          # `packages/native` into PACKAGE_DIRS (this PR's point) puts
+          # `@pyreon/native-compiler` in scope, and its suite spawns ~600 real
+          # swiftc/kotlinc processes — ~400s uncached WITHOUT coverage, and this
+          # job's verdict cache is cold. Measured on this very PR: the step ran
+          # 1381s and the job's 15-minute cap cancelled it, which reports as a
+          # RED `Build` naming no failure.
+          #
+          # The existing cap counts PACKAGES, and one package here costs more
+          # than fifteen ordinary ones — a cap chosen by the wrong dimension.
+          # Their coverage still lands, on `Coverage (Full)` at push:main +
+          # merge_group, which is exactly the backstop the width cap already
+          # leans on. Say WHICH were dropped, so the omission is visible rather
+          # than inferred from a smaller number.
+          SLOW='@pyreon/native-compiler'
+          DROPPED=$(printf '%s\n' $FILTER | sed 's/^--filter=//' | grep -xF "$SLOW" || true)
+          KEPT=$(printf '%s\n' $FILTER | sed 's/^--filter=//' | grep -vxF "$SLOW" || true)
+          if [ -n "$DROPPED" ]; then
+            echo "Toolchain-bound, measured on main instead: $(printf '%s' "$DROPPED" | paste -sd, -)"
+          fi
+          NAMES=$(printf '%s' "$KEPT" | paste -sd, -)
+          COUNT=$(printf '%s\n' $KEPT | grep -c . || true)
+          if [ "$COUNT" -eq 0 ]; then
+            echo "Nothing left to measure at PR time."
+            exit 0
+          fi
           # A release PR touches every package.json → ~130 explicit filters;
           # the push:main full run is the backstop for that width.
           if [ "$COUNT" -gt 15 ]; then

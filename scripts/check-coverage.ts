@@ -51,6 +51,7 @@ import { readdirSync, existsSync, readFileSync, appendFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { isModuleEntry } from './is-entry'
+import { isTestPath } from './test-paths'
 
 const PACKAGE_DIRS = [
   'packages/core',
@@ -62,6 +63,20 @@ const PACKAGE_DIRS = [
   // UNSCANNED by this gate — so ui-components/ui-primitives coverage was
   // never enforced and sat RED locally with nobody catching it.
   'packages/ui',
+  // Previously UNSCANNED, the same class as the `packages/ui` note above, one
+  // category over: test-utils, manifest, perf-harness, ansi, vitest-config.
+  // `@pyreon/test-utils` declares an explicit 95/95/95 that nothing was
+  // checking.
+  //
+  'packages/internals',
+  // `@pyreon/native-compiler` is the most-changed package in this release at
+  // 55k lines, and PUBLISHED — and its coverage had never been measured. Its
+  // suite spawns real swiftc/kotlinc, so the run is dominated by the VERDICT
+  // CACHE: cold it exceeds ten minutes, warm it is fast. The cache lives in
+  // `node_modules/.cache/pyreon-native-validate`, i.e. per checkout, which is
+  // why a fresh worktree measures cold and CI (which restores it via
+  // `PYREON_VALIDATE_CACHE_DIR`) does not. See `NATIVE_TIMEOUT_MS`.
+  'packages/native',
 ]
 const DEFAULT_THRESHOLD = 95
 const MINIMUM_FLOOR = 95
@@ -113,6 +128,19 @@ const SERIAL_PACKAGES = new Set(['@pyreon/zero', '@pyreon/mcp', '@pyreon/vite-pl
  * next CI run says so in the table rather than leaving it to be guessed at.
  */
 const PACKAGE_TIMEOUT_MS = 600_000
+/**
+ * `@pyreon/native-compiler` spawns real `swiftc`/`kotlinc` — hundreds of them —
+ * so its wall time is a function of the VERDICT CACHE, not of the suite. Warm
+ * it is fast; cold it exceeds the shared budget, which is what a fresh checkout
+ * always is. CI restores the cache (`PYREON_VALIDATE_CACHE_DIR`), so this
+ * headroom is for the cold local run rather than the normal path.
+ *
+ * A timeout here is still a LOUD failure that says the thresholds were not
+ * enforced — raising it buys a measurement, it does not paper over one.
+ */
+const NATIVE_TIMEOUT_MS = 1_800_000
+const timeoutFor = (pkg: string): number =>
+  pkg === '@pyreon/native-compiler' ? NATIVE_TIMEOUT_MS : PACKAGE_TIMEOUT_MS
 
 /**
  * The vitest CLI entry, run under `node` (see the spawn comment in
@@ -165,6 +193,24 @@ interface FloorExemption {
   reason: string
 }
 const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
+  '@pyreon/native-compiler': {
+    currentStatements: 88,
+    currentBranches: 82,
+    reason:
+      'Newly MEASURED, not newly regressed: `packages/native` was outside PACKAGE_DIRS, so the most-changed package in this release (55k lines of churn) — and a PUBLISHED one — had never had its coverage measured at all. Two runs gave 89.12/83.19 and 88.80/83.09 — its coverage is NOT deterministic, since which validate specs execute depends on toolchain availability and verdict-cache state, so the floor sits BELOW the observed range rather than at the best run; pinning a single measurement would make the gate flake. Recorded at the actual so the gate can hold the line while it is ratcheted up; a floor the gate can enforce is worth more than one it cannot see. NOTE the run is dominated by the validate VERDICT CACHE (it spawns real swiftc/kotlinc): warm it is fast, cold it exceeds the shared per-package budget, which is why NATIVE_TIMEOUT_MS exists.',
+  },
+  '@pyreon/native-cli': {
+    currentStatements: 89,
+    currentBranches: 82,
+    reason:
+      'Newly MEASURED for the same reason as its sibling above — published, never scanned. The first measurement here was 76.37/70.68/82.17/78.05; #3454 then added the tests that took it to 89/82/94/91, which is what the package now declares and what the `test (native)` cell enforces on ubuntu. Recorded at the actual so the gate can hold the line while it is ratcheted the rest of the way to 95. Ratchet up; never lower to absorb a regression. Watch the platform skew when re-measuring: `check.test.ts` gates three specs on `isSwiftUIAvailable()`, true on macOS and false on every runner, so a Mac reads HIGHER than the machine that gates this — take the figure from CI, not from a local run.',
+  },
+  '@pyreon/manifest': {
+    currentStatements: 95,
+    currentBranches: 94,
+    reason:
+      'Newly MEASURED, not newly regressed: `packages/internals` was outside PACKAGE_DIRS, so none of the five internals packages had ever been scanned by this gate. Four of them pass outright — ansi 100%, perf-harness 100%, test-utils 99.3%, and vitest-config has no instrumentable source. This one measures 98.12% statements / 94.39% branches, i.e. 0.61pp under the branch floor, and is recorded at the MEASURED actual so the widened scan root can land without lowering anything. Ratchet it back to 95 with the branch specs; do not raise this to absorb a regression.',
+  },
   '@pyreon/charts': {
     currentStatements: 94,
     currentBranches: 85,
@@ -760,7 +806,7 @@ function runCoverage(
     const timer = setTimeout(() => {
       timedOut = true
       child.kill('SIGTERM')
-    }, PACKAGE_TIMEOUT_MS)
+    }, timeoutFor(pkgName))
 
     child.on('close', (code, signal) => {
       clearTimeout(timer)
@@ -841,6 +887,70 @@ interface PackageInfo {
   branchThreshold: number
 }
 
+/**
+ * Every instrumentable TypeScript source a package carries (tests excluded).
+ *
+ * `isTestPath` is the repo's single definition of a test path, shared with
+ * `check-changeset-required` and `check-diagnose-catalog` — so this cannot
+ * drift into disagreeing with them about what counts as source.
+ */
+function instrumentableSources(pkgDir: string): string[] {
+  const srcDir = join(pkgDir, 'src')
+  if (!existsSync(srcDir)) return []
+  const out: string[] = []
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules') continue
+        walk(full)
+      } else if (/\.tsx?$/.test(entry.name) && !isTestPath(full)) {
+        out.push(full)
+      }
+    }
+  }
+  walk(srcDir)
+  return out
+}
+
+/**
+ * A package whose `test` script does not run vitest.
+ *
+ * The four `@pyreon/native-{runtime,router}-{swift,kotlin}` packages ship
+ * Swift/Kotlin SOURCE consumed by SPM and Gradle. Their `test` script runs
+ * `swift test` / `verify-kotlin.ts`, and they contain ZERO TypeScript — so a
+ * JS coverage pass over them measures 0/0 files. This gate rightly refuses to
+ * call 0/0 a pass, but for these packages "measured nothing" is the TRUTH
+ * rather than a failure: there is no JS to cover, and their real gate is the
+ * Swift/Kotlin toolchain plus the device jobs.
+ *
+ * Two things make this a classification rather than a hole:
+ *
+ * 1. The discriminator is the CONFIG FILE, never a name list. A package that
+ *    runs vitest has a `vitest.config.ts`; one that doesn't, doesn't. A name
+ *    list would need editing every time a package is added, and the edit that
+ *    gets forgotten is the one that hides a package.
+ * 2. The claim is VERIFIED, not trusted. A package with no vitest config that
+ *    nonetheless carries instrumentable TypeScript is a REAL hole — someone
+ *    shipped JS with no suite wired — and is reported as a problem instead of
+ *    skipped. Checking a skip list in only one direction is exactly how it
+ *    rots into a place where packages hide.
+ */
+export function classifyNonVitestPackage(
+  pkgDir: string,
+): { kind: 'vitest' } | { kind: 'no-js'; sources: 0 } | { kind: 'unwired'; sources: number } {
+  if (existsSync(join(pkgDir, 'vitest.config.ts'))) return { kind: 'vitest' }
+  const sources = instrumentableSources(pkgDir)
+  return sources.length === 0
+    ? { kind: 'no-js', sources: 0 }
+    : { kind: 'unwired', sources: sources.length }
+}
+
+/** Packages skipped because they run no vitest at all, for the report. */
+const nonVitestPackages: string[] = []
+/** Packages with TypeScript source but NO vitest config — a real hole. */
+const unwiredPackages: { name: string; sources: number }[] = []
+
 /** Collect all testable packages. */
 function collectPackages(): PackageInfo[] {
   const packages: PackageInfo[] = []
@@ -858,6 +968,16 @@ function collectPackages(): PackageInfo[] {
       const pkg = JSON.parse(readFileSync(pkgJson, 'utf-8'))
       if (!pkg.scripts?.test) continue
       if (pkg.scripts.test.startsWith('echo')) continue // skip placeholder scripts
+
+      const classified = classifyNonVitestPackage(pkgDir)
+      if (classified.kind === 'no-js') {
+        nonVitestPackages.push(pkg.name)
+        continue
+      }
+      if (classified.kind === 'unwired') {
+        unwiredPackages.push({ name: pkg.name, sources: classified.sources })
+        continue
+      }
 
       packages.push({
         dir: pkgDir,
@@ -1212,7 +1332,10 @@ const { results, problems, staleDeclarations } = await runWithConcurrency(packag
 const sorted = results.sort((a, b) => a.package.localeCompare(b.package))
 const sortedProblems = problems.sort((a, b) => a.package.localeCompare(b.package))
 const hasFailures =
-  sorted.some(isFailingResult) || sortedProblems.length > 0 || staleDeclarations.length > 0
+  sorted.some(isFailingResult) ||
+  sortedProblems.length > 0 ||
+  staleDeclarations.length > 0 ||
+  unwiredPackages.length > 0
 
 // Build report
 const reportLines: string[] = [
@@ -1254,6 +1377,37 @@ if (sortedProblems.length > 0) {
     `\u274c ${sortedProblems.length} package(s) could not be measured \u2014 their thresholds were NOT enforced:`,
     '',
     ...sortedProblems.map((p) => `  ${describeProblem(p)}`),
+  )
+}
+
+if (nonVitestPackages.length > 0) {
+  // Visible, never silent: a skipped package must be nameable from the report,
+  // or "not measured" is indistinguishable from "measured and fine" — the
+  // exact confusion this gate exists to remove.
+  reportLines.push(
+    '',
+    `\u2139\ufe0f  ${nonVitestPackages.length} package(s) run no vitest and carry no TypeScript, ` +
+      `so a JS coverage percentage is not a signal for them:`,
+    ...nonVitestPackages
+      .slice()
+      .sort()
+      .map((n) => `  ${n} — ships Swift/Kotlin source; gated by its own toolchain + the device jobs.`),
+  )
+}
+
+if (unwiredPackages.length > 0) {
+  reportLines.push(
+    '',
+    `\u274c ${unwiredPackages.length} package(s) have TypeScript source but NO vitest.config.ts — ` +
+      `their coverage is not measured by anything:`,
+    ...unwiredPackages
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(
+        (p) =>
+          `  ${p.name}: ${p.sources} instrumentable source file(s), no vitest config. ` +
+          `Add one (see @pyreon/vitest-config), or the package ships JS nothing measures.`,
+      ),
   )
 }
 
