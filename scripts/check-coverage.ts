@@ -303,10 +303,10 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
       'Lint engine. Branches at ~90% — residual gap in 89-rule AST detectors against rare/synthetic source shapes.',
   },
   '@pyreon/mcp': {
-    currentStatements: 94,
-    currentBranches: 86,
+    currentStatements: 96,
+    currentBranches: 92,
     reason:
-      'MCP server. First explicit full thresholds landed at the 2026-07 coverage-gate restoration (measured 94.55/87.64 locally). Branches re-baselined 87 → 86 on 2026-08-04 at the measured 86.12: the atlas + content tool arms added by #2610/#2646 (get_atlas_catalog fallbacks, content walking) grew the optional-chain-dense branch surface faster than its tests, and the drift went unnoticed because the coverage child was dying on CI before printing a summary (turned loud the same day). Ratchet back to 87+ as those arms get specs. Residual gap is tool-handler orchestration + docs-parsing arms against rare doc shapes.',
+      'MCP server. Ratcheted 94/86 → 96/92 in the 2026-09 coverage campaign (measured 96.32/92.91), closing the atlas + content arms the 2026-08-04 entry flagged as owing specs. The residual is tool-handler orchestration — the thin `index.ts` layer that turns a request into one of these renderer calls — plus docs-parsing arms against document shapes the repo does not contain. Raise as tests land; never lower to absorb a regression.',
   },
   '@pyreon/runtime-server': {
     currentStatements: 97,
