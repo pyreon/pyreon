@@ -233,10 +233,10 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
   //   residual gaps are compiler-emitted fast paths and timing-sensitive
   //   animation/transition arms, covered by real-Chromium e2e.
   '@pyreon/cli': {
-    currentStatements: 88,
-    currentBranches: 76,
+    currentStatements: 97,
+    currentBranches: 92,
     reason:
-      'CLI tool. Re-baselined 95/85 → 88/76 at the 2026-07 coverage-gate restoration (measured 88.88/76.91): the CLI-unification wave (`pyreon new`/`mcp`/`add`/`check`/`upgrade` npx-delegator + subprocess paths) and the doctor gates that shell out to real repo scans (check-bundle-budgets, audit-types, native-audit, audit-leak-classes) landed with integration-tier coverage. Multi-PR per-subcommand work to lift back.',
+      'CLI tool. Re-baselined 95/85 -> 88/76 at the 2026-07 gate restoration, then ratcheted 88/76 -> 93/83 -> 97/92 by the 92%+ campaign (measured 97.73/92.50, functions 100, lines 98.01). BOTH bars now clear; the entry stays only because branches sit under MINIMUM_BRANCH_FLOOR=95. The second half of the lift targeted the doctor — the part of this package that renders a verdict about SOMEONE ELSE\'s project, where an untested branch is a wrong answer they act on: the three lockfile readers behind check-dedup (a parser that silently reads nothing reports no duplicates, certifying the exact state it exists to catch), the report renderer\'s refusal to print a score for a run that measured nothing, the doc-claims gate end to end (including the escaped-em-dash JSON claim and the count repeated five times with four bumped), the scan-surface predicates that decide what is audited at all, and the --ci exit code contract. What remains is ~80 scattered arms: colour-only ternaries, defensive type narrowings TypeScript cannot see through, and the two gates that shell out to real repo scans. Raise in lockstep; never lower.',
   },
   '@pyreon/server': {
     currentStatements: 98,
