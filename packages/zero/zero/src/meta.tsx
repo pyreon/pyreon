@@ -356,11 +356,23 @@ export function buildMetaTags(
     )
     const strategy = i18nConfig.strategy ?? 'prefix-except-default'
 
+    // The default locale's own URL, captured from the loop rather than
+    // re-derived, so `x-default` can never disagree with the alternate
+    // that names the same page. Under `prefix` those two differ: EVERY
+    // route is prefixed (`expandRoutesForLocales` emits no unprefixed
+    // form at all), so a bare `pathWithoutLocale` is a URL the build
+    // never produces — and `x-default` is precisely the URL a crawler
+    // serves to a visitor whose language matches no alternate, i.e. the
+    // one that must not 404.
+    let defaultLocalePath = pathWithoutLocale
+
     for (const loc of i18nConfig.locales) {
       const localizedPath =
         strategy === 'prefix-except-default' && loc === i18nConfig.defaultLocale
           ? pathWithoutLocale
           : `/${loc}${pathWithoutLocale === '/' ? '' : pathWithoutLocale}`
+
+      if (loc === i18nConfig.defaultLocale) defaultLocalePath = localizedPath
 
       link.push({
         rel: 'alternate',
@@ -378,7 +390,7 @@ export function buildMetaTags(
     link.push({
       rel: 'alternate',
       hreflang: 'x-default',
-      href: `${origin}${pathWithoutLocale}`,
+      href: `${origin}${defaultLocalePath}`,
     })
   }
 

@@ -243,10 +243,10 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
       'SSR server. Branches at ~86% — residual gap is client-side island() path (browser-only client.ts hydration scheduling) covered by islands.browser.test.tsx in real Chromium but unreachable from node-process vitest. PRs #1335 + #1336 added happy-dom coverage for bare island() invocation; further lift to 95 requires real-browser mount tests.',
   },
   '@pyreon/zero': {
-    currentStatements: 94,
-    currentBranches: 85,
+    currentStatements: 96,
+    currentBranches: 92,
     reason:
-      'Full-stack meta-framework. Branches at ~85% — residual gap in adapter-build SSG/SSR/ISR plugin chains, fs-router auto-detect, image plugin sharp paths exercised by `verify-modes` build matrix + Playwright e2e rather than unit tests. Statements re-baselined 95 → 94 at the 2026-07 coverage-gate restoration (measured 94.97 locally; the package is usually SKIPPED on CI by the gate’s 120s per-package timeout, so the shortfall went unnoticed).',
+      'Full-stack meta-framework. Ratcheted 94/85 → 96/92 in the 2026-09 coverage campaign (measured 96.78/92.23); statements now clear the 95 floor outright and the entry remains only for branches. The residual sits in the Vite plugin chains (ssg/ssr/image/font-import), the `https()` plugin wiring and the `perf-advisor` build hook — surfaces a Node-side vitest run reaches only through a real `vite build`, and which `verify-modes` + the ssg/ssr/isr e2e already gate. Raise as tests land; never lower to absorb a regression.',
   },
   '@pyreon/zero-content': {
     currentStatements: 86,
