@@ -211,14 +211,27 @@ export function remarkMathMermaidDetails(
           const childrenAfterLabel = directive.children.filter((c, i) => {
             // Drop the synthetic label paragraph from the body so it
             // doesn't render twice.
+            //
+            // The marker sits on the PARAGRAPH in some remark-directive
+            // versions and on its first INLINE CHILD in others —
+            // `extractDirectiveLabel` above reads both, and this filter
+            // has to match it exactly. Checking only the child placement
+            // meant that with a paragraph-marker parser the summary was
+            // lifted correctly AND the label was left in the body, so
+            // every `:::details[Label]` rendered its label twice: once
+            // as the disclosure handle and once as the first line of the
+            // content. Nothing warns, and it reads as an authoring
+            // mistake rather than a pipeline one.
             if (i !== 0) return true
             const p = c as {
               type: string
+              data?: { directiveLabel?: boolean }
               children?: Array<{ data?: { directiveLabel?: boolean } }>
             }
+            if (p.type !== 'paragraph') return true
             return !(
-              p.type === 'paragraph'
-              && p.children?.[0]?.data?.directiveLabel === true
+              p.data?.directiveLabel === true
+              || p.children?.[0]?.data?.directiveLabel === true
             )
           })
           const jsx = {

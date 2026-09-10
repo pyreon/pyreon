@@ -83,6 +83,7 @@ export const ENGINE_FILES = [
   'brush',
   'a11y',
   'indicator-values',
+  'decimate-values',
 
   'bin',
 ] as const

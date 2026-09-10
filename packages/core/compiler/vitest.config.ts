@@ -25,5 +25,22 @@ export default defineNodeConfig({
   // number gt/lt/positive/negative/gte-lte) + the emitSchemaSource mini
   // rewrite (56.3%→98.9% stmts). A ~0.5–1pp buffer under each measured value
   // absorbs `test (native)`-cell variance in the jsx.ts native-equivalence tail.
-  coverageThresholds: { statements: 91, branches: 85, functions: 94, lines: 94 },
+  // Ratcheted 91/85/94/94 -> 93/86/99/96 (measured 93.71 / 86.15 / 99.18 /
+  // 96.88) by the 92%+ campaign. Branches remain well short of 92, and the
+  // reason is worth stating because it is not "nobody wrote the tests":
+  //
+  // 871 arms are uncovered and roughly 240 of them are `?? []` / `?? null`
+  // guards on AST node fields in plain.ts + plain-migrate.ts — a
+  // `VariableDeclaration` always has `declarations`, so no valid parsed source
+  // reaches them. Reaching those needs hand-forged malformed ASTs, which
+  // tests the guard rather than the compiler.
+  //
+  // jsx.ts holds 368 more, and a purpose-written 42-spec suite over its
+  // SSR-lowering eligibility moved coverage by ZERO: the 300-seed
+  // differential fuzz already reaches every one of those lines. The suite was
+  // kept anyway — the fuzz's oracle is byte-identity, which a BAIL satisfies
+  // trivially, so nothing in it can detect the fast path silently ceasing to
+  // fire. That is the shape of what is left here: lines the existing gates
+  // cross without asserting anything about.
+  coverageThresholds: { statements: 93, branches: 86, functions: 99, lines: 96 },
 })

@@ -12768,7 +12768,12 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   // Below the plot, from the bottom up: the preset strip, then the navigator.
   const belowNav = presets === undefined ? '' : ' - pyreonPresetStrip.height'
   if (navigating) {
-    lets.push(`let pyreonNavValues: [Double] = ${navValues}`)
+    // Thinned to the strip's width, exactly as the web host does: a 36px-tall
+    // overview needs the min/max envelope per pixel column, not 100k points.
+    // Without this the native navigator resolved and drew EVERY row on every
+    // frame — the same defect the web host had before `minMaxBuckets` was
+    // wired there, and worse here because the target has less headroom.
+    lets.push(`let pyreonNavValues: [Double] = minMaxBuckets(${navValues}, max(1, Int(${W} / 2.0)))`)
     lets.push(`let pyreonNavigator: NavigatorLayout = renderNavigator(pyreonNavValues, pyreonSeries[0].color, pyreonZoom, PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${H}${belowNav}), pyreonTheme.grid)`)
   }
   const bool = (name: string, fallback: boolean): string => {
