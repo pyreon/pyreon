@@ -233,6 +233,11 @@ describe('a ${} interpolation is KEPT as code', () => {
     // makes for regex literals.
     //
     // If it is ever fixed, this spec fails and should be inverted.
+    //
+    // Recorded HERE and not beside `_maskStringsAndComments`, on purpose:
+    // a note in that file is a change to published-package source for a
+    // limit that a test already states in full, and the pin is what keeps
+    // the two from drifting — there is only one of them.
     const out = invariants('const s = `${ `inner effect(q)` }`')
     expect(out, 'documented gap, not an accident').toContain('effect(q)')
   })
