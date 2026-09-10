@@ -79,9 +79,38 @@ export function createCatalogGraph(initial: readonly ComponentIntelligence[] = [
    * source is a genuine re-registration (a plugin refining a component) and
    * still replaces.
    */
+  // Base keys that have already SPLIT into qualified siblings.
+  //
+  // The escalation below DELETES the bare key and re-inserts both sides
+  // qualified. That left the bare key vacant, so the NEXT component with the
+  // same name found nothing there and claimed it — and with an odd number of
+  // siblings one of them kept an unqualified key forever. Five `Glyph`s in one
+  // directory produced `Glyph`, `Glyph@A`, `Glyph@B`, `Glyph@C`, `Glyph@D`,
+  // and because `resolveComponent` matches an exact KEY before it considers
+  // ambiguity, `graph.get('Glyph')` then resolved silently to whichever one
+  // held the bare key instead of reporting the five candidates. That is the
+  // original silent-pick bug wearing a different hat, which this module's
+  // docstring specifically says must not happen.
+  const split = new Set<string>()
+
   const insert = (ci: ComponentIntelligence): void => {
     const key = componentKey(ci)
     const existing = byKey.get(key)
+    if (!existing && split.has(key)) {
+      // The name already collided once, so the vacant bare key is not free.
+      // Qualify against a sibling using the SAME escalation, and requalify
+      // only the incoming component — the sibling already carries its own.
+      const sibling = [...byKey.values()].find((c) => c.name === ci.name && c.project === ci.project)
+      let incoming = pathQualifierFor(ci.source)
+      const held = sibling ? pathQualifierFor(sibling.source) : undefined
+      if (!incoming || !held || incoming === held) incoming = fileQualifierFor(ci.source)
+      if (incoming) {
+        const qualified = { ...ci, pathQualifier: incoming }
+        byKey.set(componentKey(qualified), qualified)
+        return
+      }
+      // Nothing to qualify with — keep the documented last-wins fallback.
+    }
     if (!existing || existing.source === ci.source) {
       byKey.set(key, ci)
       return
@@ -101,6 +130,7 @@ export function createCatalogGraph(initial: readonly ComponentIntelligence[] = [
       return
     }
     byKey.delete(key)
+    split.add(key)
     const requalified = { ...existing, pathQualifier: held }
     byKey.set(componentKey(requalified), requalified)
     const qualified = { ...ci, pathQualifier: incoming }
