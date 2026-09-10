@@ -1968,6 +1968,16 @@ function injectSignalNames(code: string, moduleId: string): string {
  * Regex literals (`/foo/g`) are NOT special-cased — they're rare and the
  * downstream extractBalancedArgs handles unmatched parens by returning null.
  *
+ * KNOWN LIMIT, pinned in `source-masking-scanner.test.ts`: the `${…}`
+ * pass-through does not re-enter this function, so a template literal
+ * NESTED inside an interpolation keeps its literal text visible. Every
+ * other mis-parse here fails toward BLANKING (a `}` inside a string ends
+ * the interpolation early, and the tail is then treated as literal
+ * text) — this is the one that fails the other way. It needs a nested
+ * template whose text contains a reactive-primitive call, which is why
+ * it is recorded rather than closed: rewriting this scanner, which the
+ * whole dev-mode transform depends on, is the larger risk.
+ *
  * @internal — exported for tests.
  */
 export function _maskStringsAndComments(code: string): string {

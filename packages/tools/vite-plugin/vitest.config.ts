@@ -36,10 +36,15 @@ export default defineNodeConfig({
   // rocketstyle-collapse resolver (which boots a NESTED Vite build). Those
   // are proven by the zero-hmr / ssr-showcase e2e rather than by the node
   // runner. Raise in lockstep; never lower.
+  // Ratcheted 95/90 -> 96/92 (2026-09 coverage campaign). Measured 96.08
+  // statements / 92.01 branches after suites covering the source-masking
+  // scanner, the dev SSR handler, the LPIH cache write, dev cache
+  // invalidation and the boot islands audit. Raise as tests land, never
+  // lower to absorb a regression.
   coverageThresholds: {
-    statements: 95,
-    branches: 90,
+    statements: 96,
+    branches: 92,
     functions: 94,
-    lines: 95,
+    lines: 96,
   },
 })
