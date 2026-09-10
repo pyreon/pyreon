@@ -249,10 +249,10 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
       'Full-stack meta-framework. Branches at ~85% — residual gap in adapter-build SSG/SSR/ISR plugin chains, fs-router auto-detect, image plugin sharp paths exercised by `verify-modes` build matrix + Playwright e2e rather than unit tests. Statements re-baselined 95 → 94 at the 2026-07 coverage-gate restoration (measured 94.97 locally; the package is usually SKIPPED on CI by the gate’s 120s per-package timeout, so the shortfall went unnoticed).',
   },
   '@pyreon/zero-content': {
-    currentStatements: 86,
-    currentBranches: 79,
+    currentStatements: 96,
+    currentBranches: 92,
     reason:
-      'Markdown content layer. The 2026-06 docs cutover (PRs #1448 + #1491) landed substantial integration-tier surface node vitest cannot reach: plugin.ts dev-server search middleware (configureServer), build-mode search-index emission (closeBundle), and optional-dependency dynamic imports (katex/mermaid success paths). Achieved node coverage at true-up: 87.39% statements / 80.79% branches (thresholds carry ~1pp variance margin). The integration paths are exercised daily by the real docs/ build + verify-modes; the Chromium harness (PR 7 follow-up) is the tracked lift back toward 95. Raise the package thresholds + this entry in lockstep as tests land.',
+      'Markdown content layer. Ratcheted 86/79 → 96/92 in the 2026-09 coverage campaign (measured 96.56/92.17). The prior entry recorded the dev-server search middleware and the build-mode index emission as unreachable from node vitest; they were not — a Vite plugin hook is a function on an object, and driving `configureServer` / `transform` / `closeBundle` directly is what surfaced four shipped bugs. What genuinely stays out of reach is the optional-peer success path: katex and mermaid are imported through a specifier assembled at RUNTIME so no bundler resolves it, which also puts it beyond `vi.doMock`. Raise as tests land; never lower to absorb a regression.',
   },
   '@pyreon/runtime-dom': {
     currentStatements: 92,
