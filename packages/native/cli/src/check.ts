@@ -164,7 +164,7 @@ export function checkSource(
   for (const target of options.targets) {
     let emitted: string | undefined
     try {
-      const result = transform(code, { target })
+      const result = transform(code, { target, filename: fileName })
       emitted = result.code
       for (const w of result.warnings) {
         findings.push({ file: fileName, target, kind: 'warning', message: w })
