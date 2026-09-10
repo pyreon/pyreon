@@ -584,3 +584,73 @@ describe('an event op composes its own release', () => {
     err.mockRestore()
   })
 })
+
+describe('the row verify covers shapes the DOM check cannot see', () => {
+  it('BAILS on a NESTED tag divergence whose DOM agrees with the row', () => {
+    // The root tag is checked against the DOM first, so a root divergence
+    // never reaches the signature. A NESTED one does — and here the server
+    // markup matches the ROW, so every DOM-side check passes and only the
+    // signature notices that row 0 had a different element there.
+    const planRow = h('li', null, h('span', null, h('a', { href: '/x' }, 'go')))
+    const row = h('li', null, h('em', null, h('a', { href: '/x' }, 'go')))
+    expect(replay(planRow, row, '<li><em><a href="/x">go</a></em></li>')).toBeNull()
+  })
+
+  it('BAILS when a NUMBER child lands where an element belongs', () => {
+    // Numbers and bigints render one text node, same as a string, so the node
+    // count still lines up — the kind is the only signal.
+    const planRow = h('li', null, h('span', { id: 'a' }, 'x'))
+    const row = h('li', null, 42 as never)
+    expect(replay(planRow, row, '<li>42</li>')).toBeNull()
+  })
+
+  it('BAILS when an ELEMENT lands where a number belongs', () => {
+    const planRow = h('li', null, 42 as never)
+    const row = h('li', null, h('span', { id: 'a' }, 'x'))
+    expect(replay(planRow, row, '<li><span id="a">x</span></li>')).toBeNull()
+  })
+
+  it('accepts a number child in the position the plan recorded one', () => {
+    // The control for the two above.
+    const planRow = () => h('li', null, 42 as never)
+    expect(replay(planRow(), h('li', null, 7 as never), '<li>7</li>')).not.toBeNull()
+  })
+
+  it('BAILS when the ROW is not an element vnode at all', () => {
+    // A `renderItem` that returns a bare string, or null, for one item. The
+    // plan resolves every node by child hops from a root ELEMENT, and there
+    // is no such anchor here.
+    const plan = buildRowPlan(h('li', null, h('span', { id: 'a' }, 'x')))
+    expect(replayRowPlan(plan!, 'just text', ssrRow('<li>just text</li>'))).toBeNull()
+    expect(replayRowPlan(plan!, null, ssrRow('<li></li>'))).toBeNull()
+    expect(replayRowPlan(plan!, () => 'accessor', ssrRow('<li>a</li>'))).toBeNull()
+  })
+
+  it('BAILS when a row has FEWER elements than the signature, DOM notwithstanding', () => {
+    // The completeness check on the element axis: the per-node compares all
+    // pass for what IS there, and the walk simply stops early, leaving later
+    // step targets unfilled.
+    const planRow = h('li', null, h('span', { id: 'a' }, 'x'), h('em', { id: 'b' }, 'y'))
+    const row = h('li', null, h('span', { id: 'a' }, 'x'))
+    expect(replay(planRow, row, '<li><span id="a">x</span><em id="b">y</em></li>')).toBeNull()
+  })
+
+  it('falls back to applyProps for a nested step whose props are GETTER-shaped', () => {
+    // Recording an op list would fire the getter at plan time and freeze the
+    // value. The plan records nothing for that element and hands the whole
+    // object to the getter-aware `applyProps` — adoption is kept, the
+    // specialization is not.
+    const title = signal('one')
+    const mk = () => {
+      const p: Record<string, unknown> = {}
+      Object.defineProperty(p, 'title', { get: () => title(), enumerable: true, configurable: true })
+      return h('li', null, h('span', p, 'x'))
+    }
+    const first = ssrRow('<li><span title="one">x</span></li>')
+    const cleanup = replayRowPlan(buildRowPlan(mk())!, mk(), first)
+    expect(cleanup).not.toBeNull()
+    title.set('two')
+    expect((first.firstChild as HTMLElement).getAttribute('title'), 'still live').toBe('two')
+    cleanup?.()
+  })
+})
