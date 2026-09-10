@@ -12,10 +12,20 @@ export default defineNodeConfig({
   // to drive from vitest. Aspiration stays 95/95 — raise back in lockstep as
   // per-subcommand tests land (BELOW_FLOOR_EXEMPTIONS entry in
   // scripts/check-coverage.ts mirrors these numbers).
+  //
+  // Ratcheted 88/76/94/89 -> 93/83/97/94 by the 92%+ campaign (measured
+  // 93.13 / 83.39 / 97.98 / 94.55). Statements clear 92; branches do not, and
+  // that is stated rather than smoothed over. Four suites over surface that
+  // had none or half: the five npx delegators as a FAMILY (they were each
+  // ~50%, with the half that actually spawns untested — including the exit
+  // code CI reads), `upgrade`'s reporting layer (whose `--json` branch has
+  // its OWN writeFileSync), `check`'s ordering + `--fix` re-detect, and
+  // `plain`'s declined histogram, which CLAUDE.md calls "the build-next
+  // signal" and whose ORDER nothing asserted.
   coverageThresholds: {
-    statements: 88,
-    branches: 76,
-    functions: 94,
-    lines: 89,
+    statements: 93,
+    branches: 83,
+    functions: 97,
+    lines: 94,
   },
 })

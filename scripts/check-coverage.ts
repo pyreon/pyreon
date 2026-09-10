@@ -231,10 +231,10 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
   //   residual gaps are compiler-emitted fast paths and timing-sensitive
   //   animation/transition arms, covered by real-Chromium e2e.
   '@pyreon/cli': {
-    currentStatements: 88,
-    currentBranches: 76,
+    currentStatements: 93,
+    currentBranches: 83,
     reason:
-      'CLI tool. Re-baselined 95/85 → 88/76 at the 2026-07 coverage-gate restoration (measured 88.88/76.91): the CLI-unification wave (`pyreon new`/`mcp`/`add`/`check`/`upgrade` npx-delegator + subprocess paths) and the doctor gates that shell out to real repo scans (check-bundle-budgets, audit-types, native-audit, audit-leak-classes) landed with integration-tier coverage. Multi-PR per-subcommand work to lift back.',
+      'CLI tool. Re-baselined 95/85 -> 88/76 at the 2026-07 gate restoration, then ratcheted 88/76 -> 93/83 by the 92%+ campaign (measured 93.13/83.39, functions 97.98, lines 94.55). STATEMENTS now clear the 92 bar; branches do not, and the residual is stated rather than smoothed over. The lift came from surface that had none or half: the five npx delegators as a family (each sat at ~50% because only argv-building and --dry-run were tested, leaving the half that actually spawns — and forwards the exit code CI reads — unexercised), `upgrade`\'s reporting layer including the `--json` branch\'s own writeFileSync, `check`\'s finding order and its `--fix` re-detect, and `plain`\'s declined histogram. What remains is ~177 scattered branches across the doctor gates that shell out to real repo scans (bundle-budgets, audit-types, audit-leak-classes, doc-claims) plus the doctor text renderer — cross-process paths hard to drive from vitest. Raise in lockstep; never lower.',
   },
   '@pyreon/server': {
     currentStatements: 95,
