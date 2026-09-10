@@ -563,6 +563,19 @@ const GZIP_PLATFORM_VARIANCE = 0.015
 const GZIP_PLATFORM_VARIANCE_FLOOR_BYTES = 64
 
 /**
+ * How much LARGER the gating machine measures than a contributor's.
+ *
+ * Distinct from {@link GZIP_PLATFORM_VARIANCE}, and the distinction is the same
+ * one {@link SUGGESTION_MARGIN} draws: this is an OBSERVATION about two
+ * machines (~177 B on a 16.5 KB package, ~1.1%; `@pyreon/toast` read 3018 B on
+ * macOS against 3068 B on ubuntu, 1.66%), while the variance is the POLICY for
+ * how much headroom a budget must carry. Using the policy figure to inflate a
+ * measurement makes the check stricter than the thing it models — measured
+ * here, it failed a package CI accepts.
+ */
+export const GZIP_PLATFORM_DELTA = 0.011
+
+/**
  * Prints the KNOWN thin-headroom debt on every run, green or red.
  *
  * Grandfathered entries are visible rather than silent: a list that is only
@@ -590,6 +603,24 @@ function printThinHeadroom(
     )
   }
   /* eslint-enable no-console */
+}
+
+/**
+ * Whether a budget carries enough headroom to be measurable on BOTH platforms.
+ *
+ * Pure so it can be tested against the two figures the same commit produces on
+ * the two machines, which is the one thing an env-var toggle cannot do: setting
+ * `CI=true` locally only disables the inflation, it does not reproduce ubuntu's
+ * larger gzip.
+ *
+ * @param measured  what THIS machine measured
+ * @param onGating  true when this machine IS the gating one (CI), so the
+ *                  measurement stands; false when it may be up to
+ *                  {@link GZIP_PLATFORM_DELTA} smaller than the gating figure.
+ */
+export function headroomIsSufficient(measured: number, budget: number, onGating: boolean): boolean {
+  const worstCase = onGating ? measured : measured * (1 + GZIP_PLATFORM_DELTA)
+  return budget - worstCase >= requiredHeadroom(worstCase)
 }
 
 /** The minimum headroom a budget needs to be measurable on both platforms. */
@@ -1073,8 +1104,24 @@ async function main(): Promise<void> {
       missing.push({ name: r.name, current: r.gzip })
       continue
     }
-    const headroom = budget - r.gzip
-    const required = requiredHeadroom(r.gzip)
+    // Judged against the WORST-CASE gating measurement, not this machine's.
+    //
+    // Both terms used to read `r.gzip`, which made THIS CHECK's own verdict
+    // platform-dependent — the exact disease it diagnoses. On macOS a budget
+    // passes at `gzip * 1.015`; on the ubuntu runner the same budget is judged
+    // against a number ~1.1% larger, so anything in `[1.015, 1.026] * gzip`
+    // passed locally and failed in CI. Measured on `@pyreon/core`: a 63 B band
+    // for a package that size, and a contributor re-running locally to
+    // "confirm" the fix only reconfirms the wrong answer.
+    //
+    // In CI the measurement IS the gating one, so it stands as measured;
+    // elsewhere it is inflated by the platform delta so the two agree. Nothing
+    // in the current table sits in that band, so this changes no verdict today
+    // — it stops the class recurring.
+    const onGating = process.env.CI !== undefined
+    const worstCase = onGating ? r.gzip : r.gzip * (1 + GZIP_PLATFORM_DELTA)
+    const headroom = budget - worstCase
+    const required = requiredHeadroom(worstCase)
     if (headroom >= 0 && headroom < required) {
       const entry = { name: r.name, current: r.gzip, budget, headroom, required }
       if (grandfathered.has(r.name)) thinKnown.push(entry)
@@ -1177,7 +1224,7 @@ async function main(): Promise<void> {
       for (const t of thinNew) {
         // eslint-disable-next-line no-console
         console.error(
-          `  ${t.name}: budget ${t.budget} B is only ${t.headroom} B above the measured ${t.current} B — needs at least ${Math.ceil(t.required)} B (~${(GZIP_PLATFORM_VARIANCE * 100).toFixed(1)}%). Suggested budget: ${suggestedBudget(t.current)} B (clear of a gating machine that measures larger than this one).`,
+          `  ${t.name}: budget ${t.budget} B is only ${Math.floor(t.headroom)} B above the measured ${t.current} B — needs at least ${Math.ceil(t.required)} B (~${(GZIP_PLATFORM_VARIANCE * 100).toFixed(1)}%). Suggested budget: ${suggestedBudget(t.current)} B (clear of a gating machine that measures larger than this one).`,
         )
       }
       // eslint-disable-next-line no-console
