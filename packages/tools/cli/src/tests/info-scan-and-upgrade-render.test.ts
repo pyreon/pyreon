@@ -18,7 +18,7 @@
  * tries to help.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { collectInfo, detectSkew, scanInstalledPyreon } from '../info'
@@ -333,7 +333,6 @@ describe('the upgrade report carries its meaning in words, not colour', () => {
     // the extra step.
     const manifest = join(root, 'package.json')
     project({ '@pyreon/core': '^0.9.0' }, [['core', '0.9.0'], ['router', '1.0.0']])
-    const { readFileSync } = require('node:fs') as typeof import('node:fs')
     const before = readFileSync(manifest, 'utf8')
     return capture(false, root).then(({ out }) => {
       expect(readFileSync(manifest, 'utf8'), 'nothing written').toBe(before)
