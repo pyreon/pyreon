@@ -4183,6 +4183,13 @@ function swiftFlowViewportLiteral(arg: ExprIR): string | null {
   return arg.fields.map((field) => `${field.name}: ${emitSwiftExpr(field.value, 0)}`).join(', ')
 }
 
+function swiftFlowExtentLiteral(arg: ExprIR): string | null {
+  if (arg.kind !== 'array' || arg.elements.length !== 2) return null
+  const [minPoint, maxPoint] = arg.elements
+  if (minPoint?.kind !== 'array' || maxPoint?.kind !== 'array' || minPoint.elements.length !== 2 || maxPoint.elements.length !== 2) return null
+  return `minX: ${emitSwiftExpr(minPoint.elements[0]!, 0)}, minY: ${emitSwiftExpr(minPoint.elements[1]!, 0)}, maxX: ${emitSwiftExpr(maxPoint.elements[0]!, 0)}, maxY: ${emitSwiftExpr(maxPoint.elements[1]!, 0)}`
+}
+
 /** Names every literal field the native node/edge type does not carry. */
 function warnDroppedFlowFields(site: string, kind: 'node' | 'edge', lit: ExprIR): void {
   if (lit.kind !== 'object') return
@@ -4193,7 +4200,7 @@ function warnDroppedFlowFields(site: string, kind: 'node' | 'edge', lit: ExprIR)
 
 /** `undefined` / `null` in a Swift argument position. */
 function isNilArg(x: ExprIR): boolean {
-  return (x.kind === 'identifier' && x.name === 'undefined') || (x.kind as string) === 'null' || (x.kind as string) === 'undefined'
+  return (x.kind === 'literal' && x.value === null) || (x.kind === 'identifier' && x.name === 'undefined') || (x.kind as string) === 'null' || (x.kind as string) === 'undefined'
 }
 
 /** `updateNodePosition(id, {x, y})` — the `PyreonXYPosition` twin. */
@@ -5723,6 +5730,15 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         if (member === 'setCenter' && e.args.length >= 2) {
           const options = e.args[2] ? swiftFlowViewportLiteral(e.args[2]!) : ''
           if (options !== null) return `${swiftIdent(flowName)}.setCenter(${emitSwiftExpr(e.args[0]!, indent)}, ${emitSwiftExpr(e.args[1]!, indent)}${options ? `, ${options}` : ''})`
+        }
+        if (member === 'setNodeExtent' && e.args.length === 1) {
+          if (isNilArg(e.args[0]!)) return `${swiftIdent(flowName)}.clearNodeExtent()`
+          const extent = swiftFlowExtentLiteral(e.args[0]!)
+          if (extent !== null) return `${swiftIdent(flowName)}.setNodeExtent(${extent})`
+        }
+        if (member === 'clampToExtent' && e.args.length >= 1) {
+          const position = swiftFlowPositionLiteral(e.args[0]!)
+          if (position !== null) return `${swiftIdent(flowName)}.clampToExtent(${position}${e.args.slice(1).map((arg) => `, ${emitSwiftExpr(arg, indent)}`).join('')})`
         }
       }
       // A signal WRITE on a flow-state property (`flow.nodes.set(...)`): the

@@ -231,6 +231,12 @@ struct PyreonFlowStateTests {
         check(q.selectedNodes().isEmpty && q.getEdge("nn") == nil, "setNodes prunes selection and newly disconnected edges")
         q.setEdges([PyreonFlowEdge(id: "fresh", source: "x", target: "x")])
         check(q.edges.map(\.id) == ["fresh"] && q.getEdge("fresh")?.type == "bezier" && q.selectedEdges().isEmpty, "setEdges normalizes and prunes selection")
+        q.setNodeExtent(minX: 0, minY: 10, maxX: 200, maxY: 300)
+        check(q.clampToExtent(PyreonXYPosition(x: 500, y: -2), 20, 30) == PyreonXYPosition(x: 180, y: 10), "clampToExtent applies node dimensions")
+        q.updateNodePosition("x", PyreonXYPosition(x: 500, y: 500))
+        check(q.getNode("x")?.position == PyreonXYPosition(x: 50, y: 260), "position updates automatically use the configured extent and default dimensions")
+        q.clearNodeExtent()
+        check(q.clampToExtent(PyreonXYPosition(x: 500, y: -2)) == PyreonXYPosition(x: 500, y: -2), "clearing the extent restores unconstrained positions")
 
         // 12. Observation granularity — THE performance contract. A tracker
         // reading node "1" must not fire when node "2" moves. With one

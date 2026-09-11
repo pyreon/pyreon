@@ -15,4 +15,6 @@ Partial viewport updates and center-on-coordinate operations now lower to equiva
 
 Literal bulk node and edge additions/replacements now lower to native model arrays, retaining duplicate filtering, edge normalization, selection pruning, and removal of edges disconnected by node replacement.
 
+Node extents now constrain native position updates and shared-source extent setup, clearing, and explicit clamping lower on both targets.
+
 Swift compiler validation now uses a disposable module cache, keeping hermetic and sandboxed runs independent of a writable user-level Clang cache.

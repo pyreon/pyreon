@@ -210,6 +210,12 @@ fun main() {
     check(q.selectedNodes().isEmpty() && q.getEdge("nn") == null, "setNodes prunes selection and newly disconnected edges")
     q.setEdges(listOf(PyreonFlowEdge(id = "fresh", source = "x", target = "x")))
     check(q.edges.map { it.id } == listOf("fresh") && q.getEdge("fresh")?.type == "bezier" && q.selectedEdges().isEmpty(), "setEdges normalizes and prunes selection")
+    q.setNodeExtent(minX = 0.0, minY = 10.0, maxX = 200.0, maxY = 300.0)
+    check(q.clampToExtent(PyreonXYPosition(500.0, -2.0), 20.0, 30.0) == PyreonXYPosition(180.0, 10.0), "clampToExtent applies node dimensions")
+    q.updateNodePosition("x", PyreonXYPosition(500.0, 500.0))
+    check(q.getNode("x")?.position == PyreonXYPosition(50.0, 260.0), "position updates automatically use the configured extent and default dimensions")
+    q.clearNodeExtent()
+    check(q.clampToExtent(PyreonXYPosition(500.0, -2.0)) == PyreonXYPosition(500.0, -2.0), "clearing the extent restores unconstrained positions")
     // Per-id storage: a position write must not disturb order or the other nodes.
     et.updateNodePosition("2", PyreonXYPosition(50.0, 50.0))
     check(et.nodes.map { it.id } == listOf("1", "2", "3"), "updateNodePosition keeps insertion order")

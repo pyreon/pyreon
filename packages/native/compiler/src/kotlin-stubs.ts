@@ -1624,6 +1624,9 @@ class PyreonFlowState<T>(
   fun removeNode(id: String) {}
   fun removeNodes(ids: List<String>) {}
   fun updateNodePosition(id: String, position: PyreonXYPosition) {}
+  fun setNodeExtent(minX: Double, minY: Double, maxX: Double, maxY: Double) {}
+  fun clearNodeExtent() {}
+  fun clampToExtent(position: PyreonXYPosition, nodeWidth: Double = 150.0, nodeHeight: Double = 40.0): PyreonXYPosition = position
   fun getEdge(id: String): PyreonFlowEdge? = null
   fun addEdge(edge: PyreonFlowEdge) {}
   fun addEdges(edges: List<PyreonFlowEdge>) {}

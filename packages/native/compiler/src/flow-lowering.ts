@@ -24,6 +24,7 @@ export const LOWERED_FLOW_METHODS: ReadonlySet<string> = new Set([
   'moveSelectedNodes',
   'addEdgeWaypoint', 'removeEdgeWaypoint', 'updateEdgeWaypoint', 'reconnectEdge',
   'getConnectedEdges', 'getIncomers', 'getOutgoers', 'getChildNodes', 'getAbsolutePosition',
+  'setNodeExtent', 'clampToExtent',
 ])
 
 /** `FlowNode` fields the native `PyreonFlowNode` carries. */

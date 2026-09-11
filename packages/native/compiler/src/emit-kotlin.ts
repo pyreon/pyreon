@@ -3350,6 +3350,13 @@ function kotlinFlowViewportLiteral(arg: ExprIR): string | null {
   return arg.fields.map((field) => `${field.name} = ${ktChartDouble(emitKotlinExpr(field.value, 0))}`).join(', ')
 }
 
+function kotlinFlowExtentLiteral(arg: ExprIR): string | null {
+  if (arg.kind !== 'array' || arg.elements.length !== 2) return null
+  const [minPoint, maxPoint] = arg.elements
+  if (minPoint?.kind !== 'array' || maxPoint?.kind !== 'array' || minPoint.elements.length !== 2 || maxPoint.elements.length !== 2) return null
+  return `minX = ${ktChartDouble(emitKotlinExpr(minPoint.elements[0]!, 0))}, minY = ${ktChartDouble(emitKotlinExpr(minPoint.elements[1]!, 0))}, maxX = ${ktChartDouble(emitKotlinExpr(maxPoint.elements[0]!, 0))}, maxY = ${ktChartDouble(emitKotlinExpr(maxPoint.elements[1]!, 0))}`
+}
+
 /** Names every literal field the native node/edge type does not carry. */
 function warnDroppedFlowFieldsKt(site: string, kind: 'node' | 'edge', lit: ExprIR): void {
   if (lit.kind !== 'object') return
@@ -4744,6 +4751,16 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (member === 'setCenter' && e.args.length >= 2) {
           const options = e.args[2] ? kotlinFlowViewportLiteral(e.args[2]!) : ''
           if (options !== null) return `${kotlinIdent(flowName)}.setCenter(${ktChartDouble(emitKotlinExpr(e.args[0]!, indent))}, ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))}${options ? `, ${options}` : ''})`
+        }
+        if (member === 'setNodeExtent' && e.args.length === 1) {
+          const value = e.args[0]!
+          if ((value.kind === 'literal' && value.value === null) || (value.kind as string) === 'null' || (value.kind === 'identifier' && value.name === 'undefined')) return `${kotlinIdent(flowName)}.clearNodeExtent()`
+          const extent = kotlinFlowExtentLiteral(value)
+          if (extent !== null) return `${kotlinIdent(flowName)}.setNodeExtent(${extent})`
+        }
+        if (member === 'clampToExtent' && e.args.length >= 1) {
+          const position = kotlinFlowPositionLiteral(e.args[0]!)
+          if (position !== null) return `${kotlinIdent(flowName)}.clampToExtent(${position}${e.args.slice(1).map((arg) => `, ${ktChartDouble(emitKotlinExpr(arg, indent))}`).join('')})`
         }
       }
       // A signal WRITE on a flow-state property — read-only natively; name it.

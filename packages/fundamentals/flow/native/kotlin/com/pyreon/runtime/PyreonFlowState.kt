@@ -95,6 +95,7 @@ class PyreonFlowState<T>(
     private val minZoom: Double = 0.1,
     private val maxZoom: Double = 4.0,
 ) {
+    private var nodeExtent: DoubleArray? = null
     private val order = mutableStateListOf<String>()
     private val nodeMap = mutableStateMapOf<String, PyreonFlowNode<T>>()
     /** Every node in insertion order. Derived from the per-id map — reading it
@@ -192,7 +193,19 @@ class PyreonFlowState<T>(
     /** O(1); recomposes only the readers of this node. */
     fun updateNodePosition(id: String, position: PyreonXYPosition) {
         val node = nodeMap[id] ?: return
-        nodeMap[id] = node.copy(position = position)
+        nodeMap[id] = node.copy(position = clampToExtent(position, node.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH, node.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT))
+    }
+    fun setNodeExtent(minX: Double, minY: Double, maxX: Double, maxY: Double) {
+        nodeExtent = doubleArrayOf(minX, minY, maxX, maxY)
+    }
+    fun clearNodeExtent() { nodeExtent = null }
+    @JvmOverloads
+    fun clampToExtent(position: PyreonXYPosition, nodeWidth: Double = PYREON_FLOW_DEFAULT_NODE_WIDTH, nodeHeight: Double = PYREON_FLOW_DEFAULT_NODE_HEIGHT): PyreonXYPosition {
+        val extent = nodeExtent ?: return position
+        return PyreonXYPosition(
+            x = kotlin.math.min(kotlin.math.max(position.x, extent[0]), extent[2] - nodeWidth),
+            y = kotlin.math.min(kotlin.math.max(position.y, extent[1]), extent[3] - nodeHeight),
+        )
     }
 
     // ── edge operations ─────────────────────────────────────────────────────

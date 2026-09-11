@@ -263,6 +263,7 @@ public final class PyreonFlowState<T> {
 
     private let minZoom: Double
     private let maxZoom: Double
+    private var nodeExtent: (minX: Double, minY: Double, maxX: Double, maxY: Double)?
 
     public init(
         nodes: [PyreonFlowNode<T>] = [],
@@ -368,9 +369,22 @@ public final class PyreonFlowState<T> {
     /// readers (`nodesVersion`) — never the other nodes' views.
     public func updateNodePosition(_ id: String, _ position: PyreonXYPosition) {
         guard nodeStore[id] != nil else { return }
-        nodeStore[id]!.position = position
-        boxes[id]!.node.position = position
+        let node = nodeStore[id]!
+        let clamped = clampToExtent(position, node.width ?? pyreonFlowDefaultNodeWidth, node.height ?? pyreonFlowDefaultNodeHeight)
+        nodeStore[id]!.position = clamped
+        boxes[id]!.node.position = clamped
         nodesVersion &+= 1
+    }
+    public func setNodeExtent(minX: Double, minY: Double, maxX: Double, maxY: Double) {
+        nodeExtent = (minX, minY, maxX, maxY)
+    }
+    public func clearNodeExtent() { nodeExtent = nil }
+    public func clampToExtent(_ position: PyreonXYPosition, _ nodeWidth: Double = pyreonFlowDefaultNodeWidth, _ nodeHeight: Double = pyreonFlowDefaultNodeHeight) -> PyreonXYPosition {
+        guard let extent = nodeExtent else { return position }
+        return PyreonXYPosition(
+            x: min(max(position.x, extent.minX), extent.maxX - nodeWidth),
+            y: min(max(position.y, extent.minY), extent.maxY - nodeHeight)
+        )
     }
 
     // ── edge operations ─────────────────────────────────────────────────────

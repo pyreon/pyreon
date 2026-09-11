@@ -442,6 +442,24 @@ export function C() {
         expect(validateKotlin(result.code).ok).toBe(true)
       }
     })
+    it(`[${target}] node extent setup, clearing and clamping lower with typed positions`, () => {
+      const src = base('', `<Button onPress={() => { flow.setNodeExtent([[0, 10], [200, 300]]); flow.clampToExtent({ x: 500, y: -2 }, 20, 30); flow.setNodeExtent(null) }}>Bounds</Button>`)
+      const result = transform(src, { target })
+      const w = (result.warnings ?? []).join('\n')
+      expect(w).not.toContain('`setNodeExtent` is NOT ported')
+      expect(w).not.toContain('`clampToExtent` is NOT ported')
+      if (target === 'swift') {
+        expect(result.code).toContain('flow.setNodeExtent(minX: 0, minY: 10, maxX: 200, maxY: 300)')
+        expect(result.code).toContain('flow.clampToExtent(PyreonXYPosition(x: 500, y: -2), 20, 30)')
+        expect(result.code).toContain('flow.clearNodeExtent()')
+        expect(validateSwiftWithStubs(result.code).ok).toBe(true)
+      } else {
+        expect(result.code).toContain('flow.setNodeExtent(minX = 0.0, minY = 10.0, maxX = 200.0, maxY = 300.0)')
+        expect(result.code).toContain('flow.clampToExtent(PyreonXYPosition(500.0, -2.0), 20.0, 30.0)')
+        expect(result.code).toContain('flow.clearNodeExtent()')
+        expect(validateKotlin(result.code).ok).toBe(true)
+      }
+    })
   }
 
   describe('Swift argument labels + stub fidelity', () => {
