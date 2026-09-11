@@ -57,12 +57,14 @@ fun main() {
     check(ruled.reconnectEdge("native-edge", PyreonFlowConnection("api", "db")), "validated reconnect succeeds")
     check(ruled.getEdge("native-edge")?.sourceHandle == null && ruled.getEdge("native-edge")?.targetHandle == null, "validated reconnect can clear stale handle ids")
     check(!ruled.reconnectEdge("native-edge", PyreonFlowConnection("api", "ui")) && ruled.getEdge("native-edge")?.target == "db", "invalid reconnect leaves the edge unchanged")
-    val disabledDefaults = PyreonFlowState(nodes = listOf(PyreonFlowNode("kept", position = PyreonXYPosition(0.0, 0.0), data = NodeData("Kept"))), nodesDraggable = false, nodesConnectable = false, nodesSelectable = false, nodesFocusable = false, edgesFocusable = false, nodesDeletable = false, edgesDeletable = false, edgesReconnectable = false, edgeInteractionWidth = 33.0, connectionRadius = -4.0, pannable = false, zoomable = false, defaultEdgeType = "step", fitViewOnLoad = true, fitViewPadding = 0.2)
+    val disabledDefaults = PyreonFlowState(nodes = listOf(PyreonFlowNode("kept", position = PyreonXYPosition(0.0, 0.0), data = NodeData("Kept")), PyreonFlowNode("other", position = PyreonXYPosition(20.0, 0.0), data = NodeData("Other"))), nodesDraggable = false, nodesConnectable = false, nodesSelectable = false, nodesFocusable = false, edgesFocusable = false, nodesDeletable = false, edgesDeletable = false, edgesReconnectable = false, edgeInteractionWidth = 33.0, connectionRadius = -4.0, pannable = false, zoomable = false, multiSelect = false, defaultEdgeType = "step", fitViewOnLoad = true, fitViewPadding = 0.2)
     disabledDefaults.addEdge(PyreonFlowEdge("defaulted", "kept", "kept"))
     disabledDefaults.selectNode("kept"); disabledDefaults.deleteSelected()
     check(disabledDefaults.getNode("kept") != null && disabledDefaults.connectionRadius == 0.0, "global deletion default protects nodes and connection radius clamps nonnegative")
     check(!disabledDefaults.nodesDraggable && !disabledDefaults.nodesConnectable && !disabledDefaults.pannable && disabledDefaults.edgeInteractionWidth == 33.0, "native interaction defaults retain explicit global disables")
     check(disabledDefaults.getEdge("defaulted")?.type == "step" && disabledDefaults.fitViewOnLoad && disabledDefaults.fitViewPadding == 0.2, "edge type and initial fit defaults are retained")
+    disabledDefaults.selectNode("kept"); disabledDefaults.selectNode("other", additive = true)
+    check(disabledDefaults.selectedNodes() == listOf("other"), "multiSelect false converts additive selection to replacement")
 
     val configuredNode = PyreonFlowNode(
         id = "configured", position = PyreonXYPosition(1.0, 2.0), data = NodeData("Configured"),

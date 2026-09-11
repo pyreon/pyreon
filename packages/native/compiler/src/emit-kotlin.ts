@@ -3190,7 +3190,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       ...(d.snapGrid !== undefined ? [`snapGrid = ${ktDouble(d.snapGrid)}`] : []),
       ...(d.nodeExtent !== undefined ? [`nodeExtent = PyreonFlowNodeExtent(${d.nodeExtent.map(ktDouble).join(', ')})`] : []),
       ...(d.defaultMarkerEnd !== undefined ? [`defaultMarkerEnd = ${d.defaultMarkerEnd === null ? 'null' : kotlinFlowMarker(d.defaultMarkerEnd)}`] : []),
-      ...(['nodesDraggable', 'nodesConnectable', 'nodesSelectable', 'nodesFocusable', 'edgesFocusable', 'nodesDeletable', 'edgesDeletable', 'edgesReconnectable', 'pannable', 'zoomable'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key} = ${d[key]}`]),
+      ...(['nodesDraggable', 'nodesConnectable', 'nodesSelectable', 'nodesFocusable', 'edgesFocusable', 'nodesDeletable', 'edgesDeletable', 'edgesReconnectable', 'pannable', 'zoomable', 'multiSelect'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key} = ${d[key]}`]),
       ...(d.edgeInteractionWidth !== undefined ? [`edgeInteractionWidth = ${ktDouble(d.edgeInteractionWidth)}`] : []),
       ...(d.connectionRadius !== undefined ? [`connectionRadius = ${ktDouble(d.connectionRadius)}`] : []),
       ...(d.defaultEdgeType !== undefined ? [`defaultEdgeType = ${JSON.stringify(d.defaultEdgeType)}`] : []),

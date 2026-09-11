@@ -135,6 +135,7 @@ class PyreonFlowState<T>(
     connectionRadius: Double = 0.0,
     val pannable: Boolean = true,
     val zoomable: Boolean = true,
+    val multiSelect: Boolean = true,
     val defaultEdgeType: String = PYREON_FLOW_DEFAULT_EDGE_TYPE,
     val fitViewOnLoad: Boolean = false,
     fitViewPadding: Double = 0.1,
@@ -379,7 +380,7 @@ class PyreonFlowState<T>(
 
     @JvmOverloads
     fun selectNode(id: String, additive: Boolean = false) {
-        if (additive) {
+        if (additive && multiSelect) {
             if (selectedNodeIdSet.put(id, Unit) == null) selectedNodeIdList.add(id)
         } else {
             setNodeSelection(listOf(id))
@@ -388,7 +389,7 @@ class PyreonFlowState<T>(
     }
     @JvmOverloads
     fun selectNodes(ids: List<String>, additive: Boolean = false) {
-        if (additive) {
+        if (additive && multiSelect) {
             for (id in ids) if (selectedNodeIdSet.put(id, Unit) == null) selectedNodeIdList.add(id)
         } else {
             setNodeSelection(ids.distinct())
@@ -400,7 +401,7 @@ class PyreonFlowState<T>(
     }
     @JvmOverloads
     fun selectEdge(id: String, additive: Boolean = false) {
-        if (additive) {
+        if (additive && multiSelect) {
             if (selectedEdgeIdSet.put(id, Unit) == null) selectedEdgeIdList.add(id)
         } else {
             setEdgeSelection(listOf(id))

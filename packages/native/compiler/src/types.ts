@@ -971,6 +971,7 @@ export type DeclIR =
       connectionRadius?: number
       pannable?: boolean
       zoomable?: boolean
+      multiSelect?: boolean
       defaultEdgeType?: string
       fitView?: boolean
       fitViewPadding?: number

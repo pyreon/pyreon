@@ -1640,6 +1640,7 @@ class PyreonFlowState<T>(
   connectionRadius: Double = 0.0,
   pannable: Boolean = true,
   zoomable: Boolean = true,
+  multiSelect: Boolean = true,
   defaultEdgeType: String = "bezier",
   fitViewOnLoad: Boolean = false,
   fitViewPadding: Double = 0.1,
