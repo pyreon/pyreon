@@ -1009,7 +1009,6 @@ class TasksAppInstrumentedTest {
         // coordinates and silently leaves the route unchanged.
         composeRule
             .onNodeWithTag("tasks-logout")
-            .performScrollTo()
             .performClick()
 
         assertTagDisplayed("login-page", "after tasks-logout (/tasks -> /login)")
