@@ -25,5 +25,15 @@ fun main() {
     val mini = pyreonFlowMiniMapLayout(state, width = 200.0, height = 150.0)
     checkHost(mini.nodes.map { it.id } == listOf("visible", "target"), "minimap omits hidden nodes")
     checkHost(mini.scale > 0.0 && mini.viewport.width > 0.0, "minimap derives graph scale and viewport indicator")
+    val dragGroups = PyreonFlowState(
+        nodes = listOf(
+            PyreonFlowNode("parent", position = PyreonXYPosition(10.0, 10.0), data = "Parent"),
+            PyreonFlowNode("child", position = PyreonXYPosition(5.0, 5.0), data = "Child", parentId = "parent"),
+            PyreonFlowNode("peer", position = PyreonXYPosition(30.0, 30.0), data = "Peer"),
+        ),
+    )
+    dragGroups.selectNodes(listOf("parent", "child", "peer"))
+    checkHost(pyreonFlowDragNodeIds(dragGroups, "parent") == listOf("parent", "peer"), "multi-drag omits descendants of a selected ancestor")
+    checkHost(pyreonFlowDragNodeIds(dragGroups, "child") == listOf("parent", "peer"), "dragging any selected member moves the same top-level selection")
     println("PyreonFlowHostTest: all checks passed")
 }

@@ -57,3 +57,19 @@ fun <T> pyreonFlowEdgeStrokes(
         PyreonFlowEdgeStroke(edge.id, path.segments, color, width)
     }
 }
+
+fun <T> pyreonFlowDragNodeIds(state: PyreonFlowState<T>, draggedNodeId: String): List<String> {
+    val ids = (if (state.isNodeSelected(draggedNodeId)) state.selectedNodes() else listOf(draggedNodeId)).toMutableList()
+    val selected = ids.toSet()
+    ids.removeAll { id ->
+        var parentId = state.getNode(id)?.parentId
+        val seen = mutableSetOf<String>()
+        var hasSelectedAncestor = false
+        while (parentId != null && seen.add(parentId)) {
+            if (selected.contains(parentId)) { hasSelectedAncestor = true; break }
+            parentId = state.getNode(parentId)?.parentId
+        }
+        hasSelectedAncestor
+    }
+    return ids
+}

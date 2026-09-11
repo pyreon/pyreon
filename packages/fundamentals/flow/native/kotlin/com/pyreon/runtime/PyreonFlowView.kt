@@ -179,6 +179,7 @@ fun <T> PyreonFlowView(
     val density = LocalDensity.current
     var interactionsLocked by remember { mutableStateOf(false) }
     var connectionDraft by remember { mutableStateOf<PyreonFlowConnectionDraft?>(null) }
+    var nodeDragStarts by remember { mutableStateOf<Map<String, PyreonXYPosition>>(emptyMap()) }
     val interactiveHandles = state.nodes.flatMap { node ->
         if (node.hidden == true || node.connectable == false) emptyList() else {
             val absolute = state.getAbsolutePosition(node.id)
@@ -256,16 +257,19 @@ fun <T> PyreonFlowView(
                 }
                 if (!interactionsLocked && node.draggable != false) {
                     nodeModifier = nodeModifier.pointerInput(node.id, state.viewport.zoom) {
-                        detectDragGestures { change, amount ->
+                        detectDragGestures(
+                            onDragStart = {
+                                nodeDragStarts = pyreonFlowDragNodeIds(state, node.id).associateWith { id -> state.getNode(id)!!.position }
+                            },
+                            onDragCancel = { nodeDragStarts = emptyMap() },
+                            onDragEnd = { nodeDragStarts = emptyMap() },
+                        ) { change, _ ->
                             change.consume()
-                            val current = state.getNode(node.id)?.position ?: return@detectDragGestures
-                            state.updateNodePosition(
-                                node.id,
-                                PyreonXYPosition(
-                                    current.x + amount.x,
-                                    current.y + amount.y,
-                                ),
-                            )
+                            val delta = change.position - change.previousPosition
+                            for ((id, current) in nodeDragStarts) {
+                                nodeDragStarts = nodeDragStarts + (id to PyreonXYPosition(current.x + delta.x, current.y + delta.y))
+                                state.updateNodePosition(id, PyreonXYPosition(current.x + delta.x, current.y + delta.y))
+                            }
                         }
                     }
                 }

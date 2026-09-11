@@ -64,6 +64,14 @@ struct PyreonFlowStateTests {
         let mini = pyreonFlowMiniMapLayout(state: f, width: 200, height: 150)
         check(mini.nodes.map(\.id) == ["1", "2", "3"], "minimap derives every visible node")
         check(mini.scale > 0 && mini.viewport.width > 0, "minimap derives graph scale and viewport indicator")
+        let dragGroups = PyreonFlowState(nodes: [
+            PyreonFlowNode(id: "parent", position: PyreonXYPosition(x: 10, y: 10), data: NodeData(label: "Parent")),
+            PyreonFlowNode(id: "child", position: PyreonXYPosition(x: 5, y: 5), data: NodeData(label: "Child"), parentId: "parent"),
+            PyreonFlowNode(id: "peer", position: PyreonXYPosition(x: 30, y: 30), data: NodeData(label: "Peer")),
+        ])
+        dragGroups.selectNodes(["parent", "child", "peer"])
+        check(pyreonFlowDragNodeIds(state: dragGroups, draggedNodeId: "parent") == ["parent", "peer"], "multi-drag omits descendants of a selected ancestor")
+        check(pyreonFlowDragNodeIds(state: dragGroups, draggedNodeId: "child") == ["parent", "peer"], "dragging any selected member moves the same top-level selection")
 
         let configuredNode = PyreonFlowNode(
             id: "configured", position: PyreonXYPosition(x: 1, y: 2), data: NodeData(label: "Configured"),

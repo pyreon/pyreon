@@ -238,6 +238,25 @@ public func pyreonFlowEdgeStrokes<T>(
     }
 }
 
+/// The dragged selection with descendants removed when an ancestor is also
+/// selected. Node positions are parent-relative, so moving both would apply
+/// the same pointer delta twice to a descendant's absolute position.
+@available(iOS 17.0, macOS 14.0, *)
+public func pyreonFlowDragNodeIds<T>(state: PyreonFlowState<T>, draggedNodeId: String) -> [String] {
+    var ids = state.isNodeSelected(draggedNodeId) ? state.selectedNodes() : [draggedNodeId]
+    let selected = Set(ids)
+    ids.removeAll { id in
+        var parentId = state.getNode(id)?.parentId
+        var seen: Set<String> = []
+        while let parent = parentId, seen.insert(parent).inserted {
+            if selected.contains(parent) { return true }
+            parentId = state.getNode(parent)?.parentId
+        }
+        return false
+    }
+    return ids
+}
+
 /// A native SwiftUI host for `PyreonFlowState`: it measures its container,
 /// draws edges and nodes under one viewport, and supplies selection, dragging,
 /// panning, zooming, and accessibility without a web view.
@@ -389,15 +408,20 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         DragGesture(minimumDistance: 1, coordinateSpace: .global)
             .onChanged { value in
                 guard !interactionsLocked, node.draggable != false else { return }
-                let start = nodeDragStart[node.id] ?? node.position
-                if nodeDragStart[node.id] == nil { nodeDragStart[node.id] = start }
-                state.updateNodePosition(
-                    node.id,
-                    PyreonXYPosition(
-                        x: start.x + value.translation.width / state.viewport.zoom,
-                        y: start.y + value.translation.height / state.viewport.zoom))
+                if nodeDragStart.isEmpty {
+                    for id in pyreonFlowDragNodeIds(state: state, draggedNodeId: node.id) {
+                        if let position = state.getNode(id)?.position { nodeDragStart[id] = position }
+                    }
+                }
+                for (id, start) in nodeDragStart {
+                    state.updateNodePosition(
+                        id,
+                        PyreonXYPosition(
+                            x: start.x + value.translation.width / state.viewport.zoom,
+                            y: start.y + value.translation.height / state.viewport.zoom))
+                }
             }
-            .onEnded { _ in nodeDragStart[node.id] = nil }
+            .onEnded { _ in nodeDragStart.removeAll(keepingCapacity: true) }
     }
 
     private var panGesture: some Gesture {
