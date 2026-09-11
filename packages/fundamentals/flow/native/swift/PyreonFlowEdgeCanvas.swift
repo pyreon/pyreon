@@ -47,6 +47,31 @@ public struct PyreonFlowHandleAnchor: Equatable {
     public var x: Double; public var y: Double; public var position: PyreonFlowPosition
 }
 
+/// A handle resolved into graph coordinates. Keeping hit testing in graph
+/// space makes the interaction radius independent from pan and zoom.
+public struct PyreonFlowInteractiveHandle: Equatable {
+    public var nodeId: String
+    public var handleId: String?
+    public var type: String
+    public var position: PyreonFlowPosition
+    public var x: Double
+    public var y: Double
+}
+
+public func pyreonFlowInteractiveHandles(nodeId: String, node: PyreonFlowRect, handles: [PyreonFlowHandleConfig]) -> [PyreonFlowInteractiveHandle] {
+    handles.map { handle in
+        let point = pyreonHandlePosition(handle.position, nodeX: node.x, nodeY: node.y, nodeWidth: node.width, nodeHeight: node.height)
+        return PyreonFlowInteractiveHandle(nodeId: nodeId, handleId: handle.id, type: handle.type, position: handle.position, x: point.x, y: point.y)
+    }
+}
+
+public func pyreonNearestFlowHandle(_ handles: [PyreonFlowInteractiveHandle], point: PyreonXYPosition, type: String, radius: Double) -> PyreonFlowInteractiveHandle? {
+    guard radius >= 0 else { return nil }
+    return handles
+        .filter { $0.type == type && hypot($0.x - point.x, $0.y - point.y) <= radius }
+        .min { hypot($0.x - point.x, $0.y - point.y) < hypot($1.x - point.x, $1.y - point.y) }
+}
+
 public func pyreonHandlePosition(_ position: PyreonFlowPosition, nodeX: Double, nodeY: Double, nodeWidth: Double, nodeHeight: Double) -> PyreonXYPosition {
     switch position {
     case .top: return PyreonXYPosition(x: nodeX + nodeWidth / 2, y: nodeY)

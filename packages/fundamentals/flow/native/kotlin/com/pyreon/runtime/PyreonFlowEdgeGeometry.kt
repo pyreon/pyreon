@@ -71,6 +71,19 @@ fun pyreonResolveHandleAnchor(nodeX: Double, nodeY: Double, nodeWidth: Double, n
     return null
 }
 
+fun pyreonFlowInteractiveHandles(nodeId: String, node: PyreonFlowNodeBox, handles: List<PyreonFlowHandleConfig>): List<PyreonFlowInteractiveHandle> =
+    handles.map { handle ->
+        val point = pyreonHandlePosition(handle.position, node.x, node.y, node.width, node.height)
+        PyreonFlowInteractiveHandle(nodeId, handle.id, handle.type, handle.position, point.x, point.y)
+    }
+
+fun pyreonNearestFlowHandle(handles: List<PyreonFlowInteractiveHandle>, point: PyreonFlowPathPoint, type: String, radius: Double): PyreonFlowInteractiveHandle? {
+    if (radius < 0.0) return null
+    return handles.asSequence()
+        .filter { it.type == type && kotlin.math.hypot(it.x - point.x, it.y - point.y) <= radius }
+        .minByOrNull { kotlin.math.hypot(it.x - point.x, it.y - point.y) }
+}
+
 fun pyreonSmartHandlePositions(source: PyreonFlowNodeBox, target: PyreonFlowNodeBox, sourceHandles: List<PyreonFlowHandleConfig> = emptyList(), targetHandles: List<PyreonFlowHandleConfig> = emptyList()): PyreonFlowSmartPositions {
     val dx = target.x + target.width / 2 - (source.x + source.width / 2)
     val dy = target.y + target.height / 2 - (source.y + source.height / 2)
