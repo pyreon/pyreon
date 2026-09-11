@@ -5,10 +5,18 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.matchParentSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.Button
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
@@ -19,6 +27,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
 enum class PyreonFlowBackgroundVariant { Dots, Lines, Cross }
@@ -29,6 +38,33 @@ data class PyreonFlowBackgroundStyle(
     val size: Double = 1.0,
     val color: String = "#dddddd",
 )
+
+enum class PyreonFlowControlsPosition { TopLeft, TopRight, BottomLeft, BottomRight }
+
+data class PyreonFlowControlsStyle(
+    val showZoomIn: Boolean = true,
+    val showZoomOut: Boolean = true,
+    val showFitView: Boolean = true,
+    val showLock: Boolean = false,
+    val position: PyreonFlowControlsPosition = PyreonFlowControlsPosition.BottomLeft,
+)
+
+@Composable
+fun <T> PyreonFlowControls(
+    state: PyreonFlowState<T>,
+    style: PyreonFlowControlsStyle,
+    locked: Boolean,
+    onLockedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier.padding(2.dp)) {
+        if (style.showZoomIn) Button(onClick = { state.zoomIn() }, modifier = Modifier.semantics { contentDescription = "Zoom in" }) { Text("+") }
+        if (style.showZoomOut) Button(onClick = { state.zoomOut() }, modifier = Modifier.semantics { contentDescription = "Zoom out" }) { Text("−") }
+        if (style.showFitView) Button(onClick = { state.fitView() }, modifier = Modifier.semantics { contentDescription = "Fit view" }) { Text("Fit") }
+        if (style.showLock) Button(onClick = { onLockedChange(!locked) }, modifier = Modifier.semantics { contentDescription = "Lock the canvas"; selected = locked }) { Text(if (locked) "Unlock" else "Lock") }
+        Text("${(state.zoom * 100).roundToInt()}%", modifier = Modifier.semantics { contentDescription = "Current zoom level" })
+    }
+}
 
 @Composable
 fun PyreonFlowBackground(
@@ -77,9 +113,11 @@ fun <T> PyreonFlowView(
     edgeColor: String = "#999999",
     edgeWidth: Double = 1.5,
     background: PyreonFlowBackgroundStyle? = null,
+    controls: PyreonFlowControlsStyle? = null,
     nodeContent: @Composable (PyreonFlowNode<T>) -> Unit,
 ) {
     val density = LocalDensity.current
+    var interactionsLocked by remember { mutableStateOf(false) }
     Box(
         modifier = modifier.onSizeChanged { size ->
             state.containerSize = PyreonFlowContainerSize(size.width.toDouble(), size.height.toDouble())
@@ -88,6 +126,7 @@ fun <T> PyreonFlowView(
         Box(
             Modifier.matchParentSize().pointerInput(state) {
                 detectTransformGestures { _, pan, zoom, _ ->
+                    if (interactionsLocked) return@detectTransformGestures
                     state.setViewport(
                         x = state.viewport.x + pan.x,
                         y = state.viewport.y + pan.y,
@@ -134,7 +173,7 @@ fun <T> PyreonFlowView(
                 if (node.selectable != false) {
                     nodeModifier = nodeModifier.clickable { state.selectNode(node.id) }
                 }
-                if (node.draggable != false) {
+                if (!interactionsLocked && node.draggable != false) {
                     nodeModifier = nodeModifier.pointerInput(node.id, state.viewport.zoom) {
                         detectDragGestures { change, amount ->
                             change.consume()
@@ -151,6 +190,22 @@ fun <T> PyreonFlowView(
                 }
                 Box(nodeModifier) { nodeContent(node) }
             }
+        }
+
+        if (controls != null) {
+            val alignment = when (controls.position) {
+                PyreonFlowControlsPosition.TopLeft -> androidx.compose.ui.Alignment.TopStart
+                PyreonFlowControlsPosition.TopRight -> androidx.compose.ui.Alignment.TopEnd
+                PyreonFlowControlsPosition.BottomLeft -> androidx.compose.ui.Alignment.BottomStart
+                PyreonFlowControlsPosition.BottomRight -> androidx.compose.ui.Alignment.BottomEnd
+            }
+            PyreonFlowControls(
+                state,
+                controls,
+                interactionsLocked,
+                { interactionsLocked = it },
+                Modifier.align(alignment).padding(10.dp),
+            )
         }
     }
 }

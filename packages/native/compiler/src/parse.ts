@@ -2629,7 +2629,7 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
     {
       // `createFlow` lowers (PyreonFlowState — CRUD/selection/viewport/graph
       // queries), and `<Flow>` lowers to the native interactive host. Optional
-      // chrome (Controls/MiniMap/Handle/NodeToolbar/NodeResizer/Panel) is
+      // chrome (MiniMap/Handle/NodeToolbar/NodeResizer/Panel) is
       // SVG/DOM rendering + pointer-event gesture handling with NO native
       // emit AT ALL. Without this entry those names emitted VERBATIM as if
       // they were real SwiftUI/Compose types — `Flow(instance: flow) {
@@ -2641,8 +2641,8 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
       // port yet either — name them so the warning doesn't imply only the
       // JSX layer is missing.
       advice:
-        '`createFlow({ nodes, edges })`, `<Flow instance={flow}>`, and nested `<Background>` LOWER to the native PyreonFlowState/PyreonFlowView engine. Optional chrome (Controls/MiniMap/Handle/NodeToolbar/NodeResizer/Panel), custom renderer maps, `useFlow`, `computeLayout`, and standalone edge-path helpers still have no shared-source native emit; keep those behind platform branches or use the `@pyreon/flow/webview` bridge',
-      supported: new Set(['createFlow', 'Flow', 'Background']),
+        '`createFlow({ nodes, edges })`, `<Flow instance={flow}>`, `<Background>`, and `<Controls>` LOWER to the native PyreonFlowState/PyreonFlowView engine. Optional chrome (MiniMap/Handle/NodeToolbar/NodeResizer/Panel), custom renderer maps, `useFlow`, `computeLayout`, and standalone edge-path helpers still have no shared-source native emit; keep those behind platform branches or use the `@pyreon/flow/webview` bridge',
+      supported: new Set(['createFlow', 'Flow', 'Background', 'Controls']),
     },
   ],
   [

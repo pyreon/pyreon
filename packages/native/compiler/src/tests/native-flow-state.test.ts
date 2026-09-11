@@ -171,6 +171,21 @@ describe('<Flow> native host lowering', () => {
     if (isKotlincAvailable()) expect(validateKotlin(kotlin.code).ok).toBe(true)
   })
 
+  it('extracts functional Controls configuration on both targets', () => {
+    const withControls = source.replace(
+      "import { createFlow, Flow }",
+      "import { createFlow, Flow, Controls }",
+    ).replace('<Flow instance={flow} />', '<Flow instance={flow}><Controls showZoomOut={false} showLock={true} position="top-right" /></Flow>')
+    const swift = transform(withControls, { target: 'swift' })
+    const kotlin = transform(withControls, { target: 'kotlin' })
+    expect(swift.code).toContain('controls: PyreonFlowControlsStyle(showZoomIn: true, showZoomOut: false, showFitView: true, showLock: true, position: .topRight)')
+    expect(kotlin.code).toContain('controls = PyreonFlowControlsStyle(showZoomIn = true, showZoomOut = false, showFitView = true, showLock = true, position = PyreonFlowControlsPosition.TopRight)')
+    expect(swift.warnings.some((warning) => warning.includes('Controls (from @pyreon/flow)'))).toBe(false)
+    expect(kotlin.warnings.some((warning) => warning.includes('Controls (from @pyreon/flow)'))).toBe(false)
+    if (isSwiftcAvailable()) expect(validateSwiftWithStubs(swift.code).ok).toBe(true)
+    if (isKotlincAvailable()) expect(validateKotlin(kotlin.code).ok).toBe(true)
+  })
+
   it('emits the Compose host instead of an unresolved web component', () => {
     const result = transform(source, { target: 'kotlin' })
     expect(result.code).toContain('PyreonFlowView(state = flow) { pyreonNode ->')

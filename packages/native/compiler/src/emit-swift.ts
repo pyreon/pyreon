@@ -7942,12 +7942,23 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
   const background = e.children
     .filter((child) => child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'Background')
     .map((child) => child.kind === 'expr' ? child.expr : undefined)[0]
-  const otherChildren = e.children.filter((child) => !(child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'Background'))
+  const controls = e.children
+    .filter((child) => child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'Controls')
+    .map((child) => child.kind === 'expr' ? child.expr : undefined)[0]
+  const otherChildren = e.children.filter((child) => !(child.kind === 'expr' && child.expr.kind === 'jsx-element' && (child.expr.tag === 'Background' || child.expr.tag === 'Controls')))
   if (otherChildren.length > 0) {
-    _emitWarnings.push('<Flow> contains native-unlowered children; Controls/MiniMap and other optional chrome remain explicit follow-ups.')
+    _emitWarnings.push('<Flow> contains native-unlowered children; MiniMap and other optional chrome remain explicit follow-ups.')
   }
   const bgArg = background?.kind === 'jsx-element' ? `, background: ${emitSwiftFlowBackground(background)}` : ''
-  return `PyreonFlowView(state: ${emitSwiftExpr(attr.value, 0)}${bgArg}) { pyreonNode in\n  Text(pyreonNode.id)\n}`
+  const controlsArg = controls?.kind === 'jsx-element' ? `, controls: ${emitSwiftFlowControls(controls)}` : ''
+  return `PyreonFlowView(state: ${emitSwiftExpr(attr.value, 0)}${bgArg}${controlsArg}) { pyreonNode in\n  Text(pyreonNode.id)\n}`
+}
+
+function emitSwiftFlowControls(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const bool = (name: string, fallback: boolean): string => readStaticAttr(e, name) === false ? 'false' : readStaticAttr(e, name) === true ? 'true' : String(fallback)
+  const position = readStaticAttr(e, 'position')
+  const pos = position === 'top-left' ? '.topLeft' : position === 'top-right' ? '.topRight' : position === 'bottom-right' ? '.bottomRight' : '.bottomLeft'
+  return `PyreonFlowControlsStyle(showZoomIn: ${bool('showZoomIn', true)}, showZoomOut: ${bool('showZoomOut', true)}, showFitView: ${bool('showFitView', true)}, showLock: ${bool('showLock', false)}, position: ${pos})`
 }
 
 function emitSwiftFlowBackground(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {

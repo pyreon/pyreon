@@ -37,4 +37,6 @@ Shared-source `<Flow instance={flow} />` now lowers directly to those SwiftUI an
 
 Nested `<Background>` now lowers to native viewport-aware dots, lines, or cross patterns with matching gap, size, and color configuration.
 
+Nested `<Controls>` now lowers to functional native zoom-in, zoom-out, fit-view, zoom-percentage, placement, and canvas-lock controls; locking disables pan, zoom, and node dragging on both targets.
+
 Swift compiler validation now uses a disposable module cache, keeping hermetic and sandboxed runs independent of a writable user-level Clang cache.

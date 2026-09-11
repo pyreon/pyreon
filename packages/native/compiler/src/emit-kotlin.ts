@@ -6516,12 +6516,23 @@ function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string
   const background = e.children
     .filter((child) => child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'Background')
     .map((child) => child.kind === 'expr' ? child.expr : undefined)[0]
-  const otherChildren = e.children.filter((child) => !(child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'Background'))
+  const controls = e.children
+    .filter((child) => child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'Controls')
+    .map((child) => child.kind === 'expr' ? child.expr : undefined)[0]
+  const otherChildren = e.children.filter((child) => !(child.kind === 'expr' && child.expr.kind === 'jsx-element' && (child.expr.tag === 'Background' || child.expr.tag === 'Controls')))
   if (otherChildren.length > 0) {
-    _emitWarnings.push('<Flow> contains native-unlowered children; Controls/MiniMap and other optional chrome remain explicit follow-ups.')
+    _emitWarnings.push('<Flow> contains native-unlowered children; MiniMap and other optional chrome remain explicit follow-ups.')
   }
   const bgArg = background?.kind === 'jsx-element' ? `, background = ${emitKotlinFlowBackground(background)}` : ''
-  return `PyreonFlowView(state = ${emitKotlinExpr(attr.value, 0)}${bgArg}) { pyreonNode ->\n  Text(text = pyreonNode.id)\n}`
+  const controlsArg = controls?.kind === 'jsx-element' ? `, controls = ${emitKotlinFlowControls(controls)}` : ''
+  return `PyreonFlowView(state = ${emitKotlinExpr(attr.value, 0)}${bgArg}${controlsArg}) { pyreonNode ->\n  Text(text = pyreonNode.id)\n}`
+}
+
+function emitKotlinFlowControls(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const bool = (name: string, fallback: boolean): string => readStaticAttrKotlin(e, name) === false ? 'false' : readStaticAttrKotlin(e, name) === true ? 'true' : String(fallback)
+  const position = readStaticAttrKotlin(e, 'position')
+  const pos = position === 'top-left' ? 'TopLeft' : position === 'top-right' ? 'TopRight' : position === 'bottom-right' ? 'BottomRight' : 'BottomLeft'
+  return `PyreonFlowControlsStyle(showZoomIn = ${bool('showZoomIn', true)}, showZoomOut = ${bool('showZoomOut', true)}, showFitView = ${bool('showFitView', true)}, showLock = ${bool('showLock', false)}, position = PyreonFlowControlsPosition.${pos})`
 }
 
 function emitKotlinFlowBackground(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {

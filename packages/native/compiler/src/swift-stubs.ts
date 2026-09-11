@@ -1164,9 +1164,13 @@ public enum PyreonFlowBackgroundVariant { case dots, lines, cross }
 public struct PyreonFlowBackgroundStyle {
   public init(variant: PyreonFlowBackgroundVariant = .dots, gap: Double = 20, size: Double = 1, color: String = "#dddddd") {}
 }
+public enum PyreonFlowControlsPosition { case topLeft, topRight, bottomLeft, bottomRight }
+public struct PyreonFlowControlsStyle {
+  public init(showZoomIn: Bool = true, showZoomOut: Bool = true, showFitView: Bool = true, showLock: Bool = false, position: PyreonFlowControlsPosition = .bottomLeft) {}
+}
 @available(iOS 17.0, macOS 14.0, *)
 public struct PyreonFlowView<T, NodeContent: View>: View {
-  public init(state: PyreonFlowState<T>, edgeColor: String = "#999999", edgeWidth: Double = 1.5, background: PyreonFlowBackgroundStyle? = nil, @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>) -> NodeContent) {}
+  public init(state: PyreonFlowState<T>, edgeColor: String = "#999999", edgeWidth: Double = 1.5, background: PyreonFlowBackgroundStyle? = nil, controls: PyreonFlowControlsStyle? = nil, @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>) -> NodeContent) {}
   public var body: some View { EmptyView() }
 }
 public struct PyreonI18n {
