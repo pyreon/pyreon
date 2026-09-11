@@ -19,4 +19,6 @@ Node extents now constrain native position updates and shared-source extent setu
 
 Literal `snapToGrid`, `snapGrid`, and `nodeExtent` configuration now initializes both native engines, including JavaScript-compatible rounding at negative half-grid positions.
 
+Native edge rendering can now derive straight, bezier, and waypoint segment lists and label anchors directly from endpoint coordinates instead of requiring precomputed bridge payloads.
+
 Swift compiler validation now uses a disposable module cache, keeping hermetic and sandboxed runs independent of a writable user-level Clang cache.

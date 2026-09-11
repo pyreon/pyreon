@@ -7,8 +7,13 @@
 
 import com.pyreon.runtime.PyreonFlowEdgeSegment
 import com.pyreon.runtime.PyreonFlowEdgeStroke
+import com.pyreon.runtime.PyreonFlowPathPoint
+import com.pyreon.runtime.PyreonFlowPosition
+import com.pyreon.runtime.pyreonBezierPath
 import com.pyreon.runtime.pyreonFlowEdgeColor
 import com.pyreon.runtime.pyreonFlowEdgePath
+import com.pyreon.runtime.pyreonStraightPath
+import com.pyreon.runtime.pyreonWaypointPath
 
 private fun check(cond: Boolean, msg: String) {
     if (!cond) throw AssertionError("PyreonFlowEdgeGeometryTest: $msg")
@@ -49,6 +54,13 @@ fun main() {
     val stroke = PyreonFlowEdgeStroke("e1", listOf(PyreonFlowEdgeSegment.move(0.0, 0.0), PyreonFlowEdgeSegment.line(1.0, 1.0)), color = "#123456", dash = listOf(4.0, 2.0))
     check(stroke.path === stroke.path && stroke.resolvedColor == pyreonFlowEdgeColor("#123456"), "stroke caches its path and resolved color")
     check(stroke.pathEffect != null && PyreonFlowEdgeStroke("e2", emptyList()).pathEffect == null, "dash builds a PathEffect once; a solid stroke has none")
+
+    val routedStraight = pyreonStraightPath(0.0, 0.0, 100.0, 50.0)
+    check(routedStraight.labelX == 50.0 && routedStraight.labelY == 25.0 && routedStraight.segments.size == 2, "straight routing returns midpoint and segments")
+    val routedBezier = pyreonBezierPath(0.0, 0.0, PyreonFlowPosition.Right, 200.0, 100.0, PyreonFlowPosition.Left)
+    check(routedBezier.segments[1].c1x!! > 0.0 && routedBezier.segments[1].c2x!! < 200.0, "bezier routing offsets controls along handle directions")
+    val routedWaypoint = pyreonWaypointPath(0.0, 0.0, 100.0, 100.0, listOf(PyreonFlowPathPoint(25.0, 30.0), PyreonFlowPathPoint(75.0, 80.0)))
+    check(routedWaypoint.labelX == 75.0 && routedWaypoint.labelY == 80.0 && routedWaypoint.segments.size == 4, "waypoint routing uses the middle waypoint label and every segment")
 
     println("PyreonFlowEdgeGeometryTest: all checks passed")
 }

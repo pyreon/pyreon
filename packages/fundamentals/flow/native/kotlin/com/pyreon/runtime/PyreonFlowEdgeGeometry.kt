@@ -3,6 +3,7 @@ package com.pyreon.runtime
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
+import kotlin.math.hypot
 
 // The PURE half of PyreonFlowEdgeCanvas.kt — everything that needs no
 // Compose Foundation `Canvas`: the closed move/line/cubic/quad vocabulary
@@ -13,9 +14,14 @@ import androidx.compose.ui.graphics.PathEffect
 // twin's geometry has always been — the canvas composable itself stays
 // `kotlinSdkOnly`, device-gate territory, and is now ~20 lines.
 //
-// See PyreonFlowEdgeCanvas.swift's header for the design rationale (why the
-// color parser is SELF-CONTAINED rather than reusing charts', what this
-// deliberately does NOT do — compute segments from node positions).
+enum class PyreonFlowPosition { Top, Right, Bottom, Left }
+
+data class PyreonFlowPathResult(
+    val labelX: Double,
+    val labelY: Double,
+    val segments: List<PyreonFlowEdgeSegment>,
+)
+data class PyreonFlowPathPoint(val x: Double, val y: Double)
 
 /** Parses `#rgb` / `#rrggbb` into a Compose `Color`, falling back to gray. */
 internal fun pyreonFlowEdgeColor(s: String): Color {
@@ -61,6 +67,33 @@ data class PyreonFlowEdgeSegment(
         fun quad(x: Double, y: Double, cx: Double, cy: Double) =
             PyreonFlowEdgeSegment("quad", x, y, cx = cx, cy = cy)
     }
+}
+
+fun pyreonStraightPath(sourceX: Double, sourceY: Double, targetX: Double, targetY: Double) =
+    PyreonFlowPathResult((sourceX + targetX) / 2, (sourceY + targetY) / 2, listOf(PyreonFlowEdgeSegment.move(sourceX, sourceY), PyreonFlowEdgeSegment.line(targetX, targetY)))
+
+fun pyreonBezierPath(
+    sourceX: Double,
+    sourceY: Double,
+    sourcePosition: PyreonFlowPosition = PyreonFlowPosition.Bottom,
+    targetX: Double,
+    targetY: Double,
+    targetPosition: PyreonFlowPosition = PyreonFlowPosition.Top,
+    curvature: Double = 0.25,
+): PyreonFlowPathResult {
+    val offset = hypot(targetX - sourceX, targetY - sourceY) * curvature
+    var scx = sourceX; var scy = sourceY; var tcx = targetX; var tcy = targetY
+    when (sourcePosition) { PyreonFlowPosition.Top -> scy -= offset; PyreonFlowPosition.Bottom -> scy += offset; PyreonFlowPosition.Left -> scx -= offset; PyreonFlowPosition.Right -> scx += offset }
+    when (targetPosition) { PyreonFlowPosition.Top -> tcy -= offset; PyreonFlowPosition.Bottom -> tcy += offset; PyreonFlowPosition.Left -> tcx -= offset; PyreonFlowPosition.Right -> tcx += offset }
+    return PyreonFlowPathResult((sourceX + targetX) / 2, (sourceY + targetY) / 2, listOf(PyreonFlowEdgeSegment.move(sourceX, sourceY), PyreonFlowEdgeSegment.cubic(targetX, targetY, scx, scy, tcx, tcy)))
+}
+
+fun pyreonWaypointPath(sourceX: Double, sourceY: Double, targetX: Double, targetY: Double, waypoints: List<PyreonFlowPathPoint>): PyreonFlowPathResult {
+    if (waypoints.isEmpty()) return pyreonStraightPath(sourceX, sourceY, targetX, targetY)
+    val points = listOf(PyreonFlowPathPoint(sourceX, sourceY)) + waypoints + PyreonFlowPathPoint(targetX, targetY)
+    val segments = points.mapIndexed { index, point -> if (index == 0) PyreonFlowEdgeSegment.move(point.x, point.y) else PyreonFlowEdgeSegment.line(point.x, point.y) }
+    val label = waypoints[waypoints.size / 2]
+    return PyreonFlowPathResult(label.x, label.y, segments)
 }
 
 /** Builds an UNSCALED Compose `Path` (flow coordinates) from a segment list.

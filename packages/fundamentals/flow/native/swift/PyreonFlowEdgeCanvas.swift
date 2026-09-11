@@ -13,14 +13,13 @@ import SwiftUI
 // `DrawCmd`), so a future compiler recognizer over `EdgeSegment` reuses that
 // feature verbatim instead of needing a new one.
 //
-// What this file does NOT do: compute segments FROM node positions. That is
-// `computeEdgeGeometry`/`getEdgePath` on the web — pure functions, and a
-// genuine candidate for the SAME "engine bundle → generator script → commit
-// generated Swift/Kotlin" treatment `PyreonChartEngine` got, but that is its
-// own follow-up (mirrors the layout-engine crossing). Until then, a native
-// screen constructs `PyreonFlowEdgeSegment` values itself (the math for a
-// straight or bezier edge between two known points is a few lines) or reads
-// them off a value bridged from web (e.g. via the `<WebView>` JSON bridge).
+public enum PyreonFlowPosition { case top, right, bottom, left }
+
+public struct PyreonFlowPathResult: Equatable {
+    public var labelX: Double
+    public var labelY: Double
+    public var segments: [PyreonFlowEdgeSegment]
+}
 
 /// One drawing primitive in an edge's path — `move`/`line`/`cubic`/`quad`,
 /// the exact vocabulary `EdgeSegment` (`types.ts`) defines.
@@ -75,6 +74,29 @@ public struct PyreonFlowEdgeSegment: Equatable {
     public static func quad(_ x: Double, _ y: Double, cx: Double, cy: Double) -> PyreonFlowEdgeSegment {
         PyreonFlowEdgeSegment(kind: "quad", x: x, y: y, cx: cx, cy: cy)
     }
+}
+
+public func pyreonStraightPath(sourceX: Double, sourceY: Double, targetX: Double, targetY: Double) -> PyreonFlowPathResult {
+    PyreonFlowPathResult(labelX: (sourceX + targetX) / 2, labelY: (sourceY + targetY) / 2, segments: [.move(sourceX, sourceY), .line(targetX, targetY)])
+}
+
+public func pyreonBezierPath(sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition = .bottom, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition = .top, curvature: Double = 0.25) -> PyreonFlowPathResult {
+    let distance = hypot(targetX - sourceX, targetY - sourceY)
+    let offset = distance * curvature
+    var scx = sourceX, scy = sourceY, tcx = targetX, tcy = targetY
+    switch sourcePosition { case .top: scy -= offset; case .bottom: scy += offset; case .left: scx -= offset; case .right: scx += offset }
+    switch targetPosition { case .top: tcy -= offset; case .bottom: tcy += offset; case .left: tcx -= offset; case .right: tcx += offset }
+    return PyreonFlowPathResult(labelX: (sourceX + targetX) / 2, labelY: (sourceY + targetY) / 2, segments: [.move(sourceX, sourceY), .cubic(targetX, targetY, c1x: scx, c1y: scy, c2x: tcx, c2y: tcy)])
+}
+
+public func pyreonWaypointPath(sourceX: Double, sourceY: Double, targetX: Double, targetY: Double, waypoints: [PyreonXYPosition]) -> PyreonFlowPathResult {
+    guard !waypoints.isEmpty else { return pyreonStraightPath(sourceX: sourceX, sourceY: sourceY, targetX: targetX, targetY: targetY) }
+    let points = [PyreonXYPosition(x: sourceX, y: sourceY)] + waypoints + [PyreonXYPosition(x: targetX, y: targetY)]
+    let segments: [PyreonFlowEdgeSegment] = points.enumerated().map { index, point in
+        index == 0 ? PyreonFlowEdgeSegment.move(point.x, point.y) : PyreonFlowEdgeSegment.line(point.x, point.y)
+    }
+    let label = waypoints[waypoints.count / 2]
+    return PyreonFlowPathResult(labelX: label.x, labelY: label.y, segments: segments)
 }
 
 /// Builds a SwiftUI `Path` from a segment list. Pure — no SwiftUI View

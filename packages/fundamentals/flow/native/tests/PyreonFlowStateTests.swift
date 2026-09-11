@@ -323,6 +323,13 @@ struct PyreonFlowStateTests {
         )
         check(pyreonFlowEdgeColor("not-a-color") == Color.gray, "an unrecognized color string falls back to gray")
 
+        let routedStraight = pyreonStraightPath(sourceX: 0, sourceY: 0, targetX: 100, targetY: 50)
+        check(routedStraight.labelX == 50 && routedStraight.labelY == 25 && routedStraight.segments.count == 2, "straight routing returns midpoint and segments")
+        let routedBezier = pyreonBezierPath(sourceX: 0, sourceY: 0, sourcePosition: .right, targetX: 200, targetY: 100, targetPosition: .left)
+        check(routedBezier.segments[1].c1x! > 0 && routedBezier.segments[1].c2x! < 200, "bezier routing offsets controls along handle directions")
+        let routedWaypoint = pyreonWaypointPath(sourceX: 0, sourceY: 0, targetX: 100, targetY: 100, waypoints: [PyreonXYPosition(x: 25, y: 30), PyreonXYPosition(x: 75, y: 80)])
+        check(routedWaypoint.labelX == 75 && routedWaypoint.labelY == 80 && routedWaypoint.segments.count == 4, "waypoint routing uses the middle waypoint label and every segment")
+
         // 6. A stroke prebuilds its path/color/dash ONCE, at construction — the
         // draw closure must find nothing left to parse or allocate per edge.
         let stroke = PyreonFlowEdgeStroke(id: "e1", segments: [.move(0, 0), .line(100, 50)], color: "#f00", dash: [4, 2])
