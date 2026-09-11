@@ -210,6 +210,35 @@ describe('<Flow> native host lowering', () => {
   })
 })
 
+describe('createFlow connection validation lowering', () => {
+  const source = `
+    import { createFlow } from '@pyreon/flow'
+    export function App() {
+      const flow = createFlow({
+        nodes: [
+          { id: 'api', type: 'api', position: { x: 0, y: 0 }, data: { label: 'API' } },
+          { id: 'db', type: 'database', position: { x: 100, y: 0 }, data: { label: 'DB' } },
+        ],
+        edges: [],
+        connectionRules: { api: { outputs: ['database'] } },
+        isValidConnection: (connection) => connection.source !== connection.target,
+      })
+      return null
+    }
+  `
+
+  it('emits literal rules and callback for Swift and Kotlin', () => {
+    const swift = transform(source, { target: 'swift' })
+    const kotlin = transform(source, { target: 'kotlin' })
+    expect(swift.code).toContain('connectionRules: ["api": ["database"]]')
+    expect(swift.code).toContain('isValidConnection: { connection in connection.source != connection.target }')
+    expect(kotlin.code).toContain('connectionRules = mapOf("api" to listOf("database"))')
+    expect(kotlin.code).toContain('connectionValidator = { connection -> connection.source != connection.target }')
+    if (isSwiftcAvailable()) expect(validateSwiftWithStubs(swift.code).ok).toBe(true)
+    if (isKotlincAvailable()) expect(validateKotlin(kotlin.code).ok).toBe(true)
+  })
+})
+
 describe('createFlow — v1 decline shapes (loud warning, not silent drop)', () => {
   it('a non-literal nodes source declines with a named reason', () => {
     const src = `

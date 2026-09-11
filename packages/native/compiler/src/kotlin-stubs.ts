@@ -1609,6 +1609,7 @@ data class PyreonFlowEdge(
   val interactionWidth: Double? = null,
   val waypoints: List<PyreonXYPosition> = emptyList(),
 )
+data class PyreonFlowConnection(val source: String, val target: String, val sourceHandle: String? = null, val targetHandle: String? = null)
 data class PyreonFlowContainerSize(val width: Double = 0.0, val height: Double = 0.0)
 class PyreonFlowState<T>(
   nodes: List<PyreonFlowNode<T>> = emptyList(),
@@ -1619,6 +1620,8 @@ class PyreonFlowState<T>(
   snapToGrid: Boolean = false,
   snapGrid: Double = 15.0,
   nodeExtent: PyreonFlowNodeExtent? = null,
+  connectionRules: Map<String, List<String>>? = null,
+  connectionValidator: ((PyreonFlowConnection) -> Boolean)? = null,
 ) {
   val nodes: List<PyreonFlowNode<T>> = nodes
   val edges: List<PyreonFlowEdge> = edges
@@ -1626,6 +1629,7 @@ class PyreonFlowState<T>(
   var containerSize: PyreonFlowContainerSize = PyreonFlowContainerSize()
   val zoom: Double get() = viewport.zoom
   fun getNode(id: String): PyreonFlowNode<T>? = null
+  fun isValidConnection(connection: PyreonFlowConnection): Boolean = true
   fun addNode(node: PyreonFlowNode<T>) {}
   fun addNodes(nodes: List<PyreonFlowNode<T>>) {}
   fun setNodes(nodes: List<PyreonFlowNode<T>>) {}

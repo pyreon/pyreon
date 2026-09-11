@@ -42,6 +42,15 @@ struct PyreonFlowStateTests {
         check(f.getNode("nope") == nil, "getNode misses a missing id")
         check(f.getEdge("e1")?.source == "1", "getEdge reads the seeded edge")
 
+        let ruled = PyreonFlowState(nodes: [
+            PyreonFlowNode(id: "api", type: "api", position: PyreonXYPosition(x: 0, y: 0), data: NodeData(label: "API")),
+            PyreonFlowNode(id: "db", type: "database", position: PyreonXYPosition(x: 1, y: 0), data: NodeData(label: "DB")),
+            PyreonFlowNode(id: "ui", type: "ui", position: PyreonXYPosition(x: 2, y: 0), data: NodeData(label: "UI")),
+        ], connectionRules: ["api": ["database"]], isValidConnection: { $0.source != $0.target })
+        check(ruled.isValidConnection(PyreonFlowConnection(source: "api", target: "db")), "connection rules allow declared target type")
+        check(!ruled.isValidConnection(PyreonFlowConnection(source: "api", target: "ui")), "connection rules reject undeclared target type")
+        check(!ruled.isValidConnection(PyreonFlowConnection(source: "api", target: "api")), "connection callback veto runs before rules")
+
         let initialStrokes = pyreonFlowEdgeStrokes(state: f)
         check(initialStrokes.map(\.id) == ["e1", "e2"], "native host derives every visible edge")
         f.addEdge(PyreonFlowEdge(id: "dangling", source: "missing", target: "1"))

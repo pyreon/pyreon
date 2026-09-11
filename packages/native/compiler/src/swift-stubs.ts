@@ -1094,6 +1094,13 @@ public struct PyreonFlowEdge: Equatable {
     self.animated = animated
   }
 }
+public struct PyreonFlowConnection: Equatable {
+  public var source: String = ""
+  public var target: String = ""
+  public var sourceHandle: String? = nil
+  public var targetHandle: String? = nil
+  public init(source: String, target: String, sourceHandle: String? = nil, targetHandle: String? = nil) {}
+}
 public final class PyreonFlowState<T> {
   public init(
     nodes: [PyreonFlowNode<T>] = [],
@@ -1103,7 +1110,9 @@ public final class PyreonFlowState<T> {
     maxZoom: Double = 4,
     snapToGrid: Bool = false,
     snapGrid: Double = 15,
-    nodeExtent: PyreonFlowNodeExtent? = nil
+    nodeExtent: PyreonFlowNodeExtent? = nil,
+    connectionRules: [String: [String]]? = nil,
+    isValidConnection: ((PyreonFlowConnection) -> Bool)? = nil
   ) {}
   public private(set) var nodes: [PyreonFlowNode<T>] = []
   public private(set) var edges: [PyreonFlowEdge] = []
@@ -1111,6 +1120,7 @@ public final class PyreonFlowState<T> {
   public var containerSize = PyreonFlowContainerSize()
   public var zoom: Double { viewport.zoom }
   public func getNode(_ id: String) -> PyreonFlowNode<T>? { nil }
+  public func isValidConnection(_ connection: PyreonFlowConnection) -> Bool { true }
   public func addNode(_ node: PyreonFlowNode<T>) {}
   public func addNodes(_ nodes: [PyreonFlowNode<T>]) {}
   public func setNodes(_ nodes: [PyreonFlowNode<T>]) {}

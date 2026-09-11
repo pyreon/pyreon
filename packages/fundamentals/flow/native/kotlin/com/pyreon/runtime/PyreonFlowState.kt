@@ -75,6 +75,13 @@ data class PyreonFlowEdge(
     val waypoints: List<PyreonXYPosition> = emptyList(),
 )
 
+data class PyreonFlowConnection(
+    val source: String,
+    val target: String,
+    val sourceHandle: String? = null,
+    val targetHandle: String? = null,
+)
+
 /** Default node box when a node declares no explicit width/height — the SAME
  *  `150x40` fallback `DEFAULT_NODE_WIDTH`/`DEFAULT_NODE_HEIGHT` use on web. */
 const val PYREON_FLOW_DEFAULT_NODE_WIDTH: Double = 150.0
@@ -100,6 +107,8 @@ class PyreonFlowState<T>(
     private val snapToGrid: Boolean = false,
     private val snapGrid: Double = 15.0,
     nodeExtent: PyreonFlowNodeExtent? = null,
+    private val connectionRules: Map<String, List<String>>? = null,
+    private val connectionValidator: ((PyreonFlowConnection) -> Boolean)? = null,
 ) {
     private var nodeExtent: PyreonFlowNodeExtent? = nodeExtent
     private val order = mutableStateListOf<String>()
@@ -221,6 +230,14 @@ class PyreonFlowState<T>(
     // ── edge operations ─────────────────────────────────────────────────────
     fun getEdge(id: String): PyreonFlowEdge? =
         if (edgeIds.containsKey(id)) _edges.firstOrNull { it.id == id } else null
+    fun isValidConnection(connection: PyreonFlowConnection): Boolean {
+        if (connectionValidator?.invoke(connection) == false) return false
+        val rules = connectionRules ?: return true
+        val source = nodeMap[connection.source] ?: return false
+        val outputs = rules[source.type ?: "default"] ?: return true
+        val target = nodeMap[connection.target] ?: return false
+        return outputs.contains(target.type ?: "default")
+    }
     /** Adds the edge unless an edge with the same `id` already exists — same
      *  dedupe-by-id contract as the web `addEdge`; applies `type ?: "bezier"`. */
     fun addEdge(edge: PyreonFlowEdge) {

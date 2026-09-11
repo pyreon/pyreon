@@ -3,6 +3,7 @@
 // viewport results, so a diagram behaves identically on web, iOS, and Android.
 
 import com.pyreon.runtime.PyreonFlowEdge
+import com.pyreon.runtime.PyreonFlowConnection
 import com.pyreon.runtime.PyreonFlowNode
 import com.pyreon.runtime.PyreonFlowNodeExtent
 import com.pyreon.runtime.PyreonFlowState
@@ -36,6 +37,19 @@ fun main() {
     check(f.getNode("2")?.data?.label == "Mid", "getNode reads the seeded data")
     check(f.getNode("nope") == null, "getNode misses a missing id")
     check(f.getEdge("e1")?.source == "1", "getEdge reads the seeded edge")
+
+    val ruled = PyreonFlowState(
+        nodes = listOf(
+            PyreonFlowNode("api", type = "api", position = PyreonXYPosition(0.0, 0.0), data = NodeData("API")),
+            PyreonFlowNode("db", type = "database", position = PyreonXYPosition(1.0, 0.0), data = NodeData("DB")),
+            PyreonFlowNode("ui", type = "ui", position = PyreonXYPosition(2.0, 0.0), data = NodeData("UI")),
+        ),
+        connectionRules = mapOf("api" to listOf("database")),
+        connectionValidator = { it.source != it.target },
+    )
+    check(ruled.isValidConnection(PyreonFlowConnection("api", "db")), "connection rules allow declared target type")
+    check(!ruled.isValidConnection(PyreonFlowConnection("api", "ui")), "connection rules reject undeclared target type")
+    check(!ruled.isValidConnection(PyreonFlowConnection("api", "api")), "connection callback veto runs before rules")
 
     val configuredNode = PyreonFlowNode(
         id = "configured", position = PyreonXYPosition(1.0, 2.0), data = NodeData("Configured"),

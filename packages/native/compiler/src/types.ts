@@ -955,6 +955,8 @@ export type DeclIR =
       snapToGrid?: boolean
       snapGrid?: number
       nodeExtent?: [number, number, number, number]
+      connectionRules?: Record<string, string[]>
+      connectionValidator?: ExprIR
     }
 
 /**

@@ -43,4 +43,6 @@ Native MiniMap geometry now derives graph bounds, absolute child-node rectangles
 
 Nested `<MiniMap>` now lowers to native node and viewport rendering with configurable size/colors, click-to-center, drag-to-pan, and pinch zoom behavior.
 
+Literal `connectionRules` and `isValidConnection` callbacks now lower into both native state engines, preserving callback-first veto behavior and source-type-to-target-type validation.
+
 Swift compiler validation now uses a disposable module cache, keeping hermetic and sandboxed runs independent of a writable user-level Clang cache.

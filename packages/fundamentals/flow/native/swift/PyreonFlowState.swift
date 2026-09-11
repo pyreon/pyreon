@@ -189,6 +189,16 @@ public struct PyreonFlowEdge: Equatable {
     }
 }
 
+public struct PyreonFlowConnection: Equatable {
+    public var source: String
+    public var target: String
+    public var sourceHandle: String?
+    public var targetHandle: String?
+    public init(source: String, target: String, sourceHandle: String? = nil, targetHandle: String? = nil) {
+        self.source = source; self.target = target; self.sourceHandle = sourceHandle; self.targetHandle = targetHandle
+    }
+}
+
 /// Default node box when a node declares no explicit width/height — the
 /// SAME `150×40` fallback `DEFAULT_NODE_WIDTH`/`DEFAULT_NODE_HEIGHT` use on
 /// web (`edges.ts`), so `fitView` frames the graph identically on every
@@ -278,6 +288,8 @@ public final class PyreonFlowState<T> {
     private var nodeExtent: PyreonFlowNodeExtent?
     private let snapToGrid: Bool
     private let snapGrid: Double
+    private let connectionRules: [String: [String]]?
+    @ObservationIgnored private let connectionValidator: ((PyreonFlowConnection) -> Bool)?
 
     public init(
         nodes: [PyreonFlowNode<T>] = [],
@@ -287,7 +299,9 @@ public final class PyreonFlowState<T> {
         maxZoom: Double = 4,
         snapToGrid: Bool = false,
         snapGrid: Double = 15,
-        nodeExtent: PyreonFlowNodeExtent? = nil
+        nodeExtent: PyreonFlowNodeExtent? = nil,
+        connectionRules: [String: [String]]? = nil,
+        isValidConnection: ((PyreonFlowConnection) -> Bool)? = nil
     ) {
         self.viewport = viewport
         self.minZoom = minZoom
@@ -295,6 +309,8 @@ public final class PyreonFlowState<T> {
         self.snapToGrid = snapToGrid
         self.snapGrid = snapGrid
         self.nodeExtent = nodeExtent
+        self.connectionRules = connectionRules
+        self.connectionValidator = isValidConnection
         for node in nodes { insertNode(node) }
         for edge in edges { insertEdge(edge) }
     }
@@ -414,6 +430,14 @@ public final class PyreonFlowState<T> {
     public func getEdge(_ id: String) -> PyreonFlowEdge? {
         guard edgeIds.contains(id) else { return nil }
         return edges.first { $0.id == id }
+    }
+    public func isValidConnection(_ connection: PyreonFlowConnection) -> Bool {
+        if let connectionValidator, !connectionValidator(connection) { return false }
+        guard let connectionRules else { return true }
+        guard let source = nodeStore[connection.source] else { return false }
+        guard let outputs = connectionRules[source.type ?? "default"] else { return true }
+        guard let target = nodeStore[connection.target] else { return false }
+        return outputs.contains(target.type ?? "default")
     }
     /// Adds the edge unless an edge with the same `id` already exists — same
     /// dedupe-by-id contract as the web `addEdge`; applies `type ?? 'bezier'`.

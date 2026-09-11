@@ -3184,6 +3184,8 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       ...(d.snapToGrid !== undefined ? [`snapToGrid = ${d.snapToGrid}`] : []),
       ...(d.snapGrid !== undefined ? [`snapGrid = ${ktDouble(d.snapGrid)}`] : []),
       ...(d.nodeExtent !== undefined ? [`nodeExtent = PyreonFlowNodeExtent(${d.nodeExtent.map(ktDouble).join(', ')})`] : []),
+      ...(d.connectionRules !== undefined ? [`connectionRules = mapOf(${Object.entries(d.connectionRules).map(([key, outputs]) => `${JSON.stringify(key)} to listOf(${outputs.map((output) => JSON.stringify(output)).join(', ')})`).join(', ')})`] : []),
+      ...(d.connectionValidator !== undefined ? [`connectionValidator = ${emitKotlinExpr(d.connectionValidator, 0)}`] : []),
     ].join(', ')
     return `val ${kotlinIdent(d.name)} = remember { PyreonFlowState<${rowType}>(nodes = listOf(${nodeLits}), edges = listOf(${edgeLits})${zoomArgs === '' ? '' : `, ${zoomArgs}`}) }`
   }

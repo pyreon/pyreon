@@ -9266,6 +9266,25 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     if (lo.length !== 2 || hi.length !== 2) return undefined
     return [literalNumber(lo[0]), literalNumber(lo[1]), literalNumber(hi[0]), literalNumber(hi[1])]
   })()
+  const connectionRulesNode = objProp(configArg, 'connectionRules')
+  const connectionRules = (() => {
+    if (connectionRulesNode === undefined) return undefined
+    if (connectionRulesNode.type !== 'ObjectExpression') return null
+    const out: Record<string, string[]> = {}
+    for (const prop of (connectionRulesNode.properties as AnyNode[] | undefined) ?? []) {
+      if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') return null
+      const key = prop.key?.type === 'Identifier' ? prop.key.name as string : literalString(prop.key)
+      const rule = unwrapTypeLayers(prop.value)
+      const outputs = rule?.type === 'ObjectExpression' ? objProp(rule, 'outputs') : undefined
+      if (key === undefined || outputs?.type !== 'ArrayExpression') return null
+      const values = ((outputs.elements as AnyNode[] | undefined) ?? []).map(literalString)
+      if (values.some((value) => value === undefined)) return null
+      out[key] = values as string[]
+    }
+    return out
+  })()
+  const validatorNode = objProp(configArg, 'isValidConnection')
+  const connectionValidator = validatorNode !== undefined ? parseExpr(validatorNode, ctx) : undefined
 
   // Every OTHER key the user wrote lowers to NOTHING. That is a behavioural
   // divergence from the same source line — `createFlow({ …, fitView: true })`
@@ -9283,7 +9302,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (droppedEdgeFields.size > 0) {
     ctx.warnings.push(droppedFlowFieldsWarning(`createFlow declaration \`${name}\``, 'edge', [...droppedEdgeFields]))
   }
-  const HANDLED_FLOW_CONFIG_KEYS = new Set(['nodes', 'edges', 'minZoom', 'maxZoom', 'snapToGrid', 'snapGrid', 'nodeExtent'])
+  const HANDLED_FLOW_CONFIG_KEYS = new Set(['nodes', 'edges', 'minZoom', 'maxZoom', 'snapToGrid', 'snapGrid', 'nodeExtent', 'connectionRules', 'isValidConnection'])
   const droppedKeys: string[] = []
   for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
@@ -9307,6 +9326,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (objProp(configArg, 'snapToGrid') !== undefined && snapToGrid === undefined) droppedKeys.push('snapToGrid (not a boolean literal)')
   if (objProp(configArg, 'snapGrid') !== undefined && snapGrid === undefined) droppedKeys.push('snapGrid (not a numeric literal)')
   if (extentNode !== undefined && (nodeExtent === undefined || nodeExtent.some((n) => n === undefined))) droppedKeys.push('nodeExtent (not a numeric [[minX, minY], [maxX, maxY]] literal)')
+  if (connectionRules === null) droppedKeys.push('connectionRules (not a literal { type: { outputs: string[] } } map)')
   if (droppedKeys.length > 0) {
     ctx.warnings.push(
       `createFlow declaration \`${name}\`: ${droppedKeys.map((k) => `\`${k}\``).join(', ')} ` +
@@ -9327,6 +9347,8 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     ...(snapToGrid !== undefined ? { snapToGrid } : {}),
     ...(snapGrid !== undefined ? { snapGrid } : {}),
     ...(nodeExtent !== undefined && nodeExtent.every((n) => n !== undefined) ? { nodeExtent: nodeExtent as [number, number, number, number] } : {}),
+    ...(connectionRules !== undefined && connectionRules !== null ? { connectionRules } : {}),
+    ...(connectionValidator !== undefined ? { connectionValidator } : {}),
   }
 }
 
