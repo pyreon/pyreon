@@ -22,6 +22,40 @@ data class PyreonFlowPathResult(
     val segments: List<PyreonFlowEdgeSegment>,
 )
 data class PyreonFlowPathPoint(val x: Double, val y: Double)
+data class PyreonFlowNodeBox(val x: Double, val y: Double, val width: Double, val height: Double)
+data class PyreonFlowHandleAnchor(val x: Double, val y: Double, val position: PyreonFlowPosition)
+data class PyreonFlowFloatingEndpoints(val source: PyreonFlowHandleAnchor, val target: PyreonFlowHandleAnchor)
+
+fun pyreonHandlePosition(position: PyreonFlowPosition, nodeX: Double, nodeY: Double, nodeWidth: Double, nodeHeight: Double): PyreonFlowPathPoint = when (position) {
+    PyreonFlowPosition.Top -> PyreonFlowPathPoint(nodeX + nodeWidth / 2, nodeY)
+    PyreonFlowPosition.Right -> PyreonFlowPathPoint(nodeX + nodeWidth, nodeY + nodeHeight / 2)
+    PyreonFlowPosition.Bottom -> PyreonFlowPathPoint(nodeX + nodeWidth / 2, nodeY + nodeHeight)
+    PyreonFlowPosition.Left -> PyreonFlowPathPoint(nodeX, nodeY + nodeHeight / 2)
+}
+
+fun pyreonNodeIntersection(box: PyreonFlowNodeBox, toward: PyreonFlowPathPoint): PyreonFlowPathPoint {
+    val cx = box.x + box.width / 2; val cy = box.y + box.height / 2
+    val dx = toward.x - cx; val dy = toward.y - cy
+    if (dx == 0.0 && dy == 0.0) return PyreonFlowPathPoint(cx, cy)
+    val scaleX = if (dx != 0.0) box.width / 2 / kotlin.math.abs(dx) else Double.POSITIVE_INFINITY
+    val scaleY = if (dy != 0.0) box.height / 2 / kotlin.math.abs(dy) else Double.POSITIVE_INFINITY
+    val scale = kotlin.math.min(scaleX, scaleY)
+    return PyreonFlowPathPoint(cx + dx * scale, cy + dy * scale)
+}
+
+private fun pyreonSideOfPoint(box: PyreonFlowNodeBox, point: PyreonFlowPathPoint): PyreonFlowPosition = when {
+    kotlin.math.abs(point.x - box.x) <= 1 -> PyreonFlowPosition.Left
+    kotlin.math.abs(point.x - (box.x + box.width)) <= 1 -> PyreonFlowPosition.Right
+    kotlin.math.abs(point.y - box.y) <= 1 -> PyreonFlowPosition.Top
+    else -> PyreonFlowPosition.Bottom
+}
+
+fun pyreonFloatingEndpoints(source: PyreonFlowNodeBox, target: PyreonFlowNodeBox): PyreonFlowFloatingEndpoints {
+    val sourceCenter = PyreonFlowPathPoint(source.x + source.width / 2, source.y + source.height / 2)
+    val targetCenter = PyreonFlowPathPoint(target.x + target.width / 2, target.y + target.height / 2)
+    val sp = pyreonNodeIntersection(source, targetCenter); val tp = pyreonNodeIntersection(target, sourceCenter)
+    return PyreonFlowFloatingEndpoints(PyreonFlowHandleAnchor(sp.x, sp.y, pyreonSideOfPoint(source, sp)), PyreonFlowHandleAnchor(tp.x, tp.y, pyreonSideOfPoint(target, tp)))
+}
 
 /** Parses `#rgb` / `#rrggbb` into a Compose `Color`, falling back to gray. */
 internal fun pyreonFlowEdgeColor(s: String): Color {

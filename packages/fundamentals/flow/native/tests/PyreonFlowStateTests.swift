@@ -341,6 +341,13 @@ struct PyreonFlowStateTests {
         }
         let nativeStep = pyreonStepPath(sourceX: 0, sourceY: 0, sourcePosition: .right, targetX: 100, targetY: 80, targetPosition: .left)
         check(nativeStep == pyreonSmoothStepPath(sourceX: 0, sourceY: 0, sourcePosition: .right, targetX: 100, targetY: 80, targetPosition: .left, borderRadius: 0), "step is exactly smoothstep with a zero-radius corner")
+        check(pyreonHandlePosition(.right, nodeX: 0, nodeY: 0, nodeWidth: 150, nodeHeight: 40) == PyreonXYPosition(x: 150, y: 20), "right handle uses the node-side midpoint")
+        let sourceBox = PyreonFlowRect(x: 0, y: 0, width: 150, height: 40)
+        let targetBox = PyreonFlowRect(x: 200, y: 100, width: 150, height: 40)
+        check(pyreonNodeIntersection(sourceBox, toward: PyreonXYPosition(x: 275, y: 120)) == PyreonXYPosition(x: 115, y: 40), "node intersection matches the web perimeter crossing")
+        let floating = pyreonFloatingEndpoints(source: sourceBox, target: targetBox)
+        check(floating.source == PyreonFlowHandleAnchor(x: 115, y: 40, position: .bottom), "floating source exactly matches web")
+        check(floating.target == PyreonFlowHandleAnchor(x: 235, y: 100, position: .top), "floating target exactly matches web")
 
         // 6. A stroke prebuilds its path/color/dash ONCE, at construction — the
         // draw closure must find nothing left to parse or allocate per edge.

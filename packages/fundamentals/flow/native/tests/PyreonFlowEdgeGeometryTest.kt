@@ -8,8 +8,12 @@
 import com.pyreon.runtime.PyreonFlowEdgeSegment
 import com.pyreon.runtime.PyreonFlowEdgeStroke
 import com.pyreon.runtime.PyreonFlowPathPoint
+import com.pyreon.runtime.PyreonFlowNodeBox
 import com.pyreon.runtime.PyreonFlowPosition
 import com.pyreon.runtime.pyreonBezierPath
+import com.pyreon.runtime.pyreonFloatingEndpoints
+import com.pyreon.runtime.pyreonHandlePosition
+import com.pyreon.runtime.pyreonNodeIntersection
 import com.pyreon.runtime.pyreonFlowEdgeColor
 import com.pyreon.runtime.pyreonFlowEdgePath
 import com.pyreon.runtime.pyreonStraightPath
@@ -75,6 +79,13 @@ fun main() {
     }
     val step = pyreonStepPath(0.0, 0.0, PyreonFlowPosition.Right, 100.0, 80.0, PyreonFlowPosition.Left)
     check(step == pyreonSmoothStepPath(0.0, 0.0, PyreonFlowPosition.Right, 100.0, 80.0, PyreonFlowPosition.Left, borderRadius = 0.0), "step is exactly smoothstep with a zero-radius corner")
+    check(pyreonHandlePosition(PyreonFlowPosition.Right, 0.0, 0.0, 150.0, 40.0) == PyreonFlowPathPoint(150.0, 20.0), "right handle uses the node-side midpoint")
+    val sourceBox = PyreonFlowNodeBox(0.0, 0.0, 150.0, 40.0)
+    val targetBox = PyreonFlowNodeBox(200.0, 100.0, 150.0, 40.0)
+    check(pyreonNodeIntersection(sourceBox, PyreonFlowPathPoint(275.0, 120.0)) == PyreonFlowPathPoint(115.0, 40.0), "node intersection matches the web perimeter crossing")
+    val floating = pyreonFloatingEndpoints(sourceBox, targetBox)
+    check(floating.source.x == 115.0 && floating.source.y == 40.0 && floating.source.position == PyreonFlowPosition.Bottom, "floating source exactly matches web")
+    check(floating.target.x == 235.0 && floating.target.y == 100.0 && floating.target.position == PyreonFlowPosition.Top, "floating target exactly matches web")
 
     println("PyreonFlowEdgeGeometryTest: all checks passed")
 }

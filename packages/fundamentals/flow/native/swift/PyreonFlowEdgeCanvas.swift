@@ -21,6 +21,48 @@ public struct PyreonFlowPathResult: Equatable {
     public var segments: [PyreonFlowEdgeSegment]
 }
 
+public struct PyreonFlowRect: Equatable {
+    public var x: Double; public var y: Double; public var width: Double; public var height: Double
+    public init(x: Double, y: Double, width: Double, height: Double) { self.x = x; self.y = y; self.width = width; self.height = height }
+}
+
+public struct PyreonFlowHandleAnchor: Equatable {
+    public var x: Double; public var y: Double; public var position: PyreonFlowPosition
+}
+
+public func pyreonHandlePosition(_ position: PyreonFlowPosition, nodeX: Double, nodeY: Double, nodeWidth: Double, nodeHeight: Double) -> PyreonXYPosition {
+    switch position {
+    case .top: return PyreonXYPosition(x: nodeX + nodeWidth / 2, y: nodeY)
+    case .right: return PyreonXYPosition(x: nodeX + nodeWidth, y: nodeY + nodeHeight / 2)
+    case .bottom: return PyreonXYPosition(x: nodeX + nodeWidth / 2, y: nodeY + nodeHeight)
+    case .left: return PyreonXYPosition(x: nodeX, y: nodeY + nodeHeight / 2)
+    }
+}
+
+public func pyreonNodeIntersection(_ box: PyreonFlowRect, toward: PyreonXYPosition) -> PyreonXYPosition {
+    let cx = box.x + box.width / 2, cy = box.y + box.height / 2
+    let dx = toward.x - cx, dy = toward.y - cy
+    if dx == 0 && dy == 0 { return PyreonXYPosition(x: cx, y: cy) }
+    let scaleX = dx != 0 ? box.width / 2 / abs(dx) : Double.infinity
+    let scaleY = dy != 0 ? box.height / 2 / abs(dy) : Double.infinity
+    let scale = min(scaleX, scaleY)
+    return PyreonXYPosition(x: cx + dx * scale, y: cy + dy * scale)
+}
+
+private func pyreonSideOfPoint(_ box: PyreonFlowRect, _ point: PyreonXYPosition) -> PyreonFlowPosition {
+    if abs(point.x - box.x) <= 1 { return .left }
+    if abs(point.x - (box.x + box.width)) <= 1 { return .right }
+    if abs(point.y - box.y) <= 1 { return .top }
+    return .bottom
+}
+
+public func pyreonFloatingEndpoints(source: PyreonFlowRect, target: PyreonFlowRect) -> (source: PyreonFlowHandleAnchor, target: PyreonFlowHandleAnchor) {
+    let sourceCenter = PyreonXYPosition(x: source.x + source.width / 2, y: source.y + source.height / 2)
+    let targetCenter = PyreonXYPosition(x: target.x + target.width / 2, y: target.y + target.height / 2)
+    let sp = pyreonNodeIntersection(source, toward: targetCenter), tp = pyreonNodeIntersection(target, toward: sourceCenter)
+    return (PyreonFlowHandleAnchor(x: sp.x, y: sp.y, position: pyreonSideOfPoint(source, sp)), PyreonFlowHandleAnchor(x: tp.x, y: tp.y, position: pyreonSideOfPoint(target, tp)))
+}
+
 /// One drawing primitive in an edge's path — `move`/`line`/`cubic`/`quad`,
 /// the exact vocabulary `EdgeSegment` (`types.ts`) defines.
 public struct PyreonFlowEdgeSegment: Equatable {
