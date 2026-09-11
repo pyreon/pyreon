@@ -245,9 +245,9 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
   },
   '@pyreon/loom': {
     currentStatements: 95,
-    currentBranches: 90,
+    currentBranches: 92,
     reason:
-      'Dependency observatory. Statements, functions and lines all clear the floor comfortably (97.71 / 99.09 / 98.96) and are NOT exempted — only branches is, at 90.32. It had no threshold entry at all, so all four inherited the 95% default and the branch shortfall reddened `Coverage (Full)` on every main run while nothing in the package stated its branch contract. The 54 uncovered branches are spread thin across six files that are otherwise 96-99% (workspace 83.8, model 86.6, detect 88.3, config 88.3, graph 90, imports 96.1) and are defensive arms — `??` fallbacks and optional chaining on shapes the callers already guarantee. Ratchet up as tests land.',
+      'Dependency observatory. Statements, functions and lines all clear the floor comfortably (98.31 / 99.09 / 99.27) and are NOT exempted — only branches is, now at 92.65, which clears the 92%+ campaign bar though not the gate\'s 95. Ratcheted 90 -> 92 by covering `core/detect.ts`, where every uncovered arm was a RECOGNITION rule present because the naive detector produced wrong warnings on a real monorepo: the `@types/*` twin (including the scoped `@scope/x` -> `@types/scope__x` mapping, which is not the obvious one), type-only-counts-as-used, and private-vs-published severity. Writing them surfaced a real gap — `if (!prod) continue` skipped the WHOLE package, so one whose runtime imports are all relative or all declared never had its `import type` specifiers checked at all, making `phantom-type-dep` unreachable for exactly the shape where it is the only finding available. The residual is defensive `??` fallbacks spread thin across files that are otherwise 96-99%.',
   },
   '@pyreon/atlas': {
     currentStatements: 87,
@@ -265,7 +265,7 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
     currentStatements: 95,
     currentBranches: 92,
     reason:
-      '12 headless behavior primitives (SelectBase/ComboboxBase/CalendarBase/TreeBase/…). Ratcheted across several waves from a 62/54 first baseline — 78/71, then 81/75 (the run that surfaced and locked the CheckboxBase + RadioBase label-to-input double-toggle fix), then 86/81 (Combobox + Tree state machines through the headless state objects) — and now 89 -> 92 by the 92%+ campaign (measured 95.92/92.13), which clears that bar though not the gate\'s 95. The lift is four edge-behaviour suites: TreeBase\'s roving tab stop (without the fallback an untouched tree renders ZERO tab stops and is unreachable by keyboard) and its string-valued ARIA state; NumberInputBase against non-numbers, where the surface promises `value()` is never NaN; PinInputBase\'s paste distribution and length fallback; ModalBase\'s dismissal and its three-step initial-focus chain; ComboboxBase with an empty option list. Residual is spread across the remaining primitives (Calendar, RangeSlider, TagsInput, Tabs) rather than concentrated. Raise in lockstep; never lower.',
+      '12 headless behavior primitives (SelectBase/ComboboxBase/CalendarBase/TreeBase/…). Ratcheted across several waves from a 62/54 first baseline — 78/71, then 81/75 (the run that surfaced and locked the CheckboxBase + RadioBase label-to-input double-toggle fix), then 86/81 (Combobox + Tree state machines through the headless state objects) — and now 89 -> 92 by the 92%+ campaign (measured 95.92/92.13), which clears that bar though not the gate\'s 95. The lift is four edge-behaviour suites: TreeBase\'s roving tab stop (without the fallback an untouched tree renders ZERO tab stops and is unreachable by keyboard) and its string-valued ARIA state; NumberInputBase against non-numbers, where the surface promises `value()` is never NaN; PinInputBase\'s paste distribution and length fallback; ModalBase\'s dismissal and its three-step initial-focus chain; ComboboxBase with an empty option list. Plus TreeBase typeahead, the rule PAIR nothing asserted: a repeated character CYCLES from after the current item while a longer buffer REFINES from at it, and getting either backwards still moves focus — just somewhere the user did not intend, which reports as \'the tree feels broken\'. Residual is spread across the remaining primitives (Calendar, RangeSlider, TagsInput, Tabs) rather than concentrated. Raise in lockstep; never lower.',
   },
   // ── Branch < MINIMUM_BRANCH_FLOOR=95 (statements OK at ≥95) ─────────
   // Each entry's `currentBranches` mirrors the package's vitest.config.ts
@@ -342,15 +342,15 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
   },
   '@pyreon/solid-compat': {
     currentStatements: 96,
-    currentBranches: 91,
+    currentBranches: 92,
     reason:
-      'Solid compat layer. Ratcheted 95/89 -> 96/91 (measured 96.68/91.77) by covering `setStore`\'s path forms (nested, array index, function updater, filter predicate), `createResource`\'s staleness guards on both the resolve and reject arms, and the store proxy\'s traps over a path whose value has vanished. That surfaced a real bug: the proxy target was a plain `{}` regardless of the value, so a store-wrapped ARRAY threw `TypeError: trap reported non-configurability for property length` on `JSON.stringify` and reported false for `Array.isArray` — while `.length`, indexing and `.map()` all worked, so a store looked healthy until something serialized it. 91 rather than 92 is the honest node-run ceiling: of the 25 branches left, four are NODE_ENV arms and most of the rest are defensive arms no caller can reach (safeAssign\'s zero-length path, the `!desc` continues, the sync half of the fetch-version check). Raise it when one becomes reachable, not by covering it.',
+      'Solid compat layer. Ratcheted 95/89 -> 96/91 by covering `setStore`\'s path forms, `createResource`\'s staleness guards on both arms, and the store proxy over a vanished path — which surfaced a real bug (the proxy target was a plain `{}` regardless of the value, so a store-wrapped ARRAY threw on `JSON.stringify` and reported false for `Array.isArray`, while `.length`, indexing and `.map()` all worked). Then 91 -> 92 by the 92%+ campaign, clearing that bar: the deciding arm is the unmount guard inside `scheduleEffects`, which defers into a microtask so a component can go away before its effects run — an effect that runs anyway subscribes, times, or writes into a disposed owner and says nothing about it. The arms still uncovered are UNREACHABLE through the shipped API rather than untested: nothing pushes to `pendingLayoutEffects`, `onMount`\'s wrapper returns undefined unconditionally so a stored cleanup is never a function, and `safeAssign`\'s zero-length path cannot be reached because `setStore` dispatches either the draft form or a path form with >= 1 segment. Raise when one becomes reachable, not by calling internals.',
   },
   '@pyreon/svelte-compat': {
-    currentStatements: 95,
-    currentBranches: 89,
+    currentStatements: 98,
+    currentBranches: 92,
     reason:
-      'Svelte compat shim. Branches at ~89% — residual gap in store-contract derived/readable edge arms + Svelte 5 runes adapter. Real-Chromium e2e covers production shapes.',
+      'Svelte compat shim. Ratcheted 95/89 -> 98/92 by the 92%+ campaign (measured 98.89/92.30), clearing that bar. Two contracts got it there, both previously unasserted: the unmount guard inside `scheduleEffects` — effects are deferred to a microtask, so a component can unmount first, and one that runs anyway leaks silently — and the CHILDLESS shape of the hardcoded native-component bypass (`<Show when={x} fallback={y} />` with the content passed as a prop rather than as children). The residual is store-contract derived/readable edge arms plus the Svelte 5 runes adapter; real-Chromium e2e covers production shapes.',
   },
   '@pyreon/lint': {
     currentStatements: 95,
