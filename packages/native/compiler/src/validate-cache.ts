@@ -9,11 +9,10 @@
 // 180s per-spec `testTimeout` and a 50-minute workflow timeout: both raise
 // the ceiling, neither removes the cost.
 //
-// WHY it is SAFE: a validate call is a PURE function of
-// (kind, compiler identity, stub content, source). The compilers are
-// deterministic, and the stubs are module constants. So the same key always
-// implies the same verdict, and a hit can never change a result — only skip
-// re-deriving one.
+// WHY it is SAFE: a successful validate call is a PURE function of
+// (kind, compiler identity, stub content, source). Failed subprocesses are not
+// cached: resource exhaustion, sandbox permissions, signals, and runner
+// timeouts are environmental failures rather than source verdicts.
 //
 // The KEY MUST include the stub content. This is the load-bearing detail,
 // not a nicety: the stubs are edited regularly (a subset stub manufactures
@@ -40,12 +39,9 @@ import {
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
-/** The shape stored on disk. Deliberately NOT `ValidationResult` — a
- * `skipped` verdict depends on tool availability, which is environmental and
- * must never be cached. Only real compiler verdicts are persisted. */
+/** The shape stored on disk. Only successful compiler verdicts are persisted. */
 interface CachedVerdict {
-  ok: boolean
-  error?: string
+  ok: true
 }
 
 /** Which validator produced the verdict. Two validators can disagree about
@@ -202,11 +198,13 @@ function readDisk(key: string): CachedVerdict | undefined {
     if (
       parsed !== null &&
       typeof parsed === 'object' &&
-      typeof (parsed as CachedVerdict).ok === 'boolean'
+      (parsed as { ok?: unknown }).ok === true
     ) {
-      const v = parsed as CachedVerdict
-      return v.error === undefined ? { ok: v.ok } : { ok: v.ok, error: v.error }
+      return { ok: true }
     }
+    // Older cache versions persisted failures, including transient compiler
+    // process failures. Evict those entries and derive a fresh verdict.
+    unlinkSync(file)
   } catch {
     // Corrupt entry: drop it so it stops costing a read every call.
     try {
@@ -328,8 +326,8 @@ function whichSync(bin: string): string | null {
 /**
  * Run `compute` unless a cached verdict for this exact input already exists.
  *
- * `skipped` verdicts are passed through UNCACHED: they encode tool
- * availability rather than a compiler judgement, and they are already free.
+ * `skipped` and failed verdicts are passed through UNCACHED. A failure may be
+ * environmental; only a successful compiler verdict is safe to reuse.
  */
 export function withVerdictCache(
   kind: ValidateKind,
@@ -345,14 +343,13 @@ export function withVerdictCache(
   const hit = memo.get(key) ?? readDisk(key)
   if (hit !== undefined) {
     memo.set(key, hit)
-    return hit.error === undefined ? { ok: hit.ok } : { ok: hit.ok, error: hit.error }
+    return { ok: true }
   }
 
   const result = compute()
-  if (result.skipped === true) return result
+  if (result.skipped === true || result.ok !== true) return result
 
-  const verdict: CachedVerdict =
-    result.error === undefined ? { ok: result.ok } : { ok: result.ok, error: result.error }
+  const verdict: CachedVerdict = { ok: true }
   memo.set(key, verdict)
   writeDisk(key, verdict)
   return result
