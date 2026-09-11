@@ -1,4 +1,5 @@
 import SwiftUI
+import Foundation
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -140,6 +141,38 @@ public func pyreonChartMeasure(_ text: String, _ size: Double) -> Double {
 /// send swiftc past its type-check budget.
 public func pyreonChartDouble(_ v: Double) -> Double { v }
 public func pyreonChartDouble(_ v: Int) -> Double { Double(v) }
+
+/// Locale-aware chart formatters matching the web host's `Intl` defaults:
+/// grouped numbers with at most two fraction digits, and a short month/day.
+/// They are factories so each chart owns its formatter; Foundation formatter
+/// instances are mutable and must not be shared across concurrent views.
+public func pyreonLocaleNumberFormatter(_ tag: String) -> (Double) -> String {
+    let candidate = Locale(identifier: tag)
+    let locale = candidate.language.languageCode?.identifier.isEmpty == false ? candidate : Locale(identifier: "en")
+    let formatter = NumberFormatter()
+    formatter.locale = locale
+    formatter.numberStyle = .decimal
+    formatter.minimumFractionDigits = 0
+    formatter.maximumFractionDigits = 2
+    formatter.usesGroupingSeparator = true
+    return { value in
+        guard value.isFinite else { return "" }
+        return formatter.string(from: NSNumber(value: value)) ?? String(value)
+    }
+}
+
+public func pyreonLocaleDateFormatter(_ tag: String) -> (Double) -> String {
+    let candidate = Locale(identifier: tag)
+    let locale = candidate.language.languageCode?.identifier.isEmpty == false ? candidate : Locale(identifier: "en")
+    let formatter = DateFormatter()
+    formatter.locale = locale
+    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+    formatter.setLocalizedDateFormatFromTemplate("MMMd")
+    return { value in
+        guard value.isFinite else { return "" }
+        return formatter.string(from: Date(timeIntervalSince1970: value / 1000.0))
+    }
+}
 
 /// Move a draw list down the canvas — the host sits a plot below the title
 /// and legend it drew at (0, 0). Translating the commands rather than
