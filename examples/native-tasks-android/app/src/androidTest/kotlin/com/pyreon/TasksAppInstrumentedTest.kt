@@ -1003,18 +1003,15 @@ class TasksAppInstrumentedTest {
         assertTagDisplayed("tasks-page", "after toolkit-back (/toolkit?filter=done -> /tasks)")
 
         // Phase 6: logout — flips the store flag back; lands on /login.
+        // Returning from the long toolkit page can preserve a scroll position
+        // that leaves the header action outside the viewport. Compose still
+        // finds that semantics node, but a bare click then targets off-screen
+        // coordinates and silently leaves the route unchanged.
         composeRule
             .onNodeWithTag("tasks-logout")
+            .performScrollTo()
             .performClick()
 
-        composeRule.waitUntil(timeoutMillis = 15_000) {
-            composeRule
-                .onAllNodesWithTag("login-page")
-                .fetchSemanticsNodes()
-                .isNotEmpty()
-        }
-        composeRule
-            .onNodeWithTag("login-page")
-            .assertIsDisplayed()
+        assertTagDisplayed("login-page", "after tasks-logout (/tasks -> /login)")
     }
 }
