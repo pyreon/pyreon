@@ -298,6 +298,28 @@ let _activeEnumType: string | undefined
  * Swift typecheck (an integer literal infers as Double there) and failed
  * kotlinc with 'actual type is Int, but Double? was expected'.
  */
+/**
+ * An integer literal in a position whose type is KNOWN to be Double, marked so
+ * it emits `4.0` rather than `4`.
+ *
+ * `Record<string, Double> = { '2024-01-03': 4 }` is the natural way to write a
+ * count — a calendar's values ARE integers — and it emitted an Int-valued map
+ * against a Double-valued annotation, which does not compile.
+ *
+ * Applied at the sites that KNOW the element type (a map literal's values, an
+ * array literal's elements), deliberately not at the literal emit reading the
+ * ambient expected type: that type describes an ENCLOSING position, so it also
+ * covers an array index, the argument of `Double(n - 1)` and the operands of
+ * `level == 2` — all Int contexts, all corrupted by a blanket rewrite. That
+ * version was written, and the chart engine's drift lock caught it turning
+ * `slope[0]` into `slope[0.0]`.
+ */
+function asFloatLiteral(v: ExprIR, t: TypeIR | undefined): ExprIR {
+  if (t === undefined || !typeWantsFloat(t)) return v
+  if (v.kind !== 'literal' || typeof v.value !== 'number' || !Number.isInteger(v.value) || v.float === true) return v
+  return { ...v, float: true }
+}
+
 function typeWantsFloat(t: TypeIR): boolean {
   if (t.kind === 'number') return t.float === true
   if (t.kind === 'typeRef') return t.name === 'Double' || t.name === 'Float'
@@ -5051,6 +5073,12 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           })
         }
       }
+      // Chart decimators consume `[Double]`; TypeScript `number[]` can be
+      // represented as `[Int]` when its initializer is wholly integral.
+      if (e.callee.kind === 'identifier' && (e.callee.name === 'lttbIndices' || e.callee.name === 'minMaxBuckets') && e.args.length >= 2) {
+        const args = e.args.map((arg, i) => i === 1 ? `(${emitSwiftExpr(arg, indent)}).map { pyreonChartDouble($0) }` : emitSwiftExpr(arg, indent))
+        return `${swiftIdent(e.callee.name)}(${args.join(', ')})`
+      }
       // `Object.keys(<object-typed expr>)` → static `[String]` of the
       // struct field names. A synthesized struct's keys are statically
       // known, so the rewrite lowers to a plain string-array literal;
@@ -7351,7 +7379,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         const vT = _expectedType.value
         if (e.fields.length === 0) return '[:]'
         const entries = e.fields
-          .map((f) => `${JSON.stringify(f.name)}: ${withExpectedType(vT, () => emitSwiftExpr(f.value, indent))}`)
+          .map((f) => `${JSON.stringify(f.name)}: ${withExpectedType(vT, () => emitSwiftExpr(asFloatLiteral(f.value, vT), indent))}`)
           .join(', ')
         return `[${entries}]`
       }
@@ -12618,7 +12646,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     _hostStateDecls.push('@State private var pyreonZoom: ZoomWindow = ZoomWindow(start: 0.0, end: 1.0)')
     if (zoomed) _hostStateDecls.push('@State private var pyreonZoomAnchor: ZoomWindow = ZoomWindow(start: 0.0, end: 1.0)')
     lets.push(`let pyreonRange: SliceRange = sliceRange(pyreonZoom, ${data}.count)`)
-    lets.push(`let pyreonRows = Array(${data}[pyreonRange.from..<pyreonRange.to])`)
+    lets.push(`let pyreonSourceRows = Array(${data}[pyreonRange.from..<pyreonRange.to])`)
   }
   if (navigating) {
     _hostStateDecls.push('@State private var pyreonNavKind: Int = 0')
@@ -12632,7 +12660,9 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   }
   if (legend.toggling) _hostStateDecls.push('@State private var pyreonHidden: [Int] = []')
   if (legend.paging) _hostStateDecls.push('@State private var pyreonLegendPage: Double = 0.0')
-  const rows = windowed ? 'pyreonRows' : data
+  const maxPoints = chartAttrExpr(e, 'maxPoints')
+  let decimated = false
+  let rows = windowed ? 'pyreonSourceRows' : data
   // The theme's palette colours marks with no `color` (the theme builder already warned about a bad literal, so this parse stays silent).
   const pyreonPalette = chartThemePalette(chartAttrExpr(e, 'theme'), tag, () => {}, _chartThemeScope === null ? undefined : (_chartThemeScope.palette as readonly string[]))
   const series: string[] = []
@@ -12643,6 +12673,9 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     // ARRAY, so it arrives as a spread element rather than a call. It expands
     // to the two Series it names: the envelope as a band, and its middle.
     if (m.kind === 'spread') {
+      if (k === 0 && maxPoints !== undefined) {
+        _emitWarnings.push(`<${tag} maxPoints>: the first mark is a spread indicator, whose derived values are not available until after mark expansion on native; row thinning is skipped.`)
+      }
       const expanded = swiftBollingerSpread(m.argument, tag, k, rows, windowed, indent, lets, pyreonPalette)
       if (expanded === 'unsupported') return 'EmptyView()'
       for (const line of expanded) series.push(line)
@@ -12676,16 +12709,25 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     }
     const body = swiftAccessorExpr(y, tag, `mark ${k + 1}`, indent)
     if (body === 'unsupported') return 'EmptyView()'
+    if (k === 0 && maxPoints !== undefined) {
+      const max = `Int(${emitSwiftExpr(maxPoints, indent)})`
+      lets.push(`let pyreonMaxPoints: Int = ${max}`)
+      lets.push(`let pyreonDecimateValues: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${body})`, 'Double', windowed)}`)
+      lets.push(`let pyreonKeep: [Int] = pyreonMaxPoints >= 3 && ${rows}.count > pyreonMaxPoints ? lttbIndices([], pyreonDecimateValues, pyreonMaxPoints) : Array(${rows}.indices)`)
+      lets.push(`let pyreonRows = pyreonKeep.map { ${rows}[$0] }`)
+      rows = 'pyreonRows'
+      decimated = true
+    }
     const optsArg = bubble || isBand || indicator?.takesWindow === true ? m.args[2] : m.args[1]
     const opts = swiftMarkOptionArgs(optsArg, tag, k, pyreonPalette)
     if (opts === 'unsupported') return 'EmptyView()'
-    const rowMap = swiftPlotRowMap(rows, `pyreonChartDouble(${body})`, 'Double', windowed)
+    const rowMap = swiftPlotRowMap(rows, `pyreonChartDouble(${body})`, 'Double', windowed, decimated)
     const derivedValues = indicator === undefined ? undefined : swiftIndicatorValues(indicator, m, rowMap, tag, k, indent)
     if (derivedValues === 'unsupported') return 'EmptyView()'
     lets.push(`let pyreonValues${k}: [Double] = ${derivedValues ?? rowMap}`)
     // The bounds ride the same row map the values do — `errLow`/`errHigh` are
     // the LAST Series fields on both targets, so they append.
-    const errArgs = swiftMarkErrorArgs(optsArg, tag, k, rows, windowed, indent, lets)
+    const errArgs = swiftMarkErrorArgs(optsArg, tag, k, rows, windowed, indent, lets, decimated)
     if (errArgs === 'unsupported') return 'EmptyView()'
     // The navigator shows the first mark over EVERY row, whatever the window.
     if (k === 0 && navigating) navValues = swiftPlotRowMap(data, `pyreonChartDouble(${body})`, 'Double', false)
@@ -12702,7 +12744,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       // tooltip and the accessible table report the datum, not the radius.
       // `rValues` precedes `radii` in the generated struct, and Swift's
       // memberwise init takes its arguments in declaration order.
-      lets.push(`let pyreonRRaw${k}: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${rBody})`, 'Double', windowed)}`)
+      lets.push(`let pyreonRRaw${k}: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${rBody})`, 'Double', windowed, decimated)}`)
       lets.push(`let pyreonRadii${k}: [Double] = bubbleRadii(pyreonRRaw${k}, ${range[0]}, ${range[1]})`)
       const at = opts.findIndex((o) => o.startsWith('showValues:')) + 1
       const withRadii = [...opts.slice(0, at), `rValues: pyreonRRaw${k}`, `radii: pyreonRadii${k}`, ...opts.slice(at)]
@@ -12715,7 +12757,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       }
       const loBody = swiftAccessorExpr(lo, tag, `mark ${k + 1} lower bound`, indent)
       if (loBody === 'unsupported') return 'EmptyView()'
-      lets.push(`let pyreonLow${k}: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${loBody})`, 'Double', windowed)}`)
+      lets.push(`let pyreonLow${k}: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${loBody})`, 'Double', windowed, decimated)}`)
       // `values2` is the LAST Series field on both targets, so it appends
       // after the error bounds — Swift's init is positional even when
       // labelled.
@@ -12735,7 +12777,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   if (xAcc !== undefined) {
     const body = swiftAccessorExpr(xAcc, tag, 'x', indent)
     if (body === 'unsupported') return 'EmptyView()'
-    lets.push(`let pyreonCats: [String] = ${swiftPlotRowMap(rows, body, 'String', windowed)}`)
+    lets.push(`let pyreonCats: [String] = ${swiftPlotRowMap(rows, body, 'String', windowed, decimated)}`)
   } else {
     lets.push('let pyreonCats: [String] = []')
   }
@@ -12743,7 +12785,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   if (xValueAcc !== undefined) {
     const body = swiftAccessorExpr(xValueAcc, tag, 'xValue', indent)
     if (body === 'unsupported') return 'EmptyView()'
-    lets.push(`let pyreonXValues: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${body})`, 'Double', windowed)}`)
+    lets.push(`let pyreonXValues: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${body})`, 'Double', windowed, decimated)}`)
   }
   const present = PLOT_UNLOWERED_PROPS.filter((p) => chartAttrExpr(e, p) !== undefined || e.attrs.some((a) => a.kind === 'event' && 'on' + a.name === p.toLowerCase()))
   if (present.length > 0) _emitWarnings.push(plotUnloweredWarning(tag, present))
@@ -12782,6 +12824,8 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     return v === undefined ? String(fallback) : typeof raw === 'boolean' ? String(raw) : emitSwiftExpr(v, indent)
   }
   const below = `${belowNav}${navigating ? ' - pyreonNavigator.height' : ''}`
+  const locale = chartAttrExpr(e, 'locale')
+  if (locale !== undefined) lets.push(`let pyreonLocale: String = ${emitSwiftExpr(locale, indent)}`)
   const specArgs = [
     `width: ${chrome.width(W)}`,
     `height: ${chrome.height(H)}${below}`,
@@ -12800,9 +12844,9 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   // so in a warning.
   const yDom = chartAttrExpr(e, 'yDomain')
   if (yDom !== undefined) specArgs.push(`yDomain: ${emitSwiftExpr(yDom, indent)}`)
-  const yFormat = swiftChartFormatter(e, 'format', indent)
+  const yFormat = swiftChartFormatter(e, 'format', indent) ?? (locale === undefined ? undefined : 'pyreonLocaleNumberFormatter(pyreonLocale)')
   if (yFormat !== undefined) specArgs.push(`yFormat: ${yFormat}`)
-  const xFormat = swiftChartFormatter(e, 'xFormat', indent)
+  const xFormat = swiftChartFormatter(e, 'xFormat', indent) ?? (locale !== undefined && readStaticAttr(e, 'xTime') === true ? 'pyreonLocaleDateFormatter(pyreonLocale)' : undefined)
   if (xFormat !== undefined) specArgs.push(`xFormat: ${xFormat}`)
   const y2 = chartAttrExpr(e, 'y2Domain')
   if (y2 !== undefined) specArgs.push(`y2Domain: ${emitSwiftExpr(y2, indent)}`)
@@ -12817,6 +12861,23 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   const mk = chartAttrExpr(e, 'markers')
   if (mk !== undefined) specArgs.push(`markers: ${withExpectedType({ kind: 'array', element: { kind: 'typeRef', name: 'PointMarker', args: [] } }, () => emitSwiftExpr(mk, indent))}`)
   if (swiftChartAnimating(e, 'PlotChart')) specArgs.push('progress: pyreonEntrance')
+  // `selectedMode` — a TAP pins a datum, which is the half of the events model
+  // a touch target actually has. (`emphasis`'s hover band and `onHighlight`
+  // are mouseover-driven and stay declined, for the same reason `crosshair`
+  // does.) The engine already draws a pinned datum from `ChartSpec.emphasis`;
+  // this is the host state that says which. It goes here because Swift's init
+  // is positional and `emphasis` follows `progress` in the struct.
+  const pinMode = readStaticAttr(e, 'selectedMode')
+  const pinning = pinMode === 'single' || pinMode === 'multiple'
+  if (pinning) {
+    _hostStateDecls.push('@State private var pyreonSelected: [Int] = []')
+    const selected = decimated
+      ? `pyreonSelected.compactMap { pyreonGlobal in pyreonKeep.firstIndex(of: pyreonGlobal${windowed ? ' - pyreonRange.from' : ''}) }`
+      : windowed
+        ? 'pyreonSelected.map { $0 - pyreonRange.from }.filter { $0 >= 0 && $0 < pyreonRows.count }'
+        : 'pyreonSelected'
+    specArgs.push(`emphasis: Emphasis(highlight: -1, selected: ${selected})`)
+  }
   // The batch-2 spec switches: a literal each, AFTER `progress` (Swift's init order is the struct's field order).
   for (const p of PLOT_SPEC_LITERAL_PROPS) {
     const raw = readStaticAttr(e, p.name)
@@ -12873,18 +12934,34 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   const localHit = `plotHitBars(pyreonSpec, pyreonChartMeasure, ${plotX}, ${tapY})`
   // Under a window the hit is LOCAL to the slice; the callback speaks GLOBAL indices, as on the web.
   // With a tooltip the local hit is bound once (`pyreonLocal`) and both read it; without one the emit is as before.
+  const globalHit = (local: string): string => {
+    const mapped = decimated ? `pyreonKeep[${local}]` : local
+    const global = windowed ? `${mapped} + pyreonRange.from` : mapped
+    return `${local} < 0 ? -1 : ${global}`
+  }
   const hit = tooltip
-    ? windowed ? '(pyreonLocal < 0 ? -1 : pyreonLocal + pyreonRange.from)' : 'pyreonLocal'
-    : windowed
-      ? `{ () -> Int in let pyreonHit = ${localHit}; return pyreonHit < 0 ? -1 : pyreonHit + pyreonRange.from }()`
+    ? `(${globalHit('pyreonLocal')})`
+    : windowed || decimated
+      ? `{ () -> Int in let pyreonHit = ${localHit}; return ${globalHit('pyreonHit')} }()`
       : localHit
   const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
   let gesture = ''
-  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging || brushing || tooltip) {
-    const selectOnly = onSel?.kind === 'event' ? swiftChartSelectBody(onSel.handler, hit, indent) : ''
-    const select = tooltip
+  // `pinning` joins the gate: a chart with ONLY `selectedMode` has no other
+  // reason to install a tap, and without it the pin never runs.
+  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging || brushing || tooltip || pinning) {
+    // With pinning on, the hit is computed ONCE into a local: the pin, the
+    // change callback and `onSelect` all name the same pick.
+    const pick = pinning ? 'pyreonPick' : hit
+    const selectOnly = onSel?.kind === 'event' ? swiftChartSelectBody(onSel.handler, pick, indent) : ''
+    const onSelChange = chartEventHandler(e, 'selectchange')
+    const pinBody = pinning
+      ? `let pyreonPick = ${hit}; let pyreonNextSel = pinSelection(pyreonSelected, pyreonPick, ${pinMode === 'multiple'}); pyreonSelected = pyreonNextSel` +
+        (onSelChange === undefined ? '' : `; ${swiftChartSelectBody(onSelChange, 'pyreonNextSel', indent)}`)
+      : ''
+    const selectBase = tooltip
       ? `let pyreonLocal = ${localHit}; pyreonTip = pyreonLocal < 0 ? [] : ${tipLines}; pyreonTipAt = PyreonChartPt(x: Double(pyreonTap.location.x), y: Double(pyreonTap.location.y))${selectOnly === '' ? '' : `; ${selectOnly}`}`
       : selectOnly
+    const select = pinBody === '' ? selectBase : selectBase === '' ? pinBody : `${pinBody}; ${selectBase}`
     // One tap, several surfaces, in canvas coordinates: the legend pager, a
     // legend entry, a preset button, a committed brush (a plain tap clears it),
     // then the plot. First hit wins — the web's order.
@@ -12951,7 +13028,14 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   // The data description the web `aria-label` carries, from the same series
   // and categories the canvas painted (hidden series excluded, as on the web).
   const plotTitle = readStringAttrExpr(e, 'title', indent)
-  const describe = `describeChart(A11yInput(title: ${plotTitle ?? 'nil'}, categories: pyreonCats, series: pyreonSeries.map { A11ySeries(label: $0.label, values: $0.values, kind: $0.kind, values2: $0.values2, errLow: $0.errLow, errHigh: $0.errHigh, rValues: $0.rValues) }, format: ${yFormat ?? 'nil'}))`
+  const labels = chartAttrExpr(e, 'seriesLabels')
+  if (labels !== undefined) lets.push(`let pyreonSeriesLabels: [String] = ${emitSwiftExpr(labels, indent)}`)
+  const a11ySeries = labels === undefined
+    ? 'pyreonSeries.map { A11ySeries(label: $0.label, values: $0.values, kind: $0.kind, values2: $0.values2, errLow: $0.errLow, errHigh: $0.errHigh, rValues: $0.rValues) }'
+    : legend.toggling
+      ? 'pyreonSeriesAll.enumerated().filter { !pyreonHidden.contains($0.offset) }.map { (pyreonI, pyreonS) in A11ySeries(label: pyreonI < pyreonSeriesLabels.count ? pyreonSeriesLabels[pyreonI] : pyreonS.label, values: pyreonS.values, kind: pyreonS.kind, values2: pyreonS.values2, errLow: pyreonS.errLow, errHigh: pyreonS.errHigh, rValues: pyreonS.rValues) }'
+      : 'pyreonSeries.enumerated().map { (pyreonI, pyreonS) in A11ySeries(label: pyreonI < pyreonSeriesLabels.count ? pyreonSeriesLabels[pyreonI] : pyreonS.label, values: pyreonS.values, kind: pyreonS.kind, values2: pyreonS.values2, errLow: pyreonS.errLow, errHigh: pyreonS.errHigh, rValues: pyreonS.rValues) }'
+  const describe = `describeChart(A11yInput(title: ${plotTitle ?? 'nil'}, categories: pyreonCats, series: ${a11ySeries}, format: ${yFormat ?? 'nil'}))`
   if (!navigating) return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent, describe)
   // The navigator's drag lives on a clear overlay over the strip (above the
   // preset strip), a sibling of the canvas: a touch that starts there is the
@@ -13138,6 +13222,7 @@ function swiftMarkErrorArgs(
   windowed: boolean,
   indent: number,
   lets: string[],
+  decimated = false,
 ): string[] | 'unsupported' {
   if (opts === undefined || opts.kind !== 'object') return []
   const low = opts.fields.find((f) => f.name === 'errorLow')?.value
@@ -13150,8 +13235,8 @@ function swiftMarkErrorArgs(
   const lowBody = swiftAccessorExpr(low, tag, `mark ${seriesIndex + 1} errorLow`, indent)
   const highBody = swiftAccessorExpr(high, tag, `mark ${seriesIndex + 1} errorHigh`, indent)
   if (lowBody === 'unsupported' || highBody === 'unsupported') return 'unsupported'
-  lets.push(`let pyreonErrLow${seriesIndex}: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${lowBody})`, 'Double', windowed)}`)
-  lets.push(`let pyreonErrHigh${seriesIndex}: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${highBody})`, 'Double', windowed)}`)
+  lets.push(`let pyreonErrLow${seriesIndex}: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${lowBody})`, 'Double', windowed, decimated)}`)
+  lets.push(`let pyreonErrHigh${seriesIndex}: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${highBody})`, 'Double', windowed, decimated)}`)
   return [`errLow: pyreonErrLow${seriesIndex}`, `errHigh: pyreonErrHigh${seriesIndex}`]
 }
 
@@ -13182,11 +13267,13 @@ function swiftBubbleRange(opts: ExprIR | undefined): [string, string] {
 
 let _hostStateDecls: string[] = []
 
-function swiftPlotRowMap(rows: string, body: string, type: string, zoomed: boolean): string {
-  if (!zoomed) return `${rows}.enumerated().map { (pyreonI, pyreonD) in ${body} }`
+function swiftPlotRowMap(rows: string, body: string, type: string, zoomed: boolean, decimated = false): string {
+  if (!zoomed && !decimated) return `${rows}.enumerated().map { (pyreonI, pyreonD) in ${body} }`
   // Bind the rebased GLOBAL index only when the accessor reads it (an unused let is a warning).
   if (!/\bpyreonI\b/.test(body)) return `${rows}.enumerated().map { (_, pyreonD) -> ${type} in ${body} }`
-  return `${rows}.enumerated().map { (pyreonJ, pyreonD) -> ${type} in let pyreonI = pyreonJ + pyreonRange.from; return ${body} }`
+  const local = decimated ? 'pyreonKeep[pyreonJ]' : 'pyreonJ'
+  const global = zoomed ? `${local} + pyreonRange.from` : local
+  return `${rows}.enumerated().map { (pyreonJ, pyreonD) -> ${type} in let pyreonI = ${global}; return ${body} }`
 }
 
 /** `<PlotChart data marks x? xValue? … dataZoom? showLegend? showTitle? onSelect? …>` */

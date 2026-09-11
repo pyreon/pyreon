@@ -1475,19 +1475,13 @@ const PLOT_UNLOWERED_REASON: Readonly<Record<string, string>> = {
   toolbox: 'it draws a DOWNLOAD button, and a phone has nowhere to download to',
   onSaveImage: 'it fires when that download button is pressed',
   accessibleTable: 'it renders a hidden DOM `<table>`; the native canvas carries `describeChart`\'s sentence instead',
-  locale: 'it formats through `Intl`, which the crossed engine cannot call — native charts format with the engine\'s own formatters',
   facet: 'it renders a GRID of sub-plots rather than a chart setting; compose the panels yourself',
   facetColumns: 'it sizes the `facet` grid, which is web-only',
   // ── Emit work, not an obstacle ─────────────────────────────────────────
   // Each of these names what is MISSING, because "not lowered" without that
   // reads as impossible when it is merely unbuilt.
-  emphasis: 'the engine already draws it from `ChartSpec.emphasis`, which crosses — what is missing is the host STATE saying which datum is emphasised',
-  selectedMode: 'it pins a selection, which needs that same host state (the gesture arcs\' `_hostStateDecls` splice is how it would be held)',
-  onSelectChange: 'it observes the pinned selection, so it waits on `selectedMode`',
-  onHighlight: 'it observes the highlighted datum, so it waits on the same emphasis state',
-  maxPoints:
-    'row thinning is not yet built in the emitter, and the host still needs to map a tap\'s index back through the kept rows — but the ARITHMETIC crosses now (`decimate-values.ts` is in ENGINE_FILES), so decimate before the chart: `const ys: number[] = rows.map(r => r.y * 1.0)` then `const keep = lttbIndices([], ys, 1000)`, and plot `keep.map(i => rows[i])`. The `* 1.0` is load-bearing: a TS `number` field with no fractional initializer lowers to Int while `lttbIndices` takes Double, and without it BOTH toolchains reject the emit with no warning. `lttbIndices` returns the kept INDICES, so a tap still names the row you decimated from',
-  seriesLabels: 'it renames the series in the hidden accessible table; the native canvas is named by `describeChart` over the series\' own labels, and feeding it the override is emit work',
+  emphasis: 'it is the HOVER band (`mouseover`/`mouseout`), and a touch target has no hover state to draw it for — the same wall `crosshair` hits. The engine\'s `ChartSpec.emphasis` does cross and IS fed on native, by `selectedMode`: a tap pins a datum and the pinned outline draws. What stays web-only is the hover half',
+  onHighlight: 'it reports the HOVERED datum and -1 when the pointer leaves, so a touch target has nothing to report — a tap is a pick, which is `onSelect`. Firing this on tap would report a hover that did not happen',
   updateAnimation: 'the update tween interpolates two draw lists through `cmd-tween.ts`, which is web-only; crossing it needs the host to hold the PREVIOUS list',
   updateDuration: 'it times that same web-only draw-list tween, so it waits on `updateAnimation`',
 }
@@ -1505,4 +1499,4 @@ export function plotUnloweredWarning(tag: string, present: readonly string[]): s
 // `updateAnimation`, `updateDuration`, `toolbox`, `onSaveImage`,
 // `accessibleTable`) are reported through `chartChromeUnlowered` for the plot
 // host too — listing them here as well would warn twice.
-export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'emphasis', 'maxPoints', 'crosshair', 'link', 'keyboard', 'updateAnimation', 'updateDuration', 'seriesLabels', 'toolbox', 'onSaveImage', 'accessibleTable', 'locale', 'facet', 'facetColumns']
+export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'onHighlight', 'emphasis', 'crosshair', 'link', 'keyboard', 'updateAnimation', 'updateDuration', 'toolbox', 'onSaveImage', 'accessibleTable', 'facet', 'facetColumns']
