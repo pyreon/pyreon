@@ -29,4 +29,6 @@ Configured and measured handles now resolve by ID with the web precedence rules,
 
 Literal source/target handle declarations now survive `createFlow` seeds and `addNode`/bulk-node lowering on Swift and Kotlin.
 
+A complete native edge-path dispatcher now combines handle/floating endpoint resolution with waypoint and built-in route selection, matching authoritative web geometry fixtures.
+
 Swift compiler validation now uses a disposable module cache, keeping hermetic and sandboxed runs independent of a writable user-level Clang cache.

@@ -23,3 +23,5 @@ data class PyreonFlowNodeMeasurement(
     val height: Double,
     val handles: List<PyreonFlowMeasuredHandle> = emptyList(),
 )
+
+data class PyreonFlowSmartPositions(val source: PyreonFlowPosition, val target: PyreonFlowPosition)

@@ -71,6 +71,33 @@ fun pyreonResolveHandleAnchor(nodeX: Double, nodeY: Double, nodeWidth: Double, n
     return null
 }
 
+fun pyreonSmartHandlePositions(source: PyreonFlowNodeBox, target: PyreonFlowNodeBox, sourceHandles: List<PyreonFlowHandleConfig> = emptyList(), targetHandles: List<PyreonFlowHandleConfig> = emptyList()): PyreonFlowSmartPositions {
+    val dx = target.x + target.width / 2 - (source.x + source.width / 2)
+    val dy = target.y + target.height / 2 - (source.y + source.height / 2)
+    val horizontal = kotlin.math.abs(dx) > kotlin.math.abs(dy)
+    val sourceSide = sourceHandles.firstOrNull()?.position ?: if (horizontal) if (dx > 0) PyreonFlowPosition.Right else PyreonFlowPosition.Left else if (dy > 0) PyreonFlowPosition.Bottom else PyreonFlowPosition.Top
+    val targetSide = targetHandles.firstOrNull()?.position ?: if (horizontal) if (dx > 0) PyreonFlowPosition.Left else PyreonFlowPosition.Right else if (dy > 0) PyreonFlowPosition.Top else PyreonFlowPosition.Bottom
+    return PyreonFlowSmartPositions(sourceSide, targetSide)
+}
+
+fun pyreonComputeEdgePath(type: String, source: PyreonFlowNodeBox, target: PyreonFlowNodeBox, sourceHandleId: String? = null, targetHandleId: String? = null, sourceHandles: List<PyreonFlowHandleConfig> = emptyList(), targetHandles: List<PyreonFlowHandleConfig> = emptyList(), sourceMeasurement: PyreonFlowNodeMeasurement? = null, targetMeasurement: PyreonFlowNodeMeasurement? = null, waypoints: List<PyreonFlowPathPoint> = emptyList(), borderRadius: Double = 5.0, offset: Double = 20.0, curvature: Double = 0.25): PyreonFlowPathResult {
+    val sa = pyreonResolveHandleAnchor(source.x, source.y, source.width, source.height, sourceHandleId, "source", sourceHandles, sourceMeasurement)
+    val ta = pyreonResolveHandleAnchor(target.x, target.y, target.width, target.height, targetHandleId, "target", targetHandles, targetMeasurement)
+    val anchors = if (sa == null && ta == null && waypoints.isEmpty()) pyreonFloatingEndpoints(source, target) else {
+        val smart = pyreonSmartHandlePositions(source, target, sourceHandles, targetHandles)
+        val sp = pyreonHandlePosition(smart.source, source.x, source.y, source.width, source.height)
+        val tp = pyreonHandlePosition(smart.target, target.x, target.y, target.width, target.height)
+        PyreonFlowFloatingEndpoints(sa ?: PyreonFlowHandleAnchor(sp.x, sp.y, smart.source), ta ?: PyreonFlowHandleAnchor(tp.x, tp.y, smart.target))
+    }
+    if (waypoints.isNotEmpty()) return pyreonWaypointPath(anchors.source.x, anchors.source.y, anchors.target.x, anchors.target.y, waypoints)
+    return when (type) {
+        "smoothstep" -> pyreonSmoothStepPath(anchors.source.x, anchors.source.y, anchors.source.position, anchors.target.x, anchors.target.y, anchors.target.position, borderRadius, offset)
+        "straight" -> pyreonStraightPath(anchors.source.x, anchors.source.y, anchors.target.x, anchors.target.y)
+        "step" -> pyreonStepPath(anchors.source.x, anchors.source.y, anchors.source.position, anchors.target.x, anchors.target.y, anchors.target.position, offset)
+        else -> pyreonBezierPath(anchors.source.x, anchors.source.y, anchors.source.position, anchors.target.x, anchors.target.y, anchors.target.position, curvature)
+    }
+}
+
 /** Parses `#rgb` / `#rrggbb` into a Compose `Color`, falling back to gray. */
 internal fun pyreonFlowEdgeColor(s: String): Color {
     val str = s.trim()

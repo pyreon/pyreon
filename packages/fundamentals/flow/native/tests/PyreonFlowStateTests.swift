@@ -353,6 +353,11 @@ struct PyreonFlowStateTests {
         check(pyreonResolveHandleAnchor(nodeX: 10, nodeY: 20, nodeWidth: 200, nodeHeight: 80, handleId: "real", type: "source", config: configHandles, measurement: measurement) == PyreonFlowHandleAnchor(x: 55, y: 81, position: .bottom), "named measured handle wins with its exact rendered center")
         check(pyreonResolveHandleAnchor(nodeX: 10, nodeY: 20, nodeWidth: 200, nodeHeight: 80, handleId: "cfg", type: "source", config: configHandles, measurement: measurement) == PyreonFlowHandleAnchor(x: 210, y: 60, position: .right), "named config handle uses effective dimensions")
         check(pyreonResolveHandleAnchor(nodeX: 10, nodeY: 20, nodeWidth: 200, nodeHeight: 80, handleId: "missing", type: "source", config: configHandles, measurement: measurement)?.x == 55, "unknown id falls back to the first measured handle")
+        let completeFloating = pyreonComputeEdgePath(type: "bezier", source: sourceBox, target: targetBox)
+        check(completeFloating.labelX == 175 && completeFloating.labelY == 70 && completeFloating.segments[0] == .move(115, 40), "complete dispatcher matches web floating endpoints and label")
+        check(abs(completeFloating.segments[1].c1y! - 73.54101966249684) < 0.000000001, "complete dispatcher matches web bezier control geometry")
+        let completeHandled = pyreonComputeEdgePath(type: "straight", source: sourceBox, target: targetBox, sourceHandleId: "out", targetHandleId: "in", sourceHandles: configHandles, targetHandles: [PyreonFlowHandleConfig(id: "in", type: "target", position: .left)])
+        check(completeHandled.segments == [.move(150, 20), .line(200, 120)], "complete dispatcher matches web configured-handle straight route")
 
         // 6. A stroke prebuilds its path/color/dash ONCE, at construction — the
         // draw closure must find nothing left to parse or allocate per edge.

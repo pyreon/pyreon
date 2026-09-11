@@ -14,6 +14,7 @@ import com.pyreon.runtime.PyreonFlowMeasuredHandle
 import com.pyreon.runtime.PyreonFlowNodeMeasurement
 import com.pyreon.runtime.PyreonFlowPosition
 import com.pyreon.runtime.pyreonBezierPath
+import com.pyreon.runtime.pyreonComputeEdgePath
 import com.pyreon.runtime.pyreonFloatingEndpoints
 import com.pyreon.runtime.pyreonHandlePosition
 import com.pyreon.runtime.pyreonNodeIntersection
@@ -95,6 +96,11 @@ fun main() {
     check(pyreonResolveHandleAnchor(10.0, 20.0, 200.0, 80.0, "real", "source", configHandles, measurement) == com.pyreon.runtime.PyreonFlowHandleAnchor(55.0, 81.0, PyreonFlowPosition.Bottom), "named measured handle wins with its exact rendered center")
     check(pyreonResolveHandleAnchor(10.0, 20.0, 200.0, 80.0, "cfg", "source", configHandles, measurement) == com.pyreon.runtime.PyreonFlowHandleAnchor(210.0, 60.0, PyreonFlowPosition.Right), "named config handle uses effective dimensions")
     check(pyreonResolveHandleAnchor(10.0, 20.0, 200.0, 80.0, "missing", "source", configHandles, measurement)?.x == 55.0, "unknown id falls back to the first measured handle")
+    val completeFloating = pyreonComputeEdgePath("bezier", sourceBox, targetBox)
+    check(completeFloating.labelX == 175.0 && completeFloating.labelY == 70.0 && completeFloating.segments[0] == PyreonFlowEdgeSegment.move(115.0, 40.0), "complete dispatcher matches web floating endpoints and label")
+    check(kotlin.math.abs(completeFloating.segments[1].c1y!! - 73.54101966249684) < 0.000000001, "complete dispatcher matches web bezier control geometry")
+    val completeHandled = pyreonComputeEdgePath("straight", sourceBox, targetBox, "out", "in", configHandles, listOf(PyreonFlowHandleConfig("in", "target", PyreonFlowPosition.Left)))
+    check(completeHandled.segments == listOf(PyreonFlowEdgeSegment.move(150.0, 20.0), PyreonFlowEdgeSegment.line(200.0, 120.0)), "complete dispatcher matches web configured-handle straight route")
 
     println("PyreonFlowEdgeGeometryTest: all checks passed")
 }

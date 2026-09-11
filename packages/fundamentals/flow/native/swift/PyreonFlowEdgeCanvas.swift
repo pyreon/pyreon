@@ -99,6 +99,38 @@ public func pyreonResolveHandleAnchor(nodeX: Double, nodeY: Double, nodeWidth: D
     return nil
 }
 
+public func pyreonSmartHandlePositions(source: PyreonFlowRect, target: PyreonFlowRect, sourceHandles: [PyreonFlowHandleConfig] = [], targetHandles: [PyreonFlowHandleConfig] = []) -> (source: PyreonFlowPosition, target: PyreonFlowPosition) {
+    let dx = target.x + target.width / 2 - (source.x + source.width / 2)
+    let dy = target.y + target.height / 2 - (source.y + source.height / 2)
+    let horizontal = abs(dx) > abs(dy)
+    let sourceSide = sourceHandles.first?.position ?? (horizontal ? (dx > 0 ? .right : .left) : (dy > 0 ? .bottom : .top))
+    let targetSide = targetHandles.first?.position ?? (horizontal ? (dx > 0 ? .left : .right) : (dy > 0 ? .top : .bottom))
+    return (sourceSide, targetSide)
+}
+
+public func pyreonComputeEdgePath(type: String, source: PyreonFlowRect, target: PyreonFlowRect, sourceHandleId: String? = nil, targetHandleId: String? = nil, sourceHandles: [PyreonFlowHandleConfig] = [], targetHandles: [PyreonFlowHandleConfig] = [], sourceMeasurement: PyreonFlowNodeMeasurement? = nil, targetMeasurement: PyreonFlowNodeMeasurement? = nil, waypoints: [PyreonXYPosition] = [], borderRadius: Double = 5, offset: Double = 20, curvature: Double = 0.25) -> PyreonFlowPathResult {
+    let sa = pyreonResolveHandleAnchor(nodeX: source.x, nodeY: source.y, nodeWidth: source.width, nodeHeight: source.height, handleId: sourceHandleId, type: "source", config: sourceHandles, measurement: sourceMeasurement)
+    let ta = pyreonResolveHandleAnchor(nodeX: target.x, nodeY: target.y, nodeWidth: target.width, nodeHeight: target.height, handleId: targetHandleId, type: "target", config: targetHandles, measurement: targetMeasurement)
+    let useFloating = sa == nil && ta == nil && waypoints.isEmpty
+    let sourceAnchor: PyreonFlowHandleAnchor, targetAnchor: PyreonFlowHandleAnchor
+    if useFloating {
+        (sourceAnchor, targetAnchor) = pyreonFloatingEndpoints(source: source, target: target)
+    } else {
+        let smart = pyreonSmartHandlePositions(source: source, target: target, sourceHandles: sourceHandles, targetHandles: targetHandles)
+        let sp = pyreonHandlePosition(smart.source, nodeX: source.x, nodeY: source.y, nodeWidth: source.width, nodeHeight: source.height)
+        let tp = pyreonHandlePosition(smart.target, nodeX: target.x, nodeY: target.y, nodeWidth: target.width, nodeHeight: target.height)
+        sourceAnchor = sa ?? PyreonFlowHandleAnchor(x: sp.x, y: sp.y, position: smart.source)
+        targetAnchor = ta ?? PyreonFlowHandleAnchor(x: tp.x, y: tp.y, position: smart.target)
+    }
+    if !waypoints.isEmpty { return pyreonWaypointPath(sourceX: sourceAnchor.x, sourceY: sourceAnchor.y, targetX: targetAnchor.x, targetY: targetAnchor.y, waypoints: waypoints) }
+    switch type {
+    case "smoothstep": return pyreonSmoothStepPath(sourceX: sourceAnchor.x, sourceY: sourceAnchor.y, sourcePosition: sourceAnchor.position, targetX: targetAnchor.x, targetY: targetAnchor.y, targetPosition: targetAnchor.position, borderRadius: borderRadius, offset: offset)
+    case "straight": return pyreonStraightPath(sourceX: sourceAnchor.x, sourceY: sourceAnchor.y, targetX: targetAnchor.x, targetY: targetAnchor.y)
+    case "step": return pyreonStepPath(sourceX: sourceAnchor.x, sourceY: sourceAnchor.y, sourcePosition: sourceAnchor.position, targetX: targetAnchor.x, targetY: targetAnchor.y, targetPosition: targetAnchor.position, offset: offset)
+    default: return pyreonBezierPath(sourceX: sourceAnchor.x, sourceY: sourceAnchor.y, sourcePosition: sourceAnchor.position, targetX: targetAnchor.x, targetY: targetAnchor.y, targetPosition: targetAnchor.position, curvature: curvature)
+    }
+}
+
 /// One drawing primitive in an edge's path — `move`/`line`/`cubic`/`quad`,
 /// the exact vocabulary `EdgeSegment` (`types.ts`) defines.
 public struct PyreonFlowEdgeSegment: Equatable {
