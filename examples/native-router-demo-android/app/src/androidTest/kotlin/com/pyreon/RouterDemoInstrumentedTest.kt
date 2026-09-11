@@ -1049,8 +1049,12 @@ class RouterDemoInstrumentedTest {
         composeRule.onNodeWithTag("media-page").assertIsDisplayed()
 
         composeRule.waitUntil(timeoutMillis = 30_000) {
-            composeRule.onAllNodesWithText("Video: playing")
-                .fetchSemanticsNodes().isNotEmpty()
+            composeRule.onAllNodesWithTag("video-status")
+                .fetchSemanticsNodes()
+                .any { node ->
+                    node.config.getOrNull(SemanticsProperties.Text)
+                        ?.any { text -> text.text == "Video: playing" } == true
+                }
         }
         composeRule.onNodeWithTag("video-status").assertTextEquals("Video: playing")
     }

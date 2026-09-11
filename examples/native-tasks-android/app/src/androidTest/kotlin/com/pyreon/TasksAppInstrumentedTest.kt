@@ -786,6 +786,32 @@ class TasksAppInstrumentedTest {
             .performClick()
         assertTagDisplayed("tasks-page", "after dash-back (/dashboard -> /tasks)")
 
+        // The GALLERY — the ten chart families that had never rendered on a
+        // device. Nine of nineteen lowered hosts were device-proven before
+        // this; the other ten rested on stub typechecking, which catches a type
+        // error and cannot catch a chart that paints nothing.
+        //
+        // `tasks-gallery` lives on the same LazyColumn-backed tasks page as
+        // `tasks-dashboard` above. It has no ancestor exposing Compose's Scroll
+        // semantics action, so `performScrollTo()` here fails before the click.
+        // Inside the gallery, scroll each chart into view: ten charts do not fit
+        // on a phone, and an off-screen assertion is not device render proof.
+        composeRule
+            .onNodeWithTag("tasks-gallery")
+            .performClick()
+        assertTagDisplayed("gal-page", "after tasks-gallery (/tasks -> /gallery)")
+        for (tag in listOf(
+            "gal-calendar", "gal-candlestick", "gal-gantt", "gal-graph", "gal-map",
+            "gal-parallel", "gal-polar", "gal-river", "gal-sunburst", "gal-tree",
+        )) {
+            composeRule.onNodeWithTag(tag).performScrollTo().assertIsDisplayed()
+        }
+        composeRule
+            .onNodeWithTag("gal-back")
+            .performScrollTo()
+            .performClick()
+        assertTagDisplayed("tasks-page", "after gal-back (/gallery -> /tasks)")
+
         // Phase 5b: the TOOLKIT screen — where eleven previously snippet-only
         // packages actually run. The web e2e asserts the same values in a
         // browser; this is the Android half. Until it existed the screen was
@@ -977,18 +1003,14 @@ class TasksAppInstrumentedTest {
         assertTagDisplayed("tasks-page", "after toolkit-back (/toolkit?filter=done -> /tasks)")
 
         // Phase 6: logout — flips the store flag back; lands on /login.
+        // Returning from the long toolkit page can preserve a scroll position
+        // that leaves the header action outside the viewport. Compose still
+        // finds that semantics node, but a bare click then targets off-screen
+        // coordinates and silently leaves the route unchanged.
         composeRule
             .onNodeWithTag("tasks-logout")
             .performClick()
 
-        composeRule.waitUntil(timeoutMillis = 15_000) {
-            composeRule
-                .onAllNodesWithTag("login-page")
-                .fetchSemanticsNodes()
-                .isNotEmpty()
-        }
-        composeRule
-            .onNodeWithTag("login-page")
-            .assertIsDisplayed()
+        assertTagDisplayed("login-page", "after tasks-logout (/tasks -> /login)")
     }
 }

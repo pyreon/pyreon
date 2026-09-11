@@ -73,7 +73,7 @@ import { Toaster, toast } from '@pyreon/toast'
 import { announce } from '@pyreon/a11y'
 import { useUrlState } from '@pyreon/url-state'
 import { signal, computed } from '@pyreon/reactivity'
-import { BoxplotChart, FunnelChart, GaugeChart, HeatmapChart, PieChart, PlotChart, RadarChart, SankeyChart, TreemapChart, bars, bollinger, line, sma } from '@pyreon/charts/plot'
+import { BoxplotChart, CalendarChart, CandlestickChart, FunnelChart, GanttChart, GaugeChart, GraphChart, HeatmapChart, MapChart, ParallelChart, PieChart, PlotChart, PolarChart, RadarChart, RiverChart, SankeyChart, SunburstChart, TreeChart, TreemapChart, bars, bollinger, line, sma } from '@pyreon/charts/plot'
 import type { BrushRange, RadarAxis, RadarHitIndex, SankeyHitIndex, SankeyLink, SankeyNode, TreeNode, ZoomWindow } from '@pyreon/charts/plot'
 import { useForm } from '@pyreon/form'
 import { useFetch, useCrashReporter } from '@pyreon/hooks'
@@ -251,6 +251,9 @@ function TasksPage() {
         </Button>
         <Button onPress={() => navigate('/dashboard')} data-testid="tasks-dashboard">
           Dashboard
+        </Button>
+        <Button onPress={() => navigate('/gallery')} data-testid="tasks-gallery">
+          Chart gallery
         </Button>
         <Button onPress={() => navigate('/toolkit')} data-testid="tasks-toolkit">
           Toolkit
@@ -541,6 +544,84 @@ interface Spread {
   samples: number[]
 }
 const SPREAD: Spread[] = [{ team: 'web', samples: [3, 4, 5, 9, 4] }, { team: 'native', samples: [1, 2, 2, 8, 3] }]
+
+// The GALLERY — the ten chart families the device gates had never rendered.
+//
+// A separate page rather than more rows on the dashboard, deliberately: the
+// dashboard's device assertions tap TUNED COORDINATES (the funnel's top slab,
+// the radar's first vertex, the boxplot's left third), and anything inserted
+// above them moves every one of those taps. A gallery cannot break them.
+//
+// What it proves is narrower than the dashboard and worth stating: that each
+// family LAYS OUT AND PAINTS on a real device from shared source. The
+// dashboard proves interaction; this proves the ten that had neither.
+const CAL_VALUES: Record<string, Double> = { '2024-01-03': 4, '2024-01-11': 9, '2024-02-02': 2 }
+interface Candle {
+  day: string
+  o: Double
+  h: Double
+  l: Double
+  c: Double
+}
+const CANDLES: Candle[] = [
+  { day: 'Mon', o: 10.5, h: 12.5, l: 9.5, c: 12.0 },
+  { day: 'Tue', o: 12.0, h: 13.5, l: 11.0, c: 11.5 },
+  { day: 'Wed', o: 11.5, h: 14.0, l: 11.0, c: 13.5 },
+]
+const GANTT_TASKS: GanttTask[] = [
+  { id: 'a', name: 'Design', start: '2024-01-01', end: '2024-01-10', progress: 0.6 },
+  { id: 'b', name: 'Build', start: '2024-01-08', end: '2024-01-24' },
+  { id: 'c', name: 'Ship', start: '2024-01-25', end: '2024-01-30' },
+]
+const GRAPH_NODES: GraphNode[] = [{ id: 'a', name: 'API' }, { id: 'b', name: 'Web' }, { id: 'c', name: 'DB' }]
+const GRAPH_LINKS: GraphLink[] = [{ source: 'a', target: 'b' }, { source: 'a', target: 'c' }]
+// A PRECOMPUTED `GeoShape[]` — the one map shape that lowers, because the
+// registry, raw GeoJSON and `geoShapes()` itself all stay web (project once on
+// the web or in a build step). Two boxes are enough to prove the host paints.
+const GEO: GeoShape[] = [
+  { name: 'West', rings: [[{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 6 }, { x: 0, y: 6 }]] },
+  { name: 'East', rings: [[{ x: 5, y: 0 }, { x: 9, y: 0 }, { x: 9, y: 6 }, { x: 5, y: 6 }]] },
+]
+const GEO_VALUES: Record<string, Double> = { West: 3, East: 8 }
+// `rows` is typed `(Double | string | null)[]` on the web for a CATEGORY axis;
+// a homogeneous `Double[][]` is the shape that lowers, and is what a numeric
+// parallel plot uses anyway.
+const PARALLEL_AXES: ParallelAxis[] = [{ name: 'cost' }, { name: 'speed' }, { name: 'risk' }]
+const PARALLEL_ROWS: Double[][] = [[1.5, 4.5, 2.5], [3.5, 2.5, 4.5], [2.5, 3.5, 1.5]]
+const POLAR_AXES: PolarAxes = { categories: ['N', 'E', 'S', 'W'] }
+const POLAR_SERIES: PolarSeries[] = [{ name: 'Wind', kind: 'bar', values: [3.5, 6.5, 2.5, 4.5] }]
+const RIVER_SERIES: RiverSeries[] = [
+  { name: 'core', values: [1.5, 4.5, 2.5, 6.5] },
+  { name: 'docs', values: [2.5, 1.5, 5.5, 3.5] },
+]
+const SUNBURST: TreeNode[] = [
+  { name: 'app', children: [{ name: 'ui', value: 30 }, { name: 'data', value: 20 }] },
+  { name: 'infra', value: 25 },
+]
+
+function GalleryPage() {
+  const navigate = useNavigate()
+  return (
+    <Scroll direction="vertical" data-testid="gal-scroll">
+      <Stack gap={3} padding={4} data-testid="gal-page">
+        <Text>Chart gallery</Text>
+        <CalendarChart start="2024-01-01" end="2024-02-11" values={CAL_VALUES} height={160} data-testid="gal-calendar" />
+        <CandlestickChart data={CANDLES} open={(d: Candle) => d.o} high={(d: Candle) => d.h} low={(d: Candle) => d.l} close={(d: Candle) => d.c} x={(d: Candle) => d.day} height={180} data-testid="gal-candlestick" />
+        <GanttChart tasks={GANTT_TASKS} height={160} data-testid="gal-gantt" />
+        <GraphChart nodes={GRAPH_NODES} links={GRAPH_LINKS} height={200} data-testid="gal-graph" />
+        <MapChart map={GEO} values={GEO_VALUES} height={180} data-testid="gal-map" />
+        <ParallelChart axes={PARALLEL_AXES} rows={PARALLEL_ROWS} height={180} data-testid="gal-parallel" />
+        <PolarChart axes={POLAR_AXES} series={POLAR_SERIES} height={200} data-testid="gal-polar" />
+        <RiverChart series={RIVER_SERIES} height={180} data-testid="gal-river" />
+        <SunburstChart data={SUNBURST} height={200} data-testid="gal-sunburst" />
+        <TreeChart data={SUNBURST} height={200} data-testid="gal-tree" />
+        <Button onPress={() => navigate('/tasks')} data-testid="gal-back">
+          Back to tasks
+        </Button>
+      </Stack>
+    </Scroll>
+  )
+}
 
 function DashboardPage() {
   const navigate = useNavigate()
@@ -1057,6 +1138,11 @@ export function TasksApp() {
       {
         path: '/dashboard',
         component: DashboardPage,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/gallery',
+        component: GalleryPage,
         beforeEnter: () => useApp().store.isAuthed(),
       },
       {

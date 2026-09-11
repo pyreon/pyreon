@@ -90,9 +90,9 @@ describe('withVerdictCache', () => {
     expect(calls).toBe(1)
   })
 
-  it('preserves the compiler ERROR TEXT across a hit', () => {
-    // A cached failure must stay diagnosable — an `ok:false` with the error
-    // dropped would turn a useful gate failure into a mystery.
+  it('does NOT cache compiler failures, which may be environmental', () => {
+    // A timeout, signal, permission denial, or resource-exhaustion error is not
+    // a stable source verdict. Re-run it instead of poisoning every later job.
     let calls = 0
     const run = (): { ok: boolean; error: string } => {
       calls++
@@ -100,9 +100,23 @@ describe('withVerdictCache', () => {
     }
     withVerdictCache('kotlin', 'v', 's', 'src', run)
     const second = withVerdictCache('kotlin', 'v', 's', 'src', run)
-    expect(calls).toBe(1)
+    expect(calls).toBe(2)
     expect(second.ok).toBe(false)
     expect(second.error).toBe("error: cannot find 'Switch' in scope")
+    expect(readdirSync(dir).filter((f) => f.endsWith('.json'))).toEqual([])
+  })
+
+  it('evicts an old cached failure and recomputes it', () => {
+    const key = cacheKey('kotlin', 'v', 's', 'src')
+    writeFileSync(join(dir, `${key}.json`), '{"ok":false,"error":"Operation not permitted"}', 'utf8')
+    let calls = 0
+    const result = withVerdictCache('kotlin', 'v', 's', 'src', () => {
+      calls++
+      return { ok: true }
+    })
+    expect(result.ok).toBe(true)
+    expect(calls).toBe(1)
+    expect(JSON.parse(readFileSync(join(dir, `${key}.json`), 'utf8'))).toEqual({ ok: true })
   })
 
   it('re-computes after the stub content changes', () => {
