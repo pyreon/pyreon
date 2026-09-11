@@ -508,6 +508,17 @@ public final class PyreonFlowState<T> {
         viewport.x = -position.x * viewport.zoom
         viewport.y = -position.y * viewport.zoom
     }
+    public func setViewport(x: Double? = nil, y: Double? = nil, zoom: Double? = nil) {
+        viewport = PyreonFlowViewport(
+            x: x ?? viewport.x,
+            y: y ?? viewport.y,
+            zoom: zoom ?? viewport.zoom
+        )
+    }
+    public func setCenter(_ x: Double, _ y: Double, zoom: Double? = nil) {
+        let z = min(max(zoom ?? viewport.zoom, minZoom), maxZoom)
+        setViewport(x: -x * z + containerSize.width / 2, y: -y * z + containerSize.height / 2, zoom: z)
+    }
     public func screenToFlowPosition(_ position: PyreonXYPosition) -> PyreonXYPosition {
         PyreonXYPosition(x: (position.x - viewport.x) / viewport.zoom, y: (position.y - viewport.y) / viewport.zoom)
     }

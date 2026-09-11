@@ -334,6 +334,19 @@ class PyreonFlowState<T>(
     fun panTo(position: PyreonXYPosition) {
         _viewport = _viewport.copy(x = -position.x * _viewport.zoom, y = -position.y * _viewport.zoom)
     }
+    @JvmOverloads
+    fun setViewport(x: Double? = null, y: Double? = null, zoom: Double? = null) {
+        _viewport = PyreonFlowViewport(
+            x = x ?: _viewport.x,
+            y = y ?: _viewport.y,
+            zoom = zoom ?: _viewport.zoom,
+        )
+    }
+    @JvmOverloads
+    fun setCenter(x: Double, y: Double, zoom: Double? = null) {
+        val z = (zoom ?: _viewport.zoom).coerceIn(minZoom, maxZoom)
+        setViewport(x = -x * z + containerSize.width / 2, y = -y * z + containerSize.height / 2, zoom = z)
+    }
     fun screenToFlowPosition(position: PyreonXYPosition): PyreonXYPosition = PyreonXYPosition(
         x = (position.x - _viewport.x) / _viewport.zoom,
         y = (position.y - _viewport.y) / _viewport.zoom,

@@ -157,6 +157,11 @@ struct PyreonFlowStateTests {
         check(abs(h.viewport.zoom - 1.0) < 0.0001, "zoomOut divides by 1.2 (inverse of zoomIn)")
         h.panTo(PyreonXYPosition(x: 50, y: 25))
         check(h.viewport.x == -50 && h.viewport.y == -25, "panTo at zoom 1 sets origin to -position")
+        h.setViewport(x: 12, zoom: 8)
+        check(h.viewport == PyreonFlowViewport(x: 12, y: -25, zoom: 8), "setViewport merges partial fields without clamping")
+        h.containerSize = PyreonFlowContainerSize(width: 200, height: 100)
+        h.setCenter(10, 20, zoom: 2)
+        check(h.viewport == PyreonFlowViewport(x: 80, y: 10, zoom: 2), "setCenter centers with a clamped optional zoom")
 
         // 8. fitView — no-op with no measured container; frames the graph once sized.
         let k = seedFlow()

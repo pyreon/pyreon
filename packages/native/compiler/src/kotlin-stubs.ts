@@ -1645,6 +1645,8 @@ class PyreonFlowState<T>(
   fun zoomIn() {}
   fun zoomOut() {}
   fun panTo(position: PyreonXYPosition) {}
+  fun setViewport(x: Double? = null, y: Double? = null, zoom: Double? = null) {}
+  fun setCenter(x: Double, y: Double, zoom: Double? = null) {}
   fun screenToFlowPosition(position: PyreonXYPosition): PyreonXYPosition = position
   fun flowToScreenPosition(position: PyreonXYPosition): PyreonXYPosition = position
   fun isNodeVisible(id: String): Boolean = false

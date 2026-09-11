@@ -140,6 +140,11 @@ fun main() {
     check(abs(h.viewport.zoom - 1.0) < 0.0001, "zoomOut divides by 1.2 (inverse of zoomIn)")
     h.panTo(PyreonXYPosition(50.0, 25.0))
     check(h.viewport.x == -50.0 && h.viewport.y == -25.0, "panTo at zoom 1 sets origin to -position")
+    h.setViewport(x = 12.0, zoom = 8.0)
+    check(h.viewport == PyreonFlowViewport(12.0, -25.0, 8.0), "setViewport merges partial fields without clamping")
+    h.containerSize = com.pyreon.runtime.PyreonFlowContainerSize(200.0, 100.0)
+    h.setCenter(10.0, 20.0, zoom = 2.0)
+    check(h.viewport == PyreonFlowViewport(80.0, 10.0, 2.0), "setCenter centers with a clamped optional zoom")
 
     // 8. fitView.
     val k = seedFlow()

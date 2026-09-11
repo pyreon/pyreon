@@ -411,6 +411,22 @@ export function C() {
         expect(validateKotlin(result.code).ok).toBe(true)
       }
     })
+    it(`[${target}] partial viewport writes and centering lower without losing omitted fields`, () => {
+      const src = base('', `<Button onPress={() => { flow.setViewport({ x: 10, zoom: 2 }); flow.setCenter(30, 40, { zoom: 3 }) }}>View</Button>`)
+      const result = transform(src, { target })
+      const w = (result.warnings ?? []).join('\n')
+      expect(w).not.toContain('`setViewport` is NOT ported')
+      expect(w).not.toContain('`setCenter` is NOT ported')
+      if (target === 'swift') {
+        expect(result.code).toContain('flow.setViewport(x: 10, zoom: 2)')
+        expect(result.code).toContain('flow.setCenter(30, 40, zoom: 3)')
+        expect(validateSwiftWithStubs(result.code).ok).toBe(true)
+      } else {
+        expect(result.code).toContain('flow.setViewport(x = 10.0, zoom = 2.0)')
+        expect(result.code).toContain('flow.setCenter(30.0, 40.0, zoom = 3.0)')
+        expect(validateKotlin(result.code).ok).toBe(true)
+      }
+    })
   }
 
   describe('Swift argument labels + stub fidelity', () => {

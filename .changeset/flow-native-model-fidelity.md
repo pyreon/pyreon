@@ -11,4 +11,6 @@ The native state also gains bulk node/edge removal and selection, plain state re
 
 Edge waypoints now survive declaration and `addEdge` lowering, and native state supports waypoint insertion, update, removal, and edge reconnection with web-compatible index behavior.
 
+Partial viewport updates and center-on-coordinate operations now lower to equivalent native state operations.
+
 Swift compiler validation now uses a disposable module cache, keeping hermetic and sandboxed runs independent of a writable user-level Clang cache.

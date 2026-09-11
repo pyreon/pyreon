@@ -4164,6 +4164,13 @@ function swiftFlowReconnectLiteral(arg: ExprIR): string | null {
   return arg.fields.map((field) => `, ${field.name}: ${emitSwiftExpr(field.value, 0)}`).join('')
 }
 
+function swiftFlowViewportLiteral(arg: ExprIR): string | null {
+  if (arg.kind !== 'object') return null
+  const allowed = new Set(['x', 'y', 'zoom'])
+  if (arg.fields.some((field) => !allowed.has(field.name))) return null
+  return arg.fields.map((field) => `${field.name}: ${emitSwiftExpr(field.value, 0)}`).join(', ')
+}
+
 /** Names every literal field the native node/edge type does not carry. */
 function warnDroppedFlowFields(site: string, kind: 'node' | 'edge', lit: ExprIR): void {
   if (lit.kind !== 'object') return
@@ -5688,6 +5695,14 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         if (member === 'reconnectEdge' && e.args.length === 2) {
           const args = swiftFlowReconnectLiteral(e.args[1]!)
           if (args !== null) return `${swiftIdent(flowName)}.reconnectEdge(${emitSwiftExpr(e.args[0]!, indent)}${args})`
+        }
+        if (member === 'setViewport' && e.args.length >= 1) {
+          const args = swiftFlowViewportLiteral(e.args[0]!)
+          if (args !== null) return `${swiftIdent(flowName)}.setViewport(${args})`
+        }
+        if (member === 'setCenter' && e.args.length >= 2) {
+          const options = e.args[2] ? swiftFlowViewportLiteral(e.args[2]!) : ''
+          if (options !== null) return `${swiftIdent(flowName)}.setCenter(${emitSwiftExpr(e.args[0]!, indent)}, ${emitSwiftExpr(e.args[1]!, indent)}${options ? `, ${options}` : ''})`
         }
       }
       // A signal WRITE on a flow-state property (`flow.nodes.set(...)`): the

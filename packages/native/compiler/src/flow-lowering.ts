@@ -19,7 +19,7 @@ export const LOWERED_FLOW_METHODS: ReadonlySet<string> = new Set([
   'getEdge', 'getEdges', 'addEdge', 'removeEdge', 'removeEdges',
   'isNodeSelected', 'isEdgeSelected', 'selectedNodes', 'selectedEdges',
   'selectNode', 'selectNodes', 'deselectNode', 'selectEdge', 'clearSelection', 'selectAll', 'deleteSelected',
-  'zoomTo', 'zoomIn', 'zoomOut', 'panTo', 'fitView', 'getViewport',
+  'zoomTo', 'zoomIn', 'zoomOut', 'panTo', 'fitView', 'getViewport', 'setViewport', 'setCenter',
   'screenToFlowPosition', 'flowToScreenPosition', 'isNodeVisible', 'focusNode',
   'moveSelectedNodes',
   'addEdgeWaypoint', 'removeEdgeWaypoint', 'updateEdgeWaypoint', 'reconnectEdge',

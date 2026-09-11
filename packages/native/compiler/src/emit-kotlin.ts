@@ -3331,6 +3331,13 @@ function kotlinFlowReconnectLiteral(arg: ExprIR): string | null {
   return arg.fields.map((field) => `, ${field.name} = ${emitKotlinExpr(field.value, 0)}`).join('')
 }
 
+function kotlinFlowViewportLiteral(arg: ExprIR): string | null {
+  if (arg.kind !== 'object') return null
+  const allowed = new Set(['x', 'y', 'zoom'])
+  if (arg.fields.some((field) => !allowed.has(field.name))) return null
+  return arg.fields.map((field) => `${field.name} = ${ktChartDouble(emitKotlinExpr(field.value, 0))}`).join(', ')
+}
+
 /** Names every literal field the native node/edge type does not carry. */
 function warnDroppedFlowFieldsKt(site: string, kind: 'node' | 'edge', lit: ExprIR): void {
   if (lit.kind !== 'object') return
@@ -4709,6 +4716,14 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (member === 'reconnectEdge' && e.args.length === 2) {
           const args = kotlinFlowReconnectLiteral(e.args[1]!)
           if (args !== null) return `${kotlinIdent(flowName)}.reconnectEdge(${emitKotlinExpr(e.args[0]!, indent)}${args})`
+        }
+        if (member === 'setViewport' && e.args.length >= 1) {
+          const args = kotlinFlowViewportLiteral(e.args[0]!)
+          if (args !== null) return `${kotlinIdent(flowName)}.setViewport(${args})`
+        }
+        if (member === 'setCenter' && e.args.length >= 2) {
+          const options = e.args[2] ? kotlinFlowViewportLiteral(e.args[2]!) : ''
+          if (options !== null) return `${kotlinIdent(flowName)}.setCenter(${ktChartDouble(emitKotlinExpr(e.args[0]!, indent))}, ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))}${options ? `, ${options}` : ''})`
         }
       }
       // A signal WRITE on a flow-state property — read-only natively; name it.
