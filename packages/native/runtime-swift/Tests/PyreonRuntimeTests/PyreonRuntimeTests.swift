@@ -10,6 +10,13 @@ import XCTest
 @testable import PyreonRuntime
 
 final class PyreonRuntimeTests: XCTestCase {
+    func testChartLocaleFormattersMatchWebDefaults() throws {
+        XCTAssertEqual(pyreonLocaleNumberFormatter("en-US")(1234.5), "1,234.5")
+        XCTAssertEqual(pyreonLocaleDateFormatter("en-US")(1_704_153_600_000), "Jan 2")
+        XCTAssertEqual(pyreonLocaleNumberFormatter("not_a_locale")(.infinity), "")
+        XCTAssertEqual(pyreonLocaleDateFormatter("not_a_locale")(.nan), "")
+    }
+
     /// The `PyreonTokens` namespace is reachable + carries the
     /// placeholder version constant. PR 7a replaces the version
     /// with real token tables.

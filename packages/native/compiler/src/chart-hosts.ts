@@ -1475,7 +1475,6 @@ const PLOT_UNLOWERED_REASON: Readonly<Record<string, string>> = {
   toolbox: 'it draws a DOWNLOAD button, and a phone has nowhere to download to',
   onSaveImage: 'it fires when that download button is pressed',
   accessibleTable: 'it renders a hidden DOM `<table>`; the native canvas carries `describeChart`\'s sentence instead',
-  locale: 'it formats through `Intl`, which the crossed engine cannot call — native charts format with the engine\'s own formatters',
   facet: 'it renders a GRID of sub-plots rather than a chart setting; compose the panels yourself',
   facetColumns: 'it sizes the `facet` grid, which is web-only',
   // ── Emit work, not an obstacle ─────────────────────────────────────────
@@ -1500,4 +1499,4 @@ export function plotUnloweredWarning(tag: string, present: readonly string[]): s
 // `updateAnimation`, `updateDuration`, `toolbox`, `onSaveImage`,
 // `accessibleTable`) are reported through `chartChromeUnlowered` for the plot
 // host too — listing them here as well would warn twice.
-export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'onHighlight', 'emphasis', 'crosshair', 'link', 'keyboard', 'updateAnimation', 'updateDuration', 'toolbox', 'onSaveImage', 'accessibleTable', 'locale', 'facet', 'facetColumns']
+export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'onHighlight', 'emphasis', 'crosshair', 'link', 'keyboard', 'updateAnimation', 'updateDuration', 'toolbox', 'onSaveImage', 'accessibleTable', 'facet', 'facetColumns']

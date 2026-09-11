@@ -12818,6 +12818,8 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     return v === undefined ? String(fallback) : typeof raw === 'boolean' ? String(raw) : emitSwiftExpr(v, indent)
   }
   const below = `${belowNav}${navigating ? ' - pyreonNavigator.height' : ''}`
+  const locale = chartAttrExpr(e, 'locale')
+  if (locale !== undefined) lets.push(`let pyreonLocale: String = ${emitSwiftExpr(locale, indent)}`)
   const specArgs = [
     `width: ${chrome.width(W)}`,
     `height: ${chrome.height(H)}${below}`,
@@ -12836,9 +12838,9 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   // so in a warning.
   const yDom = chartAttrExpr(e, 'yDomain')
   if (yDom !== undefined) specArgs.push(`yDomain: ${emitSwiftExpr(yDom, indent)}`)
-  const yFormat = swiftChartFormatter(e, 'format', indent)
+  const yFormat = swiftChartFormatter(e, 'format', indent) ?? (locale === undefined ? undefined : 'pyreonLocaleNumberFormatter(pyreonLocale)')
   if (yFormat !== undefined) specArgs.push(`yFormat: ${yFormat}`)
-  const xFormat = swiftChartFormatter(e, 'xFormat', indent)
+  const xFormat = swiftChartFormatter(e, 'xFormat', indent) ?? (locale !== undefined && readStaticAttr(e, 'xTime') === true ? 'pyreonLocaleDateFormatter(pyreonLocale)' : undefined)
   if (xFormat !== undefined) specArgs.push(`xFormat: ${xFormat}`)
   const y2 = chartAttrExpr(e, 'y2Domain')
   if (y2 !== undefined) specArgs.push(`y2Domain: ${emitSwiftExpr(y2, indent)}`)

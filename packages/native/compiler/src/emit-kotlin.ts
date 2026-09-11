@@ -10710,6 +10710,8 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     return v === undefined ? String(fallback) : typeof raw === 'boolean' ? String(raw) : emitKotlinExpr(v, indent)
   }
   const below = `${belowNav}${navigating ? ' - pyreonNavigator.height' : ''}`
+  const locale = chartAttrExprKotlin(e, 'locale')
+  if (locale !== undefined) lets.push(`val pyreonLocale: String = ${emitKotlinExpr(locale, indent)}`)
   const specArgs = [
     `width = ${chrome.width(W)}`,
     `height = ${chrome.height(H)}${below}`,
@@ -10723,9 +10725,9 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   // Mirror of the Swift emitter — ChartSpec field 9, before `yFormat`.
   const yDom = chartAttrExprKotlin(e, 'yDomain')
   if (yDom !== undefined) specArgs.push(`yDomain = ${emitKotlinExpr(yDom, indent)}`)
-  const yFormat = kotlinChartFormatter(e, 'format', indent)
+  const yFormat = kotlinChartFormatter(e, 'format', indent) ?? (locale === undefined ? undefined : 'pyreonLocaleNumberFormatter(pyreonLocale)')
   if (yFormat !== undefined) specArgs.push(`yFormat = ${yFormat}`)
-  const xFormat = kotlinChartFormatter(e, 'xFormat', indent)
+  const xFormat = kotlinChartFormatter(e, 'xFormat', indent) ?? (locale !== undefined && readStaticAttrKotlin(e, 'xTime') === true ? 'pyreonLocaleDateFormatter(pyreonLocale)' : undefined)
   if (xFormat !== undefined) specArgs.push(`xFormat = ${xFormat}`)
   const y2 = chartAttrExprKotlin(e, 'y2Domain')
   if (y2 !== undefined) specArgs.push(`y2Domain = ${emitKotlinExpr(y2, indent)}`)
