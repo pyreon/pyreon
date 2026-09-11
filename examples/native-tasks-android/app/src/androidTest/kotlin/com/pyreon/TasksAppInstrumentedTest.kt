@@ -791,12 +791,13 @@ class TasksAppInstrumentedTest {
         // this; the other ten rested on stub typechecking, which catches a type
         // error and cannot catch a chart that paints nothing.
         //
-        // `performScrollTo` before each: ten charts do not fit on a phone, and a
-        // Compose assertion on an off-screen node is not the same question as
-        // one on a laid-out node.
+        // `tasks-gallery` lives on the same LazyColumn-backed tasks page as
+        // `tasks-dashboard` above. It has no ancestor exposing Compose's Scroll
+        // semantics action, so `performScrollTo()` here fails before the click.
+        // Inside the gallery, scroll each chart into view: ten charts do not fit
+        // on a phone, and an off-screen assertion is not device render proof.
         composeRule
             .onNodeWithTag("tasks-gallery")
-            .performScrollTo()
             .performClick()
         assertTagDisplayed("gal-page", "after tasks-gallery (/tasks -> /gallery)")
         for (tag in listOf(
