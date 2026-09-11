@@ -18,6 +18,11 @@ public struct PyreonFlowMiniMapStyle: Equatable {
     }
 }
 
+private struct PyreonFlowConnectionDraft: Equatable {
+    var source: PyreonFlowInteractiveHandle
+    var current: PyreonXYPosition
+}
+
 @available(iOS 17.0, macOS 14.0, *)
 public func pyreonFlowMiniMapLayout<T>(state: PyreonFlowState<T>, width: Double = 200, height: Double = 150, padding: Double = 40) -> PyreonFlowMiniMapLayout {
     let visible = state.nodes.filter { $0.hidden != true }
@@ -250,6 +255,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     @State private var panStart: PyreonFlowViewport?
     @State private var zoomStart: Double?
     @State private var interactionsLocked = false
+    @State private var connectionDraft: PyreonFlowConnectionDraft?
 
     public init(
         state: PyreonFlowState<T>,
@@ -284,7 +290,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                 }
 
                 PyreonFlowEdgeCanvas(
-                    edges: pyreonFlowEdgeStrokes(state: state, color: edgeColor, width: edgeWidth),
+                    edges: edgeStrokes,
                     viewport: state.viewport)
                     .equatable()
                     .allowsHitTesting(false)
@@ -308,6 +314,16 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                             .accessibilityAddTraits(state.isNodeSelected(node.id) ? [.isSelected] : [])
                             .accessibilityHidden(node.focusable == false)
                     }
+                    ForEach(Array(interactiveHandles.enumerated()), id: \.offset) { _, handle in
+                        Circle()
+                            .fill(handle.type == "source" ? Color.blue : Color.green)
+                            .overlay(Circle().stroke(Color.white, lineWidth: 1))
+                            .frame(width: 12 / state.viewport.zoom, height: 12 / state.viewport.zoom)
+                            .position(x: handle.x, y: handle.y)
+                            .contentShape(Circle())
+                            .gesture(handle.type == "source" ? connectionGesture(handle) : nil)
+                            .accessibilityLabel(Text("\(handle.type) handle \(handle.handleId ?? "default")"))
+                    }
                 }
                 .scaleEffect(state.viewport.zoom, anchor: .topLeading)
                 .offset(x: state.viewport.x, y: state.viewport.y)
@@ -322,9 +338,47 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                 }
             }
             .clipped()
+            .coordinateSpace(name: "PyreonFlowCanvas")
             .onAppear { updateContainer(proxy.size) }
             .onChange(of: proxy.size) { _, size in updateContainer(size) }
         }
+    }
+
+    private var interactiveHandles: [PyreonFlowInteractiveHandle] {
+        state.nodes.flatMap { node -> [PyreonFlowInteractiveHandle] in
+            guard node.hidden != true, node.connectable != false else { return [] }
+            let p = state.getAbsolutePosition(node.id)
+            let box = PyreonFlowRect(x: p.x, y: p.y, width: node.width ?? pyreonFlowDefaultNodeWidth, height: node.height ?? pyreonFlowDefaultNodeHeight)
+            return pyreonFlowInteractiveHandles(nodeId: node.id, node: box, handles: node.sourceHandles + node.targetHandles)
+        }
+    }
+
+    private var edgeStrokes: [PyreonFlowEdgeStroke] {
+        var strokes = pyreonFlowEdgeStrokes(state: state, color: edgeColor, width: edgeWidth)
+        if let draft = connectionDraft {
+            strokes.append(PyreonFlowEdgeStroke(id: "__connection-preview", segments: [
+                PyreonFlowEdgeSegment.move(draft.source.x, draft.source.y),
+                PyreonFlowEdgeSegment.line(draft.current.x, draft.current.y),
+            ], color: edgeColor, width: edgeWidth))
+        }
+        return strokes
+    }
+
+    private func graphPoint(_ point: CGPoint) -> PyreonXYPosition {
+        PyreonXYPosition(x: (point.x - state.viewport.x) / state.viewport.zoom, y: (point.y - state.viewport.y) / state.viewport.zoom)
+    }
+
+    private func connectionGesture(_ source: PyreonFlowInteractiveHandle) -> AnyGesture<DragGesture.Value>? {
+        guard !interactionsLocked else { return nil }
+        return AnyGesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("PyreonFlowCanvas"))
+            .onChanged { value in connectionDraft = PyreonFlowConnectionDraft(source: source, current: graphPoint(value.location)) }
+            .onEnded { value in
+                let point = graphPoint(value.location)
+                if let target = pyreonNearestFlowHandle(interactiveHandles, point: point, type: "target", radius: 20 / state.viewport.zoom) {
+                    _ = state.connect(PyreonFlowConnection(source: source.nodeId, target: target.nodeId, sourceHandle: source.handleId, targetHandle: target.handleId))
+                }
+                connectionDraft = nil
+            })
     }
 
     private func updateContainer(_ size: CGSize) {

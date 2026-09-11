@@ -59,6 +59,11 @@ data class PyreonFlowMiniMapStyle(
     val zoomable: Boolean = true,
 )
 
+private data class PyreonFlowConnectionDraft(
+    val source: PyreonFlowInteractiveHandle,
+    val current: PyreonFlowPathPoint,
+)
+
 @Composable
 fun <T> PyreonFlowMiniMap(
     state: PyreonFlowState<T>,
@@ -173,6 +178,27 @@ fun <T> PyreonFlowView(
 ) {
     val density = LocalDensity.current
     var interactionsLocked by remember { mutableStateOf(false) }
+    var connectionDraft by remember { mutableStateOf<PyreonFlowConnectionDraft?>(null) }
+    val interactiveHandles = state.nodes.flatMap { node ->
+        if (node.hidden == true || node.connectable == false) emptyList() else {
+            val absolute = state.getAbsolutePosition(node.id)
+            pyreonFlowInteractiveHandles(
+                node.id,
+                PyreonFlowNodeBox(absolute.x, absolute.y, node.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH, node.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT),
+                node.sourceHandles + node.targetHandles,
+            )
+        }
+    }
+    val edgeStrokes = pyreonFlowEdgeStrokes(state, edgeColor, edgeWidth).toMutableList().also { strokes ->
+        connectionDraft?.let { draft ->
+            strokes += PyreonFlowEdgeStroke(
+                "__connection-preview",
+                listOf(PyreonFlowEdgeSegment.move(draft.source.x, draft.source.y), PyreonFlowEdgeSegment.line(draft.current.x, draft.current.y)),
+                edgeColor,
+                edgeWidth,
+            )
+        }
+    }
     Box(
         modifier = modifier.onSizeChanged { size ->
             state.containerSize = PyreonFlowContainerSize(size.width.toDouble(), size.height.toDouble())
@@ -196,7 +222,7 @@ fun <T> PyreonFlowView(
         }
 
         PyreonFlowEdgeCanvas(
-            edges = pyreonFlowEdgeStrokes(state, edgeColor, edgeWidth),
+            edges = edgeStrokes,
             viewport = state.viewport,
             modifier = Modifier.matchParentSize(),
         )
@@ -244,6 +270,34 @@ fun <T> PyreonFlowView(
                     }
                 }
                 Box(nodeModifier) { nodeContent(node) }
+            }
+            for (handle in interactiveHandles) {
+                val diameter = 12.0 / state.viewport.zoom
+                Canvas(
+                    Modifier
+                        .offset { IntOffset((handle.x - diameter / 2).roundToInt(), (handle.y - diameter / 2).roundToInt()) }
+                        .requiredSize(with(density) { diameter.toFloat().toDp() })
+                        .semantics { contentDescription = "${handle.type} handle ${handle.handleId ?: "default"}" }
+                        .pointerInput(handle, interactionsLocked, state.viewport.zoom) {
+                            if (interactionsLocked || handle.type != "source") return@pointerInput
+                            var current = PyreonFlowPathPoint(handle.x, handle.y)
+                            detectDragGestures(
+                                onDragStart = { connectionDraft = PyreonFlowConnectionDraft(handle, current) },
+                                onDragCancel = { connectionDraft = null },
+                                onDragEnd = {
+                                    val target = pyreonNearestFlowHandle(interactiveHandles, current, "target", 20.0 / state.viewport.zoom)
+                                    if (target != null) state.connect(PyreonFlowConnection(handle.nodeId, target.nodeId, handle.handleId, target.handleId))
+                                    connectionDraft = null
+                                },
+                            ) { change, amount ->
+                                change.consume()
+                                current = PyreonFlowPathPoint(current.x + amount.x, current.y + amount.y)
+                                connectionDraft = PyreonFlowConnectionDraft(handle, current)
+                            }
+                        },
+                ) {
+                    drawCircle(if (handle.type == "source") androidx.compose.ui.graphics.Color.Blue else androidx.compose.ui.graphics.Color.Green)
+                }
             }
         }
 
