@@ -1,5 +1,37 @@
 import SwiftUI
 
+public struct PyreonFlowMiniMapNode: Equatable {
+    public var id: String; public var x: Double; public var y: Double; public var width: Double; public var height: Double
+}
+public struct PyreonFlowMiniMapLayout: Equatable {
+    public var nodes: [PyreonFlowMiniMapNode]
+    public var viewport: PyreonFlowRect
+    public var scale: Double
+    public var minX: Double
+    public var minY: Double
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+public func pyreonFlowMiniMapLayout<T>(state: PyreonFlowState<T>, width: Double = 200, height: Double = 150, padding: Double = 40) -> PyreonFlowMiniMapLayout {
+    let visible = state.nodes.filter { $0.hidden != true }
+    guard !visible.isEmpty else { return PyreonFlowMiniMapLayout(nodes: [], viewport: PyreonFlowRect(x: 0, y: 0, width: 0, height: 0), scale: 1, minX: 0, minY: 0) }
+    var minX = Double.infinity, minY = Double.infinity, maxX = -Double.infinity, maxY = -Double.infinity
+    var absolute: [(PyreonFlowNode<T>, PyreonXYPosition)] = []
+    for node in visible {
+        let p = state.getAbsolutePosition(node.id); absolute.append((node, p))
+        minX = min(minX, p.x); minY = min(minY, p.y)
+        maxX = max(maxX, p.x + (node.width ?? pyreonFlowDefaultNodeWidth))
+        maxY = max(maxY, p.y + (node.height ?? pyreonFlowDefaultNodeHeight))
+    }
+    let scale = min(width / max(1, maxX - minX + padding * 2), height / max(1, maxY - minY + padding * 2))
+    let nodes = absolute.map { node, p in PyreonFlowMiniMapNode(id: node.id, x: (p.x - minX + padding) * scale, y: (p.y - minY + padding) * scale, width: (node.width ?? pyreonFlowDefaultNodeWidth) * scale, height: (node.height ?? pyreonFlowDefaultNodeHeight) * scale) }
+    let vp = state.viewport, cs = state.containerSize
+    return PyreonFlowMiniMapLayout(
+        nodes: nodes,
+        viewport: PyreonFlowRect(x: (-vp.x / vp.zoom - minX + padding) * scale, y: (-vp.y / vp.zoom - minY + padding) * scale, width: (cs.width / vp.zoom) * scale, height: (cs.height / vp.zoom) * scale),
+        scale: scale, minX: minX, minY: minY)
+}
+
 public enum PyreonFlowBackgroundVariant: Equatable { case dots, lines, cross }
 
 public struct PyreonFlowBackgroundStyle: Equatable {

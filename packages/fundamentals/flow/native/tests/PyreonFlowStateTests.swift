@@ -47,6 +47,10 @@ struct PyreonFlowStateTests {
         f.addEdge(PyreonFlowEdge(id: "dangling", source: "missing", target: "1"))
         check(!pyreonFlowEdgeStrokes(state: f).contains { $0.id == "dangling" }, "native host omits edges with missing endpoints")
         f.removeEdge("dangling")
+        f.containerSize = PyreonFlowContainerSize(width: 400, height: 200)
+        let mini = pyreonFlowMiniMapLayout(state: f, width: 200, height: 150)
+        check(mini.nodes.map(\.id) == ["1", "2", "3"], "minimap derives every visible node")
+        check(mini.scale > 0 && mini.viewport.width > 0, "minimap derives graph scale and viewport indicator")
 
         let configuredNode = PyreonFlowNode(
             id: "configured", position: PyreonXYPosition(x: 1, y: 2), data: NodeData(label: "Configured"),

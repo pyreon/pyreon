@@ -39,4 +39,6 @@ Nested `<Background>` now lowers to native viewport-aware dots, lines, or cross 
 
 Nested `<Controls>` now lowers to functional native zoom-in, zoom-out, fit-view, zoom-percentage, placement, and canvas-lock controls; locking disables pan, zoom, and node dragging on both targets.
 
+Native MiniMap geometry now derives graph bounds, absolute child-node rectangles, scale, and the live viewport indicator identically on Swift and Kotlin, with executable coverage for hidden-node filtering.
+
 Swift compiler validation now uses a disposable module cache, keeping hermetic and sandboxed runs independent of a writable user-level Clang cache.
