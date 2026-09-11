@@ -37,6 +37,11 @@ private struct PyreonFlowConnectionDraft: Equatable {
     var source: PyreonFlowInteractiveHandle
     var current: PyreonXYPosition
 }
+private struct PyreonFlowReconnectDraft: Equatable {
+    var updater: PyreonFlowEdgeUpdater
+    var fixed: PyreonXYPosition
+    var current: PyreonXYPosition
+}
 
 @available(iOS 17.0, macOS 14.0, *)
 public func pyreonFlowMiniMapLayout<T>(state: PyreonFlowState<T>, width: Double = 200, height: Double = 150, padding: Double = 40) -> PyreonFlowMiniMapLayout {
@@ -291,6 +296,15 @@ public func pyreonFlowEdgeUpdaters<T>(state: PyreonFlowState<T>, strokes: [Pyreo
     }
 }
 
+public func pyreonFlowReconnectConnection(edge: PyreonFlowEdge, end: String, handle: PyreonFlowInteractiveHandle) -> PyreonFlowConnection? {
+    if end == "target" {
+        guard handle.type == "target", handle.nodeId != edge.source else { return nil }
+        return PyreonFlowConnection(source: edge.source, target: handle.nodeId, sourceHandle: edge.sourceHandle, targetHandle: handle.handleId)
+    }
+    guard end == "source", handle.type == "source", handle.nodeId != edge.target else { return nil }
+    return PyreonFlowConnection(source: handle.nodeId, target: edge.target, sourceHandle: handle.handleId, targetHandle: edge.targetHandle)
+}
+
 /// The dragged selection with descendants removed when an ancestor is also
 /// selected. Node positions are parent-relative, so moving both would apply
 /// the same pointer delta twice to a descendant's absolute position.
@@ -328,6 +342,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     @State private var zoomStart: Double?
     @State private var interactionsLocked = false
     @State private var connectionDraft: PyreonFlowConnectionDraft?
+    @State private var reconnectDraft: PyreonFlowReconnectDraft?
 
     public init(
         state: PyreonFlowState<T>,
@@ -409,6 +424,16 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                             .gesture(handle.type == "source" ? connectionGesture(handle) : nil)
                             .accessibilityLabel(Text("\(handle.type) handle \(handle.handleId ?? "default")"))
                     }
+                    ForEach(pyreonFlowEdgeUpdaters(state: state, strokes: edgeStrokes)) { updater in
+                        Circle()
+                            .fill(Color.blue.opacity(0.35))
+                            .overlay(Circle().stroke(Color.blue, lineWidth: 1.5 / state.viewport.zoom))
+                            .frame(width: 12 / state.viewport.zoom, height: 12 / state.viewport.zoom)
+                            .position(x: updater.x, y: updater.y)
+                            .contentShape(Circle())
+                            .gesture(reconnectGesture(updater))
+                            .accessibilityLabel(Text("Reconnect \(updater.end) of edge \(updater.edgeId)"))
+                    }
                 }
                 .scaleEffect(state.viewport.zoom, anchor: .topLeading)
                 .offset(x: state.viewport.x, y: state.viewport.y)
@@ -446,6 +471,11 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                 PyreonFlowEdgeSegment.line(draft.current.x, draft.current.y),
             ], color: edgeColor, width: edgeWidth))
         }
+        if let draft = reconnectDraft {
+            strokes.append(PyreonFlowEdgeStroke(id: "__reconnect-preview", segments: [
+                .move(draft.fixed.x, draft.fixed.y), .line(draft.current.x, draft.current.y),
+            ], color: edgeColor, width: edgeWidth))
+        }
         return strokes
     }
 
@@ -464,6 +494,34 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                 }
                 connectionDraft = nil
             })
+    }
+
+    private func reconnectGesture(_ updater: PyreonFlowEdgeUpdater) -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .named("PyreonFlowCanvas"))
+            .onChanged { value in
+                guard !interactionsLocked,
+                      let stroke = edgeStrokes.first(where: { $0.id == updater.edgeId }),
+                      let first = stroke.segments.first, let last = stroke.segments.last
+                else { return }
+                let fixed = updater.end == "target"
+                    ? PyreonXYPosition(x: first.x, y: first.y)
+                    : PyreonXYPosition(x: last.x, y: last.y)
+                reconnectDraft = PyreonFlowReconnectDraft(updater: updater, fixed: fixed, current: graphPoint(value.location))
+            }
+            .onEnded { value in
+                defer { reconnectDraft = nil }
+                guard !interactionsLocked, let edge = state.getEdge(updater.edgeId) else { return }
+                let movingTarget = updater.end == "target"
+                let fixedNodeId = movingTarget ? edge.source : edge.target
+                guard let handle = pyreonNearestFlowHandle(
+                    interactiveHandles.filter { $0.nodeId != fixedNodeId },
+                    point: graphPoint(value.location),
+                    type: movingTarget ? "target" : "source",
+                    radius: 20 / state.viewport.zoom)
+                else { return }
+                guard let connection = pyreonFlowReconnectConnection(edge: edge, end: updater.end, handle: handle) else { return }
+                _ = state.reconnectEdge(edge.id, connection: connection)
+            }
     }
 
     private func updateContainer(_ size: CGSize) {

@@ -99,6 +99,12 @@ fun <T> pyreonFlowEdgeUpdaters(state: PyreonFlowState<T>, strokes: List<PyreonFl
     }
 }
 
+fun pyreonFlowReconnectConnection(edge: PyreonFlowEdge, end: String, handle: PyreonFlowInteractiveHandle): PyreonFlowConnection? = when {
+    end == "target" && handle.type == "target" && handle.nodeId != edge.source -> PyreonFlowConnection(edge.source, handle.nodeId, edge.sourceHandle, handle.handleId)
+    end == "source" && handle.type == "source" && handle.nodeId != edge.target -> PyreonFlowConnection(handle.nodeId, edge.target, handle.handleId, edge.targetHandle)
+    else -> null
+}
+
 fun <T> pyreonFlowDragNodeIds(state: PyreonFlowState<T>, draggedNodeId: String): List<String> {
     val ids = (if (state.isNodeSelected(draggedNodeId)) state.selectedNodes() else listOf(draggedNodeId)).toMutableList()
     val selected = ids.toSet()

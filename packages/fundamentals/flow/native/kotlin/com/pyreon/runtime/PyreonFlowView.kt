@@ -63,6 +63,11 @@ private data class PyreonFlowConnectionDraft(
     val source: PyreonFlowInteractiveHandle,
     val current: PyreonFlowPathPoint,
 )
+private data class PyreonFlowReconnectDraft(
+    val updater: PyreonFlowEdgeUpdater,
+    val fixed: PyreonFlowPathPoint,
+    val current: PyreonFlowPathPoint,
+)
 
 @Composable
 fun <T> PyreonFlowMiniMap(
@@ -179,6 +184,7 @@ fun <T> PyreonFlowView(
     val density = LocalDensity.current
     var interactionsLocked by remember { mutableStateOf(false) }
     var connectionDraft by remember { mutableStateOf<PyreonFlowConnectionDraft?>(null) }
+    var reconnectDraft by remember { mutableStateOf<PyreonFlowReconnectDraft?>(null) }
     var nodeDragStarts by remember { mutableStateOf<Map<String, PyreonXYPosition>>(emptyMap()) }
     val interactiveHandles = state.nodes.flatMap { node ->
         if (node.hidden == true || node.connectable == false) emptyList() else {
@@ -195,6 +201,14 @@ fun <T> PyreonFlowView(
             strokes += PyreonFlowEdgeStroke(
                 "__connection-preview",
                 listOf(PyreonFlowEdgeSegment.move(draft.source.x, draft.source.y), PyreonFlowEdgeSegment.line(draft.current.x, draft.current.y)),
+                edgeColor,
+                edgeWidth,
+            )
+        }
+        reconnectDraft?.let { draft ->
+            strokes += PyreonFlowEdgeStroke(
+                "__reconnect-preview",
+                listOf(PyreonFlowEdgeSegment.move(draft.fixed.x, draft.fixed.y), PyreonFlowEdgeSegment.line(draft.current.x, draft.current.y)),
                 edgeColor,
                 edgeWidth,
             )
@@ -319,6 +333,46 @@ fun <T> PyreonFlowView(
                 ) {
                     drawCircle(if (handle.type == "source") androidx.compose.ui.graphics.Color.Blue else androidx.compose.ui.graphics.Color.Green)
                 }
+            }
+            for (updater in pyreonFlowEdgeUpdaters(state, edgeStrokes)) {
+                val diameter = 12.0 / state.viewport.zoom
+                Canvas(
+                    Modifier
+                        .offset { IntOffset((updater.x - diameter / 2).roundToInt(), (updater.y - diameter / 2).roundToInt()) }
+                        .requiredSize(with(density) { diameter.toFloat().toDp() })
+                        .semantics { contentDescription = "Reconnect ${updater.end} of edge ${updater.edgeId}" }
+                        .pointerInput(updater, interactionsLocked, state.viewport.zoom) {
+                            if (interactionsLocked) return@pointerInput
+                            var current = PyreonFlowPathPoint(updater.x, updater.y)
+                            var fixed = current
+                            detectDragGestures(
+                                onDragStart = {
+                                    val segments = edgeStrokes.firstOrNull { it.id == updater.edgeId }?.segments
+                                    if (!segments.isNullOrEmpty()) {
+                                        fixed = if (updater.end == "target") PyreonFlowPathPoint(segments.first().x, segments.first().y) else PyreonFlowPathPoint(segments.last().x, segments.last().y)
+                                        reconnectDraft = PyreonFlowReconnectDraft(updater, fixed, current)
+                                    }
+                                },
+                                onDragCancel = { reconnectDraft = null },
+                                onDragEnd = {
+                                    val edge = state.getEdge(updater.edgeId)
+                                    if (edge != null) {
+                                        val movingTarget = updater.end == "target"
+                                        val fixedNodeId = if (movingTarget) edge.source else edge.target
+                                        val target = pyreonNearestFlowHandle(interactiveHandles.filter { it.nodeId != fixedNodeId }, current, if (movingTarget) "target" else "source", 20.0 / state.viewport.zoom)
+                                        if (target != null) {
+                                            pyreonFlowReconnectConnection(edge, updater.end, target)?.let { state.reconnectEdge(edge.id, it) }
+                                        }
+                                    }
+                                    reconnectDraft = null
+                                },
+                            ) { change, amount ->
+                                change.consume()
+                                current = PyreonFlowPathPoint(current.x + amount.x, current.y + amount.y)
+                                reconnectDraft = PyreonFlowReconnectDraft(updater, fixed, current)
+                            }
+                        },
+                ) { drawCircle(androidx.compose.ui.graphics.Color.Blue.copy(alpha = 0.35f)) }
             }
         }
 
