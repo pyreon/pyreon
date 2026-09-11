@@ -21,7 +21,7 @@
     "postinstall": "bun scripts/bootstrap.ts",
     "build": "bun run --filter='*' build",
     "dev": "bun run --filter='*' dev",
-    "test": "bun run --filter='*' test",
+    "test": "bun run --filter='*' --sequential test",
     "test:browser": "bun run --filter='*' --sequential test:browser",
     "test:watch": "vitest",
     "lint": "oxlint .",
