@@ -2655,11 +2655,11 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
       // Radar/Plot), and the eight two-prop CHART_HOSTS (Sankey/Graph/
       // Treemap/Sunburst/Tree/River/Gantt/Polar — nodes+links or a values
       // record, dispatched through `emitSwiftChartHost`/`emitKotlinChartHost`
-      // in chart-hosts.ts). OptionChart is deliberately UNLOWERED (see
-      // UNLOWERED_CHART_HOSTS for the reason), and the ECharts-backed default
-      // export stays web.
+      // in chart-hosts.ts). OptionChart lowers literal pie/gauge options
+      // through those same hosts; unsupported option families warn by path.
+      // The ECharts-backed default export stays web.
       advice:
-        'Most `@pyreon/charts/plot` hosts lower to a native PyreonChartCanvas over the generated engine — PieChart/FunnelChart/GaugeChart/CandlestickChart/HeatmapChart/RadarChart/PlotChart/SankeyChart/GraphChart/TreemapChart/SunburstChart/TreeChart/RiverChart/GanttChart/PolarChart/CalendarChart/ParallelChart/BoxplotChart. MapChart lowers from a PRECOMPUTED `GeoShape[]` const — the map registry, raw GeoJSON and `geoShapes()` itself stay web and warn by name (project once on the web or in a build step); OptionChart is deliberately unlowered (see UNLOWERED_CHART_HOSTS for why); the theme lowers per chart (`theme={chartThemes.dark}` / `theme={{ palette: palettes.okabeIto }}`) and `<ChartThemeProvider mode theme>` is a compile-time scope its chart children inherit (a literal `mode` / `theme`; a reactive mode cannot be read at compile time and warns); the ECharts-backed default export is web-only — keep it in a `<Web>` branch, or embed via the `/webview` bridge',
+        'Most `@pyreon/charts/plot` hosts lower to a native PyreonChartCanvas over the generated engine — PieChart/FunnelChart/GaugeChart/CandlestickChart/HeatmapChart/RadarChart/PlotChart/SankeyChart/GraphChart/TreemapChart/SunburstChart/TreeChart/RiverChart/GanttChart/PolarChart/CalendarChart/ParallelChart/BoxplotChart. MapChart lowers from a PRECOMPUTED `GeoShape[]` const — the map registry, raw GeoJSON and `geoShapes()` itself stay web and warn by name (project once on the web or in a build step). OptionChart lowers static pie/gauge options through the same native hosts and names unsupported option paths. The theme lowers per chart (`theme={chartThemes.dark}` / `theme={{ palette: palettes.okabeIto }}`) and `<ChartThemeProvider mode theme>` is a compile-time scope its chart children inherit (a literal `mode` / `theme`; a reactive mode cannot be read at compile time and warns); the ECharts-backed default export is web-only — keep it in a `<Web>` branch, or embed via the `/webview` bridge',
       supported: new Set([
         // DERIVED from the registries that actually do the lowering, rather
         // than re-typed. The two disagreed the moment a host was added:
@@ -2672,6 +2672,7 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
         ...Object.keys(ACCESSOR_CHART_HOSTS),
         ...Object.keys(FRAME_CHART_HOSTS),
         'MapChart',
+        'OptionChart',
         // Theme surface: the provider is a TRANSPARENT wrapper on native (its
         // children render; per-chart `theme` props do the theming there), and
         // `chartThemes` / `palettes` are compiler-known constants a `theme`

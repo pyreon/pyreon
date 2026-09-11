@@ -98,13 +98,13 @@ export function C() { return <SankeyChart animate={false} nodes={[]} /> }`,
     expect(r.warnings.join('\n')).toContain('<SankeyChart>: needs a `links` attribute on native')
     expect(r.code).toContain('EmptyView()')
   })
-  it('a still-unlowered host (OptionChart) warns by name instead of naming a view that does not exist', () => {
+  it('an unsupported OptionChart shape warns by option path instead of naming a view that does not exist', () => {
     const r = transform(
       `import { OptionChart } from '@pyreon/charts/plot'
 export function C() { return <OptionChart option={{ series: [] }} /> }`,
       { target: 'swift' },
     )
-    expect(r.warnings.join('\n')).toContain('<OptionChart> has no native lowering yet')
+    expect(r.warnings.join('\n')).toContain('<OptionChart option.series>')
     expect(r.code).not.toContain('OptionChart(')
   })
   it('importing from @pyreon/charts/plot does not raise the web-only package warning', () => {
@@ -1321,8 +1321,8 @@ describe('chart hosts — CalendarChart + ParallelChart lower through literal ad
       expect(colored.code).toContain('renderParallel(')
     }
   })
-  it('OptionChart is the only host left without a lowering (Calendar/Parallel cross through adapters, Map through projected shapes)', () => {
-    expect(Object.keys(UNLOWERED_CHART_HOSTS)).toEqual(['OptionChart'])
+  it('every chart host now has a native entry point (unsupported literal shapes diagnose inside their adapter)', () => {
+    expect(Object.keys(UNLOWERED_CHART_HOSTS)).toEqual([])
   })
   it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine) accepts both hosts', () => {
     for (const src of [CALENDAR, PARALLEL]) {
