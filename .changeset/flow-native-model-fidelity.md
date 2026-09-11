@@ -31,4 +31,6 @@ Literal source/target handle declarations now survive `createFlow` seeds and `ad
 
 A complete native edge-path dispatcher now combines handle/floating endpoint resolution with waypoint and built-in route selection, matching authoritative web geometry fixtures.
 
+SwiftUI and Compose now ship complete native Flow hosts that measure their container, render state-derived nodes and edges under one viewport, and support selection, node dragging, canvas pan/zoom, visibility, and accessibility labels. Real iOS and Android example targets compile the hosts, while the graph-to-stroke rules have executable Swift and Kotlin coverage.
+
 Swift compiler validation now uses a disposable module cache, keeping hermetic and sandboxed runs independent of a writable user-level Clang cache.

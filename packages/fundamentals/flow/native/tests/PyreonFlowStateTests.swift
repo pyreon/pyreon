@@ -42,6 +42,12 @@ struct PyreonFlowStateTests {
         check(f.getNode("nope") == nil, "getNode misses a missing id")
         check(f.getEdge("e1")?.source == "1", "getEdge reads the seeded edge")
 
+        let initialStrokes = pyreonFlowEdgeStrokes(state: f)
+        check(initialStrokes.map(\.id) == ["e1", "e2"], "native host derives every visible edge")
+        f.addEdge(PyreonFlowEdge(id: "dangling", source: "missing", target: "1"))
+        check(!pyreonFlowEdgeStrokes(state: f).contains { $0.id == "dangling" }, "native host omits edges with missing endpoints")
+        f.removeEdge("dangling")
+
         let configuredNode = PyreonFlowNode(
             id: "configured", position: PyreonXYPosition(x: 1, y: 2), data: NodeData(label: "Configured"),
             draggable: false, selectable: true, connectable: false, focusable: true,

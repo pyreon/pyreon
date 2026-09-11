@@ -78,11 +78,14 @@
         ],
         "PyreonFlowEdgeGeometry": [
           "PyreonFlowGeometryTypes.kt",
-          "PyreonFlowEdgeGeometry.kt"
+          "PyreonFlowState.kt",
+          "PyreonFlowEdgeGeometry.kt",
+          "PyreonFlowHost.kt"
         ]
       },
       "kotlinSdkOnly": [
-        "PyreonFlowEdgeCanvas.kt"
+        "PyreonFlowEdgeCanvas.kt",
+        "PyreonFlowView.kt"
       ]
     }
   }

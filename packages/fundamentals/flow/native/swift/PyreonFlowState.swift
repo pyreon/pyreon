@@ -3,15 +3,11 @@
 // TypeScript engine (`flow.ts`), so a diagram author gets 1:1 results on
 // web AND native from one mental model.
 //
-// Scope (v1 — mirrors the discipline `PyreonTableState` set: a real, useful
-// subset now, the rest named as follow-ups rather than silently missing):
-//   - Node/edge CRUD, selection, viewport (pan/zoom/fitView), graph queries.
-//   - NOT YET ported: `updateNode` (partial merge — no faithful Swift shape
-//     without a builder closure), `isValidConnection` (needs connection-rule
-//     config), bulk `selectNodes`, `layout()` (the separate layout-engine
-//     crossing), `undo`/`redo`/`pushHistory`, `copySelected`/`paste`,
-//     `moveSelectedNodes`/snap-lines (drag-session internals — tied to the
-//     native gesture layer, a follow-up), sub-flow/group queries.
+// Scope: node/edge CRUD, selection, viewport (pan/zoom/fitView), graph
+// queries, configuration, endpoint/path geometry, and the interactive native
+// hosts are ported. APIs whose semantics require a separate native design
+// (layout engines, history/clipboard, connection validation, and snap-line
+// presentation) remain explicit compiler diagnostics rather than silent gaps.
 //
 // Unlike `PyreonTableState` (which WRAPS an external reactive data source),
 // `createFlow({ nodes, edges })` OWNS its data — nodes/edges are seeded once
