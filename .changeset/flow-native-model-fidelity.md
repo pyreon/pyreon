@@ -45,4 +45,6 @@ Nested `<MiniMap>` now lowers to native node and viewport rendering with configu
 
 Literal `connectionRules` and `isValidConnection` callbacks now lower into both native state engines, preserving callback-first veto behavior and source-type-to-target-type validation.
 
+Native connection commits now validate before mutation, preserve source/target handle IDs, generate stable unique IDs when needed, and reject duplicate explicit IDs; shared `isValidConnection({...})` calls lower to nominal native connection values.
+
 Swift compiler validation now uses a disposable module cache, keeping hermetic and sandboxed runs independent of a writable user-level Clang cache.

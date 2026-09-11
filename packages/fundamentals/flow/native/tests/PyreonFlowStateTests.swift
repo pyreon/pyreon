@@ -50,6 +50,10 @@ struct PyreonFlowStateTests {
         check(ruled.isValidConnection(PyreonFlowConnection(source: "api", target: "db")), "connection rules allow declared target type")
         check(!ruled.isValidConnection(PyreonFlowConnection(source: "api", target: "ui")), "connection rules reject undeclared target type")
         check(!ruled.isValidConnection(PyreonFlowConnection(source: "api", target: "api")), "connection callback veto runs before rules")
+        let connected = ruled.connect(PyreonFlowConnection(source: "api", target: "db", sourceHandle: "out", targetHandle: "in"), id: "native-edge")
+        check(connected?.sourceHandle == "out" && connected?.targetHandle == "in", "connect preserves handle ids")
+        check(ruled.connect(PyreonFlowConnection(source: "api", target: "ui"), id: "rejected") == nil && ruled.getEdge("rejected") == nil, "connect never stores an invalid edge")
+        check(ruled.connect(PyreonFlowConnection(source: "api", target: "db"), id: "native-edge") == nil, "connect rejects duplicate explicit ids")
 
         let initialStrokes = pyreonFlowEdgeStrokes(state: f)
         check(initialStrokes.map(\.id) == ["e1", "e2"], "native host derives every visible edge")

@@ -3374,6 +3374,15 @@ function kotlinFlowReconnectLiteral(arg: ExprIR): string | null {
   return arg.fields.map((field) => `, ${field.name} = ${emitKotlinExpr(field.value, 0)}`).join('')
 }
 
+function kotlinFlowConnectionLiteral(arg: ExprIR): string | null {
+  if (arg.kind !== 'object') return null
+  const field = (name: string): ExprIR | undefined => arg.fields.find((f) => f.name === name)?.value
+  const source = field('source'), target = field('target')
+  if (source === undefined || target === undefined) return null
+  const sourceHandle = field('sourceHandle'), targetHandle = field('targetHandle')
+  return `PyreonFlowConnection(source = ${emitKotlinExpr(source, 0)}, target = ${emitKotlinExpr(target, 0)}${sourceHandle ? `, sourceHandle = ${emitKotlinExpr(sourceHandle, 0)}` : ''}${targetHandle ? `, targetHandle = ${emitKotlinExpr(targetHandle, 0)}` : ''})`
+}
+
 function kotlinFlowViewportLiteral(arg: ExprIR): string | null {
   if (arg.kind !== 'object') return null
   const allowed = new Set(['x', 'y', 'zoom'])
@@ -4766,6 +4775,10 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (member === 'reconnectEdge' && e.args.length === 2) {
           const args = kotlinFlowReconnectLiteral(e.args[1]!)
           if (args !== null) return `${kotlinIdent(flowName)}.reconnectEdge(${emitKotlinExpr(e.args[0]!, indent)}${args})`
+        }
+        if (member === 'isValidConnection' && e.args.length === 1) {
+          const connection = kotlinFlowConnectionLiteral(e.args[0]!)
+          if (connection !== null) return `${kotlinIdent(flowName)}.isValidConnection(${connection})`
         }
         if ((member === 'addNodes' || member === 'setNodes') && e.args.length === 1) {
           const nodes = kotlinFlowNodeListLiteral(e.args[0]!, flowName)

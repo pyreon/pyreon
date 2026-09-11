@@ -439,6 +439,19 @@ public final class PyreonFlowState<T> {
         guard let target = nodeStore[connection.target] else { return false }
         return outputs.contains(target.type ?? "default")
     }
+    @discardableResult
+    public func connect(_ connection: PyreonFlowConnection, id: String? = nil) -> PyreonFlowEdge? {
+        guard isValidConnection(connection) else { return nil }
+        let edge = PyreonFlowEdge(
+            id: id ?? "edge-\(UUID().uuidString.lowercased())",
+            source: connection.source,
+            target: connection.target,
+            sourceHandle: connection.sourceHandle,
+            targetHandle: connection.targetHandle)
+        guard !edgeIds.contains(edge.id) else { return nil }
+        insertEdge(edge)
+        return getEdge(edge.id)
+    }
     /// Adds the edge unless an edge with the same `id` already exists — same
     /// dedupe-by-id contract as the web `addEdge`; applies `type ?? 'bezier'`.
     public func addEdge(_ edge: PyreonFlowEdge) {

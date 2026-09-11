@@ -50,6 +50,10 @@ fun main() {
     check(ruled.isValidConnection(PyreonFlowConnection("api", "db")), "connection rules allow declared target type")
     check(!ruled.isValidConnection(PyreonFlowConnection("api", "ui")), "connection rules reject undeclared target type")
     check(!ruled.isValidConnection(PyreonFlowConnection("api", "api")), "connection callback veto runs before rules")
+    val connected = ruled.connect(PyreonFlowConnection("api", "db", "out", "in"), "native-edge")
+    check(connected?.sourceHandle == "out" && connected.targetHandle == "in", "connect preserves handle ids")
+    check(ruled.connect(PyreonFlowConnection("api", "ui"), "rejected") == null && ruled.getEdge("rejected") == null, "connect never stores an invalid edge")
+    check(ruled.connect(PyreonFlowConnection("api", "db"), "native-edge") == null, "connect rejects duplicate explicit ids")
 
     val configuredNode = PyreonFlowNode(
         id = "configured", position = PyreonXYPosition(1.0, 2.0), data = NodeData("Configured"),

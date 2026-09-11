@@ -23,6 +23,7 @@ export const LOWERED_FLOW_METHODS: ReadonlySet<string> = new Set([
   'screenToFlowPosition', 'flowToScreenPosition', 'isNodeVisible', 'focusNode',
   'moveSelectedNodes',
   'addEdgeWaypoint', 'removeEdgeWaypoint', 'updateEdgeWaypoint', 'reconnectEdge',
+  'isValidConnection',
   'getConnectedEdges', 'getIncomers', 'getOutgoers', 'getChildNodes', 'getAbsolutePosition',
   'setNodeExtent', 'clampToExtent',
 ])

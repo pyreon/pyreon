@@ -238,6 +238,19 @@ class PyreonFlowState<T>(
         val target = nodeMap[connection.target] ?: return false
         return outputs.contains(target.type ?: "default")
     }
+    fun connect(connection: PyreonFlowConnection, id: String? = null): PyreonFlowEdge? {
+        if (!isValidConnection(connection)) return null
+        val edge = PyreonFlowEdge(
+            id = id ?: "edge-${java.util.UUID.randomUUID().toString().lowercase()}",
+            source = connection.source,
+            target = connection.target,
+            sourceHandle = connection.sourceHandle,
+            targetHandle = connection.targetHandle,
+        )
+        if (edgeIds.containsKey(edge.id)) return null
+        insertEdge(edge)
+        return getEdge(edge.id)
+    }
     /** Adds the edge unless an edge with the same `id` already exists — same
      *  dedupe-by-id contract as the web `addEdge`; applies `type ?: "bezier"`. */
     fun addEdge(edge: PyreonFlowEdge) {

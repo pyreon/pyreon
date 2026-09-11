@@ -213,6 +213,7 @@ describe('<Flow> native host lowering', () => {
 describe('createFlow connection validation lowering', () => {
   const source = `
     import { createFlow } from '@pyreon/flow'
+    import { Text } from '@pyreon/primitives'
     export function App() {
       const flow = createFlow({
         nodes: [
@@ -223,7 +224,7 @@ describe('createFlow connection validation lowering', () => {
         connectionRules: { api: { outputs: ['database'] } },
         isValidConnection: (connection) => connection.source !== connection.target,
       })
-      return null
+      return <Text>{flow.isValidConnection({ source: 'api', target: 'db' }) ? 'yes' : 'no'}</Text>
     }
   `
 
@@ -234,6 +235,8 @@ describe('createFlow connection validation lowering', () => {
     expect(swift.code).toContain('isValidConnection: { connection in connection.source != connection.target }')
     expect(kotlin.code).toContain('connectionRules = mapOf("api" to listOf("database"))')
     expect(kotlin.code).toContain('connectionValidator = { connection -> connection.source != connection.target }')
+    expect(swift.code).toContain('flow.isValidConnection(PyreonFlowConnection(source: "api", target: "db"))')
+    expect(kotlin.code).toContain('flow.isValidConnection(PyreonFlowConnection(source = "api", target = "db"))')
     if (isSwiftcAvailable()) expect(validateSwiftWithStubs(swift.code).ok).toBe(true)
     if (isKotlincAvailable()) expect(validateKotlin(kotlin.code).ok).toBe(true)
   })

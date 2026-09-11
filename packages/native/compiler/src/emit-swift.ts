@@ -4206,6 +4206,15 @@ function swiftFlowReconnectLiteral(arg: ExprIR): string | null {
   return arg.fields.map((field) => `, ${field.name}: ${emitSwiftExpr(field.value, 0)}`).join('')
 }
 
+function swiftFlowConnectionLiteral(arg: ExprIR): string | null {
+  if (arg.kind !== 'object') return null
+  const field = (name: string): ExprIR | undefined => arg.fields.find((f) => f.name === name)?.value
+  const source = field('source'), target = field('target')
+  if (source === undefined || target === undefined) return null
+  const sourceHandle = field('sourceHandle'), targetHandle = field('targetHandle')
+  return `PyreonFlowConnection(source: ${emitSwiftExpr(source, 0)}, target: ${emitSwiftExpr(target, 0)}${sourceHandle ? `, sourceHandle: ${emitSwiftExpr(sourceHandle, 0)}` : ''}${targetHandle ? `, targetHandle: ${emitSwiftExpr(targetHandle, 0)}` : ''})`
+}
+
 function swiftFlowViewportLiteral(arg: ExprIR): string | null {
   if (arg.kind !== 'object') return null
   const allowed = new Set(['x', 'y', 'zoom'])
@@ -5744,6 +5753,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         if (member === 'reconnectEdge' && e.args.length === 2) {
           const args = swiftFlowReconnectLiteral(e.args[1]!)
           if (args !== null) return `${swiftIdent(flowName)}.reconnectEdge(${emitSwiftExpr(e.args[0]!, indent)}${args})`
+        }
+        if (member === 'isValidConnection' && e.args.length === 1) {
+          const connection = swiftFlowConnectionLiteral(e.args[0]!)
+          if (connection !== null) return `${swiftIdent(flowName)}.isValidConnection(${connection})`
         }
         if ((member === 'addNodes' || member === 'setNodes') && e.args.length === 1) {
           const nodes = swiftFlowNodeListLiteral(e.args[0]!, flowName)
