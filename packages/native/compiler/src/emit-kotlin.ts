@@ -4080,6 +4080,13 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           })
         }
       }
+      // The chart decimators consume `List<Double>`, while TypeScript's
+      // `number[]` may be emitted as `List<Int>` from integral initializers.
+      // Normalize the numeric vector at this typed boundary.
+      if (e.callee.kind === 'identifier' && (e.callee.name === 'lttbIndices' || e.callee.name === 'minMaxBuckets') && e.args.length >= 2) {
+        const args = e.args.map((arg, i) => i === 1 ? `(${emitKotlinExpr(arg, indent)}).map { it.toDouble() }` : emitKotlinExpr(arg, indent))
+        return `${kotlinIdent(e.callee.name)}(${args.join(', ')})`
+      }
       // Field-array accessor unwrap: zero-arg `items()`/`length()` on a
       // PyreonFieldArray decl (and `value()` on a For-item param over its
       // items) are web signal READS — on Kotlin they are properties, so the

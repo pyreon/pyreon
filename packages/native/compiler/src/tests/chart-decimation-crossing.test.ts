@@ -112,10 +112,12 @@ describe('the decimation arithmetic crosses', () => {
       expect(r.warnings ?? [], `${target} started warning — update the remedy text`).toEqual([])
     }
     if (isSwiftcAvailable()) {
-      expect(validateSwiftWithStubs(transform(withoutWidening, { target: 'swift' }).code).ok).toBe(true)
+      const result = validateSwiftWithStubs(transform(withoutWidening, { target: 'swift' }).code)
+      expect(result.ok, result.error ?? '').toBe(true)
     }
     if (isKotlincAvailable()) {
-      expect(validateKotlin(transform(withoutWidening, { target: 'kotlin' }).code).ok).toBe(true)
+      const result = validateKotlin(transform(withoutWidening, { target: 'kotlin' }).code)
+      expect(result.ok, result.error ?? '').toBe(true)
     }
   })
 

@@ -5073,6 +5073,13 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           })
         }
       }
+      // The chart decimators consume `[Double]`, while TypeScript's `number[]`
+      // may be represented as `[Int]` when its initializer contains only
+      // integral values. Normalize the numeric vector at this typed boundary.
+      if (e.callee.kind === 'identifier' && (e.callee.name === 'lttbIndices' || e.callee.name === 'minMaxBuckets') && e.args.length >= 2) {
+        const args = e.args.map((arg, i) => i === 1 ? `(${emitSwiftExpr(arg, indent)}).map { pyreonChartDouble($0) }` : emitSwiftExpr(arg, indent))
+        return `${swiftIdent(e.callee.name)}(${args.join(', ')})`
+      }
       // `Object.keys(<object-typed expr>)` → static `[String]` of the
       // struct field names. A synthesized struct's keys are statically
       // known, so the rewrite lowers to a plain string-array literal;
