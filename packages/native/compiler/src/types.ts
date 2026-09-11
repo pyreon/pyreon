@@ -946,6 +946,7 @@ export type DeclIR =
         deletable?: boolean
         reconnectable?: boolean
         interactionWidth?: number
+        pathOptions?: { curvature?: number; borderRadius?: number; offset?: number }
         waypoints?: { x: ExprIR; y: ExprIR }[]
       }[]
       /** `minZoom` from the config, when written as a numeric literal. */

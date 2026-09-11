@@ -466,7 +466,7 @@ import { Stack, Text } from '${P}'
 export function C() {
   const flow = createFlow({
     nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'A' }, parentId: 'root', draggable: false, selectable: true, connectable: false, focusable: true, ariaLabel: 'Start node', hidden: false, deletable: true, expandParent: true, group: true, sourceHandles: [{ id: 'out', type: 'source', position: 'right' }], targetHandles: [{ type: 'target', position: 'left' }], style: {} }],
-    edges: [{ id: 'e1', source: '1', target: '1', markerEnd: 'arrow', sourceHandle: 'out', targetHandle: 'in', focusable: true, ariaLabel: 'Loop', hidden: false, deletable: true, reconnectable: false, interactionWidth: 24 }],
+    edges: [{ id: 'e1', source: '1', target: '1', markerEnd: 'arrow', sourceHandle: 'out', targetHandle: 'in', focusable: true, ariaLabel: 'Loop', hidden: false, deletable: true, reconnectable: false, interactionWidth: 24, pathOptions: { curvature: 0.4, borderRadius: 8, offset: 30 } }],
   })
   return (<Stack><Text>{flow.nodes().length}</Text></Stack>)
 }
@@ -475,7 +475,7 @@ export function C() {
       const w = (result.warnings ?? []).join('\n')
       expect(w).toContain('node field `style` is NOT carried')
       expect(w).toContain('edge field `markerEnd` is NOT carried')
-      for (const field of ['parentId', 'draggable', 'selectable', 'connectable', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'expandParent', 'group', 'sourceHandles', 'targetHandles', 'sourceHandle', 'targetHandle', 'reconnectable', 'interactionWidth']) {
+      for (const field of ['parentId', 'draggable', 'selectable', 'connectable', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'expandParent', 'group', 'sourceHandles', 'targetHandles', 'sourceHandle', 'targetHandle', 'reconnectable', 'interactionWidth', 'pathOptions']) {
         expect(w).not.toContain(`field \`${field}\` is NOT carried`)
       }
       const assignment = target === 'swift' ? ':' : ' ='
@@ -485,6 +485,9 @@ export function C() {
       expect(result.code).toContain(`targetHandle${assignment} "in"`)
       expect(result.code).toContain(`ariaLabel${assignment} "Loop"`)
       expect(result.code).toContain(`interactionWidth${assignment} ${target === 'swift' ? '24' : '24.0'}`)
+      expect(result.code).toContain(`curvature${assignment} ${target === 'swift' ? '0.4' : '0.4'}`)
+      expect(result.code).toContain(`borderRadius${assignment} ${target === 'swift' ? '8' : '8.0'}`)
+      expect(result.code).toContain(`pathOffset${assignment} ${target === 'swift' ? '30' : '30.0'}`)
       expect(result.code).toContain(target === 'swift' ? 'sourceHandles: [PyreonFlowHandleConfig(id: "out", type: "source", position: .right)]' : 'sourceHandles = listOf(PyreonFlowHandleConfig(id = "out", type = "source", position = PyreonFlowPosition.Right))')
     })
     it(`[${target}] a declaration-time NON-literal edge label/type is named, not silently dropped`, () => {
@@ -503,13 +506,17 @@ export function C() {
       expect(warningsOf(src, target)).toContain('`label (not a string literal)`')
     })
     it(`[${target}] call-site addNode/addEdge literals with extra fields warn BY NAME`, () => {
-      const w = warningsOf(base('', `<Button onPress={() => { flow.addNode({ id: '2', position: { x: 1, y: 1 }, data: { label: 'B' }, hidden: true, sourceHandles: [{ id: 'out', type: 'source', position: 'right' }], style: {} }); flow.addEdge({ id: 'e2', source: '1', target: '2', sourceHandle: 'out', waypoints: [], markerEnd: 'arrow' }) }}>Add</Button>`), target)
+      const source = base('', `<Button onPress={() => { flow.addNode({ id: '2', position: { x: 1, y: 1 }, data: { label: 'B' }, hidden: true, sourceHandles: [{ id: 'out', type: 'source', position: 'right' }], style: {} }); flow.addEdge({ id: 'e2', source: '1', target: '2', sourceHandle: 'out', waypoints: [], pathOptions: { offset: 31 }, markerEnd: 'arrow' }) }}>Add</Button>`)
+      const result = transform(source, { target })
+      const w = (result.warnings ?? []).join('\n')
       expect(w).toContain('addNode(...): node field `style` is NOT carried')
       expect(w).not.toContain('node field `hidden` is NOT carried')
       expect(w).not.toContain('node field `sourceHandles` is NOT carried')
       expect(w).toContain('addEdge(...): edge field `markerEnd` is NOT carried')
       expect(w).not.toContain('edge field `waypoints` is NOT carried')
       expect(w).not.toContain('edge field `sourceHandle` is NOT carried')
+      expect(w).not.toContain('edge field `pathOptions` is NOT carried')
+      expect(result.code).toContain(`pathOffset${target === 'swift' ? ':' : ' ='} ${target === 'swift' ? '31' : '31.0'}`)
     })
     it(`[${target}] waypoint editing and reconnect lower to native values and typecheck`, () => {
       const src = base('', `<Button onPress={() => { flow.addEdge({ id: 'e2', source: '1', target: '1', waypoints: [{ x: 4, y: 5 }] }); flow.addEdgeWaypoint('e1', { x: 1, y: 2 }, -1); flow.updateEdgeWaypoint('e1', 0, { x: 3, y: 4 }); flow.removeEdgeWaypoint('e1', -1); flow.reconnectEdge('e1', { target: '2', targetHandle: 'in' }) }}>Edit</Button>`)

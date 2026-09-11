@@ -54,8 +54,11 @@ fun <T> pyreonFlowEdgeStrokes(
             sourceHandles = source.sourceHandles,
             targetHandles = target.targetHandles,
             waypoints = edge.waypoints.map { PyreonFlowPathPoint(it.x, it.y) },
+            borderRadius = edge.borderRadius ?: 5.0,
+            offset = edge.pathOffset ?: 20.0,
+            curvature = edge.curvature ?: 0.25,
         )
-        PyreonFlowEdgeStroke(edge.id, path.segments, color, width)
+        PyreonFlowEdgeStroke(edge.id, path.segments, color, width, if (edge.animated) listOf(5.0, 5.0) else null)
     }
 }
 
@@ -72,6 +75,9 @@ fun <T> pyreonFlowEdgeLabels(state: PyreonFlowState<T>): List<PyreonFlowEdgeLabe
             PyreonFlowNodeBox(tp.x, tp.y, target.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH, target.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT),
             edge.sourceHandle, edge.targetHandle, source.sourceHandles, target.targetHandles,
             waypoints = edge.waypoints.map { PyreonFlowPathPoint(it.x, it.y) },
+            borderRadius = edge.borderRadius ?: 5.0,
+            offset = edge.pathOffset ?: 20.0,
+            curvature = edge.curvature ?: 0.25,
         )
         PyreonFlowEdgeLabel(edge.id, edge.label, edge.ariaLabel ?: edge.label ?: "Edge from ${edge.source} to ${edge.target}", path.labelX, path.labelY, edge.focusable != false)
     }

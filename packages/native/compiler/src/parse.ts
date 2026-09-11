@@ -9094,6 +9094,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     deletable?: boolean
     reconnectable?: boolean
     interactionWidth?: number
+    pathOptions?: { curvature?: number; borderRadius?: number; offset?: number }
     waypoints?: { x: ExprIR; y: ExprIR }[]
   }[] = []
   let shapeOk = true
@@ -9187,6 +9188,19 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       const edgeStringFields = ['sourceHandle', 'targetHandle', 'ariaLabel'] as const
       const edgeBoolFields = ['focusable', 'hidden', 'deletable', 'reconnectable'] as const
       const interactionWidth = literalNumber(objProp(edgeLit, 'interactionWidth'))
+      const pathOptionsNode = objProp(edgeLit, 'pathOptions')
+      const pathOptions = (() => {
+        if (!pathOptionsNode) return undefined
+        if (pathOptionsNode.type !== 'ObjectExpression') return null
+        const result: { curvature?: number; borderRadius?: number; offset?: number } = {}
+        for (const key of ['curvature', 'borderRadius', 'offset'] as const) {
+          const valueNode = objProp(pathOptionsNode, key)
+          const value = literalNumber(valueNode)
+          if (valueNode && value === undefined) return null
+          if (value !== undefined) result[key] = value
+        }
+        return result
+      })()
       const waypointsNode = objProp(edgeLit, 'waypoints')
       const waypoints = literalPositions(waypointsNode)
       for (const k of literalObjectKeys(edgeLit)) if (!HANDLED_FLOW_EDGE_FIELDS.has(k)) droppedEdgeFields.add(k)
@@ -9196,6 +9210,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       for (const k of edgeStringFields) if (objProp(edgeLit, k) && literalString(objProp(edgeLit, k)) === undefined) droppedEdgeFields.add(`${k} (not a string literal)`)
       for (const k of edgeBoolFields) if (objProp(edgeLit, k) && literalBool(objProp(edgeLit, k)) === undefined) droppedEdgeFields.add(`${k} (not a boolean literal)`)
       if (objProp(edgeLit, 'interactionWidth') && interactionWidth === undefined) droppedEdgeFields.add('interactionWidth (not a numeric literal)')
+      if (pathOptions === null) droppedEdgeFields.add('pathOptions (not a literal numeric options object)')
       if (waypointsNode && waypoints === undefined) droppedEdgeFields.add('waypoints (not an array literal of { x, y })')
       edgesOut.push({
         id,
@@ -9213,6 +9228,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
           return value === undefined ? [] : [[k, value]]
         })),
         ...(interactionWidth !== undefined ? { interactionWidth } : {}),
+        ...(pathOptions !== undefined && pathOptions !== null ? { pathOptions } : {}),
         ...(waypoints !== undefined ? { waypoints } : {}),
       })
     }

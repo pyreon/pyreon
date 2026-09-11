@@ -61,6 +61,9 @@ struct PyreonFlowStateTests {
         check(!pyreonFlowEdgeStrokes(state: f).contains { $0.id == "dangling" }, "native host omits edges with missing endpoints")
         let labels = pyreonFlowEdgeLabels(state: f)
         check(labels.first?.accessibilityLabel == "Edge from 1 to 2" && labels.first!.x > 0, "native host derives positioned accessible edge labels")
+        let routed = PyreonFlowState(nodes: f.nodes, edges: [PyreonFlowEdge(id: "tuned", source: "1", target: "2", type: "step", animated: true, pathOffset: 37)])
+        let tunedStroke = pyreonFlowEdgeStrokes(state: routed)[0]
+        check(tunedStroke.dash == [5, 5] && tunedStroke.segments[1].x == 187, "native host applies animated dash and per-edge path offset")
         f.removeEdge("dangling")
         f.containerSize = PyreonFlowContainerSize(width: 400, height: 200)
         let mini = pyreonFlowMiniMapLayout(state: f, width: 200, height: 150)

@@ -1068,6 +1068,9 @@ public struct PyreonFlowEdge: Equatable {
   public var deletable: Bool? = nil
   public var reconnectable: Bool? = nil
   public var interactionWidth: Double? = nil
+  public var curvature: Double? = nil
+  public var borderRadius: Double? = nil
+  public var pathOffset: Double? = nil
   public var waypoints: [PyreonXYPosition] = []
   public init(
     id: String,
@@ -1084,6 +1087,9 @@ public struct PyreonFlowEdge: Equatable {
     deletable: Bool? = nil,
     reconnectable: Bool? = nil,
     interactionWidth: Double? = nil,
+    curvature: Double? = nil,
+    borderRadius: Double? = nil,
+    pathOffset: Double? = nil,
     waypoints: [PyreonXYPosition] = []
   ) {
     self.id = id

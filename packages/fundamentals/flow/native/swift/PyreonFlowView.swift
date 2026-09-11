@@ -241,8 +241,11 @@ public func pyreonFlowEdgeStrokes<T>(
             targetHandleId: edge.targetHandle,
             sourceHandles: source.sourceHandles,
             targetHandles: target.targetHandles,
-            waypoints: edge.waypoints)
-        return PyreonFlowEdgeStroke(id: edge.id, segments: path.segments, color: color, width: width)
+            waypoints: edge.waypoints,
+            borderRadius: edge.borderRadius ?? 5,
+            offset: edge.pathOffset ?? 20,
+            curvature: edge.curvature ?? 0.25)
+        return PyreonFlowEdgeStroke(id: edge.id, segments: path.segments, color: color, width: width, dash: edge.animated ? [5, 5] : nil)
     }
 }
 
@@ -258,7 +261,10 @@ public func pyreonFlowEdgeLabels<T>(state: PyreonFlowState<T>) -> [PyreonFlowEdg
             target: PyreonFlowRect(x: tp.x, y: tp.y, width: target.width ?? pyreonFlowDefaultNodeWidth, height: target.height ?? pyreonFlowDefaultNodeHeight),
             sourceHandleId: edge.sourceHandle, targetHandleId: edge.targetHandle,
             sourceHandles: source.sourceHandles, targetHandles: target.targetHandles,
-            waypoints: edge.waypoints)
+            waypoints: edge.waypoints,
+            borderRadius: edge.borderRadius ?? 5,
+            offset: edge.pathOffset ?? 20,
+            curvature: edge.curvature ?? 0.25)
         return PyreonFlowEdgeLabel(id: edge.id, text: edge.label, accessibilityLabel: edge.ariaLabel ?? edge.label ?? "Edge from \(edge.source) to \(edge.target)", x: path.labelX, y: path.labelY, focusable: edge.focusable != false)
     }
 }

@@ -1607,6 +1607,9 @@ data class PyreonFlowEdge(
   val deletable: Boolean? = null,
   val reconnectable: Boolean? = null,
   val interactionWidth: Double? = null,
+  val curvature: Double? = null,
+  val borderRadius: Double? = null,
+  val pathOffset: Double? = null,
   val waypoints: List<PyreonXYPosition> = emptyList(),
 )
 data class PyreonFlowConnection(val source: String, val target: String, val sourceHandle: String? = null, val targetHandle: String? = null)
