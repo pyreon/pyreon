@@ -7,6 +7,7 @@ import { transform } from '../index'
 import {
   isKotlincAvailable,
   isSwiftUIAvailable,
+  swiftChartAugmentation,
   validateKotlin,
   validateSwiftTypecheck,
 } from '../validate'
@@ -31,6 +32,12 @@ export function App() {
 }`
 
 describe('PlotChart locale crosses to native platform formatters', () => {
+  it('keeps one Swift declaration per locale helper in the real-engine stub bundle', () => {
+    const augmentation = swiftChartAugmentation('PyreonChartCanvas(')
+    expect(augmentation.match(/public func pyreonLocaleNumberFormatter/g)).toHaveLength(1)
+    expect(augmentation.match(/public func pyreonLocaleDateFormatter/g)).toHaveLength(1)
+  })
+
   it('Swift lowers number and UTC date formatting without a warning', () => {
     const r = transform(SRC, { target: 'swift' })
     expect(r.warnings).toEqual([])
