@@ -359,7 +359,7 @@ import { createFlow } from '@pyreon/flow'
 import { Stack, Text } from '${P}'
 export function C() {
   const flow = createFlow({
-    nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'A' }, parentId: 'root', draggable: false, selectable: true, connectable: false, focusable: true, ariaLabel: 'Start node', hidden: false, deletable: true, expandParent: true, group: true, style: {} }],
+    nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'A' }, parentId: 'root', draggable: false, selectable: true, connectable: false, focusable: true, ariaLabel: 'Start node', hidden: false, deletable: true, expandParent: true, group: true, sourceHandles: [{ id: 'out', type: 'source', position: 'right' }], targetHandles: [{ type: 'target', position: 'left' }], style: {} }],
     edges: [{ id: 'e1', source: '1', target: '1', markerEnd: 'arrow', sourceHandle: 'out', targetHandle: 'in', focusable: true, ariaLabel: 'Loop', hidden: false, deletable: true, reconnectable: false, interactionWidth: 24 }],
   })
   return (<Stack><Text>{flow.nodes().length}</Text></Stack>)
@@ -369,7 +369,7 @@ export function C() {
       const w = (result.warnings ?? []).join('\n')
       expect(w).toContain('node field `style` is NOT carried')
       expect(w).toContain('edge field `markerEnd` is NOT carried')
-      for (const field of ['parentId', 'draggable', 'selectable', 'connectable', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'expandParent', 'group', 'sourceHandle', 'targetHandle', 'reconnectable', 'interactionWidth']) {
+      for (const field of ['parentId', 'draggable', 'selectable', 'connectable', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'expandParent', 'group', 'sourceHandles', 'targetHandles', 'sourceHandle', 'targetHandle', 'reconnectable', 'interactionWidth']) {
         expect(w).not.toContain(`field \`${field}\` is NOT carried`)
       }
       const assignment = target === 'swift' ? ':' : ' ='
@@ -379,6 +379,7 @@ export function C() {
       expect(result.code).toContain(`targetHandle${assignment} "in"`)
       expect(result.code).toContain(`ariaLabel${assignment} "Loop"`)
       expect(result.code).toContain(`interactionWidth${assignment} ${target === 'swift' ? '24' : '24.0'}`)
+      expect(result.code).toContain(target === 'swift' ? 'sourceHandles: [PyreonFlowHandleConfig(id: "out", type: "source", position: .right)]' : 'sourceHandles = listOf(PyreonFlowHandleConfig(id = "out", type = "source", position = PyreonFlowPosition.Right))')
     })
     it(`[${target}] a declaration-time NON-literal edge label/type is named, not silently dropped`, () => {
       const src = `
@@ -396,9 +397,10 @@ export function C() {
       expect(warningsOf(src, target)).toContain('`label (not a string literal)`')
     })
     it(`[${target}] call-site addNode/addEdge literals with extra fields warn BY NAME`, () => {
-      const w = warningsOf(base('', `<Button onPress={() => { flow.addNode({ id: '2', position: { x: 1, y: 1 }, data: { label: 'B' }, hidden: true, style: {} }); flow.addEdge({ id: 'e2', source: '1', target: '2', sourceHandle: 'out', waypoints: [], markerEnd: 'arrow' }) }}>Add</Button>`), target)
+      const w = warningsOf(base('', `<Button onPress={() => { flow.addNode({ id: '2', position: { x: 1, y: 1 }, data: { label: 'B' }, hidden: true, sourceHandles: [{ id: 'out', type: 'source', position: 'right' }], style: {} }); flow.addEdge({ id: 'e2', source: '1', target: '2', sourceHandle: 'out', waypoints: [], markerEnd: 'arrow' }) }}>Add</Button>`), target)
       expect(w).toContain('addNode(...): node field `style` is NOT carried')
       expect(w).not.toContain('node field `hidden` is NOT carried')
+      expect(w).not.toContain('node field `sourceHandles` is NOT carried')
       expect(w).toContain('addEdge(...): edge field `markerEnd` is NOT carried')
       expect(w).not.toContain('edge field `waypoints` is NOT carried')
       expect(w).not.toContain('edge field `sourceHandle` is NOT carried')

@@ -32,6 +32,7 @@ export const HANDLED_FLOW_NODE_FIELDS: ReadonlySet<string> = new Set([
   'id', 'type', 'position', 'data', 'width', 'height',
   'draggable', 'selectable', 'connectable', 'focusable', 'ariaLabel',
   'hidden', 'deletable', 'parentId', 'expandParent', 'group',
+  'sourceHandles', 'targetHandles',
 ])
 /** `FlowEdge` fields the native `PyreonFlowEdge` carries. */
 export const HANDLED_FLOW_EDGE_FIELDS: ReadonlySet<string> = new Set([

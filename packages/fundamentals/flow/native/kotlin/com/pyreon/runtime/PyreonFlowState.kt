@@ -52,6 +52,8 @@ data class PyreonFlowNode<T>(
     val parentId: String? = null,
     val expandParent: Boolean? = null,
     val group: Boolean? = null,
+    val sourceHandles: List<PyreonFlowHandleConfig> = emptyList(),
+    val targetHandles: List<PyreonFlowHandleConfig> = emptyList(),
 )
 
 /** An edge — mirrors `FlowEdge`'s core fields, including editable waypoints. */

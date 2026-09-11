@@ -3141,6 +3141,8 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
           ...(n.parentId !== undefined ? [`parentId = ${JSON.stringify(n.parentId)}`] : []),
           ...(n.expandParent !== undefined ? [`expandParent = ${n.expandParent}`] : []),
           ...(n.group !== undefined ? [`group = ${n.group}`] : []),
+          ...(n.sourceHandles !== undefined ? [`sourceHandles = ${kotlinFlowParsedHandles(n.sourceHandles)}`] : []),
+          ...(n.targetHandles !== undefined ? [`targetHandles = ${kotlinFlowParsedHandles(n.targetHandles)}`] : []),
         ]
         return `PyreonFlowNode(${parts.join(', ')})`
       })
@@ -3265,6 +3267,8 @@ function kotlinFlowNodeLiteral(arg: ExprIR, flowName: string): string | null {
   const typeExpr = field('type')
   const widthExpr = field('width')
   const heightExpr = field('height')
+  const sourceHandlesExpr = field('sourceHandles')
+  const targetHandlesExpr = field('targetHandles')
   const optionalFields = ['draggable', 'selectable', 'connectable', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'parentId', 'expandParent', 'group'] as const
   const parts = [
     `id = ${emitKotlinExpr(idExpr, 0)}`,
@@ -3277,8 +3281,30 @@ function kotlinFlowNodeLiteral(arg: ExprIR, flowName: string): string | null {
       const value = field(name)
       return value ? [`${name} = ${emitKotlinExpr(value, 0)}`] : []
     }),
+    ...(sourceHandlesExpr ? [`sourceHandles = ${kotlinFlowHandlesLiteral(sourceHandlesExpr) ?? emitKotlinExpr(sourceHandlesExpr, 0)}`] : []),
+    ...(targetHandlesExpr ? [`targetHandles = ${kotlinFlowHandlesLiteral(targetHandlesExpr) ?? emitKotlinExpr(targetHandlesExpr, 0)}`] : []),
   ]
   return `PyreonFlowNode(${parts.join(', ')})`
+}
+
+function kotlinFlowParsedHandles(handles: { id?: string; type: string; position: string }[]): string {
+  const positionName = (position: string) => position[0]!.toUpperCase() + position.slice(1)
+  return `listOf(${handles.map((h) => `PyreonFlowHandleConfig(${h.id === undefined ? '' : `id = ${JSON.stringify(h.id)}, `}type = ${JSON.stringify(h.type)}, position = PyreonFlowPosition.${positionName(h.position)})`).join(', ')})`
+}
+
+function kotlinFlowHandlesLiteral(arg: ExprIR): string | null {
+  if (arg.kind !== 'array') return null
+  const parsed: { id?: string; type: string; position: string }[] = []
+  for (const item of arg.elements) {
+    if (item.kind !== 'object') return null
+    const field = (name: string) => item.fields.find((f) => f.name === name)?.value
+    const type = field('type'), position = field('position'), id = field('id')
+    if (type?.kind !== 'literal' || typeof type.value !== 'string') return null
+    const positionName = position?.kind === 'literal' && typeof position.value === 'string' ? position.value.toLowerCase() : position?.kind === 'member' ? position.property.toLowerCase() : undefined
+    if (!positionName || !['top', 'right', 'bottom', 'left'].includes(positionName) || (id && (id.kind !== 'literal' || typeof id.value !== 'string'))) return null
+    parsed.push({ type: type.value, position: positionName, ...(id?.kind === 'literal' ? { id: id.value as string } : {}) })
+  }
+  return kotlinFlowParsedHandles(parsed)
 }
 
 /** `addEdge({...})` — the `PyreonFlowEdge` twin of `kotlinFlowNodeLiteral`. */

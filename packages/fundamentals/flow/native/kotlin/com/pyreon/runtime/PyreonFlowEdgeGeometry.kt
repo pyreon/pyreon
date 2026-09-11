@@ -14,14 +14,11 @@ import kotlin.math.hypot
 // twin's geometry has always been — the canvas composable itself stays
 // `kotlinSdkOnly`, device-gate territory, and is now ~20 lines.
 //
-enum class PyreonFlowPosition { Top, Right, Bottom, Left }
-
 data class PyreonFlowPathResult(
     val labelX: Double,
     val labelY: Double,
     val segments: List<PyreonFlowEdgeSegment>,
 )
-data class PyreonFlowPathPoint(val x: Double, val y: Double)
 data class PyreonFlowNodeBox(val x: Double, val y: Double, val width: Double, val height: Double)
 data class PyreonFlowHandleAnchor(val x: Double, val y: Double, val position: PyreonFlowPosition)
 data class PyreonFlowFloatingEndpoints(val source: PyreonFlowHandleAnchor, val target: PyreonFlowHandleAnchor)
@@ -55,6 +52,23 @@ fun pyreonFloatingEndpoints(source: PyreonFlowNodeBox, target: PyreonFlowNodeBox
     val targetCenter = PyreonFlowPathPoint(target.x + target.width / 2, target.y + target.height / 2)
     val sp = pyreonNodeIntersection(source, targetCenter); val tp = pyreonNodeIntersection(target, sourceCenter)
     return PyreonFlowFloatingEndpoints(PyreonFlowHandleAnchor(sp.x, sp.y, pyreonSideOfPoint(source, sp)), PyreonFlowHandleAnchor(tp.x, tp.y, pyreonSideOfPoint(target, tp)))
+}
+
+fun pyreonResolveHandleAnchor(nodeX: Double, nodeY: Double, nodeWidth: Double, nodeHeight: Double, handleId: String?, type: String, config: List<PyreonFlowHandleConfig>, measurement: PyreonFlowNodeMeasurement?): PyreonFlowHandleAnchor? {
+    val measured = measurement?.handles?.filter { it.type == type } ?: emptyList()
+    if (handleId != null) {
+        measured.firstOrNull { it.id == handleId }?.let { return PyreonFlowHandleAnchor(nodeX + it.x, nodeY + it.y, it.position) }
+        config.firstOrNull { it.id == handleId }?.let {
+            val point = pyreonHandlePosition(it.position, nodeX, nodeY, nodeWidth, nodeHeight)
+            return PyreonFlowHandleAnchor(point.x, point.y, it.position)
+        }
+    }
+    measured.firstOrNull()?.let { return PyreonFlowHandleAnchor(nodeX + it.x, nodeY + it.y, it.position) }
+    config.firstOrNull()?.let {
+        val point = pyreonHandlePosition(it.position, nodeX, nodeY, nodeWidth, nodeHeight)
+        return PyreonFlowHandleAnchor(point.x, point.y, it.position)
+    }
+    return null
 }
 
 /** Parses `#rgb` / `#rrggbb` into a Compose `Color`, falling back to gray. */

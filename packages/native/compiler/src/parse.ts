@@ -9031,6 +9031,30 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     }
     return out
   }
+  const literalFlowPosition = (n: AnyNode | undefined): string | undefined => {
+    const direct = literalString(n)
+    if (direct && ['top', 'right', 'bottom', 'left'].includes(direct.toLowerCase())) return direct.toLowerCase()
+    if (n?.type === 'StaticMemberExpression' || n?.type === 'MemberExpression') {
+      const positionName = (n.property as AnyNode | undefined)?.name
+      if (typeof positionName === 'string' && ['top', 'right', 'bottom', 'left'].includes(positionName.toLowerCase())) return positionName.toLowerCase()
+    }
+    return undefined
+  }
+  const literalHandles = (n: AnyNode | undefined): { id?: string; type: string; position: string }[] | undefined => {
+    if (!n || n.type !== 'ArrayExpression') return undefined
+    const out: { id?: string; type: string; position: string }[] = []
+    for (const raw of (n.elements as AnyNode[] | undefined) ?? []) {
+      const item = unwrapTypeLayers(raw)
+      if (!item || item.type !== 'ObjectExpression') return undefined
+      const type = literalString(objProp(item, 'type'))
+      const position = literalFlowPosition(objProp(item, 'position'))
+      const idNode = objProp(item, 'id')
+      const id = literalString(idNode)
+      if (!type || !position || (idNode && id === undefined)) return undefined
+      out.push({ type, position, ...(id !== undefined ? { id } : {}) })
+    }
+    return out
+  }
 
   const droppedNodeFields = new Set<string>()
   const droppedEdgeFields = new Set<string>()
@@ -9052,6 +9076,8 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     parentId?: string
     expandParent?: boolean
     group?: boolean
+    sourceHandles?: { id?: string; type: string; position: string }[]
+    targetHandles?: { id?: string; type: string; position: string }[]
   }[] = []
   const edgesOut: {
     id: string
@@ -9104,12 +9130,18 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       const widthNode = objProp(nodeLit, 'width')
       const heightNode = objProp(nodeLit, 'height')
       const typeLit = literalString(typeNode)
+      const sourceHandlesNode = objProp(nodeLit, 'sourceHandles')
+      const targetHandlesNode = objProp(nodeLit, 'targetHandles')
+      const sourceHandles = literalHandles(sourceHandlesNode)
+      const targetHandles = literalHandles(targetHandlesNode)
       const stringFields = ['ariaLabel', 'parentId'] as const
       const boolFields = ['draggable', 'selectable', 'connectable', 'focusable', 'hidden', 'deletable', 'expandParent', 'group'] as const
       for (const k of literalObjectKeys(nodeLit)) if (!HANDLED_FLOW_NODE_FIELDS.has(k)) droppedNodeFields.add(k)
       if (typeNode && typeLit === undefined) droppedNodeFields.add('type (not a string literal)')
       for (const k of stringFields) if (objProp(nodeLit, k) && literalString(objProp(nodeLit, k)) === undefined) droppedNodeFields.add(`${k} (not a string literal)`)
       for (const k of boolFields) if (objProp(nodeLit, k) && literalBool(objProp(nodeLit, k)) === undefined) droppedNodeFields.add(`${k} (not a boolean literal)`)
+      if (sourceHandlesNode && sourceHandles === undefined) droppedNodeFields.add('sourceHandles (not a literal handle array)')
+      if (targetHandlesNode && targetHandles === undefined) droppedNodeFields.add('targetHandles (not a literal handle array)')
       nodesOut.push({
         id,
         positionX: parseExpr(posXNode, ctx),
@@ -9126,6 +9158,8 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
           const value = literalBool(objProp(nodeLit, k))
           return value === undefined ? [] : [[k, value]]
         })),
+        ...(sourceHandles !== undefined ? { sourceHandles } : {}),
+        ...(targetHandles !== undefined ? { targetHandles } : {}),
       })
     }
   } else if (nodesArg) {

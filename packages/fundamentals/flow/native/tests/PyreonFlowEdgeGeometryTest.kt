@@ -9,11 +9,15 @@ import com.pyreon.runtime.PyreonFlowEdgeSegment
 import com.pyreon.runtime.PyreonFlowEdgeStroke
 import com.pyreon.runtime.PyreonFlowPathPoint
 import com.pyreon.runtime.PyreonFlowNodeBox
+import com.pyreon.runtime.PyreonFlowHandleConfig
+import com.pyreon.runtime.PyreonFlowMeasuredHandle
+import com.pyreon.runtime.PyreonFlowNodeMeasurement
 import com.pyreon.runtime.PyreonFlowPosition
 import com.pyreon.runtime.pyreonBezierPath
 import com.pyreon.runtime.pyreonFloatingEndpoints
 import com.pyreon.runtime.pyreonHandlePosition
 import com.pyreon.runtime.pyreonNodeIntersection
+import com.pyreon.runtime.pyreonResolveHandleAnchor
 import com.pyreon.runtime.pyreonFlowEdgeColor
 import com.pyreon.runtime.pyreonFlowEdgePath
 import com.pyreon.runtime.pyreonStraightPath
@@ -86,6 +90,11 @@ fun main() {
     val floating = pyreonFloatingEndpoints(sourceBox, targetBox)
     check(floating.source.x == 115.0 && floating.source.y == 40.0 && floating.source.position == PyreonFlowPosition.Bottom, "floating source exactly matches web")
     check(floating.target.x == 235.0 && floating.target.y == 100.0 && floating.target.position == PyreonFlowPosition.Top, "floating target exactly matches web")
+    val configHandles = listOf(PyreonFlowHandleConfig("cfg", "source", PyreonFlowPosition.Right))
+    val measurement = PyreonFlowNodeMeasurement(180.0, 60.0, listOf(PyreonFlowMeasuredHandle("real", "source", PyreonFlowPosition.Bottom, 45.0, 61.0)))
+    check(pyreonResolveHandleAnchor(10.0, 20.0, 200.0, 80.0, "real", "source", configHandles, measurement) == com.pyreon.runtime.PyreonFlowHandleAnchor(55.0, 81.0, PyreonFlowPosition.Bottom), "named measured handle wins with its exact rendered center")
+    check(pyreonResolveHandleAnchor(10.0, 20.0, 200.0, 80.0, "cfg", "source", configHandles, measurement) == com.pyreon.runtime.PyreonFlowHandleAnchor(210.0, 60.0, PyreonFlowPosition.Right), "named config handle uses effective dimensions")
+    check(pyreonResolveHandleAnchor(10.0, 20.0, 200.0, 80.0, "missing", "source", configHandles, measurement)?.x == 55.0, "unknown id falls back to the first measured handle")
 
     println("PyreonFlowEdgeGeometryTest: all checks passed")
 }

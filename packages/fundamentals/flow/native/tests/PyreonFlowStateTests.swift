@@ -348,6 +348,11 @@ struct PyreonFlowStateTests {
         let floating = pyreonFloatingEndpoints(source: sourceBox, target: targetBox)
         check(floating.source == PyreonFlowHandleAnchor(x: 115, y: 40, position: .bottom), "floating source exactly matches web")
         check(floating.target == PyreonFlowHandleAnchor(x: 235, y: 100, position: .top), "floating target exactly matches web")
+        let configHandles = [PyreonFlowHandleConfig(id: "cfg", type: "source", position: .right)]
+        let measurement = PyreonFlowNodeMeasurement(width: 180, height: 60, handles: [PyreonFlowMeasuredHandle(id: "real", type: "source", position: .bottom, x: 45, y: 61)])
+        check(pyreonResolveHandleAnchor(nodeX: 10, nodeY: 20, nodeWidth: 200, nodeHeight: 80, handleId: "real", type: "source", config: configHandles, measurement: measurement) == PyreonFlowHandleAnchor(x: 55, y: 81, position: .bottom), "named measured handle wins with its exact rendered center")
+        check(pyreonResolveHandleAnchor(nodeX: 10, nodeY: 20, nodeWidth: 200, nodeHeight: 80, handleId: "cfg", type: "source", config: configHandles, measurement: measurement) == PyreonFlowHandleAnchor(x: 210, y: 60, position: .right), "named config handle uses effective dimensions")
+        check(pyreonResolveHandleAnchor(nodeX: 10, nodeY: 20, nodeWidth: 200, nodeHeight: 80, handleId: "missing", type: "source", config: configHandles, measurement: measurement)?.x == 55, "unknown id falls back to the first measured handle")
 
         // 6. A stroke prebuilds its path/color/dash ONCE, at construction — the
         // draw closure must find nothing left to parse or allocate per edge.

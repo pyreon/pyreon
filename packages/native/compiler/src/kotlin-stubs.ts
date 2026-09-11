@@ -1570,6 +1570,8 @@ class PyreonSortableState<T>(
 data class PyreonXYPosition(val x: Double, val y: Double)
 data class PyreonFlowViewport(val x: Double = 0.0, val y: Double = 0.0, val zoom: Double = 1.0)
 data class PyreonFlowNodeExtent(val minX: Double, val minY: Double, val maxX: Double, val maxY: Double)
+enum class PyreonFlowPosition { Top, Right, Bottom, Left }
+data class PyreonFlowHandleConfig(val id: String? = null, val type: String, val position: PyreonFlowPosition)
 data class PyreonFlowNode<T>(
   val id: String,
   val type: String? = null,
@@ -1587,6 +1589,8 @@ data class PyreonFlowNode<T>(
   val parentId: String? = null,
   val expandParent: Boolean? = null,
   val group: Boolean? = null,
+  val sourceHandles: List<PyreonFlowHandleConfig> = emptyList(),
+  val targetHandles: List<PyreonFlowHandleConfig> = emptyList(),
 )
 data class PyreonFlowEdge(
   val id: String,

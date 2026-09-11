@@ -25,4 +25,8 @@ Native edge routing also covers every horizontal/vertical smooth-step orientatio
 
 Native geometry now resolves node-side handle midpoints, perimeter intersections, and floating endpoints with the same coordinates and tangent sides as web.
 
+Configured and measured handles now resolve by ID with the web precedence rules, exact measured centers, effective node dimensions, and first-handle fallback.
+
+Literal source/target handle declarations now survive `createFlow` seeds and `addNode`/bulk-node lowering on Swift and Kotlin.
+
 Swift compiler validation now uses a disposable module cache, keeping hermetic and sandboxed runs independent of a writable user-level Clang cache.

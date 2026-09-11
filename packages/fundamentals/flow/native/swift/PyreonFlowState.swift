@@ -69,6 +69,8 @@ public struct PyreonFlowNode<T> {
     public var parentId: String?
     public var expandParent: Bool?
     public var group: Bool?
+    public var sourceHandles: [PyreonFlowHandleConfig]
+    public var targetHandles: [PyreonFlowHandleConfig]
 
     public init(
         id: String,
@@ -86,7 +88,9 @@ public struct PyreonFlowNode<T> {
         deletable: Bool? = nil,
         parentId: String? = nil,
         expandParent: Bool? = nil,
-        group: Bool? = nil
+        group: Bool? = nil,
+        sourceHandles: [PyreonFlowHandleConfig] = [],
+        targetHandles: [PyreonFlowHandleConfig] = []
     ) {
         self.id = id
         self.type = type
@@ -104,6 +108,8 @@ public struct PyreonFlowNode<T> {
         self.parentId = parentId
         self.expandParent = expandParent
         self.group = group
+        self.sourceHandles = sourceHandles
+        self.targetHandles = targetHandles
     }
 }
 

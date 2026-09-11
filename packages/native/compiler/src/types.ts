@@ -928,6 +928,8 @@ export type DeclIR =
         parentId?: string
         expandParent?: boolean
         group?: boolean
+        sourceHandles?: { id?: string; type: string; position: string }[]
+        targetHandles?: { id?: string; type: string; position: string }[]
       }[]
       edges: {
         id: string

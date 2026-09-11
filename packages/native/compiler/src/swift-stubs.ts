@@ -1004,6 +1004,10 @@ public struct PyreonFlowViewport: Equatable {
 public struct PyreonFlowNodeExtent: Equatable {
   public init(minX: Double, minY: Double, maxX: Double, maxY: Double) {}
 }
+public enum PyreonFlowPosition { case top, right, bottom, left }
+public struct PyreonFlowHandleConfig: Equatable {
+  public init(id: String? = nil, type: String, position: PyreonFlowPosition) {}
+}
 public struct PyreonFlowNode<T> {
   public var id: String
   public var type: String? = nil
@@ -1037,7 +1041,9 @@ public struct PyreonFlowNode<T> {
     deletable: Bool? = nil,
     parentId: String? = nil,
     expandParent: Bool? = nil,
-    group: Bool? = nil
+    group: Bool? = nil,
+    sourceHandles: [PyreonFlowHandleConfig] = [],
+    targetHandles: [PyreonFlowHandleConfig] = []
   ) {
     self.id = id
     self.type = type

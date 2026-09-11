@@ -15,6 +15,23 @@ import SwiftUI
 //
 public enum PyreonFlowPosition: Equatable { case top, right, bottom, left }
 
+public struct PyreonFlowHandleConfig: Equatable {
+    public var id: String?
+    public var type: String
+    public var position: PyreonFlowPosition
+    public init(id: String? = nil, type: String, position: PyreonFlowPosition) { self.id = id; self.type = type; self.position = position }
+}
+
+public struct PyreonFlowMeasuredHandle: Equatable {
+    public var id: String; public var type: String; public var position: PyreonFlowPosition; public var x: Double; public var y: Double
+    public init(id: String, type: String, position: PyreonFlowPosition, x: Double, y: Double) { self.id = id; self.type = type; self.position = position; self.x = x; self.y = y }
+}
+
+public struct PyreonFlowNodeMeasurement: Equatable {
+    public var width: Double; public var height: Double; public var handles: [PyreonFlowMeasuredHandle]
+    public init(width: Double, height: Double, handles: [PyreonFlowMeasuredHandle] = []) { self.width = width; self.height = height; self.handles = handles }
+}
+
 public struct PyreonFlowPathResult: Equatable {
     public var labelX: Double
     public var labelY: Double
@@ -61,6 +78,25 @@ public func pyreonFloatingEndpoints(source: PyreonFlowRect, target: PyreonFlowRe
     let targetCenter = PyreonXYPosition(x: target.x + target.width / 2, y: target.y + target.height / 2)
     let sp = pyreonNodeIntersection(source, toward: targetCenter), tp = pyreonNodeIntersection(target, toward: sourceCenter)
     return (PyreonFlowHandleAnchor(x: sp.x, y: sp.y, position: pyreonSideOfPoint(source, sp)), PyreonFlowHandleAnchor(x: tp.x, y: tp.y, position: pyreonSideOfPoint(target, tp)))
+}
+
+public func pyreonResolveHandleAnchor(nodeX: Double, nodeY: Double, nodeWidth: Double, nodeHeight: Double, handleId: String?, type: String, config: [PyreonFlowHandleConfig], measurement: PyreonFlowNodeMeasurement?) -> PyreonFlowHandleAnchor? {
+    let measured = measurement?.handles.filter { $0.type == type } ?? []
+    if let handleId {
+        if let handle = measured.first(where: { $0.id == handleId }) {
+            return PyreonFlowHandleAnchor(x: nodeX + handle.x, y: nodeY + handle.y, position: handle.position)
+        }
+        if let handle = config.first(where: { $0.id == handleId }) {
+            let point = pyreonHandlePosition(handle.position, nodeX: nodeX, nodeY: nodeY, nodeWidth: nodeWidth, nodeHeight: nodeHeight)
+            return PyreonFlowHandleAnchor(x: point.x, y: point.y, position: handle.position)
+        }
+    }
+    if let handle = measured.first { return PyreonFlowHandleAnchor(x: nodeX + handle.x, y: nodeY + handle.y, position: handle.position) }
+    if let handle = config.first {
+        let point = pyreonHandlePosition(handle.position, nodeX: nodeX, nodeY: nodeY, nodeWidth: nodeWidth, nodeHeight: nodeHeight)
+        return PyreonFlowHandleAnchor(x: point.x, y: point.y, position: handle.position)
+    }
+    return nil
 }
 
 /// One drawing primitive in an edge's path — `move`/`line`/`cubic`/`quad`,
