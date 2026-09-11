@@ -21,7 +21,7 @@ const read = (p: string) => readFileSync(join(REPO, p), 'utf8')
 const CANVAS_SWIFT = 'packages/native/runtime-swift/Sources/PyreonRuntime/PyreonChartCanvas.swift'
 const ENGINE_SWIFT = 'packages/native/runtime-swift/Sources/PyreonRuntime/PyreonChartEngine.swift'
 
-const APP = `import { PieChart, PlotChart, TreemapChart, bars, compact } from '@pyreon/charts/plot'
+const APP = `import { PieChart, PlotChart, TreemapChart, bars, compact, line } from '@pyreon/charts/plot'
 import { Stack } from '@pyreon/primitives'
 interface Row { m: string; v: number }
 const ROWS: Row[] = [{ m: 'Jan', v: 10 }, { m: 'Feb', v: 30 }, { m: 'Mar', v: 20 }]
@@ -31,6 +31,8 @@ export function App() {
     <Stack>
       <PlotChart data={ROWS} x={(d) => d.m} marks={[bars((d) => d.v, { label: 'Value' })]} title="Sales" format={compact} height={200} />
       <PlotChart data={ROWS} x={(d) => d.m} marks={[bars((d) => d.v)]} accessibilityLabel="Explicit name" height={200} />
+      <PlotChart data={ROWS} x={(d) => d.m} marks={[bars((d) => d.v, { label: 'Visual label' })]} seriesLabels={['Spoken label']} height={200} />
+      <PlotChart data={ROWS} x={(d) => d.m} marks={[bars((d) => d.v), line((d) => d.v)]} seriesLabels={['Bars spoken', 'Line spoken']} showLegend height={200} />
       <PieChart data={ROWS} value={(d) => d.v} label={(d) => d.m} title="Share" height={200} />
       <TreemapChart data={TREE} height={200} />
       <TreemapChart data={TREE} accessibilityLabel="Repo by size" height={200} />
@@ -55,6 +57,13 @@ describe('every native chart canvas is named (Swift)', () => {
   })
   it('the plot host is DESCRIBED from its painted series and categories, through the chart format, titled', () => {
     expect(r.code).toContain('.accessibilityLabel(describeChart(A11yInput(title: "Sales", categories: pyreonCats, series: pyreonSeries.map { A11ySeries(label: $0.label, values: $0.values, kind: $0.kind, values2: $0.values2, errLow: $0.errLow, errHigh: $0.errHigh, rValues: $0.rValues) }, format: compact)))')
+  })
+  it('seriesLabels overrides the spoken name without rewriting the visual series label', () => {
+    expect(r.code).toContain('let pyreonSeriesLabels: [String] = ["Spoken label"]')
+    expect(r.code).toContain('label: pyreonI < pyreonSeriesLabels.count ? pyreonSeriesLabels[pyreonI] : pyreonS.label')
+    expect(r.code).toContain('label: "Visual label"')
+    expect(r.code).toContain('pyreonSeriesAll.enumerated().map { (pyreonI, pyreonS) in A11ySeries(')
+    expect(r.code).not.toContain('pyreonSeriesAll.enumerated().filter { !pyreonHidden.contains($0.offset) }')
   })
   it('an explicit accessibilityLabel wins over the description and over the family word', () => {
     expect(r.code).toContain('.accessibilityLabel("Explicit name")')
@@ -88,6 +97,13 @@ describe('every native chart canvas is named (Kotlin)', () => {
     expect(r.code).toContain('.semantics { contentDescription = "Repo by size" }')
     expect(r.code).toContain('.semantics { contentDescription = "Share" }')
     expect(r.code).toContain('.semantics { contentDescription = "Treemap chart" }')
+  })
+  it('seriesLabels overrides only the spoken Kotlin series name', () => {
+    expect(r.code).toContain('val pyreonSeriesLabels: List<String> = listOf("Spoken label")')
+    expect(r.code).toContain('label = pyreonSeriesLabels.getOrElse(pyreonI) { pyreonS.label }')
+    expect(r.code).toContain('label = "Visual label"')
+    expect(r.code).toContain('pyreonSeriesAll.mapIndexed { pyreonI, pyreonS -> A11ySeries(')
+    expect(r.code).not.toContain('pyreonSeriesAll.mapIndexedNotNull')
   })
   it.skipIf(!isKotlincAvailable())('kotlinc accepts the labelled emit', () => {
     const v = validateKotlin(r.code)

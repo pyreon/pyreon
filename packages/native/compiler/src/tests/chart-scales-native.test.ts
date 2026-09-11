@@ -1,7 +1,7 @@
 // Batch 2 on native: the spec switches (log view, time y, 100% stack, axis
 // titles, label mode) lower as literals on both targets, `<Scale>` /
 // `<Axis title labels scale time>` desugar, the waterfall mark lowers, and
-// the web-only pieces (error accessors, `<Histogram>`, `locale`, `facet`)
+// the web-only pieces (error accessors, `<Histogram>`, `facet`)
 // are NAMED rather than dropped — then the real toolchains compile the emit.
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -195,7 +195,7 @@ export function App() {
 })
 
 describe('the web-only pieces are named, never dropped silently', () => {
-  it('error accessors on a mark, <Histogram>, locale and facet each warn by name on both targets', () => {
+  it('error accessors on a mark, <Histogram> and facet are never dropped silently', () => {
     const src = `import { Bar, Histogram, Plot, PlotChart, bars } from '@pyreon/charts/plot'
 import { Stack } from '@pyreon/primitives'
 interface Row { m: string; v: number; lo: number; hi: number; r: string }
@@ -217,15 +217,15 @@ export function App() {
       const all = r.warnings.join('\n')
       // `errorLow` / `errorHigh` lower (the error-bar block below) and so
       // does `<Histogram>` (its own block above). What stays web-only is
-      // `locale` — Intl, which the crossed engine cannot call — and `facet`,
-      // a grid of sub-plots rather than a spec field. Both are NAMED.
+      // `locale` now lowers through the platform formatters. `facet`, a grid
+      // of sub-plots rather than a spec field, remains explicitly named.
       expect(all, target).not.toContain('is a per-row accessor')
       // The old "web only" line is gone; what this fixture now reports about
       // the histogram is the `<Bar>` standing beside it, which the row
       // substitution legitimately drops.
       expect(all, target).not.toContain('bins the rows on the web only')
       expect(all, target).toContain('reads the ORIGINAL rows')
-      expect(all, target).toContain('`locale`')
+      expect(all, target).not.toContain('`locale`')
       expect(all, target).toContain('`facet`')
     }
   })
