@@ -427,6 +427,21 @@ export function C() {
         expect(validateKotlin(result.code).ok).toBe(true)
       }
     })
+    it(`[${target}] literal bulk node and edge replacement lowers to nominal native model types`, () => {
+      const src = base('', `<Button onPress={() => { flow.addNodes([{ id: '2', position: { x: 10, y: 20 }, data: { label: 'B' } }]); flow.addEdges([{ id: 'e2', source: '1', target: '2' }]); flow.setNodes([{ id: '2', position: { x: 30, y: 40 }, data: { label: 'C' } }]); flow.setEdges([{ id: 'e3', source: '2', target: '2' }]) }}>Bulk</Button>`)
+      const result = transform(src, { target })
+      const w = (result.warnings ?? []).join('\n')
+      for (const member of ['addNodes', 'addEdges', 'setNodes', 'setEdges']) expect(w).not.toContain(`\`${member}\` is NOT ported`)
+      if (target === 'swift') {
+        expect(result.code).toMatch(/flow\.addNodes\(\[PyreonFlowNode\(id: "2"/)
+        expect(result.code).toContain('flow.setEdges([PyreonFlowEdge(id: "e3", source: "2", target: "2")])')
+        expect(validateSwiftWithStubs(result.code).ok).toBe(true)
+      } else {
+        expect(result.code).toMatch(/flow\.addNodes\(listOf\(PyreonFlowNode\(id = "2"/)
+        expect(result.code).toContain('flow.setEdges(listOf(PyreonFlowEdge(id = "e3", source = "2", target = "2")))')
+        expect(validateKotlin(result.code).ok).toBe(true)
+      }
+    })
   }
 
   describe('Swift argument labels + stub fidelity', () => {

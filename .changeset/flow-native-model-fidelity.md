@@ -13,4 +13,6 @@ Edge waypoints now survive declaration and `addEdge` lowering, and native state 
 
 Partial viewport updates and center-on-coordinate operations now lower to equivalent native state operations.
 
+Literal bulk node and edge additions/replacements now lower to native model arrays, retaining duplicate filtering, edge normalization, selection pruning, and removal of edges disconnected by node replacement.
+
 Swift compiler validation now uses a disposable module cache, keeping hermetic and sandboxed runs independent of a writable user-level Clang cache.

@@ -344,6 +344,19 @@ public final class PyreonFlowState<T> {
     public func addNode(_ node: PyreonFlowNode<T>) {
         insertNode(node)
     }
+    public func addNodes(_ nodes: [PyreonFlowNode<T>]) {
+        for node in nodes { insertNode(node) }
+    }
+    public func setNodes(_ nodes: [PyreonFlowNode<T>]) {
+        let nextIds = Set(nodes.map(\.id))
+        order.removeAll(keepingCapacity: true)
+        nodeStore.removeAll(keepingCapacity: true)
+        boxes.removeAll(keepingCapacity: true)
+        for node in nodes { insertNode(node) }
+        setNodeSelection(selectedNodeIds.filter { nextIds.contains($0) })
+        removeEdges { !nextIds.contains($0.source) || !nextIds.contains($0.target) }
+        nodesVersion &+= 1
+    }
     /// Removes the node AND every edge connected to it (source or target) —
     /// same as the web `removeNode`.
     public func removeNode(_ id: String) {
@@ -369,6 +382,15 @@ public final class PyreonFlowState<T> {
     /// dedupe-by-id contract as the web `addEdge`; applies `type ?? 'bezier'`.
     public func addEdge(_ edge: PyreonFlowEdge) {
         insertEdge(edge)
+    }
+    public func addEdges(_ edges: [PyreonFlowEdge]) {
+        for edge in edges { insertEdge(edge) }
+    }
+    public func setEdges(_ next: [PyreonFlowEdge]) {
+        edges.removeAll(keepingCapacity: true)
+        edgeIds.removeAll(keepingCapacity: true)
+        for edge in next { insertEdge(edge) }
+        setEdgeSelection(selectedEdgeIds.filter { edgeIds.contains($0) })
     }
     public func removeEdge(_ id: String) {
         guard edgeIds.contains(id) else { return }

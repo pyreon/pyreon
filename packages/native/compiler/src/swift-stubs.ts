@@ -1100,11 +1100,15 @@ public final class PyreonFlowState<T> {
   public var zoom: Double { viewport.zoom }
   public func getNode(_ id: String) -> PyreonFlowNode<T>? { nil }
   public func addNode(_ node: PyreonFlowNode<T>) {}
+  public func addNodes(_ nodes: [PyreonFlowNode<T>]) {}
+  public func setNodes(_ nodes: [PyreonFlowNode<T>]) {}
   public func removeNode(_ id: String) {}
   public func removeNodes(_ ids: [String]) {}
   public func updateNodePosition(_ id: String, _ position: PyreonXYPosition) {}
   public func getEdge(_ id: String) -> PyreonFlowEdge? { nil }
   public func addEdge(_ edge: PyreonFlowEdge) {}
+  public func addEdges(_ edges: [PyreonFlowEdge]) {}
+  public func setEdges(_ edges: [PyreonFlowEdge]) {}
   public func removeEdge(_ id: String) {}
   public func reconnectEdge(_ id: String, source: String? = nil, target: String? = nil, sourceHandle: String? = nil, targetHandle: String? = nil) {}
   public func addEdgeWaypoint(_ edgeId: String, _ point: PyreonXYPosition, _ index: Int? = nil) {}

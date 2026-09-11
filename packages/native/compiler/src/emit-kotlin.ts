@@ -3313,6 +3313,18 @@ function kotlinFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
   return `PyreonFlowEdge(${parts.join(', ')})`
 }
 
+function kotlinFlowNodeListLiteral(arg: ExprIR, flowName: string): string | null {
+  if (arg.kind !== 'array') return null
+  const nodes = arg.elements.map((item) => kotlinFlowNodeLiteral(item, flowName))
+  return nodes.some((node) => node === null) ? null : `listOf(${nodes.join(', ')})`
+}
+
+function kotlinFlowEdgeListLiteral(arg: ExprIR, flowName: string): string | null {
+  if (arg.kind !== 'array') return null
+  const edges = arg.elements.map((item) => kotlinFlowEdgeLiteral(item, flowName))
+  return edges.some((edge) => edge === null) ? null : `listOf(${edges.join(', ')})`
+}
+
 function kotlinFlowPositionsLiteral(arg: ExprIR): string | null {
   if (arg.kind !== 'array') return null
   const values: string[] = []
@@ -4716,6 +4728,14 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (member === 'reconnectEdge' && e.args.length === 2) {
           const args = kotlinFlowReconnectLiteral(e.args[1]!)
           if (args !== null) return `${kotlinIdent(flowName)}.reconnectEdge(${emitKotlinExpr(e.args[0]!, indent)}${args})`
+        }
+        if ((member === 'addNodes' || member === 'setNodes') && e.args.length === 1) {
+          const nodes = kotlinFlowNodeListLiteral(e.args[0]!, flowName)
+          if (nodes !== null) return `${kotlinIdent(flowName)}.${member}(${nodes})`
+        }
+        if ((member === 'addEdges' || member === 'setEdges') && e.args.length === 1) {
+          const edges = kotlinFlowEdgeListLiteral(e.args[0]!, flowName)
+          if (edges !== null) return `${kotlinIdent(flowName)}.${member}(${edges})`
         }
         if (member === 'setViewport' && e.args.length >= 1) {
           const args = kotlinFlowViewportLiteral(e.args[0]!)

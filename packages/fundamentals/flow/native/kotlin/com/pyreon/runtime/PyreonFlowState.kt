@@ -172,6 +172,17 @@ class PyreonFlowState<T>(
     fun addNode(node: PyreonFlowNode<T>) {
         insertNode(node)
     }
+    fun addNodes(nodes: List<PyreonFlowNode<T>>) {
+        for (node in nodes) insertNode(node)
+    }
+    fun setNodes(nodes: List<PyreonFlowNode<T>>) {
+        val nextIds = nodes.mapTo(HashSet()) { it.id }
+        order.clear()
+        nodeMap.clear()
+        for (node in nodes) insertNode(node)
+        setNodeSelection(selectedNodeIdList.filter { nextIds.contains(it) })
+        removeEdges { !nextIds.contains(it.source) || !nextIds.contains(it.target) }
+    }
     /** Removes the node AND every edge connected to it (source or target). */
     fun removeNode(id: String) {
         if (!nodeMap.containsKey(id)) return
@@ -191,6 +202,15 @@ class PyreonFlowState<T>(
      *  dedupe-by-id contract as the web `addEdge`; applies `type ?: "bezier"`. */
     fun addEdge(edge: PyreonFlowEdge) {
         insertEdge(edge)
+    }
+    fun addEdges(edges: List<PyreonFlowEdge>) {
+        for (edge in edges) insertEdge(edge)
+    }
+    fun setEdges(edges: List<PyreonFlowEdge>) {
+        _edges = emptyList()
+        edgeIds.clear()
+        for (edge in edges) insertEdge(edge)
+        setEdgeSelection(selectedEdgeIdList.filter { edgeIds.containsKey(it) })
     }
     fun removeEdge(id: String) {
         if (!edgeIds.containsKey(id)) return

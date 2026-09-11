@@ -222,6 +222,15 @@ struct PyreonFlowStateTests {
         q.removeEdges(["cx"])
         q.removeNodes(["p"])
         check(q.getNode("p") == nil && q.getEdge("pc") == nil && q.getEdge("cx") == nil, "bulk removals prune connected edges")
+        q.addNodes([PyreonFlowNode(id: "n", position: PyreonXYPosition(x: 1, y: 2), data: NodeData(label: "New")), PyreonFlowNode(id: "n", position: PyreonXYPosition(x: 9, y: 9), data: NodeData(label: "Duplicate"))])
+        q.addEdges([PyreonFlowEdge(id: "nn", source: "n", target: "n"), PyreonFlowEdge(id: "nn", source: "n", target: "x")])
+        check(q.getNode("n")?.position.x == 1 && q.getEdge("nn")?.target == "n", "bulk adds ignore duplicate ids")
+        q.selectNode("n")
+        q.selectEdge("nn", additive: true)
+        q.setNodes([PyreonFlowNode(id: "x", position: PyreonXYPosition(x: 0, y: 0), data: NodeData(label: "Only"))])
+        check(q.selectedNodes().isEmpty && q.getEdge("nn") == nil, "setNodes prunes selection and newly disconnected edges")
+        q.setEdges([PyreonFlowEdge(id: "fresh", source: "x", target: "x")])
+        check(q.edges.map(\.id) == ["fresh"] && q.getEdge("fresh")?.type == "bezier" && q.selectedEdges().isEmpty, "setEdges normalizes and prunes selection")
 
         // 12. Observation granularity — THE performance contract. A tracker
         // reading node "1" must not fire when node "2" moves. With one

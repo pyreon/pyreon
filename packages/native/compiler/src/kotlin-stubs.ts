@@ -1619,11 +1619,15 @@ class PyreonFlowState<T>(
   val zoom: Double get() = viewport.zoom
   fun getNode(id: String): PyreonFlowNode<T>? = null
   fun addNode(node: PyreonFlowNode<T>) {}
+  fun addNodes(nodes: List<PyreonFlowNode<T>>) {}
+  fun setNodes(nodes: List<PyreonFlowNode<T>>) {}
   fun removeNode(id: String) {}
   fun removeNodes(ids: List<String>) {}
   fun updateNodePosition(id: String, position: PyreonXYPosition) {}
   fun getEdge(id: String): PyreonFlowEdge? = null
   fun addEdge(edge: PyreonFlowEdge) {}
+  fun addEdges(edges: List<PyreonFlowEdge>) {}
+  fun setEdges(edges: List<PyreonFlowEdge>) {}
   fun removeEdge(id: String) {}
   fun reconnectEdge(id: String, source: String? = null, target: String? = null, sourceHandle: String? = null, targetHandle: String? = null) {}
   fun addEdgeWaypoint(edgeId: String, point: PyreonXYPosition, index: Int? = null) {}

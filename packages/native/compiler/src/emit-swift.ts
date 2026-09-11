@@ -4146,6 +4146,18 @@ function swiftFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
   return `PyreonFlowEdge(${parts.join(', ')})`
 }
 
+function swiftFlowNodeListLiteral(arg: ExprIR, flowName: string): string | null {
+  if (arg.kind !== 'array') return null
+  const nodes = arg.elements.map((item) => swiftFlowNodeLiteral(item, flowName))
+  return nodes.some((node) => node === null) ? null : `[${nodes.join(', ')}]`
+}
+
+function swiftFlowEdgeListLiteral(arg: ExprIR, flowName: string): string | null {
+  if (arg.kind !== 'array') return null
+  const edges = arg.elements.map((item) => swiftFlowEdgeLiteral(item, flowName))
+  return edges.some((edge) => edge === null) ? null : `[${edges.join(', ')}]`
+}
+
 function swiftFlowPositionsLiteral(arg: ExprIR): string | null {
   if (arg.kind !== 'array') return null
   const values: string[] = []
@@ -5695,6 +5707,14 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         if (member === 'reconnectEdge' && e.args.length === 2) {
           const args = swiftFlowReconnectLiteral(e.args[1]!)
           if (args !== null) return `${swiftIdent(flowName)}.reconnectEdge(${emitSwiftExpr(e.args[0]!, indent)}${args})`
+        }
+        if ((member === 'addNodes' || member === 'setNodes') && e.args.length === 1) {
+          const nodes = swiftFlowNodeListLiteral(e.args[0]!, flowName)
+          if (nodes !== null) return `${swiftIdent(flowName)}.${member}(${nodes})`
+        }
+        if ((member === 'addEdges' || member === 'setEdges') && e.args.length === 1) {
+          const edges = swiftFlowEdgeListLiteral(e.args[0]!, flowName)
+          if (edges !== null) return `${swiftIdent(flowName)}.${member}(${edges})`
         }
         if (member === 'setViewport' && e.args.length >= 1) {
           const args = swiftFlowViewportLiteral(e.args[0]!)
