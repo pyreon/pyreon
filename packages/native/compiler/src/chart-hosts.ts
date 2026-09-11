@@ -1483,7 +1483,6 @@ const PLOT_UNLOWERED_REASON: Readonly<Record<string, string>> = {
   // reads as impossible when it is merely unbuilt.
   emphasis: 'it is the HOVER band (`mouseover`/`mouseout`), and a touch target has no hover state to draw it for — the same wall `crosshair` hits. The engine\'s `ChartSpec.emphasis` does cross and IS fed on native, by `selectedMode`: a tap pins a datum and the pinned outline draws. What stays web-only is the hover half',
   onHighlight: 'it reports the HOVERED datum and -1 when the pointer leaves, so a touch target has nothing to report — a tap is a pick, which is `onSelect`. Firing this on tap would report a hover that did not happen',
-  seriesLabels: 'it renames the series in the hidden accessible table; the native canvas is named by `describeChart` over the series\' own labels, and feeding it the override is emit work',
   updateAnimation: 'the update tween interpolates two draw lists through `cmd-tween.ts`, which is web-only; crossing it needs the host to hold the PREVIOUS list',
   updateDuration: 'it times that same web-only draw-list tween, so it waits on `updateAnimation`',
 }
@@ -1501,4 +1500,4 @@ export function plotUnloweredWarning(tag: string, present: readonly string[]): s
 // `updateAnimation`, `updateDuration`, `toolbox`, `onSaveImage`,
 // `accessibleTable`) are reported through `chartChromeUnlowered` for the plot
 // host too — listing them here as well would warn twice.
-export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'onHighlight', 'emphasis', 'crosshair', 'link', 'keyboard', 'updateAnimation', 'updateDuration', 'seriesLabels', 'toolbox', 'onSaveImage', 'accessibleTable', 'locale', 'facet', 'facetColumns']
+export const PLOT_UNLOWERED_PROPS: readonly string[] = ['handle', 'onHighlight', 'emphasis', 'crosshair', 'link', 'keyboard', 'updateAnimation', 'updateDuration', 'toolbox', 'onSaveImage', 'accessibleTable', 'locale', 'facet', 'facetColumns']

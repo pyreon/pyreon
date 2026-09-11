@@ -13020,7 +13020,12 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   // The data description the web `aria-label` carries, from the same series
   // and categories the canvas painted (hidden series excluded, as on the web).
   const plotTitle = readStringAttrExpr(e, 'title', indent)
-  const describe = `describeChart(A11yInput(title: ${plotTitle ?? 'nil'}, categories: pyreonCats, series: pyreonSeries.map { A11ySeries(label: $0.label, values: $0.values, kind: $0.kind, values2: $0.values2, errLow: $0.errLow, errHigh: $0.errHigh, rValues: $0.rValues) }, format: ${yFormat ?? 'nil'}))`
+  const labels = chartAttrExpr(e, 'seriesLabels')
+  if (labels !== undefined) lets.push(`let pyreonSeriesLabels: [String] = ${emitSwiftExpr(labels, indent)}`)
+  const a11ySeries = labels === undefined
+    ? 'pyreonSeries.map { A11ySeries(label: $0.label, values: $0.values, kind: $0.kind, values2: $0.values2, errLow: $0.errLow, errHigh: $0.errHigh, rValues: $0.rValues) }'
+    : 'pyreonSeries.enumerated().map { (pyreonI, pyreonS) in A11ySeries(label: pyreonI < pyreonSeriesLabels.count ? pyreonSeriesLabels[pyreonI] : pyreonS.label, values: pyreonS.values, kind: pyreonS.kind, values2: pyreonS.values2, errLow: pyreonS.errLow, errHigh: pyreonS.errHigh, rValues: pyreonS.rValues) }'
+  const describe = `describeChart(A11yInput(title: ${plotTitle ?? 'nil'}, categories: pyreonCats, series: ${a11ySeries}, format: ${yFormat ?? 'nil'}))`
   if (!navigating) return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent, describe)
   // The navigator's drag lives on a clear overlay over the strip (above the
   // preset strip), a sibling of the canvas: a touch that starts there is the
