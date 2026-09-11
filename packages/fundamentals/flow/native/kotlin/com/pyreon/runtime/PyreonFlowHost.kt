@@ -2,6 +2,7 @@ package com.pyreon.runtime
 
 data class PyreonFlowMiniMapNode(val id: String, val x: Double, val y: Double, val width: Double, val height: Double)
 data class PyreonFlowMiniMapLayout(val nodes: List<PyreonFlowMiniMapNode>, val viewport: PyreonFlowNodeBox, val scale: Double, val minX: Double, val minY: Double)
+data class PyreonFlowEdgeLabel(val id: String, val text: String?, val accessibilityLabel: String, val x: Double, val y: Double, val focusable: Boolean)
 
 fun <T> pyreonFlowMiniMapLayout(state: PyreonFlowState<T>, width: Double = 200.0, height: Double = 150.0, padding: Double = 40.0): PyreonFlowMiniMapLayout {
     val visible = state.nodes.filter { it.hidden != true }
@@ -55,6 +56,24 @@ fun <T> pyreonFlowEdgeStrokes(
             waypoints = edge.waypoints.map { PyreonFlowPathPoint(it.x, it.y) },
         )
         PyreonFlowEdgeStroke(edge.id, path.segments, color, width)
+    }
+}
+
+fun <T> pyreonFlowEdgeLabels(state: PyreonFlowState<T>): List<PyreonFlowEdgeLabel> {
+    val nodes = state.nodes.filter { it.hidden != true }.associateBy { it.id }
+    return state.edges.mapNotNull { edge ->
+        if (edge.hidden == true) return@mapNotNull null
+        val source = nodes[edge.source] ?: return@mapNotNull null
+        val target = nodes[edge.target] ?: return@mapNotNull null
+        val sp = state.getAbsolutePosition(source.id); val tp = state.getAbsolutePosition(target.id)
+        val path = pyreonComputeEdgePath(
+            edge.type ?: PYREON_FLOW_DEFAULT_EDGE_TYPE,
+            PyreonFlowNodeBox(sp.x, sp.y, source.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH, source.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT),
+            PyreonFlowNodeBox(tp.x, tp.y, target.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH, target.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT),
+            edge.sourceHandle, edge.targetHandle, source.sourceHandles, target.targetHandles,
+            waypoints = edge.waypoints.map { PyreonFlowPathPoint(it.x, it.y) },
+        )
+        PyreonFlowEdgeLabel(edge.id, edge.label, edge.ariaLabel ?: edge.label ?: "Edge from ${edge.source} to ${edge.target}", path.labelX, path.labelY, edge.focusable != false)
     }
 }
 

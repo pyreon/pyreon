@@ -3,6 +3,14 @@ import SwiftUI
 public struct PyreonFlowMiniMapNode: Equatable {
     public var id: String; public var x: Double; public var y: Double; public var width: Double; public var height: Double
 }
+public struct PyreonFlowEdgeLabel: Identifiable, Equatable {
+    public var id: String
+    public var text: String?
+    public var accessibilityLabel: String
+    public var x: Double
+    public var y: Double
+    public var focusable: Bool
+}
 public struct PyreonFlowMiniMapLayout: Equatable {
     public var nodes: [PyreonFlowMiniMapNode]
     public var viewport: PyreonFlowRect
@@ -238,6 +246,23 @@ public func pyreonFlowEdgeStrokes<T>(
     }
 }
 
+@available(iOS 17.0, macOS 14.0, *)
+public func pyreonFlowEdgeLabels<T>(state: PyreonFlowState<T>) -> [PyreonFlowEdgeLabel] {
+    let nodes = Dictionary(uniqueKeysWithValues: state.nodes.filter { $0.hidden != true }.map { ($0.id, $0) })
+    return state.edges.compactMap { edge in
+        guard edge.hidden != true, let source = nodes[edge.source], let target = nodes[edge.target] else { return nil }
+        let sp = state.getAbsolutePosition(source.id), tp = state.getAbsolutePosition(target.id)
+        let path = pyreonComputeEdgePath(
+            type: edge.type ?? "bezier",
+            source: PyreonFlowRect(x: sp.x, y: sp.y, width: source.width ?? pyreonFlowDefaultNodeWidth, height: source.height ?? pyreonFlowDefaultNodeHeight),
+            target: PyreonFlowRect(x: tp.x, y: tp.y, width: target.width ?? pyreonFlowDefaultNodeWidth, height: target.height ?? pyreonFlowDefaultNodeHeight),
+            sourceHandleId: edge.sourceHandle, targetHandleId: edge.targetHandle,
+            sourceHandles: source.sourceHandles, targetHandles: target.targetHandles,
+            waypoints: edge.waypoints)
+        return PyreonFlowEdgeLabel(id: edge.id, text: edge.label, accessibilityLabel: edge.ariaLabel ?? edge.label ?? "Edge from \(edge.source) to \(edge.target)", x: path.labelX, y: path.labelY, focusable: edge.focusable != false)
+    }
+}
+
 /// The dragged selection with descendants removed when an ancestor is also
 /// selected. Node positions are parent-relative, so moving both would apply
 /// the same pointer delta twice to a descendant's absolute position.
@@ -315,6 +340,18 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                     .allowsHitTesting(false)
 
                 ZStack(alignment: .topLeading) {
+                    ForEach(pyreonFlowEdgeLabels(state: state)) { edge in
+                        Text(edge.text ?? "")
+                            .font(.system(size: 12))
+                            .padding(edge.text == nil ? 8 : 3)
+                            .background(edge.text == nil ? Color.clear : Color.white.opacity(0.9))
+                            .position(x: edge.x, y: edge.y)
+                            .contentShape(Rectangle())
+                            .onTapGesture { state.selectEdge(edge.id) }
+                            .accessibilityLabel(Text(edge.accessibilityLabel))
+                            .accessibilityAddTraits(state.isEdgeSelected(edge.id) ? [.isSelected] : [])
+                            .accessibilityHidden(!edge.focusable)
+                    }
                     ForEach(state.nodes.filter { $0.hidden != true }, id: \.id) { node in
                         let absolute = state.getAbsolutePosition(node.id)
                         nodeContent(node)

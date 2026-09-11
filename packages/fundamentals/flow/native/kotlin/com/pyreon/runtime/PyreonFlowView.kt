@@ -237,6 +237,18 @@ fun <T> PyreonFlowView(
                 transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
             },
         ) {
+            for (edge in pyreonFlowEdgeLabels(state)) {
+                Text(
+                    edge.text ?: "",
+                    Modifier
+                        .offset { IntOffset(edge.x.roundToInt(), edge.y.roundToInt()) }
+                        .clickable { state.selectEdge(edge.id) }
+                        .semantics {
+                            contentDescription = edge.accessibilityLabel
+                            selected = state.isEdgeSelected(edge.id)
+                        },
+                )
+            }
             for (node in state.nodes) {
                 if (node.hidden == true) continue
                 val absolute = state.getAbsolutePosition(node.id)
