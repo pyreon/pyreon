@@ -250,7 +250,8 @@ public func pyreonFlowEdgeStrokes<T>(
             id: edge.id, segments: path.segments, color: color, width: width,
             dash: edge.animated ? [5, 5] : nil,
             startMarker: markers.start.flatMap { pyreonFlowMarkerGlyph($0, segments: path.segments, atStart: true, edgeColor: color) },
-            endMarker: markers.end.flatMap { pyreonFlowMarkerGlyph($0, segments: path.segments, atStart: false, edgeColor: color) })
+            endMarker: markers.end.flatMap { pyreonFlowMarkerGlyph($0, segments: path.segments, atStart: false, edgeColor: color) },
+            interactionWidth: edge.interactionWidth ?? 20)
     }
 }
 
@@ -338,6 +339,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                     .contentShape(Rectangle())
                     .gesture(panGesture)
                     .simultaneousGesture(zoomGesture)
+                    .simultaneousGesture(edgeTapGesture)
 
                 if let background {
                     PyreonFlowBackground(style: background, viewport: state.viewport)
@@ -483,6 +485,15 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                     y: start.y + value.translation.height)
             }
             .onEnded { _ in panStart = nil }
+    }
+
+    private var edgeTapGesture: some Gesture {
+        SpatialTapGesture(coordinateSpace: .named("PyreonFlowCanvas")).onEnded { value in
+            let point = graphPoint(value.location)
+            if let edge = pyreonNearestFlowEdge(edgeStrokes.filter { $0.id != "__connection-preview" }, point: point, zoom: state.viewport.zoom) {
+                state.selectEdge(edge.id)
+            }
+        }
     }
 
     private var zoomGesture: some Gesture {

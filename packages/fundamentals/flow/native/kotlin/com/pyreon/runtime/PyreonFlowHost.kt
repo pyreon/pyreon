@@ -63,6 +63,7 @@ fun <T> pyreonFlowEdgeStrokes(
             edge.id, path.segments, color, width, if (edge.animated) listOf(5.0, 5.0) else null,
             markers.first?.let { pyreonFlowMarkerGlyph(it, path.segments, true, color) },
             markers.second?.let { pyreonFlowMarkerGlyph(it, path.segments, false, color) },
+            edge.interactionWidth ?: 20.0,
         )
     }
 }

@@ -21,6 +21,8 @@ import com.pyreon.runtime.pyreonNodeIntersection
 import com.pyreon.runtime.pyreonResolveHandleAnchor
 import com.pyreon.runtime.pyreonFlowInteractiveHandles
 import com.pyreon.runtime.pyreonNearestFlowHandle
+import com.pyreon.runtime.pyreonFlowEdgeDistance
+import com.pyreon.runtime.pyreonNearestFlowEdge
 import com.pyreon.runtime.pyreonFlowEdgeColor
 import com.pyreon.runtime.pyreonFlowEdgePath
 import com.pyreon.runtime.pyreonStraightPath
@@ -108,6 +110,13 @@ fun main() {
     check(kotlin.math.abs(completeFloating.segments[1].c1y!! - 73.54101966249684) < 0.000000001, "complete dispatcher matches web bezier control geometry")
     val completeHandled = pyreonComputeEdgePath("straight", sourceBox, targetBox, "out", "in", configHandles, listOf(PyreonFlowHandleConfig("in", "target", PyreonFlowPosition.Left)))
     check(completeHandled.segments == listOf(PyreonFlowEdgeSegment.move(150.0, 20.0), PyreonFlowEdgeSegment.line(200.0, 120.0)), "complete dispatcher matches web configured-handle straight route")
+    val hitEdges = listOf(
+        PyreonFlowEdgeStroke("far", listOf(PyreonFlowEdgeSegment.move(0.0, 40.0), PyreonFlowEdgeSegment.line(100.0, 40.0)), interactionWidth = 20.0),
+        PyreonFlowEdgeStroke("near", listOf(PyreonFlowEdgeSegment.move(0.0, 0.0), PyreonFlowEdgeSegment.line(100.0, 0.0)), interactionWidth = 20.0),
+    )
+    check(pyreonFlowEdgeDistance(hitEdges[1].segments, PyreonFlowPathPoint(50.0, 4.0)) == 4.0, "edge hit distance covers the full line, not only its label")
+    check(pyreonNearestFlowEdge(hitEdges, PyreonFlowPathPoint(50.0, 4.0), 1.0)?.id == "near", "edge hit testing selects the nearest path")
+    check(pyreonNearestFlowEdge(hitEdges, PyreonFlowPathPoint(50.0, 6.0), 2.0) == null, "edge interaction width remains constant in screen pixels under zoom")
 
     println("PyreonFlowEdgeGeometryTest: all checks passed")
 }

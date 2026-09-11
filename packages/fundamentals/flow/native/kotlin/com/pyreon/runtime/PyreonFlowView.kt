@@ -215,6 +215,11 @@ fun <T> PyreonFlowView(
                     )
                     state.zoomTo(state.viewport.zoom * zoom)
                 }
+            }.pointerInput(state, edgeStrokes, state.viewport) {
+                detectTapGestures { screen ->
+                    val point = PyreonFlowPathPoint((screen.x - state.viewport.x) / state.viewport.zoom, (screen.y - state.viewport.y) / state.viewport.zoom)
+                    pyreonNearestFlowEdge(edgeStrokes.filter { it.id != "__connection-preview" }, point, state.viewport.zoom)?.let { state.selectEdge(it.id) }
+                }
             },
         )
 

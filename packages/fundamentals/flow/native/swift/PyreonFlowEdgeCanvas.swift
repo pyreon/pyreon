@@ -320,6 +320,40 @@ public func pyreonFlowMarkerGlyph(_ marker: PyreonFlowMarker, segments: [PyreonF
     return PyreonFlowMarkerGlyph(points: marker.type == "arrowclosed" ? [tip, a, b] : [a, tip, b], closed: marker.type == "arrowclosed", color: marker.color ?? edgeColor, strokeWidth: marker.strokeWidth)
 }
 
+private func pyreonPointSegmentDistance(_ point: PyreonXYPosition, _ a: PyreonXYPosition, _ b: PyreonXYPosition) -> Double {
+    let dx = b.x - a.x, dy = b.y - a.y
+    let length2 = dx * dx + dy * dy
+    if length2 == 0 { return hypot(point.x - a.x, point.y - a.y) }
+    let t = min(1, max(0, ((point.x - a.x) * dx + (point.y - a.y) * dy) / length2))
+    return hypot(point.x - (a.x + t * dx), point.y - (a.y + t * dy))
+}
+
+/// Distance to the rendered path in graph units. Curves are adaptively
+/// approximated with enough chords for pointer hit testing, never drawing.
+public func pyreonFlowEdgeDistance(_ segments: [PyreonFlowEdgeSegment], point: PyreonXYPosition, curveSteps: Int = 24) -> Double {
+    var current: PyreonXYPosition?
+    var best = Double.infinity
+    for segment in segments {
+        let end = PyreonXYPosition(x: segment.x, y: segment.y)
+        if segment.kind == "move" { current = end; continue }
+        guard let start = current else { current = end; continue }
+        var previous = start
+        let steps = segment.kind == "line" ? 1 : max(1, curveSteps)
+        for i in 1...steps {
+            let t = Double(i) / Double(steps), u = 1 - t
+            let sample: PyreonXYPosition
+            if segment.kind == "cubic", let c1x = segment.c1x, let c1y = segment.c1y, let c2x = segment.c2x, let c2y = segment.c2y {
+                sample = PyreonXYPosition(x: u*u*u*start.x + 3*u*u*t*c1x + 3*u*t*t*c2x + t*t*t*end.x, y: u*u*u*start.y + 3*u*u*t*c1y + 3*u*t*t*c2y + t*t*t*end.y)
+            } else if segment.kind == "quad", let cx = segment.cx, let cy = segment.cy {
+                sample = PyreonXYPosition(x: u*u*start.x + 2*u*t*cx + t*t*end.x, y: u*u*start.y + 2*u*t*cy + t*t*end.y)
+            } else { sample = end }
+            best = min(best, pyreonPointSegmentDistance(point, previous, sample)); previous = sample
+        }
+        current = end
+    }
+    return best
+}
+
 /// Parses `#rgb` / `#rrggbb` into a SwiftUI `Color`, falling back to gray for
 /// anything else. Deliberately SELF-CONTAINED rather than reusing
 /// `@pyreon/charts`' `pyreonChartColor` (same hex-parsing logic, smaller
@@ -374,6 +408,7 @@ public struct PyreonFlowEdgeStroke: Identifiable, Equatable {
     public var dash: [Double]? { didSet { dashCG = dash.map { $0.map { CGFloat($0) } } } }
     public var startMarker: PyreonFlowMarkerGlyph?
     public var endMarker: PyreonFlowMarkerGlyph?
+    public var interactionWidth: Double
 
     /// The unscaled path, built once from `segments` (flow coordinates).
     public private(set) var path: Path
@@ -389,7 +424,8 @@ public struct PyreonFlowEdgeStroke: Identifiable, Equatable {
         width: Double = 1.5,
         dash: [Double]? = nil,
         startMarker: PyreonFlowMarkerGlyph? = nil,
-        endMarker: PyreonFlowMarkerGlyph? = nil
+        endMarker: PyreonFlowMarkerGlyph? = nil,
+        interactionWidth: Double = 20
     ) {
         self.id = id
         self.segments = segments
@@ -398,10 +434,17 @@ public struct PyreonFlowEdgeStroke: Identifiable, Equatable {
         self.dash = dash
         self.startMarker = startMarker
         self.endMarker = endMarker
+        self.interactionWidth = interactionWidth
         self.path = pyreonFlowEdgePath(segments)
         self.resolvedColor = pyreonFlowEdgeColor(color)
         self.dashCG = dash.map { $0.map { CGFloat($0) } }
     }
+}
+
+public func pyreonNearestFlowEdge(_ edges: [PyreonFlowEdgeStroke], point: PyreonXYPosition, zoom: Double) -> PyreonFlowEdgeStroke? {
+    let safeZoom = max(zoom, 0.000001)
+    return edges.filter { pyreonFlowEdgeDistance($0.segments, point: point) <= $0.interactionWidth / 2 / safeZoom }
+        .min { pyreonFlowEdgeDistance($0.segments, point: point) < pyreonFlowEdgeDistance($1.segments, point: point) }
 }
 
 /// Draws every edge in `edges`, applying the SAME viewport transform (pan +

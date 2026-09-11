@@ -267,6 +267,36 @@ fun pyreonFlowMarkerGlyph(marker: PyreonFlowMarker, segments: List<PyreonFlowEdg
     return PyreonFlowMarkerGlyph(if (marker.type == "arrowclosed") listOf(tip, a, b) else listOf(a, tip, b), marker.type == "arrowclosed", marker.color ?: edgeColor, marker.strokeWidth)
 }
 
+private fun pyreonPointSegmentDistance(point: PyreonFlowPathPoint, a: PyreonFlowPathPoint, b: PyreonFlowPathPoint): Double {
+    val dx = b.x - a.x; val dy = b.y - a.y; val length2 = dx * dx + dy * dy
+    if (length2 == 0.0) return hypot(point.x - a.x, point.y - a.y)
+    val t = (((point.x - a.x) * dx + (point.y - a.y) * dy) / length2).coerceIn(0.0, 1.0)
+    return hypot(point.x - (a.x + t * dx), point.y - (a.y + t * dy))
+}
+
+fun pyreonFlowEdgeDistance(segments: List<PyreonFlowEdgeSegment>, point: PyreonFlowPathPoint, curveSteps: Int = 24): Double {
+    var current: PyreonFlowPathPoint? = null; var best = Double.POSITIVE_INFINITY
+    for (segment in segments) {
+        val end = PyreonFlowPathPoint(segment.x, segment.y)
+        if (segment.kind == "move") { current = end; continue }
+        val start = current
+        if (start == null) { current = end; continue }
+        var previous: PyreonFlowPathPoint = start
+        val steps = if (segment.kind == "line") 1 else maxOf(1, curveSteps)
+        for (i in 1..steps) {
+            val t = i.toDouble() / steps; val u = 1 - t
+            val sample: PyreonFlowPathPoint = when {
+                segment.kind == "cubic" && segment.c1x != null && segment.c1y != null && segment.c2x != null && segment.c2y != null -> PyreonFlowPathPoint(u*u*u*start.x + 3*u*u*t*segment.c1x + 3*u*t*t*segment.c2x + t*t*t*end.x, u*u*u*start.y + 3*u*u*t*segment.c1y + 3*u*t*t*segment.c2y + t*t*t*end.y)
+                segment.kind == "quad" && segment.cx != null && segment.cy != null -> PyreonFlowPathPoint(u*u*start.x + 2*u*t*segment.cx + t*t*end.x, u*u*start.y + 2*u*t*segment.cy + t*t*end.y)
+                else -> end
+            }
+            best = minOf(best, pyreonPointSegmentDistance(point, previous, sample)); previous = sample
+        }
+        current = end
+    }
+    return best
+}
+
 data class PyreonFlowEdgeStroke(
     val id: String,
     val segments: List<PyreonFlowEdgeSegment>,
@@ -275,6 +305,7 @@ data class PyreonFlowEdgeStroke(
     val dash: List<Double>? = null,
     val startMarker: PyreonFlowMarkerGlyph? = null,
     val endMarker: PyreonFlowMarkerGlyph? = null,
+    val interactionWidth: Double = 20.0,
 ) {
     /** Unscaled, built once from [segments]. */
     val path: Path by lazy { pyreonFlowEdgePath(segments) }
@@ -284,4 +315,10 @@ data class PyreonFlowEdgeStroke(
     val pathEffect: PathEffect? by lazy {
         dash?.let { PathEffect.dashPathEffect(it.map { d -> d.toFloat() }.toFloatArray()) }
     }
+}
+
+fun pyreonNearestFlowEdge(edges: List<PyreonFlowEdgeStroke>, point: PyreonFlowPathPoint, zoom: Double): PyreonFlowEdgeStroke? {
+    val safeZoom = maxOf(zoom, 0.000001)
+    return edges.filter { pyreonFlowEdgeDistance(it.segments, point) <= it.interactionWidth / 2 / safeZoom }
+        .minByOrNull { pyreonFlowEdgeDistance(it.segments, point) }
 }

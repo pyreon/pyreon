@@ -70,6 +70,13 @@ struct PyreonFlowStateTests {
         let openMarker = PyreonFlowMarker(type: "arrow", color: "#ff0000", width: 12, height: 8, strokeWidth: 2)
         let marked = PyreonFlowState(nodes: f.nodes, edges: [PyreonFlowEdge(id: "marked", source: "1", target: "2", markerStart: openMarker, markerEnd: openMarker, markerEndSpecified: true)])
         check(pyreonFlowEdgeStrokes(state: marked)[0].startMarker?.closed == false && pyreonFlowEdgeStrokes(state: marked)[0].endMarker?.color == "#ff0000", "configured open markers preserve shape and color at both ends")
+        let hitEdges = [
+            PyreonFlowEdgeStroke(id: "far", segments: [.move(0, 40), .line(100, 40)], interactionWidth: 20),
+            PyreonFlowEdgeStroke(id: "near", segments: [.move(0, 0), .line(100, 0)], interactionWidth: 20),
+        ]
+        check(pyreonFlowEdgeDistance(hitEdges[1].segments, point: PyreonXYPosition(x: 50, y: 4)) == 4, "edge hit distance covers the full line, not only its label")
+        check(pyreonNearestFlowEdge(hitEdges, point: PyreonXYPosition(x: 50, y: 4), zoom: 1)?.id == "near", "edge hit testing selects the nearest path")
+        check(pyreonNearestFlowEdge(hitEdges, point: PyreonXYPosition(x: 50, y: 6), zoom: 2) == nil, "edge interaction width remains constant in screen pixels under zoom")
         f.removeEdge("dangling")
         f.containerSize = PyreonFlowContainerSize(width: 400, height: 200)
         let mini = pyreonFlowMiniMapLayout(state: f, width: 200, height: 150)
