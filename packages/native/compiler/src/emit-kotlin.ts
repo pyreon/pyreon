@@ -10533,7 +10533,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   if (windowed) {
     lets.push('var pyreonZoom by remember { mutableStateOf(ZoomWindow(start = 0.0, end = 1.0)) }')
     lets.push(`val pyreonRange: SliceRange = sliceRange(pyreonZoom, ${data}.size)`)
-    lets.push(`val pyreonRows = ${data}.subList(pyreonRange.from, pyreonRange.to)`)
+    lets.push(`val pyreonSourceRows = ${data}.subList(pyreonRange.from, pyreonRange.to)`)
     // `onZoom` — one effect keyed on the window state covers pinch, pan, a
     // preset tap and the navigator alike, as the web's single observer does.
     const onZoom = e.attrs.find((a) => a.kind === 'event' && a.name === 'zoom')
@@ -10561,7 +10561,9 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const pinning = pinMode === 'single' || pinMode === 'multiple'
   if (pinning) lets.push('var pyreonSelected by remember { mutableStateOf(listOf<Int>()) }')
   if (legend.paging) lets.push('var pyreonLegendPage by remember { mutableStateOf(0.0) }')
-  const rows = windowed ? 'pyreonRows' : data
+  const maxPoints = chartAttrExprKotlin(e, 'maxPoints')
+  let decimated = false
+  let rows = windowed ? 'pyreonSourceRows' : data
   // The theme's palette colours marks with no `color` (the theme builder already warned about a bad literal, so this parse stays silent).
   const pyreonPalette = chartThemePalette(chartAttrExprKotlin(e, 'theme'), tag, () => {}, _chartThemeScope === null ? undefined : (_chartThemeScope.palette as readonly string[]))
   const series: string[] = []
@@ -10570,6 +10572,9 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     const m = marksV.elements[k]!
     // `...bollinger(...)` — mirror of the Swift emitter.
     if (m.kind === 'spread') {
+      if (k === 0 && maxPoints !== undefined) {
+        _emitWarnings.push(`<${tag} maxPoints>: the first mark is a spread indicator, whose derived values are not available until after mark expansion on native; row thinning is skipped.`)
+      }
       const expanded = kotlinBollingerSpread(m.argument, tag, k, rows, windowed, indent, lets, pyreonPalette)
       if (expanded === 'unsupported') return 'Box {}'
       for (const line of expanded) series.push(line)
@@ -10600,15 +10605,24 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     }
     const body = kotlinAccessorExpr(y, tag, `mark ${k + 1}`, indent)
     if (body === 'unsupported') return 'Box {}'
+    if (k === 0 && maxPoints !== undefined) {
+      const max = `(${emitKotlinExpr(maxPoints, indent)}).toInt()`
+      lets.push(`val pyreonMaxPoints: Int = ${max}`)
+      lets.push(`val pyreonDecimateValues: List<Double> = ${kotlinPlotRowMap(rows, `(${body}).toDouble()`, windowed)}`)
+      lets.push(`val pyreonKeep: List<Int> = if (pyreonMaxPoints >= 3 && ${rows}.size > pyreonMaxPoints) lttbIndices(listOf(), pyreonDecimateValues, pyreonMaxPoints) else ${rows}.indices.toList()`)
+      lets.push(`val pyreonRows = pyreonKeep.map { ${rows}[it] }`)
+      rows = 'pyreonRows'
+      decimated = true
+    }
     const optsArg = bubble || isBand || indicator?.takesWindow === true ? m.args[2] : m.args[1]
     const opts = kotlinMarkOptionArgs(optsArg, tag, k, pyreonPalette)
     if (opts === 'unsupported') return 'Box {}'
-    const rowMap = kotlinPlotRowMap(rows, `(${body}).toDouble()`, windowed)
+    const rowMap = kotlinPlotRowMap(rows, `(${body}).toDouble()`, windowed, decimated)
     const derivedValues = indicator === undefined ? undefined : kotlinIndicatorValues(indicator, m, rowMap, tag, k)
     if (derivedValues === 'unsupported') return 'Box {}'
     lets.push(`val pyreonValues${k}: List<Double> = ${derivedValues ?? rowMap}`)
     // The bounds ride the same row map the values do (mirror of the Swift emitter).
-    const errArgs = kotlinMarkErrorArgs(optsArg, tag, k, rows, windowed, indent, lets)
+    const errArgs = kotlinMarkErrorArgs(optsArg, tag, k, rows, windowed, indent, lets, decimated)
     if (errArgs === 'unsupported') return 'Box {}'
     if (k === 0 && navigating) navValues = kotlinPlotRowMap(data, `(${body}).toDouble()`, false)
     if (bubble) {
@@ -10622,7 +10636,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
       const range = kotlinBubbleRange(optsArg)
       // The RAW r values beside the pixel radii — the mirror of the Swift
       // emitter; the table and tooltip report the datum, not the radius.
-      lets.push(`val pyreonRRaw${k}: List<Double> = ${kotlinPlotRowMap(rows, `(${rBody}).toDouble()`, windowed)}`)
+      lets.push(`val pyreonRRaw${k}: List<Double> = ${kotlinPlotRowMap(rows, `(${rBody}).toDouble()`, windowed, decimated)}`)
       lets.push(`val pyreonRadii${k}: List<Double> = bubbleRadii(pyreonRRaw${k}, ${range[0]}, ${range[1]})`)
       const at = opts.findIndex((o) => o.startsWith('showValues =')) + 1
       const withRadii = [...opts.slice(0, at), `rValues = pyreonRRaw${k}`, `radii = pyreonRadii${k}`, ...opts.slice(at)]
@@ -10635,7 +10649,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
       }
       const loBody = kotlinAccessorExpr(lo, tag, `mark ${k + 1} lower bound`, indent)
       if (loBody === 'unsupported') return 'Box {}'
-      lets.push(`val pyreonLow${k}: List<Double> = ${kotlinPlotRowMap(rows, `(${loBody}).toDouble()`, windowed)}`)
+      lets.push(`val pyreonLow${k}: List<Double> = ${kotlinPlotRowMap(rows, `(${loBody}).toDouble()`, windowed, decimated)}`)
       series.push(`Series(kind = "band", values = pyreonValues${k}, ${[...opts, ...errArgs, `values2 = pyreonLow${k}`].join(', ')})`)
     } else {
       series.push(`Series(kind = ${JSON.stringify(kind)}, values = pyreonValues${k}, ${[...opts, ...errArgs].join(', ')})`)
@@ -10651,7 +10665,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   if (xAcc !== undefined) {
     const body = kotlinAccessorExpr(xAcc, tag, 'x', indent)
     if (body === 'unsupported') return 'Box {}'
-    lets.push(`val pyreonCats: List<String> = ${kotlinPlotRowMap(rows, body, windowed)}`)
+    lets.push(`val pyreonCats: List<String> = ${kotlinPlotRowMap(rows, body, windowed, decimated)}`)
   } else {
     lets.push('val pyreonCats: List<String> = listOf<String>()')
   }
@@ -10659,7 +10673,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   if (xValueAcc !== undefined) {
     const body = kotlinAccessorExpr(xValueAcc, tag, 'xValue', indent)
     if (body === 'unsupported') return 'Box {}'
-    lets.push(`val pyreonXValues: List<Double> = ${kotlinPlotRowMap(rows, `(${body}).toDouble()`, windowed)}`)
+    lets.push(`val pyreonXValues: List<Double> = ${kotlinPlotRowMap(rows, `(${body}).toDouble()`, windowed, decimated)}`)
   }
   const present = PLOT_UNLOWERED_PROPS.filter((p) => chartAttrExprKotlin(e, p) !== undefined || e.attrs.some((a) => a.kind === 'event' && 'on' + a.name === p.toLowerCase()))
   if (!windowed && e.attrs.some((a) => a.kind === 'event' && a.name === 'zoom')) _emitWarnings.push('<PlotChart onZoom>: needs `dataZoom`, `zoomPresets` or `navigator` — without a window there is nothing to report.')
@@ -10726,7 +10740,14 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const mk = chartAttrExprKotlin(e, 'markers')
   if (mk !== undefined) specArgs.push(`markers = ${withExpectedTypeKotlin({ kind: 'array', element: { kind: 'typeRef', name: 'PointMarker', args: [] } }, () => emitKotlinExpr(mk, indent))}`)
   if (kotlinChartAnimating(e, 'PlotChart')) specArgs.push('progress = pyreonEntrance')
-  if (pinning) specArgs.push('emphasis = Emphasis(highlight = -1, selected = pyreonSelected)')
+  if (pinning) {
+    const selected = decimated
+      ? `pyreonSelected.mapNotNull { pyreonGlobal -> pyreonKeep.indexOf(pyreonGlobal${windowed ? ' - pyreonRange.from' : ''}).takeIf { it >= 0 } }`
+      : windowed
+        ? 'pyreonSelected.map { it - pyreonRange.from }.filter { it >= 0 && it < pyreonRows.size }'
+        : 'pyreonSelected'
+    specArgs.push(`emphasis = Emphasis(highlight = -1, selected = ${selected})`)
+  }
   // The batch-2 spec switches: a literal each, straight onto the spec.
   for (const p of PLOT_SPEC_LITERAL_PROPS) {
     const raw = readStaticAttrKotlin(e, p.name)
@@ -10768,9 +10789,12 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const cmds = `${chrome.mirror(painted)}${tipCmds}`
   const localHit = (x: string, y: string): string => `plotHitBars(pyreonSpec, ::pyreonChartMeasure, ${x}, ${chrome.top === '0.0' ? y : `${y} - pyreonTop`})`
   const hit = (x: string, y: string): string => {
-    if (tooltip) return windowed ? '(if (pyreonLocal < 0) -1 else pyreonLocal + pyreonRange.from)' : 'pyreonLocal'
-    const local = localHit(x, y)
-    return windowed ? `run { val pyreonHit = ${local}; if (pyreonHit < 0) -1 else pyreonHit + pyreonRange.from }` : local
+    const local = tooltip ? 'pyreonLocal' : 'pyreonHit'
+    const mapped = decimated ? `pyreonKeep[${local}]` : local
+    const global = windowed ? `${mapped} + pyreonRange.from` : mapped
+    if (tooltip) return `(if (${local} < 0) -1 else ${global})`
+    if (!windowed && !decimated) return localHit(x, y)
+    return `run { val pyreonHit = ${localHit(x, y)}; if (pyreonHit < 0) -1 else ${global} }`
   }
   const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
   // Two x's, because the chrome and the plot are laid out in different
@@ -11048,6 +11072,7 @@ function kotlinMarkErrorArgs(
   windowed: boolean,
   indent: number,
   lets: string[],
+  decimated = false,
 ): string[] | 'unsupported' {
   if (opts === undefined || opts.kind !== 'object') return []
   const low = opts.fields.find((f) => f.name === 'errorLow')?.value
@@ -11060,8 +11085,8 @@ function kotlinMarkErrorArgs(
   const lowBody = kotlinAccessorExpr(low, tag, `mark ${seriesIndex + 1} errorLow`, indent)
   const highBody = kotlinAccessorExpr(high, tag, `mark ${seriesIndex + 1} errorHigh`, indent)
   if (lowBody === 'unsupported' || highBody === 'unsupported') return 'unsupported'
-  lets.push(`val pyreonErrLow${seriesIndex}: List<Double> = ${kotlinPlotRowMap(rows, `(${lowBody}).toDouble()`, windowed)}`)
-  lets.push(`val pyreonErrHigh${seriesIndex}: List<Double> = ${kotlinPlotRowMap(rows, `(${highBody}).toDouble()`, windowed)}`)
+  lets.push(`val pyreonErrLow${seriesIndex}: List<Double> = ${kotlinPlotRowMap(rows, `(${lowBody}).toDouble()`, windowed, decimated)}`)
+  lets.push(`val pyreonErrHigh${seriesIndex}: List<Double> = ${kotlinPlotRowMap(rows, `(${highBody}).toDouble()`, windowed, decimated)}`)
   return [`errLow = pyreonErrLow${seriesIndex}`, `errHigh = pyreonErrHigh${seriesIndex}`]
 }
 
@@ -11094,10 +11119,12 @@ function kotlinBubbleRange(opts: ExprIR | undefined): [string, string] {
 // no component-level splice. `detectTransformGestures` reports INCREMENTAL
 // pan and zoom per event, which maps straight onto the engine's window math.
 
-function kotlinPlotRowMap(rows: string, body: string, zoomed: boolean): string {
-  if (!zoomed) return `${rows}.mapIndexed { pyreonI, pyreonD -> ${body} }`
+function kotlinPlotRowMap(rows: string, body: string, zoomed: boolean, decimated = false): string {
+  if (!zoomed && !decimated) return `${rows}.mapIndexed { pyreonI, pyreonD -> ${body} }`
   if (!/\bpyreonI\b/.test(body)) return `${rows}.mapIndexed { _, pyreonD -> ${body} }`
-  return `${rows}.mapIndexed { pyreonJ, pyreonD -> val pyreonI = pyreonJ + pyreonRange.from; ${body} }`
+  const local = decimated ? 'pyreonKeep[pyreonJ]' : 'pyreonJ'
+  const global = zoomed ? `${local} + pyreonRange.from` : local
+  return `${rows}.mapIndexed { pyreonJ, pyreonD -> val pyreonI = ${global}; ${body} }`
 }
 
 /** `kotlinFrameHostWithTap` that can also force the density line (the transform gesture reads it even without a tap). */
@@ -11195,4 +11222,3 @@ function kotlinBrushHandler(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: st
   _emitWarnings.push(`<${tag} onBrush>: must be a NAMED handler (\`const onBrush = (r: BrushRange | null) => …\`) on native — an inline arrow is not lowered; the brush still selects, without the callback.`)
   return undefined
 }
-
