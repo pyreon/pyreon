@@ -22,7 +22,7 @@
     "build": "bun run --filter='*' build",
     "dev": "bun run --filter='*' dev",
     "test": "bun run --filter='*' test",
-    "test:browser": "bun run --filter='*' test:browser",
+    "test:browser": "bun run --filter='*' --sequential test:browser",
     "test:watch": "vitest",
     "lint": "oxlint .",
     "lint:browser-smoke": "bun scripts/check-browser-smoke.ts",
