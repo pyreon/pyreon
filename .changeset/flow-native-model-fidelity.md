@@ -35,4 +35,6 @@ SwiftUI and Compose now ship complete native Flow hosts that measure their conta
 
 Shared-source `<Flow instance={flow} />` now lowers directly to those SwiftUI and Compose hosts with a default node renderer. Unsupported custom renderer maps and optional web chrome remain explicit diagnostics rather than unresolved native symbols or silent drops.
 
+Nested `<Background>` now lowers to native viewport-aware dots, lines, or cross patterns with matching gap, size, and color configuration.
+
 Swift compiler validation now uses a disposable module cache, keeping hermetic and sandboxed runs independent of a writable user-level Clang cache.

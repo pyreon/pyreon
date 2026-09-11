@@ -156,6 +156,21 @@ describe('<Flow> native host lowering', () => {
     if (isSwiftcAvailable()) expect(validateSwiftWithStubs(result.code).ok).toBe(true)
   })
 
+  it('extracts Background chrome into the SwiftUI and Compose host configuration', () => {
+    const withBackground = source.replace(
+      "import { createFlow, Flow }",
+      "import { createFlow, Flow, Background }",
+    ).replace('<Flow instance={flow} />', '<Flow instance={flow}><Background variant="cross" gap={24} size={2} color="#abc" /></Flow>')
+    const swift = transform(withBackground, { target: 'swift' })
+    const kotlin = transform(withBackground, { target: 'kotlin' })
+    expect(swift.code).toContain('background: PyreonFlowBackgroundStyle(variant: .cross, gap: 24, size: 2, color: "#abc")')
+    expect(kotlin.code).toContain('background = PyreonFlowBackgroundStyle(variant = PyreonFlowBackgroundVariant.Cross, gap = 24.0, size = 2.0, color = "#abc")')
+    expect(swift.warnings.some((warning) => warning.includes('Background (from @pyreon/flow)'))).toBe(false)
+    expect(kotlin.warnings.some((warning) => warning.includes('Background (from @pyreon/flow)'))).toBe(false)
+    if (isSwiftcAvailable()) expect(validateSwiftWithStubs(swift.code).ok).toBe(true)
+    if (isKotlincAvailable()) expect(validateKotlin(kotlin.code).ok).toBe(true)
+  })
+
   it('emits the Compose host instead of an unresolved web component', () => {
     const result = transform(source, { target: 'kotlin' })
     expect(result.code).toContain('PyreonFlowView(state = flow) { pyreonNode ->')

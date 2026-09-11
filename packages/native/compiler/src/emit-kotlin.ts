@@ -6513,10 +6513,25 @@ function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string
       _emitWarnings.push(`<Flow ${name}={…}> custom renderer maps are not lowered natively yet; the native default node/edge renderer is used.`)
     }
   }
-  if (e.children.length > 0) {
-    _emitWarnings.push('<Flow> children are web chrome and are not lowered inside the native host yet; Background/Controls/MiniMap remain explicit follow-ups.')
+  const background = e.children
+    .filter((child) => child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'Background')
+    .map((child) => child.kind === 'expr' ? child.expr : undefined)[0]
+  const otherChildren = e.children.filter((child) => !(child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'Background'))
+  if (otherChildren.length > 0) {
+    _emitWarnings.push('<Flow> contains native-unlowered children; Controls/MiniMap and other optional chrome remain explicit follow-ups.')
   }
-  return `PyreonFlowView(state = ${emitKotlinExpr(attr.value, 0)}) { pyreonNode ->\n  Text(text = pyreonNode.id)\n}`
+  const bgArg = background?.kind === 'jsx-element' ? `, background = ${emitKotlinFlowBackground(background)}` : ''
+  return `PyreonFlowView(state = ${emitKotlinExpr(attr.value, 0)}${bgArg}) { pyreonNode ->\n  Text(text = pyreonNode.id)\n}`
+}
+
+function emitKotlinFlowBackground(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const variant = readStaticAttrKotlin(e, 'variant')
+  const resolvedVariant = variant === 'lines' ? 'Lines' : variant === 'cross' ? 'Cross' : 'Dots'
+  const gap = readStaticAttrKotlin(e, 'gap')
+  const size = readStaticAttrKotlin(e, 'size')
+  const color = readStaticAttrKotlin(e, 'color')
+  const n = (value: unknown, fallback: number): string => `${typeof value === 'number' ? value : fallback}${Number.isInteger(typeof value === 'number' ? value : fallback) ? '.0' : ''}`
+  return `PyreonFlowBackgroundStyle(variant = PyreonFlowBackgroundVariant.${resolvedVariant}, gap = ${n(gap, 20)}, size = ${n(size, 1)}, color = ${typeof color === 'string' ? JSON.stringify(color) : '"#dddddd"'})`
 }
 
 /**

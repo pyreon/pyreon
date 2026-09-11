@@ -1,6 +1,7 @@
 package com.pyreon.runtime
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -19,6 +21,54 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.unit.IntOffset
 import kotlin.math.roundToInt
 
+enum class PyreonFlowBackgroundVariant { Dots, Lines, Cross }
+
+data class PyreonFlowBackgroundStyle(
+    val variant: PyreonFlowBackgroundVariant = PyreonFlowBackgroundVariant.Dots,
+    val gap: Double = 20.0,
+    val size: Double = 1.0,
+    val color: String = "#dddddd",
+)
+
+@Composable
+fun PyreonFlowBackground(
+    style: PyreonFlowBackgroundStyle,
+    viewport: PyreonFlowViewport,
+    modifier: Modifier = Modifier,
+) {
+    Canvas(modifier) {
+        val step = maxOf(1f, (style.gap * viewport.zoom).toFloat())
+        val radius = maxOf(0.5f, (style.size * viewport.zoom).toFloat())
+        val x0 = viewport.x.toFloat() % step
+        val y0 = viewport.y.toFloat() % step
+        val color = pyreonFlowEdgeColor(style.color)
+        when (style.variant) {
+            PyreonFlowBackgroundVariant.Dots, PyreonFlowBackgroundVariant.Cross -> {
+                var x = x0
+                while (x <= size.width) {
+                    var y = y0
+                    while (y <= size.height) {
+                        if (style.variant == PyreonFlowBackgroundVariant.Dots) {
+                            drawCircle(color, radius, Offset(x, y))
+                        } else {
+                            drawLine(color, Offset(x - radius * 2, y), Offset(x + radius * 2, y), radius)
+                            drawLine(color, Offset(x, y - radius * 2), Offset(x, y + radius * 2), radius)
+                        }
+                        y += step
+                    }
+                    x += step
+                }
+            }
+            PyreonFlowBackgroundVariant.Lines -> {
+                var x = x0
+                while (x <= size.width) { drawLine(color, Offset(x, 0f), Offset(x, size.height), radius); x += step }
+                var y = y0
+                while (y <= size.height) { drawLine(color, Offset(0f, y), Offset(size.width, y), radius); y += step }
+            }
+        }
+    }
+}
+
 /** Native Compose host for Flow state, rendering without a WebView. */
 @Composable
 fun <T> PyreonFlowView(
@@ -26,6 +76,7 @@ fun <T> PyreonFlowView(
     modifier: Modifier = Modifier,
     edgeColor: String = "#999999",
     edgeWidth: Double = 1.5,
+    background: PyreonFlowBackgroundStyle? = null,
     nodeContent: @Composable (PyreonFlowNode<T>) -> Unit,
 ) {
     val density = LocalDensity.current
@@ -45,6 +96,10 @@ fun <T> PyreonFlowView(
                 }
             },
         )
+
+        if (background != null) {
+            PyreonFlowBackground(background, state.viewport, Modifier.matchParentSize())
+        }
 
         PyreonFlowEdgeCanvas(
             edges = pyreonFlowEdgeStrokes(state, edgeColor, edgeWidth),

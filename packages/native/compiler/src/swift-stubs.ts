@@ -1160,8 +1160,13 @@ public final class PyreonFlowState<T> {
   public func focusNode(_ nodeId: String, _ focusZoom: Double? = nil) {}
 }
 @available(iOS 17.0, macOS 14.0, *)
+public enum PyreonFlowBackgroundVariant { case dots, lines, cross }
+public struct PyreonFlowBackgroundStyle {
+  public init(variant: PyreonFlowBackgroundVariant = .dots, gap: Double = 20, size: Double = 1, color: String = "#dddddd") {}
+}
+@available(iOS 17.0, macOS 14.0, *)
 public struct PyreonFlowView<T, NodeContent: View>: View {
-  public init(state: PyreonFlowState<T>, edgeColor: String = "#999999", edgeWidth: Double = 1.5, @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>) -> NodeContent) {}
+  public init(state: PyreonFlowState<T>, edgeColor: String = "#999999", edgeWidth: Double = 1.5, background: PyreonFlowBackgroundStyle? = nil, @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>) -> NodeContent) {}
   public var body: some View { EmptyView() }
 }
 public struct PyreonI18n {

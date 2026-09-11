@@ -7939,10 +7939,24 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
       _emitWarnings.push(`<Flow ${name}={…}> custom renderer maps are not lowered natively yet; the native default node/edge renderer is used.`)
     }
   }
-  if (e.children.length > 0) {
-    _emitWarnings.push('<Flow> children are web chrome and are not lowered inside the native host yet; Background/Controls/MiniMap remain explicit follow-ups.')
+  const background = e.children
+    .filter((child) => child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'Background')
+    .map((child) => child.kind === 'expr' ? child.expr : undefined)[0]
+  const otherChildren = e.children.filter((child) => !(child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'Background'))
+  if (otherChildren.length > 0) {
+    _emitWarnings.push('<Flow> contains native-unlowered children; Controls/MiniMap and other optional chrome remain explicit follow-ups.')
   }
-  return `PyreonFlowView(state: ${emitSwiftExpr(attr.value, 0)}) { pyreonNode in\n  Text(pyreonNode.id)\n}`
+  const bgArg = background?.kind === 'jsx-element' ? `, background: ${emitSwiftFlowBackground(background)}` : ''
+  return `PyreonFlowView(state: ${emitSwiftExpr(attr.value, 0)}${bgArg}) { pyreonNode in\n  Text(pyreonNode.id)\n}`
+}
+
+function emitSwiftFlowBackground(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const variant = readStaticAttr(e, 'variant')
+  const resolvedVariant = variant === 'lines' ? '.lines' : variant === 'cross' ? '.cross' : '.dots'
+  const gap = readStaticAttr(e, 'gap')
+  const size = readStaticAttr(e, 'size')
+  const color = readStaticAttr(e, 'color')
+  return `PyreonFlowBackgroundStyle(variant: ${resolvedVariant}, gap: ${typeof gap === 'number' ? gap : 20}, size: ${typeof size === 'number' ? size : 1}, color: ${typeof color === 'string' ? JSON.stringify(color) : '"#dddddd"'})`
 }
 
 /**

@@ -1,5 +1,61 @@
 import SwiftUI
 
+public enum PyreonFlowBackgroundVariant: Equatable { case dots, lines, cross }
+
+public struct PyreonFlowBackgroundStyle: Equatable {
+    public var variant: PyreonFlowBackgroundVariant
+    public var gap: Double
+    public var size: Double
+    public var color: String
+    public init(variant: PyreonFlowBackgroundVariant = .dots, gap: Double = 20, size: Double = 1, color: String = "#dddddd") {
+        self.variant = variant; self.gap = gap; self.size = size; self.color = color
+    }
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+public struct PyreonFlowBackground: View, Equatable {
+    public var style: PyreonFlowBackgroundStyle
+    public var viewport: PyreonFlowViewport
+    public init(style: PyreonFlowBackgroundStyle, viewport: PyreonFlowViewport) {
+        self.style = style; self.viewport = viewport
+    }
+    public var body: some View {
+        Canvas { context, size in
+            let step = CGFloat(max(1, style.gap * viewport.zoom))
+            let radius = CGFloat(max(0.5, style.size * viewport.zoom))
+            let x0 = CGFloat(viewport.x).truncatingRemainder(dividingBy: step)
+            let y0 = CGFloat(viewport.y).truncatingRemainder(dividingBy: step)
+            let color = pyreonFlowEdgeColor(style.color)
+            switch style.variant {
+            case .dots, .cross:
+                var x = x0
+                while x <= size.width {
+                    var y = y0
+                    while y <= size.height {
+                        if style.variant == .dots {
+                        context.fill(Path(ellipseIn: CGRect(x: x - radius, y: y - radius, width: radius * 2, height: radius * 2)), with: .color(color))
+                        } else {
+                            var path = Path(); path.move(to: CGPoint(x: x - radius * 2, y: y)); path.addLine(to: CGPoint(x: x + radius * 2, y: y)); path.move(to: CGPoint(x: x, y: y - radius * 2)); path.addLine(to: CGPoint(x: x, y: y + radius * 2))
+                            context.stroke(path, with: .color(color), lineWidth: radius)
+                        }
+                        y += step
+                    }
+                    x += step
+                }
+            case .lines:
+                var path = Path()
+                var x = x0
+                while x <= size.width { path.move(to: CGPoint(x: x, y: 0)); path.addLine(to: CGPoint(x: x, y: size.height)); x += step }
+                var y = y0
+                while y <= size.height { path.move(to: CGPoint(x: 0, y: y)); path.addLine(to: CGPoint(x: size.width, y: y)); y += step }
+                context.stroke(path, with: .color(color), lineWidth: radius)
+            }
+        }
+        .accessibilityHidden(true)
+        .allowsHitTesting(false)
+    }
+}
+
 /// Converts the graph's visible edges into the flat draw list consumed by
 /// `PyreonFlowEdgeCanvas`. Edges with hidden or missing endpoints are omitted,
 /// matching the web renderer rather than drawing a misleading line to (0, 0).
@@ -49,6 +105,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     @Bindable private var state: PyreonFlowState<T>
     private let edgeColor: String
     private let edgeWidth: Double
+    private let background: PyreonFlowBackgroundStyle?
     private let nodeContent: (PyreonFlowNode<T>) -> NodeContent
 
     @State private var nodeDragStart: [String: PyreonXYPosition] = [:]
@@ -59,11 +116,13 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         state: PyreonFlowState<T>,
         edgeColor: String = "#999999",
         edgeWidth: Double = 1.5,
+        background: PyreonFlowBackgroundStyle? = nil,
         @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>) -> NodeContent
     ) {
         self.state = state
         self.edgeColor = edgeColor
         self.edgeWidth = edgeWidth
+        self.background = background
         self.nodeContent = nodeContent
     }
 
@@ -75,6 +134,11 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                     .contentShape(Rectangle())
                     .gesture(panGesture)
                     .simultaneousGesture(zoomGesture)
+
+                if let background {
+                    PyreonFlowBackground(style: background, viewport: state.viewport)
+                        .equatable()
+                }
 
                 PyreonFlowEdgeCanvas(
                     edges: pyreonFlowEdgeStrokes(state: state, color: edgeColor, width: edgeWidth),

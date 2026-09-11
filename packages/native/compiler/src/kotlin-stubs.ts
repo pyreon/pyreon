@@ -1675,12 +1675,16 @@ class PyreonFlowState<T>(
   fun focusNode(nodeId: String, focusZoom: Double? = null) {}
 }
 
+enum class PyreonFlowBackgroundVariant { Dots, Lines, Cross }
+data class PyreonFlowBackgroundStyle(val variant: PyreonFlowBackgroundVariant = PyreonFlowBackgroundVariant.Dots, val gap: Double = 20.0, val size: Double = 1.0, val color: String = "#dddddd")
+
 @Composable
 fun <T> PyreonFlowView(
   state: PyreonFlowState<T>,
   modifier: Modifier = Modifier,
   edgeColor: String = "#999999",
   edgeWidth: Double = 1.5,
+  background: PyreonFlowBackgroundStyle? = null,
   nodeContent: @Composable (PyreonFlowNode<T>) -> Unit,
 ) {}
 
