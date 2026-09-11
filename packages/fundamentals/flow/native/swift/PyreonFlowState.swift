@@ -155,6 +155,9 @@ public struct PyreonFlowEdge: Equatable {
     public var curvature: Double?
     public var borderRadius: Double?
     public var pathOffset: Double?
+    public var markerStart: PyreonFlowMarker?
+    public var markerEnd: PyreonFlowMarker?
+    public var markerEndSpecified: Bool
     public var waypoints: [PyreonXYPosition]
 
     public init(
@@ -175,6 +178,9 @@ public struct PyreonFlowEdge: Equatable {
         curvature: Double? = nil,
         borderRadius: Double? = nil,
         pathOffset: Double? = nil,
+        markerStart: PyreonFlowMarker? = nil,
+        markerEnd: PyreonFlowMarker? = nil,
+        markerEndSpecified: Bool = false,
         waypoints: [PyreonXYPosition] = []
     ) {
         self.id = id
@@ -194,6 +200,9 @@ public struct PyreonFlowEdge: Equatable {
         self.curvature = curvature
         self.borderRadius = borderRadius
         self.pathOffset = pathOffset
+        self.markerStart = markerStart
+        self.markerEnd = markerEnd
+        self.markerEndSpecified = markerEndSpecified
         self.waypoints = waypoints
     }
 }
@@ -205,6 +214,17 @@ public struct PyreonFlowConnection: Equatable {
     public var targetHandle: String?
     public init(source: String, target: String, sourceHandle: String? = nil, targetHandle: String? = nil) {
         self.source = source; self.target = target; self.sourceHandle = sourceHandle; self.targetHandle = targetHandle
+    }
+}
+
+public struct PyreonFlowMarker: Equatable {
+    public var type: String
+    public var color: String?
+    public var width: Double
+    public var height: Double
+    public var strokeWidth: Double
+    public init(type: String, color: String? = nil, width: Double = 10, height: Double = 7, strokeWidth: Double = 1) {
+        self.type = type; self.color = color; self.width = width; self.height = height; self.strokeWidth = strokeWidth
     }
 }
 
@@ -298,6 +318,7 @@ public final class PyreonFlowState<T> {
     private let snapToGrid: Bool
     private let snapGrid: Double
     private let connectionRules: [String: [String]]?
+    public let defaultMarkerEnd: PyreonFlowMarker?
     @ObservationIgnored private let connectionValidator: ((PyreonFlowConnection) -> Bool)?
 
     public init(
@@ -310,6 +331,7 @@ public final class PyreonFlowState<T> {
         snapGrid: Double = 15,
         nodeExtent: PyreonFlowNodeExtent? = nil,
         connectionRules: [String: [String]]? = nil,
+        defaultMarkerEnd: PyreonFlowMarker? = PyreonFlowMarker(type: "arrowclosed"),
         isValidConnection: ((PyreonFlowConnection) -> Bool)? = nil
     ) {
         self.viewport = viewport
@@ -319,6 +341,7 @@ public final class PyreonFlowState<T> {
         self.snapGrid = snapGrid
         self.nodeExtent = nodeExtent
         self.connectionRules = connectionRules
+        self.defaultMarkerEnd = defaultMarkerEnd
         self.connectionValidator = isValidConnection
         for node in nodes { insertNode(node) }
         for edge in edges { insertEdge(edge) }
@@ -439,6 +462,9 @@ public final class PyreonFlowState<T> {
     public func getEdge(_ id: String) -> PyreonFlowEdge? {
         guard edgeIds.contains(id) else { return nil }
         return edges.first { $0.id == id }
+    }
+    public func resolvedMarkers(_ edge: PyreonFlowEdge) -> (start: PyreonFlowMarker?, end: PyreonFlowMarker?) {
+        (edge.markerStart, edge.markerEndSpecified ? edge.markerEnd : defaultMarkerEnd)
     }
     public func isValidConnection(_ connection: PyreonFlowConnection) -> Bool {
         if let connectionValidator, !connectionValidator(connection) { return false }

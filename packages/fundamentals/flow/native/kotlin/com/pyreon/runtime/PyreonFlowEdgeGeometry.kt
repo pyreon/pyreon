@@ -246,12 +246,35 @@ internal fun pyreonFlowEdgePath(segments: List<PyreonFlowEdgeSegment>): Path {
  *  hex color and re-allocated the dash `FloatArray` + `PathEffect` for every
  *  edge on every draw, at gesture rate. `width`/`dash` are in FLOW units and
  *  scale with the zoom through the canvas transform. */
+data class PyreonFlowMarkerGlyph(val points: List<PyreonFlowPathPoint>, val closed: Boolean, val color: String, val strokeWidth: Double)
+
+fun pyreonFlowMarkerGlyph(marker: PyreonFlowMarker, segments: List<PyreonFlowEdgeSegment>, atStart: Boolean, edgeColor: String): PyreonFlowMarkerGlyph? {
+    if (segments.size < 2) return null
+    val tip: PyreonFlowPathPoint; val toward: PyreonFlowPathPoint
+    if (atStart) {
+        val first = segments.first(); val next = segments[1]
+        tip = PyreonFlowPathPoint(first.x, first.y); toward = PyreonFlowPathPoint(next.c1x ?: next.cx ?: next.x, next.c1y ?: next.cy ?: next.y)
+    } else {
+        val last = segments.last(); val previous = segments[segments.lastIndex - 1]
+        tip = PyreonFlowPathPoint(last.x, last.y); toward = PyreonFlowPathPoint(last.c2x ?: last.cx ?: previous.x, last.c2y ?: last.cy ?: previous.y)
+    }
+    var dx = tip.x - toward.x; var dy = tip.y - toward.y
+    val length = hypot(dx, dy); if (length <= 0.0) return null
+    dx /= length; dy /= length
+    val back = PyreonFlowPathPoint(tip.x - dx * marker.width, tip.y - dy * marker.width)
+    val px = -dy * marker.height / 2; val py = dx * marker.height / 2
+    val a = PyreonFlowPathPoint(back.x + px, back.y + py); val b = PyreonFlowPathPoint(back.x - px, back.y - py)
+    return PyreonFlowMarkerGlyph(if (marker.type == "arrowclosed") listOf(tip, a, b) else listOf(a, tip, b), marker.type == "arrowclosed", marker.color ?: edgeColor, marker.strokeWidth)
+}
+
 data class PyreonFlowEdgeStroke(
     val id: String,
     val segments: List<PyreonFlowEdgeSegment>,
     val color: String = "#999999",
     val width: Double = 1.5,
     val dash: List<Double>? = null,
+    val startMarker: PyreonFlowMarkerGlyph? = null,
+    val endMarker: PyreonFlowMarkerGlyph? = null,
 ) {
     /** Unscaled, built once from [segments]. */
     val path: Path by lazy { pyreonFlowEdgePath(segments) }

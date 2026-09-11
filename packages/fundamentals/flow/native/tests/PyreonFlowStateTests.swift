@@ -64,6 +64,12 @@ struct PyreonFlowStateTests {
         let routed = PyreonFlowState(nodes: f.nodes, edges: [PyreonFlowEdge(id: "tuned", source: "1", target: "2", type: "step", animated: true, pathOffset: 37)])
         let tunedStroke = pyreonFlowEdgeStrokes(state: routed)[0]
         check(tunedStroke.dash == [5, 5] && tunedStroke.segments[1].x == 187, "native host applies animated dash and per-edge path offset")
+        check(tunedStroke.endMarker?.closed == true && tunedStroke.endMarker?.points.first?.x == tunedStroke.segments.last?.x, "omitted markerEnd renders the default closed arrow at the target")
+        let noMarker = PyreonFlowState(nodes: f.nodes, edges: [PyreonFlowEdge(id: "none", source: "1", target: "2", markerEndSpecified: true)])
+        check(pyreonFlowEdgeStrokes(state: noMarker)[0].endMarker == nil, "explicit markerEnd null suppresses the default arrow")
+        let openMarker = PyreonFlowMarker(type: "arrow", color: "#ff0000", width: 12, height: 8, strokeWidth: 2)
+        let marked = PyreonFlowState(nodes: f.nodes, edges: [PyreonFlowEdge(id: "marked", source: "1", target: "2", markerStart: openMarker, markerEnd: openMarker, markerEndSpecified: true)])
+        check(pyreonFlowEdgeStrokes(state: marked)[0].startMarker?.closed == false && pyreonFlowEdgeStrokes(state: marked)[0].endMarker?.color == "#ff0000", "configured open markers preserve shape and color at both ends")
         f.removeEdge("dangling")
         f.containerSize = PyreonFlowContainerSize(width: 400, height: 200)
         let mini = pyreonFlowMiniMapLayout(state: f, width: 200, height: 150)

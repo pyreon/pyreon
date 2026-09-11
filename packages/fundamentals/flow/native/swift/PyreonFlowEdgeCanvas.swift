@@ -292,6 +292,34 @@ public func pyreonFlowEdgePath(_ segments: [PyreonFlowEdgeSegment]) -> Path {
     return p
 }
 
+public struct PyreonFlowMarkerGlyph: Equatable {
+    public var points: [PyreonXYPosition]
+    public var closed: Bool
+    public var color: String
+    public var strokeWidth: Double
+}
+
+public func pyreonFlowMarkerGlyph(_ marker: PyreonFlowMarker, segments: [PyreonFlowEdgeSegment], atStart: Bool, edgeColor: String) -> PyreonFlowMarkerGlyph? {
+    guard segments.count >= 2 else { return nil }
+    let tip: PyreonXYPosition, toward: PyreonXYPosition
+    if atStart {
+        let first = segments[0], next = segments[1]
+        tip = PyreonXYPosition(x: first.x, y: first.y)
+        toward = PyreonXYPosition(x: next.c1x ?? next.cx ?? next.x, y: next.c1y ?? next.cy ?? next.y)
+    } else {
+        let last = segments[segments.count - 1], previous = segments[segments.count - 2]
+        tip = PyreonXYPosition(x: last.x, y: last.y)
+        toward = PyreonXYPosition(x: last.c2x ?? last.cx ?? previous.x, y: last.c2y ?? last.cy ?? previous.y)
+    }
+    var dx = tip.x - toward.x, dy = tip.y - toward.y
+    let length = hypot(dx, dy); guard length > 0 else { return nil }
+    dx /= length; dy /= length
+    let back = PyreonXYPosition(x: tip.x - dx * marker.width, y: tip.y - dy * marker.width)
+    let px = -dy * marker.height / 2, py = dx * marker.height / 2
+    let a = PyreonXYPosition(x: back.x + px, y: back.y + py), b = PyreonXYPosition(x: back.x - px, y: back.y - py)
+    return PyreonFlowMarkerGlyph(points: marker.type == "arrowclosed" ? [tip, a, b] : [a, tip, b], closed: marker.type == "arrowclosed", color: marker.color ?? edgeColor, strokeWidth: marker.strokeWidth)
+}
+
 /// Parses `#rgb` / `#rrggbb` into a SwiftUI `Color`, falling back to gray for
 /// anything else. Deliberately SELF-CONTAINED rather than reusing
 /// `@pyreon/charts`' `pyreonChartColor` (same hex-parsing logic, smaller
@@ -344,6 +372,8 @@ public struct PyreonFlowEdgeStroke: Identifiable, Equatable {
     public var color: String { didSet { resolvedColor = pyreonFlowEdgeColor(color) } }
     public var width: Double
     public var dash: [Double]? { didSet { dashCG = dash.map { $0.map { CGFloat($0) } } } }
+    public var startMarker: PyreonFlowMarkerGlyph?
+    public var endMarker: PyreonFlowMarkerGlyph?
 
     /// The unscaled path, built once from `segments` (flow coordinates).
     public private(set) var path: Path
@@ -357,13 +387,17 @@ public struct PyreonFlowEdgeStroke: Identifiable, Equatable {
         segments: [PyreonFlowEdgeSegment],
         color: String = "#999999",
         width: Double = 1.5,
-        dash: [Double]? = nil
+        dash: [Double]? = nil,
+        startMarker: PyreonFlowMarkerGlyph? = nil,
+        endMarker: PyreonFlowMarkerGlyph? = nil
     ) {
         self.id = id
         self.segments = segments
         self.color = color
         self.width = width
         self.dash = dash
+        self.startMarker = startMarker
+        self.endMarker = endMarker
         self.path = pyreonFlowEdgePath(segments)
         self.resolvedColor = pyreonFlowEdgeColor(color)
         self.dashCG = dash.map { $0.map { CGFloat($0) } }
@@ -401,6 +435,13 @@ public struct PyreonFlowEdgeCanvas: View, Equatable {
                 var style = StrokeStyle(lineWidth: CGFloat(edge.width), lineJoin: .round)
                 if let d = edge.dashCG { style.dash = d }
                 ctx.stroke(edge.path, with: .color(edge.resolvedColor), style: style)
+                for marker in [edge.startMarker, edge.endMarker].compactMap({ $0 }) {
+                    guard let first = marker.points.first else { continue }
+                    var markerPath = Path(); markerPath.move(to: CGPoint(x: first.x, y: first.y))
+                    for point in marker.points.dropFirst() { markerPath.addLine(to: CGPoint(x: point.x, y: point.y)) }
+                    if marker.closed { markerPath.closeSubpath(); ctx.fill(markerPath, with: .color(pyreonFlowEdgeColor(marker.color))) }
+                    else { ctx.stroke(markerPath, with: .color(pyreonFlowEdgeColor(marker.color)), lineWidth: marker.strokeWidth) }
+                }
             }
         }
     }

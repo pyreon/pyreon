@@ -56,6 +56,14 @@ data class PyreonFlowNode<T>(
     val targetHandles: List<PyreonFlowHandleConfig> = emptyList(),
 )
 
+data class PyreonFlowMarker(
+    val type: String,
+    val color: String? = null,
+    val width: Double = 10.0,
+    val height: Double = 7.0,
+    val strokeWidth: Double = 1.0,
+)
+
 /** An edge — mirrors `FlowEdge`'s core fields, including editable waypoints. */
 data class PyreonFlowEdge(
     val id: String,
@@ -75,6 +83,9 @@ data class PyreonFlowEdge(
     val curvature: Double? = null,
     val borderRadius: Double? = null,
     val pathOffset: Double? = null,
+    val markerStart: PyreonFlowMarker? = null,
+    val markerEnd: PyreonFlowMarker? = null,
+    val markerEndSpecified: Boolean = false,
     val waypoints: List<PyreonXYPosition> = emptyList(),
 )
 
@@ -111,6 +122,7 @@ class PyreonFlowState<T>(
     private val snapGrid: Double = 15.0,
     nodeExtent: PyreonFlowNodeExtent? = null,
     private val connectionRules: Map<String, List<String>>? = null,
+    val defaultMarkerEnd: PyreonFlowMarker? = PyreonFlowMarker("arrowclosed"),
     private val connectionValidator: ((PyreonFlowConnection) -> Boolean)? = null,
 ) {
     private var nodeExtent: PyreonFlowNodeExtent? = nodeExtent
@@ -233,6 +245,8 @@ class PyreonFlowState<T>(
     // ── edge operations ─────────────────────────────────────────────────────
     fun getEdge(id: String): PyreonFlowEdge? =
         if (edgeIds.containsKey(id)) _edges.firstOrNull { it.id == id } else null
+    fun resolvedMarkers(edge: PyreonFlowEdge): Pair<PyreonFlowMarker?, PyreonFlowMarker?> =
+        edge.markerStart to if (edge.markerEndSpecified) edge.markerEnd else defaultMarkerEnd
     fun isValidConnection(connection: PyreonFlowConnection): Boolean {
         if (connectionValidator?.invoke(connection) == false) return false
         val rules = connectionRules ?: return true

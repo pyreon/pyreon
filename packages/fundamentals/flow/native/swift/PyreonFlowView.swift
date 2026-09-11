@@ -245,7 +245,12 @@ public func pyreonFlowEdgeStrokes<T>(
             borderRadius: edge.borderRadius ?? 5,
             offset: edge.pathOffset ?? 20,
             curvature: edge.curvature ?? 0.25)
-        return PyreonFlowEdgeStroke(id: edge.id, segments: path.segments, color: color, width: width, dash: edge.animated ? [5, 5] : nil)
+        let markers = state.resolvedMarkers(edge)
+        return PyreonFlowEdgeStroke(
+            id: edge.id, segments: path.segments, color: color, width: width,
+            dash: edge.animated ? [5, 5] : nil,
+            startMarker: markers.start.flatMap { pyreonFlowMarkerGlyph($0, segments: path.segments, atStart: true, edgeColor: color) },
+            endMarker: markers.end.flatMap { pyreonFlowMarkerGlyph($0, segments: path.segments, atStart: false, edgeColor: color) })
     }
 }
 

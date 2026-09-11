@@ -58,7 +58,12 @@ fun <T> pyreonFlowEdgeStrokes(
             offset = edge.pathOffset ?: 20.0,
             curvature = edge.curvature ?: 0.25,
         )
-        PyreonFlowEdgeStroke(edge.id, path.segments, color, width, if (edge.animated) listOf(5.0, 5.0) else null)
+        val markers = state.resolvedMarkers(edge)
+        PyreonFlowEdgeStroke(
+            edge.id, path.segments, color, width, if (edge.animated) listOf(5.0, 5.0) else null,
+            markers.first?.let { pyreonFlowMarkerGlyph(it, path.segments, true, color) },
+            markers.second?.let { pyreonFlowMarkerGlyph(it, path.segments, false, color) },
+        )
     }
 }
 
