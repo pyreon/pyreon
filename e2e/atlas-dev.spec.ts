@@ -163,6 +163,9 @@ test.describe('atlas dev', () => {
   })
 
   test('the docs page carries Scenarios (as links into the canvas) and Source', async ({ page }) => {
+    const errors: string[] = []
+    page.on('pageerror', (error) => errors.push(String(error)))
+
     await page.goto('/')
     await page.getByRole('button', { name: 'Chip', exact: true }).click()
     await page.getByRole('button', { name: 'Docs', exact: true }).click()
@@ -189,6 +192,7 @@ test.describe('atlas dev', () => {
     await solid.click()
     await expect(page.getByTestId('canvas-preview')).toBeVisible()
     await expect(page.getByTestId('canvas-name')).toHaveText('Chip')
+    expect(errors).toEqual([])
   })
 
   test('measure addon reports the hovered box dimensions from the real layout', async ({ page }) => {

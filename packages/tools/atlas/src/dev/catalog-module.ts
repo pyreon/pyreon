@@ -387,10 +387,15 @@ export function generateCatalogModule(
   ordered.forEach((entry, i) => {
     const { component } = entry
     const controls = component.controls.filter(isEditableControl).map(toWorkbenchControl)
-    // The discovered event surface. These are the props the Actions panel can
-    // observe — the controls list deliberately excludes them (a function is not
-    // an editable value), so they are threaded separately.
-    const reactiveProps = component.controls.filter((c) => c.reactive).map((c) => c.name)
+    // The discovered EVENT surface. `reactive` means only "function-valued";
+    // it also includes render props such as `children`/`renderItem`. Fabricating
+    // one of those changes component behaviour even when the user supplied no
+    // callback (Combobox sees a function child, enters its render-prop escape
+    // hatch, and renders the logger's `undefined` return). The framework's
+    // event contract is `on[A-Z]`, so observe exactly that subset.
+    const reactiveProps = component.controls
+      .filter((c) => c.reactive && /^on[A-Z]/.test(c.name))
+      .map((c) => c.name)
     const page = pageFor(component, options.pages)
     lines.push('    {')
     lines.push(`      id: ${lit(ids[i]!)},`)
