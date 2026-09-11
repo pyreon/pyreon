@@ -103,23 +103,19 @@ describe('the decimation arithmetic crosses', () => {
     expect(r.ok, r.error ?? '').toBe(true)
   })
 
-  it('an Int-valued series is refused by BOTH toolchains, and warns on neither', () => {
-    // The reason the remedy text carries `* 1.0`. A TS `number` field with no
-    // fractional initializer lowers to Int, `lttbIndices` takes Double, and the
-    // emitters do not coerce an argument to an engine parameter — so a user
-    // writing perfectly good TypeScript gets a green compile pass and a native
-    // build that fails on a type they never wrote. Pinned as a KNOWN gap rather
-    // than left as folklore; the fix is argument coercion in both emitters.
+  it('normalizes an integral number series at the decimator boundary', () => {
     const withoutWidening = PRE_DECIMATED.replace('rows().map((r) => r.v * 1.0)', 'rows().map((r) => r.v)')
     for (const target of ['swift', 'kotlin'] as const) {
       const r = transform(withoutWidening, { target })
       expect(r.warnings ?? [], `${target} started warning — update the remedy text`).toEqual([])
     }
     if (isSwiftcAvailable()) {
-      expect(validateSwiftWithStubs(transform(withoutWidening, { target: 'swift' }).code).ok).toBe(false)
+      const result = validateSwiftWithStubs(transform(withoutWidening, { target: 'swift' }).code)
+      expect(result.ok, result.error ?? '').toBe(true)
     }
     if (isKotlincAvailable()) {
-      expect(validateKotlin(transform(withoutWidening, { target: 'kotlin' }).code).ok).toBe(false)
+      const result = validateKotlin(transform(withoutWidening, { target: 'kotlin' }).code)
+      expect(result.ok, result.error ?? '').toBe(true)
     }
   })
 
