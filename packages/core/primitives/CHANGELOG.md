@@ -1,5 +1,243 @@
 # @pyreon/primitives
 
+## 0.52.0
+
+### Minor Changes
+
+- Add `<Audio>` — sound playback on web, iOS and Android. (1612ed1)
+
+  Mirrors `<Video>` in shape: same `src` dispatch (a bare name is a bundled
+  asset), the same three-value `onStatusChange` vocabulary
+  (`waiting`/`playing`/`paused`), and a declarative prop surface rather than a
+  player-controller hook.
+
+  **It is deliberately NON-VISUAL, which is the one place it does not mirror
+  `<Video>`.** Audio has no view on the native targets — `AVAudioPlayer` and
+  Media3 are objects, not views — so there is no `controls` prop. The web's
+  browser-styled control bar has no cross-platform counterpart, and a prop that
+  silently no-ops on two of three targets is the failure this API family
+  refuses; `useScreenOrientation` omits `lock()` for exactly the same reason.
+  Compose a transport from Pyreon primitives and drive it with these props.
+
+  `volume` is **clamped** to 0..1 rather than rejected — on all three arms, and
+  at emit time too, so `volume={1.7}` bakes as `1` and the generated native
+  source is honest about what will actually play. An out-of-range value is a
+  caller slip, and refusing to play is a worse answer than the nearest legal
+  level.
+
+  The native host is a concrete zero-size view rather than `EmptyView`: a
+  modifier attached to `EmptyView` is silently inert, which is how a `<Modal>`
+  sheet once shipped that never presented. The playback engine is injected on
+  both targets, so the status machine and the clamp are testable with no
+  AVFoundation, no Android SDK and no device.
+
+  Adds `useAudioRecorder` alongside it — the input half of the same concept.
+  `start()` resolves `false` on a denied microphone permission rather than
+  throwing: that is the most likely outcome of the call and an ordinary branch
+  in any UI that uses it, so callers get an `if` rather than a `try`, matching
+  `useWakeLock.request()`. `stop()` resolves a URL — an object URL on the web,
+  a file URL natively — because that is the one representation all three targets
+  produce and every consumer can use; a zero-length capture resolves `null`
+  rather than an empty URL that plays nothing. Disposal releases the microphone
+  tracks, which is what turns the OS recording indicator off.
+
+  And `useCamera` — take a photo through the SYSTEM capture UI on every target.
+  It mirrors `useImagePicker` exactly, because the two differ only in which
+  system flow they open: `capture()` resolves a URI or `null` and never
+  rejects, since a cancel and an unavailable camera are the same outcome to a
+  caller. The system UI owns the permission prompt, so there is no permission
+  plumbing to get subtly different per platform.
+
+  A CUSTOM in-app viewfinder is deliberately out of scope. An AVCaptureSession
+  layer, a CameraX PreviewView and a `<video>` element are not one thing
+  wearing three hats, and a surface that only half-crosses is worse than one
+  that says what it covers — `useNativeModule` is the escape hatch there, as it
+  is for Bluetooth GATT.
+
+  Plus `useSpeech` and `useDeviceMotion`, the last two Tier-1 crossers.
+
+  `useSpeech` CANCELS before each `speak()` — queueing is the platform default
+  on all three, so without it a second press talks over the first instead of
+  replacing it. Rate, pitch and voice are deliberately out of scope: the
+  platforms disagree on ranges and on how voices are identified, so one name
+  would mean three different things.
+
+  `useDeviceMotion` has an explicit `start()` rather than listening on mount,
+  because an always-on hook would be wrong on all three targets: iOS Safari
+  gates the event behind a gesture-triggered prompt, and both native targets
+  want start/stop so the sensor is not draining battery for a screen nobody is
+  looking at. Where `requestPermission` does not exist (everything but iOS
+  Safari) its ABSENCE is a grant, not a failure.
+
+- `<WebView>` installs the reverse message bridge BEFORE it pushes the first `data`. (a0c4cd7)
+
+  A hosted page commonly reacts to its very first `pyreondata` by sending something
+  back — an echo, a ready signal, a rendered-size report. Pushing before
+  `window.pyreonPostMessage` exists dropped that first response silently.
+
+  The old order happened to work with `html` (`srcdoc`), where the page's own script
+  runs before the host's load handler at all. It broke the moment a page was loaded
+  from a bundled file via `src`, where the load is asynchronous and the page's first
+  `send()` lands between the push and the injection. Both native runtimes install
+  their message handler at WebView construction, so this also stops the web from
+  being the odd target out.
+
+- Add `connectWebHost()` — the reusable guest-side glue for the `<WebView>` bridge, the other half of the WebView-host pattern that lets web-only-rich packages (charts / flow / rich-text / code / document) run 1:1 on iOS/Android by hosting the same web bundle inside a native WebView. A bundle calls `connectWebHost()` to read host-pushed props (`data()` / `onData`, fired on every `pyreondata` push) and send events back (`emit` → the host `onMessage`) — identical code on web, iOS, and Android, so it replaces the hand-rolled `window.__pyreonData` / `window.pyreonPostMessage` wiring with one tested implementation. (b9c82f6)
+- Ship `<Transition>` / `<TransitionGroup>` from `@pyreon/primitives` — the animation vocabulary now has an import path that resolves on every target (5a83e86)
+
+  PMTC has lowered `<Transition>` and `<TransitionGroup>` to real platform
+  animation since M2.7/M2.8 — SwiftUI `.transition(…)` + `.animation(_:value:)`,
+  Compose `AnimatedVisibility(enter =, exit =)` — with preset mapping, asymmetric
+  enter/leave timing and device proof. But `@pyreon/primitives` exported neither
+  name, and the only runtime export lived in `@pyreon/runtime-dom`, which the
+  compiler correctly flags web-only. So the one import that worked on web warned
+  on native, and the import native accepted did not exist: a fully built
+  capability with no reachable door.
+
+  `@pyreon/primitives` now exports both, with a self-contained web
+  implementation built on `h()` + `renderEffect` alone (no `@pyreon/runtime-dom`
+  dependency — the package keeps its two peer deps, which is what lets it be the
+  multiplatform vocabulary).
+
+  The prop contract mirrors the native emitters exactly: `show`, `name`
+  (`fade` / `scale-in` / `slide-up|down|left|right`, camelCase and kebab-case
+  both accepted), `duration`, `easing`, and the asymmetric
+  `enterDuration` / `leaveDuration` / `enterEasing` / `leaveEasing` overrides that
+  fall back to the symmetric value. Direction is the direction of travel, so a
+  slide-up rises into place from below — matching `.move(edge: .bottom)` and
+  `slideInVertically { it }`.
+
+  On web the hidden state is `display:none` on the wrapper rather than an unmount,
+  so an animation wrapper never gates its children out of SSR and a hidden
+  `<Transition>` contributes no flex `gap`. Only transition LONGHANDS are ever
+  assigned, so a consumer's own `transition-delay` survives.
+
+  The native emit is unchanged and asserted byte-identical to the bare-tag form.
+  The web-only warnings for `@pyreon/kinetic` and `@pyreon/runtime-dom` now name
+  `@pyreon/primitives` as the import that actually crosses, instead of naming a
+  tag whose only import was broken.
+
+### Patch Changes
+
+- Update third-party dependencies to their latest compatible releases, (ea669a1)
+  extending #3174's sweep to every package.json the first pass hadn't reached
+  (that pass touched only the root manifest, so nothing there tripped the
+  Changeset gate — this one edits per-package manifests directly and does).
+
+  Runtime dependencies that reach consumers: `oxc-parser`/`oxc-transform`
+  0.147 → 0.148 (`@pyreon/compiler`, `@pyreon/native-compiler`, `@pyreon/lint`
+  — `@oxc-project/types` alongside it), `magic-string` 1.2.2 → 1.2.3
+  (`@pyreon/compiler`), the CodeMirror 6 family — `@codemirror/search` and
+  `@codemirror/state` 6.7.1 → 6.7.2, `@codemirror/legacy-modes` 6.5.3 → 6.5.4
+  (`@pyreon/code`), TipTap 3.30.3 → 3.31.2 (`@pyreon/rich-text`), TanStack Query
+  5.102.2 → 5.102.8 across `@tanstack/query-core` and its persist/devtools
+  companions (`@pyreon/query`, and the shared root override so `@pyreon/http`
+  agrees), `@tanstack/table-core` 9.1.2 → 9.2.4 (`@pyreon/table`), the
+  pragmatic-drag-and-drop family (`@pyreon/dnd`) — core 3.0.0 → 3.1.0,
+  auto-scroll 3.1.0 → 3.2.0, hitbox 2.1.0 → 2.2.0, all in-range within the
+  v3 major this repo already adopted.
+
+  Dev-only comparison/tooling bumps across the touched packages: `rolldown`,
+  `react-hook-form`, `hotkeys-js`, `axios`, `ky`, `i18next`, `xstate`, `joi`,
+  `typia`, `nuqs`, `@tanstack/react-virtual`, `@tanstack/react-table`,
+  `@tanstack/react-query`, `motion`, and `mobx-state-tree` 7.4.0 → 8.0.0 — a
+  real major, but its own peer range for `mobx` moved `^6.3.0` → `^7.0.0`,
+  which matches what this repo already declares (`^7.0.3`); the OLD pin was
+  the one silently out of range.
+
+  `happy-dom` deduped to ONE resolved version repo-wide — three stale copies
+  (20.11.6/20.12.0/20.13.2) were co-installed before this pass across the ~17
+  packages that each pin it independently. The unification target is
+  **20.11.6, not the newest 20.13.2** — bumping past 20.11.6 breaks
+  `@pyreon/styler`'s `memory-growth.test.ts` deterministically (5/5 local
+  runs, plus a CI failure on `test (fundamentals+ui-system+zero)`), a pure
+  `environment: 'happy-dom'` test whose eviction-cycle counting depends on
+  CSSOM/`cssRules` behavior that changed somewhere between those versions —
+  confirmed by isolating the version with an exact pin, not by assumption; 3/3
+  clean at 20.11.6, 5/5 failing at 20.13.2. Verified pre-existing on `main`
+  (3/3 passes there, at 20.11.6) so this is the same "routine bump, unvetted
+  runtime behavior change" shape as the `@tanstack/virtual-core` finding
+  below, just caught before push instead of by CI. The one other consumer
+  pinning past 20.11.6 — `@happy-dom/global-registrator` in
+  `examples/benchmark`, whose own 20.13.2 release requires `happy-dom
+^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
+  graph resolves to one version again.
+
+  `examples/benchmark`'s framework competitors were refreshed too so the
+  "fastest framework" comparisons stay honest against current releases: Vue +
+  `@vue/server-renderer` + `@vue/compiler-dom` 3.5.41 → 3.5.42, Svelte 5.56.10
+  → 5.57.0, and Octane 0.1.46 → 0.2.2 (its peer `@octanejs/vite-plugin`
+  0.1.46 → 0.1.52 alongside it) — a real minor jump, verified with a clean
+  production build before committing to it. Octane 0.2.2 replaces the
+  `forBlock` fast-path flag the row-list bench's own doc comment describes
+  un-handicapping with a new `fastKeyedForBlock` path; the bench impl still
+  reaches it (confirmed by compiling `octane.tsrx` through `octane/compiler`
+  0.2.2 and reading the emitted flags), so the comparison stays fair, but
+  every previously-published Pyreon-vs-Octane number in
+  `.claude/skills/pyreon-benchmarks/SKILL.md` was measured against 0.1.46 and
+  needs re-verification against 0.2.2 before being cited again — flagged
+  there, not restated as fact here.
+
+  Held deliberately, each for a stated reason found by actually reading the
+  dependency rather than assuming: TypeScript stays capped `<7.0.0` (removes
+  the classic Compiler API `@pyreon/compiler`/`@pyreon/mcp`/`@pyreon/cli` are
+  built on). `vitest`/`@vitest/browser`/`@vitest/browser-playwright`/
+  `@vitest/coverage-v8` stay on 4.1.11 as one locked unit (5.0.0 just went GA
+  and changes `clearMocks` to default `true`, tightens `coverage.include`/
+  `exclude` matching, and removes several import entrypoints — exactly the
+  class of change this repo's `Coverage (Full)` gate has already rotted on
+  three times; a real migration, not a version bump). `@changesets/cli`
+  2.31.1 → 3.0.1 and `@changesets/changelog-github` 0.7.0 → 1.0.0 stay put:
+  1.0.0 ships `"type": "module"` with no CJS export, and this repo's own
+  `.changeset/resilient-changelog.cjs` does `require('@changesets/changelog-
+github')` — bumping it would break `changeset version` at release time with
+  `ERR_REQUIRE_ESM`, verified by reading the published package's `exports`
+  map, not assumed. The root `uuid` override stays at `11.1.1` for the same
+  reason, one level removed: it force-pins a transitive dep of `exceljs`
+  (`^8.3.0`, itself already outside its own declared range on purpose), and
+  `uuid` 12.0.0 dropped CommonJS support entirely — `exceljs`'s own bundled
+  code does `require('uuid')`, verified directly in its installed `dist/`, so
+  the same ESM-only trap applies one hop further down the graph.
+
+  One more found by actually running the browser test tier, not just typecheck
+  and the node/happy-dom suite: `@tanstack/virtual-core` was bumped 3.17.4 →
+  3.17.8 in this branch's first pass (a routine-looking override edit, not
+  vetted as carefully as the deps above), and it broke
+  `@pyreon/virtual`'s real-Chromium `repositions a STAYING row below when row 0
+is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
+  retries) — bisected down to virtual-core's own 3.17.7 "synchronous
+  notification for scroll compensation" change, not to anything else in this
+  branch (ruled out `@tanstack/react-virtual`, unrelated — not imported by this
+  code path at all; ruled out the `oxc-parser`/`magic-string`/`rolldown`
+  bumps too, by reverting each in isolation and rebuilding). Reverted back to
+  3.17.4, matching what's currently on `main`, and NOT bumped further.
+
+  This surfaced something that predates this PR: `@pyreon/virtual`'s own
+  `package.json` has declared `@tanstack/virtual-core: "^3.17.7"` since an
+  earlier fix (commit 973c4e323, "the root overrides pinned
+  @tanstack/virtual-core to 3.17.4 while three packages declared ^3.17.7, so
+  the installed version did not satisfy its own consumers' declared range")
+  — but the root override was only ever bumped to 3.17.4 there, not to
+  3.17.7+, so the exact mismatch that fix describes is still live on `main`
+  today: the declared floor and the resolved version disagree, silently,
+  because the currently-resolved 3.17.4 happens to still pass. Bumping the
+  override to actually satisfy the package's own declared range (3.17.7,
+  confirmed — not just 3.17.8) is what surfaces the real compatibility break
+  in `use-virtualizer.ts`'s remeasurement handling. Left as-is here rather
+  than fixed, because closing it needs either updating the wrapper for
+  virtual-core's new synchronous-notification timing or re-adjudicating the
+  test's assumptions against it — real source-level work, not a version
+  bump. Tracked as a known gap, not silently left broken: someone picking
+  this up should treat `bun run test:browser` in `@pyreon/virtual` as the
+  regression gate, not just `bun run test`, which does not exercise this
+  path at all (confirmed: the full node/happy-dom suite passes 1805/1805
+  regardless of which virtual-core version is resolved).
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+
 ## 0.51.0
 
 ### Minor Changes

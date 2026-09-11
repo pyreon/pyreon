@@ -1,5 +1,1027 @@
 # @pyreon/runtime-dom
 
+## 0.52.0
+
+### Minor Changes
+
+- Stop allocating a per-row closure that the `_bindText`/`_bindDirect` fast path throws away (fc0f445)
+
+  For a member-expression callee (`{row.label()}` — the dominant `<For>` row shape) the compiler emitted a `caller` thunk: `_bindText(row.label, __t2, () => row.label())`. That argument exists solely so the runtime's SLOW path can preserve `this` when `source` turns out to be a plain method rather than a signal — the fast path (`source.direct`) returns before ever reading it. So every signal-backed member text/attribute binding allocated one closure per row and immediately discarded it.
+
+  The emit now passes the RECEIVER instead: `_bindText(row.label, __t2, undefined, row)`. `row` is an identifier already in scope, so the argument costs no allocation, and the runtime rebuilds the call with `.call(receiver)` only if it actually reaches the slow path. Both backends emit byte-identically.
+
+  Scope and limits:
+
+  - The receiver occupies its OWN positional slot rather than sharing the third with the thunk, because **a receiver can itself be callable** — `typeof x === 'function'` cannot tell a receiver from a thunk, so one shared slot would invoke the receiver instead of the method (a callable store's `store.getState()` would render the store's own return value).
+  - Only depth-1 chains (`row.label()`) use the receiver. Deeper chains (`row.data.name()`) deliberately keep the thunk, because passing their receiver would mean evaluating `row.data` a second time at the call site and could double-fire a getter.
+  - Bare-identifier signals (`{count()}`) were already on the 2-arg form and are unchanged.
+  - The slot-3 thunk is still honoured, so a runtime can serve output from an older compiler without silently breaking `this`.
+  - Wall-clock is a wash: the eliminated allocation is real and structurally visible in the emit, but it sits below measurement resolution (repeated interleaved runs over 10,000 rows produced deltas of both signs, −2.9% to +9.5%). This ships as a defect fix, not a speedup.
+
+- Hydration now ADOPTS compiled templates instead of rebuilding them. (18bc355)
+
+  A component whose body is a static DOM subtree compiles to a single `_tpl()`
+  call. Hydration cloned that template and replaced the server-rendered nodes
+  with the clone, so every templatized subtree in every compiled SSR app was
+  discarded and rebuilt — measured retention was 0/2 for a leaf and 0/4 for a
+  three-level tree. Only `<For>` rows adopted, and only because they armed the
+  one-shot `_tpl` target themselves.
+
+  That is a correctness bug rather than a performance cost: state living on the
+  server nodes did not survive. Text typed into an uncontrolled input before the
+  bundle booted was wiped, focus was lost, scroll position reset, and listeners
+  attached by non-Pyreon code were dropped.
+
+  `hydrateComponent` now arms the same one-shot target with the component's SSR
+  cursor, so a root `_tpl` binds against the existing nodes, and the swap is
+  skipped when the adopted element already is the cursor. Adoption is gated on
+  the template's static skeleton (tags, static attributes, static text) being
+  byte-equal to the target, which keeps a non-root template from claiming the
+  slot in a way that could corrupt it.
+
+- perf(hydration): parse a `<For>` block's rows in one pass instead of two (cb15c01)
+
+  A hydrating `<For>` walked its block's sibling chain twice — once to find the
+  matching `<!--/pyreon-for-->`, then again to collect the `<!--k:KEY-->` row
+  markers — and then paid two more sibling reads per row (`.nextSibling` for the
+  row's first node, `.previousSibling` for its last) that the walk already had in
+  hand. Fused into one ordered pass that carries both, the per-row sibling-getter
+  budget drops from 6 to 2.
+
+  Measured on a 1000-row keyed table, counting the runtime's own reads of
+  `Node.prototype`'s traversal getters: the block parse falls 6000 → 2000, and
+  the whole hydration walk falls 19,047 → 15,047 DOM traversal reads (−21%).
+  Behaviour is unchanged — adoption, key verification, and the empty-row bail all
+  take the same decisions — so the reduction is in traversal work only. This is
+  an op-count result; the wall-clock effect is not measured here.
+
+- During hydration, `dangerouslySetInnerHTML` now TRUSTS the server-rendered DOM instead of re-assigning `el.innerHTML` — React's exact semantics, closing the code-block residual #3018 named. (2b12889)
+
+  The problem had two halves, both measured on the docs production build (`/docs/router`, 132 code blocks, 9,111 of the page's 9,511 still-rebuilt body nodes under `.code-block`). First, every one of the 132 code-block `_tpl` calls WAS armed at its real cursor — the #3018 deferral worked — and every one bailed in the adopt verifier: an innerHTML-bearing template element is EMPTY (the payload is applied by the bind) while its SSR counterpart is FULL (the server renders `__html` as inner content), so the verifier read the parsed Shiki output as extra elements and cloned the whole template. Second, even a passing verify would have lost the nodes anyway: the compiled bind inlined `el.innerHTML = _h.__html`, re-parsing byte-identical HTML into fresh nodes on its first (mount) run.
+
+  Three coordinated seams close it. The compiler (both backends, byte-identical) now emits `_setHtml(el, expr)` for every `dangerouslySetInnerHTML` binding — the `_setClass`/`_setStyle` rule: export the runtime normalizer, emit a call to it — and bakes a `data-pyreon-html` declaration onto the template element (the `data-pyreon-hole` mechanism; stripped at parse, never reaches user DOM, baked only for a template-empty element). The verifier accepts ANY server children on a declared element — the binding owns them — and marks it on a full match. The shared sink (`applyDangerousHtml`, exported as `_setHtml`) skips its FIRST write to a marked element; every later write — reactive re-runs, post-hydration flips, all of CSR — assigns exactly as before. The h() hydration path marks through `hydrateElement` (the `<select value>` sibling — but skip-first rather than defer, because the reactive form's effect must still run to subscribe). A template with declared innerHTML elements refuses the `<For>` plan-replay fast path the same way holes do: the replay records no marks, so a replayed row's bind would re-parse the children the adoption kept.
+
+  No string comparison is performed, deliberately: innerHTML serialization round-trips differ (entity encoding, attribute quoting), so an equality check would false-negative on identical content. React compares nothing, and neither do we — which buys the same trade React accepted: a client `__html` that GENUINELY differs from the server's shows the server content until the first reactive update. The trade is locked by its own spec. The sanitized `innerHTML` prop is out of scope and still re-assigns (its server DOM is the parse of SANITIZER output, which this trust cannot vouch for).
+
+  Measured on the docs production build (serve-ssg, Playwright Chromium): `<body>` retention 2,010/11,514 (17.5%) → 11,121/11,514 (96.6%). The residual ~393 nodes sit under the docs `api-card` regions and the live `<Example>` mounts — different component shapes, not innerHTML. The app-page fixture is unregressed: 2206/2206 adopted in both arms, hydration median 3.71ms (before) → 3.64ms (after) on the same harness, CIs adjacent — a wash within run noise.
+
+- `<input value>` / `<textarea value>` now establish `defaultValue` on a client mount, so `form.reset()` behaves the same on a client-mounted page as on a hydrated one (80135d8)
+
+  SSR serializes `value` as a content ATTRIBUTE — it has to, because before JS arrives the box still has to show text — and that attribute is what `form.reset()` restores from, since `input.defaultValue` reflects it. A client mount only ever set the PROPERTY, and a property assignment never creates the attribute. The result was the same form behaving differently depending on how the user arrived:
+
+  ```
+  client-mounted, then form.reset()  ->  ""       field clears
+  hydrated,       then form.reset()  ->  "hello"  field restores
+  ```
+
+  `applyValueProp` (exported to the compiler as `_setValue`) now assigns the property and, on the FIRST application only, sets `defaultValue`. Both compiler backends emit it for `input`/`textarea`, byte-identically; every other element that owns a `value` property (`<progress>`, `<option>`, `<select>`, custom elements) keeps the plain property assignment and pays nothing.
+
+  The default is established once rather than alongside every write, which matters more than it looks: a controlled input writes its signal from `onInput`, so its value binding re-runs on every keystroke. Moving `defaultValue` with it would drag the reset target along with the typing and quietly turn `form.reset()` into a no-op. React draws the line in exactly the same place — `initInput` seeds the default from the initial value, `updateInput` only ever follows an explicit `defaultValue` prop.
+
+  Because the reflected default makes the client's serialized DOM byte-match the server's, `input.value` and `textarea.value` are now ARMED in the SSR↔hydration parity fuzzer instead of masked. `select.value` stays masked deliberately: its default lives in `<option selected>`, and React, Preact and Solid all diverge there identically.
+
+- Hydration ADOPTS `.map()`-composed and multi-root dynamic regions instead of rebuilding them (9fe7be2)
+
+  A component list written with `.map()` retained **0 of 241** server nodes through
+  hydration, while the identical list under `<For>` retained all of them. The final
+  DOM was correct either way, so nothing warned.
+
+  Four independent layers discarded the server DOM:
+
+  1. `templateSignature` refused every compiled template containing a `<!>`
+     mount-slot placeholder, so a `.map()` CONTAINER never adopted — it cloned, and
+     the NativeItem branch then replaced the whole server subtree.
+  2. The multi-root branch of `hydrateReactiveChild` mounted fresh and DELETED the
+     entire `<!--$-->…<!--/$-->` range. This one governs every multi-root dynamic
+     region, not just `.map()`.
+  3. `runtime-server` ELIDES those range markers when the accessor is its element's
+     sole child (the tag boundary already delimits the extent). That decision is
+     read from the static vnode shape, which the compiled `_tpl` + `_mountSlot`
+     path consumes too — and it had never joined the agreement, so a sole
+     `.map()` child went looking for a range the server deliberately never emitted.
+     It now adopts the element's whole child list, synthesizing the elided close so
+     it runs the SAME adoption core as a marked range — including the removal
+     contract, without which a flip away from the adopted content stranded every
+     server node beside the fresh render.
+  4. `hydrateSoleAccessorChild` — the `h()`-side reader of that same elision —
+     adopted only a single text node and mounted fresh for anything else, retaining
+     1/N for a multi-root region.
+
+  All four now adopt. Slot adoption is gated on each `<!>` being its parent's LAST
+  child, because a slot is one node in the clone but an arbitrary run in the server
+  DOM — any compiled ref walk that steps past it would land on slot content instead
+  of the node it names. Shapes that would cross a slot (`<div><!><!></div>`,
+  `<div><!><footer/></div>`) fall back to the clone, unchanged.
+
+- Hydration now ADOPTS a compiled template's mount holes, closing the blocker that kept `templatizeComponentChildren` opt-in for its main shape (fc0d636)
+
+  A compiled template whose children are all absorbed COMPONENT children is emitted EMPTY and filled at mount by trailing `_mountChild` calls. Its server counterpart holds those components' real output, which the adoption verifier read as "extra elements" — so the whole subtree was cloned and swapped instead of hydrated, and everything below it with it. On a 3-level layout that measured **0 of 4 nodes retained**; the same page with the option off retained 4 of 4.
+
+  It now retains **4 of 4**, with three adoptions.
+
+  Three things had to be right, and doing only the first is a correctness bug rather than a partial win:
+
+  1. **The verifier skips a hole's DOM range.** The compiler DECLARES the element it leaves empty (`data-pyreon-hole`, baked into the template string and stripped by `_tpl` at parse time, so it never reaches user DOM). Declared rather than inferred: `_setChild` and a spread `innerHTML` also fill an empty template element and do not hydrate, so a blanket "an empty element may have extra children" rule would duplicate or discard their content.
+  2. **The compiled bind hydrates that range instead of mounting into it.** `_mountChild` threads a per-hole cursor when it runs inside an adopting bind, so a component absorbed into a hole hydrates the server's copy — which recursively arms its own template, and so on down. Relaxing (1) alone leaves the bind appending a second copy beside the server's.
+  3. **The range is delimited without any SSR change.** A hole is always trailing — the compiler routes a component child with static content after it through a `<!>` placeholder instead, and no template containing one is adoptable — so the parent element's own tag boundary supplies the extent. SSR emits exactly the same bytes it did before; a per-component range marker would have taxed every hydrated page.
+
+  Whatever the bind does not claim is swept, which is precisely the empty element a clone would have produced. A mis-declared hole therefore costs an adoption, never correctness.
+
+  Both compiler backends emit the declaration byte-identically (locked by the cross-backend equivalence suite and a 5,000-seed fuzz). Plan replay is refused for a hole-bearing template, because a plan records marker spots but not hole cursors.
+
+  **Still opt-in.** The residual is the MIXED shape — a component with a static sibling — which compiles to `<!>` + `_mountSlot` and measures 3/4 retained with the option off against 0/4 with it on. That is the pre-existing dynamic-slot limit reached through a component; its server range markers already exist, and closing it needs a verifier that can adopt a comment-placeholder-bearing template.
+
+- Templatize COMPONENT children by default — the mixed shape now hydrates too (f8ee02a)
+
+  `templatizeComponentChildren` absorbs a component child into the enclosing
+  `_tpl()` template instead of bailing the whole element to `h()`. It is worth a
+  measured −13.0% on the 2,047-component deep-tree mount (41% of the gap to
+  Solid), and it has been opt-in because it cost hydration retention. It now
+  **defaults ON** in `@pyreon/vite-plugin`. The compiler primitive stays opt-in,
+  the same split `ssrTemplate` uses, because the emit injects an import.
+
+  Two things changed to make that safe.
+
+  **The mount hole no longer has to be the element's whole content.** A hole is
+  marker-free because it is TRAILING — the element's own closing tag supplies its
+  extent — and that never required the element to be EMPTY, only for the hole to
+  come last. So an element with static children followed by components is now
+  declared a hole that starts after them: the compiler bakes the static prefix as
+  usual, and the verifier matches those children first and starts the hole cursor
+  after them. How many there are is read off the template itself, so no count
+  crosses the compiler/runtime boundary to drift, and the all-components case is
+  the same code path with a count of zero. The shape this closes measured 3 of 4
+  nodes retained with the option OFF and 0 of 4 with it ON; it now retains 4 of 4.
+
+  **Shapes that cannot adopt are no longer absorbed at all.** The emitter takes
+  exactly `[element*][component+]` and bails everything else to `h()`, which is
+  byte-identically what it emits with the option off. The `<!>` + `_mountSlot`
+  form for components is gone: it rendered correctly, but produced a template
+  containing a comment, which the adopt verifier refuses — so it cost more
+  retention than the absorb bought. The result is that the option changes an emit
+  exactly when it absorbs, and there is no shape it makes worse.
+
+  Also fixes a latent interaction between this option and `collapseRocketstyle`.
+  Both rewrite the same node; collapse decided whether to wrap its call in JSX
+  braces from the node's AST parent, which is still a JSX element even after the
+  template pass has relocated that node's text into a call argument. The result
+  was `_mountChild({__rsCollapse(…)}, …)` — not parseable JavaScript. It needed
+  both features at once, so it was unreachable while this one was opt-in.
+
+  Set `templatizeComponentChildren: false` to restore the previous emit.
+
+- Add `templatizeComponentChildren` — absorb COMPONENT children into the enclosing (b689ffd)
+  `_tpl()` template instead of bailing the whole element to `h()`. **Opt-in,
+  default off.**
+
+  The template emitter bails on a component child, so one `<Node/>` makes
+  `templateElementCount` return −1 for that element and every ancestor — an app's
+  whole composition skeleton lowers to `h()` + `mountElement`. With the option on,
+  the skeleton bakes into the template HTML and each component child is mounted
+  into the clone: `_mountChild` appended when nothing static follows it (no
+  placeholder comment), `_mountSlot` + a `<!>` placeholder otherwise.
+
+  Measured on the 2,047-component deep-tree mount — production builds, real
+  Chromium, three interleaved passes, arms verified by grepping the built bundle
+  for the baked `<div class="branch"></div>` template before reading any number:
+  **4.53ms → 3.94ms (−13.0%)**, with Vanilla/Solid/React/Vue/Svelte as in-run
+  controls all moving ≤2% except two noisier arms at ≤5.5%. The gap to SolidJS
+  closes 1.31ms → 0.77ms, i.e. **41% of the remaining deep-tree deficit**;
+  standing 1.41× → 1.24×.
+
+  Ordering is safe by construction. A `_tpl` bind runs when the CALL EXPRESSION
+  evaluates, so a bind that MOUNTS COMPONENTS is ordered against the enclosing
+  component's setup. A component's sole child is `_lc`-deferred, and every other
+  eager-argument position (multi-child component parent, member/namespaced tag
+  parent, fragment, expression container) bails to `h()`.
+
+  **Why it stays off by default:** a `_tpl` result is SWAPPED at hydration, so
+  every element this newly templatizes stops adopting its SSR DOM — and so does
+  everything below it. Measured on a 3-level layout, node retention 4/4 → 0/4 (it pinned 3/4 when written; #2918 then taught hydration to ADOPT compiled templates, so the OFF arm now keeps all four).
+  Only enable it for a client bundle that never calls `hydrateRoot()`. The plugin
+  warns once when it is on, because it also forces the compiler's JS backend (no
+  native mirror yet).
+
+- `_tpl` now DEFERS its build during hydration, so every compiled-template region adopts at its real DOM cursor instead of the first `_tpl` in a component's evaluation window consuming the one-shot adoption target. (967f78b)
+
+  The problem was evaluation order. An h()-rooted component evaluates its children as h() ARGUMENTS, before the hydration walk knows which server node each child corresponds to — so a mid-array `_tpl('<main …>')` ran first inside the component's armed window, consumed the arm meant for the component ROOT (a DIV), failed the root-tag gate, cloned, and its bind mounted the entire route subtree into the detached clone. All descendant `_tpl` calls then ran un-armed and cloned too. Measured on the docs production build, `/docs/router`: 195 of 200 `_tpl` calls during hydration ran un-armed; one consumed arm cost ~95% of the page.
+
+  While `hydrateRoot`'s synchronous walk is active, `_tpl` now returns a LAZY NativeItem; `hydrateChild` calls its `__adoptAt(cursor)` when the item meets its real cursor, and only then does the build run — armed with the right node, verifier unchanged. A live arm whose root tag MATCHES keeps the historical eager path byte-identically (component roots, `<For>` rows and their plan replay); a MISMATCHED arm is left untouched for the element it belongs to. A deferral that cannot adopt (verify bail, non-element cursor, multi-root template) builds a clone on first `.el` read and the existing swap fallback stands. Mount-hole cursors thread through the deferred build, so a hole's component child hydrates the server nodes in place, recursively. CSR is untouched — outside hydration `_tpl` builds eagerly as before.
+
+  Measured on the docs production build, `/docs/router` (serve-ssg, Playwright Chromium): `<body>` retention 558/11,514 (4.8%) → 2,010/11,514 (17.5%). The residual is dominated by shiki code blocks — 9,111 of the 9,511 rebuilt elements sit under `.code-block`, whose `pre.shiki` content renders via `dangerouslySetInnerHTML` and structurally cannot adopt; outside those regions retention is ~83%. Hydration wall time (deferred-script window, median of 15 loads) moved 66.7ms → 64.5ms — a wash within run noise: the added verify work is offset by the clone-and-swap construction it replaces. The app-page fixture is unregressed: 2206/2206 adopted, 3.81ms median, still ahead of Vue/Preact/React on the same harness.
+
+- Hydration now ADOPTS a reactive accessor's server-rendered subtree instead of rebuilding it, and `@pyreon/zero` resolves the matched route before hydrating so its pages actually hydrate in place. (7ead5f8)
+
+  A function child's SSR output is bracketed by `<!--$-->…<!--/$-->`. Previously the general case (anything but a single text node) always deleted that range and re-mounted. `RouterView` renders its route through exactly such an accessor, so a zero app discarded its entire server-rendered page on every load — measured on the docs production build, 10 of 11,514 `<body>` nodes survived hydration (0.1%). Typed input, focus, scroll position and any listener attached by non-Pyreon code were destroyed on every page load, and the client rebuilt DOM the server had already produced.
+
+  `hydrateReactiveChild` now hydrates the accessor's first render against that range, bounded by the end marker the same way the async-component path bounds its own. Anything the walk does not consume is swept, so a genuine divergence degrades to the previous behaviour rather than orphaning nodes.
+
+  The SAME adoption applies to `hydrateSoleAccessorChild`, and for zero that is the load-bearing one. #2935 elides the range markers when an accessor is an element's ONLY child (the tag boundary is the extent), and `RouterView` returns `h('div', …, child)` — so zero's route takes that path. Adopting in only the marked path leaves zero at 0.1%; measured, not inferred.
+
+  That alone does not help a `lazy()` host: at hydration time the route component is not yet loaded, so the accessor's first render is the loading fallback (`null` for a route without a `loadingComponent`), which matches nothing. `startClient` therefore calls `router.preload(path, { skipLoaders: true })` before `hydrateRoot`, making the first render the real component. Loader data is unaffected — it was already seeded from `__PYREON_LOADER_DATA__`. The route chunks are `modulepreload`ed by the SSG/SSR build, so this normally resolves from cache, and the server's DOM stays visible while it does.
+
+  Measured on the docs production build at this branch's tip, `/docs/router`: `<body>` retention 10/11,514 (0.1%) → 558/11,514 (4.8%). (An earlier cut of this branch measured 10.9%; the figure was re-measured after the later correctness commits and this is the honest current number.) The residual is NOT verifier strictness — instrumenting every adoption bail site shows zero shape/DOM-gate failures on this page. It is arming-protocol timing: compiled `_tpl` calls evaluated as h() arguments run before any DOM cursor exists, so they clone eagerly and the whole subtree below them is swapped instead of adopted. That is a separate lever — deferred `_tpl` arming — which this change makes reachable for the first time in a zero app.
+
+  Also fixes a latent cleanup bug this exposed: `bindPolymorphicText` disposes its binding without removing the bound text node, so a NESTED accessor's adopted text survived its parent's re-emission. Invisible while every accessor re-mounted over a full range swap; caught by the SSR↔hydration parity fuzzer's post-flip oracle.
+
+  `@pyreon/atlas`'s SSR-parity oracle now normalizes the `<input value>` attribute, which a server can only express as an ATTRIBUTE while the client sets it as a PROPERTY. A hydrated tree shows the server's attribute and a client-mounted tree shows nothing, while the live property — what the user sees, edits and submits — is identical. That check previously passed only BECAUSE hydration rebuilt every subtree, making "hydrated" and "client mount" the same code path; adoption surfaced the difference rather than causing it. Everything else the oracle compares is untouched. Scoped to `value` alone — the narrower the exemption the smaller the hole — and it should be deleted outright once #2953 establishes `defaultValue` on a client mount, fixing the divergence at the source.
+
+### Patch Changes
+
+- Hydration now ADOPTS the SSR text node behind a mixed-content interpolation, (089064b)
+  instead of rendering its value twice.
+
+  An element whose last child is an interpolation, with any sibling before it,
+  rendered the value TWICE and left a stray close marker:
+
+  ```
+  SSR       <div class="b">Count: <!--$-->7<!--/$--></div>
+  hydrated  <div class="b">Count: 77<!--/$--></div>
+  ```
+
+  `<p>Hello {name}</p>`, `<div>Count: {n()}</div>`, `<p><b>B</b>{tail()}</p>` —
+  among the commonest shapes a rendered page contains.
+
+  The compiler bakes a `<!>` placeholder for such a slot and used to inline
+  `createTextNode("") + replaceChild` against it. That is right for a CLONE and
+  wrong for an ADOPTED container, where the placeholder ref resolves to the live
+  `<!--$-->` opening the range that already holds this slot's server-rendered
+  text. The bind wrote the value into its fresh node while the server's own text
+  survived beside it.
+
+  `_mountSlot` has been marker-aware for ELEMENT slots since the compiled path
+  became a consumer of the SSR range. The text slot never joined that agreement,
+  because its swap is INLINE generated code the runtime cannot intercept — so the
+  fix is a new runtime helper, `_textSlot`, carrying the same
+  clone-vs-marked-range discrimination, which both compiler backends now emit in
+  place of the inlined pair.
+
+  **This supersedes #3299 and removes it.** That PR fixed the same defect by
+  REFUSING the shape in the verifier so the element rebuilt — correct, and
+  deliberately minimal, because a correctness fix should not wait on a compiler
+  change. It paid for correctness with adoption, and now that the text bind is
+  adoption-aware the refusal would only cost the adoption back: with #3299 on
+  `main` and `_textSlot` in place, the adoption specs read 0 instead of 3/3, 3/3
+  and 4/4. So the guard is deleted here, and its own specs are kept — they lock
+  the OUTPUT half of the contract while the new file locks the adoption half.
+
+  Measured on the shapes above, SSR then hydrate, counting node identity:
+
+  | shape                  | before                    | #3299            | now                      |
+  | ---------------------- | ------------------------- | ---------------- | ------------------------ |
+  | `<p>Hello {n()}</p>`   | 3/3 adopted, WRONG output | correct, rebuilt | **3/3 adopted, correct** |
+  | `<p><b>B</b>{t()}</p>` | 4/4 adopted, WRONG output | correct, rebuilt | **4/4 adopted, correct** |
+
+  Adoption is not a nicety here: a rebuilt node loses typed input, focus, scroll
+  position and any listener attached by non-Pyreon code, so this is a correctness
+  metric before it is a speed one.
+
+  An empty range (`<!--$--><!--/$-->`, the accessor rendered `''`) and any range
+  holding content a polymorphic binding will replace are handled explicitly —
+  cleared depth-counted so a nested range cannot end the walk early, then given a
+  fresh node. Correct, simply not adopted.
+
+  Two gaps let the original defect ship. The hydration parity fuzzer builds its
+  trees with `h()` and never `transformJSX`, so it reaches the runtime path only
+  and structurally cannot see a compiled-template defect — a gap its own record
+  already names as owed. And a real `@pyreon/zero` page re-mounts most of its body
+  rather than adopting it, so the broken branch rarely ran where it would be
+  noticed. The new specs compile through the REAL transform for that reason, and
+  assert node identity and the `runtime.tpl.adopt` counter alongside the HTML — an
+  output-only suite would pass for a fix that gave up adoption.
+
+  Bisect-verified in both halves. Neutering `_textSlot`'s marked-range branch
+  fails five specs with `Hello AdaAda` / `Count: 77` / `tailtail` / `v=11`;
+  reverting the JS emit with the native binary moved aside (so the JS backend is
+  actually exercised) fails the same five. Both backends emit `_textSlot`
+  byte-identically, locked by the compiler's native-equivalence suite.
+
+  Three compiler specs asserting the old emit were updated rather than deleted:
+  each protects an invariant this change preserves — mixed content still uses a
+  comment placeholder rather than a baked space that would merge during parsing,
+  and PZ-08's slot target is still the phase-1 hoisted const, never a walk
+  re-evaluated after `_mountSlot` mutated the sibling list.
+
+- Update third-party dependencies to their latest compatible releases, (ea669a1)
+  extending #3174's sweep to every package.json the first pass hadn't reached
+  (that pass touched only the root manifest, so nothing there tripped the
+  Changeset gate — this one edits per-package manifests directly and does).
+
+  Runtime dependencies that reach consumers: `oxc-parser`/`oxc-transform`
+  0.147 → 0.148 (`@pyreon/compiler`, `@pyreon/native-compiler`, `@pyreon/lint`
+  — `@oxc-project/types` alongside it), `magic-string` 1.2.2 → 1.2.3
+  (`@pyreon/compiler`), the CodeMirror 6 family — `@codemirror/search` and
+  `@codemirror/state` 6.7.1 → 6.7.2, `@codemirror/legacy-modes` 6.5.3 → 6.5.4
+  (`@pyreon/code`), TipTap 3.30.3 → 3.31.2 (`@pyreon/rich-text`), TanStack Query
+  5.102.2 → 5.102.8 across `@tanstack/query-core` and its persist/devtools
+  companions (`@pyreon/query`, and the shared root override so `@pyreon/http`
+  agrees), `@tanstack/table-core` 9.1.2 → 9.2.4 (`@pyreon/table`), the
+  pragmatic-drag-and-drop family (`@pyreon/dnd`) — core 3.0.0 → 3.1.0,
+  auto-scroll 3.1.0 → 3.2.0, hitbox 2.1.0 → 2.2.0, all in-range within the
+  v3 major this repo already adopted.
+
+  Dev-only comparison/tooling bumps across the touched packages: `rolldown`,
+  `react-hook-form`, `hotkeys-js`, `axios`, `ky`, `i18next`, `xstate`, `joi`,
+  `typia`, `nuqs`, `@tanstack/react-virtual`, `@tanstack/react-table`,
+  `@tanstack/react-query`, `motion`, and `mobx-state-tree` 7.4.0 → 8.0.0 — a
+  real major, but its own peer range for `mobx` moved `^6.3.0` → `^7.0.0`,
+  which matches what this repo already declares (`^7.0.3`); the OLD pin was
+  the one silently out of range.
+
+  `happy-dom` deduped to ONE resolved version repo-wide — three stale copies
+  (20.11.6/20.12.0/20.13.2) were co-installed before this pass across the ~17
+  packages that each pin it independently. The unification target is
+  **20.11.6, not the newest 20.13.2** — bumping past 20.11.6 breaks
+  `@pyreon/styler`'s `memory-growth.test.ts` deterministically (5/5 local
+  runs, plus a CI failure on `test (fundamentals+ui-system+zero)`), a pure
+  `environment: 'happy-dom'` test whose eviction-cycle counting depends on
+  CSSOM/`cssRules` behavior that changed somewhere between those versions —
+  confirmed by isolating the version with an exact pin, not by assumption; 3/3
+  clean at 20.11.6, 5/5 failing at 20.13.2. Verified pre-existing on `main`
+  (3/3 passes there, at 20.11.6) so this is the same "routine bump, unvetted
+  runtime behavior change" shape as the `@tanstack/virtual-core` finding
+  below, just caught before push instead of by CI. The one other consumer
+  pinning past 20.11.6 — `@happy-dom/global-registrator` in
+  `examples/benchmark`, whose own 20.13.2 release requires `happy-dom
+^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
+  graph resolves to one version again.
+
+  `examples/benchmark`'s framework competitors were refreshed too so the
+  "fastest framework" comparisons stay honest against current releases: Vue +
+  `@vue/server-renderer` + `@vue/compiler-dom` 3.5.41 → 3.5.42, Svelte 5.56.10
+  → 5.57.0, and Octane 0.1.46 → 0.2.2 (its peer `@octanejs/vite-plugin`
+  0.1.46 → 0.1.52 alongside it) — a real minor jump, verified with a clean
+  production build before committing to it. Octane 0.2.2 replaces the
+  `forBlock` fast-path flag the row-list bench's own doc comment describes
+  un-handicapping with a new `fastKeyedForBlock` path; the bench impl still
+  reaches it (confirmed by compiling `octane.tsrx` through `octane/compiler`
+  0.2.2 and reading the emitted flags), so the comparison stays fair, but
+  every previously-published Pyreon-vs-Octane number in
+  `.claude/skills/pyreon-benchmarks/SKILL.md` was measured against 0.1.46 and
+  needs re-verification against 0.2.2 before being cited again — flagged
+  there, not restated as fact here.
+
+  Held deliberately, each for a stated reason found by actually reading the
+  dependency rather than assuming: TypeScript stays capped `<7.0.0` (removes
+  the classic Compiler API `@pyreon/compiler`/`@pyreon/mcp`/`@pyreon/cli` are
+  built on). `vitest`/`@vitest/browser`/`@vitest/browser-playwright`/
+  `@vitest/coverage-v8` stay on 4.1.11 as one locked unit (5.0.0 just went GA
+  and changes `clearMocks` to default `true`, tightens `coverage.include`/
+  `exclude` matching, and removes several import entrypoints — exactly the
+  class of change this repo's `Coverage (Full)` gate has already rotted on
+  three times; a real migration, not a version bump). `@changesets/cli`
+  2.31.1 → 3.0.1 and `@changesets/changelog-github` 0.7.0 → 1.0.0 stay put:
+  1.0.0 ships `"type": "module"` with no CJS export, and this repo's own
+  `.changeset/resilient-changelog.cjs` does `require('@changesets/changelog-
+github')` — bumping it would break `changeset version` at release time with
+  `ERR_REQUIRE_ESM`, verified by reading the published package's `exports`
+  map, not assumed. The root `uuid` override stays at `11.1.1` for the same
+  reason, one level removed: it force-pins a transitive dep of `exceljs`
+  (`^8.3.0`, itself already outside its own declared range on purpose), and
+  `uuid` 12.0.0 dropped CommonJS support entirely — `exceljs`'s own bundled
+  code does `require('uuid')`, verified directly in its installed `dist/`, so
+  the same ESM-only trap applies one hop further down the graph.
+
+  One more found by actually running the browser test tier, not just typecheck
+  and the node/happy-dom suite: `@tanstack/virtual-core` was bumped 3.17.4 →
+  3.17.8 in this branch's first pass (a routine-looking override edit, not
+  vetted as carefully as the deps above), and it broke
+  `@pyreon/virtual`'s real-Chromium `repositions a STAYING row below when row 0
+is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
+  retries) — bisected down to virtual-core's own 3.17.7 "synchronous
+  notification for scroll compensation" change, not to anything else in this
+  branch (ruled out `@tanstack/react-virtual`, unrelated — not imported by this
+  code path at all; ruled out the `oxc-parser`/`magic-string`/`rolldown`
+  bumps too, by reverting each in isolation and rebuilding). Reverted back to
+  3.17.4, matching what's currently on `main`, and NOT bumped further.
+
+  This surfaced something that predates this PR: `@pyreon/virtual`'s own
+  `package.json` has declared `@tanstack/virtual-core: "^3.17.7"` since an
+  earlier fix (commit 973c4e323, "the root overrides pinned
+  @tanstack/virtual-core to 3.17.4 while three packages declared ^3.17.7, so
+  the installed version did not satisfy its own consumers' declared range")
+  — but the root override was only ever bumped to 3.17.4 there, not to
+  3.17.7+, so the exact mismatch that fix describes is still live on `main`
+  today: the declared floor and the resolved version disagree, silently,
+  because the currently-resolved 3.17.4 happens to still pass. Bumping the
+  override to actually satisfy the package's own declared range (3.17.7,
+  confirmed — not just 3.17.8) is what surfaces the real compatibility break
+  in `use-virtualizer.ts`'s remeasurement handling. Left as-is here rather
+  than fixed, because closing it needs either updating the wrapper for
+  virtual-core's new synchronous-notification timing or re-adjudicating the
+  test's assumptions against it — real source-level work, not a version
+  bump. Tracked as a known gap, not silently left broken: someone picking
+  this up should treat `bun run test:browser` in `@pyreon/virtual` as the
+  regression gate, not just `bun run test`, which does not exercise this
+  path at all (confirmed: the full node/happy-dom suite passes 1805/1805
+  regardless of which virtual-core version is resolved).
+
+- Update external dependencies to latest across the workspace: tanstack query/virtual patches, tiptap 3.29.2, codemirror view 6.43.8, shiki 4.4.2, elkjs 0.12, yjs 13.6.32, MCP SDK 1.30, oxc 0.143, magic-string 1.1.0, pragmatic-drag-and-drop 2.0.2, and tooling (vite 8.2.0, playwright 1.62.1 — both previously held back by upstream bugs now fixed). `@pyreon/testing` widens its `@testing-library/jest-dom` peer to `^6.0.0 || ^7.0.0` (v7 verified). TypeScript stays capped `<7.0.0` (TS7 removed the classic Compiler API); `@tanstack/table-core` stays on v8 (v9 is a structural API rewrite that would break `@pyreon/table`'s public options surface — tracked as its own migration). (1d74edc)
+- fix(core,runtime-server,runtime-dom): two guards keyed on one spelling of a thing with several (6a7c0f1)
+
+  **A lowercase `on*` prop became a live inline handler in SSR output.** The
+  event-prop skip required an UPPERCASE third character, so the lowercase
+  spelling — the real HTML event-handler content attribute — fell through:
+
+  ```
+  h('div', { onclick: 'alert(1)' })            ->  <div onclick="alert(1)">
+  h('img', { src: 'x', onerror: 'alert(1)' })  ->  <img src="x" onerror="alert(1)">
+  ```
+
+  live in the server-rendered HTML, which the browser runs before any framework
+  code. The reachable vector is a spread of a user-keyed object — verbatim the
+  threat model `UNSAFE_ATTR_NAME_RE` already documents, and invisible to it
+  because `onclick` contains no breakout character.
+
+  The skip runs BEFORE the `typeof value === 'function'` resolution, so the same
+  hole meant a lowercase `on*` holding a FUNCTION was CALLED during render: a
+  typo'd `onclick={handleDelete}` executed `handleDelete` on the server.
+
+  Fixed with a NAME SET (`EVENT_HANDLER_ATTRS`, 112 entries) rather than
+  `/^on[a-z]/`, because the broad regex also eats `once` and `onyx`, which are
+  ordinary attributes an existing spec asserts must still render.
+
+  **`formAction` bypassed the URL guard on every path.** The guard keys on the
+  JSX PROP name while SSR emits the lowercased ATTRIBUTE name. `formAction` is an
+  advertised typed prop, so the idiomatic TSX spelling was the unguarded one —
+  and `formaction` overrides `<form action>`, which is in the set precisely
+  because `javascript:` executes on submit:
+
+  ```
+  <button formAction="javascript:alert(1)">  ->  formaction="javascript:alert(1)"
+  <button formaction="javascript:alert(1)">  ->  (blocked)
+  ```
+
+  `isUrlAttr` now resolves the name before asking, in one place, so no call site
+  can key on the wrong spelling again.
+
+- `<For>`'s owns-parent bulk clear and full-replace branches (`handleFastClear` / `handleReplaceAll`, plus the keyed-array sibling in `mountKeyedList`) now wipe the block IN PLACE with one native `replaceChildren(...)` call instead of a `cloneNode(false)` + `replaceChild` parent swap. The swap silently REPLACED the parent element, dropping its expando-delegated event handlers (`__ev_*`), refs, observers, and direct listeners — e.g. `<ul onClick={…}><For …/></ul>` lost its click handler after the first clear or full replace. Parent identity is now preserved (locked by parent-identity + `runtime.mountFor.clearFast`/`replaceFast` counter specs, bisect-verified). Measured trade, real Chromium interleaved CPU profiles (2026-08-17): the swap was ~20µs/1000-rows faster on-CPU, inside the fair bench's 100µs timer quantum; happy-dom clears/replaces are ~5–10% faster with the new form. (1431b7b)
+- **A `<For>` row that renders `null` took the whole list down.** Hiding a row (ce16224)
+  with `cond ? <Row/> : null` is the ordinary way to filter a list without
+  filtering the data. The row-mount path probed the render result for a
+  native-item marker before checking it was a value at all, so one null row threw
+  inside the `<For>` effect — before any row had been placed. The element rendered
+  as its two markers and nothing else, and the only trace was an unhandled effect
+  error in the console. SSR renders the same source correctly, so it was a
+  guaranteed hydration divergence as well.
+
+  **The devtools element picker threw on an event forwarded to `document`.** Its
+  `mousemove`/`click` listeners are capture-phase and document-level — they sit on
+  the user's app while it is being debugged — and every drag implementation
+  forwards pointer movement to `document` once the pointer leaves the handle.
+  `document` has no box to measure and no tag name, so the picker threw inside the
+  app's own drag path: the tool breaking the thing it was opened to inspect, in a
+  way that reads as the app's bug.
+
+- Fix a hydration regression from the mid-slot adoption change: an element whose (4234788)
+  SOLE child is an accessor that rendered `null` on the server — `<i
+class={…}>{() => cond ? null : <X/>}</i>`, which SSR emits as an EMPTY `<i>` with
+  its range markers elided — came back from hydration with every binding dead.
+  The class never updated and the slot never mounted, while identity was kept
+  and no mismatch was reported; only a later flip showed it.
+
+  `_mountSlot` hands that case a `null` placeholder by design (both the compiled
+  ref and the parent's firstChild are null), and the new `isMidSlotText` guard read
+  `.nodeType` on it. The adopt bind threw, `hydrateComponent`'s catch logged the
+  error and kept the server nodes, and the element's bindings were orphaned. The
+  guard is now null-safe. Found by the compiled-path parity fuzz the day after the
+  regression shipped; locked by `hydrate-empty-sole-slot.test.tsx` (real
+  `transformJSX`, bisect-verified: the guard reverted fails with the swallowed
+  `console.error` and `expected 'off' to be 'on'`).
+
+- Adopt a mid-position slot whose SSR range holds ELEMENTS — `{cond && <i/>}!`, (4234788)
+  `{xs.map(…)} tail` — instead of rebuilding the element's subtree. This closes
+  the last ordinary hydration shape that rebuilt.
+
+  Such a range cannot be collapsed to one node without losing its elements, but
+  the compiled refs after it still need the clone's single-node shape. So the
+  verifier PARKS it: everything after the open marker through the close marker
+  moves into a fragment hung off the open marker, which stays in the DOM as the
+  one placeholder the refs expect; the verify descent steps over the parked
+  range (its content is slot output the template says nothing about, exactly
+  like the content after a trailing slot). `hydrateMountSlot` puts the range
+  back — right after the open marker — and adopts it like any marked range. A
+  text bind that finds element content where it expected a text (`_textSlot`,
+  the polymorphic-upgrade shape) discards the park and takes a fresh node
+  WITHOUT walking the DOM for a close marker that is no longer there; that walk
+  would have removed the static siblings. Nested ranges park as one unit
+  (`findMatchingClose` is depth-aware). Plan replay stays off for mid-slot
+  templates.
+
+  The swap-fallback spec in `hydrate-tpl-adoption.test.tsx` needed retargeting a
+  second time: both shapes it has used to force the swap now adopt, so it forces
+  the bail the way it happens in practice — a static attribute the server never
+  rendered — and keeps its purpose (swap-path anchor liveness).
+
+  Two harness lessons are recorded in the specs because they cost a wrong
+  finding each. The compiler leaves a conditional's `<b>x{y()}</b>` as residual
+  JSX with a BARE `{y()}`, so the server renders the inner value with NO markers
+  — a hand-built inner accessor in the server arm is a document the server never
+  sends (the client is still reactive: the conditional's accessor re-runs on
+  `y`). And a `ReferenceError: _x is not defined` inside an effect is a copied
+  harness missing a runtime helper, not the product.
+
+  Bundle budgets: runtime-dom 18900 → 19300, `mount+hydrate` 15000 → 15300, both
+  by hand. This adds ~260 B gz to the bundle and ~230 B to the hydrate import;
+  `mount`-only is untouched. Across #3302, #3307 and this, runtime-dom has grown
+  about 4.7%, every byte on the hydration path — stated, not hidden.
+
+  Locked by `hydrate-mid-element-slot-adoption.test.tsx` (9 specs, real
+  `transformJSX`): five adopt shapes with identity and reactivity, the
+  `_textSlot` hazard, the no-matching-close bail, and a `<For>` case with list
+  ops after adoption. Bisect: reverting the park branch fails all seven adopt
+  specs on retention (`expected +0 to be N`) while the hazard and bail specs stay
+  green. runtime-dom 1466 passed (95 files); runtime-server 365; validate-fast
+  43/43.
+
+- Adopt the SSR text node behind a NON-trailing interpolation instead of (43d769d)
+  rebuilding the element's whole subtree.
+
+  `<p>Hello {name}!</p>` compiles to `<p>Hello <!>!</p>` — a placeholder with
+  static content after it. `templateSignature` refused that shape outright, for a
+  real reason: a `<!>` is ONE node in the clone and a `<!--$-->…<!--/$-->` RANGE
+  in the server DOM, so a compiled ref that steps past it (`__p1 =
+__p0.nextSibling.nextSibling`) lands on range content. The element and
+  everything under it rebuilt. A 19-shape adoption census found this the only
+  ordinary shape still rebuilding — every prose sentence whose interpolation is
+  not at the very end, which is most of them.
+
+  The fix makes the server DOM match the clone before the bind runs, rather than
+  relaxing the refs. The signature records each mid `<!>` by CLONE child-index;
+  the verifier requires the server range at that index to hold at most one text
+  node and records it; `tplAdoptVerify` then COLLAPSES it to exactly one text node
+  — both markers removed, an empty text materialized when the accessor rendered
+  `''`. After that every positional ref is correct by construction, and both bind
+  kinds already handle a clone-shaped DOM: `_textSlot` adopts the text, and a
+  `<For>` row's `_setChildAt` writes `.data` in place instead of swapping a fresh
+  node. A range holding ELEMENTS still bails to the clone, exactly as before, so
+  a mid conditional-element slot rebuilds correctly rather than mis-adopting.
+
+  One invariant had to be re-stated explicitly. `_mountSlot`'s marker-less
+  adoption branch is gated on `placeholder === parent.firstChild`, which used to
+  prove the slot was SOLE — because the signature refused every non-trailing
+  `<!>`, a firstChild placeholder during adoption could be nothing else. A
+  collapsed mid slot at clone index 0 is now a firstChild placeholder too, and
+  without a discriminator `_mountSlot` hydrated the element's whole child list as
+  slot content, swallowing the static sibling: `<p>{off && <i/>}!</p>` hydrated to
+  `<p></p>`. The collapsed text now carries a Symbol brand on the node itself (a
+  registry keyed by DOM node is leak class C); `_mountSlot` skips its marker-less
+  branch for a branded node and falls to the clone path, which is correct for both
+  the empty and the single-text range. Caught by the spec written for exactly that
+  shape before it was ever run.
+
+  Plan replay stays off for mid-slot templates, mirroring the hole and innerHTML
+  gates: the plan records spots against child indices, and a mid slot is exactly
+  the case where server and clone indices disagree until the collapse. `<For>`
+  rows with a mid slot adopt through the full verify.
+
+  Locked by `hydrate-mid-text-slot-adoption.test.tsx` (10 specs, real
+  `transformJSX`): four adopt shapes with identity + reactivity asserted on the
+  SAME text node, two structural-divergence bails, the element-range bail, the
+  empty mid mount slot, and two `<For>` cases including list ops after adoption.
+  Bisect-verified: reverting the verifier branch fails all six adopt specs on
+  retention (`expected +0 to be 4`; the row case `1 to be 13`) while the bail
+  specs stay green. `hydrate-tpl-adoption.test.tsx`'s swap-fallback spec kept its
+  purpose by moving to a shape that still bails (element in the range); the shape
+  it used to carry now has an adopt-path twin with the same list ops.
+
+- Two hydration-recovery fixes, both in the "dead server DOM" class. (ce16224)
+
+  **A tag mismatch now recovers at the CURSOR, not at the parent anchor.** For
+  an element's children the anchor is the END of the list, so a mismatch in the
+  middle appended the client's node past every following sibling — the client's
+  own nodes came out in the wrong order, and the dead server copy sat in FRONT of
+  the live one, which is what makes `querySelector` return a node with no
+  handlers on it. The text paths already carried this fix; the element path did
+  not. The client's nodes are now contiguous and in the client's order at the
+  position the walk reached.
+
+  **A `<For>` whose SSR block markers cannot be parsed now removes the range it
+  claims.** That branch returns a null cursor, meaning "I have taken the rest of
+  this parent" — but it mounted the client's rows and left the server's in place,
+  so the list rendered TWICE, live copy first and dead copy after. Snapshotting
+  before the mount (the ordering the reactive-range sweep already documents) and
+  removing afterwards leaves exactly the client's rows.
+
+  An unclaimed server node after a text mismatch in a static child list is still
+  not swept: that list has no marker range delimiting its extent, and inferring
+  one from the leftover cursor is not sound — measured, it deletes
+  `dangerouslySetInnerHTML` content and breaks the SSR↔hydrate parity fuzz on 5
+  of 300 seeds. Closing it needs explicit claim accounting; the gap and its
+  consequence are pinned by the specs in `hydrate-mismatch-recovery.test.tsx`.
+
+- A hydration mismatch inside a reactive accessor range now sweeps the server (1a7ca7e)
+  DOM the client did not claim immediately, instead of leaving it until the
+  accessor's next run.
+
+  `adoptReactiveRange` hands the accessor's first render to `hydrateChild`,
+  which recovers a divergence (server `<ul>`, client `<p>`) by mounting the
+  client's render fresh and returning the cursor it stopped at. The server nodes
+  it did not consume stayed in the DOM until the accessor re-ran: a list whose
+  server query cache was warm and whose client cache was cold rendered its rows
+  on the server and its loading placeholder on the client, and kept BOTH on
+  screen for the whole fetch — countable rows with delete buttons carrying no
+  handler, past the point `data-pyreon-hydrated` was set. The unclaimed range is
+  now removed as part of the first render; adopted nodes (identity kept) and
+  freshly mounted nodes are untouched, and the accessor's own anchor is
+  excluded so later renders still land.
+
+- Fix hydration duplicating the value of a trailing interpolation. (c0e9e9c)
+
+  An element whose LAST child is an interpolation, with any sibling before it,
+  rendered its value TWICE after hydration and left a stray close marker behind:
+
+  ```
+  SSR       <div class="b">Count: <!--$-->7<!--/$--></div>
+  hydrated  <div class="b">Count: 77<!--/$--></div>
+  ```
+
+  `<p>Hello {name}</p>`, `<div>Count: {n()}</div>`, `<p><b>B</b>{tail()}</p>` —
+  one of the commonest shapes in a rendered page.
+
+  The compiler bakes the same `<!>` placeholder for two slots whose adoption
+  contracts are opposites. A MOUNT slot is consumed by `_mountSlot`, which is
+  adoption-aware: handed the live `<!--$-->` it recognises the marked range and
+  hydrates into it. A reactive TEXT slot is consumed by `_bindText` behind an
+  INLINE `replaceChild` the runtime never sees — it swaps a fresh empty node in
+  for whatever the placeholder ref resolved to. The verifier claimed any trailing
+  range whose close marker was the element's last child as a mount slot and left
+  both markers standing, so the text bind replaced the OPEN MARKER, wrote the
+  value into its fresh node, and the server's own text survived beside it.
+
+  `matchDomAgainstTemplate` now refuses the one shape both slots can produce — a
+  trailing range holding exactly one text node — and the element rebuilds, which
+  is correct. This is a refusal rather than a repair because nothing distinguishes
+  the two: the template signature records only "this element ends with a
+  placeholder", and normalizing the range to suit the text bind would hand a
+  genuine mount slot a text-node placeholder, whose marker-less branch then mounts
+  a SECOND copy. An EMPTY range and a range holding ELEMENTS are unambiguous and
+  keep adopting; specs hold that line, since a bail that widened would quietly
+  cost the adoption this area exists to win.
+
+  Restoring adoption for this shape means routing the text slot through a runtime
+  helper the way `_mountSlot` already is — a compiler change in both backends, not
+  a verifier one. Deliberately not attempted here: the correctness fix should not
+  wait on it.
+
+  Two independent gaps let this ship. The hydration parity fuzzer builds its trees
+  with `h()` and never `transformJSX`, so it reaches the runtime path only and
+  cannot see a compiled-template defect at all — a gap its own record already
+  names as owed. And on a real `@pyreon/zero` page most of the body is re-mounted
+  rather than adopted, so the broken branch rarely ran where it would be noticed.
+  The new specs compile through the REAL transform for exactly that reason; a
+  general compiled-path fuzz is still owed.
+
+  Found while auditing why zero pages retain so little of their SSR DOM: a
+  19-shape adoption census (real transform, SSR, hydrate, node identity) showed
+  every ordinary shape already adopting, and this one adopting WRONGLY.
+
+- Hydration row-plan prop-level specialization + row-shape signature. `replayRowPlan` now applies props through per-key ops compiled once at plan build (a monomorphic event binder with the name normalization + delegation branch hoisted out of the per-row path, direct class/style sinks, full `applyProp` for everything else) instead of per-row per-key dispatch. Every row's vnode is verified against a shape signature (tags, ordered prop-key sequences, child kinds/counts) before anything is bound — closing a silent-drop hole where a row whose shape diverged from row 0 (a conditional `onClick`, an extra child, a per-item `ref`) was adopted with row 0's bindings only: dead click handlers and unfired refs with zero warnings. A row-root `ref` is now wired on the replay path (previously never fired for adopted rows). The keyed-`<For>` SSR block parse uses parallel arrays and alloc-free key comparison, and the compiled-template adoption verifier caches the last template's plan and uses indexed loops per row. (75a47dd)
+- Fix three list and hydration defects found by covering the paths a wrong-shaped (ce16224)
+  list or a stale server page reaches.
+
+  **A keyed list that loses a key silently deletes that row.** Classification is
+  pinned at an accessor's first run, so a list that was fully keyed then is
+  reconciled by key forever — and every path that does so addresses rows by key,
+  which makes a keyless vnode invisible to all of them. Losing one key in a
+  `.map()` deleted exactly that row; losing all of them rendered an empty list.
+  The keyed reconciler now carries the positional path itself and falls back to it
+  for any list it cannot key, resuming keyed reconciliation the moment one is
+  fully keyed again.
+
+  **A duplicate key wedged the next reorder.** The position map recorded a
+  repeated key's LAST index while the cached row belonged to its FIRST, so the
+  following update computed an already-ordered sequence, moved nothing, and left
+  the list rendering the previous order. The key sequence is now deduped
+  first-wins, matching what actually gets mounted.
+
+  **A diverged reactive text left the server's copy on the page.** Hydrating
+  marker-less (older-server) HTML whose text disagrees with the client inserted
+  the corrected value beside the stale node instead of replacing it. When the next
+  sibling was an element it never claimed the stale text either, so the page showed
+  both values and a second copy of the sibling.
+
+  **A bound `<input value>` going nullish did the opposite of what it meant.**
+  The `h()` path reached a generic nullish branch before the `value` dispatch, so
+  clearing the field called `removeAttribute` — which leaves what the user typed
+  on screen and wipes `defaultValue`, since the attribute IS the reset default.
+  The compiled path (`_setValue`) already carried the correct nullish handling;
+  the two now agree.
+
+- fix(runtime-dom): `signal.trigger()` did nothing for an unkeyed array child (0764bf0)
+
+  `mountReactive` skips its teardown+remount when the accessor returns the value
+  already mounted (#3082). That is correct for the shape it was written for — a
+  component's sole child is `_lc`-memoized, so the accessor hands back the SAME
+  `_tpl` NativeItem whose DOM and bindings were built once; tearing it down
+  disposes bindings the remount does not rebuild, leaving one live, permanently
+  stale node.
+
+  But `===` cannot separate "the same value, unchanged" from "the same value,
+  mutated in place" — and `signal.trigger()` is public API whose manifest entry
+  documents it as force-notifying subscribers "after an in-place mutation" (the
+  Vue `triggerRef` semantic). With an unkeyed array child, which
+  `mountAccessorChild` routes to `mountReactive` rather than `mountKeyedList`,
+  the skip made it a silent no-op:
+
+  ```js
+  const rows = signal([<li>a</li>, <li>b</li>]);
+  rows.peek().push(<li>c</li>);
+  rows.trigger(); // third row never mounted
+  ```
+
+  The skip is now gated on the value carrying construction-time DOM
+  (`__isNative`), which is exactly the destructive case #3082 identified. Every
+  other value — a VNode, an array, a primitive — is rebuilt correctly by a
+  remount, which is the pre-#3082 behaviour and what `trigger()` depends on.
+
+  Introduced 2026-08-27, after 0.51.0, so this never shipped.
+
+- Namespaced JSX attributes (`xlink:href`, `xml:lang`) work on the compiled (600f763)
+  template path, and the SVG sprite idiom renders on every path.
+
+  `xlink:href` parses as a namespaced name, which every name reader in the
+  template emitter read as the empty string — so the JS backend baked malformed
+  HTML and the Rust backend dropped the attribute. Both backends now read the
+  qualified name through one helper, so the element keeps its template instead of
+  bailing to `h()`.
+
+  The runtime half is the part that was actually broken on both paths:
+  `setAttribute('xlink:href', …)` creates a null-namespace attribute an SVG
+  `<use>` ignores, where the HTML parser (SSR bytes, and the compiled bake) puts
+  it in the XLink namespace. `applyAttrProp` / `setStaticProp` now resolve the
+  namespace the parser would have assigned, so an assigned attribute reproduces a
+  parsed one byte for byte and a client mount agrees with its own server render.
+
+- Reactive props reach the signal's DIRECT tier. `<Row value={sig()} />` used to (3dba9dc)
+  lower to `_rp(() => sig())`, an opaque thunk, and the row's `{props.value}` to
+  `bindPolymorphicText(() => props.value)` — a tracked effect whose teardown is a
+  hashed `Set.delete`. The dispose-500 ablation ladder measured that wrapper at
+  roughly half the residual over Solid: with the prop holding the signal itself,
+  the text bind's share of the teardown drops from ~31µs to ~11µs per 500 rows.
+
+  Now a BARE signal/computed call as a component prop lowers to `_rpd(sig)`
+  (`@pyreon/core`): a `REACTIVE_PROP`-branded thunk that also carries the
+  signal's `.direct` / `._v` / `.peek`, re-targeted to the signal. A prop READ in
+  a template text child lowers to `_bindProp(props, "key", node, parent)`
+  (`@pyreon/runtime-dom`), which binds through the prop's GETTER — the thunk
+  `makeReactiveProps` installed — and takes `_bindText`'s direct tier when the
+  getter carries `.direct`, falling back to the tracked polymorphic path for any
+  other getter or a plain data property. Value semantics are unchanged on every
+  path (the getter's value, re-rendered on change; VNode values still upgrade to
+  a subtree mount); the signal itself is never branded. Both compiler backends,
+  byte-identical. Anything that is not exactly a bare call (`sig() + 1`,
+  `String(sig())`, a shadowed name) keeps `_rp`; a deeper read (`props.a.b`)
+  keeps `bindPolymorphicText`.
+
+- Two inline tracking subscribers before a Set, hash-free effect teardown, and (768f104)
+  unit teardown for a compiled slot's static children.
+
+  `@pyreon/runtime-dom`: a compiled `<div>{children}</div>` lowers to
+  `_mountSlot(children, el, placeholder)`, and when `children` is a static
+  value (an array of row VNodes, not an accessor) every row element used to
+  receive its own DOM remover, so disposing a 500-row list removed 500 nodes one
+  by one before dropping the container that already contained them. A static
+  slot value is part of the clone and leaves with it, so it now mounts under the
+  same "removed as a unit" contract the clone's own children have
+  (`mountChildAsUnit`): effects are still disposed, DOM removal is left to the
+  clone. An accessor slot is unchanged — it is a reactive boundary that must
+  clear its own range on every flip. Same treatment for `_mountChild`'s
+  non-accessor absorbed-component case.
+
+  A signal or computed now keeps its first TWO tracking subscribers inline and
+  promotes to a `Set` only on the third. The second lives in the existing `_s`
+  field as a FUNCTION (a `Set` there still means ≥3), so a signal grows by no
+  property — an extra field measured +24 B per signal under V8's in-object
+  slack, which on a 10k-row page is the whole retained-heap margin the board
+  tracks. The one-slot census counted flat row lists and computed chains, where
+  a source has exactly one subscriber; a list row that owns an `effect()` AND a
+  text bind on its own signal — the dispose-500 scenario, and any row with a
+  derived side effect — has exactly two, and paid a hashed `Set.delete` per
+  subscriber per dispose. With two inline subscribers a write routes through
+  the pending queues exactly as a promoted Set does (the two-tier drain keeps a
+  `{ equals }` computed ahead of an effect that reads it; a listener added or
+  removed by the first callback follows the same cap-iteration rule), so
+  ordering is unchanged; a single subscriber keeps the direct dispatch.
+
+  Effect, render-effect and `_bind` disposers also stop truncating their dep
+  array with `deps.length = 0` for the one-dep case (a length-setter store V8
+  takes slowly) and `pop()` instead.
+
+  Any code that reads `_s` as a Set must now handle the function form — use
+  `_hasSubscribers` / `_tierCount` from `@pyreon/reactivity` rather than
+  touching the field (the in-repo readers — devtools graph, `debug()`,
+  `createSelector`, the store's sole-subscriber swap — are updated).
+
+  Measured on the dispose-500 ablation ladder (real Chromium, CDP attribution,
+  the board's exact shape as its own arm): 60.8 → 15.6 µs on-CPU and 95 → 27.8 µs
+  wall, against SolidJS at 14.7 / 26.3 in the same runs. On the scenario board
+  the op reads Pyreon 40 µs vs Solid 35 µs with overlapping CI95 (was 115 µs,
+  3.29×). Retained heap per signal unchanged (152 B).
+
+- Fix a crash when a prop names a READ-ONLY IDL accessor, and arm the hydration parity fuzzer against value-bearing form controls. (0d4ebbf)
+
+  `setStaticProp` routed a prop to a property assignment when `key in el` — which answers "does this property EXIST?", while the assignment needs the stronger "is it WRITABLE?". `in` is true for a getter-only IDL accessor, and framework code is ESM (hence strict mode), so the assignment THREW instead of silently no-opping and took the whole mount down:
+
+  ```
+  TypeError: Cannot set property list of #<HTMLInputElement> which has only a getter
+  ```
+
+  `list` is an advertised JSX prop (`list?: string`), so `<input list="dl">` — ordinary documented API — crashed. The same shape was reachable via `form`, `select.options`, `table.rows`, `video.buffered`, `input.labels`, `input.validity`, and via any DOM-element spread (`_applyProps` funnels into the same helper). The compiled template path was unaffected (it routes generic attrs through `_setAttr`), so vite-plugin apps were safe while `@pyreon/testing`, the auto-JSX-runtime browser suites and the compat layers were not.
+
+  The assignment now falls back to `setAttribute`, which is the CORRECT destination rather than mere crash-avoidance: `list` and `form` ARE content attributes whose IDL properties are read-only precisely because they return the resolved element. React and Preact both set the attribute here.
+
+  The guard is a `try`/`catch` rather than a descriptor/writability probe, chosen on measurement: over 200k Chromium assignments try/catch costs 0.96-1.01x of a bare assign (V8 zero-cost-on-success exceptions), a prototype-chain `getOwnPropertyDescriptor` walk costs 1.70-3.23x, and a WeakMap-cached walk still costs 1.18-1.36x while adding a module-level cache. A hardcoded name list was rejected because it silently rots as the DOM grows another read-only accessor. Trade-off documented at the call site: a genuine setter exception is also swallowed into an attribute write, which is strictly better than downing the mount.
+
+  Also arms `hydration-parity-fuzz.test.tsx`, which never generated value-bearing form controls — the reason this whole property/attribute class was invisible to it. The grammar now emits `input` (`value`, `checked`), `textarea` and `select`, reaching 41.2% of 5000 seeds, with an exported `KNOWN_ATTR_PARITY_DIVERGENCES` set naming only `input.value` / `textarea.value` / `select.value` (non-reflecting properties, where SSR can serialize only an attribute and the client sets only the property — a separate open design question). Deleting an entry re-arms that exact shape; `checked` and `selected` stay armed.
+
+- fix(runtime-dom): `_setChildAt` duplicated the page on hydration, and rendered "null" (7c0d3cb)
+
+  The adoption verifier relaxes an element whose TEMPLATE has a `<!>` as its only
+  child — it reads that as a sole slot whose SSR markers were elided — and then
+  skips verifying that element's children. But the compiler routes two shapes to
+  `_setChildAt` rather than `_mountSlot`:
+
+  ```jsx
+  <div><>{rows}</></div>     // fragment wrapper
+  <div>{null}{rows}</div>    // dropped nothing-rendering sibling
+  ```
+
+  because `classifyJsxChild` recurses fragments and drops `{null}` while
+  `ssrSoleChild` counts both, so the template gets a `<!>` at firstChild while
+  the slot is NOT sole to SSR. When the value is STATIC, SSR emits no markers
+  either way — so the verifier's marker re-check cannot separate "sole, elided"
+  from "static, never applicable", and it adopts.
+
+  `_setChildAt` had no hydration path, so it mounted a fresh copy beside the
+  server's nodes and removed exactly one of them:
+
+  ```
+  ssr       <div class="w"><b>a</b><i>b</i></div>
+  hydrated  <div class="w"><b>a</b><i>b</i><i>b</i></div>
+  fresh     <div class="w"><b>a</b><i>b</i></div>
+  ```
+
+  It now adopts over the parent's child list when the placeholder is a server
+  node rather than a clone's empty comment — the hydrate-mode counterpart the
+  catalogued rule requires, since a verifier relaxation on its own duplicates the
+  page.
+
+  Also fixed, found while reproducing it: the non-mountable branch rendered the
+  literal text `"null"` for a nullish value (`String(null)` handed to
+  `createTextNode`), where `_setChild` and SSR both render nothing.
+
+- Fix a reactive boundary destroying its own children when its accessor re-runs (c5c44b8)
+  with an unchanged value.
+
+  `mountReactive` tore down and re-mounted on EVERY effect re-run. That is merely
+  wasteful for most shapes and destructive for the one the compiler now emits: a
+  component's sole child is `_lc`-memoized, so `<Show>`'s accessor hands back the
+  SAME `_tpl` NativeItem whose DOM and bindings were built once. The teardown
+  disposed those bindings and the remount re-inserted the same element without
+  rebuilding them — leaving one live node, permanently stale, with no warning.
+
+  It needed a `when` accessor that RE-RUNS while its verdict is unchanged, which
+  is ordinary: `when={() => selected() !== undefined}` re-runs on every
+  `selected` change and stays `true`. Found building a generated API client,
+  where picking a second item left the detail view pinned to the first.
+
+  `mountReactive` now skips the teardown when the accessor returns the value
+  already mounted. Identity is deliberately the test: every shape that builds a
+  fresh value per run compares unequal and behaves exactly as before, so only a
+  value literally already in the DOM is skipped. It is also a real reduction in
+  churn — a `<Show>` over a frequently-changing signal no longer rebuilds its
+  branch on every change (counted by `runtime.mountReactive.identitySkip`).
+
+- Textish reactive accessor children now run ONCE at mount instead of twice. `mountChild` used to invoke every function child two times: an untracked classification sample plus the chosen binding machinery's own tracked first run (~12,000 accessor invocations for a 6,000-cell table mount — the `@pyreon/table` bench finding). Classification now happens inside the binding's first tracked run (`mountAccessorChild`), so string/number/boolean-initial accessors — per-cell formatters, labels, `_mountSlot` component children — execute exactly once, with identical subscriptions, context-owner capture, and polymorphic text→VNode upgrade behavior. Structural accessors (keyed-array and VNode/null initials) deliberately keep the previous two-invocation handoff to `mountKeyedList`/`mountReactive`, preserving their effect()-grade semantics (ErrorBoundary routing, onUpdate notification, re-entrant generation guard). Compiled template bindings (`_bindText`/`bindPolymorphicText`) were always single-call and are unchanged. Measured on the table bench's h()-path mount at 1k rows × 6 cols: 57.4–60.1ms → 52.8–53.9ms (~10%). (e5b71bd)
+
+  Note: an accessor with side effects (impure user code) now observably runs once at mount rather than twice on these paths.
+
+- Sole-child accessor slots are SSR-emitted without `<!--$-->…<!--/$-->` range markers. (6c9e618)
+
+  SSR wraps every reactive accessor's output in range markers because an accessor's DOM extent is runtime-unknowable — it can render zero nodes, one, or many. There is exactly one construct where it is knowable: an accessor that is its element's ONLY child, where the tag boundary already delimits the slot. Everything between `<a>` and `</a>` IS the extent, whatever the value. Those markers carried no information, so they are gone: 18 bytes of HTML per slot and, on hydration, a whole per-row DOM triplet locate-verify-remove replaced by a single node check.
+
+  The elision is decided from the STATIC vnode shape (`children.length === 1 && typeof children[0] === 'function'`), never from the rendered value — so it is uniform across every value a slot can produce, which is what separates it from the value-conditional scheme that previously regressed 83/5000 parity-fuzz seeds by putting a marked range next to an unmarked one. An accessor with siblings, inside a Fragment, or at the root keeps its markers, because there the extent genuinely is unknowable.
+
+  Four surfaces move together: `renderElement` and `streamElementNode` (`@pyreon/runtime-server`), `hydrateElement` plus the `<For>` row plan and the compiled-`_tpl` adopt verifier (`@pyreon/runtime-dom`), and the new `_escSole` emit in BOTH `@pyreon/compiler` backends. `_escSole` is a new `@pyreon/runtime-server` export: `_esc` with one extra branch that unwraps a function value without markers, which is what makes the emit correct for `{() => sig()}` (the accessor reaches the hole as a function) and `{sig()}` (the compiler wraps it, so it arrives as a value) alike.
+
+  The marker triplet also carried a per-row structural guard on the hydration fast paths — it is what proved a compiled row's dynamic slot still held a TEXT node, so a row whose accessor rendered empty or a VNode bailed to the interpretive walk instead of binding the wrong node. With the markers gone that invariant is stated directly, in both `replayRowPlan` and the `_tpl` adopt replay.
+
+  Verified at 20,000 seeds of the SSR↔hydration parity fuzz and 5,000 seeds each of the compiler's cross-backend `fuzz-equivalence` and the `_ssr`-vs-h() `ssr-template-fuzz`; the seed counts of all three are now overridable via `PYREON_FUZZ_SEEDS`.
+
+- Fix DUPLICATED DOM after hydration when a compiled slot's value begins with a (531d7a1)
+  nested reactive range — a `<Show>` (its root accessor is range-marked) or a
+  fragment whose first child is an accessor — inside an element where that slot
+  is the sole child.
+
+  runtime-server elides the `<!--$-->` pair around an element's SOLE accessor
+  child (the tag boundary already delimits it), so in that shape the slot's first
+  server node was the NESTED range's `<!--$-->`. `_mountSlot` read a `<!--$-->` at
+  its placeholder as the slot's own range, handed the nested consumer a region
+  whose markers were already consumed, and that consumer fell to the legacy
+  remove-one-node path: `<b>t<input><input></b>`, a `<For>` under a `<Show>` with
+  every row twice. Found by the compiled-path hydration parity fuzz at 3000 seeds
+  (seeds 1237 / 2447); it is on every release since compiled-slot adoption
+  landed, and became reachable for the `<p>{sig()}x</p>` sibling shape once
+  literal children started baking (#3318).
+
+  The runtime cannot decide soleness. Position fails the mirror shapes
+  (`<main>{null}{acc}</main>`, `<span><>{acc}</></span>` — SSR counts the `{null}`
+  and the fragment as children and MARKS the slot, while the client template
+  renders no node for them and the ref lands on `firstChild` all the same; seeds
+  150 / 273 / 291), and the marker fails the nested-range shapes. So the compiler
+  emits the verdict: `_mountSlot(…, true)` on exactly the sole shape, derived from
+  the same `ssrSoleChild` predicate the SSR emit uses for `_escSole`, in both
+  backends (byte-identical, native-equivalence + fuzz-equivalence locked). Every
+  other slot's emit is unchanged. The same verdict now gates the lone-reactive-
+  text `firstChild` fast form: `<p>{null}{n()}</p>` and `<p><>{n()}</></p>` take
+  the `_textSlot` placeholder form, so hydration adopts their server text instead
+  of the verifier refusing the template and rebuilding it.
+
+  Locked by `sole-slot-verdict.test.tsx` (both seed shapes, the three mirror
+  shapes, and server-text-node identity for the text twin), all compiled through
+  the real `transformJSX` for SSR and client alike. Bisect-verified two ways:
+  runtime reverted → the seed shapes duplicate; compiler reverted → the seed
+  shapes duplicate and the text twins lose the server node.
+
+- `applyStyleProp` (= the compiled template path's `_setStyle`) now skips the `el.style.cssText` write when a reactive STRING style re-emits an unchanged value — previously every re-emit paid a full declaration parse + style invalidation even when the string was byte-identical, while the sibling class binding already diffed before writing. Because `cssText` readback is engine-normalized (never equal to the input string), the guard caches the last-written pair (source string + its normalized serialization) per element and skips only when the source is unchanged AND the live declaration still matches what the framework's own write produced — so an external style mutation between identical emits still gets rewritten (same live-DOM-verified philosophy as the class guard). Object-style handling is unchanged. (0b2edfc)
+- Close five correctness holes on the compiled path and the redirect boundary, two of them security-relevant. (2bef24d)
+
+  **The compiled template path skipped `setStaticProp` branches it never re-stated.** The compiler routes each attribute by name straight to `_setAttr` / `_setValue` / `_setStyle`, so every branch `setStaticProp` runs _above_ that dispatch point is one the compiled path skips. Three shipped that way: `_setAttr` had no URL guard, so a compiled `<a href={u}>` wrote `javascript:alert(1)` while `h()` dropped it and SSR omitted it (an XSS in every compiled app, and a hydration mismatch); `_setValue` had no nullish branch, so `<input value={undefined}>` displayed the literal text `undefined`; and `_setStyle` cleared an object style on a nullish flip but never a string one. The shared branch is now one predicate both paths call, locked by a differential test over {attribute} × {payload} × {compiled, `h()`, SSR}.
+
+  **A namespaced JSX attribute reached every template name-reader as the empty string.** `xlink:href` parses as `JSXNamespacedName`, and the readers test for `JSXIdentifier`. Neither backend errored: the JS backend baked malformed HTML (`<use ="/static">`), the Rust backend dropped the attribute — so `<use xlink:href="#icon">`, the SVG sprite idiom, rendered nothing in every compiled app, differently per backend, for static and dynamic values alike. Both backends now bail the element to `h()`, where the runtime sets the qualified name and guards it.
+
+  **`\` is an authority delimiter, so blocking only `//host` left three bypasses.** The URL parser resolves `\\evil.com`, `/\evil.com` and `\/evil.com` off-origin exactly as `//evil.com` does, but the router's redirect boundary — whose verdict is emitted as a raw `Location:` header — classified all three as internal. Fixed as the class (any leading run of two or more `[/\]`), in the redirect boundary and in `classifyHref`, where an `internal` verdict renders a real `href` that a ctrl-click resolves without ever reaching the click handler. A blocked target now says so in dev instead of silently landing on `/`.
+
+  **A subscriber could be skipped when the tier promoted mid-notify.** `createSelector`'s `notifyBucket` snapshotted both inline subscribers, then asked whether the second was still subscribed using an identity compare against the inline tiers only — so when the first registered a third subscriber and `addSubscriber` promoted both slots into a Set, the second matched neither and was silently dropped. The check now covers every shape the two-tier store can be in.
+
+  Also: the hydration adoption marker is removed on final dispose, and the fuzz gate's timeout is derived from its seed count so the documented high-seed command can finish.
+
+- Scope the compiled-template adoption PLAN fast path to `<For>` rows, so it can (086ca67)
+  no longer skip the static-skeleton gate.
+
+  `tplAdoptVerify` caches an `AdoptPlan` per template and can spot-replay it
+  instead of re-walking the skeleton. That is sound for `<For>` rows — one
+  `renderItem`, so rows 2..N are structurally identical to row 1 by construction
+  — but it ran for every adoption. The plan is keyed by the TEMPLATE element and
+  `_tplCache` is keyed by the HTML string and is process-global, so two unrelated
+  components that compile to the same template shared one plan. For a static
+  template `replayAdoptPlan` has no triplet or removal spots to check and returns
+  true unconditionally, so the second component adopted ANY same-tag target
+  without any structural verification — precisely the mis-consumption the
+  skeleton gate exists to make harmless.
+
+  Reproduced at default settings, no compiler option involved: a local
+  `<div class="other">X</div>` reached the armed slot first and came back
+  carrying the server root's `class="root"` and its text. The rendered page still
+  looked correct (the real root cloned afterwards), so the damage was confined to
+  the detached node the app holds a reference to — silent by construction.
+
+  Plan replay is now opt-in via `_setTplAdoptTarget(el, allowPlanReplay)` and only
+  the `<For>` row loop opts in; component-root adoption always runs the full
+  verify. The `<For>` fast path is unchanged and is now observable through a new
+  dev counter, `runtime.tpl.adoptPlanReplay`, so losing it becomes a failing
+  assertion rather than a silent regression.
+
+- Ship `<Transition>` / `<TransitionGroup>` from `@pyreon/primitives` — the animation vocabulary now has an import path that resolves on every target (5a83e86)
+
+  PMTC has lowered `<Transition>` and `<TransitionGroup>` to real platform
+  animation since M2.7/M2.8 — SwiftUI `.transition(…)` + `.animation(_:value:)`,
+  Compose `AnimatedVisibility(enter =, exit =)` — with preset mapping, asymmetric
+  enter/leave timing and device proof. But `@pyreon/primitives` exported neither
+  name, and the only runtime export lived in `@pyreon/runtime-dom`, which the
+  compiler correctly flags web-only. So the one import that worked on web warned
+  on native, and the import native accepted did not exist: a fully built
+  capability with no reachable door.
+
+  `@pyreon/primitives` now exports both, with a self-contained web
+  implementation built on `h()` + `renderEffect` alone (no `@pyreon/runtime-dom`
+  dependency — the package keeps its two peer deps, which is what lets it be the
+  multiplatform vocabulary).
+
+  The prop contract mirrors the native emitters exactly: `show`, `name`
+  (`fade` / `scale-in` / `slide-up|down|left|right`, camelCase and kebab-case
+  both accepted), `duration`, `easing`, and the asymmetric
+  `enterDuration` / `leaveDuration` / `enterEasing` / `leaveEasing` overrides that
+  fall back to the symmetric value. Direction is the direction of travel, so a
+  slide-up rises into place from below — matching `.move(edge: .bottom)` and
+  `slideInVertically { it }`.
+
+  On web the hidden state is `display:none` on the wrapper rather than an unmount,
+  so an animation wrapper never gates its children out of SSR and a hidden
+  `<Transition>` contributes no flex `gap`. Only transition LONGHANDS are ever
+  assigned, so a consumer's own `transition-delay` survives.
+
+  The native emit is unchanged and asserted byte-identical to the bare-tag form.
+  The web-only warnings for `@pyreon/kinetic` and `@pyreon/runtime-dom` now name
+  `@pyreon/primitives` as the import that actually crosses, instead of naming a
+  tag whose only import was broken.
+
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+  - @pyreon/sized-map@0.52.0
+
 ## 0.51.0
 
 ### Patch Changes
