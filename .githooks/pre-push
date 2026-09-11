@@ -225,7 +225,7 @@ echo "[3/3] tests (affected)"
 TEST_OUTPUT_FILE=$(mktemp -t pyreon-pre-push-XXXXXX)
 trap 'rm -f "$TEST_OUTPUT_FILE"' EXIT
 
-run_with_timeout "tests" "bun run $FILTER test > '$TEST_OUTPUT_FILE' 2>&1"
+run_with_timeout "tests" "bun run $FILTER --sequential test > '$TEST_OUTPUT_FILE' 2>&1"
 TEST_EXIT=$?
 cat "$TEST_OUTPUT_FILE"
 
