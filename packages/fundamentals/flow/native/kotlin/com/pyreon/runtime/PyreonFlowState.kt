@@ -42,6 +42,16 @@ data class PyreonFlowNode<T>(
     val data: T,
     val width: Double? = null,
     val height: Double? = null,
+    val draggable: Boolean? = null,
+    val selectable: Boolean? = null,
+    val connectable: Boolean? = null,
+    val focusable: Boolean? = null,
+    val ariaLabel: String? = null,
+    val hidden: Boolean? = null,
+    val deletable: Boolean? = null,
+    val parentId: String? = null,
+    val expandParent: Boolean? = null,
+    val group: Boolean? = null,
 )
 
 /** An edge — mirrors `FlowEdge`'s core (non-marker/waypoint) fields. */
@@ -49,9 +59,17 @@ data class PyreonFlowEdge(
     val id: String,
     val source: String,
     val target: String,
+    val sourceHandle: String? = null,
+    val targetHandle: String? = null,
     val type: String? = null,
     val label: String? = null,
     val animated: Boolean = false,
+    val focusable: Boolean? = null,
+    val ariaLabel: String? = null,
+    val hidden: Boolean? = null,
+    val deletable: Boolean? = null,
+    val reconnectable: Boolean? = null,
+    val interactionWidth: Double? = null,
 )
 
 /** Default node box when a node declares no explicit width/height — the SAME

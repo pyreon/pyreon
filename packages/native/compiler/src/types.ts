@@ -918,14 +918,32 @@ export type DeclIR =
         data: ExprIR
         width?: ExprIR
         height?: ExprIR
+        draggable?: boolean
+        selectable?: boolean
+        connectable?: boolean
+        focusable?: boolean
+        ariaLabel?: string
+        hidden?: boolean
+        deletable?: boolean
+        parentId?: string
+        expandParent?: boolean
+        group?: boolean
       }[]
       edges: {
         id: string
         source: string
         target: string
+        sourceHandle?: string
+        targetHandle?: string
         type?: string
         label?: string
         animated?: boolean
+        focusable?: boolean
+        ariaLabel?: string
+        hidden?: boolean
+        deletable?: boolean
+        reconnectable?: boolean
+        interactionWidth?: number
       }[]
       /** `minZoom` from the config, when written as a numeric literal. */
       minZoom?: number

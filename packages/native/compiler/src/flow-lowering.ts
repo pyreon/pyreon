@@ -24,9 +24,17 @@ export const LOWERED_FLOW_METHODS: ReadonlySet<string> = new Set([
 ])
 
 /** `FlowNode` fields the native `PyreonFlowNode` carries. */
-export const HANDLED_FLOW_NODE_FIELDS: ReadonlySet<string> = new Set(['id', 'type', 'position', 'data', 'width', 'height'])
+export const HANDLED_FLOW_NODE_FIELDS: ReadonlySet<string> = new Set([
+  'id', 'type', 'position', 'data', 'width', 'height',
+  'draggable', 'selectable', 'connectable', 'focusable', 'ariaLabel',
+  'hidden', 'deletable', 'parentId', 'expandParent', 'group',
+])
 /** `FlowEdge` fields the native `PyreonFlowEdge` carries. */
-export const HANDLED_FLOW_EDGE_FIELDS: ReadonlySet<string> = new Set(['id', 'source', 'target', 'type', 'label', 'animated'])
+export const HANDLED_FLOW_EDGE_FIELDS: ReadonlySet<string> = new Set([
+  'id', 'source', 'target', 'sourceHandle', 'targetHandle', 'type', 'label',
+  'animated', 'focusable', 'ariaLabel', 'hidden', 'deletable',
+  'reconnectable', 'interactionWidth',
+])
 
 export function unloweredFlowMemberWarning(flowName: string, member: string): string {
   return (

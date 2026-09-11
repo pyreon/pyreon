@@ -36,6 +36,20 @@ fun main() {
     check(f.getNode("nope") == null, "getNode misses a missing id")
     check(f.getEdge("e1")?.source == "1", "getEdge reads the seeded edge")
 
+    val configuredNode = PyreonFlowNode(
+        id = "configured", position = PyreonXYPosition(1.0, 2.0), data = NodeData("Configured"),
+        draggable = false, selectable = true, connectable = false, focusable = true,
+        ariaLabel = "Configured node", hidden = false, deletable = true,
+        parentId = "group", expandParent = true, group = true,
+    )
+    check(configuredNode.draggable == false && configuredNode.parentId == "group" && configuredNode.ariaLabel == "Configured node", "node interaction/accessibility/group fields are retained")
+    val configuredEdge = PyreonFlowEdge(
+        id = "configured-edge", source = "1", target = "2", sourceHandle = "out", targetHandle = "in",
+        focusable = true, ariaLabel = "Configured edge", hidden = false, deletable = true,
+        reconnectable = false, interactionWidth = 24.0,
+    )
+    check(configuredEdge.sourceHandle == "out" && configuredEdge.targetHandle == "in" && configuredEdge.interactionWidth == 24.0, "edge handle/interaction fields are retained")
+
     // 2. addNode / addEdge.
     f.addNode(PyreonFlowNode(id = "4", position = PyreonXYPosition(600.0, 0.0), data = NodeData("Extra")))
     check(f.nodes.size == 4, "addNode appends")

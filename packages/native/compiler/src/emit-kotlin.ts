@@ -3131,6 +3131,16 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
           `data = ${emitKotlinExpr(n.data, 0)}`,
           ...(n.width !== undefined ? [`width = ${ktChartDouble(emitKotlinExpr(n.width, 0))}`] : []),
           ...(n.height !== undefined ? [`height = ${ktChartDouble(emitKotlinExpr(n.height, 0))}`] : []),
+          ...(n.draggable !== undefined ? [`draggable = ${n.draggable}`] : []),
+          ...(n.selectable !== undefined ? [`selectable = ${n.selectable}`] : []),
+          ...(n.connectable !== undefined ? [`connectable = ${n.connectable}`] : []),
+          ...(n.focusable !== undefined ? [`focusable = ${n.focusable}`] : []),
+          ...(n.ariaLabel !== undefined ? [`ariaLabel = ${JSON.stringify(n.ariaLabel)}`] : []),
+          ...(n.hidden !== undefined ? [`hidden = ${n.hidden}`] : []),
+          ...(n.deletable !== undefined ? [`deletable = ${n.deletable}`] : []),
+          ...(n.parentId !== undefined ? [`parentId = ${JSON.stringify(n.parentId)}`] : []),
+          ...(n.expandParent !== undefined ? [`expandParent = ${n.expandParent}`] : []),
+          ...(n.group !== undefined ? [`group = ${n.group}`] : []),
         ]
         return `PyreonFlowNode(${parts.join(', ')})`
       })
@@ -3141,9 +3151,17 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
           `id = ${JSON.stringify(e.id)}`,
           `source = ${JSON.stringify(e.source)}`,
           `target = ${JSON.stringify(e.target)}`,
+          ...(e.sourceHandle !== undefined ? [`sourceHandle = ${JSON.stringify(e.sourceHandle)}`] : []),
+          ...(e.targetHandle !== undefined ? [`targetHandle = ${JSON.stringify(e.targetHandle)}`] : []),
           ...(e.type !== undefined ? [`type = ${JSON.stringify(e.type)}`] : []),
           ...(e.label !== undefined ? [`label = ${JSON.stringify(e.label)}`] : []),
           ...(e.animated !== undefined ? [`animated = ${e.animated ? 'true' : 'false'}`] : []),
+          ...(e.focusable !== undefined ? [`focusable = ${e.focusable}`] : []),
+          ...(e.ariaLabel !== undefined ? [`ariaLabel = ${JSON.stringify(e.ariaLabel)}`] : []),
+          ...(e.hidden !== undefined ? [`hidden = ${e.hidden}`] : []),
+          ...(e.deletable !== undefined ? [`deletable = ${e.deletable}`] : []),
+          ...(e.reconnectable !== undefined ? [`reconnectable = ${e.reconnectable}`] : []),
+          ...(e.interactionWidth !== undefined ? [`interactionWidth = ${ktChartDouble(String(e.interactionWidth))}`] : []),
         ]
         return `PyreonFlowEdge(${parts.join(', ')})`
       })
@@ -3243,6 +3261,7 @@ function kotlinFlowNodeLiteral(arg: ExprIR, flowName: string): string | null {
   const typeExpr = field('type')
   const widthExpr = field('width')
   const heightExpr = field('height')
+  const optionalFields = ['draggable', 'selectable', 'connectable', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'parentId', 'expandParent', 'group'] as const
   const parts = [
     `id = ${emitKotlinExpr(idExpr, 0)}`,
     ...(typeExpr ? [`type = ${emitKotlinExpr(typeExpr, 0)}`] : []),
@@ -3250,6 +3269,10 @@ function kotlinFlowNodeLiteral(arg: ExprIR, flowName: string): string | null {
     `data = ${emitKotlinExpr(dataExpr, 0)}`,
     ...(widthExpr ? [`width = ${ktChartDouble(emitKotlinExpr(widthExpr, 0))}`] : []),
     ...(heightExpr ? [`height = ${ktChartDouble(emitKotlinExpr(heightExpr, 0))}`] : []),
+    ...optionalFields.flatMap((name) => {
+      const value = field(name)
+      return value ? [`${name} = ${emitKotlinExpr(value, 0)}`] : []
+    }),
   ]
   return `PyreonFlowNode(${parts.join(', ')})`
 }
@@ -3266,6 +3289,8 @@ function kotlinFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
   const typeExpr = field('type')
   const labelExpr = field('label')
   const animatedExpr = field('animated')
+  const optionalFields = ['sourceHandle', 'targetHandle', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'reconnectable'] as const
+  const interactionWidthExpr = field('interactionWidth')
   const parts = [
     `id = ${emitKotlinExpr(idExpr, 0)}`,
     `source = ${emitKotlinExpr(sourceExpr, 0)}`,
@@ -3273,6 +3298,11 @@ function kotlinFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
     ...(typeExpr ? [`type = ${emitKotlinExpr(typeExpr, 0)}`] : []),
     ...(labelExpr ? [`label = ${emitKotlinExpr(labelExpr, 0)}`] : []),
     ...(animatedExpr ? [`animated = ${emitKotlinExpr(animatedExpr, 0)}`] : []),
+    ...optionalFields.flatMap((name) => {
+      const value = field(name)
+      return value ? [`${name} = ${emitKotlinExpr(value, 0)}`] : []
+    }),
+    ...(interactionWidthExpr ? [`interactionWidth = ${ktChartDouble(emitKotlinExpr(interactionWidthExpr, 0))}`] : []),
   ]
   return `PyreonFlowEdge(${parts.join(', ')})`
 }
@@ -11152,4 +11182,3 @@ function kotlinBrushHandler(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: st
   _emitWarnings.push(`<${tag} onBrush>: must be a NAMED handler (\`const onBrush = (r: BrushRange | null) => …\`) on native — an inline arrow is not lowered; the brush still selects, without the callback.`)
   return undefined
 }
-

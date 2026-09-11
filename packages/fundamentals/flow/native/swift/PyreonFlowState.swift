@@ -59,6 +59,16 @@ public struct PyreonFlowNode<T> {
     public var data: T
     public var width: Double?
     public var height: Double?
+    public var draggable: Bool?
+    public var selectable: Bool?
+    public var connectable: Bool?
+    public var focusable: Bool?
+    public var ariaLabel: String?
+    public var hidden: Bool?
+    public var deletable: Bool?
+    public var parentId: String?
+    public var expandParent: Bool?
+    public var group: Bool?
 
     public init(
         id: String,
@@ -66,7 +76,17 @@ public struct PyreonFlowNode<T> {
         position: PyreonXYPosition,
         data: T,
         width: Double? = nil,
-        height: Double? = nil
+        height: Double? = nil,
+        draggable: Bool? = nil,
+        selectable: Bool? = nil,
+        connectable: Bool? = nil,
+        focusable: Bool? = nil,
+        ariaLabel: String? = nil,
+        hidden: Bool? = nil,
+        deletable: Bool? = nil,
+        parentId: String? = nil,
+        expandParent: Bool? = nil,
+        group: Bool? = nil
     ) {
         self.id = id
         self.type = type
@@ -74,6 +94,16 @@ public struct PyreonFlowNode<T> {
         self.data = data
         self.width = width
         self.height = height
+        self.draggable = draggable
+        self.selectable = selectable
+        self.connectable = connectable
+        self.focusable = focusable
+        self.ariaLabel = ariaLabel
+        self.hidden = hidden
+        self.deletable = deletable
+        self.parentId = parentId
+        self.expandParent = expandParent
+        self.group = group
     }
 }
 
@@ -96,27 +126,51 @@ public struct PyreonFlowEdge: Equatable {
     public var id: String
     public var source: String
     public var target: String
+    public var sourceHandle: String?
+    public var targetHandle: String?
     /// Never `nil` once stored: the engine applies the web `normalizeEdge`
     /// default (`type ?? 'bezier'`) on seed AND `addEdge`, so `edges[i].type`
     /// reads the same on every target.
     public var type: String?
     public var label: String?
     public var animated: Bool
+    public var focusable: Bool?
+    public var ariaLabel: String?
+    public var hidden: Bool?
+    public var deletable: Bool?
+    public var reconnectable: Bool?
+    public var interactionWidth: Double?
 
     public init(
         id: String,
         source: String,
         target: String,
+        sourceHandle: String? = nil,
+        targetHandle: String? = nil,
         type: String? = nil,
         label: String? = nil,
-        animated: Bool = false
+        animated: Bool = false,
+        focusable: Bool? = nil,
+        ariaLabel: String? = nil,
+        hidden: Bool? = nil,
+        deletable: Bool? = nil,
+        reconnectable: Bool? = nil,
+        interactionWidth: Double? = nil
     ) {
         self.id = id
         self.source = source
         self.target = target
+        self.sourceHandle = sourceHandle
+        self.targetHandle = targetHandle
         self.type = type
         self.label = label
         self.animated = animated
+        self.focusable = focusable
+        self.ariaLabel = ariaLabel
+        self.hidden = hidden
+        self.deletable = deletable
+        self.reconnectable = reconnectable
+        self.interactionWidth = interactionWidth
     }
 }
 

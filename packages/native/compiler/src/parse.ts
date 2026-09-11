@@ -8999,6 +8999,8 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     n?.type === 'Literal' && typeof n.value === 'string' ? (n.value as string) : undefined
   const literalBool = (n: AnyNode | undefined): boolean | undefined =>
     n?.type === 'Literal' && typeof n.value === 'boolean' ? (n.value as boolean) : undefined
+  const literalNumber = (n: AnyNode | undefined): number | undefined =>
+    n?.type === 'Literal' && typeof n.value === 'number' ? (n.value as number) : undefined
   const objProp = (
     obj: AnyNode,
     key: string,
@@ -9027,14 +9029,32 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     data: ExprIR
     width?: ExprIR
     height?: ExprIR
+    draggable?: boolean
+    selectable?: boolean
+    connectable?: boolean
+    focusable?: boolean
+    ariaLabel?: string
+    hidden?: boolean
+    deletable?: boolean
+    parentId?: string
+    expandParent?: boolean
+    group?: boolean
   }[] = []
   const edgesOut: {
     id: string
     source: string
     target: string
+    sourceHandle?: string
+    targetHandle?: string
     type?: string
     label?: string
     animated?: boolean
+    focusable?: boolean
+    ariaLabel?: string
+    hidden?: boolean
+    deletable?: boolean
+    reconnectable?: boolean
+    interactionWidth?: number
   }[] = []
   let shapeOk = true
 
@@ -9070,8 +9090,12 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       const widthNode = objProp(nodeLit, 'width')
       const heightNode = objProp(nodeLit, 'height')
       const typeLit = literalString(typeNode)
+      const stringFields = ['ariaLabel', 'parentId'] as const
+      const boolFields = ['draggable', 'selectable', 'connectable', 'focusable', 'hidden', 'deletable', 'expandParent', 'group'] as const
       for (const k of literalObjectKeys(nodeLit)) if (!HANDLED_FLOW_NODE_FIELDS.has(k)) droppedNodeFields.add(k)
       if (typeNode && typeLit === undefined) droppedNodeFields.add('type (not a string literal)')
+      for (const k of stringFields) if (objProp(nodeLit, k) && literalString(objProp(nodeLit, k)) === undefined) droppedNodeFields.add(`${k} (not a string literal)`)
+      for (const k of boolFields) if (objProp(nodeLit, k) && literalBool(objProp(nodeLit, k)) === undefined) droppedNodeFields.add(`${k} (not a boolean literal)`)
       nodesOut.push({
         id,
         positionX: parseExpr(posXNode, ctx),
@@ -9080,6 +9104,14 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
         ...(typeLit !== undefined ? { type: typeLit } : {}),
         ...(widthNode ? { width: parseExpr(widthNode, ctx) } : {}),
         ...(heightNode ? { height: parseExpr(heightNode, ctx) } : {}),
+        ...Object.fromEntries(stringFields.flatMap((k) => {
+          const value = literalString(objProp(nodeLit, k))
+          return value === undefined ? [] : [[k, value]]
+        })),
+        ...Object.fromEntries(boolFields.flatMap((k) => {
+          const value = literalBool(objProp(nodeLit, k))
+          return value === undefined ? [] : [[k, value]]
+        })),
       })
     }
   } else if (nodesArg) {
@@ -9104,10 +9136,16 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       const edgeType = literalString(objProp(edgeLit, 'type'))
       const edgeLabel = literalString(objProp(edgeLit, 'label'))
       const edgeAnimated = literalBool(objProp(edgeLit, 'animated'))
+      const edgeStringFields = ['sourceHandle', 'targetHandle', 'ariaLabel'] as const
+      const edgeBoolFields = ['focusable', 'hidden', 'deletable', 'reconnectable'] as const
+      const interactionWidth = literalNumber(objProp(edgeLit, 'interactionWidth'))
       for (const k of literalObjectKeys(edgeLit)) if (!HANDLED_FLOW_EDGE_FIELDS.has(k)) droppedEdgeFields.add(k)
       if (objProp(edgeLit, 'type') && edgeType === undefined) droppedEdgeFields.add('type (not a string literal)')
       if (objProp(edgeLit, 'label') && edgeLabel === undefined) droppedEdgeFields.add('label (not a string literal)')
       if (objProp(edgeLit, 'animated') && edgeAnimated === undefined) droppedEdgeFields.add('animated (not a boolean literal)')
+      for (const k of edgeStringFields) if (objProp(edgeLit, k) && literalString(objProp(edgeLit, k)) === undefined) droppedEdgeFields.add(`${k} (not a string literal)`)
+      for (const k of edgeBoolFields) if (objProp(edgeLit, k) && literalBool(objProp(edgeLit, k)) === undefined) droppedEdgeFields.add(`${k} (not a boolean literal)`)
+      if (objProp(edgeLit, 'interactionWidth') && interactionWidth === undefined) droppedEdgeFields.add('interactionWidth (not a numeric literal)')
       edgesOut.push({
         id,
         source,
@@ -9115,6 +9153,15 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
         ...(edgeType !== undefined ? { type: edgeType } : {}),
         ...(edgeLabel !== undefined ? { label: edgeLabel } : {}),
         ...(edgeAnimated !== undefined ? { animated: edgeAnimated } : {}),
+        ...Object.fromEntries(edgeStringFields.flatMap((k) => {
+          const value = literalString(objProp(edgeLit, k))
+          return value === undefined ? [] : [[k, value]]
+        })),
+        ...Object.fromEntries(edgeBoolFields.flatMap((k) => {
+          const value = literalBool(objProp(edgeLit, k))
+          return value === undefined ? [] : [[k, value]]
+        })),
+        ...(interactionWidth !== undefined ? { interactionWidth } : {}),
       })
     }
   } else if (edgesArg) {
@@ -9153,8 +9200,6 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // already take them, so the runtime was never the blocker here; only this
   // reader was. A non-literal value (a variable, an expression) is left to the
   // unhandled-key warning below rather than half-lowered.
-  const literalNumber = (n: AnyNode | undefined): number | undefined =>
-    n?.type === 'Literal' && typeof n.value === 'number' ? (n.value as number) : undefined
   const minZoom = literalNumber(objProp(configArg, 'minZoom'))
   const maxZoom = literalNumber(objProp(configArg, 'maxZoom'))
 

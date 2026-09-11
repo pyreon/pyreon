@@ -1008,13 +1008,33 @@ public struct PyreonFlowNode<T> {
   public var data: T
   public var width: Double? = nil
   public var height: Double? = nil
+  public var draggable: Bool? = nil
+  public var selectable: Bool? = nil
+  public var connectable: Bool? = nil
+  public var focusable: Bool? = nil
+  public var ariaLabel: String? = nil
+  public var hidden: Bool? = nil
+  public var deletable: Bool? = nil
+  public var parentId: String? = nil
+  public var expandParent: Bool? = nil
+  public var group: Bool? = nil
   public init(
     id: String,
     type: String? = nil,
     position: PyreonXYPosition,
     data: T,
     width: Double? = nil,
-    height: Double? = nil
+    height: Double? = nil,
+    draggable: Bool? = nil,
+    selectable: Bool? = nil,
+    connectable: Bool? = nil,
+    focusable: Bool? = nil,
+    ariaLabel: String? = nil,
+    hidden: Bool? = nil,
+    deletable: Bool? = nil,
+    parentId: String? = nil,
+    expandParent: Bool? = nil,
+    group: Bool? = nil
   ) {
     self.id = id
     self.type = type
@@ -1028,16 +1048,32 @@ public struct PyreonFlowEdge: Equatable {
   public var id: String
   public var source: String
   public var target: String
+  public var sourceHandle: String? = nil
+  public var targetHandle: String? = nil
   public var type: String? = nil
   public var label: String? = nil
   public var animated: Bool = false
+  public var focusable: Bool? = nil
+  public var ariaLabel: String? = nil
+  public var hidden: Bool? = nil
+  public var deletable: Bool? = nil
+  public var reconnectable: Bool? = nil
+  public var interactionWidth: Double? = nil
   public init(
     id: String,
     source: String,
     target: String,
+    sourceHandle: String? = nil,
+    targetHandle: String? = nil,
     type: String? = nil,
     label: String? = nil,
-    animated: Bool = false
+    animated: Bool = false,
+    focusable: Bool? = nil,
+    ariaLabel: String? = nil,
+    hidden: Bool? = nil,
+    deletable: Bool? = nil,
+    reconnectable: Bool? = nil,
+    interactionWidth: Double? = nil
   ) {
     self.id = id
     self.source = source

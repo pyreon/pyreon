@@ -323,21 +323,32 @@ export function C() {
       expect(w).not.toContain('is NOT ported')
       expect(w).not.toContain('does NOTHING')
     })
-    it(`[${target}] node/edge fields the native types do not carry warn BY NAME at the DECLARATION`, () => {
+    it(`[${target}] carried node/edge fields emit, while genuinely unsupported fields still warn BY NAME`, () => {
       const src = `
 import { createFlow } from '@pyreon/flow'
 import { Stack, Text } from '${P}'
 export function C() {
   const flow = createFlow({
-    nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'A' }, parentId: 'root', draggable: false }],
-    edges: [{ id: 'e1', source: '1', target: '1', markerEnd: 'arrow', sourceHandle: 'out' }],
+    nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'A' }, parentId: 'root', draggable: false, selectable: true, connectable: false, focusable: true, ariaLabel: 'Start node', hidden: false, deletable: true, expandParent: true, group: true, style: {} }],
+    edges: [{ id: 'e1', source: '1', target: '1', markerEnd: 'arrow', sourceHandle: 'out', targetHandle: 'in', focusable: true, ariaLabel: 'Loop', hidden: false, deletable: true, reconnectable: false, interactionWidth: 24 }],
   })
   return (<Stack><Text>{flow.nodes().length}</Text></Stack>)
 }
 `
-      const w = warningsOf(src, target)
-      expect(w).toContain('node fields `parentId`, `draggable` are NOT carried')
-      expect(w).toContain('edge fields `markerEnd`, `sourceHandle` are NOT carried')
+      const result = transform(src, { target })
+      const w = (result.warnings ?? []).join('\n')
+      expect(w).toContain('node field `style` is NOT carried')
+      expect(w).toContain('edge field `markerEnd` is NOT carried')
+      for (const field of ['parentId', 'draggable', 'selectable', 'connectable', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'expandParent', 'group', 'sourceHandle', 'targetHandle', 'reconnectable', 'interactionWidth']) {
+        expect(w).not.toContain(`field \`${field}\` is NOT carried`)
+      }
+      const assignment = target === 'swift' ? ':' : ' ='
+      expect(result.code).toContain(`parentId${assignment} "root"`)
+      expect(result.code).toContain(`draggable${assignment} false`)
+      expect(result.code).toContain(`sourceHandle${assignment} "out"`)
+      expect(result.code).toContain(`targetHandle${assignment} "in"`)
+      expect(result.code).toContain(`ariaLabel${assignment} "Loop"`)
+      expect(result.code).toContain(`interactionWidth${assignment} ${target === 'swift' ? '24' : '24.0'}`)
     })
     it(`[${target}] a declaration-time NON-literal edge label/type is named, not silently dropped`, () => {
       const src = `
@@ -355,9 +366,11 @@ export function C() {
       expect(warningsOf(src, target)).toContain('`label (not a string literal)`')
     })
     it(`[${target}] call-site addNode/addEdge literals with extra fields warn BY NAME`, () => {
-      const w = warningsOf(base('', `<Button onPress={() => { flow.addNode({ id: '2', position: { x: 1, y: 1 }, data: { label: 'B' }, hidden: true }); flow.addEdge({ id: 'e2', source: '1', target: '2', waypoints: [] }) }}>Add</Button>`), target)
-      expect(w).toContain('addNode(...): node field `hidden` is NOT carried')
+      const w = warningsOf(base('', `<Button onPress={() => { flow.addNode({ id: '2', position: { x: 1, y: 1 }, data: { label: 'B' }, hidden: true, style: {} }); flow.addEdge({ id: 'e2', source: '1', target: '2', sourceHandle: 'out', waypoints: [] }) }}>Add</Button>`), target)
+      expect(w).toContain('addNode(...): node field `style` is NOT carried')
+      expect(w).not.toContain('node field `hidden` is NOT carried')
       expect(w).toContain('addEdge(...): edge field `waypoints` is NOT carried')
+      expect(w).not.toContain('edge field `sourceHandle` is NOT carried')
     })
   }
 
