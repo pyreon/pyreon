@@ -1059,6 +1059,7 @@ public struct PyreonFlowEdge: Equatable {
   public var deletable: Bool? = nil
   public var reconnectable: Bool? = nil
   public var interactionWidth: Double? = nil
+  public var waypoints: [PyreonXYPosition] = []
   public init(
     id: String,
     source: String,
@@ -1073,7 +1074,8 @@ public struct PyreonFlowEdge: Equatable {
     hidden: Bool? = nil,
     deletable: Bool? = nil,
     reconnectable: Bool? = nil,
-    interactionWidth: Double? = nil
+    interactionWidth: Double? = nil,
+    waypoints: [PyreonXYPosition] = []
   ) {
     self.id = id
     self.source = source
@@ -1104,6 +1106,10 @@ public final class PyreonFlowState<T> {
   public func getEdge(_ id: String) -> PyreonFlowEdge? { nil }
   public func addEdge(_ edge: PyreonFlowEdge) {}
   public func removeEdge(_ id: String) {}
+  public func reconnectEdge(_ id: String, source: String? = nil, target: String? = nil, sourceHandle: String? = nil, targetHandle: String? = nil) {}
+  public func addEdgeWaypoint(_ edgeId: String, _ point: PyreonXYPosition, _ index: Int? = nil) {}
+  public func removeEdgeWaypoint(_ edgeId: String, _ index: Int) {}
+  public func updateEdgeWaypoint(_ edgeId: String, _ index: Int, _ point: PyreonXYPosition) {}
   public func removeEdges(_ ids: [String]) {}
   public func isNodeSelected(_ id: String) -> Bool { false }
   public func isEdgeSelected(_ id: String) -> Bool { false }

@@ -3162,6 +3162,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
           ...(e.deletable !== undefined ? [`deletable = ${e.deletable}`] : []),
           ...(e.reconnectable !== undefined ? [`reconnectable = ${e.reconnectable}`] : []),
           ...(e.interactionWidth !== undefined ? [`interactionWidth = ${ktChartDouble(String(e.interactionWidth))}`] : []),
+          ...(e.waypoints !== undefined ? [`waypoints = listOf(${e.waypoints.map((p) => `PyreonXYPosition(${ktChartDouble(emitKotlinExpr(p.x, 0))}, ${ktChartDouble(emitKotlinExpr(p.y, 0))})`).join(', ')})`] : []),
         ]
         return `PyreonFlowEdge(${parts.join(', ')})`
       })
@@ -3289,6 +3290,7 @@ function kotlinFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
   const typeExpr = field('type')
   const labelExpr = field('label')
   const animatedExpr = field('animated')
+  const waypointsExpr = field('waypoints')
   const optionalFields = ['sourceHandle', 'targetHandle', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'reconnectable'] as const
   const interactionWidthExpr = field('interactionWidth')
   const parts = [
@@ -3303,8 +3305,30 @@ function kotlinFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
       return value ? [`${name} = ${emitKotlinExpr(value, 0)}`] : []
     }),
     ...(interactionWidthExpr ? [`interactionWidth = ${ktChartDouble(emitKotlinExpr(interactionWidthExpr, 0))}`] : []),
+    ...(waypointsExpr ? (() => {
+      const value = kotlinFlowPositionsLiteral(waypointsExpr)
+      return [`waypoints = ${value ?? emitKotlinExpr(waypointsExpr, 0)}`]
+    })() : []),
   ]
   return `PyreonFlowEdge(${parts.join(', ')})`
+}
+
+function kotlinFlowPositionsLiteral(arg: ExprIR): string | null {
+  if (arg.kind !== 'array') return null
+  const values: string[] = []
+  for (const item of arg.elements) {
+    const value = kotlinFlowPositionLiteral(item)
+    if (value === null) return null
+    values.push(value)
+  }
+  return `listOf(${values.join(', ')})`
+}
+
+function kotlinFlowReconnectLiteral(arg: ExprIR): string | null {
+  if (arg.kind !== 'object') return null
+  const allowed = new Set(['source', 'target', 'sourceHandle', 'targetHandle'])
+  if (arg.fields.some((field) => !allowed.has(field.name))) return null
+  return arg.fields.map((field) => `, ${field.name} = ${emitKotlinExpr(field.value, 0)}`).join('')
 }
 
 /** Names every literal field the native node/edge type does not carry. */
@@ -4673,6 +4697,18 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         }
         if (member === 'focusNode' && e.args.length === 2) {
           return `${kotlinIdent(flowName)}.focusNode(${emitKotlinExpr(e.args[0]!, indent)}, ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))})`
+        }
+        if (member === 'addEdgeWaypoint' && e.args.length >= 2) {
+          const point = kotlinFlowPositionLiteral(e.args[1]!)
+          if (point !== null) return `${kotlinIdent(flowName)}.addEdgeWaypoint(${emitKotlinExpr(e.args[0]!, indent)}, ${point}${e.args.length === 3 ? `, ${emitKotlinExpr(e.args[2]!, indent)}` : ''})`
+        }
+        if (member === 'updateEdgeWaypoint' && e.args.length === 3) {
+          const point = kotlinFlowPositionLiteral(e.args[2]!)
+          if (point !== null) return `${kotlinIdent(flowName)}.updateEdgeWaypoint(${emitKotlinExpr(e.args[0]!, indent)}, ${emitKotlinExpr(e.args[1]!, indent)}, ${point})`
+        }
+        if (member === 'reconnectEdge' && e.args.length === 2) {
+          const args = kotlinFlowReconnectLiteral(e.args[1]!)
+          if (args !== null) return `${kotlinIdent(flowName)}.reconnectEdge(${emitKotlinExpr(e.args[0]!, indent)}${args})`
         }
       }
       // A signal WRITE on a flow-state property — read-only natively; name it.

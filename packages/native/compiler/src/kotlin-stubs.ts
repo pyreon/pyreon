@@ -1602,6 +1602,7 @@ data class PyreonFlowEdge(
   val deletable: Boolean? = null,
   val reconnectable: Boolean? = null,
   val interactionWidth: Double? = null,
+  val waypoints: List<PyreonXYPosition> = emptyList(),
 )
 data class PyreonFlowContainerSize(val width: Double = 0.0, val height: Double = 0.0)
 class PyreonFlowState<T>(
@@ -1624,6 +1625,10 @@ class PyreonFlowState<T>(
   fun getEdge(id: String): PyreonFlowEdge? = null
   fun addEdge(edge: PyreonFlowEdge) {}
   fun removeEdge(id: String) {}
+  fun reconnectEdge(id: String, source: String? = null, target: String? = null, sourceHandle: String? = null, targetHandle: String? = null) {}
+  fun addEdgeWaypoint(edgeId: String, point: PyreonXYPosition, index: Int? = null) {}
+  fun removeEdgeWaypoint(edgeId: String, index: Int) {}
+  fun updateEdgeWaypoint(edgeId: String, index: Int, point: PyreonXYPosition) {}
   fun removeEdges(ids: List<String>) {}
   fun isNodeSelected(id: String): Boolean = false
   fun isEdgeSelected(id: String): Boolean = false

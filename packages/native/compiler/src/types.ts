@@ -944,6 +944,7 @@ export type DeclIR =
         deletable?: boolean
         reconnectable?: boolean
         interactionWidth?: number
+        waypoints?: { x: ExprIR; y: ExprIR }[]
       }[]
       /** `minZoom` from the config, when written as a numeric literal. */
       minZoom?: number

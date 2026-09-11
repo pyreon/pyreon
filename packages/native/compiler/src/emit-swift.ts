@@ -4013,6 +4013,7 @@ function emitSwiftDecl(
           ...(e.deletable !== undefined ? [`deletable: ${e.deletable}`] : []),
           ...(e.reconnectable !== undefined ? [`reconnectable: ${e.reconnectable}`] : []),
           ...(e.interactionWidth !== undefined ? [`interactionWidth: ${e.interactionWidth}`] : []),
+          ...(e.waypoints !== undefined ? [`waypoints: [${e.waypoints.map((p) => `PyreonXYPosition(x: ${emitSwiftExpr(p.x, 0)}, y: ${emitSwiftExpr(p.y, 0)})`).join(', ')}]`] : []),
         ]
         return `PyreonFlowEdge(${parts.join(', ')})`
       })
@@ -4124,6 +4125,7 @@ function swiftFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
   const typeExpr = field('type')
   const labelExpr = field('label')
   const animatedExpr = field('animated')
+  const waypointsExpr = field('waypoints')
   const optionalFields = ['sourceHandle', 'targetHandle', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'reconnectable', 'interactionWidth'] as const
   const parts = [
     `id: ${emitSwiftExpr(idExpr, 0)}`,
@@ -4136,8 +4138,30 @@ function swiftFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
       const value = field(name)
       return value ? [`${name}: ${emitSwiftExpr(value, 0)}`] : []
     }),
+    ...(waypointsExpr ? (() => {
+      const value = swiftFlowPositionsLiteral(waypointsExpr)
+      return [`waypoints: ${value ?? emitSwiftExpr(waypointsExpr, 0)}`]
+    })() : []),
   ]
   return `PyreonFlowEdge(${parts.join(', ')})`
+}
+
+function swiftFlowPositionsLiteral(arg: ExprIR): string | null {
+  if (arg.kind !== 'array') return null
+  const values: string[] = []
+  for (const item of arg.elements) {
+    const value = swiftFlowPositionLiteral(item)
+    if (value === null) return null
+    values.push(value)
+  }
+  return `[${values.join(', ')}]`
+}
+
+function swiftFlowReconnectLiteral(arg: ExprIR): string | null {
+  if (arg.kind !== 'object') return null
+  const allowed = new Set(['source', 'target', 'sourceHandle', 'targetHandle'])
+  if (arg.fields.some((field) => !allowed.has(field.name))) return null
+  return arg.fields.map((field) => `, ${field.name}: ${emitSwiftExpr(field.value, 0)}`).join('')
 }
 
 /** Names every literal field the native node/edge type does not carry. */
@@ -5652,6 +5676,18 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         if (['panTo', 'screenToFlowPosition', 'flowToScreenPosition'].includes(member) && e.args.length === 1) {
           const lit = swiftFlowPositionLiteral(e.args[0]!)
           if (lit !== null) return `${swiftIdent(flowName)}.${member}(${lit})`
+        }
+        if (member === 'addEdgeWaypoint' && e.args.length >= 2) {
+          const point = swiftFlowPositionLiteral(e.args[1]!)
+          if (point !== null) return `${swiftIdent(flowName)}.addEdgeWaypoint(${emitSwiftExpr(e.args[0]!, indent)}, ${point}${e.args.length === 3 ? `, ${emitSwiftExpr(e.args[2]!, indent)}` : ''})`
+        }
+        if (member === 'updateEdgeWaypoint' && e.args.length === 3) {
+          const point = swiftFlowPositionLiteral(e.args[2]!)
+          if (point !== null) return `${swiftIdent(flowName)}.updateEdgeWaypoint(${emitSwiftExpr(e.args[0]!, indent)}, ${emitSwiftExpr(e.args[1]!, indent)}, ${point})`
+        }
+        if (member === 'reconnectEdge' && e.args.length === 2) {
+          const args = swiftFlowReconnectLiteral(e.args[1]!)
+          if (args !== null) return `${swiftIdent(flowName)}.reconnectEdge(${emitSwiftExpr(e.args[0]!, indent)}${args})`
         }
       }
       // A signal WRITE on a flow-state property (`flow.nodes.set(...)`): the

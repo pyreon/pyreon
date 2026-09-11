@@ -384,11 +384,32 @@ export function C() {
       expect(warningsOf(src, target)).toContain('`label (not a string literal)`')
     })
     it(`[${target}] call-site addNode/addEdge literals with extra fields warn BY NAME`, () => {
-      const w = warningsOf(base('', `<Button onPress={() => { flow.addNode({ id: '2', position: { x: 1, y: 1 }, data: { label: 'B' }, hidden: true, style: {} }); flow.addEdge({ id: 'e2', source: '1', target: '2', sourceHandle: 'out', waypoints: [] }) }}>Add</Button>`), target)
+      const w = warningsOf(base('', `<Button onPress={() => { flow.addNode({ id: '2', position: { x: 1, y: 1 }, data: { label: 'B' }, hidden: true, style: {} }); flow.addEdge({ id: 'e2', source: '1', target: '2', sourceHandle: 'out', waypoints: [], markerEnd: 'arrow' }) }}>Add</Button>`), target)
       expect(w).toContain('addNode(...): node field `style` is NOT carried')
       expect(w).not.toContain('node field `hidden` is NOT carried')
-      expect(w).toContain('addEdge(...): edge field `waypoints` is NOT carried')
+      expect(w).toContain('addEdge(...): edge field `markerEnd` is NOT carried')
+      expect(w).not.toContain('edge field `waypoints` is NOT carried')
       expect(w).not.toContain('edge field `sourceHandle` is NOT carried')
+    })
+    it(`[${target}] waypoint editing and reconnect lower to native values and typecheck`, () => {
+      const src = base('', `<Button onPress={() => { flow.addEdge({ id: 'e2', source: '1', target: '1', waypoints: [{ x: 4, y: 5 }] }); flow.addEdgeWaypoint('e1', { x: 1, y: 2 }, -1); flow.updateEdgeWaypoint('e1', 0, { x: 3, y: 4 }); flow.removeEdgeWaypoint('e1', -1); flow.reconnectEdge('e1', { target: '2', targetHandle: 'in' }) }}>Edit</Button>`)
+      const result = transform(src, { target })
+      const w = (result.warnings ?? []).join('\n')
+      for (const member of ['addEdgeWaypoint', 'updateEdgeWaypoint', 'removeEdgeWaypoint', 'reconnectEdge']) {
+        expect(w).not.toContain(`\`${member}\` is NOT ported`)
+      }
+      expect(w).not.toContain('edge field `waypoints` is NOT carried')
+      if (target === 'swift') {
+        expect(result.code).toContain('waypoints: [PyreonXYPosition(x: 4, y: 5)]')
+        expect(result.code).toContain('flow.addEdgeWaypoint("e1", PyreonXYPosition(x: 1, y: 2), -1)')
+        expect(result.code).toContain('flow.reconnectEdge("e1", target: "2", targetHandle: "in")')
+        expect(validateSwiftWithStubs(result.code).ok).toBe(true)
+      } else {
+        expect(result.code).toContain('waypoints = listOf(PyreonXYPosition(4.0, 5.0))')
+        expect(result.code).toContain('flow.addEdgeWaypoint("e1", PyreonXYPosition(1.0, 2.0), -1)')
+        expect(result.code).toContain('flow.reconnectEdge("e1", target = "2", targetHandle = "in")')
+        expect(validateKotlin(result.code).ok).toBe(true)
+      }
     })
   }
 

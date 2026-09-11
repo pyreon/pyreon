@@ -22,6 +22,7 @@ export const LOWERED_FLOW_METHODS: ReadonlySet<string> = new Set([
   'zoomTo', 'zoomIn', 'zoomOut', 'panTo', 'fitView', 'getViewport',
   'screenToFlowPosition', 'flowToScreenPosition', 'isNodeVisible', 'focusNode',
   'moveSelectedNodes',
+  'addEdgeWaypoint', 'removeEdgeWaypoint', 'updateEdgeWaypoint', 'reconnectEdge',
   'getConnectedEdges', 'getIncomers', 'getOutgoers', 'getChildNodes', 'getAbsolutePosition',
 ])
 
@@ -35,7 +36,7 @@ export const HANDLED_FLOW_NODE_FIELDS: ReadonlySet<string> = new Set([
 export const HANDLED_FLOW_EDGE_FIELDS: ReadonlySet<string> = new Set([
   'id', 'source', 'target', 'sourceHandle', 'targetHandle', 'type', 'label',
   'animated', 'focusable', 'ariaLabel', 'hidden', 'deletable',
-  'reconnectable', 'interactionWidth',
+  'reconnectable', 'interactionWidth', 'waypoints',
 ])
 
 export function unloweredFlowMemberWarning(flowName: string, member: string): string {

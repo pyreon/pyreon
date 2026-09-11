@@ -54,7 +54,7 @@ data class PyreonFlowNode<T>(
     val group: Boolean? = null,
 )
 
-/** An edge — mirrors `FlowEdge`'s core (non-marker/waypoint) fields. */
+/** An edge — mirrors `FlowEdge`'s core fields, including editable waypoints. */
 data class PyreonFlowEdge(
     val id: String,
     val source: String,
@@ -70,6 +70,7 @@ data class PyreonFlowEdge(
     val deletable: Boolean? = null,
     val reconnectable: Boolean? = null,
     val interactionWidth: Double? = null,
+    val waypoints: List<PyreonXYPosition> = emptyList(),
 )
 
 /** Default node box when a node declares no explicit width/height — the SAME
@@ -194,6 +195,44 @@ class PyreonFlowState<T>(
     fun removeEdge(id: String) {
         if (!edgeIds.containsKey(id)) return
         removeEdges { it.id == id }
+    }
+    fun reconnectEdge(id: String, source: String? = null, target: String? = null, sourceHandle: String? = null, targetHandle: String? = null) {
+        val i = _edges.indexOfFirst { it.id == id }
+        if (i < 0) return
+        val edge = _edges[i]
+        _edges = _edges.toMutableList().also { it[i] = edge.copy(
+            source = source ?: edge.source,
+            target = target ?: edge.target,
+            sourceHandle = sourceHandle ?: edge.sourceHandle,
+            targetHandle = targetHandle ?: edge.targetHandle,
+        ) }
+    }
+    @JvmOverloads
+    fun addEdgeWaypoint(edgeId: String, point: PyreonXYPosition, index: Int? = null) {
+        val i = _edges.indexOfFirst { it.id == edgeId }
+        if (i < 0) return
+        val points = _edges[i].waypoints.toMutableList()
+        val insertionIndex = when {
+            index == null -> points.size
+            index < 0 -> (points.size + index).coerceAtLeast(0)
+            else -> index.coerceAtMost(points.size)
+        }
+        points.add(insertionIndex, point)
+        _edges = _edges.toMutableList().also { it[i] = it[i].copy(waypoints = points) }
+    }
+    fun removeEdgeWaypoint(edgeId: String, index: Int) {
+        val i = _edges.indexOfFirst { it.id == edgeId }
+        if (i < 0) return
+        val removalIndex = if (index < 0) (_edges[i].waypoints.size + index).coerceAtLeast(0) else index
+        if (removalIndex !in _edges[i].waypoints.indices) return
+        val points = _edges[i].waypoints.toMutableList().also { it.removeAt(removalIndex) }
+        _edges = _edges.toMutableList().also { it[i] = it[i].copy(waypoints = points) }
+    }
+    fun updateEdgeWaypoint(edgeId: String, index: Int, point: PyreonXYPosition) {
+        val i = _edges.indexOfFirst { it.id == edgeId }
+        if (i < 0 || index !in _edges[i].waypoints.indices) return
+        val points = _edges[i].waypoints.toMutableList().also { it[index] = point }
+        _edges = _edges.toMutableList().also { it[i] = it[i].copy(waypoints = points) }
     }
     fun removeEdges(ids: List<String>) {
         val gone = ids.toSet()

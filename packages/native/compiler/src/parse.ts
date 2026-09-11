@@ -9018,6 +9018,19 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     }
     return undefined
   }
+  const literalPositions = (n: AnyNode | undefined): { x: ExprIR; y: ExprIR }[] | undefined => {
+    if (!n || n.type !== 'ArrayExpression') return undefined
+    const out: { x: ExprIR; y: ExprIR }[] = []
+    for (const raw of (n.elements as AnyNode[] | undefined) ?? []) {
+      const item = unwrapTypeLayers(raw)
+      if (!item || item.type !== 'ObjectExpression') return undefined
+      const x = objProp(item, 'x')
+      const y = objProp(item, 'y')
+      if (!x || !y) return undefined
+      out.push({ x: parseExpr(x, ctx), y: parseExpr(y, ctx) })
+    }
+    return out
+  }
 
   const droppedNodeFields = new Set<string>()
   const droppedEdgeFields = new Set<string>()
@@ -9055,6 +9068,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     deletable?: boolean
     reconnectable?: boolean
     interactionWidth?: number
+    waypoints?: { x: ExprIR; y: ExprIR }[]
   }[] = []
   let shapeOk = true
 
@@ -9139,6 +9153,8 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       const edgeStringFields = ['sourceHandle', 'targetHandle', 'ariaLabel'] as const
       const edgeBoolFields = ['focusable', 'hidden', 'deletable', 'reconnectable'] as const
       const interactionWidth = literalNumber(objProp(edgeLit, 'interactionWidth'))
+      const waypointsNode = objProp(edgeLit, 'waypoints')
+      const waypoints = literalPositions(waypointsNode)
       for (const k of literalObjectKeys(edgeLit)) if (!HANDLED_FLOW_EDGE_FIELDS.has(k)) droppedEdgeFields.add(k)
       if (objProp(edgeLit, 'type') && edgeType === undefined) droppedEdgeFields.add('type (not a string literal)')
       if (objProp(edgeLit, 'label') && edgeLabel === undefined) droppedEdgeFields.add('label (not a string literal)')
@@ -9146,6 +9162,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       for (const k of edgeStringFields) if (objProp(edgeLit, k) && literalString(objProp(edgeLit, k)) === undefined) droppedEdgeFields.add(`${k} (not a string literal)`)
       for (const k of edgeBoolFields) if (objProp(edgeLit, k) && literalBool(objProp(edgeLit, k)) === undefined) droppedEdgeFields.add(`${k} (not a boolean literal)`)
       if (objProp(edgeLit, 'interactionWidth') && interactionWidth === undefined) droppedEdgeFields.add('interactionWidth (not a numeric literal)')
+      if (waypointsNode && waypoints === undefined) droppedEdgeFields.add('waypoints (not an array literal of { x, y })')
       edgesOut.push({
         id,
         source,
@@ -9162,6 +9179,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
           return value === undefined ? [] : [[k, value]]
         })),
         ...(interactionWidth !== undefined ? { interactionWidth } : {}),
+        ...(waypoints !== undefined ? { waypoints } : {}),
       })
     }
   } else if (edgesArg) {

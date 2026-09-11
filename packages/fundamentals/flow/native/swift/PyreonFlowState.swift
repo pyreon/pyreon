@@ -121,7 +121,7 @@ public struct PyreonFlowContainerSize: Equatable {
     }
 }
 
-/// An edge — mirrors `FlowEdge`'s core (non-marker/waypoint) fields.
+/// An edge — mirrors `FlowEdge`'s core fields, including editable waypoints.
 public struct PyreonFlowEdge: Equatable {
     public var id: String
     public var source: String
@@ -140,6 +140,7 @@ public struct PyreonFlowEdge: Equatable {
     public var deletable: Bool?
     public var reconnectable: Bool?
     public var interactionWidth: Double?
+    public var waypoints: [PyreonXYPosition]
 
     public init(
         id: String,
@@ -155,7 +156,8 @@ public struct PyreonFlowEdge: Equatable {
         hidden: Bool? = nil,
         deletable: Bool? = nil,
         reconnectable: Bool? = nil,
-        interactionWidth: Double? = nil
+        interactionWidth: Double? = nil,
+        waypoints: [PyreonXYPosition] = []
     ) {
         self.id = id
         self.source = source
@@ -171,6 +173,7 @@ public struct PyreonFlowEdge: Equatable {
         self.deletable = deletable
         self.reconnectable = reconnectable
         self.interactionWidth = interactionWidth
+        self.waypoints = waypoints
     }
 }
 
@@ -376,6 +379,32 @@ public final class PyreonFlowState<T> {
         edges.remove(at: i)
         edgeIds.remove(id)
         if selectedEdgeIdSet.remove(id) != nil { selectedEdgeIds.removeAll { $0 == id } }
+    }
+    public func reconnectEdge(_ id: String, source: String? = nil, target: String? = nil, sourceHandle: String? = nil, targetHandle: String? = nil) {
+        guard let i = edges.firstIndex(where: { $0.id == id }) else { return }
+        if let source { edges[i].source = source }
+        if let target { edges[i].target = target }
+        if let sourceHandle { edges[i].sourceHandle = sourceHandle }
+        if let targetHandle { edges[i].targetHandle = targetHandle }
+    }
+    public func addEdgeWaypoint(_ edgeId: String, _ point: PyreonXYPosition, _ index: Int? = nil) {
+        guard let i = edges.firstIndex(where: { $0.id == edgeId }) else { return }
+        if let index {
+            let count = edges[i].waypoints.count
+            let insertionIndex = index < 0 ? max(count + index, 0) : min(index, count)
+            edges[i].waypoints.insert(point, at: insertionIndex)
+        }
+        else { edges[i].waypoints.append(point) }
+    }
+    public func removeEdgeWaypoint(_ edgeId: String, _ index: Int) {
+        guard let i = edges.firstIndex(where: { $0.id == edgeId }) else { return }
+        let removalIndex = index < 0 ? max(edges[i].waypoints.count + index, 0) : index
+        guard edges[i].waypoints.indices.contains(removalIndex) else { return }
+        edges[i].waypoints.remove(at: removalIndex)
+    }
+    public func updateEdgeWaypoint(_ edgeId: String, _ index: Int, _ point: PyreonXYPosition) {
+        guard let i = edges.firstIndex(where: { $0.id == edgeId }), edges[i].waypoints.indices.contains(index) else { return }
+        edges[i].waypoints[index] = point
     }
     public func removeEdges(_ ids: [String]) {
         let gone = Set(ids)

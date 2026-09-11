@@ -165,6 +165,14 @@ fun main() {
     check(et.getEdge("e9")?.type == "bezier", "addEdge applies the 'bezier' default")
     et.addEdge(PyreonFlowEdge(id = "e10", source = "1", target = "3", type = "step"))
     check(et.getEdge("e10")?.type == "step", "an explicit edge type is kept")
+    et.addEdge(PyreonFlowEdge(id = "ew", source = "1", target = "2", waypoints = listOf(PyreonXYPosition(10.0, 10.0))))
+    et.addEdgeWaypoint("ew", PyreonXYPosition(20.0, 20.0), -1)
+    check(et.getEdge("ew")?.waypoints?.map { it.x } == listOf(20.0, 10.0), "negative waypoint insertion mirrors Array.splice")
+    et.updateEdgeWaypoint("ew", 1, PyreonXYPosition(30.0, 30.0))
+    et.removeEdgeWaypoint("ew", -1)
+    check(et.getEdge("ew")?.waypoints == listOf(PyreonXYPosition(20.0, 20.0)), "waypoint update/removal preserves the remaining route")
+    et.reconnectEdge("ew", target = "3", targetHandle = "in")
+    check(et.getEdge("ew")?.target == "3" && et.getEdge("ew")?.targetHandle == "in", "reconnect changes only supplied endpoints")
     // Bulk operations, coordinate conversion, visibility and groups.
     val q = PyreonFlowState(nodes = listOf(
         PyreonFlowNode(id = "p", position = PyreonXYPosition(10.0, 20.0), data = NodeData("Parent"), width = 100.0, height = 80.0, group = true),
