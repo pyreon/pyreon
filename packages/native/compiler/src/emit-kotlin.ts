@@ -3193,6 +3193,9 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       ...(['nodesDraggable', 'nodesConnectable', 'nodesSelectable', 'nodesFocusable', 'edgesFocusable', 'nodesDeletable', 'edgesDeletable', 'edgesReconnectable', 'pannable', 'zoomable'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key} = ${d[key]}`]),
       ...(d.edgeInteractionWidth !== undefined ? [`edgeInteractionWidth = ${ktDouble(d.edgeInteractionWidth)}`] : []),
       ...(d.connectionRadius !== undefined ? [`connectionRadius = ${ktDouble(d.connectionRadius)}`] : []),
+      ...(d.defaultEdgeType !== undefined ? [`defaultEdgeType = ${JSON.stringify(d.defaultEdgeType)}`] : []),
+      ...(d.fitView !== undefined ? [`fitViewOnLoad = ${d.fitView}`] : []),
+      ...(d.fitViewPadding !== undefined ? [`fitViewPadding = ${ktDouble(d.fitViewPadding)}`] : []),
       ...(d.connectionRules !== undefined ? [`connectionRules = mapOf(${Object.entries(d.connectionRules).map(([key, outputs]) => `${JSON.stringify(key)} to listOf(${outputs.map((output) => JSON.stringify(output)).join(', ')})`).join(', ')})`] : []),
       ...(d.connectionValidator !== undefined ? [`connectionValidator = ${emitKotlinExpr(d.connectionValidator, 0)}`] : []),
     ].join(', ')

@@ -135,9 +135,13 @@ class PyreonFlowState<T>(
     connectionRadius: Double = 0.0,
     val pannable: Boolean = true,
     val zoomable: Boolean = true,
+    val defaultEdgeType: String = PYREON_FLOW_DEFAULT_EDGE_TYPE,
+    val fitViewOnLoad: Boolean = false,
+    fitViewPadding: Double = 0.1,
     private val connectionValidator: ((PyreonFlowConnection) -> Boolean)? = null,
 ) {
     val connectionRadius: Double = maxOf(0.0, connectionRadius)
+    val fitViewPadding: Double = maxOf(0.0, fitViewPadding)
     private var nodeExtent: PyreonFlowNodeExtent? = nodeExtent
     private val order = mutableStateListOf<String>()
     private val nodeMap = mutableStateMapOf<String, PyreonFlowNode<T>>()
@@ -182,7 +186,7 @@ class PyreonFlowState<T>(
     /** Applies the web `normalizeEdge` default (`type ?: "bezier"`); dedupes by id. */
     private fun insertEdge(edge: PyreonFlowEdge) {
         if (edgeIds.containsKey(edge.id)) return
-        val e = if (edge.type == null) edge.copy(type = PYREON_FLOW_DEFAULT_EDGE_TYPE) else edge
+        val e = if (edge.type == null) edge.copy(type = defaultEdgeType) else edge
         _edges = _edges + e
         edgeIds[e.id] = Unit
     }

@@ -4037,6 +4037,9 @@ function emitSwiftDecl(
       ...(['nodesDraggable', 'nodesConnectable', 'nodesSelectable', 'nodesFocusable', 'edgesFocusable', 'nodesDeletable', 'edgesDeletable', 'edgesReconnectable', 'pannable', 'zoomable'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key}: ${d[key]}`]),
       ...(d.edgeInteractionWidth !== undefined ? [`edgeInteractionWidth: ${d.edgeInteractionWidth}`] : []),
       ...(d.connectionRadius !== undefined ? [`connectionRadius: ${d.connectionRadius}`] : []),
+      ...(d.defaultEdgeType !== undefined ? [`defaultEdgeType: ${JSON.stringify(d.defaultEdgeType)}`] : []),
+      ...(d.fitView !== undefined ? [`fitView: ${d.fitView}`] : []),
+      ...(d.fitViewPadding !== undefined ? [`fitViewPadding: ${d.fitViewPadding}`] : []),
       ...(d.connectionRules !== undefined ? [`connectionRules: [${Object.entries(d.connectionRules).map(([key, outputs]) => `${JSON.stringify(key)}: [${outputs.map((output) => JSON.stringify(output)).join(', ')}]`).join(', ')}]`] : []),
       ...(d.connectionValidator !== undefined ? [`isValidConnection: ${emitSwiftExpr(d.connectionValidator, 0)}`] : []),
     ].join(', ')

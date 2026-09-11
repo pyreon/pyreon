@@ -186,6 +186,7 @@ fun <T> PyreonFlowView(
     var connectionDraft by remember { mutableStateOf<PyreonFlowConnectionDraft?>(null) }
     var reconnectDraft by remember { mutableStateOf<PyreonFlowReconnectDraft?>(null) }
     var nodeDragStarts by remember { mutableStateOf<Map<String, PyreonXYPosition>>(emptyMap()) }
+    var didInitialFit by remember { mutableStateOf(false) }
     val interactiveHandles = state.nodes.flatMap { node ->
         if (node.hidden == true || !(node.connectable ?: state.nodesConnectable)) emptyList() else {
             val absolute = state.getAbsolutePosition(node.id)
@@ -217,6 +218,10 @@ fun <T> PyreonFlowView(
     Box(
         modifier = modifier.onSizeChanged { size ->
             state.containerSize = PyreonFlowContainerSize(size.width.toDouble(), size.height.toDouble())
+            if (state.fitViewOnLoad && !didInitialFit && size.width > 0 && size.height > 0) {
+                didInitialFit = true
+                state.fitView(padding = state.fitViewPadding)
+            }
         },
     ) {
         Box(

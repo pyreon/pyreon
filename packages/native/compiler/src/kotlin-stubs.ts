@@ -1640,6 +1640,9 @@ class PyreonFlowState<T>(
   connectionRadius: Double = 0.0,
   pannable: Boolean = true,
   zoomable: Boolean = true,
+  defaultEdgeType: String = "bezier",
+  fitViewOnLoad: Boolean = false,
+  fitViewPadding: Double = 0.1,
   connectionRules: Map<String, List<String>>? = null,
   connectionValidator: ((PyreonFlowConnection) -> Boolean)? = null,
 ) {

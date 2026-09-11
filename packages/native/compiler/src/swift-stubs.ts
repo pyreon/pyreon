@@ -1130,6 +1130,7 @@ public final class PyreonFlowState<T> {
     nodesDraggable: Bool = true, nodesConnectable: Bool = true, nodesSelectable: Bool = true, nodesFocusable: Bool = true,
     edgesFocusable: Bool = true, nodesDeletable: Bool = true, edgesDeletable: Bool = true, edgesReconnectable: Bool = true,
     edgeInteractionWidth: Double = 20, connectionRadius: Double = 0, pannable: Bool = true, zoomable: Bool = true,
+    defaultEdgeType: String = "bezier", fitView: Bool = false, fitViewPadding: Double = 0.1,
     connectionRules: [String: [String]]? = nil,
     isValidConnection: ((PyreonFlowConnection) -> Bool)? = nil
   ) {}

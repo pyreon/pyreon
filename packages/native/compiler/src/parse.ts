@@ -9324,6 +9324,9 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const interactionBools = Object.fromEntries(interactionBoolKeys.flatMap((key) => { const value = literalBool(objProp(configArg, key)); return value === undefined ? [] : [[key, value]] })) as Partial<Record<(typeof interactionBoolKeys)[number], boolean>>
   const edgeInteractionWidth = literalNumber(objProp(configArg, 'edgeInteractionWidth'))
   const connectionRadius = literalNumber(objProp(configArg, 'connectionRadius'))
+  const defaultEdgeType = literalString(objProp(configArg, 'defaultEdgeType'))
+  const fitView = literalBool(objProp(configArg, 'fitView'))
+  const fitViewPadding = literalNumber(objProp(configArg, 'fitViewPadding'))
   const connectionRules = (() => {
     if (connectionRulesNode === undefined) return undefined
     if (connectionRulesNode.type !== 'ObjectExpression') return null
@@ -9359,7 +9362,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (droppedEdgeFields.size > 0) {
     ctx.warnings.push(droppedFlowFieldsWarning(`createFlow declaration \`${name}\``, 'edge', [...droppedEdgeFields]))
   }
-  const HANDLED_FLOW_CONFIG_KEYS = new Set(['nodes', 'edges', 'minZoom', 'maxZoom', 'snapToGrid', 'snapGrid', 'nodeExtent', 'defaultMarkerEnd', 'connectionRules', 'isValidConnection', ...interactionBoolKeys, 'edgeInteractionWidth', 'connectionRadius'])
+  const HANDLED_FLOW_CONFIG_KEYS = new Set(['nodes', 'edges', 'minZoom', 'maxZoom', 'snapToGrid', 'snapGrid', 'nodeExtent', 'defaultMarkerEnd', 'connectionRules', 'isValidConnection', ...interactionBoolKeys, 'edgeInteractionWidth', 'connectionRadius', 'defaultEdgeType', 'fitView', 'fitViewPadding'])
   const droppedKeys: string[] = []
   for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
@@ -9388,6 +9391,9 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   for (const key of interactionBoolKeys) if (objProp(configArg, key) && literalBool(objProp(configArg, key)) === undefined) droppedKeys.push(`${key} (not a boolean literal)`)
   if (objProp(configArg, 'edgeInteractionWidth') && edgeInteractionWidth === undefined) droppedKeys.push('edgeInteractionWidth (not a numeric literal)')
   if (objProp(configArg, 'connectionRadius') && connectionRadius === undefined) droppedKeys.push('connectionRadius (not a numeric literal)')
+  if (objProp(configArg, 'defaultEdgeType') && defaultEdgeType === undefined) droppedKeys.push('defaultEdgeType (not a string literal)')
+  if (objProp(configArg, 'fitView') && fitView === undefined) droppedKeys.push('fitView (not a boolean literal)')
+  if (objProp(configArg, 'fitViewPadding') && fitViewPadding === undefined) droppedKeys.push('fitViewPadding (not a numeric literal)')
   if (droppedKeys.length > 0) {
     ctx.warnings.push(
       `createFlow declaration \`${name}\`: ${droppedKeys.map((k) => `\`${k}\``).join(', ')} ` +
@@ -9412,6 +9418,9 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     ...interactionBools,
     ...(edgeInteractionWidth !== undefined ? { edgeInteractionWidth } : {}),
     ...(connectionRadius !== undefined ? { connectionRadius } : {}),
+    ...(defaultEdgeType !== undefined ? { defaultEdgeType } : {}),
+    ...(fitView !== undefined ? { fitView } : {}),
+    ...(fitViewPadding !== undefined ? { fitViewPadding } : {}),
     ...(connectionRules !== undefined && connectionRules !== null ? { connectionRules } : {}),
     ...(connectionValidator !== undefined ? { connectionValidator } : {}),
   }

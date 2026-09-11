@@ -322,6 +322,7 @@ public final class PyreonFlowState<T> {
     public let nodesDraggable: Bool; public let nodesConnectable: Bool; public let nodesSelectable: Bool; public let nodesFocusable: Bool
     public let edgesFocusable: Bool; public let nodesDeletable: Bool; public let edgesDeletable: Bool; public let edgesReconnectable: Bool
     public let edgeInteractionWidth: Double; public let connectionRadius: Double; public let pannable: Bool; public let zoomable: Bool
+    public let defaultEdgeType: String; public let fitViewOnLoad: Bool; public let fitViewPadding: Double
     @ObservationIgnored private let connectionValidator: ((PyreonFlowConnection) -> Bool)?
 
     public init(
@@ -338,6 +339,7 @@ public final class PyreonFlowState<T> {
         nodesDraggable: Bool = true, nodesConnectable: Bool = true, nodesSelectable: Bool = true, nodesFocusable: Bool = true,
         edgesFocusable: Bool = true, nodesDeletable: Bool = true, edgesDeletable: Bool = true, edgesReconnectable: Bool = true,
         edgeInteractionWidth: Double = 20, connectionRadius: Double = 0, pannable: Bool = true, zoomable: Bool = true,
+        defaultEdgeType: String = "bezier", fitView: Bool = false, fitViewPadding: Double = 0.1,
         isValidConnection: ((PyreonFlowConnection) -> Bool)? = nil
     ) {
         self.viewport = viewport
@@ -351,6 +353,7 @@ public final class PyreonFlowState<T> {
         self.nodesDraggable = nodesDraggable; self.nodesConnectable = nodesConnectable; self.nodesSelectable = nodesSelectable; self.nodesFocusable = nodesFocusable
         self.edgesFocusable = edgesFocusable; self.nodesDeletable = nodesDeletable; self.edgesDeletable = edgesDeletable; self.edgesReconnectable = edgesReconnectable
         self.edgeInteractionWidth = edgeInteractionWidth; self.connectionRadius = max(0, connectionRadius); self.pannable = pannable; self.zoomable = zoomable
+        self.defaultEdgeType = defaultEdgeType; self.fitViewOnLoad = fitView; self.fitViewPadding = max(0, fitViewPadding)
         self.connectionValidator = isValidConnection
         for node in nodes { insertNode(node) }
         for edge in edges { insertEdge(edge) }
@@ -372,7 +375,7 @@ public final class PyreonFlowState<T> {
     private func insertEdge(_ edge: PyreonFlowEdge) {
         guard !edgeIds.contains(edge.id) else { return }
         var e = edge
-        if e.type == nil { e.type = pyreonFlowDefaultEdgeType }
+        if e.type == nil { e.type = defaultEdgeType }
         edges.append(e)
         edgeIds.insert(e.id)
     }

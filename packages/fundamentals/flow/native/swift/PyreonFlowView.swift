@@ -343,6 +343,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     @State private var interactionsLocked = false
     @State private var connectionDraft: PyreonFlowConnectionDraft?
     @State private var reconnectDraft: PyreonFlowReconnectDraft?
+    @State private var didInitialFit = false
 
     public init(
         state: PyreonFlowState<T>,
@@ -449,8 +450,11 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             }
             .clipped()
             .coordinateSpace(name: "PyreonFlowCanvas")
-            .onAppear { updateContainer(proxy.size) }
-            .onChange(of: proxy.size) { _, size in updateContainer(size) }
+            .onAppear { updateContainer(proxy.size); fitInitiallyIfNeeded() }
+            .onChange(of: proxy.size) { _, size in
+                updateContainer(size)
+                fitInitiallyIfNeeded()
+            }
         }
     }
 
@@ -526,6 +530,12 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
 
     private func updateContainer(_ size: CGSize) {
         state.containerSize = PyreonFlowContainerSize(width: size.width, height: size.height)
+    }
+
+    private func fitInitiallyIfNeeded() {
+        guard state.fitViewOnLoad, !didInitialFit, state.containerSize.width > 0, state.containerSize.height > 0 else { return }
+        didInitialFit = true
+        state.fitView(padding: state.fitViewPadding)
     }
 
     private func nodeDragGesture(_ node: PyreonFlowNode<T>) -> some Gesture {

@@ -971,6 +971,9 @@ export type DeclIR =
       connectionRadius?: number
       pannable?: boolean
       zoomable?: boolean
+      defaultEdgeType?: string
+      fitView?: boolean
+      fitViewPadding?: number
       connectionRules?: Record<string, string[]>
       connectionValidator?: ExprIR
     }

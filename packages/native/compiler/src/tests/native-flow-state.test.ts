@@ -330,10 +330,11 @@ describe('createFlow — v1 decline shapes (loud warning, not silent drop)', () 
     })
 
     it('an UNLOWERED key warns by NAME on both targets', () => {
-      const src = cfg('fitView: true, snapToGrid: true,')
+      const src = cfg('autoHistory: false, fitView: true, snapToGrid: true,')
       for (const target of ['swift', 'kotlin'] as const) {
         const w = (transform(src, { target }).warnings ?? []).join(' ')
-        expect(w).toContain('`fitView`')
+        expect(w).toContain('`autoHistory`')
+        expect(w).not.toContain('`fitView`')
         expect(w).not.toContain('`snapToGrid`')
         expect(w).toContain('behaves differently on web')
       }
@@ -471,6 +472,7 @@ export function C() {
     nodesDraggable: false, nodesConnectable: false, nodesSelectable: false, nodesFocusable: false,
     edgesFocusable: false, nodesDeletable: false, edgesDeletable: false, edgesReconnectable: false,
     edgeInteractionWidth: 32, connectionRadius: 9, pannable: false, zoomable: false,
+    defaultEdgeType: 'step', fitView: true, fitViewPadding: 0.2,
   })
   return (<Stack><Text>{flow.nodes().length}</Text></Stack>)
 }
@@ -504,6 +506,9 @@ export function C() {
       }
       expect(result.code).toContain(`edgeInteractionWidth${assignment} ${target === 'swift' ? '32' : '32.0'}`)
       expect(result.code).toContain(`connectionRadius${assignment} ${target === 'swift' ? '9' : '9.0'}`)
+      expect(result.code).toContain(`defaultEdgeType${assignment} "step"`)
+      expect(result.code).toContain(`${target === 'swift' ? 'fitView' : 'fitViewOnLoad'}${assignment} true`)
+      expect(result.code).toContain(`fitViewPadding${assignment} 0.2`)
       expect(result.code).toContain(target === 'swift' ? 'sourceHandles: [PyreonFlowHandleConfig(id: "out", type: "source", position: .right)]' : 'sourceHandles = listOf(PyreonFlowHandleConfig(id = "out", type = "source", position = PyreonFlowPosition.Right))')
     })
     it(`[${target}] a declaration-time NON-literal edge label/type is named, not silently dropped`, () => {
