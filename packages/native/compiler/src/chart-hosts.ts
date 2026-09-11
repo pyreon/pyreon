@@ -542,6 +542,23 @@ const objectField = (e: ExprIR, name: string): ExprIR | undefined =>
     ? e.fields.find((f) => f.name === name)?.value
     : undefined
 
+function optionFields(
+  e: ExprIR,
+  allowed: readonly string[],
+  path: string,
+  warn: (m: string) => void,
+): void {
+  if (e.kind !== 'object') return
+  for (const field of e.fields) {
+    if (!allowed.includes(field.name)) warn(`<OptionChart ${path}.${field.name}>: this option field does not cross yet; native renders without it.`)
+  }
+}
+
+function optionDatumNumber(e: ExprIR | undefined): number | undefined {
+  if (e?.kind === 'object') return litNumber(objectField(e, 'value'))
+  return litNumber(e)
+}
+
 /**
  * Lower the first static OptionChart families through their existing native
  * hosts. The option facade is intentionally compile-time on native: arbitrary
@@ -567,6 +584,8 @@ export function desugarOptionChart(
     warn('<OptionChart option.series>: native needs a literal series with a string `type`; emitting nothing.')
     return undefined
   }
+
+  optionFields(raw, ['series', 'title', 'legend', 'tooltip', 'xAxis', 'yAxis'], 'option', warn)
 
   for (const a of e.attrs) {
     if (a.kind === 'event' && a.name !== 'selectindex') {
@@ -598,6 +617,7 @@ export function desugarOptionChart(
   if (attrOf(e, 'timelineIndex') !== undefined) warn('<OptionChart timelineIndex>: timeline options do not cross yet; native renders the base option.')
 
   if (kind === 'gauge') {
+    optionFields(series, ['type', 'data', 'min', 'max', 'detail'], 'option.series[0]', warn)
     const data = literalOf(objectField(series, 'data'), resolve)
     const firstDatum = data?.kind === 'array' ? literalOf(data.elements[0], resolve) : undefined
     const value = firstDatum === undefined ? undefined : firstDatum.kind === 'object' ? objectField(firstDatum, 'value') : firstDatum
@@ -619,6 +639,7 @@ export function desugarOptionChart(
   }
 
   if (kind === 'pie') {
+    optionFields(series, ['type', 'data', 'radius', 'label'], 'option.series[0]', warn)
     const data = literalOf(objectField(series, 'data'), resolve)
     if (data?.kind !== 'array') {
       warn('<OptionChart option.series[0].data>: a native pie needs a literal data array; emitting nothing.')
@@ -652,6 +673,103 @@ export function desugarOptionChart(
     const labelShow = label === undefined ? undefined : objectField(label, 'show')
     if (labelShow?.kind === 'literal' && labelShow.value === false) set('showLabels', lit(false))
     return { kind: 'jsx-element', tag: 'PieChart', attrs, children: [] }
+  }
+
+  const cartesianKinds = new Set(['line', 'bar', 'scatter'])
+  if (cartesianKinds.has(kind)) {
+    if (rawSeries?.kind !== 'array' || rawSeries.elements.length === 0) {
+      warn('<OptionChart option.series>: native cartesian options need a non-empty literal series array; emitting nothing.')
+      return undefined
+    }
+    const seriesObjects: Extract<ExprIR, { kind: 'object' }>[] = []
+    for (let si = 0; si < rawSeries.elements.length; si++) {
+      const s = literalOf(rawSeries.elements[si], resolve)
+      const sk = s === undefined ? undefined : litString(objectField(s, 'type'))
+      if (s?.kind !== 'object' || sk === undefined || !cartesianKinds.has(sk)) {
+        warn(`<OptionChart option.series[${si}].type>: this cartesian adapter needs line, bar, or scatter series; emitting nothing.`)
+        return undefined
+      }
+      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle'], `option.series[${si}]`, warn)
+      seriesObjects.push(s)
+    }
+    const xAxis = literalOf(objectField(raw, 'xAxis'), resolve)
+    const categories = xAxis === undefined ? undefined : literalOf(objectField(xAxis, 'data'), resolve)
+    if (categories?.kind !== 'array' || !categories.elements.every((x) => litString(x) !== undefined || litNumber(x) !== undefined)) {
+      warn('<OptionChart option.xAxis.data>: native cartesian options need a literal category array; emitting nothing.')
+      return undefined
+    }
+    optionFields(xAxis!, ['type', 'data', 'show', 'name'], 'option.xAxis', warn)
+    const seriesValues: number[][] = []
+    for (let si = 0; si < seriesObjects.length; si++) {
+      const data = literalOf(objectField(seriesObjects[si]!, 'data'), resolve)
+      if (data?.kind !== 'array' || data.elements.length !== categories.elements.length || data.elements.some((d) => optionDatumNumber(literalOf(d, resolve)) === undefined)) {
+        warn(`<OptionChart option.series[${si}].data>: native cartesian series need one literal numeric value per xAxis category; emitting nothing.`)
+        return undefined
+      }
+      seriesValues.push(data.elements.map((d) => optionDatumNumber(literalOf(d, resolve))!))
+    }
+    // Synthesised row structs infer each field from their first occurrence.
+    // Keep an all-integral series as Int (the mark accessor converts it), but
+    // make EVERY value Double when any row is fractional so later rows cannot
+    // disagree with the first row's generated Swift/Kotlin field type.
+    const seriesFloat = seriesValues.map((values) => values.some((n) => !Number.isInteger(n)))
+    const rows: ExprIR[] = categories.elements.map((x, i) => ({
+      kind: 'object',
+      fields: [
+        { name: 'x', value: lit(String(litString(x) ?? litNumber(x))) },
+        ...seriesValues.map((values, si) => ({
+          name: `s${si}`,
+          value: {
+            kind: 'literal' as const,
+            value: values[i]!,
+            ...(seriesFloat[si] ? { float: true } : {}),
+          },
+        })),
+      ],
+    }))
+    set('data', { kind: 'array', elements: rows })
+    set('x', { kind: 'arrow', params: ['d'], body: { kind: 'member', object: ident('d'), property: 'x' } })
+    const barCount = seriesObjects.filter((s) => litString(objectField(s, 'type')) === 'bar').length
+    const marks: ExprIR[] = seriesObjects.map((s, si) => {
+      const sk = litString(objectField(s, 'type'))!
+      const stacked = objectField(s, 'stack') !== undefined
+      const factory = sk === 'bar' ? (stacked ? 'stackedBars' : barCount > 1 ? 'groupedBars' : 'bars') : sk === 'scatter' ? 'points' : objectField(s, 'areaStyle') !== undefined ? 'area' : 'line'
+      const opts: { name: string; value: ExprIR }[] = []
+      const name = objectField(s, 'name')
+      if (litString(name) !== undefined) opts.push({ name: 'label', value: name! })
+      const item = literalOf(objectField(s, sk === 'line' ? 'lineStyle' : 'itemStyle'), resolve)
+      const color = item === undefined ? undefined : objectField(item, 'color')
+      if (litString(color) !== undefined) opts.push({ name: 'color', value: color! })
+      return {
+        kind: 'call',
+        callee: ident(factory),
+        args: [
+          { kind: 'arrow', params: ['d'], body: { kind: 'member', object: ident('d'), property: `s${si}` } },
+          { kind: 'object', fields: opts },
+        ],
+      }
+    })
+    set('marks', { kind: 'array', elements: marks })
+    const xShow = xAxis === undefined ? undefined : objectField(xAxis, 'show')
+    if (xShow?.kind === 'literal' && xShow.value === false) set('showXAxis', lit(false))
+    const yAxis = literalOf(objectField(raw, 'yAxis'), resolve)
+    if (yAxis !== undefined) {
+      optionFields(yAxis, ['show', 'name', 'min', 'max'], 'option.yAxis', warn)
+      const yShow = objectField(yAxis, 'show')
+      if (yShow?.kind === 'literal' && yShow.value === false) set('showYAxis', lit(false))
+      const ymin = litNumber(objectField(yAxis, 'min'))
+      const ymax = litNumber(objectField(yAxis, 'max'))
+      if (ymin !== undefined && ymax !== undefined) {
+        set('yDomain', {
+          kind: 'object',
+          fields: [
+            { name: 'min', value: { kind: 'literal', value: ymin, float: true } },
+            { name: 'max', value: { kind: 'literal', value: ymax, float: true } },
+          ],
+        })
+      }
+    }
+    return { kind: 'jsx-element', tag: 'PlotChart', attrs, children: [] }
   }
 
   warn(`<OptionChart option.series[0].type>: native option adapter does not lower \`${kind}\` yet; emitting nothing.`)
