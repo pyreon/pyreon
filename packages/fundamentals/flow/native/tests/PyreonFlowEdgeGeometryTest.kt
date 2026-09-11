@@ -13,6 +13,8 @@ import com.pyreon.runtime.pyreonBezierPath
 import com.pyreon.runtime.pyreonFlowEdgeColor
 import com.pyreon.runtime.pyreonFlowEdgePath
 import com.pyreon.runtime.pyreonStraightPath
+import com.pyreon.runtime.pyreonSmoothStepPath
+import com.pyreon.runtime.pyreonStepPath
 import com.pyreon.runtime.pyreonWaypointPath
 
 private fun check(cond: Boolean, msg: String) {
@@ -61,6 +63,18 @@ fun main() {
     check(routedBezier.segments[1].c1x!! > 0.0 && routedBezier.segments[1].c2x!! < 200.0, "bezier routing offsets controls along handle directions")
     val routedWaypoint = pyreonWaypointPath(0.0, 0.0, 100.0, 100.0, listOf(PyreonFlowPathPoint(25.0, 30.0), PyreonFlowPathPoint(75.0, 80.0)))
     check(routedWaypoint.labelX == 75.0 && routedWaypoint.labelY == 80.0 && routedWaypoint.segments.size == 4, "waypoint routing uses the middle waypoint label and every segment")
+    val orientations = listOf(
+        Triple(PyreonFlowPosition.Right, PyreonFlowPosition.Top, listOf("move:0.0,0.0", "line:20.0,0.0", "line:20.0,55.0", "quad:25.0,60.0", "line:100.0,60.0", "line:100.0,80.0")),
+        Triple(PyreonFlowPosition.Bottom, PyreonFlowPosition.Left, listOf("move:0.0,0.0", "line:0.0,20.0", "line:75.0,20.0", "quad:80.0,25.0", "line:80.0,80.0", "line:100.0,80.0")),
+        Triple(PyreonFlowPosition.Right, PyreonFlowPosition.Left, listOf("move:0.0,0.0", "line:20.0,0.0", "line:50.0,0.0", "quad:50.0,40.0", "line:50.0,80.0", "line:80.0,80.0", "line:100.0,80.0")),
+        Triple(PyreonFlowPosition.Bottom, PyreonFlowPosition.Top, listOf("move:0.0,0.0", "line:0.0,20.0", "line:0.0,40.0", "quad:50.0,40.0", "line:100.0,40.0", "line:100.0,60.0", "line:100.0,80.0")),
+    )
+    for ((sourceSide, targetSide, expected) in orientations) {
+        val route = pyreonSmoothStepPath(0.0, 0.0, sourceSide, 100.0, 80.0, targetSide, borderRadius = 5.0, offset = 20.0)
+        check(route.segments.map { "${it.kind}:${it.x},${it.y}" } == expected, "smoothstep $sourceSide->$targetSide exactly matches the web segment packet")
+    }
+    val step = pyreonStepPath(0.0, 0.0, PyreonFlowPosition.Right, 100.0, 80.0, PyreonFlowPosition.Left)
+    check(step == pyreonSmoothStepPath(0.0, 0.0, PyreonFlowPosition.Right, 100.0, 80.0, PyreonFlowPosition.Left, borderRadius = 0.0), "step is exactly smoothstep with a zero-radius corner")
 
     println("PyreonFlowEdgeGeometryTest: all checks passed")
 }

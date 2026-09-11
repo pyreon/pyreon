@@ -21,4 +21,6 @@ Literal `snapToGrid`, `snapGrid`, and `nodeExtent` configuration now initializes
 
 Native edge rendering can now derive straight, bezier, and waypoint segment lists and label anchors directly from endpoint coordinates instead of requiring precomputed bridge payloads.
 
+Native edge routing also covers every horizontal/vertical smooth-step orientation and zero-radius step paths.
+
 Swift compiler validation now uses a disposable module cache, keeping hermetic and sandboxed runs independent of a writable user-level Clang cache.

@@ -329,6 +329,18 @@ struct PyreonFlowStateTests {
         check(routedBezier.segments[1].c1x! > 0 && routedBezier.segments[1].c2x! < 200, "bezier routing offsets controls along handle directions")
         let routedWaypoint = pyreonWaypointPath(sourceX: 0, sourceY: 0, targetX: 100, targetY: 100, waypoints: [PyreonXYPosition(x: 25, y: 30), PyreonXYPosition(x: 75, y: 80)])
         check(routedWaypoint.labelX == 75 && routedWaypoint.labelY == 80 && routedWaypoint.segments.count == 4, "waypoint routing uses the middle waypoint label and every segment")
+        let orientations: [(PyreonFlowPosition, PyreonFlowPosition, [String])] = [
+            (.right, .top, ["move:0.0,0.0", "line:20.0,0.0", "line:20.0,55.0", "quad:25.0,60.0", "line:100.0,60.0", "line:100.0,80.0"]),
+            (.bottom, .left, ["move:0.0,0.0", "line:0.0,20.0", "line:75.0,20.0", "quad:80.0,25.0", "line:80.0,80.0", "line:100.0,80.0"]),
+            (.right, .left, ["move:0.0,0.0", "line:20.0,0.0", "line:50.0,0.0", "quad:50.0,40.0", "line:50.0,80.0", "line:80.0,80.0", "line:100.0,80.0"]),
+            (.bottom, .top, ["move:0.0,0.0", "line:0.0,20.0", "line:0.0,40.0", "quad:50.0,40.0", "line:100.0,40.0", "line:100.0,60.0", "line:100.0,80.0"]),
+        ]
+        for (sourceSide, targetSide, expected) in orientations {
+            let route = pyreonSmoothStepPath(sourceX: 0, sourceY: 0, sourcePosition: sourceSide, targetX: 100, targetY: 80, targetPosition: targetSide, borderRadius: 5, offset: 20)
+            check(route.segments.map { "\($0.kind):\($0.x),\($0.y)" } == expected, "every smoothstep orientation exactly matches the web segment packet")
+        }
+        let nativeStep = pyreonStepPath(sourceX: 0, sourceY: 0, sourcePosition: .right, targetX: 100, targetY: 80, targetPosition: .left)
+        check(nativeStep == pyreonSmoothStepPath(sourceX: 0, sourceY: 0, sourcePosition: .right, targetX: 100, targetY: 80, targetPosition: .left, borderRadius: 0), "step is exactly smoothstep with a zero-radius corner")
 
         // 6. A stroke prebuilds its path/color/dash ONCE, at construction — the
         // draw closure must find nothing left to parse or allocate per edge.

@@ -96,6 +96,32 @@ fun pyreonWaypointPath(sourceX: Double, sourceY: Double, targetX: Double, target
     return PyreonFlowPathResult(label.x, label.y, segments)
 }
 
+fun pyreonSmoothStepPath(sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition = PyreonFlowPosition.Bottom, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition = PyreonFlowPosition.Top, borderRadius: Double = 5.0, offset: Double = 20.0): PyreonFlowPathResult {
+    val hs = sourcePosition == PyreonFlowPosition.Left || sourcePosition == PyreonFlowPosition.Right
+    val ht = targetPosition == PyreonFlowPosition.Left || targetPosition == PyreonFlowPosition.Right
+    val sx = sourceX + if (sourcePosition == PyreonFlowPosition.Right) offset else if (sourcePosition == PyreonFlowPosition.Left) -offset else 0.0
+    val sy = sourceY + if (sourcePosition == PyreonFlowPosition.Bottom) offset else if (sourcePosition == PyreonFlowPosition.Top) -offset else 0.0
+    val tx = targetX + if (targetPosition == PyreonFlowPosition.Right) offset else if (targetPosition == PyreonFlowPosition.Left) -offset else 0.0
+    val ty = targetY + if (targetPosition == PyreonFlowPosition.Bottom) offset else if (targetPosition == PyreonFlowPosition.Top) -offset else 0.0
+    val mx = (sx + tx) / 2; val my = (sy + ty) / 2; val r = borderRadius
+    val segments = when {
+        hs && !ht -> {
+            val runY = if (ty > sy) ty - r else ty + r; val outX = sx + if (tx > sx) r else -r
+            listOf(PyreonFlowEdgeSegment.move(sourceX, sourceY), PyreonFlowEdgeSegment.line(sx, sy), PyreonFlowEdgeSegment.line(sx, runY), PyreonFlowEdgeSegment.quad(outX, ty, sx, ty), PyreonFlowEdgeSegment.line(tx, ty), PyreonFlowEdgeSegment.line(targetX, targetY))
+        }
+        !hs && ht -> {
+            val runX = if (tx > sx) tx - r else tx + r; val outY = sy + if (ty > sy) r else -r
+            listOf(PyreonFlowEdgeSegment.move(sourceX, sourceY), PyreonFlowEdgeSegment.line(sx, sy), PyreonFlowEdgeSegment.line(runX, sy), PyreonFlowEdgeSegment.quad(tx, outY, tx, sy), PyreonFlowEdgeSegment.line(tx, ty), PyreonFlowEdgeSegment.line(targetX, targetY))
+        }
+        hs && ht -> listOf(PyreonFlowEdgeSegment.move(sourceX, sourceY), PyreonFlowEdgeSegment.line(sx, sourceY), PyreonFlowEdgeSegment.line(mx, sourceY), PyreonFlowEdgeSegment.quad(mx, my, mx, sourceY), PyreonFlowEdgeSegment.line(mx, targetY), PyreonFlowEdgeSegment.line(tx, targetY), PyreonFlowEdgeSegment.line(targetX, targetY))
+        else -> listOf(PyreonFlowEdgeSegment.move(sourceX, sourceY), PyreonFlowEdgeSegment.line(sourceX, sy), PyreonFlowEdgeSegment.line(sourceX, my), PyreonFlowEdgeSegment.quad(mx, my, sourceX, my), PyreonFlowEdgeSegment.line(targetX, my), PyreonFlowEdgeSegment.line(targetX, ty), PyreonFlowEdgeSegment.line(targetX, targetY))
+    }
+    return PyreonFlowPathResult((sourceX + targetX) / 2, (sourceY + targetY) / 2, segments)
+}
+
+fun pyreonStepPath(sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition = PyreonFlowPosition.Bottom, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition = PyreonFlowPosition.Top, offset: Double = 20.0) =
+    pyreonSmoothStepPath(sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, 0.0, offset)
+
 /** Builds an UNSCALED Compose `Path` (flow coordinates) from a segment list.
  *  The viewport transform is applied ONCE by the canvas (`withTransform`),
  *  not per point — v1 transformed every point of every edge on every draw.

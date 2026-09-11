@@ -13,7 +13,7 @@ import SwiftUI
 // `DrawCmd`), so a future compiler recognizer over `EdgeSegment` reuses that
 // feature verbatim instead of needing a new one.
 //
-public enum PyreonFlowPosition { case top, right, bottom, left }
+public enum PyreonFlowPosition: Equatable { case top, right, bottom, left }
 
 public struct PyreonFlowPathResult: Equatable {
     public var labelX: Double
@@ -97,6 +97,35 @@ public func pyreonWaypointPath(sourceX: Double, sourceY: Double, targetX: Double
     }
     let label = waypoints[waypoints.count / 2]
     return PyreonFlowPathResult(labelX: label.x, labelY: label.y, segments: segments)
+}
+
+public func pyreonSmoothStepPath(sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition = .bottom, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition = .top, borderRadius: Double = 5, offset: Double = 20) -> PyreonFlowPathResult {
+    let hs = sourcePosition == .left || sourcePosition == .right
+    let ht = targetPosition == .left || targetPosition == .right
+    let sx = sourceX + (sourcePosition == .right ? offset : sourcePosition == .left ? -offset : 0)
+    let sy = sourceY + (sourcePosition == .bottom ? offset : sourcePosition == .top ? -offset : 0)
+    let tx = targetX + (targetPosition == .right ? offset : targetPosition == .left ? -offset : 0)
+    let ty = targetY + (targetPosition == .bottom ? offset : targetPosition == .top ? -offset : 0)
+    let mx = (sx + tx) / 2, my = (sy + ty) / 2, r = borderRadius
+    var segments: [PyreonFlowEdgeSegment]
+    if hs && !ht {
+        let cornerY = ty, runY = cornerY > sy ? cornerY - r : cornerY + r
+        let outX = sx + (tx > sx ? r : -r)
+        segments = [.move(sourceX, sourceY), .line(sx, sy), .line(sx, runY), .quad(outX, cornerY, cx: sx, cy: cornerY), .line(tx, cornerY), .line(targetX, targetY)]
+    } else if !hs && ht {
+        let cornerX = tx, runX = cornerX > sx ? cornerX - r : cornerX + r
+        let outY = sy + (ty > sy ? r : -r)
+        segments = [.move(sourceX, sourceY), .line(sx, sy), .line(runX, sy), .quad(cornerX, outY, cx: cornerX, cy: sy), .line(cornerX, ty), .line(targetX, targetY)]
+    } else if hs && ht {
+        segments = [.move(sourceX, sourceY), .line(sx, sourceY), .line(mx, sourceY), .quad(mx, my, cx: mx, cy: sourceY), .line(mx, targetY), .line(tx, targetY), .line(targetX, targetY)]
+    } else {
+        segments = [.move(sourceX, sourceY), .line(sourceX, sy), .line(sourceX, my), .quad(mx, my, cx: sourceX, cy: my), .line(targetX, my), .line(targetX, ty), .line(targetX, targetY)]
+    }
+    return PyreonFlowPathResult(labelX: (sourceX + targetX) / 2, labelY: (sourceY + targetY) / 2, segments: segments)
+}
+
+public func pyreonStepPath(sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition = .bottom, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition = .top, offset: Double = 20) -> PyreonFlowPathResult {
+    pyreonSmoothStepPath(sourceX: sourceX, sourceY: sourceY, sourcePosition: sourcePosition, targetX: targetX, targetY: targetY, targetPosition: targetPosition, borderRadius: 0, offset: offset)
 }
 
 /// Builds a SwiftUI `Path` from a segment list. Pure — no SwiftUI View
