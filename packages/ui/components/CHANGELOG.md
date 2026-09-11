@@ -1,5 +1,34 @@
 # @pyreon/ui-components
 
+## 0.52.0
+
+### Patch Changes
+
+- Fix `RingProgress` silently vanishing for a NaN percentage. (3e2ce76)
+
+  The value clamp was `Math.max(0, Math.min(100, v ?? 0))`. `?? 0` catches null
+  and undefined but **not** NaN, and `Math.min(100, NaN)` is NaN — so a NaN
+  value produced `stroke-dashoffset="NaN"` on the arc.
+
+  That does not error. An SVG attribute set to NaN simply stops the arc
+  rendering, so the ring disappears at exactly the moment the data is
+  degenerate — a percentage computed as `done / total` is NaN when both are 0,
+  which is the ordinary empty state of any progress display.
+
+  `Infinity` was already handled (it clamps to 100); NaN and a non-numeric
+  value were not. The clamp now coerces and checks `Number.isFinite` before
+  clamping, falling back to 0.
+
+- Updated dependencies:
+  - @pyreon/core@0.52.0
+  - @pyreon/reactivity@0.52.0
+  - @pyreon/unistyle@0.52.0
+  - @pyreon/elements@0.52.0
+  - @pyreon/rocketstyle@0.52.0
+  - @pyreon/ui-primitives@0.52.0
+  - @pyreon/coolgrid@0.52.0
+  - @pyreon/ui-theme@0.50.2
+
 ## 0.51.0
 
 ### Patch Changes

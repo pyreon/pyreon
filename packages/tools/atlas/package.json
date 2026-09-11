@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/atlas",
-  "version": "0.51.0",
-  "description": "AI-native component workbench for the Pyreon ecosystem \u2014 derives, verifies, and serves a machine-readable component catalog.",
+  "version": "0.52.0",
+  "description": "AI-native component workbench for the Pyreon ecosystem — derives, verifies, and serves a machine-readable component catalog.",
   "license": "MIT",
   "publishConfig": {
     "access": "public"
