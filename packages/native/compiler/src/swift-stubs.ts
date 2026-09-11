@@ -1159,6 +1159,11 @@ public final class PyreonFlowState<T> {
   public func moveSelectedNodes(_ dx: Double, _ dy: Double) {}
   public func focusNode(_ nodeId: String, _ focusZoom: Double? = nil) {}
 }
+@available(iOS 17.0, macOS 14.0, *)
+public struct PyreonFlowView<T, NodeContent: View>: View {
+  public init(state: PyreonFlowState<T>, edgeColor: String = "#999999", edgeWidth: Double = 1.5, @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>) -> NodeContent) {}
+  public var body: some View { EmptyView() }
+}
 public struct PyreonI18n {
   // fallbackLocale is OPTIONAL and DEFAULTED in the real PyreonI18n. The stub
   // made it required, so \`createI18n({ locale, messages })\` — the two-argument

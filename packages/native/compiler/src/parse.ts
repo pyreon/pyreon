@@ -2628,8 +2628,8 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
     '@pyreon/flow',
     {
       // `createFlow` lowers (PyreonFlowState — CRUD/selection/viewport/graph
-      // queries); the JSX components (`<Flow>` and everything it renders —
-      // Background/Controls/MiniMap/Handle/NodeToolbar/NodeResizer/Panel) are
+      // queries), and `<Flow>` lowers to the native interactive host. Optional
+      // chrome (Background/Controls/MiniMap/Handle/NodeToolbar/NodeResizer/Panel) is
       // SVG/DOM rendering + pointer-event gesture handling with NO native
       // emit AT ALL. Without this entry those names emitted VERBATIM as if
       // they were real SwiftUI/Compose types — `Flow(instance: flow) {
@@ -2641,8 +2641,8 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
       // port yet either — name them so the warning doesn't imply only the
       // JSX layer is missing.
       advice:
-        '`createFlow({ nodes, edges })` LOWERS to the native PyreonFlowState engine (v1: literal config; CRUD/selection/pan-zoom/graph-queries) — mutate it from event handlers, and draw its edges with `PyreonFlowEdgeCanvas` (SwiftUI Canvas / Compose Canvas) from hand-written native code. The `<Flow>` JSX component and everything it renders (Background/Controls/MiniMap/Handle/NodeToolbar/NodeResizer/Panel), `useFlow`, `computeLayout`, and the edge-path helpers (getBezierPath/getSmoothStepPath/…) have NO native emit — host the full JSX-driven editor via the `@pyreon/flow/webview` bridge instead',
-      supported: new Set(['createFlow']),
+        '`createFlow({ nodes, edges })` and `<Flow instance={flow}>` LOWER to the native PyreonFlowState/PyreonFlowView engine. Optional chrome (Background/Controls/MiniMap/Handle/NodeToolbar/NodeResizer/Panel), custom renderer maps, `useFlow`, `computeLayout`, and standalone edge-path helpers still have no shared-source native emit; keep those behind platform branches or use the `@pyreon/flow/webview` bridge',
+      supported: new Set(['createFlow', 'Flow']),
     },
   ],
   [

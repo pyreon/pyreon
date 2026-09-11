@@ -17,9 +17,9 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'the `<Flow>`/`<Background>`/`<Controls>`/`<MiniMap>`/`<Handle>` JSX components are SVG/DOM rendering + pointer-event gesture handling, with no native emit; `createFlow` now lowers (see nativeFrontend) — its JSX host does not yet, so shared source rendering the components still needs the `<WebView>` bridge subpath (or hand-written native SwiftUI/Compose calling PyreonFlowState + PyreonFlowEdgeCanvas directly)',
+      'the core `createFlow` state and `<Flow instance={flow}>` host lower natively, while the optional `<Background>`/`<Controls>`/`<MiniMap>`/`<Handle>` chrome and custom renderer maps still depend on SVG/DOM behavior and require explicit native follow-ups or the WebView bridge',
     nativeFrontend:
-      'PyreonFlowState — `createFlow({ nodes, edges, minZoom, maxZoom })` (v1: literal node/edge config plus numeric-literal zoom bounds; CRUD, selection, pan/zoom/fitView, graph queries — every OTHER `FlowConfig` key warns by name rather than dropping silently, since an unlowered `fitView`/`snapToGrid` makes one source line behave differently per target) lowers to the native @Observable/`remember` port, plus `PyreonFlowEdgeCanvas` (SwiftUI Canvas / Compose Canvas) for drawing the built-in edge path geometry (bezier/smoothstep/straight/step/waypoint — the same 4-command vocabulary `EdgeSegment` in `types.ts` encodes) from hand-written native code; the `<Flow>` JSX auto-lowering that would let ONE `.tsx` render the diagram natively with no hand-wiring is a tracked follow-up',
+      'PyreonFlowState lowers `createFlow` configuration, models, and operations to @Observable/Compose state. `<Flow instance={flow}>` lowers to the interactive `PyreonFlowView` SwiftUI/Compose host, including state-derived nodes and built-in edge geometry, selection, node drag, canvas pan/zoom, visibility, container measurement, and accessibility labels. Custom node/edge renderer maps and optional Flow chrome remain named diagnostics rather than silent drops.',
   },
   peerDeps: ['@pyreon/runtime-dom'],
   longExample: `import { createFlow, useFlow, Flow, Background, Controls, MiniMap, Handle, Position, type NodeComponentProps } from '@pyreon/flow'

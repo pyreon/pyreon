@@ -6421,6 +6421,7 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // <WebView> — native host (Android WebView via PyreonWebView) for
   // embedding web-only-rich viz inside a Compose native shell.
   if (tag === 'WebView') return emitKotlinWebView(e)
+  if (tag === 'Flow' && canAliasIntercept(tag, '@pyreon/flow')) return emitKotlinFlowHost(e)
   // `@pyreon/charts/plot` family hosts → PyreonChartCanvas over the generated
   // engine (chart-hosts.ts); accessor-prop hosts warn by name.
   if (isChartHostTag(tag)) return emitKotlinChartHost(e, indent)
@@ -6499,6 +6500,23 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // 8 other canonical primitives fall through to generic emit until
   // real apps demand each (see emit-swift.ts comment).
   return emitKotlinGeneric(e, indent)
+}
+
+function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'instance')
+  if (attr === undefined || attr.kind !== 'attr' || attr.value === undefined) {
+    _emitWarnings.push('<Flow> requires `instance={flow}` for native lowering — the host was dropped.')
+    return 'Box {}'
+  }
+  for (const name of ['nodeTypes', 'edgeTypes'] as const) {
+    if (e.attrs.some((a) => a.kind === 'attr' && a.name === name)) {
+      _emitWarnings.push(`<Flow ${name}={…}> custom renderer maps are not lowered natively yet; the native default node/edge renderer is used.`)
+    }
+  }
+  if (e.children.length > 0) {
+    _emitWarnings.push('<Flow> children are web chrome and are not lowered inside the native host yet; Background/Controls/MiniMap remain explicit follow-ups.')
+  }
+  return `PyreonFlowView(state = ${emitKotlinExpr(attr.value, 0)}) { pyreonNode ->\n  Text(text = pyreonNode.id)\n}`
 }
 
 /**

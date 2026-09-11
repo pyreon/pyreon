@@ -7824,6 +7824,7 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   // <WebView> — native host (WKWebView via PyreonWebView) for embedding
   // web-only-rich viz (charts / flow / tables) inside a native shell.
   if (tag === 'WebView') return emitSwiftWebView(e)
+  if (tag === 'Flow' && canAliasIntercept(tag, '@pyreon/flow')) return emitSwiftFlowHost(e)
   // `@pyreon/charts/plot` family hosts → PyreonChartCanvas over the generated
   // engine (chart-hosts.ts); accessor-prop hosts warn by name.
   if (isChartHostTag(tag)) return emitSwiftChartHost(e, indent)
@@ -7925,6 +7926,23 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   // real platform). Ship as real apps demand each.
   // Generic SwiftUI View by tag name.
   return emitSwiftGeneric(e, indent)
+}
+
+function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'instance')
+  if (attr === undefined || attr.kind !== 'attr' || attr.value === undefined) {
+    _emitWarnings.push('<Flow> requires `instance={flow}` for native lowering — the host was dropped.')
+    return 'EmptyView()'
+  }
+  for (const name of ['nodeTypes', 'edgeTypes'] as const) {
+    if (e.attrs.some((a) => a.kind === 'attr' && a.name === name)) {
+      _emitWarnings.push(`<Flow ${name}={…}> custom renderer maps are not lowered natively yet; the native default node/edge renderer is used.`)
+    }
+  }
+  if (e.children.length > 0) {
+    _emitWarnings.push('<Flow> children are web chrome and are not lowered inside the native host yet; Background/Controls/MiniMap remain explicit follow-ups.')
+  }
+  return `PyreonFlowView(state: ${emitSwiftExpr(attr.value, 0)}) { pyreonNode in\n  Text(pyreonNode.id)\n}`
 }
 
 /**

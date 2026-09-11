@@ -136,6 +136,35 @@ describe('createFlow — Kotlin lowering', () => {
   })
 })
 
+describe('<Flow> native host lowering', () => {
+  const source = `
+    import { createFlow, Flow } from '@pyreon/flow'
+    export function App() {
+      const flow = createFlow({
+        nodes: [{ id: 'a', position: { x: 0, y: 0 }, data: { label: 'Start' } }],
+        edges: [],
+      })
+      return <Flow instance={flow} />
+    }
+  `
+
+  it('emits the SwiftUI host instead of an unresolved web component', () => {
+    const result = transform(source, { target: 'swift' })
+    expect(result.code).toContain('PyreonFlowView(state: flow) { pyreonNode in')
+    expect(result.code).toContain('Text(pyreonNode.id)')
+    expect(result.warnings.some((warning) => warning.includes('Flow (from @pyreon/flow)'))).toBe(false)
+    if (isSwiftcAvailable()) expect(validateSwiftWithStubs(result.code).ok).toBe(true)
+  })
+
+  it('emits the Compose host instead of an unresolved web component', () => {
+    const result = transform(source, { target: 'kotlin' })
+    expect(result.code).toContain('PyreonFlowView(state = flow) { pyreonNode ->')
+    expect(result.code).toContain('Text(text = pyreonNode.id)')
+    expect(result.warnings.some((warning) => warning.includes('Flow (from @pyreon/flow)'))).toBe(false)
+    if (isKotlincAvailable()) expect(validateKotlin(result.code).ok).toBe(true)
+  })
+})
+
 describe('createFlow — v1 decline shapes (loud warning, not silent drop)', () => {
   it('a non-literal nodes source declines with a named reason', () => {
     const src = `

@@ -1675,6 +1675,15 @@ class PyreonFlowState<T>(
   fun focusNode(nodeId: String, focusZoom: Double? = null) {}
 }
 
+@Composable
+fun <T> PyreonFlowView(
+  state: PyreonFlowState<T>,
+  modifier: Modifier = Modifier,
+  edgeColor: String = "#999999",
+  edgeWidth: Double = 1.5,
+  nodeContent: @Composable (PyreonFlowNode<T>) -> Unit,
+) {}
+
 // PyreonPermissions — mirror of @pyreon/native-runtime-kotlin's
 // PyreonPermissions.kt surface the emit touches: callable shape
 // (operator invoke), not / cannot / all / any. Added with the
