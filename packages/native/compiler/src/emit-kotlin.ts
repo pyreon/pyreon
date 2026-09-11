@@ -10895,7 +10895,9 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   if (labels !== undefined) lets.push(`val pyreonSeriesLabels: List<String> = ${emitKotlinExpr(labels, indent)}`)
   const a11ySeries = labels === undefined
     ? 'pyreonSeries.map { A11ySeries(label = it.label, values = it.values, kind = it.kind, values2 = it.values2, errLow = it.errLow, errHigh = it.errHigh, rValues = it.rValues) }'
-    : 'pyreonSeries.mapIndexed { pyreonI, pyreonS -> A11ySeries(label = pyreonSeriesLabels.getOrElse(pyreonI) { pyreonS.label }, values = pyreonS.values, kind = pyreonS.kind, values2 = pyreonS.values2, errLow = pyreonS.errLow, errHigh = pyreonS.errHigh, rValues = pyreonS.rValues) }'
+    : legend.toggling
+      ? 'pyreonSeriesAll.mapIndexedNotNull { pyreonI, pyreonS -> if (pyreonHidden.contains(pyreonI)) null else A11ySeries(label = pyreonSeriesLabels.getOrElse(pyreonI) { pyreonS.label }, values = pyreonS.values, kind = pyreonS.kind, values2 = pyreonS.values2, errLow = pyreonS.errLow, errHigh = pyreonS.errHigh, rValues = pyreonS.rValues) }'
+      : 'pyreonSeries.mapIndexed { pyreonI, pyreonS -> A11ySeries(label = pyreonSeriesLabels.getOrElse(pyreonI) { pyreonS.label }, values = pyreonS.values, kind = pyreonS.kind, values2 = pyreonS.values2, errLow = pyreonS.errLow, errHigh = pyreonS.errHigh, rValues = pyreonS.rValues) }'
   const describe = `describeChart(A11yInput(title = ${typeof plotTitleRaw === 'string' ? JSON.stringify(plotTitleRaw) : 'null'}, categories = pyreonCats, series = ${a11ySeries}, format = ${yFormat ?? 'null'}))`
   return kotlinFrameHostWithDensity(e, lets, cmds, tap, W, H, hasWidth, indent, windowed || tap !== '', overlay, describe)
 }
