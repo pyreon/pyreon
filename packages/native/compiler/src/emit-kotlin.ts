@@ -86,7 +86,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -266,6 +266,28 @@ function kotlinStructCtorArgs(
       return `${f.name} = ${wantsFloat && isInt ? `(${raw}).toDouble()` : raw}`
     })
     .join(', ')
+}
+
+/**
+ * An integer literal in a position whose type is KNOWN to be Double, marked so
+ * it emits `4.0` rather than `4`.
+ *
+ * `Record<string, Double> = { '2024-01-03': 4 }` is the natural way to write a
+ * count — a calendar's values ARE integers — and it emitted an Int-valued map
+ * against a Double-valued annotation, which does not compile.
+ *
+ * Applied at the sites that KNOW the element type (a map literal's values, an
+ * array literal's elements), deliberately not at the literal emit reading the
+ * ambient expected type: that type describes an ENCLOSING position, so it also
+ * covers an array index, the argument of `Double(n - 1)` and the operands of
+ * `level == 2` — all Int contexts, all corrupted by a blanket rewrite. That
+ * version was written, and the chart engine's drift lock caught it turning
+ * `slope[0]` into `slope[0.0]`.
+ */
+function asFloatLiteral(v: ExprIR, t: TypeIR | undefined): ExprIR {
+  if (t === undefined || !typeWantsFloat(t)) return v
+  if (v.kind !== 'literal' || typeof v.value !== 'number' || !Number.isInteger(v.value) || v.float === true) return v
+  return { ...v, float: true }
 }
 
 function typeWantsFloat(t: TypeIR): boolean {
@@ -4058,6 +4080,13 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           })
         }
       }
+      // The chart decimators consume `List<Double>`, while TypeScript's
+      // `number[]` may be emitted as `List<Int>` from integral initializers.
+      // Normalize the numeric vector at this typed boundary.
+      if (e.callee.kind === 'identifier' && (e.callee.name === 'lttbIndices' || e.callee.name === 'minMaxBuckets') && e.args.length >= 2) {
+        const args = e.args.map((arg, i) => i === 1 ? `(${emitKotlinExpr(arg, indent)}).map { it.toDouble() }` : emitKotlinExpr(arg, indent))
+        return `${kotlinIdent(e.callee.name)}(${args.join(', ')})`
+      }
       // Field-array accessor unwrap: zero-arg `items()`/`length()` on a
       // PyreonFieldArray decl (and `value()` on a For-item param over its
       // items) are web signal READS — on Kotlin they are properties, so the
@@ -5912,7 +5941,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       if (_expectedTypeKotlin?.kind === 'map' && (!e.spreads || e.spreads.length === 0)) {
         const vT = _expectedTypeKotlin.value
         const entries = e.fields
-          .map((f) => `${JSON.stringify(f.name)} to ${withExpectedTypeKotlin(vT, () => emitKotlinExpr(f.value, indent))}`)
+          .map((f) => `${JSON.stringify(f.name)} to ${withExpectedTypeKotlin(vT, () => emitKotlinExpr(asFloatLiteral(f.value, vT), indent))}`)
           .join(', ')
         return `mutableMapOf(${entries})`
       }
@@ -9820,7 +9849,7 @@ const KOTLIN_CHART_TARGET: ChartHostTarget = {
     options === 'null'
       ? `${struct}(${fields.map(([f, v]) => `${f} = ${v}`).join(', ')})`
       : `(${options}).let { it.copy(${fields.map(([f, v]) => `${f} = it.${f} ?: ${v}`).join(', ')}) }`,
-  pieOptions: (a) => `PieOptions(innerRadius = ${a.innerRatio}, showLabels = true, labelColor = "#ffffff", fontSize = ${a.fontSize ?? '11.0'})`,
+  pieOptions: (a) => `PieOptions(innerRadius = ${a.innerRatio}, showLabels = ${a.showLabels ?? 'true'}, labelColor = "#ffffff", fontSize = ${a.fontSize ?? '11.0'})`,
   theme: () => `ChartTheme(axis = ${JSON.stringify(CHART_THEME_DEFAULT.axis)}, grid = ${JSON.stringify(CHART_THEME_DEFAULT.grid)}, label = ${JSON.stringify(CHART_THEME_DEFAULT.label)}, fontSize = ${CHART_THEME_DEFAULT.fontSize})`,
 }
 
@@ -9853,6 +9882,7 @@ function kotlinBollingerSpread(
   indent: number,
   lets: string[],
   palette: readonly string[],
+  namePrefix = 'pyreon',
 ): string[] | 'unsupported' {
   const call = arg.kind === 'call' && arg.callee.kind === 'identifier' && arg.callee.name === 'bollinger' ? arg : undefined
   if (call === undefined) {
@@ -9880,13 +9910,13 @@ function kotlinBollingerSpread(
   if (opts === 'unsupported') return 'unsupported'
   const win = Math.trunc(w.value)
   const rowMap = kotlinPlotRowMap(rows, `(${body}).toDouble()`, windowed)
-  lets.push(`val pyreonRaw${k}: List<Double> = ${rowMap}`)
-  lets.push(`val pyreonUpper${k}: List<Double> = bollingerEdge(pyreonRaw${k}, ${win}, ${sd}, 1.0)`)
-  lets.push(`val pyreonLower${k}: List<Double> = bollingerEdge(pyreonRaw${k}, ${win}, ${sd}, -1.0)`)
-  lets.push(`val pyreonMid${k}: List<Double> = smaValues(pyreonRaw${k}, ${win})`)
+  lets.push(`val ${namePrefix}Raw${k}: List<Double> = ${rowMap}`)
+  lets.push(`val ${namePrefix}Upper${k}: List<Double> = bollingerEdge(${namePrefix}Raw${k}, ${win}, ${sd}, 1.0)`)
+  lets.push(`val ${namePrefix}Lower${k}: List<Double> = bollingerEdge(${namePrefix}Raw${k}, ${win}, ${sd}, -1.0)`)
+  lets.push(`val ${namePrefix}Mid${k}: List<Double> = smaValues(${namePrefix}Raw${k}, ${win})`)
   return [
-    `Series(kind = "band", values = pyreonUpper${k}, ${[...opts, `values2 = pyreonLower${k}`].join(', ')})`,
-    `Series(kind = "line", values = pyreonMid${k}, ${opts.join(', ')})`,
+    `Series(kind = "band", values = ${namePrefix}Upper${k}, ${[...opts, `values2 = ${namePrefix}Lower${k}`].join(', ')})`,
+    `Series(kind = "line", values = ${namePrefix}Mid${k}, ${opts.join(', ')})`,
   ]
 }
 
@@ -9978,6 +10008,10 @@ function emitKotlinChartHostInner(e: Extract<ExprIR, { kind: 'jsx-element' }>, i
   if (tag === GRAMMAR_CHART_HOST) {
     // The grammar desugars to the host it names (`<PlotChart marks>`, or a family host for `<Arc>` / `<Stage>` / `<Cell>` / `<Candle>`) and re-enters here as that element.
     return emitKotlinChartHost(desugarChartGrammar(e, (w) => _emitWarnings.push(w)), indent)
+  }
+  if (tag === 'OptionChart') {
+    const lowered = desugarOptionChart(e, (n) => _moduleConstExprsKotlin.get(n), (w) => _emitWarnings.push(w))
+    return lowered === undefined ? 'Box {}' : emitKotlinChartHost(lowered, indent)
   }
   if (Object.hasOwn(GRAMMAR_MARK_TAGS, tag) || Object.hasOwn(GRAMMAR_FAMILY_TAGS, tag) || GRAMMAR_CONFIG_TAGS.includes(tag)) {
     _emitWarnings.push(`<${tag}> only means something as a child of <Plot>; on its own it renders nothing.`)
@@ -10198,7 +10232,7 @@ function emitKotlinAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     lets.push('var pyreonTip by remember { mutableStateOf(listOf<String>()) }')
     lets.push('var pyreonTipAt by remember { mutableStateOf(PyreonChartPt(0.0, 0.0)) }')
   }
-  const args: ChartHostArgs = { data: [], options, W: chrome.width(W), H: chrome.height(H), gutter: '0.0', innerRatio: kotlinChartDouble(e, 'innerRadius', 0, indent), fontSize: tf.fontSize }
+  const args: ChartHostArgs = { data: [], options, W: chrome.width(W), H: chrome.height(H), gutter: '0.0', innerRatio: kotlinChartDouble(e, 'innerRadius', 0, indent), showLabels: readStaticAttrKotlin(e, 'showLabels') === false ? 'false' : 'true', fontSize: tf.fontSize }
   const tipCmds = tooltip
     ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${KOTLIN_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${KOTLIN_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, ::pyreonChartMeasure)`
     : ''
@@ -10511,7 +10545,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   if (windowed) {
     lets.push('var pyreonZoom by remember { mutableStateOf(ZoomWindow(start = 0.0, end = 1.0)) }')
     lets.push(`val pyreonRange: SliceRange = sliceRange(pyreonZoom, ${data}.size)`)
-    lets.push(`val pyreonRows = ${data}.subList(pyreonRange.from, pyreonRange.to)`)
+    lets.push(`val pyreonSourceRows = ${data}.subList(pyreonRange.from, pyreonRange.to)`)
     // `onZoom` — one effect keyed on the window state covers pinch, pan, a
     // preset tap and the navigator alike, as the web's single observer does.
     const onZoom = e.attrs.find((a) => a.kind === 'event' && a.name === 'zoom')
@@ -10529,19 +10563,40 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     lets.push('var pyreonBrushB by remember { mutableStateOf(-1.0) }')
   }
   if (legend.toggling) lets.push('var pyreonHidden by remember { mutableStateOf(listOf<Int>()) }')
+  // `selectedMode` — the Swift half's twin. A TAP pins a datum, which is the
+  // half of the events model a touch target actually has; `emphasis`'s hover
+  // band and `onHighlight` are mouseover-driven and stay declined. The engine
+  // draws a pinned datum from `ChartSpec.emphasis`; this is the state saying
+  // which. Declared HERE rather than beside the spec arg because Compose reads
+  // the state from `lets`, which is emitted before the spec is built.
+  const pinMode = readStaticAttrKotlin(e, 'selectedMode')
+  const pinning = pinMode === 'single' || pinMode === 'multiple'
+  if (pinning) lets.push('var pyreonSelected by remember { mutableStateOf(listOf<Int>()) }')
   if (legend.paging) lets.push('var pyreonLegendPage by remember { mutableStateOf(0.0) }')
-  const rows = windowed ? 'pyreonRows' : data
+  const maxPoints = chartAttrExprKotlin(e, 'maxPoints')
+  const fullA11y = windowed || maxPoints !== undefined
+  let decimated = false
+  let rows = windowed ? 'pyreonSourceRows' : data
   // The theme's palette colours marks with no `color` (the theme builder already warned about a bad literal, so this parse stays silent).
   const pyreonPalette = chartThemePalette(chartAttrExprKotlin(e, 'theme'), tag, () => {}, _chartThemeScope === null ? undefined : (_chartThemeScope.palette as readonly string[]))
   const series: string[] = []
+  const fullA11ySeries: string[] = []
   let navValues = ''
   for (let k = 0; k < marksV.elements.length; k++) {
     const m = marksV.elements[k]!
     // `...bollinger(...)` — mirror of the Swift emitter.
     if (m.kind === 'spread') {
+      if (k === 0 && maxPoints !== undefined) {
+        _emitWarnings.push(`<${tag} maxPoints>: the first mark is a spread indicator, whose derived values are not available until after mark expansion on native; row thinning is skipped.`)
+      }
       const expanded = kotlinBollingerSpread(m.argument, tag, k, rows, windowed, indent, lets, pyreonPalette)
       if (expanded === 'unsupported') return 'Box {}'
       for (const line of expanded) series.push(line)
+      if (fullA11y) {
+        const full = kotlinBollingerSpread(m.argument, tag, k, data, false, indent, lets, pyreonPalette, 'pyreonA11y')
+        if (full === 'unsupported') return 'Box {}'
+        for (const line of full) fullA11ySeries.push(line)
+      }
       continue
     }
     const callee = m.kind === 'call' && m.callee.kind === 'identifier' ? m.callee.name : undefined
@@ -10569,16 +10624,37 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     }
     const body = kotlinAccessorExpr(y, tag, `mark ${k + 1}`, indent)
     if (body === 'unsupported') return 'Box {}'
+    if (k === 0 && maxPoints !== undefined) {
+      const max = `(${emitKotlinExpr(maxPoints, indent)}).toInt()`
+      lets.push(`val pyreonMaxPoints: Int = ${max}`)
+      lets.push(`val pyreonDecimateValues: List<Double> = ${kotlinPlotRowMap(rows, `(${body}).toDouble()`, windowed)}`)
+      lets.push(`val pyreonKeep: List<Int> = if (pyreonMaxPoints >= 3 && ${rows}.size > pyreonMaxPoints) lttbIndices(listOf(), pyreonDecimateValues, pyreonMaxPoints) else ${rows}.indices.toList()`)
+      lets.push(`val pyreonRows = pyreonKeep.map { ${rows}[it] }`)
+      rows = 'pyreonRows'
+      decimated = true
+    }
     const optsArg = bubble || isBand || indicator?.takesWindow === true ? m.args[2] : m.args[1]
     const opts = kotlinMarkOptionArgs(optsArg, tag, k, pyreonPalette)
     if (opts === 'unsupported') return 'Box {}'
-    const rowMap = kotlinPlotRowMap(rows, `(${body}).toDouble()`, windowed)
+    const rowMap = kotlinPlotRowMap(rows, `(${body}).toDouble()`, windowed, decimated)
     const derivedValues = indicator === undefined ? undefined : kotlinIndicatorValues(indicator, m, rowMap, tag, k)
     if (derivedValues === 'unsupported') return 'Box {}'
     lets.push(`val pyreonValues${k}: List<Double> = ${derivedValues ?? rowMap}`)
     // The bounds ride the same row map the values do (mirror of the Swift emitter).
-    const errArgs = kotlinMarkErrorArgs(optsArg, tag, k, rows, windowed, indent, lets)
+    const errArgs = kotlinMarkErrorArgs(optsArg, tag, k, rows, windowed, indent, lets, decimated)
     if (errArgs === 'unsupported') return 'Box {}'
+    let a11yErrArgs: string[] = []
+    if (fullA11y && errArgs.length > 0) {
+      const fullErr = kotlinMarkErrorArgs(optsArg, tag, k, data, false, indent, lets, false, 'pyreonA11y')
+      if (fullErr === 'unsupported') return 'Box {}'
+      a11yErrArgs = fullErr
+    }
+    if (fullA11y) {
+      const fullRows = kotlinPlotRowMap(data, `(${body}).toDouble()`, false)
+      const fullValues = indicator === undefined ? fullRows : kotlinIndicatorValues(indicator, m, fullRows, tag, k)
+      if (fullValues === 'unsupported') return 'Box {}'
+      lets.push(`val pyreonA11yValues${k}: List<Double> = ${fullValues}`)
+    }
     if (k === 0 && navigating) navValues = kotlinPlotRowMap(data, `(${body}).toDouble()`, false)
     if (bubble) {
       const r = m.args[1]
@@ -10591,11 +10667,17 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
       const range = kotlinBubbleRange(optsArg)
       // The RAW r values beside the pixel radii — the mirror of the Swift
       // emitter; the table and tooltip report the datum, not the radius.
-      lets.push(`val pyreonRRaw${k}: List<Double> = ${kotlinPlotRowMap(rows, `(${rBody}).toDouble()`, windowed)}`)
+      lets.push(`val pyreonRRaw${k}: List<Double> = ${kotlinPlotRowMap(rows, `(${rBody}).toDouble()`, windowed, decimated)}`)
       lets.push(`val pyreonRadii${k}: List<Double> = bubbleRadii(pyreonRRaw${k}, ${range[0]}, ${range[1]})`)
       const at = opts.findIndex((o) => o.startsWith('showValues =')) + 1
       const withRadii = [...opts.slice(0, at), `rValues = pyreonRRaw${k}`, `radii = pyreonRadii${k}`, ...opts.slice(at)]
       series.push(`Series(kind = "points", values = pyreonValues${k}, ${[...withRadii, ...errArgs].join(', ')})`)
+      if (fullA11y) {
+        lets.push(`val pyreonA11yRRaw${k}: List<Double> = ${kotlinPlotRowMap(data, `(${rBody}).toDouble()`, false)}`)
+        const a11yAt = opts.findIndex((o) => o.startsWith('showValues =')) + 1
+        const a11yOpts = [...opts.slice(0, a11yAt), `rValues = pyreonA11yRRaw${k}`, ...opts.slice(a11yAt)]
+        fullA11ySeries.push(`Series(kind = "points", values = pyreonA11yValues${k}, ${[...a11yOpts, ...a11yErrArgs].join(', ')})`)
+      }
     } else if (isBand) {
       const lo = m.args[0]
       if (lo === undefined) {
@@ -10604,10 +10686,15 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
       }
       const loBody = kotlinAccessorExpr(lo, tag, `mark ${k + 1} lower bound`, indent)
       if (loBody === 'unsupported') return 'Box {}'
-      lets.push(`val pyreonLow${k}: List<Double> = ${kotlinPlotRowMap(rows, `(${loBody}).toDouble()`, windowed)}`)
+      lets.push(`val pyreonLow${k}: List<Double> = ${kotlinPlotRowMap(rows, `(${loBody}).toDouble()`, windowed, decimated)}`)
       series.push(`Series(kind = "band", values = pyreonValues${k}, ${[...opts, ...errArgs, `values2 = pyreonLow${k}`].join(', ')})`)
+      if (fullA11y) {
+        lets.push(`val pyreonA11yLow${k}: List<Double> = ${kotlinPlotRowMap(data, `(${loBody}).toDouble()`, false)}`)
+        fullA11ySeries.push(`Series(kind = "band", values = pyreonA11yValues${k}, ${[...opts, ...a11yErrArgs, `values2 = pyreonA11yLow${k}`].join(', ')})`)
+      }
     } else {
       series.push(`Series(kind = ${JSON.stringify(kind)}, values = pyreonValues${k}, ${[...opts, ...errArgs].join(', ')})`)
+      if (fullA11y) fullA11ySeries.push(`Series(kind = ${JSON.stringify(kind)}, values = pyreonA11yValues${k}, ${[...opts, ...a11yErrArgs].join(', ')})`)
     }
   }
   if (legend.toggling) {
@@ -10616,19 +10703,22 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   } else {
     lets.push(`val pyreonSeries: List<Series> = listOf(${series.join(', ')})`)
   }
+  if (fullA11y) lets.push(`val pyreonA11ySeriesSource: List<Series> = listOf(${fullA11ySeries.join(', ')})`)
   const xAcc = chartAttrExprKotlin(e, 'x')
   if (xAcc !== undefined) {
     const body = kotlinAccessorExpr(xAcc, tag, 'x', indent)
     if (body === 'unsupported') return 'Box {}'
-    lets.push(`val pyreonCats: List<String> = ${kotlinPlotRowMap(rows, body, windowed)}`)
+    lets.push(`val pyreonCats: List<String> = ${kotlinPlotRowMap(rows, body, windowed, decimated)}`)
+    if (fullA11y) lets.push(`val pyreonA11yCats: List<String> = ${kotlinPlotRowMap(data, body, false)}`)
   } else {
     lets.push('val pyreonCats: List<String> = listOf<String>()')
+    if (fullA11y) lets.push('val pyreonA11yCats: List<String> = listOf<String>()')
   }
   const xValueAcc = chartAttrExprKotlin(e, 'xValue')
   if (xValueAcc !== undefined) {
     const body = kotlinAccessorExpr(xValueAcc, tag, 'xValue', indent)
     if (body === 'unsupported') return 'Box {}'
-    lets.push(`val pyreonXValues: List<Double> = ${kotlinPlotRowMap(rows, `(${body}).toDouble()`, windowed)}`)
+    lets.push(`val pyreonXValues: List<Double> = ${kotlinPlotRowMap(rows, `(${body}).toDouble()`, windowed, decimated)}`)
   }
   const present = PLOT_UNLOWERED_PROPS.filter((p) => chartAttrExprKotlin(e, p) !== undefined || e.attrs.some((a) => a.kind === 'event' && 'on' + a.name === p.toLowerCase()))
   if (!windowed && e.attrs.some((a) => a.kind === 'event' && a.name === 'zoom')) _emitWarnings.push('<PlotChart onZoom>: needs `dataZoom`, `zoomPresets` or `navigator` — without a window there is nothing to report.')
@@ -10665,6 +10755,8 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     return v === undefined ? String(fallback) : typeof raw === 'boolean' ? String(raw) : emitKotlinExpr(v, indent)
   }
   const below = `${belowNav}${navigating ? ' - pyreonNavigator.height' : ''}`
+  const locale = chartAttrExprKotlin(e, 'locale')
+  if (locale !== undefined) lets.push(`val pyreonLocale: String = ${emitKotlinExpr(locale, indent)}`)
   const specArgs = [
     `width = ${chrome.width(W)}`,
     `height = ${chrome.height(H)}${below}`,
@@ -10678,9 +10770,9 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   // Mirror of the Swift emitter — ChartSpec field 9, before `yFormat`.
   const yDom = chartAttrExprKotlin(e, 'yDomain')
   if (yDom !== undefined) specArgs.push(`yDomain = ${emitKotlinExpr(yDom, indent)}`)
-  const yFormat = kotlinChartFormatter(e, 'format', indent)
+  const yFormat = kotlinChartFormatter(e, 'format', indent) ?? (locale === undefined ? undefined : 'pyreonLocaleNumberFormatter(pyreonLocale)')
   if (yFormat !== undefined) specArgs.push(`yFormat = ${yFormat}`)
-  const xFormat = kotlinChartFormatter(e, 'xFormat', indent)
+  const xFormat = kotlinChartFormatter(e, 'xFormat', indent) ?? (locale !== undefined && readStaticAttrKotlin(e, 'xTime') === true ? 'pyreonLocaleDateFormatter(pyreonLocale)' : undefined)
   if (xFormat !== undefined) specArgs.push(`xFormat = ${xFormat}`)
   const y2 = chartAttrExprKotlin(e, 'y2Domain')
   if (y2 !== undefined) specArgs.push(`y2Domain = ${emitKotlinExpr(y2, indent)}`)
@@ -10695,6 +10787,14 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const mk = chartAttrExprKotlin(e, 'markers')
   if (mk !== undefined) specArgs.push(`markers = ${withExpectedTypeKotlin({ kind: 'array', element: { kind: 'typeRef', name: 'PointMarker', args: [] } }, () => emitKotlinExpr(mk, indent))}`)
   if (kotlinChartAnimating(e, 'PlotChart')) specArgs.push('progress = pyreonEntrance')
+  if (pinning) {
+    const selected = decimated
+      ? `pyreonSelected.mapNotNull { pyreonGlobal -> pyreonKeep.indexOf(pyreonGlobal${windowed ? ' - pyreonRange.from' : ''}).takeIf { it >= 0 } }`
+      : windowed
+        ? 'pyreonSelected.map { it - pyreonRange.from }.filter { it >= 0 && it < pyreonRows.size }'
+        : 'pyreonSelected'
+    specArgs.push(`emphasis = Emphasis(highlight = -1, selected = ${selected})`)
+  }
   // The batch-2 spec switches: a literal each, straight onto the spec.
   for (const p of PLOT_SPEC_LITERAL_PROPS) {
     const raw = readStaticAttrKotlin(e, p.name)
@@ -10736,9 +10836,12 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const cmds = `${chrome.mirror(painted)}${tipCmds}`
   const localHit = (x: string, y: string): string => `plotHitBars(pyreonSpec, ::pyreonChartMeasure, ${x}, ${chrome.top === '0.0' ? y : `${y} - pyreonTop`})`
   const hit = (x: string, y: string): string => {
-    if (tooltip) return windowed ? '(if (pyreonLocal < 0) -1 else pyreonLocal + pyreonRange.from)' : 'pyreonLocal'
-    const local = localHit(x, y)
-    return windowed ? `run { val pyreonHit = ${local}; if (pyreonHit < 0) -1 else pyreonHit + pyreonRange.from }` : local
+    const local = tooltip ? 'pyreonLocal' : 'pyreonHit'
+    const mapped = decimated ? `pyreonKeep[${local}]` : local
+    const global = windowed ? `${mapped} + pyreonRange.from` : mapped
+    if (tooltip) return `(if (${local} < 0) -1 else ${global})`
+    if (!windowed && !decimated) return localHit(x, y)
+    return `run { val pyreonHit = ${localHit(x, y)}; if (pyreonHit < 0) -1 else ${global} }`
   }
   const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
   // Two x's, because the chrome and the plot are laid out in different
@@ -10751,11 +10854,22 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const plotX = chrome.plotX(rawTapX)
   const tapYExpr = '(pyreonTap.y / pyreonDensity).toDouble()'
   let tap = ''
-  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging || brushing || tooltip) {
-    const selectOnly = onSel?.kind === 'event' ? kotlinChartSelectBody(onSel.handler, hit(plotX, tapYExpr), indent) : ''
-    const select = tooltip
+  // `pinning` joins the gate: a chart with ONLY `selectedMode` has no other
+  // reason to install a tap, and without it the pin never runs.
+  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging || brushing || tooltip || pinning) {
+    // With pinning on, the hit is computed ONCE into a local: the pin, the
+    // change callback and `onSelect` all name the same pick.
+    const pick = pinning ? 'pyreonPick' : hit(plotX, tapYExpr)
+    const selectOnly = onSel?.kind === 'event' ? kotlinChartSelectBody(onSel.handler, pick, indent) : ''
+    const onSelChange = chartEventHandler(e, 'selectchange')
+    const pinBody = pinning
+      ? `val pyreonPick = ${hit(plotX, tapYExpr)}; val pyreonNextSel = pinSelection(pyreonSelected, pyreonPick, ${pinMode === 'multiple'}); pyreonSelected = pyreonNextSel` +
+        (onSelChange === undefined ? '' : `; ${kotlinChartSelectBody(onSelChange, 'pyreonNextSel', indent)}`)
+      : ''
+    const selectBase = tooltip
       ? `val pyreonLocal = ${localHit(plotX, tapYExpr)}; pyreonTip = if (pyreonLocal < 0) listOf() else ${tipLines}; pyreonTipAt = PyreonChartPt(${rawTapX}, ${tapYExpr})${selectOnly === '' ? '' : `; ${selectOnly}`}`
       : selectOnly
+    const select = pinBody === '' ? selectBase : selectBase === '' ? pinBody : `${pinBody}; ${selectBase}`
     const decls: string[] = []
     const branches: string[] = []
     if (legend.paging) {
@@ -10822,9 +10936,16 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const overlay = navigating
     ? `Box(modifier = Modifier.fillMaxWidth().offset(y = ((${H})${below}).dp).height((pyreonNavigator.height).dp).pointerInput(Unit) { awaitEachGesture { val pyreonDown = awaitFirstDown(requireUnconsumed = false); pyreonNavAnchor = pyreonZoom; pyreonNavDx = 0.0; pyreonNavKind = navigatorHit(pyreonNavigator.strip, pyreonZoom, (pyreonDown.position.x / pyreonDensity).toDouble()); drag(pyreonDown.id) { pyreonChange -> val pyreonStep = pyreonChange.positionChange(); pyreonChange.consume(); pyreonNavDx = pyreonNavDx + (pyreonStep.x / pyreonDensity).toDouble(); pyreonZoom = navigatorDrag(pyreonNavKind, pyreonNavAnchor, pyreonNavDx / pyreonNavigator.strip.w) }; pyreonNavKind = 0 } })`
     : undefined
-  // The data description the web `aria-label` carries (mirror of the Swift emitter).
+  // The data description always uses every source row and mark, independent
+  // of paint-only zoom, thinning and legend visibility (mirror of Swift/web).
   const plotTitleRaw = readStaticAttrKotlin(e, 'title')
-  const describe = `describeChart(A11yInput(title = ${typeof plotTitleRaw === 'string' ? JSON.stringify(plotTitleRaw) : 'null'}, categories = pyreonCats, series = pyreonSeries.map { A11ySeries(label = it.label, values = it.values, kind = it.kind, values2 = it.values2, errLow = it.errLow, errHigh = it.errHigh, rValues = it.rValues) }, format = ${yFormat ?? 'null'}))`
+  const labels = chartAttrExprKotlin(e, 'seriesLabels')
+  if (labels !== undefined) lets.push(`val pyreonSeriesLabels: List<String> = ${emitKotlinExpr(labels, indent)}`)
+  const a11ySource = fullA11y ? 'pyreonA11ySeriesSource' : legend.toggling ? 'pyreonSeriesAll' : 'pyreonSeries'
+  const a11ySeries = labels === undefined
+    ? `${a11ySource}.map { A11ySeries(label = it.label, values = it.values, kind = it.kind, values2 = it.values2, errLow = it.errLow, errHigh = it.errHigh, rValues = it.rValues) }`
+    : `${a11ySource}.mapIndexed { pyreonI, pyreonS -> A11ySeries(label = pyreonSeriesLabels.getOrElse(pyreonI) { pyreonS.label }, values = pyreonS.values, kind = pyreonS.kind, values2 = pyreonS.values2, errLow = pyreonS.errLow, errHigh = pyreonS.errHigh, rValues = pyreonS.rValues) }`
+  const describe = `describeChart(A11yInput(title = ${typeof plotTitleRaw === 'string' ? JSON.stringify(plotTitleRaw) : 'null'}, categories = ${fullA11y ? 'pyreonA11yCats' : 'pyreonCats'}, series = ${a11ySeries}, format = ${yFormat ?? 'null'}))`
   return kotlinFrameHostWithDensity(e, lets, cmds, tap, W, H, hasWidth, indent, windowed || tap !== '', overlay, describe)
 }
 
@@ -11005,6 +11126,8 @@ function kotlinMarkErrorArgs(
   windowed: boolean,
   indent: number,
   lets: string[],
+  decimated = false,
+  namePrefix = 'pyreon',
 ): string[] | 'unsupported' {
   if (opts === undefined || opts.kind !== 'object') return []
   const low = opts.fields.find((f) => f.name === 'errorLow')?.value
@@ -11017,9 +11140,9 @@ function kotlinMarkErrorArgs(
   const lowBody = kotlinAccessorExpr(low, tag, `mark ${seriesIndex + 1} errorLow`, indent)
   const highBody = kotlinAccessorExpr(high, tag, `mark ${seriesIndex + 1} errorHigh`, indent)
   if (lowBody === 'unsupported' || highBody === 'unsupported') return 'unsupported'
-  lets.push(`val pyreonErrLow${seriesIndex}: List<Double> = ${kotlinPlotRowMap(rows, `(${lowBody}).toDouble()`, windowed)}`)
-  lets.push(`val pyreonErrHigh${seriesIndex}: List<Double> = ${kotlinPlotRowMap(rows, `(${highBody}).toDouble()`, windowed)}`)
-  return [`errLow = pyreonErrLow${seriesIndex}`, `errHigh = pyreonErrHigh${seriesIndex}`]
+  lets.push(`val ${namePrefix}ErrLow${seriesIndex}: List<Double> = ${kotlinPlotRowMap(rows, `(${lowBody}).toDouble()`, windowed, decimated)}`)
+  lets.push(`val ${namePrefix}ErrHigh${seriesIndex}: List<Double> = ${kotlinPlotRowMap(rows, `(${highBody}).toDouble()`, windowed, decimated)}`)
+  return [`errLow = ${namePrefix}ErrLow${seriesIndex}`, `errHigh = ${namePrefix}ErrHigh${seriesIndex}`]
 }
 
 /** A `Formatter` prop as a Kotlin `(Double) -> String`: a bare engine formatter becomes a function reference; a factory call or an arrow lowers as is. */
@@ -11051,10 +11174,12 @@ function kotlinBubbleRange(opts: ExprIR | undefined): [string, string] {
 // no component-level splice. `detectTransformGestures` reports INCREMENTAL
 // pan and zoom per event, which maps straight onto the engine's window math.
 
-function kotlinPlotRowMap(rows: string, body: string, zoomed: boolean): string {
-  if (!zoomed) return `${rows}.mapIndexed { pyreonI, pyreonD -> ${body} }`
+function kotlinPlotRowMap(rows: string, body: string, zoomed: boolean, decimated = false): string {
+  if (!zoomed && !decimated) return `${rows}.mapIndexed { pyreonI, pyreonD -> ${body} }`
   if (!/\bpyreonI\b/.test(body)) return `${rows}.mapIndexed { _, pyreonD -> ${body} }`
-  return `${rows}.mapIndexed { pyreonJ, pyreonD -> val pyreonI = pyreonJ + pyreonRange.from; ${body} }`
+  const local = decimated ? 'pyreonKeep[pyreonJ]' : 'pyreonJ'
+  const global = zoomed ? `${local} + pyreonRange.from` : local
+  return `${rows}.mapIndexed { pyreonJ, pyreonD -> val pyreonI = ${global}; ${body} }`
 }
 
 /** `kotlinFrameHostWithTap` that can also force the density line (the transform gesture reads it even without a tap). */
@@ -11152,4 +11277,3 @@ function kotlinBrushHandler(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: st
   _emitWarnings.push(`<${tag} onBrush>: must be a NAMED handler (\`const onBrush = (r: BrushRange | null) => …\`) on native — an inline arrow is not lowered; the brush still selects, without the callback.`)
   return undefined
 }
-

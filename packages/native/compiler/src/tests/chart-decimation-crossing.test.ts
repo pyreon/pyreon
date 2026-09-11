@@ -39,6 +39,17 @@ export function Big(): JSX.Element {
 }
 `
 
+const MAX_POINTS = `
+import { signal } from '@pyreon/reactivity'
+import { PlotChart, line } from '@pyreon/charts/plot'
+interface Row { label: string; v: number }
+export function Big(): JSX.Element {
+  const rows = signal<Row[]>([])
+  const selected = signal<number[]>([])
+  return <PlotChart data={rows()} x={(d: Row) => d.label} marks={[line((d: Row, i: number) => d.v + i)]} maxPoints={500} dataZoom selectedMode="multiple" onSelectIndex={(i: number) => { selected.set([i]) }} />
+}
+`
+
 describe('the decimation arithmetic crosses', () => {
   for (const target of ['swift', 'kotlin'] as const) {
     it(`${target}: pre-decimating with lttbIndices raises no warning`, () => {
@@ -62,23 +73,51 @@ describe('the decimation arithmetic crosses', () => {
     })
   }
 
-  it('an Int-valued series is refused by BOTH toolchains, and warns on neither', () => {
-    // The reason the remedy text carries `* 1.0`. A TS `number` field with no
-    // fractional initializer lowers to Int, `lttbIndices` takes Double, and the
-    // emitters do not coerce an argument to an engine parameter — so a user
-    // writing perfectly good TypeScript gets a green compile pass and a native
-    // build that fails on a type they never wrote. Pinned as a KNOWN gap rather
-    // than left as folklore; the fix is argument coercion in both emitters.
+  it('maxPoints lowers row thinning and original-index mapping on Swift', () => {
+    const r = transform(MAX_POINTS, { target: 'swift' })
+    expect(r.warnings ?? [], (r.warnings ?? []).join('\n')).toEqual([])
+    expect(r.code).toContain('lttbIndices([], pyreonDecimateValues, pyreonMaxPoints)')
+    expect(r.code).toContain('let pyreonRows = pyreonKeep.map { pyreonSourceRows[$0] }')
+    expect(r.code).toContain('let pyreonI = pyreonKeep[pyreonJ] + pyreonRange.from')
+    expect(r.code).toContain('pyreonKeep[pyreonHit] + pyreonRange.from')
+    expect(r.code).toContain('pyreonKeep.firstIndex(of: pyreonGlobal - pyreonRange.from)')
+  })
+
+  it('maxPoints lowers the same semantics on Kotlin', () => {
+    const r = transform(MAX_POINTS, { target: 'kotlin' })
+    expect(r.warnings ?? [], (r.warnings ?? []).join('\n')).toEqual([])
+    expect(r.code).toContain('lttbIndices(listOf(), pyreonDecimateValues, pyreonMaxPoints)')
+    expect(r.code).toContain('val pyreonRows = pyreonKeep.map { pyreonSourceRows[it] }')
+    expect(r.code).toContain('val pyreonI = pyreonKeep[pyreonJ] + pyreonRange.from')
+    expect(r.code).toContain('pyreonKeep[pyreonHit] + pyreonRange.from')
+    expect(r.code).toContain('pyreonKeep.indexOf(pyreonGlobal - pyreonRange.from)')
+  })
+
+  it('the maxPoints Swift emit typechecks', { skip: !isSwiftcAvailable() }, () => {
+    const r = validateSwiftWithStubs(transform(MAX_POINTS, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+
+  it('the maxPoints Kotlin emit typechecks', { skip: !isKotlincAvailable() }, () => {
+    const r = validateKotlin(transform(MAX_POINTS, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+
+  it('a number-annotated series with integer literals is accepted by both toolchains', () => {
+    // Both current toolchains accept the generated call. Keep this compile
+    // contract positive instead of pinning an obsolete compiler failure.
     const withoutWidening = PRE_DECIMATED.replace('rows().map((r) => r.v * 1.0)', 'rows().map((r) => r.v)')
     for (const target of ['swift', 'kotlin'] as const) {
       const r = transform(withoutWidening, { target })
       expect(r.warnings ?? [], `${target} started warning — update the remedy text`).toEqual([])
     }
     if (isSwiftcAvailable()) {
-      expect(validateSwiftWithStubs(transform(withoutWidening, { target: 'swift' }).code).ok).toBe(false)
+      const result = validateSwiftWithStubs(transform(withoutWidening, { target: 'swift' }).code)
+      expect(result.ok, result.error ?? '').toBe(true)
     }
     if (isKotlincAvailable()) {
-      expect(validateKotlin(transform(withoutWidening, { target: 'kotlin' }).code).ok).toBe(false)
+      const result = validateKotlin(transform(withoutWidening, { target: 'kotlin' }).code)
+      expect(result.ok, result.error ?? '').toBe(true)
     }
   })
 

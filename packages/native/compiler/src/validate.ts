@@ -482,7 +482,13 @@ export function swiftChartAugmentation(source: string): string {
   const start = canvas.indexOf('public struct PyreonChartPt')
   const end = canvas.indexOf('/// Parse the engine')
   const types = start >= 0 && end > start ? canvas.slice(start, end) : ''
-  return SWIFT_CHART_VIEW_STUBS + '\n' + types + '\n' + engine.replace(SWIFT_STUBBED_IMPORTS, '')
+  // The extracted canvas section owns the real locale helpers. Keep their tiny
+  // fallback declarations only when the runtime source is absent; concatenating
+  // both made every unrelated chart-host swiftc test fail with redeclarations.
+  const viewStubs = SWIFT_CHART_VIEW_STUBS
+    .replace('public func pyreonLocaleNumberFormatter(_ tag: String) -> (Double) -> String { { String($0) } }\n', '')
+    .replace('public func pyreonLocaleDateFormatter(_ tag: String) -> (Double) -> String { { String($0) } }\n', '')
+  return viewStubs + '\n' + types + '\n' + engine.replace(SWIFT_STUBBED_IMPORTS, '')
 }
 
 /** The Kotlin stub text a chart-host emit needs beyond the Compose bundle; `''` when no host is present. */

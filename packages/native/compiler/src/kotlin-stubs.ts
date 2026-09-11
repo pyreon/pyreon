@@ -2145,4 +2145,6 @@ fun pyreonShiftCmdsXY(cmds: List<PyreonDrawCmd>, dx: Double, dy: Double): List<P
 fun pyreonMirrorCmds(cmds: List<PyreonDrawCmd>, width: Double): List<PyreonDrawCmd> = cmds
 fun pyreonChartDouble(v: Double): Double = v
 fun pyreonChartDouble(v: Int): Double = v.toDouble()
+fun pyreonLocaleNumberFormatter(tag: String): (Double) -> String = { it.toString() }
+fun pyreonLocaleDateFormatter(tag: String): (Double) -> String = { it.toString() }
 `

@@ -98,13 +98,13 @@ export function C() { return <SankeyChart animate={false} nodes={[]} /> }`,
     expect(r.warnings.join('\n')).toContain('<SankeyChart>: needs a `links` attribute on native')
     expect(r.code).toContain('EmptyView()')
   })
-  it('a still-unlowered host (OptionChart) warns by name instead of naming a view that does not exist', () => {
+  it('an unsupported OptionChart shape warns by option path instead of naming a view that does not exist', () => {
     const r = transform(
       `import { OptionChart } from '@pyreon/charts/plot'
 export function C() { return <OptionChart option={{ series: [] }} /> }`,
       { target: 'swift' },
     )
-    expect(r.warnings.join('\n')).toContain('<OptionChart> has no native lowering yet')
+    expect(r.warnings.join('\n')).toContain('<OptionChart option.series>')
     expect(r.code).not.toContain('OptionChart(')
   })
   it('importing from @pyreon/charts/plot does not raise the web-only package warning', () => {
@@ -717,9 +717,9 @@ describe('chart hosts — <PlotChart dataZoom> as pinch + pan over a fraction wi
     // The state sits on the struct, before `var body` — not inside the builder.
     expect(r.code.indexOf('@State private var pyreonZoom')).toBeLessThan(r.code.indexOf('var body: some View'))
     expect(r.code).toContain('let pyreonRange: SliceRange = sliceRange(pyreonZoom, DAYS.count)')
-    expect(r.code).toContain('let pyreonRows = Array(DAYS[pyreonRange.from..<pyreonRange.to])')
-    expect(r.code).toContain('let pyreonValues1: [Double] = pyreonRows.enumerated().map { (pyreonJ, pyreonD) -> Double in let pyreonI = pyreonJ + pyreonRange.from; return pyreonChartDouble(pyreonD.avg + pyreonI) }')
-    expect(r.code).toContain('let pyreonCats: [String] = pyreonRows.enumerated().map { (_, pyreonD) -> String in pyreonD.label }')
+    expect(r.code).toContain('let pyreonSourceRows = Array(DAYS[pyreonRange.from..<pyreonRange.to])')
+    expect(r.code).toContain('let pyreonValues1: [Double] = pyreonSourceRows.enumerated().map { (pyreonJ, pyreonD) -> Double in let pyreonI = pyreonJ + pyreonRange.from; return pyreonChartDouble(pyreonD.avg + pyreonI) }')
+    expect(r.code).toContain('let pyreonCats: [String] = pyreonSourceRows.enumerated().map { (_, pyreonD) -> String in pyreonD.label }')
     expect(r.code).toContain('.simultaneousGesture(MagnificationGesture().onChanged { pyreonScale in pyreonZoom = zoomWindow(pyreonZoomAnchor, 1.0 / Double(pyreonScale), 0.5) }.onEnded { _ in pyreonZoomAnchor = pyreonZoom })')
     expect(r.code).toContain('.simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { pyreonDrag in pyreonZoom = panWindow(pyreonZoomAnchor, -Double(pyreonDrag.translation.width) / Double(pyreonGeo.size.width)) }.onEnded { _ in pyreonZoomAnchor = pyreonZoom })')
     expect(r.code).toContain('if abs(pyreonTap.translation.width) < 6.0 && abs(pyreonTap.translation.height) < 6.0 { let i = { () -> Int in let pyreonHit = plotHitBars(pyreonSpec, pyreonChartMeasure, Double(pyreonTap.location.x), Double(pyreonTap.location.y)); return pyreonHit < 0 ? -1 : pyreonHit + pyreonRange.from }()')
@@ -729,8 +729,8 @@ describe('chart hosts — <PlotChart dataZoom> as pinch + pan over a fraction wi
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('var pyreonZoom by remember { mutableStateOf(ZoomWindow(start = 0.0, end = 1.0)) }')
     expect(r.code).toContain('val pyreonRange: SliceRange = sliceRange(pyreonZoom, DAYS.size)')
-    expect(r.code).toContain('val pyreonRows = DAYS.subList(pyreonRange.from, pyreonRange.to)')
-    expect(r.code).toContain('val pyreonValues1: List<Double> = pyreonRows.mapIndexed { pyreonJ, pyreonD -> val pyreonI = pyreonJ + pyreonRange.from; (pyreonD.avg + pyreonI).toDouble() }')
+    expect(r.code).toContain('val pyreonSourceRows = DAYS.subList(pyreonRange.from, pyreonRange.to)')
+    expect(r.code).toContain('val pyreonValues1: List<Double> = pyreonSourceRows.mapIndexed { pyreonJ, pyreonD -> val pyreonI = pyreonJ + pyreonRange.from; (pyreonD.avg + pyreonI).toDouble() }')
     expect(r.code).toContain('.pointerInput(Unit) { detectTransformGestures { _, pyreonPan, pyreonZoomBy, _ -> pyreonZoom = panWindow(zoomWindow(pyreonZoom, 1.0 / pyreonZoomBy.toDouble(), 0.5), -(pyreonPan.x / pyreonDensity).toDouble() / pyreonW) } }')
     expect(r.code).toContain('run { val pyreonHit = plotHitBars(pyreonSpec, ::pyreonChartMeasure, (pyreonTap.x / pyreonDensity).toDouble(), (pyreonTap.y / pyreonDensity).toDouble()); if (pyreonHit < 0) -1 else pyreonHit + pyreonRange.from }')
   })
@@ -1013,7 +1013,7 @@ describe('chart hosts — <PlotChart navigator> as the engine-laid-out slider st
     expect(r.code).toContain('@State private var pyreonNavKind: Int = 0')
     expect(r.code).toContain('@State private var pyreonNavAnchor: ZoomWindow = ZoomWindow(start: 0.0, end: 1.0)')
     // The window slices the rows the PLOT draws; the navigator sees every row.
-    expect(r.code).toContain('let pyreonValues0: [Double] = pyreonRows.enumerated().map { (_, pyreonD) -> Double in pyreonChartDouble(pyreonD.hits) }')
+    expect(r.code).toContain('let pyreonValues0: [Double] = pyreonSourceRows.enumerated().map { (_, pyreonD) -> Double in pyreonChartDouble(pyreonD.hits) }')
     // Thinned to the strip's width — one min/max pair per 2px column, the same
     // envelope the web host draws. Before this the native strip resolved and
     // painted every row on every frame.
@@ -1321,8 +1321,8 @@ describe('chart hosts — CalendarChart + ParallelChart lower through literal ad
       expect(colored.code).toContain('renderParallel(')
     }
   })
-  it('OptionChart is the only host left without a lowering (Calendar/Parallel cross through adapters, Map through projected shapes)', () => {
-    expect(Object.keys(UNLOWERED_CHART_HOSTS)).toEqual(['OptionChart'])
+  it('every chart host now has a native entry point (unsupported literal shapes diagnose inside their adapter)', () => {
+    expect(Object.keys(UNLOWERED_CHART_HOSTS)).toEqual([])
   })
   it.skipIf(!isSwiftcAvailable())('swiftc (stub bundle + real engine) accepts both hosts', () => {
     for (const src of [CALENDAR, PARALLEL]) {
@@ -1448,11 +1448,13 @@ describe('PlotChart events/actions props on native', () => {
   it('warn BY NAME — attrs AND event props — and the chart still lowers', () => {
     for (const target of ['swift', 'kotlin'] as const) {
       const r = transform(EVENTS_MODEL, { target })
-      // Both props in ONE warning, each carrying its own reason.
-      const w = r.warnings.find((x) => x.includes('`selectedMode`'))
-      expect(w, 'no selectedMode warning').toBeDefined()
-      expect(w).toContain('`onHighlight` (')
-      expect(w).toContain('are not lowered on native')
+      // `selectedMode` LOWERS now (a tap pins), so it is gone from the warning
+      // — asserted in BOTH directions, because a prop dropping out of a
+      // warning silently is how a stale reason survives.
+      const w = r.warnings.find((x) => x.includes('`onHighlight`'))
+      expect(w, 'no onHighlight warning').toBeDefined()
+      expect(w).not.toContain('`selectedMode`')
+      expect(w).toContain('not lowered on native')
       expect(r.code).toContain('renderChart(')
     }
   })
