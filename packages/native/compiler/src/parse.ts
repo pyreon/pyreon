@@ -9055,6 +9055,31 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     }
     return out
   }
+  type ParsedMarker = { type: string; color?: string; width?: number; height?: number; strokeWidth?: number }
+  const literalMarker = (n: AnyNode | undefined): ParsedMarker | null | undefined => {
+    if (!n) return undefined
+    if (n.type === 'NullLiteral' || (n.type === 'Literal' && n.value === null)) return null
+    const direct = literalString(n)
+    const memberName = n.type === 'StaticMemberExpression' || n.type === 'MemberExpression' ? (n.property as AnyNode | undefined)?.name : undefined
+    const markerType = (direct ?? (typeof memberName === 'string' ? memberName : '')).toLowerCase()
+    if (markerType === 'arrow' || markerType === 'arrowclosed') return { type: markerType }
+    if (n.type !== 'ObjectExpression') return undefined
+    const typeNode = objProp(n, 'type')
+    const directType = literalString(typeNode)
+    const typeMember = typeNode?.type === 'StaticMemberExpression' || typeNode?.type === 'MemberExpression' ? (typeNode.property as AnyNode | undefined)?.name : undefined
+    const type = (directType ?? (typeof typeMember === 'string' ? typeMember : '')).toLowerCase()
+    if (type !== 'arrow' && type !== 'arrowclosed') return undefined
+    const result: ParsedMarker = { type }
+    const colorNode = objProp(n, 'color'); const color = literalString(colorNode)
+    if (colorNode && color === undefined) return undefined
+    if (color !== undefined) result.color = color
+    for (const key of ['width', 'height', 'strokeWidth'] as const) {
+      const valueNode = objProp(n, key); const value = literalNumber(valueNode)
+      if (valueNode && value === undefined) return undefined
+      if (value !== undefined) result[key] = value
+    }
+    return result
+  }
 
   const droppedNodeFields = new Set<string>()
   const droppedEdgeFields = new Set<string>()
@@ -9095,6 +9120,8 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     reconnectable?: boolean
     interactionWidth?: number
     pathOptions?: { curvature?: number; borderRadius?: number; offset?: number }
+    markerStart?: ParsedMarker
+    markerEnd?: ParsedMarker | null
     waypoints?: { x: ExprIR; y: ExprIR }[]
   }[] = []
   let shapeOk = true
@@ -9189,6 +9216,10 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       const edgeBoolFields = ['focusable', 'hidden', 'deletable', 'reconnectable'] as const
       const interactionWidth = literalNumber(objProp(edgeLit, 'interactionWidth'))
       const pathOptionsNode = objProp(edgeLit, 'pathOptions')
+      const markerStartNode = objProp(edgeLit, 'markerStart')
+      const markerEndNode = objProp(edgeLit, 'markerEnd')
+      const markerStart = literalMarker(markerStartNode)
+      const markerEnd = literalMarker(markerEndNode)
       const pathOptions = (() => {
         if (!pathOptionsNode) return undefined
         if (pathOptionsNode.type !== 'ObjectExpression') return null
@@ -9211,6 +9242,8 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       for (const k of edgeBoolFields) if (objProp(edgeLit, k) && literalBool(objProp(edgeLit, k)) === undefined) droppedEdgeFields.add(`${k} (not a boolean literal)`)
       if (objProp(edgeLit, 'interactionWidth') && interactionWidth === undefined) droppedEdgeFields.add('interactionWidth (not a numeric literal)')
       if (pathOptions === null) droppedEdgeFields.add('pathOptions (not a literal numeric options object)')
+      if (markerStartNode && markerStart === undefined) droppedEdgeFields.add('markerStart (not a literal marker)')
+      if (markerEndNode && markerEnd === undefined) droppedEdgeFields.add('markerEnd (not a literal marker or null)')
       if (waypointsNode && waypoints === undefined) droppedEdgeFields.add('waypoints (not an array literal of { x, y })')
       edgesOut.push({
         id,
@@ -9229,6 +9262,8 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
         })),
         ...(interactionWidth !== undefined ? { interactionWidth } : {}),
         ...(pathOptions !== undefined && pathOptions !== null ? { pathOptions } : {}),
+        ...(markerStart !== undefined && markerStart !== null ? { markerStart } : {}),
+        ...(markerEndNode && markerEnd !== undefined ? { markerEnd } : {}),
         ...(waypoints !== undefined ? { waypoints } : {}),
       })
     }
@@ -9283,6 +9318,8 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     return [literalNumber(lo[0]), literalNumber(lo[1]), literalNumber(hi[0]), literalNumber(hi[1])]
   })()
   const connectionRulesNode = objProp(configArg, 'connectionRules')
+  const defaultMarkerEndNode = objProp(configArg, 'defaultMarkerEnd')
+  const defaultMarkerEnd = literalMarker(defaultMarkerEndNode)
   const connectionRules = (() => {
     if (connectionRulesNode === undefined) return undefined
     if (connectionRulesNode.type !== 'ObjectExpression') return null
@@ -9318,7 +9355,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (droppedEdgeFields.size > 0) {
     ctx.warnings.push(droppedFlowFieldsWarning(`createFlow declaration \`${name}\``, 'edge', [...droppedEdgeFields]))
   }
-  const HANDLED_FLOW_CONFIG_KEYS = new Set(['nodes', 'edges', 'minZoom', 'maxZoom', 'snapToGrid', 'snapGrid', 'nodeExtent', 'connectionRules', 'isValidConnection'])
+  const HANDLED_FLOW_CONFIG_KEYS = new Set(['nodes', 'edges', 'minZoom', 'maxZoom', 'snapToGrid', 'snapGrid', 'nodeExtent', 'defaultMarkerEnd', 'connectionRules', 'isValidConnection'])
   const droppedKeys: string[] = []
   for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
@@ -9343,6 +9380,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (objProp(configArg, 'snapGrid') !== undefined && snapGrid === undefined) droppedKeys.push('snapGrid (not a numeric literal)')
   if (extentNode !== undefined && (nodeExtent === undefined || nodeExtent.some((n) => n === undefined))) droppedKeys.push('nodeExtent (not a numeric [[minX, minY], [maxX, maxY]] literal)')
   if (connectionRules === null) droppedKeys.push('connectionRules (not a literal { type: { outputs: string[] } } map)')
+  if (defaultMarkerEndNode && defaultMarkerEnd === undefined) droppedKeys.push('defaultMarkerEnd (not a literal marker or null)')
   if (droppedKeys.length > 0) {
     ctx.warnings.push(
       `createFlow declaration \`${name}\`: ${droppedKeys.map((k) => `\`${k}\``).join(', ')} ` +
@@ -9363,6 +9401,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     ...(snapToGrid !== undefined ? { snapToGrid } : {}),
     ...(snapGrid !== undefined ? { snapGrid } : {}),
     ...(nodeExtent !== undefined && nodeExtent.every((n) => n !== undefined) ? { nodeExtent: nodeExtent as [number, number, number, number] } : {}),
+    ...(defaultMarkerEndNode && defaultMarkerEnd !== undefined ? { defaultMarkerEnd } : {}),
     ...(connectionRules !== undefined && connectionRules !== null ? { connectionRules } : {}),
     ...(connectionValidator !== undefined ? { connectionValidator } : {}),
   }

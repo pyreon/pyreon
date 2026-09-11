@@ -947,6 +947,8 @@ export type DeclIR =
         reconnectable?: boolean
         interactionWidth?: number
         pathOptions?: { curvature?: number; borderRadius?: number; offset?: number }
+        markerStart?: { type: string; color?: string; width?: number; height?: number; strokeWidth?: number }
+        markerEnd?: { type: string; color?: string; width?: number; height?: number; strokeWidth?: number } | null
         waypoints?: { x: ExprIR; y: ExprIR }[]
       }[]
       /** `minZoom` from the config, when written as a numeric literal. */
@@ -956,6 +958,7 @@ export type DeclIR =
       snapToGrid?: boolean
       snapGrid?: number
       nodeExtent?: [number, number, number, number]
+      defaultMarkerEnd?: { type: string; color?: string; width?: number; height?: number; strokeWidth?: number } | null
       connectionRules?: Record<string, string[]>
       connectionValidator?: ExprIR
     }

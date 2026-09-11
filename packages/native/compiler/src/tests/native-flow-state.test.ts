@@ -466,7 +466,8 @@ import { Stack, Text } from '${P}'
 export function C() {
   const flow = createFlow({
     nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'A' }, parentId: 'root', draggable: false, selectable: true, connectable: false, focusable: true, ariaLabel: 'Start node', hidden: false, deletable: true, expandParent: true, group: true, sourceHandles: [{ id: 'out', type: 'source', position: 'right' }], targetHandles: [{ type: 'target', position: 'left' }], style: {} }],
-    edges: [{ id: 'e1', source: '1', target: '1', markerEnd: 'arrow', sourceHandle: 'out', targetHandle: 'in', focusable: true, ariaLabel: 'Loop', hidden: false, deletable: true, reconnectable: false, interactionWidth: 24, pathOptions: { curvature: 0.4, borderRadius: 8, offset: 30 } }],
+    edges: [{ id: 'e1', source: '1', target: '1', markerStart: { type: 'arrowclosed', color: '#f00', width: 12, height: 8, strokeWidth: 2 }, markerEnd: 'arrow', sourceHandle: 'out', targetHandle: 'in', focusable: true, ariaLabel: 'Loop', hidden: false, deletable: true, reconnectable: false, interactionWidth: 24, pathOptions: { curvature: 0.4, borderRadius: 8, offset: 30 } }, { id: 'e2', source: '1', target: '1', markerEnd: null }],
+    defaultMarkerEnd: null,
   })
   return (<Stack><Text>{flow.nodes().length}</Text></Stack>)
 }
@@ -474,7 +475,8 @@ export function C() {
       const result = transform(src, { target })
       const w = (result.warnings ?? []).join('\n')
       expect(w).toContain('node field `style` is NOT carried')
-      expect(w).toContain('edge field `markerEnd` is NOT carried')
+      expect(w).not.toContain('edge field `markerEnd` is NOT carried')
+      expect(w).not.toContain('edge field `markerStart` is NOT carried')
       for (const field of ['parentId', 'draggable', 'selectable', 'connectable', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'expandParent', 'group', 'sourceHandles', 'targetHandles', 'sourceHandle', 'targetHandle', 'reconnectable', 'interactionWidth', 'pathOptions']) {
         expect(w).not.toContain(`field \`${field}\` is NOT carried`)
       }
@@ -488,6 +490,11 @@ export function C() {
       expect(result.code).toContain(`curvature${assignment} ${target === 'swift' ? '0.4' : '0.4'}`)
       expect(result.code).toContain(`borderRadius${assignment} ${target === 'swift' ? '8' : '8.0'}`)
       expect(result.code).toContain(`pathOffset${assignment} ${target === 'swift' ? '30' : '30.0'}`)
+      expect(result.code).toContain(target === 'swift' ? 'markerStart: PyreonFlowMarker(type: "arrowclosed", color: "#f00", width: 12, height: 8, strokeWidth: 2)' : 'markerStart = PyreonFlowMarker("arrowclosed", color = "#f00", width = 12.0, height = 8.0, strokeWidth = 2.0)')
+      expect(result.code).toContain(target === 'swift' ? 'markerEnd: PyreonFlowMarker(type: "arrow")' : 'markerEnd = PyreonFlowMarker("arrow")')
+      expect(result.code).toContain(`markerEndSpecified${assignment} true`)
+      expect(result.code).toContain(target === 'swift' ? 'markerEnd: nil, markerEndSpecified: true' : 'markerEnd = null, markerEndSpecified = true')
+      expect(result.code).toContain(target === 'swift' ? 'defaultMarkerEnd: nil' : 'defaultMarkerEnd = null')
       expect(result.code).toContain(target === 'swift' ? 'sourceHandles: [PyreonFlowHandleConfig(id: "out", type: "source", position: .right)]' : 'sourceHandles = listOf(PyreonFlowHandleConfig(id = "out", type = "source", position = PyreonFlowPosition.Right))')
     })
     it(`[${target}] a declaration-time NON-literal edge label/type is named, not silently dropped`, () => {
@@ -512,7 +519,8 @@ export function C() {
       expect(w).toContain('addNode(...): node field `style` is NOT carried')
       expect(w).not.toContain('node field `hidden` is NOT carried')
       expect(w).not.toContain('node field `sourceHandles` is NOT carried')
-      expect(w).toContain('addEdge(...): edge field `markerEnd` is NOT carried')
+      expect(w).not.toContain('addEdge(...): edge field `markerEnd` is NOT carried')
+      expect(result.code).toContain(target === 'swift' ? 'markerEnd: PyreonFlowMarker(type: "arrow")' : 'markerEnd = PyreonFlowMarker("arrow")')
       expect(w).not.toContain('edge field `waypoints` is NOT carried')
       expect(w).not.toContain('edge field `sourceHandle` is NOT carried')
       expect(w).not.toContain('edge field `pathOptions` is NOT carried')

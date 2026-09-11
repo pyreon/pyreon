@@ -3167,6 +3167,8 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
           ...(e.pathOptions?.curvature !== undefined ? [`curvature = ${ktChartDouble(String(e.pathOptions.curvature))}`] : []),
           ...(e.pathOptions?.borderRadius !== undefined ? [`borderRadius = ${ktChartDouble(String(e.pathOptions.borderRadius))}`] : []),
           ...(e.pathOptions?.offset !== undefined ? [`pathOffset = ${ktChartDouble(String(e.pathOptions.offset))}`] : []),
+          ...(e.markerStart !== undefined ? [`markerStart = ${kotlinFlowMarker(e.markerStart)}`] : []),
+          ...(e.markerEnd !== undefined ? [`markerEnd = ${e.markerEnd === null ? 'null' : kotlinFlowMarker(e.markerEnd)}`, 'markerEndSpecified = true'] : []),
           ...(e.waypoints !== undefined ? [`waypoints = listOf(${e.waypoints.map((p) => `PyreonXYPosition(${ktChartDouble(emitKotlinExpr(p.x, 0))}, ${ktChartDouble(emitKotlinExpr(p.y, 0))})`).join(', ')})`] : []),
         ]
         return `PyreonFlowEdge(${parts.join(', ')})`
@@ -3187,6 +3189,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       ...(d.snapToGrid !== undefined ? [`snapToGrid = ${d.snapToGrid}`] : []),
       ...(d.snapGrid !== undefined ? [`snapGrid = ${ktDouble(d.snapGrid)}`] : []),
       ...(d.nodeExtent !== undefined ? [`nodeExtent = PyreonFlowNodeExtent(${d.nodeExtent.map(ktDouble).join(', ')})`] : []),
+      ...(d.defaultMarkerEnd !== undefined ? [`defaultMarkerEnd = ${d.defaultMarkerEnd === null ? 'null' : kotlinFlowMarker(d.defaultMarkerEnd)}`] : []),
       ...(d.connectionRules !== undefined ? [`connectionRules = mapOf(${Object.entries(d.connectionRules).map(([key, outputs]) => `${JSON.stringify(key)} to listOf(${outputs.map((output) => JSON.stringify(output)).join(', ')})`).join(', ')})`] : []),
       ...(d.connectionValidator !== undefined ? [`connectionValidator = ${emitKotlinExpr(d.connectionValidator, 0)}`] : []),
     ].join(', ')
@@ -3297,6 +3300,30 @@ function kotlinFlowParsedHandles(handles: { id?: string; type: string; position:
   return `listOf(${handles.map((h) => `PyreonFlowHandleConfig(${h.id === undefined ? '' : `id = ${JSON.stringify(h.id)}, `}type = ${JSON.stringify(h.type)}, position = PyreonFlowPosition.${positionName(h.position)})`).join(', ')})`
 }
 
+function kotlinFlowMarker(marker: { type: string; color?: string; width?: number; height?: number; strokeWidth?: number }): string {
+  const args = [JSON.stringify(marker.type)]
+  if (marker.color !== undefined) args.push(`color = ${JSON.stringify(marker.color)}`)
+  if (marker.width !== undefined) args.push(`width = ${ktChartDouble(String(marker.width))}`)
+  if (marker.height !== undefined) args.push(`height = ${ktChartDouble(String(marker.height))}`)
+  if (marker.strokeWidth !== undefined) args.push(`strokeWidth = ${ktChartDouble(String(marker.strokeWidth))}`)
+  return `PyreonFlowMarker(${args.join(', ')})`
+}
+
+function kotlinFlowMarkerLiteral(expr: ExprIR): string | null {
+  if (expr.kind === 'literal' && expr.value === null) return 'null'
+  if (expr.kind === 'literal' && typeof expr.value === 'string') return kotlinFlowMarker({ type: expr.value.toLowerCase() })
+  if (expr.kind === 'member') return kotlinFlowMarker({ type: expr.property.toLowerCase() })
+  if (expr.kind !== 'object') return null
+  const field = (name: string) => expr.fields.find((f) => f.name === name)?.value
+  const type = field('type')
+  const typeName = type?.kind === 'literal' && typeof type.value === 'string' ? type.value.toLowerCase() : type?.kind === 'member' ? type.property.toLowerCase() : null
+  if (typeName !== 'arrow' && typeName !== 'arrowclosed') return null
+  const args = [JSON.stringify(typeName)]
+  const color = field('color'); if (color) args.push(`color = ${emitKotlinExpr(color, 0)}`)
+  for (const name of ['width', 'height', 'strokeWidth'] as const) { const value = field(name); if (value) args.push(`${name} = ${ktChartDouble(emitKotlinExpr(value, 0))}`) }
+  return `PyreonFlowMarker(${args.join(', ')})`
+}
+
 function kotlinFlowHandlesLiteral(arg: ExprIR): string | null {
   if (arg.kind !== 'array') return null
   const parsed: { id?: string; type: string; position: string }[] = []
@@ -3325,6 +3352,8 @@ function kotlinFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
   const labelExpr = field('label')
   const animatedExpr = field('animated')
   const pathOptionsExpr = field('pathOptions')
+  const markerStartExpr = field('markerStart')
+  const markerEndExpr = field('markerEnd')
   const waypointsExpr = field('waypoints')
   const optionalFields = ['sourceHandle', 'targetHandle', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'reconnectable'] as const
   const interactionWidthExpr = field('interactionWidth')
@@ -3339,6 +3368,8 @@ function kotlinFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
       const nativeName = name === 'offset' ? 'pathOffset' : name
       return ['curvature', 'borderRadius', 'pathOffset'].includes(nativeName) ? [`${nativeName} = ${ktChartDouble(emitKotlinExpr(value, 0))}`] : []
     }) : []),
+    ...(markerStartExpr ? (() => { const marker = kotlinFlowMarkerLiteral(markerStartExpr); return marker && marker !== 'null' ? [`markerStart = ${marker}`] : [] })() : []),
+    ...(markerEndExpr ? (() => { const marker = kotlinFlowMarkerLiteral(markerEndExpr); return marker ? [`markerEnd = ${marker}`, 'markerEndSpecified = true'] : [] })() : []),
     ...optionalFields.flatMap((name) => {
       const value = field(name)
       return value ? [`${name} = ${emitKotlinExpr(value, 0)}`] : []

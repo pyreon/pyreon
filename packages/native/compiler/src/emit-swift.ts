@@ -4018,6 +4018,8 @@ function emitSwiftDecl(
           ...(e.pathOptions?.curvature !== undefined ? [`curvature: ${e.pathOptions.curvature}`] : []),
           ...(e.pathOptions?.borderRadius !== undefined ? [`borderRadius: ${e.pathOptions.borderRadius}`] : []),
           ...(e.pathOptions?.offset !== undefined ? [`pathOffset: ${e.pathOptions.offset}`] : []),
+          ...(e.markerStart !== undefined ? [`markerStart: ${swiftFlowMarker(e.markerStart)}`] : []),
+          ...(e.markerEnd !== undefined ? [`markerEnd: ${e.markerEnd === null ? 'nil' : swiftFlowMarker(e.markerEnd)}`, 'markerEndSpecified: true'] : []),
           ...(e.waypoints !== undefined ? [`waypoints: [${e.waypoints.map((p) => `PyreonXYPosition(x: ${emitSwiftExpr(p.x, 0)}, y: ${emitSwiftExpr(p.y, 0)})`).join(', ')}]`] : []),
         ]
         return `PyreonFlowEdge(${parts.join(', ')})`
@@ -4031,6 +4033,7 @@ function emitSwiftDecl(
       ...(d.snapToGrid !== undefined ? [`snapToGrid: ${d.snapToGrid}`] : []),
       ...(d.snapGrid !== undefined ? [`snapGrid: ${d.snapGrid}`] : []),
       ...(d.nodeExtent !== undefined ? [`nodeExtent: PyreonFlowNodeExtent(minX: ${d.nodeExtent[0]}, minY: ${d.nodeExtent[1]}, maxX: ${d.nodeExtent[2]}, maxY: ${d.nodeExtent[3]})`] : []),
+      ...(d.defaultMarkerEnd !== undefined ? [`defaultMarkerEnd: ${d.defaultMarkerEnd === null ? 'nil' : swiftFlowMarker(d.defaultMarkerEnd)}`] : []),
       ...(d.connectionRules !== undefined ? [`connectionRules: [${Object.entries(d.connectionRules).map(([key, outputs]) => `${JSON.stringify(key)}: [${outputs.map((output) => JSON.stringify(output)).join(', ')}]`).join(', ')}]`] : []),
       ...(d.connectionValidator !== undefined ? [`isValidConnection: ${emitSwiftExpr(d.connectionValidator, 0)}`] : []),
     ].join(', ')
@@ -4131,6 +4134,29 @@ function swiftFlowParsedHandles(handles: { id?: string; type: string; position: 
   return `[${handles.map((h) => `PyreonFlowHandleConfig(${h.id === undefined ? '' : `id: ${JSON.stringify(h.id)}, `}type: ${JSON.stringify(h.type)}, position: .${h.position})`).join(', ')}]`
 }
 
+function swiftFlowMarker(marker: { type: string; color?: string; width?: number; height?: number; strokeWidth?: number }): string {
+  const args = [`type: ${JSON.stringify(marker.type)}`]
+  if (marker.color !== undefined) args.push(`color: ${JSON.stringify(marker.color)}`)
+  if (marker.width !== undefined) args.push(`width: ${marker.width}`)
+  if (marker.height !== undefined) args.push(`height: ${marker.height}`)
+  if (marker.strokeWidth !== undefined) args.push(`strokeWidth: ${marker.strokeWidth}`)
+  return `PyreonFlowMarker(${args.join(', ')})`
+}
+
+function swiftFlowMarkerLiteral(expr: ExprIR): string | null {
+  if (expr.kind === 'literal' && expr.value === null) return 'nil'
+  if (expr.kind === 'literal' && typeof expr.value === 'string') return swiftFlowMarker({ type: expr.value.toLowerCase() })
+  if (expr.kind === 'member') return swiftFlowMarker({ type: expr.property.toLowerCase() })
+  if (expr.kind !== 'object') return null
+  const field = (name: string) => expr.fields.find((f) => f.name === name)?.value
+  const type = field('type')
+  const typeName = type?.kind === 'literal' && typeof type.value === 'string' ? type.value.toLowerCase() : type?.kind === 'member' ? type.property.toLowerCase() : null
+  if (typeName !== 'arrow' && typeName !== 'arrowclosed') return null
+  const args = [`type: ${JSON.stringify(typeName)}`]
+  for (const name of ['color', 'width', 'height', 'strokeWidth'] as const) { const value = field(name); if (value) args.push(`${name}: ${emitSwiftExpr(value, 0)}`) }
+  return `PyreonFlowMarker(${args.join(', ')})`
+}
+
 function swiftFlowHandlesLiteral(arg: ExprIR): string | null {
   if (arg.kind !== 'array') return null
   const parsed: { id?: string; type: string; position: string }[] = []
@@ -4159,6 +4185,8 @@ function swiftFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
   const labelExpr = field('label')
   const animatedExpr = field('animated')
   const pathOptionsExpr = field('pathOptions')
+  const markerStartExpr = field('markerStart')
+  const markerEndExpr = field('markerEnd')
   const waypointsExpr = field('waypoints')
   const optionalFields = ['sourceHandle', 'targetHandle', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'reconnectable', 'interactionWidth'] as const
   const parts = [
@@ -4172,6 +4200,8 @@ function swiftFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
       const nativeName = name === 'offset' ? 'pathOffset' : name
       return ['curvature', 'borderRadius', 'pathOffset'].includes(nativeName) ? [`${nativeName}: ${emitSwiftExpr(value, 0)}`] : []
     }) : []),
+    ...(markerStartExpr ? (() => { const marker = swiftFlowMarkerLiteral(markerStartExpr); return marker && marker !== 'nil' ? [`markerStart: ${marker}`] : [] })() : []),
+    ...(markerEndExpr ? (() => { const marker = swiftFlowMarkerLiteral(markerEndExpr); return marker ? [`markerEnd: ${marker}`, 'markerEndSpecified: true'] : [] })() : []),
     ...optionalFields.flatMap((name) => {
       const value = field(name)
       return value ? [`${name}: ${emitSwiftExpr(value, 0)}`] : []

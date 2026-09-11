@@ -41,6 +41,7 @@ export const HANDLED_FLOW_EDGE_FIELDS: ReadonlySet<string> = new Set([
   'animated', 'focusable', 'ariaLabel', 'hidden', 'deletable',
   'reconnectable', 'interactionWidth', 'waypoints',
   'pathOptions',
+  'markerStart', 'markerEnd',
 ])
 
 export function unloweredFlowMemberWarning(flowName: string, member: string): string {

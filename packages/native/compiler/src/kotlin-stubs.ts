@@ -1572,6 +1572,7 @@ data class PyreonFlowViewport(val x: Double = 0.0, val y: Double = 0.0, val zoom
 data class PyreonFlowNodeExtent(val minX: Double, val minY: Double, val maxX: Double, val maxY: Double)
 enum class PyreonFlowPosition { Top, Right, Bottom, Left }
 data class PyreonFlowHandleConfig(val id: String? = null, val type: String, val position: PyreonFlowPosition)
+data class PyreonFlowMarker(val type: String, val color: String? = null, val width: Double = 10.0, val height: Double = 7.0, val strokeWidth: Double = 1.0)
 data class PyreonFlowNode<T>(
   val id: String,
   val type: String? = null,
@@ -1610,6 +1611,9 @@ data class PyreonFlowEdge(
   val curvature: Double? = null,
   val borderRadius: Double? = null,
   val pathOffset: Double? = null,
+  val markerStart: PyreonFlowMarker? = null,
+  val markerEnd: PyreonFlowMarker? = null,
+  val markerEndSpecified: Boolean = false,
   val waypoints: List<PyreonXYPosition> = emptyList(),
 )
 data class PyreonFlowConnection(val source: String, val target: String, val sourceHandle: String? = null, val targetHandle: String? = null)
@@ -1623,6 +1627,7 @@ class PyreonFlowState<T>(
   snapToGrid: Boolean = false,
   snapGrid: Double = 15.0,
   nodeExtent: PyreonFlowNodeExtent? = null,
+  defaultMarkerEnd: PyreonFlowMarker? = PyreonFlowMarker("arrowclosed"),
   connectionRules: Map<String, List<String>>? = null,
   connectionValidator: ((PyreonFlowConnection) -> Boolean)? = null,
 ) {

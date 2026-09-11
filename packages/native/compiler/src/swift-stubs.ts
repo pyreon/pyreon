@@ -1008,6 +1008,9 @@ public enum PyreonFlowPosition { case top, right, bottom, left }
 public struct PyreonFlowHandleConfig: Equatable {
   public init(id: String? = nil, type: String, position: PyreonFlowPosition) {}
 }
+public struct PyreonFlowMarker: Equatable {
+  public init(type: String, color: String? = nil, width: Double = 10, height: Double = 7, strokeWidth: Double = 1) {}
+}
 public struct PyreonFlowNode<T> {
   public var id: String
   public var type: String? = nil
@@ -1071,6 +1074,9 @@ public struct PyreonFlowEdge: Equatable {
   public var curvature: Double? = nil
   public var borderRadius: Double? = nil
   public var pathOffset: Double? = nil
+  public var markerStart: PyreonFlowMarker? = nil
+  public var markerEnd: PyreonFlowMarker? = nil
+  public var markerEndSpecified: Bool = false
   public var waypoints: [PyreonXYPosition] = []
   public init(
     id: String,
@@ -1090,6 +1096,9 @@ public struct PyreonFlowEdge: Equatable {
     curvature: Double? = nil,
     borderRadius: Double? = nil,
     pathOffset: Double? = nil,
+    markerStart: PyreonFlowMarker? = nil,
+    markerEnd: PyreonFlowMarker? = nil,
+    markerEndSpecified: Bool = false,
     waypoints: [PyreonXYPosition] = []
   ) {
     self.id = id
@@ -1117,6 +1126,7 @@ public final class PyreonFlowState<T> {
     snapToGrid: Bool = false,
     snapGrid: Double = 15,
     nodeExtent: PyreonFlowNodeExtent? = nil,
+    defaultMarkerEnd: PyreonFlowMarker? = PyreonFlowMarker(type: "arrowclosed"),
     connectionRules: [String: [String]]? = nil,
     isValidConnection: ((PyreonFlowConnection) -> Bool)? = nil
   ) {}
