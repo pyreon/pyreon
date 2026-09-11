@@ -25,7 +25,16 @@ export default defineNodeConfig({
   // fallbacks and optional-chaining on shapes the callers already guarantee.
   // This is a RATCHET like the neighbouring packages': raise it as tests land,
   // never lower it to absorb a regression.
-  coverageThresholds: { branches: 90 },
+  // Branches ratcheted 90 -> 92 by the 92%+ campaign (measured 92.65), which
+  // clears the repo-wide bar. The lift is `core/detect.ts`: every uncovered
+  // arm there was a RECOGNITION rule — the `@types/*` twin (including the
+  // scoped `@scope/x` -> `@types/scope__x` mapping), type-only-counts-as-used,
+  // private-vs-published severity — each present because the naive detector
+  // produced wrong warnings on a real monorepo. Writing them found a real
+  // gap: `if (!prod) continue` skipped the whole package, so a package whose
+  // runtime imports are all relative or all declared never had its
+  // `import type` specifiers checked at all.
+  coverageThresholds: { branches: 92 },
   coverageExclude: [
     // gen-docs data, no logic (scaffold-recipe convention).
     'src/manifest.ts',

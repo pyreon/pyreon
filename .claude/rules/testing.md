@@ -275,6 +275,49 @@ When bisect-verifying an e2e spec that runs against a Vite dev server (anything 
 
 **Applies to**: any package whose code runs inside Vite's plugin chain. Today that's `@pyreon/vite-plugin` and `@pyreon/zero`. Adding a new plugin package: document its bisect-bisect-rebuild cycle here.
 
+## Never bisect an ENV-HYGIENE guard by exporting the hostile variable
+
+A test that shells out to `git` must strip `GIT_*` from the environment, because
+those variables OVERRIDE both `cwd` and `-C` — the trap already documented under
+"Subprocess testing as a default". The follow-on hazard is in how you PROVE that
+guard is load-bearing.
+
+The obvious bisect is to export the hostile variable and revert the guard:
+
+```sh
+# DO NOT do this in a worktree that holds real work
+GIT_DIR=$PWD/.git GIT_INDEX_FILE=$PWD/.git/index bun run test -- <the-suite>
+```
+
+With the guard reverted, the fixture's `git init -q` re-initialises the REAL
+repository, `git add -A` stages the temp fixture's files into the real index,
+and `git commit` lands a commit on the branch you are working on. Observed
+(2026-09, `@pyreon/cli`'s git-changed-default suite): a stray `init` commit on
+top of two real ones, `8207 files changed, 3 insertions(+), 1402240 deletions(-)`
+— the whole worktree deleted and replaced by a three-file fixture. It is
+recoverable (`git reflog` → `git reset <your commit>`, mixed, which leaves the
+working tree alone), but only because nothing had been pushed.
+
+The reproduction is the destruction. Reverting a guard whose entire job is to
+stop a command from touching the real repo, while telling that command to touch
+the real repo, is not a bisect — it is the bug, executed on purpose.
+
+**Do it one of these ways instead:**
+
+- Run the reverted state against a THROWAWAY clone (`git clone --depth 1 . /tmp/x`),
+  never the worktree holding the branch.
+- Assert the mechanism rather than executing it: with the guard in place, check
+  that `process.env.GIT_DIR` is undefined inside the test body, and that the
+  fixture repo — not the outer one — is what `git rev-parse --git-dir` reports.
+- Keep the FORWARD proof, which costs nothing: run the fixed suite with the
+  hostile variable exported. Green there is the claim you actually want ("this
+  suite survives a pre-push hook"), and it never writes to the real repo,
+  because the guard works.
+
+The general shape: **when a guard's failure mode is damage to something outside
+the test, the bisect must not be run where that something is real.** Same family
+as the `rm -rf` and force-push rules — the check is cheap and the mistake is not.
+
 ## Dependency-version bisect — never trust an incremental bun layout
 
 When bisecting an EXTERNAL dependency version (edit package.json → `bun install` → run tests → flip → repeat), bun's incremental install can leave STALE peer-hash instance dirs in `node_modules/.bun` with stale internal symlinks — so the on-disk resolution silently disagrees with the lockfile. The 2026-07 deps-update PR produced a fully wrong culprit attribution this way: every local "pass" ran vitest linked against `vite@8.0.16` while the lockfile (and CI's fresh install) resolved 8.1.5 — the variable under test never actually flipped, and vitest 4.1.10 was blamed for a failure vite 8.1.5 caused. Local-pass/CI-fail on an identical commit is the signature of this trap.

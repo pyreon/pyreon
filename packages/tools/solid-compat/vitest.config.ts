@@ -35,10 +35,26 @@ export default defineNodeConfig({
   // never yields a key without one), and the SYNC half of the fetch-version
   // check (nothing can interleave before a synchronous throw is caught).
   // Raise this when one of them becomes reachable, not by covering it.
+  //
+  // Branches ratcheted 91 -> 92 by the 92%+ campaign (measured 92.10), which
+  // clears the repo-wide bar. The single arm that got it there is the one
+  // that mattered: `scheduleEffects` defers into a microtask, so a component
+  // can unmount before its effects run, and the guard inside that loop is
+  // what stops an effect executing against a torn-down context. The failure
+  // is silent — the effect subscribes, or times, or writes into a disposed
+  // owner, and nothing says so.
+  //
+  // The arms still uncovered around it are UNREACHABLE through the shipped
+  // API rather than untested: nothing pushes to `pendingLayoutEffects`, and
+  // `onMount`'s wrapper returns `undefined` unconditionally, so a stored
+  // cleanup is never a function. Same for `safeAssign` and its zero-length
+  // path — `setStore` dispatches either the draft form or a path form whose
+  // path is always >= 1 segment. Covering any of those would mean calling
+  // internals directly, which asserts nothing about a consumer.
   coverageThresholds: {
     statements: 96,
     lines: 98,
-    branches: 91,
+    branches: 92,
     functions: 97,
   },
 })
