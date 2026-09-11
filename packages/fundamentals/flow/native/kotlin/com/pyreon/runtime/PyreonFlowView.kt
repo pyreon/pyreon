@@ -187,7 +187,7 @@ fun <T> PyreonFlowView(
     var reconnectDraft by remember { mutableStateOf<PyreonFlowReconnectDraft?>(null) }
     var nodeDragStarts by remember { mutableStateOf<Map<String, PyreonXYPosition>>(emptyMap()) }
     val interactiveHandles = state.nodes.flatMap { node ->
-        if (node.hidden == true || node.connectable == false) emptyList() else {
+        if (node.hidden == true || !(node.connectable ?: state.nodesConnectable)) emptyList() else {
             val absolute = state.getAbsolutePosition(node.id)
             pyreonFlowInteractiveHandles(
                 node.id,
@@ -223,11 +223,8 @@ fun <T> PyreonFlowView(
             Modifier.matchParentSize().pointerInput(state) {
                 detectTransformGestures { _, pan, zoom, _ ->
                     if (interactionsLocked) return@detectTransformGestures
-                    state.setViewport(
-                        x = state.viewport.x + pan.x,
-                        y = state.viewport.y + pan.y,
-                    )
-                    state.zoomTo(state.viewport.zoom * zoom)
+                    if (state.pannable) state.setViewport(x = state.viewport.x + pan.x, y = state.viewport.y + pan.y)
+                    if (state.zoomable) state.zoomTo(state.viewport.zoom * zoom)
                 }
             }.pointerInput(state, edgeStrokes, state.viewport) {
                 detectTapGestures { screen ->
@@ -283,10 +280,10 @@ fun <T> PyreonFlowView(
                         contentDescription = node.ariaLabel ?: node.id
                         selected = state.isNodeSelected(node.id)
                     }
-                if (node.selectable != false) {
+                if (node.selectable ?: state.nodesSelectable) {
                     nodeModifier = nodeModifier.clickable { state.selectNode(node.id) }
                 }
-                if (!interactionsLocked && node.draggable != false) {
+                if (!interactionsLocked && (node.draggable ?: state.nodesDraggable)) {
                     nodeModifier = nodeModifier.pointerInput(node.id, state.viewport.zoom) {
                         detectDragGestures(
                             onDragStart = {
@@ -320,7 +317,7 @@ fun <T> PyreonFlowView(
                                 onDragStart = { connectionDraft = PyreonFlowConnectionDraft(handle, current) },
                                 onDragCancel = { connectionDraft = null },
                                 onDragEnd = {
-                                    val target = pyreonNearestFlowHandle(interactiveHandles, current, "target", 20.0 / state.viewport.zoom)
+                                    val target = pyreonNearestFlowHandle(interactiveHandles, current, "target", (6.0 + state.connectionRadius) / state.viewport.zoom)
                                     if (target != null) state.connect(PyreonFlowConnection(handle.nodeId, target.nodeId, handle.handleId, target.handleId))
                                     connectionDraft = null
                                 },
@@ -359,7 +356,7 @@ fun <T> PyreonFlowView(
                                     if (edge != null) {
                                         val movingTarget = updater.end == "target"
                                         val fixedNodeId = if (movingTarget) edge.source else edge.target
-                                        val target = pyreonNearestFlowHandle(interactiveHandles.filter { it.nodeId != fixedNodeId }, current, if (movingTarget) "target" else "source", 20.0 / state.viewport.zoom)
+                                        val target = pyreonNearestFlowHandle(interactiveHandles.filter { it.nodeId != fixedNodeId }, current, if (movingTarget) "target" else "source", (6.0 + state.connectionRadius) / state.viewport.zoom)
                                         if (target != null) {
                                             pyreonFlowReconnectConnection(edge, updater.end, target)?.let { state.reconnectEdge(edge.id, it) }
                                         }

@@ -319,6 +319,9 @@ public final class PyreonFlowState<T> {
     private let snapGrid: Double
     private let connectionRules: [String: [String]]?
     public let defaultMarkerEnd: PyreonFlowMarker?
+    public let nodesDraggable: Bool; public let nodesConnectable: Bool; public let nodesSelectable: Bool; public let nodesFocusable: Bool
+    public let edgesFocusable: Bool; public let nodesDeletable: Bool; public let edgesDeletable: Bool; public let edgesReconnectable: Bool
+    public let edgeInteractionWidth: Double; public let connectionRadius: Double; public let pannable: Bool; public let zoomable: Bool
     @ObservationIgnored private let connectionValidator: ((PyreonFlowConnection) -> Bool)?
 
     public init(
@@ -332,6 +335,9 @@ public final class PyreonFlowState<T> {
         nodeExtent: PyreonFlowNodeExtent? = nil,
         connectionRules: [String: [String]]? = nil,
         defaultMarkerEnd: PyreonFlowMarker? = PyreonFlowMarker(type: "arrowclosed"),
+        nodesDraggable: Bool = true, nodesConnectable: Bool = true, nodesSelectable: Bool = true, nodesFocusable: Bool = true,
+        edgesFocusable: Bool = true, nodesDeletable: Bool = true, edgesDeletable: Bool = true, edgesReconnectable: Bool = true,
+        edgeInteractionWidth: Double = 20, connectionRadius: Double = 0, pannable: Bool = true, zoomable: Bool = true,
         isValidConnection: ((PyreonFlowConnection) -> Bool)? = nil
     ) {
         self.viewport = viewport
@@ -342,6 +348,9 @@ public final class PyreonFlowState<T> {
         self.nodeExtent = nodeExtent
         self.connectionRules = connectionRules
         self.defaultMarkerEnd = defaultMarkerEnd
+        self.nodesDraggable = nodesDraggable; self.nodesConnectable = nodesConnectable; self.nodesSelectable = nodesSelectable; self.nodesFocusable = nodesFocusable
+        self.edgesFocusable = edgesFocusable; self.nodesDeletable = nodesDeletable; self.edgesDeletable = edgesDeletable; self.edgesReconnectable = edgesReconnectable
+        self.edgeInteractionWidth = edgeInteractionWidth; self.connectionRadius = max(0, connectionRadius); self.pannable = pannable; self.zoomable = zoomable
         self.connectionValidator = isValidConnection
         for node in nodes { insertNode(node) }
         for edge in edges { insertEdge(edge) }
@@ -618,8 +627,8 @@ public final class PyreonFlowState<T> {
     /// O(N + E) — never one `removeNode` call per selected id, which re-scans
     /// on every iteration and makes "select all, then delete" quadratic.
     public func deleteSelected() {
-        let nodeIdsToRemove = selectedNodeIdSet
-        let edgeIdsToRemove = selectedEdgeIdSet
+        let nodeIdsToRemove = Set(selectedNodeIds.filter { id in nodeStore[id].map { $0.deletable ?? nodesDeletable } ?? false })
+        let edgeIdsToRemove = Set(selectedEdgeIds.filter { id in edges.first(where: { $0.id == id }).map { $0.deletable ?? edgesDeletable } ?? false })
         if !nodeIdsToRemove.isEmpty {
             removeNodes(nodeIdsToRemove)
             if !edgeIdsToRemove.isEmpty {

@@ -123,8 +123,21 @@ class PyreonFlowState<T>(
     nodeExtent: PyreonFlowNodeExtent? = null,
     private val connectionRules: Map<String, List<String>>? = null,
     val defaultMarkerEnd: PyreonFlowMarker? = PyreonFlowMarker("arrowclosed"),
+    val nodesDraggable: Boolean = true,
+    val nodesConnectable: Boolean = true,
+    val nodesSelectable: Boolean = true,
+    val nodesFocusable: Boolean = true,
+    val edgesFocusable: Boolean = true,
+    val nodesDeletable: Boolean = true,
+    val edgesDeletable: Boolean = true,
+    val edgesReconnectable: Boolean = true,
+    val edgeInteractionWidth: Double = 20.0,
+    connectionRadius: Double = 0.0,
+    val pannable: Boolean = true,
+    val zoomable: Boolean = true,
     private val connectionValidator: ((PyreonFlowConnection) -> Boolean)? = null,
 ) {
+    val connectionRadius: Double = maxOf(0.0, connectionRadius)
     private var nodeExtent: PyreonFlowNodeExtent? = nodeExtent
     private val order = mutableStateListOf<String>()
     private val nodeMap = mutableStateMapOf<String, PyreonFlowNode<T>>()
@@ -405,8 +418,8 @@ class PyreonFlowState<T>(
      *  single-pass shape as the web `deleteSelected` (`flow.ts`): selection
      *  sets are built ONCE and each collection scanned ONCE, O(N + E). */
     fun deleteSelected() {
-        val nodeIdsToRemove = selectedNodeIdSet.keys.toSet()
-        val edgeIdsToRemove = selectedEdgeIdSet.keys.toSet()
+        val nodeIdsToRemove = selectedNodeIdList.filterTo(mutableSetOf()) { id -> nodeMap[id]?.let { it.deletable ?: nodesDeletable } == true }
+        val edgeIdsToRemove = selectedEdgeIdList.filterTo(mutableSetOf()) { id -> _edges.firstOrNull { it.id == id }?.let { it.deletable ?: edgesDeletable } == true }
         if (nodeIdsToRemove.isNotEmpty()) {
             removeNodes(nodeIdsToRemove)
             if (edgeIdsToRemove.isNotEmpty()) removeEdges { edgeIdsToRemove.contains(it.id) }

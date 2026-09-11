@@ -57,6 +57,10 @@ struct PyreonFlowStateTests {
         check(ruled.reconnectEdge("native-edge", connection: PyreonFlowConnection(source: "api", target: "db")), "validated reconnect succeeds")
         check(ruled.getEdge("native-edge")?.sourceHandle == nil && ruled.getEdge("native-edge")?.targetHandle == nil, "validated reconnect can clear stale handle ids")
         check(!ruled.reconnectEdge("native-edge", connection: PyreonFlowConnection(source: "api", target: "ui")) && ruled.getEdge("native-edge")?.target == "db", "invalid reconnect leaves the edge unchanged")
+        let disabledDefaults = PyreonFlowState(nodes: [PyreonFlowNode(id: "kept", position: PyreonXYPosition(x: 0, y: 0), data: NodeData(label: "Kept"))], nodesDraggable: false, nodesConnectable: false, nodesSelectable: false, nodesFocusable: false, edgesFocusable: false, nodesDeletable: false, edgesDeletable: false, edgesReconnectable: false, edgeInteractionWidth: 33, connectionRadius: -4, pannable: false, zoomable: false)
+        disabledDefaults.selectNode("kept"); disabledDefaults.deleteSelected()
+        check(disabledDefaults.getNode("kept") != nil && disabledDefaults.connectionRadius == 0, "global deletion default protects nodes and connection radius clamps nonnegative")
+        check(!disabledDefaults.nodesDraggable && !disabledDefaults.nodesConnectable && !disabledDefaults.pannable && disabledDefaults.edgeInteractionWidth == 33, "native interaction defaults retain explicit global disables")
 
         let initialStrokes = pyreonFlowEdgeStrokes(state: f)
         check(initialStrokes.map(\.id) == ["e1", "e2"], "native host derives every visible edge")

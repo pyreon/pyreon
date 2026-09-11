@@ -263,7 +263,7 @@ public func pyreonFlowEdgeStrokes<T>(
             dash: edge.animated ? [5, 5] : nil,
             startMarker: markers.start.flatMap { pyreonFlowMarkerGlyph($0, segments: path.segments, atStart: true, edgeColor: color) },
             endMarker: markers.end.flatMap { pyreonFlowMarkerGlyph($0, segments: path.segments, atStart: false, edgeColor: color) },
-            interactionWidth: edge.interactionWidth ?? 20)
+            interactionWidth: edge.interactionWidth ?? state.edgeInteractionWidth)
     }
 }
 
@@ -283,7 +283,7 @@ public func pyreonFlowEdgeLabels<T>(state: PyreonFlowState<T>) -> [PyreonFlowEdg
             borderRadius: edge.borderRadius ?? 5,
             offset: edge.pathOffset ?? 20,
             curvature: edge.curvature ?? 0.25)
-        return PyreonFlowEdgeLabel(id: edge.id, text: edge.label, accessibilityLabel: edge.ariaLabel ?? edge.label ?? "Edge from \(edge.source) to \(edge.target)", x: path.labelX, y: path.labelY, focusable: edge.focusable != false)
+        return PyreonFlowEdgeLabel(id: edge.id, text: edge.label, accessibilityLabel: edge.ariaLabel ?? edge.label ?? "Edge from \(edge.source) to \(edge.target)", x: path.labelX, y: path.labelY, focusable: edge.focusable ?? state.edgesFocusable)
     }
 }
 
@@ -291,7 +291,7 @@ public func pyreonFlowEdgeLabels<T>(state: PyreonFlowState<T>) -> [PyreonFlowEdg
 public func pyreonFlowEdgeUpdaters<T>(state: PyreonFlowState<T>, strokes: [PyreonFlowEdgeStroke]) -> [PyreonFlowEdgeUpdater] {
     let byId = Dictionary(uniqueKeysWithValues: strokes.map { ($0.id, $0) })
     return state.selectedEdges().flatMap { id -> [PyreonFlowEdgeUpdater] in
-        guard let edge = state.getEdge(id), edge.reconnectable != false, let segments = byId[id]?.segments, let first = segments.first, let last = segments.last else { return [] }
+        guard let edge = state.getEdge(id), edge.reconnectable ?? state.edgesReconnectable, let segments = byId[id]?.segments, let first = segments.first, let last = segments.last else { return [] }
         return [PyreonFlowEdgeUpdater(edgeId: id, end: "source", x: first.x, y: first.y), PyreonFlowEdgeUpdater(edgeId: id, end: "target", x: last.x, y: last.y)]
     }
 }
@@ -407,12 +407,12 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                                 y: absolute.y + (node.height ?? pyreonFlowDefaultNodeHeight) / 2)
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                if node.selectable != false { state.selectNode(node.id) }
+                                if node.selectable ?? state.nodesSelectable { state.selectNode(node.id) }
                             }
                             .gesture(nodeDragGesture(node))
                             .accessibilityLabel(Text(node.ariaLabel ?? node.id))
                             .accessibilityAddTraits(state.isNodeSelected(node.id) ? [.isSelected] : [])
-                            .accessibilityHidden(node.focusable == false)
+                            .accessibilityHidden(!(node.focusable ?? state.nodesFocusable))
                     }
                     ForEach(Array(interactiveHandles.enumerated()), id: \.offset) { _, handle in
                         Circle()
@@ -456,7 +456,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
 
     private var interactiveHandles: [PyreonFlowInteractiveHandle] {
         state.nodes.flatMap { node -> [PyreonFlowInteractiveHandle] in
-            guard node.hidden != true, node.connectable != false else { return [] }
+            guard node.hidden != true, node.connectable ?? state.nodesConnectable else { return [] }
             let p = state.getAbsolutePosition(node.id)
             let box = PyreonFlowRect(x: p.x, y: p.y, width: node.width ?? pyreonFlowDefaultNodeWidth, height: node.height ?? pyreonFlowDefaultNodeHeight)
             return pyreonFlowInteractiveHandles(nodeId: node.id, node: box, handles: node.sourceHandles + node.targetHandles)
@@ -489,7 +489,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             .onChanged { value in connectionDraft = PyreonFlowConnectionDraft(source: source, current: graphPoint(value.location)) }
             .onEnded { value in
                 let point = graphPoint(value.location)
-                if let target = pyreonNearestFlowHandle(interactiveHandles, point: point, type: "target", radius: 20 / state.viewport.zoom) {
+                if let target = pyreonNearestFlowHandle(interactiveHandles, point: point, type: "target", radius: (6 + state.connectionRadius) / state.viewport.zoom) {
                     _ = state.connect(PyreonFlowConnection(source: source.nodeId, target: target.nodeId, sourceHandle: source.handleId, targetHandle: target.handleId))
                 }
                 connectionDraft = nil
@@ -517,7 +517,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                     interactiveHandles.filter { $0.nodeId != fixedNodeId },
                     point: graphPoint(value.location),
                     type: movingTarget ? "target" : "source",
-                    radius: 20 / state.viewport.zoom)
+                    radius: (6 + state.connectionRadius) / state.viewport.zoom)
                 else { return }
                 guard let connection = pyreonFlowReconnectConnection(edge: edge, end: updater.end, handle: handle) else { return }
                 _ = state.reconnectEdge(edge.id, connection: connection)
@@ -531,7 +531,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private func nodeDragGesture(_ node: PyreonFlowNode<T>) -> some Gesture {
         DragGesture(minimumDistance: 1, coordinateSpace: .global)
             .onChanged { value in
-                guard !interactionsLocked, node.draggable != false else { return }
+                guard !interactionsLocked, node.draggable ?? state.nodesDraggable else { return }
                 if nodeDragStart.isEmpty {
                     for id in pyreonFlowDragNodeIds(state: state, draggedNodeId: node.id) {
                         if let position = state.getNode(id)?.position { nodeDragStart[id] = position }
@@ -551,7 +551,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private var panGesture: some Gesture {
         DragGesture(minimumDistance: 1)
             .onChanged { value in
-                guard !interactionsLocked else { return }
+                guard !interactionsLocked, state.pannable else { return }
                 let start = panStart ?? state.viewport
                 if panStart == nil { panStart = start }
                 state.setViewport(
@@ -573,7 +573,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private var zoomGesture: some Gesture {
         MagnificationGesture()
             .onChanged { scale in
-                guard !interactionsLocked else { return }
+                guard !interactionsLocked, state.zoomable else { return }
                 let start = zoomStart ?? state.viewport.zoom
                 if zoomStart == nil { zoomStart = start }
                 state.zoomTo(start * scale)

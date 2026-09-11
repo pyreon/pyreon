@@ -959,6 +959,18 @@ export type DeclIR =
       snapGrid?: number
       nodeExtent?: [number, number, number, number]
       defaultMarkerEnd?: { type: string; color?: string; width?: number; height?: number; strokeWidth?: number } | null
+      nodesDraggable?: boolean
+      nodesConnectable?: boolean
+      nodesSelectable?: boolean
+      nodesFocusable?: boolean
+      edgesFocusable?: boolean
+      nodesDeletable?: boolean
+      edgesDeletable?: boolean
+      edgesReconnectable?: boolean
+      edgeInteractionWidth?: number
+      connectionRadius?: number
+      pannable?: boolean
+      zoomable?: boolean
       connectionRules?: Record<string, string[]>
       connectionValidator?: ExprIR
     }

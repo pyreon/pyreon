@@ -57,6 +57,10 @@ fun main() {
     check(ruled.reconnectEdge("native-edge", PyreonFlowConnection("api", "db")), "validated reconnect succeeds")
     check(ruled.getEdge("native-edge")?.sourceHandle == null && ruled.getEdge("native-edge")?.targetHandle == null, "validated reconnect can clear stale handle ids")
     check(!ruled.reconnectEdge("native-edge", PyreonFlowConnection("api", "ui")) && ruled.getEdge("native-edge")?.target == "db", "invalid reconnect leaves the edge unchanged")
+    val disabledDefaults = PyreonFlowState(nodes = listOf(PyreonFlowNode("kept", position = PyreonXYPosition(0.0, 0.0), data = NodeData("Kept"))), nodesDraggable = false, nodesConnectable = false, nodesSelectable = false, nodesFocusable = false, edgesFocusable = false, nodesDeletable = false, edgesDeletable = false, edgesReconnectable = false, edgeInteractionWidth = 33.0, connectionRadius = -4.0, pannable = false, zoomable = false)
+    disabledDefaults.selectNode("kept"); disabledDefaults.deleteSelected()
+    check(disabledDefaults.getNode("kept") != null && disabledDefaults.connectionRadius == 0.0, "global deletion default protects nodes and connection radius clamps nonnegative")
+    check(!disabledDefaults.nodesDraggable && !disabledDefaults.nodesConnectable && !disabledDefaults.pannable && disabledDefaults.edgeInteractionWidth == 33.0, "native interaction defaults retain explicit global disables")
 
     val configuredNode = PyreonFlowNode(
         id = "configured", position = PyreonXYPosition(1.0, 2.0), data = NodeData("Configured"),

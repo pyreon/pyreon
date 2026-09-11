@@ -468,6 +468,9 @@ export function C() {
     nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'A' }, parentId: 'root', draggable: false, selectable: true, connectable: false, focusable: true, ariaLabel: 'Start node', hidden: false, deletable: true, expandParent: true, group: true, sourceHandles: [{ id: 'out', type: 'source', position: 'right' }], targetHandles: [{ type: 'target', position: 'left' }], style: {} }],
     edges: [{ id: 'e1', source: '1', target: '1', markerStart: { type: 'arrowclosed', color: '#f00', width: 12, height: 8, strokeWidth: 2 }, markerEnd: 'arrow', sourceHandle: 'out', targetHandle: 'in', focusable: true, ariaLabel: 'Loop', hidden: false, deletable: true, reconnectable: false, interactionWidth: 24, pathOptions: { curvature: 0.4, borderRadius: 8, offset: 30 } }, { id: 'e2', source: '1', target: '1', markerEnd: null }],
     defaultMarkerEnd: null,
+    nodesDraggable: false, nodesConnectable: false, nodesSelectable: false, nodesFocusable: false,
+    edgesFocusable: false, nodesDeletable: false, edgesDeletable: false, edgesReconnectable: false,
+    edgeInteractionWidth: 32, connectionRadius: 9, pannable: false, zoomable: false,
   })
   return (<Stack><Text>{flow.nodes().length}</Text></Stack>)
 }
@@ -495,6 +498,12 @@ export function C() {
       expect(result.code).toContain(`markerEndSpecified${assignment} true`)
       expect(result.code).toContain(target === 'swift' ? 'markerEnd: nil, markerEndSpecified: true' : 'markerEnd = null, markerEndSpecified = true')
       expect(result.code).toContain(target === 'swift' ? 'defaultMarkerEnd: nil' : 'defaultMarkerEnd = null')
+      for (const key of ['nodesDraggable', 'nodesConnectable', 'nodesSelectable', 'nodesFocusable', 'edgesFocusable', 'nodesDeletable', 'edgesDeletable', 'edgesReconnectable', 'pannable', 'zoomable']) {
+        expect(result.code).toContain(`${key}${assignment} false`)
+        expect(w).not.toContain(`\`${key}\``)
+      }
+      expect(result.code).toContain(`edgeInteractionWidth${assignment} ${target === 'swift' ? '32' : '32.0'}`)
+      expect(result.code).toContain(`connectionRadius${assignment} ${target === 'swift' ? '9' : '9.0'}`)
       expect(result.code).toContain(target === 'swift' ? 'sourceHandles: [PyreonFlowHandleConfig(id: "out", type: "source", position: .right)]' : 'sourceHandles = listOf(PyreonFlowHandleConfig(id = "out", type = "source", position = PyreonFlowPosition.Right))')
     })
     it(`[${target}] a declaration-time NON-literal edge label/type is named, not silently dropped`, () => {

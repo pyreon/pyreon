@@ -64,7 +64,7 @@ fun <T> pyreonFlowEdgeStrokes(
             edge.id, path.segments, color, width, if (edge.animated) listOf(5.0, 5.0) else null,
             markers.first?.let { pyreonFlowMarkerGlyph(it, path.segments, true, color) },
             markers.second?.let { pyreonFlowMarkerGlyph(it, path.segments, false, color) },
-            edge.interactionWidth ?: 20.0,
+            edge.interactionWidth ?: state.edgeInteractionWidth,
         )
     }
 }
@@ -86,7 +86,7 @@ fun <T> pyreonFlowEdgeLabels(state: PyreonFlowState<T>): List<PyreonFlowEdgeLabe
             offset = edge.pathOffset ?: 20.0,
             curvature = edge.curvature ?: 0.25,
         )
-        PyreonFlowEdgeLabel(edge.id, edge.label, edge.ariaLabel ?: edge.label ?: "Edge from ${edge.source} to ${edge.target}", path.labelX, path.labelY, edge.focusable != false)
+        PyreonFlowEdgeLabel(edge.id, edge.label, edge.ariaLabel ?: edge.label ?: "Edge from ${edge.source} to ${edge.target}", path.labelX, path.labelY, edge.focusable ?: state.edgesFocusable)
     }
 }
 
@@ -94,7 +94,7 @@ fun <T> pyreonFlowEdgeUpdaters(state: PyreonFlowState<T>, strokes: List<PyreonFl
     val byId = strokes.associateBy { it.id }
     return state.selectedEdges().flatMap { id ->
         val edge = state.getEdge(id); val segments = byId[id]?.segments
-        if (edge == null || edge.reconnectable == false || segments.isNullOrEmpty()) emptyList()
+        if (edge == null || !(edge.reconnectable ?: state.edgesReconnectable) || segments.isNullOrEmpty()) emptyList()
         else listOf(PyreonFlowEdgeUpdater(id, "source", segments.first().x, segments.first().y), PyreonFlowEdgeUpdater(id, "target", segments.last().x, segments.last().y))
     }
 }
