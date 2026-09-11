@@ -37,6 +37,9 @@ export interface ValidationResult {
   skipped?: boolean
   /** Human-readable reason for a skip. */
   skipReason?: string
+  /** False when the compiler did not produce a deterministic verdict (for
+   * example, its process was interrupted by a test-runner timeout). */
+  cacheable?: boolean
 }
 
 /**
@@ -136,7 +139,7 @@ function validateSwiftUncached(source: string): ValidationResult {
     // execFileSync throws on non-zero exit. The thrown error carries
     // `stdout` and `stderr` (Buffer | string) — surface both for the
     // diagnostic.
-    const e = err as { stdout?: string | Buffer; stderr?: string | Buffer; message?: string }
+    const e = err as { stdout?: string | Buffer; stderr?: string | Buffer; message?: string; signal?: NodeJS.Signals | null; killed?: boolean }
     const stderr = typeof e.stderr === 'string' ? e.stderr : e.stderr?.toString('utf8') ?? ''
     const stdout = typeof e.stdout === 'string' ? e.stdout : e.stdout?.toString('utf8') ?? ''
     const output = [stderr, stdout].filter(Boolean).join('\n').trim()
@@ -727,6 +730,7 @@ function validateKotlinUncached(source: string): ValidationResult {
     return {
       ok: false,
       error: output || e.message || 'kotlinc failed with no output',
+      ...(e.signal !== undefined && e.signal !== null || e.killed === true ? { cacheable: false } : {}),
     }
   } finally {
     try {

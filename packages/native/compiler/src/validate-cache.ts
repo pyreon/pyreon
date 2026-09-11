@@ -175,6 +175,10 @@ export function cacheKey(
   source: string,
 ): string {
   return createHash('sha256')
+    // v2 invalidates entries written before interrupted compiler processes
+    // were distinguished from deterministic compiler verdicts.
+    .update('v2')
+    .update('\0')
     .update(kind)
     .update('\0')
     .update(compilerVersion)
@@ -336,8 +340,8 @@ export function withVerdictCache(
   compilerVersion: string,
   stubs: string,
   source: string,
-  compute: () => { ok: boolean; error?: string; skipped?: boolean; skipReason?: string },
-): { ok: boolean; error?: string; skipped?: boolean; skipReason?: string } {
+  compute: () => { ok: boolean; error?: string; skipped?: boolean; skipReason?: string; cacheable?: boolean },
+): { ok: boolean; error?: string; skipped?: boolean; skipReason?: string; cacheable?: boolean } {
   if (cacheDisabled()) return compute()
 
   const key = cacheKey(kind, compilerVersion, stubs, source)
@@ -349,7 +353,7 @@ export function withVerdictCache(
   }
 
   const result = compute()
-  if (result.skipped === true) return result
+  if (result.skipped === true || result.cacheable === false) return result
 
   const verdict: CachedVerdict =
     result.error === undefined ? { ok: result.ok } : { ok: result.ok, error: result.error }

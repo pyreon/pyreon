@@ -130,6 +130,19 @@ describe('withVerdictCache', () => {
     expect(readdirSync(dir).filter((f) => f.endsWith('.json'))).toEqual([])
   })
 
+  it('does NOT cache an interrupted compiler result', () => {
+    let calls = 0
+    const run = (): { ok: boolean; error?: string; cacheable?: boolean } => {
+      calls++
+      return calls === 1
+        ? { ok: false, error: 'terminated by SIGTERM', cacheable: false }
+        : { ok: true }
+    }
+    expect(withVerdictCache('kotlin', 'v', 's', 'src', run).ok).toBe(false)
+    expect(withVerdictCache('kotlin', 'v', 's', 'src', run).ok).toBe(true)
+    expect(calls).toBe(2)
+  })
+
   it('persists to DISK so a separate process (fresh memo) still hits', () => {
     // This is the tier that matters: vitest isolates modules per test file, so
     // the in-process memo is not shared between files. Simulate a new process
