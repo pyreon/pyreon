@@ -84,6 +84,7 @@ const val PYREON_FLOW_DEFAULT_EDGE_TYPE: String = "bezier"
 /** A container's measured pixel size — written by the hosting composable's
  *  own `onSizeChanged`, mirroring the web `containerSize` signal. */
 data class PyreonFlowContainerSize(val width: Double = 0.0, val height: Double = 0.0)
+data class PyreonFlowNodeExtent(val minX: Double, val minY: Double, val maxX: Double, val maxY: Double)
 
 /** Reactive flow-diagram state: nodes, edges, viewport, selection. Behaviour-
  *  identical to the TS/Swift engines for the v1 surface. See the file header
@@ -94,8 +95,11 @@ class PyreonFlowState<T>(
     viewport: PyreonFlowViewport = PyreonFlowViewport(),
     private val minZoom: Double = 0.1,
     private val maxZoom: Double = 4.0,
+    private val snapToGrid: Boolean = false,
+    private val snapGrid: Double = 15.0,
+    nodeExtent: PyreonFlowNodeExtent? = null,
 ) {
-    private var nodeExtent: DoubleArray? = null
+    private var nodeExtent: PyreonFlowNodeExtent? = nodeExtent
     private val order = mutableStateListOf<String>()
     private val nodeMap = mutableStateMapOf<String, PyreonFlowNode<T>>()
     /** Every node in insertion order. Derived from the per-id map — reading it
@@ -193,18 +197,22 @@ class PyreonFlowState<T>(
     /** O(1); recomposes only the readers of this node. */
     fun updateNodePosition(id: String, position: PyreonXYPosition) {
         val node = nodeMap[id] ?: return
-        nodeMap[id] = node.copy(position = clampToExtent(position, node.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH, node.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT))
+        val snapped = if (snapToGrid && snapGrid != 0.0) PyreonXYPosition(
+            kotlin.math.floor(position.x / snapGrid + 0.5) * snapGrid,
+            kotlin.math.floor(position.y / snapGrid + 0.5) * snapGrid,
+        ) else position
+        nodeMap[id] = node.copy(position = clampToExtent(snapped, node.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH, node.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT))
     }
     fun setNodeExtent(minX: Double, minY: Double, maxX: Double, maxY: Double) {
-        nodeExtent = doubleArrayOf(minX, minY, maxX, maxY)
+        nodeExtent = PyreonFlowNodeExtent(minX, minY, maxX, maxY)
     }
     fun clearNodeExtent() { nodeExtent = null }
     @JvmOverloads
     fun clampToExtent(position: PyreonXYPosition, nodeWidth: Double = PYREON_FLOW_DEFAULT_NODE_WIDTH, nodeHeight: Double = PYREON_FLOW_DEFAULT_NODE_HEIGHT): PyreonXYPosition {
         val extent = nodeExtent ?: return position
         return PyreonXYPosition(
-            x = kotlin.math.min(kotlin.math.max(position.x, extent[0]), extent[2] - nodeWidth),
-            y = kotlin.math.min(kotlin.math.max(position.y, extent[1]), extent[3] - nodeHeight),
+            x = kotlin.math.min(kotlin.math.max(position.x, extent.minX), extent.maxX - nodeWidth),
+            y = kotlin.math.min(kotlin.math.max(position.y, extent.minY), extent.maxY - nodeHeight),
         )
     }
 

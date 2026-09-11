@@ -4023,6 +4023,9 @@ function emitSwiftDecl(
     const zoomArgs = [
       ...(d.minZoom !== undefined ? [`minZoom: ${d.minZoom}`] : []),
       ...(d.maxZoom !== undefined ? [`maxZoom: ${d.maxZoom}`] : []),
+      ...(d.snapToGrid !== undefined ? [`snapToGrid: ${d.snapToGrid}`] : []),
+      ...(d.snapGrid !== undefined ? [`snapGrid: ${d.snapGrid}`] : []),
+      ...(d.nodeExtent !== undefined ? [`nodeExtent: PyreonFlowNodeExtent(minX: ${d.nodeExtent[0]}, minY: ${d.nodeExtent[1]}, maxX: ${d.nodeExtent[2]}, maxY: ${d.nodeExtent[3]})`] : []),
     ].join(', ')
     return `@State private var ${swiftIdent(d.name)} = PyreonFlowState<${rowType}>(nodes: [${nodeLits}], edges: [${edgeLits}]${zoomArgs === '' ? '' : `, ${zoomArgs}`})`
   }

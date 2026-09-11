@@ -1569,6 +1569,7 @@ class PyreonSortableState<T>(
 // @pyreon/flow — the PyreonFlowState engine. Mirrors PyreonFlowState.kt.
 data class PyreonXYPosition(val x: Double, val y: Double)
 data class PyreonFlowViewport(val x: Double = 0.0, val y: Double = 0.0, val zoom: Double = 1.0)
+data class PyreonFlowNodeExtent(val minX: Double, val minY: Double, val maxX: Double, val maxY: Double)
 data class PyreonFlowNode<T>(
   val id: String,
   val type: String? = null,
@@ -1611,6 +1612,9 @@ class PyreonFlowState<T>(
   viewport: PyreonFlowViewport = PyreonFlowViewport(),
   minZoom: Double = 0.1,
   maxZoom: Double = 4.0,
+  snapToGrid: Boolean = false,
+  snapGrid: Double = 15.0,
+  nodeExtent: PyreonFlowNodeExtent? = null,
 ) {
   val nodes: List<PyreonFlowNode<T>> = nodes
   val edges: List<PyreonFlowEdge> = edges

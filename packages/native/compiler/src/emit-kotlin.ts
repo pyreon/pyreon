@@ -3179,6 +3179,9 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     const zoomArgs = [
       ...(d.minZoom !== undefined ? [`minZoom = ${ktDouble(d.minZoom)}`] : []),
       ...(d.maxZoom !== undefined ? [`maxZoom = ${ktDouble(d.maxZoom)}`] : []),
+      ...(d.snapToGrid !== undefined ? [`snapToGrid = ${d.snapToGrid}`] : []),
+      ...(d.snapGrid !== undefined ? [`snapGrid = ${ktDouble(d.snapGrid)}`] : []),
+      ...(d.nodeExtent !== undefined ? [`nodeExtent = PyreonFlowNodeExtent(${d.nodeExtent.map(ktDouble).join(', ')})`] : []),
     ].join(', ')
     return `val ${kotlinIdent(d.name)} = remember { PyreonFlowState<${rowType}>(nodes = listOf(${nodeLits}), edges = listOf(${edgeLits})${zoomArgs === '' ? '' : `, ${zoomArgs}`}) }`
   }

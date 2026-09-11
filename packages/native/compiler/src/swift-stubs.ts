@@ -1001,6 +1001,9 @@ public struct PyreonFlowViewport: Equatable {
   public var zoom: Double = 1
   public init(x: Double = 0, y: Double = 0, zoom: Double = 1) {}
 }
+public struct PyreonFlowNodeExtent: Equatable {
+  public init(minX: Double, minY: Double, maxX: Double, maxY: Double) {}
+}
 public struct PyreonFlowNode<T> {
   public var id: String
   public var type: String? = nil
@@ -1091,7 +1094,10 @@ public final class PyreonFlowState<T> {
     edges: [PyreonFlowEdge] = [],
     viewport: PyreonFlowViewport = PyreonFlowViewport(),
     minZoom: Double = 0.1,
-    maxZoom: Double = 4
+    maxZoom: Double = 4,
+    snapToGrid: Bool = false,
+    snapGrid: Double = 15,
+    nodeExtent: PyreonFlowNodeExtent? = nil
   ) {}
   public private(set) var nodes: [PyreonFlowNode<T>] = []
   public private(set) var edges: [PyreonFlowEdge] = []

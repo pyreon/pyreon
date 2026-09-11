@@ -121,6 +121,16 @@ public struct PyreonFlowContainerSize: Equatable {
     }
 }
 
+public struct PyreonFlowNodeExtent: Equatable {
+    public var minX: Double
+    public var minY: Double
+    public var maxX: Double
+    public var maxY: Double
+    public init(minX: Double, minY: Double, maxX: Double, maxY: Double) {
+        self.minX = minX; self.minY = minY; self.maxX = maxX; self.maxY = maxY
+    }
+}
+
 /// An edge — mirrors `FlowEdge`'s core fields, including editable waypoints.
 public struct PyreonFlowEdge: Equatable {
     public var id: String
@@ -263,18 +273,26 @@ public final class PyreonFlowState<T> {
 
     private let minZoom: Double
     private let maxZoom: Double
-    private var nodeExtent: (minX: Double, minY: Double, maxX: Double, maxY: Double)?
+    private var nodeExtent: PyreonFlowNodeExtent?
+    private let snapToGrid: Bool
+    private let snapGrid: Double
 
     public init(
         nodes: [PyreonFlowNode<T>] = [],
         edges: [PyreonFlowEdge] = [],
         viewport: PyreonFlowViewport = PyreonFlowViewport(),
         minZoom: Double = 0.1,
-        maxZoom: Double = 4
+        maxZoom: Double = 4,
+        snapToGrid: Bool = false,
+        snapGrid: Double = 15,
+        nodeExtent: PyreonFlowNodeExtent? = nil
     ) {
         self.viewport = viewport
         self.minZoom = minZoom
         self.maxZoom = maxZoom
+        self.snapToGrid = snapToGrid
+        self.snapGrid = snapGrid
+        self.nodeExtent = nodeExtent
         for node in nodes { insertNode(node) }
         for edge in edges { insertEdge(edge) }
     }
@@ -370,13 +388,16 @@ public final class PyreonFlowState<T> {
     public func updateNodePosition(_ id: String, _ position: PyreonXYPosition) {
         guard nodeStore[id] != nil else { return }
         let node = nodeStore[id]!
-        let clamped = clampToExtent(position, node.width ?? pyreonFlowDefaultNodeWidth, node.height ?? pyreonFlowDefaultNodeHeight)
+        let snapped = snapToGrid && snapGrid != 0
+            ? PyreonXYPosition(x: floor(position.x / snapGrid + 0.5) * snapGrid, y: floor(position.y / snapGrid + 0.5) * snapGrid)
+            : position
+        let clamped = clampToExtent(snapped, node.width ?? pyreonFlowDefaultNodeWidth, node.height ?? pyreonFlowDefaultNodeHeight)
         nodeStore[id]!.position = clamped
         boxes[id]!.node.position = clamped
         nodesVersion &+= 1
     }
     public func setNodeExtent(minX: Double, minY: Double, maxX: Double, maxY: Double) {
-        nodeExtent = (minX, minY, maxX, maxY)
+        nodeExtent = PyreonFlowNodeExtent(minX: minX, minY: minY, maxX: maxX, maxY: maxY)
     }
     public func clearNodeExtent() { nodeExtent = nil }
     public func clampToExtent(_ position: PyreonXYPosition, _ nodeWidth: Double = pyreonFlowDefaultNodeWidth, _ nodeHeight: Double = pyreonFlowDefaultNodeHeight) -> PyreonXYPosition {

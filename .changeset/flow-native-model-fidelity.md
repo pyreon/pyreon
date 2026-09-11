@@ -17,4 +17,6 @@ Literal bulk node and edge additions/replacements now lower to native model arra
 
 Node extents now constrain native position updates and shared-source extent setup, clearing, and explicit clamping lower on both targets.
 
+Literal `snapToGrid`, `snapGrid`, and `nodeExtent` configuration now initializes both native engines, including JavaScript-compatible rounding at negative half-grid positions.
+
 Swift compiler validation now uses a disposable module cache, keeping hermetic and sandboxed runs independent of a writable user-level Clang cache.

@@ -950,6 +950,9 @@ export type DeclIR =
       minZoom?: number
       /** `maxZoom` from the config, when written as a numeric literal. */
       maxZoom?: number
+      snapToGrid?: boolean
+      snapGrid?: number
+      nodeExtent?: [number, number, number, number]
     }
 
 /**

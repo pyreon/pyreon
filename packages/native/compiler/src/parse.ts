@@ -9220,6 +9220,18 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // unhandled-key warning below rather than half-lowered.
   const minZoom = literalNumber(objProp(configArg, 'minZoom'))
   const maxZoom = literalNumber(objProp(configArg, 'maxZoom'))
+  const snapToGrid = literalBool(objProp(configArg, 'snapToGrid'))
+  const snapGrid = literalNumber(objProp(configArg, 'snapGrid'))
+  const extentNode = objProp(configArg, 'nodeExtent')
+  const nodeExtent = (() => {
+    if (extentNode?.type !== 'ArrayExpression') return undefined
+    const pair = (extentNode.elements as AnyNode[] | undefined) ?? []
+    if (pair.length !== 2 || pair[0]?.type !== 'ArrayExpression' || pair[1]?.type !== 'ArrayExpression') return undefined
+    const lo = (pair[0].elements as AnyNode[] | undefined) ?? []
+    const hi = (pair[1].elements as AnyNode[] | undefined) ?? []
+    if (lo.length !== 2 || hi.length !== 2) return undefined
+    return [literalNumber(lo[0]), literalNumber(lo[1]), literalNumber(hi[0]), literalNumber(hi[1])]
+  })()
 
   // Every OTHER key the user wrote lowers to NOTHING. That is a behavioural
   // divergence from the same source line — `createFlow({ …, fitView: true })`
@@ -9237,7 +9249,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (droppedEdgeFields.size > 0) {
     ctx.warnings.push(droppedFlowFieldsWarning(`createFlow declaration \`${name}\``, 'edge', [...droppedEdgeFields]))
   }
-  const HANDLED_FLOW_CONFIG_KEYS = new Set(['nodes', 'edges', 'minZoom', 'maxZoom'])
+  const HANDLED_FLOW_CONFIG_KEYS = new Set(['nodes', 'edges', 'minZoom', 'maxZoom', 'snapToGrid', 'snapGrid', 'nodeExtent'])
   const droppedKeys: string[] = []
   for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
@@ -9258,12 +9270,15 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       droppedKeys.push(`${k} (not a numeric literal)`)
     }
   }
+  if (objProp(configArg, 'snapToGrid') !== undefined && snapToGrid === undefined) droppedKeys.push('snapToGrid (not a boolean literal)')
+  if (objProp(configArg, 'snapGrid') !== undefined && snapGrid === undefined) droppedKeys.push('snapGrid (not a numeric literal)')
+  if (extentNode !== undefined && (nodeExtent === undefined || nodeExtent.some((n) => n === undefined))) droppedKeys.push('nodeExtent (not a numeric [[minX, minY], [maxX, maxY]] literal)')
   if (droppedKeys.length > 0) {
     ctx.warnings.push(
       `createFlow declaration \`${name}\`: ${droppedKeys.map((k) => `\`${k}\``).join(', ')} ` +
         `${droppedKeys.length === 1 ? 'is' : 'are'} NOT lowered natively — the native PyreonFlowState ` +
         `uses its own defaults, so this diagram behaves differently on web than on iOS/Android from ` +
-        `the SAME source. Only \`nodes\`, \`edges\`, \`minZoom\` and \`maxZoom\` (numeric literals) cross today. ` +
+        `the SAME source. Literal node/edge seeds, zoom limits, grid snapping, and node extents cross today. ` +
         `Set the rest from hand-written native code, or keep the JSX editor on the \`@pyreon/flow/webview\` bridge.`,
     )
   }
@@ -9275,6 +9290,9 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     edges: edgesOut,
     ...(minZoom !== undefined ? { minZoom } : {}),
     ...(maxZoom !== undefined ? { maxZoom } : {}),
+    ...(snapToGrid !== undefined ? { snapToGrid } : {}),
+    ...(snapGrid !== undefined ? { snapGrid } : {}),
+    ...(nodeExtent !== undefined && nodeExtent.every((n) => n !== undefined) ? { nodeExtent: nodeExtent as [number, number, number, number] } : {}),
   }
 }
 

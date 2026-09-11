@@ -4,6 +4,7 @@
 
 import com.pyreon.runtime.PyreonFlowEdge
 import com.pyreon.runtime.PyreonFlowNode
+import com.pyreon.runtime.PyreonFlowNodeExtent
 import com.pyreon.runtime.PyreonFlowState
 import com.pyreon.runtime.PyreonFlowViewport
 import com.pyreon.runtime.PyreonXYPosition
@@ -216,6 +217,9 @@ fun main() {
     check(q.getNode("x")?.position == PyreonXYPosition(50.0, 260.0), "position updates automatically use the configured extent and default dimensions")
     q.clearNodeExtent()
     check(q.clampToExtent(PyreonXYPosition(500.0, -2.0)) == PyreonXYPosition(500.0, -2.0), "clearing the extent restores unconstrained positions")
+    val snapped = PyreonFlowState(nodes = listOf(PyreonFlowNode(id = "s", position = PyreonXYPosition(0.0, 0.0), data = NodeData("Snap"))), snapToGrid = true, snapGrid = 10.0, nodeExtent = PyreonFlowNodeExtent(-100.0, -100.0, 200.0, 200.0))
+    snapped.updateNodePosition("s", PyreonXYPosition(-5.0, 16.0))
+    check(snapped.getNode("s")?.position == PyreonXYPosition(0.0, 20.0), "grid snapping matches JavaScript Math.round, including negative halves")
     // Per-id storage: a position write must not disturb order or the other nodes.
     et.updateNodePosition("2", PyreonXYPosition(50.0, 50.0))
     check(et.nodes.map { it.id } == listOf("1", "2", "3"), "updateNodePosition keeps insertion order")

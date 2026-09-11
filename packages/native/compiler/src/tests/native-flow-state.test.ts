@@ -228,9 +228,21 @@ describe('createFlow — v1 decline shapes (loud warning, not silent drop)', () 
       for (const target of ['swift', 'kotlin'] as const) {
         const w = (transform(src, { target }).warnings ?? []).join(' ')
         expect(w).toContain('`fitView`')
-        expect(w).toContain('`snapToGrid`')
+        expect(w).not.toContain('`snapToGrid`')
         expect(w).toContain('behaves differently on web')
       }
+    })
+
+    it('grid snapping and node extent config cross on both targets', () => {
+      const src = cfg('snapToGrid: true, snapGrid: 10, nodeExtent: [[0, 5], [200, 300]],')
+      const swift = transform(src, { target: 'swift' })
+      expect(swift.code).toContain('snapToGrid: true, snapGrid: 10, nodeExtent: PyreonFlowNodeExtent(minX: 0, minY: 5, maxX: 200, maxY: 300)')
+      expect((swift.warnings ?? []).join(' ')).not.toContain('NOT lowered natively')
+      expect(validateSwiftWithStubs(swift.code).ok).toBe(true)
+      const kotlin = transform(src, { target: 'kotlin' })
+      expect(kotlin.code).toContain('snapToGrid = true, snapGrid = 10.0, nodeExtent = PyreonFlowNodeExtent(0.0, 5.0, 200.0, 300.0)')
+      expect((kotlin.warnings ?? []).join(' ')).not.toContain('NOT lowered natively')
+      expect(validateKotlin(kotlin.code).ok).toBe(true)
     })
 
     it('a NON-LITERAL minZoom is reported, not silently defaulted', () => {
