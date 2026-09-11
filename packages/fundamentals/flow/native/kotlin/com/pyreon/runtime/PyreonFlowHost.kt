@@ -3,6 +3,7 @@ package com.pyreon.runtime
 data class PyreonFlowMiniMapNode(val id: String, val x: Double, val y: Double, val width: Double, val height: Double)
 data class PyreonFlowMiniMapLayout(val nodes: List<PyreonFlowMiniMapNode>, val viewport: PyreonFlowNodeBox, val scale: Double, val minX: Double, val minY: Double)
 data class PyreonFlowEdgeLabel(val id: String, val text: String?, val accessibilityLabel: String, val x: Double, val y: Double, val focusable: Boolean)
+data class PyreonFlowEdgeUpdater(val edgeId: String, val end: String, val x: Double, val y: Double)
 
 fun <T> pyreonFlowMiniMapLayout(state: PyreonFlowState<T>, width: Double = 200.0, height: Double = 150.0, padding: Double = 40.0): PyreonFlowMiniMapLayout {
     val visible = state.nodes.filter { it.hidden != true }
@@ -86,6 +87,15 @@ fun <T> pyreonFlowEdgeLabels(state: PyreonFlowState<T>): List<PyreonFlowEdgeLabe
             curvature = edge.curvature ?: 0.25,
         )
         PyreonFlowEdgeLabel(edge.id, edge.label, edge.ariaLabel ?: edge.label ?: "Edge from ${edge.source} to ${edge.target}", path.labelX, path.labelY, edge.focusable != false)
+    }
+}
+
+fun <T> pyreonFlowEdgeUpdaters(state: PyreonFlowState<T>, strokes: List<PyreonFlowEdgeStroke>): List<PyreonFlowEdgeUpdater> {
+    val byId = strokes.associateBy { it.id }
+    return state.selectedEdges().flatMap { id ->
+        val edge = state.getEdge(id); val segments = byId[id]?.segments
+        if (edge == null || edge.reconnectable == false || segments.isNullOrEmpty()) emptyList()
+        else listOf(PyreonFlowEdgeUpdater(id, "source", segments.first().x, segments.first().y), PyreonFlowEdgeUpdater(id, "target", segments.last().x, segments.last().y))
     }
 }
 

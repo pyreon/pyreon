@@ -11,6 +11,13 @@ public struct PyreonFlowEdgeLabel: Identifiable, Equatable {
     public var y: Double
     public var focusable: Bool
 }
+public struct PyreonFlowEdgeUpdater: Identifiable, Equatable {
+    public var id: String { "\(edgeId)-\(end)" }
+    public var edgeId: String
+    public var end: String
+    public var x: Double
+    public var y: Double
+}
 public struct PyreonFlowMiniMapLayout: Equatable {
     public var nodes: [PyreonFlowMiniMapNode]
     public var viewport: PyreonFlowRect
@@ -272,6 +279,15 @@ public func pyreonFlowEdgeLabels<T>(state: PyreonFlowState<T>) -> [PyreonFlowEdg
             offset: edge.pathOffset ?? 20,
             curvature: edge.curvature ?? 0.25)
         return PyreonFlowEdgeLabel(id: edge.id, text: edge.label, accessibilityLabel: edge.ariaLabel ?? edge.label ?? "Edge from \(edge.source) to \(edge.target)", x: path.labelX, y: path.labelY, focusable: edge.focusable != false)
+    }
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+public func pyreonFlowEdgeUpdaters<T>(state: PyreonFlowState<T>, strokes: [PyreonFlowEdgeStroke]) -> [PyreonFlowEdgeUpdater] {
+    let byId = Dictionary(uniqueKeysWithValues: strokes.map { ($0.id, $0) })
+    return state.selectedEdges().flatMap { id -> [PyreonFlowEdgeUpdater] in
+        guard let edge = state.getEdge(id), edge.reconnectable != false, let segments = byId[id]?.segments, let first = segments.first, let last = segments.last else { return [] }
+        return [PyreonFlowEdgeUpdater(edgeId: id, end: "source", x: first.x, y: first.y), PyreonFlowEdgeUpdater(edgeId: id, end: "target", x: last.x, y: last.y)]
     }
 }
 

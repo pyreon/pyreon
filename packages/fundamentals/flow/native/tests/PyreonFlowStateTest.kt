@@ -54,6 +54,9 @@ fun main() {
     check(connected?.sourceHandle == "out" && connected.targetHandle == "in", "connect preserves handle ids")
     check(ruled.connect(PyreonFlowConnection("api", "ui"), "rejected") == null && ruled.getEdge("rejected") == null, "connect never stores an invalid edge")
     check(ruled.connect(PyreonFlowConnection("api", "db"), "native-edge") == null, "connect rejects duplicate explicit ids")
+    check(ruled.reconnectEdge("native-edge", PyreonFlowConnection("api", "db")), "validated reconnect succeeds")
+    check(ruled.getEdge("native-edge")?.sourceHandle == null && ruled.getEdge("native-edge")?.targetHandle == null, "validated reconnect can clear stale handle ids")
+    check(!ruled.reconnectEdge("native-edge", PyreonFlowConnection("api", "ui")) && ruled.getEdge("native-edge")?.target == "db", "invalid reconnect leaves the edge unchanged")
 
     val configuredNode = PyreonFlowNode(
         id = "configured", position = PyreonXYPosition(1.0, 2.0), data = NodeData("Configured"),

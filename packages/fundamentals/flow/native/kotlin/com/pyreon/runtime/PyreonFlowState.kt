@@ -297,6 +297,14 @@ class PyreonFlowState<T>(
             targetHandle = targetHandle ?: edge.targetHandle,
         ) }
     }
+    fun reconnectEdge(id: String, connection: PyreonFlowConnection): Boolean {
+        if (!isValidConnection(connection)) return false
+        val i = _edges.indexOfFirst { it.id == id }
+        if (i < 0) return false
+        val edge = _edges[i]
+        _edges = _edges.toMutableList().also { it[i] = edge.copy(source = connection.source, target = connection.target, sourceHandle = connection.sourceHandle, targetHandle = connection.targetHandle) }
+        return true
+    }
     @JvmOverloads
     fun addEdgeWaypoint(edgeId: String, point: PyreonXYPosition, index: Int? = null) {
         val i = _edges.indexOfFirst { it.id == edgeId }

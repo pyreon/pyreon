@@ -518,6 +518,15 @@ public final class PyreonFlowState<T> {
         if let sourceHandle { edges[i].sourceHandle = sourceHandle }
         if let targetHandle { edges[i].targetHandle = targetHandle }
     }
+    @discardableResult
+    public func reconnectEdge(_ id: String, connection: PyreonFlowConnection) -> Bool {
+        guard isValidConnection(connection), let i = edges.firstIndex(where: { $0.id == id }) else { return false }
+        edges[i].source = connection.source
+        edges[i].target = connection.target
+        edges[i].sourceHandle = connection.sourceHandle
+        edges[i].targetHandle = connection.targetHandle
+        return true
+    }
     public func addEdgeWaypoint(_ edgeId: String, _ point: PyreonXYPosition, _ index: Int? = nil) {
         guard let i = edges.firstIndex(where: { $0.id == edgeId }) else { return }
         if let index {
