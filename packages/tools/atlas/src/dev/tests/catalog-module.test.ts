@@ -267,6 +267,33 @@ describe('the render ctx (derived catalogs are NOT ctx-blind)', () => {
     expect(code).toContain("if (typeof user === 'function') user(...args)")
   })
 
+  it('does not fabricate render props while instrumenting event handlers', () => {
+    // `reactive` is Atlas discovery's function-valued marker, not an event
+    // marker. Before this guard, an optional `children` render prop was always
+    // replaced with a logger function. Combobox therefore selected its
+    // render-prop escape hatch and rendered the logger's undefined return —
+    // every generated static preview was an empty card.
+    const code = generateCatalogModule(
+      [
+        {
+          component: ci({
+            name: 'RenderPropCard',
+            controls: [
+              { name: 'children', kind: 'reactive', reactive: true, required: false },
+              { name: 'renderItem', kind: 'reactive', reactive: true, required: false },
+              { name: 'onSelect', kind: 'reactive', reactive: true, required: false },
+            ],
+          }),
+          file: '/p/src/RenderPropCard.tsx',
+        },
+      ],
+      { root: '/p/src' },
+    )
+    expect(code).toContain('["onSelect"]')
+    expect(code).not.toContain('["children"')
+    expect(code).not.toContain('"renderItem"')
+  })
+
   it('spreads ctx.pseudo gated on IS_ROCKETSTYLE (runtime truth, never guessed)', () => {
     const code = generateCatalogModule([{ component: ci({}), file: '/p/src/X.tsx' }], {
       root: '/p/src',

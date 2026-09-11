@@ -98,7 +98,7 @@ Discover components (static TS scan + rocketstyle runtime detection), derive con
 
 ```tsx
 $ atlas scan .
-atlas: discovered 9 component(s), 43 scenario(s) — 41 verified, 2 failing, 0 unverified.
+atlas: discovered 10 component(s), 44 scenario(s) — 42 verified, 2 failing, 0 unverified.
   checks: a11y 18/20 ✗ · interaction 43/43 · ssrParity 43/43 · leak 43/43
   not run: reactivityCoverage, snapshot — browser-only — run `atlas verify-browser`
   → atlas-catalog.json
@@ -197,7 +197,7 @@ Boot the workbench: real Vite + the real Pyreon compiler over your source, a der
 
 ```tsx
 $ atlas dev . --port=5210
-atlas dev: 9 component(s) → http://localhost:5210/
+atlas dev: 10 component(s) → http://localhost:5210/
 ```
 
 **Common mistakes**
@@ -221,7 +221,7 @@ Compile the workbench into a STATIC, deployable site — the same derived catalo
 
 ```tsx
 $ atlas build . --out docs/components --title "Acme DS"
-atlas build: 9 component(s) → /repo/docs/components
+atlas build: 10 component(s) → /repo/docs/components
   title: Acme DS
 ```
 
