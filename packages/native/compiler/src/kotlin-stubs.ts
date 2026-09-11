@@ -1679,6 +1679,7 @@ enum class PyreonFlowBackgroundVariant { Dots, Lines, Cross }
 data class PyreonFlowBackgroundStyle(val variant: PyreonFlowBackgroundVariant = PyreonFlowBackgroundVariant.Dots, val gap: Double = 20.0, val size: Double = 1.0, val color: String = "#dddddd")
 enum class PyreonFlowControlsPosition { TopLeft, TopRight, BottomLeft, BottomRight }
 data class PyreonFlowControlsStyle(val showZoomIn: Boolean = true, val showZoomOut: Boolean = true, val showFitView: Boolean = true, val showLock: Boolean = false, val position: PyreonFlowControlsPosition = PyreonFlowControlsPosition.BottomLeft)
+data class PyreonFlowMiniMapStyle(val nodeColor: String = "#e2e8f0", val maskColor: String = "#000000", val width: Double = 200.0, val height: Double = 150.0, val pannable: Boolean = true, val zoomable: Boolean = true)
 
 @Composable
 fun <T> PyreonFlowView(
@@ -1688,6 +1689,7 @@ fun <T> PyreonFlowView(
   edgeWidth: Double = 1.5,
   background: PyreonFlowBackgroundStyle? = null,
   controls: PyreonFlowControlsStyle? = null,
+  miniMap: PyreonFlowMiniMapStyle? = null,
   nodeContent: @Composable (PyreonFlowNode<T>) -> Unit,
 ) {}
 

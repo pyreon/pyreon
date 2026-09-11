@@ -545,7 +545,7 @@ the machine-checked contract.
 | `@pyreon/sync` | the Yjs engine + IndexedDB/WebSocket transports stay web; the engine-neutral PyreonCrdt core + `syncedSignal` lower to a native runtime, cross-device transport tracked |
 | `@pyreon/query` | wraps TanStack Query (a JS runtime cache), so the full client — QueryClient config, devtools, infinite/suspense queries — stays web; `useQuery` itself lowers to the PyreonQuery runtime |
 | `@pyreon/validation` | Standard Schema adapters (zod/valibot/arktype are JS libraries), so the adapters themselves stay web; the declarative schema FORMS lower to native validators (Gap-4 v1) |
-| `@pyreon/flow` | the core `createFlow` state, `<Flow instance=&#123;flow&#125;>` host, `<Background>`, and `<Controls>` lower natively, while `<MiniMap>`/`<Handle>` chrome and custom renderer maps still depend on SVG/DOM behavior and require explicit native follow-ups or the WebView bridge |
+| `@pyreon/flow` | the core `createFlow` state, `<Flow instance=&#123;flow&#125;>` host, `<Background>`, `<Controls>`, and `<MiniMap>` lower natively, while `<Handle>` and advanced node chrome/custom renderer maps still require explicit native follow-ups or the WebView bridge |
 | `@pyreon/lint` | lint tooling — runs at dev time, not app runtime |
 | `@pyreon/lathe` | the code generator — build-time tooling that emits app code, not app runtime itself |
 | `@pyreon/config` | build-time config shape read by the tooling that assembles an app — never part of a rendered app on any target |

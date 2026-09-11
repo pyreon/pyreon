@@ -17,9 +17,9 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'the core `createFlow` state, `<Flow instance={flow}>` host, `<Background>`, and `<Controls>` lower natively, while `<MiniMap>`/`<Handle>` chrome and custom renderer maps still depend on SVG/DOM behavior and require explicit native follow-ups or the WebView bridge',
+      'the core `createFlow` state, `<Flow instance={flow}>` host, `<Background>`, `<Controls>`, and `<MiniMap>` lower natively, while `<Handle>` and advanced node chrome/custom renderer maps still require explicit native follow-ups or the WebView bridge',
     nativeFrontend:
-      'PyreonFlowState lowers `createFlow` configuration, models, and operations to @Observable/Compose state. `<Flow instance={flow}>` lowers to the interactive `PyreonFlowView` SwiftUI/Compose host, including state-derived nodes and built-in edge geometry, selection, node drag, canvas pan/zoom, visibility, container measurement, accessibility labels, viewport-aware `<Background>` patterns, and functional `<Controls>` for zoom, fit, placement, percentage, and interaction locking. Custom renderer maps and remaining chrome stay named diagnostics rather than silent drops.',
+      'PyreonFlowState lowers `createFlow` configuration, models, and operations to @Observable/Compose state. `<Flow instance={flow}>` lowers to the interactive `PyreonFlowView` SwiftUI/Compose host, including state-derived nodes and built-in edge geometry, selection, node drag, canvas pan/zoom, visibility, measurement, accessibility, `<Background>`, functional `<Controls>`, and `<MiniMap>` node/viewport rendering with click, drag, and zoom navigation. Custom renderer maps and remaining chrome stay named diagnostics rather than silent drops.',
   },
   peerDeps: ['@pyreon/runtime-dom'],
   longExample: `import { createFlow, useFlow, Flow, Background, Controls, MiniMap, Handle, Position, type NodeComponentProps } from '@pyreon/flow'

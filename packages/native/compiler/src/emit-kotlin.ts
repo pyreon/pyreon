@@ -6519,13 +6519,24 @@ function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string
   const controls = e.children
     .filter((child) => child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'Controls')
     .map((child) => child.kind === 'expr' ? child.expr : undefined)[0]
-  const otherChildren = e.children.filter((child) => !(child.kind === 'expr' && child.expr.kind === 'jsx-element' && (child.expr.tag === 'Background' || child.expr.tag === 'Controls')))
+  const miniMap = e.children
+    .filter((child) => child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'MiniMap')
+    .map((child) => child.kind === 'expr' ? child.expr : undefined)[0]
+  const otherChildren = e.children.filter((child) => !(child.kind === 'expr' && child.expr.kind === 'jsx-element' && (child.expr.tag === 'Background' || child.expr.tag === 'Controls' || child.expr.tag === 'MiniMap')))
   if (otherChildren.length > 0) {
-    _emitWarnings.push('<Flow> contains native-unlowered children; MiniMap and other optional chrome remain explicit follow-ups.')
+    _emitWarnings.push('<Flow> contains native-unlowered children; Handle and other optional chrome remain explicit follow-ups.')
   }
   const bgArg = background?.kind === 'jsx-element' ? `, background = ${emitKotlinFlowBackground(background)}` : ''
   const controlsArg = controls?.kind === 'jsx-element' ? `, controls = ${emitKotlinFlowControls(controls)}` : ''
-  return `PyreonFlowView(state = ${emitKotlinExpr(attr.value, 0)}${bgArg}${controlsArg}) { pyreonNode ->\n  Text(text = pyreonNode.id)\n}`
+  const miniMapArg = miniMap?.kind === 'jsx-element' ? `, miniMap = ${emitKotlinFlowMiniMap(miniMap)}` : ''
+  return `PyreonFlowView(state = ${emitKotlinExpr(attr.value, 0)}${bgArg}${controlsArg}${miniMapArg}) { pyreonNode ->\n  Text(text = pyreonNode.id)\n}`
+}
+
+function emitKotlinFlowMiniMap(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const str = (name: string, fallback: string): string => { const value = readStaticAttrKotlin(e, name); return JSON.stringify(typeof value === 'string' ? value : fallback) }
+  const num = (name: string, fallback: number): string => { const value = readStaticAttrKotlin(e, name); const n = typeof value === 'number' ? value : fallback; return `${n}${Number.isInteger(n) ? '.0' : ''}` }
+  const bool = (name: string, fallback: boolean): string => readStaticAttrKotlin(e, name) === false ? 'false' : readStaticAttrKotlin(e, name) === true ? 'true' : String(fallback)
+  return `PyreonFlowMiniMapStyle(nodeColor = ${str('nodeColor', '#e2e8f0')}, maskColor = ${str('maskColor', '#000000')}, width = ${num('width', 200)}, height = ${num('height', 150)}, pannable = ${bool('pannable', true)}, zoomable = ${bool('zoomable', true)})`
 }
 
 function emitKotlinFlowControls(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {

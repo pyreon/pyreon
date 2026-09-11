@@ -186,6 +186,21 @@ describe('<Flow> native host lowering', () => {
     if (isKotlincAvailable()) expect(validateKotlin(kotlin.code).ok).toBe(true)
   })
 
+  it('extracts interactive MiniMap configuration on both targets', () => {
+    const withMiniMap = source.replace(
+      "import { createFlow, Flow }",
+      "import { createFlow, Flow, MiniMap }",
+    ).replace('<Flow instance={flow} />', '<Flow instance={flow}><MiniMap nodeColor="#123456" maskColor="#abcdef" width={180} height={120} pannable={false} /></Flow>')
+    const swift = transform(withMiniMap, { target: 'swift' })
+    const kotlin = transform(withMiniMap, { target: 'kotlin' })
+    expect(swift.code).toContain('miniMap: PyreonFlowMiniMapStyle(nodeColor: "#123456", maskColor: "#abcdef", width: 180, height: 120, pannable: false, zoomable: true)')
+    expect(kotlin.code).toContain('miniMap = PyreonFlowMiniMapStyle(nodeColor = "#123456", maskColor = "#abcdef", width = 180.0, height = 120.0, pannable = false, zoomable = true)')
+    expect(swift.warnings.some((warning) => warning.includes('MiniMap (from @pyreon/flow)'))).toBe(false)
+    expect(kotlin.warnings.some((warning) => warning.includes('MiniMap (from @pyreon/flow)'))).toBe(false)
+    if (isSwiftcAvailable()) expect(validateSwiftWithStubs(swift.code).ok).toBe(true)
+    if (isKotlincAvailable()) expect(validateKotlin(kotlin.code).ok).toBe(true)
+  })
+
   it('emits the Compose host instead of an unresolved web component', () => {
     const result = transform(source, { target: 'kotlin' })
     expect(result.code).toContain('PyreonFlowView(state = flow) { pyreonNode ->')

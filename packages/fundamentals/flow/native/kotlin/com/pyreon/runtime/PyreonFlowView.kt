@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.matchParentSize
@@ -48,6 +49,59 @@ data class PyreonFlowControlsStyle(
     val showLock: Boolean = false,
     val position: PyreonFlowControlsPosition = PyreonFlowControlsPosition.BottomLeft,
 )
+
+data class PyreonFlowMiniMapStyle(
+    val nodeColor: String = "#e2e8f0",
+    val maskColor: String = "#000000",
+    val width: Double = 200.0,
+    val height: Double = 150.0,
+    val pannable: Boolean = true,
+    val zoomable: Boolean = true,
+)
+
+@Composable
+fun <T> PyreonFlowMiniMap(
+    state: PyreonFlowState<T>,
+    style: PyreonFlowMiniMapStyle = PyreonFlowMiniMapStyle(),
+    modifier: Modifier = Modifier,
+) {
+    val density = LocalDensity.current
+    val layout = pyreonFlowMiniMapLayout(state, style.width, style.height)
+    Canvas(
+        modifier
+            .requiredSize(with(density) { style.width.toFloat().toDp() }, with(density) { style.height.toFloat().toDp() })
+            .semantics { contentDescription = "minimap" }
+            .pointerInput(layout, style.pannable) {
+                if (style.pannable) detectTapGestures { point ->
+                    if (layout.scale > 0) state.setCenter(point.x / layout.scale + layout.minX - 40, point.y / layout.scale + layout.minY - 40)
+                }
+            }
+            .pointerInput(layout.scale, style.pannable, style.zoomable) {
+                detectTransformGestures { _, pan, zoom, _ ->
+                    if (style.pannable && layout.scale > 0) {
+                        state.setViewport(x = state.viewport.x - pan.x / layout.scale * state.zoom, y = state.viewport.y - pan.y / layout.scale * state.zoom)
+                    }
+                    if (style.zoomable) {
+                        val centerX = (state.containerSize.width / 2 - state.viewport.x) / state.zoom
+                        val centerY = (state.containerSize.height / 2 - state.viewport.y) / state.zoom
+                        state.setCenter(centerX, centerY, state.zoom * zoom)
+                    }
+                }
+            },
+    ) {
+        val nodeColor = pyreonFlowEdgeColor(style.nodeColor)
+        for (node in layout.nodes) {
+            drawRect(nodeColor, Offset(node.x.toFloat(), node.y.toFloat()), androidx.compose.ui.geometry.Size(node.width.toFloat(), node.height.toFloat()))
+        }
+        val vp = layout.viewport
+        drawRect(
+            pyreonFlowEdgeColor(style.maskColor),
+            Offset(vp.x.toFloat(), vp.y.toFloat()),
+            androidx.compose.ui.geometry.Size(vp.width.toFloat(), vp.height.toFloat()),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1f),
+        )
+    }
+}
 
 @Composable
 fun <T> PyreonFlowControls(
@@ -114,6 +168,7 @@ fun <T> PyreonFlowView(
     edgeWidth: Double = 1.5,
     background: PyreonFlowBackgroundStyle? = null,
     controls: PyreonFlowControlsStyle? = null,
+    miniMap: PyreonFlowMiniMapStyle? = null,
     nodeContent: @Composable (PyreonFlowNode<T>) -> Unit,
 ) {
     val density = LocalDensity.current
@@ -206,6 +261,9 @@ fun <T> PyreonFlowView(
                 { interactionsLocked = it },
                 Modifier.align(alignment).padding(10.dp),
             )
+        }
+        if (miniMap != null) {
+            PyreonFlowMiniMap(state, miniMap, Modifier.align(androidx.compose.ui.Alignment.BottomEnd).padding(10.dp))
         }
     }
 }

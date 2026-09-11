@@ -11,6 +11,13 @@ public struct PyreonFlowMiniMapLayout: Equatable {
     public var minY: Double
 }
 
+public struct PyreonFlowMiniMapStyle: Equatable {
+    public var nodeColor: String; public var maskColor: String; public var width: Double; public var height: Double; public var pannable: Bool; public var zoomable: Bool
+    public init(nodeColor: String = "#e2e8f0", maskColor: String = "#000000", width: Double = 200, height: Double = 150, pannable: Bool = true, zoomable: Bool = true) {
+        self.nodeColor = nodeColor; self.maskColor = maskColor; self.width = width; self.height = height; self.pannable = pannable; self.zoomable = zoomable
+    }
+}
+
 @available(iOS 17.0, macOS 14.0, *)
 public func pyreonFlowMiniMapLayout<T>(state: PyreonFlowState<T>, width: Double = 200, height: Double = 150, padding: Double = 40) -> PyreonFlowMiniMapLayout {
     let visible = state.nodes.filter { $0.hidden != true }
@@ -30,6 +37,57 @@ public func pyreonFlowMiniMapLayout<T>(state: PyreonFlowState<T>, width: Double 
         nodes: nodes,
         viewport: PyreonFlowRect(x: (-vp.x / vp.zoom - minX + padding) * scale, y: (-vp.y / vp.zoom - minY + padding) * scale, width: (cs.width / vp.zoom) * scale, height: (cs.height / vp.zoom) * scale),
         scale: scale, minX: minX, minY: minY)
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+public struct PyreonFlowMiniMap<T>: View {
+    @Bindable private var state: PyreonFlowState<T>
+    private let style: PyreonFlowMiniMapStyle
+    @State private var panStart: PyreonFlowViewport?
+    @State private var zoomStart: (zoom: Double, centerX: Double, centerY: Double)?
+    public init(state: PyreonFlowState<T>, style: PyreonFlowMiniMapStyle = PyreonFlowMiniMapStyle()) { self.state = state; self.style = style }
+    public var body: some View {
+        let layout = pyreonFlowMiniMapLayout(state: state, width: style.width, height: style.height)
+        Canvas { context, _ in
+            let nodeColor = pyreonFlowEdgeColor(style.nodeColor)
+            for node in layout.nodes {
+                context.fill(Path(CGRect(x: node.x, y: node.y, width: node.width, height: node.height)), with: .color(nodeColor))
+            }
+            let viewport = layout.viewport
+            context.stroke(Path(CGRect(x: viewport.x, y: viewport.y, width: viewport.width, height: viewport.height)), with: .color(pyreonFlowEdgeColor(style.maskColor)), lineWidth: 1)
+        }
+        .frame(width: style.width, height: style.height)
+        .background(Color.white.opacity(0.92))
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.gray.opacity(0.4)))
+        .contentShape(Rectangle())
+        .gesture(panGesture(layout))
+        .simultaneousGesture(tapGesture(layout))
+        .simultaneousGesture(zoomGesture)
+        .accessibilityLabel("minimap")
+    }
+    private func tapGesture(_ layout: PyreonFlowMiniMapLayout) -> some Gesture {
+        SpatialTapGesture().onEnded { value in
+            guard style.pannable, layout.scale > 0 else { return }
+            state.setCenter(Double(value.location.x) / layout.scale + layout.minX - 40, Double(value.location.y) / layout.scale + layout.minY - 40)
+        }
+    }
+    private func panGesture(_ layout: PyreonFlowMiniMapLayout) -> some Gesture {
+        DragGesture(minimumDistance: 2, coordinateSpace: .global).onChanged { value in
+            guard style.pannable, layout.scale > 0 else { return }
+            let start = panStart ?? state.viewport
+            if panStart == nil { panStart = start }
+            state.setViewport(x: start.x - Double(value.translation.width) / layout.scale * start.zoom, y: start.y - Double(value.translation.height) / layout.scale * start.zoom)
+        }.onEnded { _ in panStart = nil }
+    }
+    private var zoomGesture: some Gesture {
+        MagnificationGesture().onChanged { scale in
+            guard style.zoomable else { return }
+            let start = zoomStart ?? (state.zoom, (state.containerSize.width / 2 - state.viewport.x) / state.zoom, (state.containerSize.height / 2 - state.viewport.y) / state.zoom)
+            if zoomStart == nil { zoomStart = start }
+            state.setCenter(start.centerX, start.centerY, zoom: start.zoom * scale)
+        }.onEnded { _ in zoomStart = nil }
+    }
 }
 
 public enum PyreonFlowBackgroundVariant: Equatable { case dots, lines, cross }
@@ -185,6 +243,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private let edgeWidth: Double
     private let background: PyreonFlowBackgroundStyle?
     private let controls: PyreonFlowControlsStyle?
+    private let miniMap: PyreonFlowMiniMapStyle?
     private let nodeContent: (PyreonFlowNode<T>) -> NodeContent
 
     @State private var nodeDragStart: [String: PyreonXYPosition] = [:]
@@ -198,6 +257,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         edgeWidth: Double = 1.5,
         background: PyreonFlowBackgroundStyle? = nil,
         controls: PyreonFlowControlsStyle? = nil,
+        miniMap: PyreonFlowMiniMapStyle? = nil,
         @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>) -> NodeContent
     ) {
         self.state = state
@@ -205,6 +265,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         self.edgeWidth = edgeWidth
         self.background = background
         self.controls = controls
+        self.miniMap = miniMap
         self.nodeContent = nodeContent
     }
 
@@ -253,6 +314,11 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
 
                 if let controls {
                     PyreonFlowControls(state: state, style: controls, locked: $interactionsLocked)
+                }
+                if let miniMap {
+                    PyreonFlowMiniMap(state: state, style: miniMap)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                        .padding(10)
                 }
             }
             .clipped()
