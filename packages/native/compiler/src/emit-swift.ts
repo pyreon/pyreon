@@ -5613,6 +5613,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       ) {
         const flowName = e.callee.object.name
         const member = e.callee.property
+        if (e.args.length === 0 && member === 'getNodes') return `${swiftIdent(flowName)}.nodes`
+        if (e.args.length === 0 && member === 'getEdges') return `${swiftIdent(flowName)}.edges`
+        if (e.args.length === 0 && member === 'getViewport') return `${swiftIdent(flowName)}.viewport`
         // Nothing silent inside the boundary: every member that is not in the
         // v1 surface is NAMED here (it is still emitted as written — the native
         // build is where it fails, but now the author heard about it first).
@@ -5622,7 +5625,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         if (member === 'fitView') _emitWarnings.push(flowFitViewWarning(flowName))
         // Swift's labeled parameters: the web call is positional, the port's
         // second parameter is labeled — an unlabeled emit fails ONLY on iOS.
-        if ((member === 'selectNode' || member === 'selectEdge') && e.args.length === 2) {
+        if ((member === 'selectNode' || member === 'selectNodes' || member === 'selectEdge') && e.args.length === 2) {
           return `${swiftIdent(flowName)}.${member}(${emitSwiftExpr(e.args[0]!, indent)}, additive: ${emitSwiftExpr(e.args[1]!, indent)})`
         }
         if (member === 'fitView' && e.args.length >= 1) {
@@ -5645,6 +5648,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           if (lit !== null) {
             return `${swiftIdent(e.callee.object.name)}.updateNodePosition(${emitSwiftExpr(e.args[0]!, indent)}, ${lit})`
           }
+        }
+        if (['panTo', 'screenToFlowPosition', 'flowToScreenPosition'].includes(member) && e.args.length === 1) {
+          const lit = swiftFlowPositionLiteral(e.args[0]!)
+          if (lit !== null) return `${swiftIdent(flowName)}.${member}(${lit})`
         }
       }
       // A signal WRITE on a flow-state property (`flow.nodes.set(...)`): the

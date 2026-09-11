@@ -15,12 +15,14 @@ export const LOWERED_FLOW_PROPERTY_READS: ReadonlySet<string> = new Set(['nodes'
 
 /** Methods `PyreonFlowState` implements on BOTH targets (v1 surface). */
 export const LOWERED_FLOW_METHODS: ReadonlySet<string> = new Set([
-  'getNode', 'addNode', 'removeNode', 'updateNodePosition',
-  'getEdge', 'addEdge', 'removeEdge',
+  'getNode', 'getNodes', 'addNode', 'removeNode', 'removeNodes', 'updateNodePosition',
+  'getEdge', 'getEdges', 'addEdge', 'removeEdge', 'removeEdges',
   'isNodeSelected', 'isEdgeSelected', 'selectedNodes', 'selectedEdges',
-  'selectNode', 'deselectNode', 'selectEdge', 'clearSelection', 'selectAll', 'deleteSelected',
-  'zoomTo', 'zoomIn', 'zoomOut', 'panTo', 'fitView',
-  'getConnectedEdges', 'getIncomers', 'getOutgoers',
+  'selectNode', 'selectNodes', 'deselectNode', 'selectEdge', 'clearSelection', 'selectAll', 'deleteSelected',
+  'zoomTo', 'zoomIn', 'zoomOut', 'panTo', 'fitView', 'getViewport',
+  'screenToFlowPosition', 'flowToScreenPosition', 'isNodeVisible', 'focusNode',
+  'moveSelectedNodes',
+  'getConnectedEdges', 'getIncomers', 'getOutgoers', 'getChildNodes', 'getAbsolutePosition',
 ])
 
 /** `FlowNode` fields the native `PyreonFlowNode` carries. */

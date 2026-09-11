@@ -176,6 +176,7 @@ class PyreonFlowState<T>(
         if (!nodeMap.containsKey(id)) return
         removeNodes(setOf(id))
     }
+    fun removeNodes(ids: List<String>) = removeNodes(ids.toSet())
     /** O(1); recomposes only the readers of this node. */
     fun updateNodePosition(id: String, position: PyreonXYPosition) {
         val node = nodeMap[id] ?: return
@@ -193,6 +194,10 @@ class PyreonFlowState<T>(
     fun removeEdge(id: String) {
         if (!edgeIds.containsKey(id)) return
         removeEdges { it.id == id }
+    }
+    fun removeEdges(ids: List<String>) {
+        val gone = ids.toSet()
+        if (gone.isNotEmpty()) removeEdges { gone.contains(it.id) }
     }
 
     // ── selection ────────────────────────────────────────────────────────────
@@ -224,6 +229,15 @@ class PyreonFlowState<T>(
             if (selectedNodeIdSet.put(id, Unit) == null) selectedNodeIdList.add(id)
         } else {
             setNodeSelection(listOf(id))
+            setEdgeSelection(emptyList())
+        }
+    }
+    @JvmOverloads
+    fun selectNodes(ids: List<String>, additive: Boolean = false) {
+        if (additive) {
+            for (id in ids) if (selectedNodeIdSet.put(id, Unit) == null) selectedNodeIdList.add(id)
+        } else {
+            setNodeSelection(ids.distinct())
             setEdgeSelection(emptyList())
         }
     }
@@ -281,6 +295,22 @@ class PyreonFlowState<T>(
     fun panTo(position: PyreonXYPosition) {
         _viewport = _viewport.copy(x = -position.x * _viewport.zoom, y = -position.y * _viewport.zoom)
     }
+    fun screenToFlowPosition(position: PyreonXYPosition): PyreonXYPosition = PyreonXYPosition(
+        x = (position.x - _viewport.x) / _viewport.zoom,
+        y = (position.y - _viewport.y) / _viewport.zoom,
+    )
+    fun flowToScreenPosition(position: PyreonXYPosition): PyreonXYPosition = PyreonXYPosition(
+        x = position.x * _viewport.zoom + _viewport.x,
+        y = position.y * _viewport.zoom + _viewport.y,
+    )
+    fun isNodeVisible(id: String): Boolean {
+        val node = nodeMap[id] ?: return false
+        val x = node.position.x * _viewport.zoom + _viewport.x
+        val y = node.position.y * _viewport.zoom + _viewport.y
+        val width = (node.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH) * _viewport.zoom
+        val height = (node.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT) * _viewport.zoom
+        return x + width > 0 && x < containerSize.width && y + height > 0 && y < containerSize.height
+    }
     /** Frames every node (or just [nodeIds], when given) inside the current
      *  `containerSize`, with [padding] as a fraction of the graph's extent on
      *  each axis (default `0.1`, matching the web `fitViewPadding` default). */
@@ -337,5 +367,34 @@ class PyreonFlowState<T>(
     fun getOutgoers(nodeId: String): List<PyreonFlowNode<T>> {
         val targetIds = _edges.filter { it.source == nodeId }.map { it.target }.toSet()
         return order.filter { targetIds.contains(it) }.map { nodeMap.getValue(it) }
+    }
+    fun getChildNodes(parentId: String): List<PyreonFlowNode<T>> =
+        order.mapNotNull { nodeMap[it] }.filter { it.parentId == parentId }
+    fun getAbsolutePosition(nodeId: String): PyreonXYPosition {
+        fun walk(id: String, seen: MutableSet<String>): PyreonXYPosition {
+            val node = nodeMap[id] ?: return PyreonXYPosition(0.0, 0.0)
+            val parentId = node.parentId
+            if (parentId == null || parentId == id) return node.position
+            if (!seen.add(id)) return node.position
+            val parent = walk(parentId, seen)
+            return PyreonXYPosition(parent.x + node.position.x, parent.y + node.position.y)
+        }
+        return walk(nodeId, mutableSetOf())
+    }
+    fun moveSelectedNodes(dx: Double, dy: Double) {
+        for (id in selectedNodeIdList.toList()) {
+            val node = nodeMap[id] ?: continue
+            updateNodePosition(id, PyreonXYPosition(node.position.x + dx, node.position.y + dy))
+        }
+    }
+    @JvmOverloads
+    fun focusNode(nodeId: String, focusZoom: Double? = null) {
+        val node = nodeMap[nodeId] ?: return
+        val position = if (node.parentId == null) node.position else getAbsolutePosition(nodeId)
+        val z = (focusZoom ?: _viewport.zoom).coerceIn(minZoom, maxZoom)
+        val centerX = position.x + (node.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH) / 2
+        val centerY = position.y + (node.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT) / 2
+        _viewport = PyreonFlowViewport(-centerX * z + containerSize.width / 2, -centerY * z + containerSize.height / 2, z)
+        selectNode(nodeId)
     }
 }

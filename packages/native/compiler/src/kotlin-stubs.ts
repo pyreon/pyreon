@@ -1619,15 +1619,18 @@ class PyreonFlowState<T>(
   fun getNode(id: String): PyreonFlowNode<T>? = null
   fun addNode(node: PyreonFlowNode<T>) {}
   fun removeNode(id: String) {}
+  fun removeNodes(ids: List<String>) {}
   fun updateNodePosition(id: String, position: PyreonXYPosition) {}
   fun getEdge(id: String): PyreonFlowEdge? = null
   fun addEdge(edge: PyreonFlowEdge) {}
   fun removeEdge(id: String) {}
+  fun removeEdges(ids: List<String>) {}
   fun isNodeSelected(id: String): Boolean = false
   fun isEdgeSelected(id: String): Boolean = false
   fun selectedNodes(): List<String> = emptyList()
   fun selectedEdges(): List<String> = emptyList()
   fun selectNode(id: String, additive: Boolean = false) {}
+  fun selectNodes(ids: List<String>, additive: Boolean = false) {}
   fun deselectNode(id: String) {}
   fun selectEdge(id: String, additive: Boolean = false) {}
   fun clearSelection() {}
@@ -1637,10 +1640,17 @@ class PyreonFlowState<T>(
   fun zoomIn() {}
   fun zoomOut() {}
   fun panTo(position: PyreonXYPosition) {}
+  fun screenToFlowPosition(position: PyreonXYPosition): PyreonXYPosition = position
+  fun flowToScreenPosition(position: PyreonXYPosition): PyreonXYPosition = position
+  fun isNodeVisible(id: String): Boolean = false
   fun fitView(nodeIds: List<String>? = null, padding: Double = 0.1) {}
   fun getConnectedEdges(nodeId: String): List<PyreonFlowEdge> = emptyList()
   fun getIncomers(nodeId: String): List<PyreonFlowNode<T>> = emptyList()
   fun getOutgoers(nodeId: String): List<PyreonFlowNode<T>> = emptyList()
+  fun getChildNodes(parentId: String): List<PyreonFlowNode<T>> = emptyList()
+  fun getAbsolutePosition(nodeId: String): PyreonXYPosition = PyreonXYPosition(0.0, 0.0)
+  fun moveSelectedNodes(dx: Double, dy: Double) {}
+  fun focusNode(nodeId: String, focusZoom: Double? = null) {}
 }
 
 // PyreonPermissions — mirror of @pyreon/native-runtime-kotlin's

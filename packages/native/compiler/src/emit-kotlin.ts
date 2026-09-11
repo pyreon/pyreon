@@ -4642,6 +4642,9 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       ) {
         const flowName = e.callee.object.name
         const member = e.callee.property
+        if (e.args.length === 0 && member === 'getNodes') return `${kotlinIdent(flowName)}.nodes`
+        if (e.args.length === 0 && member === 'getEdges') return `${kotlinIdent(flowName)}.edges`
+        if (e.args.length === 0 && member === 'getViewport') return `${kotlinIdent(flowName)}.viewport`
         // Nothing silent inside the boundary — mirrors emit-swift.ts exactly.
         if (!LOWERED_FLOW_METHODS.has(member) && !LOWERED_FLOW_PROPERTY_READS.has(member)) {
           _emitWarnings.push(unloweredFlowMemberWarning(flowName, member))
@@ -4660,6 +4663,16 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           if (lit !== null) {
             return `${kotlinIdent(e.callee.object.name)}.updateNodePosition(${emitKotlinExpr(e.args[0]!, indent)}, ${lit})`
           }
+        }
+        if (['panTo', 'screenToFlowPosition', 'flowToScreenPosition'].includes(member) && e.args.length === 1) {
+          const lit = kotlinFlowPositionLiteral(e.args[0]!)
+          if (lit !== null) return `${kotlinIdent(flowName)}.${member}(${lit})`
+        }
+        if (member === 'moveSelectedNodes' && e.args.length === 2) {
+          return `${kotlinIdent(flowName)}.moveSelectedNodes(${ktChartDouble(emitKotlinExpr(e.args[0]!, indent))}, ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))})`
+        }
+        if (member === 'focusNode' && e.args.length === 2) {
+          return `${kotlinIdent(flowName)}.focusNode(${emitKotlinExpr(e.args[0]!, indent)}, ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))})`
         }
       }
       // A signal WRITE on a flow-state property — read-only natively; name it.

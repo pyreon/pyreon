@@ -186,7 +186,31 @@ struct PyreonFlowStateTests {
         et.addEdge(PyreonFlowEdge(id: "e10", source: "1", target: "3", type: "step"))
         check(et.getEdge("e10")?.type == "step", "an explicit edge type is kept")
 
-        // 11. Observation granularity — THE performance contract. A tracker
+        // 11. Bulk operations, coordinate conversion, visibility and groups.
+        let q = PyreonFlowState(nodes: [
+            PyreonFlowNode(id: "p", position: PyreonXYPosition(x: 10, y: 20), data: NodeData(label: "Parent"), width: 100, height: 80, group: true),
+            PyreonFlowNode(id: "c", position: PyreonXYPosition(x: 5, y: 7), data: NodeData(label: "Child"), parentId: "p"),
+            PyreonFlowNode(id: "x", position: PyreonXYPosition(x: 400, y: 400), data: NodeData(label: "Other")),
+        ], edges: [PyreonFlowEdge(id: "pc", source: "p", target: "c"), PyreonFlowEdge(id: "cx", source: "c", target: "x")])
+        check(q.nodes.count == 3 && q.edges.count == 2, "plain collection reads preserve all values")
+        check(q.getChildNodes("p").map(\.id) == ["c"], "getChildNodes preserves insertion order")
+        check(q.getAbsolutePosition("c") == PyreonXYPosition(x: 15, y: 27), "absolute position folds parent offsets")
+        q.containerSize = PyreonFlowContainerSize(width: 300, height: 200)
+        q.zoomTo(2)
+        q.panTo(PyreonXYPosition(x: 10, y: 5))
+        let screen = q.flowToScreenPosition(PyreonXYPosition(x: 25, y: 15))
+        check(q.screenToFlowPosition(screen) == PyreonXYPosition(x: 25, y: 15), "screen/flow transforms are inverses")
+        check(q.isNodeVisible("p") && !q.isNodeVisible("x"), "visibility uses viewport, size and node bounds")
+        q.selectNodes(["p", "c"])
+        q.moveSelectedNodes(3, 4)
+        check(q.getNode("p")?.position == PyreonXYPosition(x: 13, y: 24) && q.getNode("c")?.position == PyreonXYPosition(x: 8, y: 11), "multi-node move updates exactly the selection")
+        q.focusNode("c", 1.5)
+        check(q.viewport.zoom == 1.5 && q.selectedNodes() == ["c"], "focusNode centers and selects with clamped zoom")
+        q.removeEdges(["cx"])
+        q.removeNodes(["p"])
+        check(q.getNode("p") == nil && q.getEdge("pc") == nil && q.getEdge("cx") == nil, "bulk removals prune connected edges")
+
+        // 12. Observation granularity — THE performance contract. A tracker
         // reading node "1" must not fire when node "2" moves. With one
         // `@Observable` array property (v1) it did: 1000/1000 node views
         // invalidated per drag frame at N = 1,000. Per-node boxes make a

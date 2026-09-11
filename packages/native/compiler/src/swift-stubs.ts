@@ -1099,15 +1099,18 @@ public final class PyreonFlowState<T> {
   public func getNode(_ id: String) -> PyreonFlowNode<T>? { nil }
   public func addNode(_ node: PyreonFlowNode<T>) {}
   public func removeNode(_ id: String) {}
+  public func removeNodes(_ ids: [String]) {}
   public func updateNodePosition(_ id: String, _ position: PyreonXYPosition) {}
   public func getEdge(_ id: String) -> PyreonFlowEdge? { nil }
   public func addEdge(_ edge: PyreonFlowEdge) {}
   public func removeEdge(_ id: String) {}
+  public func removeEdges(_ ids: [String]) {}
   public func isNodeSelected(_ id: String) -> Bool { false }
   public func isEdgeSelected(_ id: String) -> Bool { false }
   public func selectedNodes() -> [String] { [] }
   public func selectedEdges() -> [String] { [] }
   public func selectNode(_ id: String, additive: Bool = false) {}
+  public func selectNodes(_ ids: [String], additive: Bool = false) {}
   public func deselectNode(_ id: String) {}
   public func selectEdge(_ id: String, additive: Bool = false) {}
   public func clearSelection() {}
@@ -1117,10 +1120,17 @@ public final class PyreonFlowState<T> {
   public func zoomIn() {}
   public func zoomOut() {}
   public func panTo(_ position: PyreonXYPosition) {}
+  public func screenToFlowPosition(_ position: PyreonXYPosition) -> PyreonXYPosition { position }
+  public func flowToScreenPosition(_ position: PyreonXYPosition) -> PyreonXYPosition { position }
+  public func isNodeVisible(_ id: String) -> Bool { false }
   public func fitView(_ nodeIds: [String]? = nil, padding: Double = 0.1) {}
   public func getConnectedEdges(_ nodeId: String) -> [PyreonFlowEdge] { [] }
   public func getIncomers(_ nodeId: String) -> [PyreonFlowNode<T>] { [] }
   public func getOutgoers(_ nodeId: String) -> [PyreonFlowNode<T>] { [] }
+  public func getChildNodes(_ parentId: String) -> [PyreonFlowNode<T>] { [] }
+  public func getAbsolutePosition(_ nodeId: String) -> PyreonXYPosition { PyreonXYPosition(x: 0, y: 0) }
+  public func moveSelectedNodes(_ dx: Double, _ dy: Double) {}
+  public func focusNode(_ nodeId: String, _ focusZoom: Double? = nil) {}
 }
 public struct PyreonI18n {
   // fallbackLocale is OPTIONAL and DEFAULTED in the real PyreonI18n. The stub

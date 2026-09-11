@@ -165,6 +165,29 @@ fun main() {
     check(et.getEdge("e9")?.type == "bezier", "addEdge applies the 'bezier' default")
     et.addEdge(PyreonFlowEdge(id = "e10", source = "1", target = "3", type = "step"))
     check(et.getEdge("e10")?.type == "step", "an explicit edge type is kept")
+    // Bulk operations, coordinate conversion, visibility and groups.
+    val q = PyreonFlowState(nodes = listOf(
+        PyreonFlowNode(id = "p", position = PyreonXYPosition(10.0, 20.0), data = NodeData("Parent"), width = 100.0, height = 80.0, group = true),
+        PyreonFlowNode(id = "c", position = PyreonXYPosition(5.0, 7.0), data = NodeData("Child"), parentId = "p"),
+        PyreonFlowNode(id = "x", position = PyreonXYPosition(400.0, 400.0), data = NodeData("Other")),
+    ), edges = listOf(PyreonFlowEdge(id = "pc", source = "p", target = "c"), PyreonFlowEdge(id = "cx", source = "c", target = "x")))
+    check(q.nodes.size == 3 && q.edges.size == 2, "plain collection reads preserve all values")
+    check(q.getChildNodes("p").map { it.id } == listOf("c"), "getChildNodes preserves insertion order")
+    check(q.getAbsolutePosition("c") == PyreonXYPosition(15.0, 27.0), "absolute position folds parent offsets")
+    q.containerSize = com.pyreon.runtime.PyreonFlowContainerSize(300.0, 200.0)
+    q.zoomTo(2.0)
+    q.panTo(PyreonXYPosition(10.0, 5.0))
+    val screen = q.flowToScreenPosition(PyreonXYPosition(25.0, 15.0))
+    check(q.screenToFlowPosition(screen) == PyreonXYPosition(25.0, 15.0), "screen/flow transforms are inverses")
+    check(q.isNodeVisible("p") && !q.isNodeVisible("x"), "visibility uses viewport, size and node bounds")
+    q.selectNodes(listOf("p", "c"))
+    q.moveSelectedNodes(3.0, 4.0)
+    check(q.getNode("p")?.position == PyreonXYPosition(13.0, 24.0) && q.getNode("c")?.position == PyreonXYPosition(8.0, 11.0), "multi-node move updates exactly the selection")
+    q.focusNode("c", 1.5)
+    check(q.viewport.zoom == 1.5 && q.selectedNodes() == listOf("c"), "focusNode centers and selects with clamped zoom")
+    q.removeEdges(listOf("cx"))
+    q.removeNodes(listOf("p"))
+    check(q.getNode("p") == null && q.getEdge("pc") == null && q.getEdge("cx") == null, "bulk removals prune connected edges")
     // Per-id storage: a position write must not disturb order or the other nodes.
     et.updateNodePosition("2", PyreonXYPosition(50.0, 50.0))
     check(et.nodes.map { it.id } == listOf("1", "2", "3"), "updateNodePosition keeps insertion order")

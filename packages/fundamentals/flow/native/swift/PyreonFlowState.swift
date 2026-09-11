@@ -347,6 +347,7 @@ public final class PyreonFlowState<T> {
         guard nodeStore[id] != nil else { return }
         removeNodes([id])
     }
+    public func removeNodes(_ ids: [String]) { removeNodes(Set(ids)) }
     /// O(1); invalidates the views reading THIS node (its box) and whole-array
     /// readers (`nodesVersion`) — never the other nodes' views.
     public func updateNodePosition(_ id: String, _ position: PyreonXYPosition) {
@@ -376,6 +377,11 @@ public final class PyreonFlowState<T> {
         edgeIds.remove(id)
         if selectedEdgeIdSet.remove(id) != nil { selectedEdgeIds.removeAll { $0 == id } }
     }
+    public func removeEdges(_ ids: [String]) {
+        let gone = Set(ids)
+        guard !gone.isEmpty else { return }
+        removeEdges { gone.contains($0.id) }
+    }
 
     // ── selection ────────────────────────────────────────────────────────────
     // Selecting a node NON-additively clears edge selection, and vice versa —
@@ -401,6 +407,17 @@ public final class PyreonFlowState<T> {
             if selectedNodeIdSet.insert(id).inserted { selectedNodeIds.append(id) }
         } else {
             setNodeSelection([id])
+            setEdgeSelection([])
+        }
+    }
+    public func selectNodes(_ ids: [String], additive: Bool = false) {
+        if additive {
+            for id in ids where selectedNodeIdSet.insert(id).inserted { selectedNodeIds.append(id) }
+        } else {
+            var unique: [String] = []
+            var seen = Set<String>()
+            for id in ids where seen.insert(id).inserted { unique.append(id) }
+            setNodeSelection(unique)
             setEdgeSelection([])
         }
     }
@@ -462,6 +479,20 @@ public final class PyreonFlowState<T> {
         viewport.x = -position.x * viewport.zoom
         viewport.y = -position.y * viewport.zoom
     }
+    public func screenToFlowPosition(_ position: PyreonXYPosition) -> PyreonXYPosition {
+        PyreonXYPosition(x: (position.x - viewport.x) / viewport.zoom, y: (position.y - viewport.y) / viewport.zoom)
+    }
+    public func flowToScreenPosition(_ position: PyreonXYPosition) -> PyreonXYPosition {
+        PyreonXYPosition(x: position.x * viewport.zoom + viewport.x, y: position.y * viewport.zoom + viewport.y)
+    }
+    public func isNodeVisible(_ id: String) -> Bool {
+        guard let node = nodeStore[id] else { return false }
+        let x = node.position.x * viewport.zoom + viewport.x
+        let y = node.position.y * viewport.zoom + viewport.y
+        let width = (node.width ?? pyreonFlowDefaultNodeWidth) * viewport.zoom
+        let height = (node.height ?? pyreonFlowDefaultNodeHeight) * viewport.zoom
+        return x + width > 0 && x < containerSize.width && y + height > 0 && y < containerSize.height
+    }
     /// Frames every node (or just `nodeIds`, when given) inside the current
     /// `containerSize`, with `padding` as a fraction of the graph's extent on
     /// each axis (default `0.1`, matching the web `fitViewPadding` default).
@@ -522,5 +553,35 @@ public final class PyreonFlowState<T> {
     public func getOutgoers(_ nodeId: String) -> [PyreonFlowNode<T>] {
         let targetIds = Set(edges.filter { $0.source == nodeId }.map(\.target))
         return order.compactMap { targetIds.contains($0) ? nodeStore[$0]! : nil }
+    }
+    public func getChildNodes(_ parentId: String) -> [PyreonFlowNode<T>] {
+        order.compactMap { nodeStore[$0]?.parentId == parentId ? nodeStore[$0] : nil }
+    }
+    public func getAbsolutePosition(_ nodeId: String) -> PyreonXYPosition {
+        func walk(_ id: String, _ seen: inout Set<String>) -> PyreonXYPosition {
+            guard let node = nodeStore[id] else { return PyreonXYPosition(x: 0, y: 0) }
+            guard let parentId = node.parentId, parentId != id else { return node.position }
+            if seen.contains(id) { return node.position }
+            seen.insert(id)
+            let parent = walk(parentId, &seen)
+            return PyreonXYPosition(x: parent.x + node.position.x, y: parent.y + node.position.y)
+        }
+        var seen = Set<String>()
+        return walk(nodeId, &seen)
+    }
+    public func moveSelectedNodes(_ dx: Double, _ dy: Double) {
+        for id in selectedNodeIds where nodeStore[id] != nil {
+            let position = nodeStore[id]!.position
+            updateNodePosition(id, PyreonXYPosition(x: position.x + dx, y: position.y + dy))
+        }
+    }
+    public func focusNode(_ nodeId: String, _ focusZoom: Double? = nil) {
+        guard let node = nodeStore[nodeId] else { return }
+        let position = node.parentId == nil ? node.position : getAbsolutePosition(nodeId)
+        let z = min(max(focusZoom ?? viewport.zoom, minZoom), maxZoom)
+        let centerX = position.x + (node.width ?? pyreonFlowDefaultNodeWidth) / 2
+        let centerY = position.y + (node.height ?? pyreonFlowDefaultNodeHeight) / 2
+        viewport = PyreonFlowViewport(x: -centerX * z + containerSize.width / 2, y: -centerY * z + containerSize.height / 2, zoom: z)
+        selectNode(nodeId)
     }
 }
