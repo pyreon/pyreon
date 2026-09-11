@@ -125,6 +125,8 @@ export interface ChartHostArgs {
   gutter: string
   /** `innerRatio` (Sunburst) — a Double expression. */
   innerRatio: string
+  /** Pie slice-label visibility. */
+  showLabels?: string
   /** The theme's font size as emitted text (the pie's label size); the default when absent. */
   fontSize?: string
 }
@@ -507,9 +509,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
 }
 
 /** Plot hosts that exist on the web but have no native lowering yet, with the reason. */
-export const UNLOWERED_CHART_HOSTS: Readonly<Record<string, string>> = {
-  OptionChart: 'the ECharts option facade is web-only',
-}
+export const UNLOWERED_CHART_HOSTS: Readonly<Record<string, string>> = {}
 
 /** The grammar host and its mark/config children — `<Plot>` desugars to `<PlotChart marks>` before the plot emit runs. */
 export const GRAMMAR_CHART_HOST = 'Plot'
@@ -529,11 +529,133 @@ export function isChartHostTag(tag: string): boolean {
     Object.hasOwn(ACCESSOR_CHART_HOSTS, tag) ||
     Object.hasOwn(FRAME_CHART_HOSTS, tag) ||
     Object.hasOwn(UNLOWERED_CHART_HOSTS, tag) ||
+    tag === 'OptionChart' ||
     tag === GRAMMAR_CHART_HOST ||
     Object.hasOwn(GRAMMAR_MARK_TAGS, tag) ||
     Object.hasOwn(GRAMMAR_FAMILY_TAGS, tag) ||
     GRAMMAR_CONFIG_TAGS.includes(tag)
   )
+}
+
+const objectField = (e: ExprIR, name: string): ExprIR | undefined =>
+  e.kind === 'object' && (e.spreads === undefined || e.spreads.length === 0)
+    ? e.fields.find((f) => f.name === name)?.value
+    : undefined
+
+/**
+ * Lower the first static OptionChart families through their existing native
+ * hosts. The option facade is intentionally compile-time on native: arbitrary
+ * records/functions cannot cross the Swift/Kotlin boundary, while an inline
+ * ECharts-shaped literal can be validated without silently dropping fields.
+ * More families are added here as explicit adapters.
+ */
+export function desugarOptionChart(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  resolve: (name: string) => ExprIR | undefined,
+  warn: (m: string) => void,
+): Extract<ExprIR, { kind: 'jsx-element' }> | undefined {
+  const raw = literalOf(attrOf(e, 'option'), resolve)
+  if (raw === undefined || raw.kind !== 'object' || (raw.spreads !== undefined && raw.spreads.length > 0)) {
+    warn('<OptionChart option>: native needs an inline option object; emitting nothing.')
+    return undefined
+  }
+  const rawSeries = literalOf(objectField(raw, 'series'), resolve)
+  const series = rawSeries?.kind === 'array' ? literalOf(rawSeries.elements[0], resolve) : literalOf(rawSeries, resolve)
+  const type = objectField(series ?? { kind: 'literal', value: null }, 'type')
+  const kind = litString(type)
+  if (series?.kind !== 'object' || kind === undefined) {
+    warn('<OptionChart option.series>: native needs a literal series with a string `type`; emitting nothing.')
+    return undefined
+  }
+
+  for (const a of e.attrs) {
+    if (a.kind === 'event' && a.name !== 'selectindex') {
+      const prop = a.name === 'select' ? 'onSelect' : a.name === 'familyselect' ? 'onFamilySelect' : a.name === 'timelinechange' ? 'onTimelineChange' : `on${a.name}`
+      warn(`<OptionChart ${prop}>: this rich callback shape does not cross yet; native renders without it.`)
+    }
+  }
+  const attrs: AttrIR[] = e.attrs.filter((a) => {
+    if (a.kind !== 'attr') return a.kind === 'event' && a.name === 'selectindex'
+    return a.name !== 'option' && a.name !== 'theme' && a.name !== 'locale' && a.name !== 'timelineIndex'
+  })
+  const set = (name: string, value: ExprIR): void => {
+    const i = attrs.findIndex((a) => a.kind === 'attr' && a.name === name)
+    const attr: AttrIR = { kind: 'attr', name, value }
+    if (i < 0) attrs.push(attr)
+    else attrs[i] = attr
+  }
+  const title = literalOf(objectField(raw, 'title'), resolve)
+  const titleText = title === undefined ? undefined : objectField(title, 'text')
+  if (litString(titleText) !== undefined) set('title', titleText!)
+  const legend = literalOf(objectField(raw, 'legend'), resolve)
+  const legendShow = legend === undefined ? undefined : objectField(legend, 'show')
+  if (legend !== undefined && !(legendShow?.kind === 'literal' && legendShow.value === false)) set('showLegend', lit(true))
+  const tooltip = literalOf(objectField(raw, 'tooltip'), resolve)
+  const tooltipShow = tooltip === undefined ? undefined : objectField(tooltip, 'show')
+  if (tooltip !== undefined && !(tooltipShow?.kind === 'literal' && tooltipShow.value === false)) set('tooltip', lit(true))
+  if (attrOf(e, 'theme') !== undefined) warn('<OptionChart theme>: registered ECharts themes do not cross yet; native uses the chart theme.')
+  if (attrOf(e, 'locale') !== undefined) warn('<OptionChart locale>: locale formatting for family options is not used by this native adapter.')
+  if (attrOf(e, 'timelineIndex') !== undefined) warn('<OptionChart timelineIndex>: timeline options do not cross yet; native renders the base option.')
+
+  if (kind === 'gauge') {
+    const data = literalOf(objectField(series, 'data'), resolve)
+    const firstDatum = data?.kind === 'array' ? literalOf(data.elements[0], resolve) : undefined
+    const value = firstDatum === undefined ? undefined : firstDatum.kind === 'object' ? objectField(firstDatum, 'value') : firstDatum
+    const numberValue = litNumber(value)
+    if (numberValue === undefined) {
+      warn('<OptionChart option.series[0].data[0]>: a native gauge needs a literal numeric value; emitting nothing.')
+      return undefined
+    }
+    set('value', { kind: 'literal', value: numberValue, float: true })
+    for (const name of ['min', 'max'] as const) {
+      const v = objectField(series, name)
+      const n = litNumber(v)
+      if (n !== undefined) set(name, { kind: 'literal', value: n, float: true })
+    }
+    const detail = literalOf(objectField(series, 'detail'), resolve)
+    const detailShow = detail === undefined ? undefined : objectField(detail, 'show')
+    if (detailShow?.kind === 'literal' && detailShow.value === false) set('showValue', lit(false))
+    return { kind: 'jsx-element', tag: 'GaugeChart', attrs, children: [] }
+  }
+
+  if (kind === 'pie') {
+    const data = literalOf(objectField(series, 'data'), resolve)
+    if (data?.kind !== 'array') {
+      warn('<OptionChart option.series[0].data>: a native pie needs a literal data array; emitting nothing.')
+      return undefined
+    }
+    const rows: ExprIR[] = []
+    for (let i = 0; i < data.elements.length; i++) {
+      const d = literalOf(data.elements[i], resolve)
+      const value = d?.kind === 'object' ? objectField(d, 'value') : d
+      const numberValue = litNumber(value)
+      if (numberValue === undefined) {
+        warn(`<OptionChart option.series[0].data[${i}]>: a pie datum needs a literal numeric value; emitting nothing.`)
+        return undefined
+      }
+      const name = d?.kind === 'object' ? objectField(d, 'name') : undefined
+      rows.push({ kind: 'object', fields: [
+        { name: 'value', value: { kind: 'literal', value: numberValue, float: true } },
+        { name: 'label', value: litString(name) === undefined ? lit(`Slice ${i + 1}`) : name! },
+      ] })
+    }
+    set('data', { kind: 'array', elements: rows })
+    set('value', { kind: 'arrow', params: ['d'], body: { kind: 'member', object: ident('d'), property: 'value' } })
+    set('label', { kind: 'arrow', params: ['d'], body: { kind: 'member', object: ident('d'), property: 'label' } })
+    const radius = literalOf(objectField(series, 'radius'), resolve)
+    if (radius?.kind === 'array' && radius.elements.length === 2) {
+      const inner = litString(radius.elements[0])
+      const outer = litString(radius.elements[1])
+      if (inner?.endsWith('%') && outer?.endsWith('%') && Number.parseFloat(outer) > 0) set('innerRadius', { kind: 'literal', value: Number.parseFloat(inner) / Number.parseFloat(outer), float: true })
+    }
+    const label = literalOf(objectField(series, 'label'), resolve)
+    const labelShow = label === undefined ? undefined : objectField(label, 'show')
+    if (labelShow?.kind === 'literal' && labelShow.value === false) set('showLabels', lit(false))
+    return { kind: 'jsx-element', tag: 'PieChart', attrs, children: [] }
+  }
+
+  warn(`<OptionChart option.series[0].type>: native option adapter does not lower \`${kind}\` yet; emitting nothing.`)
+  return undefined
 }
 
 /**
