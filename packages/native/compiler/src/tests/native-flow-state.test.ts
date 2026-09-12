@@ -496,6 +496,12 @@ export function C() {
       if (target === 'swift') expect(validateSwiftWithStubs(result.code).ok).toBe(true)
       else expect(validateKotlin(result.code).ok).toBe(true)
     })
+    it(`[${target}] batch closures lower and typecheck`, () => {
+      const result = transform(base('', `<Button onPress={() => flow.batch(() => { flow.selectNode('1'); flow.zoomIn() })}>Batch</Button>`), { target })
+      expect((result.warnings ?? []).join(' ')).not.toContain('`batch` is NOT ported')
+      if (target === 'swift') expect(validateSwiftWithStubs(result.code).ok).toBe(true)
+      else expect(validateKotlin(result.code).ok).toBe(true)
+    })
     it(`[${target}] snap-line packets lower with nominal positions and typecheck`, () => {
       const result = transform(base('', `<Text>{flow.getSnapLines('1', { x: 12, y: 34 }, 6).snappedPosition.x}</Text>`), { target })
       const warnings = (result.warnings ?? []).join(' ')

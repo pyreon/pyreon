@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
 
 // PyreonFlowState — the Android-native port of @pyreon/flow's dependency-free
 // `createFlow`. Same node/edge/viewport/selection behaviour as the
@@ -167,6 +168,7 @@ class PyreonFlowState<T>(
     private val connectionValidator: ((PyreonFlowConnection) -> Boolean)? = null,
     private val searchText: ((T) -> String?)? = null,
 ) {
+    fun batch(operation: () -> Unit) { Snapshot.withMutableSnapshot(operation) }
     private val undoStack = ArrayList<PyreonFlowHistorySnapshot<T>>()
     private val redoStack = ArrayList<PyreonFlowHistorySnapshot<T>>()
     private var mutationVersion = 0

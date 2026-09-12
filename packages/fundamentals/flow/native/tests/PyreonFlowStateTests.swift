@@ -37,6 +37,12 @@ struct PyreonFlowStateTests {
     static func runStateChecks() {
         // 1. Seed + basic reads.
         let f = seedFlow()
+        let batched = seedFlow()
+        batched.batch {
+            batched.updateNodePosition("1", PyreonXYPosition(x: 10, y: 20))
+            batched.updateNodePosition("2", PyreonXYPosition(x: 30, y: 40))
+        }
+        check(batched.getNode("1")?.position == PyreonXYPosition(x: 10, y: 20) && batched.getNode("2")?.position == PyreonXYPosition(x: 30, y: 40), "batch runs all native mutations synchronously")
         f.updateNodeData("1") { $0.label = "Updated" }
         check(f.getNode("1")?.data.label == "Updated", "updateNodeData mutates the native payload observably")
         let history = seedFlow()

@@ -440,6 +440,7 @@ public final class PyreonFlowState<T> {
     }
 
     private func markMutation() { mutationVersion &+= 1 }
+    public func batch(_ operation: () -> Void) { operation() }
     @discardableResult public func onConnect(_ callback: @escaping (PyreonFlowConnection) -> Void) -> () -> Void {
         let token = UUID(); connectListeners[token] = callback
         return { [weak self] in self?.connectListeners[token] = nil }

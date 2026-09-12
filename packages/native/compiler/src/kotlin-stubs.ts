@@ -1672,6 +1672,7 @@ class PyreonFlowState<T>(
   val viewport: PyreonFlowViewport = viewport
   var containerSize: PyreonFlowContainerSize = PyreonFlowContainerSize()
   val zoom: Double get() = viewport.zoom
+  fun batch(operation: () -> Unit) { operation() }
   fun getNode(id: String): PyreonFlowNode<T>? = null
   fun isValidConnection(connection: PyreonFlowConnection): Boolean = true
   fun addNode(node: PyreonFlowNode<T>) {}

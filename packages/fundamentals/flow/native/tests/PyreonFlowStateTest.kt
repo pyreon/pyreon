@@ -36,6 +36,12 @@ private fun seedFlow(): PyreonFlowState<NodeData> = PyreonFlowState(
 fun main() {
     // 1. Seed + basic reads.
     val f = seedFlow()
+    val batched = seedFlow()
+    batched.batch {
+        batched.updateNodePosition("1", PyreonXYPosition(10.0, 20.0))
+        batched.updateNodePosition("2", PyreonXYPosition(30.0, 40.0))
+    }
+    check(batched.getNode("1")?.position == PyreonXYPosition(10.0, 20.0) && batched.getNode("2")?.position == PyreonXYPosition(30.0, 40.0), "batch runs all native mutations synchronously")
     val history = seedFlow()
     history.addNode(PyreonFlowNode("4", position = PyreonXYPosition(600.0, 0.0), data = NodeData("Added")))
     history.selectNode("4")
