@@ -182,6 +182,18 @@ fun <T> PyreonFlowView(
     controls: PyreonFlowControlsStyle? = null,
     miniMap: PyreonFlowMiniMapStyle? = null,
     nodeContent: @Composable (PyreonFlowNode<T>) -> Unit,
+) = PyreonFlowView(state, modifier, edgeColor, edgeWidth, background, controls, miniMap) { node, _, _ -> nodeContent(node) }
+
+@Composable
+fun <T> PyreonFlowView(
+    state: PyreonFlowState<T>,
+    modifier: Modifier = Modifier,
+    edgeColor: String = "#999999",
+    edgeWidth: Double = 1.5,
+    background: PyreonFlowBackgroundStyle? = null,
+    controls: PyreonFlowControlsStyle? = null,
+    miniMap: PyreonFlowMiniMapStyle? = null,
+    nodeContent: @Composable (PyreonFlowNode<T>, Boolean, Boolean) -> Unit,
 ) {
     val density = LocalDensity.current
     var interactionsLocked by remember { mutableStateOf(false) }
@@ -357,7 +369,7 @@ fun <T> PyreonFlowView(
                     contentDescription = node.ariaLabel ?: node.id
                     selected = state.isNodeSelected(node.id)
                 } else nodeModifier.clearAndSetSemantics { }
-                Box(nodeModifier) { nodeContent(node) }
+                Box(nodeModifier) { nodeContent(node, state.isNodeSelected(node.id), nodeDragStarts.containsKey(node.id)) }
             }
             for (handle in interactiveHandles) {
                 val diameter = 12.0 / state.viewport.zoom

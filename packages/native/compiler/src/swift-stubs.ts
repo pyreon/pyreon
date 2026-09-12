@@ -1260,6 +1260,7 @@ public struct PyreonFlowMiniMapStyle {
 @available(iOS 17.0, macOS 14.0, *)
 public struct PyreonFlowView<T, NodeContent: View>: View {
   public init(state: PyreonFlowState<T>, edgeColor: String = "#999999", edgeWidth: Double = 1.5, background: PyreonFlowBackgroundStyle? = nil, controls: PyreonFlowControlsStyle? = nil, miniMap: PyreonFlowMiniMapStyle? = nil, @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>) -> NodeContent) {}
+  public init(state: PyreonFlowState<T>, edgeColor: String = "#999999", edgeWidth: Double = 1.5, background: PyreonFlowBackgroundStyle? = nil, controls: PyreonFlowControlsStyle? = nil, miniMap: PyreonFlowMiniMapStyle? = nil, @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>, Bool, Bool) -> NodeContent) {}
   public var body: some View { EmptyView() }
 }
 public struct PyreonI18n {

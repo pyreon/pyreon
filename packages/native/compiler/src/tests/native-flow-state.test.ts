@@ -224,6 +224,41 @@ describe('<Flow> native host lowering', () => {
     }
   })
 
+  it('dispatches literal nodeTypes with live data, selection, and dragging accessors', () => {
+    const custom = `
+      import { createFlow, Flow, type NodeComponentProps } from '@pyreon/flow'
+      import { Stack, Text } from '@pyreon/primitives'
+      interface NodeData { label: string }
+      function CustomNode(props: NodeComponentProps<NodeData>) {
+        return <Stack><Text>{props.data().label}</Text><Text>{props.selected() ? 'selected' : 'idle'}</Text><Text>{props.dragging() ? 'dragging' : 'still'}</Text></Stack>
+      }
+      export function App() {
+        const flow = createFlow<NodeData>({
+          nodes: [{ id: 'a', type: 'custom', position: { x: 0, y: 0 }, data: { label: 'Start' } }],
+          edges: [],
+        })
+        return <Flow instance={flow} nodeTypes={{ custom: CustomNode }} />
+      }
+    `
+    const swift = transform(custom, { target: 'swift' })
+    const kotlin = transform(custom, { target: 'kotlin' })
+    expect(swift.code).toContain('{ pyreonNode, pyreonSelected, pyreonDragging in')
+    expect(swift.code).toContain('case "custom":')
+    expect(swift.code).toContain('CustomNode(id: pyreonNode.id, data: { pyreonNode.data }, selected: { pyreonSelected }, dragging: { pyreonDragging })')
+    expect(kotlin.code).toContain('{ pyreonNode, pyreonSelected, pyreonDragging ->')
+    expect(kotlin.code).toContain('"custom" -> CustomNode(id = pyreonNode.id, data = { pyreonNode.data }, selected = { pyreonSelected }, dragging = { pyreonDragging })')
+    expect(swift.warnings.join(' ')).not.toContain('custom renderer maps are not lowered')
+    expect(kotlin.warnings.join(' ')).not.toContain('custom renderer maps are not lowered')
+    if (isSwiftcAvailable()) {
+      const validation = validateSwiftWithStubs(swift.code)
+      expect(validation.ok, validation.error ?? '').toBe(true)
+    }
+    if (isKotlincAvailable()) {
+      const validation = validateKotlin(kotlin.code)
+      expect(validation.ok, validation.error ?? '').toBe(true)
+    }
+  })
+
   it('emits the Compose host instead of an unresolved web component', () => {
     const result = transform(source, { target: 'kotlin' })
     expect(result.code).toContain('PyreonFlowView(state = flow) { pyreonNode ->')

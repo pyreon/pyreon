@@ -3985,17 +3985,16 @@ function emitSwiftDecl(
     // this name is the SAME one each node's `data: {...}` literal resolves
     // to below, since both hit the identical field-set key.
     const rowFields = d.nodes[0]!.data.kind === 'object' ? d.nodes[0]!.data.fields : []
-    const rowType =
-      synthLiteralStructName(rowFields, _synthExprStructs, _synthExprStructKeys, (ex) =>
-        inferType(ex, _exprInferCtx),
-      ) ?? 'Any'
+    const rowType = d.dataType !== undefined
+      ? swiftType(d.dataType)
+      : resolveSwiftObjectStructName(rowFields) ?? 'Any'
     const nodeLits = d.nodes
       .map((n) => {
         const parts = [
           `id: ${JSON.stringify(n.id)}`,
           ...(n.type !== undefined ? [`type: ${JSON.stringify(n.type)}`] : []),
           `position: PyreonXYPosition(x: ${emitSwiftExpr(n.positionX, 0)}, y: ${emitSwiftExpr(n.positionY, 0)})`,
-          `data: ${emitSwiftExpr(n.data, 0)}`,
+          `data: ${withExpectedType(d.dataType, () => emitSwiftExpr(n.data, 0))}`,
           ...(n.width !== undefined ? [`width: ${emitSwiftExpr(n.width, 0)}`] : []),
           ...(n.height !== undefined ? [`height: ${emitSwiftExpr(n.height, 0)}`] : []),
           ...(n.draggable !== undefined ? [`draggable: ${n.draggable}`] : []),
@@ -8130,10 +8129,15 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
     _emitWarnings.push('<Flow> requires `instance={flow}` for native lowering — the host was dropped.')
     return 'EmptyView()'
   }
-  for (const name of ['nodeTypes', 'edgeTypes'] as const) {
-    if (e.attrs.some((a) => a.kind === 'attr' && a.name === name)) {
-      _emitWarnings.push(`<Flow ${name}={…}> custom renderer maps are not lowered natively yet; the native default node/edge renderer is used.`)
-    }
+  const nodeTypesAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'nodeTypes')
+  const nodeTypes = nodeTypesAttr?.kind === 'attr' && nodeTypesAttr.value?.kind === 'object' && (nodeTypesAttr.value.spreads?.length ?? 0) === 0 && nodeTypesAttr.value.fields.every((field) => field.value.kind === 'identifier')
+    ? nodeTypesAttr.value.fields.map((field) => ({ type: field.name, component: (field.value as Extract<ExprIR, { kind: 'identifier' }>).name }))
+    : undefined
+  if (nodeTypesAttr !== undefined && nodeTypes === undefined) {
+    _emitWarnings.push('<Flow nodeTypes={…}> must be a literal { type: Component } map to lower natively; the native default node renderer is used.')
+  }
+  if (e.attrs.some((a) => a.kind === 'attr' && a.name === 'edgeTypes')) {
+    _emitWarnings.push('<Flow edgeTypes={…}> custom edge renderer maps are not lowered natively yet; the native default edge renderer is used.')
   }
   const background = e.children
     .filter((child) => child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'Background')
@@ -8158,7 +8162,11 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
   const nodeText = attr.value.kind === 'identifier' && _flowStateLabelNamesSwift.has(attr.value.name)
     ? 'Text(String(describing: pyreonNode.data.label))'
     : 'Text(pyreonNode.id)'
-  const host = `PyreonFlowView(state: ${emitSwiftExpr(attr.value, 0)}${bgArg}${controlsArg}${miniMapArg}) { pyreonNode in\n  ${nodeText}\n}`
+  const renderer = nodeTypes && nodeTypes.length > 0
+    ? `switch pyreonNode.type {\n${nodeTypes.map(({ type, component }) => `  case ${JSON.stringify(type)}:\n    ${swiftIdent(component)}(id: pyreonNode.id, data: { pyreonNode.data }, selected: { pyreonSelected }, dragging: { pyreonDragging })`).join('\n')}\n  default:\n    ${nodeText}\n  }`
+    : nodeText
+  const rendererParams = nodeTypes && nodeTypes.length > 0 ? 'pyreonNode, pyreonSelected, pyreonDragging' : 'pyreonNode'
+  const host = `PyreonFlowView(state: ${emitSwiftExpr(attr.value, 0)}${bgArg}${controlsArg}${miniMapArg}) { ${rendererParams} in\n  ${renderer}\n}`
   if (panels.length === 0) return host
   const overlays = panels.map((panel) => {
     const position = readStaticAttr(panel, 'position')

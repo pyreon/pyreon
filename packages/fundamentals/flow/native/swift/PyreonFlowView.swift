@@ -346,7 +346,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private let background: PyreonFlowBackgroundStyle?
     private let controls: PyreonFlowControlsStyle?
     private let miniMap: PyreonFlowMiniMapStyle?
-    private let nodeContent: (PyreonFlowNode<T>) -> NodeContent
+    private let nodeContent: (PyreonFlowNode<T>, Bool, Bool) -> NodeContent
 
     @State private var nodeDragStart: [String: PyreonXYPosition] = [:]
     @State private var panStart: PyreonFlowViewport?
@@ -366,6 +366,24 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         controls: PyreonFlowControlsStyle? = nil,
         miniMap: PyreonFlowMiniMapStyle? = nil,
         @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>) -> NodeContent
+    ) {
+        self.state = state
+        self.edgeColor = edgeColor
+        self.edgeWidth = edgeWidth
+        self.background = background
+        self.controls = controls
+        self.miniMap = miniMap
+        self.nodeContent = { node, _, _ in nodeContent(node) }
+    }
+
+    public init(
+        state: PyreonFlowState<T>,
+        edgeColor: String = "#999999",
+        edgeWidth: Double = 1.5,
+        background: PyreonFlowBackgroundStyle? = nil,
+        controls: PyreonFlowControlsStyle? = nil,
+        miniMap: PyreonFlowMiniMapStyle? = nil,
+        @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>, Bool, Bool) -> NodeContent
     ) {
         self.state = state
         self.edgeColor = edgeColor
@@ -413,7 +431,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                     }
                     ForEach(visibleNodes, id: \.id) { node in
                         let absolute = state.getAbsolutePosition(node.id)
-                        nodeContent(node)
+                        nodeContent(node, state.isNodeSelected(node.id), nodeDragStart[node.id] != nil)
                             .frame(
                                 width: node.width ?? pyreonFlowDefaultNodeWidth,
                                 height: node.height ?? pyreonFlowDefaultNodeHeight)

@@ -1801,6 +1801,17 @@ fun <T> PyreonFlowView(
   miniMap: PyreonFlowMiniMapStyle? = null,
   nodeContent: @Composable (PyreonFlowNode<T>) -> Unit,
 ) {}
+@Composable
+fun <T> PyreonFlowView(
+  state: PyreonFlowState<T>,
+  modifier: Modifier = Modifier,
+  edgeColor: String = "#999999",
+  edgeWidth: Double = 1.5,
+  background: PyreonFlowBackgroundStyle? = null,
+  controls: PyreonFlowControlsStyle? = null,
+  miniMap: PyreonFlowMiniMapStyle? = null,
+  nodeContent: @Composable (PyreonFlowNode<T>, Boolean, Boolean) -> Unit,
+) {}
 
 // PyreonPermissions — mirror of @pyreon/native-runtime-kotlin's
 // PyreonPermissions.kt surface the emit touches: callable shape

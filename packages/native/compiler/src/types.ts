@@ -911,6 +911,8 @@ export type DeclIR =
       name: string
       /** True for `useFlow`: dispose listeners/history when the component unmounts. */
       lifecycleOwned?: boolean
+      /** Explicit `createFlow<T>` / `useFlow<T>` node-data type when supplied. */
+      dataType?: TypeIR
       nodes: {
         id: string
         type?: string

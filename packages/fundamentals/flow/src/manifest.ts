@@ -17,9 +17,9 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'the core `createFlow` state, `<Flow instance={flow}>` host, `<Background>`, `<Controls>`, and `<MiniMap>` lower natively, while `<Handle>` and advanced node chrome/custom renderer maps still require explicit native follow-ups or the WebView bridge',
+      'the core state, host, literal custom node maps, layouts, and common overlays lower natively, while `<Handle>`, advanced node chrome, and custom edge renderers still require explicit native follow-ups or the WebView bridge',
     nativeFrontend:
-      'PyreonFlowState lowers `createFlow` and lifecycle-owned `useFlow` configuration, models, and operations to @Observable/Compose state; standalone `computeLayout` dispatches to the same seven deterministic native layout engines. `<Flow instance={flow}>` lowers to the interactive `PyreonFlowView` SwiftUI/Compose host, including state-derived nodes and built-in edge geometry, selection, node drag, canvas pan/zoom, visibility, measurement, accessibility, `<Background>`, functional `<Controls>`, and `<MiniMap>` node/viewport rendering with click, drag, and zoom navigation. Custom renderer maps and remaining chrome stay named diagnostics rather than silent drops.',
+      'PyreonFlowState lowers `createFlow` and lifecycle-owned `useFlow` configuration, models, and operations to @Observable/Compose state; standalone `computeLayout` dispatches to the same seven deterministic native layout engines. `<Flow instance={flow}>` lowers to the interactive `PyreonFlowView` SwiftUI/Compose host, including literal custom node renderer dispatch with live data/selection/dragging accessors, built-in edge geometry, node drag, canvas pan/zoom, visibility, measurement, accessibility, `<Background>`, functional `<Controls>`, `<MiniMap>`, and positioned `<Panel>` overlays. Custom edge renderer maps, handles, and advanced node chrome stay named diagnostics rather than silent drops.',
   },
   peerDeps: ['@pyreon/runtime-dom'],
   longExample: `import { createFlow, useFlow, Flow, Background, Controls, MiniMap, Handle, Position, type NodeComponentProps } from '@pyreon/flow'

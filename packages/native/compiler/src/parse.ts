@@ -2644,7 +2644,7 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
       // port yet either — name them so the warning doesn't imply only the
       // JSX layer is missing.
       advice:
-        '`createFlow({ nodes, edges })`, `useFlow({ nodes, edges })`, `computeLayout(...)`, `<Flow instance={flow}>`, `<Background>`, `<Controls>`, `<MiniMap>`, and `<Panel>` LOWER to the native PyreonFlowState/PyreonFlowView engine. Handle/NodeToolbar/NodeResizer, custom renderer maps, and standalone edge-path helpers still have no shared-source native emit; keep those behind platform branches or use the `@pyreon/flow/webview` bridge',
+        '`createFlow({ nodes, edges })`, `useFlow({ nodes, edges })`, `computeLayout(...)`, literal `<Flow nodeTypes={{ type: Component }}>`, `<Background>`, `<Controls>`, `<MiniMap>`, and `<Panel>` LOWER to the native PyreonFlowState/PyreonFlowView engine. Handle/NodeToolbar/NodeResizer, custom edge renderer maps, and standalone edge-path helpers still have no shared-source native emit; keep those behind platform branches or use the `@pyreon/flow/webview` bridge',
       supported: new Set(['createFlow', 'useFlow', 'computeLayout', 'Flow', 'Background', 'Controls', 'MiniMap', 'Panel']),
     },
   ],
@@ -6568,9 +6568,28 @@ const NATIVE_PRIMITIVE_TYPE_NAMES = new Set(['Double', 'Float', 'Int', 'Bool', '
 const CHART_ENGINE_STRUCT_NAMES = new Set(CHART_ENGINE_STRUCTS.map((s) => s.name))
 
 function resolvePropsObjectType(t: TypeIR, ctx: ParseCtx): TypeIR {
+  if (t.kind === 'typeRef') {
+    const local = ctx.objectTypeAliases.get(t.name)
+    if (local !== undefined) return local
+  }
+  // Public @pyreon/flow custom-node props are imported rather than declared in
+  // the consumer file. They have a closed structural contract, so resolve it
+  // here just like compiler-known chart engine structs instead of emitting a
+  // zero-prop component whose body references unbound data/selection fields.
+  if (t.kind === 'typeRef' && t.name === 'NodeComponentProps' && t.args.length <= 1) {
+    const dataType = t.args[0] ?? { kind: 'unknown' as const }
+    const accessor = (returnType: TypeIR): TypeIR => ({ kind: 'function', params: [], returnType })
+    return {
+      kind: 'object',
+      fields: [
+        { name: 'id', type: { kind: 'string' } },
+        { name: 'data', type: accessor(dataType) },
+        { name: 'selected', type: accessor({ kind: 'boolean' }) },
+        { name: 'dragging', type: accessor({ kind: 'boolean' }) },
+      ],
+    }
+  }
   if (t.kind === 'typeRef' && t.args.length === 0) {
-    const resolved = ctx.objectTypeAliases.get(t.name)
-    if (resolved !== undefined) return resolved
     if (NATIVE_PRIMITIVE_TYPE_NAMES.has(t.name) || CHART_ENGINE_STRUCT_NAMES.has(t.name)) return t
     // A locally-declared string-literal union lowers to a native enum, so a
     // parameter typed with it emits verbatim and compiles — the same reason
@@ -8991,6 +9010,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (factory !== 'createFlow' && factory !== 'useFlow') return null
   if (node.id?.type !== 'Identifier') return null
   const name = node.id.name as string
+  const genericDataType = parseGenericTypeArg(init, ctx)
   const configArg = unwrapTypeLayers((init.arguments as AnyNode[] | undefined)?.[0])
   if (!configArg || configArg.type !== 'ObjectExpression') {
     ctx.warnings.push(
@@ -9459,6 +9479,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     kind: 'flow-state',
     name,
     ...(factory === 'useFlow' ? { lifecycleOwned: true } : {}),
+    ...(genericDataType.kind !== 'unknown' ? { dataType: genericDataType } : {}),
     nodes: nodesOut,
     edges: edgesOut,
     ...(minZoom !== undefined ? { minZoom } : {}),
