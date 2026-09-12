@@ -355,10 +355,10 @@ describe('createFlow — v1 decline shapes (loud warning, not silent drop)', () 
     })
 
     it('an UNLOWERED key warns by NAME on both targets', () => {
-      const src = cfg('reducedMotion: true, fitView: true, snapToGrid: true,')
+      const src = cfg('panOnScroll: true, fitView: true, snapToGrid: true,')
       for (const target of ['swift', 'kotlin'] as const) {
         const w = (transform(src, { target }).warnings ?? []).join(' ')
-        expect(w).toContain('`reducedMotion`')
+        expect(w).toContain('`panOnScroll`')
         expect(w).not.toContain('`fitView`')
         expect(w).not.toContain('`snapToGrid`')
         expect(w).toContain('behaves differently on web')
