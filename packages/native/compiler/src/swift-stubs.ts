@@ -1153,6 +1153,7 @@ public final class PyreonFlowState<T> {
   public func removeNodes(_ ids: [String]) {}
   public func updateNodePosition(_ id: String, _ position: PyreonXYPosition) {}
   public func updateNodeData(_ id: String, _ update: (inout T) -> Void) {}
+  public func updateNode(_ id: String, _ update: (inout PyreonFlowNode<T>) -> Void) {}
   public func setNodeExtent(minX: Double, minY: Double, maxX: Double, maxY: Double) {}
   public func clearNodeExtent() {}
   public func clampToExtent(_ position: PyreonXYPosition, _ nodeWidth: Double = 150, _ nodeHeight: Double = 40) -> PyreonXYPosition { position }
@@ -1161,6 +1162,7 @@ public final class PyreonFlowState<T> {
   public func addEdges(_ edges: [PyreonFlowEdge]) {}
   public func setEdges(_ edges: [PyreonFlowEdge]) {}
   public func removeEdge(_ id: String) {}
+  public func updateEdge(_ id: String, _ update: (inout PyreonFlowEdge) -> Void) {}
   public func reconnectEdge(_ id: String, source: String? = nil, target: String? = nil, sourceHandle: String? = nil, targetHandle: String? = nil) {}
   public func addEdgeWaypoint(_ edgeId: String, _ point: PyreonXYPosition, _ index: Int? = nil) {}
   public func removeEdgeWaypoint(_ edgeId: String, _ index: Int) {}

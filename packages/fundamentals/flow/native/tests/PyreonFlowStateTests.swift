@@ -38,6 +38,12 @@ struct PyreonFlowStateTests {
         let f = seedFlow()
         f.updateNodeData("1") { $0.label = "Updated" }
         check(f.getNode("1")?.data.label == "Updated", "updateNodeData mutates the native payload observably")
+        f.updateNode("1") { $0.hidden = true; $0.id = "ignored" }
+        check(f.getNode("1")?.hidden == true && f.getNode("ignored") == nil, "updateNode patches fields while preserving indexed identity")
+        f.updateNode("1") { $0.hidden = false }
+        f.updateEdge("e1") { $0.label = "Updated edge"; $0.id = "ignored" }
+        check(f.getEdge("e1")?.label == "Updated edge" && f.getEdge("ignored") == nil, "updateEdge patches fields while preserving indexed identity")
+        f.updateEdge("e1") { $0.label = nil }
         check(f.nodes.count == 3, "seeded 3 nodes")
         check(f.edges.count == 2, "seeded 2 edges")
         check(f.getNode("2")?.data.label == "Mid", "getNode reads the seeded data")

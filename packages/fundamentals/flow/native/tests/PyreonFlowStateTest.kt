@@ -35,6 +35,12 @@ fun main() {
     val f = seedFlow()
     f.updateNodeData("1") { it.copy(label = "Updated") }
     check(f.getNode("1")?.data?.label == "Updated", "updateNodeData replaces the native payload observably")
+    f.updateNode("1") { it.copy(id = "ignored", hidden = true) }
+    check(f.getNode("1")?.hidden == true && f.getNode("ignored") == null, "updateNode patches fields while preserving indexed identity")
+    f.updateNode("1") { it.copy(hidden = false) }
+    f.updateEdge("e1") { it.copy(id = "ignored", label = "Updated edge") }
+    check(f.getEdge("e1")?.label == "Updated edge" && f.getEdge("ignored") == null, "updateEdge patches fields while preserving indexed identity")
+    f.updateEdge("e1") { it.copy(label = null) }
     check(f.nodes.size == 3, "seeded 3 nodes")
     check(f.edges.size == 2, "seeded 2 edges")
     check(f.getNode("2")?.data?.label == "Mid", "getNode reads the seeded data")

@@ -444,22 +444,26 @@ export function C() {
       expect(w).not.toContain('does NOTHING')
     })
     it(`[${target}] bulk, coordinate, visibility and group methods lower without silent member gaps`, () => {
-      const src = base('', `<Button onPress={() => { flow.updateNodeData('1', { label: 'Updated' }); flow.selectNodes(['1'], true); flow.moveSelectedNodes(2, 3); flow.removeEdges(['e1']); flow.removeNodes(['missing']); flow.focusNode('1', 2); flow.panTo({ x: 4, y: 5 }) }}>Act</Button><Text>{flow.getNodes().length}</Text><Text>{flow.getEdges().length}</Text><Text>{flow.getViewport().zoom}</Text><Text>{flow.screenToFlowPosition({ x: 10, y: 20 }).x}</Text><Text>{flow.flowToScreenPosition({ x: 1, y: 2 }).y}</Text><Text>{flow.isNodeVisible('1')}</Text><Text>{flow.getChildNodes('root').length}</Text><Text>{flow.getAbsolutePosition('1').x}</Text>`)
+      const src = base('', `<Button onPress={() => { flow.updateNode('1', { hidden: true, position: { x: 8, y: 9 }, data: { label: 'Node' } }); flow.updateNodeData('1', { label: 'Updated' }); flow.updateEdge('e1', { label: 'Edge', animated: false, pathOptions: { offset: 12 }, markerEnd: null }); flow.selectNodes(['1'], true); flow.moveSelectedNodes(2, 3); flow.removeEdges(['e1']); flow.removeNodes(['missing']); flow.focusNode('1', 2); flow.panTo({ x: 4, y: 5 }) }}>Act</Button><Text>{flow.getNodes().length}</Text><Text>{flow.getEdges().length}</Text><Text>{flow.getViewport().zoom}</Text><Text>{flow.screenToFlowPosition({ x: 10, y: 20 }).x}</Text><Text>{flow.flowToScreenPosition({ x: 1, y: 2 }).y}</Text><Text>{flow.isNodeVisible('1')}</Text><Text>{flow.getChildNodes('root').length}</Text><Text>{flow.getAbsolutePosition('1').x}</Text>`)
       const result = transform(src, { target })
       const w = (result.warnings ?? []).join('\n')
-      for (const member of ['updateNodeData', 'selectNodes', 'moveSelectedNodes', 'removeEdges', 'removeNodes', 'focusNode', 'panTo', 'getNodes', 'getEdges', 'getViewport', 'screenToFlowPosition', 'flowToScreenPosition', 'isNodeVisible', 'getChildNodes', 'getAbsolutePosition']) {
+      for (const member of ['updateNode', 'updateNodeData', 'updateEdge', 'selectNodes', 'moveSelectedNodes', 'removeEdges', 'removeNodes', 'focusNode', 'panTo', 'getNodes', 'getEdges', 'getViewport', 'screenToFlowPosition', 'flowToScreenPosition', 'isNodeVisible', 'getChildNodes', 'getAbsolutePosition']) {
         expect(w).not.toContain(`\`${member}\` is NOT ported`)
       }
       if (target === 'swift') {
         expect(result.code).toContain('flow.selectNodes(["1"], additive: true)')
         expect(result.code).toContain('flow.panTo(PyreonXYPosition(x: 4, y: 5))')
         expect(result.code).toContain('flow.updateNodeData("1") { data in data.label = "Updated" }')
+        expect(result.code).toContain('flow.updateNode("1") { node in node.hidden = true; node.position = PyreonXYPosition(x: 8, y: 9); node.data.label = "Node" }')
+        expect(result.code).toContain('flow.updateEdge("e1") { edge in edge.label = "Edge"; edge.animated = false; edge.animatedSpecified = true; edge.pathOffset = 12; edge.markerEnd = nil; edge.markerEndSpecified = true }')
         expect(validateSwiftWithStubs(result.code).ok).toBe(true)
       } else {
         expect(result.code).toContain('flow.moveSelectedNodes(2.0, 3.0)')
         expect(result.code).toContain('flow.focusNode("1", 2.0)')
         expect(result.code).toContain('flow.panTo(PyreonXYPosition(4.0, 5.0))')
         expect(result.code).toContain('flow.updateNodeData("1") { data -> data.copy(label = "Updated") }')
+        expect(result.code).toContain('flow.updateNode("1") { node -> node.copy(hidden = true, position = PyreonXYPosition(8.0, 9.0), data = node.data.copy(label = "Node")) }')
+        expect(result.code).toContain('flow.updateEdge("e1") { edge -> edge.copy(label = "Edge", animated = false, animatedSpecified = true, pathOffset = 12.0, markerEnd = null, markerEndSpecified = true) }')
         expect(validateKotlin(result.code).ok).toBe(true)
       }
     })

@@ -4820,6 +4820,37 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             return `${kotlinIdent(flowName)}.updateNodeData(${emitKotlinExpr(e.args[0]!, indent)}) { data -> data.copy(${assignments}) }`
           }
         }
+        if (member === 'updateNode' && e.args.length === 2 && e.args[1]!.kind === 'object') {
+          const patch = e.args[1]
+          if (!patch.spreads || patch.spreads.length === 0) {
+            warnDroppedFlowFieldsKt(`createFlow binding \`${flowName}\` updateNode(...)`, 'node', patch)
+            const fields = patch.fields.flatMap(({ name, value }) => {
+              if (name === 'id') { _emitWarnings.push(`createFlow binding \`${flowName}\` updateNode(...): changing a node id is not supported natively; the original id is preserved.`); return [] }
+              if (name === 'position') { const position = kotlinFlowPositionLiteral(value); return position ? [`position = ${position}`] : [] }
+              if (name === 'data' && value.kind === 'object') return [`data = node.data.copy(${value.fields.map((field) => `${kotlinIdent(field.name)} = ${emitKotlinExpr(field.value, indent)}`).join(', ')})`]
+              if (name === 'sourceHandles' || name === 'targetHandles') { const handles = kotlinFlowHandlesLiteral(value); return handles ? [`${name} = ${handles}`] : [] }
+              const rendered = ['width', 'height'].includes(name) ? ktChartDouble(emitKotlinExpr(value, indent)) : emitKotlinExpr(value, indent)
+              return HANDLED_FLOW_NODE_FIELDS.has(name) ? [`${kotlinIdent(name)} = ${rendered}`] : []
+            })
+            return `${kotlinIdent(flowName)}.updateNode(${emitKotlinExpr(e.args[0]!, indent)}) { node -> node.copy(${fields.join(', ')}) }`
+          }
+        }
+        if (member === 'updateEdge' && e.args.length === 2 && e.args[1]!.kind === 'object') {
+          const patch = e.args[1]
+          if (!patch.spreads || patch.spreads.length === 0) {
+            warnDroppedFlowFieldsKt(`createFlow binding \`${flowName}\` updateEdge(...)`, 'edge', patch)
+            const fields = patch.fields.flatMap(({ name, value }) => {
+              if (name === 'id') { _emitWarnings.push(`createFlow binding \`${flowName}\` updateEdge(...): changing an edge id is not supported natively; the original id is preserved.`); return [] }
+              if (name === 'pathOptions' && value.kind === 'object') return value.fields.flatMap((field) => ['curvature', 'borderRadius', 'offset'].includes(field.name) ? [`${field.name === 'offset' ? 'pathOffset' : field.name} = ${ktChartDouble(emitKotlinExpr(field.value, indent))}`] : [])
+              if (name === 'markerStart' || name === 'markerEnd') { const marker = kotlinFlowMarkerLiteral(value); return marker ? [`${name} = ${marker}`, ...(name === 'markerEnd' ? ['markerEndSpecified = true'] : [])] : [] }
+              if (name === 'animated') return [`animated = ${emitKotlinExpr(value, indent)}`, 'animatedSpecified = true']
+              if (name === 'waypoints') { const points = kotlinFlowPositionsLiteral(value); return points ? [`waypoints = ${points}`] : [] }
+              const rendered = name === 'interactionWidth' ? ktChartDouble(emitKotlinExpr(value, indent)) : emitKotlinExpr(value, indent)
+              return HANDLED_FLOW_EDGE_FIELDS.has(name) ? [`${kotlinIdent(name)} = ${rendered}`] : []
+            })
+            return `${kotlinIdent(flowName)}.updateEdge(${emitKotlinExpr(e.args[0]!, indent)}) { edge -> edge.copy(${fields.join(', ')}) }`
+          }
+        }
         if (['panTo', 'screenToFlowPosition', 'flowToScreenPosition'].includes(member) && e.args.length === 1) {
           const lit = kotlinFlowPositionLiteral(e.args[0]!)
           if (lit !== null) return `${kotlinIdent(flowName)}.${member}(${lit})`

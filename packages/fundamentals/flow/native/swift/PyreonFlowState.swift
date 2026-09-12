@@ -491,6 +491,14 @@ public final class PyreonFlowState<T> {
         boxes[id]!.node.data = nodeStore[id]!.data
         nodesVersion &+= 1
     }
+    public func updateNode(_ id: String, _ update: (inout PyreonFlowNode<T>) -> Void) {
+        guard var node = nodeStore[id] else { return }
+        update(&node)
+        node.id = id
+        nodeStore[id] = node
+        boxes[id]!.node = node
+        nodesVersion &+= 1
+    }
     public func setNodeExtent(minX: Double, minY: Double, maxX: Double, maxY: Double) {
         nodeExtent = PyreonFlowNodeExtent(minX: minX, minY: minY, maxX: maxX, maxY: maxY)
     }
@@ -555,6 +563,13 @@ public final class PyreonFlowState<T> {
         edges.remove(at: i)
         edgeIds.remove(id)
         if selectedEdgeIdSet.remove(id) != nil { selectedEdgeIds.removeAll { $0 == id } }
+    }
+    public func updateEdge(_ id: String, _ update: (inout PyreonFlowEdge) -> Void) {
+        guard let index = edges.firstIndex(where: { $0.id == id }) else { return }
+        var edge = edges[index]
+        update(&edge)
+        edge.id = id
+        edges[index] = edge
     }
     public func reconnectEdge(_ id: String, source: String? = nil, target: String? = nil, sourceHandle: String? = nil, targetHandle: String? = nil) {
         guard let i = edges.firstIndex(where: { $0.id == id }) else { return }

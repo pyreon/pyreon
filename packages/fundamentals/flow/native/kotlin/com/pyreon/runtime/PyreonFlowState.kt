@@ -278,6 +278,10 @@ class PyreonFlowState<T>(
         val node = nodeMap[id] ?: return
         nodeMap[id] = node.copy(data = update(node.data))
     }
+    fun updateNode(id: String, update: (PyreonFlowNode<T>) -> PyreonFlowNode<T>) {
+        val node = nodeMap[id] ?: return
+        nodeMap[id] = update(node).copy(id = id)
+    }
     fun setNodeExtent(minX: Double, minY: Double, maxX: Double, maxY: Double) {
         nodeExtent = PyreonFlowNodeExtent(minX, minY, maxX, maxY)
     }
@@ -334,6 +338,11 @@ class PyreonFlowState<T>(
     fun removeEdge(id: String) {
         if (!edgeIds.containsKey(id)) return
         removeEdges { it.id == id }
+    }
+    fun updateEdge(id: String, update: (PyreonFlowEdge) -> PyreonFlowEdge) {
+        val index = _edges.indexOfFirst { it.id == id }
+        if (index < 0) return
+        _edges = _edges.toMutableList().also { it[index] = update(it[index]).copy(id = id) }
     }
     fun reconnectEdge(id: String, source: String? = null, target: String? = null, sourceHandle: String? = null, targetHandle: String? = null) {
         val i = _edges.indexOfFirst { it.id == id }

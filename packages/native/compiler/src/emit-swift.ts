@@ -5803,6 +5803,35 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             return `${swiftIdent(flowName)}.updateNodeData(${emitSwiftExpr(e.args[0]!, indent)}) { data in ${assignments} }`
           }
         }
+        if (member === 'updateNode' && e.args.length === 2 && e.args[1]!.kind === 'object') {
+          const patch = e.args[1]
+          if (!patch.spreads || patch.spreads.length === 0) {
+            warnDroppedFlowFields(`createFlow binding \`${flowName}\` updateNode(...)`, 'node', patch)
+            const statements = patch.fields.flatMap(({ name, value }) => {
+              if (name === 'id') { _emitWarnings.push(`createFlow binding \`${flowName}\` updateNode(...): changing a node id is not supported natively; the original id is preserved.`); return [] }
+              if (name === 'position') { const position = swiftFlowPositionLiteral(value); return position ? [`node.position = ${position}`] : [] }
+              if (name === 'data' && value.kind === 'object') return value.fields.map((field) => `node.data.${swiftIdent(field.name)} = ${emitSwiftExpr(field.value, indent)}`)
+              if ((name === 'sourceHandles' || name === 'targetHandles')) { const handles = swiftFlowHandlesLiteral(value); return handles ? [`node.${name} = ${handles}`] : [] }
+              return HANDLED_FLOW_NODE_FIELDS.has(name) ? [`node.${swiftIdent(name)} = ${emitSwiftExpr(value, indent)}`] : []
+            })
+            return `${swiftIdent(flowName)}.updateNode(${emitSwiftExpr(e.args[0]!, indent)}) { node in ${statements.join('; ')} }`
+          }
+        }
+        if (member === 'updateEdge' && e.args.length === 2 && e.args[1]!.kind === 'object') {
+          const patch = e.args[1]
+          if (!patch.spreads || patch.spreads.length === 0) {
+            warnDroppedFlowFields(`createFlow binding \`${flowName}\` updateEdge(...)`, 'edge', patch)
+            const statements = patch.fields.flatMap(({ name, value }) => {
+              if (name === 'id') { _emitWarnings.push(`createFlow binding \`${flowName}\` updateEdge(...): changing an edge id is not supported natively; the original id is preserved.`); return [] }
+              if (name === 'pathOptions' && value.kind === 'object') return value.fields.flatMap((field) => ['curvature', 'borderRadius', 'offset'].includes(field.name) ? [`edge.${field.name === 'offset' ? 'pathOffset' : field.name} = ${emitSwiftExpr(field.value, indent)}`] : [])
+              if (name === 'markerStart' || name === 'markerEnd') { const marker = swiftFlowMarkerLiteral(value); return marker ? [`edge.${name} = ${marker}`, ...(name === 'markerEnd' ? ['edge.markerEndSpecified = true'] : [])] : [] }
+              if (name === 'animated') return [`edge.animated = ${emitSwiftExpr(value, indent)}`, 'edge.animatedSpecified = true']
+              if (name === 'waypoints') { const points = swiftFlowPositionsLiteral(value); return points ? [`edge.waypoints = ${points}`] : [] }
+              return HANDLED_FLOW_EDGE_FIELDS.has(name) ? [`edge.${swiftIdent(name)} = ${emitSwiftExpr(value, indent)}`] : []
+            })
+            return `${swiftIdent(flowName)}.updateEdge(${emitSwiftExpr(e.args[0]!, indent)}) { edge in ${statements.join('; ')} }`
+          }
+        }
         if (['panTo', 'screenToFlowPosition', 'flowToScreenPosition'].includes(member) && e.args.length === 1) {
           const lit = swiftFlowPositionLiteral(e.args[0]!)
           if (lit !== null) return `${swiftIdent(flowName)}.${member}(${lit})`
