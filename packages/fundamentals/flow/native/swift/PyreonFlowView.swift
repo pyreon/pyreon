@@ -403,7 +403,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                             .background(edge.text == nil ? Color.clear : Color.white.opacity(0.9))
                             .position(x: edge.x, y: edge.y)
                             .contentShape(Rectangle())
-                            .onTapGesture { state.selectEdge(edge.id) }
+                            .onTapGesture { state.selectEdge(edge.id); state.emitEdgeClick(edge.id) }
                             .accessibilityLabel(Text(edge.accessibilityLabel))
                             .accessibilityAddTraits(state.isEdgeSelected(edge.id) ? [.isSelected] : [])
                             .accessibilityHidden(!edge.focusable)

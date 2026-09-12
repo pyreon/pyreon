@@ -117,6 +117,7 @@ const val PYREON_FLOW_DEFAULT_EDGE_TYPE: String = "bezier"
  *  own `onSizeChanged`, mirroring the web `containerSize` signal. */
 data class PyreonFlowContainerSize(val width: Double = 0.0, val height: Double = 0.0)
 data class PyreonFlowNodeExtent(val minX: Double, val minY: Double, val maxX: Double, val maxY: Double)
+data class PyreonFlowSelection<T>(val nodes: List<PyreonFlowNode<T>>, val edges: List<PyreonFlowEdge>)
 private data class PyreonFlowHistorySnapshot<T>(val nodes: List<PyreonFlowNode<T>>, val edges: List<PyreonFlowEdge>)
 
 /** Reactive flow-diagram state: nodes, edges, viewport, selection. Behaviour-
@@ -169,6 +170,8 @@ class PyreonFlowState<T>(
     private val nodeDragStartListeners = LinkedHashMap<Int, (PyreonFlowNode<T>) -> Unit>()
     private val nodeDragListeners = LinkedHashMap<Int, (PyreonFlowNode<T>) -> Unit>()
     private val nodeDragEndListeners = LinkedHashMap<Int, (PyreonFlowNode<T>) -> Unit>()
+    private val edgeClickListeners = LinkedHashMap<Int, (PyreonFlowEdge) -> Unit>()
+    private val selectionListeners = LinkedHashMap<Int, (PyreonFlowSelection<T>) -> Unit>()
     val connectionRadius: Double = maxOf(0.0, connectionRadius)
     val fitViewPadding: Double = maxOf(0.0, fitViewPadding)
     private var nodeExtent: PyreonFlowNodeExtent? = nodeExtent
@@ -225,6 +228,22 @@ class PyreonFlowState<T>(
     fun emitNodeDragStart(id: String) { nodeMap[id]?.let { node -> nodeDragStartListeners.values.forEach { it(node) } } }
     fun emitNodeDrag(id: String) { nodeMap[id]?.let { node -> nodeDragListeners.values.forEach { it(node) } } }
     fun emitNodeDragEnd(id: String) { nodeMap[id]?.let { node -> nodeDragEndListeners.values.forEach { it(node) } } }
+    fun onEdgeClick(callback: (PyreonFlowEdge) -> Unit): () -> Unit {
+        val id = nextListenerId++; edgeClickListeners[id] = callback
+        return { edgeClickListeners.remove(id) }
+    }
+    fun onSelectionChange(callback: (PyreonFlowSelection<T>) -> Unit): () -> Unit {
+        val id = nextListenerId++; selectionListeners[id] = callback
+        return { selectionListeners.remove(id) }
+    }
+    fun emitEdgeClick(id: String) { getEdge(id)?.let { edge -> edgeClickListeners.values.forEach { it(edge) } } }
+    private fun emitSelectionChange() {
+        val selection = PyreonFlowSelection(selectedNodeIdList.mapNotNull { nodeMap[it] }, selectedEdgeIdList.mapNotNull(::getEdge))
+        selectionListeners.values.forEach { it(selection) }
+    }
+    private fun emitSelectionChangeIfChanged(nodes: List<String>, edges: List<String>) {
+        if (nodes != selectedNodeIdList || edges != selectedEdgeIdList) emitSelectionChange()
+    }
     private fun emitViewportChange() { for (callback in viewportListeners.values) callback(_viewport) }
     private fun checkpoint() { if (autoHistory) pushHistory() }
     fun pushHistory() {
@@ -328,6 +347,7 @@ class PyreonFlowState<T>(
         for (node in nodes) insertNode(node)
     }
     fun setNodes(nodes: List<PyreonFlowNode<T>>) {
+        val oldSelectedNodes = selectedNodeIdList.toList(); val oldSelectedEdges = selectedEdgeIdList.toList()
         checkpoint()
         val nextIds = nodes.mapTo(HashSet()) { it.id }
         order.clear()
@@ -335,18 +355,23 @@ class PyreonFlowState<T>(
         for (node in nodes) insertNode(node)
         setNodeSelection(selectedNodeIdList.filter { nextIds.contains(it) })
         removeEdges { !nextIds.contains(it.source) || !nextIds.contains(it.target) }
+        emitSelectionChangeIfChanged(oldSelectedNodes, oldSelectedEdges)
     }
     /** Removes the node AND every edge connected to it (source or target). */
     fun removeNode(id: String) {
         if (!nodeMap.containsKey(id)) return
         checkpoint()
+        val oldSelectedNodes = selectedNodeIdList.toList(); val oldSelectedEdges = selectedEdgeIdList.toList()
         removeNodes(setOf(id))
+        emitSelectionChangeIfChanged(oldSelectedNodes, oldSelectedEdges)
     }
     fun removeNodes(ids: List<String>) {
         val gone = ids.filterTo(HashSet()) { nodeMap.containsKey(it) }
         if (gone.isEmpty()) return
         checkpoint()
+        val oldSelectedNodes = selectedNodeIdList.toList(); val oldSelectedEdges = selectedEdgeIdList.toList()
         removeNodes(gone)
+        emitSelectionChangeIfChanged(oldSelectedNodes, oldSelectedEdges)
     }
     /** O(1); recomposes only the readers of this node. */
     fun updateNodePosition(id: String, position: PyreonXYPosition) {
@@ -449,16 +474,20 @@ class PyreonFlowState<T>(
         }
     }
     fun setEdges(edges: List<PyreonFlowEdge>) {
+        val oldSelectedNodes = selectedNodeIdList.toList(); val oldSelectedEdges = selectedEdgeIdList.toList()
         checkpoint()
         _edges = emptyList()
         edgeIds.clear()
         for (edge in edges) insertEdge(edge)
         setEdgeSelection(selectedEdgeIdList.filter { edgeIds.containsKey(it) })
+        emitSelectionChangeIfChanged(oldSelectedNodes, oldSelectedEdges)
     }
     fun removeEdge(id: String) {
         if (!edgeIds.containsKey(id)) return
         checkpoint()
+        val oldSelectedNodes = selectedNodeIdList.toList(); val oldSelectedEdges = selectedEdgeIdList.toList()
         removeEdges { it.id == id }
+        emitSelectionChangeIfChanged(oldSelectedNodes, oldSelectedEdges)
     }
     fun updateEdge(id: String, update: (PyreonFlowEdge) -> PyreonFlowEdge) {
         val index = _edges.indexOfFirst { it.id == id }
@@ -521,7 +550,9 @@ class PyreonFlowState<T>(
         val gone = ids.filterTo(HashSet()) { edgeIds.containsKey(it) }
         if (gone.isEmpty()) return
         checkpoint()
+        val oldSelectedNodes = selectedNodeIdList.toList(); val oldSelectedEdges = selectedEdgeIdList.toList()
         removeEdges { gone.contains(it.id) }
+        emitSelectionChangeIfChanged(oldSelectedNodes, oldSelectedEdges)
     }
 
     // ── selection ────────────────────────────────────────────────────────────
@@ -555,6 +586,7 @@ class PyreonFlowState<T>(
             setNodeSelection(listOf(id))
             setEdgeSelection(emptyList())
         }
+        emitSelectionChange()
     }
     @JvmOverloads
     fun selectNodes(ids: List<String>, additive: Boolean = false) {
@@ -564,9 +596,11 @@ class PyreonFlowState<T>(
             setNodeSelection(ids.distinct())
             setEdgeSelection(emptyList())
         }
+        emitSelectionChange()
     }
     fun deselectNode(id: String) {
         if (selectedNodeIdSet.remove(id) != null) selectedNodeIdList.remove(id)
+        emitSelectionChange()
     }
     @JvmOverloads
     fun selectEdge(id: String, additive: Boolean = false) {
@@ -576,16 +610,19 @@ class PyreonFlowState<T>(
             setEdgeSelection(listOf(id))
             setNodeSelection(emptyList())
         }
+        emitSelectionChange()
     }
     fun clearSelection() {
         setNodeSelection(emptyList())
         setEdgeSelection(emptyList())
+        emitSelectionChange()
     }
     /** Selects every node. Edge selection is LEFT ALONE — the web `selectAll`
      *  (`flow.ts`) only replaces the node set; v1 of both native ports also
      *  cleared the edge set, a divergence the tests locked in by omission. */
     fun selectAll() {
         setNodeSelection(order.toList())
+        emitSelectionChange()
     }
     /** Removes every currently-selected node (and its connected edges) and
      *  every currently-selected edge — the SAME net effect AND the same
@@ -604,6 +641,7 @@ class PyreonFlowState<T>(
         }
         setNodeSelection(emptyList())
         setEdgeSelection(emptyList())
+        emitSelectionChange()
     }
 
     // ── copy / paste ────────────────────────────────────────────────────────
@@ -634,6 +672,7 @@ class PyreonFlowState<T>(
         }
         setNodeSelection(pastedIds)
         setEdgeSelection(emptyList())
+        emitSelectionChange()
     }
 
     // ── viewport ─────────────────────────────────────────────────────────────

@@ -489,9 +489,11 @@ export function C() {
         flow.onNodeDragStart(node => { console.log(node.id) })
         flow.onNodeDrag(node => { console.log(node.id) })
         flow.onNodeDragEnd(node => { console.log(node.id) })
+        flow.onEdgeClick(edge => { console.log(edge.id) })
+        flow.onSelectionChange(selection => { console.log(selection.nodes.length) })
       `, '<Button onPress={() => { stopConnect(); stopViewport() }}>Stop</Button>'), { target })
       const warnings = (result.warnings ?? []).join(' ')
-      for (const member of ['onConnect', 'onViewportChange', 'onNodeClick', 'onNodeDoubleClick', 'onNodeDragStart', 'onNodeDrag', 'onNodeDragEnd']) expect(warnings).not.toContain(`\`${member}\` is NOT ported`)
+      for (const member of ['onConnect', 'onViewportChange', 'onNodeClick', 'onNodeDoubleClick', 'onNodeDragStart', 'onNodeDrag', 'onNodeDragEnd', 'onEdgeClick', 'onSelectionChange']) expect(warnings).not.toContain(`\`${member}\` is NOT ported`)
     })
     it(`[${target}] a ported member emits with NO member warning (the control)`, () => {
       const w = warningsOf(base('', '<Button onPress={() => flow.zoomIn()}>Zoom</Button>'), target)

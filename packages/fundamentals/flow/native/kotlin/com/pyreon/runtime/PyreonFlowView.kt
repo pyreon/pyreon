@@ -265,7 +265,7 @@ fun <T> PyreonFlowView(
                     edge.text ?: "",
                     Modifier
                         .offset { IntOffset(edge.x.roundToInt(), edge.y.roundToInt()) }
-                        .clickable { state.selectEdge(edge.id) }
+                        .clickable { state.selectEdge(edge.id); state.emitEdgeClick(edge.id) }
                         .semantics {
                             contentDescription = edge.accessibilityLabel
                             selected = state.isEdgeSelected(edge.id)

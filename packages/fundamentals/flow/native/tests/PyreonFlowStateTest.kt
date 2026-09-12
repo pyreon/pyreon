@@ -103,6 +103,16 @@ fun main() {
     events.emitNodeClick("1"); events.emitNodeDoubleClick("1"); events.emitNodeDragStart("1"); events.emitNodeDrag("1"); events.emitNodeDragEnd("1")
     check(nodeEvents == listOf("click:1", "double:1", "start:1", "drag:1", "end:1"), "native node interaction listeners preserve lifecycle order and live node values")
     stops.forEach { it() }
+    var clickedEdge: String? = null
+    val stopEdge = events.onEdgeClick { clickedEdge = it.id }
+    events.emitEdgeClick("e1")
+    check(clickedEdge == "e1", "onEdgeClick receives the live native edge")
+    stopEdge()
+    var selectedIds = emptyList<String>()
+    val stopSelection = events.onSelectionChange { selectedIds = it.nodes.map { node -> node.id } + it.edges.map { edge -> edge.id } }
+    events.selectNode("1"); events.selectEdge("e1")
+    check(selectedIds == listOf("e1"), "onSelectionChange receives the final mutually-exclusive selection")
+    stopSelection()
     f.updateNodeData("1") { it.copy(label = "Updated") }
     check(f.getNode("1")?.data?.label == "Updated", "updateNodeData replaces the native payload observably")
     f.updateNode("1") { it.copy(id = "ignored", hidden = true) }

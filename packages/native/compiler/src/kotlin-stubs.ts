@@ -1625,6 +1625,7 @@ data class PyreonFlowDefaultEdgeOptions(
   val markerStart: PyreonFlowMarker? = null, val markerEnd: PyreonFlowMarker? = null, val markerEndSpecified: Boolean = false,
 )
 data class PyreonFlowConnection(val source: String, val target: String, val sourceHandle: String? = null, val targetHandle: String? = null)
+data class PyreonFlowSelection<T>(val nodes: List<PyreonFlowNode<T>>, val edges: List<PyreonFlowEdge>)
 data class PyreonFlowContainerSize(val width: Double = 0.0, val height: Double = 0.0)
 class PyreonFlowState<T>(
   nodes: List<PyreonFlowNode<T>> = emptyList(),
@@ -1729,6 +1730,8 @@ class PyreonFlowState<T>(
   fun onNodeDragStart(callback: (PyreonFlowNode<T>) -> Unit): () -> Unit = {}
   fun onNodeDrag(callback: (PyreonFlowNode<T>) -> Unit): () -> Unit = {}
   fun onNodeDragEnd(callback: (PyreonFlowNode<T>) -> Unit): () -> Unit = {}
+  fun onEdgeClick(callback: (PyreonFlowEdge) -> Unit): () -> Unit = {}
+  fun onSelectionChange(callback: (PyreonFlowSelection<T>) -> Unit): () -> Unit = {}
   fun moveSelectedNodes(dx: Double, dy: Double) {}
   fun focusNode(nodeId: String, focusZoom: Double? = null) {}
 }

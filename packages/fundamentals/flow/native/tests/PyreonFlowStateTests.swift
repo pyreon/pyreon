@@ -108,6 +108,16 @@ struct PyreonFlowStateTests {
         events.emitNodeClick("1"); events.emitNodeDoubleClick("1"); events.emitNodeDragStart("1"); events.emitNodeDrag("1"); events.emitNodeDragEnd("1")
         check(nodeEvents == ["click:1", "double:1", "start:1", "drag:1", "end:1"], "native node interaction listeners preserve lifecycle order and live node values")
         for stop in stops { stop() }
+        var clickedEdge: String?
+        let stopEdge = events.onEdgeClick { clickedEdge = $0.id }
+        events.emitEdgeClick("e1")
+        check(clickedEdge == "e1", "onEdgeClick receives the live native edge")
+        stopEdge()
+        var selectedIds: [String] = []
+        let stopSelection = events.onSelectionChange { selectedIds = $0.nodes.map(\.id) + $0.edges.map(\.id) }
+        events.selectNode("1"); events.selectEdge("e1")
+        check(selectedIds == ["e1"], "onSelectionChange receives the final mutually-exclusive selection")
+        stopSelection()
         f.updateNode("1") { $0.hidden = true; $0.id = "ignored" }
         check(f.getNode("1")?.hidden == true && f.getNode("ignored") == nil, "updateNode patches fields while preserving indexed identity")
         f.updateNode("1") { $0.hidden = false }

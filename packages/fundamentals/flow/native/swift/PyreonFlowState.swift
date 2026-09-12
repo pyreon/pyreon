@@ -132,6 +132,10 @@ public struct PyreonFlowNodeExtent: Equatable {
         self.minX = minX; self.minY = minY; self.maxX = maxX; self.maxY = maxY
     }
 }
+public struct PyreonFlowSelection<T> {
+    public let nodes: [PyreonFlowNode<T>]
+    public let edges: [PyreonFlowEdge]
+}
 
 /// An edge — mirrors `FlowEdge`'s core fields, including editable waypoints.
 public struct PyreonFlowEdge: Equatable {
@@ -355,6 +359,8 @@ public final class PyreonFlowState<T> {
     @ObservationIgnored private var nodeDragStartListeners: [UUID: (PyreonFlowNode<T>) -> Void] = [:]
     @ObservationIgnored private var nodeDragListeners: [UUID: (PyreonFlowNode<T>) -> Void] = [:]
     @ObservationIgnored private var nodeDragEndListeners: [UUID: (PyreonFlowNode<T>) -> Void] = [:]
+    @ObservationIgnored private var edgeClickListeners: [UUID: (PyreonFlowEdge) -> Void] = [:]
+    @ObservationIgnored private var selectionListeners: [UUID: (PyreonFlowSelection<T>) -> Void] = [:]
     @ObservationIgnored private let connectionValidator: ((PyreonFlowConnection) -> Bool)?
 
     public init(
@@ -416,6 +422,22 @@ public final class PyreonFlowState<T> {
     public func emitNodeDragStart(_ id: String) { if let node = nodeStore[id] { for callback in nodeDragStartListeners.values { callback(node) } } }
     public func emitNodeDrag(_ id: String) { if let node = nodeStore[id] { for callback in nodeDragListeners.values { callback(node) } } }
     public func emitNodeDragEnd(_ id: String) { if let node = nodeStore[id] { for callback in nodeDragEndListeners.values { callback(node) } } }
+    @discardableResult public func onEdgeClick(_ callback: @escaping (PyreonFlowEdge) -> Void) -> () -> Void {
+        let token = UUID(); edgeClickListeners[token] = callback
+        return { [weak self] in self?.edgeClickListeners[token] = nil }
+    }
+    @discardableResult public func onSelectionChange(_ callback: @escaping (PyreonFlowSelection<T>) -> Void) -> () -> Void {
+        let token = UUID(); selectionListeners[token] = callback
+        return { [weak self] in self?.selectionListeners[token] = nil }
+    }
+    public func emitEdgeClick(_ id: String) { if let edge = getEdge(id) { for callback in edgeClickListeners.values { callback(edge) } } }
+    private func emitSelectionChange() {
+        let selection = PyreonFlowSelection(nodes: selectedNodeIds.compactMap { nodeStore[$0] }, edges: selectedEdgeIds.compactMap(getEdge))
+        for callback in selectionListeners.values { callback(selection) }
+    }
+    private func emitSelectionChange(ifNodeIdsWere nodes: [String], edgeIdsWere edges: [String]) {
+        if nodes != selectedNodeIds || edges != selectedEdgeIds { emitSelectionChange() }
+    }
     private func emitViewportChange() { for callback in viewportListeners.values { callback(viewport) } }
     private func checkpoint() { if autoHistory { pushHistory() } }
     public func pushHistory() {
@@ -535,6 +557,7 @@ public final class PyreonFlowState<T> {
         for node in nodes { insertNode(node) }
     }
     public func setNodes(_ nodes: [PyreonFlowNode<T>]) {
+        let oldSelectedNodes = selectedNodeIds, oldSelectedEdges = selectedEdgeIds
         checkpoint()
         let nextIds = Set(nodes.map(\.id))
         order.removeAll(keepingCapacity: true)
@@ -544,19 +567,24 @@ public final class PyreonFlowState<T> {
         setNodeSelection(selectedNodeIds.filter { nextIds.contains($0) })
         removeEdges { !nextIds.contains($0.source) || !nextIds.contains($0.target) }
         nodesVersion &+= 1
+        emitSelectionChange(ifNodeIdsWere: oldSelectedNodes, edgeIdsWere: oldSelectedEdges)
     }
     /// Removes the node AND every edge connected to it (source or target) —
     /// same as the web `removeNode`.
     public func removeNode(_ id: String) {
         guard nodeStore[id] != nil else { return }
         checkpoint()
+        let oldSelectedNodes = selectedNodeIds, oldSelectedEdges = selectedEdgeIds
         removeNodes([id])
+        emitSelectionChange(ifNodeIdsWere: oldSelectedNodes, edgeIdsWere: oldSelectedEdges)
     }
     public func removeNodes(_ ids: [String]) {
         let gone = Set(ids.filter { nodeStore[$0] != nil })
         guard !gone.isEmpty else { return }
         checkpoint()
+        let oldSelectedNodes = selectedNodeIds, oldSelectedEdges = selectedEdgeIds
         removeNodes(gone)
+        emitSelectionChange(ifNodeIdsWere: oldSelectedNodes, edgeIdsWere: oldSelectedEdges)
     }
     /// O(1); invalidates the views reading THIS node (its box) and whole-array
     /// readers (`nodesVersion`) — never the other nodes' views.
@@ -667,15 +695,18 @@ public final class PyreonFlowState<T> {
         }
     }
     public func setEdges(_ next: [PyreonFlowEdge]) {
+        let oldSelectedNodes = selectedNodeIds, oldSelectedEdges = selectedEdgeIds
         checkpoint()
         edges.removeAll(keepingCapacity: true)
         edgeIds.removeAll(keepingCapacity: true)
         for edge in next { insertEdge(edge) }
         setEdgeSelection(selectedEdgeIds.filter { edgeIds.contains($0) })
+        emitSelectionChange(ifNodeIdsWere: oldSelectedNodes, edgeIdsWere: oldSelectedEdges)
     }
     public func removeEdge(_ id: String) {
         guard edgeIds.contains(id) else { return }
         checkpoint()
+        let oldSelectedNodes = selectedNodeIds, oldSelectedEdges = selectedEdgeIds
         // Single id: find-then-remove (one String compare per element, no
         // closure indirection) — the predicate path exists for node-driven
         // removal, where many edges can go in one pass.
@@ -684,6 +715,7 @@ public final class PyreonFlowState<T> {
         edgeIds.remove(id)
         if selectedEdgeIdSet.remove(id) != nil { selectedEdgeIds.removeAll { $0 == id } }
         markMutation()
+        emitSelectionChange(ifNodeIdsWere: oldSelectedNodes, edgeIdsWere: oldSelectedEdges)
     }
     public func updateEdge(_ id: String, _ update: (inout PyreonFlowEdge) -> Void) {
         guard let index = edges.firstIndex(where: { $0.id == id }) else { return }
@@ -737,7 +769,9 @@ public final class PyreonFlowState<T> {
         let gone = Set(ids.filter { edgeIds.contains($0) })
         guard !gone.isEmpty else { return }
         checkpoint()
+        let oldSelectedNodes = selectedNodeIds, oldSelectedEdges = selectedEdgeIds
         removeEdges { gone.contains($0.id) }
+        emitSelectionChange(ifNodeIdsWere: oldSelectedNodes, edgeIdsWere: oldSelectedEdges)
     }
 
     // ── selection ────────────────────────────────────────────────────────────
@@ -766,6 +800,7 @@ public final class PyreonFlowState<T> {
             setNodeSelection([id])
             setEdgeSelection([])
         }
+        emitSelectionChange()
     }
     public func selectNodes(_ ids: [String], additive: Bool = false) {
         if additive && multiSelect {
@@ -777,9 +812,11 @@ public final class PyreonFlowState<T> {
             setNodeSelection(unique)
             setEdgeSelection([])
         }
+        emitSelectionChange()
     }
     public func deselectNode(_ id: String) {
         if selectedNodeIdSet.remove(id) != nil { selectedNodeIds.removeAll { $0 == id } }
+        emitSelectionChange()
     }
     public func selectEdge(_ id: String, additive: Bool = false) {
         if additive && multiSelect {
@@ -788,16 +825,19 @@ public final class PyreonFlowState<T> {
             setEdgeSelection([id])
             setNodeSelection([])
         }
+        emitSelectionChange()
     }
     public func clearSelection() {
         setNodeSelection([])
         setEdgeSelection([])
+        emitSelectionChange()
     }
     /// Selects every node. Edge selection is LEFT ALONE — the web `selectAll`
     /// (`flow.ts`) only replaces the node set; v1 of both native ports also
     /// cleared the edge set, a divergence the tests locked in by omission.
     public func selectAll() {
         setNodeSelection(order)
+        emitSelectionChange()
     }
     /// Removes every currently-selected node (and its connected edges) and
     /// every currently-selected edge — the SAME net effect AND the same
@@ -820,6 +860,7 @@ public final class PyreonFlowState<T> {
         }
         setNodeSelection([])
         setEdgeSelection([])
+        emitSelectionChange()
     }
 
     // ── copy / paste ────────────────────────────────────────────────────────
@@ -856,6 +897,7 @@ public final class PyreonFlowState<T> {
         }
         setNodeSelection(pastedIds)
         setEdgeSelection([])
+        emitSelectionChange()
     }
 
     // ── viewport ─────────────────────────────────────────────────────────────
