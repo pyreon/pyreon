@@ -302,6 +302,10 @@ public final class PyreonFlowNodeBox<T> {
 @available(iOS 17.0, macOS 14.0, *)
 @Observable
 public final class PyreonFlowState<T> {
+    private struct HistorySnapshot {
+        let nodes: [PyreonFlowNode<T>]
+        let edges: [PyreonFlowEdge]
+    }
     @ObservationIgnored private var order: [String] = []
     @ObservationIgnored private var nodeStore: [String: PyreonFlowNode<T>] = [:]
     @ObservationIgnored private var boxes: [String: PyreonFlowNodeBox<T>] = [:]
@@ -337,6 +341,11 @@ public final class PyreonFlowState<T> {
     public let edgesFocusable: Bool; public let nodesDeletable: Bool; public let edgesDeletable: Bool; public let edgesReconnectable: Bool
     public let edgeInteractionWidth: Double; public let connectionRadius: Double; public let pannable: Bool; public let zoomable: Bool; public let multiSelect: Bool; public let onlyRenderVisibleElements: Bool
     public let defaultEdgeType: String; public let defaultEdgeOptions: PyreonFlowDefaultEdgeOptions; public let fitViewOnLoad: Bool; public let fitViewPadding: Double
+    public let autoHistory: Bool
+    @ObservationIgnored private var undoStack: [HistorySnapshot] = []
+    @ObservationIgnored private var redoStack: [HistorySnapshot] = []
+    @ObservationIgnored private var mutationVersion = 0
+    @ObservationIgnored private var checkpointVersion = -1
     @ObservationIgnored private let connectionValidator: ((PyreonFlowConnection) -> Bool)?
 
     public init(
@@ -353,7 +362,7 @@ public final class PyreonFlowState<T> {
         nodesDraggable: Bool = true, nodesConnectable: Bool = true, nodesSelectable: Bool = true, nodesFocusable: Bool = true,
         edgesFocusable: Bool = true, nodesDeletable: Bool = true, edgesDeletable: Bool = true, edgesReconnectable: Bool = true,
         edgeInteractionWidth: Double = 20, connectionRadius: Double = 0, pannable: Bool = true, zoomable: Bool = true, multiSelect: Bool = true, onlyRenderVisibleElements: Bool = false,
-        defaultEdgeType: String = "bezier", defaultEdgeOptions: PyreonFlowDefaultEdgeOptions = PyreonFlowDefaultEdgeOptions(), fitView: Bool = false, fitViewPadding: Double = 0.1,
+        defaultEdgeType: String = "bezier", defaultEdgeOptions: PyreonFlowDefaultEdgeOptions = PyreonFlowDefaultEdgeOptions(), fitView: Bool = false, fitViewPadding: Double = 0.1, autoHistory: Bool = true,
         isValidConnection: ((PyreonFlowConnection) -> Bool)? = nil
     ) {
         self.viewport = viewport
@@ -368,9 +377,39 @@ public final class PyreonFlowState<T> {
         self.edgesFocusable = edgesFocusable; self.nodesDeletable = nodesDeletable; self.edgesDeletable = edgesDeletable; self.edgesReconnectable = edgesReconnectable
         self.edgeInteractionWidth = edgeInteractionWidth; self.connectionRadius = max(0, connectionRadius); self.pannable = pannable; self.zoomable = zoomable; self.multiSelect = multiSelect; self.onlyRenderVisibleElements = onlyRenderVisibleElements
         self.defaultEdgeType = defaultEdgeType; self.defaultEdgeOptions = defaultEdgeOptions; self.fitViewOnLoad = fitView; self.fitViewPadding = max(0, fitViewPadding)
+        self.autoHistory = autoHistory
         self.connectionValidator = isValidConnection
         for node in nodes { insertNode(node) }
         for edge in edges { insertEdge(edge) }
+        mutationVersion = 0
+    }
+
+    private func markMutation() { mutationVersion &+= 1 }
+    private func checkpoint() { if autoHistory { pushHistory() } }
+    public func pushHistory() {
+        guard mutationVersion != checkpointVersion else { return }
+        checkpointVersion = mutationVersion
+        undoStack.append(HistorySnapshot(nodes: nodes, edges: edges))
+        if undoStack.count > 50 { undoStack.removeFirst() }
+        redoStack.removeAll(keepingCapacity: true)
+    }
+    private func restore(_ snapshot: HistorySnapshot) {
+        order.removeAll(keepingCapacity: true); nodeStore.removeAll(keepingCapacity: true); boxes.removeAll(keepingCapacity: true)
+        edges.removeAll(keepingCapacity: true); edgeIds.removeAll(keepingCapacity: true)
+        for node in snapshot.nodes { insertNode(node) }
+        for edge in snapshot.edges { insertEdge(edge) }
+        clearSelection()
+        nodesVersion &+= 1
+    }
+    public func undo() {
+        guard let previous = undoStack.popLast() else { return }
+        redoStack.append(HistorySnapshot(nodes: nodes, edges: edges))
+        restore(previous)
+    }
+    public func redo() {
+        guard let next = redoStack.popLast() else { return }
+        undoStack.append(HistorySnapshot(nodes: nodes, edges: edges))
+        restore(next)
     }
 
     /// Current zoom factor — `viewport.zoom`, exposed the same way the web
@@ -384,6 +423,7 @@ public final class PyreonFlowState<T> {
         boxes[node.id] = PyreonFlowNodeBox(node)
         order.append(node.id)
         nodesVersion &+= 1
+        markMutation()
     }
     /// Applies the web `normalizeEdge` default (`type ?? 'bezier'`); dedupes by id.
     private func insertEdge(_ edge: PyreonFlowEdge) {
@@ -405,6 +445,7 @@ public final class PyreonFlowState<T> {
         if !e.markerEndSpecified, defaultEdgeOptions.markerEndSpecified { e.markerEnd = defaultEdgeOptions.markerEnd; e.markerEndSpecified = true }
         edges.append(e)
         edgeIds.insert(e.id)
+        markMutation()
     }
     /// ONE in-place pass over `edges` decides what goes; the removed ids are
     /// collected into a LOCAL as it runs (no observable access and no
@@ -421,6 +462,7 @@ public final class PyreonFlowState<T> {
             return true
         }
         guard !removedIds.isEmpty else { return }
+        markMutation()
         for id in removedIds { edgeIds.remove(id) }
         var touchedSelection = false
         for id in removedIds where selectedEdgeIdSet.remove(id) != nil { touchedSelection = true }
@@ -437,6 +479,7 @@ public final class PyreonFlowState<T> {
             boxes[id] = nil
         }
         nodesVersion &+= 1
+        markMutation()
         if !selectedNodeIdSet.isDisjoint(with: ids) {
             selectedNodeIdSet.subtract(ids)
             selectedNodeIds.removeAll { ids.contains($0) }
@@ -450,12 +493,17 @@ public final class PyreonFlowState<T> {
         boxes[id]?.node
     }
     public func addNode(_ node: PyreonFlowNode<T>) {
+        guard nodeStore[node.id] == nil else { return }
+        checkpoint()
         insertNode(node)
     }
     public func addNodes(_ nodes: [PyreonFlowNode<T>]) {
+        guard !nodes.isEmpty else { return }
+        checkpoint()
         for node in nodes { insertNode(node) }
     }
     public func setNodes(_ nodes: [PyreonFlowNode<T>]) {
+        checkpoint()
         let nextIds = Set(nodes.map(\.id))
         order.removeAll(keepingCapacity: true)
         nodeStore.removeAll(keepingCapacity: true)
@@ -469,9 +517,15 @@ public final class PyreonFlowState<T> {
     /// same as the web `removeNode`.
     public func removeNode(_ id: String) {
         guard nodeStore[id] != nil else { return }
+        checkpoint()
         removeNodes([id])
     }
-    public func removeNodes(_ ids: [String]) { removeNodes(Set(ids)) }
+    public func removeNodes(_ ids: [String]) {
+        let gone = Set(ids.filter { nodeStore[$0] != nil })
+        guard !gone.isEmpty else { return }
+        checkpoint()
+        removeNodes(gone)
+    }
     /// O(1); invalidates the views reading THIS node (its box) and whole-array
     /// readers (`nodesVersion`) — never the other nodes' views.
     public func updateNodePosition(_ id: String, _ position: PyreonXYPosition) {
@@ -484,12 +538,15 @@ public final class PyreonFlowState<T> {
         nodeStore[id]!.position = clamped
         boxes[id]!.node.position = clamped
         nodesVersion &+= 1
+        markMutation()
     }
     public func updateNodeData(_ id: String, _ update: (inout T) -> Void) {
         guard nodeStore[id] != nil else { return }
+        checkpoint()
         update(&nodeStore[id]!.data)
         boxes[id]!.node.data = nodeStore[id]!.data
         nodesVersion &+= 1
+        markMutation()
     }
     public func updateNode(_ id: String, _ update: (inout PyreonFlowNode<T>) -> Void) {
         guard var node = nodeStore[id] else { return }
@@ -498,6 +555,7 @@ public final class PyreonFlowState<T> {
         nodeStore[id] = node
         boxes[id]!.node = node
         nodesVersion &+= 1
+        markMutation()
     }
     public func setNodeExtent(minX: Double, minY: Double, maxX: Double, maxY: Double) {
         nodeExtent = PyreonFlowNodeExtent(minX: minX, minY: minY, maxX: maxX, maxY: maxY)
@@ -537,18 +595,25 @@ public final class PyreonFlowState<T> {
             sourceHandle: connection.sourceHandle,
             targetHandle: connection.targetHandle)
         guard !edgeIds.contains(edge.id) else { return nil }
+        checkpoint()
         insertEdge(edge)
         return getEdge(edge.id)
     }
     /// Adds the edge unless an edge with the same `id` already exists — same
     /// dedupe-by-id contract as the web `addEdge`; applies `type ?? 'bezier'`.
     public func addEdge(_ edge: PyreonFlowEdge) {
+        guard !edgeIds.contains(edge.id) else { return }
+        checkpoint()
         insertEdge(edge)
     }
     public func addEdges(_ edges: [PyreonFlowEdge]) {
-        for edge in edges { insertEdge(edge) }
+        let fresh = edges.filter { !edgeIds.contains($0.id) }
+        guard !fresh.isEmpty else { return }
+        checkpoint()
+        for edge in fresh { insertEdge(edge) }
     }
     public func setEdges(_ next: [PyreonFlowEdge]) {
+        checkpoint()
         edges.removeAll(keepingCapacity: true)
         edgeIds.removeAll(keepingCapacity: true)
         for edge in next { insertEdge(edge) }
@@ -556,6 +621,7 @@ public final class PyreonFlowState<T> {
     }
     public func removeEdge(_ id: String) {
         guard edgeIds.contains(id) else { return }
+        checkpoint()
         // Single id: find-then-remove (one String compare per element, no
         // closure indirection) — the predicate path exists for node-driven
         // removal, where many edges can go in one pass.
@@ -563,6 +629,7 @@ public final class PyreonFlowState<T> {
         edges.remove(at: i)
         edgeIds.remove(id)
         if selectedEdgeIdSet.remove(id) != nil { selectedEdgeIds.removeAll { $0 == id } }
+        markMutation()
     }
     public func updateEdge(_ id: String, _ update: (inout PyreonFlowEdge) -> Void) {
         guard let index = edges.firstIndex(where: { $0.id == id }) else { return }
@@ -570,6 +637,7 @@ public final class PyreonFlowState<T> {
         update(&edge)
         edge.id = id
         edges[index] = edge
+        markMutation()
     }
     public func reconnectEdge(_ id: String, source: String? = nil, target: String? = nil, sourceHandle: String? = nil, targetHandle: String? = nil) {
         guard let i = edges.firstIndex(where: { $0.id == id }) else { return }
@@ -577,6 +645,7 @@ public final class PyreonFlowState<T> {
         if let target { edges[i].target = target }
         if let sourceHandle { edges[i].sourceHandle = sourceHandle }
         if let targetHandle { edges[i].targetHandle = targetHandle }
+        markMutation()
     }
     @discardableResult
     public func reconnectEdge(_ id: String, connection: PyreonFlowConnection) -> Bool {
@@ -585,6 +654,7 @@ public final class PyreonFlowState<T> {
         edges[i].target = connection.target
         edges[i].sourceHandle = connection.sourceHandle
         edges[i].targetHandle = connection.targetHandle
+        markMutation()
         return true
     }
     public func addEdgeWaypoint(_ edgeId: String, _ point: PyreonXYPosition, _ index: Int? = nil) {
@@ -595,20 +665,24 @@ public final class PyreonFlowState<T> {
             edges[i].waypoints.insert(point, at: insertionIndex)
         }
         else { edges[i].waypoints.append(point) }
+        markMutation()
     }
     public func removeEdgeWaypoint(_ edgeId: String, _ index: Int) {
         guard let i = edges.firstIndex(where: { $0.id == edgeId }) else { return }
         let removalIndex = index < 0 ? max(edges[i].waypoints.count + index, 0) : index
         guard edges[i].waypoints.indices.contains(removalIndex) else { return }
         edges[i].waypoints.remove(at: removalIndex)
+        markMutation()
     }
     public func updateEdgeWaypoint(_ edgeId: String, _ index: Int, _ point: PyreonXYPosition) {
         guard let i = edges.firstIndex(where: { $0.id == edgeId }), edges[i].waypoints.indices.contains(index) else { return }
         edges[i].waypoints[index] = point
+        markMutation()
     }
     public func removeEdges(_ ids: [String]) {
-        let gone = Set(ids)
+        let gone = Set(ids.filter { edgeIds.contains($0) })
         guard !gone.isEmpty else { return }
+        checkpoint()
         removeEdges { gone.contains($0.id) }
     }
 
@@ -680,6 +754,8 @@ public final class PyreonFlowState<T> {
     public func deleteSelected() {
         let nodeIdsToRemove = Set(selectedNodeIds.filter { id in nodeStore[id].map { $0.deletable ?? nodesDeletable } ?? false })
         let edgeIdsToRemove = Set(selectedEdgeIds.filter { id in edges.first(where: { $0.id == id }).map { $0.deletable ?? edgesDeletable } ?? false })
+        guard !nodeIdsToRemove.isEmpty || !edgeIdsToRemove.isEmpty else { return }
+        checkpoint()
         if !nodeIdsToRemove.isEmpty {
             removeNodes(nodeIdsToRemove)
             if !edgeIdsToRemove.isEmpty {

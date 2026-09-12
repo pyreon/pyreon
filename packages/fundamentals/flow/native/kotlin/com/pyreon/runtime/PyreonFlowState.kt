@@ -117,6 +117,7 @@ const val PYREON_FLOW_DEFAULT_EDGE_TYPE: String = "bezier"
  *  own `onSizeChanged`, mirroring the web `containerSize` signal. */
 data class PyreonFlowContainerSize(val width: Double = 0.0, val height: Double = 0.0)
 data class PyreonFlowNodeExtent(val minX: Double, val minY: Double, val maxX: Double, val maxY: Double)
+private data class PyreonFlowHistorySnapshot<T>(val nodes: List<PyreonFlowNode<T>>, val edges: List<PyreonFlowEdge>)
 
 /** Reactive flow-diagram state: nodes, edges, viewport, selection. Behaviour-
  *  identical to the TS/Swift engines for the v1 surface. See the file header
@@ -150,8 +151,13 @@ class PyreonFlowState<T>(
     val defaultEdgeOptions: PyreonFlowDefaultEdgeOptions = PyreonFlowDefaultEdgeOptions(),
     val fitViewOnLoad: Boolean = false,
     fitViewPadding: Double = 0.1,
+    val autoHistory: Boolean = true,
     private val connectionValidator: ((PyreonFlowConnection) -> Boolean)? = null,
 ) {
+    private val undoStack = ArrayList<PyreonFlowHistorySnapshot<T>>()
+    private val redoStack = ArrayList<PyreonFlowHistorySnapshot<T>>()
+    private var mutationVersion = 0
+    private var checkpointVersion = -1
     val connectionRadius: Double = maxOf(0.0, connectionRadius)
     val fitViewPadding: Double = maxOf(0.0, fitViewPadding)
     private var nodeExtent: PyreonFlowNodeExtent? = nodeExtent
@@ -182,6 +188,35 @@ class PyreonFlowState<T>(
     init {
         for (node in nodes) insertNode(node)
         for (edge in edges) insertEdge(edge)
+        mutationVersion = 0
+    }
+
+    private fun markMutation() { mutationVersion++ }
+    private fun checkpoint() { if (autoHistory) pushHistory() }
+    fun pushHistory() {
+        if (mutationVersion == checkpointVersion) return
+        checkpointVersion = mutationVersion
+        undoStack.add(PyreonFlowHistorySnapshot(nodes.toList(), _edges.toList()))
+        if (undoStack.size > 50) undoStack.removeAt(0)
+        redoStack.clear()
+    }
+    private fun restore(snapshot: PyreonFlowHistorySnapshot<T>) {
+        order.clear(); nodeMap.clear(); _edges = emptyList(); edgeIds.clear()
+        for (node in snapshot.nodes) insertNode(node)
+        for (edge in snapshot.edges) insertEdge(edge)
+        clearSelection()
+    }
+    fun undo() {
+        if (undoStack.isEmpty()) return
+        val previous = undoStack.removeAt(undoStack.lastIndex)
+        redoStack.add(PyreonFlowHistorySnapshot(nodes.toList(), _edges.toList()))
+        restore(previous)
+    }
+    fun redo() {
+        if (redoStack.isEmpty()) return
+        val next = redoStack.removeAt(redoStack.lastIndex)
+        undoStack.add(PyreonFlowHistorySnapshot(nodes.toList(), _edges.toList()))
+        restore(next)
     }
 
     /** Current zoom factor — `viewport.zoom`, exposed the same way the web
@@ -194,6 +229,7 @@ class PyreonFlowState<T>(
         if (nodeMap.containsKey(node.id)) return
         nodeMap[node.id] = node
         order.add(node.id)
+        markMutation()
     }
     /** Applies the web `normalizeEdge` default (`type ?: "bezier"`); dedupes by id. */
     private fun insertEdge(edge: PyreonFlowEdge) {
@@ -217,6 +253,7 @@ class PyreonFlowState<T>(
         )
         _edges = _edges + e
         edgeIds[e.id] = Unit
+        markMutation()
     }
     private fun removeEdges(shouldRemove: (PyreonFlowEdge) -> Boolean) {
         val keep = ArrayList<PyreonFlowEdge>(_edges.size)
@@ -230,12 +267,13 @@ class PyreonFlowState<T>(
                 keep.add(edge)
             }
         }
-        if (removedAny) _edges = keep
+        if (removedAny) { _edges = keep; markMutation() }
     }
     private fun removeNodes(ids: Set<String>) {
         if (ids.isEmpty()) return
         order.removeAll { ids.contains(it) }
         for (id in ids) nodeMap.remove(id)
+        markMutation()
         var touchedSelection = false
         for (id in ids) if (selectedNodeIdSet.remove(id) != null) touchedSelection = true
         if (touchedSelection) selectedNodeIdList.removeAll { ids.contains(it) }
@@ -246,12 +284,17 @@ class PyreonFlowState<T>(
     /** O(1). Reading it in a composable subscribes to THIS node only. */
     fun getNode(id: String): PyreonFlowNode<T>? = nodeMap[id]
     fun addNode(node: PyreonFlowNode<T>) {
+        if (nodeMap.containsKey(node.id)) return
+        checkpoint()
         insertNode(node)
     }
     fun addNodes(nodes: List<PyreonFlowNode<T>>) {
+        if (nodes.isEmpty()) return
+        checkpoint()
         for (node in nodes) insertNode(node)
     }
     fun setNodes(nodes: List<PyreonFlowNode<T>>) {
+        checkpoint()
         val nextIds = nodes.mapTo(HashSet()) { it.id }
         order.clear()
         nodeMap.clear()
@@ -262,9 +305,15 @@ class PyreonFlowState<T>(
     /** Removes the node AND every edge connected to it (source or target). */
     fun removeNode(id: String) {
         if (!nodeMap.containsKey(id)) return
+        checkpoint()
         removeNodes(setOf(id))
     }
-    fun removeNodes(ids: List<String>) = removeNodes(ids.toSet())
+    fun removeNodes(ids: List<String>) {
+        val gone = ids.filterTo(HashSet()) { nodeMap.containsKey(it) }
+        if (gone.isEmpty()) return
+        checkpoint()
+        removeNodes(gone)
+    }
     /** O(1); recomposes only the readers of this node. */
     fun updateNodePosition(id: String, position: PyreonXYPosition) {
         val node = nodeMap[id] ?: return
@@ -273,14 +322,18 @@ class PyreonFlowState<T>(
             kotlin.math.floor(position.y / snapGrid + 0.5) * snapGrid,
         ) else position
         nodeMap[id] = node.copy(position = clampToExtent(snapped, node.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH, node.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT))
+        markMutation()
     }
     fun updateNodeData(id: String, update: (T) -> T) {
         val node = nodeMap[id] ?: return
+        checkpoint()
         nodeMap[id] = node.copy(data = update(node.data))
+        markMutation()
     }
     fun updateNode(id: String, update: (PyreonFlowNode<T>) -> PyreonFlowNode<T>) {
         val node = nodeMap[id] ?: return
         nodeMap[id] = update(node).copy(id = id)
+        markMutation()
     }
     fun setNodeExtent(minX: Double, minY: Double, maxX: Double, maxY: Double) {
         nodeExtent = PyreonFlowNodeExtent(minX, minY, maxX, maxY)
@@ -318,18 +371,25 @@ class PyreonFlowState<T>(
             targetHandle = connection.targetHandle,
         )
         if (edgeIds.containsKey(edge.id)) return null
+        checkpoint()
         insertEdge(edge)
         return getEdge(edge.id)
     }
     /** Adds the edge unless an edge with the same `id` already exists — same
      *  dedupe-by-id contract as the web `addEdge`; applies `type ?: "bezier"`. */
     fun addEdge(edge: PyreonFlowEdge) {
+        if (edgeIds.containsKey(edge.id)) return
+        checkpoint()
         insertEdge(edge)
     }
     fun addEdges(edges: List<PyreonFlowEdge>) {
-        for (edge in edges) insertEdge(edge)
+        val fresh = edges.filterNot { edgeIds.containsKey(it.id) }
+        if (fresh.isEmpty()) return
+        checkpoint()
+        for (edge in fresh) insertEdge(edge)
     }
     fun setEdges(edges: List<PyreonFlowEdge>) {
+        checkpoint()
         _edges = emptyList()
         edgeIds.clear()
         for (edge in edges) insertEdge(edge)
@@ -337,12 +397,14 @@ class PyreonFlowState<T>(
     }
     fun removeEdge(id: String) {
         if (!edgeIds.containsKey(id)) return
+        checkpoint()
         removeEdges { it.id == id }
     }
     fun updateEdge(id: String, update: (PyreonFlowEdge) -> PyreonFlowEdge) {
         val index = _edges.indexOfFirst { it.id == id }
         if (index < 0) return
         _edges = _edges.toMutableList().also { it[index] = update(it[index]).copy(id = id) }
+        markMutation()
     }
     fun reconnectEdge(id: String, source: String? = null, target: String? = null, sourceHandle: String? = null, targetHandle: String? = null) {
         val i = _edges.indexOfFirst { it.id == id }
@@ -354,6 +416,7 @@ class PyreonFlowState<T>(
             sourceHandle = sourceHandle ?: edge.sourceHandle,
             targetHandle = targetHandle ?: edge.targetHandle,
         ) }
+        markMutation()
     }
     fun reconnectEdge(id: String, connection: PyreonFlowConnection): Boolean {
         if (!isValidConnection(connection)) return false
@@ -361,6 +424,7 @@ class PyreonFlowState<T>(
         if (i < 0) return false
         val edge = _edges[i]
         _edges = _edges.toMutableList().also { it[i] = edge.copy(source = connection.source, target = connection.target, sourceHandle = connection.sourceHandle, targetHandle = connection.targetHandle) }
+        markMutation()
         return true
     }
     @JvmOverloads
@@ -375,6 +439,7 @@ class PyreonFlowState<T>(
         }
         points.add(insertionIndex, point)
         _edges = _edges.toMutableList().also { it[i] = it[i].copy(waypoints = points) }
+        markMutation()
     }
     fun removeEdgeWaypoint(edgeId: String, index: Int) {
         val i = _edges.indexOfFirst { it.id == edgeId }
@@ -383,16 +448,20 @@ class PyreonFlowState<T>(
         if (removalIndex !in _edges[i].waypoints.indices) return
         val points = _edges[i].waypoints.toMutableList().also { it.removeAt(removalIndex) }
         _edges = _edges.toMutableList().also { it[i] = it[i].copy(waypoints = points) }
+        markMutation()
     }
     fun updateEdgeWaypoint(edgeId: String, index: Int, point: PyreonXYPosition) {
         val i = _edges.indexOfFirst { it.id == edgeId }
         if (i < 0 || index !in _edges[i].waypoints.indices) return
         val points = _edges[i].waypoints.toMutableList().also { it[index] = point }
         _edges = _edges.toMutableList().also { it[i] = it[i].copy(waypoints = points) }
+        markMutation()
     }
     fun removeEdges(ids: List<String>) {
-        val gone = ids.toSet()
-        if (gone.isNotEmpty()) removeEdges { gone.contains(it.id) }
+        val gone = ids.filterTo(HashSet()) { edgeIds.containsKey(it) }
+        if (gone.isEmpty()) return
+        checkpoint()
+        removeEdges { gone.contains(it.id) }
     }
 
     // ── selection ────────────────────────────────────────────────────────────
@@ -465,6 +534,8 @@ class PyreonFlowState<T>(
     fun deleteSelected() {
         val nodeIdsToRemove = selectedNodeIdList.filterTo(mutableSetOf()) { id -> nodeMap[id]?.let { it.deletable ?: nodesDeletable } == true }
         val edgeIdsToRemove = selectedEdgeIdList.filterTo(mutableSetOf()) { id -> _edges.firstOrNull { it.id == id }?.let { it.deletable ?: edgesDeletable } == true }
+        if (nodeIdsToRemove.isEmpty() && edgeIdsToRemove.isEmpty()) return
+        checkpoint()
         if (nodeIdsToRemove.isNotEmpty()) {
             removeNodes(nodeIdsToRemove)
             if (edgeIdsToRemove.isNotEmpty()) removeEdges { edgeIdsToRemove.contains(it.id) }

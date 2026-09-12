@@ -1654,6 +1654,7 @@ class PyreonFlowState<T>(
   defaultEdgeOptions: PyreonFlowDefaultEdgeOptions = PyreonFlowDefaultEdgeOptions(),
   fitViewOnLoad: Boolean = false,
   fitViewPadding: Double = 0.1,
+  autoHistory: Boolean = true,
   connectionRules: Map<String, List<String>>? = null,
   connectionValidator: ((PyreonFlowConnection) -> Boolean)? = null,
 ) {
@@ -1697,6 +1698,9 @@ class PyreonFlowState<T>(
   fun clearSelection() {}
   fun selectAll() {}
   fun deleteSelected() {}
+  fun pushHistory() {}
+  fun undo() {}
+  fun redo() {}
   fun zoomTo(z: Double) {}
   fun zoomIn() {}
   fun zoomOut() {}

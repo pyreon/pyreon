@@ -38,6 +38,21 @@ struct PyreonFlowStateTests {
         let f = seedFlow()
         f.updateNodeData("1") { $0.label = "Updated" }
         check(f.getNode("1")?.data.label == "Updated", "updateNodeData mutates the native payload observably")
+        let history = seedFlow()
+        history.addNode(PyreonFlowNode(id: "4", position: PyreonXYPosition(x: 600, y: 0), data: NodeData(label: "Added")))
+        history.selectNode("4")
+        history.undo()
+        check(history.getNode("4") == nil && history.selectedNodes().isEmpty, "automatic history restores graph state and clears selection")
+        history.redo()
+        check(history.getNode("4") != nil, "redo restores the undone native mutation")
+        let manualHistory = PyreonFlowState(nodes: history.nodes, edges: history.edges, autoHistory: false)
+        manualHistory.addNode(PyreonFlowNode(id: "5", position: PyreonXYPosition(x: 700, y: 0), data: NodeData(label: "Unrecorded")))
+        manualHistory.undo()
+        check(manualHistory.getNode("5") != nil, "autoHistory false does not record mutations")
+        manualHistory.pushHistory()
+        manualHistory.removeNode("5")
+        manualHistory.undo()
+        check(manualHistory.getNode("5") != nil, "manual history remains available when automatic checkpoints are disabled")
         f.updateNode("1") { $0.hidden = true; $0.id = "ignored" }
         check(f.getNode("1")?.hidden == true && f.getNode("ignored") == nil, "updateNode patches fields while preserving indexed identity")
         f.updateNode("1") { $0.hidden = false }

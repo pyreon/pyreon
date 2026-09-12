@@ -33,6 +33,21 @@ private fun seedFlow(): PyreonFlowState<NodeData> = PyreonFlowState(
 fun main() {
     // 1. Seed + basic reads.
     val f = seedFlow()
+    val history = seedFlow()
+    history.addNode(PyreonFlowNode("4", position = PyreonXYPosition(600.0, 0.0), data = NodeData("Added")))
+    history.selectNode("4")
+    history.undo()
+    check(history.getNode("4") == null && history.selectedNodes().isEmpty(), "automatic history restores graph state and clears selection")
+    history.redo()
+    check(history.getNode("4") != null, "redo restores the undone native mutation")
+    val manualHistory = PyreonFlowState(nodes = history.nodes, edges = history.edges, autoHistory = false)
+    manualHistory.addNode(PyreonFlowNode("5", position = PyreonXYPosition(700.0, 0.0), data = NodeData("Unrecorded")))
+    manualHistory.undo()
+    check(manualHistory.getNode("5") != null, "autoHistory false does not record mutations")
+    manualHistory.pushHistory()
+    manualHistory.removeNode("5")
+    manualHistory.undo()
+    check(manualHistory.getNode("5") != null, "manual history remains available when automatic checkpoints are disabled")
     f.updateNodeData("1") { it.copy(label = "Updated") }
     check(f.getNode("1")?.data?.label == "Updated", "updateNodeData replaces the native payload observably")
     f.updateNode("1") { it.copy(id = "ignored", hidden = true) }

@@ -320,6 +320,21 @@ describe('createFlow — v1 decline shapes (loud warning, not silent drop)', () 
       expect(transform(src, { target: 'kotlin' }).code).toContain('minZoom = 0.5, maxZoom = 2.0')
     })
 
+    it('autoHistory and history methods lower on both native targets', () => {
+      const src = cfg('autoHistory: false,', '<Button onPress={() => { flow.pushHistory(); flow.undo(); flow.redo() }}>History</Button>')
+      const swift = transform(src, { target: 'swift' })
+      const kotlin = transform(src, { target: 'kotlin' })
+      expect(swift.code).toContain('autoHistory: false')
+      expect(kotlin.code).toContain('autoHistory = false')
+      for (const result of [swift, kotlin]) {
+        const warnings = (result.warnings ?? []).join(' ')
+        expect(warnings).not.toContain('`autoHistory`')
+        expect(warnings).not.toContain('`pushHistory`')
+        expect(warnings).not.toContain('`undo`')
+        expect(warnings).not.toContain('`redo`')
+      }
+    })
+
     it('Kotlin renders them as DOUBLE literals — Int does not widen at a call site', () => {
       // `maxZoom: 2` emitting `maxZoom = 2` is "argument type mismatch: actual
       // type is 'Int', but 'Double' was expected". Swift takes the same source
@@ -330,10 +345,10 @@ describe('createFlow — v1 decline shapes (loud warning, not silent drop)', () 
     })
 
     it('an UNLOWERED key warns by NAME on both targets', () => {
-      const src = cfg('autoHistory: false, fitView: true, snapToGrid: true,')
+      const src = cfg('snapToObjects: true, fitView: true, snapToGrid: true,')
       for (const target of ['swift', 'kotlin'] as const) {
         const w = (transform(src, { target }).warnings ?? []).join(' ')
-        expect(w).toContain('`autoHistory`')
+        expect(w).toContain('`snapToObjects`')
         expect(w).not.toContain('`fitView`')
         expect(w).not.toContain('`snapToGrid`')
         expect(w).toContain('behaves differently on web')
@@ -425,8 +440,8 @@ export function C() {
 
   for (const target of ['swift', 'kotlin'] as const) {
     it(`[${target}] an unported FlowInstance member warns BY NAME instead of dying at the native build`, () => {
-      const w = warningsOf(base('', '<Button onPress={() => flow.undo()}>Undo</Button>'), target)
-      expect(w).toContain('`undo` is NOT ported')
+      const w = warningsOf(base('', '<Button onPress={() => flow.copySelected()}>Copy</Button>'), target)
+      expect(w).toContain('`copySelected` is NOT ported')
       expect(w).toContain('fails at the native BUILD')
     })
     it(`[${target}] callback node updates warn rather than silently claiming native support`, () => {

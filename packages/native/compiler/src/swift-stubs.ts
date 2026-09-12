@@ -1135,7 +1135,7 @@ public final class PyreonFlowState<T> {
     nodesDraggable: Bool = true, nodesConnectable: Bool = true, nodesSelectable: Bool = true, nodesFocusable: Bool = true,
     edgesFocusable: Bool = true, nodesDeletable: Bool = true, edgesDeletable: Bool = true, edgesReconnectable: Bool = true,
     edgeInteractionWidth: Double = 20, connectionRadius: Double = 0, pannable: Bool = true, zoomable: Bool = true, multiSelect: Bool = true, onlyRenderVisibleElements: Bool = false,
-    defaultEdgeType: String = "bezier", defaultEdgeOptions: PyreonFlowDefaultEdgeOptions = PyreonFlowDefaultEdgeOptions(), fitView: Bool = false, fitViewPadding: Double = 0.1,
+    defaultEdgeType: String = "bezier", defaultEdgeOptions: PyreonFlowDefaultEdgeOptions = PyreonFlowDefaultEdgeOptions(), fitView: Bool = false, fitViewPadding: Double = 0.1, autoHistory: Bool = true,
     connectionRules: [String: [String]]? = nil,
     isValidConnection: ((PyreonFlowConnection) -> Bool)? = nil
   ) {}
@@ -1179,6 +1179,9 @@ public final class PyreonFlowState<T> {
   public func clearSelection() {}
   public func selectAll() {}
   public func deleteSelected() {}
+  public func pushHistory() {}
+  public func undo() {}
+  public func redo() {}
   public func zoomTo(_ z: Double) {}
   public func zoomIn() {}
   public func zoomOut() {}

@@ -973,6 +973,7 @@ export type DeclIR =
       zoomable?: boolean
       multiSelect?: boolean
       onlyRenderVisibleElements?: boolean
+      autoHistory?: boolean
       defaultEdgeType?: string
       defaultEdgeOptions?: {
         type?: string; label?: string; animated?: boolean; focusable?: boolean; ariaLabel?: string
