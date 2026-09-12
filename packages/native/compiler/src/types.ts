@@ -909,6 +909,8 @@ export type DeclIR =
   | {
       kind: 'flow-state'
       name: string
+      /** True for `useFlow`: dispose listeners/history when the component unmounts. */
+      lifecycleOwned?: boolean
       nodes: {
         id: string
         type?: string

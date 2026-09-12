@@ -109,6 +109,14 @@ fun <T> remember(calculation: () -> T): T = calculation()
 @Suppress("UNUSED_PARAMETER")
 fun LaunchedEffect(key1: Any?, block: suspend () -> Unit) {}
 
+class DisposableEffectResult
+class DisposableEffectScope {
+  fun onDispose(effect: () -> Unit): DisposableEffectResult = DisposableEffectResult()
+}
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun DisposableEffect(key1: Any?, effect: DisposableEffectScope.() -> DisposableEffectResult) {}
+
 // isSystemInDarkTheme — Compose's dark-mode read (androidx.compose.foundation),
 // emitted by useColorScheme(). The real device build imports it via the CLI's
 // conditionalKotlinImports; this stub mirrors that surface so the validate-kotlin

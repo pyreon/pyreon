@@ -2157,6 +2157,14 @@ function emitKotlinComponent(c: ComponentIR): string {
     lines.push(bodyLines)
     lines.push(`  }`)
   }
+  // Compose lifecycle twin of Swift's onDisappear cleanup for `useFlow`.
+  // `createFlow` stays caller-owned and receives no implicit disposal.
+  for (const d of c.decls) {
+    if (d.kind === 'flow-state' && d.lifecycleOwned === true) {
+      const name = kotlinIdent(d.name)
+      lines.push(`  DisposableEffect(${name}) { onDispose { ${name}.dispose() } }`)
+    }
+  }
   for (const d of c.decls) {
     if (d.kind !== 'fetch') continue
     const name = kotlinIdent(d.name)

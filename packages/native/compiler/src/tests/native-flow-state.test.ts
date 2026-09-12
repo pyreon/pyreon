@@ -220,6 +220,38 @@ describe('<Flow> native host lowering', () => {
   })
 })
 
+describe('useFlow native lifecycle lowering', () => {
+  const source = `
+    import { useFlow, Flow } from '@pyreon/flow'
+    export function App() {
+      const flow = useFlow({
+        nodes: [{ id: 'a', position: { x: 0, y: 0 }, data: { label: 'Start' } }],
+        edges: [],
+      })
+      return <Flow instance={flow} />
+    }
+  `
+
+  it('emits a lifecycle-owned Swift state and disposes it on disappear', () => {
+    const result = transform(source, { target: 'swift' })
+    expect(result.code).toContain('@State private var flow = PyreonFlowState')
+    expect(result.code).toContain('.onDisappear { flow.dispose() }')
+    expect(result.warnings.join(' ')).not.toContain('useFlow')
+    if (isSwiftcAvailable()) expect(validateSwiftWithStubs(result.code).ok).toBe(true)
+  })
+
+  it('remembers Compose state and disposes it when leaving composition', () => {
+    const result = transform(source, { target: 'kotlin' })
+    expect(result.code).toContain('val flow = remember { PyreonFlowState')
+    expect(result.code).toContain('DisposableEffect(flow) { onDispose { flow.dispose() } }')
+    expect(result.warnings.join(' ')).not.toContain('useFlow')
+    if (isKotlincAvailable()) {
+      const validation = validateKotlin(result.code)
+      expect(validation.ok, validation.error ?? '').toBe(true)
+    }
+  })
+})
+
 describe('createFlow connection validation lowering', () => {
   const source = `
     import { createFlow } from '@pyreon/flow'

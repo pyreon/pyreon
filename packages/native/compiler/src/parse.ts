@@ -2442,6 +2442,9 @@ export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
   // (useDraggable/useDroppable), the page-global useDragMonitor and the
   // OS-file useFileDrop deliberately stay OUT, so they keep warning by name.
   'useSortable',
+  // `@pyreon/flow` — the same native state lowering as createFlow, plus
+  // component-unmount disposal emitted by both native frontends.
+  'useFlow',
 ])
 
 /**
@@ -2636,13 +2639,13 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
       // Background() }` — which fails at the native BUILD with "cannot find
       // 'Flow' in scope" and no indication anywhere that `<Flow>` itself is
       // the unsupported part, not `createFlow` (which by then has correctly
-      // lowered right above it). `computeLayout`/`useFlow`/the edge-path
+      // lowered right above it). `computeLayout`/the edge-path
       // helpers (`getBezierPath` etc.) are pure functions with no native
       // port yet either — name them so the warning doesn't imply only the
       // JSX layer is missing.
       advice:
-        '`createFlow({ nodes, edges })`, `<Flow instance={flow}>`, `<Background>`, `<Controls>`, and `<MiniMap>` LOWER to the native PyreonFlowState/PyreonFlowView engine. Optional chrome (Handle/NodeToolbar/NodeResizer/Panel), custom renderer maps, `useFlow`, `computeLayout`, and standalone edge-path helpers still have no shared-source native emit; keep those behind platform branches or use the `@pyreon/flow/webview` bridge',
-      supported: new Set(['createFlow', 'Flow', 'Background', 'Controls', 'MiniMap']),
+        '`createFlow({ nodes, edges })`, `useFlow({ nodes, edges })`, `<Flow instance={flow}>`, `<Background>`, `<Controls>`, and `<MiniMap>` LOWER to the native PyreonFlowState/PyreonFlowView engine. Optional chrome (Handle/NodeToolbar/NodeResizer/Panel), custom renderer maps, `computeLayout`, and standalone edge-path helpers still have no shared-source native emit; keep those behind platform branches or use the `@pyreon/flow/webview` bridge',
+      supported: new Set(['createFlow', 'useFlow', 'Flow', 'Background', 'Controls', 'MiniMap']),
     },
   ],
   [
@@ -6893,7 +6896,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const sortableDecl = tryDeclFromUseSortable(node, ctx)
   if (sortableDecl) return sortableDecl
 
-  // `@pyreon/flow` — `const flow = createFlow({ nodes, edges })` lowers to
+  // `@pyreon/flow` — `createFlow` and component-scoped `useFlow` lower to
   // the PyreonFlowState engine. Same placement rationale as table/sortable
   // above: recognized as a real port before the silent-drop block.
   const flowStateDecl = tryDeclFromCreateFlow(node, ctx)
@@ -8942,7 +8945,7 @@ function tryDeclFromSyncedSignal(node: AnyNode, ctx: ParseCtx): DeclIR | null {
 }
 
 /**
- * `const flow = createFlow({ nodes: [...], edges: [...] })` from `@pyreon/flow`
+ * `const flow = createFlow/useFlow({ nodes: [...], edges: [...] })` from `@pyreon/flow`
  * → a `flow-state` decl. Lowers to the native `PyreonFlowState<Row>` port.
  *
  * Unlike `createTableState` (which WRAPS an external reactive `data` source),
@@ -8984,13 +8987,14 @@ function literalObjectKeys(obj: AnyNode): string[] {
 function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const init = node.init as AnyNode | undefined
   if (init?.type !== 'CallExpression') return null
-  if ((init.callee?.name as string | undefined) !== 'createFlow') return null
+  const factory = init.callee?.name as string | undefined
+  if (factory !== 'createFlow' && factory !== 'useFlow') return null
   if (node.id?.type !== 'Identifier') return null
   const name = node.id.name as string
   const configArg = unwrapTypeLayers((init.arguments as AnyNode[] | undefined)?.[0])
   if (!configArg || configArg.type !== 'ObjectExpression') {
     ctx.warnings.push(
-      `createFlow declaration \`${name}\`: argument must be an object literal { nodes, edges } to lower natively. Falling back to silent-drop.`,
+      `${factory} declaration \`${name}\`: argument must be an object literal { nodes, edges } to lower natively. Falling back to silent-drop.`,
     )
     return null
   }
@@ -9273,7 +9277,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
 
   if (!shapeOk) {
     ctx.warnings.push(
-      `createFlow declaration \`${name}\`: \`nodes\`/\`edges\` must be literal arrays of object literals — each node needs a string \`id\`, a \`position: { x, y }\`, and an object-literal \`data\`; each edge needs string \`id\`/\`source\`/\`target\` — to lower natively (v1). Falling back to silent-drop.`,
+      `${factory} declaration \`${name}\`: \`nodes\`/\`edges\` must be literal arrays of object literals — each node needs a string \`id\`, a \`position: { x, y }\`, and an object-literal \`data\`; each edge needs string \`id\`/\`source\`/\`target\` — to lower natively (v1). Falling back to silent-drop.`,
     )
     return null
   }
@@ -9285,7 +9289,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   )
   if (nodesOut.some((n) => n.data.kind !== 'object') || dataFieldSets.size > 1) {
     ctx.warnings.push(
-      `createFlow declaration \`${name}\`: every node's \`data\` must be an object literal with the SAME field set, so one row struct can be synthesized (v1). Falling back to silent-drop.`,
+      `${factory} declaration \`${name}\`: every node's \`data\` must be an object literal with the SAME field set, so one row struct can be synthesized (v1). Falling back to silent-drop.`,
     )
     return null
   }
@@ -9294,7 +9298,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // empty seed has nothing to infer T from.
   if (nodesOut.length === 0) {
     ctx.warnings.push(
-      `createFlow declaration \`${name}\`: an empty \`nodes: []\` has no literal to infer the row-data struct from (v1). Seed at least one representative node — more can be added later via \`addNode\`. Falling back to silent-drop.`,
+      `${factory} declaration \`${name}\`: an empty \`nodes: []\` has no literal to infer the row-data struct from (v1). Seed at least one representative node — more can be added later via \`addNode\`. Falling back to silent-drop.`,
     )
     return null
   }
@@ -9401,10 +9405,10 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // class as the config keys below, one level down (#3303 named the keys and
   // stopped there; `parentId`/`markerEnd`/`sourceHandle`/… still vanished).
   if (droppedNodeFields.size > 0) {
-    ctx.warnings.push(droppedFlowFieldsWarning(`createFlow declaration \`${name}\``, 'node', [...droppedNodeFields]))
+    ctx.warnings.push(droppedFlowFieldsWarning(`${factory} declaration \`${name}\``, 'node', [...droppedNodeFields]))
   }
   if (droppedEdgeFields.size > 0) {
-    ctx.warnings.push(droppedFlowFieldsWarning(`createFlow declaration \`${name}\``, 'edge', [...droppedEdgeFields]))
+    ctx.warnings.push(droppedFlowFieldsWarning(`${factory} declaration \`${name}\``, 'edge', [...droppedEdgeFields]))
   }
   const HANDLED_FLOW_CONFIG_KEYS = new Set(['nodes', 'edges', 'minZoom', 'maxZoom', 'snapToGrid', 'snapGrid', 'nodeExtent', 'defaultMarkerEnd', 'connectionRules', 'isValidConnection', ...interactionBoolKeys, 'edgeInteractionWidth', 'connectionRadius', 'defaultEdgeType', 'connectionLineType', 'selectionMode', 'defaultEdgeOptions', 'fitView', 'fitViewPadding'])
   const droppedKeys: string[] = []
@@ -9443,7 +9447,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (objProp(configArg, 'fitViewPadding') && fitViewPadding === undefined) droppedKeys.push('fitViewPadding (not a numeric literal)')
   if (droppedKeys.length > 0) {
     ctx.warnings.push(
-      `createFlow declaration \`${name}\`: ${droppedKeys.map((k) => `\`${k}\``).join(', ')} ` +
+      `${factory} declaration \`${name}\`: ${droppedKeys.map((k) => `\`${k}\``).join(', ')} ` +
         `${droppedKeys.length === 1 ? 'is' : 'are'} NOT lowered natively — the native PyreonFlowState ` +
         `uses its own defaults, so this diagram behaves differently on web than on iOS/Android from ` +
         `the SAME source. Literal node/edge seeds, zoom limits, grid snapping, and node extents cross today. ` +
@@ -9454,6 +9458,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   return {
     kind: 'flow-state',
     name,
+    ...(factory === 'useFlow' ? { lifecycleOwned: true } : {}),
     nodes: nodesOut,
     edges: edgesOut,
     ...(minZoom !== undefined ? { minZoom } : {}),

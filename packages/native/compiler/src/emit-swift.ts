@@ -2179,6 +2179,7 @@ const LIFECYCLE_HOST_DECL_KINDS: ReadonlySet<DeclIR['kind']> = new Set([
   'debounced-value',
   'fetch',
   'form',
+  'flow-state',
   'hotkey',
   'network-status',
   'on-mount',
@@ -2778,6 +2779,14 @@ function emitSwiftComponent(c: ComponentIR): string {
     lines.push(`      .onAppear {`)
     lines.push(bodyLines)
     lines.push(`      }`)
+  }
+  // `useFlow` owns its state for this component lifetime. Release callback
+  // captures and scheduled work on unmount; singleton `createFlow` remains
+  // caller-owned and is deliberately not disposed here.
+  for (const d of c.decls) {
+    if (d.kind === 'flow-state' && d.lifecycleOwned === true) {
+      lines.push(`      .onDisappear { ${swiftIdent(d.name)}.dispose() }`)
+    }
   }
   // useHotkey → a hidden shortcut Button in `.background`.
   //
