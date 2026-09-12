@@ -302,6 +302,108 @@ public func pyreonFlowTreeLayout<T>(
     return ids.map { PyreonFlowLayoutPosition(id: $0, position: positions[$0]!) }
 }
 
+private func pyreonFlowRelaxOverlaps<T>(_ nodes: [PyreonFlowNode<T>], positions: inout [String: PyreonXYPosition], spacing: Double, passes: Int = 10) {
+    guard !nodes.isEmpty else { return }
+    let half = 1 << 15, span = half * 2
+    func key(_ x: Int, _ y: Int) -> Int { (x + half) * span + (y + half) }
+    let boxes = Dictionary(uniqueKeysWithValues: nodes.map {
+        ($0.id, (width: $0.width ?? pyreonFlowDefaultNodeWidth, height: $0.height ?? pyreonFlowDefaultNodeHeight))
+    })
+    let cell = max(1, nodes.map { max($0.width ?? pyreonFlowDefaultNodeWidth, $0.height ?? pyreonFlowDefaultNodeHeight) }.max()! + spacing)
+    for _ in 0..<passes {
+        var buckets: [Int: [String]] = [:], bucketOrder: [Int] = []
+        for node in nodes {
+            let point = positions[node.id]!, cellKey = key(Int(floor(point.x / cell)), Int(floor(point.y / cell)))
+            if buckets[cellKey] == nil { buckets[cellKey] = []; bucketOrder.append(cellKey) }
+            buckets[cellKey]!.append(node.id)
+        }
+        var moved = false
+        for bucketKey in bucketOrder {
+            let cx = bucketKey / span - half, cy = bucketKey % span - half
+            var near: [String] = []
+            for ox in -1...1 { for oy in -1...1 { near.append(contentsOf: buckets[key(cx + ox, cy + oy)] ?? []) } }
+            for id in buckets[bucketKey]! { for otherID in near where id != otherID {
+                var a = positions[id]!, b = positions[otherID]!
+                let ba = boxes[id]!, bb = boxes[otherID]!
+                let overlapX = (ba.width + bb.width) / 2 + spacing - abs(a.x + ba.width / 2 - (b.x + bb.width / 2))
+                let overlapY = (ba.height + bb.height) / 2 + spacing - abs(a.y + ba.height / 2 - (b.y + bb.height / 2))
+                if overlapX <= 0 || overlapY <= 0 { continue }
+                moved = true
+                if overlapX < overlapY {
+                    let direction = a.x <= b.x ? -1.0 : 1.0
+                    a.x += direction * overlapX / 2; b.x -= direction * overlapX / 2
+                } else {
+                    let direction = a.y <= b.y ? -1.0 : 1.0
+                    a.y += direction * overlapY / 2; b.y -= direction * overlapY / 2
+                }
+                positions[id] = a; positions[otherID] = b
+            } }
+        }
+        if !moved { break }
+    }
+}
+
+public func pyreonFlowRadialLayout<T>(
+    _ nodes: [PyreonFlowNode<T>], edges: [PyreonFlowEdge], nodeSpacing: Double = 20
+) -> [PyreonFlowLayoutPosition] {
+    guard !nodes.isEmpty else { return [] }
+    let ids = nodes.map(\.id), known = Set(nodes.map(\.id))
+    let boxes = Dictionary(uniqueKeysWithValues: nodes.map {
+        ($0.id, (width: $0.width ?? pyreonFlowDefaultNodeWidth, height: $0.height ?? pyreonFlowDefaultNodeHeight))
+    })
+    var adjacency = Dictionary(uniqueKeysWithValues: ids.map { ($0, [String]()) })
+    for edge in edges where known.contains(edge.source) && known.contains(edge.target) && edge.source != edge.target {
+        adjacency[edge.source, default: []].append(edge.target)
+    }
+    var indegree = Dictionary(uniqueKeysWithValues: ids.map { ($0, 0) })
+    for outgoing in adjacency.values { for target in outgoing { indegree[target, default: 0] += 1 } }
+    let roots = ids.filter { indegree[$0] == 0 }
+    var queue = roots.first.map { [$0] } ?? Array(ids.prefix(1))
+    var depth: [String: Int] = [:]
+    for root in queue { depth[root] = 0 }
+    var cursor = 0
+    while cursor < queue.count {
+        let id = queue[cursor]; cursor += 1
+        for child in adjacency[id] ?? [] where depth[child] == nil {
+            depth[child] = (depth[id] ?? 0) + 1; queue.append(child)
+        }
+    }
+    for id in ids where depth[id] == nil { depth[id] = 1 }
+    let average = nodes.reduce(0.0) { sum, node in
+        sum + max(node.width ?? pyreonFlowDefaultNodeWidth, node.height ?? pyreonFlowDefaultNodeHeight)
+    } / Double(nodes.count)
+    let ring = average + nodeSpacing * 2
+    var byDepth: [Int: [String]] = [:]
+    for id in ids { byDepth[depth[id] ?? 0, default: []].append(id) }
+    var raw: [String: PyreonXYPosition] = [:]
+    var previousRadius = 0.0
+    for level in byDepth.keys.sorted() {
+        let layer = byDepth[level]!
+        if level == 0 {
+            for (index, id) in layer.enumerated() {
+                let box = boxes[id]!
+                raw[id] = PyreonXYPosition(x: Double(index) * (average + nodeSpacing) - box.width / 2, y: -box.height / 2)
+            }
+            continue
+        }
+        let rootCount = byDepth[0]?.count ?? 1
+        let centreClear = Double(rootCount) * (average + nodeSpacing) / 2 + average / 2 + nodeSpacing
+        let radius = max(Double(level) * ring, centreClear, Double(layer.count) * (average + nodeSpacing) / (2 * Double.pi), previousRadius + average + nodeSpacing)
+        previousRadius = radius
+        for (index, id) in layer.enumerated() {
+            let angle = Double(index) / Double(layer.count) * Double.pi * 2, box = boxes[id]!
+            raw[id] = PyreonXYPosition(x: cos(angle) * radius - box.width / 2, y: sin(angle) * radius - box.height / 2)
+        }
+    }
+    let minX = ids.map { raw[$0]?.x ?? 0 }.min() ?? 0, minY = ids.map { raw[$0]?.y ?? 0 }.min() ?? 0
+    var positions = Dictionary(uniqueKeysWithValues: ids.map { id in
+        let point = raw[id] ?? PyreonXYPosition(x: 0, y: 0)
+        return (id, PyreonXYPosition(x: point.x - minX, y: point.y - minY))
+    })
+    pyreonFlowRelaxOverlaps(nodes, positions: &positions, spacing: nodeSpacing)
+    return ids.map { PyreonFlowLayoutPosition(id: $0, position: positions[$0]!) }
+}
+
 /// An edge — mirrors `FlowEdge`'s core fields, including editable waypoints.
 public struct PyreonFlowEdge: Equatable {
     public var id: String

@@ -13,6 +13,7 @@ import com.pyreon.runtime.PyreonFlowSnapLines
 import com.pyreon.runtime.PyreonFlowViewport
 import com.pyreon.runtime.PyreonXYPosition
 import com.pyreon.runtime.pyreonFlowPackingLayout
+import com.pyreon.runtime.pyreonFlowRadialLayout
 import com.pyreon.runtime.pyreonFlowTreeLayout
 import kotlin.math.abs
 
@@ -57,6 +58,9 @@ fun main() {
     )
     check(pyreonFlowTreeLayout(treeNodes, treeEdges, nodeSpacing = 20.0, layerSpacing = 40.0).map { it.position } == listOf(PyreonXYPosition(85.0, 0.0), PyreonXYPosition(70.0, 90.0), PyreonXYPosition(170.0, 80.0), PyreonXYPosition(80.0, 170.0), PyreonXYPosition(205.0, 2.5)), "tree layout matches web BFS centring and overlap sweep")
     check(pyreonFlowTreeLayout(treeNodes, treeEdges, direction = "UP", nodeSpacing = 20.0, layerSpacing = 40.0).map { it.position } == listOf(PyreonXYPosition(85.0, 150.0), PyreonXYPosition(70.0, 70.0), PyreonXYPosition(170.0, 60.0), PyreonXYPosition(80.0, 0.0), PyreonXYPosition(205.0, 152.5)), "tree layout mirrors web UP direction")
+    val radialNodes = treeNodes.take(3)
+    val radialEdges = listOf(PyreonFlowEdge("ra", "r", "a"), PyreonFlowEdge("ab", "a", "b"))
+    check(pyreonFlowRadialLayout(radialNodes, radialEdges).map { it.position } == listOf(PyreonXYPosition(0.0, 5.0), PyreonXYPosition(150.0, 10.0), PyreonXYPosition(270.0, 0.0)), "radial layout matches exact web ring geometry")
     val batched = seedFlow()
     batched.batch {
         batched.updateNodePosition("1", PyreonXYPosition(10.0, 20.0))

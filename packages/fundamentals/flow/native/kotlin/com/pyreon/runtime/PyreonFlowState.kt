@@ -249,6 +249,89 @@ fun <T> pyreonFlowTreeLayout(
     }
     return ids.map { PyreonFlowLayoutPosition(it, positions.getValue(it)) }
 }
+
+private fun <T> pyreonFlowRelaxOverlaps(nodes: List<PyreonFlowNode<T>>, positions: MutableMap<String, PyreonXYPosition>, spacing: Double, passes: Int = 10) {
+    if (nodes.isEmpty()) return
+    val half = 1 shl 15; val span = half * 2
+    fun key(x: Int, y: Int) = (x + half) * span + (y + half)
+    val boxes = nodes.associate { it.id to Pair(it.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH, it.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT) }
+    val cell = kotlin.math.max(1.0, nodes.maxOf { kotlin.math.max(it.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH, it.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT) } + spacing)
+    repeat(passes) {
+        val buckets = linkedMapOf<Int, MutableList<String>>()
+        nodes.forEach { node ->
+            val point = positions.getValue(node.id)
+            buckets.getOrPut(key(kotlin.math.floor(point.x / cell).toInt(), kotlin.math.floor(point.y / cell).toInt())) { mutableListOf() }.add(node.id)
+        }
+        var moved = false
+        buckets.forEach { (bucketKey, bucket) ->
+            val cx = bucketKey / span - half; val cy = bucketKey % span - half
+            val near = mutableListOf<String>()
+            for (ox in -1..1) for (oy in -1..1) buckets[key(cx + ox, cy + oy)]?.let(near::addAll)
+            bucket.forEach { id -> near.filter { it != id }.forEach { otherID ->
+                var a = positions.getValue(id); var b = positions.getValue(otherID)
+                val ba = boxes.getValue(id); val bb = boxes.getValue(otherID)
+                val overlapX = (ba.first + bb.first) / 2.0 + spacing - kotlin.math.abs(a.x + ba.first / 2.0 - (b.x + bb.first / 2.0))
+                val overlapY = (ba.second + bb.second) / 2.0 + spacing - kotlin.math.abs(a.y + ba.second / 2.0 - (b.y + bb.second / 2.0))
+                if (overlapX > 0.0 && overlapY > 0.0) {
+                    moved = true
+                    if (overlapX < overlapY) {
+                        val direction = if (a.x <= b.x) -1.0 else 1.0
+                        a = a.copy(x = a.x + direction * overlapX / 2.0); b = b.copy(x = b.x - direction * overlapX / 2.0)
+                    } else {
+                        val direction = if (a.y <= b.y) -1.0 else 1.0
+                        a = a.copy(y = a.y + direction * overlapY / 2.0); b = b.copy(y = b.y - direction * overlapY / 2.0)
+                    }
+                    positions[id] = a; positions[otherID] = b
+                }
+            } }
+        }
+        if (!moved) return
+    }
+}
+
+fun <T> pyreonFlowRadialLayout(nodes: List<PyreonFlowNode<T>>, edges: List<PyreonFlowEdge>, nodeSpacing: Double = 20.0): List<PyreonFlowLayoutPosition> {
+    if (nodes.isEmpty()) return emptyList()
+    val ids = nodes.map { it.id }; val known = ids.toSet()
+    val boxes = nodes.associate { it.id to Pair(it.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH, it.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT) }
+    val adjacency = ids.associateWith { mutableListOf<String>() }
+    edges.filter { it.source in known && it.target in known && it.source != it.target }.forEach { adjacency.getValue(it.source).add(it.target) }
+    val indegree = ids.associateWith { 0 }.toMutableMap()
+    adjacency.values.flatten().forEach { indegree[it] = (indegree[it] ?: 0) + 1 }
+    val roots = ids.filter { indegree[it] == 0 }
+    val queue = mutableListOf(roots.firstOrNull() ?: ids.first())
+    val depth = mutableMapOf(queue.first() to 0)
+    var cursor = 0
+    while (cursor < queue.size) {
+        val id = queue[cursor++]
+        adjacency.getValue(id).forEach { child -> if (child !in depth) { depth[child] = (depth[id] ?: 0) + 1; queue.add(child) } }
+    }
+    ids.filter { it !in depth }.forEach { depth[it] = 1 }
+    val average = nodes.sumOf { kotlin.math.max(it.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH, it.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT) } / nodes.size
+    val ring = average + nodeSpacing * 2.0
+    val byDepth = linkedMapOf<Int, MutableList<String>>()
+    ids.forEach { byDepth.getOrPut(depth[it] ?: 0) { mutableListOf() }.add(it) }
+    val raw = mutableMapOf<String, PyreonXYPosition>()
+    var previousRadius = 0.0
+    byDepth.keys.sorted().forEach { level ->
+        val layer = byDepth.getValue(level)
+        if (level == 0) layer.forEachIndexed { index, id ->
+            val box = boxes.getValue(id); raw[id] = PyreonXYPosition(index * (average + nodeSpacing) - box.first / 2.0, -box.second / 2.0)
+        } else {
+            val rootCount = byDepth[0]?.size ?: 1
+            val centreClear = rootCount * (average + nodeSpacing) / 2.0 + average / 2.0 + nodeSpacing
+            val radius = maxOf(level * ring, centreClear, layer.size * (average + nodeSpacing) / (2.0 * Math.PI), previousRadius + average + nodeSpacing)
+            previousRadius = radius
+            layer.forEachIndexed { index, id ->
+                val angle = index.toDouble() / layer.size * Math.PI * 2.0; val box = boxes.getValue(id)
+                raw[id] = PyreonXYPosition(kotlin.math.cos(angle) * radius - box.first / 2.0, kotlin.math.sin(angle) * radius - box.second / 2.0)
+            }
+        }
+    }
+    val minX = ids.minOf { raw[it]?.x ?: 0.0 }; val minY = ids.minOf { raw[it]?.y ?: 0.0 }
+    val positions = ids.associateWithTo(mutableMapOf()) { id -> val point = raw[id] ?: PyreonXYPosition(0.0, 0.0); PyreonXYPosition(point.x - minX, point.y - minY) }
+    pyreonFlowRelaxOverlaps(nodes, positions, nodeSpacing)
+    return ids.map { PyreonFlowLayoutPosition(it, positions.getValue(it)) }
+}
 private data class PyreonFlowHistorySnapshot<T>(val nodes: List<PyreonFlowNode<T>>, val edges: List<PyreonFlowEdge>)
 
 /** Reactive flow-diagram state: nodes, edges, viewport, selection. Behaviour-

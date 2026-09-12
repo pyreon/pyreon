@@ -56,6 +56,9 @@ struct PyreonFlowStateTests {
         ]
         check(pyreonFlowTreeLayout(treeNodes, edges: treeEdges, nodeSpacing: 20, layerSpacing: 40).map(\.position) == [PyreonXYPosition(x: 85, y: 0), PyreonXYPosition(x: 70, y: 90), PyreonXYPosition(x: 170, y: 80), PyreonXYPosition(x: 80, y: 170), PyreonXYPosition(x: 205, y: 2.5)], "tree layout matches web BFS centring and overlap sweep")
         check(pyreonFlowTreeLayout(treeNodes, edges: treeEdges, direction: "UP", nodeSpacing: 20, layerSpacing: 40).map(\.position) == [PyreonXYPosition(x: 85, y: 150), PyreonXYPosition(x: 70, y: 70), PyreonXYPosition(x: 170, y: 60), PyreonXYPosition(x: 80, y: 0), PyreonXYPosition(x: 205, y: 152.5)], "tree layout mirrors web UP direction")
+        let radialNodes = Array(treeNodes.prefix(3))
+        let radialEdges = [PyreonFlowEdge(id: "ra", source: "r", target: "a"), PyreonFlowEdge(id: "ab", source: "a", target: "b")]
+        check(pyreonFlowRadialLayout(radialNodes, edges: radialEdges).map(\.position) == [PyreonXYPosition(x: 0, y: 5), PyreonXYPosition(x: 150, y: 10), PyreonXYPosition(x: 270, y: 0)], "radial layout matches exact web ring geometry")
         let batched = seedFlow()
         batched.batch {
             batched.updateNodePosition("1", PyreonXYPosition(x: 10, y: 20))
