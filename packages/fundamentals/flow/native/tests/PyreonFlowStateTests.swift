@@ -46,6 +46,16 @@ struct PyreonFlowStateTests {
         check(pyreonFlowPackingLayout(packingNodes, spacing: 10).map { $0.id } == ["a", "b", "c", "d"], "box packing preserves input order")
         check(pyreonFlowPackingLayout(packingNodes, spacing: 10).map { $0.position } == [PyreonXYPosition(x: 0, y: 0), PyreonXYPosition(x: 110, y: 0), PyreonXYPosition(x: 0, y: 80), PyreonXYPosition(x: 130, y: 80)], "box packing matches the web shelf geometry")
         check(pyreonFlowPackingLayout(packingNodes, spacing: 10, sortByHeight: true).map { $0.id } == ["b", "c", "a", "d"], "rectpacking uses stable height/width ordering")
+        let treeEdges = [PyreonFlowEdge(id: "ra", source: "r", target: "a"), PyreonFlowEdge(id: "rb", source: "r", target: "b"), PyreonFlowEdge(id: "ac", source: "a", target: "c"), PyreonFlowEdge(id: "bc", source: "b", target: "c")]
+        let treeNodes = [
+            PyreonFlowNode(id: "r", position: PyreonXYPosition(x: 9, y: 9), data: NodeData(label: "R"), width: 100, height: 40),
+            PyreonFlowNode(id: "a", position: PyreonXYPosition(x: 9, y: 9), data: NodeData(label: "A"), width: 80, height: 30),
+            PyreonFlowNode(id: "b", position: PyreonXYPosition(x: 9, y: 9), data: NodeData(label: "B"), width: 120, height: 50),
+            PyreonFlowNode(id: "c", position: PyreonXYPosition(x: 9, y: 9), data: NodeData(label: "C"), width: 60, height: 20),
+            PyreonFlowNode(id: "orphan", position: PyreonXYPosition(x: 9, y: 9), data: NodeData(label: "O"), width: 90, height: 35),
+        ]
+        check(pyreonFlowTreeLayout(treeNodes, edges: treeEdges, nodeSpacing: 20, layerSpacing: 40).map(\.position) == [PyreonXYPosition(x: 85, y: 0), PyreonXYPosition(x: 70, y: 90), PyreonXYPosition(x: 170, y: 80), PyreonXYPosition(x: 80, y: 170), PyreonXYPosition(x: 205, y: 2.5)], "tree layout matches web BFS centring and overlap sweep")
+        check(pyreonFlowTreeLayout(treeNodes, edges: treeEdges, direction: "UP", nodeSpacing: 20, layerSpacing: 40).map(\.position) == [PyreonXYPosition(x: 85, y: 150), PyreonXYPosition(x: 70, y: 70), PyreonXYPosition(x: 170, y: 60), PyreonXYPosition(x: 80, y: 0), PyreonXYPosition(x: 205, y: 152.5)], "tree layout mirrors web UP direction")
         let batched = seedFlow()
         batched.batch {
             batched.updateNodePosition("1", PyreonXYPosition(x: 10, y: 20))

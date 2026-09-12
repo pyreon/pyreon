@@ -197,6 +197,111 @@ public func pyreonFlowPackingLayout<T>(_ nodes: [PyreonFlowNode<T>], spacing: Do
     }
 }
 
+public func pyreonFlowTreeLayout<T>(
+    _ nodes: [PyreonFlowNode<T>],
+    edges: [PyreonFlowEdge],
+    direction: String = "DOWN",
+    nodeSpacing: Double = 20,
+    layerSpacing: Double = 40
+) -> [PyreonFlowLayoutPosition] {
+    guard !nodes.isEmpty else { return [] }
+    let ids = nodes.map(\.id)
+    let known = Set(ids)
+    let boxes = Dictionary(uniqueKeysWithValues: nodes.map {
+        ($0.id, (width: $0.width ?? pyreonFlowDefaultNodeWidth, height: $0.height ?? pyreonFlowDefaultNodeHeight))
+    })
+    var adjacency = Dictionary(uniqueKeysWithValues: ids.map { ($0, [String]()) })
+    for edge in edges where known.contains(edge.source) && known.contains(edge.target) && edge.source != edge.target {
+        adjacency[edge.source, default: []].append(edge.target)
+    }
+    var indegree = Dictionary(uniqueKeysWithValues: ids.map { ($0, 0) })
+    for outgoing in adjacency.values {
+        for target in outgoing { indegree[target, default: 0] += 1 }
+    }
+    var children = Dictionary(uniqueKeysWithValues: ids.map { ($0, [String]()) })
+    var depth: [String: Int] = [:]
+    var queue = ids.filter { indegree[$0] == 0 }
+    if queue.isEmpty, let first = ids.first { queue = [first] }
+    for root in queue { depth[root] = 0 }
+    var cursor = 0
+    while cursor < queue.count {
+        let id = queue[cursor]
+        cursor += 1
+        for child in adjacency[id] ?? [] where depth[child] == nil {
+            depth[child] = (depth[id] ?? 0) + 1
+            children[id, default: []].append(child)
+            queue.append(child)
+        }
+    }
+    for id in ids where depth[id] == nil { depth[id] = 0 }
+    let maxDepth = ids.map { depth[$0] ?? 0 }.max() ?? 0
+    var layers = Array(repeating: [String](), count: maxDepth + 1)
+    for id in ids { layers[depth[id] ?? 0].append(id) }
+    let horizontal = direction == "LEFT" || direction == "RIGHT"
+    func cross(_ id: String) -> Double { horizontal ? boxes[id]!.height : boxes[id]!.width }
+    func main(_ id: String) -> Double { horizontal ? boxes[id]!.width : boxes[id]!.height }
+    let extents = layers.map { layer in
+        layer.enumerated().reduce(0.0) { $0 + cross($1.element) + ($1.offset > 0 ? nodeSpacing : 0) }
+    }
+    let widest = extents.max() ?? 0
+    var positions: [String: PyreonXYPosition] = [:]
+    var mainOffset = 0.0
+    for (layerIndex, layer) in layers.enumerated() {
+        let layerDepth = layer.map(main).max() ?? 0
+        var crossOffset = (widest - extents[layerIndex]) / 2
+        for id in layer {
+            let along = mainOffset + (layerDepth - main(id)) / 2
+            positions[id] = horizontal ? PyreonXYPosition(x: along, y: crossOffset) : PyreonXYPosition(x: crossOffset, y: along)
+            crossOffset += cross(id) + nodeSpacing
+        }
+        mainOffset += layerDepth + layerSpacing
+    }
+    if maxDepth > 0 {
+        for layerIndex in stride(from: maxDepth - 1, through: 0, by: -1) {
+            for id in layers[layerIndex] {
+                let kids = children[id] ?? []
+                guard !kids.isEmpty else { continue }
+                let centres = kids.map { child -> Double in
+                    let point = positions[child]!
+                    return horizontal ? point.y + boxes[child]!.height / 2 : point.x + boxes[child]!.width / 2
+                }
+                let middle = ((centres.min() ?? 0) + (centres.max() ?? 0)) / 2
+                let point = positions[id]!
+                positions[id] = horizontal
+                    ? PyreonXYPosition(x: point.x, y: middle - boxes[id]!.height / 2)
+                    : PyreonXYPosition(x: middle - boxes[id]!.width / 2, y: point.y)
+            }
+        }
+    }
+    for layer in layers {
+        let sorted = layer.sorted {
+            let a = positions[$0]!, b = positions[$1]!
+            return horizontal ? a.y < b.y : a.x < b.x
+        }
+        var edge = -Double.infinity
+        for id in sorted {
+            let point = positions[id]!
+            let start = horizontal ? point.y : point.x
+            let next = max(start, edge)
+            positions[id] = horizontal ? PyreonXYPosition(x: point.x, y: next) : PyreonXYPosition(x: next, y: point.y)
+            edge = next + cross(id) + nodeSpacing
+        }
+    }
+    if direction == "UP" || direction == "LEFT" {
+        let maximum = ids.map { id -> Double in
+            let point = positions[id]!
+            return horizontal ? point.x + boxes[id]!.width : point.y + boxes[id]!.height
+        }.max() ?? 0
+        for id in ids {
+            let point = positions[id]!
+            positions[id] = horizontal
+                ? PyreonXYPosition(x: maximum - point.x - boxes[id]!.width, y: point.y)
+                : PyreonXYPosition(x: point.x, y: maximum - point.y - boxes[id]!.height)
+        }
+    }
+    return ids.map { PyreonFlowLayoutPosition(id: $0, position: positions[$0]!) }
+}
+
 /// An edge — mirrors `FlowEdge`'s core fields, including editable waypoints.
 public struct PyreonFlowEdge: Equatable {
     public var id: String

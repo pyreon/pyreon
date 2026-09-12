@@ -157,6 +157,98 @@ fun <T> pyreonFlowPackingLayout(nodes: List<PyreonFlowNode<T>>, spacing: Double 
         result
     }
 }
+
+fun <T> pyreonFlowTreeLayout(
+    nodes: List<PyreonFlowNode<T>>,
+    edges: List<PyreonFlowEdge>,
+    direction: String = "DOWN",
+    nodeSpacing: Double = 20.0,
+    layerSpacing: Double = 40.0,
+): List<PyreonFlowLayoutPosition> {
+    if (nodes.isEmpty()) return emptyList()
+    val ids = nodes.map { it.id }
+    val known = ids.toSet()
+    val boxes = nodes.associate { it.id to Pair(it.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH, it.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT) }
+    val adjacency = ids.associateWith { mutableListOf<String>() }
+    edges.filter { it.source in known && it.target in known && it.source != it.target }
+        .forEach { adjacency.getValue(it.source).add(it.target) }
+    val indegree = ids.associateWith { 0 }.toMutableMap()
+    adjacency.values.flatten().forEach { indegree[it] = (indegree[it] ?: 0) + 1 }
+    val children = ids.associateWith { mutableListOf<String>() }
+    val depth = mutableMapOf<String, Int>()
+    val queue = ids.filter { indegree[it] == 0 }.toMutableList().also { if (it.isEmpty()) it.add(ids.first()) }
+    queue.forEach { depth[it] = 0 }
+    var cursor = 0
+    while (cursor < queue.size) {
+        val id = queue[cursor++]
+        adjacency.getValue(id).forEach { child ->
+            if (child !in depth) {
+                depth[child] = (depth[id] ?: 0) + 1
+                children.getValue(id).add(child)
+                queue.add(child)
+            }
+        }
+    }
+    ids.filter { it !in depth }.forEach { depth[it] = 0 }
+    val maxDepth = ids.maxOf { depth[it] ?: 0 }
+    val layers = List(maxDepth + 1) { mutableListOf<String>() }
+    ids.forEach { layers[depth[it] ?: 0].add(it) }
+    val horizontal = direction == "LEFT" || direction == "RIGHT"
+    fun cross(id: String) = if (horizontal) boxes.getValue(id).second else boxes.getValue(id).first
+    fun main(id: String) = if (horizontal) boxes.getValue(id).first else boxes.getValue(id).second
+    val extents = layers.map { layer -> layer.withIndex().sumOf { cross(it.value) + if (it.index > 0) nodeSpacing else 0.0 } }
+    val widest = extents.maxOrNull() ?: 0.0
+    val positions = mutableMapOf<String, PyreonXYPosition>()
+    var mainOffset = 0.0
+    layers.forEachIndexed { layerIndex, layer ->
+        val layerDepth = layer.maxOfOrNull(::main) ?: 0.0
+        var crossOffset = (widest - extents[layerIndex]) / 2.0
+        layer.forEach { id ->
+            val along = mainOffset + (layerDepth - main(id)) / 2.0
+            positions[id] = if (horizontal) PyreonXYPosition(along, crossOffset) else PyreonXYPosition(crossOffset, along)
+            crossOffset += cross(id) + nodeSpacing
+        }
+        mainOffset += layerDepth + layerSpacing
+    }
+    for (layerIndex in maxDepth - 1 downTo 0) {
+        layers[layerIndex].forEach { id ->
+            val kids = children.getValue(id)
+            if (kids.isNotEmpty()) {
+                val centres = kids.map { child ->
+                    val point = positions.getValue(child)
+                    if (horizontal) point.y + boxes.getValue(child).second / 2.0 else point.x + boxes.getValue(child).first / 2.0
+                }
+                val middle = (centres.minOrNull()!! + centres.maxOrNull()!!) / 2.0
+                val point = positions.getValue(id)
+                positions[id] = if (horizontal) PyreonXYPosition(point.x, middle - boxes.getValue(id).second / 2.0)
+                else PyreonXYPosition(middle - boxes.getValue(id).first / 2.0, point.y)
+            }
+        }
+    }
+    layers.forEach { layer ->
+        val sorted = layer.sortedBy { if (horizontal) positions.getValue(it).y else positions.getValue(it).x }
+        var edge = Double.NEGATIVE_INFINITY
+        sorted.forEach { id ->
+            val point = positions.getValue(id)
+            val start = if (horizontal) point.y else point.x
+            val next = kotlin.math.max(start, edge)
+            positions[id] = if (horizontal) PyreonXYPosition(point.x, next) else PyreonXYPosition(next, point.y)
+            edge = next + cross(id) + nodeSpacing
+        }
+    }
+    if (direction == "UP" || direction == "LEFT") {
+        val maximum = ids.maxOf { id ->
+            val point = positions.getValue(id)
+            if (horizontal) point.x + boxes.getValue(id).first else point.y + boxes.getValue(id).second
+        }
+        ids.forEach { id ->
+            val point = positions.getValue(id)
+            positions[id] = if (horizontal) PyreonXYPosition(maximum - point.x - boxes.getValue(id).first, point.y)
+            else PyreonXYPosition(point.x, maximum - point.y - boxes.getValue(id).second)
+        }
+    }
+    return ids.map { PyreonFlowLayoutPosition(it, positions.getValue(it)) }
+}
 private data class PyreonFlowHistorySnapshot<T>(val nodes: List<PyreonFlowNode<T>>, val edges: List<PyreonFlowEdge>)
 
 /** Reactive flow-diagram state: nodes, edges, viewport, selection. Behaviour-

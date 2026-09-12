@@ -13,6 +13,7 @@ import com.pyreon.runtime.PyreonFlowSnapLines
 import com.pyreon.runtime.PyreonFlowViewport
 import com.pyreon.runtime.PyreonXYPosition
 import com.pyreon.runtime.pyreonFlowPackingLayout
+import com.pyreon.runtime.pyreonFlowTreeLayout
 import kotlin.math.abs
 
 private data class NodeData(val label: String)
@@ -46,6 +47,16 @@ fun main() {
     check(pyreonFlowPackingLayout(packingNodes, spacing = 10.0).map { it.id } == listOf("a", "b", "c", "d"), "box packing preserves input order")
     check(pyreonFlowPackingLayout(packingNodes, spacing = 10.0).map { it.position } == listOf(PyreonXYPosition(0.0, 0.0), PyreonXYPosition(110.0, 0.0), PyreonXYPosition(0.0, 80.0), PyreonXYPosition(130.0, 80.0)), "box packing matches the web shelf geometry")
     check(pyreonFlowPackingLayout(packingNodes, spacing = 10.0, sortByHeight = true).map { it.id } == listOf("b", "c", "a", "d"), "rectpacking uses stable height/width ordering")
+    val treeEdges = listOf(PyreonFlowEdge("ra", "r", "a"), PyreonFlowEdge("rb", "r", "b"), PyreonFlowEdge("ac", "a", "c"), PyreonFlowEdge("bc", "b", "c"))
+    val treeNodes = listOf(
+        PyreonFlowNode("r", position = PyreonXYPosition(9.0, 9.0), data = NodeData("R"), width = 100.0, height = 40.0),
+        PyreonFlowNode("a", position = PyreonXYPosition(9.0, 9.0), data = NodeData("A"), width = 80.0, height = 30.0),
+        PyreonFlowNode("b", position = PyreonXYPosition(9.0, 9.0), data = NodeData("B"), width = 120.0, height = 50.0),
+        PyreonFlowNode("c", position = PyreonXYPosition(9.0, 9.0), data = NodeData("C"), width = 60.0, height = 20.0),
+        PyreonFlowNode("orphan", position = PyreonXYPosition(9.0, 9.0), data = NodeData("O"), width = 90.0, height = 35.0),
+    )
+    check(pyreonFlowTreeLayout(treeNodes, treeEdges, nodeSpacing = 20.0, layerSpacing = 40.0).map { it.position } == listOf(PyreonXYPosition(85.0, 0.0), PyreonXYPosition(70.0, 90.0), PyreonXYPosition(170.0, 80.0), PyreonXYPosition(80.0, 170.0), PyreonXYPosition(205.0, 2.5)), "tree layout matches web BFS centring and overlap sweep")
+    check(pyreonFlowTreeLayout(treeNodes, treeEdges, direction = "UP", nodeSpacing = 20.0, layerSpacing = 40.0).map { it.position } == listOf(PyreonXYPosition(85.0, 150.0), PyreonXYPosition(70.0, 70.0), PyreonXYPosition(170.0, 60.0), PyreonXYPosition(80.0, 0.0), PyreonXYPosition(205.0, 152.5)), "tree layout mirrors web UP direction")
     val batched = seedFlow()
     batched.batch {
         batched.updateNodePosition("1", PyreonXYPosition(10.0, 20.0))
