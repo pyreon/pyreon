@@ -566,12 +566,19 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                         if let position = state.getNode(id)?.position { nodeDragStart[id] = position }
                     }
                 }
+                guard let primaryStart = nodeDragStart[node.id] else { return }
+                let rawPrimary = PyreonXYPosition(
+                    x: primaryStart.x + value.translation.width / state.viewport.zoom,
+                    y: primaryStart.y + value.translation.height / state.viewport.zoom)
+                let snappedPrimary = state.snappedNodePosition(node.id, rawPrimary, excluding: Set(nodeDragStart.keys))
+                let dx = snappedPrimary.x - primaryStart.x
+                let dy = snappedPrimary.y - primaryStart.y
                 for (id, start) in nodeDragStart {
                     state.updateNodePosition(
                         id,
                         PyreonXYPosition(
-                            x: start.x + value.translation.width / state.viewport.zoom,
-                            y: start.y + value.translation.height / state.viewport.zoom))
+                            x: start.x + dx,
+                            y: start.y + dy))
                 }
             }
             .onEnded { _ in nodeDragStart.removeAll(keepingCapacity: true) }

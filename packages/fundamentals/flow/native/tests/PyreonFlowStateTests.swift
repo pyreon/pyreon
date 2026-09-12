@@ -67,6 +67,13 @@ struct PyreonFlowStateTests {
         dragged.updateNodePosition("1", PyreonXYPosition(x: 75, y: 25))
         dragged.undo()
         check(dragged.getNode("1")?.position == PyreonXYPosition(x: 0, y: 0), "a drag-start checkpoint restores direct position mutations")
+        let snapping = PyreonFlowState(nodes: [
+            PyreonFlowNode(id: "drag", position: PyreonXYPosition(x: 0, y: 0), data: NodeData(label: "Drag"), width: 100, height: 40),
+            PyreonFlowNode(id: "target", position: PyreonXYPosition(x: 200, y: 100), data: NodeData(label: "Target"), width: 100, height: 40),
+        ])
+        check(snapping.snappedNodePosition("drag", PyreonXYPosition(x: 198, y: 102)) == PyreonXYPosition(x: 200, y: 100), "object snapping aligns nearby native node edges")
+        let unsnapped = PyreonFlowState(nodes: snapping.nodes, snapToObjects: false)
+        check(unsnapped.snappedNodePosition("drag", PyreonXYPosition(x: 198, y: 102)) == PyreonXYPosition(x: 198, y: 102), "snapToObjects false preserves the raw drag position")
         f.updateNode("1") { $0.hidden = true; $0.id = "ignored" }
         check(f.getNode("1")?.hidden == true && f.getNode("ignored") == nil, "updateNode patches fields while preserving indexed identity")
         f.updateNode("1") { $0.hidden = false }

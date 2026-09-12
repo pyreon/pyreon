@@ -339,7 +339,7 @@ public final class PyreonFlowState<T> {
     public let defaultMarkerEnd: PyreonFlowMarker?
     public let nodesDraggable: Bool; public let nodesConnectable: Bool; public let nodesSelectable: Bool; public let nodesFocusable: Bool
     public let edgesFocusable: Bool; public let nodesDeletable: Bool; public let edgesDeletable: Bool; public let edgesReconnectable: Bool
-    public let edgeInteractionWidth: Double; public let connectionRadius: Double; public let pannable: Bool; public let zoomable: Bool; public let multiSelect: Bool; public let onlyRenderVisibleElements: Bool
+    public let edgeInteractionWidth: Double; public let connectionRadius: Double; public let pannable: Bool; public let zoomable: Bool; public let multiSelect: Bool; public let onlyRenderVisibleElements: Bool; public let snapToObjects: Bool
     public let defaultEdgeType: String; public let defaultEdgeOptions: PyreonFlowDefaultEdgeOptions; public let fitViewOnLoad: Bool; public let fitViewPadding: Double
     public let autoHistory: Bool
     @ObservationIgnored private var undoStack: [HistorySnapshot] = []
@@ -363,7 +363,7 @@ public final class PyreonFlowState<T> {
         defaultMarkerEnd: PyreonFlowMarker? = PyreonFlowMarker(type: "arrowclosed"),
         nodesDraggable: Bool = true, nodesConnectable: Bool = true, nodesSelectable: Bool = true, nodesFocusable: Bool = true,
         edgesFocusable: Bool = true, nodesDeletable: Bool = true, edgesDeletable: Bool = true, edgesReconnectable: Bool = true,
-        edgeInteractionWidth: Double = 20, connectionRadius: Double = 0, pannable: Bool = true, zoomable: Bool = true, multiSelect: Bool = true, onlyRenderVisibleElements: Bool = false,
+        edgeInteractionWidth: Double = 20, connectionRadius: Double = 0, pannable: Bool = true, zoomable: Bool = true, multiSelect: Bool = true, onlyRenderVisibleElements: Bool = false, snapToObjects: Bool = true,
         defaultEdgeType: String = "bezier", defaultEdgeOptions: PyreonFlowDefaultEdgeOptions = PyreonFlowDefaultEdgeOptions(), fitView: Bool = false, fitViewPadding: Double = 0.1, autoHistory: Bool = true,
         isValidConnection: ((PyreonFlowConnection) -> Bool)? = nil
     ) {
@@ -377,7 +377,7 @@ public final class PyreonFlowState<T> {
         self.defaultMarkerEnd = defaultMarkerEnd
         self.nodesDraggable = nodesDraggable; self.nodesConnectable = nodesConnectable; self.nodesSelectable = nodesSelectable; self.nodesFocusable = nodesFocusable
         self.edgesFocusable = edgesFocusable; self.nodesDeletable = nodesDeletable; self.edgesDeletable = edgesDeletable; self.edgesReconnectable = edgesReconnectable
-        self.edgeInteractionWidth = edgeInteractionWidth; self.connectionRadius = max(0, connectionRadius); self.pannable = pannable; self.zoomable = zoomable; self.multiSelect = multiSelect; self.onlyRenderVisibleElements = onlyRenderVisibleElements
+        self.edgeInteractionWidth = edgeInteractionWidth; self.connectionRadius = max(0, connectionRadius); self.pannable = pannable; self.zoomable = zoomable; self.multiSelect = multiSelect; self.onlyRenderVisibleElements = onlyRenderVisibleElements; self.snapToObjects = snapToObjects
         self.defaultEdgeType = defaultEdgeType; self.defaultEdgeOptions = defaultEdgeOptions; self.fitViewOnLoad = fitView; self.fitViewPadding = max(0, fitViewPadding)
         self.autoHistory = autoHistory
         self.connectionValidator = isValidConnection
@@ -569,6 +569,21 @@ public final class PyreonFlowState<T> {
             x: min(max(position.x, extent.minX), extent.maxX - nodeWidth),
             y: min(max(position.y, extent.minY), extent.maxY - nodeHeight)
         )
+    }
+    public func snappedNodePosition(_ id: String, _ position: PyreonXYPosition, excluding: Set<String> = [], threshold: Double = 5) -> PyreonXYPosition {
+        guard snapToObjects, let dragged = nodeStore[id] else { return position }
+        let width = dragged.width ?? pyreonFlowDefaultNodeWidth
+        let height = dragged.height ?? pyreonFlowDefaultNodeHeight
+        var result = position
+        for candidate in nodes where candidate.id != id && !excluding.contains(candidate.id) {
+            let candidateWidth = candidate.width ?? pyreonFlowDefaultNodeWidth
+            let candidateHeight = candidate.height ?? pyreonFlowDefaultNodeHeight
+            let xPairs = [(position.x + width / 2, candidate.position.x + candidateWidth / 2, candidate.position.x + candidateWidth / 2 - width / 2), (position.x, candidate.position.x, candidate.position.x), (position.x + width, candidate.position.x + candidateWidth, candidate.position.x + candidateWidth - width)]
+            for (actual, guide, target) in xPairs where abs(actual - guide) < threshold { result.x = target }
+            let yPairs = [(position.y + height / 2, candidate.position.y + candidateHeight / 2, candidate.position.y + candidateHeight / 2 - height / 2), (position.y, candidate.position.y, candidate.position.y), (position.y + height, candidate.position.y + candidateHeight, candidate.position.y + candidateHeight - height)]
+            for (actual, guide, target) in yPairs where abs(actual - guide) < threshold { result.y = target }
+        }
+        return result
     }
 
     // ── edge operations ─────────────────────────────────────────────────────

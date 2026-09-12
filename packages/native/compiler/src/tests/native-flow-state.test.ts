@@ -335,6 +335,16 @@ describe('createFlow — v1 decline shapes (loud warning, not silent drop)', () 
       }
     })
 
+    it('snapToObjects threads through instead of silently diverging', () => {
+      const src = cfg('snapToObjects: false,')
+      const swift = transform(src, { target: 'swift' })
+      const kotlin = transform(src, { target: 'kotlin' })
+      expect(swift.code).toContain('snapToObjects: false')
+      expect(kotlin.code).toContain('snapToObjects = false')
+      expect((swift.warnings ?? []).join(' ')).not.toContain('`snapToObjects`')
+      expect((kotlin.warnings ?? []).join(' ')).not.toContain('`snapToObjects`')
+    })
+
     it('Kotlin renders them as DOUBLE literals — Int does not widen at a call site', () => {
       // `maxZoom: 2` emitting `maxZoom = 2` is "argument type mismatch: actual
       // type is 'Int', but 'Double' was expected". Swift takes the same source
@@ -345,10 +355,10 @@ describe('createFlow — v1 decline shapes (loud warning, not silent drop)', () 
     })
 
     it('an UNLOWERED key warns by NAME on both targets', () => {
-      const src = cfg('snapToObjects: true, fitView: true, snapToGrid: true,')
+      const src = cfg('reducedMotion: true, fitView: true, snapToGrid: true,')
       for (const target of ['swift', 'kotlin'] as const) {
         const w = (transform(src, { target }).warnings ?? []).join(' ')
-        expect(w).toContain('`snapToObjects`')
+        expect(w).toContain('`reducedMotion`')
         expect(w).not.toContain('`fitView`')
         expect(w).not.toContain('`snapToGrid`')
         expect(w).toContain('behaves differently on web')

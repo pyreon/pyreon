@@ -973,6 +973,7 @@ export type DeclIR =
       zoomable?: boolean
       multiSelect?: boolean
       onlyRenderVisibleElements?: boolean
+      snapToObjects?: boolean
       autoHistory?: boolean
       defaultEdgeType?: string
       defaultEdgeOptions?: {

@@ -301,9 +301,15 @@ fun <T> PyreonFlowView(
                         ) { change, _ ->
                             change.consume()
                             val delta = change.position - change.previousPosition
+                            val primary = nodeDragStarts[node.id] ?: return@detectDragGestures
+                            val rawPrimary = PyreonXYPosition(primary.x + delta.x / state.viewport.zoom, primary.y + delta.y / state.viewport.zoom)
+                            val snappedPrimary = state.snappedNodePosition(node.id, rawPrimary, nodeDragStarts.keys)
+                            val actualDx = snappedPrimary.x - primary.x
+                            val actualDy = snappedPrimary.y - primary.y
                             for ((id, current) in nodeDragStarts) {
-                                nodeDragStarts = nodeDragStarts + (id to PyreonXYPosition(current.x + delta.x, current.y + delta.y))
-                                state.updateNodePosition(id, PyreonXYPosition(current.x + delta.x, current.y + delta.y))
+                                val next = PyreonXYPosition(current.x + actualDx, current.y + actualDy)
+                                nodeDragStarts = nodeDragStarts + (id to next)
+                                state.updateNodePosition(id, next)
                             }
                         }
                     }

@@ -147,6 +147,7 @@ class PyreonFlowState<T>(
     val zoomable: Boolean = true,
     val multiSelect: Boolean = true,
     val onlyRenderVisibleElements: Boolean = false,
+    val snapToObjects: Boolean = true,
     val defaultEdgeType: String = PYREON_FLOW_DEFAULT_EDGE_TYPE,
     val defaultEdgeOptions: PyreonFlowDefaultEdgeOptions = PyreonFlowDefaultEdgeOptions(),
     val fitViewOnLoad: Boolean = false,
@@ -348,6 +349,25 @@ class PyreonFlowState<T>(
             x = kotlin.math.min(kotlin.math.max(position.x, extent.minX), extent.maxX - nodeWidth),
             y = kotlin.math.min(kotlin.math.max(position.y, extent.minY), extent.maxY - nodeHeight),
         )
+    }
+    @JvmOverloads
+    fun snappedNodePosition(id: String, position: PyreonXYPosition, excluding: Set<String> = emptySet(), threshold: Double = 5.0): PyreonXYPosition {
+        if (!snapToObjects) return position
+        val dragged = nodeMap[id] ?: return position
+        val width = dragged.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH
+        val height = dragged.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT
+        var x = position.x
+        var y = position.y
+        for (candidate in nodes) {
+            if (candidate.id == id || excluding.contains(candidate.id)) continue
+            val candidateWidth = candidate.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH
+            val candidateHeight = candidate.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT
+            val xPairs = arrayOf(Triple(position.x + width / 2, candidate.position.x + candidateWidth / 2, candidate.position.x + candidateWidth / 2 - width / 2), Triple(position.x, candidate.position.x, candidate.position.x), Triple(position.x + width, candidate.position.x + candidateWidth, candidate.position.x + candidateWidth - width))
+            for ((actual, guide, target) in xPairs) if (kotlin.math.abs(actual - guide) < threshold) x = target
+            val yPairs = arrayOf(Triple(position.y + height / 2, candidate.position.y + candidateHeight / 2, candidate.position.y + candidateHeight / 2 - height / 2), Triple(position.y, candidate.position.y, candidate.position.y), Triple(position.y + height, candidate.position.y + candidateHeight, candidate.position.y + candidateHeight - height))
+            for ((actual, guide, target) in yPairs) if (kotlin.math.abs(actual - guide) < threshold) y = target
+        }
+        return PyreonXYPosition(x, y)
     }
 
     // ── edge operations ─────────────────────────────────────────────────────

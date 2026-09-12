@@ -1650,6 +1650,7 @@ class PyreonFlowState<T>(
   zoomable: Boolean = true,
   multiSelect: Boolean = true,
   onlyRenderVisibleElements: Boolean = false,
+  snapToObjects: Boolean = true,
   defaultEdgeType: String = "bezier",
   defaultEdgeOptions: PyreonFlowDefaultEdgeOptions = PyreonFlowDefaultEdgeOptions(),
   fitViewOnLoad: Boolean = false,

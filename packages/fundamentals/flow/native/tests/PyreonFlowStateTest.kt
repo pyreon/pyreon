@@ -62,6 +62,13 @@ fun main() {
     dragged.updateNodePosition("1", PyreonXYPosition(75.0, 25.0))
     dragged.undo()
     check(dragged.getNode("1")?.position == PyreonXYPosition(0.0, 0.0), "a drag-start checkpoint restores direct position mutations")
+    val snapping = PyreonFlowState(nodes = listOf(
+        PyreonFlowNode("drag", position = PyreonXYPosition(0.0, 0.0), data = NodeData("Drag"), width = 100.0, height = 40.0),
+        PyreonFlowNode("target", position = PyreonXYPosition(200.0, 100.0), data = NodeData("Target"), width = 100.0, height = 40.0),
+    ))
+    check(snapping.snappedNodePosition("drag", PyreonXYPosition(198.0, 102.0)) == PyreonXYPosition(200.0, 100.0), "object snapping aligns nearby native node edges")
+    val unsnapped = PyreonFlowState(nodes = snapping.nodes, snapToObjects = false)
+    check(unsnapped.snappedNodePosition("drag", PyreonXYPosition(198.0, 102.0)) == PyreonXYPosition(198.0, 102.0), "snapToObjects false preserves the raw drag position")
     f.updateNodeData("1") { it.copy(label = "Updated") }
     check(f.getNode("1")?.data?.label == "Updated", "updateNodeData replaces the native payload observably")
     f.updateNode("1") { it.copy(id = "ignored", hidden = true) }
