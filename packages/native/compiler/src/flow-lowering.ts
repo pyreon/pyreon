@@ -11,7 +11,7 @@
  */
 
 /** Signal/Computed reads that lower to native properties (parens dropped). */
-export const LOWERED_FLOW_PROPERTY_READS: ReadonlySet<string> = new Set(['nodes', 'edges', 'viewport', 'zoom'])
+export const LOWERED_FLOW_PROPERTY_READS: ReadonlySet<string> = new Set(['nodes', 'edges', 'viewport', 'zoom', 'containerSize'])
 
 /** Methods `PyreonFlowState` implements on BOTH targets (v1 surface). */
 export const LOWERED_FLOW_METHODS: ReadonlySet<string> = new Set([

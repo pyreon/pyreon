@@ -4981,7 +4981,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         e.callee.object.kind === 'identifier' &&
         _flowStateNamesKt.has(e.callee.object.name) &&
         e.args.length === 0 &&
-        ['nodes', 'edges', 'viewport', 'zoom'].includes(e.callee.property)
+        LOWERED_FLOW_PROPERTY_READS.has(e.callee.property)
       ) {
         return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
       }

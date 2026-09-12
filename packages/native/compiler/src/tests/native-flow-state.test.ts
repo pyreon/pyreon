@@ -584,6 +584,13 @@ export function C() {
       if (target === 'swift') expect(validateSwiftWithStubs(result.code).ok).toBe(true)
       else expect(validateKotlin(result.code).ok).toBe(true)
     })
+    it(`[${target}] containerSize reads the native measured property`, () => {
+      const result = transform(base('', '<Text>{flow.containerSize().width}</Text>'), { target })
+      expect((result.warnings ?? []).join(' ')).not.toContain('`containerSize` is NOT ported')
+      expect(result.code).toContain('flow.containerSize.width')
+      if (target === 'swift') expect(validateSwiftWithStubs(result.code).ok).toBe(true)
+      else expect(validateKotlin(result.code).ok).toBe(true)
+    })
     it(`[${target}] a ported member emits with NO member warning (the control)`, () => {
       const w = warningsOf(base('', '<Button onPress={() => flow.zoomIn()}>Zoom</Button>'), target)
       expect(w).not.toContain('is NOT ported')

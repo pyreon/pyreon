@@ -5951,7 +5951,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         e.callee.object.kind === 'identifier' &&
         _flowStateNamesSwift.has(e.callee.object.name) &&
         e.args.length === 0 &&
-        ['nodes', 'edges', 'viewport', 'zoom'].includes(e.callee.property)
+        LOWERED_FLOW_PROPERTY_READS.has(e.callee.property)
       ) {
         return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
       }
