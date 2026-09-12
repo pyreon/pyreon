@@ -151,7 +151,7 @@ describe('<Flow> native host lowering', () => {
   it('emits the SwiftUI host instead of an unresolved web component', () => {
     const result = transform(source, { target: 'swift' })
     expect(result.code).toContain('PyreonFlowView(state: flow) { pyreonNode in')
-    expect(result.code).toContain('Text(pyreonNode.id)')
+    expect(result.code).toContain('Text(String(describing: pyreonNode.data.label))')
     expect(result.warnings.some((warning) => warning.includes('Flow (from @pyreon/flow)'))).toBe(false)
     if (isSwiftcAvailable()) expect(validateSwiftWithStubs(result.code).ok).toBe(true)
   })
@@ -204,9 +204,19 @@ describe('<Flow> native host lowering', () => {
   it('emits the Compose host instead of an unresolved web component', () => {
     const result = transform(source, { target: 'kotlin' })
     expect(result.code).toContain('PyreonFlowView(state = flow) { pyreonNode ->')
-    expect(result.code).toContain('Text(text = pyreonNode.id)')
+    expect(result.code).toContain('Text(text = pyreonNode.data.label.toString())')
     expect(result.warnings.some((warning) => warning.includes('Flow (from @pyreon/flow)'))).toBe(false)
     if (isKotlincAvailable()) expect(validateKotlin(result.code).ok).toBe(true)
+  })
+
+  it('falls back to the node id when node data has no label', () => {
+    const withoutLabel = source.replace("data: { label: 'Start' }", 'data: { count: 1 }')
+    const swift = transform(withoutLabel, { target: 'swift' })
+    const kotlin = transform(withoutLabel, { target: 'kotlin' })
+    expect(swift.code).toContain('Text(pyreonNode.id)')
+    expect(kotlin.code).toContain('Text(text = pyreonNode.id)')
+    if (isSwiftcAvailable()) expect(validateSwiftWithStubs(swift.code).ok).toBe(true)
+    if (isKotlincAvailable()) expect(validateKotlin(kotlin.code).ok).toBe(true)
   })
 })
 

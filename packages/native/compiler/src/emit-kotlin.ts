@@ -460,6 +460,8 @@ let _sortableNames: Set<string> = new Set()
 /** `createFlow(...)` bindings — property reads (nodes/edges/viewport/zoom)
  *  drop parens; methods (addNode/selectNode/selectedNodes/…) flow through. */
 let _flowStateNamesKt: Set<string> = new Set()
+/** `createFlow(...)` bindings whose inferred node-data row exposes `label`. */
+let _flowStateLabelNamesKt: Set<string> = new Set()
 /** Per-component: i18n instance names — `i18n.t(key, {…})` lowers the
  *  object-literal values arg to a map at this call shape. Mirror of
  *  emit-swift's `_i18nNames`. */
@@ -1886,6 +1888,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _tableNames = new Set()
   _sortableNames = new Set()
   _flowStateNamesKt = new Set()
+  _flowStateLabelNamesKt = new Set()
   _i18nNamesKotlin = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
@@ -1926,7 +1929,12 @@ function emitKotlinComponent(c: ComponentIR): string {
     if (d.kind === 'synced-signal') _syncedSignalNames.add(d.name)
     if (d.kind === 'table-state') _tableNames.add(d.name)
     if (d.kind === 'sortable') _sortableNames.add(d.name)
-    if (d.kind === 'flow-state') _flowStateNamesKt.add(d.name)
+    if (d.kind === 'flow-state') {
+      _flowStateNamesKt.add(d.name)
+      if (d.nodes.some((node) => node.data.kind === 'object' && node.data.fields.some((field) => field.name === 'label'))) {
+        _flowStateLabelNamesKt.add(d.name)
+      }
+    }
     if (d.kind === 'i18n') _i18nNamesKotlin.add(d.name)
     // C4: `const router = createRouter(...)` is a remembered router
     // instance — name reads bare (no parens) like a signal. Add to
@@ -2334,6 +2342,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _tableNames = new Set()
   _sortableNames = new Set()
   _flowStateNamesKt = new Set()
+  _flowStateLabelNamesKt = new Set()
   _i18nNamesKotlin = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
@@ -6696,7 +6705,10 @@ function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string
   const bgArg = background?.kind === 'jsx-element' ? `, background = ${emitKotlinFlowBackground(background)}` : ''
   const controlsArg = controls?.kind === 'jsx-element' ? `, controls = ${emitKotlinFlowControls(controls)}` : ''
   const miniMapArg = miniMap?.kind === 'jsx-element' ? `, miniMap = ${emitKotlinFlowMiniMap(miniMap)}` : ''
-  return `PyreonFlowView(state = ${emitKotlinExpr(attr.value, 0)}${bgArg}${controlsArg}${miniMapArg}) { pyreonNode ->\n  Text(text = pyreonNode.id)\n}`
+  const nodeText = attr.value.kind === 'identifier' && _flowStateLabelNamesKt.has(attr.value.name)
+    ? 'Text(text = pyreonNode.data.label.toString())'
+    : 'Text(text = pyreonNode.id)'
+  return `PyreonFlowView(state = ${emitKotlinExpr(attr.value, 0)}${bgArg}${controlsArg}${miniMapArg}) { pyreonNode ->\n  ${nodeText}\n}`
 }
 
 function emitKotlinFlowMiniMap(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {

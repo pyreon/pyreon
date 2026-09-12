@@ -409,6 +409,8 @@ let _sortableNames: Set<string> = new Set()
  *  edges/viewport/zoom) drop parens; its METHODS (addNode/selectNode/
  *  selectedNodes/…) flow through unchanged — see the call-site rewrite below. */
 let _flowStateNamesSwift: Set<string> = new Set()
+/** `createFlow(...)` bindings whose inferred node-data row exposes `label`. */
+let _flowStateLabelNamesSwift: Set<string> = new Set()
 /** Per-component: `useOnline()` decl names. A web `useOnline()` returns an
  *  ACCESSOR (`() => boolean`), so shared code reads it as `net()`; on native
  *  the accessor call lowers to the `net.isOnline` read on the PyreonNetworkStatus
@@ -2311,6 +2313,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   _tableNames = new Set()
   _sortableNames = new Set()
   _flowStateNamesSwift = new Set()
+  _flowStateLabelNamesSwift = new Set()
   _netStatusNames = new Set()
   _appStateNames = new Set()
   _crashNames = new Set()
@@ -2362,7 +2365,12 @@ function emitSwiftComponent(c: ComponentIR): string {
     if (d.kind === 'synced-signal') _syncedSignalNames.add(d.name)
     if (d.kind === 'table-state') _tableNames.add(d.name)
     if (d.kind === 'sortable') _sortableNames.add(d.name)
-    if (d.kind === 'flow-state') _flowStateNamesSwift.add(d.name)
+    if (d.kind === 'flow-state') {
+      _flowStateNamesSwift.add(d.name)
+      if (d.nodes.some((node) => node.data.kind === 'object' && node.data.fields.some((field) => field.name === 'label'))) {
+        _flowStateLabelNamesSwift.add(d.name)
+      }
+    }
     if (d.kind === 'network-status') _netStatusNames.add(d.name)
     if (d.kind === 'app-state') _appStateNames.add(d.name)
     if (d.kind === 'crash-reporter') _crashNames.add(d.name)
@@ -8112,7 +8120,10 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
   const bgArg = background?.kind === 'jsx-element' ? `, background: ${emitSwiftFlowBackground(background)}` : ''
   const controlsArg = controls?.kind === 'jsx-element' ? `, controls: ${emitSwiftFlowControls(controls)}` : ''
   const miniMapArg = miniMap?.kind === 'jsx-element' ? `, miniMap: ${emitSwiftFlowMiniMap(miniMap)}` : ''
-  return `PyreonFlowView(state: ${emitSwiftExpr(attr.value, 0)}${bgArg}${controlsArg}${miniMapArg}) { pyreonNode in\n  Text(pyreonNode.id)\n}`
+  const nodeText = attr.value.kind === 'identifier' && _flowStateLabelNamesSwift.has(attr.value.name)
+    ? 'Text(String(describing: pyreonNode.data.label))'
+    : 'Text(pyreonNode.id)'
+  return `PyreonFlowView(state: ${emitSwiftExpr(attr.value, 0)}${bgArg}${controlsArg}${miniMapArg}) { pyreonNode in\n  ${nodeText}\n}`
 }
 
 function emitSwiftFlowMiniMap(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
