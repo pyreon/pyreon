@@ -3477,6 +3477,18 @@ function kotlinFlowDurationOption(arg: ExprIR | undefined): string | null | unde
   return duration === undefined ? undefined : ktChartDouble(emitKotlinExpr(duration, 0))
 }
 
+function kotlinFlowLayoutOptions(arg: ExprIR | undefined, indent: number): string | null | undefined {
+  if (arg === undefined) return undefined
+  if (arg.kind !== 'object' || (arg.spreads?.length ?? 0) > 0) return null
+  const supported = new Set(['direction', 'nodeSpacing', 'layerSpacing', 'animate', 'animationDuration'])
+  if (arg.fields.some((field) => !supported.has(field.name))) return null
+  const fields = arg.fields.map(({ name, value }) => {
+    const emitted = emitKotlinExpr(value, indent)
+    return `${name} = ${name === 'direction' || name === 'animate' ? emitted : ktChartDouble(emitted)}`
+  })
+  return `PyreonFlowLayoutOptions(${fields.join(', ')})`
+}
+
 function kotlinFlowExtentLiteral(arg: ExprIR): string | null {
   if (arg.kind !== 'array' || arg.elements.length !== 2) return null
   const [minPoint, maxPoint] = arg.elements
@@ -4264,6 +4276,19 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             if (pt !== undefined && pt.kind === 'typeRef' && arg.kind === 'object') _argExpectedTypesKotlin.set(arg, pt)
           })
         }
+      }
+      if (e.callee.kind === 'identifier' && e.callee.name === 'computeLayout' && e.args.length >= 2 && e.args.length <= 4) {
+        const options = kotlinFlowLayoutOptions(e.args[3], indent)
+        if (options !== null) {
+          const args = [
+            emitKotlinExpr(e.args[0]!, indent),
+            emitKotlinExpr(e.args[1]!, indent),
+            ...(e.args[2] ? [`algorithm = ${emitKotlinExpr(e.args[2]!, indent)}`] : []),
+            ...(options ? [`options = ${options}`] : []),
+          ]
+          return `pyreonComputeFlowLayout(${args.join(', ')})`
+        }
+        _emitWarnings.push('computeLayout options must be an object literal using direction/nodeSpacing/layerSpacing/animate/animationDuration to lower natively.')
       }
       // Field-array accessor unwrap: zero-arg `items()`/`length()` on a
       // PyreonFieldArray decl (and `value()` on a For-item param over its

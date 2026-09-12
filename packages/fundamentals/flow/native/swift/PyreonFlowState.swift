@@ -193,6 +193,34 @@ public struct PyreonFlowLayoutOptions: Equatable {
     }
 }
 
+/// Native twin of the public async `computeLayout` helper. The engine itself
+/// is synchronous on every target; `async` preserves shared-source call sites.
+public func pyreonComputeFlowLayout<T>(
+    _ nodes: [PyreonFlowNode<T>],
+    edges: [PyreonFlowEdge],
+    algorithm: String = "layered",
+    options: PyreonFlowLayoutOptions = PyreonFlowLayoutOptions()
+) async -> [PyreonFlowLayoutPosition] {
+    var positions: [PyreonFlowLayoutPosition]
+    switch algorithm {
+    case "tree": positions = pyreonFlowTreeLayout(nodes, edges: edges, direction: options.direction, nodeSpacing: options.nodeSpacing, layerSpacing: options.layerSpacing)
+    case "force": positions = pyreonFlowForceLayout(nodes, edges: edges, nodeSpacing: options.nodeSpacing)
+    case "stress": positions = pyreonFlowStressLayout(nodes, edges: edges, nodeSpacing: options.nodeSpacing)
+    case "radial": positions = pyreonFlowRadialLayout(nodes, edges: edges, nodeSpacing: options.nodeSpacing)
+    case "box": positions = pyreonFlowPackingLayout(nodes, spacing: options.nodeSpacing)
+    case "rectpacking": positions = pyreonFlowPackingLayout(nodes, spacing: options.nodeSpacing, sortByHeight: true)
+    default: positions = pyreonFlowLayeredLayout(nodes, edges: edges, direction: options.direction, nodeSpacing: options.nodeSpacing, layerSpacing: options.layerSpacing)
+    }
+    let minimumX = positions.map(\.position.x).min() ?? 0
+    let minimumY = positions.map(\.position.y).min() ?? 0
+    guard minimumX < 0 || minimumY < 0 else { return positions }
+    return positions.map { item in
+        PyreonFlowLayoutPosition(id: item.id, position: PyreonXYPosition(
+            x: item.position.x - min(0, minimumX),
+            y: item.position.y - min(0, minimumY)))
+    }
+}
+
 public func pyreonFlowPackingLayout<T>(_ nodes: [PyreonFlowNode<T>], spacing: Double = 20, sortByHeight: Bool = false) -> [PyreonFlowLayoutPosition] {
     let indexed = Array(nodes.enumerated())
     let items = sortByHeight ? indexed.sorted {

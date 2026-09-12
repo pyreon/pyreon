@@ -1642,6 +1642,8 @@ data class PyreonFlowPaneEvent(val position: PyreonXYPosition)
 data class PyreonFlowSnapshot<T>(val nodes: List<PyreonFlowNode<T>>, val edges: List<PyreonFlowEdge>, val viewport: PyreonFlowViewport? = null)
 data class PyreonFlowSnapLines(val x: Double?, val y: Double?, val snappedPosition: PyreonXYPosition)
 data class PyreonFlowLayoutOptions(val direction: String = "DOWN", val nodeSpacing: Double = 20.0, val layerSpacing: Double = 40.0, val animate: Boolean = true, val animationDuration: Double = 300.0)
+data class PyreonFlowLayoutPosition(val id: String, val position: PyreonXYPosition)
+suspend fun <T> pyreonComputeFlowLayout(nodes: List<PyreonFlowNode<T>>, edges: List<PyreonFlowEdge>, algorithm: String = "layered", options: PyreonFlowLayoutOptions = PyreonFlowLayoutOptions()): List<PyreonFlowLayoutPosition> = emptyList()
 data class PyreonFlowContainerSize(val width: Double = 0.0, val height: Double = 0.0)
 class PyreonFlowState<T>(
   nodes: List<PyreonFlowNode<T>> = emptyList(),

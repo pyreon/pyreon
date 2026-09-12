@@ -141,6 +141,33 @@ data class PyreonFlowLayoutOptions(
     val animationDuration: Double = 300.0,
 )
 
+/** Native twin of the public suspendable `computeLayout` helper. */
+suspend fun <T> pyreonComputeFlowLayout(
+    nodes: List<PyreonFlowNode<T>>,
+    edges: List<PyreonFlowEdge>,
+    algorithm: String = "layered",
+    options: PyreonFlowLayoutOptions = PyreonFlowLayoutOptions(),
+): List<PyreonFlowLayoutPosition> {
+    var positions = when (algorithm) {
+        "tree" -> pyreonFlowTreeLayout(nodes, edges, options.direction, options.nodeSpacing, options.layerSpacing)
+        "force" -> pyreonFlowForceLayout(nodes, edges, options.nodeSpacing)
+        "stress" -> pyreonFlowStressLayout(nodes, edges, options.nodeSpacing)
+        "radial" -> pyreonFlowRadialLayout(nodes, edges, options.nodeSpacing)
+        "box" -> pyreonFlowPackingLayout(nodes, options.nodeSpacing)
+        "rectpacking" -> pyreonFlowPackingLayout(nodes, options.nodeSpacing, true)
+        else -> pyreonFlowLayeredLayout(nodes, edges, options.direction, options.nodeSpacing, options.layerSpacing)
+    }
+    val minimumX = positions.minOfOrNull { it.position.x } ?: 0.0
+    val minimumY = positions.minOfOrNull { it.position.y } ?: 0.0
+    if (minimumX < 0.0 || minimumY < 0.0) positions = positions.map { item ->
+        item.copy(position = PyreonXYPosition(
+            item.position.x - kotlin.math.min(0.0, minimumX),
+            item.position.y - kotlin.math.min(0.0, minimumY),
+        ))
+    }
+    return positions
+}
+
 fun <T> pyreonFlowPackingLayout(nodes: List<PyreonFlowNode<T>>, spacing: Double = 20.0, sortByHeight: Boolean = false): List<PyreonFlowLayoutPosition> {
     val items = if (sortByHeight) nodes.withIndex().sortedWith(
         compareByDescending<IndexedValue<PyreonFlowNode<T>>> { it.value.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT }

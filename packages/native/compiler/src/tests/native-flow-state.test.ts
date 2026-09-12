@@ -252,6 +252,42 @@ describe('useFlow native lifecycle lowering', () => {
   })
 })
 
+describe('computeLayout native lowering', () => {
+  const source = `
+    import { createFlow, computeLayout } from '@pyreon/flow'
+    import { Button } from '@pyreon/primitives'
+    export function App() {
+      const flow = createFlow({
+        nodes: [{ id: 'a', position: { x: 0, y: 0 }, data: { label: 'Start' } }],
+        edges: [],
+      })
+      return <Button onPress={async () => {
+        const positions = await computeLayout(flow.nodes(), flow.edges(), 'tree', {
+          direction: 'RIGHT', nodeSpacing: 50, layerSpacing: 80, animate: false,
+        })
+        void positions
+      }}>Layout</Button>
+    }
+  `
+
+  it('routes the public helper to the async Swift native engine', () => {
+    const result = transform(source, { target: 'swift' })
+    expect(result.code).toContain('await pyreonComputeFlowLayout(flow.nodes, edges: flow.edges, algorithm: "tree", options: PyreonFlowLayoutOptions(direction: "RIGHT", nodeSpacing: 50, layerSpacing: 80, animate: false))')
+    expect(result.warnings.join(' ')).not.toContain('computeLayout (from @pyreon/flow)')
+    if (isSwiftcAvailable()) expect(validateSwiftWithStubs(result.code).ok).toBe(true)
+  })
+
+  it('routes the public helper to the suspendable Kotlin native engine', () => {
+    const result = transform(source, { target: 'kotlin' })
+    expect(result.code).toContain('pyreonComputeFlowLayout(flow.nodes, flow.edges, algorithm = "tree", options = PyreonFlowLayoutOptions(direction = "RIGHT", nodeSpacing = 50.0, layerSpacing = 80.0, animate = false))')
+    expect(result.warnings.join(' ')).not.toContain('computeLayout (from @pyreon/flow)')
+    if (isKotlincAvailable()) {
+      const validation = validateKotlin(result.code)
+      expect(validation.ok, validation.error ?? '').toBe(true)
+    }
+  })
+})
+
 describe('createFlow connection validation lowering', () => {
   const source = `
     import { createFlow } from '@pyreon/flow'

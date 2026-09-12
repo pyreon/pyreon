@@ -4310,6 +4310,15 @@ function swiftFlowDurationOption(arg: ExprIR | undefined): string | null | undef
   return duration === undefined ? undefined : emitSwiftExpr(duration, 0)
 }
 
+function swiftFlowLayoutOptions(arg: ExprIR | undefined, indent: number): string | null | undefined {
+  if (arg === undefined) return undefined
+  if (arg.kind !== 'object' || (arg.spreads?.length ?? 0) > 0) return null
+  const supported = new Set(['direction', 'nodeSpacing', 'layerSpacing', 'animate', 'animationDuration'])
+  if (arg.fields.some((field) => !supported.has(field.name))) return null
+  const fields = arg.fields.map(({ name, value }) => `${name}: ${emitSwiftExpr(value, indent)}`)
+  return `PyreonFlowLayoutOptions(${fields.join(', ')})`
+}
+
 function swiftFlowExtentLiteral(arg: ExprIR): string | null {
   if (arg.kind !== 'array' || arg.elements.length !== 2) return null
   const [minPoint, maxPoint] = arg.elements
@@ -5255,6 +5264,19 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (pt !== undefined && pt.kind === 'typeRef' && arg.kind === 'object') _argExpectedTypes.set(arg, pt)
           })
         }
+      }
+      if (e.callee.kind === 'identifier' && e.callee.name === 'computeLayout' && e.args.length >= 2 && e.args.length <= 4) {
+        const options = swiftFlowLayoutOptions(e.args[3], indent)
+        if (options !== null) {
+          const args = [
+            emitSwiftExpr(e.args[0]!, indent),
+            `edges: ${emitSwiftExpr(e.args[1]!, indent)}`,
+            ...(e.args[2] ? [`algorithm: ${emitSwiftExpr(e.args[2]!, indent)}`] : []),
+            ...(options ? [`options: ${options}`] : []),
+          ]
+          return `pyreonComputeFlowLayout(${args.join(', ')})`
+        }
+        _emitWarnings.push('computeLayout options must be an object literal using direction/nodeSpacing/layerSpacing/animate/animationDuration to lower natively.')
       }
       // `Object.keys(<object-typed expr>)` → static `[String]` of the
       // struct field names. A synthesized struct's keys are statically

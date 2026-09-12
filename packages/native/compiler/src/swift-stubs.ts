@@ -1130,6 +1130,8 @@ public struct PyreonFlowPaneEvent { public let position: PyreonXYPosition }
 public struct PyreonFlowSnapshot<T> { public let nodes: [PyreonFlowNode<T>]; public let edges: [PyreonFlowEdge]; public let viewport: PyreonFlowViewport? }
 public struct PyreonFlowSnapLines { public let x: Double?; public let y: Double?; public let snappedPosition: PyreonXYPosition }
 public struct PyreonFlowLayoutOptions { public init(direction: String = "DOWN", nodeSpacing: Double = 20, layerSpacing: Double = 40, animate: Bool = true, animationDuration: Double = 300) {} }
+public struct PyreonFlowLayoutPosition { public let id: String; public let position: PyreonXYPosition }
+public func pyreonComputeFlowLayout<T>(_ nodes: [PyreonFlowNode<T>], edges: [PyreonFlowEdge], algorithm: String = "layered", options: PyreonFlowLayoutOptions = PyreonFlowLayoutOptions()) async -> [PyreonFlowLayoutPosition] { [] }
 public final class PyreonFlowState<T> {
   public init(
     nodes: [PyreonFlowNode<T>] = [],
