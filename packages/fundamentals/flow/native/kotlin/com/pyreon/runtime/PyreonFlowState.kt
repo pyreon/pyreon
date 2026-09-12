@@ -33,6 +33,7 @@ import java.util.TimerTask
 
 /** A 2D point in flow (unscaled diagram) coordinates. */
 data class PyreonXYPosition(val x: Double, val y: Double)
+data class PyreonFlowDimensions(val width: Double, val height: Double)
 
 /** Pan/zoom state — mirrors the web `Viewport`. */
 data class PyreonFlowViewport(val x: Double = 0.0, val y: Double = 0.0, val zoom: Double = 1.0)
@@ -924,6 +925,10 @@ class PyreonFlowState<T>(
     // ── node operations ─────────────────────────────────────────────────────
     /** O(1). Reading it in a composable subscribes to THIS node only. */
     fun getNode(id: String): PyreonFlowNode<T>? = nodeMap[id]
+    fun getNodeDimensions(id: String): PyreonFlowDimensions {
+        val node = nodeMap[id] ?: return PyreonFlowDimensions(PYREON_FLOW_DEFAULT_NODE_WIDTH, PYREON_FLOW_DEFAULT_NODE_HEIGHT)
+        return PyreonFlowDimensions(node.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH, node.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT)
+    }
     fun addNode(node: PyreonFlowNode<T>) {
         if (nodeMap.containsKey(node.id)) return
         checkpoint()

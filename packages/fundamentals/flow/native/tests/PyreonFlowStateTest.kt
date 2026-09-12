@@ -5,6 +5,7 @@
 import com.pyreon.runtime.PyreonFlowEdge
 import com.pyreon.runtime.PyreonFlowConnection
 import com.pyreon.runtime.PyreonFlowDefaultEdgeOptions
+import com.pyreon.runtime.PyreonFlowDimensions
 import com.pyreon.runtime.PyreonFlowNode
 import com.pyreon.runtime.PyreonFlowNodeExtent
 import com.pyreon.runtime.PyreonFlowLayoutOptions
@@ -422,6 +423,7 @@ fun main() {
     check(q.nodes.size == 3 && q.edges.size == 2, "plain collection reads preserve all values")
     check(q.getChildNodes("p").map { it.id } == listOf("c"), "getChildNodes preserves insertion order")
     check(q.getAbsolutePosition("c") == PyreonXYPosition(15.0, 27.0), "absolute position folds parent offsets")
+    check(q.getNodeDimensions("p") == PyreonFlowDimensions(100.0, 80.0) && q.getNodeDimensions("missing") == PyreonFlowDimensions(150.0, 40.0), "node dimensions use explicit sizes and stable defaults")
     val partialSelection = PyreonFlowState(nodes = q.nodes, selectionOnDrag = true)
     check(partialSelection.nodesInSelection(PyreonXYPosition(0.0, 0.0), PyreonXYPosition(20.0, 30.0)) == listOf("p", "c"), "partial selection uses overlap and absolute child coordinates")
     val fullSelection = PyreonFlowState(nodes = q.nodes, selectionOnDrag = true, selectionMode = "full")

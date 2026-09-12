@@ -34,6 +34,11 @@ public struct PyreonXYPosition: Equatable {
         self.y = y
     }
 }
+public struct PyreonFlowDimensions: Equatable {
+    public let width: Double
+    public let height: Double
+    public init(width: Double, height: Double) { self.width = width; self.height = height }
+}
 
 /// Pan/zoom state — mirrors the web `Viewport`.
 public struct PyreonFlowViewport: Equatable {
@@ -1241,6 +1246,10 @@ public final class PyreonFlowState<T> {
     /// O(1). Reading it in a view subscribes to THIS node only.
     public func getNode(_ id: String) -> PyreonFlowNode<T>? {
         boxes[id]?.node
+    }
+    public func getNodeDimensions(_ id: String) -> PyreonFlowDimensions {
+        guard let node = nodeStore[id] else { return PyreonFlowDimensions(width: pyreonFlowDefaultNodeWidth, height: pyreonFlowDefaultNodeHeight) }
+        return PyreonFlowDimensions(width: node.width ?? pyreonFlowDefaultNodeWidth, height: node.height ?? pyreonFlowDefaultNodeHeight)
     }
     public func addNode(_ node: PyreonFlowNode<T>) {
         guard nodeStore[node.id] == nil else { return }

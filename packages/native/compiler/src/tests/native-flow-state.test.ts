@@ -591,6 +591,13 @@ export function C() {
       if (target === 'swift') expect(validateSwiftWithStubs(result.code).ok).toBe(true)
       else expect(validateKotlin(result.code).ok).toBe(true)
     })
+    it(`[${target}] getNodeDimensions lowers with a native nominal result`, () => {
+      const result = transform(base('', '<Text>{flow.getNodeDimensions("1").width}</Text>'), { target })
+      expect((result.warnings ?? []).join(' ')).not.toContain('`getNodeDimensions` is NOT ported')
+      expect(result.code).toContain('flow.getNodeDimensions("1").width')
+      if (target === 'swift') expect(validateSwiftWithStubs(result.code).ok).toBe(true)
+      else expect(validateKotlin(result.code).ok).toBe(true)
+    })
     it(`[${target}] a ported member emits with NO member warning (the control)`, () => {
       const w = warningsOf(base('', '<Button onPress={() => flow.zoomIn()}>Zoom</Button>'), target)
       expect(w).not.toContain('is NOT ported')

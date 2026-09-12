@@ -1568,6 +1568,7 @@ class PyreonSortableState<T>(
 
 // @pyreon/flow — the PyreonFlowState engine. Mirrors PyreonFlowState.kt.
 data class PyreonXYPosition(val x: Double, val y: Double)
+data class PyreonFlowDimensions(val width: Double, val height: Double)
 data class PyreonFlowViewport(val x: Double = 0.0, val y: Double = 0.0, val zoom: Double = 1.0)
 data class PyreonFlowNodeExtent(val minX: Double, val minY: Double, val maxX: Double, val maxY: Double)
 enum class PyreonFlowPosition { Top, Right, Bottom, Left }
@@ -1685,6 +1686,7 @@ class PyreonFlowState<T>(
   fun dispose() {}
   fun layout(algorithm: String = "layered", options: PyreonFlowLayoutOptions = PyreonFlowLayoutOptions()) {}
   fun getNode(id: String): PyreonFlowNode<T>? = null
+  fun getNodeDimensions(id: String): PyreonFlowDimensions = PyreonFlowDimensions(150.0, 40.0)
   fun isValidConnection(connection: PyreonFlowConnection): Boolean = true
   fun addNode(node: PyreonFlowNode<T>) {}
   fun addNodes(nodes: List<PyreonFlowNode<T>>) {}

@@ -476,6 +476,7 @@ struct PyreonFlowStateTests {
         check(q.nodes.count == 3 && q.edges.count == 2, "plain collection reads preserve all values")
         check(q.getChildNodes("p").map(\.id) == ["c"], "getChildNodes preserves insertion order")
         check(q.getAbsolutePosition("c") == PyreonXYPosition(x: 15, y: 27), "absolute position folds parent offsets")
+        check(q.getNodeDimensions("p") == PyreonFlowDimensions(width: 100, height: 80) && q.getNodeDimensions("missing") == PyreonFlowDimensions(width: 150, height: 40), "node dimensions use explicit sizes and stable defaults")
         let partialSelection = PyreonFlowState(nodes: q.nodes, selectionOnDrag: true)
         check(partialSelection.nodesInSelection(from: PyreonXYPosition(x: 0, y: 0), to: PyreonXYPosition(x: 20, y: 30)) == ["p", "c"], "partial selection uses overlap and absolute child coordinates")
         let fullSelection = PyreonFlowState(nodes: q.nodes, selectionOnDrag: true, selectionMode: "full")

@@ -990,6 +990,7 @@ public struct PyreonXYPosition: Equatable {
   public var y: Double = 0
   public init(x: Double, y: Double) {}
 }
+public struct PyreonFlowDimensions { public var width: Double; public var height: Double }
 public struct PyreonFlowContainerSize: Equatable {
   public var width: Double = 0
   public var height: Double = 0
@@ -1155,6 +1156,7 @@ public final class PyreonFlowState<T> {
   public var containerSize = PyreonFlowContainerSize()
   public var zoom: Double { viewport.zoom }
   public func getNode(_ id: String) -> PyreonFlowNode<T>? { nil }
+  public func getNodeDimensions(_ id: String) -> PyreonFlowDimensions { PyreonFlowDimensions(width: 150, height: 40) }
   public func batch(_ operation: () -> Void) { operation() }
   public func dispose() {}
   public func layout(_ algorithm: String = "layered", options: PyreonFlowLayoutOptions = PyreonFlowLayoutOptions()) {}
