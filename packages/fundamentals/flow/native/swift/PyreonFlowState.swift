@@ -1131,6 +1131,9 @@ public final class PyreonFlowState<T> {
         let targetIds = Set(edges.filter { $0.source == nodeId }.map(\.target))
         return order.compactMap { targetIds.contains($0) ? nodeStore[$0]! : nil }
     }
+    public func findNodes(_ predicate: (PyreonFlowNode<T>) -> Bool) -> [PyreonFlowNode<T>] {
+        nodes.filter(predicate)
+    }
     public func getChildNodes(_ parentId: String) -> [PyreonFlowNode<T>] {
         order.compactMap { nodeStore[$0]?.parentId == parentId ? nodeStore[$0] : nil }
     }

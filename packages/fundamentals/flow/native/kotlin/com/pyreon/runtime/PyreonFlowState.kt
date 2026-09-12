@@ -881,6 +881,7 @@ class PyreonFlowState<T>(
         val targetIds = _edges.filter { it.source == nodeId }.map { it.target }.toSet()
         return order.filter { targetIds.contains(it) }.map { nodeMap.getValue(it) }
     }
+    fun findNodes(predicate: (PyreonFlowNode<T>) -> Boolean): List<PyreonFlowNode<T>> = nodes.filter(predicate)
     fun getChildNodes(parentId: String): List<PyreonFlowNode<T>> =
         order.mapNotNull { nodeMap[it] }.filter { it.parentId == parentId }
     fun getAbsolutePosition(nodeId: String): PyreonXYPosition {

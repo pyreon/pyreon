@@ -1206,6 +1206,7 @@ public final class PyreonFlowState<T> {
   public func getConnectedEdges(_ nodeId: String) -> [PyreonFlowEdge] { [] }
   public func getIncomers(_ nodeId: String) -> [PyreonFlowNode<T>] { [] }
   public func getOutgoers(_ nodeId: String) -> [PyreonFlowNode<T>] { [] }
+  public func findNodes(_ predicate: (PyreonFlowNode<T>) -> Bool) -> [PyreonFlowNode<T>] { [] }
   public func getChildNodes(_ parentId: String) -> [PyreonFlowNode<T>] { [] }
   public func getAbsolutePosition(_ nodeId: String) -> PyreonXYPosition { PyreonXYPosition(x: 0, y: 0) }
   public func getProximityConnection(_ nodeId: String, _ threshold: Double = 50) -> PyreonFlowConnection? { nil }

@@ -384,6 +384,7 @@ struct PyreonFlowStateTests {
         check(m.getConnectedEdges("2").count == 2, "getConnectedEdges finds both e1 and e2")
         check(m.getIncomers("2").map { $0.id } == ["1"], "getIncomers walks edges INTO the node")
         check(m.getOutgoers("2").map { $0.id } == ["3"], "getOutgoers walks edges OUT of the node")
+        check(m.findNodes { $0.data.label.contains("t") }.map { $0.id } == ["1"], "findNodes evaluates the native predicate in insertion order")
         check(m.getIncomers("1").isEmpty, "a source-only node has no incomers")
 
         // 10. Edge `type` default — web `normalizeEdge`: `type ?? 'bezier'`.

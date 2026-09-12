@@ -1726,6 +1726,7 @@ class PyreonFlowState<T>(
   fun getConnectedEdges(nodeId: String): List<PyreonFlowEdge> = emptyList()
   fun getIncomers(nodeId: String): List<PyreonFlowNode<T>> = emptyList()
   fun getOutgoers(nodeId: String): List<PyreonFlowNode<T>> = emptyList()
+  fun findNodes(predicate: (PyreonFlowNode<T>) -> Boolean): List<PyreonFlowNode<T>> = emptyList()
   fun getChildNodes(parentId: String): List<PyreonFlowNode<T>> = emptyList()
   fun getAbsolutePosition(nodeId: String): PyreonXYPosition = PyreonXYPosition(0.0, 0.0)
   fun getProximityConnection(nodeId: String, threshold: Double = 50.0): PyreonFlowConnection? = null
