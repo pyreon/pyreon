@@ -1602,6 +1602,7 @@ data class PyreonFlowEdge(
   val type: String? = null,
   val label: String? = null,
   val animated: Boolean = false,
+  val animatedSpecified: Boolean = animated,
   val focusable: Boolean? = null,
   val ariaLabel: String? = null,
   val hidden: Boolean? = null,
@@ -1615,6 +1616,13 @@ data class PyreonFlowEdge(
   val markerEnd: PyreonFlowMarker? = null,
   val markerEndSpecified: Boolean = false,
   val waypoints: List<PyreonXYPosition> = emptyList(),
+)
+data class PyreonFlowDefaultEdgeOptions(
+  val type: String? = null, val label: String? = null, val animated: Boolean? = null,
+  val focusable: Boolean? = null, val ariaLabel: String? = null, val hidden: Boolean? = null,
+  val deletable: Boolean? = null, val reconnectable: Boolean? = null, val interactionWidth: Double? = null,
+  val curvature: Double? = null, val borderRadius: Double? = null, val pathOffset: Double? = null,
+  val markerStart: PyreonFlowMarker? = null, val markerEnd: PyreonFlowMarker? = null, val markerEndSpecified: Boolean = false,
 )
 data class PyreonFlowConnection(val source: String, val target: String, val sourceHandle: String? = null, val targetHandle: String? = null)
 data class PyreonFlowContainerSize(val width: Double = 0.0, val height: Double = 0.0)
@@ -1642,6 +1650,7 @@ class PyreonFlowState<T>(
   zoomable: Boolean = true,
   multiSelect: Boolean = true,
   defaultEdgeType: String = "bezier",
+  defaultEdgeOptions: PyreonFlowDefaultEdgeOptions = PyreonFlowDefaultEdgeOptions(),
   fitViewOnLoad: Boolean = false,
   fitViewPadding: Double = 0.1,
   connectionRules: Map<String, List<String>>? = null,

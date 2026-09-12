@@ -4,6 +4,7 @@
 
 import com.pyreon.runtime.PyreonFlowEdge
 import com.pyreon.runtime.PyreonFlowConnection
+import com.pyreon.runtime.PyreonFlowDefaultEdgeOptions
 import com.pyreon.runtime.PyreonFlowNode
 import com.pyreon.runtime.PyreonFlowNodeExtent
 import com.pyreon.runtime.PyreonFlowState
@@ -57,12 +58,14 @@ fun main() {
     check(ruled.reconnectEdge("native-edge", PyreonFlowConnection("api", "db")), "validated reconnect succeeds")
     check(ruled.getEdge("native-edge")?.sourceHandle == null && ruled.getEdge("native-edge")?.targetHandle == null, "validated reconnect can clear stale handle ids")
     check(!ruled.reconnectEdge("native-edge", PyreonFlowConnection("api", "ui")) && ruled.getEdge("native-edge")?.target == "db", "invalid reconnect leaves the edge unchanged")
-    val disabledDefaults = PyreonFlowState(nodes = listOf(PyreonFlowNode("kept", position = PyreonXYPosition(0.0, 0.0), data = NodeData("Kept")), PyreonFlowNode("other", position = PyreonXYPosition(20.0, 0.0), data = NodeData("Other"))), nodesDraggable = false, nodesConnectable = false, nodesSelectable = false, nodesFocusable = false, edgesFocusable = false, nodesDeletable = false, edgesDeletable = false, edgesReconnectable = false, edgeInteractionWidth = 33.0, connectionRadius = -4.0, pannable = false, zoomable = false, multiSelect = false, defaultEdgeType = "step", fitViewOnLoad = true, fitViewPadding = 0.2)
+    val disabledDefaults = PyreonFlowState(nodes = listOf(PyreonFlowNode("kept", position = PyreonXYPosition(0.0, 0.0), data = NodeData("Kept")), PyreonFlowNode("other", position = PyreonXYPosition(20.0, 0.0), data = NodeData("Other"))), nodesDraggable = false, nodesConnectable = false, nodesSelectable = false, nodesFocusable = false, edgesFocusable = false, nodesDeletable = false, edgesDeletable = false, edgesReconnectable = false, edgeInteractionWidth = 33.0, connectionRadius = -4.0, pannable = false, zoomable = false, multiSelect = false, defaultEdgeType = "step", defaultEdgeOptions = PyreonFlowDefaultEdgeOptions(type = "smoothstep", animated = true, interactionWidth = 30.0, markerEnd = null, markerEndSpecified = true), fitViewOnLoad = true, fitViewPadding = 0.2)
     disabledDefaults.addEdge(PyreonFlowEdge("defaulted", "kept", "kept"))
     disabledDefaults.selectNode("kept"); disabledDefaults.deleteSelected()
     check(disabledDefaults.getNode("kept") != null && disabledDefaults.connectionRadius == 0.0, "global deletion default protects nodes and connection radius clamps nonnegative")
     check(!disabledDefaults.nodesDraggable && !disabledDefaults.nodesConnectable && !disabledDefaults.pannable && disabledDefaults.edgeInteractionWidth == 33.0, "native interaction defaults retain explicit global disables")
-    check(disabledDefaults.getEdge("defaulted")?.type == "step" && disabledDefaults.fitViewOnLoad && disabledDefaults.fitViewPadding == 0.2, "edge type and initial fit defaults are retained")
+    check(disabledDefaults.getEdge("defaulted")?.type == "smoothstep" && disabledDefaults.getEdge("defaulted")?.animated == true && disabledDefaults.getEdge("defaulted")?.interactionWidth == 30.0 && disabledDefaults.resolvedMarkers(disabledDefaults.getEdge("defaulted")!!).second == null && disabledDefaults.fitViewOnLoad && disabledDefaults.fitViewPadding == 0.2, "edge options and initial fit defaults are retained")
+    disabledDefaults.addEdge(PyreonFlowEdge("explicit", "kept", "other", animated = false, animatedSpecified = true))
+    check(disabledDefaults.getEdge("explicit")?.animated == false, "an explicit false edge option overrides a true flow default")
     disabledDefaults.selectNode("kept"); disabledDefaults.selectNode("other", additive = true)
     check(disabledDefaults.selectedNodes() == listOf("other"), "multiSelect false converts additive selection to replacement")
 

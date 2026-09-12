@@ -74,6 +74,7 @@ data class PyreonFlowEdge(
     val type: String? = null,
     val label: String? = null,
     val animated: Boolean = false,
+    val animatedSpecified: Boolean = animated,
     val focusable: Boolean? = null,
     val ariaLabel: String? = null,
     val hidden: Boolean? = null,
@@ -87,6 +88,14 @@ data class PyreonFlowEdge(
     val markerEnd: PyreonFlowMarker? = null,
     val markerEndSpecified: Boolean = false,
     val waypoints: List<PyreonXYPosition> = emptyList(),
+)
+
+data class PyreonFlowDefaultEdgeOptions(
+    val type: String? = null, val label: String? = null, val animated: Boolean? = null,
+    val focusable: Boolean? = null, val ariaLabel: String? = null, val hidden: Boolean? = null,
+    val deletable: Boolean? = null, val reconnectable: Boolean? = null, val interactionWidth: Double? = null,
+    val curvature: Double? = null, val borderRadius: Double? = null, val pathOffset: Double? = null,
+    val markerStart: PyreonFlowMarker? = null, val markerEnd: PyreonFlowMarker? = null, val markerEndSpecified: Boolean = false,
 )
 
 data class PyreonFlowConnection(
@@ -137,6 +146,7 @@ class PyreonFlowState<T>(
     val zoomable: Boolean = true,
     val multiSelect: Boolean = true,
     val defaultEdgeType: String = PYREON_FLOW_DEFAULT_EDGE_TYPE,
+    val defaultEdgeOptions: PyreonFlowDefaultEdgeOptions = PyreonFlowDefaultEdgeOptions(),
     val fitViewOnLoad: Boolean = false,
     fitViewPadding: Double = 0.1,
     private val connectionValidator: ((PyreonFlowConnection) -> Boolean)? = null,
@@ -187,7 +197,23 @@ class PyreonFlowState<T>(
     /** Applies the web `normalizeEdge` default (`type ?: "bezier"`); dedupes by id. */
     private fun insertEdge(edge: PyreonFlowEdge) {
         if (edgeIds.containsKey(edge.id)) return
-        val e = if (edge.type == null) edge.copy(type = defaultEdgeType) else edge
+        val e = edge.copy(
+            type = edge.type ?: defaultEdgeOptions.type ?: defaultEdgeType,
+            label = edge.label ?: defaultEdgeOptions.label,
+            animated = if (edge.animatedSpecified) edge.animated else defaultEdgeOptions.animated ?: edge.animated,
+            focusable = edge.focusable ?: defaultEdgeOptions.focusable,
+            ariaLabel = edge.ariaLabel ?: defaultEdgeOptions.ariaLabel,
+            hidden = edge.hidden ?: defaultEdgeOptions.hidden,
+            deletable = edge.deletable ?: defaultEdgeOptions.deletable,
+            reconnectable = edge.reconnectable ?: defaultEdgeOptions.reconnectable,
+            interactionWidth = edge.interactionWidth ?: defaultEdgeOptions.interactionWidth,
+            curvature = edge.curvature ?: defaultEdgeOptions.curvature,
+            borderRadius = edge.borderRadius ?: defaultEdgeOptions.borderRadius,
+            pathOffset = edge.pathOffset ?: defaultEdgeOptions.pathOffset,
+            markerStart = edge.markerStart ?: defaultEdgeOptions.markerStart,
+            markerEnd = if (edge.markerEndSpecified) edge.markerEnd else defaultEdgeOptions.markerEnd,
+            markerEndSpecified = edge.markerEndSpecified || defaultEdgeOptions.markerEndSpecified,
+        )
         _edges = _edges + e
         edgeIds[e.id] = Unit
     }

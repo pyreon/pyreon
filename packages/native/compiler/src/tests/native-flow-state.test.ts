@@ -63,7 +63,7 @@ describe('createFlow — Swift lowering', () => {
     expect(r.code).toContain(
       `PyreonFlowNode(id: "2", position: PyreonXYPosition(x: 200, y: 100), data: ${structName}(label: "End"))`,
     )
-    expect(r.code).toContain('PyreonFlowEdge(id: "e1", source: "1", target: "2", animated: true)')
+    expect(r.code).toContain('PyreonFlowEdge(id: "e1", source: "1", target: "2", animated: true, animatedSpecified: true)')
   })
 
   it('does NOT wire an .onAppear data source (createFlow owns its data, unlike table)', () => {
@@ -116,7 +116,7 @@ describe('createFlow — Kotlin lowering', () => {
     // Kotlin refuses a bare Int literal where PyreonXYPosition wants Double —
     // `0` must emit as `0.0` (see the ktChartDouble coercion in emit-kotlin.ts).
     expect(r.code).toContain('PyreonFlowNode(id = "1", position = PyreonXYPosition(0.0, 0.0), data = ')
-    expect(r.code).toContain('PyreonFlowEdge(id = "e1", source = "1", target = "2", animated = true)')
+    expect(r.code).toContain('PyreonFlowEdge(id = "e1", source = "1", target = "2", animated = true, animatedSpecified = true)')
   })
 
   it('use-sites: nodes/zoom are property reads (via the TS-compat `.length` extension); addNode resolves a REAL PyreonFlowNode', () => {
@@ -473,6 +473,7 @@ export function C() {
     edgesFocusable: false, nodesDeletable: false, edgesDeletable: false, edgesReconnectable: false,
     edgeInteractionWidth: 32, connectionRadius: 9, pannable: false, zoomable: false, multiSelect: false,
     defaultEdgeType: 'step', fitView: true, fitViewPadding: 0.2,
+    defaultEdgeOptions: { type: 'smoothstep', label: 'Default', animated: true, interactionWidth: 30, pathOptions: { borderRadius: 8, offset: 12 }, markerEnd: null },
   })
   return (<Stack><Text>{flow.nodes().length}</Text></Stack>)
 }
@@ -509,6 +510,9 @@ export function C() {
       expect(result.code).toContain(`defaultEdgeType${assignment} "step"`)
       expect(result.code).toContain(`${target === 'swift' ? 'fitView' : 'fitViewOnLoad'}${assignment} true`)
       expect(result.code).toContain(`fitViewPadding${assignment} 0.2`)
+      expect(result.code).toContain(`defaultEdgeOptions${assignment} PyreonFlowDefaultEdgeOptions(`)
+      expect(result.code).toContain(`${target === 'swift' ? 'markerEnd: nil' : 'markerEnd = null'}`)
+      expect(result.code).toContain(`${target === 'swift' ? 'markerEndSpecified: true' : 'markerEndSpecified = true'}`)
       expect(result.code).toContain(target === 'swift' ? 'sourceHandles: [PyreonFlowHandleConfig(id: "out", type: "source", position: .right)]' : 'sourceHandles = listOf(PyreonFlowHandleConfig(id = "out", type = "source", position = PyreonFlowPosition.Right))')
     })
     it(`[${target}] a declaration-time NON-literal edge label/type is named, not silently dropped`, () => {

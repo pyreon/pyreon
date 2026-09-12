@@ -146,6 +146,7 @@ public struct PyreonFlowEdge: Equatable {
     public var type: String?
     public var label: String?
     public var animated: Bool
+    public var animatedSpecified: Bool
     public var focusable: Bool?
     public var ariaLabel: String?
     public var hidden: Bool?
@@ -169,6 +170,7 @@ public struct PyreonFlowEdge: Equatable {
         type: String? = nil,
         label: String? = nil,
         animated: Bool = false,
+        animatedSpecified: Bool = false,
         focusable: Bool? = nil,
         ariaLabel: String? = nil,
         hidden: Bool? = nil,
@@ -191,6 +193,7 @@ public struct PyreonFlowEdge: Equatable {
         self.type = type
         self.label = label
         self.animated = animated
+        self.animatedSpecified = animatedSpecified || animated
         self.focusable = focusable
         self.ariaLabel = ariaLabel
         self.hidden = hidden
@@ -204,6 +207,17 @@ public struct PyreonFlowEdge: Equatable {
         self.markerEnd = markerEnd
         self.markerEndSpecified = markerEndSpecified
         self.waypoints = waypoints
+    }
+}
+
+public struct PyreonFlowDefaultEdgeOptions: Equatable {
+    public var type: String?; public var label: String?; public var animated: Bool?
+    public var focusable: Bool?; public var ariaLabel: String?; public var hidden: Bool?
+    public var deletable: Bool?; public var reconnectable: Bool?; public var interactionWidth: Double?
+    public var curvature: Double?; public var borderRadius: Double?; public var pathOffset: Double?
+    public var markerStart: PyreonFlowMarker?; public var markerEnd: PyreonFlowMarker?; public var markerEndSpecified: Bool
+    public init(type: String? = nil, label: String? = nil, animated: Bool? = nil, focusable: Bool? = nil, ariaLabel: String? = nil, hidden: Bool? = nil, deletable: Bool? = nil, reconnectable: Bool? = nil, interactionWidth: Double? = nil, curvature: Double? = nil, borderRadius: Double? = nil, pathOffset: Double? = nil, markerStart: PyreonFlowMarker? = nil, markerEnd: PyreonFlowMarker? = nil, markerEndSpecified: Bool = false) {
+        self.type = type; self.label = label; self.animated = animated; self.focusable = focusable; self.ariaLabel = ariaLabel; self.hidden = hidden; self.deletable = deletable; self.reconnectable = reconnectable; self.interactionWidth = interactionWidth; self.curvature = curvature; self.borderRadius = borderRadius; self.pathOffset = pathOffset; self.markerStart = markerStart; self.markerEnd = markerEnd; self.markerEndSpecified = markerEndSpecified
     }
 }
 
@@ -322,7 +336,7 @@ public final class PyreonFlowState<T> {
     public let nodesDraggable: Bool; public let nodesConnectable: Bool; public let nodesSelectable: Bool; public let nodesFocusable: Bool
     public let edgesFocusable: Bool; public let nodesDeletable: Bool; public let edgesDeletable: Bool; public let edgesReconnectable: Bool
     public let edgeInteractionWidth: Double; public let connectionRadius: Double; public let pannable: Bool; public let zoomable: Bool; public let multiSelect: Bool
-    public let defaultEdgeType: String; public let fitViewOnLoad: Bool; public let fitViewPadding: Double
+    public let defaultEdgeType: String; public let defaultEdgeOptions: PyreonFlowDefaultEdgeOptions; public let fitViewOnLoad: Bool; public let fitViewPadding: Double
     @ObservationIgnored private let connectionValidator: ((PyreonFlowConnection) -> Bool)?
 
     public init(
@@ -339,7 +353,7 @@ public final class PyreonFlowState<T> {
         nodesDraggable: Bool = true, nodesConnectable: Bool = true, nodesSelectable: Bool = true, nodesFocusable: Bool = true,
         edgesFocusable: Bool = true, nodesDeletable: Bool = true, edgesDeletable: Bool = true, edgesReconnectable: Bool = true,
         edgeInteractionWidth: Double = 20, connectionRadius: Double = 0, pannable: Bool = true, zoomable: Bool = true, multiSelect: Bool = true,
-        defaultEdgeType: String = "bezier", fitView: Bool = false, fitViewPadding: Double = 0.1,
+        defaultEdgeType: String = "bezier", defaultEdgeOptions: PyreonFlowDefaultEdgeOptions = PyreonFlowDefaultEdgeOptions(), fitView: Bool = false, fitViewPadding: Double = 0.1,
         isValidConnection: ((PyreonFlowConnection) -> Bool)? = nil
     ) {
         self.viewport = viewport
@@ -353,7 +367,7 @@ public final class PyreonFlowState<T> {
         self.nodesDraggable = nodesDraggable; self.nodesConnectable = nodesConnectable; self.nodesSelectable = nodesSelectable; self.nodesFocusable = nodesFocusable
         self.edgesFocusable = edgesFocusable; self.nodesDeletable = nodesDeletable; self.edgesDeletable = edgesDeletable; self.edgesReconnectable = edgesReconnectable
         self.edgeInteractionWidth = edgeInteractionWidth; self.connectionRadius = max(0, connectionRadius); self.pannable = pannable; self.zoomable = zoomable; self.multiSelect = multiSelect
-        self.defaultEdgeType = defaultEdgeType; self.fitViewOnLoad = fitView; self.fitViewPadding = max(0, fitViewPadding)
+        self.defaultEdgeType = defaultEdgeType; self.defaultEdgeOptions = defaultEdgeOptions; self.fitViewOnLoad = fitView; self.fitViewPadding = max(0, fitViewPadding)
         self.connectionValidator = isValidConnection
         for node in nodes { insertNode(node) }
         for edge in edges { insertEdge(edge) }
@@ -375,7 +389,20 @@ public final class PyreonFlowState<T> {
     private func insertEdge(_ edge: PyreonFlowEdge) {
         guard !edgeIds.contains(edge.id) else { return }
         var e = edge
-        if e.type == nil { e.type = defaultEdgeType }
+        if e.type == nil { e.type = defaultEdgeOptions.type ?? defaultEdgeType }
+        if e.label == nil { e.label = defaultEdgeOptions.label }
+        if !e.animatedSpecified, let animated = defaultEdgeOptions.animated { e.animated = animated }
+        if e.focusable == nil { e.focusable = defaultEdgeOptions.focusable }
+        if e.ariaLabel == nil { e.ariaLabel = defaultEdgeOptions.ariaLabel }
+        if e.hidden == nil { e.hidden = defaultEdgeOptions.hidden }
+        if e.deletable == nil { e.deletable = defaultEdgeOptions.deletable }
+        if e.reconnectable == nil { e.reconnectable = defaultEdgeOptions.reconnectable }
+        if e.interactionWidth == nil { e.interactionWidth = defaultEdgeOptions.interactionWidth }
+        if e.curvature == nil { e.curvature = defaultEdgeOptions.curvature }
+        if e.borderRadius == nil { e.borderRadius = defaultEdgeOptions.borderRadius }
+        if e.pathOffset == nil { e.pathOffset = defaultEdgeOptions.pathOffset }
+        if e.markerStart == nil { e.markerStart = defaultEdgeOptions.markerStart }
+        if !e.markerEndSpecified, defaultEdgeOptions.markerEndSpecified { e.markerEnd = defaultEdgeOptions.markerEnd; e.markerEndSpecified = true }
         edges.append(e)
         edgeIds.insert(e.id)
     }
