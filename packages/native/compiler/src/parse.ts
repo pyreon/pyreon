@@ -9320,7 +9320,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const connectionRulesNode = objProp(configArg, 'connectionRules')
   const defaultMarkerEndNode = objProp(configArg, 'defaultMarkerEnd')
   const defaultMarkerEnd = literalMarker(defaultMarkerEndNode)
-  const interactionBoolKeys = ['nodesDraggable', 'nodesConnectable', 'nodesSelectable', 'nodesFocusable', 'edgesFocusable', 'disableKeyboardA11y', 'nodesDeletable', 'edgesDeletable', 'edgesReconnectable', 'pannable', 'zoomable', 'multiSelect', 'onlyRenderVisibleElements', 'snapToObjects', 'autoHistory', 'reducedMotion'] as const
+  const interactionBoolKeys = ['nodesDraggable', 'nodesConnectable', 'nodesSelectable', 'nodesFocusable', 'edgesFocusable', 'disableKeyboardA11y', 'nodesDeletable', 'edgesDeletable', 'edgesReconnectable', 'pannable', 'zoomable', 'zoomOnPinch', 'zoomOnDoubleClick', 'multiSelect', 'onlyRenderVisibleElements', 'snapToObjects', 'autoHistory', 'reducedMotion'] as const
   const interactionBools = Object.fromEntries(interactionBoolKeys.flatMap((key) => { const value = literalBool(objProp(configArg, key)); return value === undefined ? [] : [[key, value]] })) as Partial<Record<(typeof interactionBoolKeys)[number], boolean>>
   const edgeInteractionWidth = literalNumber(objProp(configArg, 'edgeInteractionWidth'))
   const connectionRadius = literalNumber(objProp(configArg, 'connectionRadius'))

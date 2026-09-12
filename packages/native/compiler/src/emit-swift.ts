@@ -4033,7 +4033,7 @@ function emitSwiftDecl(
       ...(d.snapGrid !== undefined ? [`snapGrid: ${d.snapGrid}`] : []),
       ...(d.nodeExtent !== undefined ? [`nodeExtent: PyreonFlowNodeExtent(minX: ${d.nodeExtent[0]}, minY: ${d.nodeExtent[1]}, maxX: ${d.nodeExtent[2]}, maxY: ${d.nodeExtent[3]})`] : []),
       ...(d.defaultMarkerEnd !== undefined ? [`defaultMarkerEnd: ${d.defaultMarkerEnd === null ? 'nil' : swiftFlowMarker(d.defaultMarkerEnd)}`] : []),
-      ...(['nodesDraggable', 'nodesConnectable', 'nodesSelectable', 'nodesFocusable', 'edgesFocusable', 'disableKeyboardA11y', 'nodesDeletable', 'edgesDeletable', 'edgesReconnectable', 'pannable', 'zoomable', 'multiSelect', 'onlyRenderVisibleElements', 'snapToObjects', 'autoHistory'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key}: ${d[key]}`]),
+      ...(['nodesDraggable', 'nodesConnectable', 'nodesSelectable', 'nodesFocusable', 'edgesFocusable', 'disableKeyboardA11y', 'nodesDeletable', 'edgesDeletable', 'edgesReconnectable', 'pannable', 'zoomable', 'zoomOnPinch', 'zoomOnDoubleClick', 'multiSelect', 'onlyRenderVisibleElements', 'snapToObjects', 'autoHistory'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key}: ${d[key]}`]),
       ...(d.edgeInteractionWidth !== undefined ? [`edgeInteractionWidth: ${d.edgeInteractionWidth}`] : []),
       ...(d.connectionRadius !== undefined ? [`connectionRadius: ${d.connectionRadius}`] : []),
       ...(d.defaultEdgeType !== undefined ? [`defaultEdgeType: ${JSON.stringify(d.defaultEdgeType)}`] : []),

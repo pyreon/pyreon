@@ -231,15 +231,22 @@ fun <T> PyreonFlowView(
                 detectTransformGestures { _, pan, zoom, _ ->
                     if (interactionsLocked) return@detectTransformGestures
                     if (state.pannable) state.setViewport(x = state.viewport.x + pan.x, y = state.viewport.y + pan.y)
-                    if (state.zoomable) state.zoomTo(state.viewport.zoom * zoom)
+                    if (state.zoomable && state.zoomOnPinch) state.zoomTo(state.viewport.zoom * zoom)
                 }
             }.pointerInput(state, edgeStrokes, state.viewport) {
-                detectTapGestures { screen ->
+                detectTapGestures(onDoubleTap = { screen ->
+                    if (!interactionsLocked && state.zoomable && state.zoomOnDoubleClick) {
+                        val point = PyreonXYPosition((screen.x - state.viewport.x) / state.zoom, (screen.y - state.viewport.y) / state.zoom)
+                        state.zoomTo(state.zoom * 1.2)
+                        val next = state.zoom
+                        state.setViewport(x = screen.x - point.x * next, y = screen.y - point.y * next, zoom = next)
+                    }
+                }, onTap = { screen ->
                     val point = PyreonFlowPathPoint((screen.x - state.viewport.x) / state.viewport.zoom, (screen.y - state.viewport.y) / state.viewport.zoom)
                     val edge = pyreonNearestFlowEdge(edgeStrokes.filter { it.id != "__connection-preview" }, point, state.viewport.zoom)
                     if (edge != null) { state.selectEdge(edge.id); state.emitEdgeClick(edge.id) }
                     else state.emitPaneClick(PyreonXYPosition(point.x, point.y))
-                }
+                })
             },
         )
 

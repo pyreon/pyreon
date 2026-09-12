@@ -1657,6 +1657,8 @@ class PyreonFlowState<T>(
   connectionRadius: Double = 0.0,
   pannable: Boolean = true,
   zoomable: Boolean = true,
+  zoomOnPinch: Boolean = true,
+  zoomOnDoubleClick: Boolean = false,
   multiSelect: Boolean = true,
   onlyRenderVisibleElements: Boolean = false,
   snapToObjects: Boolean = true,

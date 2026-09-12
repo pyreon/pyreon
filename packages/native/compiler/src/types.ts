@@ -972,6 +972,8 @@ export type DeclIR =
       connectionRadius?: number
       pannable?: boolean
       zoomable?: boolean
+      zoomOnPinch?: boolean
+      zoomOnDoubleClick?: boolean
       multiSelect?: boolean
       onlyRenderVisibleElements?: boolean
       snapToObjects?: boolean

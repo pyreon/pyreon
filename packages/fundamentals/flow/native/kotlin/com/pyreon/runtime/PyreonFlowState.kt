@@ -610,6 +610,8 @@ class PyreonFlowState<T>(
     connectionRadius: Double = 0.0,
     val pannable: Boolean = true,
     val zoomable: Boolean = true,
+    val zoomOnPinch: Boolean = true,
+    val zoomOnDoubleClick: Boolean = false,
     val multiSelect: Boolean = true,
     val onlyRenderVisibleElements: Boolean = false,
     val snapToObjects: Boolean = true,

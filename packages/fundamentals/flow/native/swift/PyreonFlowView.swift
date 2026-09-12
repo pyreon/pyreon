@@ -382,6 +382,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                     .contentShape(Rectangle())
                     .gesture(panGesture)
                     .simultaneousGesture(zoomGesture)
+                    .simultaneousGesture(doubleClickZoomGesture)
                     .simultaneousGesture(edgeTapGesture)
 
                 if let background {
@@ -624,11 +625,20 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private var zoomGesture: some Gesture {
         MagnificationGesture()
             .onChanged { scale in
-                guard !interactionsLocked, state.zoomable else { return }
+                guard !interactionsLocked, state.zoomable, state.zoomOnPinch else { return }
                 let start = zoomStart ?? state.viewport.zoom
                 if zoomStart == nil { zoomStart = start }
                 state.zoomTo(start * scale)
             }
             .onEnded { _ in zoomStart = nil }
+    }
+    private var doubleClickZoomGesture: some Gesture {
+        SpatialTapGesture(count: 2, coordinateSpace: .named("PyreonFlowCanvas")).onEnded { value in
+            guard !interactionsLocked, state.zoomable, state.zoomOnDoubleClick else { return }
+            let point = graphPoint(value.location)
+            state.zoomTo(state.zoom * 1.2)
+            let next = state.zoom
+            state.setViewport(x: value.location.x - point.x * next, y: value.location.y - point.y * next, zoom: next)
+        }
     }
 }
