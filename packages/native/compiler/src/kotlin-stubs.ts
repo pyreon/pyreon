@@ -1732,6 +1732,8 @@ class PyreonFlowState<T>(
   fun onNodeDragEnd(callback: (PyreonFlowNode<T>) -> Unit): () -> Unit = {}
   fun onEdgeClick(callback: (PyreonFlowEdge) -> Unit): () -> Unit = {}
   fun onSelectionChange(callback: (PyreonFlowSelection<T>) -> Unit): () -> Unit = {}
+  fun onNodesDelete(callback: (List<PyreonFlowNode<T>>) -> Unit): () -> Unit = {}
+  fun onEdgesDelete(callback: (List<PyreonFlowEdge>) -> Unit): () -> Unit = {}
   fun moveSelectedNodes(dx: Double, dy: Double) {}
   fun focusNode(nodeId: String, focusZoom: Double? = null) {}
 }

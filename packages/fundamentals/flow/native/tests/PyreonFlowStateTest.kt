@@ -113,6 +113,13 @@ fun main() {
     events.selectNode("1"); events.selectEdge("e1")
     check(selectedIds == listOf("e1"), "onSelectionChange receives the final mutually-exclusive selection")
     stopSelection()
+    val deletionEvents = seedFlow()
+    var deletedNodes = emptyList<String>(); var deletedEdges = emptyList<String>()
+    val stopNodeDelete = deletionEvents.onNodesDelete { deletedNodes = it.map { node -> node.id } }
+    val stopEdgeDelete = deletionEvents.onEdgesDelete { deletedEdges = it.map { edge -> edge.id } }
+    deletionEvents.removeNode("2")
+    check(deletedNodes == listOf("2") && deletedEdges == listOf("e1", "e2"), "node deletion reports the node and all incident edges")
+    stopNodeDelete(); stopEdgeDelete()
     f.updateNodeData("1") { it.copy(label = "Updated") }
     check(f.getNode("1")?.data?.label == "Updated", "updateNodeData replaces the native payload observably")
     f.updateNode("1") { it.copy(id = "ignored", hidden = true) }

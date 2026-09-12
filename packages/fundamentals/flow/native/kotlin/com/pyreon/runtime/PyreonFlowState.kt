@@ -172,6 +172,8 @@ class PyreonFlowState<T>(
     private val nodeDragEndListeners = LinkedHashMap<Int, (PyreonFlowNode<T>) -> Unit>()
     private val edgeClickListeners = LinkedHashMap<Int, (PyreonFlowEdge) -> Unit>()
     private val selectionListeners = LinkedHashMap<Int, (PyreonFlowSelection<T>) -> Unit>()
+    private val nodesDeleteListeners = LinkedHashMap<Int, (List<PyreonFlowNode<T>>) -> Unit>()
+    private val edgesDeleteListeners = LinkedHashMap<Int, (List<PyreonFlowEdge>) -> Unit>()
     val connectionRadius: Double = maxOf(0.0, connectionRadius)
     val fitViewPadding: Double = maxOf(0.0, fitViewPadding)
     private var nodeExtent: PyreonFlowNodeExtent? = nodeExtent
@@ -235,6 +237,18 @@ class PyreonFlowState<T>(
     fun onSelectionChange(callback: (PyreonFlowSelection<T>) -> Unit): () -> Unit {
         val id = nextListenerId++; selectionListeners[id] = callback
         return { selectionListeners.remove(id) }
+    }
+    fun onNodesDelete(callback: (List<PyreonFlowNode<T>>) -> Unit): () -> Unit {
+        val id = nextListenerId++; nodesDeleteListeners[id] = callback
+        return { nodesDeleteListeners.remove(id) }
+    }
+    fun onEdgesDelete(callback: (List<PyreonFlowEdge>) -> Unit): () -> Unit {
+        val id = nextListenerId++; edgesDeleteListeners[id] = callback
+        return { edgesDeleteListeners.remove(id) }
+    }
+    private fun emitDeleted(nodes: List<PyreonFlowNode<T>>, edges: List<PyreonFlowEdge>) {
+        if (nodes.isNotEmpty()) nodesDeleteListeners.values.forEach { it(nodes) }
+        if (edges.isNotEmpty()) edgesDeleteListeners.values.forEach { it(edges) }
     }
     fun emitEdgeClick(id: String) { getEdge(id)?.let { edge -> edgeClickListeners.values.forEach { it(edge) } } }
     private fun emitSelectionChange() {
@@ -360,18 +374,24 @@ class PyreonFlowState<T>(
     /** Removes the node AND every edge connected to it (source or target). */
     fun removeNode(id: String) {
         if (!nodeMap.containsKey(id)) return
+        val removedNodes = listOf(nodeMap.getValue(id))
+        val removedEdges = _edges.filter { it.source == id || it.target == id }
         checkpoint()
         val oldSelectedNodes = selectedNodeIdList.toList(); val oldSelectedEdges = selectedEdgeIdList.toList()
         removeNodes(setOf(id))
         emitSelectionChangeIfChanged(oldSelectedNodes, oldSelectedEdges)
+        emitDeleted(removedNodes, removedEdges)
     }
     fun removeNodes(ids: List<String>) {
         val gone = ids.filterTo(HashSet()) { nodeMap.containsKey(it) }
         if (gone.isEmpty()) return
+        val removedNodes = nodes.filter { gone.contains(it.id) }
+        val removedEdges = _edges.filter { gone.contains(it.source) || gone.contains(it.target) }
         checkpoint()
         val oldSelectedNodes = selectedNodeIdList.toList(); val oldSelectedEdges = selectedEdgeIdList.toList()
         removeNodes(gone)
         emitSelectionChangeIfChanged(oldSelectedNodes, oldSelectedEdges)
+        emitDeleted(removedNodes, removedEdges)
     }
     /** O(1); recomposes only the readers of this node. */
     fun updateNodePosition(id: String, position: PyreonXYPosition) {
@@ -484,10 +504,12 @@ class PyreonFlowState<T>(
     }
     fun removeEdge(id: String) {
         if (!edgeIds.containsKey(id)) return
+        val removedEdge = getEdge(id)!!
         checkpoint()
         val oldSelectedNodes = selectedNodeIdList.toList(); val oldSelectedEdges = selectedEdgeIdList.toList()
         removeEdges { it.id == id }
         emitSelectionChangeIfChanged(oldSelectedNodes, oldSelectedEdges)
+        emitDeleted(emptyList(), listOf(removedEdge))
     }
     fun updateEdge(id: String, update: (PyreonFlowEdge) -> PyreonFlowEdge) {
         val index = _edges.indexOfFirst { it.id == id }
@@ -549,10 +571,12 @@ class PyreonFlowState<T>(
     fun removeEdges(ids: List<String>) {
         val gone = ids.filterTo(HashSet()) { edgeIds.containsKey(it) }
         if (gone.isEmpty()) return
+        val removedEdges = _edges.filter { gone.contains(it.id) }
         checkpoint()
         val oldSelectedNodes = selectedNodeIdList.toList(); val oldSelectedEdges = selectedEdgeIdList.toList()
         removeEdges { gone.contains(it.id) }
         emitSelectionChangeIfChanged(oldSelectedNodes, oldSelectedEdges)
+        emitDeleted(emptyList(), removedEdges)
     }
 
     // ── selection ────────────────────────────────────────────────────────────
@@ -632,6 +656,8 @@ class PyreonFlowState<T>(
         val nodeIdsToRemove = selectedNodeIdList.filterTo(mutableSetOf()) { id -> nodeMap[id]?.let { it.deletable ?: nodesDeletable } == true }
         val edgeIdsToRemove = selectedEdgeIdList.filterTo(mutableSetOf()) { id -> _edges.firstOrNull { it.id == id }?.let { it.deletable ?: edgesDeletable } == true }
         if (nodeIdsToRemove.isEmpty() && edgeIdsToRemove.isEmpty()) return
+        val removedNodes = nodes.filter { nodeIdsToRemove.contains(it.id) }
+        val removedEdges = _edges.filter { edgeIdsToRemove.contains(it.id) || nodeIdsToRemove.contains(it.source) || nodeIdsToRemove.contains(it.target) }
         checkpoint()
         if (nodeIdsToRemove.isNotEmpty()) {
             removeNodes(nodeIdsToRemove)
@@ -642,6 +668,7 @@ class PyreonFlowState<T>(
         setNodeSelection(emptyList())
         setEdgeSelection(emptyList())
         emitSelectionChange()
+        emitDeleted(removedNodes, removedEdges)
     }
 
     // ── copy / paste ────────────────────────────────────────────────────────

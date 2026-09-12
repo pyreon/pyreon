@@ -118,6 +118,13 @@ struct PyreonFlowStateTests {
         events.selectNode("1"); events.selectEdge("e1")
         check(selectedIds == ["e1"], "onSelectionChange receives the final mutually-exclusive selection")
         stopSelection()
+        let deletionEvents = seedFlow()
+        var deletedNodes: [String] = [], deletedEdges: [String] = []
+        let stopNodeDelete = deletionEvents.onNodesDelete { deletedNodes = $0.map(\.id) }
+        let stopEdgeDelete = deletionEvents.onEdgesDelete { deletedEdges = $0.map(\.id) }
+        deletionEvents.removeNode("2")
+        check(deletedNodes == ["2"] && deletedEdges == ["e1", "e2"], "node deletion reports the node and all incident edges")
+        stopNodeDelete(); stopEdgeDelete()
         f.updateNode("1") { $0.hidden = true; $0.id = "ignored" }
         check(f.getNode("1")?.hidden == true && f.getNode("ignored") == nil, "updateNode patches fields while preserving indexed identity")
         f.updateNode("1") { $0.hidden = false }
