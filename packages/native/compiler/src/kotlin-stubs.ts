@@ -599,6 +599,8 @@ class PyreonSizedMap<K, V>(maxEntries: Int, private val lru: Boolean = false) {
 
 object Modifier {
   @Suppress("UNUSED_PARAMETER")
+  fun align(alignment: Alignment): Modifier = this
+  @Suppress("UNUSED_PARAMETER")
   fun padding(all: Dp): Modifier = this
   @Suppress("UNUSED_PARAMETER")
   fun padding(horizontal: Dp = 0.dp, vertical: Dp = 0.dp): Modifier = this
@@ -851,6 +853,8 @@ object Alignment {
   val Bottom: Vertical = V
   // 2D alignment instances — Box's contentAlignment.
   val TopStart: Alignment = this
+  val TopEnd: Alignment = this
+  val BottomStart: Alignment = this
   val Center: Alignment = this
   val BottomEnd: Alignment = this
 }

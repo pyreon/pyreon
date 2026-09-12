@@ -384,7 +384,7 @@ public struct EnvironmentValues {
 // ---- Layout containers ----
 public enum HorizontalAlignment { case leading, center, trailing }
 public enum VerticalAlignment { case top, center, bottom }
-public enum Alignment { case center, leading, trailing, top, bottom }
+public enum Alignment { case center, leading, trailing, top, bottom, topLeading, topTrailing, bottomLeading, bottomTrailing }
 // Axis.Set is an OptionSet in real SwiftUI; the stub only needs the horizontal
 // / vertical cases the coolgrid Col fractional-span emit references.
 public struct Axis { public struct Set { public init() {}; public static let horizontal = Set(); public static let vertical = Set() } }
@@ -623,7 +623,8 @@ extension View {
     maxWidth: Double? = nil,
     minHeight: Double? = nil,
     idealHeight: Double? = nil,
-    maxHeight: Double? = nil
+    maxHeight: Double? = nil,
+    alignment: Alignment = .center
   ) -> some View { self }
   // iOS 17 grid-column primitive: the coolgrid Col fractional span.
   public func containerRelativeFrame(_ axes: Axis.Set, count: Int, span: Int, spacing: Double, alignment: Alignment = .center) -> some View { self }

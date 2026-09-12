@@ -2644,8 +2644,8 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
       // port yet either — name them so the warning doesn't imply only the
       // JSX layer is missing.
       advice:
-        '`createFlow({ nodes, edges })`, `useFlow({ nodes, edges })`, `computeLayout(...)`, `<Flow instance={flow}>`, `<Background>`, `<Controls>`, and `<MiniMap>` LOWER to the native PyreonFlowState/PyreonFlowView engine. Optional chrome (Handle/NodeToolbar/NodeResizer/Panel), custom renderer maps, and standalone edge-path helpers still have no shared-source native emit; keep those behind platform branches or use the `@pyreon/flow/webview` bridge',
-      supported: new Set(['createFlow', 'useFlow', 'computeLayout', 'Flow', 'Background', 'Controls', 'MiniMap']),
+        '`createFlow({ nodes, edges })`, `useFlow({ nodes, edges })`, `computeLayout(...)`, `<Flow instance={flow}>`, `<Background>`, `<Controls>`, `<MiniMap>`, and `<Panel>` LOWER to the native PyreonFlowState/PyreonFlowView engine. Handle/NodeToolbar/NodeResizer, custom renderer maps, and standalone edge-path helpers still have no shared-source native emit; keep those behind platform branches or use the `@pyreon/flow/webview` bridge',
+      supported: new Set(['createFlow', 'useFlow', 'computeLayout', 'Flow', 'Background', 'Controls', 'MiniMap', 'Panel']),
     },
   ],
   [

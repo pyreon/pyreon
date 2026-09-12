@@ -201,6 +201,29 @@ describe('<Flow> native host lowering', () => {
     if (isKotlincAvailable()) expect(validateKotlin(kotlin.code).ok).toBe(true)
   })
 
+  it('renders positioned Panel content as a native overlay on both targets', () => {
+    const withPanel = source.replace(
+      "import { createFlow, Flow }",
+      "import { createFlow, Flow, Panel }",
+    ).replace('<Flow instance={flow} />', '<Flow instance={flow}><Panel position="bottom-right"><Text>Zoom</Text></Panel></Flow>')
+    const swift = transform(withPanel, { target: 'swift' })
+    const kotlin = transform(withPanel, { target: 'kotlin' })
+    expect(swift.code).toContain('.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)')
+    expect(kotlin.code).toContain('Modifier.align(Alignment.BottomEnd).padding(10.dp)')
+    expect(swift.code).toContain('Text("Zoom")')
+    expect(kotlin.code).toContain('Text(text = "Zoom")')
+    expect(swift.warnings.join(' ')).not.toContain('native-unlowered children')
+    expect(kotlin.warnings.join(' ')).not.toContain('native-unlowered children')
+    if (isSwiftcAvailable()) {
+      const validation = validateSwiftWithStubs(swift.code)
+      expect(validation.ok, validation.error ?? '').toBe(true)
+    }
+    if (isKotlincAvailable()) {
+      const validation = validateKotlin(kotlin.code)
+      expect(validation.ok, validation.error ?? '').toBe(true)
+    }
+  })
+
   it('emits the Compose host instead of an unresolved web component', () => {
     const result = transform(source, { target: 'kotlin' })
     expect(result.code).toContain('PyreonFlowView(state = flow) { pyreonNode ->')
