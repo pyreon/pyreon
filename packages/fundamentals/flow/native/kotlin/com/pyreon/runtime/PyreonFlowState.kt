@@ -132,6 +132,13 @@ data class PyreonFlowSnapshot<T>(
 )
 data class PyreonFlowSnapLines(val x: Double?, val y: Double?, val snappedPosition: PyreonXYPosition)
 data class PyreonFlowLayoutPosition(val id: String, val position: PyreonXYPosition)
+data class PyreonFlowLayoutOptions(
+    val direction: String = "DOWN",
+    val nodeSpacing: Double = 20.0,
+    val layerSpacing: Double = 40.0,
+    val animate: Boolean = true,
+    val animationDuration: Double = 300.0,
+)
 
 fun <T> pyreonFlowPackingLayout(nodes: List<PyreonFlowNode<T>>, spacing: Double = 20.0, sortByHeight: Boolean = false): List<PyreonFlowLayoutPosition> {
     val items = if (sortByHeight) nodes.withIndex().sortedWith(
@@ -612,12 +619,14 @@ class PyreonFlowState<T>(
     val autoHistory: Boolean = true,
     private val connectionValidator: ((PyreonFlowConnection) -> Boolean)? = null,
     private val searchText: ((T) -> String?)? = null,
+    private val reducedMotion: Boolean = false,
 ) {
     fun batch(operation: () -> Unit) { Snapshot.withMutableSnapshot(operation) }
     private companion object {
         val viewportAnimationTimer = Timer("PyreonFlowViewport", true)
     }
     @Volatile private var viewportAnimationGeneration = 0
+    @Volatile private var layoutAnimationGeneration = 0
     private val undoStack = ArrayList<PyreonFlowHistorySnapshot<T>>()
     private val redoStack = ArrayList<PyreonFlowHistorySnapshot<T>>()
     private var mutationVersion = 0
@@ -675,6 +684,42 @@ class PyreonFlowState<T>(
     }
 
     private fun markMutation() { mutationVersion++ }
+    fun layout(algorithm: String = "layered", options: PyreonFlowLayoutOptions = PyreonFlowLayoutOptions()) {
+        val startNodes = nodes
+        var targets = when (algorithm) {
+            "tree" -> pyreonFlowTreeLayout(startNodes, edges, options.direction, options.nodeSpacing, options.layerSpacing)
+            "force" -> pyreonFlowForceLayout(startNodes, edges, options.nodeSpacing)
+            "stress" -> pyreonFlowStressLayout(startNodes, edges, options.nodeSpacing)
+            "radial" -> pyreonFlowRadialLayout(startNodes, edges, options.nodeSpacing)
+            "box" -> pyreonFlowPackingLayout(startNodes, options.nodeSpacing)
+            "rectpacking" -> pyreonFlowPackingLayout(startNodes, options.nodeSpacing, true)
+            else -> pyreonFlowLayeredLayout(startNodes, edges, options.direction, options.nodeSpacing, options.layerSpacing)
+        }
+        val minimumX = targets.minOfOrNull { it.position.x } ?: 0.0; val minimumY = targets.minOfOrNull { it.position.y } ?: 0.0
+        if (minimumX < 0.0 || minimumY < 0.0) targets = targets.map { it.copy(position = PyreonXYPosition(it.position.x - kotlin.math.min(0.0, minimumX), it.position.y - kotlin.math.min(0.0, minimumY))) }
+        checkpoint(); val generation = ++layoutAnimationGeneration
+        val targetMap = targets.associate { it.id to it.position }
+        if (!options.animate || reducedMotion || options.animationDuration <= 0.0) { applyLayoutPositions(targetMap); return }
+        val starts = startNodes.associate { it.id to it.position }
+        scheduleLayoutFrame(generation, starts, targetMap, System.nanoTime(), options.animationDuration * 1_000_000.0)
+    }
+    private fun applyLayoutPositions(positions: Map<String, PyreonXYPosition>) {
+        val changes = mutableListOf<PyreonFlowNodeChange>()
+        Snapshot.withMutableSnapshot {
+            order.forEach { id -> positions[id]?.let { position -> nodeMap[id]?.let { node -> nodeMap[id] = node.copy(position = position); changes.add(PyreonFlowNodeChange("position", id, position)) } } }
+        }
+        if (changes.isNotEmpty()) { markMutation(); emitNodeChanges(changes) }
+    }
+    private fun scheduleLayoutFrame(generation: Int, starts: Map<String, PyreonXYPosition>, targets: Map<String, PyreonXYPosition>, startNanos: Long, durationNanos: Double) {
+        viewportAnimationTimer.schedule(object : TimerTask() {
+            override fun run() {
+                if (layoutAnimationGeneration != generation) return
+                val t = ((System.nanoTime() - startNanos) / durationNanos).coerceIn(0.0, 1.0); val eased = 1.0 - Math.pow(1.0 - t, 3.0)
+                applyLayoutPositions(targets.mapNotNull { (id, target) -> starts[id]?.let { start -> id to PyreonXYPosition(start.x + (target.x - start.x) * eased, start.y + (target.y - start.y) * eased) } }.toMap())
+                if (t < 1.0) scheduleLayoutFrame(generation, starts, targets, startNanos, durationNanos)
+            }
+        }, 16L)
+    }
     fun onConnect(callback: (PyreonFlowConnection) -> Unit): () -> Unit {
         val id = nextListenerId++; connectListeners[id] = callback
         return { connectListeners.remove(id) }

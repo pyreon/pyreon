@@ -171,6 +171,17 @@ public struct PyreonFlowLayoutPosition: Equatable {
     public let id: String
     public let position: PyreonXYPosition
 }
+public struct PyreonFlowLayoutOptions: Equatable {
+    public var direction: String
+    public var nodeSpacing: Double
+    public var layerSpacing: Double
+    public var animate: Bool
+    public var animationDuration: Double
+    public init(direction: String = "DOWN", nodeSpacing: Double = 20, layerSpacing: Double = 40, animate: Bool = true, animationDuration: Double = 300) {
+        self.direction = direction; self.nodeSpacing = nodeSpacing; self.layerSpacing = layerSpacing
+        self.animate = animate; self.animationDuration = animationDuration
+    }
+}
 
 public func pyreonFlowPackingLayout<T>(_ nodes: [PyreonFlowNode<T>], spacing: Double = 20, sortByHeight: Bool = false) -> [PyreonFlowLayoutPosition] {
     let indexed = Array(nodes.enumerated())
@@ -904,6 +915,8 @@ public final class PyreonFlowState<T> {
     @ObservationIgnored private let connectionValidator: ((PyreonFlowConnection) -> Bool)?
     @ObservationIgnored private let searchText: ((T) -> String?)?
     @ObservationIgnored private var viewportAnimationGeneration = 0
+    @ObservationIgnored private var layoutAnimationGeneration = 0
+    private let reducedMotion: Bool
 
     public init(
         nodes: [PyreonFlowNode<T>] = [],
@@ -921,7 +934,8 @@ public final class PyreonFlowState<T> {
         edgeInteractionWidth: Double = 20, connectionRadius: Double = 0, pannable: Bool = true, zoomable: Bool = true, multiSelect: Bool = true, onlyRenderVisibleElements: Bool = false, snapToObjects: Bool = true,
         defaultEdgeType: String = "bezier", defaultEdgeOptions: PyreonFlowDefaultEdgeOptions = PyreonFlowDefaultEdgeOptions(), fitView: Bool = false, fitViewPadding: Double = 0.1, autoHistory: Bool = true,
         isValidConnection: ((PyreonFlowConnection) -> Bool)? = nil,
-        searchText: ((T) -> String?)? = nil
+        searchText: ((T) -> String?)? = nil,
+        reducedMotion: Bool = false
     ) {
         self.viewport = viewport
         self.minZoom = minZoom
@@ -938,6 +952,7 @@ public final class PyreonFlowState<T> {
         self.autoHistory = autoHistory
         self.connectionValidator = isValidConnection
         self.searchText = searchText
+        self.reducedMotion = reducedMotion
         for node in nodes { insertNode(node) }
         for edge in edges { insertEdge(edge) }
         mutationVersion = 0
@@ -945,6 +960,51 @@ public final class PyreonFlowState<T> {
 
     private func markMutation() { mutationVersion &+= 1 }
     public func batch(_ operation: () -> Void) { operation() }
+    public func layout(_ algorithm: String = "layered", options: PyreonFlowLayoutOptions = PyreonFlowLayoutOptions()) {
+        let startNodes = nodes
+        var targets: [PyreonFlowLayoutPosition]
+        switch algorithm {
+        case "tree": targets = pyreonFlowTreeLayout(startNodes, edges: edges, direction: options.direction, nodeSpacing: options.nodeSpacing, layerSpacing: options.layerSpacing)
+        case "force": targets = pyreonFlowForceLayout(startNodes, edges: edges, nodeSpacing: options.nodeSpacing)
+        case "stress": targets = pyreonFlowStressLayout(startNodes, edges: edges, nodeSpacing: options.nodeSpacing)
+        case "radial": targets = pyreonFlowRadialLayout(startNodes, edges: edges, nodeSpacing: options.nodeSpacing)
+        case "box": targets = pyreonFlowPackingLayout(startNodes, spacing: options.nodeSpacing)
+        case "rectpacking": targets = pyreonFlowPackingLayout(startNodes, spacing: options.nodeSpacing, sortByHeight: true)
+        default: targets = pyreonFlowLayeredLayout(startNodes, edges: edges, direction: options.direction, nodeSpacing: options.nodeSpacing, layerSpacing: options.layerSpacing)
+        }
+        let minimumX = targets.map(\.position.x).min() ?? 0, minimumY = targets.map(\.position.y).min() ?? 0
+        if minimumX < 0 || minimumY < 0 {
+            targets = targets.map { target in PyreonFlowLayoutPosition(id: target.id, position: PyreonXYPosition(x: target.position.x - min(0, minimumX), y: target.position.y - min(0, minimumY))) }
+        }
+        checkpoint(); layoutAnimationGeneration &+= 1
+        let generation = layoutAnimationGeneration
+        let targetMap = Dictionary(uniqueKeysWithValues: targets.map { ($0.id, $0.position) })
+        guard options.animate && !reducedMotion && options.animationDuration > 0 else { applyLayoutPositions(targetMap); return }
+        let starts = Dictionary(uniqueKeysWithValues: startNodes.map { ($0.id, $0.position) })
+        scheduleLayoutFrame(generation: generation, starts: starts, targets: targetMap, startTime: ProcessInfo.processInfo.systemUptime, duration: options.animationDuration / 1000)
+    }
+    private func applyLayoutPositions(_ positions: [String: PyreonXYPosition]) {
+        var changes: [PyreonFlowNodeChange] = []
+        for id in order where positions[id] != nil && nodeStore[id] != nil {
+            let position = positions[id]!
+            nodeStore[id]!.position = position; boxes[id]!.node.position = position
+            changes.append(PyreonFlowNodeChange(type: "position", id: id, position: position))
+        }
+        guard !changes.isEmpty else { return }
+        nodesVersion &+= 1; markMutation(); emitNodeChanges(changes)
+    }
+    private func scheduleLayoutFrame(generation: Int, starts: [String: PyreonXYPosition], targets: [String: PyreonXYPosition], startTime: TimeInterval, duration: TimeInterval) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0 / 60.0) { [weak self] in
+            guard let self, self.layoutAnimationGeneration == generation else { return }
+            let t = min((ProcessInfo.processInfo.systemUptime - startTime) / duration, 1), eased = 1 - pow(1 - t, 3)
+            let frame = Dictionary(uniqueKeysWithValues: targets.compactMap { id, target -> (String, PyreonXYPosition)? in
+                guard let start = starts[id] else { return nil }
+                return (id, PyreonXYPosition(x: start.x + (target.x - start.x) * eased, y: start.y + (target.y - start.y) * eased))
+            })
+            self.applyLayoutPositions(frame)
+            if t < 1 { self.scheduleLayoutFrame(generation: generation, starts: starts, targets: targets, startTime: startTime, duration: duration) }
+        }
+    }
     public func animateViewport(x: Double? = nil, y: Double? = nil, zoom: Double? = nil, duration: Double = 300) {
         viewportAnimationGeneration &+= 1
         let generation = viewportAnimationGeneration

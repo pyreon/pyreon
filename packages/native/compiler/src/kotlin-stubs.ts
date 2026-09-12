@@ -1632,6 +1632,7 @@ data class PyreonFlowConnectStart(val nodeId: String, val handleId: String)
 data class PyreonFlowPaneEvent(val position: PyreonXYPosition)
 data class PyreonFlowSnapshot<T>(val nodes: List<PyreonFlowNode<T>>, val edges: List<PyreonFlowEdge>, val viewport: PyreonFlowViewport? = null)
 data class PyreonFlowSnapLines(val x: Double?, val y: Double?, val snappedPosition: PyreonXYPosition)
+data class PyreonFlowLayoutOptions(val direction: String = "DOWN", val nodeSpacing: Double = 20.0, val layerSpacing: Double = 40.0, val animate: Boolean = true, val animationDuration: Double = 300.0)
 data class PyreonFlowContainerSize(val width: Double = 0.0, val height: Double = 0.0)
 class PyreonFlowState<T>(
   nodes: List<PyreonFlowNode<T>> = emptyList(),
@@ -1666,6 +1667,7 @@ class PyreonFlowState<T>(
   connectionRules: Map<String, List<String>>? = null,
   connectionValidator: ((PyreonFlowConnection) -> Boolean)? = null,
   searchText: ((T) -> String?)? = null,
+  reducedMotion: Boolean = false,
 ) {
   val nodes: List<PyreonFlowNode<T>> = nodes
   val edges: List<PyreonFlowEdge> = edges
@@ -1673,6 +1675,7 @@ class PyreonFlowState<T>(
   var containerSize: PyreonFlowContainerSize = PyreonFlowContainerSize()
   val zoom: Double get() = viewport.zoom
   fun batch(operation: () -> Unit) { operation() }
+  fun layout(algorithm: String = "layered", options: PyreonFlowLayoutOptions = PyreonFlowLayoutOptions()) {}
   fun getNode(id: String): PyreonFlowNode<T>? = null
   fun isValidConnection(connection: PyreonFlowConnection): Boolean = true
   fun addNode(node: PyreonFlowNode<T>) {}

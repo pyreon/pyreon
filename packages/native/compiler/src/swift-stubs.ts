@@ -1128,6 +1128,7 @@ public struct PyreonFlowConnectStart { public let nodeId: String; public let han
 public struct PyreonFlowPaneEvent { public let position: PyreonXYPosition }
 public struct PyreonFlowSnapshot<T> { public let nodes: [PyreonFlowNode<T>]; public let edges: [PyreonFlowEdge]; public let viewport: PyreonFlowViewport? }
 public struct PyreonFlowSnapLines { public let x: Double?; public let y: Double?; public let snappedPosition: PyreonXYPosition }
+public struct PyreonFlowLayoutOptions { public init(direction: String = "DOWN", nodeSpacing: Double = 20, layerSpacing: Double = 40, animate: Bool = true, animationDuration: Double = 300) {} }
 public final class PyreonFlowState<T> {
   public init(
     nodes: [PyreonFlowNode<T>] = [],
@@ -1145,7 +1146,8 @@ public final class PyreonFlowState<T> {
     defaultEdgeType: String = "bezier", defaultEdgeOptions: PyreonFlowDefaultEdgeOptions = PyreonFlowDefaultEdgeOptions(), fitView: Bool = false, fitViewPadding: Double = 0.1, autoHistory: Bool = true,
     connectionRules: [String: [String]]? = nil,
     isValidConnection: ((PyreonFlowConnection) -> Bool)? = nil,
-    searchText: ((T) -> String?)? = nil
+    searchText: ((T) -> String?)? = nil,
+    reducedMotion: Bool = false
   ) {}
   public private(set) var nodes: [PyreonFlowNode<T>] = []
   public private(set) var edges: [PyreonFlowEdge] = []
@@ -1154,6 +1156,7 @@ public final class PyreonFlowState<T> {
   public var zoom: Double { viewport.zoom }
   public func getNode(_ id: String) -> PyreonFlowNode<T>? { nil }
   public func batch(_ operation: () -> Void) { operation() }
+  public func layout(_ algorithm: String = "layered", options: PyreonFlowLayoutOptions = PyreonFlowLayoutOptions()) {}
   public func isValidConnection(_ connection: PyreonFlowConnection) -> Bool { true }
   public func addNode(_ node: PyreonFlowNode<T>) {}
   public func addNodes(_ nodes: [PyreonFlowNode<T>]) {}

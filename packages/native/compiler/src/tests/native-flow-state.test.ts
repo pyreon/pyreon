@@ -449,10 +449,14 @@ export function C() {
   const warningsOf = (src: string, target: 'swift' | 'kotlin') => (transform(src, { target }).warnings ?? []).join('\n')
 
   for (const target of ['swift', 'kotlin'] as const) {
-    it(`[${target}] an unported FlowInstance member warns BY NAME instead of dying at the native build`, () => {
-      const w = warningsOf(base('', '<Button onPress={() => flow.layout()}>Layout</Button>'), target)
-      expect(w).toContain('`layout` is NOT ported')
-      expect(w).toContain('fails at the native BUILD')
+    it(`[${target}] layout options lower and typecheck`, () => {
+      const result = transform(base('', `<Button onPress={() => flow.layout('tree', { direction: 'LEFT', nodeSpacing: 24, layerSpacing: 48, animate: false, animationDuration: 450 })}>Layout</Button>`), { target })
+      expect((result.warnings ?? []).join(' ')).not.toContain('`layout` is NOT ported')
+      expect(result.code).toContain(target === 'swift'
+        ? 'flow.layout("tree", options: PyreonFlowLayoutOptions(direction: "LEFT", nodeSpacing: 24, layerSpacing: 48, animate: false, animationDuration: 450))'
+        : 'flow.layout("tree", PyreonFlowLayoutOptions(direction = "LEFT", nodeSpacing = 24.0, layerSpacing = 48.0, animate = false, animationDuration = 450.0))')
+      if (target === 'swift') expect(validateSwiftWithStubs(result.code).ok).toBe(true)
+      else expect(validateKotlin(result.code).ok).toBe(true)
     })
     it(`[${target}] callback node updates warn rather than silently claiming native support`, () => {
       const w = warningsOf(base('', '<Button onPress={() => flow.updateNodeData("1", node => ({ label: node.data.label }))}>Update</Button>'), target)

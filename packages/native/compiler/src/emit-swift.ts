@@ -4033,7 +4033,7 @@ function emitSwiftDecl(
       ...(d.snapGrid !== undefined ? [`snapGrid: ${d.snapGrid}`] : []),
       ...(d.nodeExtent !== undefined ? [`nodeExtent: PyreonFlowNodeExtent(minX: ${d.nodeExtent[0]}, minY: ${d.nodeExtent[1]}, maxX: ${d.nodeExtent[2]}, maxY: ${d.nodeExtent[3]})`] : []),
       ...(d.defaultMarkerEnd !== undefined ? [`defaultMarkerEnd: ${d.defaultMarkerEnd === null ? 'nil' : swiftFlowMarker(d.defaultMarkerEnd)}`] : []),
-      ...(['nodesDraggable', 'nodesConnectable', 'nodesSelectable', 'nodesFocusable', 'edgesFocusable', 'nodesDeletable', 'edgesDeletable', 'edgesReconnectable', 'pannable', 'zoomable', 'multiSelect', 'onlyRenderVisibleElements', 'snapToObjects', 'autoHistory'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key}: ${d[key]}`]),
+      ...(['nodesDraggable', 'nodesConnectable', 'nodesSelectable', 'nodesFocusable', 'edgesFocusable', 'nodesDeletable', 'edgesDeletable', 'edgesReconnectable', 'pannable', 'zoomable', 'multiSelect', 'onlyRenderVisibleElements', 'snapToObjects', 'autoHistory', 'reducedMotion'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key}: ${d[key]}`]),
       ...(d.edgeInteractionWidth !== undefined ? [`edgeInteractionWidth: ${d.edgeInteractionWidth}`] : []),
       ...(d.connectionRadius !== undefined ? [`connectionRadius: ${d.connectionRadius}`] : []),
       ...(d.defaultEdgeType !== undefined ? [`defaultEdgeType: ${JSON.stringify(d.defaultEdgeType)}`] : []),
@@ -5875,6 +5875,19 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         if (member === 'animateViewport' && e.args.length >= 1) {
           const args = swiftFlowViewportLiteral(e.args[0]!)
           if (args !== null) return `${swiftIdent(flowName)}.animateViewport(${args}${e.args[1] ? `, duration: ${emitSwiftExpr(e.args[1]!, indent)}` : ''})`
+        }
+        if (member === 'layout') {
+          if (e.args.length === 0) return `${swiftIdent(flowName)}.layout()`
+          const algorithm = emitSwiftExpr(e.args[0]!, indent)
+          if (e.args.length === 1) return `${swiftIdent(flowName)}.layout(${algorithm})`
+          const options = e.args[1]!
+          if (options.kind === 'object' && (!options.spreads || options.spreads.length === 0)) {
+            const fields = options.fields.flatMap(({ name, value }) => {
+              if (name === 'direction' || name === 'nodeSpacing' || name === 'layerSpacing' || name === 'animate' || name === 'animationDuration') return [`${name}: ${emitSwiftExpr(value, indent)}`]
+              return []
+            })
+            return `${swiftIdent(flowName)}.layout(${algorithm}, options: PyreonFlowLayoutOptions(${fields.join(', ')}))`
+          }
         }
         if (member === 'setCenter' && e.args.length >= 2) {
           const options = e.args[2] ? swiftFlowViewportLiteral(e.args[2]!) : ''

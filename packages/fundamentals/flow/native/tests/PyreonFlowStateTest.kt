@@ -7,6 +7,7 @@ import com.pyreon.runtime.PyreonFlowConnection
 import com.pyreon.runtime.PyreonFlowDefaultEdgeOptions
 import com.pyreon.runtime.PyreonFlowNode
 import com.pyreon.runtime.PyreonFlowNodeExtent
+import com.pyreon.runtime.PyreonFlowLayoutOptions
 import com.pyreon.runtime.PyreonFlowState
 import com.pyreon.runtime.PyreonFlowSnapshot
 import com.pyreon.runtime.PyreonFlowSnapLines
@@ -74,6 +75,11 @@ fun main() {
     check(layered.map { it.position } == listOf(PyreonXYPosition(5.0, 0.0), PyreonXYPosition(0.0, 90.0), PyreonXYPosition(100.0, 80.0), PyreonXYPosition(80.0, 170.0), PyreonXYPosition(125.0, 2.5)), "layered layout matches exact web placement")
     val cyclicLayered = pyreonFlowLayeredLayout(treeNodes, treeEdges + PyreonFlowEdge("cr", "c", "r"), direction = "LEFT")
     check(cyclicLayered.map { it.position } == listOf(PyreonXYPosition(260.0, 2.5), PyreonXYPosition(120.0, 0.0), PyreonXYPosition(100.0, 50.0), PyreonXYPosition(0.0, 40.0), PyreonXYPosition(265.0, 62.5)), "layered layout reverses cycles and mirrors LEFT like web")
+    val appliedLayout = seedFlow()
+    appliedLayout.layout("box", PyreonFlowLayoutOptions(nodeSpacing = 10.0, animate = false))
+    check(appliedLayout.nodes.map { it.position } == listOf(PyreonXYPosition(0.0, 0.0), PyreonXYPosition(160.0, 0.0), PyreonXYPosition(0.0, 50.0)), "layout atomically applies native algorithm results")
+    appliedLayout.undo()
+    check(appliedLayout.nodes.map { it.position } == listOf(PyreonXYPosition(0.0, 0.0), PyreonXYPosition(200.0, 0.0), PyreonXYPosition(400.0, 0.0)), "layout records exactly one undoable checkpoint")
     val batched = seedFlow()
     batched.batch {
         batched.updateNodePosition("1", PyreonXYPosition(10.0, 20.0))

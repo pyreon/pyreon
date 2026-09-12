@@ -3189,7 +3189,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       ...(d.snapGrid !== undefined ? [`snapGrid = ${ktDouble(d.snapGrid)}`] : []),
       ...(d.nodeExtent !== undefined ? [`nodeExtent = PyreonFlowNodeExtent(${d.nodeExtent.map(ktDouble).join(', ')})`] : []),
       ...(d.defaultMarkerEnd !== undefined ? [`defaultMarkerEnd = ${d.defaultMarkerEnd === null ? 'null' : kotlinFlowMarker(d.defaultMarkerEnd)}`] : []),
-      ...(['nodesDraggable', 'nodesConnectable', 'nodesSelectable', 'nodesFocusable', 'edgesFocusable', 'nodesDeletable', 'edgesDeletable', 'edgesReconnectable', 'pannable', 'zoomable', 'multiSelect', 'onlyRenderVisibleElements', 'snapToObjects', 'autoHistory'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key} = ${d[key]}`]),
+      ...(['nodesDraggable', 'nodesConnectable', 'nodesSelectable', 'nodesFocusable', 'edgesFocusable', 'nodesDeletable', 'edgesDeletable', 'edgesReconnectable', 'pannable', 'zoomable', 'multiSelect', 'onlyRenderVisibleElements', 'snapToObjects', 'autoHistory', 'reducedMotion'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key} = ${d[key]}`]),
       ...(d.edgeInteractionWidth !== undefined ? [`edgeInteractionWidth = ${ktDouble(d.edgeInteractionWidth)}`] : []),
       ...(d.connectionRadius !== undefined ? [`connectionRadius = ${ktDouble(d.connectionRadius)}`] : []),
       ...(d.defaultEdgeType !== undefined ? [`defaultEdgeType = ${JSON.stringify(d.defaultEdgeType)}`] : []),
@@ -4903,6 +4903,20 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (member === 'animateViewport' && e.args.length >= 1) {
           const args = kotlinFlowViewportLiteral(e.args[0]!)
           if (args !== null) return `${kotlinIdent(flowName)}.animateViewport(${args}${e.args[1] ? `, duration = ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))}` : ''})`
+        }
+        if (member === 'layout') {
+          if (e.args.length === 0) return `${kotlinIdent(flowName)}.layout()`
+          const algorithm = emitKotlinExpr(e.args[0]!, indent)
+          if (e.args.length === 1) return `${kotlinIdent(flowName)}.layout(${algorithm})`
+          const options = e.args[1]!
+          if (options.kind === 'object' && (!options.spreads || options.spreads.length === 0)) {
+            const fields = options.fields.flatMap(({ name, value }) => {
+              if (name === 'direction' || name === 'animate') return [`${name} = ${emitKotlinExpr(value, indent)}`]
+              if (name === 'nodeSpacing' || name === 'layerSpacing' || name === 'animationDuration') return [`${name} = ${ktChartDouble(emitKotlinExpr(value, indent))}`]
+              return []
+            })
+            return `${kotlinIdent(flowName)}.layout(${algorithm}, PyreonFlowLayoutOptions(${fields.join(', ')}))`
+          }
         }
         if (member === 'setCenter' && e.args.length >= 2) {
           const options = e.args[2] ? kotlinFlowViewportLiteral(e.args[2]!) : ''

@@ -69,6 +69,11 @@ struct PyreonFlowStateTests {
         check(layered.map(\.position) == [PyreonXYPosition(x: 5, y: 0), PyreonXYPosition(x: 0, y: 90), PyreonXYPosition(x: 100, y: 80), PyreonXYPosition(x: 80, y: 170), PyreonXYPosition(x: 125, y: 2.5)], "layered layout matches exact web placement")
         let cyclicLayered = pyreonFlowLayeredLayout(treeNodes, edges: treeEdges + [PyreonFlowEdge(id: "cr", source: "c", target: "r")], direction: "LEFT")
         check(cyclicLayered.map(\.position) == [PyreonXYPosition(x: 260, y: 2.5), PyreonXYPosition(x: 120, y: 0), PyreonXYPosition(x: 100, y: 50), PyreonXYPosition(x: 0, y: 40), PyreonXYPosition(x: 265, y: 62.5)], "layered layout reverses cycles and mirrors LEFT like web")
+        let appliedLayout = seedFlow()
+        appliedLayout.layout("box", options: PyreonFlowLayoutOptions(nodeSpacing: 10, animate: false))
+        check(appliedLayout.nodes.map(\.position) == [PyreonXYPosition(x: 0, y: 0), PyreonXYPosition(x: 160, y: 0), PyreonXYPosition(x: 0, y: 50)], "layout atomically applies native algorithm results")
+        appliedLayout.undo()
+        check(appliedLayout.nodes.map(\.position) == [PyreonXYPosition(x: 0, y: 0), PyreonXYPosition(x: 200, y: 0), PyreonXYPosition(x: 400, y: 0)], "layout records exactly one undoable checkpoint")
         let batched = seedFlow()
         batched.batch {
             batched.updateNodePosition("1", PyreonXYPosition(x: 10, y: 20))

@@ -975,6 +975,7 @@ export type DeclIR =
       onlyRenderVisibleElements?: boolean
       snapToObjects?: boolean
       autoHistory?: boolean
+      reducedMotion?: boolean
       defaultEdgeType?: string
       defaultEdgeOptions?: {
         type?: string; label?: string; animated?: boolean; focusable?: boolean; ariaLabel?: string
