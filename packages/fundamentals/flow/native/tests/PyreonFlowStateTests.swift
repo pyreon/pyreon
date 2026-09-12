@@ -607,8 +607,10 @@ struct PyreonFlowStateTests {
 
         let routedStraight = pyreonStraightPath(sourceX: 0, sourceY: 0, targetX: 100, targetY: 50)
         check(routedStraight.labelX == 50 && routedStraight.labelY == 25 && routedStraight.segments.count == 2, "straight routing returns midpoint and segments")
+        check(routedStraight.path == "M0,0 L100,50", "native path results preserve the public SVG path string")
         let routedBezier = pyreonBezierPath(sourceX: 0, sourceY: 0, sourcePosition: .right, targetX: 200, targetY: 100, targetPosition: .left)
         check(routedBezier.segments[1].c1x! > 0 && routedBezier.segments[1].c2x! < 200, "bezier routing offsets controls along handle directions")
+        check(routedBezier.path.hasPrefix("M0,0 C"), "bezier SVG serialization preserves its cubic command")
         let previewSource = PyreonFlowInteractiveHandle(nodeId: "n", handleId: "out", type: "source", position: .right, x: 0, y: 0)
         check(pyreonFlowConnectionPreview(type: "straight", source: previewSource, target: PyreonXYPosition(x: 100, y: 50)).map(\.kind) == ["move", "line"], "straight connection preview uses straight geometry")
         check(pyreonFlowConnectionPreview(type: "bezier", source: previewSource, target: PyreonXYPosition(x: 100, y: 50))[1].kind == "cubic", "bezier connection preview preserves the source tangent")

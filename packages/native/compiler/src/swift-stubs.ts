@@ -1007,6 +1007,16 @@ public struct PyreonFlowNodeExtent: Equatable {
   public init(minX: Double, minY: Double, maxX: Double, maxY: Double) {}
 }
 public enum PyreonFlowPosition { case top, right, bottom, left }
+public struct PyreonFlowPathResult {
+  public var path: String = ""
+  public var labelX: Double = 0
+  public var labelY: Double = 0
+}
+public func pyreonStraightPath(sourceX: Double, sourceY: Double, targetX: Double, targetY: Double) -> PyreonFlowPathResult { PyreonFlowPathResult() }
+public func pyreonBezierPath(sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition = .bottom, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition = .top, curvature: Double = 0.25) -> PyreonFlowPathResult { PyreonFlowPathResult() }
+public func pyreonWaypointPath(sourceX: Double, sourceY: Double, targetX: Double, targetY: Double, waypoints: [PyreonXYPosition]) -> PyreonFlowPathResult { PyreonFlowPathResult() }
+public func pyreonSmoothStepPath(sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition = .bottom, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition = .top, borderRadius: Double = 5, offset: Double = 20) -> PyreonFlowPathResult { PyreonFlowPathResult() }
+public func pyreonStepPath(sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition = .bottom, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition = .top, offset: Double = 20) -> PyreonFlowPathResult { PyreonFlowPathResult() }
 public struct PyreonFlowHandleConfig: Equatable {
   public init(id: String? = nil, type: String, position: PyreonFlowPosition) {}
 }

@@ -18,7 +18,21 @@ data class PyreonFlowPathResult(
     val labelX: Double,
     val labelY: Double,
     val segments: List<PyreonFlowEdgeSegment>,
-)
+) {
+    val path: String get() = segments.mapNotNull { segment ->
+        val point = "${pyreonFlowSvgNumber(segment.x)},${pyreonFlowSvgNumber(segment.y)}"
+        when (segment.kind) {
+            "move" -> "M$point"
+            "line" -> "L$point"
+            "cubic" -> "C${pyreonFlowSvgNumber(segment.c1x ?: 0.0)},${pyreonFlowSvgNumber(segment.c1y ?: 0.0)} ${pyreonFlowSvgNumber(segment.c2x ?: 0.0)},${pyreonFlowSvgNumber(segment.c2y ?: 0.0)} $point"
+            "quad" -> "Q${pyreonFlowSvgNumber(segment.cx ?: 0.0)},${pyreonFlowSvgNumber(segment.cy ?: 0.0)} $point"
+            else -> null
+        }
+    }.joinToString(" ")
+}
+
+private fun pyreonFlowSvgNumber(value: Double): String =
+    if (value.isFinite() && value == value.toLong().toDouble()) value.toLong().toString() else value.toString()
 data class PyreonFlowNodeBox(val x: Double, val y: Double, val width: Double, val height: Double)
 data class PyreonFlowHandleAnchor(val x: Double, val y: Double, val position: PyreonFlowPosition)
 data class PyreonFlowFloatingEndpoints(val source: PyreonFlowHandleAnchor, val target: PyreonFlowHandleAnchor)

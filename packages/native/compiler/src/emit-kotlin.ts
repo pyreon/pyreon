@@ -3494,6 +3494,53 @@ function kotlinFlowLayoutOptions(arg: ExprIR | undefined, indent: number): strin
   return `PyreonFlowLayoutOptions(${fields.join(', ')})`
 }
 
+const FLOW_PATH_HELPERS_KOTLIN = new Set(['getBezierPath', 'getSmoothStepPath', 'getStepPath', 'getStraightPath', 'getWaypointPath'])
+
+function kotlinFlowPathHelper(name: string, arg: ExprIR | undefined, indent: number): string | null {
+  if (arg?.kind !== 'object' || (arg.spreads?.length ?? 0) > 0) return null
+  const fields = new Map(arg.fields.map((field) => [field.name, field.value]))
+  const commonFields = ['sourceX', 'sourceY', 'targetX', 'targetY']
+  const optionalFields = name === 'getStraightPath' ? []
+    : name === 'getWaypointPath' ? ['waypoints']
+    : name === 'getBezierPath' ? ['sourcePosition', 'targetPosition', 'curvature']
+    : name === 'getSmoothStepPath' ? ['sourcePosition', 'targetPosition', 'borderRadius', 'offset']
+    : ['sourcePosition', 'targetPosition', 'offset']
+  const allowed = new Set([...commonFields, ...optionalFields])
+  if (arg.fields.some((field) => !allowed.has(field.name))) return null
+  const required = (key: string): string | null => fields.has(key) ? ktChartDouble(emitKotlinExpr(fields.get(key)!, indent)) : null
+  const sx = required('sourceX'), sy = required('sourceY'), tx = required('targetX'), ty = required('targetY')
+  if (sx === null || sy === null || tx === null || ty === null) return null
+  const position = (key: string, fallback: string): string | null => {
+    const value = fields.get(key)
+    if (value === undefined) return fallback
+    if (value.kind === 'member' && value.object.kind === 'identifier' && value.object.name === 'Position') return `PyreonFlowPosition.${value.property}`
+    if (value.kind === 'literal' && typeof value.value === 'string' && ['top', 'right', 'bottom', 'left'].includes(value.value)) return `PyreonFlowPosition.${value.value[0]!.toUpperCase()}${value.value.slice(1)}`
+    return null
+  }
+  if (name === 'getStraightPath') return `pyreonStraightPath(${sx}, ${sy}, ${tx}, ${ty})`
+  if (name === 'getWaypointPath') {
+    const waypoints = fields.get('waypoints')
+    if (waypoints?.kind !== 'array') return null
+    const points = waypoints.elements.map((point) => {
+      if (point.kind !== 'object') return null
+      const x = point.fields.find((field) => field.name === 'x')?.value
+      const y = point.fields.find((field) => field.name === 'y')?.value
+      return x && y ? `PyreonFlowPathPoint(${ktChartDouble(emitKotlinExpr(x, indent))}, ${ktChartDouble(emitKotlinExpr(y, indent))})` : null
+    })
+    if (points.some((point) => point === null)) return null
+    return `pyreonWaypointPath(${sx}, ${sy}, ${tx}, ${ty}, listOf(${points.join(', ')}))`
+  }
+  const sourcePosition = position('sourcePosition', 'PyreonFlowPosition.Bottom'), targetPosition = position('targetPosition', 'PyreonFlowPosition.Top')
+  if (sourcePosition === null || targetPosition === null) return null
+  const common = `${sx}, ${sy}, ${sourcePosition}, ${tx}, ${ty}, ${targetPosition}`
+  if (name === 'getBezierPath') return `pyreonBezierPath(${common}${fields.has('curvature') ? `, curvature = ${ktChartDouble(emitKotlinExpr(fields.get('curvature')!, indent))}` : ''})`
+  const extra = [
+    ...(name === 'getSmoothStepPath' && fields.has('borderRadius') ? [`borderRadius = ${ktChartDouble(emitKotlinExpr(fields.get('borderRadius')!, indent))}`] : []),
+    ...(fields.has('offset') ? [`offset = ${ktChartDouble(emitKotlinExpr(fields.get('offset')!, indent))}`] : []),
+  ]
+  return `${name === 'getStepPath' ? 'pyreonStepPath' : 'pyreonSmoothStepPath'}(${common}${extra.length ? `, ${extra.join(', ')}` : ''})`
+}
+
 function kotlinFlowExtentLiteral(arg: ExprIR): string | null {
   if (arg.kind !== 'array' || arg.elements.length !== 2) return null
   const [minPoint, maxPoint] = arg.elements
@@ -4294,6 +4341,11 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           return `pyreonComputeFlowLayout(${args.join(', ')})`
         }
         _emitWarnings.push('computeLayout options must be an object literal using direction/nodeSpacing/layerSpacing/animate/animationDuration to lower natively.')
+      }
+      if (e.callee.kind === 'identifier' && FLOW_PATH_HELPERS_KOTLIN.has(e.callee.name) && e.args.length === 1) {
+        const lowered = kotlinFlowPathHelper(e.callee.name, e.args[0], indent)
+        if (lowered !== null) return lowered
+        _emitWarnings.push(`${e.callee.name} requires one supported object-literal parameter to lower natively.`)
       }
       // Field-array accessor unwrap: zero-arg `items()`/`length()` on a
       // PyreonFieldArray decl (and `value()` on a For-item param over its

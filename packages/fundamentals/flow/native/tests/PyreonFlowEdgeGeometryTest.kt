@@ -73,8 +73,10 @@ fun main() {
 
     val routedStraight = pyreonStraightPath(0.0, 0.0, 100.0, 50.0)
     check(routedStraight.labelX == 50.0 && routedStraight.labelY == 25.0 && routedStraight.segments.size == 2, "straight routing returns midpoint and segments")
+    check(routedStraight.path == "M0,0 L100,50", "native path results preserve the public SVG path string")
     val routedBezier = pyreonBezierPath(0.0, 0.0, PyreonFlowPosition.Right, 200.0, 100.0, PyreonFlowPosition.Left)
     check(routedBezier.segments[1].c1x!! > 0.0 && routedBezier.segments[1].c2x!! < 200.0, "bezier routing offsets controls along handle directions")
+    check(routedBezier.path.startsWith("M0,0 C"), "bezier SVG serialization preserves its cubic command")
     val previewSource = com.pyreon.runtime.PyreonFlowInteractiveHandle("n", "out", "source", PyreonFlowPosition.Right, 0.0, 0.0)
     check(pyreonFlowConnectionPreview("straight", previewSource, PyreonFlowPathPoint(100.0, 50.0)).map { it.kind } == listOf("move", "line"), "straight connection preview uses straight geometry")
     check(pyreonFlowConnectionPreview("bezier", previewSource, PyreonFlowPathPoint(100.0, 50.0))[1].kind == "cubic", "bezier connection preview preserves the source tangent")

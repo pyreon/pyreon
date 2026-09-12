@@ -2639,13 +2639,11 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
       // Background() }` — which fails at the native BUILD with "cannot find
       // 'Flow' in scope" and no indication anywhere that `<Flow>` itself is
       // the unsupported part, not `createFlow` (which by then has correctly
-      // lowered right above it). `computeLayout`/the edge-path
-      // edge-path helpers (`getBezierPath` etc.) are pure functions with no native
-      // port yet either — name them so the warning doesn't imply only the
-      // JSX layer is missing.
+      // lowered right above it). The five public edge-path builders lower to
+      // the same native geometry used by the Flow canvas.
       advice:
-        '`createFlow({ nodes, edges })`, `useFlow({ nodes, edges })`, `computeLayout(...)`, literal `<Flow nodeTypes={{ type: Component }}>`, `<Background>`, `<Controls>`, `<MiniMap>`, and `<Panel>` LOWER to the native PyreonFlowState/PyreonFlowView engine. Handle/NodeToolbar/NodeResizer, custom edge renderer maps, and standalone edge-path helpers still have no shared-source native emit; keep those behind platform branches or use the `@pyreon/flow/webview` bridge',
-      supported: new Set(['createFlow', 'useFlow', 'computeLayout', 'Flow', 'Background', 'Controls', 'MiniMap', 'Panel']),
+        '`createFlow({ nodes, edges })`, `useFlow({ nodes, edges })`, `computeLayout(...)`, the five edge-path builders, literal `<Flow nodeTypes={{ type: Component }}>`, `<Background>`, `<Controls>`, `<MiniMap>`, and `<Panel>` LOWER to the native PyreonFlowState/PyreonFlowView engine. Handle/NodeToolbar/NodeResizer and custom edge renderer maps still have no shared-source native emit; keep those behind platform branches or use the `@pyreon/flow/webview` bridge',
+      supported: new Set(['createFlow', 'useFlow', 'computeLayout', 'getBezierPath', 'getSmoothStepPath', 'getStepPath', 'getStraightPath', 'getWaypointPath', 'Position', 'Flow', 'Background', 'Controls', 'MiniMap', 'Panel']),
     },
   ],
   [

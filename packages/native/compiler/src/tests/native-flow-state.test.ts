@@ -346,6 +346,38 @@ describe('computeLayout native lowering', () => {
   })
 })
 
+describe('Flow edge-path helper native lowering', () => {
+  const source = `
+    import { getBezierPath, getSmoothStepPath, getStepPath, getStraightPath, getWaypointPath, Position } from '@pyreon/flow'
+    import { Text } from '@pyreon/primitives'
+    export function App() {
+      const straight = getStraightPath({ sourceX: 0, sourceY: 1, targetX: 20, targetY: 21 })
+      const bezier = getBezierPath({ sourceX: 0, sourceY: 1, sourcePosition: Position.Right, targetX: 20, targetY: 21, targetPosition: Position.Left, curvature: 0.4 })
+      const smooth = getSmoothStepPath({ sourceX: 0, sourceY: 1, targetX: 20, targetY: 21, borderRadius: 7, offset: 12 })
+      const step = getStepPath({ sourceX: 0, sourceY: 1, targetX: 20, targetY: 21, offset: 8 })
+      const waypoint = getWaypointPath({ sourceX: 0, sourceY: 1, targetX: 20, targetY: 21, waypoints: [{ x: 5, y: 6 }] })
+      return <Text>{straight.path + bezier.path + smooth.path + step.path + waypoint.path}</Text>
+    }
+  `
+
+  for (const target of ['swift', 'kotlin'] as const) {
+    it(`routes all public builders to the ${target} geometry runtime`, () => {
+      const result = transform(source, { target })
+      expect(result.code).toContain('pyreonStraightPath')
+      expect(result.code).toContain('pyreonBezierPath')
+      expect(result.code).toContain('pyreonSmoothStepPath')
+      expect(result.code).toContain('pyreonStepPath')
+      expect(result.code).toContain('pyreonWaypointPath')
+      expect(result.warnings.join(' ')).not.toContain('from @pyreon/flow')
+      if (target === 'swift' && isSwiftcAvailable()) expect(validateSwiftWithStubs(result.code).ok).toBe(true)
+      if (target === 'kotlin' && isKotlincAvailable()) {
+        const validation = validateKotlin(result.code)
+        expect(validation.ok, validation.error ?? '').toBe(true)
+      }
+    })
+  }
+})
+
 describe('createFlow connection validation lowering', () => {
   const source = `
     import { createFlow } from '@pyreon/flow'

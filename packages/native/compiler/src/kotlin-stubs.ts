@@ -1584,6 +1584,13 @@ data class PyreonFlowDimensions(val width: Double, val height: Double)
 data class PyreonFlowViewport(val x: Double = 0.0, val y: Double = 0.0, val zoom: Double = 1.0)
 data class PyreonFlowNodeExtent(val minX: Double, val minY: Double, val maxX: Double, val maxY: Double)
 enum class PyreonFlowPosition { Top, Right, Bottom, Left }
+data class PyreonFlowPathPoint(val x: Double, val y: Double)
+data class PyreonFlowPathResult(val path: String = "", val labelX: Double = 0.0, val labelY: Double = 0.0)
+fun pyreonStraightPath(sourceX: Double, sourceY: Double, targetX: Double, targetY: Double) = PyreonFlowPathResult()
+fun pyreonBezierPath(sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition = PyreonFlowPosition.Bottom, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition = PyreonFlowPosition.Top, curvature: Double = 0.25) = PyreonFlowPathResult()
+fun pyreonWaypointPath(sourceX: Double, sourceY: Double, targetX: Double, targetY: Double, waypoints: List<PyreonFlowPathPoint>) = PyreonFlowPathResult()
+fun pyreonSmoothStepPath(sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition = PyreonFlowPosition.Bottom, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition = PyreonFlowPosition.Top, borderRadius: Double = 5.0, offset: Double = 20.0) = PyreonFlowPathResult()
+fun pyreonStepPath(sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition = PyreonFlowPosition.Bottom, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition = PyreonFlowPosition.Top, offset: Double = 20.0) = PyreonFlowPathResult()
 data class PyreonFlowHandleConfig(val id: String? = null, val type: String, val position: PyreonFlowPosition)
 data class PyreonFlowMarker(val type: String, val color: String? = null, val width: Double = 10.0, val height: Double = 7.0, val strokeWidth: Double = 1.0)
 data class PyreonFlowNode<T>(

@@ -36,6 +36,20 @@ public struct PyreonFlowPathResult: Equatable {
     public var labelX: Double
     public var labelY: Double
     public var segments: [PyreonFlowEdgeSegment]
+    public var path: String { segments.map { segment in
+        let point = "\(pyreonFlowSvgNumber(segment.x)),\(pyreonFlowSvgNumber(segment.y))"
+        switch segment.kind {
+        case "move": return "M\(point)"
+        case "line": return "L\(point)"
+        case "cubic": return "C\(pyreonFlowSvgNumber(segment.c1x ?? 0)),\(pyreonFlowSvgNumber(segment.c1y ?? 0)) \(pyreonFlowSvgNumber(segment.c2x ?? 0)),\(pyreonFlowSvgNumber(segment.c2y ?? 0)) \(point)"
+        case "quad": return "Q\(pyreonFlowSvgNumber(segment.cx ?? 0)),\(pyreonFlowSvgNumber(segment.cy ?? 0)) \(point)"
+        default: return ""
+        }
+    }.filter { !$0.isEmpty }.joined(separator: " ") }
+}
+
+private func pyreonFlowSvgNumber(_ value: Double) -> String {
+    value.isFinite && value.rounded() == value ? String(Int(value)) : String(value)
 }
 
 public struct PyreonFlowRect: Equatable {

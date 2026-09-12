@@ -4318,6 +4318,53 @@ function swiftFlowLayoutOptions(arg: ExprIR | undefined, indent: number): string
   return `PyreonFlowLayoutOptions(${fields.join(', ')})`
 }
 
+const FLOW_PATH_HELPERS = new Set(['getBezierPath', 'getSmoothStepPath', 'getStepPath', 'getStraightPath', 'getWaypointPath'])
+
+function swiftFlowPathHelper(name: string, arg: ExprIR | undefined, indent: number): string | null {
+  if (arg?.kind !== 'object' || (arg.spreads?.length ?? 0) > 0) return null
+  const fields = new Map(arg.fields.map((field) => [field.name, field.value]))
+  const commonFields = ['sourceX', 'sourceY', 'targetX', 'targetY']
+  const optionalFields = name === 'getStraightPath' ? []
+    : name === 'getWaypointPath' ? ['waypoints']
+    : name === 'getBezierPath' ? ['sourcePosition', 'targetPosition', 'curvature']
+    : name === 'getSmoothStepPath' ? ['sourcePosition', 'targetPosition', 'borderRadius', 'offset']
+    : ['sourcePosition', 'targetPosition', 'offset']
+  const allowed = new Set([...commonFields, ...optionalFields])
+  if (arg.fields.some((field) => !allowed.has(field.name))) return null
+  const required = (key: string): string | null => fields.has(key) ? emitSwiftExpr(fields.get(key)!, indent) : null
+  const sx = required('sourceX'), sy = required('sourceY'), tx = required('targetX'), ty = required('targetY')
+  if (sx === null || sy === null || tx === null || ty === null) return null
+  const position = (key: string, fallback: string): string | null => {
+    const value = fields.get(key)
+    if (value === undefined) return fallback
+    if (value.kind === 'member' && value.object.kind === 'identifier' && value.object.name === 'Position') return `.${value.property.toLowerCase()}`
+    if (value.kind === 'literal' && typeof value.value === 'string' && ['top', 'right', 'bottom', 'left'].includes(value.value)) return `.${value.value}`
+    return null
+  }
+  if (name === 'getStraightPath') return `pyreonStraightPath(sourceX: ${sx}, sourceY: ${sy}, targetX: ${tx}, targetY: ${ty})`
+  if (name === 'getWaypointPath') {
+    const waypoints = fields.get('waypoints')
+    if (waypoints?.kind !== 'array') return null
+    const points = waypoints.elements.map((point) => {
+      if (point.kind !== 'object') return null
+      const x = point.fields.find((field) => field.name === 'x')?.value
+      const y = point.fields.find((field) => field.name === 'y')?.value
+      return x && y ? `PyreonXYPosition(x: ${emitSwiftExpr(x, indent)}, y: ${emitSwiftExpr(y, indent)})` : null
+    })
+    if (points.some((point) => point === null)) return null
+    return `pyreonWaypointPath(sourceX: ${sx}, sourceY: ${sy}, targetX: ${tx}, targetY: ${ty}, waypoints: [${points.join(', ')}])`
+  }
+  const sourcePosition = position('sourcePosition', '.bottom'), targetPosition = position('targetPosition', '.top')
+  if (sourcePosition === null || targetPosition === null) return null
+  const common = `sourceX: ${sx}, sourceY: ${sy}, sourcePosition: ${sourcePosition}, targetX: ${tx}, targetY: ${ty}, targetPosition: ${targetPosition}`
+  if (name === 'getBezierPath') return `pyreonBezierPath(${common}${fields.has('curvature') ? `, curvature: ${emitSwiftExpr(fields.get('curvature')!, indent)}` : ''})`
+  const extra = [
+    ...(name === 'getSmoothStepPath' && fields.has('borderRadius') ? [`borderRadius: ${emitSwiftExpr(fields.get('borderRadius')!, indent)}`] : []),
+    ...(fields.has('offset') ? [`offset: ${emitSwiftExpr(fields.get('offset')!, indent)}`] : []),
+  ]
+  return `${name === 'getStepPath' ? 'pyreonStepPath' : 'pyreonSmoothStepPath'}(${common}${extra.length ? `, ${extra.join(', ')}` : ''})`
+}
+
 function swiftFlowExtentLiteral(arg: ExprIR): string | null {
   if (arg.kind !== 'array' || arg.elements.length !== 2) return null
   const [minPoint, maxPoint] = arg.elements
@@ -5276,6 +5323,11 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           return `pyreonComputeFlowLayout(${args.join(', ')})`
         }
         _emitWarnings.push('computeLayout options must be an object literal using direction/nodeSpacing/layerSpacing/animate/animationDuration to lower natively.')
+      }
+      if (e.callee.kind === 'identifier' && FLOW_PATH_HELPERS.has(e.callee.name) && e.args.length === 1) {
+        const lowered = swiftFlowPathHelper(e.callee.name, e.args[0], indent)
+        if (lowered !== null) return lowered
+        _emitWarnings.push(`${e.callee.name} requires one supported object-literal parameter to lower natively.`)
       }
       // `Object.keys(<object-typed expr>)` → static `[String]` of the
       // struct field names. A synthesized struct's keys are statically
