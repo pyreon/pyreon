@@ -474,6 +474,8 @@ struct PyreonFlowStateTests {
         let fullSelection = PyreonFlowState(nodes: q.nodes, selectionOnDrag: true, selectionMode: "full")
         check(fullSelection.nodesInSelection(from: PyreonXYPosition(x: 10, y: 20), to: PyreonXYPosition(x: 165, y: 67)) == ["c"], "full selection requires complete containment")
         q.containerSize = PyreonFlowContainerSize(width: 300, height: 200)
+        q.fitView(["c"], padding: 0)
+        check(q.flowToScreenPosition(PyreonXYPosition(x: 90, y: 47)) == PyreonXYPosition(x: 150, y: 100), "fitView centers a nested node from its absolute position")
         q.zoomTo(2)
         q.panTo(PyreonXYPosition(x: 10, y: 5))
         let screen = q.flowToScreenPosition(PyreonXYPosition(x: 25, y: 15))

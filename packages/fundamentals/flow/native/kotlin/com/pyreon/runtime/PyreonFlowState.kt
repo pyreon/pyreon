@@ -1383,10 +1383,11 @@ class PyreonFlowState<T>(
         for (node in target) {
             val w = node.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH
             val h = node.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT
-            minX = minOf(minX, node.position.x)
-            minY = minOf(minY, node.position.y)
-            maxX = maxOf(maxX, node.position.x + w)
-            maxY = maxOf(maxY, node.position.y + h)
+            val position = if (node.parentId == null) node.position else getAbsolutePosition(node.id)
+            minX = minOf(minX, position.x)
+            minY = minOf(minY, position.y)
+            maxX = maxOf(maxX, position.x + w)
+            maxY = maxOf(maxY, position.y + h)
         }
 
         val graphWidth = maxX - minX

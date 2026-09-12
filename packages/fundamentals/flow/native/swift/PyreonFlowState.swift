@@ -1685,10 +1685,11 @@ public final class PyreonFlowState<T> {
             count += 1
             let w = node.width ?? pyreonFlowDefaultNodeWidth
             let h = node.height ?? pyreonFlowDefaultNodeHeight
-            minX = min(minX, node.position.x)
-            minY = min(minY, node.position.y)
-            maxX = max(maxX, node.position.x + w)
-            maxY = max(maxY, node.position.y + h)
+            let position = node.parentId == nil ? node.position : getAbsolutePosition(node.id)
+            minX = min(minX, position.x)
+            minY = min(minY, position.y)
+            maxX = max(maxX, position.x + w)
+            maxY = max(maxY, position.y + h)
         }
         if let ids = nodeIds {
             for id in ids { if let node = nodeStore[id] { include(node) } }

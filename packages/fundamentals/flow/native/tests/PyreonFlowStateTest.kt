@@ -420,6 +420,8 @@ fun main() {
     val fullSelection = PyreonFlowState(nodes = q.nodes, selectionOnDrag = true, selectionMode = "full")
     check(fullSelection.nodesInSelection(PyreonXYPosition(10.0, 20.0), PyreonXYPosition(165.0, 67.0)) == listOf("c"), "full selection requires complete containment")
     q.containerSize = com.pyreon.runtime.PyreonFlowContainerSize(300.0, 200.0)
+    q.fitView(listOf("c"), padding = 0.0)
+    check(q.flowToScreenPosition(PyreonXYPosition(90.0, 47.0)) == PyreonXYPosition(150.0, 100.0), "fitView centers a nested node from its absolute position")
     q.zoomTo(2.0)
     q.panTo(PyreonXYPosition(10.0, 5.0))
     val screen = q.flowToScreenPosition(PyreonXYPosition(25.0, 15.0))
