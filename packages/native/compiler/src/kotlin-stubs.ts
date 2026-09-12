@@ -1626,6 +1626,8 @@ data class PyreonFlowDefaultEdgeOptions(
 )
 data class PyreonFlowConnection(val source: String, val target: String, val sourceHandle: String? = null, val targetHandle: String? = null)
 data class PyreonFlowSelection<T>(val nodes: List<PyreonFlowNode<T>>, val edges: List<PyreonFlowEdge>)
+data class PyreonFlowNodeChange(val type: String, val id: String, val position: PyreonXYPosition? = null)
+data class PyreonFlowEdgeChange(val type: String, val id: String? = null, val edge: PyreonFlowEdge? = null)
 data class PyreonFlowContainerSize(val width: Double = 0.0, val height: Double = 0.0)
 class PyreonFlowState<T>(
   nodes: List<PyreonFlowNode<T>> = emptyList(),
@@ -1734,6 +1736,8 @@ class PyreonFlowState<T>(
   fun onSelectionChange(callback: (PyreonFlowSelection<T>) -> Unit): () -> Unit = {}
   fun onNodesDelete(callback: (List<PyreonFlowNode<T>>) -> Unit): () -> Unit = {}
   fun onEdgesDelete(callback: (List<PyreonFlowEdge>) -> Unit): () -> Unit = {}
+  fun onNodesChange(callback: (List<PyreonFlowNodeChange>) -> Unit): () -> Unit = {}
+  fun onEdgesChange(callback: (List<PyreonFlowEdgeChange>) -> Unit): () -> Unit = {}
   fun moveSelectedNodes(dx: Double, dy: Double) {}
   fun focusNode(nodeId: String, focusZoom: Double? = null) {}
 }

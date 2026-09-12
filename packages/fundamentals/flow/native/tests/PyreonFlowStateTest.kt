@@ -120,6 +120,17 @@ fun main() {
     deletionEvents.removeNode("2")
     check(deletedNodes == listOf("2") && deletedEdges == listOf("e1", "e2"), "node deletion reports the node and all incident edges")
     stopNodeDelete(); stopEdgeDelete()
+    val changes = seedFlow()
+    var nodeChanges = emptyList<com.pyreon.runtime.PyreonFlowNodeChange>(); var edgeChanges = emptyList<com.pyreon.runtime.PyreonFlowEdgeChange>()
+    val stopNodeChanges = changes.onNodesChange { nodeChanges = it }
+    val stopEdgeChanges = changes.onEdgesChange { edgeChanges = it }
+    changes.updateNodePosition("1", PyreonXYPosition(10.0, 20.0))
+    check(nodeChanges == listOf(com.pyreon.runtime.PyreonFlowNodeChange("position", "1", PyreonXYPosition(10.0, 20.0))), "onNodesChange emits typed position packets")
+    changes.addEdge(PyreonFlowEdge("e3", "1", "3"))
+    check(edgeChanges.firstOrNull()?.type == "add" && edgeChanges.firstOrNull()?.edge?.id == "e3", "onEdgesChange emits the normalized added edge")
+    changes.removeNode("2")
+    check(nodeChanges == listOf(com.pyreon.runtime.PyreonFlowNodeChange("remove", "2")) && edgeChanges.map { it.id } == listOf("e1", "e2"), "compound deletion emits coherent remove batches")
+    stopNodeChanges(); stopEdgeChanges()
     f.updateNodeData("1") { it.copy(label = "Updated") }
     check(f.getNode("1")?.data?.label == "Updated", "updateNodeData replaces the native payload observably")
     f.updateNode("1") { it.copy(id = "ignored", hidden = true) }

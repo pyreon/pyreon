@@ -118,6 +118,8 @@ const val PYREON_FLOW_DEFAULT_EDGE_TYPE: String = "bezier"
 data class PyreonFlowContainerSize(val width: Double = 0.0, val height: Double = 0.0)
 data class PyreonFlowNodeExtent(val minX: Double, val minY: Double, val maxX: Double, val maxY: Double)
 data class PyreonFlowSelection<T>(val nodes: List<PyreonFlowNode<T>>, val edges: List<PyreonFlowEdge>)
+data class PyreonFlowNodeChange(val type: String, val id: String, val position: PyreonXYPosition? = null)
+data class PyreonFlowEdgeChange(val type: String, val id: String? = null, val edge: PyreonFlowEdge? = null)
 private data class PyreonFlowHistorySnapshot<T>(val nodes: List<PyreonFlowNode<T>>, val edges: List<PyreonFlowEdge>)
 
 /** Reactive flow-diagram state: nodes, edges, viewport, selection. Behaviour-
@@ -174,6 +176,8 @@ class PyreonFlowState<T>(
     private val selectionListeners = LinkedHashMap<Int, (PyreonFlowSelection<T>) -> Unit>()
     private val nodesDeleteListeners = LinkedHashMap<Int, (List<PyreonFlowNode<T>>) -> Unit>()
     private val edgesDeleteListeners = LinkedHashMap<Int, (List<PyreonFlowEdge>) -> Unit>()
+    private val nodesChangeListeners = LinkedHashMap<Int, (List<PyreonFlowNodeChange>) -> Unit>()
+    private val edgesChangeListeners = LinkedHashMap<Int, (List<PyreonFlowEdgeChange>) -> Unit>()
     val connectionRadius: Double = maxOf(0.0, connectionRadius)
     val fitViewPadding: Double = maxOf(0.0, fitViewPadding)
     private var nodeExtent: PyreonFlowNodeExtent? = nodeExtent
@@ -246,7 +250,19 @@ class PyreonFlowState<T>(
         val id = nextListenerId++; edgesDeleteListeners[id] = callback
         return { edgesDeleteListeners.remove(id) }
     }
+    fun onNodesChange(callback: (List<PyreonFlowNodeChange>) -> Unit): () -> Unit {
+        val id = nextListenerId++; nodesChangeListeners[id] = callback
+        return { nodesChangeListeners.remove(id) }
+    }
+    fun onEdgesChange(callback: (List<PyreonFlowEdgeChange>) -> Unit): () -> Unit {
+        val id = nextListenerId++; edgesChangeListeners[id] = callback
+        return { edgesChangeListeners.remove(id) }
+    }
+    private fun emitNodeChanges(changes: List<PyreonFlowNodeChange>) { if (changes.isNotEmpty()) nodesChangeListeners.values.forEach { it(changes) } }
+    private fun emitEdgeChanges(changes: List<PyreonFlowEdgeChange>) { if (changes.isNotEmpty()) edgesChangeListeners.values.forEach { it(changes) } }
     private fun emitDeleted(nodes: List<PyreonFlowNode<T>>, edges: List<PyreonFlowEdge>) {
+        emitNodeChanges(nodes.map { PyreonFlowNodeChange("remove", it.id) })
+        emitEdgeChanges(edges.map { PyreonFlowEdgeChange("remove", id = it.id) })
         if (nodes.isNotEmpty()) nodesDeleteListeners.values.forEach { it(nodes) }
         if (edges.isNotEmpty()) edgesDeleteListeners.values.forEach { it(edges) }
     }
@@ -402,6 +418,7 @@ class PyreonFlowState<T>(
         ) else position
         nodeMap[id] = node.copy(position = clampToExtent(snapped, node.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH, node.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT))
         markMutation()
+        emitNodeChanges(listOf(PyreonFlowNodeChange("position", id, nodeMap.getValue(id).position)))
     }
     fun updateNodeData(id: String, update: (T) -> T) {
         val node = nodeMap[id] ?: return
@@ -471,6 +488,7 @@ class PyreonFlowState<T>(
         if (edgeIds.containsKey(edge.id)) return null
         checkpoint()
         insertEdge(edge)
+        emitEdgeChanges(listOf(PyreonFlowEdgeChange("add", edge = getEdge(edge.id))))
         for (callback in connectListeners.values) callback(connection)
         return getEdge(edge.id)
     }
@@ -480,6 +498,7 @@ class PyreonFlowState<T>(
         if (edgeIds.containsKey(edge.id)) return
         checkpoint()
         insertEdge(edge)
+        emitEdgeChanges(listOf(PyreonFlowEdgeChange("add", edge = getEdge(edge.id))))
         val connection = PyreonFlowConnection(edge.source, edge.target, edge.sourceHandle, edge.targetHandle)
         for (callback in connectListeners.values) callback(connection)
     }
@@ -487,11 +506,15 @@ class PyreonFlowState<T>(
         val fresh = edges.filterNot { edgeIds.containsKey(it.id) }
         if (fresh.isEmpty()) return
         checkpoint()
+        val added = ArrayList<PyreonFlowEdge>()
+        val connections = ArrayList<PyreonFlowConnection>()
         for (edge in fresh) {
             insertEdge(edge)
-            val connection = PyreonFlowConnection(edge.source, edge.target, edge.sourceHandle, edge.targetHandle)
-            for (callback in connectListeners.values) callback(connection)
+            getEdge(edge.id)?.let(added::add)
+            connections.add(PyreonFlowConnection(edge.source, edge.target, edge.sourceHandle, edge.targetHandle))
         }
+        emitEdgeChanges(added.map { PyreonFlowEdgeChange("add", edge = it) })
+        for (connection in connections) for (callback in connectListeners.values) callback(connection)
     }
     fun setEdges(edges: List<PyreonFlowEdge>) {
         val oldSelectedNodes = selectedNodeIdList.toList(); val oldSelectedEdges = selectedEdgeIdList.toList()

@@ -136,6 +136,18 @@ public struct PyreonFlowSelection<T> {
     public let nodes: [PyreonFlowNode<T>]
     public let edges: [PyreonFlowEdge]
 }
+public struct PyreonFlowNodeChange: Equatable {
+    public let type: String
+    public let id: String
+    public let position: PyreonXYPosition?
+    public init(type: String, id: String, position: PyreonXYPosition? = nil) { self.type = type; self.id = id; self.position = position }
+}
+public struct PyreonFlowEdgeChange: Equatable {
+    public let type: String
+    public let id: String?
+    public let edge: PyreonFlowEdge?
+    public init(type: String, id: String? = nil, edge: PyreonFlowEdge? = nil) { self.type = type; self.id = id; self.edge = edge }
+}
 
 /// An edge — mirrors `FlowEdge`'s core fields, including editable waypoints.
 public struct PyreonFlowEdge: Equatable {
@@ -363,6 +375,8 @@ public final class PyreonFlowState<T> {
     @ObservationIgnored private var selectionListeners: [UUID: (PyreonFlowSelection<T>) -> Void] = [:]
     @ObservationIgnored private var nodesDeleteListeners: [UUID: ([PyreonFlowNode<T>]) -> Void] = [:]
     @ObservationIgnored private var edgesDeleteListeners: [UUID: ([PyreonFlowEdge]) -> Void] = [:]
+    @ObservationIgnored private var nodesChangeListeners: [UUID: ([PyreonFlowNodeChange]) -> Void] = [:]
+    @ObservationIgnored private var edgesChangeListeners: [UUID: ([PyreonFlowEdgeChange]) -> Void] = [:]
     @ObservationIgnored private let connectionValidator: ((PyreonFlowConnection) -> Bool)?
 
     public init(
@@ -440,7 +454,19 @@ public final class PyreonFlowState<T> {
         let token = UUID(); edgesDeleteListeners[token] = callback
         return { [weak self] in self?.edgesDeleteListeners[token] = nil }
     }
+    @discardableResult public func onNodesChange(_ callback: @escaping ([PyreonFlowNodeChange]) -> Void) -> () -> Void {
+        let token = UUID(); nodesChangeListeners[token] = callback
+        return { [weak self] in self?.nodesChangeListeners[token] = nil }
+    }
+    @discardableResult public func onEdgesChange(_ callback: @escaping ([PyreonFlowEdgeChange]) -> Void) -> () -> Void {
+        let token = UUID(); edgesChangeListeners[token] = callback
+        return { [weak self] in self?.edgesChangeListeners[token] = nil }
+    }
+    private func emitNodeChanges(_ changes: [PyreonFlowNodeChange]) { if !changes.isEmpty { for callback in nodesChangeListeners.values { callback(changes) } } }
+    private func emitEdgeChanges(_ changes: [PyreonFlowEdgeChange]) { if !changes.isEmpty { for callback in edgesChangeListeners.values { callback(changes) } } }
     private func emitDeleted(nodes: [PyreonFlowNode<T>], edges: [PyreonFlowEdge]) {
+        emitNodeChanges(nodes.map { PyreonFlowNodeChange(type: "remove", id: $0.id) })
+        emitEdgeChanges(edges.map { PyreonFlowEdgeChange(type: "remove", id: $0.id) })
         if !nodes.isEmpty { for callback in nodesDeleteListeners.values { callback(nodes) } }
         if !edges.isEmpty { for callback in edgesDeleteListeners.values { callback(edges) } }
     }
@@ -619,6 +645,7 @@ public final class PyreonFlowState<T> {
         boxes[id]!.node.position = clamped
         nodesVersion &+= 1
         markMutation()
+        emitNodeChanges([PyreonFlowNodeChange(type: "position", id: id, position: clamped)])
     }
     public func updateNodeData(_ id: String, _ update: (inout T) -> Void) {
         guard nodeStore[id] != nil else { return }
@@ -692,6 +719,7 @@ public final class PyreonFlowState<T> {
         guard !edgeIds.contains(edge.id) else { return nil }
         checkpoint()
         insertEdge(edge)
+        emitEdgeChanges([PyreonFlowEdgeChange(type: "add", edge: getEdge(edge.id))])
         for callback in connectListeners.values { callback(connection) }
         return getEdge(edge.id)
     }
@@ -701,6 +729,7 @@ public final class PyreonFlowState<T> {
         guard !edgeIds.contains(edge.id) else { return }
         checkpoint()
         insertEdge(edge)
+        emitEdgeChanges([PyreonFlowEdgeChange(type: "add", edge: getEdge(edge.id))])
         let connection = PyreonFlowConnection(source: edge.source, target: edge.target, sourceHandle: edge.sourceHandle, targetHandle: edge.targetHandle)
         for callback in connectListeners.values { callback(connection) }
     }
@@ -708,11 +737,15 @@ public final class PyreonFlowState<T> {
         let fresh = edges.filter { !edgeIds.contains($0.id) }
         guard !fresh.isEmpty else { return }
         checkpoint()
+        var added: [PyreonFlowEdge] = []
+        var connections: [PyreonFlowConnection] = []
         for edge in fresh {
             insertEdge(edge)
-            let connection = PyreonFlowConnection(source: edge.source, target: edge.target, sourceHandle: edge.sourceHandle, targetHandle: edge.targetHandle)
-            for callback in connectListeners.values { callback(connection) }
+            if let stored = getEdge(edge.id) { added.append(stored) }
+            connections.append(PyreonFlowConnection(source: edge.source, target: edge.target, sourceHandle: edge.sourceHandle, targetHandle: edge.targetHandle))
         }
+        emitEdgeChanges(added.map { PyreonFlowEdgeChange(type: "add", edge: $0) })
+        for connection in connections { for callback in connectListeners.values { callback(connection) } }
     }
     public func setEdges(_ next: [PyreonFlowEdge]) {
         let oldSelectedNodes = selectedNodeIds, oldSelectedEdges = selectedEdgeIds

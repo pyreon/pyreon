@@ -125,6 +125,17 @@ struct PyreonFlowStateTests {
         deletionEvents.removeNode("2")
         check(deletedNodes == ["2"] && deletedEdges == ["e1", "e2"], "node deletion reports the node and all incident edges")
         stopNodeDelete(); stopEdgeDelete()
+        let changes = seedFlow()
+        var nodeChanges: [PyreonFlowNodeChange] = [], edgeChanges: [PyreonFlowEdgeChange] = []
+        let stopNodeChanges = changes.onNodesChange { nodeChanges = $0 }
+        let stopEdgeChanges = changes.onEdgesChange { edgeChanges = $0 }
+        changes.updateNodePosition("1", PyreonXYPosition(x: 10, y: 20))
+        check(nodeChanges == [PyreonFlowNodeChange(type: "position", id: "1", position: PyreonXYPosition(x: 10, y: 20))], "onNodesChange emits typed position packets")
+        changes.addEdge(PyreonFlowEdge(id: "e3", source: "1", target: "3"))
+        check(edgeChanges.first?.type == "add" && edgeChanges.first?.edge?.id == "e3", "onEdgesChange emits the normalized added edge")
+        changes.removeNode("2")
+        check(nodeChanges == [PyreonFlowNodeChange(type: "remove", id: "2")] && edgeChanges.map(\.id) == ["e1", "e2"], "compound deletion emits coherent remove batches")
+        stopNodeChanges(); stopEdgeChanges()
         f.updateNode("1") { $0.hidden = true; $0.id = "ignored" }
         check(f.getNode("1")?.hidden == true && f.getNode("ignored") == nil, "updateNode patches fields while preserving indexed identity")
         f.updateNode("1") { $0.hidden = false }
