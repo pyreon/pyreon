@@ -1201,6 +1201,7 @@ public final class PyreonFlowState<T> {
   public func panTo(_ position: PyreonXYPosition) {}
   public func setViewport(x: Double? = nil, y: Double? = nil, zoom: Double? = nil) {}
   public func setCenter(_ x: Double, _ y: Double, zoom: Double? = nil) {}
+  public func animateViewport(x: Double? = nil, y: Double? = nil, zoom: Double? = nil, duration: Double = 300) {}
   public func screenToFlowPosition(_ position: PyreonXYPosition) -> PyreonXYPosition { position }
   public func flowToScreenPosition(_ position: PyreonXYPosition) -> PyreonXYPosition { position }
   public func isNodeVisible(_ id: String) -> Bool { false }

@@ -33,6 +33,7 @@ export const LOWERED_FLOW_METHODS: ReadonlySet<string> = new Set([
   'copySelected', 'paste', 'pushHistory', 'undo', 'redo',
   'toJSON', 'fromJSON',
   'batch',
+  'animateViewport',
 ])
 
 /** `FlowNode` fields the native `PyreonFlowNode` carries. */

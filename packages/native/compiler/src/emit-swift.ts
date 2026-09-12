@@ -5872,6 +5872,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           const args = swiftFlowViewportLiteral(e.args[0]!)
           if (args !== null) return `${swiftIdent(flowName)}.setViewport(${args})`
         }
+        if (member === 'animateViewport' && e.args.length >= 1) {
+          const args = swiftFlowViewportLiteral(e.args[0]!)
+          if (args !== null) return `${swiftIdent(flowName)}.animateViewport(${args}${e.args[1] ? `, duration: ${emitSwiftExpr(e.args[1]!, indent)}` : ''})`
+        }
         if (member === 'setCenter' && e.args.length >= 2) {
           const options = e.args[2] ? swiftFlowViewportLiteral(e.args[2]!) : ''
           if (options !== null) return `${swiftIdent(flowName)}.setCenter(${emitSwiftExpr(e.args[0]!, indent)}, ${emitSwiftExpr(e.args[1]!, indent)}${options ? `, ${options}` : ''})`

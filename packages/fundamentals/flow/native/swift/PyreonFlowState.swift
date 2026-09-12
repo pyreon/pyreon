@@ -23,6 +23,7 @@
 
 import Foundation
 import Observation
+import Dispatch
 
 /// A 2D point in flow (unscaled diagram) coordinates.
 public struct PyreonXYPosition: Equatable {
@@ -400,6 +401,7 @@ public final class PyreonFlowState<T> {
     @ObservationIgnored private var paneClickListeners: [UUID: (PyreonFlowPaneEvent) -> Void] = [:]
     @ObservationIgnored private let connectionValidator: ((PyreonFlowConnection) -> Bool)?
     @ObservationIgnored private let searchText: ((T) -> String?)?
+    @ObservationIgnored private var viewportAnimationGeneration = 0
 
     public init(
         nodes: [PyreonFlowNode<T>] = [],
@@ -441,6 +443,27 @@ public final class PyreonFlowState<T> {
 
     private func markMutation() { mutationVersion &+= 1 }
     public func batch(_ operation: () -> Void) { operation() }
+    public func animateViewport(x: Double? = nil, y: Double? = nil, zoom: Double? = nil, duration: Double = 300) {
+        viewportAnimationGeneration &+= 1
+        let generation = viewportAnimationGeneration
+        let start = viewport
+        let end = PyreonFlowViewport(x: x ?? start.x, y: y ?? start.y, zoom: zoom ?? start.zoom)
+        guard duration > 0 else { viewport = end; emitViewportChange(); return }
+        scheduleViewportFrame(generation: generation, start: start, end: end, startTime: ProcessInfo.processInfo.systemUptime, duration: duration / 1000)
+    }
+    private func scheduleViewportFrame(generation: Int, start: PyreonFlowViewport, end: PyreonFlowViewport, startTime: TimeInterval, duration: TimeInterval) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0 / 60.0) { [weak self] in
+            guard let self, self.viewportAnimationGeneration == generation else { return }
+            let t = min((ProcessInfo.processInfo.systemUptime - startTime) / duration, 1)
+            let eased = 1 - pow(1 - t, 3)
+            self.viewport = PyreonFlowViewport(
+                x: start.x + (end.x - start.x) * eased,
+                y: start.y + (end.y - start.y) * eased,
+                zoom: start.zoom + (end.zoom - start.zoom) * eased)
+            self.emitViewportChange()
+            if t < 1 { self.scheduleViewportFrame(generation: generation, start: start, end: end, startTime: startTime, duration: duration) }
+        }
+    }
     @discardableResult public func onConnect(_ callback: @escaping (PyreonFlowConnection) -> Void) -> () -> Void {
         let token = UUID(); connectListeners[token] = callback
         return { [weak self] in self?.connectListeners[token] = nil }

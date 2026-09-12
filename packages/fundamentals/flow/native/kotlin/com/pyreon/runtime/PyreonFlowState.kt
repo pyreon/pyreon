@@ -6,6 +6,8 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
+import java.util.Timer
+import java.util.TimerTask
 
 // PyreonFlowState — the Android-native port of @pyreon/flow's dependency-free
 // `createFlow`. Same node/edge/viewport/selection behaviour as the
@@ -169,6 +171,8 @@ class PyreonFlowState<T>(
     private val searchText: ((T) -> String?)? = null,
 ) {
     fun batch(operation: () -> Unit) { Snapshot.withMutableSnapshot(operation) }
+    private val viewportAnimationTimer = Timer("PyreonFlowViewport", true)
+    @Volatile private var viewportAnimationGeneration = 0
     private val undoStack = ArrayList<PyreonFlowHistorySnapshot<T>>()
     private val redoStack = ArrayList<PyreonFlowHistorySnapshot<T>>()
     private var mutationVersion = 0
@@ -808,6 +812,32 @@ class PyreonFlowState<T>(
     fun setCenter(x: Double, y: Double, zoom: Double? = null) {
         val z = (zoom ?: _viewport.zoom).coerceIn(minZoom, maxZoom)
         setViewport(x = -x * z + containerSize.width / 2, y = -y * z + containerSize.height / 2, zoom = z)
+    }
+    @JvmOverloads
+    fun animateViewport(x: Double? = null, y: Double? = null, zoom: Double? = null, duration: Double = 300.0) {
+        val generation = ++viewportAnimationGeneration
+        val start = _viewport
+        val end = PyreonFlowViewport(x ?: start.x, y ?: start.y, zoom ?: start.zoom)
+        if (duration <= 0.0) { _viewport = end; emitViewportChange(); return }
+        scheduleViewportFrame(generation, start, end, System.nanoTime(), duration * 1_000_000.0)
+    }
+    private fun scheduleViewportFrame(generation: Int, start: PyreonFlowViewport, end: PyreonFlowViewport, startNanos: Long, durationNanos: Double) {
+        viewportAnimationTimer.schedule(object : TimerTask() {
+            override fun run() {
+                if (viewportAnimationGeneration != generation) return
+                val t = ((System.nanoTime() - startNanos) / durationNanos).coerceIn(0.0, 1.0)
+                val eased = 1.0 - Math.pow(1.0 - t, 3.0)
+                Snapshot.withMutableSnapshot {
+                    _viewport = PyreonFlowViewport(
+                        start.x + (end.x - start.x) * eased,
+                        start.y + (end.y - start.y) * eased,
+                        start.zoom + (end.zoom - start.zoom) * eased,
+                    )
+                }
+                emitViewportChange()
+                if (t < 1.0) scheduleViewportFrame(generation, start, end, startNanos, durationNanos)
+            }
+        }, 16L)
     }
     fun screenToFlowPosition(position: PyreonXYPosition): PyreonXYPosition = PyreonXYPosition(
         x = (position.x - _viewport.x) / _viewport.zoom,
