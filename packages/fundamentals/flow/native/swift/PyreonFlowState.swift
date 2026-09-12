@@ -343,6 +343,91 @@ private func pyreonFlowRelaxOverlaps<T>(_ nodes: [PyreonFlowNode<T>], positions:
     }
 }
 
+private struct PyreonFlowRandom {
+    private var state: UInt32 = 0x02f6e2b1
+    mutating func next() -> Double {
+        state ^= state << 13
+        state ^= UInt32(bitPattern: Int32(bitPattern: state) >> 17)
+        state ^= state << 5
+        return Double(state) / Double(UInt32.max)
+    }
+}
+
+public func pyreonFlowForceLayout<T>(
+    _ nodes: [PyreonFlowNode<T>], edges: [PyreonFlowEdge], nodeSpacing: Double = 20
+) -> [PyreonFlowLayoutPosition] {
+    guard !nodes.isEmpty else { return [] }
+    let ids = nodes.map(\.id), count = nodes.count
+    let average = nodes.reduce(0.0) { sum, node in
+        sum + max(node.width ?? pyreonFlowDefaultNodeWidth, node.height ?? pyreonFlowDefaultNodeHeight)
+    } / Double(count)
+    let ideal = (average + nodeSpacing) * 1.4, area = ideal * sqrt(Double(count))
+    let iterations = count <= 100 ? 300 : count <= 400 ? 120 : 60
+    let cell = ideal * 2, half = 1 << 15, span = half * 2, maxPartners = 24
+    func exactKey(_ x: Int, _ y: Int) -> Int { (x + half) * span + (y + half) }
+    func key(_ x: Double, _ y: Double) -> Int { exactKey(Int(floor(x)), Int(floor(y))) }
+    var random = PyreonFlowRandom(), x = Array(repeating: 0.0, count: count), y = x
+    let index = Dictionary(uniqueKeysWithValues: ids.enumerated().map { ($0.element, $0.offset) })
+    for i in 0..<count {
+        let angle = Double(i) / Double(count) * Double.pi * 2
+        x[i] = cos(angle) * area + random.next() * ideal * 0.1
+        y[i] = sin(angle) * area + random.next() * ideal * 0.1
+    }
+    let known = Set(ids)
+    let links = edges.compactMap { edge -> (Int, Int)? in
+        guard known.contains(edge.source), known.contains(edge.target), edge.source != edge.target else { return nil }
+        return (index[edge.source]!, index[edge.target]!)
+    }
+    var dx = Array(repeating: 0.0, count: count), dy = dx, temperature = area / 4
+    for _ in 0..<iterations {
+        dx = Array(repeating: 0, count: count); dy = dx
+        var buckets: [Int: [Int]] = [:], bucketOrder: [Int] = []
+        for i in 0..<count {
+            let bucketKey = key(x[i] / cell, y[i] / cell)
+            if buckets[bucketKey] == nil { buckets[bucketKey] = []; bucketOrder.append(bucketKey) }
+            buckets[bucketKey]!.append(i)
+        }
+        for bucketKey in bucketOrder {
+            let cx = bucketKey / span - half, cy = bucketKey % span - half
+            var partners: [Int] = []
+            outer: for ox in -1...1 { for oy in -1...1 {
+                for value in buckets[exactKey(cx + ox, cy + oy)] ?? [] {
+                    partners.append(value)
+                    if partners.count >= maxPartners { break outer }
+                }
+            } }
+            for i in buckets[bucketKey]! { for j in partners where i != j {
+                var ux = x[i] - x[j], uy = y[i] - y[j], distance = sqrt(ux * ux + uy * uy)
+                if distance < 0.01 {
+                    ux = (random.next() - 0.5) * 0.1; uy = (random.next() - 0.5) * 0.1
+                    distance = sqrt(ux * ux + uy * uy); if distance == 0 { distance = 0.01 }
+                }
+                let repulsion = ideal * ideal / distance
+                dx[i] += ux / distance * repulsion; dy[i] += uy / distance * repulsion
+            } }
+        }
+        for (a, b) in links {
+            let ux = x[a] - x[b], uy = y[a] - y[b]
+            var distance = sqrt(ux * ux + uy * uy); if distance == 0 { distance = 0.01 }
+            let attraction = distance * distance / ideal
+            dx[a] -= ux / distance * attraction; dy[a] -= uy / distance * attraction
+            dx[b] += ux / distance * attraction; dy[b] += uy / distance * attraction
+        }
+        for i in 0..<count {
+            var magnitude = sqrt(dx[i] * dx[i] + dy[i] * dy[i]); if magnitude == 0 { magnitude = 1 }
+            x[i] += dx[i] / magnitude * min(magnitude, temperature)
+            y[i] += dy[i] / magnitude * min(magnitude, temperature)
+        }
+        temperature *= 0.975
+    }
+    let minX = x.min() ?? 0, minY = y.min() ?? 0
+    var positions = Dictionary(uniqueKeysWithValues: ids.enumerated().map {
+        ($0.element, PyreonXYPosition(x: x[$0.offset] - minX, y: y[$0.offset] - minY))
+    })
+    pyreonFlowRelaxOverlaps(nodes, positions: &positions, spacing: nodeSpacing)
+    return ids.map { PyreonFlowLayoutPosition(id: $0, position: positions[$0]!) }
+}
+
 public func pyreonFlowRadialLayout<T>(
     _ nodes: [PyreonFlowNode<T>], edges: [PyreonFlowEdge], nodeSpacing: Double = 20
 ) -> [PyreonFlowLayoutPosition] {

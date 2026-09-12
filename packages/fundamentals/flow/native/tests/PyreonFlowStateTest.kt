@@ -13,6 +13,7 @@ import com.pyreon.runtime.PyreonFlowSnapLines
 import com.pyreon.runtime.PyreonFlowViewport
 import com.pyreon.runtime.PyreonXYPosition
 import com.pyreon.runtime.pyreonFlowPackingLayout
+import com.pyreon.runtime.pyreonFlowForceLayout
 import com.pyreon.runtime.pyreonFlowRadialLayout
 import com.pyreon.runtime.pyreonFlowTreeLayout
 import kotlin.math.abs
@@ -61,6 +62,9 @@ fun main() {
     val radialNodes = treeNodes.take(3)
     val radialEdges = listOf(PyreonFlowEdge("ra", "r", "a"), PyreonFlowEdge("ab", "a", "b"))
     check(pyreonFlowRadialLayout(radialNodes, radialEdges).map { it.position } == listOf(PyreonXYPosition(0.0, 5.0), PyreonXYPosition(150.0, 10.0), PyreonXYPosition(270.0, 0.0)), "radial layout matches exact web ring geometry")
+    val force = pyreonFlowForceLayout(radialNodes, radialEdges)
+    val forceWeb = listOf(PyreonXYPosition(325.65041151345395, 204.74888057371896), PyreonXYPosition(162.85665358620253, 102.39421274116614), PyreonXYPosition(0.0, 0.0))
+    check(force.zip(forceWeb).all { (actual, expected) -> abs(actual.position.x - expected.x) < 1e-9 && abs(actual.position.y - expected.y) < 1e-9 }, "force layout reproduces the seeded web coordinates")
     val batched = seedFlow()
     batched.batch {
         batched.updateNodePosition("1", PyreonXYPosition(10.0, 20.0))

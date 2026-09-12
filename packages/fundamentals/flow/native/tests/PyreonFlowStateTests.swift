@@ -59,6 +59,9 @@ struct PyreonFlowStateTests {
         let radialNodes = Array(treeNodes.prefix(3))
         let radialEdges = [PyreonFlowEdge(id: "ra", source: "r", target: "a"), PyreonFlowEdge(id: "ab", source: "a", target: "b")]
         check(pyreonFlowRadialLayout(radialNodes, edges: radialEdges).map(\.position) == [PyreonXYPosition(x: 0, y: 5), PyreonXYPosition(x: 150, y: 10), PyreonXYPosition(x: 270, y: 0)], "radial layout matches exact web ring geometry")
+        let force = pyreonFlowForceLayout(radialNodes, edges: radialEdges)
+        let forceWeb = [PyreonXYPosition(x: 325.65041151345395, y: 204.74888057371896), PyreonXYPosition(x: 162.85665358620253, y: 102.39421274116614), PyreonXYPosition(x: 0, y: 0)]
+        check(zip(force, forceWeb).allSatisfy { abs($0.position.x - $1.x) < 1e-9 && abs($0.position.y - $1.y) < 1e-9 }, "force layout reproduces the seeded web coordinates")
         let batched = seedFlow()
         batched.batch {
             batched.updateNodePosition("1", PyreonXYPosition(x: 10, y: 20))

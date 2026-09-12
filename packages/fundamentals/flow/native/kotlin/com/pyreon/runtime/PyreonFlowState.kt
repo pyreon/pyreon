@@ -289,6 +289,82 @@ private fun <T> pyreonFlowRelaxOverlaps(nodes: List<PyreonFlowNode<T>>, position
     }
 }
 
+private class PyreonFlowRandom(seed: Int = 0x02f6e2b1) {
+    private var state = seed
+    fun next(): Double {
+        state = state xor (state shl 13)
+        state = state xor (state shr 17)
+        state = state xor (state shl 5)
+        return state.toUInt().toDouble() / UInt.MAX_VALUE.toDouble()
+    }
+}
+
+fun <T> pyreonFlowForceLayout(nodes: List<PyreonFlowNode<T>>, edges: List<PyreonFlowEdge>, nodeSpacing: Double = 20.0): List<PyreonFlowLayoutPosition> {
+    if (nodes.isEmpty()) return emptyList()
+    val ids = nodes.map { it.id }; val count = ids.size
+    val average = nodes.sumOf { kotlin.math.max(it.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH, it.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT) } / count
+    val ideal = (average + nodeSpacing) * 1.4
+    val area = ideal * kotlin.math.sqrt(count.toDouble())
+    val iterations = when { count <= 100 -> 300; count <= 400 -> 120; else -> 60 }
+    val cell = ideal * 2.0; val half = 1 shl 15; val span = half * 2; val maxPartners = 24
+    fun keyExact(x: Int, y: Int) = (x + half) * span + (y + half)
+    fun key(x: Double, y: Double) = keyExact(kotlin.math.floor(x).toInt(), kotlin.math.floor(y).toInt())
+    val random = PyreonFlowRandom()
+    val x = DoubleArray(count); val y = DoubleArray(count); val index = ids.withIndex().associate { it.value to it.index }
+    repeat(count) { i ->
+        val angle = i.toDouble() / count * Math.PI * 2.0
+        x[i] = kotlin.math.cos(angle) * area + random.next() * ideal * 0.1
+        y[i] = kotlin.math.sin(angle) * area + random.next() * ideal * 0.1
+    }
+    val known = ids.toSet()
+    val links = edges.filter { it.source in known && it.target in known && it.source != it.target }.map { index.getValue(it.source) to index.getValue(it.target) }
+    val dx = DoubleArray(count); val dy = DoubleArray(count); var temperature = area / 4.0
+    repeat(iterations) {
+        dx.fill(0.0); dy.fill(0.0)
+        val buckets = linkedMapOf<Int, MutableList<Int>>()
+        repeat(count) { i -> buckets.getOrPut(key(x[i] / cell, y[i] / cell)) { mutableListOf() }.add(i) }
+        buckets.forEach { (bucketKey, bucket) ->
+            val cx = bucketKey / span - half; val cy = bucketKey % span - half
+            val partners = mutableListOf<Int>()
+            loop@ for (ox in -1..1) for (oy in -1..1) {
+                for (value in buckets[keyExact(cx + ox, cy + oy)] ?: emptyList()) {
+                    partners.add(value)
+                    if (partners.size >= maxPartners) break@loop
+                }
+            }
+            bucket.forEach { i -> partners.forEach { j ->
+                if (i != j) {
+                    var ux = x[i] - x[j]; var uy = y[i] - y[j]
+                    var distance = kotlin.math.sqrt(ux * ux + uy * uy)
+                    if (distance < 0.01) {
+                        ux = (random.next() - 0.5) * 0.1; uy = (random.next() - 0.5) * 0.1
+                        distance = kotlin.math.sqrt(ux * ux + uy * uy).takeIf { it != 0.0 } ?: 0.01
+                    }
+                    val repulsion = ideal * ideal / distance
+                    dx[i] += ux / distance * repulsion; dy[i] += uy / distance * repulsion
+                }
+            } }
+        }
+        links.forEach { (a, b) ->
+            val ux = x[a] - x[b]; val uy = y[a] - y[b]
+            val distance = kotlin.math.sqrt(ux * ux + uy * uy).takeIf { it != 0.0 } ?: 0.01
+            val attraction = distance * distance / ideal
+            dx[a] -= ux / distance * attraction; dy[a] -= uy / distance * attraction
+            dx[b] += ux / distance * attraction; dy[b] += uy / distance * attraction
+        }
+        repeat(count) { i ->
+            val magnitude = kotlin.math.sqrt(dx[i] * dx[i] + dy[i] * dy[i]).takeIf { it != 0.0 } ?: 1.0
+            x[i] += dx[i] / magnitude * kotlin.math.min(magnitude, temperature)
+            y[i] += dy[i] / magnitude * kotlin.math.min(magnitude, temperature)
+        }
+        temperature *= 0.975
+    }
+    val minX = x.minOrNull() ?: 0.0; val minY = y.minOrNull() ?: 0.0
+    val positions = ids.withIndex().associateTo(mutableMapOf()) { it.value to PyreonXYPosition(x[it.index] - minX, y[it.index] - minY) }
+    pyreonFlowRelaxOverlaps(nodes, positions, nodeSpacing)
+    return ids.map { PyreonFlowLayoutPosition(it, positions.getValue(it)) }
+}
+
 fun <T> pyreonFlowRadialLayout(nodes: List<PyreonFlowNode<T>>, edges: List<PyreonFlowEdge>, nodeSpacing: Double = 20.0): List<PyreonFlowLayoutPosition> {
     if (nodes.isEmpty()) return emptyList()
     val ids = nodes.map { it.id }; val known = ids.toSet()
