@@ -1144,7 +1144,8 @@ public final class PyreonFlowState<T> {
     edgeInteractionWidth: Double = 20, connectionRadius: Double = 0, pannable: Bool = true, zoomable: Bool = true, multiSelect: Bool = true, onlyRenderVisibleElements: Bool = false, snapToObjects: Bool = true,
     defaultEdgeType: String = "bezier", defaultEdgeOptions: PyreonFlowDefaultEdgeOptions = PyreonFlowDefaultEdgeOptions(), fitView: Bool = false, fitViewPadding: Double = 0.1, autoHistory: Bool = true,
     connectionRules: [String: [String]]? = nil,
-    isValidConnection: ((PyreonFlowConnection) -> Bool)? = nil
+    isValidConnection: ((PyreonFlowConnection) -> Bool)? = nil,
+    searchText: ((T) -> String?)? = nil
   ) {}
   public private(set) var nodes: [PyreonFlowNode<T>] = []
   public private(set) var edges: [PyreonFlowEdge] = []
@@ -1207,6 +1208,7 @@ public final class PyreonFlowState<T> {
   public func getIncomers(_ nodeId: String) -> [PyreonFlowNode<T>] { [] }
   public func getOutgoers(_ nodeId: String) -> [PyreonFlowNode<T>] { [] }
   public func findNodes(_ predicate: (PyreonFlowNode<T>) -> Bool) -> [PyreonFlowNode<T>] { [] }
+  public func searchNodes(_ query: String) -> [PyreonFlowNode<T>] { [] }
   public func getChildNodes(_ parentId: String) -> [PyreonFlowNode<T>] { [] }
   public func getAbsolutePosition(_ nodeId: String) -> PyreonXYPosition { PyreonXYPosition(x: 0, y: 0) }
   public func getProximityConnection(_ nodeId: String, _ threshold: Double = 50) -> PyreonFlowConnection? { nil }

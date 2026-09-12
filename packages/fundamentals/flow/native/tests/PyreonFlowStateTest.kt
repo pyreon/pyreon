@@ -26,6 +26,7 @@ private fun seedFlow(): PyreonFlowState<NodeData> = PyreonFlowState(
         PyreonFlowNode(id = "2", position = PyreonXYPosition(200.0, 0.0), data = NodeData("Mid")),
         PyreonFlowNode(id = "3", position = PyreonXYPosition(400.0, 0.0), data = NodeData("End")),
     ),
+    searchText = { it.label },
     edges = listOf(
         PyreonFlowEdge(id = "e1", source = "1", target = "2"),
         PyreonFlowEdge(id = "e2", source = "2", target = "3"),
@@ -327,6 +328,8 @@ fun main() {
     check(m.getIncomers("2").map { it.id } == listOf("1"), "getIncomers walks edges INTO the node")
     check(m.getOutgoers("2").map { it.id } == listOf("3"), "getOutgoers walks edges OUT of the node")
     check(m.findNodes { it.data.label.contains("t") }.map { it.id } == listOf("1"), "findNodes evaluates the native predicate in insertion order")
+    check(m.searchNodes("MID").map { it.id } == listOf("2"), "searchNodes performs case-insensitive label search")
+    check(PyreonFlowState(nodes = m.nodes).searchNodes("2").map { it.id } == listOf("2"), "searchNodes falls back to ids without a label extractor")
     check(m.getIncomers("1").isEmpty(), "a source-only node has no incomers")
 
     // 10. Edge `type` default — web `normalizeEdge`: `type ?: "bezier"`.

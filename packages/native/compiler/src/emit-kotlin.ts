@@ -3213,6 +3213,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       ...(d.fitViewPadding !== undefined ? [`fitViewPadding = ${ktDouble(d.fitViewPadding)}`] : []),
       ...(d.connectionRules !== undefined ? [`connectionRules = mapOf(${Object.entries(d.connectionRules).map(([key, outputs]) => `${JSON.stringify(key)} to listOf(${outputs.map((output) => JSON.stringify(output)).join(', ')})`).join(', ')})`] : []),
       ...(d.connectionValidator !== undefined ? [`connectionValidator = ${emitKotlinExpr(d.connectionValidator, 0)}`] : []),
+      ...(rowFields.some((field) => field.name === 'label') ? ['searchText = { it.label }'] : []),
     ].join(', ')
     return `val ${kotlinIdent(d.name)} = remember { PyreonFlowState<${rowType}>(nodes = listOf(${nodeLits}), edges = listOf(${edgeLits})${zoomArgs === '' ? '' : `, ${zoomArgs}`}) }`
   }

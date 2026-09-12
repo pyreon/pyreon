@@ -165,6 +165,7 @@ class PyreonFlowState<T>(
     fitViewPadding: Double = 0.1,
     val autoHistory: Boolean = true,
     private val connectionValidator: ((PyreonFlowConnection) -> Boolean)? = null,
+    private val searchText: ((T) -> String?)? = null,
 ) {
     private val undoStack = ArrayList<PyreonFlowHistorySnapshot<T>>()
     private val redoStack = ArrayList<PyreonFlowHistorySnapshot<T>>()
@@ -882,6 +883,10 @@ class PyreonFlowState<T>(
         return order.filter { targetIds.contains(it) }.map { nodeMap.getValue(it) }
     }
     fun findNodes(predicate: (PyreonFlowNode<T>) -> Boolean): List<PyreonFlowNode<T>> = nodes.filter(predicate)
+    fun searchNodes(query: String): List<PyreonFlowNode<T>> {
+        val needle = query.lowercase()
+        return nodes.filter { node -> (searchText?.invoke(node.data) ?: node.id).lowercase().contains(needle) }
+    }
     fun getChildNodes(parentId: String): List<PyreonFlowNode<T>> =
         order.mapNotNull { nodeMap[it] }.filter { it.parentId == parentId }
     fun getAbsolutePosition(nodeId: String): PyreonXYPosition {

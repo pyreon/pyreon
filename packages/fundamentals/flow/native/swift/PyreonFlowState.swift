@@ -399,6 +399,7 @@ public final class PyreonFlowState<T> {
     @ObservationIgnored private var connectEndListeners: [UUID: (PyreonFlowConnection?) -> Void] = [:]
     @ObservationIgnored private var paneClickListeners: [UUID: (PyreonFlowPaneEvent) -> Void] = [:]
     @ObservationIgnored private let connectionValidator: ((PyreonFlowConnection) -> Bool)?
+    @ObservationIgnored private let searchText: ((T) -> String?)?
 
     public init(
         nodes: [PyreonFlowNode<T>] = [],
@@ -415,7 +416,8 @@ public final class PyreonFlowState<T> {
         edgesFocusable: Bool = true, nodesDeletable: Bool = true, edgesDeletable: Bool = true, edgesReconnectable: Bool = true,
         edgeInteractionWidth: Double = 20, connectionRadius: Double = 0, pannable: Bool = true, zoomable: Bool = true, multiSelect: Bool = true, onlyRenderVisibleElements: Bool = false, snapToObjects: Bool = true,
         defaultEdgeType: String = "bezier", defaultEdgeOptions: PyreonFlowDefaultEdgeOptions = PyreonFlowDefaultEdgeOptions(), fitView: Bool = false, fitViewPadding: Double = 0.1, autoHistory: Bool = true,
-        isValidConnection: ((PyreonFlowConnection) -> Bool)? = nil
+        isValidConnection: ((PyreonFlowConnection) -> Bool)? = nil,
+        searchText: ((T) -> String?)? = nil
     ) {
         self.viewport = viewport
         self.minZoom = minZoom
@@ -431,6 +433,7 @@ public final class PyreonFlowState<T> {
         self.defaultEdgeType = defaultEdgeType; self.defaultEdgeOptions = defaultEdgeOptions; self.fitViewOnLoad = fitView; self.fitViewPadding = max(0, fitViewPadding)
         self.autoHistory = autoHistory
         self.connectionValidator = isValidConnection
+        self.searchText = searchText
         for node in nodes { insertNode(node) }
         for edge in edges { insertEdge(edge) }
         mutationVersion = 0
@@ -1133,6 +1136,12 @@ public final class PyreonFlowState<T> {
     }
     public func findNodes(_ predicate: (PyreonFlowNode<T>) -> Bool) -> [PyreonFlowNode<T>] {
         nodes.filter(predicate)
+    }
+    public func searchNodes(_ query: String) -> [PyreonFlowNode<T>] {
+        let needle = query.lowercased()
+        return nodes.filter { node in
+            (searchText?(node.data) ?? node.id).lowercased().contains(needle)
+        }
     }
     public func getChildNodes(_ parentId: String) -> [PyreonFlowNode<T>] {
         order.compactMap { nodeStore[$0]?.parentId == parentId ? nodeStore[$0] : nil }

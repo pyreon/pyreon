@@ -489,8 +489,10 @@ export function C() {
       else expect(validateKotlin(result.code).ok).toBe(true)
     })
     it(`[${target}] findNodes predicates lower and typecheck`, () => {
-      const result = transform(base('', `<Text>{flow.findNodes(node => node.data.label === 'Node').length}</Text>`), { target })
+      const result = transform(base('', `<Text>{flow.findNodes(node => node.data.label === 'Node').length}</Text><Text>{flow.searchNodes('node').length}</Text>`), { target })
       expect((result.warnings ?? []).join(' ')).not.toContain('`findNodes` is NOT ported')
+      expect((result.warnings ?? []).join(' ')).not.toContain('`searchNodes` is NOT ported')
+      expect(result.code).toContain(target === 'swift' ? 'searchText: { $0.label }' : 'searchText = { it.label }')
       if (target === 'swift') expect(validateSwiftWithStubs(result.code).ok).toBe(true)
       else expect(validateKotlin(result.code).ok).toBe(true)
     })

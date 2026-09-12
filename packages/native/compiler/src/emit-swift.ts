@@ -4057,6 +4057,7 @@ function emitSwiftDecl(
       ...(d.fitViewPadding !== undefined ? [`fitViewPadding: ${d.fitViewPadding}`] : []),
       ...(d.connectionRules !== undefined ? [`connectionRules: [${Object.entries(d.connectionRules).map(([key, outputs]) => `${JSON.stringify(key)}: [${outputs.map((output) => JSON.stringify(output)).join(', ')}]`).join(', ')}]`] : []),
       ...(d.connectionValidator !== undefined ? [`isValidConnection: ${emitSwiftExpr(d.connectionValidator, 0)}`] : []),
+      ...(rowFields.some((field) => field.name === 'label') ? ['searchText: { $0.label }'] : []),
     ].join(', ')
     return `@State private var ${swiftIdent(d.name)} = PyreonFlowState<${rowType}>(nodes: [${nodeLits}], edges: [${edgeLits}]${zoomArgs === '' ? '' : `, ${zoomArgs}`})`
   }
