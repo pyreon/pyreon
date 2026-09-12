@@ -1365,10 +1365,11 @@ class PyreonFlowState<T>(
      *  `containerSize`, with [padding] as a fraction of the graph's extent on
      *  each axis (default `0.1`, matching the web `fitViewPadding` default). */
     @JvmOverloads
-    fun fitView(nodeIds: List<String>? = null, padding: Double = 0.1, duration: Double = 0.0) {
+    fun fitView(nodeIds: List<String>? = null, padding: Double? = null, duration: Double = 0.0) {
         val cw = containerSize.width
         val ch = containerSize.height
         if (cw <= 0 || ch <= 0) return
+        val padding = maxOf(0.0, padding ?: fitViewPadding)
         // A bounding box needs no order: walk the map's values directly (no
         // per-node key lookup) unless a subset was named.
         val target: Collection<PyreonFlowNode<T>> =

@@ -1735,7 +1735,7 @@ class PyreonFlowState<T>(
   fun screenToFlowPosition(position: PyreonXYPosition): PyreonXYPosition = position
   fun flowToScreenPosition(position: PyreonXYPosition): PyreonXYPosition = position
   fun isNodeVisible(id: String): Boolean = false
-  fun fitView(nodeIds: List<String>? = null, padding: Double = 0.1, duration: Double = 0.0) {}
+  fun fitView(nodeIds: List<String>? = null, padding: Double? = null, duration: Double = 0.0) {}
   fun getConnectedEdges(nodeId: String): List<PyreonFlowEdge> = emptyList()
   fun getIncomers(nodeId: String): List<PyreonFlowNode<T>> = emptyList()
   fun getOutgoers(nodeId: String): List<PyreonFlowNode<T>> = emptyList()

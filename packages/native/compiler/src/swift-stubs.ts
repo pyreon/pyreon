@@ -1208,7 +1208,7 @@ public final class PyreonFlowState<T> {
   public func screenToFlowPosition(_ position: PyreonXYPosition) -> PyreonXYPosition { position }
   public func flowToScreenPosition(_ position: PyreonXYPosition) -> PyreonXYPosition { position }
   public func isNodeVisible(_ id: String) -> Bool { false }
-  public func fitView(_ nodeIds: [String]? = nil, padding: Double = 0.1, duration: Double = 0) {}
+  public func fitView(_ nodeIds: [String]? = nil, padding: Double? = nil, duration: Double = 0) {}
   public func getConnectedEdges(_ nodeId: String) -> [PyreonFlowEdge] { [] }
   public func getIncomers(_ nodeId: String) -> [PyreonFlowNode<T>] { [] }
   public func getOutgoers(_ nodeId: String) -> [PyreonFlowNode<T>] { [] }

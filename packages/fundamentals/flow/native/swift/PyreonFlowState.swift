@@ -1670,8 +1670,9 @@ public final class PyreonFlowState<T> {
     /// each axis (default `0.1`, matching the web `fitViewPadding` default).
     /// A no-op when there is nothing to frame, or `containerSize` hasn't been
     /// measured yet (both `0`).
-    public func fitView(_ nodeIds: [String]? = nil, padding: Double = 0.1, duration: Double = 0) {
+    public func fitView(_ nodeIds: [String]? = nil, padding: Double? = nil, duration: Double = 0) {
         guard containerSize.width > 0, containerSize.height > 0 else { return }
+        let padding = max(0, padding ?? fitViewPadding)
         // A bounding box needs no order: walk the store's values directly
         // (no per-node hash lookup) unless a subset was named.
         var count = 0
