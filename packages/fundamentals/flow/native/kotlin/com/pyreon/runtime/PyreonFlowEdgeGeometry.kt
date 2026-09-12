@@ -210,6 +210,13 @@ fun pyreonSmoothStepPath(sourceX: Double, sourceY: Double, sourcePosition: Pyreo
 fun pyreonStepPath(sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition = PyreonFlowPosition.Bottom, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition = PyreonFlowPosition.Top, offset: Double = 20.0) =
     pyreonSmoothStepPath(sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, 0.0, offset)
 
+fun pyreonFlowConnectionPreview(type: String, source: PyreonFlowInteractiveHandle, target: PyreonFlowPathPoint): List<PyreonFlowEdgeSegment> = when (type) {
+    "smoothstep" -> pyreonSmoothStepPath(source.x, source.y, source.position, target.x, target.y, PyreonFlowPosition.Left).segments
+    "straight" -> pyreonStraightPath(source.x, source.y, target.x, target.y).segments
+    "step" -> pyreonStepPath(source.x, source.y, source.position, target.x, target.y, PyreonFlowPosition.Left).segments
+    else -> pyreonBezierPath(source.x, source.y, source.position, target.x, target.y, PyreonFlowPosition.Left).segments
+}
+
 /** Builds an UNSCALED Compose `Path` (flow coordinates) from a segment list.
  *  The viewport transform is applied ONCE by the canvas (`withTransform`),
  *  not per point — v1 transformed every point of every edge on every draw.

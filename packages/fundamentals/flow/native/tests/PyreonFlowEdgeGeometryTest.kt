@@ -20,6 +20,7 @@ import com.pyreon.runtime.pyreonHandlePosition
 import com.pyreon.runtime.pyreonNodeIntersection
 import com.pyreon.runtime.pyreonResolveHandleAnchor
 import com.pyreon.runtime.pyreonFlowInteractiveHandles
+import com.pyreon.runtime.pyreonFlowConnectionPreview
 import com.pyreon.runtime.pyreonNearestFlowHandle
 import com.pyreon.runtime.pyreonFlowEdgeDistance
 import com.pyreon.runtime.pyreonNearestFlowEdge
@@ -74,6 +75,10 @@ fun main() {
     check(routedStraight.labelX == 50.0 && routedStraight.labelY == 25.0 && routedStraight.segments.size == 2, "straight routing returns midpoint and segments")
     val routedBezier = pyreonBezierPath(0.0, 0.0, PyreonFlowPosition.Right, 200.0, 100.0, PyreonFlowPosition.Left)
     check(routedBezier.segments[1].c1x!! > 0.0 && routedBezier.segments[1].c2x!! < 200.0, "bezier routing offsets controls along handle directions")
+    val previewSource = com.pyreon.runtime.PyreonFlowInteractiveHandle("n", "out", "source", PyreonFlowPosition.Right, 0.0, 0.0)
+    check(pyreonFlowConnectionPreview("straight", previewSource, PyreonFlowPathPoint(100.0, 50.0)).map { it.kind } == listOf("move", "line"), "straight connection preview uses straight geometry")
+    check(pyreonFlowConnectionPreview("bezier", previewSource, PyreonFlowPathPoint(100.0, 50.0))[1].kind == "cubic", "bezier connection preview preserves the source tangent")
+    check(pyreonFlowConnectionPreview("step", previewSource, PyreonFlowPathPoint(100.0, 50.0)).any { it.kind == "quad" }, "step connection preview uses routed geometry")
     val routedWaypoint = pyreonWaypointPath(0.0, 0.0, 100.0, 100.0, listOf(PyreonFlowPathPoint(25.0, 30.0), PyreonFlowPathPoint(75.0, 80.0)))
     check(routedWaypoint.labelX == 75.0 && routedWaypoint.labelY == 80.0 && routedWaypoint.segments.size == 4, "waypoint routing uses the middle waypoint label and every segment")
     val orientations = listOf(

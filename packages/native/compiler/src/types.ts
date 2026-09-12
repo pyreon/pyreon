@@ -978,6 +978,7 @@ export type DeclIR =
       autoHistory?: boolean
       reducedMotion?: boolean
       defaultEdgeType?: string
+      connectionLineType?: string
       defaultEdgeOptions?: {
         type?: string; label?: string; animated?: boolean; focusable?: boolean; ariaLabel?: string
         hidden?: boolean; deletable?: boolean; reconnectable?: boolean; interactionWidth?: number

@@ -486,10 +486,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         var strokes = pyreonFlowEdgeStrokes(state: state, color: edgeColor, width: edgeWidth)
         if state.onlyRenderVisibleElements { strokes = strokes.filter { pyreonFlowEdgeStrokeIsVisible($0, state: state) } }
         if let draft = connectionDraft {
-            strokes.append(PyreonFlowEdgeStroke(id: "__connection-preview", segments: [
-                PyreonFlowEdgeSegment.move(draft.source.x, draft.source.y),
-                PyreonFlowEdgeSegment.line(draft.current.x, draft.current.y),
-            ], color: edgeColor, width: edgeWidth))
+            strokes.append(PyreonFlowEdgeStroke(id: "__connection-preview", segments: pyreonFlowConnectionPreview(type: state.connectionLineType, source: draft.source, target: draft.current), color: edgeColor, width: edgeWidth))
         }
         if let draft = reconnectDraft {
             strokes.append(PyreonFlowEdgeStroke(id: "__reconnect-preview", segments: [

@@ -263,6 +263,15 @@ public func pyreonStepPath(sourceX: Double, sourceY: Double, sourcePosition: Pyr
     pyreonSmoothStepPath(sourceX: sourceX, sourceY: sourceY, sourcePosition: sourcePosition, targetX: targetX, targetY: targetY, targetPosition: targetPosition, borderRadius: 0, offset: offset)
 }
 
+public func pyreonFlowConnectionPreview(type: String, source: PyreonFlowInteractiveHandle, target: PyreonXYPosition) -> [PyreonFlowEdgeSegment] {
+    switch type {
+    case "smoothstep": return pyreonSmoothStepPath(sourceX: source.x, sourceY: source.y, sourcePosition: source.position, targetX: target.x, targetY: target.y, targetPosition: .left).segments
+    case "straight": return pyreonStraightPath(sourceX: source.x, sourceY: source.y, targetX: target.x, targetY: target.y).segments
+    case "step": return pyreonStepPath(sourceX: source.x, sourceY: source.y, sourcePosition: source.position, targetX: target.x, targetY: target.y, targetPosition: .left).segments
+    default: return pyreonBezierPath(sourceX: source.x, sourceY: source.y, sourcePosition: source.position, targetX: target.x, targetY: target.y, targetPosition: .left).segments
+    }
+}
+
 /// Builds a SwiftUI `Path` from a segment list. Pure — no SwiftUI View
 /// dependency beyond the `Path`/`CGPoint` types, so it unit-tests headlessly
 /// by inspecting the resulting path's bounding box / element count.

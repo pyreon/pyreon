@@ -585,6 +585,10 @@ struct PyreonFlowStateTests {
         check(routedStraight.labelX == 50 && routedStraight.labelY == 25 && routedStraight.segments.count == 2, "straight routing returns midpoint and segments")
         let routedBezier = pyreonBezierPath(sourceX: 0, sourceY: 0, sourcePosition: .right, targetX: 200, targetY: 100, targetPosition: .left)
         check(routedBezier.segments[1].c1x! > 0 && routedBezier.segments[1].c2x! < 200, "bezier routing offsets controls along handle directions")
+        let previewSource = PyreonFlowInteractiveHandle(nodeId: "n", handleId: "out", type: "source", position: .right, x: 0, y: 0)
+        check(pyreonFlowConnectionPreview(type: "straight", source: previewSource, target: PyreonXYPosition(x: 100, y: 50)).map(\.kind) == ["move", "line"], "straight connection preview uses straight geometry")
+        check(pyreonFlowConnectionPreview(type: "bezier", source: previewSource, target: PyreonXYPosition(x: 100, y: 50))[1].kind == "cubic", "bezier connection preview preserves the source tangent")
+        check(pyreonFlowConnectionPreview(type: "step", source: previewSource, target: PyreonXYPosition(x: 100, y: 50)).contains { $0.kind == "quad" }, "step connection preview uses routed geometry")
         let routedWaypoint = pyreonWaypointPath(sourceX: 0, sourceY: 0, targetX: 100, targetY: 100, waypoints: [PyreonXYPosition(x: 25, y: 30), PyreonXYPosition(x: 75, y: 80)])
         check(routedWaypoint.labelX == 75 && routedWaypoint.labelY == 80 && routedWaypoint.segments.count == 4, "waypoint routing uses the middle waypoint label and every segment")
         let orientations: [(PyreonFlowPosition, PyreonFlowPosition, [String])] = [

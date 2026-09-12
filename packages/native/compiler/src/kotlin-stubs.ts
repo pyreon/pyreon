@@ -1661,6 +1661,7 @@ class PyreonFlowState<T>(
   onlyRenderVisibleElements: Boolean = false,
   snapToObjects: Boolean = true,
   defaultEdgeType: String = "bezier",
+  connectionLineType: String = "bezier",
   defaultEdgeOptions: PyreonFlowDefaultEdgeOptions = PyreonFlowDefaultEdgeOptions(),
   fitViewOnLoad: Boolean = false,
   fitViewPadding: Double = 0.1,

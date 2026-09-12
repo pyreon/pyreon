@@ -614,6 +614,7 @@ class PyreonFlowState<T>(
     val onlyRenderVisibleElements: Boolean = false,
     val snapToObjects: Boolean = true,
     val defaultEdgeType: String = PYREON_FLOW_DEFAULT_EDGE_TYPE,
+    val connectionLineType: String = PYREON_FLOW_DEFAULT_EDGE_TYPE,
     val defaultEdgeOptions: PyreonFlowDefaultEdgeOptions = PyreonFlowDefaultEdgeOptions(),
     val fitViewOnLoad: Boolean = false,
     fitViewPadding: Double = 0.1,

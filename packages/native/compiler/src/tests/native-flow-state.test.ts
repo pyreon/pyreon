@@ -460,10 +460,11 @@ export function C() {
       else expect(validateKotlin(result.code).ok).toBe(true)
     })
     it(`[${target}] native accessibility and motion policies cross createFlow`, () => {
-      const result = transform(base('', undefined, 'disableKeyboardA11y: true, reducedMotion: true,'), { target })
+      const result = transform(base('', undefined, "disableKeyboardA11y: true, reducedMotion: true, connectionLineType: 'step',"), { target })
       expect((result.warnings ?? []).join(' ')).not.toContain('NOT lowered natively')
       expect(result.code).toContain(target === 'swift' ? 'disableKeyboardA11y: true' : 'disableKeyboardA11y = true')
       expect(result.code).toContain(target === 'swift' ? 'reducedMotion: true' : 'reducedMotion = true')
+      expect(result.code).toContain(target === 'swift' ? 'connectionLineType: "step"' : 'connectionLineType = "step"')
       if (target === 'swift') expect(validateSwiftWithStubs(result.code).ok).toBe(true)
       else expect(validateKotlin(result.code).ok).toBe(true)
     })

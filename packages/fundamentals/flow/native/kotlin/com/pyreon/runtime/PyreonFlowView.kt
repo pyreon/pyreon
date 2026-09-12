@@ -203,7 +203,7 @@ fun <T> PyreonFlowView(
         connectionDraft?.let { draft ->
             strokes += PyreonFlowEdgeStroke(
                 "__connection-preview",
-                listOf(PyreonFlowEdgeSegment.move(draft.source.x, draft.source.y), PyreonFlowEdgeSegment.line(draft.current.x, draft.current.y)),
+                pyreonFlowConnectionPreview(state.connectionLineType, draft.source, draft.current),
                 edgeColor,
                 edgeWidth,
             )
