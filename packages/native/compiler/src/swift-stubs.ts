@@ -1202,6 +1202,8 @@ public final class PyreonFlowState<T> {
   public func getProximityConnection(_ nodeId: String, _ threshold: Double = 50) -> PyreonFlowConnection? { nil }
   public func getOverlappingNodes(_ nodeId: String) -> [PyreonFlowNode<T>] { [] }
   public func resolveCollisions(_ nodeId: String, _ spacing: Double = 10) {}
+  public func onConnect(_ callback: @escaping (PyreonFlowConnection) -> Void) -> () -> Void { {} }
+  public func onViewportChange(_ callback: @escaping (PyreonFlowViewport) -> Void) -> () -> Void { {} }
   public func moveSelectedNodes(_ dx: Double, _ dy: Double) {}
   public func focusNode(_ nodeId: String, _ focusZoom: Double? = nil) {}
 }

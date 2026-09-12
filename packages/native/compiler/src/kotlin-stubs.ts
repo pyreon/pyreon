@@ -1722,6 +1722,8 @@ class PyreonFlowState<T>(
   fun getProximityConnection(nodeId: String, threshold: Double = 50.0): PyreonFlowConnection? = null
   fun getOverlappingNodes(nodeId: String): List<PyreonFlowNode<T>> = emptyList()
   fun resolveCollisions(nodeId: String, spacing: Double = 10.0) {}
+  fun onConnect(callback: (PyreonFlowConnection) -> Unit): () -> Unit = {}
+  fun onViewportChange(callback: (PyreonFlowViewport) -> Unit): () -> Unit = {}
   fun moveSelectedNodes(dx: Double, dy: Double) {}
   fun focusNode(nodeId: String, focusZoom: Double? = null) {}
 }

@@ -78,6 +78,20 @@ fun main() {
     check(spatial.getProximityConnection("a", 400.0)?.target == "b", "proximity connection chooses the nearest unconnected node")
     spatial.resolveCollisions("a", 10.0)
     check(spatial.getOverlappingNodes("a").isEmpty(), "collision resolution separates overlapping native nodes")
+    val events = seedFlow()
+    var connectedTarget: String? = null
+    val stopConnect = events.onConnect { connectedTarget = it.target }
+    events.connect(PyreonFlowConnection("1", "3"), "event-edge")
+    check(connectedTarget == "3", "onConnect observes native graph connections")
+    stopConnect(); connectedTarget = null
+    events.addEdge(PyreonFlowEdge("after-unsubscribe", "1", "3"))
+    check(connectedTarget == null, "onConnect unsubscribe removes only that listener")
+    var observedZoom = 0.0
+    val stopViewport = events.onViewportChange { observedZoom = it.zoom }
+    events.zoomTo(2.0)
+    check(observedZoom == 2.0, "onViewportChange observes native viewport writes")
+    stopViewport(); events.zoomTo(3.0)
+    check(observedZoom == 2.0, "onViewportChange unsubscribe stops delivery")
     f.updateNodeData("1") { it.copy(label = "Updated") }
     check(f.getNode("1")?.data?.label == "Updated", "updateNodeData replaces the native payload observably")
     f.updateNode("1") { it.copy(id = "ignored", hidden = true) }

@@ -83,6 +83,20 @@ struct PyreonFlowStateTests {
         check(spatial.getProximityConnection("a", 400)?.target == "b", "proximity connection chooses the nearest unconnected node")
         spatial.resolveCollisions("a", 10)
         check(spatial.getOverlappingNodes("a").isEmpty, "collision resolution separates overlapping native nodes")
+        let events = seedFlow()
+        var connectedTarget: String?
+        let stopConnect = events.onConnect { connectedTarget = $0.target }
+        events.connect(PyreonFlowConnection(source: "1", target: "3"), id: "event-edge")
+        check(connectedTarget == "3", "onConnect observes native graph connections")
+        stopConnect(); connectedTarget = nil
+        events.addEdge(PyreonFlowEdge(id: "after-unsubscribe", source: "1", target: "3"))
+        check(connectedTarget == nil, "onConnect unsubscribe removes only that listener")
+        var observedZoom = 0.0
+        let stopViewport = events.onViewportChange { observedZoom = $0.zoom }
+        events.zoomTo(2)
+        check(observedZoom == 2, "onViewportChange observes native viewport writes")
+        stopViewport(); events.zoomTo(3)
+        check(observedZoom == 2, "onViewportChange unsubscribe stops delivery")
         f.updateNode("1") { $0.hidden = true; $0.id = "ignored" }
         check(f.getNode("1")?.hidden == true && f.getNode("ignored") == nil, "updateNode patches fields while preserving indexed identity")
         f.updateNode("1") { $0.hidden = false }

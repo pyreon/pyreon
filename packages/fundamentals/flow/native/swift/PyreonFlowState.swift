@@ -348,6 +348,8 @@ public final class PyreonFlowState<T> {
     @ObservationIgnored private var checkpointVersion = -1
     @ObservationIgnored private var clipboard: HistorySnapshot?
     @ObservationIgnored private var pasteCounter = 0
+    @ObservationIgnored private var connectListeners: [UUID: (PyreonFlowConnection) -> Void] = [:]
+    @ObservationIgnored private var viewportListeners: [UUID: (PyreonFlowViewport) -> Void] = [:]
     @ObservationIgnored private let connectionValidator: ((PyreonFlowConnection) -> Bool)?
 
     public init(
@@ -387,6 +389,15 @@ public final class PyreonFlowState<T> {
     }
 
     private func markMutation() { mutationVersion &+= 1 }
+    @discardableResult public func onConnect(_ callback: @escaping (PyreonFlowConnection) -> Void) -> () -> Void {
+        let token = UUID(); connectListeners[token] = callback
+        return { [weak self] in self?.connectListeners[token] = nil }
+    }
+    @discardableResult public func onViewportChange(_ callback: @escaping (PyreonFlowViewport) -> Void) -> () -> Void {
+        let token = UUID(); viewportListeners[token] = callback
+        return { [weak self] in self?.viewportListeners[token] = nil }
+    }
+    private func emitViewportChange() { for callback in viewportListeners.values { callback(viewport) } }
     private func checkpoint() { if autoHistory { pushHistory() } }
     public func pushHistory() {
         guard mutationVersion != checkpointVersion else { return }
@@ -614,6 +625,7 @@ public final class PyreonFlowState<T> {
         guard !edgeIds.contains(edge.id) else { return nil }
         checkpoint()
         insertEdge(edge)
+        for callback in connectListeners.values { callback(connection) }
         return getEdge(edge.id)
     }
     /// Adds the edge unless an edge with the same `id` already exists — same
@@ -622,12 +634,18 @@ public final class PyreonFlowState<T> {
         guard !edgeIds.contains(edge.id) else { return }
         checkpoint()
         insertEdge(edge)
+        let connection = PyreonFlowConnection(source: edge.source, target: edge.target, sourceHandle: edge.sourceHandle, targetHandle: edge.targetHandle)
+        for callback in connectListeners.values { callback(connection) }
     }
     public func addEdges(_ edges: [PyreonFlowEdge]) {
         let fresh = edges.filter { !edgeIds.contains($0.id) }
         guard !fresh.isEmpty else { return }
         checkpoint()
-        for edge in fresh { insertEdge(edge) }
+        for edge in fresh {
+            insertEdge(edge)
+            let connection = PyreonFlowConnection(source: edge.source, target: edge.target, sourceHandle: edge.sourceHandle, targetHandle: edge.targetHandle)
+            for callback in connectListeners.values { callback(connection) }
+        }
     }
     public func setEdges(_ next: [PyreonFlowEdge]) {
         checkpoint()
@@ -824,18 +842,22 @@ public final class PyreonFlowState<T> {
     // ── viewport ─────────────────────────────────────────────────────────────
     public func zoomTo(_ z: Double) {
         viewport.zoom = min(max(z, minZoom), maxZoom)
+        emitViewportChange()
     }
     public func zoomIn() {
         viewport.zoom = min(viewport.zoom * 1.2, maxZoom)
+        emitViewportChange()
     }
     public func zoomOut() {
         viewport.zoom = max(viewport.zoom / 1.2, minZoom)
+        emitViewportChange()
     }
     /// Pans so `position` (in flow coordinates) lands at the viewport origin —
     /// an ABSOLUTE pan-to-point, not a relative nudge. Matches the web `panTo`.
     public func panTo(_ position: PyreonXYPosition) {
         viewport.x = -position.x * viewport.zoom
         viewport.y = -position.y * viewport.zoom
+        emitViewportChange()
     }
     public func setViewport(x: Double? = nil, y: Double? = nil, zoom: Double? = nil) {
         viewport = PyreonFlowViewport(
@@ -843,6 +865,7 @@ public final class PyreonFlowState<T> {
             y: y ?? viewport.y,
             zoom: zoom ?? viewport.zoom
         )
+        emitViewportChange()
     }
     public func setCenter(_ x: Double, _ y: Double, zoom: Double? = nil) {
         let z = min(max(zoom ?? viewport.zoom, minZoom), maxZoom)
@@ -909,6 +932,7 @@ public final class PyreonFlowState<T> {
             y: containerSize.height / 2 - centerY * newZoom,
             zoom: newZoom
         )
+        emitViewportChange()
     }
 
     // ── graph queries ────────────────────────────────────────────────────────
@@ -997,6 +1021,7 @@ public final class PyreonFlowState<T> {
         let centerX = position.x + (node.width ?? pyreonFlowDefaultNodeWidth) / 2
         let centerY = position.y + (node.height ?? pyreonFlowDefaultNodeHeight) / 2
         viewport = PyreonFlowViewport(x: -centerX * z + containerSize.width / 2, y: -centerY * z + containerSize.height / 2, zoom: z)
+        emitViewportChange()
         selectNode(nodeId)
     }
 }

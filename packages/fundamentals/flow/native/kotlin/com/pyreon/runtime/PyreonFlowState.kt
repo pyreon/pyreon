@@ -161,6 +161,9 @@ class PyreonFlowState<T>(
     private var checkpointVersion = -1
     private var clipboard: PyreonFlowHistorySnapshot<T>? = null
     private var pasteCounter = 0
+    private var nextListenerId = 0
+    private val connectListeners = LinkedHashMap<Int, (PyreonFlowConnection) -> Unit>()
+    private val viewportListeners = LinkedHashMap<Int, (PyreonFlowViewport) -> Unit>()
     val connectionRadius: Double = maxOf(0.0, connectionRadius)
     val fitViewPadding: Double = maxOf(0.0, fitViewPadding)
     private var nodeExtent: PyreonFlowNodeExtent? = nodeExtent
@@ -195,6 +198,15 @@ class PyreonFlowState<T>(
     }
 
     private fun markMutation() { mutationVersion++ }
+    fun onConnect(callback: (PyreonFlowConnection) -> Unit): () -> Unit {
+        val id = nextListenerId++; connectListeners[id] = callback
+        return { connectListeners.remove(id) }
+    }
+    fun onViewportChange(callback: (PyreonFlowViewport) -> Unit): () -> Unit {
+        val id = nextListenerId++; viewportListeners[id] = callback
+        return { viewportListeners.remove(id) }
+    }
+    private fun emitViewportChange() { for (callback in viewportListeners.values) callback(_viewport) }
     private fun checkpoint() { if (autoHistory) pushHistory() }
     fun pushHistory() {
         if (mutationVersion == checkpointVersion) return
@@ -395,6 +407,7 @@ class PyreonFlowState<T>(
         if (edgeIds.containsKey(edge.id)) return null
         checkpoint()
         insertEdge(edge)
+        for (callback in connectListeners.values) callback(connection)
         return getEdge(edge.id)
     }
     /** Adds the edge unless an edge with the same `id` already exists — same
@@ -403,12 +416,18 @@ class PyreonFlowState<T>(
         if (edgeIds.containsKey(edge.id)) return
         checkpoint()
         insertEdge(edge)
+        val connection = PyreonFlowConnection(edge.source, edge.target, edge.sourceHandle, edge.targetHandle)
+        for (callback in connectListeners.values) callback(connection)
     }
     fun addEdges(edges: List<PyreonFlowEdge>) {
         val fresh = edges.filterNot { edgeIds.containsKey(it.id) }
         if (fresh.isEmpty()) return
         checkpoint()
-        for (edge in fresh) insertEdge(edge)
+        for (edge in fresh) {
+            insertEdge(edge)
+            val connection = PyreonFlowConnection(edge.source, edge.target, edge.sourceHandle, edge.targetHandle)
+            for (callback in connectListeners.values) callback(connection)
+        }
     }
     fun setEdges(edges: List<PyreonFlowEdge>) {
         checkpoint()
@@ -601,17 +620,21 @@ class PyreonFlowState<T>(
     // ── viewport ─────────────────────────────────────────────────────────────
     fun zoomTo(z: Double) {
         _viewport = _viewport.copy(zoom = z.coerceIn(minZoom, maxZoom))
+        emitViewportChange()
     }
     fun zoomIn() {
         _viewport = _viewport.copy(zoom = (_viewport.zoom * 1.2).coerceAtMost(maxZoom))
+        emitViewportChange()
     }
     fun zoomOut() {
         _viewport = _viewport.copy(zoom = (_viewport.zoom / 1.2).coerceAtLeast(minZoom))
+        emitViewportChange()
     }
     /** Pans so [position] (in flow coordinates) lands at the viewport origin —
      *  an ABSOLUTE pan-to-point, not a relative nudge. Matches the web `panTo`. */
     fun panTo(position: PyreonXYPosition) {
         _viewport = _viewport.copy(x = -position.x * _viewport.zoom, y = -position.y * _viewport.zoom)
+        emitViewportChange()
     }
     @JvmOverloads
     fun setViewport(x: Double? = null, y: Double? = null, zoom: Double? = null) {
@@ -620,6 +643,7 @@ class PyreonFlowState<T>(
             y = y ?: _viewport.y,
             zoom = zoom ?: _viewport.zoom,
         )
+        emitViewportChange()
     }
     @JvmOverloads
     fun setCenter(x: Double, y: Double, zoom: Double? = null) {
@@ -686,6 +710,7 @@ class PyreonFlowState<T>(
             y = ch / 2 - centerY * newZoom,
             zoom = newZoom,
         )
+        emitViewportChange()
     }
 
     // ── graph queries ────────────────────────────────────────────────────────
@@ -771,6 +796,7 @@ class PyreonFlowState<T>(
         val centerX = position.x + (node.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH) / 2
         val centerY = position.y + (node.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT) / 2
         _viewport = PyreonFlowViewport(-centerX * z + containerSize.width / 2, -centerY * z + containerSize.height / 2, z)
+        emitViewportChange()
         selectNode(nodeId)
     }
 }

@@ -480,6 +480,15 @@ export function C() {
       if (target === 'swift') expect(validateSwiftWithStubs(result.code).ok).toBe(true)
       else expect(validateKotlin(result.code).ok).toBe(true)
     })
+    it(`[${target}] connect and viewport listeners are recognized native members`, () => {
+      const result = transform(base(`
+        const stopConnect = flow.onConnect(connection => { console.log(connection.target) })
+        const stopViewport = flow.onViewportChange(viewport => { console.log(viewport.zoom) })
+      `, '<Button onPress={() => { stopConnect(); stopViewport() }}>Stop</Button>'), { target })
+      const warnings = (result.warnings ?? []).join(' ')
+      expect(warnings).not.toContain('`onConnect` is NOT ported')
+      expect(warnings).not.toContain('`onViewportChange` is NOT ported')
+    })
     it(`[${target}] a ported member emits with NO member warning (the control)`, () => {
       const w = warningsOf(base('', '<Button onPress={() => flow.zoomIn()}>Zoom</Button>'), target)
       expect(w).not.toContain('is NOT ported')
