@@ -1660,6 +1660,8 @@ class PyreonFlowState<T>(
   zoomable: Boolean = true,
   zoomOnPinch: Boolean = true,
   zoomOnDoubleClick: Boolean = false,
+  selectionOnDrag: Boolean = false,
+  selectionMode: String = "partial",
   multiSelect: Boolean = true,
   onlyRenderVisibleElements: Boolean = false,
   snapToObjects: Boolean = true,

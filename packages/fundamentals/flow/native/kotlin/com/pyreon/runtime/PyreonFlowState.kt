@@ -613,6 +613,8 @@ class PyreonFlowState<T>(
     val zoomable: Boolean = true,
     val zoomOnPinch: Boolean = true,
     val zoomOnDoubleClick: Boolean = false,
+    val selectionOnDrag: Boolean = false,
+    selectionMode: String = "partial",
     val multiSelect: Boolean = true,
     val onlyRenderVisibleElements: Boolean = false,
     val snapToObjects: Boolean = true,
@@ -626,6 +628,7 @@ class PyreonFlowState<T>(
     private val searchText: ((T) -> String?)? = null,
     private val reducedMotion: Boolean = false,
 ) {
+    val selectionMode: String = if (selectionMode == "full") "full" else "partial"
     fun batch(operation: () -> Unit) { Snapshot.withMutableSnapshot(operation) }
     private companion object {
         val viewportAnimationTimer = Timer("PyreonFlowViewport", true)
@@ -1194,6 +1197,18 @@ class PyreonFlowState<T>(
             setEdgeSelection(emptyList())
         }
         emitSelectionChange()
+    }
+    fun nodesInSelection(start: PyreonXYPosition, end: PyreonXYPosition): List<String> {
+        val minX = minOf(start.x, end.x); val minY = minOf(start.y, end.y)
+        val maxX = maxOf(start.x, end.x); val maxY = maxOf(start.y, end.y)
+        return nodes.mapNotNull { node ->
+            if (node.hidden == true) return@mapNotNull null
+            val p = if (node.parentId == null) node.position else getAbsolutePosition(node.id)
+            val width = node.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH; val height = node.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT
+            val hit = if (selectionMode == "full") p.x >= minX && p.x + width <= maxX && p.y >= minY && p.y + height <= maxY
+            else p.x + width > minX && p.x < maxX && p.y + height > minY && p.y < maxY
+            if (hit) node.id else null
+        }
     }
     fun deselectNode(id: String) {
         if (selectedNodeIdSet.remove(id) != null) selectedNodeIdList.remove(id)

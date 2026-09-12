@@ -474,6 +474,14 @@ export function C() {
       const warnings = warningsOf(base('', undefined, 'panOnDrag: [1, 2],'), target)
       expect(warnings).toContain('`panOnDrag (not a boolean literal)`')
     })
+    it(`[${target}] selection drag policy lowers and typechecks`, () => {
+      const result = transform(base('', undefined, "selectionOnDrag: true, selectionMode: 'full',"), { target })
+      expect((result.warnings ?? []).join(' ')).not.toContain('NOT lowered natively')
+      expect(result.code).toContain(target === 'swift' ? 'selectionOnDrag: true, selectionMode: "full"' : 'selectionOnDrag = true')
+      expect(result.code).toContain(target === 'swift' ? 'selectionMode: "full"' : 'selectionMode = "full"')
+      if (target === 'swift') expect(validateSwiftWithStubs(result.code).ok).toBe(true)
+      else expect(validateKotlin(result.code).ok).toBe(true)
+    })
     it(`[${target}] callback node updates warn rather than silently claiming native support`, () => {
       const w = warningsOf(base('', '<Button onPress={() => flow.updateNodeData("1", node => ({ label: node.data.label }))}>Update</Button>'), target)
       expect(w).toContain('`updateNodeData` currently lowers only a literal patch object without spreads')

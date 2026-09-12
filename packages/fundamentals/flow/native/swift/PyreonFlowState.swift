@@ -887,7 +887,7 @@ public final class PyreonFlowState<T> {
     public let defaultMarkerEnd: PyreonFlowMarker?
     public let nodesDraggable: Bool; public let nodesConnectable: Bool; public let nodesSelectable: Bool; public let nodesFocusable: Bool
     public let edgesFocusable: Bool; public let disableKeyboardA11y: Bool; public let nodesDeletable: Bool; public let edgesDeletable: Bool; public let edgesReconnectable: Bool
-    public let edgeInteractionWidth: Double; public let connectionRadius: Double; public let pannable: Bool; public let panOnDrag: Bool; public let zoomable: Bool; public let zoomOnPinch: Bool; public let zoomOnDoubleClick: Bool; public let multiSelect: Bool; public let onlyRenderVisibleElements: Bool; public let snapToObjects: Bool
+    public let edgeInteractionWidth: Double; public let connectionRadius: Double; public let pannable: Bool; public let panOnDrag: Bool; public let zoomable: Bool; public let zoomOnPinch: Bool; public let zoomOnDoubleClick: Bool; public let selectionOnDrag: Bool; public let selectionMode: String; public let multiSelect: Bool; public let onlyRenderVisibleElements: Bool; public let snapToObjects: Bool
     public let defaultEdgeType: String; public let connectionLineType: String; public let defaultEdgeOptions: PyreonFlowDefaultEdgeOptions; public let fitViewOnLoad: Bool; public let fitViewPadding: Double
     public let autoHistory: Bool
     @ObservationIgnored private var undoStack: [HistorySnapshot] = []
@@ -931,7 +931,7 @@ public final class PyreonFlowState<T> {
         defaultMarkerEnd: PyreonFlowMarker? = PyreonFlowMarker(type: "arrowclosed"),
         nodesDraggable: Bool = true, nodesConnectable: Bool = true, nodesSelectable: Bool = true, nodesFocusable: Bool = true,
         edgesFocusable: Bool = true, disableKeyboardA11y: Bool = false, nodesDeletable: Bool = true, edgesDeletable: Bool = true, edgesReconnectable: Bool = true,
-        edgeInteractionWidth: Double = 20, connectionRadius: Double = 0, pannable: Bool = true, panOnDrag: Bool = true, zoomable: Bool = true, zoomOnPinch: Bool = true, zoomOnDoubleClick: Bool = false, multiSelect: Bool = true, onlyRenderVisibleElements: Bool = false, snapToObjects: Bool = true,
+        edgeInteractionWidth: Double = 20, connectionRadius: Double = 0, pannable: Bool = true, panOnDrag: Bool = true, zoomable: Bool = true, zoomOnPinch: Bool = true, zoomOnDoubleClick: Bool = false, selectionOnDrag: Bool = false, selectionMode: String = "partial", multiSelect: Bool = true, onlyRenderVisibleElements: Bool = false, snapToObjects: Bool = true,
         defaultEdgeType: String = "bezier", connectionLineType: String = "bezier", defaultEdgeOptions: PyreonFlowDefaultEdgeOptions = PyreonFlowDefaultEdgeOptions(), fitView: Bool = false, fitViewPadding: Double = 0.1, autoHistory: Bool = true,
         isValidConnection: ((PyreonFlowConnection) -> Bool)? = nil,
         searchText: ((T) -> String?)? = nil,
@@ -947,7 +947,7 @@ public final class PyreonFlowState<T> {
         self.defaultMarkerEnd = defaultMarkerEnd
         self.nodesDraggable = nodesDraggable; self.nodesConnectable = nodesConnectable; self.nodesSelectable = nodesSelectable; self.nodesFocusable = nodesFocusable
         self.edgesFocusable = edgesFocusable; self.disableKeyboardA11y = disableKeyboardA11y; self.nodesDeletable = nodesDeletable; self.edgesDeletable = edgesDeletable; self.edgesReconnectable = edgesReconnectable
-        self.edgeInteractionWidth = edgeInteractionWidth; self.connectionRadius = max(0, connectionRadius); self.pannable = pannable; self.panOnDrag = panOnDrag; self.zoomable = zoomable; self.zoomOnPinch = zoomOnPinch; self.zoomOnDoubleClick = zoomOnDoubleClick; self.multiSelect = multiSelect; self.onlyRenderVisibleElements = onlyRenderVisibleElements; self.snapToObjects = snapToObjects
+        self.edgeInteractionWidth = edgeInteractionWidth; self.connectionRadius = max(0, connectionRadius); self.pannable = pannable; self.panOnDrag = panOnDrag; self.zoomable = zoomable; self.zoomOnPinch = zoomOnPinch; self.zoomOnDoubleClick = zoomOnDoubleClick; self.selectionOnDrag = selectionOnDrag; self.selectionMode = selectionMode == "full" ? "full" : "partial"; self.multiSelect = multiSelect; self.onlyRenderVisibleElements = onlyRenderVisibleElements; self.snapToObjects = snapToObjects
         self.defaultEdgeType = defaultEdgeType; self.connectionLineType = connectionLineType; self.defaultEdgeOptions = defaultEdgeOptions; self.fitViewOnLoad = fitView; self.fitViewPadding = max(0, fitViewPadding)
         self.autoHistory = autoHistory
         self.connectionValidator = isValidConnection
@@ -1521,6 +1521,19 @@ public final class PyreonFlowState<T> {
             setEdgeSelection([])
         }
         emitSelectionChange()
+    }
+    public func nodesInSelection(from start: PyreonXYPosition, to end: PyreonXYPosition) -> [String] {
+        let minX = min(start.x, end.x), minY = min(start.y, end.y)
+        let maxX = max(start.x, end.x), maxY = max(start.y, end.y)
+        return nodes.compactMap { node in
+            guard node.hidden != true else { return nil }
+            let p = node.parentId == nil ? node.position : getAbsolutePosition(node.id)
+            let width = node.width ?? pyreonFlowDefaultNodeWidth, height = node.height ?? pyreonFlowDefaultNodeHeight
+            let hit = selectionMode == "full"
+                ? p.x >= minX && p.x + width <= maxX && p.y >= minY && p.y + height <= maxY
+                : p.x + width > minX && p.x < maxX && p.y + height > minY && p.y < maxY
+            return hit ? node.id : nil
+        }
     }
     public func deselectNode(_ id: String) {
         if selectedNodeIdSet.remove(id) != nil { selectedNodeIds.removeAll { $0 == id } }

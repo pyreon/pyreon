@@ -975,6 +975,8 @@ export type DeclIR =
       zoomable?: boolean
       zoomOnPinch?: boolean
       zoomOnDoubleClick?: boolean
+      selectionOnDrag?: boolean
+      selectionMode?: string
       multiSelect?: boolean
       onlyRenderVisibleElements?: boolean
       snapToObjects?: boolean

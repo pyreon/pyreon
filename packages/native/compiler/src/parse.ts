@@ -9320,12 +9320,13 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const connectionRulesNode = objProp(configArg, 'connectionRules')
   const defaultMarkerEndNode = objProp(configArg, 'defaultMarkerEnd')
   const defaultMarkerEnd = literalMarker(defaultMarkerEndNode)
-  const interactionBoolKeys = ['nodesDraggable', 'nodesConnectable', 'nodesSelectable', 'nodesFocusable', 'edgesFocusable', 'disableKeyboardA11y', 'nodesDeletable', 'edgesDeletable', 'edgesReconnectable', 'pannable', 'panOnDrag', 'zoomable', 'zoomOnPinch', 'zoomOnDoubleClick', 'multiSelect', 'onlyRenderVisibleElements', 'snapToObjects', 'autoHistory', 'reducedMotion'] as const
+  const interactionBoolKeys = ['nodesDraggable', 'nodesConnectable', 'nodesSelectable', 'nodesFocusable', 'edgesFocusable', 'disableKeyboardA11y', 'nodesDeletable', 'edgesDeletable', 'edgesReconnectable', 'pannable', 'panOnDrag', 'zoomable', 'zoomOnPinch', 'zoomOnDoubleClick', 'selectionOnDrag', 'multiSelect', 'onlyRenderVisibleElements', 'snapToObjects', 'autoHistory', 'reducedMotion'] as const
   const interactionBools = Object.fromEntries(interactionBoolKeys.flatMap((key) => { const value = literalBool(objProp(configArg, key)); return value === undefined ? [] : [[key, value]] })) as Partial<Record<(typeof interactionBoolKeys)[number], boolean>>
   const edgeInteractionWidth = literalNumber(objProp(configArg, 'edgeInteractionWidth'))
   const connectionRadius = literalNumber(objProp(configArg, 'connectionRadius'))
   const defaultEdgeType = literalString(objProp(configArg, 'defaultEdgeType'))
   const connectionLineType = literalString(objProp(configArg, 'connectionLineType'))
+  const selectionMode = literalString(objProp(configArg, 'selectionMode'))
   const defaultEdgeOptionsNode = objProp(configArg, 'defaultEdgeOptions')
   const defaultEdgeOptions = (() => {
     if (defaultEdgeOptionsNode === undefined) return undefined
@@ -9405,7 +9406,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (droppedEdgeFields.size > 0) {
     ctx.warnings.push(droppedFlowFieldsWarning(`createFlow declaration \`${name}\``, 'edge', [...droppedEdgeFields]))
   }
-  const HANDLED_FLOW_CONFIG_KEYS = new Set(['nodes', 'edges', 'minZoom', 'maxZoom', 'snapToGrid', 'snapGrid', 'nodeExtent', 'defaultMarkerEnd', 'connectionRules', 'isValidConnection', ...interactionBoolKeys, 'edgeInteractionWidth', 'connectionRadius', 'defaultEdgeType', 'connectionLineType', 'defaultEdgeOptions', 'fitView', 'fitViewPadding'])
+  const HANDLED_FLOW_CONFIG_KEYS = new Set(['nodes', 'edges', 'minZoom', 'maxZoom', 'snapToGrid', 'snapGrid', 'nodeExtent', 'defaultMarkerEnd', 'connectionRules', 'isValidConnection', ...interactionBoolKeys, 'edgeInteractionWidth', 'connectionRadius', 'defaultEdgeType', 'connectionLineType', 'selectionMode', 'defaultEdgeOptions', 'fitView', 'fitViewPadding'])
   const droppedKeys: string[] = []
   for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
@@ -9436,6 +9437,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (objProp(configArg, 'connectionRadius') && connectionRadius === undefined) droppedKeys.push('connectionRadius (not a numeric literal)')
   if (objProp(configArg, 'defaultEdgeType') && defaultEdgeType === undefined) droppedKeys.push('defaultEdgeType (not a string literal)')
   if (objProp(configArg, 'connectionLineType') && connectionLineType === undefined) droppedKeys.push('connectionLineType (not a string literal)')
+  if (objProp(configArg, 'selectionMode') && !['partial', 'full'].includes(selectionMode ?? '')) droppedKeys.push('selectionMode (expected "partial" or "full")')
   if (defaultEdgeOptions === null) droppedKeys.push('defaultEdgeOptions (not a supported literal edge-options object)')
   if (objProp(configArg, 'fitView') && fitView === undefined) droppedKeys.push('fitView (not a boolean literal)')
   if (objProp(configArg, 'fitViewPadding') && fitViewPadding === undefined) droppedKeys.push('fitViewPadding (not a numeric literal)')
@@ -9465,6 +9467,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     ...(connectionRadius !== undefined ? { connectionRadius } : {}),
     ...(defaultEdgeType !== undefined ? { defaultEdgeType } : {}),
     ...(connectionLineType !== undefined ? { connectionLineType } : {}),
+    ...(['partial', 'full'].includes(selectionMode ?? '') ? { selectionMode } : {}),
     ...(defaultEdgeOptions !== undefined && defaultEdgeOptions !== null ? { defaultEdgeOptions } : {}),
     ...(fitView !== undefined ? { fitView } : {}),
     ...(fitViewPadding !== undefined ? { fitViewPadding } : {}),

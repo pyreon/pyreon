@@ -21,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -226,9 +227,24 @@ fun <T> PyreonFlowView(
             }
         },
     ) {
+        var selectionStart by remember { mutableStateOf<Offset?>(null) }
+        var selectionCurrent by remember { mutableStateOf<Offset?>(null) }
         Box(
-            Modifier.matchParentSize().pointerInput(state) {
-                detectTransformGestures { _, pan, zoom, _ ->
+            Modifier.matchParentSize().pointerInput(state, interactionsLocked, state.selectionOnDrag, state.multiSelect) {
+                if (interactionsLocked) return@pointerInput
+                if (state.selectionOnDrag && state.multiSelect) detectDragGestures(
+                    onDragStart = { point -> selectionStart = point; selectionCurrent = point },
+                    onDragCancel = { selectionStart = null; selectionCurrent = null },
+                    onDragEnd = {
+                        val start = selectionStart; val end = selectionCurrent
+                        if (start != null && end != null) state.selectNodes(state.nodesInSelection(
+                            PyreonXYPosition((start.x - state.viewport.x) / state.zoom, (start.y - state.viewport.y) / state.zoom),
+                            PyreonXYPosition((end.x - state.viewport.x) / state.zoom, (end.y - state.viewport.y) / state.zoom),
+                        ))
+                        selectionStart = null; selectionCurrent = null
+                    },
+                ) { change, _ -> change.consume(); selectionCurrent = change.position }
+                else detectTransformGestures { _, pan, zoom, _ ->
                     if (interactionsLocked) return@detectTransformGestures
                     if (state.pannable && state.panOnDrag) state.setViewport(x = state.viewport.x + pan.x, y = state.viewport.y + pan.y)
                     if (state.zoomable && state.zoomOnPinch) state.zoomTo(state.viewport.zoom * zoom)
@@ -259,6 +275,15 @@ fun <T> PyreonFlowView(
             viewport = state.viewport,
             modifier = Modifier.matchParentSize(),
         )
+
+        val selectionA = selectionStart
+        val selectionB = selectionCurrent
+        if (selectionA != null && selectionB != null) Canvas(Modifier.matchParentSize()) {
+            val left = minOf(selectionA.x, selectionB.x); val top = minOf(selectionA.y, selectionB.y)
+            val size = androidx.compose.ui.geometry.Size(kotlin.math.abs(selectionB.x - selectionA.x), kotlin.math.abs(selectionB.y - selectionA.y))
+            drawRect(androidx.compose.ui.graphics.Color.Blue.copy(alpha = 0.10f), Offset(left, top), size)
+            drawRect(androidx.compose.ui.graphics.Color.Blue.copy(alpha = 0.8f), Offset(left, top), size, style = Stroke(width = 1f))
+        }
 
         Box(
             Modifier.matchParentSize().graphicsLayer {

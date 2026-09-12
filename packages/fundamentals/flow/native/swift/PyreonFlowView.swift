@@ -350,6 +350,8 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
 
     @State private var nodeDragStart: [String: PyreonXYPosition] = [:]
     @State private var panStart: PyreonFlowViewport?
+    @State private var selectionStart: PyreonXYPosition?
+    @State private var selectionCurrent: PyreonXYPosition?
     @State private var zoomStart: Double?
     @State private var interactionsLocked = false
     @State private var connectionDraft: PyreonFlowConnectionDraft?
@@ -454,6 +456,17 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                 }
                 .scaleEffect(state.viewport.zoom, anchor: .topLeading)
                 .offset(x: state.viewport.x, y: state.viewport.y)
+
+                if let start = selectionStart, let current = selectionCurrent {
+                    let x1 = start.x * state.zoom + state.viewport.x, y1 = start.y * state.zoom + state.viewport.y
+                    let x2 = current.x * state.zoom + state.viewport.x, y2 = current.y * state.zoom + state.viewport.y
+                    Rectangle()
+                        .fill(Color.blue.opacity(0.10))
+                        .overlay(Rectangle().stroke(Color.blue.opacity(0.8), lineWidth: 1))
+                        .frame(width: abs(x2 - x1), height: abs(y2 - y1))
+                        .position(x: (x1 + x2) / 2, y: (y1 + y2) / 2)
+                        .allowsHitTesting(false)
+                }
 
                 if let controls {
                     PyreonFlowControls(state: state, style: controls, locked: $interactionsLocked)
@@ -600,14 +613,25 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private var panGesture: some Gesture {
         DragGesture(minimumDistance: 1)
             .onChanged { value in
-                guard !interactionsLocked, state.pannable, state.panOnDrag else { return }
+                guard !interactionsLocked else { return }
+                if state.selectionOnDrag && state.multiSelect {
+                    if selectionStart == nil { selectionStart = graphPoint(value.startLocation) }
+                    selectionCurrent = graphPoint(value.location)
+                    return
+                }
+                guard state.pannable, state.panOnDrag else { return }
                 let start = panStart ?? state.viewport
                 if panStart == nil { panStart = start }
                 state.setViewport(
                     x: start.x + value.translation.width,
                     y: start.y + value.translation.height)
             }
-            .onEnded { _ in panStart = nil }
+            .onEnded { _ in
+                if let start = selectionStart, let current = selectionCurrent {
+                    state.selectNodes(state.nodesInSelection(from: start, to: current))
+                }
+                selectionStart = nil; selectionCurrent = nil; panStart = nil
+            }
     }
 
     private var edgeTapGesture: some Gesture {
