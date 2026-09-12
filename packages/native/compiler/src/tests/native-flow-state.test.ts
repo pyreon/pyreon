@@ -433,9 +433,10 @@ export function C() {
       const w = warningsOf(base('', '<Button onPress={() => flow.nodes.set([])}>Clear</Button>'), target)
       expect(w).toContain('`nodes.set(...)` writes the `nodes` signal directly')
     })
-    it(`[${target}] fitView() warns that no native host measures containerSize yet`, () => {
+    it(`[${target}] fitView() lowers without a stale inert-host warning`, () => {
       const w = warningsOf(base('', '<Button onPress={() => flow.fitView()}>Fit</Button>'), target)
-      expect(w).toContain('`fitView()` compiles natively but does NOTHING from shared source')
+      expect(w).not.toContain('does NOTHING')
+      expect(w).not.toContain('NOT ported')
     })
     it(`[${target}] a ported member emits with NO member warning (the control)`, () => {
       const w = warningsOf(base('', '<Button onPress={() => flow.zoomIn()}>Zoom</Button>'), target)

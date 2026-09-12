@@ -59,13 +59,6 @@ export function flowSignalWriteWarning(flowName: string, prop: string, op: strin
   )
 }
 
-export function flowFitViewWarning(flowName: string): string {
-  return (
-    `createFlow binding \`${flowName}\`: \`fitView()\` compiles natively but does NOTHING from shared source — the native engine frames the graph inside \`containerSize\`, which starts at 0×0 and is written only by a native host's size measurement (\`GeometryReader\` / \`onSizeChanged\`), and there is no <Flow> host emit yet. ` +
-    `On web \`containerSize\` defaults to 800×600 and the <Flow> component measures it, so this button works there and is inert on iOS/Android. Call \`fitView\` from hand-written native code after measuring, or keep it in a \`<Web>\` branch.`
-  )
-}
-
 export function droppedFlowFieldsWarning(site: string, kind: 'node' | 'edge', keys: readonly string[]): string {
   const handled = kind === 'node' ? HANDLED_FLOW_NODE_FIELDS : HANDLED_FLOW_EDGE_FIELDS
   return (

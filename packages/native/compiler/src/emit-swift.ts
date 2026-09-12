@@ -14,7 +14,6 @@ import {
   LOWERED_FLOW_METHODS,
   LOWERED_FLOW_PROPERTY_READS,
   droppedFlowFieldsWarning,
-  flowFitViewWarning,
   flowSignalWriteWarning,
   unloweredFlowMemberWarning,
 } from './flow-lowering'
@@ -5771,7 +5770,6 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         if (!LOWERED_FLOW_METHODS.has(member) && !LOWERED_FLOW_PROPERTY_READS.has(member)) {
           _emitWarnings.push(unloweredFlowMemberWarning(flowName, member))
         }
-        if (member === 'fitView') _emitWarnings.push(flowFitViewWarning(flowName))
         // Swift's labeled parameters: the web call is positional, the port's
         // second parameter is labeled — an unlabeled emit fails ONLY on iOS.
         if ((member === 'selectNode' || member === 'selectNodes' || member === 'selectEdge') && e.args.length === 2) {

@@ -10,7 +10,6 @@ import {
   LOWERED_FLOW_METHODS,
   LOWERED_FLOW_PROPERTY_READS,
   droppedFlowFieldsWarning,
-  flowFitViewWarning,
   flowSignalWriteWarning,
   unloweredFlowMemberWarning,
 } from './flow-lowering'
@@ -4800,7 +4799,6 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (!LOWERED_FLOW_METHODS.has(member) && !LOWERED_FLOW_PROPERTY_READS.has(member)) {
           _emitWarnings.push(unloweredFlowMemberWarning(flowName, member))
         }
-        if (member === 'fitView') _emitWarnings.push(flowFitViewWarning(flowName))
         if (member === 'addNode' && e.args.length === 1) {
           const lit = kotlinFlowNodeLiteral(e.args[0]!, flowName)
           if (lit !== null) return `${kotlinIdent(flowName)}.addNode(${lit})`
