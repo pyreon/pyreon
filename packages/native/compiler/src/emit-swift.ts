@@ -3984,7 +3984,8 @@ function emitSwiftDecl(
     // reintroducing. Registering FIRST (via the shared registry) guarantees
     // this name is the SAME one each node's `data: {...}` literal resolves
     // to below, since both hit the identical field-set key.
-    const rowFields = d.nodes[0]!.data.kind === 'object' ? d.nodes[0]!.data.fields : []
+    const firstData = d.nodes[0]?.data
+    const rowFields = firstData?.kind === 'object' ? firstData.fields : []
     const rowType = d.dataType !== undefined
       ? swiftType(d.dataType)
       : resolveSwiftObjectStructName(rowFields) ?? 'Any'

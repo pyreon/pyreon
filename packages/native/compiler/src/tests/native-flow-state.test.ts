@@ -410,6 +410,31 @@ describe('createFlow connection validation lowering', () => {
   })
 })
 
+describe('typed empty Flow state lowering', () => {
+  const source = `
+    import { createFlow } from '@pyreon/flow'
+    import { Text } from '@pyreon/primitives'
+    interface NodeData { label: string }
+    export function App() {
+      const flow = createFlow<NodeData>({ nodes: [], edges: [] })
+      return <Text>{flow.nodes().length}</Text>
+    }
+  `
+
+  for (const target of ['swift', 'kotlin'] as const) {
+    it(`preserves the explicit data type for an empty ${target} editor`, () => {
+      const result = transform(source, { target })
+      expect(result.code).toContain(target === 'swift' ? 'PyreonFlowState<NodeData>' : 'PyreonFlowState<NodeData>')
+      expect(result.warnings.join(' ')).not.toContain('empty `nodes: []`')
+      if (target === 'swift' && isSwiftcAvailable()) expect(validateSwiftWithStubs(result.code).ok).toBe(true)
+      if (target === 'kotlin' && isKotlincAvailable()) {
+        const validation = validateKotlin(result.code)
+        expect(validation.ok, validation.error ?? '').toBe(true)
+      }
+    })
+  }
+})
+
 describe('createFlow — v1 decline shapes (loud warning, not silent drop)', () => {
   it('a non-literal nodes source declines with a named reason', () => {
     const src = `

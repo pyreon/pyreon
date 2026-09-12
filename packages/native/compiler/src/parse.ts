@@ -9311,12 +9311,12 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     )
     return null
   }
-  // At least one node is required — the row struct is synthesized from a
-  // real node's `data` literal (there is no annotation-only path yet), so an
-  // empty seed has nothing to infer T from.
-  if (nodesOut.length === 0) {
+  // An untyped empty seed has nothing to infer T from. An explicit
+  // `createFlow<T>` / `useFlow<T>` does: preserve that public type identity
+  // and let a native editor start empty, which is the ordinary creation path.
+  if (nodesOut.length === 0 && genericDataType.kind === 'unknown') {
     ctx.warnings.push(
-      `${factory} declaration \`${name}\`: an empty \`nodes: []\` has no literal to infer the row-data struct from (v1). Seed at least one representative node — more can be added later via \`addNode\`. Falling back to silent-drop.`,
+      `${factory} declaration \`${name}\`: an empty \`nodes: []\` has no literal or explicit generic to infer the row-data type from. Write \`${factory}<YourData>({ nodes: [], edges: [] })\` or seed a representative node. Falling back to silent-drop.`,
     )
     return null
   }

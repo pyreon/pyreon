@@ -3130,7 +3130,8 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     // seen declared before — see emit-swift.ts's comment on this same
     // decision). Registering FIRST guarantees this name is the SAME one
     // each node's `data = {...}` literal resolves to below.
-    const rowFields = d.nodes[0]!.data.kind === 'object' ? d.nodes[0]!.data.fields : []
+    const firstData = d.nodes[0]?.data
+    const rowFields = firstData?.kind === 'object' ? firstData.fields : []
     const typedKey = literalShapeKey(rowFields)
     const fieldSet = rowFields.map((field) => field.name).sort().join(',')
     const declaredRowType =
