@@ -508,6 +508,107 @@ public func pyreonFlowStressLayout<T>(
     return ids.map { PyreonFlowLayoutPosition(id: $0, position: positions[$0]!) }
 }
 
+public func pyreonFlowLayeredLayout<T>(
+    _ nodes: [PyreonFlowNode<T>], edges: [PyreonFlowEdge], direction: String = "DOWN",
+    nodeSpacing: Double = 20, layerSpacing: Double = 40
+) -> [PyreonFlowLayoutPosition] {
+    guard !nodes.isEmpty else { return [] }
+    let ids = nodes.map(\.id), known = Set(nodes.map(\.id))
+    let boxes = Dictionary(uniqueKeysWithValues: nodes.map {
+        ($0.id, (width: $0.width ?? pyreonFlowDefaultNodeWidth, height: $0.height ?? pyreonFlowDefaultNodeHeight))
+    })
+    var adjacency = Dictionary(uniqueKeysWithValues: ids.map { ($0, [String]()) })
+    for edge in edges where known.contains(edge.source) && known.contains(edge.target) && edge.source != edge.target {
+        adjacency[edge.source, default: []].append(edge.target)
+    }
+    var state = Dictionary(uniqueKeysWithValues: ids.map { ($0, 0) })
+    var dag = Dictionary(uniqueKeysWithValues: ids.map { ($0, [String]()) })
+    func visit(_ id: String) {
+        state[id] = 1
+        for next in adjacency[id] ?? [] {
+            let nextState = state[next] ?? 0
+            if nextState == 1 { dag[next, default: []].append(id); continue }
+            dag[id, default: []].append(next)
+            if nextState == 0 { visit(next) }
+        }
+        state[id] = 2
+    }
+    for id in ids where state[id] == 0 { visit(id) }
+    var indegree = Dictionary(uniqueKeysWithValues: ids.map { ($0, 0) })
+    for outgoing in dag.values { for target in outgoing { indegree[target, default: 0] += 1 } }
+    var depth = Dictionary(uniqueKeysWithValues: ids.map { ($0, 0) })
+    var queue = ids.filter { indegree[$0] == 0 }, seen = Set(ids.filter { indegree[$0] == 0 }), cursor = 0
+    while cursor < queue.count {
+        let id = queue[cursor]; cursor += 1
+        for target in dag[id] ?? [] {
+            depth[target] = max(depth[target] ?? 0, (depth[id] ?? 0) + 1)
+            let left = (indegree[target] ?? 0) - 1; indegree[target] = left
+            if left == 0 && !seen.contains(target) { seen.insert(target); queue.append(target) }
+        }
+    }
+    let maxDepth = ids.map { depth[$0] ?? 0 }.max() ?? 0
+    var layers = Array(repeating: [String](), count: maxDepth + 1)
+    for id in ids { layers[depth[id] ?? 0].append(id) }
+    var predecessors = Dictionary(uniqueKeysWithValues: ids.map { ($0, [String]()) })
+    for (source, outgoing) in dag { for target in outgoing { predecessors[target, default: []].append(source) } }
+    for sweep in 0..<4 {
+        let downward = sweep % 2 == 0
+        let layerIndices = downward ? Array(1..<layers.count) : Array((0..<max(0, layers.count - 1)).reversed())
+        for layerIndex in layerIndices {
+            let fixed = downward ? layers[layerIndex - 1] : layers[layerIndex + 1]
+            let fixedPosition = Dictionary(uniqueKeysWithValues: fixed.enumerated().map { ($0.element, $0.offset) })
+            func neighbours(_ id: String) -> [String] { downward ? (predecessors[id] ?? []) : (dag[id] ?? []) }
+            func median(_ id: String) -> Int {
+                let values = neighbours(id).compactMap { fixedPosition[$0] }.sorted()
+                return values.isEmpty ? -1 : values[values.count / 2]
+            }
+            let stable = Dictionary(uniqueKeysWithValues: layers[layerIndex].enumerated().map { ($0.element, $0.offset) })
+            layers[layerIndex].sort { a, b in
+                let left = median(a), right = median(b)
+                if left == -1 || right == -1 { return stable[a]! < stable[b]! }
+                return left == right ? stable[a]! < stable[b]! : left < right
+            }
+            func crossings(_ left: String, _ right: String) -> Int {
+                let a = neighbours(left).compactMap { fixedPosition[$0] }, b = neighbours(right).compactMap { fixedPosition[$0] }
+                return a.reduce(0) { sum, x in sum + b.filter { x > $0 }.count }
+            }
+            for _ in 0..<2 {
+                var swapped = false
+                if layers[layerIndex].count > 1 { for i in 0..<(layers[layerIndex].count - 1) {
+                    let a = layers[layerIndex][i], b = layers[layerIndex][i + 1]
+                    if crossings(b, a) < crossings(a, b) {
+                        layers[layerIndex][i] = b; layers[layerIndex][i + 1] = a; swapped = true
+                    }
+                } }
+                if !swapped { break }
+            }
+        }
+    }
+    let horizontal = direction == "LEFT" || direction == "RIGHT"
+    func cross(_ id: String) -> Double { horizontal ? boxes[id]!.height : boxes[id]!.width }
+    func main(_ id: String) -> Double { horizontal ? boxes[id]!.width : boxes[id]!.height }
+    let extents = layers.map { layer in layer.enumerated().reduce(0.0) { $0 + cross($1.element) + ($1.offset > 0 ? nodeSpacing : 0) } }
+    let widest = extents.max() ?? 0
+    var mainOffset = 0.0, positions: [String: PyreonXYPosition] = [:]
+    for (layerIndex, layer) in layers.enumerated() {
+        let layerDepth = layer.map(main).max() ?? 0; var crossOffset = (widest - extents[layerIndex]) / 2
+        for id in layer {
+            let along = mainOffset + (layerDepth - main(id)) / 2
+            positions[id] = horizontal ? PyreonXYPosition(x: along, y: crossOffset) : PyreonXYPosition(x: crossOffset, y: along)
+            crossOffset += cross(id) + nodeSpacing
+        }
+        mainOffset += layerDepth + layerSpacing
+    }
+    if direction == "UP" || direction == "LEFT" {
+        let maximum = ids.map { id -> Double in let point = positions[id]!; return horizontal ? point.x + boxes[id]!.width : point.y + boxes[id]!.height }.max() ?? 0
+        for id in ids {
+            let point = positions[id]!
+            positions[id] = horizontal ? PyreonXYPosition(x: maximum - point.x - boxes[id]!.width, y: point.y) : PyreonXYPosition(x: point.x, y: maximum - point.y - boxes[id]!.height)
+        }
+    }
+    return ids.map { PyreonFlowLayoutPosition(id: $0, position: positions[$0]!) }
+}
+
 public func pyreonFlowRadialLayout<T>(
     _ nodes: [PyreonFlowNode<T>], edges: [PyreonFlowEdge], nodeSpacing: Double = 20
 ) -> [PyreonFlowLayoutPosition] {

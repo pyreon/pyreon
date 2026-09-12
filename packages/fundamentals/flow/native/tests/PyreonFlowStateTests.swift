@@ -65,6 +65,10 @@ struct PyreonFlowStateTests {
         let stress = pyreonFlowStressLayout(radialNodes, edges: radialEdges)
         let stressWeb = [PyreonXYPosition(x: 138.23440571439633, y: 195.11390203079043), PyreonXYPosition(x: 58.86121415294381, y: 104.8239204520405), PyreonXYPosition(x: 0, y: 0)]
         check(zip(stress, stressWeb).allSatisfy { abs($0.position.x - $1.x) < 1e-9 && abs($0.position.y - $1.y) < 1e-9 }, "stress layout reproduces the seeded web coordinates")
+        let layered = pyreonFlowLayeredLayout(treeNodes, edges: treeEdges)
+        check(layered.map(\.position) == [PyreonXYPosition(x: 5, y: 0), PyreonXYPosition(x: 0, y: 90), PyreonXYPosition(x: 100, y: 80), PyreonXYPosition(x: 80, y: 170), PyreonXYPosition(x: 125, y: 2.5)], "layered layout matches exact web placement")
+        let cyclicLayered = pyreonFlowLayeredLayout(treeNodes, edges: treeEdges + [PyreonFlowEdge(id: "cr", source: "c", target: "r")], direction: "LEFT")
+        check(cyclicLayered.map(\.position) == [PyreonXYPosition(x: 260, y: 2.5), PyreonXYPosition(x: 120, y: 0), PyreonXYPosition(x: 100, y: 50), PyreonXYPosition(x: 0, y: 40), PyreonXYPosition(x: 265, y: 62.5)], "layered layout reverses cycles and mirrors LEFT like web")
         let batched = seedFlow()
         batched.batch {
             batched.updateNodePosition("1", PyreonXYPosition(x: 10, y: 20))

@@ -14,6 +14,7 @@ import com.pyreon.runtime.PyreonFlowViewport
 import com.pyreon.runtime.PyreonXYPosition
 import com.pyreon.runtime.pyreonFlowPackingLayout
 import com.pyreon.runtime.pyreonFlowForceLayout
+import com.pyreon.runtime.pyreonFlowLayeredLayout
 import com.pyreon.runtime.pyreonFlowRadialLayout
 import com.pyreon.runtime.pyreonFlowStressLayout
 import com.pyreon.runtime.pyreonFlowTreeLayout
@@ -69,6 +70,10 @@ fun main() {
     val stress = pyreonFlowStressLayout(radialNodes, radialEdges)
     val stressWeb = listOf(PyreonXYPosition(138.23440571439633, 195.11390203079043), PyreonXYPosition(58.86121415294381, 104.8239204520405), PyreonXYPosition(0.0, 0.0))
     check(stress.zip(stressWeb).all { (actual, expected) -> abs(actual.position.x - expected.x) < 1e-9 && abs(actual.position.y - expected.y) < 1e-9 }, "stress layout reproduces the seeded web coordinates")
+    val layered = pyreonFlowLayeredLayout(treeNodes, treeEdges)
+    check(layered.map { it.position } == listOf(PyreonXYPosition(5.0, 0.0), PyreonXYPosition(0.0, 90.0), PyreonXYPosition(100.0, 80.0), PyreonXYPosition(80.0, 170.0), PyreonXYPosition(125.0, 2.5)), "layered layout matches exact web placement")
+    val cyclicLayered = pyreonFlowLayeredLayout(treeNodes, treeEdges + PyreonFlowEdge("cr", "c", "r"), direction = "LEFT")
+    check(cyclicLayered.map { it.position } == listOf(PyreonXYPosition(260.0, 2.5), PyreonXYPosition(120.0, 0.0), PyreonXYPosition(100.0, 50.0), PyreonXYPosition(0.0, 40.0), PyreonXYPosition(265.0, 62.5)), "layered layout reverses cycles and mirrors LEFT like web")
     val batched = seedFlow()
     batched.batch {
         batched.updateNodePosition("1", PyreonXYPosition(10.0, 20.0))

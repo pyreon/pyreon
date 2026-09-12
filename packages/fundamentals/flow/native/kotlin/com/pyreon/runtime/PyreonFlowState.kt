@@ -437,6 +437,100 @@ fun <T> pyreonFlowStressLayout(nodes: List<PyreonFlowNode<T>>, edges: List<Pyreo
     return ids.map { PyreonFlowLayoutPosition(it, positions.getValue(it)) }
 }
 
+fun <T> pyreonFlowLayeredLayout(
+    nodes: List<PyreonFlowNode<T>>, edges: List<PyreonFlowEdge>, direction: String = "DOWN",
+    nodeSpacing: Double = 20.0, layerSpacing: Double = 40.0,
+): List<PyreonFlowLayoutPosition> {
+    if (nodes.isEmpty()) return emptyList()
+    val ids = nodes.map { it.id }; val known = ids.toSet()
+    val boxes = nodes.associate { it.id to Pair(it.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH, it.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT) }
+    val adjacency = ids.associateWith { mutableListOf<String>() }
+    edges.filter { it.source in known && it.target in known && it.source != it.target }.forEach { adjacency.getValue(it.source).add(it.target) }
+    val state = ids.associateWith { 0 }.toMutableMap(); val dag = ids.associateWith { mutableListOf<String>() }
+    fun visit(id: String) {
+        state[id] = 1
+        adjacency.getValue(id).forEach { next ->
+            when (state[next] ?: 0) {
+                1 -> dag.getValue(next).add(id)
+                else -> { dag.getValue(id).add(next); if ((state[next] ?: 0) == 0) visit(next) }
+            }
+        }
+        state[id] = 2
+    }
+    ids.forEach { if (state[it] == 0) visit(it) }
+    val indegree = ids.associateWith { 0 }.toMutableMap()
+    dag.values.flatten().forEach { indegree[it] = (indegree[it] ?: 0) + 1 }
+    val depth = ids.associateWith { 0 }.toMutableMap()
+    val queue = ids.filter { indegree[it] == 0 }.toMutableList(); val seen = queue.toMutableSet(); var cursor = 0
+    while (cursor < queue.size) {
+        val id = queue[cursor++]
+        dag.getValue(id).forEach { target ->
+            depth[target] = kotlin.math.max(depth[target] ?: 0, (depth[id] ?: 0) + 1)
+            val left = (indegree[target] ?: 0) - 1; indegree[target] = left
+            if (left == 0 && seen.add(target)) queue.add(target)
+        }
+    }
+    val maxDepth = ids.maxOf { depth[it] ?: 0 }
+    var layers = List(maxDepth + 1) { mutableListOf<String>() }
+    ids.forEach { layers[depth[it] ?: 0].add(it) }
+    val predecessors = ids.associateWith { mutableListOf<String>() }
+    dag.forEach { (source, outgoing) -> outgoing.forEach { predecessors.getValue(it).add(source) } }
+    repeat(4) { sweep ->
+        val downward = sweep % 2 == 0
+        val layerIndices = if (downward) (1..<layers.size).toList() else (0..<layers.size - 1).reversed()
+        layerIndices.forEach { layerIndex ->
+            val fixed = if (downward) layers[layerIndex - 1] else layers[layerIndex + 1]
+            val fixedPosition = fixed.withIndex().associate { it.value to it.index }
+            fun neighbours(id: String) = if (downward) predecessors.getValue(id) else dag.getValue(id)
+            fun median(id: String): Int {
+                val values = neighbours(id).mapNotNull(fixedPosition::get).sorted()
+                return if (values.isEmpty()) -1 else values[values.size / 2]
+            }
+            val stable = layers[layerIndex].withIndex().associate { it.value to it.index }
+            layers[layerIndex].sortWith(Comparator { a, b ->
+                val left = median(a); val right = median(b)
+                if (left == -1 || right == -1) stable.getValue(a) - stable.getValue(b)
+                else (left - right).takeIf { it != 0 } ?: (stable.getValue(a) - stable.getValue(b))
+            })
+            fun crossings(left: String, right: String): Int {
+                val a = neighbours(left).mapNotNull(fixedPosition::get); val b = neighbours(right).mapNotNull(fixedPosition::get)
+                return a.sumOf { x -> b.count { y -> x > y } }
+            }
+            repeat(2) {
+                var swapped = false; var i = 0
+                while (i + 1 < layers[layerIndex].size) {
+                    val a = layers[layerIndex][i]; val b = layers[layerIndex][i + 1]
+                    if (crossings(b, a) < crossings(a, b)) {
+                        layers[layerIndex][i] = b; layers[layerIndex][i + 1] = a; swapped = true
+                    }
+                    i++
+                }
+                if (!swapped) return@repeat
+            }
+        }
+    }
+    val horizontal = direction == "LEFT" || direction == "RIGHT"
+    fun cross(id: String) = if (horizontal) boxes.getValue(id).second else boxes.getValue(id).first
+    fun main(id: String) = if (horizontal) boxes.getValue(id).first else boxes.getValue(id).second
+    val extents = layers.map { layer -> layer.withIndex().sumOf { cross(it.value) + if (it.index > 0) nodeSpacing else 0.0 } }
+    val widest = extents.maxOrNull() ?: 0.0; var mainOffset = 0.0
+    val positions = mutableMapOf<String, PyreonXYPosition>()
+    layers.forEachIndexed { layerIndex, layer ->
+        val layerDepth = layer.maxOfOrNull(::main) ?: 0.0; var crossOffset = (widest - extents[layerIndex]) / 2.0
+        layer.forEach { id ->
+            val along = mainOffset + (layerDepth - main(id)) / 2.0
+            positions[id] = if (horizontal) PyreonXYPosition(along, crossOffset) else PyreonXYPosition(crossOffset, along)
+            crossOffset += cross(id) + nodeSpacing
+        }
+        mainOffset += layerDepth + layerSpacing
+    }
+    if (direction == "UP" || direction == "LEFT") {
+        val maximum = ids.maxOf { id -> val p = positions.getValue(id); if (horizontal) p.x + boxes.getValue(id).first else p.y + boxes.getValue(id).second }
+        ids.forEach { id -> val p = positions.getValue(id); positions[id] = if (horizontal) PyreonXYPosition(maximum - p.x - boxes.getValue(id).first, p.y) else PyreonXYPosition(p.x, maximum - p.y - boxes.getValue(id).second) }
+    }
+    return ids.map { PyreonFlowLayoutPosition(it, positions.getValue(it)) }
+}
+
 fun <T> pyreonFlowRadialLayout(nodes: List<PyreonFlowNode<T>>, edges: List<PyreonFlowEdge>, nodeSpacing: Double = 20.0): List<PyreonFlowLayoutPosition> {
     if (nodes.isEmpty()) return emptyList()
     val ids = nodes.map { it.id }; val known = ids.toSet()
