@@ -283,7 +283,7 @@ public func pyreonFlowEdgeLabels<T>(state: PyreonFlowState<T>) -> [PyreonFlowEdg
             borderRadius: edge.borderRadius ?? 5,
             offset: edge.pathOffset ?? 20,
             curvature: edge.curvature ?? 0.25)
-        return PyreonFlowEdgeLabel(id: edge.id, text: edge.label, accessibilityLabel: edge.ariaLabel ?? edge.label ?? "Edge from \(edge.source) to \(edge.target)", x: path.labelX, y: path.labelY, focusable: edge.focusable ?? state.edgesFocusable)
+        return PyreonFlowEdgeLabel(id: edge.id, text: edge.label, accessibilityLabel: edge.ariaLabel ?? edge.label ?? "Edge from \(edge.source) to \(edge.target)", x: path.labelX, y: path.labelY, focusable: !state.disableKeyboardA11y && (edge.focusable ?? state.edgesFocusable))
     }
 }
 
@@ -426,7 +426,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                             .gesture(nodeDragGesture(node))
                             .accessibilityLabel(Text(node.ariaLabel ?? node.id))
                             .accessibilityAddTraits(state.isNodeSelected(node.id) ? [.isSelected] : [])
-                            .accessibilityHidden(!(node.focusable ?? state.nodesFocusable))
+                            .accessibilityHidden(state.disableKeyboardA11y || !(node.focusable ?? state.nodesFocusable))
                     }
                     ForEach(Array(interactiveHandles.enumerated()), id: \.offset) { _, handle in
                         Circle()
@@ -437,6 +437,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                             .contentShape(Circle())
                             .gesture(handle.type == "source" ? connectionGesture(handle) : nil)
                             .accessibilityLabel(Text("\(handle.type) handle \(handle.handleId ?? "default")"))
+                            .accessibilityHidden(state.disableKeyboardA11y)
                     }
                     ForEach(pyreonFlowEdgeUpdaters(state: state, strokes: edgeStrokes)) { updater in
                         Circle()
@@ -447,6 +448,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                             .contentShape(Circle())
                             .gesture(reconnectGesture(updater))
                             .accessibilityLabel(Text("Reconnect \(updater.end) of edge \(updater.edgeId)"))
+                            .accessibilityHidden(state.disableKeyboardA11y)
                     }
                 }
                 .scaleEffect(state.viewport.zoom, anchor: .topLeading)

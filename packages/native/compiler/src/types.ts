@@ -964,6 +964,7 @@ export type DeclIR =
       nodesSelectable?: boolean
       nodesFocusable?: boolean
       edgesFocusable?: boolean
+      disableKeyboardA11y?: boolean
       nodesDeletable?: boolean
       edgesDeletable?: boolean
       edgesReconnectable?: boolean

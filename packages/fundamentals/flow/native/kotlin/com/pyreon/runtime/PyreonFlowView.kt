@@ -25,6 +25,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.unit.IntOffset
@@ -263,15 +264,16 @@ fun <T> PyreonFlowView(
         ) {
             val visibleEdgeIds = edgeStrokes.mapTo(mutableSetOf()) { it.id }
             for (edge in pyreonFlowEdgeLabels(state).filter { visibleEdgeIds.contains(it.id) }) {
+                var edgeModifier = Modifier
+                    .offset { IntOffset(edge.x.roundToInt(), edge.y.roundToInt()) }
+                    .clickable { state.selectEdge(edge.id); state.emitEdgeClick(edge.id) }
+                edgeModifier = if (edge.focusable) edgeModifier.semantics {
+                    contentDescription = edge.accessibilityLabel
+                    selected = state.isEdgeSelected(edge.id)
+                } else edgeModifier.clearAndSetSemantics { }
                 Text(
                     edge.text ?: "",
-                    Modifier
-                        .offset { IntOffset(edge.x.roundToInt(), edge.y.roundToInt()) }
-                        .clickable { state.selectEdge(edge.id); state.emitEdgeClick(edge.id) }
-                        .semantics {
-                            contentDescription = edge.accessibilityLabel
-                            selected = state.isEdgeSelected(edge.id)
-                        },
+                    edgeModifier,
                 )
             }
             for (node in visibleNodes) {
@@ -284,10 +286,6 @@ fun <T> PyreonFlowView(
                         with(density) { width.toFloat().toDp() },
                         with(density) { height.toFloat().toDp() },
                     )
-                    .semantics {
-                        contentDescription = node.ariaLabel ?: node.id
-                        selected = state.isNodeSelected(node.id)
-                    }
                 if (node.selectable ?: state.nodesSelectable) {
                     nodeModifier = nodeModifier.pointerInput(node.id, "node-taps") {
                         detectTapGestures(
@@ -323,6 +321,10 @@ fun <T> PyreonFlowView(
                         }
                     }
                 }
+                nodeModifier = if (!state.disableKeyboardA11y && (node.focusable ?: state.nodesFocusable)) nodeModifier.semantics {
+                    contentDescription = node.ariaLabel ?: node.id
+                    selected = state.isNodeSelected(node.id)
+                } else nodeModifier.clearAndSetSemantics { }
                 Box(nodeModifier) { nodeContent(node) }
             }
             for (handle in interactiveHandles) {

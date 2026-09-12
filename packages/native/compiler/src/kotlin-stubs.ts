@@ -1649,6 +1649,7 @@ class PyreonFlowState<T>(
   nodesSelectable: Boolean = true,
   nodesFocusable: Boolean = true,
   edgesFocusable: Boolean = true,
+  disableKeyboardA11y: Boolean = false,
   nodesDeletable: Boolean = true,
   edgesDeletable: Boolean = true,
   edgesReconnectable: Boolean = true,

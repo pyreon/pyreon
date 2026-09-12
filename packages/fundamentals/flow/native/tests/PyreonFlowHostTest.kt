@@ -27,6 +27,8 @@ fun main() {
     val labels = pyreonFlowEdgeLabels(state)
     checkHost(labels.map { it.id } == listOf("shown"), "only valid visible edges expose label and accessibility packets")
     checkHost(labels.single().accessibilityLabel == "Edge from visible to target" && labels.single().x > 0.0, "an unlabeled edge gets a positioned accessible fallback")
+    val keyboardA11yOff = PyreonFlowState(nodes = state.nodes, edges = state.edges, disableKeyboardA11y = true)
+    checkHost(pyreonFlowEdgeLabels(keyboardA11yOff).all { !it.focusable }, "disableKeyboardA11y removes every edge focus stop")
     val routed = PyreonFlowState(nodes = state.nodes, edges = listOf(PyreonFlowEdge("tuned", "visible", "target", type = "step", animated = true, pathOffset = 37.0)))
     val tunedStroke = pyreonFlowEdgeStrokes(routed).single()
     checkHost(tunedStroke.dash == listOf(5.0, 5.0) && tunedStroke.segments[1].x == 187.0, "native host applies animated dash and per-edge path offset")

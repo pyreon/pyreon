@@ -289,6 +289,8 @@ struct PyreonFlowStateTests {
             reconnectable: false, interactionWidth: 24
         )
         check(configuredEdge.sourceHandle == "out" && configuredEdge.targetHandle == "in" && configuredEdge.interactionWidth == 24, "edge handle/interaction fields are retained")
+        let keyboardA11yOff = PyreonFlowState(nodes: f.nodes, edges: f.edges, disableKeyboardA11y: true)
+        check(pyreonFlowEdgeLabels(state: keyboardA11yOff).allSatisfy { !$0.focusable }, "disableKeyboardA11y removes every edge focus stop")
 
         // 2. addNode / addEdge.
         f.addNode(PyreonFlowNode(id: "4", position: PyreonXYPosition(x: 600, y: 0), data: NodeData(label: "Extra")))

@@ -602,6 +602,7 @@ class PyreonFlowState<T>(
     val nodesSelectable: Boolean = true,
     val nodesFocusable: Boolean = true,
     val edgesFocusable: Boolean = true,
+    val disableKeyboardA11y: Boolean = false,
     val nodesDeletable: Boolean = true,
     val edgesDeletable: Boolean = true,
     val edgesReconnectable: Boolean = true,

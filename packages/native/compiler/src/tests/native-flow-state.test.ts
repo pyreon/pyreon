@@ -434,13 +434,14 @@ describe('createFlow — v1 decline shapes (loud warning, not silent drop)', () 
 // than the runtime (rejecting valid reads). Every one of those is now either
 // a named warning or a correct emit, on both targets.
 describe('createFlow — nothing silent inside the boundary', () => {
-  const base = (body: string, jsx = '<Text>{flow.nodes().length}</Text>') => `
+  const base = (body: string, jsx = '<Text>{flow.nodes().length}</Text>', config = '') => `
 import { createFlow } from '@pyreon/flow'
 import { Stack, Text, Button } from '${P}'
 export function C() {
   const flow = createFlow({
     nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'A' } }],
     edges: [{ id: 'e1', source: '1', target: '1' }],
+    ${config}
   })
   ${body}
   return (<Stack>${jsx}</Stack>)
@@ -455,6 +456,14 @@ export function C() {
       expect(result.code).toContain(target === 'swift'
         ? 'flow.layout("tree", options: PyreonFlowLayoutOptions(direction: "LEFT", nodeSpacing: 24, layerSpacing: 48, animate: false, animationDuration: 450))'
         : 'flow.layout("tree", PyreonFlowLayoutOptions(direction = "LEFT", nodeSpacing = 24.0, layerSpacing = 48.0, animate = false, animationDuration = 450.0))')
+      if (target === 'swift') expect(validateSwiftWithStubs(result.code).ok).toBe(true)
+      else expect(validateKotlin(result.code).ok).toBe(true)
+    })
+    it(`[${target}] native accessibility and motion policies cross createFlow`, () => {
+      const result = transform(base('', undefined, 'disableKeyboardA11y: true, reducedMotion: true,'), { target })
+      expect((result.warnings ?? []).join(' ')).not.toContain('NOT lowered natively')
+      expect(result.code).toContain(target === 'swift' ? 'disableKeyboardA11y: true' : 'disableKeyboardA11y = true')
+      expect(result.code).toContain(target === 'swift' ? 'reducedMotion: true' : 'reducedMotion = true')
       if (target === 'swift') expect(validateSwiftWithStubs(result.code).ok).toBe(true)
       else expect(validateKotlin(result.code).ok).toBe(true)
     })

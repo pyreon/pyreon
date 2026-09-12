@@ -99,7 +99,7 @@ fun <T> pyreonFlowEdgeLabels(state: PyreonFlowState<T>): List<PyreonFlowEdgeLabe
             offset = edge.pathOffset ?: 20.0,
             curvature = edge.curvature ?: 0.25,
         )
-        PyreonFlowEdgeLabel(edge.id, edge.label, edge.ariaLabel ?: edge.label ?: "Edge from ${edge.source} to ${edge.target}", path.labelX, path.labelY, edge.focusable ?: state.edgesFocusable)
+        PyreonFlowEdgeLabel(edge.id, edge.label, edge.ariaLabel ?: edge.label ?: "Edge from ${edge.source} to ${edge.target}", path.labelX, path.labelY, !state.disableKeyboardA11y && (edge.focusable ?: state.edgesFocusable))
     }
 }
 
