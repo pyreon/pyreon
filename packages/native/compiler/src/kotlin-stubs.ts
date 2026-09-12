@@ -1631,6 +1631,7 @@ data class PyreonFlowEdgeChange(val type: String, val id: String? = null, val ed
 data class PyreonFlowConnectStart(val nodeId: String, val handleId: String)
 data class PyreonFlowPaneEvent(val position: PyreonXYPosition)
 data class PyreonFlowSnapshot<T>(val nodes: List<PyreonFlowNode<T>>, val edges: List<PyreonFlowEdge>, val viewport: PyreonFlowViewport? = null)
+data class PyreonFlowSnapLines(val x: Double?, val y: Double?, val snappedPosition: PyreonXYPosition)
 data class PyreonFlowContainerSize(val width: Double = 0.0, val height: Double = 0.0)
 class PyreonFlowState<T>(
   nodes: List<PyreonFlowNode<T>> = emptyList(),
@@ -1730,6 +1731,7 @@ class PyreonFlowState<T>(
   fun getProximityConnection(nodeId: String, threshold: Double = 50.0): PyreonFlowConnection? = null
   fun getOverlappingNodes(nodeId: String): List<PyreonFlowNode<T>> = emptyList()
   fun resolveCollisions(nodeId: String, spacing: Double = 10.0) {}
+  fun getSnapLines(nodeId: String, position: PyreonXYPosition, threshold: Double = 5.0, excluding: Set<String> = emptySet()): PyreonFlowSnapLines = PyreonFlowSnapLines(null, null, position)
   fun onConnect(callback: (PyreonFlowConnection) -> Unit): () -> Unit = {}
   fun onViewportChange(callback: (PyreonFlowViewport) -> Unit): () -> Unit = {}
   fun onNodeClick(callback: (PyreonFlowNode<T>) -> Unit): () -> Unit = {}

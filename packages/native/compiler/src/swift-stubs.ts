@@ -1127,6 +1127,7 @@ public struct PyreonFlowEdgeChange { public let type: String; public let id: Str
 public struct PyreonFlowConnectStart { public let nodeId: String; public let handleId: String }
 public struct PyreonFlowPaneEvent { public let position: PyreonXYPosition }
 public struct PyreonFlowSnapshot<T> { public let nodes: [PyreonFlowNode<T>]; public let edges: [PyreonFlowEdge]; public let viewport: PyreonFlowViewport? }
+public struct PyreonFlowSnapLines { public let x: Double?; public let y: Double?; public let snappedPosition: PyreonXYPosition }
 public final class PyreonFlowState<T> {
   public init(
     nodes: [PyreonFlowNode<T>] = [],
@@ -1210,6 +1211,7 @@ public final class PyreonFlowState<T> {
   public func getProximityConnection(_ nodeId: String, _ threshold: Double = 50) -> PyreonFlowConnection? { nil }
   public func getOverlappingNodes(_ nodeId: String) -> [PyreonFlowNode<T>] { [] }
   public func resolveCollisions(_ nodeId: String, _ spacing: Double = 10) {}
+  public func getSnapLines(_ nodeId: String, _ position: PyreonXYPosition, threshold: Double = 5, excluding: Set<String> = []) -> PyreonFlowSnapLines { PyreonFlowSnapLines(x: nil, y: nil, snappedPosition: position) }
   public func onConnect(_ callback: @escaping (PyreonFlowConnection) -> Void) -> () -> Void { {} }
   public func onViewportChange(_ callback: @escaping (PyreonFlowViewport) -> Void) -> () -> Void { {} }
   public func onNodeClick(_ callback: @escaping (PyreonFlowNode<T>) -> Void) -> () -> Void { {} }

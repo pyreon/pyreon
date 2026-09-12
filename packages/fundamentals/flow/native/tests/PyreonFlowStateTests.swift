@@ -72,8 +72,12 @@ struct PyreonFlowStateTests {
             PyreonFlowNode(id: "target", position: PyreonXYPosition(x: 200, y: 100), data: NodeData(label: "Target"), width: 100, height: 40),
         ])
         check(snapping.snappedNodePosition("drag", PyreonXYPosition(x: 198, y: 102)) == PyreonXYPosition(x: 200, y: 100), "object snapping aligns nearby native node edges")
+        let guides = snapping.getSnapLines("drag", PyreonXYPosition(x: 198, y: 102))
+        check(guides == PyreonFlowSnapLines(x: 300, y: 140, snappedPosition: PyreonXYPosition(x: 200, y: 100)), "getSnapLines preserves web last-match guide coordinates and snapped position")
+        check(snapping.getSnapLines("missing", PyreonXYPosition(x: 3, y: 4)) == PyreonFlowSnapLines(x: nil, y: nil, snappedPosition: PyreonXYPosition(x: 3, y: 4)), "getSnapLines preserves input for an unknown node")
         let unsnapped = PyreonFlowState(nodes: snapping.nodes, snapToObjects: false)
         check(unsnapped.snappedNodePosition("drag", PyreonXYPosition(x: 198, y: 102)) == PyreonXYPosition(x: 198, y: 102), "snapToObjects false preserves the raw drag position")
+        check(unsnapped.getSnapLines("drag", PyreonXYPosition(x: 198, y: 102)).x == 300, "public snap-line queries remain available when automatic host snapping is disabled")
         let spatial = PyreonFlowState(nodes: [
             PyreonFlowNode(id: "a", position: PyreonXYPosition(x: 0, y: 0), data: NodeData(label: "A"), width: 100, height: 100),
             PyreonFlowNode(id: "b", position: PyreonXYPosition(x: 90, y: 20), data: NodeData(label: "B"), width: 100, height: 100),

@@ -4913,6 +4913,10 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           const position = kotlinFlowPositionLiteral(e.args[0]!)
           if (position !== null) return `${kotlinIdent(flowName)}.clampToExtent(${position}${e.args.slice(1).map((arg) => `, ${ktChartDouble(emitKotlinExpr(arg, indent))}`).join('')})`
         }
+        if (member === 'getSnapLines' && e.args.length >= 2) {
+          const position = kotlinFlowPositionLiteral(e.args[1]!)
+          if (position !== null) return `${kotlinIdent(flowName)}.getSnapLines(${emitKotlinExpr(e.args[0]!, indent)}, ${position}${e.args[2] ? `, ${ktChartDouble(emitKotlinExpr(e.args[2]!, indent))}` : ''})`
+        }
       }
       // A signal WRITE on a flow-state property — read-only natively; name it.
       if (

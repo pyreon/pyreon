@@ -9,6 +9,7 @@ import com.pyreon.runtime.PyreonFlowNode
 import com.pyreon.runtime.PyreonFlowNodeExtent
 import com.pyreon.runtime.PyreonFlowState
 import com.pyreon.runtime.PyreonFlowSnapshot
+import com.pyreon.runtime.PyreonFlowSnapLines
 import com.pyreon.runtime.PyreonFlowViewport
 import com.pyreon.runtime.PyreonXYPosition
 import kotlin.math.abs
@@ -68,8 +69,12 @@ fun main() {
         PyreonFlowNode("target", position = PyreonXYPosition(200.0, 100.0), data = NodeData("Target"), width = 100.0, height = 40.0),
     ))
     check(snapping.snappedNodePosition("drag", PyreonXYPosition(198.0, 102.0)) == PyreonXYPosition(200.0, 100.0), "object snapping aligns nearby native node edges")
+    val guides = snapping.getSnapLines("drag", PyreonXYPosition(198.0, 102.0))
+    check(guides == PyreonFlowSnapLines(300.0, 140.0, PyreonXYPosition(200.0, 100.0)), "getSnapLines preserves web last-match guide coordinates and snapped position")
+    check(snapping.getSnapLines("missing", PyreonXYPosition(3.0, 4.0)) == PyreonFlowSnapLines(null, null, PyreonXYPosition(3.0, 4.0)), "getSnapLines preserves input for an unknown node")
     val unsnapped = PyreonFlowState(nodes = snapping.nodes, snapToObjects = false)
     check(unsnapped.snappedNodePosition("drag", PyreonXYPosition(198.0, 102.0)) == PyreonXYPosition(198.0, 102.0), "snapToObjects false preserves the raw drag position")
+    check(unsnapped.getSnapLines("drag", PyreonXYPosition(198.0, 102.0)).x == 300.0, "public snap-line queries remain available when automatic host snapping is disabled")
     val spatial = PyreonFlowState(nodes = listOf(
         PyreonFlowNode("a", position = PyreonXYPosition(0.0, 0.0), data = NodeData("A"), width = 100.0, height = 100.0),
         PyreonFlowNode("b", position = PyreonXYPosition(90.0, 20.0), data = NodeData("B"), width = 100.0, height = 100.0),

@@ -127,6 +127,7 @@ data class PyreonFlowSnapshot<T>(
     val edges: List<PyreonFlowEdge>,
     val viewport: PyreonFlowViewport? = null,
 )
+data class PyreonFlowSnapLines(val x: Double?, val y: Double?, val snappedPosition: PyreonXYPosition)
 private data class PyreonFlowHistorySnapshot<T>(val nodes: List<PyreonFlowNode<T>>, val edges: List<PyreonFlowEdge>)
 
 /** Reactive flow-diagram state: nodes, edges, viewport, selection. Behaviour-
@@ -487,21 +488,27 @@ class PyreonFlowState<T>(
     @JvmOverloads
     fun snappedNodePosition(id: String, position: PyreonXYPosition, excluding: Set<String> = emptySet(), threshold: Double = 5.0): PyreonXYPosition {
         if (!snapToObjects) return position
-        val dragged = nodeMap[id] ?: return position
+        return getSnapLines(id, position, threshold, excluding).snappedPosition
+    }
+    @JvmOverloads
+    fun getSnapLines(id: String, position: PyreonXYPosition, threshold: Double = 5.0, excluding: Set<String> = emptySet()): PyreonFlowSnapLines {
+        val dragged = nodeMap[id] ?: return PyreonFlowSnapLines(null, null, position)
         val width = dragged.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH
         val height = dragged.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT
         var x = position.x
         var y = position.y
+        var snapX: Double? = null
+        var snapY: Double? = null
         for (candidate in nodes) {
             if (candidate.id == id || excluding.contains(candidate.id)) continue
             val candidateWidth = candidate.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH
             val candidateHeight = candidate.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT
             val xPairs = arrayOf(Triple(position.x + width / 2, candidate.position.x + candidateWidth / 2, candidate.position.x + candidateWidth / 2 - width / 2), Triple(position.x, candidate.position.x, candidate.position.x), Triple(position.x + width, candidate.position.x + candidateWidth, candidate.position.x + candidateWidth - width))
-            for ((actual, guide, target) in xPairs) if (kotlin.math.abs(actual - guide) < threshold) x = target
+            for ((actual, guide, target) in xPairs) if (kotlin.math.abs(actual - guide) < threshold) { snapX = guide; x = target }
             val yPairs = arrayOf(Triple(position.y + height / 2, candidate.position.y + candidateHeight / 2, candidate.position.y + candidateHeight / 2 - height / 2), Triple(position.y, candidate.position.y, candidate.position.y), Triple(position.y + height, candidate.position.y + candidateHeight, candidate.position.y + candidateHeight - height))
-            for ((actual, guide, target) in yPairs) if (kotlin.math.abs(actual - guide) < threshold) y = target
+            for ((actual, guide, target) in yPairs) if (kotlin.math.abs(actual - guide) < threshold) { snapY = guide; y = target }
         }
-        return PyreonXYPosition(x, y)
+        return PyreonFlowSnapLines(snapX, snapY, PyreonXYPosition(x, y))
     }
 
     // ── edge operations ─────────────────────────────────────────────────────

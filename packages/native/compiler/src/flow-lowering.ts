@@ -26,6 +26,7 @@ export const LOWERED_FLOW_METHODS: ReadonlySet<string> = new Set([
   'isValidConnection',
   'getConnectedEdges', 'getIncomers', 'getOutgoers', 'getChildNodes', 'getAbsolutePosition',
   'getProximityConnection', 'getOverlappingNodes', 'resolveCollisions',
+  'getSnapLines',
   'onConnect', 'onViewportChange', 'onNodeClick', 'onNodeDoubleClick', 'onNodeDragStart', 'onNodeDrag', 'onNodeDragEnd', 'onEdgeClick', 'onSelectionChange', 'onNodesDelete', 'onEdgesDelete', 'onNodesChange', 'onEdgesChange', 'onConnectStart', 'onConnectEnd', 'onPaneClick',
   'setNodeExtent', 'clampToExtent',
   'copySelected', 'paste', 'pushHistory', 'undo', 'redo',

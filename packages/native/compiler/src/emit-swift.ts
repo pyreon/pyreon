@@ -5884,6 +5884,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           const position = swiftFlowPositionLiteral(e.args[0]!)
           if (position !== null) return `${swiftIdent(flowName)}.clampToExtent(${position}${e.args.slice(1).map((arg) => `, ${emitSwiftExpr(arg, indent)}`).join('')})`
         }
+        if (member === 'getSnapLines' && e.args.length >= 2) {
+          const position = swiftFlowPositionLiteral(e.args[1]!)
+          if (position !== null) return `${swiftIdent(flowName)}.getSnapLines(${emitSwiftExpr(e.args[0]!, indent)}, ${position}${e.args[2] ? `, threshold: ${emitSwiftExpr(e.args[2]!, indent)}` : ''})`
+        }
       }
       // A signal WRITE on a flow-state property (`flow.nodes.set(...)`): the
       // native port exposes the collections read-only — name it.

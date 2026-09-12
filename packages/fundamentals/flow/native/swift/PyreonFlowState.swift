@@ -158,6 +158,14 @@ public struct PyreonFlowSnapshot<T> {
         self.nodes = nodes; self.edges = edges; self.viewport = viewport
     }
 }
+public struct PyreonFlowSnapLines: Equatable {
+    public let x: Double?
+    public let y: Double?
+    public let snappedPosition: PyreonXYPosition
+    public init(x: Double?, y: Double?, snappedPosition: PyreonXYPosition) {
+        self.x = x; self.y = y; self.snappedPosition = snappedPosition
+    }
+}
 
 /// An edge — mirrors `FlowEdge`'s core fields, including editable waypoints.
 public struct PyreonFlowEdge: Equatable {
@@ -724,19 +732,25 @@ public final class PyreonFlowState<T> {
         )
     }
     public func snappedNodePosition(_ id: String, _ position: PyreonXYPosition, excluding: Set<String> = [], threshold: Double = 5) -> PyreonXYPosition {
-        guard snapToObjects, let dragged = nodeStore[id] else { return position }
+        guard snapToObjects else { return position }
+        return getSnapLines(id, position, threshold: threshold, excluding: excluding).snappedPosition
+    }
+    public func getSnapLines(_ id: String, _ position: PyreonXYPosition, threshold: Double = 5, excluding: Set<String> = []) -> PyreonFlowSnapLines {
+        guard let dragged = nodeStore[id] else { return PyreonFlowSnapLines(x: nil, y: nil, snappedPosition: position) }
         let width = dragged.width ?? pyreonFlowDefaultNodeWidth
         let height = dragged.height ?? pyreonFlowDefaultNodeHeight
         var result = position
+        var snapX: Double? = nil
+        var snapY: Double? = nil
         for candidate in nodes where candidate.id != id && !excluding.contains(candidate.id) {
             let candidateWidth = candidate.width ?? pyreonFlowDefaultNodeWidth
             let candidateHeight = candidate.height ?? pyreonFlowDefaultNodeHeight
             let xPairs = [(position.x + width / 2, candidate.position.x + candidateWidth / 2, candidate.position.x + candidateWidth / 2 - width / 2), (position.x, candidate.position.x, candidate.position.x), (position.x + width, candidate.position.x + candidateWidth, candidate.position.x + candidateWidth - width)]
-            for (actual, guide, target) in xPairs where abs(actual - guide) < threshold { result.x = target }
+            for (actual, guide, target) in xPairs where abs(actual - guide) < threshold { snapX = guide; result.x = target }
             let yPairs = [(position.y + height / 2, candidate.position.y + candidateHeight / 2, candidate.position.y + candidateHeight / 2 - height / 2), (position.y, candidate.position.y, candidate.position.y), (position.y + height, candidate.position.y + candidateHeight, candidate.position.y + candidateHeight - height)]
-            for (actual, guide, target) in yPairs where abs(actual - guide) < threshold { result.y = target }
+            for (actual, guide, target) in yPairs where abs(actual - guide) < threshold { snapY = guide; result.y = target }
         }
-        return result
+        return PyreonFlowSnapLines(x: snapX, y: snapY, snappedPosition: result)
     }
 
     // ── edge operations ─────────────────────────────────────────────────────
