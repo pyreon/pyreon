@@ -8,6 +8,7 @@ import com.pyreon.runtime.PyreonFlowDefaultEdgeOptions
 import com.pyreon.runtime.PyreonFlowNode
 import com.pyreon.runtime.PyreonFlowNodeExtent
 import com.pyreon.runtime.PyreonFlowState
+import com.pyreon.runtime.PyreonFlowSnapshot
 import com.pyreon.runtime.PyreonFlowViewport
 import com.pyreon.runtime.PyreonXYPosition
 import kotlin.math.abs
@@ -292,6 +293,18 @@ fun main() {
     h.containerSize = com.pyreon.runtime.PyreonFlowContainerSize(200.0, 100.0)
     h.setCenter(10.0, 20.0, zoom = 2.0)
     check(h.viewport == PyreonFlowViewport(80.0, 10.0, 2.0), "setCenter centers with a clamped optional zoom")
+    val exported = h.toJSON()
+    check(exported.nodes.map { it.id } == listOf("1", "2", "3") && exported.edges.map { it.id } == listOf("e1", "e2"), "toJSON snapshots nodes and edges in order")
+    check(exported.viewport == PyreonFlowViewport(80.0, 10.0, 2.0), "toJSON includes the exact viewport")
+    h.selectNode("1")
+    h.fromJSON(PyreonFlowSnapshot(
+        nodes = listOf(PyreonFlowNode(id = "restored", position = PyreonXYPosition(7.0, 8.0), data = NodeData("Restored"))),
+        edges = listOf(PyreonFlowEdge(id = "loop", source = "restored", target = "restored")),
+    ))
+    check(h.nodes.map { it.id } == listOf("restored") && h.getEdge("loop")?.type == "bezier", "fromJSON replaces graph state and normalizes restored edges")
+    check(h.viewport == PyreonFlowViewport(80.0, 10.0, 2.0) && h.selectedNodes().isEmpty(), "fromJSON without viewport preserves it and clears selection")
+    h.fromJSON(exported)
+    check(h.nodes.map { it.id } == listOf("1", "2", "3") && h.viewport == PyreonFlowViewport(80.0, 10.0, 2.0), "toJSON/fromJSON round-trips the complete snapshot")
 
     // 8. fitView.
     val k = seedFlow()

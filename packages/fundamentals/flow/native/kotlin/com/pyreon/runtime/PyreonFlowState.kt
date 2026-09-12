@@ -122,6 +122,11 @@ data class PyreonFlowNodeChange(val type: String, val id: String, val position: 
 data class PyreonFlowEdgeChange(val type: String, val id: String? = null, val edge: PyreonFlowEdge? = null)
 data class PyreonFlowConnectStart(val nodeId: String, val handleId: String)
 data class PyreonFlowPaneEvent(val position: PyreonXYPosition)
+data class PyreonFlowSnapshot<T>(
+    val nodes: List<PyreonFlowNode<T>>,
+    val edges: List<PyreonFlowEdge>,
+    val viewport: PyreonFlowViewport? = null,
+)
 private data class PyreonFlowHistorySnapshot<T>(val nodes: List<PyreonFlowNode<T>>, val edges: List<PyreonFlowEdge>)
 
 /** Reactive flow-diagram state: nodes, edges, viewport, selection. Behaviour-
@@ -320,6 +325,22 @@ class PyreonFlowState<T>(
         val next = redoStack.removeAt(redoStack.lastIndex)
         undoStack.add(PyreonFlowHistorySnapshot(nodes.toList(), _edges.toList()))
         restore(next)
+    }
+    fun toJSON(): PyreonFlowSnapshot<T> = PyreonFlowSnapshot(nodes.toList(), _edges.toList(), _viewport)
+    fun fromJSON(snapshot: PyreonFlowSnapshot<T>) {
+        checkpoint()
+        val oldSelectedNodes = selectedNodeIdList.toList()
+        val oldSelectedEdges = selectedEdgeIdList.toList()
+        order.clear(); nodeMap.clear(); _edges = emptyList(); edgeIds.clear()
+        for (node in snapshot.nodes) insertNode(node)
+        for (edge in snapshot.edges) insertEdge(edge)
+        selectedNodeIdList.clear(); selectedNodeIdSet.clear()
+        selectedEdgeIdList.clear(); selectedEdgeIdSet.clear()
+        snapshot.viewport?.let {
+            _viewport = it
+            emitViewportChange()
+        }
+        emitSelectionChangeIfChanged(oldSelectedNodes, oldSelectedEdges)
     }
 
     /** Current zoom factor — `viewport.zoom`, exposed the same way the web

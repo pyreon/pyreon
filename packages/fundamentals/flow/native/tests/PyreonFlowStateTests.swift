@@ -349,6 +349,19 @@ struct PyreonFlowStateTests {
         h.setCenter(10, 20, zoom: 2)
         check(h.viewport == PyreonFlowViewport(x: 80, y: 10, zoom: 2), "setCenter centers with a clamped optional zoom")
 
+        let exported = h.toJSON()
+        check(exported.nodes.map(\.id) == ["1", "2", "3"] && exported.edges.map(\.id) == ["e1", "e2"], "toJSON snapshots nodes and edges in order")
+        check(exported.viewport == PyreonFlowViewport(x: 80, y: 10, zoom: 2), "toJSON includes the exact viewport")
+        h.selectNode("1")
+        h.fromJSON(PyreonFlowSnapshot(
+            nodes: [PyreonFlowNode(id: "restored", position: PyreonXYPosition(x: 7, y: 8), data: NodeData(label: "Restored"))],
+            edges: [PyreonFlowEdge(id: "loop", source: "restored", target: "restored")]
+        ))
+        check(h.nodes.map(\.id) == ["restored"] && h.getEdge("loop")?.type == "bezier", "fromJSON replaces graph state and normalizes restored edges")
+        check(h.viewport == PyreonFlowViewport(x: 80, y: 10, zoom: 2) && h.selectedNodes().isEmpty, "fromJSON without viewport preserves it and clears selection")
+        h.fromJSON(exported)
+        check(h.nodes.map(\.id) == ["1", "2", "3"] && h.viewport == PyreonFlowViewport(x: 80, y: 10, zoom: 2), "toJSON/fromJSON round-trips the complete snapshot")
+
         // 8. fitView — no-op with no measured container; frames the graph once sized.
         let k = seedFlow()
         k.fitView()

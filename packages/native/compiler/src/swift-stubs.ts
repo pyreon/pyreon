@@ -1126,6 +1126,7 @@ public struct PyreonFlowNodeChange { public let type: String; public let id: Str
 public struct PyreonFlowEdgeChange { public let type: String; public let id: String?; public let edge: PyreonFlowEdge? }
 public struct PyreonFlowConnectStart { public let nodeId: String; public let handleId: String }
 public struct PyreonFlowPaneEvent { public let position: PyreonXYPosition }
+public struct PyreonFlowSnapshot<T> { public let nodes: [PyreonFlowNode<T>]; public let edges: [PyreonFlowEdge]; public let viewport: PyreonFlowViewport? }
 public final class PyreonFlowState<T> {
   public init(
     nodes: [PyreonFlowNode<T>] = [],
@@ -1189,6 +1190,8 @@ public final class PyreonFlowState<T> {
   public func pushHistory() {}
   public func undo() {}
   public func redo() {}
+  public func toJSON() -> PyreonFlowSnapshot<T> { PyreonFlowSnapshot(nodes: [], edges: [], viewport: nil) }
+  public func fromJSON(_ snapshot: PyreonFlowSnapshot<T>) {}
   public func zoomTo(_ z: Double) {}
   public func zoomIn() {}
   public func zoomOut() {}

@@ -473,6 +473,14 @@ export function C() {
       expect((result.warnings ?? []).join(' ')).not.toContain('NOT ported')
       expect(code).toContain(target === 'swift' ? 'flow.paste(PyreonXYPosition(x: 12, y: 34))' : 'flow.paste(PyreonXYPosition(12.0, 34.0))')
     })
+    it(`[${target}] serialization methods lower and typecheck`, () => {
+      const result = transform(base('', '<Button onPress={() => { const snapshot = flow.toJSON(); flow.fromJSON(snapshot) }}>Round trip</Button>'), { target })
+      const warnings = (result.warnings ?? []).join(' ')
+      expect(warnings).not.toContain('`toJSON` is NOT ported')
+      expect(warnings).not.toContain('`fromJSON` is NOT ported')
+      if (target === 'swift') expect(validateSwiftWithStubs(result.code).ok).toBe(true)
+      else expect(validateKotlin(result.code).ok).toBe(true)
+    })
     it(`[${target}] spatial graph helpers lower and typecheck`, () => {
       const result = transform(base('', `<Button onPress={() => flow.resolveCollisions('1', 10)}>Resolve</Button><Text>{flow.getOverlappingNodes('1').length}</Text><Text>{flow.getProximityConnection('1', 50)?.target}</Text>`), { target })
       const warnings = (result.warnings ?? []).join(' ')

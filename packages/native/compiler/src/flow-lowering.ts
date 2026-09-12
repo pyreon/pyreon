@@ -29,6 +29,7 @@ export const LOWERED_FLOW_METHODS: ReadonlySet<string> = new Set([
   'onConnect', 'onViewportChange', 'onNodeClick', 'onNodeDoubleClick', 'onNodeDragStart', 'onNodeDrag', 'onNodeDragEnd', 'onEdgeClick', 'onSelectionChange', 'onNodesDelete', 'onEdgesDelete', 'onNodesChange', 'onEdgesChange', 'onConnectStart', 'onConnectEnd', 'onPaneClick',
   'setNodeExtent', 'clampToExtent',
   'copySelected', 'paste', 'pushHistory', 'undo', 'redo',
+  'toJSON', 'fromJSON',
 ])
 
 /** `FlowNode` fields the native `PyreonFlowNode` carries. */

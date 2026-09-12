@@ -1630,6 +1630,7 @@ data class PyreonFlowNodeChange(val type: String, val id: String, val position: 
 data class PyreonFlowEdgeChange(val type: String, val id: String? = null, val edge: PyreonFlowEdge? = null)
 data class PyreonFlowConnectStart(val nodeId: String, val handleId: String)
 data class PyreonFlowPaneEvent(val position: PyreonXYPosition)
+data class PyreonFlowSnapshot<T>(val nodes: List<PyreonFlowNode<T>>, val edges: List<PyreonFlowEdge>, val viewport: PyreonFlowViewport? = null)
 data class PyreonFlowContainerSize(val width: Double = 0.0, val height: Double = 0.0)
 class PyreonFlowState<T>(
   nodes: List<PyreonFlowNode<T>> = emptyList(),
@@ -1709,6 +1710,8 @@ class PyreonFlowState<T>(
   fun pushHistory() {}
   fun undo() {}
   fun redo() {}
+  fun toJSON(): PyreonFlowSnapshot<T> = PyreonFlowSnapshot(emptyList(), emptyList(), null)
+  fun fromJSON(snapshot: PyreonFlowSnapshot<T>) {}
   fun zoomTo(z: Double) {}
   fun zoomIn() {}
   fun zoomOut() {}

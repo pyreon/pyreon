@@ -6,7 +6,7 @@
 // Scope: node/edge CRUD, selection, viewport (pan/zoom/fitView), graph
 // queries, configuration, endpoint/path geometry, and the interactive native
 // hosts are ported. APIs whose semantics require a separate native design
-// (layout engines, history/clipboard, connection validation, and snap-line
+// (layout engines, search over arbitrary data payloads, and snap-line
 // presentation) remain explicit compiler diagnostics rather than silent gaps.
 //
 // Unlike `PyreonTableState` (which WRAPS an external reactive data source),
@@ -150,6 +150,14 @@ public struct PyreonFlowEdgeChange: Equatable {
 }
 public struct PyreonFlowConnectStart: Equatable { public let nodeId: String; public let handleId: String }
 public struct PyreonFlowPaneEvent: Equatable { public let position: PyreonXYPosition }
+public struct PyreonFlowSnapshot<T> {
+    public let nodes: [PyreonFlowNode<T>]
+    public let edges: [PyreonFlowEdge]
+    public let viewport: PyreonFlowViewport?
+    public init(nodes: [PyreonFlowNode<T>], edges: [PyreonFlowEdge], viewport: PyreonFlowViewport? = nil) {
+        self.nodes = nodes; self.edges = edges; self.viewport = viewport
+    }
+}
 
 /// An edge — mirrors `FlowEdge`'s core fields, including editable waypoints.
 public struct PyreonFlowEdge: Equatable {
@@ -524,6 +532,26 @@ public final class PyreonFlowState<T> {
         guard let next = redoStack.popLast() else { return }
         undoStack.append(HistorySnapshot(nodes: nodes, edges: edges))
         restore(next)
+    }
+
+    public func toJSON() -> PyreonFlowSnapshot<T> {
+        PyreonFlowSnapshot(nodes: nodes, edges: edges, viewport: viewport)
+    }
+    public func fromJSON(_ snapshot: PyreonFlowSnapshot<T>) {
+        checkpoint()
+        let oldSelectedNodes = selectedNodeIds, oldSelectedEdges = selectedEdgeIds
+        order.removeAll(keepingCapacity: true); nodeStore.removeAll(keepingCapacity: true); boxes.removeAll(keepingCapacity: true)
+        edges.removeAll(keepingCapacity: true); edgeIds.removeAll(keepingCapacity: true)
+        for node in snapshot.nodes { insertNode(node) }
+        for edge in snapshot.edges { insertEdge(edge) }
+        selectedNodeIds.removeAll(keepingCapacity: true); selectedNodeIdSet.removeAll(keepingCapacity: true)
+        selectedEdgeIds.removeAll(keepingCapacity: true); selectedEdgeIdSet.removeAll(keepingCapacity: true)
+        if let restoredViewport = snapshot.viewport {
+            viewport = restoredViewport
+            emitViewportChange()
+        }
+        emitSelectionChange(ifNodeIdsWere: oldSelectedNodes, edgeIdsWere: oldSelectedEdges)
+        nodesVersion &+= 1
     }
 
     /// Current zoom factor — `viewport.zoom`, exposed the same way the web
