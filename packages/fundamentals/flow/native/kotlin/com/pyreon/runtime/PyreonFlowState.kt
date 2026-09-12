@@ -131,6 +131,32 @@ data class PyreonFlowSnapshot<T>(
     val viewport: PyreonFlowViewport? = null,
 )
 data class PyreonFlowSnapLines(val x: Double?, val y: Double?, val snappedPosition: PyreonXYPosition)
+data class PyreonFlowLayoutPosition(val id: String, val position: PyreonXYPosition)
+
+fun <T> pyreonFlowPackingLayout(nodes: List<PyreonFlowNode<T>>, spacing: Double = 20.0, sortByHeight: Boolean = false): List<PyreonFlowLayoutPosition> {
+    val items = if (sortByHeight) nodes.withIndex().sortedWith(
+        compareByDescending<IndexedValue<PyreonFlowNode<T>>> { it.value.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT }
+            .thenByDescending { it.value.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH }
+            .thenBy { it.index },
+    ) else nodes.withIndex().toList()
+    if (items.isEmpty()) return emptyList()
+    val columns = kotlin.math.ceil(kotlin.math.sqrt(items.size.toDouble())).toInt().coerceAtLeast(1)
+    val widest = items.maxOf { it.value.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH }
+    val target = widest * columns + spacing * (columns - 1)
+    var x = 0.0
+    var y = 0.0
+    var rowHeight = 0.0
+    return items.map { item ->
+        val node = item.value
+        val width = node.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH
+        val height = node.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT
+        if (x > 0.0 && x + width > target) { x = 0.0; y += rowHeight + spacing; rowHeight = 0.0 }
+        val result = PyreonFlowLayoutPosition(node.id, PyreonXYPosition(x, y))
+        x += width + spacing
+        rowHeight = kotlin.math.max(rowHeight, height)
+        result
+    }
+}
 private data class PyreonFlowHistorySnapshot<T>(val nodes: List<PyreonFlowNode<T>>, val edges: List<PyreonFlowEdge>)
 
 /** Reactive flow-diagram state: nodes, edges, viewport, selection. Behaviour-

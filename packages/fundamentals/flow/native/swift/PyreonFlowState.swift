@@ -167,6 +167,35 @@ public struct PyreonFlowSnapLines: Equatable {
         self.x = x; self.y = y; self.snappedPosition = snappedPosition
     }
 }
+public struct PyreonFlowLayoutPosition: Equatable {
+    public let id: String
+    public let position: PyreonXYPosition
+}
+
+public func pyreonFlowPackingLayout<T>(_ nodes: [PyreonFlowNode<T>], spacing: Double = 20, sortByHeight: Bool = false) -> [PyreonFlowLayoutPosition] {
+    let indexed = Array(nodes.enumerated())
+    let items = sortByHeight ? indexed.sorted {
+        let ah = $0.element.height ?? pyreonFlowDefaultNodeHeight, bh = $1.element.height ?? pyreonFlowDefaultNodeHeight
+        if ah != bh { return ah > bh }
+        let aw = $0.element.width ?? pyreonFlowDefaultNodeWidth, bw = $1.element.width ?? pyreonFlowDefaultNodeWidth
+        if aw != bw { return aw > bw }
+        return $0.offset < $1.offset
+    } : indexed
+    guard !items.isEmpty else { return [] }
+    let columns = max(1, Int(ceil(sqrt(Double(items.count)))))
+    let widest = items.map { $0.element.width ?? pyreonFlowDefaultNodeWidth }.max() ?? pyreonFlowDefaultNodeWidth
+    let target = widest * Double(columns) + spacing * Double(columns - 1)
+    var x = 0.0, y = 0.0, rowHeight = 0.0
+    return items.map { item in
+        let node = item.element
+        let width = node.width ?? pyreonFlowDefaultNodeWidth
+        let height = node.height ?? pyreonFlowDefaultNodeHeight
+        if x > 0 && x + width > target { x = 0; y += rowHeight + spacing; rowHeight = 0 }
+        let result = PyreonFlowLayoutPosition(id: node.id, position: PyreonXYPosition(x: x, y: y))
+        x += width + spacing; rowHeight = max(rowHeight, height)
+        return result
+    }
+}
 
 /// An edge — mirrors `FlowEdge`'s core fields, including editable waypoints.
 public struct PyreonFlowEdge: Equatable {

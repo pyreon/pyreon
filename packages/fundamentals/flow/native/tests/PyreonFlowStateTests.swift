@@ -37,6 +37,15 @@ struct PyreonFlowStateTests {
     static func runStateChecks() {
         // 1. Seed + basic reads.
         let f = seedFlow()
+        let packingNodes = [
+            PyreonFlowNode(id: "a", position: PyreonXYPosition(x: 9, y: 9), data: NodeData(label: "A"), width: 100, height: 30),
+            PyreonFlowNode(id: "b", position: PyreonXYPosition(x: 9, y: 9), data: NodeData(label: "B"), width: 80, height: 70),
+            PyreonFlowNode(id: "c", position: PyreonXYPosition(x: 9, y: 9), data: NodeData(label: "C"), width: 120, height: 40),
+            PyreonFlowNode(id: "d", position: PyreonXYPosition(x: 9, y: 9), data: NodeData(label: "D"), width: 60, height: 20),
+        ]
+        check(pyreonFlowPackingLayout(packingNodes, spacing: 10).map { $0.id } == ["a", "b", "c", "d"], "box packing preserves input order")
+        check(pyreonFlowPackingLayout(packingNodes, spacing: 10).map { $0.position } == [PyreonXYPosition(x: 0, y: 0), PyreonXYPosition(x: 110, y: 0), PyreonXYPosition(x: 0, y: 80), PyreonXYPosition(x: 130, y: 80)], "box packing matches the web shelf geometry")
+        check(pyreonFlowPackingLayout(packingNodes, spacing: 10, sortByHeight: true).map { $0.id } == ["b", "c", "a", "d"], "rectpacking uses stable height/width ordering")
         let batched = seedFlow()
         batched.batch {
             batched.updateNodePosition("1", PyreonXYPosition(x: 10, y: 20))

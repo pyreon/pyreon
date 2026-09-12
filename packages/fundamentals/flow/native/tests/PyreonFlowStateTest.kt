@@ -12,6 +12,7 @@ import com.pyreon.runtime.PyreonFlowSnapshot
 import com.pyreon.runtime.PyreonFlowSnapLines
 import com.pyreon.runtime.PyreonFlowViewport
 import com.pyreon.runtime.PyreonXYPosition
+import com.pyreon.runtime.pyreonFlowPackingLayout
 import kotlin.math.abs
 
 private data class NodeData(val label: String)
@@ -36,6 +37,15 @@ private fun seedFlow(): PyreonFlowState<NodeData> = PyreonFlowState(
 fun main() {
     // 1. Seed + basic reads.
     val f = seedFlow()
+    val packingNodes = listOf(
+        PyreonFlowNode("a", position = PyreonXYPosition(9.0, 9.0), data = NodeData("A"), width = 100.0, height = 30.0),
+        PyreonFlowNode("b", position = PyreonXYPosition(9.0, 9.0), data = NodeData("B"), width = 80.0, height = 70.0),
+        PyreonFlowNode("c", position = PyreonXYPosition(9.0, 9.0), data = NodeData("C"), width = 120.0, height = 40.0),
+        PyreonFlowNode("d", position = PyreonXYPosition(9.0, 9.0), data = NodeData("D"), width = 60.0, height = 20.0),
+    )
+    check(pyreonFlowPackingLayout(packingNodes, spacing = 10.0).map { it.id } == listOf("a", "b", "c", "d"), "box packing preserves input order")
+    check(pyreonFlowPackingLayout(packingNodes, spacing = 10.0).map { it.position } == listOf(PyreonXYPosition(0.0, 0.0), PyreonXYPosition(110.0, 0.0), PyreonXYPosition(0.0, 80.0), PyreonXYPosition(130.0, 80.0)), "box packing matches the web shelf geometry")
+    check(pyreonFlowPackingLayout(packingNodes, spacing = 10.0, sortByHeight = true).map { it.id } == listOf("b", "c", "a", "d"), "rectpacking uses stable height/width ordering")
     val batched = seedFlow()
     batched.batch {
         batched.updateNodePosition("1", PyreonXYPosition(10.0, 20.0))
