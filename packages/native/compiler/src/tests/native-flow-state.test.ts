@@ -429,6 +429,10 @@ export function C() {
       expect(w).toContain('`undo` is NOT ported')
       expect(w).toContain('fails at the native BUILD')
     })
+    it(`[${target}] callback node updates warn rather than silently claiming native support`, () => {
+      const w = warningsOf(base('', '<Button onPress={() => flow.updateNodeData("1", node => ({ label: node.data.label }))}>Update</Button>'), target)
+      expect(w).toContain('`updateNodeData` currently lowers only a literal patch object without spreads')
+    })
     it(`[${target}] a signal WRITE on a flow property warns (the native collections are read-only)`, () => {
       const w = warningsOf(base('', '<Button onPress={() => flow.nodes.set([])}>Clear</Button>'), target)
       expect(w).toContain('`nodes.set(...)` writes the `nodes` signal directly')
