@@ -9,7 +9,7 @@ import Foundation
 import SwiftUI
 
 struct NodeData {
-    let label: String
+    var label: String
 }
 
 @available(iOS 17.0, macOS 14.0, *)
@@ -36,6 +36,8 @@ struct PyreonFlowStateTests {
     static func runStateChecks() {
         // 1. Seed + basic reads.
         let f = seedFlow()
+        f.updateNodeData("1") { $0.label = "Updated" }
+        check(f.getNode("1")?.data.label == "Updated", "updateNodeData mutates the native payload observably")
         check(f.nodes.count == 3, "seeded 3 nodes")
         check(f.edges.count == 2, "seeded 2 edges")
         check(f.getNode("2")?.data.label == "Mid", "getNode reads the seeded data")

@@ -33,6 +33,8 @@ private fun seedFlow(): PyreonFlowState<NodeData> = PyreonFlowState(
 fun main() {
     // 1. Seed + basic reads.
     val f = seedFlow()
+    f.updateNodeData("1") { it.copy(label = "Updated") }
+    check(f.getNode("1")?.data?.label == "Updated", "updateNodeData replaces the native payload observably")
     check(f.nodes.size == 3, "seeded 3 nodes")
     check(f.edges.size == 2, "seeded 2 edges")
     check(f.getNode("2")?.data?.label == "Mid", "getNode reads the seeded data")

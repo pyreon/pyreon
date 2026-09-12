@@ -15,7 +15,7 @@ export const LOWERED_FLOW_PROPERTY_READS: ReadonlySet<string> = new Set(['nodes'
 
 /** Methods `PyreonFlowState` implements on BOTH targets (v1 surface). */
 export const LOWERED_FLOW_METHODS: ReadonlySet<string> = new Set([
-  'getNode', 'getNodes', 'addNode', 'addNodes', 'setNodes', 'removeNode', 'removeNodes', 'updateNodePosition',
+  'getNode', 'getNodes', 'addNode', 'addNodes', 'setNodes', 'removeNode', 'removeNodes', 'updateNodePosition', 'updateNodeData',
   'getEdge', 'getEdges', 'addEdge', 'addEdges', 'setEdges', 'removeEdge', 'removeEdges',
   'isNodeSelected', 'isEdgeSelected', 'selectedNodes', 'selectedEdges',
   'selectNode', 'selectNodes', 'deselectNode', 'selectEdge', 'clearSelection', 'selectAll', 'deleteSelected',

@@ -485,6 +485,12 @@ public final class PyreonFlowState<T> {
         boxes[id]!.node.position = clamped
         nodesVersion &+= 1
     }
+    public func updateNodeData(_ id: String, _ update: (inout T) -> Void) {
+        guard nodeStore[id] != nil else { return }
+        update(&nodeStore[id]!.data)
+        boxes[id]!.node.data = nodeStore[id]!.data
+        nodesVersion &+= 1
+    }
     public func setNodeExtent(minX: Double, minY: Double, maxX: Double, maxY: Double) {
         nodeExtent = PyreonFlowNodeExtent(minX: minX, minY: minY, maxX: maxX, maxY: maxY)
     }

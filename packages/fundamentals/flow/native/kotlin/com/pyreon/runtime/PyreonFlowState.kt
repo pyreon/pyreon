@@ -274,6 +274,10 @@ class PyreonFlowState<T>(
         ) else position
         nodeMap[id] = node.copy(position = clampToExtent(snapped, node.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH, node.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT))
     }
+    fun updateNodeData(id: String, update: (T) -> T) {
+        val node = nodeMap[id] ?: return
+        nodeMap[id] = node.copy(data = update(node.data))
+    }
     fun setNodeExtent(minX: Double, minY: Double, maxX: Double, maxY: Double) {
         nodeExtent = PyreonFlowNodeExtent(minX, minY, maxX, maxY)
     }

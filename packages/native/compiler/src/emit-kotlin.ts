@@ -4813,6 +4813,13 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             return `${kotlinIdent(e.callee.object.name)}.updateNodePosition(${emitKotlinExpr(e.args[0]!, indent)}, ${lit})`
           }
         }
+        if (member === 'updateNodeData' && e.args.length === 2 && e.args[1]!.kind === 'object') {
+          const patch = e.args[1]
+          if (!patch.spreads || patch.spreads.length === 0) {
+            const assignments = patch.fields.map(({ name, value }) => `${kotlinIdent(name)} = ${emitKotlinExpr(value, indent)}`).join(', ')
+            return `${kotlinIdent(flowName)}.updateNodeData(${emitKotlinExpr(e.args[0]!, indent)}) { data -> data.copy(${assignments}) }`
+          }
+        }
         if (['panTo', 'screenToFlowPosition', 'flowToScreenPosition'].includes(member) && e.args.length === 1) {
           const lit = kotlinFlowPositionLiteral(e.args[0]!)
           if (lit !== null) return `${kotlinIdent(flowName)}.${member}(${lit})`

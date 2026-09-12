@@ -5796,6 +5796,13 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             return `${swiftIdent(e.callee.object.name)}.updateNodePosition(${emitSwiftExpr(e.args[0]!, indent)}, ${lit})`
           }
         }
+        if (member === 'updateNodeData' && e.args.length === 2 && e.args[1]!.kind === 'object') {
+          const patch = e.args[1]
+          if (!patch.spreads || patch.spreads.length === 0) {
+            const assignments = patch.fields.map(({ name, value }) => `data.${swiftIdent(name)} = ${emitSwiftExpr(value, indent)}`).join('; ')
+            return `${swiftIdent(flowName)}.updateNodeData(${emitSwiftExpr(e.args[0]!, indent)}) { data in ${assignments} }`
+          }
+        }
         if (['panTo', 'screenToFlowPosition', 'flowToScreenPosition'].includes(member) && e.args.length === 1) {
           const lit = swiftFlowPositionLiteral(e.args[0]!)
           if (lit !== null) return `${swiftIdent(flowName)}.${member}(${lit})`
