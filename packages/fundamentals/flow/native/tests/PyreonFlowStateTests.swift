@@ -97,6 +97,17 @@ struct PyreonFlowStateTests {
         check(observedZoom == 2, "onViewportChange observes native viewport writes")
         stopViewport(); events.zoomTo(3)
         check(observedZoom == 2, "onViewportChange unsubscribe stops delivery")
+        var nodeEvents: [String] = []
+        let stops = [
+            events.onNodeClick { nodeEvents.append("click:\($0.id)") },
+            events.onNodeDoubleClick { nodeEvents.append("double:\($0.id)") },
+            events.onNodeDragStart { nodeEvents.append("start:\($0.id)") },
+            events.onNodeDrag { nodeEvents.append("drag:\($0.id)") },
+            events.onNodeDragEnd { nodeEvents.append("end:\($0.id)") },
+        ]
+        events.emitNodeClick("1"); events.emitNodeDoubleClick("1"); events.emitNodeDragStart("1"); events.emitNodeDrag("1"); events.emitNodeDragEnd("1")
+        check(nodeEvents == ["click:1", "double:1", "start:1", "drag:1", "end:1"], "native node interaction listeners preserve lifecycle order and live node values")
+        for stop in stops { stop() }
         f.updateNode("1") { $0.hidden = true; $0.id = "ignored" }
         check(f.getNode("1")?.hidden == true && f.getNode("ignored") == nil, "updateNode patches fields while preserving indexed identity")
         f.updateNode("1") { $0.hidden = false }

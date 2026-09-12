@@ -350,6 +350,11 @@ public final class PyreonFlowState<T> {
     @ObservationIgnored private var pasteCounter = 0
     @ObservationIgnored private var connectListeners: [UUID: (PyreonFlowConnection) -> Void] = [:]
     @ObservationIgnored private var viewportListeners: [UUID: (PyreonFlowViewport) -> Void] = [:]
+    @ObservationIgnored private var nodeClickListeners: [UUID: (PyreonFlowNode<T>) -> Void] = [:]
+    @ObservationIgnored private var nodeDoubleClickListeners: [UUID: (PyreonFlowNode<T>) -> Void] = [:]
+    @ObservationIgnored private var nodeDragStartListeners: [UUID: (PyreonFlowNode<T>) -> Void] = [:]
+    @ObservationIgnored private var nodeDragListeners: [UUID: (PyreonFlowNode<T>) -> Void] = [:]
+    @ObservationIgnored private var nodeDragEndListeners: [UUID: (PyreonFlowNode<T>) -> Void] = [:]
     @ObservationIgnored private let connectionValidator: ((PyreonFlowConnection) -> Bool)?
 
     public init(
@@ -397,6 +402,20 @@ public final class PyreonFlowState<T> {
         let token = UUID(); viewportListeners[token] = callback
         return { [weak self] in self?.viewportListeners[token] = nil }
     }
+    private func addNodeListener(_ callback: @escaping (PyreonFlowNode<T>) -> Void, to listeners: ReferenceWritableKeyPath<PyreonFlowState<T>, [UUID: (PyreonFlowNode<T>) -> Void]>) -> () -> Void {
+        let token = UUID(); self[keyPath: listeners][token] = callback
+        return { [weak self] in self?[keyPath: listeners][token] = nil }
+    }
+    @discardableResult public func onNodeClick(_ callback: @escaping (PyreonFlowNode<T>) -> Void) -> () -> Void { addNodeListener(callback, to: \.nodeClickListeners) }
+    @discardableResult public func onNodeDoubleClick(_ callback: @escaping (PyreonFlowNode<T>) -> Void) -> () -> Void { addNodeListener(callback, to: \.nodeDoubleClickListeners) }
+    @discardableResult public func onNodeDragStart(_ callback: @escaping (PyreonFlowNode<T>) -> Void) -> () -> Void { addNodeListener(callback, to: \.nodeDragStartListeners) }
+    @discardableResult public func onNodeDrag(_ callback: @escaping (PyreonFlowNode<T>) -> Void) -> () -> Void { addNodeListener(callback, to: \.nodeDragListeners) }
+    @discardableResult public func onNodeDragEnd(_ callback: @escaping (PyreonFlowNode<T>) -> Void) -> () -> Void { addNodeListener(callback, to: \.nodeDragEndListeners) }
+    public func emitNodeClick(_ id: String) { if let node = nodeStore[id] { for callback in nodeClickListeners.values { callback(node) } } }
+    public func emitNodeDoubleClick(_ id: String) { if let node = nodeStore[id] { for callback in nodeDoubleClickListeners.values { callback(node) } } }
+    public func emitNodeDragStart(_ id: String) { if let node = nodeStore[id] { for callback in nodeDragStartListeners.values { callback(node) } } }
+    public func emitNodeDrag(_ id: String) { if let node = nodeStore[id] { for callback in nodeDragListeners.values { callback(node) } } }
+    public func emitNodeDragEnd(_ id: String) { if let node = nodeStore[id] { for callback in nodeDragEndListeners.values { callback(node) } } }
     private func emitViewportChange() { for callback in viewportListeners.values { callback(viewport) } }
     private func checkpoint() { if autoHistory { pushHistory() } }
     public func pushHistory() {

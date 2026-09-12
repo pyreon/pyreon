@@ -287,7 +287,12 @@ fun <T> PyreonFlowView(
                         selected = state.isNodeSelected(node.id)
                     }
                 if (node.selectable ?: state.nodesSelectable) {
-                    nodeModifier = nodeModifier.clickable { state.selectNode(node.id) }
+                    nodeModifier = nodeModifier.pointerInput(node.id, "node-taps") {
+                        detectTapGestures(
+                            onDoubleTap = { state.emitNodeDoubleClick(node.id) },
+                            onTap = { state.selectNode(node.id); state.emitNodeClick(node.id) },
+                        )
+                    }
                 }
                 if (!interactionsLocked && (node.draggable ?: state.nodesDraggable)) {
                     nodeModifier = nodeModifier.pointerInput(node.id, state.viewport.zoom) {
@@ -295,9 +300,10 @@ fun <T> PyreonFlowView(
                             onDragStart = {
                                 state.pushHistory()
                                 nodeDragStarts = pyreonFlowDragNodeIds(state, node.id).associateWith { id -> state.getNode(id)!!.position }
+                                state.emitNodeDragStart(node.id)
                             },
-                            onDragCancel = { nodeDragStarts = emptyMap() },
-                            onDragEnd = { nodeDragStarts = emptyMap() },
+                            onDragCancel = { if (nodeDragStarts.isNotEmpty()) state.emitNodeDragEnd(node.id); nodeDragStarts = emptyMap() },
+                            onDragEnd = { if (nodeDragStarts.isNotEmpty()) state.emitNodeDragEnd(node.id); nodeDragStarts = emptyMap() },
                         ) { change, _ ->
                             change.consume()
                             val delta = change.position - change.previousPosition
@@ -311,6 +317,7 @@ fun <T> PyreonFlowView(
                                 nodeDragStarts = nodeDragStarts + (id to next)
                                 state.updateNodePosition(id, next)
                             }
+                            state.emitNodeDrag(node.id)
                         }
                     }
                 }

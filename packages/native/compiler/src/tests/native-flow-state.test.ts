@@ -450,8 +450,8 @@ export function C() {
 
   for (const target of ['swift', 'kotlin'] as const) {
     it(`[${target}] an unported FlowInstance member warns BY NAME instead of dying at the native build`, () => {
-      const w = warningsOf(base('', '<Button onPress={() => flow.onNodeClick(() => {})}>Listen</Button>'), target)
-      expect(w).toContain('`onNodeClick` is NOT ported')
+      const w = warningsOf(base('', '<Button onPress={() => flow.layout()}>Layout</Button>'), target)
+      expect(w).toContain('`layout` is NOT ported')
       expect(w).toContain('fails at the native BUILD')
     })
     it(`[${target}] callback node updates warn rather than silently claiming native support`, () => {
@@ -480,14 +480,18 @@ export function C() {
       if (target === 'swift') expect(validateSwiftWithStubs(result.code).ok).toBe(true)
       else expect(validateKotlin(result.code).ok).toBe(true)
     })
-    it(`[${target}] connect and viewport listeners are recognized native members`, () => {
+    it(`[${target}] connection, viewport and node listeners are recognized native members`, () => {
       const result = transform(base(`
         const stopConnect = flow.onConnect(connection => { console.log(connection.target) })
         const stopViewport = flow.onViewportChange(viewport => { console.log(viewport.zoom) })
+        flow.onNodeClick(node => { console.log(node.id) })
+        flow.onNodeDoubleClick(node => { console.log(node.id) })
+        flow.onNodeDragStart(node => { console.log(node.id) })
+        flow.onNodeDrag(node => { console.log(node.id) })
+        flow.onNodeDragEnd(node => { console.log(node.id) })
       `, '<Button onPress={() => { stopConnect(); stopViewport() }}>Stop</Button>'), { target })
       const warnings = (result.warnings ?? []).join(' ')
-      expect(warnings).not.toContain('`onConnect` is NOT ported')
-      expect(warnings).not.toContain('`onViewportChange` is NOT ported')
+      for (const member of ['onConnect', 'onViewportChange', 'onNodeClick', 'onNodeDoubleClick', 'onNodeDragStart', 'onNodeDrag', 'onNodeDragEnd']) expect(warnings).not.toContain(`\`${member}\` is NOT ported`)
     })
     it(`[${target}] a ported member emits with NO member warning (the control)`, () => {
       const w = warningsOf(base('', '<Button onPress={() => flow.zoomIn()}>Zoom</Button>'), target)

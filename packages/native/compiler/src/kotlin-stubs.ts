@@ -1724,6 +1724,11 @@ class PyreonFlowState<T>(
   fun resolveCollisions(nodeId: String, spacing: Double = 10.0) {}
   fun onConnect(callback: (PyreonFlowConnection) -> Unit): () -> Unit = {}
   fun onViewportChange(callback: (PyreonFlowViewport) -> Unit): () -> Unit = {}
+  fun onNodeClick(callback: (PyreonFlowNode<T>) -> Unit): () -> Unit = {}
+  fun onNodeDoubleClick(callback: (PyreonFlowNode<T>) -> Unit): () -> Unit = {}
+  fun onNodeDragStart(callback: (PyreonFlowNode<T>) -> Unit): () -> Unit = {}
+  fun onNodeDrag(callback: (PyreonFlowNode<T>) -> Unit): () -> Unit = {}
+  fun onNodeDragEnd(callback: (PyreonFlowNode<T>) -> Unit): () -> Unit = {}
   fun moveSelectedNodes(dx: Double, dy: Double) {}
   fun focusNode(nodeId: String, focusZoom: Double? = null) {}
 }

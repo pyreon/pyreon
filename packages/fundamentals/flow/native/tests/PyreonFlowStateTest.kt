@@ -92,6 +92,17 @@ fun main() {
     check(observedZoom == 2.0, "onViewportChange observes native viewport writes")
     stopViewport(); events.zoomTo(3.0)
     check(observedZoom == 2.0, "onViewportChange unsubscribe stops delivery")
+    val nodeEvents = mutableListOf<String>()
+    val stops = listOf(
+        events.onNodeClick { nodeEvents.add("click:${it.id}") },
+        events.onNodeDoubleClick { nodeEvents.add("double:${it.id}") },
+        events.onNodeDragStart { nodeEvents.add("start:${it.id}") },
+        events.onNodeDrag { nodeEvents.add("drag:${it.id}") },
+        events.onNodeDragEnd { nodeEvents.add("end:${it.id}") },
+    )
+    events.emitNodeClick("1"); events.emitNodeDoubleClick("1"); events.emitNodeDragStart("1"); events.emitNodeDrag("1"); events.emitNodeDragEnd("1")
+    check(nodeEvents == listOf("click:1", "double:1", "start:1", "drag:1", "end:1"), "native node interaction listeners preserve lifecycle order and live node values")
+    stops.forEach { it() }
     f.updateNodeData("1") { it.copy(label = "Updated") }
     check(f.getNode("1")?.data?.label == "Updated", "updateNodeData replaces the native payload observably")
     f.updateNode("1") { it.copy(id = "ignored", hidden = true) }

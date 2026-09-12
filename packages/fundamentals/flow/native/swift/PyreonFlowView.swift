@@ -420,7 +420,9 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 if node.selectable ?? state.nodesSelectable { state.selectNode(node.id) }
+                                state.emitNodeClick(node.id)
                             }
+                            .onTapGesture(count: 2) { state.emitNodeDoubleClick(node.id) }
                             .gesture(nodeDragGesture(node))
                             .accessibilityLabel(Text(node.ariaLabel ?? node.id))
                             .accessibilityAddTraits(state.isNodeSelected(node.id) ? [.isSelected] : [])
@@ -565,6 +567,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                     for id in pyreonFlowDragNodeIds(state: state, draggedNodeId: node.id) {
                         if let position = state.getNode(id)?.position { nodeDragStart[id] = position }
                     }
+                    state.emitNodeDragStart(node.id)
                 }
                 guard let primaryStart = nodeDragStart[node.id] else { return }
                 let rawPrimary = PyreonXYPosition(
@@ -580,8 +583,12 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                             x: start.x + dx,
                             y: start.y + dy))
                 }
+                state.emitNodeDrag(node.id)
             }
-            .onEnded { _ in nodeDragStart.removeAll(keepingCapacity: true) }
+            .onEnded { _ in
+                if !nodeDragStart.isEmpty { state.emitNodeDragEnd(node.id) }
+                nodeDragStart.removeAll(keepingCapacity: true)
+            }
     }
 
     private var panGesture: some Gesture {

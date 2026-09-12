@@ -164,6 +164,11 @@ class PyreonFlowState<T>(
     private var nextListenerId = 0
     private val connectListeners = LinkedHashMap<Int, (PyreonFlowConnection) -> Unit>()
     private val viewportListeners = LinkedHashMap<Int, (PyreonFlowViewport) -> Unit>()
+    private val nodeClickListeners = LinkedHashMap<Int, (PyreonFlowNode<T>) -> Unit>()
+    private val nodeDoubleClickListeners = LinkedHashMap<Int, (PyreonFlowNode<T>) -> Unit>()
+    private val nodeDragStartListeners = LinkedHashMap<Int, (PyreonFlowNode<T>) -> Unit>()
+    private val nodeDragListeners = LinkedHashMap<Int, (PyreonFlowNode<T>) -> Unit>()
+    private val nodeDragEndListeners = LinkedHashMap<Int, (PyreonFlowNode<T>) -> Unit>()
     val connectionRadius: Double = maxOf(0.0, connectionRadius)
     val fitViewPadding: Double = maxOf(0.0, fitViewPadding)
     private var nodeExtent: PyreonFlowNodeExtent? = nodeExtent
@@ -206,6 +211,20 @@ class PyreonFlowState<T>(
         val id = nextListenerId++; viewportListeners[id] = callback
         return { viewportListeners.remove(id) }
     }
+    private fun addNodeListener(listeners: MutableMap<Int, (PyreonFlowNode<T>) -> Unit>, callback: (PyreonFlowNode<T>) -> Unit): () -> Unit {
+        val id = nextListenerId++; listeners[id] = callback
+        return { listeners.remove(id) }
+    }
+    fun onNodeClick(callback: (PyreonFlowNode<T>) -> Unit): () -> Unit = addNodeListener(nodeClickListeners, callback)
+    fun onNodeDoubleClick(callback: (PyreonFlowNode<T>) -> Unit): () -> Unit = addNodeListener(nodeDoubleClickListeners, callback)
+    fun onNodeDragStart(callback: (PyreonFlowNode<T>) -> Unit): () -> Unit = addNodeListener(nodeDragStartListeners, callback)
+    fun onNodeDrag(callback: (PyreonFlowNode<T>) -> Unit): () -> Unit = addNodeListener(nodeDragListeners, callback)
+    fun onNodeDragEnd(callback: (PyreonFlowNode<T>) -> Unit): () -> Unit = addNodeListener(nodeDragEndListeners, callback)
+    fun emitNodeClick(id: String) { nodeMap[id]?.let { node -> nodeClickListeners.values.forEach { it(node) } } }
+    fun emitNodeDoubleClick(id: String) { nodeMap[id]?.let { node -> nodeDoubleClickListeners.values.forEach { it(node) } } }
+    fun emitNodeDragStart(id: String) { nodeMap[id]?.let { node -> nodeDragStartListeners.values.forEach { it(node) } } }
+    fun emitNodeDrag(id: String) { nodeMap[id]?.let { node -> nodeDragListeners.values.forEach { it(node) } } }
+    fun emitNodeDragEnd(id: String) { nodeMap[id]?.let { node -> nodeDragEndListeners.values.forEach { it(node) } } }
     private fun emitViewportChange() { for (callback in viewportListeners.values) callback(_viewport) }
     private fun checkpoint() { if (autoHistory) pushHistory() }
     fun pushHistory() {
