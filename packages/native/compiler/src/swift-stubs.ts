@@ -1199,6 +1199,9 @@ public final class PyreonFlowState<T> {
   public func getOutgoers(_ nodeId: String) -> [PyreonFlowNode<T>] { [] }
   public func getChildNodes(_ parentId: String) -> [PyreonFlowNode<T>] { [] }
   public func getAbsolutePosition(_ nodeId: String) -> PyreonXYPosition { PyreonXYPosition(x: 0, y: 0) }
+  public func getProximityConnection(_ nodeId: String, _ threshold: Double = 50) -> PyreonFlowConnection? { nil }
+  public func getOverlappingNodes(_ nodeId: String) -> [PyreonFlowNode<T>] { [] }
+  public func resolveCollisions(_ nodeId: String, _ spacing: Double = 10) {}
   public func moveSelectedNodes(_ dx: Double, _ dy: Double) {}
   public func focusNode(_ nodeId: String, _ focusZoom: Double? = nil) {}
 }

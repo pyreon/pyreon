@@ -4868,6 +4868,9 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (member === 'focusNode' && e.args.length === 2) {
           return `${kotlinIdent(flowName)}.focusNode(${emitKotlinExpr(e.args[0]!, indent)}, ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))})`
         }
+        if ((member === 'getProximityConnection' || member === 'resolveCollisions') && e.args.length === 2) {
+          return `${kotlinIdent(flowName)}.${member}(${emitKotlinExpr(e.args[0]!, indent)}, ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))})`
+        }
         if (member === 'addEdgeWaypoint' && e.args.length >= 2) {
           const point = kotlinFlowPositionLiteral(e.args[1]!)
           if (point !== null) return `${kotlinIdent(flowName)}.addEdgeWaypoint(${emitKotlinExpr(e.args[0]!, indent)}, ${point}${e.args.length === 3 ? `, ${emitKotlinExpr(e.args[2]!, indent)}` : ''})`

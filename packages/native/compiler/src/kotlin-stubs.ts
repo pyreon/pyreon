@@ -1719,6 +1719,9 @@ class PyreonFlowState<T>(
   fun getOutgoers(nodeId: String): List<PyreonFlowNode<T>> = emptyList()
   fun getChildNodes(parentId: String): List<PyreonFlowNode<T>> = emptyList()
   fun getAbsolutePosition(nodeId: String): PyreonXYPosition = PyreonXYPosition(0.0, 0.0)
+  fun getProximityConnection(nodeId: String, threshold: Double = 50.0): PyreonFlowConnection? = null
+  fun getOverlappingNodes(nodeId: String): List<PyreonFlowNode<T>> = emptyList()
+  fun resolveCollisions(nodeId: String, spacing: Double = 10.0) {}
   fun moveSelectedNodes(dx: Double, dy: Double) {}
   fun focusNode(nodeId: String, focusZoom: Double? = null) {}
 }

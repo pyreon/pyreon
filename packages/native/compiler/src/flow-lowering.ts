@@ -25,6 +25,7 @@ export const LOWERED_FLOW_METHODS: ReadonlySet<string> = new Set([
   'addEdgeWaypoint', 'removeEdgeWaypoint', 'updateEdgeWaypoint', 'reconnectEdge',
   'isValidConnection',
   'getConnectedEdges', 'getIncomers', 'getOutgoers', 'getChildNodes', 'getAbsolutePosition',
+  'getProximityConnection', 'getOverlappingNodes', 'resolveCollisions',
   'setNodeExtent', 'clampToExtent',
   'copySelected', 'paste', 'pushHistory', 'undo', 'redo',
 ])

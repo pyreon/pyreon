@@ -713,6 +713,50 @@ class PyreonFlowState<T>(
         }
         return walk(nodeId, mutableSetOf())
     }
+    @JvmOverloads
+    fun getProximityConnection(nodeId: String, threshold: Double = 50.0): PyreonFlowConnection? {
+        val node = nodeMap[nodeId] ?: return null
+        val centerX = node.position.x + (node.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH) / 2
+        val centerY = node.position.y + (node.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT) / 2
+        var closestId: String? = null
+        var closestDistance = Double.POSITIVE_INFINITY
+        for (other in nodes) {
+            if (other.id == nodeId || _edges.any { (it.source == nodeId && it.target == other.id) || (it.source == other.id && it.target == nodeId) }) continue
+            val dx = centerX - other.position.x - (other.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH) / 2
+            val dy = centerY - other.position.y - (other.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT) / 2
+            val distance = kotlin.math.hypot(dx, dy)
+            if (distance < threshold && distance < closestDistance) { closestId = other.id; closestDistance = distance }
+        }
+        val target = closestId ?: return null
+        return PyreonFlowConnection(nodeId, target).takeIf(::isValidConnection)
+    }
+    fun getOverlappingNodes(nodeId: String): List<PyreonFlowNode<T>> {
+        val node = nodeMap[nodeId] ?: return emptyList()
+        val right = node.position.x + (node.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH)
+        val bottom = node.position.y + (node.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT)
+        return nodes.filter { other ->
+            other.id != nodeId && node.position.x < other.position.x + (other.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH) && right > other.position.x && node.position.y < other.position.y + (other.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT) && bottom > other.position.y
+        }
+    }
+    @JvmOverloads
+    fun resolveCollisions(nodeId: String, spacing: Double = 10.0) {
+        val node = nodeMap[nodeId] ?: return
+        val width = node.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH
+        val height = node.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT
+        for (other in getOverlappingNodes(nodeId)) {
+            val otherWidth = other.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH
+            val otherHeight = other.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT
+            val overlapX = minOf(node.position.x + width - other.position.x, other.position.x + otherWidth - node.position.x)
+            val overlapY = minOf(node.position.y + height - other.position.y, other.position.y + otherHeight - node.position.y)
+            if (overlapX < overlapY) {
+                val dx = if (node.position.x < other.position.x) -(overlapX + spacing) / 2 else (overlapX + spacing) / 2
+                updateNodePosition(other.id, PyreonXYPosition(other.position.x - dx, other.position.y))
+            } else {
+                val dy = if (node.position.y < other.position.y) -(overlapY + spacing) / 2 else (overlapY + spacing) / 2
+                updateNodePosition(other.id, PyreonXYPosition(other.position.x, other.position.y - dy))
+            }
+        }
+    }
     fun moveSelectedNodes(dx: Double, dy: Double) {
         for (id in selectedNodeIdList.toList()) {
             val node = nodeMap[id] ?: continue

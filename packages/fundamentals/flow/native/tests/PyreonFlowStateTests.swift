@@ -74,6 +74,15 @@ struct PyreonFlowStateTests {
         check(snapping.snappedNodePosition("drag", PyreonXYPosition(x: 198, y: 102)) == PyreonXYPosition(x: 200, y: 100), "object snapping aligns nearby native node edges")
         let unsnapped = PyreonFlowState(nodes: snapping.nodes, snapToObjects: false)
         check(unsnapped.snappedNodePosition("drag", PyreonXYPosition(x: 198, y: 102)) == PyreonXYPosition(x: 198, y: 102), "snapToObjects false preserves the raw drag position")
+        let spatial = PyreonFlowState(nodes: [
+            PyreonFlowNode(id: "a", position: PyreonXYPosition(x: 0, y: 0), data: NodeData(label: "A"), width: 100, height: 100),
+            PyreonFlowNode(id: "b", position: PyreonXYPosition(x: 90, y: 20), data: NodeData(label: "B"), width: 100, height: 100),
+            PyreonFlowNode(id: "c", position: PyreonXYPosition(x: 300, y: 0), data: NodeData(label: "C"), width: 100, height: 100),
+        ])
+        check(spatial.getOverlappingNodes("a").map(\.id) == ["b"], "overlap detection uses strict rectangle intersection")
+        check(spatial.getProximityConnection("a", 400)?.target == "b", "proximity connection chooses the nearest unconnected node")
+        spatial.resolveCollisions("a", 10)
+        check(spatial.getOverlappingNodes("a").isEmpty, "collision resolution separates overlapping native nodes")
         f.updateNode("1") { $0.hidden = true; $0.id = "ignored" }
         check(f.getNode("1")?.hidden == true && f.getNode("ignored") == nil, "updateNode patches fields while preserving indexed identity")
         f.updateNode("1") { $0.hidden = false }

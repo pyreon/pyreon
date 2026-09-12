@@ -473,6 +473,13 @@ export function C() {
       expect((result.warnings ?? []).join(' ')).not.toContain('NOT ported')
       expect(code).toContain(target === 'swift' ? 'flow.paste(PyreonXYPosition(x: 12, y: 34))' : 'flow.paste(PyreonXYPosition(12.0, 34.0))')
     })
+    it(`[${target}] spatial graph helpers lower and typecheck`, () => {
+      const result = transform(base('', `<Button onPress={() => flow.resolveCollisions('1', 10)}>Resolve</Button><Text>{flow.getOverlappingNodes('1').length}</Text><Text>{flow.getProximityConnection('1', 50)?.target}</Text>`), { target })
+      const warnings = (result.warnings ?? []).join(' ')
+      for (const member of ['resolveCollisions', 'getOverlappingNodes', 'getProximityConnection']) expect(warnings).not.toContain(`\`${member}\` is NOT ported`)
+      if (target === 'swift') expect(validateSwiftWithStubs(result.code).ok).toBe(true)
+      else expect(validateKotlin(result.code).ok).toBe(true)
+    })
     it(`[${target}] a ported member emits with NO member warning (the control)`, () => {
       const w = warningsOf(base('', '<Button onPress={() => flow.zoomIn()}>Zoom</Button>'), target)
       expect(w).not.toContain('is NOT ported')

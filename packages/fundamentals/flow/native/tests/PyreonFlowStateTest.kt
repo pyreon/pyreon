@@ -69,6 +69,15 @@ fun main() {
     check(snapping.snappedNodePosition("drag", PyreonXYPosition(198.0, 102.0)) == PyreonXYPosition(200.0, 100.0), "object snapping aligns nearby native node edges")
     val unsnapped = PyreonFlowState(nodes = snapping.nodes, snapToObjects = false)
     check(unsnapped.snappedNodePosition("drag", PyreonXYPosition(198.0, 102.0)) == PyreonXYPosition(198.0, 102.0), "snapToObjects false preserves the raw drag position")
+    val spatial = PyreonFlowState(nodes = listOf(
+        PyreonFlowNode("a", position = PyreonXYPosition(0.0, 0.0), data = NodeData("A"), width = 100.0, height = 100.0),
+        PyreonFlowNode("b", position = PyreonXYPosition(90.0, 20.0), data = NodeData("B"), width = 100.0, height = 100.0),
+        PyreonFlowNode("c", position = PyreonXYPosition(300.0, 0.0), data = NodeData("C"), width = 100.0, height = 100.0),
+    ))
+    check(spatial.getOverlappingNodes("a").map { it.id } == listOf("b"), "overlap detection uses strict rectangle intersection")
+    check(spatial.getProximityConnection("a", 400.0)?.target == "b", "proximity connection chooses the nearest unconnected node")
+    spatial.resolveCollisions("a", 10.0)
+    check(spatial.getOverlappingNodes("a").isEmpty(), "collision resolution separates overlapping native nodes")
     f.updateNodeData("1") { it.copy(label = "Updated") }
     check(f.getNode("1")?.data?.label == "Updated", "updateNodeData replaces the native payload observably")
     f.updateNode("1") { it.copy(id = "ignored", hidden = true) }

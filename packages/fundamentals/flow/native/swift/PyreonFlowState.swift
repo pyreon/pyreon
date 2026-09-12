@@ -939,6 +939,51 @@ public final class PyreonFlowState<T> {
         var seen = Set<String>()
         return walk(nodeId, &seen)
     }
+    public func getProximityConnection(_ nodeId: String, _ threshold: Double = 50) -> PyreonFlowConnection? {
+        guard let node = nodeStore[nodeId] else { return nil }
+        let centerX = node.position.x + (node.width ?? pyreonFlowDefaultNodeWidth) / 2
+        let centerY = node.position.y + (node.height ?? pyreonFlowDefaultNodeHeight) / 2
+        var closest: (id: String, distance: Double)?
+        for other in nodes where other.id != nodeId {
+            if edges.contains(where: { ($0.source == nodeId && $0.target == other.id) || ($0.source == other.id && $0.target == nodeId) }) { continue }
+            let dx = centerX - other.position.x - (other.width ?? pyreonFlowDefaultNodeWidth) / 2
+            let dy = centerY - other.position.y - (other.height ?? pyreonFlowDefaultNodeHeight) / 2
+            let distance = hypot(dx, dy)
+            if distance < threshold && (closest == nil || distance < closest!.distance) { closest = (other.id, distance) }
+        }
+        guard let closest else { return nil }
+        let connection = PyreonFlowConnection(source: nodeId, target: closest.id)
+        return isValidConnection(connection) ? connection : nil
+    }
+    public func getOverlappingNodes(_ nodeId: String) -> [PyreonFlowNode<T>] {
+        guard let node = nodeStore[nodeId] else { return [] }
+        let right = node.position.x + (node.width ?? pyreonFlowDefaultNodeWidth)
+        let bottom = node.position.y + (node.height ?? pyreonFlowDefaultNodeHeight)
+        return nodes.filter { other in
+            guard other.id != nodeId else { return false }
+            let otherRight = other.position.x + (other.width ?? pyreonFlowDefaultNodeWidth)
+            let otherBottom = other.position.y + (other.height ?? pyreonFlowDefaultNodeHeight)
+            return node.position.x < otherRight && right > other.position.x && node.position.y < otherBottom && bottom > other.position.y
+        }
+    }
+    public func resolveCollisions(_ nodeId: String, _ spacing: Double = 10) {
+        guard let node = nodeStore[nodeId] else { return }
+        let width = node.width ?? pyreonFlowDefaultNodeWidth
+        let height = node.height ?? pyreonFlowDefaultNodeHeight
+        for other in getOverlappingNodes(nodeId) {
+            let otherWidth = other.width ?? pyreonFlowDefaultNodeWidth
+            let otherHeight = other.height ?? pyreonFlowDefaultNodeHeight
+            let overlapX = min(node.position.x + width - other.position.x, other.position.x + otherWidth - node.position.x)
+            let overlapY = min(node.position.y + height - other.position.y, other.position.y + otherHeight - node.position.y)
+            if overlapX < overlapY {
+                let dx = node.position.x < other.position.x ? -(overlapX + spacing) / 2 : (overlapX + spacing) / 2
+                updateNodePosition(other.id, PyreonXYPosition(x: other.position.x - dx, y: other.position.y))
+            } else {
+                let dy = node.position.y < other.position.y ? -(overlapY + spacing) / 2 : (overlapY + spacing) / 2
+                updateNodePosition(other.id, PyreonXYPosition(x: other.position.x, y: other.position.y - dy))
+            }
+        }
+    }
     public func moveSelectedNodes(_ dx: Double, _ dy: Double) {
         for id in selectedNodeIds where nodeStore[id] != nil {
             let position = nodeStore[id]!.position
