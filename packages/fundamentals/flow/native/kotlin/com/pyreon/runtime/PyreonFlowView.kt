@@ -235,7 +235,9 @@ fun <T> PyreonFlowView(
             }.pointerInput(state, edgeStrokes, state.viewport) {
                 detectTapGestures { screen ->
                     val point = PyreonFlowPathPoint((screen.x - state.viewport.x) / state.viewport.zoom, (screen.y - state.viewport.y) / state.viewport.zoom)
-                    pyreonNearestFlowEdge(edgeStrokes.filter { it.id != "__connection-preview" }, point, state.viewport.zoom)?.let { state.selectEdge(it.id) }
+                    val edge = pyreonNearestFlowEdge(edgeStrokes.filter { it.id != "__connection-preview" }, point, state.viewport.zoom)
+                    if (edge != null) { state.selectEdge(edge.id); state.emitEdgeClick(edge.id) }
+                    else state.emitPaneClick(PyreonXYPosition(point.x, point.y))
                 }
             },
         )
@@ -334,11 +336,16 @@ fun <T> PyreonFlowView(
                             if (interactionsLocked || handle.type != "source") return@pointerInput
                             var current = PyreonFlowPathPoint(handle.x, handle.y)
                             detectDragGestures(
-                                onDragStart = { connectionDraft = PyreonFlowConnectionDraft(handle, current) },
-                                onDragCancel = { connectionDraft = null },
+                                onDragStart = { state.emitConnectStart(handle.nodeId, handle.handleId); connectionDraft = PyreonFlowConnectionDraft(handle, current) },
+                                onDragCancel = { state.emitConnectEnd(null); connectionDraft = null },
                                 onDragEnd = {
                                     val target = pyreonNearestFlowHandle(interactiveHandles, current, "target", (6.0 + state.connectionRadius) / state.viewport.zoom)
-                                    if (target != null) state.connect(PyreonFlowConnection(handle.nodeId, target.nodeId, handle.handleId, target.handleId))
+                                    var completed: PyreonFlowConnection? = null
+                                    if (target != null) {
+                                        val connection = PyreonFlowConnection(handle.nodeId, target.nodeId, handle.handleId, target.handleId)
+                                        if (state.connect(connection) != null) completed = connection
+                                    }
+                                    state.emitConnectEnd(completed)
                                     connectionDraft = null
                                 },
                             ) { change, amount ->

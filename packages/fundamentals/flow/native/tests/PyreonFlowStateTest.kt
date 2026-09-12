@@ -131,6 +131,13 @@ fun main() {
     changes.removeNode("2")
     check(nodeChanges == listOf(com.pyreon.runtime.PyreonFlowNodeChange("remove", "2")) && edgeChanges.map { it.id } == listOf("e1", "e2"), "compound deletion emits coherent remove batches")
     stopNodeChanges(); stopEdgeChanges()
+    val lifecycle = mutableListOf<String>()
+    val stopStart = changes.onConnectStart { lifecycle.add("start:${it.nodeId}:${it.handleId}") }
+    val stopEnd = changes.onConnectEnd { lifecycle.add("end:${it?.target ?: "nil"}") }
+    val stopPane = changes.onPaneClick { lifecycle.add("pane:${it.position.x}") }
+    changes.emitConnectStart("1", "out"); changes.emitConnectEnd(PyreonFlowConnection("1", "3")); changes.emitConnectEnd(null); changes.emitPaneClick(PyreonXYPosition(12.0, 34.0))
+    check(lifecycle == listOf("start:1:out", "end:3", "end:nil", "pane:12.0"), "native connection lifecycle and pane events carry success, cancellation and coordinates")
+    stopStart(); stopEnd(); stopPane()
     f.updateNodeData("1") { it.copy(label = "Updated") }
     check(f.getNode("1")?.data?.label == "Updated", "updateNodeData replaces the native payload observably")
     f.updateNode("1") { it.copy(id = "ignored", hidden = true) }

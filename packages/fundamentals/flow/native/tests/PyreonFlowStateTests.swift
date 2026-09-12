@@ -136,6 +136,13 @@ struct PyreonFlowStateTests {
         changes.removeNode("2")
         check(nodeChanges == [PyreonFlowNodeChange(type: "remove", id: "2")] && edgeChanges.map(\.id) == ["e1", "e2"], "compound deletion emits coherent remove batches")
         stopNodeChanges(); stopEdgeChanges()
+        var lifecycle: [String] = []
+        let stopStart = changes.onConnectStart { lifecycle.append("start:\($0.nodeId):\($0.handleId)") }
+        let stopEnd = changes.onConnectEnd { lifecycle.append("end:\($0?.target ?? "nil")") }
+        let stopPane = changes.onPaneClick { lifecycle.append("pane:\($0.position.x)") }
+        changes.emitConnectStart(nodeId: "1", handleId: "out"); changes.emitConnectEnd(PyreonFlowConnection(source: "1", target: "3")); changes.emitConnectEnd(nil); changes.emitPaneClick(PyreonXYPosition(x: 12, y: 34))
+        check(lifecycle == ["start:1:out", "end:3", "end:nil", "pane:12.0"], "native connection lifecycle and pane events carry success, cancellation and coordinates")
+        stopStart(); stopEnd(); stopPane()
         f.updateNode("1") { $0.hidden = true; $0.id = "ignored" }
         check(f.getNode("1")?.hidden == true && f.getNode("ignored") == nil, "updateNode patches fields while preserving indexed identity")
         f.updateNode("1") { $0.hidden = false }

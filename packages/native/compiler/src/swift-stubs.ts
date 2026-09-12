@@ -1124,6 +1124,8 @@ public struct PyreonFlowConnection: Equatable {
 public struct PyreonFlowSelection<T> { public let nodes: [PyreonFlowNode<T>]; public let edges: [PyreonFlowEdge] }
 public struct PyreonFlowNodeChange { public let type: String; public let id: String; public let position: PyreonXYPosition? }
 public struct PyreonFlowEdgeChange { public let type: String; public let id: String?; public let edge: PyreonFlowEdge? }
+public struct PyreonFlowConnectStart { public let nodeId: String; public let handleId: String }
+public struct PyreonFlowPaneEvent { public let position: PyreonXYPosition }
 public final class PyreonFlowState<T> {
   public init(
     nodes: [PyreonFlowNode<T>] = [],
@@ -1218,6 +1220,9 @@ public final class PyreonFlowState<T> {
   public func onEdgesDelete(_ callback: @escaping ([PyreonFlowEdge]) -> Void) -> () -> Void { {} }
   public func onNodesChange(_ callback: @escaping ([PyreonFlowNodeChange]) -> Void) -> () -> Void { {} }
   public func onEdgesChange(_ callback: @escaping ([PyreonFlowEdgeChange]) -> Void) -> () -> Void { {} }
+  public func onConnectStart(_ callback: @escaping (PyreonFlowConnectStart) -> Void) -> () -> Void { {} }
+  public func onConnectEnd(_ callback: @escaping (PyreonFlowConnection?) -> Void) -> () -> Void { {} }
+  public func onPaneClick(_ callback: @escaping (PyreonFlowPaneEvent) -> Void) -> () -> Void { {} }
   public func moveSelectedNodes(_ dx: Double, _ dy: Double) {}
   public func focusNode(_ nodeId: String, _ focusZoom: Double? = nil) {}
 }

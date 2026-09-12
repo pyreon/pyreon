@@ -148,6 +148,8 @@ public struct PyreonFlowEdgeChange: Equatable {
     public let edge: PyreonFlowEdge?
     public init(type: String, id: String? = nil, edge: PyreonFlowEdge? = nil) { self.type = type; self.id = id; self.edge = edge }
 }
+public struct PyreonFlowConnectStart: Equatable { public let nodeId: String; public let handleId: String }
+public struct PyreonFlowPaneEvent: Equatable { public let position: PyreonXYPosition }
 
 /// An edge — mirrors `FlowEdge`'s core fields, including editable waypoints.
 public struct PyreonFlowEdge: Equatable {
@@ -377,6 +379,9 @@ public final class PyreonFlowState<T> {
     @ObservationIgnored private var edgesDeleteListeners: [UUID: ([PyreonFlowEdge]) -> Void] = [:]
     @ObservationIgnored private var nodesChangeListeners: [UUID: ([PyreonFlowNodeChange]) -> Void] = [:]
     @ObservationIgnored private var edgesChangeListeners: [UUID: ([PyreonFlowEdgeChange]) -> Void] = [:]
+    @ObservationIgnored private var connectStartListeners: [UUID: (PyreonFlowConnectStart) -> Void] = [:]
+    @ObservationIgnored private var connectEndListeners: [UUID: (PyreonFlowConnection?) -> Void] = [:]
+    @ObservationIgnored private var paneClickListeners: [UUID: (PyreonFlowPaneEvent) -> Void] = [:]
     @ObservationIgnored private let connectionValidator: ((PyreonFlowConnection) -> Bool)?
 
     public init(
@@ -462,6 +467,21 @@ public final class PyreonFlowState<T> {
         let token = UUID(); edgesChangeListeners[token] = callback
         return { [weak self] in self?.edgesChangeListeners[token] = nil }
     }
+    @discardableResult public func onConnectStart(_ callback: @escaping (PyreonFlowConnectStart) -> Void) -> () -> Void {
+        let token = UUID(); connectStartListeners[token] = callback
+        return { [weak self] in self?.connectStartListeners[token] = nil }
+    }
+    @discardableResult public func onConnectEnd(_ callback: @escaping (PyreonFlowConnection?) -> Void) -> () -> Void {
+        let token = UUID(); connectEndListeners[token] = callback
+        return { [weak self] in self?.connectEndListeners[token] = nil }
+    }
+    @discardableResult public func onPaneClick(_ callback: @escaping (PyreonFlowPaneEvent) -> Void) -> () -> Void {
+        let token = UUID(); paneClickListeners[token] = callback
+        return { [weak self] in self?.paneClickListeners[token] = nil }
+    }
+    public func emitConnectStart(nodeId: String, handleId: String?) { let event = PyreonFlowConnectStart(nodeId: nodeId, handleId: handleId ?? ""); for callback in connectStartListeners.values { callback(event) } }
+    public func emitConnectEnd(_ connection: PyreonFlowConnection?) { for callback in connectEndListeners.values { callback(connection) } }
+    public func emitPaneClick(_ position: PyreonXYPosition) { let event = PyreonFlowPaneEvent(position: position); for callback in paneClickListeners.values { callback(event) } }
     private func emitNodeChanges(_ changes: [PyreonFlowNodeChange]) { if !changes.isEmpty { for callback in nodesChangeListeners.values { callback(changes) } } }
     private func emitEdgeChanges(_ changes: [PyreonFlowEdgeChange]) { if !changes.isEmpty { for callback in edgesChangeListeners.values { callback(changes) } } }
     private func emitDeleted(nodes: [PyreonFlowNode<T>], edges: [PyreonFlowEdge]) {

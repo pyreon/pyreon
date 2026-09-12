@@ -510,12 +510,18 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private func connectionGesture(_ source: PyreonFlowInteractiveHandle) -> AnyGesture<DragGesture.Value>? {
         guard !interactionsLocked else { return nil }
         return AnyGesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("PyreonFlowCanvas"))
-            .onChanged { value in connectionDraft = PyreonFlowConnectionDraft(source: source, current: graphPoint(value.location)) }
+            .onChanged { value in
+                if connectionDraft == nil { state.emitConnectStart(nodeId: source.nodeId, handleId: source.handleId) }
+                connectionDraft = PyreonFlowConnectionDraft(source: source, current: graphPoint(value.location))
+            }
             .onEnded { value in
                 let point = graphPoint(value.location)
+                var completed: PyreonFlowConnection?
                 if let target = pyreonNearestFlowHandle(interactiveHandles, point: point, type: "target", radius: (6 + state.connectionRadius) / state.viewport.zoom) {
-                    _ = state.connect(PyreonFlowConnection(source: source.nodeId, target: target.nodeId, sourceHandle: source.handleId, targetHandle: target.handleId))
+                    let connection = PyreonFlowConnection(source: source.nodeId, target: target.nodeId, sourceHandle: source.handleId, targetHandle: target.handleId)
+                    if state.connect(connection) != nil { completed = connection }
                 }
+                state.emitConnectEnd(completed)
                 connectionDraft = nil
             })
     }
@@ -609,6 +615,9 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             let point = graphPoint(value.location)
             if let edge = pyreonNearestFlowEdge(edgeStrokes.filter { $0.id != "__connection-preview" }, point: point, zoom: state.viewport.zoom) {
                 state.selectEdge(edge.id)
+                state.emitEdgeClick(edge.id)
+            } else {
+                state.emitPaneClick(graphPoint(value.location))
             }
         }
     }

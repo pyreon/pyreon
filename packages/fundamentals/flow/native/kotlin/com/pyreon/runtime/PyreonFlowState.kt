@@ -120,6 +120,8 @@ data class PyreonFlowNodeExtent(val minX: Double, val minY: Double, val maxX: Do
 data class PyreonFlowSelection<T>(val nodes: List<PyreonFlowNode<T>>, val edges: List<PyreonFlowEdge>)
 data class PyreonFlowNodeChange(val type: String, val id: String, val position: PyreonXYPosition? = null)
 data class PyreonFlowEdgeChange(val type: String, val id: String? = null, val edge: PyreonFlowEdge? = null)
+data class PyreonFlowConnectStart(val nodeId: String, val handleId: String)
+data class PyreonFlowPaneEvent(val position: PyreonXYPosition)
 private data class PyreonFlowHistorySnapshot<T>(val nodes: List<PyreonFlowNode<T>>, val edges: List<PyreonFlowEdge>)
 
 /** Reactive flow-diagram state: nodes, edges, viewport, selection. Behaviour-
@@ -178,6 +180,9 @@ class PyreonFlowState<T>(
     private val edgesDeleteListeners = LinkedHashMap<Int, (List<PyreonFlowEdge>) -> Unit>()
     private val nodesChangeListeners = LinkedHashMap<Int, (List<PyreonFlowNodeChange>) -> Unit>()
     private val edgesChangeListeners = LinkedHashMap<Int, (List<PyreonFlowEdgeChange>) -> Unit>()
+    private val connectStartListeners = LinkedHashMap<Int, (PyreonFlowConnectStart) -> Unit>()
+    private val connectEndListeners = LinkedHashMap<Int, (PyreonFlowConnection?) -> Unit>()
+    private val paneClickListeners = LinkedHashMap<Int, (PyreonFlowPaneEvent) -> Unit>()
     val connectionRadius: Double = maxOf(0.0, connectionRadius)
     val fitViewPadding: Double = maxOf(0.0, fitViewPadding)
     private var nodeExtent: PyreonFlowNodeExtent? = nodeExtent
@@ -258,6 +263,21 @@ class PyreonFlowState<T>(
         val id = nextListenerId++; edgesChangeListeners[id] = callback
         return { edgesChangeListeners.remove(id) }
     }
+    fun onConnectStart(callback: (PyreonFlowConnectStart) -> Unit): () -> Unit {
+        val id = nextListenerId++; connectStartListeners[id] = callback
+        return { connectStartListeners.remove(id) }
+    }
+    fun onConnectEnd(callback: (PyreonFlowConnection?) -> Unit): () -> Unit {
+        val id = nextListenerId++; connectEndListeners[id] = callback
+        return { connectEndListeners.remove(id) }
+    }
+    fun onPaneClick(callback: (PyreonFlowPaneEvent) -> Unit): () -> Unit {
+        val id = nextListenerId++; paneClickListeners[id] = callback
+        return { paneClickListeners.remove(id) }
+    }
+    fun emitConnectStart(nodeId: String, handleId: String?) { val event = PyreonFlowConnectStart(nodeId, handleId ?: ""); connectStartListeners.values.forEach { it(event) } }
+    fun emitConnectEnd(connection: PyreonFlowConnection?) { connectEndListeners.values.forEach { it(connection) } }
+    fun emitPaneClick(position: PyreonXYPosition) { val event = PyreonFlowPaneEvent(position); paneClickListeners.values.forEach { it(event) } }
     private fun emitNodeChanges(changes: List<PyreonFlowNodeChange>) { if (changes.isNotEmpty()) nodesChangeListeners.values.forEach { it(changes) } }
     private fun emitEdgeChanges(changes: List<PyreonFlowEdgeChange>) { if (changes.isNotEmpty()) edgesChangeListeners.values.forEach { it(changes) } }
     private fun emitDeleted(nodes: List<PyreonFlowNode<T>>, edges: List<PyreonFlowEdge>) {
