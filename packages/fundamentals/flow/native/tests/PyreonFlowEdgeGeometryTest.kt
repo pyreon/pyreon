@@ -14,6 +14,7 @@ import com.pyreon.runtime.PyreonFlowMeasuredHandle
 import com.pyreon.runtime.PyreonFlowNodeMeasurement
 import com.pyreon.runtime.PyreonFlowPosition
 import com.pyreon.runtime.pyreonBezierPath
+import com.pyreon.runtime.pyreonEdgePath
 import com.pyreon.runtime.pyreonComputeEdgePath
 import com.pyreon.runtime.pyreonFloatingEndpoints
 import com.pyreon.runtime.pyreonHandlePosition
@@ -77,6 +78,7 @@ fun main() {
     val routedBezier = pyreonBezierPath(0.0, 0.0, PyreonFlowPosition.Right, 200.0, 100.0, PyreonFlowPosition.Left)
     check(routedBezier.segments[1].c1x!! > 0.0 && routedBezier.segments[1].c2x!! < 200.0, "bezier routing offsets controls along handle directions")
     check(routedBezier.path.startsWith("M0,0 C"), "bezier SVG serialization preserves its cubic command")
+    check(pyreonEdgePath("straight", 0.0, 0.0, PyreonFlowPosition.Right, 100.0, 50.0, PyreonFlowPosition.Left).path == "M0,0 L100,50", "public edge dispatcher preserves straight geometry")
     val previewSource = com.pyreon.runtime.PyreonFlowInteractiveHandle("n", "out", "source", PyreonFlowPosition.Right, 0.0, 0.0)
     check(pyreonFlowConnectionPreview("straight", previewSource, PyreonFlowPathPoint(100.0, 50.0)).map { it.kind } == listOf("move", "line"), "straight connection preview uses straight geometry")
     check(pyreonFlowConnectionPreview("bezier", previewSource, PyreonFlowPathPoint(100.0, 50.0))[1].kind == "cubic", "bezier connection preview preserves the source tangent")

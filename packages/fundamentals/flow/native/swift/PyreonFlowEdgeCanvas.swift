@@ -277,6 +277,15 @@ public func pyreonStepPath(sourceX: Double, sourceY: Double, sourcePosition: Pyr
     pyreonSmoothStepPath(sourceX: sourceX, sourceY: sourceY, sourcePosition: sourcePosition, targetX: targetX, targetY: targetY, targetPosition: targetPosition, borderRadius: 0, offset: offset)
 }
 
+public func pyreonEdgePath(type: String, sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition, borderRadius: Double = 5, offset: Double = 20, curvature: Double = 0.25) -> PyreonFlowPathResult {
+    switch type {
+    case "smoothstep": return pyreonSmoothStepPath(sourceX: sourceX, sourceY: sourceY, sourcePosition: sourcePosition, targetX: targetX, targetY: targetY, targetPosition: targetPosition, borderRadius: borderRadius, offset: offset)
+    case "straight": return pyreonStraightPath(sourceX: sourceX, sourceY: sourceY, targetX: targetX, targetY: targetY)
+    case "step": return pyreonStepPath(sourceX: sourceX, sourceY: sourceY, sourcePosition: sourcePosition, targetX: targetX, targetY: targetY, targetPosition: targetPosition, offset: offset)
+    default: return pyreonBezierPath(sourceX: sourceX, sourceY: sourceY, sourcePosition: sourcePosition, targetX: targetX, targetY: targetY, targetPosition: targetPosition, curvature: curvature)
+    }
+}
+
 public func pyreonFlowConnectionPreview(type: String, source: PyreonFlowInteractiveHandle, target: PyreonXYPosition) -> [PyreonFlowEdgeSegment] {
     switch type {
     case "smoothstep": return pyreonSmoothStepPath(sourceX: source.x, sourceY: source.y, sourcePosition: source.position, targetX: target.x, targetY: target.y, targetPosition: .left).segments

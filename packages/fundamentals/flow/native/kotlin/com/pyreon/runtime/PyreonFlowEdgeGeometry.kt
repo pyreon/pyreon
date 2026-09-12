@@ -224,6 +224,13 @@ fun pyreonSmoothStepPath(sourceX: Double, sourceY: Double, sourcePosition: Pyreo
 fun pyreonStepPath(sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition = PyreonFlowPosition.Bottom, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition = PyreonFlowPosition.Top, offset: Double = 20.0) =
     pyreonSmoothStepPath(sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, 0.0, offset)
 
+fun pyreonEdgePath(type: String, sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition, borderRadius: Double = 5.0, offset: Double = 20.0, curvature: Double = 0.25): PyreonFlowPathResult = when (type) {
+    "smoothstep" -> pyreonSmoothStepPath(sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, borderRadius, offset)
+    "straight" -> pyreonStraightPath(sourceX, sourceY, targetX, targetY)
+    "step" -> pyreonStepPath(sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, offset)
+    else -> pyreonBezierPath(sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, curvature)
+}
+
 fun pyreonFlowConnectionPreview(type: String, source: PyreonFlowInteractiveHandle, target: PyreonFlowPathPoint): List<PyreonFlowEdgeSegment> = when (type) {
     "smoothstep" -> pyreonSmoothStepPath(source.x, source.y, source.position, target.x, target.y, PyreonFlowPosition.Left).segments
     "straight" -> pyreonStraightPath(source.x, source.y, target.x, target.y).segments

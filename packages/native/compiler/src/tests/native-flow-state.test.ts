@@ -348,7 +348,7 @@ describe('computeLayout native lowering', () => {
 
 describe('Flow edge-path helper native lowering', () => {
   const source = `
-    import { getBezierPath, getSmoothStepPath, getStepPath, getStraightPath, getWaypointPath, Position } from '@pyreon/flow'
+    import { getBezierPath, getSmoothStepPath, getStepPath, getStraightPath, getWaypointPath, getEdgePath, getHandlePosition, Position } from '@pyreon/flow'
     import { Text } from '@pyreon/primitives'
     export function App() {
       const straight = getStraightPath({ sourceX: 0, sourceY: 1, targetX: 20, targetY: 21 })
@@ -356,7 +356,10 @@ describe('Flow edge-path helper native lowering', () => {
       const smooth = getSmoothStepPath({ sourceX: 0, sourceY: 1, targetX: 20, targetY: 21, borderRadius: 7, offset: 12 })
       const step = getStepPath({ sourceX: 0, sourceY: 1, targetX: 20, targetY: 21, offset: 8 })
       const waypoint = getWaypointPath({ sourceX: 0, sourceY: 1, targetX: 20, targetY: 21, waypoints: [{ x: 5, y: 6 }] })
-      return <Text>{straight.path + bezier.path + smooth.path + step.path + waypoint.path}</Text>
+      const dispatched = getEdgePath('step', 0, 1, Position.Right, 20, 21, Position.Left, { offset: 9 })
+      const anchor = getHandlePosition(Position.Bottom, 0, 1, 20, 21)
+      void straight; void bezier; void smooth; void step; void waypoint; void anchor
+      return <Text>{dispatched.path}</Text>
     }
   `
 
@@ -368,8 +371,13 @@ describe('Flow edge-path helper native lowering', () => {
       expect(result.code).toContain('pyreonSmoothStepPath')
       expect(result.code).toContain('pyreonStepPath')
       expect(result.code).toContain('pyreonWaypointPath')
+      expect(result.code).toContain('pyreonEdgePath')
+      expect(result.code).toContain('pyreonHandlePosition')
       expect(result.warnings.join(' ')).not.toContain('from @pyreon/flow')
-      if (target === 'swift' && isSwiftcAvailable()) expect(validateSwiftWithStubs(result.code).ok).toBe(true)
+      if (target === 'swift' && isSwiftcAvailable()) {
+        const validation = validateSwiftWithStubs(result.code)
+        expect(validation.ok, validation.error ?? '').toBe(true)
+      }
       if (target === 'kotlin' && isKotlincAvailable()) {
         const validation = validateKotlin(result.code)
         expect(validation.ok, validation.error ?? '').toBe(true)

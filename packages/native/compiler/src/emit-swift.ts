@@ -4321,6 +4321,12 @@ function swiftFlowLayoutOptions(arg: ExprIR | undefined, indent: number): string
 
 const FLOW_PATH_HELPERS = new Set(['getBezierPath', 'getSmoothStepPath', 'getStepPath', 'getStraightPath', 'getWaypointPath'])
 
+function swiftFlowPositionExpr(value: ExprIR): string | null {
+  if (value.kind === 'member' && value.object.kind === 'identifier' && value.object.name === 'Position') return `.${value.property.toLowerCase()}`
+  if (value.kind === 'literal' && typeof value.value === 'string' && ['top', 'right', 'bottom', 'left'].includes(value.value)) return `.${value.value}`
+  return null
+}
+
 function swiftFlowPathHelper(name: string, arg: ExprIR | undefined, indent: number): string | null {
   if (arg?.kind !== 'object' || (arg.spreads?.length ?? 0) > 0) return null
   const fields = new Map(arg.fields.map((field) => [field.name, field.value]))
@@ -4338,9 +4344,7 @@ function swiftFlowPathHelper(name: string, arg: ExprIR | undefined, indent: numb
   const position = (key: string, fallback: string): string | null => {
     const value = fields.get(key)
     if (value === undefined) return fallback
-    if (value.kind === 'member' && value.object.kind === 'identifier' && value.object.name === 'Position') return `.${value.property.toLowerCase()}`
-    if (value.kind === 'literal' && typeof value.value === 'string' && ['top', 'right', 'bottom', 'left'].includes(value.value)) return `.${value.value}`
-    return null
+    return swiftFlowPositionExpr(value)
   }
   if (name === 'getStraightPath') return `pyreonStraightPath(sourceX: ${sx}, sourceY: ${sy}, targetX: ${tx}, targetY: ${ty})`
   if (name === 'getWaypointPath') {
@@ -5329,6 +5333,22 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         const lowered = swiftFlowPathHelper(e.callee.name, e.args[0], indent)
         if (lowered !== null) return lowered
         _emitWarnings.push(`${e.callee.name} requires one supported object-literal parameter to lower natively.`)
+      }
+      if (e.callee.kind === 'identifier' && e.callee.name === 'getHandlePosition' && e.args.length === 5) {
+        const position = swiftFlowPositionExpr(e.args[0]!)
+        if (position !== null) return `pyreonHandlePosition(${position}, nodeX: ${emitSwiftExpr(e.args[1]!, indent)}, nodeY: ${emitSwiftExpr(e.args[2]!, indent)}, nodeWidth: ${emitSwiftExpr(e.args[3]!, indent)}, nodeHeight: ${emitSwiftExpr(e.args[4]!, indent)})`
+        _emitWarnings.push('getHandlePosition requires a literal Position value to lower natively.')
+      }
+      if (e.callee.kind === 'identifier' && e.callee.name === 'getEdgePath' && (e.args.length === 7 || e.args.length === 8)) {
+        const sourcePosition = swiftFlowPositionExpr(e.args[3]!)
+        const targetPosition = swiftFlowPositionExpr(e.args[6]!)
+        const options = e.args[7]
+        const allowed = new Set(['borderRadius', 'offset', 'curvature'])
+        if (sourcePosition !== null && targetPosition !== null && (options === undefined || (options.kind === 'object' && (options.spreads?.length ?? 0) === 0 && options.fields.every((field) => allowed.has(field.name))))) {
+          const extras = options?.kind === 'object' ? options.fields.map((field) => `${field.name}: ${emitSwiftExpr(field.value, indent)}`) : []
+          return `pyreonEdgePath(type: ${emitSwiftExpr(e.args[0]!, indent)}, sourceX: ${emitSwiftExpr(e.args[1]!, indent)}, sourceY: ${emitSwiftExpr(e.args[2]!, indent)}, sourcePosition: ${sourcePosition}, targetX: ${emitSwiftExpr(e.args[4]!, indent)}, targetY: ${emitSwiftExpr(e.args[5]!, indent)}, targetPosition: ${targetPosition}${extras.length ? `, ${extras.join(', ')}` : ''})`
+        }
+        _emitWarnings.push('getEdgePath requires literal Position values and a supported object-literal options parameter to lower natively.')
       }
       // `Object.keys(<object-typed expr>)` → static `[String]` of the
       // struct field names. A synthesized struct's keys are statically

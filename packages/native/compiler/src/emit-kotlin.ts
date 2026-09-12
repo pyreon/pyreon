@@ -3497,6 +3497,12 @@ function kotlinFlowLayoutOptions(arg: ExprIR | undefined, indent: number): strin
 
 const FLOW_PATH_HELPERS_KOTLIN = new Set(['getBezierPath', 'getSmoothStepPath', 'getStepPath', 'getStraightPath', 'getWaypointPath'])
 
+function kotlinFlowPositionExpr(value: ExprIR): string | null {
+  if (value.kind === 'member' && value.object.kind === 'identifier' && value.object.name === 'Position') return `PyreonFlowPosition.${value.property}`
+  if (value.kind === 'literal' && typeof value.value === 'string' && ['top', 'right', 'bottom', 'left'].includes(value.value)) return `PyreonFlowPosition.${value.value[0]!.toUpperCase()}${value.value.slice(1)}`
+  return null
+}
+
 function kotlinFlowPathHelper(name: string, arg: ExprIR | undefined, indent: number): string | null {
   if (arg?.kind !== 'object' || (arg.spreads?.length ?? 0) > 0) return null
   const fields = new Map(arg.fields.map((field) => [field.name, field.value]))
@@ -3514,9 +3520,7 @@ function kotlinFlowPathHelper(name: string, arg: ExprIR | undefined, indent: num
   const position = (key: string, fallback: string): string | null => {
     const value = fields.get(key)
     if (value === undefined) return fallback
-    if (value.kind === 'member' && value.object.kind === 'identifier' && value.object.name === 'Position') return `PyreonFlowPosition.${value.property}`
-    if (value.kind === 'literal' && typeof value.value === 'string' && ['top', 'right', 'bottom', 'left'].includes(value.value)) return `PyreonFlowPosition.${value.value[0]!.toUpperCase()}${value.value.slice(1)}`
-    return null
+    return kotlinFlowPositionExpr(value)
   }
   if (name === 'getStraightPath') return `pyreonStraightPath(${sx}, ${sy}, ${tx}, ${ty})`
   if (name === 'getWaypointPath') {
@@ -4347,6 +4351,22 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         const lowered = kotlinFlowPathHelper(e.callee.name, e.args[0], indent)
         if (lowered !== null) return lowered
         _emitWarnings.push(`${e.callee.name} requires one supported object-literal parameter to lower natively.`)
+      }
+      if (e.callee.kind === 'identifier' && e.callee.name === 'getHandlePosition' && e.args.length === 5) {
+        const position = kotlinFlowPositionExpr(e.args[0]!)
+        if (position !== null) return `pyreonHandlePosition(${position}, ${e.args.slice(1).map((arg) => ktChartDouble(emitKotlinExpr(arg, indent))).join(', ')})`
+        _emitWarnings.push('getHandlePosition requires a literal Position value to lower natively.')
+      }
+      if (e.callee.kind === 'identifier' && e.callee.name === 'getEdgePath' && (e.args.length === 7 || e.args.length === 8)) {
+        const sourcePosition = kotlinFlowPositionExpr(e.args[3]!)
+        const targetPosition = kotlinFlowPositionExpr(e.args[6]!)
+        const options = e.args[7]
+        const allowed = new Set(['borderRadius', 'offset', 'curvature'])
+        if (sourcePosition !== null && targetPosition !== null && (options === undefined || (options.kind === 'object' && (options.spreads?.length ?? 0) === 0 && options.fields.every((field) => allowed.has(field.name))))) {
+          const extras = options?.kind === 'object' ? options.fields.map((field) => `${field.name} = ${ktChartDouble(emitKotlinExpr(field.value, indent))}`) : []
+          return `pyreonEdgePath(${emitKotlinExpr(e.args[0]!, indent)}, ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))}, ${ktChartDouble(emitKotlinExpr(e.args[2]!, indent))}, ${sourcePosition}, ${ktChartDouble(emitKotlinExpr(e.args[4]!, indent))}, ${ktChartDouble(emitKotlinExpr(e.args[5]!, indent))}, ${targetPosition}${extras.length ? `, ${extras.join(', ')}` : ''})`
+        }
+        _emitWarnings.push('getEdgePath requires literal Position values and a supported object-literal options parameter to lower natively.')
       }
       // Field-array accessor unwrap: zero-arg `items()`/`length()` on a
       // PyreonFieldArray decl (and `value()` on a For-item param over its

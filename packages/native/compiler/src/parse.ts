@@ -2643,7 +2643,7 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
       // the same native geometry used by the Flow canvas.
       advice:
         '`createFlow({ nodes, edges })`, `useFlow({ nodes, edges })`, `computeLayout(...)`, the five edge-path builders, literal `<Flow nodeTypes={{ type: Component }}>`, `<Background>`, `<Controls>`, `<MiniMap>`, and `<Panel>` LOWER to the native PyreonFlowState/PyreonFlowView engine. Handle/NodeToolbar/NodeResizer and custom edge renderer maps still have no shared-source native emit; keep those behind platform branches or use the `@pyreon/flow/webview` bridge',
-      supported: new Set(['createFlow', 'useFlow', 'computeLayout', 'getBezierPath', 'getSmoothStepPath', 'getStepPath', 'getStraightPath', 'getWaypointPath', 'Position', 'Flow', 'Background', 'Controls', 'MiniMap', 'Panel']),
+      supported: new Set(['createFlow', 'useFlow', 'computeLayout', 'getBezierPath', 'getSmoothStepPath', 'getStepPath', 'getStraightPath', 'getWaypointPath', 'getEdgePath', 'getHandlePosition', 'Position', 'Flow', 'Background', 'Controls', 'MiniMap', 'Panel']),
     },
   ],
   [
