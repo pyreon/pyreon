@@ -460,14 +460,19 @@ export function C() {
       else expect(validateKotlin(result.code).ok).toBe(true)
     })
     it(`[${target}] native accessibility and motion policies cross createFlow`, () => {
-      const result = transform(base('', undefined, "disableKeyboardA11y: true, reducedMotion: true, connectionLineType: 'step', zoomOnPinch: false, zoomOnDoubleClick: true,"), { target })
+      const result = transform(base('', undefined, "disableKeyboardA11y: true, reducedMotion: true, connectionLineType: 'step', panOnDrag: false, zoomOnPinch: false, zoomOnDoubleClick: true,"), { target })
       expect((result.warnings ?? []).join(' ')).not.toContain('NOT lowered natively')
       expect(result.code).toContain(target === 'swift' ? 'disableKeyboardA11y: true' : 'disableKeyboardA11y = true')
       expect(result.code).toContain(target === 'swift' ? 'reducedMotion: true' : 'reducedMotion = true')
       expect(result.code).toContain(target === 'swift' ? 'connectionLineType: "step"' : 'connectionLineType = "step"')
       expect(result.code).toContain(target === 'swift' ? 'zoomOnPinch: false, zoomOnDoubleClick: true' : 'zoomOnPinch = false, zoomOnDoubleClick = true')
+      expect(result.code).toContain(target === 'swift' ? 'panOnDrag: false' : 'panOnDrag = false')
       if (target === 'swift') expect(validateSwiftWithStubs(result.code).ok).toBe(true)
       else expect(validateKotlin(result.code).ok).toBe(true)
+    })
+    it(`[${target}] mouse-button panOnDrag arrays warn instead of silently changing touch semantics`, () => {
+      const warnings = warningsOf(base('', undefined, 'panOnDrag: [1, 2],'), target)
+      expect(warnings).toContain('`panOnDrag (not a boolean literal)`')
     })
     it(`[${target}] callback node updates warn rather than silently claiming native support`, () => {
       const w = warningsOf(base('', '<Button onPress={() => flow.updateNodeData("1", node => ({ label: node.data.label }))}>Update</Button>'), target)

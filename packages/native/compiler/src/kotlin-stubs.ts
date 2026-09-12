@@ -1656,6 +1656,7 @@ class PyreonFlowState<T>(
   edgeInteractionWidth: Double = 20.0,
   connectionRadius: Double = 0.0,
   pannable: Boolean = true,
+  panOnDrag: Boolean = true,
   zoomable: Boolean = true,
   zoomOnPinch: Boolean = true,
   zoomOnDoubleClick: Boolean = false,

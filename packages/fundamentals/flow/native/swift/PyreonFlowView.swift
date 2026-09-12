@@ -600,7 +600,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private var panGesture: some Gesture {
         DragGesture(minimumDistance: 1)
             .onChanged { value in
-                guard !interactionsLocked, state.pannable else { return }
+                guard !interactionsLocked, state.pannable, state.panOnDrag else { return }
                 let start = panStart ?? state.viewport
                 if panStart == nil { panStart = start }
                 state.setViewport(

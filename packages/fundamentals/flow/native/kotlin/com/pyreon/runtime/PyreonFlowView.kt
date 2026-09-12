@@ -230,7 +230,7 @@ fun <T> PyreonFlowView(
             Modifier.matchParentSize().pointerInput(state) {
                 detectTransformGestures { _, pan, zoom, _ ->
                     if (interactionsLocked) return@detectTransformGestures
-                    if (state.pannable) state.setViewport(x = state.viewport.x + pan.x, y = state.viewport.y + pan.y)
+                    if (state.pannable && state.panOnDrag) state.setViewport(x = state.viewport.x + pan.x, y = state.viewport.y + pan.y)
                     if (state.zoomable && state.zoomOnPinch) state.zoomTo(state.viewport.zoom * zoom)
                 }
             }.pointerInput(state, edgeStrokes, state.viewport) {

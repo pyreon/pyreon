@@ -971,6 +971,7 @@ export type DeclIR =
       edgeInteractionWidth?: number
       connectionRadius?: number
       pannable?: boolean
+      panOnDrag?: boolean
       zoomable?: boolean
       zoomOnPinch?: boolean
       zoomOnDoubleClick?: boolean
