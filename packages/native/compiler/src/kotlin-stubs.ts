@@ -1698,6 +1698,8 @@ class PyreonFlowState<T>(
   fun clearSelection() {}
   fun selectAll() {}
   fun deleteSelected() {}
+  fun copySelected() {}
+  fun paste(offset: PyreonXYPosition = PyreonXYPosition(50.0, 50.0)) {}
   fun pushHistory() {}
   fun undo() {}
   fun redo() {}

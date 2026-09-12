@@ -440,8 +440,8 @@ export function C() {
 
   for (const target of ['swift', 'kotlin'] as const) {
     it(`[${target}] an unported FlowInstance member warns BY NAME instead of dying at the native build`, () => {
-      const w = warningsOf(base('', '<Button onPress={() => flow.copySelected()}>Copy</Button>'), target)
-      expect(w).toContain('`copySelected` is NOT ported')
+      const w = warningsOf(base('', '<Button onPress={() => flow.onNodeClick(() => {})}>Listen</Button>'), target)
+      expect(w).toContain('`onNodeClick` is NOT ported')
       expect(w).toContain('fails at the native BUILD')
     })
     it(`[${target}] callback node updates warn rather than silently claiming native support`, () => {
@@ -456,6 +456,12 @@ export function C() {
       const w = warningsOf(base('', '<Button onPress={() => flow.fitView()}>Fit</Button>'), target)
       expect(w).not.toContain('does NOTHING')
       expect(w).not.toContain('NOT ported')
+    })
+    it(`[${target}] copy/paste lower with a nominal native position`, () => {
+      const result = transform(base('', '<Button onPress={() => { flow.copySelected(); flow.paste({ x: 12, y: 34 }) }}>Paste</Button>'), { target })
+      const code = result.code
+      expect((result.warnings ?? []).join(' ')).not.toContain('NOT ported')
+      expect(code).toContain(target === 'swift' ? 'flow.paste(PyreonXYPosition(x: 12, y: 34))' : 'flow.paste(PyreonXYPosition(12.0, 34.0))')
     })
     it(`[${target}] a ported member emits with NO member warning (the control)`, () => {
       const w = warningsOf(base('', '<Button onPress={() => flow.zoomIn()}>Zoom</Button>'), target)

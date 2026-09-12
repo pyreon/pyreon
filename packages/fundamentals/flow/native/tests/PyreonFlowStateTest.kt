@@ -48,6 +48,15 @@ fun main() {
     manualHistory.removeNode("5")
     manualHistory.undo()
     check(manualHistory.getNode("5") != null, "manual history remains available when automatic checkpoints are disabled")
+    val clipboard = seedFlow()
+    clipboard.selectNodes(listOf("1", "2"))
+    clipboard.copySelected()
+    clipboard.paste(PyreonXYPosition(10.0, 20.0))
+    check(clipboard.selectedNodes() == listOf("1-copy-1", "2-copy-2"), "paste selects deterministic copied node ids")
+    check(clipboard.getNode("1-copy-1")?.position == PyreonXYPosition(10.0, 20.0), "paste applies its native position offset")
+    check(clipboard.getEdge("e-1-copy-1-2-copy-2") != null && clipboard.edges.size == 3, "paste remaps only internal copied edges")
+    clipboard.undo()
+    check(clipboard.nodes.size == 3 && clipboard.edges.size == 2, "paste records one undoable history checkpoint")
     f.updateNodeData("1") { it.copy(label = "Updated") }
     check(f.getNode("1")?.data?.label == "Updated", "updateNodeData replaces the native payload observably")
     f.updateNode("1") { it.copy(id = "ignored", hidden = true) }

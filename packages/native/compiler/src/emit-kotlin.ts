@@ -4802,6 +4802,10 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (!LOWERED_FLOW_METHODS.has(member) && !LOWERED_FLOW_PROPERTY_READS.has(member)) {
           _emitWarnings.push(unloweredFlowMemberWarning(flowName, member))
         }
+        if (member === 'paste' && e.args.length === 1) {
+          const lit = kotlinFlowPositionLiteral(e.args[0]!)
+          if (lit !== null) return `${kotlinIdent(flowName)}.paste(${lit})`
+        }
         if (member === 'addNode' && e.args.length === 1) {
           const lit = kotlinFlowNodeLiteral(e.args[0]!, flowName)
           if (lit !== null) return `${kotlinIdent(flowName)}.addNode(${lit})`

@@ -158,6 +158,8 @@ class PyreonFlowState<T>(
     private val redoStack = ArrayList<PyreonFlowHistorySnapshot<T>>()
     private var mutationVersion = 0
     private var checkpointVersion = -1
+    private var clipboard: PyreonFlowHistorySnapshot<T>? = null
+    private var pasteCounter = 0
     val connectionRadius: Double = maxOf(0.0, connectionRadius)
     val fitViewPadding: Double = maxOf(0.0, fitViewPadding)
     private var nodeExtent: PyreonFlowNodeExtent? = nodeExtent
@@ -543,6 +545,36 @@ class PyreonFlowState<T>(
             removeEdges { edgeIdsToRemove.contains(it.id) }
         }
         setNodeSelection(emptyList())
+        setEdgeSelection(emptyList())
+    }
+
+    // ── copy / paste ────────────────────────────────────────────────────────
+    fun copySelected() {
+        if (selectedNodeIdSet.isEmpty()) return
+        val copiedNodes = nodes.filter { selectedNodeIdSet.containsKey(it.id) }
+        val copiedIds = copiedNodes.mapTo(HashSet()) { it.id }
+        clipboard = PyreonFlowHistorySnapshot(copiedNodes, _edges.filter { copiedIds.contains(it.source) && copiedIds.contains(it.target) })
+    }
+    @JvmOverloads
+    fun paste(offset: PyreonXYPosition = PyreonXYPosition(50.0, 50.0)) {
+        val copied = clipboard ?: return
+        checkpoint()
+        val idMap = HashMap<String, String>()
+        val pastedIds = ArrayList<String>()
+        for (node in copied.nodes) {
+            val newId = "${node.id}-copy-${++pasteCounter}"
+            idMap[node.id] = newId
+            insertNode(node.copy(id = newId, position = PyreonXYPosition(node.position.x + offset.x, node.position.y + offset.y)))
+            pastedIds.add(newId)
+        }
+        for (edge in copied.edges) {
+            val source = idMap[edge.source] ?: edge.source
+            val target = idMap[edge.target] ?: edge.target
+            val sourceHandle = edge.sourceHandle?.let { "-$it" } ?: ""
+            val targetHandle = edge.targetHandle?.let { "-$it" } ?: ""
+            insertEdge(edge.copy(id = "e-$source$sourceHandle-$target$targetHandle", source = source, target = target))
+        }
+        setNodeSelection(pastedIds)
         setEdgeSelection(emptyList())
     }
 

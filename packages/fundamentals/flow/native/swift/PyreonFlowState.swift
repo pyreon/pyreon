@@ -346,6 +346,8 @@ public final class PyreonFlowState<T> {
     @ObservationIgnored private var redoStack: [HistorySnapshot] = []
     @ObservationIgnored private var mutationVersion = 0
     @ObservationIgnored private var checkpointVersion = -1
+    @ObservationIgnored private var clipboard: HistorySnapshot?
+    @ObservationIgnored private var pasteCounter = 0
     @ObservationIgnored private let connectionValidator: ((PyreonFlowConnection) -> Bool)?
 
     public init(
@@ -765,6 +767,42 @@ public final class PyreonFlowState<T> {
             removeEdges { edgeIdsToRemove.contains($0.id) }
         }
         setNodeSelection([])
+        setEdgeSelection([])
+    }
+
+    // ── copy / paste ────────────────────────────────────────────────────────
+    public func copySelected() {
+        guard !selectedNodeIdSet.isEmpty else { return }
+        let copiedNodes = nodes.filter { selectedNodeIdSet.contains($0.id) }
+        let copiedIds = Set(copiedNodes.map(\.id))
+        clipboard = HistorySnapshot(
+            nodes: copiedNodes,
+            edges: edges.filter { copiedIds.contains($0.source) && copiedIds.contains($0.target) }
+        )
+    }
+    public func paste(_ offset: PyreonXYPosition = PyreonXYPosition(x: 50, y: 50)) {
+        guard let clipboard else { return }
+        checkpoint()
+        var idMap: [String: String] = [:]
+        var pastedIds: [String] = []
+        for var node in clipboard.nodes {
+            pasteCounter += 1
+            let newId = "\(node.id)-copy-\(pasteCounter)"
+            idMap[node.id] = newId
+            node.id = newId
+            node.position = PyreonXYPosition(x: node.position.x + offset.x, y: node.position.y + offset.y)
+            insertNode(node)
+            pastedIds.append(newId)
+        }
+        for var edge in clipboard.edges {
+            edge.source = idMap[edge.source] ?? edge.source
+            edge.target = idMap[edge.target] ?? edge.target
+            let sourceHandle = edge.sourceHandle.map { "-\($0)" } ?? ""
+            let targetHandle = edge.targetHandle.map { "-\($0)" } ?? ""
+            edge.id = "e-\(edge.source)\(sourceHandle)-\(edge.target)\(targetHandle)"
+            insertEdge(edge)
+        }
+        setNodeSelection(pastedIds)
         setEdgeSelection([])
     }
 

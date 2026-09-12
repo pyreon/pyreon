@@ -1179,6 +1179,8 @@ public final class PyreonFlowState<T> {
   public func clearSelection() {}
   public func selectAll() {}
   public func deleteSelected() {}
+  public func copySelected() {}
+  public func paste(_ offset: PyreonXYPosition = PyreonXYPosition(x: 50, y: 50)) {}
   public func pushHistory() {}
   public func undo() {}
   public func redo() {}

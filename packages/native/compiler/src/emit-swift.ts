@@ -5785,6 +5785,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             ? `${swiftIdent(flowName)}.fitView(${ids}, padding: ${emitSwiftExpr(e.args[1]!, indent)})`
             : `${swiftIdent(flowName)}.fitView(${ids})`
         }
+        if (member === 'paste' && e.args.length === 1) {
+          const lit = swiftFlowPositionLiteral(e.args[0]!)
+          if (lit !== null) return `${swiftIdent(flowName)}.paste(${lit})`
+        }
         if (member === 'addNode' && e.args.length === 1) {
           const lit = swiftFlowNodeLiteral(e.args[0]!, flowName)
           if (lit !== null) return `${swiftIdent(flowName)}.addNode(${lit})`
