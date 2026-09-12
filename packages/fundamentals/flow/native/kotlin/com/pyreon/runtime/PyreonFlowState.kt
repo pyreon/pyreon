@@ -1291,18 +1291,13 @@ class PyreonFlowState<T>(
     }
 
     // ── viewport ─────────────────────────────────────────────────────────────
-    fun zoomTo(z: Double) {
-        _viewport = _viewport.copy(zoom = z.coerceIn(minZoom, maxZoom))
-        emitViewportChange()
+    fun zoomTo(z: Double, duration: Double = 0.0) {
+        val target = z.coerceIn(minZoom, maxZoom)
+        if (duration > 0.0 && !reducedMotion) animateViewport(zoom = target, duration = duration)
+        else { _viewport = _viewport.copy(zoom = target); emitViewportChange() }
     }
-    fun zoomIn() {
-        _viewport = _viewport.copy(zoom = (_viewport.zoom * 1.2).coerceAtMost(maxZoom))
-        emitViewportChange()
-    }
-    fun zoomOut() {
-        _viewport = _viewport.copy(zoom = (_viewport.zoom / 1.2).coerceAtLeast(minZoom))
-        emitViewportChange()
-    }
+    fun zoomIn(duration: Double = 0.0) = zoomTo(_viewport.zoom * 1.2, duration)
+    fun zoomOut(duration: Double = 0.0) = zoomTo(_viewport.zoom / 1.2, duration)
     /** Pans so [position] (in flow coordinates) lands at the viewport origin —
      *  an ABSOLUTE pan-to-point, not a relative nudge. Matches the web `panTo`. */
     fun panTo(position: PyreonXYPosition) {
@@ -1310,7 +1305,8 @@ class PyreonFlowState<T>(
         emitViewportChange()
     }
     @JvmOverloads
-    fun setViewport(x: Double? = null, y: Double? = null, zoom: Double? = null) {
+    fun setViewport(x: Double? = null, y: Double? = null, zoom: Double? = null, duration: Double = 0.0) {
+        if (duration > 0.0 && !reducedMotion) { animateViewport(x, y, zoom, duration); return }
         _viewport = PyreonFlowViewport(
             x = x ?: _viewport.x,
             y = y ?: _viewport.y,
@@ -1319,16 +1315,16 @@ class PyreonFlowState<T>(
         emitViewportChange()
     }
     @JvmOverloads
-    fun setCenter(x: Double, y: Double, zoom: Double? = null) {
+    fun setCenter(x: Double, y: Double, zoom: Double? = null, duration: Double = 0.0) {
         val z = (zoom ?: _viewport.zoom).coerceIn(minZoom, maxZoom)
-        setViewport(x = -x * z + containerSize.width / 2, y = -y * z + containerSize.height / 2, zoom = z)
+        setViewport(x = -x * z + containerSize.width / 2, y = -y * z + containerSize.height / 2, zoom = z, duration = duration)
     }
     @JvmOverloads
     fun animateViewport(x: Double? = null, y: Double? = null, zoom: Double? = null, duration: Double = 300.0) {
         val generation = ++viewportAnimationGeneration
         val start = _viewport
         val end = PyreonFlowViewport(x ?: start.x, y ?: start.y, zoom ?: start.zoom)
-        if (duration <= 0.0) { _viewport = end; emitViewportChange(); return }
+        if (duration <= 0.0 || reducedMotion) { _viewport = end; emitViewportChange(); return }
         scheduleViewportFrame(generation, start, end, System.nanoTime(), duration * 1_000_000.0)
     }
     private fun scheduleViewportFrame(generation: Int, start: PyreonFlowViewport, end: PyreonFlowViewport, startNanos: Long, durationNanos: Double) {
@@ -1370,7 +1366,7 @@ class PyreonFlowState<T>(
      *  `containerSize`, with [padding] as a fraction of the graph's extent on
      *  each axis (default `0.1`, matching the web `fitViewPadding` default). */
     @JvmOverloads
-    fun fitView(nodeIds: List<String>? = null, padding: Double = 0.1) {
+    fun fitView(nodeIds: List<String>? = null, padding: Double = 0.1, duration: Double = 0.0) {
         val cw = containerSize.width
         val ch = containerSize.height
         if (cw <= 0 || ch <= 0) return
@@ -1404,12 +1400,7 @@ class PyreonFlowState<T>(
         val centerX = (minX + maxX) / 2
         val centerY = (minY + maxY) / 2
 
-        _viewport = PyreonFlowViewport(
-            x = cw / 2 - centerX * newZoom,
-            y = ch / 2 - centerY * newZoom,
-            zoom = newZoom,
-        )
-        emitViewportChange()
+        setViewport(x = cw / 2 - centerX * newZoom, y = ch / 2 - centerY * newZoom, zoom = newZoom, duration = duration)
     }
 
     // ── graph queries ────────────────────────────────────────────────────────

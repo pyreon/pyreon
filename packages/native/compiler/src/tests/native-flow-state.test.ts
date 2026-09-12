@@ -482,6 +482,17 @@ export function C() {
       if (target === 'swift') expect(validateSwiftWithStubs(result.code).ok).toBe(true)
       else expect(validateKotlin(result.code).ok).toBe(true)
     })
+    it(`[${target}] viewport method duration options lower and typecheck`, () => {
+      const jsx = '<Button onPress={() => { flow.zoomTo(2, { duration: 450 }); flow.zoomIn({ duration: 200 }); flow.setViewport({ x: 10, y: 20 }, { duration: 300 }); flow.setCenter(5, 6, { zoom: 1.5, duration: 250 }); flow.fitView(["1"], 0.2, { duration: 500 }) }}>Move</Button>'
+      const result = transform(base('', jsx), { target })
+      expect(result.code).toContain(target === 'swift' ? 'flow.zoomTo(2, duration: 450)' : 'flow.zoomTo(2.0, duration = 450.0)')
+      expect(result.code).toContain(target === 'swift' ? 'flow.zoomIn(duration: 200)' : 'flow.zoomIn(duration = 200.0)')
+      expect(result.code).toContain(target === 'swift' ? 'flow.setViewport(x: 10, y: 20, duration: 300)' : 'flow.setViewport(x = 10.0, y = 20.0, duration = 300.0)')
+      expect(result.code).toContain(target === 'swift' ? 'flow.setCenter(5, 6, zoom: 1.5, duration: 250)' : 'flow.setCenter(5.0, 6.0, zoom = 1.5, duration = 250.0)')
+      expect(result.code).toContain(target === 'swift' ? 'flow.fitView(["1"], padding: 0.2, duration: 500)' : 'flow.fitView(listOf("1"), padding = 0.2, duration = 500.0)')
+      if (target === 'swift') expect(validateSwiftWithStubs(result.code).ok).toBe(true)
+      else expect(validateKotlin(result.code).ok).toBe(true)
+    })
     it(`[${target}] callback node updates warn rather than silently claiming native support`, () => {
       const w = warningsOf(base('', '<Button onPress={() => flow.updateNodeData("1", node => ({ label: node.data.label }))}>Update</Button>'), target)
       expect(w).toContain('`updateNodeData` currently lowers only a literal patch object without spreads')

@@ -404,6 +404,9 @@ struct PyreonFlowStateTests {
         h.animateViewport(x: 40, duration: 0)
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
         check(h.viewport.x == 40, "a newer viewport animation cancels stale scheduled frames")
+        let reduced = PyreonFlowState(nodes: [PyreonFlowNode(id: "r", position: PyreonXYPosition(x: 0, y: 0), data: NodeData(label: "Reduced"))], reducedMotion: true)
+        reduced.zoomTo(2, duration: 500)
+        check(reduced.viewport.zoom == 2, "reduced motion makes duration-based viewport methods synchronous")
 
         let exported = h.toJSON()
         check(exported.nodes.map(\.id) == ["1", "2", "3"] && exported.edges.map(\.id) == ["e1", "e2"], "toJSON snapshots nodes and edges in order")

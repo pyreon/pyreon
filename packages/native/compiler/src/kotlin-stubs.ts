@@ -1725,17 +1725,17 @@ class PyreonFlowState<T>(
   fun redo() {}
   fun toJSON(): PyreonFlowSnapshot<T> = PyreonFlowSnapshot(emptyList(), emptyList(), null)
   fun fromJSON(snapshot: PyreonFlowSnapshot<T>) {}
-  fun zoomTo(z: Double) {}
-  fun zoomIn() {}
-  fun zoomOut() {}
+  fun zoomTo(z: Double, duration: Double = 0.0) {}
+  fun zoomIn(duration: Double = 0.0) {}
+  fun zoomOut(duration: Double = 0.0) {}
   fun panTo(position: PyreonXYPosition) {}
-  fun setViewport(x: Double? = null, y: Double? = null, zoom: Double? = null) {}
-  fun setCenter(x: Double, y: Double, zoom: Double? = null) {}
+  fun setViewport(x: Double? = null, y: Double? = null, zoom: Double? = null, duration: Double = 0.0) {}
+  fun setCenter(x: Double, y: Double, zoom: Double? = null, duration: Double = 0.0) {}
   fun animateViewport(x: Double? = null, y: Double? = null, zoom: Double? = null, duration: Double = 300.0) {}
   fun screenToFlowPosition(position: PyreonXYPosition): PyreonXYPosition = position
   fun flowToScreenPosition(position: PyreonXYPosition): PyreonXYPosition = position
   fun isNodeVisible(id: String): Boolean = false
-  fun fitView(nodeIds: List<String>? = null, padding: Double = 0.1) {}
+  fun fitView(nodeIds: List<String>? = null, padding: Double = 0.1, duration: Double = 0.0) {}
   fun getConnectedEdges(nodeId: String): List<PyreonFlowEdge> = emptyList()
   fun getIncomers(nodeId: String): List<PyreonFlowNode<T>> = emptyList()
   fun getOutgoers(nodeId: String): List<PyreonFlowNode<T>> = emptyList()

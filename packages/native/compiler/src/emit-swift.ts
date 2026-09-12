@@ -4281,9 +4281,16 @@ function swiftFlowConnectionLiteral(arg: ExprIR): string | null {
 
 function swiftFlowViewportLiteral(arg: ExprIR): string | null {
   if (arg.kind !== 'object') return null
-  const allowed = new Set(['x', 'y', 'zoom'])
+  const allowed = new Set(['x', 'y', 'zoom', 'duration'])
   if (arg.fields.some((field) => !allowed.has(field.name))) return null
   return arg.fields.map((field) => `${field.name}: ${emitSwiftExpr(field.value, 0)}`).join(', ')
+}
+
+function swiftFlowDurationOption(arg: ExprIR | undefined): string | null | undefined {
+  if (arg === undefined) return undefined
+  if (arg.kind !== 'object' || arg.fields.some((field) => field.name !== 'duration')) return null
+  const duration = arg.fields.find((field) => field.name === 'duration')?.value
+  return duration === undefined ? undefined : emitSwiftExpr(duration, 0)
 }
 
 function swiftFlowExtentLiteral(arg: ExprIR): string | null {
@@ -5786,9 +5793,8 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         if (member === 'fitView' && e.args.length >= 1) {
           const first = e.args[0]!
           const ids = isNilArg(first) ? 'nil' : emitSwiftExpr(first, indent)
-          return e.args.length === 2
-            ? `${swiftIdent(flowName)}.fitView(${ids}, padding: ${emitSwiftExpr(e.args[1]!, indent)})`
-            : `${swiftIdent(flowName)}.fitView(${ids})`
+          const duration = swiftFlowDurationOption(e.args[2])
+          if (duration !== null) return `${swiftIdent(flowName)}.fitView(${ids}${e.args[1] ? `, padding: ${emitSwiftExpr(e.args[1]!, indent)}` : ''}${duration ? `, duration: ${duration}` : ''})`
         }
         if (member === 'paste' && e.args.length === 1) {
           const lit = swiftFlowPositionLiteral(e.args[0]!)
@@ -5848,6 +5854,14 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           const lit = swiftFlowPositionLiteral(e.args[0]!)
           if (lit !== null) return `${swiftIdent(flowName)}.${member}(${lit})`
         }
+        if (member === 'zoomTo' && e.args.length >= 1) {
+          const duration = swiftFlowDurationOption(e.args[1])
+          if (duration !== null) return `${swiftIdent(flowName)}.zoomTo(${emitSwiftExpr(e.args[0]!, indent)}${duration ? `, duration: ${duration}` : ''})`
+        }
+        if ((member === 'zoomIn' || member === 'zoomOut') && e.args.length <= 1) {
+          const duration = swiftFlowDurationOption(e.args[0])
+          if (duration !== null) return `${swiftIdent(flowName)}.${member}(${duration ? `duration: ${duration}` : ''})`
+        }
         if (member === 'addEdgeWaypoint' && e.args.length >= 2) {
           const point = swiftFlowPositionLiteral(e.args[1]!)
           if (point !== null) return `${swiftIdent(flowName)}.addEdgeWaypoint(${emitSwiftExpr(e.args[0]!, indent)}, ${point}${e.args.length === 3 ? `, ${emitSwiftExpr(e.args[2]!, indent)}` : ''})`
@@ -5874,7 +5888,8 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         }
         if (member === 'setViewport' && e.args.length >= 1) {
           const args = swiftFlowViewportLiteral(e.args[0]!)
-          if (args !== null) return `${swiftIdent(flowName)}.setViewport(${args})`
+          const duration = swiftFlowDurationOption(e.args[1])
+          if (args !== null && duration !== null) return `${swiftIdent(flowName)}.setViewport(${args}${duration ? `${args ? ', ' : ''}duration: ${duration}` : ''})`
         }
         if (member === 'animateViewport' && e.args.length >= 1) {
           const args = swiftFlowViewportLiteral(e.args[0]!)

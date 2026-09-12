@@ -1010,7 +1010,7 @@ public final class PyreonFlowState<T> {
         let generation = viewportAnimationGeneration
         let start = viewport
         let end = PyreonFlowViewport(x: x ?? start.x, y: y ?? start.y, zoom: zoom ?? start.zoom)
-        guard duration > 0 else { viewport = end; emitViewportChange(); return }
+        guard duration > 0 && !reducedMotion else { viewport = end; emitViewportChange(); return }
         scheduleViewportFrame(generation: generation, start: start, end: end, startTime: ProcessInfo.processInfo.systemUptime, duration: duration / 1000)
     }
     private func scheduleViewportFrame(generation: Int, start: PyreonFlowViewport, end: PyreonFlowViewport, startTime: TimeInterval, duration: TimeInterval) {
@@ -1625,17 +1625,16 @@ public final class PyreonFlowState<T> {
     }
 
     // ── viewport ─────────────────────────────────────────────────────────────
-    public func zoomTo(_ z: Double) {
-        viewport.zoom = min(max(z, minZoom), maxZoom)
-        emitViewportChange()
+    public func zoomTo(_ z: Double, duration: Double = 0) {
+        let target = min(max(z, minZoom), maxZoom)
+        if duration > 0 && !reducedMotion { animateViewport(zoom: target, duration: duration) }
+        else { viewport.zoom = target; emitViewportChange() }
     }
-    public func zoomIn() {
-        viewport.zoom = min(viewport.zoom * 1.2, maxZoom)
-        emitViewportChange()
+    public func zoomIn(duration: Double = 0) {
+        zoomTo(viewport.zoom * 1.2, duration: duration)
     }
-    public func zoomOut() {
-        viewport.zoom = max(viewport.zoom / 1.2, minZoom)
-        emitViewportChange()
+    public func zoomOut(duration: Double = 0) {
+        zoomTo(viewport.zoom / 1.2, duration: duration)
     }
     /// Pans so `position` (in flow coordinates) lands at the viewport origin —
     /// an ABSOLUTE pan-to-point, not a relative nudge. Matches the web `panTo`.
@@ -1644,17 +1643,14 @@ public final class PyreonFlowState<T> {
         viewport.y = -position.y * viewport.zoom
         emitViewportChange()
     }
-    public func setViewport(x: Double? = nil, y: Double? = nil, zoom: Double? = nil) {
-        viewport = PyreonFlowViewport(
-            x: x ?? viewport.x,
-            y: y ?? viewport.y,
-            zoom: zoom ?? viewport.zoom
-        )
+    public func setViewport(x: Double? = nil, y: Double? = nil, zoom: Double? = nil, duration: Double = 0) {
+        if duration > 0 && !reducedMotion { animateViewport(x: x, y: y, zoom: zoom, duration: duration); return }
+        viewport = PyreonFlowViewport(x: x ?? viewport.x, y: y ?? viewport.y, zoom: zoom ?? viewport.zoom)
         emitViewportChange()
     }
-    public func setCenter(_ x: Double, _ y: Double, zoom: Double? = nil) {
+    public func setCenter(_ x: Double, _ y: Double, zoom: Double? = nil, duration: Double = 0) {
         let z = min(max(zoom ?? viewport.zoom, minZoom), maxZoom)
-        setViewport(x: -x * z + containerSize.width / 2, y: -y * z + containerSize.height / 2, zoom: z)
+        setViewport(x: -x * z + containerSize.width / 2, y: -y * z + containerSize.height / 2, zoom: z, duration: duration)
     }
     public func screenToFlowPosition(_ position: PyreonXYPosition) -> PyreonXYPosition {
         PyreonXYPosition(x: (position.x - viewport.x) / viewport.zoom, y: (position.y - viewport.y) / viewport.zoom)
@@ -1676,7 +1672,7 @@ public final class PyreonFlowState<T> {
     /// each axis (default `0.1`, matching the web `fitViewPadding` default).
     /// A no-op when there is nothing to frame, or `containerSize` hasn't been
     /// measured yet (both `0`).
-    public func fitView(_ nodeIds: [String]? = nil, padding: Double = 0.1) {
+    public func fitView(_ nodeIds: [String]? = nil, padding: Double = 0.1, duration: Double = 0) {
         guard containerSize.width > 0, containerSize.height > 0 else { return }
         // A bounding box needs no order: walk the store's values directly
         // (no per-node hash lookup) unless a subset was named.
@@ -1712,12 +1708,7 @@ public final class PyreonFlowState<T> {
         let centerX = (minX + maxX) / 2
         let centerY = (minY + maxY) / 2
 
-        viewport = PyreonFlowViewport(
-            x: containerSize.width / 2 - centerX * newZoom,
-            y: containerSize.height / 2 - centerY * newZoom,
-            zoom: newZoom
-        )
-        emitViewportChange()
+        setViewport(x: containerSize.width / 2 - centerX * newZoom, y: containerSize.height / 2 - centerY * newZoom, zoom: newZoom, duration: duration)
     }
 
     // ── graph queries ────────────────────────────────────────────────────────

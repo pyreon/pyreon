@@ -1198,17 +1198,17 @@ public final class PyreonFlowState<T> {
   public func redo() {}
   public func toJSON() -> PyreonFlowSnapshot<T> { PyreonFlowSnapshot(nodes: [], edges: [], viewport: nil) }
   public func fromJSON(_ snapshot: PyreonFlowSnapshot<T>) {}
-  public func zoomTo(_ z: Double) {}
-  public func zoomIn() {}
-  public func zoomOut() {}
+  public func zoomTo(_ z: Double, duration: Double = 0) {}
+  public func zoomIn(duration: Double = 0) {}
+  public func zoomOut(duration: Double = 0) {}
   public func panTo(_ position: PyreonXYPosition) {}
-  public func setViewport(x: Double? = nil, y: Double? = nil, zoom: Double? = nil) {}
-  public func setCenter(_ x: Double, _ y: Double, zoom: Double? = nil) {}
+  public func setViewport(x: Double? = nil, y: Double? = nil, zoom: Double? = nil, duration: Double = 0) {}
+  public func setCenter(_ x: Double, _ y: Double, zoom: Double? = nil, duration: Double = 0) {}
   public func animateViewport(x: Double? = nil, y: Double? = nil, zoom: Double? = nil, duration: Double = 300) {}
   public func screenToFlowPosition(_ position: PyreonXYPosition) -> PyreonXYPosition { position }
   public func flowToScreenPosition(_ position: PyreonXYPosition) -> PyreonXYPosition { position }
   public func isNodeVisible(_ id: String) -> Bool { false }
-  public func fitView(_ nodeIds: [String]? = nil, padding: Double = 0.1) {}
+  public func fitView(_ nodeIds: [String]? = nil, padding: Double = 0.1, duration: Double = 0) {}
   public func getConnectedEdges(_ nodeId: String) -> [PyreonFlowEdge] { [] }
   public func getIncomers(_ nodeId: String) -> [PyreonFlowNode<T>] { [] }
   public func getOutgoers(_ nodeId: String) -> [PyreonFlowNode<T>] { [] }
