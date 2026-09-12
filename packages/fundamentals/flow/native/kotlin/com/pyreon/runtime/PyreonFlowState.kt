@@ -145,6 +145,7 @@ class PyreonFlowState<T>(
     val pannable: Boolean = true,
     val zoomable: Boolean = true,
     val multiSelect: Boolean = true,
+    val onlyRenderVisibleElements: Boolean = false,
     val defaultEdgeType: String = PYREON_FLOW_DEFAULT_EDGE_TYPE,
     val defaultEdgeOptions: PyreonFlowDefaultEdgeOptions = PyreonFlowDefaultEdgeOptions(),
     val fitViewOnLoad: Boolean = false,
@@ -499,8 +500,9 @@ class PyreonFlowState<T>(
     )
     fun isNodeVisible(id: String): Boolean {
         val node = nodeMap[id] ?: return false
-        val x = node.position.x * _viewport.zoom + _viewport.x
-        val y = node.position.y * _viewport.zoom + _viewport.y
+        val absolute = getAbsolutePosition(id)
+        val x = absolute.x * _viewport.zoom + _viewport.x
+        val y = absolute.y * _viewport.zoom + _viewport.y
         val width = (node.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH) * _viewport.zoom
         val height = (node.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT) * _viewport.zoom
         return x + width > 0 && x < containerSize.width && y + height > 0 && y < containerSize.height

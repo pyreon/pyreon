@@ -324,6 +324,17 @@ public func pyreonFlowDragNodeIds<T>(state: PyreonFlowState<T>, draggedNodeId: S
     return ids
 }
 
+public func pyreonFlowEdgeStrokeIsVisible<T>(_ stroke: PyreonFlowEdgeStroke, state: PyreonFlowState<T>) -> Bool {
+    guard state.containerSize.width > 0, state.containerSize.height > 0, state.viewport.zoom > 0 else { return false }
+    let xs = stroke.segments.flatMap { [$0.x, $0.c1x, $0.c2x, $0.cx].compactMap { $0 } }
+    let ys = stroke.segments.flatMap { [$0.y, $0.c1y, $0.c2y, $0.cy].compactMap { $0 } }
+    guard let minX = xs.min(), let maxX = xs.max(), let minY = ys.min(), let maxY = ys.max() else { return false }
+    let pad = max(stroke.width, stroke.interactionWidth) / 2 / state.viewport.zoom
+    let left = -state.viewport.x / state.viewport.zoom, top = -state.viewport.y / state.viewport.zoom
+    let right = left + state.containerSize.width / state.viewport.zoom, bottom = top + state.containerSize.height / state.viewport.zoom
+    return maxX + pad > left && minX - pad < right && maxY + pad > top && minY - pad < bottom
+}
+
 /// A native SwiftUI host for `PyreonFlowState`: it measures its container,
 /// draws edges and nodes under one viewport, and supplies selection, dragging,
 /// panning, zooming, and accessibility without a web view.
@@ -385,7 +396,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                     .allowsHitTesting(false)
 
                 ZStack(alignment: .topLeading) {
-                    ForEach(pyreonFlowEdgeLabels(state: state)) { edge in
+                    ForEach(pyreonFlowEdgeLabels(state: state).filter { visibleEdgeIds.contains($0.id) }) { edge in
                         Text(edge.text ?? "")
                             .font(.system(size: 12))
                             .padding(edge.text == nil ? 8 : 3)
@@ -397,7 +408,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                             .accessibilityAddTraits(state.isEdgeSelected(edge.id) ? [.isSelected] : [])
                             .accessibilityHidden(!edge.focusable)
                     }
-                    ForEach(state.nodes.filter { $0.hidden != true }, id: \.id) { node in
+                    ForEach(visibleNodes, id: \.id) { node in
                         let absolute = state.getAbsolutePosition(node.id)
                         nodeContent(node)
                             .frame(
@@ -459,7 +470,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     }
 
     private var interactiveHandles: [PyreonFlowInteractiveHandle] {
-        state.nodes.flatMap { node -> [PyreonFlowInteractiveHandle] in
+        visibleNodes.flatMap { node -> [PyreonFlowInteractiveHandle] in
             guard node.hidden != true, node.connectable ?? state.nodesConnectable else { return [] }
             let p = state.getAbsolutePosition(node.id)
             let box = PyreonFlowRect(x: p.x, y: p.y, width: node.width ?? pyreonFlowDefaultNodeWidth, height: node.height ?? pyreonFlowDefaultNodeHeight)
@@ -469,6 +480,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
 
     private var edgeStrokes: [PyreonFlowEdgeStroke] {
         var strokes = pyreonFlowEdgeStrokes(state: state, color: edgeColor, width: edgeWidth)
+        if state.onlyRenderVisibleElements { strokes = strokes.filter { pyreonFlowEdgeStrokeIsVisible($0, state: state) } }
         if let draft = connectionDraft {
             strokes.append(PyreonFlowEdgeStroke(id: "__connection-preview", segments: [
                 PyreonFlowEdgeSegment.move(draft.source.x, draft.source.y),
@@ -482,6 +494,12 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         }
         return strokes
     }
+
+    private var visibleNodes: [PyreonFlowNode<T>] {
+        state.nodes.filter { $0.hidden != true && (!state.onlyRenderVisibleElements || state.isNodeVisible($0.id)) }
+    }
+
+    private var visibleEdgeIds: Set<String> { Set(edgeStrokes.map(\.id)) }
 
     private func graphPoint(_ point: CGPoint) -> PyreonXYPosition {
         PyreonXYPosition(x: (point.x - state.viewport.x) / state.viewport.zoom, y: (point.y - state.viewport.y) / state.viewport.zoom)

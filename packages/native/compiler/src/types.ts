@@ -972,6 +972,7 @@ export type DeclIR =
       pannable?: boolean
       zoomable?: boolean
       multiSelect?: boolean
+      onlyRenderVisibleElements?: boolean
       defaultEdgeType?: string
       defaultEdgeOptions?: {
         type?: string; label?: string; animated?: boolean; focusable?: boolean; ariaLabel?: string

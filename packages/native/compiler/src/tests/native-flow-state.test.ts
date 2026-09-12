@@ -472,7 +472,7 @@ export function C() {
     defaultMarkerEnd: null,
     nodesDraggable: false, nodesConnectable: false, nodesSelectable: false, nodesFocusable: false,
     edgesFocusable: false, nodesDeletable: false, edgesDeletable: false, edgesReconnectable: false,
-    edgeInteractionWidth: 32, connectionRadius: 9, pannable: false, zoomable: false, multiSelect: false,
+    edgeInteractionWidth: 32, connectionRadius: 9, pannable: false, zoomable: false, multiSelect: false, onlyRenderVisibleElements: false,
     defaultEdgeType: 'step', fitView: true, fitViewPadding: 0.2,
     defaultEdgeOptions: { type: 'smoothstep', label: 'Default', animated: true, interactionWidth: 30, pathOptions: { borderRadius: 8, offset: 12 }, markerEnd: null },
   })
@@ -502,7 +502,7 @@ export function C() {
       expect(result.code).toContain(`markerEndSpecified${assignment} true`)
       expect(result.code).toContain(target === 'swift' ? 'markerEnd: nil, markerEndSpecified: true' : 'markerEnd = null, markerEndSpecified = true')
       expect(result.code).toContain(target === 'swift' ? 'defaultMarkerEnd: nil' : 'defaultMarkerEnd = null')
-      for (const key of ['nodesDraggable', 'nodesConnectable', 'nodesSelectable', 'nodesFocusable', 'edgesFocusable', 'nodesDeletable', 'edgesDeletable', 'edgesReconnectable', 'pannable', 'zoomable', 'multiSelect']) {
+      for (const key of ['nodesDraggable', 'nodesConnectable', 'nodesSelectable', 'nodesFocusable', 'edgesFocusable', 'nodesDeletable', 'edgesDeletable', 'edgesReconnectable', 'pannable', 'zoomable', 'multiSelect', 'onlyRenderVisibleElements']) {
         expect(result.code).toContain(`${key}${assignment} false`)
         expect(w).not.toContain(`\`${key}\``)
       }

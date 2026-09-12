@@ -1,5 +1,18 @@
 package com.pyreon.runtime
 
+fun <T> pyreonFlowEdgeStrokeIsVisible(stroke: PyreonFlowEdgeStroke, state: PyreonFlowState<T>): Boolean {
+    if (state.containerSize.width <= 0 || state.containerSize.height <= 0 || state.viewport.zoom <= 0) return false
+    val xs = stroke.segments.flatMap { listOfNotNull(it.x, it.c1x, it.c2x, it.cx) }
+    val ys = stroke.segments.flatMap { listOfNotNull(it.y, it.c1y, it.c2y, it.cy) }
+    if (xs.isEmpty() || ys.isEmpty()) return false
+    val pad = maxOf(stroke.width, stroke.interactionWidth) / 2 / state.viewport.zoom
+    val left = -state.viewport.x / state.viewport.zoom
+    val top = -state.viewport.y / state.viewport.zoom
+    val right = left + state.containerSize.width / state.viewport.zoom
+    val bottom = top + state.containerSize.height / state.viewport.zoom
+    return xs.max() + pad > left && xs.min() - pad < right && ys.max() + pad > top && ys.min() - pad < bottom
+}
+
 data class PyreonFlowMiniMapNode(val id: String, val x: Double, val y: Double, val width: Double, val height: Double)
 data class PyreonFlowMiniMapLayout(val nodes: List<PyreonFlowMiniMapNode>, val viewport: PyreonFlowNodeBox, val scale: Double, val minX: Double, val minY: Double)
 data class PyreonFlowEdgeLabel(val id: String, val text: String?, val accessibilityLabel: String, val x: Double, val y: Double, val focusable: Boolean)

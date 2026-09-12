@@ -187,7 +187,8 @@ fun <T> PyreonFlowView(
     var reconnectDraft by remember { mutableStateOf<PyreonFlowReconnectDraft?>(null) }
     var nodeDragStarts by remember { mutableStateOf<Map<String, PyreonXYPosition>>(emptyMap()) }
     var didInitialFit by remember { mutableStateOf(false) }
-    val interactiveHandles = state.nodes.flatMap { node ->
+    val visibleNodes = state.nodes.filter { it.hidden != true && (!state.onlyRenderVisibleElements || state.isNodeVisible(it.id)) }
+    val interactiveHandles = visibleNodes.flatMap { node ->
         if (node.hidden == true || !(node.connectable ?: state.nodesConnectable)) emptyList() else {
             val absolute = state.getAbsolutePosition(node.id)
             pyreonFlowInteractiveHandles(
@@ -197,7 +198,7 @@ fun <T> PyreonFlowView(
             )
         }
     }
-    val edgeStrokes = pyreonFlowEdgeStrokes(state, edgeColor, edgeWidth).toMutableList().also { strokes ->
+    val edgeStrokes = pyreonFlowEdgeStrokes(state, edgeColor, edgeWidth).filter { !state.onlyRenderVisibleElements || pyreonFlowEdgeStrokeIsVisible(it, state) }.toMutableList().also { strokes ->
         connectionDraft?.let { draft ->
             strokes += PyreonFlowEdgeStroke(
                 "__connection-preview",
@@ -258,7 +259,8 @@ fun <T> PyreonFlowView(
                 transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
             },
         ) {
-            for (edge in pyreonFlowEdgeLabels(state)) {
+            val visibleEdgeIds = edgeStrokes.mapTo(mutableSetOf()) { it.id }
+            for (edge in pyreonFlowEdgeLabels(state).filter { visibleEdgeIds.contains(it.id) }) {
                 Text(
                     edge.text ?: "",
                     Modifier
@@ -270,8 +272,7 @@ fun <T> PyreonFlowView(
                         },
                 )
             }
-            for (node in state.nodes) {
-                if (node.hidden == true) continue
+            for (node in visibleNodes) {
                 val absolute = state.getAbsolutePosition(node.id)
                 val width = node.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH
                 val height = node.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT

@@ -335,7 +335,7 @@ public final class PyreonFlowState<T> {
     public let defaultMarkerEnd: PyreonFlowMarker?
     public let nodesDraggable: Bool; public let nodesConnectable: Bool; public let nodesSelectable: Bool; public let nodesFocusable: Bool
     public let edgesFocusable: Bool; public let nodesDeletable: Bool; public let edgesDeletable: Bool; public let edgesReconnectable: Bool
-    public let edgeInteractionWidth: Double; public let connectionRadius: Double; public let pannable: Bool; public let zoomable: Bool; public let multiSelect: Bool
+    public let edgeInteractionWidth: Double; public let connectionRadius: Double; public let pannable: Bool; public let zoomable: Bool; public let multiSelect: Bool; public let onlyRenderVisibleElements: Bool
     public let defaultEdgeType: String; public let defaultEdgeOptions: PyreonFlowDefaultEdgeOptions; public let fitViewOnLoad: Bool; public let fitViewPadding: Double
     @ObservationIgnored private let connectionValidator: ((PyreonFlowConnection) -> Bool)?
 
@@ -352,7 +352,7 @@ public final class PyreonFlowState<T> {
         defaultMarkerEnd: PyreonFlowMarker? = PyreonFlowMarker(type: "arrowclosed"),
         nodesDraggable: Bool = true, nodesConnectable: Bool = true, nodesSelectable: Bool = true, nodesFocusable: Bool = true,
         edgesFocusable: Bool = true, nodesDeletable: Bool = true, edgesDeletable: Bool = true, edgesReconnectable: Bool = true,
-        edgeInteractionWidth: Double = 20, connectionRadius: Double = 0, pannable: Bool = true, zoomable: Bool = true, multiSelect: Bool = true,
+        edgeInteractionWidth: Double = 20, connectionRadius: Double = 0, pannable: Bool = true, zoomable: Bool = true, multiSelect: Bool = true, onlyRenderVisibleElements: Bool = false,
         defaultEdgeType: String = "bezier", defaultEdgeOptions: PyreonFlowDefaultEdgeOptions = PyreonFlowDefaultEdgeOptions(), fitView: Bool = false, fitViewPadding: Double = 0.1,
         isValidConnection: ((PyreonFlowConnection) -> Bool)? = nil
     ) {
@@ -366,7 +366,7 @@ public final class PyreonFlowState<T> {
         self.defaultMarkerEnd = defaultMarkerEnd
         self.nodesDraggable = nodesDraggable; self.nodesConnectable = nodesConnectable; self.nodesSelectable = nodesSelectable; self.nodesFocusable = nodesFocusable
         self.edgesFocusable = edgesFocusable; self.nodesDeletable = nodesDeletable; self.edgesDeletable = edgesDeletable; self.edgesReconnectable = edgesReconnectable
-        self.edgeInteractionWidth = edgeInteractionWidth; self.connectionRadius = max(0, connectionRadius); self.pannable = pannable; self.zoomable = zoomable; self.multiSelect = multiSelect
+        self.edgeInteractionWidth = edgeInteractionWidth; self.connectionRadius = max(0, connectionRadius); self.pannable = pannable; self.zoomable = zoomable; self.multiSelect = multiSelect; self.onlyRenderVisibleElements = onlyRenderVisibleElements
         self.defaultEdgeType = defaultEdgeType; self.defaultEdgeOptions = defaultEdgeOptions; self.fitViewOnLoad = fitView; self.fitViewPadding = max(0, fitViewPadding)
         self.connectionValidator = isValidConnection
         for node in nodes { insertNode(node) }
@@ -706,8 +706,9 @@ public final class PyreonFlowState<T> {
     }
     public func isNodeVisible(_ id: String) -> Bool {
         guard let node = nodeStore[id] else { return false }
-        let x = node.position.x * viewport.zoom + viewport.x
-        let y = node.position.y * viewport.zoom + viewport.y
+        let absolute = getAbsolutePosition(id)
+        let x = absolute.x * viewport.zoom + viewport.x
+        let y = absolute.y * viewport.zoom + viewport.y
         let width = (node.width ?? pyreonFlowDefaultNodeWidth) * viewport.zoom
         let height = (node.height ?? pyreonFlowDefaultNodeHeight) * viewport.zoom
         return x + width > 0 && x < containerSize.width && y + height > 0 && y < containerSize.height
