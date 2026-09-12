@@ -561,6 +561,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             .onChanged { value in
                 guard !interactionsLocked, node.draggable ?? state.nodesDraggable else { return }
                 if nodeDragStart.isEmpty {
+                    state.pushHistory()
                     for id in pyreonFlowDragNodeIds(state: state, draggedNodeId: node.id) {
                         if let position = state.getNode(id)?.position { nodeDragStart[id] = position }
                     }

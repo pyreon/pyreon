@@ -62,6 +62,11 @@ struct PyreonFlowStateTests {
         check(clipboard.getEdge("e-1-copy-1-2-copy-2") != nil && clipboard.edges.count == 3, "paste remaps only internal copied edges")
         clipboard.undo()
         check(clipboard.nodes.count == 3 && clipboard.edges.count == 2, "paste records one undoable history checkpoint")
+        let dragged = seedFlow()
+        dragged.pushHistory()
+        dragged.updateNodePosition("1", PyreonXYPosition(x: 75, y: 25))
+        dragged.undo()
+        check(dragged.getNode("1")?.position == PyreonXYPosition(x: 0, y: 0), "a drag-start checkpoint restores direct position mutations")
         f.updateNode("1") { $0.hidden = true; $0.id = "ignored" }
         check(f.getNode("1")?.hidden == true && f.getNode("ignored") == nil, "updateNode patches fields while preserving indexed identity")
         f.updateNode("1") { $0.hidden = false }

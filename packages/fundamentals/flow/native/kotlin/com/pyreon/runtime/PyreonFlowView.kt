@@ -293,6 +293,7 @@ fun <T> PyreonFlowView(
                     nodeModifier = nodeModifier.pointerInput(node.id, state.viewport.zoom) {
                         detectDragGestures(
                             onDragStart = {
+                                state.pushHistory()
                                 nodeDragStarts = pyreonFlowDragNodeIds(state, node.id).associateWith { id -> state.getNode(id)!!.position }
                             },
                             onDragCancel = { nodeDragStarts = emptyMap() },

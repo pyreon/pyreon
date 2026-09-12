@@ -57,6 +57,11 @@ fun main() {
     check(clipboard.getEdge("e-1-copy-1-2-copy-2") != null && clipboard.edges.size == 3, "paste remaps only internal copied edges")
     clipboard.undo()
     check(clipboard.nodes.size == 3 && clipboard.edges.size == 2, "paste records one undoable history checkpoint")
+    val dragged = seedFlow()
+    dragged.pushHistory()
+    dragged.updateNodePosition("1", PyreonXYPosition(75.0, 25.0))
+    dragged.undo()
+    check(dragged.getNode("1")?.position == PyreonXYPosition(0.0, 0.0), "a drag-start checkpoint restores direct position mutations")
     f.updateNodeData("1") { it.copy(label = "Updated") }
     check(f.getNode("1")?.data?.label == "Updated", "updateNodeData replaces the native payload observably")
     f.updateNode("1") { it.copy(id = "ignored", hidden = true) }
