@@ -577,6 +577,13 @@ export function C() {
       const warnings = (result.warnings ?? []).join(' ')
       for (const member of ['onConnect', 'onViewportChange', 'onNodeClick', 'onNodeDoubleClick', 'onNodeDragStart', 'onNodeDrag', 'onNodeDragEnd', 'onEdgeClick', 'onSelectionChange', 'onNodesDelete', 'onEdgesDelete', 'onNodesChange', 'onEdgesChange', 'onConnectStart', 'onConnectEnd', 'onPaneClick']) expect(warnings).not.toContain(`\`${member}\` is NOT ported`)
     })
+    it(`[${target}] dispose lowers as a native cleanup member`, () => {
+      const result = transform(base('', '<Button onPress={() => flow.dispose()}>Dispose</Button>'), { target })
+      expect((result.warnings ?? []).join(' ')).not.toContain('`dispose` is NOT ported')
+      expect(result.code).toContain('flow.dispose()')
+      if (target === 'swift') expect(validateSwiftWithStubs(result.code).ok).toBe(true)
+      else expect(validateKotlin(result.code).ok).toBe(true)
+    })
     it(`[${target}] a ported member emits with NO member warning (the control)`, () => {
       const w = warningsOf(base('', '<Button onPress={() => flow.zoomIn()}>Zoom</Button>'), target)
       expect(w).not.toContain('is NOT ported')

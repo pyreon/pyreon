@@ -630,6 +630,17 @@ class PyreonFlowState<T>(
 ) {
     val selectionMode: String = if (selectionMode == "full") "full" else "partial"
     fun batch(operation: () -> Unit) { Snapshot.withMutableSnapshot(operation) }
+    fun dispose() {
+        viewportAnimationGeneration++; layoutAnimationGeneration++
+        undoStack.clear(); redoStack.clear(); clipboard = null
+        connectListeners.clear(); viewportListeners.clear()
+        nodeClickListeners.clear(); nodeDoubleClickListeners.clear()
+        nodeDragStartListeners.clear(); nodeDragListeners.clear(); nodeDragEndListeners.clear()
+        edgeClickListeners.clear(); selectionListeners.clear()
+        nodesDeleteListeners.clear(); edgesDeleteListeners.clear()
+        nodesChangeListeners.clear(); edgesChangeListeners.clear()
+        connectStartListeners.clear(); connectEndListeners.clear(); paneClickListeners.clear()
+    }
     private companion object {
         val viewportAnimationTimer = Timer("PyreonFlowViewport", true)
     }

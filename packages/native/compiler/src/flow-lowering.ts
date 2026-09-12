@@ -35,6 +35,7 @@ export const LOWERED_FLOW_METHODS: ReadonlySet<string> = new Set([
   'batch',
   'animateViewport',
   'layout',
+  'dispose',
 ])
 
 /** `FlowNode` fields the native `PyreonFlowNode` carries. */

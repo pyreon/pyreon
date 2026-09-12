@@ -166,6 +166,10 @@ struct PyreonFlowStateTests {
         events.selectNode("1"); events.selectEdge("e1")
         check(selectedIds == ["e1"], "onSelectionChange receives the final mutually-exclusive selection")
         stopSelection()
+        var disposedClicks = 0
+        let stopDisposed = events.onNodeClick { _ in disposedClicks += 1 }
+        events.dispose(); events.emitNodeClick("1"); stopDisposed()
+        check(disposedClicks == 0, "dispose releases native listeners and stale unsubscribers stay safe")
         let deletionEvents = seedFlow()
         var deletedNodes: [String] = [], deletedEdges: [String] = []
         let stopNodeDelete = deletionEvents.onNodesDelete { deletedNodes = $0.map(\.id) }

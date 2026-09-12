@@ -1156,6 +1156,7 @@ public final class PyreonFlowState<T> {
   public var zoom: Double { viewport.zoom }
   public func getNode(_ id: String) -> PyreonFlowNode<T>? { nil }
   public func batch(_ operation: () -> Void) { operation() }
+  public func dispose() {}
   public func layout(_ algorithm: String = "layered", options: PyreonFlowLayoutOptions = PyreonFlowLayoutOptions()) {}
   public func isValidConnection(_ connection: PyreonFlowConnection) -> Bool { true }
   public func addNode(_ node: PyreonFlowNode<T>) {}

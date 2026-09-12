@@ -170,6 +170,10 @@ fun main() {
     events.selectNode("1"); events.selectEdge("e1")
     check(selectedIds == listOf("e1"), "onSelectionChange receives the final mutually-exclusive selection")
     stopSelection()
+    var disposedClicks = 0
+    val stopDisposed = events.onNodeClick { disposedClicks++ }
+    events.dispose(); events.emitNodeClick("1"); stopDisposed()
+    check(disposedClicks == 0, "dispose releases native listeners and stale unsubscribers stay safe")
     val deletionEvents = seedFlow()
     var deletedNodes = emptyList<String>(); var deletedEdges = emptyList<String>()
     val stopNodeDelete = deletionEvents.onNodesDelete { deletedNodes = it.map { node -> node.id } }

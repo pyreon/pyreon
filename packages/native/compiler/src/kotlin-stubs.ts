@@ -1682,6 +1682,7 @@ class PyreonFlowState<T>(
   var containerSize: PyreonFlowContainerSize = PyreonFlowContainerSize()
   val zoom: Double get() = viewport.zoom
   fun batch(operation: () -> Unit) { operation() }
+  fun dispose() {}
   fun layout(algorithm: String = "layered", options: PyreonFlowLayoutOptions = PyreonFlowLayoutOptions()) {}
   fun getNode(id: String): PyreonFlowNode<T>? = null
   fun isValidConnection(connection: PyreonFlowConnection): Boolean = true

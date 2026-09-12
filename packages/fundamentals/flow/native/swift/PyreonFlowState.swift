@@ -960,6 +960,17 @@ public final class PyreonFlowState<T> {
 
     private func markMutation() { mutationVersion &+= 1 }
     public func batch(_ operation: () -> Void) { operation() }
+    public func dispose() {
+        viewportAnimationGeneration &+= 1; layoutAnimationGeneration &+= 1
+        undoStack.removeAll(); redoStack.removeAll(); clipboard = nil
+        connectListeners.removeAll(); viewportListeners.removeAll()
+        nodeClickListeners.removeAll(); nodeDoubleClickListeners.removeAll()
+        nodeDragStartListeners.removeAll(); nodeDragListeners.removeAll(); nodeDragEndListeners.removeAll()
+        edgeClickListeners.removeAll(); selectionListeners.removeAll()
+        nodesDeleteListeners.removeAll(); edgesDeleteListeners.removeAll()
+        nodesChangeListeners.removeAll(); edgesChangeListeners.removeAll()
+        connectStartListeners.removeAll(); connectEndListeners.removeAll(); paneClickListeners.removeAll()
+    }
     public func layout(_ algorithm: String = "layered", options: PyreonFlowLayoutOptions = PyreonFlowLayoutOptions()) {
         let startNodes = nodes
         var targets: [PyreonFlowLayoutPosition]
