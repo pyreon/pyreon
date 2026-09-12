@@ -171,7 +171,9 @@ class PyreonFlowState<T>(
     private val searchText: ((T) -> String?)? = null,
 ) {
     fun batch(operation: () -> Unit) { Snapshot.withMutableSnapshot(operation) }
-    private val viewportAnimationTimer = Timer("PyreonFlowViewport", true)
+    private companion object {
+        val viewportAnimationTimer = Timer("PyreonFlowViewport", true)
+    }
     @Volatile private var viewportAnimationGeneration = 0
     private val undoStack = ArrayList<PyreonFlowHistorySnapshot<T>>()
     private val redoStack = ArrayList<PyreonFlowHistorySnapshot<T>>()
