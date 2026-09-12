@@ -1627,8 +1627,7 @@ public final class PyreonFlowState<T> {
     // ── viewport ─────────────────────────────────────────────────────────────
     public func zoomTo(_ z: Double, duration: Double = 0) {
         let target = min(max(z, minZoom), maxZoom)
-        if duration > 0 && !reducedMotion { animateViewport(zoom: target, duration: duration) }
-        else { viewport.zoom = target; emitViewportChange() }
+        setViewport(zoom: target, duration: duration)
     }
     public func zoomIn(duration: Double = 0) {
         zoomTo(viewport.zoom * 1.2, duration: duration)
@@ -1639,12 +1638,11 @@ public final class PyreonFlowState<T> {
     /// Pans so `position` (in flow coordinates) lands at the viewport origin —
     /// an ABSOLUTE pan-to-point, not a relative nudge. Matches the web `panTo`.
     public func panTo(_ position: PyreonXYPosition) {
-        viewport.x = -position.x * viewport.zoom
-        viewport.y = -position.y * viewport.zoom
-        emitViewportChange()
+        setViewport(x: -position.x * viewport.zoom, y: -position.y * viewport.zoom)
     }
     public func setViewport(x: Double? = nil, y: Double? = nil, zoom: Double? = nil, duration: Double = 0) {
         if duration > 0 && !reducedMotion { animateViewport(x: x, y: y, zoom: zoom, duration: duration); return }
+        viewportAnimationGeneration &+= 1
         viewport = PyreonFlowViewport(x: x ?? viewport.x, y: y ?? viewport.y, zoom: zoom ?? viewport.zoom)
         emitViewportChange()
     }

@@ -1293,20 +1293,19 @@ class PyreonFlowState<T>(
     // ── viewport ─────────────────────────────────────────────────────────────
     fun zoomTo(z: Double, duration: Double = 0.0) {
         val target = z.coerceIn(minZoom, maxZoom)
-        if (duration > 0.0 && !reducedMotion) animateViewport(zoom = target, duration = duration)
-        else { _viewport = _viewport.copy(zoom = target); emitViewportChange() }
+        setViewport(zoom = target, duration = duration)
     }
     fun zoomIn(duration: Double = 0.0) = zoomTo(_viewport.zoom * 1.2, duration)
     fun zoomOut(duration: Double = 0.0) = zoomTo(_viewport.zoom / 1.2, duration)
     /** Pans so [position] (in flow coordinates) lands at the viewport origin —
      *  an ABSOLUTE pan-to-point, not a relative nudge. Matches the web `panTo`. */
     fun panTo(position: PyreonXYPosition) {
-        _viewport = _viewport.copy(x = -position.x * _viewport.zoom, y = -position.y * _viewport.zoom)
-        emitViewportChange()
+        setViewport(x = -position.x * _viewport.zoom, y = -position.y * _viewport.zoom)
     }
     @JvmOverloads
     fun setViewport(x: Double? = null, y: Double? = null, zoom: Double? = null, duration: Double = 0.0) {
         if (duration > 0.0 && !reducedMotion) { animateViewport(x, y, zoom, duration); return }
+        viewportAnimationGeneration++
         _viewport = PyreonFlowViewport(
             x = x ?: _viewport.x,
             y = y ?: _viewport.y,
