@@ -1675,7 +1675,7 @@ class PyreonFlowState<T>(
   connectionRules: Map<String, List<String>>? = null,
   connectionValidator: ((PyreonFlowConnection) -> Boolean)? = null,
   searchText: ((T) -> String?)? = null,
-  reducedMotion: Boolean = false,
+  reducedMotion: Boolean? = null,
 ) {
   val nodes: List<PyreonFlowNode<T>> = nodes
   val edges: List<PyreonFlowEdge> = edges

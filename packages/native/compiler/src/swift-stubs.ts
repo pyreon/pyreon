@@ -1148,7 +1148,7 @@ public final class PyreonFlowState<T> {
     connectionRules: [String: [String]]? = nil,
     isValidConnection: ((PyreonFlowConnection) -> Bool)? = nil,
     searchText: ((T) -> String?)? = nil,
-    reducedMotion: Bool = false
+    reducedMotion: Bool? = nil
   ) {}
   public private(set) var nodes: [PyreonFlowNode<T>] = []
   public private(set) var edges: [PyreonFlowEdge] = []

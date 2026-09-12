@@ -627,8 +627,16 @@ class PyreonFlowState<T>(
     val autoHistory: Boolean = true,
     private val connectionValidator: ((PyreonFlowConnection) -> Boolean)? = null,
     private val searchText: ((T) -> String?)? = null,
-    private val reducedMotion: Boolean = false,
+    private val reducedMotion: Boolean? = null,
 ) {
+    private fun shouldReduceMotion(): Boolean {
+        reducedMotion?.let { return it }
+        return try {
+            val enabled = Class.forName("android.animation.ValueAnimator")
+                .getMethod("areAnimatorsEnabled").invoke(null) as? Boolean
+            enabled == false
+        } catch (_: ReflectiveOperationException) { false }
+    }
     val selectionMode: String = if (selectionMode == "full") "full" else "partial"
     fun batch(operation: () -> Unit) { Snapshot.withMutableSnapshot(operation) }
     fun dispose() {
@@ -719,7 +727,7 @@ class PyreonFlowState<T>(
         if (minimumX < 0.0 || minimumY < 0.0) targets = targets.map { it.copy(position = PyreonXYPosition(it.position.x - kotlin.math.min(0.0, minimumX), it.position.y - kotlin.math.min(0.0, minimumY))) }
         checkpoint(); val generation = ++layoutAnimationGeneration
         val targetMap = targets.associate { it.id to it.position }
-        if (!options.animate || reducedMotion || options.animationDuration <= 0.0) { applyLayoutPositions(targetMap); return }
+        if (!options.animate || shouldReduceMotion() || options.animationDuration <= 0.0) { applyLayoutPositions(targetMap); return }
         val starts = startNodes.associate { it.id to it.position }
         scheduleLayoutFrame(generation, starts, targetMap, System.nanoTime(), options.animationDuration * 1_000_000.0)
     }
@@ -1320,7 +1328,7 @@ class PyreonFlowState<T>(
     }
     @JvmOverloads
     fun setViewport(x: Double? = null, y: Double? = null, zoom: Double? = null, duration: Double = 0.0) {
-        if (duration > 0.0 && !reducedMotion) { animateViewport(x, y, zoom, duration); return }
+        if (duration > 0.0 && !shouldReduceMotion()) { animateViewport(x, y, zoom, duration); return }
         viewportAnimationGeneration++
         _viewport = PyreonFlowViewport(
             x = x ?: _viewport.x,
@@ -1339,7 +1347,7 @@ class PyreonFlowState<T>(
         val generation = ++viewportAnimationGeneration
         val start = _viewport
         val end = PyreonFlowViewport(x ?: start.x, y ?: start.y, zoom ?: start.zoom)
-        if (duration <= 0.0 || reducedMotion) { _viewport = end; emitViewportChange(); return }
+        if (duration <= 0.0 || shouldReduceMotion()) { _viewport = end; emitViewportChange(); return }
         scheduleViewportFrame(generation, start, end, System.nanoTime(), duration * 1_000_000.0)
     }
     private fun scheduleViewportFrame(generation: Int, start: PyreonFlowViewport, end: PyreonFlowViewport, startNanos: Long, durationNanos: Double) {

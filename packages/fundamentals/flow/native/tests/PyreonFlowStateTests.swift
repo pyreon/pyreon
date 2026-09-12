@@ -414,6 +414,10 @@ struct PyreonFlowStateTests {
         let reduced = PyreonFlowState(nodes: [PyreonFlowNode(id: "r", position: PyreonXYPosition(x: 0, y: 0), data: NodeData(label: "Reduced"))], reducedMotion: true)
         reduced.zoomTo(2, duration: 500)
         check(reduced.viewport.zoom == 2, "reduced motion makes duration-based viewport methods synchronous")
+        let forcedMotion = PyreonFlowState(nodes: [PyreonFlowNode(id: "m", position: PyreonXYPosition(x: 0, y: 0), data: NodeData(label: "Motion"))], reducedMotion: false)
+        forcedMotion.zoomTo(2, duration: 500)
+        check(forcedMotion.viewport.zoom == 1, "an explicit false overrides automatic reduced-motion policy")
+        forcedMotion.dispose()
 
         let exported = h.toJSON()
         check(exported.nodes.map(\.id) == ["1", "2", "3"] && exported.edges.map(\.id) == ["e1", "e2"], "toJSON snapshots nodes and edges in order")

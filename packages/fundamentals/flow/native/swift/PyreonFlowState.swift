@@ -24,6 +24,11 @@
 import Foundation
 import Observation
 import Dispatch
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 /// A 2D point in flow (unscaled diagram) coordinates.
 public struct PyreonXYPosition: Equatable {
@@ -921,7 +926,17 @@ public final class PyreonFlowState<T> {
     @ObservationIgnored private let searchText: ((T) -> String?)?
     @ObservationIgnored private var viewportAnimationGeneration = 0
     @ObservationIgnored private var layoutAnimationGeneration = 0
-    private let reducedMotion: Bool
+    private let reducedMotion: Bool?
+    private var shouldReduceMotion: Bool {
+        if let reducedMotion { return reducedMotion }
+#if canImport(UIKit)
+        return UIAccessibility.isReduceMotionEnabled
+#elseif canImport(AppKit)
+        return NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+#else
+        return false
+#endif
+    }
 
     public init(
         nodes: [PyreonFlowNode<T>] = [],
@@ -940,7 +955,7 @@ public final class PyreonFlowState<T> {
         defaultEdgeType: String = "bezier", connectionLineType: String = "bezier", defaultEdgeOptions: PyreonFlowDefaultEdgeOptions = PyreonFlowDefaultEdgeOptions(), fitView: Bool = false, fitViewPadding: Double = 0.1, autoHistory: Bool = true,
         isValidConnection: ((PyreonFlowConnection) -> Bool)? = nil,
         searchText: ((T) -> String?)? = nil,
-        reducedMotion: Bool = false
+        reducedMotion: Bool? = nil
     ) {
         self.viewport = viewport
         self.minZoom = minZoom
@@ -995,7 +1010,7 @@ public final class PyreonFlowState<T> {
         checkpoint(); layoutAnimationGeneration &+= 1
         let generation = layoutAnimationGeneration
         let targetMap = Dictionary(uniqueKeysWithValues: targets.map { ($0.id, $0.position) })
-        guard options.animate && !reducedMotion && options.animationDuration > 0 else { applyLayoutPositions(targetMap); return }
+        guard options.animate && !shouldReduceMotion && options.animationDuration > 0 else { applyLayoutPositions(targetMap); return }
         let starts = Dictionary(uniqueKeysWithValues: startNodes.map { ($0.id, $0.position) })
         scheduleLayoutFrame(generation: generation, starts: starts, targets: targetMap, startTime: ProcessInfo.processInfo.systemUptime, duration: options.animationDuration / 1000)
     }
@@ -1026,7 +1041,7 @@ public final class PyreonFlowState<T> {
         let generation = viewportAnimationGeneration
         let start = viewport
         let end = PyreonFlowViewport(x: x ?? start.x, y: y ?? start.y, zoom: zoom ?? start.zoom)
-        guard duration > 0 && !reducedMotion else { viewport = end; emitViewportChange(); return }
+        guard duration > 0 && !shouldReduceMotion else { viewport = end; emitViewportChange(); return }
         scheduleViewportFrame(generation: generation, start: start, end: end, startTime: ProcessInfo.processInfo.systemUptime, duration: duration / 1000)
     }
     private func scheduleViewportFrame(generation: Int, start: PyreonFlowViewport, end: PyreonFlowViewport, startTime: TimeInterval, duration: TimeInterval) {
@@ -1661,7 +1676,7 @@ public final class PyreonFlowState<T> {
         setViewport(x: -position.x * viewport.zoom, y: -position.y * viewport.zoom)
     }
     public func setViewport(x: Double? = nil, y: Double? = nil, zoom: Double? = nil, duration: Double = 0) {
-        if duration > 0 && !reducedMotion { animateViewport(x: x, y: y, zoom: zoom, duration: duration); return }
+        if duration > 0 && !shouldReduceMotion { animateViewport(x: x, y: y, zoom: zoom, duration: duration); return }
         viewportAnimationGeneration &+= 1
         viewport = PyreonFlowViewport(x: x ?? viewport.x, y: y ?? viewport.y, zoom: zoom ?? viewport.zoom)
         emitViewportChange()
