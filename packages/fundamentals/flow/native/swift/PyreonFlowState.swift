@@ -344,7 +344,8 @@ private func pyreonFlowRelaxOverlaps<T>(_ nodes: [PyreonFlowNode<T>], positions:
 }
 
 private struct PyreonFlowRandom {
-    private var state: UInt32 = 0x02f6e2b1
+    private var state: UInt32
+    init(seed: UInt32 = 0x02f6e2b1) { state = seed }
     mutating func next() -> Double {
         state ^= state << 13
         state ^= UInt32(bitPattern: Int32(bitPattern: state) >> 17)
@@ -420,6 +421,85 @@ public func pyreonFlowForceLayout<T>(
         }
         temperature *= 0.975
     }
+    let minX = x.min() ?? 0, minY = y.min() ?? 0
+    var positions = Dictionary(uniqueKeysWithValues: ids.enumerated().map {
+        ($0.element, PyreonXYPosition(x: x[$0.offset] - minX, y: y[$0.offset] - minY))
+    })
+    pyreonFlowRelaxOverlaps(nodes, positions: &positions, spacing: nodeSpacing)
+    return ids.map { PyreonFlowLayoutPosition(id: $0, position: positions[$0]!) }
+}
+
+public func pyreonFlowStressLayout<T>(
+    _ nodes: [PyreonFlowNode<T>], edges: [PyreonFlowEdge], nodeSpacing: Double = 20
+) -> [PyreonFlowLayoutPosition] {
+    guard !nodes.isEmpty else { return [] }
+    let ids = nodes.map(\.id), count = nodes.count
+    let index = Dictionary(uniqueKeysWithValues: ids.enumerated().map { ($0.element, $0.offset) })
+    let average = nodes.reduce(0.0) { sum, node in
+        sum + max(node.width ?? pyreonFlowDefaultNodeWidth, node.height ?? pyreonFlowDefaultNodeHeight)
+    } / Double(count)
+    let unit = average + nodeSpacing, known = Set(ids)
+    var adjacency = Array(repeating: [Int](), count: count)
+    for edge in edges where known.contains(edge.source) && known.contains(edge.target) && edge.source != edge.target {
+        let source = index[edge.source]!, target = index[edge.target]!
+        adjacency[source].append(target); adjacency[target].append(source)
+    }
+    func bfs(_ source: Int) -> [Double] {
+        var row = Array(repeating: Double.infinity, count: count); row[source] = 0
+        var queue = [source], cursor = 0
+        while cursor < queue.count {
+            let current = queue[cursor]; cursor += 1
+            for next in adjacency[current] where row[next] == .infinity {
+                row[next] = row[current] + 1; queue.append(next)
+            }
+        }
+        return row
+    }
+    let pivotCount = min(count, 64)
+    var pivots = [0], rows = [bfs(0)], best = rows[0]
+    while pivots.count < pivotCount {
+        var far = 0, farDistance = -1.0
+        for i in 0..<count where best[i] != .infinity && best[i] > farDistance {
+            farDistance = best[i]; far = i
+        }
+        if pivots.contains(far) {
+            guard let unused = (0..<count).first(where: { !pivots.contains($0) }) else { break }
+            far = unused
+        }
+        pivots.append(far)
+        let row = bfs(far); rows.append(row)
+        for i in 0..<count where row[i] < best[i] { best[i] = row[i] }
+    }
+    var diameter = 1.0
+    for row in rows { for distance in row where distance != .infinity { diameter = max(diameter, distance) } }
+    for rowIndex in rows.indices { for i in 0..<count where rows[rowIndex][i] == .infinity { rows[rowIndex][i] = diameter + 1 } }
+    let pivotTotal = pivots.count
+    var flat = Array(repeating: 0.0, count: pivotTotal * count)
+    for pivotIndex in 0..<pivotTotal { for i in 0..<count { flat[pivotIndex * count + i] = rows[pivotIndex][i] } }
+    var random = PyreonFlowRandom(seed: 0x51f3a7)
+    let radius = unit * sqrt(Double(count))
+    var x = Array(repeating: 0.0, count: count), y = x
+    for i in 0..<count {
+        let angle = Double(i) / Double(count) * Double.pi * 2
+        x[i] = cos(angle) * radius + random.next() * 0.01
+        y[i] = sin(angle) * radius + random.next() * 0.01
+    }
+    let iterations = count <= 200 ? 150 : count <= 600 ? 60 : 30
+    for _ in 0..<iterations { for i in 0..<count {
+        var nextX = 0.0, nextY = 0.0, weightSum = 0.0
+        for pivotIndex in 0..<pivotTotal {
+            let other = pivots[pivotIndex]
+            if i == other { continue }
+            let target = flat[pivotIndex * count + i] * unit
+            if target <= 0 { continue }
+            let weight = 1 / (target * target), deltaX = x[i] - x[other], deltaY = y[i] - y[other]
+            var distance = sqrt(deltaX * deltaX + deltaY * deltaY); if distance == 0 { distance = 0.01 }
+            nextX += weight * (x[other] + target * deltaX / distance)
+            nextY += weight * (y[other] + target * deltaY / distance)
+            weightSum += weight
+        }
+        if weightSum > 0 { x[i] = nextX / weightSum; y[i] = nextY / weightSum }
+    } }
     let minX = x.min() ?? 0, minY = y.min() ?? 0
     var positions = Dictionary(uniqueKeysWithValues: ids.enumerated().map {
         ($0.element, PyreonXYPosition(x: x[$0.offset] - minX, y: y[$0.offset] - minY))

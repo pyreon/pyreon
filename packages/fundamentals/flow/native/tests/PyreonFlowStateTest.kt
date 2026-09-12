@@ -15,6 +15,7 @@ import com.pyreon.runtime.PyreonXYPosition
 import com.pyreon.runtime.pyreonFlowPackingLayout
 import com.pyreon.runtime.pyreonFlowForceLayout
 import com.pyreon.runtime.pyreonFlowRadialLayout
+import com.pyreon.runtime.pyreonFlowStressLayout
 import com.pyreon.runtime.pyreonFlowTreeLayout
 import kotlin.math.abs
 
@@ -65,6 +66,9 @@ fun main() {
     val force = pyreonFlowForceLayout(radialNodes, radialEdges)
     val forceWeb = listOf(PyreonXYPosition(325.65041151345395, 204.74888057371896), PyreonXYPosition(162.85665358620253, 102.39421274116614), PyreonXYPosition(0.0, 0.0))
     check(force.zip(forceWeb).all { (actual, expected) -> abs(actual.position.x - expected.x) < 1e-9 && abs(actual.position.y - expected.y) < 1e-9 }, "force layout reproduces the seeded web coordinates")
+    val stress = pyreonFlowStressLayout(radialNodes, radialEdges)
+    val stressWeb = listOf(PyreonXYPosition(138.23440571439633, 195.11390203079043), PyreonXYPosition(58.86121415294381, 104.8239204520405), PyreonXYPosition(0.0, 0.0))
+    check(stress.zip(stressWeb).all { (actual, expected) -> abs(actual.position.x - expected.x) < 1e-9 && abs(actual.position.y - expected.y) < 1e-9 }, "stress layout reproduces the seeded web coordinates")
     val batched = seedFlow()
     batched.batch {
         batched.updateNodePosition("1", PyreonXYPosition(10.0, 20.0))

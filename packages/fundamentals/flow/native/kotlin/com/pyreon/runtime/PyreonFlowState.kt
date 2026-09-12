@@ -365,6 +365,78 @@ fun <T> pyreonFlowForceLayout(nodes: List<PyreonFlowNode<T>>, edges: List<Pyreon
     return ids.map { PyreonFlowLayoutPosition(it, positions.getValue(it)) }
 }
 
+fun <T> pyreonFlowStressLayout(nodes: List<PyreonFlowNode<T>>, edges: List<PyreonFlowEdge>, nodeSpacing: Double = 20.0): List<PyreonFlowLayoutPosition> {
+    if (nodes.isEmpty()) return emptyList()
+    val ids = nodes.map { it.id }; val count = ids.size
+    val index = ids.withIndex().associate { it.value to it.index }
+    val average = nodes.sumOf { kotlin.math.max(it.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH, it.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT) } / count
+    val unit = average + nodeSpacing
+    val adjacency = List(count) { mutableListOf<Int>() }; val known = ids.toSet()
+    edges.filter { it.source in known && it.target in known && it.source != it.target }.forEach {
+        val source = index.getValue(it.source); val target = index.getValue(it.target)
+        adjacency[source].add(target); adjacency[target].add(source)
+    }
+    fun bfs(source: Int): DoubleArray {
+        val row = DoubleArray(count) { Double.POSITIVE_INFINITY }; row[source] = 0.0
+        val queue = mutableListOf(source); var cursor = 0
+        while (cursor < queue.size) {
+            val current = queue[cursor++]
+            adjacency[current].forEach { next -> if (row[next] == Double.POSITIVE_INFINITY) { row[next] = row[current] + 1.0; queue.add(next) } }
+        }
+        return row
+    }
+    val pivotCount = kotlin.math.min(count, 64)
+    val pivots = mutableListOf(0); val rows = mutableListOf(bfs(0)); val best = rows[0].copyOf()
+    while (pivots.size < pivotCount) {
+        var far = 0; var farDistance = -1.0
+        repeat(count) { i ->
+            val distance = best[i]
+            if (distance != Double.POSITIVE_INFINITY && distance > farDistance) { farDistance = distance; far = i }
+        }
+        if (far in pivots) far = (0..<count).firstOrNull { it !in pivots } ?: break
+        pivots.add(far)
+        val row = bfs(far); rows.add(row)
+        repeat(count) { i -> if (row[i] < best[i]) best[i] = row[i] }
+    }
+    var diameter = 1.0
+    rows.forEach { row -> row.forEach { distance -> if (distance != Double.POSITIVE_INFINITY) diameter = kotlin.math.max(diameter, distance) } }
+    rows.forEach { row -> repeat(count) { i -> if (row[i] == Double.POSITIVE_INFINITY) row[i] = diameter + 1.0 } }
+    val pivotTotal = pivots.size; val flat = DoubleArray(pivotTotal * count)
+    rows.forEachIndexed { pivotIndex, row -> row.copyInto(flat, pivotIndex * count) }
+    val random = PyreonFlowRandom(0x51f3a7); val radius = unit * kotlin.math.sqrt(count.toDouble())
+    val x = DoubleArray(count); val y = DoubleArray(count)
+    repeat(count) { i ->
+        val angle = i.toDouble() / count * Math.PI * 2.0
+        x[i] = kotlin.math.cos(angle) * radius + random.next() * 0.01
+        y[i] = kotlin.math.sin(angle) * radius + random.next() * 0.01
+    }
+    val iterations = when { count <= 200 -> 150; count <= 600 -> 60; else -> 30 }
+    repeat(iterations) {
+        repeat(count) { i ->
+            var nextX = 0.0; var nextY = 0.0; var weightSum = 0.0
+            repeat(pivotTotal) { pivotIndex ->
+                val other = pivots[pivotIndex]
+                if (i != other) {
+                    val target = flat[pivotIndex * count + i] * unit
+                    if (target > 0.0) {
+                        val weight = 1.0 / (target * target)
+                        val deltaX = x[i] - x[other]; val deltaY = y[i] - y[other]
+                        val distance = kotlin.math.sqrt(deltaX * deltaX + deltaY * deltaY).takeIf { it != 0.0 } ?: 0.01
+                        nextX += weight * (x[other] + target * deltaX / distance)
+                        nextY += weight * (y[other] + target * deltaY / distance)
+                        weightSum += weight
+                    }
+                }
+            }
+            if (weightSum > 0.0) { x[i] = nextX / weightSum; y[i] = nextY / weightSum }
+        }
+    }
+    val minX = x.minOrNull() ?: 0.0; val minY = y.minOrNull() ?: 0.0
+    val positions = ids.withIndex().associateTo(mutableMapOf()) { it.value to PyreonXYPosition(x[it.index] - minX, y[it.index] - minY) }
+    pyreonFlowRelaxOverlaps(nodes, positions, nodeSpacing)
+    return ids.map { PyreonFlowLayoutPosition(it, positions.getValue(it)) }
+}
+
 fun <T> pyreonFlowRadialLayout(nodes: List<PyreonFlowNode<T>>, edges: List<PyreonFlowEdge>, nodeSpacing: Double = 20.0): List<PyreonFlowLayoutPosition> {
     if (nodes.isEmpty()) return emptyList()
     val ids = nodes.map { it.id }; val known = ids.toSet()

@@ -62,6 +62,9 @@ struct PyreonFlowStateTests {
         let force = pyreonFlowForceLayout(radialNodes, edges: radialEdges)
         let forceWeb = [PyreonXYPosition(x: 325.65041151345395, y: 204.74888057371896), PyreonXYPosition(x: 162.85665358620253, y: 102.39421274116614), PyreonXYPosition(x: 0, y: 0)]
         check(zip(force, forceWeb).allSatisfy { abs($0.position.x - $1.x) < 1e-9 && abs($0.position.y - $1.y) < 1e-9 }, "force layout reproduces the seeded web coordinates")
+        let stress = pyreonFlowStressLayout(radialNodes, edges: radialEdges)
+        let stressWeb = [PyreonXYPosition(x: 138.23440571439633, y: 195.11390203079043), PyreonXYPosition(x: 58.86121415294381, y: 104.8239204520405), PyreonXYPosition(x: 0, y: 0)]
+        check(zip(stress, stressWeb).allSatisfy { abs($0.position.x - $1.x) < 1e-9 && abs($0.position.y - $1.y) < 1e-9 }, "stress layout reproduces the seeded web coordinates")
         let batched = seedFlow()
         batched.batch {
             batched.updateNodePosition("1", PyreonXYPosition(x: 10, y: 20))
