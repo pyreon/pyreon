@@ -182,8 +182,9 @@ fun <T> PyreonFlowView(
     background: PyreonFlowBackgroundStyle? = null,
     controls: PyreonFlowControlsStyle? = null,
     miniMap: PyreonFlowMiniMapStyle? = null,
+    nodeHandles: (PyreonFlowNode<T>) -> List<PyreonFlowHandleConfig> = { emptyList() },
     nodeContent: @Composable (PyreonFlowNode<T>) -> Unit,
-) = PyreonFlowView(state, modifier, edgeColor, edgeWidth, background, controls, miniMap) { node, _, _ -> nodeContent(node) }
+) = PyreonFlowView(state, modifier, edgeColor, edgeWidth, background, controls, miniMap, nodeHandles) { node, _, _ -> nodeContent(node) }
 
 @Composable
 fun <T> PyreonFlowView(
@@ -194,6 +195,7 @@ fun <T> PyreonFlowView(
     background: PyreonFlowBackgroundStyle? = null,
     controls: PyreonFlowControlsStyle? = null,
     miniMap: PyreonFlowMiniMapStyle? = null,
+    nodeHandles: (PyreonFlowNode<T>) -> List<PyreonFlowHandleConfig> = { emptyList() },
     nodeContent: @Composable (PyreonFlowNode<T>, Boolean, Boolean) -> Unit,
 ) {
     val density = LocalDensity.current
@@ -209,11 +211,11 @@ fun <T> PyreonFlowView(
             pyreonFlowInteractiveHandles(
                 node.id,
                 PyreonFlowNodeBox(absolute.x, absolute.y, node.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH, node.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT),
-                node.sourceHandles + node.targetHandles,
+                pyreonFlowEffectiveHandles(node, nodeHandles(node)),
             )
         }
     }
-    val edgeStrokes = pyreonFlowEdgeStrokes(state, edgeColor, edgeWidth).filter { !state.onlyRenderVisibleElements || pyreonFlowEdgeStrokeIsVisible(it, state) }.toMutableList().also { strokes ->
+    val edgeStrokes = pyreonFlowEdgeStrokes(state, edgeColor, edgeWidth, nodeHandles).filter { !state.onlyRenderVisibleElements || pyreonFlowEdgeStrokeIsVisible(it, state) }.toMutableList().also { strokes ->
         connectionDraft?.let { draft ->
             strokes += PyreonFlowEdgeStroke(
                 "__connection-preview",
@@ -308,7 +310,7 @@ fun <T> PyreonFlowView(
             },
         ) {
             val visibleEdgeIds = edgeStrokes.mapTo(mutableSetOf()) { it.id }
-            for (edge in pyreonFlowEdgeLabels(state).filter { visibleEdgeIds.contains(it.id) }) {
+            for (edge in pyreonFlowEdgeLabels(state, nodeHandles).filter { visibleEdgeIds.contains(it.id) }) {
                 var edgeModifier = Modifier
                     .offset { IntOffset(edge.x.roundToInt(), edge.y.roundToInt()) }
                     .clickable { state.selectEdge(edge.id); state.emitEdgeClick(edge.id) }

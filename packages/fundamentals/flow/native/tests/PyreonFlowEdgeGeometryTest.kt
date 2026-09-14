@@ -125,6 +125,8 @@ fun main() {
     check(pyreonResolveHandleAnchor(10.0, 20.0, 200.0, 80.0, "missing", "source", configHandles, measurement)?.x == 55.0, "unknown id falls back to the first measured handle")
     val interactive = pyreonFlowInteractiveHandles("n1", PyreonFlowNodeBox(10.0, 20.0, 200.0, 80.0), configHandles)
     check(interactive.single().x == 210.0 && interactive.single().y == 60.0, "interactive handle layout resolves graph coordinates")
+    val offsetHandle = pyreonFlowInteractiveHandles("n1", PyreonFlowNodeBox(10.0, 20.0, 200.0, 80.0), listOf(PyreonFlowHandleConfig("offset", "source", PyreonFlowPosition.Right, 75.0)))
+    check(offsetHandle.single().x == 210.0 && offsetHandle.single().y == 80.0, "interactive handles preserve the web offset percentage")
     val targetHandle = com.pyreon.runtime.PyreonFlowInteractiveHandle("n2", "in", "target", PyreonFlowPosition.Left, 240.0, 60.0)
     check(pyreonNearestFlowHandle(interactive + targetHandle, PyreonFlowPathPoint(244.0, 60.0), "target", 5.0)?.nodeId == "n2", "connection hit testing chooses the nearest matching handle")
     check(pyreonNearestFlowHandle(interactive + targetHandle, PyreonFlowPathPoint(246.0, 60.0), "target", 5.0) == null, "connection hit testing respects its graph-space radius")

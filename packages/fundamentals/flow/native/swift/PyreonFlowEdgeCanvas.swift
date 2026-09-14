@@ -19,7 +19,8 @@ public struct PyreonFlowHandleConfig: Equatable {
     public var id: String?
     public var type: String
     public var position: PyreonFlowPosition
-    public init(id: String? = nil, type: String, position: PyreonFlowPosition) { self.id = id; self.type = type; self.position = position }
+    public var offset: Double
+    public init(id: String? = nil, type: String, position: PyreonFlowPosition, offset: Double = 50) { self.id = id; self.type = type; self.position = position; self.offset = min(100, max(0, offset)) }
 }
 
 public struct PyreonFlowMeasuredHandle: Equatable {
@@ -95,7 +96,7 @@ public struct PyreonFlowInteractiveHandle: Equatable {
 
 public func pyreonFlowInteractiveHandles(nodeId: String, node: PyreonFlowRect, handles: [PyreonFlowHandleConfig]) -> [PyreonFlowInteractiveHandle] {
     handles.map { handle in
-        let point = pyreonHandlePosition(handle.position, nodeX: node.x, nodeY: node.y, nodeWidth: node.width, nodeHeight: node.height)
+        let point = pyreonHandlePosition(handle.position, nodeX: node.x, nodeY: node.y, nodeWidth: node.width, nodeHeight: node.height, offset: handle.offset)
         return PyreonFlowInteractiveHandle(nodeId: nodeId, handleId: handle.id, type: handle.type, position: handle.position, x: point.x, y: point.y)
     }
 }
@@ -107,12 +108,13 @@ public func pyreonNearestFlowHandle(_ handles: [PyreonFlowInteractiveHandle], po
         .min { hypot($0.x - point.x, $0.y - point.y) < hypot($1.x - point.x, $1.y - point.y) }
 }
 
-public func pyreonHandlePosition(_ position: PyreonFlowPosition, nodeX: Double, nodeY: Double, nodeWidth: Double, nodeHeight: Double) -> PyreonXYPosition {
+public func pyreonHandlePosition(_ position: PyreonFlowPosition, nodeX: Double, nodeY: Double, nodeWidth: Double, nodeHeight: Double, offset: Double = 50) -> PyreonXYPosition {
+    let ratio = min(100, max(0, offset)) / 100
     switch position {
-    case .top: return PyreonXYPosition(x: nodeX + nodeWidth / 2, y: nodeY)
-    case .right: return PyreonXYPosition(x: nodeX + nodeWidth, y: nodeY + nodeHeight / 2)
-    case .bottom: return PyreonXYPosition(x: nodeX + nodeWidth / 2, y: nodeY + nodeHeight)
-    case .left: return PyreonXYPosition(x: nodeX, y: nodeY + nodeHeight / 2)
+    case .top: return PyreonXYPosition(x: nodeX + nodeWidth * ratio, y: nodeY)
+    case .right: return PyreonXYPosition(x: nodeX + nodeWidth, y: nodeY + nodeHeight * ratio)
+    case .bottom: return PyreonXYPosition(x: nodeX + nodeWidth * ratio, y: nodeY + nodeHeight)
+    case .left: return PyreonXYPosition(x: nodeX, y: nodeY + nodeHeight * ratio)
     }
 }
 
@@ -154,13 +156,13 @@ public func pyreonResolveHandleAnchor(nodeX: Double, nodeY: Double, nodeWidth: D
             return PyreonFlowHandleAnchor(x: nodeX + handle.x, y: nodeY + handle.y, position: handle.position)
         }
         if let handle = config.first(where: { $0.id == handleId }) {
-            let point = pyreonHandlePosition(handle.position, nodeX: nodeX, nodeY: nodeY, nodeWidth: nodeWidth, nodeHeight: nodeHeight)
+            let point = pyreonHandlePosition(handle.position, nodeX: nodeX, nodeY: nodeY, nodeWidth: nodeWidth, nodeHeight: nodeHeight, offset: handle.offset)
             return PyreonFlowHandleAnchor(x: point.x, y: point.y, position: handle.position)
         }
     }
     if let handle = measured.first { return PyreonFlowHandleAnchor(x: nodeX + handle.x, y: nodeY + handle.y, position: handle.position) }
     if let handle = config.first {
-        let point = pyreonHandlePosition(handle.position, nodeX: nodeX, nodeY: nodeY, nodeWidth: nodeWidth, nodeHeight: nodeHeight)
+        let point = pyreonHandlePosition(handle.position, nodeX: nodeX, nodeY: nodeY, nodeWidth: nodeWidth, nodeHeight: nodeHeight, offset: handle.offset)
         return PyreonFlowHandleAnchor(x: point.x, y: point.y, position: handle.position)
     }
     return nil

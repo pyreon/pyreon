@@ -219,6 +219,31 @@ function canAliasIntercept(tag: string, expectedPkg: string): boolean {
 /** Component name → declared props, for `<Comp {...src} />` spread expansion.
  * Mirror of emit-swift's `_componentPropsMap`. */
 let _componentPropsMapKotlin: Map<string, { name: string; type: TypeIR }[]> = new Map()
+type StaticFlowHandle = { id?: string; type: string; position: string; offset?: number }
+let _flowComponentHandlesKotlin: Map<string, StaticFlowHandle[]> = new Map()
+let _flowComponentsWithInvalidHandlesKotlin: Set<string> = new Set()
+
+function collectStaticFlowHandlesKotlin(expr: ExprIR): { handles: StaticFlowHandle[]; invalid: boolean } {
+  if (expr.kind === 'jsx-fragment' || expr.kind === 'jsx-element') {
+    const nested = expr.children
+      .filter((child) => child.kind === 'expr')
+      .map((child) => collectStaticFlowHandlesKotlin(child.expr))
+    if (expr.kind === 'jsx-fragment' || expr.tag !== 'Handle') return { handles: nested.flatMap((entry) => entry.handles), invalid: nested.some((entry) => entry.invalid) }
+  } else return { handles: [], invalid: false }
+  const attr = (name: string) => expr.attrs.find((entry) => entry.kind === 'attr' && entry.name === name)
+  const literal = (name: string): string | number | undefined => {
+    const entry = attr(name)
+    if (entry?.kind !== 'attr') return undefined
+    if (entry.value.kind === 'literal' && (typeof entry.value.value === 'string' || typeof entry.value.value === 'number')) return entry.value.value
+    if (entry.value.kind === 'member' && entry.value.object.kind === 'identifier' && entry.value.object.name === 'Position') return entry.value.property.toLowerCase()
+    return undefined
+  }
+  const type = literal('type'), position = literal('position'), id = literal('id'), offset = literal('offset')
+  if (typeof type !== 'string' || typeof position !== 'string') {
+    return { handles: [], invalid: true }
+  }
+  return { handles: [{ ...(typeof id === 'string' ? { id } : {}), type, position, ...(typeof offset === 'number' ? { offset } : {}) }], invalid: false }
+}
 let _signalEnumTypes: Map<string, string> = new Map()
 let _activeEnumType: string | undefined
 
@@ -641,6 +666,13 @@ export function emitKotlin(
   // Build the user-component name set — mirror of emit-swift's logic.
   _componentNames = new Set(components.map((c) => c.name))
   _componentPropsMapKotlin = new Map(components.map((c) => [c.name, c.props]))
+  _flowComponentHandlesKotlin = new Map()
+  _flowComponentsWithInvalidHandlesKotlin = new Set()
+  for (const component of components) {
+    const result = collectStaticFlowHandlesKotlin(component.returnExpr)
+    _flowComponentHandlesKotlin.set(component.name, result.handles)
+    if (result.invalid) _flowComponentsWithInvalidHandlesKotlin.add(component.name)
+  }
   // Phase 3 — pre-pass: which components are layout parents (nested routes)?
   _layoutComponentNames = collectLayoutComponentNamesKotlin(components)
   // Pre-pass: register each component's `params` prop shape so router
@@ -3342,9 +3374,9 @@ function kotlinFlowNodeLiteral(arg: ExprIR, flowName: string): string | null {
   return `PyreonFlowNode(${parts.join(', ')})`
 }
 
-function kotlinFlowParsedHandles(handles: { id?: string; type: string; position: string }[]): string {
+function kotlinFlowParsedHandles(handles: StaticFlowHandle[]): string {
   const positionName = (position: string) => position[0]!.toUpperCase() + position.slice(1)
-  return `listOf(${handles.map((h) => `PyreonFlowHandleConfig(${h.id === undefined ? '' : `id = ${JSON.stringify(h.id)}, `}type = ${JSON.stringify(h.type)}, position = PyreonFlowPosition.${positionName(h.position)})`).join(', ')})`
+  return `listOf(${handles.map((h) => `PyreonFlowHandleConfig(${h.id === undefined ? '' : `id = ${JSON.stringify(h.id)}, `}type = ${JSON.stringify(h.type)}, position = PyreonFlowPosition.${positionName(h.position)}${'offset' in h && typeof h.offset === 'number' ? `, offset = ${ktChartDouble(String(h.offset))}` : ''})`).join(', ')})`
 }
 
 function kotlinFlowMarker(marker: { type: string; color?: string; width?: number; height?: number; strokeWidth?: number }): string {
@@ -6803,6 +6835,7 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (tag === 'Press') return emitKotlinPress(e, indent)
   if (tag === 'Field') return emitKotlinField(e, indent)
   if (tag === 'Toggle') return emitKotlinToggle(e, indent)
+  if (tag === 'Handle') return 'Box {}'
   // `<RouterLink>` from @pyreon/router is the SAME concept as `<Link>` and
   // carries the same `to` prop, but it had no dispatch entry — so it fell
   // through to the unknown-tag path and emitted `RouterLink(to:)` verbatim, a
@@ -6843,6 +6876,9 @@ function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string
   if (nodeTypesAttr !== undefined && nodeTypes === undefined) {
     _emitWarnings.push('<Flow nodeTypes={…}> must be a literal { type: Component } map to lower natively; the native default node renderer is used.')
   }
+  for (const entry of nodeTypes ?? []) {
+    if (_flowComponentsWithInvalidHandlesKotlin.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <Handle> requires literal \`type\` and \`position\` props for native extraction; the dynamic handle was not attached to the node.`)
+  }
   if (e.attrs.some((a) => a.kind === 'attr' && a.name === 'edgeTypes')) {
     _emitWarnings.push('<Flow edgeTypes={…}> custom edge renderer maps are not lowered natively yet; the native default edge renderer is used.')
   }
@@ -6866,6 +6902,13 @@ function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string
   const bgArg = background?.kind === 'jsx-element' ? `, background = ${emitKotlinFlowBackground(background)}` : ''
   const controlsArg = controls?.kind === 'jsx-element' ? `, controls = ${emitKotlinFlowControls(controls)}` : ''
   const miniMapArg = miniMap?.kind === 'jsx-element' ? `, miniMap = ${emitKotlinFlowMiniMap(miniMap)}` : ''
+  const handleCases = nodeTypes?.flatMap(({ type, component }) => {
+    const handles = _flowComponentHandlesKotlin.get(component) ?? []
+    return handles.length > 0 ? [`${JSON.stringify(type)} -> ${kotlinFlowParsedHandles(handles)}`] : []
+  }) ?? []
+  const nodeHandlesArg = handleCases.length > 0
+    ? `, nodeHandles = { pyreonNode ->\n    when (pyreonNode.type) {\n      ${handleCases.join('\n      ')}\n      else -> emptyList()\n    }\n  }`
+    : ''
   const nodeText = attr.value.kind === 'identifier' && _flowStateLabelNamesKt.has(attr.value.name)
     ? 'Text(text = pyreonNode.data.label.toString())'
     : 'Text(text = pyreonNode.id)'
@@ -6873,7 +6916,7 @@ function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string
     ? `when (pyreonNode.type) {\n${nodeTypes.map(({ type, component }) => `    ${JSON.stringify(type)} -> ${kotlinIdent(component)}(id = pyreonNode.id, data = { pyreonNode.data }, selected = { pyreonSelected }, dragging = { pyreonDragging })`).join('\n')}\n    else -> ${nodeText}\n  }`
     : nodeText
   const rendererParams = nodeTypes && nodeTypes.length > 0 ? 'pyreonNode, pyreonSelected, pyreonDragging' : 'pyreonNode'
-  const host = `PyreonFlowView(state = ${emitKotlinExpr(attr.value, 0)}${bgArg}${controlsArg}${miniMapArg}) { ${rendererParams} ->\n  ${renderer}\n}`
+  const host = `PyreonFlowView(state = ${emitKotlinExpr(attr.value, 0)}${bgArg}${controlsArg}${miniMapArg}${nodeHandlesArg}) { ${rendererParams} ->\n  ${renderer}\n}`
   if (panels.length === 0) return host
   const overlays = panels.map((panel) => {
     const position = readStaticAttrKotlin(panel, 'position')

@@ -259,6 +259,49 @@ describe('<Flow> native host lowering', () => {
     }
   })
 
+  it('extracts custom-node Handle declarations into interactive native handle geometry', () => {
+    const handled = `
+      import { createFlow, Flow, Handle, Position, type NodeComponentProps } from '@pyreon/flow'
+      import { Stack, Text } from '@pyreon/primitives'
+      interface NodeData { label: string }
+      function CustomNode(props: NodeComponentProps<NodeData>) {
+        return <Stack><Handle type="target" position={Position.Left} /><Text>{props.data().label}</Text><Handle id="out" type="source" position={Position.Right} offset={75} /></Stack>
+      }
+      export function App() {
+        const flow = createFlow<NodeData>({ nodes: [{ id: 'a', type: 'custom', position: { x: 0, y: 0 }, data: { label: 'Start' } }], edges: [] })
+        return <Flow instance={flow} nodeTypes={{ custom: CustomNode }} />
+      }
+    `
+    const swift = transform(handled, { target: 'swift' })
+    const kotlin = transform(handled, { target: 'kotlin' })
+    expect(swift.code).toContain('nodeHandles: { pyreonNode in')
+    expect(swift.code).toContain('case "custom": return [PyreonFlowHandleConfig(type: "target", position: .left), PyreonFlowHandleConfig(id: "out", type: "source", position: .right, offset: 75)]')
+    expect(kotlin.code).toContain('nodeHandles = { pyreonNode ->')
+    expect(kotlin.code).toContain('"custom" -> listOf(PyreonFlowHandleConfig(type = "target", position = PyreonFlowPosition.Left), PyreonFlowHandleConfig(id = "out", type = "source", position = PyreonFlowPosition.Right, offset = 75.0))')
+    expect(swift.warnings.join(' ')).not.toContain('Handle (from @pyreon/flow)')
+    expect(kotlin.warnings.join(' ')).not.toContain('Handle (from @pyreon/flow)')
+    if (isSwiftcAvailable()) expect(validateSwiftWithStubs(swift.code).ok).toBe(true)
+    if (isKotlincAvailable()) expect(validateKotlin(kotlin.code).ok).toBe(true)
+  })
+
+  it('names dynamic Handle extraction only when the component is registered as a node type', () => {
+    const source = `
+      import { createFlow, Flow, Handle, type NodeComponentProps } from '@pyreon/flow'
+      import { Stack } from '@pyreon/primitives'
+      function DynamicNode(props: NodeComponentProps<{ label: string }>) { return <Stack><Handle type="source" position={props.data().label} /></Stack> }
+      function UnusedNode(props: NodeComponentProps<{ label: string }>) { return <Stack><Handle type="target" position={props.data().label} /></Stack> }
+      export function App() {
+        const flow = createFlow({ nodes: [{ id: 'a', type: 'dynamic', position: { x: 0, y: 0 }, data: { label: 'right' } }], edges: [] })
+        return <Flow instance={flow} nodeTypes={{ dynamic: DynamicNode }} />
+      }
+    `
+    for (const target of ['swift', 'kotlin'] as const) {
+      const warnings = transform(source, { target }).warnings.join(' ')
+      expect(warnings).toContain('component `DynamicNode`')
+      expect(warnings).not.toContain('component `UnusedNode`')
+    }
+  })
+
   it('emits the Compose host instead of an unresolved web component', () => {
     const result = transform(source, { target: 'kotlin' })
     expect(result.code).toContain('PyreonFlowView(state = flow) { pyreonNode ->')
@@ -577,7 +620,7 @@ describe('createFlow — v1 decline shapes (loud warning, not silent drop)', () 
   // clamped zoom to 2x on web and 4x natively from the same source line —
   // compiles, runs, silently wrong on one target.
   describe('config keys beyond nodes/edges', () => {
-    const cfg = (extra: string) => `
+    const cfg = (extra: string, child = '') => `
       import { createFlow } from '@pyreon/flow'
       import { Text } from '${P}'
       export function X() {
@@ -586,7 +629,7 @@ describe('createFlow — v1 decline shapes (loud warning, not silent drop)', () 
           edges: [],
           ${extra}
         })
-        return <Text>{flow.zoom()}</Text>
+        return <><Text>{flow.zoom()}</Text>${child}</>
       }
     `
 

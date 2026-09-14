@@ -33,6 +33,16 @@ public struct PyreonFlowMiniMapStyle: Equatable {
     }
 }
 
+/// Explicit node-model handles win per endpoint type. Handles extracted from
+/// a custom `<Handle>` renderer fill only a missing source/target side, so a
+/// shared component and an explicit model config never produce duplicate dots.
+public func pyreonFlowEffectiveHandles<T>(_ node: PyreonFlowNode<T>, _ rendered: [PyreonFlowHandleConfig]) -> [PyreonFlowHandleConfig] {
+    var result = node.sourceHandles + node.targetHandles
+    if node.sourceHandles.isEmpty { result.append(contentsOf: rendered.filter { $0.type == "source" }) }
+    if node.targetHandles.isEmpty { result.append(contentsOf: rendered.filter { $0.type == "target" }) }
+    return result
+}
+
 private struct PyreonFlowConnectionDraft: Equatable {
     var source: PyreonFlowInteractiveHandle
     var current: PyreonXYPosition
@@ -224,7 +234,8 @@ public struct PyreonFlowBackground: View, Equatable {
 public func pyreonFlowEdgeStrokes<T>(
     state: PyreonFlowState<T>,
     color: String = "#999999",
-    width: Double = 1.5
+    width: Double = 1.5,
+    nodeHandles: (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] }
 ) -> [PyreonFlowEdgeStroke] {
     var nodes: [String: PyreonFlowNode<T>] = [:]
     for node in state.nodes where node.hidden != true { nodes[node.id] = node }
@@ -251,8 +262,8 @@ public func pyreonFlowEdgeStrokes<T>(
                 height: target.height ?? pyreonFlowDefaultNodeHeight),
             sourceHandleId: edge.sourceHandle,
             targetHandleId: edge.targetHandle,
-            sourceHandles: source.sourceHandles,
-            targetHandles: target.targetHandles,
+            sourceHandles: pyreonFlowEffectiveHandles(source, nodeHandles(source)),
+            targetHandles: pyreonFlowEffectiveHandles(target, nodeHandles(target)),
             waypoints: edge.waypoints,
             borderRadius: edge.borderRadius ?? 5,
             offset: edge.pathOffset ?? 20,
@@ -268,7 +279,7 @@ public func pyreonFlowEdgeStrokes<T>(
 }
 
 @available(iOS 17.0, macOS 14.0, *)
-public func pyreonFlowEdgeLabels<T>(state: PyreonFlowState<T>) -> [PyreonFlowEdgeLabel] {
+public func pyreonFlowEdgeLabels<T>(state: PyreonFlowState<T>, nodeHandles: (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] }) -> [PyreonFlowEdgeLabel] {
     let nodes = Dictionary(uniqueKeysWithValues: state.nodes.filter { $0.hidden != true }.map { ($0.id, $0) })
     return state.edges.compactMap { edge in
         guard edge.hidden != true, let source = nodes[edge.source], let target = nodes[edge.target] else { return nil }
@@ -278,7 +289,7 @@ public func pyreonFlowEdgeLabels<T>(state: PyreonFlowState<T>) -> [PyreonFlowEdg
             source: PyreonFlowRect(x: sp.x, y: sp.y, width: source.width ?? pyreonFlowDefaultNodeWidth, height: source.height ?? pyreonFlowDefaultNodeHeight),
             target: PyreonFlowRect(x: tp.x, y: tp.y, width: target.width ?? pyreonFlowDefaultNodeWidth, height: target.height ?? pyreonFlowDefaultNodeHeight),
             sourceHandleId: edge.sourceHandle, targetHandleId: edge.targetHandle,
-            sourceHandles: source.sourceHandles, targetHandles: target.targetHandles,
+            sourceHandles: pyreonFlowEffectiveHandles(source, nodeHandles(source)), targetHandles: pyreonFlowEffectiveHandles(target, nodeHandles(target)),
             waypoints: edge.waypoints,
             borderRadius: edge.borderRadius ?? 5,
             offset: edge.pathOffset ?? 20,
@@ -346,6 +357,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private let background: PyreonFlowBackgroundStyle?
     private let controls: PyreonFlowControlsStyle?
     private let miniMap: PyreonFlowMiniMapStyle?
+    private let nodeHandles: (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig]
     private let nodeContent: (PyreonFlowNode<T>, Bool, Bool) -> NodeContent
 
     @State private var nodeDragStart: [String: PyreonXYPosition] = [:]
@@ -365,6 +377,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         background: PyreonFlowBackgroundStyle? = nil,
         controls: PyreonFlowControlsStyle? = nil,
         miniMap: PyreonFlowMiniMapStyle? = nil,
+        nodeHandles: @escaping (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] },
         @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>) -> NodeContent
     ) {
         self.state = state
@@ -373,6 +386,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         self.background = background
         self.controls = controls
         self.miniMap = miniMap
+        self.nodeHandles = nodeHandles
         self.nodeContent = { node, _, _ in nodeContent(node) }
     }
 
@@ -383,6 +397,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         background: PyreonFlowBackgroundStyle? = nil,
         controls: PyreonFlowControlsStyle? = nil,
         miniMap: PyreonFlowMiniMapStyle? = nil,
+        nodeHandles: @escaping (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] },
         @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>, Bool, Bool) -> NodeContent
     ) {
         self.state = state
@@ -391,6 +406,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         self.background = background
         self.controls = controls
         self.miniMap = miniMap
+        self.nodeHandles = nodeHandles
         self.nodeContent = nodeContent
     }
 
@@ -417,7 +433,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                     .allowsHitTesting(false)
 
                 ZStack(alignment: .topLeading) {
-                    ForEach(pyreonFlowEdgeLabels(state: state).filter { visibleEdgeIds.contains($0.id) }) { edge in
+                    ForEach(pyreonFlowEdgeLabels(state: state, nodeHandles: nodeHandles).filter { visibleEdgeIds.contains($0.id) }) { edge in
                         Text(edge.text ?? "")
                             .font(.system(size: 12))
                             .padding(edge.text == nil ? 8 : 3)
@@ -520,12 +536,12 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             guard node.hidden != true, node.connectable ?? state.nodesConnectable else { return [] }
             let p = state.getAbsolutePosition(node.id)
             let box = PyreonFlowRect(x: p.x, y: p.y, width: node.width ?? pyreonFlowDefaultNodeWidth, height: node.height ?? pyreonFlowDefaultNodeHeight)
-            return pyreonFlowInteractiveHandles(nodeId: node.id, node: box, handles: node.sourceHandles + node.targetHandles)
+            return pyreonFlowInteractiveHandles(nodeId: node.id, node: box, handles: pyreonFlowEffectiveHandles(node, nodeHandles(node)))
         }
     }
 
     private var edgeStrokes: [PyreonFlowEdgeStroke] {
-        var strokes = pyreonFlowEdgeStrokes(state: state, color: edgeColor, width: edgeWidth)
+        var strokes = pyreonFlowEdgeStrokes(state: state, color: edgeColor, width: edgeWidth, nodeHandles: nodeHandles)
         if state.onlyRenderVisibleElements { strokes = strokes.filter { pyreonFlowEdgeStrokeIsVisible($0, state: state) } }
         if let draft = connectionDraft {
             strokes.append(PyreonFlowEdgeStroke(id: "__connection-preview", segments: pyreonFlowConnectionPreview(type: state.connectionLineType, source: draft.source, target: draft.current), color: edgeColor, width: edgeWidth))

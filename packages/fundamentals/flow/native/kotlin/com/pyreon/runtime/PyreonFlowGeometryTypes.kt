@@ -8,6 +8,7 @@ data class PyreonFlowHandleConfig(
     val id: String? = null,
     val type: String,
     val position: PyreonFlowPosition,
+    val offset: Double = 50.0,
 )
 
 data class PyreonFlowMeasuredHandle(

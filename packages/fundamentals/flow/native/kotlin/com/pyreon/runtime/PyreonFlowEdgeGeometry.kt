@@ -37,11 +37,11 @@ data class PyreonFlowNodeBox(val x: Double, val y: Double, val width: Double, va
 data class PyreonFlowHandleAnchor(val x: Double, val y: Double, val position: PyreonFlowPosition)
 data class PyreonFlowFloatingEndpoints(val source: PyreonFlowHandleAnchor, val target: PyreonFlowHandleAnchor)
 
-fun pyreonHandlePosition(position: PyreonFlowPosition, nodeX: Double, nodeY: Double, nodeWidth: Double, nodeHeight: Double): PyreonFlowPathPoint = when (position) {
-    PyreonFlowPosition.Top -> PyreonFlowPathPoint(nodeX + nodeWidth / 2, nodeY)
-    PyreonFlowPosition.Right -> PyreonFlowPathPoint(nodeX + nodeWidth, nodeY + nodeHeight / 2)
-    PyreonFlowPosition.Bottom -> PyreonFlowPathPoint(nodeX + nodeWidth / 2, nodeY + nodeHeight)
-    PyreonFlowPosition.Left -> PyreonFlowPathPoint(nodeX, nodeY + nodeHeight / 2)
+fun pyreonHandlePosition(position: PyreonFlowPosition, nodeX: Double, nodeY: Double, nodeWidth: Double, nodeHeight: Double, offset: Double = 50.0): PyreonFlowPathPoint = when (position) {
+    PyreonFlowPosition.Top -> PyreonFlowPathPoint(nodeX + nodeWidth * offset.coerceIn(0.0, 100.0) / 100.0, nodeY)
+    PyreonFlowPosition.Right -> PyreonFlowPathPoint(nodeX + nodeWidth, nodeY + nodeHeight * offset.coerceIn(0.0, 100.0) / 100.0)
+    PyreonFlowPosition.Bottom -> PyreonFlowPathPoint(nodeX + nodeWidth * offset.coerceIn(0.0, 100.0) / 100.0, nodeY + nodeHeight)
+    PyreonFlowPosition.Left -> PyreonFlowPathPoint(nodeX, nodeY + nodeHeight * offset.coerceIn(0.0, 100.0) / 100.0)
 }
 
 fun pyreonNodeIntersection(box: PyreonFlowNodeBox, toward: PyreonFlowPathPoint): PyreonFlowPathPoint {
@@ -79,13 +79,13 @@ fun pyreonResolveHandleAnchor(nodeX: Double, nodeY: Double, nodeWidth: Double, n
     if (handleId != null) {
         measured.firstOrNull { it.id == handleId }?.let { return PyreonFlowHandleAnchor(nodeX + it.x, nodeY + it.y, it.position) }
         config.firstOrNull { it.id == handleId }?.let {
-            val point = pyreonHandlePosition(it.position, nodeX, nodeY, nodeWidth, nodeHeight)
+            val point = pyreonHandlePosition(it.position, nodeX, nodeY, nodeWidth, nodeHeight, it.offset)
             return PyreonFlowHandleAnchor(point.x, point.y, it.position)
         }
     }
     measured.firstOrNull()?.let { return PyreonFlowHandleAnchor(nodeX + it.x, nodeY + it.y, it.position) }
     config.firstOrNull()?.let {
-        val point = pyreonHandlePosition(it.position, nodeX, nodeY, nodeWidth, nodeHeight)
+        val point = pyreonHandlePosition(it.position, nodeX, nodeY, nodeWidth, nodeHeight, it.offset)
         return PyreonFlowHandleAnchor(point.x, point.y, it.position)
     }
     return null
@@ -93,7 +93,7 @@ fun pyreonResolveHandleAnchor(nodeX: Double, nodeY: Double, nodeWidth: Double, n
 
 fun pyreonFlowInteractiveHandles(nodeId: String, node: PyreonFlowNodeBox, handles: List<PyreonFlowHandleConfig>): List<PyreonFlowInteractiveHandle> =
     handles.map { handle ->
-        val point = pyreonHandlePosition(handle.position, node.x, node.y, node.width, node.height)
+        val point = pyreonHandlePosition(handle.position, node.x, node.y, node.width, node.height, handle.offset)
         PyreonFlowInteractiveHandle(nodeId, handle.id, handle.type, handle.position, point.x, point.y)
     }
 

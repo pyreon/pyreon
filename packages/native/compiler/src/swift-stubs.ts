@@ -1019,7 +1019,7 @@ public func pyreonWaypointPath(sourceX: Double, sourceY: Double, targetX: Double
 public func pyreonSmoothStepPath(sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition = .bottom, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition = .top, borderRadius: Double = 5, offset: Double = 20) -> PyreonFlowPathResult { PyreonFlowPathResult() }
 public func pyreonStepPath(sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition = .bottom, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition = .top, offset: Double = 20) -> PyreonFlowPathResult { PyreonFlowPathResult() }
 public func pyreonEdgePath(type: String, sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition, borderRadius: Double = 5, offset: Double = 20, curvature: Double = 0.25) -> PyreonFlowPathResult { PyreonFlowPathResult() }
-public func pyreonHandlePosition(_ position: PyreonFlowPosition, nodeX: Double, nodeY: Double, nodeWidth: Double, nodeHeight: Double) -> PyreonXYPosition { PyreonXYPosition(x: nodeX, y: nodeY) }
+public func pyreonHandlePosition(_ position: PyreonFlowPosition, nodeX: Double, nodeY: Double, nodeWidth: Double, nodeHeight: Double, offset: Double = 50) -> PyreonXYPosition { PyreonXYPosition(x: nodeX, y: nodeY) }
 public struct PyreonFlowRect { public init(x: Double, y: Double, width: Double, height: Double) {} }
 public func pyreonNodeIntersection(_ box: PyreonFlowRect, toward: PyreonXYPosition) -> PyreonXYPosition { toward }
 public struct PyreonFlowNodeBoxDimensions { public init(sourceW: Double, sourceH: Double, targetW: Double, targetH: Double) {} }
@@ -1027,7 +1027,7 @@ public struct PyreonFlowHandleAnchor { public var x: Double = 0; public var y: D
 public struct PyreonFlowFloatingEndpoints { public var source: PyreonFlowHandleAnchor = PyreonFlowHandleAnchor(); public var target: PyreonFlowHandleAnchor = PyreonFlowHandleAnchor() }
 public struct PyreonFlowSmartPositions { public var sourcePosition: PyreonFlowPosition = .bottom; public var targetPosition: PyreonFlowPosition = .top }
 public struct PyreonFlowHandleConfig: Equatable {
-  public init(id: String? = nil, type: String, position: PyreonFlowPosition) {}
+  public init(id: String? = nil, type: String, position: PyreonFlowPosition, offset: Double = 50) {}
 }
 public struct PyreonFlowMarker: Equatable {
   public init(type: String, color: String? = nil, width: Double = 10, height: Double = 7, strokeWidth: Double = 1) {}
@@ -1282,8 +1282,8 @@ public struct PyreonFlowMiniMapStyle {
 }
 @available(iOS 17.0, macOS 14.0, *)
 public struct PyreonFlowView<T, NodeContent: View>: View {
-  public init(state: PyreonFlowState<T>, edgeColor: String = "#999999", edgeWidth: Double = 1.5, background: PyreonFlowBackgroundStyle? = nil, controls: PyreonFlowControlsStyle? = nil, miniMap: PyreonFlowMiniMapStyle? = nil, @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>) -> NodeContent) {}
-  public init(state: PyreonFlowState<T>, edgeColor: String = "#999999", edgeWidth: Double = 1.5, background: PyreonFlowBackgroundStyle? = nil, controls: PyreonFlowControlsStyle? = nil, miniMap: PyreonFlowMiniMapStyle? = nil, @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>, Bool, Bool) -> NodeContent) {}
+  public init(state: PyreonFlowState<T>, edgeColor: String = "#999999", edgeWidth: Double = 1.5, background: PyreonFlowBackgroundStyle? = nil, controls: PyreonFlowControlsStyle? = nil, miniMap: PyreonFlowMiniMapStyle? = nil, nodeHandles: @escaping (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] }, @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>) -> NodeContent) {}
+  public init(state: PyreonFlowState<T>, edgeColor: String = "#999999", edgeWidth: Double = 1.5, background: PyreonFlowBackgroundStyle? = nil, controls: PyreonFlowControlsStyle? = nil, miniMap: PyreonFlowMiniMapStyle? = nil, nodeHandles: @escaping (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] }, @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>, Bool, Bool) -> NodeContent) {}
   public var body: some View { EmptyView() }
 }
 public struct PyreonI18n {

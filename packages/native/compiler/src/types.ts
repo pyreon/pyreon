@@ -932,8 +932,8 @@ export type DeclIR =
         parentId?: string
         expandParent?: boolean
         group?: boolean
-        sourceHandles?: { id?: string; type: string; position: string }[]
-        targetHandles?: { id?: string; type: string; position: string }[]
+        sourceHandles?: { id?: string; type: string; position: string; offset?: number }[]
+        targetHandles?: { id?: string; type: string; position: string; offset?: number }[]
       }[]
       edges: {
         id: string

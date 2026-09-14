@@ -655,6 +655,13 @@ struct PyreonFlowStateTests {
         check(pyreonResolveHandleAnchor(nodeX: 10, nodeY: 20, nodeWidth: 200, nodeHeight: 80, handleId: "missing", type: "source", config: configHandles, measurement: measurement)?.x == 55, "unknown id falls back to the first measured handle")
         let interactive = pyreonFlowInteractiveHandles(nodeId: "n1", node: PyreonFlowRect(x: 10, y: 20, width: 200, height: 80), handles: configHandles)
         check(interactive == [PyreonFlowInteractiveHandle(nodeId: "n1", handleId: "cfg", type: "source", position: .right, x: 210, y: 60)], "interactive handle layout resolves graph coordinates")
+        let offsetHandle = pyreonFlowInteractiveHandles(nodeId: "n1", node: PyreonFlowRect(x: 10, y: 20, width: 200, height: 80), handles: [PyreonFlowHandleConfig(id: "offset", type: "source", position: .right, offset: 75)])
+        check(offsetHandle.first?.x == 210 && offsetHandle.first?.y == 80 && offsetHandle.count == 1, "interactive handles preserve the web offset percentage")
+        let renderedHandles = [PyreonFlowHandleConfig(id: "out", type: "source", position: .right), PyreonFlowHandleConfig(id: "in", type: "target", position: .left)]
+        let inferredNode = PyreonFlowNode(id: "inferred", position: PyreonXYPosition(x: 0, y: 0), data: "Inferred")
+        check(pyreonFlowEffectiveHandles(inferredNode, renderedHandles) == renderedHandles, "renderer handles fill missing endpoint types")
+        let explicitNode = PyreonFlowNode(id: "explicit", position: PyreonXYPosition(x: 0, y: 0), data: "Explicit", sourceHandles: [PyreonFlowHandleConfig(id: "model", type: "source", position: .top)])
+        check(pyreonFlowEffectiveHandles(explicitNode, renderedHandles).compactMap(\.id) == ["model", "in"], "explicit model handles win per endpoint type without duplicates")
         let candidates = interactive + [PyreonFlowInteractiveHandle(nodeId: "n2", handleId: "in", type: "target", position: .left, x: 240, y: 60)]
         check(pyreonNearestFlowHandle(candidates, point: PyreonXYPosition(x: 244, y: 60), type: "target", radius: 5)?.nodeId == "n2", "connection hit testing chooses the nearest matching handle")
         check(pyreonNearestFlowHandle(candidates, point: PyreonXYPosition(x: 246, y: 60), type: "target", radius: 5) == nil, "connection hit testing respects its graph-space radius")

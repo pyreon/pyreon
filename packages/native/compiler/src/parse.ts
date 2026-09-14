@@ -2632,7 +2632,7 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
     {
       // `createFlow` lowers (PyreonFlowState — CRUD/selection/viewport/graph
       // queries), and `<Flow>` lowers to the native interactive host. Optional
-      // chrome (Handle/NodeToolbar/NodeResizer/Panel) is
+      // chrome (NodeToolbar/NodeResizer) is
       // SVG/DOM rendering + pointer-event gesture handling with NO native
       // emit AT ALL. Without this entry those names emitted VERBATIM as if
       // they were real SwiftUI/Compose types — `Flow(instance: flow) {
@@ -2642,8 +2642,8 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
       // lowered right above it). The five public edge-path builders lower to
       // the same native geometry used by the Flow canvas.
       advice:
-        '`createFlow({ nodes, edges })`, `useFlow({ nodes, edges })`, `computeLayout(...)`, the five edge-path builders, literal `<Flow nodeTypes={{ type: Component }}>`, `<Background>`, `<Controls>`, `<MiniMap>`, and `<Panel>` LOWER to the native PyreonFlowState/PyreonFlowView engine. Handle/NodeToolbar/NodeResizer and custom edge renderer maps still have no shared-source native emit; keep those behind platform branches or use the `@pyreon/flow/webview` bridge',
-      supported: new Set(['createFlow', 'useFlow', 'computeLayout', 'getBezierPath', 'getSmoothStepPath', 'getStepPath', 'getStraightPath', 'getWaypointPath', 'getEdgePath', 'getHandlePosition', 'getNodeIntersection', 'getEffectiveDimensions', 'getFloatingEndpoints', 'getSmartHandlePositions', 'resolveHandleAnchor', 'DEFAULT_NODE_WIDTH', 'DEFAULT_NODE_HEIGHT', 'Position', 'Flow', 'Background', 'Controls', 'MiniMap', 'Panel']),
+        '`createFlow({ nodes, edges })`, `useFlow({ nodes, edges })`, `computeLayout(...)`, the edge-path builders, literal `<Flow nodeTypes={{ type: Component }}>`, static `<Handle>` declarations inside those custom nodes, `<Background>`, `<Controls>`, `<MiniMap>`, and `<Panel>` LOWER to the native PyreonFlowState/PyreonFlowView engine. NodeToolbar/NodeResizer and custom edge renderer maps still have no shared-source native emit; keep those behind platform branches or use the `@pyreon/flow/webview` bridge',
+      supported: new Set(['createFlow', 'useFlow', 'computeLayout', 'getBezierPath', 'getSmoothStepPath', 'getStepPath', 'getStraightPath', 'getWaypointPath', 'getEdgePath', 'getHandlePosition', 'getNodeIntersection', 'getEffectiveDimensions', 'getFloatingEndpoints', 'getSmartHandlePositions', 'resolveHandleAnchor', 'DEFAULT_NODE_WIDTH', 'DEFAULT_NODE_HEIGHT', 'Position', 'Flow', 'Background', 'Controls', 'MiniMap', 'Panel', 'Handle']),
     },
   ],
   [
@@ -9062,9 +9062,9 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     }
     return undefined
   }
-  const literalHandles = (n: AnyNode | undefined): { id?: string; type: string; position: string }[] | undefined => {
+  const literalHandles = (n: AnyNode | undefined): { id?: string; type: string; position: string; offset?: number }[] | undefined => {
     if (!n || n.type !== 'ArrayExpression') return undefined
-    const out: { id?: string; type: string; position: string }[] = []
+    const out: { id?: string; type: string; position: string; offset?: number }[] = []
     for (const raw of (n.elements as AnyNode[] | undefined) ?? []) {
       const item = unwrapTypeLayers(raw)
       if (!item || item.type !== 'ObjectExpression') return undefined
@@ -9072,8 +9072,10 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       const position = literalFlowPosition(objProp(item, 'position'))
       const idNode = objProp(item, 'id')
       const id = literalString(idNode)
-      if (!type || !position || (idNode && id === undefined)) return undefined
-      out.push({ type, position, ...(id !== undefined ? { id } : {}) })
+      const offsetNode = objProp(item, 'offset')
+      const offset = literalNumber(offsetNode)
+      if (!type || !position || (idNode && id === undefined) || (offsetNode && offset === undefined)) return undefined
+      out.push({ type, position, ...(id !== undefined ? { id } : {}), ...(offset !== undefined ? { offset } : {}) })
     }
     return out
   }
@@ -9123,8 +9125,8 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     parentId?: string
     expandParent?: boolean
     group?: boolean
-    sourceHandles?: { id?: string; type: string; position: string }[]
-    targetHandles?: { id?: string; type: string; position: string }[]
+    sourceHandles?: { id?: string; type: string; position: string; offset?: number }[]
+    targetHandles?: { id?: string; type: string; position: string; offset?: number }[]
   }[] = []
   const edgesOut: {
     id: string
@@ -9491,7 +9493,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     ...(connectionRadius !== undefined ? { connectionRadius } : {}),
     ...(defaultEdgeType !== undefined ? { defaultEdgeType } : {}),
     ...(connectionLineType !== undefined ? { connectionLineType } : {}),
-    ...(['partial', 'full'].includes(selectionMode ?? '') ? { selectionMode } : {}),
+    ...(['partial', 'full'].includes(selectionMode ?? '') ? { selectionMode: selectionMode! } : {}),
     ...(defaultEdgeOptions !== undefined && defaultEdgeOptions !== null ? { defaultEdgeOptions } : {}),
     ...(fitView !== undefined ? { fitView } : {}),
     ...(fitViewPadding !== undefined ? { fitViewPadding } : {}),

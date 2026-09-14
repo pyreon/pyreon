@@ -220,6 +220,31 @@ function canAliasIntercept(tag: string, expectedPkg: string): boolean {
 /** Component name → its declared props, for expanding `<Comp {...src} />`
  * spread attrs into per-prop constructor args. Built in the emitSwift pre-pass. */
 let _componentPropsMap: Map<string, { name: string; type: TypeIR }[]> = new Map()
+type StaticFlowHandle = { id?: string; type: string; position: string; offset?: number }
+let _flowComponentHandles: Map<string, StaticFlowHandle[]> = new Map()
+let _flowComponentsWithInvalidHandles: Set<string> = new Set()
+
+function collectStaticFlowHandles(expr: ExprIR): { handles: StaticFlowHandle[]; invalid: boolean } {
+  if (expr.kind === 'jsx-fragment' || expr.kind === 'jsx-element') {
+    const nested = expr.children
+      .filter((child) => child.kind === 'expr')
+      .map((child) => collectStaticFlowHandles(child.expr))
+    if (expr.kind === 'jsx-fragment' || expr.tag !== 'Handle') return { handles: nested.flatMap((entry) => entry.handles), invalid: nested.some((entry) => entry.invalid) }
+  } else return { handles: [], invalid: false }
+  const attr = (name: string) => expr.attrs.find((entry) => entry.kind === 'attr' && entry.name === name)
+  const literal = (name: string): string | number | undefined => {
+    const entry = attr(name)
+    if (entry?.kind !== 'attr') return undefined
+    if (entry.value.kind === 'literal' && (typeof entry.value.value === 'string' || typeof entry.value.value === 'number')) return entry.value.value
+    if (entry.value.kind === 'member' && entry.value.object.kind === 'identifier' && entry.value.object.name === 'Position') return entry.value.property.toLowerCase()
+    return undefined
+  }
+  const type = literal('type'), position = literal('position'), id = literal('id'), offset = literal('offset')
+  if (typeof type !== 'string' || typeof position !== 'string') {
+    return { handles: [], invalid: true }
+  }
+  return { handles: [{ ...(typeof id === 'string' ? { id } : {}), type, position, ...(typeof offset === 'number' ? { offset } : {}) }], invalid: false }
+}
 /**
  * Struct name → sorted-field-names key. Phase 2 follow-up to the
  * struct-emit PR. Used by the object-expression emit to detect when
@@ -1084,6 +1109,13 @@ export function emitSwift(
   }
   _componentNames = new Set(components.map((c) => c.name))
   _componentPropsMap = new Map(components.map((c) => [c.name, c.props]))
+  _flowComponentHandles = new Map()
+  _flowComponentsWithInvalidHandles = new Set()
+  for (const component of components) {
+    const result = collectStaticFlowHandles(component.returnExpr)
+    _flowComponentHandles.set(component.name, result.handles)
+    if (result.invalid) _flowComponentsWithInvalidHandles.add(component.name)
+  }
   _layoutComponentNames = collectLayoutComponentNames(components)
   // Pre-pass: register each component's `params` prop shape so router
   // dispatchers (which may emit in a DIFFERENT component) can construct
@@ -4173,8 +4205,8 @@ function swiftFlowNodeLiteral(arg: ExprIR, flowName: string): string | null {
   return `PyreonFlowNode(${parts.join(', ')})`
 }
 
-function swiftFlowParsedHandles(handles: { id?: string; type: string; position: string }[]): string {
-  return `[${handles.map((h) => `PyreonFlowHandleConfig(${h.id === undefined ? '' : `id: ${JSON.stringify(h.id)}, `}type: ${JSON.stringify(h.type)}, position: .${h.position})`).join(', ')}]`
+function swiftFlowParsedHandles(handles: StaticFlowHandle[]): string {
+  return `[${handles.map((h) => `PyreonFlowHandleConfig(${h.id === undefined ? '' : `id: ${JSON.stringify(h.id)}, `}type: ${JSON.stringify(h.type)}, position: .${h.position}${'offset' in h && typeof h.offset === 'number' ? `, offset: ${h.offset}` : ''})`).join(', ')}]`
 }
 
 function swiftFlowMarker(marker: { type: string; color?: string; width?: number; height?: number; strokeWidth?: number }): string {
@@ -8203,6 +8235,7 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (tag === 'Press') return emitSwiftPress(e, indent)
   if (tag === 'Field') return emitSwiftField(e, indent)
   if (tag === 'Toggle') return emitSwiftToggle(e, indent)
+  if (tag === 'Handle') return 'EmptyView()'
   // `<RouterLink>` from @pyreon/router is the SAME concept as `<Link>` and
   // carries the same `to` prop, but it had no dispatch entry — so it fell
   // through to the unknown-tag path and emitted `RouterLink(to:)` verbatim, a
@@ -8250,6 +8283,9 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
   if (nodeTypesAttr !== undefined && nodeTypes === undefined) {
     _emitWarnings.push('<Flow nodeTypes={…}> must be a literal { type: Component } map to lower natively; the native default node renderer is used.')
   }
+  for (const entry of nodeTypes ?? []) {
+    if (_flowComponentsWithInvalidHandles.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <Handle> requires literal \`type\` and \`position\` props for native extraction; the dynamic handle was not attached to the node.`)
+  }
   if (e.attrs.some((a) => a.kind === 'attr' && a.name === 'edgeTypes')) {
     _emitWarnings.push('<Flow edgeTypes={…}> custom edge renderer maps are not lowered natively yet; the native default edge renderer is used.')
   }
@@ -8273,6 +8309,13 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
   const bgArg = background?.kind === 'jsx-element' ? `, background: ${emitSwiftFlowBackground(background)}` : ''
   const controlsArg = controls?.kind === 'jsx-element' ? `, controls: ${emitSwiftFlowControls(controls)}` : ''
   const miniMapArg = miniMap?.kind === 'jsx-element' ? `, miniMap: ${emitSwiftFlowMiniMap(miniMap)}` : ''
+  const handleCases = nodeTypes?.flatMap(({ type, component }) => {
+    const handles = _flowComponentHandles.get(component) ?? []
+    return handles.length > 0 ? [`case ${JSON.stringify(type)}: return ${swiftFlowParsedHandles(handles)}`] : []
+  }) ?? []
+  const nodeHandlesArg = handleCases.length > 0
+    ? `, nodeHandles: { pyreonNode in\n    switch pyreonNode.type {\n    ${handleCases.join('\n    ')}\n    default: return []\n    }\n  }`
+    : ''
   const nodeText = attr.value.kind === 'identifier' && _flowStateLabelNamesSwift.has(attr.value.name)
     ? 'Text(String(describing: pyreonNode.data.label))'
     : 'Text(pyreonNode.id)'
@@ -8280,7 +8323,7 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
     ? `switch pyreonNode.type {\n${nodeTypes.map(({ type, component }) => `  case ${JSON.stringify(type)}:\n    ${swiftIdent(component)}(id: pyreonNode.id, data: { pyreonNode.data }, selected: { pyreonSelected }, dragging: { pyreonDragging })`).join('\n')}\n  default:\n    ${nodeText}\n  }`
     : nodeText
   const rendererParams = nodeTypes && nodeTypes.length > 0 ? 'pyreonNode, pyreonSelected, pyreonDragging' : 'pyreonNode'
-  const host = `PyreonFlowView(state: ${emitSwiftExpr(attr.value, 0)}${bgArg}${controlsArg}${miniMapArg}) { ${rendererParams} in\n  ${renderer}\n}`
+  const host = `PyreonFlowView(state: ${emitSwiftExpr(attr.value, 0)}${bgArg}${controlsArg}${miniMapArg}${nodeHandlesArg}) { ${rendererParams} in\n  ${renderer}\n}`
   if (panels.length === 0) return host
   const overlays = panels.map((panel) => {
     const position = readStaticAttr(panel, 'position')

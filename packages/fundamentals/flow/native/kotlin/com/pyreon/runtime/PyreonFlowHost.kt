@@ -18,6 +18,12 @@ data class PyreonFlowMiniMapLayout(val nodes: List<PyreonFlowMiniMapNode>, val v
 data class PyreonFlowEdgeLabel(val id: String, val text: String?, val accessibilityLabel: String, val x: Double, val y: Double, val focusable: Boolean)
 data class PyreonFlowEdgeUpdater(val edgeId: String, val end: String, val x: Double, val y: Double)
 
+fun <T> pyreonFlowEffectiveHandles(node: PyreonFlowNode<T>, rendered: List<PyreonFlowHandleConfig>): List<PyreonFlowHandleConfig> = buildList {
+    addAll(node.sourceHandles); addAll(node.targetHandles)
+    if (node.sourceHandles.isEmpty()) addAll(rendered.filter { it.type == "source" })
+    if (node.targetHandles.isEmpty()) addAll(rendered.filter { it.type == "target" })
+}
+
 fun <T> pyreonFlowMiniMapLayout(state: PyreonFlowState<T>, width: Double = 200.0, height: Double = 150.0, padding: Double = 40.0): PyreonFlowMiniMapLayout {
     val visible = state.nodes.filter { it.hidden != true }
     if (visible.isEmpty()) return PyreonFlowMiniMapLayout(emptyList(), PyreonFlowNodeBox(0.0, 0.0, 0.0, 0.0), 1.0, 0.0, 0.0)
@@ -45,6 +51,7 @@ fun <T> pyreonFlowEdgeStrokes(
     state: PyreonFlowState<T>,
     color: String = "#999999",
     width: Double = 1.5,
+    nodeHandles: (PyreonFlowNode<T>) -> List<PyreonFlowHandleConfig> = { emptyList() },
 ): List<PyreonFlowEdgeStroke> {
     val nodes = state.nodes.filter { it.hidden != true }.associateBy { it.id }
     return state.edges.mapNotNull { edge ->
@@ -65,8 +72,8 @@ fun <T> pyreonFlowEdgeStrokes(
                 target.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT),
             sourceHandleId = edge.sourceHandle,
             targetHandleId = edge.targetHandle,
-            sourceHandles = source.sourceHandles,
-            targetHandles = target.targetHandles,
+            sourceHandles = pyreonFlowEffectiveHandles(source, nodeHandles(source)),
+            targetHandles = pyreonFlowEffectiveHandles(target, nodeHandles(target)),
             waypoints = edge.waypoints.map { PyreonFlowPathPoint(it.x, it.y) },
             borderRadius = edge.borderRadius ?: 5.0,
             offset = edge.pathOffset ?: 20.0,
@@ -82,7 +89,7 @@ fun <T> pyreonFlowEdgeStrokes(
     }
 }
 
-fun <T> pyreonFlowEdgeLabels(state: PyreonFlowState<T>): List<PyreonFlowEdgeLabel> {
+fun <T> pyreonFlowEdgeLabels(state: PyreonFlowState<T>, nodeHandles: (PyreonFlowNode<T>) -> List<PyreonFlowHandleConfig> = { emptyList() }): List<PyreonFlowEdgeLabel> {
     val nodes = state.nodes.filter { it.hidden != true }.associateBy { it.id }
     return state.edges.mapNotNull { edge ->
         if (edge.hidden == true) return@mapNotNull null
@@ -93,7 +100,7 @@ fun <T> pyreonFlowEdgeLabels(state: PyreonFlowState<T>): List<PyreonFlowEdgeLabe
             edge.type ?: PYREON_FLOW_DEFAULT_EDGE_TYPE,
             PyreonFlowNodeBox(sp.x, sp.y, source.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH, source.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT),
             PyreonFlowNodeBox(tp.x, tp.y, target.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH, target.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT),
-            edge.sourceHandle, edge.targetHandle, source.sourceHandles, target.targetHandles,
+            edge.sourceHandle, edge.targetHandle, pyreonFlowEffectiveHandles(source, nodeHandles(source)), pyreonFlowEffectiveHandles(target, nodeHandles(target)),
             waypoints = edge.waypoints.map { PyreonFlowPathPoint(it.x, it.y) },
             borderRadius = edge.borderRadius ?: 5.0,
             offset = edge.pathOffset ?: 20.0,
