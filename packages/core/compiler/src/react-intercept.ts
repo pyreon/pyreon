@@ -541,11 +541,18 @@ function isTextLikeInput(jsxElement: ts.Node): boolean {
     'image',
     'hidden',
   ])
+  // The caller hands over what `findParentJsxElement` returns, which for a
+  // non-self-closing `<input …></input>` is the OPENING element — it carries
+  // the attributes directly. Reading only the self-closing and full-element
+  // shapes left that case with no `type` probe, so `<input type="checkbox">`
+  // written with a closing tag was reported as text-like.
   const attrs = ts.isJsxSelfClosingElement(jsxElement)
     ? jsxElement.attributes
-    : ts.isJsxElement(jsxElement)
-      ? jsxElement.openingElement.attributes
-      : undefined
+    : ts.isJsxOpeningElement(jsxElement)
+      ? jsxElement.attributes
+      : ts.isJsxElement(jsxElement)
+        ? jsxElement.openingElement.attributes
+        : undefined
   if (!attrs) return true
   for (const a of attrs.properties) {
     if (!ts.isJsxAttribute(a) || a.name.getText() !== 'type') continue
