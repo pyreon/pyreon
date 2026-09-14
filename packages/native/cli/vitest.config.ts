@@ -35,5 +35,15 @@ import { defineNodeConfig } from '@pyreon/vitest-config'
 // and edge paths, no longer one nameable block. Ratchet up; never lower.
 export default defineNodeConfig({
   category: 'internals',
-  coverageThresholds: { statements: 89, branches: 82, functions: 94, lines: 91 },
+  // Ratcheted 89/82/94/91 -> 95/92/96/96 by the 92%+ campaign (measured
+  // 96.62 / 93.21 / 97.02 / 97.06 on macOS). Two suites: the CLI paths a
+  // real invocation takes that nothing had driven (the space-separated flag
+  // form, --fonts, --target=all's worst-exit contract, the build report's
+  // skipped/warning sections, wire's json / ios-out / co-located modes, the
+  // LSP's didSave/shutdown turns) and one spec per content-keyed Kotlin
+  // import arm — the class where a predicate keyed on the wrong call shape
+  // is invisible to the kotlinc stub gate and costs a device build. The
+  // ~1% headroom is the documented platform skew: check.test.ts gates four
+  // specs on isSwiftUIAvailable(), false on every ubuntu runner.
+  coverageThresholds: { statements: 95, branches: 92, functions: 96, lines: 96 },
 })
