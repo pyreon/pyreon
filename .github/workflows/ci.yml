@@ -1202,8 +1202,12 @@ jobs:
           set +e
           # `$SHARD_ARGS` is empty for every non-sharded cell, so this is
           # byte-identical to the unsharded command there (unquoted on
-          # purpose, under `set -f`, so empty expands to nothing).
-          OUTPUT=$(bun run $FILTER --sequential test $SHARD_ARGS 2>&1)
+          # purpose, under `set -f`, so empty expands to nothing). The `--`
+          # is load-bearing: `bun run --filter … --sequential <script> ARGS`
+          # DROPS every arg after the script name (verified: it spawned a
+          # bare `vitest run`), so without it every native cell ran the
+          # whole suite instead of its shard and hit the 25-minute cap.
+          OUTPUT=$(bun run $FILTER --sequential test -- $SHARD_ARGS 2>&1)
           EXIT=$?
           set -e
           echo "$OUTPUT"
