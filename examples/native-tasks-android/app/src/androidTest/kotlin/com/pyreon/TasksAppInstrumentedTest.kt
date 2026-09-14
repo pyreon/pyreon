@@ -196,13 +196,24 @@ class TasksAppInstrumentedTest {
      */
     private fun assertTagDisplayed(tag: String, where: String) {
         try {
+            // WAIT first, exactly as the pre-helper assertions did
+            // (`waitUntil(15_000) { onAllNodesWithTag(tag)… }`): a route change
+            // that crosses the auth guard recomposes one frame later than the
+            // click on a loaded emulator, and an INSTANT assertIsDisplayed fires
+            // in that gap — reported as "the screen simply never recomposed",
+            // which is indistinguishable from the real bug it exists to catch.
+            composeRule.waitUntil(timeoutMillis = 15_000) {
+                composeRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
+            }
             composeRule.onNodeWithTag(tag).assertIsDisplayed()
         } catch (e: Throwable) {
-            // `n.config.toString()` rather than a typed read: SemanticsConfiguration
-            // has no `getOrNull`, and indexing a missing key throws. describeTimeout
+            // `n.config.toString()` rather than a typed read: `describeTimeout`
             // above already reads it this way, so this stays on a construct this
             // file has compiled before — the whole point being that a diagnostic
-            // must not be the thing that breaks the build.
+            // must not be the thing that breaks the build. (`getOrNull` DOES
+            // exist — `androidx.compose.ui.semantics.getOrNull`, imported above —
+            // the earlier claim here that it did not is what caused the
+            // router-demo compile error.)
             val routerText =
                 try {
                     val nodes =
