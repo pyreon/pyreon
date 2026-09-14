@@ -74,6 +74,18 @@ fun main() {
     check(f.getNodeDimensions("intrinsic") == PyreonFlowDimensions(100.0, 40.0), "explicit node dimensions win over host measurements")
     f.removeNode("intrinsic")
     check(!f.measurements.containsKey("intrinsic"), "removed nodes release their measurements")
+    val keyboard = seedFlow()
+    check(keyboard.handleKeyboardCommand("Enter", nodeId = "1"), "Android keyboard Enter selects a focused node")
+    check(keyboard.isNodeSelected("1"), "Android keyboard selection is observable")
+    val keyboardStart = keyboard.getNode("1")!!.position
+    check(keyboard.handleKeyboardCommand("ArrowRight", nodeId = "1"), "Android keyboard arrows are consumed")
+    check(keyboard.getNode("1")!!.position.x == keyboardStart.x + 10.0, "Android keyboard arrows move by ten")
+    check(keyboard.handleKeyboardCommand("ArrowDown", nodeId = "1", shift = true), "Android Shift+arrow is consumed")
+    check(keyboard.getNode("1")!!.position.y == keyboardStart.y + 100.0, "Android Shift+arrow moves by one hundred")
+    check(keyboard.handleKeyboardCommand("a", command = true) && keyboard.selectedNodes().size == keyboard.nodes.size, "Android Control-A selects all")
+    check(keyboard.handleKeyboardCommand("Escape") && keyboard.selectedNodes().isEmpty(), "Android Escape clears selection")
+    keyboard.selectNode("1")
+    check(keyboard.handleKeyboardCommand("Delete") && keyboard.getNode("1") == null, "Android configured delete key removes selection")
     val packingNodes = listOf(
         PyreonFlowNode("a", position = PyreonXYPosition(9.0, 9.0), data = NodeData("A"), width = 100.0, height = 30.0),
         PyreonFlowNode("b", position = PyreonXYPosition(9.0, 9.0), data = NodeData("B"), width = 80.0, height = 70.0),

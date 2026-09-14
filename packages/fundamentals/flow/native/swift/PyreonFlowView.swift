@@ -522,6 +522,10 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                 fitInitiallyIfNeeded()
             }
         }
+        .focusable(!state.disableKeyboardA11y)
+        .onKeyPress { press in
+            handleKeyPress(press)
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(ariaLabel))
     }
@@ -550,6 +554,10 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             }
             .onTapGesture(count: 2) { state.emitNodeDoubleClick(node.id) }
             .gesture(nodeDragGesture(node))
+            .focusable(!state.disableKeyboardA11y && (node.focusable ?? state.nodesFocusable))
+            .onKeyPress { press in
+                handleKeyPress(press, nodeId: node.id)
+            }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(Text(node.ariaLabel ?? node.id))
             .accessibilityAddTraits(state.isNodeSelected(node.id) ? [.isSelected] : [])
@@ -560,6 +568,37 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                 }
             }
             .accessibilityHidden(state.disableKeyboardA11y || !(node.focusable ?? state.nodesFocusable))
+    }
+
+    private func handleKeyPress(_ press: KeyPress, nodeId: String? = nil) -> KeyPress.Result {
+        guard let key = flowKeyName(press.key) else { return .ignored }
+        let command = press.modifiers.contains(.command) || press.modifiers.contains(.control)
+        return state.handleKeyboardCommand(
+            key,
+            nodeId: nodeId,
+            shift: press.modifiers.contains(.shift),
+            command: command,
+            repeatKey: press.phase == .repeat
+        ) ? .handled : .ignored
+    }
+
+    private func flowKeyName(_ key: KeyEquivalent) -> String? {
+        switch key {
+        case .leftArrow: return "ArrowLeft"
+        case .rightArrow: return "ArrowRight"
+        case .upArrow: return "ArrowUp"
+        case .downArrow: return "ArrowDown"
+        case .return: return "Enter"
+        case .space: return " "
+        case .delete: return "Backspace"
+        case .deleteForward: return "Delete"
+        case .escape: return "Escape"
+        case KeyEquivalent("a"): return "a"
+        case KeyEquivalent("c"): return "c"
+        case KeyEquivalent("v"): return "v"
+        case KeyEquivalent("z"): return "z"
+        default: return nil
+        }
     }
 
     private func edgeLabelView(_ edge: PyreonFlowEdgeLabel) -> some View {

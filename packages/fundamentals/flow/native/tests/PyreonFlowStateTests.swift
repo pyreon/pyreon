@@ -57,6 +57,18 @@ struct PyreonFlowStateTests {
         check(f.getNodeDimensions("intrinsic") == PyreonFlowDimensions(width: 100, height: 40), "explicit node dimensions win over host measurements")
         f.removeNode("intrinsic")
         check(f.measurements["intrinsic"] == nil, "removed nodes release their measurements")
+        let keyboard = seedFlow()
+        check(keyboard.handleKeyboardCommand("Enter", nodeId: "1"), "Apple keyboard Enter selects a focused node")
+        check(keyboard.isNodeSelected("1"), "Apple keyboard selection is observable")
+        let keyboardStart = keyboard.getNode("1")!.position
+        check(keyboard.handleKeyboardCommand("ArrowRight", nodeId: "1"), "Apple keyboard arrows are consumed")
+        check(keyboard.getNode("1")!.position.x == keyboardStart.x + 10, "Apple keyboard arrows move by ten")
+        check(keyboard.handleKeyboardCommand("ArrowDown", nodeId: "1", shift: true), "Apple Shift+arrow is consumed")
+        check(keyboard.getNode("1")!.position.y == keyboardStart.y + 100, "Apple Shift+arrow moves by one hundred")
+        check(keyboard.handleKeyboardCommand("a", command: true) && keyboard.selectedNodes().count == keyboard.nodes.count, "Apple Command-A selects all")
+        check(keyboard.handleKeyboardCommand("Escape") && keyboard.selectedNodes().isEmpty, "Apple Escape clears selection")
+        keyboard.selectNode("1")
+        check(keyboard.handleKeyboardCommand("Delete") && keyboard.getNode("1") == nil, "Apple configured delete key removes selection")
         let packingNodes = [
             PyreonFlowNode(id: "a", position: PyreonXYPosition(x: 9, y: 9), data: NodeData(label: "A"), width: 100, height: 30),
             PyreonFlowNode(id: "b", position: PyreonXYPosition(x: 9, y: 9), data: NodeData(label: "B"), width: 80, height: 70),

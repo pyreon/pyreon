@@ -1,6 +1,7 @@
 package com.pyreon.runtime
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -25,6 +26,16 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.nativeKeyEvent
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
@@ -73,6 +84,35 @@ private data class PyreonFlowReconnectDraft(
     val fixed: PyreonFlowPathPoint,
     val current: PyreonFlowPathPoint,
 )
+
+private fun pyreonFlowKeyName(event: KeyEvent): String? = when (event.key) {
+    Key.DirectionLeft -> "ArrowLeft"
+    Key.DirectionRight -> "ArrowRight"
+    Key.DirectionUp -> "ArrowUp"
+    Key.DirectionDown -> "ArrowDown"
+    Key.Enter, Key.NumPadEnter -> "Enter"
+    Key.Spacebar -> " "
+    Key.Backspace -> "Backspace"
+    Key.Delete -> "Delete"
+    Key.Escape -> "Escape"
+    Key.A -> "a"
+    Key.C -> "c"
+    Key.V -> "v"
+    Key.Z -> "z"
+    else -> null
+}
+
+private fun <T> PyreonFlowState<T>.handleKeyEvent(event: KeyEvent, nodeId: String? = null): Boolean {
+    if (event.type != KeyEventType.KeyDown) return false
+    val key = pyreonFlowKeyName(event) ?: return false
+    return handleKeyboardCommand(
+        key = key,
+        nodeId = nodeId,
+        shift = event.isShiftPressed,
+        command = event.isCtrlPressed || event.isMetaPressed,
+        repeatKey = event.nativeKeyEvent.repeatCount > 0,
+    )
+}
 
 @Composable
 fun <T> PyreonFlowMiniMap(
@@ -241,7 +281,11 @@ fun <T> PyreonFlowView(
         }
     }
     Box(
-        modifier = modifier.semantics { contentDescription = ariaLabel }.onSizeChanged { size ->
+        modifier = modifier
+            .semantics { contentDescription = ariaLabel }
+            .focusable(enabled = !state.disableKeyboardA11y)
+            .onKeyEvent { event -> state.handleKeyEvent(event) }
+            .onSizeChanged { size ->
             state.containerSize = PyreonFlowContainerSize(size.width.toDouble(), size.height.toDouble())
             if (state.fitViewOnLoad && !didInitialFit && size.width > 0 && size.height > 0) {
                 didInitialFit = true
@@ -385,7 +429,8 @@ fun <T> PyreonFlowView(
                         state.emitNodeClick(node.id)
                         true
                     }
-                } else nodeModifier.clearAndSetSemantics { }
+                }.focusable().onKeyEvent { event -> state.handleKeyEvent(event, node.id) }
+                else nodeModifier.clearAndSetSemantics { }
                 Box(nodeModifier) { nodeContent(node, state.isNodeSelected(node.id), nodeDragStarts.containsKey(node.id)) }
             }
             for (handle in interactiveHandles) {

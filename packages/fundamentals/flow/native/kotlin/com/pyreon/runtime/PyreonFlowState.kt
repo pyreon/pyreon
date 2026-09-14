@@ -1584,6 +1584,52 @@ class PyreonFlowState<T>(
             updateNodePosition(id, PyreonXYPosition(node.position.x + dx, node.position.y + dy))
         }
     }
+
+    /** Shared hardware-keyboard contract used by the Compose host. */
+    fun handleKeyboardCommand(
+        key: String,
+        nodeId: String? = null,
+        shift: Boolean = false,
+        command: Boolean = false,
+        repeatKey: Boolean = false,
+    ): Boolean {
+        if (disableKeyboardA11y) return false
+        if (nodeId != null) {
+            val node = nodeMap[nodeId]
+            if (node != null && (key == "Enter" || key == " ")) {
+                if (!(node.selectable ?: nodesSelectable)) return false
+                selectNode(nodeId, shift)
+                return true
+            }
+            val delta = when (key) {
+                "ArrowLeft" -> -1.0 to 0.0
+                "ArrowRight" -> 1.0 to 0.0
+                "ArrowUp" -> 0.0 to -1.0
+                "ArrowDown" -> 0.0 to 1.0
+                else -> null
+            }
+            if (node != null && delta != null) {
+                if (!(node.draggable ?: nodesDraggable)) return false
+                if (!repeatKey) pushHistory()
+                if (!isNodeSelected(nodeId)) selectNode(nodeId)
+                val step = if (shift) 100.0 else 10.0
+                moveSelectedNodes(delta.first * step, delta.second * step)
+                return true
+            }
+        }
+        if (deleteKeys?.contains(key) == true) {
+            pushHistory(); deleteSelected(); return true
+        }
+        if (key == "Escape") { clearSelection(); return true }
+        if (!command) return false
+        return when (key.lowercase()) {
+            "a" -> { selectAll(); true }
+            "c" -> { copySelected(); true }
+            "v" -> { paste(); true }
+            "z" -> { if (shift) redo() else undo(); true }
+            else -> false
+        }
+    }
     @JvmOverloads
     fun focusNode(nodeId: String, focusZoom: Double? = null) {
         val node = nodeMap[nodeId] ?: return

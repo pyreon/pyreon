@@ -1909,6 +1909,54 @@ public final class PyreonFlowState<T> {
             updateNodePosition(id, PyreonXYPosition(x: position.x + dx, y: position.y + dy))
         }
     }
+
+    /// Shared hardware-keyboard contract used by the SwiftUI host. Returns
+    /// true when Flow consumed the key; an editable native child can keep the
+    /// event by handling it before it reaches the canvas.
+    @discardableResult
+    public func handleKeyboardCommand(
+        _ key: String,
+        nodeId: String? = nil,
+        shift: Bool = false,
+        command: Bool = false,
+        repeatKey: Bool = false
+    ) -> Bool {
+        if disableKeyboardA11y { return false }
+        if let nodeId, let node = nodeStore[nodeId] {
+            if key == "Enter" || key == " " {
+                guard node.selectable ?? nodesSelectable else { return false }
+                selectNode(nodeId, additive: shift)
+                return true
+            }
+            let delta: (Double, Double)? = switch key {
+            case "ArrowLeft": (-1, 0)
+            case "ArrowRight": (1, 0)
+            case "ArrowUp": (0, -1)
+            case "ArrowDown": (0, 1)
+            default: nil
+            }
+            if let delta {
+                guard node.draggable ?? nodesDraggable else { return false }
+                if !repeatKey { pushHistory() }
+                if !isNodeSelected(nodeId) { selectNode(nodeId) }
+                let step = shift ? 100.0 : 10.0
+                moveSelectedNodes(delta.0 * step, delta.1 * step)
+                return true
+            }
+        }
+        if deleteKeys?.contains(key) == true {
+            pushHistory(); deleteSelected(); return true
+        }
+        if key == "Escape" { clearSelection(); return true }
+        guard command else { return false }
+        switch key.lowercased() {
+        case "a": selectAll(); return true
+        case "c": copySelected(); return true
+        case "v": paste(); return true
+        case "z": shift ? redo() : undo(); return true
+        default: return false
+        }
+    }
     public func focusNode(_ nodeId: String, _ focusZoom: Double? = nil) {
         guard let node = nodeStore[nodeId] else { return }
         let position = node.parentId == nil ? node.position : getAbsolutePosition(nodeId)
