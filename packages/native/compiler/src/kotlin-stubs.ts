@@ -1596,6 +1596,10 @@ fun pyreonEdgePath(type: String, sourceX: Double, sourceY: Double, sourcePositio
 fun pyreonHandlePosition(position: PyreonFlowPosition, nodeX: Double, nodeY: Double, nodeWidth: Double, nodeHeight: Double) = PyreonFlowPathPoint(nodeX, nodeY)
 data class PyreonFlowNodeBox(val x: Double, val y: Double, val width: Double, val height: Double)
 fun pyreonNodeIntersection(box: PyreonFlowNodeBox, toward: PyreonFlowPathPoint) = toward
+data class PyreonFlowNodeBoxDimensions(val sourceW: Double, val sourceH: Double, val targetW: Double, val targetH: Double)
+data class PyreonFlowHandleAnchor(val x: Double = 0.0, val y: Double = 0.0, val position: PyreonFlowPosition = PyreonFlowPosition.Bottom)
+data class PyreonFlowFloatingEndpoints(val source: PyreonFlowHandleAnchor = PyreonFlowHandleAnchor(), val target: PyreonFlowHandleAnchor = PyreonFlowHandleAnchor())
+data class PyreonFlowSmartPositions(val sourcePosition: PyreonFlowPosition = PyreonFlowPosition.Bottom, val targetPosition: PyreonFlowPosition = PyreonFlowPosition.Top)
 data class PyreonFlowHandleConfig(val id: String? = null, val type: String, val position: PyreonFlowPosition)
 data class PyreonFlowMarker(val type: String, val color: String? = null, val width: Double = 10.0, val height: Double = 7.0, val strokeWidth: Double = 1.0)
 data class PyreonFlowNode<T>(
@@ -1619,6 +1623,9 @@ data class PyreonFlowNode<T>(
   val targetHandles: List<PyreonFlowHandleConfig> = emptyList(),
 )
 fun <T> pyreonEffectiveDimensions(node: PyreonFlowNode<T>, measurement: PyreonFlowNodeMeasurement? = null) = PyreonFlowDimensions(node.width ?: measurement?.width ?: 150.0, node.height ?: measurement?.height ?: 40.0)
+fun <S, T> pyreonGetFloatingEndpoints(sourceNode: PyreonFlowNode<S>, targetNode: PyreonFlowNode<T>, dimensions: PyreonFlowNodeBoxDimensions) = PyreonFlowFloatingEndpoints()
+fun <S, T> pyreonGetSmartHandlePositions(sourceNode: PyreonFlowNode<S>, targetNode: PyreonFlowNode<T>, dimensions: PyreonFlowNodeBoxDimensions? = null) = PyreonFlowSmartPositions()
+fun <T> pyreonResolveHandleAnchor(node: PyreonFlowNode<T>, handleId: String?, type: String, dimensions: PyreonFlowDimensions, measurement: PyreonFlowNodeMeasurement? = null): PyreonFlowHandleAnchor? = null
 data class PyreonFlowEdge(
   val id: String,
   val source: String,

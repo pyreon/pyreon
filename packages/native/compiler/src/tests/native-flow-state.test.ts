@@ -477,6 +477,47 @@ describe('Flow effective-dimension helper lowering', () => {
   }
 })
 
+describe('Flow node anchoring helper lowering', () => {
+  const source = `
+    import { createFlow, getEffectiveDimensions, getFloatingEndpoints, getSmartHandlePositions, resolveHandleAnchor } from '@pyreon/flow'
+    import { Text } from '@pyreon/primitives'
+    export function App() {
+      const flow = createFlow({
+        nodes: [
+          { id: 'a', position: { x: 0, y: 0 }, data: { label: 'A' }, width: 100, height: 40, sourceHandles: [{ id: 'out', type: 'source', position: 'right' }] },
+          { id: 'b', position: { x: 200, y: 80 }, data: { label: 'B' }, width: 120, height: 60 },
+        ],
+        edges: [],
+      })
+      const sourceNode = flow.nodes()[0]!
+      const targetNode = flow.nodes()[1]!
+      const dimensions = getEffectiveDimensions(sourceNode)
+      const endpoints = getFloatingEndpoints(sourceNode, targetNode, { sourceW: 100, sourceH: 40, targetW: 120, targetH: 60 })
+      const smart = getSmartHandlePositions(sourceNode, targetNode)
+      const anchor = resolveHandleAnchor(sourceNode, 'out', 'source', dimensions)
+      return <Text>{endpoints.source.x}</Text>
+    }
+  `
+
+  for (const target of ['swift', 'kotlin'] as const) {
+    it(`routes public anchoring helpers through the ${target} runtime`, () => {
+      const result = transform(source, { target })
+      expect(result.code).toContain('pyreonGetFloatingEndpoints')
+      expect(result.code).toContain('pyreonGetSmartHandlePositions')
+      expect(result.code).toContain('pyreonResolveHandleAnchor')
+      expect(result.warnings.join(' ')).not.toContain('does NOT compile')
+      if (target === 'swift' && isSwiftcAvailable()) {
+        const validation = validateSwiftWithStubs(result.code)
+        expect(validation.ok, validation.error ?? '').toBe(true)
+      }
+      if (target === 'kotlin' && isKotlincAvailable()) {
+        const validation = validateKotlin(result.code)
+        expect(validation.ok, validation.error ?? '').toBe(true)
+      }
+    })
+  }
+})
+
 describe('createFlow — v1 decline shapes (loud warning, not silent drop)', () => {
   it('a non-literal nodes source declines with a named reason', () => {
     const src = `

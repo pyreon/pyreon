@@ -1022,6 +1022,10 @@ public func pyreonEdgePath(type: String, sourceX: Double, sourceY: Double, sourc
 public func pyreonHandlePosition(_ position: PyreonFlowPosition, nodeX: Double, nodeY: Double, nodeWidth: Double, nodeHeight: Double) -> PyreonXYPosition { PyreonXYPosition(x: nodeX, y: nodeY) }
 public struct PyreonFlowRect { public init(x: Double, y: Double, width: Double, height: Double) {} }
 public func pyreonNodeIntersection(_ box: PyreonFlowRect, toward: PyreonXYPosition) -> PyreonXYPosition { toward }
+public struct PyreonFlowNodeBoxDimensions { public init(sourceW: Double, sourceH: Double, targetW: Double, targetH: Double) {} }
+public struct PyreonFlowHandleAnchor { public var x: Double = 0; public var y: Double = 0; public var position: PyreonFlowPosition = .bottom }
+public struct PyreonFlowFloatingEndpoints { public var source: PyreonFlowHandleAnchor = PyreonFlowHandleAnchor(); public var target: PyreonFlowHandleAnchor = PyreonFlowHandleAnchor() }
+public struct PyreonFlowSmartPositions { public var sourcePosition: PyreonFlowPosition = .bottom; public var targetPosition: PyreonFlowPosition = .top }
 public struct PyreonFlowHandleConfig: Equatable {
   public init(id: String? = nil, type: String, position: PyreonFlowPosition) {}
 }
@@ -1074,6 +1078,9 @@ public struct PyreonFlowNode<T> {
   }
 }
 public func pyreonEffectiveDimensions<T>(_ node: PyreonFlowNode<T>, measurement: PyreonFlowNodeMeasurement? = nil) -> PyreonFlowDimensions { PyreonFlowDimensions(width: node.width ?? measurement?.width ?? 150, height: node.height ?? measurement?.height ?? 40) }
+public func pyreonGetFloatingEndpoints<S, T>(_ sourceNode: PyreonFlowNode<S>, targetNode: PyreonFlowNode<T>, dimensions: PyreonFlowNodeBoxDimensions) -> PyreonFlowFloatingEndpoints { PyreonFlowFloatingEndpoints() }
+public func pyreonGetSmartHandlePositions<S, T>(_ sourceNode: PyreonFlowNode<S>, targetNode: PyreonFlowNode<T>, dimensions: PyreonFlowNodeBoxDimensions? = nil) -> PyreonFlowSmartPositions { PyreonFlowSmartPositions() }
+public func pyreonResolveHandleAnchor<T>(_ node: PyreonFlowNode<T>, handleId: String?, type: String, dimensions: PyreonFlowDimensions, measurement: PyreonFlowNodeMeasurement? = nil) -> PyreonFlowHandleAnchor? { nil }
 public struct PyreonFlowEdge: Equatable {
   public var id: String
   public var source: String
