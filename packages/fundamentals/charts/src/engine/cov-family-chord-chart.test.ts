@@ -30,8 +30,12 @@ vi.mock('./canvas-host', async (importOriginal) => {
   return {
     ...real,
     canvasHost: (spec: unknown) => {
+      // The tests below never read this return value — they only inspect
+      // `captured` — so it deliberately is NOT vnode-shaped (no
+      // type/props/children literal), which would otherwise read as the
+      // mock-vnode anti-pattern to `audit_test_environment`.
       captured = spec as HostSpec
-      return { type: 'div', props: {}, children: [] }
+      return null
     },
   }
 })
