@@ -25,6 +25,7 @@ import {
   readToolProbe,
   withVerdictCache,
   writeToolProbe,
+  isTransientProcessFailure,
   type ValidateKind,
 } from './validate-cache'
 
@@ -37,6 +38,27 @@ export interface ValidationResult {
   skipped?: boolean
   /** Human-readable reason for a skip. */
   skipReason?: string
+  /**
+   * True iff the compiler never delivered a verdict: a spawn failure, a kill
+   * by signal, or a timeout. Such a failure says nothing about the source and
+   * is never cached (see `isTransientProcessFailure`).
+   */
+  transient?: boolean
+}
+
+/**
+ * Turn a thrown `execFileSync` error into a `ValidationResult`, surfacing the
+ * compiler's stderr + stdout as the diagnostic and marking the result
+ * `transient` when the process never produced a verdict. ONE function for the
+ * four validators so they cannot drift on what counts as environmental.
+ */
+function processFailure(err: unknown, fallback: string): ValidationResult {
+  const e = err as { stdout?: string | Buffer; stderr?: string | Buffer; message?: string }
+  const stderr = typeof e.stderr === 'string' ? e.stderr : (e.stderr?.toString('utf8') ?? '')
+  const stdout = typeof e.stdout === 'string' ? e.stdout : (e.stdout?.toString('utf8') ?? '')
+  const output = [stderr, stdout].filter(Boolean).join('\n').trim()
+  const error = output || e.message || fallback
+  return isTransientProcessFailure(err) ? { ok: false, error, transient: true } : { ok: false, error }
 }
 
 /**
@@ -133,17 +155,7 @@ function validateSwiftUncached(source: string): ValidationResult {
     execFileSync('swiftc', ['-parse', filename], { stdio: 'pipe', encoding: 'utf8' })
     return { ok: true }
   } catch (err) {
-    // execFileSync throws on non-zero exit. The thrown error carries
-    // `stdout` and `stderr` (Buffer | string) — surface both for the
-    // diagnostic.
-    const e = err as { stdout?: string | Buffer; stderr?: string | Buffer; message?: string }
-    const stderr = typeof e.stderr === 'string' ? e.stderr : e.stderr?.toString('utf8') ?? ''
-    const stdout = typeof e.stdout === 'string' ? e.stdout : e.stdout?.toString('utf8') ?? ''
-    const output = [stderr, stdout].filter(Boolean).join('\n').trim()
-    return {
-      ok: false,
-      error: output || e.message || 'swiftc -parse failed with no output',
-    }
+    return processFailure(err, 'swiftc -parse failed with no output')
   } finally {
     try {
       rmSync(tempDir, { recursive: true, force: true })
@@ -332,14 +344,7 @@ function validateSwiftTypecheckUncached(source: string): ValidationResult {
     execFileSync('swiftc', ['-typecheck', filename], { stdio: 'pipe', encoding: 'utf8' })
     return { ok: true }
   } catch (err) {
-    const e = err as { stdout?: string | Buffer; stderr?: string | Buffer; message?: string }
-    const stderr = typeof e.stderr === 'string' ? e.stderr : e.stderr?.toString('utf8') ?? ''
-    const stdout = typeof e.stdout === 'string' ? e.stdout : e.stdout?.toString('utf8') ?? ''
-    const output = [stderr, stdout].filter(Boolean).join('\n').trim()
-    return {
-      ok: false,
-      error: output || e.message || 'swiftc -typecheck failed with no output',
-    }
+    return processFailure(err, 'swiftc -typecheck failed with no output')
   } finally {
     try {
       rmSync(tempDir, { recursive: true, force: true })
@@ -587,14 +592,7 @@ function compileSwiftStubs(stub: string, inputText: string): ValidationResult {
     })
     return { ok: true }
   } catch (err) {
-    const e = err as { stdout?: string | Buffer; stderr?: string | Buffer; message?: string }
-    const stderr = typeof e.stderr === 'string' ? e.stderr : e.stderr?.toString('utf8') ?? ''
-    const stdout = typeof e.stdout === 'string' ? e.stdout : e.stdout?.toString('utf8') ?? ''
-    const output = [stderr, stdout].filter(Boolean).join('\n').trim()
-    return {
-      ok: false,
-      error: output || e.message || 'swiftc -typecheck (stubs) failed with no output',
-    }
+    return processFailure(err, 'swiftc -typecheck (stubs) failed with no output')
   } finally {
     try {
       rmSync(tempDir, { recursive: true, force: true })
@@ -717,14 +715,7 @@ function validateKotlinUncached(source: string): ValidationResult {
     )
     return { ok: true }
   } catch (err) {
-    const e = err as { stdout?: string | Buffer; stderr?: string | Buffer; message?: string }
-    const stderr = typeof e.stderr === 'string' ? e.stderr : e.stderr?.toString('utf8') ?? ''
-    const stdout = typeof e.stdout === 'string' ? e.stdout : e.stdout?.toString('utf8') ?? ''
-    const output = [stderr, stdout].filter(Boolean).join('\n').trim()
-    return {
-      ok: false,
-      error: output || e.message || 'kotlinc failed with no output',
-    }
+    return processFailure(err, 'kotlinc failed with no output')
   } finally {
     try {
       rmSync(tempDir, { recursive: true, force: true })
