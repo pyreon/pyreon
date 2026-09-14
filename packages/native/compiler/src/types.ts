@@ -979,6 +979,9 @@ export type DeclIR =
       zoomable?: boolean
       zoomOnPinch?: boolean
       zoomOnDoubleClick?: boolean
+      panOnScroll?: boolean
+      panOnScrollSpeed?: number
+      zoomOnScroll?: boolean
       selectionOnDrag?: boolean
       selectionMode?: string
       multiSelect?: boolean
@@ -986,6 +989,11 @@ export type DeclIR =
       snapToObjects?: boolean
       autoHistory?: boolean
       reducedMotion?: boolean
+      deleteKeys?: string[] | null
+      multiSelectionKey?: string | null
+      selectionKey?: string | null
+      zoomActivationKey?: string | null
+      preventScrolling?: boolean
       defaultEdgeType?: string
       connectionLineType?: string
       defaultEdgeOptions?: {

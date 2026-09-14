@@ -44,6 +44,14 @@ private fun seedFlow(): PyreonFlowState<NodeData> = PyreonFlowState(
 )
 
 fun main() {
+    val configured = PyreonFlowState<NodeData>(
+        panOnScroll = true, panOnScrollSpeed = 0.75, zoomOnScroll = false,
+        deleteKeys = listOf("ForwardDelete"), multiSelectionKey = "ctrl",
+        selectionKey = null, zoomActivationKey = "meta", preventScrolling = false,
+    )
+    check(configured.panOnScroll && configured.panOnScrollSpeed == 0.75, "Android retains scroll config")
+    check(!configured.zoomOnScroll && configured.deleteKeys == listOf("ForwardDelete"), "Android retains zoom/delete config")
+    check(configured.multiSelectionKey == "ctrl" && configured.selectionKey == null && configured.zoomActivationKey == "meta" && !configured.preventScrolling, "Android retains modifier config")
     val measuredDimensions = pyreonEffectiveDimensions(PyreonFlowNode("dims", position = PyreonXYPosition(0.0, 0.0), data = NodeData("D"), width = 90.0), PyreonFlowNodeMeasurement(80.0, 30.0))
     check(measuredDimensions.width == 90.0 && measuredDimensions.height == 30.0, "effective dimensions preserve explicit-measured-default precedence")
     // 1. Seed + basic reads.

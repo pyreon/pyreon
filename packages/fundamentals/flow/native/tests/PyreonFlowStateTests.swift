@@ -35,6 +35,13 @@ struct PyreonFlowStateTests {
     }
 
     static func runStateChecks() {
+        let configured = PyreonFlowState<NodeData>(
+            panOnScroll: true, panOnScrollSpeed: 0.75, zoomOnScroll: false,
+            reducedMotion: false, deleteKeys: ["ForwardDelete"], multiSelectionKey: "ctrl",
+            selectionKey: nil, zoomActivationKey: "meta", preventScrolling: false)
+        check(configured.panOnScroll && configured.panOnScrollSpeed == 0.75, "Apple retains scroll config")
+        check(!configured.zoomOnScroll && configured.deleteKeys == ["ForwardDelete"], "Apple retains zoom/delete config")
+        check(configured.multiSelectionKey == "ctrl" && configured.selectionKey == nil && configured.zoomActivationKey == "meta" && !configured.preventScrolling, "Apple retains modifier config")
         // 1. Seed + basic reads.
         let f = seedFlow()
         let packingNodes = [

@@ -9344,10 +9344,30 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const connectionRulesNode = objProp(configArg, 'connectionRules')
   const defaultMarkerEndNode = objProp(configArg, 'defaultMarkerEnd')
   const defaultMarkerEnd = literalMarker(defaultMarkerEndNode)
-  const interactionBoolKeys = ['nodesDraggable', 'nodesConnectable', 'nodesSelectable', 'nodesFocusable', 'edgesFocusable', 'disableKeyboardA11y', 'nodesDeletable', 'edgesDeletable', 'edgesReconnectable', 'pannable', 'panOnDrag', 'zoomable', 'zoomOnPinch', 'zoomOnDoubleClick', 'selectionOnDrag', 'multiSelect', 'onlyRenderVisibleElements', 'snapToObjects', 'autoHistory', 'reducedMotion'] as const
+  const interactionBoolKeys = ['nodesDraggable', 'nodesConnectable', 'nodesSelectable', 'nodesFocusable', 'edgesFocusable', 'disableKeyboardA11y', 'nodesDeletable', 'edgesDeletable', 'edgesReconnectable', 'pannable', 'panOnDrag', 'panOnScroll', 'zoomable', 'zoomOnScroll', 'zoomOnPinch', 'zoomOnDoubleClick', 'selectionOnDrag', 'multiSelect', 'onlyRenderVisibleElements', 'snapToObjects', 'autoHistory', 'reducedMotion', 'preventScrolling'] as const
   const interactionBools = Object.fromEntries(interactionBoolKeys.flatMap((key) => { const value = literalBool(objProp(configArg, key)); return value === undefined ? [] : [[key, value]] })) as Partial<Record<(typeof interactionBoolKeys)[number], boolean>>
   const edgeInteractionWidth = literalNumber(objProp(configArg, 'edgeInteractionWidth'))
   const connectionRadius = literalNumber(objProp(configArg, 'connectionRadius'))
+  const panOnScrollSpeed = literalNumber(objProp(configArg, 'panOnScrollSpeed'))
+  const nullableString = (key: string): string | null | undefined => {
+    const configValue = objProp(configArg, key)
+    if (configValue === undefined) return undefined
+    if (configValue.type === 'Literal' && configValue.value === null) return null
+    return literalString(configValue)
+  }
+  const modifierKeys = ['multiSelectionKey', 'selectionKey', 'zoomActivationKey'] as const
+  const modifiers = Object.fromEntries(modifierKeys.flatMap((key) => {
+    const value = nullableString(key)
+    return value === undefined || (value !== null && !['shift', 'ctrl', 'meta', 'alt'].includes(value)) ? [] : [[key, value]]
+  })) as Partial<Record<(typeof modifierKeys)[number], string | null>>
+  const deleteKeysNode = objProp(configArg, 'deleteKeys')
+  const deleteKeys = (() => {
+    if (deleteKeysNode === undefined) return undefined
+    if (deleteKeysNode.type === 'Literal' && deleteKeysNode.value === null) return null
+    if (deleteKeysNode.type !== 'ArrayExpression') return undefined
+    const values = ((deleteKeysNode.elements as AnyNode[] | undefined) ?? []).map(literalString)
+    return values.some((value) => value === undefined) ? undefined : values as string[]
+  })()
   const defaultEdgeType = literalString(objProp(configArg, 'defaultEdgeType'))
   const connectionLineType = literalString(objProp(configArg, 'connectionLineType'))
   const selectionMode = literalString(objProp(configArg, 'selectionMode'))
@@ -9430,7 +9450,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (droppedEdgeFields.size > 0) {
     ctx.warnings.push(droppedFlowFieldsWarning(`${factory} declaration \`${name}\``, 'edge', [...droppedEdgeFields]))
   }
-  const HANDLED_FLOW_CONFIG_KEYS = new Set(['nodes', 'edges', 'minZoom', 'maxZoom', 'snapToGrid', 'snapGrid', 'nodeExtent', 'defaultMarkerEnd', 'connectionRules', 'isValidConnection', ...interactionBoolKeys, 'edgeInteractionWidth', 'connectionRadius', 'defaultEdgeType', 'connectionLineType', 'selectionMode', 'defaultEdgeOptions', 'fitView', 'fitViewPadding'])
+  const HANDLED_FLOW_CONFIG_KEYS = new Set(['nodes', 'edges', 'minZoom', 'maxZoom', 'snapToGrid', 'snapGrid', 'nodeExtent', 'defaultMarkerEnd', 'connectionRules', 'isValidConnection', ...interactionBoolKeys, 'edgeInteractionWidth', 'connectionRadius', 'panOnScrollSpeed', 'deleteKeys', ...modifierKeys, 'defaultEdgeType', 'connectionLineType', 'selectionMode', 'defaultEdgeOptions', 'fitView', 'fitViewPadding'])
   const droppedKeys: string[] = []
   for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
@@ -9459,6 +9479,12 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   for (const key of interactionBoolKeys) if (objProp(configArg, key) && literalBool(objProp(configArg, key)) === undefined) droppedKeys.push(`${key} (not a boolean literal)`)
   if (objProp(configArg, 'edgeInteractionWidth') && edgeInteractionWidth === undefined) droppedKeys.push('edgeInteractionWidth (not a numeric literal)')
   if (objProp(configArg, 'connectionRadius') && connectionRadius === undefined) droppedKeys.push('connectionRadius (not a numeric literal)')
+  if (objProp(configArg, 'panOnScrollSpeed') && panOnScrollSpeed === undefined) droppedKeys.push('panOnScrollSpeed (not a numeric literal)')
+  if (deleteKeysNode !== undefined && deleteKeys === undefined) droppedKeys.push('deleteKeys (expected a string[] literal or null)')
+  for (const key of modifierKeys) {
+    const value = nullableString(key)
+    if (objProp(configArg, key) !== undefined && (value === undefined || (value !== null && !['shift', 'ctrl', 'meta', 'alt'].includes(value)))) droppedKeys.push(`${key} (expected shift, ctrl, meta, alt, or null)`)
+  }
   if (objProp(configArg, 'defaultEdgeType') && defaultEdgeType === undefined) droppedKeys.push('defaultEdgeType (not a string literal)')
   if (objProp(configArg, 'connectionLineType') && connectionLineType === undefined) droppedKeys.push('connectionLineType (not a string literal)')
   if (objProp(configArg, 'selectionMode') && !['partial', 'full'].includes(selectionMode ?? '')) droppedKeys.push('selectionMode (expected "partial" or "full")')
@@ -9491,6 +9517,9 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     ...interactionBools,
     ...(edgeInteractionWidth !== undefined ? { edgeInteractionWidth } : {}),
     ...(connectionRadius !== undefined ? { connectionRadius } : {}),
+    ...(panOnScrollSpeed !== undefined ? { panOnScrollSpeed } : {}),
+    ...(deleteKeys !== undefined ? { deleteKeys } : {}),
+    ...modifiers,
     ...(defaultEdgeType !== undefined ? { defaultEdgeType } : {}),
     ...(connectionLineType !== undefined ? { connectionLineType } : {}),
     ...(['partial', 'full'].includes(selectionMode ?? '') ? { selectionMode: selectionMode! } : {}),

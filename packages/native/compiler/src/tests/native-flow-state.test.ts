@@ -698,14 +698,37 @@ describe('createFlow — v1 decline shapes (loud warning, not silent drop)', () 
       expect(code).not.toContain('maxZoom = 2)')
     })
 
-    it('an UNLOWERED key warns by NAME on both targets', () => {
-      const src = cfg('panOnScroll: true, fitView: true, snapToGrid: true,')
+    it('scroll and keyboard configuration crosses to both native targets', () => {
+      const src = cfg(`
+        panOnScroll: true,
+        panOnScrollSpeed: 0.75,
+        zoomOnScroll: false,
+        deleteKeys: ['Delete'],
+        multiSelectionKey: 'ctrl',
+        selectionKey: null,
+        zoomActivationKey: 'meta',
+        preventScrolling: false,
+      `)
+      const swift = transform(src, { target: 'swift' })
+      const kotlin = transform(src, { target: 'kotlin' })
+      expect(swift.code).toContain('panOnScroll: true, panOnScrollSpeed: 0.75, zoomOnScroll: false')
+      expect(swift.code).toContain('deleteKeys: ["Delete"], multiSelectionKey: "ctrl", selectionKey: nil, zoomActivationKey: "meta", preventScrolling: false')
+      expect(kotlin.code).toContain('panOnScroll = true, zoomOnScroll = false')
+      expect(kotlin.code).toContain('panOnScrollSpeed = 0.75, deleteKeys = listOf("Delete"), multiSelectionKey = "ctrl", selectionKey = null, zoomActivationKey = "meta"')
       for (const target of ['swift', 'kotlin'] as const) {
         const w = (transform(src, { target }).warnings ?? []).join(' ')
-        expect(w).toContain('`panOnScroll`')
-        expect(w).not.toContain('`fitView`')
-        expect(w).not.toContain('`snapToGrid`')
-        expect(w).toContain('behaves differently on web')
+        expect(w).not.toContain('NOT lowered natively')
+      }
+      expect(validateSwiftWithStubs(swift.code).ok).toBe(true)
+      expect(validateKotlin(kotlin.code).ok).toBe(true)
+    })
+
+    it('rejects dynamic or invalid keyboard configuration instead of silently defaulting', () => {
+      const src = cfg(`deleteKeys: keys, multiSelectionKey: 'capslock',`, '',)
+      for (const target of ['swift', 'kotlin'] as const) {
+        const warnings = (transform(src, { target }).warnings ?? []).join(' ')
+        expect(warnings).toContain('deleteKeys (expected a string[] literal or null)')
+        expect(warnings).toContain('multiSelectionKey (expected shift, ctrl, meta, alt, or null)')
       }
     })
 
