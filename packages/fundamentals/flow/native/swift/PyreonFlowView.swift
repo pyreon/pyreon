@@ -427,6 +427,10 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                             .onTapGesture { state.selectEdge(edge.id); state.emitEdgeClick(edge.id) }
                             .accessibilityLabel(Text(edge.accessibilityLabel))
                             .accessibilityAddTraits(state.isEdgeSelected(edge.id) ? [.isSelected] : [])
+                            .accessibilityAction {
+                                state.selectEdge(edge.id)
+                                state.emitEdgeClick(edge.id)
+                            }
                             .accessibilityHidden(!edge.focusable)
                     }
                     ForEach(visibleNodes, id: \.id) { node in
@@ -447,6 +451,12 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                             .gesture(nodeDragGesture(node))
                             .accessibilityLabel(Text(node.ariaLabel ?? node.id))
                             .accessibilityAddTraits(state.isNodeSelected(node.id) ? [.isSelected] : [])
+                            .accessibilityAction {
+                                if node.selectable ?? state.nodesSelectable {
+                                    state.selectNode(node.id)
+                                    state.emitNodeClick(node.id)
+                                }
+                            }
                             .accessibilityHidden(state.disableKeyboardA11y || !(node.focusable ?? state.nodesFocusable))
                     }
                     ForEach(Array(interactiveHandles.enumerated()), id: \.offset) { _, handle in
