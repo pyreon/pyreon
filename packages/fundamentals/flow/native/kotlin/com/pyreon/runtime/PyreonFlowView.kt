@@ -27,6 +27,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.unit.IntOffset
@@ -368,6 +369,11 @@ fun <T> PyreonFlowView(
                 nodeModifier = if (!state.disableKeyboardA11y && (node.focusable ?: state.nodesFocusable)) nodeModifier.semantics {
                     contentDescription = node.ariaLabel ?: node.id
                     selected = state.isNodeSelected(node.id)
+                    if (node.selectable ?: state.nodesSelectable) onClick {
+                        state.selectNode(node.id)
+                        state.emitNodeClick(node.id)
+                        true
+                    }
                 } else nodeModifier.clearAndSetSemantics { }
                 Box(nodeModifier) { nodeContent(node, state.isNodeSelected(node.id), nodeDragStarts.containsKey(node.id)) }
             }
