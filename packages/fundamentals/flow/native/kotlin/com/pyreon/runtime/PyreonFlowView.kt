@@ -7,9 +7,12 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.Button
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
@@ -211,9 +214,10 @@ fun <T> PyreonFlowView(
     val interactiveHandles = visibleNodes.flatMap { node ->
         if (node.hidden == true || !(node.connectable ?: state.nodesConnectable)) emptyList() else {
             val absolute = state.getAbsolutePosition(node.id)
+            val dimensions = state.getNodeDimensions(node.id)
             pyreonFlowInteractiveHandles(
                 node.id,
-                PyreonFlowNodeBox(absolute.x, absolute.y, node.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH, node.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT),
+                PyreonFlowNodeBox(absolute.x, absolute.y, dimensions.width, dimensions.height),
                 pyreonFlowEffectiveHandles(node, nodeHandles(node)),
             )
         }
@@ -328,14 +332,16 @@ fun <T> PyreonFlowView(
             }
             for (node in visibleNodes) {
                 val absolute = state.getAbsolutePosition(node.id)
-                val width = node.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH
-                val height = node.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT
                 var nodeModifier = Modifier
                     .offset { IntOffset(absolute.x.roundToInt(), absolute.y.roundToInt()) }
-                    .requiredSize(
-                        with(density) { width.toFloat().toDp() },
-                        with(density) { height.toFloat().toDp() },
-                    )
+                if (node.width != null) nodeModifier = nodeModifier.width(with(density) { node.width.toFloat().toDp() })
+                if (node.height != null) nodeModifier = nodeModifier.height(with(density) { node.height.toFloat().toDp() })
+                nodeModifier = nodeModifier.defaultMinSize(
+                    minWidth = with(density) { PYREON_FLOW_DEFAULT_NODE_WIDTH.toFloat().toDp() },
+                    minHeight = with(density) { PYREON_FLOW_DEFAULT_NODE_HEIGHT.toFloat().toDp() },
+                ).onSizeChanged { size ->
+                    state.updateNodeMeasurement(node.id, size.width / density.density.toDouble(), size.height / density.density.toDouble())
+                }
                 if (node.selectable ?: state.nodesSelectable) {
                     nodeModifier = nodeModifier.pointerInput(node.id, "node-taps") {
                         detectTapGestures(
@@ -418,8 +424,9 @@ fun <T> PyreonFlowView(
             for (node in visibleNodes) {
                 val config = nodeResizer(node) ?: continue
                 val absolute = state.getAbsolutePosition(node.id)
-                val width = node.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH
-                val height = node.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT
+                val dimensions = state.getNodeDimensions(node.id)
+                val width = dimensions.width
+                val height = dimensions.height
                 for (direction in config.directions) {
                     val x = if ('w' in direction) absolute.x else if ('e' in direction) absolute.x + width else absolute.x + width / 2
                     val y = if ('n' in direction) absolute.y else if ('s' in direction) absolute.y + height else absolute.y + height / 2

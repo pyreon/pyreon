@@ -52,7 +52,8 @@
 // `MutableState<T>` inherits from `State<T>`). `setValue` only makes
 // sense on `MutableState<T>` and is defined only there.
 
-export const KOTLIN_COMPOSE_STUBS = `// Auto-generated Compose stubs for Pyreon native-compiler validation.
+export const KOTLIN_COMPOSE_STUBS =
+  `// Auto-generated Compose stubs for Pyreon native-compiler validation.
 // DO NOT EDIT — sourced from @pyreon/native-compiler/src/kotlin-stubs.ts.
 
 // kotlinx-coroutines delay, emitted by the useInterval / useTimeout
@@ -1185,7 +1186,8 @@ fun fadeIn(animationSpec: TweenSpec): EnterTransition = EnterTransition()
 fun fadeOut(animationSpec: TweenSpec): ExitTransition = ExitTransition()
 // A <Transition name> maps to a real enter/exit pair rather than always
 // fading, so the stub mirrors the Compose functions that emit can now
-// produce. `+` composes transitions in Compose, hence the operator stubs.
+// produce. ` +
+  ` composes transitions in Compose, hence the operator stubs.
 fun scaleIn(animationSpec: TweenSpec): EnterTransition = EnterTransition()
 fun scaleOut(animationSpec: TweenSpec): ExitTransition = ExitTransition()
 fun slideInVertically(animationSpec: TweenSpec, initialOffsetY: (Int) -> Int = { it }): EnterTransition = EnterTransition()
@@ -1727,6 +1729,7 @@ class PyreonFlowState<T>(
 ) {
   val nodes: List<PyreonFlowNode<T>> = nodes
   val edges: List<PyreonFlowEdge> = edges
+  val measurements: Map<String, PyreonFlowNodeMeasurement> = emptyMap()
   val viewport: PyreonFlowViewport = viewport
   var containerSize: PyreonFlowContainerSize = PyreonFlowContainerSize()
   val zoom: Double get() = viewport.zoom
@@ -1738,6 +1741,7 @@ class PyreonFlowState<T>(
   fun layout(algorithm: String = "layered", options: PyreonFlowLayoutOptions = PyreonFlowLayoutOptions()) {}
   fun getNode(id: String): PyreonFlowNode<T>? = null
   fun getNodeDimensions(id: String): PyreonFlowDimensions = PyreonFlowDimensions(150.0, 40.0)
+  fun updateNodeMeasurement(id: String, width: Double, height: Double) {}
   fun isValidConnection(connection: PyreonFlowConnection): Boolean = true
   fun connect(connection: PyreonFlowConnection, id: String? = null): PyreonFlowEdge? = null
   fun resolvedMarkers(edge: PyreonFlowEdge): Pair<PyreonFlowMarker?, PyreonFlowMarker?> = null to null

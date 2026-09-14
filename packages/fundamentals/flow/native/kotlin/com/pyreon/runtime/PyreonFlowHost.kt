@@ -73,20 +73,22 @@ fun <T> pyreonFlowEdgeStrokes(
         val target = nodes[edge.target] ?: return@mapNotNull null
         val sourcePosition = state.getAbsolutePosition(source.id)
         val targetPosition = state.getAbsolutePosition(target.id)
+        val sourceDimensions = state.getNodeDimensions(source.id)
+        val targetDimensions = state.getNodeDimensions(target.id)
         val path = pyreonComputeEdgePath(
             type = edge.type ?: PYREON_FLOW_DEFAULT_EDGE_TYPE,
             source = PyreonFlowNodeBox(
                 sourcePosition.x, sourcePosition.y,
-                source.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH,
-                source.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT),
+                sourceDimensions.width, sourceDimensions.height),
             target = PyreonFlowNodeBox(
                 targetPosition.x, targetPosition.y,
-                target.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH,
-                target.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT),
+                targetDimensions.width, targetDimensions.height),
             sourceHandleId = edge.sourceHandle,
             targetHandleId = edge.targetHandle,
             sourceHandles = pyreonFlowEffectiveHandles(source, nodeHandles(source)),
             targetHandles = pyreonFlowEffectiveHandles(target, nodeHandles(target)),
+            sourceMeasurement = state.measurements[source.id],
+            targetMeasurement = state.measurements[target.id],
             waypoints = edge.waypoints.map { PyreonFlowPathPoint(it.x, it.y) },
             borderRadius = edge.borderRadius ?: 5.0,
             offset = edge.pathOffset ?: 20.0,
@@ -109,11 +111,13 @@ fun <T> pyreonFlowEdgeLabels(state: PyreonFlowState<T>, nodeHandles: (PyreonFlow
         val source = nodes[edge.source] ?: return@mapNotNull null
         val target = nodes[edge.target] ?: return@mapNotNull null
         val sp = state.getAbsolutePosition(source.id); val tp = state.getAbsolutePosition(target.id)
+        val sd = state.getNodeDimensions(source.id); val td = state.getNodeDimensions(target.id)
         val path = pyreonComputeEdgePath(
             edge.type ?: PYREON_FLOW_DEFAULT_EDGE_TYPE,
-            PyreonFlowNodeBox(sp.x, sp.y, source.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH, source.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT),
-            PyreonFlowNodeBox(tp.x, tp.y, target.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH, target.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT),
+            PyreonFlowNodeBox(sp.x, sp.y, sd.width, sd.height),
+            PyreonFlowNodeBox(tp.x, tp.y, td.width, td.height),
             edge.sourceHandle, edge.targetHandle, pyreonFlowEffectiveHandles(source, nodeHandles(source)), pyreonFlowEffectiveHandles(target, nodeHandles(target)),
+            sourceMeasurement = state.measurements[source.id], targetMeasurement = state.measurements[target.id],
             waypoints = edge.waypoints.map { PyreonFlowPathPoint(it.x, it.y) },
             borderRadius = edge.borderRadius ?: 5.0,
             offset = edge.pathOffset ?: 20.0,

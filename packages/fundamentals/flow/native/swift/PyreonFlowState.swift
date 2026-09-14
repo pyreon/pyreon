@@ -930,6 +930,7 @@ public final class PyreonFlowState<T> {
     }
     @ObservationIgnored private var order: [String] = []
     @ObservationIgnored private var nodeStore: [String: PyreonFlowNode<T>] = [:]
+    public private(set) var measurements: [String: PyreonFlowNodeMeasurement] = [:]
     @ObservationIgnored private var boxes: [String: PyreonFlowNodeBox<T>] = [:]
     /// Bumped on every node add/remove/move — the whole-array subscription.
     private var nodesVersion: UInt = 0
@@ -1211,7 +1212,7 @@ public final class PyreonFlowState<T> {
         redoStack.removeAll(keepingCapacity: true)
     }
     private func restore(_ snapshot: HistorySnapshot) {
-        order.removeAll(keepingCapacity: true); nodeStore.removeAll(keepingCapacity: true); boxes.removeAll(keepingCapacity: true)
+        order.removeAll(keepingCapacity: true); nodeStore.removeAll(keepingCapacity: true); boxes.removeAll(keepingCapacity: true); measurements.removeAll(keepingCapacity: true)
         edges.removeAll(keepingCapacity: true); edgeIds.removeAll(keepingCapacity: true)
         for node in snapshot.nodes { insertNode(node) }
         for edge in snapshot.edges { insertEdge(edge) }
@@ -1235,7 +1236,7 @@ public final class PyreonFlowState<T> {
     public func fromJSON(_ snapshot: PyreonFlowSnapshot<T>) {
         checkpoint()
         let oldSelectedNodes = selectedNodeIds, oldSelectedEdges = selectedEdgeIds
-        order.removeAll(keepingCapacity: true); nodeStore.removeAll(keepingCapacity: true); boxes.removeAll(keepingCapacity: true)
+        order.removeAll(keepingCapacity: true); nodeStore.removeAll(keepingCapacity: true); boxes.removeAll(keepingCapacity: true); measurements.removeAll(keepingCapacity: true)
         edges.removeAll(keepingCapacity: true); edgeIds.removeAll(keepingCapacity: true)
         for node in snapshot.nodes { insertNode(node) }
         for edge in snapshot.edges { insertEdge(edge) }
@@ -1314,6 +1315,7 @@ public final class PyreonFlowState<T> {
         for id in ids {
             nodeStore[id] = nil
             boxes[id] = nil
+            measurements[id] = nil
         }
         nodesVersion &+= 1
         markMutation()
@@ -1331,7 +1333,12 @@ public final class PyreonFlowState<T> {
     }
     public func getNodeDimensions(_ id: String) -> PyreonFlowDimensions {
         guard let node = nodeStore[id] else { return PyreonFlowDimensions(width: pyreonFlowDefaultNodeWidth, height: pyreonFlowDefaultNodeHeight) }
-        return PyreonFlowDimensions(width: node.width ?? pyreonFlowDefaultNodeWidth, height: node.height ?? pyreonFlowDefaultNodeHeight)
+        return pyreonEffectiveDimensions(node, measurement: measurements[id])
+    }
+    public func updateNodeMeasurement(_ id: String, width: Double, height: Double) {
+        guard nodeStore[id] != nil, width > 0, height > 0 else { return }
+        let next = PyreonFlowNodeMeasurement(width: width, height: height, handles: measurements[id]?.handles ?? [])
+        if measurements[id] != next { measurements[id] = next }
     }
     public func addNode(_ node: PyreonFlowNode<T>) {
         guard nodeStore[node.id] == nil else { return }
@@ -1351,6 +1358,7 @@ public final class PyreonFlowState<T> {
         nodeStore.removeAll(keepingCapacity: true)
         boxes.removeAll(keepingCapacity: true)
         for node in nodes { insertNode(node) }
+        measurements = measurements.filter { nextIds.contains($0.key) }
         setNodeSelection(selectedNodeIds.filter { nextIds.contains($0) })
         removeEdges { !nextIds.contains($0.source) || !nextIds.contains($0.target) }
         nodesVersion &+= 1

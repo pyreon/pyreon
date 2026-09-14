@@ -13,6 +13,7 @@
   },
   "devDependencies": {
     "@pyreon/core": "workspace:*",
+    "@pyreon/flow": "workspace:*",
     "@pyreon/hooks": "workspace:*",
     "@pyreon/i18n": "workspace:*",
     "@pyreon/machine": "workspace:*",

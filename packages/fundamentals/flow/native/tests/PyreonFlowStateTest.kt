@@ -66,6 +66,14 @@ fun main() {
     check(measuredDimensions.width == 90.0 && measuredDimensions.height == 30.0, "effective dimensions preserve explicit-measured-default precedence")
     // 1. Seed + basic reads.
     val f = seedFlow()
+    f.updateNodeMeasurement("1", 240.0, 72.0)
+    check(f.measurements["1"] == PyreonFlowNodeMeasurement(240.0, 72.0), "Compose host measurements are observable")
+    check(f.getNodeDimensions("1") == PyreonFlowDimensions(240.0, 72.0), "intrinsic host measurements drive effective geometry")
+    f.addNode(PyreonFlowNode("intrinsic", position = PyreonXYPosition(0.0, 0.0), data = NodeData("Intrinsic"), width = 100.0, height = 40.0))
+    f.updateNodeMeasurement("intrinsic", 240.0, 72.0)
+    check(f.getNodeDimensions("intrinsic") == PyreonFlowDimensions(100.0, 40.0), "explicit node dimensions win over host measurements")
+    f.removeNode("intrinsic")
+    check(!f.measurements.containsKey("intrinsic"), "removed nodes release their measurements")
     val packingNodes = listOf(
         PyreonFlowNode("a", position = PyreonXYPosition(9.0, 9.0), data = NodeData("A"), width = 100.0, height = 30.0),
         PyreonFlowNode("b", position = PyreonXYPosition(9.0, 9.0), data = NodeData("B"), width = 80.0, height = 70.0),

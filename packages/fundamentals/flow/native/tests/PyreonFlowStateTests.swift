@@ -49,6 +49,14 @@ struct PyreonFlowStateTests {
         check(pyreonCollectFlowEdgeMarkers([markerEdge, markerEdge], defaultMarkerEnd: pyreonFlowDefaultMarkerEnd).count == 2, "Apple marker collection deduplicates equal markers")
         // 1. Seed + basic reads.
         let f = seedFlow()
+        f.updateNodeMeasurement("1", width: 240, height: 72)
+        check(f.measurements["1"] == PyreonFlowNodeMeasurement(width: 240, height: 72), "SwiftUI host measurements are observable")
+        check(f.getNodeDimensions("1") == PyreonFlowDimensions(width: 240, height: 72), "intrinsic host measurements drive effective geometry")
+        f.addNode(PyreonFlowNode(id: "intrinsic", position: PyreonXYPosition(x: 0, y: 0), data: NodeData(label: "Intrinsic"), width: 100, height: 40))
+        f.updateNodeMeasurement("intrinsic", width: 240, height: 72)
+        check(f.getNodeDimensions("intrinsic") == PyreonFlowDimensions(width: 100, height: 40), "explicit node dimensions win over host measurements")
+        f.removeNode("intrinsic")
+        check(f.measurements["intrinsic"] == nil, "removed nodes release their measurements")
         let packingNodes = [
             PyreonFlowNode(id: "a", position: PyreonXYPosition(x: 9, y: 9), data: NodeData(label: "A"), width: 100, height: 30),
             PyreonFlowNode(id: "b", position: PyreonXYPosition(x: 9, y: 9), data: NodeData(label: "B"), width: 80, height: 70),

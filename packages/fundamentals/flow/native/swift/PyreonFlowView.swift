@@ -273,22 +273,26 @@ public func pyreonFlowEdgeStrokes<T>(
 
         let sourcePosition = state.getAbsolutePosition(source.id)
         let targetPosition = state.getAbsolutePosition(target.id)
+        let sourceDimensions = state.getNodeDimensions(source.id)
+        let targetDimensions = state.getNodeDimensions(target.id)
         let path = pyreonComputeEdgePath(
             type: edge.type ?? "bezier",
             source: PyreonFlowRect(
                 x: sourcePosition.x,
                 y: sourcePosition.y,
-                width: source.width ?? pyreonFlowDefaultNodeWidth,
-                height: source.height ?? pyreonFlowDefaultNodeHeight),
+                width: sourceDimensions.width,
+                height: sourceDimensions.height),
             target: PyreonFlowRect(
                 x: targetPosition.x,
                 y: targetPosition.y,
-                width: target.width ?? pyreonFlowDefaultNodeWidth,
-                height: target.height ?? pyreonFlowDefaultNodeHeight),
+                width: targetDimensions.width,
+                height: targetDimensions.height),
             sourceHandleId: edge.sourceHandle,
             targetHandleId: edge.targetHandle,
             sourceHandles: pyreonFlowEffectiveHandles(source, nodeHandles(source)),
             targetHandles: pyreonFlowEffectiveHandles(target, nodeHandles(target)),
+            sourceMeasurement: state.measurements[source.id],
+            targetMeasurement: state.measurements[target.id],
             waypoints: edge.waypoints,
             borderRadius: edge.borderRadius ?? 5,
             offset: edge.pathOffset ?? 20,
@@ -309,12 +313,14 @@ public func pyreonFlowEdgeLabels<T>(state: PyreonFlowState<T>, nodeHandles: (Pyr
     return state.edges.compactMap { edge in
         guard edge.hidden != true, let source = nodes[edge.source], let target = nodes[edge.target] else { return nil }
         let sp = state.getAbsolutePosition(source.id), tp = state.getAbsolutePosition(target.id)
+        let sd = state.getNodeDimensions(source.id), td = state.getNodeDimensions(target.id)
         let path = pyreonComputeEdgePath(
             type: edge.type ?? "bezier",
-            source: PyreonFlowRect(x: sp.x, y: sp.y, width: source.width ?? pyreonFlowDefaultNodeWidth, height: source.height ?? pyreonFlowDefaultNodeHeight),
-            target: PyreonFlowRect(x: tp.x, y: tp.y, width: target.width ?? pyreonFlowDefaultNodeWidth, height: target.height ?? pyreonFlowDefaultNodeHeight),
+            source: PyreonFlowRect(x: sp.x, y: sp.y, width: sd.width, height: sd.height),
+            target: PyreonFlowRect(x: tp.x, y: tp.y, width: td.width, height: td.height),
             sourceHandleId: edge.sourceHandle, targetHandleId: edge.targetHandle,
             sourceHandles: pyreonFlowEffectiveHandles(source, nodeHandles(source)), targetHandles: pyreonFlowEffectiveHandles(target, nodeHandles(target)),
+            sourceMeasurement: state.measurements[source.id], targetMeasurement: state.measurements[target.id],
             waypoints: edge.waypoints,
             borderRadius: edge.borderRadius ?? 5,
             offset: edge.pathOffset ?? 20,
@@ -369,6 +375,13 @@ public func pyreonFlowEdgeStrokeIsVisible<T>(_ stroke: PyreonFlowEdgeStroke, sta
     let left = -state.viewport.x / state.viewport.zoom, top = -state.viewport.y / state.viewport.zoom
     let right = left + state.containerSize.width / state.viewport.zoom, bottom = top + state.containerSize.height / state.viewport.zoom
     return maxX + pad > left && minX - pad < right && maxY + pad > top && minY - pad < bottom
+}
+
+private struct PyreonFlowNodeSizePreference: PreferenceKey {
+    static var defaultValue: [String: CGSize] = [:]
+    static func reduce(value: inout [String: CGSize], nextValue: () -> [String: CGSize]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, latest in latest })
+    }
 }
 
 /// A native SwiftUI host for `PyreonFlowState`: it measures its container,
@@ -469,85 +482,11 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                     .allowsHitTesting(false)
 
                 ZStack(alignment: .topLeading) {
-                    ForEach(pyreonFlowEdgeLabels(state: state, nodeHandles: nodeHandles).filter { visibleEdgeIds.contains($0.id) }) { edge in
-                        Text(edge.text ?? "")
-                            .font(.system(size: 12))
-                            .padding(edge.text == nil ? 8 : 3)
-                            .background(edge.text == nil ? Color.clear : Color.white.opacity(0.9))
-                            .position(x: edge.x, y: edge.y)
-                            .contentShape(Rectangle())
-                            .onTapGesture { state.selectEdge(edge.id); state.emitEdgeClick(edge.id) }
-                            .accessibilityLabel(Text(edge.accessibilityLabel))
-                            .accessibilityAddTraits(state.isEdgeSelected(edge.id) ? [.isSelected] : [])
-                            .accessibilityAction {
-                                state.selectEdge(edge.id)
-                                state.emitEdgeClick(edge.id)
-                            }
-                            .accessibilityHidden(!edge.focusable)
-                    }
-                    ForEach(visibleNodes, id: \.id) { node in
-                        let absolute = state.getAbsolutePosition(node.id)
-                        nodeContent(node, state.isNodeSelected(node.id), nodeDragStart[node.id] != nil)
-                            .frame(
-                                width: node.width ?? pyreonFlowDefaultNodeWidth,
-                                height: node.height ?? pyreonFlowDefaultNodeHeight)
-                            .position(
-                                x: absolute.x + (node.width ?? pyreonFlowDefaultNodeWidth) / 2,
-                                y: absolute.y + (node.height ?? pyreonFlowDefaultNodeHeight) / 2)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                if node.selectable ?? state.nodesSelectable { state.selectNode(node.id) }
-                                state.emitNodeClick(node.id)
-                            }
-                            .onTapGesture(count: 2) { state.emitNodeDoubleClick(node.id) }
-                            .gesture(nodeDragGesture(node))
-                            .accessibilityElement(children: .ignore)
-                            .accessibilityLabel(Text(node.ariaLabel ?? node.id))
-                            .accessibilityAddTraits(state.isNodeSelected(node.id) ? [.isSelected] : [])
-                            .accessibilityAction {
-                                if node.selectable ?? state.nodesSelectable {
-                                    state.selectNode(node.id)
-                                    state.emitNodeClick(node.id)
-                                }
-                            }
-                            .accessibilityHidden(state.disableKeyboardA11y || !(node.focusable ?? state.nodesFocusable))
-                    }
-                    ForEach(Array(interactiveHandles.enumerated()), id: \.offset) { _, handle in
-                        Circle()
-                            .fill(handle.type == "source" ? Color.blue : Color.green)
-                            .overlay(Circle().stroke(Color.white, lineWidth: 1))
-                            .frame(width: 12 / state.viewport.zoom, height: 12 / state.viewport.zoom)
-                            .position(x: handle.x, y: handle.y)
-                            .contentShape(Circle())
-                            .gesture(handle.type == "source" ? connectionGesture(handle) : nil)
-                            .accessibilityLabel(Text("\(handle.type) handle \(handle.handleId ?? "default")"))
-                            .accessibilityHidden(state.disableKeyboardA11y)
-                    }
-                    ForEach(visibleNodes, id: \.id) { node in
-                        if let config = nodeResizer(node) {
-                            ForEach(config.directions, id: \.self) { direction in
-                                RoundedRectangle(cornerRadius: 2 / state.viewport.zoom)
-                                    .fill(Color.white)
-                                    .overlay(RoundedRectangle(cornerRadius: 2 / state.viewport.zoom).stroke(Color.blue, lineWidth: 1.5 / state.viewport.zoom))
-                                    .frame(width: config.handleSize / state.viewport.zoom, height: config.handleSize / state.viewport.zoom)
-                                    .position(resizerPosition(node, direction: direction))
-                                    .contentShape(Rectangle())
-                                    .gesture(resizeGesture(node, config: config, direction: direction))
-                                    .accessibilityLabel(Text("Resize \(direction) for node \(node.id)"))
-                            }
-                        }
-                    }
-                    ForEach(pyreonFlowEdgeUpdaters(state: state, strokes: edgeStrokes)) { updater in
-                        Circle()
-                            .fill(Color.blue.opacity(0.35))
-                            .overlay(Circle().stroke(Color.blue, lineWidth: 1.5 / state.viewport.zoom))
-                            .frame(width: 12 / state.viewport.zoom, height: 12 / state.viewport.zoom)
-                            .position(x: updater.x, y: updater.y)
-                            .contentShape(Circle())
-                            .gesture(reconnectGesture(updater))
-                            .accessibilityLabel(Text("Reconnect \(updater.end) of edge \(updater.edgeId)"))
-                            .accessibilityHidden(state.disableKeyboardA11y)
-                    }
+                    edgeLabelsLayer
+                    nodesLayer
+                    handlesLayer
+                    resizersLayer
+                    edgeUpdatersLayer
                 }
                 .scaleEffect(state.viewport.zoom, anchor: .topLeading)
                 .offset(x: state.viewport.x, y: state.viewport.y)
@@ -574,6 +513,9 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             }
             .clipped()
             .coordinateSpace(name: "PyreonFlowCanvas")
+            .onPreferenceChange(PyreonFlowNodeSizePreference.self) { sizes in
+                for (id, size) in sizes { state.updateNodeMeasurement(id, width: size.width, height: size.height) }
+            }
             .onAppear { updateContainer(proxy.size); fitInitiallyIfNeeded() }
             .onChange(of: proxy.size) { _, size in
                 updateContainer(size)
@@ -584,11 +526,141 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         .accessibilityLabel(Text(ariaLabel))
     }
 
+    private func measuredNodeView(_ node: PyreonFlowNode<T>) -> some View {
+        let absolute = state.getAbsolutePosition(node.id)
+        let dimensions = state.getNodeDimensions(node.id)
+        let fixedWidth = node.width.map { CGFloat($0) }
+        let fixedHeight = node.height.map { CGFloat($0) }
+        return nodeContent(node, state.isNodeSelected(node.id), nodeDragStart[node.id] != nil)
+            .frame(
+                minWidth: fixedWidth == nil ? CGFloat(pyreonFlowDefaultNodeWidth) : nil,
+                idealWidth: fixedWidth,
+                maxWidth: fixedWidth,
+                minHeight: fixedHeight == nil ? CGFloat(pyreonFlowDefaultNodeHeight) : nil,
+                idealHeight: fixedHeight,
+                maxHeight: fixedHeight)
+            .background(GeometryReader { measured in
+                Color.clear.preference(key: PyreonFlowNodeSizePreference.self, value: [node.id: measured.size])
+            })
+            .position(x: absolute.x + dimensions.width / 2, y: absolute.y + dimensions.height / 2)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if node.selectable ?? state.nodesSelectable { state.selectNode(node.id) }
+                state.emitNodeClick(node.id)
+            }
+            .onTapGesture(count: 2) { state.emitNodeDoubleClick(node.id) }
+            .gesture(nodeDragGesture(node))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(node.ariaLabel ?? node.id))
+            .accessibilityAddTraits(state.isNodeSelected(node.id) ? [.isSelected] : [])
+            .accessibilityAction {
+                if node.selectable ?? state.nodesSelectable {
+                    state.selectNode(node.id)
+                    state.emitNodeClick(node.id)
+                }
+            }
+            .accessibilityHidden(state.disableKeyboardA11y || !(node.focusable ?? state.nodesFocusable))
+    }
+
+    private func edgeLabelView(_ edge: PyreonFlowEdgeLabel) -> some View {
+        Text(edge.text ?? "")
+            .font(.system(size: 12))
+            .padding(edge.text == nil ? 8 : 3)
+            .background(edge.text == nil ? Color.clear : Color.white.opacity(0.9))
+            .position(x: edge.x, y: edge.y)
+            .contentShape(Rectangle())
+            .onTapGesture { state.selectEdge(edge.id); state.emitEdgeClick(edge.id) }
+            .accessibilityLabel(Text(edge.accessibilityLabel))
+            .accessibilityAddTraits(state.isEdgeSelected(edge.id) ? [.isSelected] : [])
+            .accessibilityAction {
+                state.selectEdge(edge.id)
+                state.emitEdgeClick(edge.id)
+            }
+            .accessibilityHidden(!edge.focusable)
+    }
+
+    private var visibleEdgeLabels: [PyreonFlowEdgeLabel] {
+        pyreonFlowEdgeLabels(state: state, nodeHandles: nodeHandles)
+            .filter { visibleEdgeIds.contains($0.id) }
+    }
+
+    private var edgeLabelsLayer: some View {
+        ForEach(visibleEdgeLabels) { edge in
+            edgeLabelView(edge)
+        }
+    }
+
+    private var nodesLayer: some View {
+        ForEach(visibleNodes, id: \.id) { node in
+            measuredNodeView(node)
+        }
+    }
+
+    private var handlesLayer: some View {
+        ForEach(Array(interactiveHandles.enumerated()), id: \.offset) { _, handle in
+            handleView(handle)
+        }
+    }
+
+    private func handleView(_ handle: PyreonFlowInteractiveHandle) -> some View {
+        let label = "\(handle.type) handle \(handle.handleId ?? "default")"
+        return SwiftUI.Circle()
+            .fill(handle.type == "source" ? Color.blue : Color.green)
+            .overlay(SwiftUI.Circle().stroke(Color.white, lineWidth: 1))
+            .frame(width: 12 / state.viewport.zoom, height: 12 / state.viewport.zoom)
+            .position(x: handle.x, y: handle.y)
+            .contentShape(SwiftUI.Circle())
+            .gesture(handle.type == "source" ? connectionGesture(handle) : nil)
+            .accessibilityLabel(Text(label))
+            .accessibilityHidden(state.disableKeyboardA11y)
+    }
+
+    private var resizersLayer: some View {
+        ForEach(visibleNodes, id: \.id) { node in
+            if let config = nodeResizer(node) {
+                ForEach(config.directions, id: \.self) { direction in
+                    resizerView(node, config: config, direction: direction)
+                }
+            }
+        }
+    }
+
+    private func resizerView(_ node: PyreonFlowNode<T>, config: PyreonFlowNodeResizerConfig, direction: String) -> some View {
+        SwiftUI.RoundedRectangle(cornerRadius: 2 / state.viewport.zoom)
+            .fill(Color.white)
+            .overlay(SwiftUI.RoundedRectangle(cornerRadius: 2 / state.viewport.zoom).stroke(Color.blue, lineWidth: 1.5 / state.viewport.zoom))
+            .frame(width: config.handleSize / state.viewport.zoom, height: config.handleSize / state.viewport.zoom)
+            .position(resizerPosition(node, direction: direction))
+            .contentShape(SwiftUI.Rectangle())
+            .gesture(resizeGesture(node, config: config, direction: direction))
+            .accessibilityLabel(Text("Resize \(direction) for node \(node.id)"))
+    }
+
+    private var edgeUpdatersLayer: some View {
+        ForEach(pyreonFlowEdgeUpdaters(state: state, strokes: edgeStrokes)) { updater in
+            edgeUpdaterView(updater)
+        }
+    }
+
+    private func edgeUpdaterView(_ updater: PyreonFlowEdgeUpdater) -> some View {
+        let label = "Reconnect \(updater.end) of edge \(updater.edgeId)"
+        return SwiftUI.Circle()
+            .fill(Color.blue.opacity(0.35))
+            .overlay(SwiftUI.Circle().stroke(Color.blue, lineWidth: 1.5 / state.viewport.zoom))
+            .frame(width: 12 / state.viewport.zoom, height: 12 / state.viewport.zoom)
+            .position(x: updater.x, y: updater.y)
+            .contentShape(SwiftUI.Circle())
+            .gesture(reconnectGesture(updater))
+            .accessibilityLabel(Text(label))
+            .accessibilityHidden(state.disableKeyboardA11y)
+    }
+
     private var interactiveHandles: [PyreonFlowInteractiveHandle] {
         visibleNodes.flatMap { node -> [PyreonFlowInteractiveHandle] in
             guard node.hidden != true, node.connectable ?? state.nodesConnectable else { return [] }
             let p = state.getAbsolutePosition(node.id)
-            let box = PyreonFlowRect(x: p.x, y: p.y, width: node.width ?? pyreonFlowDefaultNodeWidth, height: node.height ?? pyreonFlowDefaultNodeHeight)
+            let dimensions = state.getNodeDimensions(node.id)
+            let box = PyreonFlowRect(x: p.x, y: p.y, width: dimensions.width, height: dimensions.height)
             return pyreonFlowInteractiveHandles(nodeId: node.id, node: box, handles: pyreonFlowEffectiveHandles(node, nodeHandles(node)))
         }
     }
@@ -666,7 +738,8 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
 
     private func resizerPosition(_ node: PyreonFlowNode<T>, direction: String) -> CGPoint {
         let p = state.getAbsolutePosition(node.id)
-        let width = node.width ?? pyreonFlowDefaultNodeWidth, height = node.height ?? pyreonFlowDefaultNodeHeight
+        let dimensions = state.getNodeDimensions(node.id)
+        let width = dimensions.width, height = dimensions.height
         let x = direction.contains("w") ? p.x : direction.contains("e") ? p.x + width : p.x + width / 2
         let y = direction.contains("n") ? p.y : direction.contains("s") ? p.y + height : p.y + height / 2
         return CGPoint(x: x, y: y)
@@ -679,10 +752,11 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                 guard !interactionsLocked else { return }
                 if resizeDrafts[key] == nil {
                     state.pushHistory()
+                    let dimensions = state.getNodeDimensions(node.id)
                     resizeDrafts[key] = PyreonFlowResizeDraft(frame: PyreonFlowResizeFrame(
                         position: node.position,
-                        width: node.width ?? pyreonFlowDefaultNodeWidth,
-                        height: node.height ?? pyreonFlowDefaultNodeHeight))
+                        width: dimensions.width,
+                        height: dimensions.height))
                 }
                 guard let draft = resizeDrafts[key] else { return }
                 let frame = pyreonFlowResizeFrame(draft.frame, direction: direction, dx: value.translation.width / state.viewport.zoom, dy: value.translation.height / state.viewport.zoom, minWidth: config.minWidth, minHeight: config.minHeight)

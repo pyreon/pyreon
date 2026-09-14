@@ -1193,11 +1193,13 @@ public final class PyreonFlowState<T> {
   public let autoHistory = true; public let deleteKeys: [String]? = ["Delete", "Backspace"]; public let multiSelectionKey: String? = "shift"; public let selectionKey: String? = "shift"; public let zoomActivationKey: String? = "ctrl"; public let preventScrolling = true
   public private(set) var nodes: [PyreonFlowNode<T>] = []
   public private(set) var edges: [PyreonFlowEdge] = []
+  public private(set) var measurements: [String: PyreonFlowNodeMeasurement] = [:]
   public private(set) var viewport: PyreonFlowViewport = PyreonFlowViewport()
   public var containerSize = PyreonFlowContainerSize()
   public var zoom: Double { viewport.zoom }
   public func getNode(_ id: String) -> PyreonFlowNode<T>? { nil }
   public func getNodeDimensions(_ id: String) -> PyreonFlowDimensions { PyreonFlowDimensions(width: 150, height: 40) }
+  public func updateNodeMeasurement(_ id: String, width: Double, height: Double) {}
   public func batch(_ operation: () -> Void) { operation() }
   public func dispose() {}
   public func layout(_ algorithm: String = "layered", options: PyreonFlowLayoutOptions = PyreonFlowLayoutOptions()) {}

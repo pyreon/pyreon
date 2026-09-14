@@ -747,6 +747,11 @@ class PyreonFlowState<T>(
     private var nodeExtent: PyreonFlowNodeExtent? = nodeExtent
     private val order = mutableStateListOf<String>()
     private val nodeMap = mutableStateMapOf<String, PyreonFlowNode<T>>()
+    private val measurementStore = mutableStateMapOf<String, PyreonFlowNodeMeasurement>()
+    /** Intrinsic node sizes reported by the Compose host. Explicit node
+     * width/height still win, matching the web engine's effective dimensions. */
+    val measurements: Map<String, PyreonFlowNodeMeasurement>
+        get() = measurementStore
     /** Every node in insertion order. Derived from the per-id map — reading it
      *  subscribes to EVERY node (use [getNode] in per-node composables). */
     val nodes: List<PyreonFlowNode<T>>
@@ -899,7 +904,7 @@ class PyreonFlowState<T>(
         redoStack.clear()
     }
     private fun restore(snapshot: PyreonFlowHistorySnapshot<T>) {
-        order.clear(); nodeMap.clear(); _edges = emptyList(); edgeIds.clear()
+        order.clear(); nodeMap.clear(); measurementStore.clear(); _edges = emptyList(); edgeIds.clear()
         for (node in snapshot.nodes) insertNode(node)
         for (edge in snapshot.edges) insertEdge(edge)
         clearSelection()
@@ -921,7 +926,7 @@ class PyreonFlowState<T>(
         checkpoint()
         val oldSelectedNodes = selectedNodeIdList.toList()
         val oldSelectedEdges = selectedEdgeIdList.toList()
-        order.clear(); nodeMap.clear(); _edges = emptyList(); edgeIds.clear()
+        order.clear(); nodeMap.clear(); measurementStore.clear(); _edges = emptyList(); edgeIds.clear()
         for (node in snapshot.nodes) insertNode(node)
         for (edge in snapshot.edges) insertEdge(edge)
         selectedNodeIdList.clear(); selectedNodeIdSet.clear()
@@ -986,7 +991,7 @@ class PyreonFlowState<T>(
     private fun removeNodes(ids: Set<String>) {
         if (ids.isEmpty()) return
         order.removeAll { ids.contains(it) }
-        for (id in ids) nodeMap.remove(id)
+        for (id in ids) { nodeMap.remove(id); measurementStore.remove(id) }
         markMutation()
         var touchedSelection = false
         for (id in ids) if (selectedNodeIdSet.remove(id) != null) touchedSelection = true
@@ -999,7 +1004,13 @@ class PyreonFlowState<T>(
     fun getNode(id: String): PyreonFlowNode<T>? = nodeMap[id]
     fun getNodeDimensions(id: String): PyreonFlowDimensions {
         val node = nodeMap[id] ?: return PyreonFlowDimensions(PYREON_FLOW_DEFAULT_NODE_WIDTH, PYREON_FLOW_DEFAULT_NODE_HEIGHT)
-        return PyreonFlowDimensions(node.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH, node.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT)
+        return pyreonEffectiveDimensions(node, measurementStore[id])
+    }
+    fun updateNodeMeasurement(id: String, width: Double, height: Double) {
+        if (!nodeMap.containsKey(id) || width <= 0.0 || height <= 0.0) return
+        val previous = measurementStore[id]
+        val next = PyreonFlowNodeMeasurement(width, height, previous?.handles ?: emptyList())
+        if (previous != next) measurementStore[id] = next
     }
     fun addNode(node: PyreonFlowNode<T>) {
         if (nodeMap.containsKey(node.id)) return
@@ -1018,6 +1029,7 @@ class PyreonFlowState<T>(
         order.clear()
         nodeMap.clear()
         for (node in nodes) insertNode(node)
+        measurementStore.keys.retainAll(nextIds)
         setNodeSelection(selectedNodeIdList.filter { nextIds.contains(it) })
         removeEdges { !nextIds.contains(it.source) || !nextIds.contains(it.target) }
         emitSelectionChangeIfChanged(oldSelectedNodes, oldSelectedEdges)
