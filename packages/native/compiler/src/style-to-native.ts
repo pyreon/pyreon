@@ -719,7 +719,10 @@ function parseAspectRatio(v: string | number): string | null {
   if (slash) {
     const w = parseFloat(slash[1]!)
     const h = parseFloat(slash[2]!)
-    return h > 0 ? (w / h).toFixed(4).replace(/\.?0+$/, '') : null
+    // Both operands need the SAME positivity guard the number/plain forms
+    // above and below already apply -- `'0 / 9'` (or a negative w) slipped
+    // through with only `h > 0` checked, emitting a degenerate 0 ratio.
+    return w > 0 && h > 0 ? (w / h).toFixed(4).replace(/\.?0+$/, '') : null
   }
   const n = parseFloat(s)
   return Number.isFinite(n) && n > 0 ? String(n) : null

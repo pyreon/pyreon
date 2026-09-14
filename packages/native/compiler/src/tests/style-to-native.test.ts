@@ -370,6 +370,19 @@ describe('inline style — sizing constraints (emit)', () => {
     )
   })
 
+  it('drops a degenerate `W / H` ratio (zero or negative width) instead of emitting a 0 aspectRatio', () => {
+    // parseAspectRatio's slash form only checked h > 0, so '0 / 9' produced a
+    // real (degenerate) 0 ratio -- both aspectRatio(0, ...) and aspectRatio(0f)
+    // collapse the view. The plain-number and bare-string forms already
+    // guard `> 0`; the slash form must too.
+    expect(swift(`<Stack style={{ aspectRatio: '0 / 9' }}><Text>x</Text></Stack>`).code).not.toContain(
+      '.aspectRatio(',
+    )
+    expect(kotlin(`<Stack style={{ aspectRatio: '0 / 9' }}><Text>x</Text></Stack>`).code).not.toContain(
+      '.aspectRatio(',
+    )
+  })
+
   it('warns + drops margin (no native equivalent), never silently', () => {
     const { code, warnings } = swift(`<Stack style={{ margin: 8, marginTop: 4 }}><Text>x</Text></Stack>`)
     expect(code).not.toMatch(/\.frame\(|\.padding\(/)
