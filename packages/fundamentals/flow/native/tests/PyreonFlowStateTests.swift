@@ -51,6 +51,7 @@ struct PyreonFlowStateTests {
         let f = seedFlow()
         f.updateNodeMeasurement("1", width: 240, height: 72)
         check(f.measurements["1"] == PyreonFlowNodeMeasurement(width: 240, height: 72), "SwiftUI host measurements are observable")
+        check(f.nodeLookup["1"]?.data.label == "Start" && f.edgeLookup["e1"]?.source == "1", "FlowInstance lookup maps stay reactive and addressable")
         check(f.getNodeDimensions("1") == PyreonFlowDimensions(width: 240, height: 72), "intrinsic host measurements drive effective geometry")
         f.addNode(PyreonFlowNode(id: "intrinsic", position: PyreonXYPosition(x: 0, y: 0), data: NodeData(label: "Intrinsic"), width: 100, height: 40))
         f.updateNodeMeasurement("intrinsic", width: 240, height: 72)

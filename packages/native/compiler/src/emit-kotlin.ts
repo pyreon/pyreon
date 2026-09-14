@@ -5203,6 +5203,25 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           if (position !== null) return `${kotlinIdent(flowName)}.getSnapLines(${emitKotlinExpr(e.args[0]!, indent)}, ${position}${e.args[2] ? `, ${ktChartDouble(emitKotlinExpr(e.args[2]!, indent))}` : ''})`
         }
       }
+      // Flow lookup computeds are JavaScript Maps. Kotlin Map.get already
+      // matches; Map.has is containsKey.
+      if (
+        e.callee.kind === 'member' &&
+        (e.callee.property === 'get' || e.callee.property === 'has') &&
+        e.callee.object.kind === 'call' &&
+        e.callee.object.args.length === 0 &&
+        e.callee.object.callee.kind === 'member' &&
+        e.callee.object.callee.object.kind === 'identifier' &&
+        _flowStateNamesKt.has(e.callee.object.callee.object.name) &&
+        ['nodeMap', 'edgeMap', 'measurements'].includes(e.callee.object.callee.property) &&
+        e.args.length === 1
+      ) {
+        const flowName = kotlinIdent(e.callee.object.callee.object.name)
+        const webName = e.callee.object.callee.property
+        const nativeName = webName === 'nodeMap' ? 'nodeLookup' : webName === 'edgeMap' ? 'edgeLookup' : webName
+        const method = e.callee.property === 'has' ? 'containsKey' : 'get'
+        return `${flowName}.${nativeName}.${method}(${emitKotlinExpr(e.args[0]!, indent)})`
+      }
       // A signal WRITE on a flow-state property — read-only natively; name it.
       if (
         e.callee.kind === 'member' &&
@@ -5227,7 +5246,8 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         e.args.length === 0 &&
         LOWERED_FLOW_PROPERTY_READS.has(e.callee.property)
       ) {
-        return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
+        const nativeName = e.callee.property === 'nodeMap' ? 'nodeLookup' : e.callee.property === 'edgeMap' ? 'edgeLookup' : e.callee.property
+        return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(nativeName)}`
       }
       // `parseInt(s)` / `parseFloat(s)` / `Number(s)` → Kotlin
       // `(s).toIntOrNull() ?: 0` / `(s).toDoubleOrNull() ?: 0.0`. JS returns

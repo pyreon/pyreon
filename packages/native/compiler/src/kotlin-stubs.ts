@@ -1728,7 +1728,9 @@ class PyreonFlowState<T>(
   reducedMotion: Boolean? = null,
 ) {
   val nodes: List<PyreonFlowNode<T>> = nodes
+  val nodeLookup: Map<String, PyreonFlowNode<T>> = emptyMap()
   val edges: List<PyreonFlowEdge> = edges
+  val edgeLookup: Map<String, PyreonFlowEdge> = emptyMap()
   val measurements: Map<String, PyreonFlowNodeMeasurement> = emptyMap()
   val viewport: PyreonFlowViewport = viewport
   var containerSize: PyreonFlowContainerSize = PyreonFlowContainerSize()

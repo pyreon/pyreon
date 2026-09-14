@@ -90,6 +90,23 @@ describe('createFlow — Swift lowering', () => {
     expect(r.code).toContain('flow.selectedNodes().count')
   })
 
+  it('nodeMap/edgeMap/measurements preserve Map lookup semantics', () => {
+    const src = workflowFlow.replace(
+      '<Text>{flow.selectedNodes().length}</Text>',
+      `<Text>{flow.nodeMap().size}</Text>
+       <Text>{flow.nodeMap().has('1') ? 'node' : 'none'}</Text>
+       <Text>{flow.edgeMap().has('e1') ? 'edge' : 'none'}</Text>
+       <Text>{flow.measurements().size}</Text>`,
+    )
+    const out = transform(src, { target: 'swift' })
+    expect(out.code).toContain('flow.nodeLookup.count')
+    expect(out.code).toContain('(flow.nodeLookup["1"] != nil)')
+    expect(out.code).toContain('(flow.edgeLookup["e1"] != nil)')
+    expect(out.code).toContain('flow.measurements.count')
+    const v = validateSwiftWithStubs(out.code)
+    expect(v.ok, v.error ?? '').toBe(true)
+  })
+
   it('the recognizer itself does not decline this shape (no createFlow-specific warning)', () => {
     // NOTE: the package-level blanket "@pyreon/flow is WEB-ONLY" warning
     // still fires here — it is derived from the manifest's `multiplatform`
@@ -109,6 +126,23 @@ describe('createFlow — Swift lowering', () => {
 
 describe('createFlow — Kotlin lowering', () => {
   const r = transform(workflowFlow, { target: 'kotlin' })
+
+  it('nodeMap/edgeMap/measurements preserve Map lookup semantics', () => {
+    const src = workflowFlow.replace(
+      '<Text>{flow.selectedNodes().length}</Text>',
+      `<Text>{flow.nodeMap().size}</Text>
+       <Text>{flow.nodeMap().has('1') ? 'node' : 'none'}</Text>
+       <Text>{flow.edgeMap().has('e1') ? 'edge' : 'none'}</Text>
+       <Text>{flow.measurements().size}</Text>`,
+    )
+    const out = transform(src, { target: 'kotlin' })
+    expect(out.code).toContain('flow.nodeLookup.size')
+    expect(out.code).toContain('flow.nodeLookup.containsKey("1")')
+    expect(out.code).toContain('flow.edgeLookup.containsKey("e1")')
+    expect(out.code).toContain('flow.measurements.size')
+    const v = validateKotlin(out.code)
+    expect(v.ok, v.error ?? '').toBe(true)
+  })
 
   it('emits a remembered PyreonFlowState with literal node/edge config, Int position literals coerced to Double', () => {
     expect(r.code).toContain('remember { PyreonFlowState<')

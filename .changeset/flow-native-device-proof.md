@@ -15,3 +15,6 @@ Match the web editor's hardware-keyboard model on SwiftUI and Compose: focused
 nodes select with Enter/Space, move by 10 units with arrows (100 with Shift),
 and the canvas handles configured deletion, Escape, select/copy/paste, and
 undo/redo shortcuts.
+
+Lower the reactive `nodeMap`, `edgeMap`, and `measurements` FlowInstance reads
+to native lookup maps, including shared `size`, `get`, and `has` operations.

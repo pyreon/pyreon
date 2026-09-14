@@ -756,10 +756,15 @@ class PyreonFlowState<T>(
      *  subscribes to EVERY node (use [getNode] in per-node composables). */
     val nodes: List<PyreonFlowNode<T>>
         get() = order.map { nodeMap.getValue(it) }
+    /** Reactive O(1) lookup view matching the web FlowInstance computed. */
+    val nodeLookup: Map<String, PyreonFlowNode<T>>
+        get() = nodeMap
 
     private var _edges by mutableStateOf<List<PyreonFlowEdge>>(emptyList())
     val edges: List<PyreonFlowEdge>
         get() = _edges
+    val edgeLookup: Map<String, PyreonFlowEdge>
+        get() = _edges.associateBy { it.id }
     private val edgeIds = mutableStateMapOf<String, Unit>()
 
     private var _viewport by mutableStateOf(viewport)

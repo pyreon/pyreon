@@ -940,9 +940,17 @@ public final class PyreonFlowState<T> {
         _ = nodesVersion
         return order.map { nodeStore[$0]! }
     }
+    /// Reactive O(1) lookup view matching the web FlowInstance computed.
+    public var nodeLookup: [String: PyreonFlowNode<T>] {
+        _ = nodesVersion
+        return nodeStore
+    }
 
     public private(set) var edges: [PyreonFlowEdge] = []
     private var edgeIds: Set<String> = []
+    public var edgeLookup: [String: PyreonFlowEdge] {
+        Dictionary(uniqueKeysWithValues: edges.map { ($0.id, $0) })
+    }
 
     public private(set) var viewport: PyreonFlowViewport
     /// Written by the hosting view's own size measurement — see the file header.

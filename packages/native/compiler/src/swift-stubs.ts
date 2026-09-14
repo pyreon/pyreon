@@ -1192,7 +1192,9 @@ public final class PyreonFlowState<T> {
   public let defaultEdgeType = "bezier"; public let connectionLineType = "bezier"; public let defaultEdgeOptions = PyreonFlowDefaultEdgeOptions(); public let fitViewOnLoad = false; public let fitViewPadding = 0.1
   public let autoHistory = true; public let deleteKeys: [String]? = ["Delete", "Backspace"]; public let multiSelectionKey: String? = "shift"; public let selectionKey: String? = "shift"; public let zoomActivationKey: String? = "ctrl"; public let preventScrolling = true
   public private(set) var nodes: [PyreonFlowNode<T>] = []
+  public var nodeLookup: [String: PyreonFlowNode<T>] { [:] }
   public private(set) var edges: [PyreonFlowEdge] = []
+  public var edgeLookup: [String: PyreonFlowEdge] { [:] }
   public private(set) var measurements: [String: PyreonFlowNodeMeasurement] = [:]
   public private(set) var viewport: PyreonFlowViewport = PyreonFlowViewport()
   public var containerSize = PyreonFlowContainerSize()

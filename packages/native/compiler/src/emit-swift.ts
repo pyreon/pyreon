@@ -6163,6 +6163,25 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           if (position !== null) return `${swiftIdent(flowName)}.getSnapLines(${emitSwiftExpr(e.args[0]!, indent)}, ${position}${e.args[2] ? `, threshold: ${emitSwiftExpr(e.args[2]!, indent)}` : ''})`
         }
       }
+      // Flow lookup computeds are JavaScript Maps. Preserve their canonical
+      // get/has operations while targeting Swift dictionaries.
+      if (
+        e.callee.kind === 'member' &&
+        (e.callee.property === 'get' || e.callee.property === 'has') &&
+        e.callee.object.kind === 'call' &&
+        e.callee.object.args.length === 0 &&
+        e.callee.object.callee.kind === 'member' &&
+        e.callee.object.callee.object.kind === 'identifier' &&
+        _flowStateNamesSwift.has(e.callee.object.callee.object.name) &&
+        ['nodeMap', 'edgeMap', 'measurements'].includes(e.callee.object.callee.property) &&
+        e.args.length === 1
+      ) {
+        const flowName = swiftIdent(e.callee.object.callee.object.name)
+        const webName = e.callee.object.callee.property
+        const nativeName = webName === 'nodeMap' ? 'nodeLookup' : webName === 'edgeMap' ? 'edgeLookup' : webName
+        const lookup = `${flowName}.${nativeName}[${emitSwiftExpr(e.args[0]!, indent)}]`
+        return e.callee.property === 'has' ? `(${lookup} != nil)` : lookup
+      }
       // A signal WRITE on a flow-state property (`flow.nodes.set(...)`): the
       // native port exposes the collections read-only — name it.
       if (
@@ -6190,7 +6209,8 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         e.args.length === 0 &&
         LOWERED_FLOW_PROPERTY_READS.has(e.callee.property)
       ) {
-        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
+        const nativeName = e.callee.property === 'nodeMap' ? 'nodeLookup' : e.callee.property === 'edgeMap' ? 'edgeLookup' : e.callee.property
+        return `${swiftIdent(e.callee.object.name)}.${swiftIdent(nativeName)}`
       }
       // `parseInt(s)` / `parseFloat(s)` / `Number(s)` → Swift `Int(s) ?? 0`
       // / `Double(s) ?? 0`. JS returns NaN on failure; the `?? 0` default
@@ -7273,6 +7293,20 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // constant is `Double.pi`.
       if (e.object.kind === 'identifier' && e.object.name === 'Math' && e.property === 'PI') {
         return 'Double.pi'
+      }
+
+      if (
+        e.property === 'size' &&
+        e.object.kind === 'call' &&
+        e.object.args.length === 0 &&
+        e.object.callee.kind === 'member' &&
+        e.object.callee.object.kind === 'identifier' &&
+        _flowStateNamesSwift.has(e.object.callee.object.name) &&
+        ['nodeMap', 'edgeMap', 'measurements'].includes(e.object.callee.property)
+      ) {
+        const webName = e.object.callee.property
+        const nativeName = webName === 'nodeMap' ? 'nodeLookup' : webName === 'edgeMap' ? 'edgeLookup' : webName
+        return `${swiftIdent(e.object.callee.object.name)}.${nativeName}.count`
       }
 
       // `m.size` (Map/Set property) → Swift `.count`, typed off the receiver.
