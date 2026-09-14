@@ -622,10 +622,17 @@ jobs:
           java-version: '21'
 
       - name: Setup Android SDK
-        # First-party action for the SDK + build-tools + platform.
+        # First-party action for the SDK command-line tools. Keep `packages`
+        # explicit: the action's default includes the obsolete `tools` package,
+        # which currently resolves to an emulator download. A transient/corrupt
+        # emulator ZIP then fails this setup step before Gradle can run. The
+        # emulator runner installs its own emulator/system image later; AGP
+        # resolves its pinned platform/build-tools requirements during builds.
         # SHA-pinned per PinnedDependenciesID supply-chain hardening.
         # android-actions/setup-android@v3
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          packages: platform-tools
 
       - name: Install Gradle (pinned distribution + sha256)
         # The android examples pin AGP 8.13.2 (needs Gradle 8.13+) but ship no

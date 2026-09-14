@@ -5,6 +5,7 @@ import {
   extractAgp,
   extractPinnedGradle,
   extractCompileSdk,
+  hasSafeAndroidSetupPackages,
   maxCompileSdkFor,
   minGradleFor,
   usesKotlinOptionsDsl,
@@ -68,6 +69,24 @@ describe('extraction', () => {
   it('reads GRADLE_VERSION out of the workflow', () => {
     expect(extractPinnedGradle("          GRADLE_VERSION: '8.14.5'\n")).toBe('8.14.5')
     expect(extractPinnedGradle('no pin here')).toBeNull()
+  })
+})
+
+describe('Android SDK setup packages', () => {
+  const workflow = (packages?: string) => `steps:
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@pinned
+${packages === undefined ? '' : `        with:\n          packages: ${packages}\n`}      - name: Build
+        run: gradle assembleDebug
+`
+
+  it('accepts the explicit minimal platform-tools installation', () => {
+    expect(hasSafeAndroidSetupPackages(workflow('platform-tools'))).toBe(true)
+  })
+
+  it('rejects action defaults and the legacy tools package', () => {
+    expect(hasSafeAndroidSetupPackages(workflow())).toBe(false)
+    expect(hasSafeAndroidSetupPackages(workflow('tools platform-tools'))).toBe(false)
   })
 })
 
