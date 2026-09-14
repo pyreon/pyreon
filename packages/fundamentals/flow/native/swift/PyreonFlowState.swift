@@ -828,6 +828,42 @@ public struct PyreonFlowMarker: Equatable {
     }
 }
 
+public struct PyreonFlowResolvedMarkers: Equatable {
+    public let start: PyreonFlowMarker?
+    public let end: PyreonFlowMarker?
+    public init(start: PyreonFlowMarker?, end: PyreonFlowMarker?) { self.start = start; self.end = end }
+}
+
+public let pyreonFlowDefaultMarkerEnd = PyreonFlowMarker(type: "arrowclosed")
+
+public func pyreonResolveFlowMarker(_ marker: PyreonFlowMarker?) -> PyreonFlowMarker? {
+    guard let marker else { return nil }
+    return PyreonFlowMarker(type: marker.type, color: marker.color ?? "#999999", width: marker.width, height: marker.height, strokeWidth: marker.strokeWidth)
+}
+
+private func pyreonFlowMarkerNumber(_ value: Double) -> String {
+    value.rounded() == value ? String(Int(value)) : String(value)
+}
+
+public func pyreonFlowMarkerId(_ marker: PyreonFlowMarker) -> String {
+    let color = (marker.color ?? "#999999").lowercased().replacingOccurrences(of: "[^a-z0-9]", with: "", options: .regularExpression)
+    return "pyreon-flow-marker-\(marker.type)-\(color)-\(pyreonFlowMarkerNumber(marker.width))x\(pyreonFlowMarkerNumber(marker.height))-\(pyreonFlowMarkerNumber(marker.strokeWidth))"
+}
+
+public func pyreonResolveFlowEdgeMarkers(_ edge: PyreonFlowEdge, defaultMarkerEnd: PyreonFlowMarker?) -> PyreonFlowResolvedMarkers {
+    PyreonFlowResolvedMarkers(start: pyreonResolveFlowMarker(edge.markerStart), end: pyreonResolveFlowMarker(edge.markerEndSpecified ? edge.markerEnd : defaultMarkerEnd))
+}
+
+public func pyreonCollectFlowEdgeMarkers(_ edges: [PyreonFlowEdge], defaultMarkerEnd: PyreonFlowMarker?) -> [String: PyreonFlowMarker] {
+    var result: [String: PyreonFlowMarker] = [:]
+    for edge in edges {
+        let markers = pyreonResolveFlowEdgeMarkers(edge, defaultMarkerEnd: defaultMarkerEnd)
+        if let start = markers.start { result[pyreonFlowMarkerId(start)] = start }
+        if let end = markers.end { result[pyreonFlowMarkerId(end)] = end }
+    }
+    return result
+}
+
 /// Default node box when a node declares no explicit width/height — the
 /// SAME `150×40` fallback `DEFAULT_NODE_WIDTH`/`DEFAULT_NODE_HEIGHT` use on
 /// web (`edges.ts`), so `fitView` frames the graph identically on every

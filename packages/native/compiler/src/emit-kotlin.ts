@@ -4369,6 +4369,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
     case 'identifier':
       if (e.name === 'DEFAULT_NODE_WIDTH') return '150.0'
       if (e.name === 'DEFAULT_NODE_HEIGHT') return '40.0'
+      if (e.name === 'DEFAULT_MARKER_END') return 'pyreonFlowDefaultMarkerEnd'
       return kotlinIdent(e.name)
     case 'await':
       // M4.5: a Kotlin suspend call carries NO `await` keyword — the enclosing
@@ -4426,6 +4427,22 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         const lowered = kotlinFlowPathHelper(e.callee.name, e.args[0], indent)
         if (lowered !== null) return lowered
         _emitWarnings.push(`${e.callee.name} requires one supported object-literal parameter to lower natively.`)
+      }
+      if (e.callee.kind === 'identifier' && e.callee.name === 'resolveMarker' && e.args.length === 1) {
+        const marker = kotlinFlowMarkerLiteral(e.args[0]!) ?? emitKotlinExpr(e.args[0]!, indent)
+        return `pyreonResolveFlowMarker(${marker})`
+      }
+      if (e.callee.kind === 'identifier' && e.callee.name === 'markerId' && e.args.length === 1) {
+        const marker = kotlinFlowMarkerLiteral(e.args[0]!) ?? emitKotlinExpr(e.args[0]!, indent)
+        return `pyreonFlowMarkerId(${marker})`
+      }
+      if (e.callee.kind === 'identifier' && e.callee.name === 'resolveEdgeMarkers' && e.args.length === 2) {
+        const marker = kotlinFlowMarkerLiteral(e.args[1]!) ?? emitKotlinExpr(e.args[1]!, indent)
+        return `pyreonResolveFlowEdgeMarkers(${emitKotlinExpr(e.args[0]!, indent)}, ${marker})`
+      }
+      if (e.callee.kind === 'identifier' && e.callee.name === 'collectEdgeMarkers' && e.args.length === 2) {
+        const marker = kotlinFlowMarkerLiteral(e.args[1]!) ?? emitKotlinExpr(e.args[1]!, indent)
+        return `pyreonCollectFlowEdgeMarkers(${emitKotlinExpr(e.args[0]!, indent)}, ${marker})`
       }
       if (e.callee.kind === 'identifier' && e.callee.name === 'getHandlePosition' && e.args.length === 5) {
         const position = kotlinFlowPositionExpr(e.args[0]!)
@@ -5934,6 +5951,9 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       }
     }
     case 'member': {
+      if (e.object.kind === 'identifier' && e.object.name === 'MarkerType' && (e.property === 'Arrow' || e.property === 'ArrowClosed')) {
+        return JSON.stringify(e.property.toLowerCase())
+      }
       // `Math.PI` member READ — java.lang.Math.PI is valid on the JVM, but
       // emit the fully-qualified stdlib constant so no import is needed and
       // the kotlinc stub gate sees a real symbol.

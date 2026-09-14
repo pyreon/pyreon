@@ -1032,6 +1032,12 @@ public struct PyreonFlowHandleConfig: Equatable {
 public struct PyreonFlowMarker: Equatable {
   public init(type: String, color: String? = nil, width: Double = 10, height: Double = 7, strokeWidth: Double = 1) {}
 }
+public struct PyreonFlowResolvedMarkers { public let start: PyreonFlowMarker?; public let end: PyreonFlowMarker? }
+public let pyreonFlowDefaultMarkerEnd = PyreonFlowMarker(type: "arrowclosed")
+public func pyreonResolveFlowMarker(_ marker: PyreonFlowMarker?) -> PyreonFlowMarker? { marker }
+public func pyreonFlowMarkerId(_ marker: PyreonFlowMarker) -> String { "" }
+public func pyreonResolveFlowEdgeMarkers(_ edge: PyreonFlowEdge, defaultMarkerEnd: PyreonFlowMarker?) -> PyreonFlowResolvedMarkers { PyreonFlowResolvedMarkers(start: nil, end: nil) }
+public func pyreonCollectFlowEdgeMarkers(_ edges: [PyreonFlowEdge], defaultMarkerEnd: PyreonFlowMarker?) -> [String: PyreonFlowMarker] { [:] }
 public struct PyreonFlowNode<T> {
   public var id: String
   public var type: String? = nil

@@ -1602,6 +1602,12 @@ data class PyreonFlowFloatingEndpoints(val source: PyreonFlowHandleAnchor = Pyre
 data class PyreonFlowSmartPositions(val sourcePosition: PyreonFlowPosition = PyreonFlowPosition.Bottom, val targetPosition: PyreonFlowPosition = PyreonFlowPosition.Top)
 data class PyreonFlowHandleConfig(val id: String? = null, val type: String, val position: PyreonFlowPosition, val offset: Double = 50.0)
 data class PyreonFlowMarker(val type: String, val color: String? = null, val width: Double = 10.0, val height: Double = 7.0, val strokeWidth: Double = 1.0)
+data class PyreonFlowResolvedMarkers(val start: PyreonFlowMarker?, val end: PyreonFlowMarker?)
+val pyreonFlowDefaultMarkerEnd = PyreonFlowMarker("arrowclosed")
+fun pyreonResolveFlowMarker(marker: PyreonFlowMarker?): PyreonFlowMarker? = marker
+fun pyreonFlowMarkerId(marker: PyreonFlowMarker): String = ""
+fun pyreonResolveFlowEdgeMarkers(edge: PyreonFlowEdge, defaultMarkerEnd: PyreonFlowMarker?): PyreonFlowResolvedMarkers = PyreonFlowResolvedMarkers(null, null)
+fun pyreonCollectFlowEdgeMarkers(edges: List<PyreonFlowEdge>, defaultMarkerEnd: PyreonFlowMarker?): Map<String, PyreonFlowMarker> = emptyMap()
 data class PyreonFlowNode<T>(
   val id: String,
   val type: String? = null,

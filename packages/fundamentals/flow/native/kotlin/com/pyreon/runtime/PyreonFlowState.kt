@@ -73,6 +73,30 @@ data class PyreonFlowMarker(
     val strokeWidth: Double = 1.0,
 )
 
+data class PyreonFlowResolvedMarkers(val start: PyreonFlowMarker?, val end: PyreonFlowMarker?)
+
+val pyreonFlowDefaultMarkerEnd = PyreonFlowMarker("arrowclosed")
+
+fun pyreonResolveFlowMarker(marker: PyreonFlowMarker?): PyreonFlowMarker? = marker?.copy(color = marker.color ?: "#999999")
+
+private fun pyreonFlowMarkerNumber(value: Double): String = if (value % 1.0 == 0.0) value.toLong().toString() else value.toString()
+
+fun pyreonFlowMarkerId(marker: PyreonFlowMarker): String {
+    val color = (marker.color ?: "#999999").lowercase().replace(Regex("[^a-z0-9]"), "")
+    return "pyreon-flow-marker-${marker.type}-$color-${pyreonFlowMarkerNumber(marker.width)}x${pyreonFlowMarkerNumber(marker.height)}-${pyreonFlowMarkerNumber(marker.strokeWidth)}"
+}
+
+fun pyreonResolveFlowEdgeMarkers(edge: PyreonFlowEdge, defaultMarkerEnd: PyreonFlowMarker?): PyreonFlowResolvedMarkers =
+    PyreonFlowResolvedMarkers(pyreonResolveFlowMarker(edge.markerStart), pyreonResolveFlowMarker(if (edge.markerEndSpecified) edge.markerEnd else defaultMarkerEnd))
+
+fun pyreonCollectFlowEdgeMarkers(edges: List<PyreonFlowEdge>, defaultMarkerEnd: PyreonFlowMarker?): Map<String, PyreonFlowMarker> = buildMap {
+    for (edge in edges) {
+        val markers = pyreonResolveFlowEdgeMarkers(edge, defaultMarkerEnd)
+        markers.start?.let { put(pyreonFlowMarkerId(it), it) }
+        markers.end?.let { put(pyreonFlowMarkerId(it), it) }
+    }
+}
+
 /** An edge — mirrors `FlowEdge`'s core fields, including editable waypoints. */
 data class PyreonFlowEdge(
     val id: String,

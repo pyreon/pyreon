@@ -1166,4 +1166,43 @@ export function C() {
       expect(v.ok, v.error ?? '').toBe(true)
     })
   })
+
+  describe('public marker helper native lowering', () => {
+    const src = `
+      import { createFlow, resolveMarker, markerId, resolveEdgeMarkers, collectEdgeMarkers, DEFAULT_MARKER_END, MarkerType } from '@pyreon/flow'
+      import { Button } from '${P}'
+      export function X() {
+        const flow = createFlow({
+          nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'A' } }],
+          edges: [{ id: 'e1', source: '1', target: '1' }],
+        })
+        return <Button onPress={() => {
+          resolveMarker({ type: MarkerType.Arrow, color: '#F00' })
+          markerId({ type: MarkerType.ArrowClosed })
+          resolveEdgeMarkers(flow.edges()[0], null)
+          collectEdgeMarkers(flow.edges(), DEFAULT_MARKER_END)
+        }}>Markers</Button>
+      }
+    `
+
+    it('emits runtime marker helpers and constants on Swift', () => {
+      const result = transform(src, { target: 'swift' })
+      expect(result.code).toContain('pyreonResolveFlowMarker(PyreonFlowMarker(type: "arrow", color: "#F00"))')
+      expect(result.code).toContain('pyreonFlowMarkerId(PyreonFlowMarker(type: "arrowclosed"))')
+      expect(result.code).toContain('pyreonResolveFlowEdgeMarkers(flow.edges[0], defaultMarkerEnd: nil)')
+      expect(result.code).toContain('pyreonCollectFlowEdgeMarkers(flow.edges, defaultMarkerEnd: pyreonFlowDefaultMarkerEnd)')
+      expect((result.warnings ?? []).join(' ')).not.toContain('not available in the native compiler')
+      expect(validateSwiftWithStubs(result.code).ok).toBe(true)
+    })
+
+    it('emits runtime marker helpers and constants on Kotlin', () => {
+      const result = transform(src, { target: 'kotlin' })
+      expect(result.code).toContain('pyreonResolveFlowMarker(PyreonFlowMarker("arrow", color = "#F00"))')
+      expect(result.code).toContain('pyreonFlowMarkerId(PyreonFlowMarker("arrowclosed"))')
+      expect(result.code).toContain('pyreonResolveFlowEdgeMarkers(flow.edges[0], null)')
+      expect(result.code).toContain('pyreonCollectFlowEdgeMarkers(flow.edges, pyreonFlowDefaultMarkerEnd)')
+      expect((result.warnings ?? []).join(' ')).not.toContain('not available in the native compiler')
+      expect(validateKotlin(result.code).ok).toBe(true)
+    })
+  })
 })

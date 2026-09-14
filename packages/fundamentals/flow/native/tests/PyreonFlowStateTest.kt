@@ -10,6 +10,7 @@ import com.pyreon.runtime.PyreonFlowNodeMeasurement
 import com.pyreon.runtime.PyreonFlowNode
 import com.pyreon.runtime.PyreonFlowNodeExtent
 import com.pyreon.runtime.PyreonFlowLayoutOptions
+import com.pyreon.runtime.PyreonFlowMarker
 import com.pyreon.runtime.PyreonFlowState
 import com.pyreon.runtime.PyreonFlowSnapshot
 import com.pyreon.runtime.PyreonFlowSnapLines
@@ -22,6 +23,10 @@ import com.pyreon.runtime.pyreonFlowRadialLayout
 import com.pyreon.runtime.pyreonFlowStressLayout
 import com.pyreon.runtime.pyreonFlowTreeLayout
 import com.pyreon.runtime.pyreonEffectiveDimensions
+import com.pyreon.runtime.pyreonCollectFlowEdgeMarkers
+import com.pyreon.runtime.pyreonFlowDefaultMarkerEnd
+import com.pyreon.runtime.pyreonFlowMarkerId
+import com.pyreon.runtime.pyreonResolveFlowEdgeMarkers
 import kotlin.math.abs
 
 private data class NodeData(val label: String)
@@ -52,6 +57,11 @@ fun main() {
     check(configured.panOnScroll && configured.panOnScrollSpeed == 0.75, "Android retains scroll config")
     check(!configured.zoomOnScroll && configured.deleteKeys == listOf("ForwardDelete"), "Android retains zoom/delete config")
     check(configured.multiSelectionKey == "ctrl" && configured.selectionKey == null && configured.zoomActivationKey == "meta" && !configured.preventScrolling, "Android retains modifier config")
+    val markerEdge = PyreonFlowEdge(id = "marker", source = "1", target = "2", markerStart = PyreonFlowMarker("arrow", color = "#F00"))
+    val resolvedMarker = pyreonResolveFlowEdgeMarkers(markerEdge, pyreonFlowDefaultMarkerEnd)
+    check(resolvedMarker.start?.color == "#F00" && resolvedMarker.end?.type == "arrowclosed", "Android resolves per-edge and default markers")
+    check(pyreonFlowMarkerId(PyreonFlowMarker("arrow", color = "#F00")) == "pyreon-flow-marker-arrow-f00-10x7-1", "Android marker ids match web formatting")
+    check(pyreonCollectFlowEdgeMarkers(listOf(markerEdge, markerEdge), pyreonFlowDefaultMarkerEnd).size == 2, "Android marker collection deduplicates equal markers")
     val measuredDimensions = pyreonEffectiveDimensions(PyreonFlowNode("dims", position = PyreonXYPosition(0.0, 0.0), data = NodeData("D"), width = 90.0), PyreonFlowNodeMeasurement(80.0, 30.0))
     check(measuredDimensions.width == 90.0 && measuredDimensions.height == 30.0, "effective dimensions preserve explicit-measured-default precedence")
     // 1. Seed + basic reads.

@@ -42,6 +42,11 @@ struct PyreonFlowStateTests {
         check(configured.panOnScroll && configured.panOnScrollSpeed == 0.75, "Apple retains scroll config")
         check(!configured.zoomOnScroll && configured.deleteKeys == ["ForwardDelete"], "Apple retains zoom/delete config")
         check(configured.multiSelectionKey == "ctrl" && configured.selectionKey == nil && configured.zoomActivationKey == "meta" && !configured.preventScrolling, "Apple retains modifier config")
+        let markerEdge = PyreonFlowEdge(id: "marker", source: "1", target: "2", markerStart: PyreonFlowMarker(type: "arrow", color: "#F00"))
+        let resolvedMarker = pyreonResolveFlowEdgeMarkers(markerEdge, defaultMarkerEnd: pyreonFlowDefaultMarkerEnd)
+        check(resolvedMarker.start?.color == "#F00" && resolvedMarker.end?.type == "arrowclosed", "Apple resolves per-edge and default markers")
+        check(pyreonFlowMarkerId(PyreonFlowMarker(type: "arrow", color: "#F00")) == "pyreon-flow-marker-arrow-f00-10x7-1", "Apple marker ids match web formatting")
+        check(pyreonCollectFlowEdgeMarkers([markerEdge, markerEdge], defaultMarkerEnd: pyreonFlowDefaultMarkerEnd).count == 2, "Apple marker collection deduplicates equal markers")
         // 1. Seed + basic reads.
         let f = seedFlow()
         let packingNodes = [
