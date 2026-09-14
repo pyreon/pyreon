@@ -4281,18 +4281,29 @@ function parseNestedObjectShape(
   schemaFn: string | null,
 ): ZodSchemaDefnIR | null {
   // objectCallNode is `z.object({...})`. Wrap it as `<schemaFn>(z.object({...}))`
-  // so the existing walker can extract fields + auxSchemas.
+  // so the existing walker can extract fields + auxSchemas — EXCEPT for the
+  // wrapper-LESS `s` DSL (`schemaFn === null`), whose own re-entry branch
+  // (`tryNamespacedSchemaDefnFromTopLevel`'s `if (schemaFn === null) innerCall
+  // = init`) expects `init` to BE the `<prefix>.object(...)` call directly —
+  // wrapping it here built `<null>(objectCallNode)` (callee `{name: null}`,
+  // not the required MemberExpression), so a nested `s.object({...})` inside
+  // an `s.object`/`s.array` always failed to lower, silently dropping the
+  // field and then the whole schema. Hand `objectCallNode` straight through
+  // as `init` in that case.
   const wrapped: AnyNode = {
     type: 'VariableDeclaration',
     declarations: [
       {
         type: 'VariableDeclarator',
         id: { type: 'Identifier', name },
-        init: {
-          type: 'CallExpression',
-          callee: { type: 'Identifier', name: schemaFn },
-          arguments: [objectCallNode],
-        },
+        init:
+          schemaFn === null
+            ? objectCallNode
+            : {
+                type: 'CallExpression',
+                callee: { type: 'Identifier', name: schemaFn },
+                arguments: [objectCallNode],
+              },
       },
     ],
   }
