@@ -79,7 +79,10 @@ describe('atlas scan mounts the example', () => {
     //
     // The 2 failures are the example's deliberate empty-label scenarios, which
     // the static a11y check catches — they are load-bearing here, since a
-    // verify pipeline that cannot fail is not verifying anything.
+    // verify pipeline that cannot fail is not verifying anything. (The check
+    // also verifies a name-like prop a scenario SUPPLIES, but an OPTIONAL one
+    // blanked by the edge-cases plugin's own Empty scenario is not a finding —
+    // GuardedDelete's `label?` stays green.)
     //
     // 53 scenarios: the content seed gives every rocketstyle text component a
     // `children` text control, and the edge-cases plugin then derives an Empty

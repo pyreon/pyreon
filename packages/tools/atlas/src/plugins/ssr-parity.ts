@@ -104,6 +104,16 @@ export function normalizeHtml(html: string): string {
     // which means the oracle was green for the wrong reason, not that adoption
     // broke it. Everything else it compares is untouched.
     .replaceAll(/ value="[^"]*"/g, '')
+    // `createUniqueId()` is a process-wide counter (`pyreon-N`), never reset
+    // between the SSR render, the hydrate and the fresh client mount this
+    // oracle compares — so a Combobox's `aria-controls="pyreon-2-listbox"`
+    // legitimately reads `pyreon-3-listbox` on the second mount. That is
+    // three instances of one counter, not a DOM mismatch, so the NUMBER is
+    // canonicalized and the id's SHAPE and every reference to it still have
+    // to agree. (The real, separate hazard — a hydrated component's closure
+    // holding a different id than the adopted server attribute — is not a
+    // DOM diff at all and needs its own check; see the anti-patterns entry.)
+    .replaceAll(/pyreon-\d+/g, 'pyreon-#')
     .trim()
 }
 

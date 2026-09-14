@@ -8,6 +8,7 @@
  * place the JSON becomes vnodes, so it is tested through a real `h`.
  */
 import { h as coreH } from '@pyreon/core'
+import { renderToString } from '@pyreon/runtime-server'
 import { describe, expect, it } from 'vitest'
 import {
   deriveContent,
@@ -53,6 +54,24 @@ describe('deriveContent', () => {
     }
   })
 
+  it('seeds NOTHING for a container no generic block can legally fill', () => {
+    // A `<div>` inside `<table>` is foster-parented out by the HTML parser,
+    // so SSR and the client mount disagree and the parity check blames the
+    // component. Measured: every Table scenario of ui-components failed SSR
+    // parity the moment the seed landed.
+    for (const tag of ['table', 'tbody', 'tr', 'dl']) {
+      expect(deriveContent({ name: 'Table', tag }), tag).toEqual({ args: {}, controls: [] })
+    }
+  })
+
+  it('fills a list with <li> blocks, never <div>', async () => {
+    const seed = deriveContent({ name: 'Breadcrumb', tag: 'ul' })
+    expect(seed.args.children).toEqual({ __atlasContent: 'blocks', count: 3, tag: 'li' })
+    const { children } = materializeContent(seed.args, h)
+    const html = await renderToString(h('ul', {}, ...children) as never)
+    expect(html.match(/<li data-atlas-content="block"/g)).toHaveLength(3)
+  })
+
   it('gives a layout container placeholder blocks and NO control', () => {
     const seed = deriveContent({ name: 'Stack', tag: 'div' })
     expect(isContentBlocks(seed.args.children)).toBe(true)
@@ -87,15 +106,15 @@ describe('materializeContent', () => {
     expect(materializeContent(args, h)).toEqual({ props: args, children: [] })
   })
 
-  it('turns the blocks marker into real elements through the GIVEN h', () => {
+  it('turns the blocks marker into real elements through the GIVEN h', async () => {
     const marker = { __atlasContent: 'blocks', count: 3 }
     const { props, children } = materializeContent({ children: marker, gap: 'sm' }, h)
     expect(props).toEqual({ gap: 'sm' })
     expect(children).toHaveLength(3)
-    const first = children[0] as { type: unknown; props: Record<string, unknown>; children: unknown[] }
-    expect(first.type).toBe('div')
-    expect(first.props['data-atlas-content']).toBe('block')
-    expect(first.children).toEqual(['1'])
+    // Rendered through the real pipeline, not read off a vnode shape.
+    const html = await renderToString(h('section', {}, ...children) as never)
+    expect(html.match(/<div data-atlas-content="block"/g)).toHaveLength(3)
+    expect(html).toContain('>1</div>')
   })
 
   it('survives a marker whose count round-tripped badly', () => {

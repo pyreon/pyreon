@@ -59,7 +59,15 @@ export interface VariantAxis {
  * typed-but-unimplemented class. A new source enters this union in the same
  * change that ships its producer.
  */
-export type ScenarioSource = 'auto-default' | 'auto-variant' | 'authored'
+/**
+ * `auto-edge` is the edge-cases plugin's Empty / Long-content pair: states
+ * atlas MANUFACTURES to exercise rendering, not states the component claims.
+ * Kept distinct from `auto-variant` so a check can tell "the author blanked
+ * the label" from "atlas blanked it to see what happens" — the static a11y
+ * check fails a REQUIRED name that is empty in either, but an OPTIONAL one
+ * only when a scenario the component owns supplies it empty.
+ */
+export type ScenarioSource = 'auto-default' | 'auto-variant' | 'auto-edge' | 'authored'
 
 /**
  * A named, concrete state of a component — the derived replacement for a

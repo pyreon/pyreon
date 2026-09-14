@@ -30,6 +30,15 @@ import type { PropControl } from './types'
 export interface ContentBlocks {
   readonly __atlasContent: 'blocks'
   readonly count: number
+  /**
+   * The element each block renders as. `div` for a flex/grid container; `li`
+   * inside a list, because a `<div>` in a `<ul>` is not that list's content
+   * model. A container whose content model is NEITHER (a `<table>`, a `<dl>`)
+   * gets no blocks at all — the HTML parser foster-parents a `<div>` out of a
+   * `<table>`, so the SSR markup and the client mount disagree and the
+   * SSR-parity check reports the COMPONENT as failing to hydrate.
+   */
+  readonly tag?: 'div' | 'li'
 }
 
 /** What discovery knows about how a component renders. */
@@ -59,6 +68,14 @@ const CONTAINER_TAGS = new Set([
   'ul', 'ol', 'menu', 'dl', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'colgroup',
   'nav', 'section', 'article', 'aside', 'header', 'footer', 'main', 'form', 'fieldset', 'figure', 'dialog',
 ])
+/** Containers whose children must be `<li>`. */
+const LIST_TAGS = new Set(['ul', 'ol', 'menu'])
+/**
+ * Containers whose content model no generic block satisfies. Seeded with
+ * NOTHING rather than something the parser would relocate — see
+ * `ContentBlocks.tag`.
+ */
+const STRICT_CONTAINERS = new Set(['table', 'thead', 'tbody', 'tfoot', 'tr', 'colgroup', 'dl', 'select', 'datalist', 'optgroup'])
 
 /**
  * Names that read as LAYOUT: the component exists to arrange children. A
@@ -114,9 +131,13 @@ export function deriveContent(shape: ContentShape): ContentSeed {
   }
   if (tag && VOID_MEDIA.has(tag)) return { args: {}, controls: [] }
   if (tag && FIELDS.has(tag)) return text('Type here…', 'placeholder')
-  if (tag === 'select') return { args: {}, controls: [] }
+  if (tag && STRICT_CONTAINERS.has(tag)) return { args: {}, controls: [] }
   if (isContainer(shape)) {
-    const blocks: ContentBlocks = { __atlasContent: 'blocks', count: BLOCKS }
+    const blocks: ContentBlocks = {
+      __atlasContent: 'blocks',
+      count: BLOCKS,
+      ...(tag && LIST_TAGS.has(tag) ? { tag: 'li' as const } : {}),
+    }
     // No control: the value is a marker, and a text field showing
     // `[object Object]` is worse than no field.
     return { args: { children: blocks }, controls: [] }
@@ -157,9 +178,10 @@ export function materializeContent<N>(
   const { children, ...props } = args
   if (isContentBlocks(children)) {
     const count = Math.max(1, Math.min(12, Math.floor(children.count) || BLOCKS))
+    const tag = children.tag === 'li' ? 'li' : 'div'
     const blocks: N[] = []
     for (let i = 1; i <= count; i++) {
-      blocks.push(h('div', { 'data-atlas-content': 'block', style: BLOCK_STYLE }, String(i)))
+      blocks.push(h(tag, { 'data-atlas-content': 'block', style: BLOCK_STYLE }, String(i)))
     }
     return { props, children: blocks }
   }
