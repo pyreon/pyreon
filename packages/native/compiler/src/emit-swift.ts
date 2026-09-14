@@ -5394,7 +5394,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           })
         }
       }
-      if (e.callee.kind === 'identifier' && e.callee.name === 'computeLayout' && e.args.length >= 2 && e.args.length <= 4) {
+      if (e.callee.kind === 'identifier' && e.callee.name === '__pyreonFlowComputeLayout' && e.args.length >= 2 && e.args.length <= 4) {
         const options = swiftFlowLayoutOptions(e.args[3], indent)
         if (options !== null) {
           const args = [

@@ -657,7 +657,7 @@ describe('createFlow — v1 decline shapes (loud warning, not silent drop)', () 
   describe('config keys beyond nodes/edges', () => {
     const cfg = (extra: string, child = '') => `
       import { createFlow } from '@pyreon/flow'
-      import { Text } from '${P}'
+      import { Button, Text } from '${P}'
       export function X() {
         const flow = createFlow({
           nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'A' } }],
