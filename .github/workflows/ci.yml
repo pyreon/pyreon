@@ -1139,15 +1139,29 @@ jobs:
         with:
           path: .cache/pyreon-native-validate
           key: native-verdicts-ci-${{ runner.os }}-${{ matrix.name }}-${{ github.sha }}
-          # Two prefixes, tried in order (actions/cache walks a multi-line
-          # `restore-keys` top to bottom, first match wins): this cell's OWN
-          # number first (best case — a fresh push under an UNCHANGED shard
-          # count still gets its exact prior history), then the category-wide
-          # fallback below. For `native-rest` the two lines are identical —
-          # harmless, `native-rest`'s file set doesn't reshuffle.
-          restore-keys: |
-            native-verdicts-ci-${{ runner.os }}-${{ matrix.name }}-
-            ${{ startsWith(matrix.name, 'native-compiler-') && format('native-verdicts-ci-{0}-native-compiler-', runner.os) || format('native-verdicts-ci-{0}-{1}-', runner.os, matrix.name) }}
+          # ONE line, deliberately — a first cut here tried the exact
+          # shard-number prefix FIRST and the category-wide prefix as a
+          # fallback SECOND, reasoning "best case first, then widen". That
+          # reasoning was backwards, and it shipped a regression the very
+          # next run: `actions/cache` walks `restore-keys` top to bottom and
+          # STOPS at the first prefix with ANY match, however small or stale
+          # — it never tries the next line once one matches. So the moment
+          # this shard's own number had EVEN ONE ancient, near-empty save
+          # (18 KB, one run's worth of partial progress before a cancel), the
+          # exact-number line "matched" and shadowed the much larger
+          # accumulated store the wide fallback would have found — shard 9
+          # cancelled again at the exact 25m cap on the very next push,
+          # restoring that same 18 KB. The exact-number prefix is also pure
+          # redundancy, not just harmful: `native-compiler-` is already a
+          # PREFIX of `native-compiler-N-`, so within a SINGLE restore-keys
+          # entry `actions/cache` already picks the MOST RECENT match under
+          # it — which is this shard's own latest save whenever that IS the
+          # most recent, and the category's best accumulation otherwise.
+          # There is no case the two-line form won and this one-line form
+          # loses. For `native-rest` the expression below is just its own
+          # exact prefix — its file set doesn't reshuffle, so there is no
+          # category to widen into.
+          restore-keys: ${{ startsWith(matrix.name, 'native-compiler-') && format('native-verdicts-ci-{0}-native-compiler-', runner.os) || format('native-verdicts-ci-{0}-{1}-', runner.os, matrix.name) }}
 
       - name: Run tests (${{ matrix.name }})
         # PYREON_SKIP_SLOW_TESTS=1 makes individual tests opt OUT of the
