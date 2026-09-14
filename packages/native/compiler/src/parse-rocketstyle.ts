@@ -268,7 +268,11 @@ function parseDimensionCall(
   const values: RocketstyleDimensionValue[] = []
   const props = (body as { properties?: AnyNode[] }).properties ?? []
   for (const prop of props) {
-    if (prop.type !== 'Property' && prop.type !== 'ObjectProperty') continue
+    // A COMPUTED key (`{ [k]: v }`) has an Identifier/expression `key` too --
+    // readKey() can't tell it from a literal name, so skip it here (the
+    // sibling *-native.ts walkers already guard the same way). Without this
+    // a computed key silently read the VARIABLE NAME as the field/token name.
+    if ((prop.type !== 'Property' && prop.type !== 'ObjectProperty') || prop.computed) continue
     const valueName = readKey((prop as { key?: AnyNode }).key)
     if (valueName === null) continue
     const valueBody = unwrapTSLayers((prop as { value?: AnyNode }).value)
@@ -304,7 +308,11 @@ function parseValueProperties(
   const properties: StyleProperty[] = []
   const props = (body as { properties?: AnyNode[] }).properties ?? []
   for (const prop of props) {
-    if (prop.type !== 'Property' && prop.type !== 'ObjectProperty') continue
+    // A COMPUTED key (`{ [k]: v }`) has an Identifier/expression `key` too --
+    // readKey() can't tell it from a literal name, so skip it here (the
+    // sibling *-native.ts walkers already guard the same way). Without this
+    // a computed key silently read the VARIABLE NAME as the field/token name.
+    if ((prop.type !== 'Property' && prop.type !== 'ObjectProperty') || prop.computed) continue
     const propName = readKey((prop as { key?: AnyNode }).key)
     if (propName === null) continue
     const propValue = unwrapTSLayers((prop as { value?: AnyNode }).value)
