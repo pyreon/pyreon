@@ -67,6 +67,38 @@ describe('inline style → native modifiers (emit)', () => {
     )
   })
 
+  it('an UNRESOLVABLE typography value is dropped WITH a warning, not silently', () => {
+    // `color`/`fontWeight`/`textAlign` each resolve through a lookup table or
+    // color parser. A value that table has no entry for (a CSS-wide keyword,
+    // an unmapped weight name, 'justify') used to be accepted into `typo`
+    // regardless, and the consuming modifier emitter found no match and wrote
+    // NOTHING — the property vanished from BOTH the output and the warnings.
+    // It now falls back to the same generic style-property path any other
+    // unrecognized/unparseable CSS value takes.
+    const src = `<Text style={{ color: 'rebeccapurple', fontWeight: 'ultralight', textAlign: 'justify' }}>Hi</Text>`
+    const { code, warnings } = swift(src)
+    expect(code).not.toMatch(/foregroundColor|multilineTextAlignment/)
+    const joined = warnings.join('\n')
+    expect(joined).toContain('color')
+    expect(joined).toMatch(/fontWeight/)
+    expect(joined).toMatch(/textAlign/)
+
+    const k = kotlin(src)
+    expect(k.code).not.toMatch(/fontWeight = |textAlign = /)
+    expect(k.warnings.join('\n')).toMatch(/fontWeight/)
+  })
+
+  it('a RESOLVABLE typography value still lowers normally (the control)', () => {
+    expect(
+      swift(`<Text style={{ color: '#ff0000', fontWeight: 'bold', textAlign: 'center' }}>Hi</Text>`)
+        .code,
+    ).toMatch(/foregroundColor.*multilineTextAlignment\(\.center\)|foregroundColor/)
+    expect(
+      kotlin(`<Text style={{ color: '#ff0000', fontWeight: 'bold', textAlign: 'center' }}>Hi</Text>`)
+        .code,
+    ).toContain('fontWeight = FontWeight.Bold')
+  })
+
   it('collapses a horizontal-only padding to the axis form', () => {
     expect(swift(`<Stack style={{ paddingX: 12 }}><Text>x</Text></Stack>`).code).toContain(
       '.padding(.horizontal, 12)',
