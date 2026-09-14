@@ -11441,7 +11441,22 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       }
     }
     case 'ArrayExpression': {
-      const elements = (node.elements as AnyNode[]).map((e) => parseExpr(e, ctx))
+      // A sparse array literal (`[1, , 2]`) is valid TS — oxc represents the
+      // hole as a `null` entry, not an AST node — but every downstream reader
+      // dereferences `.type` unconditionally, so an unguarded map crashed the
+      // WHOLE transform with an opaque `null is not an object`, no filename,
+      // no line. Lower a hole to the `undefined` IDENTIFIER (the same shape
+      // `undefined` gets everywhere else in this file — `{kind:'undefined'}`
+      // is a TYPE-IR variant, not an expr one; using it here as an ExprIR
+      // compiles past the `as` cast but crashes downstream readers that
+      // switch on the real ExprIR kind set, e.g. `inferType`'s array-element
+      // walk, which has no case for it and falls off the end returning
+      // `undefined` where a `TypeIR` was expected) — matching what reading
+      // the hole produces on both the web and every native target, and
+      // keeping element POSITIONS lined up rather than collapsing the array.
+      const elements = (node.elements as (AnyNode | null)[]).map((e) =>
+        e === null ? ({ kind: 'identifier', name: 'undefined' } as ExprIR) : parseExpr(e, ctx),
+      )
       return { kind: 'array', elements }
     }
     case 'ObjectExpression': {
