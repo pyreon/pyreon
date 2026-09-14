@@ -55,8 +55,10 @@ describe('atlas scan mounts the example', () => {
 
     // The exact counts, not just "nothing unverified".
     //
-    // Ten components (SearchField in `components/forms/` joins the eight and
-    // RenderPropCard locks optional render-prop handling —
+    // Eleven components (SearchField in `components/forms/` joins the eight,
+    // RenderPropCard locks optional render-prop handling, and `components/Stack`
+    // is the layout container whose derived scenarios carry placeholder BLOCKS — the
+    // seed that has to survive the SSR-parity render as well as the mount —
     // its nested directory is also the sidebar-hierarchy fixture): the
     // rocketstyle chains in `demo-catalog.tsx`
     // and `components/Chip.tsx` are call expressions, invisible to the static
@@ -77,9 +79,17 @@ describe('atlas scan mounts the example', () => {
     //
     // The 2 failures are the example's deliberate empty-label scenarios, which
     // the static a11y check catches — they are load-bearing here, since a
-    // verify pipeline that cannot fail is not verifying anything.
+    // verify pipeline that cannot fail is not verifying anything. (The check
+    // also verifies a name-like prop a scenario SUPPLIES, but an OPTIONAL one
+    // blanked by the edge-cases plugin's own Empty scenario is not a finding —
+    // GuardedDelete's `label?` stays green.)
+    //
+    // 53 scenarios: the content seed gives every rocketstyle text component a
+    // `children` text control, and the edge-cases plugin then derives an Empty
+    // and a Long-content scenario per text control — the states a label-less
+    // preview could never have exercised.
     expect(run.stdout).toMatch(
-      /10 component\(s\), 44 scenario\(s\) — 42 verified, 2 failing, 0 unverified/,
+      /11 component\(s\), 53 scenario\(s\) — 51 verified, 2 failing, 0 unverified/,
     )
     // 320s: the spawn's own descriptive killer is timeout: 300_000 above;
     // the vitest backstop must EXCEED the composed inner budget (the ws-relay

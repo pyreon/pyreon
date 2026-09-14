@@ -130,8 +130,8 @@ export function edgeCasesPlugin(options: EdgeCaseOptions = {}): AtlasPlugin {
       const text = ci.controls.find((c) => c.kind === 'text')
       if (!text) return ci
       return appendScenarios(ci, () => [
-        makeScenario({ component: componentKey(ci), name: 'Empty', args: { [text.name]: '' }, source: 'auto-variant' }),
-        makeScenario({ component: componentKey(ci), name: 'Long content', args: { [text.name]: long }, source: 'auto-variant' }),
+        makeScenario({ component: componentKey(ci), name: 'Empty', args: { [text.name]: '' }, source: 'auto-edge' }),
+        makeScenario({ component: componentKey(ci), name: 'Long content', args: { [text.name]: long }, source: 'auto-edge' }),
       ])
     },
   })

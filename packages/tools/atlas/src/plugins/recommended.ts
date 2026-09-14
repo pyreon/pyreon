@@ -5,6 +5,7 @@
  *   categorize (tags)
  *   -> generate scenarios (variant matrix, states, edge cases)
  *   -> ensure a default scenario
+ *   -> seed representative content (a label, an image source, layout blocks)
  *   -> fill required props so scenarios render
  *   -> verify a11y (static) + mount (runtime)
  *   -> write usage docs
@@ -16,6 +17,7 @@
 import type { AtlasPlugin } from './types'
 import { a11yPlugin } from './a11y'
 import { mountPlugin } from './mount'
+import { contentPlugin } from './content'
 import { fillDefaultsPlugin } from './fill-defaults'
 import { defaultScenarioPlugin, edgeCasesPlugin, statesPlugin } from './scenarios'
 import { tagsPlugin } from './tags'
@@ -43,6 +45,7 @@ export function recommendedPlugins(options: RecommendedOptions = {}): AtlasPlugi
     statesPlugin(),
     edgeCasesPlugin(),
     defaultScenarioPlugin(),
+    contentPlugin(),
     fillDefaultsPlugin(),
     a11yPlugin(),
     ...(options.mount === false ? [] : [mountPlugin()]),
