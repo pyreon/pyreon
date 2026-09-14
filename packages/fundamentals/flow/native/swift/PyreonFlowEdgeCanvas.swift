@@ -32,6 +32,12 @@ public struct PyreonFlowNodeMeasurement: Equatable {
     public init(width: Double, height: Double, handles: [PyreonFlowMeasuredHandle] = []) { self.width = width; self.height = height; self.handles = handles }
 }
 
+public func pyreonEffectiveDimensions<T>(_ node: PyreonFlowNode<T>, measurement: PyreonFlowNodeMeasurement? = nil) -> PyreonFlowDimensions {
+    PyreonFlowDimensions(
+        width: node.width ?? measurement?.width ?? pyreonFlowDefaultNodeWidth,
+        height: node.height ?? measurement?.height ?? pyreonFlowDefaultNodeHeight)
+}
+
 public struct PyreonFlowPathResult: Equatable {
     public var labelX: Double
     public var labelY: Double

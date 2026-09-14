@@ -992,6 +992,7 @@ public struct PyreonXYPosition: Equatable {
   public init(x: Double, y: Double) {}
 }
 public struct PyreonFlowDimensions { public var width: Double; public var height: Double }
+public struct PyreonFlowNodeMeasurement { public var width: Double; public var height: Double; public init(width: Double, height: Double) {} }
 public struct PyreonFlowContainerSize: Equatable {
   public var width: Double = 0
   public var height: Double = 0
@@ -1072,6 +1073,7 @@ public struct PyreonFlowNode<T> {
     self.height = height
   }
 }
+public func pyreonEffectiveDimensions<T>(_ node: PyreonFlowNode<T>, measurement: PyreonFlowNodeMeasurement? = nil) -> PyreonFlowDimensions { PyreonFlowDimensions(width: node.width ?? measurement?.width ?? 150, height: node.height ?? measurement?.height ?? 40) }
 public struct PyreonFlowEdge: Equatable {
   public var id: String
   public var source: String

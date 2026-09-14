@@ -1581,6 +1581,7 @@ class PyreonSortableState<T>(
 // @pyreon/flow — the PyreonFlowState engine. Mirrors PyreonFlowState.kt.
 data class PyreonXYPosition(val x: Double, val y: Double)
 data class PyreonFlowDimensions(val width: Double, val height: Double)
+data class PyreonFlowNodeMeasurement(val width: Double, val height: Double)
 data class PyreonFlowViewport(val x: Double = 0.0, val y: Double = 0.0, val zoom: Double = 1.0)
 data class PyreonFlowNodeExtent(val minX: Double, val minY: Double, val maxX: Double, val maxY: Double)
 enum class PyreonFlowPosition { Top, Right, Bottom, Left }
@@ -1617,6 +1618,7 @@ data class PyreonFlowNode<T>(
   val sourceHandles: List<PyreonFlowHandleConfig> = emptyList(),
   val targetHandles: List<PyreonFlowHandleConfig> = emptyList(),
 )
+fun <T> pyreonEffectiveDimensions(node: PyreonFlowNode<T>, measurement: PyreonFlowNodeMeasurement? = null) = PyreonFlowDimensions(node.width ?: measurement?.width ?: 150.0, node.height ?: measurement?.height ?: 40.0)
 data class PyreonFlowEdge(
   val id: String,
   val source: String,

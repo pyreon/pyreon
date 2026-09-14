@@ -611,6 +611,8 @@ struct PyreonFlowStateTests {
         let routedBezier = pyreonBezierPath(sourceX: 0, sourceY: 0, sourcePosition: .right, targetX: 200, targetY: 100, targetPosition: .left)
         check(routedBezier.segments[1].c1x! > 0 && routedBezier.segments[1].c2x! < 200, "bezier routing offsets controls along handle directions")
         check(routedBezier.path.hasPrefix("M0,0 C"), "bezier SVG serialization preserves its cubic command")
+        let measuredDimensions = pyreonEffectiveDimensions(PyreonFlowNode(id: "dims", position: PyreonXYPosition(x: 0, y: 0), data: "D", width: 90), measurement: PyreonFlowNodeMeasurement(width: 80, height: 30))
+        check(measuredDimensions.width == 90 && measuredDimensions.height == 30, "effective dimensions preserve explicit-measured-default precedence")
         check(pyreonEdgePath(type: "straight", sourceX: 0, sourceY: 0, sourcePosition: .right, targetX: 100, targetY: 50, targetPosition: .left).path == "M0,0 L100,50", "public edge dispatcher preserves straight geometry")
         let previewSource = PyreonFlowInteractiveHandle(nodeId: "n", handleId: "out", type: "source", position: .right, x: 0, y: 0)
         check(pyreonFlowConnectionPreview(type: "straight", source: previewSource, target: PyreonXYPosition(x: 100, y: 50)).map(\.kind) == ["move", "line"], "straight connection preview uses straight geometry")

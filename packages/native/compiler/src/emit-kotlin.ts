@@ -4383,6 +4383,12 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (box !== null && toward !== null) return `pyreonNodeIntersection(${box}, ${toward})`
         _emitWarnings.push('getNodeIntersection requires literal { x, y, width, height } and { x, y } parameters to lower natively.')
       }
+      if (e.callee.kind === 'identifier' && e.callee.name === 'getEffectiveDimensions' && (e.args.length === 1 || e.args.length === 2)) {
+        if (e.args[0]!.kind !== 'object' && (e.args[1] === undefined || e.args[1]!.kind !== 'object')) {
+          return `pyreonEffectiveDimensions(${emitKotlinExpr(e.args[0]!, indent)}${e.args[1] ? `, ${emitKotlinExpr(e.args[1], indent)}` : ''})`
+        }
+        _emitWarnings.push('getEffectiveDimensions requires native Flow node/measurement expressions rather than anonymous object literals.')
+      }
       // Field-array accessor unwrap: zero-arg `items()`/`length()` on a
       // PyreonFieldArray decl (and `value()` on a For-item param over its
       // items) are web signal READS — on Kotlin they are properties, so the

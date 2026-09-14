@@ -448,6 +448,35 @@ describe('typed empty Flow state lowering', () => {
   }
 })
 
+describe('Flow effective-dimension helper lowering', () => {
+  const source = `
+    import { createFlow, getEffectiveDimensions } from '@pyreon/flow'
+    import { Text } from '@pyreon/primitives'
+    export function App() {
+      const flow = createFlow({ nodes: [{ id: 'a', position: { x: 0, y: 0 }, data: { label: 'A' }, width: 90 }], edges: [] })
+      const node = flow.nodes()[0]!
+      const dimensions = getEffectiveDimensions(node)
+      return <Text>{dimensions.width}</Text>
+    }
+  `
+
+  for (const target of ['swift', 'kotlin'] as const) {
+    it(`routes native Flow nodes through ${target} precedence`, () => {
+      const result = transform(source, { target })
+      expect(result.code).toContain('pyreonEffectiveDimensions(node)')
+      expect(result.warnings.join(' ')).not.toContain('getEffectiveDimensions (from @pyreon/flow)')
+      if (target === 'swift' && isSwiftcAvailable()) {
+        const validation = validateSwiftWithStubs(result.code)
+        expect(validation.ok, validation.error ?? '').toBe(true)
+      }
+      if (target === 'kotlin' && isKotlincAvailable()) {
+        const validation = validateKotlin(result.code)
+        expect(validation.ok, validation.error ?? '').toBe(true)
+      }
+    })
+  }
+})
+
 describe('createFlow — v1 decline shapes (loud warning, not silent drop)', () => {
   it('a non-literal nodes source declines with a named reason', () => {
     const src = `

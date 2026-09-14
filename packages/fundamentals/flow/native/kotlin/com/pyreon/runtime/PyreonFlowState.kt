@@ -60,6 +60,11 @@ data class PyreonFlowNode<T>(
     val targetHandles: List<PyreonFlowHandleConfig> = emptyList(),
 )
 
+fun <T> pyreonEffectiveDimensions(node: PyreonFlowNode<T>, measurement: PyreonFlowNodeMeasurement? = null) = PyreonFlowDimensions(
+    node.width ?: measurement?.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH,
+    node.height ?: measurement?.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT,
+)
+
 data class PyreonFlowMarker(
     val type: String,
     val color: String? = null,

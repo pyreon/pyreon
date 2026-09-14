@@ -6,6 +6,7 @@ import com.pyreon.runtime.PyreonFlowEdge
 import com.pyreon.runtime.PyreonFlowConnection
 import com.pyreon.runtime.PyreonFlowDefaultEdgeOptions
 import com.pyreon.runtime.PyreonFlowDimensions
+import com.pyreon.runtime.PyreonFlowNodeMeasurement
 import com.pyreon.runtime.PyreonFlowNode
 import com.pyreon.runtime.PyreonFlowNodeExtent
 import com.pyreon.runtime.PyreonFlowLayoutOptions
@@ -20,6 +21,7 @@ import com.pyreon.runtime.pyreonFlowLayeredLayout
 import com.pyreon.runtime.pyreonFlowRadialLayout
 import com.pyreon.runtime.pyreonFlowStressLayout
 import com.pyreon.runtime.pyreonFlowTreeLayout
+import com.pyreon.runtime.pyreonEffectiveDimensions
 import kotlin.math.abs
 
 private data class NodeData(val label: String)
@@ -42,6 +44,8 @@ private fun seedFlow(): PyreonFlowState<NodeData> = PyreonFlowState(
 )
 
 fun main() {
+    val measuredDimensions = pyreonEffectiveDimensions(PyreonFlowNode("dims", position = PyreonXYPosition(0.0, 0.0), data = NodeData("D"), width = 90.0), PyreonFlowNodeMeasurement(80.0, 30.0))
+    check(measuredDimensions.width == 90.0 && measuredDimensions.height == 30.0, "effective dimensions preserve explicit-measured-default precedence")
     // 1. Seed + basic reads.
     val f = seedFlow()
     val packingNodes = listOf(
