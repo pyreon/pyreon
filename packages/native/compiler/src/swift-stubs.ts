@@ -1177,6 +1177,14 @@ public final class PyreonFlowState<T> {
     reducedMotion: Bool? = nil,
     deleteKeys: [String]? = ["Delete", "Backspace"], multiSelectionKey: String? = "shift", selectionKey: String? = "shift", zoomActivationKey: String? = "ctrl", preventScrolling: Bool = true
   ) {}
+  public let defaultMarkerEnd: PyreonFlowMarker? = nil
+  public let nodesDraggable = true; public let nodesConnectable = true; public let nodesSelectable = true; public let nodesFocusable = true
+  public let edgesFocusable = true; public let disableKeyboardA11y = false; public let nodesDeletable = true; public let edgesDeletable = true; public let edgesReconnectable = true
+  public let edgeInteractionWidth = 20.0; public let connectionRadius = 0.0; public let pannable = true; public let panOnDrag = true; public let panOnScroll = false; public let panOnScrollSpeed = 0.5
+  public let zoomable = true; public let zoomOnScroll = true; public let zoomOnPinch = true; public let zoomOnDoubleClick = false
+  public let selectionOnDrag = false; public let selectionMode = "partial"; public let multiSelect = true; public let onlyRenderVisibleElements = false; public let snapToObjects = true
+  public let defaultEdgeType = "bezier"; public let connectionLineType = "bezier"; public let defaultEdgeOptions = PyreonFlowDefaultEdgeOptions(); public let fitViewOnLoad = false; public let fitViewPadding = 0.1
+  public let autoHistory = true; public let deleteKeys: [String]? = ["Delete", "Backspace"]; public let multiSelectionKey: String? = "shift"; public let selectionKey: String? = "shift"; public let zoomActivationKey: String? = "ctrl"; public let preventScrolling = true
   public private(set) var nodes: [PyreonFlowNode<T>] = []
   public private(set) var edges: [PyreonFlowEdge] = []
   public private(set) var viewport: PyreonFlowViewport = PyreonFlowViewport()
@@ -1188,6 +1196,12 @@ public final class PyreonFlowState<T> {
   public func dispose() {}
   public func layout(_ algorithm: String = "layered", options: PyreonFlowLayoutOptions = PyreonFlowLayoutOptions()) {}
   public func isValidConnection(_ connection: PyreonFlowConnection) -> Bool { true }
+  public func connect(_ connection: PyreonFlowConnection, id: String? = nil) -> PyreonFlowEdge? { nil }
+  public func resolvedMarkers(_ edge: PyreonFlowEdge) -> (start: PyreonFlowMarker?, end: PyreonFlowMarker?) { (nil, nil) }
+  public func snappedNodePosition(_ id: String, _ position: PyreonXYPosition, excluding: Set<String> = [], threshold: Double = 5) -> PyreonXYPosition { position }
+  public func nodesInSelection(from start: PyreonXYPosition, to end: PyreonXYPosition) -> [String] { [] }
+  public func emitNodeClick(_ id: String) {}; public func emitNodeDoubleClick(_ id: String) {}; public func emitNodeDragStart(_ id: String) {}; public func emitNodeDrag(_ id: String) {}; public func emitNodeDragEnd(_ id: String) {}
+  public func emitConnectStart(nodeId: String, handleId: String?) {}; public func emitConnectEnd(_ connection: PyreonFlowConnection?) {}; public func emitPaneClick(_ position: PyreonXYPosition) {}; public func emitEdgeClick(_ id: String) {}
   public func addNode(_ node: PyreonFlowNode<T>) {}
   public func addNodes(_ nodes: [PyreonFlowNode<T>]) {}
   public func setNodes(_ nodes: [PyreonFlowNode<T>]) {}
