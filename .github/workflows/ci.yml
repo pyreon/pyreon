@@ -1105,18 +1105,49 @@ jobs:
       # store once per branch and evict everything else out of the 10 GB
       # repo budget). PRs restore main's latest store via the prefix key.
       # The nightly native-validate schedule stays deliberately UNCACHED.
-      # Keys are PER-CATEGORY: the three native cells derive DISJOINT verdict
-      # sets (two vitest shards + the rest), so a shared key would (a) make
-      # the three saves race one immutable key — first wins, the others error
-      # — and (b) let a cell restore a sibling's store, all misses. Each cell
-      # saves and restores its own category's lineage.
+      #
+      # SAVE stays keyed by the EXACT cell name + SHA — sixteen shards
+      # racing to save the SAME key would make fifteen of them no-op
+      # ("already exists"), so each shard needs its own slot to actually
+      # persist anything.
+      #
+      # RESTORE, below, is deliberately WIDER: it matches ANY
+      # `native-compiler-*` shard's most recent save, not just this cell's
+      # own number. **This corrects a claim the previous version of this
+      # comment made and got backwards.** It reasoned "restoring a sibling's
+      # store is all misses" — true only if the store were keyed by WHERE a
+      # verdict came from. It isn't: `validate-cache.ts` content-addresses
+      # every entry by (validator kind, compiler version, stub text, exact
+      # source bytes), so a verdict computed under shard 3 answers shard 11's
+      # question just as well, PROVIDED shard 11 asks it. And it will,
+      # often: `vitest --shard=i/N` reassigns EVERY file the moment N
+      # changes (this repo has changed N five times — 2, 3, 5, 8, 16, each
+      # documented above `timeout-minutes`), so a shard-NUMBER-scoped prefix
+      # restores a store built for files that number no longer holds. Proof:
+      # the 8→16 split's very next run cancelled 11 of 16 shards at the
+      # exact 25m cap (run 34895191963) — shards 9-16 are NUMBERS THAT NEVER
+      # EXISTED before that split, so their shard-scoped prefix had ZERO
+      # history to restore, cold from the first byte; shards 1-8 fared no
+      # better on average, because THEIR prefix pointed at a verdict set
+      # built for the DIFFERENT files the same number held under 8-way.
+      # Category-wide restore means every shard's FIRST run after a resplit
+      # still inherits whatever the category has accumulated so far, instead
+      # of restarting that shard's history at zero.
       - name: Restore native compile-verdict cache
         if: startsWith(matrix.name, 'native')
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache/pyreon-native-validate
           key: native-verdicts-ci-${{ runner.os }}-${{ matrix.name }}-${{ github.sha }}
-          restore-keys: native-verdicts-ci-${{ runner.os }}-${{ matrix.name }}-
+          # Two prefixes, tried in order (actions/cache walks a multi-line
+          # `restore-keys` top to bottom, first match wins): this cell's OWN
+          # number first (best case — a fresh push under an UNCHANGED shard
+          # count still gets its exact prior history), then the category-wide
+          # fallback below. For `native-rest` the two lines are identical —
+          # harmless, `native-rest`'s file set doesn't reshuffle.
+          restore-keys: |
+            native-verdicts-ci-${{ runner.os }}-${{ matrix.name }}-
+            ${{ startsWith(matrix.name, 'native-compiler-') && format('native-verdicts-ci-{0}-native-compiler-', runner.os) || format('native-verdicts-ci-{0}-{1}-', runner.os, matrix.name) }}
 
       - name: Run tests (${{ matrix.name }})
         # PYREON_SKIP_SLOW_TESTS=1 makes individual tests opt OUT of the
@@ -1283,10 +1314,23 @@ jobs:
           # DROPS every arg after the script name (verified: it spawned a
           # bare `vitest run`), so without it every native cell ran the
           # whole suite instead of its shard and hit the 25-minute cap.
-          OUTPUT=$(bun run $FILTER --sequential test -- $SHARD_ARGS 2>&1)
-          EXIT=$?
+          #
+          # STREAM to a file via `tee`, do not buffer through `$(...)`. A
+          # buffered command substitution holds ALL output until the
+          # process exits — so a shard killed by `timeout-minutes` (the
+          # 25m cap) leaves the live log holding NOTHING past "Cell
+          # filter: …", and a cancelled native-compiler-N run gives no clue
+          # which test file was still compiling. `tee` writes every line
+          # as vitest emits it, so the live log (and this file, read below)
+          # carries real progress right up to the kill. `PIPESTATUS[0]`
+          # recovers vitest's own exit code across the pipe (bash-only,
+          # safe here — this step already relies on `set -f`/`set +e`).
+          OUTPUT_FILE=$(mktemp)
+          bun run $FILTER --sequential test -- $SHARD_ARGS 2>&1 | tee "$OUTPUT_FILE"
+          EXIT=${PIPESTATUS[0]}
           set -e
-          echo "$OUTPUT"
+          OUTPUT=$(cat "$OUTPUT_FILE")
+          rm -f "$OUTPUT_FILE"
           if [ $EXIT -ne 0 ] && echo "$OUTPUT" | grep -q "No packages matched the filter"; then
             echo "(no matching packages have a 'test' script — treating as no-op)"
             EXIT=0

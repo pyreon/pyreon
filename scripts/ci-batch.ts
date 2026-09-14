@@ -76,9 +76,12 @@ const WEIGHTS: Record<string, number> = {
   // The compiler shards are `--isolate`d, so `buildBatchedMatrix` never reads
   // their weight — each already sits alone in its own cell to keep its verdict
   // cache key unambiguous. Listed anyway so the table tells the truth: measured
-  // 2026-09-04 at ~24m/16m/23m for a 3-way split (~63m total), which is why the
-  // Eight-way proof still found one partition at the 25m cap; sixteen halves
-  // each measured partition while the serialized train stays within 20 slots.
+  // 2026-09-04 at ~24m/16m/23m for a 3-way split (~63m total). Growth since then
+  // ran the split out twice more — a five-way, then an eight-way proof run that
+  // still found one partition (shard 6) compiling at the exact 25m cap (see
+  // ci.yml's own dated history above `timeout-minutes`) — so this halves every
+  // eight-way partition into sixteen shards, keeping deterministic headroom
+  // for the next measured worst case rather than the mean.
   'native-rest': 332,
   'native-compiler-1': 375,
   'native-compiler-2': 375,

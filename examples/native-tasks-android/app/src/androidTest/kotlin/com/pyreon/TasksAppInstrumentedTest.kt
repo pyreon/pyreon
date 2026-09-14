@@ -185,7 +185,7 @@ class TasksAppInstrumentedTest {
      * displayed!" and nothing else — not where in the flow, not what was on
      * screen instead. Gradle's console output truncates the stack to the Compose
      * frame, so a CI-only failure cannot even be traced back to a call site:
-     * this file has SEVEN `tasks-page` assertions and the report names none of
+     * this file has TEN `tasks-page` assertions and the report names none of
      * them. Two rounds were spent not knowing which one fired.
      *
      * So carry the evidence in the message. The decisive part is whatever the

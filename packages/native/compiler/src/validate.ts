@@ -29,6 +29,25 @@ import {
   type ValidateKind,
 } from './validate-cache'
 
+// Every `execFileSync` call below is UNBOUNDED without this: none of them
+// pass a `timeout`, so a genuinely stuck `swiftc`/`kotlinc` (a runner
+// resource crunch, a pathological typecheck) blocks synchronously — the
+// event loop can't run, so vitest's own per-test `testTimeout` (180s) can
+// never fire to interrupt it — and the ONLY thing that can still end it is
+// the CI job's outer `timeout-minutes` (25m), which then reads as "this
+// whole shard is unaccountably slow" with zero diagnostic pointing at the
+// one call that never returned. `execFileSync`'s `timeout` sends SIGTERM on
+// expiry, which `isTransientProcessFailure` already classifies correctly
+// (a signalled kill is never cached as a verdict) — so a real hang now
+// fails LOUD and FAST as `transient`, instead of silently eating a shard's
+// whole 25-minute budget. `COMPILE_TIMEOUT_MS` sits comfortably under the
+// 180s test timeout so a hang is reported before vitest's own clock would
+// have masked it with an opaque "Test timed out"; `PROBE_TIMEOUT_MS` is
+// wider because a cold JVM start for `kotlinc -version` is documented
+// (below) to take up to ~20s under CI load.
+const COMPILE_TIMEOUT_MS = 150_000
+const PROBE_TIMEOUT_MS = 60_000
+
 export interface ValidationResult {
   /** True iff the source was accepted as syntactically valid. */
   ok: boolean
@@ -83,6 +102,7 @@ export function isSwiftcAvailable(): boolean {
     _swiftcVersion = execFileSync('swiftc', ['--version'], {
       stdio: ['ignore', 'pipe', 'ignore'],
       encoding: 'utf8',
+      timeout: PROBE_TIMEOUT_MS,
     }).trim()
     _swiftcAvailable = true
   } catch {
@@ -152,7 +172,7 @@ function validateSwiftUncached(source: string): ValidationResult {
   writeFileSync(filename, source, 'utf8')
 
   try {
-    execFileSync('swiftc', ['-parse', filename], { stdio: 'pipe', encoding: 'utf8' })
+    execFileSync('swiftc', ['-parse', filename], { stdio: 'pipe', encoding: 'utf8', timeout: COMPILE_TIMEOUT_MS })
     return { ok: true }
   } catch (err) {
     return processFailure(err, 'swiftc -parse failed with no output')
@@ -194,7 +214,7 @@ export function isSwiftUIAvailable(): boolean {
   const filename = join(tempDir, 'probe.swift')
   writeFileSync(filename, 'import SwiftUI\nlet _pyreonSwiftUIProbe = 0\n', 'utf8')
   try {
-    execFileSync('swiftc', ['-typecheck', filename], { stdio: 'ignore' })
+    execFileSync('swiftc', ['-typecheck', filename], { stdio: 'ignore', timeout: PROBE_TIMEOUT_MS })
     _swiftUIAvailable = true
   } catch {
     _swiftUIAvailable = false
@@ -251,7 +271,7 @@ export function isObservationAvailable(): boolean {
     'utf8',
   )
   try {
-    execFileSync('swiftc', ['-typecheck', filename], { stdio: 'ignore' })
+    execFileSync('swiftc', ['-typecheck', filename], { stdio: 'ignore', timeout: PROBE_TIMEOUT_MS })
     _observationAvailable = true
   } catch {
     _observationAvailable = false
@@ -341,7 +361,7 @@ function validateSwiftTypecheckUncached(source: string): ValidationResult {
   writeFileSync(filename, preamble + source, 'utf8')
 
   try {
-    execFileSync('swiftc', ['-typecheck', filename], { stdio: 'pipe', encoding: 'utf8' })
+    execFileSync('swiftc', ['-typecheck', filename], { stdio: 'pipe', encoding: 'utf8', timeout: COMPILE_TIMEOUT_MS })
     return { ok: true }
   } catch (err) {
     return processFailure(err, 'swiftc -typecheck failed with no output')
@@ -589,6 +609,7 @@ function compileSwiftStubs(stub: string, inputText: string): ValidationResult {
     execFileSync('swiftc', ['-typecheck', stubsPath, inputPath], {
       stdio: 'pipe',
       encoding: 'utf8',
+      timeout: COMPILE_TIMEOUT_MS,
     })
     return { ok: true }
   } catch (err) {
@@ -623,6 +644,7 @@ export function isKotlincAvailable(): boolean {
     _kotlincVersion = execFileSync('kotlinc', ['-version'], {
       stdio: ['ignore', 'pipe', 'pipe'],
       encoding: 'utf8',
+      timeout: PROBE_TIMEOUT_MS,
     }).trim()
     _kotlincAvailable = true
   } catch (err) {
@@ -711,7 +733,7 @@ function validateKotlinUncached(source: string): ValidationResult {
       // kotlinc considers improvable but is still valid); -d produces
       // .class files in the temp dir which we discard via rmSync.
       ['-nowarn', '-d', outDir, stubsPath, inputPath],
-      { stdio: 'pipe', encoding: 'utf8' },
+      { stdio: 'pipe', encoding: 'utf8', timeout: COMPILE_TIMEOUT_MS },
     )
     return { ok: true }
   } catch (err) {
