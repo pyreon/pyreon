@@ -450,7 +450,7 @@ against the installed zod (4.4.3) rather than inferred from its changelog —
 deprecated form is emitted **deliberately**: it works in zod 3 *and* 4, while
 the newer one exists only in 4.
 
-#### zod lowers MORE of a real spec than the first-party validator
+#### zod still lowers a real spec's shared gap the first-party validator does not
 
 Both reach native, through different doors. PMTC reads `s.object({ … })`
 directly; it reads zod only inside `@pyreon/validation`'s `zodSchema(...)`.
@@ -459,18 +459,20 @@ Measured against the real compiler:
 | shape | `s.*` | zod |
 | --- | --- | --- |
 | scalars, optional, nullable, arrays of scalars | lowers | lowers |
-| a **nested object** | dropped | **lowers** |
-| an **array of objects** | dropped | **lowers** |
+| a **nested object** | **lowers** | **lowers** |
+| an **array of objects** | **lowers** | **lowers** |
 | a field **naming another model** | dropped | dropped |
 
-That is the opposite of what you would assume from `@pyreon/validate` being
-first-party, and it is why `validator: 'zod'` is not merely an interoperability
-option.
+Nested objects and arrays-of-objects used to be dropped under `s.*` — a
+`@pyreon/native-compiler` bug (a re-entry wrapper synthesized for the
+wrapper-less form built a callee literally named `null`) — and are fixed now.
 
-The shared gap — a field naming another model — is what every OpenAPI document
-of any size is full of. Under zod it closes: refs are **inlined** on the native
-path, and an inlined ref is a nested object, which lowers. So a spec whose
-`Book` has an `author: $ref` produces
+The REMAINING shared gap — a field naming another model — is what every
+OpenAPI document of any size is full of, and it is why `validator: 'zod'` is
+still not merely an interoperability option. Under zod it closes: refs are
+**inlined** on the native path (this generator's own choice, not a compiler
+capability), and an inlined ref is a nested object, which now lowers under
+EITHER validator. So a spec whose `Book` has an `author: $ref` produces
 
 ```swift
 struct PyreonZodSchema_Book: Codable {
@@ -480,17 +482,17 @@ struct PyreonZodSchema_Book: Codable {
 ```
 
 where the default validator emits that struct **without `author`**, and says so
-in a warning. Inlining is not done under `s.*` because nested objects are
-dropped there too — it would trade one dropped field for another and triple the
-emitted schema.
+in a warning — this generator does not (yet) inline a `$ref` for the `s.*`
+path, so the gap survives even though the compiler could now lower the
+inlined shape.
 
 A `$ref` **cycle** has no finite nesting, so it falls back to naming the target;
 the compiler drops that one field with a warning. Honest, bounded, and the
 generator does not hang.
 
-The matrix above is pinned by a test that runs the real compiler, so if PMTC's
-`s.*` recogniser grows nested-object support this README gets corrected in the
-same change instead of quietly becoming a lie.
+The matrix above is pinned by a test that runs the real compiler, so if this
+generator starts inlining `$ref`s for `s.*` too, this README gets corrected in
+the same change instead of quietly becoming a lie.
 
 ### Pick only what you want
 

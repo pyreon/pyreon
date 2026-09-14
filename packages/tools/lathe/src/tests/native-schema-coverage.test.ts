@@ -2,17 +2,21 @@
  * What each validator's schemas actually lower to, measured against the REAL
  * native compiler.
  *
- * The surprising result this pins: PMTC's **zod recogniser strictly dominates
- * its `@pyreon/validate` one**. A nested object and an array of objects lower
- * under zod and are DROPPED under `s.*`. That is the opposite of what you would
- * assume from `@pyreon/validate` being first-party, and it is the whole reason
- * `validator: 'zod'` is not merely an interoperability option — on the native
- * target it lowers strictly more of a real spec.
+ * This used to pin a real gap: a nested object and an array of objects
+ * lowered under zod and were DROPPED under `s.*` — `@pyreon/validate`'s
+ * wrapper-less DSL synthesized a re-entry wrapper with a callee literally
+ * named `null` for the schema-less form, which the wrapper-less branch then
+ * rejected. Fixed in `@pyreon/native-compiler` (`parseNestedObjectShape`):
+ * both shapes now lower under `s.*` too. `validator: 'zod'` remains a real
+ * interoperability option, just no longer the ONLY one that reaches this
+ * depth — a named `$ref` reference is still dropped under BOTH recognisers
+ * (neither follows a named reference; see the third spec below), which is
+ * the residual gap zod's inlining still closes on the native path.
  *
- * It is measured here rather than asserted in prose because it is a property of
- * a DIFFERENT package. If PMTC's `s.*` recogniser grows nested-object support,
- * this file fails and the README claim gets corrected in the same change,
- * instead of quietly becoming a lie.
+ * It is measured here rather than asserted in prose because it is a property
+ * of a DIFFERENT package. If PMTC's `s.*` recogniser regresses this, this
+ * file fails and the README claim gets corrected in the same change, instead
+ * of quietly becoming a lie.
  *
  * A dropped field is the dangerous shape, not a loud one: the module still
  * emits, still carries the `PyreonZodSchema_` marker, and the struct that
@@ -62,17 +66,20 @@ describe.skipIf(compiler() === null)('native schema recogniser coverage', () => 
     })
   }
 
-  it('a NESTED object lowers under zod and is DROPPED under s.*', () => {
+  it('a NESTED object lowers under BOTH zod and s.*', () => {
+    // Was: "... and is DROPPED under s.*" — the wrapper-less re-entry bug
+    // fixed in @pyreon/native-compiler. Kept as a positive spec rather than
+    // deleted, so a regression here is caught the same way the drop was.
     expect(lowers(zodSrc(`z.object({ a: z.object({ b: z.string() }) })`)), 'zod').toBe(true)
-    expect(lowers(pyreonSrc(`s.object({ a: s.object({ b: s.string() }) })`)), 'pyreon').toBe(false)
+    expect(lowers(pyreonSrc(`s.object({ a: s.object({ b: s.string() }) })`)), 'pyreon').toBe(true)
   })
 
-  it('an ARRAY OF OBJECTS lowers under zod and is DROPPED under s.*', () => {
+  it('an ARRAY OF OBJECTS lowers under BOTH zod and s.*', () => {
     expect(lowers(zodSrc(`z.object({ x: z.array(z.object({ b: z.string() })) })`)), 'zod').toBe(true)
     expect(
       lowers(pyreonSrc(`s.object({ x: s.array(s.object({ b: s.string() })) })`)),
       'pyreon',
-    ).toBe(false)
+    ).toBe(true)
   })
 
   it('a field NAMING another schema is dropped under both — which is why zod inlines', () => {
