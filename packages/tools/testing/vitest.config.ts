@@ -25,7 +25,7 @@ export default mergeConfig(
     // 100/91.66/100/100 after the failure-path specs + setup dogfooding
     // landed; thresholds sit 1pp under (elements' drift-margin convention).
     // The 2 residual uncovered branches are matcher-internal defensive arms.
-    coverageThresholds: { statements: 99, branches: 90, functions: 99, lines: 99 },
+    coverageThresholds: { statements: 99, branches: 95, functions: 99, lines: 99 },
     // --expose-gc so `globalThis.gc` is available to the GC/leak matchers
     // (expectGarbageCollected / expectNoReactiveLeak) — same harness as
     // @pyreon/runtime-dom.

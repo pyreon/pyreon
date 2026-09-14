@@ -370,17 +370,11 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
     reason:
       'SSR string/stream renderer. Coverage is ENVIRONMENT-DEPENDENT: CI linux measures 98.05/95.19, a macOS run of the identical tree measures 97.84/94.89 (platform-gated arms in the streaming/abort paths). Thresholds sit at the cross-environment MINIMUM (97/94) so `bun run coverage` is green on a green tree everywhere; aspiration stays 98/95.',
   },
-  '@pyreon/testing': {
-    currentStatements: 99,
-    currentBranches: 90,
-    reason:
-      'Public test kit. First explicit thresholds landed at the 2026-07 coverage-gate restoration (previously NO explicit entry — the gate assumed 95 while vitest enforced the 80/75 tools default, so it failed the gate silently at 90% statements). Now measured 100/91.66 after failure-path specs + dogfooding src/vitest.ts as the package setupFiles; thresholds 99/90 leave a 1pp drift margin. The 2 residual uncovered branches are matcher-internal defensive arms.',
-  },
   '@pyreon/validate': {
-    currentStatements: 96,
-    currentBranches: 91,
+    currentStatements: 97,
+    currentBranches: 94,
     reason:
-      'Validator runtime. Re-baselined 99/97 → 95/90 at the 2026-07 coverage-gate restoration (measured 95.12/90.11): the JIT compiles most check verdicts inline, so the INTERPRETER failure arms of the newer check/composition waves (string substring checks, object algebra, union call-forms, mini/server subpaths) no longer execute under parse() — their contracts are locked via the compiled path (jit-differential + emit-equivalence). Ratcheted 95/90 → 96/91 after toJsonSchema (json-schema.ts) reached 100% — every representable kind, check→constraint mapping, unrepresentable policy, and the forward-compat op-union branches now covered. Remaining lift = the interpreter-path test corpus, tracked as follow-up.',
+      'Validator runtime. Ratcheted 96/91 -> 97/94 by the 92%+ campaign (measured 97.62/94.58): the interpreter-path corpus tracked as follow-up in the previous entry has since landed, so the measured value is simply recorded. Residual 68 arms, concentrated in core/schema.ts (18) and core/jit.ts (14): the JIT compiles most check verdicts inline, so the INTERPRETER failure arms of the newer check/composition waves no longer execute under parse() — their contracts are locked via the compiled path (jit-differential + emit-equivalence). Below the 95 floor by that one point; raise in lockstep when the interpreter arms are covered, never lower.',
   },
 }
 
