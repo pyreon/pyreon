@@ -24,6 +24,36 @@ test.describe('atlas build — static site', () => {
     expect(errors).toEqual([])
   })
 
+  test('optional render props stay absent and the component preview mounts', async ({ page }) => {
+    // Discovery marks every function-valued prop as `reactive`. Only on[A-Z]
+    // props are events: injecting an Actions logger as `children` changes a
+    // render-prop component's branch and used to leave the static canvas empty.
+    await page.goto('/render-prop-card/')
+    await expect(page.getByTestId('canvas-name')).toHaveText('RenderPropCard')
+    await expect(page.getByTestId('canvas-preview').getByRole('button')).toHaveText(
+      'Default render-prop preview',
+    )
+  })
+
+  test('every discovered component produces preview DOM', async ({ page }) => {
+    // A catalog-wide injection bug can leave the chrome healthy while every
+    // canvas contains only Pyreon's anchor comment. Exercise every emitted
+    // component route so that failure cannot hide behind the default entry.
+    for (const id of [
+      'badge',
+      'button',
+      'chip',
+      'guarded-delete',
+      'render-prop-card',
+      'search-field',
+    ]) {
+      await page.goto(`/${id}/`)
+      const preview = page.getByTestId('canvas-preview')
+      await expect(preview.locator(':scope > *')).not.toHaveCount(0)
+      await expect(preview.locator('[data-atlas-error]')).toHaveCount(0)
+    }
+  })
+
   test('the --title flag reaches the page title AND the chrome', async ({ page }) => {
     await page.goto('/')
     await expect(page).toHaveTitle('Atlas E2E')

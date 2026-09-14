@@ -25,7 +25,10 @@ export function formatDefault(value: unknown): string {
 }
 
 export function DocsView(props: { model: WorkbenchModel }) {
-  const m = props.model
+  // Keep the model as a reference. The prop-derived inliner otherwise splices
+  // `props.model` into both adjacent statements in `openScenario` and loses
+  // their boundary: `view.set('canvas')(props.model).selectScenario(...)`.
+  let m = props.model
   const usage = () => {
     const c = m.sel()
     if (!c) return ''

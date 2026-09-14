@@ -21,7 +21,7 @@ Or run it through the CLI front door with zero setup — `pyreon atlas <cmd>` de
 
 ```bash
 pyreon atlas scan .
-# atlas: discovered 9 component(s), 43 scenario(s) — 41 verified, 2 failing, 0 unverified.
+# atlas: discovered 10 component(s), 44 scenario(s) — 42 verified, 2 failing, 0 unverified.
 #   checks: a11y 18/20 ✗ · interaction 43/43 · ssrParity 43/43 · leak 43/43
 #   not run: reactivityCoverage, snapshot — browser-only — run `atlas verify-browser`
 #   → atlas-catalog.json
@@ -31,7 +31,7 @@ pyreon atlas scan .
 #       a11y: missing accessible name: "label" is empty
 ```
 
-The **`checks:` line is the one to read**. `41 verified` counts *scenarios*, not checks — a package where `@pyreon/runtime-server` does not resolve can report every scenario verified having run only two of the six. The tally says which ran, which failed, and the `not run:` lines say why the rest did not.
+The **`checks:` line is the one to read**. `42 verified` counts *scenarios*, not checks — a package where `@pyreon/runtime-server` does not resolve can report every scenario verified having run only two of the six. The tally says which ran, which failed, and the `not run:` lines say why the rest did not.
 
 The scan discovers components (static TypeScript scan + rocketstyle runtime detection), derives controls and scenarios, **mounts every scenario** through a real module loader, and runs the node half of the verify pipeline. It writes two artifacts:
 

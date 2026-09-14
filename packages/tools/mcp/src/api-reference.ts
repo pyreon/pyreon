@@ -10734,7 +10734,7 @@ for (const note of doc.notes) console.warn(note.code, note.at, note.message)`,
   'atlas/atlas scan': {
     signature: 'atlas scan [dir] [--no-mount] [--check]',
     example: `$ atlas scan .
-atlas: discovered 9 component(s), 43 scenario(s) — 41 verified, 2 failing, 0 unverified.
+atlas: discovered 10 component(s), 44 scenario(s) — 42 verified, 2 failing, 0 unverified.
   checks: a11y 18/20 ✗ · interaction 43/43 · ssrParity 43/43 · leak 43/43
   not run: reactivityCoverage, snapshot — browser-only — run \`atlas verify-browser\`
   → atlas-catalog.json
@@ -10788,7 +10788,7 @@ atlas verify Button: 1 component(s), 15 scenario(s)
   'atlas/atlas dev': {
     signature: 'atlas dev [dir] [--port=5210]',
     example: `$ atlas dev . --port=5210
-atlas dev: 9 component(s) → http://localhost:5210/`,
+atlas dev: 10 component(s) → http://localhost:5210/`,
     notes: 'Boot the workbench: real Vite + the real Pyreon compiler over your source, a derived catalog in the sidebar (nested by directory), live controls (bool/string/number/color editors), canvas addons (viewport / background / zoom / measure overlay / pseudo-state force), an A11y panel with on-demand axe-core, autodocs pages, an Actions log, and the Reactivity Lens. Components in files that import `@pyreon/atlas` are treated as workbench HOSTS and excluded from the nav (import-specifier match, never substrings). See also: atlas scan.',
     mistakes: `- Expecting authored \`play\` functions to run on DERIVED catalogs in the workbench — play crosses no JSON boundary; the ▶ button appears for hand catalogs, and derived play scripts run in \`atlas scan\` / the verify pipeline
 - Styling per-instance frames with inline styles — the workbench styles through the Element \`css\` prop channel (hashed classes); custom viewport widths ship zero inline styles`,
@@ -10797,7 +10797,7 @@ atlas dev: 9 component(s) → http://localhost:5210/`,
   'atlas/atlas build': {
     signature: 'atlas build [dir] [--out <dir>] [--title <text>] [--base <path>]',
     example: `$ atlas build . --out docs/components --title "Acme DS"
-atlas build: 9 component(s) → /repo/docs/components
+atlas build: 10 component(s) → /repo/docs/components
   title: Acme DS`,
     notes: 'Compile the workbench into a STATIC, deployable site — the same derived catalog `atlas dev` serves, as plain files for Pages / Netlify / Cloudflare / S3, with no server component. Crucially it BAKES the two node-answered panels: the Docs source block and the Reactivity Lens read files and run the TypeScript compiler API, neither of which can run in a page, so the build precomputes them per component and ships the answers as data — the Lens still reports real per-expression live/static verdicts on a fully static page. An answer that genuinely cannot be computed bakes its REASON, so the panel says what is wrong instead of surfacing a network error about a request that was never going to work. `--out` defaults to `atlas-dist` and a RELATIVE `--out` resolves against the scanned project, not your shell — `atlas build packages/ui --out site` writes `packages/ui/site`, the same base Vite uses for `outDir` and the same place `atlas scan` writes its catalog. Pass an absolute path when you want it elsewhere; the resolved directory is always printed. Emits a DIRECTORY PER COMPONENT, so `/button/` is a real page on a plain file server — pasteable, bookmarkable, and readable back by the workbench from its own path (the component leaves the query string, so the two can never disagree). Real URLs, not prerendered pages: the body is empty until JS runs. Skipped for a relative `--base`, whose assets would resolve against the wrong directory. `--base` is for a subdirectory deploy (`--base /my-repo/` for a GitHub Pages project site); `--title` wins over `atlas.config.ts`’s `title`. Fails loudly when discovery finds nothing rather than deploying an empty site. See also: atlas dev, atlas scan.',
     mistakes: `- Assuming a plain \`vite build\` of the workbench is equivalent — it produces a site that LOOKS complete while the Docs source block and the Reactivity Lens are permanently dark, because nothing baked their node-only answers

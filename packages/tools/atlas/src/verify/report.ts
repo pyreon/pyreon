@@ -3,7 +3,7 @@
  *
  * ── Why this exists ───────────────────────────────────────────────────────
  *
- * The scan summary said `41 verified, 2 failing, 0 unverified`. That names a
+ * The scan summary said `42 verified, 2 failing, 0 unverified`. That names a
  * quantity and withholds the finding: six checks run per scenario, and the one
  * that failed is the entire content of the message. Answering "which check?"
  * meant opening `atlas-catalog.json` and walking it by hand — measured on this

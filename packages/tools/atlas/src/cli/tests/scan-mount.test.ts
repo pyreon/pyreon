@@ -55,7 +55,8 @@ describe('atlas scan mounts the example', () => {
 
     // The exact counts, not just "nothing unverified".
     //
-    // Nine components (SearchField in `components/forms/` joins the eight —
+    // Ten components (SearchField in `components/forms/` joins the eight and
+    // RenderPropCard locks optional render-prop handling —
     // its nested directory is also the sidebar-hierarchy fixture): the
     // rocketstyle chains in `demo-catalog.tsx`
     // and `components/Chip.tsx` are call expressions, invisible to the static
@@ -78,7 +79,7 @@ describe('atlas scan mounts the example', () => {
     // the static a11y check catches — they are load-bearing here, since a
     // verify pipeline that cannot fail is not verifying anything.
     expect(run.stdout).toMatch(
-      /9 component\(s\), 43 scenario\(s\) — 41 verified, 2 failing, 0 unverified/,
+      /10 component\(s\), 44 scenario\(s\) — 42 verified, 2 failing, 0 unverified/,
     )
     // 320s: the spawn's own descriptive killer is timeout: 300_000 above;
     // the vitest backstop must EXCEED the composed inner budget (the ws-relay
