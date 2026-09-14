@@ -4327,6 +4327,13 @@ function swiftFlowPositionExpr(value: ExprIR): string | null {
   return null
 }
 
+function swiftFlowGeometryLiteral(arg: ExprIR, fields: readonly string[], typeName: string, indent: number): string | null {
+  if (arg.kind !== 'object' || (arg.spreads?.length ?? 0) > 0 || arg.fields.length !== fields.length) return null
+  const values = new Map(arg.fields.map((field) => [field.name, field.value]))
+  if (fields.some((field) => !values.has(field))) return null
+  return `${typeName}(${fields.map((field) => `${field}: ${emitSwiftExpr(values.get(field)!, indent)}`).join(', ')})`
+}
+
 function swiftFlowPathHelper(name: string, arg: ExprIR | undefined, indent: number): string | null {
   if (arg?.kind !== 'object' || (arg.spreads?.length ?? 0) > 0) return null
   const fields = new Map(arg.fields.map((field) => [field.name, field.value]))
@@ -5275,6 +5282,8 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       }
       return String(e.value)
     case 'identifier':
+      if (e.name === 'DEFAULT_NODE_WIDTH') return '150'
+      if (e.name === 'DEFAULT_NODE_HEIGHT') return '40'
       return swiftIdent(e.name)
     case 'await':
       // M4.5: `await x.method()` — emit the `await` keyword before the awaited
@@ -5349,6 +5358,12 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           return `pyreonEdgePath(type: ${emitSwiftExpr(e.args[0]!, indent)}, sourceX: ${emitSwiftExpr(e.args[1]!, indent)}, sourceY: ${emitSwiftExpr(e.args[2]!, indent)}, sourcePosition: ${sourcePosition}, targetX: ${emitSwiftExpr(e.args[4]!, indent)}, targetY: ${emitSwiftExpr(e.args[5]!, indent)}, targetPosition: ${targetPosition}${extras.length ? `, ${extras.join(', ')}` : ''})`
         }
         _emitWarnings.push('getEdgePath requires literal Position values and a supported object-literal options parameter to lower natively.')
+      }
+      if (e.callee.kind === 'identifier' && e.callee.name === 'getNodeIntersection' && e.args.length === 2) {
+        const box = swiftFlowGeometryLiteral(e.args[0]!, ['x', 'y', 'width', 'height'], 'PyreonFlowRect', indent)
+        const toward = swiftFlowGeometryLiteral(e.args[1]!, ['x', 'y'], 'PyreonXYPosition', indent)
+        if (box !== null && toward !== null) return `pyreonNodeIntersection(${box}, toward: ${toward})`
+        _emitWarnings.push('getNodeIntersection requires literal { x, y, width, height } and { x, y } parameters to lower natively.')
       }
       // `Object.keys(<object-typed expr>)` → static `[String]` of the
       // struct field names. A synthesized struct's keys are statically

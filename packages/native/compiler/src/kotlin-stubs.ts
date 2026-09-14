@@ -1593,6 +1593,8 @@ fun pyreonSmoothStepPath(sourceX: Double, sourceY: Double, sourcePosition: Pyreo
 fun pyreonStepPath(sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition = PyreonFlowPosition.Bottom, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition = PyreonFlowPosition.Top, offset: Double = 20.0) = PyreonFlowPathResult()
 fun pyreonEdgePath(type: String, sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition, borderRadius: Double = 5.0, offset: Double = 20.0, curvature: Double = 0.25) = PyreonFlowPathResult()
 fun pyreonHandlePosition(position: PyreonFlowPosition, nodeX: Double, nodeY: Double, nodeWidth: Double, nodeHeight: Double) = PyreonFlowPathPoint(nodeX, nodeY)
+data class PyreonFlowNodeBox(val x: Double, val y: Double, val width: Double, val height: Double)
+fun pyreonNodeIntersection(box: PyreonFlowNodeBox, toward: PyreonFlowPathPoint) = toward
 data class PyreonFlowHandleConfig(val id: String? = null, val type: String, val position: PyreonFlowPosition)
 data class PyreonFlowMarker(val type: String, val color: String? = null, val width: Double = 10.0, val height: Double = 7.0, val strokeWidth: Double = 1.0)
 data class PyreonFlowNode<T>(

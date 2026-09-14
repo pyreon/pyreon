@@ -3503,6 +3503,13 @@ function kotlinFlowPositionExpr(value: ExprIR): string | null {
   return null
 }
 
+function kotlinFlowGeometryLiteral(arg: ExprIR, fields: readonly string[], typeName: string, indent: number): string | null {
+  if (arg.kind !== 'object' || (arg.spreads?.length ?? 0) > 0 || arg.fields.length !== fields.length) return null
+  const values = new Map(arg.fields.map((field) => [field.name, field.value]))
+  if (fields.some((field) => !values.has(field))) return null
+  return `${typeName}(${fields.map((field) => ktChartDouble(emitKotlinExpr(values.get(field)!, indent))).join(', ')})`
+}
+
 function kotlinFlowPathHelper(name: string, arg: ExprIR | undefined, indent: number): string | null {
   if (arg?.kind !== 'object' || (arg.spreads?.length ?? 0) > 0) return null
   const fields = new Map(arg.fields.map((field) => [field.name, field.value]))
@@ -4294,6 +4301,8 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       }
       return String(e.value)
     case 'identifier':
+      if (e.name === 'DEFAULT_NODE_WIDTH') return '150.0'
+      if (e.name === 'DEFAULT_NODE_HEIGHT') return '40.0'
       return kotlinIdent(e.name)
     case 'await':
       // M4.5: a Kotlin suspend call carries NO `await` keyword — the enclosing
@@ -4367,6 +4376,12 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           return `pyreonEdgePath(${emitKotlinExpr(e.args[0]!, indent)}, ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))}, ${ktChartDouble(emitKotlinExpr(e.args[2]!, indent))}, ${sourcePosition}, ${ktChartDouble(emitKotlinExpr(e.args[4]!, indent))}, ${ktChartDouble(emitKotlinExpr(e.args[5]!, indent))}, ${targetPosition}${extras.length ? `, ${extras.join(', ')}` : ''})`
         }
         _emitWarnings.push('getEdgePath requires literal Position values and a supported object-literal options parameter to lower natively.')
+      }
+      if (e.callee.kind === 'identifier' && e.callee.name === 'getNodeIntersection' && e.args.length === 2) {
+        const box = kotlinFlowGeometryLiteral(e.args[0]!, ['x', 'y', 'width', 'height'], 'PyreonFlowNodeBox', indent)
+        const toward = kotlinFlowGeometryLiteral(e.args[1]!, ['x', 'y'], 'PyreonFlowPathPoint', indent)
+        if (box !== null && toward !== null) return `pyreonNodeIntersection(${box}, ${toward})`
+        _emitWarnings.push('getNodeIntersection requires literal { x, y, width, height } and { x, y } parameters to lower natively.')
       }
       // Field-array accessor unwrap: zero-arg `items()`/`length()` on a
       // PyreonFieldArray decl (and `value()` on a For-item param over its
