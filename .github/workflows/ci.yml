@@ -1192,96 +1192,23 @@ jobs:
           BATCH_FAILED=""
           for category in $MEMBERS; do
           echo "::group::test — $category"
+          NATIVE_SHARD_INDEX=""
+          SHARD_ARGS=""
           # Most cells map 1:1 onto `packages/<category>/`. The `native-*`
           # cells are PSEUDO-categories splitting `packages/native/` across dedicated
           # runners (see the timeout-minutes comment). Their `--exclude`/glob
           # complement is derived, never enumerated, so a new native package is
           # always covered by exactly one of them.
           case "$category" in
-            # All compiler shards resolve the SAME package; they differ only
-            # by vitest `--shard`, which splits the package's test FILES into
-            # disjoint groups whose union is every file. Sharding is applied
-            # at `vitest run`; `vitest list` ignores it, so never probe the
-            # split with `list`.
-            native-compiler-1)
+            # All compiler shards resolve the SAME package. Vitest's hash
+            # sharding balances file count, but these files vary by orders of
+            # magnitude because some spawn real swiftc/kotlinc processes. The
+            # repo script cost-balances them while asserting that their union
+            # is every test file exactly once.
+            native-compiler-*)
               AFFECTED_ARGS="--category=native/compiler"
               FULL_FILTER="--filter=./packages/native/compiler"
-              SHARD_ARGS="--shard=1/16"
-              ;;
-            native-compiler-2)
-              AFFECTED_ARGS="--category=native/compiler"
-              FULL_FILTER="--filter=./packages/native/compiler"
-              SHARD_ARGS="--shard=2/16"
-              ;;
-            native-compiler-3)
-              AFFECTED_ARGS="--category=native/compiler"
-              FULL_FILTER="--filter=./packages/native/compiler"
-              SHARD_ARGS="--shard=3/16"
-              ;;
-            native-compiler-4)
-              AFFECTED_ARGS="--category=native/compiler"
-              FULL_FILTER="--filter=./packages/native/compiler"
-              SHARD_ARGS="--shard=4/16"
-              ;;
-            native-compiler-5)
-              AFFECTED_ARGS="--category=native/compiler"
-              FULL_FILTER="--filter=./packages/native/compiler"
-              SHARD_ARGS="--shard=5/16"
-              ;;
-            native-compiler-6)
-              AFFECTED_ARGS="--category=native/compiler"
-              FULL_FILTER="--filter=./packages/native/compiler"
-              SHARD_ARGS="--shard=6/16"
-              ;;
-            native-compiler-7)
-              AFFECTED_ARGS="--category=native/compiler"
-              FULL_FILTER="--filter=./packages/native/compiler"
-              SHARD_ARGS="--shard=7/16"
-              ;;
-            native-compiler-8)
-              AFFECTED_ARGS="--category=native/compiler"
-              FULL_FILTER="--filter=./packages/native/compiler"
-              SHARD_ARGS="--shard=8/16"
-              ;;
-            native-compiler-9)
-              AFFECTED_ARGS="--category=native/compiler"
-              FULL_FILTER="--filter=./packages/native/compiler"
-              SHARD_ARGS="--shard=9/16"
-              ;;
-            native-compiler-10)
-              AFFECTED_ARGS="--category=native/compiler"
-              FULL_FILTER="--filter=./packages/native/compiler"
-              SHARD_ARGS="--shard=10/16"
-              ;;
-            native-compiler-11)
-              AFFECTED_ARGS="--category=native/compiler"
-              FULL_FILTER="--filter=./packages/native/compiler"
-              SHARD_ARGS="--shard=11/16"
-              ;;
-            native-compiler-12)
-              AFFECTED_ARGS="--category=native/compiler"
-              FULL_FILTER="--filter=./packages/native/compiler"
-              SHARD_ARGS="--shard=12/16"
-              ;;
-            native-compiler-13)
-              AFFECTED_ARGS="--category=native/compiler"
-              FULL_FILTER="--filter=./packages/native/compiler"
-              SHARD_ARGS="--shard=13/16"
-              ;;
-            native-compiler-14)
-              AFFECTED_ARGS="--category=native/compiler"
-              FULL_FILTER="--filter=./packages/native/compiler"
-              SHARD_ARGS="--shard=14/16"
-              ;;
-            native-compiler-15)
-              AFFECTED_ARGS="--category=native/compiler"
-              FULL_FILTER="--filter=./packages/native/compiler"
-              SHARD_ARGS="--shard=15/16"
-              ;;
-            native-compiler-16)
-              AFFECTED_ARGS="--category=native/compiler"
-              FULL_FILTER="--filter=./packages/native/compiler"
-              SHARD_ARGS="--shard=16/16"
+              NATIVE_SHARD_INDEX="${category#native-compiler-}"
               ;;
             native-rest)
               AFFECTED_ARGS="--category=native --exclude=native/compiler"
@@ -1312,7 +1239,10 @@ jobs:
             echo "::endgroup::"
             continue
           fi
-          echo "Cell filter: $FILTER${SHARD_ARGS:+ (shard $SHARD_ARGS)}"
+          if [ -n "$NATIVE_SHARD_INDEX" ]; then
+            SHARD_ARGS=$(bun scripts/native-test-shard.ts --index="$NATIVE_SHARD_INDEX" --total=16)
+          fi
+          echo "Cell filter: $FILTER${NATIVE_SHARD_INDEX:+ (balanced shard $NATIVE_SHARD_INDEX/16)}"
           set -f
           # Some affected packages genuinely have no `test` script (rare
           # under packages/* — most are zero-cli kind of shape — but
@@ -1321,13 +1251,10 @@ jobs:
           # and exits 1. Tolerate that case — fail on real test
           # failures only.
           set +e
-          # `$SHARD_ARGS` is empty for every non-sharded cell, so this is
-          # byte-identical to the unsharded command there (unquoted on
-          # purpose, under `set -f`, so empty expands to nothing). The `--`
-          # is load-bearing: `bun run --filter … --sequential <script> ARGS`
-          # DROPS every arg after the script name (verified: it spawned a
-          # bare `vitest run`), so without it every native cell ran the
-          # whole suite instead of its shard and hit the 25-minute cap.
+          # `$SHARD_ARGS` contains package-relative file paths only for a
+          # native compiler cell. `set -f` prevents the shell interpreting
+          # any path characters as globs; spaces deliberately split the list
+          # into Vitest positional arguments.
           #
           # STREAM to a file via `tee`, do not buffer through `$(...)`. A
           # buffered command substitution holds ALL output until the
@@ -1340,8 +1267,17 @@ jobs:
           # recovers vitest's own exit code across the pipe (bash-only,
           # safe here — this step already relies on `set -f`/`set +e`).
           OUTPUT_FILE=$(mktemp)
-          bun run $FILTER --sequential test -- $SHARD_ARGS 2>&1 | tee "$OUTPUT_FILE"
-          EXIT=${PIPESTATUS[0]}
+          if [ -n "$NATIVE_SHARD_INDEX" ]; then
+            # Bun's workspace `--filter` runner silently drops positional
+            # Vitest file arguments (reproduced locally: one requested file
+            # ran all 402). Entering the package makes forwarding observable
+            # and guarantees this cell executes only its balanced file list.
+            (cd packages/native/compiler && bun run test -- $SHARD_ARGS) 2>&1 | tee "$OUTPUT_FILE"
+            EXIT=${PIPESTATUS[0]}
+          else
+            bun run $FILTER --sequential test -- 2>&1 | tee "$OUTPUT_FILE"
+            EXIT=${PIPESTATUS[0]}
+          fi
           set -e
           OUTPUT=$(cat "$OUTPUT_FILE")
           rm -f "$OUTPUT_FILE"
