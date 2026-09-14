@@ -77,16 +77,25 @@ const WEIGHTS: Record<string, number> = {
   // their weight — each already sits alone in its own cell to keep its verdict
   // cache key unambiguous. Listed anyway so the table tells the truth: measured
   // 2026-09-04 at ~24m/16m/23m for a 3-way split (~63m total), which is why the
-  // split went to five. ~760s each is 63m / 5.
+  // Eight-way proof still found one partition at the 25m cap; sixteen halves
+  // each measured partition while the serialized train stays within 20 slots.
   'native-rest': 332,
-  'native-compiler-1': 475,
-  'native-compiler-2': 475,
-  'native-compiler-3': 475,
-  'native-compiler-4': 475,
-  'native-compiler-5': 475,
-  'native-compiler-6': 475,
-  'native-compiler-7': 475,
-  'native-compiler-8': 475,
+  'native-compiler-1': 375,
+  'native-compiler-2': 375,
+  'native-compiler-3': 375,
+  'native-compiler-4': 375,
+  'native-compiler-5': 375,
+  'native-compiler-6': 375,
+  'native-compiler-7': 375,
+  'native-compiler-8': 375,
+  'native-compiler-9': 375,
+  'native-compiler-10': 375,
+  'native-compiler-11': 375,
+  'native-compiler-12': 375,
+  'native-compiler-13': 375,
+  'native-compiler-14': 375,
+  'native-compiler-15': 375,
+  'native-compiler-16': 375,
   // ── scaffold-smoke cells (run 31084707225; a scaffolded app's cold
   //    `bun install` + `vite build` — monorepo-vercel auto-skips on a
   //    version-ahead workspace, hence the outlier) ──
