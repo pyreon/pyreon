@@ -47,7 +47,7 @@
  * fuzz found six live instances of.
  */
 import type { ComponentRef, VerifyCheck, VerifyFinding } from '../core'
-import { finding } from '../core'
+import { finding, materializeContent } from '../core'
 import { ensureDom } from '../verify/dom'
 import type { MountRuntime } from '../verify/harness'
 import { SKIP_REASON, skipped } from './registry'
@@ -189,7 +189,14 @@ export async function checkSsrParity(
   }
 
   const build = (): unknown => {
-    const node = h(component as unknown, args)
+    // The same materialization the mount harness performs: seeded content
+    // (a label, or the layout-blocks marker) becomes REST children, so the
+    // tree rendered on the server is the tree the client mounted — a marker
+    // left as a prop reaches the renderer as a vnode with no `props` and
+    // throws inside `renderToString`, which then reads as the COMPONENT
+    // failing SSR.
+    const { props, children } = materializeContent(args, h)
+    const node = h(component as unknown, props, ...children)
     return wrapper ? h(wrapper as unknown, {}, node) : node
   }
 

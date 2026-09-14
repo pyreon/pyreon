@@ -114,6 +114,28 @@ describe('checkSsrParity', () => {
     expect(verdict.findings ?? []).toEqual([])
   })
 
+  it('materializes seeded layout blocks BEFORE rendering — the marker is not a vnode', async () => {
+    // A derived scenario for a layout container carries `children` as the
+    // JSON blocks marker. Handed to `h()` as a prop it reaches the renderer as
+    // an object with no `props`, and `renderToString` throws — reported as the
+    // COMPONENT failing SSR. Both sides must materialize it the way the mount
+    // harness does.
+    const Stack = (props: { children?: unknown }) => h('div', { class: 'stack' }, props.children as never)
+    const [a, b] = containers()
+    const verdict = await checkSsrParity(
+      runtime,
+      Stack as never,
+      { children: { __atlasContent: 'blocks', count: 2 } },
+      a,
+      b,
+    )
+    // Before the fix this was `ssr-render-threw` — the marker reached
+    // `renderToString` as a prop. A pass with no findings is the whole claim:
+    // the containers are detached scratch space the check disposes itself.
+    expect(verdict.status).toBe('pass')
+    expect(verdict.findings ?? []).toEqual([])
+  })
+
   it('FAILS a component whose render is not deterministic', async () => {
     // A component that renders something different each time it runs cannot
     // hydrate: the server's HTML and the client's expectation disagree by

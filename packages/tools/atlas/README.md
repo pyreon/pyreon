@@ -12,7 +12,15 @@ The three obsessions are **DX**, **AI**, and **Automation**:
 
 - **Automation** — point Atlas at a package and get a full catalog with **zero
   authored stories**: controls inferred from prop types, a **variant matrix**
-  from rocketstyle dimensions, and one derived **scenario** per matrix cell.
+  from rocketstyle dimensions, one derived **scenario** per matrix cell, and
+  **representative content** seeded into every scenario — a text component
+  gets its own name as an editable `children` control, an `<img>` a real
+  placeholder `src` + `alt`, a field a `placeholder`, and a layout container
+  (`Stack`, `Grid`, `Box`, `AspectRatio`, …) three placeholder blocks to
+  arrange. Derived from the tag the component renders as, merged UNDER any
+  authored args, and materialized by ONE function in both the verify harness
+  and the canvas — so what the scan verified is what the workbench shows,
+  never an empty `<button>`.
 - **AI** — the whole catalog is one queryable **Catalog Graph** (typed JSON +
   an `llms.txt`-style surface), so agents can enumerate, render, generate, and
   validate the library. Generation is grounded in real type facts and

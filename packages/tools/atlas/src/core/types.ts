@@ -307,6 +307,14 @@ export interface ComponentIntelligence {
   bundleCost?: { raw: number; gzip: number }
   /** a one-line summary (from a manifest or generated) */
   summary?: string
+  /**
+   * Representative content, merged UNDER every scenario's args — a label for a
+   * text component, a `src` for an image, placeholder blocks for a layout
+   * container. Plain JSON: it is written to the catalog file and into the
+   * generated workbench module, and `materializeContent` turns it into vnodes
+   * at mount. See `core/content.ts` for why derived scenarios need it.
+   */
+  content?: Readonly<Record<string, unknown>>
 }
 
 /** The serialized whole-catalog shape — the machine surface agents consume. */

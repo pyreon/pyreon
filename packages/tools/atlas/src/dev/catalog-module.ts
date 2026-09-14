@@ -73,7 +73,11 @@ export function groupFor(file: string, root: string): string {
 }
 
 /** Map a discovered control to the workbench's control shape. */
-export function toWorkbenchControl(control: PropControl): {
+export function toWorkbenchControl(
+  control: PropControl,
+  /** The component's content seed for this prop — the default when the prop declares none. */
+  seeded?: unknown,
+): {
   key: string
   label: string
   type: 'text' | 'enum' | 'bool' | 'number' | 'color'
@@ -111,7 +115,8 @@ export function toWorkbenchControl(control: PropControl): {
     return { key: control.name, label, type: 'color', default: control.defaultValue ?? '#3b82f6', ...(control.required ? { required: true } : {}) }
   }
   // Everything else edits as text.
-  return { key: control.name, label, type: 'text', default: control.defaultValue ?? '', ...(control.required ? { required: true } : {}) }
+  const fallback = typeof seeded === 'string' ? seeded : ''
+  return { key: control.name, label, type: 'text', default: control.defaultValue ?? fallback, ...(control.required ? { required: true } : {}) }
 }
 
 /**
@@ -295,7 +300,13 @@ export function generateCatalogModule(
 
   const ordered = sortEntries(entries, options)
   const ids = catalogIds(entries, options)
-  const lines: string[] = ["import { h } from '@pyreon/core'", '']
+  const lines: string[] = [
+    "import { h } from '@pyreon/core'",
+    // The SAME materializer the verify harness uses — one implementation, so a
+    // seed that verified renders identically on the canvas.
+    "import { materializeContent as __content } from '@pyreon/atlas/core'",
+    '',
+  ]
 
   // Component modules are imported INDIVIDUALLY and non-fatally.
   //
@@ -386,7 +397,9 @@ export function generateCatalogModule(
 
   ordered.forEach((entry, i) => {
     const { component } = entry
-    const controls = component.controls.filter(isEditableControl).map(toWorkbenchControl)
+    const controls = component.controls
+      .filter(isEditableControl)
+      .map((c) => toWorkbenchControl(c, component.content?.[c.name]))
     // The discovered EVENT surface. `reactive` means only "function-valued";
     // it also includes render props such as `children`/`renderItem`. Fabricating
     // one of those changes component behaviour even when the user supplied no
@@ -467,7 +480,11 @@ export function generateCatalogModule(
         `: ${lit(`Could not load ${component.name} from `)} + ${lit(entry.file)})`,
     )
     lines.push(`        }`)
-    lines.push(`        const merged = { ...props }`)
+    // Content merges UNDER the control values: the seed is what renders when
+    // the user has said nothing, and clearing the `children` field to '' is a
+    // real edit that wins. The layout-blocks marker has no control, so it
+    // always comes from here.
+    lines.push(`        const merged = { ...${JSON.stringify(component.content ?? {})}, ...props }`)
     if (reactiveProps.length > 0) {
       lines.push(`        for (const name of ${JSON.stringify(reactiveProps)}) {`)
       lines.push(`          const user = merged[name]`)
@@ -480,11 +497,12 @@ export function generateCatalogModule(
       lines.push(`        }`)
     }
     lines.push(`        if (Comp.IS_ROCKETSTYLE) Object.assign(merged, ctx.pseudo)`)
+    lines.push(`        const { props: __p, children: __c } = __content(merged, h)`)
     if (options.configPath) {
-      lines.push(`        const __el = h(__Perms, { value: ctx.can }, h(Comp, merged))`)
+      lines.push(`        const __el = h(__Perms, { value: ctx.can }, h(Comp, __p, ...__c))`)
       lines.push(`        return __wrapAll(__el)`)
     } else {
-      lines.push(`        return h(Comp, merged)`)
+      lines.push(`        return h(Comp, __p, ...__c)`)
     }
     lines.push(`      },`)
     lines.push('    },')

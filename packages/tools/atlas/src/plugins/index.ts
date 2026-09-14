@@ -37,6 +37,7 @@ export { authoredScenariosPlugin,
   defaultScenarioPlugin, statesPlugin, edgeCasesPlugin, themePlugin } from './scenarios'
 
 // enrichment
+export { contentPlugin } from './content'
 export { fillDefaultsPlugin } from './fill-defaults'
 export { tagsPlugin } from './tags'
 

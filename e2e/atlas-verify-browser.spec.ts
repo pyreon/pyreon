@@ -65,13 +65,15 @@ test('scan → create baselines → compare → merged catalog verdicts', () => 
     timeout: 300_000,
   })
   expect(first.status, first.stderr).toBe(0)
-  expect(first.stdout).toContain('27 scenario(s)')
-  expect(first.stdout).toContain('coverage measured on 27')
-  expect(first.stdout).toContain('27 baseline(s) created')
+  // 31 drivable: the content seed adds an Empty + Long-content scenario per
+  // text control, and `components/Stack` brings two sizes.
+  expect(first.stdout).toContain('31 scenario(s)')
+  expect(first.stdout).toContain('coverage measured on 31')
+  expect(first.stdout).toContain('31 baseline(s) created')
   expect(first.stdout).toContain('0 visual diff(s)')
   // Partial coverage is REPORTED, never silent: workbench-host components
   // (demo-catalog.tsx, workshop.tsx) can't be driven through the dev nav.
-  expect(first.stdout).toContain('17 scenario(s) not drivable')
+  expect(first.stdout).toContain('22 scenario(s) not drivable')
 
   // Run 2: baselines exist → pure compare, nothing created, nothing diffs.
   const second = spawnSync('node', [BIN, 'verify-browser', WORKSHOP], {
@@ -87,7 +89,7 @@ test('scan → create baselines → compare → merged catalog verdicts', () => 
   const catalog = JSON.parse(readFileSync(CATALOG, 'utf8')) as CatalogJson
   const scenarios = catalog.components.flatMap((c) => c.scenarios)
   const driven = scenarios.filter((s) => s.verify?.snapshot.status !== 'skip')
-  expect(driven.length).toBe(27)
+  expect(driven.length).toBe(31)
 
   // Coverage is a real measurement on the components' OWN reactivity
   // instance — at least one scenario must have seen reactive nodes, and the
