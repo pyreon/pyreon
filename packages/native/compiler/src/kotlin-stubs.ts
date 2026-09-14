@@ -1709,12 +1709,21 @@ class PyreonFlowState<T>(
   val viewport: PyreonFlowViewport = viewport
   var containerSize: PyreonFlowContainerSize = PyreonFlowContainerSize()
   val zoom: Double get() = viewport.zoom
+  val connectionRadius: Double = connectionRadius
+  val fitViewPadding: Double = fitViewPadding
+  val selectionMode: String = selectionMode
   fun batch(operation: () -> Unit) { operation() }
   fun dispose() {}
   fun layout(algorithm: String = "layered", options: PyreonFlowLayoutOptions = PyreonFlowLayoutOptions()) {}
   fun getNode(id: String): PyreonFlowNode<T>? = null
   fun getNodeDimensions(id: String): PyreonFlowDimensions = PyreonFlowDimensions(150.0, 40.0)
   fun isValidConnection(connection: PyreonFlowConnection): Boolean = true
+  fun connect(connection: PyreonFlowConnection, id: String? = null): PyreonFlowEdge? = null
+  fun resolvedMarkers(edge: PyreonFlowEdge): Pair<PyreonFlowMarker?, PyreonFlowMarker?> = null to null
+  fun snappedNodePosition(id: String, position: PyreonXYPosition, excluding: Set<String> = emptySet(), threshold: Double = 5.0): PyreonXYPosition = position
+  fun nodesInSelection(start: PyreonXYPosition, end: PyreonXYPosition): List<String> = emptyList()
+  fun emitNodeClick(id: String) {}; fun emitNodeDoubleClick(id: String) {}; fun emitNodeDragStart(id: String) {}; fun emitNodeDrag(id: String) {}; fun emitNodeDragEnd(id: String) {}
+  fun emitConnectStart(nodeId: String, handleId: String?) {}; fun emitConnectEnd(connection: PyreonFlowConnection?) {}; fun emitPaneClick(position: PyreonXYPosition) {}; fun emitEdgeClick(id: String) {}
   fun addNode(node: PyreonFlowNode<T>) {}
   fun addNodes(nodes: List<PyreonFlowNode<T>>) {}
   fun setNodes(nodes: List<PyreonFlowNode<T>>) {}

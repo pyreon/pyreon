@@ -60,6 +60,8 @@ type AnyNode = any
 interface ParseCtx {
   warnings: string[]
   source: string
+  /** Local aliases of computeLayout imported specifically from @pyreon/flow. */
+  flowComputeLayoutNames?: Set<string>
   /**
    * Module-scope `const X = 'literal'` bindings, name → value. Collected in a
    * pre-pass so a hook that BAKES a string into the emit can accept a shared
@@ -385,6 +387,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   const ctx: ParseCtx = {
     warnings: [],
     source,
+    flowComputeLayoutNames: new Set(),
     storeHookNames: new Set(),
     objectTypeAliases: new Map(),
     enumTypeNames: new Set(),
@@ -449,6 +452,14 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // accept `const KEY = 'filter'` and not only an inline literal. Runs before
   // component bodies so declaration ORDER does not matter.
   collectStringConsts(ast.program.body as AnyNode[], ctx.stringConsts)
+  for (const node of ast.program.body as AnyNode[]) {
+    if (node.type !== 'ImportDeclaration' || node.source?.value !== '@pyreon/flow') continue
+    for (const spec of (node.specifiers as AnyNode[]) ?? []) {
+      if (spec.type === 'ImportSpecifier' && spec.imported?.name === 'computeLayout' && typeof spec.local?.name === 'string') {
+        ctx.flowComputeLayoutNames?.add(spec.local.name)
+      }
+    }
+  }
   // Pre-pass: collect object-shape type aliases so a NAMED props annotation
   // (`props: CardProps`) resolves regardless of declaration order. Warnings
   // from this parse are DISCARDED (a scratch ctx) — the main pass's
@@ -9491,7 +9502,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     ...(connectionRadius !== undefined ? { connectionRadius } : {}),
     ...(defaultEdgeType !== undefined ? { defaultEdgeType } : {}),
     ...(connectionLineType !== undefined ? { connectionLineType } : {}),
-    ...(['partial', 'full'].includes(selectionMode ?? '') ? { selectionMode } : {}),
+    ...(selectionMode === 'partial' || selectionMode === 'full' ? { selectionMode } : {}),
     ...(defaultEdgeOptions !== undefined && defaultEdgeOptions !== null ? { defaultEdgeOptions } : {}),
     ...(fitView !== undefined ? { fitView } : {}),
     ...(fitViewPadding !== undefined ? { fitViewPadding } : {}),
@@ -11483,7 +11494,10 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         }
         return { kind: 'announce-call', message, assertive }
       }
-      const callee = parseExpr(node.callee, ctx)
+      const callee =
+        node.callee?.type === 'Identifier' && ctx.flowComputeLayoutNames?.has(node.callee.name as string)
+          ? { kind: 'identifier' as const, name: '__pyreonFlowComputeLayout' }
+          : parseExpr(node.callee, ctx)
       const args = (node.arguments as AnyNode[]).map((a) => parseExpr(a, ctx))
       // `node.optional` is set for the `f?.()` link of an optional chain
       // (oxc wraps the chain in a ChainExpression; each call carries its own
