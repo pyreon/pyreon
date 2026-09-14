@@ -234,40 +234,39 @@ function TasksPage() {
     navigate('/login')
   }
 
-  // <Scroll> so the eleven action buttons below the list stay reachable on a
-  // phone: without it the last one (tasks-logout) sits below the Android fold
-  // and a Compose performClick taps empty coordinates (silently — no error).
-  // The Espresso test performScrollTo()s before tapping it.
   return (
-    <Scroll direction="vertical" data-testid="tasks-scroll">
-      <Stack gap={3} padding={4} data-testid="tasks-page">
-        <Inline gap={2}>
-          <Icon name="star" color="primary" size="md" data-testid="header-icon" />
-          <Text>My Tasks</Text>
-          <Text>{remaining} open</Text>
-        </Inline>
-        <For each={useApp().store.tasks} by={(t) => t.id}>
-          {(t) => (
-            <Inline gap={2}>
-              <Button onPress={() => toggle(t.id)}>{t.done ? 'done' : 'todo'}</Button>
-              <Text>{t.title}</Text>
-            </Inline>
-          )}
-        </For>
-        <Field
-          value={draft}
-          onChangeText={(v) => draft.set(v)}
-          onSubmit={addTask}
-          placeholder="What needs doing?"
-          data-testid="new-task-title"
-        />
-        {/* Action buttons stack VERTICALLY (not <Inline>) — on Android
-          <Inline> lowers to a Compose `Row`, which does NOT wrap, so 6
-          buttons overflow the screen width and push the last one
-          (`tasks-logout`) off-screen + untappable. (iOS `HStack` shrinks
-          to fit, hiding the issue — a cross-platform layout gotcha; see
-          CLAUDE.md.) A vertical <Stack> keeps every button full-width and
-          on-screen on both targets. */}
+    <Stack gap={3} padding={4} data-testid="tasks-page">
+      <Inline gap={2}>
+        <Icon name="star" color="primary" size="md" data-testid="header-icon" />
+        <Text>My Tasks</Text>
+        <Text>{remaining} open</Text>
+      </Inline>
+      <For each={useApp().store.tasks} by={(t) => t.id}>
+        {(t) => (
+          <Inline gap={2}>
+            <Button onPress={() => toggle(t.id)}>{t.done ? 'done' : 'todo'}</Button>
+            <Text>{t.title}</Text>
+          </Inline>
+        )}
+      </For>
+      <Field
+        value={draft}
+        onChangeText={(v) => draft.set(v)}
+        onSubmit={addTask}
+        placeholder="What needs doing?"
+        data-testid="new-task-title"
+      />
+      {/* Action buttons: two VERTICAL <Stack> columns side by side. A single
+          <Inline> row of buttons overflows on Android (Compose `Row` does not
+          wrap; iOS `HStack` shrinks and hides it), and a single vertical
+          <Stack> of eleven buttons pushes the last one (`tasks-logout`)
+          below the emulator fold, where a Compose performClick taps empty
+          coordinates and silently does nothing. The page root cannot be a
+          <Scroll>: the task list is a <For> (LazyColumn), which the compiler
+          refuses to nest inside a verticalScroll Column (infinite-height
+          measure). Two columns of six/five keep every button on-screen on
+          both targets with no scrolling at all. */}
+      <Inline gap={2}>
         <Stack gap={2}>
           <Button onPress={addTask} data-testid="new-task-add">
             Add
@@ -287,6 +286,8 @@ function TasksPage() {
           <Button onPress={() => navigate('/flow')} data-testid="tasks-flow">
             Flow
           </Button>
+        </Stack>
+        <Stack gap={2}>
           <Button onPress={() => navigate('/stats')} data-testid="tasks-stats">
             Stats
           </Button>
@@ -303,8 +304,8 @@ function TasksPage() {
             Logout
           </Button>
         </Stack>
-      </Stack>
-    </Scroll>
+      </Inline>
+    </Stack>
   )
 }
 
