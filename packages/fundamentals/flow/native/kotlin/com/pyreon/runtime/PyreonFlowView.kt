@@ -182,10 +182,11 @@ fun <T> PyreonFlowView(
     background: PyreonFlowBackgroundStyle? = null,
     controls: PyreonFlowControlsStyle? = null,
     miniMap: PyreonFlowMiniMapStyle? = null,
+    ariaLabel: String = "Flow diagram",
     nodeHandles: (PyreonFlowNode<T>) -> List<PyreonFlowHandleConfig> = { emptyList() },
     nodeResizer: (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { null },
     nodeContent: @Composable (PyreonFlowNode<T>) -> Unit,
-) = PyreonFlowView(state, modifier, edgeColor, edgeWidth, background, controls, miniMap, nodeHandles, nodeResizer) { node, _, _ -> nodeContent(node) }
+) = PyreonFlowView(state, modifier, edgeColor, edgeWidth, background, controls, miniMap, ariaLabel, nodeHandles, nodeResizer) { node, _, _ -> nodeContent(node) }
 
 @Composable
 fun <T> PyreonFlowView(
@@ -196,6 +197,7 @@ fun <T> PyreonFlowView(
     background: PyreonFlowBackgroundStyle? = null,
     controls: PyreonFlowControlsStyle? = null,
     miniMap: PyreonFlowMiniMapStyle? = null,
+    ariaLabel: String = "Flow diagram",
     nodeHandles: (PyreonFlowNode<T>) -> List<PyreonFlowHandleConfig> = { emptyList() },
     nodeResizer: (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { null },
     nodeContent: @Composable (PyreonFlowNode<T>, Boolean, Boolean) -> Unit,
@@ -236,7 +238,7 @@ fun <T> PyreonFlowView(
         }
     }
     Box(
-        modifier = modifier.onSizeChanged { size ->
+        modifier = modifier.semantics { contentDescription = ariaLabel }.onSizeChanged { size ->
             state.containerSize = PyreonFlowContainerSize(size.width.toDouble(), size.height.toDouble())
             if (state.fitViewOnLoad && !didInitialFit && size.width > 0 && size.height > 0) {
                 didInitialFit = true

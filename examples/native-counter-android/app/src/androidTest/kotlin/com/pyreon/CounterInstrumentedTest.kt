@@ -35,6 +35,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasScrollAction
@@ -64,6 +65,13 @@ import org.junit.runner.RunWith
 class CounterInstrumentedTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<MainActivity>()
+
+    @Test
+    fun directNativeFlowRendersNodes() {
+        composeRule.onNodeWithText("Native Flow Start").assertIsDisplayed()
+        composeRule.onNodeWithText("Native Flow End").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Native Flow device proof").assertExists()
+    }
 
     @Test
     fun appLaunchesAndIncrementsCounter() {

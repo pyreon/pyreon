@@ -8367,6 +8367,8 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
   const bgArg = background?.kind === 'jsx-element' ? `, background: ${emitSwiftFlowBackground(background)}` : ''
   const controlsArg = controls?.kind === 'jsx-element' ? `, controls: ${emitSwiftFlowControls(controls)}` : ''
   const miniMapArg = miniMap?.kind === 'jsx-element' ? `, miniMap: ${emitSwiftFlowMiniMap(miniMap)}` : ''
+  const ariaLabelAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'ariaLabel')
+  const ariaLabelArg = ariaLabelAttr?.kind === 'attr' && ariaLabelAttr.value !== undefined ? `, ariaLabel: ${emitSwiftExpr(ariaLabelAttr.value, 0)}` : ''
   const handleCases = nodeTypes?.flatMap(({ type, component }) => {
     const handles = _flowComponentHandles.get(component) ?? []
     return handles.length > 0 ? [`case ${JSON.stringify(type)}: return ${swiftFlowParsedHandles(handles)}`] : []
@@ -8388,7 +8390,7 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
     ? `switch pyreonNode.type {\n${nodeTypes.map(({ type, component }) => `  case ${JSON.stringify(type)}:\n    ${swiftIdent(component)}(id: pyreonNode.id, data: { pyreonNode.data }, selected: { pyreonSelected }, dragging: { pyreonDragging })`).join('\n')}\n  default:\n    ${nodeText}\n  }`
     : nodeText
   const rendererParams = nodeTypes && nodeTypes.length > 0 ? 'pyreonNode, pyreonSelected, pyreonDragging' : 'pyreonNode'
-  const host = `PyreonFlowView(state: ${emitSwiftExpr(attr.value, 0)}${bgArg}${controlsArg}${miniMapArg}${nodeHandlesArg}${nodeResizerArg}) { ${rendererParams} in\n  ${renderer}\n}`
+  const host = `PyreonFlowView(state: ${emitSwiftExpr(attr.value, 0)}${bgArg}${controlsArg}${miniMapArg}${ariaLabelArg}${nodeHandlesArg}${nodeResizerArg}) { ${rendererParams} in\n  ${renderer}\n}`
   if (panels.length === 0) return host
   const overlays = panels.map((panel) => {
     const position = readStaticAttr(panel, 'position')

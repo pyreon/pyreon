@@ -382,6 +382,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private let background: PyreonFlowBackgroundStyle?
     private let controls: PyreonFlowControlsStyle?
     private let miniMap: PyreonFlowMiniMapStyle?
+    private let ariaLabel: String
     private let nodeHandles: (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig]
     private let nodeResizer: (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig?
     private let nodeContent: (PyreonFlowNode<T>, Bool, Bool) -> NodeContent
@@ -404,6 +405,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         background: PyreonFlowBackgroundStyle? = nil,
         controls: PyreonFlowControlsStyle? = nil,
         miniMap: PyreonFlowMiniMapStyle? = nil,
+        ariaLabel: String = "Flow diagram",
         nodeHandles: @escaping (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] },
         nodeResizer: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { _ in nil },
         @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>) -> NodeContent
@@ -414,6 +416,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         self.background = background
         self.controls = controls
         self.miniMap = miniMap
+        self.ariaLabel = ariaLabel
         self.nodeHandles = nodeHandles
         self.nodeResizer = nodeResizer
         self.nodeContent = { node, _, _ in nodeContent(node) }
@@ -426,6 +429,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         background: PyreonFlowBackgroundStyle? = nil,
         controls: PyreonFlowControlsStyle? = nil,
         miniMap: PyreonFlowMiniMapStyle? = nil,
+        ariaLabel: String = "Flow diagram",
         nodeHandles: @escaping (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] },
         nodeResizer: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { _ in nil },
         @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>, Bool, Bool) -> NodeContent
@@ -436,6 +440,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         self.background = background
         self.controls = controls
         self.miniMap = miniMap
+        self.ariaLabel = ariaLabel
         self.nodeHandles = nodeHandles
         self.nodeResizer = nodeResizer
         self.nodeContent = nodeContent
@@ -496,6 +501,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                             }
                             .onTapGesture(count: 2) { state.emitNodeDoubleClick(node.id) }
                             .gesture(nodeDragGesture(node))
+                            .accessibilityElement(children: .ignore)
                             .accessibilityLabel(Text(node.ariaLabel ?? node.id))
                             .accessibilityAddTraits(state.isNodeSelected(node.id) ? [.isSelected] : [])
                             .accessibilityAction {
@@ -574,6 +580,8 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                 fitInitiallyIfNeeded()
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text(ariaLabel))
     }
 
     private var interactiveHandles: [PyreonFlowInteractiveHandle] {

@@ -6958,6 +6958,8 @@ function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string
   const bgArg = background?.kind === 'jsx-element' ? `, background = ${emitKotlinFlowBackground(background)}` : ''
   const controlsArg = controls?.kind === 'jsx-element' ? `, controls = ${emitKotlinFlowControls(controls)}` : ''
   const miniMapArg = miniMap?.kind === 'jsx-element' ? `, miniMap = ${emitKotlinFlowMiniMap(miniMap)}` : ''
+  const ariaLabelAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'ariaLabel')
+  const ariaLabelArg = ariaLabelAttr?.kind === 'attr' && ariaLabelAttr.value !== undefined ? `, ariaLabel = ${emitKotlinExpr(ariaLabelAttr.value, 0)}` : ''
   const handleCases = nodeTypes?.flatMap(({ type, component }) => {
     const handles = _flowComponentHandlesKotlin.get(component) ?? []
     return handles.length > 0 ? [`${JSON.stringify(type)} -> ${kotlinFlowParsedHandles(handles)}`] : []
@@ -6979,7 +6981,7 @@ function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string
     ? `when (pyreonNode.type) {\n${nodeTypes.map(({ type, component }) => `    ${JSON.stringify(type)} -> ${kotlinIdent(component)}(id = pyreonNode.id, data = { pyreonNode.data }, selected = { pyreonSelected }, dragging = { pyreonDragging })`).join('\n')}\n    else -> ${nodeText}\n  }`
     : nodeText
   const rendererParams = nodeTypes && nodeTypes.length > 0 ? 'pyreonNode, pyreonSelected, pyreonDragging' : 'pyreonNode'
-  const host = `PyreonFlowView(state = ${emitKotlinExpr(attr.value, 0)}${bgArg}${controlsArg}${miniMapArg}${nodeHandlesArg}${nodeResizerArg}) { ${rendererParams} ->\n  ${renderer}\n}`
+  const host = `PyreonFlowView(state = ${emitKotlinExpr(attr.value, 0)}${bgArg}${controlsArg}${miniMapArg}${ariaLabelArg}${nodeHandlesArg}${nodeResizerArg}) { ${rendererParams} ->\n  ${renderer}\n}`
   if (panels.length === 0) return host
   const overlays = panels.map((panel) => {
     const position = readStaticAttrKotlin(panel, 'position')

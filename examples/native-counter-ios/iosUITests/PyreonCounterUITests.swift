@@ -56,6 +56,17 @@ final class PyreonCounterUITests: XCTestCase {
         XCUIApplication().terminate()
     }
 
+    func test_directNativeFlowRendersNodes() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        // The native host intentionally exposes each node as one accessible
+        // canvas element, so query all element types instead of relying on the
+        // custom node's internal Text retaining the staticText role.
+        XCTAssertTrue(app.descendants(matching: .any)["Native Flow Start"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.descendants(matching: .any)["Native Flow End"].waitForExistence(timeout: 10))
+    }
+
     /// Maps/geolocation — a BEHAVIORAL proof, not a does-not-crash one.
     ///
     /// The injected coordinate is set by the workflow step

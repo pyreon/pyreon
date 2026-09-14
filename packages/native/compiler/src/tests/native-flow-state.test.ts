@@ -156,6 +156,16 @@ describe('<Flow> native host lowering', () => {
     if (isSwiftcAvailable()) expect(validateSwiftWithStubs(result.code).ok).toBe(true)
   })
 
+  it('carries the Flow accessible name to SwiftUI and Compose hosts', () => {
+    const named = source.replace('<Flow instance={flow} />', '<Flow instance={flow} ariaLabel="Pipeline editor" />')
+    const swift = transform(named, { target: 'swift' })
+    const kotlin = transform(named, { target: 'kotlin' })
+    expect(swift.code).toContain('PyreonFlowView(state: flow, ariaLabel: "Pipeline editor")')
+    expect(kotlin.code).toContain('PyreonFlowView(state = flow, ariaLabel = "Pipeline editor")')
+    expect(validateSwiftWithStubs(swift.code).ok).toBe(true)
+    expect(validateKotlin(kotlin.code).ok).toBe(true)
+  })
+
   it('extracts Background chrome into the SwiftUI and Compose host configuration', () => {
     const withBackground = source.replace(
       "import { createFlow, Flow }",
