@@ -655,7 +655,7 @@ describe('createFlow — v1 decline shapes (loud warning, not silent drop)', () 
   // clamped zoom to 2x on web and 4x natively from the same source line —
   // compiles, runs, silently wrong on one target.
   describe('config keys beyond nodes/edges', () => {
-    const cfg = (extra: string, child = '') => `
+    const cfg = (extra: string, content = '<Text>{flow.zoom()}</Text>') => `
       import { createFlow } from '@pyreon/flow'
       import { Button, Text } from '${P}'
       export function X() {
@@ -664,7 +664,7 @@ describe('createFlow — v1 decline shapes (loud warning, not silent drop)', () 
           edges: [],
           ${extra}
         })
-        return <><Text>{flow.zoom()}</Text>${child}</>
+        return ${content}
       }
     `
 
