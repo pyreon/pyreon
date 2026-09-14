@@ -662,6 +662,10 @@ struct PyreonFlowStateTests {
         check(pyreonFlowEffectiveHandles(inferredNode, renderedHandles) == renderedHandles, "renderer handles fill missing endpoint types")
         let explicitNode = PyreonFlowNode(id: "explicit", position: PyreonXYPosition(x: 0, y: 0), data: "Explicit", sourceHandles: [PyreonFlowHandleConfig(id: "model", type: "source", position: .top)])
         check(pyreonFlowEffectiveHandles(explicitNode, renderedHandles).compactMap(\.id) == ["model", "in"], "explicit model handles win per endpoint type without duplicates")
+        let resized = pyreonFlowResizeFrame(PyreonFlowResizeFrame(position: PyreonXYPosition(x: 100, y: 80), width: 150, height: 40), direction: "nw", dx: 170, dy: 30)
+        check(resized == PyreonFlowResizeFrame(position: PyreonXYPosition(x: 200, y: 90), width: 50, height: 30), "north-west resizing clamps dimensions and keeps the opposite corner fixed")
+        let expanded = pyreonFlowResizeFrame(PyreonFlowResizeFrame(position: PyreonXYPosition(x: 100, y: 80), width: 150, height: 40), direction: "se", dx: 25, dy: 15)
+        check(expanded == PyreonFlowResizeFrame(position: PyreonXYPosition(x: 100, y: 80), width: 175, height: 55), "south-east resizing expands without moving the origin")
         let candidates = interactive + [PyreonFlowInteractiveHandle(nodeId: "n2", handleId: "in", type: "target", position: .left, x: 240, y: 60)]
         check(pyreonNearestFlowHandle(candidates, point: PyreonXYPosition(x: 244, y: 60), type: "target", radius: 5)?.nodeId == "n2", "connection hit testing chooses the nearest matching handle")
         check(pyreonNearestFlowHandle(candidates, point: PyreonXYPosition(x: 246, y: 60), type: "target", radius: 5) == nil, "connection hit testing respects its graph-space radius")

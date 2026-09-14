@@ -33,6 +33,28 @@ public struct PyreonFlowMiniMapStyle: Equatable {
     }
 }
 
+public struct PyreonFlowNodeResizerConfig: Equatable {
+    public var minWidth: Double; public var minHeight: Double; public var handleSize: Double; public var showEdgeHandles: Bool
+    public init(minWidth: Double = 50, minHeight: Double = 30, handleSize: Double = 8, showEdgeHandles: Bool = false) {
+        self.minWidth = max(0, minWidth); self.minHeight = max(0, minHeight); self.handleSize = max(1, handleSize); self.showEdgeHandles = showEdgeHandles
+    }
+    public var directions: [String] { showEdgeHandles ? ["nw", "ne", "sw", "se", "n", "s", "e", "w"] : ["nw", "ne", "sw", "se"] }
+}
+
+public struct PyreonFlowResizeFrame: Equatable {
+    public var position: PyreonXYPosition; public var width: Double; public var height: Double
+    public init(position: PyreonXYPosition, width: Double, height: Double) { self.position = position; self.width = width; self.height = height }
+}
+
+public func pyreonFlowResizeFrame(_ start: PyreonFlowResizeFrame, direction: String, dx: Double, dy: Double, minWidth: Double = 50, minHeight: Double = 30) -> PyreonFlowResizeFrame {
+    var width = start.width, height = start.height, x = start.position.x, y = start.position.y
+    if direction.contains("e") { width = max(minWidth, start.width + dx) }
+    if direction.contains("w") { width = max(minWidth, start.width - dx); x = start.position.x + start.width - width }
+    if direction.contains("s") { height = max(minHeight, start.height + dy) }
+    if direction.contains("n") { height = max(minHeight, start.height - dy); y = start.position.y + start.height - height }
+    return PyreonFlowResizeFrame(position: PyreonXYPosition(x: x, y: y), width: width, height: height)
+}
+
 /// Explicit node-model handles win per endpoint type. Handles extracted from
 /// a custom `<Handle>` renderer fill only a missing source/target side, so a
 /// shared component and an explicit model config never produce duplicate dots.
@@ -51,6 +73,9 @@ private struct PyreonFlowReconnectDraft: Equatable {
     var updater: PyreonFlowEdgeUpdater
     var fixed: PyreonXYPosition
     var current: PyreonXYPosition
+}
+private struct PyreonFlowResizeDraft: Equatable {
+    var frame: PyreonFlowResizeFrame
 }
 
 @available(iOS 17.0, macOS 14.0, *)
@@ -358,6 +383,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private let controls: PyreonFlowControlsStyle?
     private let miniMap: PyreonFlowMiniMapStyle?
     private let nodeHandles: (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig]
+    private let nodeResizer: (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig?
     private let nodeContent: (PyreonFlowNode<T>, Bool, Bool) -> NodeContent
 
     @State private var nodeDragStart: [String: PyreonXYPosition] = [:]
@@ -368,6 +394,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     @State private var interactionsLocked = false
     @State private var connectionDraft: PyreonFlowConnectionDraft?
     @State private var reconnectDraft: PyreonFlowReconnectDraft?
+    @State private var resizeDrafts: [String: PyreonFlowResizeDraft] = [:]
     @State private var didInitialFit = false
 
     public init(
@@ -378,6 +405,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         controls: PyreonFlowControlsStyle? = nil,
         miniMap: PyreonFlowMiniMapStyle? = nil,
         nodeHandles: @escaping (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] },
+        nodeResizer: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { _ in nil },
         @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>) -> NodeContent
     ) {
         self.state = state
@@ -387,6 +415,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         self.controls = controls
         self.miniMap = miniMap
         self.nodeHandles = nodeHandles
+        self.nodeResizer = nodeResizer
         self.nodeContent = { node, _, _ in nodeContent(node) }
     }
 
@@ -398,6 +427,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         controls: PyreonFlowControlsStyle? = nil,
         miniMap: PyreonFlowMiniMapStyle? = nil,
         nodeHandles: @escaping (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] },
+        nodeResizer: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { _ in nil },
         @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>, Bool, Bool) -> NodeContent
     ) {
         self.state = state
@@ -407,6 +437,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         self.controls = controls
         self.miniMap = miniMap
         self.nodeHandles = nodeHandles
+        self.nodeResizer = nodeResizer
         self.nodeContent = nodeContent
     }
 
@@ -485,6 +516,20 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                             .gesture(handle.type == "source" ? connectionGesture(handle) : nil)
                             .accessibilityLabel(Text("\(handle.type) handle \(handle.handleId ?? "default")"))
                             .accessibilityHidden(state.disableKeyboardA11y)
+                    }
+                    ForEach(visibleNodes, id: \.id) { node in
+                        if let config = nodeResizer(node) {
+                            ForEach(config.directions, id: \.self) { direction in
+                                RoundedRectangle(cornerRadius: 2 / state.viewport.zoom)
+                                    .fill(Color.white)
+                                    .overlay(RoundedRectangle(cornerRadius: 2 / state.viewport.zoom).stroke(Color.blue, lineWidth: 1.5 / state.viewport.zoom))
+                                    .frame(width: config.handleSize / state.viewport.zoom, height: config.handleSize / state.viewport.zoom)
+                                    .position(resizerPosition(node, direction: direction))
+                                    .contentShape(Rectangle())
+                                    .gesture(resizeGesture(node, config: config, direction: direction))
+                                    .accessibilityLabel(Text("Resize \(direction) for node \(node.id)"))
+                            }
+                        }
                     }
                     ForEach(pyreonFlowEdgeUpdaters(state: state, strokes: edgeStrokes)) { updater in
                         Circle()
@@ -609,6 +654,35 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                 guard let connection = pyreonFlowReconnectConnection(edge: edge, end: updater.end, handle: handle) else { return }
                 _ = state.reconnectEdge(edge.id, connection: connection)
             }
+    }
+
+    private func resizerPosition(_ node: PyreonFlowNode<T>, direction: String) -> CGPoint {
+        let p = state.getAbsolutePosition(node.id)
+        let width = node.width ?? pyreonFlowDefaultNodeWidth, height = node.height ?? pyreonFlowDefaultNodeHeight
+        let x = direction.contains("w") ? p.x : direction.contains("e") ? p.x + width : p.x + width / 2
+        let y = direction.contains("n") ? p.y : direction.contains("s") ? p.y + height : p.y + height / 2
+        return CGPoint(x: x, y: y)
+    }
+
+    private func resizeGesture(_ node: PyreonFlowNode<T>, config: PyreonFlowNodeResizerConfig, direction: String) -> some Gesture {
+        let key = "\(node.id):\(direction)"
+        return DragGesture(minimumDistance: 0, coordinateSpace: .global)
+            .onChanged { value in
+                guard !interactionsLocked else { return }
+                if resizeDrafts[key] == nil {
+                    state.pushHistory()
+                    resizeDrafts[key] = PyreonFlowResizeDraft(frame: PyreonFlowResizeFrame(
+                        position: node.position,
+                        width: node.width ?? pyreonFlowDefaultNodeWidth,
+                        height: node.height ?? pyreonFlowDefaultNodeHeight))
+                }
+                guard let draft = resizeDrafts[key] else { return }
+                let frame = pyreonFlowResizeFrame(draft.frame, direction: direction, dx: value.translation.width / state.viewport.zoom, dy: value.translation.height / state.viewport.zoom, minWidth: config.minWidth, minHeight: config.minHeight)
+                state.updateNode(node.id) { current in
+                    current.position = frame.position; current.width = frame.width; current.height = frame.height
+                }
+            }
+            .onEnded { _ in resizeDrafts[key] = nil }
     }
 
     private func updateContainer(_ size: CGSize) {

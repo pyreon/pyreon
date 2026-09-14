@@ -183,8 +183,9 @@ fun <T> PyreonFlowView(
     controls: PyreonFlowControlsStyle? = null,
     miniMap: PyreonFlowMiniMapStyle? = null,
     nodeHandles: (PyreonFlowNode<T>) -> List<PyreonFlowHandleConfig> = { emptyList() },
+    nodeResizer: (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { null },
     nodeContent: @Composable (PyreonFlowNode<T>) -> Unit,
-) = PyreonFlowView(state, modifier, edgeColor, edgeWidth, background, controls, miniMap, nodeHandles) { node, _, _ -> nodeContent(node) }
+) = PyreonFlowView(state, modifier, edgeColor, edgeWidth, background, controls, miniMap, nodeHandles, nodeResizer) { node, _, _ -> nodeContent(node) }
 
 @Composable
 fun <T> PyreonFlowView(
@@ -196,6 +197,7 @@ fun <T> PyreonFlowView(
     controls: PyreonFlowControlsStyle? = null,
     miniMap: PyreonFlowMiniMapStyle? = null,
     nodeHandles: (PyreonFlowNode<T>) -> List<PyreonFlowHandleConfig> = { emptyList() },
+    nodeResizer: (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { null },
     nodeContent: @Composable (PyreonFlowNode<T>, Boolean, Boolean) -> Unit,
 ) {
     val density = LocalDensity.current
@@ -410,6 +412,38 @@ fun <T> PyreonFlowView(
                         },
                 ) {
                     drawCircle(if (handle.type == "source") androidx.compose.ui.graphics.Color.Blue else androidx.compose.ui.graphics.Color.Green)
+                }
+            }
+            for (node in visibleNodes) {
+                val config = nodeResizer(node) ?: continue
+                val absolute = state.getAbsolutePosition(node.id)
+                val width = node.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH
+                val height = node.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT
+                for (direction in config.directions) {
+                    val x = if ('w' in direction) absolute.x else if ('e' in direction) absolute.x + width else absolute.x + width / 2
+                    val y = if ('n' in direction) absolute.y else if ('s' in direction) absolute.y + height else absolute.y + height / 2
+                    val diameter = config.handleSize / state.viewport.zoom
+                    Canvas(
+                        Modifier
+                            .offset { IntOffset((x - diameter / 2).roundToInt(), (y - diameter / 2).roundToInt()) }
+                            .requiredSize(with(density) { diameter.toFloat().toDp() })
+                            .semantics { contentDescription = "Resize $direction for node ${node.id}" }
+                            .pointerInput(node.id, direction, config, state.viewport.zoom, interactionsLocked) {
+                                if (interactionsLocked) return@pointerInput
+                                var start = PyreonFlowResizeFrame(node.position, width, height)
+                                var dx = 0.0; var dy = 0.0
+                                detectDragGestures(
+                                    onDragStart = { state.pushHistory(); start = PyreonFlowResizeFrame(state.getNode(node.id)?.position ?: node.position, state.getNodeDimensions(node.id).width, state.getNodeDimensions(node.id).height) },
+                                ) { change, amount ->
+                                    change.consume(); dx += amount.x / state.viewport.zoom; dy += amount.y / state.viewport.zoom
+                                    val frame = pyreonFlowResizeFrame(start, direction, dx, dy, config.minWidth, config.minHeight)
+                                    state.updateNode(node.id) { current -> current.copy(position = frame.position, width = frame.width, height = frame.height) }
+                                }
+                            },
+                    ) {
+                        drawRect(androidx.compose.ui.graphics.Color.White)
+                        drawRect(androidx.compose.ui.graphics.Color.Blue, style = Stroke(width = (1.5 / state.viewport.zoom).toFloat()))
+                    }
                 }
             }
             for (updater in pyreonFlowEdgeUpdaters(state, edgeStrokes)) {

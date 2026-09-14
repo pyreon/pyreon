@@ -302,6 +302,31 @@ describe('<Flow> native host lowering', () => {
     }
   })
 
+  it('extracts NodeResizer into native corner and edge drag configuration', () => {
+    const source = `
+      import { createFlow, Flow, NodeResizer, type NodeComponentProps } from '@pyreon/flow'
+      import { Stack, Text } from '@pyreon/primitives'
+      interface NodeData { label: string }
+      function ResizableNode(props: NodeComponentProps<NodeData>) {
+        return <Stack><Text>{props.data().label}</Text><NodeResizer nodeId={props.id} instance={null} minWidth={80} minHeight={45} handleSize={12} showEdgeHandles /></Stack>
+      }
+      export function App() {
+        const flow = createFlow<NodeData>({ nodes: [{ id: 'a', type: 'resizable', position: { x: 0, y: 0 }, data: { label: 'Start' } }], edges: [] })
+        return <Flow instance={flow} nodeTypes={{ resizable: ResizableNode }} />
+      }
+    `
+    const swift = transform(source, { target: 'swift' })
+    const kotlin = transform(source, { target: 'kotlin' })
+    expect(swift.code).toContain('nodeResizer: { pyreonNode in')
+    expect(swift.code).toContain('case "resizable": return PyreonFlowNodeResizerConfig(minWidth: 80, minHeight: 45, handleSize: 12, showEdgeHandles: true)')
+    expect(kotlin.code).toContain('nodeResizer = { pyreonNode ->')
+    expect(kotlin.code).toContain('"resizable" -> PyreonFlowNodeResizerConfig(minWidth = 80.0, minHeight = 45.0, handleSize = 12.0, showEdgeHandles = true)')
+    expect(swift.warnings.join(' ')).not.toContain('NodeResizer (from @pyreon/flow)')
+    expect(kotlin.warnings.join(' ')).not.toContain('NodeResizer (from @pyreon/flow)')
+    if (isSwiftcAvailable()) expect(validateSwiftWithStubs(swift.code).ok).toBe(true)
+    if (isKotlincAvailable()) expect(validateKotlin(kotlin.code).ok).toBe(true)
+  })
+
   it('emits the Compose host instead of an unresolved web component', () => {
     const result = transform(source, { target: 'kotlin' })
     expect(result.code).toContain('PyreonFlowView(state = flow) { pyreonNode ->')

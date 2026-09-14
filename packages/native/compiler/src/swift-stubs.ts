@@ -1280,10 +1280,13 @@ public struct PyreonFlowControlsStyle {
 public struct PyreonFlowMiniMapStyle {
   public init(nodeColor: String = "#e2e8f0", maskColor: String = "#000000", width: Double = 200, height: Double = 150, pannable: Bool = true, zoomable: Bool = true) {}
 }
+public struct PyreonFlowNodeResizerConfig {
+  public init(minWidth: Double = 50, minHeight: Double = 30, handleSize: Double = 8, showEdgeHandles: Bool = false) {}
+}
 @available(iOS 17.0, macOS 14.0, *)
 public struct PyreonFlowView<T, NodeContent: View>: View {
-  public init(state: PyreonFlowState<T>, edgeColor: String = "#999999", edgeWidth: Double = 1.5, background: PyreonFlowBackgroundStyle? = nil, controls: PyreonFlowControlsStyle? = nil, miniMap: PyreonFlowMiniMapStyle? = nil, nodeHandles: @escaping (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] }, @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>) -> NodeContent) {}
-  public init(state: PyreonFlowState<T>, edgeColor: String = "#999999", edgeWidth: Double = 1.5, background: PyreonFlowBackgroundStyle? = nil, controls: PyreonFlowControlsStyle? = nil, miniMap: PyreonFlowMiniMapStyle? = nil, nodeHandles: @escaping (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] }, @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>, Bool, Bool) -> NodeContent) {}
+  public init(state: PyreonFlowState<T>, edgeColor: String = "#999999", edgeWidth: Double = 1.5, background: PyreonFlowBackgroundStyle? = nil, controls: PyreonFlowControlsStyle? = nil, miniMap: PyreonFlowMiniMapStyle? = nil, nodeHandles: @escaping (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] }, nodeResizer: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { _ in nil }, @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>) -> NodeContent) {}
+  public init(state: PyreonFlowState<T>, edgeColor: String = "#999999", edgeWidth: Double = 1.5, background: PyreonFlowBackgroundStyle? = nil, controls: PyreonFlowControlsStyle? = nil, miniMap: PyreonFlowMiniMapStyle? = nil, nodeHandles: @escaping (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] }, nodeResizer: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { _ in nil }, @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>, Bool, Bool) -> NodeContent) {}
   public var body: some View { EmptyView() }
 }
 public struct PyreonI18n {

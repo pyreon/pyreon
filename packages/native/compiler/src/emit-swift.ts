@@ -223,6 +223,32 @@ let _componentPropsMap: Map<string, { name: string; type: TypeIR }[]> = new Map(
 type StaticFlowHandle = { id?: string; type: string; position: string; offset?: number }
 let _flowComponentHandles: Map<string, StaticFlowHandle[]> = new Map()
 let _flowComponentsWithInvalidHandles: Set<string> = new Set()
+type StaticFlowNodeResizer = { minWidth: number; minHeight: number; handleSize: number; showEdgeHandles: boolean }
+let _flowComponentResizers: Map<string, StaticFlowNodeResizer> = new Map()
+let _flowComponentsWithInvalidResizers: Set<string> = new Set()
+
+function collectStaticFlowNodeResizer(expr: ExprIR): { config?: StaticFlowNodeResizer; invalid: boolean } {
+  if (expr.kind !== 'jsx-fragment' && expr.kind !== 'jsx-element') return { invalid: false }
+  if (expr.kind === 'jsx-element' && expr.tag === 'NodeResizer') {
+    const read = (name: string): string | number | boolean | undefined => {
+      const attr = expr.attrs.find((entry) => entry.kind === 'attr' && entry.name === name)
+      return attr?.kind === 'attr' && attr.value.kind === 'literal' ? attr.value.value ?? undefined : undefined
+    }
+    const invalid = ['minWidth', 'minHeight', 'handleSize'].some((name) => expr.attrs.some((entry) => entry.kind === 'attr' && entry.name === name) && typeof read(name) !== 'number') ||
+      expr.attrs.some((entry) => entry.kind === 'attr' && entry.name === 'showEdgeHandles') && typeof read('showEdgeHandles') !== 'boolean'
+    return { invalid, config: {
+      minWidth: typeof read('minWidth') === 'number' ? read('minWidth') as number : 50,
+      minHeight: typeof read('minHeight') === 'number' ? read('minHeight') as number : 30,
+      handleSize: typeof read('handleSize') === 'number' ? read('handleSize') as number : 8,
+      showEdgeHandles: read('showEdgeHandles') === true,
+    } }
+  }
+  for (const child of expr.children) if (child.kind === 'expr') {
+    const found = collectStaticFlowNodeResizer(child.expr)
+    if (found.config || found.invalid) return found
+  }
+  return { invalid: false }
+}
 
 function collectStaticFlowHandles(expr: ExprIR): { handles: StaticFlowHandle[]; invalid: boolean } {
   if (expr.kind === 'jsx-fragment' || expr.kind === 'jsx-element') {
@@ -1111,10 +1137,15 @@ export function emitSwift(
   _componentPropsMap = new Map(components.map((c) => [c.name, c.props]))
   _flowComponentHandles = new Map()
   _flowComponentsWithInvalidHandles = new Set()
+  _flowComponentResizers = new Map()
+  _flowComponentsWithInvalidResizers = new Set()
   for (const component of components) {
     const result = collectStaticFlowHandles(component.returnExpr)
     _flowComponentHandles.set(component.name, result.handles)
     if (result.invalid) _flowComponentsWithInvalidHandles.add(component.name)
+    const resizer = collectStaticFlowNodeResizer(component.returnExpr)
+    if (resizer.config) _flowComponentResizers.set(component.name, resizer.config)
+    if (resizer.invalid) _flowComponentsWithInvalidResizers.add(component.name)
   }
   _layoutComponentNames = collectLayoutComponentNames(components)
   // Pre-pass: register each component's `params` prop shape so router
@@ -8236,6 +8267,7 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (tag === 'Field') return emitSwiftField(e, indent)
   if (tag === 'Toggle') return emitSwiftToggle(e, indent)
   if (tag === 'Handle') return 'EmptyView()'
+  if (tag === 'NodeResizer') return 'EmptyView()'
   // `<RouterLink>` from @pyreon/router is the SAME concept as `<Link>` and
   // carries the same `to` prop, but it had no dispatch entry — so it fell
   // through to the unknown-tag path and emitted `RouterLink(to:)` verbatim, a
@@ -8285,6 +8317,7 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
   }
   for (const entry of nodeTypes ?? []) {
     if (_flowComponentsWithInvalidHandles.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <Handle> requires literal \`type\` and \`position\` props for native extraction; the dynamic handle was not attached to the node.`)
+    if (_flowComponentsWithInvalidResizers.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <NodeResizer> size and edge-handle options must be literals for native extraction; dynamic values use native defaults.`)
   }
   if (e.attrs.some((a) => a.kind === 'attr' && a.name === 'edgeTypes')) {
     _emitWarnings.push('<Flow edgeTypes={…}> custom edge renderer maps are not lowered natively yet; the native default edge renderer is used.')
@@ -8316,6 +8349,13 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
   const nodeHandlesArg = handleCases.length > 0
     ? `, nodeHandles: { pyreonNode in\n    switch pyreonNode.type {\n    ${handleCases.join('\n    ')}\n    default: return []\n    }\n  }`
     : ''
+  const resizerCases = nodeTypes?.flatMap(({ type, component }) => {
+    const config = _flowComponentResizers.get(component)
+    return config ? [`case ${JSON.stringify(type)}: return PyreonFlowNodeResizerConfig(minWidth: ${config.minWidth}, minHeight: ${config.minHeight}, handleSize: ${config.handleSize}, showEdgeHandles: ${config.showEdgeHandles})`] : []
+  }) ?? []
+  const nodeResizerArg = resizerCases.length > 0
+    ? `, nodeResizer: { pyreonNode in\n    switch pyreonNode.type {\n    ${resizerCases.join('\n    ')}\n    default: return nil\n    }\n  }`
+    : ''
   const nodeText = attr.value.kind === 'identifier' && _flowStateLabelNamesSwift.has(attr.value.name)
     ? 'Text(String(describing: pyreonNode.data.label))'
     : 'Text(pyreonNode.id)'
@@ -8323,7 +8363,7 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
     ? `switch pyreonNode.type {\n${nodeTypes.map(({ type, component }) => `  case ${JSON.stringify(type)}:\n    ${swiftIdent(component)}(id: pyreonNode.id, data: { pyreonNode.data }, selected: { pyreonSelected }, dragging: { pyreonDragging })`).join('\n')}\n  default:\n    ${nodeText}\n  }`
     : nodeText
   const rendererParams = nodeTypes && nodeTypes.length > 0 ? 'pyreonNode, pyreonSelected, pyreonDragging' : 'pyreonNode'
-  const host = `PyreonFlowView(state: ${emitSwiftExpr(attr.value, 0)}${bgArg}${controlsArg}${miniMapArg}${nodeHandlesArg}) { ${rendererParams} in\n  ${renderer}\n}`
+  const host = `PyreonFlowView(state: ${emitSwiftExpr(attr.value, 0)}${bgArg}${controlsArg}${miniMapArg}${nodeHandlesArg}${nodeResizerArg}) { ${rendererParams} in\n  ${renderer}\n}`
   if (panels.length === 0) return host
   const overlays = panels.map((panel) => {
     const position = readStaticAttr(panel, 'position')

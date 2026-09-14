@@ -17,6 +17,19 @@ data class PyreonFlowMiniMapNode(val id: String, val x: Double, val y: Double, v
 data class PyreonFlowMiniMapLayout(val nodes: List<PyreonFlowMiniMapNode>, val viewport: PyreonFlowNodeBox, val scale: Double, val minX: Double, val minY: Double)
 data class PyreonFlowEdgeLabel(val id: String, val text: String?, val accessibilityLabel: String, val x: Double, val y: Double, val focusable: Boolean)
 data class PyreonFlowEdgeUpdater(val edgeId: String, val end: String, val x: Double, val y: Double)
+data class PyreonFlowNodeResizerConfig(val minWidth: Double = 50.0, val minHeight: Double = 30.0, val handleSize: Double = 8.0, val showEdgeHandles: Boolean = false) {
+    val directions: List<String> get() = if (showEdgeHandles) listOf("nw", "ne", "sw", "se", "n", "s", "e", "w") else listOf("nw", "ne", "sw", "se")
+}
+data class PyreonFlowResizeFrame(val position: PyreonXYPosition, val width: Double, val height: Double)
+
+fun pyreonFlowResizeFrame(start: PyreonFlowResizeFrame, direction: String, dx: Double, dy: Double, minWidth: Double = 50.0, minHeight: Double = 30.0): PyreonFlowResizeFrame {
+    var width = start.width; var height = start.height; var x = start.position.x; var y = start.position.y
+    if ('e' in direction) width = maxOf(minWidth, start.width + dx)
+    if ('w' in direction) { width = maxOf(minWidth, start.width - dx); x = start.position.x + start.width - width }
+    if ('s' in direction) height = maxOf(minHeight, start.height + dy)
+    if ('n' in direction) { height = maxOf(minHeight, start.height - dy); y = start.position.y + start.height - height }
+    return PyreonFlowResizeFrame(PyreonXYPosition(x, y), width, height)
+}
 
 fun <T> pyreonFlowEffectiveHandles(node: PyreonFlowNode<T>, rendered: List<PyreonFlowHandleConfig>): List<PyreonFlowHandleConfig> = buildList {
     addAll(node.sourceHandles); addAll(node.targetHandles)

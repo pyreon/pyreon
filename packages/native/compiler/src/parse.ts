@@ -2632,7 +2632,7 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
     {
       // `createFlow` lowers (PyreonFlowState — CRUD/selection/viewport/graph
       // queries), and `<Flow>` lowers to the native interactive host. Optional
-      // chrome (NodeToolbar/NodeResizer) is
+      // chrome (NodeToolbar) is
       // SVG/DOM rendering + pointer-event gesture handling with NO native
       // emit AT ALL. Without this entry those names emitted VERBATIM as if
       // they were real SwiftUI/Compose types — `Flow(instance: flow) {
@@ -2642,8 +2642,8 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
       // lowered right above it). The five public edge-path builders lower to
       // the same native geometry used by the Flow canvas.
       advice:
-        '`createFlow({ nodes, edges })`, `useFlow({ nodes, edges })`, `computeLayout(...)`, the edge-path builders, literal `<Flow nodeTypes={{ type: Component }}>`, static `<Handle>` declarations inside those custom nodes, `<Background>`, `<Controls>`, `<MiniMap>`, and `<Panel>` LOWER to the native PyreonFlowState/PyreonFlowView engine. NodeToolbar/NodeResizer and custom edge renderer maps still have no shared-source native emit; keep those behind platform branches or use the `@pyreon/flow/webview` bridge',
-      supported: new Set(['createFlow', 'useFlow', 'computeLayout', 'getBezierPath', 'getSmoothStepPath', 'getStepPath', 'getStraightPath', 'getWaypointPath', 'getEdgePath', 'getHandlePosition', 'getNodeIntersection', 'getEffectiveDimensions', 'getFloatingEndpoints', 'getSmartHandlePositions', 'resolveHandleAnchor', 'DEFAULT_NODE_WIDTH', 'DEFAULT_NODE_HEIGHT', 'Position', 'Flow', 'Background', 'Controls', 'MiniMap', 'Panel', 'Handle']),
+        '`createFlow({ nodes, edges })`, `useFlow({ nodes, edges })`, `computeLayout(...)`, the edge-path builders, literal `<Flow nodeTypes={{ type: Component }}>`, static `<Handle>` and `<NodeResizer>` declarations inside those custom nodes, `<Background>`, `<Controls>`, `<MiniMap>`, and `<Panel>` LOWER to the native PyreonFlowState/PyreonFlowView engine. NodeToolbar and custom edge renderer maps still have no shared-source native emit; keep those behind platform branches or use the `@pyreon/flow/webview` bridge',
+      supported: new Set(['createFlow', 'useFlow', 'computeLayout', 'getBezierPath', 'getSmoothStepPath', 'getStepPath', 'getStraightPath', 'getWaypointPath', 'getEdgePath', 'getHandlePosition', 'getNodeIntersection', 'getEffectiveDimensions', 'getFloatingEndpoints', 'getSmartHandlePositions', 'resolveHandleAnchor', 'DEFAULT_NODE_WIDTH', 'DEFAULT_NODE_HEIGHT', 'Position', 'Flow', 'Background', 'Controls', 'MiniMap', 'Panel', 'Handle', 'NodeResizer']),
     },
   ],
   [

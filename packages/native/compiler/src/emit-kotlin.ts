@@ -222,6 +222,32 @@ let _componentPropsMapKotlin: Map<string, { name: string; type: TypeIR }[]> = ne
 type StaticFlowHandle = { id?: string; type: string; position: string; offset?: number }
 let _flowComponentHandlesKotlin: Map<string, StaticFlowHandle[]> = new Map()
 let _flowComponentsWithInvalidHandlesKotlin: Set<string> = new Set()
+type StaticFlowNodeResizer = { minWidth: number; minHeight: number; handleSize: number; showEdgeHandles: boolean }
+let _flowComponentResizersKotlin: Map<string, StaticFlowNodeResizer> = new Map()
+let _flowComponentsWithInvalidResizersKotlin: Set<string> = new Set()
+
+function collectStaticFlowNodeResizerKotlin(expr: ExprIR): { config?: StaticFlowNodeResizer; invalid: boolean } {
+  if (expr.kind !== 'jsx-fragment' && expr.kind !== 'jsx-element') return { invalid: false }
+  if (expr.kind === 'jsx-element' && expr.tag === 'NodeResizer') {
+    const read = (name: string): string | number | boolean | undefined => {
+      const attr = expr.attrs.find((entry) => entry.kind === 'attr' && entry.name === name)
+      return attr?.kind === 'attr' && attr.value.kind === 'literal' ? attr.value.value ?? undefined : undefined
+    }
+    const invalid = ['minWidth', 'minHeight', 'handleSize'].some((name) => expr.attrs.some((entry) => entry.kind === 'attr' && entry.name === name) && typeof read(name) !== 'number') ||
+      expr.attrs.some((entry) => entry.kind === 'attr' && entry.name === 'showEdgeHandles') && typeof read('showEdgeHandles') !== 'boolean'
+    return { invalid, config: {
+      minWidth: typeof read('minWidth') === 'number' ? read('minWidth') as number : 50,
+      minHeight: typeof read('minHeight') === 'number' ? read('minHeight') as number : 30,
+      handleSize: typeof read('handleSize') === 'number' ? read('handleSize') as number : 8,
+      showEdgeHandles: read('showEdgeHandles') === true,
+    } }
+  }
+  for (const child of expr.children) if (child.kind === 'expr') {
+    const found = collectStaticFlowNodeResizerKotlin(child.expr)
+    if (found.config || found.invalid) return found
+  }
+  return { invalid: false }
+}
 
 function collectStaticFlowHandlesKotlin(expr: ExprIR): { handles: StaticFlowHandle[]; invalid: boolean } {
   if (expr.kind === 'jsx-fragment' || expr.kind === 'jsx-element') {
@@ -668,10 +694,15 @@ export function emitKotlin(
   _componentPropsMapKotlin = new Map(components.map((c) => [c.name, c.props]))
   _flowComponentHandlesKotlin = new Map()
   _flowComponentsWithInvalidHandlesKotlin = new Set()
+  _flowComponentResizersKotlin = new Map()
+  _flowComponentsWithInvalidResizersKotlin = new Set()
   for (const component of components) {
     const result = collectStaticFlowHandlesKotlin(component.returnExpr)
     _flowComponentHandlesKotlin.set(component.name, result.handles)
     if (result.invalid) _flowComponentsWithInvalidHandlesKotlin.add(component.name)
+    const resizer = collectStaticFlowNodeResizerKotlin(component.returnExpr)
+    if (resizer.config) _flowComponentResizersKotlin.set(component.name, resizer.config)
+    if (resizer.invalid) _flowComponentsWithInvalidResizersKotlin.add(component.name)
   }
   // Phase 3 — pre-pass: which components are layout parents (nested routes)?
   _layoutComponentNames = collectLayoutComponentNamesKotlin(components)
@@ -6836,6 +6867,7 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (tag === 'Field') return emitKotlinField(e, indent)
   if (tag === 'Toggle') return emitKotlinToggle(e, indent)
   if (tag === 'Handle') return 'Box {}'
+  if (tag === 'NodeResizer') return 'Box {}'
   // `<RouterLink>` from @pyreon/router is the SAME concept as `<Link>` and
   // carries the same `to` prop, but it had no dispatch entry — so it fell
   // through to the unknown-tag path and emitted `RouterLink(to:)` verbatim, a
@@ -6878,6 +6910,7 @@ function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string
   }
   for (const entry of nodeTypes ?? []) {
     if (_flowComponentsWithInvalidHandlesKotlin.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <Handle> requires literal \`type\` and \`position\` props for native extraction; the dynamic handle was not attached to the node.`)
+    if (_flowComponentsWithInvalidResizersKotlin.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <NodeResizer> size and edge-handle options must be literals for native extraction; dynamic values use native defaults.`)
   }
   if (e.attrs.some((a) => a.kind === 'attr' && a.name === 'edgeTypes')) {
     _emitWarnings.push('<Flow edgeTypes={…}> custom edge renderer maps are not lowered natively yet; the native default edge renderer is used.')
@@ -6909,6 +6942,13 @@ function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string
   const nodeHandlesArg = handleCases.length > 0
     ? `, nodeHandles = { pyreonNode ->\n    when (pyreonNode.type) {\n      ${handleCases.join('\n      ')}\n      else -> emptyList()\n    }\n  }`
     : ''
+  const resizerCases = nodeTypes?.flatMap(({ type, component }) => {
+    const config = _flowComponentResizersKotlin.get(component)
+    return config ? [`${JSON.stringify(type)} -> PyreonFlowNodeResizerConfig(minWidth = ${ktChartDouble(String(config.minWidth))}, minHeight = ${ktChartDouble(String(config.minHeight))}, handleSize = ${ktChartDouble(String(config.handleSize))}, showEdgeHandles = ${config.showEdgeHandles})`] : []
+  }) ?? []
+  const nodeResizerArg = resizerCases.length > 0
+    ? `, nodeResizer = { pyreonNode ->\n    when (pyreonNode.type) {\n      ${resizerCases.join('\n      ')}\n      else -> null\n    }\n  }`
+    : ''
   const nodeText = attr.value.kind === 'identifier' && _flowStateLabelNamesKt.has(attr.value.name)
     ? 'Text(text = pyreonNode.data.label.toString())'
     : 'Text(text = pyreonNode.id)'
@@ -6916,7 +6956,7 @@ function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string
     ? `when (pyreonNode.type) {\n${nodeTypes.map(({ type, component }) => `    ${JSON.stringify(type)} -> ${kotlinIdent(component)}(id = pyreonNode.id, data = { pyreonNode.data }, selected = { pyreonSelected }, dragging = { pyreonDragging })`).join('\n')}\n    else -> ${nodeText}\n  }`
     : nodeText
   const rendererParams = nodeTypes && nodeTypes.length > 0 ? 'pyreonNode, pyreonSelected, pyreonDragging' : 'pyreonNode'
-  const host = `PyreonFlowView(state = ${emitKotlinExpr(attr.value, 0)}${bgArg}${controlsArg}${miniMapArg}${nodeHandlesArg}) { ${rendererParams} ->\n  ${renderer}\n}`
+  const host = `PyreonFlowView(state = ${emitKotlinExpr(attr.value, 0)}${bgArg}${controlsArg}${miniMapArg}${nodeHandlesArg}${nodeResizerArg}) { ${rendererParams} ->\n  ${renderer}\n}`
   if (panels.length === 0) return host
   const overlays = panels.map((panel) => {
     const position = readStaticAttrKotlin(panel, 'position')
