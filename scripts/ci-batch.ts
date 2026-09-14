@@ -79,11 +79,14 @@ const WEIGHTS: Record<string, number> = {
   // 2026-09-04 at ~24m/16m/23m for a 3-way split (~63m total), which is why the
   // split went to five. ~760s each is 63m / 5.
   'native-rest': 332,
-  'native-compiler-1': 760,
-  'native-compiler-2': 760,
-  'native-compiler-3': 760,
-  'native-compiler-4': 760,
-  'native-compiler-5': 760,
+  'native-compiler-1': 475,
+  'native-compiler-2': 475,
+  'native-compiler-3': 475,
+  'native-compiler-4': 475,
+  'native-compiler-5': 475,
+  'native-compiler-6': 475,
+  'native-compiler-7': 475,
+  'native-compiler-8': 475,
   // ── scaffold-smoke cells (run 31084707225; a scaffolded app's cold
   //    `bun install` + `vite build` — monorepo-vercel auto-skips on a
   //    version-ahead workspace, hence the outlier) ──

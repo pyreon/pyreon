@@ -259,19 +259,19 @@ jobs:
         id: matrices
         run: |
           # Category lists MUST mirror the cells' own case statements below.
-          # The three `native-*` test entries are PSEUDO-categories splitting
-          # packages/native/ across three runners (see test-cell's timeout
+          # The `native-*` test entries are PSEUDO-categories splitting
+          # packages/native/ across dedicated runners (see test-cell's timeout
           # comment); their affected-args mirror the cell exactly so the
           # decide verdict and the cell's own filter can never disagree
-          # (same script, same base, deterministic). `native-compiler-{1,2,3}`
+          # (same script, same base, deterministic). `native-compiler-{1..8}`
           # resolve the SAME package and differ only by vitest `--shard`.
           TC_ALL='["core","fundamentals","internals","native","tools","ui","ui-system","zero","examples"]'
-          TEST_ALL='["core","fundamentals","internals","native-compiler-1","native-compiler-2","native-compiler-3","native-compiler-4","native-compiler-5","native-rest","tools","ui","ui-system","zero"]'
-          # The four native TEST cells must never share a runner: each keys a
-          # compile-verdict cache on its own category and the three derive
+          TEST_ALL='["core","fundamentals","internals","native-compiler-1","native-compiler-2","native-compiler-3","native-compiler-4","native-compiler-5","native-compiler-6","native-compiler-7","native-compiler-8","native-rest","tools","ui","ui-system","zero"]'
+          # The nine native TEST cells must never share a runner: each keys a
+          # compile-verdict cache on its own category and the compiler shards derive
           # DISJOINT verdict sets, so merging them would make the key ambiguous
           # and silently turn every lookup into a miss.
-          NATIVE_ISO='native-compiler-1,native-compiler-2,native-compiler-3,native-compiler-4,native-compiler-5,native-rest'
+          NATIVE_ISO='native-compiler-1,native-compiler-2,native-compiler-3,native-compiler-4,native-compiler-5,native-compiler-6,native-compiler-7,native-compiler-8,native-rest'
           emit() { # emit <prefix> <json>
             echo "$1=$2" >> "$GITHUB_OUTPUT"
             if [ "$2" = "[]" ]; then echo "$1-has=false" >> "$GITHUB_OUTPUT"; else echo "$1-has=true" >> "$GITHUB_OUTPUT"; fi
@@ -338,12 +338,15 @@ jobs:
             "native-compiler-3:--category=native/compiler" \
             "native-compiler-4:--category=native/compiler" \
             "native-compiler-5:--category=native/compiler" \
+            "native-compiler-6:--category=native/compiler" \
+            "native-compiler-7:--category=native/compiler" \
+            "native-compiler-8:--category=native/compiler" \
             "native-rest:--category=native --exclude=native/compiler" \
             "tools:--category=tools" "ui:--category=ui" \
             "ui-system:--category=ui-system" "zero:--category=zero")
           # typecheck: 9 categories -> 3 cells (~12 min serial).
-          # test: 7 non-native categories -> 2 cells, plus the 5 native compiler
-          # shards + native-rest kept 1:1 = 8 cells.
+          # test: 7 non-native categories -> 2 cells, plus the 8 native compiler
+          # shards + native-rest kept 1:1 = 11 cells.
           batch typecheck "$TC_SEL" 3
           batch test "$TEST_SEL" 2 "$NATIVE_ISO"
       - name: Select affected e2e suites
@@ -1027,7 +1030,13 @@ jobs:
     # 12.6m mean and a ~19m unlucky worst case (76%), under the 85% the note
     # above already flagged as thinner than a required gate deserves.
     #
-    # Expect a 6th. Spawn reduction (batching/caching `swiftc -parse` and
+    # 2026-09-14: the expanded chart/Flow native suites exhausted the five-way
+    # split: shards 1 and 4 were both still compiling when GitHub cancelled
+    # them at 25m, while shard 3 completed in 20m. Split eight ways: scaling
+    # the measured lower bound gives 15.6m per former 25m shard and restores
+    # useful headroom without dropping a single test.
+    #
+    # Expect a 9th. Spawn reduction (batching/caching `swiftc -parse` and
     # `kotlinc` across specs) is still the real lever; sharding only buys the
     # room to do it deliberately rather than under a red gate.
     #
@@ -1037,7 +1046,7 @@ jobs:
     # `case`, `TEST_ALL`, `NATIVE_ISO`, the `pick` cost-map, and the fallback
     # matrix `include`. Miss one and that shard's FILES silently never run —
     # the union-is-every-file property this whole design rests on is only
-    # true if all five lists agree.
+    # true if all eight lists agree.
     #
     # Non-native cells are vitest-only and keep the tight 10-minute cap so a
     # genuine hang there still fails fast.
@@ -1047,7 +1056,7 @@ jobs:
       matrix:
         # Dynamic (see typecheck-cell): only affected categories spawn;
         # `|| full-list` fallback keeps a `changes` failure fail-closed.
-        include: ${{ fromJSON(needs.install.outputs.test-matrix || '[{"name":"native-compiler-1","members":"native-compiler-1"},{"name":"native-compiler-2","members":"native-compiler-2"},{"name":"native-compiler-3","members":"native-compiler-3"},{"name":"native-compiler-4","members":"native-compiler-4"},{"name":"native-compiler-5","members":"native-compiler-5"},{"name":"native-rest","members":"native-rest"},{"name":"batch-a","members":"core fundamentals internals"},{"name":"batch-b","members":"tools ui ui-system zero"}]') }}
+        include: ${{ fromJSON(needs.install.outputs.test-matrix || '[{"name":"native-compiler-1","members":"native-compiler-1"},{"name":"native-compiler-2","members":"native-compiler-2"},{"name":"native-compiler-3","members":"native-compiler-3"},{"name":"native-compiler-4","members":"native-compiler-4"},{"name":"native-compiler-5","members":"native-compiler-5"},{"name":"native-compiler-6","members":"native-compiler-6"},{"name":"native-compiler-7","members":"native-compiler-7"},{"name":"native-compiler-8","members":"native-compiler-8"},{"name":"native-rest","members":"native-rest"},{"name":"batch-a","members":"core fundamentals internals"},{"name":"batch-b","members":"tools ui ui-system zero"}]') }}
     steps:
       # Pin Node — vitest's `#!/usr/bin/env node` shebang means tests
       # run under whatever Node is on PATH. Without this, ubuntu-latest's
@@ -1126,8 +1135,8 @@ jobs:
           BATCH_FAILED=""
           for category in $MEMBERS; do
           echo "::group::test — $category"
-          # Most cells map 1:1 onto `packages/<category>/`. The two `native-*`
-          # cells are PSEUDO-categories splitting `packages/native/` across two
+          # Most cells map 1:1 onto `packages/<category>/`. The `native-*`
+          # cells are PSEUDO-categories splitting `packages/native/` across dedicated
           # runners (see the timeout-minutes comment). Their `--exclude`/glob
           # complement is derived, never enumerated, so a new native package is
           # always covered by exactly one of them.
@@ -1140,27 +1149,42 @@ jobs:
             native-compiler-1)
               AFFECTED_ARGS="--category=native/compiler"
               FULL_FILTER="--filter=./packages/native/compiler"
-              SHARD_ARGS="--shard=1/5"
+              SHARD_ARGS="--shard=1/8"
               ;;
             native-compiler-2)
               AFFECTED_ARGS="--category=native/compiler"
               FULL_FILTER="--filter=./packages/native/compiler"
-              SHARD_ARGS="--shard=2/5"
+              SHARD_ARGS="--shard=2/8"
               ;;
             native-compiler-3)
               AFFECTED_ARGS="--category=native/compiler"
               FULL_FILTER="--filter=./packages/native/compiler"
-              SHARD_ARGS="--shard=3/5"
+              SHARD_ARGS="--shard=3/8"
               ;;
             native-compiler-4)
               AFFECTED_ARGS="--category=native/compiler"
               FULL_FILTER="--filter=./packages/native/compiler"
-              SHARD_ARGS="--shard=4/5"
+              SHARD_ARGS="--shard=4/8"
               ;;
             native-compiler-5)
               AFFECTED_ARGS="--category=native/compiler"
               FULL_FILTER="--filter=./packages/native/compiler"
-              SHARD_ARGS="--shard=5/5"
+              SHARD_ARGS="--shard=5/8"
+              ;;
+            native-compiler-6)
+              AFFECTED_ARGS="--category=native/compiler"
+              FULL_FILTER="--filter=./packages/native/compiler"
+              SHARD_ARGS="--shard=6/8"
+              ;;
+            native-compiler-7)
+              AFFECTED_ARGS="--category=native/compiler"
+              FULL_FILTER="--filter=./packages/native/compiler"
+              SHARD_ARGS="--shard=7/8"
+              ;;
+            native-compiler-8)
+              AFFECTED_ARGS="--category=native/compiler"
+              FULL_FILTER="--filter=./packages/native/compiler"
+              SHARD_ARGS="--shard=8/8"
               ;;
             native-rest)
               AFFECTED_ARGS="--category=native --exclude=native/compiler"
