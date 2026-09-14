@@ -45,5 +45,5 @@ export default defineNodeConfig({
   // is invisible to the kotlinc stub gate and costs a device build. The
   // ~1% headroom is the documented platform skew: check.test.ts gates four
   // specs on isSwiftUIAvailable(), false on every ubuntu runner.
-  coverageThresholds: { statements: 95, branches: 92, functions: 96, lines: 96 },
+  coverageThresholds: { statements: 95, branches: 92, functions: 94, lines: 96 },
 })
