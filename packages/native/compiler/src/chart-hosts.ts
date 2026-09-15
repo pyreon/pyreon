@@ -289,13 +289,39 @@ export const parallelRowsAdapter: ChartHostAdapter = (attrs, t, warn, resolve) =
   return t.list(out)
 }
 
+/**
+ * The fields an engine struct types as `Double` (bare or `Double | undefined`).
+ * A number LITERAL headed for one of them must be written as a Double: Kotlin
+ * will not widen `8` to `Double`, so `SankeyLink(value = 8)` does not compile.
+ */
+function engineDoubleFields(structName: string): ReadonlySet<string> {
+  type TypeShape = { kind: string; name?: string; branches?: readonly TypeShape[] }
+  const isDouble = (t: TypeShape): boolean =>
+    (t.kind === 'typeRef' && t.name === 'Double') || (t.kind === 'union' && (t.branches ?? []).some(isDouble))
+  const struct = CHART_ENGINE_STRUCTS.find((s) => s.name === structName)
+  return new Set((struct?.fields ?? []).filter((f) => isDouble(f.type as never)).map((f) => f.name))
+}
+
+/** A number literal, or a negated one, as a Double literal; undefined for anything else. */
+function doubleLiteral(e: ExprIR): string | undefined {
+  const n = litNumber(e)
+  if (n !== undefined) return chartDouble(n)
+  if (e.kind === 'unary' && e.op === '-') {
+    const m = litNumber(e.argument)
+    if (m !== undefined) return chartDouble(-m)
+  }
+  return undefined
+}
+
 function literalStructArrayAdapter(
   prop: string,
   structName: string,
   required: readonly string[],
   optional: readonly string[],
 ): ChartHostAdapter {
+  const doubles = engineDoubleFields(structName)
   return (attrs, t, warn, resolve, emit) => {
+    const emitField = (name: string, field: ExprIR): string => (doubles.has(name) ? (doubleLiteral(field) ?? emit(field)) : emit(field))
     const value = literalOf(attrs[prop], resolve)
     if (value?.kind !== 'array') return emit(attrs[prop]!)
     const rows: string[] = []
@@ -312,9 +338,9 @@ function literalStructArrayAdapter(
           warn(`<${structName} ${prop}[${i}].${name}>: required by the native engine; emitting nothing.`)
           return 'unsupported'
         }
-        fields.push([name, emit(field)])
+        fields.push([name, emitField(name, field)])
       }
-      for (const name of optional) fields.push([name, objectField(row, name) === undefined ? t.nil : emit(objectField(row, name)!)])
+      for (const name of optional) fields.push([name, objectField(row, name) === undefined ? t.nil : emitField(name, objectField(row, name)!)])
       rows.push(t.struct(structName, fields))
     }
     return t.list(rows)
