@@ -4282,18 +4282,29 @@ function parseNestedObjectShape(
   schemaFn: string | null,
 ): ZodSchemaDefnIR | null {
   // objectCallNode is `z.object({...})`. Wrap it as `<schemaFn>(z.object({...}))`
-  // so the existing walker can extract fields + auxSchemas.
+  // so the existing walker can extract fields + auxSchemas — EXCEPT for the
+  // wrapper-LESS `s` DSL (`schemaFn === null`), whose own re-entry branch
+  // (`tryNamespacedSchemaDefnFromTopLevel`'s `if (schemaFn === null) innerCall
+  // = init`) expects `init` to BE the `<prefix>.object(...)` call directly —
+  // wrapping it here built `<null>(objectCallNode)` (callee `{name: null}`,
+  // not the required MemberExpression), so a nested `s.object({...})` inside
+  // an `s.object`/`s.array` always failed to lower, silently dropping the
+  // field and then the whole schema. Hand `objectCallNode` straight through
+  // as `init` in that case.
   const wrapped: AnyNode = {
     type: 'VariableDeclaration',
     declarations: [
       {
         type: 'VariableDeclarator',
         id: { type: 'Identifier', name },
-        init: {
-          type: 'CallExpression',
-          callee: { type: 'Identifier', name: schemaFn },
-          arguments: [objectCallNode],
-        },
+        init:
+          schemaFn === null
+            ? objectCallNode
+            : {
+                type: 'CallExpression',
+                callee: { type: 'Identifier', name: schemaFn },
+                arguments: [objectCallNode],
+              },
       },
     ],
   }
@@ -11442,7 +11453,22 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       }
     }
     case 'ArrayExpression': {
-      const elements = (node.elements as AnyNode[]).map((e) => parseExpr(e, ctx))
+      // A sparse array literal (`[1, , 2]`) is valid TS — oxc represents the
+      // hole as a `null` entry, not an AST node — but every downstream reader
+      // dereferences `.type` unconditionally, so an unguarded map crashed the
+      // WHOLE transform with an opaque `null is not an object`, no filename,
+      // no line. Lower a hole to the `undefined` IDENTIFIER (the same shape
+      // `undefined` gets everywhere else in this file — `{kind:'undefined'}`
+      // is a TYPE-IR variant, not an expr one; using it here as an ExprIR
+      // compiles past the `as` cast but crashes downstream readers that
+      // switch on the real ExprIR kind set, e.g. `inferType`'s array-element
+      // walk, which has no case for it and falls off the end returning
+      // `undefined` where a `TypeIR` was expected) — matching what reading
+      // the hole produces on both the web and every native target, and
+      // keeping element POSITIONS lined up rather than collapsing the array.
+      const elements = (node.elements as (AnyNode | null)[]).map((e) =>
+        e === null ? ({ kind: 'identifier', name: 'undefined' } as ExprIR) : parseExpr(e, ctx),
+      )
       return { kind: 'array', elements }
     }
     case 'ObjectExpression': {
