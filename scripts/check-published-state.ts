@@ -31,8 +31,9 @@
  *
  *   bun scripts/check-published-state.ts [--json] [--native]
  */
-import { readFileSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 
 export const SENTINELS = ['@pyreon/reactivity', '@pyreon/core', '@pyreon/zero'] as const
 
@@ -43,9 +44,32 @@ export const SENTINELS = ['@pyreon/reactivity', '@pyreon/core', '@pyreon/zero'] 
 // when native has caught up, so it passes `--native` to ALSO guard the
 // native-binary cascade (JS published, but the tag→native step failed or the tag
 // never pushed — the historical skew class where `@pyreon/compiler-*` lagged a
-// version behind). One representative binary suffices: all 7 share the
-// fixed-group version, bumped in lockstep by `changeset version`.
-export const NATIVE_SENTINELS = ['@pyreon/compiler-darwin-arm64'] as const
+// version behind). EVERY binary is a sentinel, not one representative: the
+// release-native publish MATRIX is `fail-fast: false` per target, so one
+// target can be a version behind while the others published — and on that
+// platform `@pyreon/compiler`'s optionalDependency then resolves to a stale
+// binary, i.e. the 3.7-8.9× slower JS fallback, silently. The set is READ from
+// the parent package's `optionalDependencies` so a new target cannot be
+// forgotten here (the one hand-maintained list this gate used to carry).
+export const NATIVE_SENTINELS: readonly string[] = readNativeSentinels()
+
+function readNativeSentinels(): string[] {
+  const manifest = join(findRepoRoot(), 'packages', 'core', 'compiler', 'package.json')
+  const pkg = JSON.parse(readFileSync(manifest, 'utf8')) as { optionalDependencies?: Record<string, string> }
+  const names = Object.keys(pkg.optionalDependencies ?? {}).filter((n) => n.startsWith('@pyreon/compiler-'))
+  if (names.length === 0) throw new Error(`[check-published-state] no @pyreon/compiler-* optionalDependencies in ${manifest}`)
+  return names.sort()
+}
+
+/** Walk up from this script to the `.changeset/config.json` marker. */
+function findRepoRoot(): string {
+  let dir = dirname(fileURLToPath(import.meta.url))
+  for (let i = 0; i < 6; i++) {
+    if (existsSync(join(dir, '.changeset', 'config.json'))) return dir
+    dir = dirname(dir)
+  }
+  throw new Error('[check-published-state] repo root not found')
+}
 
 /**
  * The sentinel set to verify. `--native` adds the native compiler binary(ies)

@@ -1063,9 +1063,11 @@ jobs:
           retries: 3
           script: |
             const title = '[native-device] Nightly device build is RED'
-            const failed =
-              '${{ needs.ios-build.result }}' === 'failure' ||
-              '${{ needs.android-build.result }}' === 'failure'
+            // ANY non-success result is red: a job killed by `timeout-minutes`
+            // reports `cancelled`, not `failure`, so a chronically-timing-out
+            // nightly read as green here — and AUTO-CLOSED the sticky issue.
+            const results = ['${{ needs.ios-build.result }}', '${{ needs.android-build.result }}']
+            const failed = results.some((r) => r !== 'success')
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
             const { data: issues } = await github.rest.issues.listForRepo({
               owner: context.repo.owner,

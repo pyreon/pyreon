@@ -21,6 +21,7 @@ import {
   findDuplicateWriters,
   findKeyDrift,
   findOrphanRestores,
+  findOrphanSaves,
   findPathListMismatches,
 } from '../../../../../scripts/check-cache-key-sync'
 
@@ -287,5 +288,29 @@ describe('findKeyDrift', () => {
     // gate is deliberately strict rather than normalising.
     const out = findKeyDrift([use('a', "'x', 'y'"), use('b', "'x','y'")])
     expect(out).toHaveLength(1)
+  })
+})
+
+describe('findOrphanSaves — a save nothing restores is eviction pressure', () => {
+  it('flags a save-only template no restore site can hit', () => {
+    const steps = [
+      ...extractCacheSteps(step({ kind: 'save', path: 'x', key: 'a-${{ h }}' }), 'f'),
+      ...extractCacheSteps(step({ kind: 'restore', path: 'x', key: 'b-${{ h }}' }), 'g'),
+    ]
+    expect(findOrphanSaves(steps)).toEqual([{ keyTemplate: 'a-<expr>', sites: ['f:1'] }])
+  })
+  it('accepts a save restored by exact key, by a restore-keys prefix, or by a combined step', () => {
+    const exact = [
+      ...extractCacheSteps(step({ kind: 'save', path: 'x', key: 'a-${{ h }}' }), 'f'),
+      ...extractCacheSteps(step({ kind: 'restore', path: 'x', key: 'a-${{ h }}' }), 'g'),
+    ]
+    expect(findOrphanSaves(exact)).toEqual([])
+    const byPrefix = [
+      ...extractCacheSteps(step({ kind: 'save', path: 'x', key: 'whatever-${{ h }}' }), 'f'),
+      ...extractCacheSteps(step({ kind: 'restore', path: 'x', key: 'zzz-${{ h }}' }), 'g'),
+    ]
+    expect(findOrphanSaves(byPrefix)).toEqual([])
+    const combined = extractCacheSteps(step({ kind: 'both', path: 'x', key: 'only-${{ h }}' }), 'f')
+    expect(findOrphanSaves(combined)).toEqual([])
   })
 })

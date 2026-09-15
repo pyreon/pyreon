@@ -308,6 +308,41 @@ export function findOrphanRestores(steps: CacheStep[]): OrphanRestore[] {
     .sort((a, b) => a.prefix.localeCompare(b.prefix))
 }
 
+export interface OrphanSave {
+  keyTemplate: string
+  sites: string[]
+}
+
+/**
+ * A save-only (`actions/cache/save`) site whose key template NO restore site
+ * can ever hit — neither an exact `key:` nor a `restore-keys` prefix of it.
+ * The reciprocal of `findOrphanRestores`: such a save is pure write traffic
+ * against the repository's 10 GB cache budget, and every byte it writes
+ * evicts an entry a restore WOULD have hit. (`actions/cache` restores its own
+ * key, so a combined step is never an orphan.)
+ */
+export function findOrphanSaves(steps: CacheStep[]): OrphanSave[] {
+  const restoreTemplates = new Set<string>()
+  const restorePrefixes = new Set<string>()
+  for (const s of steps) {
+    if (s.kind === 'save') continue
+    if (s.keyTemplate !== '') restoreTemplates.add(s.keyTemplate)
+    for (const p of s.restorePrefixes) if (p !== '' && p !== '<expr>') restorePrefixes.add(p)
+  }
+  const bySite = new Map<string, string[]>()
+  for (const s of steps) {
+    if (s.kind !== 'save' || s.keyTemplate === '' || s.keyTemplate === '<expr>') continue
+    if (restoreTemplates.has(s.keyTemplate)) continue
+    if ([...restorePrefixes].some((p) => s.keyTemplate.startsWith(p))) continue
+    const sites = bySite.get(s.keyTemplate) ?? []
+    sites.push(`${s.file}:${s.line}`)
+    bySite.set(s.keyTemplate, sites)
+  }
+  return [...bySite.entries()]
+    .map(([keyTemplate, sites]) => ({ keyTemplate, sites }))
+    .sort((a, b) => a.keyTemplate.localeCompare(b.keyTemplate))
+}
+
 // ─── main ─────────────────────────────────────────────────────────────────
 
 function collectYaml(dir: string, acc: string[] = []): string[] {
@@ -391,6 +426,19 @@ if (mismatches.length > 0) {
     }
   }
   console.error(`\nMake every site under a prefix declare the same \`path:\` block.`)
+  process.exit(1)
+}
+
+const orphanSaves = findOrphanSaves(steps)
+if (orphanSaves.length > 0) {
+  console.error(
+    `[check-cache-key-sync] FAILED — ${orphanSaves.length} save-only key(s) that NO step ever restores (pure eviction pressure):`,
+  )
+  for (const o of orphanSaves) {
+    console.error(`  ${o.keyTemplate}`)
+    for (const site of o.sites) console.error(`      at ${site}`)
+  }
+  console.error('\nRestore the key somewhere (actions/cache/restore with the same key or a restore-keys prefix), or delete the save.')
   process.exit(1)
 }
 
