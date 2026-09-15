@@ -3344,6 +3344,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
           ...(e.deletable !== undefined ? [`deletable = ${e.deletable}`] : []),
           ...(e.reconnectable !== undefined ? [`reconnectable = ${e.reconnectable}`] : []),
           ...(e.interactionWidth !== undefined ? [`interactionWidth = ${ktChartDouble(String(e.interactionWidth))}`] : []),
+          ...(e.data !== undefined && kotlinFlowData(e.data) !== null ? [`data = ${kotlinFlowData(e.data)}`] : []),
           ...(e.pathOptions?.curvature !== undefined ? [`curvature = ${ktChartDouble(String(e.pathOptions.curvature))}`] : []),
           ...(e.pathOptions?.borderRadius !== undefined ? [`borderRadius = ${ktChartDouble(String(e.pathOptions.borderRadius))}`] : []),
           ...(e.pathOptions?.offset !== undefined ? [`pathOffset = ${ktChartDouble(String(e.pathOptions.offset))}`] : []),
@@ -3557,6 +3558,34 @@ function kotlinFlowHandlesLiteral(arg: ExprIR): string | null {
   return kotlinFlowParsedHandles(parsed)
 }
 
+function kotlinFlowDataValue(expr: ExprIR): string | null {
+  if (expr.kind === 'literal') {
+    if (expr.value === null) return 'PyreonFlowDataValue.NullValue'
+    if (typeof expr.value === 'string') return `PyreonFlowDataValue.StringValue(${JSON.stringify(expr.value)})`
+    if (typeof expr.value === 'number') return `PyreonFlowDataValue.NumberValue(${ktChartDouble(String(expr.value))})`
+    if (typeof expr.value === 'boolean') return `PyreonFlowDataValue.BoolValue(${expr.value})`
+    return null
+  }
+  if (expr.kind === 'array') {
+    const values = expr.elements.map(kotlinFlowDataValue)
+    return values.some((value) => value === null) ? null : `PyreonFlowDataValue.ArrayValue(listOf(${values.join(', ')}))`
+  }
+  if (expr.kind === 'object' && (expr.spreads?.length ?? 0) === 0) {
+    const data = kotlinFlowData(expr)
+    return data === null ? null : `PyreonFlowDataValue.ObjectValue(${data})`
+  }
+  return null
+}
+
+function kotlinFlowData(expr: ExprIR): string | null {
+  if (expr.kind !== 'object' || (expr.spreads?.length ?? 0) > 0) return null
+  const values = expr.fields.map((field) => {
+    const value = kotlinFlowDataValue(field.value)
+    return value === null ? null : `${JSON.stringify(field.name)} to ${value}`
+  })
+  return values.some((value) => value === null) ? null : `PyreonFlowData(mapOf(${values.join(', ')}))`
+}
+
 /** `addEdge({...})` — the `PyreonFlowEdge` twin of `kotlinFlowNodeLiteral`. */
 function kotlinFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
   if (arg.kind !== 'object') return null
@@ -3573,6 +3602,9 @@ function kotlinFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
   const markerStartExpr = field('markerStart')
   const markerEndExpr = field('markerEnd')
   const waypointsExpr = field('waypoints')
+  const dataExpr = field('data')
+  const portableData = dataExpr ? kotlinFlowData(dataExpr) : null
+  if (dataExpr && portableData === null) _emitWarnings.push(`createFlow binding \`${flowName}\` addEdge(...): edge \`data\` must be a static JSON-compatible object to lower natively.`)
   const optionalFields = ['sourceHandle', 'targetHandle', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'reconnectable'] as const
   const interactionWidthExpr = field('interactionWidth')
   const parts = [
@@ -3582,6 +3614,7 @@ function kotlinFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
     ...(typeExpr ? [`type = ${emitKotlinExpr(typeExpr, 0)}`] : []),
     ...(labelExpr ? [`label = ${emitKotlinExpr(labelExpr, 0)}`] : []),
     ...(animatedExpr ? [`animated = ${emitKotlinExpr(animatedExpr, 0)}`] : []),
+    ...(portableData ? [`data = ${portableData}`] : []),
     ...(pathOptionsExpr?.kind === 'object' ? pathOptionsExpr.fields.flatMap(({ name, value }) => {
       const nativeName = name === 'offset' ? 'pathOffset' : name
       return ['curvature', 'borderRadius', 'pathOffset'].includes(nativeName) ? [`${nativeName} = ${ktChartDouble(emitKotlinExpr(value, 0))}`] : []
@@ -5223,6 +5256,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               if (name === 'markerStart' || name === 'markerEnd') { const marker = kotlinFlowMarkerLiteral(value); return marker ? [`${name} = ${marker}`, ...(name === 'markerEnd' ? ['markerEndSpecified = true'] : [])] : [] }
               if (name === 'animated') return [`animated = ${emitKotlinExpr(value, indent)}`, 'animatedSpecified = true']
               if (name === 'waypoints') { const points = kotlinFlowPositionsLiteral(value); return points ? [`waypoints = ${points}`] : [] }
+              if (name === 'data') { const data = kotlinFlowData(value); if (!data) _emitWarnings.push(`createFlow binding \`${flowName}\` updateEdge(...): edge \`data\` must be a static JSON-compatible object to lower natively.`); return data ? [`data = ${data}`] : [] }
               const rendered = name === 'interactionWidth' ? ktChartDouble(emitKotlinExpr(value, indent)) : emitKotlinExpr(value, indent)
               return HANDLED_FLOW_EDGE_FIELDS.has(name) ? [`${kotlinIdent(name)} = ${rendered}`] : []
             })
@@ -6088,6 +6122,13 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       }
     }
     case 'member': {
+      if (
+        e.object.kind === 'member' && e.object.property === 'data' &&
+        e.object.object.kind === 'member' && e.object.object.property === 'edge' &&
+        e.object.object.object.kind === 'identifier' && e.object.object.object.name === _activePropsParamName
+      ) {
+        return `${emitKotlinExpr(e.object, indent)}?.get(${JSON.stringify(e.property)})`
+      }
       if (e.object.kind === 'identifier' && e.object.name === 'MarkerType' && (e.property === 'Arrow' || e.property === 'ArrowClosed')) {
         return JSON.stringify(e.property.toLowerCase())
       }

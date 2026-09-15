@@ -9190,6 +9190,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     deletable?: boolean
     reconnectable?: boolean
     interactionWidth?: number
+    data?: ExprIR
     pathOptions?: { curvature?: number; borderRadius?: number; offset?: number }
     markerStart?: ParsedMarker
     markerEnd?: ParsedMarker | null
@@ -9301,6 +9302,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       const edgeStringFields = ['sourceHandle', 'targetHandle', 'ariaLabel'] as const
       const edgeBoolFields = ['focusable', 'hidden', 'deletable', 'reconnectable'] as const
       const interactionWidth = literalNumber(objProp(edgeLit, 'interactionWidth'))
+      const edgeDataNode = objProp(edgeLit, 'data')
       const pathOptionsNode = objProp(edgeLit, 'pathOptions')
       const markerStartNode = objProp(edgeLit, 'markerStart')
       const markerEndNode = objProp(edgeLit, 'markerEnd')
@@ -9327,6 +9329,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       for (const k of edgeStringFields) if (objProp(edgeLit, k) && literalString(objProp(edgeLit, k)) === undefined) droppedEdgeFields.add(`${k} (not a string literal)`)
       for (const k of edgeBoolFields) if (objProp(edgeLit, k) && literalBool(objProp(edgeLit, k)) === undefined) droppedEdgeFields.add(`${k} (not a boolean literal)`)
       if (objProp(edgeLit, 'interactionWidth') && interactionWidth === undefined) droppedEdgeFields.add('interactionWidth (not a numeric literal)')
+      if (edgeDataNode && edgeDataNode.type !== 'ObjectExpression') droppedEdgeFields.add('data (not an object literal)')
       if (pathOptions === null) droppedEdgeFields.add('pathOptions (not a literal numeric options object)')
       if (markerStartNode && markerStart === undefined) droppedEdgeFields.add('markerStart (not a literal marker)')
       if (markerEndNode && markerEnd === undefined) droppedEdgeFields.add('markerEnd (not a literal marker or null)')
@@ -9347,6 +9350,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
           return value === undefined ? [] : [[k, value]]
         })),
         ...(interactionWidth !== undefined ? { interactionWidth } : {}),
+        ...(edgeDataNode?.type === 'ObjectExpression' ? { data: parseExpr(edgeDataNode, ctx) } : {}),
         ...(pathOptions !== undefined && pathOptions !== null ? { pathOptions } : {}),
         ...(markerStart !== undefined && markerStart !== null ? { markerStart } : {}),
         ...(markerEndNode && markerEnd !== undefined ? { markerEnd } : {}),

@@ -1108,7 +1108,7 @@ import { Stack, Text } from '${P}'
 export function C() {
   const flow = createFlow({
     nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'A' }, parentId: 'root', extent: 'parent', draggable: false, selectable: true, connectable: false, focusable: true, ariaLabel: 'Start node', hidden: false, deletable: true, expandParent: true, group: true, sourceHandles: [{ id: 'out', type: 'source', position: 'right' }], targetHandles: [{ type: 'target', position: 'left' }], style: {} }],
-    edges: [{ id: 'e1', source: '1', target: '1', markerStart: { type: 'arrowclosed', color: '#f00', width: 12, height: 8, strokeWidth: 2 }, markerEnd: 'arrow', sourceHandle: 'out', targetHandle: 'in', focusable: true, ariaLabel: 'Loop', hidden: false, deletable: true, reconnectable: false, interactionWidth: 24, pathOptions: { curvature: 0.4, borderRadius: 8, offset: 30 } }, { id: 'e2', source: '1', target: '1', markerEnd: null }],
+    edges: [{ id: 'e1', source: '1', target: '1', data: { label: 'wire', weight: 2, active: true, tags: ['a', null], meta: { kind: 'signal' } }, markerStart: { type: 'arrowclosed', color: '#f00', width: 12, height: 8, strokeWidth: 2 }, markerEnd: 'arrow', sourceHandle: 'out', targetHandle: 'in', focusable: true, ariaLabel: 'Loop', hidden: false, deletable: true, reconnectable: false, interactionWidth: 24, pathOptions: { curvature: 0.4, borderRadius: 8, offset: 30 } }, { id: 'e2', source: '1', target: '1', markerEnd: null }],
     defaultMarkerEnd: null,
     nodesDraggable: false, nodesConnectable: false, nodesSelectable: false, nodesFocusable: false,
     edgesFocusable: false, nodesDeletable: false, edgesDeletable: false, edgesReconnectable: false,
@@ -1124,6 +1124,7 @@ export function C() {
       expect(w).toContain('node field `style` is NOT carried')
       expect(w).not.toContain('edge field `markerEnd` is NOT carried')
       expect(w).not.toContain('edge field `markerStart` is NOT carried')
+      expect(w).not.toContain('edge field `data` is NOT carried')
       for (const field of ['parentId', 'extent', 'draggable', 'selectable', 'connectable', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'expandParent', 'group', 'sourceHandles', 'targetHandles', 'sourceHandle', 'targetHandle', 'reconnectable', 'interactionWidth', 'pathOptions']) {
         expect(w).not.toContain(`field \`${field}\` is NOT carried`)
       }
@@ -1135,6 +1136,8 @@ export function C() {
       expect(result.code).toContain(`targetHandle${assignment} "in"`)
       expect(result.code).toContain(`ariaLabel${assignment} "Loop"`)
       expect(result.code).toContain(`interactionWidth${assignment} ${target === 'swift' ? '24' : '24.0'}`)
+      expect(result.code).toContain(target === 'swift' ? 'data: PyreonFlowData(["label": .string("wire")' : 'data = PyreonFlowData(mapOf("label" to PyreonFlowDataValue.StringValue("wire")')
+      expect(result.code).toContain(target === 'swift' ? '.object(PyreonFlowData(["kind": .string("signal")]))' : 'PyreonFlowDataValue.ObjectValue(PyreonFlowData(mapOf("kind" to PyreonFlowDataValue.StringValue("signal"))))')
       expect(result.code).toContain(`curvature${assignment} ${target === 'swift' ? '0.4' : '0.4'}`)
       expect(result.code).toContain(`borderRadius${assignment} ${target === 'swift' ? '8' : '8.0'}`)
       expect(result.code).toContain(`pathOffset${assignment} ${target === 'swift' ? '30' : '30.0'}`)
@@ -1172,8 +1175,25 @@ export function C() {
 `
       expect(warningsOf(src, target)).toContain('`label (not a string literal)`')
     })
+    it(`[${target}] nested JSON-compatible edge data is carried and native-compiler valid`, () => {
+      const src = `
+import { createFlow } from '@pyreon/flow'
+import { Stack, Text } from '${P}'
+export function C() {
+  const flow = createFlow({
+    nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'A' } }],
+    edges: [{ id: 'e1', source: '1', target: '1', data: { label: 'wire', count: 2, enabled: true, nested: { mode: 'fast' }, values: [1, null, false] } }],
+  })
+  return <Stack><Text>{flow.edges().length}</Text></Stack>
+}`
+      const result = transform(src, { target })
+      expect(result.warnings.join(' ')).not.toContain('edge field `data`')
+      expect(result.code).toContain(target === 'swift' ? 'data: PyreonFlowData(' : 'data = PyreonFlowData(')
+      const validation = target === 'swift' ? validateSwiftWithStubs(result.code) : validateKotlin(result.code)
+      expect(validation.ok, validation.error ?? '').toBe(true)
+    })
     it(`[${target}] call-site addNode/addEdge literals with extra fields warn BY NAME`, () => {
-      const source = base('', `<Button onPress={() => { flow.addNode({ id: '2', position: { x: 1, y: 1 }, data: { label: 'B' }, extent: [[0, 10], [100, 90]], hidden: true, sourceHandles: [{ id: 'out', type: 'source', position: 'right' }], style: {} }); flow.addEdge({ id: 'e2', source: '1', target: '2', sourceHandle: 'out', waypoints: [], pathOptions: { offset: 31 }, markerEnd: 'arrow' }) }}>Add</Button>`)
+      const source = base('', `<Button onPress={() => { flow.addNode({ id: '2', position: { x: 1, y: 1 }, data: { label: 'B' }, extent: [[0, 10], [100, 90]], hidden: true, sourceHandles: [{ id: 'out', type: 'source', position: 'right' }], style: {} }); flow.addEdge({ id: 'e2', source: '1', target: '2', data: { label: 'new' }, sourceHandle: 'out', waypoints: [], pathOptions: { offset: 31 }, markerEnd: 'arrow' }) }}>Add</Button>`)
       const result = transform(source, { target })
       const w = (result.warnings ?? []).join('\n')
       expect(w).toContain('addNode(...): node field `style` is NOT carried')
@@ -1186,6 +1206,8 @@ export function C() {
       expect(w).not.toContain('edge field `waypoints` is NOT carried')
       expect(w).not.toContain('edge field `sourceHandle` is NOT carried')
       expect(w).not.toContain('edge field `pathOptions` is NOT carried')
+      expect(w).not.toContain('edge field `data` is NOT carried')
+      expect(result.code).toContain(target === 'swift' ? 'data: PyreonFlowData(["label": .string("new")])' : 'data = PyreonFlowData(mapOf("label" to PyreonFlowDataValue.StringValue("new")))')
       expect(result.code).toContain(`pathOffset${target === 'swift' ? ':' : ' ='} ${target === 'swift' ? '31' : '31.0'}`)
     })
     it(`[${target}] waypoint editing and reconnect lower to native values and typecheck`, () => {
@@ -1348,7 +1370,7 @@ export function C() {
             sourcePosition: props.sourcePosition(), targetX: props.targetX(),
             targetY: props.targetY(), targetPosition: props.targetPosition(),
           }).path} style="fill: none; stroke: #e11d48; stroke-width: 2" />
-          <EdgeLabelRenderer><Text>{props.edge.label}</Text></EdgeLabelRenderer>
+          <EdgeLabelRenderer><Text>{props.edge.data?.label}</Text></EdgeLabelRenderer>
         </>
       }
       export function Diagram() {
@@ -1357,7 +1379,7 @@ export function C() {
             { id: 'a', position: { x: 0, y: 0 }, data: { label: 'A' } },
             { id: 'b', position: { x: 200, y: 80 }, data: { label: 'B' } },
           ],
-          edges: [{ id: 'ab', source: 'a', target: 'b', type: 'signal' }],
+          edges: [{ id: 'ab', source: 'a', target: 'b', type: 'signal', data: { label: 'Signal' } }],
         })
         return <Flow instance={flow} edgeTypes={{ signal: SignalEdge }} />
       }

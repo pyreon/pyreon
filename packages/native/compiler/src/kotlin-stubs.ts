@@ -1634,6 +1634,15 @@ fun <T> pyreonEffectiveDimensions(node: PyreonFlowNode<T>, measurement: PyreonFl
 fun <S, T> pyreonGetFloatingEndpoints(sourceNode: PyreonFlowNode<S>, targetNode: PyreonFlowNode<T>, dimensions: PyreonFlowNodeBoxDimensions) = PyreonFlowFloatingEndpoints()
 fun <S, T> pyreonGetSmartHandlePositions(sourceNode: PyreonFlowNode<S>, targetNode: PyreonFlowNode<T>, dimensions: PyreonFlowNodeBoxDimensions? = null) = PyreonFlowSmartPositions()
 fun <T> pyreonResolveHandleAnchor(node: PyreonFlowNode<T>, handleId: String?, type: String, dimensions: PyreonFlowDimensions, measurement: PyreonFlowNodeMeasurement? = null): PyreonFlowHandleAnchor? = null
+sealed interface PyreonFlowDataValue {
+  data class StringValue(val value: String) : PyreonFlowDataValue
+  data class NumberValue(val value: Double) : PyreonFlowDataValue
+  data class BoolValue(val value: Boolean) : PyreonFlowDataValue
+  data class ObjectValue(val value: PyreonFlowData) : PyreonFlowDataValue
+  data class ArrayValue(val value: List<PyreonFlowDataValue>) : PyreonFlowDataValue
+  data object NullValue : PyreonFlowDataValue
+}
+data class PyreonFlowData(val values: Map<String, PyreonFlowDataValue> = emptyMap()) { operator fun get(key: String): PyreonFlowDataValue? = values[key] }
 data class PyreonFlowEdge(
   val id: String,
   val source: String,
@@ -1650,6 +1659,7 @@ data class PyreonFlowEdge(
   val deletable: Boolean? = null,
   val reconnectable: Boolean? = null,
   val interactionWidth: Double? = null,
+  val data: PyreonFlowData? = null,
   val curvature: Double? = null,
   val borderRadius: Double? = null,
   val pathOffset: Double? = null,

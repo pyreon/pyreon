@@ -726,6 +726,28 @@ public func pyreonFlowRadialLayout<T>(
 }
 
 /// An edge — mirrors `FlowEdge`'s core fields, including editable waypoints.
+public indirect enum PyreonFlowDataValue: Equatable, CustomStringConvertible {
+    case string(String), number(Double), bool(Bool), object(PyreonFlowData), array([PyreonFlowDataValue]), null
+    public var description: String {
+        switch self {
+        case .string(let value): return value
+        case .number(let value): return value.rounded() == value ? String(Int(value)) : String(value)
+        case .bool(let value): return String(value)
+        case .object(let value): return String(describing: value)
+        case .array(let value): return String(describing: value)
+        case .null: return "null"
+        }
+    }
+}
+
+@dynamicMemberLookup
+public struct PyreonFlowData: Equatable {
+    public var values: [String: PyreonFlowDataValue]
+    public init(_ values: [String: PyreonFlowDataValue] = [:]) { self.values = values }
+    public subscript(dynamicMember key: String) -> PyreonFlowDataValue? { values[key] }
+    public subscript(_ key: String) -> PyreonFlowDataValue? { values[key] }
+}
+
 public struct PyreonFlowEdge: Equatable {
     public var id: String
     public var source: String
@@ -745,6 +767,7 @@ public struct PyreonFlowEdge: Equatable {
     public var deletable: Bool?
     public var reconnectable: Bool?
     public var interactionWidth: Double?
+    public var data: PyreonFlowData?
     public var curvature: Double?
     public var borderRadius: Double?
     public var pathOffset: Double?
@@ -769,6 +792,7 @@ public struct PyreonFlowEdge: Equatable {
         deletable: Bool? = nil,
         reconnectable: Bool? = nil,
         interactionWidth: Double? = nil,
+        data: PyreonFlowData? = nil,
         curvature: Double? = nil,
         borderRadius: Double? = nil,
         pathOffset: Double? = nil,
@@ -792,6 +816,7 @@ public struct PyreonFlowEdge: Equatable {
         self.deletable = deletable
         self.reconnectable = reconnectable
         self.interactionWidth = interactionWidth
+        self.data = data
         self.curvature = curvature
         self.borderRadius = borderRadius
         self.pathOffset = pathOffset

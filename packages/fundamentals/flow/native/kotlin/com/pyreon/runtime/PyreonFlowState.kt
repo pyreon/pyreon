@@ -100,6 +100,19 @@ fun pyreonCollectFlowEdgeMarkers(edges: List<PyreonFlowEdge>, defaultMarkerEnd: 
 }
 
 /** An edge — mirrors `FlowEdge`'s core fields, including editable waypoints. */
+sealed interface PyreonFlowDataValue {
+    data class StringValue(val value: String) : PyreonFlowDataValue { override fun toString() = value }
+    data class NumberValue(val value: Double) : PyreonFlowDataValue { override fun toString() = if (value % 1.0 == 0.0) value.toLong().toString() else value.toString() }
+    data class BoolValue(val value: Boolean) : PyreonFlowDataValue { override fun toString() = value.toString() }
+    data class ObjectValue(val value: PyreonFlowData) : PyreonFlowDataValue
+    data class ArrayValue(val value: List<PyreonFlowDataValue>) : PyreonFlowDataValue
+    data object NullValue : PyreonFlowDataValue { override fun toString() = "null" }
+}
+
+data class PyreonFlowData(val values: Map<String, PyreonFlowDataValue> = emptyMap()) {
+    operator fun get(key: String): PyreonFlowDataValue? = values[key]
+}
+
 data class PyreonFlowEdge(
     val id: String,
     val source: String,
@@ -116,6 +129,7 @@ data class PyreonFlowEdge(
     val deletable: Boolean? = null,
     val reconnectable: Boolean? = null,
     val interactionWidth: Double? = null,
+    val data: PyreonFlowData? = null,
     val curvature: Double? = null,
     val borderRadius: Double? = null,
     val pathOffset: Double? = null,

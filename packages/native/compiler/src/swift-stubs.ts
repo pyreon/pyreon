@@ -1088,6 +1088,13 @@ public func pyreonEffectiveDimensions<T>(_ node: PyreonFlowNode<T>, measurement:
 public func pyreonGetFloatingEndpoints<S, T>(_ sourceNode: PyreonFlowNode<S>, targetNode: PyreonFlowNode<T>, dimensions: PyreonFlowNodeBoxDimensions) -> PyreonFlowFloatingEndpoints { PyreonFlowFloatingEndpoints() }
 public func pyreonGetSmartHandlePositions<S, T>(_ sourceNode: PyreonFlowNode<S>, targetNode: PyreonFlowNode<T>, dimensions: PyreonFlowNodeBoxDimensions? = nil) -> PyreonFlowSmartPositions { PyreonFlowSmartPositions() }
 public func pyreonResolveHandleAnchor<T>(_ node: PyreonFlowNode<T>, handleId: String?, type: String, dimensions: PyreonFlowDimensions, measurement: PyreonFlowNodeMeasurement? = nil) -> PyreonFlowHandleAnchor? { nil }
+public indirect enum PyreonFlowDataValue: Equatable { case string(String), number(Double), bool(Bool), object(PyreonFlowData), array([PyreonFlowDataValue]), null }
+@dynamicMemberLookup public struct PyreonFlowData: Equatable {
+  public var values: [String: PyreonFlowDataValue]
+  public init(_ values: [String: PyreonFlowDataValue] = [:]) { self.values = values }
+  public subscript(dynamicMember key: String) -> PyreonFlowDataValue? { values[key] }
+  public subscript(_ key: String) -> PyreonFlowDataValue? { values[key] }
+}
 public struct PyreonFlowEdge: Equatable {
   public var id: String
   public var source: String
@@ -1104,6 +1111,7 @@ public struct PyreonFlowEdge: Equatable {
   public var deletable: Bool? = nil
   public var reconnectable: Bool? = nil
   public var interactionWidth: Double? = nil
+  public var data: PyreonFlowData? = nil
   public var curvature: Double? = nil
   public var borderRadius: Double? = nil
   public var pathOffset: Double? = nil
@@ -1127,6 +1135,7 @@ public struct PyreonFlowEdge: Equatable {
     deletable: Bool? = nil,
     reconnectable: Bool? = nil,
     interactionWidth: Double? = nil,
+    data: PyreonFlowData? = nil,
     curvature: Double? = nil,
     borderRadius: Double? = nil,
     pathOffset: Double? = nil,

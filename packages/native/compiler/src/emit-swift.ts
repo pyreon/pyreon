@@ -4189,6 +4189,7 @@ function emitSwiftDecl(
           ...(e.deletable !== undefined ? [`deletable: ${e.deletable}`] : []),
           ...(e.reconnectable !== undefined ? [`reconnectable: ${e.reconnectable}`] : []),
           ...(e.interactionWidth !== undefined ? [`interactionWidth: ${e.interactionWidth}`] : []),
+          ...(e.data !== undefined && swiftFlowData(e.data) !== null ? [`data: ${swiftFlowData(e.data)}`] : []),
           ...(e.pathOptions?.curvature !== undefined ? [`curvature: ${e.pathOptions.curvature}`] : []),
           ...(e.pathOptions?.borderRadius !== undefined ? [`borderRadius: ${e.pathOptions.borderRadius}`] : []),
           ...(e.pathOptions?.offset !== undefined ? [`pathOffset: ${e.pathOptions.offset}`] : []),
@@ -4388,6 +4389,37 @@ function swiftFlowHandlesLiteral(arg: ExprIR): string | null {
   return swiftFlowParsedHandles(parsed)
 }
 
+function swiftFlowDataValue(expr: ExprIR): string | null {
+  if (expr.kind === 'literal') {
+    if (expr.value === null) return '.null'
+    if (typeof expr.value === 'string') return `.string(${JSON.stringify(expr.value)})`
+    if (typeof expr.value === 'number') return `.number(${expr.value})`
+    if (typeof expr.value === 'boolean') return `.bool(${expr.value})`
+    return null
+  }
+  if (expr.kind === 'array') {
+    const values = expr.elements.map(swiftFlowDataValue)
+    return values.some((value) => value === null) ? null : `.array([${values.join(', ')}])`
+  }
+  if (expr.kind === 'object' && (expr.spreads?.length ?? 0) === 0) {
+    const values = expr.fields.map((field) => {
+      const value = swiftFlowDataValue(field.value)
+      return value === null ? null : `${JSON.stringify(field.name)}: ${value}`
+    })
+    return values.some((value) => value === null) ? null : `.object(PyreonFlowData([${values.join(', ')}]))`
+  }
+  return null
+}
+
+function swiftFlowData(expr: ExprIR): string | null {
+  if (expr.kind !== 'object' || (expr.spreads?.length ?? 0) > 0) return null
+  const values = expr.fields.map((field) => {
+    const value = swiftFlowDataValue(field.value)
+    return value === null ? null : `${JSON.stringify(field.name)}: ${value}`
+  })
+  return values.some((value) => value === null) ? null : `PyreonFlowData([${values.join(', ')}])`
+}
+
 /** `addEdge({...})` — the `PyreonFlowEdge` twin of `swiftFlowNodeLiteral`. */
 function swiftFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
   if (arg.kind !== 'object') return null
@@ -4404,6 +4436,9 @@ function swiftFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
   const markerStartExpr = field('markerStart')
   const markerEndExpr = field('markerEnd')
   const waypointsExpr = field('waypoints')
+  const dataExpr = field('data')
+  const portableData = dataExpr ? swiftFlowData(dataExpr) : null
+  if (dataExpr && portableData === null) _emitWarnings.push(`createFlow binding \`${flowName}\` addEdge(...): edge \`data\` must be a static JSON-compatible object to lower natively.`)
   const optionalFields = ['sourceHandle', 'targetHandle', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'reconnectable', 'interactionWidth'] as const
   const parts = [
     `id: ${emitSwiftExpr(idExpr, 0)}`,
@@ -4412,6 +4447,7 @@ function swiftFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
     ...(typeExpr ? [`type: ${emitSwiftExpr(typeExpr, 0)}`] : []),
     ...(labelExpr ? [`label: ${emitSwiftExpr(labelExpr, 0)}`] : []),
     ...(animatedExpr ? [`animated: ${emitSwiftExpr(animatedExpr, 0)}`] : []),
+    ...(portableData ? [`data: ${portableData}`] : []),
     ...(pathOptionsExpr?.kind === 'object' ? pathOptionsExpr.fields.flatMap(({ name, value }) => {
       const nativeName = name === 'offset' ? 'pathOffset' : name
       return ['curvature', 'borderRadius', 'pathOffset'].includes(nativeName) ? [`${nativeName}: ${emitSwiftExpr(value, 0)}`] : []
@@ -6199,6 +6235,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               if (name === 'markerStart' || name === 'markerEnd') { const marker = swiftFlowMarkerLiteral(value); return marker ? [`edge.${name} = ${marker}`, ...(name === 'markerEnd' ? ['edge.markerEndSpecified = true'] : [])] : [] }
               if (name === 'animated') return [`edge.animated = ${emitSwiftExpr(value, indent)}`, 'edge.animatedSpecified = true']
               if (name === 'waypoints') { const points = swiftFlowPositionsLiteral(value); return points ? [`edge.waypoints = ${points}`] : [] }
+              if (name === 'data') { const data = swiftFlowData(value); if (!data) _emitWarnings.push(`createFlow binding \`${flowName}\` updateEdge(...): edge \`data\` must be a static JSON-compatible object to lower natively.`); return data ? [`edge.data = ${data}`] : [] }
               return HANDLED_FLOW_EDGE_FIELDS.has(name) ? [`edge.${swiftIdent(name)} = ${emitSwiftExpr(value, indent)}`] : []
             })
             return `${swiftIdent(flowName)}.updateEdge(${emitSwiftExpr(e.args[0]!, indent)}) { edge in ${statements.join('; ')} }`

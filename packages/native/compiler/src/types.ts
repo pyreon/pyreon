@@ -952,6 +952,7 @@ export type DeclIR =
         deletable?: boolean
         reconnectable?: boolean
         interactionWidth?: number
+        data?: ExprIR
         pathOptions?: { curvature?: number; borderRadius?: number; offset?: number }
         markerStart?: { type: string; color?: string; width?: number; height?: number; strokeWidth?: number }
         markerEnd?: { type: string; color?: string; width?: number; height?: number; strokeWidth?: number } | null
