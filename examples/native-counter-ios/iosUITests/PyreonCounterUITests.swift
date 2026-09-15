@@ -1077,9 +1077,15 @@ final class PyreonCounterUITests: XCTestCase {
         while !unlock.isHittable && swipes < 10 { app.swipeUp(); swipes += 1 }
         unlock.tap()
 
+        let denied = app.staticTexts["Lock: denied"].waitForExistence(timeout: 20)
+        // Snapshot only on failure: it walks every text on a long page.
+        let lockTexts = denied ? [] : app.staticTexts.allElementsBoundByIndex
+            .map { $0.label }.filter { $0.hasPrefix("Lock") }
+        let unlockButtons = denied ? 0 : app.buttons.matching(identifier: "Unlock").count
         XCTAssertTrue(
-            app.staticTexts["Lock: denied"].waitForExistence(timeout: 20),
-            "\"Lock: denied\" never appeared after tapping Unlock — the async "
+            denied,
+            "observed Lock texts=\(lockTexts) unlockButtons=\(unlockButtons) hittable=\(unlock.isHittable) — "
+                + "\"Lock: denied\" never appeared after tapping Unlock — the async "
                 + "handler was not wrapped in a Task (so the awaited "
                 + "bio.authenticate never ran) or the post-await lockStatus "
                 + "re-render did not fire. On an unenrolled Simulator the gate "
