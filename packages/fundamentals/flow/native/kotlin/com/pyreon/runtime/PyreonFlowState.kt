@@ -1511,6 +1511,10 @@ class PyreonFlowState<T>(
         )
         emitViewportChange()
     }
+    fun setViewport(next: PyreonFlowViewport) = setViewport(x = next.x, y = next.y, zoom = next.zoom)
+    fun setViewport(update: (PyreonFlowViewport) -> PyreonFlowViewport) = setViewport(update(viewport))
+    fun replaceContainerSize(next: PyreonFlowContainerSize) { containerSize = next }
+    fun updateContainerSize(update: (PyreonFlowContainerSize) -> PyreonFlowContainerSize) = replaceContainerSize(update(containerSize))
     @JvmOverloads
     fun setCenter(x: Double, y: Double, zoom: Double? = null, duration: Double = 0.0) {
         val z = (zoom ?: _viewport.zoom).coerceIn(minZoom, maxZoom)

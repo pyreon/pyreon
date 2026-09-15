@@ -1816,6 +1816,10 @@ class PyreonFlowState<T>(
   fun zoomOut(duration: Double = 0.0) {}
   fun panTo(position: PyreonXYPosition) {}
   fun setViewport(x: Double? = null, y: Double? = null, zoom: Double? = null, duration: Double = 0.0) {}
+  fun setViewport(next: PyreonFlowViewport) {}
+  fun setViewport(update: (PyreonFlowViewport) -> PyreonFlowViewport) {}
+  fun replaceContainerSize(next: PyreonFlowContainerSize) {}
+  fun updateContainerSize(update: (PyreonFlowContainerSize) -> PyreonFlowContainerSize) {}
   fun setCenter(x: Double, y: Double, zoom: Double? = null, duration: Double = 0.0) {}
   fun animateViewport(x: Double? = null, y: Double? = null, zoom: Double? = null, duration: Double = 300.0) {}
   fun screenToFlowPosition(position: PyreonXYPosition): PyreonXYPosition = position
