@@ -1,3 +1,4 @@
+import { isHeadAttrSafe } from './attr-guard'
 import type { ComponentFn, VNode } from '@pyreon/core'
 import { h, pushContext } from '@pyreon/core'
 import { renderToString } from '@pyreon/runtime-server'
@@ -116,7 +117,15 @@ function serializeTag(
   let open = `<${tag.tag}`
   if (props) {
     for (const k in props) {
-      open += ` ${k}="${esc(props[k] as string)}"`
+      // `<head>` is a SERIALIZER like any other, and it was the one with no
+      // guards at all. Every check here is the one `@pyreon/runtime-server`'s
+      // `renderProp` already ran for the same markup rendered as an element —
+      // sharing the predicates from `@pyreon/core` rather than re-deriving them,
+      // since two serializers with private copies is how the element renderer
+      // acquired its own gaps.
+      const v = props[k] as string
+      if (!isHeadAttrSafe(k, v, tag.tag)) continue
+      open += ` ${k}="${esc(v)}"`
     }
   }
   // CSP: stamp the request nonce on inline/executable tags so a strict
@@ -133,6 +142,7 @@ function serializeTag(
   const body = content.replace(/<\/(script|style|noscript)/gi, '<\\/$1').replace(/<!--/g, '<\\!--')
   return `${open}>${body}</${tag.tag}>`
 }
+
 
 /**
  * HTML-escape `&`, `<`, `>`, `"` in a single charCode pass — faster than the

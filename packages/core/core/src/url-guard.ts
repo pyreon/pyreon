@@ -55,7 +55,7 @@ export function isUrlAttr(key: string): boolean {
 }
 
 /**
- * HTML event-handler CONTENT attributes, lowercase — the spelling that is
+ * Event-handler CONTENT attributes, lowercase — the spelling that is
  * executable markup rather than a Pyreon prop.
  *
  * Pyreon documents the camelCase form (`onClick`), and the SSR skip used to
@@ -76,29 +76,110 @@ export function isUrlAttr(key: string): boolean {
  * data. So: every real handler name is refused, an unknown `on*` name is kept.
  * Adding a name can only ever refuse more; the cost of a missing one is this
  * bug, so err toward listing it.
+ *
+ * VOCABULARY — the set is a UNION, not one language's list. It was HTML-only,
+ * which made it exactly 36 names short of what one shipping engine exposes, and
+ * every one of those was a live sink on the paths below: SVG's SMIL handlers
+ * (`onbegin`/`onend`/`onrepeat`) and the vendor-legacy ones Chromium still
+ * compiles (`onmousewheel`, `onwebkit*`, `onbeforecopy`, `onsearch`, …) are as
+ * executable as `onclick`. So the members come from three vocabularies:
+ *
+ *   1. HTML — the GlobalEventHandlers / Window-reflecting set.
+ *   2. SVG — SMIL animation events plus the SVG 1.1 graphical/document events
+ *      (`onactivate`, `onzoom`) Chromium no longer exposes but other engines
+ *      and older content still carry.
+ *   3. Vendor/legacy still live in a shipping engine (`-webkit-`/`-moz-`
+ *      prefixed, `ondragexit`, `onoverflow`/`onunderflow`).
+ *
+ * A hand-maintained list of a moving target rots, so it is RATCHETED rather
+ * than trusted: `event-handler-vocabulary.browser.test.tsx` enumerates every
+ * `on*` IDL handler a real Chromium exposes on HTML, SVG and Window prototypes
+ * and fails if any is missing here. A new browser handler reds that gate
+ * instead of silently becoming an unguarded sink.
  */
 export const EVENT_HANDLER_ATTRS = new Set([
-  'onabort', 'onafterprint', 'onanimationcancel', 'onanimationend', 'onanimationiteration',
-  'onanimationstart', 'onauxclick', 'onbeforeinput', 'onbeforematch', 'onbeforeprint',
-  'onbeforetoggle', 'onbeforeunload', 'onblur', 'oncancel', 'oncanplay', 'oncanplaythrough',
-  'onchange', 'onclick', 'onclose', 'oncontextlost', 'oncontextmenu', 'oncontextrestored',
-  'oncopy', 'oncuechange', 'oncut', 'ondblclick', 'ondrag', 'ondragend', 'ondragenter',
-  'ondragleave', 'ondragover', 'ondragstart', 'ondrop', 'ondurationchange', 'onemptied',
-  'onended', 'onerror', 'onfocus', 'onfocusin', 'onfocusout', 'onformdata',
-  'ongotpointercapture', 'onhashchange', 'oninput', 'oninvalid', 'onkeydown', 'onkeypress',
-  'onkeyup', 'onlanguagechange', 'onload', 'onloadeddata', 'onloadedmetadata', 'onloadstart',
-  'onlostpointercapture', 'onmessage', 'onmessageerror', 'onmousedown', 'onmouseenter',
-  'onmouseleave', 'onmousemove', 'onmouseout', 'onmouseover', 'onmouseup', 'onoffline',
-  'ononline', 'onpagehide', 'onpageshow', 'onpaste', 'onpause', 'onplay', 'onplaying',
-  'onpointercancel', 'onpointerdown', 'onpointerenter', 'onpointerleave', 'onpointermove',
-  'onpointerout', 'onpointerover', 'onpointerrawupdate', 'onpointerup', 'onpopstate',
-  'onprogress', 'onratechange', 'onrejectionhandled', 'onreset', 'onresize', 'onscroll',
-  'onscrollend', 'onsecuritypolicyviolation', 'onseeked', 'onseeking', 'onselect',
-  'onslotchange', 'onstalled', 'onstorage', 'onsubmit', 'onsuspend', 'ontimeupdate',
-  'ontoggle', 'ontouchcancel', 'ontouchend', 'ontouchmove', 'ontouchstart',
-  'ontransitioncancel', 'ontransitionend', 'ontransitionrun', 'ontransitionstart',
-  'onunhandledrejection', 'onunload', 'onvolumechange', 'onwaiting', 'onwheel',
+  'onabort', 'onactivate', 'onafterprint', 'onanimationcancel', 'onanimationend',
+  'onanimationiteration', 'onanimationstart', 'onappinstalled', 'onauxclick', 'onbeforecopy',
+  'onbeforecut', 'onbeforeinput', 'onbeforeinstallprompt', 'onbeforematch', 'onbeforepaste',
+  'onbeforeprint', 'onbeforetoggle', 'onbeforeunload', 'onbeforexrselect', 'onbegin', 'onblur',
+  'oncancel', 'oncanplay', 'oncanplaythrough', 'onchange', 'onclick', 'onclose', 'oncommand',
+  'oncontentvisibilityautostatechange', 'oncontextlost', 'oncontextmenu', 'oncontextrestored',
+  'oncopy', 'oncuechange', 'oncut', 'ondblclick', 'ondevicemotion', 'ondeviceorientation',
+  'ondeviceorientationabsolute', 'ondrag', 'ondragend', 'ondragenter', 'ondragexit', 'ondragleave',
+  'ondragover', 'ondragstart', 'ondrop', 'ondurationchange', 'onemptied', 'onencrypted', 'onend',
+  'onended', 'onenterpictureinpicture', 'onerror', 'onfocus', 'onfocusin', 'onfocusout',
+  'onformdata', 'onfullscreenchange', 'onfullscreenerror', 'ongamepadconnected',
+  'ongamepaddisconnected', 'ongotpointercapture', 'onhashchange', 'oninput', 'oninvalid',
+  'onkeydown', 'onkeypress', 'onkeyup', 'onlanguagechange', 'onleavepictureinpicture', 'onload',
+  'onloadeddata', 'onloadedmetadata', 'onloadstart', 'onlostpointercapture', 'onmessage',
+  'onmessageerror', 'onmousedown', 'onmouseenter', 'onmouseleave', 'onmousemove', 'onmouseout',
+  'onmouseover', 'onmouseup', 'onmousewheel', 'onmozfullscreenchange', 'onmozfullscreenerror',
+  'onoffline', 'ononline', 'onoverflow', 'onpagehide', 'onpagereveal', 'onpageshow', 'onpageswap',
+  'onpaste', 'onpause', 'onplay', 'onplaying', 'onpointercancel', 'onpointerdown',
+  'onpointerenter', 'onpointerleave', 'onpointermove', 'onpointerout', 'onpointerover',
+  'onpointerrawupdate', 'onpointerup', 'onpopstate', 'onprogress', 'onratechange',
+  'onrejectionhandled', 'onrepeat', 'onreset', 'onresize', 'onscroll', 'onscrollend',
+  'onscrollsnapchange', 'onscrollsnapchanging', 'onsearch', 'onsecuritypolicyviolation',
+  'onseeked', 'onseeking', 'onselect', 'onselectionchange', 'onselectstart', 'onslotchange',
+  'onstalled', 'onstorage', 'onsubmit', 'onsuspend', 'ontimeupdate', 'ontoggle', 'ontouchcancel',
+  'ontouchend', 'ontouchmove', 'ontouchstart', 'ontransitioncancel', 'ontransitionend',
+  'ontransitionrun', 'ontransitionstart', 'onunderflow', 'onunhandledrejection', 'onunload',
+  'onvolumechange', 'onwaiting', 'onwaitingforkey', 'onwebkitanimationend',
+  'onwebkitanimationiteration', 'onwebkitanimationstart', 'onwebkitfullscreenchange',
+  'onwebkitfullscreenerror', 'onwebkittransitionend', 'onwheel', 'onzoom',
 ])
+
+/**
+ * Is `key` an event-handler prop/attribute that must never be written as a
+ * content attribute?
+ *
+ * ONE predicate for every sink, for the reason this function exists at all: the
+ * refusal used to live as an open-coded charCode probe in SSR's
+ * `renderPropSkipped` and NOWHERE else, so it guarded exactly one cell of a
+ * (renderer x namespace x vocabulary) matrix. The client `h()` path wrote
+ * `onclick` as a live attribute on any SVG/MathML element (its foreign-namespace
+ * branch returns before every later check), the compiled template sink
+ * (`_setAttr`) wrote it on plain HTML too *and* INVOKED a function-valued one,
+ * and the compiled SSR sink (`_ssrAttrGen`) serialized it. Measured in real
+ * Chromium, all three executed the attribute's script.
+ *
+ * BOTH spellings, deliberately:
+ *  - camelCase (`onClick`) is Pyreon's own prop spelling, and `setAttribute`
+ *    LOWERCASES a qualified name on an HTML element — so writing one as an
+ *    attribute produces a live `onclick`. It never reaches an attribute sink on
+ *    the happy path (`applyProp` routes it to `applyEventProp` first), but the
+ *    getter-shaped descriptor path bypasses that routing, so the shape alone is
+ *    enough to refuse.
+ *  - lowercase is HTML/SVG's spelling, where only the REAL handler names are
+ *    executable markup — `once`, `onyx` and `only` are ordinary attributes and
+ *    must still render, which is why this consults a name set.
+ */
+export function isEventHandlerAttr(key: string): boolean {
+  // charCode probe, no regex machinery per prop — this runs for every attribute
+  // on every element on both renderers.
+  if (key.length <= 2) return false
+  if (key.charCodeAt(0) !== 111 /* 'o' */ || key.charCodeAt(1) !== 110 /* 'n' */) return false
+  const c = key.charCodeAt(2)
+  if (c >= 65 && c <= 90) return true
+  return c >= 97 && c <= 122 && EVENT_HANDLER_ATTRS.has(key)
+}
+
+/**
+ * Characters that cannot appear in an attribute NAME without breaking out of
+ * the attribute list — whitespace, `/`, `>`, `=`, quotes, `<`, and the C0/DEL
+ * controls. A name containing one of these lets a spread of a user-keyed object
+ * inject SIBLING attributes: `{ 'name x="y" onload': 'z' }` serializes as
+ * `<meta name x="y" onload="z">`, i.e. two attributes the author never wrote,
+ * one of them a handler.
+ *
+ * Here rather than in each serializer because there are two of them —
+ * `@pyreon/runtime-server`'s `toAttrName` and `@pyreon/head`'s `serializeTag` —
+ * and only the first had it. Same reason `URL_ATTRS` lives here: a guard
+ * duplicated per renderer is a guard that drifts, and the one that drifted was
+ * the one nobody remembered existed.
+ */
+// oxlint-disable-next-line no-control-regex
+export const UNSAFE_ATTR_NAME_RE = /[\s/>="'<\u0000-\u001F\u007F]/
 
 /** Matches the `javascript:` / `data:` URI prefixes the guard rejects by default. */
 export const UNSAFE_URL_RE = /^\s*(?:javascript|data):/i
@@ -165,7 +246,16 @@ export function isUnsafeUrl(url: string): boolean {
 // Those contexts are safe, so the guard allows them while still blocking
 // `data:text/html` on <iframe>/<object>/<embed>, `javascript:` everywhere, and
 // scripted SVG.
-const IMAGE_SRC_ATTRS = new Set(['src', 'srcset', 'poster'])
+// `srcset` is deliberately NOT here. It was, and the entry was DEAD: this set is
+// only ever consulted from `isSafeImageDataUri`, which every caller reaches
+// through `isUrlAttr`/`URL_ATTRS` — and `srcset` is not in `URL_ATTRS`, so no
+// value with that key ever arrived. Finishing the wiring rather than deleting it
+// was considered and rejected on the merits: a `srcset` value is a CANDIDATE
+// LIST (`a.png 1x, b.png 2x`), so guarding it means splitting candidates rather
+// than testing the string, and neither `javascript:` nor a scripted SVG executes
+// from an image-candidate slot. If `srcset` is ever added to `URL_ATTRS`, add it
+// back here at the same time — the candidate split is the prerequisite.
+const IMAGE_SRC_ATTRS = new Set(['src', 'poster'])
 const IMAGE_CONTEXT_TAGS = new Set(['img', 'source', 'video'])
 // Raster image data URIs can never carry executable content — always safe.
 const SAFE_RASTER_DATA_RE =
@@ -174,7 +264,23 @@ const SVG_DATA_RE = /^\s*data:image\/svg\+xml\s*[;,]/i
 // SVG loaded via <img> is sandboxed (scripts don't run), but we still reject
 // SVGs carrying <script> or on*= handlers — defense in depth, and safe if the
 // URI ever reaches a script-executing context.
-const SVG_SCRIPT_RE = /<\s*script\b|\son[a-z-]+\s*=/i
+// The separator before an `on*=` handler is `[\s/"']`, not `\s`. Requiring
+// whitespace let two payloads through, both verified live against a real
+// Chromium `DOMParser` in the HTML mode this check exists to defend
+// ("safe if the URI ever reaches a script-executing context"):
+//
+//   <svg xmlns="…"/onload="alert(1)"/>      slash separator      -> was ALLOWED
+//   <svg xmlns="…"/**/onload="alert(1)"/>   comment separator    -> was ALLOWED
+//   <svg xmlns="…"onload="alert(1)"/>       NO separator at all  -> was ALLOWED
+//
+// The third is the one a separator-shaped mental model misses entirely: after a
+// quoted attribute value the tokenizer is in after-attribute-value-quoted, and
+// on anything other than whitespace / `/` / `>` it emits a parse error and
+// RECOVERS into before-attribute-name — so the closing quote is itself a
+// separator. Measured verdicts (`hasAttribute('onload')` after parsing):
+// space/newline/tab/formfeed/`/`/`//`/`/**/`/quote-adjacent all LIVE, only `>`
+// inert (the tag has already closed, so it is text).
+const SVG_SCRIPT_RE = /<\s*script\b|[\s/"']on[a-z-]+\s*=/i
 
 /**
  * True when `value` is an image `data:` URI on an image-source attribute
