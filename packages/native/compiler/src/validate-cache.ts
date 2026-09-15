@@ -404,11 +404,7 @@ export function withVerdictCache(
     transient?: boolean
   },
 ): { ok: boolean; error?: string; skipped?: boolean; skipReason?: string; transient?: boolean } {
-  // An empty compiler version means the tool is absent. There is no compiler
-  // to key a verdict on, and serving a stored verdict here would answer a call
-  // that must SKIP: a runner without kotlinc got a stale `{ ok: true }` from a
-  // restored store instead of `skipped`.
-  if (cacheDisabled() || compilerVersion === '') return compute()
+  if (cacheDisabled()) return compute()
 
   const key = cacheKey(kind, compilerVersion, stubs, source)
 

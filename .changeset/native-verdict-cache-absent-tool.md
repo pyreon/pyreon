@@ -2,4 +2,4 @@
 '@pyreon/native-compiler': patch
 ---
 
-The native compile-verdict cache no longer serves or stores a verdict when the compiler is absent (an empty compiler version). A runner without `kotlinc` or `swiftc` now skips as intended instead of reading a stale verdict from a restored cache.
+An absent `swiftc` or `kotlinc` now always skips validation instead of being answered by a stored verdict from a restored cache. The skip check runs before the verdict cache in every validator, matching `validateSwiftWithStubs`.
