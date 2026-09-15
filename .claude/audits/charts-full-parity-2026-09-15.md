@@ -62,7 +62,21 @@ for interaction, animation or accessibility parity.
 - [ ] Universal transitions: the direct web canvas now morphs differing
   command kinds and growing/shrinking item sets behind the explicit
   `universalTransition` prop. Native canvas state/timing and device evidence
-  are still required before this row can be marked complete.
+  are still required before this row can be marked complete; the ledger row
+  is `partial` for exactly that reason (compile-time parity only).
+- [x] Hosted connected groups (`<ChartWebView group>`): the last pending
+  hosted row. Every hosted chart is its own page, so the relay is a generic
+  `<WebView>` host group (web iframes, WKWebViews, Android WebViews all speak
+  the same reserved protocol); real-Chromium proof across separate pages,
+  compiler proof on both targets. Hosted ledger: 11/11.
+- [x] Ledger honesty pass: every direct row whose engine still emits a live
+  "not supported" warning for a contract member is `partial`, with the
+  warning site as its evidence (`series.line` stacked lines, `series.sankey`
+  vertical, `coordinates.polar` bar/line only, `calendar`/`parallel`
+  vertical, `single-axis` scatter only, `axes` one x / two y, `visual-map`
+  calculable handle, `graphic` element types, `mark-point` / `mark-line`
+  shapes). Direct ledger after the pass: 31/62 rows. The score is derived
+  from the rows; nothing hand-types a headline.
 
 ## Exit gate
 
