@@ -414,7 +414,7 @@ describe('event-handler attributes — compiled ≡ h() ≡ SSR', () => {
   it('camelCase `onClick` still binds a real listener (control)', () => {
     let fired = 0
     const { container, cleanup } = hMount(h('button', { onClick: () => fired++ }, 'x'))
-    const btn = container.querySelector('button')! as HTMLElement & Record<string, unknown>
+    const btn = container.querySelector('button')! as unknown as HTMLElement & Record<string, unknown>
     // `click` is DELEGATED, so the binding is an `__ev_click` expando invoked by
     // the delegation root — a detached container has none, hence the structural
     // assertion. It is the load-bearing one anyway: it proves `applyProp` routed
