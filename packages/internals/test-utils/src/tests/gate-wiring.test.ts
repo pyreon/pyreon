@@ -11,7 +11,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   ciComplementGates,
   ciComplementIsWired,
+  gateIsWiredInWorkflows,
   gateNeedle,
+  runBlockText,
   scriptAliases,
 } from '../../../../../scripts/gate-wiring'
 
@@ -76,7 +78,6 @@ describe('ciComplementIsWired', () => {
   })
 })
 
-import { gateIsWiredInWorkflows, runBlockText } from '../../../../../scripts/gate-wiring'
 
 describe('gateIsWiredInWorkflows — whole-COMMAND match over run blocks only', () => {
   // A substring test over the whole workflow read `bun run lint:pyreon`, a

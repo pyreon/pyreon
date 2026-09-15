@@ -11,7 +11,13 @@
  * ground truth (npm + origin), so these specs pin the decision table.
  */
 import { describe, expect, it } from 'vitest'
-import { parsePublishResult, planHeal, resolveBumpCommit, validateReleaseVersion } from '../../../../../scripts/heal-release-chain'
+import {
+  nativeDispatchBlockedBy,
+  parsePublishResult,
+  planHeal,
+  resolveBumpCommit,
+  validateReleaseVersion,
+} from '../../../../../scripts/heal-release-chain'
 
 const HEALTHY = {
   npmHasVersion: true,
@@ -208,7 +214,6 @@ describe('parsePublishResult — phase 1 local truth must be SOUND or absent', (
     ).toBeNull()
   })
 })
-import { nativeDispatchBlockedBy } from '../../../../../scripts/heal-release-chain'
 
 describe('nativeDispatchBlockedBy — binaries are @pyreon/compiler optionalDependencies', () => {
   it('blocks when @pyreon/compiler itself did not publish', () => {

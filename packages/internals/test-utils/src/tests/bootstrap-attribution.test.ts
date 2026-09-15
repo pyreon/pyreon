@@ -8,7 +8,10 @@
  * verdict lines back out of the captured output.
  */
 import { describe, expect, it } from 'vitest'
-import { attributeBuildFailures } from '../../../../../scripts/bootstrap-attribution'
+import {
+  attributeBuildFailures,
+  spawnBatchAttributed,
+} from '../../../../../scripts/bootstrap-attribution'
 
 const OUTPUT = `@pyreon/core build: vl_rolldown_build
 @pyreon/core build: built lib/ in 1.2s
@@ -33,7 +36,6 @@ describe('attributeBuildFailures', () => {
   })
 })
 
-import { spawnBatchAttributed } from '../../../../../scripts/bootstrap-attribution'
 
 describe('spawnBatchAttributed — resolves on the batch EXIT, not on pipe EOF', () => {
   // A per-package build bun spawns inherits the batch's stdout pipe. When the
