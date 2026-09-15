@@ -41,9 +41,9 @@ export function configureChartWebViewHost(
   const source = read('engineSrc')
   if (typeof script === 'string') {
     // A function replacement: a string one expands `$&` / `$'` inside the engine source.
-    html = html.replace(/<script src="[^"]*"><\/script\s*>/, () => `<script>${safeScript(script)}</script>`)
+    html = html.replace(/<script src="[^"]*"><\/script[^>]*>/i, () => `<script>${safeScript(script)}</script>`)
   } else if (typeof source === 'string') {
-    html = html.replace(/<script src="[^"]*"><\/script\s*>/, () => `<script src="${safeAttr(source)}"></script>`)
+    html = html.replace(/<script src="[^"]*"><\/script[^>]*>/i, () => `<script src="${safeAttr(source)}"></script>`)
   }
   const theme = read('theme')
   if (typeof theme === 'string') {
