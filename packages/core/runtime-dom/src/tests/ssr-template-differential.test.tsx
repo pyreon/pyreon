@@ -1074,7 +1074,7 @@ describe('SSR fast path — attribute seams that diverged from renderProp (round
   })
 
   it('a user object whose join() returns null omits the attribute like the h() path', async () => {
-    const data = { xs: { join: () => null as unknown as string } }
+    const data = { xs: { join: (_sep: string) => null as unknown as string } }
     const node = evalSsr('const Node = <div data-a={data.xs.join(",")}>x</div>', { data })
     const html = await renderToString(node as VNode)
     expect(html).toBe(await renderToString(h('div', { 'data-a': data.xs.join(',') }, 'x')))
