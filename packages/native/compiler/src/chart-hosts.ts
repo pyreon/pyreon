@@ -158,6 +158,11 @@ export interface ChartHostSpec {
   readonly reuseLayout?: boolean
   /** Builds the index-hit expression for a tap at (x, y) — what `onSelectIndex` receives. */
   readonly hit: (layout: string, x: string, y: string, a: ChartHostArgs, t: ChartHostTarget) => string
+  /** Additional index-only events that use the same painted layout. */
+  readonly extraHits?: readonly {
+    event: string
+    hit: (layout: string, x: string, y: string, a: ChartHostArgs, t: ChartHostTarget) => string
+  }[]
   /** Per-prop literal adapters for props whose web shape has no native form (see the adapters below). */
   readonly adapt?: Readonly<Record<string, ChartHostAdapter>>
   /** The `gutter` default when the web host's differs from Sankey's 80. */
@@ -608,7 +613,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     dataDefaults: {
       paths: (t) => t.list([]),
       points: (t) => t.list([]),
-      overlayOptions: (t) => t.nil,
+      overlayOptions: (t) => t.struct('GeoOverlayOptions', []),
     },
     options: 'options',
     optionsStruct: 'GeoOptions',
@@ -618,6 +623,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     render: (l, a) => `renderGeo(${l}, ${a.data[1]}, ${a.options}) + renderGeoOverlayPaths(${l}, ${a.data[2]}, ${a.data[4]}) + renderGeoOverlayPoints(${l}, ${a.data[3]}, ${a.data[4]})`,
     reuseLayout: true,
     hit: (l, x, y) => `hitGeoIndex(${l}, ${x}, ${y})`,
+    extraHits: [{ event: 'selectpointindex', hit: (l, x, y, a) => `hitGeoOverlayPoint(${l}, ${a.data[3]}, ${x}, ${y}, (${a.data[4]}).radius)` }],
     tooltip: (l, x, y, a) => `geoTip(${l}, ${a.data[1]}, ${x}, ${y})`,
     adapt: { map: geoShapesAdapter, values: geoValuesAdapter },
   },

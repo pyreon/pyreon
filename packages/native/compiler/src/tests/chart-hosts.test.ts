@@ -1266,7 +1266,7 @@ export function Regions() {
   return (
     <Stack>
       <Text>{picked()}</Text>
-      <MapChart animate={false} map={SHAPES} values={{ A: 5, B: 9.5 }} paths={PATHS} points={POINTS} overlayOptions={OVERLAY} options={{ showLabels: true }} height={280} tooltip onSelectIndex={(i: number) => picked.set(i)} />
+      <MapChart animate={false} map={SHAPES} values={{ A: 5, B: 9.5 }} paths={PATHS} points={POINTS} overlayOptions={OVERLAY} options={{ showLabels: true }} height={280} tooltip onSelectIndex={(i: number) => picked.set(i)} onSelectPointIndex={(i: number) => picked.set(i + 100)} />
     </Stack>
   )
 }`
@@ -1380,6 +1380,7 @@ describe('chart hosts — MapChart lowers from projected shapes; the registry an
     expect(r.code).toContain('renderGeoOverlayPaths(pyreonLayout, PATHS, OVERLAY)')
     expect(r.code).toContain('renderGeoOverlayPoints(pyreonLayout, POINTS, OVERLAY)')
     expect(r.code).toContain('hitGeoIndex(pyreonLayout, Double(pyreonTap.location.x), Double(pyreonTap.location.y))')
+    expect(r.code).toContain('hitGeoOverlayPoint(pyreonLayout, POINTS, Double(pyreonTap.location.x), Double(pyreonTap.location.y), (OVERLAY).radius)')
     expect(r.code).toContain('geoTip(pyreonLayout, [GeoValue(region: "A", value: 5.0), GeoValue(region: "B", value: 9.5)]')
   })
 
@@ -1391,18 +1392,19 @@ describe('chart hosts — MapChart lowers from projected shapes; the registry an
     expect(r.code).toContain('renderGeoOverlayPaths(pyreonLayout, PATHS, OVERLAY)')
     expect(r.code).toContain('renderGeoOverlayPoints(pyreonLayout, POINTS, OVERLAY)')
     expect(r.code).toContain('hitGeoIndex(pyreonLayout,')
+    expect(r.code).toContain('hitGeoOverlayPoint(pyreonLayout, POINTS,')
     expect(r.code).toContain('geoTip(pyreonLayout, listOf(GeoValue(region = "A", value = 5.0), GeoValue(region = "B", value = 9.5))')
   })
 
   it('omitted overlays lower to empty lists and no options on both targets', () => {
     const swift = transform(MAP_NO_OVERLAYS, { target: 'swift' })
     expect(swift.warnings).toEqual([])
-    expect(swift.code).toContain('renderGeoOverlayPaths(pyreonLayout, [], nil)')
-    expect(swift.code).toContain('renderGeoOverlayPoints(pyreonLayout, [], nil)')
+    expect(swift.code).toContain('renderGeoOverlayPaths(pyreonLayout, [], GeoOverlayOptions())')
+    expect(swift.code).toContain('renderGeoOverlayPoints(pyreonLayout, [], GeoOverlayOptions())')
     const kotlin = transform(MAP_NO_OVERLAYS, { target: 'kotlin' })
     expect(kotlin.warnings).toEqual([])
-    expect(kotlin.code).toContain('renderGeoOverlayPaths(pyreonLayout, listOf(), null)')
-    expect(kotlin.code).toContain('renderGeoOverlayPoints(pyreonLayout, listOf(), null)')
+    expect(kotlin.code).toContain('renderGeoOverlayPaths(pyreonLayout, listOf(), GeoOverlayOptions())')
+    expect(kotlin.code).toContain('renderGeoOverlayPoints(pyreonLayout, listOf(), GeoOverlayOptions())')
   })
 
   // The border SEPARATES two filled regions, so it reads the page GROUND —

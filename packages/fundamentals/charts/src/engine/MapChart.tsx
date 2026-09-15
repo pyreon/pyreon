@@ -13,7 +13,7 @@ import { canvasHost, orNull } from './canvas-host'
 import type { CanvasHostProps } from './canvas-host'
 import { geoTip } from './chrome'
 import { geoDomain, geoValueOf, hitGeoIndex, layoutGeoShapes, renderGeo } from './geo'
-import { renderGeoOverlayPaths, renderGeoOverlayPoints } from './geo-overlay'
+import { hitGeoOverlayPoint, renderGeoOverlayPaths, renderGeoOverlayPoints } from './geo-overlay'
 import { geoShapes, geoValues, getMap } from './geo-web'
 import type { GeoLayout, GeoOptions, GeoRegion, GeoShape, GeoValue } from './geo'
 import type { GeoOverlayOptions, GeoOverlayPath, GeoOverlayPoint } from './geo-overlay'
@@ -41,6 +41,8 @@ export interface MapChartProps extends CanvasHostProps {
   onSelect?: (region: GeoRegion | null) => void
   /** The region's INDEX under the click (into the layout's regions), or -1 — the multiplatform-safe twin of `onSelect`. */
   onSelectIndex?: (index: number) => void
+  /** The overlay point's index under the click, or -1 for a miss. */
+  onSelectPointIndex?: (index: number) => void
 }
 
 const isShapes = (m: GeoShape[] | GeoJson | string): m is GeoShape[] => Array.isArray(m)
@@ -91,6 +93,7 @@ export function MapChart(props: MapChartProps): VNode {
     ],
     select: (layout, px, py) => {
       const i = hitGeoIndex(layout, px, py)
+      props.onSelectPointIndex?.(hitGeoOverlayPoint(layout, props.points ?? [], px, py, props.overlayOptions?.radius))
       props.onSelect?.(i < 0 ? null : layout.regions[i]!)
       props.onSelectIndex?.(i)
     },

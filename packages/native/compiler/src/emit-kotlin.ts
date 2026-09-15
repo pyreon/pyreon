@@ -10704,8 +10704,12 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   lets.push(...chrome.lets)
   const tooltip = spec.tooltip !== undefined && readStaticAttrKotlin(e, 'tooltip') === true
   const onSel = e.attrs.find((a) => a.kind === 'event' && a.name === 'selectindex')
+  const extraHits = (spec.extraHits ?? []).flatMap((extra) => {
+    const event = e.attrs.find((a) => a.kind === 'event' && a.name === extra.event)
+    return event?.kind === 'event' ? [{ extra, event }] : []
+  })
   if (e.attrs.some((a) => a.kind === 'event' && a.name === 'select')) _emitWarnings.push(chartRichSelectWarning(tag))
-  const tapping = onSel?.kind === 'event' || tooltip
+  const tapping = onSel?.kind === 'event' || extraHits.length > 0 || tooltip
   const reuseLayout = tapping || spec.reuseLayout === true
   const layout = reuseLayout ? 'pyreonLayout' : spec.layout(plotArgs, KOTLIN_CHART_TARGET)
   if (reuseLayout) lets.push(`val pyreonLayout = ${spec.layout(plotArgs, KOTLIN_CHART_TARGET)}`)
@@ -10737,6 +10741,9 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
     const parts: string[] = []
     if (tooltip) parts.push(`pyreonTip = ${spec.tooltip!(layout, tx, tapY, plotArgs, KOTLIN_CHART_TARGET)}; pyreonTipAt = PyreonChartPt(${rawTx}, (pyreonTap.y / pyreonDensity).toDouble())`)
     if (onSel?.kind === 'event') parts.push(kotlinChartSelectBody(onSel.handler, spec.hit(layout, tx, tapY, plotArgs, KOTLIN_CHART_TARGET), indent))
+    for (const { extra, event } of extraHits) {
+      parts.push(`run { ${kotlinChartSelectBody(event.handler, extra.hit(layout, tx, tapY, plotArgs, KOTLIN_CHART_TARGET), indent)} }`)
+    }
     // Keyed on the layout the lambda captures: a `pointerInput(Unit)` keeps the FIRST composition's val (the plot host's #3294 lesson).
     tap = `.pointerInput(pyreonLayout) { detectTapGestures { pyreonTap -> ${parts.join('; ')} } }`
   }

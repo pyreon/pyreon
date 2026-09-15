@@ -12703,10 +12703,14 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
   // chrome-free, tap-free host keeps its inline `render(layout(...))`.
   const tooltip = spec.tooltip !== undefined && readStaticAttr(e, 'tooltip') === true
   const onSel = e.attrs.find((a) => a.kind === 'event' && a.name === 'selectindex')
+  const extraHits = (spec.extraHits ?? []).flatMap((extra) => {
+    const event = e.attrs.find((a) => a.kind === 'event' && a.name === extra.event)
+    return event?.kind === 'event' ? [{ extra, event }] : []
+  })
   // A rich-hit `onSelect` (a cell, a node, a Sankey node-or-link) has no native
   // shape; it used to vanish with no diagnostic on all eleven of these hosts.
   if (e.attrs.some((a) => a.kind === 'event' && a.name === 'select')) _emitWarnings.push(chartRichSelectWarning(tag))
-  const tapping = onSel?.kind === 'event' || tooltip
+  const tapping = onSel?.kind === 'event' || extraHits.length > 0 || tooltip
   const reuseLayout = tapping || spec.reuseLayout === true
   const layout = reuseLayout ? 'pyreonLayout' : spec.layout(plotArgs, SWIFT_CHART_TARGET)
   if (reuseLayout) lets.push(`let pyreonLayout = ${spec.layout(plotArgs, SWIFT_CHART_TARGET)}`)
@@ -12733,6 +12737,9 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
       parts.push(`pyreonTip = ${spec.tooltip!(layout, chrome.plotX('Double(pyreonTap.location.x)'), tapY, plotArgs, SWIFT_CHART_TARGET)}; pyreonTipAt = PyreonChartPt(x: Double(pyreonTap.location.x), y: Double(pyreonTap.location.y))`)
     }
     if (onSel?.kind === 'event') parts.push(swiftChartSelectBody(onSel.handler, spec.hit(layout, chrome.plotX('Double(pyreonTap.location.x)'), tapY, plotArgs, SWIFT_CHART_TARGET), indent))
+    for (const { extra, event } of extraHits) {
+      parts.push(`do { ${swiftChartSelectBody(event.handler, extra.hit(layout, chrome.plotX('Double(pyreonTap.location.x)'), tapY, plotArgs, SWIFT_CHART_TARGET), indent)} }`)
+    }
     gesture = `.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onEnded { pyreonTap in ${parts.join('; ')} })`
   }
   if (lets.length === 0) {
