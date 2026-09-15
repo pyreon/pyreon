@@ -2466,7 +2466,12 @@ pub fn transform_plain(
     let source_type = SourceType::from_path(&filename)
         .unwrap_or_default()
         .with_module(true)
-        .with_jsx(true);
+        // Mirror the JS pre-pass's `getLang`: a `.ts`/`.mts`/`.cts` module parses WITHOUT
+        // JSX, so `<T>(x: T) => x` and `<number>x` are a generic arrow and a type
+        // assertion rather than a parse error. With JSX forced on, the parse failed
+        // and `None` was returned — a VERDICT ("not a plain module"), so the file
+        // shipped un-rewritten and its `state()` calls reached the runtime.
+        .with_jsx(!ts_only_extension(&filename));
     let allocator = Allocator::default();
     let ret = Parser::new(&allocator, &code, source_type).parse();
     if ret.panicked {
@@ -2645,4 +2650,11 @@ pub fn transform_plain(
         code: out,
         warnings,
     })
+}
+
+/// `.ts` / `.mts` / `.cts` — TypeScript with angle-bracket syntax reserved for
+/// generics and type assertions, never JSX. Everything else keeps JSX on, as
+/// the JS pre-pass does.
+fn ts_only_extension(filename: &str) -> bool {
+    filename.ends_with(".ts") || filename.ends_with(".mts") || filename.ends_with(".cts")
 }

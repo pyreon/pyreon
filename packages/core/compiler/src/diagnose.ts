@@ -1886,6 +1886,22 @@ const geometry = () => props.shape
         "// throws on older versions (empty qualified name)\n// <svg><use xlink:href=\"#icon\" /></svg>\n\n// SVG2 spelling — no namespace needed\n<svg><use href=\"#icon\" /></svg>\n\n// or set it explicitly\n<svg><use ref={(el) => el.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', '#icon')} /></svg>",
     }),
   },
+  {
+    // `applyProps`' getter-descriptor branch handed a getter's VALUE straight
+    // to the static sink, so a getter yielding an accessor (a primitive's
+    // `getItemProps()` spread through a rocketstyle element) stringified the
+    // closure into the attribute. Fixed by resolving the accessor inside the
+    // tracked frame; the residual is an app on an older runtime, or a custom
+    // prop pipeline that stores accessors behind getters of its own.
+    pattern: /applyStaticProp received a function for "([^"]+)"/,
+    diagnose: (m) => ({
+      cause:
+        `A prop reached the DOM sink as a FUNCTION. \`${m[1] ?? 'the prop'}\` was an accessor (\`() => value\`) stored behind a getter — the shape a primitive's helper object (\`getItemProps()\`) takes after a descriptor-copying spread — and the getter branch of \`applyProps\` passed the closure through unresolved, so the element got the function's SOURCE TEXT as its value.`,
+      fix: 'Upgrade: `applyProps` now resolves an accessor a getter returns, inside the same tracked frame, so the value stays live. On an older runtime, call the accessor at the spread site (`tabIndex={props.tabIndex()}`) or pass the helper object through `mergeProps` / `splitProps` from `@pyreon/core` instead of a hand-rolled descriptor copy.',
+      fixCode:
+        '// stringified on older runtimes: a getter whose value is an accessor\n// <Star {...state.getItemProps(i)} />  // { tabIndex: () => 0 | -1 }\n\n// resolve at the site if you cannot upgrade\nconst item = state.getItemProps(i)\n<Star {...item} tabIndex={item.tabIndex()} />',
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */

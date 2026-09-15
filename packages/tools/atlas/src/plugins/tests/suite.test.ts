@@ -216,6 +216,9 @@ describe('recommendedPlugins', () => {
       'atlas:states',
       'atlas:edge-cases',
       'atlas:default-scenario',
+      // After every generator, before required-prop filling: a `label` seeded
+      // with the name is a real value, not a `'label'` stand-in.
+      'atlas:content',
       'atlas:fill-defaults',
       'atlas:a11y-static',
       // The first check that actually RUNS the component. Ordered after the
@@ -225,6 +228,6 @@ describe('recommendedPlugins', () => {
     ])
   })
   it('threads baseArgs into the variant-matrix plugin', () => {
-    expect(recommendedPlugins({ baseArgs: { x: 1 } })).toHaveLength(9)
+    expect(recommendedPlugins({ baseArgs: { x: 1 } })).toHaveLength(10)
   })
 })

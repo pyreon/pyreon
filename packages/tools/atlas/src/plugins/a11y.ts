@@ -22,16 +22,29 @@ export function a11yPlugin(): AtlasPlugin {
   return defineAtlasPlugin({
     name: 'atlas:a11y-static',
     verify(ctx: VerifyContext): { a11y: VerifyCheck } {
-      const nameProps = ctx.component.controls.filter((c) => c.required && NAME_PROP.test(c.name))
+      // A name-like prop is checked when the component REQUIRES it, or when
+      // the scenario SUPPLIES it — a seeded `alt` on an `<img>`, an authored
+      // `aria-label`. Required-only left every rocketstyle library skipped
+      // wholesale (ui-components: 0 of 108 checked), because a chain declares
+      // no required props; a supplied name that is empty is exactly the
+      // finding this check exists for. EXCEPT the edge-cases plugin's own
+      // Empty scenario blanking an OPTIONAL name: atlas manufactured that
+      // state to exercise rendering, so reporting it would be atlas failing
+      // its own question (a REQUIRED name empty there is still a finding —
+      // the workshop's `button--empty` precedent).
+      const manufactured = ctx.scenario.source === 'auto-edge'
+      const nameProps = ctx.component.controls.filter(
+        (c) => NAME_PROP.test(c.name) && (c.required || (!manufactured && c.name in ctx.scenario.args)),
+      )
       if (nameProps.length === 0) {
         // NOT a gap in the component — this static check only knows how to
-        // verify that a required name-like prop was supplied, and this one has
+        // verify that a name-like prop was supplied, and this scenario carries
         // none. Saying so distinguishes it from "the check failed to run",
         // which is what a bare skip reads as.
         return {
           a11y: skipped(
             'nothing-to-check',
-            'no required name-like prop to check statically — run `atlas verify-browser` for real axe-core coverage',
+            'no name-like prop required or supplied to check statically — run `atlas verify-browser` for real axe-core coverage',
           ),
         }
       }

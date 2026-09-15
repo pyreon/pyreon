@@ -53,9 +53,9 @@ export default defineNodeConfig({
     'src/rules/query/query-options-as-function.ts',
   ],
   coverageThresholds: {
-    statements: 95,
-    branches: 90,
-    functions: 94,
-    lines: 95,
+    statements: 96,
+    branches: 92,
+    functions: 99,
+    lines: 99,
   },
 })
