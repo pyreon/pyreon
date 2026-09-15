@@ -6,7 +6,7 @@
  * available through the supported native host. The two scores are deliberately
  * separate: hosted coverage never inflates the direct-native score.
  */
-export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-15.1' as const
+export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-15.2' as const
 
 export type ChartCapabilityArea = 'data' | 'series' | 'coordinates' | 'runtime' | 'presentation'
 export type ChartCapabilityMode = 'direct' | 'hosted'
@@ -58,8 +58,8 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
 
   row('runtime.init-dispose-resize', 'runtime', 'hosted', 'complete', 'src/webview.ts'),
   row('runtime.option-updates', 'runtime', 'hosted', 'complete', 'src/webview.ts'),
-  row('runtime.actions', 'runtime', 'hosted', 'pending', 'src/webview.ts'),
-  row('runtime.events', 'runtime', 'hosted', 'partial', 'src/webview.ts'),
+  row('runtime.actions', 'runtime', 'hosted', 'complete', 'src/webview.browser.test.tsx'),
+  row('runtime.events', 'runtime', 'hosted', 'complete', 'src/webview.browser.test.tsx'),
   row('runtime.connected-groups', 'runtime', 'hosted', 'pending', 'src/webview.ts'),
   row('runtime.loading', 'runtime', 'hosted', 'partial', 'src/webview.ts'),
   row('runtime.themes', 'runtime', 'hosted', 'partial', 'src/webview.ts'),

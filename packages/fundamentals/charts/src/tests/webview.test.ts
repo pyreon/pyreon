@@ -29,6 +29,14 @@ describe('buildChartHostHtml', () => {
     expect(html).toContain("window.addEventListener('resize'")
   })
 
+  it('installs command dispatch and only the requested additional event listeners', () => {
+    const html = buildChartHostHtml({ forwardEvents: ['legendselectchanged', 'datazoom', 'datazoom', 'click'] })
+    expect(html).toContain('chart.dispatchAction(command)')
+    expect(html).toContain('completedCommands[commandKey]')
+    expect(html).toContain('["legendselectchanged","datazoom"]')
+    expect(html).toContain('__pyreonChartEvent: 1')
+  })
+
   it('inlines echartsScript (self-contained) and takes precedence over echartsSrc', () => {
     const html = buildChartHostHtml({
       echartsScript: 'window.echarts={init:function(){}}',
@@ -84,6 +92,36 @@ describe('<ChartWebView>', () => {
     expect(onSelect).toHaveBeenCalledWith({ name: 'US', value: 42, dataIndex: 0 })
   })
 
+  it('wraps commands with the option and preserves reactive command reads', () => {
+    let sequence = 0
+    const vnode = ChartWebView({
+      option: { series: [] },
+      commands: () => [{ id: ++sequence, type: 'restore' }],
+    })
+    const props = vnode.props as { data: unknown }
+    expect(props.data).toEqual({
+      __pyreonChartHost: 1,
+      option: { series: [] },
+      commands: [{ id: 1, type: 'restore' }],
+    })
+    expect(props.data).toMatchObject({ commands: [{ id: 2 }] })
+  })
+
+  it('routes structured hosted events separately from selection messages', () => {
+    const onSelect = vi.fn()
+    const onEvent = vi.fn()
+    const vnode = ChartWebView({ option: {}, onSelect, onEvent })
+    const onMessage = (vnode.props as { onMessage: (m: string) => void }).onMessage
+    onMessage(JSON.stringify({ __pyreonChartEvent: 1, name: 'datazoom', payload: { start: 10 } }))
+    expect(onEvent).toHaveBeenCalledWith({ name: 'datazoom', payload: { start: 10 } })
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('wires the reverse bridge when only onEvent is supplied', () => {
+    const vnode = ChartWebView({ option: {}, onEvent: vi.fn() })
+    expect(typeof (vnode.props as { onMessage: unknown }).onMessage).toBe('function')
+  })
+
   it('a non-JSON reverse message is handed back as { name } (never silently dropped)', () => {
     const onSelect = vi.fn()
     const vnode = ChartWebView({ option: {}, onSelect })
@@ -135,11 +173,13 @@ describe('<ChartWebView>', () => {
       echartsSrc: 'https://example.test/echarts.js',
       theme: 'dark',
       renderer: 'svg',
+      forwardEvents: ['datazoom'],
     })
     const html = (vnode.props as { html: string }).html
     expect(html).toContain('https://example.test/echarts.js')
     expect(html).toContain('dark')
     expect(html).toContain('svg')
+    expect(html).toContain('["datazoom"]')
   })
 
   it('forwards an inlined echartsScript through the component', () => {

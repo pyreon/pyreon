@@ -46,6 +46,21 @@ export interface ChartSelectPayload {
   componentType?: string
 }
 
+/** A serializable command delivered to the hosted chart exactly once per id. */
+export interface ChartHostCommand {
+  /** Stable identity used to prevent re-running a command after option updates. */
+  id: string | number
+  /** Command name understood by the hosted chart engine. */
+  type: string
+  [key: string]: unknown
+}
+
+/** A JSON-safe event emitted by the hosted chart. */
+export interface ChartHostEvent {
+  name: string
+  payload: Record<string, unknown>
+}
+
 export interface BuildChartHostHtmlOptions {
   /**
    * ECharts UMD/IIFE source, INLINED into the page — makes it fully
@@ -72,6 +87,8 @@ export interface BuildChartHostHtmlOptions {
    * to `transparent` so the native/web container's background shows through.
    */
   background?: string
+  /** Additional chart event names to forward through the reverse bridge. */
+  forwardEvents?: readonly string[]
 }
 
 const DEFAULT_ECHARTS_SRC = 'https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js'
@@ -135,6 +152,7 @@ export function buildChartHostHtml(options: BuildChartHostHtmlOptions = {}): str
     theme,
     renderer = 'canvas',
     background = 'transparent',
+    forwardEvents = [],
   } = options
 
   const engineTag = echartsScript
@@ -147,6 +165,9 @@ export function buildChartHostHtml(options: BuildChartHostHtmlOptions = {}): str
   // validate rather than interpolate an arbitrary string into the object literal.
   const themeArg = theme ? JSON.stringify(theme) : 'null'
   const safeRenderer = renderer === 'svg' ? 'svg' : 'canvas'
+  const forwardedEventNames = JSON.stringify(
+    Array.from(new Set(forwardEvents.filter((name) => typeof name === 'string' && name.length > 0 && name !== 'click'))),
+  )
 
   // The bridge script — kept dependency-free vanilla JS so it runs in the
   // hosted page with only ECharts present.
@@ -178,7 +199,7 @@ export function buildChartHostHtml(options: BuildChartHostHtmlOptions = {}): str
   var el = document.getElementById('pyreon-chart');
   var chart = echarts.init(el, ${themeArg}, { renderer: '${safeRenderer}' });
 
-  var lastSig = null, rafId = 0;
+  var lastSig = null, rafId = 0, completedCommands = Object.create(null), completedCommandKeys = [];
   function seriesSig(opt) {
     var s = opt.series;
     if (Object.prototype.toString.call(s) === '[object Array]') {
@@ -191,10 +212,12 @@ export function buildChartHostHtml(options: BuildChartHostHtmlOptions = {}): str
   }
   function doApply() {
     rafId = 0;
-    var opt = window.__pyreonData;
+    var input = window.__pyreonData;
     // The bridge may deliver the option as an already-parsed object (web:
     // contentWindow.__pyreonData = value) or, defensively, as a JSON string.
-    if (typeof opt === 'string') { try { opt = JSON.parse(opt); } catch (e) { return; } }
+    if (typeof input === 'string') { try { input = JSON.parse(input); } catch (e) { return; } }
+    var isEnvelope = input && input.__pyreonChartHost === 1;
+    var opt = isEnvelope ? input.option : input;
     if (!opt || typeof opt !== 'object') return;
     var sig = seriesSig(opt);
     // PERF: same series structure → MERGE (ECharts diffs + animates the data
@@ -202,6 +225,19 @@ export function buildChartHostHtml(options: BuildChartHostHtmlOptions = {}): str
     // added/removed/retyped) → full replace (notMerge) for correctness.
     chart.setOption(opt, sig !== lastSig);
     lastSig = sig;
+    var commands = isEnvelope && Object.prototype.toString.call(input.commands) === '[object Array]' ? input.commands : [];
+    for (var c = 0; c < commands.length; c++) {
+      var command = commands[c];
+      if (!command || (typeof command.id !== 'string' && typeof command.id !== 'number') || typeof command.type !== 'string') continue;
+      var commandKey = typeof command.id + ':' + command.id;
+      if (completedCommands[commandKey]) continue;
+      try {
+        chart.dispatchAction(command);
+        completedCommands[commandKey] = true;
+        completedCommandKeys.push(commandKey);
+        if (completedCommandKeys.length > 1024) delete completedCommands[completedCommandKeys.shift()];
+      } catch (e) { pyreonReportHostError(String(e && e.stack || e)); }
+    }
   }
   // PERF: coalesce a burst of pushes (a signal updating several times before a
   // frame) into ONE setOption per frame — aligns work to the display and never
@@ -225,6 +261,25 @@ export function buildChartHostHtml(options: BuildChartHostHtmlOptions = {}): str
     };
     try { window.pyreonPostMessage(JSON.stringify(payload)); } catch (e) {}
   });
+
+  function eventPayload(p) {
+    var payload = {};
+    if (!p || typeof p !== 'object') return payload;
+    for (var key in p) {
+      if (!Object.prototype.hasOwnProperty.call(p, key) || key === 'event') continue;
+      try { payload[key] = JSON.parse(JSON.stringify(p[key])); } catch (e) {}
+    }
+    return payload;
+  }
+  var forwardedEvents = ${forwardedEventNames};
+  for (var eventIndex = 0; eventIndex < forwardedEvents.length; eventIndex++) {
+    (function (eventName) {
+      chart.on(eventName, function (p) {
+        if (typeof window.pyreonPostMessage !== 'function') return;
+        try { window.pyreonPostMessage(JSON.stringify({ __pyreonChartEvent: 1, name: eventName, payload: eventPayload(p) })); } catch (e) {}
+      });
+    })(forwardedEvents[eventIndex]);
+  }
 
   window.addEventListener('pyreondata', apply);
   window.addEventListener('resize', function () { chart.resize(); });
@@ -264,6 +319,10 @@ export interface ChartWebViewProps {
   option: unknown
   /** Tap-a-chart-element callback — receives the parsed {@link ChartSelectPayload}. */
   onSelect?: (payload: ChartSelectPayload) => void
+  /** Serializable commands; each command runs once for its stable `id`. */
+  commands?: readonly ChartHostCommand[] | (() => readonly ChartHostCommand[])
+  /** Receives events selected by {@link forwardEvents}. */
+  onEvent?: (event: ChartHostEvent) => void
   /**
    * Provide your own host HTML (advanced). If omitted, one is built via
    * {@link buildChartHostHtml} from the `echarts*`/`theme`/`renderer` props.
@@ -281,6 +340,8 @@ export interface ChartWebViewProps {
   theme?: string
   /** `'canvas'` (default) or `'svg'`. */
   renderer?: 'canvas' | 'svg'
+  /** Additional hosted event names to forward to {@link onEvent}. */
+  forwardEvents?: readonly string[]
 }
 
 /**
@@ -307,6 +368,7 @@ export function ChartWebView(props: ChartWebViewProps): VNode {
   if (props.echartsSrc !== undefined) built.echartsSrc = props.echartsSrc
   if (props.theme !== undefined) built.theme = props.theme
   if (props.renderer !== undefined) built.renderer = props.renderer
+  if (props.forwardEvents !== undefined) built.forwardEvents = props.forwardEvents
   const html = props.html ?? buildChartHostHtml(built)
 
   const webViewProps: Record<string, unknown> = { html }
@@ -321,21 +383,28 @@ export function ChartWebView(props: ChartWebViewProps): VNode {
     configurable: true,
     get(): unknown {
       const o = props.option
-      return typeof o === 'function' ? (o as () => unknown)() : o
+      const option = typeof o === 'function' ? (o as () => unknown)() : o
+      if (props.commands === undefined) return option
+      const source = props.commands
+      const commands = typeof source === 'function' ? source() : source
+      return { __pyreonChartHost: 1, option, commands }
     },
   })
-  if (props.onSelect) {
+  if (props.onSelect || props.onEvent) {
     const onSelect = props.onSelect
+    const onEvent = props.onEvent
     webViewProps.onMessage = (message: string): void => {
-      let payload: ChartSelectPayload
+      let payload: ChartSelectPayload | (ChartHostEvent & { __pyreonChartEvent: 1 })
       try {
-        payload = JSON.parse(message) as ChartSelectPayload
+        payload = JSON.parse(message) as ChartSelectPayload | (ChartHostEvent & { __pyreonChartEvent: 1 })
       } catch {
         // A non-JSON message — hand back the raw string as `name` so nothing
         // is silently dropped.
         payload = { name: message }
       }
-      onSelect(payload)
+      if (payload && typeof payload === 'object' && '__pyreonChartEvent' in payload)
+        onEvent?.({ name: payload.name, payload: payload.payload })
+      else onSelect?.(payload)
     }
   }
   return h(WebView as (p: unknown) => VNodeChild, webViewProps) as VNode
