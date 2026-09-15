@@ -462,14 +462,20 @@ export function Counter() {
         </Button>
       </Modal>
 
-      {/* Scroll → iOS `ScrollView` / Android `verticalScroll`. A container is
+      {/* Scroll → iOS `ScrollView` / Android `verticalScroll`. The explicit
+          bounded viewport is required because this proof lives inside the
+          page's outer vertical Scroll; Compose rejects same-axis nested
+          scrollers when the inner one is measured with infinite height.
+          A container is
           flattened out of the iOS a11y tree unless it carries
           `.accessibilityElement(children: .contain)`, which the emitter adds
           for container tags — so querying the container itself is the
           load-bearing part of this assertion. */}
-      <Scroll axis="vertical" data-testid="core-scroll">
-        <Text data-testid="core-scroll-child">Scrolled child</Text>
-      </Scroll>
+      <Stack style={{ height: 64 }}>
+        <Scroll axis="vertical" data-testid="core-scroll">
+          <Text data-testid="core-scroll-child">Scrolled child</Text>
+        </Scroll>
+      </Stack>
     </Stack>
     </Scroll>
   )

@@ -838,7 +838,7 @@ export function C() {
     name: '@pyreon/flow/webview',
     mechanism: 'webview-host',
     rationale:
-      'optional compatibility bridge for applications that deliberately need the browser SVG/DOM/CSS renderer unchanged inside WKWebView or Android WebView; the regular @pyreon/flow editor has a direct SwiftUI/Compose lowering path.',
+      'Optional compatibility bridge for applications that deliberately need the browser SVG/DOM/CSS renderer unchanged inside WKWebView or Android WebView; the regular @pyreon/flow editor has a direct SwiftUI/Compose lowering path. Bridge proven in real Chromium; native host is emit + stub-typecheck proven, NOT device-proven.',
     snippet: `import { signal } from '@pyreon/reactivity'
 import { Stack, Text, WebView } from '@pyreon/primitives'
 export function C() {
