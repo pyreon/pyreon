@@ -68,6 +68,11 @@ export const INNER_PYREON_OPTION_DISPOSITION: Record<
   /** Build-only source rewrites; the SSR graph should carry them too. */
   compileValidators: 'forward',
   optimizeValidators: 'forward',
+  /** Which modules the JSX transform touches. The SSR graph compiles the same
+   *  files, so an app that opted a module in (or out) must see the same
+   *  decision on both passes. */
+  include: 'forward',
+  exclude: 'forward',
 
   /** DROP — the plugin's `config()` would set `build.rollupOptions.input` to
    *  the user's server entry, replacing zero's synthetic one. A plugin's
