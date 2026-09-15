@@ -216,6 +216,7 @@ export function buildChartHostHtml(options: BuildChartHostHtmlOptions = {}): str
   var chart = echarts.init(el, ${themeArg}, { renderer: '${safeRenderer}' });
 
   var lastSig = null, rafId = 0, lastLoading = null, lastLoadingOptions = null;
+  var lastGroup = null, relaying = false;
   var completedCommands = Object.create(null), completedCommandKeys = [];
   function seriesSig(opt) {
     var s = opt.series;
@@ -242,6 +243,25 @@ export function buildChartHostHtml(options: BuildChartHostHtmlOptions = {}): str
     // added/removed/retyped) → full replace (notMerge) for correctness.
     chart.setOption(opt, sig !== lastSig);
     lastSig = sig;
+    // Connected group: mirrors echarts.connect() — each hosted page is its own
+    // realm, so the engine's own connect() can never see a sibling host. The
+    // page joins the engine group locally (honest for a multi-chart host page)
+    // AND the <WebView> HOST GROUP of the same name; the host fans the action
+    // classes connect() mirrors into every sibling host of that group.
+    var group = isEnvelope && typeof input.group === 'string' && input.group !== '' ? input.group : null;
+    if (group !== lastGroup) {
+      if (lastGroup !== null) { try { echarts.disconnect(lastGroup); } catch (e) {} }
+      chart.group = group === null ? undefined : group;
+      if (group !== null) { try { echarts.connect(group); } catch (e) {} }
+      lastGroup = group;
+      if (typeof window.pyreonPostMessage === 'function') {
+        try {
+          window.pyreonPostMessage(JSON.stringify(group === null
+            ? { __pyreonWebViewGroup: 1, leave: true }
+            : { __pyreonWebViewGroup: 1, join: group }));
+        } catch (e) {}
+      }
+    }
     var commands = isEnvelope && Object.prototype.toString.call(input.commands) === '[object Array]' ? input.commands : [];
     for (var c = 0; c < commands.length; c++) {
       var command = commands[c];
@@ -310,6 +330,55 @@ export function buildChartHostHtml(options: BuildChartHostHtmlOptions = {}): str
     })(forwardedEvents[eventIndex]);
   }
 
+  // Outbound half of the connected group. The mirrored set is the one
+  // echarts.connect() shares: dataZoom, legend selection, highlight/downplay,
+  // and the data-anchored tooltip.
+  function groupAction(eventName, p) {
+    var a = null;
+    if (eventName === 'datazoom') a = pick({ type: 'dataZoom' }, p, ['batch', 'start', 'end', 'startValue', 'endValue', 'dataZoomIndex', 'dataZoomId']);
+    else if (eventName === 'legendselectchanged' || eventName === 'legendselected' || eventName === 'legendunselected') {
+      // A user legend tap is a TOGGLE (legendselectchanged); programmatic
+      // select/unselect actions raise the other two. All carry name + selected.
+      if (!p || typeof p.name !== 'string' || !p.selected) return null;
+      a = { type: p.selected[p.name] === false ? 'legendUnSelect' : 'legendSelect', name: p.name };
+    } else if (eventName === 'highlight' || eventName === 'downplay') a = pick({ type: eventName }, p, ['batch', 'seriesIndex', 'seriesId', 'seriesName', 'dataIndex', 'name']);
+    else if (eventName === 'showtip') a = pick({ type: 'showTip' }, p, ['seriesIndex', 'dataIndex', 'name', 'position']);
+    else if (eventName === 'hidetip') a = { type: 'hideTip' };
+    return a;
+  }
+  function pick(target, source, keys) {
+    if (!source || typeof source !== 'object') return target;
+    for (var k = 0; k < keys.length; k++) {
+      var v = source[keys[k]];
+      if (v === undefined || v === null) continue;
+      try { target[keys[k]] = JSON.parse(JSON.stringify(v)); } catch (e) {}
+    }
+    return target;
+  }
+  var groupEvents = ['datazoom', 'legendselectchanged', 'legendselected', 'legendunselected', 'highlight', 'downplay', 'showtip', 'hidetip'];
+  for (var groupIndex = 0; groupIndex < groupEvents.length; groupIndex++) {
+    (function (eventName) {
+      chart.on(eventName, function (p) {
+        if (lastGroup === null || relaying || (p && p.__pyreonGroupRelay === true)) return;
+        if (typeof window.pyreonPostMessage !== 'function') return;
+        var action = groupAction(eventName, p);
+        if (!action) return;
+        action.__pyreonGroupRelay = true;
+        try { window.pyreonPostMessage(JSON.stringify({ __pyreonWebViewGroup: 1, group: lastGroup, message: JSON.stringify(action) })); } catch (e) {}
+      });
+    })(groupEvents[groupIndex]);
+  }
+  // Inbound half: a sibling host's mirrored action, delivered by the <WebView>
+  // host through the page-level relay entry point. The relaying flag keeps the
+  // dispatch's own events from echoing back out.
+  window.__pyreonWebViewGroupMessage = function (message) {
+    var action = null;
+    try { action = JSON.parse(message); } catch (e) { return; }
+    if (!action || typeof action.type !== 'string') return;
+    relaying = true;
+    try { chart.dispatchAction(action); } catch (e) {} finally { relaying = false; }
+  };
+
   window.addEventListener('pyreondata', apply);
   window.addEventListener('resize', function () { chart.resize(); });
   // Observe the container's OWN size — a native host (or an iframe) sizing the
@@ -362,6 +431,16 @@ export interface ChartWebViewProps {
   onEvent?: (event: ChartHostEvent) => void
   /** Receives host initialization and command failures. */
   onError?: (error: ChartHostError) => void
+  /**
+   * Connected-group name (`echarts.connect`). Hosts sharing a group mirror
+   * dataZoom, legend selection, highlight/downplay and the data-anchored
+   * tooltip between each other. Every host is its own page, so the engine's
+   * own `connect()` cannot reach a sibling; the hosted page relays the same
+   * action classes through the `<WebView>` host group of the same name
+   * (identical on web, iOS and Android). Pass an accessor to move a host
+   * between groups.
+   */
+  group?: ChartHostAccessor<string | undefined>
   /**
    * Provide your own host HTML (advanced). If omitted, one is built via
    * {@link buildChartHostHtml} from the `echarts*`/`theme`/`renderer` props.
@@ -423,6 +502,7 @@ export function ChartWebView(props: ChartWebViewProps): VNode {
   const html = props.html ?? buildChartHostHtml(built)
 
   const webViewProps: Record<string, unknown> = { html }
+  const hasGroup = props.group !== undefined
   // Forward `option` to `<WebView data>` PRESERVING reactivity — a getter that
   // re-reads `props.option` on every access. Reading it eagerly (`data:
   // props.option`) would collapse a compiler-wrapped reactive prop to a static
@@ -435,7 +515,7 @@ export function ChartWebView(props: ChartWebViewProps): VNode {
     get(): unknown {
       const o = props.option
       const option = typeof o === 'function' ? (o as () => unknown)() : o
-      if (props.commands === undefined && props.loading === undefined) return option
+      if (props.commands === undefined && props.loading === undefined && !hasGroup) return option
       const commandSource = props.commands
       const commands = typeof commandSource === 'function' ? commandSource() : (commandSource ?? [])
       const loadingSource = props.loading
@@ -443,7 +523,15 @@ export function ChartWebView(props: ChartWebViewProps): VNode {
       const loadingOptionsSource = props.loadingOptions
       const loadingOptions =
         typeof loadingOptionsSource === 'function' ? loadingOptionsSource() : (loadingOptionsSource ?? {})
-      return { __pyreonChartHost: 1, option, commands, loading: { visible: loading, options: loadingOptions } }
+      const envelope: Record<string, unknown> = { __pyreonChartHost: 1, option, commands, loading: { visible: loading, options: loadingOptions } }
+      if (hasGroup) {
+        // The page joins/leaves the host group of this name (and the engine
+        // group) when the envelope's `group` changes.
+        const groupSource = props.group
+        const group = typeof groupSource === 'function' ? groupSource() : groupSource
+        if (group !== undefined && group !== '') envelope.group = group
+      }
+      return envelope
     },
   })
   if (props.onSelect || props.onEvent || props.onError) {

@@ -22,17 +22,19 @@ public func pyreonChartWebViewData(
     option: String,
     commands: String,
     loading: Bool,
-    loadingOptions: String
+    loadingOptions: String,
+    group: String? = nil
 ) -> String {
     let decodedOption = pyreonChartDecode(option) ?? [:]
     let decodedCommands = pyreonChartDecode(commands) as? [Any] ?? []
     let decodedLoadingOptions = pyreonChartDecode(loadingOptions) as? [String: Any] ?? [:]
-    let envelope: [String: Any] = [
+    var envelope: [String: Any] = [
         "__pyreonChartHost": 1,
         "option": decodedOption,
         "commands": decodedCommands,
         "loading": ["visible": loading, "options": decodedLoadingOptions],
     ]
+    if let group, !group.isEmpty { envelope["group"] = group }
     guard let data = try? JSONSerialization.data(withJSONObject: envelope),
           let result = String(data: data, encoding: .utf8)
     else { return option }

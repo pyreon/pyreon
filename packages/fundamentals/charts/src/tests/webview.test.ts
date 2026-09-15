@@ -6,6 +6,7 @@
  * string/emit contract that must hold on every target.
  */
 import { describe, expect, it, vi } from 'vitest'
+import { signal } from '@pyreon/reactivity'
 import { WebView } from '@pyreon/primitives'
 import { ChartWebView, buildChartHostHtml } from '../webview'
 
@@ -123,6 +124,40 @@ describe('<ChartWebView>', () => {
       loading: { visible: false, options: {} },
     })
     expect(props.data).toMatchObject({ commands: [{ id: 2 }] })
+  })
+
+  it('carries a connected group in the envelope, statically or through an accessor', () => {
+    const group = signal<string | undefined>('dash')
+    const dataOf = (v: { props: unknown }) => (v.props as { data: { group?: string; commands: unknown[] } }).data
+    expect(dataOf(ChartWebView({ option: { series: [] }, group: 'dash' }))).toEqual({
+      __pyreonChartHost: 1,
+      option: { series: [] },
+      commands: [],
+      loading: { visible: false, options: {} },
+      group: 'dash',
+    })
+    const reactive = ChartWebView({ option: { series: [] }, group: () => group() })
+    expect(dataOf(reactive).group).toBe('dash')
+    group.set(undefined)
+    expect(dataOf(reactive).group, 'leaving the group drops it from the envelope').toBeUndefined()
+    // The relay itself is the <WebView> host group's job: a group message the
+    // page posts is consumed by the host and never reaches onSelect.
+    expect((ChartWebView({ option: {}, group: 'dash' }).props as { onMessage?: unknown }).onMessage).toBeUndefined()
+  })
+
+  it('installs the connected-group protocol in the host page', () => {
+    const html = buildChartHostHtml()
+    expect(html).toContain('echarts.connect(group)')
+    expect(html).toContain('echarts.disconnect(lastGroup)')
+    // Join/leave the <WebView> host group of the same name as the engine group.
+    expect(html).toContain('{ __pyreonWebViewGroup: 1, join: group }')
+    expect(html).toContain('{ __pyreonWebViewGroup: 1, leave: true }')
+    // Outbound: the mirrored action classes echarts.connect() shares.
+    expect(html).toContain("['datazoom', 'legendselectchanged', 'legendselected', 'legendunselected', 'highlight', 'downplay', 'showtip', 'hidetip']")
+    expect(html).toContain('{ __pyreonWebViewGroup: 1, group: lastGroup, message: JSON.stringify(action) }')
+    // Inbound: the host-delivered relay entry point dispatches without echoing.
+    expect(html).toContain('window.__pyreonWebViewGroupMessage = function (message)')
+    expect(html).toContain('if (lastGroup === null || relaying || (p && p.__pyreonGroupRelay === true)) return')
   })
 
   it('wraps reactive loading state and options without evaluating them during construction', () => {

@@ -11,7 +11,7 @@ export const CHART_WEBVIEW_HOST_PROPS = [
 export const HANDLED_CHART_WEBVIEW_PROPS: ReadonlySet<string> = new Set([
   'option', 'onSelect', 'commands', 'loading', 'loadingOptions', 'onEvent', 'onError', 'html',
   'engineScript', 'engineSrc', 'echartsScript', 'echartsSrc', 'theme', 'renderer', 'background',
-  'forwardEvents', 'hostSetupScript',
+  'forwardEvents', 'hostSetupScript', 'group',
 ])
 
 export function legacyChartHostProp(name: string): string {

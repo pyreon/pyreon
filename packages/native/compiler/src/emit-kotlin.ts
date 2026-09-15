@@ -8501,7 +8501,9 @@ function emitKotlinChartWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): st
   const commands = dynamicWebViewAttrKotlin(e, 'commands')
   const loading = dynamicWebViewAttrKotlin(e, 'loading')
   const loadingOptions = dynamicWebViewAttrKotlin(e, 'loadingOptions')
-  const data = `pyreonChartWebViewData(option = ${option === undefined ? '"{}"' : kotlinWebViewDataArg(option)}, commands = ${commands === undefined ? '"[]"' : kotlinWebViewDataArg(commands)}, loading = ${loading === undefined ? 'false' : emitKotlinExpr(loading, 0)}, loadingOptions = ${loadingOptions === undefined ? '"{}"' : kotlinWebViewDataArg(loadingOptions)})`
+  const group = dynamicWebViewAttrKotlin(e, 'group')
+  const groupArg = group === undefined ? '' : `, group = ${emitKotlinExpr(group, 0)}`
+  const data = `pyreonChartWebViewData(option = ${option === undefined ? '"{}"' : kotlinWebViewDataArg(option)}, commands = ${commands === undefined ? '"[]"' : kotlinWebViewDataArg(commands)}, loading = ${loading === undefined ? 'false' : emitKotlinExpr(loading, 0)}, loadingOptions = ${loadingOptions === undefined ? '"{}"' : kotlinWebViewDataArg(loadingOptions)}${groupArg})`
   const callbackArgs = (['select', 'event', 'error'] as const).flatMap((name) => {
     const attr = e.attrs.find((candidate) => candidate.kind === 'event' && candidate.name === name)
     return attr?.kind === 'event' ? [`on${name[0]!.toUpperCase()}${name.slice(1)} = ${emitKotlinMessageHandler(attr.handler)}`] : []

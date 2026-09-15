@@ -981,7 +981,7 @@ data class PyreonChartWebViewSelection(val name: String? = null)
 data class PyreonChartWebViewEvent(val name: String, val payload: Map<String, Any?> = emptyMap())
 data class PyreonChartWebViewError(val message: String)
 @Suppress("UNUSED_PARAMETER")
-fun pyreonChartWebViewData(option: String, commands: String, loading: Boolean, loadingOptions: String): String = option
+fun pyreonChartWebViewData(option: String, commands: String, loading: Boolean, loadingOptions: String, group: String? = null): String = option
 @Suppress("UNUSED_PARAMETER")
 fun pyreonDispatchChartWebViewMessage(message: String, onSelect: ((PyreonChartWebViewSelection) -> Unit)? = null, onEvent: ((PyreonChartWebViewEvent) -> Unit)? = null, onError: ((PyreonChartWebViewError) -> Unit)? = null) {}
 

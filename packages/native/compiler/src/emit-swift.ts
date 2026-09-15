@@ -10307,7 +10307,9 @@ function emitSwiftChartWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): str
   const commands = dynamicWebViewAttr(e, 'commands')
   const loading = dynamicWebViewAttr(e, 'loading')
   const loadingOptions = dynamicWebViewAttr(e, 'loadingOptions')
-  const data = `pyreonChartWebViewData(option: ${option === undefined ? '"{}"' : swiftWebViewDataArg(option)}, commands: ${commands === undefined ? '"[]"' : swiftWebViewDataArg(commands)}, loading: ${loading === undefined ? 'false' : emitSwiftExpr(loading, 0)}, loadingOptions: ${loadingOptions === undefined ? '"{}"' : swiftWebViewDataArg(loadingOptions)})`
+  const group = dynamicWebViewAttr(e, 'group')
+  const groupArg = group === undefined ? '' : `, group: ${emitSwiftExpr(group, 0)}`
+  const data = `pyreonChartWebViewData(option: ${option === undefined ? '"{}"' : swiftWebViewDataArg(option)}, commands: ${commands === undefined ? '"[]"' : swiftWebViewDataArg(commands)}, loading: ${loading === undefined ? 'false' : emitSwiftExpr(loading, 0)}, loadingOptions: ${loadingOptions === undefined ? '"{}"' : swiftWebViewDataArg(loadingOptions)}${groupArg})`
   const callbackArgs = (['select', 'event', 'error'] as const).flatMap((name) => {
     const attr = e.attrs.find((candidate) => candidate.kind === 'event' && candidate.name === name)
     return attr?.kind === 'event' ? [`on${name[0]!.toUpperCase()}${name.slice(1)}: ${emitSwiftMessageHandler(attr.handler)}`] : []

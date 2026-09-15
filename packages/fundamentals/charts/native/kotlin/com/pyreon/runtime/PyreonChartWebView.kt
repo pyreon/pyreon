@@ -21,12 +21,14 @@ fun pyreonChartWebViewData(
     commands: String,
     loading: Boolean,
     loadingOptions: String,
+    group: String? = null,
 ): String = try {
     JSONObject()
         .put("__pyreonChartHost", 1)
         .put("option", JSONTokener(option).nextValue())
         .put("commands", JSONArray(commands))
         .put("loading", JSONObject().put("visible", loading).put("options", JSONObject(loadingOptions)))
+        .apply { if (!group.isNullOrEmpty()) put("group", group) }
         .toString()
 } catch (_: Exception) {
     option

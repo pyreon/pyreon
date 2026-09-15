@@ -18,6 +18,7 @@ export function App(props: { option: any; loading: boolean }) {
     commands={[{ id: 'restore', type: 'restore' }]}
     loading={props.loading}
     loadingOptions={{ text: 'Loading' }}
+    group="dashboard"
     background="#101820"
     onSelect={(selection) => console.log(selection.name)}
     onEvent={(event) => console.log(event.name)}
@@ -54,6 +55,9 @@ describe('@pyreon/charts/webview native lowering', () => {
     expect(result.code).toContain('PyreonWebView(')
     expect(result.code).toContain('background:#101820')
     expect(result.code).toContain('pyreonChartWebViewData(')
+    // Connected group: the envelope carries the group name so the hosted page
+    // joins it and relays the mirrored action classes through the bridge.
+    expect(result.code).toContain(target === 'swift' ? 'group: "dashboard"' : 'group = "dashboard"')
     expect(result.code).toContain('pyreonDispatchChartWebViewMessage(')
     if (target === 'swift' && isSwiftcAvailable()) {
       expect(validateSwiftWithStubs(result.code)).toMatchObject({ ok: true })

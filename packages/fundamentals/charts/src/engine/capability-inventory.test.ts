@@ -21,9 +21,16 @@ describe('versioned chart capability inventory', () => {
     const direct = chartCapabilityScore('direct')
     const hosted = chartCapabilityScore('hosted')
     expect(direct.total).toBeGreaterThan(hosted.total)
-    expect(direct.percent).toBeLessThan(100)
-    expect(hosted.percent).toBeLessThan(100)
+    // The score is the ROW COUNT, never a hand-typed headline: 100 is reachable
+    // only when no row is partial or pending.
+    const allComplete = (mode: 'direct' | 'hosted') =>
+      CHART_CAPABILITIES.filter((row) => row.mode === mode).every((row) => row.status === 'complete')
+    expect(direct.percent === 100).toBe(allComplete('direct'))
+    expect(hosted.percent === 100).toBe(allComplete('hosted'))
+    // Direct-native still carries open rows; hosted (the unchanged engine in
+    // the supported native host) has none left.
     expect(CHART_CAPABILITIES.some((row) => row.mode === 'direct' && row.status !== 'complete')).toBe(true)
+    expect(allComplete('hosted')).toBe(true)
   })
 
   it('covers every completion-plan area in the direct ledger', () => {
