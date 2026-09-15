@@ -694,7 +694,7 @@ export function desugarOptionChart(
     return undefined
   }
 
-  optionFields(raw, ['series', 'title', 'legend', 'tooltip', 'xAxis', 'yAxis', 'radar', 'calendar', 'parallel', 'parallelAxis', 'singleAxis', 'visualMap', 'color'], 'option', warn)
+  optionFields(raw, ['series', 'title', 'legend', 'tooltip', 'xAxis', 'yAxis', 'radar', 'calendar', 'parallel', 'parallelAxis', 'singleAxis', 'polar', 'angleAxis', 'radiusAxis', 'visualMap', 'color'], 'option', warn)
 
   for (const a of e.attrs) {
     if (a.kind === 'event' && a.name !== 'selectindex') {
@@ -969,6 +969,88 @@ export function desugarOptionChart(
     set('series', { kind: 'array', elements: riverSeries })
     set('river', { kind: 'object', fields: riverFields })
     return { kind: 'jsx-element', tag: 'RiverChart', attrs, children: [] }
+  }
+
+  if (litString(objectField(series, 'coordinateSystem')) === 'polar') {
+    const angleAxis = literalOf(objectField(raw, 'angleAxis'), resolve)
+    const radiusAxis = literalOf(objectField(raw, 'radiusAxis'), resolve)
+    if (angleAxis?.kind !== 'object' || radiusAxis?.kind !== 'object') {
+      warn('<OptionChart option.angleAxis>: native polar charts need literal angleAxis and radiusAxis objects; emitting nothing.')
+      return undefined
+    }
+    optionFields(angleAxis, ['type', 'data', 'min', 'max', 'startAngle', 'clockwise'], 'option.angleAxis', warn)
+    optionFields(radiusAxis, ['type', 'data', 'min', 'max'], 'option.radiusAxis', warn)
+    const categoryOnRadius = litString(objectField(radiusAxis, 'type')) === 'category'
+    const categoryAxis = categoryOnRadius ? radiusAxis : angleAxis
+    const valueAxis = categoryOnRadius ? angleAxis : radiusAxis
+    const categoryData = literalOf(objectField(categoryAxis, 'data'), resolve)
+    if (categoryData?.kind !== 'array' || categoryData.elements.some((value) => litString(value) === undefined)) {
+      warn('<OptionChart polar category axis data>: native polar charts need literal string categories; emitting nothing.')
+      return undefined
+    }
+    const axesFields: { name: string; value: ExprIR }[] = [
+      { name: 'categories', value: categoryData },
+    ]
+    if (categoryOnRadius) axesFields.push({ name: 'categoryOn', value: lit('radius') })
+    const min = litNumber(objectField(valueAxis, 'min'))
+    const max = litNumber(objectField(valueAxis, 'max'))
+    if (max !== undefined) axesFields.push({ name: 'valueDomain', value: { kind: 'object', fields: [{ name: 'min', value: optionDoubleLiteral(min ?? 0) }, { name: 'max', value: optionDoubleLiteral(max) }] } })
+    const startAngle = litNumber(objectField(angleAxis, 'startAngle'))
+    if (startAngle !== undefined) axesFields.push({ name: 'startAngle', value: optionDoubleLiteral((-startAngle * Math.PI) / 180) })
+    if (objectField(angleAxis, 'clockwise')?.kind === 'literal' && objectField(angleAxis, 'clockwise')?.value === false) axesFields.push({ name: 'clockwise', value: lit(false) })
+
+    const sourceSeries = rawSeries?.kind === 'array' ? rawSeries.elements : [series]
+    const polarSeries: ExprIR[] = []
+    for (let i = 0; i < sourceSeries.length; i++) {
+      const item = literalOf(sourceSeries[i], resolve)
+      const itemKind = item?.kind === 'object' ? litString(objectField(item, 'type')) : undefined
+      if (item?.kind !== 'object' || (itemKind !== 'bar' && itemKind !== 'line') || litString(objectField(item, 'coordinateSystem')) !== 'polar') {
+        warn(`<OptionChart option.series[${i}]>: native polar charts support literal polar bar and line series; emitting nothing.`)
+        return undefined
+      }
+      optionFields(item, ['type', 'name', 'data', 'coordinateSystem', 'polarIndex', 'stack', 'itemStyle', 'lineStyle', 'label', 'emphasis', 'smooth', 'symbol', 'symbolSize', 'barWidth', 'barGap', 'barCategoryGap', 'roundCap', 'showBackground', 'backgroundStyle', 'areaStyle', 'color'], `option.series[${i}]`, warn)
+      const itemData = literalOf(objectField(item, 'data'), resolve)
+      if (itemData?.kind !== 'array') {
+        warn(`<OptionChart option.series[${i}].data>: a native polar series needs literal numeric data; emitting nothing.`)
+        return undefined
+      }
+      const values: ExprIR[] = []
+      for (let j = 0; j < itemData.elements.length; j++) {
+        const datum = literalOf(itemData.elements[j], resolve)
+        const value = datum?.kind === 'array' ? litNumber(datum.elements[0]) : datum?.kind === 'object' ? litNumber(objectField(datum, 'value')) : litNumber(datum)
+        if (value === undefined) {
+          warn(`<OptionChart option.series[${i}].data[${j}]>: a native polar datum needs a literal number; emitting nothing.`)
+          return undefined
+        }
+        values.push(optionDoubleLiteral(value))
+      }
+      const itemStyle = literalOf(objectField(item, 'itemStyle'), resolve)
+      const lineStyle = literalOf(objectField(item, 'lineStyle'), resolve)
+      const color = itemStyle?.kind === 'object' ? litString(objectField(itemStyle, 'color')) : lineStyle?.kind === 'object' ? litString(objectField(lineStyle, 'color')) : undefined
+      const fields: { name: string; value: ExprIR }[] = [
+        { name: 'name', value: litString(objectField(item, 'name')) === undefined ? lit(`Series ${i + 1}`) : objectField(item, 'name')! },
+        { name: 'kind', value: lit(itemKind) },
+        { name: 'values', value: { kind: 'array', elements: values } },
+      ]
+      if (color !== undefined) fields.push({ name: 'color', value: lit(color) })
+      const stack = litString(objectField(item, 'stack'))
+      if (stack !== undefined) fields.push({ name: 'stack', value: lit(stack) })
+      polarSeries.push({ kind: 'object', fields })
+    }
+
+    const polarFields: { name: string; value: ExprIR }[] = []
+    const polar = literalOf(objectField(raw, 'polar'), resolve)
+    if (polar?.kind === 'object') {
+      optionFields(polar, ['radius'], 'option.polar', warn)
+      const radius = literalOf(objectField(polar, 'radius'), resolve)
+      const inner = radius?.kind === 'array' ? litString(radius.elements[0]) : undefined
+      const outer = radius?.kind === 'array' ? litString(radius.elements[1]) : undefined
+      if (inner?.endsWith('%') && outer?.endsWith('%') && Number.parseFloat(outer) > 0) polarFields.push({ name: 'innerRatio', value: optionDoubleLiteral(Number.parseFloat(inner) / Number.parseFloat(outer)) })
+    }
+    set('axes', { kind: 'object', fields: axesFields })
+    set('series', { kind: 'array', elements: polarSeries })
+    if (polarFields.length > 0) set('polar', { kind: 'object', fields: polarFields })
+    return { kind: 'jsx-element', tag: 'PolarChart', attrs, children: [] }
   }
 
   if (kind === 'heatmap' && litString(objectField(series, 'coordinateSystem')) === 'calendar') {

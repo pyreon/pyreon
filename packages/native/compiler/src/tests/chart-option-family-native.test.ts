@@ -73,6 +73,17 @@ export function App() { return <OptionChart option={{
   ] }],
 }} /> }`
 
+const POLAR = `import { OptionChart } from '@pyreon/charts/plot'
+export function App() { return <OptionChart option={{
+  polar: { radius: ['20%', '80%'] },
+  angleAxis: { type: 'category', data: ['North', 'East', 'South'], startAngle: 90, clockwise: false },
+  radiusAxis: { min: 0, max: 12 },
+  series: [
+    { type: 'bar', coordinateSystem: 'polar', name: 'Actual', stack: 'total', itemStyle: { color: '#123456' }, data: [3, 6, 9] },
+    { type: 'line', coordinateSystem: 'polar', name: 'Trend', lineStyle: { color: '#abcdef' }, data: [2, 5, 8] },
+  ],
+}} /> }`
+
 describe('OptionChart family options lower to native hosts', () => {
   for (const target of ['swift', 'kotlin'] as const) {
     it(`${target}: pie preserves data, donut radius, labels, legend, tooltip, title, and size`, () => {
@@ -151,6 +162,16 @@ describe('OptionChart family options lower to native hosts', () => {
       expect(r.code).toContain(target === 'swift' ? 'values: [2.0, 4.0]' : 'values = listOf(2.0, 4.0)')
       expect(r.code).toContain(target === 'swift' ? 'showLabels: false' : 'showLabels = false')
     })
+
+    it(`${target}: polar options preserve axes, multiple series, domain, direction, radius, and colours`, () => {
+      const r = transform(POLAR, { target })
+      expect(r.warnings).toEqual([])
+      expect(r.code).not.toContain('OptionChart(')
+      expect(r.code).toContain('renderPolar')
+      for (const value of ['North', 'East', 'South', 'Actual', 'Trend', '#123456', '#abcdef', 'total']) expect(r.code).toContain(`"${value}"`)
+      expect(r.code).toContain(target === 'swift' ? 'clockwise: false' : 'clockwise = false')
+      expect(r.code).toContain(target === 'swift' ? 'innerRatio: 0.25' : 'innerRatio = 0.25')
+    })
   }
 
   it('names unsupported dynamic and cartesian option shapes', () => {
@@ -217,6 +238,16 @@ describe('OptionChart family options lower to native hosts', () => {
 
   it.skipIf(!isKotlincAvailable())('kotlinc accepts river option emits', () => {
     const r = validateKotlin(transform(RIVER, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  }, 90_000)
+
+  it.skipIf(!isSwiftcAvailable())('swiftc accepts polar option emits', () => {
+    const r = validateSwiftWithStubs(transform(POLAR, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  }, 30_000)
+
+  it.skipIf(!isKotlincAvailable())('kotlinc accepts polar option emits', () => {
+    const r = validateKotlin(transform(POLAR, { target: 'kotlin' }).code)
     expect(r.ok, r.error ?? '').toBe(true)
   }, 90_000)
 })
