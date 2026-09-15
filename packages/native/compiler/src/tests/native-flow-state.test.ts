@@ -49,6 +49,32 @@ it('asserts every lowered mutable FlowConfig field in both native behaviour fixt
   }
 })
 
+it('executes every lowered FlowInstance operation in both native behaviour fixtures', () => {
+  const fixtures = [
+    ['Swift', readFileSync(new URL('../../../../fundamentals/flow/native/tests/PyreonFlowStateTests.swift', import.meta.url), 'utf8')],
+    ['Kotlin', readFileSync(new URL('../../../../fundamentals/flow/native/tests/PyreonFlowStateTest.kt', import.meta.url), 'utf8')],
+  ] as const
+  // These public calls intentionally rewrite to native properties or internal
+  // measurement names, so their executable proof lives in the compiler matrix
+  // below rather than under the public spelling in the runtime fixtures.
+  const compilerRewrites = new Set([
+    'getNodes', 'getEdges', 'getViewport', '_setNodeMeasurement', '_clearNodeMeasurement',
+  ])
+  const thisTest = readFileSync(new URL(import.meta.url), 'utf8')
+  const compilerEvidence = thisTest.slice(thisTest.indexOf('const workflowFlow'))
+
+  for (const method of LOWERED_FLOW_METHODS) {
+    if (compilerRewrites.has(method)) {
+      expect(compilerEvidence, `${method} must remain covered by compiler emit tests`).toContain(`flow.${method}(`)
+      continue
+    }
+    for (const [target, fixture] of fixtures) {
+      const invoked = fixture.includes(`.${method}(`) || fixture.includes(`.${method} {`)
+      expect(invoked, `${method} must execute in the ${target} behaviour fixture`).toBe(true)
+    }
+  }
+})
+
 it('tracks every public FlowInstance member in native lowering', () => {
   const source = readFileSync(new URL('../../../../fundamentals/flow/src/types.ts', import.meta.url), 'utf8')
   const body = source.slice(source.indexOf('export interface FlowInstance'), source.indexOf('// ─── Component props'))
