@@ -25,6 +25,30 @@ description: "Common ci / build gate mistakes in Pyreon and how to fix them."
 
 ---
 
+### [FIXED, 2026-09] An `actions/cache` entry is versioned by its PATH LIST — a differing restore never hits.
+
+ci.yml saved `bootstrap-*` under `packages/*/*/lib` + `.bootstrap-cache.json` at one site and `packages/*/*/lib` alone at another; `setup-pyreon` restored the single-path form. The exact per-run key still hit, so nothing was red — but the prefix fallback that "restores the nearest lib/ … worst case slower, never red" could match nothing, and its comment stayed. `check-cache-key-sync` could not see it: it groups BY path list ("one artifact under many prefixes") — the inverse question. Fix: identical path lists at every site, and the RECIPROCAL invariant (`findPathListMismatches`: every site touching a prefix — through `key:` OR `restore-keys:` — declares the same sorted list; a pure-expression key participates through its restore prefixes, a `save` never through `restore-keys`). **Rule: a gate that groups by X to find "one X under many Y" needs its reciprocal before the pair is covered.**
+
+---
+
+### [FIXED, 2026-09] `bootstrap.ts` recorded a package as BUILT on the absence of a check that could not fail.
+
+The batched `bun run --filter=… build` exit is one boolean for N packages; the lib/ postcondition is mtime-based and blind whenever CI restores lib/ NEWER than src/ (`checkout` + `cache/restore`), and it returns null outright for packages that produce no lib/ (`@pyreon/native-runtime-kotlin`, whose build IS the cross-file duplicate-declaration gate). So a failed build got its source hash written to `.bootstrap-cache.json` and was skipped on every later run — a dead-gate-by-cache, with a message reading "ALL originally-dirty packages built successfully". Fix: the batch is run through a tee that CAPTURES bun's per-package verdict lines (`<name> build: Exited with code N`, `attributeBuildFailures`), an attributed failure is dirty regardless of the postcondition, the per-package retry uses its own exit status, and an UNATTRIBUTED non-zero exit records nothing (a withheld hash costs one rebuild; a wrong one skips a broken package forever). **Rule: a "successfully built" record must be gated on positive evidence for THAT package, never on "no check failed".**
+
+---
+
+### [FIXED, 2026-09] `check-gates-wired` counted hook-only validate-fast gates as wired (26 of 46 unenforced).
+
+26 of 46 gates (license coverage, tsconfig presets, cache-key sync, workflow shell order, iOS signing policy, `check-gates-wired` itself…) had no workflow `run:` line and were enforced by nobody while reporting green. Fix: `Fast Gates` runs `validate-fast --ci-complement` (the gates no workflow invokes, directly or via a root `package.json` alias — computed at runtime from `scripts/gate-wiring.ts`, so nothing runs twice and a gate added to validate-fast is enforced from its first PR), and `check-gates-wired` fails if that step disappears. **Rule: "wired" must mean "some path CI cannot skip runs it"; a hook is a convenience, not enforcement.**
+
+---
+
+### [FIXED, 2026-09] Three release-script defects: CI-only branches nobody had executed locally.
+
+(1) `publish.ts` referenced the loop variable `${name}` OUTSIDE its loop, inside the `GITHUB_STEP_SUMMARY` block — a Node script inheriting the DOM lib typechecks that as `window.name`, and it is a ReferenceError only under Actions, which failed the release step documented as non-blocking. (2) `heal-release-chain.ts` parsed `{version, published}` from `publish-result.json` and DROPPED `failed`/`blocked`, then created a GitHub Release reading "All packages … at &#123;version&#125;" — with the 0.51.0 shape (70 published, 2 failed, 1 blocked) the tag, the Release and the native dispatch all fired before `check-published-state` could red the run; its registry retry also never retried a THROWN fetch (DNS/ECONNRESET — the dominant transient), so the deliberate "registry unreachable — refusing to guess" exit was unreachable. (3) `cap-changeset-bumps.ts` ran its `<key>: major` regex over the WHOLE changeset file; the pattern matches English (`Impact: major`), and a body is copied verbatim into `CHANGELOG.md`, so the published changelog inverted what the author wrote. Fixes: interpolate the list; a `PublishResult.incomplete` set that refuses the Release (not the tag/dispatch — the chain is what native builds hang off) with a `::error::` naming the packages, in BOTH phases; `try/catch` inside the retry loop; frontmatter-scoped capping (`capChangesetText`). Also `git diff --name-only` QUOTES non-ASCII paths (`"…caf\303\251.ts"`), which four gates then classified as "not relevant" — one NUL-delimited reader (`scripts/changed-files.ts`, `-z`) now serves all four.
+
+---
+
 ### A type that exists ONLY in a validation stub — the emit compiles against it and references nothing real
 
 (the `<Audio>` instance, 2026-08). Stubs are what let the Swift/Kotlin gates run without an Apple/Android SDK, and they are therefore the one place where DECLARING something hides its absence. `<Audio>` emitted `PyreonAudioPlayer(url:…, engine: AVFoundationAudioEngine())` on iOS and `Media3AudioEngine(…)` on Android; all three names lived only in `swift-stubs.ts` / `kotlin-stubs.ts`, so the primitive had never compiled on either platform while every gate stayed green for its whole life. **Two checks, both needed: (1) every OWNED type a stub declares AND an emitter emits must be declared in that language's REAL runtime — paired BY LANGUAGE, since a combined corpus finds Swift's `PyreonAudioPlayer` for the Kotlin check and passes; (2) compile a probe against the real SDK WITH the real runtime sources linked in, which additionally catches a wrong signature, an unaccepted modifier, an availability mismatch — none of which a name check can see.** The mirror failure is a stub NARROWER than the runtime, which manufactures a phantom bug in correct codegen; both are stub-fidelity defects, one quiet and one loud. Reference: `packages/native/compiler/src/tests/{emitted-runtime-types-exist,real-runtime-typecheck}.test.ts`.

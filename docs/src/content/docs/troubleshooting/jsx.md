@@ -119,6 +119,24 @@ A `<label>` FORWARDS its click to the wrapped control as a default action, so on
 
 ---
 
+### [FIXED, 2026-09] Template ATTRIBUTE bake lagged the TEXT bake by three escaping rules.
+
+`escapeLiteralText` (text children) already encoded line terminators as numeric entities, preserved well-formed entities and used the COOKED template-literal value; `escapeHtmlAttr` (attributes) escaped only `&` and `"`. Consequences: a multi-line JSX attribute — legal JSX, and oxc keeps the newline verbatim — baked a raw `\n` into the double-quoted `_tpl` JS string → `Unterminated string`, a hard BUILD break (CRLF checkouts hit it on every multi-line attribute); `title="a&quot;b"` was escaped AGAIN so the DOM attribute held the SOURCE text `a&quot;b` while the h() path (oxc decodes entities) and SSR held `a"b` — a wrong value AND a hydration divergence; `` title=&#123;`a\tb`&#125; `` baked the RAW quasi, rendering a backslash and a `t`. Fix: `escapeHtmlAttr` (JSX string — entity-aware `&`, like `escapeHtmlText`) / `escapeLiteralAttr` (JS string — unconditional `&`), both encoding `\n`/`\r`/U+2028/9 as `&#N;`, and the cooked quasi (absent cooked → runtime path). **Rule: when a seam has two consumers of one contract (text bake / attribute bake; JSX-string / JS-string), a fix to one is a fix to a SHAPE — grep the sibling before closing.** Both backends byte-identical; locked by `compiler/src/tests/template-escape-audit.test.ts` + `runtime-dom/src/tests/template-escape-audit.test.tsx` (bisect-verified). **Same emitter, same PR — a plain attribute AFTER a spread lost to the spread:** `<a {...p} rel="noopener" href="/safe">` ≡ `{...p, rel, href}`: the later key wins. The emitter baked the static value into the HTML and only THEN applied the spread (`_applyProps`), and a dynamic spread (`_bindSpread`) re-applied on every change — so `<div {...p} id="b">` and `<div id="b" {...p}>` emitted BYTE-IDENTICALLY and a caller-controlled `p.rel` silently overrode the very guard written to defeat it. Fix: `hasBailAttr` bails an element with a plain attribute after a spread to h(), which spreads into one object and is correct by construction (a plain attribute BEFORE the spread keeps the template — the spread legitimately wins there). In-repo blast radius: one file.
+
+---
+
+### [FIXED, 2026-09] Raw-text elements (`<script>`/`<style>`) were entity-escaped in the bake AND in SSR.
+
+`<style>{'.b > i {}'}</style>` baked `.b &gt; i {}` and the browser rendered the ENTITY CHARACTERS (invalid selector, rule dropped); `<script>{'a && b'}</script>` shipped `a &amp;&amp; b`, a SyntaxError at eval. SSR (`renderToString`) made the same mistake with `escapeHtml`, so every server-rendered inline style/script was corrupted too — and differently from the client (`&#10;` vs a real newline), a guaranteed hydration mismatch. Fix: the compiler bails raw-text elements WITH content to h() in both the `_tpl` and `_ssr` emitters (`RAW_TEXT_ELEMENTS`; `<iframe>` is raw text too but its fallback is never rendered, so it is deliberately excluded — a differential spec depends on that), and `runtime-server` serializes `<script>`/`<style>` text with React Fizz's raw-text-safe escape (only `</script`/`<script`/`</style` are neutralised, with `\u0073` so the escaped script still parses). A void element written with children (`<br>x</br>`) bails too — the parser reads them as SIBLINGS of the template root and drops them. **Detection trap: happy-dom DECODES entities inside `<style>`, so the happy-dom mount spec passed against the reverted gate; only the compiler emit spec and the real-Chromium `raw-text-template.browser.test.tsx` discriminate.**
+
+---
+
+### [FIXED, 2026-09] Signal auto-call knew three shadow forms and auto-called every other binding.
+
+`findShadowingNames` knew a plain param, a one-level destructured param and a top-level `const`. A `catch (error)` / `for (const item of …)` / nested-pattern / default / rest / block-scoped `let` / function or class declaration sharing a module signal's name was still auto-called — `const error = signal(null)` + `catch (error) { return <p>{error}</p> }` compiled to `error()` and threw `TypeError: error is not a function` INSIDE the error handler. Fix: `collectFunctionBindings` (both backends) walks params + every declaration at any block depth, flattening block scope (an over-approximation that can only SKIP an auto-call — the reference stays bare, which the runtime treats as an accessor — never mis-call). **Rule: a scope pass must enumerate the language's BINDING GRAMMAR, not the three shapes the author thought of** — the same "one spelling of an idiom" class PMTC hit four times.
+
+---
+
 ### `className`/`htmlFor`
 
 Use `class` and `for` — standard HTML attributes
