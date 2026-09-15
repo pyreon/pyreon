@@ -2463,15 +2463,14 @@ pub fn transform_plain(
         return None;
     }
 
-    let source_type = SourceType::from_path(&filename)
-        .unwrap_or_default()
-        .with_module(true)
-        // Mirror the JS pre-pass's `getLang`: a `.ts`/`.mts`/`.cts` module parses WITHOUT
-        // JSX, so `<T>(x: T) => x` and `<number>x` are a generic arrow and a type
-        // assertion rather than a parse error. With JSX forced on, the parse failed
-        // and `None` was returned — a VERDICT ("not a plain module"), so the file
-        // shipped un-rewritten and its `state()` calls reached the runtime.
-        .with_jsx(!ts_only_extension(&filename));
+    // Mirror the JS pre-pass's `getLang` EXACTLY (never `SourceType::from_path`,
+    // whose fallback for an unrecognised name — a `?v=` query, `.pyreon` — is
+    // plain JavaScript): a `.ts`/`.mts`/`.cts` module parses WITHOUT JSX, so
+    // `<T>(x: T) => x` and `<number>x` are a generic arrow and a type assertion
+    // rather than a parse error. With JSX forced on, the parse failed and `None`
+    // was returned — a VERDICT ("not a plain module"), so the file shipped
+    // un-rewritten and its `state()` calls reached the runtime.
+    let source_type = plain_source_type(&filename);
     let allocator = Allocator::default();
     let ret = Parser::new(&allocator, &code, source_type).parse();
     if ret.panicked {
@@ -2657,4 +2656,21 @@ pub fn transform_plain(
 /// the JS pre-pass does.
 fn ts_only_extension(filename: &str) -> bool {
     filename.ends_with(".ts") || filename.ends_with(".mts") || filename.ends_with(".cts")
+}
+
+/// The parser dialect for a filename — mirrors `getLang` in `src/plain.ts`
+/// case-for-case (`.tsx` → tsx; `.ts`/`.mts`/`.cts` → ts; `.jsx`/`.pyreon` →
+/// jsx; `.js`/`.mjs`/`.cjs` → js; anything else → tsx).
+fn plain_source_type(filename: &str) -> SourceType {
+    if filename.ends_with(".tsx") {
+        SourceType::tsx()
+    } else if ts_only_extension(filename) {
+        SourceType::ts()
+    } else if filename.ends_with(".jsx") || filename.ends_with(".pyreon") {
+        SourceType::jsx()
+    } else if filename.ends_with(".js") || filename.ends_with(".mjs") || filename.ends_with(".cjs") {
+        SourceType::mjs()
+    } else {
+        SourceType::tsx()
+    }
 }

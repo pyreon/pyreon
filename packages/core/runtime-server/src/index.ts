@@ -683,8 +683,11 @@ async function streamElementNode(vnode: VNode, enqueue: (s: string) => void): Pr
     // every await, so a module-level stack would cross-contaminate; the
     // ALS context sticks to this stream's continuation graph.
     const taValue = textareaValue(tag, props)
+    const raw = taValue === null ? rawTextContent(tag, vnode.children) : null
     if (taValue !== null) {
       enqueue(taValue)
+    } else if (raw !== null) {
+      enqueue(raw)
     } else {
       const frame = tag === 'select' ? makeSelectFrame(props) : null
       // Sole-child accessor: stream its VALUE directly, no range markers — the
@@ -1199,6 +1202,8 @@ function renderElement(vnode: VNode): MaybeAsync {
       html += taValue
       return `${html}</${tag}>`
     }
+    const raw = rawTextContent(tag, vnode.children)
+    if (raw !== null) return `${html}${raw}</${tag}>`
     const frame = tag === 'select' ? makeSelectFrame(props) : null
     // Sole-child accessor: render its VALUE directly — the tag boundary is the
     // extent, so no range markers. See `soleAccessorChild`.
@@ -2246,6 +2251,67 @@ const NEEDS_ESCAPE_RE = /[&<>"']/
  * (`<textarea value="prop">child</textarea>` yields `.value === "prop"` on the
  * client). SSR emitting the children instead would be a hydration mismatch.
  */
+// ─── Raw-text elements (`<script>` / `<style>`) ───────────────────────────────
+//
+// The HTML parser reads the content of these two elements as RAW TEXT: no
+// character reference is ever decoded inside them, so the `escapeHtml` every
+// other text child gets would land as LITERAL characters — `.b > i` became
+// `.b &gt; i` (an invalid selector, rule dropped) and `a && b` became
+// `a &amp;&amp; b` (a SyntaxError at script-eval). The only thing that CAN
+// break out of raw text is the element's own end tag (plus, for script, the
+// `<!--`/`<script` double-escape state), so that is the only thing escaped —
+// the same minimal escape React's Fizz renderer applies (`escapeStyleTextContent`
+// / `escapeEntireInlineScriptContent`). `\u0073` is chosen over a backslash
+// because it is valid inside a JS identifier, string AND regex, so the escaped
+// source still parses to the same program.
+//
+// Content is collected from string/number/accessor children only; a VNode
+// child (or anything else) keeps the ordinary path, which is what the h()
+// client mount does for it too. The compiled `_ssr` fast path bails on these
+// tags in both backends (`RAW_TEXT_ELEMENTS`), so the runtime is the single
+// producer of their bytes.
+function rawTextChildren(children: readonly VNodeChild[]): string | null {
+  let out = ''
+  const walk = (c: unknown): boolean => {
+    if (c == null || typeof c === 'boolean') return true
+    if (typeof c === 'string') {
+      out += c
+      return true
+    }
+    if (typeof c === 'number') {
+      out += String(c)
+      return true
+    }
+    if (typeof c === 'function') return walk((c as () => unknown)())
+    if (Array.isArray(c)) {
+      for (const x of c) if (!walk(x)) return false
+      return true
+    }
+    return false
+  }
+  return walk(children) ? out : null
+}
+
+const SCRIPT_BREAKOUT_RE = /(<\/|<)(s)(cript)/gi
+const STYLE_BREAKOUT_RE = /<\/(style)/gi
+
+function escapeRawText(tag: string, text: string): string {
+  if (tag === 'script') {
+    return text.replace(SCRIPT_BREAKOUT_RE, (_m, prefix: string, s: string, rest: string) =>
+      `${prefix}${s === 's' ? '\\u0073' : '\\u0053'}${rest}`,
+    )
+  }
+  return text.replace(STYLE_BREAKOUT_RE, '<\\/$1')
+}
+
+/** Raw-text content for a `<script>`/`<style>` element, or `null` when the tag
+ * is not raw-text or a child is not text-shaped (→ the ordinary path). */
+function rawTextContent(tag: string, children: readonly VNodeChild[]): string | null {
+  if (tag !== 'script' && tag !== 'style') return null
+  const text = rawTextChildren(children)
+  return text === null ? null : escapeRawText(tag, text)
+}
+
 function textareaValue(tag: string, props: Record<string, unknown> | null): string | null {
   if (tag !== 'textarea' || props == null) return null
   let v = props.value

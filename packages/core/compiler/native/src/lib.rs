@@ -129,6 +129,15 @@ fn is_delegated_event(name: &str) -> bool {
     )
 }
 
+/// Raw-text elements — the parser never decodes character references inside
+/// them. Mirrors JS `RAW_TEXT_ELEMENTS`.
+fn is_raw_text_element(tag: &str) -> bool {
+    matches!(
+        tag,
+        "script" | "style" | "xmp" | "iframe" | "noembed" | "noframes" | "plaintext" | "noscript"
+    )
+}
+
 fn is_void_element(tag: &str) -> bool {
     matches!(
         tag,
@@ -292,8 +301,55 @@ fn is_lower_case(s: &str) -> bool {
 /// literal NUL is avoided here: it breaks grep, formatters and diff tooling).
 const HOLE_SENTINEL: char = '\u{0}';
 
+/// A JSX attribute STRING value (`title="…"`) baked into the `<template>` HTML.
+/// Mirrors the JS backend's `escapeHtmlAttr` byte-for-byte: a well-formed
+/// entity is preserved (oxc keeps entities literal in `.value`; the downstream
+/// JSX transform and the `<template>` parser decode them identically), a bare
+/// `&` and `"` are escaped, and line terminators become numeric entities (the
+/// template HTML is a double-quoted JS string that escapes only `\\` and `"`).
 fn escape_html_attr(s: &str) -> String {
-    s.replace('&', "&amp;").replace('"', "&quot;")
+    let mut out = String::with_capacity(s.len());
+    for (i, ch) in s.char_indices() {
+        match ch {
+            '&' => {
+                // Already a valid HTML entity `&...;`? Leave the `&` as-is.
+                let valid = s[i + 1..]
+                    .find(';')
+                    .is_some_and(|semi_pos| is_valid_entity(&s[i + 1..i + 1 + semi_pos]));
+                if valid {
+                    out.push('&');
+                } else {
+                    out.push_str("&amp;");
+                }
+            }
+            c => push_attr_char(&mut out, c),
+        }
+    }
+    out
+}
+
+/// Unconditional twin of `escape_html_attr` for a JS string literal
+/// (`title={"…"}`) — `&` is always data. Mirrors JS `escapeLiteralAttr`.
+fn escape_literal_attr(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            c => push_attr_char(&mut out, c),
+        }
+    }
+    out
+}
+
+fn push_attr_char(out: &mut String, ch: char) {
+    match ch {
+        '"' => out.push_str("&quot;"),
+        '\n' => out.push_str("&#10;"),
+        '\r' => out.push_str("&#13;"),
+        '\u{2028}' => out.push_str("&#8232;"),
+        '\u{2029}' => out.push_str("&#8233;"),
+        c => out.push(c),
+    }
 }
 
 /// Serialize a string as a double-quoted JS string literal — mirrors the JS
@@ -1486,107 +1542,175 @@ fn is_pure_primitive_method(name: &str) -> bool {
     )
 }
 
-/// Find variable declarations and parameters in a function that shadow signal names.
+/// Every name a binding PATTERN introduces — nested object/array patterns,
+/// defaults, rest. Mirrors the JS backend's `collectPatternNames`.
+fn collect_pattern_names(p: &BindingPattern, out: &mut Vec<String>) {
+    match p {
+        BindingPattern::BindingIdentifier(id) => out.push(id.name.to_string()),
+        BindingPattern::ObjectPattern(obj) => {
+            for prop in &obj.properties {
+                collect_pattern_names(&prop.value, out);
+            }
+            if let Some(rest) = &obj.rest {
+                collect_pattern_names(&rest.argument, out);
+            }
+        }
+        BindingPattern::ArrayPattern(arr) => {
+            for el in arr.elements.iter().flatten() {
+                collect_pattern_names(el, out);
+            }
+            if let Some(rest) = &arr.rest {
+                collect_pattern_names(&rest.argument, out);
+            }
+        }
+        BindingPattern::AssignmentPattern(asg) => collect_pattern_names(&asg.left, out),
+    }
+}
+
+/// A name a function binds plus, for a plain `const x = …` declarator, its
+/// initializer (so callers can apply their "re-declared as the same kind"
+/// carve-out). Mirrors the JS backend's `FunctionBinding`.
+struct FunctionBinding<'a, 'b> {
+    name: String,
+    init: Option<&'b Expression<'a>>,
+}
+
+/// Every name a FUNCTION binds — params plus every declaration in its body at
+/// ANY block depth (variable declarations of any pattern, function/class
+/// declarations, `catch (e)`, `for` heads, and the same inside
+/// `if`/`try`/`switch`/loops/labels). Nested function and class BODIES are
+/// not descended — they get their own scope pass. Block scoping is
+/// deliberately flattened (a name bound anywhere shadows for the whole
+/// function): that can only SKIP an auto-call, never mis-call a non-signal.
+/// Mirrors the JS backend's `collectFunctionBindings` — both backends walk
+/// the identical statement set.
+fn collect_function_bindings<'a, 'b>(
+    params: &'b oxc_ast::ast::FormalParameters<'a>,
+    body: Option<&'b oxc_ast::ast::FunctionBody<'a>>,
+) -> Vec<FunctionBinding<'a, 'b>> {
+    let mut out = Vec::new();
+    let mut names = Vec::new();
+    for param in &params.items {
+        collect_pattern_names(&param.pattern, &mut names);
+    }
+    if let Some(rest) = &params.rest {
+        collect_pattern_names(&rest.rest.argument, &mut names);
+    }
+    for name in names {
+        out.push(FunctionBinding { name, init: None });
+    }
+    if let Some(body) = body {
+        collect_statement_bindings(&body.statements, &mut out);
+    }
+    out
+}
+
+fn collect_statement_bindings<'a, 'b>(stmts: &'b [Statement<'a>], out: &mut Vec<FunctionBinding<'a, 'b>>) {
+    for stmt in stmts {
+        collect_statement_binding(stmt, out);
+    }
+}
+
+fn collect_variable_declaration<'a, 'b>(
+    decl: &'b oxc_ast::ast::VariableDeclaration<'a>,
+    out: &mut Vec<FunctionBinding<'a, 'b>>,
+) {
+    for declarator in &decl.declarations {
+        if let BindingPattern::BindingIdentifier(id) = &declarator.id {
+            out.push(FunctionBinding { name: id.name.to_string(), init: declarator.init.as_ref() });
+        } else {
+            let mut names = Vec::new();
+            collect_pattern_names(&declarator.id, &mut names);
+            for name in names {
+                out.push(FunctionBinding { name, init: None });
+            }
+        }
+    }
+}
+
+fn collect_statement_binding<'a, 'b>(stmt: &'b Statement<'a>, out: &mut Vec<FunctionBinding<'a, 'b>>) {
+    match stmt {
+        Statement::VariableDeclaration(decl) => collect_variable_declaration(decl, out),
+        Statement::FunctionDeclaration(func) => {
+            if let Some(id) = &func.id {
+                out.push(FunctionBinding { name: id.name.to_string(), init: None });
+            }
+        }
+        Statement::ClassDeclaration(class) => {
+            if let Some(id) = &class.id {
+                out.push(FunctionBinding { name: id.name.to_string(), init: None });
+            }
+        }
+        Statement::BlockStatement(block) => collect_statement_bindings(&block.body, out),
+        Statement::IfStatement(if_stmt) => {
+            collect_statement_binding(&if_stmt.consequent, out);
+            if let Some(alt) = &if_stmt.alternate {
+                collect_statement_binding(alt, out);
+            }
+        }
+        Statement::ForStatement(for_stmt) => {
+            if let Some(oxc_ast::ast::ForStatementInit::VariableDeclaration(decl)) = &for_stmt.init {
+                collect_variable_declaration(decl, out);
+            }
+            collect_statement_binding(&for_stmt.body, out);
+        }
+        Statement::ForInStatement(for_in) => {
+            if let oxc_ast::ast::ForStatementLeft::VariableDeclaration(decl) = &for_in.left {
+                collect_variable_declaration(decl, out);
+            }
+            collect_statement_binding(&for_in.body, out);
+        }
+        Statement::ForOfStatement(for_of) => {
+            if let oxc_ast::ast::ForStatementLeft::VariableDeclaration(decl) = &for_of.left {
+                collect_variable_declaration(decl, out);
+            }
+            collect_statement_binding(&for_of.body, out);
+        }
+        Statement::WhileStatement(w) => collect_statement_binding(&w.body, out),
+        Statement::DoWhileStatement(d) => collect_statement_binding(&d.body, out),
+        Statement::LabeledStatement(l) => collect_statement_binding(&l.body, out),
+        Statement::TryStatement(t) => {
+            collect_statement_bindings(&t.block.body, out);
+            if let Some(handler) = &t.handler {
+                if let Some(param) = &handler.param {
+                    let mut names = Vec::new();
+                    collect_pattern_names(&param.pattern, &mut names);
+                    for name in names {
+                        out.push(FunctionBinding { name, init: None });
+                    }
+                }
+                collect_statement_bindings(&handler.body.body, out);
+            }
+            if let Some(fin) = &t.finalizer {
+                collect_statement_bindings(&fin.body, out);
+            }
+        }
+        Statement::SwitchStatement(sw) => {
+            for case in &sw.cases {
+                collect_statement_bindings(&case.consequent, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Find declarations/params in a function that shadow signal names — a
+/// same-named re-declaration that is ITSELF `signal(...)` is not a shadow.
+/// Mirrors JS `findShadowingNames`.
 fn find_shadowing_names(node: &oxc_ast::ast::Function, ctx: &Ctx) -> Vec<String> {
-    let mut shadows = Vec::new();
-    // Check function parameters
-    for param in &node.params.items {
-        match &param.pattern {
-            BindingPattern::BindingIdentifier(id) => {
-                if ctx.signal_vars.contains(id.name.as_str()) {
-                    shadows.push(id.name.to_string());
-                }
-            }
-            BindingPattern::ObjectPattern(obj) => {
-                for prop in &obj.properties {
-                    if let BindingPattern::BindingIdentifier(id) = &prop.value {
-                        if ctx.signal_vars.contains(id.name.as_str()) {
-                            shadows.push(id.name.to_string());
-                        }
-                    }
-                }
-            }
-            BindingPattern::ArrayPattern(arr) => {
-                for el in arr.elements.iter().flatten() {
-                    if let BindingPattern::BindingIdentifier(id) = el {
-                        if ctx.signal_vars.contains(id.name.as_str()) {
-                            shadows.push(id.name.to_string());
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    // Check top-level variable declarations in the function body
-    if let Some(body) = &node.body {
-        for stmt in &body.statements {
-            if let Statement::VariableDeclaration(decl) = stmt {
-                for declarator in &decl.declarations {
-                    if let BindingPattern::BindingIdentifier(id) = &declarator.id {
-                        if ctx.signal_vars.contains(id.name.as_str()) {
-                            if let Some(init) = &declarator.init {
-                                if !is_signal_call_expr(init) {
-                                    shadows.push(id.name.to_string());
-                                }
-                            } else {
-                                shadows.push(id.name.to_string());
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    shadows
+    shadowing_signal_names(collect_function_bindings(&node.params, node.body.as_deref()), ctx)
 }
 
 /// Arrow function variant of find_shadowing_names.
 fn find_shadowing_names_arrow(node: &ArrowFunctionExpression, ctx: &Ctx) -> Vec<String> {
+    shadowing_signal_names(collect_function_bindings(&node.params, node.get_function_body()), ctx)
+}
+
+fn shadowing_signal_names(bindings: Vec<FunctionBinding>, ctx: &Ctx) -> Vec<String> {
     let mut shadows = Vec::new();
-    for param in &node.params.items {
-        match &param.pattern {
-            BindingPattern::BindingIdentifier(id) => {
-                if ctx.signal_vars.contains(id.name.as_str()) {
-                    shadows.push(id.name.to_string());
-                }
-            }
-            BindingPattern::ObjectPattern(obj) => {
-                for prop in &obj.properties {
-                    if let BindingPattern::BindingIdentifier(id) = &prop.value {
-                        if ctx.signal_vars.contains(id.name.as_str()) {
-                            shadows.push(id.name.to_string());
-                        }
-                    }
-                }
-            }
-            BindingPattern::ArrayPattern(arr) => {
-                for el in arr.elements.iter().flatten() {
-                    if let BindingPattern::BindingIdentifier(id) = el {
-                        if ctx.signal_vars.contains(id.name.as_str()) {
-                            shadows.push(id.name.to_string());
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    for stmt in node.get_function_body().map_or(&[][..], |b| &b.statements) {
-        if let Statement::VariableDeclaration(decl) = stmt {
-            for declarator in &decl.declarations {
-                if let BindingPattern::BindingIdentifier(id) = &declarator.id {
-                    if ctx.signal_vars.contains(id.name.as_str()) {
-                        if let Some(init) = &declarator.init {
-                            if !is_signal_call_expr(init) {
-                                shadows.push(id.name.to_string());
-                            }
-                        } else {
-                            shadows.push(id.name.to_string());
-                        }
-                    }
-                }
-            }
+    for b in bindings {
+        if ctx.signal_vars.contains(b.name.as_str()) && !b.init.is_some_and(is_signal_call_expr) {
+            shadows.push(b.name);
         }
     }
     shadows
@@ -1757,102 +1881,23 @@ fn maybe_register_jsx_fn_decl(func: &oxc_ast::ast::Function, ctx: &mut Ctx) {
     }
 }
 
-/// `find_shadowing_names` applied to `jsx_fn_vars` (params + body-top-level
-/// variable declarations; a same-named re-decl that is ITSELF a
-/// JSX-returning fn is not a shadow — mirrors the `is_signal_call_expr`
-/// carve-out). Mirrors JS `findShadowingJsxFnNames` (PZ-02).
+/// `find_shadowing_names` applied to `jsx_fn_vars` — a same-named re-decl
+/// that is ITSELF a JSX-returning fn is not a shadow (mirrors the
+/// `is_signal_call_expr` carve-out). Mirrors JS `findShadowingJsxFnNames` (PZ-02).
 fn find_shadowing_jsx_fn_names(node: &oxc_ast::ast::Function, ctx: &Ctx) -> Vec<String> {
-    let mut shadows = Vec::new();
-    for param in &node.params.items {
-        match &param.pattern {
-            BindingPattern::BindingIdentifier(id) => {
-                if ctx.jsx_fn_vars.contains(id.name.as_str()) {
-                    shadows.push(id.name.to_string());
-                }
-            }
-            BindingPattern::ObjectPattern(obj) => {
-                for prop in &obj.properties {
-                    if let BindingPattern::BindingIdentifier(id) = &prop.value {
-                        if ctx.jsx_fn_vars.contains(id.name.as_str()) {
-                            shadows.push(id.name.to_string());
-                        }
-                    }
-                }
-            }
-            BindingPattern::ArrayPattern(arr) => {
-                for el in arr.elements.iter().flatten() {
-                    if let BindingPattern::BindingIdentifier(id) = el {
-                        if ctx.jsx_fn_vars.contains(id.name.as_str()) {
-                            shadows.push(id.name.to_string());
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    if let Some(body) = &node.body {
-        for stmt in &body.statements {
-            if let Statement::VariableDeclaration(decl) = stmt {
-                for declarator in &decl.declarations {
-                    if let BindingPattern::BindingIdentifier(id) = &declarator.id {
-                        if ctx.jsx_fn_vars.contains(id.name.as_str()) {
-                            match &declarator.init {
-                                Some(init) if is_jsx_fn_init(init) => {}
-                                _ => shadows.push(id.name.to_string()),
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    shadows
+    shadowing_jsx_fn_names(collect_function_bindings(&node.params, node.body.as_deref()), ctx)
 }
 
 /// Arrow variant of `find_shadowing_jsx_fn_names`.
 fn find_shadowing_jsx_fn_names_arrow(node: &ArrowFunctionExpression, ctx: &Ctx) -> Vec<String> {
+    shadowing_jsx_fn_names(collect_function_bindings(&node.params, node.get_function_body()), ctx)
+}
+
+fn shadowing_jsx_fn_names(bindings: Vec<FunctionBinding>, ctx: &Ctx) -> Vec<String> {
     let mut shadows = Vec::new();
-    for param in &node.params.items {
-        match &param.pattern {
-            BindingPattern::BindingIdentifier(id) => {
-                if ctx.jsx_fn_vars.contains(id.name.as_str()) {
-                    shadows.push(id.name.to_string());
-                }
-            }
-            BindingPattern::ObjectPattern(obj) => {
-                for prop in &obj.properties {
-                    if let BindingPattern::BindingIdentifier(id) = &prop.value {
-                        if ctx.jsx_fn_vars.contains(id.name.as_str()) {
-                            shadows.push(id.name.to_string());
-                        }
-                    }
-                }
-            }
-            BindingPattern::ArrayPattern(arr) => {
-                for el in arr.elements.iter().flatten() {
-                    if let BindingPattern::BindingIdentifier(id) = el {
-                        if ctx.jsx_fn_vars.contains(id.name.as_str()) {
-                            shadows.push(id.name.to_string());
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    for stmt in node.get_function_body().map_or(&[][..], |b| &b.statements) {
-        if let Statement::VariableDeclaration(decl) = stmt {
-            for declarator in &decl.declarations {
-                if let BindingPattern::BindingIdentifier(id) = &declarator.id {
-                    if ctx.jsx_fn_vars.contains(id.name.as_str()) {
-                        match &declarator.init {
-                            Some(init) if is_jsx_fn_init(init) => {}
-                            _ => shadows.push(id.name.to_string()),
-                        }
-                    }
-                }
-            }
+    for b in bindings {
+        if ctx.jsx_fn_vars.contains(b.name.as_str()) && !b.init.is_some_and(is_jsx_fn_init) {
+            shadows.push(b.name);
         }
     }
     shadows
@@ -2656,10 +2701,8 @@ fn resolve_var_to_string(var_name: &str, ctx: &mut Ctx) -> String {
     let program = ctx.program;
     let resolved = if let Some(init_expr) = find_init_expression_by_span(program, span) {
         // AST-based resolution: find identifier references to prop-derived vars
-        let prop_derived_vars_snapshot: FxHashMap<String, Span> =
-            ctx.prop_derived_vars.clone();
         let mut idents: Vec<(u32, u32, String, bool)> = Vec::new();
-        collect_prop_derived_idents(init_expr, &prop_derived_vars_snapshot, &mut idents);
+        collect_prop_derived_idents(init_expr, &ctx.prop_derived_vars, &mut idents);
 
         if idents.is_empty() {
             ctx.source[span.start as usize..span.end as usize].to_string()
@@ -3959,10 +4002,19 @@ pub fn transform_jsx(
     ssr_template: Option<bool>,
     templatize_component_children: Option<bool>,
 ) -> TransformResult {
-    let source_type = SourceType::from_path(&filename)
-        .unwrap_or_default()
-        .with_module(true)
-        .with_jsx(true);
+    // Mirror the JS backend's `getLang` EXACTLY: `.jsx` parses as JSX, every
+    // other filename as TSX. Deriving the dialect from the path
+    // (`SourceType::from_path`) fell back to plain JavaScript for any name
+    // oxc did not recognise — a Vite id carrying a `?v=` query, `.pyreon`, an
+    // uppercase extension — so TypeScript syntax failed to parse, `panicked`
+    // hit, and the source was returned UNCHANGED as a success: raw JSX shipped
+    // to the browser with no error and no JS fallback. The JS backend never
+    // consulted the path, so the two disagreed on the same input.
+    let source_type = if filename.ends_with(".jsx") {
+        SourceType::jsx()
+    } else {
+        SourceType::tsx()
+    };
 
     let allocator = Allocator::default();
     let ret = Parser::new(&allocator, &code, source_type).parse();
@@ -4850,6 +4902,12 @@ fn handle_jsx_expression_child(container: &JSXExpressionContainer, ctx: &mut Ctx
                 let unwrapped = unwrap_type_layers(expr);
                 let sliced = slice_expr(unwrapped, ctx);
                 ctx.add_replacement(sp.start, sp.end, format!("() => {}", sliced));
+                ctx.lens(
+                    sp.start,
+                    sp.end,
+                    "reactive",
+                    "live — re-evaluates whenever its signals change".to_string(),
+                );
                 return;
             }
             // Skip the carve-out for signal references — `<Comp>{count}</Comp>`
@@ -6105,6 +6163,11 @@ fn ssr_serialize_element(buf: &mut SsrBuf, el: &JSXElement, mode: SsrMode, ctx: 
     if tag == "select" || tag == "option" {
         return false; // PZ-09 complexity → bail
     }
+    // Raw-text content is serialized by the runtime with a raw-text-safe
+    // escape, not `escape_html` — bail so the bake can't drift (mirrors JS).
+    if is_raw_text_element(tag) && !self_closing {
+        return false;
+    }
     // Duplicate plain attrs (JSX last-wins) — baking both is parser-first-wins.
     let mut seen: FxHashSet<String> = FxHashSet::default();
     for a in &el.opening_element.attributes {
@@ -6584,15 +6647,24 @@ fn try_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
 }
 
 fn has_bail_attr(el: &JSXElement, is_root: bool) -> bool {
+    let mut saw_spread = false;
     for attr in &el.opening_element.attributes {
         match attr {
             JSXAttributeItem::SpreadAttribute(_) => {
                 if is_root {
+                    saw_spread = true;
                     continue;
                 }
                 return true;
             }
             JSXAttributeItem::Attribute(a) => {
+                // A plain attribute AFTER a spread must win over the spread's
+                // key (JSX object semantics); the template path applied the
+                // spread LAST. Bail to h(), which is correct by construction.
+                // Mirrors `hasBailAttr` in `src/jsx.ts`.
+                if saw_spread {
+                    return true;
+                }
                 // A NAMESPACED name (`xlink:href`) is NOT a bail any more: every
                 // reader in this backend goes through `jsx_attr_name`, so the
                 // qualified name reaches the static bake, the dynamic `_setAttr`
@@ -6722,6 +6794,11 @@ fn template_element_count(el: &JSXElement, is_root: bool, tpl_components: bool) 
     }
     if is_self_closing(el) {
         return 1;
+    }
+    // Raw-text content never decodes a baked entity; a void element with
+    // children parses them as siblings. Both keep the h() path (mirrors JS).
+    if (is_raw_text_element(tag) || is_void_element(tag)) && !el.children.is_empty() {
+        return -1;
     }
     let mut count = 1;
     // Decided ONCE per element and threaded down, including through fragment
@@ -7552,7 +7629,7 @@ fn static_attr_to_html(expr: &Expression, html_attr_name: &str, tag: &str) -> Op
             if is_select_value {
                 return None;
             }
-            Some(format!(" {}=\"{}\"", html_attr_name, escape_html_attr(&s.value)))
+            Some(format!(" {}=\"{}\"", html_attr_name, escape_literal_attr(&s.value)))
         }
         Expression::NumericLiteral(n) => {
             if is_select_value {
@@ -7576,15 +7653,16 @@ fn static_attr_to_html(expr: &Expression, html_attr_name: &str, tag: &str) -> Op
             if is_select_value {
                 return None;
             }
-            // No-substitution template literal: use the raw text
-            if let Some(quasi) = t.quasis.first() {
-                Some(format!(
+            // No-substitution template literal: bake the COOKED text (the value
+            // the runtime sees); an absent cooked value is an invalid escape →
+            // the runtime path. Mirrors the JS backend.
+            match t.quasis.first().and_then(|q| q.value.cooked.as_ref()) {
+                Some(cooked) => Some(format!(
                     " {}=\"{}\"",
                     html_attr_name,
-                    escape_html_attr(quasi.value.raw.as_str())
-                ))
-            } else {
-                Some(String::new())
+                    escape_literal_attr(cooked.as_str())
+                )),
+                None => None,
             }
         }
         // Signed numeric literal: `tabIndex={-1}` — trivially foldable, bake.
