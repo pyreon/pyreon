@@ -306,6 +306,10 @@ async function main(): Promise<number> {
   const doc = readFileSync(docPath, 'utf8')
   const start = doc.indexOf(TABLE_START)
   const end = doc.indexOf(TABLE_END)
+  // Sorted by name: `findManifests` walks the filesystem, whose order differs
+  // between macOS (alphabetical) and the ubuntu runner (ext4 hash order) — an
+  // unsorted table regenerates differently per platform and drifts CI-only.
+  rows.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
   const rendered = renderTierTable(rows)
   if (start === -1 || end === -1) {
     failures.push(

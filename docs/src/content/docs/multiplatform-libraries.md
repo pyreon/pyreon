@@ -493,72 +493,72 @@ the machine-checked contract.
 
 | Package | Why |
 | --- | --- |
+| `@pyreon/attrs` | attrs(&#123; name, component &#125;) default-prop HOC lowers via attrs-native (use-site wins) |
+| `@pyreon/coolgrid` | Container/Row/Col lower (equal-fill + literal fractional Col spans) |
 | `@pyreon/core` | the JSX authoring surface PMTC compiles — For/Show/Suspense/ErrorBoundary lower; Switch/Match/Dynamic/Portal/Index warn with concrete alternatives |
+| `@pyreon/elements` | Element→Stack and Text lower via elements-native; the rich web-only surfaces (Overlay/Portal/List slots) warn per-construct |
 | `@pyreon/primitives` | the 15 canonical primitives: real web DOM runtime AND SwiftUI/Compose emit — the compiler's native target vocabulary |
 | `@pyreon/reactivity` | L0 of the shared-code model: signal/computed/effect lower as-is; PyreonReactivity runtime ports on both native targets |
-| `@pyreon/sized-map` | pure-logic bounded FIFO/LRU map with no platform edge; `new SizedMap<K, V>(&#123; maxEntries &#125;)` lowers to the co-located PyreonSizedMap runtime on both native targets (a computed cap stays web — the literal is baked into the emit) |
-| `@pyreon/rx` | the namespace form (rx.filter/map/…) lowers per-method to native collection ops; standalone transforms warn |
-| `@pyreon/coolgrid` | Container/Row/Col lower (equal-fill + literal fractional Col spans) |
-| `@pyreon/ui-core` | `<PyreonUI>` lowers transparently on native (theme is compile-time; dark mode is the system read) |
-| `@pyreon/attrs` | attrs(&#123; name, component &#125;) default-prop HOC lowers via attrs-native (use-site wins) |
-| `@pyreon/elements` | Element→Stack and Text lower via elements-native; the rich web-only surfaces (Overlay/Portal/List slots) warn per-construct |
-| `@pyreon/styler` | styled(Prim) + defineTheme tokens lower via the styler-native frontend; the CSS-in-JS runtime is web, the authored patterns compile |
 | `@pyreon/rocketstyle` | rocketstyle-over-primitive chains lower (static cascade + one dynamic dimension) via rocketstyle-native |
+| `@pyreon/rx` | the namespace form (rx.filter/map/…) lowers per-method to native collection ops; standalone transforms warn |
+| `@pyreon/sized-map` | pure-logic bounded FIFO/LRU map with no platform edge; `new SizedMap<K, V>(&#123; maxEntries &#125;)` lowers to the co-located PyreonSizedMap runtime on both native targets (a computed cap stays web — the literal is baked into the emit) |
+| `@pyreon/styler` | styled(Prim) + defineTheme tokens lower via the styler-native frontend; the CSS-in-JS runtime is web, the authored patterns compile |
+| `@pyreon/ui-core` | `<PyreonUI>` lowers transparently on native (theme is compile-time; dark mode is the system read) |
 
 ### `service-backend` — one API, per-target runtime backends (9)
 
 | Package | Why |
 | --- | --- |
-| `@pyreon/router` | web history/hash router + @pyreon/native-router-&#123;swift,kotlin&#125; ports; nav/params/guards/loaders device-proven |
 | `@pyreon/form` | useForm v2 + useFieldArray lower to PyreonForm/PyreonFieldArray; device-proven both platforms |
-| `@pyreon/permissions` | usePermissions read surface lowers to PyreonPermissions (callable can/all/any) |
-| `@pyreon/storage` | useStorage family over @PyreonAppStorage (Swift) / rememberPyreonStorage (Kotlin); persistence device-proven |
 | `@pyreon/hooks` | the L2 service-hook layer: every hook in PMTC's NATIVE_LOWERED_HOOKS has a web implementation and Swift/Kotlin runtime ports; the remaining hooks are web conveniences |
-| `@pyreon/machine` | createMachine lowers to PyreonMachine on both targets; transition device-asserted |
-| `@pyreon/state-tree` | model() lowers to PyreonModel singletons on both targets |
 | `@pyreon/i18n` | createI18n core (t(), interpolation, one/other plurals) lowers to PyreonI18n; translation device-proven both platforms |
+| `@pyreon/machine` | createMachine lowers to PyreonMachine on both targets; transition device-asserted |
+| `@pyreon/permissions` | usePermissions read surface lowers to PyreonPermissions (callable can/all/any) |
+| `@pyreon/router` | web history/hash router + @pyreon/native-router-&#123;swift,kotlin&#125; ports; nav/params/guards/loaders device-proven |
+| `@pyreon/state-tree` | model() lowers to PyreonModel singletons on both targets |
+| `@pyreon/storage` | useStorage family over @PyreonAppStorage (Swift) / rememberPyreonStorage (Kotlin); persistence device-proven |
 | `@pyreon/store` | defineStore lowers to @Observable singleton (Swift) / mutableStateOf object (Kotlin); cross-screen state device-proven |
 
 ### `web-only` — architecturally coupled to the web platform (37)
 
 | Package | Why |
 | --- | --- |
-| `@pyreon/runtime-dom` | the DOM renderer — on native, PMTC emits SwiftUI/Compose instead of running a renderer; `<Transition>` / `<TransitionGroup>` DO cross, but import them from `@pyreon/primitives` (this package is web-only, so importing them from here warns) |
-| `@pyreon/server` | SSR handler + islands for web deployments; native apps have no server-rendered HTML |
-| `@pyreon/runtime-server` | server-side HTML rendering (SSR/streaming) — a web-platform concern with no native analogue |
-| `@pyreon/head` | document `<head>` management — no equivalent surface exists on iOS/Android |
-| `@pyreon/compiler` | the web JSX compiler + build tooling itself; the native sibling is @pyreon/native-compiler — nothing here ships to an app runtime |
-| `@pyreon/validate` | pure-logic schema DSL; the runtime engine (JIT, JSON-schema export, async refinements, the v1/mini compat surfaces) stays web, and inline uses like `s.string().parse(x)` do not lower |
-| `@pyreon/dnd` | `useSortable` now lowers to the native PyreonSortableState engine (list reorder, the highest-value case); the element-getter hooks (useDraggable/useDroppable), the page-global useDragMonitor and the OS-file useFileDrop stay web — they are pdnd/DOM-shaped, not gesture-shaped |
-| `@pyreon/toast` | the core `toast(...)` + `<Toaster>` now lower to the native PyreonToast runtime (v1); the rich surface (toast.promise/update, options, animation) stays web |
-| `@pyreon/hotkeys` | keyboard-shortcut layer over DOM KeyboardEvent. The REGISTRY half (registerHotkey / scopes / conflict reporting) is web; the `useHotkey` authoring hook lowers — see nativeFrontend |
-| `@pyreon/code` | wraps CodeMirror 6 (DOM editor engine); consume on native via the `<WebView>` bridge subpath |
-| `@pyreon/charts` | the DEFAULT export wraps ECharts (a browser canvas engine) and stays web — keep it in a `<Web>` branch or embed it through the `<WebView>` bridge subpath. `@pyreon/charts/plot` is the multiplatform engine: every direct family host lowers to a native PyreonChartCanvas (`<MapChart>` from a precomputed `GeoShape[]`; the map registry, raw GeoJSON and `geoShapes()` stay web and warn by name) over the GENERATED engine. Static inline `<OptionChart>` options lower for line / bar / scatter, pie, gauge, radar, candlestick, heatmap, funnel, treemap, sunburst, tree, sankey and graph; dynamic options and the remaining option families warn instead of silently emitting an empty native view. A bare host follows the device colour scheme, as it follows `prefers-color-scheme` in a browser. Marks lower too, the indicators included: `sma` / `ema` / `trend` from a numeric-literal window, and `bollinger`'s array spread expanded to the band and middle line it names (see nativeFrontend and the Charts row of the capability matrix) |
-| `@pyreon/document` | wraps pdfmake/docx/exceljs/pptxgenjs (browser/node document engines); no native lowering |
-| `@pyreon/url-state` | the address bar is the web's own surface — history entries, `popstate`, `batchUrlUpdates` and the pluggable serializers stay web; on native the equivalent is the router's search parameters |
-| `@pyreon/table` | the TanStack-backed `useTable` (row model / faceting / virtual sizing) stays web; the dependency-free `createTableState` engine lowers to the native PyreonTableState port, rendered with `<For>` + primitives |
-| `@pyreon/http` | universal web/node HTTP client (WHATWG fetch); the transport (middleware, interceptors, streaming) stays web — native networking is the PyreonFetch/PyreonHttp runtime layer |
-| `@pyreon/virtual` | DOM virtualization (scroll containers, measured rows); native lists are lazy by construction (LazyColumn/LazyVStack) |
-| `@pyreon/rich-text` | wraps TipTap/ProseMirror (DOM editor); consume on native via the `<WebView>` bridge subpath |
 | `@pyreon/a11y` | mostly DOM/ARIA utilities (the native element a11y story is the AccessibilityProps vocabulary on @pyreon/primitives); `announce(...)` now lowers to the native PyreonA11y runtime |
-| `@pyreon/feature` | CRUD composite over query/form/store/validation. The RUNTIME half stays web — the generated hooks (useList / useById / useCreate / useUpdate / useDelete / useSearch), the network fetcher, and validator/form integration all lower only when every dependency does. The DECLARATION half already crosses (see nativeFrontend) |
-| `@pyreon/sync` | the Yjs engine + IndexedDB/WebSocket transports stay web; the engine-neutral PyreonCrdt core + `syncedSignal` lower to a native runtime, cross-device transport tracked |
-| `@pyreon/query` | wraps TanStack Query (a JS runtime cache), so the full client — QueryClient config, devtools, infinite/suspense queries — stays web; `useQuery` itself lowers to the PyreonQuery runtime |
-| `@pyreon/validation` | Standard Schema adapters (zod/valibot/arktype are JS libraries), so the adapters themselves stay web; the declarative schema FORMS lower to native validators (Gap-4 v1) |
-| `@pyreon/flow` | the core state, host, literal custom node maps, layouts, and common overlays lower natively, while `<Handle>`, advanced node chrome, and custom edge renderers still require explicit native follow-ups or the WebView bridge |
-| `@pyreon/lint` | lint tooling — runs at dev time, not app runtime |
-| `@pyreon/lathe` | the code generator — build-time tooling that emits app code, not app runtime itself |
-| `@pyreon/config` | build-time config shape read by the tooling that assembles an app — never part of a rendered app on any target |
-| `@pyreon/mcp` | the MCP server — dev/AI tooling, not app runtime |
-| `@pyreon/testing` | the web testing kit (Testing-Library parity over the DOM renderer); native testing is XCUITest/Compose-test territory |
 | `@pyreon/atlas` | the component workbench — dev tooling that runs in a browser, not app runtime |
-| `@pyreon/loom` | the dependency observatory — dev tooling, not app runtime |
-| `@pyreon/kinetic-presets` | preset pack for the kinetic CSS engine; the presets whose motion exists in the native vocabulary cross — see nativeFrontend |
+| `@pyreon/charts` | the DEFAULT export wraps ECharts (a browser canvas engine) and stays web — keep it in a `<Web>` branch or embed it through the `<WebView>` bridge subpath. `@pyreon/charts/plot` is the multiplatform engine: every direct family host lowers to a native PyreonChartCanvas (`<MapChart>` from a precomputed `GeoShape[]`; the map registry, raw GeoJSON and `geoShapes()` stay web and warn by name) over the GENERATED engine. Static inline `<OptionChart>` options lower for line / bar / scatter, pie, gauge, radar, candlestick, heatmap, funnel, treemap, sunburst, tree, sankey and graph; dynamic options and the remaining option families warn instead of silently emitting an empty native view. A bare host follows the device colour scheme, as it follows `prefers-color-scheme` in a browser. Marks lower too, the indicators included: `sma` / `ema` / `trend` from a numeric-literal window, and `bollinger`'s array spread expanded to the band and middle line it names (see nativeFrontend and the Charts row of the capability matrix) |
+| `@pyreon/code` | wraps CodeMirror 6 (DOM editor engine); consume on native via the `<WebView>` bridge subpath |
+| `@pyreon/compiler` | the web JSX compiler + build tooling itself; the native sibling is @pyreon/native-compiler — nothing here ships to an app runtime |
+| `@pyreon/config` | build-time config shape read by the tooling that assembles an app — never part of a rendered app on any target |
 | `@pyreon/connector-document` | bridges ui-components to @pyreon/document extraction — both ends are web/document engines |
+| `@pyreon/dnd` | `useSortable` now lowers to the native PyreonSortableState engine (list reorder, the highest-value case); the element-getter hooks (useDraggable/useDroppable), the page-global useDragMonitor and the OS-file useFileDrop stay web — they are pdnd/DOM-shaped, not gesture-shaped |
+| `@pyreon/document` | wraps pdfmake/docx/exceljs/pptxgenjs (browser/node document engines); no native lowering |
 | `@pyreon/document-primitives` | document-authoring primitives feeding the pdfmake/docx renderers |
+| `@pyreon/feature` | CRUD composite over query/form/store/validation. The RUNTIME half stays web — the generated hooks (useList / useById / useCreate / useUpdate / useDelete / useSearch), the network fetcher, and validator/form integration all lower only when every dependency does. The DECLARATION half already crosses (see nativeFrontend) |
+| `@pyreon/flow` | the core state, host, literal custom node maps, layouts, and common overlays lower natively, while `<Handle>`, advanced node chrome, and custom edge renderers still require explicit native follow-ups or the WebView bridge |
+| `@pyreon/head` | document `<head>` management — no equivalent surface exists on iOS/Android |
+| `@pyreon/hotkeys` | keyboard-shortcut layer over DOM KeyboardEvent. The REGISTRY half (registerHotkey / scopes / conflict reporting) is web; the `useHotkey` authoring hook lowers — see nativeFrontend |
+| `@pyreon/http` | universal web/node HTTP client (WHATWG fetch); the transport (middleware, interceptors, streaming) stays web — native networking is the PyreonFetch/PyreonHttp runtime layer |
 | `@pyreon/kinetic` | CSS-transition animation engine (classes + rAF over real CSSOM). The CLASS/style machinery is web; the PRESET vocabulary crosses — see nativeFrontend |
+| `@pyreon/kinetic-presets` | preset pack for the kinetic CSS engine; the presets whose motion exists in the native vocabulary cross — see nativeFrontend |
+| `@pyreon/lathe` | the code generator — build-time tooling that emits app code, not app runtime itself |
+| `@pyreon/lint` | lint tooling — runs at dev time, not app runtime |
+| `@pyreon/loom` | the dependency observatory — dev tooling, not app runtime |
+| `@pyreon/mcp` | the MCP server — dev/AI tooling, not app runtime |
+| `@pyreon/query` | wraps TanStack Query (a JS runtime cache), so the full client — QueryClient config, devtools, infinite/suspense queries — stays web; `useQuery` itself lowers to the PyreonQuery runtime |
+| `@pyreon/rich-text` | wraps TipTap/ProseMirror (DOM editor); consume on native via the `<WebView>` bridge subpath |
+| `@pyreon/runtime-dom` | the DOM renderer — on native, PMTC emits SwiftUI/Compose instead of running a renderer; `<Transition>` / `<TransitionGroup>` DO cross, but import them from `@pyreon/primitives` (this package is web-only, so importing them from here warns) |
+| `@pyreon/runtime-server` | server-side HTML rendering (SSR/streaming) — a web-platform concern with no native analogue |
+| `@pyreon/server` | SSR handler + islands for web deployments; native apps have no server-rendered HTML |
+| `@pyreon/sync` | the Yjs engine + IndexedDB/WebSocket transports stay web; the engine-neutral PyreonCrdt core + `syncedSignal` lower to a native runtime, cross-device transport tracked |
+| `@pyreon/table` | the TanStack-backed `useTable` (row model / faceting / virtual sizing) stays web; the dependency-free `createTableState` engine lowers to the native PyreonTableState port, rendered with `<For>` + primitives |
+| `@pyreon/testing` | the web testing kit (Testing-Library parity over the DOM renderer); native testing is XCUITest/Compose-test territory |
+| `@pyreon/toast` | the core `toast(...)` + `<Toaster>` now lower to the native PyreonToast runtime (v1); the rich surface (toast.promise/update, options, animation) stays web |
 | `@pyreon/unistyle` | responsive breakpoints + CSS-variable theming over real CSS; native theming is compile-time tokens + the 2-bucket size-class model |
-| `@pyreon/zero-content` | markdown/MDX content pipeline for zero's web rendering |
+| `@pyreon/url-state` | the address bar is the web's own surface — history entries, `popstate`, `batchUrlUpdates` and the pluggable serializers stay web; on native the equivalent is the router's search parameters |
+| `@pyreon/validate` | pure-logic schema DSL; the runtime engine (JIT, JSON-schema export, async refinements, the v1/mini compat surfaces) stays web, and inline uses like `s.string().parse(x)` do not lower |
+| `@pyreon/validation` | Standard Schema adapters (zod/valibot/arktype are JS libraries), so the adapters themselves stay web; the declarative schema FORMS lower to native validators (Gap-4 v1) |
+| `@pyreon/virtual` | DOM virtualization (scroll containers, measured rows); native lists are lazy by construction (LazyColumn/LazyVStack) |
 | `@pyreon/zero` | the web meta-framework (SSR/SSG/ISR, Vite, fs-router); native apps are built by PMTC + create-multiplatform, not zero |
+| `@pyreon/zero-content` | markdown/MDX content pipeline for zero's web rendering |
 
 {/* gen:multiplatform-tiers:end */}
