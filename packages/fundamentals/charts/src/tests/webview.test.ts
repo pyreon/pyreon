@@ -33,6 +33,8 @@ describe('buildChartHostHtml', () => {
     const html = buildChartHostHtml({ forwardEvents: ['legendselectchanged', 'datazoom', 'datazoom', 'click'] })
     expect(html).toContain('chart.dispatchAction(command)')
     expect(html).toContain('completedCommands[commandKey]')
+    expect(html).toContain("chart.showLoading('default', loadingOptions)")
+    expect(html).toContain('chart.hideLoading()')
     expect(html).toContain('["legendselectchanged","datazoom"]')
     expect(html).toContain('__pyreonChartEvent: 1')
   })
@@ -103,8 +105,22 @@ describe('<ChartWebView>', () => {
       __pyreonChartHost: 1,
       option: { series: [] },
       commands: [{ id: 1, type: 'restore' }],
+      loading: { visible: false, options: {} },
     })
     expect(props.data).toMatchObject({ commands: [{ id: 2 }] })
+  })
+
+  it('wraps reactive loading state and options without evaluating them during construction', () => {
+    let visible = false
+    const loading = vi.fn(() => visible)
+    const loadingOptions = vi.fn(() => ({ text: visible ? 'Still working' : 'Ready' }))
+    const vnode = ChartWebView({ option: {}, loading, loadingOptions })
+    expect(loading).not.toHaveBeenCalled()
+    expect(loadingOptions).not.toHaveBeenCalled()
+    visible = true
+    expect((vnode.props as { data: unknown }).data).toMatchObject({
+      loading: { visible: true, options: { text: 'Still working' } },
+    })
   })
 
   it('routes structured hosted events separately from selection messages', () => {

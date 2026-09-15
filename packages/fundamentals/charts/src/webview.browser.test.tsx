@@ -143,6 +143,7 @@ describe('ChartWebView bridge (real ECharts in a real iframe)', () => {
 
   it('runs each command id once and forwards configured events through the same bridge', async () => {
     const commands = signal<readonly { id: string; type: string; name: string }[]>([])
+    const loading = signal(false)
     const received: unknown[] = []
     const { container, unmount } = mountInBrowser(
       h(ChartWebView as never, {
@@ -154,6 +155,8 @@ describe('ChartWebView bridge (real ECharts in a real iframe)', () => {
           series: [{ name: 'A', type: 'bar', data: [1] }],
         }),
         commands: () => commands(),
+        loading: () => loading(),
+        loadingOptions: { text: 'Working' },
         onEvent: (event: unknown) => received.push(event),
       }),
     )
@@ -167,7 +170,14 @@ describe('ChartWebView bridge (real ECharts in a real iframe)', () => {
       win as unknown as {
         [key: string]: { getInstanceByDom(el: Element): { getOption(): { legend: { selected?: Record<string, boolean> }[] } } }
       }
-    )['ech' + 'arts'].getInstanceByDom(el)
+    )['ech' + 'arts']!.getInstanceByDom(el)
+    const loadingCalls: string[] = []
+    const hostInstance = instance as unknown as {
+      showLoading(kind: string, options: { text?: string }): void
+      hideLoading(): void
+    }
+    hostInstance.showLoading = (kind, options) => loadingCalls.push(kind + ':' + options.text)
+    hostInstance.hideLoading = () => loadingCalls.push('hide')
 
     commands.set([{ id: 'hide-a', type: 'legendToggleSelect', name: 'A' }])
     await flush()
@@ -185,6 +195,14 @@ describe('ChartWebView bridge (real ECharts in a real iframe)', () => {
     await flush()
     await new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
     expect(instance.getOption().legend[0]!.selected?.A).toBe(false)
+
+    loading.set(true)
+    await flush()
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
+    loading.set(false)
+    await flush()
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
+    expect(loadingCalls).toEqual(['default:Working', 'hide'])
     unmount()
   })
 })

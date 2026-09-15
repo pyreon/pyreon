@@ -61,6 +61,8 @@ export interface ChartHostEvent {
   payload: Record<string, unknown>
 }
 
+type ChartHostAccessor<T> = T | (() => T)
+
 export interface BuildChartHostHtmlOptions {
   /**
    * ECharts UMD/IIFE source, INLINED into the page — makes it fully
@@ -199,7 +201,8 @@ export function buildChartHostHtml(options: BuildChartHostHtmlOptions = {}): str
   var el = document.getElementById('pyreon-chart');
   var chart = echarts.init(el, ${themeArg}, { renderer: '${safeRenderer}' });
 
-  var lastSig = null, rafId = 0, completedCommands = Object.create(null), completedCommandKeys = [];
+  var lastSig = null, rafId = 0, lastLoading = null, lastLoadingOptions = null;
+  var completedCommands = Object.create(null), completedCommandKeys = [];
   function seriesSig(opt) {
     var s = opt.series;
     if (Object.prototype.toString.call(s) === '[object Array]') {
@@ -237,6 +240,18 @@ export function buildChartHostHtml(options: BuildChartHostHtmlOptions = {}): str
         completedCommandKeys.push(commandKey);
         if (completedCommandKeys.length > 1024) delete completedCommands[completedCommandKeys.shift()];
       } catch (e) { pyreonReportHostError(String(e && e.stack || e)); }
+    }
+    if (isEnvelope && input.loading) {
+      var visible = input.loading.visible === true;
+      var loadingOptions = input.loading.options && typeof input.loading.options === 'object' ? input.loading.options : {};
+      var loadingOptionsSig = '';
+      try { loadingOptionsSig = JSON.stringify(loadingOptions); } catch (e) {}
+      if (visible !== lastLoading || (visible && loadingOptionsSig !== lastLoadingOptions)) {
+        if (visible) chart.showLoading('default', loadingOptions);
+        else chart.hideLoading();
+        lastLoading = visible;
+        lastLoadingOptions = loadingOptionsSig;
+      }
     }
   }
   // PERF: coalesce a burst of pushes (a signal updating several times before a
@@ -320,7 +335,11 @@ export interface ChartWebViewProps {
   /** Tap-a-chart-element callback — receives the parsed {@link ChartSelectPayload}. */
   onSelect?: (payload: ChartSelectPayload) => void
   /** Serializable commands; each command runs once for its stable `id`. */
-  commands?: readonly ChartHostCommand[] | (() => readonly ChartHostCommand[])
+  commands?: ChartHostAccessor<readonly ChartHostCommand[]>
+  /** Reactive visibility of the hosted loading overlay. */
+  loading?: ChartHostAccessor<boolean>
+  /** Serializable appearance options for the hosted loading overlay. */
+  loadingOptions?: ChartHostAccessor<Record<string, unknown>>
   /** Receives events selected by {@link forwardEvents}. */
   onEvent?: (event: ChartHostEvent) => void
   /**
@@ -384,10 +403,15 @@ export function ChartWebView(props: ChartWebViewProps): VNode {
     get(): unknown {
       const o = props.option
       const option = typeof o === 'function' ? (o as () => unknown)() : o
-      if (props.commands === undefined) return option
-      const source = props.commands
-      const commands = typeof source === 'function' ? source() : source
-      return { __pyreonChartHost: 1, option, commands }
+      if (props.commands === undefined && props.loading === undefined) return option
+      const commandSource = props.commands
+      const commands = typeof commandSource === 'function' ? commandSource() : (commandSource ?? [])
+      const loadingSource = props.loading
+      const loading = typeof loadingSource === 'function' ? loadingSource() : (loadingSource ?? false)
+      const loadingOptionsSource = props.loadingOptions
+      const loadingOptions =
+        typeof loadingOptionsSource === 'function' ? loadingOptionsSource() : (loadingOptionsSource ?? {})
+      return { __pyreonChartHost: 1, option, commands, loading: { visible: loading, options: loadingOptions } }
     },
   })
   if (props.onSelect || props.onEvent) {
