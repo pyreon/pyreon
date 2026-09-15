@@ -2521,6 +2521,30 @@ export function chartRichSelectWarning(tag: string): string {
   return `<${tag} onSelect>: the rich-hit callback is not lowered on native — use \`onSelectIndex\` (the engine's index hit, the shape the tap reports on every target).`
 }
 /** The warning for a chrome prop `<tag>` carries but does not draw — `animate` on an engine with no entrance is inert everywhere, not a native gap. */
+/**
+ * A chart FLAG the native emit can only honour as a literal (`dataZoom`,
+ * `navigator`, `brush`, `horizontal`, `universalTransition`,
+ * `updateAnimation`). A flag that is PRESENT but not statically resolvable —
+ * a signal read, a prop, a computed — used to lower silently as OFF, which is
+ * the one outcome worse than a warning: the web build honours the value and
+ * the device build quietly does not. The emitters route every such read
+ * through here so the drop is named.
+ */
+export function chartStaticFlag(
+  element: { attrs: readonly ({ kind: 'attr'; name: string } | { kind: string })[] },
+  tag: string,
+  prop: string,
+  read: (name: string) => string | number | boolean | undefined,
+  warn: (message: string) => void,
+): boolean {
+  const value = read(prop)
+  if (value === undefined && element.attrs.some((attr) => attr.kind === 'attr' && (attr as { name: string }).name === prop)) {
+    warn(`<${tag} ${prop}={…}>: must be a literal on native — a reactive or computed value lowers as \`false\`, so the chart renders without it. Use a literal, or branch with <Web> / <NativeIOS> / <NativeAndroid>.`)
+    return false
+  }
+  return value === true
+}
+
 export function chartChromeWarning(tag: string, prop: string): string {
   if (prop === 'animate' && !chartHostAnimates(tag)) return `<${tag}>: \`animate\` has no effect on any target — its engine draws fully formed; the prop is ignored.`
   return `<${tag}>: \`${prop}\` is not lowered on native yet; the chart renders without it.`

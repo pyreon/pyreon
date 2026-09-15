@@ -91,7 +91,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS, chartStaticFlag } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -12544,8 +12544,10 @@ function swiftChartDouble(e: Extract<ExprIR, { kind: 'jsx-element' }>, name: str
 function swiftChartCanvas(e: Extract<ExprIR, { kind: 'jsx-element' }>, cmds: string, indent: number): string {
   const args = [`cmds: ${cmds}`]
   if (chartAttrExpr(e, 'updateDuration') !== undefined) args.push(`durationMs: ${swiftChartDouble(e, 'updateDuration', 350, indent)}`)
-  if (readStaticAttr(e, 'universalTransition') === true) args.push('universal: true')
+  const flag = (prop: string): boolean => chartStaticFlag(e, e.tag, prop, (name) => readStaticAttr(e, name), (w) => _emitWarnings.push(w))
+  if (flag('universalTransition')) args.push('universal: true')
   if (readStaticAttr(e, 'updateAnimation') === false) args.push('animated: false')
+  else flag('updateAnimation')
   return `PyreonChartCanvas(${args.join(', ')})`
 }
 
@@ -13230,16 +13232,18 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     return 'EmptyView()'
   }
   const data = emitSwiftExpr(dataV, indent)
-  const zoomed = readStaticAttr(e, 'dataZoom') === true
+  const flag = (prop: string): boolean => chartStaticFlag(e, tag, prop, (name) => readStaticAttr(e, name), (w) => _emitWarnings.push(w))
+  const zoomed = flag('dataZoom')
   const presetsRaw = swiftZoomPresets(e, tag)
   const presets = presetsRaw === 'unsupported' ? undefined : presetsRaw
-  let navigating = readStaticAttr(e, 'navigator') === true
+  let navigating = flag('navigator')
   if (navigating && marksV.elements.length === 0) {
     _emitWarnings.push(`<${tag} navigator>: needs at least one mark (the strip shows the first one); the chart renders without the navigator.`)
     navigating = false
   }
   // The brush: a plain drag selects — only where the web's plain drag does too.
-  let brushing = readStaticAttr(e, 'brush') === true && readStaticAttr(e, 'horizontal') !== true
+  const horizontal = flag('horizontal')
+  let brushing = flag('brush') && !horizontal
   if (brushing && zoomed) {
     _emitWarnings.push(`<${tag} brush>: with \`dataZoom\` the web brushes on Shift+drag, which touch has not — on native the plain drag pans, so the brush stays web-only in that combination; the chart renders without it.`)
     brushing = false

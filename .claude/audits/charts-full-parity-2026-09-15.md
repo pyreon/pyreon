@@ -69,6 +69,11 @@ for interaction, animation or accessibility parity.
   `<WebView>` host group (web iframes, WKWebViews, Android WebViews all speak
   the same reserved protocol); real-Chromium proof across separate pages,
   compiler proof on both targets. Hosted ledger: 11/11.
+- [x] Silent-drop class closed for the literal-only chart flags: `dataZoom`,
+  `navigator`, `brush`, `horizontal`, `universalTransition` and
+  `updateAnimation` warn by name on both targets when present but not
+  statically resolvable (they lowered as off with no diagnostic). Reactive
+  lowering of those flags remains C6 work.
 - [x] Ledger honesty pass: every direct row whose engine still emits a live
   "not supported" warning for a contract member is `partial`, with the
   warning site as its evidence (`series.line` stacked lines, `series.sankey`
