@@ -41,6 +41,14 @@ export const LOWERED_FLOW_PROPERTY_READS: ReadonlySet<string> = new Set([
   'nodeMap', 'edgeMap', 'measurements',
 ])
 
+/** Every public `<Flow>` prop is either lowered or diagnosed as an explicit
+ * browser-presentation boundary. Kept beside the state surface registries so
+ * adding a web prop cannot silently bypass the native completeness audit. */
+export const HANDLED_FLOW_HOST_PROPS: ReadonlySet<string> = new Set([
+  'instance', 'nodeTypes', 'edgeTypes', 'connectionLine',
+  'style', 'class', 'ariaLabel', 'colorMode', 'children',
+])
+
 /** Mutable `FlowConfig` fields retained by both native state engines. */
 export const LOWERED_FLOW_CONFIG_PROPERTIES: ReadonlyMap<string, string> = new Map([
   ['defaultEdgeType', 'defaultEdgeType'], ['defaultEdgeOptions', 'defaultEdgeOptions'],

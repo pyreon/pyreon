@@ -14,7 +14,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { transform } from '../index'
-import { LOWERED_FLOW_CONFIG_PROPERTIES, LOWERED_FLOW_METHODS, LOWERED_FLOW_PROPERTY_READS } from '../flow-lowering'
+import { HANDLED_FLOW_HOST_PROPS, LOWERED_FLOW_CONFIG_PROPERTIES, LOWERED_FLOW_METHODS, LOWERED_FLOW_PROPERTY_READS } from '../flow-lowering'
 import {
   isKotlincAvailable,
   isSwiftcAvailable,
@@ -52,6 +52,13 @@ it('tracks every public FlowInstance member in native lowering', () => {
     !LOWERED_FLOW_METHODS.has(member),
   )
   expect(missing).toEqual([])
+})
+
+it('tracks every public Flow host prop in native lowering or boundary diagnostics', () => {
+  const source = readFileSync(new URL('../../../../fundamentals/flow/src/components/flow-component.tsx', import.meta.url), 'utf8')
+  const body = source.slice(source.indexOf('export interface FlowComponentProps'), source.indexOf('/**\n * The main Flow component'))
+  const publicProps = [...body.matchAll(/^  ([A-Za-z_]\w*)\??:/gm)].map((match) => match[1]!).sort()
+  expect([...HANDLED_FLOW_HOST_PROPS].sort()).toEqual(publicProps)
 })
 
 const workflowFlow = `
@@ -231,6 +238,29 @@ describe('<Flow> native host lowering', { timeout: 30_000 }, () => {
     expect(kotlin.code).toContain('PyreonFlowView(state = flow, ariaLabel = "Pipeline editor")')
     expect(validateSwiftWithStubs(swift.code).ok).toBe(true)
     expect(validateKotlin(kotlin.code).ok).toBe(true)
+  })
+
+  it('carries the Flow color mode to both native theme environments', () => {
+    const themed = source.replace('<Flow instance={flow} />', '<Flow instance={flow} colorMode="dark" />')
+    const swift = transform(themed, { target: 'swift' })
+    const kotlin = transform(themed, { target: 'kotlin' })
+    expect(swift.code).toContain('PyreonFlowView(state: flow, colorMode: "dark")')
+    expect(kotlin.code).toContain('PyreonFlowView(state = flow, colorMode = "dark")')
+    expect(validateSwiftWithStubs(swift.code).ok).toBe(true)
+    expect(validateKotlin(kotlin.code).ok).toBe(true)
+  })
+
+  it.each(['swift', 'kotlin'] as const)('names browser-CSS host and chrome props on %s', (target) => {
+    const styled = source
+      .replace("import { createFlow, Flow }", "import { createFlow, Flow, MiniMap, Panel }")
+      .replace(
+        '<Flow instance={flow} />',
+        '<Flow instance={flow} class="canvas" style="width: 100%"><MiniMap class="map" style="opacity: .8" /><Panel class="panel">Tools</Panel></Flow>',
+      )
+    const warnings = transform(styled, { target }).warnings.join('\n')
+    for (const boundary of ['<Flow class>', '<Flow style>', '<MiniMap class>', '<MiniMap style>', '<Panel class>']) {
+      expect(warnings).toContain(boundary)
+    }
   })
 
   it('extracts Background chrome into the SwiftUI and Compose host configuration', () => {

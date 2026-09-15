@@ -515,6 +515,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private let miniMap: PyreonFlowMiniMapStyle?
     private let miniMapNodeColor: (PyreonFlowNode<T>) -> String
     private let ariaLabel: String
+    private let colorMode: String
     private let nodeHandles: (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig]
     private let nodeResizer: (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig?
     private let nodeToolbarConfigs: (PyreonFlowNode<T>) -> [PyreonFlowNodeToolbarConfig]
@@ -546,6 +547,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         miniMap: PyreonFlowMiniMapStyle? = nil,
         miniMapNodeColor: @escaping (PyreonFlowNode<T>) -> String = { _ in "" },
         ariaLabel: String = "Flow diagram",
+        colorMode: String = "light",
         nodeHandles: @escaping (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] },
         nodeResizer: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { _ in nil },
         nodeToolbarConfigs: @escaping (PyreonFlowNode<T>) -> [PyreonFlowNodeToolbarConfig] = { _ in [] },
@@ -565,6 +567,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         self.miniMap = miniMap
         self.miniMapNodeColor = miniMapNodeColor
         self.ariaLabel = ariaLabel
+        self.colorMode = colorMode
         self.nodeHandles = nodeHandles
         self.nodeResizer = nodeResizer
         self.nodeToolbarConfigs = nodeToolbarConfigs
@@ -586,6 +589,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         miniMap: PyreonFlowMiniMapStyle? = nil,
         miniMapNodeColor: @escaping (PyreonFlowNode<T>) -> String = { _ in "" },
         ariaLabel: String = "Flow diagram",
+        colorMode: String = "light",
         nodeHandles: @escaping (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] },
         nodeResizer: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { _ in nil },
         nodeToolbarConfigs: @escaping (PyreonFlowNode<T>) -> [PyreonFlowNodeToolbarConfig] = { _ in [] },
@@ -605,6 +609,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         self.miniMap = miniMap
         self.miniMapNodeColor = miniMapNodeColor
         self.ariaLabel = ariaLabel
+        self.colorMode = colorMode
         self.nodeHandles = nodeHandles
         self.nodeResizer = nodeResizer
         self.nodeToolbarConfigs = nodeToolbarConfigs
@@ -693,6 +698,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(ariaLabel))
+        .preferredColorScheme(colorMode == "dark" ? .dark : colorMode == "light" ? .light : nil)
     }
 
     private func measuredNodeView(_ node: PyreonFlowNode<T>) -> some View {

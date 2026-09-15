@@ -7200,9 +7200,13 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (tag === 'Press') return emitKotlinPress(e, indent)
   if (tag === 'Field') return emitKotlinField(e, indent)
   if (tag === 'Toggle') return emitKotlinToggle(e, indent)
-  if (tag === 'Handle') return 'Box {}'
+  if (tag === 'Handle') {
+    for (const name of ['style', 'class']) if (e.attrs.some((a) => a.kind === 'attr' && a.name === name)) _emitWarnings.push(`<Handle ${name}> is browser CSS and is not applied natively; handle geometry and interaction still lower.`)
+    return 'Box {}'
+  }
   if (tag === 'NodeResizer') return 'Box {}'
   if (tag === 'NodeToolbar') {
+    for (const name of ['style', 'class']) if (e.attrs.some((a) => a.kind === 'attr' && a.name === name)) _emitWarnings.push(`<NodeToolbar ${name}> is browser CSS and is not applied natively; toolbar placement and content still lower.`)
     if (!_flowComponentToolbarsKotlin.has(_activeComponentName)) _emitWarnings.push('<NodeToolbar> only lowers when declared inside a component registered by a literal <Flow nodeTypes={{ type: Component }}> map; it was dropped.')
     return 'Box {}'
   }
@@ -7244,6 +7248,7 @@ function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string
     _emitWarnings.push('<Flow> requires `instance={flow}` for native lowering — the host was dropped.')
     return 'Box {}'
   }
+  for (const name of ['style', 'class']) if (e.attrs.some((a) => a.kind === 'attr' && a.name === name)) _emitWarnings.push(`<Flow ${name}> is browser CSS and is not applied to the native canvas; use native layout primitives around <Flow> for container sizing and decoration.`)
   const nodeTypesAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'nodeTypes')
   const nodeTypes = resolveStaticFlowRendererMap(nodeTypesAttr?.kind === 'attr' ? nodeTypesAttr.value : undefined, (name) => _moduleConstExprsKotlin.get(name))
   if (nodeTypesAttr !== undefined && nodeTypes === undefined) {
@@ -7297,6 +7302,8 @@ function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string
     : ''
   const ariaLabelAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'ariaLabel')
   const ariaLabelArg = ariaLabelAttr?.kind === 'attr' && ariaLabelAttr.value !== undefined ? `, ariaLabel = ${emitKotlinExpr(ariaLabelAttr.value, 0)}` : ''
+  const colorModeAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'colorMode')
+  const colorModeArg = colorModeAttr?.kind === 'attr' && colorModeAttr.value !== undefined ? `, colorMode = ${emitKotlinExpr(colorModeAttr.value, 0)}` : ''
   const handleCases = nodeTypes?.flatMap(({ type, component }) => {
     const handles = _flowComponentHandlesKotlin.get(component) ?? []
     return handles.length > 0 ? [`${JSON.stringify(type)} -> ${kotlinFlowParsedHandles(handles)}`] : []
@@ -7341,14 +7348,14 @@ function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string
     ? `when (pyreonNode.type) {\n${nodeTypes.map(({ type, component }) => `    ${JSON.stringify(type)} -> ${kotlinIdent(component)}(id = pyreonNode.id, data = { pyreonNode.data }, selected = { pyreonSelected }, dragging = { pyreonDragging })`).join('\n')}\n    else -> ${nodeText}\n  }`
     : nodeText
   const rendererParams = nodeTypes && nodeTypes.length > 0 ? 'pyreonNode, pyreonSelected, pyreonDragging' : 'pyreonNode'
-  const host = `PyreonFlowView(state = ${emitKotlinExpr(attr.value, 0)}${bgArg}${controlsArg}${controlsContentArg}${miniMapArg}${miniMapNodeColorArg}${ariaLabelArg}${nodeHandlesArg}${nodeResizerArg}${nodeToolbarConfigArg}${nodeToolbarArg}${customEdgeTypesArg}${customEdgeArg}${customConnectionLineArg}) { ${rendererParams} ->\n  ${renderer}\n}`
+  const host = `PyreonFlowView(state = ${emitKotlinExpr(attr.value, 0)}${bgArg}${controlsArg}${controlsContentArg}${miniMapArg}${miniMapNodeColorArg}${ariaLabelArg}${colorModeArg}${nodeHandlesArg}${nodeResizerArg}${nodeToolbarConfigArg}${nodeToolbarArg}${customEdgeTypesArg}${customEdgeArg}${customConnectionLineArg}) { ${rendererParams} ->\n  ${renderer}\n}`
   if (panels.length === 0 && otherChildren.length === 0) return host
   const overlays = panels.map((panel) => {
     const position = readStaticAttrKotlin(panel, 'position')
     const hasPosition = panel.attrs.some((a) => a.kind === 'attr' && a.name === 'position')
     const alignment = position === 'top-right' ? 'TopEnd' : position === 'bottom-left' ? 'BottomStart' : position === 'bottom-right' ? 'BottomEnd' : 'TopStart'
     if (hasPosition && typeof position !== 'string') _emitWarnings.push('<Panel position={…}> must be a string literal to lower natively; top-left is used.')
-    if (panel.attrs.some((a) => a.kind === 'attr' && a.name === 'style')) _emitWarnings.push('<Panel style={…}> uses web CSS and is not applied natively; its position and content still lower.')
+    for (const name of ['style', 'class']) if (panel.attrs.some((a) => a.kind === 'attr' && a.name === name)) _emitWarnings.push(`<Panel ${name}> uses browser CSS and is not applied natively; its position and content still lower.`)
     const content = panel.children.map((child) => `      ${emitKotlinChild(child, 6)}`).join('\n')
     return `    Box(modifier = Modifier.align(Alignment.${alignment}).padding(10.dp)) {\n${content}\n    }`
   })
@@ -7382,6 +7389,7 @@ function emitKotlinFlowCustomPath(e: Extract<ExprIR, { kind: 'jsx-element' }>, i
 }
 
 function emitKotlinFlowMiniMap(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  for (const name of ['style', 'class']) if (e.attrs.some((a) => a.kind === 'attr' && a.name === name)) _emitWarnings.push(`<MiniMap ${name}> is browser CSS and is not applied natively; its dimensions, colors, and interactions still lower.`)
   const str = (name: string, fallback: string): string => { const value = readStaticAttrKotlin(e, name); return JSON.stringify(typeof value === 'string' ? value : fallback) }
   const num = (name: string, fallback: number): string => { const value = readStaticAttrKotlin(e, name); const n = typeof value === 'number' ? value : fallback; return `${n}${Number.isInteger(n) ? '.0' : ''}` }
   const bool = (name: string, fallback: boolean): string => readStaticAttrKotlin(e, name) === false ? 'false' : readStaticAttrKotlin(e, name) === true ? 'true' : String(fallback)

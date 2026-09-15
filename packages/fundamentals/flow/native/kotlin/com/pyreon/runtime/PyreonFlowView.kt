@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -18,8 +19,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Button
+import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
+import androidx.compose.material.darkColors
+import androidx.compose.material.lightColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -277,6 +281,7 @@ fun <T> PyreonFlowView(
     miniMap: PyreonFlowMiniMapStyle? = null,
     miniMapNodeColor: (PyreonFlowNode<T>) -> String = { "" },
     ariaLabel: String = "Flow diagram",
+    colorMode: String = "light",
     nodeHandles: (PyreonFlowNode<T>) -> List<PyreonFlowHandleConfig> = { emptyList() },
     nodeResizer: (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { null },
     nodeToolbarConfigs: (PyreonFlowNode<T>) -> List<PyreonFlowNodeToolbarConfig> = { emptyList() },
@@ -286,7 +291,7 @@ fun <T> PyreonFlowView(
     customConnectionLineEnabled: Boolean = false,
     customConnectionLine: @Composable (PyreonFlowConnectionLineContext) -> Unit = {},
     nodeContent: @Composable (PyreonFlowNode<T>) -> Unit,
-) = PyreonFlowView(state, modifier, edgeColor, edgeWidth, background, controls, controlsContent, miniMap, miniMapNodeColor, ariaLabel, nodeHandles, nodeResizer, nodeToolbarConfigs, nodeToolbar, customEdgeTypes, customEdge, customConnectionLineEnabled, customConnectionLine) { node, _, _ -> nodeContent(node) }
+) = PyreonFlowView(state, modifier, edgeColor, edgeWidth, background, controls, controlsContent, miniMap, miniMapNodeColor, ariaLabel, colorMode, nodeHandles, nodeResizer, nodeToolbarConfigs, nodeToolbar, customEdgeTypes, customEdge, customConnectionLineEnabled, customConnectionLine) { node, _, _ -> nodeContent(node) }
 
 @Composable
 fun <T> PyreonFlowView(
@@ -300,6 +305,7 @@ fun <T> PyreonFlowView(
     miniMap: PyreonFlowMiniMapStyle? = null,
     miniMapNodeColor: (PyreonFlowNode<T>) -> String = { "" },
     ariaLabel: String = "Flow diagram",
+    colorMode: String = "light",
     nodeHandles: (PyreonFlowNode<T>) -> List<PyreonFlowHandleConfig> = { emptyList() },
     nodeResizer: (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { null },
     nodeToolbarConfigs: (PyreonFlowNode<T>) -> List<PyreonFlowNodeToolbarConfig> = { emptyList() },
@@ -310,6 +316,10 @@ fun <T> PyreonFlowView(
     customConnectionLine: @Composable (PyreonFlowConnectionLineContext) -> Unit = {},
     nodeContent: @Composable (PyreonFlowNode<T>, Boolean, Boolean) -> Unit,
 ) {
+    val forceDark = colorMode == "dark"
+    val forceLight = colorMode == "light"
+    val systemDark = isSystemInDarkTheme()
+    val resolvedDark = if (colorMode == "system") systemDark else forceDark
     val density = LocalDensity.current
     var interactionsLocked by remember { mutableStateOf(false) }
     var connectionDraft by remember { mutableStateOf<PyreonFlowConnectionDraft?>(null) }
@@ -346,7 +356,7 @@ fun <T> PyreonFlowView(
             )
         }
     }
-    Box(
+    val content: @Composable () -> Unit = { Box(
         modifier = modifier
             .semantics { contentDescription = ariaLabel }
             .focusable(enabled = !state.disableKeyboardA11y)
@@ -704,5 +714,10 @@ fun <T> PyreonFlowView(
         if (miniMap != null) {
             PyreonFlowMiniMap(state, miniMap, miniMapNodeColor, Modifier.align(androidx.compose.ui.Alignment.BottomEnd).padding(10.dp))
         }
+    } }
+    if (forceDark || forceLight) {
+        MaterialTheme(colors = if (resolvedDark) darkColors() else lightColors(), content = content)
+    } else {
+        content()
     }
 }
