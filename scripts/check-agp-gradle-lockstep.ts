@@ -110,10 +110,29 @@ export function extractPinnedGradle(workflow: string): string | null {
   return /GRADLE_VERSION:\s*'([0-9.]+)'/.exec(workflow)?.[1] ?? null
 }
 
+/**
+ * The Android setup action defaults to `tools platform-tools`. The legacy
+ * `tools` package currently pulls the emulator archive, duplicating the
+ * emulator-runner's installation and making every native PR depend on an
+ * unrelated large ZIP before Gradle even starts. Require an explicit,
+ * minimal package list so an action-default change cannot restore that flake.
+ */
+export function hasSafeAndroidSetupPackages(workflow: string): boolean {
+  const action = workflow.indexOf('uses: android-actions/setup-android@')
+  if (action < 0) return false
+  const nextStep = workflow.indexOf('\n      - name:', action)
+  const block = workflow.slice(action, nextStep < 0 ? undefined : nextStep)
+  const value = /^\s*packages:\s*([^#\n]+)$/m.exec(block)?.[1]?.trim()
+  if (!value) return false
+  const packages = value.split(/\s+/)
+  return packages.includes('platform-tools') && !packages.includes('tools')
+}
+
 function main(): number {
   const root = resolve(import.meta.dirname, '..')
   const wf = join(root, '.github/workflows/native-device.yml')
-  const pinned = extractPinnedGradle(readFileSync(wf, 'utf8'))
+  const workflow = readFileSync(wf, 'utf8')
+  const pinned = extractPinnedGradle(workflow)
   if (!pinned) {
     console.error('[check-agp-gradle-lockstep] ✗ no GRADLE_VERSION found in native-device.yml')
     return 1
@@ -130,6 +149,11 @@ function main(): number {
 
   const problems: string[] = []
   let sawGradleMismatch = false
+  if (!hasSafeAndroidSetupPackages(workflow)) {
+    problems.push(
+      '  native-device.yml: setup-android must explicitly install `platform-tools` without legacy `tools` (emulator-runner owns the emulator download).',
+    )
+  }
   for (const app of apps) {
     const f = join(examplesDir, app, 'build.gradle.kts')
     let src: string

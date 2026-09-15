@@ -80,6 +80,32 @@ describe('a11yPlugin', () => {
     expect(messages(result)).toContain('alt')
   })
 
+  it('checks a SUPPLIED name-like prop even when it is optional', async () => {
+    // The seeded `alt` on an `<img>`: optional on the component, present in
+    // the scenario. An empty one is a finding, not a skip.
+    const c = ci({ controls: [{ name: 'alt', kind: 'text', reactive: false, required: false }] })
+    expect((await check(c, { alt: 'Image placeholder' })).status).toBe('pass')
+    expect((await check(c, { alt: '' })).status).toBe('fail')
+    // Absent from the scenario AND optional: still nothing to check.
+    expect((await check(c, {})).status).toBe('skip')
+  })
+
+  it('does not fail its OWN Empty edge case on an optional name', async () => {
+    const c = ci({ controls: [{ name: 'label', kind: 'text', reactive: false, required: false }] })
+    const res = await a11yPlugin().verify!({
+      scenario: makeScenario({ component: c.name, name: 'Empty', args: { label: '' }, source: 'auto-edge' }),
+      component: c,
+    })
+    expect(res.a11y!.status).toBe('skip')
+    // A REQUIRED name empty in that same scenario is still the finding.
+    const req = ci({ controls: [{ name: 'label', kind: 'text', reactive: false, required: true }] })
+    const res2 = await a11yPlugin().verify!({
+      scenario: makeScenario({ component: req.name, name: 'Empty', args: { label: '' }, source: 'auto-edge' }),
+      component: req,
+    })
+    expect(res2.a11y!.status).toBe('fail')
+  })
+
   it('treats undefined and null as empty', async () => {
     const c = ci({ controls: [{ name: 'label', kind: 'text', reactive: false, required: true }] })
     expect((await check(c, {})).status).toBe('fail')

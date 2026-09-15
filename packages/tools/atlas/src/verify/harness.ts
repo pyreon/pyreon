@@ -7,6 +7,7 @@
  * itself threw — are worth getting right once.
  */
 import type { ComponentRef } from '../core'
+import { materializeContent } from '../core'
 import type { DomEnv } from './dom'
 
 /**
@@ -238,7 +239,12 @@ export function mountScenario(
 
   let unmount: (() => void) | undefined
   try {
-    const tree = runtime.h(component, args)
+    // Seeded content rides in `args` as JSON (a string label, or the layout
+    // blocks marker) and becomes REST children here — the same materialization
+    // the generated workbench render performs, so the canvas shows what was
+    // verified.
+    const { props, children } = materializeContent(args, runtime.h)
+    const tree = runtime.h(component, props, ...children)
     // The wrapper receives the scenario as `children`, so a project's existing
     // provider component works unchanged — no Atlas-specific contract to learn.
     unmount = runtime.mount(wrapper ? runtime.h(wrapper, { children: tree }) : tree, container)
