@@ -562,3 +562,24 @@ public struct PyreonFlowEdgeCanvas: View, Equatable {
         }
     }
 }
+
+/// A compiler target for a shared-source custom edge's SVG `<path>`. The
+/// compiler passes the path helper result itself (not the serialized `d`), so
+/// native keeps the exact move/line/cubic/quad geometry without parsing SVG.
+public struct PyreonFlowCustomEdgePath: View {
+    public var result: PyreonFlowPathResult
+    public var color: String
+    public var width: Double
+    public var dash: [Double]?
+    public init(result: PyreonFlowPathResult, color: String = "#999999", width: Double = 1.5, dash: [Double]? = nil) {
+        self.result = result; self.color = color; self.width = width; self.dash = dash
+    }
+    public var body: some View {
+        Canvas { context, _ in
+            var style = StrokeStyle(lineWidth: CGFloat(width), lineJoin: .round)
+            if let dash { style.dash = dash.map { CGFloat($0) } }
+            context.stroke(pyreonFlowEdgePath(result.segments), with: .color(pyreonFlowEdgeColor(color)), style: style)
+        }
+        .allowsHitTesting(false)
+    }
+}

@@ -1830,6 +1830,7 @@ class PyreonFlowState<T>(
   fun onConnectEnd(callback: (PyreonFlowConnection?) -> Unit): () -> Unit = {}
   fun onPaneClick(callback: (PyreonFlowPaneEvent) -> Unit): () -> Unit = {}
   fun moveSelectedNodes(dx: Double, dy: Double) {}
+  fun handleKeyboardCommand(key: String, nodeId: String? = null, shift: Boolean = false, command: Boolean = false, repeatKey: Boolean = false): Boolean = false
   fun focusNode(nodeId: String, focusZoom: Double? = null) {}
 }
 
@@ -1840,6 +1841,9 @@ data class PyreonFlowControlsStyle(val showZoomIn: Boolean = true, val showZoomO
 data class PyreonFlowMiniMapStyle(val nodeColor: String = "#e2e8f0", val maskColor: String = "#000000", val width: Double = 200.0, val height: Double = 150.0, val pannable: Boolean = true, val zoomable: Boolean = true)
 data class PyreonFlowNodeResizerConfig(val minWidth: Double = 50.0, val minHeight: Double = 30.0, val handleSize: Double = 8.0, val showEdgeHandles: Boolean = false)
 data class PyreonFlowNodeToolbarConfig(val position: String = "top", val align: String = "center", val offset: Double = 8.0, val showOnSelect: Boolean = true)
+data class PyreonFlowCustomEdgeContext(val edge: PyreonFlowEdge, val sourceX: Double, val sourceY: Double, val targetX: Double, val targetY: Double, val sourcePosition: PyreonFlowPosition, val targetPosition: PyreonFlowPosition, val selected: Boolean, val labelX: Double, val labelY: Double)
+@Composable fun PyreonFlowCustomEdgePath(result: PyreonFlowPathResult, color: String = "#999999", width: Double = 1.5, dash: List<Double>? = null) {}
+@Composable fun PyreonFlowEdgeLabelRenderer(content: @Composable () -> Unit) { content() }
 
 @Composable
 fun <T> PyreonFlowView(
@@ -1855,6 +1859,8 @@ fun <T> PyreonFlowView(
   nodeResizer: (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { null },
   nodeToolbarConfig: (PyreonFlowNode<T>) -> PyreonFlowNodeToolbarConfig? = { null },
   nodeToolbar: @Composable (PyreonFlowNode<T>, Boolean, Boolean) -> Unit = { _, _, _ -> },
+  customEdgeTypes: Set<String> = emptySet(),
+  customEdge: @Composable (PyreonFlowCustomEdgeContext) -> Unit = {},
   nodeContent: @Composable (PyreonFlowNode<T>) -> Unit,
 ) {}
 @Composable
@@ -1871,6 +1877,8 @@ fun <T> PyreonFlowView(
   nodeResizer: (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { null },
   nodeToolbarConfig: (PyreonFlowNode<T>) -> PyreonFlowNodeToolbarConfig? = { null },
   nodeToolbar: @Composable (PyreonFlowNode<T>, Boolean, Boolean) -> Unit = { _, _, _ -> },
+  customEdgeTypes: Set<String> = emptySet(),
+  customEdge: @Composable (PyreonFlowCustomEdgeContext) -> Unit = {},
   nodeContent: @Composable (PyreonFlowNode<T>, Boolean, Boolean) -> Unit,
 ) {}
 

@@ -4482,6 +4482,7 @@ const FLOW_PATH_HELPERS = new Set(['getBezierPath', 'getSmoothStepPath', 'getSte
 function swiftFlowPositionExpr(value: ExprIR): string | null {
   if (value.kind === 'member' && value.object.kind === 'identifier' && value.object.name === 'Position') return `.${value.property.toLowerCase()}`
   if (value.kind === 'literal' && typeof value.value === 'string' && ['top', 'right', 'bottom', 'left'].includes(value.value)) return `.${value.value}`
+  if (value.kind === 'call') return emitSwiftExpr(value, 0)
   return null
 }
 
@@ -8432,6 +8433,11 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
     if (!_flowComponentToolbars.has(_activeComponentName)) _emitWarnings.push('<NodeToolbar> only lowers when declared inside a component registered by a literal <Flow nodeTypes={{ type: Component }}> map; it was dropped.')
     return 'EmptyView()'
   }
+  if (tag === 'path') return emitSwiftFlowCustomPath(e, indent)
+  if (tag === 'EdgeLabelRenderer') {
+    const content = e.children.map((child) => `  ${emitSwiftChild(child, indent + 2)}`).join('\n')
+    return `PyreonFlowEdgeLabelRenderer {\n${content}\n${' '.repeat(indent)}}`
+  }
   // `<RouterLink>` from @pyreon/router is the SAME concept as `<Link>` and
   // carries the same `to` prop, but it had no dispatch entry — so it fell
   // through to the unknown-tag path and emitted `RouterLink(to:)` verbatim, a
@@ -8484,8 +8490,12 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
     if (_flowComponentsWithInvalidResizers.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <NodeResizer> size and edge-handle options must be literals for native extraction; dynamic values use native defaults.`)
     if (_flowComponentsWithInvalidToolbars.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <NodeToolbar> supports one declaration with literal position, align, offset, and showOnSelect props on native; unsupported values use native defaults.`)
   }
-  if (e.attrs.some((a) => a.kind === 'attr' && a.name === 'edgeTypes')) {
-    _emitWarnings.push('<Flow edgeTypes={…}> custom edge renderer maps are not lowered natively yet; the native default edge renderer is used.')
+  const edgeTypesAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'edgeTypes')
+  const edgeTypes = edgeTypesAttr?.kind === 'attr' && edgeTypesAttr.value?.kind === 'object' && (edgeTypesAttr.value.spreads?.length ?? 0) === 0 && edgeTypesAttr.value.fields.every((field) => field.value.kind === 'identifier')
+    ? edgeTypesAttr.value.fields.map((field) => ({ type: field.name, component: (field.value as Extract<ExprIR, { kind: 'identifier' }>).name }))
+    : undefined
+  if (edgeTypesAttr !== undefined && edgeTypes === undefined) {
+    _emitWarnings.push('<Flow edgeTypes={…}> must be a literal { type: Component } map to lower natively; the native default edge renderer is used.')
   }
   const background = e.children
     .filter((child) => child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'Background')
@@ -8501,9 +8511,6 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
     .map((child) => child.kind === 'expr' ? child.expr : undefined)
     .filter((panel): panel is Extract<ExprIR, { kind: 'jsx-element' }> => panel?.kind === 'jsx-element')
   const otherChildren = e.children.filter((child) => !(child.kind === 'expr' && child.expr.kind === 'jsx-element' && (child.expr.tag === 'Background' || child.expr.tag === 'Controls' || child.expr.tag === 'MiniMap' || child.expr.tag === 'Panel')))
-  if (otherChildren.length > 0) {
-    _emitWarnings.push('<Flow> contains native-unlowered children; Handle and other optional chrome remain explicit follow-ups.')
-  }
   const bgArg = background?.kind === 'jsx-element' ? `, background: ${emitSwiftFlowBackground(background)}` : ''
   const controlsArg = controls?.kind === 'jsx-element' ? `, controls: ${emitSwiftFlowControls(controls)}` : ''
   const miniMapArg = miniMap?.kind === 'jsx-element' ? `, miniMap: ${emitSwiftFlowMiniMap(miniMap)}` : ''
@@ -8537,6 +8544,12 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
   const nodeToolbarArg = toolbarContentCases.length > 0
     ? `, nodeToolbar: { pyreonNode, pyreonSelected, pyreonDragging in\n    switch pyreonNode.type {\n    ${toolbarContentCases.join('\n    ')}\n    default: return nil\n    }\n  }`
     : ''
+  const customEdgeTypesArg = edgeTypes && edgeTypes.length > 0
+    ? `, customEdgeTypes: Set([${edgeTypes.map(({ type }) => JSON.stringify(type)).join(', ')}])`
+    : ''
+  const customEdgeArg = edgeTypes && edgeTypes.length > 0
+    ? `, customEdge: { pyreonEdge in\n    switch pyreonEdge.edge.type {\n    ${edgeTypes.map(({ type, component }) => `case ${JSON.stringify(type)}: return AnyView(${swiftIdent(component)}(edge: pyreonEdge.edge, sourceX: { pyreonEdge.sourceX }, sourceY: { pyreonEdge.sourceY }, targetX: { pyreonEdge.targetX }, targetY: { pyreonEdge.targetY }, sourcePosition: { pyreonEdge.sourcePosition }, targetPosition: { pyreonEdge.targetPosition }, selected: { pyreonEdge.selected }, labelX: { pyreonEdge.labelX }, labelY: { pyreonEdge.labelY }))`).join('\n    ')}\n    default: return nil\n    }\n  }`
+    : ''
   const nodeText = attr.value.kind === 'identifier' && _flowStateLabelNamesSwift.has(attr.value.name)
     ? 'Text(String(describing: pyreonNode.data.label))'
     : 'Text(pyreonNode.id)'
@@ -8544,8 +8557,8 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
     ? `switch pyreonNode.type {\n${nodeTypes.map(({ type, component }) => `  case ${JSON.stringify(type)}:\n    ${swiftIdent(component)}(id: pyreonNode.id, data: { pyreonNode.data }, selected: { pyreonSelected }, dragging: { pyreonDragging })`).join('\n')}\n  default:\n    ${nodeText}\n  }`
     : nodeText
   const rendererParams = nodeTypes && nodeTypes.length > 0 ? 'pyreonNode, pyreonSelected, pyreonDragging' : 'pyreonNode'
-  const host = `PyreonFlowView(state: ${emitSwiftExpr(attr.value, 0)}${bgArg}${controlsArg}${miniMapArg}${ariaLabelArg}${nodeHandlesArg}${nodeResizerArg}${nodeToolbarConfigArg}${nodeToolbarArg}) { ${rendererParams} in\n  ${renderer}\n}`
-  if (panels.length === 0) return host
+  const host = `PyreonFlowView(state: ${emitSwiftExpr(attr.value, 0)}${bgArg}${controlsArg}${miniMapArg}${ariaLabelArg}${nodeHandlesArg}${nodeResizerArg}${nodeToolbarConfigArg}${nodeToolbarArg}${customEdgeTypesArg}${customEdgeArg}) { ${rendererParams} in\n  ${renderer}\n}`
+  if (panels.length === 0 && otherChildren.length === 0) return host
   const overlays = panels.map((panel) => {
     const position = readStaticAttr(panel, 'position')
     const hasPosition = panel.attrs.some((a) => a.kind === 'attr' && a.name === 'position')
@@ -8554,8 +8567,25 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
     if (panel.attrs.some((a) => a.kind === 'attr' && a.name === 'style')) _emitWarnings.push('<Panel style={…}> uses web CSS and is not applied natively; its position and content still lower.')
     const content = panel.children.map((child) => `      ${emitSwiftChild(child, 6)}`).join('\n')
     return `    Group {\n${content}\n    }\n    .padding(10)\n    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: ${alignment})`
-  }).join('\n')
+  }).concat(otherChildren.map((child) => `    ${emitSwiftChild(child, 4)}`)).join('\n')
   return `ZStack {\n  ${host}\n${overlays}\n}`
+}
+
+function emitSwiftFlowCustomPath(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'd')
+  let value = attr?.kind === 'attr' ? attr.value : undefined
+  if (value?.kind === 'arrow' && value.params.length === 0) value = value.body
+  if (value?.kind !== 'member' || value.property !== 'path') {
+    _emitWarnings.push('A native custom-edge <path> requires d={() => get*Path({...}).path}; arbitrary SVG path strings need a NativeIOS/NativeAndroid renderer.')
+    return 'EmptyView()'
+  }
+  const style = readStaticAttr(e, 'style')
+  const stroke = readStaticAttr(e, 'stroke')
+  const color = typeof stroke === 'string' ? stroke : typeof style === 'string' ? (style.match(/#[0-9a-fA-F]{3,8}/)?.[0] ?? '#999999') : '#999999'
+  const widthAttr = readStaticAttr(e, 'stroke-width') ?? readStaticAttr(e, 'strokeWidth')
+  const styleWidth = typeof style === 'string' ? /stroke-width:\s*([0-9.]+)/.exec(style)?.[1] : undefined
+  const width = typeof widthAttr === 'number' ? widthAttr : styleWidth === undefined ? 1.5 : Number(styleWidth)
+  return `PyreonFlowCustomEdgePath(result: ${emitSwiftExpr(value.object, indent)}, color: ${JSON.stringify(color)}, width: ${width})`
 }
 
 function emitSwiftFlowMiniMap(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {

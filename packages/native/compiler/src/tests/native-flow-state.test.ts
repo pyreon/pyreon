@@ -1311,4 +1311,55 @@ export function C() {
       expect(validateKotlin(result.code).ok).toBe(true)
     })
   })
+
+  describe('custom edge renderer native lowering', () => {
+    const src = `
+      import { createFlow, Flow, EdgeLabelRenderer, getBezierPath, type EdgeComponentProps } from '@pyreon/flow'
+      import { Text } from '@pyreon/primitives'
+      function SignalEdge(props: EdgeComponentProps) {
+        return <>
+          <path d={() => getBezierPath({
+            sourceX: props.sourceX(), sourceY: props.sourceY(),
+            sourcePosition: props.sourcePosition(), targetX: props.targetX(),
+            targetY: props.targetY(), targetPosition: props.targetPosition(),
+          }).path} style="fill: none; stroke: #e11d48; stroke-width: 2" />
+          <EdgeLabelRenderer><Text>{props.edge.label}</Text></EdgeLabelRenderer>
+        </>
+      }
+      export function Diagram() {
+        const flow = createFlow({
+          nodes: [
+            { id: 'a', position: { x: 0, y: 0 }, data: { label: 'A' } },
+            { id: 'b', position: { x: 200, y: 80 }, data: { label: 'B' } },
+          ],
+          edges: [{ id: 'ab', source: 'a', target: 'b', type: 'signal' }],
+        })
+        return <Flow instance={flow} edgeTypes={{ signal: SignalEdge }} />
+      }
+    `
+
+    it('dispatches a live Swift custom edge and draws the helper geometry', () => {
+      const result = transform(src, { target: 'swift' })
+      expect(result.code).toContain('customEdgeTypes: Set(["signal"])')
+      expect(result.code).toContain('case "signal": return AnyView(SignalEdge(')
+      expect(result.code).toContain('PyreonFlowCustomEdgePath(result: pyreonBezierPath(')
+      expect(result.code).toContain('color: "#e11d48", width: 2')
+      expect(result.code).toContain('PyreonFlowEdgeLabelRenderer {')
+      expect((result.warnings ?? []).join('\n')).not.toContain('custom edge renderer maps are not lowered')
+      const validation = validateSwiftWithStubs(result.code)
+      expect(validation.ok, validation.error ?? '').toBe(true)
+    })
+
+    it('dispatches a live Kotlin custom edge and draws the helper geometry', () => {
+      const result = transform(src, { target: 'kotlin' })
+      expect(result.code).toContain('customEdgeTypes = setOf("signal")')
+      expect(result.code).toContain('"signal" -> SignalEdge(')
+      expect(result.code).toContain('PyreonFlowCustomEdgePath(result = pyreonBezierPath(')
+      expect(result.code).toContain('color = "#e11d48", width = 2.0')
+      expect(result.code).toContain('PyreonFlowEdgeLabelRenderer {')
+      expect((result.warnings ?? []).join('\n')).not.toContain('custom edge renderer maps are not lowered')
+      const validation = validateKotlin(result.code)
+      expect(validation.ok, validation.error ?? '').toBe(true)
+    })
+  })
 })

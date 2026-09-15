@@ -2651,8 +2651,8 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
       // lowered right above it). The five public edge-path builders lower to
       // the same native geometry used by the Flow canvas.
       advice:
-        '`createFlow({ nodes, edges })`, `useFlow({ nodes, edges })`, `computeLayout(...)`, edge-path and marker helpers, literal `<Flow nodeTypes={{ type: Component }}>`, static `<Handle>`, `<NodeResizer>`, and one literal-config `<NodeToolbar>` declaration inside those custom nodes, `<Background>`, `<Controls>`, `<MiniMap>`, and `<Panel>` LOWER to the native PyreonFlowState/PyreonFlowView engine. Custom edge renderer maps still have no shared-source native emit; keep those behind platform branches or use the `@pyreon/flow/webview` bridge',
-      supported: new Set(['createFlow', 'useFlow', 'computeLayout', 'getBezierPath', 'getSmoothStepPath', 'getStepPath', 'getStraightPath', 'getWaypointPath', 'getEdgePath', 'getHandlePosition', 'getNodeIntersection', 'getEffectiveDimensions', 'getFloatingEndpoints', 'getSmartHandlePositions', 'resolveHandleAnchor', 'resolveMarker', 'markerId', 'resolveEdgeMarkers', 'collectEdgeMarkers', 'DEFAULT_MARKER_END', 'DEFAULT_NODE_WIDTH', 'DEFAULT_NODE_HEIGHT', 'MarkerType', 'Position', 'Flow', 'Background', 'Controls', 'MiniMap', 'Panel', 'Handle', 'NodeResizer', 'NodeToolbar']),
+        '`createFlow({ nodes, edges })`, `useFlow({ nodes, edges })`, `computeLayout(...)`, edge-path and marker helpers, literal `<Flow nodeTypes={{ type: Component }}>`, literal `<Flow edgeTypes={{ type: Component }}>` maps whose renderer uses the shipped path helpers, static `<Handle>`, `<NodeResizer>`, and one literal-config `<NodeToolbar>` declaration inside custom nodes, `<Background>`, `<Controls>`, `<MiniMap>`, `<Panel>`, and `<EdgeLabelRenderer>` LOWER to the native PyreonFlowState/PyreonFlowView engine. Arbitrary SVG path strings or browser-only DOM/CSS inside a custom renderer still require NativeIOS/NativeAndroid branches or the `@pyreon/flow/webview` bridge',
+      supported: new Set(['createFlow', 'useFlow', 'computeLayout', 'getBezierPath', 'getSmoothStepPath', 'getStepPath', 'getStraightPath', 'getWaypointPath', 'getEdgePath', 'getHandlePosition', 'getNodeIntersection', 'getEffectiveDimensions', 'getFloatingEndpoints', 'getSmartHandlePositions', 'resolveHandleAnchor', 'resolveMarker', 'markerId', 'resolveEdgeMarkers', 'collectEdgeMarkers', 'DEFAULT_MARKER_END', 'DEFAULT_NODE_WIDTH', 'DEFAULT_NODE_HEIGHT', 'MarkerType', 'Position', 'Flow', 'Background', 'Controls', 'MiniMap', 'Panel', 'Handle', 'NodeResizer', 'NodeToolbar', 'EdgeLabelRenderer']),
     },
   ],
   [
@@ -6593,6 +6593,26 @@ function resolvePropsObjectType(t: TypeIR, ctx: ParseCtx): TypeIR {
         { name: 'data', type: accessor(dataType) },
         { name: 'selected', type: accessor({ kind: 'boolean' }) },
         { name: 'dragging', type: accessor({ kind: 'boolean' }) },
+      ],
+    }
+  }
+  if (t.kind === 'typeRef' && t.name === 'EdgeComponentProps' && t.args.length === 0) {
+    const accessor = (returnType: TypeIR): TypeIR => ({ kind: 'function', params: [], returnType })
+    const numberAccessor = accessor({ kind: 'number', float: true })
+    const positionAccessor = accessor({ kind: 'typeRef', name: 'PyreonFlowPosition', args: [] })
+    return {
+      kind: 'object',
+      fields: [
+        { name: 'edge', type: { kind: 'typeRef', name: 'PyreonFlowEdge', args: [] } },
+        { name: 'sourceX', type: numberAccessor },
+        { name: 'sourceY', type: numberAccessor },
+        { name: 'targetX', type: numberAccessor },
+        { name: 'targetY', type: numberAccessor },
+        { name: 'sourcePosition', type: positionAccessor },
+        { name: 'targetPosition', type: positionAccessor },
+        { name: 'selected', type: accessor({ kind: 'boolean' }) },
+        { name: 'labelX', type: numberAccessor },
+        { name: 'labelY', type: numberAccessor },
       ],
     }
   }

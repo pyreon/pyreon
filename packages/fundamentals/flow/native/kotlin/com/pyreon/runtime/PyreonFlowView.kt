@@ -17,10 +17,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.Button
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.provides
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
@@ -33,7 +36,6 @@ import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.nativeKeyEvent
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
@@ -85,6 +87,38 @@ private data class PyreonFlowReconnectDraft(
     val current: PyreonFlowPathPoint,
 )
 
+data class PyreonFlowCustomEdgeContext(
+    val edge: PyreonFlowEdge,
+    val sourceX: Double, val sourceY: Double,
+    val targetX: Double, val targetY: Double,
+    val sourcePosition: PyreonFlowPosition, val targetPosition: PyreonFlowPosition,
+    val selected: Boolean,
+    val labelX: Double, val labelY: Double,
+)
+
+private val LocalPyreonFlowEdgeLabelPoint = staticCompositionLocalOf { PyreonFlowPathPoint(0.0, 0.0) }
+
+@Composable
+fun PyreonFlowEdgeLabelRenderer(content: @Composable () -> Unit) {
+    val point = LocalPyreonFlowEdgeLabelPoint.current
+    Box(Modifier.offset { IntOffset(point.x.roundToInt(), point.y.roundToInt()) }) { content() }
+}
+
+private fun pyreonFlowSegmentPosition(segments: List<PyreonFlowEdgeSegment>, atStart: Boolean): PyreonFlowPosition {
+    val first = segments.firstOrNull() ?: return if (atStart) PyreonFlowPosition.Right else PyreonFlowPosition.Left
+    val last = segments.last()
+    val anchorX = if (atStart) first.x else last.x; val anchorY = if (atStart) first.y else last.y
+    val segment = if (atStart && segments.size > 1) segments[1] else last
+    val previous = if (segments.size > 1) segments[segments.size - 2] else first
+    val probeX = if (atStart) segment.c1x ?: segment.cx ?: segment.x else segment.c2x ?: segment.cx ?: previous.x
+    val probeY = if (atStart) segment.c1y ?: segment.cy ?: segment.y else segment.c2y ?: segment.cy ?: previous.y
+    val dx = if (atStart) probeX - anchorX else anchorX - probeX
+    val dy = if (atStart) probeY - anchorY else anchorY - probeY
+    return if (kotlin.math.abs(dx) >= kotlin.math.abs(dy)) {
+        if (dx >= 0) PyreonFlowPosition.Right else PyreonFlowPosition.Left
+    } else if (dy >= 0) PyreonFlowPosition.Bottom else PyreonFlowPosition.Top
+}
+
 private fun pyreonFlowKeyName(event: KeyEvent): String? = when (event.key) {
     Key.DirectionLeft -> "ArrowLeft"
     Key.DirectionRight -> "ArrowRight"
@@ -110,7 +144,7 @@ private fun <T> PyreonFlowState<T>.handleKeyEvent(event: KeyEvent, nodeId: Strin
         nodeId = nodeId,
         shift = event.isShiftPressed,
         command = event.isCtrlPressed || event.isMetaPressed,
-        repeatKey = event.nativeKeyEvent.repeatCount > 0,
+        repeatKey = event.repeatCount > 0,
     )
 }
 
@@ -229,8 +263,10 @@ fun <T> PyreonFlowView(
     nodeResizer: (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { null },
     nodeToolbarConfig: (PyreonFlowNode<T>) -> PyreonFlowNodeToolbarConfig? = { null },
     nodeToolbar: @Composable (PyreonFlowNode<T>, Boolean, Boolean) -> Unit = { _, _, _ -> },
+    customEdgeTypes: Set<String> = emptySet(),
+    customEdge: @Composable (PyreonFlowCustomEdgeContext) -> Unit = {},
     nodeContent: @Composable (PyreonFlowNode<T>) -> Unit,
-) = PyreonFlowView(state, modifier, edgeColor, edgeWidth, background, controls, miniMap, ariaLabel, nodeHandles, nodeResizer, nodeToolbarConfig, nodeToolbar) { node, _, _ -> nodeContent(node) }
+) = PyreonFlowView(state, modifier, edgeColor, edgeWidth, background, controls, miniMap, ariaLabel, nodeHandles, nodeResizer, nodeToolbarConfig, nodeToolbar, customEdgeTypes, customEdge) { node, _, _ -> nodeContent(node) }
 
 @Composable
 fun <T> PyreonFlowView(
@@ -246,6 +282,8 @@ fun <T> PyreonFlowView(
     nodeResizer: (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { null },
     nodeToolbarConfig: (PyreonFlowNode<T>) -> PyreonFlowNodeToolbarConfig? = { null },
     nodeToolbar: @Composable (PyreonFlowNode<T>, Boolean, Boolean) -> Unit = { _, _, _ -> },
+    customEdgeTypes: Set<String> = emptySet(),
+    customEdge: @Composable (PyreonFlowCustomEdgeContext) -> Unit = {},
     nodeContent: @Composable (PyreonFlowNode<T>, Boolean, Boolean) -> Unit,
 ) {
     val density = LocalDensity.current
@@ -341,7 +379,10 @@ fun <T> PyreonFlowView(
         }
 
         PyreonFlowEdgeCanvas(
-            edges = edgeStrokes,
+            edges = edgeStrokes.filter { stroke ->
+                val edge = state.getEdge(stroke.id)
+                edge == null || !customEdgeTypes.contains(edge.type ?: PYREON_FLOW_DEFAULT_EDGE_TYPE)
+            },
             viewport = state.viewport,
             modifier = Modifier.matchParentSize(),
         )
@@ -364,6 +405,26 @@ fun <T> PyreonFlowView(
                 transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
             },
         ) {
+            val strokesById = edgeStrokes.associateBy { it.id }
+            val labelsById = pyreonFlowEdgeLabels(state, nodeHandles).associateBy { it.id }
+            for (edge in state.edges) {
+                if (edge.hidden == true || !customEdgeTypes.contains(edge.type ?: PYREON_FLOW_DEFAULT_EDGE_TYPE)) continue
+                val stroke = strokesById[edge.id] ?: continue
+                val first = stroke.segments.firstOrNull() ?: continue
+                val last = stroke.segments.last()
+                val label = labelsById[edge.id]
+                Box(Modifier.matchParentSize()) {
+                    val labelX = label?.x ?: (first.x + last.x) / 2
+                    val labelY = label?.y ?: (first.y + last.y) / 2
+                    CompositionLocalProvider(LocalPyreonFlowEdgeLabelPoint provides PyreonFlowPathPoint(labelX, labelY)) {
+                        customEdge(PyreonFlowCustomEdgeContext(
+                            edge, first.x, first.y, last.x, last.y,
+                            pyreonFlowSegmentPosition(stroke.segments, true), pyreonFlowSegmentPosition(stroke.segments, false),
+                            state.isEdgeSelected(edge.id), labelX, labelY,
+                        ))
+                    }
+                }
+            }
             val visibleEdgeIds = edgeStrokes.mapTo(mutableSetOf()) { it.id }
             for (edge in pyreonFlowEdgeLabels(state, nodeHandles).filter { visibleEdgeIds.contains(it.id) }) {
                 var edgeModifier = Modifier

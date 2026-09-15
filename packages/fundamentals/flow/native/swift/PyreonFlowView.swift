@@ -18,6 +18,48 @@ public struct PyreonFlowEdgeUpdater: Identifiable, Equatable {
     public var x: Double
     public var y: Double
 }
+
+public struct PyreonFlowCustomEdgeContext: Identifiable {
+    public var id: String { edge.id }
+    public var edge: PyreonFlowEdge
+    public var sourceX: Double; public var sourceY: Double
+    public var targetX: Double; public var targetY: Double
+    public var sourcePosition: PyreonFlowPosition; public var targetPosition: PyreonFlowPosition
+    public var selected: Bool
+    public var labelX: Double; public var labelY: Double
+}
+
+private struct PyreonFlowEdgeLabelPointKey: EnvironmentKey {
+    static let defaultValue = CGPoint.zero
+}
+private extension EnvironmentValues {
+    var pyreonFlowEdgeLabelPoint: CGPoint {
+        get { self[PyreonFlowEdgeLabelPointKey.self] }
+        set { self[PyreonFlowEdgeLabelPointKey.self] = newValue }
+    }
+}
+public struct PyreonFlowEdgeLabelRenderer<Content: View>: View {
+    @Environment(\.pyreonFlowEdgeLabelPoint) private var point
+    private let content: Content
+    public init(@ViewBuilder content: () -> Content) { self.content = content() }
+    public var body: some View { content.position(x: point.x, y: point.y) }
+}
+
+private func pyreonFlowSegmentPosition(_ segments: [PyreonFlowEdgeSegment], atStart: Bool) -> PyreonFlowPosition {
+    guard let first = segments.first, let last = segments.last else { return atStart ? .right : .left }
+    let anchorX = atStart ? first.x : last.x, anchorY = atStart ? first.y : last.y
+    let probeX: Double, probeY: Double
+    if atStart, segments.count > 1 {
+        let next = segments[1]; probeX = next.c1x ?? next.cx ?? next.x; probeY = next.c1y ?? next.cy ?? next.y
+    } else if !atStart, let end = segments.last {
+        let previous = segments.count > 1 ? segments[segments.count - 2] : first
+        probeX = end.c2x ?? end.cx ?? previous.x; probeY = end.c2y ?? end.cy ?? previous.y
+    } else { probeX = last.x; probeY = last.y }
+    let dx = atStart ? probeX - anchorX : anchorX - probeX
+    let dy = atStart ? probeY - anchorY : anchorY - probeY
+    if abs(dx) >= abs(dy) { return dx >= 0 ? .right : .left }
+    return dy >= 0 ? .bottom : .top
+}
 public struct PyreonFlowMiniMapLayout: Equatable {
     public var nodes: [PyreonFlowMiniMapNode]
     public var viewport: PyreonFlowRect
@@ -444,6 +486,8 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private let nodeResizer: (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig?
     private let nodeToolbarConfig: (PyreonFlowNode<T>) -> PyreonFlowNodeToolbarConfig?
     private let nodeToolbar: (PyreonFlowNode<T>, Bool, Bool) -> AnyView?
+    private let customEdgeTypes: Set<String>
+    private let customEdge: (PyreonFlowCustomEdgeContext) -> AnyView?
     private let nodeContent: (PyreonFlowNode<T>, Bool, Bool) -> NodeContent
 
     @State private var nodeDragStart: [String: PyreonXYPosition] = [:]
@@ -469,6 +513,8 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         nodeResizer: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { _ in nil },
         nodeToolbarConfig: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeToolbarConfig? = { _ in nil },
         nodeToolbar: @escaping (PyreonFlowNode<T>, Bool, Bool) -> AnyView? = { _, _, _ in nil },
+        customEdgeTypes: Set<String> = [],
+        customEdge: @escaping (PyreonFlowCustomEdgeContext) -> AnyView? = { _ in nil },
         @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>) -> NodeContent
     ) {
         self.state = state
@@ -482,6 +528,8 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         self.nodeResizer = nodeResizer
         self.nodeToolbarConfig = nodeToolbarConfig
         self.nodeToolbar = nodeToolbar
+        self.customEdgeTypes = customEdgeTypes
+        self.customEdge = customEdge
         self.nodeContent = { node, _, _ in nodeContent(node) }
     }
 
@@ -497,6 +545,8 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         nodeResizer: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { _ in nil },
         nodeToolbarConfig: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeToolbarConfig? = { _ in nil },
         nodeToolbar: @escaping (PyreonFlowNode<T>, Bool, Bool) -> AnyView? = { _, _, _ in nil },
+        customEdgeTypes: Set<String> = [],
+        customEdge: @escaping (PyreonFlowCustomEdgeContext) -> AnyView? = { _ in nil },
         @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>, Bool, Bool) -> NodeContent
     ) {
         self.state = state
@@ -510,6 +560,8 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         self.nodeResizer = nodeResizer
         self.nodeToolbarConfig = nodeToolbarConfig
         self.nodeToolbar = nodeToolbar
+        self.customEdgeTypes = customEdgeTypes
+        self.customEdge = customEdge
         self.nodeContent = nodeContent
     }
 
@@ -530,12 +582,16 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                 }
 
                 PyreonFlowEdgeCanvas(
-                    edges: edgeStrokes,
+                    edges: edgeStrokes.filter { stroke in
+                        guard let edge = state.getEdge(stroke.id) else { return true }
+                        return !customEdgeTypes.contains(edge.type ?? "bezier")
+                    },
                     viewport: state.viewport)
                     .equatable()
                     .allowsHitTesting(false)
 
                 ZStack(alignment: .topLeading) {
+                    customEdgesLayer
                     edgeLabelsLayer
                     nodesLayer
                     handlesLayer
@@ -789,6 +845,33 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             ], color: edgeColor, width: edgeWidth))
         }
         return strokes
+    }
+
+    @ViewBuilder private var customEdgesLayer: some View {
+        ForEach(customEdgeContexts) { context in
+            if let view = customEdge(context) {
+                view
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .environment(\.pyreonFlowEdgeLabelPoint, CGPoint(x: context.labelX, y: context.labelY))
+            }
+        }
+    }
+
+    private var customEdgeContexts: [PyreonFlowCustomEdgeContext] {
+        let strokes = Dictionary(uniqueKeysWithValues: edgeStrokes.map { ($0.id, $0) })
+        let labels = Dictionary(uniqueKeysWithValues: pyreonFlowEdgeLabels(state: state, nodeHandles: nodeHandles).map { ($0.id, $0) })
+        return state.edges.compactMap { edge in
+            guard edge.hidden != true, customEdgeTypes.contains(edge.type ?? "bezier"),
+                  let stroke = strokes[edge.id], let first = stroke.segments.first, let last = stroke.segments.last
+            else { return nil }
+            let source = pyreonFlowSegmentPosition(stroke.segments, atStart: true)
+            let target = pyreonFlowSegmentPosition(stroke.segments, atStart: false)
+            return PyreonFlowCustomEdgeContext(
+                edge: edge, sourceX: first.x, sourceY: first.y, targetX: last.x, targetY: last.y,
+                sourcePosition: source, targetPosition: target, selected: state.isEdgeSelected(edge.id),
+                labelX: labels[edge.id]?.x ?? (first.x + last.x) / 2,
+                labelY: labels[edge.id]?.y ?? (first.y + last.y) / 2)
+        }
     }
 
     private var visibleNodes: [PyreonFlowNode<T>] {

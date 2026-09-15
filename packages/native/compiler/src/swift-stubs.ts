@@ -1292,6 +1292,7 @@ public final class PyreonFlowState<T> {
   public func onConnectEnd(_ callback: @escaping (PyreonFlowConnection?) -> Void) -> () -> Void { {} }
   public func onPaneClick(_ callback: @escaping (PyreonFlowPaneEvent) -> Void) -> () -> Void { {} }
   public func moveSelectedNodes(_ dx: Double, _ dy: Double) {}
+  public func handleKeyboardCommand(_ key: String, nodeId: String? = nil, shift: Bool = false, command: Bool = false, repeatKey: Bool = false) -> Bool { false }
   public func focusNode(_ nodeId: String, _ focusZoom: Double? = nil) {}
 }
 @available(iOS 17.0, macOS 14.0, *)
@@ -1312,10 +1313,24 @@ public struct PyreonFlowNodeResizerConfig {
 public struct PyreonFlowNodeToolbarConfig {
   public init(position: String = "top", align: String = "center", offset: Double = 8, showOnSelect: Bool = true) {}
 }
+public struct PyreonFlowCustomEdgeContext {
+  public let edge: PyreonFlowEdge
+  public let sourceX: Double; public let sourceY: Double; public let targetX: Double; public let targetY: Double
+  public let sourcePosition: PyreonFlowPosition; public let targetPosition: PyreonFlowPosition
+  public let selected: Bool; public let labelX: Double; public let labelY: Double
+}
+public struct PyreonFlowCustomEdgePath: View {
+  public init(result: PyreonFlowPathResult, color: String = "#999999", width: Double = 1.5, dash: [Double]? = nil) {}
+  public var body: some View { EmptyView() }
+}
+public struct PyreonFlowEdgeLabelRenderer<Content: View>: View {
+  public init(@ViewBuilder content: () -> Content) {}
+  public var body: some View { EmptyView() }
+}
 @available(iOS 17.0, macOS 14.0, *)
 public struct PyreonFlowView<T, NodeContent: View>: View {
-  public init(state: PyreonFlowState<T>, edgeColor: String = "#999999", edgeWidth: Double = 1.5, background: PyreonFlowBackgroundStyle? = nil, controls: PyreonFlowControlsStyle? = nil, miniMap: PyreonFlowMiniMapStyle? = nil, ariaLabel: String = "Flow diagram", nodeHandles: @escaping (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] }, nodeResizer: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { _ in nil }, nodeToolbarConfig: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeToolbarConfig? = { _ in nil }, nodeToolbar: @escaping (PyreonFlowNode<T>, Bool, Bool) -> AnyView? = { _, _, _ in nil }, @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>) -> NodeContent) {}
-  public init(state: PyreonFlowState<T>, edgeColor: String = "#999999", edgeWidth: Double = 1.5, background: PyreonFlowBackgroundStyle? = nil, controls: PyreonFlowControlsStyle? = nil, miniMap: PyreonFlowMiniMapStyle? = nil, ariaLabel: String = "Flow diagram", nodeHandles: @escaping (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] }, nodeResizer: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { _ in nil }, nodeToolbarConfig: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeToolbarConfig? = { _ in nil }, nodeToolbar: @escaping (PyreonFlowNode<T>, Bool, Bool) -> AnyView? = { _, _, _ in nil }, @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>, Bool, Bool) -> NodeContent) {}
+  public init(state: PyreonFlowState<T>, edgeColor: String = "#999999", edgeWidth: Double = 1.5, background: PyreonFlowBackgroundStyle? = nil, controls: PyreonFlowControlsStyle? = nil, miniMap: PyreonFlowMiniMapStyle? = nil, ariaLabel: String = "Flow diagram", nodeHandles: @escaping (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] }, nodeResizer: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { _ in nil }, nodeToolbarConfig: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeToolbarConfig? = { _ in nil }, nodeToolbar: @escaping (PyreonFlowNode<T>, Bool, Bool) -> AnyView? = { _, _, _ in nil }, customEdgeTypes: Set<String> = [], customEdge: @escaping (PyreonFlowCustomEdgeContext) -> AnyView? = { _ in nil }, @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>) -> NodeContent) {}
+  public init(state: PyreonFlowState<T>, edgeColor: String = "#999999", edgeWidth: Double = 1.5, background: PyreonFlowBackgroundStyle? = nil, controls: PyreonFlowControlsStyle? = nil, miniMap: PyreonFlowMiniMapStyle? = nil, ariaLabel: String = "Flow diagram", nodeHandles: @escaping (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] }, nodeResizer: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { _ in nil }, nodeToolbarConfig: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeToolbarConfig? = { _ in nil }, nodeToolbar: @escaping (PyreonFlowNode<T>, Bool, Bool) -> AnyView? = { _, _, _ in nil }, customEdgeTypes: Set<String> = [], customEdge: @escaping (PyreonFlowCustomEdgeContext) -> AnyView? = { _ in nil }, @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>, Bool, Bool) -> NodeContent) {}
   public var body: some View { EmptyView() }
 }
 public struct PyreonI18n {
