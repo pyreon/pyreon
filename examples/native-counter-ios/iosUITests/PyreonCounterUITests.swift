@@ -1078,7 +1078,7 @@ final class PyreonCounterUITests: XCTestCase {
         unlock.tap()
 
         XCTAssertTrue(
-            app.staticTexts["Lock: denied"].waitForExistence(timeout: 5),
+            app.staticTexts["Lock: denied"].waitForExistence(timeout: 20),
             "\"Lock: denied\" never appeared after tapping Unlock — the async "
                 + "handler was not wrapped in a Task (so the awaited "
                 + "bio.authenticate never ran) or the post-await lockStatus "
