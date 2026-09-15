@@ -192,9 +192,13 @@ Position.Left // 'left'
 - **The layout engine is code-split** — the first `flow.layout()` call fetches its chunk, so it takes longer than subsequent ones; every mode is pure geometry with no external dependency.
 - **`flow.dispose()` is final** — listeners detach, signals stop updating. Don't reuse a disposed instance. `useFlow` wires this up for you on unmount.
 
-## Multiplatform — `@pyreon/flow/webview`
+## Multiplatform
 
-`@pyreon/flow` renders SVG/DOM + custom-JSX nodes (web-only). To show a flow diagram on iOS/Android too, host it in a native `<WebView>`. `buildFlowHostHtml()` returns a FULLY self-contained SVG renderer (no external bundle) that draws the same `{ nodes, edges }` model as `<Flow>` — labeled nodes, bezier edges (flow's real `getBezierPath`), pan + pinch/zoom, fit-on-load, tap-to-select:
+The native compiler lowers `createFlow` / `useFlow` and `<Flow>` to `PyreonFlowState` plus an interactive SwiftUI or Compose host. The same source provides node/edge CRUD, selection, history, all seven layouts, built-in and static custom node/edge renderers, handles, connection/reconnection gestures, resizing, multiple toolbars, background, controls, minimap, panels, accessibility, viewport gestures, and portable inline node/edge styles on web, iOS, and Android.
+
+Renderer maps and structural renderer configuration must be statically discoverable by the native compiler. Browser CSS classes and arbitrary SVG path strings have no automatic native meaning; keep genuinely platform-specific presentation in `NativeIOS` / `NativeAndroid` branches. Supported inline node styles (`width`, `height`, `padding`, hex `background`/`background-color`, hex `border-color`, `border-width`, `border-radius`, `opacity`) and edge styles (`stroke`, `stroke-width`) lower directly.
+
+`@pyreon/flow/webview` remains an optional compatibility route when an application deliberately needs its browser CSS/DOM renderer unchanged. `buildFlowHostHtml()` returns a self-contained SVG renderer (no external bundle):
 
 ```tsx
 import { buildFlowHostHtml } from '@pyreon/flow/webview'
@@ -209,9 +213,9 @@ const FLOW_HOST = buildFlowHostHtml()
 />
 ```
 
-- Compiles to WKWebView / Android WebView / an `<iframe srcdoc>` — same bridge (forward `data` push, reverse `pyreonPostMessage`) on every target.
+- Compiles to WKWebView / Android WebView / an `<iframe srcdoc>` — the same bridge (forward `data` push, reverse `pyreonPostMessage`) on every target.
 - **`<FlowWebView graph onSelect>`** is the web-side wrapper; native uses `<WebView html={FLOW_HOST} …>` directly.
-- **Full editor** (custom-JSX nodes / connection dragging / resizing): bundle your compiled `@pyreon/flow` web app and pass it as the host via `<FlowWebView html={…}>` / `<WebView html={…}>`.
+- Use this bridge only when retaining browser-only CSS/DOM behavior is more important than a native SwiftUI/Compose host.
 
 See `examples/native-viz` for a one-source multiplatform app.
 

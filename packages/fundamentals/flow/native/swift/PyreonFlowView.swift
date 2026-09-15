@@ -3,6 +3,17 @@ import SwiftUI
 public struct PyreonFlowMiniMapNode: Equatable {
     public var id: String; public var x: Double; public var y: Double; public var width: Double; public var height: Double
 }
+
+private struct PyreonFlowNodeInlineStyleModifier: ViewModifier {
+    let style: PyreonFlowNodeInlineStyle
+    func body(content: Content) -> some View {
+        content
+            .padding(CGFloat(style.padding))
+            .background(RoundedRectangle(cornerRadius: CGFloat(style.borderRadius)).fill(style.backgroundColor.map(pyreonFlowEdgeColor) ?? Color.clear))
+            .overlay(RoundedRectangle(cornerRadius: CGFloat(style.borderRadius)).stroke(style.borderColor.map(pyreonFlowEdgeColor) ?? Color.clear, lineWidth: CGFloat(style.borderWidth)))
+            .opacity(style.opacity)
+    }
+}
 public struct PyreonFlowEdgeLabel: Identifiable, Equatable {
     public var id: String
     public var text: String?
@@ -382,11 +393,13 @@ public func pyreonFlowEdgeStrokes<T>(
             offset: edge.pathOffset ?? 20,
             curvature: edge.curvature ?? 0.25)
         let markers = state.resolvedMarkers(edge)
+        let resolvedColor = pyreonFlowStyleValue(edge.style, "stroke") ?? color
+        let resolvedWidth = pyreonFlowStyleNumber(edge.style, "stroke-width") ?? width
         return PyreonFlowEdgeStroke(
-            id: edge.id, segments: path.segments, color: color, width: width,
+            id: edge.id, segments: path.segments, color: resolvedColor, width: resolvedWidth,
             dash: edge.animated ? [5, 5] : nil,
-            startMarker: markers.start.flatMap { pyreonFlowMarkerGlyph($0, segments: path.segments, atStart: true, edgeColor: color) },
-            endMarker: markers.end.flatMap { pyreonFlowMarkerGlyph($0, segments: path.segments, atStart: false, edgeColor: color) },
+            startMarker: markers.start.flatMap { pyreonFlowMarkerGlyph($0, segments: path.segments, atStart: true, edgeColor: resolvedColor) },
+            endMarker: markers.end.flatMap { pyreonFlowMarkerGlyph($0, segments: path.segments, atStart: false, edgeColor: resolvedColor) },
             interactionWidth: edge.interactionWidth ?? state.edgeInteractionWidth)
     }
 }
@@ -685,8 +698,9 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private func measuredNodeView(_ node: PyreonFlowNode<T>) -> some View {
         let absolute = state.getAbsolutePosition(node.id)
         let dimensions = state.getNodeDimensions(node.id)
-        let fixedWidth = node.width.map { CGFloat($0) }
-        let fixedHeight = node.height.map { CGFloat($0) }
+        let inlineStyle = pyreonFlowNodeInlineStyle(node.style)
+        let fixedWidth = (node.width ?? inlineStyle.width).map { CGFloat($0) }
+        let fixedHeight = (node.height ?? inlineStyle.height).map { CGFloat($0) }
         return nodeContent(node, state.isNodeSelected(node.id), nodeDragStart[node.id] != nil)
             .frame(
                 minWidth: fixedWidth == nil ? CGFloat(pyreonFlowDefaultNodeWidth) : nil,
@@ -695,6 +709,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                 minHeight: fixedHeight == nil ? CGFloat(pyreonFlowDefaultNodeHeight) : nil,
                 idealHeight: fixedHeight,
                 maxHeight: fixedHeight)
+            .modifier(PyreonFlowNodeInlineStyleModifier(style: inlineStyle))
             .background(GeometryReader { measured in
                 Color.clear.preference(key: PyreonFlowNodeSizePreference.self, value: [node.id: measured.size])
             })

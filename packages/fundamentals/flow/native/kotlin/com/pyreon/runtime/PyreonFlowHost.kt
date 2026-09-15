@@ -110,10 +110,12 @@ fun <T> pyreonFlowEdgeStrokes(
             curvature = edge.curvature ?: 0.25,
         )
         val markers = state.resolvedMarkers(edge)
+        val resolvedColor = pyreonFlowStyleValue(edge.style, "stroke") ?: color
+        val resolvedWidth = pyreonFlowStyleNumber(edge.style, "stroke-width") ?: width
         PyreonFlowEdgeStroke(
-            edge.id, path.segments, color, width, if (edge.animated) listOf(5.0, 5.0) else null,
-            markers.first?.let { pyreonFlowMarkerGlyph(it, path.segments, true, color) },
-            markers.second?.let { pyreonFlowMarkerGlyph(it, path.segments, false, color) },
+            edge.id, path.segments, resolvedColor, resolvedWidth, if (edge.animated) listOf(5.0, 5.0) else null,
+            markers.first?.let { pyreonFlowMarkerGlyph(it, path.segments, true, resolvedColor) },
+            markers.second?.let { pyreonFlowMarkerGlyph(it, path.segments, false, resolvedColor) },
             edge.interactionWidth ?: state.edgeInteractionWidth,
         )
     }

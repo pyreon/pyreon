@@ -9,6 +9,42 @@ import androidx.compose.runtime.snapshots.Snapshot
 import java.util.Timer
 import java.util.TimerTask
 
+/** Resolve one declaration from Flow's portable inline CSS-string surface. */
+fun pyreonFlowStyleValue(style: String?, property: String): String? {
+    if (style == null) return null
+    val wanted = property.lowercase()
+    for (declaration in style.split(';')) {
+        val pair = declaration.split(':', limit = 2)
+        if (pair.size == 2 && pair[0].trim().lowercase() == wanted) {
+            return pair[1].trim().ifEmpty { null }
+        }
+    }
+    return null
+}
+
+fun pyreonFlowStyleNumber(style: String?, property: String): Double? =
+    pyreonFlowStyleValue(style, property)?.removeSuffix("px")?.removeSuffix("PX")?.trim()?.toDoubleOrNull()
+
+data class PyreonFlowNodeInlineStyle(
+    val width: Double?, val height: Double?, val padding: Double,
+    val backgroundColor: String?, val borderColor: String?,
+    val borderWidth: Double, val borderRadius: Double, val opacity: Double,
+)
+
+fun pyreonFlowNodeInlineStyle(style: String?): PyreonFlowNodeInlineStyle {
+    val background = pyreonFlowStyleValue(style, "background-color") ?: pyreonFlowStyleValue(style, "background")
+    return PyreonFlowNodeInlineStyle(
+        pyreonFlowStyleNumber(style, "width"),
+        pyreonFlowStyleNumber(style, "height"),
+        maxOf(0.0, pyreonFlowStyleNumber(style, "padding") ?: 0.0),
+        background?.takeIf { it.startsWith("#") },
+        pyreonFlowStyleValue(style, "border-color")?.takeIf { it.startsWith("#") },
+        maxOf(0.0, pyreonFlowStyleNumber(style, "border-width") ?: 0.0),
+        maxOf(0.0, pyreonFlowStyleNumber(style, "border-radius") ?: 0.0),
+        (pyreonFlowStyleNumber(style, "opacity") ?: 1.0).coerceIn(0.0, 1.0),
+    )
+}
+
 // PyreonFlowState — the Android-native port of @pyreon/flow's dependency-free
 // `createFlow`. Same node/edge/viewport/selection behaviour as the
 // TypeScript AND Swift engines (`flow.ts` / `PyreonFlowState.swift`), so a

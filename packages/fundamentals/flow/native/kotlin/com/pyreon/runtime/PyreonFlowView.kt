@@ -1,6 +1,8 @@
 package com.pyreon.runtime
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -477,16 +479,28 @@ fun <T> PyreonFlowView(
             }
             for (node in visibleNodes) {
                 val absolute = state.getAbsolutePosition(node.id)
+                val inlineStyle = pyreonFlowNodeInlineStyle(node.style)
                 var nodeModifier = Modifier
                     .offset { IntOffset(absolute.x.roundToInt(), absolute.y.roundToInt()) }
-                if (node.width != null) nodeModifier = nodeModifier.width(with(density) { node.width.toFloat().toDp() })
-                if (node.height != null) nodeModifier = nodeModifier.height(with(density) { node.height.toFloat().toDp() })
+                val styledWidth = node.width ?: inlineStyle.width
+                val styledHeight = node.height ?: inlineStyle.height
+                if (styledWidth != null) nodeModifier = nodeModifier.width(with(density) { styledWidth.toFloat().toDp() })
+                if (styledHeight != null) nodeModifier = nodeModifier.height(with(density) { styledHeight.toFloat().toDp() })
                 nodeModifier = nodeModifier.defaultMinSize(
                     minWidth = with(density) { PYREON_FLOW_DEFAULT_NODE_WIDTH.toFloat().toDp() },
                     minHeight = with(density) { PYREON_FLOW_DEFAULT_NODE_HEIGHT.toFloat().toDp() },
                 ).onSizeChanged { size ->
                     state.updateNodeMeasurement(node.id, size.width / density.density.toDouble(), size.height / density.density.toDouble())
                 }
+                if (inlineStyle.padding > 0) nodeModifier = nodeModifier.padding(with(density) { inlineStyle.padding.toFloat().toDp() })
+                val nodeShape = RoundedCornerShape(with(density) { inlineStyle.borderRadius.toFloat().toDp() })
+                inlineStyle.backgroundColor?.let { nodeModifier = nodeModifier.background(pyreonFlowEdgeColor(it), nodeShape) }
+                if (inlineStyle.borderWidth > 0 && inlineStyle.borderColor != null) nodeModifier = nodeModifier.border(
+                    with(density) { inlineStyle.borderWidth.toFloat().toDp() },
+                    pyreonFlowEdgeColor(inlineStyle.borderColor),
+                    nodeShape,
+                )
+                if (inlineStyle.opacity < 1) nodeModifier = nodeModifier.graphicsLayer { alpha = inlineStyle.opacity.toFloat() }
                 if (node.selectable ?: state.nodesSelectable) {
                     nodeModifier = nodeModifier.pointerInput(node.id, "node-taps") {
                         detectTapGestures(

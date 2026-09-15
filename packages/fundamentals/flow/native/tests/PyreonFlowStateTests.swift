@@ -736,6 +736,18 @@ struct PyreonFlowStateTests {
         check(stroke == stroke && stroke != moved, "strokes are Equatable (so an unchanged draw list can be skipped)")
         check(PyreonFlowEdgeCanvas(edges: [stroke]) == PyreonFlowEdgeCanvas(edges: [stroke]), "the canvas is Equatable over edges + viewport")
 
+        let styledState = PyreonFlowState(
+            nodes: [
+                PyreonFlowNode(id: "a", position: PyreonXYPosition(x: 0, y: 0), data: "A"),
+                PyreonFlowNode(id: "b", position: PyreonXYPosition(x: 200, y: 0), data: "B"),
+            ],
+            edges: [PyreonFlowEdge(id: "styled", source: "a", target: "b", style: " stroke: #123456; stroke-width: 4px; unknown: kept")])
+        let styledStroke = pyreonFlowEdgeStrokes(state: styledState).first!
+        check(styledStroke.color == "#123456" && styledStroke.width == 4, "portable inline edge stroke style reaches the native draw list")
+        check(pyreonFlowStyleValue(styledState.edges[0].style, "unknown") == "kept", "style parser preserves and resolves unknown declarations without corrupting the model")
+        let nodeStyle = pyreonFlowNodeInlineStyle("width: 120px; height: 45; padding: 8px; background: #abcdef; border-color: #123456; border-width: 2px; border-radius: 6px; opacity: .5")
+        check(nodeStyle == PyreonFlowNodeInlineStyle(width: 120, height: 45, padding: 8, backgroundColor: "#abcdef", borderColor: "#123456", borderWidth: 2, borderRadius: 6, opacity: 0.5), "portable node box styles resolve identically for SwiftUI")
+
         print("PyreonFlowEdgeCanvasTests: edge canvas checks passed")
     }
 

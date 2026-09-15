@@ -807,8 +807,8 @@ export function C() {
     name: '@pyreon/flow',
     mechanism: 'pmtc-lowers',
     rationale:
-      'createFlow({ nodes, edges, minZoom, maxZoom }) lowers to PyreonFlowState (@Observable / Compose state) on both targets — CRUD, selection, pan/zoom/fitView, graph queries; every other FlowConfig key warns by name. The <Flow> JSX host, gestures, layout and chrome do NOT lower yet (warned by name at the import) — the diagram itself still crosses via the @pyreon/flow/webview entry below. NOT device-proven: no example calls createFlow yet.',
-    snippet: `import { createFlow } from '@pyreon/flow'
+      'createFlow/useFlow and the interactive Flow host lower to PyreonFlowState + SwiftUI/Compose on both targets: complete public state operations, all seven layouts, gestures, built-in/static custom renderers, handles, resizing, multiple toolbars, custom edges/connection lines, background, controls, minimap, panels, accessibility, and portable inline styles. Native device builds are exercised by the native-tasks applications; browser-only CSS selectors and arbitrary SVG strings remain explicit platform boundaries.',
+    snippet: `import { createFlow, Flow, Background, Controls, MiniMap } from '@pyreon/flow'
 import { Stack, Text, Button } from '@pyreon/primitives'
 export function C() {
   const flow = createFlow({
@@ -816,12 +816,15 @@ export function C() {
       { id: 'a', position: { x: 0, y: 0 }, data: { label: 'A' } },
       { id: 'b', position: { x: 200, y: 0 }, data: { label: 'B' } },
     ],
-    edges: [{ id: 'e1', source: 'a', target: 'b' }],
+    edges: [{ id: 'e1', source: 'a', target: 'b', style: 'stroke: #6366f1; stroke-width: 2' }],
     minZoom: 0.5,
     maxZoom: 2,
   })
   return (
     <Stack>
+      <Flow instance={flow} ariaLabel="Native workflow">
+        <Background /><Controls /><MiniMap />
+      </Flow>
       <Text>{flow.nodes().length}</Text>
       <Text>{flow.zoom()}</Text>
       <Button onPress={() => flow.addNode({ id: 'c', position: { x: 400, y: 0 }, data: { label: 'C' } })}>Add</Button>
@@ -835,7 +838,7 @@ export function C() {
     name: '@pyreon/flow/webview',
     mechanism: 'webview-host',
     rationale:
-      'the JSX diagram (<Flow>, layout, gestures, chrome) has no native emit yet, so it crosses by HOSTING the same diagram in a native <WebView> (@pyreon/flow/webview — self-contained, no CDN). Bridge + real SVG render proven in real Chromium; native host is emit + stub-typecheck proven, NOT device-proven.',
+      'optional compatibility bridge for applications that deliberately need the browser SVG/DOM/CSS renderer unchanged inside WKWebView or Android WebView; the regular @pyreon/flow editor has a direct SwiftUI/Compose lowering path.',
     snippet: `import { signal } from '@pyreon/reactivity'
 import { Stack, Text, WebView } from '@pyreon/primitives'
 export function C() {

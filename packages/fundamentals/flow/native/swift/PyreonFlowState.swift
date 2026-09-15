@@ -23,6 +23,48 @@
 
 import Foundation
 import Observation
+
+/// Resolves one declaration from Flow's portable inline CSS-string surface.
+/// Native renderers intentionally consume only properties with direct native
+/// equivalents; unknown declarations remain preserved on the model.
+public func pyreonFlowStyleValue(_ style: String?, _ property: String) -> String? {
+    guard let style else { return nil }
+    let wanted = property.lowercased()
+    for declaration in style.split(separator: ";") {
+        let pair = declaration.split(separator: ":", maxSplits: 1)
+        guard pair.count == 2,
+              pair[0].trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == wanted
+        else { continue }
+        let value = pair[1].trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
+    }
+    return nil
+}
+
+public func pyreonFlowStyleNumber(_ style: String?, _ property: String) -> Double? {
+    guard var value = pyreonFlowStyleValue(style, property) else { return nil }
+    if value.lowercased().hasSuffix("px") { value.removeLast(2) }
+    return Double(value.trimmingCharacters(in: .whitespacesAndNewlines))
+}
+
+public struct PyreonFlowNodeInlineStyle: Equatable {
+    public var width: Double?; public var height: Double?; public var padding: Double
+    public var backgroundColor: String?; public var borderColor: String?
+    public var borderWidth: Double; public var borderRadius: Double; public var opacity: Double
+}
+
+public func pyreonFlowNodeInlineStyle(_ style: String?) -> PyreonFlowNodeInlineStyle {
+    let background = pyreonFlowStyleValue(style, "background-color") ?? pyreonFlowStyleValue(style, "background")
+    return PyreonFlowNodeInlineStyle(
+        width: pyreonFlowStyleNumber(style, "width"),
+        height: pyreonFlowStyleNumber(style, "height"),
+        padding: max(0, pyreonFlowStyleNumber(style, "padding") ?? 0),
+        backgroundColor: background?.hasPrefix("#") == true ? background : nil,
+        borderColor: pyreonFlowStyleValue(style, "border-color").flatMap { $0.hasPrefix("#") ? $0 : nil },
+        borderWidth: max(0, pyreonFlowStyleNumber(style, "border-width") ?? 0),
+        borderRadius: max(0, pyreonFlowStyleNumber(style, "border-radius") ?? 0),
+        opacity: min(1, max(0, pyreonFlowStyleNumber(style, "opacity") ?? 1)))
+}
 import Dispatch
 #if canImport(UIKit)
 import UIKit
