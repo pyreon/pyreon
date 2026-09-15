@@ -268,6 +268,28 @@ function kotlinStructCtorArgs(
     .join(', ')
 }
 
+/**
+ * An integer literal in a position whose type is KNOWN to be Double, marked so
+ * it emits `4.0` rather than `4`.
+ *
+ * `Record<string, Double> = { '2024-01-03': 4 }` is the natural way to write a
+ * count — a calendar's values ARE integers — and it emitted an Int-valued map
+ * against a Double-valued annotation, which does not compile.
+ *
+ * Applied at the sites that KNOW the element type (a map literal's values, an
+ * array literal's elements), deliberately not at the literal emit reading the
+ * ambient expected type: that type describes an ENCLOSING position, so it also
+ * covers an array index, the argument of `Double(n - 1)` and the operands of
+ * `level == 2` — all Int contexts, all corrupted by a blanket rewrite. That
+ * version was written, and the chart engine's drift lock caught it turning
+ * `slope[0]` into `slope[0.0]`.
+ */
+function asFloatLiteral(v: ExprIR, t: TypeIR | undefined): ExprIR {
+  if (t === undefined || !typeWantsFloat(t)) return v
+  if (v.kind !== 'literal' || typeof v.value !== 'number' || !Number.isInteger(v.value) || v.float === true) return v
+  return { ...v, float: true }
+}
+
 function typeWantsFloat(t: TypeIR): boolean {
   if (t.kind === 'number') return t.float === true
   if (t.kind === 'typeRef') return t.name === 'Double' || t.name === 'Float'
@@ -4058,6 +4080,12 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           })
         }
       }
+      // Chart decimators consume `List<Double>`; TypeScript `number[]` can be
+      // represented as `List<Int>` when its initializer is wholly integral.
+      if (e.callee.kind === 'identifier' && (e.callee.name === 'lttbIndices' || e.callee.name === 'minMaxBuckets') && e.args.length >= 2) {
+        const args = e.args.map((arg, i) => i === 1 ? `(${emitKotlinExpr(arg, indent)}).map { it.toDouble() }` : emitKotlinExpr(arg, indent))
+        return `${kotlinIdent(e.callee.name)}(${args.join(', ')})`
+      }
       // Field-array accessor unwrap: zero-arg `items()`/`length()` on a
       // PyreonFieldArray decl (and `value()` on a For-item param over its
       // items) are web signal READS — on Kotlin they are properties, so the
@@ -5912,7 +5940,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       if (_expectedTypeKotlin?.kind === 'map' && (!e.spreads || e.spreads.length === 0)) {
         const vT = _expectedTypeKotlin.value
         const entries = e.fields
-          .map((f) => `${JSON.stringify(f.name)} to ${withExpectedTypeKotlin(vT, () => emitKotlinExpr(f.value, indent))}`)
+          .map((f) => `${JSON.stringify(f.name)} to ${withExpectedTypeKotlin(vT, () => emitKotlinExpr(asFloatLiteral(f.value, vT), indent))}`)
           .join(', ')
         return `mutableMapOf(${entries})`
       }
@@ -10529,6 +10557,15 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     lets.push('var pyreonBrushB by remember { mutableStateOf(-1.0) }')
   }
   if (legend.toggling) lets.push('var pyreonHidden by remember { mutableStateOf(listOf<Int>()) }')
+  // `selectedMode` — the Swift half's twin. A TAP pins a datum, which is the
+  // half of the events model a touch target actually has; `emphasis`'s hover
+  // band and `onHighlight` are mouseover-driven and stay declined. The engine
+  // draws a pinned datum from `ChartSpec.emphasis`; this is the state saying
+  // which. Declared HERE rather than beside the spec arg because Compose reads
+  // the state from `lets`, which is emitted before the spec is built.
+  const pinMode = readStaticAttrKotlin(e, 'selectedMode')
+  const pinning = pinMode === 'single' || pinMode === 'multiple'
+  if (pinning) lets.push('var pyreonSelected by remember { mutableStateOf(listOf<Int>()) }')
   if (legend.paging) lets.push('var pyreonLegendPage by remember { mutableStateOf(0.0) }')
   const rows = windowed ? 'pyreonRows' : data
   // The theme's palette colours marks with no `color` (the theme builder already warned about a bad literal, so this parse stays silent).
@@ -10695,6 +10732,7 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const mk = chartAttrExprKotlin(e, 'markers')
   if (mk !== undefined) specArgs.push(`markers = ${withExpectedTypeKotlin({ kind: 'array', element: { kind: 'typeRef', name: 'PointMarker', args: [] } }, () => emitKotlinExpr(mk, indent))}`)
   if (kotlinChartAnimating(e, 'PlotChart')) specArgs.push('progress = pyreonEntrance')
+  if (pinning) specArgs.push('emphasis = Emphasis(highlight = -1, selected = pyreonSelected)')
   // The batch-2 spec switches: a literal each, straight onto the spec.
   for (const p of PLOT_SPEC_LITERAL_PROPS) {
     const raw = readStaticAttrKotlin(e, p.name)
@@ -10751,11 +10789,22 @@ function emitKotlinPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const plotX = chrome.plotX(rawTapX)
   const tapYExpr = '(pyreonTap.y / pyreonDensity).toDouble()'
   let tap = ''
-  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging || brushing || tooltip) {
-    const selectOnly = onSel?.kind === 'event' ? kotlinChartSelectBody(onSel.handler, hit(plotX, tapYExpr), indent) : ''
-    const select = tooltip
+  // `pinning` joins the gate: a chart with ONLY `selectedMode` has no other
+  // reason to install a tap, and without it the pin never runs.
+  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging || brushing || tooltip || pinning) {
+    // With pinning on, the hit is computed ONCE into a local: the pin, the
+    // change callback and `onSelect` all name the same pick.
+    const pick = pinning ? 'pyreonPick' : hit(plotX, tapYExpr)
+    const selectOnly = onSel?.kind === 'event' ? kotlinChartSelectBody(onSel.handler, pick, indent) : ''
+    const onSelChange = chartEventHandler(e, 'selectchange')
+    const pinBody = pinning
+      ? `val pyreonPick = ${hit(plotX, tapYExpr)}; val pyreonNextSel = pinSelection(pyreonSelected, pyreonPick, ${pinMode === 'multiple'}); pyreonSelected = pyreonNextSel` +
+        (onSelChange === undefined ? '' : `; ${kotlinChartSelectBody(onSelChange, 'pyreonNextSel', indent)}`)
+      : ''
+    const selectBase = tooltip
       ? `val pyreonLocal = ${localHit(plotX, tapYExpr)}; pyreonTip = if (pyreonLocal < 0) listOf() else ${tipLines}; pyreonTipAt = PyreonChartPt(${rawTapX}, ${tapYExpr})${selectOnly === '' ? '' : `; ${selectOnly}`}`
       : selectOnly
+    const select = pinBody === '' ? selectBase : selectBase === '' ? pinBody : `${pinBody}; ${selectBase}`
     const decls: string[] = []
     const branches: string[] = []
     if (legend.paging) {
@@ -11152,4 +11201,3 @@ function kotlinBrushHandler(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: st
   _emitWarnings.push(`<${tag} onBrush>: must be a NAMED handler (\`const onBrush = (r: BrushRange | null) => …\`) on native — an inline arrow is not lowered; the brush still selects, without the callback.`)
   return undefined
 }
-

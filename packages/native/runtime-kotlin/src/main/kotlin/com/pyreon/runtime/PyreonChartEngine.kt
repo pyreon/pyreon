@@ -7125,6 +7125,36 @@ fun legendToggle(hidden: List<Int>, i: Int): List<Int> {
     return out
   }
 
+fun pinSelection(selected: List<Int>, global: Int, multiple: Boolean): List<Int> {
+    if (global < 0) {
+      return selected
+    }
+    var has = false
+    for (k in 0 until selected.length) {
+      if (selected[k] == global) {
+        has = true
+      }
+    }
+    if (!multiple) {
+      val one: MutableList<Int> = mutableListOf()
+      if (!has) {
+        one.add(global)
+      }
+      return one
+    }
+    val out: MutableList<Int> = mutableListOf()
+    for (k in 0 until selected.length) {
+      val s = selected[k]
+      if (s != global) {
+        out.add(s)
+      }
+    }
+    if (!has) {
+      out.add(global)
+    }
+    return out
+  }
+
 fun hideHiddenSeries(series: List<Series>, hidden: List<Int>): List<Series> {
     if (hidden.length == 0) {
       return series

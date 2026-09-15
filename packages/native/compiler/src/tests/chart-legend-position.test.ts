@@ -166,7 +166,11 @@ describe('every unlowered plot prop says WHY, not just its name', () => {
   it('names the emit-work ones as unbuilt rather than impossible', () => {
     // The distinction is the point: a reader must be able to tell a wall from
     // a backlog item.
-    for (const prop of ['emphasis', 'selectedMode', 'maxPoints', 'updateAnimation'] as const) {
+    // `selectedMode` LOWERS now, and `emphasis` turned out to be a WALL rather
+    // than a backlog item — it is the hover band, and a touch target has no
+    // hover. Both left this list for opposite reasons, which is exactly the
+    // distinction the spec below draws.
+    for (const prop of ['maxPoints', 'updateAnimation'] as const) {
       const why = plotUnloweredWarning('PlotChart', [prop])
       expect(why, prop).toMatch(/missing|not yet|unbuilt|waits on|emit work|needs/)
     }

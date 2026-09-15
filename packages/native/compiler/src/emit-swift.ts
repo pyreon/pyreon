@@ -298,6 +298,28 @@ let _activeEnumType: string | undefined
  * Swift typecheck (an integer literal infers as Double there) and failed
  * kotlinc with 'actual type is Int, but Double? was expected'.
  */
+/**
+ * An integer literal in a position whose type is KNOWN to be Double, marked so
+ * it emits `4.0` rather than `4`.
+ *
+ * `Record<string, Double> = { '2024-01-03': 4 }` is the natural way to write a
+ * count — a calendar's values ARE integers — and it emitted an Int-valued map
+ * against a Double-valued annotation, which does not compile.
+ *
+ * Applied at the sites that KNOW the element type (a map literal's values, an
+ * array literal's elements), deliberately not at the literal emit reading the
+ * ambient expected type: that type describes an ENCLOSING position, so it also
+ * covers an array index, the argument of `Double(n - 1)` and the operands of
+ * `level == 2` — all Int contexts, all corrupted by a blanket rewrite. That
+ * version was written, and the chart engine's drift lock caught it turning
+ * `slope[0]` into `slope[0.0]`.
+ */
+function asFloatLiteral(v: ExprIR, t: TypeIR | undefined): ExprIR {
+  if (t === undefined || !typeWantsFloat(t)) return v
+  if (v.kind !== 'literal' || typeof v.value !== 'number' || !Number.isInteger(v.value) || v.float === true) return v
+  return { ...v, float: true }
+}
+
 function typeWantsFloat(t: TypeIR): boolean {
   if (t.kind === 'number') return t.float === true
   if (t.kind === 'typeRef') return t.name === 'Double' || t.name === 'Float'
@@ -5051,6 +5073,12 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           })
         }
       }
+      // Chart decimators consume `[Double]`; TypeScript `number[]` can be
+      // represented as `[Int]` when its initializer is wholly integral.
+      if (e.callee.kind === 'identifier' && (e.callee.name === 'lttbIndices' || e.callee.name === 'minMaxBuckets') && e.args.length >= 2) {
+        const args = e.args.map((arg, i) => i === 1 ? `(${emitSwiftExpr(arg, indent)}).map { pyreonChartDouble($0) }` : emitSwiftExpr(arg, indent))
+        return `${swiftIdent(e.callee.name)}(${args.join(', ')})`
+      }
       // `Object.keys(<object-typed expr>)` → static `[String]` of the
       // struct field names. A synthesized struct's keys are statically
       // known, so the rewrite lowers to a plain string-array literal;
@@ -7351,7 +7379,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         const vT = _expectedType.value
         if (e.fields.length === 0) return '[:]'
         const entries = e.fields
-          .map((f) => `${JSON.stringify(f.name)}: ${withExpectedType(vT, () => emitSwiftExpr(f.value, indent))}`)
+          .map((f) => `${JSON.stringify(f.name)}: ${withExpectedType(vT, () => emitSwiftExpr(asFloatLiteral(f.value, vT), indent))}`)
           .join(', ')
         return `[${entries}]`
       }
@@ -12817,6 +12845,18 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   const mk = chartAttrExpr(e, 'markers')
   if (mk !== undefined) specArgs.push(`markers: ${withExpectedType({ kind: 'array', element: { kind: 'typeRef', name: 'PointMarker', args: [] } }, () => emitSwiftExpr(mk, indent))}`)
   if (swiftChartAnimating(e, 'PlotChart')) specArgs.push('progress: pyreonEntrance')
+  // `selectedMode` — a TAP pins a datum, which is the half of the events model
+  // a touch target actually has. (`emphasis`'s hover band and `onHighlight`
+  // are mouseover-driven and stay declined, for the same reason `crosshair`
+  // does.) The engine already draws a pinned datum from `ChartSpec.emphasis`;
+  // this is the host state that says which. It goes here because Swift's init
+  // is positional and `emphasis` follows `progress` in the struct.
+  const pinMode = readStaticAttr(e, 'selectedMode')
+  const pinning = pinMode === 'single' || pinMode === 'multiple'
+  if (pinning) {
+    _hostStateDecls.push('@State private var pyreonSelected: [Int] = []')
+    specArgs.push('emphasis: Emphasis(highlight: -1, selected: pyreonSelected)')
+  }
   // The batch-2 spec switches: a literal each, AFTER `progress` (Swift's init order is the struct's field order).
   for (const p of PLOT_SPEC_LITERAL_PROPS) {
     const raw = readStaticAttr(e, p.name)
@@ -12880,11 +12920,22 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       : localHit
   const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
   let gesture = ''
-  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging || brushing || tooltip) {
-    const selectOnly = onSel?.kind === 'event' ? swiftChartSelectBody(onSel.handler, hit, indent) : ''
-    const select = tooltip
+  // `pinning` joins the gate: a chart with ONLY `selectedMode` has no other
+  // reason to install a tap, and without it the pin never runs.
+  if (onSel?.kind === 'event' || presets !== undefined || legend.toggling || legend.paging || brushing || tooltip || pinning) {
+    // With pinning on, the hit is computed ONCE into a local: the pin, the
+    // change callback and `onSelect` all name the same pick.
+    const pick = pinning ? 'pyreonPick' : hit
+    const selectOnly = onSel?.kind === 'event' ? swiftChartSelectBody(onSel.handler, pick, indent) : ''
+    const onSelChange = chartEventHandler(e, 'selectchange')
+    const pinBody = pinning
+      ? `let pyreonPick = ${hit}; let pyreonNextSel = pinSelection(pyreonSelected, pyreonPick, ${pinMode === 'multiple'}); pyreonSelected = pyreonNextSel` +
+        (onSelChange === undefined ? '' : `; ${swiftChartSelectBody(onSelChange, 'pyreonNextSel', indent)}`)
+      : ''
+    const selectBase = tooltip
       ? `let pyreonLocal = ${localHit}; pyreonTip = pyreonLocal < 0 ? [] : ${tipLines}; pyreonTipAt = PyreonChartPt(x: Double(pyreonTap.location.x), y: Double(pyreonTap.location.y))${selectOnly === '' ? '' : `; ${selectOnly}`}`
       : selectOnly
+    const select = pinBody === '' ? selectBase : selectBase === '' ? pinBody : `${pinBody}; ${selectBase}`
     // One tap, several surfaces, in canvas coordinates: the legend pager, a
     // legend entry, a preset button, a committed brush (a plain tap clears it),
     // then the plot. First hit wins — the web's order.
