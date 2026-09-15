@@ -834,10 +834,28 @@ struct PyreonFlowStateTests {
         check(errorMessage == "broken", "host errors retain their message")
     }
 
+    /// Model fields that carry with no native RENDER meaning still carry:
+    /// `class` is a browser CSS hook, so the host never reads it, but a node or
+    /// edge round-trips it unchanged (a consumer branching on it natively, or
+    /// serialising the graph back to the web, sees the same value).
+    static func runModelFieldChecks() {
+        let f = PyreonFlowState<NodeData>(
+            nodes: [PyreonFlowNode(id: "tagged", position: PyreonXYPosition(x: 0, y: 0), data: NodeData(label: "Tagged"), className: "highlight custom", style: "opacity: .5")],
+            edges: [PyreonFlowEdge(id: "tagged-edge", source: "tagged", target: "tagged", className: "dashed-edge", pathOffset: 12)])
+        check(f.getNode("tagged")?.className == "highlight custom", "Apple retains a node's browser class name on the model")
+        check(f.getEdge("tagged-edge")?.className == "dashed-edge", "Apple retains an edge's browser class name on the model")
+        f.updateNode("tagged") { $0.position = PyreonXYPosition(x: 5, y: 5) }
+        check(f.getNode("tagged")?.className == "highlight custom", "a node update leaves the class name in place")
+        let explicitTarget = PyreonFlowNode(id: "explicit-target", position: PyreonXYPosition(x: 0, y: 0), data: NodeData(label: "Target"), targetHandles: [PyreonFlowHandleConfig(id: "model-in", type: "target", position: .bottom)])
+        let inferred = [PyreonFlowHandleConfig(id: "out", type: "source", position: .right), PyreonFlowHandleConfig(id: "in", type: "target", position: .left)]
+        check(pyreonFlowEffectiveHandles(explicitTarget, inferred).compactMap { $0.id } == ["model-in", "out"], "explicit target handles come first and replace only the inferred target endpoint")
+    }
+
     static func main() {
         runStateChecks()
         runEdgeCanvasChecks()
         runWebViewChecks()
+        runModelFieldChecks()
         print("PyreonFlowStateTests: all checks passed")
     }
 }

@@ -194,7 +194,9 @@ Position.Left // 'left'
 
 ## Multiplatform
 
-The native compiler lowers `createFlow` / `useFlow` and `<Flow>` to `PyreonFlowState` plus an interactive SwiftUI or Compose host. The same source provides node/edge CRUD, selection, history, all seven layouts, built-in and static custom node/edge renderers, handles, connection/reconnection gestures, resizing, multiple toolbars, background, controls, minimap, panels, accessibility, viewport gestures, and portable inline node/edge styles on web, iOS, and Android.
+The native compiler lowers `createFlow` / `useFlow` and `<Flow>` to `PyreonFlowState` plus an interactive SwiftUI or Compose host. The same source provides node/edge CRUD, selection, history, all seven layouts, built-in and static custom node/edge renderers, handles, connection/reconnection gestures, resizing, multiple toolbars, background, controls, minimap, panels, accessibility names, viewport gestures, and portable inline node/edge styles on web, iOS, and Android. What is PROVEN where: the state/algorithm surface by matching Swift and Kotlin behaviour fixtures; the emit by both real toolchains; on device (`examples/native-counter-ios` / `-android`) the rendered host, node/edge counts, zoom and selection. Pointer/touch gestures, keyboard equivalents and reduced motion are not yet device-asserted — see `.claude/audits/flow-full-parity-2026-09-15.md` for the open items.
+
+Browser-only, by member: `FlowLayersContext` and `flowStyles` (the DOM renderer's layer context and CSS custom properties) never lower and warn by name; use them inside a `<Web>` branch or take the `@pyreon/flow/webview` route below.
 
 Renderer maps and structural renderer configuration must be statically discoverable by the native compiler. Browser CSS classes and arbitrary SVG path strings have no automatic native meaning; keep genuinely platform-specific presentation in `NativeIOS` / `NativeAndroid` branches. Supported inline node styles (`width`, `height`, `padding`, hex `background`/`background-color`, hex `border-color`, `border-width`, `border-radius`, `opacity`) and edge styles (`stroke`, `stroke-width`) lower directly.
 
@@ -214,7 +216,7 @@ const FLOW_HOST = buildFlowHostHtml()
 ```
 
 - Compiles to WKWebView / Android WebView / an `<iframe srcdoc>` — the same bridge (forward `data` push, reverse `pyreonPostMessage`) on every target.
-- **`<FlowWebView graph onSelect>`** is the web-side wrapper; native uses `<WebView html={FLOW_HOST} …>` directly.
+- **`<FlowWebView graph onSelect>`** is the wrapper on every target: it lowers to the native `PyreonWebView` bridge itself (a generated default host, graph updates, once-only commands, selection/event/message/error callbacks), so the same JSX hosts the unchanged renderer on web, iOS and Android.
 - Use this bridge only when retaining browser-only CSS/DOM behavior is more important than a native SwiftUI/Compose host.
 
 See `examples/native-viz` for a one-source multiplatform app.

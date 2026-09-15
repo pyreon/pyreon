@@ -58,6 +58,18 @@ native view.
   Swift and Kotlin behaviour fixtures. A source-derived compiler test prevents
   new configuration fields from entering the native inventory without both
   assertions.
+- [x] Every handled node and edge field is exercised under its native
+  spelling in BOTH targets' fixtures (`class` → `className`, `pathOptions` →
+  curvature / borderRadius / pathOffset), ratcheted by a source-derived test.
+  The pass surfaced `class` (both targets) and `targetHandles` (Kotlin) as
+  registry-only carries; both now have behaviour assertions, and the
+  Kotlin smoke runs under a JDK (without one the gate is typecheck-only —
+  put one on PATH before trusting a green).
+- [x] F7 first pass: the manifest, README, multiplatform pattern doc and
+  multiplatform page state what is proven where, name the browser-only
+  members (`FlowLayersContext`, `flowStyles`), and no longer list the package
+  among those that cannot render natively. Still open under F7: the generated
+  reference page carries no native-tier section (a generator change).
 - [x] The public `@pyreon/flow/webview` component now lowers to the real native
   WebView bridge instead of an unresolved `FlowWebView` symbol. Its generated
   default host is byte-ratcheted against the web builder; graph updates,

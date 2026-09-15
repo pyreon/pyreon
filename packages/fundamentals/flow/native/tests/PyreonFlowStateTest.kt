@@ -3,6 +3,7 @@
 // viewport results, so a diagram behaves identically on web, iOS, and Android.
 
 import com.pyreon.runtime.PyreonFlowEdge
+import com.pyreon.runtime.PyreonFlowHandleConfig
 import com.pyreon.runtime.PyreonFlowConnection
 import com.pyreon.runtime.PyreonFlowDefaultEdgeOptions
 import com.pyreon.runtime.PyreonFlowDimensions
@@ -580,6 +581,19 @@ fun main() {
     et.updateNodePosition("2", PyreonXYPosition(50.0, 50.0))
     check(et.nodes.map { it.id } == listOf("1", "2", "3"), "updateNodePosition keeps insertion order")
     check(et.getNode("2")?.position == PyreonXYPosition(50.0, 50.0) && et.getNode("1")?.position == PyreonXYPosition(0.0, 0.0), "only the written node moved")
+
+    // Model fields that carry with no native RENDER meaning still carry:
+    // `class` is a browser CSS hook the host never reads, but a node or edge
+    // round-trips it unchanged; explicit `targetHandles` win over inferred ones
+    // per endpoint type exactly like `sourceHandles`.
+    val tagged = PyreonFlowState(
+        nodes = listOf(PyreonFlowNode("tagged", position = PyreonXYPosition(0.0, 0.0), data = NodeData("Tagged"), className = "highlight custom", style = "opacity: .5",
+            targetHandles = listOf(PyreonFlowHandleConfig("model-in", "target", PyreonFlowPosition.Bottom)))),
+        edges = listOf(PyreonFlowEdge("tagged-edge", source = "tagged", target = "tagged", className = "dashed-edge", pathOffset = 12.0)),
+    )
+    check(tagged.getNode("tagged")?.className == "highlight custom", "Android retains a node's browser class name on the model")
+    check(tagged.getEdge("tagged-edge")?.className == "dashed-edge", "Android retains an edge's browser class name on the model")
+    check(tagged.getNode("tagged")?.targetHandles?.single()?.id == "model-in", "Android retains explicit target handles on the model")
 
     println("PyreonFlowStateTest: all checks passed")
 }

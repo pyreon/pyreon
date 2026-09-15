@@ -14,7 +14,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { transform } from '../index'
-import { HANDLED_FLOW_COMPONENT_PROPS, HANDLED_FLOW_HOST_PROPS, HANDLED_FLOW_WEBVIEW_PROPS, LOWERED_FLOW_CONFIG_PROPERTIES, LOWERED_FLOW_METHODS, LOWERED_FLOW_PROPERTY_READS, LOWERED_FLOW_RUNTIME_EXPORTS, WEB_ONLY_FLOW_RUNTIME_EXPORTS } from '../flow-lowering'
+import { HANDLED_FLOW_COMPONENT_PROPS, HANDLED_FLOW_EDGE_FIELDS, HANDLED_FLOW_NODE_FIELDS, HANDLED_FLOW_HOST_PROPS, HANDLED_FLOW_WEBVIEW_PROPS, LOWERED_FLOW_CONFIG_PROPERTIES, LOWERED_FLOW_METHODS, LOWERED_FLOW_PROPERTY_READS, LOWERED_FLOW_RUNTIME_EXPORTS, WEB_ONLY_FLOW_RUNTIME_EXPORTS } from '../flow-lowering'
 import {
   isKotlincAvailable,
   isSwiftcAvailable,
@@ -71,6 +71,30 @@ it('executes every lowered FlowInstance operation in both native behaviour fixtu
     for (const [target, fixture] of fixtures) {
       const invoked = fixture.includes(`.${method}(`) || fixture.includes(`.${method} {`)
       expect(invoked, `${method} must execute in the ${target} behaviour fixture`).toBe(true)
+    }
+  }
+})
+
+it('asserts every handled node and edge field in both native behaviour fixtures', () => {
+  // A field in HANDLED_FLOW_NODE_FIELDS / _EDGE_FIELDS is a carry claim: the
+  // native model retains it and the host reads it. Membership alone proved
+  // that for neither target — the Swift fixture never touched `class`, the
+  // Kotlin one never touched `class` or `targetHandles`. Every field must be
+  // exercised under its NATIVE spelling in that target's fixtures (state or
+  // host), so a field added to the registry fails here until both prove it.
+  const fixtures = [
+    ['Swift', ['PyreonFlowStateTests.swift']],
+    ['Kotlin', ['PyreonFlowStateTest.kt', 'PyreonFlowHostTest.kt', 'PyreonFlowEdgeGeometryTest.kt']],
+  ] as const
+  const nativeSpellings = (field: string): readonly string[] =>
+    field === 'class' ? ['className'] : field === 'pathOptions' ? ['curvature', 'borderRadius', 'pathOffset'] : [field]
+  for (const [target, files] of fixtures) {
+    const source = files
+      .map((file) => readFileSync(new URL(`../../../../fundamentals/flow/native/tests/${file}`, import.meta.url), 'utf8'))
+      .join('\n')
+    for (const field of [...HANDLED_FLOW_NODE_FIELDS, ...HANDLED_FLOW_EDGE_FIELDS]) {
+      const exercised = nativeSpellings(field).some((name) => new RegExp(`[.(, ]${name}\\b`).test(source))
+      expect(exercised, `${field} must be exercised in the ${target} behaviour fixtures`).toBe(true)
     }
   }
 })

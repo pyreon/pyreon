@@ -73,7 +73,7 @@ Same source. Three idiomatic outputs (web rendered live; iOS/Android emitted as 
 
 | Package | Blocking dependency |
 |---|---|
-| `@pyreon/flow` (the `<Flow>` JSX host) | SVG/CSS-transform pan-zoom + DOM pointer events; `createFlow` itself DOES lower (`PyreonFlowState` on both targets — see the tier table), the host/gestures/layout/chrome do not yet |
+| `@pyreon/flow` — ONLY `FlowLayersContext`, `flowStyles` (the DOM renderer's layer context and CSS custom properties) plus arbitrary SVG path strings / browser CSS selectors in a custom renderer | `createFlow` / `useFlow`, the `FlowInstance` surface, the seven layouts AND the `<Flow>` host with its chrome, gestures and static custom renderers lower to `PyreonFlowState` + `PyreonFlowView` on both targets (see the tier table); the named DOM-bound members warn by name, and the unchanged DOM renderer is available through `@pyreon/flow/webview` |
 | `@pyreon/charts` (the `echarts` facade: `Chart`, `useChart`, `<OptionChart>`) | `echarts` (renders to `<canvas>`) — **but `@pyreon/charts/plot` is NOT in this table**: Pyreon's own plot engine and its hosts render natively (see the Charts row of the capability matrix) |
 | `@pyreon/code` | CodeMirror 6 (DOM editor) + a `<canvas>` minimap |
 | `@pyreon/dnd` | `@atlaskit/pragmatic-drag-and-drop` (HTML5 drag events on `HTMLElement`) |
@@ -1256,8 +1256,8 @@ project as well as the workspace.
 
 ## WebView host — embedding web-only-rich viz (charts / flow)
 
-Some libraries are **structurally web-only** — `@pyreon/charts` (ECharts),
-`@pyreon/flow` (the SVG host — its `createFlow` state lowers), `@pyreon/code` (CodeMirror), `@pyreon/document`
+Some libraries are **structurally web-only** — `@pyreon/charts`' ECharts facade
+(its `/plot` engine and `@pyreon/flow`'s `<Flow>` host render natively), `@pyreon/code` (CodeMirror), `@pyreon/document`
 (pdfmake) all wrap a browser-runtime engine and cannot compile to SwiftUI
 / Compose. The multiplatform answer is a **hybrid**: a substantial native
 shell (the canonical primitives) with the heavy viz hosted in a
@@ -1326,13 +1326,16 @@ handler).
 
 ### The `/webview` subpaths — web engines that cross by HOSTING
 
-Four packages wrap a web engine that has no native equivalent and cannot
-be reimplemented as a native view: `@pyreon/charts` (ECharts, a canvas
-engine), `@pyreon/code` (CodeMirror 6, a DOM editor), `@pyreon/rich-text`
-(TipTap/ProseMirror, a DOM editor), and `@pyreon/flow` (an SVG
-layout). Rather than leave them web-only, each ships a **`./webview`
+Three packages wrap a web engine that has no native equivalent and cannot
+be reimplemented as a native view: `@pyreon/charts`' ECharts facade (a canvas
+engine), `@pyreon/code` (CodeMirror 6, a DOM editor) and `@pyreon/rich-text`
+(TipTap/ProseMirror, a DOM editor) — and `@pyreon/flow`, whose `<Flow>` host
+DOES render natively but whose DOM/CSS renderer some apps want unchanged.
+Rather than leave them web-only, each ships a **`./webview`
 subpath** that builds a self-contained host page and runs the SAME web
-bundle inside the `<WebView>` documented above:
+bundle inside the `<WebView>` documented above; each host component below
+lowers to the native bridge itself (`PyreonWebView(html:data:onMessage:)`),
+so it is the same JSX on every target:
 
 | Package | host-page builder | host component |
 | --- | --- | --- |
