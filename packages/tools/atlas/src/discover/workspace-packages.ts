@@ -419,12 +419,12 @@ function subpathEntry(dir: string, subpath: string, want: EntryKind): string | u
     const target = entryFromExports(declared, want)
     if (target) {
       const path = join(dir, target.replace(/^\.\//, ''))
-      if (existsSync(path)) return path
+      if (isFile(path)) return path
     }
   }
   for (const extension of ['', '.js', '.mjs', '.ts', '/index.js', '/index.ts']) {
     const path = join(dir, `${subpath}${extension}`)
-    if (existsSync(path)) return path
+    if (isFile(path)) return path
   }
   return undefined
 }

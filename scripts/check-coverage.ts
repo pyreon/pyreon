@@ -243,12 +243,6 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
     reason:
       'Dependency observatory. Statements, functions and lines all clear the floor comfortably (98.31 / 99.09 / 99.27) and are NOT exempted — only branches is, now at 92.65, which clears the 92%+ campaign bar though not the gate\'s 95. Ratcheted 90 -> 92 by covering `core/detect.ts`, where every uncovered arm was a RECOGNITION rule present because the naive detector produced wrong warnings on a real monorepo: the `@types/*` twin (including the scoped `@scope/x` -> `@types/scope__x` mapping, which is not the obvious one), type-only-counts-as-used, and private-vs-published severity. Writing them surfaced a real gap — `if (!prod) continue` skipped the WHOLE package, so one whose runtime imports are all relative or all declared never had its `import type` specifiers checked at all, making `phantom-type-dep` unreachable for exactly the shape where it is the only finding available. The residual is defensive `??` fallbacks spread thin across files that are otherwise 96-99%.',
   },
-  '@pyreon/atlas': {
-    currentStatements: 87,
-    currentBranches: 79,
-    reason:
-      'AI-native component workbench. First enforced at 82/75 (it had been absent from every CI coverage table because the runner silently dropped any package whose output it could not parse). Ratcheted 84/76 -> 87/79 by the 92%+ campaign (measured 87.93/79.69, functions 90.54, lines 89.13). The lift targeted the surfaces whose failure is SILENT: the CLI\'s exit codes, where a command that cannot do its job and exits 0 reports success for work it did not do (an empty scan, a `check` with no catalog, `verify` matching nothing); the dev plugin\'s RPC channel, which is a local HTTP endpoint that READS FILES — so its root guard is a security boundary, and the separator in the prefix check is what stops a sibling directory (`/proj-evil` for root `/proj`) passing; and the plugin registry\'s per-hook cost attribution, where a profiler recording under the wrong name turns a measurement into a confident wrong answer. What remains is concentrated and named: `dev/server.ts` (boots a real Vite server), `build/static.ts`, `ui/model.ts` + `ui/lens-client.ts` (browser-side, measured on the page\'s own devtools bridge by `atlas verify-browser`), and the discover/type-resolution layer. Raise in lockstep; never lower.',
-  },
   '@pyreon/ui-components': {
     currentStatements: 98,
     currentBranches: 94,
