@@ -91,6 +91,12 @@ export interface BuildChartHostHtmlOptions {
   background?: string
   /** Additional chart event names to forward through the reverse bridge. */
   forwardEvents?: readonly string[]
+  /**
+   * Trusted JavaScript executed after the bundled engine loads and before the
+   * chart is created. Use it for build-time theme, geographic-data, or
+   * extension registration. Never pass untrusted input.
+   */
+  hostSetupScript?: string
 }
 
 const DEFAULT_ECHARTS_SRC = 'https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js'
@@ -155,11 +161,13 @@ export function buildChartHostHtml(options: BuildChartHostHtmlOptions = {}): str
     renderer = 'canvas',
     background = 'transparent',
     forwardEvents = [],
+    hostSetupScript,
   } = options
 
   const engineTag = echartsScript
     ? `<script>${scriptSafe(echartsScript)}</script>`
     : `<script src="${attrSafe(echartsSrc)}"></script>`
+  const setupTag = hostSetupScript ? `<script>${scriptSafe(hostSetupScript)}</script>` : ''
 
   // A theme is an ECharts theme NAME (a registered identifier); JSON.stringify
   // emits a properly-escaped JS string literal so a name containing a quote can't
@@ -317,6 +325,7 @@ export function buildChartHostHtml(options: BuildChartHostHtmlOptions = {}): str
     '}#pyreon-chart{height:100%;width:100%}</style></head>' +
     '<body><div id="pyreon-chart"></div>' +
     engineTag +
+    setupTag +
     '<script>' +
     scriptSafe(bridge) +
     '</script></body></html>'
@@ -361,6 +370,8 @@ export interface ChartWebViewProps {
   renderer?: 'canvas' | 'svg'
   /** Additional hosted event names to forward to {@link onEvent}. */
   forwardEvents?: readonly string[]
+  /** Trusted pre-initialization registration script; see the host builder option. */
+  hostSetupScript?: string
 }
 
 /**
@@ -388,6 +399,7 @@ export function ChartWebView(props: ChartWebViewProps): VNode {
   if (props.theme !== undefined) built.theme = props.theme
   if (props.renderer !== undefined) built.renderer = props.renderer
   if (props.forwardEvents !== undefined) built.forwardEvents = props.forwardEvents
+  if (props.hostSetupScript !== undefined) built.hostSetupScript = props.hostSetupScript
   const html = props.html ?? buildChartHostHtml(built)
 
   const webViewProps: Record<string, unknown> = { html }

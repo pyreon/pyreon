@@ -26,7 +26,11 @@ import echartsScript from 'echarts/dist/echarts.min.js?raw'
 import { ChartWebView, buildChartHostHtml } from './webview'
 
 const HOST = buildChartHostHtml({ echartsScript })
-const INTERACTIVE_HOST = buildChartHostHtml({ echartsScript: echartsScript, forwardEvents: ['legendselectchanged'] })
+const INTERACTIVE_HOST = buildChartHostHtml({
+  echartsScript: echartsScript,
+  forwardEvents: ['legendselectchanged'],
+  hostSetupScript: 'window.__pyreonSetupProof = 42',
+})
 
 const barOption = (data: number[]) => ({
   xAxis: { type: 'category', data: ['A', 'B', 'C'] },
@@ -165,6 +169,7 @@ describe('ChartWebView bridge (real ECharts in a real iframe)', () => {
     await flush()
     const iframe = query<HTMLIFrameElement>(container, 'iframe')
     const win = await waitForChart(iframe)
+    expect((win as unknown as { __pyreonSetupProof?: number }).__pyreonSetupProof).toBe(42)
     const el = iframe.contentDocument!.getElementById('pyreon-chart')!
     const instance = (
       win as unknown as {

@@ -39,6 +39,21 @@ describe('buildChartHostHtml', () => {
     expect(html).toContain('__pyreonChartEvent: 1')
   })
 
+  it('places a trusted setup script after the engine and before chart creation', () => {
+    const html = buildChartHostHtml({
+      echartsScript: 'window.__engineReady = true',
+      hostSetupScript: 'window.__setupReady = window.__engineReady',
+    })
+    expect(html.indexOf('window.__engineReady = true')).toBeLessThan(html.indexOf('window.__setupReady'))
+    expect(html.indexOf('window.__setupReady')).toBeLessThan(html.indexOf('var chart ='))
+  })
+
+  it('prevents the trusted setup script from terminating its script element', () => {
+    const html = buildChartHostHtml({ hostSetupScript: 'window.x = "</script><p>escaped</p>"' })
+    expect(html).not.toContain('</script><p>escaped</p>')
+    expect(html).toContain('<\\/script><p>escaped<\\/p>')
+  })
+
   it('inlines echartsScript (self-contained) and takes precedence over echartsSrc', () => {
     const html = buildChartHostHtml({
       echartsScript: 'window.echarts={init:function(){}}',
@@ -190,12 +205,14 @@ describe('<ChartWebView>', () => {
       theme: 'dark',
       renderer: 'svg',
       forwardEvents: ['datazoom'],
+      hostSetupScript: 'window.__configured = true',
     })
     const html = (vnode.props as { html: string }).html
     expect(html).toContain('https://example.test/echarts.js')
     expect(html).toContain('dark')
     expect(html).toContain('svg')
     expect(html).toContain('["datazoom"]')
+    expect(html).toContain('window.__configured = true')
   })
 
   it('forwards an inlined echartsScript through the component', () => {
