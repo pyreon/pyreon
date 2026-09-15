@@ -29,5 +29,19 @@ import { defineNodeConfig } from '@pyreon/vitest-config'
 export default defineNodeConfig({
   category: 'internals',
   coverageThresholds: { statements: 95, branches: 92, functions: 94, lines: 96 },
-  overrides: { test: { testTimeout: 180_000 } },
+  overrides: {
+    test: {
+      testTimeout: 180_000,
+      // Each file can launch several synchronous swiftc/kotlinc processes.
+      // Running files in parallel therefore starts multiple compiler/JVM
+      // processes on the same two-core Actions runner. The resulting CPU and
+      // memory contention has repeatedly stretched otherwise-valid Kotlin
+      // checks from seconds to the 25-minute job ceiling, where GitHub marks
+      // the matrix cell as `cancelled`. CI already distributes this package
+      // across sixteen independent runners; serialize files *inside* each
+      // runner so those shards provide the parallelism without a local
+      // compiler stampede.
+      fileParallelism: process.env.PYREON_NATIVE_COMPILER_SERIAL !== '1',
+    },
+  },
 })
