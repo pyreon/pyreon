@@ -226,6 +226,22 @@ let _flowComponentsWithInvalidHandles: Set<string> = new Set()
 type StaticFlowNodeResizer = { minWidth: number; minHeight: number; handleSize: number; showEdgeHandles: boolean }
 let _flowComponentResizers: Map<string, StaticFlowNodeResizer> = new Map()
 let _flowComponentsWithInvalidResizers: Set<string> = new Set()
+type StaticFlowNodeToolbar = {
+  position: string
+  align: string
+  offset: number
+  showOnSelect: boolean
+  contentComponent: string
+}
+let _flowComponentToolbars: Map<string, StaticFlowNodeToolbar> = new Map()
+let _flowComponentsWithInvalidToolbars: Set<string> = new Set()
+let _activeComponentName = ''
+
+function collectStaticFlowNodeToolbars(expr: ExprIR): Extract<ExprIR, { kind: 'jsx-element' }>[] {
+  if (expr.kind !== 'jsx-fragment' && expr.kind !== 'jsx-element') return []
+  if (expr.kind === 'jsx-element' && expr.tag === 'NodeToolbar') return [expr]
+  return expr.children.flatMap((child) => child.kind === 'expr' ? collectStaticFlowNodeToolbars(child.expr) : [])
+}
 
 function collectStaticFlowNodeResizer(expr: ExprIR): { config?: StaticFlowNodeResizer; invalid: boolean } {
   if (expr.kind !== 'jsx-fragment' && expr.kind !== 'jsx-element') return { invalid: false }
@@ -1161,6 +1177,10 @@ export function emitSwift(
   _flowComponentsWithInvalidHandles = new Set()
   _flowComponentResizers = new Map()
   _flowComponentsWithInvalidResizers = new Set()
+  _flowComponentToolbars = new Map()
+  _flowComponentsWithInvalidToolbars = new Set()
+  const flowToolbarComponents: ComponentIR[] = []
+  const usedComponentNames = new Set(components.map((component) => component.name))
   for (const component of components) {
     const result = collectStaticFlowHandles(component.returnExpr)
     _flowComponentHandles.set(component.name, result.handles)
@@ -1168,6 +1188,41 @@ export function emitSwift(
     const resizer = collectStaticFlowNodeResizer(component.returnExpr)
     if (resizer.config) _flowComponentResizers.set(component.name, resizer.config)
     if (resizer.invalid) _flowComponentsWithInvalidResizers.add(component.name)
+    const toolbars = collectStaticFlowNodeToolbars(component.returnExpr)
+    if (toolbars.length > 0) {
+      const toolbar = toolbars[0]!
+      let contentComponent = `${component.name}PyreonNodeToolbar`
+      while (usedComponentNames.has(contentComponent)) contentComponent += '_'
+      usedComponentNames.add(contentComponent)
+      const read = (name: string): unknown => {
+        const entry = toolbar.attrs.find((candidate) => candidate.kind === 'attr' && candidate.name === name)
+        return entry?.kind === 'attr' && entry.value.kind === 'literal' ? entry.value.value : undefined
+      }
+      const has = (name: string): boolean => toolbar.attrs.some((entry) => entry.kind === 'attr' && entry.name === name)
+      const position = read('position'), align = read('align'), offset = read('offset'), showOnSelect = read('showOnSelect')
+      const invalid = toolbars.length > 1 ||
+        (has('position') && typeof position !== 'string') ||
+        (has('align') && typeof align !== 'string') ||
+        (has('offset') && typeof offset !== 'number') ||
+        (has('showOnSelect') && typeof showOnSelect !== 'boolean')
+      _flowComponentToolbars.set(component.name, {
+        position: typeof position === 'string' ? position : 'top',
+        align: typeof align === 'string' ? align : 'center',
+        offset: typeof offset === 'number' ? offset : 8,
+        showOnSelect: typeof showOnSelect === 'boolean' ? showOnSelect : true,
+        contentComponent,
+      })
+      if (invalid) _flowComponentsWithInvalidToolbars.add(component.name)
+      flowToolbarComponents.push({
+        ...component,
+        name: contentComponent,
+        returnExpr: { kind: 'jsx-fragment', children: toolbar.children },
+      })
+    }
+  }
+  for (const toolbarComponent of flowToolbarComponents) {
+    _componentNames.add(toolbarComponent.name)
+    _componentPropsMap.set(toolbarComponent.name, toolbarComponent.props)
   }
   _layoutComponentNames = collectLayoutComponentNames(components)
   // Pre-pass: register each component's `params` prop shape so router
@@ -1337,7 +1392,7 @@ export function emitSwift(
   // Emit components — populates _needsSwift{Suspense,ErrorBoundary,KeepAlive}Wrapper
   // if any of those elements is encountered.
   const componentParts: string[] = []
-  for (const c of components) componentParts.push(emitSwiftComponent(c))
+  for (const c of [...components, ...flowToolbarComponents]) componentParts.push(emitSwiftComponent(c))
   // Emit synthesized anonymous-object structs (collected during component
   // emit) at module scope. Swift allows top-level type forward refs, so
   // ordering vs the components is irrelevant.
@@ -2317,6 +2372,7 @@ function warnUnmappedMemberMethod(e: Extract<ExprIR, { kind: 'call' }>): void {
 }
 
 function emitSwiftComponent(c: ComponentIR): string {
+  _activeComponentName = c.name
   // Store field types thread into the inference ctx so computeds over
   // store reads (`useApp().store.tasks().filter(...).length`) infer a
   // concrete return type instead of degrading to Any.
@@ -8372,6 +8428,10 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   if (tag === 'Toggle') return emitSwiftToggle(e, indent)
   if (tag === 'Handle') return 'EmptyView()'
   if (tag === 'NodeResizer') return 'EmptyView()'
+  if (tag === 'NodeToolbar') {
+    if (!_flowComponentToolbars.has(_activeComponentName)) _emitWarnings.push('<NodeToolbar> only lowers when declared inside a component registered by a literal <Flow nodeTypes={{ type: Component }}> map; it was dropped.')
+    return 'EmptyView()'
+  }
   // `<RouterLink>` from @pyreon/router is the SAME concept as `<Link>` and
   // carries the same `to` prop, but it had no dispatch entry — so it fell
   // through to the unknown-tag path and emitted `RouterLink(to:)` verbatim, a
@@ -8422,6 +8482,7 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
   for (const entry of nodeTypes ?? []) {
     if (_flowComponentsWithInvalidHandles.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <Handle> requires literal \`type\` and \`position\` props for native extraction; the dynamic handle was not attached to the node.`)
     if (_flowComponentsWithInvalidResizers.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <NodeResizer> size and edge-handle options must be literals for native extraction; dynamic values use native defaults.`)
+    if (_flowComponentsWithInvalidToolbars.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <NodeToolbar> supports one declaration with literal position, align, offset, and showOnSelect props on native; unsupported values use native defaults.`)
   }
   if (e.attrs.some((a) => a.kind === 'attr' && a.name === 'edgeTypes')) {
     _emitWarnings.push('<Flow edgeTypes={…}> custom edge renderer maps are not lowered natively yet; the native default edge renderer is used.')
@@ -8462,6 +8523,20 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
   const nodeResizerArg = resizerCases.length > 0
     ? `, nodeResizer: { pyreonNode in\n    switch pyreonNode.type {\n    ${resizerCases.join('\n    ')}\n    default: return nil\n    }\n  }`
     : ''
+  const toolbarCases = nodeTypes?.flatMap(({ type, component }) => {
+    const config = _flowComponentToolbars.get(component)
+    return config ? [`case ${JSON.stringify(type)}: return PyreonFlowNodeToolbarConfig(position: ${JSON.stringify(config.position)}, align: ${JSON.stringify(config.align)}, offset: ${config.offset}, showOnSelect: ${config.showOnSelect})`] : []
+  }) ?? []
+  const nodeToolbarConfigArg = toolbarCases.length > 0
+    ? `, nodeToolbarConfig: { pyreonNode in\n    switch pyreonNode.type {\n    ${toolbarCases.join('\n    ')}\n    default: return nil\n    }\n  }`
+    : ''
+  const toolbarContentCases = nodeTypes?.flatMap(({ type, component }) => {
+    const config = _flowComponentToolbars.get(component)
+    return config ? [`case ${JSON.stringify(type)}: return AnyView(${swiftIdent(config.contentComponent)}(id: pyreonNode.id, data: { pyreonNode.data }, selected: { pyreonSelected }, dragging: { pyreonDragging }))`] : []
+  }) ?? []
+  const nodeToolbarArg = toolbarContentCases.length > 0
+    ? `, nodeToolbar: { pyreonNode, pyreonSelected, pyreonDragging in\n    switch pyreonNode.type {\n    ${toolbarContentCases.join('\n    ')}\n    default: return nil\n    }\n  }`
+    : ''
   const nodeText = attr.value.kind === 'identifier' && _flowStateLabelNamesSwift.has(attr.value.name)
     ? 'Text(String(describing: pyreonNode.data.label))'
     : 'Text(pyreonNode.id)'
@@ -8469,7 +8544,7 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
     ? `switch pyreonNode.type {\n${nodeTypes.map(({ type, component }) => `  case ${JSON.stringify(type)}:\n    ${swiftIdent(component)}(id: pyreonNode.id, data: { pyreonNode.data }, selected: { pyreonSelected }, dragging: { pyreonDragging })`).join('\n')}\n  default:\n    ${nodeText}\n  }`
     : nodeText
   const rendererParams = nodeTypes && nodeTypes.length > 0 ? 'pyreonNode, pyreonSelected, pyreonDragging' : 'pyreonNode'
-  const host = `PyreonFlowView(state: ${emitSwiftExpr(attr.value, 0)}${bgArg}${controlsArg}${miniMapArg}${ariaLabelArg}${nodeHandlesArg}${nodeResizerArg}) { ${rendererParams} in\n  ${renderer}\n}`
+  const host = `PyreonFlowView(state: ${emitSwiftExpr(attr.value, 0)}${bgArg}${controlsArg}${miniMapArg}${ariaLabelArg}${nodeHandlesArg}${nodeResizerArg}${nodeToolbarConfigArg}${nodeToolbarArg}) { ${rendererParams} in\n  ${renderer}\n}`
   if (panels.length === 0) return host
   const overlays = panels.map((panel) => {
     const position = readStaticAttr(panel, 'position')

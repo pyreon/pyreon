@@ -1854,7 +1854,7 @@ fun <T> PyreonFlowView(
   nodeHandles: (PyreonFlowNode<T>) -> List<PyreonFlowHandleConfig> = { emptyList() },
   nodeResizer: (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { null },
   nodeToolbarConfig: (PyreonFlowNode<T>) -> PyreonFlowNodeToolbarConfig? = { null },
-  nodeToolbar: @Composable (PyreonFlowNode<T>, Boolean) -> Unit = { _, _ -> },
+  nodeToolbar: @Composable (PyreonFlowNode<T>, Boolean, Boolean) -> Unit = { _, _, _ -> },
   nodeContent: @Composable (PyreonFlowNode<T>) -> Unit,
 ) {}
 @Composable
@@ -1870,7 +1870,7 @@ fun <T> PyreonFlowView(
   nodeHandles: (PyreonFlowNode<T>) -> List<PyreonFlowHandleConfig> = { emptyList() },
   nodeResizer: (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { null },
   nodeToolbarConfig: (PyreonFlowNode<T>) -> PyreonFlowNodeToolbarConfig? = { null },
-  nodeToolbar: @Composable (PyreonFlowNode<T>, Boolean) -> Unit = { _, _ -> },
+  nodeToolbar: @Composable (PyreonFlowNode<T>, Boolean, Boolean) -> Unit = { _, _, _ -> },
   nodeContent: @Composable (PyreonFlowNode<T>, Boolean, Boolean) -> Unit,
 ) {}
 

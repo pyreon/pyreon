@@ -228,7 +228,7 @@ fun <T> PyreonFlowView(
     nodeHandles: (PyreonFlowNode<T>) -> List<PyreonFlowHandleConfig> = { emptyList() },
     nodeResizer: (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { null },
     nodeToolbarConfig: (PyreonFlowNode<T>) -> PyreonFlowNodeToolbarConfig? = { null },
-    nodeToolbar: @Composable (PyreonFlowNode<T>, Boolean) -> Unit = { _, _ -> },
+    nodeToolbar: @Composable (PyreonFlowNode<T>, Boolean, Boolean) -> Unit = { _, _, _ -> },
     nodeContent: @Composable (PyreonFlowNode<T>) -> Unit,
 ) = PyreonFlowView(state, modifier, edgeColor, edgeWidth, background, controls, miniMap, ariaLabel, nodeHandles, nodeResizer, nodeToolbarConfig, nodeToolbar) { node, _, _ -> nodeContent(node) }
 
@@ -245,7 +245,7 @@ fun <T> PyreonFlowView(
     nodeHandles: (PyreonFlowNode<T>) -> List<PyreonFlowHandleConfig> = { emptyList() },
     nodeResizer: (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { null },
     nodeToolbarConfig: (PyreonFlowNode<T>) -> PyreonFlowNodeToolbarConfig? = { null },
-    nodeToolbar: @Composable (PyreonFlowNode<T>, Boolean) -> Unit = { _, _ -> },
+    nodeToolbar: @Composable (PyreonFlowNode<T>, Boolean, Boolean) -> Unit = { _, _, _ -> },
     nodeContent: @Composable (PyreonFlowNode<T>, Boolean, Boolean) -> Unit,
 ) {
     val density = LocalDensity.current
@@ -565,7 +565,7 @@ fun <T> PyreonFlowView(
                         translationX = (-placement.anchorX * size.width).toFloat()
                         translationY = (-placement.anchorY * size.height).toFloat()
                     },
-            ) { nodeToolbar(node, selected) }
+            ) { nodeToolbar(node, selected, nodeDragStarts.containsKey(node.id)) }
         }
 
         if (controls != null) {

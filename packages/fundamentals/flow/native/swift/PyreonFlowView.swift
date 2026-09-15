@@ -443,7 +443,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private let nodeHandles: (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig]
     private let nodeResizer: (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig?
     private let nodeToolbarConfig: (PyreonFlowNode<T>) -> PyreonFlowNodeToolbarConfig?
-    private let nodeToolbar: (PyreonFlowNode<T>, Bool) -> AnyView?
+    private let nodeToolbar: (PyreonFlowNode<T>, Bool, Bool) -> AnyView?
     private let nodeContent: (PyreonFlowNode<T>, Bool, Bool) -> NodeContent
 
     @State private var nodeDragStart: [String: PyreonXYPosition] = [:]
@@ -468,7 +468,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         nodeHandles: @escaping (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] },
         nodeResizer: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { _ in nil },
         nodeToolbarConfig: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeToolbarConfig? = { _ in nil },
-        nodeToolbar: @escaping (PyreonFlowNode<T>, Bool) -> AnyView? = { _, _ in nil },
+        nodeToolbar: @escaping (PyreonFlowNode<T>, Bool, Bool) -> AnyView? = { _, _, _ in nil },
         @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>) -> NodeContent
     ) {
         self.state = state
@@ -496,7 +496,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         nodeHandles: @escaping (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] },
         nodeResizer: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { _ in nil },
         nodeToolbarConfig: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeToolbarConfig? = { _ in nil },
-        nodeToolbar: @escaping (PyreonFlowNode<T>, Bool) -> AnyView? = { _, _ in nil },
+        nodeToolbar: @escaping (PyreonFlowNode<T>, Bool, Bool) -> AnyView? = { _, _, _ in nil },
         @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>, Bool, Bool) -> NodeContent
     ) {
         self.state = state
@@ -694,7 +694,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private var nodeToolbarsLayer: some View {
         ForEach(visibleNodes, id: \.id) { node in
             let selected = state.isNodeSelected(node.id)
-            if let config = nodeToolbarConfig(node), (!config.showOnSelect || selected), let toolbar = nodeToolbar(node, selected) {
+            if let config = nodeToolbarConfig(node), (!config.showOnSelect || selected), let toolbar = nodeToolbar(node, selected, nodeDragStart[node.id] != nil) {
                 let absolute = state.getAbsolutePosition(node.id)
                 let dimensions = state.getNodeDimensions(node.id)
                 PyreonFlowToolbarPortal(

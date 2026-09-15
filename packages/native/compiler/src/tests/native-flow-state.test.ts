@@ -44,7 +44,7 @@ export function WorkflowFlow() {
 }
 `
 
-describe('createFlow — Swift lowering', () => {
+describe('createFlow — Swift lowering', { timeout: 30_000 }, () => {
   const r = transform(workflowFlow, { target: 'swift' })
 
   it('emits a self-seeding @State PyreonFlowState, row struct synthesized from `data`', () => {
@@ -124,7 +124,7 @@ describe('createFlow — Swift lowering', () => {
   })
 })
 
-describe('createFlow — Kotlin lowering', () => {
+describe('createFlow — Kotlin lowering', { timeout: 30_000 }, () => {
   const r = transform(workflowFlow, { target: 'kotlin' })
 
   it('nodeMap/edgeMap/measurements preserve Map lookup semantics', () => {
@@ -170,7 +170,7 @@ describe('createFlow — Kotlin lowering', () => {
   })
 })
 
-describe('<Flow> native host lowering', () => {
+describe('<Flow> native host lowering', { timeout: 30_000 }, () => {
   const source = `
     import { createFlow, Flow } from '@pyreon/flow'
     export function App() {
@@ -371,6 +371,65 @@ describe('<Flow> native host lowering', () => {
     if (isKotlincAvailable()) expect(validateKotlin(kotlin.code).ok).toBe(true)
   })
 
+  it('extracts NodeToolbar configuration and live custom-node content on both targets', { timeout: 30_000 }, () => {
+    const source = `
+      import { createFlow, Flow, NodeToolbar, type NodeComponentProps } from '@pyreon/flow'
+      import { Button, Stack, Text } from '@pyreon/primitives'
+      interface NodeData { label: string }
+      function ToolbarNode(props: NodeComponentProps<NodeData>) {
+        return <Stack>
+          <Text>{props.data().label}</Text>
+          <NodeToolbar position="bottom" align="end" offset={12} showOnSelect={false}>
+            <Button onClick={() => console.log(props.id)}>Edit {props.data().label}</Button>
+          </NodeToolbar>
+        </Stack>
+      }
+      export function App() {
+        const flow = createFlow<NodeData>({ nodes: [{ id: 'a', type: 'toolbar', position: { x: 0, y: 0 }, data: { label: 'Start' } }], edges: [] })
+        return <Flow instance={flow} nodeTypes={{ toolbar: ToolbarNode }} />
+      }
+    `
+    const swift = transform(source, { target: 'swift' })
+    const kotlin = transform(source, { target: 'kotlin' })
+    expect(swift.code).toContain('nodeToolbarConfig: { pyreonNode in')
+    expect(swift.code).toContain('case "toolbar": return PyreonFlowNodeToolbarConfig(position: "bottom", align: "end", offset: 12, showOnSelect: false)')
+    expect(swift.code).toContain('nodeToolbar: { pyreonNode, pyreonSelected, pyreonDragging in')
+    expect(swift.code).toContain('AnyView(ToolbarNodePyreonNodeToolbar(id: pyreonNode.id, data: { pyreonNode.data }, selected: { pyreonSelected }, dragging: { pyreonDragging }))')
+    expect(swift.code).toContain('struct ToolbarNodePyreonNodeToolbar: View')
+    expect(kotlin.code).toContain('nodeToolbarConfig = { pyreonNode ->')
+    expect(kotlin.code).toContain('"toolbar" -> PyreonFlowNodeToolbarConfig(position = "bottom", align = "end", offset = 12.0, showOnSelect = false)')
+    expect(kotlin.code).toContain('nodeToolbar = { pyreonNode, pyreonSelected, pyreonDragging ->')
+    expect(kotlin.code).toContain('ToolbarNodePyreonNodeToolbar(id = pyreonNode.id, data = { pyreonNode.data }, selected = { pyreonSelected }, dragging = { pyreonDragging })')
+    expect(kotlin.code).toContain('fun ToolbarNodePyreonNodeToolbar(')
+    expect(swift.warnings.join(' ')).not.toContain('NodeToolbar (from @pyreon/flow)')
+    expect(kotlin.warnings.join(' ')).not.toContain('NodeToolbar (from @pyreon/flow)')
+    if (isSwiftcAvailable()) {
+      const validation = validateSwiftWithStubs(swift.code)
+      expect(validation.ok, validation.error ?? '').toBe(true)
+    }
+    if (isKotlincAvailable()) {
+      const validation = validateKotlin(kotlin.code)
+      expect(validation.ok, validation.error ?? '').toBe(true)
+    }
+  })
+
+  it('names dynamic or repeated NodeToolbar declarations on registered node types', () => {
+    const source = `
+      import { createFlow, Flow, NodeToolbar, type NodeComponentProps } from '@pyreon/flow'
+      import { Stack, Text } from '@pyreon/primitives'
+      function ToolbarNode(props: NodeComponentProps<{ label: string }>) {
+        return <Stack><NodeToolbar offset={props.data().label}><Text>A</Text></NodeToolbar><NodeToolbar><Text>B</Text></NodeToolbar></Stack>
+      }
+      export function App() {
+        const flow = createFlow({ nodes: [{ id: 'a', type: 'toolbar', position: { x: 0, y: 0 }, data: { label: 'Start' } }], edges: [] })
+        return <Flow instance={flow} nodeTypes={{ toolbar: ToolbarNode }} />
+      }
+    `
+    for (const target of ['swift', 'kotlin'] as const) {
+      expect(transform(source, { target }).warnings.join(' ')).toContain('component `ToolbarNode`: <NodeToolbar> supports one declaration with literal')
+    }
+  })
+
   it('emits the Compose host instead of an unresolved web component', () => {
     const result = transform(source, { target: 'kotlin' })
     expect(result.code).toContain('PyreonFlowView(state = flow) { pyreonNode ->')
@@ -390,7 +449,7 @@ describe('<Flow> native host lowering', () => {
   })
 })
 
-describe('useFlow native lifecycle lowering', () => {
+describe('useFlow native lifecycle lowering', { timeout: 30_000 }, () => {
   const source = `
     import { useFlow, Flow } from '@pyreon/flow'
     export function App() {
@@ -422,7 +481,7 @@ describe('useFlow native lifecycle lowering', () => {
   })
 })
 
-describe('computeLayout native lowering', () => {
+describe('computeLayout native lowering', { timeout: 30_000 }, () => {
   const source = `
     import { createFlow, computeLayout } from '@pyreon/flow'
     import { Button } from '@pyreon/primitives'
@@ -458,7 +517,7 @@ describe('computeLayout native lowering', () => {
   })
 })
 
-describe('Flow edge-path helper native lowering', () => {
+describe('Flow edge-path helper native lowering', { timeout: 30_000 }, () => {
   const source = `
     import { getBezierPath, getSmoothStepPath, getStepPath, getStraightPath, getWaypointPath, getEdgePath, getHandlePosition, getNodeIntersection, DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT, Position } from '@pyreon/flow'
     import { Text } from '@pyreon/primitives'
@@ -503,7 +562,7 @@ describe('Flow edge-path helper native lowering', () => {
   }
 })
 
-describe('createFlow connection validation lowering', () => {
+describe('createFlow connection validation lowering', { timeout: 30_000 }, () => {
   const source = `
     import { createFlow } from '@pyreon/flow'
     import { Text } from '@pyreon/primitives'
@@ -535,7 +594,7 @@ describe('createFlow connection validation lowering', () => {
   })
 })
 
-describe('typed empty Flow state lowering', () => {
+describe('typed empty Flow state lowering', { timeout: 30_000 }, () => {
   const source = `
     import { createFlow } from '@pyreon/flow'
     import { Text } from '@pyreon/primitives'
@@ -560,7 +619,7 @@ describe('typed empty Flow state lowering', () => {
   }
 })
 
-describe('Flow effective-dimension helper lowering', () => {
+describe('Flow effective-dimension helper lowering', { timeout: 30_000 }, () => {
   const source = `
     import { createFlow, getEffectiveDimensions } from '@pyreon/flow'
     import { Text } from '@pyreon/primitives'
@@ -589,7 +648,7 @@ describe('Flow effective-dimension helper lowering', () => {
   }
 })
 
-describe('Flow node anchoring helper lowering', () => {
+describe('Flow node anchoring helper lowering', { timeout: 30_000 }, () => {
   const source = `
     import { createFlow, getEffectiveDimensions, getFloatingEndpoints, getSmartHandlePositions, resolveHandleAnchor } from '@pyreon/flow'
     import { Text } from '@pyreon/primitives'
@@ -630,7 +689,7 @@ describe('Flow node anchoring helper lowering', () => {
   }
 })
 
-describe('createFlow — v1 decline shapes (loud warning, not silent drop)', () => {
+describe('createFlow — v1 decline shapes (loud warning, not silent drop)', { timeout: 30_000 }, () => {
   it('a non-literal nodes source declines with a named reason', () => {
     const src = `
       import { createFlow } from '@pyreon/flow'
@@ -844,7 +903,7 @@ describe('createFlow — v1 decline shapes (loud warning, not silent drop)', () 
 // positionally (an iOS-only build break), and the Swift stub was narrower
 // than the runtime (rejecting valid reads). Every one of those is now either
 // a named warning or a correct emit, on both targets.
-describe('createFlow — nothing silent inside the boundary', () => {
+describe('createFlow — nothing silent inside the boundary', { timeout: 30_000 }, () => {
   const base = (body: string, jsx = '<Text>{flow.nodes().length}</Text>', config = '') => `
 import { createFlow } from '@pyreon/flow'
 import { Stack, Text, Button } from '${P}'

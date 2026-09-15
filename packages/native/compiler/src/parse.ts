@@ -2642,10 +2642,8 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
     '@pyreon/flow',
     {
       // `createFlow` lowers (PyreonFlowState — CRUD/selection/viewport/graph
-      // queries), and `<Flow>` lowers to the native interactive host. Optional
-      // chrome (NodeToolbar) is
-      // SVG/DOM rendering + pointer-event gesture handling with NO native
-      // emit AT ALL. Without this entry those names emitted VERBATIM as if
+      // queries), and `<Flow>` lowers to the native interactive host. Without
+      // this entry unsupported names emitted VERBATIM as if
       // they were real SwiftUI/Compose types — `Flow(instance: flow) {
       // Background() }` — which fails at the native BUILD with "cannot find
       // 'Flow' in scope" and no indication anywhere that `<Flow>` itself is
@@ -2653,8 +2651,8 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
       // lowered right above it). The five public edge-path builders lower to
       // the same native geometry used by the Flow canvas.
       advice:
-        '`createFlow({ nodes, edges })`, `useFlow({ nodes, edges })`, `computeLayout(...)`, edge-path and marker helpers, literal `<Flow nodeTypes={{ type: Component }}>`, static `<Handle>` and `<NodeResizer>` declarations inside those custom nodes, `<Background>`, `<Controls>`, `<MiniMap>`, and `<Panel>` LOWER to the native PyreonFlowState/PyreonFlowView engine. NodeToolbar and custom edge renderer maps still have no shared-source native emit; keep those behind platform branches or use the `@pyreon/flow/webview` bridge',
-      supported: new Set(['createFlow', 'useFlow', 'computeLayout', 'getBezierPath', 'getSmoothStepPath', 'getStepPath', 'getStraightPath', 'getWaypointPath', 'getEdgePath', 'getHandlePosition', 'getNodeIntersection', 'getEffectiveDimensions', 'getFloatingEndpoints', 'getSmartHandlePositions', 'resolveHandleAnchor', 'resolveMarker', 'markerId', 'resolveEdgeMarkers', 'collectEdgeMarkers', 'DEFAULT_MARKER_END', 'DEFAULT_NODE_WIDTH', 'DEFAULT_NODE_HEIGHT', 'MarkerType', 'Position', 'Flow', 'Background', 'Controls', 'MiniMap', 'Panel', 'Handle', 'NodeResizer']),
+        '`createFlow({ nodes, edges })`, `useFlow({ nodes, edges })`, `computeLayout(...)`, edge-path and marker helpers, literal `<Flow nodeTypes={{ type: Component }}>`, static `<Handle>`, `<NodeResizer>`, and one literal-config `<NodeToolbar>` declaration inside those custom nodes, `<Background>`, `<Controls>`, `<MiniMap>`, and `<Panel>` LOWER to the native PyreonFlowState/PyreonFlowView engine. Custom edge renderer maps still have no shared-source native emit; keep those behind platform branches or use the `@pyreon/flow/webview` bridge',
+      supported: new Set(['createFlow', 'useFlow', 'computeLayout', 'getBezierPath', 'getSmoothStepPath', 'getStepPath', 'getStraightPath', 'getWaypointPath', 'getEdgePath', 'getHandlePosition', 'getNodeIntersection', 'getEffectiveDimensions', 'getFloatingEndpoints', 'getSmartHandlePositions', 'resolveHandleAnchor', 'resolveMarker', 'markerId', 'resolveEdgeMarkers', 'collectEdgeMarkers', 'DEFAULT_MARKER_END', 'DEFAULT_NODE_WIDTH', 'DEFAULT_NODE_HEIGHT', 'MarkerType', 'Position', 'Flow', 'Background', 'Controls', 'MiniMap', 'Panel', 'Handle', 'NodeResizer', 'NodeToolbar']),
     },
   ],
   [

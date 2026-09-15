@@ -225,6 +225,22 @@ let _flowComponentsWithInvalidHandlesKotlin: Set<string> = new Set()
 type StaticFlowNodeResizer = { minWidth: number; minHeight: number; handleSize: number; showEdgeHandles: boolean }
 let _flowComponentResizersKotlin: Map<string, StaticFlowNodeResizer> = new Map()
 let _flowComponentsWithInvalidResizersKotlin: Set<string> = new Set()
+type StaticFlowNodeToolbar = {
+  position: string
+  align: string
+  offset: number
+  showOnSelect: boolean
+  contentComponent: string
+}
+let _flowComponentToolbarsKotlin: Map<string, StaticFlowNodeToolbar> = new Map()
+let _flowComponentsWithInvalidToolbarsKotlin: Set<string> = new Set()
+let _activeComponentName = ''
+
+function collectStaticFlowNodeToolbarsKotlin(expr: ExprIR): Extract<ExprIR, { kind: 'jsx-element' }>[] {
+  if (expr.kind !== 'jsx-fragment' && expr.kind !== 'jsx-element') return []
+  if (expr.kind === 'jsx-element' && expr.tag === 'NodeToolbar') return [expr]
+  return expr.children.flatMap((child) => child.kind === 'expr' ? collectStaticFlowNodeToolbarsKotlin(child.expr) : [])
+}
 
 function collectStaticFlowNodeResizerKotlin(expr: ExprIR): { config?: StaticFlowNodeResizer; invalid: boolean } {
   if (expr.kind !== 'jsx-fragment' && expr.kind !== 'jsx-element') return { invalid: false }
@@ -718,6 +734,10 @@ export function emitKotlin(
   _flowComponentsWithInvalidHandlesKotlin = new Set()
   _flowComponentResizersKotlin = new Map()
   _flowComponentsWithInvalidResizersKotlin = new Set()
+  _flowComponentToolbarsKotlin = new Map()
+  _flowComponentsWithInvalidToolbarsKotlin = new Set()
+  const flowToolbarComponents: ComponentIR[] = []
+  const usedComponentNames = new Set(components.map((component) => component.name))
   for (const component of components) {
     const result = collectStaticFlowHandlesKotlin(component.returnExpr)
     _flowComponentHandlesKotlin.set(component.name, result.handles)
@@ -725,6 +745,41 @@ export function emitKotlin(
     const resizer = collectStaticFlowNodeResizerKotlin(component.returnExpr)
     if (resizer.config) _flowComponentResizersKotlin.set(component.name, resizer.config)
     if (resizer.invalid) _flowComponentsWithInvalidResizersKotlin.add(component.name)
+    const toolbars = collectStaticFlowNodeToolbarsKotlin(component.returnExpr)
+    if (toolbars.length > 0) {
+      const toolbar = toolbars[0]!
+      let contentComponent = `${component.name}PyreonNodeToolbar`
+      while (usedComponentNames.has(contentComponent)) contentComponent += '_'
+      usedComponentNames.add(contentComponent)
+      const read = (name: string): unknown => {
+        const entry = toolbar.attrs.find((candidate) => candidate.kind === 'attr' && candidate.name === name)
+        return entry?.kind === 'attr' && entry.value.kind === 'literal' ? entry.value.value : undefined
+      }
+      const has = (name: string): boolean => toolbar.attrs.some((entry) => entry.kind === 'attr' && entry.name === name)
+      const position = read('position'), align = read('align'), offset = read('offset'), showOnSelect = read('showOnSelect')
+      const invalid = toolbars.length > 1 ||
+        (has('position') && typeof position !== 'string') ||
+        (has('align') && typeof align !== 'string') ||
+        (has('offset') && typeof offset !== 'number') ||
+        (has('showOnSelect') && typeof showOnSelect !== 'boolean')
+      _flowComponentToolbarsKotlin.set(component.name, {
+        position: typeof position === 'string' ? position : 'top',
+        align: typeof align === 'string' ? align : 'center',
+        offset: typeof offset === 'number' ? offset : 8,
+        showOnSelect: typeof showOnSelect === 'boolean' ? showOnSelect : true,
+        contentComponent,
+      })
+      if (invalid) _flowComponentsWithInvalidToolbarsKotlin.add(component.name)
+      flowToolbarComponents.push({
+        ...component,
+        name: contentComponent,
+        returnExpr: { kind: 'jsx-fragment', children: toolbar.children },
+      })
+    }
+  }
+  for (const toolbarComponent of flowToolbarComponents) {
+    _componentNames.add(toolbarComponent.name)
+    _componentPropsMapKotlin.set(toolbarComponent.name, toolbarComponent.props)
   }
   // Phase 3 — pre-pass: which components are layout parents (nested routes)?
   _layoutComponentNames = collectLayoutComponentNamesKotlin(components)
@@ -880,7 +935,7 @@ export function emitKotlin(
   // Emit components — populates _needsKotlin{Suspense,ErrorBoundary,KeepAlive}Wrapper
   // if any of those elements is encountered.
   const componentParts: string[] = []
-  for (const c of components) componentParts.push(emitKotlinComponent(c))
+  for (const c of [...components, ...flowToolbarComponents]) componentParts.push(emitKotlinComponent(c))
   // consulted AFTER helper + component emission — the flag is set during it
   if (_needsKotlinNumString) parts.push(KOTLIN_NUM_STRING)
   // Emit synthesized anonymous-object data classes (collected during
@@ -1955,6 +2010,7 @@ function kotlinModifierPredicate(mods: readonly HotkeyModifier[]): string {
 }
 
 function emitKotlinComponent(c: ComponentIR): string {
+  _activeComponentName = c.name
   // Component-scope const literals → static-attr resolution (mirror of Swift).
   _componentConstMapKotlin = buildComponentConstMap(c.decls)
   _activePropsParamName = c.propsParamName
@@ -6956,6 +7012,10 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (tag === 'Toggle') return emitKotlinToggle(e, indent)
   if (tag === 'Handle') return 'Box {}'
   if (tag === 'NodeResizer') return 'Box {}'
+  if (tag === 'NodeToolbar') {
+    if (!_flowComponentToolbarsKotlin.has(_activeComponentName)) _emitWarnings.push('<NodeToolbar> only lowers when declared inside a component registered by a literal <Flow nodeTypes={{ type: Component }}> map; it was dropped.')
+    return 'Box {}'
+  }
   // `<RouterLink>` from @pyreon/router is the SAME concept as `<Link>` and
   // carries the same `to` prop, but it had no dispatch entry — so it fell
   // through to the unknown-tag path and emitted `RouterLink(to:)` verbatim, a
@@ -6999,6 +7059,7 @@ function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string
   for (const entry of nodeTypes ?? []) {
     if (_flowComponentsWithInvalidHandlesKotlin.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <Handle> requires literal \`type\` and \`position\` props for native extraction; the dynamic handle was not attached to the node.`)
     if (_flowComponentsWithInvalidResizersKotlin.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <NodeResizer> size and edge-handle options must be literals for native extraction; dynamic values use native defaults.`)
+    if (_flowComponentsWithInvalidToolbarsKotlin.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <NodeToolbar> supports one declaration with literal position, align, offset, and showOnSelect props on native; unsupported values use native defaults.`)
   }
   if (e.attrs.some((a) => a.kind === 'attr' && a.name === 'edgeTypes')) {
     _emitWarnings.push('<Flow edgeTypes={…}> custom edge renderer maps are not lowered natively yet; the native default edge renderer is used.')
@@ -7039,6 +7100,20 @@ function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string
   const nodeResizerArg = resizerCases.length > 0
     ? `, nodeResizer = { pyreonNode ->\n    when (pyreonNode.type) {\n      ${resizerCases.join('\n      ')}\n      else -> null\n    }\n  }`
     : ''
+  const toolbarCases = nodeTypes?.flatMap(({ type, component }) => {
+    const config = _flowComponentToolbarsKotlin.get(component)
+    return config ? [`${JSON.stringify(type)} -> PyreonFlowNodeToolbarConfig(position = ${JSON.stringify(config.position)}, align = ${JSON.stringify(config.align)}, offset = ${ktChartDouble(String(config.offset))}, showOnSelect = ${config.showOnSelect})`] : []
+  }) ?? []
+  const nodeToolbarConfigArg = toolbarCases.length > 0
+    ? `, nodeToolbarConfig = { pyreonNode ->\n    when (pyreonNode.type) {\n      ${toolbarCases.join('\n      ')}\n      else -> null\n    }\n  }`
+    : ''
+  const toolbarContentCases = nodeTypes?.flatMap(({ type, component }) => {
+    const config = _flowComponentToolbarsKotlin.get(component)
+    return config ? [`${JSON.stringify(type)} -> ${kotlinIdent(config.contentComponent)}(id = pyreonNode.id, data = { pyreonNode.data }, selected = { pyreonSelected }, dragging = { pyreonDragging })`] : []
+  }) ?? []
+  const nodeToolbarArg = toolbarContentCases.length > 0
+    ? `, nodeToolbar = { pyreonNode, pyreonSelected, pyreonDragging ->\n    when (pyreonNode.type) {\n      ${toolbarContentCases.join('\n      ')}\n      else -> Unit\n    }\n  }`
+    : ''
   const nodeText = attr.value.kind === 'identifier' && _flowStateLabelNamesKt.has(attr.value.name)
     ? 'Text(text = pyreonNode.data.label.toString())'
     : 'Text(text = pyreonNode.id)'
@@ -7046,7 +7121,7 @@ function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string
     ? `when (pyreonNode.type) {\n${nodeTypes.map(({ type, component }) => `    ${JSON.stringify(type)} -> ${kotlinIdent(component)}(id = pyreonNode.id, data = { pyreonNode.data }, selected = { pyreonSelected }, dragging = { pyreonDragging })`).join('\n')}\n    else -> ${nodeText}\n  }`
     : nodeText
   const rendererParams = nodeTypes && nodeTypes.length > 0 ? 'pyreonNode, pyreonSelected, pyreonDragging' : 'pyreonNode'
-  const host = `PyreonFlowView(state = ${emitKotlinExpr(attr.value, 0)}${bgArg}${controlsArg}${miniMapArg}${ariaLabelArg}${nodeHandlesArg}${nodeResizerArg}) { ${rendererParams} ->\n  ${renderer}\n}`
+  const host = `PyreonFlowView(state = ${emitKotlinExpr(attr.value, 0)}${bgArg}${controlsArg}${miniMapArg}${ariaLabelArg}${nodeHandlesArg}${nodeResizerArg}${nodeToolbarConfigArg}${nodeToolbarArg}) { ${rendererParams} ->\n  ${renderer}\n}`
   if (panels.length === 0) return host
   const overlays = panels.map((panel) => {
     const position = readStaticAttrKotlin(panel, 'position')
