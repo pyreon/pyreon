@@ -1030,6 +1030,35 @@ export function C() {
       if (target === 'swift') expect(validateSwiftWithStubs(result.code).ok).toBe(true)
       else expect(validateKotlin(result.code).ok).toBe(true)
     })
+    it(`[${target}] immutable local Flow values resolve to nominal native arguments`, () => {
+      const result = transform(base(`
+  const nodePatch = { hidden: true, position: { x: 7, y: 8 } }
+  const edgePatch = { animated: true, label: 'Live' }
+  const added = { id: '2', position: { x: 20, y: 30 }, data: { label: 'Added' } }
+`, '<Button onPress={() => { flow.updateNode("1", nodePatch); flow.updateEdge("e1", edgePatch); flow.addNode(added) }}>Apply</Button>'), { target })
+      expect(result.warnings.join(' ')).not.toContain('currently lowers only a literal patch')
+      expect(result.code).toContain(target === 'swift' ? 'flow.updateNode("1") { node in node.hidden = true; node.position = PyreonXYPosition(x: 7, y: 8) }' : 'flow.updateNode("1") { node -> node.copy(hidden = true, position = PyreonXYPosition(7.0, 8.0)) }')
+      expect(result.code).toContain(target === 'swift' ? 'flow.addNode(PyreonFlowNode(id: "2"' : 'flow.addNode(PyreonFlowNode(id = "2"')
+      const validation = target === 'swift' ? validateSwiftWithStubs(result.code) : validateKotlin(result.code)
+      expect(validation.ok, validation.error ?? '').toBe(true)
+    })
+    it(`[${target}] immutable module Flow values resolve to nominal native arguments`, () => {
+      const src = `
+import { createFlow } from '@pyreon/flow'
+import { Button } from '${P}'
+const patch = { hidden: true }
+const added = { id: '2', position: { x: 20, y: 30 }, data: { label: 'Added' } }
+export function C() {
+  const flow = createFlow({ nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'A' } }], edges: [] })
+  return <Button onPress={() => { flow.updateNode('1', patch); flow.addNode(added) }}>Apply</Button>
+}`
+      const result = transform(src, { target })
+      expect(result.warnings.join(' ')).not.toContain('currently lowers only a literal patch')
+      expect(result.code).toContain(target === 'swift' ? 'flow.updateNode("1") { node in node.hidden = true }' : 'flow.updateNode("1") { node -> node.copy(hidden = true) }')
+      expect(result.code).toContain(target === 'swift' ? 'flow.addNode(PyreonFlowNode(id: "2"' : 'flow.addNode(PyreonFlowNode(id = "2"')
+      const validation = target === 'swift' ? validateSwiftWithStubs(result.code) : validateKotlin(result.code)
+      expect(validation.ok, validation.error ?? '').toBe(true)
+    })
     it(`[${target}] node/edge signal writes route through native replacement operations`, () => {
       const result = transform(base('', '<Button onPress={() => { flow.nodes.set([]); flow.edges.update(edges => edges.filter(edge => edge.source === "1")) }}>Clear</Button>'), { target })
       expect(result.warnings.join(' ')).not.toContain('writes the `nodes` signal directly')

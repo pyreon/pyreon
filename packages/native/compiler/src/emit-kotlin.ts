@@ -633,6 +633,8 @@ let _moduleConstExprsKotlin: Map<string, ExprIR> = new Map()
  * `_componentConstMap`. Set per `emitKotlinComponent`; consulted by
  * `readStaticAttrKotlin` after the module-level map. */
 let _componentConstMapKotlin: Map<string, string | number | boolean> = new Map()
+/** Immutable component value declarations available for nominal Flow literal lowering. */
+let _componentValueConstExprsKotlin: Map<string, ExprIR> = new Map()
 
 export function _peekKotlinEmitWarnings(): string[] {
   return [..._emitWarnings]
@@ -2028,6 +2030,20 @@ function emitKotlinComponent(c: ComponentIR): string {
   _activeComponentName = c.name
   // Component-scope const literals → static-attr resolution (mirror of Swift).
   _componentConstMapKotlin = buildComponentConstMap(c.decls)
+  const mutatedFlowValues = new Set<string>()
+  const visitMutation = (node: unknown): void => {
+    if (node === null || typeof node !== 'object') return
+    if (Array.isArray(node)) { for (const value of node) visitMutation(value); return }
+    const value = node as { kind?: string; argument?: unknown; target?: unknown }
+    const candidate = value.kind === 'update' ? value.argument : value.kind === 'assign' ? value.target : undefined
+    if (candidate && typeof candidate === 'object' && (candidate as { kind?: string }).kind === 'identifier') mutatedFlowValues.add((candidate as { name: string }).name)
+    for (const child of Object.values(value as Record<string, unknown>)) visitMutation(child)
+  }
+  for (const decl of c.decls) {
+    if (decl.kind === 'function') visitMutation(decl.body)
+    else if (decl.kind === 'computed') visitMutation(decl)
+  }
+  _componentValueConstExprsKotlin = new Map(c.decls.flatMap((decl) => decl.kind === 'value' && !mutatedFlowValues.has(decl.name) ? [[decl.name, decl.expr] as const] : []))
   _activePropsParamName = c.propsParamName
   // Build the per-component signal-name → enum-type-name map for use
   // at `.set()` call sites — mirrors Swift emit. Note: the type field
@@ -3703,6 +3719,19 @@ function kotlinFlowViewportLiteral(arg: ExprIR): string | null {
   return arg.fields.map((field) => `${field.name} = ${ktChartDouble(emitKotlinExpr(field.value, 0))}`).join(', ')
 }
 
+function resolveKotlinStaticFlowValue(arg: ExprIR): ExprIR {
+  let value = arg
+  const seen = new Set<string>()
+  for (;;) {
+    while (value.kind === 'paren') value = value.inner
+    if (value.kind !== 'identifier' || seen.has(value.name)) return value
+    const next = _componentValueConstExprsKotlin.get(value.name) ?? _moduleConstExprsKotlin.get(value.name)
+    if (next === undefined) return value
+    seen.add(value.name)
+    value = next
+  }
+}
+
 function kotlinFlowDurationOption(arg: ExprIR | undefined): string | null | undefined {
   if (arg === undefined) return undefined
   if (arg.kind !== 'object' || arg.fields.some((field) => field.name !== 'duration')) return null
@@ -5214,10 +5243,10 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       ) {
         const flowName = e.callee.object.name
         const member = e.callee.property
-        const flowPatchArg = e.args[1]
+        const flowPatchArg = e.args[1] === undefined ? undefined : resolveKotlinStaticFlowValue(e.args[1])
         const flowPatchBody = flowPatchArg?.kind === 'arrow' && flowPatchArg.body.kind === 'paren' ? flowPatchArg.body.inner : flowPatchArg?.kind === 'arrow' ? flowPatchArg.body : undefined
         const flowPatchCallback = member === 'updateNodeData' && flowPatchArg?.kind === 'arrow' && flowPatchArg.params.length === 1 && flowPatchBody?.kind === 'object' && (flowPatchBody.spreads?.length ?? 0) === 0
-        if (['updateNode', 'updateNodeData', 'updateEdge'].includes(member) && e.args.length === 2 && !flowPatchCallback && (e.args[1]!.kind !== 'object' || (e.args[1]!.spreads?.length ?? 0) > 0)) {
+        if (['updateNode', 'updateNodeData', 'updateEdge'].includes(member) && e.args.length === 2 && !flowPatchCallback && (flowPatchArg?.kind !== 'object' || (flowPatchArg.spreads?.length ?? 0) > 0)) {
           _emitWarnings.push(`createFlow binding \`${flowName}\`: \`${member}\` currently lowers only a literal patch object without spreads on native targets; this call is emitted as written and may fail the native build.`)
         }
         if (e.args.length === 0 && member === 'getNodes') return `${kotlinIdent(flowName)}.nodes`
@@ -5246,25 +5275,25 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           _emitWarnings.push(unloweredFlowMemberWarning(flowName, member))
         }
         if (member === 'paste' && e.args.length === 1) {
-          const lit = kotlinFlowPositionLiteral(e.args[0]!)
+          const lit = kotlinFlowPositionLiteral(resolveKotlinStaticFlowValue(e.args[0]!))
           if (lit !== null) return `${kotlinIdent(flowName)}.paste(${lit})`
         }
         if (member === 'addNode' && e.args.length === 1) {
-          const lit = kotlinFlowNodeLiteral(e.args[0]!, flowName)
+          const lit = kotlinFlowNodeLiteral(resolveKotlinStaticFlowValue(e.args[0]!), flowName)
           if (lit !== null) return `${kotlinIdent(flowName)}.addNode(${lit})`
         }
         if (member === 'addEdge' && e.args.length === 1) {
-          const lit = kotlinFlowEdgeLiteral(e.args[0]!, flowName)
+          const lit = kotlinFlowEdgeLiteral(resolveKotlinStaticFlowValue(e.args[0]!), flowName)
           if (lit !== null) return `${kotlinIdent(flowName)}.addEdge(${lit})`
         }
         if (e.callee.property === 'updateNodePosition' && e.args.length === 2) {
-          const lit = kotlinFlowPositionLiteral(e.args[1]!)
+          const lit = kotlinFlowPositionLiteral(resolveKotlinStaticFlowValue(e.args[1]!))
           if (lit !== null) {
             return `${kotlinIdent(e.callee.object.name)}.updateNodePosition(${emitKotlinExpr(e.args[0]!, indent)}, ${lit})`
           }
         }
-        if (member === 'updateNodeData' && e.args.length === 2 && e.args[1]!.kind === 'object') {
-          const patch = e.args[1]
+        if (member === 'updateNodeData' && e.args.length === 2 && flowPatchArg?.kind === 'object') {
+          const patch = flowPatchArg
           if (!patch.spreads || patch.spreads.length === 0) {
             const assignments = patch.fields.map(({ name, value }) => `${kotlinIdent(name)} = ${emitKotlinExpr(value, indent)}`).join(', ')
             return `${kotlinIdent(flowName)}.updateNodeData(${emitKotlinExpr(e.args[0]!, indent)}) { data -> data.copy(${assignments}) }`
@@ -5278,8 +5307,8 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           }).join(', ')
           return `${kotlinIdent(flowName)}.updateNodeDataFromNode(${emitKotlinExpr(e.args[0]!, indent)}) { node -> node.data.copy(${assignments}) }`
         }
-        if (member === 'updateNode' && e.args.length === 2 && e.args[1]!.kind === 'object') {
-          const patch = e.args[1]
+        if (member === 'updateNode' && e.args.length === 2 && flowPatchArg?.kind === 'object') {
+          const patch = flowPatchArg
           if (!patch.spreads || patch.spreads.length === 0) {
             warnDroppedFlowFieldsKt(`createFlow binding \`${flowName}\` updateNode(...)`, 'node', patch)
             const fields = patch.fields.flatMap(({ name, value }) => {
@@ -5299,8 +5328,8 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             return `${kotlinIdent(flowName)}.updateNode(${emitKotlinExpr(e.args[0]!, indent)}) { node -> node.copy(${fields.join(', ')}) }`
           }
         }
-        if (member === 'updateEdge' && e.args.length === 2 && e.args[1]!.kind === 'object') {
-          const patch = e.args[1]
+        if (member === 'updateEdge' && e.args.length === 2 && flowPatchArg?.kind === 'object') {
+          const patch = flowPatchArg
           if (!patch.spreads || patch.spreads.length === 0) {
             warnDroppedFlowFieldsKt(`createFlow binding \`${flowName}\` updateEdge(...)`, 'edge', patch)
             const fields = patch.fields.flatMap(({ name, value }) => {
@@ -5355,15 +5384,15 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           if (connection !== null) return `${kotlinIdent(flowName)}.isValidConnection(${connection})`
         }
         if ((member === 'addNodes' || member === 'setNodes') && e.args.length === 1) {
-          const nodes = kotlinFlowNodeListLiteral(e.args[0]!, flowName)
+          const nodes = kotlinFlowNodeListLiteral(resolveKotlinStaticFlowValue(e.args[0]!), flowName)
           if (nodes !== null) return `${kotlinIdent(flowName)}.${member}(${nodes})`
         }
         if ((member === 'addEdges' || member === 'setEdges') && e.args.length === 1) {
-          const edges = kotlinFlowEdgeListLiteral(e.args[0]!, flowName)
+          const edges = kotlinFlowEdgeListLiteral(resolveKotlinStaticFlowValue(e.args[0]!), flowName)
           if (edges !== null) return `${kotlinIdent(flowName)}.${member}(${edges})`
         }
         if (member === 'setViewport' && e.args.length >= 1) {
-          const args = kotlinFlowViewportLiteral(e.args[0]!)
+          const args = kotlinFlowViewportLiteral(resolveKotlinStaticFlowValue(e.args[0]!))
           const duration = kotlinFlowDurationOption(e.args[1])
           if (args !== null && duration !== null) return `${kotlinIdent(flowName)}.setViewport(${args}${duration ? `${args ? ', ' : ''}duration = ${duration}` : ''})`
         }
@@ -5441,7 +5470,8 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if ((property === 'nodes' || property === 'edges') && e.args.length === 1) {
           const method = property === 'nodes' ? 'setNodes' : 'setEdges'
           if (e.callee.property === 'set') {
-            const literal = property === 'nodes' ? kotlinFlowNodeListLiteral(e.args[0]!, flowName) : kotlinFlowEdgeListLiteral(e.args[0]!, flowName)
+            const value = resolveKotlinStaticFlowValue(e.args[0]!)
+            const literal = property === 'nodes' ? kotlinFlowNodeListLiteral(value, flowName) : kotlinFlowEdgeListLiteral(value, flowName)
             return `${kotlinIdent(flowName)}.${method}(${literal ?? emitKotlinExpr(e.args[0]!, indent)})`
           }
           return `${kotlinIdent(flowName)}.${method}(${emitKotlinExpr(e.args[0]!, indent)})`
@@ -5450,7 +5480,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           const method = property === 'viewport' ? 'setViewport' : e.callee.property === 'set' ? 'replaceContainerSize' : 'updateContainerSize'
           const typeName = property === 'viewport' ? 'PyreonFlowViewport' : 'PyreonFlowContainerSize'
           const names = property === 'viewport' ? ['x', 'y', 'zoom'] : ['width', 'height']
-          const arg = e.args[0]!
+          const arg = resolveKotlinStaticFlowValue(e.args[0]!)
           if (e.callee.property === 'set' && arg.kind === 'object' && (arg.spreads?.length ?? 0) === 0) {
             const values = new Map(arg.fields.map((field) => [field.name, field.value]))
             if (names.every((name) => values.has(name))) {

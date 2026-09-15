@@ -4544,6 +4544,19 @@ function swiftFlowViewportLiteral(arg: ExprIR): string | null {
   return arg.fields.map((field) => `${field.name}: ${emitSwiftExpr(field.value, 0)}`).join(', ')
 }
 
+function resolveSwiftStaticFlowValue(arg: ExprIR): ExprIR {
+  let value = inlineValueConsts(arg)
+  const seen = new Set<string>()
+  for (;;) {
+    while (value.kind === 'paren') value = value.inner
+    if (value.kind !== 'identifier' || seen.has(value.name)) return value
+    const next = _moduleConstExprs.get(value.name)
+    if (next === undefined) return value
+    seen.add(value.name)
+    value = inlineValueConsts(next)
+  }
+}
+
 function swiftFlowDurationOption(arg: ExprIR | undefined): string | null | undefined {
   if (arg === undefined) return undefined
   if (arg.kind !== 'object' || arg.fields.some((field) => field.name !== 'duration')) return null
@@ -6190,10 +6203,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       ) {
         const flowName = e.callee.object.name
         const member = e.callee.property
-        const flowPatchArg = e.args[1]
+        const flowPatchArg = e.args[1] === undefined ? undefined : resolveSwiftStaticFlowValue(e.args[1])
         const flowPatchBody = flowPatchArg?.kind === 'arrow' && flowPatchArg.body.kind === 'paren' ? flowPatchArg.body.inner : flowPatchArg?.kind === 'arrow' ? flowPatchArg.body : undefined
         const flowPatchCallback = member === 'updateNodeData' && flowPatchArg?.kind === 'arrow' && flowPatchArg.params.length === 1 && flowPatchBody?.kind === 'object' && (flowPatchBody.spreads?.length ?? 0) === 0
-        if (['updateNode', 'updateNodeData', 'updateEdge'].includes(member) && e.args.length === 2 && !flowPatchCallback && (e.args[1]!.kind !== 'object' || (e.args[1]!.spreads?.length ?? 0) > 0)) {
+        if (['updateNode', 'updateNodeData', 'updateEdge'].includes(member) && e.args.length === 2 && !flowPatchCallback && (flowPatchArg?.kind !== 'object' || (flowPatchArg.spreads?.length ?? 0) > 0)) {
           _emitWarnings.push(`createFlow binding \`${flowName}\`: \`${member}\` currently lowers only a literal patch object without spreads on native targets; this call is emitted as written and may fail the native build.`)
         }
         if (e.args.length === 0 && member === 'getNodes') return `${swiftIdent(flowName)}.nodes`
@@ -6234,25 +6247,25 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           if (duration !== null) return `${swiftIdent(flowName)}.fitView(${ids}${e.args[1] ? `, padding: ${emitSwiftExpr(e.args[1]!, indent)}` : ''}${duration ? `, duration: ${duration}` : ''})`
         }
         if (member === 'paste' && e.args.length === 1) {
-          const lit = swiftFlowPositionLiteral(e.args[0]!)
+          const lit = swiftFlowPositionLiteral(resolveSwiftStaticFlowValue(e.args[0]!))
           if (lit !== null) return `${swiftIdent(flowName)}.paste(${lit})`
         }
         if (member === 'addNode' && e.args.length === 1) {
-          const lit = swiftFlowNodeLiteral(e.args[0]!, flowName)
+          const lit = swiftFlowNodeLiteral(resolveSwiftStaticFlowValue(e.args[0]!), flowName)
           if (lit !== null) return `${swiftIdent(flowName)}.addNode(${lit})`
         }
         if (member === 'addEdge' && e.args.length === 1) {
-          const lit = swiftFlowEdgeLiteral(e.args[0]!, flowName)
+          const lit = swiftFlowEdgeLiteral(resolveSwiftStaticFlowValue(e.args[0]!), flowName)
           if (lit !== null) return `${swiftIdent(flowName)}.addEdge(${lit})`
         }
         if (e.callee.property === 'updateNodePosition' && e.args.length === 2) {
-          const lit = swiftFlowPositionLiteral(e.args[1]!)
+          const lit = swiftFlowPositionLiteral(resolveSwiftStaticFlowValue(e.args[1]!))
           if (lit !== null) {
             return `${swiftIdent(e.callee.object.name)}.updateNodePosition(${emitSwiftExpr(e.args[0]!, indent)}, ${lit})`
           }
         }
-        if (member === 'updateNodeData' && e.args.length === 2 && e.args[1]!.kind === 'object') {
-          const patch = e.args[1]
+        if (member === 'updateNodeData' && e.args.length === 2 && flowPatchArg?.kind === 'object') {
+          const patch = flowPatchArg
           if (!patch.spreads || patch.spreads.length === 0) {
             const assignments = patch.fields.map(({ name, value }) => `data.${swiftIdent(name)} = ${emitSwiftExpr(value, indent)}`).join('; ')
             return `${swiftIdent(flowName)}.updateNodeData(${emitSwiftExpr(e.args[0]!, indent)}) { data in ${assignments} }`
@@ -6266,8 +6279,8 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           }).join('; ')
           return `${swiftIdent(flowName)}.updateNodeDataFromNode(${emitSwiftExpr(e.args[0]!, indent)}) { node in var data = node.data; ${assignments}; return data }`
         }
-        if (member === 'updateNode' && e.args.length === 2 && e.args[1]!.kind === 'object') {
-          const patch = e.args[1]
+        if (member === 'updateNode' && e.args.length === 2 && flowPatchArg?.kind === 'object') {
+          const patch = flowPatchArg
           if (!patch.spreads || patch.spreads.length === 0) {
             warnDroppedFlowFields(`createFlow binding \`${flowName}\` updateNode(...)`, 'node', patch)
             const statements = patch.fields.flatMap(({ name, value }) => {
@@ -6286,8 +6299,8 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             return `${swiftIdent(flowName)}.updateNode(${emitSwiftExpr(e.args[0]!, indent)}) { node in ${statements.join('; ')} }`
           }
         }
-        if (member === 'updateEdge' && e.args.length === 2 && e.args[1]!.kind === 'object') {
-          const patch = e.args[1]
+        if (member === 'updateEdge' && e.args.length === 2 && flowPatchArg?.kind === 'object') {
+          const patch = flowPatchArg
           if (!patch.spreads || patch.spreads.length === 0) {
             warnDroppedFlowFields(`createFlow binding \`${flowName}\` updateEdge(...)`, 'edge', patch)
             const statements = patch.fields.flatMap(({ name, value }) => {
@@ -6332,15 +6345,15 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           if (connection !== null) return `${swiftIdent(flowName)}.isValidConnection(${connection})`
         }
         if ((member === 'addNodes' || member === 'setNodes') && e.args.length === 1) {
-          const nodes = swiftFlowNodeListLiteral(e.args[0]!, flowName)
+          const nodes = swiftFlowNodeListLiteral(resolveSwiftStaticFlowValue(e.args[0]!), flowName)
           if (nodes !== null) return `${swiftIdent(flowName)}.${member}(${nodes})`
         }
         if ((member === 'addEdges' || member === 'setEdges') && e.args.length === 1) {
-          const edges = swiftFlowEdgeListLiteral(e.args[0]!, flowName)
+          const edges = swiftFlowEdgeListLiteral(resolveSwiftStaticFlowValue(e.args[0]!), flowName)
           if (edges !== null) return `${swiftIdent(flowName)}.${member}(${edges})`
         }
         if (member === 'setViewport' && e.args.length >= 1) {
-          const args = swiftFlowViewportLiteral(e.args[0]!)
+          const args = swiftFlowViewportLiteral(resolveSwiftStaticFlowValue(e.args[0]!))
           const duration = swiftFlowDurationOption(e.args[1])
           if (args !== null && duration !== null) return `${swiftIdent(flowName)}.setViewport(${args}${duration ? `${args ? ', ' : ''}duration: ${duration}` : ''})`
         }
@@ -6413,7 +6426,8 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         if ((property === 'nodes' || property === 'edges') && e.args.length === 1) {
           const method = property === 'nodes' ? 'setNodes' : 'setEdges'
           if (e.callee.property === 'set') {
-            const literal = property === 'nodes' ? swiftFlowNodeListLiteral(e.args[0]!, flowName) : swiftFlowEdgeListLiteral(e.args[0]!, flowName)
+            const value = resolveSwiftStaticFlowValue(e.args[0]!)
+            const literal = property === 'nodes' ? swiftFlowNodeListLiteral(value, flowName) : swiftFlowEdgeListLiteral(value, flowName)
             return `${swiftIdent(flowName)}.${method}(${literal ?? emitSwiftExpr(e.args[0]!, indent)})`
           }
           return `${swiftIdent(flowName)}.${method}(${emitSwiftExpr(e.args[0]!, indent)})`
@@ -6422,7 +6436,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           const method = property === 'viewport' ? 'setViewport' : e.callee.property === 'set' ? 'replaceContainerSize' : 'updateContainerSize'
           const typeName = property === 'viewport' ? 'PyreonFlowViewport' : 'PyreonFlowContainerSize'
           const names = property === 'viewport' ? ['x', 'y', 'zoom'] : ['width', 'height']
-          const arg = e.args[0]!
+          const arg = resolveSwiftStaticFlowValue(e.args[0]!)
           if (e.callee.property === 'set' && arg.kind === 'object' && (arg.spreads?.length ?? 0) === 0) {
             const values = new Map(arg.fields.map((field) => [field.name, field.value]))
             if (names.every((name) => values.has(name))) {
