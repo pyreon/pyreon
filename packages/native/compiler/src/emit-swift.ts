@@ -6450,6 +6450,18 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (names.every((name) => values.has(name) || (body.spreads?.length ?? 0) > 0)) return `${swiftIdent(flowName)}.${method} { ${param} in ${typeName}(${names.map((name) => `${name}: ${values.has(name) ? emitSwiftExpr(values.get(name)!, indent) : `${param}.${name}`}`).join(', ')}) }`
           }
         }
+        if (property === 'measurements' && e.args.length === 1) {
+          const arg = resolveSwiftStaticFlowValue(e.args[0]!)
+          if (e.callee.property === 'set' && arg.kind === 'new-collection' && arg.collection === 'map' && (arg.entries?.length ?? 0) === 0) {
+            return `${swiftIdent(flowName)}.replaceMeasurements([:])`
+          }
+          if (e.callee.property === 'set') {
+            return `${swiftIdent(flowName)}.replaceMeasurements(${emitSwiftExpr(arg, indent)})`
+          }
+          if (e.callee.property === 'update' && arg.kind === 'arrow') {
+            return `${swiftIdent(flowName)}.updateMeasurements(${emitSwiftExpr(arg, indent)})`
+          }
+        }
         _emitWarnings.push(flowSignalWriteWarning(flowName, property, e.callee.property))
       }
       // PyreonFlowState PROPERTY reads: web `flow.nodes()` / `flow.edges()` /

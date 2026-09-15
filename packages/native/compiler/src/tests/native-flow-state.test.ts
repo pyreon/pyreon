@@ -1086,6 +1086,14 @@ export function C() {
         expect(validation.ok, validation.error ?? '').toBe(true)
       }
     })
+    it(`[${target}] measurement signal reset and callback update retain native signal semantics`, () => {
+      const result = transform(base('', '<Button onPress={() => { flow.measurements.set(flow.measurements()); flow.measurements.update(measurements => measurements) }}>Reset measurements</Button>'), { target })
+      expect(result.warnings.join(' ')).not.toContain('writes the `measurements` signal directly')
+      expect(result.code).toContain('flow.replaceMeasurements(flow.measurements)')
+      expect(result.code).toContain('flow.updateMeasurements(')
+      const validation = target === 'swift' ? validateSwiftWithStubs(result.code) : validateKotlin(result.code)
+      expect(validation.ok, validation.error ?? '').toBe(true)
+    })
     it(`[${target}] setNodes/setEdges callback forms typecheck`, () => {
       const result = transform(base('', '<Button onPress={() => { flow.setNodes(nodes => nodes.filter(node => node.id === "1")); flow.setEdges(edges => edges.filter(edge => edge.target === "1")) }}>Keep</Button>'), { target })
       expect(result.warnings.join(' ')).not.toContain('currently lowers only')

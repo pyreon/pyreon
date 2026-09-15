@@ -1077,6 +1077,13 @@ class PyreonFlowState<T>(
         val next = PyreonFlowNodeMeasurement(width, height, handles)
         if (previous != next) measurementStore[id] = next
     }
+    fun replaceMeasurements(next: Map<String, PyreonFlowNodeMeasurement>) {
+        measurementStore.clear()
+        measurementStore.putAll(next)
+    }
+    fun updateMeasurements(update: (Map<String, PyreonFlowNodeMeasurement>) -> Map<String, PyreonFlowNodeMeasurement>) {
+        replaceMeasurements(update(measurementStore.toMap()))
+    }
     fun clearNodeMeasurement(id: String) { measurementStore.remove(id) }
     fun addNode(node: PyreonFlowNode<T>) {
         if (nodeMap.containsKey(node.id)) return

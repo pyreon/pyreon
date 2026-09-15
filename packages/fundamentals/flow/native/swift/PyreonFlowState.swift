@@ -1436,6 +1436,10 @@ public final class PyreonFlowState<T> {
         let next = PyreonFlowNodeMeasurement(width: width, height: height, handles: handles)
         if measurements[id] != next { measurements[id] = next }
     }
+    public func replaceMeasurements(_ next: [String: PyreonFlowNodeMeasurement]) { measurements = next }
+    public func updateMeasurements(_ update: ([String: PyreonFlowNodeMeasurement]) -> [String: PyreonFlowNodeMeasurement]) {
+        replaceMeasurements(update(measurements))
+    }
     public func clearNodeMeasurement(_ id: String) { measurements[id] = nil }
     public func addNode(_ node: PyreonFlowNode<T>) {
         guard nodeStore[node.id] == nil else { return }

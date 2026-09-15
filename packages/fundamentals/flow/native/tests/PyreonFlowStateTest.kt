@@ -80,6 +80,11 @@ fun main() {
     f.clearNodeMeasurement("1")
     check(!f.measurements.containsKey("1"), "explicit measurement cleanup removes the native entry")
     f.updateNodeMeasurement("1", 240.0, 72.0)
+    f.updateMeasurements { it }
+    check(f.measurements["1"]?.width == 240.0, "measurement callback replacement preserves entries")
+    f.replaceMeasurements(emptyMap())
+    check(f.measurements.isEmpty(), "measurement signal replacement clears stale entries")
+    f.updateNodeMeasurement("1", 240.0, 72.0)
     check(f.nodeLookup["1"]?.data?.label == "Start" && f.edgeLookup["e1"]?.source == "1", "FlowInstance lookup maps stay reactive and addressable")
     check(f.getNodeDimensions("1") == PyreonFlowDimensions(240.0, 72.0), "intrinsic host measurements drive effective geometry")
     f.addNode(PyreonFlowNode("intrinsic", position = PyreonXYPosition(0.0, 0.0), data = NodeData("Intrinsic"), width = 100.0, height = 40.0))

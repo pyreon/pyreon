@@ -1228,6 +1228,8 @@ public final class PyreonFlowState<T> {
   public func getNode(_ id: String) -> PyreonFlowNode<T>? { nil }
   public func getNodeDimensions(_ id: String) -> PyreonFlowDimensions { PyreonFlowDimensions(width: 150, height: 40) }
   public func updateNodeMeasurement(_ id: String, width: Double, height: Double, handles: [PyreonFlowMeasuredHandle] = []) {}
+  public func replaceMeasurements(_ next: [String: PyreonFlowNodeMeasurement]) {}
+  public func updateMeasurements(_ update: ([String: PyreonFlowNodeMeasurement]) -> [String: PyreonFlowNodeMeasurement]) {}
   public func clearNodeMeasurement(_ id: String) {}
   public func batch(_ operation: () -> Void) { operation() }
   public func dispose() {}

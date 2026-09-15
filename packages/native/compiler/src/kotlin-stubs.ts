@@ -1762,6 +1762,8 @@ class PyreonFlowState<T>(
   fun getNode(id: String): PyreonFlowNode<T>? = null
   fun getNodeDimensions(id: String): PyreonFlowDimensions = PyreonFlowDimensions(150.0, 40.0)
   fun updateNodeMeasurement(id: String, width: Double, height: Double, handles: List<PyreonFlowMeasuredHandle> = emptyList()) {}
+  fun replaceMeasurements(next: Map<String, PyreonFlowNodeMeasurement>) {}
+  fun updateMeasurements(update: (Map<String, PyreonFlowNodeMeasurement>) -> Map<String, PyreonFlowNodeMeasurement>) {}
   fun clearNodeMeasurement(id: String) {}
   fun isValidConnection(connection: PyreonFlowConnection): Boolean = true
   fun connect(connection: PyreonFlowConnection, id: String? = null): PyreonFlowEdge? = null

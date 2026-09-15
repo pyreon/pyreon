@@ -61,6 +61,11 @@ struct PyreonFlowStateTests {
         f.clearNodeMeasurement("1")
         check(f.measurements["1"] == nil, "explicit measurement cleanup removes the native entry")
         f.updateNodeMeasurement("1", width: 240, height: 72)
+        f.updateMeasurements { $0 }
+        check(f.measurements["1"]?.width == 240, "measurement callback replacement preserves entries")
+        f.replaceMeasurements([:])
+        check(f.measurements.isEmpty, "measurement signal replacement clears stale entries")
+        f.updateNodeMeasurement("1", width: 240, height: 72)
         check(f.nodeLookup["1"]?.data.label == "Start" && f.edgeLookup["e1"]?.source == "1", "FlowInstance lookup maps stay reactive and addressable")
         check(f.getNodeDimensions("1") == PyreonFlowDimensions(width: 240, height: 72), "intrinsic host measurements drive effective geometry")
         f.addNode(PyreonFlowNode(id: "intrinsic", position: PyreonXYPosition(x: 0, y: 0), data: NodeData(label: "Intrinsic"), width: 100, height: 40))
