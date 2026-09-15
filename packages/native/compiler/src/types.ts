@@ -930,6 +930,8 @@ export type DeclIR =
         hidden?: boolean
         deletable?: boolean
         parentId?: string
+        extent?: [number, number, number, number]
+        extentParent?: boolean
         expandParent?: boolean
         group?: boolean
         sourceHandles?: { id?: string; type: string; position: string; offset?: number }[]

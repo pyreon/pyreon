@@ -4091,6 +4091,8 @@ function emitSwiftDecl(
           ...(n.hidden !== undefined ? [`hidden: ${n.hidden}`] : []),
           ...(n.deletable !== undefined ? [`deletable: ${n.deletable}`] : []),
           ...(n.parentId !== undefined ? [`parentId: ${JSON.stringify(n.parentId)}`] : []),
+          ...(n.extent !== undefined ? [`extent: PyreonFlowNodeExtent(minX: ${n.extent[0]}, minY: ${n.extent[1]}, maxX: ${n.extent[2]}, maxY: ${n.extent[3]})`] : []),
+          ...(n.extentParent === true ? ['extentParent: true'] : []),
           ...(n.expandParent !== undefined ? [`expandParent: ${n.expandParent}`] : []),
           ...(n.group !== undefined ? [`group: ${n.group}`] : []),
           ...(n.sourceHandles !== undefined ? [`sourceHandles: ${swiftFlowParsedHandles(n.sourceHandles)}`] : []),
@@ -4245,6 +4247,9 @@ function swiftFlowNodeLiteral(arg: ExprIR, flowName: string): string | null {
   const heightExpr = field('height')
   const sourceHandlesExpr = field('sourceHandles')
   const targetHandlesExpr = field('targetHandles')
+  const extentExpr = field('extent')
+  const extent = extentExpr ? swiftFlowNodeExtentArgs(extentExpr) : null
+  if (extentExpr && !extent) _emitWarnings.push(`createFlow binding \`${flowName}\` addNode(...): node field \`extent\` must be \`'parent'\` or a static [[minX, minY], [maxX, maxY]] tuple on native targets.`)
   const optionalFields = ['draggable', 'selectable', 'connectable', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'parentId', 'expandParent', 'group'] as const
   const parts = [
     `id: ${emitSwiftExpr(idExpr, 0)}`,
@@ -4253,6 +4258,7 @@ function swiftFlowNodeLiteral(arg: ExprIR, flowName: string): string | null {
     `data: ${emitSwiftExpr(dataExpr, 0)}`,
     ...(widthExpr ? [`width: ${emitSwiftExpr(widthExpr, 0)}`] : []),
     ...(heightExpr ? [`height: ${emitSwiftExpr(heightExpr, 0)}`] : []),
+    ...(extent ? extent : []),
     ...optionalFields.flatMap((name) => {
       const value = field(name)
       return value ? [`${name}: ${emitSwiftExpr(value, 0)}`] : []
@@ -4261,6 +4267,12 @@ function swiftFlowNodeLiteral(arg: ExprIR, flowName: string): string | null {
     ...(targetHandlesExpr ? [`targetHandles: ${swiftFlowHandlesLiteral(targetHandlesExpr) ?? emitSwiftExpr(targetHandlesExpr, 0)}`] : []),
   ]
   return `PyreonFlowNode(${parts.join(', ')})`
+}
+
+function swiftFlowNodeExtentArgs(expr: ExprIR): string[] | null {
+  if (expr.kind === 'literal' && expr.value === 'parent') return ['extentParent: true']
+  const args = swiftFlowExtentLiteral(expr)
+  return args ? [`extent: PyreonFlowNodeExtent(${args})`] : null
 }
 
 function swiftFlowParsedHandles(handles: StaticFlowHandle[]): string {
@@ -6095,6 +6107,11 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               if (name === 'position') { const position = swiftFlowPositionLiteral(value); return position ? [`node.position = ${position}`] : [] }
               if (name === 'data' && value.kind === 'object') return value.fields.map((field) => `node.data.${swiftIdent(field.name)} = ${emitSwiftExpr(field.value, indent)}`)
               if ((name === 'sourceHandles' || name === 'targetHandles')) { const handles = swiftFlowHandlesLiteral(value); return handles ? [`node.${name} = ${handles}`] : [] }
+              if (name === 'extent') {
+                const extent = swiftFlowNodeExtentArgs(value)
+                if (!extent) _emitWarnings.push(`createFlow binding \`${flowName}\` updateNode(...): node field \`extent\` must be \`'parent'\` or a static [[minX, minY], [maxX, maxY]] tuple on native targets.`)
+                return extent ? extent.map((part) => part === 'extentParent: true' ? 'node.extent = nil; node.extentParent = true' : `node.${part.replace(':', ' =')}; node.extentParent = false`) : []
+              }
               return HANDLED_FLOW_NODE_FIELDS.has(name) ? [`node.${swiftIdent(name)} = ${emitSwiftExpr(value, indent)}`] : []
             })
             return `${swiftIdent(flowName)}.updateNode(${emitSwiftExpr(e.args[0]!, indent)}) { node in ${statements.join('; ')} }`

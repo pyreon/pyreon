@@ -3246,6 +3246,8 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
           ...(n.hidden !== undefined ? [`hidden = ${n.hidden}`] : []),
           ...(n.deletable !== undefined ? [`deletable = ${n.deletable}`] : []),
           ...(n.parentId !== undefined ? [`parentId = ${JSON.stringify(n.parentId)}`] : []),
+          ...(n.extent !== undefined ? [`extent = PyreonFlowNodeExtent(${n.extent.map((value) => ktChartDouble(String(value))).join(', ')})`] : []),
+          ...(n.extentParent === true ? ['extentParent = true'] : []),
           ...(n.expandParent !== undefined ? [`expandParent = ${n.expandParent}`] : []),
           ...(n.group !== undefined ? [`group = ${n.group}`] : []),
           ...(n.sourceHandles !== undefined ? [`sourceHandles = ${kotlinFlowParsedHandles(n.sourceHandles)}`] : []),
@@ -3412,6 +3414,9 @@ function kotlinFlowNodeLiteral(arg: ExprIR, flowName: string): string | null {
   const heightExpr = field('height')
   const sourceHandlesExpr = field('sourceHandles')
   const targetHandlesExpr = field('targetHandles')
+  const extentExpr = field('extent')
+  const extent = extentExpr ? kotlinFlowNodeExtentArgs(extentExpr) : null
+  if (extentExpr && !extent) _emitWarnings.push(`createFlow binding \`${flowName}\` addNode(...): node field \`extent\` must be \`'parent'\` or a static [[minX, minY], [maxX, maxY]] tuple on native targets.`)
   const optionalFields = ['draggable', 'selectable', 'connectable', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'parentId', 'expandParent', 'group'] as const
   const parts = [
     `id = ${emitKotlinExpr(idExpr, 0)}`,
@@ -3420,6 +3425,7 @@ function kotlinFlowNodeLiteral(arg: ExprIR, flowName: string): string | null {
     `data = ${emitKotlinExpr(dataExpr, 0)}`,
     ...(widthExpr ? [`width = ${ktChartDouble(emitKotlinExpr(widthExpr, 0))}`] : []),
     ...(heightExpr ? [`height = ${ktChartDouble(emitKotlinExpr(heightExpr, 0))}`] : []),
+    ...(extent ? extent : []),
     ...optionalFields.flatMap((name) => {
       const value = field(name)
       return value ? [`${name} = ${emitKotlinExpr(value, 0)}`] : []
@@ -3428,6 +3434,12 @@ function kotlinFlowNodeLiteral(arg: ExprIR, flowName: string): string | null {
     ...(targetHandlesExpr ? [`targetHandles = ${kotlinFlowHandlesLiteral(targetHandlesExpr) ?? emitKotlinExpr(targetHandlesExpr, 0)}`] : []),
   ]
   return `PyreonFlowNode(${parts.join(', ')})`
+}
+
+function kotlinFlowNodeExtentArgs(expr: ExprIR): string[] | null {
+  if (expr.kind === 'literal' && expr.value === 'parent') return ['extentParent = true']
+  const args = kotlinFlowExtentLiteral(expr)
+  return args ? [`extent = PyreonFlowNodeExtent(${args})`] : null
 }
 
 function kotlinFlowParsedHandles(handles: StaticFlowHandle[]): string {
@@ -5118,6 +5130,11 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               if (name === 'position') { const position = kotlinFlowPositionLiteral(value); return position ? [`position = ${position}`] : [] }
               if (name === 'data' && value.kind === 'object') return [`data = node.data.copy(${value.fields.map((field) => `${kotlinIdent(field.name)} = ${emitKotlinExpr(field.value, indent)}`).join(', ')})`]
               if (name === 'sourceHandles' || name === 'targetHandles') { const handles = kotlinFlowHandlesLiteral(value); return handles ? [`${name} = ${handles}`] : [] }
+              if (name === 'extent') {
+                const extent = kotlinFlowNodeExtentArgs(value)
+                if (!extent) _emitWarnings.push(`createFlow binding \`${flowName}\` updateNode(...): node field \`extent\` must be \`'parent'\` or a static [[minX, minY], [maxX, maxY]] tuple on native targets.`)
+                return extent ? extent.map((part) => part === 'extentParent = true' ? 'extent = null, extentParent = true' : `${part}, extentParent = false`) : []
+              }
               const rendered = ['width', 'height'].includes(name) ? ktChartDouble(emitKotlinExpr(value, indent)) : emitKotlinExpr(value, indent)
               return HANDLED_FLOW_NODE_FIELDS.has(name) ? [`${kotlinIdent(name)} = ${rendered}`] : []
             })

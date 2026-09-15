@@ -512,6 +512,18 @@ fun main() {
     val snapped = PyreonFlowState(nodes = listOf(PyreonFlowNode(id = "s", position = PyreonXYPosition(0.0, 0.0), data = NodeData("Snap"))), snapToGrid = true, snapGrid = 10.0, nodeExtent = PyreonFlowNodeExtent(-100.0, -100.0, 200.0, 200.0))
     snapped.updateNodePosition("s", PyreonXYPosition(-5.0, 16.0))
     check(snapped.getNode("s")?.position == PyreonXYPosition(0.0, 20.0), "grid snapping matches JavaScript Math.round, including negative halves")
+    val nested = PyreonFlowState(nodes = listOf(
+        PyreonFlowNode(id = "parent", position = PyreonXYPosition(0.0, 0.0), data = NodeData("Parent"), width = 100.0, height = 100.0),
+        PyreonFlowNode(id = "child", position = PyreonXYPosition(0.0, 0.0), data = NodeData("Child"), width = 30.0, height = 20.0, parentId = "parent", extentParent = true, expandParent = true),
+        PyreonFlowNode(id = "boxed", position = PyreonXYPosition(0.0, 0.0), data = NodeData("Boxed"), width = 30.0, height = 20.0, extent = PyreonFlowNodeExtent(10.0, 20.0, 100.0, 90.0)),
+    ))
+    nested.updateNodePosition("child", PyreonXYPosition(120.0, 110.0))
+    check(nested.getNode("child")?.position == PyreonXYPosition(70.0, 80.0), "parent extent constrains child positions using child dimensions")
+    nested.updateNode("child") { it.copy(extentParent = false) }
+    nested.updateNodePosition("child", PyreonXYPosition(120.0, 110.0))
+    check(nested.getNode("parent")?.width == 150.0 && nested.getNode("parent")?.height == 130.0, "expandParent grows the parent when an unconstrained child moves beyond it")
+    nested.updateNodePosition("boxed", PyreonXYPosition(500.0, -10.0))
+    check(nested.getNode("boxed")?.position == PyreonXYPosition(70.0, 20.0), "a node-specific numeric extent overrides the flow extent")
     // Per-id storage: a position write must not disturb order or the other nodes.
     et.updateNodePosition("2", PyreonXYPosition(50.0, 50.0))
     check(et.nodes.map { it.id } == listOf("1", "2", "3"), "updateNodePosition keeps insertion order")

@@ -555,6 +555,18 @@ struct PyreonFlowStateTests {
         let snapped = PyreonFlowState(nodes: [PyreonFlowNode(id: "s", position: PyreonXYPosition(x: 0, y: 0), data: NodeData(label: "Snap"))], snapToGrid: true, snapGrid: 10, nodeExtent: PyreonFlowNodeExtent(minX: -100, minY: -100, maxX: 200, maxY: 200))
         snapped.updateNodePosition("s", PyreonXYPosition(x: -5, y: 16))
         check(snapped.getNode("s")?.position == PyreonXYPosition(x: 0, y: 20), "grid snapping matches JavaScript Math.round, including negative halves")
+        let nested = PyreonFlowState(nodes: [
+            PyreonFlowNode(id: "parent", position: PyreonXYPosition(x: 0, y: 0), data: NodeData(label: "Parent"), width: 100, height: 100),
+            PyreonFlowNode(id: "child", position: PyreonXYPosition(x: 0, y: 0), data: NodeData(label: "Child"), width: 30, height: 20, parentId: "parent", extentParent: true, expandParent: true),
+            PyreonFlowNode(id: "boxed", position: PyreonXYPosition(x: 0, y: 0), data: NodeData(label: "Boxed"), width: 30, height: 20, extent: PyreonFlowNodeExtent(minX: 10, minY: 20, maxX: 100, maxY: 90)),
+        ])
+        nested.updateNodePosition("child", PyreonXYPosition(x: 120, y: 110))
+        check(nested.getNode("child")?.position == PyreonXYPosition(x: 70, y: 80), "parent extent constrains child positions using child dimensions")
+        nested.updateNode("child") { $0.extentParent = false }
+        nested.updateNodePosition("child", PyreonXYPosition(x: 120, y: 110))
+        check(nested.getNode("parent")?.width == 150 && nested.getNode("parent")?.height == 130, "expandParent grows the parent when an unconstrained child moves beyond it")
+        nested.updateNodePosition("boxed", PyreonXYPosition(x: 500, y: -10))
+        check(nested.getNode("boxed")?.position == PyreonXYPosition(x: 70, y: 20), "a node-specific numeric extent overrides the flow extent")
 
         // 12. Observation granularity — THE performance contract. A tracker
         // reading node "1" must not fire when node "2" moves. With one

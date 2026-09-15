@@ -9134,6 +9134,8 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     hidden?: boolean
     deletable?: boolean
     parentId?: string
+    extent?: [number, number, number, number]
+    extentParent?: boolean
     expandParent?: boolean
     group?: boolean
     sourceHandles?: { id?: string; type: string; position: string; offset?: number }[]
@@ -9195,6 +9197,18 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       const typeLit = literalString(typeNode)
       const sourceHandlesNode = objProp(nodeLit, 'sourceHandles')
       const targetHandlesNode = objProp(nodeLit, 'targetHandles')
+      const extentNode = objProp(nodeLit, 'extent')
+      const extentParent = literalString(extentNode) === 'parent'
+      const extent = (() => {
+        if (extentNode?.type !== 'ArrayExpression') return undefined
+        const pair = (extentNode.elements as AnyNode[] | undefined) ?? []
+        if (pair.length !== 2 || pair[0]?.type !== 'ArrayExpression' || pair[1]?.type !== 'ArrayExpression') return undefined
+        const lo = (pair[0].elements as AnyNode[] | undefined) ?? []
+        const hi = (pair[1].elements as AnyNode[] | undefined) ?? []
+        if (lo.length !== 2 || hi.length !== 2) return undefined
+        const values = [literalNumber(lo[0]), literalNumber(lo[1]), literalNumber(hi[0]), literalNumber(hi[1])]
+        return values.some((value) => value === undefined) ? undefined : values as [number, number, number, number]
+      })()
       const sourceHandles = literalHandles(sourceHandlesNode)
       const targetHandles = literalHandles(targetHandlesNode)
       const stringFields = ['ariaLabel', 'parentId'] as const
@@ -9205,6 +9219,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       for (const k of boolFields) if (objProp(nodeLit, k) && literalBool(objProp(nodeLit, k)) === undefined) droppedNodeFields.add(`${k} (not a boolean literal)`)
       if (sourceHandlesNode && sourceHandles === undefined) droppedNodeFields.add('sourceHandles (not a literal handle array)')
       if (targetHandlesNode && targetHandles === undefined) droppedNodeFields.add('targetHandles (not a literal handle array)')
+      if (extentNode && !extentParent && extent === undefined) droppedNodeFields.add('extent (expected "parent" or a numeric [[minX, minY], [maxX, maxY]] literal)')
       nodesOut.push({
         id,
         positionX: parseExpr(posXNode, ctx),
@@ -9223,6 +9238,8 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
         })),
         ...(sourceHandles !== undefined ? { sourceHandles } : {}),
         ...(targetHandles !== undefined ? { targetHandles } : {}),
+        ...(extentParent ? { extentParent: true } : {}),
+        ...(extent !== undefined ? { extent } : {}),
       })
     }
   } else if (nodesArg) {

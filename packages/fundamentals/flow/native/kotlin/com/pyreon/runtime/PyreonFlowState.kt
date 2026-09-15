@@ -54,6 +54,8 @@ data class PyreonFlowNode<T>(
     val hidden: Boolean? = null,
     val deletable: Boolean? = null,
     val parentId: String? = null,
+    val extent: PyreonFlowNodeExtent? = null,
+    val extentParent: Boolean = false,
     val expandParent: Boolean? = null,
     val group: Boolean? = null,
     val sourceHandles: List<PyreonFlowHandleConfig> = emptyList(),
@@ -1068,7 +1070,23 @@ class PyreonFlowState<T>(
             kotlin.math.floor(position.x / snapGrid + 0.5) * snapGrid,
             kotlin.math.floor(position.y / snapGrid + 0.5) * snapGrid,
         ) else position
-        nodeMap[id] = node.copy(position = clampToExtent(snapped, node.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH, node.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT))
+        val width = node.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH
+        val height = node.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT
+        val parent = node.parentId?.let(nodeMap::get)
+        val effectiveExtent = if (node.extentParent && parent != null) PyreonFlowNodeExtent(
+            0.0, 0.0,
+            parent.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH,
+            parent.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT,
+        ) else node.extent ?: nodeExtent
+        var clamped = clamp(snapped, effectiveExtent, width, height)
+        if (node.expandParent == true && parent != null && node.parentId != null) {
+            clamped = PyreonXYPosition(kotlin.math.max(0.0, clamped.x), kotlin.math.max(0.0, clamped.y))
+            nodeMap[node.parentId] = parent.copy(
+                width = kotlin.math.max(parent.width ?: PYREON_FLOW_DEFAULT_NODE_WIDTH, clamped.x + width),
+                height = kotlin.math.max(parent.height ?: PYREON_FLOW_DEFAULT_NODE_HEIGHT, clamped.y + height),
+            )
+        }
+        nodeMap[id] = node.copy(position = clamped)
         markMutation()
         emitNodeChanges(listOf(PyreonFlowNodeChange("position", id, nodeMap.getValue(id).position)))
     }
@@ -1089,10 +1107,13 @@ class PyreonFlowState<T>(
     fun clearNodeExtent() { nodeExtent = null }
     @JvmOverloads
     fun clampToExtent(position: PyreonXYPosition, nodeWidth: Double = PYREON_FLOW_DEFAULT_NODE_WIDTH, nodeHeight: Double = PYREON_FLOW_DEFAULT_NODE_HEIGHT): PyreonXYPosition {
-        val extent = nodeExtent ?: return position
+        return clamp(position, nodeExtent, nodeWidth, nodeHeight)
+    }
+    private fun clamp(position: PyreonXYPosition, extent: PyreonFlowNodeExtent?, nodeWidth: Double, nodeHeight: Double): PyreonXYPosition {
+        extent ?: return position
         return PyreonXYPosition(
-            x = kotlin.math.min(kotlin.math.max(position.x, extent.minX), extent.maxX - nodeWidth),
-            y = kotlin.math.min(kotlin.math.max(position.y, extent.minY), extent.maxY - nodeHeight),
+            x = kotlin.math.min(kotlin.math.max(position.x, extent.minX), kotlin.math.max(extent.minX, extent.maxX - nodeWidth)),
+            y = kotlin.math.min(kotlin.math.max(position.y, extent.minY), kotlin.math.max(extent.minY, extent.maxY - nodeHeight)),
         )
     }
     @JvmOverloads

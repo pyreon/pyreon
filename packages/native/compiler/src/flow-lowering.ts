@@ -45,7 +45,7 @@ export const LOWERED_FLOW_METHODS: ReadonlySet<string> = new Set([
 export const HANDLED_FLOW_NODE_FIELDS: ReadonlySet<string> = new Set([
   'id', 'type', 'position', 'data', 'width', 'height',
   'draggable', 'selectable', 'connectable', 'focusable', 'ariaLabel',
-  'hidden', 'deletable', 'parentId', 'expandParent', 'group',
+  'hidden', 'deletable', 'parentId', 'extent', 'expandParent', 'group',
   'sourceHandles', 'targetHandles',
 ])
 /** `FlowEdge` fields the native `PyreonFlowEdge` carries. */

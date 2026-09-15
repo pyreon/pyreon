@@ -74,6 +74,8 @@ public struct PyreonFlowNode<T> {
     public var hidden: Bool?
     public var deletable: Bool?
     public var parentId: String?
+    public var extent: PyreonFlowNodeExtent?
+    public var extentParent: Bool
     public var expandParent: Bool?
     public var group: Bool?
     public var sourceHandles: [PyreonFlowHandleConfig]
@@ -94,6 +96,8 @@ public struct PyreonFlowNode<T> {
         hidden: Bool? = nil,
         deletable: Bool? = nil,
         parentId: String? = nil,
+        extent: PyreonFlowNodeExtent? = nil,
+        extentParent: Bool = false,
         expandParent: Bool? = nil,
         group: Bool? = nil,
         sourceHandles: [PyreonFlowHandleConfig] = [],
@@ -113,6 +117,8 @@ public struct PyreonFlowNode<T> {
         self.hidden = hidden
         self.deletable = deletable
         self.parentId = parentId
+        self.extent = extent
+        self.extentParent = extentParent
         self.expandParent = expandParent
         self.group = group
         self.sourceHandles = sourceHandles
@@ -1403,7 +1409,20 @@ public final class PyreonFlowState<T> {
         let snapped = snapToGrid && snapGrid != 0
             ? PyreonXYPosition(x: floor(position.x / snapGrid + 0.5) * snapGrid, y: floor(position.y / snapGrid + 0.5) * snapGrid)
             : position
-        let clamped = clampToExtent(snapped, node.width ?? pyreonFlowDefaultNodeWidth, node.height ?? pyreonFlowDefaultNodeHeight)
+        let width = node.width ?? pyreonFlowDefaultNodeWidth
+        let height = node.height ?? pyreonFlowDefaultNodeHeight
+        let parent = node.parentId.flatMap { nodeStore[$0] }
+        let effectiveExtent = node.extentParent && parent != nil
+            ? PyreonFlowNodeExtent(minX: 0, minY: 0, maxX: parent!.width ?? pyreonFlowDefaultNodeWidth, maxY: parent!.height ?? pyreonFlowDefaultNodeHeight)
+            : node.extent ?? nodeExtent
+        var clamped = clamp(snapped, to: effectiveExtent, width, height)
+        if node.expandParent == true, var parent, let parentId = node.parentId {
+            clamped = PyreonXYPosition(x: max(0, clamped.x), y: max(0, clamped.y))
+            parent.width = max(parent.width ?? pyreonFlowDefaultNodeWidth, clamped.x + width)
+            parent.height = max(parent.height ?? pyreonFlowDefaultNodeHeight, clamped.y + height)
+            nodeStore[parentId] = parent
+            boxes[parentId]?.node = parent
+        }
         nodeStore[id]!.position = clamped
         boxes[id]!.node.position = clamped
         nodesVersion &+= 1
@@ -1432,10 +1451,13 @@ public final class PyreonFlowState<T> {
     }
     public func clearNodeExtent() { nodeExtent = nil }
     public func clampToExtent(_ position: PyreonXYPosition, _ nodeWidth: Double = pyreonFlowDefaultNodeWidth, _ nodeHeight: Double = pyreonFlowDefaultNodeHeight) -> PyreonXYPosition {
-        guard let extent = nodeExtent else { return position }
+        clamp(position, to: nodeExtent, nodeWidth, nodeHeight)
+    }
+    private func clamp(_ position: PyreonXYPosition, to extent: PyreonFlowNodeExtent?, _ nodeWidth: Double, _ nodeHeight: Double) -> PyreonXYPosition {
+        guard let extent else { return position }
         return PyreonXYPosition(
-            x: min(max(position.x, extent.minX), extent.maxX - nodeWidth),
-            y: min(max(position.y, extent.minY), extent.maxY - nodeHeight)
+            x: min(max(position.x, extent.minX), max(extent.minX, extent.maxX - nodeWidth)),
+            y: min(max(position.y, extent.minY), max(extent.minY, extent.maxY - nodeHeight))
         )
     }
     public func snappedNodePosition(_ id: String, _ position: PyreonXYPosition, excluding: Set<String> = [], threshold: Double = 5) -> PyreonXYPosition {
