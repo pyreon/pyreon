@@ -198,6 +198,22 @@ minutes a serial `123 probes x 1.36s` estimate implies — vitest runs files in
 parallel, so probe cost is amortized across workers. Estimating a per-file cost
 serially when the runner is parallel is an easy way to overstate a win by 10x.
 
+**And it is served by ONE warm compiler JVM per run** (`src/kotlin-daemon.ts`,
+2026-09). A cache miss used to cost a cold `kotlinc` per check — JVM start
+plus a re-analysis of the 2,300-line Compose stub file, ~4s here and ~6s on a
+CI runner — and with the stubs edited most days, a miss was the common case
+in CI (16 shards, ~140 runner-minutes per run). The same check against a
+loaded `K2JVMCompiler` with the stubs pre-compiled to a jar is ~78ms. The
+package's vitest `globalSetup` starts the JVM once per run and hands its spool
+directory to the worker processes through `PYREON_KOTLIN_DAEMON_SPOOL`
+(the forks pool starts a process per test FILE, so a per-process daemon
+measured only 2× where the run-wide one measures ~10×). The validator writes
+a request file and sleeps in 1ms `Atomics.wait` slices for the reply, because
+it is synchronous. Every failure path falls back to per-check `kotlinc`, and
+`kotlin-daemon.test.ts` asserts the two paths agree on both an accepted and a
+rejected emit (bisect: a daemon forging acceptance fails it). `PYREON_KOTLIN_DAEMON=0`
+forces the plain path — use it when bisecting a verdict you do not trust.
+
 Consequences you need to know when working in this package:
 
 - **A timing measurement in this package is meaningless without stating the

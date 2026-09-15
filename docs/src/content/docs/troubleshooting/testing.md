@@ -109,6 +109,12 @@ real browsers never fire `hashchange` for pushState/replaceState (WHATWG: only f
 
 ---
 
+### A toolchain spawned per check where the toolchain's START is the cost — "the compilers are crazy slow" was the JVM, not the compiler
+
+(2026-09, `@pyreon/native-compiler`). `validateKotlin` ran `kotlinc` per emit: a cold JVM, the whole 2,300-line stub file re-analysed, codegen to a throwaway dir — 4.2s per check locally, ~6s on a two-core runner, ~600 checks per run, 16 CI shards at 5–19 minutes each (~140 runner-minutes, 59% of a CI run's compute). Decomposed: `kotlinc -version` alone 1.4s; the same input against stubs pre-compiled to a jar 2.1s; a warm in-process `K2JVMCompiler` with the jar **78ms**. The input was never the cost. Fix: one compiler JVM per test RUN (vitest `globalSetup`, spool-directory transport for the synchronous caller, workers attach by pid), stubs compiled once per stubs text into the verdict cache, plain `kotlinc` as the fallback on every failure path, a parity spec locking both paths to identical verdicts. **Two traps on the way: (1) a per-PROCESS daemon measured only 2× — vitest's forks pool starts a fresh process per test FILE, so "once per process" was once per file; scope a warm resource to the RUN, not the module or the process. (2) a "definitely invalid" probe shape must be checked against the language — `String + Int` is legal Kotlin, so the first parity probe was accepted by both paths and proved nothing.** General rule: when a suite's wall clock is dominated by spawning a JIT-compiled toolchain, measure the toolchain's START against its WORK before sharding, caching, or blaming load — a cache only helps when it hits, and shards multiply the start cost they were meant to hide.
+
+---
+
 ### Running `bun test`
 
 Use `bun run test` (runs vitest via package scripts)
