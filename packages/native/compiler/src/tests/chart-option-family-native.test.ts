@@ -40,6 +40,15 @@ export function App() { return <>
   <OptionChart option={{ series: [{ type: 'funnel', sort: 'none', gap: 3, data: [{ name: 'Visit', value: 100 }, { name: 'Buy', value: 20 }] }] }} />
 </> }`
 
+const HIERARCHY_AND_NETWORK = `import { OptionChart } from '@pyreon/charts/plot'
+export function App() { return <>
+  <OptionChart option={{ series: [{ type: 'treemap', label: { show: false }, data: [{ name: 'A', children: [{ name: 'A1', value: 3, itemStyle: { color: '#3366ff' } }] }] }] }} />
+  <OptionChart option={{ series: [{ type: 'sunburst', radius: ['30%', '90%'], data: [{ name: 'A', children: [{ name: 'A1', value: 3 }] }] }] }} />
+  <OptionChart option={{ series: [{ type: 'tree', symbolSize: 12, data: [{ name: 'Root', children: [{ name: 'Leaf', value: 2 }] }] }] }} />
+  <OptionChart option={{ series: [{ type: 'sankey', nodeWidth: 18, nodeGap: 7, nodeAlign: 'justify', data: [{ name: 'From' }, { name: 'To' }], links: [{ source: 'From', target: 'To', value: 5 }] }] }} />
+  <OptionChart option={{ series: [{ type: 'graph', data: [{ id: 'a', name: 'Alpha', value: 2, symbolSize: 20 }, { id: 'b', name: 'Beta' }], links: [{ source: 'a', target: 'b', value: 3 }] }] }} />
+</> }`
+
 describe('OptionChart family options lower to native hosts', () => {
   for (const target of ['swift', 'kotlin'] as const) {
     it(`${target}: pie preserves data, donut radius, labels, legend, tooltip, title, and size`, () => {
@@ -81,6 +90,15 @@ describe('OptionChart family options lower to native hosts', () => {
       for (const renderer of ['renderRadar', 'renderCandlestickChart', 'renderHeatChart', 'renderFunnel']) expect(r.code).toContain(renderer)
       for (const label of ['Speed', 'Power', 'Mon', 'Tue', 'AM', 'PM', 'Visit', 'Buy']) expect(r.code).toContain(`"${label}"`)
     })
+
+    it(`${target}: hierarchy and network options use their native renderers`, () => {
+      const r = transform(HIERARCHY_AND_NETWORK, { target })
+      expect(r.warnings).toEqual([])
+      expect(r.code).not.toContain('OptionChart(')
+      for (const renderer of ['renderTreemap', 'renderSunburst', 'renderTree', 'renderSankey', 'renderGraph']) expect(r.code).toContain(renderer)
+      for (const label of ['A1', 'Root', 'Leaf', 'From', 'To', 'Alpha', 'Beta']) expect(r.code).toContain(`"${label}"`)
+      expect(r.code).toContain('#3366ff')
+    })
   }
 
   it('names unsupported dynamic and cartesian option shapes', () => {
@@ -101,12 +119,22 @@ describe('OptionChart family options lower to native hosts', () => {
       const r = validateSwiftWithStubs(transform(src, { target: 'swift' }).code)
       expect(r.ok, r.error ?? '').toBe(true)
     }
-  })
+  }, 90_000)
 
   it.skipIf(!isKotlincAvailable())('kotlinc accepts the family and cartesian emits', () => {
     for (const src of [PIE, GAUGE, CARTESIAN, STATIC_FAMILIES]) {
       const r = validateKotlin(transform(src, { target: 'kotlin' }).code)
       expect(r.ok, r.error ?? '').toBe(true)
     }
-  })
+  }, 90_000)
+
+  it.skipIf(!isSwiftcAvailable())('swiftc accepts hierarchy and network option emits', () => {
+    const r = validateSwiftWithStubs(transform(HIERARCHY_AND_NETWORK, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  }, 30_000)
+
+  it.skipIf(!isKotlincAvailable())('kotlinc accepts hierarchy and network option emits', () => {
+    const r = validateKotlin(transform(HIERARCHY_AND_NETWORK, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  }, 30_000)
 })
