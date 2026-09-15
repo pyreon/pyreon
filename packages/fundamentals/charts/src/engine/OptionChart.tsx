@@ -15,7 +15,8 @@ import { compiledCommands, optionToSvg, planOption } from './option'
 import type { CompiledOption, EChartsOption, OptionPlan } from './option'
 import { familyHostNode } from './family-host'
 import type { FamilyPlan } from './option-family'
-import { TIMELINE_HEIGHT, resolveTimeline, timelineCommands, timelineSteps } from './option-composite'
+import { TIMELINE_HEIGHT, mergeChartOptions, resolveTimeline, timelineCommands, timelineSteps } from './option-composite'
+import type { OptionUpdatePolicy } from './option-composite'
 import { graphicCommands } from './option-layer'
 import { visualMapCommands } from './visual-map'
 import { barsFor, layoutChart, resolveY2Domain, resolveYDomain, seriesOnRightAxis } from './render'
@@ -45,6 +46,8 @@ export interface OptionHit {
 export interface OptionChartProps extends Omit<CanvasHostProps, 'theme' | 'showTitle' | 'subtitle' | 'showLegend' | 'legendPosition' | 'animate' | 'updateAnimation' | 'updateDuration'> {
   /** An ECharts-shaped option. An accessor makes it reactive; a plain object is static. */
   option: EChartsOption | (() => EChartsOption)
+  /** How successive reactive option values combine. Default: replace (the existing full-snapshot behavior). */
+  optionUpdate?: OptionUpdatePolicy
   /** A registered theme name or an inline definition (see `registerTheme`). */
   theme?: string | ThemeDefinition
   /** BCP 47 tag for axis-label formatting (see `registerLocale`). */
@@ -163,7 +166,15 @@ export function OptionChart(props: OptionChartProps): VNode {
   // Which surface shows: the built-in canvas, a family host, or the svg fallback.
   const mode = signal<'canvas' | 'host' | 'svg'>('canvas')
   const hostNode = signal<VNode | null>(null)
-  const readOption = (): EChartsOption => (typeof props.option === 'function' ? props.option() : props.option)
+  let retainedOption: EChartsOption | undefined
+  let retainedInput: EChartsOption | undefined
+  const readOption = (): EChartsOption => {
+    const input = typeof props.option === 'function' ? props.option() : props.option
+    if (input === retainedInput && retainedOption !== undefined) return retainedOption
+    retainedInput = input
+    retainedOption = mergeChartOptions(retainedOption, input, props.optionUpdate ?? { mode: 'replace' }) as EChartsOption
+    return retainedOption
+  }
   const stepIndex = (): number | undefined => props.timelineIndex ?? (step() >= 0 ? step() : undefined)
   const width = (): Double => props.width ?? 640.0
   const height = (): Double => props.height ?? 320.0

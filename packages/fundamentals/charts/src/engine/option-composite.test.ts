@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { composeSvg, gridRect, resolveTimeline, splitGrids, timelineCommands, timelineSteps } from './option-composite'
+import { composeSvg, gridRect, mergeChartOptions, resolveTimeline, splitGrids, timelineCommands, timelineSteps } from './option-composite'
 import { optionToSvg, planOption } from './option'
 
 const twoGrids = {
@@ -14,6 +14,42 @@ const timeline = {
   baseOption: { timeline: { data: ['2019', { value: '2020' }, '2021'], currentIndex: 1 }, title: { text: 'Sales' }, xAxis: { type: 'category', data: ['a', 'b'] }, yAxis: {}, series: [{ type: 'bar', name: 'sales' }] },
   options: [{ series: [{ data: [1, 2] }] }, { title: { subtext: 'step two' }, series: [{ data: [3, 4] }] }, { series: [{ data: [5, 6] }] }],
 }
+
+describe('reactive option updates', () => {
+  const previous = {
+    title: { text: 'Sales', textStyle: { color: '#111111', size: 14 } },
+    series: [
+      { id: 'revenue', type: 'bar', data: [1, 2], itemStyle: { color: '#123456' } },
+      { name: 'cost', type: 'line', data: [3, 4] },
+    ],
+  }
+
+  it('merges nested objects and matches component arrays by id/name without mutation', () => {
+    const update = {
+      title: { textStyle: { size: 18 } },
+      series: [
+        { name: 'cost', data: [8, 9] },
+        { id: 'revenue', itemStyle: { opacity: 0.5 } },
+      ],
+    }
+    const merged = mergeChartOptions(previous, update)
+    expect(merged['title']).toEqual({ text: 'Sales', textStyle: { color: '#111111', size: 18 } })
+    expect(merged['series']).toEqual([
+      { id: 'revenue', type: 'bar', data: [1, 2], itemStyle: { color: '#123456', opacity: 0.5 } },
+      { name: 'cost', type: 'line', data: [8, 9] },
+    ])
+    expect(previous.series[0]!.itemStyle).toEqual({ color: '#123456' })
+    expect(update.series[1]!.itemStyle).toEqual({ opacity: 0.5 })
+  })
+
+  it('supports whole-option and selected-component replacement', () => {
+    const update = { title: { text: 'Only this' }, series: [{ id: 'new', type: 'pie', data: [7] }] }
+    expect(mergeChartOptions(previous, update, { mode: 'replace' })).toBe(update)
+    const merged = mergeChartOptions(previous, update, { replaceKeys: 'series' })
+    expect(merged['series']).toBe(update.series)
+    expect(merged['title']).toEqual({ text: 'Only this', textStyle: { color: '#111111', size: 14 } })
+  })
+})
 
 describe('timeline', () => {
   it('reads the step labels and clamps currentIndex', () => {

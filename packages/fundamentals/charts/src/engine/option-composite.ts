@@ -21,6 +21,64 @@ const num = (v: unknown): number | null => {
 }
 const toArr = (v: unknown): Obj[] => (Array.isArray(v) ? v.filter(isObj) : isObj(v) ? [v] : [])
 
+export interface OptionUpdatePolicy {
+  /** Replace the whole previous option instead of merging the update. */
+  mode?: 'merge' | 'replace'
+  /** Top-level component keys replaced as a unit while the rest still merges. */
+  replaceKeys?: string | readonly string[]
+}
+
+const INDEXED_COMPONENTS = new Set([
+  'series', 'xAxis', 'yAxis', 'grid', 'polar', 'radiusAxis', 'angleAxis',
+  'calendar', 'parallel', 'parallelAxis', 'singleAxis', 'dataset', 'visualMap',
+  'dataZoom', 'title', 'legend', 'graphic',
+])
+
+const componentKey = (value: unknown): string | null => {
+  if (!isObj(value)) return null
+  if (typeof value['id'] === 'string' || typeof value['id'] === 'number') return `id:${String(value['id'])}`
+  if (typeof value['name'] === 'string') return `name:${value['name']}`
+  return null
+}
+
+const mergeComponentArray = (before: unknown[], after: unknown[]): unknown[] => {
+  const out = before.slice()
+  const claimed = new Set<number>()
+  for (let i = 0; i < after.length; i++) {
+    const next = after[i]
+    const key = componentKey(next)
+    let at = key === null ? -1 : out.findIndex((candidate, index) => !claimed.has(index) && componentKey(candidate) === key)
+    if (at < 0 && i < out.length && !claimed.has(i)) at = i
+    if (at < 0) {
+      out.push(next)
+      claimed.add(out.length - 1)
+      continue
+    }
+    claimed.add(at)
+    out[at] = isObj(out[at]) && isObj(next) ? mergeObjects(out[at] as Obj, next) : next
+  }
+  return out
+}
+
+/**
+ * Merge a reactive option update without mutating either input. Objects merge
+ * recursively; component arrays match stable ids, then names, then indices.
+ * Ordinary arrays are values and replace as a unit.
+ */
+export function mergeChartOptions(previous: Obj | undefined, update: Obj, policy: OptionUpdatePolicy = {}): Obj {
+  if (previous === undefined || policy.mode === 'replace') return update
+  const replace = new Set(typeof policy.replaceKeys === 'string' ? [policy.replaceKeys] : policy.replaceKeys ?? [])
+  const out: Obj = { ...previous }
+  for (const key of Object.keys(update)) {
+    const before = previous[key]
+    const after = update[key]
+    if (replace.has(key)) out[key] = after
+    else if (INDEXED_COMPONENTS.has(key) && Array.isArray(before) && Array.isArray(after)) out[key] = mergeComponentArray(before, after)
+    else out[key] = isObj(before) && isObj(after) ? mergeObjects(before, after) : after
+  }
+  return out
+}
+
 /** Height reserved under the chart for the timeline strip. */
 export const TIMELINE_HEIGHT = 40.0
 

@@ -16,6 +16,36 @@ const inked = (c: HTMLCanvasElement): number => {
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 describe('OptionChart (real browser)', () => {
+  it('retains omitted option fields across reactive updates and can replace selected components', async () => {
+    const option = signal<EChartsOption>({
+      xAxis: { data: ['a', 'b'] },
+      yAxis: {},
+      series: [{ id: 'main', type: 'bar', name: 'Main', data: [1, 2] }, { id: 'extra', type: 'line', name: 'Extra', data: [2, 1] }],
+    })
+    const merged = mountInBrowser(h(OptionChart, { option: () => option(), optionUpdate: { mode: 'merge' }, width: 300, height: 160 }))
+    await flush()
+    option.set({ series: [{ id: 'main', data: [5, 6] }] })
+    await flush()
+    expect(merged.container.querySelector('table')!.textContent).toContain('a')
+    expect(merged.container.querySelector('table')!.textContent).toContain('Extra')
+
+    const replacement = signal<EChartsOption>({
+      xAxis: { data: ['a', 'b'] },
+      yAxis: {},
+      series: [{ id: 'main', type: 'bar', name: 'Main', data: [1, 2] }, { id: 'extra', type: 'line', name: 'Extra', data: [2, 1] }],
+    })
+    const replacing = mountInBrowser(h(OptionChart, {
+      option: () => replacement(),
+      optionUpdate: { mode: 'merge', replaceKeys: 'series' },
+      width: 300,
+      height: 160,
+    }))
+    await flush()
+    replacement.set({ series: [{ id: 'main', type: 'bar', name: 'Main', data: [5, 6] }] })
+    await flush()
+    expect(replacing.container.querySelector('table')!.textContent).not.toContain('Extra')
+  })
+
   it('paints a bar option on canvas, hit-tests clicks against the painted geometry, and repaints on option change', async () => {
     const option = signal<EChartsOption>({ title: { text: 'Sales' }, xAxis: { data: ['a', 'b', 'c'] }, yAxis: {}, series: [{ type: 'bar', data: [3, 1, 2] }] })
     const hits: (OptionHit | null)[] = []
