@@ -34,6 +34,13 @@ name: Required Check Autoheal
 # comment for something GitHub cancelled entirely on purpose. So: skip the
 # rerun when a NEWER run already exists for this workflow+branch — that run
 # is what matters, not this one.
+#
+# The run-list check alone is not sufficient. A cancelled older run can finish
+# after the replacement run was dispatched, and GitHub may briefly return the
+# older run first (especially while a failed-jobs rerun is being materialized).
+# Re-running that stale SHA enters the branch concurrency group again and can
+# cancel the CURRENT device build. The PR head SHA is authoritative: autoheal
+# may act only while the cancelled run still belongs to the PR's current head.
 on:
   workflow_run:
     workflows:
@@ -56,6 +63,34 @@ jobs:
           retries: 3
           script: |
             const run = context.payload.workflow_run
+
+            // Never let a stale run cancel the replacement that superseded it.
+            // `workflow_run.pull_requests` can be empty for unusual event/API
+            // shapes; autoheal is a mutation, so uncertainty must fail closed.
+            const prs = run.pull_requests ?? []
+            if (prs.length === 0) {
+              core.notice(`run ${run.id} has no associated PR — not rerunning without a current-head proof.`)
+              return
+            }
+            let isCurrentHead = false
+            for (const pr of prs) {
+              const { data: current } = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number,
+              })
+              if (current.state === 'open' && current.head.sha === run.head_sha) {
+                isCurrentHead = true
+                break
+              }
+            }
+            if (!isCurrentHead) {
+              core.notice(
+                `run ${run.id} (${run.head_sha}) is not the current head of any associated open PR — ` +
+                `not rerunning a superseded build.`,
+              )
+              return
+            }
 
             // Superseded check: is this still the latest run of this workflow
             // for its branch? `list` is already newest-first, so the first
@@ -86,7 +121,6 @@ jobs:
             // The RERUN above is the deliverable; this comment is advisory context
             // for it. A GitHub API 5xx here must never turn the heal job itself red —
             // that IS the dead-gate class `notify-nightly` documents two jobs over.
-            const prs = run.pull_requests ?? []
             for (const pr of prs) {
               try {
                 await github.rest.issues.createComment({
