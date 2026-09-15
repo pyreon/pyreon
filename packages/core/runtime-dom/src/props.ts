@@ -92,7 +92,19 @@ export function applyProps(el: Element, props: Props, skipKey?: string): Cleanup
     const descriptor = Object.getOwnPropertyDescriptor(props, key)
     let c: Cleanup | null
     if (descriptor?.get) {
-      c = renderEffect(() => applyStaticProp(el, key, (props as Record<string, unknown>)[key]))
+      c = renderEffect(() => {
+        // A getter's VALUE can itself be an accessor: a primitive's helper
+        // object (`getItemProps()` → `{ tabIndex: () => 0 | -1 }`) spread onto
+        // a rocketstyle element reaches here with the function behind a getter
+        // — the descriptor path never took `applyProp`'s function branch, so
+        // the closure hit `applyStaticProp` and was stringified into the
+        // attribute (warned as "received a function", 12× per ui-components
+        // scan, from Rating / Tree / SegmentedControl / NavLink / ScrollArea).
+        // Resolving here, inside the tracked frame, keeps it live either way.
+        let value = (props as Record<string, unknown>)[key]
+        if (typeof value === 'function') value = (value as () => unknown)()
+        applyStaticProp(el, key, value)
+      })
     } else {
       c = applyProp(el, key, props[key])
     }

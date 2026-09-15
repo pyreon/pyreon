@@ -185,7 +185,7 @@ class TasksAppInstrumentedTest {
      * displayed!" and nothing else — not where in the flow, not what was on
      * screen instead. Gradle's console output truncates the stack to the Compose
      * frame, so a CI-only failure cannot even be traced back to a call site:
-     * this file has SEVEN `tasks-page` assertions and the report names none of
+     * this file has TEN `tasks-page` assertions and the report names none of
      * them. Two rounds were spent not knowing which one fired.
      *
      * So carry the evidence in the message. The decisive part is whatever the
@@ -196,13 +196,24 @@ class TasksAppInstrumentedTest {
      */
     private fun assertTagDisplayed(tag: String, where: String) {
         try {
+            // WAIT first, exactly as the pre-helper assertions did
+            // (`waitUntil(15_000) { onAllNodesWithTag(tag)… }`): a route change
+            // that crosses the auth guard recomposes one frame later than the
+            // click on a loaded emulator, and an INSTANT assertIsDisplayed fires
+            // in that gap — reported as "the screen simply never recomposed",
+            // which is indistinguishable from the real bug it exists to catch.
+            composeRule.waitUntil(timeoutMillis = 15_000) {
+                composeRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
+            }
             composeRule.onNodeWithTag(tag).assertIsDisplayed()
         } catch (e: Throwable) {
-            // `n.config.toString()` rather than a typed read: SemanticsConfiguration
-            // has no `getOrNull`, and indexing a missing key throws. describeTimeout
+            // `n.config.toString()` rather than a typed read: `describeTimeout`
             // above already reads it this way, so this stays on a construct this
             // file has compiled before — the whole point being that a diagnostic
-            // must not be the thing that breaks the build.
+            // must not be the thing that breaks the build. (`getOrNull` DOES
+            // exist — `androidx.compose.ui.semantics.getOrNull`, imported above —
+            // the earlier claim here that it did not is what caused the
+            // router-demo compile error.)
             val routerText =
                 try {
                     val nodes =
@@ -786,6 +797,32 @@ class TasksAppInstrumentedTest {
             .performClick()
         assertTagDisplayed("tasks-page", "after dash-back (/dashboard -> /tasks)")
 
+        // The GALLERY — the ten chart families that had never rendered on a
+        // device. Nine of nineteen lowered hosts were device-proven before
+        // this; the other ten rested on stub typechecking, which catches a type
+        // error and cannot catch a chart that paints nothing.
+        //
+        // `tasks-gallery` lives on the same LazyColumn-backed tasks page as
+        // `tasks-dashboard` above. It has no ancestor exposing Compose's Scroll
+        // semantics action, so `performScrollTo()` here fails before the click.
+        // Inside the gallery, scroll each chart into view: ten charts do not fit
+        // on a phone, and an off-screen assertion is not device render proof.
+        composeRule
+            .onNodeWithTag("tasks-gallery")
+            .performClick()
+        assertTagDisplayed("gal-page", "after tasks-gallery (/tasks -> /gallery)")
+        for (tag in listOf(
+            "gal-calendar", "gal-candlestick", "gal-gantt", "gal-graph", "gal-map",
+            "gal-parallel", "gal-polar", "gal-river", "gal-sunburst", "gal-tree",
+        )) {
+            composeRule.onNodeWithTag(tag).performScrollTo().assertIsDisplayed()
+        }
+        composeRule
+            .onNodeWithTag("gal-back")
+            .performScrollTo()
+            .performClick()
+        assertTagDisplayed("tasks-page", "after gal-back (/gallery -> /tasks)")
+
         // Phase 5b: the TOOLKIT screen — where eleven previously snippet-only
         // packages actually run. The web e2e asserts the same values in a
         // browser; this is the Android half. Until it existed the screen was
@@ -977,18 +1014,14 @@ class TasksAppInstrumentedTest {
         assertTagDisplayed("tasks-page", "after toolkit-back (/toolkit?filter=done -> /tasks)")
 
         // Phase 6: logout — flips the store flag back; lands on /login.
+        // Returning from the long toolkit page can preserve a scroll position
+        // that leaves the header action outside the viewport. Compose still
+        // finds that semantics node, but a bare click then targets off-screen
+        // coordinates and silently leaves the route unchanged.
         composeRule
             .onNodeWithTag("tasks-logout")
             .performClick()
 
-        composeRule.waitUntil(timeoutMillis = 15_000) {
-            composeRule
-                .onAllNodesWithTag("login-page")
-                .fetchSemanticsNodes()
-                .isNotEmpty()
-        }
-        composeRule
-            .onNodeWithTag("login-page")
-            .assertIsDisplayed()
+        assertTagDisplayed("login-page", "after tasks-logout (/tasks -> /login)")
     }
 }

@@ -200,22 +200,16 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
       'Newly MEASURED, not newly regressed: `packages/native` was outside PACKAGE_DIRS, so the most-changed package in this release (55k lines of churn) — and a PUBLISHED one — had never had its coverage measured at all. Two runs gave 89.12/83.19 and 88.80/83.09 — its coverage is NOT deterministic, since which validate specs execute depends on toolchain availability and verdict-cache state, so the floor sits BELOW the observed range rather than at the best run; pinning a single measurement would make the gate flake. Recorded at the actual so the gate can hold the line while it is ratcheted up; a floor the gate can enforce is worth more than one it cannot see. NOTE the run is dominated by the validate VERDICT CACHE (it spawns real swiftc/kotlinc): warm it is fast, cold it exceeds the shared per-package budget, which is why NATIVE_TIMEOUT_MS exists.',
   },
   '@pyreon/native-cli': {
-    currentStatements: 89,
-    currentBranches: 82,
+    currentStatements: 95,
+    currentBranches: 92,
     reason:
-      'Newly MEASURED for the same reason as its sibling above — published, never scanned. The first measurement here was 76.37/70.68/82.17/78.05; #3454 then added the tests that took it to 89/82/94/91, which is what the package now declares and what the `test (native)` cell enforces on ubuntu. Recorded at the actual so the gate can hold the line while it is ratcheted the rest of the way to 95. Ratchet up; never lower to absorb a regression. Watch the platform skew when re-measuring: `check.test.ts` gates three specs on `isSwiftUIAvailable()`, true on macOS and false on every runner, so a Mac reads HIGHER than the machine that gates this — take the figure from CI, not from a local run.',
+      'Newly MEASURED for the same reason as its sibling above — published, never scanned. The first measurement was 76.37/70.68/82.17/78.05; #3454 took it to 89/82/94/91; the 92%+ campaign then took it to 95/92/96/96 (measured 96.62/93.21/97.02/97.06 on macOS) with two suites: the CLI paths a real invocation takes that nothing had driven (the space-separated flag form, --fonts, --target=all\'s worst-exit contract, the build report\'s skipped/warning sections, wire\'s json/ios-out/co-located modes, the LSP\'s didSave/shutdown turns) and one spec per content-keyed Kotlin import arm — the class where a predicate keyed on the wrong call shape is invisible to the kotlinc stub gate and costs a device build. Statements clear the bar; branches sit under the 95 floor. Ratchet up; never lower to absorb a regression. Watch the platform skew when re-measuring: `check.test.ts` gates four specs on `isSwiftUIAvailable()`, true on macOS and false on every runner, so a Mac reads HIGHER than the machine that gates this — the ~1% headroom is for that; take the figure from CI, not from a local run.',
   },
   '@pyreon/manifest': {
     currentStatements: 95,
     currentBranches: 94,
     reason:
       'Newly MEASURED, not newly regressed: `packages/internals` was outside PACKAGE_DIRS, so none of the five internals packages had ever been scanned by this gate. Four of them pass outright — ansi 100%, perf-harness 100%, test-utils 99.3%, and vitest-config has no instrumentable source. This one measures 98.12% statements / 94.39% branches, i.e. 0.61pp under the branch floor, and is recorded at the MEASURED actual so the widened scan root can land without lowering anything. Ratchet it back to 95 with the branch specs; do not raise this to absorb a regression.',
-  },
-  '@pyreon/charts': {
-    currentStatements: 94,
-    currentBranches: 85,
-    reason:
-      'The plot-engine family wave (2026-09, ~30 stacked PRs: funnel through gantt, the ECharts option facade, the option host, the native crossings). Each PR lands one family with statement-level geometry specs; the edge and interaction specs that lift branch coverage arrive in LATER PRs of the same stack, so an intermediate branch measures 94-97% statements and 85-90% branches (theme river: 96.28 / 87.49 with the browser-covered canvas hosts excluded) while the top of the stack sits higher. Recorded at the wave floor rather than lowered per PR; the ratchet back toward 98 is one follow-up once the wave has merged, and the family hosts stay excluded because each is covered only by its real-Chromium spec.',
   },
   '@pyreon/lathe': {
     currentStatements: 96,
@@ -238,10 +232,10 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
       'flow.ts interaction paths the real-Chromium suites drive. Raise in lockstep as tests land; never lower.',
   },
   '@pyreon/compiler': {
-    currentStatements: 93,
-    currentBranches: 86,
+    currentStatements: 97,
+    currentBranches: 93,
     reason:
-      'JSX transform + detectors. Ratcheted 91/85 -> 93/86 by the 92%+ campaign (measured 93.71/86.15, functions 99.18, lines 96.88). The lift came from the project AUDITS — islands, SSG routes, native multiplatform — where the failure mode is a detector whose scan misses the files it is about, reports nothing, and has that render as a clean bill of health under `pyreon doctor`. Both directions per rule: the file that must be found and the file that must be skipped. Branches remain well short of 92 and the residual is structural, not a backlog: ~240 of the 871 uncovered arms are `?? []` guards on AST node fields in plain.ts + plain-migrate.ts that no valid parsed source can produce, and jsx.ts holds 368 more that a purpose-written 42-spec eligibility suite moved by ZERO because the 300-seed differential fuzz already crosses every one of them. Those specs were kept regardless — the fuzz proves byte-identity, which a BAIL satisfies trivially, so it structurally cannot detect the fast path ceasing to fire. Raise in lockstep; never lower.',
+      'JSX compiler. Ratcheted 93/86 -> 97/93 by the 92%+ campaign (measured 97.47/93.54, functions 99.86, lines 98.65). Twenty cov-* suites (1,096 specs) over jsx.ts (the template emitter: attr setters, SSR fast-path bail catalogue, collapse detectors, prop-derived inlining and its shadow set, signal auto-call, templatize-component-children, text fusion), plain.ts + plain-migrate.ts (every Plain Mode shape asserted BYTE-EQUAL across the JS and Rust backends), and the audits/detectors/scanner. Each pairs the source shape that takes an arm with the neighbour that must not. Two product bugs surfaced: the Rust plain-mode mirror forced JSX on for `.ts` files (a generic arrow or angle-bracket cast made the whole module silently not-plain), and the on-change-input probe could not read a non-self-closing `<input>`. MEASURED RESIDUAL, 406 arms: ~130 `?? []` / `?? \'\'` fallbacks on AST fields oxc always supplies, ~60 `if (!node)` presence guards, position-guard operands short-circuited by an earlier operand, ESTree-legacy case labels oxc never emits (StringLiteral/NumericLiteral), the `needsCxImport` vestige (never assigned true since class routes through _setClass), and the native-binary fallback arms (the binary is loaded in-process, so the JS fallback side cannot run). Lifting further means synthesising malformed ASTs, which asserts nothing about the product.',
   },
   '@pyreon/loom': {
     currentStatements: 95,
@@ -353,10 +347,10 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
       'Svelte compat shim. Ratcheted 95/89 -> 98/92 by the 92%+ campaign (measured 98.89/92.30), clearing that bar. Two contracts got it there, both previously unasserted: the unmount guard inside `scheduleEffects` — effects are deferred to a microtask, so a component can unmount first, and one that runs anyway leaks silently — and the CHILDLESS shape of the hardcoded native-component bypass (`<Show when={x} fallback={y} />` with the content passed as a prop rather than as children). The residual is store-contract derived/readable edge arms plus the Svelte 5 runes adapter; real-Chromium e2e covers production shapes.',
   },
   '@pyreon/lint': {
-    currentStatements: 95,
-    currentBranches: 90,
+    currentStatements: 96,
+    currentBranches: 92,
     reason:
-      'Lint engine. Branches at ~90% — residual gap in the 132 rules AST detectors against rare/synthetic source shapes. MEASURED RESIDUAL, so the next attempt starts from a number rather than a guess: at 90.12% branches, 423 arms are uncovered and 198 of them are defensive narrowings over AST nodes (nullish array fallbacks, node-presence guards, type-tag guards, recursion-depth caps) that a real parse cannot produce. Four shape-matrix suites — 88 specs over ~15 rules, covering each rule\'s recognition surface and its documented quiet cases — moved 37 arms; the rate is ~3 arms per rule matrix, because a rule\'s uncovered arms are mostly its narrowings rather than its shapes. Reaching 92 from here means synthesising malformed ASTs, which asserts nothing about the product. Lift it by writing shape matrices for the rules that have none yet — that is where the bug-preventing tests are.',
+      'Lint engine. Ratcheted 95/90 -> 96/92 by the 92%+ campaign (measured 96.85/92.32). Three more shape-matrix suites (`rule-shape-matrices-4/5/6`, 101 specs) took branches from 90.12 to 92.32: each pairs a shape a rule must act on with the corrected form it must leave alone, so an unconditional rule fails as surely as an inert one. The last batch covered the seams AROUND the rules that had no spec at all — the runner\'s extension gate and error-severity option diagnostics, `applyFixes` over an empty edit list, the reporter\'s totals pluralization, the `why-off` did-you-mean, unknown `settings` keys, the relative `routes/` and `entry-client` file-role shapes, and the manifest readers\' refusals (no package.json, non-string name, `.cjs` by extension). MEASURED RESIDUAL: 329 arms uncovered, the majority defensive narrowings over AST nodes (nullish array fallbacks, node-presence guards, type-tag guards, depth caps) that a real parse cannot produce; lifting further means synthesising malformed ASTs, which asserts nothing about the product. Branches stay below the 95 floor by design.',
   },
   '@pyreon/mcp': {
     currentStatements: 96,
@@ -370,17 +364,11 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
     reason:
       'SSR string/stream renderer. Coverage is ENVIRONMENT-DEPENDENT: CI linux measures 98.05/95.19, a macOS run of the identical tree measures 97.84/94.89 (platform-gated arms in the streaming/abort paths). Thresholds sit at the cross-environment MINIMUM (97/94) so `bun run coverage` is green on a green tree everywhere; aspiration stays 98/95.',
   },
-  '@pyreon/testing': {
-    currentStatements: 99,
-    currentBranches: 90,
-    reason:
-      'Public test kit. First explicit thresholds landed at the 2026-07 coverage-gate restoration (previously NO explicit entry — the gate assumed 95 while vitest enforced the 80/75 tools default, so it failed the gate silently at 90% statements). Now measured 100/91.66 after failure-path specs + dogfooding src/vitest.ts as the package setupFiles; thresholds 99/90 leave a 1pp drift margin. The 2 residual uncovered branches are matcher-internal defensive arms.',
-  },
   '@pyreon/validate': {
-    currentStatements: 96,
-    currentBranches: 91,
+    currentStatements: 97,
+    currentBranches: 94,
     reason:
-      'Validator runtime. Re-baselined 99/97 → 95/90 at the 2026-07 coverage-gate restoration (measured 95.12/90.11): the JIT compiles most check verdicts inline, so the INTERPRETER failure arms of the newer check/composition waves (string substring checks, object algebra, union call-forms, mini/server subpaths) no longer execute under parse() — their contracts are locked via the compiled path (jit-differential + emit-equivalence). Ratcheted 95/90 → 96/91 after toJsonSchema (json-schema.ts) reached 100% — every representable kind, check→constraint mapping, unrepresentable policy, and the forward-compat op-union branches now covered. Remaining lift = the interpreter-path test corpus, tracked as follow-up.',
+      'Validator runtime. Ratcheted 96/91 -> 97/94 by the 92%+ campaign (measured 97.62/94.58): the interpreter-path corpus tracked as follow-up in the previous entry has since landed, so the measured value is simply recorded. Residual 68 arms, concentrated in core/schema.ts (18) and core/jit.ts (14): the JIT compiles most check verdicts inline, so the INTERPRETER failure arms of the newer check/composition waves no longer execute under parse() — their contracts are locked via the compiled path (jit-differential + emit-equivalence). Below the 95 floor by that one point; raise in lockstep when the interpreter arms are covered, never lower.',
   },
 }
 

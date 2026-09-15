@@ -31,6 +31,9 @@ export { slugify, scenarioId, makeScenario } from './scenario'
 
 export { buildVariantMatrix, variantLabel, autoVariantScenarios } from './variants'
 
+export type { ContentBlocks, ContentShape, ContentSeed } from './content'
+export { deriveContent, isContainer, isContentBlocks, materializeContent, PLACEHOLDER_IMAGE, seedArgs } from './content'
+
 export type { AtlasExtension } from './extension'
 export {
   defineExtension,

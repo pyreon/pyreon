@@ -666,6 +666,11 @@ const rocketComponent: RocketComponent = (options) => {
   // hence the cast. Do not drop the readonly on the type.
   ;(FinalComponent as unknown as { __rs_attrs: typeof options.attrs }).__rs_attrs =
     options.attrs ?? []
+  // The BASE the chain renders: a tag string for `.config({ component: 'hr' })`,
+  // otherwise the wrapped component. Read by `@pyreon/atlas` discovery — an
+  // `<hr>`-based Divider takes no children, and only this says so, since its
+  // attrs chain never sets `tag`.
+  ;(FinalComponent as unknown as { __rs_component: unknown }).__rs_component = options.component
 
   Object.assign(FinalComponent, {
     attrs: (attrs: any, { priority, filter }: any = {}) => {

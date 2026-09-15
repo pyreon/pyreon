@@ -98,6 +98,37 @@ describe('a scenario that behaves', () => {
   })
 })
 
+describe('seeded content reaches the mount (the empty-preview class)', () => {
+  // Real mount, real DOM: the layout-blocks marker is JSON in the catalog and
+  // must become elements HERE, through the runtime's own `h`, or the verify
+  // verdict covers an empty container while the canvas shows blocks.
+  it('mounts the blocks marker as real elements the component receives as children', async () => {
+    const dom = await ensureDom()
+    if (!dom.ok) return
+    const seen: unknown[] = []
+    const Probe = (props: Record<string, unknown>) => {
+      seen.push(props.children)
+      return h('section', {}, props.children as never)
+    }
+    const mounted = mountScenario(dom.env, await defaultRuntime(), Probe as never, {
+      children: { __atlasContent: 'blocks', count: 2 },
+    })
+    expect(mounted.errors).toEqual([])
+    expect(mounted.container.querySelectorAll('[data-atlas-content="block"]')).toHaveLength(2)
+    expect(Array.isArray(seen[0])).toBe(true)
+    mounted.dispose()
+  })
+
+  it('hands a string seed to the component as its children', async () => {
+    const dom = await ensureDom()
+    if (!dom.ok) return
+    const Probe = (props: Record<string, unknown>) => h('button', {}, props.children as never)
+    const mounted = mountScenario(dom.env, await defaultRuntime(), Probe as never, { children: 'Save', size: 'sm' })
+    expect(mounted.container.querySelector('button')?.textContent).toBe('Save')
+    mounted.dispose()
+  })
+})
+
 describe('the crash classes it exists to catch', () => {
   it('fails when the component throws on mount', async () => {
     const check = await runVerify(() => {

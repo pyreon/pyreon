@@ -65,6 +65,25 @@ export function Canvas(props: { model: WorkbenchModel }) {
     if (!m.measure()) hideOverlay()
   })
 
+  // A width is PINNED when a viewport preset (shipped or per-project) sets
+  // one; the fluid default is not a frame, it is the stage.
+  //
+  // `let`, not `const`: these derive from `props.model`, and the compiler
+  // INLINES a prop-derived const at every JSX use site (emitting its own
+  // `_rp` import, which collides with the explicit one this file needs for
+  // the `css` prop). `let` is the documented opt-out — see anti-patterns
+  // "reactive-props inlining re-invokes a STATEFUL prop-derived const".
+  // oxlint-disable-next-line prefer-const
+  let pinned = () => m.viewportPreset().width !== null
+  // The render context in one line — brand, mode, pinned viewport, forced
+  // pseudo state, locale. Lives in the canvas bar; a pinned frame repeats it
+  // on its own chrome so a screenshot of the device edge still says what it is.
+  // oxlint-disable-next-line prefer-const
+  let chrome = () =>
+    `${m.brand().name} · ${m.dark() ? 'dark' : 'light'}${
+      m.viewportPreset().width === null ? '' : ` · ${m.viewportPreset().hint}`
+    }${m.pseudo() ? ` · :${m.pseudo()}` : ''}${m.locale() === 'en' ? '' : ` · ${m.locale()}`}`
+
   return (
     <C.Main>
       <C.CanvasBar>
@@ -77,7 +96,7 @@ export function Canvas(props: { model: WorkbenchModel }) {
         </C.ZoomBtn>
         <C.Col>
           <C.CanvasName data-testid="canvas-name">{() => m.sel()?.name ?? ''}</C.CanvasName>
-          <C.CanvasPath>{() => `components/${m.selId()}`}</C.CanvasPath>
+          <C.CanvasPath data-testid="canvas-meta">{() => `components/${m.selId()} · ${chrome()}`}</C.CanvasPath>
         </C.Col>
         <C.Spacer />
         <C.Segment>
@@ -118,6 +137,7 @@ export function Canvas(props: { model: WorkbenchModel }) {
         <C.Frame
           data-testid="canvas-frame"
           size={() => (VIEWPORT_SIZE[m.viewport()] ?? 'vFull') as never}
+          variant={() => (pinned() ? 'framed' : 'bare') as never}
           {...({
             // The Element `css` PROP — the per-instance styling channel (the
             // chain's structural css lives in its theme, so nothing is
@@ -130,13 +150,9 @@ export function Canvas(props: { model: WorkbenchModel }) {
             }),
           } as Record<string, unknown>)}
         >
-          <C.FrameChrome>
-            {() =>
-              `${m.brand().name} · ${m.dark() ? 'dark' : 'light'}${
-                m.viewportPreset().width === null ? '' : ` · ${m.viewportPreset().hint}`
-              }${m.pseudo() ? ` · :${m.pseudo()}` : ''}${m.locale() === 'en' ? '' : ` · ${m.locale()}`}`
-            }
-          </C.FrameChrome>
+          <Show when={pinned}>
+            <C.FrameChrome>{chrome}</C.FrameChrome>
+          </Show>
           <C.PreviewSurface
             data-testid="canvas-preview"
             ref={m.previewRef}

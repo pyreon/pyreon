@@ -42,5 +42,5 @@ export default defineNodeConfig({
   // trivially, so nothing in it can detect the fast path silently ceasing to
   // fire. That is the shape of what is left here: lines the existing gates
   // cross without asserting anything about.
-  coverageThresholds: { statements: 93, branches: 86, functions: 99, lines: 96 },
+  coverageThresholds: { statements: 97, branches: 93, functions: 99, lines: 98 },
 })

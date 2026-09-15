@@ -18,5 +18,5 @@ export default defineNodeConfig({
   // toJsonSchema conversion coverage clears 96/91 on both platforms). The
   // residual gap is the interpreter failure arms redundant with the JIT path
   // (documented in scripts/check-coverage.ts).
-  coverageThresholds: { statements: 96, branches: 91, functions: 98, lines: 97 },
+  coverageThresholds: { statements: 97, branches: 94, functions: 98, lines: 97 },
 })
