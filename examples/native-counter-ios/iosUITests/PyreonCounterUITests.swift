@@ -1071,6 +1071,10 @@ final class PyreonCounterUITests: XCTestCase {
         // (2) Tap Unlock → the async Task { await … } runs and flips the text.
         let unlock = app.buttons["Unlock"]
         XCTAssertTrue(unlock.exists, "Unlock button missing")
+        // The page is an outer vertical Scroll; Unlock sits below the fold, and
+        // tapping a non-hittable element lands on whatever covers its point.
+        var swipes = 0
+        while !unlock.isHittable && swipes < 10 { app.swipeUp(); swipes += 1 }
         unlock.tap()
 
         XCTAssertTrue(
