@@ -1462,6 +1462,9 @@ public final class PyreonFlowState<T> {
         nodesVersion &+= 1
         emitSelectionChange(ifNodeIdsWere: oldSelectedNodes, edgeIdsWere: oldSelectedEdges)
     }
+    public func setNodes(_ update: ([PyreonFlowNode<T>]) -> [PyreonFlowNode<T>]) {
+        setNodes(update(nodes))
+    }
     /// Removes the node AND every edge connected to it (source or target) —
     /// same as the web `removeNode`.
     public func removeNode(_ id: String) {
@@ -1640,6 +1643,9 @@ public final class PyreonFlowState<T> {
         for edge in next { insertEdge(edge) }
         setEdgeSelection(selectedEdgeIds.filter { edgeIds.contains($0) })
         emitSelectionChange(ifNodeIdsWere: oldSelectedNodes, edgeIdsWere: oldSelectedEdges)
+    }
+    public func setEdges(_ update: ([PyreonFlowEdge]) -> [PyreonFlowEdge]) {
+        setEdges(update(edges))
     }
     public func removeEdge(_ id: String) {
         guard edgeIds.contains(id) else { return }

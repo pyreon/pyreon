@@ -550,6 +550,9 @@ struct PyreonFlowStateTests {
         check(q.selectedNodes().isEmpty && q.getEdge("nn") == nil, "setNodes prunes selection and newly disconnected edges")
         q.setEdges([PyreonFlowEdge(id: "fresh", source: "x", target: "x")])
         check(q.edges.map(\.id) == ["fresh"] && q.getEdge("fresh")?.type == "bezier" && q.selectedEdges().isEmpty, "setEdges normalizes and prunes selection")
+        q.setNodes { nodes in nodes + [PyreonFlowNode(id: "callback", position: PyreonXYPosition(x: 2, y: 3), data: NodeData(label: "Callback"))] }
+        q.setEdges { edges in edges + [PyreonFlowEdge(id: "callback-edge", source: "x", target: "callback")] }
+        check(q.nodes.map(\.id) == ["x", "callback"] && q.edges.map(\.id) == ["fresh", "callback-edge"], "setNodes and setEdges callbacks receive and replace current collections")
         q.setNodeExtent(minX: 0, minY: 10, maxX: 200, maxY: 300)
         check(q.clampToExtent(PyreonXYPosition(x: 500, y: -2), 20, 30) == PyreonXYPosition(x: 180, y: 10), "clampToExtent applies node dimensions")
         q.updateNodePosition("x", PyreonXYPosition(x: 500, y: 500))

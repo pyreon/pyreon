@@ -5418,7 +5418,17 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         LOWERED_FLOW_PROPERTY_READS.has(e.callee.object.property) &&
         (e.callee.property === 'set' || e.callee.property === 'update')
       ) {
-        _emitWarnings.push(flowSignalWriteWarning(e.callee.object.object.name, e.callee.object.property, e.callee.property))
+        const flowName = e.callee.object.object.name
+        const property = e.callee.object.property
+        if ((property === 'nodes' || property === 'edges') && e.args.length === 1) {
+          const method = property === 'nodes' ? 'setNodes' : 'setEdges'
+          if (e.callee.property === 'set') {
+            const literal = property === 'nodes' ? kotlinFlowNodeListLiteral(e.args[0]!, flowName) : kotlinFlowEdgeListLiteral(e.args[0]!, flowName)
+            return `${kotlinIdent(flowName)}.${method}(${literal ?? emitKotlinExpr(e.args[0]!, indent)})`
+          }
+          return `${kotlinIdent(flowName)}.${method}(${emitKotlinExpr(e.args[0]!, indent)})`
+        }
+        _emitWarnings.push(flowSignalWriteWarning(flowName, property, e.callee.property))
       }
       // PyreonFlowState property reads drop parens — web `flow.nodes()` /
       // `flow.edges()` / `flow.viewport()` / `flow.zoom()` are Signal/Computed

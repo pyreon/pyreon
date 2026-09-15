@@ -6391,7 +6391,17 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         LOWERED_FLOW_PROPERTY_READS.has(e.callee.object.property) &&
         (e.callee.property === 'set' || e.callee.property === 'update')
       ) {
-        _emitWarnings.push(flowSignalWriteWarning(e.callee.object.object.name, e.callee.object.property, e.callee.property))
+        const flowName = e.callee.object.object.name
+        const property = e.callee.object.property
+        if ((property === 'nodes' || property === 'edges') && e.args.length === 1) {
+          const method = property === 'nodes' ? 'setNodes' : 'setEdges'
+          if (e.callee.property === 'set') {
+            const literal = property === 'nodes' ? swiftFlowNodeListLiteral(e.args[0]!, flowName) : swiftFlowEdgeListLiteral(e.args[0]!, flowName)
+            return `${swiftIdent(flowName)}.${method}(${literal ?? emitSwiftExpr(e.args[0]!, indent)})`
+          }
+          return `${swiftIdent(flowName)}.${method}(${emitSwiftExpr(e.args[0]!, indent)})`
+        }
+        _emitWarnings.push(flowSignalWriteWarning(flowName, property, e.callee.property))
       }
       // PyreonFlowState PROPERTY reads: web `flow.nodes()` / `flow.edges()` /
       // `flow.viewport()` / `flow.zoom()` are Signal/Computed accessor CALLS —

@@ -1099,6 +1099,9 @@ class PyreonFlowState<T>(
         removeEdges { !nextIds.contains(it.source) || !nextIds.contains(it.target) }
         emitSelectionChangeIfChanged(oldSelectedNodes, oldSelectedEdges)
     }
+    fun setNodes(update: (List<PyreonFlowNode<T>>) -> List<PyreonFlowNode<T>>) {
+        setNodes(update(nodes))
+    }
     /** Removes the node AND every edge connected to it (source or target). */
     fun removeNode(id: String) {
         if (!nodeMap.containsKey(id)) return
@@ -1269,6 +1272,9 @@ class PyreonFlowState<T>(
         for (edge in edges) insertEdge(edge)
         setEdgeSelection(selectedEdgeIdList.filter { edgeIds.containsKey(it) })
         emitSelectionChangeIfChanged(oldSelectedNodes, oldSelectedEdges)
+    }
+    fun setEdges(update: (List<PyreonFlowEdge>) -> List<PyreonFlowEdge>) {
+        setEdges(update(edges))
     }
     fun removeEdge(id: String) {
         if (!edgeIds.containsKey(id)) return

@@ -508,6 +508,9 @@ fun main() {
     check(q.selectedNodes().isEmpty() && q.getEdge("nn") == null, "setNodes prunes selection and newly disconnected edges")
     q.setEdges(listOf(PyreonFlowEdge(id = "fresh", source = "x", target = "x")))
     check(q.edges.map { it.id } == listOf("fresh") && q.getEdge("fresh")?.type == "bezier" && q.selectedEdges().isEmpty(), "setEdges normalizes and prunes selection")
+    q.setNodes { nodes -> nodes + PyreonFlowNode(id = "callback", position = PyreonXYPosition(2.0, 3.0), data = NodeData("Callback")) }
+    q.setEdges { edges -> edges + PyreonFlowEdge(id = "callback-edge", source = "x", target = "callback") }
+    check(q.nodes.map { it.id } == listOf("x", "callback") && q.edges.map { it.id } == listOf("fresh", "callback-edge"), "setNodes and setEdges callbacks receive and replace current collections")
     q.setNodeExtent(minX = 0.0, minY = 10.0, maxX = 200.0, maxY = 300.0)
     check(q.clampToExtent(PyreonXYPosition(500.0, -2.0), 20.0, 30.0) == PyreonXYPosition(180.0, 10.0), "clampToExtent applies node dimensions")
     q.updateNodePosition("x", PyreonXYPosition(500.0, 500.0))

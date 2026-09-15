@@ -1771,6 +1771,7 @@ class PyreonFlowState<T>(
   fun addNode(node: PyreonFlowNode<T>) {}
   fun addNodes(nodes: List<PyreonFlowNode<T>>) {}
   fun setNodes(nodes: List<PyreonFlowNode<T>>) {}
+  fun setNodes(update: (List<PyreonFlowNode<T>>) -> List<PyreonFlowNode<T>>) {}
   fun removeNode(id: String) {}
   fun removeNodes(ids: List<String>) {}
   fun updateNodePosition(id: String, position: PyreonXYPosition) {}
@@ -1784,6 +1785,7 @@ class PyreonFlowState<T>(
   fun addEdge(edge: PyreonFlowEdge) {}
   fun addEdges(edges: List<PyreonFlowEdge>) {}
   fun setEdges(edges: List<PyreonFlowEdge>) {}
+  fun setEdges(update: (List<PyreonFlowEdge>) -> List<PyreonFlowEdge>) {}
   fun removeEdge(id: String) {}
   fun updateEdge(id: String, update: (PyreonFlowEdge) -> PyreonFlowEdge) {}
   fun reconnectEdge(id: String, source: String? = null, target: String? = null, sourceHandle: String? = null, targetHandle: String? = null) {}

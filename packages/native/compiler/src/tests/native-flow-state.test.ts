@@ -1030,9 +1030,20 @@ export function C() {
       if (target === 'swift') expect(validateSwiftWithStubs(result.code).ok).toBe(true)
       else expect(validateKotlin(result.code).ok).toBe(true)
     })
-    it(`[${target}] a signal WRITE on a flow property warns (the native collections are read-only)`, () => {
-      const w = warningsOf(base('', '<Button onPress={() => flow.nodes.set([])}>Clear</Button>'), target)
-      expect(w).toContain('`nodes.set(...)` writes the `nodes` signal directly')
+    it(`[${target}] node/edge signal writes route through native replacement operations`, () => {
+      const result = transform(base('', '<Button onPress={() => { flow.nodes.set([]); flow.edges.update(edges => edges.filter(edge => edge.source === "1")) }}>Clear</Button>'), { target })
+      expect(result.warnings.join(' ')).not.toContain('writes the `nodes` signal directly')
+      expect(result.warnings.join(' ')).not.toContain('writes the `edges` signal directly')
+      expect(result.code).toContain(target === 'swift' ? 'flow.setNodes([])' : 'flow.setNodes(listOf())')
+      expect(result.code).toContain('flow.setEdges(')
+      if (target === 'swift') expect(validateSwiftWithStubs(result.code).ok).toBe(true)
+      else expect(validateKotlin(result.code).ok).toBe(true)
+    })
+    it(`[${target}] setNodes/setEdges callback forms typecheck`, () => {
+      const result = transform(base('', '<Button onPress={() => { flow.setNodes(nodes => nodes.filter(node => node.id === "1")); flow.setEdges(edges => edges.filter(edge => edge.target === "1")) }}>Keep</Button>'), { target })
+      expect(result.warnings.join(' ')).not.toContain('currently lowers only')
+      if (target === 'swift') expect(validateSwiftWithStubs(result.code).ok).toBe(true)
+      else expect(validateKotlin(result.code).ok).toBe(true)
     })
     it(`[${target}] fitView() lowers without a stale inert-host warning`, () => {
       const w = warningsOf(base('', '<Button onPress={() => flow.fitView()}>Fit</Button>'), target)
