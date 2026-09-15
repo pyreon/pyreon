@@ -1075,9 +1075,14 @@ final class PyreonCounterUITests: XCTestCase {
         // tapping a non-hittable element lands on whatever covers its point.
         var swipes = 0
         while !unlock.isHittable && swipes < 10 { app.swipeUp(); swipes += 1 }
-        unlock.tap()
-
-        let denied = app.staticTexts["Lock: denied"].waitForExistence(timeout: 20)
+        // Retry the tap: on the CI simulator the first tap after launch can be
+        // absorbed by the page's ScrollView while the Flow canvas above is still
+        // settling (observed: one hittable Unlock button, state still "idle").
+        var denied = false
+        for _ in 0..<3 where !denied {
+            unlock.tap()
+            denied = app.staticTexts["Lock: denied"].waitForExistence(timeout: 7)
+        }
         // Snapshot only on failure: it walks every text on a long page.
         let lockTexts = denied ? [] : app.staticTexts.allElementsBoundByIndex
             .map { $0.label }.filter { $0.hasPrefix("Lock") }
