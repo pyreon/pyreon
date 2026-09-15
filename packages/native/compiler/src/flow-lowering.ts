@@ -49,6 +49,19 @@ export const HANDLED_FLOW_HOST_PROPS: ReadonlySet<string> = new Set([
   'style', 'class', 'ariaLabel', 'colorMode', 'children',
 ])
 
+/** Every public supporting-component prop is lowered, consumed from native
+ * context, or diagnosed as an explicit browser-presentation boundary. */
+export const HANDLED_FLOW_COMPONENT_PROPS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ['BackgroundProps', new Set(['variant', 'gap', 'size', 'color'])],
+  ['MiniMapProps', new Set(['style', 'class', 'nodeColor', 'maskColor', 'width', 'height', 'pannable', 'zoomable'])],
+  ['ControlsProps', new Set(['instance', 'showZoomIn', 'showZoomOut', 'showFitView', 'showLock', 'position', 'children'])],
+  ['PanelProps', new Set(['position', 'style', 'class', 'children'])],
+  ['HandleProps', new Set(['type', 'position', 'id', 'offset', 'style', 'class'])],
+  ['NodeResizerProps', new Set(['nodeId', 'instance', 'minWidth', 'minHeight', 'handleSize', 'showEdgeHandles'])],
+  ['NodeToolbarProps', new Set(['position', 'offset', 'showOnSelect', 'selected', 'nodeId', 'align', 'style', 'class', 'children'])],
+  ['EdgeLabelRendererProps', new Set(['children'])],
+])
+
 /** Mutable `FlowConfig` fields retained by both native state engines. */
 export const LOWERED_FLOW_CONFIG_PROPERTIES: ReadonlyMap<string, string> = new Map([
   ['defaultEdgeType', 'defaultEdgeType'], ['defaultEdgeOptions', 'defaultEdgeOptions'],
