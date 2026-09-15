@@ -289,6 +289,43 @@ export const parallelRowsAdapter: ChartHostAdapter = (attrs, t, warn, resolve) =
   return t.list(out)
 }
 
+function literalStructArrayAdapter(
+  prop: string,
+  structName: string,
+  required: readonly string[],
+  optional: readonly string[],
+): ChartHostAdapter {
+  return (attrs, t, warn, resolve, emit) => {
+    const value = literalOf(attrs[prop], resolve)
+    if (value?.kind !== 'array') return emit(attrs[prop]!)
+    const rows: string[] = []
+    for (let i = 0; i < value.elements.length; i++) {
+      const row = literalOf(value.elements[i], resolve)
+      if (row?.kind !== 'object') {
+        warn(`<${structName} ${prop}[${i}]>: native needs a literal object; emitting nothing.`)
+        return 'unsupported'
+      }
+      const fields: [string, string][] = []
+      for (const name of required) {
+        const field = objectField(row, name)
+        if (field === undefined) {
+          warn(`<${structName} ${prop}[${i}].${name}>: required by the native engine; emitting nothing.`)
+          return 'unsupported'
+        }
+        fields.push([name, emit(field)])
+      }
+      for (const name of optional) fields.push([name, objectField(row, name) === undefined ? t.nil : emit(objectField(row, name)!)])
+      rows.push(t.struct(structName, fields))
+    }
+    return t.list(rows)
+  }
+}
+
+const sankeyNodesAdapter = literalStructArrayAdapter('nodes', 'SankeyNode', ['name'], ['color'])
+const sankeyLinksAdapter = literalStructArrayAdapter('links', 'SankeyLink', ['source', 'target', 'value'], [])
+const graphNodesAdapter = literalStructArrayAdapter('nodes', 'GraphNode', ['id'], ['name', 'value', 'category', 'color', 'x', 'y'])
+const graphLinksAdapter = literalStructArrayAdapter('links', 'GraphLink', ['source', 'target'], ['value'])
+
 // ---------------------------------------------------------------------------
 // Geo. Two of `<MapChart map>`'s three shapes are web-only and one crosses, so
 // the adapter's job is to REFUSE the two by name rather than to translate: a
@@ -369,6 +406,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     hit: (l, x, y) => `hitSankeyIndex(${l}, ${x}, ${y})`,
     legend: (l) => `sankeyLegend(${l})`,
     tooltip: (l, x, y) => `sankeyTip(${l}, ${x}, ${y})`,
+    adapt: { nodes: sankeyNodesAdapter, links: sankeyLinksAdapter },
   },
   GraphChart: {
     data: ['nodes', 'links'],
@@ -380,6 +418,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     render: (l, a, t) => `renderGraph(${l}, ${box00(a, t)}, ${a.options})`,
     hit: (l, x, y) => `hitGraphIndex(${l}, ${x}, ${y})`,
     tooltip: (l, x, y) => `graphTip(${l}, ${x}, ${y})`,
+    adapt: { nodes: graphNodesAdapter, links: graphLinksAdapter },
   },
   TreemapChart: {
     data: ['data'],
@@ -559,11 +598,49 @@ function optionDatumNumber(e: ExprIR | undefined): number | undefined {
   return litNumber(e)
 }
 
+function optionTreeNodes(
+  value: ExprIR | undefined,
+  resolve: (name: string) => ExprIR | undefined,
+  path: string,
+  warn: (m: string) => void,
+): ExprIR | undefined {
+  const data = value === undefined ? undefined : literalOf(value, resolve)
+  if (data?.kind !== 'array') {
+    warn(`<OptionChart ${path}>: native hierarchy series need a literal data array; emitting nothing.`)
+    return undefined
+  }
+  const nodes: ExprIR[] = []
+  for (let i = 0; i < data.elements.length; i++) {
+    const node = literalOf(data.elements[i], resolve)
+    const name = node?.kind === 'object' ? objectField(node, 'name') : undefined
+    if (node?.kind !== 'object' || litString(name) === undefined) {
+      warn(`<OptionChart ${path}[${i}]>: a hierarchy node needs a literal string name; emitting nothing.`)
+      return undefined
+    }
+    const fields: { name: string; value: ExprIR }[] = [{ name: 'name', value: name! }]
+    const numeric = litNumber(objectField(node, 'value'))
+    if (numeric !== undefined) fields.push({ name: 'value', value: optionNumberLiteral(numeric) })
+    const children = objectField(node, 'children')
+    if (children !== undefined) {
+      const lowered = optionTreeNodes(children, resolve, `${path}[${i}].children`, warn)
+      if (lowered === undefined) return undefined
+      fields.push({ name: 'children', value: lowered })
+    }
+    const item = literalOf(objectField(node, 'itemStyle'), resolve)
+    const color = item === undefined ? objectField(node, 'color') : objectField(item, 'color')
+    if (litString(color) !== undefined) fields.push({ name: 'color', value: color! })
+    nodes.push({ kind: 'object', fields })
+  }
+  return { kind: 'array', elements: nodes }
+}
+
 const optionNumberLiteral = (value: number): ExprIR => ({
   kind: 'literal',
   value,
   ...(!Number.isInteger(value) ? { float: true } : {}),
 })
+
+const optionDoubleLiteral = (value: number): ExprIR => ({ kind: 'literal', value, float: true })
 
 /**
  * Lower the first static OptionChart families through their existing native
@@ -810,6 +887,99 @@ export function desugarOptionChart(
     }
     if (funnelFields.length > 0) set('funnel', { kind: 'object', fields: funnelFields })
     return { kind: 'jsx-element', tag: 'FunnelChart', attrs, children: [] }
+  }
+
+  if (kind === 'treemap' || kind === 'sunburst' || kind === 'tree') {
+    optionFields(series, ['type', 'name', 'data', 'label', 'itemStyle', 'levels', 'radius', 'nodeClick', 'roam', 'symbolSize', 'orient'], 'option.series[0]', warn)
+    const data = optionTreeNodes(objectField(series, 'data'), resolve, 'option.series[0].data', warn)
+    if (data === undefined) return undefined
+    set('data', data)
+    const label = literalOf(objectField(series, 'label'), resolve)
+    const labelShow = label === undefined ? undefined : objectField(label, 'show')
+    const optionName = kind === 'treemap' ? 'treemap' : kind === 'sunburst' ? 'sunburst' : 'tree'
+    const optionValues: { name: string; value: ExprIR }[] = []
+    if (labelShow?.kind === 'literal' && labelShow.value === false) optionValues.push({ name: 'showLabels', value: lit(false) })
+    const symbolSize = litNumber(objectField(series, 'symbolSize'))
+    if (kind === 'tree' && symbolSize !== undefined) optionValues.push({ name: 'symbolSize', value: optionNumberLiteral(symbolSize) })
+    if (optionValues.length > 0) set(optionName, { kind: 'object', fields: optionValues })
+    if (kind === 'sunburst') {
+      const radius = literalOf(objectField(series, 'radius'), resolve)
+      if (radius?.kind === 'array' && radius.elements.length === 2) {
+        const inner = litString(radius.elements[0])
+        const outer = litString(radius.elements[1])
+        if (inner?.endsWith('%') && outer?.endsWith('%') && Number.parseFloat(outer) > 0) set('innerRatio', optionNumberLiteral(Number.parseFloat(inner) / Number.parseFloat(outer)))
+      }
+    }
+    const tag = kind === 'treemap' ? 'TreemapChart' : kind === 'sunburst' ? 'SunburstChart' : 'TreeChart'
+    return { kind: 'jsx-element', tag, attrs, children: [] }
+  }
+
+  if (kind === 'sankey' || kind === 'graph') {
+    optionFields(series, ['type', 'name', 'data', 'nodes', 'links', 'edges', 'label', 'itemStyle', 'lineStyle', 'layout', 'roam', 'symbolSize', 'nodeWidth', 'nodeGap', 'nodeAlign'], 'option.series[0]', warn)
+    const rawNodes = literalOf(objectField(series, 'data') ?? objectField(series, 'nodes'), resolve)
+    const rawLinks = literalOf(objectField(series, 'links') ?? objectField(series, 'edges'), resolve)
+    if (rawNodes?.kind !== 'array' || rawLinks?.kind !== 'array') {
+      warn(`<OptionChart option.series[0]>: native ${kind} needs literal node and link arrays; emitting nothing.`)
+      return undefined
+    }
+    const nodes: ExprIR[] = []
+    for (let i = 0; i < rawNodes.elements.length; i++) {
+      const node = literalOf(rawNodes.elements[i], resolve)
+      const name = node?.kind === 'object' ? objectField(node, 'name') : undefined
+      if (node?.kind !== 'object' || litString(name) === undefined) {
+        warn(`<OptionChart option.series[0].data[${i}]>: a native ${kind} node needs a literal string name; emitting nothing.`)
+        return undefined
+      }
+      const fields: { name: string; value: ExprIR }[] = [{ name: 'name', value: name! }]
+      if (kind === 'graph') {
+        fields.unshift({ name: 'id', value: litString(objectField(node, 'id')) === undefined ? name! : objectField(node, 'id')! })
+        const value = litNumber(objectField(node, 'value'))
+        if (value !== undefined) fields.push({ name: 'value', value: optionDoubleLiteral(value) })
+      }
+      const item = literalOf(objectField(node, 'itemStyle'), resolve)
+      const color = item === undefined ? undefined : objectField(item, 'color')
+      if (litString(color) !== undefined) fields.push({ name: 'color', value: color! })
+      nodes.push({ kind: 'object', fields })
+    }
+    const links: ExprIR[] = []
+    for (let i = 0; i < rawLinks.elements.length; i++) {
+      const link = literalOf(rawLinks.elements[i], resolve)
+      const source = link?.kind === 'object' ? objectField(link, 'source') : undefined
+      const target = link?.kind === 'object' ? objectField(link, 'target') : undefined
+      if (link?.kind !== 'object' || litString(source) === undefined || litString(target) === undefined) {
+        warn(`<OptionChart option.series[0].links[${i}]>: a native ${kind} link needs literal string endpoints; emitting nothing.`)
+        return undefined
+      }
+      const fields: { name: string; value: ExprIR }[] = [{ name: 'source', value: source! }, { name: 'target', value: target! }]
+      const value = litNumber(objectField(link, 'value'))
+      if (kind === 'sankey') {
+        if (value === undefined) {
+          warn(`<OptionChart option.series[0].links[${i}].value>: a native sankey link needs a literal value; emitting nothing.`)
+          return undefined
+        }
+        fields.push({ name: 'value', value: optionDoubleLiteral(value) })
+      } else if (value !== undefined) fields.push({ name: 'value', value: optionDoubleLiteral(value) })
+      links.push({ kind: 'object', fields })
+    }
+    set('nodes', { kind: 'array', elements: nodes })
+    set('links', { kind: 'array', elements: links })
+    const optionName = kind === 'sankey' ? 'sankey' : 'graph'
+    const optionValues: { name: string; value: ExprIR }[] = []
+    if (kind === 'sankey') {
+      const nodeWidth = litNumber(objectField(series, 'nodeWidth'))
+      const nodeGap = litNumber(objectField(series, 'nodeGap'))
+      const nodeAlign = litString(objectField(series, 'nodeAlign'))
+      if (nodeWidth !== undefined) optionValues.push({ name: 'nodeWidth', value: optionNumberLiteral(nodeWidth) })
+      if (nodeGap !== undefined) optionValues.push({ name: 'nodePadding', value: optionNumberLiteral(nodeGap) })
+      if (nodeAlign === 'left' || nodeAlign === 'justify') optionValues.push({ name: 'align', value: lit(nodeAlign) })
+    } else {
+      const layout = litString(objectField(series, 'layout'))
+      const symbolSize = litNumber(objectField(series, 'symbolSize'))
+      if (layout === 'force' || layout === 'circular' || layout === 'none') optionValues.push({ name: 'layout', value: lit(layout) })
+      if (symbolSize !== undefined) optionValues.push({ name: 'symbolSize', value: optionNumberLiteral(symbolSize) })
+    }
+    if (optionValues.length > 0) set(optionName, { kind: 'object', fields: optionValues })
+    return { kind: 'jsx-element', tag: kind === 'sankey' ? 'SankeyChart' : 'GraphChart', attrs, children: [] }
   }
 
   const cartesianKinds = new Set(['line', 'bar', 'scatter'])

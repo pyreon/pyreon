@@ -223,6 +223,12 @@ export function cacheKey(
   source: string,
 ): string {
   return createHash('sha256')
+    // The compiler command itself is part of the verdict. Bump when flags or
+    // the harness environment change, otherwise a cached environmental
+    // rejection (for example Swift's old unwritable default module cache)
+    // survives the fix even though the source and compiler version did not.
+    .update('validator-command-v2')
+    .update('\0')
     .update(kind)
     .update('\0')
     .update(compilerVersion)
