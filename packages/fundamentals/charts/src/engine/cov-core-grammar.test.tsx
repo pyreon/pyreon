@@ -8,7 +8,6 @@ import { For, Fragment, Show, h, makeReactiveProps } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import {
   Arc,
-  Area,
   Axis,
   Band,
   Bar,

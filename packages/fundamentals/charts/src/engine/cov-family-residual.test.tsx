@@ -16,7 +16,7 @@ import { computeLayout } from './layout'
 import { resolveMarks, bars } from './marks'
 import { layoutParallel, renderParallel, hitParallelIndex } from './parallel'
 import { layoutSankey, renderSankey } from './sankey'
-import { layoutSunburst, hitSunburstIndex } from './sunburst'
+import { hitSunburstIndex } from './sunburst'
 import { lttbIndices, minMaxBuckets } from './decimate-values'
 import type { DrawCmd } from './types'
 

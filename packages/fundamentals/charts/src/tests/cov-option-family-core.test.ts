@@ -19,7 +19,6 @@ import type { FamilyPlan } from '../engine/option-family'
 type PlanFields = FamilyPlan & { [k: string]: unknown }
 const plan = (o: EChartsOption): PlanFields => compileFamily(o)!.plan as PlanFields
 const warns = (o: EChartsOption): string[] => compileFamily(o)!.warnings.map((w) => w.path)
-const codes = (o: EChartsOption): string[] => compileFamily(o)!.warnings.map((w) => w.code)
 const pie = (extra: Record<string, unknown> = {}, top: Record<string, unknown> = {}): EChartsOption => ({
   series: [{ type: 'pie', data: [{ name: 'a', value: 1 }, { name: 'b', value: 2 }], ...extra }],
   ...top,

@@ -6,7 +6,6 @@ import { describe, expect, it } from 'vitest'
 import { layoutPolar, polarTicks, renderPolar } from './polar'
 import type { PolarSeries } from './polar'
 
-const TAU = Math.PI * 2
 const box = { x: 0, y: 0, w: 400, h: 400 }
 const cats = (n: number): string[] => Array.from({ length: n }, (_, i) => String.fromCharCode(97 + i))
 const bar = (values: number[], extra: Partial<PolarSeries> = {}): PolarSeries => ({ name: 'b', kind: 'bar', values, ...extra })
