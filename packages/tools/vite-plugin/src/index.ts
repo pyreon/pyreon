@@ -52,7 +52,8 @@ import {
 import { injectIslandNames } from './island-auto-name'
 import { optimizeValidators } from './optimize-validators'
 import type { CollapseResolver } from './rocketstyle-collapse'
-import type { Plugin, ViteDevServer } from 'vite'
+import { createFilter } from 'vite'
+import type { FilterPattern, Plugin, ViteDevServer } from 'vite'
 
 // Dev-mode counter sink — see packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
@@ -94,6 +95,18 @@ export interface PyreonPluginApi {
 }
 
 export interface PyreonPluginOptions {
+  /**
+   * Restrict which modules the JSX transform runs on (the Vite-plugin
+   * `createFilter` convention — picomatch globs, regexes, or arrays).
+   * Default: every JSX-bearing module EXCEPT `node_modules`, where only
+   * `@pyreon/*` packages are transformed. A third-party package shipping
+   * untranspiled `.jsx` (reachable once it is in `optimizeDeps.exclude`) must
+   * not have its React JSX reinterpreted as Pyreon JSX — pass `include` to
+   * opt one in deliberately.
+   */
+  include?: FilterPattern
+  /** Modules the transform must never touch — see `include`. */
+  exclude?: FilterPattern
   /**
    * Alias imports from an existing framework to Pyreon's compat layer.
    *
@@ -457,12 +470,9 @@ export function _isPyreonWorkspaceFile(id: string, cache: Map<string, boolean>):
   const filePath = queryIdx === -1 ? id : id.slice(0, queryIdx)
   if (!filePath || filePath[0] === '\0') return false
 
-  // Path-based filter first (cheap): file must live under `<root>/packages/`
-  // and not under `<root>/examples/`. This excludes example apps even when
-  // they have `@pyreon/example-*` names.
-  if (!filePath.includes('/packages/') || filePath.includes('/examples/')) {
-    return false
-  }
+  // Decided on IDENTITY (the owning package's name), never on the path: a
+  // `/packages/` test held only inside this monorepo, so every npm consumer
+  // of a compat app had framework JSX redirected to the compat runtime.
 
   let dir = dirname(filePath)
   // Walk up at most ~12 levels — enough for any realistic monorepo depth.
@@ -475,7 +485,12 @@ export function _isPyreonWorkspaceFile(id: string, cache: Map<string, boolean>):
       let isPyreon = false
       try {
         const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { name?: string }
-        isPyreon = typeof pkg.name === 'string' && pkg.name.startsWith('@pyreon/')
+        // The `@pyreon/example-*` apps are CONSUMERS (four of them are the
+        // compat apps this guard exists for), not framework files.
+        isPyreon =
+          typeof pkg.name === 'string' &&
+          pkg.name.startsWith('@pyreon/') &&
+          !pkg.name.startsWith('@pyreon/example-')
       } catch {
         // Malformed package.json — treat as not-pyreon.
       }
@@ -728,6 +743,17 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
   // consumer running `vite dev` isn't left wondering why nothing collapsed.
   let warnedDevCollapse = false
   let projectRoot = ''
+  // `include`/`exclude` — see the option docs. The default `exclude` keeps
+  // third-party `node_modules` out of the transform while letting the
+  // `@pyreon/*` packages (resolved via the `bun` condition to their `.tsx`
+  // source in a workspace) through.
+  // A user `include` is the whole allowlist (a module listed there is opted
+  // in deliberately, node_modules or not); the node_modules default applies
+  // only when no `include` was given.
+  const moduleFilter = createFilter(
+    options?.include ?? undefined,
+    options?.exclude ?? (options?.include !== undefined ? [] : [/\/node_modules\/(?!@pyreon\/)/]),
+  )
 
   // ── Cross-module signal export registry ─────────────────────────────────
   // Tracks which modules export signal() declarations so imported signals
@@ -1048,6 +1074,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
     },
 
     async transform(code, id, transformOptions) {
+      if (!moduleFilter(id)) return
       // ── Validator tree-shake rewrite (opt-in, build-only) ──────────────
       // Rewrite chainable `const X = s.<chain>` schemas to the lean
       // `@pyreon/validate/mini` form so the bundle prunes unused checks — the
@@ -1087,6 +1114,14 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       // error. Gated on a cheap string check so ordinary `.ts` files pay one
       // `includes` call and nothing else.
       const isPlainTs = (ext === '.ts' || ext === '.mts') && detectPlain(code)
+      // ── Scan for exported signal declarations (populate registry) ──────
+      // BEFORE the extension gate: a plain `.ts` store module never reaches
+      // the JSX compile, and the boot-time prescan is a walk that can miss a
+      // file (created later, outside the walked root) — so a `.ts` module's
+      // exported signals are registered every time it is transformed, the
+      // same way a `.tsx` one's are. Cheap: two regexes per module.
+      if (ext === '.ts' || ext === '.mts' || ext === '.js' || ext === '.mjs')
+        scanSignalExports(code, normalizeModuleId(id), signalExportRegistry)
       if (ext !== '.tsx' && ext !== '.jsx' && ext !== '.pyreon' && !isPlainTs) return
 
       // In compat mode, skip Pyreon's reactive JSX transform but apply
@@ -1272,9 +1307,17 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
           ssrTemplate = false
         } else {
           if (ssrTemplateAuto === undefined) {
-            const resolvedRs = await this.resolve('@pyreon/runtime-server', id, {
-              skipSelf: true,
-            })
+            // Probed from the PROJECT ROOT — definitionally the app — not from
+            // `id`: `this.resolve` is importer-relative, and under a strict
+            // dep layout a DEPENDENCY's module resolves runtime-server while the
+            // app's own do not. Latching on whichever SSR module transformed
+            // first would then inject an unresolvable `_ssr` import into the
+            // app's modules — the 500 this gate exists to prevent.
+            const resolvedRs = await this.resolve(
+              '@pyreon/runtime-server',
+              pathJoin(projectRoot || process.cwd(), 'package.json'),
+              { skipSelf: true },
+            )
             ssrTemplateAuto = resolvedRs != null
             if (!ssrTemplateAuto && !ssrTemplateAutoWarned && !isBuild) {
               ssrTemplateAutoWarned = true
@@ -1324,9 +1367,18 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       // (`dangerouslySetInnerHTML` is raw by design and needs no sanitizer —
       // the check deliberately excludes it via the negative lookbehind on
       // the attribute/key spellings that end in `innerHTML`.)
-      if (/(?<!dangerouslySet)innerHTML\s*[=:]/.test(code)) {
-        output = `import '@pyreon/runtime-dom/sanitizer';
-` + output
+      // Tested against the MASKED source (strings + comments blanked, the
+      // same helper `injectSignalNames` uses) and only in PROP position — a
+      // JSX attribute `innerHTML={…}` or an object key `innerHTML:` — never a
+      // raw DOM assignment `el.innerHTML = ''` (the `.` lookbehind), which
+      // needs no sanitizer. Each false positive pinned a ~1.9 kB gz
+      // side-effect import into a module that never used the prop.
+      // (`dangerouslySetInnerHTML` cannot match: its `I` is uppercase.)
+      if (/(?<![.\w$])innerHTML\s*(?:=(?!=)|:)/.test(_maskStringsAndComments(code))) {
+        // APPENDED, not prepended: an ESM import is hoisted wherever it
+        // sits, and a prepend shifted every line the compiler's source map
+        // describes by one — a frame then resolved to the WRONG statement.
+        output += `\nimport '@pyreon/runtime-dom/sanitizer';\n`
       }
 
       // ── Build-only: append compiled validator verdicts (.tsx path) ──────
@@ -1543,6 +1595,24 @@ export function registerLpihMiddleware(
       res.end('Method Not Allowed')
       return
     }
+    // A plain POST is a CORS-simple request, so ANY site open in the
+    // developer's browser could write this file (hint poisoning / DoS of the
+    // LSP feature; `--host` widens it to the LAN). A browser always sends
+    // `Origin` on a cross-site POST — require it to be the dev server's own.
+    const origin = req.headers?.origin
+    if (typeof origin === 'string') {
+      let sameOrigin = false
+      try {
+        sameOrigin = new URL(origin).host === req.headers?.host
+      } catch {
+        sameOrigin = false
+      }
+      if (!sameOrigin) {
+        res.statusCode = 403
+        res.end('Forbidden')
+        return
+      }
+    }
     let body = ''
     req.on('data', (chunk: Buffer | string) => {
       body += chunk.toString()
@@ -1602,6 +1672,13 @@ export async function writeLpihCacheFile(path: string, body: string): Promise<vo
     !Array.isArray((parsed as { fires?: unknown }).fires)
   ) {
     throw new Error('[Pyreon] LPIH bridge: payload is missing `fires` array')
+  }
+  // Every entry must be a plain object — the wrapper shape alone let a
+  // payload of arbitrary junk through to disk.
+  for (const f of (parsed as { fires: unknown[] }).fires) {
+    if (f === null || typeof f !== 'object' || Array.isArray(f)) {
+      throw new Error('[Pyreon] LPIH bridge: `fires` entries must be objects')
+    }
   }
   const fs = await import('node:fs/promises')
   const pid = typeof process !== 'undefined' && 'pid' in process ? process.pid : 0
@@ -2627,6 +2704,50 @@ interface IslandDecl {
 }
 
 /**
+ * Every `.ts`/`.tsx`/`.js`/`.jsx` source file under `root`, for the boot-time
+ * prescans (signal exports, `island()` declarations). ONE walker for both —
+ * they were duplicated, and a fix landed in one of them and not the other.
+ *
+ * `lib`/`dist`/`build` are skipped ONLY as a package's BUILD OUTPUT — i.e.
+ * at the walk root or beside a `package.json`. Skipping every directory of
+ * that name at any depth made `src/lib/store.ts` (the `$lib` / shadcn
+ * convention) invisible: its exported signal then rendered as its own
+ * function SOURCE, non-reactively, in every importer, because a plain `.ts`
+ * store had no other path into the registry. `node_modules` and dot-dirs
+ * are skipped everywhere.
+ */
+function collectSourceFiles(root: string): string[] {
+  const files: string[] = []
+  function walk(dir: string) {
+    let entries: string[]
+    try {
+      entries = readdirSync(dir)
+    } catch {
+      return // permission error / race — skip the directory
+    }
+    const isPackageRoot = dir === root || existsSync(pathJoin(dir, 'package.json'))
+    for (const entry of entries) {
+      if (
+        entry.startsWith('.') ||
+        entry === 'node_modules' ||
+        (isPackageRoot && (entry === 'dist' || entry === 'lib' || entry === 'build'))
+      )
+        continue
+      const full = pathJoin(dir, entry)
+      try {
+        const stat = statSync(full)
+        if (stat.isDirectory()) walk(full)
+        else if (/\.(ts|tsx|js|jsx)$/.test(entry)) files.push(full)
+      } catch {
+        /* unreadable entry */
+      }
+    }
+  }
+  walk(root)
+  return files
+}
+
+/**
  * Pre-scan all source files in the project for `island()` declarations.
  *
  * Called from `buildStart` (when `islands: true`) so the registry is fully
@@ -2645,34 +2766,7 @@ async function prescanIslandDeclarations(
   root: string,
   registry: Map<string, IslandDecl[]>,
 ): Promise<void> {
-  const files: string[] = []
-
-  function walk(dir: string) {
-    try {
-      for (const entry of readdirSync(dir)) {
-        if (
-          entry.startsWith('.') ||
-          entry === 'node_modules' ||
-          entry === 'dist' ||
-          entry === 'lib' ||
-          entry === 'build'
-        )
-          continue
-        const full = pathJoin(dir, entry)
-        try {
-          const stat = statSync(full)
-          if (stat.isDirectory()) walk(full)
-          else if (/\.(ts|tsx|js|jsx)$/.test(entry)) files.push(full)
-        } catch {
-          /* permission error, etc. */
-        }
-      }
-    } catch {
-      /* dir doesn't exist */
-    }
-  }
-
-  walk(root)
+  const files = collectSourceFiles(root)
 
   for (const file of files) {
     try {
@@ -2842,34 +2936,7 @@ async function prescanSignalExports(
   root: string,
   registry: Map<string, Set<string>>,
 ): Promise<void> {
-  const files: string[] = []
-
-  function walk(dir: string) {
-    try {
-      for (const entry of readdirSync(dir)) {
-        if (
-          entry.startsWith('.') ||
-          entry === 'node_modules' ||
-          entry === 'dist' ||
-          entry === 'lib' ||
-          entry === 'build'
-        )
-          continue
-        const full = pathJoin(dir, entry)
-        try {
-          const stat = statSync(full)
-          if (stat.isDirectory()) walk(full)
-          else if (/\.(ts|tsx|js|jsx)$/.test(entry)) files.push(full)
-        } catch {
-          /* permission error, etc. */
-        }
-      }
-    } catch {
-      /* dir doesn't exist */
-    }
-  }
-
-  walk(root)
+  const files = collectSourceFiles(root)
 
   for (const file of files) {
     try {

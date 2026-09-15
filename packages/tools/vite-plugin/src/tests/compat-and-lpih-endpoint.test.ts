@@ -146,7 +146,9 @@ describe('the LPIH endpoint guards what it accepts', () => {
     handler(req, res)
     req.emit('data', '{"fires":[]}')
     req.emit('end')
-    await new Promise<void>((r) => setTimeout(r, 20))
+    // Poll rather than a fixed wait — the write is async and a fixed 20 ms
+    // was outrun under parallel-suite load (see testing.md on timeouts).
+    for (let i = 0; i < 100 && res.statusCode !== 204; i++) await new Promise<void>((r) => setTimeout(r, 10))
 
     expect(res.statusCode).toBe(204)
   })
