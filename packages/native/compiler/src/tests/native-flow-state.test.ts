@@ -694,6 +694,46 @@ describe('Flow node anchoring helper lowering', { timeout: 30_000 }, () => {
 })
 
 describe('createFlow — v1 decline shapes (loud warning, not silent drop)', { timeout: 30_000 }, () => {
+  it('resolves immutable local literal node and edge seeds', () => {
+    const src = `
+      import { createFlow } from '@pyreon/flow'
+      import { Text } from '${P}'
+      export function X() {
+        const seedNodes = [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'A' } }]
+        const seedEdges = [{ source: '1', target: '2' }]
+        const flow = createFlow({ nodes: seedNodes, edges: seedEdges })
+        return <Text>{flow.nodes().length}</Text>
+      }
+    `
+    for (const target of ['swift', 'kotlin'] as const) {
+      const result = transform(src, { target })
+      expect(result.warnings.join(' ')).not.toContain('createFlow declaration `flow`')
+      expect(result.code).toContain(target === 'swift' ? 'PyreonFlowEdge(id: "e-1-2"' : 'PyreonFlowEdge(id = "e-1-2"')
+      const validation = target === 'swift' ? validateSwiftWithStubs(result.code) : validateKotlin(result.code)
+      expect(validation.ok, validation.error ?? '').toBe(true)
+    }
+  })
+
+  it('resolves module-scoped immutable literal seeds', () => {
+    const src = `
+      import { createFlow } from '@pyreon/flow'
+      import { Text } from '${P}'
+      const seedNodes = [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'A' } }]
+      const seedEdges = [{ source: '1', target: '2' }]
+      export function X() {
+        const flow = createFlow({ nodes: seedNodes, edges: seedEdges })
+        return <Text>{flow.edges().length}</Text>
+      }
+    `
+    for (const target of ['swift', 'kotlin'] as const) {
+      const result = transform(src, { target })
+      expect(result.warnings.join(' ')).not.toContain('createFlow declaration `flow`')
+      expect(result.code).toContain(target === 'swift' ? 'PyreonFlowEdge(id: "e-1-2"' : 'PyreonFlowEdge(id = "e-1-2"')
+      const validation = target === 'swift' ? validateSwiftWithStubs(result.code) : validateKotlin(result.code)
+      expect(validation.ok, validation.error ?? '').toBe(true)
+    }
+  })
+
   it('a non-literal nodes source declines with a named reason', () => {
     const src = `
       import { createFlow } from '@pyreon/flow'

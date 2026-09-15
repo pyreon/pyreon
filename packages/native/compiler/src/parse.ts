@@ -60,6 +60,10 @@ type AnyNode = any
 interface ParseCtx {
   warnings: string[]
   source: string
+  /** Component-local immutable literal bindings available to structural recognizers. */
+  staticExprs?: Map<string, AnyNode>
+  /** Module-scope immutable literal bindings, collected before components. */
+  moduleStaticExprs?: Map<string, AnyNode>
   /** Local aliases of computeLayout imported specifically from @pyreon/flow. */
   flowComputeLayoutNames?: Set<string>
   /**
@@ -452,6 +456,16 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // accept `const KEY = 'filter'` and not only an inline literal. Runs before
   // component bodies so declaration ORDER does not matter.
   collectStringConsts(ast.program.body as AnyNode[], ctx.stringConsts)
+  ctx.moduleStaticExprs = new Map()
+  for (const top of ast.program.body as AnyNode[]) {
+    const declaration = top.type === 'ExportNamedDeclaration' ? top.declaration : top
+    if (declaration?.type !== 'VariableDeclaration' || declaration.kind !== 'const') continue
+    for (const declarator of (declaration.declarations as AnyNode[] | undefined) ?? []) {
+      if (declarator.id?.type === 'Identifier' && declarator.init) {
+        ctx.moduleStaticExprs.set(declarator.id.name as string, unwrapTypeLayers(declarator.init as AnyNode))
+      }
+    }
+  }
   for (const node of ast.program.body as AnyNode[]) {
     if (node.type !== 'ImportDeclaration' || node.source?.value !== '@pyreon/flow') continue
     for (const spec of (node.specifiers as AnyNode[]) ?? []) {
@@ -539,6 +553,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     // synthetic-name counter so names stay short + deterministic per component.
     ctx.hookFieldAliases.clear()
     ctx.hookDestructureCounter = 0
+    ctx.staticExprs = new Map()
     // Loud-warning: surface top-level declaration kinds PMTC silently
     // DROPS (no emit → the body references an undefined symbol on the
     // target — a confusing real-compiler error the parse-only gate can't
@@ -6038,6 +6053,9 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
   for (const stmt of body) {
     if (stmt.type === 'VariableDeclaration') {
       for (const declarator of stmt.declarations as AnyNode[]) {
+        if (stmt.kind === 'const' && declarator.id?.type === 'Identifier' && declarator.init) {
+          ctx.staticExprs?.set(declarator.id.name as string, unwrapTypeLayers(declarator.init as AnyNode))
+        }
         const decl = tryDeclFromVarDeclarator(declarator, ctx)
         if (decl) decls.push(decl)
       }
@@ -9056,6 +9074,18 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     )
     return null
   }
+  const resolveStaticExpr = (input: AnyNode | undefined): AnyNode | undefined => {
+    let expr = input
+    const seen = new Set<string>()
+    while (expr?.type === 'Identifier' && !seen.has(expr.name as string)) {
+      const bindingName = expr.name as string
+      seen.add(bindingName)
+      const resolved = ctx.staticExprs?.get(bindingName) ?? ctx.moduleStaticExprs?.get(bindingName)
+      if (!resolved) break
+      expr = resolved
+    }
+    return expr
+  }
 
   const literalString = (n: AnyNode | undefined): string | undefined =>
     n?.type === 'Literal' && typeof n.value === 'string' ? (n.value as string) : undefined
@@ -9197,7 +9227,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   }[] = []
   let shapeOk = true
 
-  const nodesArg = objProp(configArg, 'nodes')
+  const nodesArg = resolveStaticExpr(objProp(configArg, 'nodes'))
   if (nodesArg && nodesArg.type === 'ArrayExpression') {
     for (const el of (nodesArg.elements as AnyNode[] | undefined) ?? []) {
       const nodeLit = unwrapTypeLayers(el)
@@ -9286,7 +9316,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     shapeOk = false
   }
 
-  const edgesArg = objProp(configArg, 'edges')
+  const edgesArg = resolveStaticExpr(objProp(configArg, 'edges'))
   if (edgesArg && edgesArg.type === 'ArrayExpression') {
     for (const el of (edgesArg.elements as AnyNode[] | undefined) ?? []) {
       const edgeLit = unwrapTypeLayers(el)
