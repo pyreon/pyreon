@@ -994,9 +994,13 @@ export function C() {
       if (target === 'swift') expect(validateSwiftWithStubs(result.code).ok).toBe(true)
       else expect(validateKotlin(result.code).ok).toBe(true)
     })
-    it(`[${target}] mouse-button panOnDrag arrays warn instead of silently changing touch semantics`, () => {
-      const warnings = warningsOf(base('', undefined, 'panOnDrag: [1, 2],'), target)
-      expect(warnings).toContain('`panOnDrag (not a boolean literal)`')
+    it(`[${target}] panOnDrag button arrays preserve primary-touch semantics`, () => {
+      const disabled = transform(base('', undefined, 'panOnDrag: [1, 2],'), { target })
+      const enabled = transform(base('', undefined, "panOnDrag: [0], reducedMotion: 'auto',"), { target })
+      expect(disabled.warnings.join(' ')).not.toContain('panOnDrag')
+      expect(enabled.warnings.join(' ')).not.toContain('reducedMotion')
+      expect(disabled.code).toContain(target === 'swift' ? 'panOnDrag: false' : 'panOnDrag = false')
+      expect(enabled.code).toContain(target === 'swift' ? 'panOnDrag: true' : 'panOnDrag = true')
     })
     it(`[${target}] selection drag policy lowers and typechecks`, () => {
       const result = transform(base('', undefined, "selectionOnDrag: true, selectionMode: 'full',"), { target })

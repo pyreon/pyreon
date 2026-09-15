@@ -9454,6 +9454,18 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const defaultMarkerEnd = literalMarker(defaultMarkerEndNode)
   const interactionBoolKeys = ['nodesDraggable', 'nodesConnectable', 'nodesSelectable', 'nodesFocusable', 'edgesFocusable', 'disableKeyboardA11y', 'nodesDeletable', 'edgesDeletable', 'edgesReconnectable', 'pannable', 'panOnDrag', 'panOnScroll', 'zoomable', 'zoomOnScroll', 'zoomOnPinch', 'zoomOnDoubleClick', 'selectionOnDrag', 'multiSelect', 'onlyRenderVisibleElements', 'snapToObjects', 'autoHistory', 'reducedMotion', 'preventScrolling'] as const
   const interactionBools = Object.fromEntries(interactionBoolKeys.flatMap((key) => { const value = literalBool(objProp(configArg, key)); return value === undefined ? [] : [[key, value]] })) as Partial<Record<(typeof interactionBoolKeys)[number], boolean>>
+  const panOnDragNode = objProp(configArg, 'panOnDrag')
+  const panOnDragButtons = panOnDragNode?.type === 'ArrayExpression'
+    ? ((panOnDragNode.elements as AnyNode[] | undefined) ?? []).map(literalNumber)
+    : undefined
+  if (panOnDragButtons && panOnDragButtons.every((value) => value !== undefined)) {
+    // Native phone/tablet input is the primary pointer (`button === 0` on
+    // web). Preserve the array contract for that platform-relevant pointer:
+    // `[0]` pans, while the Figma-style `[1, 2]` reserves touch drag for selection.
+    interactionBools.panOnDrag = panOnDragButtons.includes(0)
+  }
+  const reducedMotionNode = objProp(configArg, 'reducedMotion')
+  const reducedMotionAuto = literalString(reducedMotionNode) === 'auto'
   const edgeInteractionWidth = literalNumber(objProp(configArg, 'edgeInteractionWidth'))
   const connectionRadius = literalNumber(objProp(configArg, 'connectionRadius'))
   const panOnScrollSpeed = literalNumber(objProp(configArg, 'panOnScrollSpeed'))
@@ -9584,7 +9596,13 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (extentNode !== undefined && (nodeExtent === undefined || nodeExtent.some((n) => n === undefined))) droppedKeys.push('nodeExtent (not a numeric [[minX, minY], [maxX, maxY]] literal)')
   if (connectionRules === null) droppedKeys.push('connectionRules (not a literal { type: { outputs: string[] } } map)')
   if (defaultMarkerEndNode && defaultMarkerEnd === undefined) droppedKeys.push('defaultMarkerEnd (not a literal marker or null)')
-  for (const key of interactionBoolKeys) if (objProp(configArg, key) && literalBool(objProp(configArg, key)) === undefined) droppedKeys.push(`${key} (not a boolean literal)`)
+  for (const key of interactionBoolKeys) {
+    const valueNode = objProp(configArg, key)
+    if (!valueNode || literalBool(valueNode) !== undefined) continue
+    if (key === 'panOnDrag' && panOnDragButtons?.every((value) => value !== undefined)) continue
+    if (key === 'reducedMotion' && reducedMotionAuto) continue
+    droppedKeys.push(`${key} (not a supported literal)`)
+  }
   if (objProp(configArg, 'edgeInteractionWidth') && edgeInteractionWidth === undefined) droppedKeys.push('edgeInteractionWidth (not a numeric literal)')
   if (objProp(configArg, 'connectionRadius') && connectionRadius === undefined) droppedKeys.push('connectionRadius (not a numeric literal)')
   if (objProp(configArg, 'panOnScrollSpeed') && panOnScrollSpeed === undefined) droppedKeys.push('panOnScrollSpeed (not a numeric literal)')
