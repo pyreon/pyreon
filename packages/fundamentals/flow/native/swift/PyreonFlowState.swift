@@ -4,10 +4,8 @@
 // web AND native from one mental model.
 //
 // Scope: node/edge CRUD, selection, viewport (pan/zoom/fitView), graph
-// queries, configuration, endpoint/path geometry, and the interactive native
-// hosts are ported. APIs whose semantics require a separate native design
-// (layout engines, search over arbitrary data payloads, and snap-line
-// presentation) remain explicit compiler diagnostics rather than silent gaps.
+// queries, configuration, layout, search, snapping, endpoint/path geometry,
+// and the interactive native hosts are ported.
 //
 // Unlike `PyreonTableState` (which WRAPS an external reactive data source),
 // `createFlow({ nodes, edges })` OWNS its data — nodes/edges are seeded once
@@ -1885,6 +1883,16 @@ public final class PyreonFlowState<T> {
         viewportAnimationGeneration &+= 1
         viewport = PyreonFlowViewport(x: x ?? viewport.x, y: y ?? viewport.y, zoom: zoom ?? viewport.zoom)
         emitViewportChange()
+    }
+    public func setViewport(_ next: PyreonFlowViewport) {
+        setViewport(x: next.x, y: next.y, zoom: next.zoom)
+    }
+    public func setViewport(_ update: (PyreonFlowViewport) -> PyreonFlowViewport) {
+        setViewport(update(viewport))
+    }
+    public func replaceContainerSize(_ next: PyreonFlowContainerSize) { containerSize = next }
+    public func updateContainerSize(_ update: (PyreonFlowContainerSize) -> PyreonFlowContainerSize) {
+        replaceContainerSize(update(containerSize))
     }
     public func setCenter(_ x: Double, _ y: Double, zoom: Double? = nil, duration: Double = 0) {
         let z = min(max(zoom ?? viewport.zoom, minZoom), maxZoom)

@@ -1039,6 +1039,24 @@ export function C() {
       if (target === 'swift') expect(validateSwiftWithStubs(result.code).ok).toBe(true)
       else expect(validateKotlin(result.code).ok).toBe(true)
     })
+    it(`[${target}] viewport and container signal writes retain native signal semantics`, () => {
+      const result = transform(base('', '<Button onPress={() => { flow.viewport.set({ x: 1, y: 2, zoom: 3 }); flow.viewport.update(viewport => ({ ...viewport, x: viewport.x + 4 })); flow.containerSize.set({ width: 640, height: 480 }); flow.containerSize.update(size => ({ ...size, height: size.height + 20 })) }}>Resize</Button>'), { target })
+      const warnings = result.warnings.join(' ')
+      expect(warnings).not.toContain('writes the `viewport` signal directly')
+      expect(warnings).not.toContain('writes the `containerSize` signal directly')
+      if (target === 'swift') {
+        expect(result.code).toContain('flow.setViewport(PyreonFlowViewport(x: 1, y: 2, zoom: 3))')
+        expect(result.code).toContain('flow.setViewport { viewport in PyreonFlowViewport(x: viewport.x + 4, y: viewport.y, zoom: viewport.zoom) }')
+        expect(result.code).toContain('flow.replaceContainerSize(PyreonFlowContainerSize(width: 640, height: 480))')
+        expect(validateSwiftWithStubs(result.code).ok).toBe(true)
+      } else {
+        expect(result.code).toContain('flow.setViewport(PyreonFlowViewport(x = 1.0, y = 2.0, zoom = 3.0))')
+        expect(result.code).toContain('flow.setViewport { viewport -> PyreonFlowViewport(x = viewport.x + 4, y = viewport.y, zoom = viewport.zoom) }')
+        expect(result.code).toContain('flow.replaceContainerSize(PyreonFlowContainerSize(width = 640.0, height = 480.0))')
+        const validation = validateKotlin(result.code)
+        expect(validation.ok, validation.error ?? '').toBe(true)
+      }
+    })
     it(`[${target}] setNodes/setEdges callback forms typecheck`, () => {
       const result = transform(base('', '<Button onPress={() => { flow.setNodes(nodes => nodes.filter(node => node.id === "1")); flow.setEdges(edges => edges.filter(edge => edge.target === "1")) }}>Keep</Button>'), { target })
       expect(result.warnings.join(' ')).not.toContain('currently lowers only')

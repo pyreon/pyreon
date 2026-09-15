@@ -1285,6 +1285,10 @@ public final class PyreonFlowState<T> {
   public func zoomOut(duration: Double = 0) {}
   public func panTo(_ position: PyreonXYPosition) {}
   public func setViewport(x: Double? = nil, y: Double? = nil, zoom: Double? = nil, duration: Double = 0) {}
+  public func setViewport(_ next: PyreonFlowViewport) {}
+  public func setViewport(_ update: (PyreonFlowViewport) -> PyreonFlowViewport) {}
+  public func replaceContainerSize(_ next: PyreonFlowContainerSize) {}
+  public func updateContainerSize(_ update: (PyreonFlowContainerSize) -> PyreonFlowContainerSize) {}
   public func setCenter(_ x: Double, _ y: Double, zoom: Double? = nil, duration: Double = 0) {}
   public func animateViewport(x: Double? = nil, y: Double? = nil, zoom: Double? = nil, duration: Double = 300) {}
   public func screenToFlowPosition(_ position: PyreonXYPosition) -> PyreonXYPosition { position }

@@ -6401,6 +6401,24 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           }
           return `${swiftIdent(flowName)}.${method}(${emitSwiftExpr(e.args[0]!, indent)})`
         }
+        if ((property === 'viewport' || property === 'containerSize') && e.args.length === 1) {
+          const method = property === 'viewport' ? 'setViewport' : e.callee.property === 'set' ? 'replaceContainerSize' : 'updateContainerSize'
+          const typeName = property === 'viewport' ? 'PyreonFlowViewport' : 'PyreonFlowContainerSize'
+          const names = property === 'viewport' ? ['x', 'y', 'zoom'] : ['width', 'height']
+          const arg = e.args[0]!
+          if (e.callee.property === 'set' && arg.kind === 'object' && (arg.spreads?.length ?? 0) === 0) {
+            const values = new Map(arg.fields.map((field) => [field.name, field.value]))
+            if (names.every((name) => values.has(name))) {
+              return `${swiftIdent(flowName)}.${method}(${typeName}(${names.map((name) => `${name}: ${emitSwiftExpr(values.get(name)!, indent)}`).join(', ')}))`
+            }
+          }
+          const body = arg.kind === 'arrow' ? (arg.body.kind === 'paren' ? arg.body.inner : arg.body) : undefined
+          if (e.callee.property === 'update' && arg.kind === 'arrow' && arg.params.length === 1 && body?.kind === 'object' && (body.spreads ?? []).every((spread) => spread.kind === 'identifier' && spread.name === arg.params[0])) {
+            const values = new Map(body.fields.map((field) => [field.name, field.value]))
+            const param = swiftIdent(arg.params[0]!)
+            if (names.every((name) => values.has(name) || (body.spreads?.length ?? 0) > 0)) return `${swiftIdent(flowName)}.${method} { ${param} in ${typeName}(${names.map((name) => `${name}: ${values.has(name) ? emitSwiftExpr(values.get(name)!, indent) : `${param}.${name}`}`).join(', ')}) }`
+          }
+        }
         _emitWarnings.push(flowSignalWriteWarning(flowName, property, e.callee.property))
       }
       // PyreonFlowState PROPERTY reads: web `flow.nodes()` / `flow.edges()` /

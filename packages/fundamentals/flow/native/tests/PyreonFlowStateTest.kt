@@ -511,6 +511,11 @@ fun main() {
     q.setNodes { nodes -> nodes + PyreonFlowNode(id = "callback", position = PyreonXYPosition(2.0, 3.0), data = NodeData("Callback")) }
     q.setEdges { edges -> edges + PyreonFlowEdge(id = "callback-edge", source = "x", target = "callback") }
     check(q.nodes.map { it.id } == listOf("x", "callback") && q.edges.map { it.id } == listOf("fresh", "callback-edge"), "setNodes and setEdges callbacks receive and replace current collections")
+    q.setViewport(PyreonFlowViewport(1.0, 2.0, 2.0))
+    q.setViewport { PyreonFlowViewport(it.x + 3.0, it.y, it.zoom) }
+    q.replaceContainerSize(com.pyreon.runtime.PyreonFlowContainerSize(640.0, 480.0))
+    q.updateContainerSize { com.pyreon.runtime.PyreonFlowContainerSize(it.width, it.height + 20.0) }
+    check(q.viewport == PyreonFlowViewport(4.0, 2.0, 2.0) && q.containerSize == com.pyreon.runtime.PyreonFlowContainerSize(640.0, 500.0), "signal-compatible viewport and container updates use current values")
     q.setNodeExtent(minX = 0.0, minY = 10.0, maxX = 200.0, maxY = 300.0)
     check(q.clampToExtent(PyreonXYPosition(500.0, -2.0), 20.0, 30.0) == PyreonXYPosition(180.0, 10.0), "clampToExtent applies node dimensions")
     q.updateNodePosition("x", PyreonXYPosition(500.0, 500.0))

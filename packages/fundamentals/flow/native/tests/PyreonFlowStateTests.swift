@@ -553,6 +553,11 @@ struct PyreonFlowStateTests {
         q.setNodes { nodes in nodes + [PyreonFlowNode(id: "callback", position: PyreonXYPosition(x: 2, y: 3), data: NodeData(label: "Callback"))] }
         q.setEdges { edges in edges + [PyreonFlowEdge(id: "callback-edge", source: "x", target: "callback")] }
         check(q.nodes.map(\.id) == ["x", "callback"] && q.edges.map(\.id) == ["fresh", "callback-edge"], "setNodes and setEdges callbacks receive and replace current collections")
+        q.setViewport(PyreonFlowViewport(x: 1, y: 2, zoom: 2))
+        q.setViewport { PyreonFlowViewport(x: $0.x + 3, y: $0.y, zoom: $0.zoom) }
+        q.replaceContainerSize(PyreonFlowContainerSize(width: 640, height: 480))
+        q.updateContainerSize { PyreonFlowContainerSize(width: $0.width, height: $0.height + 20) }
+        check(q.viewport == PyreonFlowViewport(x: 4, y: 2, zoom: 2) && q.containerSize == PyreonFlowContainerSize(width: 640, height: 500), "signal-compatible viewport and container updates use current values")
         q.setNodeExtent(minX: 0, minY: 10, maxX: 200, maxY: 300)
         check(q.clampToExtent(PyreonXYPosition(x: 500, y: -2), 20, 30) == PyreonXYPosition(x: 180, y: 10), "clampToExtent applies node dimensions")
         q.updateNodePosition("x", PyreonXYPosition(x: 500, y: 500))
