@@ -51,6 +51,8 @@ describe('the disposition covers every option', () => {
         'compat',
         'compileValidators',
         'devErrorPrinter',
+        'exclude',
+        'include',
         'islands',
         'jsxAutoImport',
         'lpih',
