@@ -96,6 +96,13 @@ data class PyreonFlowCustomEdgeContext(
     val labelX: Double, val labelY: Double,
 )
 
+data class PyreonFlowConnectionLineContext(
+    val sourceX: Double, val sourceY: Double,
+    val targetX: Double, val targetY: Double,
+    val sourcePosition: PyreonFlowPosition,
+    val path: PyreonFlowPathResult,
+)
+
 private val LocalPyreonFlowEdgeLabelPoint = staticCompositionLocalOf { PyreonFlowPathPoint(0.0, 0.0) }
 
 @Composable
@@ -265,8 +272,10 @@ fun <T> PyreonFlowView(
     nodeToolbar: @Composable (PyreonFlowNode<T>, Boolean, Boolean) -> Unit = { _, _, _ -> },
     customEdgeTypes: Set<String> = emptySet(),
     customEdge: @Composable (PyreonFlowCustomEdgeContext) -> Unit = {},
+    customConnectionLineEnabled: Boolean = false,
+    customConnectionLine: @Composable (PyreonFlowConnectionLineContext) -> Unit = {},
     nodeContent: @Composable (PyreonFlowNode<T>) -> Unit,
-) = PyreonFlowView(state, modifier, edgeColor, edgeWidth, background, controls, miniMap, ariaLabel, nodeHandles, nodeResizer, nodeToolbarConfig, nodeToolbar, customEdgeTypes, customEdge) { node, _, _ -> nodeContent(node) }
+) = PyreonFlowView(state, modifier, edgeColor, edgeWidth, background, controls, miniMap, ariaLabel, nodeHandles, nodeResizer, nodeToolbarConfig, nodeToolbar, customEdgeTypes, customEdge, customConnectionLineEnabled, customConnectionLine) { node, _, _ -> nodeContent(node) }
 
 @Composable
 fun <T> PyreonFlowView(
@@ -284,6 +293,8 @@ fun <T> PyreonFlowView(
     nodeToolbar: @Composable (PyreonFlowNode<T>, Boolean, Boolean) -> Unit = { _, _, _ -> },
     customEdgeTypes: Set<String> = emptySet(),
     customEdge: @Composable (PyreonFlowCustomEdgeContext) -> Unit = {},
+    customConnectionLineEnabled: Boolean = false,
+    customConnectionLine: @Composable (PyreonFlowConnectionLineContext) -> Unit = {},
     nodeContent: @Composable (PyreonFlowNode<T>, Boolean, Boolean) -> Unit,
 ) {
     val density = LocalDensity.current
@@ -380,6 +391,7 @@ fun <T> PyreonFlowView(
 
         PyreonFlowEdgeCanvas(
             edges = edgeStrokes.filter { stroke ->
+                if (stroke.id == "__connection-preview" && customConnectionLineEnabled) return@filter false
                 val edge = state.getEdge(stroke.id)
                 edge == null || !customEdgeTypes.contains(edge.type ?: PYREON_FLOW_DEFAULT_EDGE_TYPE)
             },
@@ -405,6 +417,19 @@ fun <T> PyreonFlowView(
                 transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
             },
         ) {
+            connectionDraft?.takeIf { customConnectionLineEnabled }?.let { draft ->
+                val result = pyreonEdgePath(
+                    state.connectionLineType,
+                    draft.source.x, draft.source.y, draft.source.position,
+                    draft.current.x, draft.current.y, PyreonFlowPosition.Left,
+                )
+                Box(Modifier.matchParentSize()) {
+                    customConnectionLine(PyreonFlowConnectionLineContext(
+                        draft.source.x, draft.source.y, draft.current.x, draft.current.y,
+                        draft.source.position, result,
+                    ))
+                }
+            }
             val strokesById = edgeStrokes.associateBy { it.id }
             val labelsById = pyreonFlowEdgeLabels(state, nodeHandles).associateBy { it.id }
             for (edge in state.edges) {

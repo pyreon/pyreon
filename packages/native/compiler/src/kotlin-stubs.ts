@@ -1842,6 +1842,7 @@ data class PyreonFlowMiniMapStyle(val nodeColor: String = "#e2e8f0", val maskCol
 data class PyreonFlowNodeResizerConfig(val minWidth: Double = 50.0, val minHeight: Double = 30.0, val handleSize: Double = 8.0, val showEdgeHandles: Boolean = false)
 data class PyreonFlowNodeToolbarConfig(val position: String = "top", val align: String = "center", val offset: Double = 8.0, val showOnSelect: Boolean = true)
 data class PyreonFlowCustomEdgeContext(val edge: PyreonFlowEdge, val sourceX: Double, val sourceY: Double, val targetX: Double, val targetY: Double, val sourcePosition: PyreonFlowPosition, val targetPosition: PyreonFlowPosition, val selected: Boolean, val labelX: Double, val labelY: Double)
+data class PyreonFlowConnectionLineContext(val sourceX: Double, val sourceY: Double, val targetX: Double, val targetY: Double, val sourcePosition: PyreonFlowPosition, val path: PyreonFlowPathResult)
 @Composable fun PyreonFlowCustomEdgePath(result: PyreonFlowPathResult, color: String = "#999999", width: Double = 1.5, dash: List<Double>? = null) {}
 @Composable fun PyreonFlowEdgeLabelRenderer(content: @Composable () -> Unit) { content() }
 
@@ -1861,6 +1862,8 @@ fun <T> PyreonFlowView(
   nodeToolbar: @Composable (PyreonFlowNode<T>, Boolean, Boolean) -> Unit = { _, _, _ -> },
   customEdgeTypes: Set<String> = emptySet(),
   customEdge: @Composable (PyreonFlowCustomEdgeContext) -> Unit = {},
+  customConnectionLineEnabled: Boolean = false,
+  customConnectionLine: @Composable (PyreonFlowConnectionLineContext) -> Unit = {},
   nodeContent: @Composable (PyreonFlowNode<T>) -> Unit,
 ) {}
 @Composable
@@ -1879,6 +1882,8 @@ fun <T> PyreonFlowView(
   nodeToolbar: @Composable (PyreonFlowNode<T>, Boolean, Boolean) -> Unit = { _, _, _ -> },
   customEdgeTypes: Set<String> = emptySet(),
   customEdge: @Composable (PyreonFlowCustomEdgeContext) -> Unit = {},
+  customConnectionLineEnabled: Boolean = false,
+  customConnectionLine: @Composable (PyreonFlowConnectionLineContext) -> Unit = {},
   nodeContent: @Composable (PyreonFlowNode<T>, Boolean, Boolean) -> Unit,
 ) {}
 

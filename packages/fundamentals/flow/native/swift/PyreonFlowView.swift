@@ -29,6 +29,13 @@ public struct PyreonFlowCustomEdgeContext: Identifiable {
     public var labelX: Double; public var labelY: Double
 }
 
+public struct PyreonFlowConnectionLineContext {
+    public var sourceX: Double; public var sourceY: Double
+    public var targetX: Double; public var targetY: Double
+    public var sourcePosition: PyreonFlowPosition
+    public var path: PyreonFlowPathResult
+}
+
 private struct PyreonFlowEdgeLabelPointKey: EnvironmentKey {
     static let defaultValue = CGPoint.zero
 }
@@ -488,6 +495,8 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private let nodeToolbar: (PyreonFlowNode<T>, Bool, Bool) -> AnyView?
     private let customEdgeTypes: Set<String>
     private let customEdge: (PyreonFlowCustomEdgeContext) -> AnyView?
+    private let customConnectionLineEnabled: Bool
+    private let customConnectionLine: (PyreonFlowConnectionLineContext) -> AnyView?
     private let nodeContent: (PyreonFlowNode<T>, Bool, Bool) -> NodeContent
 
     @State private var nodeDragStart: [String: PyreonXYPosition] = [:]
@@ -515,6 +524,8 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         nodeToolbar: @escaping (PyreonFlowNode<T>, Bool, Bool) -> AnyView? = { _, _, _ in nil },
         customEdgeTypes: Set<String> = [],
         customEdge: @escaping (PyreonFlowCustomEdgeContext) -> AnyView? = { _ in nil },
+        customConnectionLineEnabled: Bool = false,
+        customConnectionLine: @escaping (PyreonFlowConnectionLineContext) -> AnyView? = { _ in nil },
         @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>) -> NodeContent
     ) {
         self.state = state
@@ -530,6 +541,8 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         self.nodeToolbar = nodeToolbar
         self.customEdgeTypes = customEdgeTypes
         self.customEdge = customEdge
+        self.customConnectionLineEnabled = customConnectionLineEnabled
+        self.customConnectionLine = customConnectionLine
         self.nodeContent = { node, _, _ in nodeContent(node) }
     }
 
@@ -547,6 +560,8 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         nodeToolbar: @escaping (PyreonFlowNode<T>, Bool, Bool) -> AnyView? = { _, _, _ in nil },
         customEdgeTypes: Set<String> = [],
         customEdge: @escaping (PyreonFlowCustomEdgeContext) -> AnyView? = { _ in nil },
+        customConnectionLineEnabled: Bool = false,
+        customConnectionLine: @escaping (PyreonFlowConnectionLineContext) -> AnyView? = { _ in nil },
         @ViewBuilder nodeContent: @escaping (PyreonFlowNode<T>, Bool, Bool) -> NodeContent
     ) {
         self.state = state
@@ -562,6 +577,8 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         self.nodeToolbar = nodeToolbar
         self.customEdgeTypes = customEdgeTypes
         self.customEdge = customEdge
+        self.customConnectionLineEnabled = customConnectionLineEnabled
+        self.customConnectionLine = customConnectionLine
         self.nodeContent = nodeContent
     }
 
@@ -583,6 +600,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
 
                 PyreonFlowEdgeCanvas(
                     edges: edgeStrokes.filter { stroke in
+                        if stroke.id == "__connection-preview" && customConnectionLineEnabled { return false }
                         guard let edge = state.getEdge(stroke.id) else { return true }
                         return !customEdgeTypes.contains(edge.type ?? "bezier")
                     },
@@ -591,6 +609,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                     .allowsHitTesting(false)
 
                 ZStack(alignment: .topLeading) {
+                    customConnectionLineLayer
                     customEdgesLayer
                     edgeLabelsLayer
                     nodesLayer
@@ -853,6 +872,21 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
                 view
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .environment(\.pyreonFlowEdgeLabelPoint, CGPoint(x: context.labelX, y: context.labelY))
+            }
+        }
+    }
+
+    @ViewBuilder private var customConnectionLineLayer: some View {
+        if customConnectionLineEnabled, let draft = connectionDraft {
+            let result = pyreonEdgePath(
+                type: state.connectionLineType,
+                sourceX: draft.source.x, sourceY: draft.source.y, sourcePosition: draft.source.position,
+                targetX: draft.current.x, targetY: draft.current.y, targetPosition: .left)
+            if let view = customConnectionLine(PyreonFlowConnectionLineContext(
+                sourceX: draft.source.x, sourceY: draft.source.y,
+                targetX: draft.current.x, targetY: draft.current.y,
+                sourcePosition: draft.source.position, path: result)) {
+                view.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         }
     }

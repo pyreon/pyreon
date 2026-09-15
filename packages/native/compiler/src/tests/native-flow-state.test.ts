@@ -1362,4 +1362,40 @@ export function C() {
       expect(validation.ok, validation.error ?? '').toBe(true)
     })
   })
+
+  describe('custom connection-line native lowering', () => {
+    const src = `
+      import { createFlow, Flow, type ConnectionLineProps } from '@pyreon/flow'
+      function SignalLine(props: ConnectionLineProps) {
+        return <path d={props.path} style="fill: none; stroke: #2563eb; stroke-width: 3" />
+      }
+      export function Diagram() {
+        const flow = createFlow({
+          nodes: [{ id: 'a', position: { x: 0, y: 0 }, data: { label: 'A' } }],
+          edges: [],
+        })
+        return <Flow instance={flow} connectionLine={SignalLine} />
+      }
+    `
+
+    it('dispatches the live structured preview on Swift', () => {
+      const result = transform(src, { target: 'swift' })
+      expect(result.code).toContain('customConnectionLineEnabled: true')
+      expect(result.code).toContain('SignalLine(sourceX: { pyreonLine.sourceX }')
+      expect(result.code).toContain('PyreonFlowCustomEdgePath(result: path()')
+      expect(result.code).toContain('color: "#2563eb", width: 3')
+      const validation = validateSwiftWithStubs(result.code)
+      expect(validation.ok, validation.error ?? '').toBe(true)
+    })
+
+    it('dispatches the live structured preview on Kotlin', () => {
+      const result = transform(src, { target: 'kotlin' })
+      expect(result.code).toContain('customConnectionLineEnabled = true')
+      expect(result.code).toContain('SignalLine(sourceX = { pyreonLine.sourceX }')
+      expect(result.code).toContain('PyreonFlowCustomEdgePath(result = path()')
+      expect(result.code).toContain('color = "#2563eb", width = 3.0')
+      const validation = validateKotlin(result.code)
+      expect(validation.ok, validation.error ?? '').toBe(true)
+    })
+  })
 })

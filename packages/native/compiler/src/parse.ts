@@ -6617,6 +6617,21 @@ function resolvePropsObjectType(t: TypeIR, ctx: ParseCtx): TypeIR {
       ],
     }
   }
+  if (t.kind === 'typeRef' && t.name === 'ConnectionLineProps' && t.args.length === 0) {
+    const accessor = (returnType: TypeIR): TypeIR => ({ kind: 'function', params: [], returnType })
+    const numberAccessor = accessor({ kind: 'number', float: true })
+    return {
+      kind: 'object',
+      fields: [
+        { name: 'sourceX', type: numberAccessor },
+        { name: 'sourceY', type: numberAccessor },
+        { name: 'targetX', type: numberAccessor },
+        { name: 'targetY', type: numberAccessor },
+        { name: 'sourcePosition', type: accessor({ kind: 'typeRef', name: 'PyreonFlowPosition', args: [] }) },
+        { name: 'path', type: accessor({ kind: 'typeRef', name: 'PyreonFlowPathResult', args: [] }) },
+      ],
+    }
+  }
   if (t.kind === 'typeRef' && t.args.length === 0) {
     if (NATIVE_PRIMITIVE_TYPE_NAMES.has(t.name) || CHART_ENGINE_STRUCT_NAMES.has(t.name)) return t
     // A locally-declared string-literal union lowers to a native enum, so a
