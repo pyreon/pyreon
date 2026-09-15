@@ -56,7 +56,7 @@ describe('<PlotChart tooltip> — a tap tooltip on both targets', () => {
     const r = transform(TIP, { target: 'swift' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('@State private var pyreonTip: [String] = []')
-    expect(r.code).toContain('let pyreonLocal = plotHitBars(pyreonSpec, pyreonChartMeasure, Double(pyreonTap.location.x), Double(pyreonTap.location.y)); pyreonTip = pyreonLocal < 0 ? [] : tooltipLines(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label: $0.label, values: $0.values, color: $0.color, values2: $0.values2, rValues: $0.rValues) }), compact); pyreonTipAt = PyreonChartPt(x: Double(pyreonTap.location.x), y: Double(pyreonTap.location.y)); let i = pyreonLocal')
+    expect(r.code).toContain('let pyreonLocal = plotHitBars(pyreonSpec, pyreonChartMeasure, Double(pyreonTap.location.x), Double(pyreonTap.location.y)); pyreonTip = pyreonLocal < 0 ? [] : tooltipLines(tooltipAt(pyreonLocal, pyreonCats, pyreonSeries.map { TooltipSeries(label: $0.label, values: $0.values, color: $0.color, values2: $0.values2, rValues: $0.rValues) }), compact); pyreonTipAt = PyreonChartPt(x: Double(pyreonTap.location.x), y: Double(pyreonTap.location.y)); let i = (pyreonLocal < 0 ? -1 : pyreonLocal)')
     expect(r.code).toContain(`+ renderTooltip(pyreonTip, pyreonTipAt, PyreonChartRect(x: 0.0, y: 0.0, w: Double(pyreonGeo.size.width), h: 200.0), TooltipOptions(fontSize: 11.0, fill: ${SW.surface}, border: ${SW.grid}, text: ${SW.text}, pad: 8.0, radius: 4.0), pyreonChartMeasure)`)
   })
   it('Kotlin: the same, with remembered state and the density-scaled tap', () => {

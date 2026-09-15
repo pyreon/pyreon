@@ -25,6 +25,11 @@ import androidx.compose.ui.graphics.nativeCanvas
 import android.graphics.Paint
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.unit.dp
+import java.text.NumberFormat
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 // The chart draw-list contract — the Kotlin twin of PyreonChartCanvas.swift.
 // The RUNTIME owns these types; the generated PyreonChartEngine geometry
@@ -171,6 +176,24 @@ fun pyreonShiftCmdsXY(cmds: List<PyreonDrawCmd>, dx: Double, dy: Double): List<P
 fun pyreonChartDouble(v: Double): Double = v
 
 fun pyreonChartDouble(v: Int): Double = v.toDouble()
+
+/** Locale-aware chart formatters matching the web host's `Intl` defaults. */
+fun pyreonLocaleNumberFormatter(tag: String): (Double) -> String {
+    val locale = Locale.forLanguageTag(tag).takeIf { it.language.isNotEmpty() } ?: Locale.ENGLISH
+    val formatter = NumberFormat.getNumberInstance(locale).apply {
+        minimumFractionDigits = 0
+        maximumFractionDigits = 2
+        isGroupingUsed = true
+    }
+    return { value -> if (value.isFinite()) formatter.format(value) else "" }
+}
+
+fun pyreonLocaleDateFormatter(tag: String): (Double) -> String {
+    val locale = Locale.forLanguageTag(tag).takeIf { it.language.isNotEmpty() } ?: Locale.ENGLISH
+    val pattern = android.text.format.DateFormat.getBestDateTimePattern(locale, "MMMd")
+    val formatter = SimpleDateFormat(pattern, locale).apply { timeZone = TimeZone.getTimeZone("UTC") }
+    return { value -> if (value.isFinite()) formatter.format(Date(value.toLong())) else "" }
+}
 
 /**
  * Mirror a draw list about the canvas's vertical centreline — a right-to-left

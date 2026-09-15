@@ -76,10 +76,10 @@ export default defineNodeConfig({
   // BELOW_FLOOR_EXEMPTIONS at these values; ratchet back toward 98 once the
   // wave has merged (never lower to absorb a regression).
   coverageThresholds: {
-    statements: 94,
-    branches: 85,
-    functions: 90,
-    lines: 94,
+    statements: 99,
+    branches: 99,
+    functions: 99,
+    lines: 99,
   },
   // --expose-gc makes `globalThis.gc` available in the fork workers so the
   // GC-observable dispose-leak lock (dispose-gc.test.tsx) RUNS in CI instead

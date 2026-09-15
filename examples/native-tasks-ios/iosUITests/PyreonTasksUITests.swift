@@ -767,6 +767,36 @@ final class PyreonTasksUITests: XCTestCase {
         app.buttons["dash-back"].firstMatch.tap()
         XCTAssertTrue(tasksPage.waitForExistence(timeout: 15), "Did not return to tasks after dashboard Back")
 
+        // The GALLERY — the ten chart families that had never rendered on a
+        // device. Nine of nineteen lowered hosts were device-proven before
+        // this; the other ten rested on stub typechecking, which catches a
+        // type error and cannot catch a chart that paints nothing.
+        //
+        // Existence, not coordinates: these assert that each family LAYS OUT
+        // AND PAINTS from shared source. The dashboard above proves
+        // interaction, and its taps are tuned to ITS layout — which is why
+        // these live on their own page rather than as more rows there.
+        let galleryBtn = app.buttons["tasks-gallery"].firstMatch
+        XCTAssertTrue(galleryBtn.exists, "Chart gallery button missing on tasks page")
+        galleryBtn.tap()
+        let galPage = app.otherElements["gal-page"].firstMatch
+        XCTAssertTrue(galPage.waitForExistence(timeout: 15), "Chart gallery page did not render")
+        for id in [
+            "gal-calendar", "gal-candlestick", "gal-gantt", "gal-graph", "gal-map",
+            "gal-parallel", "gal-polar", "gal-river", "gal-sunburst", "gal-tree",
+        ] {
+            let canvas = app.descendants(matching: .any).matching(identifier: id).firstMatch
+            // Scrolled into view first: ten charts do not fit on a phone, and
+            // an off-screen element's `exists` is true while its frame is not
+            // meaningful — the same trap that made the boxplot assertion read
+            // an off-screen tap as a failed hit test.
+            scrollIntoView(canvas, in: app)
+            XCTAssertTrue(canvas.waitForExistence(timeout: 10), "\(id) canvas missing on the gallery")
+            XCTAssertFalse(canvas.frame.isEmpty, "\(id) rendered with an empty frame — it laid out to nothing")
+        }
+        app.buttons["gal-back"].firstMatch.tap()
+        XCTAssertTrue(tasksPage.waitForExistence(timeout: 15), "Did not return to tasks after gallery Back")
+
         // Phase 5b: the TOOLKIT screen — the one place eleven packages that had
         // only ever been snippet-proven actually run. The web e2e asserts the
         // same values in a browser; this is the native half, and until it

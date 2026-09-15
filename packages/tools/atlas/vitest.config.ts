@@ -48,10 +48,10 @@ export default defineNodeConfig({
   // path guard is a security boundary), and the plugin registry's cost
   // attribution.
   coverageThresholds: {
-    statements: 87,
-    branches: 79,
-    functions: 90,
-    lines: 88,
+    statements: 98,
+    branches: 97,
+    functions: 98,
+    lines: 99,
   },
   // `src/ui/**` splits cleanly into two halves, and only one is measurable here.
   //

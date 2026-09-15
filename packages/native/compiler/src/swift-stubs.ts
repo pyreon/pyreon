@@ -1668,6 +1668,8 @@ public struct PyreonChartCanvas: View {
   public var body: some View { EmptyView() }
 }
 public func pyreonChartColor(_ s: String) -> Color { Color.clear }
+public func pyreonLocaleNumberFormatter(_ tag: String) -> (Double) -> String { { String($0) } }
+public func pyreonLocaleDateFormatter(_ tag: String) -> (Double) -> String { { String($0) } }
 public func pyreonMirrorCmds(_ cmds: [PyreonDrawCmd], _ width: Double) -> [PyreonDrawCmd] { cmds }
 public struct PyreonChartEntrance<Content: View>: View {
   public init(durationMs: Double, @ViewBuilder content: @escaping (Double) -> Content) {}
