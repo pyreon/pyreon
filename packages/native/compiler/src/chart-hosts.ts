@@ -694,7 +694,7 @@ export function desugarOptionChart(
     return undefined
   }
 
-  optionFields(raw, ['series', 'title', 'legend', 'tooltip', 'xAxis', 'yAxis', 'radar', 'calendar', 'parallel', 'parallelAxis', 'visualMap', 'color'], 'option', warn)
+  optionFields(raw, ['series', 'title', 'legend', 'tooltip', 'xAxis', 'yAxis', 'radar', 'calendar', 'parallel', 'parallelAxis', 'singleAxis', 'visualMap', 'color'], 'option', warn)
 
   for (const a of e.attrs) {
     if (a.kind === 'event' && a.name !== 'selectindex') {
@@ -923,6 +923,52 @@ export function desugarOptionChart(
     set('rows', data)
     if (parallelFields.length > 0) set('parallel', { kind: 'object', fields: parallelFields })
     return { kind: 'jsx-element', tag: 'ParallelChart', attrs, children: [] }
+  }
+
+  if (kind === 'themeRiver') {
+    optionFields(series, ['type', 'name', 'data', 'coordinateSystem', 'singleAxisIndex', 'boundaryGap', 'label', 'itemStyle', 'emphasis', 'color'], 'option.series[0]', warn)
+    const data = literalOf(objectField(series, 'data'), resolve)
+    if (data?.kind !== 'array') {
+      warn('<OptionChart option.series[0].data>: a native river chart needs literal [category, value, series] rows; emitting nothing.')
+      return undefined
+    }
+    const categories = new Set<string>()
+    const byName = new Map<string, Map<string, number>>()
+    for (let i = 0; i < data.elements.length; i++) {
+      const row = literalOf(data.elements[i], resolve)
+      const category = row?.kind === 'array' ? litString(row.elements[0]) : undefined
+      const value = row?.kind === 'array' ? litNumber(row.elements[1]) : undefined
+      const name = row?.kind === 'array' ? litString(row.elements[2]) : undefined
+      if (category === undefined || value === undefined || name === undefined) {
+        warn(`<OptionChart option.series[0].data[${i}]>: a native river datum needs a literal [category, number, series] tuple; emitting nothing.`)
+        return undefined
+      }
+      categories.add(category)
+      const values = byName.get(name) ?? new Map<string, number>()
+      values.set(category, (values.get(category) ?? 0) + value)
+      byName.set(name, values)
+    }
+    const sortedCategories = [...categories].sort()
+    const riverSeries: ExprIR[] = [...byName].map(([name, values]) => ({
+      kind: 'object',
+      fields: [
+        { name: 'name', value: lit(name) },
+        { name: 'values', value: { kind: 'array', elements: sortedCategories.map((category) => optionDoubleLiteral(values.get(category) ?? 0)) } },
+      ],
+    }))
+    const riverFields: { name: string; value: ExprIR }[] = [
+      { name: 'categories', value: { kind: 'array', elements: sortedCategories.map(lit) } },
+    ]
+    const label = literalOf(objectField(series, 'label'), resolve)
+    if (label?.kind === 'object') {
+      optionFields(label, ['show'], 'option.series[0].label', warn)
+      if (objectField(label, 'show')?.kind === 'literal' && objectField(label, 'show')?.value === false) riverFields.push({ name: 'showLabels', value: lit(false) })
+    }
+    const singleAxis = literalOf(objectField(raw, 'singleAxis'), resolve)
+    if (singleAxis?.kind === 'object') optionFields(singleAxis, ['type'], 'option.singleAxis', warn)
+    set('series', { kind: 'array', elements: riverSeries })
+    set('river', { kind: 'object', fields: riverFields })
+    return { kind: 'jsx-element', tag: 'RiverChart', attrs, children: [] }
   }
 
   if (kind === 'heatmap' && litString(objectField(series, 'coordinateSystem')) === 'calendar') {

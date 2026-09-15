@@ -64,6 +64,15 @@ export function App() { return <OptionChart option={{
   series: [{ type: 'parallel', lineStyle: { width: 3, opacity: 0.6, color: '#123456' }, data: [[4, 'low'], [9, 'high']] }],
 }} /> }`
 
+const RIVER = `import { OptionChart } from '@pyreon/charts/plot'
+export function App() { return <OptionChart option={{
+  singleAxis: { type: 'time' },
+  series: [{ type: 'themeRiver', label: { show: false }, data: [
+    ['2026-01-02', 3, 'Alpha'], ['2026-01-01', 2, 'Alpha'],
+    ['2026-01-01', 5, 'Beta'], ['2026-01-02', 1, 'Alpha'],
+  ] }],
+}} /> }`
+
 describe('OptionChart family options lower to native hosts', () => {
   for (const target of ['swift', 'kotlin'] as const) {
     it(`${target}: pie preserves data, donut radius, labels, legend, tooltip, title, and size`, () => {
@@ -132,6 +141,16 @@ describe('OptionChart family options lower to native hosts', () => {
       expect(r.code).toContain(target === 'swift' ? 'lineWidth: Double(3)' : 'lineWidth = (3).toDouble()')
       expect(r.code).toContain(target === 'swift' ? 'lineOpacity: 0.6' : 'lineOpacity = 0.6')
     })
+
+    it(`${target}: river options group, sort, and aggregate literal rows`, () => {
+      const r = transform(RIVER, { target })
+      expect(r.warnings).toEqual([])
+      expect(r.code).not.toContain('OptionChart(')
+      expect(r.code).toContain('renderRiver')
+      for (const value of ['2026-01-01', '2026-01-02', 'Alpha', 'Beta']) expect(r.code).toContain(`"${value}"`)
+      expect(r.code).toContain(target === 'swift' ? 'values: [2.0, 4.0]' : 'values = listOf(2.0, 4.0)')
+      expect(r.code).toContain(target === 'swift' ? 'showLabels: false' : 'showLabels = false')
+    })
   }
 
   it('names unsupported dynamic and cartesian option shapes', () => {
@@ -188,6 +207,16 @@ describe('OptionChart family options lower to native hosts', () => {
 
   it.skipIf(!isKotlincAvailable())('kotlinc accepts parallel option emits', () => {
     const r = validateKotlin(transform(PARALLEL, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  }, 90_000)
+
+  it.skipIf(!isSwiftcAvailable())('swiftc accepts river option emits', () => {
+    const r = validateSwiftWithStubs(transform(RIVER, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  }, 30_000)
+
+  it.skipIf(!isKotlincAvailable())('kotlinc accepts river option emits', () => {
+    const r = validateKotlin(transform(RIVER, { target: 'kotlin' }).code)
     expect(r.ok, r.error ?? '').toBe(true)
   }, 90_000)
 })
