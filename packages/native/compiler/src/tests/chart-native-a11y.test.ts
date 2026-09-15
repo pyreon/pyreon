@@ -62,7 +62,8 @@ describe('every native chart canvas is named (Swift)', () => {
     expect(r.code).toContain('let pyreonSeriesLabels: [String] = ["Spoken label"]')
     expect(r.code).toContain('label: pyreonI < pyreonSeriesLabels.count ? pyreonSeriesLabels[pyreonI] : pyreonS.label')
     expect(r.code).toContain('label: "Visual label"')
-    expect(r.code).toContain('pyreonSeriesAll.enumerated().filter { !pyreonHidden.contains($0.offset) }')
+    expect(r.code).toContain('pyreonSeriesAll.enumerated().map { (pyreonI, pyreonS) in A11ySeries(')
+    expect(r.code).not.toContain('pyreonSeriesAll.enumerated().filter { !pyreonHidden.contains($0.offset) }')
   })
   it('an explicit accessibilityLabel wins over the description and over the family word', () => {
     expect(r.code).toContain('.accessibilityLabel("Explicit name")')
@@ -101,7 +102,8 @@ describe('every native chart canvas is named (Kotlin)', () => {
     expect(r.code).toContain('val pyreonSeriesLabels: List<String> = listOf("Spoken label")')
     expect(r.code).toContain('label = pyreonSeriesLabels.getOrElse(pyreonI) { pyreonS.label }')
     expect(r.code).toContain('label = "Visual label"')
-    expect(r.code).toContain('pyreonSeriesAll.mapIndexedNotNull { pyreonI, pyreonS -> if (pyreonHidden.contains(pyreonI)) null')
+    expect(r.code).toContain('pyreonSeriesAll.mapIndexed { pyreonI, pyreonS -> A11ySeries(')
+    expect(r.code).not.toContain('pyreonSeriesAll.mapIndexedNotNull')
   })
   it.skipIf(!isKotlincAvailable())('kotlinc accepts the labelled emit', () => {
     const v = validateKotlin(r.code)

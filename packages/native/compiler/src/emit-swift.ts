@@ -90,7 +90,7 @@ import {
   isWildcardRoute,
   resolveRouteTarget,
 } from './route-ir-helpers'
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS } from './chart-hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, chartThemeScope, chartThemePalette, desugarChartGrammar, desugarOptionChart, PLOT_MARK_KINDS, PLOT_MARK_OPTION_FIELDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, UNLOWERED_CHART_HOSTS, chartDouble, isChartHostTag, PLOT_SPEC_LITERAL_PROPS, chartRichSelectWarning, PLOT_INDICATOR_MARKS } from './chart-hosts'
 import type { ChartHostArgs, ChartHostTarget, ChartThemeText, RawChartTheme } from './chart-hosts'
 import { unknownTransitionPresetWarning } from './transition-presets'
 import {
@@ -12661,7 +12661,7 @@ const SWIFT_CHART_TARGET: ChartHostTarget = {
     options === 'nil'
       ? `${struct}(${fields.map(([f, v]) => `${f}: ${v}`).join(', ')})`
       : `{ () -> ${struct} in var pyreonO = ${options}; ${fields.map(([f, v]) => `pyreonO.${f} = pyreonO.${f} ?? ${v}`).join('; ')}; return pyreonO }()`,
-  pieOptions: (a) => `PieOptions(innerRadius: ${a.innerRatio}, showLabels: true, labelColor: "#ffffff", fontSize: ${a.fontSize ?? '11.0'})`,
+  pieOptions: (a) => `PieOptions(innerRadius: ${a.innerRatio}, showLabels: ${a.showLabels ?? 'true'}, labelColor: "#ffffff", fontSize: ${a.fontSize ?? '11.0'})`,
   theme: () => `ChartTheme(axis: ${JSON.stringify(CHART_THEME_DEFAULT.axis)}, grid: ${JSON.stringify(CHART_THEME_DEFAULT.grid)}, label: ${JSON.stringify(CHART_THEME_DEFAULT.label)}, fontSize: ${CHART_THEME_DEFAULT.fontSize})`,
 }
 
@@ -12709,6 +12709,7 @@ function swiftBollingerSpread(
   indent: number,
   lets: string[],
   palette: readonly string[],
+  namePrefix = 'pyreon',
 ): string[] | 'unsupported' {
   const call = arg.kind === 'call' && arg.callee.kind === 'identifier' && arg.callee.name === 'bollinger' ? arg : undefined
   if (call === undefined) {
@@ -12738,13 +12739,13 @@ function swiftBollingerSpread(
   if (opts === 'unsupported') return 'unsupported'
   const win = Math.trunc(w.value)
   const rowMap = swiftPlotRowMap(rows, `pyreonChartDouble(${body})`, 'Double', windowed)
-  lets.push(`let pyreonRaw${k}: [Double] = ${rowMap}`)
-  lets.push(`let pyreonUpper${k}: [Double] = bollingerEdge(pyreonRaw${k}, ${win}, ${sd}, 1.0)`)
-  lets.push(`let pyreonLower${k}: [Double] = bollingerEdge(pyreonRaw${k}, ${win}, ${sd}, -1.0)`)
-  lets.push(`let pyreonMid${k}: [Double] = smaValues(pyreonRaw${k}, ${win})`)
+  lets.push(`let ${namePrefix}Raw${k}: [Double] = ${rowMap}`)
+  lets.push(`let ${namePrefix}Upper${k}: [Double] = bollingerEdge(${namePrefix}Raw${k}, ${win}, ${sd}, 1.0)`)
+  lets.push(`let ${namePrefix}Lower${k}: [Double] = bollingerEdge(${namePrefix}Raw${k}, ${win}, ${sd}, -1.0)`)
+  lets.push(`let ${namePrefix}Mid${k}: [Double] = smaValues(${namePrefix}Raw${k}, ${win})`)
   return [
-    `Series(kind: "band", values: pyreonUpper${k}, ${[...opts, `values2: pyreonLower${k}`].join(', ')})`,
-    `Series(kind: "line", values: pyreonMid${k}, ${opts.join(', ')})`,
+    `Series(kind: "band", values: ${namePrefix}Upper${k}, ${[...opts, `values2: ${namePrefix}Lower${k}`].join(', ')})`,
+    `Series(kind: "line", values: ${namePrefix}Mid${k}, ${opts.join(', ')})`,
   ]
 }
 
@@ -12841,6 +12842,10 @@ function emitSwiftChartHostInner(e: Extract<ExprIR, { kind: 'jsx-element' }>, in
   if (tag === GRAMMAR_CHART_HOST) {
     // The grammar desugars to the host it names (`<PlotChart marks>`, or a family host for `<Arc>` / `<Stage>` / `<Cell>` / `<Candle>`) and re-enters here as that element.
     return emitSwiftChartHost(desugarChartGrammar(e, (w) => _emitWarnings.push(w)), indent)
+  }
+  if (tag === 'OptionChart') {
+    const lowered = desugarOptionChart(e, (n) => _moduleConstExprs.get(n), (w) => _emitWarnings.push(w))
+    return lowered === undefined ? 'EmptyView()' : emitSwiftChartHost(lowered, indent)
   }
   if (Object.hasOwn(GRAMMAR_MARK_TAGS, tag) || Object.hasOwn(GRAMMAR_FAMILY_TAGS, tag) || GRAMMAR_CONFIG_TAGS.includes(tag)) {
     _emitWarnings.push(`<${tag}> only means something as a child of <Plot>; on its own it renders nothing.`)
@@ -13052,7 +13057,7 @@ function emitSwiftAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   const items = hoist ? 'pyreonItems' : mapped
   const lets = hoist ? [`let pyreonItems: [${spec.struct}] = ${mapped}`, ...chrome.lets] : []
   if (animating) lets.push(`let pyreonOpts: ${spec.optionsStruct} = ${SWIFT_CHART_TARGET.withProgress(options, spec.optionsStruct!, 'pyreonEntrance')}`)
-  const args: ChartHostArgs = { data: [], options, W: chrome.width(W), H: chrome.height(H), gutter: '0.0', innerRatio: swiftChartDouble(e, 'innerRadius', 0, indent), fontSize: tf.fontSize }
+  const args: ChartHostArgs = { data: [], options, W: chrome.width(W), H: chrome.height(H), gutter: '0.0', innerRatio: swiftChartDouble(e, 'innerRadius', 0, indent), showLabels: readStaticAttr(e, 'showLabels') === false ? 'false' : 'true', fontSize: tf.fontSize }
   const tipCmds = tooltip
     ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, pyreonChartMeasure)`
     : ''
@@ -13467,11 +13472,13 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   if (legend.toggling) _hostStateDecls.push('@State private var pyreonHidden: [Int] = []')
   if (legend.paging) _hostStateDecls.push('@State private var pyreonLegendPage: Double = 0.0')
   const maxPoints = chartAttrExpr(e, 'maxPoints')
+  const fullA11y = windowed || maxPoints !== undefined
   let decimated = false
   let rows = windowed ? 'pyreonSourceRows' : data
   // The theme's palette colours marks with no `color` (the theme builder already warned about a bad literal, so this parse stays silent).
   const pyreonPalette = chartThemePalette(chartAttrExpr(e, 'theme'), tag, () => {}, _chartThemeScope === null ? undefined : (_chartThemeScope.palette as readonly string[]))
   const series: string[] = []
+  const fullA11ySeries: string[] = []
   let navValues = ''
   for (let k = 0; k < marksV.elements.length; k++) {
     const m = marksV.elements[k]!
@@ -13485,6 +13492,11 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       const expanded = swiftBollingerSpread(m.argument, tag, k, rows, windowed, indent, lets, pyreonPalette)
       if (expanded === 'unsupported') return 'EmptyView()'
       for (const line of expanded) series.push(line)
+      if (fullA11y) {
+        const full = swiftBollingerSpread(m.argument, tag, k, data, false, indent, lets, pyreonPalette, 'pyreonA11y')
+        if (full === 'unsupported') return 'EmptyView()'
+        for (const line of full) fullA11ySeries.push(line)
+      }
       continue
     }
     const callee = m.kind === 'call' && m.callee.kind === 'identifier' ? m.callee.name : undefined
@@ -13535,6 +13547,18 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     // the LAST Series fields on both targets, so they append.
     const errArgs = swiftMarkErrorArgs(optsArg, tag, k, rows, windowed, indent, lets, decimated)
     if (errArgs === 'unsupported') return 'EmptyView()'
+    let a11yErrArgs: string[] = []
+    if (fullA11y && errArgs.length > 0) {
+      const fullErr = swiftMarkErrorArgs(optsArg, tag, k, data, false, indent, lets, false, 'pyreonA11y')
+      if (fullErr === 'unsupported') return 'EmptyView()'
+      a11yErrArgs = fullErr
+    }
+    if (fullA11y) {
+      const fullRows = swiftPlotRowMap(data, `pyreonChartDouble(${body})`, 'Double', false)
+      const fullValues = indicator === undefined ? fullRows : swiftIndicatorValues(indicator, m, fullRows, tag, k, indent)
+      if (fullValues === 'unsupported') return 'EmptyView()'
+      lets.push(`let pyreonA11yValues${k}: [Double] = ${fullValues}`)
+    }
     // The navigator shows the first mark over EVERY row, whatever the window.
     if (k === 0 && navigating) navValues = swiftPlotRowMap(data, `pyreonChartDouble(${body})`, 'Double', false)
     if (bubble) {
@@ -13555,6 +13579,12 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       const at = opts.findIndex((o) => o.startsWith('showValues:')) + 1
       const withRadii = [...opts.slice(0, at), `rValues: pyreonRRaw${k}`, `radii: pyreonRadii${k}`, ...opts.slice(at)]
       series.push(`Series(kind: "points", values: pyreonValues${k}, ${[...withRadii, ...errArgs].join(', ')})`)
+      if (fullA11y) {
+        lets.push(`let pyreonA11yRRaw${k}: [Double] = ${swiftPlotRowMap(data, `pyreonChartDouble(${rBody})`, 'Double', false)}`)
+        const a11yAt = opts.findIndex((o) => o.startsWith('showValues:')) + 1
+        const a11yOpts = [...opts.slice(0, a11yAt), `rValues: pyreonA11yRRaw${k}`, ...opts.slice(a11yAt)]
+        fullA11ySeries.push(`Series(kind: "points", values: pyreonA11yValues${k}, ${[...a11yOpts, ...a11yErrArgs].join(', ')})`)
+      }
     } else if (isBand) {
       const lo = m.args[0]
       if (lo === undefined) {
@@ -13568,8 +13598,13 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       // after the error bounds — Swift's init is positional even when
       // labelled.
       series.push(`Series(kind: "band", values: pyreonValues${k}, ${[...opts, ...errArgs, `values2: pyreonLow${k}`].join(', ')})`)
+      if (fullA11y) {
+        lets.push(`let pyreonA11yLow${k}: [Double] = ${swiftPlotRowMap(data, `pyreonChartDouble(${loBody})`, 'Double', false)}`)
+        fullA11ySeries.push(`Series(kind: "band", values: pyreonA11yValues${k}, ${[...opts, ...a11yErrArgs, `values2: pyreonA11yLow${k}`].join(', ')})`)
+      }
     } else {
       series.push(`Series(kind: ${JSON.stringify(kind)}, values: pyreonValues${k}, ${[...opts, ...errArgs].join(', ')})`)
+      if (fullA11y) fullA11ySeries.push(`Series(kind: ${JSON.stringify(kind)}, values: pyreonA11yValues${k}, ${[...opts, ...a11yErrArgs].join(', ')})`)
     }
   }
   if (legend.toggling) {
@@ -13579,13 +13614,16 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   } else {
     lets.push(`let pyreonSeries: [Series] = [${series.join(', ')}]`)
   }
+  if (fullA11y) lets.push(`let pyreonA11ySeriesSource: [Series] = [${fullA11ySeries.join(', ')}]`)
   const xAcc = chartAttrExpr(e, 'x')
   if (xAcc !== undefined) {
     const body = swiftAccessorExpr(xAcc, tag, 'x', indent)
     if (body === 'unsupported') return 'EmptyView()'
     lets.push(`let pyreonCats: [String] = ${swiftPlotRowMap(rows, body, 'String', windowed, decimated)}`)
+    if (fullA11y) lets.push(`let pyreonA11yCats: [String] = ${swiftPlotRowMap(data, body, 'String', false)}`)
   } else {
     lets.push('let pyreonCats: [String] = []')
+    if (fullA11y) lets.push('let pyreonA11yCats: [String] = []')
   }
   const xValueAcc = chartAttrExpr(e, 'xValue')
   if (xValueAcc !== undefined) {
@@ -13831,17 +13869,17 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     if (windowed) gesture += `.onChange(of: [pyreonZoom.start, pyreonZoom.end]) { ${swiftChartSelectBody(onZoom.handler, 'pyreonZoom', indent)} }`
     else _emitWarnings.push('<PlotChart onZoom>: needs `dataZoom`, `zoomPresets` or `navigator` — without a window there is nothing to report.')
   }
-  // The data description the web `aria-label` carries, from the same series
-  // and categories the canvas painted (hidden series excluded, as on the web).
+  // The web description resolves every mark over every source row. Zoom,
+  // decimation and legend visibility affect paint only; they must not erase
+  // data from the single VoiceOver summary.
   const plotTitle = readStringAttrExpr(e, 'title', indent)
   const labels = chartAttrExpr(e, 'seriesLabels')
   if (labels !== undefined) lets.push(`let pyreonSeriesLabels: [String] = ${emitSwiftExpr(labels, indent)}`)
+  const a11ySource = fullA11y ? 'pyreonA11ySeriesSource' : legend.toggling ? 'pyreonSeriesAll' : 'pyreonSeries'
   const a11ySeries = labels === undefined
-    ? 'pyreonSeries.map { A11ySeries(label: $0.label, values: $0.values, kind: $0.kind, values2: $0.values2, errLow: $0.errLow, errHigh: $0.errHigh, rValues: $0.rValues) }'
-    : legend.toggling
-      ? 'pyreonSeriesAll.enumerated().filter { !pyreonHidden.contains($0.offset) }.map { (pyreonI, pyreonS) in A11ySeries(label: pyreonI < pyreonSeriesLabels.count ? pyreonSeriesLabels[pyreonI] : pyreonS.label, values: pyreonS.values, kind: pyreonS.kind, values2: pyreonS.values2, errLow: pyreonS.errLow, errHigh: pyreonS.errHigh, rValues: pyreonS.rValues) }'
-      : 'pyreonSeries.enumerated().map { (pyreonI, pyreonS) in A11ySeries(label: pyreonI < pyreonSeriesLabels.count ? pyreonSeriesLabels[pyreonI] : pyreonS.label, values: pyreonS.values, kind: pyreonS.kind, values2: pyreonS.values2, errLow: pyreonS.errLow, errHigh: pyreonS.errHigh, rValues: pyreonS.rValues) }'
-  const describe = `describeChart(A11yInput(title: ${plotTitle ?? 'nil'}, categories: pyreonCats, series: ${a11ySeries}, format: ${yFormat ?? 'nil'}))`
+    ? `${a11ySource}.map { A11ySeries(label: $0.label, values: $0.values, kind: $0.kind, values2: $0.values2, errLow: $0.errLow, errHigh: $0.errHigh, rValues: $0.rValues) }`
+    : `${a11ySource}.enumerated().map { (pyreonI, pyreonS) in A11ySeries(label: pyreonI < pyreonSeriesLabels.count ? pyreonSeriesLabels[pyreonI] : pyreonS.label, values: pyreonS.values, kind: pyreonS.kind, values2: pyreonS.values2, errLow: pyreonS.errLow, errHigh: pyreonS.errHigh, rValues: pyreonS.rValues) }`
+  const describe = `describeChart(A11yInput(title: ${plotTitle ?? 'nil'}, categories: ${fullA11y ? 'pyreonA11yCats' : 'pyreonCats'}, series: ${a11ySeries}, format: ${yFormat ?? 'nil'}))`
   if (!navigating) return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent, describe)
   // The navigator's drag lives on a clear overlay over the strip (above the
   // preset strip), a sibling of the canvas: a touch that starts there is the
@@ -14029,6 +14067,7 @@ function swiftMarkErrorArgs(
   indent: number,
   lets: string[],
   decimated = false,
+  namePrefix = 'pyreon',
 ): string[] | 'unsupported' {
   if (opts === undefined || opts.kind !== 'object') return []
   const low = opts.fields.find((f) => f.name === 'errorLow')?.value
@@ -14041,9 +14080,9 @@ function swiftMarkErrorArgs(
   const lowBody = swiftAccessorExpr(low, tag, `mark ${seriesIndex + 1} errorLow`, indent)
   const highBody = swiftAccessorExpr(high, tag, `mark ${seriesIndex + 1} errorHigh`, indent)
   if (lowBody === 'unsupported' || highBody === 'unsupported') return 'unsupported'
-  lets.push(`let pyreonErrLow${seriesIndex}: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${lowBody})`, 'Double', windowed, decimated)}`)
-  lets.push(`let pyreonErrHigh${seriesIndex}: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${highBody})`, 'Double', windowed, decimated)}`)
-  return [`errLow: pyreonErrLow${seriesIndex}`, `errHigh: pyreonErrHigh${seriesIndex}`]
+  lets.push(`let ${namePrefix}ErrLow${seriesIndex}: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${lowBody})`, 'Double', windowed, decimated)}`)
+  lets.push(`let ${namePrefix}ErrHigh${seriesIndex}: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${highBody})`, 'Double', windowed, decimated)}`)
+  return [`errLow: ${namePrefix}ErrLow${seriesIndex}`, `errHigh: ${namePrefix}ErrHigh${seriesIndex}`]
 }
 
 /** `[minRadius, maxRadius]` of a bubble's options literal, the web defaults (3, 18) when absent. */

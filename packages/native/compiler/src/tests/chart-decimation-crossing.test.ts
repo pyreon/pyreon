@@ -104,6 +104,8 @@ describe('the decimation arithmetic crosses', () => {
   })
 
   it('normalizes an integral number series at the decimator boundary', () => {
+    // Both current toolchains accept the generated call. Keep this compile
+    // contract positive instead of pinning an obsolete compiler failure.
     const withoutWidening = PRE_DECIMATED.replace('rows().map((r) => r.v * 1.0)', 'rows().map((r) => r.v)')
     for (const target of ['swift', 'kotlin'] as const) {
       const r = transform(withoutWidening, { target })
