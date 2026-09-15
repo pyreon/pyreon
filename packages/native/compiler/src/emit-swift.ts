@@ -6199,6 +6199,23 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         if (e.args.length === 0 && member === 'getNodes') return `${swiftIdent(flowName)}.nodes`
         if (e.args.length === 0 && member === 'getEdges') return `${swiftIdent(flowName)}.edges`
         if (e.args.length === 0 && member === 'getViewport') return `${swiftIdent(flowName)}.viewport`
+        if (member === '_clearNodeMeasurement' && e.args.length === 1) return `${swiftIdent(flowName)}.clearNodeMeasurement(${emitSwiftExpr(e.args[0]!, indent)})`
+        if (member === '_setNodeMeasurement' && (e.args.length === 3 || e.args.length === 4)) {
+          const baseArgs = `${emitSwiftExpr(e.args[0]!, indent)}, width: ${emitSwiftExpr(e.args[1]!, indent)}, height: ${emitSwiftExpr(e.args[2]!, indent)}`
+          if (e.args.length === 3) return `${swiftIdent(flowName)}.updateNodeMeasurement(${baseArgs})`
+          const handles = e.args[3]!
+          if (handles.kind === 'array') {
+            const emitted = handles.elements.map((item) => {
+              if (item.kind !== 'object') return null
+              const fields = new Map(item.fields.map((field) => [field.name, field.value]))
+              const position = fields.get('position')
+              if (!fields.has('id') || !fields.has('type') || !fields.has('x') || !fields.has('y') || position?.kind !== 'literal' || typeof position.value !== 'string') return null
+              return `PyreonFlowMeasuredHandle(id: ${emitSwiftExpr(fields.get('id')!, indent)}, type: ${emitSwiftExpr(fields.get('type')!, indent)}, position: .${position.value}, x: ${emitSwiftExpr(fields.get('x')!, indent)}, y: ${emitSwiftExpr(fields.get('y')!, indent)})`
+            })
+            if (emitted.every((value) => value !== null)) return `${swiftIdent(flowName)}.updateNodeMeasurement(${baseArgs}, handles: [${emitted.join(', ')}])`
+          }
+          _emitWarnings.push(`createFlow binding \`${flowName}\`: \`_setNodeMeasurement\` handle geometry must be a literal array to lower natively.`)
+        }
         // Nothing silent inside the boundary: every member that is not in the
         // v1 surface is NAMED here (it is still emitted as written — the native
         // build is where it fails, but now the author heard about it first).

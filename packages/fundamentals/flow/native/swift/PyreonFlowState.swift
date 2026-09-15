@@ -1431,11 +1431,12 @@ public final class PyreonFlowState<T> {
         guard let node = nodeStore[id] else { return PyreonFlowDimensions(width: pyreonFlowDefaultNodeWidth, height: pyreonFlowDefaultNodeHeight) }
         return pyreonEffectiveDimensions(node, measurement: measurements[id])
     }
-    public func updateNodeMeasurement(_ id: String, width: Double, height: Double) {
+    public func updateNodeMeasurement(_ id: String, width: Double, height: Double, handles: [PyreonFlowMeasuredHandle] = []) {
         guard nodeStore[id] != nil, width > 0, height > 0 else { return }
-        let next = PyreonFlowNodeMeasurement(width: width, height: height, handles: measurements[id]?.handles ?? [])
+        let next = PyreonFlowNodeMeasurement(width: width, height: height, handles: handles)
         if measurements[id] != next { measurements[id] = next }
     }
+    public func clearNodeMeasurement(_ id: String) { measurements[id] = nil }
     public func addNode(_ node: PyreonFlowNode<T>) {
         guard nodeStore[node.id] == nil else { return }
         checkpoint()

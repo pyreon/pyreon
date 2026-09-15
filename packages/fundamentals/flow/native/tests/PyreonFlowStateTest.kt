@@ -7,6 +7,8 @@ import com.pyreon.runtime.PyreonFlowConnection
 import com.pyreon.runtime.PyreonFlowDefaultEdgeOptions
 import com.pyreon.runtime.PyreonFlowDimensions
 import com.pyreon.runtime.PyreonFlowNodeMeasurement
+import com.pyreon.runtime.PyreonFlowMeasuredHandle
+import com.pyreon.runtime.PyreonFlowPosition
 import com.pyreon.runtime.PyreonFlowNode
 import com.pyreon.runtime.PyreonFlowNodeExtent
 import com.pyreon.runtime.PyreonFlowLayoutOptions
@@ -71,6 +73,13 @@ fun main() {
     val f = seedFlow()
     f.updateNodeMeasurement("1", 240.0, 72.0)
     check(f.measurements["1"] == PyreonFlowNodeMeasurement(240.0, 72.0), "Compose host measurements are observable")
+    f.updateNodeMeasurement("1", 240.0, 72.0, listOf(PyreonFlowMeasuredHandle("out", "source", PyreonFlowPosition.Right, 240.0, 36.0)))
+    check(f.measurements["1"]?.handles?.size == 1, "Compose host records measured handle anchors")
+    f.updateNodeMeasurement("1", 240.0, 72.0)
+    check(f.measurements["1"]?.handles?.isEmpty() == true, "an omitted handle list clears stale anchors like the web engine")
+    f.clearNodeMeasurement("1")
+    check(!f.measurements.containsKey("1"), "explicit measurement cleanup removes the native entry")
+    f.updateNodeMeasurement("1", 240.0, 72.0)
     check(f.nodeLookup["1"]?.data?.label == "Start" && f.edgeLookup["e1"]?.source == "1", "FlowInstance lookup maps stay reactive and addressable")
     check(f.getNodeDimensions("1") == PyreonFlowDimensions(240.0, 72.0), "intrinsic host measurements drive effective geometry")
     f.addNode(PyreonFlowNode("intrinsic", position = PyreonXYPosition(0.0, 0.0), data = NodeData("Intrinsic"), width = 100.0, height = 40.0))

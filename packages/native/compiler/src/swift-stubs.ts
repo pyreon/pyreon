@@ -993,7 +993,8 @@ public struct PyreonXYPosition: Equatable {
   public init(x: Double, y: Double) {}
 }
 public struct PyreonFlowDimensions { public var width: Double; public var height: Double }
-public struct PyreonFlowNodeMeasurement { public var width: Double; public var height: Double; public init(width: Double, height: Double) {} }
+public struct PyreonFlowMeasuredHandle { public var id: String; public var type: String; public var position: PyreonFlowPosition; public var x: Double; public var y: Double; public init(id: String, type: String, position: PyreonFlowPosition, x: Double, y: Double) { self.id = id; self.type = type; self.position = position; self.x = x; self.y = y } }
+public struct PyreonFlowNodeMeasurement { public var width: Double; public var height: Double; public var handles: [PyreonFlowMeasuredHandle]; public init(width: Double, height: Double, handles: [PyreonFlowMeasuredHandle] = []) { self.width = width; self.height = height; self.handles = handles } }
 public struct PyreonFlowContainerSize: Equatable {
   public var width: Double = 0
   public var height: Double = 0
@@ -1226,7 +1227,8 @@ public final class PyreonFlowState<T> {
   public var zoom: Double { viewport.zoom }
   public func getNode(_ id: String) -> PyreonFlowNode<T>? { nil }
   public func getNodeDimensions(_ id: String) -> PyreonFlowDimensions { PyreonFlowDimensions(width: 150, height: 40) }
-  public func updateNodeMeasurement(_ id: String, width: Double, height: Double) {}
+  public func updateNodeMeasurement(_ id: String, width: Double, height: Double, handles: [PyreonFlowMeasuredHandle] = []) {}
+  public func clearNodeMeasurement(_ id: String) {}
   public func batch(_ operation: () -> Void) { operation() }
   public func dispose() {}
   public func layout(_ algorithm: String = "layered", options: PyreonFlowLayoutOptions = PyreonFlowLayoutOptions()) {}
