@@ -14,7 +14,8 @@ describe('buildFlowHostHtml', () => {
     expect(html).toContain('createElementNS') // real SVG renderer, no external engine
     expect(html).toContain("window.addEventListener('pyreondata', schedule)") // forward (coalesced)
     expect(html).toContain('function schedule(')
-    expect(html).toContain('window.pyreonPostMessage(JSON.stringify({ id: n.id, data: n.data }))') // reverse
+    expect(html).toContain('function post(payload)')
+    expect(html).toContain('post({ id: n.id, data: n.data })') // reverse
     expect(html).toContain('function bezier(') // flow's edge geometry inlined
     expect(html).toContain('function reportHostError(')
     expect(html).toContain('if (message === lastHostError) return')
@@ -46,6 +47,14 @@ describe('<FlowWebView>', () => {
   it('unwraps an accessor graph', () => {
     const vnode = FlowWebView({ graph: () => graph })
     expect((vnode.props as { data: unknown }).data).toEqual(graph)
+  })
+
+  it('embeds reactive once-only commands without changing the command-free graph identity', () => {
+    const commands = [{ id: 'fit-1', type: 'fit-view' as const }]
+    const plain = FlowWebView({ graph })
+    expect((plain.props as { data: unknown }).data).toBe(graph)
+    const commanded = FlowWebView({ graph, commands: () => commands })
+    expect((commanded.props as { data: unknown }).data).toEqual({ ...graph, __pyreonFlowCommands: commands })
   })
 
   it('wires onSelect through onMessage, parsing {id,data}', () => {
@@ -84,6 +93,19 @@ describe('<FlowWebView>', () => {
     const vnode = FlowWebView({ graph, onMessage })
     ;(vnode.props as { onMessage: (message: string) => void }).onMessage('{"type":"ready"}')
     expect(onMessage).toHaveBeenCalledWith({ type: 'ready' })
+  })
+
+  it('routes built-in messages through the typed event channel', () => {
+    const onEvent = vi.fn()
+    const receive = (FlowWebView({ graph, onEvent }).props as { onMessage: (message: string) => void }).onMessage
+    receive(JSON.stringify({ id: 'a', data: { label: 'A' } }))
+    receive(JSON.stringify({ type: 'edge-select', id: 'a-b', source: 'a', target: 'b' }))
+    receive(JSON.stringify({ type: 'viewport-change', viewport: { x: 4, y: 5, zoom: 2 } }))
+    expect(onEvent.mock.calls.map((call) => call[0])).toEqual([
+      { type: 'node-select', id: 'a', data: { label: 'A' } },
+      { type: 'edge-select', id: 'a-b', source: 'a', target: 'b' },
+      { type: 'viewport-change', viewport: { x: 4, y: 5, zoom: 2 } },
+    ])
   })
 
   it('routes structured host failures to onError without treating them as selections', () => {

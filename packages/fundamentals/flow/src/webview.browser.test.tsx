@@ -15,6 +15,7 @@ import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { WebView } from '@pyreon/primitives'
 import { describe, expect, it } from 'vitest'
 import { FlowWebView, buildFlowHostHtml } from './webview'
+import type { FlowHostCommand } from './webview'
 
 const HOST = buildFlowHostHtml()
 
@@ -41,6 +42,41 @@ async function waitForFlow(iframe: HTMLIFrameElement, timeoutMs = 8000): Promise
 }
 
 describe('FlowWebView bridge (real SVG diagram in a real iframe)', () => {
+  it('executes viewport commands once and emits typed viewport and edge events', async () => {
+    const commands = signal<FlowHostCommand[]>([])
+    const events: unknown[] = []
+    const { container, unmount } = mountInBrowser(
+      h(FlowWebView as never, {
+        html: HOST,
+        graph: () => graph(['A', 'B']),
+        commands: () => commands(),
+        onEvent: (event: unknown) => events.push(event),
+      }),
+    )
+    container.style.width = '500px'
+    container.style.height = '400px'
+    await flush()
+    const iframe = query<HTMLIFrameElement>(container, 'iframe')
+    const doc = await waitForFlow(iframe)
+
+    commands.set([{ id: 'viewport-1', type: 'set-viewport', x: 12, y: 34, zoom: 2 }])
+    await flush()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(events).toContainEqual({ type: 'viewport-change', viewport: { x: 12, y: 34, zoom: 2 } })
+
+    const count = events.length
+    commands.set([{ id: 'viewport-1', type: 'set-viewport', x: 90, y: 90, zoom: 3 }])
+    await flush()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(events).toHaveLength(count)
+
+    const edge = query<SVGPathElement>(doc, '[data-edge-id="A->B"]')
+    edge.dispatchEvent(new (iframe.contentWindow as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent('click', { bubbles: true }))
+    await flush()
+    expect(events).toContainEqual({ type: 'edge-select', id: 'A->B', source: 'A', target: 'B' })
+    unmount()
+  })
+
   it('FORWARD: pushing a graph renders SVG nodes + bezier edges; updating re-renders in place', async () => {
     const g = signal(graph(['Start', 'Middle', 'End']))
     const wvProps: Record<string, unknown> = { html: HOST }
