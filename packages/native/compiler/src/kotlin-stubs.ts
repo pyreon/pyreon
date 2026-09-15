@@ -1863,9 +1863,12 @@ class PyreonFlowState<T>(
 }
 
 enum class PyreonFlowBackgroundVariant { Dots, Lines, Cross }
+fun pyreonFlowBackgroundVariant(value: String): PyreonFlowBackgroundVariant = PyreonFlowBackgroundVariant.Dots
 data class PyreonFlowBackgroundStyle(val variant: PyreonFlowBackgroundVariant = PyreonFlowBackgroundVariant.Dots, val gap: Double = 20.0, val size: Double = 1.0, val color: String = "#dddddd")
 enum class PyreonFlowControlsPosition { TopLeft, TopRight, BottomLeft, BottomRight }
+fun pyreonFlowControlsPosition(value: String): PyreonFlowControlsPosition = PyreonFlowControlsPosition.BottomLeft
 data class PyreonFlowControlsStyle(val showZoomIn: Boolean = true, val showZoomOut: Boolean = true, val showFitView: Boolean = true, val showLock: Boolean = false, val position: PyreonFlowControlsPosition = PyreonFlowControlsPosition.BottomLeft)
+@Composable fun <T> PyreonStandaloneFlowControls(state: PyreonFlowState<T>, style: PyreonFlowControlsStyle = PyreonFlowControlsStyle(), extraContent: @Composable () -> Unit = {}) { extraContent() }
 data class PyreonFlowMiniMapStyle(val nodeColor: String = "#e2e8f0", val maskColor: String = "#000000", val width: Double = 200.0, val height: Double = 150.0, val pannable: Boolean = true, val zoomable: Boolean = true)
 data class PyreonFlowNodeResizerConfig(val minWidth: Double = 50.0, val minHeight: Double = 30.0, val handleSize: Double = 8.0, val showEdgeHandles: Boolean = false)
 data class PyreonFlowNodeToolbarConfig(val position: String = "top", val align: String = "center", val offset: Double = 8.0, val showOnSelect: Boolean = true, val selectedOverride: Boolean? = false, val nodeIdOverride: String? = null)

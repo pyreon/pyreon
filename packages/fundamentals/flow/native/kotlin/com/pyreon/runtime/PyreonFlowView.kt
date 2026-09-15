@@ -57,6 +57,11 @@ import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
 enum class PyreonFlowBackgroundVariant { Dots, Lines, Cross }
+fun pyreonFlowBackgroundVariant(value: String): PyreonFlowBackgroundVariant = when (value) {
+    "lines" -> PyreonFlowBackgroundVariant.Lines
+    "cross" -> PyreonFlowBackgroundVariant.Cross
+    else -> PyreonFlowBackgroundVariant.Dots
+}
 
 data class PyreonFlowBackgroundStyle(
     val variant: PyreonFlowBackgroundVariant = PyreonFlowBackgroundVariant.Dots,
@@ -66,6 +71,12 @@ data class PyreonFlowBackgroundStyle(
 )
 
 enum class PyreonFlowControlsPosition { TopLeft, TopRight, BottomLeft, BottomRight }
+fun pyreonFlowControlsPosition(value: String): PyreonFlowControlsPosition = when (value) {
+    "top-left" -> PyreonFlowControlsPosition.TopLeft
+    "top-right" -> PyreonFlowControlsPosition.TopRight
+    "bottom-right" -> PyreonFlowControlsPosition.BottomRight
+    else -> PyreonFlowControlsPosition.BottomLeft
+}
 
 data class PyreonFlowControlsStyle(
     val showZoomIn: Boolean = true,
@@ -227,6 +238,17 @@ fun <T> PyreonFlowControls(
         Text("${(state.zoom * 100).roundToInt()}%", modifier = Modifier.semantics { contentDescription = "Current zoom level" })
         extraContent()
     }
+}
+
+/** Controls rendered independently from PyreonFlowView. */
+@Composable
+fun <T> PyreonStandaloneFlowControls(
+    state: PyreonFlowState<T>,
+    style: PyreonFlowControlsStyle = PyreonFlowControlsStyle(),
+    extraContent: @Composable () -> Unit = {},
+) {
+    var locked by remember { mutableStateOf(false) }
+    PyreonFlowControls(state, style, locked, { locked = it }, extraContent = extraContent)
 }
 
 @Composable

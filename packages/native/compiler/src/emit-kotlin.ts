@@ -7147,6 +7147,7 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // embedding web-only-rich viz inside a Compose native shell.
   if (tag === 'WebView') return emitKotlinWebView(e)
   if (tag === 'Flow' && canAliasIntercept(tag, '@pyreon/flow')) return emitKotlinFlowHost(e)
+  if (tag === 'Controls' && canAliasIntercept(tag, '@pyreon/flow')) return emitKotlinStandaloneFlowControls(e, indent)
   // `@pyreon/charts/plot` family hosts → PyreonChartCanvas over the generated
   // engine (chart-hosts.ts); accessor-prop hosts warn by name.
   if (isChartHostTag(tag)) return emitKotlinChartHost(e, indent)
@@ -7297,8 +7298,10 @@ function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string
     : ''
   const miniMapArg = miniMap?.kind === 'jsx-element' ? `, miniMap = ${emitKotlinFlowMiniMap(miniMap)}` : ''
   const miniMapNodeColorAttr = miniMap?.kind === 'jsx-element' ? miniMap.attrs.find((a) => a.kind === 'attr' && a.name === 'nodeColor') : undefined
-  const miniMapNodeColorArg = miniMapNodeColorAttr?.kind === 'attr' && miniMapNodeColorAttr.value !== undefined && !(miniMapNodeColorAttr.value.kind === 'literal' && typeof miniMapNodeColorAttr.value.value === 'string')
-    ? `, miniMapNodeColor = ${emitKotlinExpr(miniMapNodeColorAttr.value, 0)}`
+  const miniMapNodeColorValue = miniMapNodeColorAttr?.kind === 'attr' ? miniMapNodeColorAttr.value : undefined
+  const miniMapNodeColorIsCallback = miniMapNodeColorValue?.kind === 'arrow' || (miniMapNodeColorValue?.kind === 'identifier' && (_functionNames.has(miniMapNodeColorValue.name) || _moduleConstExprsKotlin.get(miniMapNodeColorValue.name)?.kind === 'arrow'))
+  const miniMapNodeColorArg = miniMapNodeColorValue !== undefined && miniMapNodeColorIsCallback
+    ? `, miniMapNodeColor = ${emitKotlinExpr(miniMapNodeColorValue, 0)}`
     : ''
   const ariaLabelAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'ariaLabel')
   const ariaLabelArg = ariaLabelAttr?.kind === 'attr' && ariaLabelAttr.value !== undefined ? `, ariaLabel = ${emitKotlinExpr(ariaLabelAttr.value, 0)}` : ''
@@ -7364,6 +7367,18 @@ function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string
   return `Box {\n  ${host}\n${overlaysCode}\n}`
 }
 
+function emitKotlinStandaloneFlowControls(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const instance = e.attrs.find((a) => a.kind === 'attr' && a.name === 'instance')
+  if (instance?.kind !== 'attr' || instance.value === undefined) {
+    _emitWarnings.push('<Controls> outside <Flow> requires `instance={flow}` for native lowering; it was dropped.')
+    return 'Box {}'
+  }
+  const content = e.children.length > 0
+    ? `, extraContent = {\n${e.children.map((child) => `    ${emitKotlinChild(child, indent + 4)}`).join('\n')}\n${' '.repeat(indent + 2)}}`
+    : ''
+  return `PyreonStandaloneFlowControls(state = ${emitKotlinExpr(instance.value, 0)}, style = ${emitKotlinFlowControls(e)}${content})`
+}
+
 function emitKotlinFlowCustomPath(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'd')
   let value = attr?.kind === 'attr' ? attr.value : undefined
@@ -7390,27 +7405,55 @@ function emitKotlinFlowCustomPath(e: Extract<ExprIR, { kind: 'jsx-element' }>, i
 
 function emitKotlinFlowMiniMap(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
   for (const name of ['style', 'class']) if (e.attrs.some((a) => a.kind === 'attr' && a.name === name)) _emitWarnings.push(`<MiniMap ${name}> is browser CSS and is not applied natively; its dimensions, colors, and interactions still lower.`)
-  const str = (name: string, fallback: string): string => { const value = readStaticAttrKotlin(e, name); return JSON.stringify(typeof value === 'string' ? value : fallback) }
-  const num = (name: string, fallback: number): string => { const value = readStaticAttrKotlin(e, name); const n = typeof value === 'number' ? value : fallback; return `${n}${Number.isInteger(n) ? '.0' : ''}` }
-  const bool = (name: string, fallback: boolean): string => readStaticAttrKotlin(e, name) === false ? 'false' : readStaticAttrKotlin(e, name) === true ? 'true' : String(fallback)
+  const expr = (name: string, fallback: string): string => {
+    const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === name)
+    return attr?.kind === 'attr' && attr.value !== undefined ? emitKotlinExpr(attr.value, 0) : fallback
+  }
+  const str = (name: string, fallback: string): string => {
+    const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === name)
+    const value = attr?.kind === 'attr' ? attr.value : undefined
+    const callback = value?.kind === 'arrow' || (value?.kind === 'identifier' && (_functionNames.has(value.name) || _moduleConstExprsKotlin.get(value.name)?.kind === 'arrow'))
+    return callback ? JSON.stringify(fallback) : expr(name, JSON.stringify(fallback))
+  }
+  const num = (name: string, fallback: number): string => {
+    const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === name)
+    if (attr?.kind !== 'attr' || attr.value === undefined) return `${fallback}.0`
+    if (attr.value.kind !== 'literal') return `(${emitKotlinExpr(attr.value, 0)}).toDouble()`
+    const value = attr.value.value
+    return typeof value === 'number' ? `${value}${Number.isInteger(value) ? '.0' : ''}` : emitKotlinExpr(attr.value, 0)
+  }
+  const bool = (name: string, fallback: boolean): string => expr(name, String(fallback))
   return `PyreonFlowMiniMapStyle(nodeColor = ${str('nodeColor', '#e2e8f0')}, maskColor = ${str('maskColor', '#000000')}, width = ${num('width', 200)}, height = ${num('height', 150)}, pannable = ${bool('pannable', true)}, zoomable = ${bool('zoomable', true)})`
 }
 
 function emitKotlinFlowControls(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
-  const bool = (name: string, fallback: boolean): string => readStaticAttrKotlin(e, name) === false ? 'false' : readStaticAttrKotlin(e, name) === true ? 'true' : String(fallback)
+  const expr = (name: string, fallback: string): string => {
+    const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === name)
+    return attr?.kind === 'attr' && attr.value !== undefined ? emitKotlinExpr(attr.value, 0) : fallback
+  }
+  const bool = (name: string, fallback: boolean): string => expr(name, String(fallback))
   const position = readStaticAttrKotlin(e, 'position')
-  const pos = position === 'top-left' ? 'TopLeft' : position === 'top-right' ? 'TopRight' : position === 'bottom-right' ? 'BottomRight' : 'BottomLeft'
-  return `PyreonFlowControlsStyle(showZoomIn = ${bool('showZoomIn', true)}, showZoomOut = ${bool('showZoomOut', true)}, showFitView = ${bool('showFitView', true)}, showLock = ${bool('showLock', false)}, position = PyreonFlowControlsPosition.${pos})`
+  const positionAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'position')
+  const pos = position === 'top-left' ? 'PyreonFlowControlsPosition.TopLeft' : position === 'top-right' ? 'PyreonFlowControlsPosition.TopRight' : position === 'bottom-right' ? 'PyreonFlowControlsPosition.BottomRight' : typeof position === 'string' || positionAttr === undefined ? 'PyreonFlowControlsPosition.BottomLeft' : `pyreonFlowControlsPosition(${emitKotlinExpr(positionAttr.kind === 'attr' && positionAttr.value !== undefined ? positionAttr.value : { kind: 'literal', value: 'bottom-left' }, 0)})`
+  return `PyreonFlowControlsStyle(showZoomIn = ${bool('showZoomIn', true)}, showZoomOut = ${bool('showZoomOut', true)}, showFitView = ${bool('showFitView', true)}, showLock = ${bool('showLock', false)}, position = ${pos})`
 }
 
 function emitKotlinFlowBackground(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
   const variant = readStaticAttrKotlin(e, 'variant')
-  const resolvedVariant = variant === 'lines' ? 'Lines' : variant === 'cross' ? 'Cross' : 'Dots'
-  const gap = readStaticAttrKotlin(e, 'gap')
-  const size = readStaticAttrKotlin(e, 'size')
-  const color = readStaticAttrKotlin(e, 'color')
-  const n = (value: unknown, fallback: number): string => `${typeof value === 'number' ? value : fallback}${Number.isInteger(typeof value === 'number' ? value : fallback) ? '.0' : ''}`
-  return `PyreonFlowBackgroundStyle(variant = PyreonFlowBackgroundVariant.${resolvedVariant}, gap = ${n(gap, 20)}, size = ${n(size, 1)}, color = ${typeof color === 'string' ? JSON.stringify(color) : '"#dddddd"'})`
+  const variantAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'variant')
+  const resolvedVariant = variant === 'lines' ? 'PyreonFlowBackgroundVariant.Lines' : variant === 'cross' ? 'PyreonFlowBackgroundVariant.Cross' : variant === 'dots' || variantAttr === undefined ? 'PyreonFlowBackgroundVariant.Dots' : `pyreonFlowBackgroundVariant(${emitKotlinExpr(variantAttr.kind === 'attr' && variantAttr.value !== undefined ? variantAttr.value : { kind: 'literal', value: 'dots' }, 0)})`
+  const expr = (name: string, fallback: string): string => {
+    const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === name)
+    return attr?.kind === 'attr' && attr.value !== undefined ? emitKotlinExpr(attr.value, 0) : fallback
+  }
+  const num = (name: string, fallback: number): string => {
+    const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === name)
+    if (attr?.kind !== 'attr' || attr.value === undefined) return `${fallback}.0`
+    if (attr.value.kind !== 'literal') return `(${emitKotlinExpr(attr.value, 0)}).toDouble()`
+    const value = attr.value.value
+    return typeof value === 'number' ? `${value}${Number.isInteger(value) ? '.0' : ''}` : emitKotlinExpr(attr.value, 0)
+  }
+  return `PyreonFlowBackgroundStyle(variant = ${resolvedVariant}, gap = ${num('gap', 20)}, size = ${num('size', 1)}, color = ${expr('color', '"#dddddd"')})`
 }
 
 /**
