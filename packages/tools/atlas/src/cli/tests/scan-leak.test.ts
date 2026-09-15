@@ -35,7 +35,10 @@ describe('atlas scan catches a real subscription-retention leak', () => {
     // stays verified: a leak checker that cries wolf on a clean component
     // costs more trust than it earns.
     expect(run.status, run.stderr).toBe(1)
-    expect(run.stdout).toMatch(/2 component\(s\), 4 scenario\(s\) — 2 verified, 2 failing/)
+    // 6 scenarios: Default + Empty + Long content per component — the Default
+    // is unconditional now, so the leaky component fails three, not two.
+    expect(run.stdout).toMatch(/2 component\(s\), 6 scenario\(s\) — 3 verified, 3 failing/)
+    expect(run.stderr).toContain('leaky--default')
     // Both scenarios still named; the failing CHECK is named with them now, so
     // a reader learns it was the LEAK check without opening the catalog.
     expect(run.stderr).toContain('leaky--empty')

@@ -38,7 +38,7 @@ export interface ContentBlocks {
    * `<table>`, so the SSR markup and the client mount disagree and the
    * SSR-parity check reports the COMPONENT as failing to hydrate.
    */
-  readonly tag?: 'div' | 'li'
+  readonly tag?: 'div' | 'li' | 'option'
 }
 
 /** What discovery knows about how a component renders. */
@@ -47,12 +47,25 @@ export interface ContentShape {
   name: string
   /** The DOM tag the component renders as, when discovery could read it. */
   tag?: string | undefined
+  /**
+   * The COMPONENT a rocketstyle chain renders through (`el.config({ component:
+   * ModalBase })`) — its display name, when the base is a function rather
+   * than a tag. A base decides what the chain consumes the way a tag does:
+   * a modal base needs `open` before it renders anything at all.
+   */
+  base?: string | undefined
 }
 
 /** The seed: args merged UNDER every scenario, plus the controls that edit them. */
 export interface ContentSeed {
   args: Record<string, unknown>
   controls: PropControl[]
+  /**
+   * The prop that carries the CONTENT (`children`, `placeholder`, …) — the one
+   * an edge-case scenario should blank or overflow. Absent when the seed
+   * carries no text at all (a void tag, a layout container).
+   */
+  contentKey?: string
 }
 
 /** Tags that can carry no children at all, and what they take instead. */
@@ -75,7 +88,33 @@ const LIST_TAGS = new Set(['ul', 'ol', 'menu'])
  * NOTHING rather than something the parser would relocate — see
  * `ContentBlocks.tag`.
  */
-const STRICT_CONTAINERS = new Set(['table', 'thead', 'tbody', 'tfoot', 'tr', 'colgroup', 'dl', 'select', 'datalist', 'optgroup'])
+const STRICT_CONTAINERS = new Set(['table', 'thead', 'tbody', 'tfoot', 'tr', 'colgroup', 'dl', 'datalist', 'optgroup'])
+/** Containers whose children must be `<option>`. */
+const OPTION_TAGS = new Set(['select', 'datalist', 'optgroup'])
+
+/**
+ * Bases that render NOTHING until they are opened — a modal, dialog, drawer,
+ * sheet. Seeding `open: true` is what makes the scenario show (and verify)
+ * the component rather than its closed state, which is no DOM at all. The
+ * workbench wires the base's `onClose` back to this control, so closing the
+ * overlay in the preview flips it off like a real app would.
+ */
+const OPEN_BASE = /(?:Modal|Dialog|Drawer|Sheet|Overlay)(?:Base)?$/
+/** Bases that render a native `<select>` — content is `<option>`s, never text. */
+const OPTION_BASE = /SelectBase$/
+
+/**
+ * Props that carry a component's CONTENT, by name. The edge-case plugin
+ * blanks/overflows one of these; an arbitrary `text` control (`src`,
+ * `trackColor`, `alt`) is a value, not content, and overflowing it produces a
+ * request for `./The%20quick%20brown%20fox…` rather than a wrapping check.
+ */
+export const CONTENT_KEYS = /^(?:children|label|title|text|content|placeholder|description|caption|message|heading|subtitle|summary|name)$/
+
+/** Is this prop name a content channel (see `CONTENT_KEYS`)? */
+export function isContentKey(name: string): boolean {
+  return CONTENT_KEYS.test(name)
+}
 
 /**
  * Names that read as LAYOUT: the component exists to arrange children. A
@@ -102,6 +141,19 @@ function text(name: string, key = 'children'): ContentSeed {
   return {
     args: { [key]: name },
     controls: [{ name: key, kind: 'text', defaultValue: name, reactive: false, required: false }],
+    contentKey: key,
+  }
+}
+
+/** Prepend an `open: true` seed (+ its boolean control) to another seed. */
+function opened(seed: ContentSeed): ContentSeed {
+  return {
+    args: { open: true, ...seed.args },
+    controls: [
+      { name: 'open', kind: 'boolean', defaultValue: true, reactive: false, required: false },
+      ...seed.controls,
+    ],
+    ...(seed.contentKey ? { contentKey: seed.contentKey } : {}),
   }
 }
 
@@ -132,6 +184,17 @@ export function deriveContent(shape: ContentShape): ContentSeed {
   if (tag && VOID_MEDIA.has(tag)) return { args: {}, controls: [] }
   if (tag && FIELDS.has(tag)) return text('Type here…', 'placeholder')
   if (tag && STRICT_CONTAINERS.has(tag)) return { args: {}, controls: [] }
+  if (tag && OPTION_TAGS.has(tag)) {
+    // A `<select>` with a string child is a `<select>` with nothing in it —
+    // the parser drops text that is not inside an `<option>`.
+    const blocks: ContentBlocks = { __atlasContent: 'blocks', count: BLOCKS, tag: 'option' }
+    return { args: { children: blocks }, controls: [] }
+  }
+  if (shape.base && OPTION_BASE.test(shape.base)) {
+    const blocks: ContentBlocks = { __atlasContent: 'blocks', count: BLOCKS, tag: 'option' }
+    return { args: { children: blocks }, controls: [] }
+  }
+  if (shape.base && OPEN_BASE.test(shape.base)) return opened(text(shape.name))
   if (isContainer(shape)) {
     const blocks: ContentBlocks = {
       __atlasContent: 'blocks',
@@ -178,10 +241,14 @@ export function materializeContent<N>(
   const { children, ...props } = args
   if (isContentBlocks(children)) {
     const count = Math.max(1, Math.min(12, Math.floor(children.count) || BLOCKS))
-    const tag = children.tag === 'li' ? 'li' : 'div'
+    const tag = children.tag === 'li' ? 'li' : children.tag === 'option' ? 'option' : 'div'
     const blocks: N[] = []
     for (let i = 1; i <= count; i++) {
-      blocks.push(h(tag, { 'data-atlas-content': 'block', style: BLOCK_STYLE }, String(i)))
+      blocks.push(
+        tag === 'option'
+          ? h('option', { value: String(i) }, `Option ${i}`)
+          : h(tag, { 'data-atlas-content': 'block', style: BLOCK_STYLE }, String(i)),
+      )
     }
     return { props, children: blocks }
   }

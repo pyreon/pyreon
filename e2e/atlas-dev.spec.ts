@@ -117,7 +117,9 @@ test.describe('atlas dev', () => {
     // publishes.
     await page.goto('/')
     await page.getByRole('button', { name: 'Chip', exact: true }).click()
-    const solid = page.getByTestId('scenario-chip--variant-solid')
+    // The all-defaults cell of the variant fan is named `Default` — the state
+    // the canvas opens on.
+    const solid = page.getByTestId('scenario-chip--default')
     await expect(solid).toBeVisible()
     await expect(solid.locator('[data-verdict]')).toHaveAttribute('data-verdict', 'ok')
 
@@ -171,7 +173,7 @@ test.describe('atlas dev', () => {
     await page.getByRole('button', { name: 'Docs', exact: true }).click()
 
     // Scenarios block: each derived state with its verdict, doubling as a LINK.
-    const solid = page.getByTestId('docs-scenario-chip--variant-solid')
+    const solid = page.getByTestId('docs-scenario-chip--default')
     await expect(solid).toBeVisible()
     await expect(solid.locator('[data-verdict]')).toHaveAttribute('data-verdict', 'ok')
 

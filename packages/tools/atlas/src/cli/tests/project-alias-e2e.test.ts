@@ -21,7 +21,7 @@ function aliasedProject(extra?: { atlasConfig?: string; viteConfig?: string }): 
   writeFileSync(
     join(dir, 'src', 'components', 'Badge.tsx'),
     'import { ACCENT } from "~/shared/tokens"\n' +
-      'export function Badge(props: { label?: string }) { return null as never }\n' +
+      'export function Badge(props: { label?: string }) { return 1 as never }\n' +
       'export const BADGE_COLOR = ACCENT\n',
   )
   if (extra?.viteConfig !== undefined) writeFileSync(join(dir, 'vite.config.ts'), extra.viteConfig)
