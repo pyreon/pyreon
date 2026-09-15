@@ -54,6 +54,7 @@ native view.
 
 - [x] Public runtime, instance, configuration, host, component, node and edge
   inventories are source-derived and fail closed when the public surface grows.
-- [x] Direct-manipulation configuration that previously lacked native fixture
-  coverage now has matching Swift and Kotlin assertions: drag-panning, pinch
-  zoom, double-click zoom, connection-line mode and default-marker override.
+- [x] Every lowered mutable configuration field is now asserted by matching
+  Swift and Kotlin behaviour fixtures. A source-derived compiler test prevents
+  new configuration fields from entering the native inventory without both
+  assertions.

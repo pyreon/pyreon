@@ -34,6 +34,21 @@ it('tracks every public mutable FlowConfig field in native lowering', () => {
   expect([...LOWERED_FLOW_CONFIG_PROPERTIES.keys()].sort()).toEqual(publicKeys)
 })
 
+it('asserts every lowered mutable FlowConfig field in both native behaviour fixtures', () => {
+  const fixtures = [
+    readFileSync(new URL('../../../../fundamentals/flow/native/tests/PyreonFlowStateTests.swift', import.meta.url), 'utf8'),
+    readFileSync(new URL('../../../../fundamentals/flow/native/tests/PyreonFlowStateTest.kt', import.meta.url), 'utf8'),
+  ]
+  for (const [publicName, nativeName] of LOWERED_FLOW_CONFIG_PROPERTIES) {
+    for (const fixture of fixtures) {
+      const asserted = fixture.split('\n').some((line) =>
+        line.includes('check(') && (line.includes(publicName) || line.includes(nativeName)),
+      )
+      expect(asserted, `${publicName} must be asserted in ${fixture.includes('struct PyreonFlowStateTests') ? 'Swift' : 'Kotlin'}`).toBe(true)
+    }
+  }
+})
+
 it('tracks every public FlowInstance member in native lowering', () => {
   const source = readFileSync(new URL('../../../../fundamentals/flow/src/types.ts', import.meta.url), 'utf8')
   const body = source.slice(source.indexOf('export interface FlowInstance'), source.indexOf('// ─── Component props'))

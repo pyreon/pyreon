@@ -55,17 +55,34 @@ fun main() {
     check(pyreonFlowEdgeId("1", "2") == "e-1-2", "Android generates missing edge ids like web")
     check(pyreonFlowEdgeId("1", "2", "out", "in") == "e-1-out-2-in", "Android includes handles in generated edge ids")
     val configured = PyreonFlowState<NodeData>(
-        panOnScroll = true, panOnScrollSpeed = 0.75, zoomOnScroll = false,
-        panOnDrag = false, zoomOnPinch = false, zoomOnDoubleClick = true,
+        minZoom = 0.25, maxZoom = 3.5, snapToGrid = true, snapGrid = 20.0,
+        nodeExtent = PyreonFlowNodeExtent(-10.0, -20.0, 500.0, 600.0),
+        connectionRules = mapOf("source" to listOf("target")), defaultMarkerEnd = null,
+        nodesDraggable = false, nodesConnectable = false, nodesSelectable = false, nodesFocusable = false,
+        edgesFocusable = false, disableKeyboardA11y = true, nodesDeletable = false, edgesDeletable = false, edgesReconnectable = false,
+        edgeInteractionWidth = 33.0, connectionRadius = 12.0, pannable = false, panOnDrag = false,
+        panOnScroll = true, panOnScrollSpeed = 0.75, zoomable = false, zoomOnScroll = false,
+        zoomOnPinch = false, zoomOnDoubleClick = true, selectionOnDrag = true,
+        selectionMode = "full", multiSelect = false, onlyRenderVisibleElements = true, snapToObjects = false,
+        defaultEdgeType = "straight", connectionLineType = "step",
+        defaultEdgeOptions = PyreonFlowDefaultEdgeOptions(type = "smoothstep", animated = true, interactionWidth = 44.0),
+        fitViewOnLoad = true, fitViewPadding = 0.2, autoHistory = false,
         deleteKeys = listOf("ForwardDelete"), multiSelectionKey = "ctrl",
         selectionKey = null, zoomActivationKey = "meta", preventScrolling = false,
-        defaultMarkerEnd = null, connectionLineType = "step",
+        connectionValidator = { it.source != it.target }, reducedMotion = false,
     )
-    check(configured.panOnScroll && configured.panOnScrollSpeed == 0.75, "Android retains scroll config")
-    check(!configured.zoomOnScroll && configured.deleteKeys == listOf("ForwardDelete"), "Android retains zoom/delete config")
+    check(configured.minZoom == 0.25 && configured.maxZoom == 3.5 && configured.snapToGrid && configured.snapGrid == 20.0, "Android retains viewport and grid config")
+    check(configured.nodeExtent == PyreonFlowNodeExtent(-10.0, -20.0, 500.0, 600.0) && configured.connectionRules == mapOf("source" to listOf("target")), "Android retains extent and connection rules")
+    check(!configured.nodesDraggable && !configured.nodesConnectable && !configured.nodesSelectable && !configured.nodesFocusable, "Android retains node interaction config")
+    check(!configured.edgesFocusable && configured.disableKeyboardA11y && !configured.nodesDeletable && !configured.edgesDeletable && !configured.edgesReconnectable, "Android retains accessibility and deletion config")
+    check(configured.edgeInteractionWidth == 33.0 && configured.connectionRadius == 12.0 && !configured.pannable && !configured.panOnDrag, "Android retains pointer config")
+    check(configured.panOnScroll && configured.panOnScrollSpeed == 0.75 && !configured.zoomable && !configured.zoomOnScroll, "Android retains scroll and zoom config")
     check(configured.multiSelectionKey == "ctrl" && configured.selectionKey == null && configured.zoomActivationKey == "meta" && !configured.preventScrolling, "Android retains modifier config")
-    check(!configured.panOnDrag && !configured.zoomOnPinch && configured.zoomOnDoubleClick, "Android retains direct-manipulation config")
-    check(configured.connectionLineType == "step" && configured.defaultMarkerEnd == null, "Android retains connection presentation config")
+    check(!configured.zoomOnPinch && configured.zoomOnDoubleClick && configured.selectionOnDrag && configured.selectionMode == "full" && !configured.multiSelect, "Android retains direct-manipulation config")
+    check(configured.onlyRenderVisibleElements && !configured.snapToObjects && configured.defaultEdgeType == "straight" && configured.connectionLineType == "step", "Android retains render and connection config")
+    check(configured.defaultEdgeOptions == PyreonFlowDefaultEdgeOptions(type = "smoothstep", animated = true, interactionWidth = 44.0) && configured.defaultMarkerEnd == null, "Android retains edge defaults")
+    check(configured.fitViewOnLoad && configured.fitViewPadding == 0.2 && !configured.autoHistory && configured.reducedMotion == false, "Android retains lifecycle config")
+    check(!configured.isValidConnection(PyreonFlowConnection("same", "same")) && configured.deleteKeys == listOf("ForwardDelete"), "Android retains validation and delete-key config")
     configured.minZoom = 0.75
     configured.pannable = false
     configured.zoomTo(0.1)

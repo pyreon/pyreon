@@ -39,16 +39,33 @@ struct PyreonFlowStateTests {
         check(pyreonFlowEdgeId(source: "1", target: "2") == "e-1-2", "Apple generates missing edge ids like web")
         check(pyreonFlowEdgeId(source: "1", target: "2", sourceHandle: "out", targetHandle: "in") == "e-1-out-2-in", "Apple includes handles in generated edge ids")
         let configured = PyreonFlowState<NodeData>(
-            defaultMarkerEnd: nil, panOnDrag: false, panOnScroll: true, panOnScrollSpeed: 0.75,
-            zoomOnScroll: false, zoomOnPinch: false, zoomOnDoubleClick: true,
-            connectionLineType: "step",
+            minZoom: 0.25, maxZoom: 3.5, snapToGrid: true, snapGrid: 20,
+            nodeExtent: PyreonFlowNodeExtent(minX: -10, minY: -20, maxX: 500, maxY: 600),
+            connectionRules: ["source": ["target"]], defaultMarkerEnd: nil,
+            nodesDraggable: false, nodesConnectable: false, nodesSelectable: false, nodesFocusable: false,
+            edgesFocusable: false, disableKeyboardA11y: true, nodesDeletable: false, edgesDeletable: false, edgesReconnectable: false,
+            edgeInteractionWidth: 33, connectionRadius: 12, pannable: false, panOnDrag: false,
+            panOnScroll: true, panOnScrollSpeed: 0.75, zoomable: false, zoomOnScroll: false,
+            zoomOnPinch: false, zoomOnDoubleClick: true, selectionOnDrag: true,
+            selectionMode: "full", multiSelect: false, onlyRenderVisibleElements: true, snapToObjects: false,
+            defaultEdgeType: "straight", connectionLineType: "step",
+            defaultEdgeOptions: PyreonFlowDefaultEdgeOptions(type: "smoothstep", animated: true, interactionWidth: 44),
+            fitView: true, fitViewPadding: 0.2, autoHistory: false,
+            isValidConnection: { $0.source != $0.target },
             reducedMotion: false, deleteKeys: ["ForwardDelete"], multiSelectionKey: "ctrl",
             selectionKey: nil, zoomActivationKey: "meta", preventScrolling: false)
-        check(configured.panOnScroll && configured.panOnScrollSpeed == 0.75, "Apple retains scroll config")
-        check(!configured.zoomOnScroll && configured.deleteKeys == ["ForwardDelete"], "Apple retains zoom/delete config")
+        check(configured.minZoom == 0.25 && configured.maxZoom == 3.5 && configured.snapToGrid && configured.snapGrid == 20, "Apple retains viewport and grid config")
+        check(configured.nodeExtent == PyreonFlowNodeExtent(minX: -10, minY: -20, maxX: 500, maxY: 600) && configured.connectionRules == ["source": ["target"]], "Apple retains extent and connection rules")
+        check(!configured.nodesDraggable && !configured.nodesConnectable && !configured.nodesSelectable && !configured.nodesFocusable, "Apple retains node interaction config")
+        check(!configured.edgesFocusable && configured.disableKeyboardA11y && !configured.nodesDeletable && !configured.edgesDeletable && !configured.edgesReconnectable, "Apple retains accessibility and deletion config")
+        check(configured.edgeInteractionWidth == 33 && configured.connectionRadius == 12 && !configured.pannable && !configured.panOnDrag, "Apple retains pointer config")
+        check(configured.panOnScroll && configured.panOnScrollSpeed == 0.75 && !configured.zoomable && !configured.zoomOnScroll, "Apple retains scroll and zoom config")
         check(configured.multiSelectionKey == "ctrl" && configured.selectionKey == nil && configured.zoomActivationKey == "meta" && !configured.preventScrolling, "Apple retains modifier config")
-        check(!configured.panOnDrag && !configured.zoomOnPinch && configured.zoomOnDoubleClick, "Apple retains direct-manipulation config")
-        check(configured.connectionLineType == "step" && configured.defaultMarkerEnd == nil, "Apple retains connection presentation config")
+        check(!configured.zoomOnPinch && configured.zoomOnDoubleClick && configured.selectionOnDrag && configured.selectionMode == "full" && !configured.multiSelect, "Apple retains direct-manipulation config")
+        check(configured.onlyRenderVisibleElements && !configured.snapToObjects && configured.defaultEdgeType == "straight" && configured.connectionLineType == "step", "Apple retains render and connection config")
+        check(configured.defaultEdgeOptions == PyreonFlowDefaultEdgeOptions(type: "smoothstep", animated: true, interactionWidth: 44) && configured.defaultMarkerEnd == nil, "Apple retains edge defaults")
+        check(configured.fitViewOnLoad && configured.fitViewPadding == 0.2 && !configured.autoHistory && configured.reducedMotion == false, "Apple retains lifecycle config")
+        check(!configured.isValidConnection(PyreonFlowConnection(source: "same", target: "same")) && configured.deleteKeys == ["ForwardDelete"], "Apple retains validation and delete-key config")
         configured.minZoom = 0.75
         configured.pannable = false
         configured.zoomTo(0.1)
