@@ -20,11 +20,11 @@
  */
 
 import type { IrDocument, IrOperation, IrType, Reach } from '../core/ir'
-import { typeIdent } from '../core/naming'
+import { propKey, typeIdent } from '../core/naming'
 import { byTag, endpointSpec, isMutation, tagFile } from './client'
 import { tsType } from './schema'
 import type { GeneratedFile } from './writer'
-import { safeBlockComment } from './writer'
+import { CONTROL_CHARS, q, safeBlockComment } from './writer'
 
 export const DOCS_DIR = 'docs'
 
@@ -86,10 +86,19 @@ function frontmatter(title: string, description: string): string[] {
  * Backslash first, for the same reason `mdCell` below does it: escaping only
  * the quote turns `\\"` into `\\\"` — an escaped backslash followed by a LIVE
  * quote — and the scalar ends anyway.
+ *
+ * The control characters go the way they go in every other emitted context:
+ * OUT. A double-quoted YAML scalar has no escape available for them at this
+ * layer, and js-yaml -- which is what gray-matter reads these pages with --
+ * REFUSES the whole document on one, naming a line and column in a file the
+ * author never wrote. NUL, BEL and ESC each took a page down; DEL and NEL
+ * parsed but were silently dropped, so escaping them would buy nothing a strip
+ * does not. TAB is legal and stays.
  */
 function yaml(value: string): string {
   return value
     .replace(/[\r\n]+/g, ' ')
+    .replace(CONTROL_CHARS, '')
     .trim()
     .replace(/\\/g, '\\\\')
     .replace(/"/g, '\\"')
@@ -173,12 +182,20 @@ function tagPage(
 
     const params = [...op.pathParams, ...op.queryParams]
     if (params.length > 0) {
+      // A parameter NAME is spec-supplied text landing in a table cell, so it
+      // takes the same escape every other cell here takes. A PATH name is
+      // normalized to an identifier, but a QUERY name is a WIRE name and
+      // survives verbatim -- `p|q` split the row, leaving the header at four
+      // cells and that row at five, which silently shifts every value one
+      // column left of its heading.
       lines.push('| Parameter | In | Required | Type |', '| --- | --- | --- | --- |')
       for (const p of op.pathParams) {
-        lines.push(`| \`${p.name}\` | path | yes | ${typeCell(p.type)} |`)
+        lines.push(`| \`${md(p.name)}\` | path | yes | ${typeCell(p.type)} |`)
       }
       for (const p of op.queryParams) {
-        lines.push(`| \`${p.name}\` | query | ${p.required ? 'yes' : 'no'} | ${typeCell(p.type)} |`)
+        lines.push(
+          `| \`${md(p.name)}\` | query | ${p.required ? 'yes' : 'no'} | ${typeCell(p.type)} |`,
+        )
       }
       lines.push('')
     }
@@ -238,12 +255,19 @@ function hookName(op: IrOperation): string {
 /** An argument literal shaped like the endpoint's own `EndpointArgs`. */
 function argsLiteral(op: IrOperation): string {
   const parts: string[] = []
+  // `propKey` and `q`, not raw interpolation. The snippet is TypeScript a
+  // reader COPIES, and a QUERY name is a WIRE name that survives verbatim by
+  // design -- `odd wire-name` produced `query: { odd wire-name: '…' }`, which
+  // is not a program. The client emitter has quoted these since the parameter
+  // -name fix; the page that documents it did not.
   if (op.pathParams.length > 0) {
-    parts.push(`params: { ${op.pathParams.map((p) => `${p.name}: ${sample(p.type)}`).join(', ')} }`)
+    const fields = op.pathParams.map((p) => `${propKey(p.name)}: ${sample(p.type)}`)
+    parts.push(`params: { ${fields.join(', ')} }`)
   }
   const required = op.queryParams.filter((p) => p.required)
   if (required.length > 0) {
-    parts.push(`query: { ${required.map((p) => `${p.name}: ${sample(p.type)}`).join(', ')} }`)
+    const fields = required.map((p) => `${propKey(p.name)}: ${sample(p.type)}`)
+    parts.push(`query: { ${fields.join(', ')} }`)
   }
   if (op.body) parts.push('json: /* … */ {}')
   return parts.length > 0 ? `{ ${parts.join(', ')} }` : ''
@@ -256,7 +280,11 @@ function sample(type: IrType): string {
     case 'boolean':
       return 'true'
     case 'string':
-      return type.enum && type.enum[0] ? `'${type.enum[0]}'` : "'…'"
+      // An enum VALUE is spec text landing in a string literal, so it takes
+      // the same escaper the code emitters use. A raw `'` ended the literal
+      // and a raw newline ended the LINE, which is how a value breaks out of
+      // a fenced snippet.
+      return type.enum && type.enum[0] ? q(type.enum[0]) : "'…'"
     default:
       return "'…'"
   }

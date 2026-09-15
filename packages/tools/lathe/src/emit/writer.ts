@@ -151,6 +151,80 @@ export function relativeSpecifier(fromPath: string, toPath: string): string {
 }
 
 /**
+ * The control characters no emitted context can carry.
+ *
+ * TAB, LF and CR are deliberately absent: the first is legal everywhere the
+ * emit puts text, and the other two are line terminators each context handles
+ * on its own terms (collapsed in a comment, escaped in a literal, escaped in a
+ * regex). What is left is the C0 range plus DEL, which is illegal or silently
+ * dropped in every one of them.
+ *
+ * ONE definition rather than the four inline copies this used to be. Each copy
+ * is a place a future context can be given a subtly different set — and a
+ * sanitizer that covers most of a class is the shape that ships.
+ */
+// eslint-disable-next-line no-control-regex
+export const CONTROL_CHARS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g
+
+/**
+ * Wrap an already-valid regex SOURCE in a literal, safely.
+ *
+ * The package emits regex literals from two places -- a `pattern` constraint in
+ * `schema.ts` and a parameterised mock route in `mock.ts` -- and the lexical
+ * question is the same in both: a literal is terminated by `/` and by all four
+ * JavaScript line terminators (`RegularExpressionChar` is built from
+ * `RegularExpressionNonTerminator`, "SourceCharacter but not LineTerminator",
+ * so LF, CR, U+2028 and U+2029 are illegal ANYWHERE in one, character class
+ * included). A raw control character is NOT a terminator and stays legal.
+ *
+ * The first site grew a sanitizer and its comment called the regex literal
+ * "the fifth surface", singular. It was the fifth CONTEXT and the FIRST of two
+ * sites: `mockPath` escaped regex metacharacters and no terminator at all, so
+ * a spec path carrying a newline emitted `path: /\/x\/a<LF>b(?:\?|$)/` and the
+ * whole `mocks.ts` module failed to parse -- under the default config, for
+ * every operation in it.
+ *
+ * ESCAPE-AWARE, so it needs no precondition from its callers. Replacing a raw
+ * terminator blind is the "escape the escape character first" trap in a third
+ * syntax: `mockPath` joins segments with `\/`, so a naive `/` -> `\/` pass
+ * would turn an already-escaped slash into an escaped BACKSLASH followed by a
+ * live `/` and end the literal anyway. The walk consumes each `\X` pair whole,
+ * so an escaped terminator is rewritten once and an escaped anything-else is
+ * copied through untouched.
+ */
+export function regexLiteral(source: string): string {
+  let out = ''
+  for (let i = 0; i < source.length; i++) {
+    const c = source[i] as string
+    if (c !== '\\') {
+      out += REGEX_ESCAPES[c] ?? c
+      continue
+    }
+    const next = source[i + 1]
+    // A trailing lone backslash is not valid regex source, but emitting it
+    // raw ends the literal one character early -- which turns a broken
+    // constraint into a broken module. Escape it and let the RegExp
+    // constructor be the thing that complains.
+    if (next === undefined) {
+      out += '\\\\'
+      continue
+    }
+    out += REGEX_ESCAPES[next] ?? `\\${next}`
+    i++
+  }
+  return `/${out}/`
+}
+
+/** Each terminator, and the escape that means the same character. */
+const REGEX_ESCAPES: Readonly<Record<string, string>> = {
+  '/': '\\/',
+  '\n': '\\n',
+  '\r': '\\r',
+  '\u2028': '\\u2028',
+  '\u2029': '\\u2029',
+}
+
+/**
  * Make a spec-supplied string safe inside a `//` line comment.
  *
  * A line comment ends at the first line terminator, so a newline in a value
@@ -164,8 +238,7 @@ export function relativeSpecifier(fromPath: string, toPath: string): string {
 export function safeLineComment(value: string): string {
   return value
     .replace(/[\r\n\u2028\u2029]+/g, ' ')
-    // eslint-disable-next-line no-control-regex
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
+    .replace(CONTROL_CHARS, '')
     .trim()
 }
 
@@ -198,8 +271,7 @@ export function safeBlockComment(value: string): string {
       // multi-character terminator. `safeLineComment` already has these two in
       // the correct order.
       .replace(/[\r\u2028\u2029]/g, '\n')
-      // eslint-disable-next-line no-control-regex
-      .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
+      .replace(CONTROL_CHARS, '')
       .split('*/')
       .join('*\\/')
   )
@@ -248,8 +320,7 @@ export function q(value: string): string {
     .replace(/\r/g, '\\r')
     .replace(/\u2028/g, '\\u2028')
     .replace(/\u2029/g, '\\u2029')
-    // eslint-disable-next-line no-control-regex
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, (c) =>
+    .replace(CONTROL_CHARS, (c) =>
       `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`,
     )
   return `'${escaped}'`
