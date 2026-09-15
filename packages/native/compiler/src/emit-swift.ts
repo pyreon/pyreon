@@ -233,6 +233,7 @@ type StaticFlowNodeToolbar = {
   offset: number
   showOnSelect: boolean
   selectedOverride?: boolean
+  nodeIdOverride?: string
   contentComponent: string
 }
 let _flowComponentToolbars: Map<string, StaticFlowNodeToolbar[]> = new Map()
@@ -1202,18 +1203,26 @@ export function emitSwift(
         return entry?.kind === 'attr' && entry.value.kind === 'literal' ? entry.value.value : undefined
       }
       const has = (name: string): boolean => toolbar.attrs.some((entry) => entry.kind === 'attr' && entry.name === name)
-      const position = read('position'), align = read('align'), offset = read('offset'), showOnSelect = read('showOnSelect'), selected = read('selected')
+      const selectedExpr = toolbar.attrs.find((entry) => entry.kind === 'attr' && entry.name === 'selected')
+      const selectedValue = selectedExpr?.kind === 'attr' ? selectedExpr.value : undefined
+      const selectedUsesNode = selectedValue?.kind === 'identifier' && selectedValue.name === 'selected' || selectedValue?.kind === 'member' && selectedValue.property === 'selected'
+      const nodeIdExpr = toolbar.attrs.find((entry) => entry.kind === 'attr' && entry.name === 'nodeId')
+      const nodeIdValue = nodeIdExpr?.kind === 'attr' ? nodeIdExpr.value : undefined
+      const nodeIdUsesNode = nodeIdValue?.kind === 'identifier' && (nodeIdValue.name === 'id' || nodeIdValue.name === 'nodeId') || nodeIdValue?.kind === 'member' && (nodeIdValue.property === 'id' || nodeIdValue.property === 'nodeId')
+      const position = read('position'), align = read('align'), offset = read('offset'), showOnSelect = read('showOnSelect'), selected = read('selected'), nodeId = read('nodeId')
       const invalid = (has('position') && typeof position !== 'string') ||
         (has('align') && typeof align !== 'string') ||
         (has('offset') && typeof offset !== 'number') ||
         (has('showOnSelect') && typeof showOnSelect !== 'boolean') ||
-        (has('selected') && typeof selected !== 'boolean')
+        (has('selected') && typeof selected !== 'boolean' && !selectedUsesNode) ||
+        (has('nodeId') && typeof nodeId !== 'string' && !nodeIdUsesNode)
       parsedToolbars.push({
         position: typeof position === 'string' ? position : 'top',
         align: typeof align === 'string' ? align : 'center',
         offset: typeof offset === 'number' ? offset : 8,
         showOnSelect: typeof showOnSelect === 'boolean' ? showOnSelect : true,
-        ...(typeof selected === 'boolean' ? { selectedOverride: selected } : {}),
+        ...(!selectedUsesNode ? { selectedOverride: typeof selected === 'boolean' ? selected : false } : {}),
+        ...(typeof nodeId === 'string' ? { nodeIdOverride: nodeId } : {}),
         contentComponent,
       })
       if (invalid) _flowComponentsWithInvalidToolbars.add(component.name)
@@ -8553,7 +8562,7 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
     : ''
   const toolbarCases = nodeTypes?.flatMap(({ type, component }) => {
     const configs = _flowComponentToolbars.get(component)
-    return configs?.length ? [`case ${JSON.stringify(type)}: return [${configs.map((config) => `PyreonFlowNodeToolbarConfig(position: ${JSON.stringify(config.position)}, align: ${JSON.stringify(config.align)}, offset: ${config.offset}, showOnSelect: ${config.showOnSelect}${config.selectedOverride === undefined ? '' : `, selectedOverride: ${config.selectedOverride}`})`).join(', ')}]`] : []
+    return configs?.length ? [`case ${JSON.stringify(type)}: return [${configs.map((config) => `PyreonFlowNodeToolbarConfig(position: ${JSON.stringify(config.position)}, align: ${JSON.stringify(config.align)}, offset: ${config.offset}, showOnSelect: ${config.showOnSelect}${config.selectedOverride === undefined ? '' : `, selectedOverride: ${config.selectedOverride}`}${config.nodeIdOverride === undefined ? '' : `, nodeIdOverride: ${JSON.stringify(config.nodeIdOverride)}`})`).join(', ')}]`] : []
   }) ?? []
   const nodeToolbarConfigArg = toolbarCases.length > 0
     ? `, nodeToolbarConfigs: { pyreonNode in\n    switch pyreonNode.type {\n    ${toolbarCases.join('\n    ')}\n    default: return []\n    }\n  }`

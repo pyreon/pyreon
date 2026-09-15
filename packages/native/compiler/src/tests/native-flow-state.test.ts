@@ -379,7 +379,7 @@ describe('<Flow> native host lowering', { timeout: 30_000 }, () => {
       function ToolbarNode(props: NodeComponentProps<NodeData>) {
         return <Stack>
           <Text>{props.data().label}</Text>
-          <NodeToolbar position="bottom" align="end" offset={12} showOnSelect={false} selected={false}>
+          <NodeToolbar position="bottom" align="end" offset={12} showOnSelect={false} selected={false} nodeId="anchor">
             <Button onClick={() => console.log(props.id)}>Edit {props.data().label}</Button>
           </NodeToolbar>
         </Stack>
@@ -392,12 +392,12 @@ describe('<Flow> native host lowering', { timeout: 30_000 }, () => {
     const swift = transform(source, { target: 'swift' })
     const kotlin = transform(source, { target: 'kotlin' })
     expect(swift.code).toContain('nodeToolbarConfigs: { pyreonNode in')
-    expect(swift.code).toContain('case "toolbar": return [PyreonFlowNodeToolbarConfig(position: "bottom", align: "end", offset: 12, showOnSelect: false, selectedOverride: false)]')
+    expect(swift.code).toContain('case "toolbar": return [PyreonFlowNodeToolbarConfig(position: "bottom", align: "end", offset: 12, showOnSelect: false, selectedOverride: false, nodeIdOverride: "anchor")]')
     expect(swift.code).toContain('nodeToolbar: { pyreonNode, pyreonToolbarIndex, pyreonSelected, pyreonDragging in')
     expect(swift.code).toContain('AnyView(ToolbarNodePyreonNodeToolbar(id: pyreonNode.id, data: { pyreonNode.data }, selected: { pyreonSelected }, dragging: { pyreonDragging }))')
     expect(swift.code).toContain('struct ToolbarNodePyreonNodeToolbar: View')
     expect(kotlin.code).toContain('nodeToolbarConfigs = { pyreonNode ->')
-    expect(kotlin.code).toContain('"toolbar" -> listOf(PyreonFlowNodeToolbarConfig(position = "bottom", align = "end", offset = 12.0, showOnSelect = false, selectedOverride = false))')
+    expect(kotlin.code).toContain('"toolbar" -> listOf(PyreonFlowNodeToolbarConfig(position = "bottom", align = "end", offset = 12.0, showOnSelect = false, selectedOverride = false, nodeIdOverride = "anchor"))')
     expect(kotlin.code).toContain('nodeToolbar = { pyreonNode, pyreonToolbarIndex, pyreonSelected, pyreonDragging ->')
     expect(kotlin.code).toContain('ToolbarNodePyreonNodeToolbar(id = pyreonNode.id, data = { pyreonNode.data }, selected = { pyreonSelected }, dragging = { pyreonDragging })')
     expect(kotlin.code).toContain('fun ToolbarNodePyreonNodeToolbar(')
@@ -418,7 +418,7 @@ describe('<Flow> native host lowering', { timeout: 30_000 }, () => {
       import { createFlow, Flow, NodeToolbar, type NodeComponentProps } from '@pyreon/flow'
       import { Stack, Text } from '@pyreon/primitives'
       function ToolbarNode(props: NodeComponentProps<{ label: string }>) {
-        return <Stack><NodeToolbar offset={props.data().label}><Text>A</Text></NodeToolbar><NodeToolbar><Text>B</Text></NodeToolbar></Stack>
+        return <Stack><NodeToolbar offset={props.data().label}><Text>A</Text></NodeToolbar><NodeToolbar selected={props.selected} nodeId={props.id}><Text>B</Text></NodeToolbar></Stack>
       }
       export function App() {
         const flow = createFlow({ nodes: [{ id: 'a', type: 'toolbar', position: { x: 0, y: 0 }, data: { label: 'Start' } }], edges: [] })

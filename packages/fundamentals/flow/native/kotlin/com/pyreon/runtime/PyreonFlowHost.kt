@@ -20,7 +20,7 @@ data class PyreonFlowEdgeUpdater(val edgeId: String, val end: String, val x: Dou
 data class PyreonFlowNodeResizerConfig(val minWidth: Double = 50.0, val minHeight: Double = 30.0, val handleSize: Double = 8.0, val showEdgeHandles: Boolean = false) {
     val directions: List<String> get() = if (showEdgeHandles) listOf("nw", "ne", "sw", "se", "n", "s", "e", "w") else listOf("nw", "ne", "sw", "se")
 }
-data class PyreonFlowNodeToolbarConfig(val position: String = "top", val align: String = "center", val offset: Double = 8.0, val showOnSelect: Boolean = true, val selectedOverride: Boolean? = null)
+data class PyreonFlowNodeToolbarConfig(val position: String = "top", val align: String = "center", val offset: Double = 8.0, val showOnSelect: Boolean = true, val selectedOverride: Boolean? = false, val nodeIdOverride: String? = null)
 data class PyreonFlowNodeToolbarPlacement(val x: Double, val y: Double, val anchorX: Double, val anchorY: Double)
 
 /** Screen-space twin of the web NodeToolbar portal placement. */

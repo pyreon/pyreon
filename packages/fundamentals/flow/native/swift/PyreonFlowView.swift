@@ -91,9 +91,9 @@ public struct PyreonFlowNodeResizerConfig: Equatable {
 }
 
 public struct PyreonFlowNodeToolbarConfig: Equatable {
-    public var position: String; public var align: String; public var offset: Double; public var showOnSelect: Bool; public var selectedOverride: Bool?
-    public init(position: String = "top", align: String = "center", offset: Double = 8, showOnSelect: Bool = true, selectedOverride: Bool? = nil) {
-        self.position = position; self.align = align; self.offset = offset; self.showOnSelect = showOnSelect; self.selectedOverride = selectedOverride
+    public var position: String; public var align: String; public var offset: Double; public var showOnSelect: Bool; public var selectedOverride: Bool?; public var nodeIdOverride: String?
+    public init(position: String = "top", align: String = "center", offset: Double = 8, showOnSelect: Bool = true, selectedOverride: Bool? = false, nodeIdOverride: String? = nil) {
+        self.position = position; self.align = align; self.offset = offset; self.showOnSelect = showOnSelect; self.selectedOverride = selectedOverride; self.nodeIdOverride = nodeIdOverride
     }
 }
 
@@ -787,8 +787,9 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
             let selected = state.isNodeSelected(node.id)
             ForEach(Array(nodeToolbarConfigs(node).enumerated()), id: \.offset) { index, config in
                 if (!config.showOnSelect || (config.selectedOverride ?? selected)), let toolbar = nodeToolbar(node, index, selected, nodeDragStart[node.id] != nil) {
-                    let absolute = state.getAbsolutePosition(node.id)
-                    let dimensions = state.getNodeDimensions(node.id)
+                    let targetId = config.nodeIdOverride ?? node.id
+                    let absolute = state.getAbsolutePosition(targetId)
+                    let dimensions = state.getNodeDimensions(targetId)
                     PyreonFlowToolbarPortal(
                         placement: pyreonFlowNodeToolbarPlacement(
                             node: PyreonFlowRect(x: absolute.x, y: absolute.y, width: dimensions.width, height: dimensions.height),

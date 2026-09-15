@@ -566,8 +566,9 @@ fun <T> PyreonFlowView(
             }
             for (node in visibleNodes) {
                 val config = nodeResizer(node) ?: continue
-                val absolute = state.getAbsolutePosition(node.id)
-                val dimensions = state.getNodeDimensions(node.id)
+                val targetId = config.nodeIdOverride ?: node.id
+                val absolute = state.getAbsolutePosition(targetId)
+                val dimensions = state.getNodeDimensions(targetId)
                 val width = dimensions.width
                 val height = dimensions.height
                 for (direction in config.directions) {
