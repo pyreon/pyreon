@@ -41,6 +41,11 @@ export function Canvas(props: { model: WorkbenchModel }) {
     if (!surface || !surface.contains(target) || target === surface) return hideOverlay()
     const s = stage.getBoundingClientRect()
     const r = target.getBoundingClientRect()
+    // The surface is zoomed with a transform, and a client rect is measured
+    // AFTER it — so the overlay box is right in viewport space, but the number
+    // has to be divided back: at 200% a 100×40 button reported 200 × 80, and
+    // the number is the addon's whole product.
+    const zoom = ZOOM_PCT[m.zoomIdx()]! / 100
     boxEl.style.display = 'block'
     boxEl.style.left = `${r.left - s.left + stage.scrollLeft}px`
     boxEl.style.top = `${r.top - s.top + stage.scrollTop}px`
@@ -49,7 +54,7 @@ export function Canvas(props: { model: WorkbenchModel }) {
     labelEl.style.display = 'block'
     labelEl.style.left = `${r.left - s.left + stage.scrollLeft}px`
     labelEl.style.top = `${r.bottom - s.top + stage.scrollTop + 6}px`
-    labelEl.textContent = `${Math.round(r.width)} × ${Math.round(r.height)}`
+    labelEl.textContent = `${Math.round(r.width / zoom)} × ${Math.round(r.height / zoom)}`
   }
 
   // Pointer tracking rides JSX event props on the Stage element (below) —
