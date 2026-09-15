@@ -112,23 +112,21 @@ describe('a TEXT mismatch recovers at the cursor, not at the end', () => {
     dispose()
   })
 
-  it('renders the CLIENT text FIRST, and leaves the server text after it', () => {
-    // Documents the shape exactly, because half of it is a known gap.
+  it('renders the CLIENT text and NOTHING of the server\'s', () => {
+    // This spec used to assert `clientserver`, with a KNOWN GAP paragraph
+    // saying a static child list has no extent to sweep against and that
+    // inferring one from the leftover cursor deletes `dangerouslySetInnerHTML`
+    // content. Both halves were wrong. The extent IS known — an element's
+    // closing tag, the container's end — and the cursor walks it monotonically
+    // with every recovery mounting AT it, so everything from the residual
+    // cursor on is provably unclaimed. The innerHTML hazard is real but is a
+    // property of a CHILDLESS vnode (nothing was walked, so nothing can be
+    // concluded), which `hydrateElement` now gates on.
     //
-    // The client's text is inserted AT THE CURSOR, which is what keeps sibling
-    // order correct (the spec below). The server's node is deliberately kept:
-    // the NEXT sibling frequently adopts it, and consuming it here would cost
-    // that adoption for the common "server had one extra node" case.
-    //
-    // KNOWN GAP: when no sibling claims it, nothing sweeps it — a static child
-    // list has no marker range delimiting its extent the way a reactive
-    // accessor does, and inferring the extent from the leftover cursor is not
-    // sound (measured: it deletes `dangerouslySetInnerHTML` content and breaks
-    // the SSR↔hydrate parity fuzz on 5 of 300 seeds). So a text mismatch
-    // renders BOTH values. Fixing it needs explicit claim accounting rather
-    // than a cursor heuristic; this spec is what will change when it lands.
+    // The invariant the old spec protected is kept: the client's value is what
+    // renders, and it renders FIRST. What changed is the residue.
     const dispose = ssrThenHydrate('<p>server</p>', h('p', null, 'client'))
-    expect(text()).toBe('clientserver')
+    expect(text()).toBe('client')
     dispose()
   })
 
@@ -140,10 +138,11 @@ describe('a TEXT mismatch recovers at the cursor, not at the end', () => {
       '<p><b>one</b>SERVER<i>three</i></p>',
       h('p', null, h('b', null, 'one'), 'two', h('i', null, 'three')),
     )
-    // The CLIENT's three children, in the client's order, contiguously. The
-    // unclaimed server tail follows (the known gap above) — what must never
-    // happen is a client node landing after it.
-    expect(container.firstElementChild?.textContent).toBe('onetwothreeSERVERthree')
+    // The CLIENT's three children, in the client's order, contiguously, and
+    // nothing else. The text mismatch now REPLACES the stale node and advances
+    // past it (mirroring `hydrateReactiveText`), so the server `<i>three</i>`
+    // is handed to the sibling it belongs to and ADOPTED rather than swept.
+    expect(container.firstElementChild?.textContent).toBe('onetwothree')
     dispose()
   })
 
@@ -436,22 +435,24 @@ describe('teardown after a recovery', () => {
     // A recovered node the dispose path does not own outlives the root, and a
     // mismatch is exactly when extra nodes get created.
     //
-    // The residue goes with it here because the ADOPTED `<p>` is the root
-    // vnode, and disposing an element removes the element — children and all.
-    // So the leftover only survives while the page is live, which is exactly
-    // when it is visible.
+    // There is no residue left to reason about since #3505 — the element
+    // boundary sweeps it — so this now asserts the simpler truth on both
+    // sides: the client's value while live, an empty container after.
     const dispose = ssrThenHydrate('<p>server</p>', h('p', null, 'client'))
-    expect(text(), 'both values while live').toBe('clientserver')
+    expect(text(), 'the client value while live').toBe('client')
     dispose()
     expect(container.textContent, 'and nothing after teardown').toBe('')
   })
 
   it('removes the client tree after a TAG recovery', () => {
+    // The server `<span>` is swept at the ROOT boundary (the container's end
+    // is the extent), so the live page shows only the client's `<div>` — and
+    // teardown then leaves nothing at all. Pre-#3505 the `<span>` survived
+    // both, which is what this spec used to assert.
     const dispose = ssrThenHydrate('<span>x</span>', h('div', null, 'x'))
+    expect(tags(), 'only the client element is live').toEqual(['div'])
     dispose()
-    expect(tags(), 'the client element is gone; the unclaimed server node is not ours').toEqual([
-      'span',
-    ])
+    expect(tags(), 'and nothing after teardown').toEqual([])
   })
 
   it('disposes a reactive binding created during recovery', () => {
