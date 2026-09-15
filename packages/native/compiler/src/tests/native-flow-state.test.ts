@@ -88,6 +88,17 @@ it('classifies every public Flow runtime export as native-portable or web-only',
   expect([...portable, ...webOnly].sort()).toEqual(exports)
 })
 
+it('uses the Flow runtime inventory for exact import-boundary diagnostics', () => {
+  for (const name of WEB_ONLY_FLOW_RUNTIME_EXPORTS) {
+    const result = transform(`import { ${name} } from '@pyreon/flow'; export function App() { return null }`, { target: 'swift' })
+    expect(result.warnings.join('\n'), name).toContain(name)
+  }
+  for (const name of LOWERED_FLOW_RUNTIME_EXPORTS) {
+    const result = transform(`import { ${name} } from '@pyreon/flow'; export function App() { return null }`, { target: 'swift' })
+    expect(result.warnings.join('\n'), name).not.toContain(`\`${name}\``)
+  }
+})
+
 const workflowFlow = `
 import { createFlow } from '@pyreon/flow'
 import { Stack, Text, Button } from '${P}'

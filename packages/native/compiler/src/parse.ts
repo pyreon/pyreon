@@ -6,7 +6,7 @@
 
 import { CHART_ENGINE_STRUCTS } from './chart-engine-structs'
 import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, FRAME_CHART_HOSTS } from './chart-hosts'
-import { HANDLED_FLOW_EDGE_FIELDS, HANDLED_FLOW_NODE_FIELDS, droppedFlowFieldsWarning } from './flow-lowering'
+import { HANDLED_FLOW_EDGE_FIELDS, HANDLED_FLOW_NODE_FIELDS, LOWERED_FLOW_RUNTIME_EXPORTS, droppedFlowFieldsWarning } from './flow-lowering'
 import { warnUnlowerdCrdtMembers } from './parse-crdt-surface'
 import { parseSync } from 'oxc-parser'
 import { detectPlain, transformPlain } from '@pyreon/compiler/plain'
@@ -2667,7 +2667,7 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
       // the same native geometry used by the Flow canvas.
       advice:
         '`createFlow({ nodes, edges })`, `useFlow({ nodes, edges })`, `computeLayout(...)`, edge-path and marker helpers, literal `<Flow nodeTypes={{ type: Component }}>`, literal `<Flow edgeTypes={{ type: Component }}>` maps whose renderer uses the shipped path helpers, static `<Handle>`, `<NodeResizer>`, and one literal-config `<NodeToolbar>` declaration inside custom nodes, `<Background>`, `<Controls>`, `<MiniMap>`, `<Panel>`, and `<EdgeLabelRenderer>` LOWER to the native PyreonFlowState/PyreonFlowView engine. Arbitrary SVG path strings or browser-only DOM/CSS inside a custom renderer still require NativeIOS/NativeAndroid branches or the `@pyreon/flow/webview` bridge',
-      supported: new Set(['createFlow', 'useFlow', 'computeLayout', 'getBezierPath', 'getSmoothStepPath', 'getStepPath', 'getStraightPath', 'getWaypointPath', 'getEdgePath', 'getHandlePosition', 'getNodeIntersection', 'getEffectiveDimensions', 'getFloatingEndpoints', 'getSmartHandlePositions', 'resolveHandleAnchor', 'resolveMarker', 'markerId', 'resolveEdgeMarkers', 'collectEdgeMarkers', 'DEFAULT_MARKER_END', 'DEFAULT_NODE_WIDTH', 'DEFAULT_NODE_HEIGHT', 'MarkerType', 'Position', 'Flow', 'Background', 'Controls', 'MiniMap', 'Panel', 'Handle', 'NodeResizer', 'NodeToolbar', 'EdgeLabelRenderer']),
+      supported: LOWERED_FLOW_RUNTIME_EXPORTS,
     },
   ],
   [
