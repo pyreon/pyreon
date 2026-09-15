@@ -42,7 +42,7 @@ const pointer = (el: Element, type: string, x: number, y: number, extra: Pointer
   const r = el.getBoundingClientRect()
   el.dispatchEvent(new PointerEvent(type, { clientX: r.left + x, clientY: r.top + y, bubbles: true, cancelable: true, ...extra }))
 }
-const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
+const nextFrame = (): Promise<void> => new Promise((r) => requestAnimationFrame(() => r()))
 
 describe('keyboard on a family host', () => {
   it('walks the items with the arrows, announces each in the live region, and Enter selects through onSelect + onSelectIndex', async () => {
@@ -125,35 +125,41 @@ describe('accessibility wiring on a family host', () => {
 
 describe('update animation on a family host', () => {
   it('tweens a same-shape data change over updateDuration and settles on the new frame; updateAnimation={false} snaps', async () => {
+    const next: TreeNode[] = [{ name: 'a', value: 46 }, { name: 'b', value: 30 }, { name: 'c', value: 20 }]
+    // The frame a snap paints — what the tween must settle on.
+    const { container: c2 } = mountInBrowser(() => TreemapChart({ data: next, width: 400, height: 300, animate: false }))
+    await flush()
+    const expected = checksum(c2.querySelector('canvas')!)
+
     const data = signal<TreeNode[]>(TREE)
-    const { container } = mountInBrowser(() => TreemapChart({ data: () => data(), width: 400, height: 300, animate: false, updateDuration: 120 }))
+    // The tween's first tick only records its start time, so the first frame
+    // that is neither old nor new is the SECOND tick. With a short duration one
+    // slow frame on a loaded runner lands straight on the settled frame, so the
+    // duration is long and the canvas is sampled on every frame until it settles.
+    const { container } = mountInBrowser(() => TreemapChart({ data: () => data(), width: 400, height: 300, animate: false, updateDuration: 1000 }))
     await flush()
     const canvas = container.querySelector('canvas')!
-    // A mild change: every cell keeps its label, so the two frames share a shape and tween.
-    const snap = (): number => checksum(canvas)
-    const first = snap()
-    data.set([{ name: 'a', value: 46 }, { name: 'b', value: 30 }, { name: 'c', value: 20 }])
-    // Sample the canvas through the tween: a tween passes through frames that
-    // are neither the old nor the new one; a snap would show exactly two values.
+    const first = checksum(canvas)
+    expect(first).not.toBe(expected)
+    data.set(next)
     const seen = new Set<number>([first])
-    for (let i = 0; i < 16; i++) {
-      await wait(20)
-      seen.add(snap())
+    const deadline = performance.now() + 10_000
+    let settled = first
+    while (settled !== expected && performance.now() < deadline) {
+      await nextFrame()
+      settled = checksum(canvas)
+      seen.add(settled)
     }
-    const settled = snap()
-    expect(settled).not.toBe(first)
+    expect(settled).toBe(expected)
     expect(seen.size).toBeGreaterThan(2)
-    // The settled frame is what a snap paints.
-    const { container: c2 } = mountInBrowser(() => TreemapChart({ data: [{ name: 'a', value: 46 }, { name: 'b', value: 30 }, { name: 'c', value: 20 }], width: 400, height: 300, animate: false }))
-    await flush()
-    expect(settled).toBe(checksum(c2.querySelector('canvas')!))
+    const snapped = settled
     // `updateAnimation={false}` paints the new frame at once.
     const snapData = signal<TreeNode[]>(TREE)
     const { container: c3 } = mountInBrowser(() => TreemapChart({ data: () => snapData(), width: 400, height: 300, animate: false, updateAnimation: false }))
     await flush()
-    snapData.set([{ name: 'a', value: 46 }, { name: 'b', value: 30 }, { name: 'c', value: 20 }])
+    snapData.set(next)
     await flush()
-    expect(checksum(c3.querySelector('canvas')!)).toBe(settled)
+    expect(checksum(c3.querySelector('canvas')!)).toBe(snapped)
   })
 })
 
