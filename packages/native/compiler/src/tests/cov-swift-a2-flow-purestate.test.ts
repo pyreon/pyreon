@@ -94,13 +94,14 @@ describe('createFlow addNode/addEdge/updateNodePosition — literal rebuild vs f
     const { code } = flow(`    flow.addNode({ id: '4', data: { label: 'D' } })
     flow.addNode({ id: '5', position: { x: 1 }, data: { label: 'E' } })
     flow.addNode(held)`)
-    // no `position` at all / a `position` with no `y` / an identifier —
-    // each returns null from the recognizer, never a warning
+    // no `position` at all / a `position` with no `y` fall through, never a
+    // warning. An identifier bound to a COMPLETE node literal is now resolved
+    // through its const binding and rebuilt like the literal itself.
     expect(code).not.toContain('flow.addNode(PyreonFlowNode(id: "4"')
     expect(code).not.toContain('flow.addNode(PyreonFlowNode(id: "5"')
     expect(code).toMatch(/flow\.addNode\(__Obj\d+\(id: "4"/)
     expect(code).toMatch(/flow\.addNode\(__Obj\d+\(id: "5"/)
-    expect(code).toMatch(/flow\.addNode\(\(?__Obj\d+\(id: "z"/)
+    expect(code).toContain('flow.addNode(PyreonFlowNode(id: "z", position: PyreonXYPosition(x: 1, y: 1), data: __Obj0(label: "Z")))')
   })
 
   it('a node literal field the native type does not carry is DROPPED and NAMED', () => {

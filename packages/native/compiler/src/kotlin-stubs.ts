@@ -1703,7 +1703,7 @@ class PyreonFlowState<T>(
   var maxZoom: Double = 4.0,
   var snapToGrid: Boolean = false,
   var snapGrid: Double = 15.0,
-  var nodeExtent: PyreonFlowNodeExtent? = null,
+  nodeExtent: PyreonFlowNodeExtent? = null,
   var defaultMarkerEnd: PyreonFlowMarker? = PyreonFlowMarker("arrowclosed"),
   var nodesDraggable: Boolean = true,
   var nodesConnectable: Boolean = true,
@@ -1745,6 +1745,7 @@ class PyreonFlowState<T>(
   searchText: ((T) -> String?)? = null,
   var reducedMotion: Boolean? = null,
 ) {
+  var nodeExtent: PyreonFlowNodeExtent? = nodeExtent
   val nodes: List<PyreonFlowNode<T>> = nodes
   val nodeLookup: Map<String, PyreonFlowNode<T>> = emptyMap()
   val edges: List<PyreonFlowEdge> = edges
