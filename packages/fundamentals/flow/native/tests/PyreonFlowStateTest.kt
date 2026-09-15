@@ -56,12 +56,16 @@ fun main() {
     check(pyreonFlowEdgeId("1", "2", "out", "in") == "e-1-out-2-in", "Android includes handles in generated edge ids")
     val configured = PyreonFlowState<NodeData>(
         panOnScroll = true, panOnScrollSpeed = 0.75, zoomOnScroll = false,
+        panOnDrag = false, zoomOnPinch = false, zoomOnDoubleClick = true,
         deleteKeys = listOf("ForwardDelete"), multiSelectionKey = "ctrl",
         selectionKey = null, zoomActivationKey = "meta", preventScrolling = false,
+        defaultMarkerEnd = null, connectionLineType = "step",
     )
     check(configured.panOnScroll && configured.panOnScrollSpeed == 0.75, "Android retains scroll config")
     check(!configured.zoomOnScroll && configured.deleteKeys == listOf("ForwardDelete"), "Android retains zoom/delete config")
     check(configured.multiSelectionKey == "ctrl" && configured.selectionKey == null && configured.zoomActivationKey == "meta" && !configured.preventScrolling, "Android retains modifier config")
+    check(!configured.panOnDrag && !configured.zoomOnPinch && configured.zoomOnDoubleClick, "Android retains direct-manipulation config")
+    check(configured.connectionLineType == "step" && configured.defaultMarkerEnd == null, "Android retains connection presentation config")
     configured.minZoom = 0.75
     configured.pannable = false
     configured.zoomTo(0.1)

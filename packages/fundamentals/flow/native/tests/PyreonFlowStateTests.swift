@@ -39,12 +39,16 @@ struct PyreonFlowStateTests {
         check(pyreonFlowEdgeId(source: "1", target: "2") == "e-1-2", "Apple generates missing edge ids like web")
         check(pyreonFlowEdgeId(source: "1", target: "2", sourceHandle: "out", targetHandle: "in") == "e-1-out-2-in", "Apple includes handles in generated edge ids")
         let configured = PyreonFlowState<NodeData>(
-            panOnScroll: true, panOnScrollSpeed: 0.75, zoomOnScroll: false,
+            defaultMarkerEnd: nil, panOnDrag: false, panOnScroll: true, panOnScrollSpeed: 0.75,
+            zoomOnScroll: false, zoomOnPinch: false, zoomOnDoubleClick: true,
+            connectionLineType: "step",
             reducedMotion: false, deleteKeys: ["ForwardDelete"], multiSelectionKey: "ctrl",
             selectionKey: nil, zoomActivationKey: "meta", preventScrolling: false)
         check(configured.panOnScroll && configured.panOnScrollSpeed == 0.75, "Apple retains scroll config")
         check(!configured.zoomOnScroll && configured.deleteKeys == ["ForwardDelete"], "Apple retains zoom/delete config")
         check(configured.multiSelectionKey == "ctrl" && configured.selectionKey == nil && configured.zoomActivationKey == "meta" && !configured.preventScrolling, "Apple retains modifier config")
+        check(!configured.panOnDrag && !configured.zoomOnPinch && configured.zoomOnDoubleClick, "Apple retains direct-manipulation config")
+        check(configured.connectionLineType == "step" && configured.defaultMarkerEnd == nil, "Apple retains connection presentation config")
         configured.minZoom = 0.75
         configured.pannable = false
         configured.zoomTo(0.1)

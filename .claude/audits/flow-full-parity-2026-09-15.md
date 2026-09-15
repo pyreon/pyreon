@@ -49,3 +49,11 @@ drops, green real-browser tests, green real Swift/Kotlin compilers, and green
 iOS/Android behavioural scenarios for every claimed direct-native category.
 The hybrid WebView category is reported separately and is never described as a
 native view.
+
+## Progress checkpoints
+
+- [x] Public runtime, instance, configuration, host, component, node and edge
+  inventories are source-derived and fail closed when the public surface grows.
+- [x] Direct-manipulation configuration that previously lacked native fixture
+  coverage now has matching Swift and Kotlin assertions: drag-panning, pinch
+  zoom, double-click zoom, connection-line mode and default-marker override.
