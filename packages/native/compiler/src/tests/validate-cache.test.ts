@@ -80,21 +80,6 @@ describe('cacheKey — every verdict-affecting input is folded in', () => {
 })
 
 describe('withVerdictCache', () => {
-  it('never serves or stores a verdict when the compiler version is empty (tool absent)', () => {
-    // A runner without kotlinc must SKIP. With the empty version keyed like
-    // any other, a restored store answered that call with a stale `{ ok: true }`.
-    let calls = 0
-    const run = (): { ok: boolean; skipped: boolean; skipReason: string } => {
-      calls++
-      return { ok: true, skipped: true, skipReason: 'kotlinc not on PATH' }
-    }
-    expect(withVerdictCache('kotlin', '', 's', 'src', () => ({ ok: true })).skipped).toBeUndefined()
-    expect(withVerdictCache('kotlin', '', 's', 'src', run).skipped).toBe(true)
-    expect(withVerdictCache('kotlin', '', 's', 'src', run).skipped).toBe(true)
-    expect(calls).toBe(2)
-    expect(readdirSync(dir).filter((f) => f.endsWith('.json'))).toEqual([])
-  })
-
   it('computes on a miss and reuses on a hit', () => {
     let calls = 0
     const run = (): { ok: boolean } => {

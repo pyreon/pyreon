@@ -134,6 +134,12 @@ export function _resetSwiftcCache(): void {
  * (force skip) and PYREON_REQUIRE_NATIVE_VALIDATE (fail-on-absent).
  */
 export function validateSwift(source: string): ValidationResult {
+  // Skip and absent-tool answers come BEFORE the cache, as in
+  // validateSwiftWithStubs: a stored verdict must never answer a call that
+  // should skip.
+  if (process.env.PYREON_SKIP_NATIVE_VALIDATE === '1' || !isSwiftcAvailable()) {
+    return validateSwiftUncached(source)
+  }
   return withVerdictCache(
     'swift-parse' satisfies ValidateKind,
     swiftcVersion(),
@@ -325,6 +331,9 @@ export function _swiftTypecheckPreamble(source: string): string {
 }
 
 export function validateSwiftTypecheck(source: string): ValidationResult {
+  if (process.env.PYREON_SKIP_NATIVE_VALIDATE === '1' || !isSwiftcAvailable() || !isSwiftUIAvailable()) {
+    return validateSwiftTypecheckUncached(source)
+  }
   return withVerdictCache(
     'swift-typecheck' satisfies ValidateKind,
     swiftcVersion(),
@@ -699,6 +708,11 @@ export function _resetKotlincCache(): void {
  * these stubs.
  */
 export function validateKotlin(source: string): ValidationResult {
+  // kotlinc prints its version on STDERR, so the captured version is '' even
+  // when the tool is present; the presence check has to be explicit.
+  if (process.env.PYREON_SKIP_NATIVE_VALIDATE === '1' || !isKotlincAvailable()) {
+    return validateKotlinUncached(source)
+  }
   return withVerdictCache(
     'kotlin' satisfies ValidateKind,
     kotlincVersion(),
