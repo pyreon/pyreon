@@ -49,7 +49,13 @@ describe('production mode — malformed-frame drops are silent (dev-gate false s
     const { syncedSignal } = await import('../synced-signal')
     const { MSG_AWARENESS } = await import('../crdt/ws-protocol')
 
-    const server = await createSyncServer({ port: 0 })
+    // `authorize` supplied deliberately: this spec's invariant is that a
+    // MALFORMED FRAME is dropped silently in production, and it asserts that by
+    // requiring NOTHING to warn. A relay built without `authorize` now warns at
+    // construction (an open relay is a live misconfiguration an operator must
+    // see), which is a different statement — and a production-mode spec should
+    // model a production config anyway.
+    const server = await createSyncServer({ port: 0, authorize: () => true })
     try {
       const url = `ws://127.0.0.1:${server.port}/prod-garbage`
       const a = createYjsDoc()

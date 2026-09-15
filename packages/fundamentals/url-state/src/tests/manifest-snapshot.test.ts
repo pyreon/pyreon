@@ -57,6 +57,8 @@ describe('gen-docs — url-state snapshot', () => {
       import { useRouter } from '@pyreon/router'
       const router = useRouter()
       setUrlRouter(router)  // replace() by default; push() honours { replace: false }
+      // The router also says WHERE params live: in its default hash mode they ride
+      // inside the fragment (#/products?page=3), not in location.search.
 
       // SSR-safe — initializes to the default on the server, reads window.location on the client
       // No typeof window checks needed in your components

@@ -3,7 +3,7 @@ import { isClient } from '@pyreon/reactivity'
 /** Read a search param from the current URL. Returns `null` if not present. */
 export function getParam(key: string): string | null {
   if (!isClient) return null
-  return new URLSearchParams(window.location.search).get(key)
+  return currentParams().get(key)
 }
 
 /**
@@ -12,7 +12,7 @@ export function getParam(key: string): string | null {
  */
 export function getParamAll(key: string): string[] {
   if (!isClient) return []
-  return new URLSearchParams(window.location.search).getAll(key)
+  return currentParams().getAll(key)
 }
 
 /**
@@ -40,6 +40,31 @@ export interface UrlRouter {
    * dev-warns once, rather than pretending.
    */
   push?(path: string): void | Promise<unknown>
+  /**
+   * Which part of the URL the router treats as the route.
+   *
+   * `@pyreon/router`'s DEFAULT is `'hash'`, where the whole route — path AND
+   * query — lives in the fragment (`#/products?page=3`) and `location.search`
+   * is empty. url-state used to build `/{pathname}?{search}` unconditionally,
+   * so under the documented `setUrlRouter(useRouter())` bridge a write handed a
+   * hash router `/?page=3`, which it wrote as `#/?page=3` — navigating the app
+   * OFF `#/products` on the first filter change, and never reading back.
+   *
+   * `useRouter()` exposes `mode` as a public field, so structural typing picks
+   * this up with no cast at the call site. Absent (a hand-rolled router) →
+   * `'history'`, which is what every such router has always meant.
+   */
+  mode?: 'hash' | 'history'
+  /**
+   * Base path for a sub-path deploy, history mode only. Underscore-prefixed
+   * because that is the field `@pyreon/router` exposes (`_base`) — the name is
+   * what structural typing binds to, so renaming it here would silently read
+   * `undefined` off a real router.
+   *
+   * The router re-prefixes the base itself when it writes the URL, so the path
+   * handed to it must be base-RELATIVE; `location.pathname` is not.
+   */
+  _base?: string
 }
 
 /** Module-level router reference. Set via `setUrlRouter()`. */
@@ -77,13 +102,52 @@ function warnRouterCannotPush(): void {
   }
 }
 
+/**
+ * Which half of the URL the query lives in.
+ *
+ * Derived from the REGISTERED router, never guessed from the URL: without a
+ * router url-state owns `location.search` outright (it writes history itself,
+ * and a hash router that was never registered keeps its fragment untouched),
+ * so `'history'` is both the honest default and the pre-existing behaviour.
+ */
+function routeOwnsHash(): boolean {
+  return _router?.mode === 'hash'
+}
+
+/**
+ * Split a hash route (`#/products?page=3`) into its path and query halves.
+ * An empty hash is the root route, which the router itself spells `/`.
+ */
+function splitHashRoute(): { path: string; search: string } {
+  // SSR guard for the same reason `currentParams` carries one: the callers are
+  // already `isClient`-guarded, but the guard is cross-function and the
+  // no-window-in-ssr rule cannot trace it.
+  if (!isClient) return { path: '/', search: '' }
+  const raw = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : ''
+  const q = raw.indexOf('?')
+  if (q === -1) return { path: raw || '/', search: '' }
+  return { path: raw.slice(0, q) || '/', search: raw.slice(q + 1) }
+}
+
+/**
+ * Strip the router's base off `location.pathname`, because the router prepends
+ * it again when it writes the URL. Without this a `base: '/app'` deploy turned
+ * `/app/products` into `/app/app/products?page=2` on the first write.
+ */
+function stripRouterBase(pathname: string): string {
+  const base = _router?._base
+  if (!base || base === '/') return pathname
+  if (pathname === base) return '/'
+  return pathname.startsWith(`${base}/`) ? pathname.slice(base.length) : pathname
+}
+
 /** Read the current URL's search params. Client-only — callers guard SSR. */
 function currentParams(): URLSearchParams {
   // SSR guard: callers funnel through the public `isClient`-guarded entries,
   // but guard here too so the helper is SSR-safe by construction (and the
   // no-window-in-ssr rule can't trace the cross-function guard).
   if (!isClient) return new URLSearchParams()
-  return new URLSearchParams(window.location.search)
+  return new URLSearchParams(routeOwnsHash() ? splitHashRoute().search : window.location.search)
 }
 
 /**
@@ -101,7 +165,17 @@ function currentParams(): URLSearchParams {
 function commit(params: URLSearchParams, replace: boolean): void {
   if (!isClient) return
   const search = params.toString()
-  const url = search ? `${window.location.pathname}?${search}` : window.location.pathname
+  const qs = search ? `?${search}` : ''
+  // Ask the ROUTER which part of the URL is the route, rather than assuming
+  // `location.pathname` is. In hash mode the query belongs INSIDE the fragment
+  // next to the route path; in history mode the path handed to the router is
+  // base-relative, and the fragment is carried through because it is nobody
+  // else's to drop (`/docs#installation` used to become `/docs?page=2`).
+  const url = _router
+    ? routeOwnsHash()
+      ? `${splitHashRoute().path}${qs}`
+      : `${stripRouterBase(window.location.pathname)}${qs}${window.location.hash}`
+    : `${window.location.pathname}${qs}${window.location.hash}`
 
   if (_router) {
     if (!replace && typeof _router.push === 'function') {
