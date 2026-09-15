@@ -12,7 +12,7 @@ describe('versioned chart capability inventory', () => {
     for (const row of CHART_CAPABILITIES) {
       expect(['complete', 'partial', 'pending']).toContain(row.status)
       expect(row.evidence.length, row.id).toBeGreaterThan(0)
-      expect(row.evidence.every((path) => path.startsWith('src/')), row.id).toBe(true)
+      expect(row.evidence.every((path) => path.startsWith('src/') || path.startsWith('../../native/compiler/')), row.id).toBe(true)
       expect(row.evidence.every((path) => existsSync(resolve(packageRoot, path))), row.id).toBe(true)
     }
   })

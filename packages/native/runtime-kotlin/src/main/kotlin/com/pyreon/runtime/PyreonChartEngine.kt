@@ -57,7 +57,7 @@ data class WaterfallStep(var rect: PyreonChartRect, var datumIndex: Int, var val
 
 data class Series(var kind: String, var values: List<Double>, var color: String, var width: Double, var radius: Double, var label: String, var curve: ((List<PyreonChartPt>) -> List<PyreonChartPt>)? = null, var showValues: Boolean? = null, var rValues: List<Double>? = null, var radii: List<Double>? = null, var axis: String? = null, var effect: Boolean? = null, var symbol: String? = null, var symbolRepeat: Boolean? = null, var corners: List<Double>? = null, var gradient: SeriesGradient? = null, var dash: List<Double>? = null, var negativeColor: String? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var values2: List<Double>? = null)
 
-data class Annotation(var y: Double? = null, var x: Double? = null, var yFrom: Double? = null, var yTo: Double? = null, var label: String? = null, var color: String? = null)
+data class Annotation(var y: Double? = null, var x: Double? = null, var yFrom: Double? = null, var yTo: Double? = null, var xFrom: Double? = null, var xTo: Double? = null, var label: String? = null, var color: String? = null)
 
 data class PointMarker(var seriesIndex: Double? = null, var at: String? = null, var atIndex: Double? = null, var label: String? = null, var color: String? = null, var radius: Double? = null)
 
@@ -1828,6 +1828,20 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
         val y2 = scaleLinear(yDomain, plot.y + plot.h, plot.y, yTo)
         val top = if (y1 < y2) y1 else y2
         out.add(PyreonDrawCmd(kind = "rect", rect = PyreonChartRect(x = plot.x, y = top, w = plot.w, h = (Math.abs(y2 - y1)).toDouble()), fill = withAlpha((a.color ?: t.axis), 0.12)))
+        if (a.label != null) {
+          out.add(PyreonDrawCmd(kind = "text", fill = (a.color ?: t.label), text = a.label, at = PyreonChartPt(x = plot.x + plot.w - 4.0, y = top + 4.0), size = t.fontSize, align = "end", baseline = "top"))
+        }
+      }
+      val xFrom = (a.xFrom ?: 0.0)
+      val xTo = (a.xTo ?: 0.0)
+      if (a.xFrom != null && a.xTo != null) {
+        val x1 = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, xFrom)
+        val x2 = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, xTo)
+        val left = if (x1 < x2) x1 else x2
+        out.add(PyreonDrawCmd(kind = "rect", rect = PyreonChartRect(x = left, y = plot.y, w = (Math.abs(x2 - x1)).toDouble(), h = plot.h), fill = withAlpha((a.color ?: t.axis), 0.12)))
+        if (a.label != null) {
+          out.add(PyreonDrawCmd(kind = "text", fill = (a.color ?: t.label), text = a.label, at = PyreonChartPt(x = left + 4.0, y = plot.y + 4.0), size = t.fontSize, align = "start", baseline = "top"))
+        }
       }
     }
     for (a in notes) {

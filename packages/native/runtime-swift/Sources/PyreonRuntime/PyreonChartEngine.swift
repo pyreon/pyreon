@@ -329,13 +329,17 @@ public struct Annotation: Codable {
   public var x: Double? = nil
   public var yFrom: Double? = nil
   public var yTo: Double? = nil
+  public var xFrom: Double? = nil
+  public var xTo: Double? = nil
   public var label: String? = nil
   public var color: String? = nil
-  public init(y: Double? = nil, x: Double? = nil, yFrom: Double? = nil, yTo: Double? = nil, label: String? = nil, color: String? = nil) {
+  public init(y: Double? = nil, x: Double? = nil, yFrom: Double? = nil, yTo: Double? = nil, xFrom: Double? = nil, xTo: Double? = nil, label: String? = nil, color: String? = nil) {
     self.y = y
     self.x = x
     self.yFrom = yFrom
     self.yTo = yTo
+    self.xFrom = xFrom
+    self.xTo = xTo
     self.label = label
     self.color = color
   }
@@ -3790,6 +3794,20 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
         let y2 = scaleLinear(yDomain, plot.y + plot.h, plot.y, yTo)
         let top = y1 < y2 ? y1 : y2
         out.append(PyreonDrawCmd(kind: "rect", rect: PyreonChartRect(x: plot.x, y: top, w: plot.w, h: Double(abs(y2 - y1))), fill: withAlpha((a.color ?? t.axis), 0.12)))
+        if a.label != nil {
+          out.append(PyreonDrawCmd(kind: "text", fill: (a.color ?? t.label), text: a.label, at: PyreonChartPt(x: plot.x + plot.w - 4.0, y: top + 4.0), size: t.fontSize, align: "end", baseline: "top"))
+        }
+      }
+      let xFrom = (a.xFrom ?? 0.0)
+      let xTo = (a.xTo ?? 0.0)
+      if a.xFrom != nil && a.xTo != nil {
+        let x1 = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, xFrom)
+        let x2 = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, xTo)
+        let left = x1 < x2 ? x1 : x2
+        out.append(PyreonDrawCmd(kind: "rect", rect: PyreonChartRect(x: left, y: plot.y, w: Double(abs(x2 - x1)), h: plot.h), fill: withAlpha((a.color ?? t.axis), 0.12)))
+        if a.label != nil {
+          out.append(PyreonDrawCmd(kind: "text", fill: (a.color ?? t.label), text: a.label, at: PyreonChartPt(x: left + 4.0, y: plot.y + 4.0), size: t.fontSize, align: "start", baseline: "top"))
+        }
       }
     }
     for a in notes {

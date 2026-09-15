@@ -88,7 +88,7 @@ const KNOWN_TOP = new Set([
 ])
 const KNOWN_SERIES = new Set([
   'type', 'name', 'data', 'stack', 'smooth', 'step', 'areaStyle', 'itemStyle',
-  'lineStyle', 'symbolSize', 'label', 'yAxisIndex', 'markLine', 'markPoint',
+  'lineStyle', 'symbolSize', 'label', 'yAxisIndex', 'markLine', 'markPoint', 'markArea',
   'color', 'showSymbol', 'symbol', 'emphasis', 'z', 'zlevel', 'silent',
   'symbolRepeat', 'symbolClip', 'symbolMargin', 'symbolBoundingData', 'symbolOffset', 'rippleEffect', 'showEffectOn',
   'renderItem', 'encode', 'dimensions', 'clip', 'datasetIndex',
@@ -352,7 +352,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
     series.push(entry)
     const seriesIndex = series.length - 1
 
-    // markLine → annotations; markPoint → markers.
+    // markLine / markArea → annotations; markPoint → markers.
     const ml = isObj(s['markLine']) && Array.isArray(s['markLine']['data']) ? (s['markLine']['data'] as unknown[]) : []
     for (let k = 0; k < ml.length; k++) {
       const m = ml[k]
@@ -373,6 +373,25 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       } else {
         warn('mark-shape-unsupported', `${path}.markLine.data[${k}]`, 'Only average/max/min, yAxis and xAxis markLines are mapped.')
       }
+    }
+    const markArea = isObj(s['markArea']) ? s['markArea'] : undefined
+    const ma = markArea !== undefined && Array.isArray(markArea['data']) ? (markArea['data'] as unknown[]) : []
+    const maStyle = markArea !== undefined && isObj(markArea['itemStyle']) ? markArea['itemStyle'] : undefined
+    const maColor = maStyle !== undefined && typeof maStyle['color'] === 'string' ? (maStyle['color'] as string) : color
+    for (let k = 0; k < ma.length; k++) {
+      const pair = ma[k]
+      if (!Array.isArray(pair) || pair.length < 2 || !isObj(pair[0]) || !isObj(pair[1])) {
+        warn('mark-shape-unsupported', `${path}.markArea.data[${k}]`, 'A mark area needs two boundary objects; it was skipped.')
+        continue
+      }
+      const name = typeof pair[0]['name'] === 'string' ? (pair[0]['name'] as string) : undefined
+      const yFrom = num(pair[0]['yAxis'])
+      const yTo = num(pair[1]['yAxis'])
+      const xFrom = num(pair[0]['xAxis'])
+      const xTo = num(pair[1]['xAxis'])
+      if (yFrom !== null && yTo !== null) annotations.push({ yFrom, yTo, label: name, color: maColor })
+      else if (xFrom !== null && xTo !== null) annotations.push({ xFrom, xTo, label: name, color: maColor })
+      else warn('mark-shape-unsupported', `${path}.markArea.data[${k}]`, 'A mark area needs matching numeric xAxis or yAxis boundaries; it was skipped.')
     }
     const mp = isObj(s['markPoint']) && Array.isArray(s['markPoint']['data']) ? (s['markPoint']['data'] as unknown[]) : []
     for (let k = 0; k < mp.length; k++) {

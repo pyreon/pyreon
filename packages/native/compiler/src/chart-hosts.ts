@@ -1491,7 +1491,7 @@ export function desugarOptionChart(
         warn(`<OptionChart option.series[${si}].type>: this cartesian adapter needs line, bar, or scatter series; emitting nothing.`)
         return undefined
       }
-      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle'], `option.series[${si}]`, warn)
+      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle', 'markArea'], `option.series[${si}]`, warn)
       seriesObjects.push(s)
     }
     const xAxis = literalOf(objectField(raw, 'xAxis'), resolve)
@@ -1552,6 +1552,51 @@ export function desugarOptionChart(
       }
     })
     set('marks', { kind: 'array', elements: marks })
+    const annotations: ExprIR[] = []
+    for (let si = 0; si < seriesObjects.length; si++) {
+      const markArea = literalOf(objectField(seriesObjects[si]!, 'markArea'), resolve)
+      if (markArea === undefined) continue
+      if (markArea.kind !== 'object') {
+        warn(`<OptionChart option.series[${si}].markArea>: native mark areas need a literal object; rendering without it.`)
+        continue
+      }
+      optionFields(markArea, ['data', 'itemStyle'], `option.series[${si}].markArea`, warn)
+      const data = literalOf(objectField(markArea, 'data'), resolve)
+      const style = literalOf(objectField(markArea, 'itemStyle'), resolve)
+      const color = style?.kind === 'object' ? litString(objectField(style, 'color')) : undefined
+      if (style?.kind === 'object') optionFields(style, ['color'], `option.series[${si}].markArea.itemStyle`, warn)
+      if (data?.kind !== 'array') {
+        warn(`<OptionChart option.series[${si}].markArea.data>: native mark areas need a literal boundary-pair array; rendering without it.`)
+        continue
+      }
+      for (let ai = 0; ai < data.elements.length; ai++) {
+        const pair = literalOf(data.elements[ai], resolve)
+        const from = pair?.kind === 'array' ? literalOf(pair.elements[0], resolve) : undefined
+        const to = pair?.kind === 'array' ? literalOf(pair.elements[1], resolve) : undefined
+        if (from?.kind !== 'object' || to?.kind !== 'object') {
+          warn(`<OptionChart option.series[${si}].markArea.data[${ai}]>: native mark areas need two literal boundary objects; rendering without this area.`)
+          continue
+        }
+        const yFrom = litNumber(objectField(from, 'yAxis'))
+        const yTo = litNumber(objectField(to, 'yAxis'))
+        const xFrom = litNumber(objectField(from, 'xAxis'))
+        const xTo = litNumber(objectField(to, 'xAxis'))
+        const fields: { name: string; value: ExprIR }[] = []
+        if (yFrom !== undefined && yTo !== undefined) {
+          fields.push({ name: 'yFrom', value: optionDoubleLiteral(yFrom) }, { name: 'yTo', value: optionDoubleLiteral(yTo) })
+        } else if (xFrom !== undefined && xTo !== undefined) {
+          fields.push({ name: 'xFrom', value: optionDoubleLiteral(xFrom) }, { name: 'xTo', value: optionDoubleLiteral(xTo) })
+        } else {
+          warn(`<OptionChart option.series[${si}].markArea.data[${ai}]>: native mark areas need matching numeric xAxis or yAxis boundaries; rendering without this area.`)
+          continue
+        }
+        const name = litString(objectField(from, 'name'))
+        if (name !== undefined) fields.push({ name: 'label', value: lit(name) })
+        if (color !== undefined) fields.push({ name: 'color', value: lit(color) })
+        annotations.push({ kind: 'object', fields })
+      }
+    }
+    if (annotations.length > 0) set('annotations', { kind: 'array', elements: annotations })
     const xShow = xAxis === undefined ? undefined : objectField(xAxis, 'show')
     if (xShow?.kind === 'literal' && xShow.value === false) set('showXAxis', lit(false))
     const yAxis = literalOf(objectField(raw, 'yAxis'), resolve)

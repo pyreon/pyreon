@@ -24,7 +24,7 @@ export function App() {
     xAxis: { type: 'category', data: ['Q1', 'Q2', 'Q3'], name: 'Quarter' },
     yAxis: { min: 0, max: 100, name: 'Value' },
     series: [
-      { type: 'bar', name: 'Actual', itemStyle: { color: '#3366ff' }, data: [20, 45, 70] },
+      { type: 'bar', name: 'Actual', itemStyle: { color: '#3366ff' }, data: [20, 45, 70], markArea: { itemStyle: { color: '#224466' }, data: [[{ name: 'Target', yAxis: 30 }, { yAxis: 60 }], [{ xAxis: 0.5 }, { xAxis: 1.5 }]] } },
       { type: 'bar', name: 'Plan', data: [30, 50, 80] },
       { type: 'line', name: 'Trend', lineStyle: { color: '#ff6633' }, areaStyle: {}, data: [25, 48, 75] },
       { type: 'scatter', name: 'Events', data: [15, 60, 90] },
@@ -131,6 +131,9 @@ describe('OptionChart family options lower to native hosts', () => {
       for (const category of ['Q1', 'Q2', 'Q3']) expect(r.code).toContain(`"${category}"`)
       expect(r.code).toContain('#3366ff')
       expect(r.code).toContain('#ff6633')
+      expect(r.code).toContain('#224466')
+      expect(r.code).toContain(target === 'swift' ? 'yFrom: 30.0, yTo: 60.0' : 'yFrom = 30.0, yTo = 60.0')
+      expect(r.code).toContain(target === 'swift' ? 'xFrom: 0.5, xTo: 1.5' : 'xFrom = 0.5, xTo = 1.5')
       expect(r.code).toContain(target === 'swift' ? 'yDomain: Domain(min: 0.0, max: 100.0)' : 'yDomain = Domain(min = 0.0, max = 100.0)')
     })
 

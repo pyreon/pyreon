@@ -89,7 +89,7 @@ export interface Series {
 /**
  * A reference rule or band — the "target line" every dashboard needs.
  *
- * Exactly one of `y`, `x`, or the `yFrom`/`yTo` pair should be set; an
+ * Exactly one of `y`, `x`, `yFrom`/`yTo`, or `xFrom`/`xTo` should be set; an
  * annotation with none is skipped rather than guessed at. Values are in DOMAIN
  * units — for a categorical x axis that is the datum INDEX, matching how the
  * points are placed.
@@ -102,6 +102,9 @@ export interface Annotation {
   /** Horizontal band between these two y values. */
   yFrom?: Double | undefined
   yTo?: Double | undefined
+  /** Vertical band between these two x-domain values. */
+  xFrom?: Double | undefined
+  xTo?: Double | undefined
   label?: string | undefined
   color?: string | undefined
 }
@@ -744,6 +747,20 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         rect: { x: plot.x, y: top, w: plot.w, h: Math.abs(y2 - y1) },
         fill: withAlpha(a.color ?? t.axis, 0.12),
       })
+      if (a.label !== undefined) out.push({ kind: 'text', text: a.label, at: { x: plot.x + plot.w - 4.0, y: top + 4.0 }, fill: a.color ?? t.label, size: t.fontSize, align: 'end', baseline: 'top' })
+    }
+    const xFrom = a.xFrom ?? 0.0
+    const xTo = a.xTo ?? 0.0
+    if (a.xFrom !== undefined && a.xTo !== undefined) {
+      const x1 = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, xFrom)
+      const x2 = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, xTo)
+      const left = x1 < x2 ? x1 : x2
+      out.push({
+        kind: 'rect',
+        rect: { x: left, y: plot.y, w: Math.abs(x2 - x1), h: plot.h },
+        fill: withAlpha(a.color ?? t.axis, 0.12),
+      })
+      if (a.label !== undefined) out.push({ kind: 'text', text: a.label, at: { x: left + 4.0, y: plot.y + 4.0 }, fill: a.color ?? t.label, size: t.fontSize, align: 'start', baseline: 'top' })
     }
   }
   for (const a of notes) {

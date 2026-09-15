@@ -17,7 +17,7 @@ export interface ChartCapability {
   area: ChartCapabilityArea
   mode: ChartCapabilityMode
   status: ChartCapabilityStatus
-  /** Repository-relative proof. A pending row names the implementation seam. */
+  /** Package-relative proof; native compiler evidence may traverse to its sibling package. */
   evidence: readonly string[]
 }
 
@@ -54,7 +54,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   row('coordinates.timeline', 'coordinates', 'direct', 'partial', 'src/engine/option-composite.ts'),
   row('coordinates.toolbox', 'coordinates', 'direct', 'partial', 'src/engine/toolbox.ts'),
   row('coordinates.brush', 'coordinates', 'direct', 'partial', 'src/engine/brush.ts'),
-  row('coordinates.mark-area', 'coordinates', 'direct', 'pending', 'src/engine/option.ts'),
+  row('coordinates.mark-area', 'coordinates', 'direct', 'complete', 'src/engine/option.test.ts', '../../native/compiler/src/tests/chart-option-family-native.test.ts'),
 
   row('runtime.init-dispose-resize', 'runtime', 'hosted', 'complete', 'src/webview.ts'),
   row('runtime.option-updates', 'runtime', 'hosted', 'complete', 'src/webview.ts'),
