@@ -9,7 +9,7 @@
  * this is the real search surface.
  */
 import { onMount, Show } from '@pyreon/core'
-import { batch, computed, signal } from '@pyreon/reactivity'
+import { batch, computed, isClient, signal } from '@pyreon/reactivity'
 import * as C from '../../components'
 import type { WorkbenchModel } from '../../model'
 
@@ -56,7 +56,7 @@ export function SearchDialog(props: { model: WorkbenchModel }) {
   // Mounted only while open (the <Show> below) — focus the field on open.
   const Body = () => {
     onMount(() => {
-      opener = typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null
+      opener = isClient ? (document.activeElement as HTMLElement | null) : null
       // Post-paint: the field must exist AND the browser must have committed
       // the dialog before focus sticks reliably.
       requestAnimationFrame(() => m.focusSearch())

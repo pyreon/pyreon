@@ -8,7 +8,7 @@
  * (`partOf`) sits indented under its parent, and a long scenario list is
  * capped until asked for.
  */
-import { Show, type VNodeChild } from '@pyreon/core'
+import { onMount, Show, type VNodeChild } from '@pyreon/core'
 import { effect, signal } from '@pyreon/reactivity'
 import * as C from '../../components'
 import type { HierarchyNode } from '../../hierarchy'
@@ -30,9 +30,15 @@ export function Sidebar(props: { model: WorkbenchModel }) {
     if (el) rows.set(id, el)
     else rows.delete(id)
   }
-  effect(() => {
-    const el = rows.get(m.selId())
+  // A subscription opened on mount rather than a setup-time effect: scrolling
+  // is imperative DOM work, and the rows only exist once mounted.
+  const scrollToSelected = () => {
+    const el = rows.get(m.selId.peek())
     if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest' })
+  }
+  onMount(() => {
+    scrollToSelected()
+    return m.selId.subscribe(scrollToSelected)
   })
 
   // "Show all N" is per selection: selecting another component collapses the

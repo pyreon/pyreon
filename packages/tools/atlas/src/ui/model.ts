@@ -512,7 +512,7 @@ export function createModel(
   // content in `<!--portal-->…<!--/portal-->` markers, and one on the body is
   // what says the render went somewhere rather than nowhere.
   const portaled = () =>
-    typeof document !== 'undefined' &&
+    isClient &&
     [...document.body.childNodes].some((n) => n.nodeType === 8 && (n as Comment).data === 'portal')
   const isEmpty = (el: HTMLElement) =>
     el.childElementCount === 0 && (el.textContent ?? '').trim().length === 0 && !portaled()
