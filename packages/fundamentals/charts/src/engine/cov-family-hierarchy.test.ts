@@ -11,7 +11,8 @@ import { layoutParallel, parallelPlace, renderParallel, hitParallelIndex } from 
 import { hitRadarIndex, withAlpha } from './radar'
 import { layoutChord, renderChord, ribbonPolygon } from './chord'
 import { emaValues, smaValues, stdevValues, trendValues } from './indicator-values'
-import { layoutSingleAxis, renderSingleAxis, singleAxisToSvg } from './single-axis'
+import { layoutSingleAxis, renderSingleAxis } from './single-axis'
+import { singleAxisToSvg } from './single-axis-web'
 
 const box = { x: 0, y: 0, w: 400, h: 300 }
 

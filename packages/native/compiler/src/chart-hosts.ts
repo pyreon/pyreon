@@ -230,6 +230,63 @@ export const calendarValuesAdapter: ChartHostAdapter = (attrs, t, warn, resolve)
   return t.list(items)
 }
 
+const singleAxisSpecAdapter: ChartHostAdapter = (attrs, t, warn, resolve, emit) => {
+  const axis = literalOf(attrs['axis'], resolve)
+  if (axis?.kind !== 'object') return emit(attrs['axis']!)
+  const fields: [string, string][] = []
+  const type = litString(objectField(axis, 'type'))
+  fields.push(['type', type === undefined ? t.nil : JSON.stringify(type)])
+  const categories = literalOf(objectField(axis, 'categories'), resolve)
+  fields.push(['categories', categories?.kind === 'array' ? emit(categories) : t.nil])
+  const domain = literalOf(objectField(axis, 'domain'), resolve)
+  if (domain?.kind === 'object') {
+    const min = litNumber(objectField(domain, 'min'))
+    const max = litNumber(objectField(domain, 'max'))
+    if (min === undefined || max === undefined) {
+      warn('<SingleAxisChart axis.domain>: needs literal min/max numbers on native; emitting nothing.')
+      return 'unsupported'
+    }
+    fields.push(['domain', t.struct('Domain', [['min', chartDouble(min)], ['max', chartDouble(max)]])])
+  } else fields.push(['domain', t.nil])
+  const name = litString(objectField(axis, 'name'))
+  fields.push(['name', name === undefined ? t.nil : JSON.stringify(name)])
+  return t.struct('SingleAxisSpec', fields)
+}
+
+/** Preserve the declared `ParallelAxis[]` element type when optional fields differ between axes. */
+const parallelAxesAdapter: ChartHostAdapter = (attrs, t, warn, resolve, emit) => {
+  const axes = literalOf(attrs['axes'], resolve)
+  if (axes?.kind !== 'array') return emit(attrs['axes']!)
+  const items: string[] = []
+  for (const item of axes.elements) {
+    if (item.kind !== 'object') return emit(attrs['axes']!)
+    const name = litString(objectField(item, 'name'))
+    if (name === undefined) {
+      warn('<ParallelChart axes>: every literal axis needs a string name on native; emitting nothing.')
+      return 'unsupported'
+    }
+    const fields: [string, string][] = [['name', JSON.stringify(name)]]
+    const type = litString(objectField(item, 'type'))
+    fields.push(['type', type === undefined ? t.nil : JSON.stringify(type)])
+    const categories = literalOf(objectField(item, 'categories'), resolve)
+    fields.push(['categories', categories?.kind === 'array' ? emit(categories) : t.nil])
+    const domain = literalOf(objectField(item, 'domain'), resolve)
+    if (domain?.kind === 'object') {
+      const min = litNumber(objectField(domain, 'min'))
+      const max = litNumber(objectField(domain, 'max'))
+      if (min === undefined || max === undefined) {
+        warn('<ParallelChart axes.domain>: needs literal min/max numbers on native; emitting nothing.')
+        return 'unsupported'
+      }
+      fields.push(['domain', t.struct('Domain', [['min', chartDouble(min)], ['max', chartDouble(max)]])])
+    } else fields.push(['domain', t.nil])
+    const inverse = objectField(item, 'inverse')
+    fields.push(['inverse', inverse === undefined ? t.nil : emit(inverse)])
+    items.push(t.struct('ParallelAxis', fields))
+  }
+  return t.list(items)
+}
+
 /** `rows={[[…], …]}` → `[[Double]]`, categories resolved through the `axes` literal, gaps as NaN. */
 export const parallelRowsAdapter: ChartHostAdapter = (attrs, t, warn, resolve) => {
   const rows = literalOf(attrs['rows'], resolve)
@@ -568,8 +625,19 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     layout: (a, t) => `layoutParallel(${a.data[0]}, ${a.data[1]}, ${t.rect(a.gutter, '8.0', t.max0(`${a.W} - ${a.gutter} * 2.0`), t.max0(`${a.H} - 16.0`))}, ${a.options})`,
     render: (l, a) => `renderParallel(${l}, ${a.options})`,
     hit: (l, x, y) => `hitParallelIndex(${l}, ${x}, ${y})`,
-    adapt: { rows: parallelRowsAdapter },
+    adapt: { axes: parallelAxesAdapter, rows: parallelRowsAdapter },
     warnProps: ['rowColor'],
+  },
+  SingleAxisChart: {
+    data: ['axis', 'points'],
+    options: 'singleAxis',
+    optionsStruct: 'SingleAxisOptions',
+    themeDefaults: ['labelColor', 'axisColor'],
+    defaultHeight: 160,
+    layout: (a, t) => `layoutSingleAxis(${a.data[0]}, ${a.data[1]}, ${box00(a, t)}, ${a.options})`,
+    render: (l, a) => `renderSingleAxis(${l}, ${a.options})`,
+    hit: (l, x, y) => `hitSingleAxis(${l}, ${x}, ${y})`,
+    adapt: { axis: singleAxisSpecAdapter },
   },
 }
 
@@ -1009,6 +1077,75 @@ export function desugarOptionChart(
     set('series', { kind: 'array', elements: riverSeries })
     set('river', { kind: 'object', fields: riverFields })
     return { kind: 'jsx-element', tag: 'RiverChart', attrs, children: [] }
+  }
+
+  if (litString(objectField(series, 'coordinateSystem')) === 'singleAxis') {
+    if (kind !== 'scatter' && kind !== 'effectScatter') {
+      warn(`<OptionChart option.series[0].type>: native single-axis charts support scatter series; ${kind} cannot lower.`)
+      return undefined
+    }
+    optionFields(series, ['type', 'name', 'data', 'coordinateSystem', 'singleAxisIndex', 'label', 'itemStyle', 'symbolSize', 'color'], 'option.series[0]', warn)
+    const axis = literalOf(objectField(raw, 'singleAxis'), resolve)
+    const data = literalOf(objectField(series, 'data'), resolve)
+    if (axis?.kind !== 'object' || data?.kind !== 'array') {
+      warn('<OptionChart option.singleAxis>: native single-axis charts need a literal axis and data; emitting nothing.')
+      return undefined
+    }
+    optionFields(axis, ['type', 'data', 'min', 'max', 'name'], 'option.singleAxis', warn)
+    const axisFields: { name: string; value: ExprIR }[] = []
+    const isCategory = litString(objectField(axis, 'type')) === 'category'
+    axisFields.push({ name: 'type', value: lit(isCategory ? 'category' : 'value') })
+    if (isCategory) {
+      const categories = literalOf(objectField(axis, 'data'), resolve)
+      if (categories?.kind !== 'array' || categories.elements.some((value) => litString(value) === undefined)) {
+        warn('<OptionChart option.singleAxis.data>: a native category axis needs literal string categories; emitting nothing.')
+        return undefined
+      }
+      axisFields.push({ name: 'categories', value: categories })
+    } else {
+      const min = litNumber(objectField(axis, 'min'))
+      const max = litNumber(objectField(axis, 'max'))
+      if (min !== undefined && max !== undefined) axisFields.push({ name: 'domain', value: { kind: 'object', fields: [{ name: 'min', value: optionDoubleLiteral(min) }, { name: 'max', value: optionDoubleLiteral(max) }] } })
+    }
+    const axisName = litString(objectField(axis, 'name'))
+    if (axisName !== undefined) axisFields.push({ name: 'name', value: lit(axisName) })
+    const points: ExprIR[] = []
+    for (let i = 0; i < data.elements.length; i++) {
+      const datum = literalOf(data.elements[i], resolve)
+      const values = datum?.kind === 'array' ? datum : datum?.kind === 'object' ? literalOf(objectField(datum, 'value'), resolve) : undefined
+      const x = values?.kind === 'array' ? litNumber(values.elements[0]) : litNumber(datum)
+      if (x === undefined) {
+        warn(`<OptionChart option.series[0].data[${i}]>: a native single-axis datum needs a literal value or [position, size]; emitting nothing.`)
+        return undefined
+      }
+      const fields: { name: string; value: ExprIR }[] = [{ name: 'x', value: optionDoubleLiteral(x) }]
+      const size = values?.kind === 'array' ? litNumber(values.elements[1]) : undefined
+      if (size !== undefined) fields.push({ name: 'size', value: optionDoubleLiteral(size) })
+      if (datum?.kind === 'object') {
+        const name = litString(objectField(datum, 'name'))
+        const itemStyle = literalOf(objectField(datum, 'itemStyle'), resolve)
+        const color = itemStyle?.kind === 'object' ? litString(objectField(itemStyle, 'color')) : undefined
+        if (name !== undefined) fields.push({ name: 'name', value: lit(name) })
+        if (color !== undefined) fields.push({ name: 'color', value: lit(color) })
+      }
+      points.push({ kind: 'object', fields })
+    }
+    const optionFieldsOut: { name: string; value: ExprIR }[] = []
+    const label = literalOf(objectField(series, 'label'), resolve)
+    if (label?.kind === 'object') {
+      optionFields(label, ['show'], 'option.series[0].label', warn)
+      const show = objectField(label, 'show')
+      if (show?.kind === 'literal' && show.value === true) optionFieldsOut.push({ name: 'showLabels', value: lit(true) })
+    }
+    const radius = litNumber(objectField(series, 'symbolSize'))
+    if (radius !== undefined) optionFieldsOut.push({ name: 'radius', value: optionDoubleLiteral(radius / 2) })
+    const itemStyle = literalOf(objectField(series, 'itemStyle'), resolve)
+    const color = itemStyle?.kind === 'object' ? litString(objectField(itemStyle, 'color')) : undefined
+    if (color !== undefined) optionFieldsOut.push({ name: 'color', value: lit(color) })
+    set('axis', { kind: 'object', fields: axisFields })
+    set('points', { kind: 'array', elements: points })
+    if (optionFieldsOut.length > 0) set('singleAxis', { kind: 'object', fields: optionFieldsOut })
+    return { kind: 'jsx-element', tag: 'SingleAxisChart', attrs, children: [] }
   }
 
   if (litString(objectField(series, 'coordinateSystem')) === 'polar') {

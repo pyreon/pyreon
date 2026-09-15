@@ -94,6 +94,12 @@ export function App() { return <OptionChart option={{
   ] }],
 }} /> }`
 
+const SINGLE_AXIS = `import { OptionChart } from '@pyreon/charts/plot'
+export function App() { return <OptionChart option={{
+  singleAxis: { type: 'value', min: 0, max: 100, name: 'Score' },
+  series: [{ type: 'effectScatter', coordinateSystem: 'singleAxis', symbolSize: 16, label: { show: true }, itemStyle: { color: '#336699' }, data: [[20, 2], [75, 8]] }],
+}} /> }`
+
 describe('OptionChart family options lower to native hosts', () => {
   for (const target of ['swift', 'kotlin'] as const) {
     it(`${target}: pie preserves data, donut radius, labels, legend, tooltip, title, and size`, () => {
@@ -193,6 +199,15 @@ describe('OptionChart family options lower to native hosts', () => {
       for (const value of ['A', 'B', '#ddeeff', '#112233']) expect(r.code).toContain(`"${value}"`)
       expect(r.code).toContain('FiveNumber(')
     })
+
+    it(`${target}: single-axis options preserve domain, point sizes, labels, and colour`, () => {
+      const r = transform(SINGLE_AXIS, { target })
+      expect(r.warnings).toEqual([])
+      expect(r.code).not.toContain('OptionChart(')
+      expect(r.code).toContain('renderSingleAxis')
+      for (const value of ['Score', '#336699']) expect(r.code).toContain(`"${value}"`)
+      expect(r.code).toContain(target === 'swift' ? 'radius: 8.0' : 'radius = 8.0')
+    })
   }
 
   it('names unsupported dynamic and cartesian option shapes', () => {
@@ -279,6 +294,16 @@ describe('OptionChart family options lower to native hosts', () => {
 
   it.skipIf(!isKotlincAvailable())('kotlinc accepts boxplot option emits', () => {
     const r = validateKotlin(transform(BOXPLOT, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  }, 90_000)
+
+  it.skipIf(!isSwiftcAvailable())('swiftc accepts single-axis option emits', () => {
+    const r = validateSwiftWithStubs(transform(SINGLE_AXIS, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  }, 30_000)
+
+  it.skipIf(!isKotlincAvailable())('kotlinc accepts single-axis option emits', () => {
+    const r = validateKotlin(transform(SINGLE_AXIS, { target: 'kotlin' }).code)
     expect(r.ok, r.error ?? '').toBe(true)
   }, 90_000)
 })

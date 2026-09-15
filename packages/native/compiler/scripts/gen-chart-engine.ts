@@ -66,6 +66,7 @@ export const ENGINE_FILES = [
   'geo',
   'gantt',
   'parallel',
+  'single-axis',
   'candlestick-chart',
   'boxplot',
   'boxplot-chart',

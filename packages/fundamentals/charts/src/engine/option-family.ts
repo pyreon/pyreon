@@ -26,7 +26,7 @@ import type { GeoOptions } from './geo'
 import type { GeoJson } from './geo-web'
 import { geoPointsToSvg } from './geo-points'
 import type { GeoPath, GeoPoint, GeoPointsOptions } from './geo-points'
-import { singleAxisToSvg } from './single-axis'
+import { singleAxisToSvg } from './single-axis-web'
 import type { SingleAxisOptions, SingleAxisPoint, SingleAxisSpec } from './single-axis'
 import type { FunnelOptions } from './funnel'
 import type { RadarAxis } from './radar'
@@ -313,7 +313,7 @@ export function compileFamily(rawOption: EChartsOption): CompiledFamily | null {
     const axis: SingleAxisSpec = {
       type: isCat ? 'category' : 'value',
       ...(isCat ? { categories: cats ?? [] } : {}),
-      ...(!isCat && lo !== null && hi !== null ? { domain: [lo, hi] as [Double, Double] } : {}),
+      ...(!isCat && lo !== null && hi !== null ? { domain: { min: lo, max: hi } } : {}),
       ...(typeof ax['name'] === 'string' ? { name: ax['name'] as string } : {}),
     }
     const points: SingleAxisPoint[] = []
@@ -1184,4 +1184,3 @@ export function familyToSvg(plan: FamilyPlan, size: { width?: Double | undefined
       })
   }
 }
-

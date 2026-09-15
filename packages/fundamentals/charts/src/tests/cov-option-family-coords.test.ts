@@ -33,7 +33,7 @@ registerMap('cov-family-world', world)
 describe('singleAxis', () => {
   const sa = (s: Record<string, unknown>, singleAxis?: unknown): PlanFields => plan(series({ type: 'scatter', coordinateSystem: 'singleAxis', ...s }, singleAxis === undefined ? {} : { singleAxis }))
   it('a value axis reads min/max as a domain; a category axis reads the labels instead', () => {
-    expect((sa({ data: [] }, { min: 0, max: 10, name: 'Load' }) as { axis: unknown }).axis).toEqual({ type: 'value', domain: [0, 10], name: 'Load' })
+    expect((sa({ data: [] }, { min: 0, max: 10, name: 'Load' }) as { axis: unknown }).axis).toEqual({ type: 'value', domain: { min: 0, max: 10 }, name: 'Load' })
     expect((sa({ data: [] }, { type: 'category', data: ['a', { value: 'b' }, 7] }) as { axis: unknown }).axis).toEqual({ type: 'category', categories: ['a', 'b', '7'] })
     // A category axis with no data still gets an (empty) category list, never a domain.
     expect((sa({ data: [] }, { type: 'category', min: 0, max: 5 }) as { axis: unknown }).axis).toEqual({ type: 'category', categories: [] })

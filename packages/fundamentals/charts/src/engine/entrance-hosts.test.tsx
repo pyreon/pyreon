@@ -109,6 +109,6 @@ describe('the family hosts play the entrance', () => {
     // them: every family in `seen` has already proved it declares `animates`
     // AND threads `progress` through, so this only catches a scan that found
     // nothing. Bump it when a family lands — chord took it from 14 to 15.
-    expect(seen.length).toBe(15)
+    expect(seen.length).toBe(16)
   })
 })
