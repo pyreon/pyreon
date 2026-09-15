@@ -707,51 +707,51 @@ class PyreonFlowState<T>(
     nodes: List<PyreonFlowNode<T>> = emptyList(),
     edges: List<PyreonFlowEdge> = emptyList(),
     viewport: PyreonFlowViewport = PyreonFlowViewport(),
-    private val minZoom: Double = 0.1,
-    private val maxZoom: Double = 4.0,
-    private val snapToGrid: Boolean = false,
-    private val snapGrid: Double = 15.0,
+    var minZoom: Double = 0.1,
+    var maxZoom: Double = 4.0,
+    var snapToGrid: Boolean = false,
+    var snapGrid: Double = 15.0,
     nodeExtent: PyreonFlowNodeExtent? = null,
-    private val connectionRules: Map<String, List<String>>? = null,
-    val defaultMarkerEnd: PyreonFlowMarker? = PyreonFlowMarker("arrowclosed"),
-    val nodesDraggable: Boolean = true,
-    val nodesConnectable: Boolean = true,
-    val nodesSelectable: Boolean = true,
-    val nodesFocusable: Boolean = true,
-    val edgesFocusable: Boolean = true,
-    val disableKeyboardA11y: Boolean = false,
-    val nodesDeletable: Boolean = true,
-    val edgesDeletable: Boolean = true,
-    val edgesReconnectable: Boolean = true,
-    val edgeInteractionWidth: Double = 20.0,
+    var connectionRules: Map<String, List<String>>? = null,
+    var defaultMarkerEnd: PyreonFlowMarker? = PyreonFlowMarker("arrowclosed"),
+    var nodesDraggable: Boolean = true,
+    var nodesConnectable: Boolean = true,
+    var nodesSelectable: Boolean = true,
+    var nodesFocusable: Boolean = true,
+    var edgesFocusable: Boolean = true,
+    var disableKeyboardA11y: Boolean = false,
+    var nodesDeletable: Boolean = true,
+    var edgesDeletable: Boolean = true,
+    var edgesReconnectable: Boolean = true,
+    var edgeInteractionWidth: Double = 20.0,
     connectionRadius: Double = 0.0,
-    val pannable: Boolean = true,
-    val panOnDrag: Boolean = true,
-    val panOnScroll: Boolean = false,
-    val panOnScrollSpeed: Double = 0.5,
-    val zoomable: Boolean = true,
-    val zoomOnScroll: Boolean = true,
-    val zoomOnPinch: Boolean = true,
-    val zoomOnDoubleClick: Boolean = false,
-    val selectionOnDrag: Boolean = false,
+    var pannable: Boolean = true,
+    var panOnDrag: Boolean = true,
+    var panOnScroll: Boolean = false,
+    var panOnScrollSpeed: Double = 0.5,
+    var zoomable: Boolean = true,
+    var zoomOnScroll: Boolean = true,
+    var zoomOnPinch: Boolean = true,
+    var zoomOnDoubleClick: Boolean = false,
+    var selectionOnDrag: Boolean = false,
     selectionMode: String = "partial",
-    val multiSelect: Boolean = true,
-    val onlyRenderVisibleElements: Boolean = false,
-    val snapToObjects: Boolean = true,
-    val defaultEdgeType: String = PYREON_FLOW_DEFAULT_EDGE_TYPE,
-    val connectionLineType: String = PYREON_FLOW_DEFAULT_EDGE_TYPE,
-    val defaultEdgeOptions: PyreonFlowDefaultEdgeOptions = PyreonFlowDefaultEdgeOptions(),
-    val fitViewOnLoad: Boolean = false,
+    var multiSelect: Boolean = true,
+    var onlyRenderVisibleElements: Boolean = false,
+    var snapToObjects: Boolean = true,
+    var defaultEdgeType: String = PYREON_FLOW_DEFAULT_EDGE_TYPE,
+    var connectionLineType: String = PYREON_FLOW_DEFAULT_EDGE_TYPE,
+    var defaultEdgeOptions: PyreonFlowDefaultEdgeOptions = PyreonFlowDefaultEdgeOptions(),
+    var fitViewOnLoad: Boolean = false,
     fitViewPadding: Double = 0.1,
-    val autoHistory: Boolean = true,
-    val deleteKeys: List<String>? = listOf("Delete", "Backspace"),
-    val multiSelectionKey: String? = "shift",
-    val selectionKey: String? = "shift",
-    val zoomActivationKey: String? = "ctrl",
-    val preventScrolling: Boolean = true,
-    private val connectionValidator: ((PyreonFlowConnection) -> Boolean)? = null,
+    var autoHistory: Boolean = true,
+    var deleteKeys: List<String>? = listOf("Delete", "Backspace"),
+    var multiSelectionKey: String? = "shift",
+    var selectionKey: String? = "shift",
+    var zoomActivationKey: String? = "ctrl",
+    var preventScrolling: Boolean = true,
+    var connectionValidator: ((PyreonFlowConnection) -> Boolean)? = null,
     private val searchText: ((T) -> String?)? = null,
-    private val reducedMotion: Boolean? = null,
+    var reducedMotion: Boolean? = null,
 ) {
     private fun shouldReduceMotion(): Boolean {
         reducedMotion?.let { return it }
@@ -761,7 +761,7 @@ class PyreonFlowState<T>(
             enabled == false
         } catch (_: ReflectiveOperationException) { false }
     }
-    val selectionMode: String = if (selectionMode == "full") "full" else "partial"
+    var selectionMode: String = if (selectionMode == "full") "full" else "partial"
     fun batch(operation: () -> Unit) { Snapshot.withMutableSnapshot(operation) }
     fun dispose() {
         viewportAnimationGeneration++; layoutAnimationGeneration++
@@ -802,9 +802,9 @@ class PyreonFlowState<T>(
     private val connectStartListeners = LinkedHashMap<Int, (PyreonFlowConnectStart) -> Unit>()
     private val connectEndListeners = LinkedHashMap<Int, (PyreonFlowConnection?) -> Unit>()
     private val paneClickListeners = LinkedHashMap<Int, (PyreonFlowPaneEvent) -> Unit>()
-    val connectionRadius: Double = maxOf(0.0, connectionRadius)
-    val fitViewPadding: Double = maxOf(0.0, fitViewPadding)
-    private var nodeExtent: PyreonFlowNodeExtent? = nodeExtent
+    var connectionRadius: Double = maxOf(0.0, connectionRadius)
+    var fitViewPadding: Double = maxOf(0.0, fitViewPadding)
+    var nodeExtent: PyreonFlowNodeExtent? = nodeExtent
     private val order = mutableStateListOf<String>()
     private val nodeMap = mutableStateMapOf<String, PyreonFlowNode<T>>()
     private val measurementStore = mutableStateMapOf<String, PyreonFlowNodeMeasurement>()

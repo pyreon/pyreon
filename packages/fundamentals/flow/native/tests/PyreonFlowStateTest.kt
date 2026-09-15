@@ -62,6 +62,10 @@ fun main() {
     check(configured.panOnScroll && configured.panOnScrollSpeed == 0.75, "Android retains scroll config")
     check(!configured.zoomOnScroll && configured.deleteKeys == listOf("ForwardDelete"), "Android retains zoom/delete config")
     check(configured.multiSelectionKey == "ctrl" && configured.selectionKey == null && configured.zoomActivationKey == "meta" && !configured.preventScrolling, "Android retains modifier config")
+    configured.minZoom = 0.75
+    configured.pannable = false
+    configured.zoomTo(0.1)
+    check(configured.viewport.zoom == 0.75 && !configured.pannable, "Android applies live mutable Flow config")
     val markerEdge = PyreonFlowEdge(id = "marker", source = "1", target = "2", markerStart = PyreonFlowMarker("arrow", color = "#F00"))
     val resolvedMarker = pyreonResolveFlowEdgeMarkers(markerEdge, pyreonFlowDefaultMarkerEnd)
     check(resolvedMarker.start?.color == "#F00" && resolvedMarker.end?.type == "arrowclosed", "Android resolves per-edge and default markers")

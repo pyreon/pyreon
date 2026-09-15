@@ -1049,19 +1049,19 @@ public final class PyreonFlowState<T> {
     private var selectedEdgeIds: [String] = []
     private var selectedEdgeIdSet: Set<String> = []
 
-    private let minZoom: Double
-    private let maxZoom: Double
-    private var nodeExtent: PyreonFlowNodeExtent?
-    private let snapToGrid: Bool
-    private let snapGrid: Double
-    private let connectionRules: [String: [String]]?
-    public let defaultMarkerEnd: PyreonFlowMarker?
-    public let nodesDraggable: Bool; public let nodesConnectable: Bool; public let nodesSelectable: Bool; public let nodesFocusable: Bool
-    public let edgesFocusable: Bool; public let disableKeyboardA11y: Bool; public let nodesDeletable: Bool; public let edgesDeletable: Bool; public let edgesReconnectable: Bool
-    public let edgeInteractionWidth: Double; public let connectionRadius: Double; public let pannable: Bool; public let panOnDrag: Bool; public let panOnScroll: Bool; public let panOnScrollSpeed: Double; public let zoomable: Bool; public let zoomOnScroll: Bool; public let zoomOnPinch: Bool; public let zoomOnDoubleClick: Bool; public let selectionOnDrag: Bool; public let selectionMode: String; public let multiSelect: Bool; public let onlyRenderVisibleElements: Bool; public let snapToObjects: Bool
-    public let defaultEdgeType: String; public let connectionLineType: String; public let defaultEdgeOptions: PyreonFlowDefaultEdgeOptions; public let fitViewOnLoad: Bool; public let fitViewPadding: Double
-    public let autoHistory: Bool
-    public let deleteKeys: [String]?; public let multiSelectionKey: String?; public let selectionKey: String?; public let zoomActivationKey: String?; public let preventScrolling: Bool
+    public var minZoom: Double
+    public var maxZoom: Double
+    public var nodeExtent: PyreonFlowNodeExtent?
+    public var snapToGrid: Bool
+    public var snapGrid: Double
+    public var connectionRules: [String: [String]]?
+    public var defaultMarkerEnd: PyreonFlowMarker?
+    public var nodesDraggable: Bool; public var nodesConnectable: Bool; public var nodesSelectable: Bool; public var nodesFocusable: Bool
+    public var edgesFocusable: Bool; public var disableKeyboardA11y: Bool; public var nodesDeletable: Bool; public var edgesDeletable: Bool; public var edgesReconnectable: Bool
+    public var edgeInteractionWidth: Double; public var connectionRadius: Double; public var pannable: Bool; public var panOnDrag: Bool; public var panOnScroll: Bool; public var panOnScrollSpeed: Double; public var zoomable: Bool; public var zoomOnScroll: Bool; public var zoomOnPinch: Bool; public var zoomOnDoubleClick: Bool; public var selectionOnDrag: Bool; public var selectionMode: String; public var multiSelect: Bool; public var onlyRenderVisibleElements: Bool; public var snapToObjects: Bool
+    public var defaultEdgeType: String; public var connectionLineType: String; public var defaultEdgeOptions: PyreonFlowDefaultEdgeOptions; public var fitViewOnLoad: Bool; public var fitViewPadding: Double
+    public var autoHistory: Bool
+    public var deleteKeys: [String]?; public var multiSelectionKey: String?; public var selectionKey: String?; public var zoomActivationKey: String?; public var preventScrolling: Bool
     @ObservationIgnored private var undoStack: [HistorySnapshot] = []
     @ObservationIgnored private var redoStack: [HistorySnapshot] = []
     @ObservationIgnored private var mutationVersion = 0
@@ -1084,11 +1084,11 @@ public final class PyreonFlowState<T> {
     @ObservationIgnored private var connectStartListeners: [UUID: (PyreonFlowConnectStart) -> Void] = [:]
     @ObservationIgnored private var connectEndListeners: [UUID: (PyreonFlowConnection?) -> Void] = [:]
     @ObservationIgnored private var paneClickListeners: [UUID: (PyreonFlowPaneEvent) -> Void] = [:]
-    @ObservationIgnored private let connectionValidator: ((PyreonFlowConnection) -> Bool)?
+    @ObservationIgnored public var connectionValidator: ((PyreonFlowConnection) -> Bool)?
     @ObservationIgnored private let searchText: ((T) -> String?)?
     @ObservationIgnored private var viewportAnimationGeneration = 0
     @ObservationIgnored private var layoutAnimationGeneration = 0
-    private let reducedMotion: Bool?
+    public var reducedMotion: Bool?
     private var shouldReduceMotion: Bool {
         if let reducedMotion { return reducedMotion }
 #if canImport(UIKit)

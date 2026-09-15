@@ -41,6 +41,31 @@ export const LOWERED_FLOW_PROPERTY_READS: ReadonlySet<string> = new Set([
   'nodeMap', 'edgeMap', 'measurements',
 ])
 
+/** Mutable `FlowConfig` fields retained by both native state engines. */
+export const LOWERED_FLOW_CONFIG_PROPERTIES: ReadonlyMap<string, string> = new Map([
+  ['defaultEdgeType', 'defaultEdgeType'], ['defaultEdgeOptions', 'defaultEdgeOptions'],
+  ['minZoom', 'minZoom'], ['maxZoom', 'maxZoom'], ['snapToGrid', 'snapToGrid'],
+  ['snapGrid', 'snapGrid'], ['snapToObjects', 'snapToObjects'],
+  ['connectionRules', 'connectionRules'], ['nodesDraggable', 'nodesDraggable'],
+  ['nodesConnectable', 'nodesConnectable'], ['nodesSelectable', 'nodesSelectable'],
+  ['nodesFocusable', 'nodesFocusable'], ['edgesFocusable', 'edgesFocusable'],
+  ['disableKeyboardA11y', 'disableKeyboardA11y'], ['reducedMotion', 'reducedMotion'],
+  ['nodesDeletable', 'nodesDeletable'], ['edgesDeletable', 'edgesDeletable'],
+  ['isValidConnection', 'connectionValidator'], ['connectionRadius', 'connectionRadius'],
+  ['autoHistory', 'autoHistory'], ['multiSelect', 'multiSelect'], ['nodeExtent', 'nodeExtent'],
+  ['pannable', 'pannable'], ['zoomable', 'zoomable'], ['panOnDrag', 'panOnDrag'],
+  ['panOnScroll', 'panOnScroll'], ['panOnScrollSpeed', 'panOnScrollSpeed'],
+  ['zoomOnScroll', 'zoomOnScroll'], ['zoomOnPinch', 'zoomOnPinch'],
+  ['zoomOnDoubleClick', 'zoomOnDoubleClick'], ['selectionOnDrag', 'selectionOnDrag'],
+  ['selectionMode', 'selectionMode'], ['deleteKeys', 'deleteKeys'],
+  ['multiSelectionKey', 'multiSelectionKey'], ['selectionKey', 'selectionKey'],
+  ['zoomActivationKey', 'zoomActivationKey'], ['edgesReconnectable', 'edgesReconnectable'],
+  ['edgeInteractionWidth', 'edgeInteractionWidth'], ['connectionLineType', 'connectionLineType'],
+  ['preventScrolling', 'preventScrolling'], ['fitView', 'fitViewOnLoad'],
+  ['fitViewPadding', 'fitViewPadding'], ['defaultMarkerEnd', 'defaultMarkerEnd'],
+  ['onlyRenderVisibleElements', 'onlyRenderVisibleElements'],
+])
+
 /** Methods `PyreonFlowState` implements on BOTH targets (v1 surface). */
 export const LOWERED_FLOW_METHODS: ReadonlySet<string> = new Set([
   'getNode', 'getNodeDimensions', 'getNodes', 'addNode', 'addNodes', 'setNodes', 'removeNode', 'removeNodes', 'updateNode', 'updateNodePosition', 'updateNodeData',

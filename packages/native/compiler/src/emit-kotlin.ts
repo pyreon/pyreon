@@ -7,6 +7,7 @@
 import {
   HANDLED_FLOW_EDGE_FIELDS,
   HANDLED_FLOW_NODE_FIELDS,
+  LOWERED_FLOW_CONFIG_PROPERTIES,
   LOWERED_FLOW_METHODS,
   LOWERED_FLOW_PROPERTY_READS,
   droppedFlowFieldsWarning,
@@ -6246,6 +6247,14 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       }
     }
     case 'member': {
+      if (
+        e.object.kind === 'member' && e.object.property === 'config' &&
+        e.object.object.kind === 'identifier' && _flowStateNamesKt.has(e.object.object.name)
+      ) {
+        const nativeProperty = LOWERED_FLOW_CONFIG_PROPERTIES.get(e.property)
+        if (nativeProperty !== undefined) return `${kotlinIdent(e.object.object.name)}.${nativeProperty}`
+        _emitWarnings.push(`createFlow binding \`${e.object.object.name}\`: \`config.${e.property}\` is not represented by the native Flow configuration.`)
+      }
       if (
         e.object.kind === 'member' && e.object.property === 'data' &&
         e.object.object.kind === 'member' && e.object.object.property === 'edge' &&

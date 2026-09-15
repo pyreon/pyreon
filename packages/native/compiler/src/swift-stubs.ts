@@ -1209,14 +1209,17 @@ public final class PyreonFlowState<T> {
     reducedMotion: Bool? = nil,
     deleteKeys: [String]? = ["Delete", "Backspace"], multiSelectionKey: String? = "shift", selectionKey: String? = "shift", zoomActivationKey: String? = "ctrl", preventScrolling: Bool = true
   ) {}
-  public let defaultMarkerEnd: PyreonFlowMarker? = nil
-  public let nodesDraggable = true; public let nodesConnectable = true; public let nodesSelectable = true; public let nodesFocusable = true
-  public let edgesFocusable = true; public let disableKeyboardA11y = false; public let nodesDeletable = true; public let edgesDeletable = true; public let edgesReconnectable = true
-  public let edgeInteractionWidth = 20.0; public let connectionRadius = 0.0; public let pannable = true; public let panOnDrag = true; public let panOnScroll = false; public let panOnScrollSpeed = 0.5
-  public let zoomable = true; public let zoomOnScroll = true; public let zoomOnPinch = true; public let zoomOnDoubleClick = false
-  public let selectionOnDrag = false; public let selectionMode = "partial"; public let multiSelect = true; public let onlyRenderVisibleElements = false; public let snapToObjects = true
-  public let defaultEdgeType = "bezier"; public let connectionLineType = "bezier"; public let defaultEdgeOptions = PyreonFlowDefaultEdgeOptions(); public let fitViewOnLoad = false; public let fitViewPadding = 0.1
-  public let autoHistory = true; public let deleteKeys: [String]? = ["Delete", "Backspace"]; public let multiSelectionKey: String? = "shift"; public let selectionKey: String? = "shift"; public let zoomActivationKey: String? = "ctrl"; public let preventScrolling = true
+  public var minZoom = 0.1; public var maxZoom = 4.0; public var snapToGrid = false; public var snapGrid = 15.0
+  public var nodeExtent: PyreonFlowNodeExtent? = nil; public var connectionRules: [String: [String]]? = nil
+  public var connectionValidator: ((PyreonFlowConnection) -> Bool)? = nil; public var reducedMotion: Bool? = nil
+  public var defaultMarkerEnd: PyreonFlowMarker? = nil
+  public var nodesDraggable = true; public var nodesConnectable = true; public var nodesSelectable = true; public var nodesFocusable = true
+  public var edgesFocusable = true; public var disableKeyboardA11y = false; public var nodesDeletable = true; public var edgesDeletable = true; public var edgesReconnectable = true
+  public var edgeInteractionWidth = 20.0; public var connectionRadius = 0.0; public var pannable = true; public var panOnDrag = true; public var panOnScroll = false; public var panOnScrollSpeed = 0.5
+  public var zoomable = true; public var zoomOnScroll = true; public var zoomOnPinch = true; public var zoomOnDoubleClick = false
+  public var selectionOnDrag = false; public var selectionMode = "partial"; public var multiSelect = true; public var onlyRenderVisibleElements = false; public var snapToObjects = true
+  public var defaultEdgeType = "bezier"; public var connectionLineType = "bezier"; public var defaultEdgeOptions = PyreonFlowDefaultEdgeOptions(); public var fitViewOnLoad = false; public var fitViewPadding = 0.1
+  public var autoHistory = true; public var deleteKeys: [String]? = ["Delete", "Backspace"]; public var multiSelectionKey: String? = "shift"; public var selectionKey: String? = "shift"; public var zoomActivationKey: String? = "ctrl"; public var preventScrolling = true
   public private(set) var nodes: [PyreonFlowNode<T>] = []
   public var nodeLookup: [String: PyreonFlowNode<T>] { [:] }
   public private(set) var edges: [PyreonFlowEdge] = []

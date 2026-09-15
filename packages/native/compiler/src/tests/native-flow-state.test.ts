@@ -12,7 +12,9 @@
 // validate against the compiler stubs here.
 
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { transform } from '../index'
+import { LOWERED_FLOW_CONFIG_PROPERTIES } from '../flow-lowering'
 import {
   isKotlincAvailable,
   isSwiftcAvailable,
@@ -21,6 +23,17 @@ import {
 } from '../validate'
 
 const P = '@pyreon/primitives'
+
+it('tracks every public mutable FlowConfig field in native lowering', () => {
+  const source = readFileSync(new URL('../../../../fundamentals/flow/src/types.ts', import.meta.url), 'utf8')
+  const config = source.slice(source.indexOf('export interface FlowConfig'), source.indexOf('// ─── Snap session'))
+  const publicKeys = [...config.matchAll(/^  ([A-Za-z_]\w*)\??:/gm)]
+    .map((match) => match[1]!)
+    .filter((key) => key !== 'nodes' && key !== 'edges')
+    .sort()
+  expect([...LOWERED_FLOW_CONFIG_PROPERTIES.keys()].sort()).toEqual(publicKeys)
+})
+
 const workflowFlow = `
 import { createFlow } from '@pyreon/flow'
 import { Stack, Text, Button } from '${P}'
@@ -1091,6 +1104,18 @@ export function C() {
       expect(result.warnings.join(' ')).not.toContain('writes the `measurements` signal directly')
       expect(result.code).toContain('flow.replaceMeasurements(flow.measurements)')
       expect(result.code).toContain('flow.updateMeasurements(')
+      const validation = target === 'swift' ? validateSwiftWithStubs(result.code) : validateKotlin(result.code)
+      expect(validation.ok, validation.error ?? '').toBe(true)
+    })
+    it(`[${target}] mutable public Flow config reads and writes target retained native policy`, () => {
+      const result = transform(base('', '<Button onPress={() => { flow.config.pannable = false; flow.config.snapToGrid = !flow.config.snapToGrid; flow.config.minZoom = 0.5 }}><Text>{flow.config.selectionMode}</Text></Button>'), { target })
+      const warnings = result.warnings.join(' ')
+      expect(warnings).not.toContain('config.pannable')
+      expect(warnings).not.toContain('config.snapToGrid')
+      expect(result.code).toContain('flow.pannable = false')
+      expect(result.code).toContain('flow.snapToGrid = !flow.snapToGrid')
+      expect(result.code).toContain(target === 'swift' ? 'flow.minZoom = 0.5' : 'flow.minZoom = 0.5')
+      expect(result.code).toContain('flow.selectionMode')
       const validation = target === 'swift' ? validateSwiftWithStubs(result.code) : validateKotlin(result.code)
       expect(validation.ok, validation.error ?? '').toBe(true)
     })
