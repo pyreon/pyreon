@@ -137,6 +137,24 @@ A `<label>` FORWARDS its click to the wrapped control as a default action, so on
 
 ---
 
+### [FIXED, 2026-09] SSR fast-path attribute seams diverged from `renderProp` in three places the name-based dispatch could not see.
+
+The compile-to-string path (`ssrSerializeAttr`, both backends) skipped only the camelCase handler spelling (`/^on[A-Z]/`), so a LOWERCASE `onclick={handler}` reached `_ssrAttrGen`, whose function branch INVOKED the handler during server render and baked its return — and a string value baked a live inline handler `renderPropSkipped` refuses by name set. A literal `aria-hidden={false}` was omitted where `renderPropValue` emits `aria-hidden="false"`. And "provably a string" trusted a METHOD NAME on an untyped receiver (`x.join()`, `n.toFixed(2)`), so a user object's `join()` returning null baked `name="null"` where the h() path omits — and `String(x)` proved a string even when the module rebinds `String`. **Rules: the skip set is the runtime's set, MIRRORED and identity-locked (`SSR_EVENT_HANDLER_ATTRS`, like `SSR_URL_ATTRS`); a boolean aria literal follows the runtime's string-enum rule; a proof must come from the value's own syntax (a literal, a template, a concat with a literal side) or a GLOBAL the module provably does not rebind — never from a method name.** Detection lesson: the render-fuzz grammar had no lowercase handler, no `{false}` literal and no method-call value, so 20,000 seeds were green; one new name in `ATTR_NAMES` (`onclick`) and a `lit: 'false'` attr kind made the grammar catch all three on its first run. Reference: `compiler/src/jsx.ts:ssrSerializeAttr`/`ssrProvablyString` + `native/src/lib.rs` mirrors; locked by `ssr-fast-path-attr-parity.test.ts` (both backends), `ssr-template-differential.test.tsx`, and the widened fuzz — bisect-verified.
+
+---
+
+### [FIXED, 2026-09] Plain Mode total tracking hoisted reads it had no right to.
+
+The prologue that pre-reads conditionally-read state (`void (a());`) treated a read inside a NESTED function as "conditional" and hoisted it — so `effect(() => { setTimeout(() => log(a), 100) })` re-ran on every `a` change (a timer pile-up), and a cleanup that read state re-ran the effect forever; classic code never subscribes to a nested callback's reads, and neither must the dialect. A binding SHADOWED inside the effect body (`const a = 2`) was mistaken for the outer state — hoisted, and its inner read rewritten to a call. And a hoisted deep path (`s.items[0].id`) was read UNGUARDED before the body's own null check, so the prologue threw where the body would not. **Rules: a hoist is sound only at the effect's own function depth AND for a name not declared inside the effect (`hoistable(frame, name)`); a hoisted member path is optionally chained (`s()?.items?.[0]?.id`) because it runs before every guard the author wrote.** Both implementations (JS oracle + Rust mirror) changed in one PR; `plain-native-equivalence` locks byte-equality. Reference: `compiler/src/plain.ts:recordRead`/`recordPath` + `native/src/plain.rs`; bisect-verified in `plain.test.ts`.
+
+---
+
+### [FIXED, 2026-09] A probe that INVOKES an accessor to classify it, then hands the ORIGINAL children to the fallback path, invokes it twice.
+
+`runtime-server`'s raw-text (`<script>`/`<style>`) serializer called every function child to see whether the content was text-shaped and, when one returned a VNode, fell back to the ordinary path over `vnode.children` — invoking the same accessor a second time: a duplicated side effect, and a non-idempotent accessor rendered its SECOND value. "Function values are called once at render time — SSR is one-shot" is a contract every classification probe must honour: resolve once into a list, classify the RESOLVED values, and render those. Reference: `runtime-server/src/index.ts:rawTextChildren`/`rawTextContent`; bisect-verified (`expected 2 to be 1`).
+
+---
+
 ### `className`/`htmlFor`
 
 Use `class` and `for` — standard HTML attributes

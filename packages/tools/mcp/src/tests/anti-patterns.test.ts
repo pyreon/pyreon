@@ -6,6 +6,7 @@ import {
   type AntiPatternCategory,
   catalogHeadings,
   formatAntiPatterns,
+  antiPatternsIndexPageCount,
   formatAntiPatternsIndex,
   parseAntiPatterns,
 } from '../anti-patterns'
@@ -145,8 +146,10 @@ describe('index hook follows the NEED, not the format', () => {
     expect(shown.slice(0, -1).endsWith(' ')).toBe(false)
   })
 
-  it('every entry still gets exactly one index line', () => {
-    const lines = index.split('\n').filter((l) => l.startsWith('- '))
+  it('every entry still gets exactly one index line (across the category pages)', () => {
+    const n = antiPatternsIndexPageCount(entries)
+    const lines = Array.from({ length: n }, (_, i) => formatAntiPatternsIndex(entries, i + 1))
+      .flatMap((p) => p.split('\n').filter((l) => l.startsWith('- ')))
     expect(lines.length).toBe(entries.length)
   })
 })

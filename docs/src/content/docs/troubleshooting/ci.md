@@ -49,6 +49,36 @@ The batched `bun run --filter=… build` exit is one boolean for N packages; the
 
 ---
 
+### [FIXED, 2026-09] A nightly notifier that tests `result === 'failure'` reads a TIMED-OUT job as green — and auto-closes the alarm.
+
+A job killed by `timeout-minutes` reports `cancelled`, not `failure`; native-device's sticky-issue job only counted `failure`, so a chronically-timing-out nightly not only stayed silent, it CLOSED the open issue as "green again". The predicate is now `result !== 'success'` (published-state's new notifier was born with it). Same family as the fail-open `changes` gate: enumerate the failure states, never the one you have seen.
+
+---
+
+### [FIXED, 2026-09] One representative sentinel for a `fail-fast: false` publish MATRIX hides a partial publish.
+
+`check-published-state --native` verified `@pyreon/compiler-darwin-arm64` alone on the reasoning that all seven binaries share the fixed-group version — but the publish matrix is per target and does not fail fast, so six can publish while the seventh lags, and on THAT platform `@pyreon/compiler`'s optionalDependency resolves to a stale binary → the 3.7–8.9× slower JS fallback, silently. The sentinel set is now READ from the parent package's `optionalDependencies` (all seven, and a new target cannot be forgotten). **Rule: a per-item matrix needs a per-item alarm; a shared version number says nothing about which items published.** Companion: release-native's `cancel-in-progress: true` could cancel a half-finished publish matrix on a re-dispatch (now `false`), and its publish job checked out `github.ref` where the build used `inputs.ref || github.ref` — a healer re-dispatch published main's stub `package.json` version around a tag-built binary.
+
+---
+
+### [FIXED, 2026-09] File-scope `id-token: write` / `pages: write` grants the credential to every job, including the ones that only build.
+
+release-native granted npm's OIDC trusted-publishing token to seven build jobs running third-party toolchain actions; docs.yml granted a Pages deploy credential to the PR-triggered build job. Per-job `permissions:` blocks override the file scope — put a write credential on the ONE job that uses it and leave `contents: read` at the top.
+
+---
+
+### [FIXED, 2026-09] Waiting on a spawned batch's `close` hangs when a child inherits the pipe; wait on `exit`.
+
+bootstrap's batched `bun run --filter=… build` was awaited on `close`, which fires only when every stdio pipe reaches EOF — and the per-package builds bun spawns INHERIT the pipe, so after the timeout SIGKILL'd the batch an orphaned child held it open and `close` never fired: the postinstall hung for as long as the slowest orphan lived. `exit` fires on the batch's own exit regardless of stdio; whatever tail an orphan still writes is simply not attributed, and an unattributed failure withholds every "built" hash (fail-closed). Locked by `bootstrap-attribution.test.ts` with a backgrounded `sleep` holding the pipe (bisect: `expected 6017 to be less than 4000`).
+
+---
+
+### [FIXED, 2026-09] A cache-key gate that compares by LITERAL PREFIX conflates keys that differ after an expression.
+
+`check-cache-key-sync` keyed its one-prefix⇒one-path-list invariant on the text before the first `${{`, so `cache-${{ os }}-alpha` and `cache-${{ os }}-beta` — different entries — false-positived as one prefix with two path lists, while `restore-keys` entries (which genuinely ARE prefixes) need prefix semantics. The identity is now the whole key with every `${{ … }}` normalised to `<expr>`; a `restore-keys` prefix participates against every saved template it prefixes. Sibling closed in the same pass: a save-only key nothing ever restores (`findOrphanSaves`) is pure eviction pressure on the 10 GB cache budget.
+
+---
+
 ### A type that exists ONLY in a validation stub — the emit compiles against it and references nothing real
 
 (the `<Audio>` instance, 2026-08). Stubs are what let the Swift/Kotlin gates run without an Apple/Android SDK, and they are therefore the one place where DECLARING something hides its absence. `<Audio>` emitted `PyreonAudioPlayer(url:…, engine: AVFoundationAudioEngine())` on iOS and `Media3AudioEngine(…)` on Android; all three names lived only in `swift-stubs.ts` / `kotlin-stubs.ts`, so the primitive had never compiled on either platform while every gate stayed green for its whole life. **Two checks, both needed: (1) every OWNED type a stub declares AND an emitter emits must be declared in that language's REAL runtime — paired BY LANGUAGE, since a combined corpus finds Swift's `PyreonAudioPlayer` for the Kotlin check and passes; (2) compile a probe against the real SDK WITH the real runtime sources linked in, which additionally catches a wrong signature, an unaccepted modifier, an availability mismatch — none of which a name check can see.** The mirror failure is a stub NARROWER than the runtime, which manufactures a phantom bug in correct codegen; both are stub-fidelity defects, one quiet and one loud. Reference: `packages/native/compiler/src/tests/{emitted-runtime-types-exist,real-runtime-typecheck}.test.ts`.
