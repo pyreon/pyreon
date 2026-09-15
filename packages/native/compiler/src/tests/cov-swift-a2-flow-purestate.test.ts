@@ -118,7 +118,7 @@ describe('createFlow addNode/addEdge/updateNodePosition — literal rebuild vs f
     flow.addEdge({ id: 'e3', source: '1' })
     flow.addEdge(held)`)
     expect(code).toContain(
-      'flow.addEdge(PyreonFlowEdge(id: "e2", source: "1", target: "2", type: "smooth", label: "L", animated: true))',
+      'flow.addEdge(PyreonFlowEdge(id: "e2", source: "1", target: "2", type: "smooth", label: "L", animated: true, animatedSpecified: true))',
     )
     // type/label/animated absent → the three optional arms emit nothing
     expect(code).toContain('flow.addEdge(PyreonFlowEdge(id: "e4", source: "1", target: "2"))')
@@ -154,15 +154,12 @@ describe('createFlow reads and writes', () => {
     expect(code).toContain('flow.selectAll()')
   })
 
-  it('a signal WRITE on a read-only flow collection is NAMED', () => {
-    const { warnings } = flow(`    flow.nodes.set([])
+  it('a signal WRITE on a flow collection lowers to its native setter, with no warning', () => {
+    const { code, warnings } = flow(`    flow.nodes.set([])
     flow.edges.update((v) => v)`)
-    expect(warnings.some((w) => w.includes('`nodes.set(...)` writes the `nodes` signal directly'))).toBe(
-      true,
-    )
-    expect(
-      warnings.some((w) => w.includes('`edges.update(...)` writes the `edges` signal directly')),
-    ).toBe(true)
+    expect(warnings).toEqual([])
+    expect(code).toContain('flow.setNodes([])')
+    expect(code).toContain('flow.setEdges({ v in v })')
   })
 
   it('an UNPORTED member is emitted as written AND named', () => {
