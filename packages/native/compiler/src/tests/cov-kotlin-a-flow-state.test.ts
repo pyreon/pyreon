@@ -111,13 +111,13 @@ describe('Kotlin createFlow: nothing silent inside the boundary', () => {
     expect(e.warnings.join('\n')).toContain('edge field `zzz`')
   })
 
-  it('an UNPORTED member is named, and fitView carries its own inert-on-native warning', () => {
+  it('an UNPORTED member is named, and the now-ported fitView lowers without a warning', () => {
     expect(kt(`      <Button onPress={() => flow.wat()}>W</Button>`).warnings.join('\n')).toContain(
       '`wat` is NOT ported',
     )
-    expect(kt(`      <Button onPress={() => flow.fitView()}>F</Button>`).warnings.join('\n')).toContain(
-      'does NOTHING from shared source',
-    )
+    const fit = kt(`      <Button onPress={() => flow.fitView()}>F</Button>`)
+    expect(fit.warnings).toEqual([])
+    expect(fit.code).toContain('flow.fitView()')
   })
 
   it('a WRITE to a read-only flow property is named rather than emitted as a store', () => {

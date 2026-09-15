@@ -15,7 +15,6 @@ import {
   LOWERED_FLOW_METHODS,
   LOWERED_FLOW_PROPERTY_READS,
   droppedFlowFieldsWarning,
-  flowFitViewWarning,
   flowSignalWriteWarning,
   unloweredFlowMemberWarning,
 } from './flow-lowering'
@@ -436,6 +435,8 @@ let _sortableNames: Set<string> = new Set()
  *  edges/viewport/zoom) drop parens; its METHODS (addNode/selectNode/
  *  selectedNodes/…) flow through unchanged — see the call-site rewrite below. */
 let _flowStateNamesSwift: Set<string> = new Set()
+/** `createFlow(...)` bindings whose inferred node-data row exposes `label`. */
+let _flowStateLabelNamesSwift: Set<string> = new Set()
 /** Per-component: `useOnline()` decl names. A web `useOnline()` returns an
  *  ACCESSOR (`() => boolean`), so shared code reads it as `net()`; on native
  *  the accessor call lowers to the `net.isOnline` read on the PyreonNetworkStatus
@@ -2226,6 +2227,7 @@ const LIFECYCLE_HOST_DECL_KINDS: ReadonlySet<DeclIR['kind']> = new Set([
   'debounced-value',
   'fetch',
   'form',
+  'flow-state',
   'hotkey',
   'network-status',
   'on-mount',
@@ -2360,6 +2362,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   _tableNames = new Set()
   _sortableNames = new Set()
   _flowStateNamesSwift = new Set()
+  _flowStateLabelNamesSwift = new Set()
   _netStatusNames = new Set()
   _appStateNames = new Set()
   _crashNames = new Set()
@@ -2411,7 +2414,12 @@ function emitSwiftComponent(c: ComponentIR): string {
     if (d.kind === 'synced-signal') _syncedSignalNames.add(d.name)
     if (d.kind === 'table-state') _tableNames.add(d.name)
     if (d.kind === 'sortable') _sortableNames.add(d.name)
-    if (d.kind === 'flow-state') _flowStateNamesSwift.add(d.name)
+    if (d.kind === 'flow-state') {
+      _flowStateNamesSwift.add(d.name)
+      if (d.nodes.some((node) => node.data.kind === 'object' && node.data.fields.some((field) => field.name === 'label'))) {
+        _flowStateLabelNamesSwift.add(d.name)
+      }
+    }
     if (d.kind === 'network-status') _netStatusNames.add(d.name)
     if (d.kind === 'app-state') _appStateNames.add(d.name)
     if (d.kind === 'crash-reporter') _crashNames.add(d.name)
@@ -2819,6 +2827,14 @@ function emitSwiftComponent(c: ComponentIR): string {
     lines.push(`      .onAppear {`)
     lines.push(bodyLines)
     lines.push(`      }`)
+  }
+  // `useFlow` owns its state for this component lifetime. Release callback
+  // captures and scheduled work on unmount; singleton `createFlow` remains
+  // caller-owned and is deliberately not disposed here.
+  for (const d of c.decls) {
+    if (d.kind === 'flow-state' && d.lifecycleOwned === true) {
+      lines.push(`      .onDisappear { ${swiftIdent(d.name)}.dispose() }`)
+    }
   }
   // useHotkey → a hidden shortcut Button in `.background`.
   //
@@ -4016,20 +4032,32 @@ function emitSwiftDecl(
     // reintroducing. Registering FIRST (via the shared registry) guarantees
     // this name is the SAME one each node's `data: {...}` literal resolves
     // to below, since both hit the identical field-set key.
-    const rowFields = d.nodes[0]!.data.kind === 'object' ? d.nodes[0]!.data.fields : []
-    const rowType =
-      synthLiteralStructName(rowFields, _synthExprStructs, _synthExprStructKeys, (ex) =>
-        inferType(ex, _exprInferCtx),
-      ) ?? 'Any'
+    const firstData = d.nodes[0]?.data
+    const rowFields = firstData?.kind === 'object' ? firstData.fields : []
+    const rowType = d.dataType !== undefined
+      ? swiftType(d.dataType)
+      : resolveSwiftObjectStructName(rowFields) ?? 'Any'
     const nodeLits = d.nodes
       .map((n) => {
         const parts = [
           `id: ${swiftStr(n.id)}`,
           ...(n.type !== undefined ? [`type: ${swiftStr(n.type)}`] : []),
           `position: PyreonXYPosition(x: ${emitSwiftExpr(n.positionX, 0)}, y: ${emitSwiftExpr(n.positionY, 0)})`,
-          `data: ${emitSwiftExpr(n.data, 0)}`,
+          `data: ${withExpectedType(d.dataType, () => emitSwiftExpr(n.data, 0))}`,
           ...(n.width !== undefined ? [`width: ${emitSwiftExpr(n.width, 0)}`] : []),
           ...(n.height !== undefined ? [`height: ${emitSwiftExpr(n.height, 0)}`] : []),
+          ...(n.draggable !== undefined ? [`draggable: ${n.draggable}`] : []),
+          ...(n.selectable !== undefined ? [`selectable: ${n.selectable}`] : []),
+          ...(n.connectable !== undefined ? [`connectable: ${n.connectable}`] : []),
+          ...(n.focusable !== undefined ? [`focusable: ${n.focusable}`] : []),
+          ...(n.ariaLabel !== undefined ? [`ariaLabel: ${swiftStr(n.ariaLabel)}`] : []),
+          ...(n.hidden !== undefined ? [`hidden: ${n.hidden}`] : []),
+          ...(n.deletable !== undefined ? [`deletable: ${n.deletable}`] : []),
+          ...(n.parentId !== undefined ? [`parentId: ${swiftStr(n.parentId)}`] : []),
+          ...(n.expandParent !== undefined ? [`expandParent: ${n.expandParent}`] : []),
+          ...(n.group !== undefined ? [`group: ${n.group}`] : []),
+          ...(n.sourceHandles !== undefined ? [`sourceHandles: ${swiftFlowParsedHandles(n.sourceHandles)}`] : []),
+          ...(n.targetHandles !== undefined ? [`targetHandles: ${swiftFlowParsedHandles(n.targetHandles)}`] : []),
         ]
         return `PyreonFlowNode(${parts.join(', ')})`
       })
@@ -4040,9 +4068,23 @@ function emitSwiftDecl(
           `id: ${swiftStr(e.id)}`,
           `source: ${swiftStr(e.source)}`,
           `target: ${swiftStr(e.target)}`,
+          ...(e.sourceHandle !== undefined ? [`sourceHandle: ${swiftStr(e.sourceHandle)}`] : []),
+          ...(e.targetHandle !== undefined ? [`targetHandle: ${swiftStr(e.targetHandle)}`] : []),
           ...(e.type !== undefined ? [`type: ${swiftStr(e.type)}`] : []),
           ...(e.label !== undefined ? [`label: ${swiftStr(e.label)}`] : []),
-          ...(e.animated !== undefined ? [`animated: ${e.animated ? 'true' : 'false'}`] : []),
+          ...(e.animated !== undefined ? [`animated: ${e.animated ? 'true' : 'false'}`, 'animatedSpecified: true'] : []),
+          ...(e.focusable !== undefined ? [`focusable: ${e.focusable}`] : []),
+          ...(e.ariaLabel !== undefined ? [`ariaLabel: ${swiftStr(e.ariaLabel)}`] : []),
+          ...(e.hidden !== undefined ? [`hidden: ${e.hidden}`] : []),
+          ...(e.deletable !== undefined ? [`deletable: ${e.deletable}`] : []),
+          ...(e.reconnectable !== undefined ? [`reconnectable: ${e.reconnectable}`] : []),
+          ...(e.interactionWidth !== undefined ? [`interactionWidth: ${e.interactionWidth}`] : []),
+          ...(e.pathOptions?.curvature !== undefined ? [`curvature: ${e.pathOptions.curvature}`] : []),
+          ...(e.pathOptions?.borderRadius !== undefined ? [`borderRadius: ${e.pathOptions.borderRadius}`] : []),
+          ...(e.pathOptions?.offset !== undefined ? [`pathOffset: ${e.pathOptions.offset}`] : []),
+          ...(e.markerStart !== undefined ? [`markerStart: ${swiftFlowMarker(e.markerStart)}`] : []),
+          ...(e.markerEnd !== undefined ? [`markerEnd: ${e.markerEnd === null ? 'nil' : swiftFlowMarker(e.markerEnd)}`, 'markerEndSpecified: true'] : []),
+          ...(e.waypoints !== undefined ? [`waypoints: [${e.waypoints.map((p) => `PyreonXYPosition(x: ${emitSwiftExpr(p.x, 0)}, y: ${emitSwiftExpr(p.y, 0)})`).join(', ')}]`] : []),
         ]
         return `PyreonFlowEdge(${parts.join(', ')})`
       })
@@ -4052,6 +4094,39 @@ function emitSwiftDecl(
     const zoomArgs = [
       ...(d.minZoom !== undefined ? [`minZoom: ${d.minZoom}`] : []),
       ...(d.maxZoom !== undefined ? [`maxZoom: ${d.maxZoom}`] : []),
+      ...(d.snapToGrid !== undefined ? [`snapToGrid: ${d.snapToGrid}`] : []),
+      ...(d.snapGrid !== undefined ? [`snapGrid: ${d.snapGrid}`] : []),
+      ...(d.nodeExtent !== undefined ? [`nodeExtent: PyreonFlowNodeExtent(minX: ${d.nodeExtent[0]}, minY: ${d.nodeExtent[1]}, maxX: ${d.nodeExtent[2]}, maxY: ${d.nodeExtent[3]})`] : []),
+      ...(d.defaultMarkerEnd !== undefined ? [`defaultMarkerEnd: ${d.defaultMarkerEnd === null ? 'nil' : swiftFlowMarker(d.defaultMarkerEnd)}`] : []),
+      ...(['nodesDraggable', 'nodesConnectable', 'nodesSelectable', 'nodesFocusable', 'edgesFocusable', 'disableKeyboardA11y', 'nodesDeletable', 'edgesDeletable', 'edgesReconnectable', 'pannable', 'panOnDrag', 'zoomable', 'zoomOnPinch', 'zoomOnDoubleClick', 'selectionOnDrag'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key}: ${d[key]}`]),
+      ...(d.selectionMode !== undefined ? [`selectionMode: ${swiftStr(d.selectionMode)}`] : []),
+      ...(['multiSelect', 'onlyRenderVisibleElements', 'snapToObjects', 'autoHistory'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key}: ${d[key]}`]),
+      ...(d.edgeInteractionWidth !== undefined ? [`edgeInteractionWidth: ${d.edgeInteractionWidth}`] : []),
+      ...(d.connectionRadius !== undefined ? [`connectionRadius: ${d.connectionRadius}`] : []),
+      ...(d.defaultEdgeType !== undefined ? [`defaultEdgeType: ${swiftStr(d.defaultEdgeType)}`] : []),
+      ...(d.connectionLineType !== undefined ? [`connectionLineType: ${swiftStr(d.connectionLineType)}`] : []),
+      ...(d.defaultEdgeOptions !== undefined ? [`defaultEdgeOptions: PyreonFlowDefaultEdgeOptions(${[
+        ...(d.defaultEdgeOptions.type !== undefined ? [`type: ${swiftStr(d.defaultEdgeOptions.type)}`] : []),
+        ...(d.defaultEdgeOptions.label !== undefined ? [`label: ${swiftStr(d.defaultEdgeOptions.label)}`] : []),
+        ...(d.defaultEdgeOptions.animated !== undefined ? [`animated: ${d.defaultEdgeOptions.animated}`] : []),
+        ...(d.defaultEdgeOptions.focusable !== undefined ? [`focusable: ${d.defaultEdgeOptions.focusable}`] : []),
+        ...(d.defaultEdgeOptions.ariaLabel !== undefined ? [`ariaLabel: ${swiftStr(d.defaultEdgeOptions.ariaLabel)}`] : []),
+        ...(d.defaultEdgeOptions.hidden !== undefined ? [`hidden: ${d.defaultEdgeOptions.hidden}`] : []),
+        ...(d.defaultEdgeOptions.deletable !== undefined ? [`deletable: ${d.defaultEdgeOptions.deletable}`] : []),
+        ...(d.defaultEdgeOptions.reconnectable !== undefined ? [`reconnectable: ${d.defaultEdgeOptions.reconnectable}`] : []),
+        ...(d.defaultEdgeOptions.interactionWidth !== undefined ? [`interactionWidth: ${d.defaultEdgeOptions.interactionWidth}`] : []),
+        ...(d.defaultEdgeOptions.pathOptions?.curvature !== undefined ? [`curvature: ${d.defaultEdgeOptions.pathOptions.curvature}`] : []),
+        ...(d.defaultEdgeOptions.pathOptions?.borderRadius !== undefined ? [`borderRadius: ${d.defaultEdgeOptions.pathOptions.borderRadius}`] : []),
+        ...(d.defaultEdgeOptions.pathOptions?.offset !== undefined ? [`pathOffset: ${d.defaultEdgeOptions.pathOptions.offset}`] : []),
+        ...(d.defaultEdgeOptions.markerStart !== undefined ? [`markerStart: ${swiftFlowMarker(d.defaultEdgeOptions.markerStart)}`] : []),
+        ...(d.defaultEdgeOptions.markerEnd !== undefined ? [`markerEnd: ${d.defaultEdgeOptions.markerEnd === null ? 'nil' : swiftFlowMarker(d.defaultEdgeOptions.markerEnd)}`, 'markerEndSpecified: true'] : []),
+      ].join(', ')})`] : []),
+      ...(d.fitView !== undefined ? [`fitView: ${d.fitView}`] : []),
+      ...(d.fitViewPadding !== undefined ? [`fitViewPadding: ${d.fitViewPadding}`] : []),
+      ...(d.connectionRules !== undefined ? [`connectionRules: [${Object.entries(d.connectionRules).map(([key, outputs]) => `${swiftStr(key)}: [${outputs.map((output) => swiftStr(output)).join(', ')}]`).join(', ')}]`] : []),
+      ...(d.connectionValidator !== undefined ? [`isValidConnection: ${emitSwiftExpr(d.connectionValidator, 0)}`] : []),
+      ...(rowFields.some((field) => field.name === 'label') ? ['searchText: { $0.label }'] : []),
+      ...(d.reducedMotion !== undefined ? [`reducedMotion: ${d.reducedMotion}`] : []),
     ].join(', ')
     return `@State private var ${swiftIdent(d.name)} = PyreonFlowState<${rowType}>(nodes: [${nodeLits}], edges: [${edgeLits}]${zoomArgs === '' ? '' : `, ${zoomArgs}`})`
   }
@@ -4126,6 +4201,9 @@ function swiftFlowNodeLiteral(arg: ExprIR, flowName: string): string | null {
   const typeExpr = field('type')
   const widthExpr = field('width')
   const heightExpr = field('height')
+  const sourceHandlesExpr = field('sourceHandles')
+  const targetHandlesExpr = field('targetHandles')
+  const optionalFields = ['draggable', 'selectable', 'connectable', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'parentId', 'expandParent', 'group'] as const
   const parts = [
     `id: ${emitSwiftExpr(idExpr, 0)}`,
     ...(typeExpr ? [`type: ${emitSwiftExpr(typeExpr, 0)}`] : []),
@@ -4133,8 +4211,56 @@ function swiftFlowNodeLiteral(arg: ExprIR, flowName: string): string | null {
     `data: ${emitSwiftExpr(dataExpr, 0)}`,
     ...(widthExpr ? [`width: ${emitSwiftExpr(widthExpr, 0)}`] : []),
     ...(heightExpr ? [`height: ${emitSwiftExpr(heightExpr, 0)}`] : []),
+    ...optionalFields.flatMap((name) => {
+      const value = field(name)
+      return value ? [`${name}: ${emitSwiftExpr(value, 0)}`] : []
+    }),
+    ...(sourceHandlesExpr ? [`sourceHandles: ${swiftFlowHandlesLiteral(sourceHandlesExpr) ?? emitSwiftExpr(sourceHandlesExpr, 0)}`] : []),
+    ...(targetHandlesExpr ? [`targetHandles: ${swiftFlowHandlesLiteral(targetHandlesExpr) ?? emitSwiftExpr(targetHandlesExpr, 0)}`] : []),
   ]
   return `PyreonFlowNode(${parts.join(', ')})`
+}
+
+function swiftFlowParsedHandles(handles: { id?: string; type: string; position: string }[]): string {
+  return `[${handles.map((h) => `PyreonFlowHandleConfig(${h.id === undefined ? '' : `id: ${swiftStr(h.id)}, `}type: ${swiftStr(h.type)}, position: .${h.position})`).join(', ')}]`
+}
+
+function swiftFlowMarker(marker: { type: string; color?: string; width?: number; height?: number; strokeWidth?: number }): string {
+  const args = [`type: ${swiftStr(marker.type)}`]
+  if (marker.color !== undefined) args.push(`color: ${swiftStr(marker.color)}`)
+  if (marker.width !== undefined) args.push(`width: ${marker.width}`)
+  if (marker.height !== undefined) args.push(`height: ${marker.height}`)
+  if (marker.strokeWidth !== undefined) args.push(`strokeWidth: ${marker.strokeWidth}`)
+  return `PyreonFlowMarker(${args.join(', ')})`
+}
+
+function swiftFlowMarkerLiteral(expr: ExprIR): string | null {
+  if (expr.kind === 'literal' && expr.value === null) return 'nil'
+  if (expr.kind === 'literal' && typeof expr.value === 'string') return swiftFlowMarker({ type: expr.value.toLowerCase() })
+  if (expr.kind === 'member') return swiftFlowMarker({ type: expr.property.toLowerCase() })
+  if (expr.kind !== 'object') return null
+  const field = (name: string) => expr.fields.find((f) => f.name === name)?.value
+  const type = field('type')
+  const typeName = type?.kind === 'literal' && typeof type.value === 'string' ? type.value.toLowerCase() : type?.kind === 'member' ? type.property.toLowerCase() : null
+  if (typeName !== 'arrow' && typeName !== 'arrowclosed') return null
+  const args = [`type: ${swiftStr(typeName)}`]
+  for (const name of ['color', 'width', 'height', 'strokeWidth'] as const) { const value = field(name); if (value) args.push(`${name}: ${emitSwiftExpr(value, 0)}`) }
+  return `PyreonFlowMarker(${args.join(', ')})`
+}
+
+function swiftFlowHandlesLiteral(arg: ExprIR): string | null {
+  if (arg.kind !== 'array') return null
+  const parsed: { id?: string; type: string; position: string }[] = []
+  for (const item of arg.elements) {
+    if (item.kind !== 'object') return null
+    const field = (name: string) => item.fields.find((f) => f.name === name)?.value
+    const type = field('type'), position = field('position'), id = field('id')
+    if (type?.kind !== 'literal' || typeof type.value !== 'string') return null
+    const positionName = position?.kind === 'literal' && typeof position.value === 'string' ? position.value.toLowerCase() : position?.kind === 'member' ? position.property.toLowerCase() : undefined
+    if (!positionName || !['top', 'right', 'bottom', 'left'].includes(positionName) || (id && (id.kind !== 'literal' || typeof id.value !== 'string'))) return null
+    parsed.push({ type: type.value, position: positionName, ...(id?.kind === 'literal' ? { id: id.value as string } : {}) })
+  }
+  return swiftFlowParsedHandles(parsed)
 }
 
 /** `addEdge({...})` — the `PyreonFlowEdge` twin of `swiftFlowNodeLiteral`. */
@@ -4149,6 +4275,11 @@ function swiftFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
   const typeExpr = field('type')
   const labelExpr = field('label')
   const animatedExpr = field('animated')
+  const pathOptionsExpr = field('pathOptions')
+  const markerStartExpr = field('markerStart')
+  const markerEndExpr = field('markerEnd')
+  const waypointsExpr = field('waypoints')
+  const optionalFields = ['sourceHandle', 'targetHandle', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'reconnectable', 'interactionWidth'] as const
   const parts = [
     `id: ${emitSwiftExpr(idExpr, 0)}`,
     `source: ${emitSwiftExpr(sourceExpr, 0)}`,
@@ -4156,8 +4287,149 @@ function swiftFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
     ...(typeExpr ? [`type: ${emitSwiftExpr(typeExpr, 0)}`] : []),
     ...(labelExpr ? [`label: ${emitSwiftExpr(labelExpr, 0)}`] : []),
     ...(animatedExpr ? [`animated: ${emitSwiftExpr(animatedExpr, 0)}`] : []),
+    ...(pathOptionsExpr?.kind === 'object' ? pathOptionsExpr.fields.flatMap(({ name, value }) => {
+      const nativeName = name === 'offset' ? 'pathOffset' : name
+      return ['curvature', 'borderRadius', 'pathOffset'].includes(nativeName) ? [`${nativeName}: ${emitSwiftExpr(value, 0)}`] : []
+    }) : []),
+    ...(markerStartExpr ? (() => { const marker = swiftFlowMarkerLiteral(markerStartExpr); return marker && marker !== 'nil' ? [`markerStart: ${marker}`] : [] })() : []),
+    ...(markerEndExpr ? (() => { const marker = swiftFlowMarkerLiteral(markerEndExpr); return marker ? [`markerEnd: ${marker}`, 'markerEndSpecified: true'] : [] })() : []),
+    ...optionalFields.flatMap((name) => {
+      const value = field(name)
+      return value ? [`${name}: ${emitSwiftExpr(value, 0)}`] : []
+    }),
+    ...(waypointsExpr ? (() => {
+      const value = swiftFlowPositionsLiteral(waypointsExpr)
+      return [`waypoints: ${value ?? emitSwiftExpr(waypointsExpr, 0)}`]
+    })() : []),
   ]
   return `PyreonFlowEdge(${parts.join(', ')})`
+}
+
+function swiftFlowNodeListLiteral(arg: ExprIR, flowName: string): string | null {
+  if (arg.kind !== 'array') return null
+  const nodes = arg.elements.map((item) => swiftFlowNodeLiteral(item, flowName))
+  return nodes.some((node) => node === null) ? null : `[${nodes.join(', ')}]`
+}
+
+function swiftFlowEdgeListLiteral(arg: ExprIR, flowName: string): string | null {
+  if (arg.kind !== 'array') return null
+  const edges = arg.elements.map((item) => swiftFlowEdgeLiteral(item, flowName))
+  return edges.some((edge) => edge === null) ? null : `[${edges.join(', ')}]`
+}
+
+function swiftFlowPositionsLiteral(arg: ExprIR): string | null {
+  if (arg.kind !== 'array') return null
+  const values: string[] = []
+  for (const item of arg.elements) {
+    const value = swiftFlowPositionLiteral(item)
+    if (value === null) return null
+    values.push(value)
+  }
+  return `[${values.join(', ')}]`
+}
+
+function swiftFlowReconnectLiteral(arg: ExprIR): string | null {
+  if (arg.kind !== 'object') return null
+  const allowed = new Set(['source', 'target', 'sourceHandle', 'targetHandle'])
+  if (arg.fields.some((field) => !allowed.has(field.name))) return null
+  return arg.fields.map((field) => `, ${field.name}: ${emitSwiftExpr(field.value, 0)}`).join('')
+}
+
+function swiftFlowConnectionLiteral(arg: ExprIR): string | null {
+  if (arg.kind !== 'object') return null
+  const field = (name: string): ExprIR | undefined => arg.fields.find((f) => f.name === name)?.value
+  const source = field('source'), target = field('target')
+  if (source === undefined || target === undefined) return null
+  const sourceHandle = field('sourceHandle'), targetHandle = field('targetHandle')
+  return `PyreonFlowConnection(source: ${emitSwiftExpr(source, 0)}, target: ${emitSwiftExpr(target, 0)}${sourceHandle ? `, sourceHandle: ${emitSwiftExpr(sourceHandle, 0)}` : ''}${targetHandle ? `, targetHandle: ${emitSwiftExpr(targetHandle, 0)}` : ''})`
+}
+
+function swiftFlowViewportLiteral(arg: ExprIR): string | null {
+  if (arg.kind !== 'object') return null
+  const allowed = new Set(['x', 'y', 'zoom', 'duration'])
+  if (arg.fields.some((field) => !allowed.has(field.name))) return null
+  return arg.fields.map((field) => `${field.name}: ${emitSwiftExpr(field.value, 0)}`).join(', ')
+}
+
+function swiftFlowDurationOption(arg: ExprIR | undefined): string | null | undefined {
+  if (arg === undefined) return undefined
+  if (arg.kind !== 'object' || arg.fields.some((field) => field.name !== 'duration')) return null
+  const duration = arg.fields.find((field) => field.name === 'duration')?.value
+  return duration === undefined ? undefined : emitSwiftExpr(duration, 0)
+}
+
+function swiftFlowLayoutOptions(arg: ExprIR | undefined, indent: number): string | null | undefined {
+  if (arg === undefined) return undefined
+  if (arg.kind !== 'object' || (arg.spreads?.length ?? 0) > 0) return null
+  const supported = new Set(['direction', 'nodeSpacing', 'layerSpacing', 'animate', 'animationDuration'])
+  if (arg.fields.some((field) => !supported.has(field.name))) return null
+  const fields = arg.fields.map(({ name, value }) => `${name}: ${emitSwiftExpr(value, indent)}`)
+  return `PyreonFlowLayoutOptions(${fields.join(', ')})`
+}
+
+const FLOW_PATH_HELPERS = new Set(['getBezierPath', 'getSmoothStepPath', 'getStepPath', 'getStraightPath', 'getWaypointPath'])
+
+function swiftFlowPositionExpr(value: ExprIR): string | null {
+  if (value.kind === 'member' && value.object.kind === 'identifier' && value.object.name === 'Position') return `.${value.property.toLowerCase()}`
+  if (value.kind === 'literal' && typeof value.value === 'string' && ['top', 'right', 'bottom', 'left'].includes(value.value)) return `.${value.value}`
+  return null
+}
+
+function swiftFlowGeometryLiteral(arg: ExprIR, fields: readonly string[], typeName: string, indent: number): string | null {
+  if (arg.kind !== 'object' || (arg.spreads?.length ?? 0) > 0 || arg.fields.length !== fields.length) return null
+  const values = new Map(arg.fields.map((field) => [field.name, field.value]))
+  if (fields.some((field) => !values.has(field))) return null
+  return `${typeName}(${fields.map((field) => `${field}: ${emitSwiftExpr(values.get(field)!, indent)}`).join(', ')})`
+}
+
+function swiftFlowPathHelper(name: string, arg: ExprIR | undefined, indent: number): string | null {
+  if (arg?.kind !== 'object' || (arg.spreads?.length ?? 0) > 0) return null
+  const fields = new Map(arg.fields.map((field) => [field.name, field.value]))
+  const commonFields = ['sourceX', 'sourceY', 'targetX', 'targetY']
+  const optionalFields = name === 'getStraightPath' ? []
+    : name === 'getWaypointPath' ? ['waypoints']
+    : name === 'getBezierPath' ? ['sourcePosition', 'targetPosition', 'curvature']
+    : name === 'getSmoothStepPath' ? ['sourcePosition', 'targetPosition', 'borderRadius', 'offset']
+    : ['sourcePosition', 'targetPosition', 'offset']
+  const allowed = new Set([...commonFields, ...optionalFields])
+  if (arg.fields.some((field) => !allowed.has(field.name))) return null
+  const required = (key: string): string | null => fields.has(key) ? emitSwiftExpr(fields.get(key)!, indent) : null
+  const sx = required('sourceX'), sy = required('sourceY'), tx = required('targetX'), ty = required('targetY')
+  if (sx === null || sy === null || tx === null || ty === null) return null
+  const position = (key: string, fallback: string): string | null => {
+    const value = fields.get(key)
+    if (value === undefined) return fallback
+    return swiftFlowPositionExpr(value)
+  }
+  if (name === 'getStraightPath') return `pyreonStraightPath(sourceX: ${sx}, sourceY: ${sy}, targetX: ${tx}, targetY: ${ty})`
+  if (name === 'getWaypointPath') {
+    const waypoints = fields.get('waypoints')
+    if (waypoints?.kind !== 'array') return null
+    const points = waypoints.elements.map((point) => {
+      if (point.kind !== 'object') return null
+      const x = point.fields.find((field) => field.name === 'x')?.value
+      const y = point.fields.find((field) => field.name === 'y')?.value
+      return x && y ? `PyreonXYPosition(x: ${emitSwiftExpr(x, indent)}, y: ${emitSwiftExpr(y, indent)})` : null
+    })
+    if (points.some((point) => point === null)) return null
+    return `pyreonWaypointPath(sourceX: ${sx}, sourceY: ${sy}, targetX: ${tx}, targetY: ${ty}, waypoints: [${points.join(', ')}])`
+  }
+  const sourcePosition = position('sourcePosition', '.bottom'), targetPosition = position('targetPosition', '.top')
+  if (sourcePosition === null || targetPosition === null) return null
+  const common = `sourceX: ${sx}, sourceY: ${sy}, sourcePosition: ${sourcePosition}, targetX: ${tx}, targetY: ${ty}, targetPosition: ${targetPosition}`
+  if (name === 'getBezierPath') return `pyreonBezierPath(${common}${fields.has('curvature') ? `, curvature: ${emitSwiftExpr(fields.get('curvature')!, indent)}` : ''})`
+  const extra = [
+    ...(name === 'getSmoothStepPath' && fields.has('borderRadius') ? [`borderRadius: ${emitSwiftExpr(fields.get('borderRadius')!, indent)}`] : []),
+    ...(fields.has('offset') ? [`offset: ${emitSwiftExpr(fields.get('offset')!, indent)}`] : []),
+  ]
+  return `${name === 'getStepPath' ? 'pyreonStepPath' : 'pyreonSmoothStepPath'}(${common}${extra.length ? `, ${extra.join(', ')}` : ''})`
+}
+
+function swiftFlowExtentLiteral(arg: ExprIR): string | null {
+  if (arg.kind !== 'array' || arg.elements.length !== 2) return null
+  const [minPoint, maxPoint] = arg.elements
+  if (minPoint?.kind !== 'array' || maxPoint?.kind !== 'array' || minPoint.elements.length !== 2 || maxPoint.elements.length !== 2) return null
+  return `minX: ${emitSwiftExpr(minPoint.elements[0]!, 0)}, minY: ${emitSwiftExpr(minPoint.elements[1]!, 0)}, maxX: ${emitSwiftExpr(maxPoint.elements[0]!, 0)}, maxY: ${emitSwiftExpr(maxPoint.elements[1]!, 0)}`
 }
 
 /** Names every literal field the native node/edge type does not carry. */
@@ -4170,7 +4442,7 @@ function warnDroppedFlowFields(site: string, kind: 'node' | 'edge', lit: ExprIR)
 
 /** `undefined` / `null` in a Swift argument position. */
 function isNilArg(x: ExprIR): boolean {
-  return (x.kind === 'identifier' && x.name === 'undefined') || (x.kind as string) === 'null' || (x.kind as string) === 'undefined'
+  return (x.kind === 'literal' && x.value === null) || (x.kind === 'identifier' && x.name === 'undefined') || (x.kind as string) === 'null' || (x.kind as string) === 'undefined'
 }
 
 /** `updateNodePosition(id, {x, y})` — the `PyreonXYPosition` twin. */
@@ -5058,6 +5330,8 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       }
       return String(e.value)
     case 'identifier':
+      if (e.name === 'DEFAULT_NODE_WIDTH') return '150'
+      if (e.name === 'DEFAULT_NODE_HEIGHT') return '40'
       return swiftIdent(e.name)
     case 'await':
       // M4.5: `await x.method()` — emit the `await` keyword before the awaited
@@ -5098,6 +5372,52 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (pt !== undefined && pt.kind === 'typeRef' && arg.kind === 'object') _argExpectedTypes.set(arg, pt)
           })
         }
+      }
+      if (e.callee.kind === 'identifier' && e.callee.name === '__pyreonFlowComputeLayout' && e.args.length >= 2 && e.args.length <= 4) {
+        const options = swiftFlowLayoutOptions(e.args[3], indent)
+        if (options !== null) {
+          const args = [
+            emitSwiftExpr(e.args[0]!, indent),
+            `edges: ${emitSwiftExpr(e.args[1]!, indent)}`,
+            ...(e.args[2] ? [`algorithm: ${emitSwiftExpr(e.args[2]!, indent)}`] : []),
+            ...(options ? [`options: ${options}`] : []),
+          ]
+          return `pyreonComputeFlowLayout(${args.join(', ')})`
+        }
+        _emitWarnings.push('computeLayout options must be an object literal using direction/nodeSpacing/layerSpacing/animate/animationDuration to lower natively.')
+      }
+      if (e.callee.kind === 'identifier' && FLOW_PATH_HELPERS.has(e.callee.name) && e.args.length === 1) {
+        const lowered = swiftFlowPathHelper(e.callee.name, e.args[0], indent)
+        if (lowered !== null) return lowered
+        _emitWarnings.push(`${e.callee.name} requires one supported object-literal parameter to lower natively.`)
+      }
+      if (e.callee.kind === 'identifier' && e.callee.name === 'getHandlePosition' && e.args.length === 5) {
+        const position = swiftFlowPositionExpr(e.args[0]!)
+        if (position !== null) return `pyreonHandlePosition(${position}, nodeX: ${emitSwiftExpr(e.args[1]!, indent)}, nodeY: ${emitSwiftExpr(e.args[2]!, indent)}, nodeWidth: ${emitSwiftExpr(e.args[3]!, indent)}, nodeHeight: ${emitSwiftExpr(e.args[4]!, indent)})`
+        _emitWarnings.push('getHandlePosition requires a literal Position value to lower natively.')
+      }
+      if (e.callee.kind === 'identifier' && e.callee.name === 'getEdgePath' && (e.args.length === 7 || e.args.length === 8)) {
+        const sourcePosition = swiftFlowPositionExpr(e.args[3]!)
+        const targetPosition = swiftFlowPositionExpr(e.args[6]!)
+        const options = e.args[7]
+        const allowed = new Set(['borderRadius', 'offset', 'curvature'])
+        if (sourcePosition !== null && targetPosition !== null && (options === undefined || (options.kind === 'object' && (options.spreads?.length ?? 0) === 0 && options.fields.every((field) => allowed.has(field.name))))) {
+          const extras = options?.kind === 'object' ? options.fields.map((field) => `${field.name}: ${emitSwiftExpr(field.value, indent)}`) : []
+          return `pyreonEdgePath(type: ${emitSwiftExpr(e.args[0]!, indent)}, sourceX: ${emitSwiftExpr(e.args[1]!, indent)}, sourceY: ${emitSwiftExpr(e.args[2]!, indent)}, sourcePosition: ${sourcePosition}, targetX: ${emitSwiftExpr(e.args[4]!, indent)}, targetY: ${emitSwiftExpr(e.args[5]!, indent)}, targetPosition: ${targetPosition}${extras.length ? `, ${extras.join(', ')}` : ''})`
+        }
+        _emitWarnings.push('getEdgePath requires literal Position values and a supported object-literal options parameter to lower natively.')
+      }
+      if (e.callee.kind === 'identifier' && e.callee.name === 'getNodeIntersection' && e.args.length === 2) {
+        const box = swiftFlowGeometryLiteral(e.args[0]!, ['x', 'y', 'width', 'height'], 'PyreonFlowRect', indent)
+        const toward = swiftFlowGeometryLiteral(e.args[1]!, ['x', 'y'], 'PyreonXYPosition', indent)
+        if (box !== null && toward !== null) return `pyreonNodeIntersection(${box}, toward: ${toward})`
+        _emitWarnings.push('getNodeIntersection requires literal { x, y, width, height } and { x, y } parameters to lower natively.')
+      }
+      if (e.callee.kind === 'identifier' && e.callee.name === 'getEffectiveDimensions' && (e.args.length === 1 || e.args.length === 2)) {
+        if (e.args[0]!.kind !== 'object' && (e.args[1] === undefined || e.args[1]!.kind !== 'object')) {
+          return `pyreonEffectiveDimensions(${emitSwiftExpr(e.args[0]!, indent)}${e.args[1] ? `, measurement: ${emitSwiftExpr(e.args[1], indent)}` : ''})`
+        }
+        _emitWarnings.push('getEffectiveDimensions requires native Flow node/measurement expressions rather than anonymous object literals.')
       }
       // Chart decimators consume `[Double]`; TypeScript `number[]` can be
       // represented as `[Int]` when its initializer is wholly integral.
@@ -5639,24 +5959,32 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       ) {
         const flowName = e.callee.object.name
         const member = e.callee.property
+        if (['updateNode', 'updateNodeData', 'updateEdge'].includes(member) && e.args.length === 2 && (e.args[1]!.kind !== 'object' || (e.args[1]!.spreads?.length ?? 0) > 0)) {
+          _emitWarnings.push(`createFlow binding \`${flowName}\`: \`${member}\` currently lowers only a literal patch object without spreads on native targets; this call is emitted as written and may fail the native build.`)
+        }
+        if (e.args.length === 0 && member === 'getNodes') return `${swiftIdent(flowName)}.nodes`
+        if (e.args.length === 0 && member === 'getEdges') return `${swiftIdent(flowName)}.edges`
+        if (e.args.length === 0 && member === 'getViewport') return `${swiftIdent(flowName)}.viewport`
         // Nothing silent inside the boundary: every member that is not in the
         // v1 surface is NAMED here (it is still emitted as written — the native
         // build is where it fails, but now the author heard about it first).
         if (!LOWERED_FLOW_METHODS.has(member) && !LOWERED_FLOW_PROPERTY_READS.has(member)) {
           _emitWarnings.push(unloweredFlowMemberWarning(flowName, member))
         }
-        if (member === 'fitView') _emitWarnings.push(flowFitViewWarning(flowName))
         // Swift's labeled parameters: the web call is positional, the port's
         // second parameter is labeled — an unlabeled emit fails ONLY on iOS.
-        if ((member === 'selectNode' || member === 'selectEdge') && e.args.length === 2) {
+        if ((member === 'selectNode' || member === 'selectNodes' || member === 'selectEdge') && e.args.length === 2) {
           return `${swiftIdent(flowName)}.${member}(${emitSwiftExpr(e.args[0]!, indent)}, additive: ${emitSwiftExpr(e.args[1]!, indent)})`
         }
         if (member === 'fitView' && e.args.length >= 1) {
           const first = e.args[0]!
           const ids = isNilArg(first) ? 'nil' : emitSwiftExpr(first, indent)
-          return e.args.length === 2
-            ? `${swiftIdent(flowName)}.fitView(${ids}, padding: ${emitSwiftExpr(e.args[1]!, indent)})`
-            : `${swiftIdent(flowName)}.fitView(${ids})`
+          const duration = swiftFlowDurationOption(e.args[2])
+          if (duration !== null) return `${swiftIdent(flowName)}.fitView(${ids}${e.args[1] ? `, padding: ${emitSwiftExpr(e.args[1]!, indent)}` : ''}${duration ? `, duration: ${duration}` : ''})`
+        }
+        if (member === 'paste' && e.args.length === 1) {
+          const lit = swiftFlowPositionLiteral(e.args[0]!)
+          if (lit !== null) return `${swiftIdent(flowName)}.paste(${lit})`
         }
         if (member === 'addNode' && e.args.length === 1) {
           const lit = swiftFlowNodeLiteral(e.args[0]!, flowName)
@@ -5671,6 +5999,117 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           if (lit !== null) {
             return `${swiftIdent(e.callee.object.name)}.updateNodePosition(${emitSwiftExpr(e.args[0]!, indent)}, ${lit})`
           }
+        }
+        if (member === 'updateNodeData' && e.args.length === 2 && e.args[1]!.kind === 'object') {
+          const patch = e.args[1]
+          if (!patch.spreads || patch.spreads.length === 0) {
+            const assignments = patch.fields.map(({ name, value }) => `data.${swiftIdent(name)} = ${emitSwiftExpr(value, indent)}`).join('; ')
+            return `${swiftIdent(flowName)}.updateNodeData(${emitSwiftExpr(e.args[0]!, indent)}) { data in ${assignments} }`
+          }
+        }
+        if (member === 'updateNode' && e.args.length === 2 && e.args[1]!.kind === 'object') {
+          const patch = e.args[1]
+          if (!patch.spreads || patch.spreads.length === 0) {
+            warnDroppedFlowFields(`createFlow binding \`${flowName}\` updateNode(...)`, 'node', patch)
+            const statements = patch.fields.flatMap(({ name, value }) => {
+              if (name === 'id') { _emitWarnings.push(`createFlow binding \`${flowName}\` updateNode(...): changing a node id is not supported natively; the original id is preserved.`); return [] }
+              if (name === 'position') { const position = swiftFlowPositionLiteral(value); return position ? [`node.position = ${position}`] : [] }
+              if (name === 'data' && value.kind === 'object') return value.fields.map((field) => `node.data.${swiftIdent(field.name)} = ${emitSwiftExpr(field.value, indent)}`)
+              if ((name === 'sourceHandles' || name === 'targetHandles')) { const handles = swiftFlowHandlesLiteral(value); return handles ? [`node.${name} = ${handles}`] : [] }
+              return HANDLED_FLOW_NODE_FIELDS.has(name) ? [`node.${swiftIdent(name)} = ${emitSwiftExpr(value, indent)}`] : []
+            })
+            return `${swiftIdent(flowName)}.updateNode(${emitSwiftExpr(e.args[0]!, indent)}) { node in ${statements.join('; ')} }`
+          }
+        }
+        if (member === 'updateEdge' && e.args.length === 2 && e.args[1]!.kind === 'object') {
+          const patch = e.args[1]
+          if (!patch.spreads || patch.spreads.length === 0) {
+            warnDroppedFlowFields(`createFlow binding \`${flowName}\` updateEdge(...)`, 'edge', patch)
+            const statements = patch.fields.flatMap(({ name, value }) => {
+              if (name === 'id') { _emitWarnings.push(`createFlow binding \`${flowName}\` updateEdge(...): changing an edge id is not supported natively; the original id is preserved.`); return [] }
+              if (name === 'pathOptions' && value.kind === 'object') return value.fields.flatMap((field) => ['curvature', 'borderRadius', 'offset'].includes(field.name) ? [`edge.${field.name === 'offset' ? 'pathOffset' : field.name} = ${emitSwiftExpr(field.value, indent)}`] : [])
+              if (name === 'markerStart' || name === 'markerEnd') { const marker = swiftFlowMarkerLiteral(value); return marker ? [`edge.${name} = ${marker}`, ...(name === 'markerEnd' ? ['edge.markerEndSpecified = true'] : [])] : [] }
+              if (name === 'animated') return [`edge.animated = ${emitSwiftExpr(value, indent)}`, 'edge.animatedSpecified = true']
+              if (name === 'waypoints') { const points = swiftFlowPositionsLiteral(value); return points ? [`edge.waypoints = ${points}`] : [] }
+              return HANDLED_FLOW_EDGE_FIELDS.has(name) ? [`edge.${swiftIdent(name)} = ${emitSwiftExpr(value, indent)}`] : []
+            })
+            return `${swiftIdent(flowName)}.updateEdge(${emitSwiftExpr(e.args[0]!, indent)}) { edge in ${statements.join('; ')} }`
+          }
+        }
+        if (['panTo', 'screenToFlowPosition', 'flowToScreenPosition'].includes(member) && e.args.length === 1) {
+          const lit = swiftFlowPositionLiteral(e.args[0]!)
+          if (lit !== null) return `${swiftIdent(flowName)}.${member}(${lit})`
+        }
+        if (member === 'zoomTo' && e.args.length >= 1) {
+          const duration = swiftFlowDurationOption(e.args[1])
+          if (duration !== null) return `${swiftIdent(flowName)}.zoomTo(${emitSwiftExpr(e.args[0]!, indent)}${duration ? `, duration: ${duration}` : ''})`
+        }
+        if ((member === 'zoomIn' || member === 'zoomOut') && e.args.length <= 1) {
+          const duration = swiftFlowDurationOption(e.args[0])
+          if (duration !== null) return `${swiftIdent(flowName)}.${member}(${duration ? `duration: ${duration}` : ''})`
+        }
+        if (member === 'addEdgeWaypoint' && e.args.length >= 2) {
+          const point = swiftFlowPositionLiteral(e.args[1]!)
+          if (point !== null) return `${swiftIdent(flowName)}.addEdgeWaypoint(${emitSwiftExpr(e.args[0]!, indent)}, ${point}${e.args.length === 3 ? `, ${emitSwiftExpr(e.args[2]!, indent)}` : ''})`
+        }
+        if (member === 'updateEdgeWaypoint' && e.args.length === 3) {
+          const point = swiftFlowPositionLiteral(e.args[2]!)
+          if (point !== null) return `${swiftIdent(flowName)}.updateEdgeWaypoint(${emitSwiftExpr(e.args[0]!, indent)}, ${emitSwiftExpr(e.args[1]!, indent)}, ${point})`
+        }
+        if (member === 'reconnectEdge' && e.args.length === 2) {
+          const args = swiftFlowReconnectLiteral(e.args[1]!)
+          if (args !== null) return `${swiftIdent(flowName)}.reconnectEdge(${emitSwiftExpr(e.args[0]!, indent)}${args})`
+        }
+        if (member === 'isValidConnection' && e.args.length === 1) {
+          const connection = swiftFlowConnectionLiteral(e.args[0]!)
+          if (connection !== null) return `${swiftIdent(flowName)}.isValidConnection(${connection})`
+        }
+        if ((member === 'addNodes' || member === 'setNodes') && e.args.length === 1) {
+          const nodes = swiftFlowNodeListLiteral(e.args[0]!, flowName)
+          if (nodes !== null) return `${swiftIdent(flowName)}.${member}(${nodes})`
+        }
+        if ((member === 'addEdges' || member === 'setEdges') && e.args.length === 1) {
+          const edges = swiftFlowEdgeListLiteral(e.args[0]!, flowName)
+          if (edges !== null) return `${swiftIdent(flowName)}.${member}(${edges})`
+        }
+        if (member === 'setViewport' && e.args.length >= 1) {
+          const args = swiftFlowViewportLiteral(e.args[0]!)
+          const duration = swiftFlowDurationOption(e.args[1])
+          if (args !== null && duration !== null) return `${swiftIdent(flowName)}.setViewport(${args}${duration ? `${args ? ', ' : ''}duration: ${duration}` : ''})`
+        }
+        if (member === 'animateViewport' && e.args.length >= 1) {
+          const args = swiftFlowViewportLiteral(e.args[0]!)
+          if (args !== null) return `${swiftIdent(flowName)}.animateViewport(${args}${e.args[1] ? `, duration: ${emitSwiftExpr(e.args[1]!, indent)}` : ''})`
+        }
+        if (member === 'layout') {
+          if (e.args.length === 0) return `${swiftIdent(flowName)}.layout()`
+          const algorithm = emitSwiftExpr(e.args[0]!, indent)
+          if (e.args.length === 1) return `${swiftIdent(flowName)}.layout(${algorithm})`
+          const options = e.args[1]!
+          if (options.kind === 'object' && (!options.spreads || options.spreads.length === 0)) {
+            const fields = options.fields.flatMap(({ name, value }) => {
+              if (name === 'direction' || name === 'nodeSpacing' || name === 'layerSpacing' || name === 'animate' || name === 'animationDuration') return [`${name}: ${emitSwiftExpr(value, indent)}`]
+              return []
+            })
+            return `${swiftIdent(flowName)}.layout(${algorithm}, options: PyreonFlowLayoutOptions(${fields.join(', ')}))`
+          }
+        }
+        if (member === 'setCenter' && e.args.length >= 2) {
+          const options = e.args[2] ? swiftFlowViewportLiteral(e.args[2]!) : ''
+          if (options !== null) return `${swiftIdent(flowName)}.setCenter(${emitSwiftExpr(e.args[0]!, indent)}, ${emitSwiftExpr(e.args[1]!, indent)}${options ? `, ${options}` : ''})`
+        }
+        if (member === 'setNodeExtent' && e.args.length === 1) {
+          if (isNilArg(e.args[0]!)) return `${swiftIdent(flowName)}.clearNodeExtent()`
+          const extent = swiftFlowExtentLiteral(e.args[0]!)
+          if (extent !== null) return `${swiftIdent(flowName)}.setNodeExtent(${extent})`
+        }
+        if (member === 'clampToExtent' && e.args.length >= 1) {
+          const position = swiftFlowPositionLiteral(e.args[0]!)
+          if (position !== null) return `${swiftIdent(flowName)}.clampToExtent(${position}${e.args.slice(1).map((arg) => `, ${emitSwiftExpr(arg, indent)}`).join('')})`
+        }
+        if (member === 'getSnapLines' && e.args.length >= 2) {
+          const position = swiftFlowPositionLiteral(e.args[1]!)
+          if (position !== null) return `${swiftIdent(flowName)}.getSnapLines(${emitSwiftExpr(e.args[0]!, indent)}, ${position}${e.args[2] ? `, threshold: ${emitSwiftExpr(e.args[2]!, indent)}` : ''})`
         }
       }
       // A signal WRITE on a flow-state property (`flow.nodes.set(...)`): the
@@ -5698,7 +6137,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         e.callee.object.kind === 'identifier' &&
         _flowStateNamesSwift.has(e.callee.object.name) &&
         e.args.length === 0 &&
-        ['nodes', 'edges', 'viewport', 'zoom'].includes(e.callee.property)
+        LOWERED_FLOW_PROPERTY_READS.has(e.callee.property)
       ) {
         return `${swiftIdent(e.callee.object.name)}.${swiftIdent(e.callee.property)}`
       }
@@ -7745,6 +8184,7 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   // <WebView> — native host (WKWebView via PyreonWebView) for embedding
   // web-only-rich viz (charts / flow / tables) inside a native shell.
   if (tag === 'WebView') return emitSwiftWebView(e)
+  if (tag === 'Flow' && canAliasIntercept(tag, '@pyreon/flow')) return emitSwiftFlowHost(e)
   // `@pyreon/charts/plot` family hosts → PyreonChartCanvas over the generated
   // engine (chart-hosts.ts); accessor-prop hosts warn by name.
   if (isChartHostTag(tag)) return emitSwiftChartHost(e, indent)
@@ -7846,6 +8286,86 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   // real platform). Ship as real apps demand each.
   // Generic SwiftUI View by tag name.
   return emitSwiftGeneric(e, indent)
+}
+
+function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'instance')
+  if (attr === undefined || attr.kind !== 'attr' || attr.value === undefined) {
+    _emitWarnings.push('<Flow> requires `instance={flow}` for native lowering — the host was dropped.')
+    return 'EmptyView()'
+  }
+  const nodeTypesAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'nodeTypes')
+  const nodeTypes = nodeTypesAttr?.kind === 'attr' && nodeTypesAttr.value?.kind === 'object' && (nodeTypesAttr.value.spreads?.length ?? 0) === 0 && nodeTypesAttr.value.fields.every((field) => field.value.kind === 'identifier')
+    ? nodeTypesAttr.value.fields.map((field) => ({ type: field.name, component: (field.value as Extract<ExprIR, { kind: 'identifier' }>).name }))
+    : undefined
+  if (nodeTypesAttr !== undefined && nodeTypes === undefined) {
+    _emitWarnings.push('<Flow nodeTypes={…}> must be a literal { type: Component } map to lower natively; the native default node renderer is used.')
+  }
+  if (e.attrs.some((a) => a.kind === 'attr' && a.name === 'edgeTypes')) {
+    _emitWarnings.push('<Flow edgeTypes={…}> custom edge renderer maps are not lowered natively yet; the native default edge renderer is used.')
+  }
+  const background = e.children
+    .filter((child) => child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'Background')
+    .map((child) => child.kind === 'expr' ? child.expr : undefined)[0]
+  const controls = e.children
+    .filter((child) => child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'Controls')
+    .map((child) => child.kind === 'expr' ? child.expr : undefined)[0]
+  const miniMap = e.children
+    .filter((child) => child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'MiniMap')
+    .map((child) => child.kind === 'expr' ? child.expr : undefined)[0]
+  const panels = e.children
+    .filter((child) => child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'Panel')
+    .map((child) => child.kind === 'expr' ? child.expr : undefined)
+    .filter((panel): panel is Extract<ExprIR, { kind: 'jsx-element' }> => panel?.kind === 'jsx-element')
+  const otherChildren = e.children.filter((child) => !(child.kind === 'expr' && child.expr.kind === 'jsx-element' && (child.expr.tag === 'Background' || child.expr.tag === 'Controls' || child.expr.tag === 'MiniMap' || child.expr.tag === 'Panel')))
+  if (otherChildren.length > 0) {
+    _emitWarnings.push('<Flow> contains native-unlowered children; Handle and other optional chrome remain explicit follow-ups.')
+  }
+  const bgArg = background?.kind === 'jsx-element' ? `, background: ${emitSwiftFlowBackground(background)}` : ''
+  const controlsArg = controls?.kind === 'jsx-element' ? `, controls: ${emitSwiftFlowControls(controls)}` : ''
+  const miniMapArg = miniMap?.kind === 'jsx-element' ? `, miniMap: ${emitSwiftFlowMiniMap(miniMap)}` : ''
+  const nodeText = attr.value.kind === 'identifier' && _flowStateLabelNamesSwift.has(attr.value.name)
+    ? 'Text(String(describing: pyreonNode.data.label))'
+    : 'Text(pyreonNode.id)'
+  const renderer = nodeTypes && nodeTypes.length > 0
+    ? `switch pyreonNode.type {\n${nodeTypes.map(({ type, component }) => `  case ${swiftStr(type)}:\n    ${swiftIdent(component)}(id: pyreonNode.id, data: { pyreonNode.data }, selected: { pyreonSelected }, dragging: { pyreonDragging })`).join('\n')}\n  default:\n    ${nodeText}\n  }`
+    : nodeText
+  const rendererParams = nodeTypes && nodeTypes.length > 0 ? 'pyreonNode, pyreonSelected, pyreonDragging' : 'pyreonNode'
+  const host = `PyreonFlowView(state: ${emitSwiftExpr(attr.value, 0)}${bgArg}${controlsArg}${miniMapArg}) { ${rendererParams} in\n  ${renderer}\n}`
+  if (panels.length === 0) return host
+  const overlays = panels.map((panel) => {
+    const position = readStaticAttr(panel, 'position')
+    const hasPosition = panel.attrs.some((a) => a.kind === 'attr' && a.name === 'position')
+    const alignment = position === 'top-right' ? '.topTrailing' : position === 'bottom-left' ? '.bottomLeading' : position === 'bottom-right' ? '.bottomTrailing' : '.topLeading'
+    if (hasPosition && typeof position !== 'string') _emitWarnings.push('<Panel position={…}> must be a string literal to lower natively; top-left is used.')
+    if (panel.attrs.some((a) => a.kind === 'attr' && a.name === 'style')) _emitWarnings.push('<Panel style={…}> uses web CSS and is not applied natively; its position and content still lower.')
+    const content = panel.children.map((child) => `      ${emitSwiftChild(child, 6)}`).join('\n')
+    return `    Group {\n${content}\n    }\n    .padding(10)\n    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: ${alignment})`
+  }).join('\n')
+  return `ZStack {\n  ${host}\n${overlays}\n}`
+}
+
+function emitSwiftFlowMiniMap(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const str = (name: string, fallback: string): string => { const value = readStaticAttr(e, name); return swiftStr(typeof value === 'string' ? value : fallback) }
+  const num = (name: string, fallback: number): string => { const value = readStaticAttr(e, name); return String(typeof value === 'number' ? value : fallback) }
+  const bool = (name: string, fallback: boolean): string => readStaticAttr(e, name) === false ? 'false' : readStaticAttr(e, name) === true ? 'true' : String(fallback)
+  return `PyreonFlowMiniMapStyle(nodeColor: ${str('nodeColor', '#e2e8f0')}, maskColor: ${str('maskColor', '#000000')}, width: ${num('width', 200)}, height: ${num('height', 150)}, pannable: ${bool('pannable', true)}, zoomable: ${bool('zoomable', true)})`
+}
+
+function emitSwiftFlowControls(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const bool = (name: string, fallback: boolean): string => readStaticAttr(e, name) === false ? 'false' : readStaticAttr(e, name) === true ? 'true' : String(fallback)
+  const position = readStaticAttr(e, 'position')
+  const pos = position === 'top-left' ? '.topLeft' : position === 'top-right' ? '.topRight' : position === 'bottom-right' ? '.bottomRight' : '.bottomLeft'
+  return `PyreonFlowControlsStyle(showZoomIn: ${bool('showZoomIn', true)}, showZoomOut: ${bool('showZoomOut', true)}, showFitView: ${bool('showFitView', true)}, showLock: ${bool('showLock', false)}, position: ${pos})`
+}
+
+function emitSwiftFlowBackground(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const variant = readStaticAttr(e, 'variant')
+  const resolvedVariant = variant === 'lines' ? '.lines' : variant === 'cross' ? '.cross' : '.dots'
+  const gap = readStaticAttr(e, 'gap')
+  const size = readStaticAttr(e, 'size')
+  const color = readStaticAttr(e, 'color')
+  return `PyreonFlowBackgroundStyle(variant: ${resolvedVariant}, gap: ${typeof gap === 'number' ? gap : 20}, size: ${typeof size === 'number' ? size : 1}, color: ${typeof color === 'string' ? swiftStr(color) : '"#dddddd"'})`
 }
 
 /**
