@@ -47,6 +47,12 @@ export function App() {
   }} />
 }`
 
+const PICTORIAL = `import { OptionChart } from '@pyreon/charts/plot'
+export function App() { return <OptionChart option={{
+  xAxis: { type: 'category', data: ['A', 'B'] }, yAxis: {},
+  series: [{ type: 'pictorialBar', name: 'Units', symbol: 'diamond', symbolRepeat: 'fixed', data: [3, 5] }],
+}} /> }`
+
 const STATIC_FAMILIES = `import { OptionChart } from '@pyreon/charts/plot'
 export function App() { return <>
   <OptionChart option={{ radar: { indicator: [{ name: 'Speed', max: 100 }, { name: 'Power', max: 100 }] }, legend: {}, series: [{ type: 'radar', areaStyle: { opacity: 0.4 }, data: [{ name: 'A', value: [80, 60] }] }] }} />
@@ -162,6 +168,13 @@ describe('OptionChart family options lower to native hosts', () => {
       expect(r.code).toContain(target === 'swift' ? 'yDomain: Domain(min: 0.0, max: 100.0)' : 'yDomain = Domain(min = 0.0, max = 100.0)')
     })
 
+    it(`${target}: pictorial bars lower through the native symbol renderer`, () => {
+      const r = transform(PICTORIAL, { target })
+      expect(r.warnings).toEqual([])
+      expect(r.code).toContain(target === 'swift' ? 'symbol: "diamond", symbolRepeat: true' : 'symbol = "diamond", symbolRepeat = true')
+      expect(r.code).toContain('renderChart(')
+    })
+
     it(`${target}: radar, candlestick, heatmap, and funnel options use their native renderers`, () => {
       const r = transform(STATIC_FAMILIES, { target })
       expect(r.warnings).toEqual([])
@@ -263,14 +276,14 @@ describe('OptionChart family options lower to native hosts', () => {
   })
 
   it.skipIf(!isSwiftcAvailable())('swiftc accepts the family and cartesian emits', () => {
-    for (const src of [PIE, GAUGE, TIMELINE_PIE, CARTESIAN, STATIC_FAMILIES]) {
+    for (const src of [PIE, GAUGE, TIMELINE_PIE, CARTESIAN, PICTORIAL, STATIC_FAMILIES]) {
       const r = validateSwiftWithStubs(transform(src, { target: 'swift' }).code)
       expect(r.ok, r.error ?? '').toBe(true)
     }
   }, 90_000)
 
   it.skipIf(!isKotlincAvailable())('kotlinc accepts the family and cartesian emits', () => {
-    for (const src of [PIE, GAUGE, TIMELINE_PIE, CARTESIAN, STATIC_FAMILIES]) {
+    for (const src of [PIE, GAUGE, TIMELINE_PIE, CARTESIAN, PICTORIAL, STATIC_FAMILIES]) {
       const r = validateKotlin(transform(src, { target: 'kotlin' }).code)
       expect(r.ok, r.error ?? '').toBe(true)
     }

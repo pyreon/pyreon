@@ -1575,7 +1575,7 @@ export function desugarOptionChart(
     return { kind: 'jsx-element', tag: kind === 'sankey' ? 'SankeyChart' : 'GraphChart', attrs, children: [] }
   }
 
-  const cartesianKinds = new Set(['line', 'bar', 'scatter'])
+  const cartesianKinds = new Set(['line', 'bar', 'pictorialBar', 'scatter'])
   if (cartesianKinds.has(kind)) {
     if (rawSeries?.kind !== 'array' || rawSeries.elements.length === 0) {
       warn('<OptionChart option.series>: native cartesian options need a non-empty literal series array; emitting nothing.')
@@ -1586,10 +1586,10 @@ export function desugarOptionChart(
       const s = literalOf(rawSeries.elements[si], resolve)
       const sk = s === undefined ? undefined : litString(objectField(s, 'type'))
       if (s?.kind !== 'object' || sk === undefined || !cartesianKinds.has(sk)) {
-        warn(`<OptionChart option.series[${si}].type>: this cartesian adapter needs line, bar, or scatter series; emitting nothing.`)
+        warn(`<OptionChart option.series[${si}].type>: this cartesian adapter needs line, bar, pictorialBar, or scatter series; emitting nothing.`)
         return undefined
       }
-      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle', 'markArea'], `option.series[${si}]`, warn)
+      optionFields(s, ['type', 'name', 'data', 'stack', 'areaStyle', 'itemStyle', 'lineStyle', 'markArea', 'symbol', 'symbolRepeat'], `option.series[${si}]`, warn)
       seriesObjects.push(s)
     }
     const xAxis = literalOf(objectField(raw, 'xAxis'), resolve)
@@ -1629,11 +1629,15 @@ export function desugarOptionChart(
     }))
     set('data', { kind: 'array', elements: rows })
     set('x', { kind: 'arrow', params: ['d'], body: { kind: 'member', object: ident('d'), property: 'x' } })
-    const barCount = seriesObjects.filter((s) => litString(objectField(s, 'type')) === 'bar').length
+    const barCount = seriesObjects.filter((s) => {
+      const type = litString(objectField(s, 'type'))
+      return type === 'bar' || type === 'pictorialBar'
+    }).length
     const marks: ExprIR[] = seriesObjects.map((s, si) => {
       const sk = litString(objectField(s, 'type'))!
       const stacked = objectField(s, 'stack') !== undefined
-      const factory = sk === 'bar' ? (stacked ? 'stackedBars' : barCount > 1 ? 'groupedBars' : 'bars') : sk === 'scatter' ? 'points' : objectField(s, 'areaStyle') !== undefined ? 'area' : 'line'
+      const barLike = sk === 'bar' || sk === 'pictorialBar'
+      const factory = barLike ? (stacked ? 'stackedBars' : barCount > 1 ? 'groupedBars' : 'bars') : sk === 'scatter' ? 'points' : objectField(s, 'areaStyle') !== undefined ? 'area' : 'line'
       const opts: { name: string; value: ExprIR }[] = []
       const name = objectField(s, 'name')
       if (litString(name) !== undefined) opts.push({ name: 'label', value: name! })
@@ -1642,6 +1646,19 @@ export function desugarOptionChart(
       if (litString(color) !== undefined) opts.push({ name: 'color', value: color! })
       const pattern = optionPatternLiteral(objectField(s, 'itemStyle'), resolve)
       if (pattern !== undefined) opts.push({ name: 'pattern', value: pattern })
+      if (sk === 'pictorialBar') {
+        const rawSymbol = litString(objectField(s, 'symbol')) ?? 'rect'
+        const symbol = rawSymbol === 'roundRect' ? 'rect' : rawSymbol
+        if (symbol === 'rect' || symbol === 'circle' || symbol === 'diamond' || symbol === 'triangle') {
+          opts.push({ name: 'symbol', value: lit(symbol) })
+        } else {
+          warn(`<OptionChart option.series[${si}].symbol>: native pictorial bars support rect, roundRect, circle, diamond, or triangle; rendering rectangles.`)
+          opts.push({ name: 'symbol', value: lit('rect') })
+        }
+        const repeat = objectField(s, 'symbolRepeat')
+        const repeatValue = repeat?.kind === 'literal' && (repeat.value === true || repeat.value === 'fixed' || (typeof repeat.value === 'number' && repeat.value > 0))
+        opts.push({ name: 'symbolRepeat', value: lit(repeatValue) })
+      }
       return {
         kind: 'call',
         callee: ident(factory),
