@@ -12538,6 +12538,15 @@ function swiftChartDouble(e: Extract<ExprIR, { kind: 'jsx-element' }>, name: str
   return chartDouble(fallback)
 }
 
+/** Select the stateful draw-list host unless update animation is explicitly disabled. */
+function swiftChartCanvas(e: Extract<ExprIR, { kind: 'jsx-element' }>, cmds: string, indent: number): string {
+  const args = [`cmds: ${cmds}`]
+  if (chartAttrExpr(e, 'updateDuration') !== undefined) args.push(`durationMs: ${swiftChartDouble(e, 'updateDuration', 350, indent)}`)
+  if (readStaticAttr(e, 'universalTransition') === true) args.push('universal: true')
+  if (readStaticAttr(e, 'updateAnimation') === false) args.push('animated: false')
+  return `PyreonChartCanvas(${args.join(', ')})`
+}
+
 /**
  * The body of the tap closure for `onSelectIndex`: bind the handler's param to
  * the engine's index hit, then run the handler's own body as a zero-arg
@@ -12702,7 +12711,7 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
   const tipCmds = tooltip
     ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, pyreonChartMeasure)`
     : ''
-  const canvas = `PyreonChartCanvas(cmds: ${chrome.mirror(chrome.wrap(spec.render(layout, renderArgs, SWIFT_CHART_TARGET)))}${tipCmds})`
+  const canvas = swiftChartCanvas(e, `${chrome.mirror(chrome.wrap(spec.render(layout, renderArgs, SWIFT_CHART_TARGET)))}${tipCmds}`, indent)
   // `onSelectIndex` → a tap (a zero-distance drag, which reports its location)
   // over the engine's index hit, computed against the same layout the canvas
   // painted. `.contentShape` makes the whole canvas — not only its painted
@@ -12806,7 +12815,7 @@ function emitSwiftAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   const tipCmds = tooltip
     ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, pyreonChartMeasure)`
     : ''
-  const canvas = `PyreonChartCanvas(cmds: ${chrome.mirror(chrome.wrap(spec.render(items, animating ? { ...args, options: 'pyreonOpts' } : args, SWIFT_CHART_TARGET)))}${tipCmds})`
+  const canvas = swiftChartCanvas(e, `${chrome.mirror(chrome.wrap(spec.render(items, animating ? { ...args, options: 'pyreonOpts' } : args, SWIFT_CHART_TARGET)))}${tipCmds}`, indent)
   // Both `onSelect` (already an index on these hosts) and `onSelectIndex` lower to the tap; `tooltip` shares it.
   const onSel = e.attrs.find((a) => a.kind === 'event' && (a.name === 'selectindex' || a.name === 'select'))
   const tapY = withChrome ? 'Double(pyreonTap.location.y) - pyreonTop' : 'Double(pyreonTap.location.y)'
@@ -12843,7 +12852,7 @@ function emitSwiftGaugeHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const text = showValue
     ? ` + [PyreonDrawCmd(kind: "text", fill: "#10161d", text: plain(${value}), at: PyreonChartPt(x: ${W} / 2.0, y: ${H} - 6.0), size: 20.0, align: "middle", baseline: "bottom")]`
     : ''
-  const canvas = `PyreonChartCanvas(cmds: ${swiftRtl(e, W).mirror(`renderGauge(${value}, PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${H} * 2.0), ${opts})${text}`)})`
+  const canvas = swiftChartCanvas(e, swiftRtl(e, W).mirror(`renderGauge(${value}, PyreonChartRect(x: 0.0, y: 0.0, w: ${W}, h: ${H} * 2.0), ${opts})${text}`), indent)
   const tail = swiftChartA11y(e, undefined, indent) + emitSwiftLayoutModifiers(e)
   if (hasWidth) return `${canvas}.frame(width: ${W}, height: ${H})${tail}`
   const pad = ' '.repeat(indent + 2)
@@ -12972,7 +12981,7 @@ function emitSwiftCandlestickHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, i
   const hasWidth = chartAttrExpr(e, 'width') !== undefined
   const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
   const rtlC = swiftRtl(e, W)
-  const canvas = `PyreonChartCanvas(cmds: ${rtlC.mirror(`renderCandlestickChart(pyreonCandles, ${W}, ${H}, pyreonCats, pyreonTheme, ${options}, pyreonChartMeasure)`)})`
+  const canvas = swiftChartCanvas(e, rtlC.mirror(`renderCandlestickChart(pyreonCandles, ${W}, ${H}, pyreonCats, pyreonTheme, ${options}, pyreonChartMeasure)`), indent)
   const gesture = swiftChartGesture(e, (x, y) => `hitCandlestickChart(pyreonCandles, ${W}, ${H}, pyreonCats, pyreonTheme.fontSize, pyreonChartMeasure, ${x}, ${y})`, indent, ['selectindex', 'select'], rtlC.tapX)
   return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent)
 }
@@ -13009,7 +13018,7 @@ function emitSwiftBoxplotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
   const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
   // The entrance reaches the RENDER only (its trailing `progress`, as the heat host's); the hit reads the frame without it.
   const rtlB = swiftRtl(e, W)
-  const canvas = `PyreonChartCanvas(cmds: ${rtlB.mirror(`renderBoxplotChart(pyreonBoxes, ${W}, ${H}, pyreonCats, pyreonTheme, ${options}, pyreonChartMeasure${swiftChartAnimating(e, tag) ? ', nil, pyreonEntrance' : ''})`)})`
+  const canvas = swiftChartCanvas(e, rtlB.mirror(`renderBoxplotChart(pyreonBoxes, ${W}, ${H}, pyreonCats, pyreonTheme, ${options}, pyreonChartMeasure${swiftChartAnimating(e, tag) ? ', nil, pyreonEntrance' : ''})`), indent)
   const gesture = swiftChartGesture(e, (x, y) => `hitBoxplotChart(pyreonBoxes.count, ${W}, ${H}, pyreonCats, pyreonTheme.fontSize, pyreonChartMeasure, ${x}, ${y}, pyreonBoxes)`, indent, ['selectindex', 'select'], rtlB.tapX)
   return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent)
 }
@@ -13055,7 +13064,7 @@ function emitSwiftHeatmapHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
   const hasWidth = chartAttrExpr(e, 'width') !== undefined
   const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
   const rtlH = swiftRtl(e, W)
-  const canvas = `PyreonChartCanvas(cmds: ${rtlH.mirror(`renderHeatChart(pyreonGrid, ${W}, ${H}, pyreonTheme, ${stops}, ${gap}, pyreonChartMeasure${swiftChartAnimating(e, tag) ? ', pyreonEntrance' : ''})`)})`
+  const canvas = swiftChartCanvas(e, rtlH.mirror(`renderHeatChart(pyreonGrid, ${W}, ${H}, pyreonTheme, ${stops}, ${gap}, pyreonChartMeasure${swiftChartAnimating(e, tag) ? ', pyreonEntrance' : ''})`), indent)
   const gesture = swiftChartGesture(e, (x, y) => `hitHeatChart(pyreonGrid, ${W}, ${H}, pyreonTheme.fontSize, ${gap}, pyreonChartMeasure, ${x}, ${y})`, indent, ['selectindex'], rtlH.tapX)
   return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent)
 }
@@ -13107,7 +13116,7 @@ function emitSwiftRadarHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const showLabels = showV === undefined ? 'true' : typeof showRaw === 'boolean' ? String(showRaw) : emitSwiftExpr(showV, indent)
   const opts = `RadarOptions(rings: ${rings}, gridColor: "rgba(132,150,165,0.35)", labelColor: "#5a6b7a", fontSize: 11.0, showLabels: ${showLabels})`
   const box = `PyreonChartRect(x: 0.0, y: 0.0, w: ${chrome.width(W)}, h: ${chrome.height(H)})`
-  const canvas = `PyreonChartCanvas(cmds: ${chrome.mirror(chrome.wrap(`renderRadar(${emitSwiftExpr(axesV, indent)}, pyreonSeries, ${box}, ${opts})`))})`
+  const canvas = swiftChartCanvas(e, chrome.mirror(chrome.wrap(`renderRadar(${emitSwiftExpr(axesV, indent)}, pyreonSeries, ${box}, ${opts})`)), indent)
   // The tap: the engine's `hitRadarIndex` (a `{ series, axis }` — the shape BOTH
   // web callbacks receive), against the same box the canvas painted, the
   // chrome's height taken off the tap's y. Radar had no tap on either target.
@@ -13541,7 +13550,7 @@ function emitSwiftPlotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   // tooltip is deliberately NOT mirrored: it is drawn at the raw tap point,
   // which is already a visual coordinate.
   const painted = `${chrome.wrap(`renderChart(pyreonSpec, pyreonChartMeasure)${brushing ? ' + pyreonBrushCmds' : ''}`)}${extraCmds}`
-  const canvas = `PyreonChartCanvas(cmds: ${chrome.mirror(painted)}${tipCmds})`
+  const canvas = swiftChartCanvas(e, `${chrome.mirror(painted)}${tipCmds}`, indent)
   const tapY = chrome.top === '0.0' ? 'Double(pyreonTap.location.y)' : 'Double(pyreonTap.location.y) - pyreonTop'
   // The hit test speaks the UNMIRRORED geometry the engine laid out, so an
   // RTL tap is mirrored back before it is asked about. Painting mirrored and

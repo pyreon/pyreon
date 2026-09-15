@@ -1876,7 +1876,7 @@ public struct GeometryReader<Content: View>: View {
 public struct PyreonChartCanvas: View {
   public var cmds: [PyreonDrawCmd]
   public var fontFamily: String?
-  public init(cmds: [PyreonDrawCmd], fontFamily: String? = nil) { self.cmds = cmds; self.fontFamily = fontFamily }
+  public init(cmds: [PyreonDrawCmd], durationMs: Double = 350.0, universal: Bool = false, animated: Bool = true, fontFamily: String? = nil) { self.cmds = cmds; self.fontFamily = fontFamily }
   public var body: some View { EmptyView() }
 }
 public func pyreonChartColor(_ s: String) -> Color { Color.clear }

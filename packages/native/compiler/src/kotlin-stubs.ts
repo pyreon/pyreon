@@ -2352,7 +2352,7 @@ export const KOTLIN_CHART_VIEW_STUBS = `
 // ---- @pyreon/charts/plot hosts (chart-hosts.ts emit) ----
 @Composable
 @Suppress("UNUSED_PARAMETER")
-fun PyreonChartCanvas(cmds: List<PyreonDrawCmd>, modifier: Modifier = Modifier) {}
+fun PyreonChartCanvas(cmds: List<PyreonDrawCmd>, modifier: Modifier = Modifier, durationMs: Double = 350.0, universal: Boolean = false, animated: Boolean = true) {}
 @Composable
 fun PyreonChartEntrance(durationMs: Double, content: @Composable (Double) -> Unit) { content(1.0) }
 fun pyreonChartMeasure(text: String, size: Double): Double = text.length * size * 0.6

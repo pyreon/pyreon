@@ -10539,6 +10539,15 @@ function kotlinChartDouble(e: Extract<ExprIR, { kind: 'jsx-element' }>, name: st
   return chartDouble(fallback)
 }
 
+/** Select the stateful draw-list host unless update animation is explicitly disabled. */
+function kotlinChartCanvas(e: Extract<ExprIR, { kind: 'jsx-element' }>, cmds: string, modifier: string, indent: number): string {
+  const args = [`cmds = ${cmds}`, `modifier = ${modifier}`]
+  if (chartAttrExprKotlin(e, 'updateDuration') !== undefined) args.push(`durationMs = ${kotlinChartDouble(e, 'updateDuration', 350, indent)}`)
+  if (readStaticAttrKotlin(e, 'universalTransition') === true) args.push('universal = true')
+  if (readStaticAttrKotlin(e, 'updateAnimation') === false) args.push('animated = false')
+  return `PyreonChartCanvas(${args.join(', ')})`
+}
+
 /**
  * The body of the tap lambda for `onSelectIndex`: bind the handler's param to
  * the engine's index hit, then run the handler's own body as a zero-arg lambda
@@ -10733,7 +10742,7 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   const generic = emitKotlinLayoutModifier(e)
   const titleMod = kotlinChartA11y(e, describe)
   const modifier = size + tap + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))
-  const canvas = `PyreonChartCanvas(cmds = ${cmds}, modifier = ${modifier})`
+  const canvas = kotlinChartCanvas(e, cmds, modifier, indent)
   // A tap needs the density from a composable scope, so a tappable host always
   // sits in a BoxWithConstraints even when its width is explicit.
   if (hasWidth && tap === '') return canvas
@@ -10831,7 +10840,7 @@ function emitKotlinAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   const generic = emitKotlinLayoutModifier(e)
   const titleMod = kotlinChartA11y(e, describe)
   const modifier = size + tap + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))
-  const canvas = `PyreonChartCanvas(cmds = ${cmds}, modifier = ${modifier})`
+  const canvas = kotlinChartCanvas(e, cmds, modifier, indent)
   if (hasWidth && tap === '') return canvas
   const pad = ' '.repeat(indent + 2)
   const widthLine = hasWidth ? '' : `${pad}val pyreonW = maxWidth.value.toDouble()\n`
@@ -10862,7 +10871,7 @@ function emitKotlinGaugeHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   const size = hasWidth ? `Modifier.width((${W}).dp).height((${H}).dp)` : `Modifier.fillMaxWidth().height((${H}).dp)`
   const generic = emitKotlinLayoutModifier(e)
   const titleMod = kotlinChartA11y(e, describe)
-  const canvas = `PyreonChartCanvas(cmds = ${kotlinRtl(e, W).mirror(cmds)}, modifier = ${size + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))})`
+  const canvas = kotlinChartCanvas(e, kotlinRtl(e, W).mirror(cmds), size + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, '')), indent)
   if (hasWidth) return canvas
   const pad = ' '.repeat(indent + 2)
   return `BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {\n${pad}val pyreonW = maxWidth.value.toDouble()\n${pad}${canvas}\n${' '.repeat(indent)}}`
@@ -11587,7 +11596,7 @@ function kotlinFrameHostLets(e: Extract<ExprIR, { kind: 'jsx-element' }>, lets: 
   const size = hasWidth ? `Modifier.width((${W}).dp).height((${H}).dp)` : `Modifier.fillMaxWidth().height((${H}).dp)`
   const generic = emitKotlinLayoutModifier(e)
   const titleMod = kotlinChartA11y(e, describe)
-  const canvas = `PyreonChartCanvas(cmds = ${mirror(cmds)}, modifier = ${size + tap + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))})`
+  const canvas = kotlinChartCanvas(e, mirror(cmds), size + tap + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, '')), indent)
   const pad = ' '.repeat(indent + 2)
   const widthLine = hasWidth ? '' : `${pad}val pyreonW = maxWidth.value.toDouble()\n`
   const densityLine = tap === '' ? '' : `${pad}val pyreonDensity = LocalDensity.current.density\n`
@@ -11692,7 +11701,7 @@ function kotlinFrameHostWithTap(e: Extract<ExprIR, { kind: 'jsx-element' }>, let
   const size = hasWidth ? `Modifier.width((${W}).dp).height((${H}).dp)` : `Modifier.fillMaxWidth().height((${H}).dp)`
   const generic = emitKotlinLayoutModifier(e)
   const titleMod = kotlinChartA11y(e, describe)
-  const canvas = `PyreonChartCanvas(cmds = ${cmds}, modifier = ${size + tap + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, ''))})`
+  const canvas = kotlinChartCanvas(e, cmds, size + tap + titleMod + (generic === '' ? '' : generic.replace(/^Modifier/, '')), indent)
   const pad = ' '.repeat(indent + 2)
   const widthLine = hasWidth ? '' : `${pad}val pyreonW = maxWidth.value.toDouble()\n`
   const densityLine = tap === '' ? '' : `${pad}val pyreonDensity = LocalDensity.current.density\n`
@@ -11802,8 +11811,8 @@ function kotlinFrameHostWithDensity(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   // host (modifier order unchanged: size, gestures, identity).
   const canvas =
     overlay === undefined
-      ? `PyreonChartCanvas(cmds = ${cmds}, modifier = ${size + tap + identity})`
-      : `Box(modifier = ${size + identity}) {\n${pad}  PyreonChartCanvas(cmds = ${cmds}, modifier = Modifier.fillMaxSize()${tap})\n${pad}  ${overlay}\n${pad}}`
+      ? kotlinChartCanvas(e, cmds, size + tap + identity, indent)
+      : `Box(modifier = ${size + identity}) {\n${pad}  ${kotlinChartCanvas(e, cmds, `Modifier.fillMaxSize()${tap}`, indent + 2)}\n${pad}  ${overlay}\n${pad}}`
   const widthLine = hasWidth ? '' : `${pad}val pyreonW = maxWidth.value.toDouble()\n`
   const densityLine = needsDensity ? `${pad}val pyreonDensity = LocalDensity.current.density\n` : ''
   const body = lets.map((l) => `${pad}${l}\n`).join('')

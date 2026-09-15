@@ -107,7 +107,7 @@ describe('chart entrance — the web tween crosses to both targets', () => {
       expect(p.code).toContain(target === 'swift' ? 'progress: pyreonEntrance)' : 'progress = pyreonEntrance)')
       const h = transform(HEAT, { target })
       expect(h.warnings).toEqual([])
-      expect(h.code).toContain(target === 'swift' ? 'pyreonChartMeasure, pyreonEntrance))' : '::pyreonChartMeasure, pyreonEntrance)')
+      expect(h.code).toContain(target === 'swift' ? 'pyreonChartMeasure, pyreonEntrance)' : '::pyreonChartMeasure, pyreonEntrance)')
     }
   })
   it('the duration is the theme\'s enterMs: a literal field, a named theme, else the default', () => {

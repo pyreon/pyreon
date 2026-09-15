@@ -389,7 +389,120 @@ private func pyreonPaintPattern(_ context: inout GraphicsContext, _ pattern: Pyr
     }
 }
 
-public struct PyreonChartCanvas: View {
+private func pyreonChartMix(_ a: Double, _ b: Double, _ t: Double) -> Double { a + (b - a) * t }
+private func pyreonChartMixPoint(_ a: PyreonChartPt, _ b: PyreonChartPt, _ t: Double) -> PyreonChartPt {
+    PyreonChartPt(x: pyreonChartMix(a.x, b.x, t), y: pyreonChartMix(a.y, b.y, t))
+}
+
+public func pyreonSameChartCommandShape(_ a: [PyreonDrawCmd], _ b: [PyreonDrawCmd]) -> Bool {
+    guard a.count == b.count else { return false }
+    for i in a.indices {
+        if a[i].kind != b[i].kind { return false }
+        if (a[i].kind == "polyline" || a[i].kind == "polygon") && a[i].points?.count != b[i].points?.count { return false }
+        if a[i].kind == "text" && a[i].text != b[i].text { return false }
+    }
+    return true
+}
+
+public func pyreonTweenChartCommands(_ from: [PyreonDrawCmd], _ to: [PyreonDrawCmd], _ progress: Double) -> [PyreonDrawCmd] {
+    if progress >= 1.0 || !pyreonSameChartCommandShape(from, to) { return to }
+    return to.indices.map { i in
+        let a = from[i]
+        var b = to[i]
+        switch b.kind {
+        case "rect":
+            if let x = a.rect, let y = b.rect {
+                b.rect = PyreonChartRect(x: pyreonChartMix(x.x, y.x, progress), y: pyreonChartMix(x.y, y.y, progress), w: pyreonChartMix(x.w, y.w, progress), h: pyreonChartMix(x.h, y.h, progress))
+            }
+        case "line":
+            if let af = a.from, let at = a.to, let bf = b.from, let bt = b.to {
+                b.from = pyreonChartMixPoint(af, bf, progress); b.to = pyreonChartMixPoint(at, bt, progress)
+            }
+        case "polyline", "polygon":
+            if let ap = a.points, let bp = b.points, ap.count == bp.count {
+                b.points = bp.indices.map { pyreonChartMixPoint(ap[$0], bp[$0], progress) }
+            }
+        case "circle":
+            if let ac = a.center, let bc = b.center, let ar = a.radius, let br = b.radius {
+                b.center = pyreonChartMixPoint(ac, bc, progress); b.radius = pyreonChartMix(ar, br, progress)
+            }
+        case "text":
+            if let aa = a.at, let ba = b.at {
+                b.at = pyreonChartMixPoint(aa, ba, progress)
+                b.size = pyreonChartMix(a.size ?? b.size ?? 0.0, b.size ?? 0.0, progress)
+            }
+        default: break
+        }
+        return b
+    }
+}
+
+private func pyreonChartBounds(_ command: PyreonDrawCmd) -> PyreonChartRect {
+    var points: [PyreonChartPt] = []
+    if let r = command.rect { points = [PyreonChartPt(x: r.x, y: r.y), PyreonChartPt(x: r.x + r.w, y: r.y + r.h)] }
+    else if let f = command.from, let t = command.to { points = [f, t] }
+    else if let p = command.points { points = p }
+    else if let c = command.center, let r = command.radius { points = [PyreonChartPt(x: c.x - r, y: c.y - r), PyreonChartPt(x: c.x + r, y: c.y + r)] }
+    else if let at = command.at { points = [at] }
+    guard let first = points.first else { return PyreonChartRect(x: 0, y: 0, w: 0, h: 0) }
+    var minX = first.x, maxX = first.x, minY = first.y, maxY = first.y
+    for point in points.dropFirst() {
+        minX = min(minX, point.x); maxX = max(maxX, point.x)
+        minY = min(minY, point.y); maxY = max(maxY, point.y)
+    }
+    return PyreonChartRect(x: minX, y: minY, w: maxX - minX, h: maxY - minY)
+}
+
+private func pyreonCollapsedChartCommand(_ command: PyreonDrawCmd) -> PyreonDrawCmd {
+    let box = pyreonChartBounds(command)
+    let center = PyreonChartPt(x: box.x + box.w / 2.0, y: box.y + box.h / 2.0)
+    var result = command
+    switch command.kind {
+    case "rect": result.rect = PyreonChartRect(x: center.x, y: center.y, w: 0, h: 0)
+    case "line": result.from = center; result.to = center
+    case "polyline", "polygon": result.points = Array(repeating: center, count: command.points?.count ?? 0)
+    case "circle": result.center = center; result.radius = 0
+    case "text": result.at = center; result.size = 0
+    default: break
+    }
+    return result
+}
+
+private func pyreonChartTarget(_ target: PyreonDrawCmd, at source: PyreonDrawCmd?) -> PyreonDrawCmd {
+    guard let source else { return pyreonCollapsedChartCommand(target) }
+    let box = pyreonChartBounds(source)
+    let center = PyreonChartPt(x: box.x + box.w / 2.0, y: box.y + box.h / 2.0)
+    var result = target
+    switch target.kind {
+    case "rect": result.rect = box
+    case "line": result.from = PyreonChartPt(x: box.x, y: box.y); result.to = PyreonChartPt(x: box.x + box.w, y: box.y + box.h)
+    case "polyline", "polygon": result.points = Array(repeating: center, count: target.points?.count ?? 0)
+    case "circle": result.center = center; result.radius = max(box.w, box.h) / 2.0
+    case "text": result.at = center; result.size = source.kind == "text" ? source.size : 0
+    default: break
+    }
+    return result
+}
+
+public func pyreonUniversalTweenChartCommands(_ from: [PyreonDrawCmd], _ to: [PyreonDrawCmd], _ progress: Double) -> [PyreonDrawCmd] {
+    if progress >= 1.0 { return to }
+    if pyreonSameChartCommandShape(from, to) { return pyreonTweenChartCommands(from, to, progress) }
+    var used = Set<Int>()
+    var out: [PyreonDrawCmd] = []
+    for target in to {
+        var sourceIndex = from.indices.first { !used.contains($0) && from[$0].kind == target.kind }
+        if sourceIndex == nil { sourceIndex = from.indices.first { !used.contains($0) } }
+        if let index = sourceIndex { used.insert(index) }
+        let start = pyreonChartTarget(target, at: sourceIndex.map { from[$0] })
+        out.append(pyreonTweenChartCommands([start], [target], progress)[0])
+    }
+    for i in from.indices where !used.contains(i) {
+        out.append(pyreonTweenChartCommands([from[i]], [pyreonCollapsedChartCommand(from[i])], progress)[0])
+    }
+    return out
+}
+
+private struct PyreonStaticChartCanvas: View {
     public var cmds: [PyreonDrawCmd]
     public var fontFamily: String?
     public init(cmds: [PyreonDrawCmd], fontFamily: String? = nil) {
@@ -484,6 +597,59 @@ public struct PyreonChartCanvas: View {
                 default:
                     continue
                 }
+            }
+        }
+    }
+}
+
+/// Draw-list transition host used for reactive chart updates. Geometry is
+/// interpolated in the runtime so native applications need no browser renderer.
+public struct PyreonChartCanvas: View {
+    public var cmds: [PyreonDrawCmd]
+    public var durationMs: Double
+    public var universal: Bool
+    public var animated: Bool
+    public var fontFamily: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var from: [PyreonDrawCmd]
+    @State private var target: [PyreonDrawCmd]
+    @State private var startedAt = Date()
+    @State private var animating = false
+    @State private var generation = 0
+
+    public init(cmds: [PyreonDrawCmd], durationMs: Double = 350.0, universal: Bool = false, animated: Bool = true, fontFamily: String? = nil) {
+        self.cmds = cmds
+        self.durationMs = durationMs
+        self.universal = universal
+        self.animated = animated
+        self.fontFamily = fontFamily
+        _from = State(initialValue: cmds)
+        _target = State(initialValue: cmds)
+    }
+
+    private func tween(_ progress: Double) -> [PyreonDrawCmd] {
+        universal ? pyreonUniversalTweenChartCommands(from, target, progress) : pyreonTweenChartCommands(from, target, progress)
+    }
+
+    public var body: some View {
+        TimelineView(.animation(paused: !animating)) { context in
+            let elapsed = context.date.timeIntervalSince(startedAt) * 1000.0
+            let progress = reduceMotion || durationMs <= 0.0 ? 1.0 : min(1.0, max(0.0, elapsed / durationMs))
+            PyreonStaticChartCanvas(cmds: animating ? tween(progress) : target, fontFamily: fontFamily)
+        }
+        .onChange(of: cmds) { next in
+            let elapsed = Date().timeIntervalSince(startedAt) * 1000.0
+            let progress = animating && durationMs > 0.0 ? min(1.0, max(0.0, elapsed / durationMs)) : 1.0
+            from = animating ? tween(progress) : target
+            target = next
+            startedAt = Date()
+            generation += 1
+            let current = generation
+            animating = animated && !reduceMotion && durationMs > 0.0 && from != target
+            guard animating else { return }
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(durationMs * 1_000_000.0))
+                if current == generation { animating = false; from = target }
             }
         }
     }

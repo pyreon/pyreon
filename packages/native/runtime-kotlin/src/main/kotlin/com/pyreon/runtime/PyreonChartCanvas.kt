@@ -6,7 +6,10 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -317,8 +320,110 @@ private fun DrawScope.pyreonPaintPattern(pattern: PyreonChartPattern?, clip: Pat
     }
 }
 
+private fun pyreonChartMix(a: Double, b: Double, t: Double): Double = a + (b - a) * t
+private fun pyreonChartMixPoint(a: PyreonChartPt, b: PyreonChartPt, t: Double) =
+    PyreonChartPt(pyreonChartMix(a.x, b.x, t), pyreonChartMix(a.y, b.y, t))
+
+fun pyreonSameChartCommandShape(a: List<PyreonDrawCmd>, b: List<PyreonDrawCmd>): Boolean {
+    if (a.size != b.size) return false
+    for (i in a.indices) {
+        if (a[i].kind != b[i].kind) return false
+        if ((a[i].kind == "polyline" || a[i].kind == "polygon") && a[i].points?.size != b[i].points?.size) return false
+        if (a[i].kind == "text" && a[i].text != b[i].text) return false
+    }
+    return true
+}
+
+fun pyreonTweenChartCommands(from: List<PyreonDrawCmd>, to: List<PyreonDrawCmd>, progress: Double): List<PyreonDrawCmd> {
+    if (progress >= 1.0 || !pyreonSameChartCommandShape(from, to)) return to
+    return to.indices.map { i ->
+        val a = from[i]
+        val b = to[i]
+        when (b.kind) {
+            "rect" -> b.copy(rect = if (a.rect != null && b.rect != null) PyreonChartRect(
+                pyreonChartMix(a.rect!!.x, b.rect!!.x, progress), pyreonChartMix(a.rect!!.y, b.rect!!.y, progress),
+                pyreonChartMix(a.rect!!.w, b.rect!!.w, progress), pyreonChartMix(a.rect!!.h, b.rect!!.h, progress)) else b.rect)
+            "line" -> b.copy(
+                from = if (a.from != null && b.from != null) pyreonChartMixPoint(a.from!!, b.from!!, progress) else b.from,
+                to = if (a.to != null && b.to != null) pyreonChartMixPoint(a.to!!, b.to!!, progress) else b.to)
+            "polyline", "polygon" -> b.copy(points = if (a.points != null && b.points != null && a.points!!.size == b.points!!.size)
+                b.points!!.indices.map { pyreonChartMixPoint(a.points!![it], b.points!![it], progress) } else b.points)
+            "circle" -> b.copy(
+                center = if (a.center != null && b.center != null) pyreonChartMixPoint(a.center!!, b.center!!, progress) else b.center,
+                radius = if (a.radius != null && b.radius != null) pyreonChartMix(a.radius!!, b.radius!!, progress) else b.radius)
+            "text" -> b.copy(
+                at = if (a.at != null && b.at != null) pyreonChartMixPoint(a.at!!, b.at!!, progress) else b.at,
+                size = pyreonChartMix(a.size ?: b.size ?: 0.0, b.size ?: 0.0, progress))
+            else -> b
+        }
+    }
+}
+
+private fun pyreonChartBounds(command: PyreonDrawCmd): PyreonChartRect {
+    val points = when {
+        command.rect != null -> listOf(PyreonChartPt(command.rect!!.x, command.rect!!.y), PyreonChartPt(command.rect!!.x + command.rect!!.w, command.rect!!.y + command.rect!!.h))
+        command.from != null && command.to != null -> listOf(command.from!!, command.to!!)
+        command.points != null -> command.points!!
+        command.center != null && command.radius != null -> listOf(PyreonChartPt(command.center!!.x - command.radius!!, command.center!!.y - command.radius!!), PyreonChartPt(command.center!!.x + command.radius!!, command.center!!.y + command.radius!!))
+        command.at != null -> listOf(command.at!!)
+        else -> emptyList()
+    }
+    if (points.isEmpty()) return PyreonChartRect(0.0, 0.0, 0.0, 0.0)
+    var minX = points[0].x; var maxX = minX; var minY = points[0].y; var maxY = minY
+    for (point in points.drop(1)) {
+        minX = minOf(minX, point.x); maxX = maxOf(maxX, point.x)
+        minY = minOf(minY, point.y); maxY = maxOf(maxY, point.y)
+    }
+    return PyreonChartRect(minX, minY, maxX - minX, maxY - minY)
+}
+
+private fun pyreonCollapsedChartCommand(command: PyreonDrawCmd): PyreonDrawCmd {
+    val box = pyreonChartBounds(command)
+    val center = PyreonChartPt(box.x + box.w / 2.0, box.y + box.h / 2.0)
+    return when (command.kind) {
+        "rect" -> command.copy(rect = PyreonChartRect(center.x, center.y, 0.0, 0.0))
+        "line" -> command.copy(from = center, to = center)
+        "polyline", "polygon" -> command.copy(points = List(command.points?.size ?: 0) { center.copy() })
+        "circle" -> command.copy(center = center, radius = 0.0)
+        "text" -> command.copy(at = center, size = 0.0)
+        else -> command
+    }
+}
+
+private fun pyreonChartTarget(target: PyreonDrawCmd, source: PyreonDrawCmd?): PyreonDrawCmd {
+    if (source == null) return pyreonCollapsedChartCommand(target)
+    val box = pyreonChartBounds(source)
+    val center = PyreonChartPt(box.x + box.w / 2.0, box.y + box.h / 2.0)
+    return when (target.kind) {
+        "rect" -> target.copy(rect = box)
+        "line" -> target.copy(from = PyreonChartPt(box.x, box.y), to = PyreonChartPt(box.x + box.w, box.y + box.h))
+        "polyline", "polygon" -> target.copy(points = List(target.points?.size ?: 0) { center.copy() })
+        "circle" -> target.copy(center = center, radius = maxOf(box.w, box.h) / 2.0)
+        "text" -> target.copy(at = center, size = if (source.kind == "text") source.size else 0.0)
+        else -> target
+    }
+}
+
+fun pyreonUniversalTweenChartCommands(from: List<PyreonDrawCmd>, to: List<PyreonDrawCmd>, progress: Double): List<PyreonDrawCmd> {
+    if (progress >= 1.0) return to
+    if (pyreonSameChartCommandShape(from, to)) return pyreonTweenChartCommands(from, to, progress)
+    val used = mutableSetOf<Int>()
+    val out = mutableListOf<PyreonDrawCmd>()
+    for (target in to) {
+        var sourceIndex = from.indices.firstOrNull { it !in used && from[it].kind == target.kind }
+        if (sourceIndex == null) sourceIndex = from.indices.firstOrNull { it !in used }
+        if (sourceIndex != null) used.add(sourceIndex)
+        val start = pyreonChartTarget(target, sourceIndex?.let { from[it] })
+        out.add(pyreonTweenChartCommands(listOf(start), listOf(target), progress)[0])
+    }
+    for (i in from.indices) if (i !in used) {
+        out.add(pyreonTweenChartCommands(listOf(from[i]), listOf(pyreonCollapsedChartCommand(from[i])), progress)[0])
+    }
+    return out
+}
+
 @Composable
-fun PyreonChartCanvas(
+private fun PyreonStaticChartCanvas(
     cmds: List<PyreonDrawCmd>,
     modifier: Modifier = Modifier,
 ) {
@@ -453,6 +558,43 @@ fun PyreonChartCanvas(
         }
         }
     }
+}
+
+/** Draw-list transition host for reactive chart updates on Android. */
+@Composable
+fun PyreonChartCanvas(
+    cmds: List<PyreonDrawCmd>,
+    modifier: Modifier = Modifier,
+    durationMs: Double = 350.0,
+    universal: Boolean = false,
+    animated: Boolean = true,
+) {
+    val context = LocalContext.current
+    val reduceMotion = remember {
+        Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
+    }
+    var from by remember { mutableStateOf(cmds) }
+    var target by remember { mutableStateOf(cmds) }
+    val progress = remember { Animatable(1f) }
+    LaunchedEffect(cmds, durationMs, universal, reduceMotion) {
+        from = if (universal) {
+            pyreonUniversalTweenChartCommands(from, target, progress.value.toDouble())
+        } else {
+            pyreonTweenChartCommands(from, target, progress.value.toDouble())
+        }
+        target = cmds
+        progress.snapTo(if (!animated || reduceMotion || durationMs <= 0.0 || from == target) 1f else 0f)
+        if (progress.value < 1f) {
+            progress.animateTo(1f, tween(durationMs.toInt(), easing = LinearEasing))
+            from = target
+        }
+    }
+    val rendered = if (universal) {
+        pyreonUniversalTweenChartCommands(from, target, progress.value.toDouble())
+    } else {
+        pyreonTweenChartCommands(from, target, progress.value.toDouble())
+    }
+    PyreonStaticChartCanvas(rendered, modifier)
 }
 
 // ── Radial chart components ─────────────────────────────────────────────

@@ -163,16 +163,8 @@ describe('every unlowered plot prop says WHY, not just its name', () => {
     }
   })
 
-  it('names the emit-work ones as unbuilt rather than impossible', () => {
-    // The distinction is the point: a reader must be able to tell a wall from
-    // a backlog item.
-    // `selectedMode` and `maxPoints` LOWER now, while `emphasis` turned out to
-    // be a WALL rather than a backlog item — it is the hover band, and a touch
-    // target has no hover. They left this list for opposite reasons, which is
-    // exactly the distinction the spec below draws.
-    for (const prop of ['updateAnimation'] as const) {
-      const why = plotUnloweredWarning('PlotChart', [prop])
-      expect(why, prop).toMatch(/missing|not yet|unbuilt|waits on|emit work|needs/)
-    }
+  it('does not report the update tween after its native lowering', () => {
+    expect(PLOT_UNLOWERED_PROPS).not.toContain('updateAnimation')
+    expect(chartChromeUnlowered('PlotChart')).not.toContain('updateDuration')
   })
 })
