@@ -51,7 +51,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
     .map((name) => row(`coordinates.${name}`, 'coordinates', 'direct', 'complete', 'src/engine/option.test.ts')),
   row('coordinates.geo', 'coordinates', 'direct', 'partial', 'src/engine/geo-web.ts'),
   row('coordinates.data-zoom', 'coordinates', 'direct', 'partial', 'src/engine/navigator.ts'),
-  row('coordinates.timeline', 'coordinates', 'direct', 'partial', 'src/engine/option-composite.ts'),
+  row('coordinates.timeline', 'coordinates', 'direct', 'partial', 'src/engine/option-composite.ts', '../../native/compiler/src/tests/chart-option-family-native.test.ts'),
   row('coordinates.toolbox', 'coordinates', 'direct', 'partial', 'src/engine/toolbox.ts'),
   row('coordinates.brush', 'coordinates', 'direct', 'partial', 'src/engine/brush.ts'),
   row('coordinates.mark-area', 'coordinates', 'direct', 'complete', 'src/engine/option.test.ts', '../../native/compiler/src/tests/chart-option-family-native.test.ts'),

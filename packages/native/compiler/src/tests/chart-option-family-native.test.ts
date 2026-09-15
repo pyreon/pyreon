@@ -17,6 +17,21 @@ export function App() {
   return <OptionChart option={{ series: [{ type: 'gauge', min: 10, max: 90, detail: { show: false }, data: [{ value: 42 }] }] }} />
 }`
 
+const TIMELINE_PIE = `import { OptionChart } from '@pyreon/charts/plot'
+export function App() {
+  return <OptionChart timelineIndex={1} option={{
+    baseOption: {
+      timeline: { data: ['first', 'second'], currentIndex: 0 },
+      title: { text: 'Timeline share' },
+      series: [{ type: 'pie', radius: ['40%', '80%'], label: { show: false, position: 'inside' }, data: [{ value: 3, name: 'Base' }] }],
+    },
+    options: [
+      { series: [{ data: [{ value: 1, name: 'First' }] }] },
+      { series: [{ label: { position: 'outside' }, data: [{ value: 7, name: 'Second' }] }] },
+    ],
+  }} />
+}`
+
 const CARTESIAN = `import { OptionChart } from '@pyreon/charts/plot'
 export function App() {
   return <OptionChart height={260} option={{
@@ -120,6 +135,15 @@ describe('OptionChart family options lower to native hosts', () => {
       expect(r.code).toContain('renderGauge(')
       expect(r.code).toContain(target === 'swift' ? 'min: 10.0, max: 90.0' : 'min = 10.0, max = 90.0')
       expect(r.code).not.toContain('plain(42.0)')
+    })
+
+    it(`${target}: a static timeline selects and recursively merges the requested native step`, () => {
+      const r = transform(TIMELINE_PIE, { target })
+      expect(r.warnings).toEqual([])
+      expect(r.code).toContain('renderPie(')
+      expect(r.code).toContain('"Second"')
+      expect(r.code).not.toContain('"First"')
+      expect(r.code).toContain(target === 'swift' ? 'innerRadius: 0.5, showLabels: false' : 'innerRadius = 0.5, showLabels = false')
     })
 
     it(`${target}: cartesian options preserve categories, series kinds, names, colours, and domain`, () => {
@@ -226,15 +250,26 @@ describe('OptionChart family options lower to native hosts', () => {
     expect(r.warnings.join('\n')).toContain('<OptionChart onFamilySelect>')
   })
 
+  it('names invalid or missing static timeline steps and safely renders the base', () => {
+    const missing = transform(TIMELINE_PIE.replace('timelineIndex={1}', 'timelineIndex={9}'), { target: 'swift' })
+    expect(missing.warnings.join('\n')).toContain('step 9 does not exist')
+    expect(missing.code).toContain('renderPie(')
+    expect(missing.code).toContain('"Base"')
+
+    const dynamic = transform(TIMELINE_PIE.replace('timelineIndex={1}', 'timelineIndex={Date.now()}'), { target: 'kotlin' })
+    expect(dynamic.warnings.join('\n')).toContain('native needs a static numeric index')
+    expect(dynamic.code).toContain('"First"')
+  })
+
   it.skipIf(!isSwiftcAvailable())('swiftc accepts the family and cartesian emits', () => {
-    for (const src of [PIE, GAUGE, CARTESIAN, STATIC_FAMILIES]) {
+    for (const src of [PIE, GAUGE, TIMELINE_PIE, CARTESIAN, STATIC_FAMILIES]) {
       const r = validateSwiftWithStubs(transform(src, { target: 'swift' }).code)
       expect(r.ok, r.error ?? '').toBe(true)
     }
   }, 90_000)
 
   it.skipIf(!isKotlincAvailable())('kotlinc accepts the family and cartesian emits', () => {
-    for (const src of [PIE, GAUGE, CARTESIAN, STATIC_FAMILIES]) {
+    for (const src of [PIE, GAUGE, TIMELINE_PIE, CARTESIAN, STATIC_FAMILIES]) {
       const r = validateKotlin(transform(src, { target: 'kotlin' }).code)
       expect(r.ok, r.error ?? '').toBe(true)
     }

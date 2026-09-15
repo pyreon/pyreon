@@ -732,6 +732,78 @@ const optionNumberLiteral = (value: number): ExprIR => ({
 
 const optionDoubleLiteral = (value: number): ExprIR => ({ kind: 'literal', value, float: true })
 
+const mergeStaticOptionObjects = (
+  base: Extract<ExprIR, { kind: 'object' }>,
+  override: Extract<ExprIR, { kind: 'object' }>,
+): Extract<ExprIR, { kind: 'object' }> => {
+  const fields = base.fields.map((field) => ({ ...field }))
+  for (const incoming of override.fields) {
+    const index = fields.findIndex((field) => field.name === incoming.name)
+    if (index < 0) {
+      fields.push({ ...incoming })
+      continue
+    }
+    const previous = fields[index]!.value
+    if (previous.kind === 'object' && incoming.value.kind === 'object') {
+      fields[index] = { ...incoming, value: mergeStaticOptionObjects(previous, incoming.value) }
+      continue
+    }
+    if (incoming.name === 'series' && previous.kind === 'array' && incoming.value.kind === 'array') {
+      const elements = previous.elements.slice()
+      for (let item = 0; item < incoming.value.elements.length; item++) {
+        const before = elements[item]
+        const after = incoming.value.elements[item]!
+        elements[item] = before?.kind === 'object' && after.kind === 'object'
+          ? mergeStaticOptionObjects(before, after)
+          : after
+      }
+      fields[index] = { ...incoming, value: { kind: 'array', elements } }
+      continue
+    }
+    fields[index] = { ...incoming }
+  }
+  return { kind: 'object', fields }
+}
+
+const resolveStaticTimelineOption = (
+  option: Extract<ExprIR, { kind: 'object' }>,
+  requestedIndex: number | undefined,
+  resolve: (name: string) => ExprIR | undefined,
+  warn: (message: string) => void,
+): Extract<ExprIR, { kind: 'object' }> => {
+  const base = literalOf(objectField(option, 'baseOption'), resolve)
+  const timeline = literalOf(objectField(option, 'timeline'), resolve) ??
+    (base?.kind === 'object' ? literalOf(objectField(base, 'timeline'), resolve) : undefined)
+  if (base?.kind !== 'object' && timeline?.kind !== 'object') return option
+
+  let merged: Extract<ExprIR, { kind: 'object' }> = base?.kind === 'object'
+    ? { ...base, fields: base.fields.filter((field) => field.name !== 'timeline') }
+    : { kind: 'object', fields: [] }
+  for (const field of option.fields) {
+    if (field.name === 'baseOption' || field.name === 'options' || field.name === 'timeline') continue
+    if (!merged.fields.some((current) => current.name === field.name)) merged.fields.push({ ...field })
+  }
+
+  const steps = literalOf(objectField(option, 'options'), resolve)
+  const current = timeline?.kind === 'object' ? litNumber(objectField(timeline, 'currentIndex')) : undefined
+  const index = Math.floor(requestedIndex ?? current ?? 0)
+  if (steps?.kind !== 'array' || steps.elements.length === 0) {
+    warn('<OptionChart option.options>: timeline has no static steps; native renders the base option.')
+    return merged
+  }
+  if (index < 0 || index >= steps.elements.length) {
+    warn(`<OptionChart timelineIndex>: step ${index} does not exist; native renders the base option.`)
+    return merged
+  }
+  const step = literalOf(steps.elements[index], resolve)
+  if (step?.kind !== 'object') {
+    warn(`<OptionChart option.options[${index}]>: native needs a static option object; native renders the base option.`)
+    return merged
+  }
+  merged = mergeStaticOptionObjects(merged, step)
+  return merged
+}
+
 /**
  * Lower the first static OptionChart families through their existing native
  * hosts. The option facade is intentionally compile-time on native: arbitrary
@@ -744,11 +816,17 @@ export function desugarOptionChart(
   resolve: (name: string) => ExprIR | undefined,
   warn: (m: string) => void,
 ): Extract<ExprIR, { kind: 'jsx-element' }> | undefined {
-  const raw = literalOf(attrOf(e, 'option'), resolve)
+  let raw = literalOf(attrOf(e, 'option'), resolve)
   if (raw === undefined || raw.kind !== 'object' || (raw.spreads !== undefined && raw.spreads.length > 0)) {
     warn('<OptionChart option>: native needs an inline option object; emitting nothing.')
     return undefined
   }
+  const requestedTimeline = literalOf(attrOf(e, 'timelineIndex'), resolve)
+  const timelineIndex = requestedTimeline === undefined ? undefined : litNumber(requestedTimeline)
+  if (requestedTimeline !== undefined && timelineIndex === undefined) {
+    warn('<OptionChart timelineIndex>: native needs a static numeric index; the option currentIndex is used.')
+  }
+  raw = resolveStaticTimelineOption(raw, timelineIndex, resolve, warn)
   const rawSeries = literalOf(objectField(raw, 'series'), resolve)
   const series = rawSeries?.kind === 'array' ? literalOf(rawSeries.elements[0], resolve) : literalOf(rawSeries, resolve)
   const type = objectField(series ?? { kind: 'literal', value: null }, 'type')
@@ -787,7 +865,6 @@ export function desugarOptionChart(
   if (tooltip !== undefined && !(tooltipShow?.kind === 'literal' && tooltipShow.value === false)) set('tooltip', lit(true))
   if (attrOf(e, 'theme') !== undefined) warn('<OptionChart theme>: registered ECharts themes do not cross yet; native uses the chart theme.')
   if (attrOf(e, 'locale') !== undefined) warn('<OptionChart locale>: locale formatting for family options is not used by this native adapter.')
-  if (attrOf(e, 'timelineIndex') !== undefined) warn('<OptionChart timelineIndex>: timeline options do not cross yet; native renders the base option.')
 
   if (kind === 'gauge') {
     optionFields(series, ['type', 'data', 'min', 'max', 'detail'], 'option.series[0]', warn)
