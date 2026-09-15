@@ -17,6 +17,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { OWN_VERSION, PYREON_DEP_RANGE } from '../own-version'
 import { buildScaffold } from '../scaffold'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -141,6 +142,42 @@ describe('a scaffolded app can be installed', () => {
       expect(scaffoldedPyreonDeps(packageJson)).toContain(d)
       expect(isPrivateInWorkspace(d), `${d} must stay publishable`).toBe(false)
     }
+  })
+
+  // -------------------------------------------------------------------------
+  // Every `@pyreon/*` range is pinned to the SCAFFOLDER'S OWN version.
+  //
+  // `latest` resolves each dep independently at install time, so a PARTIALLY
+  // published release silently scaffolds a MIXED stack. Observed after 0.51.0:
+  // the four native packages were still at 0.50.0 (their PUTs 404'd for a
+  // missing Trusted Publisher, and publish.ts classified that as a skip), so
+  // `latest` produced 0.51.0 JS over a 0.50.0 native runtime — with no signal
+  // to the user. A caret range pinned to the scaffolder's own version fails
+  // the install LOUDLY instead, which is correct for an incomplete release.
+  // `@pyreon/create-zero` has always done this.
+  // -------------------------------------------------------------------------
+  it('pins every @pyreon dependency to ^<own version>, never `latest`', () => {
+    const pkg = JSON.parse(packageJson) as {
+      dependencies?: Record<string, string>
+      devDependencies?: Record<string, string>
+    }
+    const ranges = Object.entries({ ...pkg.dependencies, ...pkg.devDependencies }).filter(
+      ([name]) => name.startsWith('@pyreon/'),
+    )
+    expect(ranges.length).toBeGreaterThan(4)
+    for (const [name, range] of ranges) {
+      expect(range, `${name} must be pinned, not floating`).toBe(PYREON_DEP_RANGE)
+    }
+  })
+
+  it('OWN_VERSION is the package\'s real version, so the pin is not a constant', () => {
+    // Guards the derivation itself: a hard-coded PYREON_DEP_RANGE would satisfy
+    // the spec above forever while drifting from the published version.
+    const self = JSON.parse(
+      readFileSync(join(HERE, '../../package.json'), 'utf8'),
+    ) as { version: string }
+    expect(OWN_VERSION).toBe(self.version)
+    expect(PYREON_DEP_RANGE).toBe(`^${self.version}`)
   })
 
   it('the scaffolded README no longer claims the native toolchain is unpublished', () => {

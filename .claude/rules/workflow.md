@@ -220,9 +220,9 @@ every open PR in the repository.
   stacked PR merges UNGATED: GitHub can only require status checks on a
   protected base, and protecting feature branches is structurally impossible —
   a ruleset's `required_status_checks` gates REF UPDATES, so covering branches
-  people push to makes them read-only (verified empirically 2026-07-30:
-  `GH013 … 37 of 37 required status checks are expected` on an ordinary push;
-  reverted immediately). The `PR targets main` CI check makes a violation a
+  people push to makes them read-only (verified empirically 2026-07-30: an
+  ordinary push was rejected with `GH013 … required status checks are
+  expected`, naming the whole required set; reverted immediately). The `PR targets main` CI check makes a violation a
   named red X. For dependent work, branch FROM the parent but open the PR
   against `main`; its diff carries the parent's commits until the parent
   merges, then shrinks automatically. When a stack already exists, merge
