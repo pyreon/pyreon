@@ -218,7 +218,9 @@ describe('validate-cache — withVerdictCache', () => {
   it('reads back a hand-written entry that DOES have the right shape', () => {
     const src = uniqueSource()
     const key = cacheKey('swift-parse', 'v1', '', src)
-    writeFileSync(join(PRIVATE_CACHE, `${key}.json`), '{"ok":false,"error":"planted"}', 'utf8')
+    // A rejection is only trusted when it carries the `v: 2` classification
+    // marker; an unmarked one whose text is not compiler output is evicted.
+    writeFileSync(join(PRIVATE_CACHE, `${key}.json`), '{"v":2,"ok":false,"error":"planted"}', 'utf8')
     _resetValidateCache()
     let calls = 0
     const r = withVerdictCache('swift-parse', 'v1', '', src, () => {

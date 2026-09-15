@@ -88,10 +88,9 @@ describe('the frame hosts decline by name', () => {
       .toEqual(['<HeatmapChart value>: only a single-expression arrow `(d, i) => …` lowers on native; emitting an empty Box().'])
   })
 
-  it('an unlowered host is named with its reason rather than emitted verbatim', () => {
+  it('every chart host lowers — OptionChart no longer falls back to an empty Box', () => {
     const r = kotlin(app('OptionChart', `<OptionChart option={{ a: 1 }} />`))
-    expect(r.warnings.some((w) => w.startsWith('<OptionChart> has no native lowering yet'))).toBe(true)
-    expect(r.code).toContain('Box {}')
+    expect(r.warnings.some((w) => w.startsWith('<OptionChart> has no native lowering yet'))).toBe(false)
   })
 
   it('a grammar mark tag used OUTSIDE <Plot> renders nothing and says so', () => {
