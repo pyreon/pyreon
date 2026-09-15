@@ -691,7 +691,7 @@ function optionDatumNumber(e: ExprIR | undefined): number | undefined {
 function optionPatternLiteral(style: ExprIR | undefined, resolve: (name: string) => ExprIR | undefined): ExprIR | undefined {
   const item = literalOf(style, resolve)
   const raw = item?.kind === 'object' ? literalOf(objectField(item, 'decal'), resolve) : undefined
-  if (raw?.kind !== 'object' || objectField(raw, 'show')?.kind === 'literal' && objectField(raw, 'show')?.value === false) return undefined
+  if (raw?.kind !== 'object' || (() => { const show = objectField(raw, 'show'); return show?.kind === 'literal' && show.value === false })()) return undefined
   const symbol = litString(objectField(raw, 'symbol')) ?? ''
   const rotation = litNumber(objectField(raw, 'rotation')) ?? 0
   const firstNumber = (value: ExprIR | undefined): number | undefined => {

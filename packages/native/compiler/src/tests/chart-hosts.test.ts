@@ -1307,11 +1307,11 @@ describe('chart hosts — CalendarChart + ParallelChart lower through literal ad
       expect(r.code).not.toContain('renderCalendar(')
     }
   })
-  it('Swift: parallel rows become [[Double]] — a category resolves to its index through the typed AXES const, a null or an unknown category is NaN; the gutter defaults to the web\'s 40 and is overridable', () => {
+  it('Swift: parallel rows become [[Double]] — the AXES const is inlined as typed ParallelAxis values and a category resolves to its index, a null or an unknown category is NaN; the gutter defaults to the web\'s 40 and is overridable', () => {
     const r = transform(PARALLEL, { target: 'swift' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain(
-      'layoutParallel(AXES, [[0.0, 30.0], [2.0, Double.nan], [Double.nan, 22.0]], PyreonChartRect(x: 30.0, y: 8.0, w: max(0.0, Double(pyreonGeo.size.width) - 30.0 * 2.0), h: max(0.0, 260.0 - 16.0)), pyreonOptions)',
+      'layoutParallel([ParallelAxis(name: "Cyl", type: "category", categories: ["4", "6", "8"], domain: nil, inverse: nil), ParallelAxis(name: "MPG", type: nil, categories: nil, domain: nil, inverse: nil)], [[0.0, 30.0], [2.0, Double.nan], [Double.nan, 22.0]], PyreonChartRect(x: 30.0, y: 8.0, w: max(0.0, Double(pyreonGeo.size.width) - 30.0 * 2.0), h: max(0.0, 260.0 - 16.0)), pyreonOptions)',
     )
     expect(r.code).toContain('renderParallel(pyreonLayout')
     expect(r.code).toContain('hitParallelIndex(pyreonLayout')
