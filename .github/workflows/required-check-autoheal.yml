@@ -19,6 +19,21 @@ name: Required Check Autoheal
 # rerun does not loop forever), and always leaves a visible trace: a PR
 # comment naming what happened, so a third failure is investigated by a
 # human rather than retried into silence.
+#
+# SECOND cancellation class, found after this shipped: a `cancelled` run is
+# not always an anomaly to retry — the workflow's own per-ref
+# `cancel-in-progress: true` cancels a branch's in-progress device build on
+# EVERY new push to that branch, by design (don't burn scarce macOS minutes
+# on a superseded commit). A push cadence faster than the ~40-95min build
+# (observed: a merge-up chain pushing every 15-20min) makes THAT the
+# dominant source of `cancelled` runs, not the external-reclaim class this
+# workflow was built for. Blindly rerunning a superseded run wastes exactly
+# the runner time the OTHER half of this fix (job-level concurrency,
+# below/elsewhere) exists to conserve, races the newer run that's already
+# in flight, and posts a misleading "cancelled from outside the workflow"
+# comment for something GitHub cancelled entirely on purpose. So: skip the
+# rerun when a NEWER run already exists for this workflow+branch — that run
+# is what matters, not this one.
 on:
   workflow_run:
     workflows:
@@ -41,6 +56,28 @@ jobs:
           retries: 3
           script: |
             const run = context.payload.workflow_run
+
+            // Superseded check: is this still the latest run of this workflow
+            // for its branch? `list` is already newest-first, so the first
+            // entry IS the latest — compare its id, not created_at (two runs
+            // created in the same second, which happens under rapid pushes,
+            // would tie on a timestamp compare).
+            const { data: recent } = await github.rest.actions.listWorkflowRunsForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              branch: run.head_branch,
+              per_page: 5,
+            })
+            const runsForThisWorkflow = recent.workflow_runs.filter((r) => r.workflow_id === run.workflow_id)
+            const latest = runsForThisWorkflow[0]
+            if (latest && latest.id !== run.id) {
+              core.notice(
+                `run ${run.id} was cancelled by a newer push (run ${latest.id} is now the latest for ` +
+                `${run.head_branch}) — not rerunning a superseded build.`,
+              )
+              return
+            }
+
             await github.rest.actions.reRunWorkflowFailedJobs({
               owner: context.repo.owner,
               repo: context.repo.repo,
