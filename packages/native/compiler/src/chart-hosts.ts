@@ -260,11 +260,7 @@ const parallelAxesAdapter: ChartHostAdapter = (attrs, t, warn, resolve, emit) =>
   const items: string[] = []
   for (const item of axes.elements) {
     if (item.kind !== 'object') return emit(attrs['axes']!)
-    const name = litString(objectField(item, 'name'))
-    if (name === undefined) {
-      warn('<ParallelChart axes>: every literal axis needs a string name on native; emitting nothing.')
-      return 'unsupported'
-    }
+    const name = litString(objectField(item, 'name')) ?? `Axis ${items.length + 1}`
     const fields: [string, string][] = [['name', JSON.stringify(name)]]
     const type = litString(objectField(item, 'type'))
     fields.push(['type', type === undefined ? t.nil : JSON.stringify(type)])
