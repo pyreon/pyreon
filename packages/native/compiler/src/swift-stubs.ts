@@ -1311,7 +1311,7 @@ public struct PyreonFlowNodeResizerConfig {
   public init(minWidth: Double = 50, minHeight: Double = 30, handleSize: Double = 8, showEdgeHandles: Bool = false) {}
 }
 public struct PyreonFlowNodeToolbarConfig {
-  public init(position: String = "top", align: String = "center", offset: Double = 8, showOnSelect: Bool = true) {}
+  public init(position: String = "top", align: String = "center", offset: Double = 8, showOnSelect: Bool = true, selectedOverride: Bool? = nil) {}
 }
 public struct PyreonFlowCustomEdgeContext {
   public let edge: PyreonFlowEdge

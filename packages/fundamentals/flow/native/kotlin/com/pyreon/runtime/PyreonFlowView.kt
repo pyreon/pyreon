@@ -644,7 +644,7 @@ fun <T> PyreonFlowView(
         for (node in visibleNodes) {
             val selected = state.isNodeSelected(node.id)
             for ((index, config) in nodeToolbarConfigs(node).withIndex()) {
-                if (config.showOnSelect && !selected) continue
+                if (config.showOnSelect && !(config.selectedOverride ?: selected)) continue
                 val absolute = state.getAbsolutePosition(node.id)
                 val dimensions = state.getNodeDimensions(node.id)
                 val placement = pyreonFlowNodeToolbarPlacement(

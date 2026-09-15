@@ -91,9 +91,9 @@ public struct PyreonFlowNodeResizerConfig: Equatable {
 }
 
 public struct PyreonFlowNodeToolbarConfig: Equatable {
-    public var position: String; public var align: String; public var offset: Double; public var showOnSelect: Bool
-    public init(position: String = "top", align: String = "center", offset: Double = 8, showOnSelect: Bool = true) {
-        self.position = position; self.align = align; self.offset = offset; self.showOnSelect = showOnSelect
+    public var position: String; public var align: String; public var offset: Double; public var showOnSelect: Bool; public var selectedOverride: Bool?
+    public init(position: String = "top", align: String = "center", offset: Double = 8, showOnSelect: Bool = true, selectedOverride: Bool? = nil) {
+        self.position = position; self.align = align; self.offset = offset; self.showOnSelect = showOnSelect; self.selectedOverride = selectedOverride
     }
 }
 
@@ -786,7 +786,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         ForEach(visibleNodes, id: \.id) { node in
             let selected = state.isNodeSelected(node.id)
             ForEach(Array(nodeToolbarConfigs(node).enumerated()), id: \.offset) { index, config in
-                if (!config.showOnSelect || selected), let toolbar = nodeToolbar(node, index, selected, nodeDragStart[node.id] != nil) {
+                if (!config.showOnSelect || (config.selectedOverride ?? selected)), let toolbar = nodeToolbar(node, index, selected, nodeDragStart[node.id] != nil) {
                     let absolute = state.getAbsolutePosition(node.id)
                     let dimensions = state.getNodeDimensions(node.id)
                     PyreonFlowToolbarPortal(

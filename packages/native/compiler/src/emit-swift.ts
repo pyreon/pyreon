@@ -232,6 +232,7 @@ type StaticFlowNodeToolbar = {
   align: string
   offset: number
   showOnSelect: boolean
+  selectedOverride?: boolean
   contentComponent: string
 }
 let _flowComponentToolbars: Map<string, StaticFlowNodeToolbar[]> = new Map()
@@ -1201,16 +1202,18 @@ export function emitSwift(
         return entry?.kind === 'attr' && entry.value.kind === 'literal' ? entry.value.value : undefined
       }
       const has = (name: string): boolean => toolbar.attrs.some((entry) => entry.kind === 'attr' && entry.name === name)
-      const position = read('position'), align = read('align'), offset = read('offset'), showOnSelect = read('showOnSelect')
+      const position = read('position'), align = read('align'), offset = read('offset'), showOnSelect = read('showOnSelect'), selected = read('selected')
       const invalid = (has('position') && typeof position !== 'string') ||
         (has('align') && typeof align !== 'string') ||
         (has('offset') && typeof offset !== 'number') ||
-        (has('showOnSelect') && typeof showOnSelect !== 'boolean')
+        (has('showOnSelect') && typeof showOnSelect !== 'boolean') ||
+        (has('selected') && typeof selected !== 'boolean')
       parsedToolbars.push({
         position: typeof position === 'string' ? position : 'top',
         align: typeof align === 'string' ? align : 'center',
         offset: typeof offset === 'number' ? offset : 8,
         showOnSelect: typeof showOnSelect === 'boolean' ? showOnSelect : true,
+        ...(typeof selected === 'boolean' ? { selectedOverride: selected } : {}),
         contentComponent,
       })
       if (invalid) _flowComponentsWithInvalidToolbars.add(component.name)
@@ -8550,7 +8553,7 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
     : ''
   const toolbarCases = nodeTypes?.flatMap(({ type, component }) => {
     const configs = _flowComponentToolbars.get(component)
-    return configs?.length ? [`case ${JSON.stringify(type)}: return [${configs.map((config) => `PyreonFlowNodeToolbarConfig(position: ${JSON.stringify(config.position)}, align: ${JSON.stringify(config.align)}, offset: ${config.offset}, showOnSelect: ${config.showOnSelect})`).join(', ')}]`] : []
+    return configs?.length ? [`case ${JSON.stringify(type)}: return [${configs.map((config) => `PyreonFlowNodeToolbarConfig(position: ${JSON.stringify(config.position)}, align: ${JSON.stringify(config.align)}, offset: ${config.offset}, showOnSelect: ${config.showOnSelect}${config.selectedOverride === undefined ? '' : `, selectedOverride: ${config.selectedOverride}`})`).join(', ')}]`] : []
   }) ?? []
   const nodeToolbarConfigArg = toolbarCases.length > 0
     ? `, nodeToolbarConfigs: { pyreonNode in\n    switch pyreonNode.type {\n    ${toolbarCases.join('\n    ')}\n    default: return []\n    }\n  }`
