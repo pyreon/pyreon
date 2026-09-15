@@ -14,7 +14,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { transform } from '../index'
-import { HANDLED_FLOW_COMPONENT_PROPS, HANDLED_FLOW_HOST_PROPS, LOWERED_FLOW_CONFIG_PROPERTIES, LOWERED_FLOW_METHODS, LOWERED_FLOW_PROPERTY_READS } from '../flow-lowering'
+import { HANDLED_FLOW_COMPONENT_PROPS, HANDLED_FLOW_HOST_PROPS, LOWERED_FLOW_CONFIG_PROPERTIES, LOWERED_FLOW_METHODS, LOWERED_FLOW_PROPERTY_READS, LOWERED_FLOW_RUNTIME_EXPORTS, WEB_ONLY_FLOW_RUNTIME_EXPORTS } from '../flow-lowering'
 import {
   isKotlincAvailable,
   isSwiftcAvailable,
@@ -75,6 +75,17 @@ it('tracks every public Flow supporting-component prop in native lowering or bou
     const publicProps = [...body.matchAll(/^  ([A-Za-z_]\w*)\??:/gm)].map((match) => match[1]!).sort()
     expect([...handled].sort(), name).toEqual(publicProps)
   }
+})
+
+it('classifies every public Flow runtime export as native-portable or web-only', () => {
+  const source = readFileSync(new URL('../../../../fundamentals/flow/src/index.ts', import.meta.url), 'utf8')
+  const exports = [...source.matchAll(/^export \{([\s\S]*?)\} from/gm)]
+    .flatMap((match) => match[1]!.split(',').map((name) => name.trim()).filter(Boolean))
+    .sort()
+  const portable = [...LOWERED_FLOW_RUNTIME_EXPORTS]
+  const webOnly = [...WEB_ONLY_FLOW_RUNTIME_EXPORTS]
+  expect(portable.filter((name) => WEB_ONLY_FLOW_RUNTIME_EXPORTS.has(name)), 'classifications must not overlap').toEqual([])
+  expect([...portable, ...webOnly].sort()).toEqual(exports)
 })
 
 const workflowFlow = `

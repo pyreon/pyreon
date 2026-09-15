@@ -18,7 +18,7 @@ WebView escape path; silent drops are release blockers.
 
 ## Work streams
 
-- [ ] **F1 — machine-readable public-surface inventory.** Derive the Flow
+- [x] **F1 — machine-readable public-surface inventory.** Derive the Flow
   instance, config, node, edge, host, chrome and helper inventories from source.
   Fail when a new public item is neither lowered nor explicitly routed.
 - [ ] **F2 — direct state/algorithm parity.** Prove every portable method and

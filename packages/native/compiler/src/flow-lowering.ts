@@ -62,6 +62,27 @@ export const HANDLED_FLOW_COMPONENT_PROPS: ReadonlyMap<string, ReadonlySet<strin
   ['EdgeLabelRendererProps', new Set(['children'])],
 ])
 
+/** Public runtime exports whose portable semantics are implemented by the
+ * native compiler/runtime pair. This inventory deliberately includes helpers,
+ * constants and enum-like values, not only JSX hosts. */
+export const LOWERED_FLOW_RUNTIME_EXPORTS: ReadonlySet<string> = new Set([
+  'Background', 'Controls', 'Flow', 'Handle', 'MiniMap', 'NodeResizer',
+  'NodeToolbar', 'EdgeLabelRenderer', 'Panel',
+  'DEFAULT_NODE_HEIGHT', 'DEFAULT_NODE_WIDTH', 'getBezierPath', 'getEdgePath',
+  'getEffectiveDimensions', 'getFloatingEndpoints', 'getHandlePosition',
+  'getNodeIntersection', 'getSmartHandlePositions', 'getSmoothStepPath',
+  'getStepPath', 'getStraightPath', 'getWaypointPath', 'resolveHandleAnchor',
+  'collectEdgeMarkers', 'DEFAULT_MARKER_END', 'markerId', 'resolveEdgeMarkers',
+  'resolveMarker', 'createFlow', 'useFlow', 'computeLayout', 'MarkerType',
+  'Position',
+])
+
+/** Public runtime exports that are intrinsically tied to the DOM renderer and
+ * must remain behind a web branch/host rather than being silently emitted. */
+export const WEB_ONLY_FLOW_RUNTIME_EXPORTS: ReadonlySet<string> = new Set([
+  'FlowLayersContext', 'flowStyles',
+])
+
 /** Mutable `FlowConfig` fields retained by both native state engines. */
 export const LOWERED_FLOW_CONFIG_PROPERTIES: ReadonlyMap<string, string> = new Map([
   ['defaultEdgeType', 'defaultEdgeType'], ['defaultEdgeOptions', 'defaultEdgeOptions'],

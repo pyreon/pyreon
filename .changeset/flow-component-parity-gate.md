@@ -2,4 +2,4 @@
 '@pyreon/native-compiler': patch
 ---
 
-Add a native parity inventory gate for every public Flow supporting-component prop so new Background, MiniMap, Controls, Panel, Handle, resizer, toolbar, and edge-label capabilities cannot silently bypass native handling.
+Add native parity inventory gates for every public Flow runtime export and supporting-component prop so new helpers, constants, components, and chrome capabilities cannot silently bypass native handling or an explicit web-only boundary.
