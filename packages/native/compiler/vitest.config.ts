@@ -28,6 +28,6 @@ import { defineNodeConfig } from '@pyreon/vitest-config'
 // Raise these as tests land; never lower them to absorb a regression.
 export default defineNodeConfig({
   category: 'internals',
-  coverageThresholds: { statements: 88, branches: 82, functions: 91, lines: 90 },
+  coverageThresholds: { statements: 95, branches: 92, functions: 94, lines: 96 },
   overrides: { test: { testTimeout: 180_000 } },
 })

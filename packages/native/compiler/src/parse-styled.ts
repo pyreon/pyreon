@@ -190,7 +190,23 @@ function parseCssTemplate(
   for (let i = 0; i < quasis.length; i++) {
     const q = quasis[i]
     if (q) {
-      const cooked = ((q as { value?: { cooked?: string; raw?: string } }).value?.cooked) ?? ''
+      const qv = (q as { value?: { cooked?: string | null; raw?: string } }).value
+      // `cooked` is `null` (NOT `undefined` -- oxc's own value, checked
+      // directly against a live parse) when the segment contains an escape
+      // it cannot interpret (a legacy octal-style `\2014`, an invalid `\u`)
+      // -- NOT just for the offending character, for the WHOLE quasi
+      // segment: a TemplateLiteral splits only at `${...}` boundaries, so one
+      // bad escape dropped every property declaration sharing that segment
+      // with zero warnings. Fall back to `raw` (the literal source text,
+      // escapes un-interpreted) rather than losing the segment outright -- a
+      // raw `\2014` in the emitted CSS/native style value is harmless noise,
+      // a silently vanished background-color rule is not.
+      const cooked = qv?.cooked ?? qv?.raw ?? ''
+      if (qv?.cooked == null && qv?.raw !== undefined && qv.raw.length > 0) {
+        warnings.push(
+          `[${declName}] a CSS template segment contains an escape sequence the parser could not interpret — used the raw source text instead of dropping the segment.`,
+        )
+      }
       parts.push({ kind: 'text', value: cooked })
     }
     const e = expressions[i]
