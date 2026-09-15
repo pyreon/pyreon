@@ -499,3 +499,41 @@ describe('handler errors do not leak detail in production', () => {
     logged.mockRestore()
   })
 })
+
+describe('corsOrigins entries are normalized at construction', () => {
+  beforeEach(() => {
+    _resetActions()
+  })
+
+  // The match is equality, so an entry spelled with a trailing slash or an
+  // explicit default port would silently never fire. Normalizing once at
+  // construction keeps both spellings working.
+  for (const entry of [
+    'https://admin.example.com',
+    'https://admin.example.com/',
+    'https://admin.example.com:443',
+  ]) {
+    it(`accepts the origin for an entry written as ${entry}`, async () => {
+      const action = defineAction(async () => ({ ok: true }))
+      const mw = createActionMiddleware({ corsOrigins: [entry] })
+      const ctx = mockCtx(`/_zero/actions/${action.actionId}`, 'POST', 'null', {
+        Origin: 'https://admin.example.com',
+      })
+      const res = await mw(ctx as never)
+      expect(res?.status, entry).toBe(200)
+    })
+  }
+
+  it('drops an unparseable entry with a warning instead of matching nothing silently', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const action = defineAction(async () => ({ ok: true }))
+    const mw = createActionMiddleware({ corsOrigins: ['admin.example.com'] })
+    expect(warn).toHaveBeenCalled()
+    expect(String(warn.mock.calls[0]?.[0])).toContain('corsOrigins')
+    const ctx = mockCtx(`/_zero/actions/${action.actionId}`, 'POST', 'null', {
+      Origin: 'https://admin.example.com',
+    })
+    expect((await mw(ctx as never))?.status).toBe(403)
+    warn.mockRestore()
+  })
+})

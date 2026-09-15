@@ -136,6 +136,9 @@ export interface CreateActionMiddlewareOptions {
    * allows POSTs from any URL under that origin — and ONLY that origin.
    * A prefix match would accept `https://admin.example.com.evil.net`,
    * so it is deliberately not used; write the full scheme + host (+ port).
+   * Entries are normalized to their origin at construction, so a trailing
+   * slash or an explicit default port is fine; an entry that is not a
+   * parseable absolute URL is dropped with a warning.
    *
    * Without this opt-in, any cross-origin POST is rejected with HTTP 403.
    * This is the CSRF baseline: a malicious origin that a logged-in user
@@ -166,7 +169,23 @@ export function createActionMiddleware(
 ): (
   ctx: MiddlewareContext,
 ) => Response | undefined | Promise<Response | undefined> {
-  const corsOrigins = options?.corsOrigins ?? []
+  // Normalize the allowlist ONCE, at construction. Entries are written by
+  // hand, so `https://admin.example.com/` (trailing slash) and a default
+  // port are both plausible spellings of the same origin — and since the
+  // match below is equality, an unnormalized entry would silently never
+  // fire. An entry that is not a parseable absolute URL is dropped with a
+  // warning rather than sitting in the list matching nothing.
+  const corsOrigins = (options?.corsOrigins ?? []).flatMap((entry) => {
+    const origin = originOf(entry)
+    if (origin === null || origin === 'null') {
+      console.warn(
+        `[Pyreon] createActionMiddleware: ignoring corsOrigins entry ${JSON.stringify(entry)} — ` +
+          'not a parseable origin. Write the full scheme + host (+ port), e.g. "https://admin.example.com".',
+      )
+      return []
+    }
+    return [origin]
+  })
   return async (ctx: MiddlewareContext) => {
     if (!ctx.path.startsWith('/_zero/actions/')) return
 

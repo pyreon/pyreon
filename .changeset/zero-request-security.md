@@ -10,8 +10,10 @@ beginning with the request's own passed — `https://app.example.com.evil.net`,
 `https://app.example.comevil.net`, `https://app.example.com@evil.net`. The
 `corsOrigins` allowlist had the same defect. The header is now parsed and its
 origin compared by equality (a `Referer` reduced to its origin first); an
-unparseable header is rejected. `corsOrigins` entries are matched exactly — the
-JSDoc no longer says STARTS-WITH.
+unparseable header is rejected. `corsOrigins` entries are normalized to their origin at
+construction (so a trailing slash or an explicit default port still works)
+and then matched exactly; an unparseable entry is dropped with a warning
+instead of silently matching nothing. The JSDoc no longer says STARTS-WITH.
 
 **Rate limiting: `X-Forwarded-For` is only read when a proxy is declared.** The
 default key took the header's first entry, which is the caller's own claim: a
