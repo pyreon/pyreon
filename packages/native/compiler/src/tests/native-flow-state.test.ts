@@ -1430,10 +1430,10 @@ export function C() {
       import { Button } from '@pyreon/primitives'
       export function Diagram() {
         const flow = createFlow({ nodes: [{ id: 'a', position: { x: 0, y: 0 }, data: { label: 'A' } }], edges: [] })
-        return <Flow instance={flow}>
+        return <Flow instance={flow}><>
           <MiniMap nodeColor={(node: FlowNode<{ label: string }>) => node.data.label === 'A' ? '#ef4444' : '#22c55e'} />
           <Controls position="top-right"><Button onPress={() => flow.selectAll()}>All</Button></Controls>
-        </Flow>
+        </></Flow>
       }
     `
 

@@ -7080,20 +7080,25 @@ function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string
   if (connectionLineAttr !== undefined && connectionLine === undefined) {
     _emitWarnings.push('<Flow connectionLine={…}> must reference a component identifier to lower natively; the built-in connection line is used.')
   }
-  const background = e.children
+  const flowChildren = e.children.flatMap(function flatten(child): ChildIR[] {
+    return child.kind === 'expr' && child.expr.kind === 'jsx-fragment'
+      ? child.expr.children.flatMap(flatten)
+      : [child]
+  })
+  const background = flowChildren
     .filter((child) => child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'Background')
     .map((child) => child.kind === 'expr' ? child.expr : undefined)[0]
-  const controls = e.children
+  const controls = flowChildren
     .filter((child) => child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'Controls')
     .map((child) => child.kind === 'expr' ? child.expr : undefined)[0]
-  const miniMap = e.children
+  const miniMap = flowChildren
     .filter((child) => child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'MiniMap')
     .map((child) => child.kind === 'expr' ? child.expr : undefined)[0]
-  const panels = e.children
+  const panels = flowChildren
     .filter((child) => child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'Panel')
     .map((child) => child.kind === 'expr' ? child.expr : undefined)
     .filter((panel): panel is Extract<ExprIR, { kind: 'jsx-element' }> => panel?.kind === 'jsx-element')
-  const otherChildren = e.children.filter((child) => !(child.kind === 'expr' && child.expr.kind === 'jsx-element' && (child.expr.tag === 'Background' || child.expr.tag === 'Controls' || child.expr.tag === 'MiniMap' || child.expr.tag === 'Panel')))
+  const otherChildren = flowChildren.filter((child) => !(child.kind === 'expr' && child.expr.kind === 'jsx-element' && (child.expr.tag === 'Background' || child.expr.tag === 'Controls' || child.expr.tag === 'MiniMap' || child.expr.tag === 'Panel')))
   const bgArg = background?.kind === 'jsx-element' ? `, background = ${emitKotlinFlowBackground(background)}` : ''
   const controlsArg = controls?.kind === 'jsx-element' ? `, controls = ${emitKotlinFlowControls(controls)}` : ''
   const controlsContentArg = controls?.kind === 'jsx-element' && controls.children.length > 0
