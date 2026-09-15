@@ -23,6 +23,9 @@ Component model and lifecycle for Pyreon. Provides the VNode type system, `h()` 
 - splitProps / mergeProps / removeUndefinedProps — reactivity-preserving props utilities
 - cx() — class value combiner (strings, objects, arrays, nested)
 - createUniqueId — SSR-safe unique ID generation
+- Async — pending/error/empty/data over any structural AsyncLike source (query results, http resources, hand-rolled)
+- use() — compose element directives (plain (el) =&gt; cleanup | void functions) into a single ref callback
+- elementRef() — one value that is both a ref and the () =&gt; T | null accessor element-consuming hooks take
 
 ## Complete example
 
@@ -80,6 +83,32 @@ const LazyApp = () => (
     <HeavyPage />
   </Suspense>
 )
+
+// Async data boundary — pending / error / empty / data from any AsyncLike source
+import type { AsyncLike, Directive } from "@pyreon/core"
+declare const todos: AsyncLike<{ id: number; title: string }[]>
+const TodoList = () => (
+  <Async of={todos} empty="No todos yet." error={(e) => <p>{String(e)}</p>}>
+    {(rows) => <ul>{rows.map(r => <li>{r.title}</li>)}</ul>}
+  </Async>
+)
+
+// Directive composer — compose element behaviours into one ref
+const clickOutside = (cb: () => void): Directive => (el) => {
+  const h2 = (e: Event) => { if (!el.contains(e.target as Node)) cb() }
+  document.addEventListener("mousedown", h2)
+  return () => document.removeEventListener("mousedown", h2)
+}
+const Popover = (props: { close: () => void }) => (
+  <div ref={use(clickOutside(props.close))} />
+)
+
+// elementRef — one value that is both the ref AND the () => T | null accessor
+const Card = () => {
+  const cardEl = elementRef<HTMLDivElement>()
+  onMount(() => cardEl()?.focus())
+  return <div ref={cardEl} tabIndex={0} />
+}
 ```
 
 ## Exports
@@ -115,6 +144,7 @@ const LazyApp = () => (
 | [`Portal`](#portal) | component | Render children into a DOM element outside the component tree (typically `document.body`). |
 | [`mapArray`](#maparray) | function | Low-level reactive array mapping used internally by `<For>`. |
 | [`createRef`](#createref) | function | Create a mutable ref object (`{ current: T \| null }`) for holding DOM element references. |
+| [`elementRef`](#elementref) | function | A single value that is BOTH a ref and the `() => T \| null` accessor element-consuming hooks take (`useElementSize`, `use |
 | [`nativeCompat`](#nativecompat) | function | Mark a Pyreon framework component as "self-managing" so compat layers (`@pyreon/{react,preact,vue,solid}-compat`) skip t |
 | [`isNativeCompat`](#isnativecompat) | function | Compat-layer-side: read whether a function has been marked as a Pyreon native framework component via `nativeCompat()`. |
 | [`NATIVE_COMPAT_MARKER`](#native-compat-marker) | constant | The well-known registry symbol (`Symbol.for("pyreon:native-compat")`) used to mark a component as a Pyreon native framew |
@@ -883,6 +913,38 @@ return <input ref={inputRef} />
 ```
 
 **See also:** `onMount`
+
+---
+
+### elementRef `function`
+
+```ts
+elementRef<T = HTMLElement>(): ElementRef<T>
+```
+
+A single value that is BOTH a ref and the `() => T | null` accessor element-consuming hooks take (`useElementSize`, `useClickOutside`, `useDraggable`, and ten others across `@pyreon/hooks`/`@pyreon/dnd`). The runtime already invokes a function ref as `ref(el)` on mount and `ref(null)` on unmount, so `elementRef` reads that call shape directly: called WITH an argument means SET (a ref attach/detach), called with NO argument means READ (the accessor hooks want). Without it, wiring N hooks to one element costs three touchpoints (a local variable, a hand-written `() => el` thunk per hook, a callback ref wiring the local back) — `elementRef` collapses that to two, and N hooks on the same element add none of them. `.current` is kept so it drops into code written against `createRef`.
+
+**Example**
+
+```tsx
+import { elementRef } from '@pyreon/core'
+import { useElementSize } from '@pyreon/hooks'
+
+function Card() {
+  const el = elementRef<HTMLDivElement>()
+  const size = useElementSize(el)   // el IS the () => T | null accessor
+  return <div ref={el}>{size().width}px</div>
+}
+```
+
+**Common mistakes**
+
+- Using `elementRef` where TWO different elements are involved — it is one value FOR one element; a second element needs its own `elementRef()`, not a second read of the same one.
+- Treating `null` as a "no value yet" read — `null` is a legal SET (exactly what unmount passes). The discriminator is `undefined` (zero-arg call), not truthiness — `el()` reads, `el(null)` still writes.
+- Passing `elementRef()` to a hook that expects a PLAIN `T | null` value instead of an accessor — it is callable, not a value; hooks that take `() => T | null` (the convention every element-consuming hook in `@pyreon/hooks`/`@pyreon/dnd` follows) accept it directly, a hook expecting a raw element needs `el()`.
+- Re-declaring a local `let` + manual thunk alongside `elementRef` "to be safe" — that reintroduces the exact three-touchpoint duplication `elementRef` exists to remove.
+
+**See also:** `createRef` · `use`
 
 ---
 

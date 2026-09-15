@@ -160,6 +160,24 @@ const Heavy = lazy(() => import('./Heavy'))
 
 `lazy()` integrates with `Suspense` — async work inside the lazy module pauses rendering until resolved. SSR streams the fallback then patches in the resolved subtree.
 
+## Async data
+
+```tsx
+import type { AsyncLike } from '@pyreon/core'
+
+// Any source exposing isPending/isError/error/data satisfies AsyncLike<T> —
+// a @pyreon/query result, a @pyreon/http resource, or a hand-rolled one.
+declare const todos: AsyncLike<{ id: number; title: string }[]>
+
+<Async of={todos} empty="No todos yet." error={(e) => <p>{String(e)}</p>}>
+  {(rows) => <ul>{rows.map((r) => <li>{r.title}</li>)}</ul>}
+</Async>
+```
+
+`<Async>` renders one of pending / error / empty / data instead of a hand-written guard chain, and re-evaluates on source change (same reactive-accessor shape as `Show`). `empty` covers both null/undefined data and an empty array — but only when you pass it: an empty array with no `empty` prop is handed to `children` instead, so a list that renders its own empty state keeps working.
+
+There is **no default for `error`** — `<ErrorBoundary>` cannot catch it. A reactive re-run's throw happens outside the boundary's reach (only a throw during the *initial* mount is caught), which is exactly the common case: a request that fails after mount. Omitting `error` renders nothing and warns once in development; pass `error={(e) => …}` to surface it.
+
 ## Props utilities
 
 ```tsx
@@ -195,6 +213,39 @@ function Switch(props: { checked?: boolean; onChange?: (v: boolean) => void }) {
   return <button {...rest} aria-checked={() => (checked() ? 'true' : 'false')} onClick={() => setChecked(!checked())} />
 }
 ```
+
+## Refs and directives
+
+`elementRef()` is a single value that is *both* the ref and the accessor element-consuming hooks want (`useElementSize`, `useClickOutside`, `useDraggable`, …). The runtime already calls a function ref as `ref(el)` on mount and `ref(null)` on unmount — so "called with an argument" means SET and "called with no argument" means READ:
+
+```tsx
+import { elementRef } from '@pyreon/core'
+import { useElementSize } from '@pyreon/hooks'
+
+function Card() {
+  const el = elementRef<HTMLDivElement>()
+  const size = useElementSize(el)   // it IS () => T | null
+  return <div ref={el}>{size().width}px</div>
+}
+```
+
+Without it, wiring N hooks to one element costs three touchpoints each (declare a local, hand-write a `() => el` thunk per hook, wire a callback ref back to the local) — `elementRef` collapses that to two, and N hooks on the same element add none of them. `.current` is kept so it drops into code written against `createRef`.
+
+`use()` composes element **directives** — plain `(el) => cleanup | void` functions — into a single ref callback, so attaching N behaviours costs one attribute instead of N hook calls and a ref attach:
+
+```tsx
+import { use, type Directive } from '@pyreon/core'
+
+const clickOutside = (cb: () => void): Directive => (el) => {
+  const h = (e: Event) => { if (!el.contains(e.target as Node)) cb() }
+  document.addEventListener('mousedown', h)
+  return () => document.removeEventListener('mousedown', h)
+}
+
+<div ref={use(autoFocus, clickOutside(close), hotkey({ Escape: close }))} />
+```
+
+Nothing here is compiler- or renderer-special-cased — `use()` just returns an ordinary `RefCallback`. Cleanups run in **reverse** attach order (LIFO), so a directive whose setup depends on an earlier one tears down first. Falsy entries are skipped, so a directive can be applied conditionally inline: `use(base, isOpen && trapFocus())`. A re-attach without an intervening detach (a `KeepAlive` remount, a re-applied spread) tears the previous registration down first — listeners never pile up.
 
 ## ErrorBoundary
 
