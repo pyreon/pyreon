@@ -35,7 +35,6 @@ const counter = (at = 'src/Counter.tsx'): void =>
   write(at, 'export function Counter(props: { count: number }) { return null }\n')
 
 const run = async (...argv: string[]): Promise<number> => runCli(argv)
-const outText = () => stdout.join('')
 const errText = () => stderr.join('')
 
 beforeEach(() => {

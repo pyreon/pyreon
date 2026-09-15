@@ -15,7 +15,7 @@
  *     unrouted is what made the whole route axis decorative — two different
  *     URLs rendered byte-identically and both reported `pass`.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { h, registerErrorHandler } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { mountPlugin } from '../mount'
