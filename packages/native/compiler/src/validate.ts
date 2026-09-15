@@ -636,6 +636,10 @@ function compileSwiftStubs(stub: string, inputText: string): ValidationResult {
 let _kotlincAvailable: boolean | undefined
 let _kotlincVersion = ''
 export function isKotlincAvailable(): boolean {
+  // A job that owns only the Swift half (the macOS real-SDK job) sets this so a
+  // runner image that happens to ship kotlinc does not silently start running
+  // hundreds of cold JVM compiles another job already covers.
+  if (process.env.PYREON_SKIP_KOTLIN_VALIDATE === '1') return false
   if (_kotlincAvailable !== undefined) return _kotlincAvailable
   const cached = readToolProbe('kotlinc')
   if (cached !== null) {
@@ -711,6 +715,9 @@ export function validateKotlin(source: string): ValidationResult {
 function validateKotlinUncached(source: string): ValidationResult {
   if (process.env.PYREON_SKIP_NATIVE_VALIDATE === '1') {
     return { ok: true, skipped: true, skipReason: 'PYREON_SKIP_NATIVE_VALIDATE=1' }
+  }
+  if (process.env.PYREON_SKIP_KOTLIN_VALIDATE === '1') {
+    return { ok: true, skipped: true, skipReason: 'PYREON_SKIP_KOTLIN_VALIDATE=1' }
   }
   if (!isKotlincAvailable()) {
     if (process.env.PYREON_REQUIRE_NATIVE_VALIDATE === '1') {

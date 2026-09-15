@@ -296,7 +296,7 @@ jobs:
       - name: Restore native compile-verdict cache
         # Skipped on the nightly drift run — see the uncached env below.
         if: github.event_name != 'schedule'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache/pyreon-native-validate
           key: native-verdicts-ci-${{ runner.os }}-validate-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-${{ github.run_id }}
@@ -504,6 +504,17 @@ jobs:
           grep -q 'Toggle("", isOn: Binding(' generated/TodoApp.swift
           echo "[ios-todomvc-smoke] ✓ TodoApp.tsx compiles to typecheck-clean SwiftUI (Phase 2 feature set verified)"
 
+      # Saved in its own `always()` step. The implicit post-save of `actions/cache`
+      # is skipped when `timeout-minutes` cancels the job, so the verdicts a run
+      # DID compute were lost and every retry started exactly as cold, timing out
+      # again: a PR with enough new native code could never go green.
+      - name: Save native compile-verdict cache
+        if: always() && github.event_name != 'schedule'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/pyreon-native-validate
+          key: native-verdicts-ci-${{ runner.os }}-validate-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-${{ github.run_id }}
+
   validate-swift-typecheck:
     name: Validate emitted Swift (real-SDK typecheck, macOS)
     needs: decide
@@ -625,7 +636,7 @@ jobs:
       # never finish inside its cap on a busy day.
       - name: Restore native compile-verdict cache
         if: github.event_name != 'schedule'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache/pyreon-native-validate
           key: native-verdicts-ci-${{ runner.os }}-validate-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-${{ github.run_id }}
@@ -635,10 +646,13 @@ jobs:
       - name: Run native-compiler tests (real-SDK Swift -typecheck)
         # macos-15 ships the real SwiftUI SDK → isSwiftUIAvailable()=true → the
         # real-SDK `swiftc -typecheck` blocks run (they SKIP on ubuntu). Kotlin
-        # blocks skip (no kotlinc); the ubuntu `validate` job covers Kotlin.
+        # blocks are skipped explicitly: the ubuntu `validate` job owns them.
         env:
           PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate
           PYREON_VALIDATE_NO_CACHE: ${{ github.event_name == 'schedule' && '1' || '0' }}
+          # The macos-15 image now ships kotlinc, which silently turned on
+          # hundreds of cold JVM compiles here and pushed this job past its cap.
+          PYREON_SKIP_KOTLIN_VALIDATE: '1'
         run: bun run --filter='@pyreon/native-compiler' test
 
       - name: Native coverage — COMPILE every registry snippet
@@ -678,3 +692,11 @@ jobs:
         env:
           PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate
           PYREON_VALIDATE_NO_CACHE: ${{ github.event_name == 'schedule' && '1' || '0' }}
+
+      # See the matching step in `validate`: a timed-out run must still save.
+      - name: Save native compile-verdict cache
+        if: always() && github.event_name != 'schedule'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/pyreon-native-validate
+          key: native-verdicts-ci-${{ runner.os }}-validate-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-${{ github.run_id }}
