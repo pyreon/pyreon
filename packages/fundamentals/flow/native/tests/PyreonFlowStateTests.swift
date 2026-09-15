@@ -19,7 +19,7 @@ struct PyreonFlowStateTests {
         if !c { fatalError("PyreonFlowStateTests: \(m)") }
     }
 
-    static func seedFlow() -> PyreonFlowState<NodeData> {
+    static func seedFlow(reducedMotion: Bool? = nil) -> PyreonFlowState<NodeData> {
         PyreonFlowState(
             nodes: [
                 PyreonFlowNode(id: "1", position: PyreonXYPosition(x: 0, y: 0), data: NodeData(label: "Start")),
@@ -30,7 +30,8 @@ struct PyreonFlowStateTests {
                 PyreonFlowEdge(id: "e1", source: "1", target: "2"),
                 PyreonFlowEdge(id: "e2", source: "2", target: "3"),
             ],
-            searchText: { $0.label }
+            searchText: { $0.label },
+            reducedMotion: reducedMotion
         )
     }
 
@@ -384,7 +385,9 @@ struct PyreonFlowStateTests {
 
         // 7. Viewport — zoomTo clamps, zoomIn/zoomOut are the 1.2x factor, panTo
         //    is an ABSOLUTE pan-to-point (not relative).
-        let h = seedFlow()
+        // This block verifies scheduled-frame cancellation, so its motion
+        // policy must not inherit a runner's accessibility preference.
+        let h = seedFlow(reducedMotion: false)
         check(h.zoom == 1, "default zoom is 1")
         h.zoomTo(10)
         check(h.viewport.zoom == 4, "zoomTo clamps to maxZoom (default 4)")
