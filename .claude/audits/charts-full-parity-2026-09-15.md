@@ -54,6 +54,11 @@ for interaction, animation or accessibility parity.
 - [x] Versioned, machine-readable capability ledger with separate direct and
   hosted scores, evidence paths, and a regression test that prevents a false
   100% direct score while partial or pending rows remain.
+- [x] Public `ChartWebView` lowering for Swift and Kotlin, including generated
+  host freshness, reactive option/command/loading envelopes, reverse
+  selection/event/error routing, source-ratcheted prop totality, and native
+  runtime helpers. This closes the previous unresolved-component build gap;
+  device behaviour remains part of C7's exit gate.
 
 ## Exit gate
 

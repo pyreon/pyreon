@@ -153,6 +153,21 @@ describe('<ChartWebView>', () => {
     expect(typeof (vnode.props as { onMessage: unknown }).onMessage).toBe('function')
   })
 
+  it('routes host failures to onError instead of selection', () => {
+    const onSelect = vi.fn()
+    const onError = vi.fn()
+    const vnode = ChartWebView({ option: {}, onSelect, onError })
+    const onMessage = (vnode.props as { onMessage: (m: string) => void }).onMessage
+    onMessage(JSON.stringify({ error: 'renderer failed' }))
+    expect(onError).toHaveBeenCalledWith({ message: 'renderer failed' })
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('forwards the background into the generated host', () => {
+    const vnode = ChartWebView({ option: {}, background: '#101820' })
+    expect((vnode.props as { html: string }).html).toContain('background:#101820')
+  })
+
   it('a non-JSON reverse message is handed back as { name } (never silently dropped)', () => {
     const onSelect = vi.fn()
     const vnode = ChartWebView({ option: {}, onSelect })
@@ -222,6 +237,10 @@ describe('<ChartWebView>', () => {
 })
 
 describe('buildChartHostHtml — script-context hardening', () => {
+  it('reports initialization failures through the host bridge', () => {
+    const html = buildChartHostHtml()
+    expect(html).toContain('pyreonReportHostError(window.__pyreonChartError)')
+  })
   it('a theme name with a quote cannot break out of echarts.init(...)', () => {
     const html = buildChartHostHtml({ theme: "x' + alert(1) + '" })
     // NEW: the theme is a JSON-stringified (double-quoted) JS string literal, so

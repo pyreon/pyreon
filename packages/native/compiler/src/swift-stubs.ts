@@ -1446,6 +1446,11 @@ public struct PyreonWebView: View {
   public init(src: String? = nil, html: String? = nil, data: String? = nil, onMessage: ((String) -> Void)? = nil) {}
   public typealias Body = Never
 }
+public struct PyreonChartWebViewSelection { public let name: String? }
+public struct PyreonChartWebViewEvent { public let name: String; public let payload: [String: Any] }
+public struct PyreonChartWebViewError: Error { public let message: String }
+public func pyreonChartWebViewData(option: String, commands: String, loading: Bool, loadingOptions: String) -> String { option }
+public func pyreonDispatchChartWebViewMessage(_ message: String, onSelect: ((PyreonChartWebViewSelection) -> Void)? = nil, onEvent: ((PyreonChartWebViewEvent) -> Void)? = nil, onError: ((PyreonChartWebViewError) -> Void)? = nil) {}
 
 // ---- PyreonForm (@pyreon/form -> runtime-swift's PyreonForm, a final class) ----
 // The emit does @State private var form = PyreonForm(initialValues:validators:)

@@ -292,11 +292,18 @@ let corpus: [PyreonDrawCmd] = ${swiftCorpus()}
 print(pyreonMirrorCmds(corpus, ${num(WIDTH)}).map { line($0) }.joined(separator: "\\n"))
 `
       writeFileSync(join(dir, 'main.swift'), harness)
-      execFileSync('swiftc', ['-O', join(dir, 'main.swift'), '-o', join(dir, 'run')], { stdio: 'pipe' })
+      execFileSync('swiftc', ['-O', join(dir, 'main.swift'), '-o', join(dir, 'run')], {
+        stdio: 'pipe',
+        env: {
+          ...process.env,
+          CLANG_MODULE_CACHE_PATH: join(dir, 'clang-module-cache'),
+          SWIFT_MODULECACHE_PATH: join(dir, 'swift-module-cache'),
+        },
+      })
       return execFileSync(join(dir, 'run'), { encoding: 'utf8' }).trimEnd().split('\n')
     })
     expect(got).toEqual(project(mirrorCmds(CORPUS, WIDTH)))
-  })
+  }, 60_000)
 
   it.skipIf(!isKotlincAvailable() || jvmPath() === undefined)(
     'the SHIPPED Kotlin mirror matches, executed',

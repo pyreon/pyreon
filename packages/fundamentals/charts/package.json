@@ -48,7 +48,9 @@
     "lib",
     "src",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "native/swift",
+    "native/kotlin"
   ],
   "scripts": {
     "build": "vl_rolldown_build",
@@ -84,5 +86,13 @@
   },
   "dependencies": {
     "@pyreon/primitives": "workspace:^"
+  },
+  "pyreon": {
+    "native": {
+      "swift": "native/swift",
+      "kotlin": "native/kotlin",
+      "kotlinServices": {},
+      "kotlinSdkOnly": ["PyreonChartWebView.kt"]
+    }
   }
 }

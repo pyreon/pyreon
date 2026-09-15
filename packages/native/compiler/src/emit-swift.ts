@@ -17,6 +17,7 @@ import {
   flowSignalWriteWarning,
   unloweredFlowMemberWarning,
 } from './flow-lowering'
+import { CHART_WEBVIEW_HOST_PROPS, configureChartWebViewHost, legacyChartHostProp } from './chart-webview-lowering'
 import {
   ICON_MAP,
   isCanonicalPrimitive,
@@ -195,7 +196,7 @@ let _attrsComponents: Map<string, AttrsComponentIR> = new Map()
 // Alias-tag local name → its import package. The Element/PyreonUI/Container/
 // Row/Col hooks intercept a tag ONLY when it resolves from its expected
 // @pyreon package, so a same-named user component isn't mis-lowered.
-let _aliasImports: Map<string, string> = new Map()
+let _aliasImports: Map<string, { source: string; imported: string }> = new Map()
 
 /**
  * True when `tag` is eligible for an alias hook (Element/PyreonUI/Container/
@@ -205,7 +206,7 @@ let _aliasImports: Map<string, string> = new Map()
  * prior behaviour, so this only SUPPRESSES a tag imported from another package
  * (e.g. `import { Row } from './my-components'` is no longer a coolgrid Row).
  */
-function canAliasIntercept(tag: string, expectedPkg: string): boolean {
+function canAliasIntercept(tag: string, expectedPkg: string, expectedImport = tag): boolean {
   if (
     _componentNames.has(tag) ||
     _styledComponents.has(tag) ||
@@ -214,7 +215,7 @@ function canAliasIntercept(tag: string, expectedPkg: string): boolean {
   )
     return false
   const src = _aliasImports.get(tag)
-  return src === undefined || src === expectedPkg
+  return src === undefined || (src.source === expectedPkg && src.imported === expectedImport)
 }
 
 /** Component name → its declared props, for expanding `<Comp {...src} />`
@@ -1038,7 +1039,7 @@ export function emitSwift(
   styledComponents: StyledComponentIR[] = [],
   rocketstyleComponents: RocketstyleComponentIR[] = [],
   attrsComponents: AttrsComponentIR[] = [],
-  aliasImports: Map<string, string> = new Map(),
+  aliasImports: Map<string, { source: string; imported: string }> = new Map(),
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
   // Per-FILE hook-binding-name sets. They are populated by the pre-pass
@@ -8141,6 +8142,9 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   // <WebView> — native host (WKWebView via PyreonWebView) for embedding
   // web-only-rich viz (charts / flow / tables) inside a native shell.
   if (tag === 'WebView') return emitSwiftWebView(e)
+  if (canAliasIntercept(tag, '@pyreon/charts', 'ChartWebView') && _aliasImports.get(tag)?.imported === 'ChartWebView') {
+    return emitSwiftChartWebView(e)
+  }
   if (tag === 'Flow' && canAliasIntercept(tag, '@pyreon/flow')) return emitSwiftFlowHost(e)
   // `@pyreon/charts/plot` family hosts → PyreonChartCanvas over the generated
   // engine (chart-hosts.ts); accessor-prop hosts warn by name.
@@ -10283,6 +10287,33 @@ function emitSwiftWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
   }
   const args = [content, dataArg, onMsgArg].filter((a) => a !== undefined).join(', ')
   return `PyreonWebView(${args})`
+}
+
+function emitSwiftChartWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const option = dynamicWebViewAttr(e, 'option')
+  if (option === undefined) _emitWarnings.push('<ChartWebView>: `option` is required on native; emitting an empty option.')
+  const explicitHtml = dynamicWebViewAttr(e, 'html')
+  if (explicitHtml !== undefined) {
+    for (const prop of CHART_WEBVIEW_HOST_PROPS) {
+      const legacy = legacyChartHostProp(prop)
+      if (e.attrs.some((attr) => attr.kind === 'attr' && (attr.name === prop || attr.name === legacy))) {
+        _emitWarnings.push(`<ChartWebView html={…} ${prop}={…}>: ${prop} is ignored because custom host HTML owns its configuration.`)
+      }
+    }
+  }
+  const html = explicitHtml === undefined
+    ? JSON.stringify(configureChartWebViewHost(e, readStaticAttr, (warning) => _emitWarnings.push(warning)))
+    : emitSwiftExpr(explicitHtml, 0)
+  const commands = dynamicWebViewAttr(e, 'commands')
+  const loading = dynamicWebViewAttr(e, 'loading')
+  const loadingOptions = dynamicWebViewAttr(e, 'loadingOptions')
+  const data = `pyreonChartWebViewData(option: ${option === undefined ? '"{}"' : swiftWebViewDataArg(option)}, commands: ${commands === undefined ? '"[]"' : swiftWebViewDataArg(commands)}, loading: ${loading === undefined ? 'false' : emitSwiftExpr(loading, 0)}, loadingOptions: ${loadingOptions === undefined ? '"{}"' : swiftWebViewDataArg(loadingOptions)})`
+  const callbackArgs = (['select', 'event', 'error'] as const).flatMap((name) => {
+    const attr = e.attrs.find((candidate) => candidate.kind === 'event' && candidate.name === name)
+    return attr?.kind === 'event' ? [`on${name[0]!.toUpperCase()}${name.slice(1)}: ${emitSwiftMessageHandler(attr.handler)}`] : []
+  })
+  const onMessage = callbackArgs.length === 0 ? '' : `, onMessage: { pyreonMsg in pyreonDispatchChartWebViewMessage(pyreonMsg, ${callbackArgs.join(', ')}) }`
+  return `PyreonWebView(html: ${html}, data: ${data}${onMessage})`
 }
 
 /**

@@ -3039,7 +3039,7 @@ function warnUnloweredPyreonHooks(body: AnyNode[], ctx: ParseCtx): void {
 
 /** The alias-tag names the emit's Element/PyreonUI/Container/Row/Col hooks
  *  can intercept. Kept in sync with the guards in emit-swift/emit-kotlin. */
-const ALIAS_TAG_NAMES = new Set(['Element', 'PyreonUI', 'PyreonUIProvider', 'Container', 'Row', 'Col'])
+const ALIAS_TAG_NAMES = new Set(['Element', 'PyreonUI', 'PyreonUIProvider', 'Container', 'Row', 'Col', 'ChartWebView'])
 
 /**
  * Collect a local-name → `@pyreon` package map for the alias-tag names. The
@@ -3049,8 +3049,8 @@ const ALIAS_TAG_NAMES = new Set(['Element', 'PyreonUI', 'PyreonUIProvider', 'Con
  * NOT mis-lowered as a coolgrid Row. Records by LOCAL name (the JSX tag), and
  * normalises a sub-path import (`@pyreon/coolgrid/x`) to its package root.
  */
-function collectAliasImports(body: AnyNode[]): Map<string, string> {
-  const map = new Map<string, string>()
+function collectAliasImports(body: AnyNode[]): Map<string, { source: string; imported: string }> {
+  const map = new Map<string, { source: string; imported: string }>()
   for (const node of body) {
     if (node.type !== 'ImportDeclaration') continue
     const src = node.source?.value
@@ -3060,7 +3060,10 @@ function collectAliasImports(body: AnyNode[]): Map<string, string> {
       : src
     for (const spec of (node.specifiers as AnyNode[]) ?? []) {
       const local = spec?.local?.name
-      if (typeof local === 'string' && ALIAS_TAG_NAMES.has(local)) map.set(local, pkg)
+      const imported = spec?.imported?.name
+      if (typeof local === 'string' && typeof imported === 'string' && ALIAS_TAG_NAMES.has(imported)) {
+        map.set(local, { source: pkg, imported })
+      }
     }
   }
   return map

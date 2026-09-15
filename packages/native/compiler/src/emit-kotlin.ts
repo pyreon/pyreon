@@ -13,6 +13,7 @@ import {
   flowSignalWriteWarning,
   unloweredFlowMemberWarning,
 } from './flow-lowering'
+import { CHART_WEBVIEW_HOST_PROPS, configureChartWebViewHost, legacyChartHostProp } from './chart-webview-lowering'
 import {
   ICON_MAP,
   isCanonicalPrimitive,
@@ -196,7 +197,7 @@ let _attrsComponents: Map<string, AttrsComponentIR> = new Map()
 // Alias-tag local name → its import package. The Element/PyreonUI/Container/
 // Row/Col hooks intercept a tag ONLY when it resolves from its expected
 // @pyreon package, so a same-named user component isn't mis-lowered.
-let _aliasImports: Map<string, string> = new Map()
+let _aliasImports: Map<string, { source: string; imported: string }> = new Map()
 
 /**
  * True when `tag` is eligible for an alias hook (Element/PyreonUI/Container/
@@ -205,7 +206,7 @@ let _aliasImports: Map<string, string> = new Map()
  * must resolve from `expectedPkg`. An untracked name keeps prior behaviour, so
  * this only SUPPRESSES a tag imported from another package.
  */
-function canAliasIntercept(tag: string, expectedPkg: string): boolean {
+function canAliasIntercept(tag: string, expectedPkg: string, expectedImport = tag): boolean {
   if (
     _componentNames.has(tag) ||
     _styledComponents.has(tag) ||
@@ -214,7 +215,7 @@ function canAliasIntercept(tag: string, expectedPkg: string): boolean {
   )
     return false
   const src = _aliasImports.get(tag)
-  return src === undefined || src === expectedPkg
+  return src === undefined || (src.source === expectedPkg && src.imported === expectedImport)
 }
 /** Component name → declared props, for `<Comp {...src} />` spread expansion.
  * Mirror of emit-swift's `_componentPropsMap`. */
@@ -589,7 +590,7 @@ export function emitKotlin(
   styledComponents: StyledComponentIR[] = [],
   rocketstyleComponents: RocketstyleComponentIR[] = [],
   attrsComponents: AttrsComponentIR[] = [],
-  aliasImports: Map<string, string> = new Map(),
+  aliasImports: Map<string, { source: string; imported: string }> = new Map(),
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
   _needsKotlinNumString = false
@@ -6757,6 +6758,9 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // <WebView> — native host (Android WebView via PyreonWebView) for
   // embedding web-only-rich viz inside a Compose native shell.
   if (tag === 'WebView') return emitKotlinWebView(e)
+  if (canAliasIntercept(tag, '@pyreon/charts', 'ChartWebView') && _aliasImports.get(tag)?.imported === 'ChartWebView') {
+    return emitKotlinChartWebView(e)
+  }
   if (tag === 'Flow' && canAliasIntercept(tag, '@pyreon/flow')) return emitKotlinFlowHost(e)
   // `@pyreon/charts/plot` family hosts → PyreonChartCanvas over the generated
   // engine (chart-hosts.ts); accessor-prop hosts warn by name.
@@ -8477,6 +8481,33 @@ function emitKotlinWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
   }
   const args = [content, dataArg, onMsgArg].filter((a) => a !== undefined).join(', ')
   return `PyreonWebView(${args})`
+}
+
+function emitKotlinChartWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const option = dynamicWebViewAttrKotlin(e, 'option')
+  if (option === undefined) _emitWarnings.push('<ChartWebView>: `option` is required on native; emitting an empty option.')
+  const explicitHtml = dynamicWebViewAttrKotlin(e, 'html')
+  if (explicitHtml !== undefined) {
+    for (const prop of CHART_WEBVIEW_HOST_PROPS) {
+      const legacy = legacyChartHostProp(prop)
+      if (e.attrs.some((attr) => attr.kind === 'attr' && (attr.name === prop || attr.name === legacy))) {
+        _emitWarnings.push(`<ChartWebView html={…} ${prop}={…}>: ${prop} is ignored because custom host HTML owns its configuration.`)
+      }
+    }
+  }
+  const html = explicitHtml === undefined
+    ? JSON.stringify(configureChartWebViewHost(e, readStaticAttrKotlin, (warning) => _emitWarnings.push(warning)))
+    : emitKotlinExpr(explicitHtml, 0)
+  const commands = dynamicWebViewAttrKotlin(e, 'commands')
+  const loading = dynamicWebViewAttrKotlin(e, 'loading')
+  const loadingOptions = dynamicWebViewAttrKotlin(e, 'loadingOptions')
+  const data = `pyreonChartWebViewData(option = ${option === undefined ? '"{}"' : kotlinWebViewDataArg(option)}, commands = ${commands === undefined ? '"[]"' : kotlinWebViewDataArg(commands)}, loading = ${loading === undefined ? 'false' : emitKotlinExpr(loading, 0)}, loadingOptions = ${loadingOptions === undefined ? '"{}"' : kotlinWebViewDataArg(loadingOptions)})`
+  const callbackArgs = (['select', 'event', 'error'] as const).flatMap((name) => {
+    const attr = e.attrs.find((candidate) => candidate.kind === 'event' && candidate.name === name)
+    return attr?.kind === 'event' ? [`on${name[0]!.toUpperCase()}${name.slice(1)} = ${emitKotlinMessageHandler(attr.handler)}`] : []
+  })
+  const onMessage = callbackArgs.length === 0 ? '' : `, onMessage = { pyreonMsg -> pyreonDispatchChartWebViewMessage(pyreonMsg, ${callbackArgs.join(', ')}) }`
+  return `PyreonWebView(html = ${html}, data = ${data}${onMessage})`
 }
 
 /**

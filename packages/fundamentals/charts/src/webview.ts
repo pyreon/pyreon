@@ -61,9 +61,15 @@ export interface ChartHostEvent {
   payload: Record<string, unknown>
 }
 
+export interface ChartHostError { message: string }
+
 type ChartHostAccessor<T> = T | (() => T)
 
 export interface BuildChartHostHtmlOptions {
+  /** Inlined hosted-engine bundle. Preferred vendor-neutral name. */
+  engineScript?: string
+  /** Hosted-engine URL used when no inline bundle is supplied. */
+  engineSrc?: string
   /**
    * ECharts UMD/IIFE source, INLINED into the page — makes it fully
    * self-contained (offline, and satisfies the iOS/Android local-asset
@@ -155,8 +161,8 @@ const attrSafe = (s: string): string =>
  */
 export function buildChartHostHtml(options: BuildChartHostHtmlOptions = {}): string {
   const {
-    echartsScript,
-    echartsSrc = DEFAULT_ECHARTS_SRC,
+    engineScript = options.echartsScript,
+    engineSrc = options.echartsSrc ?? DEFAULT_ECHARTS_SRC,
     theme,
     renderer = 'canvas',
     background = 'transparent',
@@ -164,9 +170,9 @@ export function buildChartHostHtml(options: BuildChartHostHtmlOptions = {}): str
     hostSetupScript,
   } = options
 
-  const engineTag = echartsScript
-    ? `<script>${scriptSafe(echartsScript)}</script>`
-    : `<script src="${attrSafe(echartsSrc)}"></script>`
+  const engineTag = engineScript
+    ? `<script>${scriptSafe(engineScript)}</script>`
+    : `<script src="${attrSafe(engineSrc)}"></script>`
   const setupTag = hostSetupScript ? `<script>${scriptSafe(hostSetupScript)}</script>` : ''
 
   // A theme is an ECharts theme NAME (a registered identifier); JSON.stringify
@@ -314,7 +320,10 @@ export function buildChartHostHtml(options: BuildChartHostHtmlOptions = {}): str
     new ResizeObserver(function () { chart.resize(); }).observe(el);
   }
   apply();
-  } catch (e) { window.__pyreonChartError = String(e && e.stack || e); }
+  } catch (e) {
+    window.__pyreonChartError = String(e && e.stack || e);
+    pyreonReportHostError(window.__pyreonChartError);
+  }
 })();`
 
   return (
@@ -351,6 +360,8 @@ export interface ChartWebViewProps {
   loadingOptions?: ChartHostAccessor<Record<string, unknown>>
   /** Receives events selected by {@link forwardEvents}. */
   onEvent?: (event: ChartHostEvent) => void
+  /** Receives host initialization and command failures. */
+  onError?: (error: ChartHostError) => void
   /**
    * Provide your own host HTML (advanced). If omitted, one is built via
    * {@link buildChartHostHtml} from the `echarts*`/`theme`/`renderer` props.
@@ -360,6 +371,10 @@ export interface ChartWebViewProps {
    * per render.
    */
   html?: string
+  /** Inlined hosted-engine bundle. */
+  engineScript?: string
+  /** Hosted-engine URL used when no inline bundle is supplied. */
+  engineSrc?: string
   /** Inlined ECharts UMD source (self-contained page) — see {@link BuildChartHostHtmlOptions}. */
   echartsScript?: string
   /** ECharts CDN URL when not inlining — see {@link BuildChartHostHtmlOptions}. */
@@ -368,6 +383,8 @@ export interface ChartWebViewProps {
   theme?: string
   /** `'canvas'` (default) or `'svg'`. */
   renderer?: 'canvas' | 'svg'
+  /** Background behind a transparent hosted chart. */
+  background?: string
   /** Additional hosted event names to forward to {@link onEvent}. */
   forwardEvents?: readonly string[]
   /** Trusted pre-initialization registration script; see the host builder option. */
@@ -394,10 +411,13 @@ export interface ChartWebViewProps {
  */
 export function ChartWebView(props: ChartWebViewProps): VNode {
   const built: BuildChartHostHtmlOptions = {}
+  if (props.engineScript !== undefined) built.engineScript = props.engineScript
+  if (props.engineSrc !== undefined) built.engineSrc = props.engineSrc
   if (props.echartsScript !== undefined) built.echartsScript = props.echartsScript
   if (props.echartsSrc !== undefined) built.echartsSrc = props.echartsSrc
   if (props.theme !== undefined) built.theme = props.theme
   if (props.renderer !== undefined) built.renderer = props.renderer
+  if (props.background !== undefined) built.background = props.background
   if (props.forwardEvents !== undefined) built.forwardEvents = props.forwardEvents
   if (props.hostSetupScript !== undefined) built.hostSetupScript = props.hostSetupScript
   const html = props.html ?? buildChartHostHtml(built)
@@ -426,9 +446,10 @@ export function ChartWebView(props: ChartWebViewProps): VNode {
       return { __pyreonChartHost: 1, option, commands, loading: { visible: loading, options: loadingOptions } }
     },
   })
-  if (props.onSelect || props.onEvent) {
+  if (props.onSelect || props.onEvent || props.onError) {
     const onSelect = props.onSelect
     const onEvent = props.onEvent
+    const onError = props.onError
     webViewProps.onMessage = (message: string): void => {
       let payload: ChartSelectPayload | (ChartHostEvent & { __pyreonChartEvent: 1 })
       try {
@@ -438,7 +459,10 @@ export function ChartWebView(props: ChartWebViewProps): VNode {
         // is silently dropped.
         payload = { name: message }
       }
-      if (payload && typeof payload === 'object' && '__pyreonChartEvent' in payload)
+      if (payload && typeof payload === 'object' && 'error' in payload) {
+        const errorValue = (payload as { error?: unknown }).error
+        onError?.({ message: typeof errorValue === 'string' ? errorValue : String(errorValue) })
+      } else if (payload && typeof payload === 'object' && '__pyreonChartEvent' in payload)
         onEvent?.({ name: payload.name, payload: payload.payload })
       else onSelect?.(payload)
     }
