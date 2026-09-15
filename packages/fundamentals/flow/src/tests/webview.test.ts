@@ -58,6 +58,38 @@ describe('<FlowWebView>', () => {
     ;(FlowWebView({ graph, onSelect }).props as { onMessage: (m: string) => void }).onMessage('x')
     expect(onSelect).toHaveBeenCalledWith({ id: 'x' })
   })
+
+  it('delivers arbitrary parsed editor messages without coercing their shape', () => {
+    const onMessage = vi.fn()
+    const onSelect = vi.fn()
+    const vnode = FlowWebView({ graph, onMessage, onSelect })
+    const receive = (vnode.props as { onMessage: (message: string) => void }).onMessage
+    receive(JSON.stringify({ type: 'viewport-change', viewport: { x: 4, y: 5, zoom: 2 } }))
+    receive('editor-ready')
+    expect(onMessage).toHaveBeenNthCalledWith(1, {
+      type: 'viewport-change',
+      viewport: { x: 4, y: 5, zoom: 2 },
+    })
+    expect(onMessage).toHaveBeenNthCalledWith(2, 'editor-ready')
+    expect(onSelect).toHaveBeenCalledTimes(1)
+    expect(onSelect).toHaveBeenCalledWith({ id: 'editor-ready' })
+  })
+
+  it('wires the reverse bridge when only the generic message callback is present', () => {
+    const onMessage = vi.fn()
+    const vnode = FlowWebView({ graph, onMessage })
+    ;(vnode.props as { onMessage: (message: string) => void }).onMessage('{"type":"ready"}')
+    expect(onMessage).toHaveBeenCalledWith({ type: 'ready' })
+  })
+
+  it('preserves arbitrary JSON-safe node and edge fields in the forward graph', () => {
+    const richGraph = {
+      nodes: [{ id: 'a', position: { x: 0, y: 0 }, hidden: true, parentId: 'root', custom: { role: 'input' } }],
+      edges: [{ source: 'a', target: 'b', markerEnd: { type: 'closed' }, reconnectable: false }],
+    }
+    const vnode = FlowWebView({ graph: richGraph })
+    expect((vnode.props as { data: unknown }).data).toBe(richGraph)
+  })
 })
 
 describe('webview — coverage of the defensive and forwarding paths', () => {

@@ -37,6 +37,8 @@ export interface FlowWebViewNode {
   data?: unknown
   width?: number
   height?: number
+  /** Additional JSON-safe model fields are preserved for custom host pages. */
+  [key: string]: unknown
 }
 /** An edge in the pushed graph. */
 export interface FlowWebViewEdge {
@@ -273,6 +275,12 @@ export interface FlowWebViewProps {
   /** Node-tap callback — receives `{ id, data }`. */
   onSelect?: (payload: FlowSelectPayload) => void
   /**
+   * Every parsed reverse-bridge payload from the hosted page. Non-JSON
+   * messages are delivered as strings. This is the generic channel for a
+   * bundled editor; node selections continue to reach `onSelect` as well.
+   */
+  onMessage?: (payload: unknown) => void
+  /**
    * Provide your own host HTML (advanced — e.g. a bundled full `@pyreon/flow`
    * web app). Omit to build the self-contained diagram renderer from the
    * `node*`/`*Color` options.
@@ -322,16 +330,22 @@ export function FlowWebView(props: FlowWebViewProps): VNode {
       return typeof gph === 'function' ? (gph as () => unknown)() : gph
     },
   })
-  if (props.onSelect) {
+  if (props.onSelect || props.onMessage) {
     const onSelect = props.onSelect
+    const onMessage = props.onMessage
     webViewProps.onMessage = (message: string): void => {
-      let payload: FlowSelectPayload
+      let payload: unknown
       try {
-        payload = JSON.parse(message) as FlowSelectPayload
+        payload = JSON.parse(message) as unknown
       } catch {
-        payload = { id: message }
+        payload = message
       }
-      onSelect(payload)
+      onMessage?.(payload)
+      if (onSelect) {
+        if (payload && typeof payload === 'object' && 'id' in payload && typeof payload.id === 'string')
+          onSelect(payload as FlowSelectPayload)
+        else if (typeof payload === 'string') onSelect({ id: payload })
+      }
     }
   }
   return h(WebView as (p: unknown) => VNodeChild, webViewProps) as VNode

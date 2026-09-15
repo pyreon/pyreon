@@ -74,11 +74,13 @@ describe('FlowWebView bridge (real SVG diagram in a real iframe)', () => {
 
   it('REVERSE: tapping a node drives onSelect with {id,data}', async () => {
     const received: unknown[] = []
+    const messages: unknown[] = []
     const { container, unmount } = mountInBrowser(
       h(FlowWebView as never, {
         html: HOST,
         graph: () => graph(['A', 'B']),
         onSelect: (p: unknown) => received.push(p),
+        onMessage: (payload: unknown) => messages.push(payload),
       }),
     )
     container.style.width = '500px'
@@ -95,6 +97,7 @@ describe('FlowWebView bridge (real SVG diagram in a real iframe)', () => {
 
     expect(received).toHaveLength(1)
     expect(received[0]).toEqual({ id: 'B', data: { label: 'B' } })
+    expect(messages).toEqual([{ id: 'B', data: { label: 'B' } }])
     unmount()
   })
 })
