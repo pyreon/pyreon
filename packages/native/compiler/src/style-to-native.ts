@@ -301,10 +301,35 @@ export function extractTextTypography(
     const v = f.value.kind === 'literal' ? f.value.value : undefined
     if (TYPOGRAPHY_KEYS.has(f.name) && v !== undefined) {
       if (f.name === 'fontSize' && typeof v === 'number') typo.fontSize = v
-      else if (f.name === 'fontWeight' && (typeof v === 'string' || typeof v === 'number')) typo.fontWeight = v
-      else if (f.name === 'color' && typeof v === 'string') typo.color = v
-      else if (f.name === 'textAlign' && typeof v === 'string') typo.textAlign = v
-      else if (f.name === 'fontStyle' && typeof v === 'string') typo.fontStyle = v
+      // `fontWeight`/`color`/`textAlign` each resolve through a lookup table or
+      // parser keyed on THIS target, and an unresolvable value (`'ultralight'`,
+      // `'rebeccapurple'`, `'justify'`) used to be accepted into `typo` anyway
+      // — the consuming `swiftTextTypographyModifiers`/Kotlin twin then found
+      // no match and emitted NOTHING, with the field gone from `rest` too, so
+      // the whole property vanished with zero warnings. `letterSpacing` right
+      // below already validates before accepting; mirror it here so an
+      // unresolvable value falls back to `rest` and gets the same downstream
+      // "unhandled style key" warning the identical value gets on a non-Text
+      // element.
+      else if (
+        f.name === 'fontWeight' &&
+        (typeof v === 'string' || typeof v === 'number') &&
+        (target === 'swift' ? SWIFT_WEIGHT : KOTLIN_WEIGHT)[String(v)]
+      ) {
+        typo.fontWeight = v
+      } else if (
+        f.name === 'color' &&
+        typeof v === 'string' &&
+        parseCssColor(v, target)
+      ) {
+        typo.color = v
+      } else if (
+        f.name === 'textAlign' &&
+        typeof v === 'string' &&
+        (target === 'swift' ? SWIFT_ALIGN : KOTLIN_ALIGN)[v]
+      ) {
+        typo.textAlign = v
+      } else if (f.name === 'fontStyle' && typeof v === 'string') typo.fontStyle = v
       else if (f.name === 'letterSpacing' && (typeof v === 'number' || typeof v === 'string')) {
         const n = parseDimension(v)
         if (n !== null) typo.letterSpacing = n
@@ -719,7 +744,10 @@ function parseAspectRatio(v: string | number): string | null {
   if (slash) {
     const w = parseFloat(slash[1]!)
     const h = parseFloat(slash[2]!)
-    return h > 0 ? (w / h).toFixed(4).replace(/\.?0+$/, '') : null
+    // Both operands need the SAME positivity guard the number/plain forms
+    // above and below already apply -- `'0 / 9'` (or a negative w) slipped
+    // through with only `h > 0` checked, emitting a degenerate 0 ratio.
+    return w > 0 && h > 0 ? (w / h).toFixed(4).replace(/\.?0+$/, '') : null
   }
   const n = parseFloat(s)
   return Number.isFinite(n) && n > 0 ? String(n) : null
