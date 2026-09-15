@@ -455,7 +455,10 @@ export type { Suite }
 export function forcesFullRun(path: string): boolean {
   if (path === 'bun.lock' || path === 'package.json') return true
   if (/^tsconfig.*\.json$/.test(path)) return true
-  if (path === 'vitest.shared.ts' || path === 'vitest.browser.ts') return true
+  // Every root `vitest.*.ts` (see `affected.ts:isRootFile` — the two names
+  // this used to list no longer exist) and the pinned toolchain.
+  if (/^vitest\.[^/]*\.ts$/.test(path)) return true
+  if (path === '.bun-version') return true
   if (path.startsWith('.github/workflows/')) return true
   if (path.startsWith('scripts/')) return true
   if (/^playwright[^/]*\.config\.ts$/.test(path)) return true

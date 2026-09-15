@@ -85,14 +85,19 @@ describe('isRootFile', () => {
     'bun.lock',
     'tsconfig.json',
     'tsconfig.base.json',
-    'vitest.shared.ts',
-    'vitest.browser.ts',
+    // the root setup file every package's vitest config loads — the two
+    // names this list used to carry (`vitest.shared.ts` / `vitest.browser.ts`)
+    // were deleted in #914, so the classifier matched nothing at the root
+    'vitest.setup.ts',
+    'vitest.workspace.ts',
+    '.bun-version',
     '.github/workflows/ci.yml',
   ])('treats %s as a root file (forces full suite)', (path) => {
     expect(isRootFile(path)).toBe(true)
   })
 
   it.each([
+    'packages/core/runtime-dom/vitest.config.ts', // a PACKAGE vitest config is not root
     'packages/core/reactivity/src/signal.ts',
     'examples/playground/src/App.tsx',
     'docs/src/content/docs/zero.md',

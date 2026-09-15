@@ -76,8 +76,14 @@ const ROOT = resolve(import.meta.dirname, '..')
 export function isRootFile(path: string): boolean {
   if (path === 'package.json') return true
   if (path === 'bun.lock') return true
-  if (path === 'vitest.shared.ts') return true
-  if (path === 'vitest.browser.ts') return true
+  // Every root `vitest.*.ts` — `vitest.setup.ts` is the `setupFiles` of EVERY
+  // package's vitest config (via @pyreon/vitest-config). The two names this
+  // used to list (`vitest.shared.ts` / `vitest.browser.ts`) were absorbed into
+  // that package in #914 and no longer exist, so a root setup-file change
+  // escalated NOTHING.
+  if (/^vitest\.[^/]*\.ts$/.test(path)) return true
+  // The pinned toolchain: a bun bump runs every test under a different runtime.
+  if (path === '.bun-version') return true
   if (/^tsconfig.*\.json$/.test(path)) return true
   if (path.startsWith('.github/workflows/')) return true
   // NOTE: `scripts/` is deliberately NOT a root file. Scripts are standalone
