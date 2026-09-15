@@ -165,27 +165,15 @@ jobs:
     # The original problem was never the shape of the job -- it was a timeout
     # guessed instead of derived. That is fixed below.
     runs-on: macos-15
-    # Repo-wide (NOT keyed by ref/PR) — macOS runners are the scarce resource
-    # on this org's free plan, and every PR fighting independently for one
-    # is what actually produces the failure mode below, not a bug in this
-    # job's own steps. Measured 2026-09-14 across the last 50 runs of this
-    # workflow: 27 cancelled, in clusters of up to 6 DIFFERENT branches
-    # within the same minute — with roughly half of the cancellations
-    # killing a job that had already done real work (6-48 minutes, once as
-    # this exact job on #3492), not a stale run a newer push superseded.
-    # That signature — many branches simultaneously, mid-flight — is runner
-    # contention getting resolved by the infra reclaiming overcommitted
-    # capacity, not this workflow's `cancel-in-progress` (which is scoped
-    # per-ref and only ever kills a branch's OWN prior run).
-    #
-    # `cancel-in-progress: false` so excess demand QUEUES (visible in the
-    # Actions UI as "waiting on concurrency") instead of racing for runners
-    # and getting killed — the same trade the per-PR matrix-to-serial fix
-    # above already made once, one level up: fewer simultaneous macOS jobs
-    # beats more of them dying.
-    concurrency:
-      group: native-device-ios-build-macos-runner
-      cancel-in-progress: false
+    # Do NOT add a repo-wide job concurrency group here. GitHub concurrency is
+    # not an unbounded semaphore: each group retains at most one running and
+    # one pending job, and a newer pending job CANCELS the older pending one
+    # even when `cancel-in-progress` is false. With several native PRs open,
+    # that produced the explicit annotation "Canceling since a higher priority
+    # waiting request ... exists" and permanently blocked the displaced PR.
+    # Let the hosted-runner scheduler queue macOS demand instead. The workflow-
+    # level per-ref group above still cancels genuinely superseded commits on
+    # the same PR, while distinct PRs each retain their required iOS check.
     # DERIVED from measured composition, not guessed -- guessing is what
     # produced 40, then 60, then the split:
     #
