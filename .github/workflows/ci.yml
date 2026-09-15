@@ -1212,6 +1212,10 @@ jobs:
           # Harmless for non-native cells: validate-cache only engages when a
           # validator actually runs.
           PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate
+          # Sixteen runners provide package-level parallelism. Within a
+          # native-compiler shard, keep real swiftc/kotlinc processes serial
+          # so two-core runners do not turn JVM contention into a timeout.
+          PYREON_NATIVE_COMPILER_SERIAL: ${{ startsWith(matrix.name, 'native-compiler-') && '1' || '' }}
           # This job restores the bootstrap, so `packages/*/lib/` is present.
           # Seven specs across charts / store / lint MEASURE that built output
           # and guard themselves on its existence — correct locally, where a

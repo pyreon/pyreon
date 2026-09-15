@@ -6,7 +6,7 @@ import SwiftUI
 // was true of nothing. A hand-wired SwiftUI view is exactly how the runtime
 // documents consuming the canvas today; this one is small enough to be the
 // reference for that. Not routed to from the app; the point is the build.
-@available(iOS 17.0, *)
+@available(iOS 17.0, macOS 14.0, *)
 struct FlowEdgesPreview: View {
     let strokes: [PyreonFlowEdgeStroke] = [
         PyreonFlowEdgeStroke(
@@ -19,5 +19,24 @@ struct FlowEdgesPreview: View {
         // `.equatable()` joins once #3320 (Equatable canvas) is on main.
         PyreonFlowEdgeCanvas(edges: strokes, viewport: PyreonFlowViewport(x: 0, y: 0, zoom: 1))
             .frame(height: 80)
+    }
+}
+
+// Compiles the complete interactive host as part of the real iOS app,
+// including state-driven edge derivation and node content.
+@available(iOS 17.0, macOS 14.0, *)
+struct FlowHostPreview: View {
+    @State private var state = PyreonFlowState(
+        nodes: [
+            PyreonFlowNode(id: "start", position: PyreonXYPosition(x: 0, y: 0), data: "Start"),
+            PyreonFlowNode(id: "end", position: PyreonXYPosition(x: 200, y: 80), data: "End"),
+        ],
+        edges: [PyreonFlowEdge(id: "edge", source: "start", target: "end")])
+
+    var body: some View {
+        PyreonFlowView(state: state) { node in
+            Text(node.data)
+        }
+        .frame(width: 400, height: 240)
     }
 }

@@ -7,8 +7,33 @@
 
 import com.pyreon.runtime.PyreonFlowEdgeSegment
 import com.pyreon.runtime.PyreonFlowEdgeStroke
+import com.pyreon.runtime.PyreonFlowPathPoint
+import com.pyreon.runtime.PyreonFlowNodeBox
+import com.pyreon.runtime.PyreonFlowHandleConfig
+import com.pyreon.runtime.PyreonFlowMeasuredHandle
+import com.pyreon.runtime.PyreonFlowNode
+import com.pyreon.runtime.PyreonFlowNodeMeasurement
+import com.pyreon.runtime.PyreonFlowPosition
+import com.pyreon.runtime.PyreonXYPosition
+import com.pyreon.runtime.pyreonBezierPath
+import com.pyreon.runtime.pyreonEdgePath
+import com.pyreon.runtime.pyreonEffectiveDimensions
+import com.pyreon.runtime.pyreonComputeEdgePath
+import com.pyreon.runtime.pyreonFloatingEndpoints
+import com.pyreon.runtime.pyreonHandlePosition
+import com.pyreon.runtime.pyreonNodeIntersection
+import com.pyreon.runtime.pyreonResolveHandleAnchor
+import com.pyreon.runtime.pyreonFlowInteractiveHandles
+import com.pyreon.runtime.pyreonFlowConnectionPreview
+import com.pyreon.runtime.pyreonNearestFlowHandle
+import com.pyreon.runtime.pyreonFlowEdgeDistance
+import com.pyreon.runtime.pyreonNearestFlowEdge
 import com.pyreon.runtime.pyreonFlowEdgeColor
 import com.pyreon.runtime.pyreonFlowEdgePath
+import com.pyreon.runtime.pyreonStraightPath
+import com.pyreon.runtime.pyreonSmoothStepPath
+import com.pyreon.runtime.pyreonStepPath
+import com.pyreon.runtime.pyreonWaypointPath
 
 private fun check(cond: Boolean, msg: String) {
     if (!cond) throw AssertionError("PyreonFlowEdgeGeometryTest: $msg")
@@ -49,6 +74,63 @@ fun main() {
     val stroke = PyreonFlowEdgeStroke("e1", listOf(PyreonFlowEdgeSegment.move(0.0, 0.0), PyreonFlowEdgeSegment.line(1.0, 1.0)), color = "#123456", dash = listOf(4.0, 2.0))
     check(stroke.path === stroke.path && stroke.resolvedColor == pyreonFlowEdgeColor("#123456"), "stroke caches its path and resolved color")
     check(stroke.pathEffect != null && PyreonFlowEdgeStroke("e2", emptyList()).pathEffect == null, "dash builds a PathEffect once; a solid stroke has none")
+
+    val routedStraight = pyreonStraightPath(0.0, 0.0, 100.0, 50.0)
+    check(routedStraight.labelX == 50.0 && routedStraight.labelY == 25.0 && routedStraight.segments.size == 2, "straight routing returns midpoint and segments")
+    check(routedStraight.path == "M0,0 L100,50", "native path results preserve the public SVG path string")
+    val routedBezier = pyreonBezierPath(0.0, 0.0, PyreonFlowPosition.Right, 200.0, 100.0, PyreonFlowPosition.Left)
+    check(routedBezier.segments[1].c1x!! > 0.0 && routedBezier.segments[1].c2x!! < 200.0, "bezier routing offsets controls along handle directions")
+    check(routedBezier.path.startsWith("M0,0 C"), "bezier SVG serialization preserves its cubic command")
+    val measuredDimensions = pyreonEffectiveDimensions(PyreonFlowNode("dims", position = PyreonXYPosition(0.0, 0.0), data = "D", width = 90.0), PyreonFlowNodeMeasurement(80.0, 30.0))
+    check(measuredDimensions.width == 90.0 && measuredDimensions.height == 30.0, "effective dimensions preserve explicit-measured-default precedence")
+    check(pyreonEdgePath("straight", 0.0, 0.0, PyreonFlowPosition.Right, 100.0, 50.0, PyreonFlowPosition.Left).path == "M0,0 L100,50", "public edge dispatcher preserves straight geometry")
+    val previewSource = com.pyreon.runtime.PyreonFlowInteractiveHandle("n", "out", "source", PyreonFlowPosition.Right, 0.0, 0.0)
+    check(pyreonFlowConnectionPreview("straight", previewSource, PyreonFlowPathPoint(100.0, 50.0)).map { it.kind } == listOf("move", "line"), "straight connection preview uses straight geometry")
+    check(pyreonFlowConnectionPreview("bezier", previewSource, PyreonFlowPathPoint(100.0, 50.0))[1].kind == "cubic", "bezier connection preview preserves the source tangent")
+    check(pyreonFlowConnectionPreview("step", previewSource, PyreonFlowPathPoint(100.0, 50.0)).any { it.kind == "quad" }, "step connection preview uses routed geometry")
+    val routedWaypoint = pyreonWaypointPath(0.0, 0.0, 100.0, 100.0, listOf(PyreonFlowPathPoint(25.0, 30.0), PyreonFlowPathPoint(75.0, 80.0)))
+    check(routedWaypoint.labelX == 75.0 && routedWaypoint.labelY == 80.0 && routedWaypoint.segments.size == 4, "waypoint routing uses the middle waypoint label and every segment")
+    val orientations = listOf(
+        Triple(PyreonFlowPosition.Right, PyreonFlowPosition.Top, listOf("move:0.0,0.0", "line:20.0,0.0", "line:20.0,55.0", "quad:25.0,60.0", "line:100.0,60.0", "line:100.0,80.0")),
+        Triple(PyreonFlowPosition.Bottom, PyreonFlowPosition.Left, listOf("move:0.0,0.0", "line:0.0,20.0", "line:75.0,20.0", "quad:80.0,25.0", "line:80.0,80.0", "line:100.0,80.0")),
+        Triple(PyreonFlowPosition.Right, PyreonFlowPosition.Left, listOf("move:0.0,0.0", "line:20.0,0.0", "line:50.0,0.0", "quad:50.0,40.0", "line:50.0,80.0", "line:80.0,80.0", "line:100.0,80.0")),
+        Triple(PyreonFlowPosition.Bottom, PyreonFlowPosition.Top, listOf("move:0.0,0.0", "line:0.0,20.0", "line:0.0,40.0", "quad:50.0,40.0", "line:100.0,40.0", "line:100.0,60.0", "line:100.0,80.0")),
+    )
+    for ((sourceSide, targetSide, expected) in orientations) {
+        val route = pyreonSmoothStepPath(0.0, 0.0, sourceSide, 100.0, 80.0, targetSide, borderRadius = 5.0, offset = 20.0)
+        check(route.segments.map { "${it.kind}:${it.x},${it.y}" } == expected, "smoothstep $sourceSide->$targetSide exactly matches the web segment packet")
+    }
+    val step = pyreonStepPath(0.0, 0.0, PyreonFlowPosition.Right, 100.0, 80.0, PyreonFlowPosition.Left)
+    check(step == pyreonSmoothStepPath(0.0, 0.0, PyreonFlowPosition.Right, 100.0, 80.0, PyreonFlowPosition.Left, borderRadius = 0.0), "step is exactly smoothstep with a zero-radius corner")
+    check(pyreonHandlePosition(PyreonFlowPosition.Right, 0.0, 0.0, 150.0, 40.0) == PyreonFlowPathPoint(150.0, 20.0), "right handle uses the node-side midpoint")
+    val sourceBox = PyreonFlowNodeBox(0.0, 0.0, 150.0, 40.0)
+    val targetBox = PyreonFlowNodeBox(200.0, 100.0, 150.0, 40.0)
+    check(pyreonNodeIntersection(sourceBox, PyreonFlowPathPoint(275.0, 120.0)) == PyreonFlowPathPoint(115.0, 40.0), "node intersection matches the web perimeter crossing")
+    val floating = pyreonFloatingEndpoints(sourceBox, targetBox)
+    check(floating.source.x == 115.0 && floating.source.y == 40.0 && floating.source.position == PyreonFlowPosition.Bottom, "floating source exactly matches web")
+    check(floating.target.x == 235.0 && floating.target.y == 100.0 && floating.target.position == PyreonFlowPosition.Top, "floating target exactly matches web")
+    val configHandles = listOf(PyreonFlowHandleConfig("cfg", "source", PyreonFlowPosition.Right))
+    val measurement = PyreonFlowNodeMeasurement(180.0, 60.0, listOf(PyreonFlowMeasuredHandle("real", "source", PyreonFlowPosition.Bottom, 45.0, 61.0)))
+    check(pyreonResolveHandleAnchor(10.0, 20.0, 200.0, 80.0, "real", "source", configHandles, measurement) == com.pyreon.runtime.PyreonFlowHandleAnchor(55.0, 81.0, PyreonFlowPosition.Bottom), "named measured handle wins with its exact rendered center")
+    check(pyreonResolveHandleAnchor(10.0, 20.0, 200.0, 80.0, "cfg", "source", configHandles, measurement) == com.pyreon.runtime.PyreonFlowHandleAnchor(210.0, 60.0, PyreonFlowPosition.Right), "named config handle uses effective dimensions")
+    check(pyreonResolveHandleAnchor(10.0, 20.0, 200.0, 80.0, "missing", "source", configHandles, measurement)?.x == 55.0, "unknown id falls back to the first measured handle")
+    val interactive = pyreonFlowInteractiveHandles("n1", PyreonFlowNodeBox(10.0, 20.0, 200.0, 80.0), configHandles)
+    check(interactive.single().x == 210.0 && interactive.single().y == 60.0, "interactive handle layout resolves graph coordinates")
+    val targetHandle = com.pyreon.runtime.PyreonFlowInteractiveHandle("n2", "in", "target", PyreonFlowPosition.Left, 240.0, 60.0)
+    check(pyreonNearestFlowHandle(interactive + targetHandle, PyreonFlowPathPoint(244.0, 60.0), "target", 5.0)?.nodeId == "n2", "connection hit testing chooses the nearest matching handle")
+    check(pyreonNearestFlowHandle(interactive + targetHandle, PyreonFlowPathPoint(246.0, 60.0), "target", 5.0) == null, "connection hit testing respects its graph-space radius")
+    val completeFloating = pyreonComputeEdgePath("bezier", sourceBox, targetBox)
+    check(completeFloating.labelX == 175.0 && completeFloating.labelY == 70.0 && completeFloating.segments[0] == PyreonFlowEdgeSegment.move(115.0, 40.0), "complete dispatcher matches web floating endpoints and label")
+    check(kotlin.math.abs(completeFloating.segments[1].c1y!! - 73.54101966249684) < 0.000000001, "complete dispatcher matches web bezier control geometry")
+    val completeHandled = pyreonComputeEdgePath("straight", sourceBox, targetBox, "out", "in", configHandles, listOf(PyreonFlowHandleConfig("in", "target", PyreonFlowPosition.Left)))
+    check(completeHandled.segments == listOf(PyreonFlowEdgeSegment.move(150.0, 20.0), PyreonFlowEdgeSegment.line(200.0, 120.0)), "complete dispatcher matches web configured-handle straight route")
+    val hitEdges = listOf(
+        PyreonFlowEdgeStroke("far", listOf(PyreonFlowEdgeSegment.move(0.0, 40.0), PyreonFlowEdgeSegment.line(100.0, 40.0)), interactionWidth = 20.0),
+        PyreonFlowEdgeStroke("near", listOf(PyreonFlowEdgeSegment.move(0.0, 0.0), PyreonFlowEdgeSegment.line(100.0, 0.0)), interactionWidth = 20.0),
+    )
+    check(pyreonFlowEdgeDistance(hitEdges[1].segments, PyreonFlowPathPoint(50.0, 4.0)) == 4.0, "edge hit distance covers the full line, not only its label")
+    check(pyreonNearestFlowEdge(hitEdges, PyreonFlowPathPoint(50.0, 4.0), 1.0)?.id == "near", "edge hit testing selects the nearest path")
+    check(pyreonNearestFlowEdge(hitEdges, PyreonFlowPathPoint(50.0, 6.0), 2.0) == null, "edge interaction width remains constant in screen pixels under zoom")
 
     println("PyreonFlowEdgeGeometryTest: all checks passed")
 }

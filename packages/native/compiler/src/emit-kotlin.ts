@@ -11,7 +11,6 @@ import {
   LOWERED_FLOW_METHODS,
   LOWERED_FLOW_PROPERTY_READS,
   droppedFlowFieldsWarning,
-  flowFitViewWarning,
   flowSignalWriteWarning,
   unloweredFlowMemberWarning,
 } from './flow-lowering'
@@ -484,6 +483,8 @@ let _sortableNames: Set<string> = new Set()
 /** `createFlow(...)` bindings — property reads (nodes/edges/viewport/zoom)
  *  drop parens; methods (addNode/selectNode/selectedNodes/…) flow through. */
 let _flowStateNamesKt: Set<string> = new Set()
+/** `createFlow(...)` bindings whose inferred node-data row exposes `label`. */
+let _flowStateLabelNamesKt: Set<string> = new Set()
 /** Per-component: i18n instance names — `i18n.t(key, {…})` lowers the
  *  object-literal values arg to a map at this call shape. Mirror of
  *  emit-swift's `_i18nNames`. */
@@ -1913,6 +1914,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _tableNames = new Set()
   _sortableNames = new Set()
   _flowStateNamesKt = new Set()
+  _flowStateLabelNamesKt = new Set()
   _i18nNamesKotlin = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
@@ -1953,7 +1955,12 @@ function emitKotlinComponent(c: ComponentIR): string {
     if (d.kind === 'synced-signal') _syncedSignalNames.add(d.name)
     if (d.kind === 'table-state') _tableNames.add(d.name)
     if (d.kind === 'sortable') _sortableNames.add(d.name)
-    if (d.kind === 'flow-state') _flowStateNamesKt.add(d.name)
+    if (d.kind === 'flow-state') {
+      _flowStateNamesKt.add(d.name)
+      if (d.nodes.some((node) => node.data.kind === 'object' && node.data.fields.some((field) => field.name === 'label'))) {
+        _flowStateLabelNamesKt.add(d.name)
+      }
+    }
     if (d.kind === 'i18n') _i18nNamesKotlin.add(d.name)
     // C4: `const router = createRouter(...)` is a remembered router
     // instance — name reads bare (no parens) like a signal. Add to
@@ -2176,6 +2183,14 @@ function emitKotlinComponent(c: ComponentIR): string {
     lines.push(bodyLines)
     lines.push(`  }`)
   }
+  // Compose lifecycle twin of Swift's onDisappear cleanup for `useFlow`.
+  // `createFlow` stays caller-owned and receives no implicit disposal.
+  for (const d of c.decls) {
+    if (d.kind === 'flow-state' && d.lifecycleOwned === true) {
+      const name = kotlinIdent(d.name)
+      lines.push(`  DisposableEffect(${name}) { onDispose { ${name}.dispose() } }`)
+    }
+  }
   for (const d of c.decls) {
     if (d.kind !== 'fetch') continue
     const name = kotlinIdent(d.name)
@@ -2361,6 +2376,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _tableNames = new Set()
   _sortableNames = new Set()
   _flowStateNamesKt = new Set()
+  _flowStateLabelNamesKt = new Set()
   _i18nNamesKotlin = new Set()
   _fetchNames = new Set()
   _formNames = new Set()
@@ -3144,11 +3160,17 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     // seen declared before — see emit-swift.ts's comment on this same
     // decision). Registering FIRST guarantees this name is the SAME one
     // each node's `data = {...}` literal resolves to below.
-    const rowFields = d.nodes[0]!.data.kind === 'object' ? d.nodes[0]!.data.fields : []
-    const rowType =
-      synthLiteralStructName(rowFields, _synthExprStructs, _synthExprStructKeys, (ex) =>
-        inferType(ex, _kotlinExprInferCtx),
-      ) ?? 'Any'
+    const firstData = d.nodes[0]?.data
+    const rowFields = firstData?.kind === 'object' ? firstData.fields : []
+    const typedKey = literalShapeKey(rowFields)
+    const fieldSet = rowFields.map((field) => field.name).sort().join(',')
+    const declaredRowType =
+      (typedKey !== null ? _structTypedKeyToName.get(typedKey) : undefined) ??
+      _structFieldsToName.get(fieldSet) ??
+      subsetStructName(rowFields.map((field) => field.name), _declaredStructs, typeIsOptional)
+    const rowType = d.dataType !== undefined
+      ? kotlinType(d.dataType)
+      : declaredRowType ?? synthLiteralStructName(rowFields, _synthExprStructs, _synthExprStructKeys, (ex) => inferType(ex, _kotlinExprInferCtx)) ?? 'Any'
     // `PyreonXYPosition`/`PyreonFlowNode.width`/`.height` are Double —
     // Kotlin refuses a bare Int literal there (same reason charts' Pie/Gauge
     // emitters run every numeric arg through `ktChartDouble`).
@@ -3158,9 +3180,21 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
           `id = ${kotlinStr(n.id)}`,
           ...(n.type !== undefined ? [`type = ${kotlinStr(n.type)}`] : []),
           `position = PyreonXYPosition(${ktChartDouble(emitKotlinExpr(n.positionX, 0))}, ${ktChartDouble(emitKotlinExpr(n.positionY, 0))})`,
-          `data = ${emitKotlinExpr(n.data, 0)}`,
+          `data = ${withExpectedTypeKotlin(d.dataType, () => emitKotlinExpr(n.data, 0))}`,
           ...(n.width !== undefined ? [`width = ${ktChartDouble(emitKotlinExpr(n.width, 0))}`] : []),
           ...(n.height !== undefined ? [`height = ${ktChartDouble(emitKotlinExpr(n.height, 0))}`] : []),
+          ...(n.draggable !== undefined ? [`draggable = ${n.draggable}`] : []),
+          ...(n.selectable !== undefined ? [`selectable = ${n.selectable}`] : []),
+          ...(n.connectable !== undefined ? [`connectable = ${n.connectable}`] : []),
+          ...(n.focusable !== undefined ? [`focusable = ${n.focusable}`] : []),
+          ...(n.ariaLabel !== undefined ? [`ariaLabel = ${kotlinStr(n.ariaLabel)}`] : []),
+          ...(n.hidden !== undefined ? [`hidden = ${n.hidden}`] : []),
+          ...(n.deletable !== undefined ? [`deletable = ${n.deletable}`] : []),
+          ...(n.parentId !== undefined ? [`parentId = ${kotlinStr(n.parentId)}`] : []),
+          ...(n.expandParent !== undefined ? [`expandParent = ${n.expandParent}`] : []),
+          ...(n.group !== undefined ? [`group = ${n.group}`] : []),
+          ...(n.sourceHandles !== undefined ? [`sourceHandles = ${kotlinFlowParsedHandles(n.sourceHandles)}`] : []),
+          ...(n.targetHandles !== undefined ? [`targetHandles = ${kotlinFlowParsedHandles(n.targetHandles)}`] : []),
         ]
         return `PyreonFlowNode(${parts.join(', ')})`
       })
@@ -3171,9 +3205,23 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
           `id = ${kotlinStr(e.id)}`,
           `source = ${kotlinStr(e.source)}`,
           `target = ${kotlinStr(e.target)}`,
+          ...(e.sourceHandle !== undefined ? [`sourceHandle = ${kotlinStr(e.sourceHandle)}`] : []),
+          ...(e.targetHandle !== undefined ? [`targetHandle = ${kotlinStr(e.targetHandle)}`] : []),
           ...(e.type !== undefined ? [`type = ${kotlinStr(e.type)}`] : []),
           ...(e.label !== undefined ? [`label = ${kotlinStr(e.label)}`] : []),
-          ...(e.animated !== undefined ? [`animated = ${e.animated ? 'true' : 'false'}`] : []),
+          ...(e.animated !== undefined ? [`animated = ${e.animated ? 'true' : 'false'}`, 'animatedSpecified = true'] : []),
+          ...(e.focusable !== undefined ? [`focusable = ${e.focusable}`] : []),
+          ...(e.ariaLabel !== undefined ? [`ariaLabel = ${kotlinStr(e.ariaLabel)}`] : []),
+          ...(e.hidden !== undefined ? [`hidden = ${e.hidden}`] : []),
+          ...(e.deletable !== undefined ? [`deletable = ${e.deletable}`] : []),
+          ...(e.reconnectable !== undefined ? [`reconnectable = ${e.reconnectable}`] : []),
+          ...(e.interactionWidth !== undefined ? [`interactionWidth = ${ktChartDouble(String(e.interactionWidth))}`] : []),
+          ...(e.pathOptions?.curvature !== undefined ? [`curvature = ${ktChartDouble(String(e.pathOptions.curvature))}`] : []),
+          ...(e.pathOptions?.borderRadius !== undefined ? [`borderRadius = ${ktChartDouble(String(e.pathOptions.borderRadius))}`] : []),
+          ...(e.pathOptions?.offset !== undefined ? [`pathOffset = ${ktChartDouble(String(e.pathOptions.offset))}`] : []),
+          ...(e.markerStart !== undefined ? [`markerStart = ${kotlinFlowMarker(e.markerStart)}`] : []),
+          ...(e.markerEnd !== undefined ? [`markerEnd = ${e.markerEnd === null ? 'null' : kotlinFlowMarker(e.markerEnd)}`, 'markerEndSpecified = true'] : []),
+          ...(e.waypoints !== undefined ? [`waypoints = listOf(${e.waypoints.map((p) => `PyreonXYPosition(${ktChartDouble(emitKotlinExpr(p.x, 0))}, ${ktChartDouble(emitKotlinExpr(p.y, 0))})`).join(', ')})`] : []),
         ]
         return `PyreonFlowEdge(${parts.join(', ')})`
       })
@@ -3190,6 +3238,37 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     const zoomArgs = [
       ...(d.minZoom !== undefined ? [`minZoom = ${ktDouble(d.minZoom)}`] : []),
       ...(d.maxZoom !== undefined ? [`maxZoom = ${ktDouble(d.maxZoom)}`] : []),
+      ...(d.snapToGrid !== undefined ? [`snapToGrid = ${d.snapToGrid}`] : []),
+      ...(d.snapGrid !== undefined ? [`snapGrid = ${ktDouble(d.snapGrid)}`] : []),
+      ...(d.nodeExtent !== undefined ? [`nodeExtent = PyreonFlowNodeExtent(${d.nodeExtent.map(ktDouble).join(', ')})`] : []),
+      ...(d.defaultMarkerEnd !== undefined ? [`defaultMarkerEnd = ${d.defaultMarkerEnd === null ? 'null' : kotlinFlowMarker(d.defaultMarkerEnd)}`] : []),
+      ...(['nodesDraggable', 'nodesConnectable', 'nodesSelectable', 'nodesFocusable', 'edgesFocusable', 'disableKeyboardA11y', 'nodesDeletable', 'edgesDeletable', 'edgesReconnectable', 'pannable', 'panOnDrag', 'zoomable', 'zoomOnPinch', 'zoomOnDoubleClick', 'selectionOnDrag', 'multiSelect', 'onlyRenderVisibleElements', 'snapToObjects', 'autoHistory', 'reducedMotion'] as const).flatMap((key) => d[key] === undefined ? [] : [`${key} = ${d[key]}`]),
+      ...(d.selectionMode !== undefined ? [`selectionMode = ${kotlinStr(d.selectionMode)}`] : []),
+      ...(d.edgeInteractionWidth !== undefined ? [`edgeInteractionWidth = ${ktDouble(d.edgeInteractionWidth)}`] : []),
+      ...(d.connectionRadius !== undefined ? [`connectionRadius = ${ktDouble(d.connectionRadius)}`] : []),
+      ...(d.defaultEdgeType !== undefined ? [`defaultEdgeType = ${kotlinStr(d.defaultEdgeType)}`] : []),
+      ...(d.connectionLineType !== undefined ? [`connectionLineType = ${kotlinStr(d.connectionLineType)}`] : []),
+      ...(d.defaultEdgeOptions !== undefined ? [`defaultEdgeOptions = PyreonFlowDefaultEdgeOptions(${[
+        ...(d.defaultEdgeOptions.type !== undefined ? [`type = ${kotlinStr(d.defaultEdgeOptions.type)}`] : []),
+        ...(d.defaultEdgeOptions.label !== undefined ? [`label = ${kotlinStr(d.defaultEdgeOptions.label)}`] : []),
+        ...(d.defaultEdgeOptions.animated !== undefined ? [`animated = ${d.defaultEdgeOptions.animated}`] : []),
+        ...(d.defaultEdgeOptions.focusable !== undefined ? [`focusable = ${d.defaultEdgeOptions.focusable}`] : []),
+        ...(d.defaultEdgeOptions.ariaLabel !== undefined ? [`ariaLabel = ${kotlinStr(d.defaultEdgeOptions.ariaLabel)}`] : []),
+        ...(d.defaultEdgeOptions.hidden !== undefined ? [`hidden = ${d.defaultEdgeOptions.hidden}`] : []),
+        ...(d.defaultEdgeOptions.deletable !== undefined ? [`deletable = ${d.defaultEdgeOptions.deletable}`] : []),
+        ...(d.defaultEdgeOptions.reconnectable !== undefined ? [`reconnectable = ${d.defaultEdgeOptions.reconnectable}`] : []),
+        ...(d.defaultEdgeOptions.interactionWidth !== undefined ? [`interactionWidth = ${ktDouble(d.defaultEdgeOptions.interactionWidth)}`] : []),
+        ...(d.defaultEdgeOptions.pathOptions?.curvature !== undefined ? [`curvature = ${ktDouble(d.defaultEdgeOptions.pathOptions.curvature)}`] : []),
+        ...(d.defaultEdgeOptions.pathOptions?.borderRadius !== undefined ? [`borderRadius = ${ktDouble(d.defaultEdgeOptions.pathOptions.borderRadius)}`] : []),
+        ...(d.defaultEdgeOptions.pathOptions?.offset !== undefined ? [`pathOffset = ${ktDouble(d.defaultEdgeOptions.pathOptions.offset)}`] : []),
+        ...(d.defaultEdgeOptions.markerStart !== undefined ? [`markerStart = ${kotlinFlowMarker(d.defaultEdgeOptions.markerStart)}`] : []),
+        ...(d.defaultEdgeOptions.markerEnd !== undefined ? [`markerEnd = ${d.defaultEdgeOptions.markerEnd === null ? 'null' : kotlinFlowMarker(d.defaultEdgeOptions.markerEnd)}`, 'markerEndSpecified = true'] : []),
+      ].join(', ')})`] : []),
+      ...(d.fitView !== undefined ? [`fitViewOnLoad = ${d.fitView}`] : []),
+      ...(d.fitViewPadding !== undefined ? [`fitViewPadding = ${ktDouble(d.fitViewPadding)}`] : []),
+      ...(d.connectionRules !== undefined ? [`connectionRules = mapOf(${Object.entries(d.connectionRules).map(([key, outputs]) => `${kotlinStr(key)} to listOf(${outputs.map((output) => kotlinStr(output)).join(', ')})`).join(', ')})`] : []),
+      ...(d.connectionValidator !== undefined ? [`connectionValidator = ${emitKotlinExpr(d.connectionValidator, 0)}`] : []),
+      ...(rowFields.some((field) => field.name === 'label') ? ['searchText = { it.label }'] : []),
     ].join(', ')
     return `val ${kotlinIdent(d.name)} = remember { PyreonFlowState<${rowType}>(nodes = listOf(${nodeLits}), edges = listOf(${edgeLits})${zoomArgs === '' ? '' : `, ${zoomArgs}`}) }`
   }
@@ -3273,6 +3352,9 @@ function kotlinFlowNodeLiteral(arg: ExprIR, flowName: string): string | null {
   const typeExpr = field('type')
   const widthExpr = field('width')
   const heightExpr = field('height')
+  const sourceHandlesExpr = field('sourceHandles')
+  const targetHandlesExpr = field('targetHandles')
+  const optionalFields = ['draggable', 'selectable', 'connectable', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'parentId', 'expandParent', 'group'] as const
   const parts = [
     `id = ${emitKotlinExpr(idExpr, 0)}`,
     ...(typeExpr ? [`type = ${emitKotlinExpr(typeExpr, 0)}`] : []),
@@ -3280,8 +3362,58 @@ function kotlinFlowNodeLiteral(arg: ExprIR, flowName: string): string | null {
     `data = ${emitKotlinExpr(dataExpr, 0)}`,
     ...(widthExpr ? [`width = ${ktChartDouble(emitKotlinExpr(widthExpr, 0))}`] : []),
     ...(heightExpr ? [`height = ${ktChartDouble(emitKotlinExpr(heightExpr, 0))}`] : []),
+    ...optionalFields.flatMap((name) => {
+      const value = field(name)
+      return value ? [`${name} = ${emitKotlinExpr(value, 0)}`] : []
+    }),
+    ...(sourceHandlesExpr ? [`sourceHandles = ${kotlinFlowHandlesLiteral(sourceHandlesExpr) ?? emitKotlinExpr(sourceHandlesExpr, 0)}`] : []),
+    ...(targetHandlesExpr ? [`targetHandles = ${kotlinFlowHandlesLiteral(targetHandlesExpr) ?? emitKotlinExpr(targetHandlesExpr, 0)}`] : []),
   ]
   return `PyreonFlowNode(${parts.join(', ')})`
+}
+
+function kotlinFlowParsedHandles(handles: { id?: string; type: string; position: string }[]): string {
+  const positionName = (position: string) => position[0]!.toUpperCase() + position.slice(1)
+  return `listOf(${handles.map((h) => `PyreonFlowHandleConfig(${h.id === undefined ? '' : `id = ${kotlinStr(h.id)}, `}type = ${kotlinStr(h.type)}, position = PyreonFlowPosition.${positionName(h.position)})`).join(', ')})`
+}
+
+function kotlinFlowMarker(marker: { type: string; color?: string; width?: number; height?: number; strokeWidth?: number }): string {
+  const args = [kotlinStr(marker.type)]
+  if (marker.color !== undefined) args.push(`color = ${kotlinStr(marker.color)}`)
+  if (marker.width !== undefined) args.push(`width = ${ktChartDouble(String(marker.width))}`)
+  if (marker.height !== undefined) args.push(`height = ${ktChartDouble(String(marker.height))}`)
+  if (marker.strokeWidth !== undefined) args.push(`strokeWidth = ${ktChartDouble(String(marker.strokeWidth))}`)
+  return `PyreonFlowMarker(${args.join(', ')})`
+}
+
+function kotlinFlowMarkerLiteral(expr: ExprIR): string | null {
+  if (expr.kind === 'literal' && expr.value === null) return 'null'
+  if (expr.kind === 'literal' && typeof expr.value === 'string') return kotlinFlowMarker({ type: expr.value.toLowerCase() })
+  if (expr.kind === 'member') return kotlinFlowMarker({ type: expr.property.toLowerCase() })
+  if (expr.kind !== 'object') return null
+  const field = (name: string) => expr.fields.find((f) => f.name === name)?.value
+  const type = field('type')
+  const typeName = type?.kind === 'literal' && typeof type.value === 'string' ? type.value.toLowerCase() : type?.kind === 'member' ? type.property.toLowerCase() : null
+  if (typeName !== 'arrow' && typeName !== 'arrowclosed') return null
+  const args = [kotlinStr(typeName)]
+  const color = field('color'); if (color) args.push(`color = ${emitKotlinExpr(color, 0)}`)
+  for (const name of ['width', 'height', 'strokeWidth'] as const) { const value = field(name); if (value) args.push(`${name} = ${ktChartDouble(emitKotlinExpr(value, 0))}`) }
+  return `PyreonFlowMarker(${args.join(', ')})`
+}
+
+function kotlinFlowHandlesLiteral(arg: ExprIR): string | null {
+  if (arg.kind !== 'array') return null
+  const parsed: { id?: string; type: string; position: string }[] = []
+  for (const item of arg.elements) {
+    if (item.kind !== 'object') return null
+    const field = (name: string) => item.fields.find((f) => f.name === name)?.value
+    const type = field('type'), position = field('position'), id = field('id')
+    if (type?.kind !== 'literal' || typeof type.value !== 'string') return null
+    const positionName = position?.kind === 'literal' && typeof position.value === 'string' ? position.value.toLowerCase() : position?.kind === 'member' ? position.property.toLowerCase() : undefined
+    if (!positionName || !['top', 'right', 'bottom', 'left'].includes(positionName) || (id && (id.kind !== 'literal' || typeof id.value !== 'string'))) return null
+    parsed.push({ type: type.value, position: positionName, ...(id?.kind === 'literal' ? { id: id.value as string } : {}) })
+  }
+  return kotlinFlowParsedHandles(parsed)
 }
 
 /** `addEdge({...})` — the `PyreonFlowEdge` twin of `kotlinFlowNodeLiteral`. */
@@ -3296,6 +3428,12 @@ function kotlinFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
   const typeExpr = field('type')
   const labelExpr = field('label')
   const animatedExpr = field('animated')
+  const pathOptionsExpr = field('pathOptions')
+  const markerStartExpr = field('markerStart')
+  const markerEndExpr = field('markerEnd')
+  const waypointsExpr = field('waypoints')
+  const optionalFields = ['sourceHandle', 'targetHandle', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'reconnectable'] as const
+  const interactionWidthExpr = field('interactionWidth')
   const parts = [
     `id = ${emitKotlinExpr(idExpr, 0)}`,
     `source = ${emitKotlinExpr(sourceExpr, 0)}`,
@@ -3303,8 +3441,153 @@ function kotlinFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
     ...(typeExpr ? [`type = ${emitKotlinExpr(typeExpr, 0)}`] : []),
     ...(labelExpr ? [`label = ${emitKotlinExpr(labelExpr, 0)}`] : []),
     ...(animatedExpr ? [`animated = ${emitKotlinExpr(animatedExpr, 0)}`] : []),
+    ...(pathOptionsExpr?.kind === 'object' ? pathOptionsExpr.fields.flatMap(({ name, value }) => {
+      const nativeName = name === 'offset' ? 'pathOffset' : name
+      return ['curvature', 'borderRadius', 'pathOffset'].includes(nativeName) ? [`${nativeName} = ${ktChartDouble(emitKotlinExpr(value, 0))}`] : []
+    }) : []),
+    ...(markerStartExpr ? (() => { const marker = kotlinFlowMarkerLiteral(markerStartExpr); return marker && marker !== 'null' ? [`markerStart = ${marker}`] : [] })() : []),
+    ...(markerEndExpr ? (() => { const marker = kotlinFlowMarkerLiteral(markerEndExpr); return marker ? [`markerEnd = ${marker}`, 'markerEndSpecified = true'] : [] })() : []),
+    ...optionalFields.flatMap((name) => {
+      const value = field(name)
+      return value ? [`${name} = ${emitKotlinExpr(value, 0)}`] : []
+    }),
+    ...(interactionWidthExpr ? [`interactionWidth = ${ktChartDouble(emitKotlinExpr(interactionWidthExpr, 0))}`] : []),
+    ...(waypointsExpr ? (() => {
+      const value = kotlinFlowPositionsLiteral(waypointsExpr)
+      return [`waypoints = ${value ?? emitKotlinExpr(waypointsExpr, 0)}`]
+    })() : []),
   ]
   return `PyreonFlowEdge(${parts.join(', ')})`
+}
+
+function kotlinFlowNodeListLiteral(arg: ExprIR, flowName: string): string | null {
+  if (arg.kind !== 'array') return null
+  const nodes = arg.elements.map((item) => kotlinFlowNodeLiteral(item, flowName))
+  return nodes.some((node) => node === null) ? null : `listOf(${nodes.join(', ')})`
+}
+
+function kotlinFlowEdgeListLiteral(arg: ExprIR, flowName: string): string | null {
+  if (arg.kind !== 'array') return null
+  const edges = arg.elements.map((item) => kotlinFlowEdgeLiteral(item, flowName))
+  return edges.some((edge) => edge === null) ? null : `listOf(${edges.join(', ')})`
+}
+
+function kotlinFlowPositionsLiteral(arg: ExprIR): string | null {
+  if (arg.kind !== 'array') return null
+  const values: string[] = []
+  for (const item of arg.elements) {
+    const value = kotlinFlowPositionLiteral(item)
+    if (value === null) return null
+    values.push(value)
+  }
+  return `listOf(${values.join(', ')})`
+}
+
+function kotlinFlowReconnectLiteral(arg: ExprIR): string | null {
+  if (arg.kind !== 'object') return null
+  const allowed = new Set(['source', 'target', 'sourceHandle', 'targetHandle'])
+  if (arg.fields.some((field) => !allowed.has(field.name))) return null
+  return arg.fields.map((field) => `, ${field.name} = ${emitKotlinExpr(field.value, 0)}`).join('')
+}
+
+function kotlinFlowConnectionLiteral(arg: ExprIR): string | null {
+  if (arg.kind !== 'object') return null
+  const field = (name: string): ExprIR | undefined => arg.fields.find((f) => f.name === name)?.value
+  const source = field('source'), target = field('target')
+  if (source === undefined || target === undefined) return null
+  const sourceHandle = field('sourceHandle'), targetHandle = field('targetHandle')
+  return `PyreonFlowConnection(source = ${emitKotlinExpr(source, 0)}, target = ${emitKotlinExpr(target, 0)}${sourceHandle ? `, sourceHandle = ${emitKotlinExpr(sourceHandle, 0)}` : ''}${targetHandle ? `, targetHandle = ${emitKotlinExpr(targetHandle, 0)}` : ''})`
+}
+
+function kotlinFlowViewportLiteral(arg: ExprIR): string | null {
+  if (arg.kind !== 'object') return null
+  const allowed = new Set(['x', 'y', 'zoom', 'duration'])
+  if (arg.fields.some((field) => !allowed.has(field.name))) return null
+  return arg.fields.map((field) => `${field.name} = ${ktChartDouble(emitKotlinExpr(field.value, 0))}`).join(', ')
+}
+
+function kotlinFlowDurationOption(arg: ExprIR | undefined): string | null | undefined {
+  if (arg === undefined) return undefined
+  if (arg.kind !== 'object' || arg.fields.some((field) => field.name !== 'duration')) return null
+  const duration = arg.fields.find((field) => field.name === 'duration')?.value
+  return duration === undefined ? undefined : ktChartDouble(emitKotlinExpr(duration, 0))
+}
+
+function kotlinFlowLayoutOptions(arg: ExprIR | undefined, indent: number): string | null | undefined {
+  if (arg === undefined) return undefined
+  if (arg.kind !== 'object' || (arg.spreads?.length ?? 0) > 0) return null
+  const supported = new Set(['direction', 'nodeSpacing', 'layerSpacing', 'animate', 'animationDuration'])
+  if (arg.fields.some((field) => !supported.has(field.name))) return null
+  const fields = arg.fields.map(({ name, value }) => {
+    const emitted = emitKotlinExpr(value, indent)
+    return `${name} = ${name === 'direction' || name === 'animate' ? emitted : ktChartDouble(emitted)}`
+  })
+  return `PyreonFlowLayoutOptions(${fields.join(', ')})`
+}
+
+const FLOW_PATH_HELPERS_KOTLIN = new Set(['getBezierPath', 'getSmoothStepPath', 'getStepPath', 'getStraightPath', 'getWaypointPath'])
+
+function kotlinFlowPositionExpr(value: ExprIR): string | null {
+  if (value.kind === 'member' && value.object.kind === 'identifier' && value.object.name === 'Position') return `PyreonFlowPosition.${value.property}`
+  if (value.kind === 'literal' && typeof value.value === 'string' && ['top', 'right', 'bottom', 'left'].includes(value.value)) return `PyreonFlowPosition.${value.value[0]!.toUpperCase()}${value.value.slice(1)}`
+  return null
+}
+
+function kotlinFlowGeometryLiteral(arg: ExprIR, fields: readonly string[], typeName: string, indent: number): string | null {
+  if (arg.kind !== 'object' || (arg.spreads?.length ?? 0) > 0 || arg.fields.length !== fields.length) return null
+  const values = new Map(arg.fields.map((field) => [field.name, field.value]))
+  if (fields.some((field) => !values.has(field))) return null
+  return `${typeName}(${fields.map((field) => ktChartDouble(emitKotlinExpr(values.get(field)!, indent))).join(', ')})`
+}
+
+function kotlinFlowPathHelper(name: string, arg: ExprIR | undefined, indent: number): string | null {
+  if (arg?.kind !== 'object' || (arg.spreads?.length ?? 0) > 0) return null
+  const fields = new Map(arg.fields.map((field) => [field.name, field.value]))
+  const commonFields = ['sourceX', 'sourceY', 'targetX', 'targetY']
+  const optionalFields = name === 'getStraightPath' ? []
+    : name === 'getWaypointPath' ? ['waypoints']
+    : name === 'getBezierPath' ? ['sourcePosition', 'targetPosition', 'curvature']
+    : name === 'getSmoothStepPath' ? ['sourcePosition', 'targetPosition', 'borderRadius', 'offset']
+    : ['sourcePosition', 'targetPosition', 'offset']
+  const allowed = new Set([...commonFields, ...optionalFields])
+  if (arg.fields.some((field) => !allowed.has(field.name))) return null
+  const required = (key: string): string | null => fields.has(key) ? ktChartDouble(emitKotlinExpr(fields.get(key)!, indent)) : null
+  const sx = required('sourceX'), sy = required('sourceY'), tx = required('targetX'), ty = required('targetY')
+  if (sx === null || sy === null || tx === null || ty === null) return null
+  const position = (key: string, fallback: string): string | null => {
+    const value = fields.get(key)
+    if (value === undefined) return fallback
+    return kotlinFlowPositionExpr(value)
+  }
+  if (name === 'getStraightPath') return `pyreonStraightPath(${sx}, ${sy}, ${tx}, ${ty})`
+  if (name === 'getWaypointPath') {
+    const waypoints = fields.get('waypoints')
+    if (waypoints?.kind !== 'array') return null
+    const points = waypoints.elements.map((point) => {
+      if (point.kind !== 'object') return null
+      const x = point.fields.find((field) => field.name === 'x')?.value
+      const y = point.fields.find((field) => field.name === 'y')?.value
+      return x && y ? `PyreonFlowPathPoint(${ktChartDouble(emitKotlinExpr(x, indent))}, ${ktChartDouble(emitKotlinExpr(y, indent))})` : null
+    })
+    if (points.some((point) => point === null)) return null
+    return `pyreonWaypointPath(${sx}, ${sy}, ${tx}, ${ty}, listOf(${points.join(', ')}))`
+  }
+  const sourcePosition = position('sourcePosition', 'PyreonFlowPosition.Bottom'), targetPosition = position('targetPosition', 'PyreonFlowPosition.Top')
+  if (sourcePosition === null || targetPosition === null) return null
+  const common = `${sx}, ${sy}, ${sourcePosition}, ${tx}, ${ty}, ${targetPosition}`
+  if (name === 'getBezierPath') return `pyreonBezierPath(${common}${fields.has('curvature') ? `, curvature = ${ktChartDouble(emitKotlinExpr(fields.get('curvature')!, indent))}` : ''})`
+  const extra = [
+    ...(name === 'getSmoothStepPath' && fields.has('borderRadius') ? [`borderRadius = ${ktChartDouble(emitKotlinExpr(fields.get('borderRadius')!, indent))}`] : []),
+    ...(fields.has('offset') ? [`offset = ${ktChartDouble(emitKotlinExpr(fields.get('offset')!, indent))}`] : []),
+  ]
+  return `${name === 'getStepPath' ? 'pyreonStepPath' : 'pyreonSmoothStepPath'}(${common}${extra.length ? `, ${extra.join(', ')}` : ''})`
+}
+
+function kotlinFlowExtentLiteral(arg: ExprIR): string | null {
+  if (arg.kind !== 'array' || arg.elements.length !== 2) return null
+  const [minPoint, maxPoint] = arg.elements
+  if (minPoint?.kind !== 'array' || maxPoint?.kind !== 'array' || minPoint.elements.length !== 2 || maxPoint.elements.length !== 2) return null
+  return `minX = ${ktChartDouble(emitKotlinExpr(minPoint.elements[0]!, 0))}, minY = ${ktChartDouble(emitKotlinExpr(minPoint.elements[1]!, 0))}, maxX = ${ktChartDouble(emitKotlinExpr(maxPoint.elements[0]!, 0))}, maxY = ${ktChartDouble(emitKotlinExpr(maxPoint.elements[1]!, 0))}`
 }
 
 /** Names every literal field the native node/edge type does not carry. */
@@ -4048,6 +4331,8 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       }
       return String(e.value)
     case 'identifier':
+      if (e.name === 'DEFAULT_NODE_WIDTH') return '150.0'
+      if (e.name === 'DEFAULT_NODE_HEIGHT') return '40.0'
       return kotlinIdent(e.name)
     case 'await':
       // M4.5: a Kotlin suspend call carries NO `await` keyword — the enclosing
@@ -4087,6 +4372,52 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             if (pt !== undefined && pt.kind === 'typeRef' && arg.kind === 'object') _argExpectedTypesKotlin.set(arg, pt)
           })
         }
+      }
+      if (e.callee.kind === 'identifier' && e.callee.name === '__pyreonFlowComputeLayout' && e.args.length >= 2 && e.args.length <= 4) {
+        const options = kotlinFlowLayoutOptions(e.args[3], indent)
+        if (options !== null) {
+          const args = [
+            emitKotlinExpr(e.args[0]!, indent),
+            emitKotlinExpr(e.args[1]!, indent),
+            ...(e.args[2] ? [`algorithm = ${emitKotlinExpr(e.args[2]!, indent)}`] : []),
+            ...(options ? [`options = ${options}`] : []),
+          ]
+          return `pyreonComputeFlowLayout(${args.join(', ')})`
+        }
+        _emitWarnings.push('computeLayout options must be an object literal using direction/nodeSpacing/layerSpacing/animate/animationDuration to lower natively.')
+      }
+      if (e.callee.kind === 'identifier' && FLOW_PATH_HELPERS_KOTLIN.has(e.callee.name) && e.args.length === 1) {
+        const lowered = kotlinFlowPathHelper(e.callee.name, e.args[0], indent)
+        if (lowered !== null) return lowered
+        _emitWarnings.push(`${e.callee.name} requires one supported object-literal parameter to lower natively.`)
+      }
+      if (e.callee.kind === 'identifier' && e.callee.name === 'getHandlePosition' && e.args.length === 5) {
+        const position = kotlinFlowPositionExpr(e.args[0]!)
+        if (position !== null) return `pyreonHandlePosition(${position}, ${e.args.slice(1).map((arg) => ktChartDouble(emitKotlinExpr(arg, indent))).join(', ')})`
+        _emitWarnings.push('getHandlePosition requires a literal Position value to lower natively.')
+      }
+      if (e.callee.kind === 'identifier' && e.callee.name === 'getEdgePath' && (e.args.length === 7 || e.args.length === 8)) {
+        const sourcePosition = kotlinFlowPositionExpr(e.args[3]!)
+        const targetPosition = kotlinFlowPositionExpr(e.args[6]!)
+        const options = e.args[7]
+        const allowed = new Set(['borderRadius', 'offset', 'curvature'])
+        if (sourcePosition !== null && targetPosition !== null && (options === undefined || (options.kind === 'object' && (options.spreads?.length ?? 0) === 0 && options.fields.every((field) => allowed.has(field.name))))) {
+          const extras = options?.kind === 'object' ? options.fields.map((field) => `${field.name} = ${ktChartDouble(emitKotlinExpr(field.value, indent))}`) : []
+          return `pyreonEdgePath(${emitKotlinExpr(e.args[0]!, indent)}, ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))}, ${ktChartDouble(emitKotlinExpr(e.args[2]!, indent))}, ${sourcePosition}, ${ktChartDouble(emitKotlinExpr(e.args[4]!, indent))}, ${ktChartDouble(emitKotlinExpr(e.args[5]!, indent))}, ${targetPosition}${extras.length ? `, ${extras.join(', ')}` : ''})`
+        }
+        _emitWarnings.push('getEdgePath requires literal Position values and a supported object-literal options parameter to lower natively.')
+      }
+      if (e.callee.kind === 'identifier' && e.callee.name === 'getNodeIntersection' && e.args.length === 2) {
+        const box = kotlinFlowGeometryLiteral(e.args[0]!, ['x', 'y', 'width', 'height'], 'PyreonFlowNodeBox', indent)
+        const toward = kotlinFlowGeometryLiteral(e.args[1]!, ['x', 'y'], 'PyreonFlowPathPoint', indent)
+        if (box !== null && toward !== null) return `pyreonNodeIntersection(${box}, ${toward})`
+        _emitWarnings.push('getNodeIntersection requires literal { x, y, width, height } and { x, y } parameters to lower natively.')
+      }
+      if (e.callee.kind === 'identifier' && e.callee.name === 'getEffectiveDimensions' && (e.args.length === 1 || e.args.length === 2)) {
+        if (e.args[0]!.kind !== 'object' && (e.args[1] === undefined || e.args[1]!.kind !== 'object')) {
+          return `pyreonEffectiveDimensions(${emitKotlinExpr(e.args[0]!, indent)}${e.args[1] ? `, ${emitKotlinExpr(e.args[1], indent)}` : ''})`
+        }
+        _emitWarnings.push('getEffectiveDimensions requires native Flow node/measurement expressions rather than anonymous object literals.')
       }
       // Chart decimators consume `List<Double>`; TypeScript `number[]` can be
       // represented as `List<Int>` when its initializer is wholly integral.
@@ -4648,11 +4979,20 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       ) {
         const flowName = e.callee.object.name
         const member = e.callee.property
+        if (['updateNode', 'updateNodeData', 'updateEdge'].includes(member) && e.args.length === 2 && (e.args[1]!.kind !== 'object' || (e.args[1]!.spreads?.length ?? 0) > 0)) {
+          _emitWarnings.push(`createFlow binding \`${flowName}\`: \`${member}\` currently lowers only a literal patch object without spreads on native targets; this call is emitted as written and may fail the native build.`)
+        }
+        if (e.args.length === 0 && member === 'getNodes') return `${kotlinIdent(flowName)}.nodes`
+        if (e.args.length === 0 && member === 'getEdges') return `${kotlinIdent(flowName)}.edges`
+        if (e.args.length === 0 && member === 'getViewport') return `${kotlinIdent(flowName)}.viewport`
         // Nothing silent inside the boundary — mirrors emit-swift.ts exactly.
         if (!LOWERED_FLOW_METHODS.has(member) && !LOWERED_FLOW_PROPERTY_READS.has(member)) {
           _emitWarnings.push(unloweredFlowMemberWarning(flowName, member))
         }
-        if (member === 'fitView') _emitWarnings.push(flowFitViewWarning(flowName))
+        if (member === 'paste' && e.args.length === 1) {
+          const lit = kotlinFlowPositionLiteral(e.args[0]!)
+          if (lit !== null) return `${kotlinIdent(flowName)}.paste(${lit})`
+        }
         if (member === 'addNode' && e.args.length === 1) {
           const lit = kotlinFlowNodeLiteral(e.args[0]!, flowName)
           if (lit !== null) return `${kotlinIdent(flowName)}.addNode(${lit})`
@@ -4666,6 +5006,134 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           if (lit !== null) {
             return `${kotlinIdent(e.callee.object.name)}.updateNodePosition(${emitKotlinExpr(e.args[0]!, indent)}, ${lit})`
           }
+        }
+        if (member === 'updateNodeData' && e.args.length === 2 && e.args[1]!.kind === 'object') {
+          const patch = e.args[1]
+          if (!patch.spreads || patch.spreads.length === 0) {
+            const assignments = patch.fields.map(({ name, value }) => `${kotlinIdent(name)} = ${emitKotlinExpr(value, indent)}`).join(', ')
+            return `${kotlinIdent(flowName)}.updateNodeData(${emitKotlinExpr(e.args[0]!, indent)}) { data -> data.copy(${assignments}) }`
+          }
+        }
+        if (member === 'updateNode' && e.args.length === 2 && e.args[1]!.kind === 'object') {
+          const patch = e.args[1]
+          if (!patch.spreads || patch.spreads.length === 0) {
+            warnDroppedFlowFieldsKt(`createFlow binding \`${flowName}\` updateNode(...)`, 'node', patch)
+            const fields = patch.fields.flatMap(({ name, value }) => {
+              if (name === 'id') { _emitWarnings.push(`createFlow binding \`${flowName}\` updateNode(...): changing a node id is not supported natively; the original id is preserved.`); return [] }
+              if (name === 'position') { const position = kotlinFlowPositionLiteral(value); return position ? [`position = ${position}`] : [] }
+              if (name === 'data' && value.kind === 'object') return [`data = node.data.copy(${value.fields.map((field) => `${kotlinIdent(field.name)} = ${emitKotlinExpr(field.value, indent)}`).join(', ')})`]
+              if (name === 'sourceHandles' || name === 'targetHandles') { const handles = kotlinFlowHandlesLiteral(value); return handles ? [`${name} = ${handles}`] : [] }
+              const rendered = ['width', 'height'].includes(name) ? ktChartDouble(emitKotlinExpr(value, indent)) : emitKotlinExpr(value, indent)
+              return HANDLED_FLOW_NODE_FIELDS.has(name) ? [`${kotlinIdent(name)} = ${rendered}`] : []
+            })
+            return `${kotlinIdent(flowName)}.updateNode(${emitKotlinExpr(e.args[0]!, indent)}) { node -> node.copy(${fields.join(', ')}) }`
+          }
+        }
+        if (member === 'updateEdge' && e.args.length === 2 && e.args[1]!.kind === 'object') {
+          const patch = e.args[1]
+          if (!patch.spreads || patch.spreads.length === 0) {
+            warnDroppedFlowFieldsKt(`createFlow binding \`${flowName}\` updateEdge(...)`, 'edge', patch)
+            const fields = patch.fields.flatMap(({ name, value }) => {
+              if (name === 'id') { _emitWarnings.push(`createFlow binding \`${flowName}\` updateEdge(...): changing an edge id is not supported natively; the original id is preserved.`); return [] }
+              if (name === 'pathOptions' && value.kind === 'object') return value.fields.flatMap((field) => ['curvature', 'borderRadius', 'offset'].includes(field.name) ? [`${field.name === 'offset' ? 'pathOffset' : field.name} = ${ktChartDouble(emitKotlinExpr(field.value, indent))}`] : [])
+              if (name === 'markerStart' || name === 'markerEnd') { const marker = kotlinFlowMarkerLiteral(value); return marker ? [`${name} = ${marker}`, ...(name === 'markerEnd' ? ['markerEndSpecified = true'] : [])] : [] }
+              if (name === 'animated') return [`animated = ${emitKotlinExpr(value, indent)}`, 'animatedSpecified = true']
+              if (name === 'waypoints') { const points = kotlinFlowPositionsLiteral(value); return points ? [`waypoints = ${points}`] : [] }
+              const rendered = name === 'interactionWidth' ? ktChartDouble(emitKotlinExpr(value, indent)) : emitKotlinExpr(value, indent)
+              return HANDLED_FLOW_EDGE_FIELDS.has(name) ? [`${kotlinIdent(name)} = ${rendered}`] : []
+            })
+            return `${kotlinIdent(flowName)}.updateEdge(${emitKotlinExpr(e.args[0]!, indent)}) { edge -> edge.copy(${fields.join(', ')}) }`
+          }
+        }
+        if (['panTo', 'screenToFlowPosition', 'flowToScreenPosition'].includes(member) && e.args.length === 1) {
+          const lit = kotlinFlowPositionLiteral(e.args[0]!)
+          if (lit !== null) return `${kotlinIdent(flowName)}.${member}(${lit})`
+        }
+        if (member === 'zoomTo' && e.args.length >= 1) {
+          const duration = kotlinFlowDurationOption(e.args[1])
+          if (duration !== null) return `${kotlinIdent(flowName)}.zoomTo(${ktChartDouble(emitKotlinExpr(e.args[0]!, indent))}${duration ? `, duration = ${duration}` : ''})`
+        }
+        if ((member === 'zoomIn' || member === 'zoomOut') && e.args.length <= 1) {
+          const duration = kotlinFlowDurationOption(e.args[0])
+          if (duration !== null) return `${kotlinIdent(flowName)}.${member}(${duration ? `duration = ${duration}` : ''})`
+        }
+        if (member === 'moveSelectedNodes' && e.args.length === 2) {
+          return `${kotlinIdent(flowName)}.moveSelectedNodes(${ktChartDouble(emitKotlinExpr(e.args[0]!, indent))}, ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))})`
+        }
+        if (member === 'focusNode' && e.args.length === 2) {
+          return `${kotlinIdent(flowName)}.focusNode(${emitKotlinExpr(e.args[0]!, indent)}, ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))})`
+        }
+        if ((member === 'getProximityConnection' || member === 'resolveCollisions') && e.args.length === 2) {
+          return `${kotlinIdent(flowName)}.${member}(${emitKotlinExpr(e.args[0]!, indent)}, ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))})`
+        }
+        if (member === 'addEdgeWaypoint' && e.args.length >= 2) {
+          const point = kotlinFlowPositionLiteral(e.args[1]!)
+          if (point !== null) return `${kotlinIdent(flowName)}.addEdgeWaypoint(${emitKotlinExpr(e.args[0]!, indent)}, ${point}${e.args.length === 3 ? `, ${emitKotlinExpr(e.args[2]!, indent)}` : ''})`
+        }
+        if (member === 'updateEdgeWaypoint' && e.args.length === 3) {
+          const point = kotlinFlowPositionLiteral(e.args[2]!)
+          if (point !== null) return `${kotlinIdent(flowName)}.updateEdgeWaypoint(${emitKotlinExpr(e.args[0]!, indent)}, ${emitKotlinExpr(e.args[1]!, indent)}, ${point})`
+        }
+        if (member === 'reconnectEdge' && e.args.length === 2) {
+          const args = kotlinFlowReconnectLiteral(e.args[1]!)
+          if (args !== null) return `${kotlinIdent(flowName)}.reconnectEdge(${emitKotlinExpr(e.args[0]!, indent)}${args})`
+        }
+        if (member === 'isValidConnection' && e.args.length === 1) {
+          const connection = kotlinFlowConnectionLiteral(e.args[0]!)
+          if (connection !== null) return `${kotlinIdent(flowName)}.isValidConnection(${connection})`
+        }
+        if ((member === 'addNodes' || member === 'setNodes') && e.args.length === 1) {
+          const nodes = kotlinFlowNodeListLiteral(e.args[0]!, flowName)
+          if (nodes !== null) return `${kotlinIdent(flowName)}.${member}(${nodes})`
+        }
+        if ((member === 'addEdges' || member === 'setEdges') && e.args.length === 1) {
+          const edges = kotlinFlowEdgeListLiteral(e.args[0]!, flowName)
+          if (edges !== null) return `${kotlinIdent(flowName)}.${member}(${edges})`
+        }
+        if (member === 'setViewport' && e.args.length >= 1) {
+          const args = kotlinFlowViewportLiteral(e.args[0]!)
+          const duration = kotlinFlowDurationOption(e.args[1])
+          if (args !== null && duration !== null) return `${kotlinIdent(flowName)}.setViewport(${args}${duration ? `${args ? ', ' : ''}duration = ${duration}` : ''})`
+        }
+        if (member === 'animateViewport' && e.args.length >= 1) {
+          const args = kotlinFlowViewportLiteral(e.args[0]!)
+          if (args !== null) return `${kotlinIdent(flowName)}.animateViewport(${args}${e.args[1] ? `, duration = ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))}` : ''})`
+        }
+        if (member === 'fitView' && e.args.length >= 1 && e.args.length <= 3) {
+          const duration = kotlinFlowDurationOption(e.args[2])
+          if (duration !== null) return `${kotlinIdent(flowName)}.fitView(${emitKotlinExpr(e.args[0]!, indent)}${e.args[1] ? `, padding = ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))}` : ''}${duration ? `, duration = ${duration}` : ''})`
+        }
+        if (member === 'layout') {
+          if (e.args.length === 0) return `${kotlinIdent(flowName)}.layout()`
+          const algorithm = emitKotlinExpr(e.args[0]!, indent)
+          if (e.args.length === 1) return `${kotlinIdent(flowName)}.layout(${algorithm})`
+          const options = e.args[1]!
+          if (options.kind === 'object' && (!options.spreads || options.spreads.length === 0)) {
+            const fields = options.fields.flatMap(({ name, value }) => {
+              if (name === 'direction' || name === 'animate') return [`${name} = ${emitKotlinExpr(value, indent)}`]
+              if (name === 'nodeSpacing' || name === 'layerSpacing' || name === 'animationDuration') return [`${name} = ${ktChartDouble(emitKotlinExpr(value, indent))}`]
+              return []
+            })
+            return `${kotlinIdent(flowName)}.layout(${algorithm}, PyreonFlowLayoutOptions(${fields.join(', ')}))`
+          }
+        }
+        if (member === 'setCenter' && e.args.length >= 2) {
+          const options = e.args[2] ? kotlinFlowViewportLiteral(e.args[2]!) : ''
+          if (options !== null) return `${kotlinIdent(flowName)}.setCenter(${ktChartDouble(emitKotlinExpr(e.args[0]!, indent))}, ${ktChartDouble(emitKotlinExpr(e.args[1]!, indent))}${options ? `, ${options}` : ''})`
+        }
+        if (member === 'setNodeExtent' && e.args.length === 1) {
+          const value = e.args[0]!
+          if ((value.kind === 'literal' && value.value === null) || (value.kind as string) === 'null' || (value.kind === 'identifier' && value.name === 'undefined')) return `${kotlinIdent(flowName)}.clearNodeExtent()`
+          const extent = kotlinFlowExtentLiteral(value)
+          if (extent !== null) return `${kotlinIdent(flowName)}.setNodeExtent(${extent})`
+        }
+        if (member === 'clampToExtent' && e.args.length >= 1) {
+          const position = kotlinFlowPositionLiteral(e.args[0]!)
+          if (position !== null) return `${kotlinIdent(flowName)}.clampToExtent(${position}${e.args.slice(1).map((arg) => `, ${ktChartDouble(emitKotlinExpr(arg, indent))}`).join('')})`
+        }
+        if (member === 'getSnapLines' && e.args.length >= 2) {
+          const position = kotlinFlowPositionLiteral(e.args[1]!)
+          if (position !== null) return `${kotlinIdent(flowName)}.getSnapLines(${emitKotlinExpr(e.args[0]!, indent)}, ${position}${e.args[2] ? `, ${ktChartDouble(emitKotlinExpr(e.args[2]!, indent))}` : ''})`
         }
       }
       // A signal WRITE on a flow-state property — read-only natively; name it.
@@ -4690,7 +5158,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         e.callee.object.kind === 'identifier' &&
         _flowStateNamesKt.has(e.callee.object.name) &&
         e.args.length === 0 &&
-        ['nodes', 'edges', 'viewport', 'zoom'].includes(e.callee.property)
+        LOWERED_FLOW_PROPERTY_READS.has(e.callee.property)
       ) {
         return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}`
       }
@@ -6311,6 +6779,7 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // <WebView> — native host (Android WebView via PyreonWebView) for
   // embedding web-only-rich viz inside a Compose native shell.
   if (tag === 'WebView') return emitKotlinWebView(e)
+  if (tag === 'Flow' && canAliasIntercept(tag, '@pyreon/flow')) return emitKotlinFlowHost(e)
   // `@pyreon/charts/plot` family hosts → PyreonChartCanvas over the generated
   // engine (chart-hosts.ts); accessor-prop hosts warn by name.
   if (isChartHostTag(tag)) return emitKotlinChartHost(e, indent)
@@ -6389,6 +6858,87 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // 8 other canonical primitives fall through to generic emit until
   // real apps demand each (see emit-swift.ts comment).
   return emitKotlinGeneric(e, indent)
+}
+
+function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'instance')
+  if (attr === undefined || attr.kind !== 'attr' || attr.value === undefined) {
+    _emitWarnings.push('<Flow> requires `instance={flow}` for native lowering — the host was dropped.')
+    return 'Box {}'
+  }
+  const nodeTypesAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'nodeTypes')
+  const nodeTypes = nodeTypesAttr?.kind === 'attr' && nodeTypesAttr.value?.kind === 'object' && (nodeTypesAttr.value.spreads?.length ?? 0) === 0 && nodeTypesAttr.value.fields.every((field) => field.value.kind === 'identifier')
+    ? nodeTypesAttr.value.fields.map((field) => ({ type: field.name, component: (field.value as Extract<ExprIR, { kind: 'identifier' }>).name }))
+    : undefined
+  if (nodeTypesAttr !== undefined && nodeTypes === undefined) {
+    _emitWarnings.push('<Flow nodeTypes={…}> must be a literal { type: Component } map to lower natively; the native default node renderer is used.')
+  }
+  if (e.attrs.some((a) => a.kind === 'attr' && a.name === 'edgeTypes')) {
+    _emitWarnings.push('<Flow edgeTypes={…}> custom edge renderer maps are not lowered natively yet; the native default edge renderer is used.')
+  }
+  const background = e.children
+    .filter((child) => child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'Background')
+    .map((child) => child.kind === 'expr' ? child.expr : undefined)[0]
+  const controls = e.children
+    .filter((child) => child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'Controls')
+    .map((child) => child.kind === 'expr' ? child.expr : undefined)[0]
+  const miniMap = e.children
+    .filter((child) => child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'MiniMap')
+    .map((child) => child.kind === 'expr' ? child.expr : undefined)[0]
+  const panels = e.children
+    .filter((child) => child.kind === 'expr' && child.expr.kind === 'jsx-element' && child.expr.tag === 'Panel')
+    .map((child) => child.kind === 'expr' ? child.expr : undefined)
+    .filter((panel): panel is Extract<ExprIR, { kind: 'jsx-element' }> => panel?.kind === 'jsx-element')
+  const otherChildren = e.children.filter((child) => !(child.kind === 'expr' && child.expr.kind === 'jsx-element' && (child.expr.tag === 'Background' || child.expr.tag === 'Controls' || child.expr.tag === 'MiniMap' || child.expr.tag === 'Panel')))
+  if (otherChildren.length > 0) {
+    _emitWarnings.push('<Flow> contains native-unlowered children; Handle and other optional chrome remain explicit follow-ups.')
+  }
+  const bgArg = background?.kind === 'jsx-element' ? `, background = ${emitKotlinFlowBackground(background)}` : ''
+  const controlsArg = controls?.kind === 'jsx-element' ? `, controls = ${emitKotlinFlowControls(controls)}` : ''
+  const miniMapArg = miniMap?.kind === 'jsx-element' ? `, miniMap = ${emitKotlinFlowMiniMap(miniMap)}` : ''
+  const nodeText = attr.value.kind === 'identifier' && _flowStateLabelNamesKt.has(attr.value.name)
+    ? 'Text(text = pyreonNode.data.label.toString())'
+    : 'Text(text = pyreonNode.id)'
+  const renderer = nodeTypes && nodeTypes.length > 0
+    ? `when (pyreonNode.type) {\n${nodeTypes.map(({ type, component }) => `    ${kotlinStr(type)} -> ${kotlinIdent(component)}(id = pyreonNode.id, data = { pyreonNode.data }, selected = { pyreonSelected }, dragging = { pyreonDragging })`).join('\n')}\n    else -> ${nodeText}\n  }`
+    : nodeText
+  const rendererParams = nodeTypes && nodeTypes.length > 0 ? 'pyreonNode, pyreonSelected, pyreonDragging' : 'pyreonNode'
+  const host = `PyreonFlowView(state = ${emitKotlinExpr(attr.value, 0)}${bgArg}${controlsArg}${miniMapArg}) { ${rendererParams} ->\n  ${renderer}\n}`
+  if (panels.length === 0) return host
+  const overlays = panels.map((panel) => {
+    const position = readStaticAttrKotlin(panel, 'position')
+    const hasPosition = panel.attrs.some((a) => a.kind === 'attr' && a.name === 'position')
+    const alignment = position === 'top-right' ? 'TopEnd' : position === 'bottom-left' ? 'BottomStart' : position === 'bottom-right' ? 'BottomEnd' : 'TopStart'
+    if (hasPosition && typeof position !== 'string') _emitWarnings.push('<Panel position={…}> must be a string literal to lower natively; top-left is used.')
+    if (panel.attrs.some((a) => a.kind === 'attr' && a.name === 'style')) _emitWarnings.push('<Panel style={…}> uses web CSS and is not applied natively; its position and content still lower.')
+    const content = panel.children.map((child) => `      ${emitKotlinChild(child, 6)}`).join('\n')
+    return `    Box(modifier = Modifier.align(Alignment.${alignment}).padding(10.dp)) {\n${content}\n    }`
+  }).join('\n')
+  return `Box {\n  ${host}\n${overlays}\n}`
+}
+
+function emitKotlinFlowMiniMap(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const str = (name: string, fallback: string): string => { const value = readStaticAttrKotlin(e, name); return kotlinStr(typeof value === 'string' ? value : fallback) }
+  const num = (name: string, fallback: number): string => { const value = readStaticAttrKotlin(e, name); const n = typeof value === 'number' ? value : fallback; return `${n}${Number.isInteger(n) ? '.0' : ''}` }
+  const bool = (name: string, fallback: boolean): string => readStaticAttrKotlin(e, name) === false ? 'false' : readStaticAttrKotlin(e, name) === true ? 'true' : String(fallback)
+  return `PyreonFlowMiniMapStyle(nodeColor = ${str('nodeColor', '#e2e8f0')}, maskColor = ${str('maskColor', '#000000')}, width = ${num('width', 200)}, height = ${num('height', 150)}, pannable = ${bool('pannable', true)}, zoomable = ${bool('zoomable', true)})`
+}
+
+function emitKotlinFlowControls(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const bool = (name: string, fallback: boolean): string => readStaticAttrKotlin(e, name) === false ? 'false' : readStaticAttrKotlin(e, name) === true ? 'true' : String(fallback)
+  const position = readStaticAttrKotlin(e, 'position')
+  const pos = position === 'top-left' ? 'TopLeft' : position === 'top-right' ? 'TopRight' : position === 'bottom-right' ? 'BottomRight' : 'BottomLeft'
+  return `PyreonFlowControlsStyle(showZoomIn = ${bool('showZoomIn', true)}, showZoomOut = ${bool('showZoomOut', true)}, showFitView = ${bool('showFitView', true)}, showLock = ${bool('showLock', false)}, position = PyreonFlowControlsPosition.${pos})`
+}
+
+function emitKotlinFlowBackground(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const variant = readStaticAttrKotlin(e, 'variant')
+  const resolvedVariant = variant === 'lines' ? 'Lines' : variant === 'cross' ? 'Cross' : 'Dots'
+  const gap = readStaticAttrKotlin(e, 'gap')
+  const size = readStaticAttrKotlin(e, 'size')
+  const color = readStaticAttrKotlin(e, 'color')
+  const n = (value: unknown, fallback: number): string => `${typeof value === 'number' ? value : fallback}${Number.isInteger(typeof value === 'number' ? value : fallback) ? '.0' : ''}`
+  return `PyreonFlowBackgroundStyle(variant = PyreonFlowBackgroundVariant.${resolvedVariant}, gap = ${n(gap, 20)}, size = ${n(size, 1)}, color = ${typeof color === 'string' ? kotlinStr(color) : '"#dddddd"'})`
 }
 
 /**

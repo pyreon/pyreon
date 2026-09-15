@@ -49,6 +49,17 @@ fun PyreonFlowEdgeCanvas(
                         pathEffect = edge.pathEffect,
                     ),
                 )
+                for (marker in listOfNotNull(edge.startMarker, edge.endMarker)) {
+                    val points = marker.points
+                    if (points.isEmpty()) continue
+                    val markerPath = androidx.compose.ui.graphics.Path().apply {
+                        moveTo(points[0].x.toFloat(), points[0].y.toFloat())
+                        for (point in points.drop(1)) lineTo(point.x.toFloat(), point.y.toFloat())
+                        if (marker.closed) close()
+                    }
+                    if (marker.closed) drawPath(markerPath, pyreonFlowEdgeColor(marker.color))
+                    else drawPath(markerPath, pyreonFlowEdgeColor(marker.color), style = Stroke(width = marker.strokeWidth.toFloat(), cap = StrokeCap.Butt, join = StrokeJoin.Round))
+                }
             }
         }
     }

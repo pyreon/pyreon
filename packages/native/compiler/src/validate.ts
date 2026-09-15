@@ -621,7 +621,10 @@ function compileSwiftStubs(stub: string, inputText: string): ValidationResult {
   try {
     // Both files compiled as one module; the stubs satisfy SwiftUI/PyreonRuntime
     // references. -typecheck performs full name + type resolution (no codegen).
-    execFileSync('swiftc', ['-typecheck', stubsPath, inputPath], {
+    // Keep Clang/Swift modules beside the disposable inputs. Sandboxed local
+    // runs and hermetic CI workers may not be allowed to write the toolchain's
+    // default user cache; typechecking must not depend on that ambient path.
+    execFileSync('swiftc', ['-module-cache-path', join(tempDir, 'ModuleCache'), '-typecheck', stubsPath, inputPath], {
       stdio: 'pipe',
       encoding: 'utf8',
       timeout: COMPILE_TIMEOUT_MS,

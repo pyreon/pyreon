@@ -954,20 +954,13 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
       expect(result.warnings.some((w) => w.includes('PieChart') && w.includes('GaugeChart'))).toBe(true)
     })
 
-    it('a flow JSX-component import gets the SYMBOL-level advice now, not the blanket line', () => {
-      // Mirror of the charts case above: `createFlow` declares nativeFrontend
-      // (this PR), so the blanket warn defers to the UNLOWERED entry for the
-      // rest of the package's surface — `<Flow>` and friends have no native
-      // emit, but `createFlow` itself stays completely silent.
+    it('lowered Flow and createFlow imports stay silent', () => {
       const result = transform(
         `import { Flow, createFlow } from '@pyreon/flow'\nexport function App() { return null }`,
         { target: 'swift' },
       )
       expect(result.warnings.some((w) => w.includes('WEB-ONLY'))).toBe(false)
-      expect(result.warnings.some((w) => w.includes('Flow (from @pyreon/flow)'))).toBe(true)
-      // `createFlow` itself is in `supported` — it must NOT get its own
-      // "has NO native lowering" line (it legitimately appears inside the
-      // Flow warning's ADVICE text, recommending it as the fix).
+      expect(result.warnings.some((w) => w.includes('Flow (from @pyreon/flow)'))).toBe(false)
       expect(result.warnings.some((w) => w.includes('createFlow (from'))).toBe(false)
     })
 
