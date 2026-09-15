@@ -694,7 +694,7 @@ export function desugarOptionChart(
     return undefined
   }
 
-  optionFields(raw, ['series', 'title', 'legend', 'tooltip', 'xAxis', 'yAxis', 'radar', 'visualMap', 'color'], 'option', warn)
+  optionFields(raw, ['series', 'title', 'legend', 'tooltip', 'xAxis', 'yAxis', 'radar', 'calendar', 'visualMap', 'color'], 'option', warn)
 
   for (const a of e.attrs) {
     if (a.kind === 'event' && a.name !== 'selectindex') {
@@ -851,6 +851,47 @@ export function desugarOptionChart(
     set('data', { kind: 'array', elements: rows })
     for (const name of ['open', 'high', 'low', 'close', 'x']) set(name, { kind: 'arrow', params: ['d'], body: { kind: 'member', object: ident('d'), property: name } })
     return { kind: 'jsx-element', tag: 'CandlestickChart', attrs, children: [] }
+  }
+
+  if (kind === 'heatmap' && litString(objectField(series, 'coordinateSystem')) === 'calendar') {
+    optionFields(series, ['type', 'name', 'coordinateSystem', 'data', 'label', 'itemStyle', 'emphasis', 'color'], 'option.series[0]', warn)
+    const calendar = literalOf(objectField(raw, 'calendar'), resolve)
+    const range = calendar?.kind === 'object' ? literalOf(objectField(calendar, 'range'), resolve) : undefined
+    let start: string | undefined
+    let end: string | undefined
+    const year = litString(range)
+    if (year !== undefined && /^\d{4}$/.test(year)) {
+      start = `${year}-01-01`
+      end = `${year}-12-31`
+    } else if (range?.kind === 'array' && range.elements.length === 2) {
+      start = litString(range.elements[0])
+      end = litString(range.elements[1])
+    }
+    if (start === undefined || end === undefined) {
+      warn('<OptionChart option.calendar.range>: a native calendar needs a literal year or [start, end] ISO-date range; emitting nothing.')
+      return undefined
+    }
+    optionFields(calendar!, ['range'], 'option.calendar', warn)
+    const data = literalOf(objectField(series, 'data'), resolve)
+    if (data?.kind !== 'array') {
+      warn('<OptionChart option.series[0].data>: a native calendar needs literal [date, value] rows; emitting nothing.')
+      return undefined
+    }
+    const fields: { name: string; value: ExprIR }[] = []
+    for (let i = 0; i < data.elements.length; i++) {
+      const row = literalOf(data.elements[i], resolve)
+      const date = row?.kind === 'array' ? litString(row.elements[0]) : undefined
+      const value = row?.kind === 'array' ? litNumber(row.elements[1]) : undefined
+      if (date === undefined || value === undefined || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        warn(`<OptionChart option.series[0].data[${i}]>: a native calendar cell needs a literal [ISO-date, number]; emitting nothing.`)
+        return undefined
+      }
+      fields.push({ name: date, value: optionNumberLiteral(value) })
+    }
+    set('start', lit(start))
+    set('end', lit(end))
+    set('values', { kind: 'object', fields })
+    return { kind: 'jsx-element', tag: 'CalendarChart', attrs, children: [] }
   }
 
   if (kind === 'heatmap') {

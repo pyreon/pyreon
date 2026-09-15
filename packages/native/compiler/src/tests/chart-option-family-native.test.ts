@@ -49,6 +49,12 @@ export function App() { return <>
   <OptionChart option={{ series: [{ type: 'graph', data: [{ id: 'a', name: 'Alpha', value: 2, symbolSize: 20 }, { id: 'b', name: 'Beta' }], links: [{ source: 'a', target: 'b', value: 3 }] }] }} />
 </> }`
 
+const CALENDAR = `import { OptionChart } from '@pyreon/charts/plot'
+export function App() { return <>
+  <OptionChart option={{ calendar: { range: '2026' }, series: [{ type: 'heatmap', coordinateSystem: 'calendar', data: [['2026-01-03', 4], ['2026-06-12', 9]] }] }} />
+  <OptionChart option={{ calendar: { range: ['2025-12-20', '2026-01-10'] }, series: [{ type: 'heatmap', coordinateSystem: 'calendar', data: [['2025-12-25', 7]] }] }} />
+</> }`
+
 describe('OptionChart family options lower to native hosts', () => {
   for (const target of ['swift', 'kotlin'] as const) {
     it(`${target}: pie preserves data, donut radius, labels, legend, tooltip, title, and size`, () => {
@@ -99,6 +105,14 @@ describe('OptionChart family options lower to native hosts', () => {
       for (const label of ['A1', 'Root', 'Leaf', 'From', 'To', 'Alpha', 'Beta']) expect(r.code).toContain(`"${label}"`)
       expect(r.code).toContain('#3366ff')
     })
+
+    it(`${target}: calendar heatmap options preserve year/range and dated values`, () => {
+      const r = transform(CALENDAR, { target })
+      expect(r.warnings).toEqual([])
+      expect(r.code).not.toContain('OptionChart(')
+      expect(r.code).toContain('renderCalendar')
+      for (const value of ['2026-01-01', '2026-12-31', '2025-12-20', '2026-01-10', '2026-01-03', '2026-06-12', '2025-12-25']) expect(r.code).toContain(`"${value}"`)
+    })
   }
 
   it('names unsupported dynamic and cartesian option shapes', () => {
@@ -135,6 +149,16 @@ describe('OptionChart family options lower to native hosts', () => {
 
   it.skipIf(!isKotlincAvailable())('kotlinc accepts hierarchy and network option emits', () => {
     const r = validateKotlin(transform(HIERARCHY_AND_NETWORK, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  }, 30_000)
+
+  it.skipIf(!isSwiftcAvailable())('swiftc accepts calendar option emits', () => {
+    const r = validateSwiftWithStubs(transform(CALENDAR, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  }, 30_000)
+
+  it.skipIf(!isKotlincAvailable())('kotlinc accepts calendar option emits', () => {
+    const r = validateKotlin(transform(CALENDAR, { target: 'kotlin' }).code)
     expect(r.ok, r.error ?? '').toBe(true)
   }, 30_000)
 })
