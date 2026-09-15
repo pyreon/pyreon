@@ -49,6 +49,14 @@ export const HANDLED_FLOW_HOST_PROPS: ReadonlySet<string> = new Set([
   'style', 'class', 'ariaLabel', 'colorMode', 'children',
 ])
 
+/** The public `@pyreon/flow/webview` component surface. Both emitters consume
+ * every entry; this set is source-ratcheted in native-flow-state.test.ts. */
+export const HANDLED_FLOW_WEBVIEW_PROPS: ReadonlySet<string> = new Set([
+  'graph', 'commands', 'onSelect', 'onMessage', 'onEvent', 'onError', 'html',
+  'nodeWidth', 'nodeHeight', 'nodeFill', 'nodeStroke', 'labelColor', 'edgeColor',
+  'background',
+])
+
 /** Every public supporting-component prop is lowered, consumed from native
  * context, or diagnosed as an explicit browser-presentation boundary. */
 export const HANDLED_FLOW_COMPONENT_PROPS: ReadonlyMap<string, ReadonlySet<string>> = new Map([

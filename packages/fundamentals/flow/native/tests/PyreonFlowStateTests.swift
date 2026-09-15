@@ -803,9 +803,41 @@ struct PyreonFlowStateTests {
         print("PyreonFlowEdgeCanvasTests: edge canvas checks passed")
     }
 
+    static func runWebViewChecks() {
+        let merged = pyreonFlowWebViewData(
+            graph: #"{"nodes":[],"edges":[]}"#,
+            commands: #"[{"id":"fit","type":"fit-view"}]"#)
+        let mergedObject = try! JSONSerialization.jsonObject(with: Data(merged.utf8)) as! [String: Any]
+        check((mergedObject["__pyreonFlowCommands"] as? [Any])?.count == 1, "webview commands merge into the private bridge field")
+
+        var selected: [String] = []
+        var events: [String] = []
+        var messages = 0
+        pyreonDispatchFlowWebViewMessage(
+            #"{"type":"edge-select","id":"e1","source":"a","target":"b"}"#,
+            onSelect: { selected.append($0.id) },
+            onMessage: { _ in messages += 1 },
+            onEvent: { events.append($0.type) })
+        check(selected == ["e1"], "edge payloads preserve the web onSelect compatibility callback")
+        check(events == ["edge-select"] && messages == 1, "edge payloads reach typed and generic callbacks")
+
+        pyreonDispatchFlowWebViewMessage(
+            #"{"id":"n1","data":{"label":"Node"}}"#,
+            onSelect: { selected.append($0.id) },
+            onEvent: { events.append($0.type) })
+        check(selected.last == "n1" && events.last == "node-select", "node payloads reach both node callbacks")
+
+        var errorMessage = ""
+        pyreonDispatchFlowWebViewMessage(
+            #"{"__pyreonFlowHostError":1,"message":"broken"}"#,
+            onError: { errorMessage = $0.message })
+        check(errorMessage == "broken", "host errors retain their message")
+    }
+
     static func main() {
         runStateChecks()
         runEdgeCanvasChecks()
+        runWebViewChecks()
         print("PyreonFlowStateTests: all checks passed")
     }
 }

@@ -14,7 +14,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { transform } from '../index'
-import { HANDLED_FLOW_COMPONENT_PROPS, HANDLED_FLOW_HOST_PROPS, LOWERED_FLOW_CONFIG_PROPERTIES, LOWERED_FLOW_METHODS, LOWERED_FLOW_PROPERTY_READS, LOWERED_FLOW_RUNTIME_EXPORTS, WEB_ONLY_FLOW_RUNTIME_EXPORTS } from '../flow-lowering'
+import { HANDLED_FLOW_COMPONENT_PROPS, HANDLED_FLOW_HOST_PROPS, HANDLED_FLOW_WEBVIEW_PROPS, LOWERED_FLOW_CONFIG_PROPERTIES, LOWERED_FLOW_METHODS, LOWERED_FLOW_PROPERTY_READS, LOWERED_FLOW_RUNTIME_EXPORTS, WEB_ONLY_FLOW_RUNTIME_EXPORTS } from '../flow-lowering'
 import {
   isKotlincAvailable,
   isSwiftcAvailable,
@@ -100,6 +100,14 @@ it('tracks every public Flow host prop in native lowering or boundary diagnostic
   const body = source.slice(source.indexOf('export interface FlowComponentProps'), source.indexOf('/**\n * The main Flow component'))
   const publicProps = [...body.matchAll(/^  ([A-Za-z_]\w*)\??:/gm)].map((match) => match[1]!).sort()
   expect([...HANDLED_FLOW_HOST_PROPS].sort()).toEqual(publicProps)
+})
+
+it('tracks every public FlowWebView prop in both native emitters', () => {
+  const source = readFileSync(new URL('../../../../fundamentals/flow/src/webview.ts', import.meta.url), 'utf8')
+  const start = source.indexOf('export interface FlowWebViewProps')
+  const body = source.slice(start, source.indexOf('\n}', start))
+  const publicProps = [...body.matchAll(/^  ([A-Za-z_]\w*)\??:/gm)].map((match) => match[1]!).sort()
+  expect([...HANDLED_FLOW_WEBVIEW_PROPS].sort()).toEqual(publicProps)
 })
 
 it('tracks every public Flow supporting-component prop in native lowering or boundary diagnostics', () => {

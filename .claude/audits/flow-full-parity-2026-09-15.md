@@ -58,3 +58,10 @@ native view.
   Swift and Kotlin behaviour fixtures. A source-derived compiler test prevents
   new configuration fields from entering the native inventory without both
   assertions.
+- [x] The public `@pyreon/flow/webview` component now lowers to the real native
+  WebView bridge instead of an unresolved `FlowWebView` symbol. Its generated
+  default host is byte-ratcheted against the web builder; graph updates,
+  once-only commands, static host styling, selection/event/message/error
+  callbacks, renamed imports, and explicit custom HTML are covered by compiler
+  and Swift behaviour tests. Android runtime compilation and both device
+  behaviour scenarios remain required before F5 can be checked complete.

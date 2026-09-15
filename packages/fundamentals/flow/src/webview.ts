@@ -363,6 +363,7 @@ export interface FlowWebViewProps {
   nodeStroke?: string
   labelColor?: string
   edgeColor?: string
+  background?: string
 }
 
 /**
@@ -387,6 +388,7 @@ export function FlowWebView(props: FlowWebViewProps): VNode {
   if (props.nodeStroke !== undefined) built.nodeStroke = props.nodeStroke
   if (props.labelColor !== undefined) built.labelColor = props.labelColor
   if (props.edgeColor !== undefined) built.edgeColor = props.edgeColor
+  if (props.background !== undefined) built.background = props.background
   const html = props.html ?? buildFlowHostHtml(built)
 
   const webViewProps: Record<string, unknown> = { html }
