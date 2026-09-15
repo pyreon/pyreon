@@ -49,6 +49,16 @@ public struct PyreonChartGradient: Codable, Equatable {
     }
 }
 
+public struct PyreonChartPattern: Codable, Equatable {
+    public var kind: String
+    public var color: String
+    public var spacing: Double
+    public var width: Double
+    public init(kind: String, color: String, spacing: Double, width: Double) {
+        self.kind = kind; self.color = color; self.spacing = spacing; self.width = width
+    }
+}
+
 public struct PyreonDrawCmd: Codable, Equatable {
     public var kind: String
     public var rect: PyreonChartRect?
@@ -65,6 +75,7 @@ public struct PyreonDrawCmd: Codable, Equatable {
     public var corners: [Double]?
     /// Paint the fill as a linear gradient; `fill` stays the fallback.
     public var grad: PyreonChartGradient?
+    public var pattern: PyreonChartPattern?
     public var center: PyreonChartPt?
     public var radius: Double?
     public var text: String?
@@ -86,6 +97,7 @@ public struct PyreonDrawCmd: Codable, Equatable {
         fill: String? = nil,
         corners: [Double]? = nil,
         grad: PyreonChartGradient? = nil,
+        pattern: PyreonChartPattern? = nil,
         from: PyreonChartPt? = nil,
         to: PyreonChartPt? = nil,
         stroke: String? = nil,
@@ -106,6 +118,7 @@ public struct PyreonDrawCmd: Codable, Equatable {
         self.fill = fill
         self.corners = corners
         self.grad = grad
+        self.pattern = pattern
         self.from = from
         self.to = to
         self.stroke = stroke
@@ -339,6 +352,43 @@ func pyreonRoundedRectPath(_ r: PyreonChartRect, _ radii: [Double]) -> Path {
 
 /// A SwiftUI Canvas walking the engine's flat draw list — the native twin of
 /// canvas-web's renderer (same dispatch, same text-anchor semantics).
+private func pyreonPaintPattern(_ context: inout GraphicsContext, _ pattern: PyreonChartPattern?, _ clip: Path, _ bounds: CGRect) {
+    guard let pattern else { return }
+    let spacing = max(2.0, pattern.spacing)
+    let width = max(0.5, pattern.width)
+    context.drawLayer { layer in
+        layer.clip(to: clip)
+        let shade = GraphicsContext.Shading.color(pyreonChartColor(pattern.color))
+        if pattern.kind == "dots" {
+            var y = bounds.minY
+            while y <= bounds.maxY {
+                var x = bounds.minX
+                while x <= bounds.maxX {
+                    layer.fill(Path(ellipseIn: CGRect(x: x - width / 2.0, y: y - width / 2.0, width: width, height: width)), with: shade)
+                    x += spacing
+                }
+                y += spacing
+            }
+        } else {
+            let span = bounds.width + bounds.height
+            var d = -bounds.height
+            while d <= bounds.width {
+                var p = Path()
+                p.move(to: CGPoint(x: bounds.minX + d, y: bounds.maxY))
+                p.addLine(to: CGPoint(x: bounds.minX + d + span, y: bounds.minY))
+                layer.stroke(p, with: shade, lineWidth: width)
+                if pattern.kind == "cross" {
+                    var q = Path()
+                    q.move(to: CGPoint(x: bounds.minX + d, y: bounds.minY))
+                    q.addLine(to: CGPoint(x: bounds.minX + d + span, y: bounds.maxY))
+                    layer.stroke(q, with: shade, lineWidth: width)
+                }
+                d += spacing
+            }
+        }
+    }
+}
+
 public struct PyreonChartCanvas: View {
     public var cmds: [PyreonDrawCmd]
     public var fontFamily: String?
@@ -356,10 +406,14 @@ public struct PyreonChartCanvas: View {
                     let shade = pyreonChartShading(fill, c.grad)
                     let radii = cornerRadii(r, c.corners)
                     if hasCorners(radii) {
-                        context.fill(pyreonRoundedRectPath(r, radii), with: shade)
+                        let path = pyreonRoundedRectPath(r, radii)
+                        context.fill(path, with: shade)
+                        pyreonPaintPattern(&context, c.pattern, path, CGRect(x: r.x, y: r.y, width: r.w, height: r.h))
                     } else {
-                        context.fill(
-                            Path(CGRect(x: r.x, y: r.y, width: r.w, height: r.h)), with: shade)
+                        let box = CGRect(x: r.x, y: r.y, width: r.w, height: r.h)
+                        let path = Path(box)
+                        context.fill(path, with: shade)
+                        pyreonPaintPattern(&context, c.pattern, path, box)
                     }
                 case "line":
                     guard let f = c.from, let t = c.to, let stroke = c.stroke else { continue }
@@ -384,6 +438,11 @@ public struct PyreonChartCanvas: View {
                     for q in pts.dropFirst() { p.addLine(to: CGPoint(x: q.x, y: q.y)) }
                     p.closeSubpath()
                     context.fill(p, with: pyreonChartShading(fill, c.grad))
+                    let xs = pts.map { $0.x }
+                    let ys = pts.map { $0.y }
+                    if let minX = xs.min(), let maxX = xs.max(), let minY = ys.min(), let maxY = ys.max() {
+                        pyreonPaintPattern(&context, c.pattern, p, CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY))
+                    }
                 case "circle":
                     guard let ctr = c.center, let rad = c.radius, let fill = c.fill else { continue }
                     let rect = CGRect(

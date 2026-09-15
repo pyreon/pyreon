@@ -11045,7 +11045,28 @@ function kotlinMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex
   }
   if (fields.has('curve')) _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: a \`curve\` callback is not lowered on native; the series draws straight.`)
   const args: string[] = []
+  const pattern = fields.get('pattern')
+  const pushPattern = (): boolean => {
+    if (pattern === undefined) return true
+    if (pattern.kind !== 'object' || (pattern.spreads !== undefined && pattern.spreads.length > 0)) return false
+    const values = new Map(pattern.fields.map((field) => [field.name, field.value]))
+    const kind = values.get('kind')
+    const color = values.get('color')
+    const spacing = values.get('spacing')
+    const width = values.get('width')
+    if (kind?.kind !== 'literal' || typeof kind.value !== 'string' || color?.kind !== 'literal' || typeof color.value !== 'string' || spacing?.kind !== 'literal' || typeof spacing.value !== 'number' || width?.kind !== 'literal' || typeof width.value !== 'number') return false
+    args.push(`pattern = PyreonChartPattern(kind = ${JSON.stringify(kind.value)}, color = ${JSON.stringify(color.value)}, spacing = ${chartDouble(spacing.value)}, width = ${chartDouble(width.value)})`)
+    return true
+  }
+  let patternPushed = false
   for (const spec of PLOT_MARK_OPTION_FIELDS) {
+    if (spec.name === 'negativeColor' && !patternPushed) {
+      if (!pushPattern()) {
+        _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`pattern\` needs literal kind/color/spacing/width fields on native; emitting an empty Box().`)
+        return 'unsupported'
+      }
+      patternPushed = true
+    }
     const v = fields.get(spec.name)
     if (v !== undefined) {
       if (v.kind !== 'literal' || typeof v.value !== spec.kind) {
@@ -11059,6 +11080,10 @@ function kotlinMarkOptionArgs(opts: ExprIR | undefined, tag: string, seriesIndex
     if (spec.name === 'color') args.push(`color = ${JSON.stringify(palette[seriesIndex % palette.length])}`)
     else if (spec.name === 'label') args.push(`label = ${JSON.stringify(`Series ${seriesIndex + 1}`)}`)
     else if (spec.default !== undefined) args.push(`${spec.name} = ${spec.kind === 'number' ? chartDouble(spec.default as number) : String(spec.default)}`)
+  }
+  if (!patternPushed && !pushPattern()) {
+    _emitWarnings.push(`<${tag}> mark ${seriesIndex + 1}: \`pattern\` needs literal kind/color/spacing/width fields on native; emitting an empty Box().`)
+    return 'unsupported'
   }
   return args
 }

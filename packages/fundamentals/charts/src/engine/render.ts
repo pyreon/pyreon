@@ -12,7 +12,7 @@ import { polygonCmd, rectCmd } from './corners'
 import { seriesGradient } from './gradient'
 import type { SeriesGradient } from './gradient'
 import { withAlpha } from './radar'
-import type { DrawCmd, Domain, MeasureText, Pt, Rect, Double } from './types'
+import type { ChartPattern, DrawCmd, Domain, MeasureText, Pt, Rect, Double } from './types'
 
 /** One drawable series. */
 export interface Series {
@@ -62,6 +62,8 @@ export interface Series {
   corners?: Double[] | undefined
   /** Linear-gradient fill for bar-family and area series; resolved against the plot box. */
   gradient?: SeriesGradient | undefined
+  /** Repeating fill overlay for bar-family and area series. */
+  pattern?: ChartPattern | undefined
   /** Dash pattern for a line's stroke (`[on, off]` in px) — the target-line look; `line` only. */
   dash?: Double[] | undefined
   /** The fill a `waterfall` step takes when its value is negative; `color` otherwise. */
@@ -854,7 +856,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     for (const seg of stackSegs) {
       const rS = growRect(seg.rect, yDomain)
       const gS = seriesGradient(stackedSeries[seg.seriesIndex]!.gradient, plot)
-      out.push(rectCmd(rS, stackedSeries[seg.seriesIndex]!.color, stackedSeries[seg.seriesIndex]!.corners, gS.stops.length === 0 ? undefined : gS))
+      out.push(rectCmd(rS, stackedSeries[seg.seriesIndex]!.color, stackedSeries[seg.seriesIndex]!.corners, gS.stops.length === 0 ? undefined : gS, stackedSeries[seg.seriesIndex]!.pattern))
       const lvlS = emphasisLevel(spec, seg.datumIndex)
       if (lvlS > 0) out.push(emphasisOutline(rS, lvlS, t.label))
       // A stacked segment labels INSIDE itself: its value is the segment's
@@ -882,7 +884,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     for (const seg of groupSegs) {
       const rG = growRect(seg.rect, yDomain)
       const gG = seriesGradient(groupedSeries[seg.seriesIndex]!.gradient, plot)
-      out.push(rectCmd(rG, groupedSeries[seg.seriesIndex]!.color, groupedSeries[seg.seriesIndex]!.corners, gG.stops.length === 0 ? undefined : gG))
+      out.push(rectCmd(rG, groupedSeries[seg.seriesIndex]!.color, groupedSeries[seg.seriesIndex]!.corners, gG.stops.length === 0 ? undefined : gG, groupedSeries[seg.seriesIndex]!.pattern))
       const lvlG = emphasisLevel(spec, seg.datumIndex)
       if (lvlG > 0) out.push(emphasisOutline(rG, lvlG, t.label))
       // A grouped bar has a free outer edge, so it labels OUTSIDE like a
@@ -923,7 +925,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         for (const p of upper) poly.push(p)
         for (let i = lower.length - 1; i >= 0; i--) poly.push(lower[i]!)
         const gA = seriesGradient(sA.gradient, plot)
-        out.push(polygonCmd(poly, sA.color, gA.stops.length === 0 ? undefined : gA))
+        out.push(polygonCmd(poly, sA.color, gA.stops.length === 0 ? undefined : gA, sA.pattern))
         // Like a stacked SEGMENT, a stacked band labels inside itself with
         // its OWN value — the running total is what the outline already
         // shows, and a label repeating it would say nothing per series.
@@ -982,7 +984,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         const r = rects[ri]!
         const grown = growRectH(r)
         if (s.symbol === undefined) {
-          out.push(rectCmd(grown, s.color, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, true), sGrad))
+          out.push(rectCmd(grown, s.color, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, true), sGrad, s.pattern))
         } else if (s.symbolRepeat === true) {
           // Repeat a unit symbol along the bar (left to right); a partial last symbol is dropped.
           const unit = grown.h
@@ -1037,7 +1039,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         const r = rects[ri]!
         const grown = growRect(r, sDomain)
         if (s.symbol === undefined) {
-          out.push(rectCmd(grown, s.color, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, false), sGrad))
+          out.push(rectCmd(grown, s.color, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, false), sGrad, s.pattern))
         } else if (s.symbolRepeat === true) {
           // Repeat a unit symbol up the bar; a partial last symbol is dropped.
           // (Horizontal charts left this loop above, so the bar is vertical.)
@@ -1094,7 +1096,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         const startY = scaleLinear(sDomain, plot.y + plot.h, plot.y, st.start)
         const grownH = st.rect.h * progress
         const grown: Rect = progress >= 1.0 ? st.rect : { x: st.rect.x, y: st.value >= 0.0 ? startY - grownH : startY, w: st.rect.w, h: grownH }
-        out.push(rectCmd(grown, fill, s.corners, sGrad))
+        out.push(rectCmd(grown, fill, s.corners, sGrad, s.pattern))
         const lvlW = emphasisLevel(spec, st.datumIndex)
         if (lvlW > 0) out.push(emphasisOutline(grown, lvlW, t.label))
         if (si + 1 < steps.length && progress >= 1.0) {
@@ -1151,7 +1153,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         const poly: Pt[] = []
         for (const p of upper) poly.push(p)
         for (let i = lower.length - 1; i >= 0; i--) poly.push(lower[i]!)
-        if (poly.length > 2) out.push(polygonCmd(poly, s.color, sGrad))
+        if (poly.length > 2) out.push(polygonCmd(poly, s.color, sGrad, s.pattern))
       }
     } else if (s.kind === 'area') {
       // Gap-splitting (a non-finite value breaks the fill into runs, same
@@ -1166,7 +1168,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           // rather than a polygon between the first and last data points.
           poly.push({ x: pts[pts.length - 1]!.x, y: plot.y + plot.h })
           poly.push({ x: pts[0]!.x, y: plot.y + plot.h })
-          out.push(polygonCmd(poly, s.color, sGrad))
+          out.push(polygonCmd(poly, s.color, sGrad, s.pattern))
         }
       }
     } else {

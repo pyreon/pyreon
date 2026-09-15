@@ -688,6 +688,27 @@ function optionDatumNumber(e: ExprIR | undefined): number | undefined {
   return litNumber(e)
 }
 
+function optionPatternLiteral(style: ExprIR | undefined, resolve: (name: string) => ExprIR | undefined): ExprIR | undefined {
+  const item = literalOf(style, resolve)
+  const raw = item?.kind === 'object' ? literalOf(objectField(item, 'decal'), resolve) : undefined
+  if (raw?.kind !== 'object' || objectField(raw, 'show')?.kind === 'literal' && objectField(raw, 'show')?.value === false) return undefined
+  const symbol = litString(objectField(raw, 'symbol')) ?? ''
+  const rotation = litNumber(objectField(raw, 'rotation')) ?? 0
+  const firstNumber = (value: ExprIR | undefined): number | undefined => {
+    const resolved = literalOf(value, resolve)
+    return resolved?.kind === 'array' ? litNumber(resolved.elements[0]) : litNumber(resolved)
+  }
+  return {
+    kind: 'object',
+    fields: [
+      { name: 'kind', value: lit(symbol.includes('circle') ? 'dots' : Math.abs(rotation) < 0.01 ? 'cross' : 'diagonal') },
+      { name: 'color', value: lit(litString(objectField(raw, 'color')) ?? 'rgba(255,255,255,0.45)') },
+      { name: 'spacing', value: optionDoubleLiteral(Math.max(2, firstNumber(objectField(raw, 'dashArrayX')) ?? 8)) },
+      { name: 'width', value: optionDoubleLiteral(Math.max(0.5, firstNumber(objectField(raw, 'dashArrayY')) ?? 1)) },
+    ],
+  }
+}
+
 function optionTreeNodes(
   value: ExprIR | undefined,
   resolve: (name: string) => ExprIR | undefined,
@@ -1619,6 +1640,8 @@ export function desugarOptionChart(
       const item = literalOf(objectField(s, sk === 'line' ? 'lineStyle' : 'itemStyle'), resolve)
       const color = item === undefined ? undefined : objectField(item, 'color')
       if (litString(color) !== undefined) opts.push({ name: 'color', value: color! })
+      const pattern = optionPatternLiteral(objectField(s, 'itemStyle'), resolve)
+      if (pattern !== undefined) opts.push({ name: 'pattern', value: pattern })
       return {
         kind: 'call',
         callee: ident(factory),

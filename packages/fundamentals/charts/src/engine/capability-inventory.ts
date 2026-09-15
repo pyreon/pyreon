@@ -76,7 +76,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   row('presentation.states', 'presentation', 'direct', 'partial', 'src/engine/emphasis.test.ts'),
   row('presentation.symbols', 'presentation', 'direct', 'partial', 'src/engine/marks.ts'),
   row('presentation.gradients-patterns', 'presentation', 'direct', 'partial', 'src/engine/gradient.ts'),
-  row('presentation.decals', 'presentation', 'direct', 'pending', 'src/engine/render.ts'),
+  row('presentation.decals', 'presentation', 'direct', 'partial', 'src/engine/pattern.test.ts'),
   row('presentation.animation', 'presentation', 'direct', 'partial', 'src/engine/cmd-tween.ts'),
   row('presentation.universal-transition', 'presentation', 'direct', 'pending', 'src/engine/cmd-tween.ts'),
   row('presentation.locale', 'presentation', 'direct', 'complete', 'src/engine/locale.ts'),

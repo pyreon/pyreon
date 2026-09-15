@@ -18,8 +18,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.nativeCanvas
 import android.graphics.Paint
@@ -53,6 +55,13 @@ data class PyreonChartGradient(
     var stops: List<PyreonChartGradientStop>,
 )
 
+data class PyreonChartPattern(
+    var kind: String,
+    var color: String,
+    var spacing: Double,
+    var width: Double,
+)
+
 data class PyreonDrawCmd(
     var kind: String,
     var rect: PyreonChartRect? = null,
@@ -71,6 +80,7 @@ data class PyreonDrawCmd(
     var corners: List<Double>? = null,
     /** Paint the fill as a linear gradient; `fill` stays the fallback. */
     var grad: PyreonChartGradient? = null,
+    var pattern: PyreonChartPattern? = null,
     var center: PyreonChartPt? = null,
     var radius: Double? = null,
     var text: String? = null,
@@ -277,6 +287,36 @@ fun pyreonRoundedRectPath(r: PyreonChartRect, radii: List<Double>): Path {
     return p
 }
 
+private fun DrawScope.pyreonPaintPattern(pattern: PyreonChartPattern?, clip: Path, bounds: PyreonChartRect) {
+    pattern ?: return
+    val spacing = pattern.spacing.coerceAtLeast(2.0).toFloat()
+    val width = pattern.width.coerceAtLeast(0.5).toFloat()
+    val color = pyreonChartColor(pattern.color)
+    clipPath(clip) {
+        if (pattern.kind == "dots") {
+            var y = bounds.y.toFloat()
+            while (y <= (bounds.y + bounds.h).toFloat()) {
+                var x = bounds.x.toFloat()
+                while (x <= (bounds.x + bounds.w).toFloat()) {
+                    drawCircle(color = color, radius = width / 2f, center = Offset(x, y))
+                    x += spacing
+                }
+                y += spacing
+            }
+        } else {
+            val span = (bounds.w + bounds.h).toFloat()
+            var d = -bounds.h.toFloat()
+            while (d <= bounds.w.toFloat()) {
+                drawLine(color, Offset(bounds.x.toFloat() + d, (bounds.y + bounds.h).toFloat()), Offset(bounds.x.toFloat() + d + span, bounds.y.toFloat()), width)
+                if (pattern.kind == "cross") {
+                    drawLine(color, Offset(bounds.x.toFloat() + d, bounds.y.toFloat()), Offset(bounds.x.toFloat() + d + span, (bounds.y + bounds.h).toFloat()), width)
+                }
+                d += spacing
+            }
+        }
+    }
+}
+
 @Composable
 fun PyreonChartCanvas(
     cmds: List<PyreonDrawCmd>,
@@ -299,6 +339,7 @@ fun PyreonChartCanvas(
                         val path = pyreonRoundedRectPath(r, radii)
                         if (brush != null) drawPath(path = path, brush = brush, style = Fill)
                         else drawPath(path = path, color = pyreonChartColor(fill), style = Fill)
+                        pyreonPaintPattern(c.pattern, path, r)
                     } else {
                         val topLeft = Offset(r.x.toFloat(), r.y.toFloat())
                         val size = Size(r.w.toFloat(), r.h.toFloat())
@@ -306,6 +347,10 @@ fun PyreonChartCanvas(
                         else
                             drawRect(
                                 color = pyreonChartColor(fill), topLeft = topLeft, size = size)
+                        val path = Path().apply {
+                            addRect(ComposeRect(r.x.toFloat(), r.y.toFloat(), (r.x + r.w).toFloat(), (r.y + r.h).toFloat()))
+                        }
+                        pyreonPaintPattern(c.pattern, path, r)
                     }
                 }
                 "line" -> {
@@ -350,6 +395,11 @@ fun PyreonChartCanvas(
                     val pbrush = pyreonChartBrush(c.grad)
                     if (pbrush != null) drawPath(path = p, brush = pbrush, style = Fill)
                     else drawPath(path = p, color = pyreonChartColor(fill), style = Fill)
+                    val minX = pts.minOf { it.x }
+                    val maxX = pts.maxOf { it.x }
+                    val minY = pts.minOf { it.y }
+                    val maxY = pts.maxOf { it.y }
+                    pyreonPaintPattern(c.pattern, p, PyreonChartRect(minX, minY, maxX - minX, maxY - minY))
                 }
                 "circle" -> {
                     val ctr = c.center ?: continue

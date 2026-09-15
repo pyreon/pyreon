@@ -418,6 +418,18 @@ export function Revenue() {
 }`
 
 describe('chart hosts — <PlotChart marks> (the cartesian family)', () => {
+  it('carries literal pattern fills into both native series', () => {
+    const src = PLOT.replace("{ label: 'Revenue', color: '#0f766e' }", "{ label: 'Revenue', color: '#0f766e', pattern: { kind: 'cross', color: '#ffffff', spacing: 7, width: 1.5 } }")
+    const swift = transform(src, { target: 'swift' })
+    const kotlin = transform(src, { target: 'kotlin' })
+    expect(swift.warnings).toEqual([])
+    expect(kotlin.warnings).toEqual([])
+    expect(swift.code).toContain('pattern: PyreonChartPattern(kind: "cross", color: "#ffffff", spacing: 7.0, width: 1.5)')
+    expect(kotlin.code).toContain('pattern = PyreonChartPattern(kind = "cross", color = "#ffffff", spacing = 7.0, width = 1.5)')
+    expect(validateSwiftWithStubs(swift.code).ok).toBe(true)
+    if (isKotlincAvailable()) expect(validateKotlin(kotlin.code).ok).toBe(true)
+  }, 90_000)
+
   it('Swift: each mark becomes a Series over an inlined accessor; the spec is built inline; onSelect taps plotHitBars', () => {
     const r = transform(PLOT, { target: 'swift' })
     expect(r.warnings).toEqual([])

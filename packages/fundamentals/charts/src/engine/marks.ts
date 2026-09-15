@@ -14,7 +14,7 @@ import type { Series } from './render'
 import { DEFAULT_PALETTE, paletteAt } from './palette'
 import { bubbleRadii } from './bubble'
 import type { SeriesGradient } from './gradient'
-import type { Double, Pt } from './types'
+import type { ChartPattern, Double, Pt } from './types'
 import { binLabel, binValues } from './bin'
 import type { Bin } from './bin'
 import { plain } from './format'
@@ -104,6 +104,8 @@ export interface MarkOptions {
    * `'horizontal'`.
    */
   gradient?: SeriesGradient
+  /** Repeating fill overlay for bar-family and area marks. */
+  pattern?: ChartPattern
   /**
    * Dash pattern for a `line` mark's stroke, `[on, off]` in px — the
    * target / forecast line look. The engine's draw command already carried
@@ -359,6 +361,7 @@ export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly s
       symbolRepeat: m.options.symbolRepeat,
       corners: normalizeCorners(m.options.borderRadius),
       gradient: m.options.gradient,
+      pattern: m.options.pattern,
       dash: m.options.dash,
       negativeColor: m.options.negativeColor,
       errLow,

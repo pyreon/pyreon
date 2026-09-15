@@ -127,7 +127,7 @@ export type { ChartToSvgOptions } from './engine/svg-chart'
 export { measureApprox, renderSvg, svgCommand } from './engine/svg'
 export type { SvgOptions } from './engine/svg'
 
-export type { ChartGradient, ChartGradientStop, Domain, DrawCmd, Double, MeasureText, Pt, Rect, Tick } from './engine/types'
+export type { ChartGradient, ChartGradientStop, ChartPattern, Domain, DrawCmd, Double, MeasureText, Pt, Rect, Tick } from './engine/types'
 
 // Server-side SVG for the whole family — pure, measureApprox by default
 export {

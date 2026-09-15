@@ -16,7 +16,7 @@
 // rendering context), which is why `measureApprox` exists — see its note.
 
 import { cornerRadii, hasCorners } from './corners'
-import type { ChartGradient, DrawCmd, Double, MeasureText, Pt } from './types'
+import type { ChartGradient, ChartPattern, DrawCmd, Double, MeasureText, Pt } from './types'
 
 /**
  * Round to at most 2 decimals and drop a trailing `.0`.
@@ -132,21 +132,48 @@ export function collectGradients(cmds: DrawCmd[], prefix: string): { defs: strin
   return { defs: parts.length === 0 ? '' : `<defs>${parts.join('')}</defs>`, ids }
 }
 
+export function collectPatterns(cmds: DrawCmd[], prefix: string): { defs: string; ids: string[] } {
+  const parts: string[] = []
+  const ids: string[] = []
+  let i = 0
+  for (const c of cmds) {
+    const p = c.kind === 'rect' || c.kind === 'polygon' ? c.pattern : undefined
+    if (p === undefined) { ids.push(''); continue }
+    const id = `${prefix}-p${i++}`
+    ids.push(id)
+    const spacing = Math.max(2, p.spacing)
+    const width = Math.max(0.5, p.width)
+    const mark = patternSvg(p, spacing, width)
+    parts.push(`<pattern id="${id}" width="${n(spacing)}" height="${n(spacing)}" patternUnits="userSpaceOnUse">${mark}</pattern>`)
+  }
+  return { defs: parts.length === 0 ? '' : `<defs>${parts.join('')}</defs>`, ids }
+}
+
+function patternSvg(p: ChartPattern, spacing: Double, width: Double): string {
+  const color = esc(p.color)
+  if (p.kind === 'dots') return `<circle cx="${n(spacing / 2)}" cy="${n(spacing / 2)}" r="${n(width / 2)}" fill="${color}"/>`
+  const first = `<path d="M-${n(spacing)} ${n(spacing)}L${n(spacing)} -${n(spacing)}M0 ${n(spacing * 2)}L${n(spacing * 2)} 0" stroke="${color}" stroke-width="${n(width)}"/>`
+  if (p.kind === 'diagonal') return first
+  return first + `<path d="M-${n(spacing)} 0L${n(spacing)} ${n(spacing * 2)}M0 -${n(spacing)}L${n(spacing * 2)} ${n(spacing)}" stroke="${color}" stroke-width="${n(width)}"/>`
+}
+
 /**
  * Serialize one command. Exported for backends that compose their own document.
  *
  * `gradientId` is the id `collectGradients` minted for THIS command; without
  * one, a gradient-bearing command falls back to its solid `fill`.
  */
-export function svgCommand(c: DrawCmd, fontFamily: string, gradientId?: string): string {
+export function svgCommand(c: DrawCmd, fontFamily: string, gradientId?: string, patternId?: string): string {
   const paint = (fill: string, grad: ChartGradient | undefined): string =>
     grad !== undefined && gradientId !== undefined && gradientId !== '' ? `url(#${gradientId})` : esc(fill)
   if (c.kind === 'rect') {
     const radii = cornerRadii(c.rect, c.corners)
     if (hasCorners(radii)) {
-      return `<path d="${roundedRectPath(c.rect.x, c.rect.y, c.rect.w, c.rect.h, radii)}" fill="${paint(c.fill, c.grad)}"/>`
+      const shape = `<path d="${roundedRectPath(c.rect.x, c.rect.y, c.rect.w, c.rect.h, radii)}"`
+      return `${shape} fill="${paint(c.fill, c.grad)}"/>${c.pattern === undefined || !patternId ? '' : `${shape} fill="url(#${patternId})"/>`}`
     }
-    return `<rect x="${n(c.rect.x)}" y="${n(c.rect.y)}" width="${n(c.rect.w)}" height="${n(c.rect.h)}" fill="${paint(c.fill, c.grad)}"/>`
+    const shape = `<rect x="${n(c.rect.x)}" y="${n(c.rect.y)}" width="${n(c.rect.w)}" height="${n(c.rect.h)}"`
+    return `${shape} fill="${paint(c.fill, c.grad)}"/>${c.pattern === undefined || !patternId ? '' : `${shape} fill="url(#${patternId})"/>`}`
   }
   if (c.kind === 'line') {
     return `<line x1="${n(c.from.x)}" y1="${n(c.from.y)}" x2="${n(c.to.x)}" y2="${n(c.to.y)}" stroke="${esc(c.stroke)}" stroke-width="${n(c.width)}"${dashAttr(c.dash)}/>`
@@ -159,7 +186,8 @@ export function svgCommand(c: DrawCmd, fontFamily: string, gradientId?: string):
   }
   if (c.kind === 'polygon') {
     if (c.points.length < 3) return ''
-    return `<polygon points="${pointsAttr(c.points)}" fill="${paint(c.fill, c.grad)}"/>`
+    const shape = `<polygon points="${pointsAttr(c.points)}"`
+    return `${shape} fill="${paint(c.fill, c.grad)}"/>${c.pattern === undefined || !patternId ? '' : `${shape} fill="url(#${patternId})"/>`}`
   }
   if (c.kind === 'circle') {
     return `<circle cx="${n(c.center.x)}" cy="${n(c.center.y)}" r="${n(c.radius)}" fill="${esc(c.fill)}"/>`
@@ -235,13 +263,15 @@ export function renderSvg(
   if (options.description !== undefined) aria.push(`aria-describedby="${descId}"`)
 
   const gradients = collectGradients(cmds, prefix)
+  const patterns = collectPatterns(cmds, prefix)
   const body: string[] = []
   if (gradients.defs !== '') body.push(gradients.defs)
+  if (patterns.defs !== '') body.push(patterns.defs)
   if (options.background !== undefined) {
     body.push(`<rect x="0" y="0" width="${n(width)}" height="${n(height)}" fill="${esc(options.background)}"/>`)
   }
   for (let i = 0; i < cmds.length; i++) {
-    const s = svgCommand(cmds[i]!, fontFamily, gradients.ids[i])
+    const s = svgCommand(cmds[i]!, fontFamily, gradients.ids[i], patterns.ids[i])
     if (s !== '') body.push(s)
   }
 

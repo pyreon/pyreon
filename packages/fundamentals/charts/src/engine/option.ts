@@ -30,7 +30,7 @@ import type { LegendEntry } from './legend'
 import { measureApprox, renderSvg } from './svg'
 import { compileFamily, familyToSvg } from './option-family'
 import type { CompiledFamily } from './option-family'
-import type { DrawCmd, Domain, Double, MeasureText, Rect } from './types'
+import type { ChartPattern, DrawCmd, Domain, Double, MeasureText, Rect } from './types'
 
 /** An ECharts-shaped option. Loosely typed on purpose: the facade VALIDATES. */
 export type EChartsOption = Record<string, unknown>
@@ -106,6 +106,20 @@ const num = (v: unknown): number | null => {
   return null
 }
 const first = <T,>(v: T | T[] | undefined): T | undefined => (Array.isArray(v) ? v[0] : v)
+
+function fillPattern(style: Record<string, unknown>): ChartPattern | undefined {
+  const raw = isObj(style['decal']) ? style['decal'] : undefined
+  if (raw === undefined || raw['show'] === false) return undefined
+  const symbol = typeof raw['symbol'] === 'string' ? raw['symbol'] : ''
+  const rotation = num(raw['rotation']) ?? 0.0
+  const kind: ChartPattern['kind'] = symbol.includes('circle') ? 'dots' : Math.abs(rotation) < 0.01 ? 'cross' : 'diagonal'
+  return {
+    kind,
+    color: typeof raw['color'] === 'string' ? raw['color'] : 'rgba(255,255,255,0.45)',
+    spacing: Math.max(2.0, num(first(raw['dashArrayX'] as number | number[] | undefined)) ?? 8.0),
+    width: Math.max(0.5, num(first(raw['dashArrayY'] as number | number[] | undefined)) ?? 1.0),
+  }
+}
 
 /** `symbol` + `symbolRepeat` for a pictorialBar series; a path/image symbol falls back to a rect with a warning. */
 function pictorialFields(s: Record<string, unknown>, warn: (code: OptionWarning['code'], path: string, message: string) => void, path: string): { symbol: Series['symbol']; symbolRepeat: boolean } {
@@ -346,6 +360,7 @@ export function compileOption(rawOption: EChartsOption, opts: CompileOptions = {
       showValues: label['show'] === true,
       radii: undefined,
       axis: yAxisIndex === 1 ? 'right' : undefined,
+      pattern: fillPattern(itemStyle),
       ...(type === 'effectScatter' ? { effect: true } : {}),
       ...(type === 'pictorialBar' ? pictorialFields(s, warn, path) : {}),
     }

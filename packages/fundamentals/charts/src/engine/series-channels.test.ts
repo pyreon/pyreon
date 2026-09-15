@@ -51,6 +51,7 @@ const ROLE: Readonly<Record<keyof Series, Role>> = {
   symbolRepeat: 'presentation',
   corners: 'presentation',
   gradient: 'presentation',
+  pattern: 'presentation',
   dash: 'presentation',
   negativeColor: 'presentation',
 }

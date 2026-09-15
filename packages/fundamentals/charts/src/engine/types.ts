@@ -97,6 +97,18 @@ export interface ChartGradient {
   stops: ChartGradientStop[]
 }
 
+/** A repeating, backend-neutral fill overlay. */
+export interface ChartPattern {
+  /** Stripe, crossed-stripe, or dot texture. */
+  kind: 'diagonal' | 'cross' | 'dots'
+  /** Foreground colour painted over the command's ordinary fill. */
+  color: string
+  /** Distance between repeated marks, in engine units. */
+  spacing: Double
+  /** Stripe width or dot diameter, in engine units. */
+  width: Double
+}
+
 export type DrawCmd =
   | {
       kind: 'rect'
@@ -114,10 +126,12 @@ export type DrawCmd =
       corners?: Double[] | undefined
       /** Paint the fill as a gradient; `fill` stays the fallback. */
       grad?: ChartGradient | undefined
+      /** Paint a repeating overlay clipped to the shape. */
+      pattern?: ChartPattern | undefined
     }
   | { kind: 'line'; from: Pt; to: Pt; stroke: string; width: Double; dash?: Double[] | undefined }
   | { kind: 'polyline'; points: Pt[]; stroke: string; width: Double; dash?: Double[] | undefined }
-  | { kind: 'polygon'; points: Pt[]; fill: string; grad?: ChartGradient | undefined }
+  | { kind: 'polygon'; points: Pt[]; fill: string; grad?: ChartGradient | undefined; pattern?: ChartPattern | undefined }
   | { kind: 'circle'; center: Pt; radius: Double; fill: string }
   | {
       kind: 'text'

@@ -170,6 +170,40 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "PyreonChartPattern",
+    "fields": [
+      {
+        "name": "kind",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "color",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "spacing",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "width",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "PyreonDrawCmd",
     "fields": [
       {
@@ -235,6 +269,22 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
             {
               "kind": "typeRef",
               "name": "PyreonChartGradient",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "pattern",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "PyreonChartPattern",
               "args": []
             },
             {
@@ -1525,6 +1575,22 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
             {
               "kind": "typeRef",
               "name": "SeriesGradient",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "pattern",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "PyreonChartPattern",
               "args": []
             },
             {
@@ -9531,6 +9597,7 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "PresetOptions",
   "PyreonChartGradient",
   "PyreonChartGradientStop",
+  "PyreonChartPattern",
   "PyreonChartPt",
   "PyreonChartRect",
   "PyreonDrawCmd",

@@ -294,12 +294,13 @@ public struct Series {
   public var symbolRepeat: Bool? = nil
   public var corners: [Double]? = nil
   public var gradient: SeriesGradient? = nil
+  public var pattern: PyreonChartPattern? = nil
   public var dash: [Double]? = nil
   public var negativeColor: String? = nil
   public var errLow: [Double]? = nil
   public var errHigh: [Double]? = nil
   public var values2: [Double]? = nil
-  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, showValues: Bool? = nil, rValues: [Double]? = nil, radii: [Double]? = nil, axis: String? = nil, effect: Bool? = nil, symbol: String? = nil, symbolRepeat: Bool? = nil, corners: [Double]? = nil, gradient: SeriesGradient? = nil, dash: [Double]? = nil, negativeColor: String? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil, values2: [Double]? = nil) {
+  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, showValues: Bool? = nil, rValues: [Double]? = nil, radii: [Double]? = nil, axis: String? = nil, effect: Bool? = nil, symbol: String? = nil, symbolRepeat: Bool? = nil, corners: [Double]? = nil, gradient: SeriesGradient? = nil, pattern: PyreonChartPattern? = nil, dash: [Double]? = nil, negativeColor: String? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil, values2: [Double]? = nil) {
     self.kind = kind
     self.values = values
     self.color = color
@@ -316,6 +317,7 @@ public struct Series {
     self.symbolRepeat = symbolRepeat
     self.corners = corners
     self.gradient = gradient
+    self.pattern = pattern
     self.dash = dash
     self.negativeColor = negativeColor
     self.errLow = errLow
@@ -2377,24 +2379,42 @@ public func hasCorners(_ radii: [Double]) -> Bool {
     return false
   }
 
-public func rectCmd(_ rect: PyreonChartRect, _ fill: String, _ corners: [Double]?, _ grad: PyreonChartGradient?) -> PyreonDrawCmd {
+public func rectCmd(_ rect: PyreonChartRect, _ fill: String, _ corners: [Double]?, _ grad: PyreonChartGradient?, _ pattern: PyreonChartPattern? = nil) -> PyreonDrawCmd {
+    if pattern == nil {
+      if corners == nil && grad == nil {
+        return PyreonDrawCmd(kind: "rect", rect: rect, fill: fill)
+      }
+      if grad == nil {
+        return PyreonDrawCmd(kind: "rect", rect: rect, fill: fill, corners: corners)
+      }
+      if corners == nil {
+        return PyreonDrawCmd(kind: "rect", rect: rect, fill: fill, grad: grad)
+      }
+      return PyreonDrawCmd(kind: "rect", rect: rect, fill: fill, corners: corners, grad: grad)
+    }
     if corners == nil && grad == nil {
-      return PyreonDrawCmd(kind: "rect", rect: rect, fill: fill)
+      return PyreonDrawCmd(kind: "rect", rect: rect, fill: fill, pattern: pattern)
     }
     if grad == nil {
-      return PyreonDrawCmd(kind: "rect", rect: rect, fill: fill, corners: corners)
+      return PyreonDrawCmd(kind: "rect", rect: rect, fill: fill, corners: corners, pattern: pattern)
     }
     if corners == nil {
-      return PyreonDrawCmd(kind: "rect", rect: rect, fill: fill, grad: grad)
+      return PyreonDrawCmd(kind: "rect", rect: rect, fill: fill, grad: grad, pattern: pattern)
     }
-    return PyreonDrawCmd(kind: "rect", rect: rect, fill: fill, corners: corners, grad: grad)
+    return PyreonDrawCmd(kind: "rect", rect: rect, fill: fill, corners: corners, grad: grad, pattern: pattern)
   }
 
-public func polygonCmd(_ points: [PyreonChartPt], _ fill: String, _ grad: PyreonChartGradient?) -> PyreonDrawCmd {
-    if grad == nil {
+public func polygonCmd(_ points: [PyreonChartPt], _ fill: String, _ grad: PyreonChartGradient?, _ pattern: PyreonChartPattern? = nil) -> PyreonDrawCmd {
+    if grad == nil && pattern == nil {
       return PyreonDrawCmd(kind: "polygon", fill: fill, points: points)
     }
-    return PyreonDrawCmd(kind: "polygon", fill: fill, grad: grad, points: points)
+    if grad == nil {
+      return PyreonDrawCmd(kind: "polygon", fill: fill, pattern: pattern, points: points)
+    }
+    if pattern == nil {
+      return PyreonDrawCmd(kind: "polygon", fill: fill, grad: grad, points: points)
+    }
+    return PyreonDrawCmd(kind: "polygon", fill: fill, grad: grad, pattern: pattern, points: points)
   }
 
 public func gradientFor(_ g: SeriesGradient, _ plot: PyreonChartRect) -> PyreonChartGradient {
@@ -3852,7 +3872,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
       for seg in stackSegs {
         let rS = growRect(seg.rect, yDomain)
         let gS = seriesGradient(stackedSeries[seg.seriesIndex].gradient, plot)
-        out.append(rectCmd(rS, stackedSeries[seg.seriesIndex].color, stackedSeries[seg.seriesIndex].corners, gS.stops.count == 0 ? nil : gS))
+        out.append(rectCmd(rS, stackedSeries[seg.seriesIndex].color, stackedSeries[seg.seriesIndex].corners, gS.stops.count == 0 ? nil : gS, stackedSeries[seg.seriesIndex].pattern))
         let lvlS = emphasisLevel(spec, seg.datumIndex)
         if lvlS > 0 {
           out.append(emphasisOutline(rS, lvlS, t.label))
@@ -3869,7 +3889,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
       for seg in groupSegs {
         let rG = growRect(seg.rect, yDomain)
         let gG = seriesGradient(groupedSeries[seg.seriesIndex].gradient, plot)
-        out.append(rectCmd(rG, groupedSeries[seg.seriesIndex].color, groupedSeries[seg.seriesIndex].corners, gG.stops.count == 0 ? nil : gG))
+        out.append(rectCmd(rG, groupedSeries[seg.seriesIndex].color, groupedSeries[seg.seriesIndex].corners, gG.stops.count == 0 ? nil : gG, groupedSeries[seg.seriesIndex].pattern))
         let lvlG = emphasisLevel(spec, seg.datumIndex)
         if lvlG > 0 {
           out.append(emphasisOutline(rG, lvlG, t.label))
@@ -3902,7 +3922,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
             poly.append(lower[i])
           }
           let gA = seriesGradient(sA.gradient, plot)
-          out.append(polygonCmd(poly, sA.color, gA.stops.count == 0 ? nil : gA))
+          out.append(polygonCmd(poly, sA.color, gA.stops.count == 0 ? nil : gA, sA.pattern))
           if sA.showValues == true && progress >= 1.0 {
             let fmtA = (spec.yFormat ?? plain)
             for i in 0..<upper.count {
@@ -3937,7 +3957,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
           let r = rects[ri]
           let grown = growRectH(r)
           if s.symbol == nil {
-            out.append(rectCmd(grown, s.color, (s.corners ?? themeCorners(spec.theme.radius, ((s.values[ri] ?? 0.0)) >= 0.0, true)), sGrad))
+            out.append(rectCmd(grown, s.color, (s.corners ?? themeCorners(spec.theme.radius, ((s.values[ri] ?? 0.0)) >= 0.0, true)), sGrad, s.pattern))
           } else {
             if s.symbolRepeat == true {
               let unit = grown.h
@@ -3984,7 +4004,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
           let r = rects[ri]
           let grown = growRect(r, sDomain)
           if s.symbol == nil {
-            out.append(rectCmd(grown, s.color, (s.corners ?? themeCorners(spec.theme.radius, ((s.values[ri] ?? 0.0)) >= 0.0, false)), sGrad))
+            out.append(rectCmd(grown, s.color, (s.corners ?? themeCorners(spec.theme.radius, ((s.values[ri] ?? 0.0)) >= 0.0, false)), sGrad, s.pattern))
           } else {
             if s.symbolRepeat == true {
               let unit = grown.w
@@ -4034,7 +4054,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
             let startY = scaleLinear(sDomain, plot.y + plot.h, plot.y, st.start)
             let grownH = st.rect.h * progress
             let grown = progress >= 1.0 ? st.rect : PyreonChartRect(x: st.rect.x, y: st.value >= 0.0 ? startY - grownH : startY, w: st.rect.w, h: grownH)
-            out.append(rectCmd(grown, fill, s.corners, sGrad))
+            out.append(rectCmd(grown, fill, s.corners, sGrad, s.pattern))
             let lvlW = emphasisLevel(spec, st.datumIndex)
             if lvlW > 0 {
               out.append(emphasisOutline(grown, lvlW, t.label))
@@ -4085,7 +4105,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
                   poly.append(lower[i])
                 }
                 if poly.count > 2 {
-                  out.append(polygonCmd(poly, s.color, sGrad))
+                  out.append(polygonCmd(poly, s.color, sGrad, s.pattern))
                 }
               }
             } else {
@@ -4099,7 +4119,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
                     }
                     poly.append(PyreonChartPt(x: pts[pts.count - 1].x, y: plot.y + plot.h))
                     poly.append(PyreonChartPt(x: pts[0].x, y: plot.y + plot.h))
-                    out.append(polygonCmd(poly, s.color, sGrad))
+                    out.append(polygonCmd(poly, s.color, sGrad, s.pattern))
                   }
                 }
               } else {
