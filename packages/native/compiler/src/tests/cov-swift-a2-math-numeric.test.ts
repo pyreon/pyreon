@@ -95,9 +95,15 @@ describe('Math.* — the lowering table, one arm per entry', () => {
     expect(body(code, 'e')).toBe('Math.trunc(n, 2)')
     expect(body(code, 'f')).toBe('Math.abs(n, 2)')
     expect(body(code, 'g')).toBe('Math.sqrt(n, 2)')
-    expect(body(code, 'h')).toBe('Math.min(n)')
-    expect(body(code, 'i')).toBe('Math.max(n)')
     expect(body(code, 'j')).toBe('Math.pow(n)')
+    // `min`/`max` are VARIADIC in ECMAScript, so a 1-arg call is not an arity
+    // mismatch at all — `Math.min(n)` IS `n`. They used to fall through here
+    // to the same uncompilable `Math.min(n)`; the totality lowering folds
+    // them instead (see `native-math-totality.test.ts`). The invariant this
+    // spec protects — a NAME-matched entry whose arity the TABLE rejects is
+    // not rewritten BY THE TABLE — is unchanged and still asserted above.
+    expect(body(code, 'h')).toBe('n')
+    expect(body(code, 'i')).toBe('n')
   })
 
   it('SWIFT_MATH_DOUBLE table: matched arity coerces every arg; wrong arity and an unknown name do not', () => {
@@ -114,7 +120,9 @@ describe('Math.* — the lowering table, one arm per entry', () => {
     expect(body(code, 'p')).toBe('log10(Double(10))')
     // arity ≠ table arity → NOT rewritten (both directions of the guard)
     expect(body(code, 'q')).toBe('Math.cbrt(1, 2)')
-    expect(body(code, 'r')).toBe('Math.hypot(1)')
+    // `hypot` is variadic in ECMAScript; `Math.hypot(1)` is `abs(1)`, so the
+    // totality lowering claims it rather than leaving the raw member emit.
+    expect(body(code, 'r')).toBe('abs(Double(1))')
     // a name absent from the table → never rewritten
     expect(body(code, 't')).toBe('Math.nope(1)')
   })

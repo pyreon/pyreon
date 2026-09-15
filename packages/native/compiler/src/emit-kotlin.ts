@@ -65,12 +65,17 @@ import {
   typeIsOptional,
   unwrapOptionalType,
   synthesizeWebSocketAutoConnect,
+  registerComponentFnReturns,
   widenFloatLocals,
   widenFloatSignals,
 } from './infer-type'
 import { clampExpr } from './pure-state'
 import { permissionsProviderSeed } from './permissions-provider'
 import type { InferenceCtx } from './infer-type'
+import { lowerMathCall, lowerMathConstant } from './math-lowering'
+import { buildObjectConstFields, planObjectSpread, resolveSpreadFields } from './spread-lowering'
+import { collectJsxFnNames, jsxHelperCallName, jsxHelperCallWarning } from './jsx-helper-call'
+import type { SpreadResolver } from './spread-lowering'
 import { kotlinIdent, safeIdent } from './identifier-safety'
 import { resolveRocketstyleUseSite } from './rocketstyle-native'
 import type { AttrsComponentIR } from './attrs-native'
@@ -187,6 +192,8 @@ let _kotlinExprInferCtx: ReturnType<typeof buildInferenceCtx> = buildInferenceCt
 let _websocketUrlsKotlin: Map<string, string> = new Map()
 /** Mirror of emit-swift's `_componentNames`. See that file for rationale. */
 let _componentNames: Set<string> = new Set()
+/** Mirror of emit-swift's `_jsxFnNames`. */
+let _jsxFnNames: Set<string> = new Set()
 // `styled(Prim)`-wrapped components — a `<X>` use-site is rewritten to `<Prim>`
 // + the captured style injected as a synthetic `style` attr (see emitKotlinJsx).
 let _styledComponents: Map<string, StyledComponentIR> = new Map()
@@ -563,6 +570,8 @@ let _moduleConstExprsKotlin: Map<string, ExprIR> = new Map()
  * `_componentConstMap`. Set per `emitKotlinComponent`; consulted by
  * `readStaticAttrKotlin` after the module-level map. */
 let _componentConstMapKotlin: Map<string, string | number | boolean> = new Map()
+/** Mirror of the Swift emitter's `_componentObjectConsts`. */
+let _componentObjectConstsKotlin: Map<string, Set<string>> = new Map()
 
 export function _peekKotlinEmitWarnings(): string[] {
   return [..._emitWarnings]
@@ -662,6 +671,7 @@ export function emitKotlin(
   }
   // Build the user-component name set — mirror of emit-swift's logic.
   _componentNames = new Set(components.map((c) => c.name))
+  _jsxFnNames = collectJsxFnNames(components, [], moduleDecls)
   _componentPropsMapKotlin = new Map(components.map((c) => [c.name, c.props]))
   // Phase 3 — pre-pass: which components are layout parents (nested routes)?
   _layoutComponentNames = collectLayoutComponentNamesKotlin(components)
@@ -831,6 +841,7 @@ export function emitKotlin(
   _synthExprStructs = []
   _synthExprStructKeys = new Map()
   _componentNames = new Set()
+  _jsxFnNames = new Set()
   _styledComponents = new Map()
   _rocketstyleComponents = new Map()
   _attrsComponents = new Map()
@@ -1894,6 +1905,8 @@ function kotlinModifierPredicate(mods: readonly HotkeyModifier[]): string {
 function emitKotlinComponent(c: ComponentIR): string {
   // Component-scope const literals → static-attr resolution (mirror of Swift).
   _componentConstMapKotlin = buildComponentConstMap(c.decls)
+  _componentObjectConstsKotlin = buildObjectConstFields(c.decls)
+  for (const n of collectJsxFnNames([], c.decls)) _jsxFnNames.add(n)
   _activePropsParamName = c.propsParamName
   // Build the per-component signal-name → enum-type-name map for use
   // at `.set()` call sites — mirrors Swift emit. Note: the type field
@@ -2032,6 +2045,10 @@ function emitKotlinComponent(c: ComponentIR): string {
   for (const d of c.decls) {
     if (d.kind === 'function') widenFloatLocals(d.body, inferCtx)
   }
+  // AFTER the widening: register un-annotated component-local function
+  // returns, so a call to one types precisely instead of `Any`. Before the
+  // widening the body still reads `let acc = 0` as Int.
+  registerComponentFnReturns(c.decls, inferCtx)
   _kotlinExprInferCtx = inferCtx
   // Pass 1: walk decls — emits decl bodies AND discovers synthesized
   // types from decl annotations. The actual decl text is buffered into
@@ -4573,6 +4590,25 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         e.callee.object.kind === 'identifier' &&
         e.callee.object.name === 'Math'
       ) {
+        // TOTALITY seam — see the Swift twin. Every ECMAScript `Math` member
+        // the two sets below do NOT carry is lowered (or named) in
+        // `math-lowering.ts`; it returns null for everything they do.
+        if (e.args.every((a) => a.kind !== 'spread')) {
+          const lowered = lowerMathCall({
+            target: 'kotlin',
+            member: e.callee.property,
+            args: e.args.map((a) => emitKotlinExpr(a, indent)),
+            argIsFloat: e.args.map((a) => {
+              const t = inferType(a, _kotlinExprInferCtx)
+              if (t.kind === 'typeRef' && (t.name === 'Double' || t.name === 'Float')) return true
+              return t.kind === 'number' && t.float === true
+            }),
+          })
+          if (lowered !== null) {
+            if ('warn' in lowered) _emitWarnings.push(lowered.warn)
+            else return lowered.code
+          }
+        }
         // 2-arg mixed Int/Double: java.lang.Math has no (Int, Double)
         // overload (Kotlin literals do not adapt like Swift's) —
         // `Math.max(2, Math.ceil(x))` fails. Coerce the int side.
@@ -5882,6 +5918,14 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       if (e.object.kind === 'identifier' && e.object.name === 'Math' && e.property === 'PI') {
         return 'kotlin.math.PI'
       }
+      // The other Math constants: `Math.E` happens to resolve on the JVM,
+      // but LN2 / LN10 / LOG2E / LOG10E / SQRT2 / SQRT1_2 are NOT on
+      // java.lang.Math — they fell through as unresolved references. Emit the
+      // ECMAScript double literals so a shared source agrees with the web.
+      if (e.object.kind === 'identifier' && e.object.name === 'Math') {
+        const k = lowerMathConstant(e.property)
+        if (k !== null) return k
+      }
       // v2 (form-binding arc) — per-field dict access on a form
       // container: `form.values.email` → `form.values.value["email"
       // ?: ""` (the MutableState map needs `.value` + the subscript;
@@ -6422,6 +6466,31 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // Other shapes (multi-spread, non-identifier spread, no spread
       // with overrides) fall through to the existing `(field = value)`
       // tuple-literal emit.
+      // TOTALITY seam for spreads — see the Swift twin. Same shared plan, so
+      // the two targets cannot disagree about which field wins.
+      if (e.spreads && e.spreads.length > 0) {
+        const plan = planObjectSpread(e.fields, e.spreads, kotlinSpreadResolver(indent))
+        if (plan !== null) {
+          if (plan.warn !== undefined) _emitWarnings.push(plan.warn)
+          // Swift twin: optionality is warned on every arm.
+          if (isNullableType(inferType(plan.source, _kotlinExprInferCtx))) {
+            _emitWarnings.push(
+              optionalSpreadWarning(
+                plan.source.kind === 'identifier' ? plan.source.name : emitKotlinExpr(plan.source, indent),
+              ),
+            )
+          }
+          if (plan.kind === 'copy') {
+            return `${emitKotlinExpr(plan.source, indent)}.copy()`
+          } else {
+            const target = emitKotlinExpr(plan.source, indent)
+            const overrides = plan.fields
+              .map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`)
+              .join(', ')
+            return `${target}.copy(${overrides})`
+          }
+        }
+      }
       if (e.spreads && e.spreads.length === 1 && e.spreads[0]!.kind === 'identifier') {
         const target = emitKotlinExpr(e.spreads[0]!, indent)
         // Mirror of the Swift emitter: `.copy` on a nullable receiver is
@@ -7105,6 +7174,15 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
         if (i < t.exprs.length) parts.push(`\${${emitKotlinExpr(t.exprs[i]!, indent)}}`)
       }
     } else {
+      // A CALL to a JSX-returning helper reaches `<Text>{row("a")}</Text>`
+      // through this seam too, not only the container-child one — the same
+      // View-into-a-string interpolation, one emitter function over.
+      const helperInText = jsxHelperCallName(childExpr, _jsxFnNames)
+      if (helperInText !== null) {
+        const w = jsxHelperCallWarning(helperInText, 'kotlin')
+        if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+        continue
+      }
       parts.push(kotlinInterpSegment(childExpr, indent))
     }
   }
@@ -7446,7 +7524,24 @@ function emitKotlinFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
         _fieldArrayNamesKotlin.has(each.value.object.name) &&
         each.value.property === 'items'))
   if (isFieldArrayItems) _fieldArrayItemParamsKotlin.push(param)
-  const bodyText = emitKotlinExpr(body, indent + 4)
+  // Seed the ROW param with the element type — the Swift twin carries the
+  // rationale (an unknown row type silently mis-lowers `.length` there).
+  // Kotlin's own emit is unaffected today, but the two inference ctxs must
+  // stay in step or the next type-dependent lowering diverges by target.
+  const rowT = each ? inferType(unwrapAccessorArrow(each.value), _kotlinExprInferCtx) : undefined
+  const rowElem = rowT?.kind === 'array' ? rowT.element : undefined
+  const hadRow = _kotlinExprInferCtx.locals.has(param)
+  const prevRow = _kotlinExprInferCtx.locals.get(param)
+  if (rowElem !== undefined) _kotlinExprInferCtx.locals.set(param, rowElem)
+  let bodyText: string
+  try {
+    bodyText = emitKotlinExpr(body, indent + 4)
+  } finally {
+    if (rowElem !== undefined) {
+      if (hadRow) _kotlinExprInferCtx.locals.set(param, prevRow!)
+      else _kotlinExprInferCtx.locals.delete(param)
+    }
+  }
   if (isFieldArrayItems) _fieldArrayItemParamsKotlin.pop()
   return (
     `LazyColumn {\n` +
@@ -10094,6 +10189,19 @@ function emitKotlinChild(c: ChildIR, indent: number): string {
       const w = jsxInStringifiedChildWarning('kotlin')
       if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
     }
+    // Swift twin — a CALL to a JSX-returning helper. Here the emit was not
+    // merely wrong but uncompilable (`row("a")` against a `fun row()` the
+    // component emit gave no parameters), so the shape never shipped; it
+    // still has to be NAMED rather than left as a kotlinc error about
+    // generated code.
+    const jsxHelper = jsxHelperCallName(c.expr, _jsxFnNames)
+    if (jsxHelper !== null) {
+      const w = jsxHelperCallWarning(jsxHelper, 'kotlin')
+      if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+      // A Compose container accepts an empty statement position; a comment
+      // keeps the emitted file readable about WHY the view is missing.
+      return `// (pyreon) ${jsxHelper}(…) — see the emit warning`
+    }
     // Value expression child of a container — wrap in Text string-
     // interpolation, the same shape `<Text>{expr}</Text>` emits.
     // A template child already emits a Kotlin String literal, so use it as
@@ -11825,4 +11933,20 @@ function kotlinBrushHandler(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: st
   if (h.kind === 'identifier') return kotlinIdent(h.name)
   _emitWarnings.push(`<${tag} onBrush>: must be a NAMED handler (\`const onBrush = (r: BrushRange | null) => …\`) on native — an inline arrow is not lowered; the brush still selects, without the callback.`)
   return undefined
+}
+
+/** Mirror of `swiftSpreadResolver` against the Kotlin inference ctx. */
+function kotlinSpreadResolver(indent: number): SpreadResolver {
+  return {
+    fieldsOf(e) {
+      return resolveSpreadFields(e, inferType(e, _kotlinExprInferCtx), _kotlinStructDefs, _componentObjectConstsKotlin, _kotlinExprInferCtx)
+    },
+    typeKeyOf(e) {
+      const t = inferType(e, _kotlinExprInferCtx)
+      if (t.kind === 'typeRef') return t.name
+      const f = resolveSpreadFields(e, t, _kotlinStructDefs, _componentObjectConstsKotlin, _kotlinExprInferCtx)
+      return f === null ? null : `{${[...f].sort().join(',')}}`
+    },
+    label: (e) => emitKotlinExpr(e, indent),
+  }
 }

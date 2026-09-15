@@ -105,7 +105,12 @@ describe('@pyreon/dnd useSortable → native', () => {
     })
 
     it('`ref={s.itemRef(key)}` → the item modifier, key coerced to String', () => {
-      expect(swift(SCALAR).code).toContain('.pyreonSortableItem(s, key: "\\(item)")')
+      // A String row passes THROUGH: the `<For>` row param is typed from
+      // `each` now, so the coercion has nothing to do. It used to be wrapped
+      // only because the row typed `unknown` — a redundant interpolation, not
+      // a contract. The contract (the key parameter is a String) is what the
+      // STRUCT case below asserts.
+      expect(swift(SCALAR).code).toContain('.pyreonSortableItem(s, key: item)')
       // A number key is interpolated rather than passed as Int.
       expect(swift(STRUCT).code).toContain('.pyreonSortableItem(s, key: "\\(t.id)")')
     })
@@ -137,7 +142,9 @@ describe('@pyreon/dnd useSortable → native', () => {
     it('both refs → Modifier extensions', () => {
       const code = kotlin(SCALAR).code
       expect(code).toContain('Modifier.pyreonSortableContainer(s)')
-      expect(code).toContain('Modifier.pyreonSortableItem(s, (item).toString())')
+      // Swift twin: a String row needs no `.toString()` now that the `<For>`
+      // row param carries `each`'s element type.
+      expect(code).toContain('Modifier.pyreonSortableItem(s, item)')
     })
   })
 
