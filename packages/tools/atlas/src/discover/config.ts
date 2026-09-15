@@ -53,6 +53,15 @@ export interface AtlasConfig {
    */
   scenarios?: Record<string, readonly AuthoredScenario[]>
   /**
+   * How variant scenarios are derived from a component's dimension axes.
+   *
+   * `axes` (default) — the default combination plus one scenario per axis
+   * VALUE with the other axes at their defaults (`Σ|axis|`). `full` — every
+   * combination (`Π|axis|`): opt in when the axes genuinely interact, knowing
+   * a `state × size × variant` component then carries 60+ scenarios.
+   */
+  matrix?: 'axes' | 'full'
+  /**
    * Path fragments to skip during discovery, ADDED to the defaults.
    *
    * A file can export a PascalCase component and still not belong in a
@@ -66,6 +75,27 @@ export interface AtlasConfig {
    * both work without a glob dialect to learn.
    */
   ignore?: readonly string[]
+  /**
+   * Components that render NOTHING outside a browser, by name.
+   *
+   * The Node scan mounts into happy-dom, but `isServer` is decided when
+   * `@pyreon/reactivity` is evaluated — before any DOM exists — so a
+   * component gated on it (a modal that returns `null` on the server) renders
+   * nothing there whatever its props. The mount check would report that as
+   * `empty-render`; for a name listed here it reports `browser-only` instead,
+   * and `atlas verify-browser` is where the render is judged. A name here
+   * still gets every other check.
+   */
+  browserOnly?: readonly string[]
+  /**
+   * Components that are PARTS of another — `{ TabPanel: 'Tabs',
+   * AccordionContent: 'Accordion' }`. A part renders nothing on its own (a
+   * tab panel needs its tabs' context to know whether it is active), so the
+   * mount check reports `part-of` instead of `empty-render`, and the
+   * workbench canvas shows the PARENT's opening scenario for it — the
+   * composition the part actually lives in.
+   */
+  parts?: Record<string, string>
   /**
    * The site's name — browser tab, workbench chrome, and the `<title>` of a
    * built static site. `--title` on the CLI wins over this.
@@ -327,6 +357,17 @@ function validateAlias(value: unknown): string | undefined {
       Array.isArray(v) && v.every((e) => typeof e === 'string')
         ? undefined
         : 'must be an array of path fragments',
+    ),
+    take('parts', (v) =>
+      typeof v === 'object' && v !== null && !Array.isArray(v) &&
+      Object.values(v as Record<string, unknown>).every((e) => typeof e === 'string')
+        ? undefined
+        : 'must map a part name to its parent component name',
+    ),
+    take('browserOnly', (v) =>
+      Array.isArray(v) && v.every((e) => typeof e === 'string')
+        ? undefined
+        : 'must be an array of component names',
     ),
     take('title', (v) => (typeof v === 'string' ? undefined : '`title` must be a string')),
     take('pages', validatePages),

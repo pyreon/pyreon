@@ -169,6 +169,13 @@ export function Canvas(props: { model: WorkbenchModel }) {
             {() => m.preview()}
           </C.PreviewSurface>
         </C.Frame>
+        <Show when={() => m.previewEmpty()}>
+          <C.EmptyHint data-testid="canvas-empty">
+            Nothing rendered for this state — the component returned no DOM. Pick another
+            scenario in the sidebar, or give it what it needs (data props, an open state, a
+            render-prop child) in atlas.config.ts.
+          </C.EmptyHint>
+        </Show>
       </C.Stage>
     </C.Main>
   )

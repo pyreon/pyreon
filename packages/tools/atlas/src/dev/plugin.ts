@@ -120,6 +120,8 @@ export interface AtlasDevPluginOptions {
   presets?: import('../ui/catalog').WorkbenchPresets
   /** Per-component presentation overrides from atlas.config.ts (`pages`). */
   pages?: Record<string, import('../discover/config').PageMeta>
+  /** Part → parent component name (`parts`). */
+  parts?: Record<string, string>
   /** Monorepo roots with ABSOLUTE dirs — grouping needs each project`s own root. */
   projects?: readonly { name: string; dir: string }[]
   /** Title shown in the workbench chrome. */
@@ -165,6 +167,7 @@ export function atlasDevPlugin(options: AtlasDevPluginOptions): VitePluginLike {
           ...(options.configPath ? { configPath: options.configPath } : {}),
           ...(options.presets ? { presets: options.presets } : {}),
           ...(options.pages ? { pages: options.pages } : {}),
+          ...(options.parts ? { parts: options.parts } : {}),
           ...(options.projects ? { projects: options.projects } : {}),
         })
       }

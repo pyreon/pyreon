@@ -55,11 +55,11 @@ describe('scanRoots', () => {
 
 describe('a monorepo scan', () => {
   const button = (label: string) =>
-    `export function Button(props: { label: string }) {\n  return null as never // ${label}\n}\n`
+    `export function Button(props: { label: string }) {\n  return 1 as never // ${label}\n}\n`
 
   beforeEach(() => {
     write('packages/core/src/Button.tsx', button('core'))
-    write('packages/core/src/forms/Field.tsx', 'export function Field(props: { name: string }) {\n  return null as never\n}\n')
+    write('packages/core/src/forms/Field.tsx', 'export function Field(props: { name: string }) {\n  return 1 as never\n}\n')
     write('packages/admin/src/Button.tsx', button('admin'))
     write(
       'atlas.config.ts',
@@ -106,7 +106,7 @@ describe('a monorepo scan', () => {
 
 describe('a single-package scan is unchanged', () => {
   beforeEach(() => {
-    write('src/Button.tsx', 'export function Button(props: { label: string }) {\n  return null as never\n}\n')
+    write('src/Button.tsx', 'export function Button(props: { label: string }) {\n  return 1 as never\n}\n')
   })
 
   it('sets no project, so every key stays bare', async () => {

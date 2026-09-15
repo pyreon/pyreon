@@ -69,6 +69,20 @@ export function readTag(value: unknown): string | undefined {
   return tag
 }
 
+/**
+ * The COMPONENT a rocketstyle chain renders through, by display name —
+ * `el.config({ component: ModalBase })` sets `__rs_component` to the base
+ * function. Undefined when the chain renders a tag (a string base, or an
+ * attrs `tag`), which is the case `readTag` answers instead.
+ */
+export function readBase(value: unknown): string | undefined {
+  const base = (value as RocketstyleComponent | undefined)?.__rs_component
+  if (typeof base !== 'function') return undefined
+  const named = base as { displayName?: unknown; name?: unknown }
+  const name = typeof named.displayName === 'string' ? named.displayName : named.name
+  return typeof name === 'string' && name.length > 0 ? name : undefined
+}
+
 export interface RocketstyleDiscoveryOptions {
   /** Loads a module — the same one the components will be mounted from. */
   loader: ModuleLoader
@@ -198,7 +212,8 @@ export async function discoverRocketstyle(
       // Dimensions say how the component can LOOK; they never say what it
       // renders WITH. Without this every derived scenario mounted an empty
       // `<button>` / `<h2>` / `<div>` — see `core/content.ts`.
-      const content = deriveContent({ name, tag: readTag(value) })
+      const base = readBase(value)
+      const content = deriveContent({ name, tag: readTag(value), base })
       out.push({
         name,
         component: value as ComponentRef,
@@ -208,6 +223,7 @@ export async function discoverRocketstyle(
         tags: [],
         source: file,
         ...(Object.keys(content.args).length > 0 ? { content: content.args } : {}),
+        ...(base ? { base } : {}),
       })
     }
   }

@@ -132,6 +132,8 @@ export interface WorkbenchScenario {
   name: string
   /** the control values this scenario pins */
   args: Record<string, unknown>
+  /** Provenance — `authored` for a config-written scenario, `auto-*` for a derived one. */
+  source?: string
   /**
    * Authored interaction script — hand-written catalogs only (a derived
    * catalog is serialized JSON, and a function cannot cross that boundary).
@@ -162,6 +164,12 @@ export interface WorkbenchComponent {
   key?: string
   /** Display label from `pages.<name>.title`; falls back to `name`. */
   title?: string
+  /**
+   * The id of the component this one is a PART of (`AtlasConfig.parts`). The
+   * canvas renders the parent's opening scenario for it, and the sidebar
+   * nests it under the parent.
+   */
+  partOf?: string
   /** Sidebar group heading (components are grouped by this). */
   group: string
   /** Docs status pill, e.g. `'stable'`. */

@@ -29,10 +29,12 @@ export { inferControl, inferControls } from './controls'
 export type { ScenarioInit } from './scenario'
 export { slugify, scenarioId, makeScenario } from './scenario'
 
-export { buildVariantMatrix, variantLabel, autoVariantScenarios } from './variants'
+export { buildVariantMatrix, buildVariantFan, variantLabel, autoVariantScenarios } from './variants'
+export type { VariantMatrix } from './variants'
+export { catalogReplacer, looksLikeVNode } from './serialize'
 
 export type { ContentBlocks, ContentShape, ContentSeed } from './content'
-export { deriveContent, isContainer, isContentBlocks, materializeContent, PLACEHOLDER_IMAGE, seedArgs } from './content'
+export { CONTENT_KEYS, deriveContent, isContainer, isContentBlocks, isContentKey, materializeContent, PLACEHOLDER_IMAGE, seedArgs } from './content'
 
 export type { AtlasExtension } from './extension'
 export {
