@@ -243,7 +243,12 @@ public struct PyreonFlowMiniMap<T>: View {
     }
 }
 
-public enum PyreonFlowBackgroundVariant: Equatable { case dots, lines, cross }
+public enum PyreonFlowBackgroundVariant: Equatable {
+    case dots, lines, cross
+    public static func from(_ value: String) -> Self {
+        value == "lines" ? .lines : value == "cross" ? .cross : .dots
+    }
+}
 
 public struct PyreonFlowBackgroundStyle: Equatable {
     public var variant: PyreonFlowBackgroundVariant
@@ -255,7 +260,17 @@ public struct PyreonFlowBackgroundStyle: Equatable {
     }
 }
 
-public enum PyreonFlowControlsPosition: Equatable { case topLeft, topRight, bottomLeft, bottomRight }
+public enum PyreonFlowControlsPosition: Equatable {
+    case topLeft, topRight, bottomLeft, bottomRight
+    public static func from(_ value: String) -> Self {
+        switch value {
+        case "top-left": return .topLeft
+        case "top-right": return .topRight
+        case "bottom-right": return .bottomRight
+        default: return .bottomLeft
+        }
+    }
+}
 
 public struct PyreonFlowControlsStyle: Equatable {
     public var showZoomIn: Bool
@@ -300,6 +315,22 @@ public struct PyreonFlowControls<T>: View {
         case .bottomLeft: return .bottomLeading
         case .bottomRight: return .bottomTrailing
         }
+    }
+}
+
+/// Controls rendered independently from `PyreonFlowView`, mirroring the web
+/// `<Controls instance={flow}>` form while retaining local lock-button state.
+@available(iOS 17.0, macOS 14.0, *)
+public struct PyreonStandaloneFlowControls<T>: View {
+    @Bindable private var state: PyreonFlowState<T>
+    @State private var locked = false
+    private let style: PyreonFlowControlsStyle
+    private let extraContent: () -> AnyView?
+    public init(state: PyreonFlowState<T>, style: PyreonFlowControlsStyle = .init(), extraContent: @escaping () -> AnyView? = { nil }) {
+        self.state = state; self.style = style; self.extraContent = extraContent
+    }
+    public var body: some View {
+        PyreonFlowControls(state: state, style: style, locked: $locked, extraContent: extraContent)
     }
 }
 

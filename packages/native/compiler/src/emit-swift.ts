@@ -8535,6 +8535,7 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   // web-only-rich viz (charts / flow / tables) inside a native shell.
   if (tag === 'WebView') return emitSwiftWebView(e)
   if (tag === 'Flow' && canAliasIntercept(tag, '@pyreon/flow')) return emitSwiftFlowHost(e)
+  if (tag === 'Controls' && canAliasIntercept(tag, '@pyreon/flow')) return emitSwiftStandaloneFlowControls(e, indent)
   // `@pyreon/charts/plot` family hosts → PyreonChartCanvas over the generated
   // engine (chart-hosts.ts); accessor-prop hosts warn by name.
   if (isChartHostTag(tag)) return emitSwiftChartHost(e, indent)
@@ -8708,8 +8709,10 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
     : ''
   const miniMapArg = miniMap?.kind === 'jsx-element' ? `, miniMap: ${emitSwiftFlowMiniMap(miniMap)}` : ''
   const miniMapNodeColorAttr = miniMap?.kind === 'jsx-element' ? miniMap.attrs.find((a) => a.kind === 'attr' && a.name === 'nodeColor') : undefined
-  const miniMapNodeColorArg = miniMapNodeColorAttr?.kind === 'attr' && miniMapNodeColorAttr.value !== undefined && !(miniMapNodeColorAttr.value.kind === 'literal' && typeof miniMapNodeColorAttr.value.value === 'string')
-    ? `, miniMapNodeColor: ${emitSwiftExpr(miniMapNodeColorAttr.value, 0)}`
+  const miniMapNodeColorValue = miniMapNodeColorAttr?.kind === 'attr' ? miniMapNodeColorAttr.value : undefined
+  const miniMapNodeColorIsCallback = miniMapNodeColorValue?.kind === 'arrow' || (miniMapNodeColorValue?.kind === 'identifier' && (_functionNames.has(miniMapNodeColorValue.name) || _moduleConstExprs.get(miniMapNodeColorValue.name)?.kind === 'arrow'))
+  const miniMapNodeColorArg = miniMapNodeColorValue !== undefined && miniMapNodeColorIsCallback
+    ? `, miniMapNodeColor: ${emitSwiftExpr(miniMapNodeColorValue, 0)}`
     : ''
   const ariaLabelAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'ariaLabel')
   const ariaLabelArg = ariaLabelAttr?.kind === 'attr' && ariaLabelAttr.value !== undefined ? `, ariaLabel: ${emitSwiftExpr(ariaLabelAttr.value, 0)}` : ''
@@ -8775,6 +8778,18 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
   return `ZStack {\n  ${host}\n${overlaysCode}\n}`
 }
 
+function emitSwiftStandaloneFlowControls(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const instance = e.attrs.find((a) => a.kind === 'attr' && a.name === 'instance')
+  if (instance?.kind !== 'attr' || instance.value === undefined) {
+    _emitWarnings.push('<Controls> outside <Flow> requires `instance={flow}` for native lowering; it was dropped.')
+    return 'EmptyView()'
+  }
+  const content = e.children.length > 0
+    ? `, extraContent: { AnyView(Group {\n${e.children.map((child) => `    ${emitSwiftChild(child, indent + 4)}`).join('\n')}\n${' '.repeat(indent + 2)}}) }`
+    : ''
+  return `PyreonStandaloneFlowControls(state: ${emitSwiftExpr(instance.value, 0)}, style: ${emitSwiftFlowControls(e)}${content})`
+}
+
 function emitSwiftFlowCustomPath(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'd')
   let value = attr?.kind === 'attr' ? attr.value : undefined
@@ -8801,26 +8816,51 @@ function emitSwiftFlowCustomPath(e: Extract<ExprIR, { kind: 'jsx-element' }>, in
 
 function emitSwiftFlowMiniMap(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
   for (const name of ['style', 'class']) if (e.attrs.some((a) => a.kind === 'attr' && a.name === name)) _emitWarnings.push(`<MiniMap ${name}> is browser CSS and is not applied natively; its dimensions, colors, and interactions still lower.`)
-  const str = (name: string, fallback: string): string => { const value = readStaticAttr(e, name); return JSON.stringify(typeof value === 'string' ? value : fallback) }
-  const num = (name: string, fallback: number): string => { const value = readStaticAttr(e, name); return String(typeof value === 'number' ? value : fallback) }
-  const bool = (name: string, fallback: boolean): string => readStaticAttr(e, name) === false ? 'false' : readStaticAttr(e, name) === true ? 'true' : String(fallback)
+  const expr = (name: string, fallback: string): string => {
+    const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === name)
+    return attr?.kind === 'attr' && attr.value !== undefined ? emitSwiftExpr(attr.value, 0) : fallback
+  }
+  const str = (name: string, fallback: string): string => {
+    const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === name)
+    const value = attr?.kind === 'attr' ? attr.value : undefined
+    const callback = value?.kind === 'arrow' || (value?.kind === 'identifier' && (_functionNames.has(value.name) || _moduleConstExprs.get(value.name)?.kind === 'arrow'))
+    return callback ? JSON.stringify(fallback) : expr(name, JSON.stringify(fallback))
+  }
+  const num = (name: string, fallback: number): string => {
+    const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === name)
+    if (attr?.kind !== 'attr' || attr.value === undefined) return String(fallback)
+    return attr.value.kind === 'literal' ? emitSwiftExpr(attr.value, 0) : `Double(${emitSwiftExpr(attr.value, 0)})`
+  }
+  const bool = (name: string, fallback: boolean): string => expr(name, String(fallback))
   return `PyreonFlowMiniMapStyle(nodeColor: ${str('nodeColor', '#e2e8f0')}, maskColor: ${str('maskColor', '#000000')}, width: ${num('width', 200)}, height: ${num('height', 150)}, pannable: ${bool('pannable', true)}, zoomable: ${bool('zoomable', true)})`
 }
 
 function emitSwiftFlowControls(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
-  const bool = (name: string, fallback: boolean): string => readStaticAttr(e, name) === false ? 'false' : readStaticAttr(e, name) === true ? 'true' : String(fallback)
+  const expr = (name: string, fallback: string): string => {
+    const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === name)
+    return attr?.kind === 'attr' && attr.value !== undefined ? emitSwiftExpr(attr.value, 0) : fallback
+  }
+  const bool = (name: string, fallback: boolean): string => expr(name, String(fallback))
   const position = readStaticAttr(e, 'position')
-  const pos = position === 'top-left' ? '.topLeft' : position === 'top-right' ? '.topRight' : position === 'bottom-right' ? '.bottomRight' : '.bottomLeft'
+  const positionAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'position')
+  const pos = position === 'top-left' ? '.topLeft' : position === 'top-right' ? '.topRight' : position === 'bottom-right' ? '.bottomRight' : typeof position === 'string' || positionAttr === undefined ? '.bottomLeft' : `PyreonFlowControlsPosition.from(${emitSwiftExpr(positionAttr.kind === 'attr' && positionAttr.value !== undefined ? positionAttr.value : { kind: 'literal', value: 'bottom-left' }, 0)})`
   return `PyreonFlowControlsStyle(showZoomIn: ${bool('showZoomIn', true)}, showZoomOut: ${bool('showZoomOut', true)}, showFitView: ${bool('showFitView', true)}, showLock: ${bool('showLock', false)}, position: ${pos})`
 }
 
 function emitSwiftFlowBackground(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
   const variant = readStaticAttr(e, 'variant')
-  const resolvedVariant = variant === 'lines' ? '.lines' : variant === 'cross' ? '.cross' : '.dots'
-  const gap = readStaticAttr(e, 'gap')
-  const size = readStaticAttr(e, 'size')
-  const color = readStaticAttr(e, 'color')
-  return `PyreonFlowBackgroundStyle(variant: ${resolvedVariant}, gap: ${typeof gap === 'number' ? gap : 20}, size: ${typeof size === 'number' ? size : 1}, color: ${typeof color === 'string' ? JSON.stringify(color) : '"#dddddd"'})`
+  const variantAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'variant')
+  const resolvedVariant = variant === 'lines' ? '.lines' : variant === 'cross' ? '.cross' : variant === 'dots' || variantAttr === undefined ? '.dots' : `.from(${emitSwiftExpr(variantAttr.kind === 'attr' && variantAttr.value !== undefined ? variantAttr.value : { kind: 'literal', value: 'dots' }, 0)})`
+  const expr = (name: string, fallback: string): string => {
+    const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === name)
+    return attr?.kind === 'attr' && attr.value !== undefined ? emitSwiftExpr(attr.value, 0) : fallback
+  }
+  const num = (name: string, fallback: number): string => {
+    const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === name)
+    if (attr?.kind !== 'attr' || attr.value === undefined) return String(fallback)
+    return attr.value.kind === 'literal' ? emitSwiftExpr(attr.value, 0) : `Double(${emitSwiftExpr(attr.value, 0)})`
+  }
+  return `PyreonFlowBackgroundStyle(variant: ${resolvedVariant}, gap: ${num('gap', 20)}, size: ${num('size', 1)}, color: ${expr('color', '"#dddddd"')})`
 }
 
 /**

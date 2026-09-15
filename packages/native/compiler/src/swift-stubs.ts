@@ -1334,13 +1334,24 @@ public final class PyreonFlowState<T> {
   public func focusNode(_ nodeId: String, _ focusZoom: Double? = nil) {}
 }
 @available(iOS 17.0, macOS 14.0, *)
-public enum PyreonFlowBackgroundVariant { case dots, lines, cross }
+public enum PyreonFlowBackgroundVariant {
+  case dots, lines, cross
+  public static func from(_ value: String) -> Self { .dots }
+}
 public struct PyreonFlowBackgroundStyle {
   public init(variant: PyreonFlowBackgroundVariant = .dots, gap: Double = 20, size: Double = 1, color: String = "#dddddd") {}
 }
-public enum PyreonFlowControlsPosition { case topLeft, topRight, bottomLeft, bottomRight }
+public enum PyreonFlowControlsPosition {
+  case topLeft, topRight, bottomLeft, bottomRight
+  public static func from(_ value: String) -> Self { .bottomLeft }
+}
 public struct PyreonFlowControlsStyle {
   public init(showZoomIn: Bool = true, showZoomOut: Bool = true, showFitView: Bool = true, showLock: Bool = false, position: PyreonFlowControlsPosition = .bottomLeft) {}
+}
+@available(iOS 17.0, macOS 14.0, *)
+public struct PyreonStandaloneFlowControls<T>: View {
+  public init(state: PyreonFlowState<T>, style: PyreonFlowControlsStyle = .init(), extraContent: @escaping () -> AnyView? = { nil }) {}
+  public var body: some View { EmptyView() }
 }
 public struct PyreonFlowMiniMapStyle {
   public init(nodeColor: String = "#e2e8f0", maskColor: String = "#000000", width: Double = 200, height: Double = 150, pannable: Bool = true, zoomable: Bool = true) {}

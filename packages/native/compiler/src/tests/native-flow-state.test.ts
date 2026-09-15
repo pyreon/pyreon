@@ -293,6 +293,50 @@ describe('<Flow> native host lowering', { timeout: 30_000 }, () => {
     if (isKotlincAvailable()) expect(validateKotlin(kotlin.code).ok).toBe(true)
   })
 
+  it('preserves reactive Background, Controls, and MiniMap presentation props', () => {
+    const reactive = source.replace(
+      "import { createFlow, Flow } from '@pyreon/flow'",
+      "import { createFlow, Flow, Background, Controls, MiniMap } from '@pyreon/flow'\n    import { signal } from '@pyreon/reactivity'",
+    ).replace(
+      'const flow = createFlow({',
+      "const showZoom = signal(false)\n      const corner = signal('top-left')\n      const spacing = signal(12)\n      const chromeColor = signal('#abcdef')\n      const flow = createFlow({",
+    ).replace(
+      '<Flow instance={flow} />',
+      '<Flow instance={flow}><Background gap={spacing()} color={chromeColor()} /><Controls showZoomIn={showZoom()} position={corner()} /><MiniMap width={spacing()} nodeColor={chromeColor()} /></Flow>',
+    )
+    const swift = transform(reactive, { target: 'swift' })
+    const kotlin = transform(reactive, { target: 'kotlin' })
+    expect(swift.code).toContain('gap: Double(spacing)')
+    expect(swift.code).toContain('color: chromeColor')
+    expect(swift.code).toContain('showZoomIn: showZoom')
+    expect(swift.code).toContain('position: PyreonFlowControlsPosition.from(corner)')
+    expect(swift.code).toContain('nodeColor: chromeColor')
+    expect(swift.code).toContain('width: Double(spacing)')
+    expect(kotlin.code).toContain('gap = (spacing).toDouble()')
+    expect(kotlin.code).toContain('color = chromeColor')
+    expect(kotlin.code).toContain('showZoomIn = showZoom')
+    expect(kotlin.code).toContain('position = pyreonFlowControlsPosition(corner)')
+    expect(kotlin.code).toContain('nodeColor = chromeColor')
+    expect(kotlin.code).toContain('width = (spacing).toDouble()')
+    expect(validateSwiftWithStubs(swift.code).ok).toBe(true)
+    expect(validateKotlin(kotlin.code).ok).toBe(true)
+  })
+
+  it('lowers standalone Controls with an explicit instance on both targets', () => {
+    const standalone = source.replace(
+      "import { createFlow, Flow } from '@pyreon/flow'",
+      "import { createFlow, Controls } from '@pyreon/flow'\n    import { Text } from '@pyreon/primitives'",
+    ).replace('<Flow instance={flow} />', '<Controls instance={flow} showZoomOut={false} position="top-right"><Text>Extra</Text></Controls>')
+    const swift = transform(standalone, { target: 'swift' })
+    const kotlin = transform(standalone, { target: 'kotlin' })
+    expect(swift.code).toContain('PyreonStandaloneFlowControls(state: flow, style: PyreonFlowControlsStyle(showZoomIn: true, showZoomOut: false, showFitView: true, showLock: false, position: .topRight)')
+    expect(kotlin.code).toContain('PyreonStandaloneFlowControls(state = flow, style = PyreonFlowControlsStyle(showZoomIn = true, showZoomOut = false, showFitView = true, showLock = false, position = PyreonFlowControlsPosition.TopRight)')
+    expect(swift.code).toContain('Text("Extra")')
+    expect(kotlin.code).toContain('Text(text = "Extra")')
+    expect(validateSwiftWithStubs(swift.code).ok).toBe(true)
+    expect(validateKotlin(kotlin.code).ok).toBe(true)
+  })
+
   it('extracts interactive MiniMap configuration on both targets', () => {
     const withMiniMap = source.replace(
       "import { createFlow, Flow }",
