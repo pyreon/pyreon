@@ -909,6 +909,10 @@ export type DeclIR =
   | {
       kind: 'flow-state'
       name: string
+      /** True for `useFlow`: dispose listeners/history when the component unmounts. */
+      lifecycleOwned?: boolean
+      /** Explicit `createFlow<T>` / `useFlow<T>` node-data type when supplied. */
+      dataType?: TypeIR
       nodes: {
         id: string
         type?: string
@@ -918,19 +922,83 @@ export type DeclIR =
         data: ExprIR
         width?: ExprIR
         height?: ExprIR
+        draggable?: boolean
+        selectable?: boolean
+        connectable?: boolean
+        focusable?: boolean
+        ariaLabel?: string
+        hidden?: boolean
+        deletable?: boolean
+        parentId?: string
+        expandParent?: boolean
+        group?: boolean
+        sourceHandles?: { id?: string; type: string; position: string }[]
+        targetHandles?: { id?: string; type: string; position: string }[]
       }[]
       edges: {
         id: string
         source: string
         target: string
+        sourceHandle?: string
+        targetHandle?: string
         type?: string
         label?: string
         animated?: boolean
+        focusable?: boolean
+        ariaLabel?: string
+        hidden?: boolean
+        deletable?: boolean
+        reconnectable?: boolean
+        interactionWidth?: number
+        pathOptions?: { curvature?: number; borderRadius?: number; offset?: number }
+        markerStart?: { type: string; color?: string; width?: number; height?: number; strokeWidth?: number }
+        markerEnd?: { type: string; color?: string; width?: number; height?: number; strokeWidth?: number } | null
+        waypoints?: { x: ExprIR; y: ExprIR }[]
       }[]
       /** `minZoom` from the config, when written as a numeric literal. */
       minZoom?: number
       /** `maxZoom` from the config, when written as a numeric literal. */
       maxZoom?: number
+      snapToGrid?: boolean
+      snapGrid?: number
+      nodeExtent?: [number, number, number, number]
+      defaultMarkerEnd?: { type: string; color?: string; width?: number; height?: number; strokeWidth?: number } | null
+      nodesDraggable?: boolean
+      nodesConnectable?: boolean
+      nodesSelectable?: boolean
+      nodesFocusable?: boolean
+      edgesFocusable?: boolean
+      disableKeyboardA11y?: boolean
+      nodesDeletable?: boolean
+      edgesDeletable?: boolean
+      edgesReconnectable?: boolean
+      edgeInteractionWidth?: number
+      connectionRadius?: number
+      pannable?: boolean
+      panOnDrag?: boolean
+      zoomable?: boolean
+      zoomOnPinch?: boolean
+      zoomOnDoubleClick?: boolean
+      selectionOnDrag?: boolean
+      selectionMode?: string
+      multiSelect?: boolean
+      onlyRenderVisibleElements?: boolean
+      snapToObjects?: boolean
+      autoHistory?: boolean
+      reducedMotion?: boolean
+      defaultEdgeType?: string
+      connectionLineType?: string
+      defaultEdgeOptions?: {
+        type?: string; label?: string; animated?: boolean; focusable?: boolean; ariaLabel?: string
+        hidden?: boolean; deletable?: boolean; reconnectable?: boolean; interactionWidth?: number
+        pathOptions?: { curvature?: number; borderRadius?: number; offset?: number }
+        markerStart?: { type: string; color?: string; width?: number; height?: number; strokeWidth?: number }
+        markerEnd?: { type: string; color?: string; width?: number; height?: number; strokeWidth?: number } | null
+      }
+      fitView?: boolean
+      fitViewPadding?: number
+      connectionRules?: Record<string, string[]>
+      connectionValidator?: ExprIR
     }
 
 /**

@@ -208,6 +208,13 @@ fun <T> remember(key: Any?, calculation: () -> T): T = calculation()
 fun <T> remember(calculation: () -> T): T = calculation()
 `
 
+const COMPOSE_SNAPSHOT_STUBS = `package androidx.compose.runtime.snapshots
+
+object Snapshot {
+  fun <T> withMutableSnapshot(block: () -> T): T = block()
+}
+`
+
 const ANDROIDX_COMPOSE_GRAPHICS_STUBS = `// androidx.compose.ui.graphics — the surface PyreonFlowEdgeGeometry.kt touches
 // (Path mutators, Color(int,int,int) + Gray + float channels, dashPathEffect).
 // FUNCTIONAL, not type-only, because the geometry smoke test RUNS: the stub
@@ -1276,6 +1283,7 @@ const tempDir = mkdtempSync(join(tmpdir(), 'pyreon-kotlin-runtime-verify-'))
 
 try {
   const composeRuntimePath = join(tempDir, 'ComposeRuntime.kt')
+  const composeSnapshotPath = join(tempDir, 'ComposeSnapshot.kt')
   const kotlinxSerializationPath = join(tempDir, 'KotlinxSerialization.kt')
   const kotlinxSerializationJsonPath = join(tempDir, 'KotlinxSerializationJson.kt')
   // Per-service Android/coroutines stubs (Clipboard-only)
@@ -1284,6 +1292,7 @@ try {
   const kotlinxCoroutinesPath = join(tempDir, 'KotlinxCoroutines.kt')
 
   writeFileSync(composeRuntimePath, COMPOSE_RUNTIME_STUBS, 'utf8')
+  writeFileSync(composeSnapshotPath, COMPOSE_SNAPSHOT_STUBS, 'utf8')
   const androidContentDatabasePath = join(tempDir, 'AndroidContentDatabase.kt')
   const composePlatformPath = join(tempDir, 'ComposeUiPlatform.kt')
   writeFileSync(kotlinxSerializationPath, KOTLINX_SERIALIZATION_STUBS, 'utf8')
@@ -1678,6 +1687,7 @@ try {
     ? [
         '-d', tempDir,
         composeRuntimePath,
+        composeSnapshotPath,
         kotlinxSerializationPath,
         kotlinxSerializationJsonPath,
         ...clipboardStubs,
@@ -1710,6 +1720,7 @@ try {
         '-include-runtime',
         '-d', jarPath,
         composeRuntimePath,
+        composeSnapshotPath,
         kotlinxSerializationPath,
         kotlinxSerializationJsonPath,
         ...clipboardStubs,

@@ -60,6 +60,8 @@ type AnyNode = any
 interface ParseCtx {
   warnings: string[]
   source: string
+  /** Local aliases of computeLayout imported specifically from @pyreon/flow. */
+  flowComputeLayoutNames?: Set<string>
   /**
    * Module-scope `const X = 'literal'` bindings, name → value. Collected in a
    * pre-pass so a hook that BAKES a string into the emit can accept a shared
@@ -385,6 +387,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   const ctx: ParseCtx = {
     warnings: [],
     source,
+    flowComputeLayoutNames: new Set(),
     storeHookNames: new Set(),
     objectTypeAliases: new Map(),
     enumTypeNames: new Set(),
@@ -449,6 +452,14 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // accept `const KEY = 'filter'` and not only an inline literal. Runs before
   // component bodies so declaration ORDER does not matter.
   collectStringConsts(ast.program.body as AnyNode[], ctx.stringConsts)
+  for (const node of ast.program.body as AnyNode[]) {
+    if (node.type !== 'ImportDeclaration' || node.source?.value !== '@pyreon/flow') continue
+    for (const spec of (node.specifiers as AnyNode[]) ?? []) {
+      if (spec.type === 'ImportSpecifier' && spec.imported?.name === 'computeLayout' && typeof spec.local?.name === 'string') {
+        ctx.flowComputeLayoutNames?.add(spec.local.name)
+      }
+    }
+  }
   // Pre-pass: collect object-shape type aliases so a NAMED props annotation
   // (`props: CardProps`) resolves regardless of declaration order. Warnings
   // from this parse are DISCARDED (a scratch ctx) — the main pass's
@@ -2442,6 +2453,9 @@ export const NATIVE_LOWERED_HOOKS: ReadonlySet<string> = new Set([
   // (useDraggable/useDroppable), the page-global useDragMonitor and the
   // OS-file useFileDrop deliberately stay OUT, so they keep warning by name.
   'useSortable',
+  // `@pyreon/flow` — the same native state lowering as createFlow, plus
+  // component-unmount disposal emitted by both native frontends.
+  'useFlow',
 ])
 
 /**
@@ -2628,21 +2642,19 @@ export const UNLOWERED_PYREON_MODULES: ReadonlyMap<string, UnloweredModule> = ne
     '@pyreon/flow',
     {
       // `createFlow` lowers (PyreonFlowState — CRUD/selection/viewport/graph
-      // queries); the JSX components (`<Flow>` and everything it renders —
-      // Background/Controls/MiniMap/Handle/NodeToolbar/NodeResizer/Panel) are
+      // queries), and `<Flow>` lowers to the native interactive host. Optional
+      // chrome (Handle/NodeToolbar/NodeResizer/Panel) is
       // SVG/DOM rendering + pointer-event gesture handling with NO native
       // emit AT ALL. Without this entry those names emitted VERBATIM as if
       // they were real SwiftUI/Compose types — `Flow(instance: flow) {
       // Background() }` — which fails at the native BUILD with "cannot find
       // 'Flow' in scope" and no indication anywhere that `<Flow>` itself is
       // the unsupported part, not `createFlow` (which by then has correctly
-      // lowered right above it). `computeLayout`/`useFlow`/the edge-path
-      // helpers (`getBezierPath` etc.) are pure functions with no native
-      // port yet either — name them so the warning doesn't imply only the
-      // JSX layer is missing.
+      // lowered right above it). The five public edge-path builders lower to
+      // the same native geometry used by the Flow canvas.
       advice:
-        '`createFlow({ nodes, edges })` LOWERS to the native PyreonFlowState engine (v1: literal config; CRUD/selection/pan-zoom/graph-queries) — mutate it from event handlers, and draw its edges with `PyreonFlowEdgeCanvas` (SwiftUI Canvas / Compose Canvas) from hand-written native code. The `<Flow>` JSX component and everything it renders (Background/Controls/MiniMap/Handle/NodeToolbar/NodeResizer/Panel), `useFlow`, `computeLayout`, and the edge-path helpers (getBezierPath/getSmoothStepPath/…) have NO native emit — host the full JSX-driven editor via the `@pyreon/flow/webview` bridge instead',
-      supported: new Set(['createFlow']),
+        '`createFlow({ nodes, edges })`, `useFlow({ nodes, edges })`, `computeLayout(...)`, the five edge-path builders, literal `<Flow nodeTypes={{ type: Component }}>`, `<Background>`, `<Controls>`, `<MiniMap>`, and `<Panel>` LOWER to the native PyreonFlowState/PyreonFlowView engine. Handle/NodeToolbar/NodeResizer and custom edge renderer maps still have no shared-source native emit; keep those behind platform branches or use the `@pyreon/flow/webview` bridge',
+      supported: new Set(['createFlow', 'useFlow', 'computeLayout', 'getBezierPath', 'getSmoothStepPath', 'getStepPath', 'getStraightPath', 'getWaypointPath', 'getEdgePath', 'getHandlePosition', 'getNodeIntersection', 'getEffectiveDimensions', 'DEFAULT_NODE_WIDTH', 'DEFAULT_NODE_HEIGHT', 'Position', 'Flow', 'Background', 'Controls', 'MiniMap', 'Panel']),
     },
   ],
   [
@@ -6577,9 +6589,28 @@ const NATIVE_PRIMITIVE_TYPE_NAMES = new Set(['Double', 'Float', 'Int', 'Bool', '
 const CHART_ENGINE_STRUCT_NAMES = new Set(CHART_ENGINE_STRUCTS.map((s) => s.name))
 
 function resolvePropsObjectType(t: TypeIR, ctx: ParseCtx): TypeIR {
+  if (t.kind === 'typeRef') {
+    const local = ctx.objectTypeAliases.get(t.name)
+    if (local !== undefined) return local
+  }
+  // Public @pyreon/flow custom-node props are imported rather than declared in
+  // the consumer file. They have a closed structural contract, so resolve it
+  // here just like compiler-known chart engine structs instead of emitting a
+  // zero-prop component whose body references unbound data/selection fields.
+  if (t.kind === 'typeRef' && t.name === 'NodeComponentProps' && t.args.length <= 1) {
+    const dataType = t.args[0] ?? { kind: 'unknown' as const }
+    const accessor = (returnType: TypeIR): TypeIR => ({ kind: 'function', params: [], returnType })
+    return {
+      kind: 'object',
+      fields: [
+        { name: 'id', type: { kind: 'string' } },
+        { name: 'data', type: accessor(dataType) },
+        { name: 'selected', type: accessor({ kind: 'boolean' }) },
+        { name: 'dragging', type: accessor({ kind: 'boolean' }) },
+      ],
+    }
+  }
   if (t.kind === 'typeRef' && t.args.length === 0) {
-    const resolved = ctx.objectTypeAliases.get(t.name)
-    if (resolved !== undefined) return resolved
     if (NATIVE_PRIMITIVE_TYPE_NAMES.has(t.name) || CHART_ENGINE_STRUCT_NAMES.has(t.name)) return t
     // A locally-declared string-literal union lowers to a native enum, so a
     // parameter typed with it emits verbatim and compiles — the same reason
@@ -6905,7 +6936,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const sortableDecl = tryDeclFromUseSortable(node, ctx)
   if (sortableDecl) return sortableDecl
 
-  // `@pyreon/flow` — `const flow = createFlow({ nodes, edges })` lowers to
+  // `@pyreon/flow` — `createFlow` and component-scoped `useFlow` lower to
   // the PyreonFlowState engine. Same placement rationale as table/sortable
   // above: recognized as a real port before the silent-drop block.
   const flowStateDecl = tryDeclFromCreateFlow(node, ctx)
@@ -8954,7 +8985,7 @@ function tryDeclFromSyncedSignal(node: AnyNode, ctx: ParseCtx): DeclIR | null {
 }
 
 /**
- * `const flow = createFlow({ nodes: [...], edges: [...] })` from `@pyreon/flow`
+ * `const flow = createFlow/useFlow({ nodes: [...], edges: [...] })` from `@pyreon/flow`
  * → a `flow-state` decl. Lowers to the native `PyreonFlowState<Row>` port.
  *
  * Unlike `createTableState` (which WRAPS an external reactive `data` source),
@@ -8996,13 +9027,15 @@ function literalObjectKeys(obj: AnyNode): string[] {
 function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   const init = node.init as AnyNode | undefined
   if (init?.type !== 'CallExpression') return null
-  if ((init.callee?.name as string | undefined) !== 'createFlow') return null
+  const factory = init.callee?.name as string | undefined
+  if (factory !== 'createFlow' && factory !== 'useFlow') return null
   if (node.id?.type !== 'Identifier') return null
   const name = node.id.name as string
+  const genericDataType = parseGenericTypeArg(init, ctx)
   const configArg = unwrapTypeLayers((init.arguments as AnyNode[] | undefined)?.[0])
   if (!configArg || configArg.type !== 'ObjectExpression') {
     ctx.warnings.push(
-      `createFlow declaration \`${name}\`: argument must be an object literal { nodes, edges } to lower natively. Falling back to silent-drop.`,
+      `${factory} declaration \`${name}\`: argument must be an object literal { nodes, edges } to lower natively. Falling back to silent-drop.`,
     )
     return null
   }
@@ -9011,6 +9044,8 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     n?.type === 'Literal' && typeof n.value === 'string' ? (n.value as string) : undefined
   const literalBool = (n: AnyNode | undefined): boolean | undefined =>
     n?.type === 'Literal' && typeof n.value === 'boolean' ? (n.value as boolean) : undefined
+  const literalNumber = (n: AnyNode | undefined): number | undefined =>
+    n?.type === 'Literal' && typeof n.value === 'number' ? (n.value as number) : undefined
   const objProp = (
     obj: AnyNode,
     key: string,
@@ -9028,6 +9063,68 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     }
     return undefined
   }
+  const literalPositions = (n: AnyNode | undefined): { x: ExprIR; y: ExprIR }[] | undefined => {
+    if (!n || n.type !== 'ArrayExpression') return undefined
+    const out: { x: ExprIR; y: ExprIR }[] = []
+    for (const raw of (n.elements as AnyNode[] | undefined) ?? []) {
+      const item = unwrapTypeLayers(raw)
+      if (!item || item.type !== 'ObjectExpression') return undefined
+      const x = objProp(item, 'x')
+      const y = objProp(item, 'y')
+      if (!x || !y) return undefined
+      out.push({ x: parseExpr(x, ctx), y: parseExpr(y, ctx) })
+    }
+    return out
+  }
+  const literalFlowPosition = (n: AnyNode | undefined): string | undefined => {
+    const direct = literalString(n)
+    if (direct && ['top', 'right', 'bottom', 'left'].includes(direct.toLowerCase())) return direct.toLowerCase()
+    if (n?.type === 'StaticMemberExpression' || n?.type === 'MemberExpression') {
+      const positionName = (n.property as AnyNode | undefined)?.name
+      if (typeof positionName === 'string' && ['top', 'right', 'bottom', 'left'].includes(positionName.toLowerCase())) return positionName.toLowerCase()
+    }
+    return undefined
+  }
+  const literalHandles = (n: AnyNode | undefined): { id?: string; type: string; position: string }[] | undefined => {
+    if (!n || n.type !== 'ArrayExpression') return undefined
+    const out: { id?: string; type: string; position: string }[] = []
+    for (const raw of (n.elements as AnyNode[] | undefined) ?? []) {
+      const item = unwrapTypeLayers(raw)
+      if (!item || item.type !== 'ObjectExpression') return undefined
+      const type = literalString(objProp(item, 'type'))
+      const position = literalFlowPosition(objProp(item, 'position'))
+      const idNode = objProp(item, 'id')
+      const id = literalString(idNode)
+      if (!type || !position || (idNode && id === undefined)) return undefined
+      out.push({ type, position, ...(id !== undefined ? { id } : {}) })
+    }
+    return out
+  }
+  type ParsedMarker = { type: string; color?: string; width?: number; height?: number; strokeWidth?: number }
+  const literalMarker = (n: AnyNode | undefined): ParsedMarker | null | undefined => {
+    if (!n) return undefined
+    if (n.type === 'NullLiteral' || (n.type === 'Literal' && n.value === null)) return null
+    const direct = literalString(n)
+    const memberName = n.type === 'StaticMemberExpression' || n.type === 'MemberExpression' ? (n.property as AnyNode | undefined)?.name : undefined
+    const markerType = (direct ?? (typeof memberName === 'string' ? memberName : '')).toLowerCase()
+    if (markerType === 'arrow' || markerType === 'arrowclosed') return { type: markerType }
+    if (n.type !== 'ObjectExpression') return undefined
+    const typeNode = objProp(n, 'type')
+    const directType = literalString(typeNode)
+    const typeMember = typeNode?.type === 'StaticMemberExpression' || typeNode?.type === 'MemberExpression' ? (typeNode.property as AnyNode | undefined)?.name : undefined
+    const type = (directType ?? (typeof typeMember === 'string' ? typeMember : '')).toLowerCase()
+    if (type !== 'arrow' && type !== 'arrowclosed') return undefined
+    const result: ParsedMarker = { type }
+    const colorNode = objProp(n, 'color'); const color = literalString(colorNode)
+    if (colorNode && color === undefined) return undefined
+    if (color !== undefined) result.color = color
+    for (const key of ['width', 'height', 'strokeWidth'] as const) {
+      const valueNode = objProp(n, key); const value = literalNumber(valueNode)
+      if (valueNode && value === undefined) return undefined
+      if (value !== undefined) result[key] = value
+    }
+    return result
+  }
 
   const droppedNodeFields = new Set<string>()
   const droppedEdgeFields = new Set<string>()
@@ -9039,14 +9136,38 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     data: ExprIR
     width?: ExprIR
     height?: ExprIR
+    draggable?: boolean
+    selectable?: boolean
+    connectable?: boolean
+    focusable?: boolean
+    ariaLabel?: string
+    hidden?: boolean
+    deletable?: boolean
+    parentId?: string
+    expandParent?: boolean
+    group?: boolean
+    sourceHandles?: { id?: string; type: string; position: string }[]
+    targetHandles?: { id?: string; type: string; position: string }[]
   }[] = []
   const edgesOut: {
     id: string
     source: string
     target: string
+    sourceHandle?: string
+    targetHandle?: string
     type?: string
     label?: string
     animated?: boolean
+    focusable?: boolean
+    ariaLabel?: string
+    hidden?: boolean
+    deletable?: boolean
+    reconnectable?: boolean
+    interactionWidth?: number
+    pathOptions?: { curvature?: number; borderRadius?: number; offset?: number }
+    markerStart?: ParsedMarker
+    markerEnd?: ParsedMarker | null
+    waypoints?: { x: ExprIR; y: ExprIR }[]
   }[] = []
   let shapeOk = true
 
@@ -9082,8 +9203,18 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       const widthNode = objProp(nodeLit, 'width')
       const heightNode = objProp(nodeLit, 'height')
       const typeLit = literalString(typeNode)
+      const sourceHandlesNode = objProp(nodeLit, 'sourceHandles')
+      const targetHandlesNode = objProp(nodeLit, 'targetHandles')
+      const sourceHandles = literalHandles(sourceHandlesNode)
+      const targetHandles = literalHandles(targetHandlesNode)
+      const stringFields = ['ariaLabel', 'parentId'] as const
+      const boolFields = ['draggable', 'selectable', 'connectable', 'focusable', 'hidden', 'deletable', 'expandParent', 'group'] as const
       for (const k of literalObjectKeys(nodeLit)) if (!HANDLED_FLOW_NODE_FIELDS.has(k)) droppedNodeFields.add(k)
       if (typeNode && typeLit === undefined) droppedNodeFields.add('type (not a string literal)')
+      for (const k of stringFields) if (objProp(nodeLit, k) && literalString(objProp(nodeLit, k)) === undefined) droppedNodeFields.add(`${k} (not a string literal)`)
+      for (const k of boolFields) if (objProp(nodeLit, k) && literalBool(objProp(nodeLit, k)) === undefined) droppedNodeFields.add(`${k} (not a boolean literal)`)
+      if (sourceHandlesNode && sourceHandles === undefined) droppedNodeFields.add('sourceHandles (not a literal handle array)')
+      if (targetHandlesNode && targetHandles === undefined) droppedNodeFields.add('targetHandles (not a literal handle array)')
       nodesOut.push({
         id,
         positionX: parseExpr(posXNode, ctx),
@@ -9092,6 +9223,16 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
         ...(typeLit !== undefined ? { type: typeLit } : {}),
         ...(widthNode ? { width: parseExpr(widthNode, ctx) } : {}),
         ...(heightNode ? { height: parseExpr(heightNode, ctx) } : {}),
+        ...Object.fromEntries(stringFields.flatMap((k) => {
+          const value = literalString(objProp(nodeLit, k))
+          return value === undefined ? [] : [[k, value]]
+        })),
+        ...Object.fromEntries(boolFields.flatMap((k) => {
+          const value = literalBool(objProp(nodeLit, k))
+          return value === undefined ? [] : [[k, value]]
+        })),
+        ...(sourceHandles !== undefined ? { sourceHandles } : {}),
+        ...(targetHandles !== undefined ? { targetHandles } : {}),
       })
     }
   } else if (nodesArg) {
@@ -9116,10 +9257,39 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       const edgeType = literalString(objProp(edgeLit, 'type'))
       const edgeLabel = literalString(objProp(edgeLit, 'label'))
       const edgeAnimated = literalBool(objProp(edgeLit, 'animated'))
+      const edgeStringFields = ['sourceHandle', 'targetHandle', 'ariaLabel'] as const
+      const edgeBoolFields = ['focusable', 'hidden', 'deletable', 'reconnectable'] as const
+      const interactionWidth = literalNumber(objProp(edgeLit, 'interactionWidth'))
+      const pathOptionsNode = objProp(edgeLit, 'pathOptions')
+      const markerStartNode = objProp(edgeLit, 'markerStart')
+      const markerEndNode = objProp(edgeLit, 'markerEnd')
+      const markerStart = literalMarker(markerStartNode)
+      const markerEnd = literalMarker(markerEndNode)
+      const pathOptions = (() => {
+        if (!pathOptionsNode) return undefined
+        if (pathOptionsNode.type !== 'ObjectExpression') return null
+        const result: { curvature?: number; borderRadius?: number; offset?: number } = {}
+        for (const key of ['curvature', 'borderRadius', 'offset'] as const) {
+          const valueNode = objProp(pathOptionsNode, key)
+          const value = literalNumber(valueNode)
+          if (valueNode && value === undefined) return null
+          if (value !== undefined) result[key] = value
+        }
+        return result
+      })()
+      const waypointsNode = objProp(edgeLit, 'waypoints')
+      const waypoints = literalPositions(waypointsNode)
       for (const k of literalObjectKeys(edgeLit)) if (!HANDLED_FLOW_EDGE_FIELDS.has(k)) droppedEdgeFields.add(k)
       if (objProp(edgeLit, 'type') && edgeType === undefined) droppedEdgeFields.add('type (not a string literal)')
       if (objProp(edgeLit, 'label') && edgeLabel === undefined) droppedEdgeFields.add('label (not a string literal)')
       if (objProp(edgeLit, 'animated') && edgeAnimated === undefined) droppedEdgeFields.add('animated (not a boolean literal)')
+      for (const k of edgeStringFields) if (objProp(edgeLit, k) && literalString(objProp(edgeLit, k)) === undefined) droppedEdgeFields.add(`${k} (not a string literal)`)
+      for (const k of edgeBoolFields) if (objProp(edgeLit, k) && literalBool(objProp(edgeLit, k)) === undefined) droppedEdgeFields.add(`${k} (not a boolean literal)`)
+      if (objProp(edgeLit, 'interactionWidth') && interactionWidth === undefined) droppedEdgeFields.add('interactionWidth (not a numeric literal)')
+      if (pathOptions === null) droppedEdgeFields.add('pathOptions (not a literal numeric options object)')
+      if (markerStartNode && markerStart === undefined) droppedEdgeFields.add('markerStart (not a literal marker)')
+      if (markerEndNode && markerEnd === undefined) droppedEdgeFields.add('markerEnd (not a literal marker or null)')
+      if (waypointsNode && waypoints === undefined) droppedEdgeFields.add('waypoints (not an array literal of { x, y })')
       edgesOut.push({
         id,
         source,
@@ -9127,6 +9297,19 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
         ...(edgeType !== undefined ? { type: edgeType } : {}),
         ...(edgeLabel !== undefined ? { label: edgeLabel } : {}),
         ...(edgeAnimated !== undefined ? { animated: edgeAnimated } : {}),
+        ...Object.fromEntries(edgeStringFields.flatMap((k) => {
+          const value = literalString(objProp(edgeLit, k))
+          return value === undefined ? [] : [[k, value]]
+        })),
+        ...Object.fromEntries(edgeBoolFields.flatMap((k) => {
+          const value = literalBool(objProp(edgeLit, k))
+          return value === undefined ? [] : [[k, value]]
+        })),
+        ...(interactionWidth !== undefined ? { interactionWidth } : {}),
+        ...(pathOptions !== undefined && pathOptions !== null ? { pathOptions } : {}),
+        ...(markerStart !== undefined && markerStart !== null ? { markerStart } : {}),
+        ...(markerEndNode && markerEnd !== undefined ? { markerEnd } : {}),
+        ...(waypoints !== undefined ? { waypoints } : {}),
       })
     }
   } else if (edgesArg) {
@@ -9135,7 +9318,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
 
   if (!shapeOk) {
     ctx.warnings.push(
-      `createFlow declaration \`${name}\`: \`nodes\`/\`edges\` must be literal arrays of object literals — each node needs a string \`id\`, a \`position: { x, y }\`, and an object-literal \`data\`; each edge needs string \`id\`/\`source\`/\`target\` — to lower natively (v1). Falling back to silent-drop.`,
+      `${factory} declaration \`${name}\`: \`nodes\`/\`edges\` must be literal arrays of object literals — each node needs a string \`id\`, a \`position: { x, y }\`, and an object-literal \`data\`; each edge needs string \`id\`/\`source\`/\`target\` — to lower natively (v1). Falling back to silent-drop.`,
     )
     return null
   }
@@ -9147,16 +9330,16 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   )
   if (nodesOut.some((n) => n.data.kind !== 'object') || dataFieldSets.size > 1) {
     ctx.warnings.push(
-      `createFlow declaration \`${name}\`: every node's \`data\` must be an object literal with the SAME field set, so one row struct can be synthesized (v1). Falling back to silent-drop.`,
+      `${factory} declaration \`${name}\`: every node's \`data\` must be an object literal with the SAME field set, so one row struct can be synthesized (v1). Falling back to silent-drop.`,
     )
     return null
   }
-  // At least one node is required — the row struct is synthesized from a
-  // real node's `data` literal (there is no annotation-only path yet), so an
-  // empty seed has nothing to infer T from.
-  if (nodesOut.length === 0) {
+  // An untyped empty seed has nothing to infer T from. An explicit
+  // `createFlow<T>` / `useFlow<T>` does: preserve that public type identity
+  // and let a native editor start empty, which is the ordinary creation path.
+  if (nodesOut.length === 0 && genericDataType.kind === 'unknown') {
     ctx.warnings.push(
-      `createFlow declaration \`${name}\`: an empty \`nodes: []\` has no literal to infer the row-data struct from (v1). Seed at least one representative node — more can be added later via \`addNode\`. Falling back to silent-drop.`,
+      `${factory} declaration \`${name}\`: an empty \`nodes: []\` has no literal or explicit generic to infer the row-data type from. Write \`${factory}<YourData>({ nodes: [], edges: [] })\` or seed a representative node. Falling back to silent-drop.`,
     )
     return null
   }
@@ -9165,10 +9348,92 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // already take them, so the runtime was never the blocker here; only this
   // reader was. A non-literal value (a variable, an expression) is left to the
   // unhandled-key warning below rather than half-lowered.
-  const literalNumber = (n: AnyNode | undefined): number | undefined =>
-    n?.type === 'Literal' && typeof n.value === 'number' ? (n.value as number) : undefined
   const minZoom = literalNumber(objProp(configArg, 'minZoom'))
   const maxZoom = literalNumber(objProp(configArg, 'maxZoom'))
+  const snapToGrid = literalBool(objProp(configArg, 'snapToGrid'))
+  const snapGrid = literalNumber(objProp(configArg, 'snapGrid'))
+  const extentNode = objProp(configArg, 'nodeExtent')
+  const nodeExtent = (() => {
+    if (extentNode?.type !== 'ArrayExpression') return undefined
+    const pair = (extentNode.elements as AnyNode[] | undefined) ?? []
+    if (pair.length !== 2 || pair[0]?.type !== 'ArrayExpression' || pair[1]?.type !== 'ArrayExpression') return undefined
+    const lo = (pair[0].elements as AnyNode[] | undefined) ?? []
+    const hi = (pair[1].elements as AnyNode[] | undefined) ?? []
+    if (lo.length !== 2 || hi.length !== 2) return undefined
+    return [literalNumber(lo[0]), literalNumber(lo[1]), literalNumber(hi[0]), literalNumber(hi[1])]
+  })()
+  const connectionRulesNode = objProp(configArg, 'connectionRules')
+  const defaultMarkerEndNode = objProp(configArg, 'defaultMarkerEnd')
+  const defaultMarkerEnd = literalMarker(defaultMarkerEndNode)
+  const interactionBoolKeys = ['nodesDraggable', 'nodesConnectable', 'nodesSelectable', 'nodesFocusable', 'edgesFocusable', 'disableKeyboardA11y', 'nodesDeletable', 'edgesDeletable', 'edgesReconnectable', 'pannable', 'panOnDrag', 'zoomable', 'zoomOnPinch', 'zoomOnDoubleClick', 'selectionOnDrag', 'multiSelect', 'onlyRenderVisibleElements', 'snapToObjects', 'autoHistory', 'reducedMotion'] as const
+  const interactionBools = Object.fromEntries(interactionBoolKeys.flatMap((key) => { const value = literalBool(objProp(configArg, key)); return value === undefined ? [] : [[key, value]] })) as Partial<Record<(typeof interactionBoolKeys)[number], boolean>>
+  const edgeInteractionWidth = literalNumber(objProp(configArg, 'edgeInteractionWidth'))
+  const connectionRadius = literalNumber(objProp(configArg, 'connectionRadius'))
+  const defaultEdgeType = literalString(objProp(configArg, 'defaultEdgeType'))
+  const connectionLineType = literalString(objProp(configArg, 'connectionLineType'))
+  const selectionMode = literalString(objProp(configArg, 'selectionMode'))
+  const defaultEdgeOptionsNode = objProp(configArg, 'defaultEdgeOptions')
+  const defaultEdgeOptions = (() => {
+    if (defaultEdgeOptionsNode === undefined) return undefined
+    if (defaultEdgeOptionsNode.type !== 'ObjectExpression') return null
+    const out: NonNullable<Extract<DeclIR, { kind: 'flow-state' }>['defaultEdgeOptions']> = {}
+    const stringKeys = ['type', 'label', 'ariaLabel'] as const
+    const boolKeys = ['animated', 'focusable', 'hidden', 'deletable', 'reconnectable'] as const
+    for (const key of stringKeys) {
+      const valueNode = objProp(defaultEdgeOptionsNode, key); const value = literalString(valueNode)
+      if (valueNode && value === undefined) return null
+      if (value !== undefined) out[key] = value
+    }
+    for (const key of boolKeys) {
+      const valueNode = objProp(defaultEdgeOptionsNode, key); const value = literalBool(valueNode)
+      if (valueNode && value === undefined) return null
+      if (value !== undefined) out[key] = value
+    }
+    const widthNode = objProp(defaultEdgeOptionsNode, 'interactionWidth'); const width = literalNumber(widthNode)
+    if (widthNode && width === undefined) return null
+    if (width !== undefined) out.interactionWidth = width
+    const pathNode = objProp(defaultEdgeOptionsNode, 'pathOptions')
+    if (pathNode) {
+      if (pathNode.type !== 'ObjectExpression') return null
+      const path: { curvature?: number; borderRadius?: number; offset?: number } = {}
+      for (const key of ['curvature', 'borderRadius', 'offset'] as const) {
+        const valueNode = objProp(pathNode, key); const value = literalNumber(valueNode)
+        if (valueNode && value === undefined) return null
+        if (value !== undefined) path[key] = value
+      }
+      if (literalObjectKeys(pathNode).some((key) => !['curvature', 'borderRadius', 'offset'].includes(key))) return null
+      out.pathOptions = path
+    }
+    const markerStartNode = objProp(defaultEdgeOptionsNode, 'markerStart'); const markerStart = literalMarker(markerStartNode)
+    const markerEndNode = objProp(defaultEdgeOptionsNode, 'markerEnd'); const markerEnd = literalMarker(markerEndNode)
+    if (markerStartNode && (markerStart === undefined || markerStart === null)) return null
+    if (markerEndNode && markerEnd === undefined) return null
+    if (markerStart !== undefined && markerStart !== null) out.markerStart = markerStart
+    if (markerEndNode && markerEnd !== undefined) out.markerEnd = markerEnd
+    const handled = new Set([...stringKeys, ...boolKeys, 'interactionWidth', 'pathOptions', 'markerStart', 'markerEnd'])
+    if (literalObjectKeys(defaultEdgeOptionsNode).some((key) => !handled.has(key))) return null
+    return out
+  })()
+  const fitView = literalBool(objProp(configArg, 'fitView'))
+  const fitViewPadding = literalNumber(objProp(configArg, 'fitViewPadding'))
+  const connectionRules = (() => {
+    if (connectionRulesNode === undefined) return undefined
+    if (connectionRulesNode.type !== 'ObjectExpression') return null
+    const out: Record<string, string[]> = {}
+    for (const prop of (connectionRulesNode.properties as AnyNode[] | undefined) ?? []) {
+      if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') return null
+      const key = prop.key?.type === 'Identifier' ? prop.key.name as string : literalString(prop.key)
+      const rule = unwrapTypeLayers(prop.value)
+      const outputs = rule?.type === 'ObjectExpression' ? objProp(rule, 'outputs') : undefined
+      if (key === undefined || outputs?.type !== 'ArrayExpression') return null
+      const values = ((outputs.elements as AnyNode[] | undefined) ?? []).map(literalString)
+      if (values.some((value) => value === undefined)) return null
+      out[key] = values as string[]
+    }
+    return out
+  })()
+  const validatorNode = objProp(configArg, 'isValidConnection')
+  const connectionValidator = validatorNode !== undefined ? parseExpr(validatorNode, ctx) : undefined
 
   // Every OTHER key the user wrote lowers to NOTHING. That is a behavioural
   // divergence from the same source line — `createFlow({ …, fitView: true })`
@@ -9181,12 +9446,12 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // class as the config keys below, one level down (#3303 named the keys and
   // stopped there; `parentId`/`markerEnd`/`sourceHandle`/… still vanished).
   if (droppedNodeFields.size > 0) {
-    ctx.warnings.push(droppedFlowFieldsWarning(`createFlow declaration \`${name}\``, 'node', [...droppedNodeFields]))
+    ctx.warnings.push(droppedFlowFieldsWarning(`${factory} declaration \`${name}\``, 'node', [...droppedNodeFields]))
   }
   if (droppedEdgeFields.size > 0) {
-    ctx.warnings.push(droppedFlowFieldsWarning(`createFlow declaration \`${name}\``, 'edge', [...droppedEdgeFields]))
+    ctx.warnings.push(droppedFlowFieldsWarning(`${factory} declaration \`${name}\``, 'edge', [...droppedEdgeFields]))
   }
-  const HANDLED_FLOW_CONFIG_KEYS = new Set(['nodes', 'edges', 'minZoom', 'maxZoom'])
+  const HANDLED_FLOW_CONFIG_KEYS = new Set(['nodes', 'edges', 'minZoom', 'maxZoom', 'snapToGrid', 'snapGrid', 'nodeExtent', 'defaultMarkerEnd', 'connectionRules', 'isValidConnection', ...interactionBoolKeys, 'edgeInteractionWidth', 'connectionRadius', 'defaultEdgeType', 'connectionLineType', 'selectionMode', 'defaultEdgeOptions', 'fitView', 'fitViewPadding'])
   const droppedKeys: string[] = []
   for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
     if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
@@ -9207,12 +9472,26 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       droppedKeys.push(`${k} (not a numeric literal)`)
     }
   }
+  if (objProp(configArg, 'snapToGrid') !== undefined && snapToGrid === undefined) droppedKeys.push('snapToGrid (not a boolean literal)')
+  if (objProp(configArg, 'snapGrid') !== undefined && snapGrid === undefined) droppedKeys.push('snapGrid (not a numeric literal)')
+  if (extentNode !== undefined && (nodeExtent === undefined || nodeExtent.some((n) => n === undefined))) droppedKeys.push('nodeExtent (not a numeric [[minX, minY], [maxX, maxY]] literal)')
+  if (connectionRules === null) droppedKeys.push('connectionRules (not a literal { type: { outputs: string[] } } map)')
+  if (defaultMarkerEndNode && defaultMarkerEnd === undefined) droppedKeys.push('defaultMarkerEnd (not a literal marker or null)')
+  for (const key of interactionBoolKeys) if (objProp(configArg, key) && literalBool(objProp(configArg, key)) === undefined) droppedKeys.push(`${key} (not a boolean literal)`)
+  if (objProp(configArg, 'edgeInteractionWidth') && edgeInteractionWidth === undefined) droppedKeys.push('edgeInteractionWidth (not a numeric literal)')
+  if (objProp(configArg, 'connectionRadius') && connectionRadius === undefined) droppedKeys.push('connectionRadius (not a numeric literal)')
+  if (objProp(configArg, 'defaultEdgeType') && defaultEdgeType === undefined) droppedKeys.push('defaultEdgeType (not a string literal)')
+  if (objProp(configArg, 'connectionLineType') && connectionLineType === undefined) droppedKeys.push('connectionLineType (not a string literal)')
+  if (objProp(configArg, 'selectionMode') && !['partial', 'full'].includes(selectionMode ?? '')) droppedKeys.push('selectionMode (expected "partial" or "full")')
+  if (defaultEdgeOptions === null) droppedKeys.push('defaultEdgeOptions (not a supported literal edge-options object)')
+  if (objProp(configArg, 'fitView') && fitView === undefined) droppedKeys.push('fitView (not a boolean literal)')
+  if (objProp(configArg, 'fitViewPadding') && fitViewPadding === undefined) droppedKeys.push('fitViewPadding (not a numeric literal)')
   if (droppedKeys.length > 0) {
     ctx.warnings.push(
-      `createFlow declaration \`${name}\`: ${droppedKeys.map((k) => `\`${k}\``).join(', ')} ` +
+      `${factory} declaration \`${name}\`: ${droppedKeys.map((k) => `\`${k}\``).join(', ')} ` +
         `${droppedKeys.length === 1 ? 'is' : 'are'} NOT lowered natively — the native PyreonFlowState ` +
         `uses its own defaults, so this diagram behaves differently on web than on iOS/Android from ` +
-        `the SAME source. Only \`nodes\`, \`edges\`, \`minZoom\` and \`maxZoom\` (numeric literals) cross today. ` +
+        `the SAME source. Literal node/edge seeds, zoom limits, grid snapping, and node extents cross today. ` +
         `Set the rest from hand-written native code, or keep the JSX editor on the \`@pyreon/flow/webview\` bridge.`,
     )
   }
@@ -9220,10 +9499,27 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   return {
     kind: 'flow-state',
     name,
+    ...(factory === 'useFlow' ? { lifecycleOwned: true } : {}),
+    ...(genericDataType.kind !== 'unknown' ? { dataType: genericDataType } : {}),
     nodes: nodesOut,
     edges: edgesOut,
     ...(minZoom !== undefined ? { minZoom } : {}),
     ...(maxZoom !== undefined ? { maxZoom } : {}),
+    ...(snapToGrid !== undefined ? { snapToGrid } : {}),
+    ...(snapGrid !== undefined ? { snapGrid } : {}),
+    ...(nodeExtent !== undefined && nodeExtent.every((n) => n !== undefined) ? { nodeExtent: nodeExtent as [number, number, number, number] } : {}),
+    ...(defaultMarkerEndNode && defaultMarkerEnd !== undefined ? { defaultMarkerEnd } : {}),
+    ...interactionBools,
+    ...(edgeInteractionWidth !== undefined ? { edgeInteractionWidth } : {}),
+    ...(connectionRadius !== undefined ? { connectionRadius } : {}),
+    ...(defaultEdgeType !== undefined ? { defaultEdgeType } : {}),
+    ...(connectionLineType !== undefined ? { connectionLineType } : {}),
+    ...(selectionMode === 'partial' || selectionMode === 'full' ? { selectionMode } : {}),
+    ...(defaultEdgeOptions !== undefined && defaultEdgeOptions !== null ? { defaultEdgeOptions } : {}),
+    ...(fitView !== undefined ? { fitView } : {}),
+    ...(fitViewPadding !== undefined ? { fitViewPadding } : {}),
+    ...(connectionRules !== undefined && connectionRules !== null ? { connectionRules } : {}),
+    ...(connectionValidator !== undefined ? { connectionValidator } : {}),
   }
 }
 
@@ -11210,7 +11506,10 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         }
         return { kind: 'announce-call', message, assertive }
       }
-      const callee = parseExpr(node.callee, ctx)
+      const callee =
+        node.callee?.type === 'Identifier' && ctx.flowComputeLayoutNames?.has(node.callee.name as string)
+          ? { kind: 'identifier' as const, name: '__pyreonFlowComputeLayout' }
+          : parseExpr(node.callee, ctx)
       const args = (node.arguments as AnyNode[]).map((a) => parseExpr(a, ctx))
       // `node.optional` is set for the `f?.()` link of an optional chain
       // (oxc wraps the chain in a ChainExpression; each call carries its own

@@ -223,6 +223,10 @@ export function cacheKey(
   source: string,
 ): string {
   return createHash('sha256')
+    // v2 invalidates entries written before interrupted compiler processes
+    // were distinguished from deterministic compiler verdicts.
+    .update('v2')
+    .update('\0')
     .update(kind)
     .update('\0')
     .update(compilerVersion)
