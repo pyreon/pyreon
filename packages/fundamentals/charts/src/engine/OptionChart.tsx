@@ -110,6 +110,7 @@ export const HOST_PASSTHROUGH_KEYS: { readonly [K in HostPassthrough]: true } = 
   accessibleTable: true,
   class: true,
   rtl: true,
+  universalTransition: true,
 }
 
 /**

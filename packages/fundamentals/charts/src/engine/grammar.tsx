@@ -348,6 +348,8 @@ export interface PlotProps<T> {
   /** Tween data changes (default on); `updateDuration` in ms. */
   updateAnimation?: boolean
   updateDuration?: Double
+  /** Morph updates across differing mark or item shapes. */
+  universalTransition?: boolean
   showGrid?: boolean
   maxPoints?: number
   onSelect?: (index: number) => void
@@ -644,7 +646,7 @@ export function Plot<T>(props: PlotProps<T>): VNodeChild {
   const familyNode = (kind: FamilyHost): VNode => {
     const p: Record<string, unknown> = { data: reactiveProp(readRows) }
     // The canvas host's shared props, then the child-declared switches, then the mark's own channels.
-    for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'animate', 'updateAnimation', 'updateDuration', 'keyboard', 'onSelect', 'onSelectIndex', 'accessibleTable', 'class', 'onSaveImage'] as const) p[key] = reactiveProp(() => read(key))
+    for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'animate', 'updateAnimation', 'updateDuration', 'universalTransition', 'keyboard', 'onSelect', 'onSelectIndex', 'accessibleTable', 'class', 'onSaveImage'] as const) p[key] = reactiveProp(() => read(key))
     for (const key of ['tooltip', 'showLegend', 'legendPosition', 'format'] as const) p[key] = reactiveProp(() => read(key) ?? (resolved().props as Record<string, unknown>)[key])
     // The family hosts take a PNG-only toolbox; the plot's `'svg'` form maps to it.
     p.toolbox = reactiveProp(() => {
@@ -674,7 +676,7 @@ export function Plot<T>(props: PlotProps<T>): VNodeChild {
   const forwarded = ['format', 'xFormat', 'xTime', 'showXAxis', 'showYAxis', 'yDomain', 'y2Format', 'y2Domain', 'tooltip', 'crosshair', 'tooltipFormatter', 'showLegend', 'legendToggle', 'legendMaxRows', 'legendPosition', 'dataZoom', 'navigator', 'zoomPresets', 'link', 'brush', 'onBrush', 'annotations', 'markers', 'xTitle', 'yTitle', 'y2Title', 'xLabels', 'yScale', 'yTime', 'stackNormalize'] as const
   for (const key of forwarded) plotProps[key] = reactiveProp(() => (props as unknown as Record<string, unknown>)[key] ?? (resolved().props as Record<string, unknown>)[key])
   // Every other `<PlotChart>` prop, the events/actions model included — the grammar reaches the whole host.
-  for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'showGrid', 'horizontal', 'animate', 'updateAnimation', 'updateDuration', 'maxPoints', 'keyboard', 'accessibleTable', 'class', 'handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'onZoom', 'emphasis', 'seriesLabels', 'toolbox', 'onSaveImage', 'locale'] as const) {
+  for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'showGrid', 'horizontal', 'animate', 'updateAnimation', 'updateDuration', 'universalTransition', 'maxPoints', 'keyboard', 'accessibleTable', 'class', 'handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'onZoom', 'emphasis', 'seriesLabels', 'toolbox', 'onSaveImage', 'locale'] as const) {
     plotProps[key] = reactiveProp(() => (props as unknown as Record<string, unknown>)[key])
   }
   // `onSelect` and `onSelectIndex` are one callback on the plot host.

@@ -23,7 +23,7 @@ describe('versioned chart capability inventory', () => {
     expect(direct.total).toBeGreaterThan(hosted.total)
     expect(direct.percent).toBeLessThan(100)
     expect(hosted.percent).toBeLessThan(100)
-    expect(CHART_CAPABILITIES.some((row) => row.mode === 'direct' && row.status === 'pending')).toBe(true)
+    expect(CHART_CAPABILITIES.some((row) => row.mode === 'direct' && row.status !== 'complete')).toBe(true)
   })
 
   it('covers every completion-plan area in the direct ledger', () => {

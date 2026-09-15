@@ -21,7 +21,7 @@ import { batch, effect, isClient, signal } from '@pyreon/reactivity'
 import { chartTable, describeChart } from './a11y'
 import type { A11yInput } from './a11y'
 import { canvasMeasure, canvasSizeAttrs, paint, prepareCanvas } from './canvas-web'
-import { cmdsEqual, sameCmdShape, tweenCmds } from './cmd-tween'
+import { cmdsEqual, sameCmdShape, tweenCmds, universalTweenCmds } from './cmd-tween'
 import { placeLegend } from './legend'
 import type { LegendEntry, LegendPosition } from './legend'
 import type { ChartTheme } from './render'
@@ -105,13 +105,14 @@ export interface CanvasHostProps {
   /**
    * Tween a data change from the previous frame to the new one instead of
    * snapping, when the two frames have the same shape. Default on; respects
-   * `prefers-reduced-motion`, like the entrance. A shape change (a row added,
-   * a series removed) snaps — there is no path between two different shapes
-   * that means anything.
+   * `prefers-reduced-motion`, like the entrance. Shape-changing updates snap
+   * unless `universalTransition` is enabled.
    */
   updateAnimation?: boolean
   /** Tween duration in ms; default the theme's `updateMs`. */
   updateDuration?: Double
+  /** Morph updates even when the family or item count changes. Opt-in. */
+  universalTransition?: boolean
   /**
    * Keyboard navigation: the canvas is focusable; Left/Right (and Up/Down)
    * move through the chart's items, Home/End jump, Enter/Space select
@@ -280,7 +281,9 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     tweenFrame = requestAnimationFrame(tick)
   }
   /** The family commands to show right now: the tween's frame, else the last full frame. */
-  const shownFamily = (): DrawCmd[] => (tweenFrom !== null && tweenTo !== null && tweenT < 1.0 ? tweenCmds(tweenFrom, tweenTo, easeOutCubic(tweenT)) : (lastFamily ?? []))
+  const transitionFrame = (from: DrawCmd[], to: DrawCmd[], t: Double): DrawCmd[] =>
+    props.universalTransition === true ? universalTweenCmds(from, to, t) : tweenCmds(from, to, t)
+  const shownFamily = (): DrawCmd[] => (tweenFrom !== null && tweenTo !== null && tweenT < 1.0 ? transitionFrame(tweenFrom, tweenTo, easeOutCubic(tweenT)) : (lastFamily ?? []))
 
   /**
    * Chrome first, then the family in what is left. The title and a wrapped
@@ -388,13 +391,14 @@ export function canvasHost<L>(spec: CanvasHostSpec<L>): VNode {
     const family = spec.render(f.layout, measure, t, entrance)
     if (entrance >= 1.0) {
       const enabled = props.updateAnimation !== false && hasRaf() && !prefersReducedMotion() && (props.updateDuration ?? t.updateMs) > 0
-      if (enabled && lastFamily !== null && sameCmdShape(lastFamily, family) && !cmdsEqual(lastFamily, family)) {
+      const transitionable = lastFamily !== null && (sameCmdShape(lastFamily, family) || props.universalTransition === true)
+      if (enabled && transitionable && lastFamily !== null && !cmdsEqual(lastFamily, family)) {
         // Retarget a running tween from where it is; start one from the last frame otherwise.
-        tweenFrom = tweenFrom !== null && tweenTo !== null && tweenT < 1.0 ? tweenCmds(tweenFrom, tweenTo, easeOutCubic(tweenT)) : lastFamily
+        tweenFrom = tweenFrom !== null && tweenTo !== null && tweenT < 1.0 ? transitionFrame(tweenFrom, tweenTo, easeOutCubic(tweenT)) : lastFamily
         tweenTo = family
         lastFamily = family
         startTween()
-        paint(ctx, present([...f.chrome, ...tweenCmds(tweenFrom, family, 0.0), ...ringCmds(f)], w), w, hgt, FONT)
+        paint(ctx, present([...f.chrome, ...transitionFrame(tweenFrom, family, 0.0), ...ringCmds(f)], w), w, hgt, FONT)
         return
       }
       // A shape change snaps, and cancels any tween still running toward the old shape.

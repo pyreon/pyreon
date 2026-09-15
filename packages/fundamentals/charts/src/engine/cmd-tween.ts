@@ -98,6 +98,84 @@ export function tweenCmds(from: DrawCmd[], to: DrawCmd[], e: Double): DrawCmd[] 
   return out
 }
 
+function cmdPoints(cmd: DrawCmd): Pt[] {
+  switch (cmd.kind) {
+    case 'rect': return [{ x: cmd.rect.x, y: cmd.rect.y }, { x: cmd.rect.x + cmd.rect.w, y: cmd.rect.y + cmd.rect.h }]
+    case 'line': return [cmd.from, cmd.to]
+    case 'polyline':
+    case 'polygon': return cmd.points
+    case 'circle': return [{ x: cmd.center.x - cmd.radius, y: cmd.center.y - cmd.radius }, { x: cmd.center.x + cmd.radius, y: cmd.center.y + cmd.radius }]
+    case 'text': return [cmd.at]
+  }
+}
+
+function cmdBounds(cmd: DrawCmd): { x: Double; y: Double; w: Double; h: Double } {
+  const points = cmdPoints(cmd)
+  let minX = points[0]?.x ?? 0
+  let maxX = minX
+  let minY = points[0]?.y ?? 0
+  let maxY = minY
+  for (let i = 1; i < points.length; i++) {
+    const point = points[i]!
+    minX = Math.min(minX, point.x); maxX = Math.max(maxX, point.x)
+    minY = Math.min(minY, point.y); maxY = Math.max(maxY, point.y)
+  }
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY }
+}
+
+function repeatedPoint(point: Pt, count: number): Pt[] {
+  const out: Pt[] = []
+  for (let i = 0; i < count; i++) out.push({ x: point.x, y: point.y })
+  return out
+}
+
+function targetAtSource(source: DrawCmd | undefined, target: DrawCmd): DrawCmd {
+  if (source === undefined) return collapsed(target)
+  const box = cmdBounds(source)
+  const center = { x: box.x + box.w / 2, y: box.y + box.h / 2 }
+  switch (target.kind) {
+    case 'rect': return { ...target, rect: box }
+    case 'line': return { ...target, from: { x: box.x, y: box.y }, to: { x: box.x + box.w, y: box.y + box.h } }
+    case 'polyline':
+    case 'polygon': return { ...target, points: repeatedPoint(center, target.points.length) }
+    case 'circle': return { ...target, center, radius: Math.max(box.w, box.h) / 2 }
+    case 'text': return { ...target, at: center, size: source?.kind === 'text' ? source.size : 0 }
+  }
+}
+
+function collapsed(cmd: DrawCmd): DrawCmd {
+  const box = cmdBounds(cmd)
+  const center = { x: box.x + box.w / 2, y: box.y + box.h / 2 }
+  switch (cmd.kind) {
+    case 'rect': return { ...cmd, rect: { x: center.x, y: center.y, w: 0, h: 0 } }
+    case 'line': return { ...cmd, from: center, to: center }
+    case 'polyline':
+    case 'polygon': return { ...cmd, points: repeatedPoint(center, cmd.points.length) }
+    case 'circle': return { ...cmd, center, radius: 0 }
+    case 'text': return { ...cmd, at: center, size: 0 }
+  }
+}
+
+/** Morph differing families and item counts; the settled frame is exactly `to`. */
+export function universalTweenCmds(from: DrawCmd[], to: DrawCmd[], e: Double): DrawCmd[] {
+  if (e >= 1) return to
+  if (sameCmdShape(from, to)) return tweenCmds(from, to, e)
+  const used = new Set<number>()
+  const out: DrawCmd[] = []
+  for (let i = 0; i < to.length; i++) {
+    const target = to[i]!
+    let sourceIndex = from.findIndex((cmd, index) => !used.has(index) && cmd.kind === target.kind)
+    if (sourceIndex < 0) sourceIndex = from.findIndex((_cmd, index) => !used.has(index))
+    const source = sourceIndex < 0 ? undefined : from[sourceIndex]
+    if (sourceIndex >= 0) used.add(sourceIndex)
+    out.push(tweenCmds([targetAtSource(source, target)], [target], e)[0]!)
+  }
+  for (let i = 0; i < from.length; i++) {
+    if (!used.has(i)) out.push(tweenCmds([from[i]!], [collapsed(from[i]!)], e)[0]!)
+  }
+  return out
+}
+
 /** True when two same-shape lists place every shape at the same numbers — nothing to animate. */
 export function cmdsEqual(a: DrawCmd[], b: DrawCmd[]): boolean {
   if (!sameCmdShape(a, b)) return false

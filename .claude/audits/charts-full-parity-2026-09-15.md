@@ -59,6 +59,10 @@ for interaction, animation or accessibility parity.
   selection/event/error routing, source-ratcheted prop totality, and native
   runtime helpers. This closes the previous unresolved-component build gap;
   device behaviour remains part of C7's exit gate.
+- [ ] Universal transitions: the direct web canvas now morphs differing
+  command kinds and growing/shrinking item sets behind the explicit
+  `universalTransition` prop. Native canvas state/timing and device evidence
+  are still required before this row can be marked complete.
 
 ## Exit gate
 

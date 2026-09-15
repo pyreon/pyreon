@@ -6,7 +6,7 @@
  * available through the supported native host. The two scores are deliberately
  * separate: hosted coverage never inflates the direct-native score.
  */
-export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-15.4' as const
+export const CHART_CAPABILITY_CONTRACT = 'option-contract-2026-09-15.5' as const
 
 export type ChartCapabilityArea = 'data' | 'series' | 'coordinates' | 'runtime' | 'presentation'
 export type ChartCapabilityMode = 'direct' | 'hosted'
@@ -78,7 +78,7 @@ export const CHART_CAPABILITIES: readonly ChartCapability[] = [
   row('presentation.gradients-patterns', 'presentation', 'direct', 'partial', 'src/engine/gradient.ts'),
   row('presentation.decals', 'presentation', 'direct', 'partial', 'src/engine/pattern.test.ts'),
   row('presentation.animation', 'presentation', 'direct', 'partial', 'src/engine/cmd-tween.ts'),
-  row('presentation.universal-transition', 'presentation', 'direct', 'pending', 'src/engine/cmd-tween.ts'),
+  row('presentation.universal-transition', 'presentation', 'direct', 'partial', 'src/engine/cmd-tween.ts', 'src/engine/cmd-tween.test.ts'),
   row('presentation.locale', 'presentation', 'direct', 'complete', 'src/engine/locale.ts'),
   row('presentation.rtl', 'presentation', 'direct', 'complete', 'src/engine/rtl.ts'),
   row('presentation.export-snapshot', 'presentation', 'direct', 'complete', 'src/engine/svg.ts'),
