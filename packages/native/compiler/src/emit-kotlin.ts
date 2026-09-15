@@ -232,7 +232,7 @@ type StaticFlowNodeToolbar = {
   showOnSelect: boolean
   contentComponent: string
 }
-let _flowComponentToolbarsKotlin: Map<string, StaticFlowNodeToolbar> = new Map()
+let _flowComponentToolbarsKotlin: Map<string, StaticFlowNodeToolbar[]> = new Map()
 let _flowComponentsWithInvalidToolbarsKotlin: Set<string> = new Set()
 let _activeComponentName = ''
 
@@ -747,8 +747,9 @@ export function emitKotlin(
     if (resizer.invalid) _flowComponentsWithInvalidResizersKotlin.add(component.name)
     const toolbars = collectStaticFlowNodeToolbarsKotlin(component.returnExpr)
     if (toolbars.length > 0) {
-      const toolbar = toolbars[0]!
-      let contentComponent = `${component.name}PyreonNodeToolbar`
+      const parsedToolbars: StaticFlowNodeToolbar[] = []
+      for (const [toolbarIndex, toolbar] of toolbars.entries()) {
+      let contentComponent = `${component.name}PyreonNodeToolbar${toolbarIndex || ''}`
       while (usedComponentNames.has(contentComponent)) contentComponent += '_'
       usedComponentNames.add(contentComponent)
       const read = (name: string): unknown => {
@@ -757,12 +758,11 @@ export function emitKotlin(
       }
       const has = (name: string): boolean => toolbar.attrs.some((entry) => entry.kind === 'attr' && entry.name === name)
       const position = read('position'), align = read('align'), offset = read('offset'), showOnSelect = read('showOnSelect')
-      const invalid = toolbars.length > 1 ||
-        (has('position') && typeof position !== 'string') ||
+      const invalid = (has('position') && typeof position !== 'string') ||
         (has('align') && typeof align !== 'string') ||
         (has('offset') && typeof offset !== 'number') ||
         (has('showOnSelect') && typeof showOnSelect !== 'boolean')
-      _flowComponentToolbarsKotlin.set(component.name, {
+      parsedToolbars.push({
         position: typeof position === 'string' ? position : 'top',
         align: typeof align === 'string' ? align : 'center',
         offset: typeof offset === 'number' ? offset : 8,
@@ -775,6 +775,8 @@ export function emitKotlin(
         name: contentComponent,
         returnExpr: { kind: 'jsx-fragment', children: toolbar.children },
       })
+      }
+      _flowComponentToolbarsKotlin.set(component.name, parsedToolbars)
     }
   }
   for (const toolbarComponent of flowToolbarComponents) {
@@ -7065,7 +7067,7 @@ function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string
   for (const entry of nodeTypes ?? []) {
     if (_flowComponentsWithInvalidHandlesKotlin.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <Handle> requires literal \`type\` and \`position\` props for native extraction; the dynamic handle was not attached to the node.`)
     if (_flowComponentsWithInvalidResizersKotlin.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <NodeResizer> size and edge-handle options must be literals for native extraction; dynamic values use native defaults.`)
-    if (_flowComponentsWithInvalidToolbarsKotlin.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <NodeToolbar> supports one declaration with literal position, align, offset, and showOnSelect props on native; unsupported values use native defaults.`)
+    if (_flowComponentsWithInvalidToolbarsKotlin.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <NodeToolbar> requires literal position, align, offset, and showOnSelect props on native; unsupported values use native defaults.`)
   }
   const edgeTypesAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'edgeTypes')
   const edgeTypes = edgeTypesAttr?.kind === 'attr' && edgeTypesAttr.value?.kind === 'object' && (edgeTypesAttr.value.spreads?.length ?? 0) === 0 && edgeTypesAttr.value.fields.every((field) => field.value.kind === 'identifier')
@@ -7122,18 +7124,18 @@ function emitKotlinFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string
     ? `, nodeResizer = { pyreonNode ->\n    when (pyreonNode.type) {\n      ${resizerCases.join('\n      ')}\n      else -> null\n    }\n  }`
     : ''
   const toolbarCases = nodeTypes?.flatMap(({ type, component }) => {
-    const config = _flowComponentToolbarsKotlin.get(component)
-    return config ? [`${JSON.stringify(type)} -> PyreonFlowNodeToolbarConfig(position = ${JSON.stringify(config.position)}, align = ${JSON.stringify(config.align)}, offset = ${ktChartDouble(String(config.offset))}, showOnSelect = ${config.showOnSelect})`] : []
+    const configs = _flowComponentToolbarsKotlin.get(component)
+    return configs?.length ? [`${JSON.stringify(type)} -> listOf(${configs.map((config) => `PyreonFlowNodeToolbarConfig(position = ${JSON.stringify(config.position)}, align = ${JSON.stringify(config.align)}, offset = ${ktChartDouble(String(config.offset))}, showOnSelect = ${config.showOnSelect})`).join(', ')})`] : []
   }) ?? []
   const nodeToolbarConfigArg = toolbarCases.length > 0
-    ? `, nodeToolbarConfig = { pyreonNode ->\n    when (pyreonNode.type) {\n      ${toolbarCases.join('\n      ')}\n      else -> null\n    }\n  }`
+    ? `, nodeToolbarConfigs = { pyreonNode ->\n    when (pyreonNode.type) {\n      ${toolbarCases.join('\n      ')}\n      else -> emptyList()\n    }\n  }`
     : ''
   const toolbarContentCases = nodeTypes?.flatMap(({ type, component }) => {
-    const config = _flowComponentToolbarsKotlin.get(component)
-    return config ? [`${JSON.stringify(type)} -> ${kotlinIdent(config.contentComponent)}(id = pyreonNode.id, data = { pyreonNode.data }, selected = { pyreonSelected }, dragging = { pyreonDragging })`] : []
+    const configs = _flowComponentToolbarsKotlin.get(component)
+    return configs?.length ? [`${JSON.stringify(type)} -> when (pyreonToolbarIndex) {\n${configs.map((config, index) => `        ${index} -> ${kotlinIdent(config.contentComponent)}(id = pyreonNode.id, data = { pyreonNode.data }, selected = { pyreonSelected }, dragging = { pyreonDragging })`).join('\n')}\n        else -> Unit\n      }`] : []
   }) ?? []
   const nodeToolbarArg = toolbarContentCases.length > 0
-    ? `, nodeToolbar = { pyreonNode, pyreonSelected, pyreonDragging ->\n    when (pyreonNode.type) {\n      ${toolbarContentCases.join('\n      ')}\n      else -> Unit\n    }\n  }`
+    ? `, nodeToolbar = { pyreonNode, pyreonToolbarIndex, pyreonSelected, pyreonDragging ->\n    when (pyreonNode.type) {\n      ${toolbarContentCases.join('\n      ')}\n      else -> Unit\n    }\n  }`
     : ''
   const customEdgeTypesArg = edgeTypes && edgeTypes.length > 0
     ? `, customEdgeTypes = setOf(${edgeTypes.map(({ type }) => JSON.stringify(type)).join(', ')})`

@@ -233,7 +233,7 @@ type StaticFlowNodeToolbar = {
   showOnSelect: boolean
   contentComponent: string
 }
-let _flowComponentToolbars: Map<string, StaticFlowNodeToolbar> = new Map()
+let _flowComponentToolbars: Map<string, StaticFlowNodeToolbar[]> = new Map()
 let _flowComponentsWithInvalidToolbars: Set<string> = new Set()
 let _activeComponentName = ''
 
@@ -1190,8 +1190,9 @@ export function emitSwift(
     if (resizer.invalid) _flowComponentsWithInvalidResizers.add(component.name)
     const toolbars = collectStaticFlowNodeToolbars(component.returnExpr)
     if (toolbars.length > 0) {
-      const toolbar = toolbars[0]!
-      let contentComponent = `${component.name}PyreonNodeToolbar`
+      const parsedToolbars: StaticFlowNodeToolbar[] = []
+      for (const [toolbarIndex, toolbar] of toolbars.entries()) {
+      let contentComponent = `${component.name}PyreonNodeToolbar${toolbarIndex || ''}`
       while (usedComponentNames.has(contentComponent)) contentComponent += '_'
       usedComponentNames.add(contentComponent)
       const read = (name: string): unknown => {
@@ -1200,12 +1201,11 @@ export function emitSwift(
       }
       const has = (name: string): boolean => toolbar.attrs.some((entry) => entry.kind === 'attr' && entry.name === name)
       const position = read('position'), align = read('align'), offset = read('offset'), showOnSelect = read('showOnSelect')
-      const invalid = toolbars.length > 1 ||
-        (has('position') && typeof position !== 'string') ||
+      const invalid = (has('position') && typeof position !== 'string') ||
         (has('align') && typeof align !== 'string') ||
         (has('offset') && typeof offset !== 'number') ||
         (has('showOnSelect') && typeof showOnSelect !== 'boolean')
-      _flowComponentToolbars.set(component.name, {
+      parsedToolbars.push({
         position: typeof position === 'string' ? position : 'top',
         align: typeof align === 'string' ? align : 'center',
         offset: typeof offset === 'number' ? offset : 8,
@@ -1218,6 +1218,8 @@ export function emitSwift(
         name: contentComponent,
         returnExpr: { kind: 'jsx-fragment', children: toolbar.children },
       })
+      }
+      _flowComponentToolbars.set(component.name, parsedToolbars)
     }
   }
   for (const toolbarComponent of flowToolbarComponents) {
@@ -8488,7 +8490,7 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
   for (const entry of nodeTypes ?? []) {
     if (_flowComponentsWithInvalidHandles.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <Handle> requires literal \`type\` and \`position\` props for native extraction; the dynamic handle was not attached to the node.`)
     if (_flowComponentsWithInvalidResizers.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <NodeResizer> size and edge-handle options must be literals for native extraction; dynamic values use native defaults.`)
-    if (_flowComponentsWithInvalidToolbars.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <NodeToolbar> supports one declaration with literal position, align, offset, and showOnSelect props on native; unsupported values use native defaults.`)
+    if (_flowComponentsWithInvalidToolbars.has(entry.component)) _emitWarnings.push(`<Flow nodeTypes> component \`${entry.component}\`: <NodeToolbar> requires literal position, align, offset, and showOnSelect props on native; unsupported values use native defaults.`)
   }
   const edgeTypesAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'edgeTypes')
   const edgeTypes = edgeTypesAttr?.kind === 'attr' && edgeTypesAttr.value?.kind === 'object' && (edgeTypesAttr.value.spreads?.length ?? 0) === 0 && edgeTypesAttr.value.fields.every((field) => field.value.kind === 'identifier')
@@ -8545,18 +8547,18 @@ function emitSwiftFlowHost(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
     ? `, nodeResizer: { pyreonNode in\n    switch pyreonNode.type {\n    ${resizerCases.join('\n    ')}\n    default: return nil\n    }\n  }`
     : ''
   const toolbarCases = nodeTypes?.flatMap(({ type, component }) => {
-    const config = _flowComponentToolbars.get(component)
-    return config ? [`case ${JSON.stringify(type)}: return PyreonFlowNodeToolbarConfig(position: ${JSON.stringify(config.position)}, align: ${JSON.stringify(config.align)}, offset: ${config.offset}, showOnSelect: ${config.showOnSelect})`] : []
+    const configs = _flowComponentToolbars.get(component)
+    return configs?.length ? [`case ${JSON.stringify(type)}: return [${configs.map((config) => `PyreonFlowNodeToolbarConfig(position: ${JSON.stringify(config.position)}, align: ${JSON.stringify(config.align)}, offset: ${config.offset}, showOnSelect: ${config.showOnSelect})`).join(', ')}]`] : []
   }) ?? []
   const nodeToolbarConfigArg = toolbarCases.length > 0
-    ? `, nodeToolbarConfig: { pyreonNode in\n    switch pyreonNode.type {\n    ${toolbarCases.join('\n    ')}\n    default: return nil\n    }\n  }`
+    ? `, nodeToolbarConfigs: { pyreonNode in\n    switch pyreonNode.type {\n    ${toolbarCases.join('\n    ')}\n    default: return []\n    }\n  }`
     : ''
   const toolbarContentCases = nodeTypes?.flatMap(({ type, component }) => {
-    const config = _flowComponentToolbars.get(component)
-    return config ? [`case ${JSON.stringify(type)}: return AnyView(${swiftIdent(config.contentComponent)}(id: pyreonNode.id, data: { pyreonNode.data }, selected: { pyreonSelected }, dragging: { pyreonDragging }))`] : []
+    const configs = _flowComponentToolbars.get(component)
+    return configs?.length ? [`case ${JSON.stringify(type)}:\n      switch pyreonToolbarIndex {\n${configs.map((config, index) => `      case ${index}: return AnyView(${swiftIdent(config.contentComponent)}(id: pyreonNode.id, data: { pyreonNode.data }, selected: { pyreonSelected }, dragging: { pyreonDragging }))`).join('\n')}\n      default: return nil\n      }`] : []
   }) ?? []
   const nodeToolbarArg = toolbarContentCases.length > 0
-    ? `, nodeToolbar: { pyreonNode, pyreonSelected, pyreonDragging in\n    switch pyreonNode.type {\n    ${toolbarContentCases.join('\n    ')}\n    default: return nil\n    }\n  }`
+    ? `, nodeToolbar: { pyreonNode, pyreonToolbarIndex, pyreonSelected, pyreonDragging in\n    switch pyreonNode.type {\n    ${toolbarContentCases.join('\n    ')}\n    default: return nil\n    }\n  }`
     : ''
   const customEdgeTypesArg = edgeTypes && edgeTypes.length > 0
     ? `, customEdgeTypes: Set([${edgeTypes.map(({ type }) => JSON.stringify(type)).join(', ')}])`

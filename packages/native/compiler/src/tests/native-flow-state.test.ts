@@ -391,14 +391,14 @@ describe('<Flow> native host lowering', { timeout: 30_000 }, () => {
     `
     const swift = transform(source, { target: 'swift' })
     const kotlin = transform(source, { target: 'kotlin' })
-    expect(swift.code).toContain('nodeToolbarConfig: { pyreonNode in')
-    expect(swift.code).toContain('case "toolbar": return PyreonFlowNodeToolbarConfig(position: "bottom", align: "end", offset: 12, showOnSelect: false)')
-    expect(swift.code).toContain('nodeToolbar: { pyreonNode, pyreonSelected, pyreonDragging in')
+    expect(swift.code).toContain('nodeToolbarConfigs: { pyreonNode in')
+    expect(swift.code).toContain('case "toolbar": return [PyreonFlowNodeToolbarConfig(position: "bottom", align: "end", offset: 12, showOnSelect: false)]')
+    expect(swift.code).toContain('nodeToolbar: { pyreonNode, pyreonToolbarIndex, pyreonSelected, pyreonDragging in')
     expect(swift.code).toContain('AnyView(ToolbarNodePyreonNodeToolbar(id: pyreonNode.id, data: { pyreonNode.data }, selected: { pyreonSelected }, dragging: { pyreonDragging }))')
     expect(swift.code).toContain('struct ToolbarNodePyreonNodeToolbar: View')
-    expect(kotlin.code).toContain('nodeToolbarConfig = { pyreonNode ->')
-    expect(kotlin.code).toContain('"toolbar" -> PyreonFlowNodeToolbarConfig(position = "bottom", align = "end", offset = 12.0, showOnSelect = false)')
-    expect(kotlin.code).toContain('nodeToolbar = { pyreonNode, pyreonSelected, pyreonDragging ->')
+    expect(kotlin.code).toContain('nodeToolbarConfigs = { pyreonNode ->')
+    expect(kotlin.code).toContain('"toolbar" -> listOf(PyreonFlowNodeToolbarConfig(position = "bottom", align = "end", offset = 12.0, showOnSelect = false))')
+    expect(kotlin.code).toContain('nodeToolbar = { pyreonNode, pyreonToolbarIndex, pyreonSelected, pyreonDragging ->')
     expect(kotlin.code).toContain('ToolbarNodePyreonNodeToolbar(id = pyreonNode.id, data = { pyreonNode.data }, selected = { pyreonSelected }, dragging = { pyreonDragging })')
     expect(kotlin.code).toContain('fun ToolbarNodePyreonNodeToolbar(')
     expect(swift.warnings.join(' ')).not.toContain('NodeToolbar (from @pyreon/flow)')
@@ -413,7 +413,7 @@ describe('<Flow> native host lowering', { timeout: 30_000 }, () => {
     }
   })
 
-  it('names dynamic or repeated NodeToolbar declarations on registered node types', () => {
+  it('lowers repeated NodeToolbar declarations and names only dynamic configuration', () => {
     const source = `
       import { createFlow, Flow, NodeToolbar, type NodeComponentProps } from '@pyreon/flow'
       import { Stack, Text } from '@pyreon/primitives'
@@ -426,7 +426,11 @@ describe('<Flow> native host lowering', { timeout: 30_000 }, () => {
       }
     `
     for (const target of ['swift', 'kotlin'] as const) {
-      expect(transform(source, { target }).warnings.join(' ')).toContain('component `ToolbarNode`: <NodeToolbar> supports one declaration with literal')
+      const result = transform(source, { target })
+      expect(result.warnings.join(' ')).toContain('component `ToolbarNode`: <NodeToolbar> requires literal')
+      expect(result.code).toContain('ToolbarNodePyreonNodeToolbar')
+      expect(result.code).toContain('ToolbarNodePyreonNodeToolbar1')
+      expect(result.code).toContain(target === 'swift' ? 'case 1: return AnyView' : '1 -> ToolbarNodePyreonNodeToolbar1')
     }
   })
 

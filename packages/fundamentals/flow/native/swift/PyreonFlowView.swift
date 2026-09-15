@@ -499,8 +499,8 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private let ariaLabel: String
     private let nodeHandles: (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig]
     private let nodeResizer: (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig?
-    private let nodeToolbarConfig: (PyreonFlowNode<T>) -> PyreonFlowNodeToolbarConfig?
-    private let nodeToolbar: (PyreonFlowNode<T>, Bool, Bool) -> AnyView?
+    private let nodeToolbarConfigs: (PyreonFlowNode<T>) -> [PyreonFlowNodeToolbarConfig]
+    private let nodeToolbar: (PyreonFlowNode<T>, Int, Bool, Bool) -> AnyView?
     private let customEdgeTypes: Set<String>
     private let customEdge: (PyreonFlowCustomEdgeContext) -> AnyView?
     private let customConnectionLineEnabled: Bool
@@ -530,8 +530,8 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         ariaLabel: String = "Flow diagram",
         nodeHandles: @escaping (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] },
         nodeResizer: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { _ in nil },
-        nodeToolbarConfig: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeToolbarConfig? = { _ in nil },
-        nodeToolbar: @escaping (PyreonFlowNode<T>, Bool, Bool) -> AnyView? = { _, _, _ in nil },
+        nodeToolbarConfigs: @escaping (PyreonFlowNode<T>) -> [PyreonFlowNodeToolbarConfig] = { _ in [] },
+        nodeToolbar: @escaping (PyreonFlowNode<T>, Int, Bool, Bool) -> AnyView? = { _, _, _, _ in nil },
         customEdgeTypes: Set<String> = [],
         customEdge: @escaping (PyreonFlowCustomEdgeContext) -> AnyView? = { _ in nil },
         customConnectionLineEnabled: Bool = false,
@@ -549,7 +549,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         self.ariaLabel = ariaLabel
         self.nodeHandles = nodeHandles
         self.nodeResizer = nodeResizer
-        self.nodeToolbarConfig = nodeToolbarConfig
+        self.nodeToolbarConfigs = nodeToolbarConfigs
         self.nodeToolbar = nodeToolbar
         self.customEdgeTypes = customEdgeTypes
         self.customEdge = customEdge
@@ -570,8 +570,8 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         ariaLabel: String = "Flow diagram",
         nodeHandles: @escaping (PyreonFlowNode<T>) -> [PyreonFlowHandleConfig] = { _ in [] },
         nodeResizer: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeResizerConfig? = { _ in nil },
-        nodeToolbarConfig: @escaping (PyreonFlowNode<T>) -> PyreonFlowNodeToolbarConfig? = { _ in nil },
-        nodeToolbar: @escaping (PyreonFlowNode<T>, Bool, Bool) -> AnyView? = { _, _, _ in nil },
+        nodeToolbarConfigs: @escaping (PyreonFlowNode<T>) -> [PyreonFlowNodeToolbarConfig] = { _ in [] },
+        nodeToolbar: @escaping (PyreonFlowNode<T>, Int, Bool, Bool) -> AnyView? = { _, _, _, _ in nil },
         customEdgeTypes: Set<String> = [],
         customEdge: @escaping (PyreonFlowCustomEdgeContext) -> AnyView? = { _ in nil },
         customConnectionLineEnabled: Bool = false,
@@ -589,7 +589,7 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
         self.ariaLabel = ariaLabel
         self.nodeHandles = nodeHandles
         self.nodeResizer = nodeResizer
-        self.nodeToolbarConfig = nodeToolbarConfig
+        self.nodeToolbarConfigs = nodeToolbarConfigs
         self.nodeToolbar = nodeToolbar
         self.customEdgeTypes = customEdgeTypes
         self.customEdge = customEdge
@@ -785,16 +785,18 @@ public struct PyreonFlowView<T, NodeContent: View>: View {
     private var nodeToolbarsLayer: some View {
         ForEach(visibleNodes, id: \.id) { node in
             let selected = state.isNodeSelected(node.id)
-            if let config = nodeToolbarConfig(node), (!config.showOnSelect || selected), let toolbar = nodeToolbar(node, selected, nodeDragStart[node.id] != nil) {
-                let absolute = state.getAbsolutePosition(node.id)
-                let dimensions = state.getNodeDimensions(node.id)
-                PyreonFlowToolbarPortal(
-                    placement: pyreonFlowNodeToolbarPlacement(
-                        node: PyreonFlowRect(x: absolute.x, y: absolute.y, width: dimensions.width, height: dimensions.height),
-                        viewport: state.viewport,
-                        config: config),
-                    content: toolbar)
-                    .zIndex(10)
+            ForEach(Array(nodeToolbarConfigs(node).enumerated()), id: \.offset) { index, config in
+                if (!config.showOnSelect || selected), let toolbar = nodeToolbar(node, index, selected, nodeDragStart[node.id] != nil) {
+                    let absolute = state.getAbsolutePosition(node.id)
+                    let dimensions = state.getNodeDimensions(node.id)
+                    PyreonFlowToolbarPortal(
+                        placement: pyreonFlowNodeToolbarPlacement(
+                            node: PyreonFlowRect(x: absolute.x, y: absolute.y, width: dimensions.width, height: dimensions.height),
+                            viewport: state.viewport,
+                            config: config),
+                        content: toolbar)
+                        .zIndex(10)
+                }
             }
         }
     }
