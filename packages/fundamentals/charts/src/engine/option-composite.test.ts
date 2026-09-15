@@ -23,7 +23,7 @@ describe('timeline', () => {
     expect(timelineSteps({ timeline: { data: ['x'], currentIndex: 9 } })!.current).toBe(0)
     expect(timelineSteps({ series: [] })).toBeNull()
   })
-  it('resolves a step: series merge BY INDEX over the base, objects merge shallowly, timeline keys vanish', () => {
+  it('resolves a step: series merge by index over the base, objects merge recursively, timeline keys vanish', () => {
     const r = resolveTimeline(timeline, 1)
     expect(r.warnings).toEqual([])
     const series = r.option['series'] as { type: string; name: string; data: number[] }[]
@@ -36,6 +36,26 @@ describe('timeline', () => {
     expect('options' in r.option).toBe(false)
     // Default step = currentIndex.
     expect((resolveTimeline(timeline).option['series'] as { data: number[] }[])[0]!.data).toEqual([3, 4])
+  })
+
+  it('recursively preserves nested option and indexed-series fields', () => {
+    const resolved = resolveTimeline({
+      baseOption: {
+        timeline: { data: ['one'] },
+        title: { textStyle: { color: '#111111', fontSize: 14 } },
+        series: [{ type: 'pie', label: { show: false, position: 'inside' }, itemStyle: { color: '#123456' } }],
+      },
+      options: [{
+        title: { textStyle: { fontSize: 18 } },
+        series: [{ label: { position: 'outside' }, itemStyle: { opacity: 0.5 } }],
+      }],
+    }).option
+    expect(resolved['title']).toEqual({ textStyle: { color: '#111111', fontSize: 18 } })
+    expect(resolved['series']).toEqual([{
+      type: 'pie',
+      label: { show: false, position: 'outside' },
+      itemStyle: { color: '#123456', opacity: 0.5 },
+    }])
   })
   it('a step past the list warns by name and renders the base', () => {
     const r = resolveTimeline(timeline, 7)

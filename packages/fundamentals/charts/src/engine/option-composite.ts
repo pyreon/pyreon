@@ -49,27 +49,30 @@ export function timelineSteps(option: Obj): TimelineSteps | null {
   return { labels, current, autoPlay: tl['autoPlay'] === true, playInterval: num(tl['playInterval']) ?? 2000.0 }
 }
 
-/** ECharts' timeline merge: a step's top-level objects merge shallowly over the base; series merge BY INDEX. */
-function mergeStep(base: Obj, step: Obj): Obj {
+const mergeObjects = (base: Obj, override: Obj): Obj => {
   const out: Obj = { ...base }
-  for (const key of Object.keys(step)) {
-    const sv = step[key]
-    const bv = base[key]
-    if (key === 'series') {
-      const bs = toArr(bv)
-      const ss = Array.isArray(sv) ? (sv as unknown[]) : isObj(sv) ? [sv] : []
-      const merged: unknown[] = bs.slice()
-      for (let i = 0; i < ss.length; i++) {
-        const s = ss[i]
-        merged[i] = isObj(s) && isObj(merged[i]) ? { ...(merged[i] as Obj), ...s } : s
-      }
-      out[key] = merged
-    } else if (isObj(sv) && isObj(bv)) {
-      out[key] = { ...bv, ...sv }
-    } else {
-      out[key] = sv
-    }
+  for (const key of Object.keys(override)) {
+    const before = base[key]
+    const after = override[key]
+    out[key] = isObj(before) && isObj(after) ? mergeObjects(before, after) : after
   }
+  return out
+}
+
+/** A step recursively merges objects over the base; series entries merge by index. */
+function mergeStep(base: Obj, step: Obj): Obj {
+  const out = mergeObjects(base, step)
+  if (!Object.prototype.hasOwnProperty.call(step, 'series')) return out
+  const baseSeries = toArr(base['series'])
+  const stepValue = step['series']
+  const stepSeries = Array.isArray(stepValue) ? stepValue : isObj(stepValue) ? [stepValue] : []
+  const merged: unknown[] = baseSeries.slice()
+  for (let index = 0; index < stepSeries.length; index++) {
+    const before = merged[index]
+    const after = stepSeries[index]
+    merged[index] = isObj(before) && isObj(after) ? mergeObjects(before, after) : after
+  }
+  out['series'] = merged
   return out
 }
 
