@@ -41,6 +41,35 @@ public struct PyreonFlowNodeResizerConfig: Equatable {
     public var directions: [String] { showEdgeHandles ? ["nw", "ne", "sw", "se", "n", "s", "e", "w"] : ["nw", "ne", "sw", "se"] }
 }
 
+public struct PyreonFlowNodeToolbarConfig: Equatable {
+    public var position: String; public var align: String; public var offset: Double; public var showOnSelect: Bool
+    public init(position: String = "top", align: String = "center", offset: Double = 8, showOnSelect: Bool = true) {
+        self.position = position; self.align = align; self.offset = offset; self.showOnSelect = showOnSelect
+    }
+}
+
+public struct PyreonFlowNodeToolbarPlacement: Equatable {
+    public var x: Double; public var y: Double; public var anchorX: Double; public var anchorY: Double
+    public init(x: Double, y: Double, anchorX: Double, anchorY: Double) {
+        self.x = x; self.y = y; self.anchorX = anchorX; self.anchorY = anchorY
+    }
+}
+
+/// Screen-space toolbar anchor matching the web portal layer. Keeping this
+/// outside SwiftUI makes pan/zoom/nesting semantics executable in the co-source
+/// gate and gives the Compose host the same four-side placement contract.
+public func pyreonFlowNodeToolbarPlacement(node: PyreonFlowRect, viewport: PyreonFlowViewport, config: PyreonFlowNodeToolbarConfig = PyreonFlowNodeToolbarConfig()) -> PyreonFlowNodeToolbarPlacement {
+    let factor = config.align == "start" ? 0 : config.align == "end" ? 1 : 0.5
+    let sx = node.x * viewport.zoom + viewport.x, sy = node.y * viewport.zoom + viewport.y
+    let width = node.width * viewport.zoom, height = node.height * viewport.zoom
+    switch config.position {
+    case "bottom": return PyreonFlowNodeToolbarPlacement(x: sx + width * factor, y: sy + height + config.offset, anchorX: factor, anchorY: 0)
+    case "left": return PyreonFlowNodeToolbarPlacement(x: sx - config.offset, y: sy + height * factor, anchorX: 1, anchorY: factor)
+    case "right": return PyreonFlowNodeToolbarPlacement(x: sx + width + config.offset, y: sy + height * factor, anchorX: 0, anchorY: factor)
+    default: return PyreonFlowNodeToolbarPlacement(x: sx + width * factor, y: sy - config.offset, anchorX: factor, anchorY: 1)
+    }
+}
+
 public struct PyreonFlowResizeFrame: Equatable {
     public var position: PyreonXYPosition; public var width: Double; public var height: Double
     public init(position: PyreonXYPosition, width: Double, height: Double) { self.position = position; self.width = width; self.height = height }

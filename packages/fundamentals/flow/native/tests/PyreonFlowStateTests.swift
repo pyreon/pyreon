@@ -567,6 +567,10 @@ struct PyreonFlowStateTests {
         check(nested.getNode("parent")?.width == 150 && nested.getNode("parent")?.height == 130, "expandParent grows the parent when an unconstrained child moves beyond it")
         nested.updateNodePosition("boxed", PyreonXYPosition(x: 500, y: -10))
         check(nested.getNode("boxed")?.position == PyreonXYPosition(x: 70, y: 20), "a node-specific numeric extent overrides the flow extent")
+        let toolbarNode = PyreonFlowRect(x: 10, y: 20, width: 100, height: 40)
+        let toolbarViewport = PyreonFlowViewport(x: 5, y: -5, zoom: 2)
+        check(pyreonFlowNodeToolbarPlacement(node: toolbarNode, viewport: toolbarViewport) == PyreonFlowNodeToolbarPlacement(x: 125, y: 27, anchorX: 0.5, anchorY: 1), "top-center toolbar placement applies pan, zoom, and an unscaled offset")
+        check(pyreonFlowNodeToolbarPlacement(node: toolbarNode, viewport: toolbarViewport, config: PyreonFlowNodeToolbarConfig(position: "bottom", align: "end", offset: 6, showOnSelect: false)) == PyreonFlowNodeToolbarPlacement(x: 225, y: 121, anchorX: 1, anchorY: 0), "bottom-end toolbar placement anchors the far node corner")
 
         // 12. Observation granularity — THE performance contract. A tracker
         // reading node "1" must not fire when node "2" moves. With one

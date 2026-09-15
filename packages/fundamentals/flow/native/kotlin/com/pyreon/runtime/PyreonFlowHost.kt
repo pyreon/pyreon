@@ -20,6 +20,21 @@ data class PyreonFlowEdgeUpdater(val edgeId: String, val end: String, val x: Dou
 data class PyreonFlowNodeResizerConfig(val minWidth: Double = 50.0, val minHeight: Double = 30.0, val handleSize: Double = 8.0, val showEdgeHandles: Boolean = false) {
     val directions: List<String> get() = if (showEdgeHandles) listOf("nw", "ne", "sw", "se", "n", "s", "e", "w") else listOf("nw", "ne", "sw", "se")
 }
+data class PyreonFlowNodeToolbarConfig(val position: String = "top", val align: String = "center", val offset: Double = 8.0, val showOnSelect: Boolean = true)
+data class PyreonFlowNodeToolbarPlacement(val x: Double, val y: Double, val anchorX: Double, val anchorY: Double)
+
+/** Screen-space twin of the web NodeToolbar portal placement. */
+fun pyreonFlowNodeToolbarPlacement(node: PyreonFlowNodeBox, viewport: PyreonFlowViewport, config: PyreonFlowNodeToolbarConfig = PyreonFlowNodeToolbarConfig()): PyreonFlowNodeToolbarPlacement {
+    val factor = if (config.align == "start") 0.0 else if (config.align == "end") 1.0 else 0.5
+    val sx = node.x * viewport.zoom + viewport.x; val sy = node.y * viewport.zoom + viewport.y
+    val width = node.width * viewport.zoom; val height = node.height * viewport.zoom
+    return when (config.position) {
+        "bottom" -> PyreonFlowNodeToolbarPlacement(sx + width * factor, sy + height + config.offset, factor, 0.0)
+        "left" -> PyreonFlowNodeToolbarPlacement(sx - config.offset, sy + height * factor, 1.0, factor)
+        "right" -> PyreonFlowNodeToolbarPlacement(sx + width + config.offset, sy + height * factor, 0.0, factor)
+        else -> PyreonFlowNodeToolbarPlacement(sx + width * factor, sy - config.offset, factor, 1.0)
+    }
+}
 data class PyreonFlowResizeFrame(val position: PyreonXYPosition, val width: Double, val height: Double)
 
 fun pyreonFlowResizeFrame(start: PyreonFlowResizeFrame, direction: String, dx: Double, dy: Double, minWidth: Double = 50.0, minHeight: Double = 30.0): PyreonFlowResizeFrame {
