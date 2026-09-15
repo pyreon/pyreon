@@ -828,6 +828,44 @@ export function desugarOptionChart(
     return { kind: 'jsx-element', tag: 'RadarChart', attrs, children: [] }
   }
 
+  if (kind === 'boxplot') {
+    optionFields(series, ['type', 'name', 'data', 'itemStyle', 'color'], 'option.series[0]', warn)
+    const data = literalOf(objectField(series, 'data'), resolve)
+    const xAxis = literalOf(objectField(raw, 'xAxis'), resolve)
+    const categories = xAxis?.kind === 'object' ? literalOf(objectField(xAxis, 'data'), resolve) : undefined
+    if (data?.kind !== 'array' || categories?.kind !== 'array' || data.elements.length !== categories.elements.length) {
+      warn('<OptionChart option.series[0].data>: native boxplots need literal five-number rows matching xAxis.data; emitting nothing.')
+      return undefined
+    }
+    const rows: ExprIR[] = []
+    for (let i = 0; i < data.elements.length; i++) {
+      const summary = literalOf(data.elements[i], resolve)
+      if (summary?.kind !== 'array' || summary.elements.length < 5 || summary.elements.slice(0, 5).some((value) => litNumber(value) === undefined)) {
+        warn(`<OptionChart option.series[0].data[${i}]>: a native boxplot needs [min, q1, median, q3, max]; emitting nothing.`)
+        return undefined
+      }
+      const category = litString(categories.elements[i]) ?? String(litNumber(categories.elements[i]) ?? i + 1)
+      rows.push({ kind: 'object', fields: [
+        { name: 'x', value: lit(category) },
+        ...['min', 'q1', 'median', 'q3', 'max'].map((name, index) => ({ name, value: optionNumberLiteral(litNumber(summary.elements[index])!) })),
+      ] })
+    }
+    const itemStyle = literalOf(objectField(series, 'itemStyle'), resolve)
+    const boxFields: { name: string; value: ExprIR }[] = []
+    if (itemStyle?.kind === 'object') {
+      optionFields(itemStyle, ['color', 'borderColor'], 'option.series[0].itemStyle', warn)
+      const fill = litString(objectField(itemStyle, 'color'))
+      const stroke = litString(objectField(itemStyle, 'borderColor'))
+      if (fill !== undefined) boxFields.push({ name: 'fill', value: lit(fill) })
+      if (stroke !== undefined) boxFields.push({ name: 'stroke', value: lit(stroke) })
+    }
+    set('data', { kind: 'array', elements: rows })
+    set('summary', { kind: 'arrow', params: ['d'], body: ident('d') })
+    set('x', { kind: 'arrow', params: ['d'], body: { kind: 'member', object: ident('d'), property: 'x' } })
+    if (boxFields.length > 0) set('box', { kind: 'object', fields: boxFields })
+    return { kind: 'jsx-element', tag: 'BoxplotChart', attrs, children: [] }
+  }
+
   if (kind === 'candlestick') {
     optionFields(series, ['type', 'name', 'data', 'itemStyle', 'color'], 'option.series[0]', warn)
     const data = literalOf(objectField(series, 'data'), resolve)
@@ -889,7 +927,8 @@ export function desugarOptionChart(
         const max = litNumber(objectField(axis, 'max'))
         if (min !== undefined && max !== undefined) fields.push({ name: 'domain', value: { kind: 'object', fields: [{ name: 'min', value: optionNumberLiteral(min) }, { name: 'max', value: optionNumberLiteral(max) }] } })
       }
-      if (objectField(axis, 'inverse')?.kind === 'literal' && objectField(axis, 'inverse')?.value === true) fields.push({ name: 'inverse', value: lit(true) })
+      const inverse = objectField(axis, 'inverse')
+      if (inverse?.kind === 'literal' && inverse.value === true) fields.push({ name: 'inverse', value: lit(true) })
       axes[dim] = { kind: 'object', fields }
     }
     if (axes.some((axis) => axis === undefined)) {
@@ -962,7 +1001,8 @@ export function desugarOptionChart(
     const label = literalOf(objectField(series, 'label'), resolve)
     if (label?.kind === 'object') {
       optionFields(label, ['show'], 'option.series[0].label', warn)
-      if (objectField(label, 'show')?.kind === 'literal' && objectField(label, 'show')?.value === false) riverFields.push({ name: 'showLabels', value: lit(false) })
+      const show = objectField(label, 'show')
+      if (show?.kind === 'literal' && show.value === false) riverFields.push({ name: 'showLabels', value: lit(false) })
     }
     const singleAxis = literalOf(objectField(raw, 'singleAxis'), resolve)
     if (singleAxis?.kind === 'object') optionFields(singleAxis, ['type'], 'option.singleAxis', warn)
@@ -997,7 +1037,8 @@ export function desugarOptionChart(
     if (max !== undefined) axesFields.push({ name: 'valueDomain', value: { kind: 'object', fields: [{ name: 'min', value: optionDoubleLiteral(min ?? 0) }, { name: 'max', value: optionDoubleLiteral(max) }] } })
     const startAngle = litNumber(objectField(angleAxis, 'startAngle'))
     if (startAngle !== undefined) axesFields.push({ name: 'startAngle', value: optionDoubleLiteral((-startAngle * Math.PI) / 180) })
-    if (objectField(angleAxis, 'clockwise')?.kind === 'literal' && objectField(angleAxis, 'clockwise')?.value === false) axesFields.push({ name: 'clockwise', value: lit(false) })
+    const clockwise = objectField(angleAxis, 'clockwise')
+    if (clockwise?.kind === 'literal' && clockwise.value === false) axesFields.push({ name: 'clockwise', value: lit(false) })
 
     const sourceSeries = rawSeries?.kind === 'array' ? rawSeries.elements : [series]
     const polarSeries: ExprIR[] = []

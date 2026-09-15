@@ -84,6 +84,14 @@ export function App() { return <OptionChart option={{
   ],
 }} /> }`
 
+const BOXPLOT = `import { OptionChart } from '@pyreon/charts/plot'
+export function App() { return <OptionChart option={{
+  xAxis: { type: 'category', data: ['A', 'B'] }, yAxis: {},
+  series: [{ type: 'boxplot', itemStyle: { color: '#ddeeff', borderColor: '#112233' }, data: [
+    [1, 2, 3, 4, 5], [10, 12, 15, 18, 20],
+  ] }],
+}} /> }`
+
 describe('OptionChart family options lower to native hosts', () => {
   for (const target of ['swift', 'kotlin'] as const) {
     it(`${target}: pie preserves data, donut radius, labels, legend, tooltip, title, and size`, () => {
@@ -172,6 +180,15 @@ describe('OptionChart family options lower to native hosts', () => {
       expect(r.code).toContain(target === 'swift' ? 'clockwise: false' : 'clockwise = false')
       expect(r.code).toContain(target === 'swift' ? 'innerRatio: 0.25' : 'innerRatio = 0.25')
     })
+
+    it(`${target}: boxplot options preserve categories, five-number summaries, fill, and stroke`, () => {
+      const r = transform(BOXPLOT, { target })
+      expect(r.warnings).toEqual([])
+      expect(r.code).not.toContain('OptionChart(')
+      expect(r.code).toContain('renderBoxplotChart')
+      for (const value of ['A', 'B', '#ddeeff', '#112233']) expect(r.code).toContain(`"${value}"`)
+      expect(r.code).toContain('FiveNumber(')
+    })
   }
 
   it('names unsupported dynamic and cartesian option shapes', () => {
@@ -248,6 +265,16 @@ describe('OptionChart family options lower to native hosts', () => {
 
   it.skipIf(!isKotlincAvailable())('kotlinc accepts polar option emits', () => {
     const r = validateKotlin(transform(POLAR, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  }, 90_000)
+
+  it.skipIf(!isSwiftcAvailable())('swiftc accepts boxplot option emits', () => {
+    const r = validateSwiftWithStubs(transform(BOXPLOT, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  }, 30_000)
+
+  it.skipIf(!isKotlincAvailable())('kotlinc accepts boxplot option emits', () => {
+    const r = validateKotlin(transform(BOXPLOT, { target: 'kotlin' }).code)
     expect(r.ok, r.error ?? '').toBe(true)
   }, 90_000)
 })

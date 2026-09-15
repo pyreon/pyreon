@@ -12956,10 +12956,13 @@ function emitSwiftBoxplotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
   }
   const data = emitSwiftExpr(dataV, indent)
   // `values` yields the raw samples of a row; the engine's `fiveNumber` reduces them natively.
-  const rowsM = swiftChartMap(e, tag, data, 'values', (b) => `fiveNumber((${b}).map { pyreonChartDouble($0) })`, indent)
+  const summaryV = chartAttrExpr(e, 'summary')
+  const rowsM = summaryV === undefined
+    ? swiftChartMap(e, tag, data, 'values', (b) => `fiveNumber((${b}).map { pyreonChartDouble($0) })`, indent)
+    : swiftChartMap(e, tag, data, 'summary', (b) => `FiveNumber(min: pyreonChartDouble((${b}).min), q1: pyreonChartDouble((${b}).q1), median: pyreonChartDouble((${b}).median), q3: pyreonChartDouble((${b}).q3), max: pyreonChartDouble((${b}).max), outliers: [])`, indent)
   if (rowsM === 'unsupported') return 'EmptyView()'
   if (rowsM === null) {
-    _emitWarnings.push(`<${tag}>: needs a \`values\` accessor on native; emitting an EmptyView().`)
+    _emitWarnings.push(`<${tag}>: needs a \`values\` or \`summary\` accessor on native; emitting an EmptyView().`)
     return 'EmptyView()'
   }
   const lets = [`let pyreonBoxes: [FiveNumber] = ${rowsM}`]

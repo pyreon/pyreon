@@ -10893,10 +10893,13 @@ function emitKotlinBoxplotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
     return 'Box {}'
   }
   const data = emitKotlinExpr(dataV, indent)
-  const rowsM = kotlinChartMap(e, tag, data, 'values', (b) => `fiveNumber((${b}).map { it.toDouble() })`, indent)
+  const summaryV = chartAttrExprKotlin(e, 'summary')
+  const rowsM = summaryV === undefined
+    ? kotlinChartMap(e, tag, data, 'values', (b) => `fiveNumber((${b}).map { it.toDouble() })`, indent)
+    : kotlinChartMap(e, tag, data, 'summary', (b) => `FiveNumber(min = (${b}).min.toDouble(), q1 = (${b}).q1.toDouble(), median = (${b}).median.toDouble(), q3 = (${b}).q3.toDouble(), max = (${b}).max.toDouble(), outliers = listOf())`, indent)
   if (rowsM === 'unsupported') return 'Box {}'
   if (rowsM === null) {
-    _emitWarnings.push(`<${tag}>: needs a \`values\` accessor on native; emitting an empty Box().`)
+    _emitWarnings.push(`<${tag}>: needs a \`values\` or \`summary\` accessor on native; emitting an empty Box().`)
     return 'Box {}'
   }
   const lets = [`val pyreonBoxes: List<FiveNumber> = ${rowsM}`]
