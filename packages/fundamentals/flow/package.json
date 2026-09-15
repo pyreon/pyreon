@@ -73,14 +73,19 @@
       "kotlin": "native/kotlin",
       "kotlinServices": {
         "PyreonFlowState": [
+          "PyreonFlowGeometryTypes.kt",
           "PyreonFlowState.kt"
         ],
         "PyreonFlowEdgeGeometry": [
-          "PyreonFlowEdgeGeometry.kt"
+          "PyreonFlowGeometryTypes.kt",
+          "PyreonFlowState.kt",
+          "PyreonFlowEdgeGeometry.kt",
+          "PyreonFlowHost.kt"
         ]
       },
       "kotlinSdkOnly": [
-        "PyreonFlowEdgeCanvas.kt"
+        "PyreonFlowEdgeCanvas.kt",
+        "PyreonFlowView.kt"
       ]
     }
   }

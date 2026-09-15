@@ -109,6 +109,14 @@ fun <T> remember(calculation: () -> T): T = calculation()
 @Suppress("UNUSED_PARAMETER")
 fun LaunchedEffect(key1: Any?, block: suspend () -> Unit) {}
 
+class DisposableEffectResult
+class DisposableEffectScope {
+  fun onDispose(effect: () -> Unit): DisposableEffectResult = DisposableEffectResult()
+}
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun DisposableEffect(key1: Any?, effect: DisposableEffectScope.() -> DisposableEffectResult) {}
+
 // isSystemInDarkTheme — Compose's dark-mode read (androidx.compose.foundation),
 // emitted by useColorScheme(). The real device build imports it via the CLI's
 // conditionalKotlinImports; this stub mirrors that surface so the validate-kotlin
@@ -591,6 +599,8 @@ class PyreonSizedMap<K, V>(maxEntries: Int, private val lru: Boolean = false) {
 
 object Modifier {
   @Suppress("UNUSED_PARAMETER")
+  fun align(alignment: Alignment): Modifier = this
+  @Suppress("UNUSED_PARAMETER")
   fun padding(all: Dp): Modifier = this
   @Suppress("UNUSED_PARAMETER")
   fun padding(horizontal: Dp = 0.dp, vertical: Dp = 0.dp): Modifier = this
@@ -843,6 +853,8 @@ object Alignment {
   val Bottom: Vertical = V
   // 2D alignment instances — Box's contentAlignment.
   val TopStart: Alignment = this
+  val TopEnd: Alignment = this
+  val BottomStart: Alignment = this
   val Center: Alignment = this
   val BottomEnd: Alignment = this
 }
@@ -1568,7 +1580,24 @@ class PyreonSortableState<T>(
 
 // @pyreon/flow — the PyreonFlowState engine. Mirrors PyreonFlowState.kt.
 data class PyreonXYPosition(val x: Double, val y: Double)
+data class PyreonFlowDimensions(val width: Double, val height: Double)
+data class PyreonFlowNodeMeasurement(val width: Double, val height: Double)
 data class PyreonFlowViewport(val x: Double = 0.0, val y: Double = 0.0, val zoom: Double = 1.0)
+data class PyreonFlowNodeExtent(val minX: Double, val minY: Double, val maxX: Double, val maxY: Double)
+enum class PyreonFlowPosition { Top, Right, Bottom, Left }
+data class PyreonFlowPathPoint(val x: Double, val y: Double)
+data class PyreonFlowPathResult(val path: String = "", val labelX: Double = 0.0, val labelY: Double = 0.0)
+fun pyreonStraightPath(sourceX: Double, sourceY: Double, targetX: Double, targetY: Double) = PyreonFlowPathResult()
+fun pyreonBezierPath(sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition = PyreonFlowPosition.Bottom, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition = PyreonFlowPosition.Top, curvature: Double = 0.25) = PyreonFlowPathResult()
+fun pyreonWaypointPath(sourceX: Double, sourceY: Double, targetX: Double, targetY: Double, waypoints: List<PyreonFlowPathPoint>) = PyreonFlowPathResult()
+fun pyreonSmoothStepPath(sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition = PyreonFlowPosition.Bottom, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition = PyreonFlowPosition.Top, borderRadius: Double = 5.0, offset: Double = 20.0) = PyreonFlowPathResult()
+fun pyreonStepPath(sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition = PyreonFlowPosition.Bottom, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition = PyreonFlowPosition.Top, offset: Double = 20.0) = PyreonFlowPathResult()
+fun pyreonEdgePath(type: String, sourceX: Double, sourceY: Double, sourcePosition: PyreonFlowPosition, targetX: Double, targetY: Double, targetPosition: PyreonFlowPosition, borderRadius: Double = 5.0, offset: Double = 20.0, curvature: Double = 0.25) = PyreonFlowPathResult()
+fun pyreonHandlePosition(position: PyreonFlowPosition, nodeX: Double, nodeY: Double, nodeWidth: Double, nodeHeight: Double) = PyreonFlowPathPoint(nodeX, nodeY)
+data class PyreonFlowNodeBox(val x: Double, val y: Double, val width: Double, val height: Double)
+fun pyreonNodeIntersection(box: PyreonFlowNodeBox, toward: PyreonFlowPathPoint) = toward
+data class PyreonFlowHandleConfig(val id: String? = null, val type: String, val position: PyreonFlowPosition)
+data class PyreonFlowMarker(val type: String, val color: String? = null, val width: Double = 10.0, val height: Double = 7.0, val strokeWidth: Double = 1.0)
 data class PyreonFlowNode<T>(
   val id: String,
   val type: String? = null,
@@ -1576,15 +1605,62 @@ data class PyreonFlowNode<T>(
   val data: T,
   val width: Double? = null,
   val height: Double? = null,
+  val draggable: Boolean? = null,
+  val selectable: Boolean? = null,
+  val connectable: Boolean? = null,
+  val focusable: Boolean? = null,
+  val ariaLabel: String? = null,
+  val hidden: Boolean? = null,
+  val deletable: Boolean? = null,
+  val parentId: String? = null,
+  val expandParent: Boolean? = null,
+  val group: Boolean? = null,
+  val sourceHandles: List<PyreonFlowHandleConfig> = emptyList(),
+  val targetHandles: List<PyreonFlowHandleConfig> = emptyList(),
 )
+fun <T> pyreonEffectiveDimensions(node: PyreonFlowNode<T>, measurement: PyreonFlowNodeMeasurement? = null) = PyreonFlowDimensions(node.width ?: measurement?.width ?: 150.0, node.height ?: measurement?.height ?: 40.0)
 data class PyreonFlowEdge(
   val id: String,
   val source: String,
   val target: String,
+  val sourceHandle: String? = null,
+  val targetHandle: String? = null,
   val type: String? = null,
   val label: String? = null,
   val animated: Boolean = false,
+  val animatedSpecified: Boolean = animated,
+  val focusable: Boolean? = null,
+  val ariaLabel: String? = null,
+  val hidden: Boolean? = null,
+  val deletable: Boolean? = null,
+  val reconnectable: Boolean? = null,
+  val interactionWidth: Double? = null,
+  val curvature: Double? = null,
+  val borderRadius: Double? = null,
+  val pathOffset: Double? = null,
+  val markerStart: PyreonFlowMarker? = null,
+  val markerEnd: PyreonFlowMarker? = null,
+  val markerEndSpecified: Boolean = false,
+  val waypoints: List<PyreonXYPosition> = emptyList(),
 )
+data class PyreonFlowDefaultEdgeOptions(
+  val type: String? = null, val label: String? = null, val animated: Boolean? = null,
+  val focusable: Boolean? = null, val ariaLabel: String? = null, val hidden: Boolean? = null,
+  val deletable: Boolean? = null, val reconnectable: Boolean? = null, val interactionWidth: Double? = null,
+  val curvature: Double? = null, val borderRadius: Double? = null, val pathOffset: Double? = null,
+  val markerStart: PyreonFlowMarker? = null, val markerEnd: PyreonFlowMarker? = null, val markerEndSpecified: Boolean = false,
+)
+data class PyreonFlowConnection(val source: String, val target: String, val sourceHandle: String? = null, val targetHandle: String? = null)
+data class PyreonFlowSelection<T>(val nodes: List<PyreonFlowNode<T>>, val edges: List<PyreonFlowEdge>)
+data class PyreonFlowNodeChange(val type: String, val id: String, val position: PyreonXYPosition? = null)
+data class PyreonFlowEdgeChange(val type: String, val id: String? = null, val edge: PyreonFlowEdge? = null)
+data class PyreonFlowConnectStart(val nodeId: String, val handleId: String)
+data class PyreonFlowPaneEvent(val position: PyreonXYPosition)
+data class PyreonFlowSnapshot<T>(val nodes: List<PyreonFlowNode<T>>, val edges: List<PyreonFlowEdge>, val viewport: PyreonFlowViewport? = null)
+data class PyreonFlowSnapLines(val x: Double?, val y: Double?, val snappedPosition: PyreonXYPosition)
+data class PyreonFlowLayoutOptions(val direction: String = "DOWN", val nodeSpacing: Double = 20.0, val layerSpacing: Double = 40.0, val animate: Boolean = true, val animationDuration: Double = 300.0)
+data class PyreonFlowLayoutPosition(val id: String, val position: PyreonXYPosition)
+suspend fun <T> pyreonComputeFlowLayout(nodes: List<PyreonFlowNode<T>>, edges: List<PyreonFlowEdge>, algorithm: String = "layered", options: PyreonFlowLayoutOptions = PyreonFlowLayoutOptions()): List<PyreonFlowLayoutPosition> = emptyList()
 data class PyreonFlowContainerSize(val width: Double = 0.0, val height: Double = 0.0)
 class PyreonFlowState<T>(
   nodes: List<PyreonFlowNode<T>> = emptyList(),
@@ -1592,38 +1668,172 @@ class PyreonFlowState<T>(
   viewport: PyreonFlowViewport = PyreonFlowViewport(),
   minZoom: Double = 0.1,
   maxZoom: Double = 4.0,
+  snapToGrid: Boolean = false,
+  snapGrid: Double = 15.0,
+  nodeExtent: PyreonFlowNodeExtent? = null,
+  defaultMarkerEnd: PyreonFlowMarker? = PyreonFlowMarker("arrowclosed"),
+  nodesDraggable: Boolean = true,
+  nodesConnectable: Boolean = true,
+  nodesSelectable: Boolean = true,
+  nodesFocusable: Boolean = true,
+  edgesFocusable: Boolean = true,
+  disableKeyboardA11y: Boolean = false,
+  nodesDeletable: Boolean = true,
+  edgesDeletable: Boolean = true,
+  edgesReconnectable: Boolean = true,
+  edgeInteractionWidth: Double = 20.0,
+  connectionRadius: Double = 0.0,
+  pannable: Boolean = true,
+  panOnDrag: Boolean = true,
+  zoomable: Boolean = true,
+  zoomOnPinch: Boolean = true,
+  zoomOnDoubleClick: Boolean = false,
+  selectionOnDrag: Boolean = false,
+  selectionMode: String = "partial",
+  multiSelect: Boolean = true,
+  onlyRenderVisibleElements: Boolean = false,
+  snapToObjects: Boolean = true,
+  defaultEdgeType: String = "bezier",
+  connectionLineType: String = "bezier",
+  defaultEdgeOptions: PyreonFlowDefaultEdgeOptions = PyreonFlowDefaultEdgeOptions(),
+  fitViewOnLoad: Boolean = false,
+  fitViewPadding: Double = 0.1,
+  autoHistory: Boolean = true,
+  connectionRules: Map<String, List<String>>? = null,
+  connectionValidator: ((PyreonFlowConnection) -> Boolean)? = null,
+  searchText: ((T) -> String?)? = null,
+  reducedMotion: Boolean? = null,
 ) {
   val nodes: List<PyreonFlowNode<T>> = nodes
   val edges: List<PyreonFlowEdge> = edges
   val viewport: PyreonFlowViewport = viewport
   var containerSize: PyreonFlowContainerSize = PyreonFlowContainerSize()
   val zoom: Double get() = viewport.zoom
+  val connectionRadius: Double = connectionRadius
+  val fitViewPadding: Double = fitViewPadding
+  val selectionMode: String = selectionMode
+  fun batch(operation: () -> Unit) { operation() }
+  fun dispose() {}
+  fun layout(algorithm: String = "layered", options: PyreonFlowLayoutOptions = PyreonFlowLayoutOptions()) {}
   fun getNode(id: String): PyreonFlowNode<T>? = null
+  fun getNodeDimensions(id: String): PyreonFlowDimensions = PyreonFlowDimensions(150.0, 40.0)
+  fun isValidConnection(connection: PyreonFlowConnection): Boolean = true
+  fun connect(connection: PyreonFlowConnection, id: String? = null): PyreonFlowEdge? = null
+  fun resolvedMarkers(edge: PyreonFlowEdge): Pair<PyreonFlowMarker?, PyreonFlowMarker?> = null to null
+  fun snappedNodePosition(id: String, position: PyreonXYPosition, excluding: Set<String> = emptySet(), threshold: Double = 5.0): PyreonXYPosition = position
+  fun nodesInSelection(start: PyreonXYPosition, end: PyreonXYPosition): List<String> = emptyList()
+  fun emitNodeClick(id: String) {}; fun emitNodeDoubleClick(id: String) {}; fun emitNodeDragStart(id: String) {}; fun emitNodeDrag(id: String) {}; fun emitNodeDragEnd(id: String) {}
+  fun emitConnectStart(nodeId: String, handleId: String?) {}; fun emitConnectEnd(connection: PyreonFlowConnection?) {}; fun emitPaneClick(position: PyreonXYPosition) {}; fun emitEdgeClick(id: String) {}
   fun addNode(node: PyreonFlowNode<T>) {}
+  fun addNodes(nodes: List<PyreonFlowNode<T>>) {}
+  fun setNodes(nodes: List<PyreonFlowNode<T>>) {}
   fun removeNode(id: String) {}
+  fun removeNodes(ids: List<String>) {}
   fun updateNodePosition(id: String, position: PyreonXYPosition) {}
+  fun updateNodeData(id: String, update: (T) -> T) {}
+  fun updateNode(id: String, update: (PyreonFlowNode<T>) -> PyreonFlowNode<T>) {}
+  fun setNodeExtent(minX: Double, minY: Double, maxX: Double, maxY: Double) {}
+  fun clearNodeExtent() {}
+  fun clampToExtent(position: PyreonXYPosition, nodeWidth: Double = 150.0, nodeHeight: Double = 40.0): PyreonXYPosition = position
   fun getEdge(id: String): PyreonFlowEdge? = null
   fun addEdge(edge: PyreonFlowEdge) {}
+  fun addEdges(edges: List<PyreonFlowEdge>) {}
+  fun setEdges(edges: List<PyreonFlowEdge>) {}
   fun removeEdge(id: String) {}
+  fun updateEdge(id: String, update: (PyreonFlowEdge) -> PyreonFlowEdge) {}
+  fun reconnectEdge(id: String, source: String? = null, target: String? = null, sourceHandle: String? = null, targetHandle: String? = null) {}
+  fun addEdgeWaypoint(edgeId: String, point: PyreonXYPosition, index: Int? = null) {}
+  fun removeEdgeWaypoint(edgeId: String, index: Int) {}
+  fun updateEdgeWaypoint(edgeId: String, index: Int, point: PyreonXYPosition) {}
+  fun removeEdges(ids: List<String>) {}
   fun isNodeSelected(id: String): Boolean = false
   fun isEdgeSelected(id: String): Boolean = false
   fun selectedNodes(): List<String> = emptyList()
   fun selectedEdges(): List<String> = emptyList()
   fun selectNode(id: String, additive: Boolean = false) {}
+  fun selectNodes(ids: List<String>, additive: Boolean = false) {}
   fun deselectNode(id: String) {}
   fun selectEdge(id: String, additive: Boolean = false) {}
   fun clearSelection() {}
   fun selectAll() {}
   fun deleteSelected() {}
-  fun zoomTo(z: Double) {}
-  fun zoomIn() {}
-  fun zoomOut() {}
+  fun copySelected() {}
+  fun paste(offset: PyreonXYPosition = PyreonXYPosition(50.0, 50.0)) {}
+  fun pushHistory() {}
+  fun undo() {}
+  fun redo() {}
+  fun toJSON(): PyreonFlowSnapshot<T> = PyreonFlowSnapshot(emptyList(), emptyList(), null)
+  fun fromJSON(snapshot: PyreonFlowSnapshot<T>) {}
+  fun zoomTo(z: Double, duration: Double = 0.0) {}
+  fun zoomIn(duration: Double = 0.0) {}
+  fun zoomOut(duration: Double = 0.0) {}
   fun panTo(position: PyreonXYPosition) {}
-  fun fitView(nodeIds: List<String>? = null, padding: Double = 0.1) {}
+  fun setViewport(x: Double? = null, y: Double? = null, zoom: Double? = null, duration: Double = 0.0) {}
+  fun setCenter(x: Double, y: Double, zoom: Double? = null, duration: Double = 0.0) {}
+  fun animateViewport(x: Double? = null, y: Double? = null, zoom: Double? = null, duration: Double = 300.0) {}
+  fun screenToFlowPosition(position: PyreonXYPosition): PyreonXYPosition = position
+  fun flowToScreenPosition(position: PyreonXYPosition): PyreonXYPosition = position
+  fun isNodeVisible(id: String): Boolean = false
+  fun fitView(nodeIds: List<String>? = null, padding: Double? = null, duration: Double = 0.0) {}
   fun getConnectedEdges(nodeId: String): List<PyreonFlowEdge> = emptyList()
   fun getIncomers(nodeId: String): List<PyreonFlowNode<T>> = emptyList()
   fun getOutgoers(nodeId: String): List<PyreonFlowNode<T>> = emptyList()
+  fun findNodes(predicate: (PyreonFlowNode<T>) -> Boolean): List<PyreonFlowNode<T>> = emptyList()
+  fun searchNodes(query: String): List<PyreonFlowNode<T>> = emptyList()
+  fun getChildNodes(parentId: String): List<PyreonFlowNode<T>> = emptyList()
+  fun getAbsolutePosition(nodeId: String): PyreonXYPosition = PyreonXYPosition(0.0, 0.0)
+  fun getProximityConnection(nodeId: String, threshold: Double = 50.0): PyreonFlowConnection? = null
+  fun getOverlappingNodes(nodeId: String): List<PyreonFlowNode<T>> = emptyList()
+  fun resolveCollisions(nodeId: String, spacing: Double = 10.0) {}
+  fun getSnapLines(nodeId: String, position: PyreonXYPosition, threshold: Double = 5.0, excluding: Set<String> = emptySet()): PyreonFlowSnapLines = PyreonFlowSnapLines(null, null, position)
+  fun onConnect(callback: (PyreonFlowConnection) -> Unit): () -> Unit = {}
+  fun onViewportChange(callback: (PyreonFlowViewport) -> Unit): () -> Unit = {}
+  fun onNodeClick(callback: (PyreonFlowNode<T>) -> Unit): () -> Unit = {}
+  fun onNodeDoubleClick(callback: (PyreonFlowNode<T>) -> Unit): () -> Unit = {}
+  fun onNodeDragStart(callback: (PyreonFlowNode<T>) -> Unit): () -> Unit = {}
+  fun onNodeDrag(callback: (PyreonFlowNode<T>) -> Unit): () -> Unit = {}
+  fun onNodeDragEnd(callback: (PyreonFlowNode<T>) -> Unit): () -> Unit = {}
+  fun onEdgeClick(callback: (PyreonFlowEdge) -> Unit): () -> Unit = {}
+  fun onSelectionChange(callback: (PyreonFlowSelection<T>) -> Unit): () -> Unit = {}
+  fun onNodesDelete(callback: (List<PyreonFlowNode<T>>) -> Unit): () -> Unit = {}
+  fun onEdgesDelete(callback: (List<PyreonFlowEdge>) -> Unit): () -> Unit = {}
+  fun onNodesChange(callback: (List<PyreonFlowNodeChange>) -> Unit): () -> Unit = {}
+  fun onEdgesChange(callback: (List<PyreonFlowEdgeChange>) -> Unit): () -> Unit = {}
+  fun onConnectStart(callback: (PyreonFlowConnectStart) -> Unit): () -> Unit = {}
+  fun onConnectEnd(callback: (PyreonFlowConnection?) -> Unit): () -> Unit = {}
+  fun onPaneClick(callback: (PyreonFlowPaneEvent) -> Unit): () -> Unit = {}
+  fun moveSelectedNodes(dx: Double, dy: Double) {}
+  fun focusNode(nodeId: String, focusZoom: Double? = null) {}
 }
+
+enum class PyreonFlowBackgroundVariant { Dots, Lines, Cross }
+data class PyreonFlowBackgroundStyle(val variant: PyreonFlowBackgroundVariant = PyreonFlowBackgroundVariant.Dots, val gap: Double = 20.0, val size: Double = 1.0, val color: String = "#dddddd")
+enum class PyreonFlowControlsPosition { TopLeft, TopRight, BottomLeft, BottomRight }
+data class PyreonFlowControlsStyle(val showZoomIn: Boolean = true, val showZoomOut: Boolean = true, val showFitView: Boolean = true, val showLock: Boolean = false, val position: PyreonFlowControlsPosition = PyreonFlowControlsPosition.BottomLeft)
+data class PyreonFlowMiniMapStyle(val nodeColor: String = "#e2e8f0", val maskColor: String = "#000000", val width: Double = 200.0, val height: Double = 150.0, val pannable: Boolean = true, val zoomable: Boolean = true)
+
+@Composable
+fun <T> PyreonFlowView(
+  state: PyreonFlowState<T>,
+  modifier: Modifier = Modifier,
+  edgeColor: String = "#999999",
+  edgeWidth: Double = 1.5,
+  background: PyreonFlowBackgroundStyle? = null,
+  controls: PyreonFlowControlsStyle? = null,
+  miniMap: PyreonFlowMiniMapStyle? = null,
+  nodeContent: @Composable (PyreonFlowNode<T>) -> Unit,
+) {}
+@Composable
+fun <T> PyreonFlowView(
+  state: PyreonFlowState<T>,
+  modifier: Modifier = Modifier,
+  edgeColor: String = "#999999",
+  edgeWidth: Double = 1.5,
+  background: PyreonFlowBackgroundStyle? = null,
+  controls: PyreonFlowControlsStyle? = null,
+  miniMap: PyreonFlowMiniMapStyle? = null,
+  nodeContent: @Composable (PyreonFlowNode<T>, Boolean, Boolean) -> Unit,
+) {}
 
 // PyreonPermissions — mirror of @pyreon/native-runtime-kotlin's
 // PyreonPermissions.kt surface the emit touches: callable shape

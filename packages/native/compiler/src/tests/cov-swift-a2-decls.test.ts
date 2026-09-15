@@ -75,9 +75,9 @@ export function App() {
       'PyreonFlowNode(id: "a", type: "input", position: PyreonXYPosition(x: 0, y: 0), data: __Obj0(label: "A"), width: 10, height: 20)',
     )
     expect(code).toContain(
-      'PyreonFlowEdge(id: "e1", source: "a", target: "a", type: "smooth", label: "L", animated: true)',
+      'PyreonFlowEdge(id: "e1", source: "a", target: "a", type: "smooth", label: "L", animated: true, animatedSpecified: true)',
     )
-    expect(code).toContain(', minZoom: 0.5, maxZoom: 3)')
+    expect(code).toContain(', minZoom: 0.5, maxZoom: 3')
   })
 
   it('absent: every optional arm emits NOTHING, byte-identically to the pre-feature shape', () => {

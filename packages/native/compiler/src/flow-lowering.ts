@@ -11,22 +11,48 @@
  */
 
 /** Signal/Computed reads that lower to native properties (parens dropped). */
-export const LOWERED_FLOW_PROPERTY_READS: ReadonlySet<string> = new Set(['nodes', 'edges', 'viewport', 'zoom'])
+export const LOWERED_FLOW_PROPERTY_READS: ReadonlySet<string> = new Set(['nodes', 'edges', 'viewport', 'zoom', 'containerSize'])
 
 /** Methods `PyreonFlowState` implements on BOTH targets (v1 surface). */
 export const LOWERED_FLOW_METHODS: ReadonlySet<string> = new Set([
-  'getNode', 'addNode', 'removeNode', 'updateNodePosition',
-  'getEdge', 'addEdge', 'removeEdge',
+  'getNode', 'getNodeDimensions', 'getNodes', 'addNode', 'addNodes', 'setNodes', 'removeNode', 'removeNodes', 'updateNode', 'updateNodePosition', 'updateNodeData',
+  'getEdge', 'getEdges', 'addEdge', 'addEdges', 'setEdges', 'removeEdge', 'removeEdges', 'updateEdge',
   'isNodeSelected', 'isEdgeSelected', 'selectedNodes', 'selectedEdges',
-  'selectNode', 'deselectNode', 'selectEdge', 'clearSelection', 'selectAll', 'deleteSelected',
-  'zoomTo', 'zoomIn', 'zoomOut', 'panTo', 'fitView',
-  'getConnectedEdges', 'getIncomers', 'getOutgoers',
+  'selectNode', 'selectNodes', 'deselectNode', 'selectEdge', 'clearSelection', 'selectAll', 'deleteSelected',
+  'zoomTo', 'zoomIn', 'zoomOut', 'panTo', 'fitView', 'getViewport', 'setViewport', 'setCenter',
+  'screenToFlowPosition', 'flowToScreenPosition', 'isNodeVisible', 'focusNode',
+  'moveSelectedNodes',
+  'addEdgeWaypoint', 'removeEdgeWaypoint', 'updateEdgeWaypoint', 'reconnectEdge',
+  'isValidConnection',
+  'getConnectedEdges', 'getIncomers', 'getOutgoers', 'getChildNodes', 'getAbsolutePosition',
+  'findNodes', 'searchNodes',
+  'getProximityConnection', 'getOverlappingNodes', 'resolveCollisions',
+  'getSnapLines',
+  'onConnect', 'onViewportChange', 'onNodeClick', 'onNodeDoubleClick', 'onNodeDragStart', 'onNodeDrag', 'onNodeDragEnd', 'onEdgeClick', 'onSelectionChange', 'onNodesDelete', 'onEdgesDelete', 'onNodesChange', 'onEdgesChange', 'onConnectStart', 'onConnectEnd', 'onPaneClick',
+  'setNodeExtent', 'clampToExtent',
+  'copySelected', 'paste', 'pushHistory', 'undo', 'redo',
+  'toJSON', 'fromJSON',
+  'batch',
+  'animateViewport',
+  'layout',
+  'dispose',
 ])
 
 /** `FlowNode` fields the native `PyreonFlowNode` carries. */
-export const HANDLED_FLOW_NODE_FIELDS: ReadonlySet<string> = new Set(['id', 'type', 'position', 'data', 'width', 'height'])
+export const HANDLED_FLOW_NODE_FIELDS: ReadonlySet<string> = new Set([
+  'id', 'type', 'position', 'data', 'width', 'height',
+  'draggable', 'selectable', 'connectable', 'focusable', 'ariaLabel',
+  'hidden', 'deletable', 'parentId', 'expandParent', 'group',
+  'sourceHandles', 'targetHandles',
+])
 /** `FlowEdge` fields the native `PyreonFlowEdge` carries. */
-export const HANDLED_FLOW_EDGE_FIELDS: ReadonlySet<string> = new Set(['id', 'source', 'target', 'type', 'label', 'animated'])
+export const HANDLED_FLOW_EDGE_FIELDS: ReadonlySet<string> = new Set([
+  'id', 'source', 'target', 'sourceHandle', 'targetHandle', 'type', 'label',
+  'animated', 'focusable', 'ariaLabel', 'hidden', 'deletable',
+  'reconnectable', 'interactionWidth', 'waypoints',
+  'pathOptions',
+  'markerStart', 'markerEnd',
+])
 
 export function unloweredFlowMemberWarning(flowName: string, member: string): string {
   return (
@@ -40,13 +66,6 @@ export function flowSignalWriteWarning(flowName: string, prop: string, op: strin
   return (
     `createFlow binding \`${flowName}\`: \`${prop}.${op}(...)\` writes the \`${prop}\` signal directly — the native PyreonFlowState exposes \`${prop}\` read-only, so this fails at the native BUILD. ` +
     `Mutate through the engine's methods (addNode/removeNode/updateNodePosition/addEdge/removeEdge/deleteSelected/zoomTo/panTo) — they lower on both targets.`
-  )
-}
-
-export function flowFitViewWarning(flowName: string): string {
-  return (
-    `createFlow binding \`${flowName}\`: \`fitView()\` compiles natively but does NOTHING from shared source — the native engine frames the graph inside \`containerSize\`, which starts at 0×0 and is written only by a native host's size measurement (\`GeometryReader\` / \`onSizeChanged\`), and there is no <Flow> host emit yet. ` +
-    `On web \`containerSize\` defaults to 800×600 and the <Flow> component measures it, so this button works there and is inert on iOS/Android. Call \`fitView\` from hand-written native code after measuring, or keep it in a \`<Web>\` branch.`
   )
 }
 
