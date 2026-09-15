@@ -390,6 +390,9 @@ export function Counter() {
           proving the async scope executed AND the post-await re-render fired. */}
       <Button
         onPress={async () => {
+          // Set BEFORE the await so a device test can tell a tap that never
+          // reached the handler ("idle") from an await that never returned.
+          lockStatus.set('checking')
           const ok = await bio.authenticate('Unlock')
           lockStatus.set(ok ? 'unlocked' : 'denied')
         }}
