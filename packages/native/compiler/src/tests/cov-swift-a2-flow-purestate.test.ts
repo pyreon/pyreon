@@ -71,11 +71,9 @@ describe('createFlow member calls — labelled parameters', () => {
     expect(code).toContain('flow.fitView(["1"], padding: 20)')
   })
 
-  it('fitView WARNS every call site — it compiles but is inert from shared source', () => {
+  it('fitView lowers without a warning now that native viewport framing is ported', () => {
     const { warnings } = flow(`    flow.fitView()`)
-    expect(warnings.some((w) => w.includes('`fitView()` compiles natively but does NOTHING'))).toBe(
-      true,
-    )
+    expect(warnings.some((w) => w.includes('fitView'))).toBe(false)
   })
 })
 
