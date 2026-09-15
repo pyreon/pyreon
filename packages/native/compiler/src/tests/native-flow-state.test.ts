@@ -1323,8 +1323,10 @@ export function C() {
         import { Text } from '@pyreon/primitives'
         function Card(props: NodeComponentProps<{ label: string }>) { return <Text>{props.data().label}</Text> }
         function SignalEdge(_props: EdgeComponentProps) { return null }
-        const nodeTypes = { card: Card }
-        const edgeTypes = { signal: SignalEdge }
+        const baseNodeTypes = { card: Card }
+        const baseEdgeTypes = { signal: SignalEdge }
+        const nodeTypes = { ...baseNodeTypes }
+        const edgeTypes = { ...baseEdgeTypes }
         export function App() {
           const flow = createFlow({ nodes: [{ id: 'a', type: 'card', position: { x: 0, y: 0 }, data: { label: 'A' } }], edges: [] })
           return <Flow instance={flow} nodeTypes={nodeTypes} edgeTypes={edgeTypes} />

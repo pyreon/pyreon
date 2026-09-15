@@ -11,6 +11,31 @@
  */
 
 /** Signal/Computed reads that lower to native properties (parens dropped). */
+import type { ExprIR } from './types'
+
+export function resolveStaticFlowRendererMap(
+  expression: ExprIR | undefined,
+  lookup: (name: string) => ExprIR | undefined,
+  seen: ReadonlySet<string> = new Set(),
+): { type: string; component: string }[] | undefined {
+  if (expression?.kind === 'identifier') {
+    if (seen.has(expression.name)) return undefined
+    return resolveStaticFlowRendererMap(lookup(expression.name), lookup, new Set([...seen, expression.name]))
+  }
+  if (expression?.kind !== 'object') return undefined
+  const entries = new Map<string, string>()
+  for (const spread of expression.spreads ?? []) {
+    const resolved = resolveStaticFlowRendererMap(spread, lookup, seen)
+    if (resolved === undefined) return undefined
+    for (const entry of resolved) entries.set(entry.type, entry.component)
+  }
+  for (const field of expression.fields) {
+    if (field.value.kind !== 'identifier') return undefined
+    entries.set(field.name, field.value.name)
+  }
+  return [...entries].map(([type, component]) => ({ type, component }))
+}
+
 export const LOWERED_FLOW_PROPERTY_READS: ReadonlySet<string> = new Set([
   'nodes', 'edges', 'viewport', 'zoom', 'containerSize',
   'nodeMap', 'edgeMap', 'measurements',
