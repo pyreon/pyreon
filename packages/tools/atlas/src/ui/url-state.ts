@@ -27,6 +27,14 @@ export interface UrlState {
   /** brand + dark mode: a screenshot of a bug is mode-specific */
   brand?: string
   dark?: boolean
+  /** The view — canvas / docs / lab. Without it a Docs page could not be linked to. */
+  view?: string
+  /** A forced pseudo state (hover / focus / active / disabled). */
+  pseudo?: string
+  /** The Data panel's query state (success / loading / error / empty / refetching). */
+  query?: string
+  /** The Roles panel's active role. */
+  role?: string
 }
 
 /**
@@ -170,6 +178,11 @@ export function serializeUrlState(state: UrlState): string {
   // `dark` is written only when FALSE: the workbench defaults to dark, so
   // omitting the common case keeps a shared link readable.
   if (state.dark === false) params.set('dark', '0')
+  // The canvas is the default view; the others are worth a link of their own.
+  if (state.view && state.view !== 'canvas') params.set('view', state.view)
+  if (state.pseudo) params.set('pseudo', state.pseudo)
+  if (state.query && state.query !== 'success') params.set('query', state.query)
+  if (state.role) params.set('role', state.role)
   if (state.args && Object.keys(state.args).length > 0) {
     params.set(ARGS_KEY, JSON.stringify(state.args))
   }
@@ -202,6 +215,14 @@ export function parseUrlState(query: string): UrlState {
   if (brand) state.brand = brand
   const dark = params.get('dark')
   if (dark !== null) state.dark = dark !== '0'
+  const view = params.get('view')
+  if (view) state.view = view
+  const pseudo = params.get('pseudo')
+  if (pseudo) state.pseudo = pseudo
+  const queryState = params.get('query')
+  if (queryState) state.query = queryState
+  const role = params.get('role')
+  if (role) state.role = role
 
   const args = params.get(ARGS_KEY)
   if (args) {

@@ -92,6 +92,15 @@ export function createCatalogGraph(initial: readonly ComponentIntelligence[] = [
   // original silent-pick bug wearing a different hat, which this module's
   // docstring specifically says must not happen.
   const split = new Set<string>()
+  // The most recently inserted component per (project, name) — the sibling a
+  // colliding bare key qualifies against. Maintained alongside byKey so the
+  // collision path is a lookup rather than a scan of every entry.
+  const siblingByName = new Map<string, ComponentIntelligence>()
+  const nameKey = (c: ComponentIntelligence): string => `${c.project ?? ''}/${c.name}`
+  const put = (k: string, c: ComponentIntelligence): void => {
+    byKey.set(k, c)
+    siblingByName.set(nameKey(c), c)
+  }
 
   const insert = (ci: ComponentIntelligence): void => {
     const key = componentKey(ci)
@@ -100,19 +109,22 @@ export function createCatalogGraph(initial: readonly ComponentIntelligence[] = [
       // The name already collided once, so the vacant bare key is not free.
       // Qualify against a sibling using the SAME escalation, and requalify
       // only the incoming component — the sibling already carries its own.
-      const sibling = [...byKey.values()].find((c) => c.name === ci.name && c.project === ci.project)
+      // A LOOKUP, not a scan: the comment above names a 995-file icon package,
+      // and spreading a growing Map plus a linear scan per collision is O(n²)
+      // on exactly that shape (~990k iterations for 995 files).
+      const sibling = siblingByName.get(nameKey(ci))
       let incoming = pathQualifierFor(ci.source)
       const held = sibling ? pathQualifierFor(sibling.source) : undefined
       if (!incoming || !held || incoming === held) incoming = fileQualifierFor(ci.source)
       if (incoming) {
         const qualified = { ...ci, pathQualifier: incoming }
-        byKey.set(componentKey(qualified), qualified)
+        put(componentKey(qualified), qualified)
         return
       }
       // Nothing to qualify with — keep the documented last-wins fallback.
     }
     if (!existing || existing.source === ci.source) {
-      byKey.set(key, ci)
+      put(key, ci)
       return
     }
     // Directory first, then FILENAME when the directory is shared. A generated
@@ -126,15 +138,15 @@ export function createCatalogGraph(initial: readonly ComponentIntelligence[] = [
     }
     // Genuinely nothing to tell them apart — keep the last, as before.
     if (!incoming || !held || incoming === held) {
-      byKey.set(key, ci)
+      put(key, ci)
       return
     }
     byKey.delete(key)
     split.add(key)
     const requalified = { ...existing, pathQualifier: held }
-    byKey.set(componentKey(requalified), requalified)
+    put(componentKey(requalified), requalified)
     const qualified = { ...ci, pathQualifier: incoming }
-    byKey.set(componentKey(qualified), qualified)
+    put(componentKey(qualified), qualified)
   }
 
   for (const ci of initial) insert(ci)
