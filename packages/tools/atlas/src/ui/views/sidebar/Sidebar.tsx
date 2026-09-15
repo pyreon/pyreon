@@ -19,6 +19,7 @@ export function Sidebar(props: { model: WorkbenchModel }) {
   const component = (c: WorkbenchComponent, depth: number) => (
     <>
       <C.CompBtn
+        data-testid={`component-${c.id}`}
         state={() => (m.selId() === c.id ? 'active' : 'idle')}
         onClick={() => m.selId.set(c.id)}
         {...(depth > 0 ? { 'data-depth': String(depth) } : {})}

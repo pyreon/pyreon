@@ -21,6 +21,7 @@ import { makeQueryResult, type FakeQueryResult, type QueryStateId } from './quer
 import {
   componentFromPath,
   componentUrl,
+  editedArgs,
   parseUrlState,
   pathBase,
   serializeUrlState,
@@ -129,6 +130,8 @@ export interface WorkbenchModel {
   noResults: Computed<boolean>
   /** Live a11y verdict for the RENDERED preview (re-probed after each render). */
   a11y: Signal<A11yReport>
+  /** True when the last render left the preview surface with no DOM at all. */
+  previewEmpty: Signal<boolean>
   /** `ref` for the preview surface — attach it so the a11y checks can inspect the real DOM. */
   previewRef: (el: HTMLElement | null) => void
   // actions
@@ -222,13 +225,32 @@ export function createModel(
   // contains means no attacker-chosen string ever names a property.
   const linkedComponent = catalog.components.find((c) => c.id === initial.c)
   const selId = signal(linkedComponent?.id ?? catalog.components[0]?.id ?? '')
+
+  // The state a component OPENS on: its `Default` scenario's args, over the
+  // control defaults.
+  //
+  // A scenario's args are the WHOLE pinned state, not only the editable
+  // controls — a `Tree`'s `data`, a `Combobox`'s `options`, a `Dialog`'s
+  // `open`. Rendering from control defaults alone mounted every data-driven
+  // component with nothing to show, while the sidebar listed a verified
+  // scenario one click away. Every read of a component's values starts here,
+  // so a fresh selection, a reset, and a link that edits one key all keep the
+  // rest of the scenario. Only a scenario NAMED `Default` counts: a derived
+  // catalog always has one, and a hand-written catalog's first scenario is an
+  // extra state, not the opening one — its controls' defaults are.
+  const initialArgs = (c: WorkbenchComponent | undefined): Record<string, unknown> => {
+    const scenario = c?.scenarios?.find((s) => s.name === 'Default')
+    return scenario ? { ...scenario.args } : {}
+  }
   const query = signal('')
   const zoomIdx = signal(2) // 100%
   const view = signal<View>('canvas')
   const addon = signal<Addon>(initial.p ?? 'controls')
   // Args from the link belong to the component the link named.
   const values = signal<Record<string, Record<string, unknown>>>(
-    linkedComponent && initial.args ? { [linkedComponent.id]: initial.args } : {},
+    linkedComponent && initial.args
+      ? { [linkedComponent.id]: { ...initialArgs(linkedComponent), ...initial.args } }
+      : {},
   )
   const actions = signal<ActionEntry[]>([])
   // A URL id that names no preset falls back to the first — a stale link must
@@ -282,8 +304,8 @@ export function createModel(
   const vals = computed(() => {
     const c = sel()
     if (!c) return {}
-    const ov = values()[selId()]
-    const merged = ov ? { ...defaultValues(c), ...ov } : defaultValues(c)
+    const ov = values()[selId()] ?? initialArgs(c)
+    const merged = { ...defaultValues(c), ...ov }
     // Applied at the LAST step, to the values the component actually renders —
     // not to the stored control values. Transforming those would make the
     // Controls panel show accented text as if the user had typed it, and the
@@ -308,10 +330,15 @@ export function createModel(
   const noResults = computed(() => visibleGroups().length === 0)
 
   const setValue = (id: string, key: string, v: unknown) => {
-    const cur = values()[id]
-    values.set({ ...values(), [id]: cur ? { ...cur, [key]: v } : { [key]: v } })
+    const cur = values()[id] ?? initialArgs(catalog.components.find((c) => c.id === id))
+    values.set({ ...values(), [id]: { ...cur, [key]: v } })
   }
-  const reset = () => values.set({ ...values(), [selId()]: {} })
+  // Forget the edits; the component falls back to its opening scenario.
+  const reset = () => {
+    const next = { ...values() }
+    delete next[selId()]
+    values.set(next)
+  }
 
   const runPlay = async (compId: string, scenarioId: string) => {
     const comp = catalog.components.find((c) => c.id === compId)
@@ -345,15 +372,11 @@ export function createModel(
     selId.set(compId)
     // REPLACE the component's stored values with the scenario's args (not a
     // merge — a scenario is a complete pinned state, and stale edits bleeding
-    // through would render something the verdict never covered). Only args
-    // with a matching editable control land; the rest (e.g. a generated
-    // handler) are the render's business.
-    const editable = new Set(comp.controls.map((c) => c.key))
-    const next: Record<string, unknown> = {}
-    for (const [key, value] of Object.entries(scenario.args)) {
-      if (editable.has(key)) next[key] = value
-    }
-    values.set({ ...values(), [compId]: next })
+    // through would render something the verdict never covered). ALL of the
+    // args, not only the ones with an editable control: a `Tree` scenario is
+    // its `data`, and filtering to controls was how selecting it rendered an
+    // empty tree.
+    values.set({ ...values(), [compId]: { ...scenario.args } })
   }
 
   let actionSeq = 0
@@ -423,6 +446,19 @@ export function createModel(
   // pass is worse than one that shows nothing, so the checks now read the real
   // element (see ./a11y) and report `unknown` when it cannot be determined.
   const a11y = signal<A11yReport>(analyzeA11y(null))
+  // Did the last render leave the surface EMPTY — no element, no text? The
+  // canvas says so out loud; a blank stage next to a healthy sidebar read as
+  // "the workbench is broken" when it was the component rendering nothing.
+  const previewEmpty = signal(false)
+  // A component that PORTALS (a dialog, a drawer) leaves the surface empty
+  // while its DOM sits on `document.body` — the runtime brackets portaled
+  // content in `<!--portal-->…<!--/portal-->` markers, and one on the body is
+  // what says the render went somewhere rather than nowhere.
+  const portaled = () =>
+    typeof document !== 'undefined' &&
+    [...document.body.childNodes].some((n) => n.nodeType === 8 && (n as Comment).data === 'portal')
+  const isEmpty = (el: HTMLElement) =>
+    el.childElementCount === 0 && (el.textContent ?? '').trim().length === 0 && !portaled()
   let previewEl: HTMLElement | null = null
   let observer: MutationObserver | null = null
   let stopDir: Effect | null = null
@@ -450,6 +486,7 @@ export function createModel(
       return
     }
     a11y.set(analyzeA11y(el))
+    previewEmpty.set(isEmpty(el))
     // Writing direction is applied IMPERATIVELY to the captured element rather
     // than as a `dir={…}` prop: an accessor-valued generic attribute is not
     // forwarded through rocketstyle → Element (it silently lands as no attribute
@@ -472,7 +509,9 @@ export function createModel(
     if (typeof MutationObserver === 'undefined') return
     observer?.disconnect()
     observer = new MutationObserver(() => {
-      if (previewEl) a11y.set(analyzeA11y(previewEl))
+      if (!previewEl) return
+      a11y.set(analyzeA11y(previewEl))
+      previewEmpty.set(isEmpty(previewEl))
     })
     observer.observe(el, { childList: true, subtree: true, attributes: true, characterData: true })
   }
@@ -496,10 +535,14 @@ export function createModel(
     const hist = history
     let lastWritten: UrlState = initial
     effect(() => {
+      // Only the EDITS travel in the link — the keys that differ from the
+      // opening scenario. The scenario itself is reconstructable from the
+      // catalog, and a `Tree`'s whole `data` in every URL is not a link
+      // anyone pastes.
       const next: UrlState = {
         c: selId(),
         p: String(addon()),
-        args: values()[selId()] ?? {},
+        args: editedArgs(values()[selId()], initialArgs(sel())),
         viewport: viewport(),
         background: background(),
         locale: locale(),
@@ -542,7 +585,7 @@ export function createModel(
     viewport, background, pseudo, outline, measure, locale, pseudoLocale, permissionSet, permissions, queryState, queryResult,
     previewElement: () => previewEl,
     viewports, backgrounds, locales, roles, viewportPreset, backgroundPreset, dir,
-    brand, theme, sel, vals, visibleGroups, tree, collapsed, toggleGroup, noResults, a11y,
+    brand, theme, sel, vals, visibleGroups, tree, collapsed, toggleGroup, noResults, a11y, previewEmpty,
     setValue, selectScenario, runPlay, reset, logAction, clearActions, search, searchHits, preview, searchRef, focusSearch, previewRef,
     searchOpen, sidebarW, panelW, sidebarOpen, panelOpen,
   }

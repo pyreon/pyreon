@@ -100,10 +100,15 @@ describe('diffVerdicts', () => {
     expect(diff.changed).toEqual([])
   })
 
-  it('does NOT call a REMOVED scenario a regression', () => {
-    // Deleting a component is a legitimate edit.
+  it('calls a REMOVED scenario a regression — losing it makes the counts improve', () => {
+    // The whole-catalog collapse: one broken upstream `exports` map made every
+    // file throw, discovery returned 0 components, and `removed` held the
+    // entire baseline while `regressed` (which read only `changed`) stayed
+    // false — `atlas scan --check` exited 0 on a scan that found nothing. A
+    // deliberate deletion or rename accepts the new baseline by re-running
+    // `atlas scan`; the ratchet never rewrites its own.
     const diff = diffVerdicts([scenario('b--a', verdict({ a11y: pass }))], [])
-    expect(diff.regressed).toBe(false)
+    expect(diff.regressed).toBe(true)
     expect(diff.removed).toEqual(['b--a'])
   })
 

@@ -232,7 +232,7 @@ describe('runInit with no options at all', () => {
       process.chdir(dir)
       writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'here' }))
       mkdirSync(join(dir, 'src'), { recursive: true })
-      writeFileSync(join(dir, 'src', 'B.tsx'), 'export function B(p: { n: number }) { return null }\n')
+      writeFileSync(join(dir, 'src', 'B.tsx'), 'export function B(p: { n: number }) { return 1 }\n')
 
       const result = runInit()
       expect(result.kind).toBe('written')

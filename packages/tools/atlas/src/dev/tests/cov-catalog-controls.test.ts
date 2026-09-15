@@ -32,12 +32,15 @@ const entry = (over: Record<string, unknown> = {}) =>
   ({ component: comp(over), file: '/p/src/Button.tsx' }) as never
 
 describe('mapping a discovered prop to a control', () => {
-  it('edits a number as a number, defaulting to 0', () => {
+  it('edits a number as a number, with NO fabricated default', () => {
+    // `0` handed to RingProgress's `size` rendered a 0×0 ring on the deployed
+    // workbench. A blank control leaves the prop absent, so the component's
+    // own default applies.
     expect(toWorkbenchControl({ name: 'count', kind: 'number' } as never)).toEqual({
       key: 'count',
       label: 'Count',
       type: 'number',
-      default: 0,
+      default: undefined,
     })
     // A declared default is kept — including `0`, which a `||` would have
     // thrown away for the same 0 it looks like.
@@ -95,11 +98,11 @@ describe('the verdict a scenario is published with', () => {
     })
 
   it('publishes ok, fail and unverified as three different things', () => {
-    expect(generate({ ok: true, checked: 3 })).toContain('"verdict":"ok"')
-    expect(generate({ ok: false, checked: 3 })).toContain('"verdict":"fail"')
+    expect(generate({ ok: true, checked: 3 })).toContain('verdict: "ok"')
+    expect(generate({ ok: false, checked: 3 })).toContain('verdict: "fail"')
     // Checked NOTHING is not a failure and is emphatically not a pass.
-    expect(generate({ ok: false, checked: 0 })).toContain('"verdict":"unverified"')
+    expect(generate({ ok: false, checked: 0 })).toContain('verdict: "unverified"')
     // No verify record at all — the same honest answer.
-    expect(generate(undefined)).toContain('"verdict":"unverified"')
+    expect(generate(undefined)).toContain('verdict: "unverified"')
   })
 })
