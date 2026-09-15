@@ -20,7 +20,8 @@ import { buildCodeHostHtml } from '@pyreon/code/webview'
 import { buildRichTextHostHtml } from '@pyreon/rich-text/webview'
 
 const appPath = join(import.meta.dir, '..', 'src', 'VizApp.tsx')
-let src = readFileSync(appPath, 'utf8')
+const original = readFileSync(appPath, 'utf8')
+let src = original
 const chart = JSON.stringify(buildChartHostHtml())
 const flow = JSON.stringify(buildFlowHostHtml())
 const code = JSON.stringify(buildCodeHostHtml({ codemirrorSrc: './assets/cm.js' }))
@@ -29,5 +30,13 @@ src = src.replace(/const CHART_HOST = .*/, `const CHART_HOST = ${chart}`)
 src = src.replace(/const FLOW_HOST = .*/, `const FLOW_HOST = ${flow}`)
 src = src.replace(/const CODE_HOST = .*/, `const CODE_HOST = ${code}`)
 src = src.replace(/const RICHTEXT_HOST = .*/, `const RICHTEXT_HOST = ${richtext}`)
-writeFileSync(appPath, src)
-console.log('[gen-hosts] regenerated CHART_HOST + FLOW_HOST + CODE_HOST + RICHTEXT_HOST in src/VizApp.tsx')
+if (process.argv.includes('--check')) {
+  if (src !== original) {
+    console.error('[gen-hosts] embedded hosts are stale; run `bun scripts/gen-hosts.ts`')
+    process.exit(1)
+  }
+  console.log('[gen-hosts] embedded hosts are fresh')
+} else {
+  writeFileSync(appPath, src)
+  console.log('[gen-hosts] regenerated CHART_HOST + FLOW_HOST + CODE_HOST + RICHTEXT_HOST in src/VizApp.tsx')
+}

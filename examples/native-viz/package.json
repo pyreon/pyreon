@@ -11,7 +11,7 @@
     "build:kotlin": "./scripts/build-kotlin.sh",
     "build": "bun run build:swift && bun run build:kotlin",
     "lint": "echo '[native-viz] no TS lint surface; skipping'",
-    "test": "echo '[native-viz] no test surface; PMTC emit covered by @pyreon/native-compiler tests + the /webview browser suites'",
+    "test": "bun scripts/gen-hosts.ts --check",
     "typecheck": "echo '[native-viz] @ts-nocheck on source; PMTC handles typing'"
   },
   "devDependencies": {
