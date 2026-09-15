@@ -729,7 +729,7 @@ describe('createFlow — v1 decline shapes (loud warning, not silent drop)', { t
     expect((r.warnings ?? []).some((w) => w.includes('SAME field set'))).toBe(true)
   })
 
-  it('an edge missing an explicit id declines with a named reason', () => {
+  it('generates the same deterministic id as web when an edge omits id', () => {
     const src = `
       import { createFlow } from '@pyreon/flow'
       import { Text } from '${P}'
@@ -741,10 +741,12 @@ describe('createFlow — v1 decline shapes (loud warning, not silent drop)', { t
         return <Text>{flow.nodes().length}</Text>
       }
     `
-    const r = transform(src, { target: 'swift' })
-    expect(r.warnings ?? []).toEqual(
-      expect.arrayContaining([expect.stringContaining('createFlow declaration `flow`')]),
-    )
+    const swift = transform(src, { target: 'swift' })
+    const kotlin = transform(src, { target: 'kotlin' })
+    expect(swift.code).toContain('PyreonFlowEdge(id: "e-1-2", source: "1", target: "2")')
+    expect(kotlin.code).toContain('PyreonFlowEdge(id = "e-1-2", source = "1", target = "2")')
+    expect(swift.warnings.join(' ')).not.toContain('createFlow declaration `flow`')
+    expect(kotlin.warnings.join(' ')).not.toContain('createFlow declaration `flow`')
   })
 
   // `createFlow` takes 17 config keys. The reader took two. The other fifteen
@@ -1198,7 +1200,7 @@ export function C() {
       expect(validation.ok, validation.error ?? '').toBe(true)
     })
     it(`[${target}] call-site addNode/addEdge literals with extra fields warn BY NAME`, () => {
-      const source = base('', `<Button onPress={() => { flow.addNode({ id: '2', position: { x: 1, y: 1 }, data: { label: 'B' }, extent: [[0, 10], [100, 90]], hidden: true, sourceHandles: [{ id: 'out', type: 'source', position: 'right' }], class: 'new-node', style: 'background: blue' }); flow.addEdge({ id: 'e2', source: '1', target: '2', data: { label: 'new' }, sourceHandle: 'out', class: 'new-edge', style: 'stroke: blue', waypoints: [], pathOptions: { offset: 31 }, markerEnd: 'arrow' }) }}>Add</Button>`)
+      const source = base('', `<Button onPress={() => { flow.addNode({ id: '2', position: { x: 1, y: 1 }, data: { label: 'B' }, extent: [[0, 10], [100, 90]], hidden: true, sourceHandles: [{ id: 'out', type: 'source', position: 'right' }], class: 'new-node', style: 'background: blue' }); flow.addEdge({ source: '1', target: '2', data: { label: 'new' }, sourceHandle: 'out', class: 'new-edge', style: 'stroke: blue', waypoints: [], pathOptions: { offset: 31 }, markerEnd: 'arrow' }) }}>Add</Button>`)
       const result = transform(source, { target })
       const w = (result.warnings ?? []).join('\n')
       expect(w).not.toContain('field `style` is NOT carried')
@@ -1217,6 +1219,7 @@ export function C() {
       expect(result.code).toContain(`pathOffset${target === 'swift' ? ':' : ' ='} ${target === 'swift' ? '31' : '31.0'}`)
       expect(result.code).toContain(target === 'swift' ? 'className: "new-node", style: "background: blue"' : 'style = "background: blue", className = "new-node"')
       expect(result.code).toContain(target === 'swift' ? 'className: "new-edge", style: "stroke: blue"' : 'style = "stroke: blue", className = "new-edge"')
+      expect(result.code).toContain(target === 'swift' ? 'id: pyreonFlowEdgeId(source: "1", target: "2", sourceHandle: "out")' : 'id = pyreonFlowEdgeId(source = "1", target = "2", sourceHandle = "out")')
       const validation = target === 'swift' ? validateSwiftWithStubs(result.code) : validateKotlin(result.code)
       expect(validation.ok, validation.error ?? '').toBe(true)
     })

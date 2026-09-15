@@ -179,6 +179,10 @@ data class PyreonFlowEdge(
     val waypoints: List<PyreonXYPosition> = emptyList(),
 )
 
+/** Deterministic missing-id fallback used by the web Flow engine. */
+fun pyreonFlowEdgeId(source: String, target: String, sourceHandle: String? = null, targetHandle: String? = null): String =
+    "e-$source${sourceHandle?.let { "-$it" } ?: ""}-$target${targetHandle?.let { "-$it" } ?: ""}"
+
 data class PyreonFlowDefaultEdgeOptions(
     val type: String? = null, val label: String? = null, val animated: Boolean? = null,
     val focusable: Boolean? = null, val ariaLabel: String? = null, val hidden: Boolean? = null,

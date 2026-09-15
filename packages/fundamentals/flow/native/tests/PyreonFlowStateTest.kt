@@ -26,6 +26,7 @@ import com.pyreon.runtime.pyreonEffectiveDimensions
 import com.pyreon.runtime.pyreonCollectFlowEdgeMarkers
 import com.pyreon.runtime.pyreonFlowDefaultMarkerEnd
 import com.pyreon.runtime.pyreonFlowMarkerId
+import com.pyreon.runtime.pyreonFlowEdgeId
 import com.pyreon.runtime.pyreonResolveFlowEdgeMarkers
 import kotlin.math.abs
 
@@ -49,6 +50,8 @@ private fun seedFlow(): PyreonFlowState<NodeData> = PyreonFlowState(
 )
 
 fun main() {
+    check(pyreonFlowEdgeId("1", "2") == "e-1-2", "Android generates missing edge ids like web")
+    check(pyreonFlowEdgeId("1", "2", "out", "in") == "e-1-out-2-in", "Android includes handles in generated edge ids")
     val configured = PyreonFlowState<NodeData>(
         panOnScroll = true, panOnScrollSpeed = 0.75, zoomOnScroll = false,
         deleteKeys = listOf("ForwardDelete"), multiSelectionKey = "ctrl",

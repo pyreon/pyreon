@@ -9023,9 +9023,8 @@ function tryDeclFromSyncedSignal(node: AnyNode, ctx: ParseCtx): DeclIR | null {
  *     `position: { x, y }` (numeric expressions), `data` (an object literal —
  *     the SAME field set across every node, so ONE row struct can be
  *     synthesized), optional numeric `width`/`height`.
- *   - Each edge: `id` (string literal — NOT auto-generated, unlike the web
- *     engine's `edgeId()` fallback; a v1 narrowing, like table's explicit
- *     `columns: [{ id }]`), `source`/`target` (string literals), optional
+ *   - Each edge: optional `id` (string literal; absent ids use the web
+ *     engine's deterministic `edgeId()` fallback), `source`/`target` (string literals), optional
  *     `type`/`label` (string literals) and `animated` (boolean literal).
  *   - `viewport`/`minZoom`/`maxZoom` config fields are NOT yet recognized —
  *     the native port always starts at the default viewport `(0,0,1)` /
@@ -9299,13 +9298,17 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
         shapeOk = false
         continue
       }
-      const id = literalString(objProp(edgeLit, 'id'))
+      const idNode = objProp(edgeLit, 'id')
+      const explicitId = literalString(idNode)
       const source = literalString(objProp(edgeLit, 'source'))
       const target = literalString(objProp(edgeLit, 'target'))
-      if (id === undefined || source === undefined || target === undefined) {
+      const sourceHandleForId = literalString(objProp(edgeLit, 'sourceHandle'))
+      const targetHandleForId = literalString(objProp(edgeLit, 'targetHandle'))
+      if ((idNode && explicitId === undefined) || source === undefined || target === undefined) {
         shapeOk = false
         continue
       }
+      const id = explicitId ?? `e-${source}${sourceHandleForId ? `-${sourceHandleForId}` : ''}-${target}${targetHandleForId ? `-${targetHandleForId}` : ''}`
       const edgeType = literalString(objProp(edgeLit, 'type'))
       const edgeLabel = literalString(objProp(edgeLit, 'label'))
       const edgeAnimated = literalBool(objProp(edgeLit, 'animated'))
@@ -9379,7 +9382,7 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
 
   if (!shapeOk) {
     ctx.warnings.push(
-      `${factory} declaration \`${name}\`: \`nodes\`/\`edges\` must be literal arrays of object literals — each node needs a string \`id\`, a \`position: { x, y }\`, and an object-literal \`data\`; each edge needs string \`id\`/\`source\`/\`target\` — to lower natively (v1). Falling back to silent-drop.`,
+      `${factory} declaration \`${name}\`: \`nodes\`/\`edges\` must be literal arrays of object literals — each node needs a string \`id\`, a \`position: { x, y }\`, and an object-literal \`data\`; each edge needs string \`source\`/\`target\` (\`id\` is optional) — to lower natively (v1). Falling back to silent-drop.`,
     )
     return null
   }

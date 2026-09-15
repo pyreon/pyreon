@@ -1105,6 +1105,7 @@ public indirect enum PyreonFlowDataValue: Equatable { case string(String), numbe
   public subscript(dynamicMember key: String) -> PyreonFlowDataValue? { values[key] }
   public subscript(_ key: String) -> PyreonFlowDataValue? { values[key] }
 }
+public func pyreonFlowEdgeId(source: String, target: String, sourceHandle: String? = nil, targetHandle: String? = nil) -> String { "" }
 public struct PyreonFlowEdge: Equatable {
   public var id: String
   public var source: String

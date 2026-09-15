@@ -881,6 +881,11 @@ public struct PyreonFlowEdge: Equatable {
     }
 }
 
+/// Deterministic missing-id fallback used by the web Flow engine.
+public func pyreonFlowEdgeId(source: String, target: String, sourceHandle: String? = nil, targetHandle: String? = nil) -> String {
+    "e-\(source)\(sourceHandle.map { "-\($0)" } ?? "")-\(target)\(targetHandle.map { "-\($0)" } ?? "")"
+}
+
 public struct PyreonFlowDefaultEdgeOptions: Equatable {
     public var type: String?; public var label: String?; public var animated: Bool?
     public var focusable: Bool?; public var ariaLabel: String?; public var hidden: Bool?

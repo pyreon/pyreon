@@ -35,6 +35,8 @@ struct PyreonFlowStateTests {
     }
 
     static func runStateChecks() {
+        check(pyreonFlowEdgeId(source: "1", target: "2") == "e-1-2", "Apple generates missing edge ids like web")
+        check(pyreonFlowEdgeId(source: "1", target: "2", sourceHandle: "out", targetHandle: "in") == "e-1-out-2-in", "Apple includes handles in generated edge ids")
         let configured = PyreonFlowState<NodeData>(
             panOnScroll: true, panOnScrollSpeed: 0.75, zoomOnScroll: false,
             reducedMotion: false, deleteKeys: ["ForwardDelete"], multiSelectionKey: "ctrl",

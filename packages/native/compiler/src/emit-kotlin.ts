@@ -3596,10 +3596,10 @@ function kotlinFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
   if (arg.kind !== 'object') return null
   warnDroppedFlowFieldsKt(`createFlow binding \`${flowName}\` addEdge(...)`, 'edge', arg)
   const field = (n: string): ExprIR | undefined => arg.fields.find((f) => f.name === n)?.value
-  const idExpr = field('id')
   const sourceExpr = field('source')
   const targetExpr = field('target')
-  if (!idExpr || !sourceExpr || !targetExpr) return null
+  if (!sourceExpr || !targetExpr) return null
+  const idExpr = field('id')
   const typeExpr = field('type')
   const labelExpr = field('label')
   const animatedExpr = field('animated')
@@ -3613,7 +3613,7 @@ function kotlinFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
   const optionalFields = ['sourceHandle', 'targetHandle', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'reconnectable', 'style'] as const
   const interactionWidthExpr = field('interactionWidth')
   const parts = [
-    `id = ${emitKotlinExpr(idExpr, 0)}`,
+    `id = ${idExpr ? emitKotlinExpr(idExpr, 0) : `pyreonFlowEdgeId(source = ${emitKotlinExpr(sourceExpr, 0)}, target = ${emitKotlinExpr(targetExpr, 0)}${field('sourceHandle') ? `, sourceHandle = ${emitKotlinExpr(field('sourceHandle')!, 0)}` : ''}${field('targetHandle') ? `, targetHandle = ${emitKotlinExpr(field('targetHandle')!, 0)}` : ''})`}`,
     `source = ${emitKotlinExpr(sourceExpr, 0)}`,
     `target = ${emitKotlinExpr(targetExpr, 0)}`,
     ...(typeExpr ? [`type = ${emitKotlinExpr(typeExpr, 0)}`] : []),

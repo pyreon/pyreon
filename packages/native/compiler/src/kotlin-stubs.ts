@@ -1647,6 +1647,7 @@ sealed interface PyreonFlowDataValue {
   data object NullValue : PyreonFlowDataValue
 }
 data class PyreonFlowData(val values: Map<String, PyreonFlowDataValue> = emptyMap()) { operator fun get(key: String): PyreonFlowDataValue? = values[key] }
+fun pyreonFlowEdgeId(source: String, target: String, sourceHandle: String? = null, targetHandle: String? = null): String = ""
 data class PyreonFlowEdge(
   val id: String,
   val source: String,

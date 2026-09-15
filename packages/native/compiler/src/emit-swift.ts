@@ -4437,10 +4437,10 @@ function swiftFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
   if (arg.kind !== 'object') return null
   warnDroppedFlowFields(`createFlow binding \`${flowName}\` addEdge(...)`, 'edge', arg)
   const field = (n: string): ExprIR | undefined => arg.fields.find((f) => f.name === n)?.value
-  const idExpr = field('id')
   const sourceExpr = field('source')
   const targetExpr = field('target')
-  if (!idExpr || !sourceExpr || !targetExpr) return null
+  if (!sourceExpr || !targetExpr) return null
+  const idExpr = field('id')
   const typeExpr = field('type')
   const labelExpr = field('label')
   const animatedExpr = field('animated')
@@ -4454,7 +4454,7 @@ function swiftFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
   const leadingFields = ['sourceHandle', 'targetHandle'] as const
   const interactionFields = ['focusable', 'ariaLabel', 'hidden', 'deletable', 'reconnectable', 'interactionWidth'] as const
   const parts = [
-    `id: ${emitSwiftExpr(idExpr, 0)}`,
+    `id: ${idExpr ? emitSwiftExpr(idExpr, 0) : `pyreonFlowEdgeId(source: ${emitSwiftExpr(sourceExpr, 0)}, target: ${emitSwiftExpr(targetExpr, 0)}${field('sourceHandle') ? `, sourceHandle: ${emitSwiftExpr(field('sourceHandle')!, 0)}` : ''}${field('targetHandle') ? `, targetHandle: ${emitSwiftExpr(field('targetHandle')!, 0)}` : ''})`}`,
     `source: ${emitSwiftExpr(sourceExpr, 0)}`,
     `target: ${emitSwiftExpr(targetExpr, 0)}`,
     ...leadingFields.flatMap((name) => { const value = field(name); return value ? [`${name}: ${emitSwiftExpr(value, 0)}`] : [] }),
