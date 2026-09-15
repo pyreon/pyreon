@@ -14,7 +14,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { transform } from '../index'
-import { LOWERED_FLOW_CONFIG_PROPERTIES } from '../flow-lowering'
+import { LOWERED_FLOW_CONFIG_PROPERTIES, LOWERED_FLOW_METHODS, LOWERED_FLOW_PROPERTY_READS } from '../flow-lowering'
 import {
   isKotlincAvailable,
   isSwiftcAvailable,
@@ -32,6 +32,26 @@ it('tracks every public mutable FlowConfig field in native lowering', () => {
     .filter((key) => key !== 'nodes' && key !== 'edges')
     .sort()
   expect([...LOWERED_FLOW_CONFIG_PROPERTIES.keys()].sort()).toEqual(publicKeys)
+})
+
+it('tracks every public FlowInstance member in native lowering', () => {
+  const source = readFileSync(new URL('../../../../fundamentals/flow/src/types.ts', import.meta.url), 'utf8')
+  const body = source.slice(source.indexOf('export interface FlowInstance'), source.indexOf('// ─── Component props'))
+  const publicMembers: string[] = []
+  let internal = false
+  for (const line of body.split('\n')) {
+    if (line.includes('@internal')) internal = true
+    const match = /^  ([A-Za-z_]\w*):/.exec(line)
+    if (!match) continue
+    if (!internal) publicMembers.push(match[1]!)
+    internal = false
+  }
+  const missing = publicMembers.filter((member) =>
+    member !== 'config' &&
+    !LOWERED_FLOW_PROPERTY_READS.has(member) &&
+    !LOWERED_FLOW_METHODS.has(member),
+  )
+  expect(missing).toEqual([])
 })
 
 const workflowFlow = `
