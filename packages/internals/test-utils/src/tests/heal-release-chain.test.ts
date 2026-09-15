@@ -155,7 +155,7 @@ describe('validateReleaseVersion — the file-data → URL/argv barrier', () => 
 describe('parsePublishResult — phase 1 local truth must be SOUND or absent', () => {
   it('accepts a valid manifest', () => {
     const text = JSON.stringify({ version: '0.51.0', published: ['@pyreon/core'] })
-    expect(parsePublishResult(text)).toEqual({ version: '0.51.0', published: ['@pyreon/core'] })
+    expect(parsePublishResult(text)).toEqual({ version: '0.51.0', published: ['@pyreon/core'], incomplete: [] })
   })
 
   it('absent file → null (the Version-PR path)', () => {
@@ -182,6 +182,20 @@ describe('parsePublishResult — phase 1 local truth must be SOUND or absent', (
     ).toBeNull()
   })
 
+
+  it('carries `failed` ∪ `blocked` as `incomplete` — a partial release must not mint a Release', () => {
+    // The 0.51.0 shape: 70 published, 2 failed, 1 blocked. The healer used to
+    // drop both fields and announce "All packages … at 0.51.0" from the
+    // manifest that contradicted it.
+    const text = JSON.stringify({
+      version: '0.51.0',
+      published: ['@pyreon/core'],
+      failed: ['@pyreon/native-compiler', 42],
+      blocked: ['@pyreon/native-cli'],
+      needsBootstrap: ['@pyreon/new-pkg'],
+    })
+    expect(parsePublishResult(text)?.incomplete).toEqual(['@pyreon/native-compiler', '@pyreon/native-cli'])
+  })
 
   it('PRERELEASE version → null — the umbrella chain is stable-only', () => {
     // The prerelease job runs publish.ts too; release-native's tag trigger

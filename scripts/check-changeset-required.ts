@@ -77,6 +77,7 @@
  * 6. Otherwise → exit 1 with actionable guidance.
  */
 
+import { gitChangedFilesZ } from './changed-files'
 import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -512,8 +513,7 @@ function changedFiles(baseRef: string): string[] | null {
   // diff-filter that catches additions AND deletions (changeset files
   // are deleted when the Version PR consumes them).
   try {
-    const out = git('diff', '--name-only', '--diff-filter=ACDMRTUXB', `origin/${baseRef}...HEAD`)
-    return out.length === 0 ? [] : out.split('\n')
+    return gitChangedFilesZ(`origin/${baseRef}...HEAD`, { args: ['--diff-filter=ACDMRTUXB'] })
   } catch (err) {
     // Loud, and NOT an empty diff.
     console.error(

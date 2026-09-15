@@ -118,12 +118,22 @@ jobs:
         # would skip the upload. We re-fail at the end of the job based
         # on the captured exit code.
         continue-on-error: true
+        # `inputs.*` reach the script through env, NEVER interpolated into the
+        # body: a `${{ }}` inside `run:` is substituted BEFORE bash sees it,
+        # so a value carrying shell metacharacters becomes shell (the same
+        # rule bundle-size-diff.yml states for `github.*`). Env values are
+        # never re-parsed.
+        env:
+          APP: ${{ inputs.app || 'perf-dashboard' }}
+          JOURNEYS: ${{ inputs.journeys }}
+          CYCLES: ${{ inputs.cycles || '15' }}
+          THRESHOLD: ${{ inputs.threshold || '50000' }}
         run: |
           set +e
-          app="${{ inputs.app || 'perf-dashboard' }}"
-          journeys="${{ inputs.journeys }}"
-          cycles="${{ inputs.cycles || '15' }}"
-          threshold="${{ inputs.threshold || '50000' }}"
+          app="$APP"
+          journeys="$JOURNEYS"
+          cycles="$CYCLES"
+          threshold="$THRESHOLD"
           jsonOut="perf-results/leak-sweep-${{ steps.sha.outputs.sha }}-${app}.json"
           mkdir -p perf-results
           args=(--app "$app" --cycles "$cycles" --threshold "$threshold" --mode dev --json "$jsonOut")

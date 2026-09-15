@@ -44,6 +44,7 @@
  *   bun run scripts/e2e-affected.ts --base=HEAD~5 --list     # debug
  */
 
+import { gitChangedFilesZ } from './changed-files'
 import { execFileSync } from 'node:child_process'
 
 // ── Suite catalogue ────────────────────────────────────────────────────────
@@ -536,12 +537,7 @@ function main(): void {
       // entirely (`--base="; rm -rf / #"` becomes just an unknown ref to
       // git, not executable shell). Same fix applied to scripts/affected.ts
       // (PR #968 follow-up); landed alongside the concurrency fix in this PR.
-      const out = execFileSync(
-        'git',
-        ['diff', '--name-only', `${base}...HEAD`],
-        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
-      )
-      changed = out.split('\n').filter(Boolean)
+      changed = gitChangedFilesZ(`${base}...HEAD`, { stdio: ['ignore', 'pipe', 'ignore'] })
     } catch {
       changed = null // can't diff → selectSuites returns ALL (safe)
     }

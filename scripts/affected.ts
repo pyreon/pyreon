@@ -64,6 +64,7 @@
  *   bun run scripts/affected.ts --category=core    # only @pyreon/* under packages/core/
  */
 
+import { gitChangedFilesZ } from './changed-files'
 import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
@@ -486,8 +487,7 @@ export function computeAffectedFlags(opts: {
 export function gitChangedFiles(base: string, cwd: string = ROOT): string[] | null {
   const tryDiff = (args: string[]): string[] | null => {
     try {
-      const out = execFileSync('git', ['diff', '--name-only', ...args], { cwd, encoding: 'utf-8' })
-      return out.split('\n').filter(Boolean)
+      return gitChangedFilesZ(args[args.length - 1]!, { cwd, args: args.slice(0, -1) })
     } catch {
       return null
     }

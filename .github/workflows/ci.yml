@@ -539,11 +539,18 @@ jobs:
             packages/*/*/lib
             .bootstrap-cache.json
           key: bootstrap-ubuntu-${{ hashFiles('packages/*/*/src/**', 'packages/*/*/package.json', 'packages/*/*/tsconfig.json', 'tsconfig.json', 'scripts/bootstrap.ts', 'bun.lock') }}
+      # SAME path list as the source-hashed entry above and as setup-pyreon's
+      # restore: actions/cache versions an entry by key AND by its path list,
+      # so a restore whose `path:` differs from the saver's can never match —
+      # the documented prefix-fallback in setup-pyreon was inert for exactly
+      # that reason (gated by check-cache-key-sync's path-list invariant).
       - name: Save lib/ under per-run-id key for downstream jobs
         if: steps.lib.outputs.run == 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: packages/*/*/lib
+          path: |
+            packages/*/*/lib
+            .bootstrap-cache.json
           key: ${{ env.BOOTSTRAP_KEY }}
 
   # ── Fast Gates: every lib-free gate, one runner ──────────────────────────
@@ -698,7 +705,14 @@ jobs:
           HAS_SKIP_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'skip-release-readiness') }}
         run: bun scripts/check-release-readiness.ts
       # ── dependencies + secrets ───────────────────────────────────────────
-      - name: Dependency Audit (untrusted deps)
+      # ADVISORY by construction: `bun pm untrusted` LISTS dependencies whose
+      # lifecycle scripts are blocked (bun's default) — it is an inventory,
+      # not a verdict, and exits non-zero on some bun versions merely for
+      # having entries. `continue-on-error` keeps it from failing the
+      # required `Fast Gates` job; the enforced half is the lockfile-drift
+      # step below plus dependency-audit.yml. Named "advisory" so it cannot
+      # be mistaken for a gate.
+      - name: Dependency Audit (untrusted deps, advisory)
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: bun pm untrusted
         continue-on-error: true
@@ -713,7 +727,12 @@ jobs:
       - name: Secrets Scan (pre-pull trufflehog image)
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: |
-          img="ghcr.io/trufflesecurity/trufflehog:latest"
+          # The VERSION must match the action step's `version:` below — the
+          # action runs `$IMAGE:$VERSION`, so a pre-pull of a different tag
+          # warms nothing, and `latest` is a floating tag: a SHA-pinned action
+          # that runs a floating image is unpinned in the only sense that
+          # executes code.
+          img="ghcr.io/trufflesecurity/trufflehog:3.97.0"
           for i in 1 2 3 4; do
             if docker pull "$img"; then exit 0; fi
             echo "::warning::ghcr.io pull attempt $i/4 failed for $img; backing off ${i}0s"
@@ -725,6 +744,8 @@ jobs:
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         uses: trufflesecurity/trufflehog@bcfcf73aaf4759d4dadc2783177c245a02792318 # v3.97.0
         with:
+          # Pinned to the action's own release — the default is `latest`.
+          version: 3.97.0
           extra_args: --only-verified
 
   # ── Shared setup anchor (YAML anchor not supported, so we repeat) ───────
@@ -736,8 +757,9 @@ jobs:
   # narrows the affected-filter to its own slice via
   # `scripts/affected.ts --category=<name>`; cells with no affected
   # packages in their category skip gracefully (empty filter = no-op).
-  # Aggregator `typecheck` job (next) keeps the stable `Typecheck`
-  # required check name for branch protection.
+  # The `Test` aggregator (level 3) consumes these cells — there is no
+  # separate `Typecheck` required check any more (#3213 consolidated the
+  # aggregators; branch protection pins `Test`).
   #
   # Why shard: pre-P3b Typecheck ran `bun run $FILTER --sequential
   # typecheck` against EVERY affected package on one runner (~270s
@@ -914,9 +936,9 @@ jobs:
 
   # ── Test: per-category matrix (P3b) ──────────────────────────────────
   # Same shard shape as `typecheck-cell` above (8 cells, per-category).
-  # Aggregator `test` job (next) keeps the stable `Test` required check
-  # name for branch protection. See `typecheck-cell` comment for shard
-  # rationale.
+  # The `Test` aggregator (level 3) keeps the stable `Test` required check
+  # name for branch protection — it also fails on a red typecheck cell.
+  # See `typecheck-cell` comment for shard rationale.
   #
   # P3c re-classification: needs `bootstrap`, not `install`. Most tests
   # use the bun condition → src/, but TWO classes of test legitimately

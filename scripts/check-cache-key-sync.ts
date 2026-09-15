@@ -124,6 +124,10 @@ export interface CacheStep {
   paths: string[]
   /** The literal text before the first `${{` in `key:` — '' when the key is pure expression. */
   prefix: string
+  /** Every `restore-keys:` entry's literal prefix — the OTHER prefixes this
+   * site can hit an entry through (a restore under a pure-expression key
+   * still falls back to these). */
+  restorePrefixes: string[]
 }
 
 /**
@@ -145,6 +149,7 @@ export function extractCacheSteps(text: string, file: string): CacheStep[] {
       : findStepIndent(lines, i)
     const paths: string[] = []
     let prefix = ''
+    const restorePrefixes: string[] = []
     for (let j = i + 1; j < lines.length; j++) {
       const l = lines[j]!
       const indent = l.length - l.trimStart().length
@@ -162,8 +167,20 @@ export function extractCacheSteps(text: string, file: string): CacheStep[] {
       }
       const km = /^\s*key:\s*(.*)$/.exec(l)
       if (km) prefix = km[1]!.split('${{')[0]!.trim()
+      const rm = /^\s*restore-keys:\s*(.*)$/.exec(l)
+      if (rm) {
+        const literal = (v: string) => v.split('${{')[0]!.trim()
+        if (rm[1]!.trim() === '|' || rm[1]!.trim() === '') {
+          for (let k = j + 1; k < lines.length; k++) {
+            const rl = lines[k]!
+            const rind = rl.length - rl.trimStart().length
+            if (rl.trim() === '' || rind <= indent) break
+            restorePrefixes.push(literal(rl))
+          }
+        } else restorePrefixes.push(literal(rm[1]!))
+      }
     }
-    out.push({ file, line: i + 1, kind, paths: [...paths].sort(), prefix })
+    out.push({ file, line: i + 1, kind, paths: [...paths].sort(), prefix, restorePrefixes })
   }
   return out
 }
@@ -204,6 +221,56 @@ export function findDuplicateWriters(steps: CacheStep[]): PathDuplicate[] {
     })
   }
   return out.sort((a, b) => a.paths[0]!.localeCompare(b.paths[0]!))
+}
+
+export interface PathListMismatch {
+  prefix: string
+  variants: Array<{ paths: string[]; sites: string[] }>
+}
+
+/**
+ * The RECIPROCAL of `findDuplicateWriters`: every site touching one key prefix
+ * must declare the IDENTICAL sorted path list. `actions/cache` versions an
+ * entry by key AND path list, so a restore whose `path:` differs from the
+ * saver's cannot match it — a documented `restore-keys` prefix fallback that
+ * disagreed on `.bootstrap-cache.json` was inert on every cache-service
+ * degradation it existed for. `findDuplicateWriters` groups BY path list, so
+ * it cannot see this: it asks "one artifact under many prefixes", this asks
+ * "one prefix over many artifacts". Pure-expression keys (`prefix === ''`)
+ * are not comparable and are skipped.
+ */
+export function findPathListMismatches(steps: CacheStep[]): PathListMismatch[] {
+  const byPrefix = new Map<string, Map<string, string[]>>()
+  for (const s of steps) {
+    // A site participates under its key's prefix AND every restore-keys
+    // prefix: a restore under a pure-expression key (`${{ env.BOOTSTRAP_KEY }}`)
+    // still falls back to `bootstrap-ubuntu-`, and that fallback can only hit
+    // an entry saved with the identical path list.
+    // `actions/cache/save` ignores `restore-keys` — only a step that can
+    // RESTORE participates through them.
+    const prefixes = new Set(
+      [s.prefix, ...(s.kind === 'save' ? [] : s.restorePrefixes)].filter((p) => p !== ''),
+    )
+    for (const prefix of prefixes) {
+      const variants = byPrefix.get(prefix) ?? new Map<string, string[]>()
+      byPrefix.set(prefix, variants)
+      const id = s.paths.join('\n')
+      const sites = variants.get(id) ?? []
+      sites.push(`${s.file}:${s.line}`)
+      variants.set(id, sites)
+    }
+  }
+  const out: PathListMismatch[] = []
+  for (const [prefix, variants] of byPrefix) {
+    if (variants.size < 2) continue
+    out.push({
+      prefix,
+      variants: [...variants.entries()]
+        .map(([id, sites]) => ({ paths: id.split('\n'), sites }))
+        .sort((a, b) => a.paths.join().localeCompare(b.paths.join())),
+    })
+  }
+  return out.sort((a, b) => a.prefix.localeCompare(b.prefix))
 }
 
 export interface OrphanRestore {
@@ -293,6 +360,22 @@ and LRU then evicts the small entries every PR depends on. Keep ONE writer
 (ci.yml's Install job for the shared stores) and make every other site an
 \`actions/cache/restore\` under that exact prefix.`,
   )
+  process.exit(1)
+}
+
+const mismatches = findPathListMismatches(steps)
+if (mismatches.length > 0) {
+  console.error(
+    `[check-cache-key-sync] FAILED — ${mismatches.length} key prefix(es) are used with DIFFERENT path lists (an entry is versioned by key AND path list, so these sites can never hit each other):`,
+  )
+  for (const m of mismatches) {
+    console.error(`\n  ${m.prefix}`)
+    for (const v of m.variants) {
+      console.error(`    ${v.paths.join(' + ')}`)
+      for (const s of v.sites) console.error(`      at ${s}`)
+    }
+  }
+  console.error(`\nMake every site under a prefix declare the same \`path:\` block.`)
   process.exit(1)
 }
 
