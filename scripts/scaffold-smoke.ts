@@ -437,6 +437,26 @@ export function isReleaseInFlightInstallFailure(
   return re.test(output)
 }
 
+/**
+ * True when `bun install` failed on the REGISTRY, not on the scaffold: a
+ * tarball that 404s (a just-published version whose tarball has not
+ * replicated yet — `@types/node@26.6.0` did this on 2026-09-15 and answered
+ * 200 an hour later), a 5xx, or a dropped connection. Such a failure says
+ * nothing about the template and is worth one retry after a pause; a
+ * resolution error (`No version matching`) or a build error is not. Pure —
+ * unit-tested.
+ */
+export function isTransientRegistryFailure(output: string): boolean {
+  return (
+    /GET https:\/\/registry\.npmjs\.org\/\S+ - (404|5\d\d)\b/.test(output) ||
+    /\b(ECONNRESET|ETIMEDOUT|EAI_AGAIN|ECONNREFUSED|socket hang up)\b/.test(output)
+  )
+}
+
+/** Attempts for an isolated-cell `bun install`: one retry after a registry-side failure. */
+const INSTALL_ATTEMPTS = 2
+const INSTALL_RETRY_DELAY_MS = 20_000
+
 function runBunInstall(projectDir: string, isolated: boolean): void {
   // Isolated cells (e.g. monorepo template) run install from inside the
   // scaffolded project root so Bun's workspace discovery picks up the
@@ -455,15 +475,25 @@ function runBunInstall(projectDir: string, isolated: boolean): void {
   // Isolated cells CAPTURE the output (and replay it to the log) so a
   // failure can be classified — the release-in-flight signature lives in
   // bun's stderr, and `stdio: 'inherit'` would throw it away.
-  const result = spawnSync('bun', ['install'], { cwd, encoding: 'utf-8' })
-  if (result.stdout) process.stdout.write(result.stdout)
-  if (result.stderr) process.stderr.write(result.stderr)
-  if (result.status !== 0) {
+  for (let attempt = 1; ; attempt++) {
+    const result = spawnSync('bun', ['install'], { cwd, encoding: 'utf-8' })
+    if (result.stdout) process.stdout.write(result.stdout)
+    if (result.stderr) process.stderr.write(result.stderr)
+    if (result.status === 0) return
     const output = `${result.stdout ?? ''}${result.stderr ?? ''}`
     if (isReleaseInFlightInstallFailure(output, readWorkspaceCreateZeroVersion())) {
       throw new ReleaseInFlightError(
         'bun install failed resolving @pyreon/* at the workspace version — a release publish is in flight (packages land over several minutes; the create-zero canary can be live while siblings lag)',
       )
+    }
+    if (attempt < INSTALL_ATTEMPTS && isTransientRegistryFailure(output)) {
+      // The registry, not the scaffold: say so and try once more after the
+      // replication window a fresh publish needs.
+      console.warn(
+        `[scaffold-smoke] bun install hit a registry-side failure (attempt ${attempt}/${INSTALL_ATTEMPTS}); retrying in ${INSTALL_RETRY_DELAY_MS / 1000}s`,
+      )
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, INSTALL_RETRY_DELAY_MS)
+      continue
     }
     throw new Error(`bun install exited with code ${result.status}`)
   }
