@@ -128,6 +128,14 @@ export interface AtlasDevPluginOptions {
   title?: string
   /** Extra RPC methods (a plugin's node-only half registers here). */
   methods?: Record<string, RpcMethod>
+  /**
+   * Re-run discovery and return the fresh entries. When provided, a change
+   * to a file under `scanRoot` re-derives the catalog and reloads the
+   * workbench — without it, `entries` is captured when the plugin is built,
+   * so a component added, a prop renamed or a variant declared after `atlas
+   * dev` started was invisible until a restart.
+   */
+  rescan?: () => Promise<readonly CatalogEntrySource[]>
 }
 
 /** Minimal Vite plugin shape — typed locally so this module needs no vite import. */
@@ -142,15 +150,26 @@ export interface VitePluginLike {
         handler: (req: unknown, res: unknown, next: () => void) => void,
       ) => void
     }
+    /** Vite's chokidar watcher — present on a real dev server, absent in unit tests. */
+    watcher?: { on: (event: string, listener: (file: string) => void) => unknown }
+    moduleGraph?: {
+      getModuleById: (id: string) => unknown
+      invalidateModule: (mod: never) => void
+    }
+    ws?: { send: (payload: { type: 'full-reload'; path?: string }) => void }
   }): void
   transformIndexHtml?: (html: string) => string
 }
 
 export function atlasDevPlugin(options: AtlasDevPluginOptions): VitePluginLike {
-  const methods = {
-    ...builtinMethods({ root: options.root, components: options.entries.map((e) => e.component) }),
+  // `let`, not `const`: a rescan replaces both — the catalog module reads
+  // `entries`, and the source/lens methods are built over the component list.
+  let entries = options.entries
+  const buildMethods = () => ({
+    ...builtinMethods({ root: options.root, components: entries.map((e) => e.component) }),
     ...options.methods,
-  }
+  })
+  let methods = buildMethods()
 
   return {
     name: 'atlas:dev',
@@ -162,7 +181,7 @@ export function atlasDevPlugin(options: AtlasDevPluginOptions): VitePluginLike {
 
     load(id) {
       if (id === resolved(CATALOG_ID)) {
-        return generateCatalogModule(options.entries, {
+        return generateCatalogModule(entries, {
           root: options.scanRoot,
           ...(options.configPath ? { configPath: options.configPath } : {}),
           ...(options.presets ? { presets: options.presets } : {}),
@@ -203,6 +222,48 @@ export function atlasDevPlugin(options: AtlasDevPluginOptions): VitePluginLike {
     },
 
     configureServer(server) {
+      // Re-derive the catalog when a scanned file changes. Debounced, because a
+      // save touches several files; serialised, because a rescan loads the
+      // project's module graph and two at once contend for it. A change that
+      // lands during a rescan queues exactly one more.
+      const rescan = options.rescan
+      if (rescan && server.watcher) {
+        const scanRoot = options.scanRoot.endsWith('/') ? options.scanRoot : `${options.scanRoot}/`
+        let timer: ReturnType<typeof setTimeout> | undefined
+        let running = false
+        let queued = false
+        const run = async (): Promise<void> => {
+          if (running) {
+            queued = true
+            return
+          }
+          running = true
+          try {
+            entries = await rescan()
+            methods = buildMethods()
+            const mod = server.moduleGraph?.getModuleById(resolved(CATALOG_ID))
+            if (mod) server.moduleGraph?.invalidateModule(mod as never)
+            server.ws?.send({ type: 'full-reload', path: '*' })
+          } catch (err) {
+            process.stderr.write(
+              `[Pyreon] atlas dev: rescan failed — the workbench keeps the previous catalog: ${err instanceof Error ? err.message : String(err)}\n`,
+            )
+          } finally {
+            running = false
+            if (queued) {
+              queued = false
+              void run()
+            }
+          }
+        }
+        const onFile = (file: string) => {
+          if (!file.startsWith(scanRoot) || !/\.(?:[cm]?[jt]sx?)$/.test(file)) return
+          if (timer !== undefined) clearTimeout(timer)
+          timer = setTimeout(() => void run(), 150)
+        }
+        for (const event of ['add', 'change', 'unlink']) server.watcher.on(event, onFile)
+      }
+
       server.middlewares.use(RPC_PATH, (req, res, next) => {
         const request = req as { method?: string; on: (e: string, cb: (c?: unknown) => void) => void }
         const response = res as {

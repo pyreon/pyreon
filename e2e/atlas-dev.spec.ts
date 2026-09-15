@@ -40,7 +40,7 @@ test.describe('atlas dev', () => {
     // projects.
     await page.goto('/')
     await page.getByRole('button', { name: 'Button', exact: true }).click()
-    await page.getByRole('button', { name: 'Actions', exact: true }).click()
+    await page.getByRole('tab', { name: 'Actions', exact: true }).click()
     await expect(page.getByText('No events yet — click the component.')).toBeVisible()
 
     await page.getByTestId('canvas-preview').locator('button').first().click()
@@ -150,15 +150,15 @@ test.describe('atlas dev', () => {
     // Clean first: Badge with its default (labelled) state.
     await page.goto('/')
     await page.getByRole('button', { name: 'Badge', exact: true }).click()
-    await page.getByRole('button', { name: 'A11y', exact: true }).click()
+    await page.getByRole('tab', { name: 'A11y', exact: true }).click()
     await page.getByTestId('axe-run').click()
     await expect(page.getByTestId('axe-clean')).toBeVisible({ timeout: 15_000 })
 
     // Now the violation the static check also knows: an empty accessible name.
     await page.getByRole('button', { name: 'Button', exact: true }).click()
     await page.getByTestId('addon-tab-controls').click()
-    await page.locator('input[placeholder]').first().fill('')
-    await page.getByRole('button', { name: 'A11y', exact: true }).click()
+    await page.locator('#addon-panel-controls input[placeholder]').first().fill('')
+    await page.getByRole('tab', { name: 'A11y', exact: true }).click()
     await page.getByTestId('axe-run').click()
     // axe's own rule id, not a homemade one — the point of vendoring.
     await expect(page.getByTestId('axe-button-name')).toBeVisible({ timeout: 15_000 })
@@ -170,7 +170,7 @@ test.describe('atlas dev', () => {
 
     await page.goto('/')
     await page.getByRole('button', { name: 'Chip', exact: true }).click()
-    await page.getByRole('button', { name: 'Docs', exact: true }).click()
+    await page.getByRole('tab', { name: 'Docs', exact: true }).click()
 
     // Scenarios block: each derived state with its verdict, doubling as a LINK.
     const solid = page.getByTestId('docs-scenario-chip--default')
@@ -217,7 +217,7 @@ test.describe('atlas dev', () => {
   test('hovering an a11y finding highlights the element the checks ran against', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'Button', exact: true }).click()
-    await page.getByRole('button', { name: 'A11y', exact: true }).click()
+    await page.getByRole('tab', { name: 'A11y', exact: true }).click()
 
     const subject = page.getByTestId('canvas-preview').locator(':scope > *').first()
     const outline = () => subject.evaluate((el) => (el as HTMLElement).style.outline)
@@ -250,6 +250,81 @@ test.describe('atlas dev', () => {
     await expect(page.getByRole('button', { name: 'SearchField' })).toBeHidden()
     await parent.click()
     await expect(child).toBeVisible()
+  })
+
+  test('the sidebar filter narrows the tree and survives the search dialog', async ({ page }) => {
+    // The tree used to filter by the dialog's query, which every exit path
+    // clears — so it could never STAY filtered.
+    await page.goto('/')
+    const filter = page.getByTestId('sidebar-filter')
+    await filter.fill('search')
+    await expect(page.getByTestId('component-search-field')).toBeVisible()
+    await expect(page.getByTestId('component-button')).toHaveCount(0)
+    // Open and close the dialog: the sidebar filter is untouched.
+    await page.keyboard.press('Meta+k')
+    await expect(page.getByTestId('search-dialog')).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('search-dialog')).toHaveCount(0)
+    await expect(page.getByTestId('component-button')).toHaveCount(0)
+    await filter.fill('')
+    await expect(page.getByTestId('component-button')).toBeVisible()
+  })
+
+  test('arrow keys walk the rows the sidebar shows — a collapsed group is skipped', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('component-button').click()
+    // Collapse the nested Forms group, then walk past where its rows would be.
+    await page.getByTestId('group-Components/Forms').click()
+    await expect(page.getByTestId('component-search-field')).toBeHidden()
+    const seen: string[] = []
+    for (let i = 0; i < 12; i += 1) {
+      await page.keyboard.press('ArrowDown')
+      seen.push((await page.getByTestId('canvas-name').textContent()) ?? '')
+    }
+    expect(seen).not.toContain('SearchField')
+    // And the selected row is always on screen.
+    const active = page.locator('[data-testid^="component-"][aria-current="true"]')
+    await expect(active).toBeVisible()
+  })
+
+  test('measure reports real pixels at every zoom', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Button', exact: true }).click()
+    await page.getByTestId('addon-tab-canvas').click()
+    await page.getByTestId('measure-toggle').click()
+    const target = page.getByTestId('canvas-preview').locator('button').first()
+    await target.hover()
+    const label = page.getByTestId('measure-label')
+    await expect(label).toHaveText(/^\d+ × \d+$/)
+    const at100 = await label.textContent()
+    // Zoom to 125% and hover again: the box grows on screen, the number does
+    // not — it is the component's layout size, not the scaled rect.
+    await page.getByText('+', { exact: true }).first().click()
+    await expect(page.getByTestId('zoom-label')).toHaveText('125%')
+    await page.mouse.move(0, 0)
+    await target.hover()
+    await expect(label).toHaveText(at100 ?? '')
+  })
+
+  test('a link can name the view — the Docs page is linkable', async ({ page }) => {
+    await page.goto('/?view=docs')
+    await expect(page.getByTestId('props-table')).toBeVisible()
+    await page.getByRole('tab', { name: 'Canvas', exact: true }).click()
+    await expect(page.getByTestId('canvas-preview')).toBeVisible()
+    await expect(page).not.toHaveURL(/view=docs/)
+  })
+
+  test('an addon panel is rebuilt for the component it is about', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Badge', exact: true }).click()
+    await page.getByRole('tab', { name: 'A11y', exact: true }).click()
+    await page.getByTestId('axe-run').click()
+    await expect(page.getByTestId('axe-clean')).toBeVisible({ timeout: 15_000 })
+    // Selecting another component discards the previous run: the panel is
+    // built per component, so it cannot show Badge's verdict under Chip.
+    await page.getByRole('button', { name: 'Chip', exact: true }).click()
+    await expect(page.getByTestId('axe-clean')).toHaveCount(0)
+    await expect(page.getByTestId('axe-run')).toBeVisible()
   })
 
   test('number and color props get REAL editors, not text boxes', async ({ page }) => {

@@ -1,3 +1,7 @@
+/* oxlint-disable jsx-a11y/prefer-tag-over-role -- the resize handles carry
+   `role="separator"` on a div on purpose: the WAI-ARIA window-splitter pattern
+   (a focusable, keyboard-movable divider). An <hr> is a thematic break, not a
+   control. */
 /**
  * `<Workbench>` — the Atlas component workbench, driven entirely by a
  * `WorkbenchCatalog` you pass in (no hardcoded component list). This file is
@@ -82,7 +86,10 @@ export function Workbench(props: WorkbenchProps) {
     if (e.key === 'Escape' && m.query()) m.query.set('')
     if (typing) return
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      const ids = m.search(m.query())
+      // The rows the sidebar SHOWS — filtered, parts under their parent,
+      // nothing inside a collapsed group. Walking the flat catalog order
+      // selected components the sidebar was not displaying.
+      const ids = m.browseIds()
       if (!ids.length) return
       e.preventDefault()
       let i = ids.indexOf(m.selId())
@@ -126,6 +133,15 @@ export function Workbench(props: WorkbenchProps) {
   const dragEnd = () => {
     dragging = null
   }
+  // Keyboard resize — the handle is a focusable separator, and ←/→ move it
+  // by 16px (⇧ for 64px). Mouse-only panel widths locked keyboard users out.
+  const dragKey = (side: 'sidebar' | 'panel') => (e: KeyboardEvent) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+    e.preventDefault()
+    const step = (e.shiftKey ? 64 : 16) * (e.key === 'ArrowRight' ? 1 : -1)
+    if (side === 'sidebar') m.sidebarW.set(Math.min(420, Math.max(200, m.sidebarW() + step)))
+    else m.panelW.set(Math.min(560, Math.max(280, m.panelW() - step)))
+  }
 
   // Same reasoning drives the `state={() => …}` accessors in ./views.
   return (
@@ -140,9 +156,14 @@ export function Workbench(props: WorkbenchProps) {
             <Sidebar model={m} />
             <C.ResizeHandle
               data-testid="resize-sidebar"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize sidebar"
+              tabIndex={0}
               onPointerDown={dragStart('sidebar')}
               onPointerMove={dragMove}
               onPointerUp={dragEnd}
+              onKeyDown={dragKey('sidebar')}
               onDblClick={() => m.sidebarOpen.set(false)}
             />
           </Show>
@@ -152,9 +173,14 @@ export function Workbench(props: WorkbenchProps) {
           <Show when={() => m.view() === 'canvas' && m.panelOpen()}>
             <C.ResizeHandle
               data-testid="resize-panel"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize addon panel"
+              tabIndex={0}
               onPointerDown={dragStart('panel')}
               onPointerMove={dragMove}
               onPointerUp={dragEnd}
+              onKeyDown={dragKey('panel')}
               onDblClick={() => m.panelOpen.set(false)}
             />
             <AddonPanel model={m} />
