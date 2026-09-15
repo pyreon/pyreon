@@ -30,7 +30,7 @@ const write = (rel: string, body: string): void => {
 }
 
 const counter = (): void =>
-  write('src/Counter.tsx', 'export function Counter(props: { count: number }) { return null }\n')
+  write('src/Counter.tsx', 'export function Counter(props: { count: number }) { return 1 }\n')
 
 /**
  * A component the STATIC scan sees and the loader cannot import.
@@ -43,7 +43,7 @@ const counter = (): void =>
 const unloadable = (): void =>
   write(
     'src/Broken.tsx',
-    "import '@no/such/package'\nexport function Broken(props: { count: number }) { return null }\n",
+    "import '@no/such/package'\nexport function Broken(props: { count: number }) { return 1 }\n",
   )
 
 const outText = () => stdout.join('')
@@ -412,7 +412,7 @@ describe('atlas init — the written summary', () => {
     const runCli = await load()
     write('package.json', JSON.stringify({ name: 'root', workspaces: ['packages/*'] }))
     write('packages/core/package.json', JSON.stringify({ name: '@acme/core' }))
-    write('packages/core/src/Button.tsx', 'export function Button(p: { n: number }) { return null }\n')
+    write('packages/core/src/Button.tsx', 'export function Button(p: { n: number }) { return 1 }\n')
 
     expect(await runCli(['init', dir])).toBe(0)
     expect(outText()).toContain('atlas init: wrote')

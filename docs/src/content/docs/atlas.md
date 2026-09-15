@@ -245,7 +245,12 @@ export const presets = {
 - **`theme`** — your design tokens. This is what resolves rocketstyle `variant` / `size` axes: those chains are call expressions the static scanner can't see, so Atlas loads them and reads the dimensions — which requires the theme their callbacks dereference. Without it, rocketstyle components are still discovered but lose their axes.
 - **`wrapper`** — the providers your components genuinely need to mount (`PyreonUI`, a `PermissionsProvider`, …). Without it, provider-dependent scenarios honestly **fail** with `threw while mounted` — they are not quietly skipped.
 - **`presets`** — per-project viewports, locales (RTL supported), and permission roles for the canvas toolbars. Each family replaces the shipped defaults; omitted families keep them.
-- **`scenarios`** — authored scenarios with `play` scripts (below). Authored entries win over generated ones with the same id.
+- **`scenarios`** — authored scenarios with `play` scripts (below). Authored entries win over generated ones with the same id. Args stay **live**: a render-prop child (`children: (state) => …`) or an `h()` tree written here reaches the canvas intact — the JSON catalog marks them as living in the config. An authored `Default` is the base every derived scenario is built on, so `size=medium` on a render-prop component is the authored composition at medium size, not an empty base.
+- **`matrix`** — how variant scenarios are derived from a component's axes. `'axes'` (default) fans one axis at a time (`Default` plus one scenario per axis value, the other axes at their defaults — `Σ|axis|`); `'full'` crosses every axis (`Π|axis|`) — opt in when the axes genuinely interact, knowing a `state × size × variant` component then carries 60+ scenarios.
+- **`browserOnly`** — component names that render `null` outside a browser (an overlay gated on `isServer`, which a Node scan decides before any DOM exists). Their empty render reports `browser-only` instead of failing; `atlas verify-browser` judges them.
+- **`parts`** — `{ TabPanel: 'Tabs', AccordionContent: 'Accordion' }`. A part renders nothing on its own; the scan reports `part-of` for it, and the workbench canvas shows it inside its parent's opening scenario.
+
+Every scenario that mounts cleanly but produces **no DOM at all** — no element, no text, nothing portaled — fails the interaction check with `empty-render` and a fix that names where the missing data props or render-prop child belong. "Mounts, clicks and unmounts without throwing" was true of an empty container; this is the check that is not.
 
 ## Play functions — authored interaction scripts
 

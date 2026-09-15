@@ -49,9 +49,38 @@ describe('deriveContent', () => {
   })
 
   it('seeds NOTHING for a tag that cannot carry content', () => {
-    for (const tag of ['hr', 'br', 'video', 'canvas', 'select']) {
+    for (const tag of ['hr', 'br', 'video', 'canvas']) {
       expect(deriveContent({ name: 'X', tag })).toEqual({ args: {}, controls: [] })
     }
+  })
+
+  it('fills a <select> with <option> blocks — text inside a select is dropped by the parser', async () => {
+    // `<select>Select</select>` is a `<select>` with nothing in it: the HTML
+    // parser discards text that is not inside an `<option>`. Measured on
+    // ui-components: 60 scenarios of an empty select, all "verified".
+    for (const shape of [{ name: 'Select', tag: 'select' }, { name: 'Select', base: 'SelectBase' }]) {
+      const seed = deriveContent(shape)
+      expect(seed.args.children, JSON.stringify(shape)).toEqual({ __atlasContent: 'blocks', count: 3, tag: 'option' })
+      expect(seed.controls).toEqual([])
+      const { children } = materializeContent(seed.args, h)
+      const html = await renderToString(h('select', {}, ...children) as never)
+      expect(html.match(/<option value="\d">Option \d<\/option>/g)).toHaveLength(3)
+    }
+  })
+
+  it('opens a modal-like base: `open: true` seeded, with a boolean control to close it', () => {
+    // `el.config({ component: ModalBase })` has no tag to read, and the base
+    // renders NOTHING until opened — so a seed of `children` alone verified 30
+    // scenarios of no DOM at all (Dialog, Drawer, Modal on ui-components).
+    for (const base of ['ModalBase', 'Dialog', 'DrawerBase', 'SheetBase']) {
+      const seed = deriveContent({ name: 'Dialog', base })
+      expect(seed.args, base).toEqual({ open: true, children: 'Dialog' })
+      expect(seed.controls.map((c) => c.name), base).toEqual(['open', 'children'])
+      expect(seed.controls[0]).toMatchObject({ kind: 'boolean', defaultValue: true })
+      expect(seed.contentKey).toBe('children')
+    }
+    // Any other function base still seeds text — the base is a hint, not a tag.
+    expect(deriveContent({ name: 'Spoiler', base: 'SpoilerBase' }).args).toEqual({ children: 'Spoiler' })
   })
 
   it('seeds NOTHING for a container no generic block can legally fill', () => {

@@ -10,7 +10,7 @@
  *   - `@pyreon/atlas/core`    — the framework-agnostic domain model + engine
  *   - `@pyreon/atlas/plugins` — the plugin API + built-in plugins
  */
-import type { CatalogGraph, ComponentIntelligence, Scenario } from './core'
+import type { CatalogGraph, ComponentIntelligence, Scenario, VariantMatrix } from './core'
 import type { AtlasPlugin } from './plugins'
 import { createCatalogGraph } from './core'
 import { createPluginRegistry, recommendedPlugins } from './plugins'
@@ -39,6 +39,8 @@ export interface AtlasConfig {
   preset?: 'recommended' | 'none'
   /** base args merged into generated variant scenarios */
   baseArgs?: Record<string, unknown>
+  /** Variant derivation shape — `axes` (default) or the `full` cross-product. */
+  matrix?: VariantMatrix
   /** the directory Atlas is pointed at (defaults to the process cwd) */
   cwd?: string
   /**
@@ -74,7 +76,10 @@ export function createAtlas(config: AtlasConfig = {}): Atlas {
   const bundle =
     config.preset === 'none'
       ? []
-      : recommendedPlugins(config.baseArgs ? { baseArgs: config.baseArgs } : {})
+      : recommendedPlugins({
+          ...(config.baseArgs ? { baseArgs: config.baseArgs } : {}),
+          ...(config.matrix ? { matrix: config.matrix } : {}),
+        })
   const registry = createPluginRegistry([...(config.plugins ?? []), ...bundle])
 
   return {

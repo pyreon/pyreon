@@ -413,6 +413,24 @@ const SUITES: Suite[] = [
     ],
   },
   {
+    // `atlas build` over the REAL library — the command `docs.yml` runs for
+    // pyreon.dev/atlas. Every component page must show the component: the
+    // workshop's seven components never exercised an overlay, a render-prop
+    // base, a `<table>` or a part, and the deployed site rendered 24 of 108 as
+    // nothing while every other gate stayed green.
+    name: 'atlas-ui-components',
+    script: 'test:e2e:atlas-ui-components',
+    triggers: [
+      ...RENDER_CORE,
+      'packages/tools/atlas/',
+      'packages/tools/vite-plugin/',
+      'packages/core/compiler/',
+      'packages/ui/',
+      'packages/ui-system/',
+      'e2e/atlas-ui-components.spec.ts',
+    ],
+  },
+  {
     // `atlas verify-browser` — the browser half of the verify pipeline as a
     // subprocess: real coverage on the page's own reactivity instance +
     // baseline-create/compare snapshots, merged back into the catalog.

@@ -41,12 +41,12 @@ const write = (rel: string, body: string): string => {
  * for "a healthy project exits 0". The failing shape gets its own spec below.
  */
 const project = (): void => {
-  write('src/Counter.tsx', 'export function Counter(props: { count: number }) { return null }\n')
+  write('src/Counter.tsx', 'export function Counter(props: { count: number }) { return 1 }\n')
 }
 
 /** A component whose generated empty-string scenario fails the a11y check. */
 const failingProject = (): void => {
-  write('src/Button.tsx', 'export function Button(props: { label: string }) { return null }\n')
+  write('src/Button.tsx', 'export function Button(props: { label: string }) { return 1 }\n')
 }
 
 const CONFIG = 'pyreon.config.ts'
