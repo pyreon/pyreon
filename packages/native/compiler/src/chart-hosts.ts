@@ -1100,19 +1100,72 @@ export function desugarOptionChart(
     const range = calendar?.kind === 'object' ? literalOf(objectField(calendar, 'range'), resolve) : undefined
     let start: string | undefined
     let end: string | undefined
-    const year = litString(range)
+    const year = litString(range) ?? (litNumber(range) !== undefined ? String(litNumber(range)) : undefined)
     if (year !== undefined && /^\d{4}$/.test(year)) {
       start = `${year}-01-01`
       end = `${year}-12-31`
+    } else if (year !== undefined && /^\d{4}-\d{2}$/.test(year)) {
+      const y = Number(year.slice(0, 4))
+      const month = Number(year.slice(5, 7))
+      const leap = y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0)
+      const last = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]
+      if (last !== undefined) {
+        start = `${year}-01`
+        end = `${year}-${last}`
+      }
+    } else if (year !== undefined && /^\d{4}-\d{2}-\d{2}$/.test(year)) {
+      start = year
+      end = year
     } else if (range?.kind === 'array' && range.elements.length === 2) {
       start = litString(range.elements[0])
       end = litString(range.elements[1])
     }
     if (start === undefined || end === undefined) {
-      warn('<OptionChart option.calendar.range>: a native calendar needs a literal year or [start, end] ISO-date range; emitting nothing.')
+      warn('<OptionChart option.calendar.range>: a native calendar needs a literal year, month, date, or [start, end] ISO-date range; emitting nothing.')
       return undefined
     }
-    optionFields(calendar!, ['range'], 'option.calendar', warn)
+    optionFields(calendar!, ['range', 'orient', 'cellSize', 'dayLabel', 'monthLabel', 'itemStyle'], 'option.calendar', warn)
+    const calendarFields: { name: string; value: ExprIR }[] = []
+    const orient = litString(objectField(calendar!, 'orient'))
+    if (orient === 'vertical') warn('<OptionChart option.calendar.orient>: vertical native calendars are not supported; rendering horizontally.')
+    const cellSizeRaw = literalOf(objectField(calendar!, 'cellSize'), resolve)
+    const cellSize = cellSizeRaw?.kind === 'array' ? litNumber(cellSizeRaw.elements[0]) : litNumber(cellSizeRaw)
+    if (cellSize !== undefined) calendarFields.push({ name: 'cellSize', value: optionDoubleLiteral(cellSize) })
+    const dayLabel = literalOf(objectField(calendar!, 'dayLabel'), resolve)
+    if (dayLabel?.kind === 'object') {
+      optionFields(dayLabel, ['show', 'firstDay'], 'option.calendar.dayLabel', warn)
+      const show = objectField(dayLabel, 'show')
+      if (show?.kind === 'literal' && show.value === false) calendarFields.push({ name: 'showDayLabels', value: lit(false) })
+      const firstDay = litNumber(objectField(dayLabel, 'firstDay'))
+      if (firstDay !== undefined) calendarFields.push({ name: 'firstDay', value: optionDoubleLiteral(firstDay) })
+    }
+    const monthLabel = literalOf(objectField(calendar!, 'monthLabel'), resolve)
+    if (monthLabel?.kind === 'object') {
+      optionFields(monthLabel, ['show'], 'option.calendar.monthLabel', warn)
+      const show = objectField(monthLabel, 'show')
+      if (show?.kind === 'literal' && show.value === false) calendarFields.push({ name: 'showMonthLabels', value: lit(false) })
+    }
+    const itemStyle = literalOf(objectField(calendar!, 'itemStyle'), resolve)
+    if (itemStyle?.kind === 'object') {
+      optionFields(itemStyle, ['color', 'borderWidth'], 'option.calendar.itemStyle', warn)
+      const emptyColor = litString(objectField(itemStyle, 'color'))
+      const gap = litNumber(objectField(itemStyle, 'borderWidth'))
+      if (emptyColor !== undefined) calendarFields.push({ name: 'emptyColor', value: lit(emptyColor) })
+      if (gap !== undefined) calendarFields.push({ name: 'cellGap', value: optionDoubleLiteral(gap) })
+    }
+    const visualMap = literalOf(objectField(raw, 'visualMap'), resolve)
+    if (visualMap?.kind === 'object') {
+      optionFields(visualMap, ['min', 'max', 'inRange'], 'option.visualMap', warn)
+      const min = litNumber(objectField(visualMap, 'min'))
+      const max = litNumber(objectField(visualMap, 'max'))
+      if (min !== undefined && max !== undefined) calendarFields.push({ name: 'domain', value: { kind: 'object', fields: [{ name: 'min', value: optionDoubleLiteral(min) }, { name: 'max', value: optionDoubleLiteral(max) }] } })
+      const inRange = literalOf(objectField(visualMap, 'inRange'), resolve)
+      if (inRange?.kind === 'object') {
+        optionFields(inRange, ['color'], 'option.visualMap.inRange', warn)
+        const colors = literalOf(objectField(inRange, 'color'), resolve)
+        if (colors?.kind === 'array' && colors.elements.length >= 2 && colors.elements.every((color) => litString(color) !== undefined)) calendarFields.push({ name: 'stops', value: colors })
+      }
+    }
     const data = literalOf(objectField(series, 'data'), resolve)
     if (data?.kind !== 'array') {
       warn('<OptionChart option.series[0].data>: a native calendar needs literal [date, value] rows; emitting nothing.')
@@ -1132,6 +1185,7 @@ export function desugarOptionChart(
     set('start', lit(start))
     set('end', lit(end))
     set('values', { kind: 'object', fields })
+    if (calendarFields.length > 0) set('calendar', { kind: 'object', fields: calendarFields })
     return { kind: 'jsx-element', tag: 'CalendarChart', attrs, children: [] }
   }
 

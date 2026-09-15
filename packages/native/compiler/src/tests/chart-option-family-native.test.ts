@@ -51,8 +51,10 @@ export function App() { return <>
 
 const CALENDAR = `import { OptionChart } from '@pyreon/charts/plot'
 export function App() { return <>
-  <OptionChart option={{ calendar: { range: '2026' }, series: [{ type: 'heatmap', coordinateSystem: 'calendar', data: [['2026-01-03', 4], ['2026-06-12', 9]] }] }} />
+  <OptionChart option={{ calendar: { range: 2026, cellSize: 14, dayLabel: { show: false, firstDay: 1 }, monthLabel: { show: false }, itemStyle: { color: '#eeeeee', borderWidth: 2 } }, visualMap: { min: 0, max: 10, inRange: { color: ['#ffffff', '#008800'] } }, series: [{ type: 'heatmap', coordinateSystem: 'calendar', data: [['2026-01-03', 4], ['2026-06-12', 9]] }] }} />
   <OptionChart option={{ calendar: { range: ['2025-12-20', '2026-01-10'] }, series: [{ type: 'heatmap', coordinateSystem: 'calendar', data: [['2025-12-25', 7]] }] }} />
+  <OptionChart option={{ calendar: { range: '2024-02' }, series: [{ type: 'heatmap', coordinateSystem: 'calendar', data: [['2024-02-29', 5]] }] }} />
+  <OptionChart option={{ calendar: { range: '2027-03-04' }, series: [{ type: 'heatmap', coordinateSystem: 'calendar', data: [['2027-03-04', 6]] }] }} />
 </> }`
 
 const PARALLEL = `import { OptionChart } from '@pyreon/charts/plot'
@@ -148,7 +150,9 @@ describe('OptionChart family options lower to native hosts', () => {
       expect(r.warnings).toEqual([])
       expect(r.code).not.toContain('OptionChart(')
       expect(r.code).toContain('renderCalendar')
-      for (const value of ['2026-01-01', '2026-12-31', '2025-12-20', '2026-01-10', '2026-01-03', '2026-06-12', '2025-12-25']) expect(r.code).toContain(`"${value}"`)
+      for (const value of ['2026-01-01', '2026-12-31', '2025-12-20', '2026-01-10', '2024-02-01', '2024-02-29', '2027-03-04', '#eeeeee', '#ffffff', '#008800']) expect(r.code).toContain(`"${value}"`)
+      expect(r.code).toContain(target === 'swift' ? 'firstDay: 1.0' : 'firstDay = 1.0')
+      expect(r.code).toContain(target === 'swift' ? 'showMonthLabels: false' : 'showMonthLabels = false')
     })
 
     it(`${target}: parallel options preserve axes, categories, rows, domains, and line style`, () => {
