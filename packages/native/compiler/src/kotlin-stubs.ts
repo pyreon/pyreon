@@ -1775,6 +1775,7 @@ class PyreonFlowState<T>(
   fun removeNodes(ids: List<String>) {}
   fun updateNodePosition(id: String, position: PyreonXYPosition) {}
   fun updateNodeData(id: String, update: (T) -> T) {}
+  fun updateNodeDataFromNode(id: String, update: (PyreonFlowNode<T>) -> T) {}
   fun updateNode(id: String, update: (PyreonFlowNode<T>) -> PyreonFlowNode<T>) {}
   fun setNodeExtent(minX: Double, minY: Double, maxX: Double, maxY: Double) {}
   fun clearNodeExtent() {}

@@ -1521,6 +1521,16 @@ public final class PyreonFlowState<T> {
         nodesVersion &+= 1
         markMutation()
     }
+    /// Callback form of the web API: computes data from the complete current node.
+    public func updateNodeDataFromNode(_ id: String, _ update: (PyreonFlowNode<T>) -> T) {
+        guard var node = nodeStore[id] else { return }
+        checkpoint()
+        node.data = update(node)
+        nodeStore[id] = node
+        boxes[id]!.node = node
+        nodesVersion &+= 1
+        markMutation()
+    }
     public func updateNode(_ id: String, _ update: (inout PyreonFlowNode<T>) -> Void) {
         guard var node = nodeStore[id] else { return }
         update(&node)

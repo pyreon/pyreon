@@ -248,6 +248,8 @@ fun main() {
     stopStart(); stopEnd(); stopPane()
     f.updateNodeData("1") { it.copy(label = "Updated") }
     check(f.getNode("1")?.data?.label == "Updated", "updateNodeData replaces the native payload observably")
+    f.updateNodeDataFromNode("1") { it.data.copy(label = "${it.id}:${it.data.label}") }
+    check(f.getNode("1")?.data?.label == "1:Updated", "callback node-data update receives the complete Android node")
     f.updateNode("1") { it.copy(id = "ignored", hidden = true) }
     check(f.getNode("1")?.hidden == true && f.getNode("ignored") == null, "updateNode patches fields while preserving indexed identity")
     f.updateNode("1") { it.copy(hidden = false) }

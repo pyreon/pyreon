@@ -1017,9 +1017,14 @@ export function C() {
       if (target === 'swift') expect(validateSwiftWithStubs(result.code).ok).toBe(true)
       else expect(validateKotlin(result.code).ok).toBe(true)
     })
-    it(`[${target}] callback node updates warn rather than silently claiming native support`, () => {
-      const w = warningsOf(base('', '<Button onPress={() => flow.updateNodeData("1", node => ({ label: node.data.label }))}>Update</Button>'), target)
-      expect(w).toContain('`updateNodeData` currently lowers only a literal patch object without spreads')
+    it(`[${target}] callback node-data updates receive the full native node`, () => {
+      const result = transform(base('', '<Button onPress={() => flow.updateNodeData("1", node => ({ label: node.id }))}>Update</Button>'), { target })
+      expect(result.warnings.join(' ')).not.toContain('`updateNodeData` currently lowers only')
+      expect(result.code).toContain(target === 'swift'
+        ? 'flow.updateNodeDataFromNode("1") { node in var data = node.data; data.label = node.id; return data }'
+        : 'flow.updateNodeDataFromNode("1") { node -> node.data.copy(label = node.id) }')
+      if (target === 'swift') expect(validateSwiftWithStubs(result.code).ok).toBe(true)
+      else expect(validateKotlin(result.code).ok).toBe(true)
     })
     it(`[${target}] a signal WRITE on a flow property warns (the native collections are read-only)`, () => {
       const w = warningsOf(base('', '<Button onPress={() => flow.nodes.set([])}>Clear</Button>'), target)

@@ -1244,6 +1244,7 @@ public final class PyreonFlowState<T> {
   public func removeNodes(_ ids: [String]) {}
   public func updateNodePosition(_ id: String, _ position: PyreonXYPosition) {}
   public func updateNodeData(_ id: String, _ update: (inout T) -> Void) {}
+  public func updateNodeDataFromNode(_ id: String, _ update: (PyreonFlowNode<T>) -> T) {}
   public func updateNode(_ id: String, _ update: (inout PyreonFlowNode<T>) -> Void) {}
   public func setNodeExtent(minX: Double, minY: Double, maxX: Double, maxY: Double) {}
   public func clearNodeExtent() {}

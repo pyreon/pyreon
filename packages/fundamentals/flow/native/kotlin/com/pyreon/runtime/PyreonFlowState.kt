@@ -1154,6 +1154,14 @@ class PyreonFlowState<T>(
         nodeMap[id] = node.copy(data = update(node.data))
         markMutation()
     }
+    /** Callback form of the web API: computes data from the complete current node. */
+    fun updateNodeDataFromNode(id: String, update: (PyreonFlowNode<T>) -> T) {
+        val node = nodeMap[id] ?: return
+        checkpoint()
+        val changed = node.copy(data = update(node))
+        nodeMap[id] = changed
+        markMutation()
+    }
     fun updateNode(id: String, update: (PyreonFlowNode<T>) -> PyreonFlowNode<T>) {
         val node = nodeMap[id] ?: return
         nodeMap[id] = update(node).copy(id = id)

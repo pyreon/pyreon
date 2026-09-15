@@ -6190,7 +6190,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       ) {
         const flowName = e.callee.object.name
         const member = e.callee.property
-        if (['updateNode', 'updateNodeData', 'updateEdge'].includes(member) && e.args.length === 2 && (e.args[1]!.kind !== 'object' || (e.args[1]!.spreads?.length ?? 0) > 0)) {
+        const flowPatchArg = e.args[1]
+        const flowPatchBody = flowPatchArg?.kind === 'arrow' && flowPatchArg.body.kind === 'paren' ? flowPatchArg.body.inner : flowPatchArg?.kind === 'arrow' ? flowPatchArg.body : undefined
+        const flowPatchCallback = member === 'updateNodeData' && flowPatchArg?.kind === 'arrow' && flowPatchArg.params.length === 1 && flowPatchBody?.kind === 'object' && (flowPatchBody.spreads?.length ?? 0) === 0
+        if (['updateNode', 'updateNodeData', 'updateEdge'].includes(member) && e.args.length === 2 && !flowPatchCallback && (e.args[1]!.kind !== 'object' || (e.args[1]!.spreads?.length ?? 0) > 0)) {
           _emitWarnings.push(`createFlow binding \`${flowName}\`: \`${member}\` currently lowers only a literal patch object without spreads on native targets; this call is emitted as written and may fail the native build.`)
         }
         if (e.args.length === 0 && member === 'getNodes') return `${swiftIdent(flowName)}.nodes`
@@ -6237,6 +6240,14 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             const assignments = patch.fields.map(({ name, value }) => `data.${swiftIdent(name)} = ${emitSwiftExpr(value, indent)}`).join('; ')
             return `${swiftIdent(flowName)}.updateNodeData(${emitSwiftExpr(e.args[0]!, indent)}) { data in ${assignments} }`
           }
+        }
+        if (member === 'updateNodeData' && e.args.length === 2 && flowPatchCallback && flowPatchArg?.kind === 'arrow' && flowPatchBody?.kind === 'object') {
+          const callback = flowPatchArg
+          const assignments = flowPatchBody.fields.map(({ name, value }) => {
+            const resolved = substituteIdentifier(value, callback.params[0]!, { kind: 'identifier', name: 'node' }) ?? value
+            return `data.${swiftIdent(name)} = ${emitSwiftExpr(resolved, indent)}`
+          }).join('; ')
+          return `${swiftIdent(flowName)}.updateNodeDataFromNode(${emitSwiftExpr(e.args[0]!, indent)}) { node in var data = node.data; ${assignments}; return data }`
         }
         if (member === 'updateNode' && e.args.length === 2 && e.args[1]!.kind === 'object') {
           const patch = e.args[1]
