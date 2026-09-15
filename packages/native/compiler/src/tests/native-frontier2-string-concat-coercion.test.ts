@@ -54,14 +54,17 @@ describe('a mixed String/non-String `+` concatenates on both targets', () => {
   it('Swift: the non-string operand is coerced String(...)', () => {
     expect(outLine('swift', STR_INT)).toContain('"count: " + String(n)')
     expect(outLine('swift', INT_STR)).toContain('String(n) + " items"')
-    expect(outLine('swift', STR_DOUBLE)).toContain('"v=" + String(x)')
+    // A DOUBLE operand takes the JS-faithful formatter, not `String(...)`:
+    // `String(250.0)` is `"250.0"` in Swift where JS prints `"250"`.
+    expect(outLine('swift', STR_DOUBLE)).toContain('"v=" + pyreonNumString(x)')
     expect(outLine('swift', STR_BOOL)).toContain('"on=" + String(b)')
   })
 
   it('Kotlin: the non-string operand is coerced (...).toString()', () => {
     expect(outLine('kotlin', STR_INT)).toContain('"count: " + (n).toString()')
     expect(outLine('kotlin', INT_STR)).toContain('(n).toString() + " items"')
-    expect(outLine('kotlin', STR_DOUBLE)).toContain('"v=" + (x).toString()')
+    // Double → the JS-faithful formatter (see the Swift twin).
+    expect(outLine('kotlin', STR_DOUBLE)).toContain('"v=" + pyreonNumString(x)')
     expect(outLine('kotlin', STR_BOOL)).toContain('"on=" + (b).toString()')
   })
 
