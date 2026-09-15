@@ -474,7 +474,12 @@ private struct PyreonFlowToolbarPortal: View {
     let content: AnyView
     @State private var contentSize: CGSize = .zero
     var body: some View {
-        content.fixedSize().background(GeometryReader { proxy in
+        content
+            .padding(4)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.25), lineWidth: 1))
+            .shadow(color: Color.black.opacity(0.1), radius: 4, y: 2)
+            .fixedSize().background(GeometryReader { proxy in
             Color.clear.onAppear { contentSize = proxy.size }
                 .onChange(of: proxy.size) { _, size in contentSize = size }
         }).position(

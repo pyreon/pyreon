@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Button
+import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -660,7 +662,11 @@ fun <T> PyreonFlowView(
                             translationX = (-placement.anchorX * size.width).toFloat()
                             translationY = (-placement.anchorY * size.height).toFloat()
                         },
-                ) { nodeToolbar(node, index, selected, nodeDragStarts.containsKey(node.id)) }
+                ) {
+                    Surface(shape = RoundedCornerShape(6.dp), elevation = 2.dp) {
+                        Box(Modifier.padding(4.dp)) { nodeToolbar(node, index, selected, nodeDragStarts.containsKey(node.id)) }
+                    }
+                }
             }
         }
 
