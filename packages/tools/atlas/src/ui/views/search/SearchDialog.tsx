@@ -1,3 +1,7 @@
+/* oxlint-disable jsx-a11y/prefer-tag-over-role -- a styled card with the dialog
+   ROLE rather than a native <dialog>: the native element is hidden until
+   showModal(), which puts it in the top layer above the workbench's own
+   backdrop and focus handling. */
 /**
  * The ⌘K search dialog — docs-site style (zero-content's Search precedent):
  * dim blurred backdrop, centered card, one big input, keyboard-driven results
@@ -14,12 +18,19 @@ export function SearchDialog(props: { model: WorkbenchModel }) {
   const activeIdx = signal(0)
   const results = computed(() => m.searchHits(m.query()))
 
-  const close = () =>
+  // Focus returns to wherever it was when the dialog opened — the ⌘K
+  // trigger, a sidebar row — rather than falling to the body.
+  let opener: HTMLElement | null = null
+  const close = () => {
     batch(() => {
       m.searchOpen.set(false)
       m.query.set('')
       activeIdx.set(0)
     })
+    const back = opener
+    opener = null
+    if (back && typeof back.focus === 'function' && back.isConnected) back.focus()
+  }
   const select = (id: string) =>
     batch(() => {
       m.selId.set(id)
@@ -45,12 +56,19 @@ export function SearchDialog(props: { model: WorkbenchModel }) {
   // Mounted only while open (the <Show> below) — focus the field on open.
   const Body = () => {
     onMount(() => {
+      opener = typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null
       // Post-paint: the field must exist AND the browser must have committed
       // the dialog before focus sticks reliably.
       requestAnimationFrame(() => m.focusSearch())
     })
     return (
-      <C.SearchDialogCard data-testid="search-dialog" onClick={(e: Event) => e.stopPropagation()}>
+      <C.SearchDialogCard
+        data-testid="search-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Search components"
+        onClick={(e: Event) => e.stopPropagation()}
+      >
         <C.SearchHead>
           <C.SearchGlyph>⌕</C.SearchGlyph>
           <C.SearchField

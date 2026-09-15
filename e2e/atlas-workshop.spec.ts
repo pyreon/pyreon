@@ -124,17 +124,17 @@ test.describe('Atlas workshop — real-Chromium e2e', () => {
     const errors: string[] = []
     const page = await open(browser, errors)
 
-    await page.getByRole('button', { name: 'Docs', exact: true }).click()
+    await page.getByRole('tab', { name: 'Docs', exact: true }).click()
     await expect(page.getByTestId('props-table')).toBeVisible()
     await expect(page.getByText('label', { exact: true })).toBeVisible()
 
-    await page.getByRole('button', { name: 'Theme Lab', exact: true }).click()
+    await page.getByRole('tab', { name: 'Theme Lab', exact: true }).click()
     const grid = page.getByTestId('lab-grid')
     await expect(grid).toBeVisible()
     // 4 brands × light/dark = 8 tiles, each with its own themed preview button.
     await expect(grid.locator('button')).toHaveCount(8)
 
-    await page.getByRole('button', { name: 'Canvas', exact: true }).click()
+    await page.getByRole('tab', { name: 'Canvas', exact: true }).click()
     await expect(page.getByTestId('canvas-preview')).toBeVisible()
 
     expect(errors).toEqual([])
@@ -144,11 +144,11 @@ test.describe('Atlas workshop — real-Chromium e2e', () => {
     const errors: string[] = []
     const page = await open(browser, errors)
 
-    await page.getByRole('button', { name: 'Actions', exact: true }).click()
+    await page.getByRole('tab', { name: 'Actions', exact: true }).click()
     await expect(page.getByText('No events yet — click the component.')).toBeVisible()
-    await page.getByRole('button', { name: 'Controls', exact: true }).click()
+    await page.getByRole('tab', { name: 'Controls', exact: true }).click()
     await page.locator(PREVIEW_BTN).click()
-    await page.getByRole('button', { name: 'Actions', exact: true }).click()
+    await page.getByRole('tab', { name: 'Actions', exact: true }).click()
     await expect(page.getByText('onClick', { exact: true })).toBeVisible()
 
     await page.getByTestId('search-trigger').click()
@@ -366,7 +366,7 @@ test('A11y panel reports the REAL rendered element, not fabricated passes', asyn
   const before = (await label.textContent())?.trim()
   expect(before).toBeTruthy()
 
-  await page.locator('input[placeholder]').first().fill('')
+  await page.locator('#addon-panel-controls input[placeholder]').first().fill('')
   await page.getByTestId('addon-tab-a11y').click()
   // an unnamed <button> is a genuine danger — the old metadata check could not
   // see this because it only looked at control values, never the DOM
@@ -418,7 +418,7 @@ test.describe('Reactivity panel — reactive coverage', () => {
 
     // Drive real reactivity: flip a control so signals actually write.
     await page.getByTestId('addon-tab-controls').click()
-    const textInput = page.locator('input[placeholder]').first()
+    const textInput = page.locator('#addon-panel-controls input[placeholder]').first()
     await textInput.fill('coverage probe')
     await page.getByTestId('addon-tab-reactivity').click()
 
@@ -520,7 +520,7 @@ test('perf panel records framework work for a real interaction', async ({ browse
 
   // Drive a real re-render: change a control so the styler + runtime do work.
   await page.getByTestId('addon-tab-controls').click()
-  await page.locator('input[placeholder]').first().fill('perf probe')
+  await page.locator('#addon-panel-controls input[placeholder]').first().fill('perf probe')
   await page.getByTestId('addon-tab-perf').click()
   await page.getByTestId('perf-toggle').click()
 
@@ -541,7 +541,7 @@ test('a hand-catalog play script runs against the live preview, steps logged to 
   const page = await open(browser, [])
   // Button carries the authored 'Click storm' scenario with a ▶.
   await page.getByTestId('play-button--play-demo').click()
-  await page.getByRole('button', { name: 'Actions', exact: true }).click()
+  await page.getByRole('tab', { name: 'Actions', exact: true }).click()
   // Each play STEP lands in the Actions ring, then the three clicks the script
   // dispatched land as real onClick events — observation plus behaviour.
   await expect(page.getByText('find the button')).toBeVisible()

@@ -100,6 +100,49 @@ export function filterHierarchy(
   return out
 }
 
+/**
+ * Order a node's items so every PART follows its parent — a tab panel under
+ * its tabs, an accordion item under its accordion — in the parent's slot,
+ * with parts of a parent that is not in this list left where they were.
+ * Pure; the sidebar indents by the same relation.
+ */
+export function withParts(items: readonly WorkbenchComponent[]): WorkbenchComponent[] {
+  const byParent = new Map<string, WorkbenchComponent[]>()
+  const ids = new Set(items.map((c) => c.id))
+  for (const c of items) {
+    if (c.partOf && ids.has(c.partOf) && c.partOf !== c.id) {
+      const list = byParent.get(c.partOf) ?? []
+      list.push(c)
+      byParent.set(c.partOf, list)
+    }
+  }
+  const out: WorkbenchComponent[] = []
+  for (const c of items) {
+    if (c.partOf && ids.has(c.partOf) && c.partOf !== c.id) continue
+    out.push(c, ...(byParent.get(c.id) ?? []))
+  }
+  return out
+}
+
+/**
+ * The component ids in the order the sidebar SHOWS them: depth-first over the
+ * tree, parts after their parent, and nothing under a collapsed group. This
+ * is what arrow-key browsing walks, so the selection can never land on a row
+ * that is not on screen.
+ */
+export function browseOrder(nodes: readonly HierarchyNode[], collapsed: ReadonlySet<string>): string[] {
+  const out: string[] = []
+  const walk = (list: readonly HierarchyNode[]) => {
+    for (const node of list) {
+      if (collapsed.has(node.path)) continue
+      for (const c of withParts(node.items)) out.push(c.id)
+      walk(node.children)
+    }
+  }
+  walk(nodes)
+  return out
+}
+
 /** Total components under a node, including descendants — the sidebar count. */
 export function countUnder(node: HierarchyNode): number {
   return node.items.length + node.children.reduce((n, child) => n + countUnder(child), 0)
