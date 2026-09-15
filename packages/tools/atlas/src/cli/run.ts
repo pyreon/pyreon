@@ -11,6 +11,7 @@ import { readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { createAtlas } from '../index'
 import type { CatalogGraph, ComponentIntelligence, Scenario } from '../core'
+import { catalogReplacer } from '../core'
 import { focusComponents } from '../verify/focus'
 import { diffVerdicts, formatDiff, readBaselineScenarios, summarizeDiff } from '../verify/diff'
 import {
@@ -123,6 +124,8 @@ export interface ScanResult {
   title?: string
   /** Per-component presentation overrides from atlas.config.ts, when it exports any. */
   pages?: Record<string, PageMeta>
+  /** Part → parent component name from atlas.config.ts (`parts`). */
+  parts?: Record<string, string>
   /** Monorepo roots from atlas.config.ts, when it declares any. */
   projects?: readonly ProjectRoot[]
   /**
@@ -403,7 +406,10 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
         // BEFORE the generators: an authored scenario wins over a generated one
         // with the same id (the generators' dedup skips existing ids).
         ...(loaded.config.scenarios ? [authoredScenariosPlugin(loaded.config.scenarios)] : []),
-        ...recommendedPlugins({ mount: false }),
+        ...recommendedPlugins({
+          mount: false,
+          ...(loaded.config.matrix ? { matrix: loaded.config.matrix } : {}),
+        }),
         // Appended AFTER the bundle so it can carry the project's wrapper. The
         // bundle's own entry is disabled above rather than duplicated.
         ...(canMount ? [mountPlugin({ ...loaded.config, ...(runtime ? { runtime } : {}) })] : []),
@@ -469,6 +475,7 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
       ...(loaded.config.presets ? { presets: loaded.config.presets } : {}),
       ...(loaded.config.title ? { title: loaded.config.title } : {}),
       ...(loaded.config.pages ? { pages: loaded.config.pages } : {}),
+      ...(loaded.config.parts ? { parts: loaded.config.parts } : {}),
       ...(effectiveProjects ? { projects: effectiveProjects } : {}),
       ...(autoDetected.length > 0 ? { autoDetected } : {}),
       ...(loaded.error ? { configError: loaded.error } : {}),
@@ -489,7 +496,7 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
       result.guidePath = join(outDir, 'atlas-agent-guide.md')
       // Atomic per file: the two files are consumed as a coherent set (the MCP
       // tools read both), and a plain write exposes a half-written window.
-      writeAtomic(result.catalogPath, JSON.stringify(graph.toJSON(), null, 2))
+      writeAtomic(result.catalogPath, JSON.stringify(graph.toJSON(), catalogReplacer, 2))
       writeAtomic(result.guidePath, result.guide)
     }
     return result
@@ -1113,3 +1120,4 @@ export async function runCli(argv: readonly string[]): Promise<number> {
   err(`atlas: unknown command "${cmd}". Try \`atlas --help\`.\n`)
   return 1
 }
+

@@ -125,6 +125,7 @@
     "release": "bun scripts/build-batched.ts && bun run scripts/publish.ts",
     "test:e2e:atlas-dev": "bunx playwright test --config=e2e-configs/atlas-dev.config.ts",
     "test:e2e:atlas-build": "bunx playwright test --config=e2e-configs/atlas-build.config.ts",
+    "test:e2e:atlas-ui-components": "bunx playwright test --config=e2e-configs/atlas-ui-components.config.ts",
     "test:e2e:atlas-verify": "bunx playwright test --config=e2e-configs/atlas-verify-browser.config.ts",
     "test:e2e:loom": "bunx playwright test --config=e2e-configs/loom-dev.config.ts",
     "check-native-primitive-coverage": "bun scripts/check-native-primitive-coverage.ts"

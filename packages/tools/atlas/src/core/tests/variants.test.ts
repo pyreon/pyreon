@@ -41,15 +41,46 @@ describe('autoVariantScenarios', () => {
     expect(s[0]).toMatchObject({ name: 'Default', source: 'auto-default', variant: {} })
   })
 
-  it('makes one scenario per matrix cell with base args merged', () => {
+  it('makes one scenario per axis value with base args merged; the all-defaults cell is `Default`', () => {
     const s = autoVariantScenarios('Button', [{ name: 'state', values: ['primary', 'secondary'] }], {
       label: 'Go',
     })
     expect(s).toHaveLength(2)
     expect(s[0]).toMatchObject({
-      source: 'auto-variant',
+      id: 'button--default',
+      name: 'Default',
+      source: 'auto-default',
       args: { label: 'Go', state: 'primary' },
       variant: { state: 'primary' },
     })
+    expect(s[1]).toMatchObject({ name: 'state=secondary', source: 'auto-variant', args: { label: 'Go', state: 'secondary' } })
+  })
+
+  it('fans one axis at a time by default: Σ|axis| scenarios, each carrying EVERY axis', () => {
+    // The cross-product was the original default; four ui-components layout
+    // components sharing indent(5)×gap(5)×gapY(6) produced 150 scenarios EACH.
+    const axes = [
+      { name: 'state', values: ['primary', 'secondary', 'danger'] },
+      { name: 'size', values: ['small', 'large'] },
+    ]
+    const fan = autoVariantScenarios('Button', axes)
+    expect(fan.map((s) => s.name)).toEqual(['Default', 'state=secondary', 'state=danger', 'size=large'])
+    // Every scenario is a COMPLETE pinned state — the other axis sits at its default.
+    expect(fan[3]!.args).toEqual({ state: 'primary', size: 'large' })
+    expect(fan[3]!.variant).toEqual({ state: 'primary', size: 'large' })
+  })
+
+  it('`full` opts back into the cross-product, with the product\'s long labels', () => {
+    const axes = [
+      { name: 'state', values: ['primary', 'secondary'] },
+      { name: 'size', values: ['small', 'large'] },
+    ]
+    const full = autoVariantScenarios('Button', axes, {}, 'full')
+    expect(full.map((s) => s.name)).toEqual([
+      'Default',
+      'state=primary · size=large',
+      'state=secondary · size=small',
+      'state=secondary · size=large',
+    ])
   })
 })

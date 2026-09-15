@@ -101,6 +101,7 @@ export async function buildStatic(options: BuildOptions = {}): Promise<BuildResu
   let presets: import('../ui/catalog').WorkbenchPresets | undefined
   let configTitle: string | undefined
   let pages: Record<string, import('../discover/config').PageMeta> | undefined
+  let parts: Record<string, string> | undefined
   let projects: readonly { name: string; dir: string }[] | undefined
   let configProblem: string | undefined
 
@@ -115,6 +116,7 @@ export async function buildStatic(options: BuildOptions = {}): Promise<BuildResu
     // does nothing" with no way to find out why.
     if (scan.configError) configProblem = scan.configError
     pages = scan.pages
+    parts = scan.parts
     // Absolute dirs: grouping resolves each component against ITS OWN project
     // root, which a relative path cannot express once there are several roots.
     projects = scan.projects?.map((pr) => ({ name: pr.name, dir: resolve(root, pr.dir) }))
@@ -226,6 +228,7 @@ export async function buildStatic(options: BuildOptions = {}): Promise<BuildResu
           ...(configPath ? { configPath } : {}),
           ...(presets ? { presets } : {}),
           ...(pages ? { pages } : {}),
+          ...(parts ? { parts } : {}),
           ...(projects ? { projects } : {}),
           title,
         }),

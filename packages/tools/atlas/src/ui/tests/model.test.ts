@@ -372,8 +372,10 @@ describe('createModel — selectScenario', () => {
     m.selectScenario('button', 'button--soft')
     expect(m.selId()).toBe('button')
     expect(m.vals().variant).toBe('soft')
-    // args without a matching editable control never land in the value store
-    expect('onClick' in m.vals()).toBe(false)
+    // EVERY arg lands, editable control or not — a scenario is the whole
+    // pinned state (a Tree's `data`), and filtering to controls rendered it
+    // empty. A function arg is kept for the render and dropped from the link.
+    expect('onClick' in m.vals()).toBe(true)
   })
 
   it('REPLACES stale edits — a scenario is a complete pinned state', () => {
