@@ -1078,7 +1078,7 @@ export function C() {
       expect(w).not.toContain('does NOTHING')
     })
     it(`[${target}] bulk, coordinate, visibility and group methods lower without silent member gaps`, () => {
-      const src = base('', `<Button onPress={() => { flow.updateNode('1', { hidden: true, position: { x: 8, y: 9 }, data: { label: 'Node' } }); flow.updateNodeData('1', { label: 'Updated' }); flow.updateEdge('e1', { label: 'Edge', animated: false, pathOptions: { offset: 12 }, markerEnd: null }); flow.selectNodes(['1'], true); flow.moveSelectedNodes(2, 3); flow.removeEdges(['e1']); flow.removeNodes(['missing']); flow.focusNode('1', 2); flow.panTo({ x: 4, y: 5 }) }}>Act</Button><Text>{flow.getNodes().length}</Text><Text>{flow.getEdges().length}</Text><Text>{flow.getViewport().zoom}</Text><Text>{flow.screenToFlowPosition({ x: 10, y: 20 }).x}</Text><Text>{flow.flowToScreenPosition({ x: 1, y: 2 }).y}</Text><Text>{flow.isNodeVisible('1')}</Text><Text>{flow.getChildNodes('root').length}</Text><Text>{flow.getAbsolutePosition('1').x}</Text>`)
+      const src = base('', `<Button onPress={() => { flow.updateNode('1', { hidden: true, class: 'active-node', style: 'background: red', position: { x: 8, y: 9 }, data: { label: 'Node' } }); flow.updateNodeData('1', { label: 'Updated' }); flow.updateEdge('e1', { label: 'Edge', class: 'active-edge', style: 'stroke: red', animated: false, pathOptions: { offset: 12 }, markerEnd: null }); flow.selectNodes(['1'], true); flow.moveSelectedNodes(2, 3); flow.removeEdges(['e1']); flow.removeNodes(['missing']); flow.focusNode('1', 2); flow.panTo({ x: 4, y: 5 }) }}>Act</Button><Text>{flow.getNodes().length}</Text><Text>{flow.getEdges().length}</Text><Text>{flow.getViewport().zoom}</Text><Text>{flow.screenToFlowPosition({ x: 10, y: 20 }).x}</Text><Text>{flow.flowToScreenPosition({ x: 1, y: 2 }).y}</Text><Text>{flow.isNodeVisible('1')}</Text><Text>{flow.getChildNodes('root').length}</Text><Text>{flow.getAbsolutePosition('1').x}</Text>`)
       const result = transform(src, { target })
       const w = (result.warnings ?? []).join('\n')
       for (const member of ['updateNode', 'updateNodeData', 'updateEdge', 'selectNodes', 'moveSelectedNodes', 'removeEdges', 'removeNodes', 'focusNode', 'panTo', 'getNodes', 'getEdges', 'getViewport', 'screenToFlowPosition', 'flowToScreenPosition', 'isNodeVisible', 'getChildNodes', 'getAbsolutePosition']) {
@@ -1088,16 +1088,16 @@ export function C() {
         expect(result.code).toContain('flow.selectNodes(["1"], additive: true)')
         expect(result.code).toContain('flow.panTo(PyreonXYPosition(x: 4, y: 5))')
         expect(result.code).toContain('flow.updateNodeData("1") { data in data.label = "Updated" }')
-        expect(result.code).toContain('flow.updateNode("1") { node in node.hidden = true; node.position = PyreonXYPosition(x: 8, y: 9); node.data.label = "Node" }')
-        expect(result.code).toContain('flow.updateEdge("e1") { edge in edge.label = "Edge"; edge.animated = false; edge.animatedSpecified = true; edge.pathOffset = 12; edge.markerEnd = nil; edge.markerEndSpecified = true }')
+        expect(result.code).toContain('flow.updateNode("1") { node in node.hidden = true; node.className = "active-node"; node.style = "background: red"; node.position = PyreonXYPosition(x: 8, y: 9); node.data.label = "Node" }')
+        expect(result.code).toContain('flow.updateEdge("e1") { edge in edge.label = "Edge"; edge.className = "active-edge"; edge.style = "stroke: red"; edge.animated = false; edge.animatedSpecified = true; edge.pathOffset = 12; edge.markerEnd = nil; edge.markerEndSpecified = true }')
         expect(validateSwiftWithStubs(result.code).ok).toBe(true)
       } else {
         expect(result.code).toContain('flow.moveSelectedNodes(2.0, 3.0)')
         expect(result.code).toContain('flow.focusNode("1", 2.0)')
         expect(result.code).toContain('flow.panTo(PyreonXYPosition(4.0, 5.0))')
         expect(result.code).toContain('flow.updateNodeData("1") { data -> data.copy(label = "Updated") }')
-        expect(result.code).toContain('flow.updateNode("1") { node -> node.copy(hidden = true, position = PyreonXYPosition(8.0, 9.0), data = node.data.copy(label = "Node")) }')
-        expect(result.code).toContain('flow.updateEdge("e1") { edge -> edge.copy(label = "Edge", animated = false, animatedSpecified = true, pathOffset = 12.0, markerEnd = null, markerEndSpecified = true) }')
+        expect(result.code).toContain('flow.updateNode("1") { node -> node.copy(hidden = true, className = "active-node", style = "background: red", position = PyreonXYPosition(8.0, 9.0), data = node.data.copy(label = "Node")) }')
+        expect(result.code).toContain('flow.updateEdge("e1") { edge -> edge.copy(label = "Edge", className = "active-edge", style = "stroke: red", animated = false, animatedSpecified = true, pathOffset = 12.0, markerEnd = null, markerEndSpecified = true) }')
         expect(validateKotlin(result.code).ok).toBe(true)
       }
     })
@@ -1107,8 +1107,8 @@ import { createFlow } from '@pyreon/flow'
 import { Stack, Text } from '${P}'
 export function C() {
   const flow = createFlow({
-    nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'A' }, parentId: 'root', extent: 'parent', draggable: false, selectable: true, connectable: false, focusable: true, ariaLabel: 'Start node', hidden: false, deletable: true, expandParent: true, group: true, sourceHandles: [{ id: 'out', type: 'source', position: 'right' }], targetHandles: [{ type: 'target', position: 'left' }], style: {} }],
-    edges: [{ id: 'e1', source: '1', target: '1', data: { label: 'wire', weight: 2, active: true, tags: ['a', null], meta: { kind: 'signal' } }, markerStart: { type: 'arrowclosed', color: '#f00', width: 12, height: 8, strokeWidth: 2 }, markerEnd: 'arrow', sourceHandle: 'out', targetHandle: 'in', focusable: true, ariaLabel: 'Loop', hidden: false, deletable: true, reconnectable: false, interactionWidth: 24, pathOptions: { curvature: 0.4, borderRadius: 8, offset: 30 } }, { id: 'e2', source: '1', target: '1', markerEnd: null }],
+    nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'A' }, parentId: 'root', extent: 'parent', draggable: false, selectable: true, connectable: false, focusable: true, ariaLabel: 'Start node', hidden: false, deletable: true, class: 'source-node', style: 'background: #fff', expandParent: true, group: true, sourceHandles: [{ id: 'out', type: 'source', position: 'right' }], targetHandles: [{ type: 'target', position: 'left' }] }],
+    edges: [{ id: 'e1', source: '1', target: '1', data: { label: 'wire', weight: 2, active: true, tags: ['a', null], meta: { kind: 'signal' } }, class: 'signal-edge', style: 'stroke: #f00; stroke-width: 2', markerStart: { type: 'arrowclosed', color: '#f00', width: 12, height: 8, strokeWidth: 2 }, markerEnd: 'arrow', sourceHandle: 'out', targetHandle: 'in', focusable: true, ariaLabel: 'Loop', hidden: false, deletable: true, reconnectable: false, interactionWidth: 24, pathOptions: { curvature: 0.4, borderRadius: 8, offset: 30 } }, { id: 'e2', source: '1', target: '1', markerEnd: null }],
     defaultMarkerEnd: null,
     nodesDraggable: false, nodesConnectable: false, nodesSelectable: false, nodesFocusable: false,
     edgesFocusable: false, nodesDeletable: false, edgesDeletable: false, edgesReconnectable: false,
@@ -1121,7 +1121,8 @@ export function C() {
 `
       const result = transform(src, { target })
       const w = (result.warnings ?? []).join('\n')
-      expect(w).toContain('node field `style` is NOT carried')
+      expect(w).not.toContain('field `style` is NOT carried')
+      expect(w).not.toContain('field `class` is NOT carried')
       expect(w).not.toContain('edge field `markerEnd` is NOT carried')
       expect(w).not.toContain('edge field `markerStart` is NOT carried')
       expect(w).not.toContain('edge field `data` is NOT carried')
@@ -1136,6 +1137,10 @@ export function C() {
       expect(result.code).toContain(`targetHandle${assignment} "in"`)
       expect(result.code).toContain(`ariaLabel${assignment} "Loop"`)
       expect(result.code).toContain(`interactionWidth${assignment} ${target === 'swift' ? '24' : '24.0'}`)
+      expect(result.code).toContain(`className${assignment} "source-node"`)
+      expect(result.code).toContain(`style${assignment} "background: #fff"`)
+      expect(result.code).toContain(`className${assignment} "signal-edge"`)
+      expect(result.code).toContain(`style${assignment} "stroke: #f00; stroke-width: 2"`)
       expect(result.code).toContain(target === 'swift' ? 'data: PyreonFlowData(["label": .string("wire")' : 'data = PyreonFlowData(mapOf("label" to PyreonFlowDataValue.StringValue("wire")')
       expect(result.code).toContain(target === 'swift' ? '.object(PyreonFlowData(["kind": .string("signal")]))' : 'PyreonFlowDataValue.ObjectValue(PyreonFlowData(mapOf("kind" to PyreonFlowDataValue.StringValue("signal"))))')
       expect(result.code).toContain(`curvature${assignment} ${target === 'swift' ? '0.4' : '0.4'}`)
@@ -1193,10 +1198,11 @@ export function C() {
       expect(validation.ok, validation.error ?? '').toBe(true)
     })
     it(`[${target}] call-site addNode/addEdge literals with extra fields warn BY NAME`, () => {
-      const source = base('', `<Button onPress={() => { flow.addNode({ id: '2', position: { x: 1, y: 1 }, data: { label: 'B' }, extent: [[0, 10], [100, 90]], hidden: true, sourceHandles: [{ id: 'out', type: 'source', position: 'right' }], style: {} }); flow.addEdge({ id: 'e2', source: '1', target: '2', data: { label: 'new' }, sourceHandle: 'out', waypoints: [], pathOptions: { offset: 31 }, markerEnd: 'arrow' }) }}>Add</Button>`)
+      const source = base('', `<Button onPress={() => { flow.addNode({ id: '2', position: { x: 1, y: 1 }, data: { label: 'B' }, extent: [[0, 10], [100, 90]], hidden: true, sourceHandles: [{ id: 'out', type: 'source', position: 'right' }], class: 'new-node', style: 'background: blue' }); flow.addEdge({ id: 'e2', source: '1', target: '2', data: { label: 'new' }, sourceHandle: 'out', class: 'new-edge', style: 'stroke: blue', waypoints: [], pathOptions: { offset: 31 }, markerEnd: 'arrow' }) }}>Add</Button>`)
       const result = transform(source, { target })
       const w = (result.warnings ?? []).join('\n')
-      expect(w).toContain('addNode(...): node field `style` is NOT carried')
+      expect(w).not.toContain('field `style` is NOT carried')
+      expect(w).not.toContain('field `class` is NOT carried')
       expect(w).not.toContain('node field `hidden` is NOT carried')
       expect(w).not.toContain('node field `sourceHandles` is NOT carried')
       expect(w).not.toContain('node field `extent` is NOT carried')
@@ -1209,6 +1215,10 @@ export function C() {
       expect(w).not.toContain('edge field `data` is NOT carried')
       expect(result.code).toContain(target === 'swift' ? 'data: PyreonFlowData(["label": .string("new")])' : 'data = PyreonFlowData(mapOf("label" to PyreonFlowDataValue.StringValue("new")))')
       expect(result.code).toContain(`pathOffset${target === 'swift' ? ':' : ' ='} ${target === 'swift' ? '31' : '31.0'}`)
+      expect(result.code).toContain(target === 'swift' ? 'className: "new-node", style: "background: blue"' : 'style = "background: blue", className = "new-node"')
+      expect(result.code).toContain(target === 'swift' ? 'className: "new-edge", style: "stroke: blue"' : 'style = "stroke: blue", className = "new-edge"')
+      const validation = target === 'swift' ? validateSwiftWithStubs(result.code) : validateKotlin(result.code)
+      expect(validation.ok, validation.error ?? '').toBe(true)
     })
     it(`[${target}] waypoint editing and reconnect lower to native values and typecheck`, () => {
       const src = base('', `<Button onPress={() => { flow.addEdge({ id: 'e2', source: '1', target: '1', waypoints: [{ x: 4, y: 5 }] }); flow.addEdgeWaypoint('e1', { x: 1, y: 2 }, -1); flow.updateEdgeWaypoint('e1', 0, { x: 3, y: 4 }); flow.removeEdgeWaypoint('e1', -1); flow.reconnectEdge('e1', { target: '2', targetHandle: 'in' }) }}>Edit</Button>`)

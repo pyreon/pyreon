@@ -4161,6 +4161,8 @@ function emitSwiftDecl(
           ...(n.ariaLabel !== undefined ? [`ariaLabel: ${JSON.stringify(n.ariaLabel)}`] : []),
           ...(n.hidden !== undefined ? [`hidden: ${n.hidden}`] : []),
           ...(n.deletable !== undefined ? [`deletable: ${n.deletable}`] : []),
+          ...(n.cssClass !== undefined ? [`className: ${JSON.stringify(n.cssClass)}`] : []),
+          ...(n.style !== undefined ? [`style: ${JSON.stringify(n.style)}`] : []),
           ...(n.parentId !== undefined ? [`parentId: ${JSON.stringify(n.parentId)}`] : []),
           ...(n.extent !== undefined ? [`extent: PyreonFlowNodeExtent(minX: ${n.extent[0]}, minY: ${n.extent[1]}, maxX: ${n.extent[2]}, maxY: ${n.extent[3]})`] : []),
           ...(n.extentParent === true ? ['extentParent: true'] : []),
@@ -4189,6 +4191,8 @@ function emitSwiftDecl(
           ...(e.deletable !== undefined ? [`deletable: ${e.deletable}`] : []),
           ...(e.reconnectable !== undefined ? [`reconnectable: ${e.reconnectable}`] : []),
           ...(e.interactionWidth !== undefined ? [`interactionWidth: ${e.interactionWidth}`] : []),
+          ...(e.cssClass !== undefined ? [`className: ${JSON.stringify(e.cssClass)}`] : []),
+          ...(e.style !== undefined ? [`style: ${JSON.stringify(e.style)}`] : []),
           ...(e.data !== undefined && swiftFlowData(e.data) !== null ? [`data: ${swiftFlowData(e.data)}`] : []),
           ...(e.pathOptions?.curvature !== undefined ? [`curvature: ${e.pathOptions.curvature}`] : []),
           ...(e.pathOptions?.borderRadius !== undefined ? [`borderRadius: ${e.pathOptions.borderRadius}`] : []),
@@ -4322,7 +4326,8 @@ function swiftFlowNodeLiteral(arg: ExprIR, flowName: string): string | null {
   const extentExpr = field('extent')
   const extent = extentExpr ? swiftFlowNodeExtentArgs(extentExpr) : null
   if (extentExpr && !extent) _emitWarnings.push(`createFlow binding \`${flowName}\` addNode(...): node field \`extent\` must be \`'parent'\` or a static [[minX, minY], [maxX, maxY]] tuple on native targets.`)
-  const optionalFields = ['draggable', 'selectable', 'connectable', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'parentId', 'expandParent', 'group'] as const
+  const beforeExtentFields = ['draggable', 'selectable', 'connectable', 'focusable', 'ariaLabel', 'hidden', 'deletable'] as const
+  const afterExtentFields = ['expandParent', 'group'] as const
   const parts = [
     `id: ${emitSwiftExpr(idExpr, 0)}`,
     ...(typeExpr ? [`type: ${emitSwiftExpr(typeExpr, 0)}`] : []),
@@ -4330,8 +4335,15 @@ function swiftFlowNodeLiteral(arg: ExprIR, flowName: string): string | null {
     `data: ${emitSwiftExpr(dataExpr, 0)}`,
     ...(widthExpr ? [`width: ${emitSwiftExpr(widthExpr, 0)}`] : []),
     ...(heightExpr ? [`height: ${emitSwiftExpr(heightExpr, 0)}`] : []),
+    ...beforeExtentFields.flatMap((name) => {
+      const value = field(name)
+      return value ? [`${name}: ${emitSwiftExpr(value, 0)}`] : []
+    }),
+    ...(field('class') ? [`className: ${emitSwiftExpr(field('class')!, 0)}`] : []),
+    ...(field('style') ? [`style: ${emitSwiftExpr(field('style')!, 0)}`] : []),
+    ...(field('parentId') ? [`parentId: ${emitSwiftExpr(field('parentId')!, 0)}`] : []),
     ...(extent ? extent : []),
-    ...optionalFields.flatMap((name) => {
+    ...afterExtentFields.flatMap((name) => {
       const value = field(name)
       return value ? [`${name}: ${emitSwiftExpr(value, 0)}`] : []
     }),
@@ -4439,14 +4451,19 @@ function swiftFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
   const dataExpr = field('data')
   const portableData = dataExpr ? swiftFlowData(dataExpr) : null
   if (dataExpr && portableData === null) _emitWarnings.push(`createFlow binding \`${flowName}\` addEdge(...): edge \`data\` must be a static JSON-compatible object to lower natively.`)
-  const optionalFields = ['sourceHandle', 'targetHandle', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'reconnectable', 'interactionWidth'] as const
+  const leadingFields = ['sourceHandle', 'targetHandle'] as const
+  const interactionFields = ['focusable', 'ariaLabel', 'hidden', 'deletable', 'reconnectable', 'interactionWidth'] as const
   const parts = [
     `id: ${emitSwiftExpr(idExpr, 0)}`,
     `source: ${emitSwiftExpr(sourceExpr, 0)}`,
     `target: ${emitSwiftExpr(targetExpr, 0)}`,
+    ...leadingFields.flatMap((name) => { const value = field(name); return value ? [`${name}: ${emitSwiftExpr(value, 0)}`] : [] }),
     ...(typeExpr ? [`type: ${emitSwiftExpr(typeExpr, 0)}`] : []),
     ...(labelExpr ? [`label: ${emitSwiftExpr(labelExpr, 0)}`] : []),
-    ...(animatedExpr ? [`animated: ${emitSwiftExpr(animatedExpr, 0)}`] : []),
+    ...(animatedExpr ? [`animated: ${emitSwiftExpr(animatedExpr, 0)}`, 'animatedSpecified: true'] : []),
+    ...interactionFields.flatMap((name) => { const value = field(name); return value ? [`${name}: ${emitSwiftExpr(value, 0)}`] : [] }),
+    ...(field('class') ? [`className: ${emitSwiftExpr(field('class')!, 0)}`] : []),
+    ...(field('style') ? [`style: ${emitSwiftExpr(field('style')!, 0)}`] : []),
     ...(portableData ? [`data: ${portableData}`] : []),
     ...(pathOptionsExpr?.kind === 'object' ? pathOptionsExpr.fields.flatMap(({ name, value }) => {
       const nativeName = name === 'offset' ? 'pathOffset' : name
@@ -4454,10 +4471,6 @@ function swiftFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
     }) : []),
     ...(markerStartExpr ? (() => { const marker = swiftFlowMarkerLiteral(markerStartExpr); return marker && marker !== 'nil' ? [`markerStart: ${marker}`] : [] })() : []),
     ...(markerEndExpr ? (() => { const marker = swiftFlowMarkerLiteral(markerEndExpr); return marker ? [`markerEnd: ${marker}`, 'markerEndSpecified: true'] : [] })() : []),
-    ...optionalFields.flatMap((name) => {
-      const value = field(name)
-      return value ? [`${name}: ${emitSwiftExpr(value, 0)}`] : []
-    }),
     ...(waypointsExpr ? (() => {
       const value = swiftFlowPositionsLiteral(waypointsExpr)
       return [`waypoints: ${value ?? emitSwiftExpr(waypointsExpr, 0)}`]
@@ -6220,6 +6233,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
                 if (!extent) _emitWarnings.push(`createFlow binding \`${flowName}\` updateNode(...): node field \`extent\` must be \`'parent'\` or a static [[minX, minY], [maxX, maxY]] tuple on native targets.`)
                 return extent ? extent.map((part) => part === 'extentParent: true' ? 'node.extent = nil; node.extentParent = true' : `node.${part.replace(':', ' =')}; node.extentParent = false`) : []
               }
+              if (name === 'class') return [`node.className = ${emitSwiftExpr(value, indent)}`]
               return HANDLED_FLOW_NODE_FIELDS.has(name) ? [`node.${swiftIdent(name)} = ${emitSwiftExpr(value, indent)}`] : []
             })
             return `${swiftIdent(flowName)}.updateNode(${emitSwiftExpr(e.args[0]!, indent)}) { node in ${statements.join('; ')} }`
@@ -6236,6 +6250,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               if (name === 'animated') return [`edge.animated = ${emitSwiftExpr(value, indent)}`, 'edge.animatedSpecified = true']
               if (name === 'waypoints') { const points = swiftFlowPositionsLiteral(value); return points ? [`edge.waypoints = ${points}`] : [] }
               if (name === 'data') { const data = swiftFlowData(value); if (!data) _emitWarnings.push(`createFlow binding \`${flowName}\` updateEdge(...): edge \`data\` must be a static JSON-compatible object to lower natively.`); return data ? [`edge.data = ${data}`] : [] }
+              if (name === 'class') return [`edge.className = ${emitSwiftExpr(value, indent)}`]
               return HANDLED_FLOW_EDGE_FIELDS.has(name) ? [`edge.${swiftIdent(name)} = ${emitSwiftExpr(value, indent)}`] : []
             })
             return `${swiftIdent(flowName)}.updateEdge(${emitSwiftExpr(e.args[0]!, indent)}) { edge in ${statements.join('; ')} }`

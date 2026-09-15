@@ -73,6 +73,8 @@ public struct PyreonFlowNode<T> {
     public var ariaLabel: String?
     public var hidden: Bool?
     public var deletable: Bool?
+    public var className: String?
+    public var style: String?
     public var parentId: String?
     public var extent: PyreonFlowNodeExtent?
     public var extentParent: Bool
@@ -95,6 +97,8 @@ public struct PyreonFlowNode<T> {
         ariaLabel: String? = nil,
         hidden: Bool? = nil,
         deletable: Bool? = nil,
+        className: String? = nil,
+        style: String? = nil,
         parentId: String? = nil,
         extent: PyreonFlowNodeExtent? = nil,
         extentParent: Bool = false,
@@ -116,6 +120,8 @@ public struct PyreonFlowNode<T> {
         self.ariaLabel = ariaLabel
         self.hidden = hidden
         self.deletable = deletable
+        self.className = className
+        self.style = style
         self.parentId = parentId
         self.extent = extent
         self.extentParent = extentParent
@@ -767,6 +773,8 @@ public struct PyreonFlowEdge: Equatable {
     public var deletable: Bool?
     public var reconnectable: Bool?
     public var interactionWidth: Double?
+    public var className: String?
+    public var style: String?
     public var data: PyreonFlowData?
     public var curvature: Double?
     public var borderRadius: Double?
@@ -792,6 +800,8 @@ public struct PyreonFlowEdge: Equatable {
         deletable: Bool? = nil,
         reconnectable: Bool? = nil,
         interactionWidth: Double? = nil,
+        className: String? = nil,
+        style: String? = nil,
         data: PyreonFlowData? = nil,
         curvature: Double? = nil,
         borderRadius: Double? = nil,
@@ -816,6 +826,8 @@ public struct PyreonFlowEdge: Equatable {
         self.deletable = deletable
         self.reconnectable = reconnectable
         self.interactionWidth = interactionWidth
+        self.className = className
+        self.style = style
         self.data = data
         self.curvature = curvature
         self.borderRadius = borderRadius

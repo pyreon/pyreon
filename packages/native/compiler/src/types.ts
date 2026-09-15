@@ -929,6 +929,8 @@ export type DeclIR =
         ariaLabel?: string
         hidden?: boolean
         deletable?: boolean
+        cssClass?: string
+        style?: string
         parentId?: string
         extent?: [number, number, number, number]
         extentParent?: boolean
@@ -953,6 +955,8 @@ export type DeclIR =
         reconnectable?: boolean
         interactionWidth?: number
         data?: ExprIR
+        cssClass?: string
+        style?: string
         pathOptions?: { curvature?: number; borderRadius?: number; offset?: number }
         markerStart?: { type: string; color?: string; width?: number; height?: number; strokeWidth?: number }
         markerEnd?: { type: string; color?: string; width?: number; height?: number; strokeWidth?: number } | null

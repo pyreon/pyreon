@@ -3316,6 +3316,8 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
           ...(n.ariaLabel !== undefined ? [`ariaLabel = ${JSON.stringify(n.ariaLabel)}`] : []),
           ...(n.hidden !== undefined ? [`hidden = ${n.hidden}`] : []),
           ...(n.deletable !== undefined ? [`deletable = ${n.deletable}`] : []),
+          ...(n.cssClass !== undefined ? [`className = ${JSON.stringify(n.cssClass)}`] : []),
+          ...(n.style !== undefined ? [`style = ${JSON.stringify(n.style)}`] : []),
           ...(n.parentId !== undefined ? [`parentId = ${JSON.stringify(n.parentId)}`] : []),
           ...(n.extent !== undefined ? [`extent = PyreonFlowNodeExtent(${n.extent.map((value) => ktChartDouble(String(value))).join(', ')})`] : []),
           ...(n.extentParent === true ? ['extentParent = true'] : []),
@@ -3344,6 +3346,8 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
           ...(e.deletable !== undefined ? [`deletable = ${e.deletable}`] : []),
           ...(e.reconnectable !== undefined ? [`reconnectable = ${e.reconnectable}`] : []),
           ...(e.interactionWidth !== undefined ? [`interactionWidth = ${ktChartDouble(String(e.interactionWidth))}`] : []),
+          ...(e.cssClass !== undefined ? [`className = ${JSON.stringify(e.cssClass)}`] : []),
+          ...(e.style !== undefined ? [`style = ${JSON.stringify(e.style)}`] : []),
           ...(e.data !== undefined && kotlinFlowData(e.data) !== null ? [`data = ${kotlinFlowData(e.data)}`] : []),
           ...(e.pathOptions?.curvature !== undefined ? [`curvature = ${ktChartDouble(String(e.pathOptions.curvature))}`] : []),
           ...(e.pathOptions?.borderRadius !== undefined ? [`borderRadius = ${ktChartDouble(String(e.pathOptions.borderRadius))}`] : []),
@@ -3489,7 +3493,7 @@ function kotlinFlowNodeLiteral(arg: ExprIR, flowName: string): string | null {
   const extentExpr = field('extent')
   const extent = extentExpr ? kotlinFlowNodeExtentArgs(extentExpr) : null
   if (extentExpr && !extent) _emitWarnings.push(`createFlow binding \`${flowName}\` addNode(...): node field \`extent\` must be \`'parent'\` or a static [[minX, minY], [maxX, maxY]] tuple on native targets.`)
-  const optionalFields = ['draggable', 'selectable', 'connectable', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'parentId', 'expandParent', 'group'] as const
+  const optionalFields = ['draggable', 'selectable', 'connectable', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'style', 'parentId', 'expandParent', 'group'] as const
   const parts = [
     `id = ${emitKotlinExpr(idExpr, 0)}`,
     ...(typeExpr ? [`type = ${emitKotlinExpr(typeExpr, 0)}`] : []),
@@ -3502,6 +3506,7 @@ function kotlinFlowNodeLiteral(arg: ExprIR, flowName: string): string | null {
       const value = field(name)
       return value ? [`${name} = ${emitKotlinExpr(value, 0)}`] : []
     }),
+    ...(field('class') ? [`className = ${emitKotlinExpr(field('class')!, 0)}`] : []),
     ...(sourceHandlesExpr ? [`sourceHandles = ${kotlinFlowHandlesLiteral(sourceHandlesExpr) ?? emitKotlinExpr(sourceHandlesExpr, 0)}`] : []),
     ...(targetHandlesExpr ? [`targetHandles = ${kotlinFlowHandlesLiteral(targetHandlesExpr) ?? emitKotlinExpr(targetHandlesExpr, 0)}`] : []),
   ]
@@ -3605,7 +3610,7 @@ function kotlinFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
   const dataExpr = field('data')
   const portableData = dataExpr ? kotlinFlowData(dataExpr) : null
   if (dataExpr && portableData === null) _emitWarnings.push(`createFlow binding \`${flowName}\` addEdge(...): edge \`data\` must be a static JSON-compatible object to lower natively.`)
-  const optionalFields = ['sourceHandle', 'targetHandle', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'reconnectable'] as const
+  const optionalFields = ['sourceHandle', 'targetHandle', 'focusable', 'ariaLabel', 'hidden', 'deletable', 'reconnectable', 'style'] as const
   const interactionWidthExpr = field('interactionWidth')
   const parts = [
     `id = ${emitKotlinExpr(idExpr, 0)}`,
@@ -3625,6 +3630,7 @@ function kotlinFlowEdgeLiteral(arg: ExprIR, flowName: string): string | null {
       const value = field(name)
       return value ? [`${name} = ${emitKotlinExpr(value, 0)}`] : []
     }),
+    ...(field('class') ? [`className = ${emitKotlinExpr(field('class')!, 0)}`] : []),
     ...(interactionWidthExpr ? [`interactionWidth = ${ktChartDouble(emitKotlinExpr(interactionWidthExpr, 0))}`] : []),
     ...(waypointsExpr ? (() => {
       const value = kotlinFlowPositionsLiteral(waypointsExpr)
@@ -5240,6 +5246,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
                 if (!extent) _emitWarnings.push(`createFlow binding \`${flowName}\` updateNode(...): node field \`extent\` must be \`'parent'\` or a static [[minX, minY], [maxX, maxY]] tuple on native targets.`)
                 return extent ? extent.map((part) => part === 'extentParent = true' ? 'extent = null, extentParent = true' : `${part}, extentParent = false`) : []
               }
+              if (name === 'class') return [`className = ${emitKotlinExpr(value, indent)}`]
               const rendered = ['width', 'height'].includes(name) ? ktChartDouble(emitKotlinExpr(value, indent)) : emitKotlinExpr(value, indent)
               return HANDLED_FLOW_NODE_FIELDS.has(name) ? [`${kotlinIdent(name)} = ${rendered}`] : []
             })
@@ -5257,6 +5264,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               if (name === 'animated') return [`animated = ${emitKotlinExpr(value, indent)}`, 'animatedSpecified = true']
               if (name === 'waypoints') { const points = kotlinFlowPositionsLiteral(value); return points ? [`waypoints = ${points}`] : [] }
               if (name === 'data') { const data = kotlinFlowData(value); if (!data) _emitWarnings.push(`createFlow binding \`${flowName}\` updateEdge(...): edge \`data\` must be a static JSON-compatible object to lower natively.`); return data ? [`data = ${data}`] : [] }
+              if (name === 'class') return [`className = ${emitKotlinExpr(value, indent)}`]
               const rendered = name === 'interactionWidth' ? ktChartDouble(emitKotlinExpr(value, indent)) : emitKotlinExpr(value, indent)
               return HANDLED_FLOW_EDGE_FIELDS.has(name) ? [`${kotlinIdent(name)} = ${rendered}`] : []
             })

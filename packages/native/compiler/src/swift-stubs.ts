@@ -1053,9 +1053,15 @@ public struct PyreonFlowNode<T> {
   public var ariaLabel: String? = nil
   public var hidden: Bool? = nil
   public var deletable: Bool? = nil
+  public var className: String? = nil
+  public var style: String? = nil
   public var parentId: String? = nil
+  public var extent: PyreonFlowNodeExtent? = nil
+  public var extentParent: Bool = false
   public var expandParent: Bool? = nil
   public var group: Bool? = nil
+  public var sourceHandles: [PyreonFlowHandleConfig] = []
+  public var targetHandles: [PyreonFlowHandleConfig] = []
   public init(
     id: String,
     type: String? = nil,
@@ -1070,7 +1076,11 @@ public struct PyreonFlowNode<T> {
     ariaLabel: String? = nil,
     hidden: Bool? = nil,
     deletable: Bool? = nil,
+    className: String? = nil,
+    style: String? = nil,
     parentId: String? = nil,
+    extent: PyreonFlowNodeExtent? = nil,
+    extentParent: Bool = false,
     expandParent: Bool? = nil,
     group: Bool? = nil,
     sourceHandles: [PyreonFlowHandleConfig] = [],
@@ -1111,6 +1121,8 @@ public struct PyreonFlowEdge: Equatable {
   public var deletable: Bool? = nil
   public var reconnectable: Bool? = nil
   public var interactionWidth: Double? = nil
+  public var className: String? = nil
+  public var style: String? = nil
   public var data: PyreonFlowData? = nil
   public var curvature: Double? = nil
   public var borderRadius: Double? = nil
@@ -1135,6 +1147,8 @@ public struct PyreonFlowEdge: Equatable {
     deletable: Bool? = nil,
     reconnectable: Bool? = nil,
     interactionWidth: Double? = nil,
+    className: String? = nil,
+    style: String? = nil,
     data: PyreonFlowData? = nil,
     curvature: Double? = nil,
     borderRadius: Double? = nil,

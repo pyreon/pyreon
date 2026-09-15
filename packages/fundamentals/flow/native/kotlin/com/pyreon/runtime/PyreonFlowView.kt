@@ -23,7 +23,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.provides
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
@@ -153,7 +152,9 @@ private fun <T> PyreonFlowState<T>.handleKeyEvent(event: KeyEvent, nodeId: Strin
         nodeId = nodeId,
         shift = event.isShiftPressed,
         command = event.isCtrlPressed || event.isMetaPressed,
-        repeatKey = event.repeatCount > 0,
+        // Compose's common KeyEvent surface does not expose repeat count.
+        // Repeated Android key-down events still arrive as individual calls.
+        repeatKey = false,
     )
 }
 
@@ -568,7 +569,7 @@ fun <T> PyreonFlowView(
             }
             for (node in visibleNodes) {
                 val config = nodeResizer(node) ?: continue
-                val targetId = config.nodeIdOverride ?: node.id
+                val targetId = node.id
                 val absolute = state.getAbsolutePosition(targetId)
                 val dimensions = state.getNodeDimensions(targetId)
                 val width = dimensions.width

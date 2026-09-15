@@ -71,6 +71,7 @@ export const HANDLED_FLOW_NODE_FIELDS: ReadonlySet<string> = new Set([
   'id', 'type', 'position', 'data', 'width', 'height',
   'draggable', 'selectable', 'connectable', 'focusable', 'ariaLabel',
   'hidden', 'deletable', 'parentId', 'extent', 'expandParent', 'group',
+  'class', 'style',
   'sourceHandles', 'targetHandles',
 ])
 /** `FlowEdge` fields the native `PyreonFlowEdge` carries. */
@@ -79,6 +80,7 @@ export const HANDLED_FLOW_EDGE_FIELDS: ReadonlySet<string> = new Set([
   'animated', 'focusable', 'ariaLabel', 'hidden', 'deletable',
   'reconnectable', 'interactionWidth', 'waypoints',
   'data',
+  'class', 'style',
   'pathOptions',
   'markerStart', 'markerEnd',
 ])

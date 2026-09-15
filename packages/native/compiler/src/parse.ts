@@ -9167,6 +9167,8 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     ariaLabel?: string
     hidden?: boolean
     deletable?: boolean
+    cssClass?: string
+    style?: string
     parentId?: string
     extent?: [number, number, number, number]
     extentParent?: boolean
@@ -9191,6 +9193,8 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     reconnectable?: boolean
     interactionWidth?: number
     data?: ExprIR
+    cssClass?: string
+    style?: string
     pathOptions?: { curvature?: number; borderRadius?: number; offset?: number }
     markerStart?: ParsedMarker
     markerEnd?: ParsedMarker | null
@@ -9227,6 +9231,8 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
         continue
       }
       const typeNode = objProp(nodeLit, 'type')
+      const nodeClass = literalString(objProp(nodeLit, 'class'))
+      const nodeStyle = literalString(objProp(nodeLit, 'style'))
       const widthNode = objProp(nodeLit, 'width')
       const heightNode = objProp(nodeLit, 'height')
       const typeLit = literalString(typeNode)
@@ -9250,6 +9256,8 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       const boolFields = ['draggable', 'selectable', 'connectable', 'focusable', 'hidden', 'deletable', 'expandParent', 'group'] as const
       for (const k of literalObjectKeys(nodeLit)) if (!HANDLED_FLOW_NODE_FIELDS.has(k)) droppedNodeFields.add(k)
       if (typeNode && typeLit === undefined) droppedNodeFields.add('type (not a string literal)')
+      if (objProp(nodeLit, 'class') && nodeClass === undefined) droppedNodeFields.add('class (not a string literal)')
+      if (objProp(nodeLit, 'style') && nodeStyle === undefined) droppedNodeFields.add('style (not a string literal)')
       for (const k of stringFields) if (objProp(nodeLit, k) && literalString(objProp(nodeLit, k)) === undefined) droppedNodeFields.add(`${k} (not a string literal)`)
       for (const k of boolFields) if (objProp(nodeLit, k) && literalBool(objProp(nodeLit, k)) === undefined) droppedNodeFields.add(`${k} (not a boolean literal)`)
       if (sourceHandlesNode && sourceHandles === undefined) droppedNodeFields.add('sourceHandles (not a literal handle array)')
@@ -9261,6 +9269,8 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
         positionY: parseExpr(posYNode, ctx),
         data: parseExpr(dataArg, ctx),
         ...(typeLit !== undefined ? { type: typeLit } : {}),
+        ...(nodeClass !== undefined ? { cssClass: nodeClass } : {}),
+        ...(nodeStyle !== undefined ? { style: nodeStyle } : {}),
         ...(widthNode ? { width: parseExpr(widthNode, ctx) } : {}),
         ...(heightNode ? { height: parseExpr(heightNode, ctx) } : {}),
         ...Object.fromEntries(stringFields.flatMap((k) => {
@@ -9303,6 +9313,8 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       const edgeBoolFields = ['focusable', 'hidden', 'deletable', 'reconnectable'] as const
       const interactionWidth = literalNumber(objProp(edgeLit, 'interactionWidth'))
       const edgeDataNode = objProp(edgeLit, 'data')
+      const edgeClass = literalString(objProp(edgeLit, 'class'))
+      const edgeStyle = literalString(objProp(edgeLit, 'style'))
       const pathOptionsNode = objProp(edgeLit, 'pathOptions')
       const markerStartNode = objProp(edgeLit, 'markerStart')
       const markerEndNode = objProp(edgeLit, 'markerEnd')
@@ -9330,6 +9342,8 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       for (const k of edgeBoolFields) if (objProp(edgeLit, k) && literalBool(objProp(edgeLit, k)) === undefined) droppedEdgeFields.add(`${k} (not a boolean literal)`)
       if (objProp(edgeLit, 'interactionWidth') && interactionWidth === undefined) droppedEdgeFields.add('interactionWidth (not a numeric literal)')
       if (edgeDataNode && edgeDataNode.type !== 'ObjectExpression') droppedEdgeFields.add('data (not an object literal)')
+      if (objProp(edgeLit, 'class') && edgeClass === undefined) droppedEdgeFields.add('class (not a string literal)')
+      if (objProp(edgeLit, 'style') && edgeStyle === undefined) droppedEdgeFields.add('style (not a string literal)')
       if (pathOptions === null) droppedEdgeFields.add('pathOptions (not a literal numeric options object)')
       if (markerStartNode && markerStart === undefined) droppedEdgeFields.add('markerStart (not a literal marker)')
       if (markerEndNode && markerEnd === undefined) droppedEdgeFields.add('markerEnd (not a literal marker or null)')
@@ -9351,6 +9365,8 @@ function tryDeclFromCreateFlow(node: AnyNode, ctx: ParseCtx): DeclIR | null {
         })),
         ...(interactionWidth !== undefined ? { interactionWidth } : {}),
         ...(edgeDataNode?.type === 'ObjectExpression' ? { data: parseExpr(edgeDataNode, ctx) } : {}),
+        ...(edgeClass !== undefined ? { cssClass: edgeClass } : {}),
+        ...(edgeStyle !== undefined ? { style: edgeStyle } : {}),
         ...(pathOptions !== undefined && pathOptions !== null ? { pathOptions } : {}),
         ...(markerStart !== undefined && markerStart !== null ? { markerStart } : {}),
         ...(markerEndNode && markerEnd !== undefined ? { markerEnd } : {}),
