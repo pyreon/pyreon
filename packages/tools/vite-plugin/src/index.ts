@@ -1113,7 +1113,12 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       // this, `state()` reaches the runtime and throws its did-not-compile
       // error. Gated on a cheap string check so ordinary `.ts` files pay one
       // `includes` call and nothing else.
-      const isPlainTs = (ext === '.ts' || ext === '.mts') && detectPlain(code)
+      // Every non-JSX script extension the pre-pass's own `getLang` handles —
+      // a `.js`/`.mjs`/`.cjs`/`.cts` plain store used to be skipped here while
+      // its `.jsx` sibling was transformed, and the prescan walks `.js`.
+      const isPlainTs =
+        (ext === '.ts' || ext === '.mts' || ext === '.cts' || ext === '.js' || ext === '.mjs' || ext === '.cjs') &&
+        detectPlain(code)
       // ── Scan for exported signal declarations (populate registry) ──────
       // BEFORE the extension gate: a plain `.ts` store module never reaches
       // the JSX compile, and the boot-time prescan is a walk that can miss a
@@ -2965,6 +2970,29 @@ async function prescanSignalExports(
 // backtracking; real import specifiers have 1-2 spaces around `as`.
 const AS_SPLIT_RE = /\s{1,10}as\s{1,10}/
 
+/**
+ * The local names a module binds to the plain markers, as regex alternations
+ * (`state|s`, `derived|d`). The canonical names are always included — the
+ * pre-pass accepts them when there is no import (the `'use plain'` form).
+ */
+export function plainMarkerLocalNames(code: string): { state: string; derived: string } {
+  const state = new Set(['state'])
+  const derived = new Set(['derived'])
+  const IMPORT_RE = /import\s*\{([^}]*)\}\s*from\s*['"]@pyreon\/core\/plain['"]/g
+  let m: RegExpExecArray | null
+  while ((m = IMPORT_RE.exec(code)) !== null) {
+    for (const spec of m[1]!.split(',')) {
+      const parts = spec.trim().split(/\s+as\s+/)
+      const imported = parts[0]?.trim()
+      const local = (parts[1] ?? parts[0])?.trim()
+      if (!imported || !local || !/^\w+$/.test(local)) continue
+      if (imported === 'state') state.add(local)
+      else if (imported === 'derived') derived.add(local)
+    }
+  }
+  return { state: [...state].join('|'), derived: [...derived].join('|') }
+}
+
 function scanSignalExports(
   code: string,
   moduleId: string,
@@ -2985,8 +3013,18 @@ function scanSignalExports(
   // cross-module auto-call. GATED on the module actually being plain — a
   // classic module with its own `state()` helper must not be misregistered
   // (a false registry entry would auto-call a non-signal in every importer).
-  if (detectPlain(code)) {
-    const PLAIN_EXPORT_RE = /export\s+(?:let|const|var)\s+(\w+)\s*=\s*(?:state(?:\s*\.\s*raw)?|derived)\s*[<(]/g
+  // The plain markers are recognised by their IMPORT SOURCE, so an alias
+  // (`import { state as s } from '@pyreon/core/plain'`) compiles — the
+  // registry scan matched the literal names only, so an aliased store's
+  // export was never registered and its importer rendered the signal's
+  // SOURCE. Match whatever local names the module bound from the marker
+  // package (falling back to the canonical names when there is no import).
+  const plainNames = detectPlain(code) ? plainMarkerLocalNames(code) : null
+  if (plainNames) {
+    const PLAIN_EXPORT_RE = new RegExp(
+      `export\\s+(?:let|const|var)\\s+(\\w+)\\s*=\\s*(?:${plainNames.state}(?:\\s*\\.\\s*raw)?|${plainNames.derived})\\s*[<(]`,
+      'g',
+    )
     while ((match = PLAIN_EXPORT_RE.exec(code)) !== null) {
       signals.add(match[1]!)
     }
@@ -2999,8 +3037,11 @@ function scanSignalExports(
   while ((match = LOCAL_SIGNAL_RE.exec(code)) !== null) {
     localSignals.add(match[1]!)
   }
-  if (detectPlain(code)) {
-    const PLAIN_LOCAL_RE = /(?:^|[\s;])(?:let|const|var)\s+(\w+)\s*=\s*(?:state(?:\s*\.\s*raw)?|derived)\s*[<(]/gm
+  if (plainNames) {
+    const PLAIN_LOCAL_RE = new RegExp(
+      `(?:^|[\\s;])(?:let|const|var)\\s+(\\w+)\\s*=\\s*(?:${plainNames.state}(?:\\s*\\.\\s*raw)?|${plainNames.derived})\\s*[<(]`,
+      'gm',
+    )
     while ((match = PLAIN_LOCAL_RE.exec(code)) !== null) {
       localSignals.add(match[1]!)
     }

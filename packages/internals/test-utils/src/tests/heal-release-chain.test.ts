@@ -208,3 +208,14 @@ describe('parsePublishResult — phase 1 local truth must be SOUND or absent', (
     ).toBeNull()
   })
 })
+import { nativeDispatchBlockedBy } from '../../../../../scripts/heal-release-chain'
+
+describe('nativeDispatchBlockedBy — binaries are @pyreon/compiler optionalDependencies', () => {
+  it('blocks when @pyreon/compiler itself did not publish', () => {
+    expect(nativeDispatchBlockedBy(['@pyreon/core', '@pyreon/compiler'])).toBe('@pyreon/compiler')
+  })
+  it('does NOT block for any other incomplete member (PMTC native-compiler included)', () => {
+    expect(nativeDispatchBlockedBy(['@pyreon/native-compiler', '@pyreon/native-cli'])).toBeNull()
+    expect(nativeDispatchBlockedBy([])).toBeNull()
+  })
+})

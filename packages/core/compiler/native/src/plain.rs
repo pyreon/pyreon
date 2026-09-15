@@ -196,6 +196,10 @@ struct Frame {
     unconditional_paths: OrderedSet,
     conditional_paths: OrderedSet,
     func_depth: i32,
+    /// `scopes.len()` when the frame opened — a binding resolved at an index
+    /// >= this was declared INSIDE the frame body and must not be hoisted
+    /// above its own declaration (TDZ). Mirrors JS `scopeDepth`.
+    scope_depth: usize,
     prologue_at: Option<u32>,
     expr_body: Option<(u32, u32)>,
 }
@@ -303,18 +307,32 @@ impl<'a> P<'a> {
         Some(m)
     }
 
+    /// Index of the scope that resolves `name`, or None. Mirrors JS `scopeIndexOf`.
+    fn scope_index_of(&self, name: &str) -> Option<usize> {
+        self.scopes.iter().rposition(|s| s.contains_key(name))
+    }
+
+    /// May the prologue hoist a read of `name` at all? A read inside a NESTED
+    /// function (a timer / listener / the effect's own cleanup) and a binding
+    /// DECLARED inside the frame are both left where they are — see the JS
+    /// `hoistable` doc for the two failure modes (timer pile-up; TDZ).
+    fn hoistable(&self, name: &str) -> bool {
+        let Some(frame) = self.track.last() else {
+            return false;
+        };
+        self.func_depth == frame.func_depth
+            && self.scope_index_of(name).map_or(true, |i| i < frame.scope_depth)
+    }
+
     fn record_read(&mut self, name: &str) {
-        let (func_depth, cond_depth, await_seen, exit_seen) = (
-            self.func_depth,
-            self.cond_depth,
-            self.await_seen,
-            self.exit_seen,
-        );
+        if !self.hoistable(name) {
+            return;
+        }
+        let (cond_depth, await_seen, exit_seen) = (self.cond_depth, self.await_seen, self.exit_seen);
         let Some(frame) = self.track.last_mut() else {
             return;
         };
-        let unconditional =
-            func_depth == frame.func_depth && cond_depth == 0 && await_seen == 0 && exit_seen == 0;
+        let unconditional = cond_depth == 0 && await_seen == 0 && exit_seen == 0;
         if unconditional {
             frame.unconditional.add(name);
         } else {
@@ -322,18 +340,15 @@ impl<'a> P<'a> {
         }
     }
 
-    fn record_path(&mut self, expr: &str) {
-        let (func_depth, cond_depth, await_seen, exit_seen) = (
-            self.func_depth,
-            self.cond_depth,
-            self.await_seen,
-            self.exit_seen,
-        );
+    fn record_path(&mut self, root: &str, expr: &str) {
+        if !self.hoistable(root) {
+            return;
+        }
+        let (cond_depth, await_seen, exit_seen) = (self.cond_depth, self.await_seen, self.exit_seen);
         let Some(frame) = self.track.last_mut() else {
             return;
         };
-        let unconditional =
-            func_depth == frame.func_depth && cond_depth == 0 && await_seen == 0 && exit_seen == 0;
+        let unconditional = cond_depth == 0 && await_seen == 0 && exit_seen == 0;
         if unconditional {
             frame.unconditional_paths.add(expr);
         } else {
@@ -1119,6 +1134,7 @@ impl<'a> P<'a> {
             unconditional_paths: OrderedSet::default(),
             conditional_paths: OrderedSet::default(),
             func_depth: self.func_depth + 1,
+            scope_depth: self.scopes.len(),
             prologue_at,
             expr_body,
         });
@@ -1143,6 +1159,7 @@ impl<'a> P<'a> {
             unconditional_paths: OrderedSet::default(),
             conditional_paths: OrderedSet::default(),
             func_depth: self.func_depth,
+            scope_depth: self.scopes.len(),
             prologue_at: None,
             expr_body: Some((start, end)),
         });
@@ -1925,13 +1942,17 @@ impl<'a> P<'a> {
         if self.track.is_empty() {
             return;
         }
-        let end = node.span_end();
+        // Segments are collected OUTERMOST-first and reversed; every step is
+        // optionally chained (`u()?.a?.b`) — see the JS twin for why a plain
+        // chain made a guarded read throw before the guard's signal was read.
+        let mut segments: Vec<String> = Vec::new();
         // Walk down the member chain validating static links.
         let mut cur_obj: &Expression = match node {
             MemberLike::Static(m) => {
                 if m.optional {
                     return;
                 }
+                segments.push(format!("?.{}", m.property.name));
                 &m.object
             }
             MemberLike::Computed(m) => {
@@ -1945,6 +1966,8 @@ impl<'a> P<'a> {
                 if !lit {
                     return;
                 }
+                let sp = m.expression.span();
+                segments.push(format!("?.[{}]", self.slice(sp.start, sp.end)));
                 &m.object
             }
         };
@@ -1954,6 +1977,7 @@ impl<'a> P<'a> {
                     if m.optional {
                         return;
                     }
+                    segments.push(format!("?.{}", m.property.name));
                     cur_obj = &m.object;
                 }
                 Expression::ComputedMemberExpression(m) => {
@@ -1967,6 +1991,8 @@ impl<'a> P<'a> {
                     if !lit {
                         return;
                     }
+                    let sp = m.expression.span();
+                    segments.push(format!("?.[{}]", self.slice(sp.start, sp.end)));
                     cur_obj = &m.object;
                 }
                 _ => break,
@@ -1979,8 +2005,10 @@ impl<'a> P<'a> {
         if !is_store {
             return;
         }
-        let path = format!("{}(){}", root.name, self.slice(root.span.end, end));
-        self.record_path(&path);
+        segments.reverse();
+        let path = format!("{}(){}", root.name, segments.join(""));
+        let root_name = root.name.to_string();
+        self.record_path(&root_name, &path);
     }
 }
 

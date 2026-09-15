@@ -67,3 +67,40 @@ describe('only the break-out sequences are neutralised', () => {
     expect(await renderToString(h('style', null, h('b', null, 'x')))).toBe('<style><b>x</b></style>')
   })
 })
+
+describe('accessor children of a raw-text element are invoked exactly once', () => {
+  // SSR is one-shot: a function child is called once at render time. The
+  // raw-text probe used to invoke every accessor to see whether it was
+  // text-shaped and, when one returned a VNode, hand the ORIGINAL children to
+  // the ordinary path — which invoked the accessor a second time (a duplicated
+  // side effect, and a divergent render for a non-idempotent accessor).
+  it('a VNode-returning accessor inside <style> runs once (string mode)', async () => {
+    let calls = 0
+    const child = () => {
+      calls++
+      return h('b', null, 'x')
+    }
+    const out = await renderToString(h('style', null, 'p{}', child))
+    expect(calls).toBe(1)
+    expect(out).toContain('<b>x</b>')
+  })
+
+  it('a VNode-returning accessor inside <script> runs once (stream mode)', async () => {
+    let calls = 0
+    const child = () => {
+      calls++
+      return h('b', null, 'x')
+    }
+    const out = await stream(h('script', null, 'a', child))
+    expect(calls).toBe(1)
+    expect(out).toContain('<b>x</b>')
+  })
+
+  it('a non-idempotent accessor renders its FIRST value', async () => {
+    let n = 0
+    const child = () => (++n === 1 ? h('i', null, 'first') : h('i', null, 'second'))
+    const out = await renderToString(h('style', null, 'p{}', child))
+    expect(out).toContain('first')
+    expect(out).not.toContain('second')
+  })
+})

@@ -1051,3 +1051,33 @@ const Node = <Prov>{row()}</Prov>`
 void mount
 void Fragment
 void disableHydrationWarnings
+
+describe('SSR fast path — attribute seams that diverged from renderProp (round 2)', () => {
+  it('a lowercase handler is neither invoked nor emitted', async () => {
+    let calls = 0
+    const handler = () => {
+      calls++
+      return 'javascript:evil()'
+    }
+    const node = evalSsr('const Node = <button onclick={handler} onclick2="x">go</button>', { handler })
+    const html = await renderToString(node as VNode)
+    expect(html).toBe(await renderToString(h('button', { onclick: handler, onclick2: 'x' }, 'go')))
+    expect(calls).toBe(0)
+    expect(html).not.toContain('onclick=')
+  })
+
+  it('aria-hidden={false} renders aria-hidden="false" like the h() path', async () => {
+    const node = evalSsr('const Node = <div aria-hidden={false} hidden={false}>x</div>')
+    const html = await renderToString(node as VNode)
+    expect(html).toBe(await renderToString(h('div', { 'aria-hidden': false, hidden: false }, 'x')))
+    expect(html).toContain('aria-hidden="false"')
+  })
+
+  it('a user object whose join() returns null omits the attribute like the h() path', async () => {
+    const data = { xs: { join: () => null as unknown as string } }
+    const node = evalSsr('const Node = <div data-a={data.xs.join(",")}>x</div>', { data })
+    const html = await renderToString(node as VNode)
+    expect(html).toBe(await renderToString(h('div', { 'data-a': data.xs.join(',') }, 'x')))
+    expect(html).not.toContain('data-a')
+  })
+})

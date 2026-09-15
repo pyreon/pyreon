@@ -605,6 +605,9 @@ struct Hoist {
 struct Ctx<'a> {
     source: &'a str,
     program: &'a Program<'a>,
+    /// `String` / `Number` are provably the globals (see `ssr_global_intact`).
+    string_global_intact: bool,
+    number_global_intact: bool,
     line_index: LineIndex,
     ssr: bool,
     /// Compile-to-string SSR fast path (`options.ssrTemplate`). Only true when
@@ -811,6 +814,8 @@ impl<'a> Ctx<'a> {
         Ctx {
             source,
             program,
+            string_global_intact: ssr_global_intact(source, "String"),
+            number_global_intact: ssr_global_intact(source, "Number"),
             collapse,
             ssr_template,
             templatize_component_children,
@@ -5218,27 +5223,175 @@ fn ssr_is_url_attr(name: &str) -> bool {
     )
 }
 
-/// Methods that ALWAYS return a string on an unambiguous receiver — used to
-/// prove a dynamic attr value is non-null-non-boolean. Mirrors JS
-/// `SSR_STRING_METHODS`.
-fn ssr_is_string_method(name: &str) -> bool {
-    matches!(
-        name,
-        "toFixed"
-            | "toString"
-            | "toLocaleString"
-            | "join"
-            | "padStart"
-            | "padEnd"
-            | "trim"
-            | "trimStart"
-            | "trimEnd"
-            | "toUpperCase"
-            | "toLowerCase"
-            | "repeat"
-            | "charAt"
-    )
+/// Is the global `name` (`String`/`Number`) provably NOT rebound in the
+/// module? Any occurrence of the identifier that is not immediately a call is
+/// treated as a rebinding (conservative: forgoes a bake, never correctness).
+/// Mirrors JS `ssrGlobalIntact`.
+fn ssr_global_intact(source: &str, name: &str) -> bool {
+    let bytes = source.as_bytes();
+    let n = name.len();
+    let mut i = 0;
+    while let Some(pos) = source[i..].find(name) {
+        let start = i + pos;
+        let end = start + n;
+        i = end;
+        // word boundary on the left (and not a member read `.String`)
+        if start > 0 {
+            let p = bytes[start - 1];
+            if p.is_ascii_alphanumeric() || p == b'_' || p == b'$' || p == b'.' {
+                continue;
+            }
+        }
+        // word boundary on the right
+        if let Some(&q) = bytes.get(end) {
+            if q.is_ascii_alphanumeric() || q == b'_' || q == b'$' {
+                continue;
+            }
+        }
+        // a `function`/`class` declaration is followed by `(`/`{` like a
+        // call and must still count as a rebinding
+        let before = source[..start].trim_end();
+        if before.ends_with("function") || before.ends_with("class") {
+            let kw_start = before.len() - if before.ends_with("function") { 8 } else { 5 };
+            let boundary = kw_start == 0
+                || !(bytes[kw_start - 1].is_ascii_alphanumeric() || bytes[kw_start - 1] == b'_' || bytes[kw_start - 1] == b'$');
+            if boundary && before.len() < start {
+                return false;
+            }
+        }
+        // immediately a call → the global usage the bake relies on
+        let mut k = end;
+        while k < bytes.len() && bytes[k].is_ascii_whitespace() {
+            k += 1;
+        }
+        if bytes.get(k) == Some(&b'(') {
+            continue;
+        }
+        return false;
+    }
+    true
 }
+
+/// The LOWERCASE handler names `renderPropSkipped` drops — mirrors JS
+/// `SSR_EVENT_HANDLER_ATTRS` (core's `EVENT_HANDLER_ATTRS`).
+fn ssr_is_lowercase_event_handler(name: &str) -> bool {
+    SSR_EVENT_HANDLER_ATTRS.binary_search(&name).is_ok()
+}
+
+const SSR_EVENT_HANDLER_ATTRS: &[&str] = &[
+    "onabort",
+    "onafterprint",
+    "onanimationcancel",
+    "onanimationend",
+    "onanimationiteration",
+    "onanimationstart",
+    "onauxclick",
+    "onbeforeinput",
+    "onbeforematch",
+    "onbeforeprint",
+    "onbeforetoggle",
+    "onbeforeunload",
+    "onblur",
+    "oncancel",
+    "oncanplay",
+    "oncanplaythrough",
+    "onchange",
+    "onclick",
+    "onclose",
+    "oncontextlost",
+    "oncontextmenu",
+    "oncontextrestored",
+    "oncopy",
+    "oncuechange",
+    "oncut",
+    "ondblclick",
+    "ondrag",
+    "ondragend",
+    "ondragenter",
+    "ondragleave",
+    "ondragover",
+    "ondragstart",
+    "ondrop",
+    "ondurationchange",
+    "onemptied",
+    "onended",
+    "onerror",
+    "onfocus",
+    "onfocusin",
+    "onfocusout",
+    "onformdata",
+    "ongotpointercapture",
+    "onhashchange",
+    "oninput",
+    "oninvalid",
+    "onkeydown",
+    "onkeypress",
+    "onkeyup",
+    "onlanguagechange",
+    "onload",
+    "onloadeddata",
+    "onloadedmetadata",
+    "onloadstart",
+    "onlostpointercapture",
+    "onmessage",
+    "onmessageerror",
+    "onmousedown",
+    "onmouseenter",
+    "onmouseleave",
+    "onmousemove",
+    "onmouseout",
+    "onmouseover",
+    "onmouseup",
+    "onoffline",
+    "ononline",
+    "onpagehide",
+    "onpageshow",
+    "onpaste",
+    "onpause",
+    "onplay",
+    "onplaying",
+    "onpointercancel",
+    "onpointerdown",
+    "onpointerenter",
+    "onpointerleave",
+    "onpointermove",
+    "onpointerout",
+    "onpointerover",
+    "onpointerrawupdate",
+    "onpointerup",
+    "onpopstate",
+    "onprogress",
+    "onratechange",
+    "onrejectionhandled",
+    "onreset",
+    "onresize",
+    "onscroll",
+    "onscrollend",
+    "onsecuritypolicyviolation",
+    "onseeked",
+    "onseeking",
+    "onselect",
+    "onslotchange",
+    "onstalled",
+    "onstorage",
+    "onsubmit",
+    "onsuspend",
+    "ontimeupdate",
+    "ontoggle",
+    "ontouchcancel",
+    "ontouchend",
+    "ontouchmove",
+    "ontouchstart",
+    "ontransitioncancel",
+    "ontransitionend",
+    "ontransitionrun",
+    "ontransitionstart",
+    "onunhandledrejection",
+    "onunload",
+    "onvolumechange",
+    "onwaiting",
+    "onwheel",
+];
 
 /// JS regex `\s` char set (for `SSR_UNSAFE_URL_RE = /^\s*(?:javascript|data):/i`).
 /// Faithful to ECMAScript's `\s`: ASCII ws + NBSP + the Unicode-space set +
@@ -5310,20 +5463,21 @@ fn ssr_url_char_safe(c: u32) -> bool {
 
 /// The expression provably evaluates to a STRING (never null/bool). Mirrors JS
 /// `ssrProvablyString`.
-fn ssr_provably_string(node: &Expression) -> bool {
+fn ssr_provably_string(node: &Expression, ctx: &Ctx) -> bool {
     let node = unwrap_type_layers(node);
     match node {
         Expression::StringLiteral(_) | Expression::TemplateLiteral(_) => true,
+        // `String(x)` — only while `String` is the global; a method call proves
+        // nothing about an untyped receiver (see JS `ssrProvablyString`).
         Expression::CallExpression(call) => match &call.callee {
-            Expression::Identifier(id) if id.name.as_str() == "String" => true,
-            Expression::StaticMemberExpression(m) => ssr_is_string_method(m.property.name.as_str()),
+            Expression::Identifier(id) if id.name.as_str() == "String" => ctx.string_global_intact,
             _ => false,
         },
         Expression::BinaryExpression(b) if b.operator == BinaryOperator::Addition => {
-            ssr_provably_string(&b.left) || ssr_provably_string(&b.right)
+            ssr_provably_string(&b.left, ctx) || ssr_provably_string(&b.right, ctx)
         }
         Expression::ConditionalExpression(c) => {
-            ssr_provably_string(&c.consequent) && ssr_provably_string(&c.alternate)
+            ssr_provably_string(&c.consequent, ctx) && ssr_provably_string(&c.alternate, ctx)
         }
         _ => false,
     }
@@ -5331,23 +5485,24 @@ fn ssr_provably_string(node: &Expression) -> bool {
 
 /// The expression provably evaluates to a string OR number (never null/bool).
 /// Mirrors JS `ssrProvablyNonNullNonBoolean`.
-fn ssr_provably_non_null_non_boolean(node: &Expression) -> bool {
+fn ssr_provably_non_null_non_boolean(node: &Expression, ctx: &Ctx) -> bool {
     let node = unwrap_type_layers(node);
-    if ssr_provably_string(node) {
+    if ssr_provably_string(node, ctx) {
         return true;
     }
     match node {
         Expression::NumericLiteral(_) => true,
         Expression::CallExpression(call) => {
             matches!(&call.callee, Expression::Identifier(id) if id.name.as_str() == "Number")
+                && ctx.number_global_intact
         }
         Expression::BinaryExpression(b) if b.operator == BinaryOperator::Addition => {
-            ssr_provably_non_null_non_boolean(&b.left)
-                && ssr_provably_non_null_non_boolean(&b.right)
+            ssr_provably_non_null_non_boolean(&b.left, ctx)
+                && ssr_provably_non_null_non_boolean(&b.right, ctx)
         }
         Expression::ConditionalExpression(c) => {
-            ssr_provably_non_null_non_boolean(&c.consequent)
-                && ssr_provably_non_null_non_boolean(&c.alternate)
+            ssr_provably_non_null_non_boolean(&c.consequent, ctx)
+                && ssr_provably_non_null_non_boolean(&c.alternate, ctx)
         }
         _ => false,
     }
@@ -5488,7 +5643,7 @@ fn ssr_try_bake_dynamic_attr(
     if !generic && !url {
         return false;
     }
-    if !ssr_provably_non_null_non_boolean(expr) {
+    if !ssr_provably_non_null_non_boolean(expr, ctx) {
         return false;
     }
     if url && !ssr_provably_safe_url(expr) {
@@ -5552,6 +5707,11 @@ fn ssr_serialize_attr(
     if is_event_handler(name) {
         return true;
     }
+    // Lowercase handler names — the same name set the runtime skips. Mirrors
+    // JS `SSR_EVENT_HANDLER_ATTRS`.
+    if ssr_is_lowercase_event_handler(name) {
+        return true;
+    }
     // innerHTML / dangerouslySetInnerHTML are INNER CONTENT, not attrs → bail.
     if name == "innerHTML" || name == "dangerouslySetInnerHTML" {
         return false;
@@ -5603,6 +5763,12 @@ fn ssr_serialize_attr(
                 None => return false, // empty / non-expression → bail
             };
             let expr = unwrap_type_layers(raw);
+            // A boolean ARIA attribute is a string enum — a literal `false`
+            // renders `aria-x="false"` (mirrors JS + `renderPropValue`).
+            if is_aria && !has_upper && matches!(expr, Expression::BooleanLiteral(b) if !b.value) {
+                buf.emit_static(&format!(" {}=\"false\"", name));
+                return true;
+            }
             // false / null / undefined → omit.
             if is_false_null_undefined(expr) {
                 return true;

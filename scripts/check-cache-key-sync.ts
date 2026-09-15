@@ -124,6 +124,10 @@ export interface CacheStep {
   paths: string[]
   /** The literal text before the first `${{` in `key:` — '' when the key is pure expression. */
   prefix: string
+  /** The whole `key:` template with every `${{ … }}` normalised to `<expr>` —
+   * the identity the path-list invariant compares on (two keys that share a
+   * literal prefix but differ after it are DIFFERENT entries). */
+  keyTemplate: string
   /** Every `restore-keys:` entry's literal prefix — the OTHER prefixes this
    * site can hit an entry through (a restore under a pure-expression key
    * still falls back to these). */
@@ -149,6 +153,7 @@ export function extractCacheSteps(text: string, file: string): CacheStep[] {
       : findStepIndent(lines, i)
     const paths: string[] = []
     let prefix = ''
+    let keyTemplate = ''
     const restorePrefixes: string[] = []
     for (let j = i + 1; j < lines.length; j++) {
       const l = lines[j]!
@@ -166,10 +171,13 @@ export function extractCacheSteps(text: string, file: string): CacheStep[] {
         } else paths.push(pm[1]!.trim())
       }
       const km = /^\s*key:\s*(.*)$/.exec(l)
-      if (km) prefix = km[1]!.split('${{')[0]!.trim()
+      if (km) {
+        prefix = km[1]!.split('${{')[0]!.trim()
+        keyTemplate = km[1]!.trim().replace(/\$\{\{[^}]*\}\}/g, '<expr>')
+      }
       const rm = /^\s*restore-keys:\s*(.*)$/.exec(l)
       if (rm) {
-        const literal = (v: string) => v.split('${{')[0]!.trim()
+        const literal = (v: string) => v.trim().replace(/\$\{\{[^}]*\}\}/g, '<expr>')
         if (rm[1]!.trim() === '|' || rm[1]!.trim() === '') {
           for (let k = j + 1; k < lines.length; k++) {
             const rl = lines[k]!
@@ -180,7 +188,7 @@ export function extractCacheSteps(text: string, file: string): CacheStep[] {
         } else restorePrefixes.push(literal(rm[1]!))
       }
     }
-    out.push({ file, line: i + 1, kind, paths: [...paths].sort(), prefix, restorePrefixes })
+    out.push({ file, line: i + 1, kind, paths: [...paths].sort(), prefix, keyTemplate, restorePrefixes })
   }
   return out
 }
@@ -240,33 +248,40 @@ export interface PathListMismatch {
  * are not comparable and are skipped.
  */
 export function findPathListMismatches(steps: CacheStep[]): PathListMismatch[] {
-  const byPrefix = new Map<string, Map<string, string[]>>()
+  // Two dimensions, compared correctly: a site's `key:` participates by its
+  // full normalised TEMPLATE (`cache-<expr>-alpha` and `cache-<expr>-beta` are
+  // different entries although they share the literal prefix `cache-` — a
+  // prefix-keyed comparison false-positived on them), and a `restore-keys`
+  // entry is genuinely a PREFIX: it can hit any SAVED template it prefixes,
+  // so its site is compared against every one of those. A save never
+  // participates through `restore-keys` (`actions/cache/save` ignores them).
+  const byTemplate = new Map<string, Map<string, string[]>>()
+  const add = (template: string, s: CacheStep) => {
+    const variants = byTemplate.get(template) ?? new Map<string, string[]>()
+    byTemplate.set(template, variants)
+    const id = s.paths.join('\n')
+    const sites = variants.get(id) ?? []
+    sites.push(`${s.file}:${s.line}`)
+    variants.set(id, sites)
+  }
+  const savedTemplates = new Set(
+    steps.filter((s) => s.kind !== 'restore' && s.keyTemplate !== '' && s.keyTemplate !== '<expr>').map((s) => s.keyTemplate),
+  )
   for (const s of steps) {
-    // A site participates under its key's prefix AND every restore-keys
-    // prefix: a restore under a pure-expression key (`${{ env.BOOTSTRAP_KEY }}`)
-    // still falls back to `bootstrap-ubuntu-`, and that fallback can only hit
-    // an entry saved with the identical path list.
-    // `actions/cache/save` ignores `restore-keys` — only a step that can
-    // RESTORE participates through them.
-    const prefixes = new Set(
-      [s.prefix, ...(s.kind === 'save' ? [] : s.restorePrefixes)].filter((p) => p !== ''),
-    )
-    for (const prefix of prefixes) {
-      const variants = byPrefix.get(prefix) ?? new Map<string, string[]>()
-      byPrefix.set(prefix, variants)
-      const id = s.paths.join('\n')
-      const sites = variants.get(id) ?? []
-      sites.push(`${s.file}:${s.line}`)
-      variants.set(id, sites)
+    if (s.keyTemplate !== '' && s.keyTemplate !== '<expr>') add(s.keyTemplate, s)
+    if (s.kind === 'save') continue
+    for (const p of s.restorePrefixes) {
+      if (p === '' || p === '<expr>') continue
+      for (const t of savedTemplates) if (t.startsWith(p)) add(t, s)
     }
   }
   const out: PathListMismatch[] = []
-  for (const [prefix, variants] of byPrefix) {
+  for (const [prefix, variants] of byTemplate) {
     if (variants.size < 2) continue
     out.push({
       prefix,
       variants: [...variants.entries()]
-        .map(([id, sites]) => ({ paths: id.split('\n'), sites }))
+        .map(([id, sites]) => ({ paths: id.split('\n'), sites: [...new Set(sites)] }))
         .sort((a, b) => a.paths.join().localeCompare(b.paths.join())),
     })
   }

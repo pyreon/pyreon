@@ -32,3 +32,35 @@ describe('attributeBuildFailures', () => {
     expect(attributeBuildFailures('@x/y build: warning: Exited with code 3 seen in fixture\n').size).toBe(0)
   })
 })
+
+import { spawnBatchAttributed } from '../../../../../scripts/bootstrap-attribution'
+
+describe('spawnBatchAttributed — resolves on the batch EXIT, not on pipe EOF', () => {
+  // A per-package build bun spawns inherits the batch's stdout pipe. When the
+  // batch dies (timeout SIGKILL, or its own exit while a child is still
+  // running) that orphan keeps the pipe open; waiting for `close` therefore
+  // waited for the orphan — the postinstall hung for as long as the slowest
+  // orphan lived. The orphan here is a backgrounded `sleep` sharing the pipe.
+  it('an exited batch with a pipe-holding orphan resolves immediately', async () => {
+    const t0 = Date.now()
+    const r = await spawnBatchAttributed('bash', ['-c', 'sleep 6 & echo started; exit 3'], {
+      cwd: process.cwd(),
+      timeoutMs: 30_000,
+    })
+    expect(Date.now() - t0).toBeLessThan(4000)
+    expect(r.ok).toBe(false)
+    expect(r.timedOut).toBe(false)
+    expect(r.output).toContain('started')
+  })
+
+  it('a timed-out batch with a pipe-holding orphan resolves right after the kill', async () => {
+    const t0 = Date.now()
+    const r = await spawnBatchAttributed('bash', ['-c', 'sleep 6 & sleep 6'], {
+      cwd: process.cwd(),
+      timeoutMs: 300,
+    })
+    expect(Date.now() - t0).toBeLessThan(4000)
+    expect(r.ok).toBe(false)
+    expect(r.timedOut).toBe(true)
+  })
+})

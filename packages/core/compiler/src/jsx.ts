@@ -1928,6 +1928,26 @@ export function transformJSX_JS(
   // quotes static, only the value escaped at runtime). Anything not provable
   // keeps the runtime `_ssrAttr*` (null-omit safety preserved).
 
+  /**
+   * Is the global `name` (String/Number) provably NOT rebound anywhere in the
+   * module? Any occurrence of the identifier that is not immediately a CALL —
+   * a declaration, a parameter, an import specifier, a member read — is
+   * treated as a rebinding; a conservative false only forgoes a bake (the
+   * runtime helper renders byte-identically), never correctness. Memoised per
+   * module: one regex scan per name.
+   */
+  const ssrGlobalIntactMemo = new Map<string, boolean>()
+  function ssrGlobalIntact(name: string): boolean {
+    let v = ssrGlobalIntactMemo.get(name)
+    if (v === undefined) {
+      // A non-call occurrence, or a `function`/`class` declaration (which
+      // is followed by `(`/`{` like a call and must still count).
+      v = !new RegExp(`(?<![\\w$.])${name}\\b(?!\\s*\\()|\\b(?:function|class)\\s+${name}\\b`).test(code)
+      ssrGlobalIntactMemo.set(name, v)
+    }
+    return v
+  }
+
   /** The expression provably evaluates to a STRING (never null/bool). */
   function ssrProvablyString(node: N): boolean {
     node = unwrapTypeLayers(node)
@@ -1940,18 +1960,15 @@ export function transformJSX_JS(
     }
     if (node.type === 'CallExpression') {
       const callee = node.callee
-      // `String(x)` global coercion → always a string.
-      if (callee?.type === 'Identifier' && callee.name === 'String') return true
-      // `x.method(...)` for a method that ALWAYS returns a string (unambiguous
-      // receiver — Array#join / Number#toFixed / String#* all return string).
-      if (
-        callee?.type === 'MemberExpression' &&
-        !callee.computed &&
-        callee.property?.type === 'Identifier' &&
-        SSR_STRING_METHODS.has(callee.property.name)
-      ) {
-        return true
-      }
+      // `String(x)` global coercion → always a string — when `String` IS the
+      // global. A module that binds the name (a param, an import, a local)
+      // makes the call whatever that binding returns, so a shadowed name
+      // proves nothing and keeps the runtime helper (null-omit safety).
+      // A method call (`x.join()`, `n.toFixed(2)`) proves NOTHING: the
+      // receiver is untyped, so the name says only what a built-in of that
+      // name returns — a user object's `join()` returning null baked
+      // `name="null"` where the h() path omits the attribute.
+      if (callee?.type === 'Identifier' && callee.name === 'String') return ssrGlobalIntact('String')
       return false
     }
     // `a + b` where EITHER operand is provably a string → string concat coerces
@@ -1975,9 +1992,10 @@ export function transformJSX_JS(
     ) {
       return true
     }
-    // `Number(x)` → always a number (NaN is still a number).
+    // `Number(x)` → always a number (NaN is still a number) — same global
+    // caveat as `String` above.
     if (node.type === 'CallExpression' && node.callee?.type === 'Identifier' && node.callee.name === 'Number') {
-      return true
+      return ssrGlobalIntact('Number')
     }
     // `a + b` with both operands non-null-non-boolean → number-or-string.
     if (node.type === 'BinaryExpression' && node.operator === '+') {
@@ -2074,6 +2092,14 @@ export function transformJSX_JS(
     // renderPropSkipped: key/ref/on* render NOTHING server-side — safe to omit.
     if (name === 'key' || name === 'ref') return true
     if (EVENT_RE.test(name)) return true
+    // LOWERCASE handler names (`onclick`) are skipped by `renderPropSkipped`
+    // too — by the SAME name set the runtime uses (`EVENT_HANDLER_ATTRS`,
+    // identity-locked). The fast path skipped only the camelCase spelling, so
+    // `onclick={handler}` reached `_ssrAttrGen`, which INVOKED the handler
+    // during render and wrote its return into the HTML — a server-side call of
+    // a client handler plus a divergence from the h() path (and, for a string
+    // value, a live inline handler the h() path refuses to emit).
+    if (SSR_EVENT_HANDLER_ATTRS.has(name)) return true
     // innerHTML / dangerouslySetInnerHTML are INNER CONTENT, not attrs → bail.
     if (name === 'innerHTML' || name === 'dangerouslySetInnerHTML') return false
     // `<textarea value>` is the other half of the PZ-09 concern that bails
@@ -2125,6 +2151,18 @@ export function transformJSX_JS(
       const raw = attr.value.expression
       if (!raw || raw.type === 'JSXEmptyExpression') return false
       const expr = unwrapTypeLayers(raw)
+      // A boolean ARIA attribute is a STRING enum: `renderPropValue` emits
+      // `aria-x="false"` for a literal `false` (the `true` arm below mirrors
+      // it) — omitting it here dropped the attribute the h() path renders.
+      if (
+        isAria &&
+        !hasUpper &&
+        (expr.type === 'BooleanLiteral' || expr.type === 'Literal') &&
+        expr.value === false
+      ) {
+        ssrEmitStatic(buf, ` ${name}="false"`)
+        return true
+      }
       // false / null / undefined → omit (compile-time; renderProp would too).
       if (
         ((expr.type === 'BooleanLiteral' || expr.type === 'Literal') && expr.value === false) ||
@@ -6517,6 +6555,35 @@ const SSR_VOID_TAGS = new Set([
 // to `_ssrAttrGen`, the lean helper that SKIPS the url-guard regex, so the
 // compiled SSR path emitted a `javascript:` URL that all three other paths
 // blocked. Mirrored in `native/src/lib.rs:ssr_is_url_attr`.
+/**
+ * The LOWERCASE handler names `renderPropSkipped` drops — mirrors core's
+ * `EVENT_HANDLER_ATTRS` (identity-locked by `ssr-url-attrs-identity.test.ts`;
+ * the compiler is a build-time dependency and cannot import core at runtime).
+ * A name outside the set (`once`, `onyx`) is an ordinary attribute.
+ */
+export const SSR_EVENT_HANDLER_ATTRS = new Set([
+  'onabort', 'onafterprint', 'onanimationcancel', 'onanimationend', 'onanimationiteration',
+  'onanimationstart', 'onauxclick', 'onbeforeinput', 'onbeforematch', 'onbeforeprint',
+  'onbeforetoggle', 'onbeforeunload', 'onblur', 'oncancel', 'oncanplay', 'oncanplaythrough',
+  'onchange', 'onclick', 'onclose', 'oncontextlost', 'oncontextmenu', 'oncontextrestored',
+  'oncopy', 'oncuechange', 'oncut', 'ondblclick', 'ondrag', 'ondragend', 'ondragenter',
+  'ondragleave', 'ondragover', 'ondragstart', 'ondrop', 'ondurationchange', 'onemptied',
+  'onended', 'onerror', 'onfocus', 'onfocusin', 'onfocusout', 'onformdata',
+  'ongotpointercapture', 'onhashchange', 'oninput', 'oninvalid', 'onkeydown', 'onkeypress',
+  'onkeyup', 'onlanguagechange', 'onload', 'onloadeddata', 'onloadedmetadata', 'onloadstart',
+  'onlostpointercapture', 'onmessage', 'onmessageerror', 'onmousedown', 'onmouseenter',
+  'onmouseleave', 'onmousemove', 'onmouseout', 'onmouseover', 'onmouseup', 'onoffline',
+  'ononline', 'onpagehide', 'onpageshow', 'onpaste', 'onpause', 'onplay', 'onplaying',
+  'onpointercancel', 'onpointerdown', 'onpointerenter', 'onpointerleave', 'onpointermove',
+  'onpointerout', 'onpointerover', 'onpointerrawupdate', 'onpointerup', 'onpopstate',
+  'onprogress', 'onratechange', 'onrejectionhandled', 'onreset', 'onresize', 'onscroll',
+  'onscrollend', 'onsecuritypolicyviolation', 'onseeked', 'onseeking', 'onselect',
+  'onslotchange', 'onstalled', 'onstorage', 'onsubmit', 'onsuspend', 'ontimeupdate',
+  'ontoggle', 'ontouchcancel', 'ontouchend', 'ontouchmove', 'ontouchstart',
+  'ontransitioncancel', 'ontransitionend', 'ontransitionrun', 'ontransitionstart',
+  'onunhandledrejection', 'onunload', 'onvolumechange', 'onwaiting', 'onwheel',
+])
+
 export const SSR_URL_ATTRS = new Set([
   'href',
   'src',
@@ -6531,21 +6598,6 @@ export const SSR_URL_ATTRS = new Set([
 // a dynamic attr value is non-null-non-boolean (so its attr name+quotes can bake).
 // `Number#toFixed`/`Array#join`/`String#*` all return string; `slice`/`concat`/
 // `replace` are excluded (ambiguous receiver / can return an array).
-const SSR_STRING_METHODS = new Set([
-  'toFixed',
-  'toString',
-  'toLocaleString',
-  'join',
-  'padStart',
-  'padEnd',
-  'trim',
-  'trimStart',
-  'trimEnd',
-  'toUpperCase',
-  'toLowerCase',
-  'repeat',
-  'charAt',
-])
 const SSR_UNSAFE_URL_RE = /^\s*(?:javascript|data):/i
 // oxlint-disable-next-line no-control-regex
 const SSR_URL_SCHEME_NOISE_RE = /[\u0000-\u0020]/g

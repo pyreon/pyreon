@@ -36,12 +36,16 @@ const MAJOR_LINE = /^(\s*['"]?[^:'"]+['"]?\s*:\s*)major\s*$/gm
  * from line shape. A file without a frontmatter block is returned unchanged.
  */
 export function capChangesetText(text: string): string {
-  const m = /^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/.exec(text)
+  // The opening fence is CAPTURED (`---\n` or `---\r\n`) and its length used
+  // for the splice — a hardcoded 4 was right for LF and, under CRLF, dropped
+  // the fence's newline and duplicated a byte, leaving unparseable frontmatter.
+  const m = /^(---\r?\n)([\s\S]*?)(\r?\n---(?:\r?\n|$))/.exec(text)
   if (!m) return text
-  const front = m[1]!
+  const fence = m[1]!
+  const front = m[2]!
   const capped = front.replace(MAJOR_LINE, '$1minor')
   if (capped === front) return text
-  return text.slice(0, 4) + capped + text.slice(4 + front.length)
+  return fence + capped + text.slice(fence.length + front.length)
 }
 
 const files = import.meta.main

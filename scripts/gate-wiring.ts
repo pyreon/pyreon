@@ -52,22 +52,60 @@ export function scriptAliases(rootPackageJsonPath: string): Map<string, string[]
   return out
 }
 
-/** Does any workflow invoke this gate — by its needle, or by a root script alias wrapping it? */
+const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/** `needle` as a whole COMMAND token: bounded by line start/end, whitespace, `&&`, `;` or `|`. */
+function commandMatcher(needle: string): RegExp {
+  return new RegExp(`(?:^|\\s|&&|;|\\|)${escapeRe(needle)}(?=\\s|$|&&|;|\\|)`, 'm')
+}
+
+/**
+ * Does any workflow `run:` block invoke this gate — by its needle, or by a
+ * root script alias whose command IS the needle? Both tests are whole-command
+ * matches over RUN BLOCKS only: a bare substring test over the whole file read
+ * `bun run lint:pyreon` (a different gate), a step NAME, a job id and
+ * `bunx oxlint --version` all as running `lint`, so a gate whose needle is a
+ * prefix of a sibling's fell out of the complement and was enforced by nobody
+ * — the exact hole the complement exists to close.
+ */
 export function gateIsWiredInWorkflows(
   cmd: string,
   texts: readonly string[],
   aliases: Map<string, string[]>,
 ): boolean {
   const needle = gateNeedle(cmd)
-  if (texts.some((t) => t.includes(needle))) return true
-  const wrapping = [...aliases.entries()]
-    .filter(([aliasNeedle]) => aliasNeedle.includes(needle))
-    .flatMap(([, names]) => names)
-  return wrapping.some((alias) =>
-    texts.some((t) =>
-      new RegExp(`\\brun\\s+${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(t),
-    ),
-  )
+  const direct = commandMatcher(needle)
+  const runBlocks = texts.map(runBlockText)
+  if (runBlocks.some((t) => direct.test(t))) return true
+  const wrapping = aliases.get(needle) ?? []
+  return wrapping.some((alias) => {
+    const viaAlias = commandMatcher(`run ${alias}`)
+    return runBlocks.some((t) => viaAlias.test(t))
+  })
+}
+
+/**
+ * Only the text of `run:` values (scalar or block) — what actually executes.
+ * Indentation-driven, like `check-cache-key-sync`'s step reader.
+ */
+export function runBlockText(workflowText: string): string {
+  const lines = workflowText.split('\n')
+  const out: string[] = []
+  for (let i = 0; i < lines.length; i++) {
+    const m = /^(\s*)(?:-\s+)?run:\s*(.*)$/.exec(lines[i]!)
+    if (!m) continue
+    const rest = m[2]!.trim()
+    if (rest === '|' || rest === '>' || rest === '|-' || rest === '>-' || rest === '') {
+      const indent = m[1]!.length
+      for (let k = i + 1; k < lines.length; k++) {
+        const l = lines[k]!
+        const ind = l.length - l.trimStart().length
+        if (l.trim() !== '' && ind <= indent) break
+        out.push(l.trim())
+      }
+    } else out.push(rest)
+  }
+  return out.join('\n')
 }
 
 /**

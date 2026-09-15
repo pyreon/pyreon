@@ -39,3 +39,14 @@ describe('capChangesetText', () => {
     expect(capChangesetText(once)).toBe(once)
   })
 })
+
+describe('capChangesetText — CRLF frontmatter', () => {
+  // The splice used a hardcoded fence length of 4 (`---\n`); a CRLF file's
+  // fence is 5 bytes, so the cap dropped the fence's newline and duplicated a
+  // byte of the frontmatter — unparseable YAML at release time.
+  it('keeps a CRLF fence intact and caps the bump', () => {
+    const crlf = "---\r\n'@pyreon/core': major\r\n---\r\n\r\nBody\r\n"
+    const out = capChangesetText(crlf)
+    expect(out).toBe("---\r\n'@pyreon/core': minor\r\n---\r\n\r\nBody\r\n")
+  })
+})

@@ -49,7 +49,7 @@ describe('extractCacheSteps', () => {
   it('reads kind, scalar path and the literal key prefix', () => {
     const text = step({ kind: 'save', path: '~/.bun/install/cache', key: "bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}" })
     expect(extractCacheSteps(text, 'ci.yml')).toEqual([
-      { file: 'ci.yml', line: 1, kind: 'save', paths: ['~/.bun/install/cache'], prefix: 'bun-install-cache-', restorePrefixes: ['whatever-'] },
+      { file: 'ci.yml', line: 1, kind: 'save', paths: ['~/.bun/install/cache'], prefix: 'bun-install-cache-', keyTemplate: 'bun-install-cache-<expr>-<expr>', restorePrefixes: ['whatever-'] },
     ])
   })
   it('reads a block-scalar path list, sorted, as the artifact identity', () => {
@@ -149,7 +149,7 @@ describe('findPathListMismatches — one prefix ⇒ one path list', () => {
     ]
     expect(findPathListMismatches(steps)).toEqual([
       {
-        prefix: 'boot-',
+        prefix: 'boot-<expr>',
         variants: [
           { paths: ['lib'], sites: ['setup:1'] },
           { paths: ['lib', 'manifest.json'], sites: ['ci:1'] },
@@ -177,8 +177,17 @@ describe('findPathListMismatches — one prefix ⇒ one path list', () => {
       ...extractCacheSteps(step({ kind: 'save', path: ['lib', 'manifest.json'], key: 'boot-${{ h }}' }), 'ci'),
       ...extractCacheSteps(text, 'setup'),
     ]
-    expect(steps[1]!.restorePrefixes).toEqual(['boot-', 'boot-'])
-    expect(findPathListMismatches(steps).map((m) => m.prefix)).toEqual(['boot-'])
+    expect(steps[1]!.restorePrefixes).toEqual(['boot-<expr>', 'boot-'])
+    expect(findPathListMismatches(steps).map((m) => m.prefix)).toEqual(['boot-<expr>'])
+  })
+  it('does NOT flag two keys that share a literal prefix but differ after it', () => {
+    // `cache-<expr>-alpha` and `cache-<expr>-beta` are different entries; a
+    // prefix-keyed comparison blocked this correct workflow.
+    const steps = [
+      ...extractCacheSteps(step({ kind: 'save', path: 'dirA', key: 'cache-${{ runner.os }}-alpha' }), 'a'),
+      ...extractCacheSteps(step({ kind: 'save', path: 'dirB', key: 'cache-${{ runner.os }}-beta' }), 'b'),
+    ]
+    expect(findPathListMismatches(steps)).toEqual([])
   })
   it('skips pure-expression keys (no prefix to compare)', () => {
     const steps = [

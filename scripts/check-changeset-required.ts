@@ -509,7 +509,10 @@ function changedFiles(baseRef: string): string[] | null {
   // diff-filter that catches additions AND deletions (changeset files
   // are deleted when the Version PR consumes them).
   try {
-    return gitChangedFilesZ(`origin/${baseRef}...HEAD`, { args: ['--diff-filter=ACDMRTUXB'] })
+    // `--no-renames`: with rename detection a `git mv` OUT of a published
+    // package lists only the NEW path, so the source that LEFT the package
+    // (a consumer-affecting change) was invisible to this classifier.
+    return gitChangedFilesZ(`origin/${baseRef}...HEAD`, { args: ['--no-renames', '--diff-filter=ACDMRTUXB'] })
   } catch (err) {
     // Loud, and NOT an empty diff.
     console.error(

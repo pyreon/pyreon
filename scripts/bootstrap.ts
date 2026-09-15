@@ -48,11 +48,11 @@
  *   source touched since its last build.
  */
 
-import { execSync, spawn, spawnSync } from 'node:child_process'
+import { execSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
-import { attributeBuildFailures } from './bootstrap-attribution'
+import { attributeBuildFailures, spawnBatchAttributed } from './bootstrap-attribution'
 
 const ROOT = resolve(import.meta.dirname, '..')
 
@@ -496,29 +496,15 @@ const isPostinstall = process.env.npm_lifecycle_event === 'postinstall'
 /**
  * Run the batched build, STREAMING its output (a cold build takes minutes —
  * a silent pipe would be a UX regression) while also CAPTURING it, so the
- * batch exit can be attributed per package (`attributeBuildFailures`).
+ * batch exit can be attributed per package (`attributeBuildFailures`). The
+ * spawn/exit contract lives in `bootstrap-attribution.ts` (unit-tested).
  */
 function runBuildAttributed(args: string[], timeoutMs: number): Promise<{ ok: boolean; output: string }> {
-  return new Promise((resolvePromise) => {
-    const child = spawn('bun', args, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] })
-    let output = ''
-    child.stdout.on('data', (d: Buffer) => {
-      output += d.toString()
-      process.stdout.write(d)
-    })
-    child.stderr.on('data', (d: Buffer) => {
-      output += d.toString()
-      process.stderr.write(d)
-    })
-    const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs)
-    child.on('error', () => {
-      clearTimeout(timer)
-      resolvePromise({ ok: false, output })
-    })
-    child.on('close', (code) => {
-      clearTimeout(timer)
-      resolvePromise({ ok: code === 0, output })
-    })
+  return spawnBatchAttributed('bun', args, {
+    cwd: ROOT,
+    timeoutMs,
+    stdout: (d) => process.stdout.write(d),
+    stderr: (d) => process.stderr.write(d),
   })
 }
 
@@ -706,7 +692,9 @@ if (stillDirty.length > 0 && !forceFail) {
 // timeout, a crash before any per-package line) leaves every dirty package
 // unproven: record NOTHING, so the next run rebuilds them — a withheld hash
 // costs one rebuild, a wrongly-recorded one skips a broken package forever.
-const unattributedFailure = buildThrew && failedInBatch.size === 0 && stillDirty.length === 0
+// Regardless of `stillDirty`: a SIGKILL'd batch under a mtime-blind lib/ can
+// put SOME packages in stillDirty while the rest never built either.
+const unattributedFailure = buildThrew && failedInBatch.size === 0
 if (!forceFail && !forceBuildThrew && !unattributedFailure) {
   const stillDirtyNames = new Set(stillDirty.map((p) => p.name))
   let manifestChanged = false

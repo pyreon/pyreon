@@ -229,7 +229,8 @@ function changedFiles(baseRef: string): string[] | null {
   // to compare only commits unique to HEAD, not the union of both
   // branches' changes since divergence.
   try {
-    return gitChangedFilesZ(`origin/${baseRef}...HEAD`)
+    // `--no-renames`: a file moved OUT of a sensitive package must still count.
+    return gitChangedFilesZ(`origin/${baseRef}...HEAD`, { args: ['--no-renames'] })
   } catch (err) {
     // Loud, and NOT an empty diff.
     console.error(

@@ -75,3 +75,27 @@ describe('ciComplementIsWired', () => {
     expect(scriptAliases(join(root, 'package.json')).get('scripts/check-d.ts')).toEqual(['check-d'])
   })
 })
+
+import { gateIsWiredInWorkflows, runBlockText } from '../../../../../scripts/gate-wiring'
+
+describe('gateIsWiredInWorkflows — whole-COMMAND match over run blocks only', () => {
+  // A substring test over the whole workflow read `bun run lint:pyreon`, a
+  // step NAME and `bunx oxlint --version` as running `lint`, so the `lint`
+  // gate fell out of the complement and nobody enforced it.
+  const aliases = new Map<string, string[]>([['oxlint .', ['lint']]])
+  it('a sibling command sharing the needle as a prefix does NOT count', () => {
+    const text = 'steps:\n  - name: lint everything\n    run: bun run lint:pyreon\n'
+    expect(gateIsWiredInWorkflows('bun run lint', [text], aliases)).toBe(false)
+  })
+  it('a step name or a comment mentioning the needle does NOT count', () => {
+    const text = 'steps:\n  - name: run lint\n    # run: bun run lint\n    run: echo hi\n'
+    expect(gateIsWiredInWorkflows('bun run lint', [text], aliases)).toBe(false)
+  })
+  it('the exact command, chained with && or in a block scalar, counts', () => {
+    expect(gateIsWiredInWorkflows('bun run lint', ['    run: bun install && bun run lint\n'], aliases)).toBe(true)
+    expect(gateIsWiredInWorkflows('bun run lint', ['    run: |\n      bun install\n      bun run lint\n'], aliases)).toBe(true)
+  })
+  it('runBlockText keeps only run values', () => {
+    expect(runBlockText('  - name: x\n    run: |\n      a\n      b\n  - run: c\n')).toBe('a\nb\nc')
+  })
+})

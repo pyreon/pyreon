@@ -156,6 +156,26 @@ function incompleteFor(version: string): string[] {
   return r !== null && r.version === version ? r.incomplete : []
 }
 
+/**
+ * The native binaries (`@pyreon/compiler-<triple>`, built by release-native
+ * from the umbrella tag) belong to `@pyreon/compiler`, which declares them as
+ * `optionalDependencies`. Dispatching them for a version whose PARENT package
+ * failed to publish mints binaries nothing can resolve; any OTHER incomplete
+ * member (PMTC's `@pyreon/native-compiler` included — a different package)
+ * is irrelevant to the binaries and must not block them. Returns the
+ * blocking package name, or null.
+ */
+export function nativeDispatchBlockedBy(incomplete: readonly string[]): string | null {
+  return incomplete.includes(NATIVE_PARENT_PKG) ? NATIVE_PARENT_PKG : null
+}
+const NATIVE_PARENT_PKG = '@pyreon/compiler'
+
+function refuseNativeForPartial(version: string, blocker: string): void {
+  console.log(
+    `::error title=Native dispatch skipped for ${version}::${blocker} did NOT publish, and the native binaries are its optionalDependencies — re-run publish.ts for it, then re-run this workflow to dispatch release-native.`,
+  )
+}
+
 function refuseReleaseForPartial(version: string, incomplete: string[]): void {
   console.log(
     `::error title=Partial release ${version}::${incomplete.length} package(s) did NOT publish: ${incomplete.join(', ')} — the umbrella tag + native dispatch still complete, but NO GitHub Release is created until every package is on npm (re-run publish.ts for the failed set; check-published-state owns the alarm).`,
@@ -422,8 +442,12 @@ async function finalizeCurrentRun(): Promise<void> {
   if (result.incomplete.length > 0) refuseReleaseForPartial(result.version, result.incomplete)
   else if (!obs.releaseExists) createGithubRelease(tag, result.version)
   // Fresh publish: the binaries CANNOT be on npm yet (they build from this
-  // tag), so the only question is whether a run exists (retry-run case).
-  if (!obs.nativeRunExists) await ensureNativeRun(tag)
+  // tag), so the only question is whether a run exists (retry-run case) —
+  // UNLESS the package the binaries belong to did not publish (see
+  // `nativeDispatchBlockedBy`).
+  const blocker = nativeDispatchBlockedBy(result.incomplete)
+  if (blocker) refuseNativeForPartial(result.version, blocker)
+  else if (!obs.nativeRunExists) await ensureNativeRun(tag)
   await pushMissingPerPkgTags(result.version)
   console.log('[heal-release-chain] phase 1 done')
 }
@@ -484,7 +508,9 @@ async function reconcile(): Promise<void> {
         ) ?? 'HEAD'
       await ensureUmbrellaTag(tag, target)
     } else if (action === 'dispatch-native') {
-      await ensureNativeRun(tag)
+      const blocker = nativeDispatchBlockedBy(incompleteFor(version))
+      if (blocker) refuseNativeForPartial(version, blocker)
+      else await ensureNativeRun(tag)
     } else if (action === 'create-release') {
       const incomplete = incompleteFor(version)
       if (incomplete.length > 0) refuseReleaseForPartial(version, incomplete)
