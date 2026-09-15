@@ -650,10 +650,18 @@ jobs:
         env:
           PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate
           PYREON_VALIDATE_NO_CACHE: ${{ github.event_name == 'schedule' && '1' || '0' }}
-          # The macos-15 image now ships kotlinc, which silently turned on
-          # hundreds of cold JVM compiles here and pushed this job past its cap.
-          PYREON_SKIP_KOTLIN_VALIDATE: '1'
-        run: bun run --filter='@pyreon/native-compiler' test
+        # The macos-15 image now ships kotlinc, which silently turned on hundreds
+        # of cold JVM compiles here and pushed this job past its cap. A shim that
+        # exits 127 shadows it for THIS step only: the validator reads a non-zero
+        # probe as "absent", and the tool-probe cache is keyed on the resolved
+        # binary, so a stale "available" entry cannot answer for the shim. An env
+        # switch was tried first and leaked into the unit tests that fake kotlinc.
+        # The co-source step below still runs Kotlin on purpose.
+        run: |
+          mkdir -p "$RUNNER_TEMP/no-kotlinc"
+          printf '#!/bin/sh\nexit 127\n' > "$RUNNER_TEMP/no-kotlinc/kotlinc"
+          chmod +x "$RUNNER_TEMP/no-kotlinc/kotlinc"
+          PATH="$RUNNER_TEMP/no-kotlinc:$PATH" bun run --filter='@pyreon/native-compiler' test
 
       - name: Native coverage — COMPILE every registry snippet
         # The coverage gate normally judges a package by transform WARNINGS and
