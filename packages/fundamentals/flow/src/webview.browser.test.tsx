@@ -100,6 +100,27 @@ describe('FlowWebView bridge (real SVG diagram in a real iframe)', () => {
     expect(messages).toEqual([{ id: 'B', data: { label: 'B' } }])
     unmount()
   })
+
+  it('reports a hosted render failure to the application instead of leaving a silent blank frame', async () => {
+    const errors: Error[] = []
+    const { container, unmount } = mountInBrowser(
+      h(FlowWebView as never, {
+        html: HOST,
+        graph: { nodes: [{ id: 'broken', position: null }], edges: [] },
+        onError: (error: Error) => errors.push(error),
+      }),
+    )
+    container.style.width = '300px'
+    container.style.height = '200px'
+    await flush()
+    const start = performance.now()
+    while (errors.length === 0 && performance.now() - start < 3000) {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    }
+    expect(errors).toHaveLength(1)
+    expect(errors[0]!.message).toContain('null')
+    unmount()
+  })
 })
 
 describe('FlowWebView performance + robustness', () => {

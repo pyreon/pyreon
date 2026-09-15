@@ -57,6 +57,11 @@ export interface FlowSelectPayload {
   data?: unknown
 }
 
+interface FlowHostErrorPayload {
+  __pyreonFlowHostError: 1
+  message: string
+}
+
 export interface BuildFlowHostHtmlOptions {
   /** Default node width when a node omits `width`. Default 150. */
   nodeWidth?: number
@@ -135,8 +140,25 @@ export function buildFlowHostHtml(options: BuildFlowHostHtmlOptions = {}): strin
   // The renderer — dependency-free vanilla JS. Edge geometry mirrors
   // `@pyreon/flow`'s `getBezierPath` (source handle Bottom → target Top,
   // curvature 0.25).
-  const script = `
+const script = `
 (function () {
+  var lastHostError = null;
+  function reportHostError(error) {
+    var message = String(error && error.stack || error);
+    if (message === lastHostError) return;
+    lastHostError = message;
+    window.__pyreonFlowError = message;
+    var attempts = 120;
+    (function send() {
+      try {
+        if (typeof window.pyreonPostMessage === 'function') {
+          window.pyreonPostMessage(JSON.stringify({ __pyreonFlowHostError: 1, message: message }));
+          return;
+        }
+      } catch (ignored) { return; }
+      if (--attempts > 0) setTimeout(send, 16);
+    })();
+  }
   try {
   var NS = 'http://www.w3.org/2000/svg';
   var NODE_W = ${num(nodeWidth)}, NODE_H = ${num(nodeHeight)};
@@ -221,6 +243,13 @@ export function buildFlowHostHtml(options: BuildFlowHostHtmlOptions = {}): strin
     });
     fit(nodes);
   }
+  function safeRender() {
+    try {
+      render();
+      lastHostError = null;
+      window.__pyreonFlowError = null;
+    } catch (error) { reportHostError(error); }
+  }
 
   // Pan (pointer) — bails on a node so taps aren't swallowed.
   var panning = false, moved = false, last = null;
@@ -244,13 +273,13 @@ export function buildFlowHostHtml(options: BuildFlowHostHtmlOptions = {}): strin
   var rafId = 0;
   function schedule() {
     if (rafId) return;
-    if (typeof requestAnimationFrame === 'function') rafId = requestAnimationFrame(function () { rafId = 0; render(); });
-    else render();
+    if (typeof requestAnimationFrame === 'function') rafId = requestAnimationFrame(function () { rafId = 0; safeRender(); });
+    else safeRender();
   }
   window.addEventListener('pyreondata', schedule);
   if (typeof ResizeObserver !== 'undefined') new ResizeObserver(function () { fitted = false; schedule(); }).observe(root);
-  applyVp(); render();
-  } catch (e) { window.__pyreonFlowError = String(e && e.stack || e); }
+  applyVp(); safeRender();
+  } catch (error) { reportHostError(error); }
 })();`
 
   return (
@@ -280,6 +309,8 @@ export interface FlowWebViewProps {
    * bundled editor; node selections continue to reach `onSelect` as well.
    */
   onMessage?: (payload: unknown) => void
+  /** Receives errors raised while the hosted renderer starts or updates. */
+  onError?: (error: Error) => void
   /**
    * Provide your own host HTML (advanced — e.g. a bundled full `@pyreon/flow`
    * web app). Omit to build the self-contained diagram renderer from the
@@ -330,9 +361,10 @@ export function FlowWebView(props: FlowWebViewProps): VNode {
       return typeof gph === 'function' ? (gph as () => unknown)() : gph
     },
   })
-  if (props.onSelect || props.onMessage) {
+  if (props.onSelect || props.onMessage || props.onError) {
     const onSelect = props.onSelect
     const onMessage = props.onMessage
+    const onError = props.onError
     webViewProps.onMessage = (message: string): void => {
       let payload: unknown
       try {
@@ -341,6 +373,13 @@ export function FlowWebView(props: FlowWebViewProps): VNode {
         payload = message
       }
       onMessage?.(payload)
+      if (
+        onError && payload && typeof payload === 'object' && '__pyreonFlowHostError' in payload &&
+        (payload as FlowHostErrorPayload).__pyreonFlowHostError === 1
+      ) {
+        onError(new Error(String((payload as FlowHostErrorPayload).message)))
+        return
+      }
       if (onSelect) {
         if (payload && typeof payload === 'object' && 'id' in payload && typeof payload.id === 'string')
           onSelect(payload as FlowSelectPayload)

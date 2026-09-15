@@ -16,6 +16,10 @@ describe('buildFlowHostHtml', () => {
     expect(html).toContain('function schedule(')
     expect(html).toContain('window.pyreonPostMessage(JSON.stringify({ id: n.id, data: n.data }))') // reverse
     expect(html).toContain('function bezier(') // flow's edge geometry inlined
+    expect(html).toContain('function reportHostError(')
+    expect(html).toContain('if (message === lastHostError) return')
+    expect(html).toContain('__pyreonFlowHostError: 1')
+    expect(html).toContain('function safeRender(')
     // No network dependency — fully self-contained.
     expect(html).not.toContain('<script src=')
   })
@@ -80,6 +84,19 @@ describe('<FlowWebView>', () => {
     const vnode = FlowWebView({ graph, onMessage })
     ;(vnode.props as { onMessage: (message: string) => void }).onMessage('{"type":"ready"}')
     expect(onMessage).toHaveBeenCalledWith({ type: 'ready' })
+  })
+
+  it('routes structured host failures to onError without treating them as selections', () => {
+    const onError = vi.fn()
+    const onSelect = vi.fn()
+    const vnode = FlowWebView({ graph, onError, onSelect })
+    ;(vnode.props as { onMessage: (message: string) => void }).onMessage(
+      JSON.stringify({ __pyreonFlowHostError: 1, message: 'render failed' }),
+    )
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(onError.mock.calls[0]![0]).toBeInstanceOf(Error)
+    expect(onError.mock.calls[0]![0].message).toBe('render failed')
+    expect(onSelect).not.toHaveBeenCalled()
   })
 
   it('preserves arbitrary JSON-safe node and edge fields in the forward graph', () => {
