@@ -16,7 +16,7 @@ import { parseRocketstyle } from '../parse-rocketstyle'
 
 describe('parse-theme skips a computed top-level key', () => {
   it('does not read the variable name as the token name', () => {
-    const { ir, warnings } = parseTheme(`
+    const { ir } = parseTheme(`
       const k = 'rootSize'
       const theme = {
         [k]: 16,
