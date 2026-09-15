@@ -256,6 +256,8 @@ export { MapChart } from './engine/MapChart'
 export type { MapChartProps, MapChartValues } from './engine/MapChart'
 export { geoPointRadii, geoPointsToSvg, hitGeoPoint, renderGeoPaths, renderGeoPoints } from './engine/geo-points'
 export type { GeoPath, GeoPoint, GeoPointsOptions, GeoPointsToSvgOptions } from './engine/geo-points'
+export { geoOverlayPointRadii, hitGeoOverlayPoint, renderGeoOverlayPaths, renderGeoOverlayPoints } from './engine/geo-overlay'
+export type { GeoCoordinate, GeoOverlayOptions, GeoOverlayPath, GeoOverlayPoint } from './engine/geo-overlay'
 
 // ECharts option compatibility — the facade, its layers, and the registries
 export { compiledCommands, compileOption, optionToSvg, planOption } from './engine/option'

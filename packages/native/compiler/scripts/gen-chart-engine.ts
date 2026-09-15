@@ -64,6 +64,7 @@ export const ENGINE_FILES = [
   'graph',
   'calendar',
   'geo',
+  'geo-overlay',
   'gantt',
   'parallel',
   'single-axis',

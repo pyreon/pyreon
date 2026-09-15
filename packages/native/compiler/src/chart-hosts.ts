@@ -1630,8 +1630,8 @@ export function desugarOptionChart(
     set('data', { kind: 'array', elements: rows })
     set('x', { kind: 'arrow', params: ['d'], body: { kind: 'member', object: ident('d'), property: 'x' } })
     const barCount = seriesObjects.filter((s) => {
-      const type = litString(objectField(s, 'type'))
-      return type === 'bar' || type === 'pictorialBar'
+      const seriesType = litString(objectField(s, 'type'))
+      return seriesType === 'bar' || seriesType === 'pictorialBar'
     }).length
     const marks: ExprIR[] = seriesObjects.map((s, si) => {
       const sk = litString(objectField(s, 'type'))!
