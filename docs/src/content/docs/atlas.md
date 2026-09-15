@@ -158,7 +158,9 @@ pyreon atlas dev . --port=5210
 
 Real Vite + the real Pyreon compiler over your source. The workbench ships:
 
-- **Sidebar** — the derived catalog, nested by directory, with per-scenario verdict dots (ok / fail / unverified — three states, never smoothed).
+- **Sidebar** — the derived catalog, nested by directory, with per-scenario verdict dots (ok / fail / unverified — three states, never smoothed). It has its own persistent filter (the ⌘K dialog's query is the dialog's, cleared on exit), parts sit under their parent, a long scenario list is capped with a "show all" row, and ↑↓ walk exactly the rows it shows.
+- **Live rescan** — a change to a scanned file re-derives the catalog and reloads the workbench (debounced, serialised; a failed rescan keeps the previous catalog and says so). A component added or a variant declared after boot shows up without a restart.
+- **Links** — the URL carries the component, the addon tab, the edited controls, the viewport / background / locale, the brand and appearance, the view (`?view=docs`), a forced pseudo state, the Data panel's query state and the active role. Chrome preferences (brand, appearance, panel widths, what is open) persist per browser; a link wins for what it names.
 - **Controls** — editors inferred from prop types: booleans, strings, selects, numbers, colors.
 - **Canvas addons** — viewport presets, backgrounds, zoom, a **measure overlay** (hover any element for its real layout box), and pseudo-state forcing (`:hover` / `:focus` / `:active`).
 - **A11y panel** — static checks plus **axe-core on demand**, scoped to the preview, with findings that highlight the offending element on hover.

@@ -148,14 +148,15 @@ describe('createModel — search + visible groups', () => {
 
   it('filters groups down and drops emptied ones', () => {
     const m = model()
-    m.query.set('badge')
+    // The sidebar filters by `filter`; the ⌘K query is the dialog's own.
+    m.filter.set('badge')
     expect(m.visibleGroups().map((g) => g.group)).toEqual(['Data Display'])
     expect(m.noResults()).toBe(false)
   })
 
   it('flags noResults for a query matching nothing', () => {
     const m = model()
-    m.query.set('zzzz-nope')
+    m.filter.set('zzzz-nope')
     expect(m.visibleGroups()).toEqual([])
     expect(m.noResults()).toBe(true)
   })

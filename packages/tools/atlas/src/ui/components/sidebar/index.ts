@@ -1,6 +1,7 @@
 /** Sidebar — component list grouped by section, with search-empty + footer. */
 export { Sidebar } from './Sidebar'
 export { SideHead } from './SideHead'
+export { FilterInput } from './FilterInput'
 export { SideLabel } from './SideLabel'
 export { CountPill } from './CountPill'
 export { SideList } from './SideList'
